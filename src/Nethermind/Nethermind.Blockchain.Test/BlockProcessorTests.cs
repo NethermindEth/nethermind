@@ -1996,14 +1996,14 @@ public partial class BlockProcessorTests
             LimboLogs.Instance,
             new WithdrawalProcessor(stateProvider, LimboLogs.Instance),
             new ExecutionRequestsProcessor(transactionProcessor),
-            balManager);
+            balManager,
+            new InclusionListSatisfactionChecker(specProvider, Substitute.For<ITxValidator>()));
 
         BranchProcessor branchProcessor = new(
             processor,
             specProvider,
             stateProvider,
             Substitute.For<IBlockhashProvider>(),
-            new InclusionListSatisfactionChecker(HoodiSpecProvider.Instance, Substitute.For<ITxValidator>()),
             LimboLogs.Instance,
             preWarmer);
 
@@ -2209,7 +2209,8 @@ public partial class BlockProcessorTests
             LimboLogs.Instance,
             new WithdrawalProcessor(stateProvider, LimboLogs.Instance),
             new ExecutionRequestsProcessor(transactionProcessor),
-            balManager);
+            balManager,
+            new InclusionListSatisfactionChecker(HoodiSpecProvider.Instance, Substitute.For<ITxValidator>()));
 
         Block block = Build.A.Block.WithHeader(Build.A.BlockHeader.WithAuthor(TestItem.AddressD).TestObject).TestObject;
         // A plain tx failure reproduces sequentially whenever the BAL is right, and a wrong BAL fails the hash
@@ -3851,13 +3852,13 @@ public partial class BlockProcessorTests
             LimboLogs.Instance,
             new WithdrawalProcessor(stateProvider, LimboLogs.Instance),
             new ExecutionRequestsProcessor(transactionProcessor),
-            balManager);
+            balManager,
+            new InclusionListSatisfactionChecker(specProvider, Substitute.For<ITxValidator>()));
         BranchProcessor branchProcessor = new(
             processor,
             specProvider,
             stateProvider,
             Substitute.For<IBlockhashProvider>(),
-            new InclusionListSatisfactionChecker(specProvider, Substitute.For<ITxValidator>()),
             LimboLogs.Instance);
 
         return new(block, stateHeaderProvider.Parent!, balManager, handler, executor, branchProcessor, container);

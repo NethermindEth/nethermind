@@ -121,7 +121,8 @@ public partial class StatelessBlockProcessingEnv(
             logManager,
             new WithdrawalProcessor(WorldState, logManager),
             new ExecutionRequestsProcessor(txProcessor),
-            blockAccessListManager
+            blockAccessListManager,
+            new InclusionListSatisfactionChecker(specProvider, new TxValidator(specProvider.ChainId))
         );
     }
 

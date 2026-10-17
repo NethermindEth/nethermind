@@ -9,12 +9,14 @@ using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.BlockAccessLists;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Caching;
@@ -55,6 +57,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     private readonly IMergeSyncController _mergeSyncController;
     private readonly IInvalidChainTracker _invalidChainTracker;
     private readonly IStateReader _stateReader;
+    private readonly IBlockAccessListStore _blockAccessListStore;
     private readonly ISpecProvider _specProvider;
     private readonly ITxValidator _txValidator;
     private readonly RecoverSignatures _senderRecovery;
@@ -90,6 +93,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         IMergeConfig mergeConfig,
         IReceiptConfig receiptConfig,
         IStateReader stateReader,
+        IBlockAccessListStore blockAccessListStore,
         RecoverSignatures senderRecovery,
         ISpecProvider specProvider,
         ITxValidator txValidator,
@@ -106,6 +110,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         _invalidChainTracker = invalidChainTracker;
         _mergeSyncController = mergeSyncController;
         _stateReader = stateReader;
+        _blockAccessListStore = blockAccessListStore;
         _specProvider = specProvider;
         _txValidator = txValidator;
         _senderRecovery = senderRecovery;
@@ -429,10 +434,11 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
 
     /// <summary>Answers an already-committed block's inclusion-list compliance without re-executing it.</summary>
     /// <remarks>
-    /// EIP-7805 appendability is judged against the state the block committed, which for a canonical block
-    /// is readable at its own state root, so the only work left is recovering the list's senders.
-    /// Null when EIP-8037 leaves the answer undecidable from state alone: only execution records the gas
-    /// dimensions appendability is judged on, so the caller must fall through to it rather than guess.
+    /// EIP-7805 appendability is judged against the state right after the block's transactions, rebuilt from
+    /// the block's access list over its parent's state.
+    /// Null when the access list or the parent's state is not available, or when EIP-8037 leaves the answer
+    /// undecidable from state alone: only execution records the gas dimensions appendability is judged on,
+    /// so the caller must fall through to it rather than guess.
     /// After cache loss or restart, even resending the current head can therefore answer SYNCING.
     /// </remarks>
     private ResultWrapper<PayloadStatusV1>? EvaluateInclusionListFromState(Block block)
@@ -470,13 +476,31 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
 
     private bool? IsInclusionListSatisfied(Block block, Transaction[] inclusionList)
     {
+        if (GetPostTransactionsState(block) is not { } state) return null;
+
         IReleaseSpec spec = _specProvider.GetSpec(block.Header);
         _senderRecovery.RecoverData(inclusionList, spec, skipErrors: true);
 
-        SpecificBlockReadOnlyStateProvider state = new(_stateReader, block.Header);
         return spec.IsEip8037Enabled && block.Header.GasUsedPerDimension is null
             ? EvaluateWithUnknownGasDimensions(block, inclusionList, state, spec)
             : InclusionListValidator.IsSatisfied(block, inclusionList, state, spec, _txValidator);
+    }
+
+    /// <summary>The state right after <paramref name="block"/>'s transactions, where EIP-7805 judges an inclusion list.</summary>
+    /// <returns><c>null</c> when the block's access list or its parent's state is not available.</returns>
+    private PostTransactionsStateProvider? GetPostTransactionsState(Block block)
+    {
+        BlockHeader? parent = _blockTree.FindParentHeader(block.Header, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+        if (parent is null || !_stateReader.HasStateForBlock(parent)) return null;
+
+        ReadOnlyBlockAccessList? blockAccessList = block.BlockAccessList ?? _blockAccessListStore.Get(block.Number, block.GetOrCalculateHash());
+        return blockAccessList is null
+            ? null
+            : new PostTransactionsStateProvider(
+                new SpecificBlockReadOnlyStateProvider(_stateReader, block.Header),
+                new SpecificBlockReadOnlyStateProvider(_stateReader, parent),
+                blockAccessList,
+                block.Transactions.Length);
     }
 
     /// <summary>Answers only when every possible gas-dimension assignment gives the same verdict.</summary>

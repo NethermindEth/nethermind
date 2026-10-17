@@ -9,6 +9,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.BlockAccessLists;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
@@ -1306,6 +1307,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
             mergeConfig,
             receiptConfig,
             stateReader,
+            Substitute.For<IBlockAccessListStore>(),
             senderRecovery ?? new RecoverSignatures(Substitute.For<IEthereumEcdsa>(), Substitute.For<ISpecProvider>(), LimboLogs.Instance),
             specProvider ?? Substitute.For<ISpecProvider>(),
             Substitute.For<ITxValidator>(),

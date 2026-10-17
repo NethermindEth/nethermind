@@ -25,9 +25,10 @@ public sealed class TransactionTraceBlockProcessor(
     ISpecProvider specProvider, IBlockValidator blockValidator, IRewardCalculator rewardCalculator,
     TransactionTraceExecutor executor, IWorldState state, IReceiptStorage receipts,
     IBeaconBlockRootHandler beaconRoot, IBlockhashStore blockHashes, ILogManager logManager,
-    IWithdrawalProcessor withdrawals, IExecutionRequestsProcessor requests, IBlockAccessListManager balManager)
+    IWithdrawalProcessor withdrawals, IExecutionRequestsProcessor requests, IBlockAccessListManager balManager,
+    IInclusionListSatisfactionChecker inclusionListSatisfactionChecker)
     : BlockProcessor(specProvider, blockValidator, rewardCalculator, executor, state, receipts,
-        beaconRoot, blockHashes, logManager, withdrawals, requests, balManager)
+        beaconRoot, blockHashes, logManager, withdrawals, requests, balManager, inclusionListSatisfactionChecker)
 {
     private readonly bool _reportsProcessedTransactions = executor.ReportsProcessedTransactions;
 

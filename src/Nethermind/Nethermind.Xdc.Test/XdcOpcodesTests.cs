@@ -109,7 +109,8 @@ public class XdcOpcodesTests : VirtualMachineTestsBase
             NullLogManager.Instance,
             Substitute.For<IWithdrawalProcessor>(),
             Substitute.For<IExecutionRequestsProcessor>(),
-            Substitute.For<IBlockAccessListManager>())
+            Substitute.For<IBlockAccessListManager>(),
+            Substitute.For<IInclusionListSatisfactionChecker>())
         { }
 
         public new BlockExecutionContext CreateBlockExecutionContext(BlockHeader header, IReleaseSpec spec)

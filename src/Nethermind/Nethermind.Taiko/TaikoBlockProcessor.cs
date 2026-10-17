@@ -43,6 +43,7 @@ public class TaikoBlockProcessor(
     IWithdrawalProcessor withdrawalProcessor,
     IExecutionRequestsProcessor executionRequestsProcessor,
     IBlockAccessListManager balManager,
+    IInclusionListSatisfactionChecker inclusionListSatisfactionChecker,
     ZkGasMeterHolder? zkGasMeterHolder = null)
     : BlockProcessor(
         specProvider,
@@ -56,7 +57,8 @@ public class TaikoBlockProcessor(
         logManager,
         withdrawalProcessor,
         executionRequestsProcessor,
-        balManager)
+        balManager,
+        inclusionListSatisfactionChecker)
 {
     private readonly ZkGasMeterHolder? _zkGasMeterHolder = zkGasMeterHolder;
 

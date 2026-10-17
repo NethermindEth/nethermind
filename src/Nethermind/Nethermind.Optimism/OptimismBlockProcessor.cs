@@ -42,6 +42,7 @@ public class OptimismBlockProcessor : BlockProcessor
         IWithdrawalProcessor withdrawalProcessor,
         IExecutionRequestsProcessor executionRequestsProcessor,
         IBlockAccessListManager balManager,
+        IInclusionListSatisfactionChecker inclusionListSatisfactionChecker,
         ICostHelper costHelper)
         : base(
             specProvider,
@@ -55,7 +56,8 @@ public class OptimismBlockProcessor : BlockProcessor
             logManager,
             withdrawalProcessor,
             executionRequestsProcessor,
-            balManager)
+            balManager,
+            inclusionListSatisfactionChecker)
     {
         ArgumentNullException.ThrowIfNull(stateProvider);
         _opSpecHelper = opSpecHelper;

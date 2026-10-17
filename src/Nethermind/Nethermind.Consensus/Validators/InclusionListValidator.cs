@@ -109,7 +109,7 @@ public static class InclusionListValidator
                 || UInt256.AddOverflow(txCost, blobFee, out txCost)))
             return false;
 
-        return SpendableBalance(block, tx.SenderAddress, in account) >= txCost && account.Nonce == tx.Nonce;
+        return account.Balance >= txCost && account.Nonce == tx.Nonce;
     }
 
     /// <summary>Whether an appended transaction's worst-case block gas still fits.</summary>
@@ -127,22 +127,5 @@ public static class InclusionListValidator
         return Eip8037BlockGasInclusionCheck.TryGetBlockGasReservations(tx, spec, out ulong executionReservation, out ulong stateReservation)
             && Eip8037BlockGasInclusionCheck.Validate(block.GasLimit, execution, state, executionReservation, stateReservation)
                 == Eip8037BlockGasInclusionCheck.Outcome.Ok;
-    }
-
-    /// <summary>Balance the sender would have had when an appended transaction executed.</summary>
-    /// <remarks>Withdrawals are the only post-merge credit applied after the block's transactions, so counting
-    /// them into the post-block balance would make an honest proposer look like a censor.</remarks>
-    private static UInt256 SpendableBalance(Block block, Address sender, ref readonly AccountStruct account)
-    {
-        UInt256 balance = account.Balance;
-        if (block.Withdrawals is not { Length: > 0 }) return balance;
-
-        foreach (Withdrawal withdrawal in block.Withdrawals)
-        {
-            if (withdrawal.Address != sender) continue;
-            if (UInt256.SubtractUnderflow(balance, withdrawal.AmountInWei, out balance)) return UInt256.Zero;
-        }
-
-        return balance;
     }
 }

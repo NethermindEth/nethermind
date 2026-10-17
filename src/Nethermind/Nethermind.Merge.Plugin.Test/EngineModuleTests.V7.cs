@@ -189,6 +189,67 @@ public partial class EngineModuleTests
         }
     }
 
+    [Test]
+    public async Task NewPayloadV6_judges_the_inclusion_list_before_the_post_execution_system_calls([Values] bool fundedBySystemCall)
+    {
+        Transaction inclusionListTx = Build.A.Transaction
+            .WithNonce(0)
+            .WithMaxFeePerGas(10.GWei)
+            .WithMaxPriorityFeePerGas(2.GWei)
+            .WithGasLimit(100_000)
+            .WithTo(TestItem.AddressA)
+            .SignedAndResolved(TestItem.PrivateKeyF)
+            .TestObject;
+        UInt256 senderFunds = 2 * (UInt256)inclusionListTx.GasLimit * inclusionListTx.MaxFeePerGas;
+        byte[][] inclusionList = [Rlp.Encode(inclusionListTx).Bytes];
+        HeadStateInterceptor headState = new();
+        using MergeTestBlockchain chain = await CreateBlockchainWithHeadState(headState, new MergeConfig { TerminalTotalDifficulty = "0", NewPayloadCacheSize = 0 },
+            configure: builder => builder.WithGenesisPostProcessor((_, state, specProvider) =>
+            {
+                if (!fundedBySystemCall)
+                {
+                    state.CreateAccount(TestItem.AddressF, senderFunds);
+                    return;
+                }
+                state.AddToBalance(Eip7002Constants.WithdrawalRequestPredeployAddress, senderFunds, specProvider.GenesisSpec);
+                state.InsertCode(Eip7002Constants.WithdrawalRequestPredeployAddress,
+                    Prepare.EvmCode.CallWithValue(TestItem.AddressF, 50_000, senderFunds).Done, specProvider.GenesisSpec);
+            }));
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+        Hash256 startingHead = chain.BlockTree.HeadHash;
+
+        ResultWrapper<ForkchoiceUpdatedV2Result> buildFcu = await rpc.engine_forkchoiceUpdatedV5(
+            new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead),
+            BuildBogotaPayloadAttributes(inclusionList: []));
+        ResultWrapper<GetPayloadV6Result?> payloadResult = await rpc.engine_getPayloadV6(Bytes.FromHexString(buildFcu.Data.PayloadId!));
+        ExecutionPayloadV4 emptyPayload = payloadResult.Data!.ExecutionPayload;
+
+        ResultWrapper<PayloadStatusV2> result = await rpc.engine_newPayloadV6(
+            emptyPayload,
+            blobVersionedHashes: [],
+            parentBeaconBlockRoot: Keccak.Zero,
+            executionRequests: payloadResult.Data!.ExecutionRequests,
+            inclusionListTransactions: inclusionList);
+        await rpc.engine_forkchoiceUpdatedV5(new ForkchoiceStateV1(emptyPayload.BlockHash, startingHead, startingHead), payloadAttributes: null);
+        ResultWrapper<PayloadStatusV2> resend = await rpc.engine_newPayloadV6(
+            emptyPayload, [], Keccak.Zero, payloadResult.Data!.ExecutionRequests, inclusionList);
+        await RetainInclusionListByPrunedResend(rpc, headState, emptyPayload, inclusionList);
+        ResultWrapper<ForkchoiceUpdatedV2Result> headFcu = await rpc.engine_forkchoiceUpdatedV5(
+            new ForkchoiceStateV1(emptyPayload.BlockHash, startingHead, startingHead), payloadAttributes: null);
+
+        chain.StateReader.TryGetAccount(chain.BlockTree.Head!.Header, TestItem.AddressF, out AccountStruct sender);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Valid));
+            Assert.That(sender.Balance, Is.EqualTo(senderFunds));
+            Assert.That(result.Data.InclusionListSatisfied, Is.EqualTo(fundedBySystemCall));
+            Assert.That(resend.Data.Status, Is.EqualTo(PayloadStatus.Valid));
+            Assert.That(resend.Data.InclusionListSatisfied, Is.EqualTo(fundedBySystemCall), "resent payload");
+            Assert.That(headFcu.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
+            Assert.That(headFcu.Data.PayloadStatus.InclusionListSatisfied, Is.EqualTo(fundedBySystemCall), "forkchoice head");
+        }
+    }
+
     // Also pins that forkchoiceUpdatedV5 reports the answer for the latest list, whichever order they arrive in.
     [Test]
     public async Task NewPayloadV6_should_revalidate_same_block_against_new_inclusion_list([Values] bool censoringListLast)
@@ -1498,6 +1559,7 @@ public partial class EngineModuleTests
         }
 
         accountReader.TrackedBlockHash = first.BlockHash;
+        accountReader.TrackedParentHash = first.ParentHash;
 
         ResultWrapper<PayloadStatusV2> resend = await rpc.engine_newPayloadV6(
             first, [], Keccak.Zero, [], entry == InclusionListEntry.Included ? firstList : [Rlp.Encode(censored).Bytes]);
@@ -1586,11 +1648,12 @@ public partial class EngineModuleTests
             get => _trackedBlockHash.Value;
             set => _trackedBlockHash.Value = value;
         }
+        public Hash256? TrackedParentHash { get; set; }
         public int AccountReads => Volatile.Read(ref _accountReads);
 
         public bool TryGetAccount(BlockHeader? baseBlock, Address address, out AccountStruct account)
         {
-            if (TrackedBlockHash is { } hash && baseBlock?.Hash == hash && address == sender)
+            if (TrackedBlockHash is { } hash && baseBlock is not null && (baseBlock.Hash == hash || baseBlock.Hash == TrackedParentHash) && address == sender)
                 Interlocked.Increment(ref _accountReads);
             return inner.TryGetAccount(baseBlock, address, out account);
         }

@@ -227,6 +227,7 @@ namespace Nethermind.AuRa.Test
                 new WithdrawalProcessor(stateProvider, LimboLogs.Instance),
                 new ExecutionRequestsProcessor(transactionProcessor),
                 balManager,
+                new InclusionListSatisfactionChecker(GnosisSpecProvider.Instance, Substitute.For<ITxValidator>()),
                 auRaValidator: null,
                 txFilter,
                 contractRewriter: contractRewriter);
@@ -236,7 +237,6 @@ namespace Nethermind.AuRa.Test
                 GnosisSpecProvider.Instance,
                 stateProvider,
                 blockhashProvider,
-                new InclusionListSatisfactionChecker(GnosisSpecProvider.Instance, Substitute.For<ITxValidator>()),
                 LimboLogs.Instance);
 
             return (branchProcessor, stateProvider, blockTree, stateHeaderProvider);

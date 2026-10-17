@@ -45,7 +45,8 @@ public partial class BlockProcessor(
     ILogManager logManager,
     IWithdrawalProcessor withdrawalProcessor,
     IExecutionRequestsProcessor executionRequestsProcessor,
-    IBlockAccessListManager balManager)
+    IBlockAccessListManager balManager,
+    IInclusionListSatisfactionChecker inclusionListSatisfactionChecker)
     : IBlockProcessor
 {
     private static readonly ParallelOptions SmallBloomOptions = new() { MaxDegreeOfParallelism = 2 };
@@ -223,7 +224,19 @@ public partial class BlockProcessor(
         // to free the thread pool for blooms, receipts root, state root parallel work below
         TransactionsExecuted?.Invoke();
 
+        JudgeInclusionList(block, options);
+
         return FinalizeBlock(block, blockTracer, options, spec, receipts);
+    }
+
+    /// <summary>Records whether the block honoured its inclusion list, judged on the state after its transactions (EIP-7805).</summary>
+    /// <remarks>Withdrawals, rewards and post-execution system calls have not run yet, so none of their credits count.</remarks>
+    private void JudgeInclusionList(Block block, ProcessingOptions options)
+    {
+        if (block.InclusionListTransactions is null || options.ContainsFlag(ProcessingOptions.NoValidation)) return;
+
+        IReadOnlyStateProvider postTransactionsState = _balManager.GetPostTransactionsState(block) ?? _stateProvider;
+        block.IsInclusionListSatisfied = inclusionListSatisfactionChecker.IsSatisfied(block, postTransactionsState);
     }
 
     protected virtual TxReceipt[] FinalizeBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options,
@@ -509,6 +522,7 @@ public partial class BlockProcessor(
 
         Block block = suggestedBlock.WithReplacedHeader(headerForProcessing);
         block.BlockAccessList = suggestedBlock.BlockAccessList;
+        block.InclusionListTransactions = suggestedBlock.InclusionListTransactions;
 
         return block;
     }

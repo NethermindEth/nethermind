@@ -109,13 +109,13 @@ public class ReorgTests
             LimboLogs.Instance,
             new WithdrawalProcessor(stateProvider, LimboLogs.Instance),
             new ExecutionRequestsProcessor(transactionProcessor),
-            balManager);
+            balManager,
+            new InclusionListSatisfactionChecker(MainnetSpecProvider.Instance, Substitute.For<ITxValidator>()));
         BranchProcessor branchProcessor = new(
             blockProcessor,
             MainnetSpecProvider.Instance,
             stateProvider,
             blockhashProvider,
-            new InclusionListSatisfactionChecker(MainnetSpecProvider.Instance, Substitute.For<ITxValidator>()),
             LimboLogs.Instance);
 
         _blockchainProcessor = new BlockchainProcessor(
