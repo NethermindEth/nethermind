@@ -1,0 +1,123 @@
+name: Network Benchmark
+
+# Runs the Nethermind.Network.Benchmark benchmarks at a base and a head commit in one job on one runner,
+# and writes a comparison table to the job summary. Timings are only comparable within a run.
+
+on:
+  workflow_dispatch:
+    inputs:
+      base:
+        description: Commit, branch or tag to compare against. Defaults to the head's merge base with master.
+        required: false
+        type: string
+      head:
+        description: Commit, branch or tag to measure. Defaults to the dispatching ref.
+        required: false
+        type: string
+      filter:
+        description: Space-separated BenchmarkDotNet filter patterns.
+        required: false
+        type: string
+        default: "*RlpxRoundTripBenchmarks* *OutFlowBenchmarks*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ inputs.head || github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+  DOTNET_NOLOGO: "1"
+
+jobs:
+  benchmark:
+    name: Network benchmarks
+    if: github.repository_owner == 'NethermindEth'
+    runs-on: benchmark
+    timeout-minutes: 180
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Check out head
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.head || github.sha }}
+          # Full history so the base can be any commit-ish and the merge base can be computed.
+          fetch-depth: 0
+          persist-credentials: false
+          path: head
+
+      # Before anything that can fail, so the comparison step always has a runtime.
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: head/global.json
+
+      - name: Resolve base
+        id: refs
+        working-directory: head
+        env:
+          # Not the tip of master, which may hold commits the head lacks.
+          BASE_INPUT: ${{ inputs.base }}
+        run: |
+          base="${BASE_INPUT:-$(git merge-base origin/master HEAD)}"
+          {
+            echo "base=$(git rev-parse --verify "${base}^{commit}")"
+            echo "head=$(git rev-parse HEAD)"
+          } >> "${GITHUB_OUTPUT}"
+
+      # A checkout rather than a worktree: the self-hosted runner keeps its workspace between runs, and
+      # checkout cleans what a previous run left in the directory.
+      - name: Check out base
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ steps.refs.outputs.base }}
+          persist-credentials: false
+          path: base
+
+      - name: Run benchmarks at base
+        id: run-base
+        continue-on-error: true
+        working-directory: base/src/Nethermind/Nethermind.Benchmark.Runner
+        env:
+          FILTER: ${{ inputs.filter }}
+        run: |
+          read -ra patterns <<< "${FILTER}"
+          dotnet run -c Release -- --filter "${patterns[@]}" --join --buildTimeout 900 --artifacts "${RUNNER_TEMP}/bdn-base"
+
+      - name: Run benchmarks at head
+        id: run-head
+        continue-on-error: true
+        working-directory: head/src/Nethermind/Nethermind.Benchmark.Runner
+        env:
+          FILTER: ${{ inputs.filter }}
+        run: |
+          read -ra patterns <<< "${FILTER}"
+          dotnet run -c Release -- --filter "${patterns[@]}" --join --buildTimeout 900 --artifacts "${RUNNER_TEMP}/bdn-head"
+
+      - name: Compare
+        if: always()
+        env:
+          BASE_SHA: ${{ steps.refs.outputs.base }}
+          HEAD_SHA: ${{ steps.refs.outputs.head }}
+          BASE_OUTCOME: ${{ steps.run-base.outcome }}
+          HEAD_OUTCOME: ${{ steps.run-head.outcome }}
+        run: head/scripts/network-bench/compare.cs "${RUNNER_TEMP}/bdn-base" "${RUNNER_TEMP}/bdn-head" >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: network-benchmark-${{ steps.refs.outputs.head }}
+          path: |
+            ${{ runner.temp }}/bdn-base
+            ${{ runner.temp }}/bdn-head
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Fail if the head run failed
+        if: steps.run-head.outcome != 'success'
+        run: exit 1
