@@ -215,6 +215,9 @@ public static partial class EvmInstructions
             gasLimitUl += GasCostOf.CallStipend;
         }
 
+        if (TOpCall.ExecutionType == ExecutionType.CALL && hasValueTransfer)
+            vm.OnValueTransferCallPrecheck(env.ExecutingAccount, target, in callValue);
+
         // Check call depth and balance of the caller.
         if (env.CallDepth >= MaxCallDepth ||
             (hasValueTransfer && !HasAtLeast(state, env.ExecutingAccount, in callValue)))

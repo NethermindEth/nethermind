@@ -3898,6 +3898,85 @@ public sealed class VirtualMachineExtensionHooksTests
         }
     }
 
+    [Test]
+    public void Value_transfer_precheck_runs_before_insufficient_balance_rejection()
+    {
+        byte[] code = Prepare.EvmCode
+            .CALL(50_000, Child, 101.Ether, 0, 0, 0, 0)
+            .Op(Instruction.POP)
+            .Done;
+
+        TestAllTracerWithOutput result = Execute(code, transactionValue: 0);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Error, Is.Null);
+            Assert.That(_hookedMachine.ValueTransferPrechecks, Is.EqualTo([
+                (SenderRecipientAndMiner.Default.Recipient, Child, (UInt256)101.Ether)]));
+            Assert.That(_hookedMachine.Initializations.Any(static state => !state.IsTopLevel && !state.IsContinuation), Is.False);
+        }
+    }
+
+    [TestCase(Instruction.CALL, 0, false)]
+    [TestCase(Instruction.CALL, 7, true)]
+    [TestCase(Instruction.CALLCODE, 7, false)]
+    [TestCase(Instruction.DELEGATECALL, 7, false)]
+    [TestCase(Instruction.STATICCALL, 7, false)]
+    public void Value_transfer_precheck_is_limited_to_nonzero_call(Instruction instruction, int value, bool expectedNotification)
+    {
+        Prepare code = Prepare.EvmCode;
+        code = instruction switch
+        {
+            Instruction.CALL => code.CALL(50_000, Child, (UInt256)value, 0, 0, 0, 0),
+            Instruction.CALLCODE => code.CALLCODE(50_000, Child, (UInt256)value, 0, 0, 0, 0),
+            Instruction.DELEGATECALL => code.DELEGATECODE(50_000, Child, 0, 0, 0, 0),
+            Instruction.STATICCALL => code.STATICCALL(50_000, Child, 0, 0, 0, 0),
+            _ => throw new ArgumentOutOfRangeException(nameof(instruction), instruction, null),
+        };
+        code.Op(Instruction.POP);
+
+        TestAllTracerWithOutput result = Execute(code.Done, transactionValue: 0);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Error, Is.Null);
+            Assert.That(_hookedMachine.ValueTransferPrechecks, Has.Count.EqualTo(expectedNotification ? 1 : 0));
+            if (expectedNotification)
+            {
+                Assert.That(_hookedMachine.ValueTransferPrechecks[0], Is.EqualTo(
+                    (SenderRecipientAndMiner.Default.Recipient, Child, (UInt256)value)));
+            }
+        }
+    }
+
+    [Test]
+    public void Value_transfer_precheck_storage_warmth_is_scoped_to_the_enclosing_frame()
+    {
+        _worldState.CreateAccount(TestItem.AddressF, 1.Ether);
+        Deploy(Prepare.EvmCode
+            .CALL(50_000, TestItem.AddressF, 101.Ether, 0, 0, 0, 0)
+            .Op(Instruction.POP)
+            .CALL(50_000, TestItem.AddressF, 101.Ether, 0, 0, 0, 0)
+            .Op(Instruction.POP)
+            .REVERT(0, 0)
+            .Done);
+        _hookedMachine.WarmValueTransferStorage = true;
+        byte[] code = Prepare.EvmCode
+            .CALL(50_000, Child, 0, 0, 0, 0, 0)
+            .Op(Instruction.POP)
+            .CALL(50_000, TestItem.AddressF, 101.Ether, 0, 0, 0, 0)
+            .Op(Instruction.POP)
+            .Done;
+
+        TestAllTracerWithOutput result = Execute(code, transactionValue: 0);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Error, Is.Null);
+            Assert.That(_hookedMachine.ValueTransferStorageWasCold, Is.EqualTo([true, false, true]));
+        }
+    }
+
     [TestCase((byte)Instruction.STOP, StatusCode.Success)]
     [TestCase((byte)Instruction.INVALID, StatusCode.Failure)]
     public void Top_level_completion_does_not_report_child_completion(byte instruction, byte expectedStatus)
@@ -4019,19 +4098,21 @@ public sealed class VirtualMachineExtensionHooksTests
         _worldState.InsertCode(Child, code, _specProvider.GenesisSpec);
     }
 
-    private TestAllTracerWithOutput Execute(params byte[] code)
-    {
-        (Block block, Transaction transaction) = PrepareTx(code);
-        TestAllTracerWithOutput tracer = new();
-        _processor.Execute(transaction, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), tracer);
-        return tracer;
-    }
+    private TestAllTracerWithOutput Execute(params byte[] code) => ExecutePrepared(PrepareTx(code));
+
+    private TestAllTracerWithOutput Execute(byte[] code, int transactionValue) =>
+        ExecutePrepared(PrepareTx(code, value: transactionValue));
 
     private TestAllTracerWithOutput Execute(Transaction transaction)
     {
         (Block block, _) = PrepareTx(null);
+        return ExecutePrepared((block, transaction));
+    }
+
+    private TestAllTracerWithOutput ExecutePrepared((Block Block, Transaction Transaction) prepared)
+    {
         TestAllTracerWithOutput tracer = new();
-        _processor.Execute(transaction, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), tracer);
+        _processor.Execute(prepared.Transaction, new BlockExecutionContext(prepared.Block.Header, _specProvider.GetSpec(prepared.Block.Header)), tracer);
         return tracer;
     }
 
@@ -4105,6 +4186,9 @@ public sealed class VirtualMachineExtensionHooksTests
         public bool HandleSelfDestruct { get; set; }
         public int SelfDestructCalls { get; private set; }
         public int DelegatedResolutions { get; private set; }
+        public List<(Address From, Address To, UInt256 Value)> ValueTransferPrechecks { get; } = [];
+        public List<bool> ValueTransferStorageWasCold { get; } = [];
+        public bool WarmValueTransferStorage { get; set; }
 
         protected override bool TryExecuteFrameInitialization(VmState<EthereumGasPolicy> currentState, out CallResult result)
         {
@@ -4155,6 +4239,15 @@ public sealed class VirtualMachineExtensionHooksTests
             Address target,
             Address codeSource,
             in UInt256 value) => SkipEoaCallFastPath;
+
+        protected internal override void OnValueTransferCallPrecheck(Address from, Address to, in UInt256 value)
+        {
+            ValueTransferPrechecks.Add((from, to, value));
+            StorageCell cell = new(to, UInt256.One);
+            ValueTransferStorageWasCold.Add(VmState.AccessTracker.IsCold(in cell));
+            if (WarmValueTransferStorage)
+                VmState.AccessTracker.WarmUp(in cell);
+        }
 
         protected internal override bool TryExecuteSelfDestruct(
             ref EvmStack stack,

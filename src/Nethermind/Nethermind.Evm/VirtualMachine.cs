@@ -584,6 +584,19 @@ public partial class VirtualMachine<TGasPolicy>(
         Address codeSource,
         in UInt256 value) => false;
 
+    /// <summary>Notifies a specialized virtual machine before a value-bearing CALL is prechecked.</summary>
+    /// <param name="from">The account supplying the call value.</param>
+    /// <param name="to">The account receiving the call value.</param>
+    /// <param name="value">The nonzero value supplied by the call.</param>
+    /// <remarks>
+    /// The notification runs after child gas reservation and the value stipend, but before depth and balance
+    /// rejection. It is raised only for CALL operations and before a child snapshot or frame exists. The default
+    /// implementation is a no-op.
+    /// </remarks>
+    protected internal virtual void OnValueTransferCallPrecheck(Address from, Address to, in UInt256 value)
+    {
+    }
+
     /// <summary>Reports the completed result of a nested frame to a specialized virtual machine.</summary>
     /// <remarks>The callback runs before the frame is merged or disposed and is a no-op for Ethereum.</remarks>
     protected virtual void OnChildFrameCompleted(
