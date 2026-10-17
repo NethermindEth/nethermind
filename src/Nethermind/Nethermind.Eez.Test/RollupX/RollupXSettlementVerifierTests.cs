@@ -210,8 +210,8 @@ public class RollupXSettlementVerifierTests
         effect = effect with { RollupUpdates = [effect.RollupUpdates[0] with { NewRoot = block.Hash!.ValueHash256 }] };
         PostBatch batch = new([], [first, effect], [], immediate, 0, [], [], [], [], [], 1, false);
         TxReceipt[] receipts = [new() { StatusCode = StatusCode.Success, Logs = [] }, new() { StatusCode = StatusCode.Success, Logs = events }];
-        EezTransactionCheckpoint[] checkpoints = [new(ordinary.Length - 1, TestItem.KeccakB, TestItem.KeccakC),
-            new(1, block.Hash!, TestItem.KeccakD)];
+        EezTransactionCheckpoint[] checkpoints = [new(TransactionIndex: ordinary.Length - 1, StateRoot: TestItem.KeccakC, BlockHash: TestItem.KeccakB),
+            new(TransactionIndex: 1, StateRoot: TestItem.KeccakD, BlockHash: block.Hash!)];
         EezStatelessBlockResult result = new(block, block.Header, receipts, checkpoints);
         ReadOnlyMemory<byte>[] encoded = new ReadOnlyMemory<byte>[ordinary.Length];
         for (int i = 0; i < ordinary.Length; i++) encoded[i] = TxDecoder.Instance.Encode(ordinary[i], RlpBehaviors.SkipTypedWrapping).Bytes;
