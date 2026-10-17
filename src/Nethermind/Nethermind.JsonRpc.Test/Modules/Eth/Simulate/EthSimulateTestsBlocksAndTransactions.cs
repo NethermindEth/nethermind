@@ -1069,6 +1069,49 @@ public class EthSimulateTestsBlocksAndTransactions
         Assert.That(new Hash256(callResult.ReturnData), Is.EqualTo(expected));
     }
 
+    /// <summary>
+    /// On a chain that merges by terminal total difficulty without pinning the terminal block (Mainnet, Sepolia), the
+    /// merge block number stays unknown. A block simulated on top of the terminal PoW block is post-merge (EIP-3675), so
+    /// PREVRANDAO reads <c>blockOverrides.prevRandao</c> rather than the difficulty the block inherits from its parent.
+    /// </summary>
+    [TestCase("0xc300000000000000000000000000000000000000000000000000000000000001", TestName = "prevrandao_on_terminal_block_returns_overridden_value")]
+    [TestCase(null, TestName = "prevrandao_on_terminal_block_without_override_returns_zero")]
+    public async Task eth_simulateV1_prevrandao_on_terminal_block_of_chain_merged_by_ttd(string? overrideHex)
+    {
+        TestSpecProvider specProvider = new(Cancun.Instance);
+        TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(new TestRpcBlockchain()).Build(specProvider);
+        BlockHeader head = chain.BlockFinder.Head!.Header;
+        specProvider.TerminalTotalDifficulty = head.TotalDifficulty;
+        Assert.That(specProvider.MergeBlockNumber, Is.Null);
+        Assert.That(head.Difficulty, Is.Not.EqualTo(UInt256.Zero));
+
+        Hash256? overrideHash = overrideHex is not null ? new Hash256(overrideHex) : null;
+        SimulatePayload<TransactionForRpc> payload = new()
+        {
+            BlockStateCalls =
+            [
+                new()
+                {
+                    BlockOverrides = overrideHash is not null ? new BlockOverride { PrevRandao = overrideHash } : null,
+                    StateOverrides = new Dictionary<Address, AccountOverride>
+                    {
+                        { TestItem.AddressC, new AccountOverride { Code = PrevRandaoBytecode } },
+                        { TestItem.AddressA, new AccountOverride { Balance = 1.Ether } }
+                    },
+                    Calls = [new LegacyTransactionForRpc { From = TestItem.AddressA, To = TestItem.AddressC, Gas = 100_000 }]
+                }
+            ]
+        };
+
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
+            chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
+
+        Assert.That(result.Result.ResultType, Is.EqualTo(Core.ResultType.Success), result.Result.Error);
+        SimulateCallResult callResult = result.Data.Single().Calls.Single();
+        Assert.That(callResult.Status, Is.EqualTo((ulong)ResultType.Success));
+        Assert.That(new Hash256(callResult.ReturnData!), Is.EqualTo(overrideHash ?? Hash256.Zero));
+    }
+
     // Regression test for https://github.com/NethermindEth/nethermind/issues/8480
     // Verifies that blockOverrides.time is respected by the EVM TIMESTAMP opcode in eth_simulateV1
     [Test]
