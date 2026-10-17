@@ -84,6 +84,26 @@ public class ReceiptDecoderTests
         Assert.That(DecodeMessageReceipt(encoded)!.Logs, Has.Length.EqualTo(ReceiptRlpBuilder.UnbackedLogCount));
     }
 
+    [TestCase(5)]
+    [TestCase(31)]
+    [TestCase(33)]
+    [TestCase(34)]
+    public void Optimism_receipt_message_decoding_normalizes_invalid_post_state_length_to_rlp_exception(int length)
+    {
+        byte[] encoded = ReceiptRlpBuilder.EncodeReceiptWithFirstItem(new byte[length]);
+
+        Assert.That(() => DecodeMessageReceipt(encoded), Throws.TypeOf<RlpException>());
+    }
+
+    [TestCase(0)]
+    [TestCase(32)]
+    public void Optimism_receipt_message_decoding_accepts_valid_post_state_length(int length)
+    {
+        byte[] encoded = ReceiptRlpBuilder.EncodeReceiptWithFirstItem(new byte[length]);
+
+        Assert.That(DecodeMessageReceipt(encoded), Is.Not.Null);
+    }
+
     [Test]
     public void Optimism_compact_receipt_storage_decoding_skips_empty_log_entry()
     {
