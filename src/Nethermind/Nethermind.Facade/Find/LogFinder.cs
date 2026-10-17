@@ -200,7 +200,18 @@ namespace Nethermind.Facade.Find
 
             ulong rangeSize = toBlock.Number - fromBlock.Number + 1;
             bool tryParallel = ScansInParallel(rangeSize, _rpcConfigGetLogsThreads);
-            return FilterLogsInBlocksParallel(filter, BlockNumbers(fromBlock.Number, rangeSize), tryParallel, cancellationToken);
+            Func<ReadOnlySpan<byte>, bool> bloomMatches = bloom =>
+            {
+                if (bloom.IsEmpty) return true;
+                BloomStructRef bloomRef = new(bloom);
+                return filter.Matches(ref bloomRef);
+            };
+
+            return RunParallel(BlockNumbers(fromBlock.Number, rangeSize),
+                number => FindHeaderIfBloomMatchesOrLogError(number, bloomMatches, cancellationToken) is { } header
+                    ? FindLogsInBlock(filter, header.Hash, header.Number, header.Timestamp, cancellationToken)
+                    : [],
+                tryParallel, cancellationToken);
         }
 
         internal static bool ScansInParallel(ulong rangeSize, int workers) => rangeSize >= (ulong)(workers * MinBlocksPerParallelWorker);
@@ -363,12 +374,24 @@ namespace Nethermind.Facade.Find
             token.ThrowIfCancellationRequested();
 
             BlockHeader? block = _blockFinder.FindHeader(blockNumber);
-            if (block is null && _logger.IsError)
-            {
-                _logger.Error($"Could not find block {blockNumber} in database. eth_getLogs will return incomplete results.");
-            }
+            if (block is null) LogMissingBlock(blockNumber);
 
             return block;
+        }
+
+        private BlockHeader? FindHeaderIfBloomMatchesOrLogError(ulong blockNumber, Func<ReadOnlySpan<byte>, bool> bloomMatches, CancellationToken token)
+        {
+            token.ThrowIfCancellationRequested();
+
+            BlockHeader? block = _blockFinder.FindCanonicalHeaderIfBloomMatches(blockNumber, bloomMatches, out bool found);
+            if (!found) LogMissingBlock(blockNumber);
+
+            return block;
+        }
+
+        private void LogMissingBlock(ulong blockNumber)
+        {
+            if (_logger.IsError) _logger.Error($"Could not find block {blockNumber} in database. eth_getLogs will return incomplete results.");
         }
     }
 }
