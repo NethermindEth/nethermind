@@ -3123,6 +3123,42 @@ jobs:
           CAMPAIGN_ROOT: ${{ needs.resolve.outputs.expb_data_dir }}/campaigns/${{ github.run_id }}/${{ github.run_attempt }}
         run: python3 benchmarks/storage-adoption/verify-client-images.py "$CAMPAIGN_ROOT/storage-image-revisions.json" nethermindeth/nethermind:master-ce93457=ce93457f0abde6daa78877ab3756c0002e33208d nethermind-rpcbench:perf-decoded-blob-multiget=02d3ffde15fb6541efaff78899bd6fd667442501
 
+      - name: Prepare trie comparison without detailed read metrics
+        id: trie-metrics-template
+        if: contains(needs.resolve.outputs.docker_images, 'nethermind-rpcbench:trie-frontier-6de9ed6') && contains(needs.resolve.outputs.additional_extra_flags, '--Metrics.EnableDetailedMetric=false')
+        env:
+          ORIGINAL_TEMPLATE: ${{ needs.resolve.outputs.expb_data_dir }}/${{ needs.resolve.outputs.config_file }}
+          YQ_BIN: ${{ runner.temp }}/yq
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PYTHON'
+          import json
+          import os
+          from pathlib import Path
+          import subprocess
+          data = json.loads(subprocess.check_output([os.environ["YQ_BIN"], "-o=json", os.environ["ORIGINAL_TEMPLATE"]], text=True))
+          for scenario in data["scenarios"].values():
+              flags = scenario.get("extra_flags", [])
+              retained = []
+              index = 0
+              while index < len(flags):
+                  flag = flags[index]
+                  if flag == "--Metrics.EnableDetailedMetric":
+                      assert index + 1 < len(flags) and flags[index + 1].lower() in ("true", "false")
+                      index += 2
+                      continue
+                  if not flag.startswith("--Metrics.EnableDetailedMetric="):
+                      retained.append(flag)
+                  index += 1
+              scenario["extra_flags"] = retained
+          target = Path(os.environ["RUNNER_TEMP"], "trie-metrics-off-template.json")
+          target.write_text(json.dumps(data, indent=2) + "\n")
+          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+              output.write(f"path={target}\n")
+          print("Template detailed-metric flag removed; the explicit false override applies to every image.")
+          PYTHON
+
       - name: Run sequential EXPB campaign
         id: run-campaign
         continue-on-error: true
@@ -3133,7 +3169,7 @@ jobs:
           # the campaign stops. A retrospective sweep bisects across many master builds and its other
           # images stay useful, so there only the failed image is abandoned.
           CAMPAIGN_FAIL_FAST: ${{ needs.resolve.outputs.docker_images != '' }}
-          EXPB_CONFIG_TEMPLATE: ${{ needs.resolve.outputs.expb_data_dir }}/${{ needs.resolve.outputs.config_file }}
+          EXPB_CONFIG_TEMPLATE: ${{ steps.trie-metrics-template.outputs.path || format('{0}/{1}', needs.resolve.outputs.expb_data_dir, needs.resolve.outputs.config_file) }}
           EXPB_CAMPAIGN_DIR: ${{ needs.resolve.outputs.expb_data_dir }}/campaigns/${{ github.run_id }}/${{ github.run_attempt }}
           FLAT_SNAPSHOT_DIR: ${{ needs.resolve.outputs.flat_snapshot_dir }}
           FLAT_SNAPSHOT_BLOCK_DIR: ${{ needs.resolve.outputs.flat_snapshot_block_dir }}
