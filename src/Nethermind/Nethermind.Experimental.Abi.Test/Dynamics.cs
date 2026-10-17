@@ -246,6 +246,63 @@ public class Dynamics
             "6100000000000000000000000000000000000000000000000000000000000000"); // "a"
     }
 
+    [Test]
+    public void ArrayOfTuplesWithSeveralTails()
+    {
+        AbiSignature<(string, UInt256, string)[]> signature = new AbiSignature("f")
+            .With(
+                AbiType.Array(AbiType.Tuple(AbiType.String, AbiType.UInt256, AbiType.String))
+            );
+
+        (string, UInt256, string)[] arguments = [("a", 1, "b"), ("c", 2, "d")];
+        AssertRoundTrip(signature, "689595a5", arguments,
+            "689595a5" + // `MethodId`
+            "0000000000000000000000000000000000000000000000000000000000000020" + // Offset to the start of the array
+            "0000000000000000000000000000000000000000000000000000000000000002" + // Length of the array
+            "0000000000000000000000000000000000000000000000000000000000000040" + // Offset to first element
+            "0000000000000000000000000000000000000000000000000000000000000120" + // Offset to second element
+            "0000000000000000000000000000000000000000000000000000000000000060" + // Offset to first component of first element
+            "0000000000000000000000000000000000000000000000000000000000000001" + // Second component of first element, `1`
+            "00000000000000000000000000000000000000000000000000000000000000a0" + // Offset to third component of first element
+            "0000000000000000000000000000000000000000000000000000000000000001" + // Length of first component of first element
+            "6100000000000000000000000000000000000000000000000000000000000000" + // "a"
+            "0000000000000000000000000000000000000000000000000000000000000001" + // Length of third component of first element
+            "6200000000000000000000000000000000000000000000000000000000000000" + // "b"
+            "0000000000000000000000000000000000000000000000000000000000000060" + // Offset to first component of second element
+            "0000000000000000000000000000000000000000000000000000000000000002" + // Second component of second element, `2`
+            "00000000000000000000000000000000000000000000000000000000000000a0" + // Offset to third component of second element
+            "0000000000000000000000000000000000000000000000000000000000000001" + // Length of first component of second element
+            "6300000000000000000000000000000000000000000000000000000000000000" + // "c"
+            "0000000000000000000000000000000000000000000000000000000000000001" + // Length of third component of second element
+            "6400000000000000000000000000000000000000000000000000000000000000"); // "d"
+    }
+
+    [Test]
+    public void DynamicTypeDeclaringWrongHeadSize()
+    {
+        Abi<string> wideString = new()
+        {
+            Name = AbiType.String.Name,
+            Read = AbiType.String.Read,
+            Write = AbiType.String.Write,
+            HeadSize = 64,
+            TailSize = AbiType.String.TailSize
+        };
+        AbiSignature<(UInt256, string)> signature = new AbiSignature("f")
+            .With(
+                AbiType.UInt256,
+                wideString
+            );
+
+        (UInt256, string) arguments = (1, "a");
+        AssertRoundTrip(signature, "1ba84e08", arguments,
+            "1ba84e08" + // `MethodId`
+            "0000000000000000000000000000000000000000000000000000000000000001" + // First argument, `1`
+            "0000000000000000000000000000000000000000000000000000000000000040" + // Offset to second argument
+            "0000000000000000000000000000000000000000000000000000000000000001" + // Length of second argument
+            "6100000000000000000000000000000000000000000000000000000000000000"); // "a"
+    }
+
     private static void AssertRoundTrip<T>(AbiSignature<T> signature, string expectedMethodId, T value, string expectedEncoding)
     {
         Assert.That(signature.MethodId(), Is.EqualTo(Bytes.FromHexString(expectedMethodId)));
