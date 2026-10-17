@@ -626,12 +626,33 @@ public class DebugRpcModule(
 
     public ResultWrapper<RawReceiptsResult> debug_getRawReceipts(BlockParameter blockParameter)
     {
-        TxReceipt[]? receipts = debugBridge.GetReceiptsForBlock(blockParameter);
-        if (receipts is null)
+        Block? block;
+        if (blockParameter.BlockHash is { } blockHash)
         {
-            return ResultWrapper<RawReceiptsResult>.Fail($"Receipts are not found for block {blockParameter}", ErrorCodes.ResourceNotFound);
+            // As in geth, a hash is read as given, ignoring requireCanonical, and a block that is not stored has no receipts.
+            block = blockFinder.FindBlock(blockHash, BlockTreeLookupOptions.None);
+
+            // Deliberately unlike geth, which returns [] here: pruned history is reported rather than shown as an empty block.
+            if (block is null && blockFinder.IsBlockPruned(blockParameter))
+            {
+                return ResultWrapper<RawReceiptsResult>.Fail($"{ErrorMessages.PrunedHistoryUnavailable} for block {blockParameter}", ErrorCodes.PrunedHistoryUnavailable);
+            }
+        }
+        else
+        {
+            SearchResult<Block> searchResult = blockFinder.SearchForBlock(blockParameter);
+            if (searchResult.IsError)
+            {
+                // Unknown block numbers yield null; pruned history and unknown safe/finalized blocks keep their error.
+                return searchResult.Error == BlockFinderExtensions.HeaderNotFound
+                    ? ResultWrapper<RawReceiptsResult>.Success(null)
+                    : ResultWrapper<RawReceiptsResult>.Fail(searchResult);
+            }
+
+            block = searchResult.Object;
         }
 
+        TxReceipt[] receipts = block is null ? [] : debugBridge.GetReceiptsForBlock(block);
         if (receipts.Length == 0)
         {
             return ResultWrapper<RawReceiptsResult>.Success(new RawReceiptsResult(ArrayPoolList<ArrayPoolList<byte>>.Empty()));
