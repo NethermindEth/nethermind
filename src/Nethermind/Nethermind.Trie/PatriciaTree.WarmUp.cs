@@ -10,8 +10,8 @@ namespace Nethermind.Trie;
 
 public partial class PatriciaTree
 {
-    private const int WarmUpBatchSize = 64;
-    private const int MinWarmUpBatchSize = 8;
+    internal const int WarmUpBatchSize = 64;
+    internal const int MinWarmUpBatchSize = 8;
 
     public readonly struct WarmUpEntry(in ValueHash256 key, bool forDelete = false) : IComparable<WarmUpEntry>
     {
@@ -129,7 +129,7 @@ public partial class PatriciaTree
         }
 
         ArrayPoolListRef<WarmUpFrontier> current = new(WarmUpBatchSize);
-        ArrayPoolListRef<WarmUpFrontier> next = new(0);
+        ArrayPoolListRef<WarmUpFrontier> next = default;
         try
         {
             next = new(WarmUpBatchSize);

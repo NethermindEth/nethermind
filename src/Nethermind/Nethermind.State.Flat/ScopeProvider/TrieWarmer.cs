@@ -185,27 +185,90 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
 
     private void HandleJobs(in Job first)
     {
-        const int batchSize = 64;
-        if (PendingHint() < 7 || first.scopeOrStorageTree is not (FlatWorldStateScope or FlatStorageTree))
+        long pendingCount = PendingHint();
+        if (pendingCount < PatriciaTree.MinWarmUpBatchSize - 1 || !CanBatch(in first))
         {
             HandleJob(in first);
             return;
         }
 
-        Span<PatriciaTree.WarmUpEntry> entries = stackalloc PatriciaTree.WarmUpEntry[batchSize];
-        int count = 1;
-        Job next = default;
-        bool hasNext = false;
+        int batchSize = GetWarmUpBatchSize(pendingCount, Volatile.Read(ref _activeProcessors));
+        if (batchSize < PatriciaTree.MinWarmUpBatchSize)
+        {
+            HandleJob(in first);
+            return;
+        }
+
+        Job current = first;
+        while (true)
+        {
+            if (!TryDequeue(out Job following))
+            {
+                HandleJob(in current);
+                return;
+            }
+
+            if (!SameBatch(in current, in following))
+            {
+                try
+                {
+                    HandleJob(in current);
+                }
+                catch
+                {
+                    HandleJob(in following);
+                    throw;
+                }
+                current = following;
+            }
+            else
+            {
+                if (!TryHandleBatch(in current, in following, batchSize, out Job pending)) return;
+                current = pending;
+            }
+
+            pendingCount = PendingHint();
+            if (pendingCount < PatriciaTree.MinWarmUpBatchSize - 1 || !CanBatch(in current))
+            {
+                HandleJob(in current);
+                return;
+            }
+            batchSize = GetWarmUpBatchSize(pendingCount, Volatile.Read(ref _activeProcessors));
+            if (batchSize < PatriciaTree.MinWarmUpBatchSize)
+            {
+                HandleJob(in current);
+                return;
+            }
+        }
+    }
+
+    internal static int GetWarmUpBatchSize(long pending, int activeProcessors) =>
+        (int)Math.Min(PatriciaTree.WarmUpBatchSize, (pending + 1) / Math.Max(1, activeProcessors));
+
+    private static bool CanBatch(in Job job) => job.scopeOrStorageTree is FlatWorldStateScope or FlatStorageTree;
+
+    private static bool SameBatch(in Job first, in Job next) =>
+        ReferenceEquals(first.scopeOrStorageTree, next.scopeOrStorageTree) && first.sequenceId == next.sequenceId;
+
+    private bool TryHandleBatch(in Job first, in Job second, int batchSize, out Job pending)
+    {
+        Span<PatriciaTree.WarmUpEntry> entries = stackalloc PatriciaTree.WarmUpEntry[PatriciaTree.WarmUpBatchSize];
+        int count = 2;
+        pending = default;
+        bool hasPending = false;
+        bool completed = false;
         try
         {
             if (first.scopeOrStorageTree is FlatWorldStateScope stateScope && stateScope.IsWarmupStopped(first.sequenceId)
-                || first.scopeOrStorageTree is FlatStorageTree storageTree && storageTree.IsWarmupStopped(first.sequenceId)) return;
+                || first.scopeOrStorageTree is FlatStorageTree storageTree && storageTree.IsWarmupStopped(first.sequenceId)) return false;
             entries[0] = ToWarmUpEntry(in first);
-            while (count < entries.Length && TryDequeue(out next))
+            entries[1] = ToWarmUpEntry(in second);
+            while (count < batchSize && TryDequeue(out Job next))
             {
-                if (!ReferenceEquals(first.scopeOrStorageTree, next.scopeOrStorageTree) || first.sequenceId != next.sequenceId)
+                if (!SameBatch(in first, in next))
                 {
-                    hasNext = true;
+                    pending = next;
+                    hasPending = true;
                     break;
                 }
                 count++;
@@ -215,17 +278,19 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
                 scope.WarmUpStateTrieBatch(entries[..count], first.sequenceId);
             else
                 ((FlatStorageTree)first.scopeOrStorageTree).WarmUpStorageTrieBatch(entries[..count], first.sequenceId);
+            completed = true;
         }
-        catch (TrieNodeException) { }
-        catch (NodeHashMismatchException) { }
-        catch (ObjectDisposedException) { }
-        catch (NullReferenceException) when (IsDisposedJobTarget(in first)) { }
+        catch (TrieNodeException) { completed = true; }
+        catch (NodeHashMismatchException) { completed = true; }
+        catch (ObjectDisposedException) { completed = true; }
+        catch (NullReferenceException) when (IsDisposedJobTarget(in first)) { completed = true; }
         finally
         {
             if (first.scopeOrStorageTree is FlatWorldStateScope scope) scope.CompleteWarmups(count);
             else ((FlatStorageTree)first.scopeOrStorageTree).CompleteWarmups(count);
-            if (hasNext) HandleJob(in next);
+            if (!completed && hasPending) HandleJob(in pending);
         }
+        return hasPending;
     }
 
     private static PatriciaTree.WarmUpEntry ToWarmUpEntry(in Job job)

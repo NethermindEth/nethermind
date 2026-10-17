@@ -15,8 +15,8 @@ public interface IBatchTriePersistenceReader
 
 public static class BatchTriePersistenceReaderExtensions
 {
-    internal const int BatchSize = 64;
-    internal const int MinBatchSize = 8;
+    internal const int BatchSize = PatriciaTree.WarmUpBatchSize;
+    internal const int MinBatchSize = PatriciaTree.MinWarmUpBatchSize;
 
     public static void LoadStateRlps(this IPersistence.IPersistenceReader reader, ReadOnlySpan<TreePath> paths, Span<byte[]?> values)
     {

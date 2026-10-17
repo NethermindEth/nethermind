@@ -32,15 +32,6 @@ public sealed partial class FlatWorldStateScope
         }
         catch (Exception exception) when (exception is NodeHashMismatchException or TrieNodeException) { }
 
-        foreach (PatriciaTree.WarmUpEntry entry in entries)
-        {
-            if (IsWarmupStopped(sequenceId)) return;
-            try
-            {
-                tree.WarmUpPath(entry.Key.Bytes, entry.ForDelete);
-            }
-            catch (Exception exception) when (exception is NodeHashMismatchException or TrieNodeException) { }
-        }
     }
 
     internal void CompleteWarmups(int count)
