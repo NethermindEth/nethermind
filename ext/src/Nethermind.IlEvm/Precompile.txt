@@ -1,6 +1,7 @@
 # Contracts IL-EVM compiles at startup, before blocks or calls run: one keccak code hash per line, busiest first.
 # Anything after the hash on a line is ignored (the profile's counts are kept there for reference).
 # Source: EXPB run 38926048169, fusaka, ~70k payloads (blocks 25489873-25554632), image nethermindeth/nethermind:vm-frame-ext-14f320d.
+# Profile: 90278 contracts, 113779109 frames, 86929382227 interpreted opcodes; these 500 ran 69155609743 of them (79.6%).
 # Rule: the first 500, busiest by interpreted opcodes among the top 999 logged, dropping contracts first seen more than 500 blocks into the window (likely created in it) or run in fewer than 50 blocks.
 0xa17eb6bd9e3366bb4447a294ca48983c15b59e2d43aafb0fea0de025d00eefad ops=5444730396 frames=1668596 size=10386 blocks=12492 first=25489877
 0xb44fb4e949d0f78f87f79ee46428f23a2a5713ce6fc6e0beb3dda78c2ac1ea55 ops=5112843483 frames=10217456 size=11075 blocks=64721 first=25489873

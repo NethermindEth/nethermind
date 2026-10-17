@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -68,21 +69,20 @@ public sealed class IlEvmModule(IIlEvmConfig config) : Module
         IlEvmScope scope = Configure(config);
 
         // Block processing and everything else get the block runner; the read-only query environments get their own,
-        // so calls keep their rules - run-time compiles under Legacy, live profiling under Adaptive, live promotion under
-        // Simple - whatever block processing does. With Scope=All every kind of read-only query the core has gets it, as before the block runner existed.
-        // A measurement run gets the timed runners instead, so the production ones carry nothing of the timing.
-        ReadOnlyQueryKind surfaces = scope == IlEvmScope.All ? AllQueryKinds : config.Surfaces;
-        FrameCodeRunner<EthereumGasPolicy> blockRunner = config.Stats ? IlEvmTimedFrameRunner.Block : IlEvmFrameRunner.ForBlocks;
-        FrameCodeRunner<EthereumGasPolicy> queryRunner = config.Stats ? IlEvmTimedFrameRunner.Instance : IlEvmFrameRunner.ForQueries;
+        // so queries keep their rules - run-time compiles under Legacy, live profiling under Adaptive, live promotion under
+        // Simple - whatever block processing does. Each kind of query environment gets a module and a runner of its own,
+        // which differ only in the surface their parts are counted under; with Scope=All every kind the core has gets one,
+        // as before the block runner existed. A measurement run gets the timed runners instead, so the production ones
+        // carry nothing of the timing.
         if (scope == IlEvmScope.All)
-            builder.RegisterInstance(blockRunner).As<FrameCodeRunner<EthereumGasPolicy>>();
-        if (surfaces != ReadOnlyQueryKind.None)
-            builder.AddSingleton<IReadOnlyQueryModule>(new IlEvmQueryModule(surfaces, queryRunner));
+            builder.RegisterInstance(config.Stats ? IlEvmTimedFrameRunner.Block : IlEvmFrameRunner.ForBlocks).As<FrameCodeRunner<EthereumGasPolicy>>();
+        foreach (IlEvmQueryModule module in IlEvmQueryModule.For(IlEvmSettings.Surfaces, config.Stats))
+            builder.AddSingleton<IReadOnlyQueryModule>(module);
         builder.AddStep(typeof(IlEvmStartupStep));
     }
 
-    /// <summary>Every kind of read-only query the core has: Call alone, since the hook's API dropped Simulate and Trace.</summary>
-    public const ReadOnlyQueryKind AllQueryKinds = ReadOnlyQueryKind.Call;
+    /// <summary>Every kind of read-only query the core has: calls, simulations and traces.</summary>
+    public const ReadOnlyQueryKind AllQueryKinds = ReadOnlyQueryKind.All;
 
     /// <summary>
     /// Sets the plugin's rules and switches from <paramref name="config"/>, as a node's load does; tools that attach the
@@ -119,6 +119,8 @@ public sealed class IlEvmModule(IIlEvmConfig config) : Module
         if (IlEvmSettings.ScopeForcedToAll)
             scope = IlEvmScope.All;
         IlEvmSettings.Scope = scope;
+        // The kinds of read-only query whose environments run compiled code: every kind with Scope=All, as configured otherwise.
+        IlEvmSettings.Surfaces = scope == IlEvmScope.All ? AllQueryKinds : config.Surfaces & AllQueryKinds;
         IlEvmSettings.Prefer = config.Prefer;
         IlRuntime.QueryCounting = mode == IlMode.Adaptive && config.Prefer == IlEvmPrefer.Rpc;
         IlRuntime.BlocksCounting = false;
@@ -156,12 +158,21 @@ public sealed class IlEvmUnsupportedStep(ILogManager logManager) : IStep
     }
 }
 
-/// <summary>Attaches the compiler's frame runner to the machines of the read-only query environments.</summary>
-/// <param name="runner">The runner to attach: <see cref="IlEvmFrameRunner.Instance"/> unless a measurement run times frames.</param>
+/// <summary>Attaches the compiler's frame runner to the machines of the read-only query environments of <paramref name="surfaces"/>.</summary>
+/// <remarks>
+/// The core loads a module into an environment whose kind it names, and the module cannot tell which kind that is: a
+/// module for one kind attaches the runner of that kind's surface, so its parts are counted under it
+/// (<see cref="IlSurfaceCounts"/>). <see cref="For"/> makes the modules the plugin registers, one per kind.
+/// </remarks>
+/// <param name="runner">The runner to attach: the production runner of the module's surface unless a measurement run times frames.</param>
 public sealed class IlEvmQueryModule(ReadOnlyQueryKind surfaces, FrameCodeRunner<EthereumGasPolicy> runner) : Module, IReadOnlyQueryModule
 {
-    /// <summary>Attaches the production runner for the rules set now, <see cref="IlEvmFrameRunner.ForQueries"/>.</summary>
-    public IlEvmQueryModule(ReadOnlyQueryKind surfaces) : this(surfaces, IlEvmFrameRunner.ForQueries)
+    /// <summary>
+    /// Attaches the production runner for the rules set now (<see cref="IlEvmFrameRunner.ForQuery"/>) of the surface of
+    /// <paramref name="surfaces"/>, one kind; a module for several kinds attaches the call environments' runner to all of
+    /// them, which then counts their parts as calls.
+    /// </summary>
+    public IlEvmQueryModule(ReadOnlyQueryKind surfaces) : this(surfaces, IlEvmFrameRunner.ForQuery(IlSurfaceCounts.Of(surfaces) ?? IlEvmSurface.Call))
     {
     }
 
@@ -172,4 +183,19 @@ public sealed class IlEvmQueryModule(ReadOnlyQueryKind surfaces, FrameCodeRunner
 
     protected override void Load(ContainerBuilder builder) =>
         builder.RegisterInstance(Runner).As<FrameCodeRunner<EthereumGasPolicy>>();
+
+    /// <summary>
+    /// A module for each kind of query in <paramref name="surfaces"/>, in the order calls, traces, simulations, each with its
+    /// surface's runner: the production one for the rules set now, or with <paramref name="timed"/> the measurement one.
+    /// </summary>
+    public static IEnumerable<IlEvmQueryModule> For(ReadOnlyQueryKind surfaces, bool timed)
+    {
+        foreach (ReadOnlyQueryKind kind in IlSurfaceCounts.Kinds)
+        {
+            if ((surfaces & kind) == 0)
+                continue;
+            IlEvmSurface surface = IlSurfaceCounts.Of(kind)!.Value;
+            yield return new IlEvmQueryModule(kind, timed ? IlEvmTimedFrameRunner.For(surface) : IlEvmFrameRunner.ForQuery(surface));
+        }
+    }
 }

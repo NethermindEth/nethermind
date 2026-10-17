@@ -21,20 +21,54 @@ namespace Nethermind.IlEvm;
 /// under any other rules, or with the kill switch off or profiling on, to the general runner; a contract whose self-check
 /// has not kept it compiled goes to <see cref="IlEvmFrameRunner.RunUnsettled"/>. It is attached only without diagnostics.
 /// </para>
-/// <para><typeparamref name="TBlock"/> is on for the block processing runner, off for the read-only queries'.</para>
+/// <para>
+/// <typeparamref name="TBlock"/> is on for the block processing runner, off for the read-only queries'. One instance per
+/// surface (<see cref="IlEvmSurface"/>), each counting its parts under its own (<see cref="IlSurfaceCounts"/>), as the
+/// general runner's instances do; a detoured part is counted here, not again by the general runner.
+/// </para>
 /// </remarks>
 public sealed class IlEvmLegacyFrameRunner<TBlock> : FrameCodeRunner<EthereumGasPolicy> where TBlock : struct, IFlag
 {
-    public static IlEvmLegacyFrameRunner<TBlock> Instance { get; } = new();
+    private static readonly IlEvmLegacyFrameRunner<TBlock> _call = new(IlEvmSurface.Call);
+    private static readonly IlEvmLegacyFrameRunner<TBlock> _trace = new(IlEvmSurface.Trace);
+    private static readonly IlEvmLegacyFrameRunner<TBlock> _simulate = new(IlEvmSurface.Simulate);
+    private static readonly IlEvmLegacyFrameRunner<TBlock> _blocks = new(IlEvmSurface.Blocks);
 
-    private IlEvmLegacyFrameRunner()
+    /// <summary>The block processing runner's instance, or the read-only call environments' one.</summary>
+    public static IlEvmLegacyFrameRunner<TBlock> Instance => TBlock.IsActive ? _blocks : _call;
+
+    /// <summary>The instance for <paramref name="surface"/>; block processing's runner has only <see cref="IlEvmSurface.Blocks"/>.</summary>
+    public static IlEvmLegacyFrameRunner<TBlock> For(IlEvmSurface surface) => TBlock.IsActive ? _blocks : surface switch
     {
-    }
+        IlEvmSurface.Trace => _trace,
+        IlEvmSurface.Simulate => _simulate,
+        _ => _call,
+    };
+
+    /// <summary>The environments the instance serves, which its parts are counted under.</summary>
+    public IlEvmSurface Surface { get; }
+
+    private IlEvmLegacyFrameRunner(IlEvmSurface surface) => Surface = surface;
 
     private static IlEvmFrameRunner General => TBlock.IsActive ? IlEvmFrameRunner.Block : IlEvmFrameRunner.Instance;
 
+    /// <summary>The core's offer of a frame part, counted under the instance's surface as <see cref="IlEvmFrameRunner"/> counts its own.</summary>
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     protected override EvmExceptionType Run(VirtualMachine<EthereumGasPolicy> vm, CodeInfo codeInfo, OpcodeBodySet bodies,
+        scoped ref EvmStack stack, scoped ref EthereumGasPolicy gas, ref nint programCounter, ref int opCodesSincePoll, FrameRunFlags flags)
+    {
+        long[] counts = IlSurfaceCounts.OfThisThread();
+        int surface = (int)Surface;
+        counts[IlSurfaceCounts.Offered + surface]++;
+        int before = vm.OpCodeCount;
+        EvmExceptionType result = RunPart(vm, codeInfo, bodies, ref stack, ref gas, ref programCounter, ref opCodesSincePoll, flags);
+        if (vm.OpCodeCount != before)
+            counts[IlSurfaceCounts.Compiled + surface]++;
+        return result;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static EvmExceptionType RunPart(VirtualMachine<EthereumGasPolicy> vm, CodeInfo codeInfo, OpcodeBodySet bodies,
         scoped ref EvmStack stack, scoped ref EthereumGasPolicy gas, ref nint programCounter, ref int opCodesSincePoll, FrameRunFlags flags)
     {
         if (IlEvmDiagnostics.Enabled || Volatile.Read(ref IlEvmSettings.LegacyDetour))

@@ -34,39 +34,73 @@ namespace Nethermind.IlEvm;
 /// instruction where it stopped. With <see cref="IlEvmSettings.LegacyEntry"/> the Legacy rules attach a runner of their
 /// own instead (<see cref="ForQueries"/>, <see cref="ForBlocks"/>), whose entry runs the same path with nothing else on it.
 /// </para>
+/// <para>
+/// One instance per surface (<see cref="IlEvmSurface"/>): the read-only query environments of each kind take their own,
+/// which differ only in the surface they count their parts under (<see cref="IlSurfaceCounts"/>); block processing's
+/// takes <see cref="Block"/>.
+/// </para>
 /// </remarks>
 public sealed class IlEvmFrameRunner : FrameCodeRunner<EthereumGasPolicy>
 {
-    /// <summary>The runner for read-only queries: runs the shipped and live contracts, or under Legacy compiles hot code at run time and self-checks it.</summary>
-    public static IlEvmFrameRunner Instance { get; } = new(block: false);
+    /// <summary>
+    /// The runner for the read-only call environments (<see cref="IlEvmSurface.Call"/>): runs the shipped and live
+    /// contracts, or under Legacy compiles hot code at run time and self-checks it.
+    /// </summary>
+    public static IlEvmFrameRunner Instance { get; } = new(IlEvmSurface.Call);
+
+    /// <summary>As <see cref="Instance"/>, for the replay and traced-call environments (<see cref="IlEvmSurface.Trace"/>).</summary>
+    public static IlEvmFrameRunner TraceInstance { get; } = new(IlEvmSurface.Trace);
+
+    /// <summary>As <see cref="Instance"/>, for the simulation environments (<see cref="IlEvmSurface.Simulate"/>).</summary>
+    public static IlEvmFrameRunner SimulateInstance { get; } = new(IlEvmSurface.Simulate);
 
     /// <summary>
     /// The runner for block processing (Scope=All): runs the shipped contracts, and under Legacy compiles or self-checks
     /// at run time only as <see cref="IlEvmSettings.BlockRuntimeCompile"/> and <see cref="IlEvmSettings.BlockSelfCheck"/> say.
     /// </summary>
-    public static IlEvmFrameRunner Block { get; } = new(block: true);
+    public static IlEvmFrameRunner Block { get; } = new(IlEvmSurface.Blocks);
+
+    /// <summary>The instance for <paramref name="surface"/>.</summary>
+    public static IlEvmFrameRunner For(IlEvmSurface surface) => surface switch
+    {
+        IlEvmSurface.Call => Instance,
+        IlEvmSurface.Trace => TraceInstance,
+        IlEvmSurface.Simulate => SimulateInstance,
+        _ => Block,
+    };
 
     /// <summary>
-    /// The runner to attach to the read-only queries' machines under the rules set now: the Legacy rules' own (<see
-    /// cref="IlEvmLegacyFrameRunner{TBlock}"/>) when <see cref="IlEvmSettings.LegacyEntry"/> asks for it and no
+    /// The runner to attach to the read-only call environments' machines under the rules set now: the Legacy rules' own
+    /// (<see cref="IlEvmLegacyFrameRunner{TBlock}"/>) when <see cref="IlEvmSettings.LegacyEntry"/> asks for it and no
     /// diagnostics run, else <see cref="Instance"/>.
     /// </summary>
-    public static FrameCodeRunner<EthereumGasPolicy> ForQueries => UseLegacyEntry ? IlEvmLegacyFrameRunner<OffFlag>.Instance : Instance;
+    public static FrameCodeRunner<EthereumGasPolicy> ForQueries => ForQuery(IlEvmSurface.Call);
+
+    /// <summary>As <see cref="ForQueries"/>, for the query environments of <paramref name="surface"/>.</summary>
+    public static FrameCodeRunner<EthereumGasPolicy> ForQuery(IlEvmSurface surface) =>
+        UseLegacyEntry ? IlEvmLegacyFrameRunner<OffFlag>.For(surface) : For(surface);
 
     /// <summary>As <see cref="ForQueries"/>, for block processing: the Legacy rules' own runner, or <see cref="Block"/>.</summary>
-    public static FrameCodeRunner<EthereumGasPolicy> ForBlocks => UseLegacyEntry ? IlEvmLegacyFrameRunner<OnFlag>.Instance : Block;
+    public static FrameCodeRunner<EthereumGasPolicy> ForBlocks => UseLegacyEntry ? IlEvmLegacyFrameRunner<OnFlag>.For(IlEvmSurface.Blocks) : Block;
 
     private static bool UseLegacyEntry => IlEvmSettings.LegacyEntry && IlEvmSettings.Mode == IlMode.Legacy && !IlEvmDiagnostics.Enabled;
 
     private readonly bool _block;
 
-    private IlEvmFrameRunner(bool block) => _block = block;
+    /// <summary>The environments the instance serves, which its parts are counted under.</summary>
+    public IlEvmSurface Surface { get; }
 
-    /// <summary>The general entry, for the Legacy runner's parts under other rules than it was attached for.</summary>
+    private IlEvmFrameRunner(IlEvmSurface surface)
+    {
+        Surface = surface;
+        _block = surface == IlEvmSurface.Blocks;
+    }
+
+    /// <summary>The general entry, for the Legacy runner's parts under other rules than it was attached for; that runner counts the part itself.</summary>
     [MethodImpl(MethodImplOptions.NoInlining | MethodImplOptions.AggressiveOptimization)]
     internal EvmExceptionType RunGeneral(VirtualMachine<EthereumGasPolicy> vm, CodeInfo codeInfo, OpcodeBodySet bodies,
         scoped ref EvmStack stack, scoped ref EthereumGasPolicy gas, ref nint programCounter, ref int opCodesSincePoll, FrameRunFlags flags) =>
-        Run(vm, codeInfo, bodies, ref stack, ref gas, ref programCounter, ref opCodesSincePoll, flags);
+        RunPart(vm, codeInfo, bodies, ref stack, ref gas, ref programCounter, ref opCodesSincePoll, flags);
 
     /// <summary>The general report, for the Legacy runner's parts under other rules than it was attached for.</summary>
     [MethodImpl(MethodImplOptions.NoInlining)]
@@ -103,7 +137,29 @@ public sealed class IlEvmFrameRunner : FrameCodeRunner<EthereumGasPolicy>
     [ThreadStatic] private static bool _sampleInterpreted;
     [ThreadStatic] private static uint _sampleRandom;
 
-    /// <summary>The core's offer of a frame part: under the Adaptive rules most parts end at their code slot's mark.</summary>
+    /// <summary>The core's offer of a frame part, counted under the runner's surface (<see cref="IlSurfaceCounts"/>), then run as the rules say.</summary>
+    /// <remarks>
+    /// The part counts as compiled when the machine's opcode count moved during the run: only compiled code moves it
+    /// before the interpreter takes a part over, and a run that hands back before its first opcode moves nothing. A part
+    /// whose run throws is counted as offered only.
+    /// </remarks>
+    // Optimized from the first call, as are the helpers compiled code calls: a tier-0 copy would slow the frames run
+    // before tiering catches up, and the self-check would judge compiled code by them.
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
+    protected override EvmExceptionType Run(VirtualMachine<EthereumGasPolicy> vm, CodeInfo codeInfo, OpcodeBodySet bodies,
+        scoped ref EvmStack stack, scoped ref EthereumGasPolicy gas, ref nint programCounter, ref int opCodesSincePoll, FrameRunFlags flags)
+    {
+        long[] counts = IlSurfaceCounts.OfThisThread();
+        int surface = (int)Surface;
+        counts[IlSurfaceCounts.Offered + surface]++;
+        int before = vm.OpCodeCount;
+        EvmExceptionType result = RunPart(vm, codeInfo, bodies, ref stack, ref gas, ref programCounter, ref opCodesSincePoll, flags);
+        if (vm.OpCodeCount != before)
+            counts[IlSurfaceCounts.Compiled + surface]++;
+        return result;
+    }
+
+    /// <summary>A frame part as the rules run it: under the Adaptive rules most parts end at their code slot's mark.</summary>
     /// <remarks>
     /// <para>
     /// A transaction's top-level entry also ends the visits this thread's gate keeps of the transaction before, whatever
@@ -116,10 +172,8 @@ public sealed class IlEvmFrameRunner : FrameCodeRunner<EthereumGasPolicy>
     /// the state, settled and admitted parts more than the hook's larger frame costs a Quiet one.
     /// </para>
     /// </remarks>
-    // Optimized from the first call, as are the helpers compiled code calls: a tier-0 copy would slow the frames run
-    // before tiering catches up, and the self-check would judge compiled code by them.
-    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
-    protected override EvmExceptionType Run(VirtualMachine<EthereumGasPolicy> vm, CodeInfo codeInfo, OpcodeBodySet bodies,
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private EvmExceptionType RunPart(VirtualMachine<EthereumGasPolicy> vm, CodeInfo codeInfo, OpcodeBodySet bodies,
         scoped ref EvmStack stack, scoped ref EthereumGasPolicy gas, ref nint programCounter, ref int opCodesSincePoll, FrameRunFlags flags)
     {
         IlMode mode = IlEvmSettings.Mode;

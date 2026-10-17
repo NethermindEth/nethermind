@@ -9,9 +9,16 @@ namespace Nethermind.IlEvm;
 /// <summary>Where compiled code may run.</summary>
 public enum IlEvmScope
 {
-    /// <summary>Only the environments serving read-only queries; block processing always runs on the interpreter.</summary>
+    /// <summary>Only the environments serving read-only queries, of the kinds <see cref="IIlEvmConfig.Surfaces"/> names; block processing always runs on the interpreter.</summary>
     Rpc,
-    /// <summary>Every machine the container builds, block processing and production included. Experimental.</summary>
+    /// <summary>
+    /// Every machine the container builds, and every kind of read-only query whatever <see cref="IIlEvmConfig.Surfaces"/>
+    /// says. The block runner is registered in the root container, so every machine without a runner of its own takes it,
+    /// which reaches far more than queries: block processing, block production, prewarming and block validation, and the
+    /// environments the query modules leave out on purpose because their results are acted on - the execution witness pool
+    /// (debug_executionWitness, proof_call, engine_newPayloadWithWitness), Flashbots block validation and the pool's frame
+    /// transaction prefix simulator among them. Experimental.
+    /// </summary>
     All,
 }
 
@@ -63,10 +70,10 @@ public interface IIlEvmConfig : IConfig
     [ConfigItem(Description = "Enables IL-EVM.", DefaultValue = "false")]
     bool Enabled { get; set; }
 
-    [ConfigItem(Description = "Rpc: only read-only query environments run compiled code. All: every machine, block processing included (experimental).", DefaultValue = "Rpc")]
+    [ConfigItem(Description = "Rpc: only the read-only query environments Surfaces names run compiled code. All (experimental): every machine the node builds, which reaches far more than queries - block processing, production, prewarming and validation, execution witness generation, Flashbots block validation and the pool's frame transaction prefix simulator - and every kind of query, whatever Surfaces says.", DefaultValue = "Rpc")]
     IlEvmScope Scope { get; set; }
 
-    [ConfigItem(Description = "The read-only queries accelerated in Rpc scope: Call (eth_call, eth_estimateGas, eth_createAccessList, and the core's other users of its shared read-only call environments), or None.", DefaultValue = "Call")]
+    [ConfigItem(Description = "The kinds of read-only query whose environments run compiled code in Rpc scope, comma-separated: Call (eth_call, eth_estimateGas, eth_createAccessList, and the core's other users of its shared read-only call environments); Trace (debug_traceCall, debug_traceCallMany, debug_traceTransaction and its by-index and in-block variants, debug_traceBlock, debug_traceBlockByNumber, debug_traceBlockByHash, debug_traceBlockFromFile, debug_intermediateRoots, debug_standardTraceBlockToFile, debug_standardTraceBadBlockToFile, trace_call, trace_callMany, trace_rawTransaction, trace_replayTransaction, trace_replayBlockTransactions, trace_block, trace_transaction, trace_get, trace_filter and proof_getTransactionReceipt, the workers that trace a block's transactions in parallel included); Simulate (eth_simulateV1, debug_simulateV1, trace_simulateV1, and debug_traceCallMany when a bundle carries its own state or block override). All is the three, None turns the queries off; Call alone keeps the debug, trace and simulate methods on the interpreter. A transaction traced opcode by opcode (the struct logger, prestateTracer, JavaScript and keccak-preimage tracers, Parity vmTrace) always runs on the interpreter; untraced transactions and system calls replayed around it run compiled.", DefaultValue = "All")]
     ReadOnlyQueryKind Surfaces { get; set; }
 
     [ConfigItem(Description = "Simple: the first ListSize entries of the shipped list, compiled at startup, and what live promotion adds from the read-only queries run compiled, every frame part of them. Adaptive: the shipped list, compiled at every startup, and what live profiling promotes between blocks run compiled, each frame part admitted on its own. Legacy: contracts compile at run time once hot, and block processing runs the shipped contracts on every frame, as before Adaptive. Adaptive and Legacy are kept for A/B runs within one image.", DefaultValue = "Legacy", HiddenFromDocs = true)]
@@ -167,7 +174,7 @@ public class IlEvmConfig : IIlEvmConfig
 {
     public bool Enabled { get; set; }
     public IlEvmScope Scope { get; set; } = IlEvmScope.Rpc;
-    public ReadOnlyQueryKind Surfaces { get; set; } = ReadOnlyQueryKind.Call;
+    public ReadOnlyQueryKind Surfaces { get; set; } = ReadOnlyQueryKind.All;
     public IlEvmSelection Selection { get; set; } = IlEvmSelection.Legacy;
     public IlEvmPrefer Prefer { get; set; } = IlEvmPrefer.Rpc;
     public bool Gate { get; set; } = true;

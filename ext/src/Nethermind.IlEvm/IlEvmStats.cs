@@ -587,7 +587,8 @@ public static class IlEvmStats
     /// <summary>
     /// The header: the totals over every contract on each path and thread kind, their slow parts and buckets, then what
     /// says whether two runs compare - the collections taken off, the run-time compiles, the core's pre-warm handoffs
-    /// (replayed, rejected, missing), the tables' entries and threads, and the managed heap.
+    /// (replayed, rejected, missing), the tables' entries and threads, and the managed heap - and last the parts each
+    /// surface's runner was offered and ran compiled (<see cref="IlSurfaceCounts.StatsToken"/>).
     /// </summary>
     private static string Header(string prefix, List<ContractTotals> contracts, TableTotals tables)
     {
@@ -605,7 +606,7 @@ public static class IlEvmStats
         line.Append(CultureInfo.InvariantCulture,
             $" gc={tables.PausedParts}/{Nanoseconds(tables.PausedTicks)} runtime-compiled={IlEvmSettings.CompiledContracts}" +
             $" handoffs={Nethermind.Blockchain.Metrics.PrewarmHandoffs}/{Nethermind.Blockchain.Metrics.PrewarmHandoffsRejected}/{Nethermind.Blockchain.Metrics.PrewarmHandoffsMissing}" +
-            $" tables={tables.Entries}/{tables.Threads} heapMiB={GC.GetTotalMemory(false) >> 20}");
+            $" tables={tables.Entries}/{tables.Threads} heapMiB={GC.GetTotalMemory(false) >> 20} {IlSurfaceCounts.StatsToken()}");
         return line.ToString();
     }
 
@@ -710,23 +711,61 @@ public static class IlEvmStats
 /// code handed it back, is declined asking for its opcode count and timed until <see cref="OnInterpreted"/>, whose first
 /// act ends it. Initcode is never timed: it is never in the code database, so no list could ship it. Block processing runs
 /// compiled only the contracts the startup compile shipped, never one a read-only query compiled at run time, so that two
-/// runs differ only by their lists.
+/// runs differ only by their lists. One instance per surface (<see cref="IlEvmSurface"/>), each counting its parts under
+/// its own (<see cref="IlSurfaceCounts"/>), which the dump's header gives.
 /// </remarks>
 public sealed class IlEvmTimedFrameRunner : FrameCodeRunner<EthereumGasPolicy>
 {
-    /// <summary>The runner for read-only queries: compiles hot code at run time, as the production one does.</summary>
-    public static IlEvmTimedFrameRunner Instance { get; } = new(block: false);
+    /// <summary>The runner for the read-only call environments: compiles hot code at run time, as the production one does.</summary>
+    public static IlEvmTimedFrameRunner Instance { get; } = new(IlEvmSurface.Call);
+
+    /// <summary>As <see cref="Instance"/>, for the replay and traced-call environments.</summary>
+    public static IlEvmTimedFrameRunner TraceInstance { get; } = new(IlEvmSurface.Trace);
+
+    /// <summary>As <see cref="Instance"/>, for the simulation environments.</summary>
+    public static IlEvmTimedFrameRunner SimulateInstance { get; } = new(IlEvmSurface.Simulate);
 
     /// <summary>The runner for block processing (Scope=All): runs the shipped contracts compiled, and compiles at run time only as <see cref="IlEvmSettings.BlockRuntimeCompile"/> says.</summary>
-    public static IlEvmTimedFrameRunner Block { get; } = new(block: true);
+    public static IlEvmTimedFrameRunner Block { get; } = new(IlEvmSurface.Blocks);
+
+    /// <summary>The instance for <paramref name="surface"/>.</summary>
+    public static IlEvmTimedFrameRunner For(IlEvmSurface surface) => surface switch
+    {
+        IlEvmSurface.Call => Instance,
+        IlEvmSurface.Trace => TraceInstance,
+        IlEvmSurface.Simulate => SimulateInstance,
+        _ => Block,
+    };
 
     private readonly bool _block;
 
-    private IlEvmTimedFrameRunner(bool block) => _block = block;
+    /// <summary>The environments the instance serves, which its parts are counted under.</summary>
+    public IlEvmSurface Surface { get; }
 
+    private IlEvmTimedFrameRunner(IlEvmSurface surface)
+    {
+        Surface = surface;
+        _block = surface == IlEvmSurface.Blocks;
+    }
+
+    /// <summary>The core's offer of a frame part, counted under the instance's surface as the production runner counts its own.</summary>
     // Optimized from the first call, as the production runner: a tier-0 copy would time the runner, not the frames.
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     protected override EvmExceptionType Run(VirtualMachine<EthereumGasPolicy> vm, CodeInfo codeInfo, OpcodeBodySet bodies,
+        scoped ref EvmStack stack, scoped ref EthereumGasPolicy gas, ref nint programCounter, ref int opCodesSincePoll, FrameRunFlags flags)
+    {
+        long[] counts = IlSurfaceCounts.OfThisThread();
+        int surface = (int)Surface;
+        counts[IlSurfaceCounts.Offered + surface]++;
+        int before = vm.OpCodeCount;
+        EvmExceptionType result = RunPart(vm, codeInfo, bodies, ref stack, ref gas, ref programCounter, ref opCodesSincePoll, flags);
+        if (vm.OpCodeCount != before)
+            counts[IlSurfaceCounts.Compiled + surface]++;
+        return result;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private EvmExceptionType RunPart(VirtualMachine<EthereumGasPolicy> vm, CodeInfo codeInfo, OpcodeBodySet bodies,
         scoped ref EvmStack stack, scoped ref EthereumGasPolicy gas, ref nint programCounter, ref int opCodesSincePoll, FrameRunFlags flags)
     {
         if (!IlEvmSettings.Enabled)

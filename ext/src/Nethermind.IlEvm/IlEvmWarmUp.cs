@@ -285,7 +285,7 @@ internal static class IlWarmUp
         if (Interlocked.CompareExchange(ref _framePath, 1, 0) != 0)
             return null;
         List<MethodBase> methods = [];
-        foreach (Type type in (Type[])[typeof(IlEvmFrameRunner), typeof(IlEvmLegacyFrameRunner<OffFlag>), typeof(IlEvmLegacyFrameRunner<OnFlag>), typeof(IlThread), typeof(IlRuntime), typeof(IlCheck), typeof(IlCheckClock),
+        foreach (Type type in (Type[])[typeof(IlEvmFrameRunner), typeof(IlEvmLegacyFrameRunner<OffFlag>), typeof(IlEvmLegacyFrameRunner<OnFlag>), typeof(IlSurfaceCounts), typeof(IlThread), typeof(IlRuntime), typeof(IlCheck), typeof(IlCheckClock),
                      typeof(IlLive), typeof(IlVisitStats), typeof(IlGate), typeof(IlCodeProfile), typeof(IlEvm.IlContract), typeof(IlEvm.IlChunk), typeof(IlEvm)])
         {
             foreach (MethodInfo method in type.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly))

@@ -447,6 +447,8 @@ public sealed class IlEvmStartupStep(
 
         // What ran compiled, once the node stops: in a benchmark's log, next to its numbers.
         processExit.Token.Register(LogSummary);
+        if (_logger.IsInfo)
+            _logger.Info($"IL-EVM: mode {IlEvmSettings.Mode}, scope {IlEvmSettings.Scope}, read-only query surfaces {DescribeSurfaces()}; the exit line counts each surface's frame parts offered and run compiled");
         if (IlEvmSettings.ScopeForcedToAll && _logger.IsWarn)
             _logger.Warn("IL-EVM: Prefer=Blocks profiles block processing, which needs its runner attached: Scope is All, not the configured Rpc");
 
@@ -598,8 +600,8 @@ public sealed class IlEvmStartupStep(
         AppDomain.CurrentDomain.ProcessExit += (_, _) => IlEvmStats.Dump(_logger, top);
         if (_logger.IsInfo)
             _logger.Info($"IL-EVM timing: every contract's frame parts are timed on the path they take, interpreted or compiled, " +
-                (config.Scope == IlEvmScope.All ? "in block processing and on the other threads" : "in read-only queries only (block processing runs no runner with Scope=Rpc)") +
-                $"; the self-check is off; the {top} contracts with the most time, and every contract that ran compiled, are logged at shutdown");
+                (config.Scope == IlEvmScope.All ? "in block processing and on the other threads" : $"in read-only queries only, of {DescribeSurfaces()} (block processing runs no runner with Scope=Rpc)") +
+                $"; the self-check is off; the {top} contracts with the most time, and every contract that ran compiled, are logged at shutdown, with each surface's parts offered and compiled in the header");
 
         // Replayed transactions run nothing on block processing: which ones are replayed depends on how far warming got,
         // which compiled code changes, so the block-processing parts of two runs would not be the same parts.
@@ -626,13 +628,20 @@ public sealed class IlEvmStartupStep(
         }
     }
 
+    /// <summary>The kinds of query environment the runners were attached to, for the exit line: All, None, or the kinds joined by +.</summary>
+    internal static string DescribeSurfaces() => IlEvmSettings.Surfaces.ToString().Replace(", ", "+", StringComparison.Ordinal);
+
+    /// <summary>
+    /// The exit line: the rules, the scope and the kinds of query environment attached, the parts each surface's runner was
+    /// offered and ran compiled (<see cref="IlSurfaceCounts"/>), the startup list, then the rules' own counters.
+    /// </summary>
     private void LogSummary()
     {
         if (IlEvmSettings.Mode == IlMode.Simple)
         {
             // The Simple rules keep none of the Adaptive ones' code states or profiles: their own line.
             string simple = string.Create(CultureInfo.InvariantCulture,
-                $"IL-EVM at exit: mode Simple, prefer {IlEvmSettings.Prefer}, scope {IlEvmSettings.Scope}; " +
+                $"IL-EVM at exit: mode Simple, prefer {IlEvmSettings.Prefer}, scope {IlEvmSettings.Scope}, surfaces {DescribeSurfaces()}; {IlSurfaceCounts.Describe()}; " +
                 $"list {IlShippedBacklog.Compiled} compiled, {IlShippedBacklog.MissingCount} missing, {IlShippedBacklog.Declined} declined; {IlSimple.Describe()}{IlEvmSettings.DescribeCaught()}");
             if (_logger.IsInfo)
                 _logger.Info(simple);
@@ -642,7 +651,7 @@ public sealed class IlEvmStartupStep(
         }
 
         string common = string.Create(CultureInfo.InvariantCulture,
-            $"IL-EVM at exit: mode {IlEvmSettings.Mode}, prefer {IlEvmSettings.Prefer}, scope {IlEvmSettings.Scope}; " +
+            $"IL-EVM at exit: mode {IlEvmSettings.Mode}, prefer {IlEvmSettings.Prefer}, scope {IlEvmSettings.Scope}, surfaces {DescribeSurfaces()}; {IlSurfaceCounts.Describe()}; " +
             $"list {IlShippedBacklog.Compiled} compiled, {IlShippedBacklog.MissingCount} missing, {IlShippedBacklog.Declined} declined, {IlShippedBacklog.LeftoverCount} left; " +
             $"code states {IlRuntime.StatesResolved} resolved, {IlRuntime.StatesRefreshed} refreshed, {IlRuntime.StatesAttached} attached, {IlRuntime.ProfileCount} profiles; ");
         string rules;

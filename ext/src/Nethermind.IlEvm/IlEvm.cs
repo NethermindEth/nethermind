@@ -13,6 +13,7 @@ using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
 using System.Threading;
 using Nethermind.Core;
+using Nethermind.Core.Container;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm;
@@ -87,6 +88,9 @@ public static class IlEvmSettings
 
     /// <summary>Whether <see cref="IlEvmPrefer.Blocks"/> overrode a configured Scope of Rpc, which the startup step warns of.</summary>
     public static bool ScopeForcedToAll { get; set; }
+
+    /// <summary>The kinds of read-only query whose environments <see cref="IlEvmModule"/> attached a runner to, for the exit line: every kind with <see cref="IlEvmScope.All"/>.</summary>
+    public static ReadOnlyQueryKind Surfaces { get; set; } = ReadOnlyQueryKind.All;
 
     /// <summary>Adaptive: whether the visit gate admits each part of an admitted contract on its own, rather than every part compiled.</summary>
     public static bool Gate { get; set; } = Environment.GetEnvironmentVariable("NETHERMIND_ILEVM_GATE") != "0";
@@ -861,7 +865,8 @@ public static unsafe partial class IlEvm
         /// report, which leaves it out, is right; after a JUMPI run alone it had not, and the mark the JUMPI moved on
         /// (<c>Poll</c>) leaves the report one short, as it must be. Right after a poll at either jump that is -1, which the core takes as 0: the JUMPDEST is stepped
         /// here instead, as the loop's jump steps it, so the interpreter goes on after it with nothing of the new interval
-        /// spent; with no gas for it, the interpreter faults on it, as the loop would, and polls no more.
+        /// spent. A jump polls only with the gas for that JUMPDEST left (<c>Poll</c>), so the step always has it; without
+        /// it the interpreter would fault on the JUMPDEST, as the loop does, and poll no more.
         /// </remarks>
         [MethodImpl(MethodImplOptions.NoInlining)]
         private EvmExceptionType HandBack(VirtualMachine<EthereumGasPolicy> vm, scoped ref EthereumGasPolicy gas, scoped ref nint programCounter,
@@ -6121,7 +6126,7 @@ public static unsafe partial class IlEvm
                     {
                         MaterializeBelow(destination);
                         MoveHead(delta - 1);
-                        Poll(landedJumpDest: 1);
+                        Poll(landedJumpDest: 1, target);
                         GoTo(target);
                     }
                     else
@@ -6139,7 +6144,7 @@ public static unsafe partial class IlEvm
                 Label foreign = NewLabel();
                 LoadTarget(destination, invalid, foreign);
                 MoveHead(delta - 1);
-                Poll(landedJumpDest: 1);
+                Poll(landedJumpDest: 1, target: null);
                 il.Emit(OpCodes.Br, _dynamicJump);
 
                 AddOutOfLine(() =>
@@ -6149,7 +6154,7 @@ public static unsafe partial class IlEvm
 
                     il.MarkLabel(foreign);
                     MoveHead(delta - 1);
-                    Poll(landedJumpDest: 1);
+                    Poll(landedJumpDest: 1, target: null);
                     ExitContinueAtLimb();
                 });
             }
@@ -6250,7 +6255,7 @@ public static unsafe partial class IlEvm
                         foreach ((int position, VVal value) in carried)
                             EmitStore(position, value);
                         MoveHead(delta - 2);
-                        Poll(landedJumpDest: landed);
+                        Poll(landedJumpDest: landed, target);
                         GoTo(target);
                     }
                     else
@@ -6267,7 +6272,7 @@ public static unsafe partial class IlEvm
                 Label foreign = NewLabel();
                 LoadTarget(destination, invalid, foreign);
                 MoveHead(delta - 2);
-                Poll(landedJumpDest: landed);
+                Poll(landedJumpDest: landed, target: null);
                 il.Emit(OpCodes.Br, _dynamicJump);
                 AddOutOfLine(() =>
                 {
@@ -6276,7 +6281,7 @@ public static unsafe partial class IlEvm
 
                     il.MarkLabel(foreign);
                     MoveHead(delta - 2);
-                    Poll(landedJumpDest: landed);
+                    Poll(landedJumpDest: landed, target: null);
                     ExitContinueAtLimb();
                 });
             }
@@ -6456,12 +6461,24 @@ public static unsafe partial class IlEvm
             /// PUSH2 before it), 0 where not (a JUMPI run alone).
             /// </param>
             /// <remarks>
+            /// <para>
             /// A JUMPI run alone leaves the JUMPDEST it lands on out of the dispatch loop's poll count, which only the
             /// machine's opcode count takes in; the landed unit counts it in <see cref="IlRunState.OpCodes"/>, so such a
             /// JUMPI moves the poll mark on by one after its check, and compiled code polls at the loop's opcodes.
+            /// </para>
+            /// <para>
+            /// Every taken jump of the dispatch loop charges the JUMPDEST it lands on before its check, so one left without
+            /// the gas for it faults there and never polls: compiled code, whose landed unit charges it later, skips the
+            /// poll when the gas left is short of it, and the landed unit's precondition then faults on the JUMPDEST. A
+            /// jump onto a JUMPDEST that is the code's last byte ends the frame at the code's end, which the loop's jump
+            /// leaves before its check too: no poll there either.
+            /// </para>
             /// </remarks>
-            private void Poll(int landedJumpDest)
+            /// <param name="target">The unit a constant destination lands on, or null for one computed at run time, which <see cref="LoadTarget"/> left in the limb local.</param>
+            private void Poll(int landedJumpDest, IlUnit? target)
             {
+                if (target is not null && target.StartPc + 1 >= codeLength)
+                    return;
                 Label slow = NewLabel();
                 Label back = NewLabel();
                 il.Emit(OpCodes.Ldarg_S, ArgState);
@@ -6488,6 +6505,18 @@ public static unsafe partial class IlEvm
                 AddOutOfLine(() =>
                 {
                     il.MarkLabel(slow);
+                    // No gas for the landed JUMPDEST: the dispatch loop faults on it before its check.
+                    il.Emit(OpCodes.Ldloc, _gas);
+                    il.Emit(OpCodes.Ldc_I8, (long)GasCostOf.JumpDest);
+                    il.Emit(OpCodes.Blt_Un, back);
+                    if (target is null)
+                    {
+                        // A computed destination on the code's last byte: the frame ends there, unpolled.
+                        il.Emit(OpCodes.Ldloc, _limb);
+                        il.Emit(OpCodes.Ldc_I8, (long)(codeLength - 1));
+                        il.Emit(OpCodes.Beq, back);
+                    }
+
                     il.Emit(OpCodes.Ldarg_S, ArgState);
                     il.Emit(OpCodes.Ldarg_S, ArgState);
                     il.Emit(OpCodes.Ldfld, StateOpCodes);
