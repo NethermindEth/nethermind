@@ -101,9 +101,8 @@ public class ReadOnlySnapshotBundleBenchmark
             ReadOnlySnapshotBundle readOnly = new(
                 prevSnapshots, new NoopPersistenceReader(), recordDetailedMetrics: false,
                 PersistedSnapshotStack.Empty());
-            NullTrieNodeCache cache = new();
             SnapshotBundle bundle = new(
-                readOnly, cache, _trieNodeLog, resourcePool, ResourcePool.Usage.MainBlockProcessing);
+                readOnly, _trieNodeLog, resourcePool, ResourcePool.Usage.MainBlockProcessing);
             CapturingCommitTarget commitTarget = new();
             using FlatWorldStateScope scope = new(
                 currentStateId: currentStateId,

@@ -240,7 +240,6 @@ public class SnapshotTests
     {
         using SnapshotBundle bundle = new(
             FlatTestHelpers.MakeBundle(_pool),
-            Substitute.For<ITrieNodeCache>(),
             null,
             _pool,
             ResourcePool.Usage.MainBlockProcessing);

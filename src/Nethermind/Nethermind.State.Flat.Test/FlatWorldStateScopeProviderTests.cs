@@ -177,7 +177,6 @@ public class FlatWorldStateScopeProviderTests
         persistenceReader ??= Substitute.For<IPersistence.IPersistenceReader>();
         return new SnapshotBundle(
             new ReadOnlySnapshotBundle(new SnapshotPooledList(0), persistenceReader, false, PersistedSnapshotStack.Empty()),
-            Substitute.For<ITrieNodeCache>(),
             trieNodeLog,
             resourcePool,
             ResourcePool.Usage.ReadOnlyProcessingEnv);
@@ -201,7 +200,7 @@ public class FlatWorldStateScopeProviderTests
         public IPersistence.IPersistenceReader PersistenceReader => field ??= Container.Resolve<IPersistence.IPersistenceReader>();
         public Snapshot? LastCommittedSnapshot { get; set; }
 
-        public TestContext(IBlockTree? blockTree = null, FlatDbConfig? config = null, ITrieWarmer? trieWarmer = null, bool historical = false, ITrieNodeCache? trieNodeCache = null, Hash256? stateRoot = null)
+        public TestContext(IBlockTree? blockTree = null, FlatDbConfig? config = null, ITrieWarmer? trieWarmer = null, bool historical = false, Hash256? stateRoot = null)
         {
             config ??= new FlatDbConfig();
 
@@ -234,18 +233,7 @@ public class FlatWorldStateScopeProviderTests
                                 }
                                 LastCommittedSnapshot = snapshot;
 
-                                // Mirror FlatDbManager.AddSnapshot, which promotes the warmed nodes into the trie node cache
-                                // before releasing the lease: returning to the pool directly would recycle
-                                // the resource while a warmer lease is still outstanding, and the resource would
-                                // then be returned a second time when that lease is released.
-                                try
-                                {
-                                    Container.Resolve<ITrieNodeCache>().Add(transientResource);
-                                }
-                                finally
-                                {
-                                    transientResource.ReleaseLease();
-                                }
+                                transientResource.ReleaseLease();
                             });
 
                         flatDiff.GatherSnapshotBundle(Arg.Any<StateId>(), Arg.Any<ResourcePool.Usage>(), Arg.Any<bool>())
@@ -266,11 +254,6 @@ public class FlatWorldStateScopeProviderTests
             if (trieWarmer is not null)
             {
                 _containerBuilder.AddSingleton(trieWarmer);
-            }
-
-            if (trieNodeCache is not null)
-            {
-                _containerBuilder.AddSingleton(trieNodeCache);
             }
 
             // Externally owned because snapshot bundle take ownership
@@ -1008,7 +991,7 @@ public class FlatWorldStateScopeProviderTests
             persistedNodes = CollectNodes(store.GetTrieStore(null), stateRoot).Rlps;
         }
 
-        using TestContext ctx = new(config: new FlatDbConfig { TrieCacheMemoryBudget = 0 }, stateRoot: stateRoot);
+        using TestContext ctx = new(config: new FlatDbConfig(), stateRoot: stateRoot);
         ctx.PersistenceReader.GetAccount(address).Returns(account);
         int backgroundLoads = 0;
         ctx.PersistenceReader.TryLoadStateRlp(Arg.Any<TreePath>(), Arg.Any<ReadFlags>())
@@ -1316,12 +1299,10 @@ public class FlatWorldStateScopeProviderTests
         [Values(0, 20)] int blocksBetweenCommits,
         [Values] bool deferStorageTrieCommit,
         // 512 crosses the bulk set's parallel threshold.
-        [Values(48, 512)] int slotsPerContract,
-        [Values] bool trieNodeCacheEnabled)
+        [Values(48, 512)] int slotsPerContract)
     {
         const int contractCount = 8;
         FlatDbConfig config = new() { DeferStorageTrieCommit = deferStorageTrieCommit };
-        if (!trieNodeCacheEnabled) config.TrieCacheMemoryBudget = 0;
         Account baseAccount = new(1, 1);
 
         RawTrieStore expectedStore = new(new TestMemDb());
@@ -1338,9 +1319,8 @@ public class FlatWorldStateScopeProviderTests
 
         // The tries start from nodes only persistence holds, so the blocks load and warm nodes from outside the trie node log.
         Dictionary<(Hash256? Storage, TreePath Path), byte[]> persistedNodes = CollectNodes(expectedStore.GetTrieStore(null), expectedState.RootHash).Rlps;
-        CountingTrieNodeCache trieNodeCache = new(new TrieNodeCache(config));
         InlineTrieWarmer warmer = new();
-        using TestContext ctx = new(config: config, trieWarmer: warmer, trieNodeCache: trieNodeCache, stateRoot: expectedState.RootHash);
+        using TestContext ctx = new(config: config, trieWarmer: warmer, stateRoot: expectedState.RootHash);
         ctx.PersistenceReader.GetAccount(Arg.Any<Address>()).Returns(baseAccount);
         for (int contract = 0; contract < contractCount; contract++)
         {
@@ -1411,12 +1391,8 @@ public class FlatWorldStateScopeProviderTests
             }
         }
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(CollectNodes(new StateTrieStoreAdapter(ctx.SnapshotBundle), scope.RootHash).Nodes,
-                Is.EquivalentTo(CollectNodes(expectedStore.GetTrieStore(null), expectedState.RootHash).Nodes));
-            Assert.That(trieNodeCache.Hits, trieNodeCacheEnabled ? Is.Positive : Is.Zero);
-        }
+        Assert.That(CollectNodes(new StateTrieStoreAdapter(ctx.SnapshotBundle), scope.RootHash).Nodes,
+            Is.EquivalentTo(CollectNodes(expectedStore.GetTrieStore(null), expectedState.RootHash).Nodes));
     }
 
     [Test]
@@ -1441,7 +1417,6 @@ public class FlatWorldStateScopeProviderTests
         SinglePersistedNodeReader reader = new(persistedPath, persistedRlp);
         using SnapshotBundle bundle = new(
             new ReadOnlySnapshotBundle(FlatTestHelpers.SnapshotList(SnapshotWithNode(readOnlySnapshotPath, readOnlySnapshotRlp)), reader, false, PersistedSnapshotStack.Empty()),
-            Substitute.For<ITrieNodeCache>(),
             log,
             pool,
             ResourcePool.Usage.MainBlockProcessing,
@@ -1483,7 +1458,7 @@ public class FlatWorldStateScopeProviderTests
         SinglePersistedNodeReader reader = new(TreePath.FromHexString("abcdef"), oldRlp);
         using (SnapshotBundle writer = new(
             new ReadOnlySnapshotBundle(new SnapshotPooledList(0), new NoopPersistenceReader(), false, PersistedSnapshotStack.Empty()),
-            Substitute.For<ITrieNodeCache>(), log, pool, ResourcePool.Usage.MainBlockProcessing))
+            log, pool, ResourcePool.Usage.MainBlockProcessing))
         {
             TrieRoot root = TrieRoot.Empty;
             for (int version = 0; version < versionCount; version++)
@@ -1513,7 +1488,7 @@ public class FlatWorldStateScopeProviderTests
 
         using SnapshotBundle bundle = new(
             new ReadOnlySnapshotBundle(readOnlySnapshots ? snapshots : new SnapshotPooledList(0), reader, false, PersistedSnapshotStack.Empty()),
-            Substitute.For<ITrieNodeCache>(), log, pool, ResourcePool.Usage.MainBlockProcessing,
+            log, pool, ResourcePool.Usage.MainBlockProcessing,
             readOnlySnapshots ? null : snapshots);
         for (int i = 0; i < 12; i++) FlatTestHelpers.StartNewGeneration(log);
         Assert.That(() => log.FindBloom(oldPointer) is null, Is.True.After(10_000, 10), "the unretained generation is compacted while snapshots retain later generations");
@@ -1583,25 +1558,6 @@ public class FlatWorldStateScopeProviderTests
                 Rlps[(nodeContext.Storage, nodeContext.Path)] = rlp;
             }
         }
-    }
-
-    private sealed class CountingTrieNodeCache(ITrieNodeCache cache) : ITrieNodeCache
-    {
-        private int _hits;
-
-        public int Hits => Volatile.Read(ref _hits);
-
-        public bool TryGet(Hash256? address, in TreePath path, in ValueHash256 hash, out NodeRecordRef record)
-        {
-            if (!cache.TryGet(address, path, hash, out record)) return false;
-
-            Interlocked.Increment(ref _hits);
-            return true;
-        }
-
-        public void Add(TransientResource transientResource) => cache.Add(transientResource);
-
-        public void Clear() => cache.Clear();
     }
 
     [Test]
@@ -2192,7 +2148,7 @@ public class FlatWorldStateScopeProviderTests
         FlatDbConfig config = new();
         ResourcePool resourcePool = new(config);
         using TrieNodeLog log = FlatTestHelpers.NewTestLog();
-        SnapshotBundle bundle = new(readOnlyBundle, Substitute.For<ITrieNodeCache>(), log, resourcePool, ResourcePool.Usage.MainBlockProcessing);
+        SnapshotBundle bundle = new(readOnlyBundle, log, resourcePool, ResourcePool.Usage.MainBlockProcessing);
         await using TrieWarmer warmer = new(LimboLogs.Instance, config);
 
         using FlatWorldStateScope scope = new(

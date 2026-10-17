@@ -637,7 +637,7 @@ public class ReadOnlySnapshotBundleFilterTests
         Assert.That(readOnly.TryLease(), Is.True);
         try
         {
-            using (SnapshotBundle bundle = new(readOnly, Substitute.For<ITrieNodeCache>(), null, _pool,
+            using (SnapshotBundle bundle = new(readOnly, null, _pool,
                        ResourcePool.Usage.ReadOnlyProcessingEnv, filterInMemorySlotReads: filterInMemorySlotReads))
             {
                 bundle.GetSlot(address, 1, bundle.DetermineSelfDestructSnapshotIdx(address), out UInt256? value);
@@ -966,7 +966,7 @@ public class ReadOnlySnapshotBundleFilterTests
                 }
 
                 readOnly.TryLease();
-                bundles[b] = new SnapshotBundle(readOnly, Substitute.For<ITrieNodeCache>(), null, _pool,
+                bundles[b] = new SnapshotBundle(readOnly, null, _pool,
                     ResourcePool.Usage.ReadOnlyProcessingEnv, ownList, filterInMemorySlotReads: b == 1);
                 foreach ((Address address, UInt256 index, UInt256 value, bool clear) in ops)
                 {

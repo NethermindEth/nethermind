@@ -71,9 +71,8 @@ public class WriteBatchBenchmark
             ReadOnlySnapshotBundle readOnly = new(
                 prevSnapshots, new NoopPersistenceReader(), recordDetailedMetrics: false,
                 PersistedSnapshotStack.Empty());
-            NullTrieNodeCache cache = new();
             SnapshotBundle bundle = new(
-                readOnly, cache, _trieNodeLog, _resourcePool, ResourcePool.Usage.MainBlockProcessing);
+                readOnly, _trieNodeLog, _resourcePool, ResourcePool.Usage.MainBlockProcessing);
             CapturingCommitTarget commitTarget = new();
             using FlatWorldStateScope scope = new(
                 currentStateId: _currentStateId,
@@ -161,9 +160,8 @@ public class WriteBatchBenchmark
         ReadOnlySnapshotBundle readOnly = new(
             prevSnapshots, new NoopPersistenceReader(), recordDetailedMetrics: false,
             PersistedSnapshotStack.Empty());
-        NullTrieNodeCache cache = new();
         SnapshotBundle bundle = new(
-            readOnly, cache, _trieNodeLog, _resourcePool, ResourcePool.Usage.MainBlockProcessing);
+            readOnly, _trieNodeLog, _resourcePool, ResourcePool.Usage.MainBlockProcessing);
         CapturingCommitTarget commitTarget = new();
         _scope = new FlatWorldStateScope(
             currentStateId: _currentStateId,

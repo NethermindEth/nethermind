@@ -65,6 +65,9 @@ internal sealed class LoggedTrie(SnapshotBundle bundle, TrieNodeLog log, Hash256
     /// <inheritdoc cref="LogBulkSet.TryGet"/>
     public byte[]? TryGet(in ValueHash256 key) => LogBulkSet.TryGet(log, this, addressHash, Root, key);
 
+    public bool TryLoad(ulong pointer, in TreePath path, in ValueHash256 hash, out NodeRecordRef record) =>
+        bundle.TryLoadTrieNodeRecord(addressHash, pointer, path, hash, out record);
+
     public bool TryLoad(in TreePath path, in ValueHash256 hash, out NodeRecordRef record) =>
         bundle.TryLoadTrieNodeRecord(addressHash, path, hash, out record);
 

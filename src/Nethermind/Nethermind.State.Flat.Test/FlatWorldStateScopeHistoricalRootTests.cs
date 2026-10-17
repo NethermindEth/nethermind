@@ -224,7 +224,6 @@ public class FlatWorldStateScopeHistoricalRootTests
 
         return new SnapshotBundle(
             readOnlyBundle,
-            Substitute.For<ITrieNodeCache>(),
             _log,
             _pool,
             ResourcePool.Usage.MainBlockProcessing);

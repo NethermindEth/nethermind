@@ -22,10 +22,8 @@ public class FlatStateReaderTests
 {
     private static readonly BlockHeader _header = Build.A.BlockHeader.WithNumber(5).WithStateRoot(TestItem.KeccakA).TestObject;
 
-    private static readonly FlatDbConfig _smallTrieCacheConfig = new() { TrieCacheMemoryBudget = MemorySizes.MiB };
-
-    private static FlatStateReader CreateReader(IFlatDbManager manager, ITrieNodeCache? trieNodeCache = null) =>
-        new(new MemDb(), manager, trieNodeCache ?? new TrieNodeCache(_smallTrieCacheConfig), NullHistoricalTrieVisitor.Instance, LimboLogs.Instance);
+    private static FlatStateReader CreateReader(IFlatDbManager manager) =>
+        new(new MemDb(), manager, NullHistoricalTrieVisitor.Instance, LimboLogs.Instance);
 
     public static readonly TestCaseData[] UnavailableStateReads =
     [
@@ -60,24 +58,21 @@ public class FlatStateReaderTests
         Assert.That(exception!.Message, Does.Contain("historical"));
     }
 
-    [TestCase(true, false, 0, TestName = "RunTreeVisitor_Proof_ServesRootsFromTrieNodeCache")]
-    [TestCase(false, false, 1, TestName = "RunTreeVisitor_Proof_LoadsRootsFromBundleOnTrieNodeCacheMiss")]
-    [TestCase(true, true, 1, TestName = "RunTreeVisitor_FullScan_BypassesTrieNodeCache")]
-    public void RunTreeVisitor_TrieNodeCache_DecidesBundleLoads(bool rootsInTrieNodeCache, bool fullScan, int expectedLoadsPerTrie)
+    [TestCase(false)]
+    [TestCase(true)]
+    public void RunTreeVisitor_LoadsTrieRootsFromBundle(bool fullScan)
     {
         CountingTrieReader trieReader = CountingTrieReader.WithSingleAccountAndSlot(TestItem.AddressA, 1, out Hash256 stateRoot);
         BlockHeader header = Build.A.BlockHeader.WithNumber(5).WithStateRoot(stateRoot).TestObject;
-        TrieNodeCache trieNodeCache = new(_smallTrieCacheConfig);
-        if (rootsInTrieNodeCache) trieReader.AddRootsTo(trieNodeCache);
-        FlatStateReader reader = CreateReader(new CurrentBundleFlatDbManager(trieReader), trieNodeCache);
+        FlatStateReader reader = CreateReader(new CurrentBundleFlatDbManager(trieReader));
 
         if (fullScan) reader.RunTreeVisitor(new TreeDumper(), header);
         else reader.RunTreeVisitor(new AccountProofCollector(TestItem.AddressA, [(UInt256)1]), header);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(trieReader.StateRlpLoads, Is.EqualTo(expectedLoadsPerTrie));
-            Assert.That(trieReader.StorageRlpLoads, Is.EqualTo(expectedLoadsPerTrie));
+            Assert.That(trieReader.StateRlpLoads, Is.EqualTo(1));
+            Assert.That(trieReader.StorageRlpLoads, Is.EqualTo(1));
         }
     }
 
@@ -105,7 +100,7 @@ public class FlatStateReaderTests
         public void AddSnapshot(Snapshot snapshot, TransientResource transientResource) { }
     }
 
-    private sealed class CountingTrieReader(Hash256 addressHash, byte[] stateRootRlp, byte[] storageRootRlp) : IPersistence.IPersistenceReader
+    private sealed class CountingTrieReader(byte[] stateRootRlp, byte[] storageRootRlp) : IPersistence.IPersistenceReader
     {
         public int StateRlpLoads { get; private set; }
         public int StorageRlpLoads { get; private set; }
@@ -125,17 +120,8 @@ public class FlatStateReaderTests
             NodeStorage nodeStorage = new(trieDb);
             stateRoot = stateTree.RootHash;
             return new CountingTrieReader(
-                addressHash,
                 nodeStorage.Get(null, TreePath.Empty, stateTree.RootHash)!,
                 nodeStorage.Get(addressHash, TreePath.Empty, storageTree.RootHash)!);
-        }
-
-        public void AddRootsTo(TrieNodeCache trieNodeCache)
-        {
-            TransientResource transientResource = new ResourcePool(_smallTrieCacheConfig).GetCachedResource(ResourcePool.Usage.MainBlockProcessing);
-            transientResource.WarmedNodes.TryInsert(null, TreePath.Empty, ValueKeccak.Compute(stateRootRlp), stateRootRlp, out _);
-            transientResource.WarmedNodes.TryInsert(addressHash, TreePath.Empty, ValueKeccak.Compute(storageRootRlp), storageRootRlp, out _);
-            trieNodeCache.Add(transientResource);
         }
 
         public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags)

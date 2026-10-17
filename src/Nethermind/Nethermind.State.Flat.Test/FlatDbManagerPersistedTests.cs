@@ -102,7 +102,6 @@ public class FlatDbManagerPersistedTests
         await using FlatDbManager manager = new(
             Substitute.For<IResourcePool>(),
             _processExitSource,
-            Substitute.For<ITrieNodeCache>(),
             managerLog,
             Substitute.For<ISnapshotCompactor>(),
             repo,
@@ -137,7 +136,6 @@ public class FlatDbManagerPersistedTests
         FlatDbManager manager = new(
             Substitute.For<IResourcePool>(),
             _processExitSource,
-            Substitute.For<ITrieNodeCache>(),
             managerLog,
             Substitute.For<ISnapshotCompactor>(),
             repo,
@@ -183,7 +181,7 @@ public class FlatDbManagerPersistedTests
         });
         using TrieNodeLog managerLog = FlatTestHelpers.NewTestLog();
         FlatDbManager manager = new(tier.ResourcePool, _processExitSource,
-            Substitute.For<ITrieNodeCache>(), managerLog, compactor, tier.Repository, persistence,
+            managerLog, compactor, tier.Repository, persistence,
             Substitute.For<IPersistedSnapshotLoader>(), _config, new BlocksConfig(), LimboLogs.Instance, false);
 
         Task? disposal = null;
@@ -240,7 +238,7 @@ public class FlatDbManagerPersistedTests
         compactor.DoCompactSnapshot(failing).Returns(_ => throw new IOException("compaction failed"));
         using TrieNodeLog managerLog = FlatTestHelpers.NewTestLog();
         FlatDbManager manager = new(tier.ResourcePool, _processExitSource,
-            Substitute.For<ITrieNodeCache>(), managerLog, compactor, tier.Repository, persistence,
+            managerLog, compactor, tier.Repository, persistence,
             Substitute.For<IPersistedSnapshotLoader>(), _config, new BlocksConfig(), LimboLogs.Instance, false);
 
         Commit(manager, tier.ResourcePool, new StateId(0, Keccak.EmptyTreeHash), failing, 1);
@@ -280,7 +278,6 @@ public class FlatDbManagerPersistedTests
         await using FlatDbManager manager = new(
             tier.ResourcePool,
             _processExitSource,
-            tier.Resolve<ITrieNodeCache>(),
             tier.Resolve<TrieNodeLog>(),
             tier.Resolve<ISnapshotCompactor>(),
             tier.Repository,

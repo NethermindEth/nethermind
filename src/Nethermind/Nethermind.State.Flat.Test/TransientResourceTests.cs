@@ -65,10 +65,12 @@ public class TransientResourceTests
         using TransientResource resource = new(new TransientResource.Size(1024, capacity));
         WarmedNodes warmedNodes = resource.WarmedNodes;
         int nodeCount = pastCapacity ? capacity + 1 : capacity;
+        ulong originalPointer = 0;
         for (byte value = 0; value < nodeCount; value++)
         {
             byte[] rlp = FlatTestHelpers.LeafRlp(value);
-            warmedNodes.TryInsert(null, TreePath.Empty, ValueKeccak.Compute(rlp), rlp, out _);
+            warmedNodes.TryInsert(null, TreePath.Empty, ValueKeccak.Compute(rlp), rlp, out _, out ulong pointer);
+            if (value == 0) originalPointer = pointer;
         }
 
         resource.Reset();
@@ -78,6 +80,16 @@ public class TransientResourceTests
             Assert.That(resource.WarmedNodes, pastCapacity ? Is.Not.SameAs(warmedNodes) : Is.SameAs(warmedNodes));
             Assert.That(resource.WarmedNodes.Count, Is.Zero);
             Assert.That(resource.GetSize().NodesCacheSize, Is.EqualTo(nodeCount));
+        }
+
+        byte[] originalRlp = FlatTestHelpers.LeafRlp(0);
+        ValueHash256 originalHash = ValueKeccak.Compute(originalRlp);
+        resource.WarmedNodes.TryInsert(null, TreePath.Empty, originalHash, originalRlp, out _, out ulong newPointer);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(newPointer, Is.Not.EqualTo(originalPointer), "growth and reuse both change pointer identity");
+            Assert.That(resource.WarmedNodes.TryGet(originalPointer, originalHash, out _), Is.False);
+            Assert.That(resource.WarmedNodes.TryGet(newPointer, originalHash, out _), Is.True);
         }
     }
 

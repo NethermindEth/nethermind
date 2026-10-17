@@ -4,7 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Numerics;
+using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
@@ -33,13 +33,18 @@ internal class WarmedNodesTests
         TreePath path = Path(0);
         TreePath collidingPath = CollidingPath(address, path);
 
-        bool inserted = warmed.TryInsert(address, path, hash, rlp, out NodeRecordRef record);
-        bool reinserted = warmed.TryInsert(address, path, hash, rlp, out _);
+        bool inserted = warmed.TryInsert(address, path, hash, rlp, out NodeRecordRef record, out ulong pointer);
+        bool reinserted = warmed.TryInsert(address, path, hash, rlp, out _, out ulong repeatedPointer);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(inserted && reinserted, Is.True, "insert");
             Assert.That(record.Rlp.ToArray(), Is.EqualTo(rlp), "inserted RLP");
             Assert.That(record.Hash, Is.EqualTo(hash), "inserted hash");
+            Assert.That(NodeRecord.IsTransient(pointer), Is.True, "temporary generation");
+            Assert.That(repeatedPointer, Is.EqualTo(pointer), "duplicate reuses its pointer");
+            Assert.That(warmed.TryGet(address, path, hash, out _, out ulong indexedPointer) && indexedPointer == pointer, Is.True, "indexed pointer");
+            Assert.That(warmed.TryGet(pointer, otherHash, out _), Is.False, "pointer checks expected hash");
+            Assert.That(new WarmedNodes(1).TryGet(pointer, hash, out _), Is.False, "foreign resource");
             Assert.That(warmed.Count, Is.EqualTo(1), "the first record of a position and hash is kept");
             Assert.That(Get(warmed, address, path, hash), Is.EqualTo(rlp), "get");
             Assert.That(Get(warmed, address, path, otherHash), Is.Null, "wrong hash");
@@ -55,28 +60,25 @@ internal class WarmedNodesTests
         {
             Assert.That(Get(warmed, address, path, hash), Is.Null, "replaced by a collision");
             Assert.That(Get(warmed, address, collidingPath, otherHash), Is.EqualTo(otherRlp), "collision");
+            Assert.That(warmed.TryGet(pointer, hash, out NodeRecordRef displaced) && displaced.Rlp.SequenceEqual(rlp), Is.True, "pointer survives index displacement");
         }
 
         long initialArenaBytes = warmed.ArenaBytes;
-        List<(NodeRecordRef Record, byte[] Rlp)> largeRecords = [];
+        List<(NodeRecordRef Record, byte[] Rlp, ulong Pointer)> largeRecords = [];
         for (int i = 0; i < LargeRecordCount; i++)
         {
             byte[] largeRlp = TrieNodeLogTests.Leaf(i, 400);
-            warmed.TryInsert(address, Path(1000 + i), ValueKeccak.Compute(largeRlp), largeRlp, out NodeRecordRef largeRecord);
-            largeRecords.Add((largeRecord, largeRlp));
+            warmed.TryInsert(address, Path(1000 + i), ValueKeccak.Compute(largeRlp), largeRlp, out NodeRecordRef largeRecord, out ulong largePointer);
+            largeRecords.Add((largeRecord, largeRlp, largePointer));
         }
 
-        List<(Hash256 Address, TreePath Path, NodeRecordRef Record)> copied = [];
-        warmed.CopyAllTo(copied);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(copied.Select(copy => copy.Record.Rlp.ToArray()), Is.EqualTo(new[] { rlp, otherRlp }.Concat(largeRecords.Select(large => large.Rlp))), "every record in arena order");
-            Assert.That(copied.Select(copy => (copy.Address, copy.Path)),
-                Is.EqualTo(new[] { path, collidingPath }.Concat(Enumerable.Range(0, LargeRecordCount).Select(i => Path(1000 + i))).Select(insertedPath => (address, insertedPath))),
-                "with the address and path each was inserted for");
+            Assert.That(warmed.Count, Is.EqualTo(2 + LargeRecordCount), "includes displaced records");
             Assert.That(initialArenaBytes, Is.EqualTo(ChunkBytes), "one chunk");
             Assert.That(warmed.ArenaBytes, Is.EqualTo(3 * ChunkBytes), "grows across chunk boundaries");
             Assert.That(largeRecords.Select(large => large.Record.Rlp.SequenceEqual(large.Rlp)), Is.All.True, "records in every chunk");
+            Assert.That(largeRecords.Select(large => warmed.TryGet(large.Pointer, large.Record.Hash, out NodeRecordRef found) && found.Rlp.SequenceEqual(large.Rlp)), Is.All.True, "pointers into every chunk");
         }
 
         warmed.Reset();
@@ -88,36 +90,98 @@ internal class WarmedNodesTests
             Assert.That(Enumerable.Range(0, LargeRecordCount).Select(i => Get(warmed, address, Path(1000 + i), largeRecords[i].Record.Hash)), Is.All.Null, "nothing remains");
         }
 
-        warmed.TryInsert(address, path, hash, rlp, out _);
-        Assert.That(Get(warmed, address, path, hash), Is.EqualTo(rlp), "reusable after reset");
-    }
-
-    [Test]
-    public void Record_table_add_fails_once_the_arena_budget_is_spent()
-    {
-        const int lastChunkBytes = 1000;
-        RecordTable table = new(1024, ChunkBytes + lastChunkBytes + NodeRecord.RecordAlignment - 1);
-        int alignedRecordLength = NodeRecord.AlignedLength(Record(Path(0), TrieNodeLogTests.Leaf(0, 400)).Length);
-        int fittingRecordCount = ChunkBytes / alignedRecordLength + lastChunkBytes / alignedRecordLength;
-
-        bool allAdded = Enumerable.Range(0, fittingRecordCount).All(i => table.TryAdd(null, Path(i), Record(Path(i), TrieNodeLogTests.Leaf(i, 400)), out _));
-        bool overBudgetAdded = table.TryAdd(null, Path(fittingRecordCount), Record(Path(fittingRecordCount), TrieNodeLogTests.Leaf(fittingRecordCount, 400)), out NodeRecordRef overBudget);
+        warmed.TryInsert(address, path, hash, rlp, out _, out ulong resetPointer);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(allAdded, Is.True, "adds within the budget");
-            Assert.That(overBudgetAdded, Is.False, "add over the budget");
-            Assert.That(overBudget.IsNull, Is.True, "no record over the budget");
-            Assert.That(table.Count, Is.EqualTo(fittingRecordCount), "count");
-            Assert.That(table.ArenaBytes, Is.EqualTo(ChunkBytes + lastChunkBytes), "the last chunk is shortened to the budget");
+            Assert.That(Get(warmed, address, path, hash), Is.EqualTo(rlp), "reusable after reset");
+            Assert.That(resetPointer, Is.Not.EqualTo(pointer), "reset renews identity even at the same arena location");
+            Assert.That(warmed.TryGet(pointer, hash, out _), Is.False, "pre-reset pointer cannot alias the same record");
+            Assert.That(warmed.TryGet(resetPointer, hash, out _), Is.True, "new pointer resolves");
         }
     }
 
-    private static byte[] Record(in TreePath path, byte[] rlp)
+    [Test]
+    public void Index_checks_the_full_address_even_when_node_keys_are_equal()
     {
-        NodeRecord.TryMeasure(rlp, out NodeRecordKind kind, out ushort hashMask);
-        byte[] record = new byte[NodeRecord.Length(BitOperations.PopCount(hashMask), rlp.Length)];
-        NodeRecord.WriteFromRlp(rlp, kind, hashMask, ValueKeccak.Compute(rlp), NodeRecord.NodeKey(null, path), record);
-        return record;
+        WarmedNodes warmed = new(1);
+        byte[] addressBytes = TestItem.KeccakA.Bytes.ToArray();
+        addressBytes[^1] ^= 1;
+        Hash256 otherAddress = new(addressBytes);
+        TreePath path = Path(0);
+        byte[] rlp = TrieNodeLogTests.Leaf(0, 8);
+        ValueHash256 hash = ValueKeccak.Compute(rlp);
+        Assert.That(NodeRecord.NodeKey(TestItem.KeccakA, path), Is.EqualTo(NodeRecord.NodeKey(otherAddress, path)), "same mixed key");
+
+        warmed.TryInsert(TestItem.KeccakA, path, hash, rlp, out _, out ulong originalPointer);
+        Assert.That(Get(warmed, otherAddress, path, hash), Is.Null, "a matching node key is not a matching address");
+        warmed.TryInsert(otherAddress, path, hash, rlp, out _, out ulong otherPointer);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(warmed.Count, Is.EqualTo(2), "different addresses must not deduplicate");
+            Assert.That(Get(warmed, TestItem.KeccakA, path, hash), Is.Null, "original address displaced");
+            Assert.That(Get(warmed, otherAddress, path, hash), Is.EqualTo(rlp));
+            Assert.That(otherPointer, Is.Not.EqualTo(originalPointer));
+            Assert.That(warmed.TryGet(originalPointer, hash, out _), Is.True, "the displaced record remains addressable");
+        }
+    }
+
+    [Test]
+    public void Concurrent_insertion_publishes_complete_records([Values] bool samePosition)
+    {
+        const int count = 1000;
+        WarmedNodes warmed = new(1);
+        byte[] rlp = TrieNodeLogTests.Leaf(0, 400);
+        ValueHash256 hash = ValueKeccak.Compute(rlp);
+        bool[] complete = new bool[count];
+        ulong[] pointers = new ulong[count];
+
+        Parallel.For(0, count, i =>
+        {
+            TreePath path = Path(samePosition ? 0 : i);
+            bool inserted = warmed.TryInsert(null, path, hash, rlp, out NodeRecordRef record, out pointers[i]);
+            bool resolved = warmed.TryGet(pointers[i], hash, out NodeRecordRef located);
+            bool indexed = !warmed.TryGet(null, path, hash, out NodeRecordRef current) || current.Rlp.SequenceEqual(rlp);
+            complete[i] = inserted && resolved && record.Rlp.SequenceEqual(rlp) && located.Rlp.SequenceEqual(rlp) && indexed;
+        });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(complete, Is.All.True);
+            Assert.That(warmed.Count, Is.EqualTo(samePosition ? 1 : count));
+            Assert.That(pointers.Distinct().Count(), Is.EqualTo(samePosition ? 1 : count));
+        }
+    }
+
+    [Test]
+    public void Transient_generation_exhaustion_does_not_reuse_ids()
+    {
+        long counter = NodeRecord.TransientGenerationMask - 2L;
+        uint last = NodeRecord.NextTransientGeneration(ref counter);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(last, Is.EqualTo(uint.MaxValue));
+            Assert.That(() => NodeRecord.NextTransientGeneration(ref counter), Throws.TypeOf<TrieException>());
+            Assert.That(() => NodeRecord.NextTransientGeneration(ref counter), Throws.TypeOf<TrieException>(), "exhaustion remains terminal");
+        }
+    }
+
+    [Test]
+    public void A_record_larger_than_a_chunk_is_not_published()
+    {
+        WarmedNodes warmed = new(1);
+        byte[] rlp = TrieNodeLogTests.Leaf(0, ChunkBytes);
+        bool added = warmed.TryInsert(null, TreePath.Empty, ValueKeccak.Compute(rlp), rlp, out NodeRecordRef record, out ulong pointer);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(added, Is.False);
+            Assert.That(record.IsNull, Is.True);
+            Assert.That(pointer, Is.Zero);
+            Assert.That(warmed.Count, Is.Zero);
+            Assert.That(warmed.ArenaBytes, Is.Zero);
+        }
     }
 
     private static TreePath Path(int seed) => new(ValueKeccak.Compute(BitConverter.GetBytes(seed)), 64);

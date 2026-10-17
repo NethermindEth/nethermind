@@ -91,7 +91,7 @@ public sealed partial class TrieNodeLog : IDisposable
     {
         ulong id = pointer >> OffsetBits;
         Generation? generation = Volatile.Read(ref _generations[id & GenerationSlotMask]);
-        if (generation?.Id != id)
+        if (NodeRecord.IsTransient(pointer) || generation?.Id != id)
         {
             record = default;
             return false;
@@ -162,13 +162,19 @@ public sealed partial class TrieNodeLog : IDisposable
         {
             if (_active.Id != fullGeneration) return;
 
-            ulong id = fullGeneration + 1;
+            ulong id = NextGeneration(fullGeneration);
             EvictCompressed(id >= MaxGenerations ? id + 1 - MaxGenerations : 0);
             if (_generations[id & GenerationSlotMask] is { } reused && (reused.Data is not null || reused.Compressed is not null)) ThrowTooManyRetained();
 
             Volatile.Write(ref _active, StartGeneration(id, Math.Max(_generationBytes, length)));
             DropOldGenerations();
         }
+    }
+
+    internal static ulong NextGeneration(ulong current)
+    {
+        if (current >= NodeRecord.TransientGenerationMask - 1) throw new TrieException("Trie node log generation IDs exhausted.");
+        return current + 1;
     }
 
     private Generation StartGeneration(ulong id, int length)

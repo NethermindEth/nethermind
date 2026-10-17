@@ -64,20 +64,6 @@ internal sealed class NoTieredCompilationAttribute : JobMutatorConfigBaseAttribu
     }
 }
 
-/// <summary>Trie node cache that never caches — these benchmarks don't measure caching.</summary>
-internal sealed class NullTrieNodeCache : ITrieNodeCache
-{
-    public bool TryGet(Hash256 address, in TreePath path, in ValueHash256 hash, out NodeRecordRef record)
-    {
-        record = default;
-        return false;
-    }
-
-    public void Add(TransientResource transientResource) { }
-
-    public void Clear() { }
-}
-
 /// <summary>Commit target that only captures the snapshot a <see cref="FlatWorldStateScope"/> commit produces.</summary>
 internal sealed class CapturingCommitTarget : IFlatCommitTarget
 {
