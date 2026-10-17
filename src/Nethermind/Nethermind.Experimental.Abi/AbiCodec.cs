@@ -34,6 +34,7 @@ public static class AbiCodec
             if (!Bytes.AreEqual(id, signature.MethodId())) throw new AbiException();
 
             T arg = signature.Abi.Read(ref r);
+            if (r.Remaining != 0) throw new AbiException();
 
             return arg;
         }

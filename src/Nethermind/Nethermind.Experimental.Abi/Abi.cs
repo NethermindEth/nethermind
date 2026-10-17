@@ -10,16 +10,14 @@ public delegate int AbiSizeFunc<in T>(T value); // TODO: Use `UInt256` when deal
 public class Abi<T>
 {
     public required string Name { get; init; }
-    public bool IsDynamic { get; init; }
     public required AbiReadFunc<T> Read { get; init; }
     public required AbiWriteAction<T> Write { get; init; }
-    public required AbiSizeFunc<T> Size { get; init; }
+    public int HeadSize { get => IsDynamic ? 32 : field; init; } = 32;
+    public AbiSizeFunc<T>? TailSize { get; init; }
 
-    internal int SizeInParent(T value)
-    {
-        const int offsetSize = 32;
-        return (IsDynamic ? offsetSize : 0) + Size(value);
-    }
+    public bool IsDynamic => TailSize is not null;
+
+    public int Size(T value) => TailSize?.Invoke(value) ?? HeadSize;
 
     public override string ToString() => Name;
 }

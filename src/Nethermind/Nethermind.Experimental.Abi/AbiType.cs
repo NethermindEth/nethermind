@@ -21,7 +21,6 @@ public static partial class AbiType
             Span<byte> output = w.Take(32);
             v.ToBigEndian(output);
         },
-        Size = _ => 32,
     };
 
     public static readonly Abi<UInt64> UInt64 = new()
@@ -29,7 +28,6 @@ public static partial class AbiType
         Name = "uint64",
         Read = (ref BinarySpanReader r) => (UInt64)UInt256.Read(ref r),
         Write = (ref BinarySpanWriter w, UInt64 v) => UInt256.Write(ref w, v),
-        Size = _ => 32,
     };
 
     public static readonly Abi<UInt32> UInt32 = new()
@@ -37,7 +35,6 @@ public static partial class AbiType
         Name = "uint32",
         Read = (ref BinarySpanReader r) => (UInt32)UInt256.Read(ref r),
         Write = (ref BinarySpanWriter w, UInt32 v) => UInt256.Write(ref w, v),
-        Size = _ => 32,
     };
 
     public static readonly Abi<UInt16> UInt16 = new()
@@ -45,7 +42,6 @@ public static partial class AbiType
         Name = "uint16",
         Read = (ref BinarySpanReader r) => (UInt16)UInt256.Read(ref r),
         Write = (ref BinarySpanWriter w, UInt16 v) => UInt256.Write(ref w, v),
-        Size = _ => 32,
     };
 
     public static readonly Abi<Byte> UInt8 = new()
@@ -53,7 +49,6 @@ public static partial class AbiType
         Name = "uint8",
         Read = (ref BinarySpanReader r) => (Byte)UInt256.Read(ref r),
         Write = (ref BinarySpanWriter w, Byte v) => UInt256.Write(ref w, v),
-        Size = _ => 32,
     };
 
     public static readonly Abi<Boolean> Bool = new()
@@ -61,32 +56,30 @@ public static partial class AbiType
         Name = "bool",
         Read = (ref BinarySpanReader r) => UInt256.Read(ref r) != 0,
         Write = (ref BinarySpanWriter w, Boolean v) => UInt256.Write(ref w, v ? 1u : 0u),
-        Size = _ => 32,
     };
 
     public static Abi<T[]> Array<T>(Abi<T> abi) => new()
     {
         Name = $"{abi.Name}[]",
-        IsDynamic = true,
         Read = (ref BinarySpanReader r) =>
         {
             UInt256 length = UInt256.Read(ref r);
-            // Every element head takes at least 32 bytes
-            if (length > (UInt256)(r.Remaining / 32)) throw new AbiException();
+            // Empty element heads (`T[0]`) are bounded as a word so that allocations stay proportional to the input
+            if (length > (UInt256)(r.Remaining / int.Max(abi.HeadSize, 32))) throw new AbiException();
 
             return r.Scoped(((int)length, abi), static ((int, Abi<T>) ctx, ref BinarySpanReader r) =>
             {
                 (int length, Abi<T> abi) = ctx;
 
                 T[] array = new T[length];
+                int headSize = length * abi.HeadSize;
+                int next = headSize;
                 if (abi.IsDynamic)
                 {
-                    int read = 0;
                     for (int i = 0; i < length; i++)
                     {
-                        (array[i], read) = r.ReadOffset(abi, static (Abi<T> abi, ref BinarySpanReader r) => abi.Read(ref r));
+                        array[i] = r.ReadOffset(abi.Read, ref next);
                     }
-                    r.Advance(read);
                 }
                 else
                 {
@@ -95,6 +88,7 @@ public static partial class AbiType
                         array[i] = abi.Read(ref r);
                     }
                 }
+                r.Advance(next - headSize);
 
                 return array;
             });
@@ -106,36 +100,27 @@ public static partial class AbiType
             {
                 (T[] array, Abi<T> abi) = ctx;
 
-                if (abi.IsDynamic)
+                int headSize = array.Length * abi.HeadSize;
+                int next = headSize;
+                foreach (T e in array)
                 {
-                    w.Advance(array.Length * 32);
-
-                    for (int i = 0; i < array.Length; i++)
-                    {
-                        w.WriteOffset(i * 32, (array[i], abi), static ((T, Abi<T>) ctx, ref BinarySpanWriter w) =>
-                        {
-                            (T e, Abi<T> abi) = ctx;
-                            abi.Write(ref w, e);
-                        });
-                    }
+                    if (abi.IsDynamic) w.WriteOffset(abi.Write, e, ref next);
+                    else abi.Write(ref w, e);
                 }
-                else
-                {
-                    for (int i = 0; i < array.Length; i++)
-                    {
-                        abi.Write(ref w, array[i]);
-                    }
-                }
+                w.Advance(next - headSize);
             });
         },
-        Size = array =>
+        TailSize = array =>
         {
             const int lengthSize = 32;
 
-            int elementsSize = 0;
-            foreach (T e in array)
+            int elementsSize = array.Length * abi.HeadSize;
+            if (abi.TailSize is { } elementTailSize)
             {
-                elementsSize += abi.SizeInParent(e);
+                foreach (T e in array)
+                {
+                    elementsSize += elementTailSize(e);
+                }
             }
 
             return lengthSize + elementsSize;
@@ -164,24 +149,12 @@ public static partial class AbiType
                 abi.Write(ref w, item);
             }
         },
-        Size = array =>
-        {
-            if (array.Length != length) throw new AbiException();
-
-            int size = 0;
-            foreach (T item in array)
-            {
-                size += abi.Size(item);
-            }
-
-            return size;
-        }
+        HeadSize = length * abi.HeadSize
     };
 
     public static Abi<byte[]> Bytes => new()
     {
         Name = "bytes",
-        IsDynamic = true,
         Read = (ref BinarySpanReader r) =>
         {
             int length = (int)UInt256.Read(ref r);
@@ -194,7 +167,7 @@ public static partial class AbiType
             UInt256.Write(ref w, (UInt256)length);
             w.WritePadded(bytes);
         },
-        Size = bytes =>
+        TailSize = bytes =>
         {
             const int lengthSize = 32;
             int bytesSize = Math.PadTo32(bytes.Length);
@@ -212,18 +185,12 @@ public static partial class AbiType
             if (bytes.Length != length) throw new AbiException();
             w.WritePadded(bytes);
         },
-        Size = bytes =>
-        {
-            int bytesLength = Math.PadTo32(bytes.Length);
-
-            return bytesLength;
-        }
+        HeadSize = Math.PadTo32(length)
     };
 
     public static Abi<String> String => new()
     {
         Name = "string",
-        IsDynamic = true,
         Read = (ref BinarySpanReader r) =>
         {
             int length = (int)UInt256.Read(ref r);
@@ -241,7 +208,7 @@ public static partial class AbiType
             Encoding.UTF8.GetBytes(v, buffer);
             buffer[byteCount..].Clear();
         },
-        Size = v =>
+        TailSize = v =>
         {
             const int lengthSize = 32;
             int byteCount = Encoding.UTF8.GetByteCount(v);

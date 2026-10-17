@@ -48,23 +48,21 @@ public ref struct BinarySpanReader
         return result;
     }
 
-    public (T, int) ReadOffset<T, TCtx>(TCtx ctx, BinarySpanReaderFunc<T, TCtx> inner)
+    public T ReadOffset<T>(AbiReadFunc<T> read, ref int next)
     {
         ReadOnlySpan<byte> offsetBytes = ReadBytes(32);
         int restorePosition = _position;
 
         UInt256 offset = new(offsetBytes, isBigEndian: true);
+        if (offset != (UInt256)next) throw new AbiException();
 
-        _position = (int)offset;
-
-        int valueStart = _position;
-        T result = inner(ctx, ref this);
-        int valueEnd = _position;
-        int read = valueEnd - valueStart;
+        _position = next;
+        T result = read(ref this);
+        next = _position;
 
         _position = restorePosition;
 
-        return (result, read);
+        return result;
     }
 }
 
@@ -97,12 +95,7 @@ public ref struct BinarySpanWriter
         Take(padding).Clear();
     }
 
-    public int Advance(int bytes)
-    {
-        int startPosition = _position;
-        _position += bytes;
-        return startPosition;
-    }
+    public void Advance(int bytes) => _position += bytes;
 
     public Span<byte> Take(int size)
     {
@@ -118,14 +111,19 @@ public ref struct BinarySpanWriter
         _position += writer._position;
     }
 
-    public void WriteOffset<TCtx>(int offset, in TCtx ctx, BinarySpanWriterAction<TCtx> inner)
+    public void WriteOffset<T>(AbiWriteAction<T> write, T value, ref int next)
     {
-        Span<byte> offsetLocation = _span[offset..(offset + 32)];
+        Span<byte> offsetLocation = Take(32);
         // Constant length (rather than `..^sizeof(int)`) lets the JIT unroll the clear.
         offsetLocation[..(32 - sizeof(int))].Clear();
-        BinaryPrimitives.WriteInt32BigEndian(offsetLocation[^sizeof(int)..], _position);
+        BinaryPrimitives.WriteInt32BigEndian(offsetLocation[^sizeof(int)..], next);
 
-        inner(ctx, ref this);
+        int restorePosition = _position;
+        _position = next;
+        write(ref this, value);
+        next = _position;
+
+        _position = restorePosition;
     }
 }
 
