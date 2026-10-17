@@ -275,6 +275,11 @@ namespace Nethermind.Facade.Find
                     }
                 }
             }
+            catch
+            {
+                logs.Dispose();
+                throw;
+            }
             finally
             {
                 // Confusingly, the `using` statement causes the recovery context to be null during the dispose.
@@ -366,7 +371,7 @@ namespace Nethermind.Facade.Find
         }
 
         /// <summary>Collects the logs of one block that the filter accepts, in the shape <typeparamref name="TLog"/>.</summary>
-        private protected interface IBlockLogs<TSelf, TLog> where TSelf : struct, IBlockLogs<TSelf, TLog>
+        private protected interface IBlockLogs<TSelf, TLog> : IDisposable where TSelf : struct, IBlockLogs<TSelf, TLog>
         {
             void Add(long logIndex, ulong blockNumber, ulong blockTimestamp, Hash256 blockHash, in TxReceiptStructRef receipt,
                 Hash256? recoveredTransactionHash, ref Hash256? transactionHash, in LogEntryStructRef log, Hash256[] topics);
@@ -404,6 +409,8 @@ namespace Nethermind.Facade.Find
 
             public readonly IEnumerable<FilterLog> Complete() => _logs ?? (IEnumerable<FilterLog>)[];
 
+            public readonly void Dispose() { }
+
             public static IEnumerable<FilterLog> From(IEnumerable<FilterLog> logs) => logs;
 
             public static IEnumerable<FilterLog> FromBlock(IEnumerable<FilterLog> blockLogs) => blockLogs;
@@ -426,6 +433,8 @@ namespace Nethermind.Facade.Find
                     topics);
 
             public readonly IEnumerable<SerializedLogs> Complete() => _logs is null ? [] : [_logs];
+
+            public readonly void Dispose() => _logs?.Dispose();
 
             public static IEnumerable<SerializedLogs> From(IEnumerable<FilterLog> logs) => FoundLogs.Serialize(logs);
 

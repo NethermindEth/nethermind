@@ -210,6 +210,18 @@ public class LogFinderTests
     }
 
     [Test]
+    [NonParallelizable]
+    public void Cancelled_scan_disposes_the_partly_filled_block()
+    {
+        using CancellationTokenSource cancellation = new();
+        DisposeTrackingLogFinder finder = new(_blockTree, _receiptStorage, _receiptsRecovery);
+        DisposeTrackingLogFinder.BlockLogs.Reset(cancellation);
+
+        Assert.That(() => finder.Scan(AllBlockFilter().Build(), [4], cancellation.Token).ToArray(), Throws.InstanceOf<OperationCanceledException>());
+        Assert.That(DisposeTrackingLogFinder.BlockLogs.Disposed, Is.EqualTo(1));
+    }
+
+    [Test]
     public void Parallel_scan_starts_at_four_blocks_per_worker([Values(1, 3)] int workers, [Values(-1, 0)] int rangeOffset) =>
         Assert.That(LogFinder.ScansInParallel((ulong)(workers * 4 + rangeOffset), workers), Is.EqualTo(rangeOffset == 0));
 
@@ -801,6 +813,39 @@ public class LogFinderTests
                 recoveryContextFactory,
                 decoder ?? new ReceiptStorageDecoder());
             return true;
+        }
+    }
+
+    private sealed class DisposeTrackingLogFinder(IBlockFinder blockFinder, IReceiptStorage receiptStorage, IReceiptsRecovery receiptsRecovery)
+        : LogFinder(blockFinder, receiptStorage, receiptStorage, LimboLogs.Instance, receiptsRecovery, MainnetSpecProvider.Instance)
+    {
+        public IEnumerable<FilterLog> Scan(LogFilter filter, IEnumerable<ulong> blockNumbers, CancellationToken cancellationToken) =>
+            FilterLogsInBlocksParallel<BlockLogs, FilterLog>(filter, blockNumbers, tryParallel: false, cancellationToken);
+
+        /// <summary>Cancels the scan on the first accepted log, so the block is left partly filled.</summary>
+        public struct BlockLogs : IBlockLogs<BlockLogs, FilterLog>
+        {
+            private static CancellationTokenSource? _cancellation;
+
+            public static int Disposed { get; private set; }
+
+            public static void Reset(CancellationTokenSource cancellation)
+            {
+                _cancellation = cancellation;
+                Disposed = 0;
+            }
+
+            public readonly void Add(long logIndex, ulong blockNumber, ulong blockTimestamp, Hash256 blockHash, in TxReceiptStructRef receipt,
+                Hash256? recoveredTransactionHash, ref Hash256? transactionHash, in LogEntryStructRef log, Hash256[] topics) =>
+                _cancellation!.Cancel();
+
+            public readonly IEnumerable<FilterLog> Complete() => [];
+
+            public readonly void Dispose() => Disposed++;
+
+            public static IEnumerable<FilterLog> From(IEnumerable<FilterLog> logs) => logs;
+
+            public static IEnumerable<FilterLog> FromBlock(IEnumerable<FilterLog> blockLogs) => blockLogs;
         }
     }
 
