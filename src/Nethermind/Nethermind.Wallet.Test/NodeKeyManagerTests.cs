@@ -4,7 +4,6 @@
 using System;
 using System.IO;
 using System.IO.Abstractions;
-using System.Linq;
 using System.Security;
 using Nethermind.Config;
 using Nethermind.Core;
@@ -52,9 +51,17 @@ namespace Nethermind.Wallet.Test
             filePath ??= NodeKeyManager.UnsecuredNodeKeyFilePath;
             filePath = filePath.GetApplicationResourcePath(test.KeyStoreConfig.KeyStoreDirectory);
             test.FileSystem.File.ReadAllBytes(filePath).Returns(TestItem.PrivateKeyA.KeyBytes);
+            MemoryStream written = new();
+            FileStreamOptions options = null;
+            test.FileSystem.FileStream.New(filePath, Arg.Do<FileStreamOptions>(o => options = o)).Returns(new TestFileSystemStream(written, filePath));
             PrivateKey nodeKey = test.NodeKeyManager.LoadNodeKey().Unprotect();
             Assert.That(nodeKey, Is.EqualTo(TestItem.PrivateKeyA));
-            test.FileSystem.File.Received().WriteAllBytes(filePath, Arg.Is<byte[]>(a => a.SequenceEqual(nodeKey.KeyBytes)));
+            Assert.That(written.ToArray(), Is.EqualTo(nodeKey.KeyBytes));
+            Assert.That(options.Mode, Is.EqualTo(FileMode.Create));
+            if (!OperatingSystem.IsWindows())
+            {
+                Assert.That(options.UnixCreateMode, Is.EqualTo(UnixFileMode.UserRead | UnixFileMode.UserWrite));
+            }
         }
 
         [Test]
@@ -68,7 +75,7 @@ namespace Nethermind.Wallet.Test
             test.FileSystem.File.Exists(filePath).Returns(true);
             PrivateKey nodeKey = test.NodeKeyManager.LoadNodeKey().Unprotect();
             Assert.That(nodeKey, Is.EqualTo(TestItem.PrivateKeyA));
-            test.FileSystem.File.DidNotReceive().WriteAllBytes(filePath, nodeKey.KeyBytes);
+            test.FileSystem.FileStream.DidNotReceive().New(filePath, Arg.Any<FileStreamOptions>());
         }
 
         [Test]
@@ -134,5 +141,6 @@ namespace Nethermind.Wallet.Test
             public IFileSystem FileSystem { get; set; }
         }
 
+        private sealed class TestFileSystemStream(Stream stream, string path) : FileSystemStream(stream, path, false);
     }
 }
