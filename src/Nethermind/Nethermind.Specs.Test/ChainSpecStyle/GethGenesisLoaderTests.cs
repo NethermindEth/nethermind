@@ -890,9 +890,10 @@ public class GethGenesisLoaderTests
         Assert.That(forks, Is.Not.Empty);
         long framesActivation = forks.Single(f => f.Fork is Eip8141Prototype).ActivationValue;
         for (int i = 0; i < forks.Count; i++)
-            if (forks[i].Fork is Eip8288Prototype) forks[i] = forks[i] with { ActivationValue = framesActivation };
+            if (forks[i].Fork is Eip8288Prototype or Eip8250Prototype or Eip8272Prototype or Eip7906Prototype)
+                forks[i] = forks[i] with { ActivationValue = framesActivation };
 
-        // Overlapping prototype labels share EIP-8141 and must agree on its activation.
+        // Overlapping prototype labels must agree: EIP-8288's prototype also enables EIP-8141, EIP-8250, EIP-8272 and EIP-7906.
         // Bypass LoadStandardGethGenesis
         // to avoid hardcoded eip150Block/eip155Block/eip158Block that would shadow fork-named properties
         string configEntries = string.Join(", ", forks.Select(f => $"\"{f.GethConfigName}\": {f.ActivationValue}"));

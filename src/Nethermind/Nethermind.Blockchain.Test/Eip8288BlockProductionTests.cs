@@ -18,6 +18,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Container;
 using Nethermind.Crypto;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
@@ -977,6 +978,13 @@ public class Eip8288BlockProductionTests
             builder.AddSingleton<ILeanProofVerifier>(verifier);
             builder.AddSingleton(proofs);
             builder.ConfigureTestConfiguration(configuration => configuration.AddBlockOnStart = false);
+            // EIP-8250's nonce manager is an ordinary contract that must already exist when the fork activates, here at
+            // genesis; keyed-nonce writes to an absent account would be cleared with it.
+            builder.AddScoped<IGenesisPostProcessor, IWorldState>(worldState => new FunctionalGenesisPostProcessor(_ =>
+            {
+                worldState.CreateAccount(Eip8250Constants.NonceManagerAddress, UInt256.Zero, 1);
+                worldState.RecalculateStateRoot();
+            }));
             configure?.Invoke(builder);
         });
 

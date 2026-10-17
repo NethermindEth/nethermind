@@ -92,7 +92,7 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
         _logger = logManager.GetClassLogger<PayloadPreparationService>();
     }
 
-    public string? StartPreparingPayload(BlockHeader parentHeader, PayloadAttributes payloadAttributes)
+    public string StartPreparingPayload(BlockHeader parentHeader, PayloadAttributes payloadAttributes)
     {
         string payloadId = payloadAttributes.GetPayloadId(parentHeader);
         if (!_payloadStorage.ContainsKey(payloadId))
@@ -100,9 +100,8 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
             if (_logger.IsInfo) _logger.Info($" Production Request  {parentHeader.Number + 1} PayloadId: {payloadId}");
             long startTimestamp = Stopwatch.GetTimestamp();
             Block? emptyBlock = ProduceEmptyBlock(payloadId, parentHeader, payloadAttributes);
-            if (emptyBlock is null) return null;
-            if (_logger.IsInfo) _logger.Info($" Produced (Empty)    {emptyBlock.ToString(emptyBlock.Difficulty != 0 ? Block.Format.HashNumberDiffAndTx : Block.Format.HashNumberMGasAndTx)} | {Stopwatch.GetElapsedTime(startTimestamp).TotalMilliseconds,8:N2} ms");
-            ImproveBlock(payloadId, parentHeader, payloadAttributes, emptyBlock, DateTimeOffset.UtcNow, default, new SharedCancellationTokenSource(CancellationTokenSource.CreateLinkedTokenSource(_shutdown?.Token ?? CancellationTokenExtensions.AlreadyCancelledToken)));
+            if (_logger.IsInfo && emptyBlock is not null) _logger.Info($" Produced (Empty)    {emptyBlock.ToString(emptyBlock.Difficulty != 0 ? Block.Format.HashNumberDiffAndTx : Block.Format.HashNumberMGasAndTx)} | {Stopwatch.GetElapsedTime(startTimestamp).TotalMilliseconds,8:N2} ms");
+            ImproveBlock(payloadId, parentHeader, payloadAttributes, emptyBlock!, DateTimeOffset.UtcNow, default, new SharedCancellationTokenSource(CancellationTokenSource.CreateLinkedTokenSource(_shutdown?.Token ?? CancellationTokenExtensions.AlreadyCancelledToken)));
         }
         else if (_logger.IsInfo)
         {
@@ -123,7 +122,7 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
 
         Block? emptyBlock = _blockProducer.BuildBlock(parentHeader, payloadAttributes: payloadAttributes, flags: IBlockProducer.Flags.PrepareEmptyBlock).Result;
 
-        if (isTrace && emptyBlock is not null) TraceAfter(payloadId, emptyBlock);
+        if (isTrace) TraceAfter(payloadId, emptyBlock);
         return emptyBlock;
 
         // Rarely in Trace so move string construction code out of hot method

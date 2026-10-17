@@ -36,43 +36,6 @@ public class PayloadPreparationServiceTests
     };
 
     [Test]
-    public async Task A_busy_producer_starts_no_payload_and_allows_retry([Values] bool trace)
-    {
-        Block emptyBlock = Build.A.Block.TestObject;
-        IBlockProducer producer = Substitute.For<IBlockProducer>();
-        producer.BuildBlock(Arg.Any<BlockHeader>(), Arg.Any<IBlockTracer>(), Arg.Any<PayloadAttributes>(),
-                Arg.Any<IBlockProducer.Flags>(), Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult<Block?>(null), Task.FromResult<Block?>(emptyBlock));
-        InterfaceLogger logger = Substitute.For<InterfaceLogger>();
-        logger.IsInfo.Returns(true);
-        logger.IsTrace.Returns(trace);
-        OneLoggerLogManager logManager = new(new ILogger(logger));
-        RecordingBlockImprovementContextFactory factory = new();
-        using TestPayloadPreparationService service = CreateService(factory, producer, logManager);
-        string expectedPayloadId = Attributes.GetPayloadId(ParentHeader);
-
-        string? busyPayloadId = service.StartPreparingPayload(ParentHeader, Attributes);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(busyPayloadId, Is.Null);
-            Assert.That(factory.Contexts, Is.Empty);
-            Assert.That(service.Stored(expectedPayloadId), Is.Null);
-            Assert.That(await service.GetPayload(expectedPayloadId), Is.Null);
-        }
-
-        string? retriedPayloadId = service.StartPreparingPayload(ParentHeader, Attributes);
-        IBlockProductionContext? payload = await service.GetPayload(expectedPayloadId);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(retriedPayloadId, Is.EqualTo(expectedPayloadId));
-            Assert.That(payload?.CurrentBestBlock, Is.SameAs(emptyBlock));
-            Assert.That(factory.Contexts, Is.Not.Empty);
-        }
-        await producer.Received(2).BuildBlock(ParentHeader, payloadAttributes: Attributes,
-            flags: IBlockProducer.Flags.PrepareEmptyBlock);
-    }
-
-    [Test]
     [CancelAfter(30000)]
     public async Task GetPayload_keeps_returning_the_block_it_handed_out_when_a_late_build_finishes([Values] bool boost)
     {

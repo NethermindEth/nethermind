@@ -74,10 +74,10 @@ public partial class EngineModuleTests
             Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
             Assert.That(result.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
             Assert.That(result.Data.PayloadStatus.LatestValidHash, Is.EqualTo(head));
-            Assert.That(result.Data.PayloadId, Is.Null);
+            Assert.That(result.Data.PayloadId, Is.Not.Null, "the payload keeps improving without an initial block");
             Assert.That(chain.BlockTree.HeadHash, Is.EqualTo(head));
         }
-        factory.DidNotReceiveWithAnyArgs().StartBlockImprovementContext(default!, default!, default!, default, default, default!);
+        factory.ReceivedWithAnyArgs(1).StartBlockImprovementContext(default!, default!, default!, default, default, default!);
     }
 
     [Test]

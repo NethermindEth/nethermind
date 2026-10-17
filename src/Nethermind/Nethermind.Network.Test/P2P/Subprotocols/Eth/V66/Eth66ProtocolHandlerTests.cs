@@ -709,7 +709,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             HandleZeroMessage(request, Eth66MessageCode.GetPooledTransactions);
 
             using PooledTransactionsMessage msg65 = new(new ArrayPoolList<Transaction>(2) { ordinary, dependent });
-            using Network.P2P.Subprotocols.Eth.V66.Messages.PooledTransactionsMessage response = new(1111, msg65);
+            using Network.P2P.Subprotocols.Eth.V66.Messages.PooledTransactionsMessage response = new(RequestTransaction(ordinary), msg65);
             HandleZeroMessage(response, Eth66MessageCode.PooledTransactions);
 
             using (Assert.EnterMultipleScope())
