@@ -8,6 +8,7 @@ using Nethermind.Core.Metric;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
 using NSubstitute;
@@ -20,7 +21,8 @@ public class ReadOnlySnapshotBundleBatchTests
 {
     [Test]
     public void GetSlots_WithMetricsAndSnapshotHits_PreservesBatchRoutingAndValues(
-        [Values] bool detailedMetrics, [Values] bool snapshotHits, [Values(0, 1, 7, 8, 16, 64, 65, 72, 129)] int count)
+        [Values] bool detailedMetrics, [Values] bool snapshotHits, [Values] bool afterCacheMiss,
+        [Values(0, 1, 7, 8, 16, 64, 65, 72, 129)] int count)
     {
         ResourcePool pool = new(new FlatDbConfig());
         (Address Address, int SelfDestructIdx, UInt256 Slot)[] requests = new (Address, int, UInt256)[count];
@@ -50,9 +52,12 @@ public class ReadOnlySnapshotBundleBatchTests
                 if (snapshotHits && i % 4 == 0)
                     c.Storages[(requests[i].Address, requests[i].Slot)] = expected[i];
         });
-        using ReadOnlySnapshotBundle bundle = new(FlatTestHelpers.SnapshotList(snapshot), reader,
+        IPersistence.IPersistenceReader persistence = afterCacheMiss
+            ? new RefCountingPersistenceReader(reader, LimboLogs.Instance.GetClassLogger<ReadOnlySnapshotBundleBatchTests>()) : reader;
+        using ReadOnlySnapshotBundle bundle = new(FlatTestHelpers.SnapshotList(snapshot), persistence,
             detailedMetrics, PersistedSnapshotStack.Empty(detailedMetrics));
-        bundle.GetSlots(requests, actual);
+        if (afterCacheMiss) ReadAfterCacheProbe(bundle, requests, actual);
+        else bundle.GetSlots(requests, actual);
         int expectedBatches = 0;
         int expectedScalars = 0;
         for (int start = 0; start < count; start += 64)
@@ -68,13 +73,15 @@ public class ReadOnlySnapshotBundleBatchTests
             Assert.That(actual, Is.EqualTo(expected), "missing, zero, full-width values and snapshot hits must retain their positions");
             Assert.That(reader.Reads, Is.EqualTo(expectedReads), "only misses must reach persistence, once and in order");
             Assert.That(reader.BatchCalls, Is.EqualTo(expectedBatches), "detailed metrics must not disable eligible batches");
+            Assert.That(reader.MissBatchCalls, Is.EqualTo(afterCacheMiss ? expectedBatches : 0),
+                "known persistence misses must retain their route through the reference-counted wrapper");
             Assert.That(reader.ScalarCalls, Is.EqualTo(expectedScalars), "small miss sets must retain scalar reads");
         }
     }
 
     [Test]
     [NonParallelizable]
-    public void GetSlots_RecordsOneObservationForEachBatch([Values] bool detailedMetrics)
+    public void GetSlots_RecordsOneObservationForEachBatch([Values] bool detailedMetrics, [Values] bool afterCacheMiss)
     {
         const int count = 8;
         (Address Address, int SelfDestructIdx, UInt256 Slot)[] requests = new (Address, int, UInt256)[count];
@@ -90,7 +97,8 @@ public class ReadOnlySnapshotBundleBatchTests
             Metrics.ReadOnlySnapshotBundleReadBatchSize = sizes;
             SlotBatchReader reader = new();
             using ReadOnlySnapshotBundle bundle = new(new SnapshotPooledList(0), reader, detailedMetrics, PersistedSnapshotStack.Empty(detailedMetrics));
-            bundle.GetSlots(requests, actual);
+            if (afterCacheMiss) bundle.GetSlotsAfterCacheMiss(requests, actual);
+            else bundle.GetSlots(requests, actual);
             int observations = detailedMetrics ? 1 : 0;
             Assert.That(reader.BatchCalls, Is.EqualTo(1));
             times.Received(observations).Observe(Arg.Any<double>(), Arg.Any<IMetricLabels>());
@@ -107,7 +115,7 @@ public class ReadOnlySnapshotBundleBatchTests
 
     [Test]
     [NonParallelizable]
-    public void GetSlots_SmallMissSet_PreservesScalarMetricLabels([Values(0, 1, 2)] int slot)
+    public void GetSlots_SmallMissSet_PreservesScalarMetricLabels([Values(0, 1, 2)] int slot, [Values] bool afterCacheMiss)
     {
         IMetricObserver previous = Metrics.ReadOnlySnapshotBundleTimes;
         IMetricObserver times = Substitute.For<IMetricObserver>();
@@ -118,7 +126,8 @@ public class ReadOnlySnapshotBundleBatchTests
             using ReadOnlySnapshotBundle bundle = new(new SnapshotPooledList(0), reader, true, PersistedSnapshotStack.Empty(true));
             (Address Address, int SelfDestructIdx, UInt256 Slot)[] requests = [(TestItem.AddressA, -1, (UInt256)(ulong)slot)];
             UInt256?[] actual = new UInt256?[1];
-            bundle.GetSlots(requests, actual);
+            if (afterCacheMiss) bundle.GetSlotsAfterCacheMiss(requests, actual);
+            else bundle.GetSlots(requests, actual);
             string label = slot == 2 ? "storage_persistence" : "storage_persistence_null";
             Assert.That(reader.ScalarCalls, Is.EqualTo(1));
             times.Received(1).Observe(Arg.Any<double>(), Arg.Any<IMetricLabels>());
@@ -127,6 +136,29 @@ public class ReadOnlySnapshotBundleBatchTests
         finally
         {
             Metrics.ReadOnlySnapshotBundleTimes = previous;
+        }
+    }
+
+    private static void ReadAfterCacheProbe(ReadOnlySnapshotBundle bundle,
+        (Address Address, int SelfDestructIdx, UInt256 Slot)[] requests, UInt256?[] values)
+    {
+        for (int start = 0; start < requests.Length; start += 64)
+        {
+            List<(Address Address, int SelfDestructIdx, UInt256 Slot)> misses = [];
+            List<int> indexes = [];
+            for (int i = start; i < Math.Min(start + 64, requests.Length); i++)
+            {
+                (Address address, int cutoff, UInt256 slot) = requests[i];
+                if (bundle.TryGetCachedSlot(new((address, slot)), cutoff, out UInt256? value)) values[i] = value;
+                else
+                {
+                    misses.Add(requests[i]);
+                    indexes.Add(i);
+                }
+            }
+            UInt256?[] results = new UInt256?[misses.Count];
+            bundle.GetSlotsAfterCacheMiss(misses.ToArray(), results);
+            for (int i = 0; i < results.Length; i++) values[indexes[i]] = results[i];
         }
     }
 
@@ -141,6 +173,7 @@ public class ReadOnlySnapshotBundleBatchTests
     {
         public List<StorageCell> Reads { get; } = [];
         public int BatchCalls { get; private set; }
+        public int MissBatchCalls { get; private set; }
         public int ScalarCalls { get; private set; }
 
         bool IPersistence.IPersistenceReader.TryGetSlot(Address address, in UInt256 slot, ref UInt256 value)
@@ -155,6 +188,12 @@ public class ReadOnlySnapshotBundleBatchTests
         {
             BatchCalls++;
             for (int i = 0; i < cells.Length; i++) values[i] = Read(cells[i].Address, in cells[i].Index);
+        }
+
+        public void GetSlotsAfterCacheMiss(ReadOnlySpan<StorageCell> cells, Span<UInt256?> values)
+        {
+            MissBatchCalls++;
+            GetSlots(cells, values);
         }
 
         private UInt256? Read(Address address, in UInt256 slot)

@@ -51,6 +51,9 @@ public class RefCountingPersistenceReader : RefCountingDisposable, IPersistence.
     public void GetSlots(ReadOnlySpan<StorageCell> cells, Span<UInt256?> values) =>
         _innerReader.GetSlots(cells, values);
 
+    public void GetSlotsAfterCacheMiss(ReadOnlySpan<StorageCell> cells, Span<UInt256?> values) =>
+        _innerReader.GetSlotsAfterCacheMiss(cells, values);
+
     public StateId CurrentState => _innerReader.CurrentState;
 
     public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags) =>

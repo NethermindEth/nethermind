@@ -429,8 +429,9 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             }
             if (requests.Count == 0) return;
 
+            if (_pausePrewarmer || _hintSequenceId != sequenceId || parallelOptions.CancellationToken.IsCancellationRequested) return;
             using ArrayPoolSpan<UInt256?> results = new(requests.Count);
-            _snapshotBundle.GetSlots(requests.AsSpan(), results);
+            _snapshotBundle.GetSlotsAfterCacheMiss(requests.AsSpan(), results);
             for (int i = 0; i < requests.Count; i++)
             {
                 if (_pausePrewarmer || _hintSequenceId != sequenceId || parallelOptions.CancellationToken.IsCancellationRequested) return;

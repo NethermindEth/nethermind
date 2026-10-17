@@ -198,7 +198,7 @@ public class FlatWorldStateScopeProviderTests
         public IPersistence.IPersistenceReader PersistenceReader => field ??= Container.Resolve<IPersistence.IPersistenceReader>();
         public Snapshot? LastCommittedSnapshot { get; set; }
 
-        public TestContext(IBlockTree? blockTree = null, FlatDbConfig? config = null, ITrieWarmer? trieWarmer = null, bool historical = false, ITrieNodeCache? trieNodeCache = null, WarmReadPool? warmReadPool = null)
+        public TestContext(IBlockTree? blockTree = null, FlatDbConfig? config = null, ITrieWarmer? trieWarmer = null, bool historical = false, ITrieNodeCache? trieNodeCache = null, WarmReadPool? warmReadPool = null, IPersistence.IPersistenceReader? persistenceReader = null)
         {
             config ??= new FlatDbConfig();
 
@@ -211,7 +211,7 @@ public class FlatWorldStateScopeProviderTests
                     .AddKeyedSingleton<IDb>(DbNames.Code, new TestMemDb())
                     .AddSingleton<IBlockTree>(blockTree ?? Substitute.For<IBlockTree>())
                     .AddSingleton<ITrieWarmer, NoopTrieWarmer>()
-                    .AddSingleton<IPersistence.IPersistenceReader>(_ => Substitute.For<IPersistence.IPersistenceReader>())
+                    .AddSingleton<IPersistence.IPersistenceReader>(_ => persistenceReader ?? Substitute.For<IPersistence.IPersistenceReader>())
                     .AddSingleton<IFlatDbManager>(_ =>
                     {
                         IFlatDbManager flatDiff = Substitute.For<IFlatDbManager>();
@@ -1973,6 +1973,37 @@ public class FlatWorldStateScopeProviderTests
     }
 
     [Test]
+    public async Task HintBal_WithMixedCachedAndColdSlots_ReadsKnownMissesOnce([Values(128, 129)] int count)
+    {
+        using WarmReadPool pool = new(1);
+        MissOnlySlotReader reader = new();
+        using TestContext ctx = new(warmReadPool: pool, persistenceReader: reader);
+        UInt256[] keys = new UInt256[count];
+        List<(StorageCell Cell, UInt256 Value)> expected = [];
+        for (int i = 0; i < count; i++)
+        {
+            keys[i] = (UInt256)(ulong)i;
+            UInt256 value = i is 0 or 64 ? UInt256.MaxValue : i % 3 == 0 ? UInt256.Zero : UInt256.MaxValue - keys[i];
+            expected.Add((new StorageCell(TestItem.AddressA, keys[i]), value));
+        }
+        ctx.SnapshotBundle.SetChangedSlot(TestItem.AddressA, keys[0], UInt256.MaxValue);
+        ctx.SnapshotBundle.SetChangedSlot(TestItem.AddressA, keys[64], UInt256.MaxValue);
+        RecordingBalReaderSink sink = new();
+        ReadOnlyAccountChanges changes = new(TestItem.AddressA, [], keys, [], [], []);
+
+        await ctx.Scope.HintBal(CreateBal(changes), sink);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(sink.StorageReads, Is.EquivalentTo(expected), "cached and distinct cold values must reach the matching sink keys");
+            Assert.That(reader.MissBatchCalls, Is.EqualTo(2), "both full groups must use the persistence-miss route");
+            Assert.That(reader.Reads, Has.Count.EqualTo(count - 2), "cached slots must not be read again from persistence");
+            Assert.That(reader.Reads, Is.Unique, "each cold slot must be read exactly once");
+            Assert.That(reader.Reads, Does.Not.Contain(UInt256.Zero).And.Not.Contain((UInt256)64));
+        }
+    }
+
+    [Test]
     public async Task HintBal_WhenPausedDuringAccountRead_DoesNotPublishPendingResults()
     {
         using WarmReadPool pool = new(1);
@@ -2165,6 +2196,37 @@ public class FlatWorldStateScopeProviderTests
             Assert.That(bundle.ShouldQueuePrewarm(TestItem.AddressB, (UInt256)1), Is.EqualTo(!activeWarmer), "a storage HintSet marks the bloom only for an active warmer");
             Assert.That(recording.AddressJobPushes, Is.EqualTo(activeWarmer ? new[] { TestItem.AddressA } : Array.Empty<Address>()), "the account hint reaches an active warmer");
             Assert.That(recording.SlotJobPushes, Is.EqualTo(activeWarmer ? 1 : 0), "the storage HintSet reaches an active warmer");
+        }
+    }
+
+    private sealed class MissOnlySlotReader : NoopPersistenceReader, IPersistence.IPersistenceReader, IBatchPersistenceReader
+    {
+        public List<UInt256> Reads { get; } = [];
+        public int MissBatchCalls { get; private set; }
+
+        Account? IPersistence.IPersistenceReader.GetAccount(Address address) =>
+            new(1, 1, TestItem.KeccakA, Keccak.OfAnEmptyString);
+
+        bool IPersistence.IPersistenceReader.TryGetSlot(Address address, in UInt256 slot, ref UInt256 value)
+        {
+            UInt256? result = Read(in slot);
+            value = result.GetValueOrDefault();
+            return result.HasValue;
+        }
+
+        public void GetSlots(ReadOnlySpan<StorageCell> cells, Span<UInt256?> values) =>
+            throw new InvalidOperationException("known misses must not repeat the general lookup");
+
+        public void GetSlotsAfterCacheMiss(ReadOnlySpan<StorageCell> cells, Span<UInt256?> values)
+        {
+            MissBatchCalls++;
+            for (int i = 0; i < cells.Length; i++) values[i] = Read(in cells[i].Index);
+        }
+
+        private UInt256? Read(in UInt256 slot)
+        {
+            Reads.Add(slot);
+            return slot.u0 % 3 == 0 ? null : UInt256.MaxValue - slot;
         }
     }
 

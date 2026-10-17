@@ -371,6 +371,23 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
             }
         }
 
+        public void GetSlotsAfterCacheMiss(ReadOnlySpan<StorageCell> cells, Span<UInt256?> values)
+        {
+            ArgumentOutOfRangeException.ThrowIfNotEqual(values.Length, cells.Length, nameof(values));
+            if (_recordDetailedMetrics)
+                for (int i = 0; i < cells.Length; i++)
+                    if (parent.IsCurrent(generation)) Metrics.IncrementCarryForwardSlotMisses();
+            inner.GetSlotsAfterCacheMiss(cells, values);
+            for (int i = 0; i < cells.Length; i++)
+            {
+                if (!parent.IsCurrent(generation)) break;
+                ref readonly StorageCell cell = ref cells[i];
+                UInt256? result = values[i];
+                parent.TryCacheSlot(CarryForwardSlotTable.Hash(cell.Address, in cell.Index), cell.Address, in cell.Index,
+                    result.HasValue, result.GetValueOrDefault(), generation);
+            }
+        }
+
         public StateId CurrentState => inner.CurrentState;
         public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags) => inner.TryLoadStateRlp(path, flags);
         public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags) => inner.TryLoadStorageRlp(address, path, flags);

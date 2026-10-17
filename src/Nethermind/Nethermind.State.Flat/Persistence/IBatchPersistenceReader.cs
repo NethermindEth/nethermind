@@ -15,12 +15,24 @@ public interface IBatchPersistenceReader
     }
 
     void GetSlots(ReadOnlySpan<StorageCell> cells, Span<UInt256?> values);
+
+    /// <summary>Reads slots already found absent from this reader's cache.</summary>
+    /// <remarks>The reader must retain the same persistence snapshot as the preceding cache probe.</remarks>
+    void GetSlotsAfterCacheMiss(ReadOnlySpan<StorageCell> cells, Span<UInt256?> values) => GetSlots(cells, values);
 }
 
 public static class BatchPersistenceReaderExtensions
 {
     internal const int BatchSize = 64;
     internal const int MinBatchSize = 8;
+
+    internal static void GetSlotsAfterCacheMiss(this IPersistence.IPersistenceReader reader,
+        ReadOnlySpan<StorageCell> cells, Span<UInt256?> values)
+    {
+        ArgumentOutOfRangeException.ThrowIfNotEqual(values.Length, cells.Length, nameof(values));
+        if (reader is IBatchPersistenceReader batch) batch.GetSlotsAfterCacheMiss(cells, values);
+        else reader.GetSlots(cells, values);
+    }
 
     public static void GetSlots(this IPersistence.IPersistenceReader reader, ReadOnlySpan<StorageCell> cells, Span<UInt256?> values)
     {

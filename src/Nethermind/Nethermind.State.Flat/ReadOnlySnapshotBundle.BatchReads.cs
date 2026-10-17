@@ -74,6 +74,37 @@ public sealed partial class ReadOnlySnapshotBundle
         }
     }
 
+    internal void GetSlotsAfterCacheMiss(ReadOnlySpan<(Address Address, int SelfDestructIdx, UInt256 Slot)> requests,
+        Span<UInt256?> values)
+    {
+        GuardDispose();
+        ArgumentOutOfRangeException.ThrowIfNotEqual(values.Length, requests.Length, nameof(values));
+        if (requests.Length < BatchPersistenceReaderExtensions.MinBatchSize)
+        {
+            for (int i = 0; i < requests.Length; i++)
+            {
+                ref readonly (Address Address, int SelfDestructIdx, UInt256 Slot) request = ref requests[i];
+                UInt256 value = default;
+                long readStart = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
+                values[i] = persistenceReader.TryGetSlot(request.Address, in request.Slot, ref value) ? value : null;
+                if (recordDetailedMetrics)
+                    Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - readStart,
+                        value.IsZero ? _readStoragePersistenceNullLabel : _readStoragePersistenceLabel);
+            }
+            return;
+        }
+
+        using ArrayPoolListRef<StorageCell> cells = new(requests.Length, requests.Length);
+        for (int i = 0; i < requests.Length; i++) cells[i] = new(requests[i].Address, in requests[i].Slot);
+        long start = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
+        persistenceReader.GetSlotsAfterCacheMiss(cells.AsSpan(), values);
+        if (recordDetailedMetrics)
+        {
+            Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - start, _readStorageBatchLabel);
+            Metrics.ReadOnlySnapshotBundleReadBatchSize.Observe(requests.Length, _readStorageBatchLabel);
+        }
+    }
+
     internal bool TryGetCachedSlot(in HashedKey<(Address, UInt256)> key, int selfDestructIdx, out UInt256? value)
     {
         GuardDispose();

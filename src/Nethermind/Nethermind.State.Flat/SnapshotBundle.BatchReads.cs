@@ -50,6 +50,14 @@ public sealed partial class SnapshotBundle
         for (int i = 0; i < misses.Count; i++) values[misses[i]] = results[i];
     }
 
+    /// <remarks>Only for misses probed within the same HintBal task, before scope mutation is allowed.</remarks>
+    internal void GetSlotsAfterCacheMiss(ReadOnlySpan<(Address Address, int SelfDestructIdx, UInt256 Slot)> requests,
+        Span<UInt256?> values)
+    {
+        GuardDispose();
+        _readOnlySnapshotBundle.GetSlotsAfterCacheMiss(requests, values);
+    }
+
     internal bool TryGetCachedSlot(Address address, in UInt256 slot, int selfDestructIdx, out UInt256? value)
     {
         GuardDispose();

@@ -51,9 +51,8 @@ public class CarryForwardCachingPersistenceTests
         Assert.That(inner.SlotReads, Is.EqualTo(expectedSlotReads));
     }
 
-    [TestCase(true, TestName = "BatchReads_PresentValues_CacheAndBypassOldGenerations")]
-    [TestCase(false, TestName = "BatchReads_MissingValues_CacheAndBypassOldGenerations")]
-    public async Task BatchReads_AfterGenerationChange_DoNotServeOrFillNewCache(bool found)
+    [Test]
+    public async Task BatchReads_AfterGenerationChange_DoNotServeOrFillNewCache([Values] bool found, [Values] bool afterCacheMiss)
     {
         const int count = 16;
         FakePersistence inner = new() { SlotExists = found };
@@ -65,7 +64,8 @@ public class CarryForwardCachingPersistenceTests
             cells[i] = new StorageCell(Address, (UInt256)(ulong)i);
         }
         UInt256?[] slots = new UInt256?[count];
-        oldReader.GetSlots(cells, slots);
+        if (afterCacheMiss) oldReader.GetSlotsAfterCacheMiss(cells, slots);
+        else oldReader.GetSlots(cells, slots);
         oldReader.GetSlots(cells, slots);
         Assert.That(inner.SlotBatchReads, Is.EqualTo(1), "same-generation slots must be served from the cache on the second batch");
 
@@ -77,7 +77,8 @@ public class CarryForwardCachingPersistenceTests
         Assert.That(slots[0].HasValue, Is.EqualTo(!found), "precondition: the current generation caches the replacement slot state");
 
         inner.SlotExists = found;
-        oldReader.GetSlots(cells, slots);
+        if (afterCacheMiss) oldReader.GetSlotsAfterCacheMiss(cells, slots);
+        else oldReader.GetSlots(cells, slots);
         Assert.That(slots, Has.All.EqualTo(found ? (UInt256?)17 : null), "an old reader must bypass current slot entries, including cached misses");
         currentReader.GetSlots(cells, slots);
         using (Assert.EnterMultipleScope())
@@ -148,7 +149,8 @@ public class CarryForwardCachingPersistenceTests
             reader.TryGetSlot(Address, in cells[i].Index, ref value);
         }
         UInt256?[] slots = new UInt256?[count];
-        reader.GetSlots(cells, slots);
+        if (misses == count) reader.GetSlotsAfterCacheMiss(cells, slots);
+        else reader.GetSlots(cells, slots);
         Assert.That(slots, Is.EqualTo(expectedSlots), "miss compaction must preserve distinct values, present zero and missing slots");
         for (int i = 0; i < count; i++)
         {
@@ -160,6 +162,34 @@ public class CarryForwardCachingPersistenceTests
         {
             Assert.That(inner.SlotReads, Is.EqualTo(count), "each slot miss must reach persistence once and then be cached");
             Assert.That(inner.SlotBatchReads, Is.EqualTo(misses >= 8 ? 1 : 0), "only a sufficiently large compacted slot miss set should use a batch");
+        }
+    }
+
+    [Test]
+    public async Task GetSlotsAfterCacheMiss_WithCurrentGeneration_RecordsMissesBeforeReading(
+        [Values] bool detailedMetrics, [Values] bool readerFails)
+    {
+        bool previous = Db.Metrics.DetailedMetricsEnabled;
+        try
+        {
+            Db.Metrics.DetailedMetricsEnabled = detailedMetrics;
+            FakePersistence inner = new();
+            if (readerFails) inner.SlotValue = _ => throw new InvalidOperationException("read failed");
+            await using CarryForwardCachingPersistence cache = new(inner);
+            using IPersistence.IPersistenceReader reader = cache.CreateReader();
+            StorageCell[] cells = new StorageCell[8];
+            for (int i = 0; i < cells.Length; i++) cells[i] = new(Address, (UInt256)(ulong)i);
+            UInt256?[] values = new UInt256?[cells.Length];
+            long before = Metrics.CarryForwardSlotMisses;
+            if (readerFails)
+                Assert.That(() => reader.GetSlotsAfterCacheMiss(cells, values), Throws.TypeOf<InvalidOperationException>());
+            else reader.GetSlotsAfterCacheMiss(cells, values);
+            Assert.That(Metrics.CarryForwardSlotMisses - before, Is.EqualTo(detailedMetrics ? cells.Length : 0),
+                "known cache misses must retain their counter even when persistence fails");
+        }
+        finally
+        {
+            Db.Metrics.DetailedMetricsEnabled = previous;
         }
     }
 
