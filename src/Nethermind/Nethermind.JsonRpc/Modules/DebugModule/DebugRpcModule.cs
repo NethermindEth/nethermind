@@ -47,7 +47,7 @@ public class DebugRpcModule(
     IBlocksConfig blocksConfig,
     IBlockFinder blockFinder,
     IBlockForRpcFactory blockForRpcFactory,
-    IOverridableCodeInfoRepository codeInfoRepository)
+    ICodeInfoRepository codeInfoRepository)
     : IDebugRpcModule
 {
     private readonly ILogger _logger = logManager.GetClassLogger<DebugRpcModule>();

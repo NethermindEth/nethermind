@@ -51,11 +51,10 @@ public class DebugModuleFactory(
             if (parallelTracer is not null) builder.AddScoped<IParallelBlockTracer>(parallelTracer);
         });
 
-        // Forward the tracer's repository for read-only preflight; this exposes the full repository contract.
-        // Stateful repository operations must stay inside the tracer's overridable env scope.
+        // Share the override environment's exact repository, including its decorators, for stateless preflight.
         ILifetimeScope debugRpcModuleLifetime = rootLifetimeScope.BeginLifetimeScope((builder) => builder
             .AddScoped<IGethStyleTracer>(tracerLifecycle.Resolve<IGethStyleTracer>())
-            .AddScoped<IOverridableCodeInfoRepository>(tracerLifecycle.Resolve<IOverridableCodeInfoRepository>()));
+            .AddScoped<ICodeInfoRepository>(tracerLifecycle.Resolve<IOverridableCodeInfoRepository>()));
 
         debugRpcModuleLifetime.Disposer.AddInstanceForAsyncDisposal(tracerLifecycle);
         rootLifetimeScope.Disposer.AddInstanceForAsyncDisposal(debugRpcModuleLifetime);

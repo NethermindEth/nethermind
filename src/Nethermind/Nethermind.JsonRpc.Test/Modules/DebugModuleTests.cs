@@ -54,7 +54,7 @@ public class DebugModuleTests
     private readonly IBlockFinder _blockFinder = Substitute.For<IBlockFinder>();
     private readonly IBlockchainBridge _blockchainBridge = Substitute.For<IBlockchainBridge>();
     private readonly MemDb _blocksDb = new();
-    private readonly IOverridableCodeInfoRepository _codeInfoRepository = Substitute.For<IOverridableCodeInfoRepository>();
+    private readonly ICodeInfoRepository _codeInfoRepository = Substitute.For<ICodeInfoRepository>();
 
     private DebugRpcModule CreateModule() => new(
         LimboLogs.Instance,

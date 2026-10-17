@@ -87,9 +87,12 @@ public static class StateOverridesExtensions
     }
 
     /// <summary>
-    /// Checks a precompile move's source before checking whether its destination is overridden.
-    /// The caller must resolve source dispatch through its repository.
+    /// Returns the error for an invalid precompile move, or <see langword="null"/> if the move is valid.
     /// </summary>
+    /// <param name="source">The account to move.</param>
+    /// <param name="destination">The account to move the precompile to.</param>
+    /// <param name="isPrecompile">Whether the caller's code repository resolves the source as a precompile.</param>
+    /// <param name="overrides">The account overrides to apply.</param>
     public static string? GetPrecompileMoveError(Address source, Address destination, bool isPrecompile, Dictionary<Address, AccountOverride> overrides) =>
         !isPrecompile ? $"Account {source} is not a precompile"
         : overrides.ContainsKey(destination) ? $"account {destination} is already overridden"
