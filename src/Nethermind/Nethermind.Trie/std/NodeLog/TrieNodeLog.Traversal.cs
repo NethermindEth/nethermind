@@ -41,8 +41,9 @@ public sealed partial class TrieNodeLog
     /// during enumeration, but cannot restore pointers already unavailable when it started. Returned records borrow this
     /// operation's memory; buffering records or pointers past enumeration requires an outer read lease.
     /// Inline children are contained in their parent's RLP and are not emitted as separate records.
+    /// Pointers below <paramref name="lowerBound"/> and their subtrees are skipped: immutable log parents are written after their children.
     /// </remarks>
-    internal IEnumerable<(TreePath Path, ulong Pointer, NodeRecordRef Record)> EnumerateNodes(ulong rootPointer) => new NodeEnumerable(this, rootPointer);
+    internal IEnumerable<(TreePath Path, ulong Pointer, NodeRecordRef Record)> EnumerateNodes(ulong rootPointer, ulong lowerBound = 0) => new NodeEnumerable(this, rootPointer, lowerBound);
 
     private bool TryFindRecord(ulong rootPointer, in TreePath path, out ulong pointer, out NodeRecordRef record)
     {
@@ -90,9 +91,9 @@ public sealed partial class TrieNodeLog
         return false;
     }
 
-    private sealed class NodeEnumerable(TrieNodeLog log, ulong rootPointer) : IEnumerable<(TreePath Path, ulong Pointer, NodeRecordRef Record)>
+    private sealed class NodeEnumerable(TrieNodeLog log, ulong rootPointer, ulong lowerBound) : IEnumerable<(TreePath Path, ulong Pointer, NodeRecordRef Record)>
     {
-        public IEnumerator<(TreePath Path, ulong Pointer, NodeRecordRef Record)> GetEnumerator() => new NodeEnumerator(log, rootPointer);
+        public IEnumerator<(TreePath Path, ulong Pointer, NodeRecordRef Record)> GetEnumerator() => new NodeEnumerator(log, rootPointer, lowerBound);
 
         IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
     }
@@ -101,14 +102,16 @@ public sealed partial class TrieNodeLog
     {
         private readonly TrieNodeLog _log;
         private readonly ulong _rootPointer;
+        private readonly ulong _lowerBound;
         private readonly ArrayPoolList<Frame> _stack;
         private bool _started;
         private bool _disposed;
 
-        public NodeEnumerator(TrieNodeLog log, ulong rootPointer)
+        public NodeEnumerator(TrieNodeLog log, ulong rootPointer, ulong lowerBound)
         {
             _log = log;
             _rootPointer = rootPointer;
+            _lowerBound = lowerBound;
             _stack = new ArrayPoolList<Frame>(4);
             try
             {
@@ -145,7 +148,7 @@ public sealed partial class TrieNodeLog
             if (!_started)
             {
                 _started = true;
-                if (_rootPointer != 0 && _log.TryLocate(_rootPointer, out NodeRecordRef root))
+                if (_rootPointer != 0 && _rootPointer >= _lowerBound && _log.TryLocate(_rootPointer, out NodeRecordRef root))
                 {
                     return Visit(TreePath.Empty, _rootPointer, root);
                 }
@@ -165,7 +168,7 @@ public sealed partial class TrieNodeLog
                 frame.RemainingChildren &= frame.RemainingChildren - 1;
                 // Hash-child pointers are packed in nibble order; traversal needs no child RLP or hash decoding.
                 ulong pointer = BinaryPrimitives.ReadUInt64LittleEndian(frame.Record.Span[(NodeRecord.HeaderLength + frame.NextPointer++ * NodeRecord.PointerLength)..]);
-                if (pointer == 0) continue;
+                if (pointer == 0 || pointer < _lowerBound) continue;
 
                 TreePath path = frame.Path;
                 if (frame.Record.Kind == NodeRecordKind.Extension)

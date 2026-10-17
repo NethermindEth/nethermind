@@ -103,7 +103,7 @@ public class SnapshotCompactorTests
     public void CompactSnapshotBundle_SingleSnapshot_PreservesAllDataTypes()
     {
         StateId from = new(0, Keccak.Zero);
-        StateId to = new(1, Keccak.Zero);
+        StateId to = new(1, TestItem.KeccakA);
 
         using Snapshot snapshot = _resourcePool.CreateSnapshot(from, to, ResourcePool.Usage.ReadOnlyProcessingEnv, _log);
         Address address1 = new("0x1111111111111111111111111111111111111111");
@@ -182,7 +182,7 @@ public class SnapshotCompactorTests
 
         // First snapshot
         StateId from0 = new(0, Keccak.Zero);
-        StateId to0 = new(1, Keccak.Zero);
+        StateId to0 = new(1, TestItem.KeccakA);
         using Snapshot snapshot0 = _resourcePool.CreateSnapshot(from0, to0, ResourcePool.Usage.ReadOnlyProcessingEnv, _log);
         snapshot0.Content.Accounts[address1] = new Account(1, 100);
         snapshot0.Content.Storages[(address1, storageIndex1)] = slotValue1;
@@ -192,8 +192,8 @@ public class SnapshotCompactorTests
         FlatTestHelpers.StartNewGeneration(_log);
 
         // Second snapshot with different items
-        StateId from1 = new(1, Keccak.Zero);
-        StateId to1 = new(2, Keccak.Zero);
+        StateId from1 = new(1, TestItem.KeccakA);
+        StateId to1 = new(2, TestItem.KeccakB);
         using Snapshot snapshot1 = _resourcePool.CreateSnapshot(from1, to1, ResourcePool.Usage.ReadOnlyProcessingEnv, _log);
         snapshot1.Content.Accounts[address2] = new Account(2, 200);
         snapshot1.Content.Storages[(address2, storageIndex2)] = slotValue2;
@@ -233,7 +233,7 @@ public class SnapshotCompactorTests
 
         // First snapshot with initial values
         StateId from0 = new(0, Keccak.Zero);
-        StateId to0 = new(1, Keccak.Zero);
+        StateId to0 = new(1, TestItem.KeccakA);
         using Snapshot snapshot0 = _resourcePool.CreateSnapshot(from0, to0, ResourcePool.Usage.ReadOnlyProcessingEnv, _log);
         snapshot0.Content.Accounts[address] = new Account(1, 100);
         snapshot0.Content.Storages[(address, storageIndex)] = slotValue1;
@@ -242,8 +242,8 @@ public class SnapshotCompactorTests
         snapshot0.Content.SetStorageNodeRlp(_log, addressHash, storageNodePath, FlatTestHelpers.LeafRlpA);
 
         // Second snapshot with updated values for same keys
-        StateId from1 = new(1, Keccak.Zero);
-        StateId to1 = new(2, Keccak.Zero);
+        StateId from1 = new(1, TestItem.KeccakA);
+        StateId to1 = new(2, TestItem.KeccakB);
         using Snapshot snapshot1 = _resourcePool.CreateSnapshot(from1, to1, ResourcePool.Usage.ReadOnlyProcessingEnv, _log);
         snapshot1.Content.Accounts[address] = new Account(2, 200);
         snapshot1.Content.Storages[(address, storageIndex)] = slotValue2;
@@ -363,6 +363,26 @@ public class SnapshotCompactorTests
         Assert.That(compacted.TryGetStorage((b, new UInt256(1)), out UInt256? slotB), Is.True);
         AssertSlotValueEqual(Slot(0xBB), slotB);
         Assert.That(compacted.TryGetStorageNode((bHash, pB), out ulong _), Is.True);
+    }
+
+    [Test]
+    public void CompactSnapshotBundle_SelectsEarliestFullBoundaryNotFirstGenerationMatch()
+    {
+        TrieNodeLogRetain earliest = _log.RetainActive();
+        SnapshotContent finalContent = new();
+        finalContent.SetStateNodeRlp(_log, TreePath.FromHexString("1"), FlatTestHelpers.LeafRlpA);
+        using Snapshot first = _resourcePool.CreateSnapshot(new(0, Keccak.EmptyTreeHash), new(1, TestItem.KeccakA), ResourcePool.Usage.ReadOnlyProcessingEnv, _log);
+        using Snapshot final = new(first.To, new(2, TestItem.KeccakB), finalContent, _resourcePool, ResourcePool.Usage.ReadOnlyProcessingEnv) { LogRetain = earliest };
+        using Snapshot compacted = _compactor.CompactSnapshotBundle(new(2) { first, final });
+        using Snapshot result = _compactor.CompactSnapshotBundle(new(1) { compacted });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first.LogRetain!.Generation, Is.EqualTo(earliest.Generation));
+            Assert.That(first.LogRetain.WriteBoundary, Is.GreaterThan(earliest.WriteBoundary));
+            Assert.That(result.LogRetain!.WriteBoundary, Is.EqualTo(earliest.WriteBoundary));
+            Assert.That(result.StateNodes.Count(), Is.EqualTo(2));
+        }
     }
 
     [Test]

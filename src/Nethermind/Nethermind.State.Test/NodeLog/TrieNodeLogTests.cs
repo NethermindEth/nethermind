@@ -5,6 +5,7 @@ using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using System.Runtime;
 using System.Runtime.InteropServices;
 using System.Runtime.CompilerServices;
@@ -77,6 +78,62 @@ internal class TrieNodeLogTests
             Assert.That(buffer.AsSpan()[0], Is.EqualTo(1));
             Assert.That(buffer.AsSpan()[^1], Is.EqualTo(2));
         }
+    }
+
+    [Test]
+    public void Retains_capture_exact_allocation_boundaries_and_copies_preserve_them()
+    {
+        using TrieNodeLog log = new(0, GenerationBytes);
+        using TrieNodeLogRetain first = log.RetainActive();
+        ulong firstPointer = log.Reserve(NodeRecord.RecordAlignment, out _, out _);
+        using TrieNodeLogRetain second = log.RetainActive();
+        ulong secondPointer = log.Reserve(NodeRecord.RecordAlignment, out _, out _);
+        using TrieNodeLogRetain copy = first.Copy();
+        log.Reserve(GenerationBytes, out _, out _);
+        log.Reserve(NodeRecord.RecordAlignment, out _, out _);
+        using TrieNodeLogRetain rotated = log.RetainActive();
+        ulong rotatedPointer = log.Reserve(NodeRecord.RecordAlignment, out _, out _);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first.WriteBoundary, Is.EqualTo(firstPointer));
+            Assert.That(second.Generation, Is.EqualTo(first.Generation));
+            Assert.That(second.WriteBoundary, Is.EqualTo(secondPointer));
+            Assert.That(copy.WriteBoundary, Is.EqualTo(first.WriteBoundary));
+            Assert.That(rotated.Generation, Is.GreaterThan(first.Generation));
+            Assert.That(rotated.WriteBoundary, Is.EqualTo(rotatedPointer));
+        }
+    }
+
+    [Test]
+    public void Retain_boundary_clamps_failed_reservation_overshoot([Values(GenerationBytes + 8L, (1L << 32) + 8)] long used)
+    {
+        using TrieNodeLog log = new(0, GenerationBytes);
+        object active = typeof(TrieNodeLog).GetField("_active", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(log)!;
+        active.GetType().GetField("Used")!.SetValue(active, used);
+        using TrieNodeLogRetain retain = log.RetainActive();
+        ulong pointer = log.Reserve(NodeRecord.RecordAlignment, out _, out _);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(retain.WriteBoundary, Is.EqualTo(retain.Generation << TrieNodeLog.OffsetBits | GenerationBytes));
+            Assert.That(pointer, Is.GreaterThan(retain.WriteBoundary));
+        }
+    }
+
+    [Test]
+    public void Concurrent_reservations_never_precede_their_retain_boundary()
+    {
+        using TrieNodeLog log = new(0, GenerationBytes);
+        Parallel.For(0, 16, thread =>
+        {
+            for (int i = 0; i < 1024; i++)
+            {
+                using TrieNodeLogRetain retain = log.RetainActive();
+                ulong pointer = log.Reserve(NodeRecord.RecordAlignment, out _, out _);
+                Assert.That(pointer, Is.GreaterThanOrEqualTo(retain.WriteBoundary));
+            }
+        });
     }
 
     [Test]

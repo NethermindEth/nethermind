@@ -57,7 +57,8 @@ public sealed partial class TrieNodeLog : IDisposable
         {
             ThrowIfUnavailable();
             ulong generation = _active.Id;
-            TrieNodeLogRetain retain = new(this, generation);
+            long used = Math.Min(Volatile.Read(ref _active.Used), _active.Data!.Length);
+            TrieNodeLogRetain retain = new(this, generation, generation << OffsetBits | (uint)used);
             _retainCount++;
             _retains[generation & GenerationSlotMask]++;
             return retain;

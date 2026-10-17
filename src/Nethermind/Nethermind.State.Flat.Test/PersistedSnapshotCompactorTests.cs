@@ -33,6 +33,7 @@ public class PersistedSnapshotCompactorTests
 
     // Holds the nodes of the static test case sources, which are built before any test runs.
     private static readonly TrieNodeLog CaseLog = FlatTestHelpers.NewTestLog();
+    private static readonly TrieNodeLogRetain CaseLogRetain = CaseLog.RetainActive();
 
     [SetUp]
     public void SetUp()
@@ -52,7 +53,11 @@ public class PersistedSnapshotCompactorTests
     }
 
     [OneTimeTearDown]
-    public void OneTimeTearDown() => CaseLog.Dispose();
+    public void OneTimeTearDown()
+    {
+        CaseLogRetain.Dispose();
+        CaseLog.Dispose();
+    }
 
     [TestCase(false)]
     [TestCase(true)]
@@ -546,7 +551,7 @@ public class PersistedSnapshotCompactorTests
         for (int i = 0; i < contents.Length; i++)
         {
             states[i + 1] = new StateId((ulong)(i + 1), Keccak.Compute($"{i + 1}"));
-            using TrieNodeLogRetain logRetain = CaseLog.RetainActive();
+            using TrieNodeLogRetain logRetain = CaseLogRetain.Copy();
             tier.ConvertToPersistedBase(
                 new Snapshot(states[i], states[i + 1], contents[i], _pool, ResourcePool.Usage.MainBlockProcessing) { LogRetain = logRetain }).Dispose();
         }

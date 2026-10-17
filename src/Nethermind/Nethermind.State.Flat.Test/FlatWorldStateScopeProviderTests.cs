@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
@@ -983,6 +984,7 @@ public class FlatWorldStateScopeProviderTests
         AssertStorageRoot(ctx, [0, 123]);
         Assert.That(ctx.LastCommittedSnapshot!.TryGetStorageNode((address.ToAccountPath.ToHash256(), TreePath.Empty), out ulong _), Is.True,
             "adoption must publish the private root even when the final batch hashes nothing");
+        Assert.That(ctx.LastCommittedSnapshot.StorageNodes, Is.Not.Empty, "the boundary precedes adopted idle-thread writes");
     }
 
     [Test]
@@ -1146,6 +1148,7 @@ public class FlatWorldStateScopeProviderTests
         {
             Assert.That(ctx.Scope.Get(address)!.StorageRoot, Is.EqualTo(Keccak.EmptyTreeHash));
             Assert.That(ctx.LastCommittedSnapshot!.TryGetStorageNode((address.ToAccountPath.ToHash256(), TreePath.Empty), out ulong _), Is.False);
+            Assert.That(ctx.LastCommittedSnapshot.StorageNodes, Is.Empty, "unreachable speculative writes are not snapshot changes");
         }
         ctx.Scope.Dispose();
         ctx.PersistenceReader.Received(1).Dispose();
@@ -1728,6 +1731,73 @@ public class FlatWorldStateScopeProviderTests
     #endregion
 
     #region Account Snapshot Commit Tests
+
+    [Test]
+    public void PausedScopeKeepsEarlierWritesButOmitsInterleavedScopeNodes()
+    {
+        using TestContext ctx = new();
+        IWorldStateScopeProvider provider = ctx.WorldStateManager.GlobalWorldState;
+        Assert.That(provider.TryBeginScope(null, new LocalMetrics(), out IWorldStateScopeProvider.IScope? paused), Is.True);
+        using IWorldStateScopeProvider.IScope pausedScope = paused!;
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch batch = pausedScope.StartWriteBatch(2))
+        {
+            batch.Set(TestItem.AddressA, new Account(1, 100));
+            batch.Set(TestItem.AddressB, new Account(2, 200));
+        }
+
+        Assert.That(provider.TryBeginScope(null, new LocalMetrics(), out IWorldStateScopeProvider.IScope? interleaved), Is.True);
+        using IWorldStateScopeProvider.IScope interleavedScope = interleaved!;
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch batch = interleavedScope.StartWriteBatch(1))
+            batch.Set(TestItem.AddressD, new Account(4, 400));
+        interleavedScope.Commit(1);
+        Snapshot interleavedSnapshot = ctx.LastCommittedSnapshot!;
+        interleavedSnapshot.AcquireLease();
+        using Snapshot interleavedLease = interleavedSnapshot;
+
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch batch = pausedScope.StartWriteBatch(1))
+            batch.Set(TestItem.AddressC, new Account(3, 300));
+        pausedScope.Commit(1);
+        Snapshot resumedSnapshot = ctx.LastCommittedSnapshot!;
+        ulong[] resumed = resumedSnapshot.StateNodes.Select(node => node.Value).ToArray();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(resumedSnapshot.LogRetain!.Generation, Is.EqualTo(interleavedSnapshot.LogRetain!.Generation));
+            Assert.That(resumedSnapshot.LogRetain.WriteBoundary, Is.LessThan(interleavedSnapshot.LogRetain.WriteBoundary));
+            Assert.That(resumed, Has.Some.LessThan(interleavedSnapshot.LogRetain.WriteBoundary), "the paused scope retains its earlier reachable writes");
+            Assert.That(resumed, Does.Not.Contain(interleavedSnapshot.StateRootPointer));
+            Assert.That(resumed.Length, Is.EqualTo(ctx.TrieNodeLog.EnumerateNodes(resumedSnapshot.StateRootPointer).Count()));
+            Assert.That(interleavedSnapshot.StateNodes.Count(), Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public void UnchangedStateRootDoesNotEnumerateInheritedOrRevertedWrites([Values] bool revert)
+    {
+        using TestContext ctx = new();
+        Account original = new(1, 100);
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch batch = ctx.Scope.StartWriteBatch(1))
+            batch.Set(TestItem.AddressA, original);
+        ctx.Scope.Commit(1);
+        StateId initial = ctx.LastCommittedSnapshot!.To;
+        if (revert)
+        {
+            using (IWorldStateScopeProvider.IWorldStateWriteBatch batch = ctx.Scope.StartWriteBatch(1))
+                batch.Set(TestItem.AddressA, new Account(2, 200));
+            using (IWorldStateScopeProvider.IWorldStateWriteBatch batch = ctx.Scope.StartWriteBatch(1))
+                batch.Set(TestItem.AddressA, original);
+        }
+        ctx.Scope.Commit(2);
+        Snapshot snapshot = ctx.LastCommittedSnapshot!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(snapshot.From, Is.EqualTo(initial));
+            Assert.That(snapshot.To.StateRoot, Is.EqualTo(initial.StateRoot));
+            Assert.That(snapshot.StateNodes, Is.Empty);
+            Assert.That(snapshot.TryGetStateNode(TreePath.Empty, out ulong _), Is.True);
+        }
+    }
 
     [Test]
     public void TestMultipleAccountsAndSlotsCommittedInSnapshot()

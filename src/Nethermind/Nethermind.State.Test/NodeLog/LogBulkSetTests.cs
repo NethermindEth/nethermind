@@ -410,6 +410,33 @@ internal class LogBulkSetTests
     }
 
     [Test]
+    public void Traversal_prunes_inherited_subtrees_at_an_inclusive_same_generation_boundary([Values] bool canParallelize)
+    {
+        using TrieNodeLog log = new(0, SmallGenerationBytes);
+        using TrieNodeLogRetain originalRetain = log.RetainActive();
+        DictionaryNodeSource source = new(new Dictionary<TreePath, byte[]>(), new WarmedNodes(1), null);
+        Hash256 inheritedKey = new("1000000000000000000000000000000000000000000000000000000000000000");
+        Hash256 updatedKey = new("f000000000000000000000000000000000000000000000000000000000000000");
+        TrieRoot original = BulkSet(log, source, null, TrieRoot.Empty, [(inheritedKey, ExistingValue), (updatedKey, ExistingValue)], canParallelize);
+        Assert.That(log.TryGetNodePointer(original.Pointer, TreePath.Empty.Append(1), out ulong inherited), Is.True);
+        using TrieNodeLogRetain updateRetain = log.RetainActive();
+        TrieRoot updated = BulkSet(log, source, null, original, [(updatedKey, NewValue)], canParallelize);
+        (TreePath Path, ulong Pointer)[] delta = log.EnumerateNodes(updated.Pointer, updateRetain.WriteBoundary).Select(node => (node.Path, node.Pointer)).ToArray();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(updated.Pointer >> 32, Is.EqualTo(original.Pointer >> 32));
+            Assert.That(delta.Select(node => node.Path), Is.EqualTo(new[] { TreePath.Empty, TreePath.Empty.Append(15) }));
+            Assert.That(delta.Min(node => node.Pointer), Is.EqualTo(updateRetain.WriteBoundary), "the first reservation belongs to this range");
+            Assert.That(log.EnumerateNodes(original.Pointer, updateRetain.WriteBoundary), Is.Empty);
+            Assert.That(log.TryGetNodePointer(updated.Pointer, TreePath.Empty.Append(1), out ulong found), Is.True);
+            Assert.That(found, Is.EqualTo(inherited), "point reads still follow inherited records");
+            Assert.That(log.GetRecord(found).Rlp.ToArray(), Is.Not.Empty);
+            Assert.That(source.FetchCount, Is.Zero);
+        }
+    }
+
+    [Test]
     public void Traversal_stops_at_unknown_child_pointers_without_loading_the_source()
     {
         using TrieNodeLog log = new(0, SmallGenerationBytes);

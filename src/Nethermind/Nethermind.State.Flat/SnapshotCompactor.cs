@@ -204,7 +204,7 @@ public class SnapshotCompactor(
         TrieNodeLogRetain? oldest = null;
         for (int i = 0; i < snapshots.Count; i++)
         {
-            if (snapshots[i].LogRetain is { } retain && (oldest is null || retain.Generation < oldest.Generation)) oldest = retain;
+            if (snapshots[i].LogRetain is { } retain && (oldest is null || retain.WriteBoundary < oldest.WriteBoundary)) oldest = retain;
         }
 
         return oldest;

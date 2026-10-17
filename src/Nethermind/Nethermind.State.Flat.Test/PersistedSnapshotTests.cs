@@ -82,7 +82,7 @@ public class PersistedSnapshotTests
     }
 
     [Test]
-    public void Loader_sizes_inherited_reachable_nodes_independently_of_root_metadata([Values] bool storage)
+    public void Loader_sizes_reachable_nodes_independently_of_root_metadata([Values] bool storage)
     {
         using FlatTestContainer tier = new(new FlatDbConfig { PersistedSnapshotDedicatedArenaThresholdBytes = 1 },
             arenaFileSizeBytes: 4096, blobFileSizeBytes: 4 * 1024 * 1024);
@@ -94,7 +94,7 @@ public class PersistedSnapshotTests
         DictionaryNodeSource source = new(new Dictionary<TreePath, byte[]>(), new WarmedNodes(1), address);
         TrieRoot root = LogBulkSet.BulkSet(_log, source, address, TrieRoot.Empty, entries, canParallelize: true);
         FlatTestHelpers.StartNewGeneration(_log);
-        using Snapshot snapshot = _resourcePool.CreateSnapshot(StateId.PreGenesis, new StateId(1, root.Hash), ResourcePool.Usage.MainBlockProcessing, _log);
+        using Snapshot snapshot = new(StateId.PreGenesis, new StateId(1, root.Hash), new SnapshotContent(), _resourcePool, ResourcePool.Usage.MainBlockProcessing) { LogRetain = original.Copy() };
         if (storage) snapshot.Content.StorageRoots[address!] = root.Pointer;
         else
         {
@@ -109,6 +109,56 @@ public class PersistedSnapshotTests
             Assert.That(persisted.Size, Is.GreaterThan(4096), "fixed arena must accommodate the reachable node table");
             Assert.That(source.FetchCount, Is.Zero);
             Assert.DoesNotThrow(() => PersistedSnapshotUtils.ValidatePersistedSnapshot(snapshot, persisted, dumpWhenFailed: false));
+        }
+    }
+
+    [Test]
+    public void IncrementalSnapshotsPersistOnlyChangedNodesAndReadBackTheCompleteTrie([Values] bool storage)
+    {
+        Hash256? address = storage ? TestItem.KeccakA : null;
+        DictionaryNodeSource source = new(new Dictionary<TreePath, byte[]>(), new WarmedNodes(1), address);
+        Hash256[] keys = Enumerable.Range(0, 256).Select(i => Keccak.Compute(BitConverter.GetBytes(i))).ToArray();
+        TrieNodeLogRetain firstRetain = _log.RetainActive();
+        using ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries = new(keys.Length);
+        foreach (Hash256 key in keys) entries.Add(new(key.ValueHash256, new byte[32]));
+        TrieRoot firstRoot = LogBulkSet.BulkSet(_log, source, address, TrieRoot.Empty, entries, canParallelize: true);
+        using Snapshot first = Create(0, ValueKeccak.EmptyTreeHash, firstRoot, firstRetain);
+        TrieNodeLogRetain secondRetain = _log.RetainActive();
+        entries.Clear();
+        entries.Add(new(keys[0].ValueHash256, Enumerable.Repeat((byte)1, 32).ToArray()));
+        TrieRoot secondRoot = LogBulkSet.BulkSet(_log, source, address, firstRoot, entries, canParallelize: false);
+        using Snapshot second = Create(1, firstRoot.Hash, secondRoot, secondRetain);
+        int firstCount = storage ? first.StorageNodes.Count() : first.StateNodes.Count();
+        int secondCount = storage ? second.StorageNodes.Count() : second.StateNodes.Count();
+        using PersistedSnapshotStack persisted = new(new(2)
+        {
+            CreatePersistedSnapshot(first.From, first.To, PersistedSnapshotBuilderTestExtensions.Build(first, _blobs)),
+            CreatePersistedSnapshot(second.From, second.To, PersistedSnapshotBuilderTestExtensions.Build(second, _blobs))
+        }, recordDetailedMetrics: false);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(firstRetain.Generation, Is.EqualTo(secondRetain.Generation));
+            Assert.That(secondCount, Is.InRange(1, 16));
+            Assert.That(firstCount, Is.GreaterThan(secondCount * 8));
+            foreach ((TreePath path, _, NodeRecordRef record) in _log.EnumerateNodes(secondRoot.Pointer))
+            {
+                bool found = storage ? persisted.TryLoadStorageRlp(address!, path, out byte[]? rlp) : persisted.TryLoadStateRlp(path, out rlp);
+                Assert.That(found, Is.True, path.ToString());
+                Assert.That(rlp, Is.EqualTo(record.Rlp.ToArray()), path.ToString());
+            }
+        }
+
+        Snapshot Create(ulong block, ValueHash256 from, TrieRoot root, TrieNodeLogRetain retain)
+        {
+            Snapshot snapshot = new(new(block, from), new(block + 1, root.Hash), new SnapshotContent(), _resourcePool, ResourcePool.Usage.MainBlockProcessing) { LogRetain = retain };
+            if (storage) snapshot.Content.StorageRoots[address!] = root.Pointer;
+            else
+            {
+                snapshot.Content.HasStateRoot = true;
+                snapshot.Content.StateRootPointer = root.Pointer;
+            }
+            return snapshot;
         }
     }
 
@@ -155,14 +205,14 @@ public class PersistedSnapshotTests
     }
 
     [Test]
-    public void Serialization_keeps_buffered_inherited_pointers_alive_until_write_completion([Values] bool failWrite)
+    public void Serialization_keeps_buffered_pointers_alive_after_retain_release_until_write_completion([Values] bool failWrite)
     {
+        using Snapshot snapshot = _resourcePool.CreateSnapshot(StateId.PreGenesis, new(1, Keccak.Zero), ResourcePool.Usage.MainBlockProcessing, _log);
         byte[] stateRlp = FlatTestHelpers.LeafRlp(1);
         byte[] storageRlp = FlatTestHelpers.LeafRlp(2);
         ulong statePointer = _log.AppendRecordFromRlp(null, TreePath.Empty, ValueKeccak.Compute(stateRlp), stateRlp);
         ulong storagePointer = _log.AppendRecordFromRlp(TestItem.KeccakA, TreePath.Empty, ValueKeccak.Compute(storageRlp), storageRlp);
         FlatTestHelpers.StartNewGeneration(_log);
-        using Snapshot snapshot = _resourcePool.CreateSnapshot(StateId.PreGenesis, StateId.PreGenesis, ResourcePool.Usage.MainBlockProcessing, _log);
         snapshot.Content.HasStateRoot = true;
         snapshot.Content.StateRootPointer = statePointer;
         snapshot.Content.StorageRoots[TestItem.KeccakA] = storagePointer;
@@ -173,6 +223,7 @@ public class PersistedSnapshotTests
         CallbackWriter writer = new(pooled, () =>
         {
             called = true;
+            snapshot.LogRetain!.Dispose();
             for (int i = 0; i < 10; i++) FlatTestHelpers.StartNewGeneration(_log);
             Assert.That(() => _log.FindBloom(statePointer) is null, Is.True.After(5_000, 10));
             Assert.That(_log.TryLocate(statePointer, out _), Is.True, "buffered pointers still resolve after extraction enumerators finish");

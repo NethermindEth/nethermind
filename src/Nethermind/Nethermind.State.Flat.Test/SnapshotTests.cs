@@ -127,6 +127,70 @@ public class SnapshotTests
     }
 
     [Test]
+    public void EnumerationIncludesOnlyReachableWritesSinceRetain([Values] bool storage)
+    {
+        using TrieNodeLog log = FlatTestHelpers.NewTestLog();
+        using TrieNodeLogRetain originalRetain = log.RetainActive();
+        Hash256? address = storage ? TestItem.KeccakA : null;
+        DictionaryNodeSource source = new(new Dictionary<TreePath, byte[]>(), new WarmedNodes(1), address);
+        Hash256 firstKey = new("1000000000000000000000000000000000000000000000000000000000000000");
+        Hash256 lastKey = new("f000000000000000000000000000000000000000000000000000000000000000");
+        TrieRoot original = Write(TrieRoot.Empty, firstKey, 1, lastKey);
+        TrieNodeLogRetain updateRetain = log.RetainActive();
+        TrieRoot unrelated = Write(TrieRoot.Empty, firstKey, 3);
+        TrieRoot updated = Write(original, lastKey, 2);
+        using Snapshot snapshot = new(new(1, original.Hash), new(2, updated.Hash), new SnapshotContent(), _pool, ResourcePool.Usage.MainBlockProcessing) { LogRetain = updateRetain };
+        if (storage) snapshot.Content.StorageRoots[address!] = updated.Pointer;
+        else
+        {
+            snapshot.Content.StateRootPointer = updated.Pointer;
+            snapshot.Content.HasStateRoot = true;
+        }
+        ulong[] pointers = (storage ? snapshot.StorageNodes.Select(kv => kv.Value) : snapshot.StateNodes.Select(kv => kv.Value)).ToArray();
+        bool found = storage
+            ? snapshot.TryGetStorageNode((address!, TreePath.Empty.Append(1)), out ulong inherited)
+            : snapshot.TryGetStateNode(TreePath.Empty.Append(1), out inherited);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(updated.Pointer >> 32, Is.EqualTo(original.Pointer >> 32));
+            Assert.That(pointers, Has.Length.EqualTo(2));
+            Assert.That(pointers, Does.Not.Contain(unrelated.Pointer));
+            Assert.That(pointers, Does.Not.Contain(inherited));
+            Assert.That(found, Is.True);
+            Assert.That(snapshot.GetRlp(inherited).ToArray(), Is.Not.Empty);
+        }
+
+        TrieRoot Write(TrieRoot root, Hash256 key, byte value, Hash256? other = null)
+        {
+            using ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries = new(2);
+            entries.Add(new(key.ValueHash256, Enumerable.Repeat(value, 32).ToArray()));
+            if (other is not null) entries.Add(new(other.ValueHash256, new byte[32]));
+            return LogBulkSet.BulkSet(log, source, address, root, entries, canParallelize: false);
+        }
+    }
+
+    [Test]
+    public void UnchangedStateRootOmitsEvenRecordsWrittenAfterRetain([Values] bool duplicateRoot)
+    {
+        using TrieNodeLog log = FlatTestHelpers.NewTestLog();
+        byte[] rlp = FlatTestHelpers.LeafRlp(1);
+        ValueHash256 hash = ValueKeccak.Compute(rlp);
+        ulong original = log.AppendRecordFromRlp(null, TreePath.Empty, hash, rlp);
+        using Snapshot snapshot = _pool.CreateSnapshot(new(1, hash), new(2, hash), ResourcePool.Usage.MainBlockProcessing, log);
+        ulong root = duplicateRoot ? log.AppendRecordFromRlp(null, TreePath.Empty, hash, rlp) : original;
+        snapshot.Content.StateRootPointer = root;
+        snapshot.Content.HasStateRoot = true;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(snapshot.StateNodes, Is.Empty);
+            Assert.That(snapshot.TryGetStateNode(TreePath.Empty, out ulong found), Is.True);
+            Assert.That(found, Is.EqualTo(root));
+            Assert.That(snapshot.GetRlp(found).ToArray(), Is.EqualTo(rlp));
+        }
+    }
+
+    [Test]
     public void FixtureConnectsPathsWithUnnormalizedTrailingBytes([Values] bool storage)
     {
         using TrieNodeLog log = FlatTestHelpers.NewTestLog();
@@ -153,7 +217,7 @@ public class SnapshotTests
     public void SuppliedRootRlpIsPreservedWhenItsChildrenArriveLater()
     {
         using TrieNodeLog log = FlatTestHelpers.NewTestLog();
-        using Snapshot snapshot = _pool.CreateSnapshot(StateId.PreGenesis, StateId.PreGenesis, ResourcePool.Usage.MainBlockProcessing, log);
+        using Snapshot snapshot = _pool.CreateSnapshot(StateId.PreGenesis, new(1, Keccak.Zero), ResourcePool.Usage.MainBlockProcessing, log);
         byte[] leafRlp = FlatTestHelpers.LeafRlp(new byte[40]);
         ChildRef child = ChildRef.ForHash(ValueKeccak.Compute(leafRlp), 0);
         byte[] rootRlp = new byte[NodeRlp.ExtensionLength([1, 2], child)];
@@ -174,7 +238,7 @@ public class SnapshotTests
     public void ReplacingRootOmitsDisconnectedEarlierNodes([Values] bool storage)
     {
         using TrieNodeLog log = FlatTestHelpers.NewTestLog();
-        using Snapshot snapshot = _pool.CreateSnapshot(StateId.PreGenesis, StateId.PreGenesis, ResourcePool.Usage.MainBlockProcessing, log);
+        using Snapshot snapshot = _pool.CreateSnapshot(StateId.PreGenesis, new(1, Keccak.Zero), ResourcePool.Usage.MainBlockProcessing, log);
         TreePath oldPath = TreePath.FromHexString("12");
         if (storage) snapshot.Content.SetStorageNodeRlp(log, TestItem.KeccakA, oldPath, FlatTestHelpers.LeafRlpA);
         else snapshot.Content.SetStateNodeRlp(log, oldPath, FlatTestHelpers.LeafRlpA);
@@ -239,15 +303,15 @@ public class SnapshotTests
     }
 
     [Test]
-    public void EnumerationProtectsInheritedRecordsUntilDisposed([Values] bool storage)
+    public void EnumerationProtectsRecordsAfterSnapshotRetainIsReleased([Values] bool storage)
     {
         using TrieNodeLog log = FlatTestHelpers.NewTestLog();
+        using Snapshot snapshot = _pool.CreateSnapshot(StateId.PreGenesis, new(1, Keccak.Zero), ResourcePool.Usage.MainBlockProcessing, log);
         byte[] rlp = FlatTestHelpers.LeafRlp(1);
         ulong inherited = log.AppendRecordFromRlp(storage ? TestItem.KeccakA : null, TreePath.Empty, ValueKeccak.Compute(rlp), rlp);
         byte[] secondRlp = FlatTestHelpers.LeafRlp(2);
         ulong second = log.AppendRecordFromRlp(TestItem.KeccakB, TreePath.Empty, ValueKeccak.Compute(secondRlp), secondRlp);
         FlatTestHelpers.StartNewGeneration(log);
-        using Snapshot snapshot = _pool.CreateSnapshot(StateId.PreGenesis, StateId.PreGenesis, ResourcePool.Usage.MainBlockProcessing, log);
         if (storage)
         {
             snapshot.Content.StorageRoots[TestItem.KeccakA] = inherited;
@@ -264,6 +328,7 @@ public class SnapshotTests
             Assert.That(enumerator.MoveNext(), Is.True);
             ulong first = enumerator.Current;
             byte[] expectedRlp = snapshot.GetRlp(first).ToArray();
+            snapshot.LogRetain!.Dispose();
             for (int i = 0; i < 10; i++) FlatTestHelpers.StartNewGeneration(log);
             Assert.That(() => log.FindBloom(inherited) is null, Is.True.After(5_000, 10));
             if (storage) Assert.That(enumerator.MoveNext(), Is.True, "moving to another address must not release the outer read lease");
@@ -283,6 +348,7 @@ public class SnapshotTests
     {
         using TrieNodeLog log = FlatTestHelpers.NewTestLog();
         using SnapshotBundle bundle = new(FlatTestHelpers.MakeBundle(_pool), Substitute.For<ITrieNodeCache>(), log, _pool, ResourcePool.Usage.MainBlockProcessing);
+        TrieNodeLogRetain retain = log.RetainActive();
         byte[] rlp = FlatTestHelpers.LeafRlp(1);
         ValueHash256 hash = ValueKeccak.Compute(rlp);
         TrieRoot root = kind switch
@@ -293,7 +359,7 @@ public class SnapshotTests
         };
         bundle.PublishLoggedStateRoot(root);
         (Snapshot? published, TransientResource? retired) = bundle.CollectAndApplySnapshot(
-            StateId.PreGenesis, new(1, root.Hash), log.RetainActive());
+            StateId.PreGenesis, new(1, root.Hash), retain);
         using Snapshot snapshot = published!;
         retired!.ReleaseLease();
 

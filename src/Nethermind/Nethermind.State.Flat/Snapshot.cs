@@ -93,9 +93,9 @@ public class Snapshot : RefCountingDisposable
     public IEnumerable<KeyValuePair<HashedKey<Address>, Account?>> Accounts => _isSorted ? _sorted!.Accounts : _mutable!.Accounts;
     public IEnumerable<KeyValuePair<HashedKey<Address>, bool>> SelfDestructedStorageAddresses => _isSorted ? _sorted!.SelfDestructedStorageAddresses : _mutable!.SelfDestructedStorageAddresses;
     public IEnumerable<KeyValuePair<HashedKey<(Address, UInt256)>, UInt256?>> Storages => _isSorted ? _sorted!.Storages : _mutable!.Storages;
-    /// <summary>Reachable log-resident storage nodes, with pointers protected until their enumerator is disposed.</summary>
+    /// <summary>Reachable storage nodes written within this snapshot's range, with pointers protected until their enumerator is disposed.</summary>
     public IEnumerable<KeyValuePair<HashedKey<(Hash256, TreePath)>, ulong>> StorageNodes => EnumerateStorageNodes();
-    /// <summary>Reachable log-resident state nodes, with pointers protected until their enumerator is disposed.</summary>
+    /// <summary>Reachable state nodes written within this snapshot's range, with pointers protected until their enumerator is disposed.</summary>
     public IEnumerable<KeyValuePair<HashedKey<TreePath>, ulong>> StateNodes => EnumerateStateNodes();
     public int AccountsCount => _isSorted ? _sorted!.AccountsCount : Counts.Accounts;
     public int StoragesCount => _isSorted ? _sorted!.StoragesCount : Counts.Storages;
@@ -110,8 +110,8 @@ public class Snapshot : RefCountingDisposable
 
     private IEnumerable<KeyValuePair<HashedKey<TreePath>, ulong>> EnumerateStateNodes()
     {
-        if (!HasStateRoot || LogRetain is null) yield break;
-        foreach ((TreePath path, ulong pointer, _) in LogRetain.Log.EnumerateNodes(StateRootPointer))
+        if (!HasStateRoot || LogRetain is null || From.StateRoot == To.StateRoot) yield break;
+        foreach ((TreePath path, ulong pointer, _) in LogRetain.Log.EnumerateNodes(StateRootPointer, LogRetain.WriteBoundary))
             yield return new(path, pointer);
     }
 
@@ -121,7 +121,7 @@ public class Snapshot : RefCountingDisposable
         using IDisposable lease = LogRetain.Log.BeginReadScope();
         foreach ((Hash256 address, ulong root) in StorageRoots)
         {
-            foreach ((TreePath path, ulong pointer, _) in LogRetain.Log.EnumerateNodes(root))
+            foreach ((TreePath path, ulong pointer, _) in LogRetain.Log.EnumerateNodes(root, LogRetain.WriteBoundary))
                 yield return new((address, path), pointer);
         }
     }
