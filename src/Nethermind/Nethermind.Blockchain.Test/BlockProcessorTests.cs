@@ -1374,6 +1374,25 @@ public partial class BlockProcessorTests
         return chain.JsonSerializer.Serialize(result);
     }
 
+    private sealed class BalApplyRecordingState(IWorldState state, Action afterApply) : WorldStateDecorator(state), IWorldState
+    {
+        public int Applied { get; private set; }
+        public int RootRecalculations { get; private set; }
+
+        void IWorldState.ApplyBal(ReadOnlyBlockAccessList bal)
+        {
+            ApplyBal(bal);
+            Applied++;
+            afterApply();
+        }
+
+        public override void RecalculateStateRoot()
+        {
+            RootRecalculations++;
+            base.RecalculateStateRoot();
+        }
+    }
+
     private sealed class OverlayRefusingState(IWorldState state) : WorldStateDecorator(state)
     {
         public override bool TryApplyAccountOverlay(IStateReadOverlay overlay) => false;
@@ -3548,6 +3567,67 @@ public partial class BlockProcessorTests
         }
     }
 
+    public enum BalRejectionPoint { None, DuringWarmup, DuringApply }
+
+    [Test]
+    public void Parallel_validation_stops_applying_the_bal_once_the_block_is_rejected([Values] BalRejectionPoint rejectedAt)
+    {
+        Assume.That(Environment.ProcessorCount, Is.GreaterThan(1));
+
+        bool rejected = rejectedAt != BalRejectionPoint.None;
+        // Set only once the failed tx's slot is filled, by which point the worker has recorded the failure.
+        using ManualResetEventSlim rejection = new();
+        void HoldUntilRejected(BalRejectionPoint point)
+        {
+            if (rejectedAt == point) rejection.Wait(TimeSpan.FromSeconds(10));
+        }
+
+        void RejectOnceFirstSlotIsFilled(Block b, GasValidationResultSlot[] gasResults)
+        {
+            gasResults[0].GetResult();
+            rejection.Set();
+            throw new InvalidBlockException(b, "invalid block access list");
+        }
+
+        Block block = BuildParallelValidationBlock(2);
+        IWorldState worldState = TestWorldStateFactory.CreateForTest();
+        using IDisposable scope = worldState.BeginScope(IWorldState.PreGenesis);
+        // Holds the failing txs until iteration 0 is past its pre-apply checks, so it cannot skip the apply early.
+        using ManualResetEventSlim applying = new();
+        BalApplyRecordingState stateProvider = new(worldState, () =>
+        {
+            applying.Set();
+            HoldUntilRejected(BalRejectionPoint.DuringApply);
+        });
+        using ManualResetEventSlim validationFinished = new(true);
+        GatedTailTransactionProcessorAdapter transactionProcessor = new(int.MaxValue, 21_000, validationFinished, outcome: _ =>
+        {
+            if (rejectedAt == BalRejectionPoint.DuringApply) applying.Wait(TimeSpan.FromSeconds(10));
+            return rejected ? TransactionResult.ErrorType.MalformedTransaction.WithDetail("rejected") : TransactionResult.Ok;
+        });
+        ParallelTestBlockAccessListManager balManager = new(transactionProcessor)
+        {
+            BalWarmupAction = () => HoldUntilRejected(BalRejectionPoint.DuringWarmup),
+            IncrementalValidationAction = rejected ? RejectOnceFirstSlotIsFilled : null,
+        };
+        BlockProcessor.ParallelBlockValidationTransactionsExecutor executor = new(
+            Substitute.For<IBlockProcessor.IBlockTransactionsExecutor>(),
+            stateProvider,
+            new TestSingleReleaseSpecProvider(Amsterdam.Instance),
+            balManager,
+            LimboLogs.Instance);
+
+        void Process() => executor.ProcessTransactions(block, ProcessingOptions.None, new BlockReceiptsTracer(), CancellationToken.None);
+        if (rejected) Assert.That(Process, Throws.InstanceOf<InvalidBlockException>());
+        else Assert.That(Process, Throws.Nothing);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(stateProvider.Applied, Is.EqualTo(rejectedAt == BalRejectionPoint.DuringWarmup ? 0 : 1), "BAL applications");
+            Assert.That(stateProvider.RootRecalculations, Is.EqualTo(rejected ? 0 : 1), "state root recalculations");
+        }
+    }
+
     /// <summary>Runs the canonical prefix, a 21k-gas tx scheduled last to hold the in-order validator, then a
     /// heavy tail, and returns the block rejection.</summary>
     private static InvalidBlockException ExecuteHeavyTail(int lead, ulong gasUsed, ulong blockGasLimit, ITransactionProcessorAdapter transactionProcessor)
@@ -4102,6 +4182,7 @@ public partial class BlockProcessorTests
         }
 
         public Action<Block, GasValidationResultSlot[]>? IncrementalValidationAction { get; init; }
+        public Action? BalWarmupAction { get; init; }
         public bool FailFirstSetBlockAccessList { get; init; }
         public int ProcessingAttempts { get; private set; }
 
@@ -4117,9 +4198,7 @@ public partial class BlockProcessorTests
             ParallelExecutionEnabled = !options.ContainsFlag(ProcessingOptions.ForceSequentialBlockAccessList);
         }
 
-        public void WaitForBalWarmup()
-        {
-        }
+        public void WaitForBalWarmup() => BalWarmupAction?.Invoke();
 
         public void Setup(Block block)
         {
