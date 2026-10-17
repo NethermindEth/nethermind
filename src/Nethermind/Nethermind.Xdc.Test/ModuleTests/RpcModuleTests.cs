@@ -227,6 +227,36 @@ public class RpcModuleTests
         _epochSwitchManager.Received(1).GetBlockByEpochNumber(epochNumber);
     }
 
+    /// <remarks>
+    /// The reference client takes epoch numbers as a Go <c>uint64</c>, so its callers send a plain JSON number, which
+    /// strict hex parsing alone would reject.
+    /// </remarks>
+    [Test]
+    public async Task EpochNumberMethods_ShouldAcceptPlainNumberOrHex_UnderStrictHexFormat(
+        [Values("XDPoS_getBlockInfoByV2EpochNum", "XDPoS_getBlockInfoByEpochNum")] string method,
+        [Values("10", "\"0xa\"")] string epochJson)
+    {
+        const ulong epochNumber = 10;
+        _blockTree.Head.Returns(Build.A.Block.WithHeader(Build.A.XdcBlockHeader().WithNumber(100).TestObject).TestObject);
+        _specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(XdcTestHelper.CreateXdcReleaseSpec(switchEpoch: 5, configsCount: (int)epochNumber));
+        _epochSwitchManager.GetBlockByEpochNumber(epochNumber).Returns(new BlockRoundInfo(TestItem.KeccakA, 100, 500));
+
+        bool strictHexFormat = EthereumJsonSerializer.StrictHexFormat;
+        EthereumJsonSerializer.StrictHexFormat = true;
+        try
+        {
+            using JsonDocument epoch = JsonDocument.Parse(epochJson);
+            string json = await RpcTest.TestSerializedRequest<IXdcRpcModule>(_rpcModule, method, epoch.RootElement);
+
+            using JsonDocument response = JsonDocument.Parse(json);
+            Assert.That(response.RootElement.GetProperty("result").GetProperty("epochFirstBlockNumber").GetString(), Is.EqualTo("0x1f4"));
+        }
+        finally
+        {
+            EthereumJsonSerializer.StrictHexFormat = strictHexFormat;
+        }
+    }
+
 
     [Test]
     public void GetEpochNumbersBetween_ShouldReturnSuccess_WhenValidRange()
