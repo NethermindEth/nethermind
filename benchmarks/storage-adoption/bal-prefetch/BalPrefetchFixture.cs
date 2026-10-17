@@ -14,6 +14,7 @@ using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.ScopeProvider;
 using NSubstitute;
+using Snapshot = Nethermind.State.Flat.Snapshot;
 
 sealed class BalPrefetchFixture : IDisposable, IWorldStateScopeProvider.IAsyncBalReaderSink
 {
