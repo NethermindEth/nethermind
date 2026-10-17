@@ -420,6 +420,35 @@ public class DebugModuleTests
         }
     }
 
+    [Test]
+    public async Task Debug_traceBlock_missing_parent_header_rejects_before_replay(
+        [Values("debug_traceBlockByHash", "debug_traceBlockByNumber", "debug_traceBlock")] string method,
+        [Values] bool streaming)
+    {
+        Block block = Build.A.Block.WithNumber(1).TestObject;
+        _jsonRpcConfig.EnableTracingStreamMode = streaming;
+        _blockFinder.Head.Returns(block);
+        _blockFinder.FindHeader(block.Hash!).Returns(block.Header);
+        _blockFinder.FindHeader(Arg.Any<BlockParameter>()).Returns(block.Header);
+        _blockchainBridge.HasStateForBlock(block.Header).Returns(true);
+        Assert.That(_blockFinder.FindHeader(block.ParentHash!, BlockTreeLookupOptions.None, block.Number - 1), Is.Null);
+        object selector = method switch
+        {
+            "debug_traceBlockByHash" => block.Hash!,
+            "debug_traceBlockByNumber" => new BlockParameter(1UL),
+            _ => new BlockDecoder().Encode(block).Bytes
+        };
+
+        JToken json = JToken.Parse(await SerializedRequest(method, selector, new { streamMode = streaming }));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.ResourceUnavailable), json.ToString());
+            Assert.That((string?)json["error"]?["message"], Does.Contain("Cannot find parent header"), json.ToString());
+            Assert.That(json["result"], Is.Null);
+            Assert.That(_debugBridge.ReceivedCalls(), Is.Empty, "missing parent must reject before replay");
+        }
+    }
+
     [TestCaseSource(nameof(TraceBaseStateGuardErrorCases))]
     public void DebugTraceTransaction_WhenTraceBaseStateGuardRejects_ReturnsResourceUnavailable(
         Func<DebugRpcModule, BlockHeader, ResultWrapper<GethLikeTxTrace>> invoke,
