@@ -861,8 +861,8 @@ public class DebugBridgeTests
         IDebugRpcModule first = factory.Create();
         await using ILifetimeScope wrappedScope = container.BeginLifetimeScope(builder => builder
             .AddSingleton<IBlockTree>(new BlockTreeOverlay(blockTree.AsReadOnly(), blockTree))
-            .AddSingleton<IGethStyleTracer>(Substitute.For<IGethStyleTracer>()));
-        IDebugRpcModule second = wrappedScope.Resolve<IDebugRpcModule>();
+            .AddScoped<IRpcModuleFactory<IDebugRpcModule>, DebugModuleFactory>());
+        IDebugRpcModule second = wrappedScope.Resolve<IRpcModuleFactory<IDebugRpcModule>>().Create();
         // Explicit rendezvous holds the mutation open; timeouts only prevent a hung test.
         TaskCompletionSource mutationEntered = new(TaskCreationOptions.RunContinuationsAsynchronously);
         using ManualResetEventSlim releaseMutation = new();
