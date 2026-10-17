@@ -86,7 +86,7 @@ public sealed partial class TrieNodeLog
                         }
 
                         _inPlaceBytes -= generation.Data!.Length;
-                        Retire(generation.Data);
+                        Retire(generation.Id, generation.Data);
                         Volatile.Write(ref generation.Data, null);
                         Retire(generation.Bloom);
                         Volatile.Write(ref generation.Bloom, null);
@@ -170,7 +170,7 @@ public sealed partial class TrieNodeLog
             if (compressed is not null && _compressedMemory <= _compressedMaxMemory && _oldestCompressed >= before) return;
 
             _compressedMemory -= (ulong)(compressed?.Memory ?? 0);
-            Retire(compressed);
+            Retire(generation.Id, compressed);
             Volatile.Write(ref generation.Compressed, null);
             _oldestCompressed++;
         }

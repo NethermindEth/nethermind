@@ -590,8 +590,7 @@ public class PersistenceManager(
                 batch.SetStorage(addr, slot, kv.Value);
             }
 
-            // Compacted snapshots (the common case) enumerate nodes in key order, which makes the writes
-            // faster; the rare non-compacted persist enumerates unordered, which is still correct.
+            // Traversal includes inherited log-resident nodes; persisting them again is harmless.
             long stateNodesSize = 0;
             foreach (KeyValuePair<HashedKey<TreePath>, ulong> kvp in snapshot.StateNodes)
             {

@@ -110,10 +110,10 @@ public class SnapshotCompactorTests
         Address address2 = new("0x2222222222222222222222222222222222222222");
         UInt256 storageIndex1 = new(1);
         UInt256 storageIndex2 = new(2);
-        TreePath statePath1 = TreePath.FromHexString("abcd");
-        TreePath statePath2 = TreePath.FromHexString("ef01");
-        TreePath storageNodePath1 = TreePath.FromHexString("1234");
-        TreePath storageNodePath2 = TreePath.FromHexString("5678");
+        TreePath statePath1 = TreePath.FromHexString("a");
+        TreePath statePath2 = TreePath.FromHexString("e");
+        TreePath storageNodePath1 = TreePath.Empty;
+        TreePath storageNodePath2 = TreePath.Empty;
         UInt256 slotValue1 = (UInt256)100;
         UInt256 slotValue2 = (UInt256)200;
 
@@ -155,13 +155,13 @@ public class SnapshotCompactorTests
         Assert.That(compacted.TryGetStorage((address2, storageIndex2), out UInt256? storedSlot2), Is.True);
         AssertSlotValueEqual(slotValue2, storedSlot2);
 
-        Assert.That(compacted.StateNodesCount, Is.EqualTo(2));
+        Assert.That(compacted.StateNodes.Count(), Is.EqualTo(3));
         Assert.That(compacted.TryGetStateNode(statePath1, out ulong stateNode1), Is.True);
         Assert.That(compacted.GetRlp(stateNode1).ToArray(), Is.EqualTo(Bytes.FromHexString(FlatTestHelpers.LeafRlpA)));
         Assert.That(compacted.TryGetStateNode(statePath2, out ulong stateNode2), Is.True);
         Assert.That(compacted.GetRlp(stateNode2).ToArray(), Is.EqualTo(Bytes.FromHexString(FlatTestHelpers.LeafRlpB)));
 
-        Assert.That(compacted.StorageNodesCount, Is.EqualTo(2));
+        Assert.That(compacted.StorageNodes.Count(), Is.EqualTo(2));
         Assert.That(compacted.TryGetStorageNode((address2Hash, storageNodePath2), out ulong storageNode2), Is.True);
         Assert.That(compacted.GetRlp(storageNode2).ToArray(), Is.EqualTo(Bytes.FromHexString(FlatTestHelpers.LeafRlpB)));
     }
@@ -173,10 +173,10 @@ public class SnapshotCompactorTests
         Address address2 = new("0x2222222222222222222222222222222222222222");
         UInt256 storageIndex1 = new(1);
         UInt256 storageIndex2 = new(2);
-        TreePath statePath1 = TreePath.FromHexString("abcd");
-        TreePath statePath2 = TreePath.FromHexString("ef01");
-        TreePath storageNodePath1 = TreePath.FromHexString("1234");
-        TreePath storageNodePath2 = TreePath.FromHexString("5678");
+        TreePath statePath1 = TreePath.FromHexString("a");
+        TreePath statePath2 = TreePath.FromHexString("e");
+        TreePath storageNodePath1 = TreePath.Empty;
+        TreePath storageNodePath2 = TreePath.Empty;
         UInt256 slotValue1 = (UInt256)100;
         UInt256 slotValue2 = (UInt256)200;
 
@@ -197,6 +197,7 @@ public class SnapshotCompactorTests
         using Snapshot snapshot1 = _resourcePool.CreateSnapshot(from1, to1, ResourcePool.Usage.ReadOnlyProcessingEnv, _log);
         snapshot1.Content.Accounts[address2] = new Account(2, 200);
         snapshot1.Content.Storages[(address2, storageIndex2)] = slotValue2;
+        snapshot1.Content.SetStateNodeRlp(_log, statePath1, FlatTestHelpers.LeafRlpA);
         snapshot1.Content.SetStateNodeRlp(_log, statePath2, FlatTestHelpers.LeafRlpB);
         Hash256 address2Hash = address2.ToAccountPath.ToCommitment();
         snapshot1.Content.SetStorageNodeRlp(_log, address2Hash, storageNodePath2, FlatTestHelpers.LeafRlpB);
@@ -209,11 +210,11 @@ public class SnapshotCompactorTests
 
         using Snapshot compacted = _compactor.CompactSnapshotBundle(snapshots);
 
-        // Verify all items from both snapshots are merged
+        // Flat changes merge; trie nodes are reachable from the final roots.
         Assert.That(compacted.AccountsCount, Is.EqualTo(2));
         Assert.That(compacted.StoragesCount, Is.EqualTo(2));
-        Assert.That(compacted.StateNodesCount, Is.EqualTo(2));
-        Assert.That(compacted.StorageNodesCount, Is.EqualTo(2));
+        Assert.That(compacted.StateNodes.Count(), Is.EqualTo(3));
+        Assert.That(compacted.StorageNodes.Count(), Is.EqualTo(2));
         Assert.That(snapshot1.LogRetain!.Generation, Is.GreaterThan(snapshot0.LogRetain!.Generation));
         Assert.That(compacted.LogRetain!.Generation, Is.EqualTo(snapshot0.LogRetain.Generation));
         Assert.That(compacted.TryGetStateNode(statePath1, out ulong stateNode1), Is.True);
@@ -225,8 +226,8 @@ public class SnapshotCompactorTests
     {
         Address address = new("0x1111111111111111111111111111111111111111");
         UInt256 storageIndex = new(1);
-        TreePath statePath = TreePath.FromHexString("abcd");
-        TreePath storageNodePath = TreePath.FromHexString("1234");
+        TreePath statePath = TreePath.Empty;
+        TreePath storageNodePath = TreePath.Empty;
         UInt256 slotValue1 = (UInt256)100;
         UInt256 slotValue2 = (UInt256)200;
 
@@ -266,10 +267,10 @@ public class SnapshotCompactorTests
         Assert.That(compacted.TryGetStorage((address, storageIndex), out UInt256? storedSlot), Is.True);
         AssertSlotValueEqual(slotValue2, storedSlot);
 
-        Assert.That(compacted.StateNodesCount, Is.EqualTo(1));
+        Assert.That(compacted.StateNodes.Count(), Is.EqualTo(1));
         Assert.That(compacted.TryGetStateNode(statePath, out ulong stateNode), Is.True);
         Assert.That(compacted.GetRlp(stateNode).ToArray(), Is.EqualTo(Bytes.FromHexString(FlatTestHelpers.LeafRlpB)));
-        Assert.That(compacted.StorageNodesCount, Is.EqualTo(1));
+        Assert.That(compacted.StorageNodes.Count(), Is.EqualTo(1));
         Assert.That(compacted.TryGetStorageNode((addressHash, storageNodePath), out ulong storageNode), Is.True);
         Assert.That(compacted.GetRlp(storageNode).ToArray(), Is.EqualTo(Bytes.FromHexString(FlatTestHelpers.LeafRlpB)));
     }
@@ -315,10 +316,10 @@ public class SnapshotCompactorTests
         Address b = new("0x2222222222222222222222222222222222222222");
         Hash256 aHash = a.ToAccountPath.ToCommitment();
         Hash256 bHash = b.ToAccountPath.ToCommitment();
-        TreePath pBefore = TreePath.FromHexString("01");
-        TreePath pSame = TreePath.FromHexString("02");
-        TreePath pAfter = TreePath.FromHexString("03");
-        TreePath pB = TreePath.FromHexString("04");
+        TreePath pBefore = TreePath.FromHexString("1");
+        TreePath pSame = TreePath.FromHexString("2");
+        TreePath pAfter = TreePath.FromHexString("3");
+        TreePath pB = TreePath.Empty;
         static UInt256 Slot(byte marker) => (UInt256)marker << 248;
 
         // Block 0 -> 1: A gets a slot/node written before it is ever self-destructed; B is unrelated.
@@ -338,6 +339,7 @@ public class SnapshotCompactorTests
         using Snapshot s2 = _resourcePool.CreateSnapshot(new(2, Keccak.Zero), new(3, Keccak.Zero), ResourcePool.Usage.ReadOnlyProcessingEnv, _log);
         if (selfDestructAgainInLastSnapshot) s2.Content.SelfDestructedStorageAddresses[a] = false;
         s2.Content.Storages[(a, new UInt256(3))] = Slot(0xA3);
+        if (!selfDestructAgainInLastSnapshot) s2.Content.SetStorageNodeRlp(_log, aHash, pSame, FlatTestHelpers.LeafRlpA);
         s2.Content.SetStorageNodeRlp(_log, aHash, pAfter, FlatTestHelpers.LeafRlpA);
 
         SnapshotPooledList snapshots = new(3) { s0, s1, s2 };
@@ -361,6 +363,78 @@ public class SnapshotCompactorTests
         Assert.That(compacted.TryGetStorage((b, new UInt256(1)), out UInt256? slotB), Is.True);
         AssertSlotValueEqual(Slot(0xBB), slotB);
         Assert.That(compacted.TryGetStorageNode((bHash, pB), out ulong _), Is.True);
+    }
+
+    [Test]
+    public void CompactSnapshotBundle_FinalRootOmitsDisconnectedEarlierStateNodes()
+    {
+        TreePath oldPath = TreePath.FromHexString("1");
+        TreePath finalPath = TreePath.FromHexString("2");
+        using Snapshot older = _resourcePool.CreateSnapshot(new(0, Keccak.Zero), new(1, Keccak.Zero), ResourcePool.Usage.ReadOnlyProcessingEnv, _log);
+        older.Content.SetStateNodeRlp(_log, oldPath, FlatTestHelpers.LeafRlpA);
+        using Snapshot final = _resourcePool.CreateSnapshot(older.To, new(2, Keccak.Zero), ResourcePool.Usage.ReadOnlyProcessingEnv, _log);
+        final.Content.SetStateNodeRlp(_log, finalPath, FlatTestHelpers.LeafRlpB);
+
+        using Snapshot compacted = _compactor.CompactSnapshotBundle(new(2) { older, final });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(compacted.TryGetStateNode(oldPath, out ulong _), Is.False);
+            Assert.That(compacted.TryGetStateNode(finalPath, out ulong pointer), Is.True);
+            Assert.That(compacted.GetRlp(pointer).ToArray(), Is.EqualTo(Bytes.FromHexString(FlatTestHelpers.LeafRlpB)));
+            Assert.That(compacted.StateNodes.Select(kv => kv.Value), Is.EqualTo(final.StateNodes.Select(kv => kv.Value)));
+        }
+    }
+
+    [Test]
+    public void CompactSnapshotBundle_NoOpEndpointOnlyInheritsMatchingStateRoot([Values] bool matchingHash)
+    {
+        byte[] rlp = Bytes.FromHexString(FlatTestHelpers.LeafRlpA);
+        Hash256 hash = new(ValueKeccak.Compute(rlp));
+        using Snapshot older = _resourcePool.CreateSnapshot(new(0, Keccak.EmptyTreeHash), new(1, hash), ResourcePool.Usage.ReadOnlyProcessingEnv, _log);
+        older.Content.SetStateNodeRlp(_log, TreePath.Empty, rlp);
+        using Snapshot final = _resourcePool.CreateSnapshot(older.To, new(2, matchingHash ? hash : TestItem.KeccakB), ResourcePool.Usage.ReadOnlyProcessingEnv, _log);
+
+        using Snapshot compacted = _compactor.CompactSnapshotBundle(new(2) { older, final });
+
+        Assert.That(compacted.TryGetStateNode(TreePath.Empty, out ulong pointer), Is.EqualTo(matchingHash));
+        if (matchingHash) Assert.That(compacted.GetRlp(pointer).ToArray(), Is.EqualTo(rlp));
+    }
+
+    [Test]
+    public void CompactSnapshotBundle_FinalEmptyStateDoesNotResurrectEarlierRoot()
+    {
+        using Snapshot older = _resourcePool.CreateSnapshot(new(0, Keccak.EmptyTreeHash), new(1, Keccak.Zero), ResourcePool.Usage.ReadOnlyProcessingEnv, _log);
+        older.Content.SetStateNodeRlp(_log, TreePath.Empty, FlatTestHelpers.LeafRlpA);
+        using Snapshot final = _resourcePool.CreateSnapshot(older.To, new(2, Keccak.EmptyTreeHash), ResourcePool.Usage.ReadOnlyProcessingEnv, _log);
+        final.Content.HasStateRoot = true;
+
+        using Snapshot compacted = _compactor.CompactSnapshotBundle(new(2) { older, final });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(compacted.StateNodes, Is.Empty);
+            Assert.That(compacted.TryGetStateNode(TreePath.Empty, out ulong _), Is.False);
+        }
+    }
+
+    [Test]
+    public void CompactSnapshotBundle_EmptyStorageMarkerSurvivesNestedCompaction([Values] bool recreate)
+    {
+        Hash256 addressHash = TestItem.AddressA.ToAccountPath.ToHash256();
+        using Snapshot older = _resourcePool.CreateSnapshot(new(0, Keccak.Zero), new(1, Keccak.Zero), ResourcePool.Usage.ReadOnlyProcessingEnv, _log);
+        older.Content.SetStorageNodeRlp(_log, addressHash, TreePath.Empty, FlatTestHelpers.LeafRlpA);
+        using Snapshot cleared = _resourcePool.CreateSnapshot(older.To, new(2, Keccak.Zero), ResourcePool.Usage.ReadOnlyProcessingEnv, _log);
+        cleared.Content.StorageRoots[addressHash] = 0;
+        using Snapshot compactedClear = _compactor.CompactSnapshotBundle(new(2) { older, cleared });
+        using Snapshot final = _resourcePool.CreateSnapshot(cleared.To, new(3, Keccak.Zero), ResourcePool.Usage.ReadOnlyProcessingEnv, _log);
+        if (recreate) final.Content.SetStorageNodeRlp(_log, addressHash, TreePath.Empty, FlatTestHelpers.LeafRlpB);
+
+        using Snapshot compacted = _compactor.CompactSnapshotBundle(new(2) { compactedClear, final });
+
+        Assert.That(compacted.TryGetStorageNode((addressHash, TreePath.Empty), out ulong pointer), Is.EqualTo(recreate));
+        if (recreate) Assert.That(compacted.GetRlp(pointer).ToArray(), Is.EqualTo(Bytes.FromHexString(FlatTestHelpers.LeafRlpB)));
+        else Assert.That(compacted.StorageNodes, Is.Empty);
     }
 
     [Test]

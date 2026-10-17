@@ -225,17 +225,15 @@ public sealed class ReadOnlySnapshotBundle(
         }
     }
 
-    public bool TryFindStateNodes(in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node) =>
-        TryFindStateNodes(path, out node);
-
-    public bool TryFindStateNodes(HashedKey<TreePath> key, [NotNullWhen(true)] out TrieNode? node)
+    public bool TryFindStateNodes(in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node)
     {
+        HashedKey<TreePath> key = new(path);
         GuardDispose();
 
         long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
         for (int i = snapshots.Count - 1; i >= 0; i--)
         {
-            if (snapshots[i].TryGetStateNode(key, out node))
+            if (snapshots[i].TryGetStateNode(key, out node) && node.Keccak == hash)
             {
                 Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
                 if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStateNodeSnapshotLabel);
@@ -249,17 +247,15 @@ public sealed class ReadOnlySnapshotBundle(
 
     // Note: No self-destruct boundary check needed for trie nodes. Trie iteration starts from the storage root hash,
     // so if storage was self-destructed, the new root is different and orphaned nodes won't be traversed.
-    public bool TryFindStorageNodes(Hash256 address, in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node) =>
-        TryFindStorageNodes((address, path), out node);
-
-    public bool TryFindStorageNodes(HashedKey<(Hash256, TreePath)> key, [NotNullWhen(true)] out TrieNode? node)
+    public bool TryFindStorageNodes(Hash256 address, in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node)
     {
+        HashedKey<(Hash256, TreePath)> key = new((address, path));
         GuardDispose();
 
         long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
         for (int i = snapshots.Count - 1; i >= 0; i--)
         {
-            if (snapshots[i].TryGetStorageNode(key, out node))
+            if (snapshots[i].TryGetStorageNode(key, out node) && node.Keccak == hash)
             {
                 Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
                 if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStorageNodeSnapshotLabel);

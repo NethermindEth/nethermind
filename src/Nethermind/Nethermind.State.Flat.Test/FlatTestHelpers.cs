@@ -3,7 +3,11 @@
 
 using System;
 using System.Buffers;
+using System.Buffers.Binary;
 using System.Collections.Generic;
+using System.Linq;
+using System.Numerics;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -27,6 +31,9 @@ public static class FlatTestHelpers
 
     /// <summary>A log with 64 KiB generations, so tests can rotate it cheaply.</summary>
     public static TrieNodeLog NewTestLog() => new(0, 64 * 1024);
+
+    /// <summary>A trie-node path with all nibbles after its length cleared.</summary>
+    public static TreePath CanonicalPath(in ValueHash256 hash, int length) => new TreePath(hash, 64).Truncate(length);
 
     public const string LeafRlpA = "c482200101";
     public const string LeafRlpB = "c482200102";
@@ -52,21 +59,133 @@ public static class FlatTestHelpers
         return snapshot;
     }
 
-    /// <summary>Records the node <paramref name="rlpHex"/> in <paramref name="log"/> and sets its pointer as the state node at <paramref name="path"/>.</summary>
+    private static readonly ConditionalWeakTable<SnapshotContent, FixtureNodes> _fixtureNodes = [];
+
+    /// <summary>Connects supplied state nodes to the snapshot root, synthesizing missing ancestors.</summary>
+    /// <remarks>Supplied parent RLP is authoritative; inputs it does not reference remain unreachable.</remarks>
     public static ulong SetStateNodeRlp(this SnapshotContent content, TrieNodeLog log, in TreePath path, string rlpHex) =>
         content.SetStateNodeRlp(log, path, Bytes.FromHexString(rlpHex));
 
     /// <inheritdoc cref="SetStateNodeRlp(SnapshotContent, TrieNodeLog, in TreePath, string)"/>
-    public static ulong SetStateNodeRlp(this SnapshotContent content, TrieNodeLog log, in TreePath path, byte[] rlp) =>
-        content.StateNodes[path] = AppendNode(log, null, path, rlp);
+    public static ulong SetStateNodeRlp(this SnapshotContent content, TrieNodeLog log, in TreePath path, byte[] rlp)
+    {
+        FixtureTrie trie = _fixtureNodes.GetValue(content, static _ => new FixtureNodes()).State;
+        if (!content.HasStateRoot || content.StateRootPointer != trie.RootPointer) trie.Nodes.Clear();
+        ulong pointer = trie.Set(log, null, path, rlp);
+        content.StateRootPointer = trie.RootPointer;
+        content.HasStateRoot = true;
+        return pointer;
+    }
 
-    /// <summary>Records the node <paramref name="rlpHex"/> in <paramref name="log"/> and sets its pointer as the storage node of <paramref name="address"/> at <paramref name="path"/>.</summary>
+    /// <summary>Connects the supplied storage node to its address's root, synthesizing missing ancestors.</summary>
     public static ulong SetStorageNodeRlp(this SnapshotContent content, TrieNodeLog log, Hash256 address, in TreePath path, string rlpHex) =>
         content.SetStorageNodeRlp(log, address, path, Bytes.FromHexString(rlpHex));
 
     /// <inheritdoc cref="SetStorageNodeRlp(SnapshotContent, TrieNodeLog, Hash256, in TreePath, string)"/>
-    public static ulong SetStorageNodeRlp(this SnapshotContent content, TrieNodeLog log, Hash256 address, in TreePath path, byte[] rlp) =>
-        content.StorageNodes[(address, path)] = AppendNode(log, address, path, rlp);
+    public static ulong SetStorageNodeRlp(this SnapshotContent content, TrieNodeLog log, Hash256 address, in TreePath path, byte[] rlp)
+    {
+        FixtureNodes fixtures = _fixtureNodes.GetValue(content, static _ => new FixtureNodes());
+        if (!fixtures.Storage.TryGetValue(address, out FixtureTrie? trie)) fixtures.Storage[address] = trie = new();
+        if (!content.StorageRoots.TryGetValue(address, out ulong root) || root != trie.RootPointer) trie.Nodes.Clear();
+        ulong pointer = trie.Set(log, address, path, rlp);
+        content.StorageRoots[address] = trie.RootPointer;
+        return pointer;
+    }
+
+    private sealed class FixtureNodes
+    {
+        public readonly FixtureTrie State = new();
+        public readonly Dictionary<Hash256, FixtureTrie> Storage = [];
+    }
+
+    private sealed class FixtureTrie
+    {
+        public readonly Dictionary<TreePath, byte[]> Nodes = [];
+        public ulong RootPointer;
+
+        public ulong Set(TrieNodeLog log, Hash256? address, in TreePath path, byte[] rlp)
+        {
+            TreePath normalizedPath = CanonicalPath(path.Path, path.Length);
+            Nodes[normalizedPath] = rlp;
+            using TrieNodeLog.ReadLease lease = log.BeginRead();
+            RootPointer = Build(log, address, TreePath.Empty, Nodes.ToArray()).Pointer;
+            return log.TryGetNodePointer(RootPointer, path, out ulong pointer) ? pointer : AppendNode(log, address, path, rlp);
+        }
+
+        private static ChildRef Build(TrieNodeLog log, Hash256? address, TreePath path, KeyValuePair<TreePath, byte[]>[] nodes)
+        {
+            KeyValuePair<TreePath, byte[]> exact = nodes.FirstOrDefault(n => n.Key == path);
+            byte[] rlp;
+            ChildRef[]? references = null;
+            if (exact.Value is not null)
+            {
+                rlp = exact.Value;
+            }
+            else
+            {
+                int shared = path.Length;
+                while (shared < nodes[0].Key.Length && nodes.All(n => n.Key.Length > shared && n.Key[shared] == nodes[0].Key[shared])) shared++;
+                if (shared > path.Length)
+                {
+                    TreePath childPath = nodes[0].Key.Truncate(shared);
+                    ChildRef child = Build(log, address, childPath, nodes);
+                    references = [child];
+                    byte[] key = Enumerable.Range(path.Length, shared - path.Length).Select(i => (byte)nodes[0].Key[i]).ToArray();
+                    rlp = new byte[NodeRlp.ExtensionLength(key, child)];
+                    NodeRlp.WriteExtension(key, child, rlp);
+                }
+                else
+                {
+                    ChildRef[] children = new ChildRef[16];
+                    for (int i = 0; i < children.Length; i++)
+                    {
+                        TreePath childPath = path.Append(i);
+                        KeyValuePair<TreePath, byte[]>[] descendants = nodes.Where(n => n.Key.Length >= childPath.Length && n.Key.StartsWith(childPath)).ToArray();
+                        if (descendants.Length > 0) children[i] = Build(log, address, childPath, descendants);
+                    }
+                    references = children;
+                    rlp = new byte[NodeRlp.BranchLength(children)];
+                    NodeRlp.WriteBranch(children, rlp);
+                }
+            }
+
+            if (!NodeRecord.TryMeasure(rlp, out NodeRecordKind kind, out ushort mask)) throw new ArgumentException("Invalid fixture node RLP.", nameof(nodes));
+            ValueHash256 hash = ValueKeccak.Compute(rlp);
+            int length = NodeRecord.Length(BitOperations.PopCount(mask), rlp.Length);
+            byte[] record = new byte[length];
+            NodeRecord.WriteFromRlp(rlp, kind, mask, hash, NodeRecord.NodeKey(address, path), record);
+            RecordView view = new(record);
+            int position = NodeRecord.HeaderLength;
+            Span<byte> keyNibbles = stackalloc byte[64];
+            for (int i = 0; i < 16; i++)
+            {
+                if ((mask & (1 << i)) == 0) continue;
+                ChildRef child = view.Child(i);
+                TreePath childPath;
+                if (kind == NodeRecordKind.Extension)
+                {
+                    view.CopyKey(0, keyNibbles);
+                    childPath = path.Append(keyNibbles[..view.KeyLength(0)]);
+                }
+                else childPath = path.Append(i);
+                ChildRef connected = default;
+                if (references is not null) connected = references[i];
+                else
+                {
+                    KeyValuePair<TreePath, byte[]>[] descendants = nodes.Where(n => n.Key.Length >= childPath.Length && n.Key.StartsWith(childPath)).ToArray();
+                    if (descendants.Length > 0) connected = Build(log, address, childPath, descendants);
+                }
+                if (connected.Kind == ChildRefKind.Hash && connected.Data == child.Data)
+                    BinaryPrimitives.WriteUInt64LittleEndian(record.AsSpan(position), connected.Pointer);
+                position += NodeRecord.PointerLength;
+            }
+
+            ulong pointer = log.Reserve(NodeRecord.AlignedLength(length), out LogBuffer buffer, out int offset);
+            record.CopyTo(buffer.AsSpan(offset, length));
+            log.FindBloom(pointer)?.Add(NodeRecord.NodeKey(address, path));
+            return ChildRef.ForHash(hash, pointer);
+        }
+    }
 
     /// <summary>The RLP of a leaf with an empty key holding <paramref name="value"/>, a distinct valid trie node per value.</summary>
     public static byte[] LeafRlp(params byte[] value)

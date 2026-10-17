@@ -23,13 +23,14 @@ internal static class PersistedSnapshotBuilderTestExtensions
     /// </summary>
     public static byte[] Build(Snapshot snapshot, BlobArenaManager blobs)
     {
-        int estimatedSize = checked((int)PersistedSnapshotBuilder.EstimateSize(snapshot));
+        using PersistedSnapshotBuilder.PreparedSnapshot prepared = new(snapshot);
+        int estimatedSize = checked((int)prepared.EstimatedSize);
         using PooledByteBufferWriter pooled = new(estimatedSize);
         using BlobArenaWriter blobWriter = blobs.CreateWriter(estimatedSize);
         using Nethermind.Core.Collections.BloomFilter bloom =
             Nethermind.Core.Collections.BloomFilter.AlwaysTrue();
         PersistedSnapshotBuilder.Build<PooledByteBufferWriter.Writer>(
-            snapshot, ref pooled.GetWriter(), blobWriter, bloom);
+            snapshot, prepared, ref pooled.GetWriter(), blobWriter, bloom);
         blobWriter.Complete();
         return pooled.WrittenSpan.ToArray();
     }

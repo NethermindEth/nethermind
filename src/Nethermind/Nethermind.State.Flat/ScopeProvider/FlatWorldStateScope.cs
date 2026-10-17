@@ -149,7 +149,6 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         WaitForOutstandingWarmups();
         _snapshotBundle.Dispose();
         ReleaseStorageTrees();
-        _stateTrie?.Dispose();
         _logRetain?.Dispose();
         _warmer.OnExitScope();
     }

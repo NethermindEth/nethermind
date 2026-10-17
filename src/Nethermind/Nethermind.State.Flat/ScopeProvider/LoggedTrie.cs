@@ -19,39 +19,36 @@ namespace Nethermind.State.Flat.ScopeProvider;
 /// back from the log by pointer, which the scope's retain keeps readable.
 /// </remarks>
 /// <param name="root">The trie's root, as <see cref="LogBulkSet.ResolveRoot"/> returns it.</param>
-internal sealed class LoggedTrie(SnapshotBundle bundle, TrieNodeLog log, Hash256? addressHash, TrieRoot root) : INodeRecordSource, IDisposable
+internal sealed class LoggedTrie(SnapshotBundle bundle, TrieNodeLog log, Hash256? addressHash, TrieRoot root) : INodeRecordSource
 {
-    private readonly WrittenNodes _written = new();
     private Hash256 _rootHash = root.ToHash256();
+    private bool _rootDirty;
 
     public TrieRoot Root { get; private set; } = root;
 
     public Hash256 RootHash => _rootHash;
 
-    /// <summary>Whether nodes were written since the last <see cref="Publish"/> or <see cref="Clear"/>.</summary>
-    public bool HasUnpublishedNodes => _written.Count > 0;
+    /// <summary>Whether the root changed since the last <see cref="Publish"/>, including a change to empty.</summary>
+    public bool HasUnpublishedNodes => _rootDirty;
 
     /// <inheritdoc cref="LogBulkSet.BulkSet"/>
     public void BulkSet(in ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries, bool canParallelize) =>
-        SetRoot(LogBulkSet.BulkSet(log, this, addressHash, Root, entries, _written, canParallelize));
+        SetRoot(LogBulkSet.BulkSet(log, this, addressHash, Root, entries, canParallelize));
 
-    /// <summary>Adopts a completed private update, including its unpublished records.</summary>
-    internal void Adopt(in TrieRoot root, WrittenNodes written)
-    {
-        _written.AddRange(written.AsSpan());
-        SetRoot(root);
-    }
+    /// <summary>Adopts the root of a completed private update.</summary>
+    internal void Adopt(in TrieRoot root) => SetRoot(root);
 
-    /// <summary>Moves the written nodes into the bundle as their pointers in the log.</summary>
+    /// <summary>Makes the final root readable from the bundle.</summary>
     public void Publish()
     {
-        if (_written.Count == 0) return;
+        // The endpoint state root is needed even for a no-op block following a changed snapshot.
+        if (addressHash is not null && !_rootDirty) return;
 
         long start = Stopwatch.GetTimestamp();
-        if (addressHash is null) bundle.PublishLoggedStateNodes(_written);
-        else bundle.PublishLoggedStorageNodes(bundle.GetStorageNodeDestination(addressHash), _written);
+        if (addressHash is null) bundle.PublishLoggedStateRoot(Root);
+        else bundle.PublishLoggedStorageRoot(addressHash, Root);
 
-        _written.Clear();
+        _rootDirty = false;
         Metrics.TrieNodePublishTime.Observe(Stopwatch.GetTimestamp() - start);
     }
 
@@ -59,7 +56,7 @@ internal sealed class LoggedTrie(SnapshotBundle bundle, TrieNodeLog log, Hash256
     public void Clear()
     {
         SetRoot(TrieRoot.Empty);
-        _written.Clear();
+        _rootDirty = true;
     }
 
     /// <inheritdoc cref="LogBulkSet.TryGet"/>
@@ -68,11 +65,11 @@ internal sealed class LoggedTrie(SnapshotBundle bundle, TrieNodeLog log, Hash256
     public bool TryLoad(in TreePath path, in ValueHash256 hash, out NodeRecordRef record) =>
         bundle.TryLoadTrieNodeRecord(addressHash, path, hash, out record);
 
-    public void Dispose() => _written.Dispose();
-
     private void SetRoot(in TrieRoot updated)
     {
-        if (updated.Hash != Root.Hash) _rootHash = updated.ToHash256();
+        bool hashChanged = updated.Hash != Root.Hash;
+        _rootDirty |= hashChanged || updated.Pointer != Root.Pointer;
+        if (hashChanged) _rootHash = updated.ToHash256();
         Root = updated;
     }
 }

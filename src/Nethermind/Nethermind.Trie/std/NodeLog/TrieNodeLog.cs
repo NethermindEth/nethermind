@@ -89,13 +89,14 @@ public sealed partial class TrieNodeLog : IDisposable
 
     internal bool TryLocate(ulong pointer, out NodeRecordRef record)
     {
-        ulong id = pointer >> OffsetBits;
-        Generation? generation = Volatile.Read(ref _generations[id & GenerationSlotMask]);
-        if (generation?.Id != id)
+        if (pointer == 0)
         {
             record = default;
             return false;
         }
+        ulong id = pointer >> OffsetBits;
+        Generation? generation = Volatile.Read(ref _generations[id & GenerationSlotMask]);
+        if (generation?.Id != id) return TryLocateRetired(pointer, out record);
 
         LogBuffer? data = Volatile.Read(ref generation.Data);
         if (data is not null)
@@ -105,12 +106,12 @@ public sealed partial class TrieNodeLog : IDisposable
         }
 
         CompressedGeneration? compressed = Volatile.Read(ref generation.Compressed);
-        record = default;
-        return compressed?.TryFind(pointer, out record) == true;
+        if (compressed?.TryFind(pointer, out record) == true) return true;
+        return TryLocateRetired(pointer, out record);
     }
 
     /// <summary>The record at <paramref name="pointer"/>.</summary>
-    /// <remarks>The caller must hold a <see cref="TrieNodeLogRetain"/> on this generation or an older one for the entire use of the record, including its spans and references.</remarks>
+    /// <remarks>The caller must hold an operation lease or a <see cref="TrieNodeLogRetain"/> on this generation or an older one for the entire use of the record, including its spans and references.</remarks>
     /// <exception cref="TrieException">The pointer does not resolve to a record.</exception>
     public NodeRecordRef GetRecord(ulong pointer)
     {

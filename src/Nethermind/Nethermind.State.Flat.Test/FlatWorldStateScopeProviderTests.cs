@@ -982,7 +982,7 @@ public class FlatWorldStateScopeProviderTests
         ctx.Scope.Commit(1);
         AssertStorageRoot(ctx, [0, 123]);
         Assert.That(ctx.LastCommittedSnapshot!.TryGetStorageNode((address.ToAccountPath.ToHash256(), TreePath.Empty), out ulong _), Is.True,
-            "adoption must publish the private WrittenNodes even when the final batch hashes nothing");
+            "adoption must publish the private root even when the final batch hashes nothing");
     }
 
     [Test]
@@ -1489,7 +1489,7 @@ public class FlatWorldStateScopeProviderTests
             for (int version = 0; version < versionCount; version++)
             {
                 TrieNodeLogRetain retain = log.RetainActive();
-                using LoggedTrie trie = new(writer, log, address, root);
+                LoggedTrie trie = new(writer, log, address, root);
                 using ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries = new(keyCount);
                 values[version] = version == 0 ? new byte[keyCount][] : (byte[][])values[version - 1].Clone();
                 for (int i = 0; i < (version == 0 ? keyCount : 1); i++)
@@ -1522,7 +1522,7 @@ public class FlatWorldStateScopeProviderTests
         for (int version = 0; version < versionCount; version++)
         {
             Assert.That(LogBulkSet.ResolveRoot(log, address, roots[version].Hash).Pointer, Is.EqualTo(roots[version].Pointer), $"indexed root {version}");
-            using LoggedTrie trie = new(bundle, log, address, LogBulkSet.ResolveRoot(log, address, roots[version].Hash));
+            LoggedTrie trie = new(bundle, log, address, LogBulkSet.ResolveRoot(log, address, roots[version].Hash));
             using (Assert.EnterMultipleScope())
             {
                 for (int i = 0; i < keys.Length; i++) Assert.That(trie.TryGet(keys[i]), Is.EqualTo(values[version][i]), $"version {version}, key {i}");

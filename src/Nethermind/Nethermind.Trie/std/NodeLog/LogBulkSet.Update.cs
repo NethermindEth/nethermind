@@ -107,7 +107,7 @@ internal static partial class LogBulkSet
     }
 
     /// <summary>A branch level whose sixteen children are updated in parallel, each by a task that commits the child's subtree in an arena of its own, so only committed references cross threads.</summary>
-    private sealed class ParallelChildren : IDisposable
+    private sealed class ParallelChildren
     {
         public bool Flipped;
         public TreePath Path;
@@ -121,28 +121,6 @@ internal static partial class LogBulkSet
         public BranchArray<ChildRef> Children;
 
         public int ChangedMask;
-
-        /// <summary>The children in <see cref="ChangedMask"/> committed as a leaf or an extension referenced by hash, whose record a collapse of this level re-encodes one nibble shorter at <see cref="Path"/>.</summary>
-        public int MovableMask;
-
-        /// <summary>The nodes each task wrote, added to the written list once this level's node is known.</summary>
-        public BranchArray<WrittenNodes?> Written;
-
-        /// <summary>Adds the nodes the tasks wrote to <paramref name="written"/>, less the top record of a child this level <paramref name="collapsed"/> onto.</summary>
-        /// <remarks>The top record is the last a task wrote, as a subtree is committed deepest first. Only the one child left in a collapsed level wrote any.</remarks>
-        public void AddWritten(WrittenNodes written, bool collapsed)
-        {
-            for (int nibble = 0; nibble < BranchChildCount; nibble++)
-            {
-                ReadOnlySpan<(TreePath Path, ulong Pointer)> nodes = Written[nibble]!.AsSpan();
-                written.AddRange(collapsed && (MovableMask & (1 << nibble)) != 0 ? nodes[..^1] : nodes);
-            }
-        }
-
-        public void Dispose()
-        {
-            foreach (WrittenNodes? written in Written) written?.Dispose();
-        }
     }
 
     private readonly partial struct Context
@@ -194,7 +172,7 @@ internal static partial class LogBulkSet
             bool changed = false;
             bool hasRemove = false;
             int nonEmptyCount = 0;
-            using ParallelChildren? parallelChildren = IsParallel(entries.Length, mask) ? new ParallelChildren() : null;
+            ParallelChildren? parallelChildren = IsParallel(entries.Length, mask) ? new ParallelChildren() : null;
             if (parallelChildren is not null) UpdateInParallel(parallelChildren, entries, flipped, path, indexes, node, childrenStart, remainderNibble, remainder);
             path.AppendMut(0);
             for (int remaining = mask; remaining != 0;)
@@ -244,7 +222,6 @@ internal static partial class LogBulkSet
             int pendingIndex = (hasRemove || isNew) && nonEmptyCount < 2
                 ? MaybeCombine(childrenStart, ref path)
                 : _arena.AddBranch(childrenStart);
-            parallelChildren?.AddWritten(_written, collapsed: pendingIndex < 0 || _arena.Nodes[pendingIndex].Kind != PendingKind.Branch);
             return Updated.To(pendingIndex);
         }
 
@@ -279,11 +256,10 @@ internal static partial class LogBulkSet
         /// <summary>Updates child <paramref name="nibble"/> of <paramref name="level"/> in an arena of its own, committing it when it changed.</summary>
         private void UpdateChild(ParallelChildren level, int nibble)
         {
-            WrittenNodes written = level.Written[nibble] = new WrittenNodes();
             BulkSetArena arena = BulkSetArena.Rent();
             try
             {
-                Context context = new(_log, _source, _address, arena, written, _entries, _sortBuffer, _canParallelize);
+                Context context = new(_log, _source, _address, arena, _entries, _sortBuffer, _canParallelize);
                 (int start, int count) = level.Ranges[nibble];
                 Span<BulkSetEntry> entries = (level.Flipped ? _sortBuffer : _entries).AsSpan(start, count);
                 Span<BulkSetEntry> sortBuffer = (level.Flipped ? _entries : _sortBuffer).AsSpan(start, count);
@@ -293,7 +269,6 @@ internal static partial class LogBulkSet
                 if (!updated.Changed) return;
 
                 level.Children[nibble] = updated.PendingIndex < 0 ? default : context.Commit(updated.PendingIndex, path, isRoot: false);
-                if (level.Children[nibble].Kind == ChildRefKind.Hash && arena.Nodes[updated.PendingIndex].Kind != PendingKind.Branch) Interlocked.Or(ref level.MovableMask, 1 << nibble);
                 Interlocked.Or(ref level.ChangedMask, 1 << nibble);
             }
             finally

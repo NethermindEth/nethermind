@@ -17,7 +17,7 @@ using IResettable = Nethermind.Core.Resettables.IResettable;
 namespace Nethermind.State.Flat;
 
 /// <summary>
-/// Snapshot are written keys between state From to state To. Backed by either the mutable
+/// Flat-value changes and final trie roots between <see cref="From"/> and <see cref="To"/>, backed by either the mutable
 /// <see cref="SnapshotContent"/> or the sorted <see cref="SortedSnapshotContent"/>, selected by <see cref="IsSorted"/>.
 /// </summary>
 public class Snapshot : RefCountingDisposable
@@ -85,7 +85,7 @@ public class Snapshot : RefCountingDisposable
     public bool IsSorted => _isSorted;
 
     /// <summary>The retain on the trie node log generation that was active when this snapshot's first block started writing; released with the snapshot.</summary>
-    /// <remarks>While held, every node pointer of this snapshot resolves in place in the log.</remarks>
+    /// <remarks>Protects this generation and later writes. Traversals lease the log to protect any inherited older records they encounter.</remarks>
     internal TrieNodeLogRetain? LogRetain { get; init; }
 
     public StateId From => _from;
@@ -93,12 +93,38 @@ public class Snapshot : RefCountingDisposable
     public IEnumerable<KeyValuePair<HashedKey<Address>, Account?>> Accounts => _isSorted ? _sorted!.Accounts : _mutable!.Accounts;
     public IEnumerable<KeyValuePair<HashedKey<Address>, bool>> SelfDestructedStorageAddresses => _isSorted ? _sorted!.SelfDestructedStorageAddresses : _mutable!.SelfDestructedStorageAddresses;
     public IEnumerable<KeyValuePair<HashedKey<(Address, UInt256)>, UInt256?>> Storages => _isSorted ? _sorted!.Storages : _mutable!.Storages;
-    public IEnumerable<KeyValuePair<HashedKey<(Hash256, TreePath)>, ulong>> StorageNodes => _isSorted ? _sorted!.StorageNodes : _mutable!.StorageNodes;
-    public IEnumerable<KeyValuePair<HashedKey<TreePath>, ulong>> StateNodes => _isSorted ? _sorted!.StateNodes : _mutable!.StateNodes;
+    /// <summary>Reachable log-resident storage nodes, with pointers protected until their enumerator is disposed.</summary>
+    public IEnumerable<KeyValuePair<HashedKey<(Hash256, TreePath)>, ulong>> StorageNodes => EnumerateStorageNodes();
+    /// <summary>Reachable log-resident state nodes, with pointers protected until their enumerator is disposed.</summary>
+    public IEnumerable<KeyValuePair<HashedKey<TreePath>, ulong>> StateNodes => EnumerateStateNodes();
     public int AccountsCount => _isSorted ? _sorted!.AccountsCount : Counts.Accounts;
     public int StoragesCount => _isSorted ? _sorted!.StoragesCount : Counts.Storages;
-    public int StateNodesCount => _isSorted ? _sorted!.StateNodesCount : Counts.StateNodes;
-    public int StorageNodesCount => _isSorted ? _sorted!.StorageNodesCount : Counts.StorageNodes;
+
+    internal bool HasStateRoot => _isSorted ? _sorted!.HasStateRoot : _mutable!.HasStateRoot;
+    internal ulong StateRootPointer => _isSorted ? _sorted!.StateRootPointer : _mutable!.StateRootPointer;
+    internal IEnumerable<KeyValuePair<Hash256, ulong>> StorageRoots => _isSorted ? _sorted!.StorageRoots : _mutable!.StorageRoots;
+
+    internal bool TryGetStorageRoot(Hash256 address, out ulong pointer) => _isSorted
+        ? _sorted!.StorageRoots.TryGetValue(address, out pointer)
+        : _mutable!.StorageRoots.TryGetValue(address, out pointer);
+
+    private IEnumerable<KeyValuePair<HashedKey<TreePath>, ulong>> EnumerateStateNodes()
+    {
+        if (!HasStateRoot || LogRetain is null) yield break;
+        foreach ((TreePath path, ulong pointer, _) in LogRetain.Log.EnumerateNodes(StateRootPointer))
+            yield return new(path, pointer);
+    }
+
+    private IEnumerable<KeyValuePair<HashedKey<(Hash256, TreePath)>, ulong>> EnumerateStorageNodes()
+    {
+        if (LogRetain is null) yield break;
+        using IDisposable lease = LogRetain.Log.BeginReadScope();
+        foreach ((Hash256 address, ulong root) in StorageRoots)
+        {
+            foreach ((TreePath path, ulong pointer, _) in LogRetain.Log.EnumerateNodes(root))
+                yield return new((address, path), pointer);
+        }
+    }
 
     /// <summary>The mutable content; only valid for snapshots created for commit (not compacted ones).</summary>
     public SnapshotContent Content => _mutable!;
@@ -143,30 +169,38 @@ public class Snapshot : RefCountingDisposable
         }
     }
 
-    /// <summary>The log pointer of the state node at <paramref name="key"/>, readable through <see cref="GetNodeRecord"/> or <see cref="GetRlp"/> while the snapshot is alive.</summary>
-    public bool TryGetStateNode(HashedKey<TreePath> key, out ulong pointer)
-        => _isSorted ? _sorted!.TryGetStateNode(key, out pointer) : _mutable!.StateNodes.TryGetValue(key, out pointer);
+    /// <summary>The log pointer of the state node at <paramref name="key"/>, readable through <see cref="GetNodeRecord"/> or <see cref="GetRlp"/> under a log read lease.</summary>
+    internal bool TryGetStateNode(HashedKey<TreePath> key, out ulong pointer)
+    {
+        pointer = 0;
+        return HasStateRoot && LogRetain is not null && LogRetain.Log.TryGetNodePointer(StateRootPointer, key.Key, out pointer);
+    }
 
     public bool TryGetStateNode(HashedKey<TreePath> key, [NotNullWhen(true)] out TrieNode? node)
     {
-        node = TryGetStateNode(key, out ulong pointer) ? GetNodeRecord(pointer).ToTrieNode() : null;
-        return node is not null;
+        node = null;
+        return HasStateRoot && LogRetain is not null && LogRetain.Log.TryGetNode(StateRootPointer, key.Key, out node);
     }
 
-    /// <summary>The log pointer of the storage node at <paramref name="key"/>, readable through <see cref="GetNodeRecord"/> or <see cref="GetRlp"/> while the snapshot is alive.</summary>
-    public bool TryGetStorageNode(HashedKey<(Hash256, TreePath)> key, out ulong pointer)
-        => _isSorted ? _sorted!.TryGetStorageNode(key, out pointer) : _mutable!.StorageNodes.TryGetValue(key, out pointer);
+    /// <summary>The log pointer of the storage node at <paramref name="key"/>, readable through <see cref="GetNodeRecord"/> or <see cref="GetRlp"/> under a log read lease.</summary>
+    internal bool TryGetStorageNode(HashedKey<(Hash256, TreePath)> key, out ulong pointer)
+    {
+        pointer = 0;
+        return LogRetain is not null && TryGetStorageRoot(key.Key.Item1, out ulong root)
+            && LogRetain.Log.TryGetNodePointer(root, key.Key.Item2, out pointer);
+    }
 
     public bool TryGetStorageNode(HashedKey<(Hash256, TreePath)> key, [NotNullWhen(true)] out TrieNode? node)
     {
-        node = TryGetStorageNode(key, out ulong pointer) ? GetNodeRecord(pointer).ToTrieNode() : null;
-        return node is not null;
+        node = null;
+        return LogRetain is not null && TryGetStorageRoot(key.Key.Item1, out ulong root)
+            && LogRetain.Log.TryGetNode(root, key.Key.Item2, out node);
     }
 
-    /// <summary>The record a node pointer of this snapshot refers to, valid while the snapshot is.</summary>
+    /// <summary>The record a node pointer refers to, borrowed from an active node enumerator or outer log read lease.</summary>
     public NodeRecordRef GetNodeRecord(ulong pointer) => LogRetain!.Log.GetRecord(pointer);
 
-    /// <summary>The RLP of a node pointer of this snapshot, valid while the snapshot is.</summary>
+    /// <summary>The RLP of a node pointer, borrowed from an active node enumerator or outer log read lease.</summary>
     public ReadOnlySpan<byte> GetRlp(ulong pointer) => GetNodeRecord(pointer).Rlp;
 
     protected override void CleanUp()
@@ -194,8 +228,12 @@ public sealed class SnapshotContent : IDisposable, IResettable
     public readonly ConcurrentDictionary<HashedKey<(Address, UInt256)>, UInt256?> Storages = new();
     public readonly ConcurrentDictionary<HashedKey<Address>, bool> SelfDestructedStorageAddresses = new();
 
-    public readonly Dictionary<HashedKey<TreePath>, ulong> StateNodes = [];
-    public readonly AddressStorageNodeDictionary StorageNodes = new();
+    /// <summary>The final published state-root pointer, zero for an empty or unavailable root.</summary>
+    public ulong StateRootPointer;
+    /// <summary>Whether this content has published a state root, including the empty root.</summary>
+    public bool HasStateRoot;
+    /// <summary>Final roots of changed storage tries. Missing addresses are unchanged; zero marks an empty trie.</summary>
+    public readonly ConcurrentDictionary<Hash256, ulong> StorageRoots = new();
 
     /// <summary>Accounts the block only read, cached for its later reads.</summary>
     /// <remarks>
@@ -213,12 +251,13 @@ public sealed class SnapshotContent : IDisposable, IResettable
         ReadAccounts.NoLockClear();
         Storages.NoLockClear();
         SelfDestructedStorageAddresses.NoLockClear();
-        StateNodes.Clear();
-        StorageNodes.NoLockClear();
+        StateRootPointer = 0;
+        HasStateRoot = false;
+        StorageRoots.NoLockClear();
     }
 
     /// <summary>
-    /// Captures the five map counts in one pass. <see cref="ConcurrentDictionary{TKey,TValue}.Count"/>
+    /// Captures flat-value and root metadata counts. <see cref="ConcurrentDictionary{TKey,TValue}.Count"/>
     /// acquires every stripe lock, so callers should capture once at a writer-quiescent boundary and
     /// reuse the result instead of re-reading live counts.
     /// </summary>
@@ -226,8 +265,8 @@ public sealed class SnapshotContent : IDisposable, IResettable
         Accounts.Count,
         Storages.Count,
         SelfDestructedStorageAddresses.Count,
-        StateNodes.Count,
-        StorageNodes.Count);
+        HasStateRoot ? 1 : 0,
+        StorageRoots.Count);
 
     public long EstimateMemory() => CaptureCounts().EstimateMemory();
 
@@ -247,30 +286,27 @@ internal readonly record struct SnapshotContentCounts(
     int Accounts,
     int Storages,
     int SelfDestructedStorageAddresses,
-    int StateNodes,
-    int StorageNodes)
+    int StateRoots,
+    int StorageRoots)
 {
-    private const int NodeSizeEstimate = 650; // Counting the node size one by one has a notable overhead. So we use estimate.
-
     public long EstimateMemory() =>
         // Cast Count to long before multiplying to avoid int overflow for large snapshots
         (long)Accounts * 172 +                         // Key (12B: ref 8B + hash 4B) + Value ref (8B) + CD overhead (48) + Account object (~104B)
             (long)Storages * 136 +                         // Key (44B: addr ref 8B + UInt256 32B + hash 4B) + Value (40B UInt256?) + CD overhead (48) + Value ref (4B)
             (long)SelfDestructedStorageAddresses * 64 +    // Key (12B: ref 8B + hash 4B) + Value (4B) + CD overhead (48)
-            (long)StateNodes * (NodeSizeEstimate + 76) +   // Key (40B: TreePath 36B + hash 4B) + Value ref (8B) + dictionary overhead (28) + TrieNode
-            (long)StorageNodes * (NodeSizeEstimate + 84);  // Key (48B: Hash256 ref 8B + TreePath 36B + hash 4B) + Value ref (8B) + dictionary overhead (28) + TrieNode
+            (long)StateRoots * 16 +                       // Pointer and publication flag, including alignment
+            (long)StorageRoots * 120;                     // Hash256 key, pointer and concurrent dictionary entry
 
     /// <summary>
     /// Estimates memory for compacted snapshots, counting only dictionary overhead + keys + value-type values.
-    /// Does not count reference type values (Account and TrieNode) as they are already accounted for
-    /// by non-compacted snapshots (compacted snapshots share these references with the original snapshots).
+    /// Does not count Account objects as they are shared with the original snapshots.
     /// </summary>
     public long EstimateCompactedMemory() =>
         // ConcurrentDictionary entry overhead ~48 bytes
-        // Reference type values (Account, TrieNode) not counted - already accounted by non-compacted snapshot
+        // Account objects are already accounted by non-compacted snapshots
         (long)Accounts * 68 +                          // Key (12B: ref 8B + hash 4B) + Value ref (8B) + CD overhead (48)
             (long)Storages * 136 +                         // Key (44B: addr ref 8B + UInt256 32B + hash 4B) + Value (40B UInt256?) + CD overhead (48) + Value ref (4B)
             (long)SelfDestructedStorageAddresses * 64 +    // Key (12B: ref 8B + hash 4B) + Value (4B) + CD overhead (48)
-            (long)StateNodes * 76 +                        // Key (40B: TreePath 36B + hash 4B) + Value ref (8B) + dictionary overhead (28)
-            (long)StorageNodes * 84;                       // Key (48B: Hash256 ref 8B + TreePath 36B + hash 4B) + Value ref (8B) + dictionary overhead (28)
+            (long)StateRoots * 16 +                       // Pointer and publication flag, including alignment
+            (long)StorageRoots * 48;                      // Shared Hash256 key, pointer and dictionary entry
 }

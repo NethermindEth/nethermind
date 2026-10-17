@@ -79,7 +79,7 @@ public class FlatDbManagerPersistedTests
         StateId s0 = new(0, Keccak.EmptyTreeHash);
         StateId s1 = new(1, Keccak.Compute("1"));
 
-        TreePath path = new(Keccak.Compute("path"), 4);
+        TreePath path = FlatTestHelpers.CanonicalPath(Keccak.Compute("path"), 4);
         byte[] nodeRlp = FlatTestHelpers.LeafRlp(0xC2, 0x80, 0x80);
         using TrieNodeLog log = FlatTestHelpers.NewTestLog();
         TrieNodeLogRetain logRetain = log.RetainActive();

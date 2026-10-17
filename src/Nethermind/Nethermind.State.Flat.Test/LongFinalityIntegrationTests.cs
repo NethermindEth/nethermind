@@ -82,9 +82,9 @@ public class LongFinalityIntegrationTests
         StateId s0 = new(0, Keccak.EmptyTreeHash);
         StateId s1 = new(1, Keccak.Compute("1"));
 
-        TreePath statePath = new(Keccak.Compute("state_path"), 4);
+        TreePath statePath = FlatTestHelpers.CanonicalPath(Keccak.Compute("state_path"), 4);
         Hash256 storageAddr = Keccak.Compute("storage_address");
-        TreePath storagePath = new(Keccak.Compute("storage_path"), 6);
+        TreePath storagePath = FlatTestHelpers.CanonicalPath(Keccak.Compute("storage_path"), 6);
         byte[] stateRlp = FlatTestHelpers.LeafRlp(0xC2, 0x80, 0x80);
         byte[] storageRlp = FlatTestHelpers.LeafRlp(0xC1, 0x80);
 
@@ -138,8 +138,8 @@ public class LongFinalityIntegrationTests
         TreePath[] paths2 = new TreePath[nodesPerSnap];
         for (int i = 0; i < nodesPerSnap; i++)
         {
-            paths1[i] = new TreePath(Keccak.Compute($"path1_{i}"), 4);
-            paths2[i] = new TreePath(Keccak.Compute($"path2_{i}"), 4);
+            paths1[i] = FlatTestHelpers.CanonicalPath(Keccak.Compute($"path1_{i}"), 4);
+            paths2[i] = FlatTestHelpers.CanonicalPath(Keccak.Compute($"path2_{i}"), 4);
         }
         MemDb catalogDb = new();
 
@@ -233,9 +233,9 @@ public class LongFinalityIntegrationTests
         StateId s1 = new(1, Keccak.Compute("1"));
         StateId s2 = new(2, Keccak.Compute("2"));
 
-        TreePath statePath = new(Keccak.Compute("state"), 4);
+        TreePath statePath = FlatTestHelpers.CanonicalPath(Keccak.Compute("state"), 4);
         Hash256 storageAddr = Keccak.Compute("addr");
-        TreePath storagePath = new(Keccak.Compute("stor_path"), 6);
+        TreePath storagePath = FlatTestHelpers.CanonicalPath(Keccak.Compute("stor_path"), 6);
 
         using Snapshot snap1 = CreateSnapshot(s0, s1, c =>
         {
@@ -300,7 +300,7 @@ public class LongFinalityIntegrationTests
 
         StateId s0 = new(0, Keccak.EmptyTreeHash);
         StateId s1 = new(1, Keccak.Compute("1"));
-        TreePath path = new(Keccak.Compute("e2e_path"), 4);
+        TreePath path = FlatTestHelpers.CanonicalPath(Keccak.Compute("e2e_path"), 4);
         byte[] nodeRlp = FlatTestHelpers.LeafRlp(0xC1, 0x80);
 
         using Snapshot source = CreateSnapshot(s0, s1, c =>
@@ -389,7 +389,7 @@ public class LongFinalityIntegrationTests
 
         Assert.That(repo.TryLeasePersistedState(s1, SnapshotTier.PersistedBase, out PersistedSnapshot? persisted), Is.True);
         Assert.That(persisted!.TryGetAccount(TestItem.AddressA, out _), Is.False);
-        Assert.That(persisted.TryLoadStateNodeRlp(new TreePath(Keccak.Compute("any"), 4), out _), Is.False);
+        Assert.That(persisted.TryLoadStateNodeRlp(FlatTestHelpers.CanonicalPath(Keccak.Compute("any"), 4), out _), Is.False);
         persisted.Dispose();
     }
 

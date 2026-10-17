@@ -131,7 +131,7 @@ public class ForwardCommitmentCaptureTests
     [Test]
     public void A_capture_round_holding_more_trie_bytes_than_the_bound_is_skipped_and_the_next_round_restarts_the_series()
     {
-        HistoryWriter writer = CreateWriter(maxBufferedBytes: 100);
+        HistoryWriter writer = CreateWriter(maxBufferedBytes: 150);
         for (ulong block = 0; block <= 3; block++) CommitBlock(block, PerChangePath, LeafRlp((int)block));
 
         writer.CaptureUpTo(StateAt(3), _repository, CancellationToken.None);
@@ -160,7 +160,7 @@ public class ForwardCommitmentCaptureTests
         FlatDbConfig config = new() { HistoryEnabled = true, ArchiveProofBuildEnabled = true };
         (HistoryAvailability _, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, config);
         ArchiveProofSettings settings = new(config, rowFormat, LimboLogs.Instance);
-        ForwardCommitmentCapture capture = Track(new ForwardCommitmentCapture(_historyColumns, Policy, _metadata, settings, CreateReclaimer(settings), LimboLogs.Instance, maxBufferedBytes: 100));
+        ForwardCommitmentCapture capture = Track(new ForwardCommitmentCapture(_historyColumns, Policy, _metadata, settings, CreateReclaimer(settings), LimboLogs.Instance, maxBufferedBytes: 150));
         Snapshot first = _resourcePool.CreateSnapshot(StateId.PreGenesis, StateAt(0), ResourcePool.Usage.ReadOnlyProcessingEnv, _log);
         first.Content.SetStateNodeRlp(_log, PerChangePath, LeafRlp(0));
         Snapshot again = _resourcePool.CreateSnapshot(StateId.PreGenesis, StateAt(0), ResourcePool.Usage.ReadOnlyProcessingEnv, _log);
@@ -182,9 +182,17 @@ public class ForwardCommitmentCaptureTests
     public void A_capture_round_that_reaches_the_large_trie_depth_writes_exact_rows_at_the_tries_top()
     {
         TreePath deep = TreePath.FromHexString("7abcde");
+        TrieNode leaf = TrieNodeFactory.CreateLeaf(new byte[64 - deep.Length], new CappedArray<byte>(RlpTagged(3)));
+        leaf.ResolveKey(NullTrieNodeResolver.Instance, ref deep, canBeParallel: false);
+        TreePath extensionPath = TreePath.FromHexString("7a");
+        TrieNode extension = TrieNodeFactory.CreateExtension(new byte[] { 0xb, 0xc, 0xd, 0xe }, leaf);
+        extension.ResolveKey(NullTrieNodeResolver.Instance, ref extensionPath, canBeParallel: false);
+        ChildVector children = ChildrenAt(0xa, 0xb);
+        children.Set(0xa, extension.Keccak!.Bytes);
         Snapshot genesis = _resourcePool.CreateSnapshot(StateId.PreGenesis, StateAt(0), ResourcePool.Usage.ReadOnlyProcessingEnv, _log);
-        genesis.Content.SetStorageNodeRlp(_log, StorageAccount.ToCommitment(), TreePath.FromHexString("7"), BranchRlp.Encode(ChildrenAt(0xa, 0xb)));
-        genesis.Content.SetStorageNodeRlp(_log, StorageAccount.ToCommitment(), deep, LeafRlp(3));
+        genesis.Content.SetStorageNodeRlp(_log, StorageAccount.ToCommitment(), TreePath.FromHexString("7"), BranchRlp.Encode(children));
+        genesis.Content.SetStorageNodeRlp(_log, StorageAccount.ToCommitment(), extensionPath, extension.FullRlp.ToArray()!);
+        genesis.Content.SetStorageNodeRlp(_log, StorageAccount.ToCommitment(), deep, leaf.FullRlp.ToArray()!);
         Add(genesis, 0);
 
         _writer.CaptureUpTo(StateAt(0), _repository, CancellationToken.None);

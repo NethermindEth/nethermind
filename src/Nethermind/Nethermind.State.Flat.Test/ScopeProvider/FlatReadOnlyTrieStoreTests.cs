@@ -74,8 +74,8 @@ public class FlatReadOnlyTrieStoreTests
 
         using IDisposable scope = _store.BeginScope(Build.A.BlockHeader.TestObject);
 
-        Assert.That(_store.FindCachedOrUnknown(null, path, Keccak.Zero).FullRlp.ToArray(), Is.EqualTo(Bytes.FromHexString(FlatTestHelpers.LeafRlpA)));
-        Assert.That(_store.FindCachedOrUnknown(storageAddress, path, Keccak.Zero).FullRlp.ToArray(), Is.EqualTo(Bytes.FromHexString(FlatTestHelpers.LeafRlpB)));
+        Assert.That(_store.FindCachedOrUnknown(null, path, Keccak.Compute(Bytes.FromHexString(FlatTestHelpers.LeafRlpA))).FullRlp.ToArray(), Is.EqualTo(Bytes.FromHexString(FlatTestHelpers.LeafRlpA)));
+        Assert.That(_store.FindCachedOrUnknown(storageAddress, path, Keccak.Compute(Bytes.FromHexString(FlatTestHelpers.LeafRlpB))).FullRlp.ToArray(), Is.EqualTo(Bytes.FromHexString(FlatTestHelpers.LeafRlpB)));
     }
 
     [Test]
