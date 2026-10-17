@@ -32,8 +32,8 @@ public ref struct BinarySpanReader
     public ReadOnlySpan<byte> ReadBytesPadded(int length)
     {
         ReadOnlySpan<byte> bytes = ReadBytes(length);
-        int padding = Math.PadTo32(length) - length;
-        _position += padding;
+        ReadOnlySpan<byte> padding = ReadBytes(Math.PadTo32(length) - length);
+        if (padding.ContainsAnyExcept((byte)0)) throw new AbiException();
 
         return bytes;
     }
