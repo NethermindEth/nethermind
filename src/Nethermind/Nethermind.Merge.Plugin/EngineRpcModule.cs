@@ -126,8 +126,9 @@ public partial class EngineRpcModule(
     public ResultWrapper<IReadOnlyList<string>> engine_exchangeCapabilities(IEnumerable<string> methods)
         => _capabilitiesHandler.Handle(methods as HashSet<string> ?? [.. methods]);
 
+    // identification.md: a single execution client answers with exactly one entry; only a multiplexer concatenates.
     public ResultWrapper<ClientVersionV1[]> engine_getClientVersionV1(ClientVersionV1 clientVersionV1) =>
-        ResultWrapper<ClientVersionV1[]>.Success(string.IsNullOrEmpty(clientVersionV1.Code) ? [new()] : [new(), clientVersionV1]);
+        ResultWrapper<ClientVersionV1[]>.Success([new()]);
 
     /// <summary>Validates a custody-column update carried by a forkchoice call, and applies it
     /// (execution-apis#793).</summary>

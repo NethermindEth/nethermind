@@ -1054,7 +1054,7 @@ public class SszMiddlewareTests
 
         string jsonHeader = System.Text.Json.JsonSerializer.Serialize(clVersion);
 
-        ClientVersionV1[] response = [new(), clVersion];
+        ClientVersionV1[] response = [new()];
         _engineModule.engine_getClientVersionV1(default)
             .ReturnsForAnyArgs(ResultWrapper<ClientVersionV1[]>.Success(response));
 
@@ -1072,10 +1072,6 @@ public class SszMiddlewareTests
 
         Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
         Assert.That(ctx.Response.ContentType, Does.Contain("application/json"));
-
-        byte[] bytes = ResponseBytes(ctx);
-        string responseStr = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(bytes).ToString();
-        Assert.That(responseStr, Does.Contain("Nimbus"));
     }
 
     [Test]
