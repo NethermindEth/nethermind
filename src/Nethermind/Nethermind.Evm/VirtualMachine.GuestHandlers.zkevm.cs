@@ -220,8 +220,11 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         /// <summary><paramref name="handlers"/>, rounded down to the word boundary it is already on where <see cref="StrictAlignmentFlag"/> is on.</summary>
         /// <remarks>As <see cref="AlignedSlot"/>: one <c>andi</c> lets the JIT prove the handler load aligned and drop its alignment test.</remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static nint* AlignedTable(nint* handlers) =>
-            StrictAlignmentFlag.IsActive ? (nint*)((nuint)handlers & ~(nuint)(sizeof(nint) - 1)) : handlers;
+        private static nint* AlignedTable(nint* handlers)
+        {
+            Debug.Assert(((nuint)handlers & (nuint)(sizeof(nint) - 1)) == 0);
+            return StrictAlignmentFlag.IsActive ? (nint*)((nuint)handlers & ~(nuint)(sizeof(nint) - 1)) : handlers;
+        }
 
         /// <summary>The big-endian 16-bit value in the two lowest bytes of <paramref name="bytes"/>; the bytes above them are ignored.</summary>
         /// <remarks>
