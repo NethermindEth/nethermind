@@ -3582,6 +3582,13 @@ public partial class BlockProcessorTests
             if (rejectedAt == point) rejection.Wait(TimeSpan.FromSeconds(10));
         }
 
+        void RejectOnceFirstSlotIsFilled(Block b, GasValidationResultSlot[] gasResults)
+        {
+            gasResults[0].GetResult();
+            rejection.Set();
+            throw new InvalidBlockException(b, "invalid block access list");
+        }
+
         Block block = BuildParallelValidationBlock(2);
         IWorldState worldState = TestWorldStateFactory.CreateForTest();
         using IDisposable scope = worldState.BeginScope(IWorldState.PreGenesis);
@@ -3592,14 +3599,7 @@ public partial class BlockProcessorTests
         ParallelTestBlockAccessListManager balManager = new(transactionProcessor)
         {
             BalWarmupAction = () => HoldUntilRejected(BalRejectionPoint.DuringWarmup),
-            IncrementalValidationAction = rejected
-                ? (b, gasResults) =>
-                {
-                    gasResults[0].GetResult();
-                    rejection.Set();
-                    throw new InvalidBlockException(b, "invalid block access list");
-                }
-                : null,
+            IncrementalValidationAction = rejected ? RejectOnceFirstSlotIsFilled : null,
         };
         BlockProcessor.ParallelBlockValidationTransactionsExecutor executor = new(
             Substitute.For<IBlockProcessor.IBlockTransactionsExecutor>(),
