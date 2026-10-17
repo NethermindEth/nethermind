@@ -58,11 +58,13 @@ public class ResourcePoolTests
         SnapshotContent content1 = _resourcePool.GetSnapshotContent(usage);
 
         content1.Accounts[new Address("0x1234567890123456789012345678901234567890")] = new Account(1, 2);
-        content1.StorageNodes[(TestItem.KeccakA, TreePath.Empty)] = 1;
+        content1.StateRootPointer = 1;
+        content1.HasStateRoot = true;
+        content1.StorageRoots[TestItem.KeccakA] = 2;
         using (Assert.EnterMultipleScope())
         {
             Assert.That(content1.Accounts, Is.Not.Empty);
-            Assert.That(content1.StorageNodes, Is.Not.Empty);
+            Assert.That(content1.StorageRoots, Is.Not.Empty);
         }
 
         _resourcePool.ReturnSnapshotContent(usage, content1);
@@ -75,7 +77,30 @@ public class ResourcePoolTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(content2.Accounts, Is.Empty);
-            Assert.That(content2.StorageNodes, Is.Empty);
+            Assert.That(content2.StateRootPointer, Is.Zero);
+            Assert.That(content2.HasStateRoot, Is.False);
+            Assert.That(content2.StorageRoots, Is.Empty);
+        }
+    }
+
+    [Test]
+    public void Test_ReturnSortedSnapshotContent_ResetsRootMetadata()
+    {
+        ResourcePool.Usage usage = ResourcePool.Usage.Compact2;
+        SortedSnapshotContent content = _resourcePool.GetSortedSnapshotContent(usage);
+        content.StateRootPointer = 1;
+        content.HasStateRoot = true;
+        content.StorageRoots[TestItem.KeccakA] = 2;
+
+        _resourcePool.ReturnSortedSnapshotContent(usage, content);
+        SortedSnapshotContent recycled = _resourcePool.GetSortedSnapshotContent(usage);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(recycled, Is.SameAs(content));
+            Assert.That(recycled.StateRootPointer, Is.Zero);
+            Assert.That(recycled.HasStateRoot, Is.False);
+            Assert.That(recycled.StorageRoots, Is.Empty);
         }
     }
 

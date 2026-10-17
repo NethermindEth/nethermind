@@ -372,17 +372,16 @@ public class SnapshotBundleWarmerTests
 
         using TrieNodeLog persistedLog = FlatTestHelpers.NewTestLog();
         using TrieNodeLogRetain persistedRetain = persistedLog.RetainActive();
-        using WrittenNodes written = new();
         TrieRoot root;
         using (ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries = new(keys.Length))
         {
             for (int i = 0; i < keys.Length; i++) entries.Add(new PatriciaTree.BulkSetEntry(keys[i], [(byte)(i + 1)]));
             root = LogBulkSet.BulkSet(persistedLog, new DictionaryNodeSource(new Dictionary<TreePath, byte[]>(), new WarmedNodes(1), address),
-                address, TrieRoot.Empty, entries, written, canParallelize: false);
+                address, TrieRoot.Empty, entries, canParallelize: false);
         }
 
-        Dictionary<TreePath, byte[]> persisted = written.AsSpan().ToArray()
-            .ToDictionary(node => node.Path, node => persistedLog.GetRecord(node.Pointer).Rlp.ToArray());
+        Dictionary<TreePath, byte[]> persisted = persistedLog.EnumerateNodes(root.Pointer)
+            .ToDictionary(node => node.Path, node => node.Record.Rlp.ToArray());
         NodeReader reader = new(persisted);
         using SnapshotBundle bundle = NewBundle(reader);
         using TrieNodeLogRetain retain = _log.RetainActive();
@@ -391,7 +390,7 @@ public class SnapshotBundleWarmerTests
         int firstWarmUp = WarmUpAll();
         int secondWarmUp = WarmUpAll();
         int readsBeforeBulkSet = reader.Reads;
-        using LoggedTrie trie = new(bundle, _log, address, preBlockRoot);
+        LoggedTrie trie = new(bundle, _log, address, preBlockRoot);
         using (ArrayPoolListRef<PatriciaTree.BulkSetEntry> change = new(1))
         {
             change.Add(new PatriciaTree.BulkSetEntry(keys[0], newValue));
@@ -462,11 +461,11 @@ public class SnapshotBundleWarmerTests
     /// <summary>Publishes the node <paramref name="rlp"/> into <paramref name="bundle"/> as a bulk set writing it would.</summary>
     private ulong PublishNode(SnapshotBundle bundle, Hash256? address, in TreePath path, byte[] rlp)
     {
-        using WrittenNodes written = new();
-        ulong pointer = _log.AppendRecordFromRlp(address, path, ValueKeccak.Compute(rlp), rlp);
-        written.Add(path, pointer);
-        if (address is null) bundle.PublishLoggedStateNodes(written);
-        else bundle.PublishLoggedStorageNodes(bundle.GetStorageNodeDestination(address), written);
+        ValueHash256 hash = ValueKeccak.Compute(rlp);
+        ulong pointer = _log.AppendRecordFromRlp(address, path, hash, rlp);
+        TrieRoot root = new(hash, pointer);
+        if (address is null) bundle.PublishLoggedStateRoot(root);
+        else bundle.PublishLoggedStorageRoot(address, root);
         return pointer;
     }
 

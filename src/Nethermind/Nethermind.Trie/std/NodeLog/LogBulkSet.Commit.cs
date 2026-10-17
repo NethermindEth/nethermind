@@ -136,7 +136,6 @@ internal static partial class LogBulkSet
                 hashes[i].Bytes.CopyTo(buffer.AsSpan(recordStarts[i] + NodeRecord.HashOffset));
                 ulong pointer = basePointer + (ulong)(recordStarts[i] - baseOffset);
                 Link(hashed[i], top, ChildRef.ForHash(hashes[i], pointer), ref topReference);
-                _written.Add(_arena.Nodes[hashed[i]].Path, pointer);
                 bloom?.Add(BinaryPrimitives.ReadUInt64LittleEndian(buffer.AsSpan(recordStarts[i] + NodeRecord.NodeKeyOffset)));
             }
         }

@@ -13,6 +13,7 @@ using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Proofs;
 using Nethermind.Trie;
+using Nethermind.Trie.NodeLog;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 
@@ -76,6 +77,54 @@ public class FlatStateReaderTests
         }
     }
 
+    [Test]
+    public void RunTreeVisitor_ReadsSnapshotRootsWithoutPersistence([Values] bool fullScan)
+    {
+        CountingTrieReader trieReader = CountingTrieReader.WithSingleAccountAndSlot(TestItem.AddressA, 1, out Hash256 stateRoot);
+        BlockHeader header = Build.A.BlockHeader.WithNumber(5).WithStateRoot(stateRoot).TestObject;
+        using TrieNodeLog log = FlatTestHelpers.NewTestLog();
+        ResourcePool pool = new(new FlatDbConfig());
+        using Snapshot snapshot = pool.CreateSnapshot(StateId.PreGenesis, new StateId(header), ResourcePool.Usage.MainBlockProcessing, log);
+        trieReader.AddRootsTo(snapshot, log);
+        FlatStateReader reader = CreateReader(new CurrentBundleFlatDbManager(trieReader, snapshot));
+
+        if (fullScan)
+        {
+            TreeDumper dumper = new();
+            reader.RunTreeVisitor(dumper, header);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(dumper.ToString(), Does.Contain("STATE TREE"));
+                Assert.That(dumper.ToString(), Does.Contain("ACCOUNT"));
+                Assert.That(dumper.ToString(), Does.Not.Contain("MISSING"));
+            }
+        }
+        else
+        {
+            AccountProofCollector collector = new(TestItem.AddressA, [(UInt256)1]);
+            reader.RunTreeVisitor(collector, header);
+            AccountProof proof = collector.BuildResult();
+            Assert.That(proof.Proof, Has.Length.EqualTo(1));
+            Assert.That(proof.StorageProofs, Has.Length.EqualTo(1));
+            Assert.That(proof.StorageProofs[0].Proof, Has.Length.EqualTo(1));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(proof.Address, Is.EqualTo(TestItem.AddressA));
+                Assert.That(proof.Balance, Is.EqualTo(UInt256.One));
+                Assert.That(proof.Nonce, Is.Zero);
+                Assert.That(Keccak.Compute(proof.Proof[0]), Is.EqualTo(stateRoot));
+                Assert.That(Keccak.Compute(proof.StorageProofs[0].Proof[0]), Is.EqualTo(proof.StorageRoot));
+                Assert.That(proof.StorageProofs[0].Value!.Value.ToArray(), Is.EqualTo(new byte[] { 1 }));
+            }
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trieReader.StateRlpLoads, Is.Zero);
+            Assert.That(trieReader.StorageRlpLoads, Is.Zero);
+        }
+    }
+
     private class ThrowingFlatDbManager : IFlatDbManager
     {
         public ReadOnlySnapshotBundle GatherReadOnlySnapshotBundle(in StateId baseBlock) =>
@@ -88,10 +137,14 @@ public class FlatStateReaderTests
         public void AddSnapshot(Snapshot snapshot, TransientResource transientResource) { }
     }
 
-    private class CurrentBundleFlatDbManager(IPersistence.IPersistenceReader persistenceReader) : IFlatDbManager
+    private class CurrentBundleFlatDbManager(IPersistence.IPersistenceReader persistenceReader, Snapshot? snapshot = null) : IFlatDbManager
     {
-        public ReadOnlySnapshotBundle GatherReadOnlySnapshotBundle(in StateId baseBlock) =>
-            new(new SnapshotPooledList(0), persistenceReader, false, PersistedSnapshotStack.Empty(false));
+        public ReadOnlySnapshotBundle GatherReadOnlySnapshotBundle(in StateId baseBlock)
+        {
+            snapshot?.AcquireLease();
+            SnapshotPooledList snapshots = snapshot is null ? new SnapshotPooledList(0) : FlatTestHelpers.SnapshotList(snapshot);
+            return new(snapshots, persistenceReader, false, PersistedSnapshotStack.Empty(false));
+        }
 
         public SnapshotBundle GatherSnapshotBundle(in StateId baseBlock, ResourcePool.Usage usage) => throw new NotSupportedException();
         public void FlushCache(CancellationToken cancellationToken) { }
@@ -100,7 +153,7 @@ public class FlatStateReaderTests
         public void AddSnapshot(Snapshot snapshot, TransientResource transientResource) { }
     }
 
-    private sealed class CountingTrieReader(byte[] stateRootRlp, byte[] storageRootRlp) : IPersistence.IPersistenceReader
+    private sealed class CountingTrieReader(Hash256 addressHash, byte[] stateRootRlp, byte[] storageRootRlp) : IPersistence.IPersistenceReader
     {
         public int StateRlpLoads { get; private set; }
         public int StorageRlpLoads { get; private set; }
@@ -120,8 +173,15 @@ public class FlatStateReaderTests
             NodeStorage nodeStorage = new(trieDb);
             stateRoot = stateTree.RootHash;
             return new CountingTrieReader(
+                addressHash,
                 nodeStorage.Get(null, TreePath.Empty, stateTree.RootHash)!,
                 nodeStorage.Get(addressHash, TreePath.Empty, storageTree.RootHash)!);
+        }
+
+        public void AddRootsTo(Snapshot snapshot, TrieNodeLog log)
+        {
+            snapshot.Content.SetStateNodeRlp(log, TreePath.Empty, stateRootRlp);
+            snapshot.Content.SetStorageNodeRlp(log, addressHash, TreePath.Empty, storageRootRlp);
         }
 
         public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags)

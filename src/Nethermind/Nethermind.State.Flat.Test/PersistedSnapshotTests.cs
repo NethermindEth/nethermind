@@ -5,13 +5,17 @@ using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Threading;
 using Nethermind.Db;
 using Nethermind.Int256;
+using Nethermind.State.Flat.Io;
+using Nethermind.State.Flat.Test.Io;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using Nethermind.Trie;
@@ -64,7 +68,7 @@ public class PersistedSnapshotTests
         for (int i = 0; i < 256; i++)
         {
             Hash256 hash = Keccak.Compute(i.ToString());
-            TreePath path = new(hash, (i % 3) switch { 0 => 3, 1 => 8, _ => 20 });
+            TreePath path = FlatTestHelpers.CanonicalPath(hash, (i % 3) switch { 0 => 3, 1 => 8, _ => 20 });
             content.SetStateNodeRlp(_log, path, FlatTestHelpers.LeafRlp(0xC2, 0x80, 0x80));
             content.SetStorageNodeRlp(_log, TestItem.KeccakA, path, FlatTestHelpers.LeafRlp(0xC2, 0x80, 0x80));
         }
@@ -75,6 +79,257 @@ public class PersistedSnapshotTests
         using PersistedSnapshot persisted = CreatePersistedSnapshot(from, to, data);
 
         Assert.DoesNotThrow(() => PersistedSnapshotUtils.ValidatePersistedSnapshot(snapshot, persisted));
+    }
+
+    [Test]
+    public void Loader_sizes_reachable_nodes_independently_of_root_metadata([Values] bool storage)
+    {
+        using FlatTestContainer tier = new(new FlatDbConfig { PersistedSnapshotDedicatedArenaThresholdBytes = 1 },
+            arenaFileSizeBytes: 4096, blobFileSizeBytes: 4 * 1024 * 1024);
+        using TrieNodeLogRetain original = _log.RetainActive();
+        Hash256? address = storage ? TestItem.KeccakA : null;
+        using ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries = new(512);
+        for (int i = 0; i < 512; i++)
+            entries.Add(new PatriciaTree.BulkSetEntry(Keccak.Compute(BitConverter.GetBytes(i)).ValueHash256, new byte[32]));
+        DictionaryNodeSource source = new(new Dictionary<TreePath, byte[]>(), new WarmedNodes(1), address);
+        TrieRoot root = LogBulkSet.BulkSet(_log, source, address, TrieRoot.Empty, entries, canParallelize: true);
+        FlatTestHelpers.StartNewGeneration(_log);
+        using Snapshot snapshot = new(StateId.PreGenesis, new StateId(1, root.Hash), new SnapshotContent(), _resourcePool, ResourcePool.Usage.MainBlockProcessing) { LogRetain = original.Copy() };
+        if (storage) snapshot.Content.StorageRoots[address!] = root.Pointer;
+        else
+        {
+            snapshot.Content.StateRootPointer = root.Pointer;
+            snapshot.Content.HasStateRoot = true;
+        }
+
+        using PersistedSnapshot persisted = tier.ConvertToPersistedBase(snapshot);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(snapshot.EstimateMemory(), Is.LessThan(256), "only root metadata is retained");
+            Assert.That(persisted.Size, Is.GreaterThan(4096), "fixed arena must accommodate the reachable node table");
+            Assert.That(source.FetchCount, Is.Zero);
+            Assert.DoesNotThrow(() => PersistedSnapshotUtils.ValidatePersistedSnapshot(snapshot, persisted, dumpWhenFailed: false));
+        }
+    }
+
+    [Test]
+    public void IncrementalSnapshotsPersistOnlyChangedNodesAndReadBackTheCompleteTrie([Values] bool storage)
+    {
+        Hash256? address = storage ? TestItem.KeccakA : null;
+        DictionaryNodeSource source = new(new Dictionary<TreePath, byte[]>(), new WarmedNodes(1), address);
+        Hash256[] keys = Enumerable.Range(0, 256).Select(i => Keccak.Compute(BitConverter.GetBytes(i))).ToArray();
+        TrieNodeLogRetain firstRetain = _log.RetainActive();
+        using ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries = new(keys.Length);
+        foreach (Hash256 key in keys) entries.Add(new(key.ValueHash256, new byte[32]));
+        TrieRoot firstRoot = LogBulkSet.BulkSet(_log, source, address, TrieRoot.Empty, entries, canParallelize: true);
+        using Snapshot first = Create(0, ValueKeccak.EmptyTreeHash, firstRoot, firstRetain);
+        TrieNodeLogRetain secondRetain = _log.RetainActive();
+        entries.Clear();
+        entries.Add(new(keys[0].ValueHash256, Enumerable.Repeat((byte)1, 32).ToArray()));
+        TrieRoot secondRoot = LogBulkSet.BulkSet(_log, source, address, firstRoot, entries, canParallelize: false);
+        using Snapshot second = Create(1, firstRoot.Hash, secondRoot, secondRetain);
+        int firstCount = storage ? first.StorageNodes.Count() : first.StateNodes.Count();
+        int secondCount = storage ? second.StorageNodes.Count() : second.StateNodes.Count();
+        using PersistedSnapshotStack persisted = new(new(2)
+        {
+            CreatePersistedSnapshot(first.From, first.To, PersistedSnapshotBuilderTestExtensions.Build(first, _blobs)),
+            CreatePersistedSnapshot(second.From, second.To, PersistedSnapshotBuilderTestExtensions.Build(second, _blobs))
+        }, recordDetailedMetrics: false);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(firstRetain.Generation, Is.EqualTo(secondRetain.Generation));
+            Assert.That(secondCount, Is.InRange(1, 16));
+            Assert.That(firstCount, Is.GreaterThan(secondCount * 8));
+            foreach ((TreePath path, _, NodeRecordRef record) in _log.EnumerateNodes(secondRoot.Pointer))
+            {
+                bool found = storage ? persisted.TryLoadStorageRlp(address!, path, out byte[]? rlp) : persisted.TryLoadStateRlp(path, out rlp);
+                Assert.That(found, Is.True, path.ToString());
+                Assert.That(rlp, Is.EqualTo(record.Rlp.ToArray()), path.ToString());
+            }
+        }
+
+        Snapshot Create(ulong block, ValueHash256 from, TrieRoot root, TrieNodeLogRetain retain)
+        {
+            Snapshot snapshot = new(new(block, from), new(block + 1, root.Hash), new SnapshotContent(), _resourcePool, ResourcePool.Usage.MainBlockProcessing) { LogRetain = retain };
+            if (storage) snapshot.Content.StorageRoots[address!] = root.Pointer;
+            else
+            {
+                snapshot.Content.HasStateRoot = true;
+                snapshot.Content.StateRootPointer = root.Pointer;
+            }
+            return snapshot;
+        }
+    }
+
+    [Test]
+    public void Roundtrip_stops_at_persisted_child_boundaries([Values] bool storage)
+    {
+        Hash256 address = TestItem.KeccakA;
+        TreePath available = TreePath.FromHexString("1");
+        TreePath persistedPath = TreePath.FromHexString("2");
+        byte[] availableRlp = FlatTestHelpers.LeafRlp(new byte[40]);
+        byte[] persistedRlp = FlatTestHelpers.LeafRlp(new byte[41]);
+        ChildRef[] children = new ChildRef[16];
+        children[1] = ChildRef.ForHash(ValueKeccak.Compute(availableRlp), 0);
+        children[2] = ChildRef.ForHash(ValueKeccak.Compute(persistedRlp), 0);
+        byte[] rootRlp = new byte[NodeRlp.BranchLength(children)];
+        NodeRlp.WriteBranch(children, rootRlp);
+        using Snapshot snapshot = FlatTestHelpers.MakeSnapshot(_resourcePool, _log, content =>
+        {
+            if (storage)
+            {
+                content.SetStorageNodeRlp(_log, address, TreePath.Empty, rootRlp);
+                content.SetStorageNodeRlp(_log, address, available, availableRlp);
+            }
+            else
+            {
+                content.SetStateNodeRlp(_log, TreePath.Empty, rootRlp);
+                content.SetStateNodeRlp(_log, available, availableRlp);
+            }
+        });
+        byte[] data = PersistedSnapshotBuilderTestExtensions.Build(snapshot, _blobs);
+        using PersistedSnapshot persisted = CreatePersistedSnapshot(snapshot.From, snapshot.To, data);
+        ValueHash256 addressHash = address.ValueHash256;
+        bool found = storage ? persisted.TryLoadStorageNodeRlp(addressHash, available, out byte[]? rlp)
+            : persisted.TryLoadStateNodeRlp(available, out rlp);
+        bool boundary = storage ? persisted.TryLoadStorageNodeRlp(addressHash, persistedPath, out _)
+            : persisted.TryLoadStateNodeRlp(persistedPath, out _);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found, Is.True);
+            Assert.That(rlp, Is.EqualTo(availableRlp));
+            Assert.That(boundary, Is.False, "a hash-only child is not reconstructed or serialized");
+            Assert.DoesNotThrow(() => PersistedSnapshotUtils.ValidatePersistedSnapshot(snapshot, persisted, dumpWhenFailed: false));
+        }
+    }
+
+    [Test]
+    public void Serialization_keeps_buffered_pointers_alive_after_retain_release_until_write_completion([Values] bool failWrite)
+    {
+        using Snapshot snapshot = _resourcePool.CreateSnapshot(StateId.PreGenesis, new(1, Keccak.Zero), ResourcePool.Usage.MainBlockProcessing, _log);
+        byte[] stateRlp = FlatTestHelpers.LeafRlp(1);
+        byte[] storageRlp = FlatTestHelpers.LeafRlp(2);
+        ulong statePointer = _log.AppendRecordFromRlp(null, TreePath.Empty, ValueKeccak.Compute(stateRlp), stateRlp);
+        ulong storagePointer = _log.AppendRecordFromRlp(TestItem.KeccakA, TreePath.Empty, ValueKeccak.Compute(storageRlp), storageRlp);
+        FlatTestHelpers.StartNewGeneration(_log);
+        snapshot.Content.HasStateRoot = true;
+        snapshot.Content.StateRootPointer = statePointer;
+        snapshot.Content.StorageRoots[TestItem.KeccakA] = storagePointer;
+        using PooledByteBufferWriter pooled = new(4096);
+        using BlobArenaWriter blobs = _blobs.CreateWriter(4096);
+        using BloomFilter bloom = BloomFilter.AlwaysTrue();
+        bool called = false;
+        CallbackWriter writer = new(pooled, () =>
+        {
+            called = true;
+            snapshot.LogRetain!.Dispose();
+            for (int i = 0; i < 10; i++) FlatTestHelpers.StartNewGeneration(_log);
+            Assert.That(() => _log.FindBloom(statePointer) is null, Is.True.After(5_000, 10));
+            Assert.That(_log.TryLocate(statePointer, out _), Is.True, "buffered pointers still resolve after extraction enumerators finish");
+            Assert.That(_log.TryLocate(storagePointer, out _), Is.True);
+            if (failWrite) throw new IOException("Injected table write failure.");
+        });
+
+        if (failWrite)
+            Assert.That(() => PersistedSnapshotBuilder.Build(snapshot, ref writer, blobs, bloom), Throws.TypeOf<IOException>());
+        else
+        {
+            PersistedSnapshotBuilder.Build(snapshot, ref writer, blobs, bloom);
+            blobs.Complete();
+            using PersistedSnapshot persisted = CreatePersistedSnapshot(snapshot.From, snapshot.To, pooled.WrittenSpan.ToArray());
+            Assert.That(persisted.TryLoadStateNodeRlp(TreePath.Empty, out byte[]? state), Is.True);
+            Assert.That(state, Is.EqualTo(stateRlp));
+            Assert.That(persisted.TryLoadStorageNodeRlp(TestItem.KeccakA.ValueHash256, TreePath.Empty, out byte[]? storage), Is.True);
+            Assert.That(storage, Is.EqualTo(storageRlp));
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(called, Is.True);
+            Assert.That(_log.TryLocate(statePointer, out _), Is.False, "completion or failure releases the outer reader");
+            Assert.That(_log.TryLocate(storagePointer, out _), Is.False);
+        }
+    }
+
+    [Test]
+    public void Preparation_failure_releases_the_outer_log_reader()
+    {
+        byte[] rlp = FlatTestHelpers.LeafRlp(1);
+        ulong inherited = _log.AppendRecordFromRlp(null, TreePath.Empty, ValueKeccak.Compute(rlp), rlp);
+        FlatTestHelpers.StartNewGeneration(_log);
+        using Snapshot snapshot = _resourcePool.CreateSnapshot(StateId.PreGenesis, StateId.PreGenesis, ResourcePool.Usage.MainBlockProcessing, _log);
+        snapshot.Content.HasStateRoot = true;
+        snapshot.Content.StateRootPointer = inherited;
+        // A corrupt offset makes one extraction job fail after the outer reader has entered.
+        ulong active = _log.Reserve(0, out _, out _) & ~(ulong)uint.MaxValue;
+        snapshot.Content.StorageRoots[TestItem.KeccakA] = active | uint.MaxValue;
+
+        Assert.That(() => new PersistedSnapshotBuilder.PreparedSnapshot(snapshot), Throws.TypeOf<IndexOutOfRangeException>());
+        for (int i = 0; i < 10; i++) FlatTestHelpers.StartNewGeneration(_log);
+        Assert.That(() => _log.FindBloom(inherited) is null, Is.True.After(5_000, 10));
+        Assert.That(_log.TryLocate(inherited, out _), Is.False, "a failed preparation must not retain retired records");
+    }
+
+    [Test]
+    public void Loader_roundtrips_compacted_final_roots_and_clear_boundaries([Values] bool recreate)
+    {
+        using FlatTestContainer tier = new(arenaFileSizeBytes: 4096);
+        byte[] firstState = FlatTestHelpers.LeafRlp(1);
+        byte[] finalState = FlatTestHelpers.LeafRlp(2);
+        TreePath oldStorage = TreePath.FromHexString("1");
+        TreePath newStorage = TreePath.FromHexString("2");
+        Hash256 address = TestItem.AddressA.ToAccountPath.ToHash256();
+        StateId firstId = new(1, ValueKeccak.Compute(firstState));
+        StateId clearId = new(2, ValueKeccak.Compute(finalState));
+        StateId finalId = new(3, clearId.StateRoot);
+        Snapshot first = _resourcePool.CreateSnapshot(StateId.PreGenesis, firstId, ResourcePool.Usage.MainBlockProcessing, _log);
+        first.Content.SetStateNodeRlp(_log, TreePath.Empty, firstState);
+        first.Content.SetStorageNodeRlp(_log, address, oldStorage, FlatTestHelpers.LeafRlp(3));
+        first.Content.Accounts[TestItem.AddressA] = new Account(1, 10);
+        first.Content.Storages[(TestItem.AddressA, (UInt256)1)] = 1;
+        Snapshot clear = _resourcePool.CreateSnapshot(firstId, clearId, ResourcePool.Usage.MainBlockProcessing, _log);
+        clear.Content.SetStateNodeRlp(_log, TreePath.Empty, finalState);
+        clear.Content.SelfDestructedStorageAddresses[TestItem.AddressA] = false;
+        clear.Content.StorageRoots[address] = 0;
+        Snapshot final = _resourcePool.CreateSnapshot(clearId, finalId, ResourcePool.Usage.MainBlockProcessing, _log);
+        if (recreate)
+        {
+            final.Content.SetStorageNodeRlp(_log, address, newStorage, FlatTestHelpers.LeafRlp(4));
+            final.Content.Storages[(TestItem.AddressA, (UInt256)2)] = 42;
+        }
+        using SnapshotPooledList inputs = FlatTestHelpers.SnapshotList(first, clear, final);
+        using Snapshot compacted = tier.Resolve<ISnapshotCompactor>().CompactSnapshotBundle(inputs);
+        using PersistedSnapshot persisted = tier.ConvertToPersistedBase(compacted);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(persisted.From, Is.EqualTo(StateId.PreGenesis));
+            Assert.That(persisted.To, Is.EqualTo(finalId));
+            Assert.That(persisted.TryLoadStateNodeRlp(TreePath.Empty, out byte[]? state), Is.True);
+            Assert.That(state, Is.EqualTo(finalState), "unchanged endpoint inherits the final matching state root");
+            Assert.That(persisted.TryLoadStorageNodeRlp(address.ValueHash256, oldStorage, out _), Is.False);
+            Assert.That(persisted.TryLoadStorageNodeRlp(address.ValueHash256, newStorage, out _), Is.EqualTo(recreate));
+            Assert.That(persisted.TryGetSelfDestructFlag(TestItem.AddressA), Is.False);
+            Assert.That(persisted.TryGetSlot(TestItem.AddressA, 1, out _), Is.False, "pre-clear flat slots are omitted");
+            Assert.DoesNotThrow(() => PersistedSnapshotUtils.ValidatePersistedSnapshot(compacted, persisted, dumpWhenFailed: false));
+        }
+    }
+
+    private struct CallbackWriter(PooledByteBufferWriter output, Action beforeWrite) : IByteBufferWriter
+    {
+        private Action? _beforeWrite = beforeWrite;
+        public Span<byte> GetSpan(int sizeHint) => output.GetWriter().GetSpan(sizeHint);
+        public void Advance(int count) => output.GetWriter().Advance(count);
+        public long Written
+        {
+            get
+            {
+                Action? callback = _beforeWrite;
+                _beforeWrite = null;
+                callback?.Invoke();
+                return output.GetWriter().Written;
+            }
+        }
+        public readonly long FirstOffset => output.GetWriter().FirstOffset;
     }
 
     private static IEnumerable<TestCaseData> RoundTripTestCases()
@@ -91,19 +346,19 @@ public class PersistedSnapshotTests
 
         yield return new TestCaseData((Action<SnapshotContent, TrieNodeLog>)((c, log) =>
         {
-            TreePath path = new(Keccak.Compute("path"), 4);
+            TreePath path = FlatTestHelpers.CanonicalPath(Keccak.Compute("path"), 4);
             c.SetStateNodeRlp(log, path, FlatTestHelpers.LeafRlp(0xC2, 0x80, 0x80));
         })).SetName("StateNode_TopPath");
 
         yield return new TestCaseData((Action<SnapshotContent, TrieNodeLog>)((c, log) =>
         {
-            TreePath path = new(Keccak.Compute("path"), 8);
+            TreePath path = FlatTestHelpers.CanonicalPath(Keccak.Compute("path"), 8);
             c.SetStateNodeRlp(log, path, FlatTestHelpers.LeafRlp(0xC2, 0x80, 0x80));
         })).SetName("StateNode_CompactPath");
 
         yield return new TestCaseData((Action<SnapshotContent, TrieNodeLog>)((c, log) =>
         {
-            TreePath longPath = new(Keccak.Compute("longpath"), 20);
+            TreePath longPath = FlatTestHelpers.CanonicalPath(Keccak.Compute("longpath"), 20);
             c.SetStateNodeRlp(log, longPath, FlatTestHelpers.LeafRlp(0xC2, 0x80, 0x81));
         })).SetName("StateNode_LongPath");
 
@@ -151,21 +406,21 @@ public class PersistedSnapshotTests
         yield return new TestCaseData((Action<SnapshotContent, TrieNodeLog>)((c, log) =>
         {
             Hash256 address = Keccak.Compute("address");
-            TreePath path = new(Keccak.Compute("path"), 4);
+            TreePath path = FlatTestHelpers.CanonicalPath(Keccak.Compute("path"), 4);
             c.SetStorageNodeRlp(log, address, path, FlatTestHelpers.LeafRlp(0xC1, 0x80));
         })).SetName("StorageNode_TopPath");
 
         yield return new TestCaseData((Action<SnapshotContent, TrieNodeLog>)((c, log) =>
         {
             Hash256 address = Keccak.Compute("address");
-            TreePath path = new(Keccak.Compute("path"), 6);
+            TreePath path = FlatTestHelpers.CanonicalPath(Keccak.Compute("path"), 6);
             c.SetStorageNodeRlp(log, address, path, FlatTestHelpers.LeafRlp(0xC1, 0x80));
         })).SetName("StorageNode_CompactPath");
 
         yield return new TestCaseData((Action<SnapshotContent, TrieNodeLog>)((c, log) =>
         {
             Hash256 address = Keccak.Compute("address");
-            TreePath longPath = new(Keccak.Compute("longpath"), 18);
+            TreePath longPath = FlatTestHelpers.CanonicalPath(Keccak.Compute("longpath"), 18);
             c.SetStorageNodeRlp(log, address, longPath, FlatTestHelpers.LeafRlp(0xC3, 0x80, 0x81, 0x82));
         })).SetName("StorageNode_LongPath");
 
@@ -188,23 +443,23 @@ public class PersistedSnapshotTests
             c.SelfDestructedStorageAddresses[TestItem.AddressD] = false;
             c.SelfDestructedStorageAddresses[TestItem.AddressE] = true;
 
-            TreePath topStatePath = new(Keccak.Compute("tp"), 3);
+            TreePath topStatePath = FlatTestHelpers.CanonicalPath(Keccak.Compute("tp"), 3);
             c.SetStateNodeRlp(log, topStatePath, FlatTestHelpers.LeafRlp(0xC1, 0x80));
 
-            TreePath shortStatePath = new(Keccak.Compute("sp"), 8);
+            TreePath shortStatePath = FlatTestHelpers.CanonicalPath(Keccak.Compute("sp"), 8);
             c.SetStateNodeRlp(log, shortStatePath, FlatTestHelpers.LeafRlp(0xC2, 0x80, 0x80));
 
-            TreePath longStatePath = new(Keccak.Compute("lp"), 20);
+            TreePath longStatePath = FlatTestHelpers.CanonicalPath(Keccak.Compute("lp"), 20);
             c.SetStateNodeRlp(log, longStatePath, FlatTestHelpers.LeafRlp(0xC2, 0x80, 0x81));
 
             Hash256 storageAddr = Keccak.Compute("storageAddr");
-            TreePath topStoragePath = new(Keccak.Compute("tsp"), 3);
+            TreePath topStoragePath = FlatTestHelpers.CanonicalPath(Keccak.Compute("tsp"), 3);
             c.SetStorageNodeRlp(log, storageAddr, topStoragePath, FlatTestHelpers.LeafRlp(0xC1, 0x80));
 
-            TreePath shortStoragePath = new(Keccak.Compute("ssp"), 6);
+            TreePath shortStoragePath = FlatTestHelpers.CanonicalPath(Keccak.Compute("ssp"), 6);
             c.SetStorageNodeRlp(log, storageAddr, shortStoragePath, FlatTestHelpers.LeafRlp(0xC1, 0x80));
 
-            TreePath longStoragePath = new(Keccak.Compute("lsp"), 18);
+            TreePath longStoragePath = FlatTestHelpers.CanonicalPath(Keccak.Compute("lsp"), 18);
             c.SetStorageNodeRlp(log, storageAddr, longStoragePath, FlatTestHelpers.LeafRlp(0xC3, 0x80, 0x81, 0x82));
         })).SetName("AllDataTypes");
     }
@@ -293,16 +548,16 @@ public class PersistedSnapshotTests
         content.Storages[(TestItem.AddressA, (UInt256)2)] = null;
         content.SelfDestructedStorageAddresses[TestItem.AddressD] = false;   // 0x00 destructed
         content.SelfDestructedStorageAddresses[TestItem.AddressE] = true;    // 0x01 new-account
-        TreePath stTop = new(Keccak.Compute("st-top"), 3);
-        TreePath stMid = new(Keccak.Compute("st-mid"), 8);
-        TreePath stLong = new(Keccak.Compute("st-long"), 20);
+        TreePath stTop = FlatTestHelpers.CanonicalPath(Keccak.Compute("st-top"), 3);
+        TreePath stMid = FlatTestHelpers.CanonicalPath(Keccak.Compute("st-mid"), 8);
+        TreePath stLong = FlatTestHelpers.CanonicalPath(Keccak.Compute("st-long"), 20);
         content.SetStateNodeRlp(_log, stTop, FlatTestHelpers.LeafRlp(0xC1, 0x80));
         content.SetStateNodeRlp(_log, stMid, FlatTestHelpers.LeafRlp(0xC2, 0x80, 0x80));
         content.SetStateNodeRlp(_log, stLong, FlatTestHelpers.LeafRlp(0xC2, 0x80, 0x81));
         Hash256 storageAddr = Keccak.Compute("storage-addr");
-        TreePath snTop = new(Keccak.Compute("sn-top"), 3);
-        TreePath snMid = new(Keccak.Compute("sn-mid"), 6);
-        TreePath snLong = new(Keccak.Compute("sn-long"), 18);
+        TreePath snTop = FlatTestHelpers.CanonicalPath(Keccak.Compute("sn-top"), 3);
+        TreePath snMid = FlatTestHelpers.CanonicalPath(Keccak.Compute("sn-mid"), 6);
+        TreePath snLong = FlatTestHelpers.CanonicalPath(Keccak.Compute("sn-long"), 18);
         content.SetStorageNodeRlp(_log, storageAddr, snTop, FlatTestHelpers.LeafRlp(0xC1, 0x81));
         content.SetStorageNodeRlp(_log, storageAddr, snMid, FlatTestHelpers.LeafRlp(0xC1, 0x82));
         content.SetStorageNodeRlp(_log, storageAddr, snLong, FlatTestHelpers.LeafRlp(0xC3, 0x80, 0x81, 0x82));
@@ -351,8 +606,8 @@ public class PersistedSnapshotTests
         Assert.That(slots[(TestItem.AddressA, (UInt256)1)]!.Value.ToBigEndian(), Is.EqualTo(slotVal));
         Assert.That(slots[(TestItem.AddressA, (UInt256)2)], Is.Null, "deleted slot surfaces as null");
 
-        Assert.That(stateNodes, Is.EqualTo(3), "one state node per depth tier");
-        Assert.That(storageNodes, Is.EqualTo(3), "one storage node per depth tier");
+        Assert.That(stateNodes, Is.EqualTo(snapshot.StateNodes.Count()), "all reachable state nodes, including connecting ancestors");
+        Assert.That(storageNodes, Is.EqualTo(snapshot.StorageNodes.Count()), "all reachable storage nodes, including connecting ancestors");
     }
 
     // A single account with enough storage slots to span many 4 KiB data blocks (and far exceed the
@@ -475,7 +730,7 @@ public class PersistedSnapshotTests
     }
 
     // When a column / sub-tag tier is absent, the enumerators must seek past it gracefully:
-    // state nodes only in the top tier, storage nodes only in the fallback tier, and no
+    // state nodes only in the top tier, storage nodes in top/fallback but not compact, and no
     // per-address column at all.
     [Test]
     public void Scan_AbsentTiers_SkipMissingColumnsAndSubTags()
@@ -485,10 +740,10 @@ public class PersistedSnapshotTests
 
         TrieNodeLogRetain logRetain = _log.RetainActive();
         SnapshotContent content = new();
-        TreePath onlyTop = new(Keccak.Compute("only-top"), 3);
+        TreePath onlyTop = FlatTestHelpers.CanonicalPath(Keccak.Compute("only-top"), 3);
         content.SetStateNodeRlp(_log, onlyTop, FlatTestHelpers.LeafRlp(0xC1, 0x80));
         Hash256 storageAddr = Keccak.Compute("absent-storage");
-        TreePath onlyFallback = new(Keccak.Compute("only-fallback"), 18);
+        TreePath onlyFallback = FlatTestHelpers.CanonicalPath(Keccak.Compute("only-fallback"), 18);
         content.SetStorageNodeRlp(_log, storageAddr, onlyFallback, FlatTestHelpers.LeafRlp(0xC3, 0x80, 0x81, 0x82));
 
         using Snapshot snapshot = new(from, to, content, _resourcePool, ResourcePool.Usage.MainBlockProcessing) { LogRetain = logRetain };
@@ -505,8 +760,8 @@ public class PersistedSnapshotTests
         }
 
         Assert.That(perAddrCount, Is.EqualTo(0), "no per-address column → empty enumeration");
-        Assert.That(stateNodes, Is.EqualTo(1), "only the top-tier state node, compact/fallback columns absent");
-        Assert.That(storageNodes, Is.EqualTo(1), "only the fallback-tier storage node, top/compact sub-tags absent");
+        Assert.That(stateNodes, Is.EqualTo(2), "root and leaf in the top tier, compact/fallback columns absent");
+        Assert.That(storageNodes, Is.EqualTo(2), "top-tier root and fallback-tier leaf, compact sub-tag absent");
     }
 
     // Exercises the read-path miss branches: a present snapshot queried for keys that are
@@ -526,10 +781,10 @@ public class PersistedSnapshotTests
         content.Accounts[TestItem.AddressC] = Build.An.Account.WithBalance(9).TestObject; // 2nd address → real address BTree
         content.Storages[(TestItem.AddressA, (UInt256)1)] = new UInt256(slotVal, isBigEndian: true);
         content.SelfDestructedStorageAddresses[TestItem.AddressA] = true;
-        TreePath statePath = new(Keccak.Compute("sp"), 4);
+        TreePath statePath = FlatTestHelpers.CanonicalPath(Keccak.Compute("sp"), 4);
         content.SetStateNodeRlp(_log, statePath, FlatTestHelpers.LeafRlp(0xC1, 0x80));
         Hash256 storageHashObj = Keccak.Compute("sh");
-        TreePath storagePath = new(Keccak.Compute("stp"), 4);
+        TreePath storagePath = FlatTestHelpers.CanonicalPath(Keccak.Compute("stp"), 4);
         content.SetStorageNodeRlp(_log, storageHashObj, storagePath, FlatTestHelpers.LeafRlp(0xC1, 0x81));
 
         using Snapshot snapshot = new(from, to, content, _resourcePool, ResourcePool.Usage.MainBlockProcessing) { LogRetain = logRetain };
@@ -548,15 +803,15 @@ public class PersistedSnapshotTests
         Assert.That(persisted.TryGetSelfDestructFlag(TestItem.AddressC), Is.Null);
 
         // Absent state node.
-        Assert.That(persisted.TryLoadStateNodeRlp(new TreePath(Keccak.Compute("absent"), 4), out byte[]? sn), Is.False);
+        Assert.That(persisted.TryLoadStateNodeRlp(FlatTestHelpers.CanonicalPath(Keccak.Compute("absent"), 4), out byte[]? sn), Is.False);
         Assert.That(sn, Is.Null);
 
         // Storage node: absent addressHash; present addressHash with absent path in the same
         // sub-tag tier and in a different (absent) tier.
         ValueHash256 storageHash = new(storageHashObj.Bytes);
         Assert.That(persisted.TryLoadStorageNodeRlp(new ValueHash256(Keccak.Compute("nope").Bytes), storagePath, out _), Is.False);
-        Assert.That(persisted.TryLoadStorageNodeRlp(storageHash, new TreePath(Keccak.Compute("absentSameTier"), 4), out _), Is.False);
-        Assert.That(persisted.TryLoadStorageNodeRlp(storageHash, new TreePath(Keccak.Compute("absentDeep"), 18), out _), Is.False);
+        Assert.That(persisted.TryLoadStorageNodeRlp(storageHash, FlatTestHelpers.CanonicalPath(Keccak.Compute("absentSameTier"), 4), out _), Is.False);
+        Assert.That(persisted.TryLoadStorageNodeRlp(storageHash, FlatTestHelpers.CanonicalPath(Keccak.Compute("absentDeep"), 18), out _), Is.False);
 
         Assert.That(persisted.TryGetAccount(TestItem.AddressA, out _), Is.True);
         Assert.That(persisted.TryLoadStorageNodeRlp(storageHash, storagePath, out _), Is.True);
@@ -576,8 +831,8 @@ public class PersistedSnapshotTests
         Assert.That(persisted.TryGetAccount(TestItem.AddressA, out _), Is.False);
         Assert.That(persisted.TryGetSlot(TestItem.AddressA, (UInt256)1, out _), Is.False);
         Assert.That(persisted.TryGetSelfDestructFlag(TestItem.AddressA), Is.Null);
-        Assert.That(persisted.TryLoadStateNodeRlp(new TreePath(Keccak.Compute("p"), 4), out _), Is.False);
-        Assert.That(persisted.TryLoadStorageNodeRlp(new ValueHash256(Keccak.Compute("h").Bytes), new TreePath(Keccak.Compute("p"), 4), out _), Is.False);
+        Assert.That(persisted.TryLoadStateNodeRlp(FlatTestHelpers.CanonicalPath(Keccak.Compute("p"), 4), out _), Is.False);
+        Assert.That(persisted.TryLoadStorageNodeRlp(new ValueHash256(Keccak.Compute("h").Bytes), FlatTestHelpers.CanonicalPath(Keccak.Compute("p"), 4), out _), Is.False);
 
         // Build-based snapshots carry no blob_range metadata → BlobRange.None → advise is a no-op.
         Assert.DoesNotThrow(() => persisted.AdviseWillNeedBlobRange());
@@ -603,10 +858,10 @@ public class PersistedSnapshotTests
         older.Accounts[TestItem.AddressD] = Build.An.Account.WithBalance(40).TestObject;
         older.Storages[(TestItem.AddressA, (UInt256)1)] = new UInt256(v1, isBigEndian: true);
         older.SelfDestructedStorageAddresses[TestItem.AddressA] = false;
-        TreePath statePath = new(Keccak.Compute("st-p"), 4);
+        TreePath statePath = FlatTestHelpers.CanonicalPath(Keccak.Compute("st-p"), 4);
         older.SetStateNodeRlp(_log, statePath, FlatTestHelpers.LeafRlp(0xC1, 0x80));
         Hash256 storageHashObj = Keccak.Compute("st-sh");
-        TreePath storagePath = new(Keccak.Compute("st-sp"), 4);
+        TreePath storagePath = FlatTestHelpers.CanonicalPath(Keccak.Compute("st-sp"), 4);
         older.SetStorageNodeRlp(_log, storageHashObj, storagePath, FlatTestHelpers.LeafRlp(0xC1, 0x81));
 
         SnapshotContent newer = new();
@@ -649,10 +904,10 @@ public class PersistedSnapshotTests
         // State / storage node RLP: present (in older) and absent.
         Assert.That(stack.TryLoadStateRlp(statePath, out byte[]? srlp), Is.True);
         Assert.That(srlp, Is.Not.Null);
-        Assert.That(stack.TryLoadStateRlp(new TreePath(Keccak.Compute("nope-st"), 4), out _), Is.False);
+        Assert.That(stack.TryLoadStateRlp(FlatTestHelpers.CanonicalPath(Keccak.Compute("nope-st"), 4), out _), Is.False);
         Assert.That(stack.TryLoadStorageRlp(storageHashObj, storagePath, out byte[]? strlp), Is.True);
         Assert.That(strlp, Is.Not.Null);
-        Assert.That(stack.TryLoadStorageRlp(storageHashObj, new TreePath(Keccak.Compute("nope-sp"), 4), out _), Is.False);
+        Assert.That(stack.TryLoadStorageRlp(storageHashObj, FlatTestHelpers.CanonicalPath(Keccak.Compute("nope-sp"), 4), out _), Is.False);
     }
 
     [Test]
@@ -696,7 +951,7 @@ public class PersistedSnapshotTests
         StateId to = new(1, Keccak.Compute("reset"));
 
         using Snapshot inMem = new(from, to, new SnapshotContent(), _resourcePool, ResourcePool.Usage.MainBlockProcessing) { LogRetain = _log.RetainActive() };
-        TreePath path = new(Keccak.Compute("p"), 8);
+        TreePath path = FlatTestHelpers.CanonicalPath(Keccak.Compute("p"), 8);
         inMem.Content.SetStateNodeRlp(_log, path, FlatTestHelpers.LeafRlp(0xC2, 0x80, 0x80));
 
         long baselineBytes = Metrics.BlobAllocatedBytes;
@@ -736,7 +991,7 @@ public class PersistedSnapshotTests
         StateId s2 = new(2, Keccak.Compute("2"));
 
         // path length 4 → StateTopNodes column
-        TreePath path = new(Keccak.Compute("path"), 4);
+        TreePath path = FlatTestHelpers.CanonicalPath(Keccak.Compute("path"), 4);
         byte[] rlp1 = FlatTestHelpers.LeafRlp(0xC0);
         byte[] rlp2 = FlatTestHelpers.LeafRlp(0xC1, 0x80);
 
@@ -895,7 +1150,7 @@ public class PersistedSnapshotTests
         Address addr = TestItem.AddressA;
         Hash256 addrHashKey = new(addr.ToAccountPath.Bytes);
         Account expectedAccount = Build.An.Account.WithBalance(987654321).WithNonce(11).TestObject;
-        TreePath storagePath = new(Keccak.Compute("warmup-spath"), 6);
+        TreePath storagePath = FlatTestHelpers.CanonicalPath(Keccak.Compute("warmup-spath"), 6);
         byte[] storageNodeRlp = FlatTestHelpers.LeafRlp(0xC3, 0x80, 0x81, 0x82);
 
         TrieNodeLogRetain logRetain = _log.RetainActive();

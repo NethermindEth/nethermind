@@ -56,7 +56,7 @@ public class ReadOnlySnapshotBundlePersistedTests
         StateId s0 = new(0, Keccak.EmptyTreeHash);
         StateId s1 = new(1, Keccak.Compute("1"));
 
-        TreePath path = new(Keccak.Compute("path"), 4);
+        TreePath path = FlatTestHelpers.CanonicalPath(Keccak.Compute("path"), 4);
         byte[] nodeRlp = FlatTestHelpers.LeafRlp(0xC2, 0x80, 0x80);
 
         TrieNodeLogRetain logRetain = _log.RetainActive();
@@ -89,7 +89,7 @@ public class ReadOnlySnapshotBundlePersistedTests
         StateId s1 = new(1, Keccak.Compute("1"));
 
         Hash256 address = Keccak.Compute("address");
-        TreePath path = new(Keccak.Compute("path"), 6);
+        TreePath path = FlatTestHelpers.CanonicalPath(Keccak.Compute("path"), 6);
         byte[] nodeRlp = FlatTestHelpers.LeafRlp(0xC1, 0x80);
 
         TrieNodeLogRetain logRetain = _log.RetainActive();
@@ -121,8 +121,8 @@ public class ReadOnlySnapshotBundlePersistedTests
         StateId s0 = new(0, Keccak.EmptyTreeHash);
         StateId s1 = new(1, Keccak.Compute("1"));
 
-        TreePath storedPath = new(Keccak.Compute("stored"), 4);
-        TreePath missingPath = new(Keccak.Compute("missing"), 3);
+        TreePath storedPath = FlatTestHelpers.CanonicalPath(Keccak.Compute("stored"), 4);
+        TreePath missingPath = FlatTestHelpers.CanonicalPath(Keccak.Compute("missing"), 3);
         byte[] nodeRlp = FlatTestHelpers.LeafRlp(0xC0);
         byte[] dbRlp = [0xC1, 0x80, 0x80];
 
@@ -154,7 +154,7 @@ public class ReadOnlySnapshotBundlePersistedTests
     public void TryLoadStateRlp_WithoutPersistedSnapshots_GoesDirectlyToPersistence()
     {
         byte[] dbRlp = [0xC0];
-        TreePath path = new(Keccak.Compute("path"), 4);
+        TreePath path = FlatTestHelpers.CanonicalPath(Keccak.Compute("path"), 4);
 
         IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
         reader.TryLoadStateRlp(Arg.Any<TreePath>(), Arg.Any<ReadFlags>()).Returns(dbRlp);
@@ -178,9 +178,9 @@ public class ReadOnlySnapshotBundlePersistedTests
         StateId s1 = new(1, Keccak.Compute("1"));
 
         Hash256 address = Keccak.Compute("address");
-        TreePath dbPath = new(Keccak.Compute("db"), pathLength);
-        TreePath persistedPath = new(Keccak.Compute("persisted"), pathLength);
-        TreePath missingPath = new(Keccak.Compute("missing"), pathLength);
+        TreePath dbPath = FlatTestHelpers.CanonicalPath(Keccak.Compute("db"), pathLength);
+        TreePath persistedPath = FlatTestHelpers.CanonicalPath(Keccak.Compute("persisted"), pathLength);
+        TreePath missingPath = FlatTestHelpers.CanonicalPath(Keccak.Compute("missing"), pathLength);
         byte[] dbRlp = Bytes.FromHexString("c3018080");
         byte[] persistedRlp = Bytes.FromHexString(FlatTestHelpers.LeafRlpB);
 

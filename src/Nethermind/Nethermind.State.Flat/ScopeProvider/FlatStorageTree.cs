@@ -52,7 +52,6 @@ public sealed class FlatStorageTree(
     private sealed class EarlyTrie : IDisposable
     {
         public readonly SnapshotBundle.BackgroundTrieSource Source;
-        public readonly WrittenNodes Written = new();
         public readonly ConcurrentQueue<(UInt256 Slot, UInt256 Value)> Writes = new();
         public readonly TrieNodeLog Log;
         public readonly Dictionary<UInt256, UInt256> Applied = [];
@@ -69,16 +68,11 @@ public sealed class FlatStorageTree(
             catch
             {
                 Source.Dispose();
-                Written.Dispose();
                 throw;
             }
         }
 
-        public void Dispose()
-        {
-            Written.Dispose();
-            Source.Dispose();
-        }
+        public void Dispose() => Source.Dispose();
     }
 
     // This number is the idx of the snapshot in the SnapshotBundle where a clear for this account was found.
@@ -175,7 +169,7 @@ public sealed class FlatStorageTree(
             {
                 OnEarlyPassDrained?.Invoke();
                 // Pool work would run at normal priority rather than this thread's idle priority.
-                early.Root = LogBulkSet.BulkSet(early.Log, early.Source, AddressHash, early.Root, entries, early.Written, canParallelize: false);
+                early.Root = LogBulkSet.BulkSet(early.Log, early.Source, AddressHash, early.Root, entries, canParallelize: false);
                 _scope.CountEarlyApplied(entries.Count);
             }
         }
@@ -211,7 +205,7 @@ public sealed class FlatStorageTree(
         if (previous != EarlyIdle) return null;
         using EarlyTrie? early = Interlocked.Exchange(ref _earlyTrie, null);
         if (early is not { Applied.Count: > 0 }) return null;
-        trie.Adopt(early.Root, early.Written);
+        trie.Adopt(early.Root);
         return early.Applied;
     }
 
@@ -298,12 +292,8 @@ public sealed class FlatStorageTree(
     /// <summary>Whether the storage trie holds nodes written since its last commit.</summary>
     internal bool HasUncommittedNodes => _trie is { HasUnpublishedNodes: true };
 
-    /// <summary>Releases the trie's buffers once the scope no longer uses this tree.</summary>
-    internal void ReleaseTrie()
-    {
-        AbandonEarlyTrie();
-        _trie?.Dispose();
-    }
+    /// <summary>Abandons private early updates once the scope no longer uses this tree.</summary>
+    internal void ReleaseTrie() => AbandonEarlyTrie();
 
     public IWorldStateScopeProvider.IStorageWriteBatch CreateWriteBatch(int estimatedEntries, Action<Address, Hash256> onRootUpdated)
     {

@@ -33,12 +33,11 @@ internal static partial class LogBulkSet
     /// <summary>Sets every entry's key to its value, deleting it when the value is null or empty, and returns the new root.</summary>
     /// <param name="address">The storage trie's address hash, or null for the state trie.</param>
     /// <param name="entries">Reordered in place; keys must be unique.</param>
-    /// <param name="written">Receives the path and pointer of every node written.</param>
     /// <param name="canParallelize">Whether the children of a full branch level with enough entries may be updated in parallel.</param>
     /// <exception cref="MissingTrieNodeException">A node on a changed path is in neither the log nor the source.</exception>
     /// <exception cref="InvalidOperationException">Two entries have the same key.</exception>
     public static TrieRoot BulkSet(TrieNodeLog log, INodeRecordSource source, Hash256? address, TrieRoot root,
-        in ArrayPoolListRef<BulkSetEntry> entries, WrittenNodes written, bool canParallelize)
+        in ArrayPoolListRef<BulkSetEntry> entries, bool canParallelize)
     {
         using TrieNodeLog.ReadLease lease = log.BeginRead();
         if (entries.Count == 0) return new TrieRoot(root.Hash, NodeRecord.PersistentPointer(root.Pointer));
@@ -58,14 +57,14 @@ internal static partial class LogBulkSet
             {
                 // The in-place sorts below the threshold need no separate buffer.
                 BulkSetEntry[] entriesArray = entries.UnsafeGetInternalArray();
-                context = new(log, source, address, arena, written, entriesArray, entriesArray, canParallelize);
+                context = new(log, source, address, arena, entriesArray, entriesArray, canParallelize);
                 rootNode = context.LoadRoot(root);
                 updated = context.Update(entries.AsSpan(), entries.AsSpan(), flipped: false, ref path, rootNode);
             }
             else
             {
                 using ArrayPoolListRef<BulkSetEntry> sortBuffer = new(entries.Count, entries.Count);
-                context = new(log, source, address, arena, written, entries.UnsafeGetInternalArray(), sortBuffer.UnsafeGetInternalArray(), canParallelize);
+                context = new(log, source, address, arena, entries.UnsafeGetInternalArray(), sortBuffer.UnsafeGetInternalArray(), canParallelize);
                 rootNode = context.LoadRoot(root);
                 updated = context.Update(entries.AsSpan(), sortBuffer.AsSpan(), flipped: false, ref path, rootNode);
             }
@@ -162,17 +161,16 @@ internal static partial class LogBulkSet
     [DoesNotReturn, StackTraceHidden]
     private static void ThrowNonUniqueKeys() => throw new InvalidOperationException("Non unique entry keys");
 
-    /// <summary>What a bulk set on one arena shares: the log and source it reads, the trie it writes, where it records writes and the arrays its entries are in.</summary>
+    /// <summary>What a bulk set on one arena shares: the log and source it reads, the trie it writes and the arrays its entries are in.</summary>
     /// <param name="entries">The array of the entries passed in.</param>
     /// <param name="sortBuffer">The array of the sort buffer, the same as <paramref name="entries"/> when there is none.</param>
-    private readonly partial struct Context(TrieNodeLog log, INodeRecordSource source, Hash256? address, BulkSetArena arena, WrittenNodes written,
+    private readonly partial struct Context(TrieNodeLog log, INodeRecordSource source, Hash256? address, BulkSetArena arena,
         BulkSetEntry[] entries, BulkSetEntry[] sortBuffer, bool canParallelize)
     {
         private readonly TrieNodeLog _log = log;
         private readonly INodeRecordSource _source = source;
         private readonly Hash256? _address = address;
         private readonly BulkSetArena _arena = arena;
-        private readonly WrittenNodes _written = written;
         private readonly BulkSetEntry[] _entries = entries;
         private readonly BulkSetEntry[] _sortBuffer = sortBuffer;
         private readonly bool _canParallelize = canParallelize;

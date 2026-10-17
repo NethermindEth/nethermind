@@ -35,13 +35,13 @@ public class ReadOnlySnapshotBundleBenchmark
     // Hit arrays — sampled from actually written data
     private Address[] _hitAccounts = null!;
     private (Address Address, UInt256 Slot)[] _hitSlots = null!;
-    private TreePath[] _hitShortPaths = null!;
-    private TreePath[] _hitLongPaths = null!;
-    private (Hash256 AddressHash, TreePath Path)[] _hitStorageNodes = null!;
+    private (TreePath Path, Hash256 Hash)[] _hitShortPaths = null!;
+    private (TreePath Path, Hash256 Hash)[] _hitLongPaths = null!;
+    private (Hash256 AddressHash, TreePath Path, Hash256 Hash)[] _hitStorageNodes = null!;
 
     // Same-account arrays — all slots/nodes from one address (hot-contract pattern)
     private (Address Address, UInt256 Slot)[] _sameAccountSlots = null!;
-    private (Hash256 AddressHash, TreePath Path)[] _sameAccountStorageNodes = null!;
+    private (Hash256 AddressHash, TreePath Path, Hash256 Hash)[] _sameAccountStorageNodes = null!;
 
     // Miss arrays — keys guaranteed absent from the snapshot
     private Address[] _missAccounts = null!;
@@ -211,9 +211,9 @@ public class ReadOnlySnapshotBundleBenchmark
         }
 
         // Collect state/storage trie nodes from all snapshots
-        List<TreePath> shortPaths = new(ArraySize);
-        List<TreePath> longPaths = new(ArraySize);
-        List<(Hash256, TreePath)> storageNodesList = new(ArraySize);
+        List<(TreePath Path, Hash256 Hash)> shortPaths = new(ArraySize);
+        List<(TreePath Path, Hash256 Hash)> longPaths = new(ArraySize);
+        List<(Hash256 AddressHash, TreePath Path, Hash256 Hash)> storageNodesList = new(ArraySize);
 
         foreach (FlatSnapshot snapshot in allSnapshots)
         {
@@ -221,10 +221,11 @@ public class ReadOnlySnapshotBundleBenchmark
             {
                 foreach (KeyValuePair<HashedKey<TreePath>, ulong> kv in snapshot.StateNodes)
                 {
+                    Hash256 nodeHash = Keccak.Compute(snapshot.GetRlp(kv.Value));
                     if (shortPaths.Count < ArraySize && kv.Key.Key.Length <= 15)
-                        shortPaths.Add(kv.Key.Key);
+                        shortPaths.Add((kv.Key.Key, nodeHash));
                     if (longPaths.Count < ArraySize && kv.Key.Key.Length > 15)
-                        longPaths.Add(kv.Key.Key);
+                        longPaths.Add((kv.Key.Key, nodeHash));
                     if (shortPaths.Count >= ArraySize && longPaths.Count >= ArraySize)
                         break;
                 }
@@ -234,7 +235,8 @@ public class ReadOnlySnapshotBundleBenchmark
             {
                 foreach (KeyValuePair<HashedKey<(Hash256, TreePath)>, ulong> kv in snapshot.StorageNodes)
                 {
-                    storageNodesList.Add((kv.Key.Key.Item1, kv.Key.Key.Item2));
+                    Hash256 nodeHash = Keccak.Compute(snapshot.GetRlp(kv.Value));
+                    storageNodesList.Add((kv.Key.Key.Item1, kv.Key.Key.Item2, nodeHash));
                     if (storageNodesList.Count >= ArraySize)
                         break;
                 }
@@ -252,14 +254,15 @@ public class ReadOnlySnapshotBundleBenchmark
             _sameAccountSlots[i] = (sameAddr, (UInt256)(ulong)(i + 1));
 
         Hash256 sameAddrHash = Keccak.Compute(sameAddr.Bytes);
-        List<(Hash256, TreePath)> sameAccountNodesList = new(ArraySize);
+        List<(Hash256 AddressHash, TreePath Path, Hash256 Hash)> sameAccountNodesList = new(ArraySize);
         foreach (FlatSnapshot snapshot in allSnapshots)
         {
             foreach (KeyValuePair<HashedKey<(Hash256, TreePath)>, ulong> kv in snapshot.StorageNodes)
             {
                 if (kv.Key.Key.Item1 == sameAddrHash)
                 {
-                    sameAccountNodesList.Add((kv.Key.Key.Item1, kv.Key.Key.Item2));
+                    Hash256 nodeHash = Keccak.Compute(snapshot.GetRlp(kv.Value));
+                    sameAccountNodesList.Add((kv.Key.Key.Item1, kv.Key.Key.Item2, nodeHash));
                     if (sameAccountNodesList.Count >= ArraySize)
                         break;
                 }
@@ -347,22 +350,23 @@ public class ReadOnlySnapshotBundleBenchmark
     [Benchmark]
     public bool TryFindStateNodes_Short()
     {
-        TreePath path = _hitShortPaths[_index++ % _hitShortPaths.Length];
-        return _bundle.TryFindStateNodes(in path, Keccak.Zero, out _);
+        (TreePath path, Hash256 hash) = _hitShortPaths[_index++ % _hitShortPaths.Length];
+        return _bundle.TryFindStateNodes(in path, hash, out _);
     }
 
     [Benchmark]
     public bool TryFindStateNodes_Long()
     {
-        TreePath path = _hitLongPaths[_index++ % _hitLongPaths.Length];
-        return _bundle.TryFindStateNodes(in path, Keccak.Zero, out _);
+        (TreePath path, Hash256 hash) = _hitLongPaths[_index++ % _hitLongPaths.Length];
+        return _bundle.TryFindStateNodes(in path, hash, out _);
     }
 
     [Benchmark]
     public bool TryFindStorageNodes()
     {
-        (Hash256 addrHash, TreePath path) = _hitStorageNodes[_index++ % _hitStorageNodes.Length];
-        return _bundle.TryFindStorageNodes(addrHash, in path, Keccak.Zero, out _);
+        (Hash256 addrHash, TreePath path, Hash256 hash) =
+            _hitStorageNodes[_index++ % _hitStorageNodes.Length];
+        return _bundle.TryFindStorageNodes(addrHash, in path, hash, out _);
     }
 
     [Benchmark]
@@ -376,9 +380,9 @@ public class ReadOnlySnapshotBundleBenchmark
     [Benchmark]
     public bool TryFindStorageNodes_SameAccount()
     {
-        (Hash256 addrHash, TreePath path) =
+        (Hash256 addrHash, TreePath path, Hash256 hash) =
             _sameAccountStorageNodes[_index++ % _sameAccountStorageNodes.Length];
-        return _bundle.TryFindStorageNodes(addrHash, in path, Keccak.Zero, out _);
+        return _bundle.TryFindStorageNodes(addrHash, in path, hash, out _);
     }
 
     [Benchmark]

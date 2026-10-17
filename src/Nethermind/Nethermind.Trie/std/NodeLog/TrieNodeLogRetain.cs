@@ -12,6 +12,11 @@ public sealed class TrieNodeLogRetain(TrieNodeLog log, ulong generation) : IDisp
 {
     private int _disposed;
 
+    internal TrieNodeLogRetain(TrieNodeLog log, ulong generation, ulong writeBoundary) : this(log, generation) => WriteBoundary = writeBoundary;
+
+    /// <summary>The inclusive allocation frontier captured when this retain was acquired.</summary>
+    internal ulong WriteBoundary { get; } = generation << TrieNodeLog.OffsetBits;
+
     /// <summary>The log whose generation is retained.</summary>
     public TrieNodeLog Log { get; } = log;
 
@@ -22,7 +27,7 @@ public sealed class TrieNodeLogRetain(TrieNodeLog log, ulong generation) : IDisp
     public TrieNodeLogRetain Copy()
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
-        TrieNodeLogRetain copy = new(Log, Generation);
+        TrieNodeLogRetain copy = new(Log, Generation, WriteBoundary);
         Log.Retain(Generation);
         return copy;
     }

@@ -11,19 +11,42 @@ namespace Nethermind.Trie.NodeLog;
 public sealed partial class TrieNodeLog
 {
     private readonly List<IDisposable> _retired = [];
+    // Lookup-only references to owners already kept by _retired, keyed by full id rather than a reusable ring slot.
+    private readonly Dictionary<ulong, RetiredGeneration> _retiredGenerations = [];
     private int _readers;
     private int _retainCount;
     private bool _disposed;
     private Exception? _compactionFailure;
 
-    /// <summary>Protects every borrowed record until the whole operation, including its parallel workers, has finished.</summary>
+    /// <summary>Protects borrowed records and lookup metadata retired during this operation until all overlapping readers finish.</summary>
     internal ReadLease BeginRead()
+    {
+        EnterRead();
+        return new ReadLease(this);
+    }
+
+    /// <summary>Protects records across iterator yields and other operations that cannot hold a ref-struct lease.</summary>
+    internal IDisposable BeginReadScope() => new ReadScope(this);
+
+    private sealed class ReadScope : IDisposable
+    {
+        private TrieNodeLog? _log;
+
+        public ReadScope(TrieNodeLog log)
+        {
+            log.EnterRead();
+            _log = log;
+        }
+
+        public void Dispose() => Interlocked.Exchange(ref _log, null)?.EndRead();
+    }
+
+    private void EnterRead()
     {
         lock (_lock)
         {
             ThrowIfUnavailable();
             _readers++;
-            return new ReadLease(this);
         }
     }
 
@@ -44,10 +67,59 @@ public sealed partial class TrieNodeLog
         else _retired.Add(owner);
     }
 
+    private void Retire(ulong generation, LogBuffer? data)
+    {
+        if (data is null) return;
+        if (_readers > 0)
+        {
+            _retiredGenerations.TryGetValue(generation, out RetiredGeneration retired);
+            retired.Data = data;
+            _retiredGenerations[generation] = retired;
+        }
+        Retire(data);
+    }
+
+    private void Retire(ulong generation, CompressedGeneration? compressed)
+    {
+        if (compressed is null) return;
+        if (_readers > 0)
+        {
+            _retiredGenerations.TryGetValue(generation, out RetiredGeneration retired);
+            retired.Compressed = compressed;
+            _retiredGenerations[generation] = retired;
+        }
+        Retire(compressed);
+    }
+
+    private bool TryLocateRetired(ulong pointer, out NodeRecordRef record)
+    {
+        lock (_lock)
+        {
+            if (_retiredGenerations.TryGetValue(pointer >> OffsetBits, out RetiredGeneration retired))
+            {
+                if (retired.Data is { } data)
+                {
+                    record = new NodeRecordRef(data.Memory, (int)(uint)pointer);
+                    return true;
+                }
+                if (retired.Compressed?.TryFind(pointer, out record) == true) return true;
+            }
+            record = default;
+            return false;
+        }
+    }
+
     private void DrainRetired()
     {
+        _retiredGenerations.Clear();
         foreach (IDisposable owner in _retired) owner.Dispose();
         _retired.Clear();
+    }
+
+    private struct RetiredGeneration
+    {
+        public LogBuffer? Data;
+        public CompressedGeneration? Compressed;
     }
 
     private void ThrowIfUnavailable()

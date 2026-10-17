@@ -6,7 +6,6 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.State.Flat.Collections;
-using Nethermind.Trie;
 using IResettable = Nethermind.Core.Resettables.IResettable;
 
 namespace Nethermind.State.Flat;
@@ -17,31 +16,25 @@ public sealed class SortedSnapshotContent : IDisposable, IResettable
     private readonly SortedMergeDictionary<HashedKey<Address>, Account?> _accounts = new();
     private readonly SortedMergeDictionary<HashedKey<(Address, UInt256)>, UInt256?> _storages = new();
     private readonly SortedMergeDictionary<HashedKey<Address>, bool> _selfDestructedStorageAddresses = new();
-    private readonly SortedMergeDictionary<HashedKey<TreePath>, ulong> _stateNodes = new();
-    private readonly SortedMergeDictionary<HashedKey<(Hash256, TreePath)>, ulong> _storageNodes = new();
 
     internal SortedMergeDictionary<HashedKey<Address>, Account?> SortedAccounts => _accounts;
     internal SortedMergeDictionary<HashedKey<(Address, UInt256)>, UInt256?> SortedStorages => _storages;
     internal SortedMergeDictionary<HashedKey<Address>, bool> SortedSelfDestructs => _selfDestructedStorageAddresses;
-    internal SortedMergeDictionary<HashedKey<TreePath>, ulong> SortedStateNodes => _stateNodes;
-    internal SortedMergeDictionary<HashedKey<(Hash256, TreePath)>, ulong> SortedStorageNodes => _storageNodes;
+
+    internal ulong StateRootPointer;
+    internal bool HasStateRoot;
+    internal readonly Dictionary<Hash256, ulong> StorageRoots = [];
 
     public IEnumerable<KeyValuePair<HashedKey<Address>, Account?>> Accounts => _accounts;
     public IEnumerable<KeyValuePair<HashedKey<Address>, bool>> SelfDestructedStorageAddresses => _selfDestructedStorageAddresses;
     public IEnumerable<KeyValuePair<HashedKey<(Address, UInt256)>, UInt256?>> Storages => _storages;
-    public IEnumerable<KeyValuePair<HashedKey<(Hash256, TreePath)>, ulong>> StorageNodes => _storageNodes;
-    public IEnumerable<KeyValuePair<HashedKey<TreePath>, ulong>> StateNodes => _stateNodes;
 
     public int AccountsCount => _accounts.Count;
     public int StoragesCount => _storages.Count;
-    public int StateNodesCount => _stateNodes.Count;
-    public int StorageNodesCount => _storageNodes.Count;
 
     public bool TryGetAccount(HashedKey<Address> key, out Account? acc) => _accounts.TryGetValue(key, out acc);
     public bool HasSelfDestruct(HashedKey<Address> key) => _selfDestructedStorageAddresses.TryGetValue(key, out bool _);
     public bool TryGetStorage(HashedKey<(Address, UInt256)> key, out UInt256? value) => _storages.TryGetValue(key, out value);
-    public bool TryGetStateNode(HashedKey<TreePath> key, out ulong pointer) => _stateNodes.TryGetValue(key, out pointer);
-    public bool TryGetStorageNode(HashedKey<(Hash256, TreePath)> key, out ulong pointer) => _storageNodes.TryGetValue(key, out pointer);
 
     public long EstimateMemory() => CaptureCounts().EstimateMemory();
 
@@ -52,16 +45,17 @@ public sealed class SortedSnapshotContent : IDisposable, IResettable
         _accounts.Count,
         _storages.Count,
         _selfDestructedStorageAddresses.Count,
-        _stateNodes.Count,
-        _storageNodes.Count);
+        HasStateRoot ? 1 : 0,
+        StorageRoots.Count);
 
     public void Reset()
     {
         _accounts.NoResizeClear();
         _storages.NoResizeClear();
         _selfDestructedStorageAddresses.NoResizeClear();
-        _stateNodes.NoResizeClear();
-        _storageNodes.NoResizeClear();
+        StateRootPointer = 0;
+        HasStateRoot = false;
+        StorageRoots.Clear();
     }
 
     public void Dispose()
@@ -69,7 +63,5 @@ public sealed class SortedSnapshotContent : IDisposable, IResettable
         _accounts.Dispose();
         _storages.Dispose();
         _selfDestructedStorageAddresses.Dispose();
-        _stateNodes.Dispose();
-        _storageNodes.Dispose();
     }
 }

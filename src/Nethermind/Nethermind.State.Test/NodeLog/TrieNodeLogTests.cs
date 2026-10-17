@@ -5,6 +5,7 @@ using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using System.Runtime;
 using System.Runtime.InteropServices;
 using System.Runtime.CompilerServices;
@@ -52,6 +53,10 @@ internal class TrieNodeLogTests
             Assert.That(log.TryLocate(temporaryPointer, out _), Is.False);
             Assert.That(log.TryLocate(realPointer | NodeRecord.TransientPointerMask, out _), Is.False);
             Assert.That(log.TryLocate(realPointer, out _), Is.True);
+            Assert.That(log.TryGetNode(temporaryPointer, TreePath.Empty, out _), Is.False);
+            Assert.That(log.TryGetNodePointer(realPointer | NodeRecord.TransientPointerMask, TreePath.Empty, out _), Is.False);
+            Assert.That(log.EnumerateNodes(temporaryPointer), Is.Empty);
+            Assert.That(log.EnumerateNodes(realPointer | NodeRecord.TransientPointerMask), Is.Empty);
             Assert.That(warmed.TryGet(realPointer, hash, out _), Is.False);
             Assert.That(NodeRecord.PersistentPointer(temporaryPointer), Is.Zero);
             Assert.That(NodeRecord.PersistentPointer(realPointer), Is.EqualTo(realPointer));
@@ -113,6 +118,62 @@ internal class TrieNodeLogTests
     }
 
     [Test]
+    public void Retains_capture_exact_allocation_boundaries_and_copies_preserve_them()
+    {
+        using TrieNodeLog log = new(0, GenerationBytes);
+        using TrieNodeLogRetain first = log.RetainActive();
+        ulong firstPointer = log.Reserve(NodeRecord.RecordAlignment, out _, out _);
+        using TrieNodeLogRetain second = log.RetainActive();
+        ulong secondPointer = log.Reserve(NodeRecord.RecordAlignment, out _, out _);
+        using TrieNodeLogRetain copy = first.Copy();
+        log.Reserve(GenerationBytes, out _, out _);
+        log.Reserve(NodeRecord.RecordAlignment, out _, out _);
+        using TrieNodeLogRetain rotated = log.RetainActive();
+        ulong rotatedPointer = log.Reserve(NodeRecord.RecordAlignment, out _, out _);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first.WriteBoundary, Is.EqualTo(firstPointer));
+            Assert.That(second.Generation, Is.EqualTo(first.Generation));
+            Assert.That(second.WriteBoundary, Is.EqualTo(secondPointer));
+            Assert.That(copy.WriteBoundary, Is.EqualTo(first.WriteBoundary));
+            Assert.That(rotated.Generation, Is.GreaterThan(first.Generation));
+            Assert.That(rotated.WriteBoundary, Is.EqualTo(rotatedPointer));
+        }
+    }
+
+    [Test]
+    public void Retain_boundary_clamps_failed_reservation_overshoot([Values(GenerationBytes + 8L, (1L << 32) + 8)] long used)
+    {
+        using TrieNodeLog log = new(0, GenerationBytes);
+        object active = typeof(TrieNodeLog).GetField("_active", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(log)!;
+        active.GetType().GetField("Used")!.SetValue(active, used);
+        using TrieNodeLogRetain retain = log.RetainActive();
+        ulong pointer = log.Reserve(NodeRecord.RecordAlignment, out _, out _);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(retain.WriteBoundary, Is.EqualTo(retain.Generation << TrieNodeLog.OffsetBits | GenerationBytes));
+            Assert.That(pointer, Is.GreaterThan(retain.WriteBoundary));
+        }
+    }
+
+    [Test]
+    public void Concurrent_reservations_never_precede_their_retain_boundary()
+    {
+        using TrieNodeLog log = new(0, GenerationBytes);
+        Parallel.For(0, 16, thread =>
+        {
+            for (int i = 0; i < 1024; i++)
+            {
+                using TrieNodeLogRetain retain = log.RetainActive();
+                ulong pointer = log.Reserve(NodeRecord.RecordAlignment, out _, out _);
+                Assert.That(pointer, Is.GreaterThanOrEqualTo(retain.WriteBoundary));
+            }
+        });
+    }
+
+    [Test]
     public void Native_buffer_disposal_is_idempotent()
     {
         using LogBuffer buffer = LogBuffer.Allocate(1);
@@ -152,7 +213,8 @@ internal class TrieNodeLogTests
             {
                 ulong later = AppendAt(log, TestItem.KeccakB, Leaf(2, 1000));
                 AdvanceTo(GenerationOf(later) + LiveGenerations);
-                Assert.That(() => log.TryLocate(pointer, out _), Is.False.After(CompactionTimeoutMilliseconds, PollingMilliseconds));
+                Assert.That(() => log.FindBloom(later) is null, Is.True.After(CompactionTimeoutMilliseconds, PollingMilliseconds));
+                using (log.BeginRead()) Assert.That(log.TryLocate(pointer, out _), Is.True, "retired compressed lookup is protected by the reader");
             }
             else
             {
@@ -180,6 +242,82 @@ internal class TrieNodeLogTests
             Assert.That(() => pendingValue.Span.ToArray(), Throws.InstanceOf<ObjectDisposedException>());
             Assert.That(original.IsDisposed, Is.True);
             Assert.That(() => bloom.MightContain(nodeKey), Throws.InstanceOf<ObjectDisposedException>());
+        }
+
+        void AdvanceTo(ulong generation)
+        {
+            while (GenerationOf(log.Reserve(generationBytes, out _, out _)) < generation) { }
+        }
+    }
+
+    [Test]
+    public void Overlapping_readers_keep_compacted_away_records_lookupable_until_the_last_reader_finishes()
+    {
+        using TrieNodeLog log = new(1UL << 20, GenerationBytes);
+        log.Reserve(0, out LogBuffer original, out _);
+        byte[] previous = Leaf(1, 8);
+        ulong pointer = Append(log, previous);
+        AppendAt(log, TestItem.KeccakA, Leaf(3, 8));
+        log.Reserve(GenerationBytes, out _, out _);
+        Append(log, Leaf(2, 8));
+        TrieNodeLog.ReadLease first = log.BeginRead();
+        TrieNodeLog.ReadLease second = log.BeginRead();
+        bool firstReleased = false;
+        try
+        {
+            while (GenerationOf(log.Reserve(GenerationBytes, out _, out _)) < LiveGenerations + 1) { }
+            Assert.That(() => log.FindBloom(pointer) is null, Is.True.After(CompactionTimeoutMilliseconds, PollingMilliseconds));
+            using (log.BeginRead()) Assert.That(log.GetRecord(pointer).Rlp.ToArray(), Is.EqualTo(previous), "raw records omitted by compaction stay lookupable");
+            first.Dispose();
+            firstReleased = true;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(log.GetRecord(pointer).Rlp.ToArray(), Is.EqualTo(previous), "the overlapping reader still owns the retired generation");
+                Assert.That(original.IsDisposed, Is.False);
+            }
+        }
+        finally
+        {
+            if (!firstReleased) first.Dispose();
+            second.Dispose();
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(original.IsDisposed, Is.True);
+            Assert.That(IsLocatable(log, pointer), Is.False, "a new reader cannot recover records evicted before it began");
+        }
+    }
+
+    [Test]
+    public void Retired_lookup_uses_full_generation_ids_when_the_ring_slot_is_reused()
+    {
+        const int generationBytes = 256;
+        using TrieNodeLog log = new(0, generationBytes);
+        byte[] previous = Leaf(1, 8);
+        byte[] current = Leaf(2, 8);
+        ulong pointer = Append(log, previous);
+        ulong replacement;
+        using (log.BeginRead())
+        {
+            AdvanceTo(LiveGenerations + 1);
+            Assert.That(() => log.FindBloom(pointer) is null, Is.True.After(CompactionTimeoutMilliseconds, PollingMilliseconds));
+            // The first slot is clear before generation 4097 reuses it.
+            using (log.BeginRead()) { }
+            AdvanceTo(4096);
+            replacement = Append(log, current);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(GenerationOf(replacement), Is.EqualTo(GenerationOf(pointer) + 4096));
+                Assert.That((uint)replacement, Is.EqualTo((uint)pointer));
+                Assert.That(log.GetRecord(pointer).Rlp.ToArray(), Is.EqualTo(previous));
+                Assert.That(log.GetRecord(replacement).Rlp.ToArray(), Is.EqualTo(current));
+                Assert.That(log.TryLocate(pointer + (8192UL << 32), out _), Is.False, "same slot and offset do not match another full generation id");
+            }
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(IsLocatable(log, pointer), Is.False);
+            Assert.That(IsLocatable(log, replacement), Is.True);
         }
 
         void AdvanceTo(ulong generation)

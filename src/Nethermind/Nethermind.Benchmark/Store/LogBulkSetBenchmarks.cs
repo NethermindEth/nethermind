@@ -45,7 +45,6 @@ public class LogBulkSetBenchmarks
     private int _fetchCountBeforeWarmLog;
     private WarmedNodes _warmedNodes;
     private DictionaryNodeSource _nodeSource;
-    private WrittenNodes _writtenNodes;
 
     [GlobalSetup]
     public void Setup()
@@ -56,7 +55,6 @@ public class LogBulkSetBenchmarks
         _trieStore = new ParallelCommitTrieStore(new RawScopedTrieStore(new MemDb()));
         _preloadedRootHash = Keccak.EmptyTreeHash;
         _preload = GenerateEntries(random, PreloadedCount);
-        _writtenNodes = new WrittenNodes();
         Dictionary<TreePath, byte[]> preloadedNodes = [];
         _warmedNodes = new WarmedNodes(BatchSize * WarmedNodesPerEntry);
         _nodeSource = new DictionaryNodeSource(preloadedNodes, _warmedNodes, null);
@@ -69,14 +67,10 @@ public class LogBulkSetBenchmarks
 
             using TrieNodeLog preloadLog = new(0, TrieNodeLog.DefaultGenerationBytes);
             using TrieNodeLogRetain preloadRetain = preloadLog.RetainActive();
-            PreloadLog(preloadLog);
-            foreach ((TreePath path, ulong pointer) in _writtenNodes.AsSpan()) preloadedNodes[path] = preloadLog.GetRecord(pointer).Rlp.ToArray();
-            _writtenNodes.Clear();
+            TrieRoot root = PreloadLog(preloadLog);
+            foreach ((TreePath path, _, NodeRecordRef record) in preloadLog.EnumerateNodes(root.Pointer)) preloadedNodes[path] = record.Rlp.ToArray();
         }
     }
-
-    [GlobalCleanup]
-    public void Cleanup() => _writtenNodes.Dispose();
 
     /// <summary>The production flow before the trie node log: hash with the write batch, persist at the end of the block.</summary>
     [Benchmark(Baseline = true)]
@@ -110,7 +104,6 @@ public class LogBulkSetBenchmarks
         _warmLog = new TrieNodeLog(WarmCompressedMaxMemory, TrieNodeLog.DefaultGenerationBytes);
         _warmLogRetain = _warmLog.RetainActive();
         _warmRoot = PreloadLog(_warmLog);
-        _writtenNodes.Clear();
         _fetchCountBeforeWarmLog = _nodeSource.FetchCount;
     }
 
@@ -134,7 +127,7 @@ public class LogBulkSetBenchmarks
         if (_preload.Length == 0) return TrieRoot.Empty;
 
         using ArrayPoolListRef<PatriciaTree.BulkSetEntry> preloadSet = new(_preload);
-        TrieRoot root = LogBulkSet.BulkSet(log, _nodeSource, null, TrieRoot.Empty, preloadSet, _writtenNodes, canParallelize: true);
+        TrieRoot root = LogBulkSet.BulkSet(log, _nodeSource, null, TrieRoot.Empty, preloadSet, canParallelize: true);
         if (root.Hash != _preloadedRootHash.ValueHash256) throw new InvalidOperationException($"Log root {root.Hash} differs from {_preloadedRootHash}");
         return root;
     }
@@ -146,9 +139,8 @@ public class LogBulkSetBenchmarks
         {
             batch.Clear();
             batch.AddRange(_entries.AsSpan(start, BatchSize));
-            LogBulkSet.BulkSet(log, _nodeSource, null, root, batch, _writtenNodes, canParallelize: true);
+            LogBulkSet.BulkSet(log, _nodeSource, null, root, batch, canParallelize: true);
             // Every batch stands for a block, which fetches the nodes it reads again.
-            _writtenNodes.Clear();
             _warmedNodes.Reset();
         }
     }
