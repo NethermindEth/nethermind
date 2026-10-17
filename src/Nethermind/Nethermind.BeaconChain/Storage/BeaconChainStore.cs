@@ -259,24 +259,19 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
     /// <summary>The stored blocks a restart must track for pruning: every block above <paramref name="finalizedSlot"/> and every non-canonical one at or below it.</summary>
     /// <remarks>
     /// Reads only the block slot keys above the lower of <paramref name="finalizedSlot"/> and the last completed prune's slot, at or below
-    /// which every stored block is canonical. Without that record, as in a database written before the slot keys, every summary is
-    /// scanned once and its slot key written; the next completed prune then records its slot.
+    /// which every stored block is canonical; before the first completed prune it reads them all.
     /// </remarks>
     internal List<(Hash256 Root, ulong Slot)> StoredBlocksForPruning(ulong finalizedSlot)
     {
-        List<(Hash256 Root, ulong Slot)> stored = GetPrunedThroughSlot() is { } prunedThrough
-            ? StoredBlocksAbove(Math.Min(prunedThrough, finalizedSlot))
-            : IndexAllBlockSlots();
+        List<(Hash256 Root, ulong Slot)> stored = StoredBlocksFrom(GetPrunedThroughSlot() is { } prunedThrough ? Math.Min(prunedThrough, finalizedSlot) + 1 : 0);
         stored.RemoveAll(block => block.Slot <= finalizedSlot && TryGetCanonicalRoot(block.Slot, out Hash256? canonical) && canonical == block.Root);
         return stored;
     }
 
-    private List<(Hash256 Root, ulong Slot)> StoredBlocksAbove(ulong slot)
+    private List<(Hash256 Root, ulong Slot)> StoredBlocksFrom(ulong slot)
     {
         List<(Hash256 Root, ulong Slot)> stored = [];
-        if (slot == ulong.MaxValue) return stored;
-
-        byte[] lower = BlockSlotKey(slot + 1, Hash256.Zero);
+        byte[] lower = BlockSlotKey(slot, Hash256.Zero);
         byte[] upper = [BlockSlotKeyPrefix + 1];
         if (_blockIndex is ISortedKeyValueStore sorted)
         {
@@ -302,28 +297,6 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
             if (key.Length == BlockSlotKeyLength)
                 stored.Add((new Hash256(key[(1 + sizeof(ulong))..]), BinaryPrimitives.ReadUInt64BigEndian(key[1..])));
         }
-    }
-
-    private List<(Hash256 Root, ulong Slot)> IndexAllBlockSlots()
-    {
-        List<(Hash256 Root, ulong Slot)> stored = [];
-        foreach ((byte[] key, byte[] value) in _blockIndex.GetAll())
-        {
-            if (key.Length == BlockSummaryKeyLength && key[0] == BlockSummaryKeyPrefix
-                && TryDecodeBlockSummary(value, out StoredBlockSummary summary))
-            {
-                stored.Add((new Hash256(key.AsSpan(1)), summary.Slot));
-            }
-        }
-
-        // Written after the scan: an in-memory column cannot change while it is enumerated.
-        using IWriteBatch batch = _blockIndex.StartWriteBatch();
-        foreach ((Hash256 root, ulong slot) in stored)
-        {
-            batch.Set(BlockSlotKey(slot, root), []);
-        }
-
-        return stored;
     }
 
     private static byte[] BlockSlotKey(ulong slot, Hash256 root)

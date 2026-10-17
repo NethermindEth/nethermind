@@ -154,7 +154,7 @@ public class BeaconChainStoreBlockSummaryTests
     }
 
     /// <param name="prunedFromAnchor">Slot of the last completed prune relative to the anchor; null when none was recorded.</param>
-    [TestCase(null, false, TestName = "Without a completed prune every summary is scanned")]
+    [TestCase(null, false, TestName = "Without a completed prune every slot key is read")]
     [TestCase(-6, false, TestName = "Slot keys above a completed prune are read from an unsorted index")]
     [TestCase(-6, true, TestName = "Slot keys above a completed prune are read from a sorted index")]
     [TestCase(2, true, TestName = "A prune past the persisted anchor still seeds every block above the anchor")]
@@ -212,36 +212,6 @@ public class BeaconChainStoreBlockSummaryTests
         Assert.That(seeded, Is.EquivalentTo(expected));
         // Restart cost must follow the unfinalized blocks, not the finalized history below the prune.
         Assert.That(db.Index.Scanned.Concat(db.Index.Reads), Has.All.Matches<byte[]>(key => IsBlockSlotKeyAbove(key, prunedThrough)));
-    }
-
-    [Test]
-    public void A_store_without_block_slot_keys_is_scanned_once_then_read_above_its_completed_prune()
-    {
-        using RecordingIndexDb db = new(sorted: true);
-        BeaconChainStore store = new(db, Sepolia);
-        (ulong anchorSlot, HashSet<(Hash256 Root, ulong Slot)> expected, _) = StoreBlocksAroundAnchor(store);
-        foreach (byte[] key in db.Index.Keys.Where(static key => key[0] == BeaconChainStore.BlockSlotKeyPrefix).ToList())
-        {
-            db.Index.Remove(key);
-        }
-
-        List<(Hash256 Root, ulong Slot)> upgraded = new BeaconChainStore(db, Sepolia).StoredBlocksForPruning(anchorSlot);
-        int summaries = db.Index.Keys.Count(static key => key.Length == 1 + Hash256.Size && key[0] == BeaconChainStore.BlockSummaryKeyPrefix);
-        int slotKeys = db.Index.Keys.Count(static key => key[0] == BeaconChainStore.BlockSlotKeyPrefix);
-        foreach ((Hash256 root, ulong slot) in upgraded.Where(block => block.Slot <= anchorSlot))
-        {
-            store.DeleteBlock(root);
-        }
-
-        store.AdvancePrunedThroughSlot(anchorSlot);
-        db.Index.ResetRecording();
-        List<(Hash256 Root, ulong Slot)> afterPrune = new BeaconChainStore(db, Sepolia).StoredBlocksForPruning(anchorSlot);
-
-        using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(upgraded, Is.EquivalentTo(expected));
-        Assert.That(slotKeys, Is.EqualTo(summaries), "the upgrade scan indexes every stored block by slot");
-        Assert.That(afterPrune, Is.EquivalentTo(expected.Where(block => block.Slot > anchorSlot)));
-        Assert.That(db.Index.Scanned.Concat(db.Index.Reads), Has.All.Matches<byte[]>(key => IsBlockSlotKeyAbove(key, anchorSlot)));
     }
 
     private static bool IsBlockSlotKeyAbove(byte[]? key, ulong slot) =>
