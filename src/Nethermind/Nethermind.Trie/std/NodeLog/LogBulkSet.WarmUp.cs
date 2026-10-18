@@ -118,8 +118,15 @@ internal static partial class LogBulkSet
         in TreePath path, in ChildRef child, out WarmUpFrame frame)
     {
         ulong pointer = child.Pointer;
-        if (log.TryLocate(pointer, out NodeRecordRef record) || warmed.TryGet(pointer, child.Data, out record)
-            || warmed.TryGet(address, path, child.Data, out record, out pointer))
+        bool found = log.TryLocate(pointer, out NodeRecordRef record);
+        if (!found)
+        {
+            found = warmed.TryGet(pointer, child.Data, out record) || warmed.TryGet(address, path, child.Data, out record, out pointer);
+            if (found) Metrics.IncrementWarmedNodeCacheHits();
+            else Metrics.IncrementWarmedNodeCacheMisses();
+        }
+
+        if (found)
         {
             frame = new WarmUpFrame(path, child.Data, record.Kind, record.View.HashMask)
             {

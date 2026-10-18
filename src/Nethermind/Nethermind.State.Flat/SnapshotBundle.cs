@@ -335,9 +335,14 @@ public sealed class SnapshotBundle : IDisposable
         GuardDispose();
 
         WarmedNodes warmed = _transientResource.WarmedNodes;
-        return warmed.TryGet(pointer, hash, out record)
-            || warmed.TryGet(address, path, hash, out record)
-            || TryInsertPersistedRecord(warmed, address, path, hash, out record);
+        if (warmed.TryGet(pointer, hash, out record) || warmed.TryGet(address, path, hash, out record))
+        {
+            Nethermind.Trie.Metrics.IncrementWarmedNodeCacheHits();
+            return true;
+        }
+
+        Nethermind.Trie.Metrics.IncrementWarmedNodeCacheMisses();
+        return TryInsertPersistedRecord(warmed, address, path, hash, out record);
     }
 
     /// <summary>Warms the nodes on the path to <paramref name="key"/> that the trie node log does not hold, for this block's bulk sets.</summary>
@@ -420,12 +425,18 @@ public sealed class SnapshotBundle : IDisposable
             }
         }
 
-        public bool TryLoad(ulong pointer, in TreePath path, in ValueHash256 hash, out NodeRecordRef record) =>
-            _warmed.TryGet(pointer, hash, out record) || TryLoad(path, hash, out record);
+        public bool TryLoad(in TreePath path, in ValueHash256 hash, out NodeRecordRef record) =>
+            TryLoad(0, path, hash, out record);
 
-        public bool TryLoad(in TreePath path, in ValueHash256 hash, out NodeRecordRef record)
+        public bool TryLoad(ulong pointer, in TreePath path, in ValueHash256 hash, out NodeRecordRef record)
         {
-            if (_warmed.TryGet(_address, path, hash, out record)) return true;
+            if (_warmed.TryGet(pointer, hash, out record) || _warmed.TryGet(_address, path, hash, out record))
+            {
+                Nethermind.Trie.Metrics.IncrementIdleWarmedNodeCacheHits();
+                return true;
+            }
+
+            Nethermind.Trie.Metrics.IncrementIdleWarmedNodeCacheMisses();
             return TryInsertPersistedRecord(_readOnly, _warmed, _address, path, hash, out record);
         }
 

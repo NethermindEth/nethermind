@@ -87,6 +87,85 @@ public class SnapshotBundleWarmerTests
         }
     }
 
+    [Test, NonParallelizable]
+    public void Normal_warmed_cache_metrics_count_each_lookup_once([Values] bool storage, [Values] bool warmUp)
+    {
+        Hash256? address = storage ? TestItem.KeccakC : null;
+        (TrieRoot root, Dictionary<TreePath, byte[]> persisted) = LeafTrie(FlatTestHelpers.LeafRlp(0x80));
+        NodeReader reader = new(persisted);
+        using SnapshotBundle bundle = NewBundle(reader);
+        (long Hits, long Misses, long IdleHits, long IdleMisses) before = WarmedCacheCounts();
+
+        if (warmUp)
+        {
+            bundle.WarmUp(address, root, ValueKeccak.Zero);
+            bundle.WarmUp(address, root, ValueKeccak.Zero);
+        }
+        else
+        {
+            Assert.That(bundle.TryLoadTrieNodeRecord(address, TreePath.Empty, root.Hash, out _), Is.True);
+            Assert.That(bundle.TryLoadTrieNodeRecord(address, 1, TreePath.Empty, root.Hash, out _), Is.True);
+        }
+
+        Assert.That(reader.Reads, Is.EqualTo(1));
+        AssertWarmedCacheCounts(before, hits: 1, misses: 1);
+    }
+
+    [Test, NonParallelizable]
+    public void Idle_warmed_cache_metrics_count_each_lookup_once([Values] bool byPointer)
+    {
+        Hash256 address = TestItem.KeccakC;
+        byte[] rlp = FlatTestHelpers.LeafRlp(0x80);
+        (TrieRoot root, Dictionary<TreePath, byte[]> persisted) = LeafTrie(rlp);
+        NodeReader reader = new(persisted);
+        using ReadOnlySnapshotBundle readOnly = FlatTestHelpers.MakeBundle(_pool, reader);
+        using SnapshotPooledList snapshots = new(1);
+        WarmedNodes warmed = new(1);
+        using SnapshotBundle.BackgroundTrieSource source = new(readOnly, _log, snapshots, warmed, address);
+        (long Hits, long Misses, long IdleHits, long IdleMisses) before = WarmedCacheCounts();
+
+        Assert.That(source.TryLoad(TreePath.Empty, root.Hash, out _), Is.True);
+        Assert.That(warmed.TryGet(address, TreePath.Empty, root.Hash, out _, out ulong pointer), Is.True);
+        Assert.That(source.TryLoad(byPointer ? pointer : 0, TreePath.Empty, root.Hash, out _), Is.True);
+        Assert.That(warmed.TryInsert(address, TreePath.Empty, root.Hash, rlp, out _), Is.True);
+
+        Assert.That(reader.Reads, Is.EqualTo(1));
+        AssertWarmedCacheCounts(before, idleHits: 1, idleMisses: 1);
+    }
+
+    [Test, NonParallelizable]
+    public void Warm_up_metrics_count_transient_pointer_hits_but_not_main_log_hits([Values] bool inLog)
+    {
+        byte[] rlp = FlatTestHelpers.LeafRlp(0x80);
+        ValueHash256 hash = ValueKeccak.Compute(rlp);
+        WarmedNodes warmed = new(1);
+        ulong pointer;
+        if (inLog) pointer = _log.AppendRecordFromRlp(null, TreePath.Empty, hash, rlp);
+        else Assert.That(warmed.TryInsert(null, TreePath.Empty, hash, rlp, out _, out pointer), Is.True);
+        (long Hits, long Misses, long IdleHits, long IdleMisses) before = WarmedCacheCounts();
+
+        LogBulkSet.WarmUp(_log, warmed, (in TreePath path, in ValueHash256 nodeHash) => throw new InvalidOperationException("Unexpected persistence read"),
+            null, new TrieRoot(hash, pointer), ValueKeccak.Zero);
+
+        AssertWarmedCacheCounts(before, hits: inLog ? 0 : 1);
+    }
+
+    private static (long Hits, long Misses, long IdleHits, long IdleMisses) WarmedCacheCounts() =>
+        (Nethermind.Trie.Metrics.WarmedNodeCacheHits, Nethermind.Trie.Metrics.WarmedNodeCacheMisses,
+            Nethermind.Trie.Metrics.IdleWarmedNodeCacheHits, Nethermind.Trie.Metrics.IdleWarmedNodeCacheMisses);
+
+    private static void AssertWarmedCacheCounts((long Hits, long Misses, long IdleHits, long IdleMisses) before,
+        long hits = 0, long misses = 0, long idleHits = 0, long idleMisses = 0)
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Nethermind.Trie.Metrics.WarmedNodeCacheHits - before.Hits, Is.EqualTo(hits));
+            Assert.That(Nethermind.Trie.Metrics.WarmedNodeCacheMisses - before.Misses, Is.EqualTo(misses));
+            Assert.That(Nethermind.Trie.Metrics.IdleWarmedNodeCacheHits - before.IdleHits, Is.EqualTo(idleHits));
+            Assert.That(Nethermind.Trie.Metrics.IdleWarmedNodeCacheMisses - before.IdleMisses, Is.EqualTo(idleMisses));
+        }
+    }
+
     [Test]
     public void Returned_transient_resource_clears_warmed_nodes([Values] bool storage)
     {
