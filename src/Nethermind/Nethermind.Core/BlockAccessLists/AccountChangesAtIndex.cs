@@ -38,6 +38,7 @@ public class AccountChangesAtIndex(Address address)
     public int StorageChangeCount => _storageChanges.Count;
 
     /// <summary>Slots read but not changed at this index.</summary>
+    /// <remarks>The first access after <see cref="AddStorageReadUnchecked"/> compacts the set, so it is not safe for concurrent readers.</remarks>
     public HashSet<UInt256> StorageReads
     {
         get
