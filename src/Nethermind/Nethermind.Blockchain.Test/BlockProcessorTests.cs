@@ -1285,7 +1285,8 @@ public partial class BlockProcessorTests
         using SnapshotableMemColumnsDb<FlatHistoryColumns> columns = new();
         TransactionChangesetIndex index = new(columns, new FlatDbConfig { HistoryTransactionIndexEnabled = true });
         ChangesetPrefixStateSeedSource seeds = new(index);
-        using BasicTestBlockchain chain = await CreatePrefixReplayChain(spec, seeds);
+        // A calculator that does not rule rewards out, so the reward pass runs and its boundary is checked.
+        using BasicTestBlockchain chain = await CreatePrefixReplayChain(spec, seeds, builder => builder.AddSingleton<IRewardCalculatorSource>(new UnhintedNoRewards()));
         BlockHeader parent = chain.BlockTree.Head!.Header;
         Block block = await AddThreeTransferBlock(chain);
         IndexThroughTheCapture(chain, index, block, parent, spec);
@@ -1338,6 +1339,13 @@ public partial class BlockProcessorTests
         IBlockTracer<TTrace> tracer = tracerFor(scope.Resolve<IWorldState>());
         processor.Process(block, TraceProcessingOptions.ReadOnlyReplay, tracer, CancellationToken.None);
         return tracer.BuildResult();
+    }
+
+    private sealed class UnhintedNoRewards : IRewardCalculatorSource, IRewardCalculator
+    {
+        public IRewardCalculator Get(ITransactionProcessor processor) => this;
+
+        public BlockReward[] CalculateRewards(Block block) => [];
     }
 
     private sealed class ZeroRewardToTheBeneficiary : IRewardCalculatorSource, IRewardCalculator

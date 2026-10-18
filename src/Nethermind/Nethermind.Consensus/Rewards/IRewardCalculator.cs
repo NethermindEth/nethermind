@@ -8,5 +8,9 @@ namespace Nethermind.Consensus.Rewards
     public interface IRewardCalculator
     {
         BlockReward[] CalculateRewards(Block block);
+
+        /// <summary>False when no block with this header is ever rewarded, so work that exists only to apply or trace
+        /// rewards can be skipped without calculating them.</summary>
+        bool MayReward(BlockHeader header) => true;
     }
 }

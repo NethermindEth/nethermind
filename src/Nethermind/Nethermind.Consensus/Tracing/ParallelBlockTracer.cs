@@ -9,6 +9,7 @@ using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
+using Nethermind.Consensus.Rewards;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -295,6 +296,9 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
         try
         {
             using Scope<Components> scope = RentEnvironment(parent);
+            // Only rewards are traced after the transactions, so a block that is never rewarded needs no replay.
+            if (scope.Component.RewardCalculator?.MayReward(block.Header) == false) return [];
+
             IBlockTracer<TTrace> tracer = afterTransactions(scope.Component.WorldState);
             try
             {
@@ -497,7 +501,7 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
     }
 
     /// <summary>Processing services owned by one leased environment; never share its world state between active workers.</summary>
-    public record Components(IWorldState WorldState, BlockchainProcessorFacade Processor, ISpecProvider SpecProvider, TransactionTraceExecutor? Executor = null);
+    public record Components(IWorldState WorldState, BlockchainProcessorFacade Processor, ISpecProvider SpecProvider, TransactionTraceExecutor? Executor = null, IRewardCalculator? RewardCalculator = null);
 
     /// <summary>An environment together with the lifetime scope it was resolved from, so the pool that retires it
     /// retires the scope too.</summary>

@@ -25,6 +25,10 @@ public enum ParityTraceStreamMode
 
 public sealed class StreamingParityLikeBlockTracer : ParityLikeBlockTracer, IDisposable
 {
+    /// <summary>Bytes buffered before they go to the wire: a flush per transaction blocks on the socket for traces of
+    /// a few hundred bytes, and in a parallel trace it does so while holding the emitter that every worker waits on.</summary>
+    internal const int FlushThresholdBytes = 1024 * 1024;
+
     private readonly Utf8JsonWriter _writer;
     private readonly PipeWriter? _pipeWriter;
     private readonly CancellationToken _cancellationToken;
@@ -40,6 +44,7 @@ public sealed class StreamingParityLikeBlockTracer : ParityLikeBlockTracer, IDis
     private Block? _block;
     private StreamingParityLikeTxTracer? _reusableTxTracer;
     private ParityTraceTypes _reusableTxTracerTypes;
+    private long _flushedBytes;
 
     public StreamingParityLikeBlockTracer(
         ParityTraceTypes types,
@@ -249,8 +254,9 @@ public sealed class StreamingParityLikeBlockTracer : ParityLikeBlockTracer, IDis
 
     private void FlushPipe()
     {
-        if (_pipeWriter is null) return;
+        if (_pipeWriter is null || _writer.BytesCommitted + _writer.BytesPending - _flushedBytes < FlushThresholdBytes) return;
         _writer.Flush();
         _pipeWriter.FlushAsync(_cancellationToken).SafeWait();
+        _flushedBytes = _writer.BytesCommitted;
     }
 }
