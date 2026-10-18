@@ -637,6 +637,34 @@ public class StateProviderTests(bool useFlat)
     }
 
     [Test]
+    public void Fee_after_a_refund_coalesced_past_a_cold_read_is_committed()
+    {
+        ParityLikeTxTracer tracer = new(Build.A.Block.TestObject, null, ParityTraceTypes.StateDiff);
+        using Context ctx = new(useFlat, UnavailableStateHeaderProvider.Instance);
+        IWorldState provider = ctx.WorldState;
+        using IDisposable _ = provider.BeginScope(IWorldState.PreGenesis);
+        Address coinbase = new(Hash2);
+        provider.CreateAccount(_address1, 100);
+        provider.CreateAccount(coinbase, 1);
+        provider.Commit(Frontier.Instance);
+
+        provider.TakeSnapshot(newTransactionStart: true);
+        provider.SubtractFromBalance(_address1, 10, Frontier.Instance);
+        Assert.That(provider.GetBalance(coinbase), Is.EqualTo(UInt256.One));
+        provider.AddToBalance(_address1, 4, Frontier.Instance);
+        provider.AddToBalanceAndCreateIfNotEmpty(coinbase, 6, Frontier.Instance);
+        provider.Commit(Frontier.Instance, tracer);
+
+        Dictionary<Address, ParityAccountStateChange> changes = tracer.BuildResult().StateChanges!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(changes[coinbase].Balance!.After, Is.EqualTo((UInt256)7));
+            Assert.That(changes[_address1].Balance!.After, Is.EqualTo((UInt256)94));
+            Assert.That(provider.GetBalance(coinbase), Is.EqualTo((UInt256)7));
+        }
+    }
+
+    [Test]
     public void Keep_in_cache()
     {
         using Context ctx = new(useFlat, UnavailableStateHeaderProvider.Instance);
