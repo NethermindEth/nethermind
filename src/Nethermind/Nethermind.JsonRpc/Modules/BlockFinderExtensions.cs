@@ -111,7 +111,7 @@ namespace Nethermind.JsonRpc.Modules
         /// <summary>
         /// Same result as <see cref="SearchForBlock"/>, but returns the header and decodes no body when one is stored.
         /// </summary>
-        private static SearchResult<BlockHeader> SearchForHeaderWithBody(IBlockFinder blockFinder, BlockParameter blockParameter)
+        public static SearchResult<BlockHeader> SearchForHeaderWithBody(this IBlockFinder blockFinder, BlockParameter blockParameter)
         {
             BlockHeader? header = blockFinder.FindHeader(blockParameter);
             if (header?.Hash is not null && blockFinder.HasBlock(header.Number, header.Hash))

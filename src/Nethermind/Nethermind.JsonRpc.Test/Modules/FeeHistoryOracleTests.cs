@@ -162,6 +162,25 @@ namespace Nethermind.JsonRpc.Test.Modules
 
         }
 
+        [Test]
+        public void GetFeeHistory_DoesNotLoadTheParentOfTheOldestBlock()
+        {
+            IBlockTree blockTree = Substitute.For<IBlockTree>();
+            BlockHeader blockHeader = Build.A.BlockHeader.WithNumber(5).WithParentHash(TestItem.KeccakA).WithGasLimit(100).WithGasUsed(50).TestObject;
+            Block headBlock = Build.A.Block.WithHeader(blockHeader).TestObject;
+            BlockParameter newestBlock = new(5UL);
+            blockTree.FindBlock(newestBlock).Returns(headBlock);
+            FeeHistoryOracle feeHistoryOracle = GetSubstitutedFeeHistoryOracle(blockTree: blockTree, specProvider: GetSpecProviderWithEip1559EnabledAs(true));
+
+            using ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(1, newestBlock, []);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(resultWrapper.Data.OldestBlock, Is.EqualTo(5UL));
+                blockTree.DidNotReceive().FindBlock(TestItem.KeccakA, Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>());
+            }
+        }
+
         [TestCase(3UL, 3UL, 1)]
         [TestCase(100UL, 95UL, 0.95)]
         [TestCase(12UL, 3UL, 0.25)]
