@@ -11,8 +11,8 @@ namespace Nethermind.SendPolicy.Plugin;
 /// Serves the current rules from <see cref="ISendPolicyConfig.RulesPath"/>.
 /// </summary>
 /// <remarks>
-/// The file must be usable when the node starts. It is parsed again whenever its write time or length changes,
-/// so an edit takes effect on the next send without a restart. Safe to call from concurrent JSON-RPC requests.
+/// The file must be usable when the node starts. Its content is checked on every send, so even a same-size
+/// replacement that preserves the file timestamp takes effect without a restart. Safe to call from concurrent JSON-RPC requests.
 /// </remarks>
 public sealed class SendPolicyRuleFile
 {
@@ -36,28 +36,30 @@ public sealed class SendPolicyRuleFile
     {
         get
         {
-            FileStamp stamp = FileStamp.Of(_path);
+            FileSnapshot snapshot = FileSnapshot.Of(_path);
             Loaded? loaded = _loaded;
-            if (loaded is not null && loaded.Stamp == stamp) return loaded.Rules;
+            if (loaded is not null && loaded.Snapshot == snapshot) return loaded.Rules;
             lock (_reloadLock)
             {
                 loaded = _loaded;
-                if (loaded is not null && loaded.Stamp == stamp) return loaded.Rules;
-                SendPolicyRules rules = Read(loaded?.LastGood ?? SendPolicyRules.Empty);
-                _loaded = new Loaded(stamp, rules, rules.Error is null ? rules : loaded?.LastGood ?? SendPolicyRules.Empty);
+                if (loaded is not null && loaded.Snapshot == snapshot) return loaded.Rules;
+                SendPolicyRules rules = Read(snapshot, loaded?.LastGood ?? SendPolicyRules.Empty);
+                _loaded = new Loaded(snapshot, rules, rules.Error is null ? rules : loaded?.LastGood ?? SendPolicyRules.Empty);
                 return rules;
             }
         }
     }
 
-    private SendPolicyRules Read(SendPolicyRules lastGood)
+    private SendPolicyRules Read(FileSnapshot snapshot, SendPolicyRules lastGood)
     {
         SendPolicyRules rules;
         try
         {
-            rules = SendPolicyRules.Parse(File.ReadAllLines(_path));
+            rules = snapshot.Error is { } error
+                ? SendPolicyRules.Unusable(lastGood, $"rule file unusable ({error})")
+                : SendPolicyRules.Parse(ReadLines(snapshot.Contents!));
         }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException or FormatException)
+        catch (FormatException e)
         {
             rules = SendPolicyRules.Unusable(lastGood, $"rule file unusable ({e.Message})");
         }
@@ -74,14 +76,25 @@ public sealed class SendPolicyRuleFile
         return rules;
     }
 
-    private sealed record Loaded(FileStamp Stamp, SendPolicyRules Rules, SendPolicyRules LastGood);
-
-    private readonly record struct FileStamp(bool Exists, DateTime WriteTimeUtc, long Length)
+    private static IEnumerable<string> ReadLines(string contents)
     {
-        public static FileStamp Of(string path)
+        using StringReader reader = new(contents);
+        while (reader.ReadLine() is { } line) yield return line;
+    }
+
+    private sealed record Loaded(FileSnapshot Snapshot, SendPolicyRules Rules, SendPolicyRules LastGood);
+
+    // File metadata alone misses atomic replacements that preserve their size and last-write time.
+    // Compare the decoded content, and represent read errors as snapshots so cached rules fail closed.
+    private readonly record struct FileSnapshot(string? Contents, string? Error)
+    {
+        public static FileSnapshot Of(string path)
         {
-            FileInfo info = new(path);
-            return info.Exists ? new FileStamp(true, info.LastWriteTimeUtc, info.Length) : default;
+            try { return new FileSnapshot(File.ReadAllText(path), null); }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+                return new FileSnapshot(null, e.Message);
+            }
         }
     }
 }
