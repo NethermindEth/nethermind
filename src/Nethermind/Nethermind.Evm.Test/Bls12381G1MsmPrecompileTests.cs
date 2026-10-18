@@ -1,10 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using Nethermind.Evm.Precompiles;
-using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
@@ -146,6 +144,9 @@ public class Bls12381G1MsmPrecompileTests : PrecompileTests<Bls12381G1MsmPrecomp
         "0000000000000000000000000000000012196c5a43d69224d8713389285f26b98f86ee910ab3dd668e413738282003cc5b7357af9a7af54bb713d62255e80f560000000000000000000000000000000006ba8102bfbeea4416b710c73e8cce3032c31c6269c44906f8ac4f7874ce99fb17559992486528963884ce429a992feeb3c940fe79b6966489b527955de7599194a9ac69a6ff58b8d99e7b1084f0464e";
     private const string ValidItemOutput =
         "000000000000000000000000000000000f1f230329be03ac700ba718bc43c8ee59a4b2d1e20c7de95b22df14e7867eae4658ed2f2dfed4f775d4dcedb4235cf00000000000000000000000000000000012924104fdb82fb074cfc868bdd22012694b5bae2c0141851a5d6a97d8bc6f22ecb2f6ddec18cba6483f2e73faa5b942";
+    // ValidItemOutput doubled through the G1 add precompile, independent of the MSM path.
+    private const string ValidItemDoubledOutput =
+        "000000000000000000000000000000000d5b12983899523be907f30d18f5015a65141d66f1a6a76bcd00547683e069b3e8573a0e9ded4cb854875fef5c81bff6000000000000000000000000000000001513ae12919597acc7b0232520c29e4fb9fa61ed45a816a9dd621e917bba7e0965978ae20798fb64e8b18307d4ad83a3";
     private const string NotOnCurvePoint =
         "0000000000000000000000000000000017f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb00000000000000000000000000000000186b28d92356c4dfec4b5201ad099dbdede3781f8998ddf929b4cd7756192185ca7b8f4ef7088f813270ac3d48868a21";
     private const string NotInSubgroupPoint =
@@ -159,11 +160,10 @@ public class Bls12381G1MsmPrecompileTests : PrecompileTests<Bls12381G1MsmPrecomp
     {
         string infinityItem = new('0', Bls12381G1MsmPrecompile.ItemSize * 2);
         string infinityOutput = new('0', 256);
-        string twoTermOutput = Convert.ToHexString(Instance.Run(Convert.FromHexString(ValidItem + ValidItem), Prague.Instance).Data!);
 
         RunTest(ZeroScalarItem + ValidItem, ValidItemOutput, true);
         RunTest(ValidItem + ZeroScalarItem + infinityItem + ZeroScalarItem, ValidItemOutput, true);
-        RunTest(ZeroScalarItem + ValidItem + ZeroScalarItem + ValidItem, twoTermOutput, true);
+        RunTest(ZeroScalarItem + ValidItem + ZeroScalarItem + ValidItem, ValidItemDoubledOutput, true);
         RunTest(ZeroScalarItem + ZeroScalarItem, infinityOutput, true);
         RunTest(infinityItem + ZeroScalarItem, infinityOutput, true);
     }

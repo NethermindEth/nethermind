@@ -1,10 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using Nethermind.Evm.Precompiles;
-using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
@@ -137,6 +135,9 @@ public class Bls12381G2MsmPrecompileTests : PrecompileTests<Bls12381G2MsmPrecomp
         "0000000000000000000000000000000003632695b09dbf86163909d2bb25995b36ad1d137cf252860fd4bb6c95749e19eb0c1383e9d2f93f2791cb0cf6c8ed9d000000000000000000000000000000001688a855609b0bbff4452d146396558ff18777f329fd4f76a96859dabfc6a6f6977c2496280dbe3b1f8923990c1d6407000000000000000000000000000000000c8567fee05d05af279adc67179468a29d7520b067dbb348ee315a99504f70a206538b81a457cce855f4851ad48b7e80000000000000000000000000000000001238dcdfa80ea46e1500026ea5feadb421de4409f4992ffbf5ae59fa67fd82f38452642a50261b849e74b4a33eed70cc973f40c12c92b703d7b7848ef8b4466d40823aad3943a312b57432b91ff68be1";
     private const string ValidItemOutput =
         "00000000000000000000000000000000119a5147fe9ddca7123f721b5662c1a44b0964c37a214cdf3a4fd34166e3b25210344e65220c38ec84d0e3b5ccc7e46d000000000000000000000000000000001642dad5dacf4295b871fe9b2787f0861f158807b2b6c01c2dce12ab053c9472bd3cb98de5dc33f40053ff45ce5c9af40000000000000000000000000000000005bb5761602b6639f2ecaf79f2d1f853fbdf75f4b3852b90808b858993a83f8a0da8a2ce7072aa91e3b6b3ffd0b3d1e20000000000000000000000000000000000a75143b9551d4ae41fb8bd71fdba7826b994c65904d9189a5ac5130a59cbb9d8dee0e016735565148fc49823d3969e";
+    // ValidItemOutput doubled through the G2 add precompile, independent of the MSM path.
+    private const string ValidItemDoubledOutput =
+        "000000000000000000000000000000000dfd08798e959dcf9d5d68b88444c0998078f8c90ba197a2f59a140c5011485587c046537527b69adcb64e1fb764bf9700000000000000000000000000000000124b680786606c7fa4ed2979a046d968007d68d313e0da33427ccf678eff57350ba7dbb2a809fcff58ecc693c0ace8460000000000000000000000000000000001103bed3f1de5d3aebe1e195d301fb71eabc039036c7aa53b9a79c21d623b1ae75a01a458e3606fca3d61b08ec6ae8e0000000000000000000000000000000015fd3017e9706f66221561c773f08b9a228f91906448c0d02b3cb4f82eef474b6238019cee43f412a7921677b8f09279";
     private const string NotOnCurvePoint =
         "00000000000000000000000000000000024aa2b2f08f0a91260805272dc51051c6e47ad4fa403b02b4510b647ae3d1770bac0326a805bbefd48056c8c121bdb800000000000000000000000000000000086b990f3da2aeac0a36143b7d7c824428215140db1bb859338764cb58458f081d92664f9053b50b3fbd2e4723121b68000000000000000000000000000000000ce5d527727d6e118cc9cdc6da2e351aadfd9baa8cbdd3a76d429a695160d12c923ac9cc3baca289e193548608b82801000000000000000000000000000000000606c4a02ea734cc32acd2b02bc28b99cb3e287e85a763af267492ab572e99ab3f370d275cec1da1aaa9075ff05f79be";
     private const string NotInSubgroupPoint =
@@ -150,11 +151,10 @@ public class Bls12381G2MsmPrecompileTests : PrecompileTests<Bls12381G2MsmPrecomp
     {
         string infinityItem = new('0', Bls12381G2MsmPrecompile.ItemSize * 2);
         string infinityOutput = new('0', 512);
-        string twoTermOutput = Convert.ToHexString(Instance.Run(Convert.FromHexString(ValidItem + ValidItem), Prague.Instance).Data!);
 
         Test(ZeroScalarItem + ValidItem, ValidItemOutput, true);
         Test(ValidItem + ZeroScalarItem + infinityItem + ZeroScalarItem, ValidItemOutput, true);
-        Test(ZeroScalarItem + ValidItem + ZeroScalarItem + ValidItem, twoTermOutput, true);
+        Test(ZeroScalarItem + ValidItem + ZeroScalarItem + ValidItem, ValidItemDoubledOutput, true);
         Test(ZeroScalarItem + ZeroScalarItem, infinityOutput, true);
         Test(infinityItem + ZeroScalarItem, infinityOutput, true);
     }
