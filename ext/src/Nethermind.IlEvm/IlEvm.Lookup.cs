@@ -46,6 +46,13 @@ public static unsafe partial class IlEvm
         [FieldOffset(49)] public bool HasContentHash;
         /// <summary>Legacy: whether the code came with a request or from the chain (<see cref="IsRequestCode"/>), 0 until a query's frame asked.</summary>
         [FieldOffset(50)] public byte Origin;
+        /// <summary>
+        /// The temperature gate's verdict for the trace runner (<see cref="IlTemperature"/>), apart from the decisions every
+        /// query runner shares: <see cref="IlTemperature.GateEpoch"/> lets the code's trace parts take the shared decisions,
+        /// its complement sends them to the interpreter, anything else sends them out of line to be judged. 0, a fresh
+        /// state's, lets them take the shared decisions while the gate is off. Only the trace runner reads or writes it.
+        /// </summary>
+        [FieldOffset(52)] public int TraceGate;
         /// <summary>Interpreted opcodes counted toward hotness; a long, as sampled frames count with a weight and busy code runs billions.</summary>
         [FieldOffset(56)] public long OpCodesRun;
         [FieldOffset(64)] public long WindowStart;
@@ -151,8 +158,9 @@ public static unsafe partial class IlEvm
     /// <param name="count">Whether the interpreter should report the frame's opcodes, which counts it toward hotness.</param>
     /// <param name="drawn">The caller drew the part for counting already (<see cref="SkipsCount"/>), so it is not drawn again.</param>
     /// <param name="query">The machine of the read-only query the frame runs in, whose request counts toward the hotness of code that came with a request; null elsewhere.</param>
+    /// <param name="gated">The trace runner asks with the temperature gate on: a compile also waits for the code to be hot in traces.</param>
     internal static IlContract? Find(CodeInfo codeInfo, OpcodeBodySet bodies, out IlCodeState state, out bool count, bool drawn = false,
-        VirtualMachine<EthereumGasPolicy>? query = null)
+        VirtualMachine<EthereumGasPolicy>? query = null, bool gated = false)
     {
         ref object? slot = ref IlEvmFrameRunner.CodeSlot(codeInfo);
         if (slot is not IlCodeState existing)
@@ -220,8 +228,8 @@ public static unsafe partial class IlEvm
         if (query is not null && IlEvmSettings.Threshold > 1 && state.HasContentHash && IsRequestCode(codeInfo, state))
             hot = HotByContent(codeInfo, state, query, frames);
 
-        // The temperature gate holds back the compile of a query's code that is not hot at run time, as it would not run it.
-        if (hot && query is not null && IlEvmSettings.Temperature > 0 && !IlTemperature.IsHot(codeInfo, state))
+        // The temperature gate holds back a trace's compile of code that is not hot in traces, as it would not run it there.
+        if (hot && gated && !IlTemperature.IsHot(codeInfo, state))
         {
             IlSurfaceCounts.OfThisThread()[IlSurfaceCounts.HeldBackCompiles]++;
             return null;

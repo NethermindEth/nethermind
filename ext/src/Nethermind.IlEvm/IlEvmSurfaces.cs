@@ -50,9 +50,9 @@ internal sealed class IlSurfaceCounts
     public const int Compiled = Padding + Surfaces;
 
     /// <summary>
-    /// The temperature gate's sampling clock (<see cref="IlEvmSettings.Temperature"/>): per surface, the thread's offered
-    /// count from which its next part is a sample. <see cref="long.MaxValue"/> while the gate is off, and always for block
-    /// processing, so the entry's one compare never takes a part out of line then.
+    /// The temperature gate's sampling clock (<see cref="IlTemperature"/>): per surface, the thread's offered count from
+    /// which its next part is a sample. <see cref="long.MaxValue"/> while the gate is off, and always for every surface but
+    /// the trace runner's, so the entry's one compare never takes a call's or a simulation's part out of line.
     /// </summary>
     public const int SampleAt = Padding + 2 * Surfaces;
 
@@ -74,14 +74,14 @@ internal sealed class IlSurfaceCounts
 
     private IlSurfaceCounts()
     {
-        StartSampling(_counts, IlEvmSettings.Temperature > 0);
+        StartSampling(_counts, IlTemperature.On);
     }
 
-    /// <summary>Starts or stops the query surfaces' sampling clocks in <paramref name="counts"/>: due at once, or never.</summary>
+    /// <summary>Starts or stops the trace runner's sampling clock in <paramref name="counts"/>, due at once or never; the other surfaces' never run.</summary>
     private static void StartSampling(long[] counts, bool on)
     {
         for (int surface = 0; surface < Surfaces; surface++)
-            Volatile.Write(ref counts[SampleAt + surface], on && surface != (int)IlEvmSurface.Blocks ? 0 : long.MaxValue);
+            Volatile.Write(ref counts[SampleAt + surface], on && surface == (int)IlEvmSurface.Trace ? 0 : long.MaxValue);
     }
 
     /// <summary>Starts or stops every thread's sampling clocks, as the temperature gate is turned on or off.</summary>

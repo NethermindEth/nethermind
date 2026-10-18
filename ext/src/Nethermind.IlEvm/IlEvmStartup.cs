@@ -276,7 +276,7 @@ public sealed class IlEvmStartupStep(
         IlEvm.ChainCode = dbProvider?.CodeDb;
         if (_logger.IsInfo)
             _logger.Info($"IL-EVM: mode {IlEvmSettings.Mode}, scope {IlEvmSettings.Scope}, read-only query surfaces {DescribeSurfaces()}; " +
-                (IlEvmSettings.Temperature > 0 ? $"temperature gate on: a query's contract runs compiled only while it ran 1/{IlEvmSettings.Temperature} of the last second's opcodes or frame parts; " : "") +
+                (IlTemperature.On ? $"temperature gate {IlTemperature.Threshold} on traces: {IlTemperature.DescribeRule()}; " : "") +
                 "the exit line counts each surface's frame parts offered and run compiled");
 
         int top = Math.Max(1, config.ProfileTop);

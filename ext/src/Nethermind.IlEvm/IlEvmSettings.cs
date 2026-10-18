@@ -396,32 +396,62 @@ public static class IlEvmSettings
     private static bool _decidedEntry = Environment.GetEnvironmentVariable("NETHERMIND_ILEVM_DECIDED_ENTRY") != "0";
 
     /// <summary>
-    /// The temperature gate, off (0) unless <c>NETHERMIND_ILEVM_TEMPERATURE</c> sets it: with n, the query runners run a
-    /// contract's compiled code only while the contract ran at least 1/n of the opcodes, or of the frame parts, they ran in
-    /// the last one-second window, and compile a contract at run time only once it does (<see cref="IlTemperature"/>). Code
-    /// a request brings is left to the other rules.
+    /// The temperature gate, off unless <c>NETHERMIND_ILEVM_TEMPERATURE</c> sets it, on the trace runner only
+    /// (<see cref="IlTemperature"/>). <c>1/n</c> sets this share: a trace's contract runs compiled only while it ran at
+    /// least 1/n of the opcodes, or of the frame parts, the trace runner ran in the last one-second window. A plain number
+    /// sets <see cref="TemperatureRate"/> instead. 0 while off or while the rate is set.
     /// </summary>
     /// <remarks>
     /// Compiled code that a contract meets cold in the CPU's caches loses to the interpreter's always-hot handlers on short
-    /// parts, as when a node replays blocks over many contracts that each run rarely; a contract with a large share of the
-    /// opcodes runs often enough to stay warm, or long enough per part to gain anyway. A change voids every decided entry.
+    /// parts, as when a node replays blocks over many contracts that each run rarely. Calls and simulations are never gated.
+    /// A change voids every trace verdict and starts the windows over.
     /// </remarks>
-    public static int Temperature
+    public static int TemperatureShare
     {
-        get => _temperature;
+        get => _temperatureShare;
         set
         {
-            _temperature = Math.Max(0, value);
-            IlSurfaceCounts.ResetSampling(_temperature > 0);
-            LegacyChanged();
+            _temperatureShare = Math.Max(0, value);
+            if (_temperatureShare > 0)
+                _temperatureRate = 0;
+            IlTemperature.Restart(TemperatureOn);
         }
     }
 
-    private static int _temperature =
-        int.TryParse(Environment.GetEnvironmentVariable("NETHERMIND_ILEVM_TEMPERATURE"), out int temperature) && temperature > 0 ? temperature : 0;
+    /// <summary>
+    /// The temperature gate's rate form, a plain number in <c>NETHERMIND_ILEVM_TEMPERATURE</c>: a trace's contract runs
+    /// compiled only while it ran at least this many frame parts, or this many thousand opcodes, a second in traces
+    /// (<see cref="IlTemperature"/>). 0 while off or while the share is set.
+    /// </summary>
+    public static int TemperatureRate
+    {
+        get => _temperatureRate;
+        set
+        {
+            _temperatureRate = Math.Max(0, value);
+            if (_temperatureRate > 0)
+                _temperatureShare = 0;
+            IlTemperature.Restart(TemperatureOn);
+        }
+    }
 
-    /// <summary>The temperature gate's window ended: every decided entry is void, so each code's next part is decided again on the new shares.</summary>
-    internal static void TemperatureTick() => LegacyChanged();
+    /// <summary>Whether the temperature gate is set, in either form.</summary>
+    public static bool TemperatureOn => _temperatureShare > 0 || _temperatureRate > 0;
+
+    /// <summary>Reads the switch: <c>1/n</c> is a share, a plain number a rate; anything else, 0 or nothing leaves the gate off.</summary>
+    internal static (int Share, int Rate) ParseTemperature(string? value)
+    {
+        value = value?.Trim();
+        if (string.IsNullOrEmpty(value))
+            return (0, 0);
+        if (value.StartsWith("1/", StringComparison.Ordinal))
+            return int.TryParse(value.AsSpan(2), System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out int share) && share > 0 ? (share, 0) : (0, 0);
+        return int.TryParse(value, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out int rate) && rate > 0 ? (0, rate) : (0, 0);
+    }
+
+    private static readonly (int Share, int Rate) _temperatureFromEnvironment = ParseTemperature(Environment.GetEnvironmentVariable("NETHERMIND_ILEVM_TEMPERATURE"));
+    private static int _temperatureShare = _temperatureFromEnvironment.Share;
+    private static int _temperatureRate = _temperatureFromEnvironment.Rate;
 
     private static int _legacyEpochs;
 
@@ -429,9 +459,9 @@ public static class IlEvmSettings
     /// What the Legacy rules' decisions kept in code states (<see cref="IlEvm.IlCodeState.Decided"/>) were taken under:
     /// positive while the query runners may act on them, that is under the Legacy rules with the kill switch and
     /// <see cref="DecidedEntry"/> on and neither profiling nor diagnostics, and -1 otherwise. A change of any of those
-    /// switches or of <see cref="SelfCheck"/>, <see cref="BlockRuntimeCompile"/>, <see cref="BlockSelfCheck"/> or
-    /// <see cref="Temperature"/>, and with the temperature gate on the end of each of its windows, moves it to a value never
-    /// used before, which voids every decision taken under the old one.
+    /// switches or of <see cref="SelfCheck"/>, <see cref="BlockRuntimeCompile"/> or <see cref="BlockSelfCheck"/> moves it to
+    /// a value never used before, which voids every decision taken under the old one. The temperature gate keeps its own
+    /// verdicts apart (<see cref="IlTemperature.GateEpoch"/>) and never moves it.
     /// </summary>
     /// <remarks>Last of the initializers, so that the switches it reads have theirs.</remarks>
     internal static int LegacyEpoch = NextLegacyEpoch();

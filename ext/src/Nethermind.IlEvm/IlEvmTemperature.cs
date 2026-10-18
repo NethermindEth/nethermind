@@ -10,48 +10,52 @@ using Nethermind.Evm.CodeAnalysis;
 namespace Nethermind.IlEvm;
 
 /// <summary>
-/// The temperature gate (<see cref="IlEvmSettings.Temperature"/>, n): on the query runners, compiled code runs a contract
-/// only while the contract is hot at run time, that is while it ran at least 1/n of the opcodes, or of the frame parts,
-/// the query runners ran in the last one-second window.
+/// The temperature gate (<see cref="IlEvmSettings.TemperatureShare"/> or <see cref="IlEvmSettings.TemperatureRate"/>): on
+/// the trace runner only, compiled code runs a contract only while the contract is hot at run time in the trace work.
 /// </summary>
 /// <remarks>
 /// <para>
 /// Compiled code wins on what it covers, but a contract run rarely meets its compiled code cold in the CPU's caches, and
-/// its short parts then lose to the interpreter, whose handlers every contract keeps hot. Replays of blocks spread over a
-/// thousand and more contracts that each run a few times a second; calls keep most of their opcodes in a few dozen. A
-/// contract with a large share of the parts runs often enough to stay warm, and one with a large share of the opcodes
-/// runs long enough per part to gain anyway, or often enough too. Shares tell the two workloads apart where an average
-/// part length does not, calls splitting frames into short parts too, and they do not depend on how fast the machine runs.
+/// its short parts then lose to the interpreter, whose handlers every contract keeps hot. Replays of transactions and
+/// blocks, which run only in the trace environments (<see cref="IlEvmSurface.Trace"/>), spread over a thousand and more
+/// contracts, and lost with every one compiled; the run-time compiles of their long tail kept the compile thread busy too.
+/// Calls and simulations are left alone: there compiled code pays even on contracts of middling rate.
 /// </para>
 /// <para>
-/// How it is measured: each thread takes one part in about <see cref="SampleEvery"/> of each query surface as a sample, at
-/// a random gap drawn from the thread's own counter of parts offered (<see cref="IlSurfaceCounts.SampleAt"/>), so the
-/// entry's steady path only compares that counter with the next sample's. A sample goes out of line, runs as the rules
-/// say, and adds its opcodes, compiled or interpreted, and the part, each times <see cref="SampleEvery"/>, to its code
-/// state's counts for the current window and to the thread's totals. The first sample after a window's end sums the
-/// threads' totals into the window's and voids every decided entry, so each code's next part is decided again on the new
-/// shares.
+/// How it is measured: each thread takes one trace part in about <see cref="SampleEvery"/> as a sample, at a random gap
+/// drawn from the thread's own counter of trace parts (<see cref="IlSurfaceCounts.SampleAt"/>), so the entry's steady path
+/// only compares that counter with the next sample's. A sample goes out of line, runs as the rules say, and adds its
+/// opcodes, compiled or interpreted, and the part, each times <see cref="SampleEvery"/>, to its code state's counts for the
+/// current one-second window and to the thread's totals. The first sample after a window's end sums the threads' totals
+/// into the window's and moves <see cref="GateEpoch"/>, which voids every code state's trace verdict.
 /// </para>
 /// <para>
-/// What is decided: a code is hot while its opcodes or its parts in the current window, or in the one before, are at
-/// least 1/n of the last window's; its parts must also be two samples' worth at least, about 32 parts a second, as one
-/// sample cannot tell a code run a few times a second from one run thirty times. That floor binds only where the query
-/// runners run few parts in all, as replays do, their time going to state reads, the tracer and the response, which
-/// keep the caches as busy as calls do: there a share of the parts alone would call warm a code that runs ten times a
-/// second. A part of a compiled contract that is not hot goes to the interpreter, and so do the code's next
-/// parts, decided in its code state until its next sample or the next window. A hot code runs as the other rules say.
-/// Run-time compiles wait for the code to be hot too. Code a request brings (<see cref="IlEvm.IsRequestCode"/>) is left to
-/// the other rules: it is counted by its content across code infos, and a new code info of it would start cold. Before
-/// the first window ends nothing is hot. Block processing's runner takes no part in any of it.
+/// What is hot, by the form of the threshold: with a share 1/n, a code whose opcodes or parts in the current window, or in
+/// the one before, are at least 1/n of the last window's trace work; with a rate r, a code that ran at least r parts or r
+/// thousand opcodes a second in one of those windows. A part count must also be two samples' worth, about 32 parts a
+/// second: one sample cannot tell a code run a few times a second from one run thirty times. Opcodes need no such floor,
+/// so a code with long parts stays compiled however rarely it runs. Code a request brings (<see cref="IlEvm.IsRequestCode"/>)
+/// is always hot: it is counted by its content across code infos, and a new code info of it would start cold.
+/// </para>
+/// <para>
+/// What it decides: the trace runner keeps its verdict in the code state (<see cref="IlEvm.IlCodeState.TraceGate"/>),
+/// apart from the decisions every query runner shares. A cold verdict sends the code's trace parts to the interpreter until
+/// the next window; a hot one lets them take the shared decisions, as with the gate off; code with nothing compiled has
+/// nothing to gate and is hot. A trace part of code that is not hot asks for no run-time compile either. Calls and
+/// simulations neither read nor write any of it: they compile, decide and run exactly as with the gate off. Block
+/// processing's runner takes no part.
 /// </para>
 /// </remarks>
 internal static class IlTemperature
 {
-    /// <summary>One part in this many, on average, is a sample, per thread and surface; each sample's opcodes count this many times.</summary>
+    /// <summary>One trace part in this many, on average, is a sample, per thread; each sample counts this many times.</summary>
     internal static int SampleEvery = 16;
 
     /// <summary>The length of a window, in milliseconds.</summary>
     internal static int WindowMs = 1_000;
+
+    /// <summary>A rate threshold of r also counts a code hot at r times this many opcodes a second: a part this long gains even cold.</summary>
+    internal const int OpCodesPerPart = 1_000;
 
     private static readonly object _rolling = new();
     private static long _windowEnd;
@@ -62,6 +66,17 @@ internal static class IlTemperature
     private static long _partsAtRoll;
     /// <summary>Whether a window has started: the one ending first has nothing before it to share by.</summary>
     private static bool _started;
+    private static int _gateEpochs;
+
+    /// <summary>
+    /// What the trace verdicts in code states (<see cref="IlEvm.IlCodeState.TraceGate"/>) are taken under: 0 while the gate
+    /// is off, so that a code state's 0 lets the trace runner take the shared decisions as with no gate; else a value never
+    /// used before, new with each window and each change of the gate, which voids every verdict.
+    /// </summary>
+    internal static int GateEpoch = IlEvmSettings.TemperatureOn ? ++_gateEpochs : 0;
+
+    /// <summary>Whether the gate is on.</summary>
+    internal static bool On => GateEpoch != 0;
 
     [ThreadStatic] private static uint _random;
 
@@ -80,6 +95,25 @@ internal static class IlTemperature
     /// <summary>The parts the samples stood for in the last window that ended; 0 before one has.</summary>
     internal static long LastParts => Volatile.Read(ref _lastParts);
 
+    /// <summary>Starts the gate over as the settings say: verdicts void, the trace runner's sampling clocks on or off, the windows from scratch.</summary>
+    internal static void Restart(bool on)
+    {
+        lock (_rolling)
+        {
+            _started = false;
+            Volatile.Write(ref _lastTotal, 0);
+            Volatile.Write(ref _lastParts, 0);
+            Volatile.Write(ref _windowEnd, 0);
+            // Past every code state's last window.
+            Volatile.Write(ref _window, _window + 2);
+            Volatile.Write(ref GateEpoch, on ? ++_gateEpochs : 0);
+        }
+
+        IlSurfaceCounts.ResetSampling(on);
+        _markCode = null;
+        _markState = null;
+    }
+
     /// <summary>The gap to this thread's next sample: uniform in 1 to 2 <see cref="SampleEvery"/> - 1, so one part in <see cref="SampleEvery"/> on average.</summary>
     /// <remarks>A random gap rather than every nth part, which parts that alternate between codes would alias.</remarks>
     internal static long NextGap()
@@ -95,7 +129,7 @@ internal static class IlTemperature
         return 1 + random % (uint)(2 * every - 1);
     }
 
-    /// <summary>Ends the window if its time is up: its total is summed from the threads', and every decided entry is voided.</summary>
+    /// <summary>Ends the window if its time is up: its totals are summed from the threads', and every trace verdict is voided.</summary>
     internal static void Roll()
     {
         long now = Environment.TickCount64;
@@ -107,8 +141,6 @@ internal static class IlTemperature
                 return;
             RollLocked(now);
         }
-
-        IlEvmSettings.TemperatureTick();
     }
 
     /// <summary>Ends the window now, whatever its time; for tests.</summary>
@@ -116,7 +148,6 @@ internal static class IlTemperature
     {
         lock (_rolling)
             RollLocked(Environment.TickCount64);
-        IlEvmSettings.TemperatureTick();
     }
 
     private static void RollLocked(long now)
@@ -130,6 +161,8 @@ internal static class IlTemperature
         _partsAtRoll = parts;
         Volatile.Write(ref _windowEnd, now + WindowMs);
         Volatile.Write(ref _window, _window + 1);
+        if (GateEpoch != 0)
+            Volatile.Write(ref GateEpoch, ++_gateEpochs);
     }
 
     /// <summary>Adds a sampled part of <paramref name="opCodes"/> to <paramref name="state"/>'s counts for the current window, and to this thread's totals.</summary>
@@ -185,14 +218,12 @@ internal static class IlTemperature
         return !_markHotness;
     }
 
-    /// <summary>Whether the code of <paramref name="state"/> is hot: its opcodes or its parts in this window or the last are at least 1/n of the last window's.</summary>
-    /// <remarks>Code a request brings always is: the other rules judge it by its content.</remarks>
+    /// <summary>Whether the code of <paramref name="state"/> is hot in the trace work, by the threshold's form (see the remarks on <see cref="IlTemperature"/>).</summary>
     internal static bool IsHot(CodeInfo codeInfo, IlEvm.IlCodeState state)
     {
         if (IlEvm.IsRequestCode(codeInfo, state))
             return true;
-        long totalOps = Volatile.Read(ref _lastTotal), totalParts = Volatile.Read(ref _lastParts);
-        int window = Volatile.Read(ref _window), n = Math.Max(1, IlEvmSettings.Temperature);
+        int window = Volatile.Read(ref _window);
         int at = state.TempWindow;
         long ops, parts;
         if (at == window)
@@ -210,32 +241,36 @@ internal static class IlTemperature
             return false;
         }
 
-        // A share of the parts needs two samples behind it: one sample is the parts of a code run too rarely to tell.
-        return totalParts > 0 && ((ops > 0 && ops >= totalOps / n) || parts >= Math.Max(2L * SampleEvery, totalParts / n));
+        // A part count needs two samples behind it: one sample is the parts of a code run too rarely to tell.
+        long floor = 2L * SampleEvery;
+        int rate = IlEvmSettings.TemperatureRate;
+        if (rate > 0)
+            return parts >= Math.Max(floor, rate) || ops >= (long)rate * OpCodesPerPart;
+        long totalOps = Volatile.Read(ref _lastTotal), totalParts = Volatile.Read(ref _lastParts);
+        int n = Math.Max(1, IlEvmSettings.TemperatureShare);
+        return totalParts > 0 && ((ops > 0 && ops >= totalOps / n) || parts >= Math.Max(floor, totalParts / n));
     }
+
+    /// <summary>The threshold as the switch writes it: <c>1/n</c> for a share, <c>r</c> for a rate, or <c>off</c>.</summary>
+    internal static string Threshold =>
+        IlEvmSettings.TemperatureRate > 0 ? IlEvmSettings.TemperatureRate.ToString(CultureInfo.InvariantCulture)
+        : IlEvmSettings.TemperatureShare > 0 ? $"1/{IlEvmSettings.TemperatureShare}" : "off";
+
+    /// <summary>The rule in words, for the startup line.</summary>
+    internal static string DescribeRule() =>
+        IlEvmSettings.TemperatureRate > 0
+            ? $"a trace's contract runs compiled only while it runs {IlEvmSettings.TemperatureRate} parts or {IlEvmSettings.TemperatureRate * OpCodesPerPart} opcodes a second in traces"
+            : $"a trace's contract runs compiled only while it ran 1/{IlEvmSettings.TemperatureShare} of the last second's trace opcodes or parts";
 
     /// <summary>The exit line's part: the gate's threshold and what it decided, or nothing while it is off.</summary>
     internal static string Describe() =>
-        IlEvmSettings.Temperature <= 0
+        !On
             ? "temperature gate off"
             : string.Create(CultureInfo.InvariantCulture,
-                $"temperature gate 1/{IlEvmSettings.Temperature} of a {WindowMs} ms window's opcodes, a sample per {SampleEvery} parts: {Window} windows, " +
-                $"the last {LastTotal / 1e6:F1}M sampled opcodes in {LastParts} parts; slow-path decisions hot {IlSurfaceCounts.Sum(IlSurfaceCounts.HotDecisions)}, " +
+                $"temperature gate {Threshold} on traces, {WindowMs} ms windows, a sample per {SampleEvery} trace parts: {Window} windows, " +
+                $"the last {LastTotal / 1e6:F1}M sampled opcodes in {LastParts} parts; slow-path verdicts hot {IlSurfaceCounts.Sum(IlSurfaceCounts.HotDecisions)}, " +
                 $"cold {IlSurfaceCounts.Sum(IlSurfaceCounts.ColdDecisions)}; hot frames whose compile it held back {IlSurfaceCounts.Sum(IlSurfaceCounts.HeldBackCompiles)}");
 
     /// <summary>Starts the windows over, as at startup, past every code state's last window; for tests.</summary>
-    internal static void Reset()
-    {
-        lock (_rolling)
-        {
-            _started = false;
-            Volatile.Write(ref _lastTotal, 0);
-            Volatile.Write(ref _lastParts, 0);
-            Volatile.Write(ref _windowEnd, 0);
-            Volatile.Write(ref _window, _window + 2);
-        }
-
-        _markCode = null;
-        _markState = null;
-    }
+    internal static void Reset() => Restart(On);
 }

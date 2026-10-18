@@ -76,9 +76,11 @@ public sealed class IlEvmFrameRunner : FrameCodeRunner<EthereumGasPolicy>
     /// <see cref="IlEvmSettings.HotnessSampling"/> drawn for counting. The rest go out of line. Code states are shared by
     /// every runner, and the decisions are the query runners' alone: block processing's runner neither acts on them nor
     /// takes them, so its own rules (<see cref="IlEvmSettings.BlockRuntimeCompile"/>, <see cref="IlEvmSettings.BlockSelfCheck"/>)
-    /// judge every part it is offered. With the temperature gate on (<see cref="IlEvmSettings.Temperature"/>), about one part
-    /// in <see cref="IlTemperature.SampleEvery"/> per thread is a sample and goes out of line before anything else
-    /// (<see cref="RunSampled"/>); the rest pay one compare of the thread's part counter for it.
+    /// judge every part it is offered. With the temperature gate on (<see cref="IlTemperature"/>), the trace runner first takes
+    /// its own verdict on the code (<see cref="IlEvm.IlCodeState.TraceGate"/>): cold sends the part to the interpreter, hot
+    /// goes on to the shared decisions, none goes out of line; and about one of its parts in
+    /// <see cref="IlTemperature.SampleEvery"/> per thread is a sample, out of line before anything else (<see cref="RunSampled"/>).
+    /// Every runner pays one compare of the thread's part counter for the samples, which only the trace runner's ever reach.
     /// </remarks>
     // Optimized from the first call, as are the helpers compiled code calls: a tier-0 copy would slow the frames run
     // before tiering catches up, and the self-check would judge compiled code by them.
@@ -92,34 +94,45 @@ public sealed class IlEvmFrameRunner : FrameCodeRunner<EthereumGasPolicy>
         if (++counts[IlSurfaceCounts.Offered + surface] >= counts[IlSurfaceCounts.SampleAt + surface])
             return RunSampled(vm, codeInfo, bodies, ref stack, ref gas, ref programCounter, ref opCodesSincePoll, flags, counts, surface);
         bool drawn = false;
-        if (!_block && CodeState(codeInfo) is IlEvm.IlCodeState state && Volatile.Read(ref state.DecidedEpoch) == IlEvmSettings.LegacyEpoch)
+        if (!_block && CodeState(codeInfo) is IlEvm.IlCodeState state)
         {
-            IlEvm.IlContract? decided = state.Decided;
-            if (decided is null)
+            // The trace runner's own verdict first, kept apart from the shared decisions: cold is the interpreter's, none is
+            // judged out of line. With the gate off it is 0, as the epoch is, and every trace part goes on to them.
+            int gateEpoch;
+            if (surface == (int)IlEvmSurface.Trace && state.TraceGate != (gateEpoch = IlTemperature.GateEpoch))
             {
-                // Nothing compiled when decided, and nothing since: the part is drawn for counting as the lookup would draw it.
-                if (state.Contract is null && state.Shipped is null)
-                {
-                    if (IlEvm.SkipsCount())
-                        return Declined;
-                    drawn = true;
-                }
-            }
-            else if (ReferenceEquals(decided.Bodies, bodies))
-            {
-                long until = state.DecidedUntil;
-                if (until == 0)
-                {
-                    int before = vm.OpCodeCount;
-                    EvmExceptionType result = decided.Run(vm, ref stack, ref gas, ref programCounter, ref opCodesSincePoll, (flags & FrameRunFlags.Cancelable) != 0);
-                    if (vm.OpCodeCount != before)
-                        counts[IlSurfaceCounts.Compiled + surface]++;
-                    return result;
-                }
-
-                // Given back, or on probation until a time not come yet.
-                if (until == long.MaxValue || Environment.TickCount64 < until)
+                if (state.TraceGate == ~gateEpoch)
                     return Declined;
+            }
+            else if (Volatile.Read(ref state.DecidedEpoch) == IlEvmSettings.LegacyEpoch)
+            {
+                IlEvm.IlContract? decided = state.Decided;
+                if (decided is null)
+                {
+                    // Nothing compiled when decided, and nothing since: the part is drawn for counting as the lookup would draw it.
+                    if (state.Contract is null && state.Shipped is null)
+                    {
+                        if (IlEvm.SkipsCount())
+                            return Declined;
+                        drawn = true;
+                    }
+                }
+                else if (ReferenceEquals(decided.Bodies, bodies))
+                {
+                    long until = state.DecidedUntil;
+                    if (until == 0)
+                    {
+                        int before = vm.OpCodeCount;
+                        EvmExceptionType result = decided.Run(vm, ref stack, ref gas, ref programCounter, ref opCodesSincePoll, (flags & FrameRunFlags.Cancelable) != 0);
+                        if (vm.OpCodeCount != before)
+                            counts[IlSurfaceCounts.Compiled + surface]++;
+                        return result;
+                    }
+
+                    // Given back, or on probation until a time not come yet.
+                    if (until == long.MaxValue || Environment.TickCount64 < until)
+                        return Declined;
+                }
             }
         }
 
@@ -141,7 +154,7 @@ public sealed class IlEvmFrameRunner : FrameCodeRunner<EthereumGasPolicy>
         return result;
     }
 
-    /// <summary>A temperature sample (<see cref="IlTemperature"/>): the part runs as the rules say, and its opcodes count toward its code's temperature.</summary>
+    /// <summary>A temperature sample of a trace part (<see cref="IlTemperature"/>): the part runs as the rules say, and its opcodes count toward its code's temperature.</summary>
     /// <remarks>
     /// The opcodes compiled code ran are counted here; a part the interpreter takes, or finishes, reports its opcodes
     /// (<see cref="OnInterpreted"/>), which complete the sample. A part the rules declined without wanting a report is
@@ -151,9 +164,9 @@ public sealed class IlEvmFrameRunner : FrameCodeRunner<EthereumGasPolicy>
     private EvmExceptionType RunSampled(VirtualMachine<EthereumGasPolicy> vm, CodeInfo codeInfo, OpcodeBodySet bodies, scoped ref EvmStack stack,
         scoped ref EthereumGasPolicy gas, ref nint programCounter, ref int opCodesSincePoll, FrameRunFlags flags, long[] counts, int surface)
     {
-        if (IlEvmSettings.Temperature <= 0 || _block)
+        if (!IlTemperature.On || Surface != IlEvmSurface.Trace)
         {
-            // The gate was turned off since this thread's clock was set: it stops.
+            // The gate was turned off since this thread's clock was set, or the part is not a trace's: the clock stops.
             counts[IlSurfaceCounts.SampleAt + surface] = long.MaxValue;
             return RunCounted(vm, codeInfo, bodies, ref stack, ref gas, ref programCounter, ref opCodesSincePoll, flags, counts, surface, drawn: false);
         }
@@ -210,6 +223,8 @@ public sealed class IlEvmFrameRunner : FrameCodeRunner<EthereumGasPolicy>
 
         // Read before what a decision rests on: a change of the settings meanwhile leaves the decision void, not wrong.
         int epoch = IlEvmSettings.LegacyEpoch;
+        // The temperature gate judges the trace runner's parts only; its verdicts are taken under its own epoch.
+        int gateEpoch = Surface == IlEvmSurface.Trace ? IlTemperature.GateEpoch : 0;
         IlEvm.IlContract? contract;
         // The code state a query runner keeps its decisions in; none for block processing, which takes no decisions.
         IlEvm.IlCodeState? state;
@@ -221,9 +236,13 @@ public sealed class IlEvmFrameRunner : FrameCodeRunner<EthereumGasPolicy>
         }
         else
         {
-            contract = IlEvm.Find(codeInfo, bodies, out IlEvm.IlCodeState found, out count, drawn, _block ? null : vm);
+            contract = IlEvm.Find(codeInfo, bodies, out IlEvm.IlCodeState found, out count, drawn, _block ? null : vm, gated: gateEpoch != 0);
             state = _block ? null : found;
         }
+
+        // A trace verdict: code with nothing compiled has nothing to gate, and one taken with the gate off is 0, as its epoch.
+        if (state is not null && Surface == IlEvmSurface.Trace && (contract is null || gateEpoch == 0) && state.TraceGate != gateEpoch)
+            state.TraceGate = gateEpoch;
 
         if (contract is null)
         {
@@ -235,20 +254,19 @@ public sealed class IlEvmFrameRunner : FrameCodeRunner<EthereumGasPolicy>
 
         bool cancelable = (flags & FrameRunFlags.Cancelable) != 0;
         IlEvmSettings.SawFrame();
-        // The temperature gate: a query's contract that is not hot at run time goes to the interpreter, and so do its next
-        // parts, decided until its next sample or the gate's next window; a hot one runs as the rules below say.
-        if (state is not null && IlEvmSettings.Temperature > 0)
+        // The temperature gate, on the trace runner: a contract that is not hot in traces goes to the interpreter, and so do
+        // its next trace parts until the gate's next window; a hot one runs as the rules below say. The verdict stays in the
+        // trace runner's own field: the decisions the other runners share are not touched.
+        if (state is not null && gateEpoch != 0)
         {
-            long[] decisions = IlSurfaceCounts.OfThisThread();
-            if (!IlTemperature.IsHot(codeInfo, state))
-            {
-                decisions[IlSurfaceCounts.ColdDecisions]++;
-                if (epoch > 0)
-                    Decide(state, contract, long.MaxValue, epoch);
+            long[] verdicts = IlSurfaceCounts.OfThisThread();
+            bool hot = IlTemperature.IsHot(codeInfo, state);
+            verdicts[hot ? IlSurfaceCounts.HotDecisions : IlSurfaceCounts.ColdDecisions]++;
+            int trace = hot ? gateEpoch : ~gateEpoch;
+            if (state.TraceGate != trace)
+                state.TraceGate = trace;
+            if (!hot)
                 return Declined;
-            }
-
-            decisions[IlSurfaceCounts.HotDecisions]++;
         }
 
         int verdict = Volatile.Read(ref contract.Check.Verdict);
