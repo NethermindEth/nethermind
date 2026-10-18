@@ -1,0 +1,147 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+// Run with: node --test tools/ProofWrapperVisualiser/test/
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const stages = require('../js/stages.js');
+const { Store, aggregate, percentileSeries, eventMatches } = require('../js/model.js');
+
+const W = '0x' + 'aa'.repeat(32), TX = '0x' + 'bb'.repeat(32);
+const A = 'a'.repeat(128), B = 'b'.repeat(128);
+
+/** A two-node propagation: node a offers W, node b fetches it, recovers its envelope, validates and relays it; then inclusion. */
+function propagation(store) {
+  store.node('a', { name: 'a', enode: `enode://${A}@1.1.1.1:1` });
+  store.node('b', { name: 'b', enode: `enode://${B}@1.1.1.2:1` });
+  store.ingest('a', [
+    { seq: '0x1', time: 1000, type: 'submitted', wrapper: W, message: 'local', mode: 0, length: 6355, transactions: [TX], dependencies: ['leanSPHINCS:0x1:0x2'] },
+    { seq: '0x2', time: 1005, type: 'offered', wrapper: W, result: 'local aggregate', transactions: [TX] },
+    { seq: '0x3', time: 1006, type: 'announced', wrapper: W, peerId: '0x' + B, message: 'NewProofWrapperHashes' },
+  ]);
+  store.ingest('b', [
+    { seq: '0x1', time: 1010, type: 'announcement-received', wrapper: W, peerId: '0x' + A, result: 'queued', length: 6355 },
+    { seq: '0x2', time: 1011, type: 'wrapper-requested', wrapper: W, peerId: '0x' + A, requestId: '0x1' },
+    { seq: '0x3', time: 1030, type: 'wrapper-received', wrapper: W, peerId: '0x' + A, result: 'matched hash and announced length; queued for validation' },
+    { seq: '0x4', time: 1031, type: 'validation-started', wrapper: W, count: 1, mode: 0, transactions: [TX] },
+    { seq: '0x5', time: 1032, type: 'envelope-requested', wrapper: W, peerId: '0x' + A, requestId: '0x2', count: 1 },
+    { seq: '0x6', time: 1040, type: 'envelope-response', wrapper: W, peerId: '0x' + A, result: 'returned 0 of 1', count: 0, detail: '1 omitted before the last returned: unavailable here, try another announcer' },
+    { seq: '0x7', time: 1045, type: 'envelope-recovery', wrapper: W, result: 'complete', durationMs: 14, count: 2 },
+    { seq: '0x8', time: 1050, type: 'verdict', wrapper: W, result: 'Valid', peerId: '0x' + A },
+    { seq: '0x9', time: 1052, type: 'offered', wrapper: W, result: 'validated', transactions: [TX] },
+  ]);
+  store.ingest('a', [{ seq: '0x4', time: 13000, type: 'included', transactions: [TX], block: '0x7' }]);
+}
+
+test('stages name each step after its EIP-8437 message or rule', () => {
+  const d = stages.describe({ type: 'wrapper-requested' });
+  assert.equal(d.stage, 'requested');
+  assert.equal(d.message, 'GetProofWrappers (0x17)');
+  assert.match(stages.describe({ type: 'verdict', result: 'GraceRefused' }).rule, /grace|local refusal/i);
+  assert.equal(stages.describe({ type: 'verdict', result: 'Invalid' }).stage, 'rejected');
+  assert.equal(stages.describe({ type: 'announcement-received', result: "dropped: peer's share of pending announcements used" }).stage, 'dropped');
+  for (const type of Object.keys(stages.TYPES)) assert.ok(stages.describe({ type, result: '' }).label, type);
+});
+
+test('indexes a wrapper per node and links transaction events to it', () => {
+  const store = new Store();
+  propagation(store);
+  const w = store.wrappers.get(W);
+  assert.equal(w.mode, 0);
+  assert.deepEqual(w.txs, [TX]);
+  assert.equal(w.perNode.size, 2);
+  assert.equal(w.outcome, 'included');
+  assert.equal(w.included.block, 7);
+  const b = w.perNode.get('b');
+  assert.equal(b.rounds, 1);
+  assert.equal(b.omitted, 1);
+  assert.equal(b.verdict, 'Valid');
+  assert.equal(store.peerNode('0x' + A.toUpperCase()), 'a');
+});
+
+test('transaction events seen before their wrapper are linked once it arrives', () => {
+  const store = new Store();
+  store.ingest('a', [{ seq: '0x1', time: 5, type: 'included', transactions: [TX], block: '0x2' }]);
+  store.ingest('a', [{ seq: '0x2', time: 1, type: 'offered', wrapper: W, transactions: [TX] }]);
+  assert.equal(store.wrappers.get(W).outcome, 'included');
+});
+
+test('aggregates per-hop latency, recovery and omissions', () => {
+  const store = new Store();
+  propagation(store);
+  const agg = aggregate(store, {}, { now: 14000, windowMs: 20000, binMs: 1000 });
+  assert.equal(agg.hop.n, 1);
+  assert.equal(agg.hop.p50, 47, 'offered on a at 1005, offered on b at 1052');
+  assert.equal(agg.fetch.p50, 20);
+  assert.equal(agg.recovery.p50, 14);
+  assert.equal(agg.counts.omissions, 1);
+  assert.equal(agg.counts.envelopeRequests, 1);
+  assert.equal(agg.outcomes.included, 1);
+  assert.equal(agg.slowest[0].w, W);
+  const requested = agg.heat[stages.STAGE_INDEX.requested];
+  assert.equal(requested.reduce((a, b) => a + b, 0), 1);
+});
+
+test('filters by node, mode, stage, outcome and text', () => {
+  const store = new Store();
+  propagation(store);
+  const all = [...store.events()];
+  const count = f => all.filter(e => eventMatches(store, e, f)).length;
+  assert.equal(count({ node: 'b' }), 9);
+  assert.equal(count({ mode: '1' }), 0);
+  assert.equal(count({ mode: '0', stage: 'recovery' }), 4);
+  assert.equal(count({ outcome: 'included', text: 'omitted' }), 1);
+  assert.equal(aggregate(store, { mode: '1' }, { now: 14000, windowMs: 20000, binMs: 1000 }).wrappers, 0);
+});
+
+test('keeps the client buffer bounded, evicting the oldest events and wrappers', () => {
+  const store = new Store({ capacity: 100, maxWrappers: 10 });
+  for (let i = 0; i < 50; i++) {
+    const hash = '0x' + i.toString(16).padStart(64, '0');
+    store.ingest('a', [{ seq: i * 3 + 1, time: i, type: 'announcement-received', wrapper: hash }, { seq: i * 3 + 2, time: i, type: 'wrapper-requested', wrapper: hash }, { seq: i * 3 + 3, time: i, type: 'gauges', detail: 'pending=1' }]);
+  }
+  assert.equal(store.size, 100);
+  assert.equal(store.evicted, 50);
+  assert.equal(store.wrappers.size, 10);
+  assert.equal(store.get(store.minGid - 1), undefined);
+  assert.equal([...store.events()].length, 100);
+  assert.equal(store.nodes.get('a').after, 150);
+});
+
+test('ignores malformed field types from hand-edited captures', () => {
+  const store = new Store();
+  store.ingest('a', [{ seq: 1, time: 1, type: 'offered', wrapper: { evil: 1 }, transactions: [1, 2], detail: ['x'] }]);
+  const [e] = store.events();
+  assert.equal(e.wrapper, undefined);
+  assert.equal(e.transactions, undefined);
+  assert.equal(e.detail, undefined);
+});
+
+test('exports a capture that loads back to the same wrappers', () => {
+  const store = new Store();
+  propagation(store);
+  const copy = new Store();
+  const capture = JSON.parse(JSON.stringify(store.toJSON()));
+  for (const n of capture.nodes) copy.node(n.key, n);
+  for (const [key, list] of Object.entries(capture.events)) copy.ingest(key, list);
+  assert.equal(capture.format, 'eip8437-visualiser/1');
+  assert.deepEqual(aggregate(copy, {}, { now: 14000, windowMs: 20000, binMs: 1000 }).hop.p50, 47);
+});
+
+test('percentile series per bin', () => {
+  const series = percentileSeries([[0, 1], [10, 3], [20, 100], [1500, 7]], 0, 2, 1000);
+  assert.deepEqual(series[0], { n: 3, p50: 3, p95: 100 });
+  assert.deepEqual(series[1], { n: 1, p50: 7, p95: 7 });
+});
+
+test('parses node lists, kurtosis enclave inspect and port print output', () => {
+  const { parseNodes } = require('../js/sources.js');
+  const inspect = [
+    '020bdf659e0d   el-1-nethermind-lighthouse                       engine-rpc: 8551/tcp -> 127.0.0.1:41551        RUNNING',
+    '                                                                rpc: 8545/tcp -> 127.0.0.1:41445',
+    '1a73d44f21cd   el-2-nethermind-lighthouse                       rpc: 8545/tcp -> http://127.0.0.1:41545        RUNNING',
+  ].join('\n');
+  assert.deepEqual(parseNodes(inspect), [{ name: 'el-1', url: 'http://127.0.0.1:41445' }, { name: 'el-2', url: 'http://127.0.0.1:41545' }]);
+  assert.deepEqual(parseNodes('el-3=http://10.0.0.3:8545\nhttp://127.0.0.1:41945\n127.0.0.1:1', 3),
+    [{ name: 'el-3', url: 'http://10.0.0.3:8545' }, { name: 'node-5', url: 'http://127.0.0.1:41945' }, { name: 'node-6', url: 'http://127.0.0.1:1' }]);
+});

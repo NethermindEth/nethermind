@@ -461,7 +461,8 @@ public sealed partial class ProofWrapperTransport : IDisposable
                 {
                     int position = served.FindIndex(entry => entry.Announcement.Hash == wrapperHash);
                     Record(ProofWrapperEventTypes.Served, peer, wrapperHash, "ProofWrappers", request.RequestId,
-                        position >= 0 ? "served" : "unavailable", length: position >= 0 ? served[position].Wrapper.Length : null);
+                        position >= 0 ? "served" : TryGetOffered(wrapperHash, out _) ? "held but not sent: soft response limit or serving budget" : "unavailable",
+                        length: position >= 0 ? served[position].Wrapper.Length : null);
                 }
             byte[][] wrappers = new byte[served.Count][];
             for (int i = 0; i < wrappers.Length; i++)

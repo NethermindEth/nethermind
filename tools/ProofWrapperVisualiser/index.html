@@ -1,0 +1,156 @@
+<!doctype html>
+<!-- SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited -->
+<!-- SPDX-License-Identifier: LGPL-3.0-only -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Proof Wrapper Mempool</title>
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+<header class="bar">
+  <h1>Proof wrappers <span class="sub">EIP-8288 over EIP-8437 eth/73</span></h1>
+  <div class="controls">
+    <button id="toggle-sources" aria-expanded="false">Nodes</button>
+    <label class="button">Open capture<input id="import" type="file" accept="application/json,.json" hidden></label>
+    <select id="replay-speed" title="Replay an opened capture at this speed, or load it at once">
+      <option value="0">load at once</option><option value="1">replay ×1</option><option value="10">replay ×10</option><option value="100">replay ×100</option>
+    </select>
+    <button id="demo" title="Open the bundled devnet capture">Demo</button>
+    <select id="synthetic" title="Synthetic load: wrappers per second across six simulated nodes">
+      <option value="0">synthetic off</option><option value="1">synthetic 1/s</option><option value="10">synthetic 10/s</option><option value="50">synthetic 50/s</option><option value="200">synthetic 200/s</option>
+    </select>
+    <button id="export">Export</button>
+    <button id="pause" aria-pressed="false">Pause</button>
+    <button id="clear">Clear</button>
+  </div>
+  <div id="perf" class="perf" aria-live="polite"></div>
+</header>
+
+<section id="sources" class="panel" hidden>
+  <div class="sources-grid">
+    <div>
+      <h3>Connected nodes</h3>
+      <table id="node-table"><thead><tr><th>Name</th><th>RPC</th><th>Status</th><th>Seq</th><th>Missed</th><th></th></tr></thead><tbody></tbody></table>
+      <p class="hint" id="proxy-hint"></p>
+    </div>
+    <div>
+      <h3>Add nodes</h3>
+      <textarea id="node-input" rows="6" spellcheck="false" placeholder="el-1=http://127.0.0.1:41445&#10;http://127.0.0.1:41545&#10;or paste `kurtosis enclave inspect &lt;enclave&gt;` / `kurtosis port print &lt;enclave&gt; el-1-... rpc` output"></textarea>
+      <div class="row"><button id="add-nodes">Connect</button><button id="discover">Discover (serve.py)</button></div>
+      <p class="hint">Nodes need <code>--Network.ProofWrapperEventBufferSize=50000</code> and the <code>debug</code> and <code>admin</code> JSON-RPC modules. Opened directly from disk, the page calls nodes itself, which needs <code>--JsonRpc.CorsOrigins=*</code>; through <code>serve.py</code> it proxies them.</p>
+    </div>
+  </div>
+</section>
+
+<section class="filters" aria-label="Filters">
+  <label>Node <select id="f-node"><option value="">all</option></select></label>
+  <label>Mode <select id="f-mode"><option value="">all</option><option value="0">mode 0 (direct)</option><option value="1">mode 1 (aggregate)</option></select></label>
+  <label>Stage <select id="f-stage"><option value="">all</option></select></label>
+  <label>Outcome <select id="f-outcome"><option value="">all</option><option>pending</option><option>validated</option><option>included</option><option>rejected</option><option>dropped</option></select></label>
+  <label class="grow">Find <input id="f-text" type="search" placeholder="wrapper or transaction hash, peer, text"></label>
+  <label>Window <select id="f-window"><option value="300000">5 min</option><option value="900000" selected>15 min</option><option value="3600000">1 h</option><option value="21600000">6 h</option></select></label>
+</section>
+
+<main class="layout">
+  <aside class="side">
+    <div class="card">
+      <h2>Network</h2>
+      <canvas id="network" class="network"></canvas>
+      <div class="legend" id="network-legend"></div>
+      <label class="check"><input type="checkbox" id="animate" checked> animate messages</label>
+    </div>
+    <div class="tiles" id="tiles"></div>
+  </aside>
+
+  <section class="content">
+    <nav class="tabs" role="tablist">
+      <button role="tab" data-tab="overview" aria-selected="true">Overview</button>
+      <button role="tab" data-tab="proving">Proving</button>
+      <button role="tab" data-tab="wrapper">Wrapper</button>
+      <button role="tab" data-tab="log">Event log</button>
+      <button role="tab" data-tab="guide">Guide</button>
+    </nav>
+
+    <div class="tab" id="tab-overview">
+      <div class="card">
+        <h2>Lifecycle activity <span class="note">events per stage over time; click a stage to filter</span></h2>
+        <canvas id="heat"></canvas>
+      </div>
+      <div class="grid4">
+        <div class="card"><h3>Per hop <span class="note">offered on sender → offered on receiver</span></h3><canvas id="h-hop"></canvas></div>
+        <div class="card"><h3>Retrieval <span class="note">0x16 received → 0x18 matched</span></h3><canvas id="h-fetch"></canvas></div>
+        <div class="card"><h3>Envelope recovery <span class="note">all GetPooledTransactions rounds</span></h3><canvas id="h-recovery"></canvas></div>
+        <div class="card"><h3>End to end <span class="note">origin → last node offering it</span></h3><canvas id="h-e2e"></canvas></div>
+      </div>
+      <div class="card">
+        <h2>Latency over time
+          <select id="pct-metric"><option value="hop">per hop</option><option value="fetch">retrieval</option><option value="recovery">envelope recovery</option><option value="verify">full validation</option><option value="step">native proof steps</option></select>
+        </h2>
+        <canvas id="pct"></canvas>
+        <div class="legend"><span><i style="background:var(--series-1)"></i>p50</span><span><i style="background:var(--series-2)"></i>p95</span></div>
+      </div>
+      <div class="grid2">
+        <div class="card"><h3>Outcomes and protocol events</h3><canvas id="outcomes"></canvas></div>
+        <div class="card"><h3>Slowest to propagate <span class="note">click to open</span></h3><table class="list" id="slowest"></table></div>
+      </div>
+      <div class="card"><h3>Recent wrappers</h3><table class="list" id="recent"></table></div>
+    </div>
+
+    <div class="tab" id="tab-proving" hidden>
+      <div class="grid4">
+        <div class="card"><h3>Leaf proofs <span class="note">native, over direct witnesses</span></h3><canvas id="p-leaf"></canvas></div>
+        <div class="card"><h3>Merge / fold steps <span class="note">recursive inputs</span></h3><canvas id="p-merge"></canvas></div>
+        <div class="card"><h3>Aggregation <span class="note">aggregate and reaggregate</span></h3><canvas id="p-aggregate"></canvas></div>
+        <div class="card"><h3>Full validation <span class="note">cold verifies only</span></h3><canvas id="p-verify"></canvas></div>
+      </div>
+      <div class="grid2">
+        <div class="card"><h3>Cache reuse</h3><canvas id="p-cache"></canvas></div>
+        <div class="card"><h3>Claimed-proof checks <span class="note">run alongside envelope recovery</span></h3><canvas id="p-claims"></canvas></div>
+      </div>
+      <div class="card">
+        <h2>Block production proofs <span class="note">per block: green ready, orange proven inline, red ✕ not ready by the deadline (body rebuilt from proven dependencies)</span></h2>
+        <canvas id="p-production"></canvas>
+        <div class="grid2"><div><h3>Scheduled production proofs</h3><canvas id="p-production-proof"></canvas></div><div><h3>Wrapper sizes <span class="note">mode 0 vs mode 1</span></h3><canvas id="p-sizes"></canvas></div></div>
+      </div>
+      <div class="card">
+        <h2>Queue depths
+          <select id="gauge-metric"><option value="pending">pending announcements</option><option value="validation">validation queue</option><option value="workers">validation workers</option><option value="stored">offered wrappers</option><option value="storedBytes">offered bytes</option><option value="chargedBytes">bytes charged to peers</option><option value="pool">pool size</option><option value="tombstones">tombstones</option></select>
+        </h2>
+        <canvas id="gauges"></canvas>
+        <div class="legend" id="gauge-legend"></div>
+      </div>
+    </div>
+
+    <div class="tab" id="tab-wrapper" hidden>
+      <div class="card">
+        <div class="row"><input id="w-search" type="search" class="grow" placeholder="wrapper hash, transaction hash or prefix"><button id="w-go">Open</button></div>
+        <div id="w-header"></div>
+      </div>
+      <div class="card"><h2>Timeline across nodes <span class="note">each lane is one node; hover a step for the EIP-8437 rule</span></h2><div id="w-swimlane" class="swimlane"></div></div>
+      <div class="card"><h2>Steps</h2><table class="list steps" id="w-steps"></table></div>
+    </div>
+
+    <div class="tab" id="tab-log" hidden>
+      <div class="card">
+        <div class="row"><span id="log-count"></span><label class="check"><input type="checkbox" id="log-follow" checked> follow newest</label></div>
+        <div class="log-head"><span>time</span><span>node</span><span>stage</span><span>step</span><span>wrapper</span><span>peer</span><span>result</span></div>
+        <div id="log" class="log" tabindex="0"><div id="log-spacer"></div></div>
+      </div>
+    </div>
+
+    <div class="tab" id="tab-guide" hidden>
+      <div class="card guide" id="guide"></div>
+    </div>
+  </section>
+</main>
+<div id="tooltip" class="tooltip" hidden></div>
+<script src="js/stages.js"></script>
+<script src="js/model.js"></script>
+<script src="js/charts.js"></script>
+<script src="js/network.js"></script>
+<script src="js/sources.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
