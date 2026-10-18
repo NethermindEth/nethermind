@@ -68,13 +68,19 @@ foreach ((int count, string shape) in cases)
         {
             fixture.ReopenCold();
             fixture.Prepare();
+            ColdReadDiagnostics diagnosticsBefore = ColdReadDiagnostics.Capture();
             long before = GC.GetTotalAllocatedBytes(precise: true);
             long start = Stopwatch.GetTimestamp();
             fixture.Read();
             double nanoseconds = Stopwatch.GetElapsedTime(start).TotalNanoseconds;
             long allocated = GC.GetTotalAllocatedBytes(precise: true) - before;
+            ColdReadDiagnostics diagnosticsAfter = ColdReadDiagnostics.Capture();
             fixture.VerifyResults();
-            samples.Add(new { nanoseconds, managedBytes = allocated, operations = 1, cacheMisses = fixture.CacheMisses });
+            samples.Add(new
+            {
+                nanoseconds, managedBytes = allocated, operations = 1, cacheMisses = fixture.CacheMisses,
+                sampleIndex = sample, diagnostics = diagnosticsAfter.Since(diagnosticsBefore)
+            });
         }
         rows.Add(new { count, shape, cache = "cold", detailedMetrics, preflightCacheMisses, samples });
     }

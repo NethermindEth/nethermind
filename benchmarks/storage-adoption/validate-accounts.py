@@ -48,7 +48,16 @@ elif mode == "results":
         for sample in row["samples"]:
             assert math.isfinite(sample["nanoseconds"]) and sample["nanoseconds"] > 0
             assert sample["operations"] >= 1 and sample["managedBytes"] >= 0
-            if row["cache"] == "cold": assert 0 <= sample["cacheMisses"] <= 2 * row["count"]
+            if row["cache"] == "cold":
+                assert 0 <= sample["cacheMisses"] <= 2 * row["count"]
+                assert 0 <= sample["sampleIndex"] < 8
+                diagnostics = sample["diagnostics"]
+                assert set(diagnostics) == {
+                    "gen0Collections", "gen1Collections", "gen2Collections", "gcPauseMs", "processCpuMs",
+                    "threadPoolThreadsBefore", "threadPoolThreadsAfter", "completedWorkItems",
+                    "readBytes", "readCalls", "minorFaults", "majorFaults",
+                }
+                assert all(math.isfinite(value) and value >= 0 for value in diagnostics.values())
     print("Verified all 36 account-prewarming cases")
 else:
     raise SystemExit("unknown validation mode")
