@@ -379,7 +379,8 @@ jobs:
                 record_failure "$block_number" "$block_hash" "output $output_hex does not match statelessOutputBytes $expected_output_hex"
               # The printed result is a debug line on OpenVM; what it proves is the
               # Keccak-256 of the result in its 32-byte public-values window.
-              elif [ "$GUEST_VM" = openvm ] && ! grep -qx "public_values=$(keccak256 "$expected_output_hex")" "$log_file"; then
+              # Not anchored at line start: the runner's stderr can land on the same line.
+              elif [ "$GUEST_VM" = openvm ] && ! grep -q "public_values=$(keccak256 "$expected_output_hex")\$" "$log_file"; then
                 record_failure "$block_number" "$block_hash" "public values do not match the Keccak-256 of statelessOutputBytes"
               else
                 echo "| $block_number | \`$block_hash\` | passed |" >> "$summary"
