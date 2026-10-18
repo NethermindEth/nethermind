@@ -53,6 +53,7 @@ namespace Nethermind.JsonRpc.Data;
 [JsonSerializable(typeof(Modules.Trace.ParityTxTraceFromStore[]))]
 [JsonSerializable(typeof(Nethermind.Core.Collections.ArrayPoolList<Modules.Trace.ParityTxTraceFromStore>))]
 [JsonSerializable(typeof(Nethermind.Core.Collections.ArrayPoolList<Nethermind.Facade.Filters.FilterLog>))]
+[JsonSerializable(typeof(Modules.Eth.SerializedLogsResult))]
 [JsonSerializable(typeof(Nethermind.Core.Collections.ArrayPoolList<Nethermind.Core.Crypto.Hash256>))]
 [JsonSerializable(typeof(ReceiptsForRpc<ReceiptForRpc>))]
 [JsonSerializable(typeof(Modules.Admin.PeerInfo.ProtocolVersion))]
