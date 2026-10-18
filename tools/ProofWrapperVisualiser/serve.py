@@ -181,7 +181,8 @@ def main():
     if ":" in args.bind:
         server_class = type("ThreadingHTTPServer6", (ThreadingHTTPServer,), {"address_family": socket.AF_INET6})
     server = server_class((args.bind, args.port), handler(nodes, args.port, frozenset(h.lower() for h in args.allow_host)))
-    print(f"Open http://{args.bind}:{args.port}/")
+    host = f"[{args.bind}]" if ":" in args.bind else args.bind
+    print(f"Open http://{host}:{args.port}/")
     server.serve_forever()
 
 
