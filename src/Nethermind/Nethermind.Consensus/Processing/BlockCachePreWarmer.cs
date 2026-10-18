@@ -1759,13 +1759,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
             if (parallelOptions.CancellationToken.IsCancellationRequested) return;
 
             ObjectPool<IPrewarmerEnv> envPool = PreWarmer._envPool;
-            // Prepared beside the warm passes, not before them: on a cached database they must not wait for it.
-            // With a block access list, HintBal prefetches the whole read set instead.
-            CancellationToken token = parallelOptions.CancellationToken;
-            Task? prefetch = Bal is null ? Task.Run(() => PrefetchKnownState(envPool, block, token), token) : null;
             try
             {
-
                 Address? beneficiary = Beneficiary;
                 if (warmSystemAccessLists || beneficiary is not null || WarmWithdrawals)
                 {
@@ -1773,6 +1768,11 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
                     try
                     {
                         using IReadOnlyTxProcessingScope scope = env.BuildAtTarget(block.Header);
+
+                        // First, on this worker and scope: the backend decides from a few cached probes, so a cached
+                        // block costs only those, and a cold one has its reads in flight before the warm passes.
+                        // With a block access list, HintBal prefetches the whole read set instead.
+                        if (Bal is null && scope.WorldState.SupportsPrefetch) PrefetchKnownState(block, scope.WorldState, parallelOptions.CancellationToken);
 
                         WarmupSender(beneficiary, null, scope.WorldState);
 
@@ -1846,24 +1846,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
             {
                 // Ignore, block completed cancel
             }
-            finally
-            {
-                WaitForPrefetch(prefetch);
-            }
-        }
-
-        private void WaitForPrefetch(Task? prefetch)
-        {
-            if (prefetch is null) return;
-            try
-            {
-                prefetch.Wait();
-            }
-            catch (AggregateException ex) when (ex.InnerException is OperationCanceledException) { }
-            catch (Exception ex)
-            {
-                PreWarmer._logger.DebugError("Error prefetching transaction state", ex);
-            }
         }
 
         /// <summary>
@@ -1871,7 +1853,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         /// recipients, declared access lists, the beneficiary and withdrawal recipients. The warm passes that follow
         /// read the same keys one at a time; with their disk reads already overlapped they find the blocks cached.
         /// </summary>
-        private void PrefetchKnownState(ObjectPool<IPrewarmerEnv> envPool, Block block, CancellationToken token)
+        private void PrefetchKnownState(Block block, IWorldState worldState, CancellationToken token)
         {
             int count = block.Transactions.Length + (block.InclusionListTransactions?.Length ?? 0);
             using PooledSet<AddressAsKey> accounts = [];
@@ -1902,18 +1884,20 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
 
             Address[] accountArray = ArrayPool<Address>.Shared.Rent(accounts.Count);
             StorageCell[] slotArray = ArrayPool<StorageCell>.Shared.Rent(slots.Count);
-            IPrewarmerEnv env = envPool.Get();
             try
             {
                 int a = 0;
                 foreach (AddressAsKey address in accounts) accountArray[a++] = address;
                 slots.CopyTo(slotArray, 0);
-                using IReadOnlyTxProcessingScope scope = env.BuildAtTarget(block.Header);
-                scope.WorldState.Prefetch(accountArray.AsSpan(0, accounts.Count), slotArray.AsSpan(0, slots.Count));
+                worldState.Prefetch(accountArray.AsSpan(0, accounts.Count), slotArray.AsSpan(0, slots.Count));
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                // A prefetch only warms caches; the warm passes that follow read and report on their own.
+                PreWarmer._logger.DebugError("Error prefetching transaction state", ex);
             }
             finally
             {
-                envPool.Return(env);
                 ArrayPool<Address>.Shared.Return(accountArray, clearArray: true);
                 ArrayPool<StorageCell>.Shared.Return(slotArray, clearArray: true);
             }

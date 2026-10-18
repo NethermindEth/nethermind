@@ -269,10 +269,12 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             Account?[]? accounts = sink is null ? null : new Account?[accountCount];
             int[]? selfDestructIdxs = sink is null ? null : new int[accountCount];
 
-            // Prepared beside the reads, not before them: on a cached database the reads must not wait for it.
-            Task? prefetch = _configuration.AsyncReadPrefetch ? Task.Run(() => PrefetchBal(accountChanges), token) : null;
             try
             {
+                // First, on this task: the backend decides from a few cached probes, so a cached block costs only
+                // those, and a cold one has its reads in flight before phase 1 reads them one at a time.
+                if (_configuration.AsyncReadPrefetch) PrefetchBal(accountChanges);
+
                 // Phase 1: trie warmup + GetAccount + sink.OnAccountRead. Sink slot reads are
                 // deferred to phase 2 so one huge account doesn't bottleneck a single worker.
                 void WarmAccount(int i)
@@ -349,8 +351,6 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             catch (OperationCanceledException) { }
             finally
             {
-                // The prefetch reads the pooled list and the snapshot bundle, so it ends before either is released.
-                WaitForPrefetch(prefetch);
                 accountChanges.Dispose();
             }
         });
@@ -361,21 +361,6 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     /// the RocksDB block cache before the warmup and execution read them one at a time. The reads that follow are
     /// unchanged; on a warm database the prefetch finds the blocks already cached.
     /// </summary>
-    private void WaitForPrefetch(Task? prefetch)
-    {
-        if (prefetch is null) return;
-        try
-        {
-            prefetch.Wait();
-        }
-        catch (AggregateException ex) when (ex.InnerException is OperationCanceledException) { }
-        catch (Exception ex)
-        {
-            ILogger logger = _logManager.GetClassLogger<FlatWorldStateScope>();
-            if (logger.IsDebug) logger.Debug($"State prefetch failed: {ex}");
-        }
-    }
-
     private void PrefetchBal(ArrayPoolList<ReadOnlyAccountChanges> accountChanges)
     {
         int slotCount = 0;
@@ -503,6 +488,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     {
         if (_configuration.AsyncReadPrefetch) _snapshotBundle.Prefetch(accounts, slots);
     }
+
+    public bool SupportsPrefetch => _configuration.AsyncReadPrefetch;
 
     public void HintWarmAccount(Address address)
     {
