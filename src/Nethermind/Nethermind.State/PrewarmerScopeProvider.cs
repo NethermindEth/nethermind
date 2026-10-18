@@ -286,14 +286,13 @@ public class PrewarmerScopeProvider(
         public void GetAccounts(ReadOnlySpan<Address> addresses, Span<Account?> accounts)
         {
             ArgumentOutOfRangeException.ThrowIfNotEqual(accounts.Length, addresses.Length, nameof(accounts));
-            if (addresses.Length < 8 || _appliedBalAccounts is not null || baseScope is not IAccountBatchReader batch)
+            if (addresses.Length < AccountReadBatch.MinReadSize || _appliedBalAccounts is not null || baseScope is not IAccountBatchReader batch)
             {
                 for (int i = 0; i < addresses.Length; i++) accounts[i] = Get(addresses[i]);
                 return;
             }
 
-            using ArrayPoolListRef<Address> misses = new(0);
-            using ArrayPoolListRef<int> positions = new(0);
+            using AccountReadBatch misses = new(addresses.Length);
             for (int i = 0; i < addresses.Length; i++)
             {
                 Address address = addresses[i];
@@ -311,18 +310,17 @@ public class PrewarmerScopeProvider(
                     if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - start, _labels.AddressHit);
                     continue;
                 }
-                misses.Add(address);
-                positions.Add(i);
+                misses.Add(address, i);
             }
             if (misses.Count == 0) return;
-            if (misses.Count < 8)
+            if (misses.Count < AccountReadBatch.MinReadSize)
             {
                 for (int i = 0; i < misses.Count; i++)
                 {
-                    AddressAsKey key = misses[i];
+                    AddressAsKey key = misses.Addresses[i];
                     long start = _measureMetric ? Stopwatch.GetTimestamp() : 0;
-                    Account? account = baseScope.Get(misses[i]);
-                    accounts[positions[i]] = account;
+                    Account? account = baseScope.Get(misses.Addresses[i]);
+                    accounts[misses.Positions[i]] = account;
                     preBlockCache.Set(in key, account);
                     if (!isPrewarmer) _metrics.IncrementPreBlockAccountMisses();
                     if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - start, _labels.AddressMiss);
@@ -331,16 +329,15 @@ public class PrewarmerScopeProvider(
             }
             using ArrayPoolListRef<Account?> results = new(misses.Count, misses.Count);
             long readStart = _measureMetric ? Stopwatch.GetTimestamp() : 0;
-            batch.GetAccounts(misses.AsSpan(), results.AsSpan());
+            batch.GetAccounts(misses.Addresses, results.AsSpan());
             if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - readStart, _labels.AddressBatchMiss);
             for (int i = 0; i < misses.Count; i++)
             {
-                AddressAsKey key = misses[i];
+                AddressAsKey key = misses.Addresses[i];
                 Account? account = results[i];
-                accounts[positions[i]] = account;
+                accounts[misses.Positions[i]] = account;
                 preBlockCache.Set(in key, account);
                 if (!isPrewarmer) _metrics.IncrementPreBlockAccountMisses();
-
             }
         }
 
@@ -374,7 +371,6 @@ public class PrewarmerScopeProvider(
             }
             return account;
         }
-
         public void HintGet(Address address, Account? account) => baseScope.HintGet(address, account);
 
         // Populator hints target the block's consumer scope (whose commit walks the hinted paths);

@@ -12,16 +12,18 @@ namespace Nethermind.State.Flat;
 public sealed partial class ReadOnlySnapshotBundle
 {
     private static readonly StringLabel _readAccountPersistenceBatchLabel = new("account_persistence_batch");
-    internal void GetAccounts(ReadOnlySpan<Address> addresses, Span<Account?> accounts)
+    internal void GetAccounts(ReadOnlySpan<Address> addresses, Span<Account?> accounts) => GetAccounts(addresses, default, accounts);
+
+    internal void GetAccounts(ReadOnlySpan<Address> addresses, ReadOnlySpan<HashedKey<Address>> keys, Span<Account?> accounts)
     {
         GuardDispose();
+        if (!keys.IsEmpty) ArgumentOutOfRangeException.ThrowIfNotEqual(keys.Length, addresses.Length, nameof(keys));
         ArgumentOutOfRangeException.ThrowIfNotEqual(accounts.Length, addresses.Length, nameof(accounts));
-        using ArrayPoolListRef<Address> misses = new(0);
-        using ArrayPoolListRef<int> positions = new(0);
+        using AccountReadBatch misses = new(addresses.Length);
         for (int i = 0; i < addresses.Length; i++)
         {
             Address address = addresses[i];
-            HashedKey<Address> key = new(address);
+            HashedKey<Address> key = keys.IsEmpty ? new(address) : keys[i];
             long start = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
             bool found = false;
             for (int j = snapshots.Count - 1; j >= 0; j--)
@@ -39,33 +41,25 @@ public sealed partial class ReadOnlySnapshotBundle
                 accounts[i] = persistedAccount;
                 continue;
             }
-            misses.Add(address);
-            positions.Add(i);
+            misses.Add(address, i);
         }
         if (misses.Count == 0) return;
-        if (misses.Count < 8)
+        if (misses.Count < AccountReadBatch.MinReadSize)
         {
             for (int i = 0; i < misses.Count; i++)
             {
-                long start = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
-                Account? account = persistenceReader.GetAccount(misses[i]);
-                accounts[positions[i]] = account;
-                if (recordDetailedMetrics)
-                    Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - start,
-                        account is null ? _readAccountPersistenceNullLabel : _readAccountPersistenceLabel);
+                accounts[misses.Positions[i]] = GetAccountFromPersistence(misses.Addresses[i]);
             }
             return;
         }
         using ArrayPoolListRef<Account?> results = new(misses.Count, misses.Count);
         long readStart = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
-        persistenceReader.ReadAccounts(misses.AsSpan(), results.AsSpan());
+        persistenceReader.ReadAccounts(misses.Addresses, results.AsSpan());
         if (recordDetailedMetrics)
             Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - readStart, _readAccountPersistenceBatchLabel);
         for (int i = 0; i < misses.Count; i++)
         {
-            Account? account = results[i];
-            accounts[positions[i]] = account;
-
+            accounts[misses.Positions[i]] = results[i];
         }
     }
 }

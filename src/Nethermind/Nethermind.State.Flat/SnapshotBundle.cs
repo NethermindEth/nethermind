@@ -491,10 +491,11 @@ public sealed partial class SnapshotBundle : IDisposable
     public void SetAccount(Address address, Account? account) =>
         _changedAccounts[address] = account;
 
-    internal void PromoteAccount(Address address, Account? account)
+    internal void PromoteAccount(Address address, Account? account) => PromoteAccount(new HashedKey<Address>(address), account);
+
+    private void PromoteAccount(HashedKey<Address> key, Account? account)
     {
         // ContainsKey is lock-free; TryAdd alone would take the bucket lock on every hot re-promote.
-        HashedKey<Address> key = new(address);
         if (!_changedAccounts.ContainsKey(key) && !_readAccounts.ContainsKey(key))
         {
             _readAccounts.TryAdd(key, account);

@@ -251,8 +251,7 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
         public void GetAccounts(ReadOnlySpan<Address> addresses, Span<Account?> accounts)
         {
             ArgumentOutOfRangeException.ThrowIfNotEqual(accounts.Length, addresses.Length, nameof(accounts));
-            using ArrayPoolListRef<Address> misses = new(0);
-            using ArrayPoolListRef<int> positions = new(0);
+            using AccountReadBatch misses = new(addresses.Length);
             for (int i = 0; i < addresses.Length; i++)
             {
                 Address address = addresses[i];
@@ -264,26 +263,25 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
                     continue;
                 }
                 if (parent.IsCurrent(generation) && _recordDetailedMetrics) Metrics.IncrementCarryForwardAccountMisses();
-                misses.Add(address);
-                positions.Add(i);
+                misses.Add(address, i);
             }
             if (misses.Count == 0) return;
-            if (misses.Count < 8)
+            if (misses.Count < AccountReadBatch.MinReadSize)
             {
                 for (int i = 0; i < misses.Count; i++)
                 {
-                    Account? account = inner.GetAccount(misses[i]);
-                    accounts[positions[i]] = account;
-                    parent.TryCacheAccount(misses[i], account, generation);
+                    Account? account = inner.GetAccount(misses.Addresses[i]);
+                    accounts[misses.Positions[i]] = account;
+                    parent.TryCacheAccount(misses.Addresses[i], account, generation);
                 }
                 return;
             }
             using ArrayPoolListRef<Account?> results = new(misses.Count, misses.Count);
-            inner.ReadAccounts(misses.AsSpan(), results.AsSpan());
+            inner.ReadAccounts(misses.Addresses, results.AsSpan());
             for (int i = 0; i < misses.Count; i++)
             {
-                accounts[positions[i]] = results[i];
-                parent.TryCacheAccount(misses[i], results[i], generation);
+                accounts[misses.Positions[i]] = results[i];
+                parent.TryCacheAccount(misses.Addresses[i], results[i], generation);
             }
         }
 

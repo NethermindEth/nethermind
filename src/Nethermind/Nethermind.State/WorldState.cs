@@ -201,7 +201,7 @@ namespace Nethermind.State
 
         public void WarmUp(Address address) => _stateProvider.WarmUp(address);
 
-        public void WarmUpAccounts(ReadOnlySpan<Address> addresses, CancellationToken cancellationToken = default)
+        void IAccountPrewarmer.WarmUpAccounts(ReadOnlySpan<Address> addresses, CancellationToken cancellationToken)
             => _stateProvider.WarmUpAccounts(addresses, cancellationToken);
 
         public void ClearStorage(Address address)

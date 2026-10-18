@@ -11,7 +11,7 @@ internal static class AccountBatchReaderExtensions
         Span<Account?> accounts)
     {
         ArgumentOutOfRangeException.ThrowIfNotEqual(accounts.Length, addresses.Length, nameof(accounts));
-        if (addresses.Length >= 8 && reader is IAccountBatchReader batch)
+        if (addresses.Length >= AccountReadBatch.MinReadSize && reader is IAccountBatchReader batch)
         {
             batch.GetAccounts(addresses, accounts);
             return;

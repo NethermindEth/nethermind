@@ -221,7 +221,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         if (!_trieless) Volatile.Read(ref _stateTree)?.UpdateRootHash();
     }
 
-    public void GetAccounts(ReadOnlySpan<Address> addresses, Span<Account?> accounts)
+    void IAccountBatchReader.GetAccounts(ReadOnlySpan<Address> addresses, Span<Account?> accounts)
     {
         ArgumentOutOfRangeException.ThrowIfNotEqual(accounts.Length, addresses.Length, nameof(accounts));
         if (_configuration.VerifyWithTrie && !_trieless)

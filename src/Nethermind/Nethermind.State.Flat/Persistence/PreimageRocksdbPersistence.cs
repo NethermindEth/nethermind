@@ -208,7 +208,6 @@ public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db, ILogManage
             _flatReader.GetAccounts(paths, accounts, AccountDecoder.Slim);
         }
 
-
         public Account? GetAccount(Address address)
         {
             ValueHash256 fakeHash = ValueKeccak.Zero;

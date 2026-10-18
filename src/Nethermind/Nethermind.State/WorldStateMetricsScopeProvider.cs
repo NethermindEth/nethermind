@@ -73,7 +73,6 @@ public class WorldStateMetricsScopeProvider(IWorldStateScopeProvider baseProvide
             else for (int i = 0; i < addresses.Length; i++) accounts[i] = baseScope.Get(addresses[i]);
         }
 
-
         public void HintGet(Address address, Account? account) => baseScope.HintGet(address, account);
 
         public IWorldStateScopeProvider.ICodeDb CodeDb => baseScope.CodeDb;

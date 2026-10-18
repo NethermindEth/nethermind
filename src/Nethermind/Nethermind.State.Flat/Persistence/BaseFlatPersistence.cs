@@ -159,7 +159,7 @@ public static class BaseFlatPersistence
     {
         public bool IsPreimageMode => isPreimageMode;
 
-        public void GetAccounts(ReadOnlySpan<ValueHash256> addresses, Span<Account?> accounts, AccountDecoder decoder)
+        void BasePersistence.IHashedFlatReader.GetAccounts(ReadOnlySpan<ValueHash256> addresses, Span<Account?> accounts, AccountDecoder decoder)
         {
             ArgumentOutOfRangeException.ThrowIfNotEqual(accounts.Length, addresses.Length, nameof(accounts));
             using ArrayPoolSpan<byte> keys = new(checked(addresses.Length * AccountKeyLength));

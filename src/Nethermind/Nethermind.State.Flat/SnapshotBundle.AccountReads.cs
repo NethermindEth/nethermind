@@ -12,8 +12,7 @@ public sealed partial class SnapshotBundle
     {
         GuardDispose();
         ArgumentOutOfRangeException.ThrowIfNotEqual(accounts.Length, addresses.Length, nameof(accounts));
-        using ArrayPoolListRef<Address> misses = new(0);
-        using ArrayPoolListRef<int> positions = new(0);
+        using AccountReadBatch misses = new(addresses.Length);
         for (int i = 0; i < addresses.Length; i++)
         {
             Address address = addresses[i];
@@ -29,31 +28,30 @@ public sealed partial class SnapshotBundle
             {
                 if (!_snapshots[j].TryGetAccount(key, out account)) continue;
                 accounts[i] = account;
-                PromoteAccount(address, account);
+                PromoteAccount(key, account);
                 found = true;
                 break;
             }
             if (found) continue;
-            misses.Add(address);
-            positions.Add(i);
+            misses.Add(in key, i);
         }
         if (misses.Count == 0) return;
-        if (misses.Count < 8)
+        if (misses.Count < AccountReadBatch.MinReadSize)
         {
             for (int i = 0; i < misses.Count; i++)
             {
-                Account? account = _readOnlySnapshotBundle.GetAccount(misses[i]);
-                accounts[positions[i]] = account;
-                PromoteAccount(misses[i], account);
+                Account? account = _readOnlySnapshotBundle.GetAccount(misses.Addresses[i], misses.Keys[i]);
+                accounts[misses.Positions[i]] = account;
+                PromoteAccount(misses.Keys[i], account);
             }
             return;
         }
         using ArrayPoolListRef<Account?> results = new(misses.Count, misses.Count);
-        _readOnlySnapshotBundle.GetAccounts(misses.AsSpan(), results.AsSpan());
+        _readOnlySnapshotBundle.GetAccounts(misses.Addresses, misses.Keys, results.AsSpan());
         for (int i = 0; i < misses.Count; i++)
         {
-            accounts[positions[i]] = results[i];
-            PromoteAccount(misses[i], results[i]);
+            accounts[misses.Positions[i]] = results[i];
+            PromoteAccount(misses.Keys[i], results[i]);
         }
     }
 }

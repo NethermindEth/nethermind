@@ -428,7 +428,7 @@ public static class BasePersistence
         private readonly int _accountSpanBufferSize = 256;
         private TFlatReader _flatReader = flatReader;
 
-        public void GetAccounts(ReadOnlySpan<Address> addresses, Span<Account?> accounts)
+        void IFlatReader.GetAccounts(ReadOnlySpan<Address> addresses, Span<Account?> accounts)
         {
             using ArrayPoolSpan<ValueHash256> paths = new(addresses.Length);
             for (int i = 0; i < addresses.Length; i++) paths[i] = addresses[i].ToAccountPath;
@@ -494,7 +494,7 @@ public static class BasePersistence
         public Account? GetAccount(Address address) =>
             _flatReader.GetAccount(address);
 
-        public void GetAccounts(ReadOnlySpan<Address> addresses, Span<Account?> accounts) =>
+        void IAccountBatchReader.GetAccounts(ReadOnlySpan<Address> addresses, Span<Account?> accounts) =>
             _flatReader.GetAccounts(addresses, accounts);
 
         public bool TryGetSlot(Address address, in UInt256 slot, ref UInt256 outValue) =>

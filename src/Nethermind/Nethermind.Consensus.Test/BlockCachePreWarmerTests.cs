@@ -65,7 +65,7 @@ public class BlockCachePreWarmerTests
         block.InclusionListTransactions = transactions[(count / 2)..];
         RecordingAccountPrewarmer warmer = new(Substitute.For<IWorldState>());
 
-        BlockCachePreWarmer.WarmupTransactionAccounts(block, 0, count, warmer, CancellationToken.None);
+        BlockCachePreWarmer.AddressWarmer.WarmupTransactionAccounts(block, 0, count, warmer, CancellationToken.None);
 
         using (Assert.EnterMultipleScope())
         {
@@ -79,7 +79,7 @@ public class BlockCachePreWarmerTests
     {
         Block block = Build.A.Block.WithTransactions(Build.A.Transaction.WithTo(TestItem.AddressA).TestObject).TestObject;
         RecordingAccountPrewarmer warmer = new(Substitute.For<IWorldState>());
-        BlockCachePreWarmer.WarmupTransactionAccounts(block, 0, 1, warmer, new CancellationToken(true));
+        BlockCachePreWarmer.AddressWarmer.WarmupTransactionAccounts(block, 0, 1, warmer, new CancellationToken(true));
         Assert.That(warmer.Addresses, Is.Empty, "cancelled address ranges must not read or publish account values");
     }
 

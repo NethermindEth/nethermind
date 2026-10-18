@@ -17,7 +17,6 @@ using Nethermind.Evm.Tracing.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.State;
-using Nethermind.Trie;
 
 namespace Nethermind.Consensus.Processing;
 
@@ -25,26 +24,6 @@ namespace Nethermind.Consensus.Processing;
 /// <remarks>Re-implements <see cref="HasCode"/> and <see cref="MarkStorageDestroyed"/>, which the interface implements itself.</remarks>
 internal sealed class FootprintRecorder(IWorldState state) : WorldStateDecorator(state), IWorldState, IAccountPrewarmer
 {
-    public void WarmUpAccounts(ReadOnlySpan<Address> addresses, CancellationToken cancellationToken = default)
-    {
-        if (State is IAccountPrewarmer prewarmer)
-        {
-            prewarmer.WarmUpAccounts(addresses, cancellationToken);
-            return;
-        }
-        foreach (Address address in addresses)
-        {
-            if (cancellationToken.IsCancellationRequested) return;
-            try
-            {
-                State.WarmUp(address);
-            }
-            catch (MissingTrieNodeException)
-            {
-            }
-        }
-    }
-
     private bool _active;
     private bool _opaque;
 
@@ -79,6 +58,20 @@ internal sealed class FootprintRecorder(IWorldState state) : WorldStateDecorator
 
     /// <summary>The machine the env runs transactions on; without it a run is taken to read every block context field.</summary>
     public VirtualMachine<EthereumGasPolicy>? Machine { get; set; }
+
+    public void WarmUpAccounts(ReadOnlySpan<Address> addresses, CancellationToken cancellationToken = default)
+    {
+        if (State is IAccountPrewarmer prewarmer)
+        {
+            prewarmer.WarmUpAccounts(addresses, cancellationToken);
+            return;
+        }
+        foreach (Address address in addresses)
+        {
+            if (cancellationToken.IsCancellationRequested) return;
+            BlockCachePreWarmer.AddressWarmer.WarmupSender(address, null, State);
+        }
+    }
 
     public void Start(IBlockProcessingProgress progress, int txIndex, CancellationToken token)
     {

@@ -7,7 +7,7 @@ using Nethermind.Core;
 
 namespace Nethermind.Evm.State;
 
-public interface IAccountPrewarmer
+internal interface IAccountPrewarmer
 {
     void WarmUpAccounts(ReadOnlySpan<Address> addresses, CancellationToken cancellationToken = default);
 }

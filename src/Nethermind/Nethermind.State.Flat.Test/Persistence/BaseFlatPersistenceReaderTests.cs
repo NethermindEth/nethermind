@@ -28,7 +28,7 @@ public class BaseFlatPersistenceReaderTests
         for (int i = 0; i < paths.Length; i++) paths[i] = new ValueHash256(Keccak.Compute(i.ToString()).Bytes);
         Account?[] actual = new Account?[count];
 
-        reader.GetAccounts(paths, actual, AccountDecoder.Slim);
+        ((BasePersistence.IHashedFlatReader)reader).GetAccounts(paths, actual, AccountDecoder.Slim);
 
         using (Assert.EnterMultipleScope())
         {

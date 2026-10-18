@@ -89,7 +89,12 @@ public sealed partial class ReadOnlySnapshotBundle(
         if (_persistedSnapshotCount > 0 && persistedSnapshots.TryGetAccount(address, out Account? persistedAccount))
             return persistedAccount;
 
-        sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
+        return GetAccountFromPersistence(address);
+    }
+
+    private Account? GetAccountFromPersistence(Address address)
+    {
+        long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
         Account? account = persistenceReader.GetAccount(address);
         if (account == null)
         {

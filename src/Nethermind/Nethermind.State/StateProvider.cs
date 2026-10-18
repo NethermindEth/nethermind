@@ -968,13 +968,13 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
     public void WarmUpAccounts(ReadOnlySpan<Address> addresses, CancellationToken cancellationToken)
     {
         if (cancellationToken.IsCancellationRequested) return;
-        if (addresses.Length < 8 || Tree is not IAccountBatchReader batch)
+        if (addresses.Length < AccountReadBatch.MinReadSize || Tree is not IAccountBatchReader batch)
         {
             WarmUpAccountsIndividually(addresses, cancellationToken);
             return;
         }
 
-        using ArrayPoolListRef<Address> misses = new(0);
+        using AccountReadBatch misses = new(addresses.Length);
         foreach (Address address in addresses)
         {
             GetOrAddBlockChange(address, out bool exists);
@@ -986,26 +986,26 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         using ArrayPoolListRef<Account?> accounts = new(misses.Count, misses.Count);
         try
         {
-            if (misses.Count < 8)
+            if (misses.Count < AccountReadBatch.MinReadSize)
             {
-                for (int i = 0; i < misses.Count; i++) accounts[i] = Tree.Get(misses[i]);
+                for (int i = 0; i < misses.Count; i++) accounts[i] = Tree.Get(misses.Addresses[i]);
             }
-            else batch.GetAccounts(misses.AsSpan(), accounts.AsSpan());
+            else batch.GetAccounts(misses.Addresses, accounts.AsSpan());
             for (int i = 0; i < misses.Count; i++)
             {
                 Account? account = accounts[i];
-                _blockChanges[misses[i]] = new(account, account);
+                _blockChanges[misses.Addresses[i]] = new(account, account);
                 _metrics.IncrementStateTreeReads();
             }
         }
         catch (MissingTrieNodeException)
         {
-            foreach (Address address in misses.AsSpan()) _blockChanges.Remove(address);
-            WarmUpAccountsIndividually(misses.AsSpan(), cancellationToken);
+            foreach (Address address in misses.Addresses) _blockChanges.Remove(address);
+            WarmUpAccountsIndividually(misses.Addresses, cancellationToken);
         }
         catch
         {
-            foreach (Address address in misses.AsSpan()) _blockChanges.Remove(address);
+            foreach (Address address in misses.Addresses) _blockChanges.Remove(address);
             throw;
         }
     }
