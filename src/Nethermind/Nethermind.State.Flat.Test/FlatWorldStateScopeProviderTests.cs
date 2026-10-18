@@ -994,17 +994,31 @@ public class FlatWorldStateScopeProviderTests
 
         int ownerThread = Environment.CurrentManagedThreadId;
         bool backgroundRootLookup = false;
+        int rootLookups = 0;
+        bool OnLookup(TreePath path)
+        {
+            if (path.Length != 0) return false;
+            Interlocked.Increment(ref rootLookups);
+            if (Environment.CurrentManagedThreadId != ownerThread)
+            {
+                backgroundRootLookup = true;
+                // Dispose after the mutable lookup's guard, before it reads the snapshot list.
+                scope.Dispose();
+            }
+            return false;
+        }
+        // Both overloads: a substitute answers the precomputed-hash overload itself instead of running its default body.
         nodeCache.TryGet(Arg.Any<Hash256>(), Arg.Any<TreePath>(), Arg.Any<Hash256>(), out Arg.Any<TrieNode?>())
             .Returns(call =>
             {
                 call[3] = null;
-                if (call.ArgAt<TreePath>(1).Length == 0 && Environment.CurrentManagedThreadId != ownerThread)
-                {
-                    backgroundRootLookup = true;
-                    // Dispose after the mutable lookup's guard, before it reads the snapshot list.
-                    scope.Dispose();
-                }
-                return false;
+                return OnLookup(call.ArgAt<TreePath>(1));
+            });
+        nodeCache.TryGet(Arg.Any<Hash256>(), Arg.Any<TreePath>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<Hash256>(), out Arg.Any<TrieNode?>())
+            .Returns(call =>
+            {
+                call[5] = null;
+                return OnLookup(call.ArgAt<TreePath>(1));
             });
         FlatStorageTree storageTree = (FlatStorageTree)scope.CreateStorageTree(address);
 
@@ -1013,6 +1027,7 @@ public class FlatWorldStateScopeProviderTests
 
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(rootLookups, Is.GreaterThan(0), "the stub must see the root lookup, or the check below proves nothing");
             Assert.That(backgroundRootLookup, Is.False);
             Assert.That(scope.EarlyApplyCounts.Applied, Is.EqualTo(1));
         }

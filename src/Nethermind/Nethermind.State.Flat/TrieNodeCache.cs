@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using System.Runtime.CompilerServices;
@@ -90,8 +91,11 @@ public sealed class TrieNodeCache : ITrieNodeCache
         return TryGet(shardIdx, hashCode, hash, out node);
     }
 
-    public bool TryGet(Hash256? address, in TreePath path, int shardIdx, int hashCode, Hash256 hash, [NotNullWhen(true)] out TrieNode? node) =>
-        TryGet(shardIdx, hashCode, hash, out node);
+    public bool TryGet(Hash256? address, in TreePath path, int shardIdx, int hashCode, Hash256 hash, [NotNullWhen(true)] out TrieNode? node)
+    {
+        Debug.Assert(GetShardAndHashCode(address, in path) == (shardIdx, hashCode), "The shard and hash must come from GetShardAndHashCode(address, path).");
+        return TryGet(shardIdx, hashCode, hash, out node);
+    }
 
     private bool TryGet(int shardIdx, int hashCode, Hash256 hash, [NotNullWhen(true)] out TrieNode? node)
     {
