@@ -53,6 +53,10 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
         IsTracingActions = true;
         IsTracingMemory = true;
         IsTracingStack = true;
+        // The script sees storage through db and has no return data on log, so the per-operation hooks would only
+        // build values for empty callbacks.
+        IsTracingOpLevelStorage = false;
+        IsTracingReturnData = false;
 
         _engine = engine;
         _db = db;

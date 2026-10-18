@@ -111,6 +111,26 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
     public void Usable_tracer_is_accepted_on_construction(string tracer) =>
         Assert.That(() => GetTracer(tracer).Dispose(), Throws.Nothing);
 
+    [Test]
+    public void Tracer_does_not_request_per_operation_storage_or_return_data()
+    {
+        using GethLikeBlockJavaScriptTracer tracer = new(TestState, Shanghai.Instance,
+            GethTraceOptions.Default with { EnableReturnData = true, Tracer = "{ fault: function(log, db) { }, result: function(ctx, db) { return null } }" });
+        Transaction tx = Build.A.Transaction.SignedAndResolved().TestObject;
+        tracer.StartNewBlockTrace(Build.A.Block.WithTransactions(tx).TestObject);
+
+        ITxTracer txTracer = ((IBlockTracer)tracer).StartNewTxTrace(tx);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(txTracer.IsTracingOpLevelStorage, Is.False);
+            Assert.That(txTracer.IsTracingReturnData, Is.False);
+            Assert.That(txTracer.IsTracingStack, Is.True);
+            Assert.That(txTracer.IsTracingMemory, Is.True);
+        }
+
+        ((IBlockTracer)tracer).EndTxTrace();
+    }
+
     private GethLikeBlockJavaScriptTracer GetTracer(string userTracer) => new(TestState, Shanghai.Instance, GethTraceOptions.Default with { EnableMemory = true, Tracer = userTracer });
 
 
