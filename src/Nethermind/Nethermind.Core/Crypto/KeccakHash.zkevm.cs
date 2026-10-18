@@ -288,8 +288,9 @@ public sealed partial class KeccakHash
             WitnessNodes.Nodes = nodes;
             WitnessNodes.Count = count;
             WitnessNodes.States = states;
-            // States in the input are freed too: the guest's bump heap frees nothing.
-            NativeMemory.Free(released);
+            // The states may lie in the input, which the allocator never returned.
+            if (!Sp1ReusableInputFlag.IsActive)
+                NativeMemory.Free(released);
         }
     }
 
