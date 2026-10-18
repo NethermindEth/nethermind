@@ -214,7 +214,7 @@ public sealed class FrameTxContext(
             if (NonceKeys is not { } keys || !KeyedNonceManager.UsesKeyedDomain(keys))
             {
                 if (worldState.GetNonce(Sender) >= Eip8250Constants.MaxNonceSeq) return FrameApprovalOutcome.NonceExhausted;
-                createsSender = !worldState.AccountExists(Sender);
+                createsSender = worldState.IsDeadAccount(Sender);
             }
         }
 

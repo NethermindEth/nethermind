@@ -41,6 +41,7 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
     // by default we will cleanup the old payload once per six slot. There is no need to fire it more often
     public const int SlotsPerOldPayloadCleanup = 6;
     public static readonly TimeSpan GetPayloadWaitForNonEmptyBlockMillisecondsDelay = TimeSpan.FromMilliseconds(50);
+    public static readonly TimeSpan GetPayloadWaitForMissingBlockMillisecondsDelay = TimeSpan.FromMilliseconds(300);
 
     /// <summary>
     /// Delay between block improvements
@@ -105,8 +106,8 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
         {
             if (_logger.IsInfo) _logger.Info($" Production Request  {parentHeader.Number + 1} PayloadId: {payloadId}");
             long startTimestamp = Stopwatch.GetTimestamp();
-            Block emptyBlock = ProduceEmptyBlock(payloadId, parentHeader, payloadAttributes);
-            if (_logger.IsInfo) _logger.Info($" Produced (Empty)    {emptyBlock.ToString(emptyBlock.Difficulty != 0 ? Block.Format.HashNumberDiffAndTx : Block.Format.HashNumberMGasAndTx)} | {Stopwatch.GetElapsedTime(startTimestamp).TotalMilliseconds,8:N2} ms");
+            Block? emptyBlock = ProduceEmptyBlock(payloadId, parentHeader, payloadAttributes);
+            if (_logger.IsInfo && emptyBlock is not null) _logger.Info($" Produced (Empty)    {emptyBlock.ToString(emptyBlock.Difficulty != 0 ? Block.Format.HashNumberDiffAndTx : Block.Format.HashNumberMGasAndTx)} | {Stopwatch.GetElapsedTime(startTimestamp).TotalMilliseconds,8:N2} ms");
             ImproveBlock(payloadId, parentHeader, payloadAttributes, emptyBlock, DateTimeOffset.UtcNow, default, new SharedCancellationTokenSource(CancellationTokenSource.CreateLinkedTokenSource(_shutdown?.Token ?? CancellationTokenExtensions.AlreadyCancelledToken)));
         }
         else if (_logger.IsInfo)
@@ -121,12 +122,12 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
         void LogMultiStartRequest(string payloadId, ulong number) => _logger.Info($"Payload for block {number} with same parameters has already started. PayloadId: {payloadId}");
     }
 
-    protected virtual Block ProduceEmptyBlock(string payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes)
+    protected virtual Block? ProduceEmptyBlock(string payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes)
     {
         bool isTrace = _logger.IsTrace;
         if (isTrace) TraceBefore(payloadId, parentHeader);
 
-        Block emptyBlock = _blockProducer.BuildBlock(parentHeader, payloadAttributes: payloadAttributes, flags: IBlockProducer.Flags.PrepareEmptyBlock).Result!;
+        Block? emptyBlock = _blockProducer.BuildBlock(parentHeader, payloadAttributes: payloadAttributes, flags: IBlockProducer.Flags.PrepareEmptyBlock).Result;
 
         if (isTrace) TraceAfter(payloadId, emptyBlock);
         return emptyBlock;
@@ -137,7 +138,7 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
             => _logger.Trace($"Preparing empty block from payload {payloadId} with parent {parentHeader}");
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        void TraceAfter(string payloadId, Block emptyBlock)
+        void TraceAfter(string payloadId, Block? emptyBlock)
             => _logger.Trace($"Prepared empty block from payload {payloadId} block: {emptyBlock}");
     }
 
@@ -147,7 +148,7 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
     /// under contention, leaving all but the last created context referenced by nobody. The candidate here is
     /// created at most once and re-offered until it is either published or disposed.
     /// </remarks>
-    protected virtual void ImproveBlock(string payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes, Block currentBestBlock, DateTimeOffset startDateTime, UInt256 currentBlockFees, SharedCancellationTokenSource cts)
+    protected virtual void ImproveBlock(string payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes, Block? currentBestBlock, DateTimeOffset startDateTime, UInt256 currentBlockFees, SharedCancellationTokenSource cts)
     {
         IBlockImprovementContext? candidate = null;
         try
@@ -203,7 +204,7 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
         }
     }
 
-    private IBlockImprovementContext CreateBlockImprovementContext(string payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes, Block currentBestBlock, DateTimeOffset startDateTime, UInt256 currentBlockFees, SharedCancellationTokenSource cts)
+    private IBlockImprovementContext CreateBlockImprovementContext(string payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes, Block? currentBestBlock, DateTimeOffset startDateTime, UInt256 currentBlockFees, SharedCancellationTokenSource cts)
     {
         if (_logger.IsTrace) _logger.Trace($"Start improving block from payload {payloadId} with parent {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)}");
 
@@ -381,7 +382,7 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
 
     }
 
-    private void LogProductionResult(Task<Block?> t, Block currentBestBlock, UInt256 blockFees, TimeSpan time)
+    private void LogProductionResult(Task<Block?> t, Block? currentBestBlock, UInt256 blockFees, TimeSpan time)
     {
         const long weiToEth = 1_000_000_000_000_000_000;
         const long weiToGwei = 1_000_000_000;
@@ -428,16 +429,20 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
         {
             try
             {
-                bool currentBestBlockIsEmpty = blockContext.Best.CurrentBestBlock?.Transactions.Length == 0;
+                // A null best block means no valid empty build exists yet, so wait for the improvement like an empty one.
+                Block? currentBestBlock = blockContext.Best.CurrentBestBlock;
+                bool noBlock = currentBestBlock is null;
+                bool currentBestBlockIsEmpty = currentBestBlock is null or { Transactions.Length: 0 };
                 if (currentBestBlockIsEmpty && !blockContext.ImprovementTask.IsCompleted)
                 {
-                    // Inform current improvement that we need results now
                     if (!skipCancel)
                     {
-                        blockContext.CancelOngoingImprovements();
+                        // Inform current improvement that we need results now. With no block to fall back on,
+                        // cancelling turns an existing build into -38001, so let it finish instead.
+                        if (!noBlock) blockContext.CancelOngoingImprovements();
 
                         using CancellationTokenSource cts = new();
-                        Task timeout = Task.Delay(GetPayloadWaitForNonEmptyBlockMillisecondsDelay, cts.Token);
+                        Task timeout = Task.Delay(noBlock ? GetPayloadWaitForMissingBlockMillisecondsDelay : GetPayloadWaitForNonEmptyBlockMillisecondsDelay, cts.Token);
                         Task completedTask = await Task.WhenAny(blockContext.ImprovementTask, timeout);
                         if (completedTask != timeout)
                         {
@@ -450,11 +455,13 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
                     }
                 }
 
+                // Stopped before reading, so a build finishing later cannot change what this and later calls return.
+                blockContext.DisposeAndCancelOngoingImprovements();
                 return blockContext.Best;
             }
             finally
             {
-                // Stop any on-going improvements as they won't be used
+                // Also stops the context when retrieval throws or is cancelled
                 blockContext.DisposeAndCancelOngoingImprovements();
                 RetainRetrievedContext(payloadId, blockContext);
             }
