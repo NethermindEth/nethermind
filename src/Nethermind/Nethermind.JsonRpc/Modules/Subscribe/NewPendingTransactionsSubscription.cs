@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Specs;
 using Nethermind.JsonRpc.Modules.Eth;
@@ -15,6 +16,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         private readonly ITxPool _txPool;
         private readonly PendingTransactionPayloadCache _payloads;
         private readonly bool _includeTransactions;
+        private int _disposed;
 
         [ConstructorWithSideEffect]
         public NewPendingTransactionsSubscription(
@@ -40,6 +42,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             _payloads = payloads;
             _logger = logManager?.GetClassLogger<NewPendingTransactionsSubscription>() ?? throw new ArgumentNullException(nameof(logManager));
             _includeTransactions = options?.IncludeTransactions ?? false;
+            if (_includeTransactions) _payloads.AddSubscriber();
 
             _txPool.NewPending += OnNewPending;
             if (_logger.IsTrace) _logger.Trace($"NewPendingTransactions subscription {Id} will track NewPendingTransactions");
@@ -59,6 +62,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         public override void Dispose()
         {
             _txPool.NewPending -= OnNewPending;
+            if (_includeTransactions && Interlocked.Exchange(ref _disposed, 1) == 0) _payloads.RemoveSubscriber();
             base.Dispose();
             if (_logger.IsTrace) _logger.Trace($"NewPendingTransactions subscription {Id} will no longer track NewPendingTransactions");
         }

@@ -45,4 +45,21 @@ public class PendingTransactionPayloadCacheTests
 
         Assert.That(payloads.Get(second).Utf8Json, Is.Not.EqualTo(firstPayload.Utf8Json));
     }
+
+    [Test]
+    public void RemoveSubscriber_ForTheLastSubscriber_DropsTheKeptTransactions()
+    {
+        PendingTransactionPayloadCache payloads = new(MainnetSpecProvider.Instance);
+        Transaction transaction = Build.A.Transaction.SignedAndResolved().TestObject;
+        payloads.AddSubscriber();
+        payloads.AddSubscriber();
+        SerializedJson first = payloads.Get(transaction);
+
+        payloads.RemoveSubscriber();
+        Assert.That(payloads.Get(transaction).Utf8Json, Is.SameAs(first.Utf8Json), "a remaining subscriber still shares the payload");
+
+        payloads.RemoveSubscriber();
+        payloads.AddSubscriber();
+        Assert.That(payloads.Get(transaction).Utf8Json, Is.Not.SameAs(first.Utf8Json), "the last subscriber leaving cleared the table");
+    }
 }
