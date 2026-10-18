@@ -10,6 +10,11 @@ namespace Nethermind.State.Flat;
 public interface ITrieNodeCache
 {
     bool TryGet(Hash256? address, in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node);
+
+    /// <summary>Same as <see cref="TryGet(Hash256?, in TreePath, Hash256, out TrieNode?)"/>, for a caller that already
+    /// has the shard and hash from <see cref="TrieNodeCache.GetShardAndHashCode"/>.</summary>
+    bool TryGet(Hash256? address, in TreePath path, int shardIdx, int hashCode, Hash256 hash, [NotNullWhen(true)] out TrieNode? node) =>
+        TryGet(address, path, hash, out node);
     void Add(TransientResource transientResource);
     void Clear();
 }
