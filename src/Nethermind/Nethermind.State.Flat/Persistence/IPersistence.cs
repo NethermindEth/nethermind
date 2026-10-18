@@ -49,6 +49,9 @@ public interface IPersistence
         IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey);
         IFlatIterator CreateStorageIterator(in ValueHash256 accountKey, in ValueHash256 startSlotKey, in ValueHash256 endSlotKey);
         bool IsPreimageMode { get; }
+
+        /// <summary>Starts reading accounts and slots from the backing store ahead of use; does nothing by default.</summary>
+        void Prefetch(ReadOnlySpan<Address> accounts, ReadOnlySpan<StorageCell> slots) { }
     }
 
     public interface IWriteBatch : IDisposable

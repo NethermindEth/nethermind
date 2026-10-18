@@ -3,6 +3,7 @@
 
 using System.Collections.Concurrent;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Trie;
@@ -299,6 +300,31 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
         public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey) => inner.CreateAccountIterator(startKey, endKey);
         public IPersistence.IFlatIterator CreateStorageIterator(in ValueHash256 accountKey, in ValueHash256 startSlotKey, in ValueHash256 endSlotKey) => inner.CreateStorageIterator(accountKey, startSlotKey, endSlotKey);
         public bool IsPreimageMode => inner.IsPreimageMode;
+
+        /// <summary>Forwards only the keys this cache cannot serve, so a prefetch never reads what a later read finds here.</summary>
+        public void Prefetch(ReadOnlySpan<Address> accounts, ReadOnlySpan<StorageCell> slots)
+        {
+            if (!parent.IsCurrent(generation))
+            {
+                inner.Prefetch(accounts, slots);
+                return;
+            }
+
+            using ArrayPoolListRef<Address> uncachedAccounts = new(accounts.Length);
+            foreach (Address address in accounts)
+            {
+                if (!parent._accounts.ContainsKey(address)) uncachedAccounts.Add(address);
+            }
+
+            using ArrayPoolListRef<StorageCell> uncachedSlots = new(slots.Length);
+            foreach (StorageCell cell in slots)
+            {
+                ulong hash = CarryForwardSlotTable.Hash(cell.Address, cell.Index);
+                if (!parent._slots.TryGet(hash, cell.Address, cell.Index, out _, out _)) uncachedSlots.Add(cell);
+            }
+
+            inner.Prefetch(uncachedAccounts.AsSpan(), uncachedSlots.AsSpan());
+        }
 
         /// <remarks>
         /// Reading through the reader afterwards is a caller bug, and once the persistence is disposed too it reads freed

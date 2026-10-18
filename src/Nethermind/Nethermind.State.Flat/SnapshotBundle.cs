@@ -24,6 +24,10 @@ public sealed class SnapshotBundle : IDisposable
     /// </summary>
     public bool IsHistorical => _readOnlySnapshotBundle.IsHistorical;
 
+    /// <summary>Starts reading persisted accounts and slots ahead of use; see <see cref="ReadOnlySnapshotBundle.Prefetch"/>.</summary>
+    public void Prefetch(ReadOnlySpan<Address> accounts, ReadOnlySpan<StorageCell> slots) =>
+        _readOnlySnapshotBundle.Prefetch(accounts, slots);
+
 
     private SnapshotContent _currentPooledContent = null!;
     // These maps are direct reference from members in _currentPooledContent.

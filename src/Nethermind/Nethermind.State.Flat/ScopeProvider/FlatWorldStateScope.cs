@@ -271,6 +271,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
             try
             {
+                if (_configuration.AsyncReadPrefetch) PrefetchBal(accountChanges);
+
                 // Phase 1: trie warmup + GetAccount + sink.OnAccountRead. Sink slot reads are
                 // deferred to phase 2 so one huge account doesn't bottleneck a single worker.
                 void WarmAccount(int i)
@@ -350,6 +352,30 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                 accountChanges.Dispose();
             }
         });
+    }
+
+    /// <summary>
+    /// Starts asynchronous batched reads of every account and slot the access list names, so their blocks are in
+    /// the RocksDB block cache before the warmup and execution read them one at a time. The reads that follow are
+    /// unchanged; on a warm database the prefetch finds the blocks already cached.
+    /// </summary>
+    private void PrefetchBal(ArrayPoolList<ReadOnlyAccountChanges> accountChanges)
+    {
+        int slotCount = 0;
+        foreach (ReadOnlyAccountChanges changes in accountChanges.AsSpan())
+            slotCount += changes.StorageChanges.Length + changes.StorageReads.Length;
+
+        using ArrayPoolListRef<Address> accounts = new(accountChanges.Count);
+        using ArrayPoolListRef<StorageCell> slots = new(slotCount);
+        foreach (ReadOnlyAccountChanges changes in accountChanges.AsSpan())
+        {
+            Address address = changes.Address;
+            accounts.Add(address);
+            foreach (ReadOnlySlotChanges slotChanges in changes.StorageChanges) slots.Add(new StorageCell(address, slotChanges.Key));
+            foreach (UInt256 slot in changes.StorageReads) slots.Add(new StorageCell(address, slot));
+        }
+
+        _snapshotBundle.Prefetch(accounts.AsSpan(), slots.AsSpan());
     }
 
     private void RunSinkSlotReads(

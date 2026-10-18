@@ -1024,6 +1024,39 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         }
     }
 
+    /// <summary>
+    /// Starts one native asynchronous MultiGet for fixed-length keys so that their blocks are in the block cache
+    /// before the scalar reads that need them. The values are discarded.
+    /// </summary>
+    /// <remarks>
+    /// The native batch overlaps its disk reads, which scalar reads on one thread cannot. Errors are ignored: the
+    /// scalar read that follows performs and reports the read itself.
+    /// </remarks>
+    internal void Prefetch(ReadOnlySpan<byte> keys, int keyLength, IColumnFamilyHandle? cf, ReadOptions readOptions)
+    {
+        if (_isDisposing || keyLength <= 0 || keys.Length < keyLength) return;
+        int count = keys.Length / keyLength;
+        byte[][] keyArrays = new byte[count][];
+        for (int i = 0; i < count; i++) keyArrays[i] = keys.Slice(i * keyLength, keyLength).ToArray();
+        IColumnFamilyHandle[]? families = null;
+        if (cf is not null)
+        {
+            families = new IColumnFamilyHandle[count];
+            Array.Fill(families, cf);
+        }
+
+        try
+        {
+            Task read = _db.MultiGetAsync(keyArrays, families, readOptions).AsTask();
+            if (!read.IsCompletedSuccessfully)
+                _ = read.ContinueWith(static t => _ = t.Exception, CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+            Db.Metrics.IncrementPrefetchedKeys(count);
+        }
+        catch (Exception e) when (e is RocksDbException or ObjectDisposedException)
+        {
+        }
+    }
+
     internal int GetCStyleWithColumnFamily(scoped ReadOnlySpan<byte> key, Span<byte> output, IColumnFamilyHandle? cf, ReadOptions readOptions)
     {
         ObjectDisposedException.ThrowIf(_isDisposing, this);

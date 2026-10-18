@@ -145,7 +145,38 @@ public static class BaseFlatPersistence
         bool fullAddressStorageKey = false
     ) : BasePersistence.IHashedFlatReader
     {
+        // One native batch per this many keys keeps the key scratch on the stack.
+        private const int PrefetchBatchSize = 64;
+
         public bool IsPreimageMode => isPreimageMode;
+
+        [SkipLocalsInit]
+        public void Prefetch(ReadOnlySpan<ValueHash256> accounts, ReadOnlySpan<ValueHash256> slotAccounts, ReadOnlySpan<ValueHash256> slots)
+        {
+            if (!accounts.IsEmpty && state is IReadPrefetcher accountPrefetcher)
+            {
+                Span<byte> keys = stackalloc byte[PrefetchBatchSize * AccountKeyLength];
+                for (int start = 0; start < accounts.Length; start += PrefetchBatchSize)
+                {
+                    int count = Math.Min(PrefetchBatchSize, accounts.Length - start);
+                    for (int i = 0; i < count; i++)
+                        EncodeAccountKeyHashed(keys.Slice(i * AccountKeyLength, AccountKeyLength), accounts[start + i]);
+                    accountPrefetcher.Prefetch(keys[..(count * AccountKeyLength)], AccountKeyLength);
+                }
+            }
+
+            if (!slots.IsEmpty && storage is IReadPrefetcher storagePrefetcher)
+            {
+                Span<byte> keys = stackalloc byte[PrefetchBatchSize * StorageKeyLength];
+                for (int start = 0; start < slots.Length; start += PrefetchBatchSize)
+                {
+                    int count = Math.Min(PrefetchBatchSize, slots.Length - start);
+                    for (int i = 0; i < count; i++)
+                        EncodeStorageKey(keys.Slice(i * StorageKeyLength, StorageKeyLength), slotAccounts[start + i], slots[start + i], fullAddressStorageKey);
+                    storagePrefetcher.Prefetch(keys[..(count * StorageKeyLength)], StorageKeyLength);
+                }
+            }
+        }
 
         public int GetAccount(in ValueHash256 address, Span<byte> outBuffer)
         {

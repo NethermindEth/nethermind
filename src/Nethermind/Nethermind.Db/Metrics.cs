@@ -58,6 +58,12 @@ namespace Nethermind.Db
         }
 
         [CounterMetric]
+        [Description("Number of keys whose reads were started ahead of use by an asynchronous prefetch.")]
+        public static long PrefetchedKeys => _prefetchedKeys.Value;
+        private static CacheLinePaddedLong _prefetchedKeys;
+        public static void IncrementPrefetchedKeys(long value) => Interlocked.Add(ref _prefetchedKeys.Value, value);
+
+        [CounterMetric]
         [Description("Number of state trie writes.")]
         public static long StateTreeWrites => _stateTreeWrites.Value;
         private static CacheLinePaddedLong _stateTreeWrites;

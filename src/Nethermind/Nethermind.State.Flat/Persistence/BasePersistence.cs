@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers;
 using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
@@ -288,6 +289,9 @@ public static class BasePersistence
         public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey);
         public IPersistence.IFlatIterator CreateStorageIterator(in ValueHash256 accountKey, in ValueHash256 startSlotKey, in ValueHash256 endSlotKey);
         public bool IsPreimageMode { get; }
+
+        /// <summary>Starts reading hashed account keys and (account, slot) key pairs ahead of use; does nothing by default.</summary>
+        public void Prefetch(ReadOnlySpan<ValueHash256> accounts, ReadOnlySpan<ValueHash256> slotAccounts, ReadOnlySpan<ValueHash256> slots) { }
     }
 
     public interface IHashedFlatWriteBatch
@@ -317,6 +321,9 @@ public static class BasePersistence
         public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey);
         public IPersistence.IFlatIterator CreateStorageIterator(in ValueHash256 accountKey, in ValueHash256 startSlotKey, in ValueHash256 endSlotKey);
         public bool IsPreimageMode { get; }
+
+        /// <summary>Starts reading accounts and slots ahead of use; does nothing by default.</summary>
+        public void Prefetch(ReadOnlySpan<Address> accounts, ReadOnlySpan<StorageCell> slots) { }
     }
 
     public interface IFlatWriteBatch
@@ -446,6 +453,34 @@ public static class BasePersistence
             _flatReader.CreateStorageIterator(accountKey, startSlotKey, endSlotKey);
 
         public bool IsPreimageMode => _flatReader.IsPreimageMode;
+
+        public void Prefetch(ReadOnlySpan<Address> accounts, ReadOnlySpan<StorageCell> slots)
+        {
+            int total = accounts.Length + slots.Length * 2;
+            if (total == 0) return;
+            ValueHash256[] rented = ArrayPool<ValueHash256>.Shared.Rent(total);
+            try
+            {
+                Span<ValueHash256> accountHashes = rented.AsSpan(0, accounts.Length);
+                for (int i = 0; i < accounts.Length; i++) accountHashes[i] = accounts[i].ToAccountPath;
+
+                Span<ValueHash256> slotAccounts = rented.AsSpan(accounts.Length, slots.Length);
+                Span<ValueHash256> slotHashes = rented.AsSpan(accounts.Length + slots.Length, slots.Length);
+                for (int i = 0; i < slots.Length; i++)
+                {
+                    slotAccounts[i] = slots[i].Address.ToAccountPath;
+                    ValueHash256 slotHash = ValueKeccak.Zero;
+                    StorageTree.ComputeKeyWithLookup(slots[i].Index, ref slotHash);
+                    slotHashes[i] = slotHash;
+                }
+
+                _flatReader.Prefetch(accountHashes, slotAccounts, slotHashes);
+            }
+            finally
+            {
+                ArrayPool<ValueHash256>.Shared.Return(rented);
+            }
+        }
     }
 
     public class Reader<TFlatReader, TTrieReader>(
@@ -489,6 +524,9 @@ public static class BasePersistence
             _flatReader.CreateStorageIterator(accountKey, startSlotKey, endSlotKey);
 
         public bool IsPreimageMode => _flatReader.IsPreimageMode;
+
+        public void Prefetch(ReadOnlySpan<Address> accounts, ReadOnlySpan<StorageCell> slots) =>
+            _flatReader.Prefetch(accounts, slots);
     }
 
     public class WriteBatch<TFlatWriteBatch, TTrieWriteBatch>(
