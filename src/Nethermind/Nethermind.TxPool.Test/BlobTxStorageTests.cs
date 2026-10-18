@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Autofac;
 using CkzgLib;
 using System;
 using System.Buffers.Binary;
@@ -12,6 +13,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.IO;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Db.Rocks;
@@ -371,7 +373,11 @@ public class BlobTxStorageTests
         using (ColumnsDb<BlobTxsColumns> db = new(directory.Path, new DbSettings(DbNames.BlobTransactions, "blobs"),
             config, factory, LimboLogs.Instance, Enum.GetValues<BlobTxsColumns>()))
         {
-            BlobTxStorage storage = new(db);
+            using IContainer container = new ContainerBuilder()
+                .AddModule(new TestNethermindModule())
+                .AddSingleton<IColumnsDb<BlobTxsColumns>>(db)
+                .Build();
+            IBlobTxStorage storage = container.Resolve<IBlobTxStorage>();
             foreach (Transaction tx in stored) storage.Add(tx);
             db.Flush();
             TxLookupKey[] keys = new TxLookupKey[count];

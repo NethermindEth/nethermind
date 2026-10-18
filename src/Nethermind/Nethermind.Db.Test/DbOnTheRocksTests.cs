@@ -91,8 +91,11 @@ namespace Nethermind.Db.Test
 
             store.GetMany<byte[]?, ReplacementValueDecoder>(keys, 1, output, new(output, previous));
 
-            Assert.That(output[0], Is.EqualTo(new byte[] { 1, 2, 3 }));
-            Assert.That(output.Skip(1), Is.All.Null);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(output[0], Is.EqualTo(new byte[] { 1, 2, 3 }));
+                Assert.That(output.Skip(1), Is.All.Null);
+            }
         }
 
         [Test]
