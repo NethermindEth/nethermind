@@ -270,10 +270,6 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
                         if (_logger.IsInfo) _logger.Info($"Valid... A new payload re-checked against its own state. Block {block.ToString(Block.Format.Short)} found in main chain.");
                         return fromState;
                     }
-
-                    // Fall through: only execution recovers the EIP-8037 dimensions this answer needs, and where
-                    // re-executing is unsafe the ancestry check below answers SYNCING — bogota.md newPayloadV6
-                    // (2.2) leaves `inclusionListSatisfied` null there, which (2.1) would not allow for VALID.
                 }
             }
         }
