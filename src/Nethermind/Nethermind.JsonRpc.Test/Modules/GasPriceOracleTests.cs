@@ -267,6 +267,28 @@ namespace Nethermind.JsonRpc.Test.Modules
             Assert.That(results, Is.EquivalentTo(expected));
         }
 
+        [Test]
+        public void GetGasPricesFromRecentBlocks_IfBlockHasMoreThanThreeValidTxs_ReturnsLowestGasPricesInAscendingOrder()
+        {
+            Transaction[] transactions =
+            [
+                Build.A.Transaction.WithGasPrice(6).TestObject,
+                Build.A.Transaction.WithGasPrice(3).TestObject,
+                Build.A.Transaction.WithGasPrice(4).TestObject,
+                Build.A.Transaction.WithGasPrice(1).TestObject,
+                Build.A.Transaction.WithGasPrice(3).TestObject,
+                Build.A.Transaction.WithGasPrice(5).TestObject
+            ];
+            Block testBlock = Build.A.Block.WithTransactions(transactions).TestObject;
+            IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+            blockFinder.FindBlock(0UL).Returns(testBlock);
+            GasPriceOracle testGasPriceOracle = new(blockFinder, Substitute.For<ISpecProvider>(), LimboLogs.Instance);
+
+            IEnumerable<UInt256> results = testGasPriceOracle.GetGasPricesFromRecentBlocks(0);
+
+            Assert.That(results, Is.EqualTo((UInt256[])[3, 3, 4]));
+        }
+
         private Transaction[] GetFiveTransactionsWithDifferentGasPrices()
         {
             Transaction[] transactions =

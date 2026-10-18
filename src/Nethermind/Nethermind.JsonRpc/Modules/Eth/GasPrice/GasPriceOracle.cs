@@ -110,29 +110,17 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
         private IEnumerable<UInt256> GetGasPricesFromRecentBlocks(IEnumerable<Block> blocks, int blocksToGoBack, CalculateGas calculateGasFromTransaction, UInt256? substituteForEmptyBlock)
         {
             int txCount = 0;
+            UInt256[] lowestGasPrices = new UInt256[EthGasPriceConstants.TxLimitFromABlock];
 
             foreach (Block currentBlock in blocks)
             {
-                Transaction[] currentBlockTransactions = currentBlock.Transactions;
-                int txFromCurrentBlock = 0;
-                bool eip1559Enabled = SpecProvider.GetSpec(currentBlock.Header).IsEip1559Enabled;
-                UInt256 baseFee = currentBlock.BaseFeePerGas;
-                IEnumerable<UInt256> effectiveGasPrices = currentBlockTransactions.Where(tx => tx.SenderAddress != currentBlock.Beneficiary)
-                        .Select(tx => calculateGasFromTransaction(tx, eip1559Enabled, baseFee))
-                        .Where(g => g >= IgnoreUnder)
-                        .OrderBy(g => g);
-
-                foreach (UInt256 gasPrice in effectiveGasPrices)
+                int txFromCurrentBlock = SelectLowestGasPrices(currentBlock, calculateGasFromTransaction, lowestGasPrices);
+                for (int i = 0; i < txFromCurrentBlock; i++)
                 {
-                    yield return gasPrice;
-                    txFromCurrentBlock++;
-                    txCount++;
-
-                    if (txFromCurrentBlock >= EthGasPriceConstants.TxLimitFromABlock)
-                    {
-                        break;
-                    }
+                    yield return lowestGasPrices[i];
                 }
+
+                txCount += txFromCurrentBlock;
 
                 if (txFromCurrentBlock == 0)
                 {
@@ -150,6 +138,39 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
                     break;
                 }
             }
+        }
+
+        /// <summary>Fills <paramref name="lowest"/> with the block's lowest gas prices at or above <see cref="IgnoreUnder"/>, in ascending order.</summary>
+        /// <returns>The number of gas prices written.</returns>
+        private int SelectLowestGasPrices(Block block, CalculateGas calculateGasFromTransaction, UInt256[] lowest)
+        {
+            bool eip1559Enabled = SpecProvider.GetSpec(block.Header).IsEip1559Enabled;
+            UInt256 baseFee = block.BaseFeePerGas;
+            int count = 0;
+            foreach (Transaction tx in block.Transactions)
+            {
+                if (tx.SenderAddress == block.Beneficiary)
+                {
+                    continue;
+                }
+
+                UInt256 gasPrice = calculateGasFromTransaction(tx, eip1559Enabled, baseFee);
+                if (gasPrice < IgnoreUnder || (count == lowest.Length && gasPrice >= lowest[^1]))
+                {
+                    continue;
+                }
+
+                int index = count < lowest.Length ? count++ : lowest.Length - 1;
+                while (index > 0 && gasPrice < lowest[index - 1])
+                {
+                    lowest[index] = lowest[index - 1];
+                    index--;
+                }
+
+                lowest[index] = gasPrice;
+            }
+
+            return count;
         }
 
         private static UInt256? GetGasPriceAtPercentile(List<UInt256> txGasPriceList)

@@ -305,6 +305,26 @@ namespace Nethermind.JsonRpc.Test.Modules
             }
         }
 
+        [Test]
+        public void GetFeeHistory_IfNewestBlockIsCached_DoesNotLoadItsBody()
+        {
+            IBlockTree blockTree = Substitute.For<IBlockTree>();
+            Block block = Build.A.Block.WithNumber(5UL).WithParentHash(TestItem.KeccakH).WithGasLimit(100).WithGasUsed(50).TestObject;
+            BlockParameter newestBlock = new(5UL);
+            blockTree.FindHeader(newestBlock).Returns(block.Header);
+            blockTree.FindBlock(newestBlock).Returns(block);
+            FeeHistoryOracle feeHistoryOracle = GetSubstitutedFeeHistoryOracle(blockTree: blockTree);
+
+            feeHistoryOracle.GetFeeHistory(1, newestBlock, []).Dispose();
+
+            blockTree.ClearReceivedCalls();
+            using ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(1, newestBlock, []);
+
+            Assert.That(resultWrapper.Data.OldestBlock, Is.EqualTo(5UL));
+            Assert.That(resultWrapper.Data.GasUsedRatio, Is.EqualTo((double[])[0.5]));
+            blockTree.DidNotReceive().FindBlock(Arg.Any<BlockParameter>(), Arg.Any<bool>());
+        }
+
         [TestCase(2UL, 2UL)]
         [TestCase(7UL, 7UL)]
         [TestCase(32UL, 32UL)]
