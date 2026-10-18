@@ -150,6 +150,10 @@ public static class BaseFlatPersistence
 
         public bool IsPreimageMode => isPreimageMode;
 
+        public bool ShouldPrefetchAccounts() => state is IReadPrefetcher prefetcher && prefetcher.ShouldPrefetch();
+
+        public bool ShouldPrefetchSlots() => storage is IReadPrefetcher prefetcher && prefetcher.ShouldPrefetch();
+
         [SkipLocalsInit]
         public void Prefetch(ReadOnlySpan<ValueHash256> accounts, ReadOnlySpan<ValueHash256> slotAccounts, ReadOnlySpan<ValueHash256> slots)
         {

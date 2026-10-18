@@ -1045,17 +1045,34 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             Array.Fill(families, cf);
         }
 
+        PrefetchGate gate = PrefetchGateFor(cf);
+        long start = Stopwatch.GetTimestamp();
         try
         {
             Task read = _db.MultiGetAsync(keyArrays, families, readOptions).AsTask();
-            if (!read.IsCompletedSuccessfully)
-                _ = read.ContinueWith(static t => _ = t.Exception, CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+            if (read.IsCompleted) RecordPrefetch(read, gate, start);
+            else _ = read.ContinueWith(static (t, state) => RecordPrefetch(t, ((PrefetchGate, long))state!), (gate, start),
+                CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
             Db.Metrics.IncrementPrefetchedKeys(count);
         }
         catch (Exception e) when (e is RocksDbException or ObjectDisposedException)
         {
         }
     }
+
+    private static void RecordPrefetch(Task read, (PrefetchGate Gate, long Start) state) => RecordPrefetch(read, state.Gate, state.Start);
+
+    private static void RecordPrefetch(Task read, PrefetchGate gate, long start)
+    {
+        if (read.IsFaulted) _ = read.Exception;
+        else gate.Record(start);
+    }
+
+    private readonly ConcurrentDictionary<nint, PrefetchGate> _prefetchGates = new();
+
+    /// <summary>The prefetch gate of a column family, or of the default one when <paramref name="cf"/> is null.</summary>
+    internal PrefetchGate PrefetchGateFor(IColumnFamilyHandle? cf) =>
+        _prefetchGates.GetOrAdd(cf?.Handle ?? 0, static _ => new PrefetchGate());
 
     internal int GetCStyleWithColumnFamily(scoped ReadOnlySpan<byte> key, Span<byte> output, IColumnFamilyHandle? cf, ReadOptions readOptions)
     {
