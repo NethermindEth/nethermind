@@ -136,8 +136,6 @@ namespace Nethermind.Trie
 
         public void Commit(bool skipRoot = false, WriteFlags writeFlags = WriteFlags.None)
         {
-            ThrowIfCommitUnsupported();
-
             if (!_allowCommits)
             {
                 ThrowReadOnlyTrieException();
@@ -172,6 +170,8 @@ namespace Nethermind.Trie
 
             // Sometimes RootRef is set to null, so we still need to reset roothash to empty tree hash.
             SetRootHash(RootRef?.Keccak, true);
+
+            ThrowIfCommitUnsupported();
         }
 
         private TrieNode Commit(ICommitter committer, ref TreePath path, TrieNode node, bool skipSelf = false)

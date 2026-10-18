@@ -1,9 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 
@@ -59,13 +56,11 @@ public partial class PatriciaTree
     partial void AdjustBulkSetFlags(ref Flags flags) => flags |= Flags.DoNotParallelize;
 
     /// <remarks>Where <see cref="FirstTouchMemoryFlag"/> is on, a branch hashed as soon as it is encoded keeps its previous
-    /// RLP (see <c>TrieNode.KeepsRlpOfHashedBranch</c>), so a commit would persist a stale encoding.</remarks>
+    /// RLP (see <c>TrieNode.KeepsRlpOfHashedBranch</c>), so a commit persists a stale encoding. The guest never commits,
+    /// and this makes one fail loudly. It is checked after the commit: checked before, it would leave the commit
+    /// unreachable and change the guest's code generation.</remarks>
     partial void ThrowIfCommitUnsupported()
     {
-        if (FirstTouchMemoryFlag.IsActive) ThrowCommitWithStaleBranchRlp();
+        if (FirstTouchMemoryFlag.IsActive) ThrowReadOnlyTrieException();
     }
-
-    [DoesNotReturn, StackTraceHidden]
-    private static void ThrowCommitWithStaleBranchRlp() =>
-        throw new InvalidOperationException("This guest keeps the previous RLP of hashed branches, so it cannot commit a trie.");
 }
