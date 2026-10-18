@@ -107,6 +107,21 @@ public class AccessListForRpcTests
         }
     }
 
+    private static readonly AccessList?[] EmptyAccessLists = [null, AccessList.Empty, new AccessList.Builder().Build()];
+
+    [Test]
+    public void Empty_access_lists_share_one_instance([ValueSource(nameof(EmptyAccessLists))] AccessList? accessList)
+    {
+        AccessListForRpc forRpc = AccessListForRpc.FromAccessList(accessList);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(forRpc, Is.SameAs(AccessListForRpc.FromAccessList(null)));
+            Assert.That(_serializer.Serialize(forRpc), Is.EqualTo("[]"));
+            Assert.That(forRpc.ToAccessList().IsEmpty, Is.True);
+        }
+    }
+
     [TestCase("address", "storageKeys")]
     [TestCase("ADDRESS", "StorageKeys")]
     [TestCase("addr\\u0065ss", "storage\\u004beys")]

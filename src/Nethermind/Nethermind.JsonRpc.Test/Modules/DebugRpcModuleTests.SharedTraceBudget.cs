@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -189,6 +190,75 @@ public partial class DebugRpcModuleTests
         Task<string[]> RunBoth() => Task.WhenAll(
             Task.Run(() => RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceBlockByHash", block.Hash, new { tracer = "callTracer" })),
             Task.Run(() => RpcTest.TestSerializedRequest(chain.TraceRpcModule, "trace_block", block.Hash)));
+    }
+
+    [TestCase("trace_block", null)]
+    [TestCase("trace_filter", null)]
+    [TestCase("trace_replayBlockTransactions", "trace")]
+    [TestCase("trace_replayBlockTransactions", "trace,stateDiff")]
+    [TestCase("trace_replayBlockTransactions", "trace,vmTrace,stateDiff")]
+    [TestCase("trace_replayBlockTransactions", "stateDiff")]
+    public async Task ParityTraces_OnAnIndexedBlock_StreamLikeTheReplay(string method, string? traceTypes)
+    {
+        using SnapshotableMemColumnsDb<FlatHistoryColumns> columns = new();
+        TransactionChangesetIndex index = new(columns, new FlatDbConfig { HistoryTransactionIndexEnabled = true });
+        OpenedBlockCount seeds = new(new ChangesetPrefixStateSeedSource(index));
+        using ParallelTraceBudget budget = new(2);
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = true })
+            .Build(builder => builder
+                .AddSingleton<ISpecProvider>(new TestSpecProvider(Prague.Instance) { AllowTestChainOverride = false })
+                .AddSingleton<IPrefixStateSeedSource>(seeds)
+                .AddSingleton(budget)
+                .AddSingleton<ParallelTraceBudgets, ISpecProvider>(specProvider => new ParallelTraceBudgets(specProvider, budget, changesetSeeds: true)));
+        BlockHeader parent = chain.BlockTree.Head!.Header;
+        ulong nonce = chain.WorldStateManager.GlobalStateReader.GetNonce(parent, TestItem.AddressB);
+        byte[][] codes =
+        [
+            Prepare.EvmCode.CallWithValue(TestItem.AddressC, 5_000, 1).Call(TestItem.AddressD, 5_000).Log(0, 0).STOP().Done,
+            Prepare.EvmCode.Call(TestItem.AddressC, 5_000).Revert(0, 0).Done,
+            Prepare.EvmCode.Create(Prepare.EvmCode.ForInitOf(Prepare.EvmCode.Op(Instruction.STOP).Done).Done, 0).STOP().Done,
+            Prepare.EvmCode.Call(TestItem.AddressC, 5_000).Op(Instruction.INVALID).Done,
+            Prepare.EvmCode.PersistData("0x01", "0x02").PushData(TestItem.AddressC).Op(Instruction.SELFDESTRUCT).Done,
+            Prepare.EvmCode.CallWithValue(TestItem.AddressE, 5_000, 1_000).STOP().Done,
+        ];
+        // More transactions than workers, in two rounds, so each recycled tracer meets every kind of frame.
+        Transaction[] transactions = new Transaction[2 * (codes.Length + 1)];
+        for (int i = 0; i < transactions.Length; i++)
+        {
+            int kind = i % (codes.Length + 1);
+            TransactionBuilder<Transaction> tx = kind == codes.Length
+                ? Build.A.Transaction.WithTo(TestItem.AddressC)
+                : Build.A.Transaction.WithCode(codes[kind]);
+            transactions[i] = tx.WithValue(kind == codes.Length - 1 ? 0 : 10).WithNonce(nonce + (ulong)i)
+                .WithGasLimit(300_000).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        }
+        Block block = await chain.AddBlock(transactions);
+        Assert.That(block.Transactions, Has.Length.EqualTo(transactions.Length), "precondition: every transaction is in the block");
+
+        object[] parameters = method switch
+        {
+            "trace_block" => [block.Hash!],
+            "trace_filter" => [new { fromBlock = $"0x{block.Number:x}", toBlock = $"0x{block.Number:x}" }],
+            _ => [block.Hash!, traceTypes!.Split(',')],
+        };
+        string replayed = await RpcTest.TestSerializedRequest(chain.TraceRpcModule, method, parameters);
+        Assert.That(seeds.Opened, Is.Zero, "precondition: before the block is indexed it is replayed");
+        IndexThroughTheCapture(chain, index, block, parent);
+        string first = await RpcTest.TestSerializedRequest(chain.TraceRpcModule, method, parameters);
+        string second = await RpcTest.TestSerializedRequest(chain.TraceRpcModule, method, parameters);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(seeds.Opened, Is.EqualTo(2), "precondition: the indexed block is traced in parallel");
+            Assert.That(JToken.Parse(replayed)["error"], Is.Null, replayed);
+            Assert.That(second, Is.EqualTo(first));
+            // The streamed replay writes a vmTrace operation's sub-trace ahead of its other fields.
+            if (traceTypes?.Contains("vmTrace") == true)
+                Assert.That(JToken.DeepEquals(JToken.Parse(first), JToken.Parse(replayed)), Is.True, first);
+            else
+                Assert.That(first, Is.EqualTo(replayed));
+        }
     }
 
     [Test]
@@ -441,5 +511,21 @@ public partial class DebugRpcModuleTests
 
         public void SetBlockExecutionContext(in BlockExecutionContext context) => inner.SetBlockExecutionContext(context);
         public void PrepareForInclusionCheck(Transaction transaction, ulong stateGasAvailable) => inner.PrepareForInclusionCheck(transaction, stateGasAvailable);
+    }
+
+    private sealed class OpenedBlockCount(IPrefixStateSeedSource inner) : IPrefixStateSeedSource
+    {
+        public int Opened;
+
+        public bool Enabled => inner.Enabled;
+
+        public bool TrySeed(Block block, int transactionIndex, StateReadOverlaySlot slot) => inner.TrySeed(block, transactionIndex, slot);
+
+        public bool TryOpenBlock(Block block, [NotNullWhen(true)] out ICoveredBlock? covered)
+        {
+            if (!inner.TryOpenBlock(block, out covered)) return false;
+            Interlocked.Increment(ref Opened);
+            return true;
+        }
     }
 }

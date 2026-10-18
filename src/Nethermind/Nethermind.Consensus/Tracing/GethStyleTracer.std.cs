@@ -391,13 +391,13 @@ public class GethStyleTracer(
             options = options with { TxHash = null };
         }
 
-        BlockLogIndex sharedLogIndex = new();
+        BlockLogIndex? sharedLogIndex = wantsLogIndex ? new() : null;
 
         using Scope<BlockProcessingComponents> scope = blockProcessingEnv.BuildAndOverrideAtTarget(block.Header, options.StateOverrides);
 
         long destroyRefund = (long)specProvider.GetSpec(block.Header).GasCosts.DestroyRefund;
         IBlockTracer<GethLikeTxTrace> tracer = writer is null
-            ? CreateOptionsTracer(block.Header, options, scope.Component.WorldState, specProvider, (_, _) => sharedLogIndex)
+            ? CreateOptionsTracer(block.Header, options, scope.Component.WorldState, specProvider, sharedLogIndex is null ? null : (_, _) => sharedLogIndex)
             : new GethLikeBlockEnvelopeStreamingTracer(options, writer, pipeWriter, cancellationToken, destroyRefund);
 
         try
