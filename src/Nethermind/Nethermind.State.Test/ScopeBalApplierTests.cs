@@ -92,4 +92,42 @@ public class ScopeBalApplierTests
             Assert.That(disposed, Is.All.EqualTo(1));
         }
     }
+
+    [Test]
+    public void ApplyBal_StopsWritingOnceCancelled([Values(0, 2)] int cancelAfter)
+    {
+        const int count = 4;
+        using CancellationTokenSource cancellation = new();
+        if (cancelAfter == 0) cancellation.Cancel();
+        int reads = 0;
+        IWorldStateScopeProvider.IScope scope = Substitute.For<IWorldStateScopeProvider.IScope>();
+        IWorldStateScopeProvider.IWorldStateWriteBatch parent = Substitute.For<IWorldStateScopeProvider.IWorldStateWriteBatch>();
+        IWorldStateScopeProvider.IStorageWriteBatch child = Substitute.For<IWorldStateScopeProvider.IStorageWriteBatch>();
+        scope.StartWriteBatch(count).Returns(parent);
+        scope.Get(Arg.Any<Address>()).Returns(_ =>
+        {
+            if (++reads == cancelAfter) cancellation.Cancel();
+            return new Account(nonce: 1, balance: 1);
+        });
+        parent.CreateStorageWriteBatch(Arg.Any<Address>(), Arg.Any<int>()).Returns(child);
+        ReadOnlyAccountChanges[] changes = new ReadOnlyAccountChanges[count];
+        for (int i = 0; i < count; i++)
+        {
+            changes[i] = Build.An.AccountChanges.WithAddress(Address.FromNumber((UInt256)(i + 1)))
+                .WithNonceChanges(new NonceChange(1, 2))
+                .WithStorageChanges(1, new StorageChange(1, 2))
+                .TestObject;
+        }
+
+        ScopeBalApplier.Apply(scope, Build.A.BlockAccessList.WithAccountChanges(changes).TestObject, LimboLogs.Instance, cancellation.Token);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reads, Is.EqualTo(cancelAfter), "accounts read");
+            parent.Received(cancelAfter).Set(Arg.Any<Address>(), Arg.Any<Account?>());
+            child.DidNotReceive().Set(Arg.Any<UInt256>(), Arg.Any<UInt256>());
+            child.Received(cancelAfter).Dispose();
+            parent.Received(1).Dispose();
+        }
+    }
 }

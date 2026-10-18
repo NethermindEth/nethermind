@@ -146,7 +146,7 @@ public interface IWorldStateScopeProvider
         /// call <see cref="UpdateRootHash"/> afterwards. See <see cref="ScopeBalApplier"/> for the generic implementation.
         /// </remarks>
         /// <param name="bal">The Block Access List whose last change per field is applied.</param>
-        /// <param name="cancellationToken">Stops the apply between accounts by throwing <see cref="OperationCanceledException"/>; the scope is then only fit to be discarded.</param>
+        /// <param name="cancellationToken">Once cancelled, the apply returns early, leaving the scope partially written and fit only to be discarded.</param>
         void ApplyBal(ReadOnlyBlockAccessList bal, CancellationToken cancellationToken = default);
     }
 

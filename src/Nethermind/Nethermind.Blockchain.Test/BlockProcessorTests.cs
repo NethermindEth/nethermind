@@ -1377,7 +1377,7 @@ public partial class BlockProcessorTests
     private sealed class BalApplyRecordingState(IWorldState state, Action beforeApply) : WorldStateDecorator(state), IWorldState
     {
         public int ApplyStarts { get; private set; }
-        public int Applied { get; private set; }
+        public int CancelledApplies { get; private set; }
         public int RootRecalculations { get; private set; }
 
         void IWorldState.ApplyBal(ReadOnlyBlockAccessList bal, CancellationToken cancellationToken)
@@ -1385,7 +1385,7 @@ public partial class BlockProcessorTests
             ApplyStarts++;
             beforeApply();
             ApplyBal(bal, cancellationToken);
-            Applied++;
+            if (cancellationToken.IsCancellationRequested) CancelledApplies++;
         }
 
         public override void RecalculateStateRoot()
@@ -3634,7 +3634,7 @@ public partial class BlockProcessorTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(stateProvider.ApplyStarts, Is.EqualTo(rejected && rejectedAt == BalRejectionPoint.DuringWarmup ? 0 : 1), "BAL applications started");
-            Assert.That(stateProvider.Applied, Is.EqualTo(rejected ? 0 : 1), "BAL applications completed");
+            Assert.That(stateProvider.CancelledApplies, Is.EqualTo(rejected && rejectedAt == BalRejectionPoint.DuringApply ? 1 : 0), "BAL applications cancelled");
             Assert.That(stateProvider.RootRecalculations, Is.EqualTo(rejected ? 0 : 1), "state root recalculations");
         }
     }

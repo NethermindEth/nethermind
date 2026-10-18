@@ -353,7 +353,7 @@ public class PrewarmerScopeProvider(
             {
                 foreach (ReadOnlyAccountChanges accountChanges in bal.AccountChanges)
                 {
-                    cancellationToken.ThrowIfCancellationRequested();
+                    if (cancellationToken.IsCancellationRequested) break;
                     if (!accountChanges.HasStateChanges) continue;
 
                     // The caches still hold the pre-block state the apply reads, so they spare it the backend reads. An

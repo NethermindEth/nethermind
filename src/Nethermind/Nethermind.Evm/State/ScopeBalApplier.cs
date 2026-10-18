@@ -40,7 +40,7 @@ public static class ScopeBalApplier
                 {
                     foreach (ReadOnlyAccountChanges accountChanges in bal.AccountChanges)
                     {
-                        cancellationToken.ThrowIfCancellationRequested();
+                        if (cancellationToken.IsCancellationRequested) break;
                         if (!accountChanges.HasStateChanges) continue;
 
                         Address address = accountChanges.Address;
@@ -73,8 +73,7 @@ public static class ScopeBalApplier
                         // A slot-only change leaves the account as it was.
                         if (delta.ChangesAccount) writeBatch.Set(address, account);
                     }
-                    cancellationToken.ThrowIfCancellationRequested();
-                    storageBatches.Apply();
+                    if (!cancellationToken.IsCancellationRequested) storageBatches.Apply();
                 }
                 catch (Exception exception)
                 {

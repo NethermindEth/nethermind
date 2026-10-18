@@ -214,14 +214,7 @@ public partial class BlockProcessor
                                     // Pre-block writes on the shared state (e.g. AuRa's system accounts) are only committed to
                                     // the journal; flush them to the scope before the BAL's values are laid over them.
                                     state.StateProvider.Commit(state.SpecProvider.GetSpec(state.Block.Header));
-                                    try
-                                    {
-                                        state.StateProvider.ApplyBal(bal, state.Rejection);
-                                    }
-                                    catch (OperationCanceledException) when (state.IsBlockRejected)
-                                    {
-                                        return state;
-                                    }
+                                    state.StateProvider.ApplyBal(bal, state.Rejection);
                                     if (state.IsBlockRejected) return state;
                                     state.StateProvider.RecalculateStateRoot();
                                     return state;
