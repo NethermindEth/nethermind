@@ -9,7 +9,7 @@
 // the database before each run, so the block cache is empty too.
 //
 // bal-*:      HintBal over 256 accounts with 8 slots each plus 256 accounts without slots (512 + 2048 reads).
-// accounts-*: the non-BAL address warm pattern: prefetch beside 8 threads reading 512 accounts.
+// accounts-*: the non-BAL address warm pattern: prefetch, then 8 threads read 512 accounts.
 // *-cold:     every read starts cold.  *-partial: 60% of the read set is warmed first.
 // *-warm:     everything is cached; measures what the prefetch costs when it cannot help.
 
@@ -116,8 +116,8 @@ return failures == 0 ? 0 : 2;
 
     int mismatches = 0;
     long begin = Stopwatch.GetTimestamp();
-    // As BlockCachePreWarmer.AddressWarmer does: prepared beside the warm reads and awaited at the end.
-    Task prefetchTask = Task.Run(() => scope.Prefetch(set.Addresses, []));
+    // As BlockCachePreWarmer.AddressWarmer does: prefetched first, inline, then read.
+    scope.Prefetch(set.Addresses, []);
     const int threads = 8;
     int per = (set.Addresses.Length + threads - 1) / threads;
     Parallel.For(0, threads, new ParallelOptions { MaxDegreeOfParallelism = threads }, t =>
@@ -127,7 +127,6 @@ return failures == 0 ? 0 : 2;
             if (scope.Get(set.Addresses[k]) != ColdStateFixture.AccountAt(set.AccountIndexes[k])) Interlocked.Increment(ref mismatches);
         }
     });
-    prefetchTask.Wait();
     return (Stopwatch.GetElapsedTime(begin).TotalMicroseconds, mismatches);
 }
 
