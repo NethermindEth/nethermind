@@ -1067,6 +1067,31 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
     }
 
     [Test]
+    public void Test_CallTrace_EveryFrameField_Serializes()
+    {
+        using NativeCallTracerCallFrame root = new()
+        {
+            Type = Instruction.CALL,
+            From = TestItem.AddressA,
+            To = TestItem.AddressB,
+            Value = 1,
+            Gas = 100_000,
+            GasUsed = 50_000,
+            Eip8037Gas = new TwoDimensionalGas(25_000, 5_000, 9_000),
+            Input = new byte[] { 0x12, 0x34 },
+            Output = new byte[] { 0xab },
+            Error = "execution reverted",
+            RevertReason = "reason",
+            Logs = new ArrayPoolList<NativeCallTracerLogEntry>(1) { new(TestItem.AddressC, [0xcd], [TestItem.KeccakA], 3, 1) }
+        };
+        root.Calls.Add(new NativeCallTracerCallFrame { Type = Instruction.STATICCALL, Gas = 1, GasUsed = 0 });
+
+        string json = JsonSerializer.Serialize(root, EthereumJsonSerializer.JsonOptions);
+
+        Assert.That(json, Is.EqualTo("""{"type":"CALL","from":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","to":"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358","value":"0x1","gas":"0x186a0","gasUsed":"0xc350","regularGasUsed":"0x61a8","stateGasUsed":"0x1388","gasRefund":"0x2328","input":"0x1234","output":"0xab","error":"execution reverted","revertReason":"reason","logs":[{"address":"0x76e68a8696537e4141926f3e528733af9e237d69","data":"0xcd","topics":["0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760"],"index":"0x3","position":"0x1"}],"calls":[{"type":"STATICCALL","from":null,"gas":"0x1","gasUsed":"0x0","input":"0x"}]}"""));
+    }
+
+    [Test]
     public void Test_CallTrace_DeepNesting_StreamedJsonIsComplete()
     {
         int depth = VirtualMachineStatics.MaxCallDepth;
