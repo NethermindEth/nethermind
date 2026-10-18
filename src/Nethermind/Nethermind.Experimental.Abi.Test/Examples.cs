@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using NUnit.Framework;
@@ -187,5 +188,47 @@ public class Examples
         Assert.That(encoded, Is.EqualTo(expected));
 
         Assert.That(AbiCodec.Decode(signature, encoded), Is.EqualTo(arguments));
+    }
+
+    [Test]
+    public void CommitHash()
+    {
+        AbiSignature<(ValueHash256, byte[])> signature = new AbiSignature("commitHash")
+            .With(
+                AbiType.Bytes32,
+                AbiType.Bytes);
+
+        byte[] expectedMethodId = Bytes.FromHexString("0x0b61ba85");
+        Assert.That(signature.MethodId.ToArray(), Is.EqualTo(expectedMethodId));
+
+        (ValueHash256, byte[]) arguments = (ValueKeccak.Compute("secret"), "cipher"u8.ToArray());
+        byte[] encoded = AbiCodec.Encode(signature, arguments);
+
+        byte[] expected = Bytes.FromHexString(
+            "0x0b61ba85" + // `MethodId`
+            "65462b0520ef7d3df61b9992ed3bea0c56ead753be7c8b3614e0ce01e4cac41b" + // First argument, `keccak256("secret")`
+            "0000000000000000000000000000000000000000000000000000000000000040" + // Location of the data part of the second parameter
+            "0000000000000000000000000000000000000000000000000000000000000006" + // Data part of the second argument
+            "6369706865720000000000000000000000000000000000000000000000000000"); // Contents of the second argument, `"cipher"`
+        Assert.That(encoded, Is.EqualTo(expected));
+
+        Assert.That(AbiCodec.Decode(signature, encoded), Is.EqualTo(arguments));
+    }
+
+    [Test]
+    public void CommitHashFromHash256()
+    {
+        AbiSignature<(ValueHash256, byte[])> signature = new AbiSignature("commitHash")
+            .With(
+                AbiType.Bytes32,
+                AbiType.Bytes);
+
+        Hash256 secretHash = Keccak.Compute("secret");
+        byte[] cipher = "cipher"u8.ToArray();
+        byte[] encoded = AbiCodec.Encode(signature, (secretHash, cipher));
+        Assert.That(encoded, Is.EqualTo(AbiCodec.Encode(signature, (secretHash.ValueHash256, cipher))));
+
+        (ValueHash256 decodedHash, _) = AbiCodec.Decode(signature, encoded);
+        Assert.That(decodedHash.ToHash256(), Is.EqualTo(secretHash));
     }
 }
