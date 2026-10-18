@@ -148,7 +148,8 @@
     const pad = { l: 52, r: 8, t: 8, b: 18 };
     let max = 0, min = Infinity;
     for (const s of series) for (const p of s.points) if (p && Number.isFinite(p[1])) { max = Math.max(max, p[1]); min = Math.min(min, p[1]); }
-    if (!max) return empty(ctx, width, height, 'No data in this window');
+    if (min === Infinity) return empty(ctx, width, height, 'No data in this window');
+    if (!max) { max = 1; log = false; }
     const plotW = width - pad.l - pad.r, plotH = height - pad.t - pad.b;
     const lo = log ? Math.max(0.1, min) : 0;
     const yOf = v => pad.t + plotH - (log ? Math.log(Math.max(v, lo) / lo) / Math.log(max / lo || 10) : v / max) * plotH;

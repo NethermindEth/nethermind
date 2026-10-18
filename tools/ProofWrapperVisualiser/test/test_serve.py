@@ -51,16 +51,19 @@ class ServeTests(unittest.TestCase):
     def setUpClass(cls):
         cls.upstream = ThreadingHTTPServer(("127.0.0.1", 0), Upstream)
         upstream_url = start(cls.upstream)
-        cls.server = ThreadingHTTPServer(("127.0.0.1", 0), serve.handler(serve.Nodes([("el-1", upstream_url)], None)))
+        cls.server = ThreadingHTTPServer(("127.0.0.1", 0), serve.handler(serve.Nodes([("el-1", upstream_url)], None), 0))
+        port = cls.server.server_address[1]
+        cls.server.RequestHandlerClass = serve.handler(serve.Nodes([("el-1", upstream_url)], None), port)
         cls.url = start(cls.server)
+        cls.port = port
 
     @classmethod
     def tearDownClass(cls):
         cls.server.shutdown()
         cls.upstream.shutdown()
 
-    def post(self, path, body):
-        request = urllib.request.Request(self.url + path, json.dumps(body).encode(), {"Content-Type": "application/json"})
+    def post(self, path, body, headers=None):
+        request = urllib.request.Request(self.url + path, json.dumps(body).encode(), {"Content-Type": "application/json", **(headers or {})})
         try:
             with urllib.request.urlopen(request, timeout=5) as response:
                 return response.status, json.loads(response.read())
@@ -88,6 +91,29 @@ class ServeTests(unittest.TestCase):
         self.assertEqual(self.post("/rpc/el-1", {"method": "admin_addPeer", "params": []})[0], 403)
         self.assertEqual(self.post("/rpc/elsewhere", {"method": "debug_proofWrapperEvents"})[0], 404)
         self.assertEqual(len(Upstream.received), sent, "nothing reaches the node")
+
+    def test_rejects_rebound_hosts_and_cross_origin_posts(self):
+        sent = len(Upstream.received)
+        call = {"method": "debug_proofWrapperEvents", "params": []}
+        self.assertEqual(self.post("/rpc/el-1", call, {"Host": f"attacker.example:{self.port}"})[0], 421)
+        self.assertEqual(self.post("/rpc/el-1", call, {"Host": "127.0.0.1:1"})[0], 421)
+        self.assertEqual(self.post("/rpc/el-1", call, {"Origin": "http://attacker.example"})[0], 403)
+        self.assertEqual(self.post("/rpc/el-1", call, {"Content-Type": "text/plain"})[0], 415)
+        self.assertEqual(len(Upstream.received), sent, "nothing reaches the node")
+        self.assertEqual(self.post("/rpc/el-1", call, {"Origin": f"http://127.0.0.1:{self.port}"})[0], 200)
+        request = urllib.request.Request(self.url + "/api/nodes", headers={"Host": f"rebound.example:{self.port}"})
+        with self.assertRaises(urllib.error.HTTPError) as refused:
+            urllib.request.urlopen(request, timeout=5)
+        self.assertEqual(refused.exception.code, 421)
+
+    def test_host_and_origin_rules(self):
+        self.assertTrue(serve.host_allowed("localhost:8437", 8437, frozenset()))
+        self.assertTrue(serve.host_allowed("[::1]:8437", 8437, frozenset()))
+        self.assertTrue(serve.host_allowed("devbox:8437", 8437, frozenset({"devbox"})))
+        self.assertFalse(serve.host_allowed("devbox:8437", 8437, frozenset()))
+        self.assertFalse(serve.host_allowed(None, 8437, frozenset()))
+        self.assertTrue(serve.origin_allowed(None, "localhost:8437"))
+        self.assertFalse(serve.origin_allowed("null", "localhost:8437"))
 
     def test_lists_configured_nodes(self):
         with urllib.request.urlopen(self.url + "/api/nodes", timeout=5) as response:

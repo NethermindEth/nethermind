@@ -6,7 +6,7 @@
 (function (root) {
   'use strict';
 
-  const PAGE = 1000;
+  const PAGE = 2000;
   const IDLE_POLL_MS = 1000;
   const MAX_PAGES_PER_SECOND = 20;
 

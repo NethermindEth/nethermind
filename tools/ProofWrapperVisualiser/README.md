@@ -30,6 +30,8 @@ python3 tools/ProofWrapperVisualiser/serve.py --kurtosis <enclave>
 `serve.py` finds every `el-*` service's RPC port with `kurtosis enclave inspect`, serves the page on
 `http://127.0.0.1:8437/` and proxies only the read-only methods above to those nodes. Add nodes outside the enclave with
 `--node NAME=URL`. From another machine, forward the page's port (`ssh -L 8437:127.0.0.1:8437 host`) or the node RPC ports.
+`serve.py` listens on loopback and only answers requests addressed to a loopback host name; to reach it under another
+name, pass `--bind` and `--allow-host NAME`. Proxied calls must come from the page's own origin.
 
 Without `serve.py`, open `index.html` directly and paste node URLs, `kurtosis enclave inspect` output or
 `kurtosis port print <enclave> <service> rpc` output under **Nodes**. The page then calls nodes itself, which needs
