@@ -465,7 +465,8 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
     /// while preserving lightweight cache-only entries.
     /// </summary>
     /// <param name="snapshot">Zero-based index representing the position in the change log to restore to.
-    /// Must be between 0 and the current last change index.</param>
+    /// Must be between 0 and the current last change index, and come from <see cref="TakeSnapshot"/> or be -1:
+    /// consecutive account updates between snapshots may share one change, so other positions can restore later values.</param>
     /// <exception cref="InvalidOperationException">
     /// Thrown if <paramref name="snapshot"/> is beyond the current position,
     /// or if internal consistency checks fail during rollback.</exception>
@@ -1101,8 +1102,10 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
 
         Account changedAccount = nonce == account.Nonce ? account.WithChangedBalance(balance) : account.WithChangedNonce(nonce);
         Debug.Assert(changedAccount.Balance == balance);
+        int count = _changes.Count;
         PushUpdate(address, changedAccount);
-        _overwritableChange = _changes.Count - 1;
+        // Only an appended change holds changedAccount; otherwise the tail may be another address's cached account.
+        if (_changes.Count > count) _overwritableChange = _changes.Count - 1;
     }
 
     private void PushTouch(Address address, Account account, IReleaseSpec releaseSpec, bool isZero)

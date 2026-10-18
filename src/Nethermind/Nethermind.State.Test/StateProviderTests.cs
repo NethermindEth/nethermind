@@ -619,6 +619,42 @@ public class StateProviderTests(bool useFlat)
     }
 
     [Test]
+    public void Update_after_a_cold_read_of_another_account_is_committed()
+    {
+        Address coinbase = TestItem.AddressB;
+        Hash256 expectedRoot;
+        using (Context expectedCtx = new(useFlat, UnavailableStateHeaderProvider.Instance))
+        {
+            IWorldState expected = expectedCtx.WorldState;
+            using IDisposable _ = expected.BeginScope(IWorldState.PreGenesis);
+            expected.CreateAccount(_address1, 6);
+            expected.CreateAccount(coinbase, 13);
+            expected.Commit(Frontier.Instance);
+            expected.CommitTree(0);
+            expectedRoot = expected.StateRoot;
+        }
+
+        using Context ctx = new(useFlat, UnavailableStateHeaderProvider.Instance);
+        IWorldState provider = ctx.WorldState;
+        using IDisposable scope = provider.BeginScope(IWorldState.PreGenesis);
+        provider.CreateAccount(_address1, 10);
+        provider.CreateAccount(coinbase, 10);
+        provider.Commit(Frontier.Instance);
+        provider.CommitTree(0);
+
+        // Sender pays, the cold coinbase read appends its cached account as the tail, then refund and fee.
+        provider.TakeSnapshot(newTransactionStart: true);
+        provider.SubtractFromBalance(_address1, 5, Frontier.Instance);
+        provider.GetBalance(coinbase);
+        provider.AddToBalance(_address1, 1, Frontier.Instance);
+        provider.AddToBalance(coinbase, 3, Frontier.Instance);
+        provider.Commit(Frontier.Instance);
+        provider.CommitTree(1);
+
+        Assert.That(provider.StateRoot, Is.EqualTo(expectedRoot));
+    }
+
+    [Test]
     public void Updates_do_not_change_an_account_value_already_handed_out([Values] bool asBalanceReference)
     {
         using Context ctx = new(useFlat, UnavailableStateHeaderProvider.Instance);
