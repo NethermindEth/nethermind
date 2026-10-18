@@ -3016,14 +3016,15 @@ public partial class BlockProcessorTests
     }
 
     [Test]
-    public void Registered_parallel_validation_skips_transaction_events_without_subscribers()
+    public void Registered_parallel_validation_hands_transaction_events_only_to_subscribers([Values] bool hasSubscribers)
     {
-        CanonicalReceiptEventSetup setup = BuildCanonicalReceiptEventSetup(balFailure: false, validationSucceeds: true, hasSubscribers: false);
+        CanonicalReceiptEventSetup setup = BuildCanonicalReceiptEventSetup(balFailure: false, validationSucceeds: true, hasSubscribers: hasSubscribers);
         using IContainer container = setup.Container;
 
         setup.BranchProcessor.Process(setup.Parent, [setup.Block], ProcessingOptions.None, NullBlockTracer.Instance);
 
-        Assert.That(setup.Handler.Events, Is.Empty, "a handler without subscribers must not be handed events");
+        Assert.That(setup.Handler.Events, hasSubscribers ? Has.Count.EqualTo(setup.Block.Transactions.Length) : Is.Empty,
+            "every transaction reaches a handler with subscribers, and none reaches one without");
     }
 
     [Test]
