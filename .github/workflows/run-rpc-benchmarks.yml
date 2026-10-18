@@ -1391,7 +1391,7 @@ jobs:
                       max_response_bytes:RPC_BENCH_MAX_RESPONSE_BYTES; do
             v="$(get ".${pair%%:*}")"; [[ -z "${v}" ]] || export "${pair#*:}=${v}"
           done
-          for pair in db_isolation_allow_snapshot_mutation:DB_ISOLATION_ALLOW_SNAPSHOT_MUTATION resource_sampling:CORPUS_RESOURCE_SAMPLING parity_diffs:CORPUS_PARITY_DIFFS \
+          for pair in db_isolation_allow_snapshot_mutation:DB_ISOLATION_ALLOW_SNAPSHOT_MUTATION resource_sampling:CORPUS_RESOURCE_SAMPLING parity_diffs:CORPUS_PARITY_DIFFS access_predictability:ACCESS_PREDICTABILITY \
                       vus:JB_VUS max_fail_rate_pct:JB_MAX_FAIL_RATE_PCT; do
             v="$(getb ".${pair%%:*}")"; [[ -z "${v}" ]] || export "${pair#*:}=${v}"
           done

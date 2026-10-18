@@ -107,7 +107,7 @@ def dispatch_defaults():
 NON_SHAPING_KEYS = {
     "clients", "corpus_baseline", "rounds",
     "iso_configs", "iso_duration",
-    "db_isolation_allow_snapshot_mutation", "resource_sampling", "parity_diffs",
+    "db_isolation_allow_snapshot_mutation", "resource_sampling", "parity_diffs", "access_predictability",
     "max_divergence_indexes", "max_fail_rate_pct",
 }
 

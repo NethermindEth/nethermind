@@ -47,6 +47,7 @@ CORPUS_TIMINGS_RPS="${CORPUS_TIMINGS_RPS:-0}"
 CORPUS_TIMINGS_CONCURRENCY="${CORPUS_TIMINGS_CONCURRENCY:-16}"
 CORPUS_WARMUP_RPS_MAX="${CORPUS_WARMUP_RPS_MAX:-0}"   # 0 = no cap on the warm-up rate
 CORPUS_PARITY_DIFFS="${CORPUS_PARITY_DIFFS:-false}"
+ACCESS_PREDICTABILITY="${ACCESS_PREDICTABILITY:-false}"   # replay each corpus once more with the prestateTracer and count predictable reads
 CORPUS_RESOURCE_SAMPLING="${CORPUS_RESOURCE_SAMPLING:-true}"
 CORPUS_WARMUP_DURATION="${CORPUS_WARMUP_DURATION:-60s}"   # discarded load per node per corpus; 0 = measure cold
 CORPUS_WARMUP_RPS="${CORPUS_WARMUP_RPS:-400}"             # floor; a higher measured rate warms at that rate
@@ -357,6 +358,14 @@ run_corpus() {
     else
       echo "::error::parity baseline capture failed for corpus $clabel on $label"; parity_fail=$((parity_fail + 1))
     fi
+  fi
+  if [[ "$ACCESS_PREDICTABILITY" == "true" ]]; then
+    report_dir="$OUT_DIR/corpus/$clabel/$label"; mkdir -p "$report_dir"
+    echo "-- ACCESS PREDICTABILITY $clabel: $label --"
+    # A native keccak keeps the derivation search to seconds; the script falls back to a reduced search without one.
+    python3 -c 'import Crypto.Hash.keccak' 2>/dev/null || python3 -m pip install --quiet --user pycryptodome >/dev/null 2>&1 || true
+    python3 "$here/access_predictability.py" --corpus "$corpus" --rpc-url "$RPC" --out "$report_dir/access-predictability.json" \
+      || { echo "::warning::access predictability replay failed for $label on corpus $clabel"; cell_fail=$((cell_fail + 1)); }
   fi
   if [[ -n "$CORPUS_TIMINGS_PASSES" ]]; then
     report_dir="$OUT_DIR/corpus/$clabel/$label"; mkdir -p "$report_dir"

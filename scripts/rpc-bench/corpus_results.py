@@ -46,7 +46,8 @@ BLOCK_HASH_PATTERN = re.compile(r"0x[0-9a-f]{64}")
 STATUS_PATTERN = re.compile(r"(ok|transport_failure|invalid_response|rpc_error)(:-?\d+)?")
 REPEAT_PATTERN = re.compile(r"^(.*?)(?:_r[0-9]+)?$")
 STAGED_FILENAMES = ("summary.json", "parity.json", "jsonbench-summary.md", "summaries.manifest",
-                    "timings.csv", "parity-diffs.json", "timings.meta.json", "resources.json")
+                    "timings.csv", "parity-diffs.json", "timings.meta.json", "resources.json",
+                    "access-predictability.json")
 RESOURCE_FIELDS = {
     "wall_seconds", "samples", "cpu_seconds", "cpu_avg_cores", "cpu_peak_cores", "cpu_throttled_usec",
     "memory_avg_bytes", "memory_peak_bytes", "memory_anon_avg_bytes", "memory_anon_peak_bytes",
@@ -294,6 +295,30 @@ def _validate_resources(path: Path) -> None:
             raise CorpusResultsError(f"{path.name}: {key} is not numeric")
 
 
+ACCESS_PREDICTABILITY_FIELDS = {
+    "schema", "records", "records_failed", "keys", "warm_records", "warm_record_share", "accounts", "slots",
+    "code_accounts", "warm", "patterns_learned", "reduced_search", "keccak_computed", "elapsed_seconds",
+}
+ACCESS_PREDICTABILITY_WARM_FIELDS = {
+    "reads", "accounts", "slots", "recall_reads", "recall_accounts", "recall_accounts_trivial_only",
+    "recall_slots_static", "recall_slots_static_and_derived", "recall_slots_majority", "recall_accounts_majority",
+    "slots_unexplained_share", "waste_share", "predicted_per_record", "reads_per_record",
+    "recall_per_record_p10", "recall_per_record_p50", "recall_per_record_p90",
+}
+
+
+def _validate_access_predictability(path: Path) -> None:
+    """Counts and ratios only: the replay saw call data and state, none of which may leave the runner."""
+    with path.open("r", encoding="utf-8") as source:
+        data = json.load(source)
+    if not isinstance(data, dict) or not set(data) <= ACCESS_PREDICTABILITY_FIELDS \
+            or not isinstance(data.get("warm"), dict) or not set(data["warm"]) <= ACCESS_PREDICTABILITY_WARM_FIELDS:
+        raise CorpusResultsError(f"{path.name} does not match the access predictability schema")
+    for value in [v for k, v in data.items() if k != "warm"] + list(data["warm"].values()):
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise CorpusResultsError(f"{path.name} holds a non-numeric value")
+
+
 def _stage_manifest(path: Path, source_root: Path, target: Path) -> bool:
     """Rewrite manifest paths relative to the artifact root; a malformed index drops only itself."""
     lines_out = []
@@ -321,6 +346,7 @@ VALIDATORS = {
     "parity-diffs.json": _validate_parity_diffs,
     "timings.meta.json": _validate_timings_meta,
     "resources.json": _validate_resources,
+    "access-predictability.json": _validate_access_predictability,
 }
 
 
