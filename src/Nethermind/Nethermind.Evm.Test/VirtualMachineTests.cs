@@ -3846,28 +3846,34 @@ public sealed class VirtualMachineExtensionHooksTests
         }
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public void Handled_frame_initialization_can_return_success_or_revert(bool shouldRevert)
+    [Test]
+    public void Handled_frame_initialization_can_return_each_result_for_regular_or_precompile_child(
+        [Values(EvmExceptionType.None, EvmExceptionType.Revert, EvmExceptionType.BadInstruction)] EvmExceptionType exceptionType,
+        [Values(false, true)] bool isPrecompile)
     {
-        Deploy(Prepare.EvmCode.SSTORE(0, [1]).Done);
+        if (!isPrecompile)
+            Deploy(Prepare.EvmCode.SSTORE(0, [1]).Done);
+
         _hookedMachine.HandleChildFrame = true;
-        _hookedMachine.HandledChildShouldRevert = shouldRevert;
+        _hookedMachine.HandledChildExceptionType = exceptionType;
+        Address target = isPrecompile ? BN254AddPrecompile.Address : Child;
         byte[] code = Prepare.EvmCode
-            .CALL(50_000, Child, 0, 0, 0, 0, 0)
+            .CALL(50_000, target, 0, 0, 0, 0, 0)
             .Op(Instruction.POP)
             .Done;
 
         TestAllTracerWithOutput result = Execute(code);
-        StorageCell cell = new(Child, UInt256.Zero);
+        StorageCell cell = new(target, UInt256.Zero);
         _worldState.Get(in cell, out UInt256 valueAfterIntercept);
+        bool shouldRevert = exceptionType == EvmExceptionType.Revert;
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Error, Is.Null);
-            Assert.That(_hookedMachine.Completions, Is.EqualTo([
-                (shouldRevert ? EvmExceptionType.Revert : EvmExceptionType.None, shouldRevert)]));
+            Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(_hookedMachine.Completions, Is.EqualTo([(exceptionType, shouldRevert)]));
             Assert.That(valueAfterIntercept, Is.EqualTo(UInt256.Zero));
+            Assert.That(_hookedMachine.HandledPrecompileFrames, Is.EqualTo(isPrecompile ? 1 : 0));
         }
     }
 
@@ -4043,6 +4049,7 @@ public sealed class VirtualMachineExtensionHooksTests
         _worldState.InsertCode(TestItem.AddressB, delegationCode, _specProvider.GenesisSpec);
         byte[] delegatedCode = Prepare.EvmCode.SSTORE(0, [1]).Done;
         _worldState.InsertCode(delegatedTarget, delegatedCode, _specProvider.GenesisSpec);
+        _hookedMachine.DelegatedCodeOverride = Prepare.EvmCode.SSTORE(0, [2]).Done;
 
         byte[] callerCode = Prepare.EvmCode
             .CALL(50_000, TestItem.AddressB, 0, 0, 0, 0, 0)
@@ -4059,7 +4066,7 @@ public sealed class VirtualMachineExtensionHooksTests
         {
             Assert.That(result.Error, Is.Null);
             Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
-            Assert.That(delegatedStorage, Is.EqualTo(UInt256.One));
+            Assert.That(delegatedStorage, Is.EqualTo((UInt256)2));
             Assert.That(_hookedMachine.DelegatedResolutions, Is.EqualTo(1));
         }
     }
@@ -4181,11 +4188,13 @@ public sealed class VirtualMachineExtensionHooksTests
         public bool ThrowFatalOnChild { get; set; }
         public bool HandleChildFrame { get; set; }
         public bool InterceptChildValueFrame { get; set; }
-        public bool HandledChildShouldRevert { get; set; }
+        public EvmExceptionType HandledChildExceptionType { get; set; }
         public bool SkipEoaCallFastPath { get; set; }
         public bool HandleSelfDestruct { get; set; }
         public int SelfDestructCalls { get; private set; }
         public int DelegatedResolutions { get; private set; }
+        public int HandledPrecompileFrames { get; private set; }
+        public byte[]? DelegatedCodeOverride { get; set; }
         public List<(Address From, Address To, UInt256 Value)> ValueTransferPrechecks { get; } = [];
         public List<bool> ValueTransferStorageWasCold { get; } = [];
         public bool WarmValueTransferStorage { get; set; }
@@ -4201,6 +4210,7 @@ public sealed class VirtualMachineExtensionHooksTests
 
             if (HandleChildFrame && !currentState.IsTopLevel && !currentState.IsContinuation)
             {
+                if (currentState.IsPrecompile) HandledPrecompileFrames++;
                 if (IsTracingActions) TraceTransactionActionStart(currentState);
 
                 if (InterceptChildValueFrame && !currentState.Env.Value.IsZero)
@@ -4216,8 +4226,8 @@ public sealed class VirtualMachineExtensionHooksTests
                 result = new(
                     ReadOnlyMemory<byte>.Empty,
                     precompileSuccess: null,
-                    shouldRevert: HandledChildShouldRevert,
-                    exceptionType: HandledChildShouldRevert ? EvmExceptionType.Revert : EvmExceptionType.None);
+                    shouldRevert: HandledChildExceptionType == EvmExceptionType.Revert,
+                    exceptionType: HandledChildExceptionType);
                 return true;
             }
 
@@ -4230,7 +4240,9 @@ public sealed class VirtualMachineExtensionHooksTests
         protected internal override CodeInfo ResolveDelegatedCodeInfo(Address codeSource, Address delegated, IReleaseSpec spec)
         {
             DelegatedResolutions++;
-            return base.ResolveDelegatedCodeInfo(codeSource, delegated, spec);
+            return DelegatedCodeOverride is { } replacement
+                ? new CodeInfo(replacement)
+                : base.ResolveDelegatedCodeInfo(codeSource, delegated, spec);
         }
 
         protected internal override bool ShouldSkipEoaCallFastPath(
