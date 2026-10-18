@@ -560,6 +560,8 @@ namespace Nethermind.Network.Rlpx
 
         Task IStoppableService.StopAsync() => Shutdown();
 
+        string IStoppableService.Description => "rlpx host";
+
         public async Task Shutdown()
         {
             CancellationTokenExtensions.CancelDisposeAndClear(ref _shutdownCts);
