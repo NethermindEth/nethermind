@@ -15,6 +15,7 @@ namespace Nethermind.Blockchain.Tracing.GethStyle;
 
 public class GethLikeTxFileTracer : GethLikeTxTracer<GethTxFileTraceEntry>
 {
+    private const int MinStackBufferSize = 16 * EvmStack.WordSize;
     private const int MinMemoryBufferSize = 1024;
 
     private readonly IGethFileTraceSink _sink;
@@ -28,7 +29,9 @@ public class GethLikeTxFileTracer : GethLikeTxTracer<GethTxFileTraceEntry>
     /// <summary>
     /// Creates a streaming Geth-style transaction tracer.
     /// </summary>
-    /// <param name="dumpCallback">Callback invoked for each completed trace entry.</param>
+    /// <param name="dumpCallback">Callback invoked for each completed trace entry. The entry, and the memory its
+    /// <see cref="GethTxTraceEntry.Stack"/> and <see cref="GethTxTraceEntry.Memory"/> point to, are reused for the
+    /// next opcode, so they are valid only during the callback.</param>
     /// <param name="options">Geth trace configuration.</param>
     /// <param name="destroyRefund">Refund awarded for the first successful legacy self-destruct of an account.</param>
     /// <param name="standardIntrinsicGas">Standard intrinsic gas removed from the receipt fallback when no action is traced.</param>
@@ -82,7 +85,7 @@ public class GethLikeTxFileTracer : GethLikeTxTracer<GethTxFileTraceEntry>
 
         int length = stack.RawByteLength;
         if (_stackBuffer.Length < length)
-            _stackBuffer = new byte[Math.Max(length, EvmStack.MaxStackSize * EvmStack.WordSize)];
+            _stackBuffer = new byte[Math.Max(length, Math.Min(Math.Max(_stackBuffer.Length * 2, MinStackBufferSize), EvmStack.MaxStackSize * EvmStack.WordSize))];
 
         stack.CopyRawBytesTo(_stackBuffer);
         CurrentTraceEntry.Stack = _stackBuffer.AsMemory(0, length);
