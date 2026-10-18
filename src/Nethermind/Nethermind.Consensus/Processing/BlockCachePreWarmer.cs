@@ -1759,10 +1759,12 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
             if (parallelOptions.CancellationToken.IsCancellationRequested) return;
 
             ObjectPool<IPrewarmerEnv> envPool = PreWarmer._envPool;
+            // Prepared beside the warm passes, not before them: on a cached database they must not wait for it.
+            // With a block access list, HintBal prefetches the whole read set instead.
+            CancellationToken token = parallelOptions.CancellationToken;
+            Task? prefetch = Bal is null ? Task.Run(() => PrefetchKnownState(envPool, block, token), token) : null;
             try
             {
-                // With a block access list, HintBal prefetches the whole read set instead.
-                if (Bal is null) PrefetchKnownState(envPool, block, parallelOptions.CancellationToken);
 
                 Address? beneficiary = Beneficiary;
                 if (warmSystemAccessLists || beneficiary is not null || WarmWithdrawals)
@@ -1843,6 +1845,24 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
             catch (OperationCanceledException)
             {
                 // Ignore, block completed cancel
+            }
+            finally
+            {
+                WaitForPrefetch(prefetch);
+            }
+        }
+
+        private void WaitForPrefetch(Task? prefetch)
+        {
+            if (prefetch is null) return;
+            try
+            {
+                prefetch.Wait();
+            }
+            catch (AggregateException ex) when (ex.InnerException is OperationCanceledException) { }
+            catch (Exception ex)
+            {
+                PreWarmer._logger.DebugError("Error prefetching transaction state", ex);
             }
         }
 

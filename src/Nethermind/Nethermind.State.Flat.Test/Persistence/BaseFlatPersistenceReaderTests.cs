@@ -120,6 +120,8 @@ public class BaseFlatPersistenceReaderTests
             return 0;
         }
 
+        public bool ShouldPrefetch() => true;
+
         public void Prefetch(ReadOnlySpan<byte> keys, int keyLength)
         {
             PrefetchBatches.Add(keys.Length / keyLength);

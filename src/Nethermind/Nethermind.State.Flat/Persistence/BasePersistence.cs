@@ -292,6 +292,12 @@ public static class BasePersistence
 
         /// <summary>Starts reading hashed account keys and (account, slot) key pairs ahead of use; does nothing by default.</summary>
         public void Prefetch(ReadOnlySpan<ValueHash256> accounts, ReadOnlySpan<ValueHash256> slotAccounts, ReadOnlySpan<ValueHash256> slots) { }
+
+        /// <summary>Whether an account prefetch is worth preparing now; see <see cref="IReadPrefetcher.ShouldPrefetch"/>.</summary>
+        public bool ShouldPrefetchAccounts() => false;
+
+        /// <summary>Whether a slot prefetch is worth preparing now; see <see cref="IReadPrefetcher.ShouldPrefetch"/>.</summary>
+        public bool ShouldPrefetchSlots() => false;
     }
 
     public interface IHashedFlatWriteBatch
@@ -456,6 +462,9 @@ public static class BasePersistence
 
         public void Prefetch(ReadOnlySpan<Address> accounts, ReadOnlySpan<StorageCell> slots)
         {
+            // Asked before any hashing: when the stores report their reads cached, a prefetch costs nothing.
+            if (accounts.IsEmpty || !_flatReader.ShouldPrefetchAccounts()) accounts = default;
+            if (slots.IsEmpty || !_flatReader.ShouldPrefetchSlots()) slots = default;
             int total = accounts.Length + slots.Length * 2;
             if (total == 0) return;
             ValueHash256[] rented = ArrayPool<ValueHash256>.Shared.Rent(total);

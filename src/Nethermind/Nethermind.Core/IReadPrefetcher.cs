@@ -14,4 +14,10 @@ public interface IReadPrefetcher
     /// later needs the value performs it again.
     /// </remarks>
     void Prefetch(ReadOnlySpan<byte> keys, int keyLength);
+
+    /// <summary>
+    /// Whether a prefetch is worth preparing now. False while recent prefetches found their keys cached; true
+    /// from time to time even then, to notice when reads turn cold.
+    /// </summary>
+    bool ShouldPrefetch();
 }
