@@ -1067,6 +1067,11 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     /// Whether a read of <paramref name="key"/> is served from the memtables or block cache. The probe runs at the
     /// block-cache read tier, which never reads a file, so a value that would need disk IO reports not cached.
     /// </summary>
+    /// <remarks>
+    /// The probe reads the latest version, not the caller's snapshot: it only decides whether a prefetch is worth
+    /// sending, and the latest version lives in the same memtables and blocks. Any read error counts as not cached;
+    /// <c>Incomplete</c> is the expected one, and the read that follows reports a real failure.
+    /// </remarks>
     [SkipLocalsInit]
     internal bool IsCached(ReadOnlySpan<byte> key, IColumnFamilyHandle? cf)
     {

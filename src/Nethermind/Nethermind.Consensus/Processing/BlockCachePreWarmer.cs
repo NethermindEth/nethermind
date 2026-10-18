@@ -1771,7 +1771,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
 
                         // First, on this worker and scope: the backend decides from a few cached probes, so a cached
                         // block costs only those, and a cold one has its reads in flight before the warm passes.
-                        // With a block access list, HintBal prefetches the whole read set instead.
+                        // It reuses this guard's scope rather than opening its own: every block after the merge
+                        // names a fee recipient, so the guard holds. With a block access list, HintBal prefetches
+                        // the whole read set instead.
                         if (Bal is null && scope.WorldState.SupportsPrefetch) PrefetchKnownState(block, scope.WorldState, parallelOptions.CancellationToken);
 
                         WarmupSender(beneficiary, null, scope.WorldState);
