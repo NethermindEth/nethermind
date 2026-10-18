@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Text;
+using Nethermind.Core;
 using Nethermind.Int256;
 
 namespace Nethermind.Experimental.Abi;
@@ -61,6 +62,23 @@ public static partial class AbiType
             return !value.IsZero;
         },
         Write = (ref BinarySpanWriter w, Boolean v) => UInt256.Write(ref w, v ? 1u : 0u),
+    };
+
+    public static readonly Abi<Address> Address = new()
+    {
+        Name = "address",
+        Read = (ref BinarySpanReader r) =>
+        {
+            ReadOnlySpan<byte> word = r.ReadBytes(32);
+            if (word[..12].ContainsAnyExcept((byte)0)) throw new AbiException();
+            return new Address(word[12..]);
+        },
+        Write = (ref BinarySpanWriter w, Address v) =>
+        {
+            Span<byte> word = w.Take(32);
+            word[..12].Clear();
+            v.Bytes.CopyTo(word[12..]);
+        },
     };
 
     public static Abi<T[]> Array<T>(Abi<T> abi) => new()

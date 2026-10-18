@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using NUnit.Framework;
@@ -9,7 +10,7 @@ using NUnit.Framework;
 namespace Nethermind.Experimental.Abi.Test;
 
 /// <remarks>
-/// The tests have been provided by the ABI specification.
+/// The tests have been provided by the ABI specification and by well-known contracts such as ERC-20.
 /// See: https://docs.soliditylang.org/en/latest/abi-spec.html#formal-specification-of-the-encoding
 /// </remarks>
 [Parallelizable(ParallelScope.All)]
@@ -160,6 +161,29 @@ public class Examples
             "0000000000000000000000000000000000000000000000000000000000000005" +
             "7468726565000000000000000000000000000000000000000000000000000000");
 
+        Assert.That(encoded, Is.EqualTo(expected));
+
+        Assert.That(AbiCodec.Decode(signature, encoded), Is.EqualTo(arguments));
+    }
+
+    [Test]
+    public void Transfer()
+    {
+        AbiSignature<(Address, UInt256)> signature = new AbiSignature("transfer")
+            .With(
+                AbiType.Address,
+                AbiType.UInt256);
+
+        byte[] expectedMethodId = Bytes.FromHexString("0xa9059cbb");
+        Assert.That(signature.MethodId.ToArray(), Is.EqualTo(expectedMethodId));
+
+        (Address, UInt256) arguments = (new Address("0x5a4eab120fb44eb6684e5e32785702ff45ea344d"), 1_000_000_000_000_000_000);
+        byte[] encoded = AbiCodec.Encode(signature, arguments);
+
+        byte[] expected = Bytes.FromHexString(
+            "0xa9059cbb" + // `MethodId`
+            "0000000000000000000000005a4eab120fb44eb6684e5e32785702ff45ea344d" + // `0x5a4eab120fb44eb6684e5e32785702ff45ea344d`
+            "0000000000000000000000000000000000000000000000000de0b6b3a7640000"); // `1_000_000_000_000_000_000`
         Assert.That(encoded, Is.EqualTo(expected));
 
         Assert.That(AbiCodec.Decode(signature, encoded), Is.EqualTo(arguments));
