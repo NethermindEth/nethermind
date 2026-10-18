@@ -33,6 +33,7 @@ using Nethermind.State.OverridableEnv;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.Logging;
+using Nethermind.Network.Config;
 using Nethermind.State;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
@@ -46,6 +47,8 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
         builder.AddSingleton<ILeanProofVerifier, Nethermind.Crypto.NativeLeanProofVerifier>()
             .AddDecorator<ILeanProofVerifier, ProductionProofCache>()
             .AddSingleton<LeanProofStore>(static _ => new LeanProofStore(FrameTxSigHash.ComputeValue))
+            .AddSingleton<ProofWrapperEventFeed>(static ctx => new ProofWrapperEventFeed(
+                ctx.Resolve<INetworkConfig>().ProofWrapperEventBufferSize, ctx.Resolve<IBlockTree>(), ctx.Resolve<ITxPool>()))
             .AddSingleton<ProofWrapperService>()
             .AddSingleton<InclusionListProofService>();
 

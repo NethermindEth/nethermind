@@ -20,6 +20,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V73;
 public sealed partial class ProofWrapperTransport
 {
     private const int MaxBusyRetries = 50;
+    private const string ExhaustedReason = "every source tried";
 
     /// <summary>The outcome of validating a received wrapper.</summary>
     /// <remarks><see cref="Refused"/> and <see cref="LocalFailure"/> are local inabilities to finish validation and
@@ -35,8 +36,14 @@ public sealed partial class ProofWrapperTransport
         Outbox outbox = new();
         lock (_gate)
         {
+            if (peer.Closed) return;
             // Announcements beyond the rate limit are ignored, not penalized.
-            if (peer.Closed || !peer.AnnouncementsIn.TryTake(1)) return;
+            if (!peer.AnnouncementsIn.TryTake(1))
+            {
+                Record(ProofWrapperEventTypes.AnnouncementsIgnored, peer, message: "NewProofWrapperHashes", count: message.Announcements.Length,
+                    result: "announcement rate limit");
+                return;
+            }
             long now = _clock.GetTimestamp();
             foreach (WrapperAnnouncement announcement in message.Announcements)
             {
@@ -44,16 +51,28 @@ public sealed partial class ProofWrapperTransport
                 ValueHash256 wrapperHash = announcement.Hash;
                 peer.Known.Add(wrapperHash);
                 if (!enabled || _store.Contains(wrapperHash)
-                    || _tombstones.Contains(wrapperHash, now)) continue;
+                    || _tombstones.Contains(wrapperHash, now))
+                {
+                    RecordAnnouncement(peer, announcement, !enabled ? "ignored: EIP-8288 inactive"
+                        : _store.Contains(wrapperHash) ? "already held" : "tombstoned: recently rejected or unresolved");
+                    continue;
+                }
                 if (_fetches.TryGetValue(wrapperHash, out WrapperFetch? existing))
                 {
                     existing.AddSource(peer, announcement.Length);
+                    RecordAnnouncement(peer, announcement, "added as another source");
                     continue;
                 }
                 // The pending cache is bounded, and each peer holds at most a share of it, so one peer announcing wrappers it
                 // never serves cannot crowd out the others. Announcements are not repeated, so excess ones are lost.
                 if (_fetches.Count >= WrapperTransportLimits.MaxPendingAnnouncements
-                    || peer.PendingFetches >= WrapperTransportLimits.MaxPendingAnnouncementsPerPeer) continue;
+                    || peer.PendingFetches >= WrapperTransportLimits.MaxPendingAnnouncementsPerPeer)
+                {
+                    RecordAnnouncement(peer, announcement, _fetches.Count >= WrapperTransportLimits.MaxPendingAnnouncements
+                        ? "dropped: pending announcement cache full" : "dropped: peer's share of pending announcements used");
+                    continue;
+                }
+                RecordAnnouncement(peer, announcement, "queued");
                 WrapperFetch fetch = new(announcement, now) { Announcer = peer };
                 peer.PendingFetches++;
                 fetch.AddSource(peer, announcement.Length);
@@ -63,6 +82,9 @@ public sealed partial class ProofWrapperTransport
         }
         outbox.Flush();
     }
+
+    private void RecordAnnouncement(WrapperPeer peer, WrapperAnnouncement announcement, string result) =>
+        Record(ProofWrapperEventTypes.AnnouncementReceived, peer, announcement.Hash, "NewProofWrapperHashes", result: result, length: announcement.Length);
 
     /// <summary>Requests queued wrappers from their next untried source, up to four outstanding requests per peer.</summary>
     /// <remarks>One pass over the pending fetches groups them by next source, so the cost does not grow with the peer count.</remarks>
@@ -83,7 +105,7 @@ public sealed partial class ProofWrapperTransport
                 queued.Add(fetch);
             }
         }
-        foreach (WrapperFetch fetch in exhausted ?? []) Remove(fetch, "every source tried");
+        foreach (WrapperFetch fetch in exhausted ?? []) Remove(fetch, ExhaustedReason);
         if (bySource is null) return;
         int count = _peers.Count;
         int first = _nextPeer % count;
@@ -114,6 +136,7 @@ public sealed partial class ProofWrapperTransport
         long reserved = Math.Min(bytes, Eth73Protocol.LocalMaxResponseBytes);
         if (batch.Count == 0 || peer.LastIssued == long.MaxValue || !TryCharge(peer, reserved)) return false;
         ValueHash256[] ids = new ValueHash256[batch.Count];
+        WrappersRequest request = new(++peer.LastIssued, now, reserved, [.. batch]);
         for (int i = 0; i < ids.Length; i++)
         {
             WrapperFetch fetch = batch[i];
@@ -121,8 +144,9 @@ public sealed partial class ProofWrapperTransport
             fetch.Tried.Add(peer);
             fetch.Started ??= now;
             ids[i] = fetch.Announcement.Hash;
+            Record(ProofWrapperEventTypes.WrapperRequested, peer, ids[i], "GetProofWrappers", request.Id, length: fetch.LengthFrom(peer),
+                count: fetch.Tried.Count);
         }
-        WrappersRequest request = new(++peer.LastIssued, now, reserved, [.. batch]);
         peer.Requests.Add(request.Id, request);
         outbox.Send(peer, new GetProofWrappersMessage(request.Id, ids));
         WrapperMetrics.Record(WrapperEvent.Requested, ids.Length);
@@ -175,7 +199,14 @@ public sealed partial class ProofWrapperTransport
                 {
                     byte[] wrapper = message.Wrappers[next++];
                     peer.Known.Add(fetch.Announcement.Hash);
-                    if (fetch.Removed || fetch.Wrapper is not null || !TryCharge(peer, wrapper.Length)) continue;
+                    if (fetch.Removed || fetch.Wrapper is not null || !TryCharge(peer, wrapper.Length))
+                    {
+                        Record(ProofWrapperEventTypes.WrapperReceived, peer, fetch.Announcement.Hash, "ProofWrappers", message.RequestId,
+                            fetch.Removed || fetch.Wrapper is not null ? "discarded: already received or abandoned" : "discarded: byte budget", length: wrapper.Length);
+                        continue;
+                    }
+                    Record(ProofWrapperEventTypes.WrapperReceived, peer, fetch.Announcement.Hash, "ProofWrappers", message.RequestId,
+                        "matched hash and announced length; queued for validation", length: wrapper.Length);
                     fetch.Wrapper = wrapper;
                     fetch.ChargedBytes = wrapper.Length;
                     fetch.Server = peer;
@@ -183,7 +214,15 @@ public sealed partial class ProofWrapperTransport
                     Enqueue(fetch);
                 }
                 // A wrapper after the last returned one was cut by the soft limit: ask the same peer again.
-                else if (position > last && identities.Length > 0) fetch.Tried.Remove(peer);
+                else if (position > last && identities.Length > 0)
+                {
+                    fetch.Tried.Remove(peer);
+                    Record(ProofWrapperEventTypes.WrapperTruncated, peer, fetch.Announcement.Hash, "ProofWrappers", message.RequestId,
+                        "after the last returned wrapper (soft response limit): re-request from the same peer");
+                }
+                else
+                    Record(ProofWrapperEventTypes.WrapperUnavailable, peer, fetch.Announcement.Hash, "ProofWrappers", message.RequestId,
+                        "omitted: unavailable from this peer, try another announcer");
             }
             WrapperMetrics.Record(WrapperEvent.Received, identities.Length);
             Schedule(outbox);
@@ -205,6 +244,8 @@ public sealed partial class ProofWrapperTransport
         foreach (WrapperFetch fetch in expired ?? [])
         {
             WrapperMetrics.Record(WrapperEvent.Expired);
+            Record(ProofWrapperEventTypes.FetchAbandoned, wrapper: fetch.Announcement.Hash,
+                result: fetch.Started is null ? "pending announcement lifetime passed" : "recovery deadline passed");
             // Validation releases its own fetch once its cancelled work unwinds.
             if (fetch.Processing is { } processing) outbox.Cancel(processing);
             else Remove(fetch, "deadline");
@@ -219,6 +260,7 @@ public sealed partial class ProofWrapperTransport
             if (fetch.Announcer is { } announcer) announcer.PendingFetches--;
         }
         Drop(fetch);
+        if (reason == ExhaustedReason) Record(ProofWrapperEventTypes.FetchAbandoned, wrapper: fetch.Announcement.Hash, result: reason);
         if (_logger.IsTrace) _logger.Trace($"eth/73 stopped fetching {fetch.Announcement}: {reason}");
     }
 
@@ -326,6 +368,10 @@ public sealed partial class ProofWrapperTransport
             if (retained is not null && TryDecode(retained, hashes[i]) is { } transaction) recovered[hashes[i]] = transaction;
             else missing.Add(i);
         }
+        if (_events.IsEnabled)
+            Record(ProofWrapperEventTypes.ValidationStarted, fetch.Server, fetch.Announcement.Hash, count: missing.Count, details: _events.Describe(wrapper),
+                detail: missing.Count == 0 ? "every listed envelope is pooled or cached"
+                    : $"{missing.Count} of {hashes.Length} envelopes missing: recovering through GetPooledTransactions while checking the claimed proofs");
         if (missing.Count > 0)
         {
             // EIP-8437 lets the claimed-proof check run alongside envelope recovery. It does not validate the wrapper: its
@@ -356,6 +402,10 @@ public sealed partial class ProofWrapperTransport
 
     private void Conclude(WrapperFetch fetch, Verdict verdict, string? error)
     {
+        if (_events.IsEnabled)
+            Record(ProofWrapperEventTypes.Verdict, fetch.Server, fetch.Announcement.Hash,
+                result: verdict == Verdict.Invalid && _wrappers.IsInVerifierTransition(_forkGraceBlocks) ? "GraceRefused" : verdict.ToString(),
+                detail: error, durationMs: _clock.GetElapsedTime(fetch.Announced).TotalMilliseconds);
         switch (verdict)
         {
             case Verdict.Valid:
@@ -459,6 +509,11 @@ public sealed partial class ProofWrapperTransport
                 EnvelopesRequest? request = await SendEnvelopeRequestAsync(source, requested, cancellation).ConfigureAwait(false);
                 if (request is null) break;
                 requests++;
+                if (_events.IsEnabled)
+                    Record(ProofWrapperEventTypes.EnvelopeRequested, source, fetch.Announcement.Hash, "GetPooledTransactions", request.Id,
+                        count: requests, transactions: ToHashes(requested),
+                        detail: source == fetch.Server ? "asking the peer that served the wrapper" : "asking another announcer");
+                long requestStarted = _clock.GetTimestamp();
                 Transaction[]? envelopes;
                 using (CancellationTokenSource timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellation))
                 {
@@ -467,18 +522,38 @@ public sealed partial class ProofWrapperTransport
                     catch (OperationCanceledException) when (!cancellation.IsCancellationRequested) { envelopes = null; }
                 }
                 // No response, or an empty one, means unavailable from this source: no penalty, try another.
-                if (envelopes is not { Length: > 0 } || !AcceptEnvelopes(fetch, envelopes, recovered)) break;
-                int last = Array.FindLastIndex(requested, recovered.ContainsKey);
+                bool accepted = envelopes is { Length: > 0 } && AcceptEnvelopes(fetch, envelopes, recovered);
+                int last = accepted ? Array.FindLastIndex(requested, recovered.ContainsKey) : -1;
+                if (_events.IsEnabled)
+                {
+                    int omitted = 0;
+                    for (int i = 0; i < last; i++) if (!recovered.ContainsKey(requested[i])) omitted++;
+                    Record(ProofWrapperEventTypes.EnvelopeResponse, source, fetch.Announcement.Hash, "PooledTransactions", request.Id,
+                        envelopes is null ? "no usable response" : envelopes.Length == 0 ? "empty: unavailable from this peer"
+                            : !accepted ? "discarded: byte budget" : $"returned {envelopes.Length} of {requested.Length}",
+                        omitted > 0 ? $"{omitted} omitted before the last returned: unavailable here, try another announcer"
+                            : last >= 0 && last < requested.Length - 1 ? $"{requested.Length - 1 - last} after the last returned: truncated, ask again" : null,
+                        count: envelopes?.Length ?? 0, durationMs: _clock.GetElapsedTime(requestStarted).TotalMilliseconds,
+                        transactions: envelopes is { Length: > 0 } ? Array.ConvertAll(envelopes, static t => t.Hash!) : null);
+                }
+                if (!accepted) break;
                 toAsk.RemoveRange(0, last + 1);
             }
             outstanding.RemoveAll(recovered.ContainsKey);
             if (outstanding.Count == 0) break;
         }
+        if (_events.IsEnabled)
+            Record(ProofWrapperEventTypes.EnvelopeRecovery, fetch.Server, fetch.Announcement.Hash,
+                result: outstanding.Count == 0 ? "complete" : "incomplete: wrapper stays unresolved, not invalid",
+                detail: $"recovered {missing.Count - outstanding.Count} of {missing.Count} envelopes from {sources.Count} sources",
+                count: requests, durationMs: _clock.GetElapsedTime(started).TotalMilliseconds);
         if (_logger.IsDebug)
             _logger.Debug($"eth/73 recovered {missing.Count - outstanding.Count} of {missing.Count} envelopes for {fetch.Announcement} with " +
                 $"{requests} GetPooledTransactions in {_clock.GetElapsedTime(started).TotalMilliseconds:F0} ms");
         return outstanding.Count == 0;
     }
+
+    private static Hash256[] ToHashes(ValueHash256[] hashes) => Array.ConvertAll(hashes, static hash => new Hash256(hash));
 
     /// <summary>Sends one GetPooledTransactions once the source has a free request slot and the byte budgets allow it.</summary>
     private async Task<EnvelopesRequest?> SendEnvelopeRequestAsync(WrapperPeer source, ValueHash256[] hashes, CancellationToken cancellation)

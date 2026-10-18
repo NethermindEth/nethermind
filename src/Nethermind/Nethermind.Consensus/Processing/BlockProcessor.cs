@@ -264,6 +264,8 @@ public partial class BlockProcessor(
             Eip8288Verifier verifier = Eip8288Verifier.For(spec);
             (ValueHash256, ValueHash256) key = (depsHash, verifier.AggregatedVk);
             byte[] proof;
+            string source = "reused";
+            long started = Stopwatch.GetTimestamp();
             if (deps.Count == 0)
                 proof = [];
             else if (_productionProofKey == key && _productionProof is not null)
@@ -277,7 +279,11 @@ public partial class BlockProcessor(
                     leanProofStore.RemoveCachedRecursive(deps, prepared!);
                     prepared = null;
                 }
-                if (prepared is not null) proof = prepared;
+                if (prepared is not null)
+                {
+                    proof = prepared;
+                    source = "prepared";
+                }
                 else
                 {
                     BlockToProduce? producing = block as BlockToProduce;
@@ -292,11 +298,13 @@ public partial class BlockProcessor(
                         // Only the latest payload's unrestricted body is worth proving; a restricted rebuild is a subset of it.
                         if (latest && producing.LeanDependencyLimit is null && !_productionProofCache.IsScheduled)
                             ScheduleProductionProof(producing, includable, attempted, deps, depsHash, limit, kept, leanProofStore, verifier);
+                        RecordProductionPass(block, deps.Count, "not-ready", $"proof not ready by the deadline: rebuilding from {limit.Count} proven dependencies", 0, started);
                         throw new LeanProofNotReadyException(limit);
                     }
                     AggregationInput input = producing is null ? new() : RecursiveStarkAggregator.Combine(producing.LeanProofInputs, deps);
                     proof = RecursiveStarkAggregator.Prove(input, _productionProofCache, verifier, in depsHash, token);
                     leanProofStore?.AddCachedRecursive(deps, proof);
+                    source = "proven";
                 }
                 token.ThrowIfCancellationRequested();
                 // One verified result per processor/backend; improvement passes reuse it without retaining old blocks.
@@ -304,9 +312,33 @@ public partial class BlockProcessor(
                 _productionProofKey = key;
             }
             token.ThrowIfCancellationRequested();
+            if (deps.Count != 0) RecordProductionPass(block, deps.Count, source, null, proof.Length, started);
             // Produced blocks must not alias the mutable improvement cache.
             block.StarkProof = (byte[])proof.Clone();
             block.Header.RecursiveStark = new RecursiveStarkCommitment(Keccak.Compute(proof), new Hash256(depsHash));
+        }
+    }
+
+    private void RecordProductionPass(Block block, int dependencies, string result, string? detail, int bytes, long started)
+    {
+        ProofWrapperEventFeed events = _productionProofCache.Events;
+        if (!events.IsEnabled) return;
+        events.Record(new()
+        {
+            Type = ProofWrapperEventTypes.ProductionPass,
+            Block = (long)block.Number,
+            Count = dependencies,
+            Result = result,
+            Detail = detail,
+            Length = bytes,
+            Transactions = [.. DependencyBearing(block)],
+            DurationMs = Stopwatch.GetElapsedTime(started).TotalMilliseconds
+        });
+
+        static IEnumerable<Hash256> DependencyBearing(Block block)
+        {
+            foreach (Transaction transaction in block.Transactions)
+                if (Eip8288Dependencies.IsDependencyBearing(transaction)) yield return transaction.Hash ?? transaction.CalculateHash();
         }
     }
 

@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -26,8 +27,10 @@ namespace Nethermind.Consensus.ProofAggregation;
 /// proof coverage leave the pool.
 /// </remarks>
 public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvider,
-    IBlockFinder blockFinder, LeanProofStore leanProofStore, ILeanProofVerifier leanProofVerifier)
+    IBlockFinder blockFinder, LeanProofStore leanProofStore, ILeanProofVerifier leanProofVerifier, ProofWrapperEventFeed? events = null)
 {
+    private readonly ProofWrapperEventFeed _events = events ?? ProofWrapperEventFeed.Disabled;
+
     internal const int MaxWrapperTransactionBytes = Eip8288Constants.MaxTxsPerWrapper * (Hash256.Size + 1);
 
     /// <summary>Local scheduling target for leanSPHINCS dependencies in one produced mode-1 batch.</summary>
@@ -150,6 +153,13 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
     private void ApplyUpgradeRule(Eip8288Verifier verifier)
     {
         (int dropped, int evicted) = Purge(verifier);
+        if (_events.IsEnabled)
+            _events.Record(new()
+            {
+                Type = ProofWrapperEventTypes.VerifierChanged,
+                Detail = $"AGGREGATED_VK {verifier.AggregatedVk}: dropped {dropped} held proofs, evicted {evicted} uncovered transactions",
+                Count = evicted
+            });
         TxPool.Metrics.Eip8288VerifierChanges++;
         TxPool.Metrics.Eip8288UpgradeDroppedProofs += dropped;
         TxPool.Metrics.Eip8288UpgradeEvictedTransactions += evicted;
@@ -168,7 +178,16 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             int evicted = 0;
             foreach (Transaction transaction in txPool.GetPendingTransactions())
                 if (Eip8288Dependencies.IsDependencyBearing(transaction) && !leanProofStore.Covers(transaction) && txPool.RemoveTransaction(transaction.Hash))
+                {
                     evicted++;
+                    if (_events.IsEnabled)
+                        _events.Record(new()
+                        {
+                            Type = ProofWrapperEventTypes.UpgradeEvicted,
+                            Transactions = [transaction.Hash!],
+                            Detail = "EIP-8288 upgrade rule: no proof under the new verifier covers it"
+                        });
+                }
             return (dropped, evicted);
         }
     }
@@ -209,12 +228,26 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
         {
             cancellationToken.ThrowIfCancellationRequested();
             if (copyInput) wrapper = (byte[])wrapper.Clone();
+            Hash256? eventHash = _events.IsEnabled ? Keccak.Compute(wrapper) : null;
+            string origin = copyInput ? "local" : "eth/73";
             MempoolWrapper decoded;
             try { decoded = DecodeProofWrapper(wrapper); }
             catch (Exception exception) when (exception is RlpException or ArgumentException)
             {
+                if (eventHash is not null) _events.Record(new() { Type = ProofWrapperEventTypes.Submitted, Wrapper = eventHash, Message = origin, Result = "malformed", Length = wrapper.Length });
                 return ProofWrapperAcceptance.Invalid("Invalid proof wrapper RLP.");
             }
+            if (eventHash is not null && _events.Describe(decoded, eventHash.ValueHash256, wrapper.Length) is { } details)
+                _events.Record(new()
+                {
+                    Type = ProofWrapperEventTypes.Submitted,
+                    Wrapper = eventHash,
+                    Message = origin,
+                    Mode = details.Mode,
+                    Length = details.Length,
+                    Transactions = details.Transactions,
+                    Dependencies = details.Dependencies
+                });
             if (MempoolWrapperValidator.ExceedsLocalVerifier(decoded)) return ProofWrapperAcceptance.Refused(LocalAggregateCapacity);
             IReadOnlyList<WrapperTransaction> received = decoded.Transactions;
             if (recovered is { Count: > 0 })
@@ -247,6 +280,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             if (!_verifiedWrappers.TryGetValue(wrapperHash, out string? error))
             {
                 bool claimsVerified = _verifiedClaims.Contains(wrapperHash);
+                long verifyStarted = Stopwatch.GetTimestamp();
                 (bool valid, string? validationError) = await Task.Run(() =>
                 {
                     bool proofValid = MempoolWrapperValidator.Validate(decoded, leanProofVerifier, in verifier, out string? proofError,
@@ -255,6 +289,16 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
                 }, cancellationToken);
                 cancellationToken.ThrowIfCancellationRequested();
                 error = validationError;
+                if (eventHash is not null)
+                    _events.Record(new()
+                    {
+                        Type = ProofWrapperEventTypes.ProofVerified,
+                        Wrapper = eventHash,
+                        Mode = decoded.Mode,
+                        Result = valid ? "valid" : "invalid",
+                        Detail = claimsVerified ? "claimed proofs already checked; transaction list verified" : validationError,
+                        DurationMs = Stopwatch.GetElapsedTime(verifyStarted).TotalMilliseconds
+                    });
                 if (!valid)
                 {
                     if (error == MempoolWrapperValidator.UnknownTransaction) return ProofWrapperAcceptance.LocalFailure(error);
@@ -263,7 +307,12 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
                 }
                 RememberVerification(wrapperHash, null);
             }
-            else if (error is not null) return ProofWrapperAcceptance.Invalid(error);
+            else
+            {
+                if (eventHash is not null)
+                    _events.Record(new() { Type = ProofWrapperEventTypes.VerdictCached, Wrapper = eventHash, Result = error is null ? "valid" : "invalid", Detail = error });
+                if (error is not null) return ProofWrapperAcceptance.Invalid(error);
+            }
             // Nothing validated under a verifier the upgrade rule has since replaced may be published or admitted.
             if (RefreshVerifier() != verifier) return ProofWrapperAcceptance.LocalFailure(VerifierChangedDuringAdmission);
             // Coverage keeps one record per dependency, so a verified recursive proof can otherwise be lost to a direct
@@ -292,7 +341,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             {
                 try
                 {
-                    admission = await SubmitProofTransactions(decoded.Transactions, cancellationToken, admittedDependencies);
+                    admission = await SubmitProofTransactions(decoded.Transactions, cancellationToken, admittedDependencies, eventHash);
                 }
                 finally
                 {
@@ -354,16 +403,32 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             }
             if (MempoolWrapperValidator.ExceedsLocalVerifier(decoded)) return ProofWrapperAcceptance.Refused(LocalAggregateCapacity);
             (ValueHash256, ValueHash256) wrapperHash = (ValueKeccak.Compute(wrapper), verifier.AggregatedVk);
+            Hash256? eventHash = _events.IsEnabled ? new Hash256(wrapperHash.Item1) : null;
             if (_verifiedWrappers.TryGetValue(wrapperHash, out string? known))
+            {
+                if (eventHash is not null)
+                    _events.Record(new() { Type = ProofWrapperEventTypes.ClaimsChecked, Wrapper = eventHash, Result = known is null ? "valid" : "invalid", Detail = "verdict cache" });
                 return known is null ? new(ProofWrapperAcceptanceStatus.Accepted, Result<Hash256[]>.Success([])) : ProofWrapperAcceptance.Invalid(known);
+            }
             if (!_verifiedClaims.Contains(wrapperHash))
             {
+                long verifyStarted = Stopwatch.GetTimestamp();
                 (bool valid, string? error) = await Task.Run(() =>
                 {
                     bool proofValid = MempoolWrapperValidator.VerifyClaimedProofs(decoded, leanProofVerifier, in verifier, out string? proofError);
                     return (proofValid, proofError);
                 }, cancellationToken);
                 cancellationToken.ThrowIfCancellationRequested();
+                if (eventHash is not null)
+                    _events.Record(new()
+                    {
+                        Type = ProofWrapperEventTypes.ClaimsChecked,
+                        Wrapper = eventHash,
+                        Mode = decoded.Mode,
+                        Result = valid ? "valid" : "invalid",
+                        Detail = error,
+                        DurationMs = Stopwatch.GetElapsedTime(verifyStarted).TotalMilliseconds
+                    });
                 if (!valid)
                 {
                     RememberVerification(wrapperHash, error);
@@ -403,7 +468,8 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
         _verifiedWrappers[hash] = error;
     }
 
-    private Task<Result<Hash256[]>> SubmitProofTransactions(IReadOnlyList<WrapperTransaction> transactions, CancellationToken cancellationToken, List<FrameDependency> admittedDependencies)
+    private Task<Result<Hash256[]>> SubmitProofTransactions(IReadOnlyList<WrapperTransaction> transactions, CancellationToken cancellationToken,
+        List<FrameDependency> admittedDependencies, Hash256? eventHash = null)
     {
         Hash256[] hashes = new Hash256[transactions.Count];
         string? firstError = null;
@@ -414,14 +480,23 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             if (entry.Full is null)
             {
                 hashes[i] = entry.Hash!;
-                if (ResolvePending(entry.Hash!) is { } pending) admittedDependencies.AddRange(Eip8288Dependencies.ForTransaction(pending, FrameTxSigHash.ComputeValue));
-                else firstError ??= MempoolWrapperValidator.UnknownTransaction;
+                if (ResolvePending(entry.Hash!) is { } pending)
+                {
+                    admittedDependencies.AddRange(Eip8288Dependencies.ForTransaction(pending, FrameTxSigHash.ComputeValue));
+                    RecordAdmission(eventHash, entry.Hash!, "already-pending");
+                }
+                else
+                {
+                    firstError ??= MempoolWrapperValidator.UnknownTransaction;
+                    RecordAdmission(eventHash, entry.Hash!, MempoolWrapperValidator.UnknownTransaction);
+                }
                 continue;
             }
             if (entry.Full.Hash is { } existingHash && txPool.TryGetPendingTransaction(existingHash.ValueHash256, out _))
             {
                 hashes[i] = existingHash;
                 admittedDependencies.AddRange(Eip8288Dependencies.ForTransaction(entry.Full, FrameTxSigHash.ComputeValue));
+                RecordAdmission(eventHash, existingHash, "already-pending");
                 continue;
             }
             Hash256 hash = entry.Full.Hash!;
@@ -429,10 +504,17 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             // Admission is per transaction: a pool rejection, including EIP-8272 recent-root mempool rules, leaves the proof and
             // the other transactions intact.
             AcceptTxResult result = txPool.SubmitTx(entry.Full, TxHandlingOptions.PersistentBroadcast);
+            RecordAdmission(eventHash, hash, result.ToString());
             if (result != AcceptTxResult.Accepted) firstError ??= result.ToString();
             else admittedDependencies.AddRange(Eip8288Dependencies.ForTransaction(entry.Full, FrameTxSigHash.ComputeValue));
         }
         return Task.FromResult(firstError is null ? Result<Hash256[]>.Success(hashes) : Result<Hash256[]>.Fail(firstError));
+    }
+
+    private void RecordAdmission(Hash256? wrapper, Hash256 transaction, string result)
+    {
+        if (wrapper is null) return;
+        _events.Record(new() { Type = ProofWrapperEventTypes.Admitted, Wrapper = wrapper, Transactions = [transaction], Result = result });
     }
 
     /// <summary>Builds a recursive wrapper over the current proof-backed pool view.</summary>
@@ -542,15 +624,21 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             return Result<byte[]>.Success(returnEncoded ? (byte[])cached.Encoded.Clone() : []);
         try
         {
+            long aggregationStarted = Stopwatch.GetTimestamp();
+            string aggregation = "reused cached proof";
             ValueHash256 hash = Eip8288Dependencies.ComputeDepsHash(deps);
             if (!leanProofStore.TryGetRecursiveProof(deps, out byte[]? proof))
             {
+                aggregation = "aggregated";
                 if (cached is not null && cached.Verifier == verifier && HasOverlap(cached.Parent.InnerDeps, covered))
                 {
                     AggregationInput incremental = RecursiveStarkAggregator.Combine(
                         [new() { RecursiveProofs = [cached.Parent] }, selectedInput], deps);
                     if (deps.Count + incremental.Discards.Count <= Eip8288Constants.MaxProofDependencies)
+                    {
                         selectedInput = incremental;
+                        aggregation = "reaggregated";
+                    }
                 }
                 proof = RecursiveStarkAggregator.Prove(selectedInput, leanProofVerifier, verifier, in hash, cancellationToken);
                 if (leanProofVerifier is not ProductionProofCache
@@ -576,7 +664,21 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             if (!ArePending(hashes))
                 return Result<byte[]>.Fail("Proof wrapper selection changed while aggregating; retry with the current pool.");
             RecursiveProofInput parent = new(deps, proof!);
-            Volatile.Write(ref _cachedWrapper, new(selectionHash, hashes, (byte[])encoded.Clone(), ValueKeccak.Compute(encoded), parent, verifier));
+            ValueHash256 encodedHash = ValueKeccak.Compute(encoded);
+            Volatile.Write(ref _cachedWrapper, new(selectionHash, hashes, (byte[])encoded.Clone(), encodedHash, parent, verifier));
+            if (_events.IsEnabled && _events.Describe(wrapper, encodedHash, encoded.Length) is { } details)
+                _events.Record(new()
+                {
+                    Type = ProofWrapperEventTypes.Aggregated,
+                    Wrapper = new Hash256(encodedHash),
+                    Result = aggregation,
+                    Detail = $"{selectedInput.Deps.Count} direct, {selectedInput.RecursiveProofs.Count} recursive, {selectedInput.Discards.Count} discarded; proof {proof!.Length} bytes",
+                    Mode = details.Mode,
+                    Length = details.Length,
+                    Transactions = details.Transactions,
+                    Dependencies = details.Dependencies,
+                    DurationMs = Stopwatch.GetElapsedTime(aggregationStarted).TotalMilliseconds
+                });
             return Result<byte[]>.Success(returnEncoded ? encoded : []);
         }
         catch (InvalidOperationException exception)

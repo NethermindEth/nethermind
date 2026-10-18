@@ -15,8 +15,10 @@ using Metrics = Nethermind.Blockchain.Metrics;
 namespace Nethermind.Consensus.ProofAggregation;
 
 /// <summary>Serializes proving and shares verified completed steps between aggregation callers.</summary>
-public sealed class ProductionProofCache(ILeanProofVerifier verifier, ILogManager? logManager = null) : ILeanProofVerifier
+public sealed class ProductionProofCache(ILeanProofVerifier verifier, ILogManager? logManager = null, ProofWrapperEventFeed? events = null)
+    : ILeanProofVerifier
 {
+    internal ProofWrapperEventFeed Events { get; } = events ?? ProofWrapperEventFeed.Disabled;
     private readonly ILogger _logger = (logManager ?? NullLogManager.Instance).GetClassLogger<ProductionProofCache>();
     private const int MaxEntries = 64;
     private const long MaxBytes = 32 * 1024 * 1024;
@@ -99,10 +101,21 @@ public sealed class ProductionProofCache(ILeanProofVerifier verifier, ILogManage
                 _verifiedOrder.Remove(node);
                 _verifiedOrder.AddLast(node);
                 Interlocked.Increment(ref Metrics.LeanVerificationCacheHits);
+                if (Events.IsEnabled) Events.Record(new() { Type = ProofWrapperEventTypes.RecursiveVerify, Result = "cached", Length = proof.Length });
                 return true;
             }
         }
-        if (!verifier.VerifyRecursiveStark(in depsHash, aggregatedVk, proof)) return false;
+        long started = Stopwatch.GetTimestamp();
+        bool valid = verifier.VerifyRecursiveStark(in depsHash, aggregatedVk, proof);
+        if (Events.IsEnabled)
+            Events.Record(new()
+            {
+                Type = ProofWrapperEventTypes.RecursiveVerify,
+                Result = valid ? "cold" : "invalid",
+                Length = proof.Length,
+                DurationMs = Stopwatch.GetElapsedTime(started).TotalMilliseconds
+            });
+        if (!valid) return false;
         RememberVerified(key);
         return true;
     }
@@ -159,6 +172,7 @@ public sealed class ProductionProofCache(ILeanProofVerifier verifier, ILogManage
         if (TryGet(key, out byte[]? cached))
         {
             Interlocked.Increment(ref Metrics.LeanProofCacheHits);
+            RecordStep(input, request?.Background == true, "cache-hit", cached!.Length, 0, 0);
             return cached!;
         }
         bool background = request?.Background == true;
@@ -218,15 +232,19 @@ public sealed class ProductionProofCache(ILeanProofVerifier verifier, ILogManage
         LeanProofStore store)
     {
         CancellationTokenSource cancellation;
+        long number;
         lock (_cacheLock)
         {
             if (_scheduled is { IsCompleted: false }) return false;
+            number = (long)_latestProduction.Number;
             cancellation = new CancellationTokenSource();
             _scheduledCancellation = cancellation;
             // The caller's proving scope, if any, must not decide this statement's priority or cancellation.
             using (ExecutionContext.SuppressFlow())
                 _scheduled = Task.Factory.StartNew(Run, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
         }
+        if (Events.IsEnabled)
+            Events.Record(new() { Type = ProofWrapperEventTypes.ProductionScheduled, Block = number, Count = deps.Count, Detail = Shape(input) });
         if (_logger.IsDebug)
             _logger.Debug($"Scheduled EIP-8288 production proof for {deps.Count} dependencies: {input.Deps.Count} direct, " +
                 $"{input.RecursiveProofs.Count} recursive, {input.Discards.Count} discarded");
@@ -234,24 +252,40 @@ public sealed class ProductionProofCache(ILeanProofVerifier verifier, ILogManage
 
         void Run()
         {
+            long started = Stopwatch.GetTimestamp();
+            string result = "proven";
+            int bytes = 0;
             try
             {
                 // A pass for a later slot cancels between fold steps; a started native call still finishes and stays cached.
                 byte[] proof = RecursiveStarkAggregator.Prove(input, this, forkVerifier, in depsHash, cancellation.Token);
+                bytes = proof.Length;
                 store.AddCachedRecursive(deps, proof);
             }
             catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
             {
+                result = "superseded";
                 if (_logger.IsDebug) _logger.Debug("Scheduled EIP-8288 production proof superseded by a later slot");
             }
             catch (Exception exception)
             {
+                result = "failed";
                 if (_logger.IsWarn) _logger.Warn($"Scheduled EIP-8288 production proof failed: {exception.Message}");
             }
             finally
             {
                 Interlocked.CompareExchange(ref _scheduledCancellation, null, cancellation);
                 cancellation.Dispose();
+                if (Events.IsEnabled)
+                    Events.Record(new()
+                    {
+                        Type = ProofWrapperEventTypes.ProductionProof,
+                        Block = number,
+                        Count = deps.Count,
+                        Result = result,
+                        Length = bytes,
+                        DurationMs = Stopwatch.GetElapsedTime(started).TotalMilliseconds
+                    });
             }
         }
     }
@@ -288,6 +322,7 @@ public sealed class ProductionProofCache(ILeanProofVerifier verifier, ILogManage
             if (TryGet(key, out byte[]? cached))
             {
                 Interlocked.Increment(ref Metrics.LeanProofCacheHits);
+                RecordStep(input, background, "cache-hit", cached!.Length, 0, 0);
                 return cached!;
             }
             // Preserve authenticated work before a caller checks its cancellation or proposal deadline.
@@ -300,6 +335,8 @@ public sealed class ProductionProofCache(ILeanProofVerifier verifier, ILogManage
             started = Stopwatch.GetTimestamp();
             bool valid = proof.Length is > 0 and <= Eip8288Constants.MaxAggregateProofBytes
                 && verifier.VerifyRecursiveStark(in statement, aggregatedVk, proof);
+            RecordStep(input, background, valid ? "proven" : "invalid", proof.Length, elapsed,
+                Stopwatch.GetElapsedTime(started).TotalMilliseconds);
             if (_logger.IsInfo)
                 _logger.Info($"Lean native {(background ? "background" : "production")} proof: prove {elapsed} ms, verify " +
                     $"{(long)Stopwatch.GetElapsedTime(started).TotalMilliseconds} ms, {proof.Length} bytes; {input.Deps.Count} direct, " +
@@ -323,6 +360,27 @@ public sealed class ProductionProofCache(ILeanProofVerifier verifier, ILogManage
         }
         finally { if (entered) Monitor.Exit(_provingLock); }
     }
+
+    /// <summary>Records one native proving call: a leaf over direct witnesses, a merge of recursive proofs, or a discard.</summary>
+    private void RecordStep(AggregationInput input, bool background, string result, int bytes, double proveMs, double verifyMs)
+    {
+        if (!Events.IsEnabled) return;
+        string kind = input.RecursiveProofs.Count == 0 ? "leaf"
+            : input.RecursiveProofs.Count == 1 && input.Deps.Count == 0 ? (input.Discards.Count > 0 ? "discard" : "fold") : "merge";
+        Events.Record(new()
+        {
+            Type = ProofWrapperEventTypes.ProofStep,
+            Result = result,
+            Message = kind,
+            Detail = $"{(background ? "background" : "production")}: {Shape(input)}{(verifyMs > 0 ? $", verify {verifyMs:F0} ms" : "")}",
+            Count = input.Deps.Count + input.RecursiveProofs.Count,
+            Length = bytes,
+            DurationMs = proveMs
+        });
+    }
+
+    private static string Shape(AggregationInput input) =>
+        $"{input.Deps.Count} direct, {input.RecursiveProofs.Count} recursive, {input.Discards.Count} discarded";
 
     private static InvalidOperationException BackgroundBusy()
     {

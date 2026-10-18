@@ -62,6 +62,7 @@ public class Eth73ProtocolHandler(
     public override int MessageIdSpaceSize => Eth73Protocol.MessageIdSpaceSize;
 
     string IWrapperLink.Description => Session.ToString() ?? "eth/73 peer";
+    string? IWrapperLink.NodeId => Session.Node?.Id.ToString();
 
     protected override bool HandleMessageCore(ZeroPacket message)
     {

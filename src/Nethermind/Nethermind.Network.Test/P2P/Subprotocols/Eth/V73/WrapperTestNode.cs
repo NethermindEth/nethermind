@@ -71,7 +71,7 @@ internal sealed class FakeWrapperLink(string name = "peer") : IWrapperLink
 /// <summary>A transport over substitute chain components, with valid-by-default proofs and a manual clock.</summary>
 internal sealed class WrapperTestNode : IDisposable
 {
-    public WrapperTestNode(ISpecProvider? specProvider = null)
+    public WrapperTestNode(ISpecProvider? specProvider = null, ProofWrapperEventFeed? events = null)
     {
         Time = new ManualTimeProvider();
         ISpecProvider specs = specProvider ?? new TestSingleReleaseSpecProvider(Eip8288Prototype.Instance);
@@ -91,8 +91,8 @@ internal sealed class WrapperTestNode : IDisposable
             lock (Pending) Pending.Add(call.Arg<Transaction>());
             return AcceptTxResult.Accepted;
         });
-        Wrappers = new ProofWrapperService(Pool, specs, Tree, ProofStore, Verifier);
-        Transport = new ProofWrapperTransport(Pool, Wrappers, LimboLogs.Instance, Time);
+        Wrappers = new ProofWrapperService(Pool, specs, Tree, ProofStore, Verifier, events);
+        Transport = new ProofWrapperTransport(Pool, Wrappers, LimboLogs.Instance, Time, events: events);
     }
 
     public ManualTimeProvider Time { get; }

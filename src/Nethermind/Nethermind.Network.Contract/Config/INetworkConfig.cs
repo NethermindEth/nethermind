@@ -162,4 +162,7 @@ public interface INetworkConfig : IConfig
 
     [ConfigItem(DefaultValue = "64", Description = "EIP-8437 fork grace window, in blocks: from when the local target fork switches to a fork that changes the EIP-8288 verifier until the head is this many blocks past it, a peer's proof failure is a local refusal rather than invalid peer data.")]
     long ProofWrapperForkGraceBlocks { get; set; }
+
+    [ConfigItem(DefaultValue = "0", Description = "Debug only: how many EIP-8288 / EIP-8437 proof wrapper lifecycle events to keep in memory for `debug_proofWrapperEvents`. 0 disables recording.")]
+    int ProofWrapperEventBufferSize { get; set; }
 }

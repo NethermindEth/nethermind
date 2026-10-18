@@ -49,10 +49,13 @@ public sealed partial class ProofWrapperTransport : IDisposable
     private bool _disposed;
     private readonly long _forkGraceBlocks;
     private Eip8288Verifier? _verifier;
+    private readonly ProofWrapperEventFeed _events;
+    private long _gaugesRecorded;
 
     public ProofWrapperTransport(ITxPool txPool, ProofWrapperService wrappers, ILogManager logManager, TimeProvider? timeProvider = null,
-        INetworkConfig? networkConfig = null)
+        INetworkConfig? networkConfig = null, ProofWrapperEventFeed? events = null)
     {
+        _events = events ?? ProofWrapperEventFeed.Disabled;
         _txPool = txPool;
         _wrappers = wrappers;
         _clock = timeProvider ?? TimeProvider.System;
@@ -103,6 +106,8 @@ public sealed partial class ProofWrapperTransport : IDisposable
                 if (entry.Verifier != _verifier) continue;
                 if (!peer.Known.Contains(entry.Announcement.Hash, now)) peer.ToAnnounce.Add(entry.Announcement);
             }
+            Record(ProofWrapperEventTypes.PeerConnected, peer, count: peer.ToAnnounce.Count,
+                detail: "eth/73 Status accepted; offered wrappers announced on connection");
             FlushAnnouncements(peer, outbox);
         }
         outbox.Flush();
@@ -125,6 +130,7 @@ public sealed partial class ProofWrapperTransport : IDisposable
         if (peer.Closed) return;
         peer.Closed = true;
         _peers.Remove(peer);
+        Record(ProofWrapperEventTypes.PeerDisconnected, peer, count: peer.Requests.Count);
         foreach (WrapperRequest request in peer.Requests.Values) Abandon(peer, request, outbox);
         peer.Requests.Clear();
         peer.ToAnnounce.Clear();
@@ -165,6 +171,7 @@ public sealed partial class ProofWrapperTransport : IDisposable
     private void Violation(WrapperPeer peer, string reason, Outbox outbox)
     {
         WrapperMetrics.Record(WrapperEvent.Violation);
+        Record(ProofWrapperEventTypes.Violation, peer, result: "disconnected", detail: reason);
         if (_logger.IsDebug) _logger.Debug($"eth/73 wrapper violation by {peer}: {reason}");
         RemoveCore(peer, outbox);
         outbox.Penalize(peer, $"eth/73: {reason}");
@@ -207,6 +214,8 @@ public sealed partial class ProofWrapperTransport : IDisposable
                 {
                     peer.Requests.Remove(request.Id);
                     WrapperMetrics.Record(WrapperEvent.RequestExpired);
+                    Record(ProofWrapperEventTypes.RequestExpired, peer, requestId: request.Id,
+                        message: request is WrappersRequest ? "GetProofWrappers" : "GetPooledTransactions", result: "no response before the request timeout");
                     Abandon(peer, request, outbox);
                 }
                 FlushAnnouncements(peer, outbox);
@@ -214,6 +223,16 @@ public sealed partial class ProofWrapperTransport : IDisposable
             ExpireFetches(now, outbox);
             Schedule(outbox);
             WrapperMetrics.Gauges(_peers.Count, _store.Count, _fetches.Count, _chargedBytes);
+            if (_events.IsEnabled && _clock.GetElapsedTime(_gaugesRecorded, now) >= TimeSpan.FromSeconds(1))
+            {
+                _gaugesRecorded = now;
+                _events.Record(new()
+                {
+                    Type = ProofWrapperEventTypes.Gauges,
+                    Detail = $"peers={_peers.Count} pending={_fetches.Count} validation={_validation.Count} workers={_validationWorkers} " +
+                        $"stored={_store.Count} storedBytes={_store.Bytes} chargedBytes={_chargedBytes} tombstones={_tombstones.Count} pool={_txPool.GetPendingTransactionsCount()}"
+                });
+            }
         }
         outbox.Flush();
     }
@@ -323,11 +342,18 @@ public sealed partial class ProofWrapperTransport : IDisposable
             if (_disposed || _verifier != verifier) return;
             foreach (WrapperStore.Entry entry in held)
             {
-                if (revalidated.Contains(entry)) entry.Verifier = verifier;
+                if (revalidated.Contains(entry))
+                {
+                    entry.Verifier = verifier;
+                    Record(ProofWrapperEventTypes.UpgradeKept, wrapper: entry.Announcement.Hash, mode: 0,
+                        detail: "EIP-8288 upgrade rule: mode-0 witnesses re-validate under the new verifier");
+                }
                 else if (_store.TryGet(entry.Announcement.Hash, out WrapperStore.Entry current) && current == entry)
                 {
                     _store.Remove(entry.Announcement.Hash);
                     dropped++;
+                    Record(ProofWrapperEventTypes.UpgradeDropped, wrapper: entry.Announcement.Hash,
+                        detail: "EIP-8288 upgrade rule: dropped; a mode-1 proof never verifies under another AGGREGATED_VK, and a mode-0 one failed to re-validate");
                 }
             }
         }
@@ -358,12 +384,16 @@ public sealed partial class ProofWrapperTransport : IDisposable
             envelopes[hash] = envelope;
         }
         WrapperAnnouncement announcement = WrapperAnnouncement.Create(wrapper);
+        ProofWrapperDetails? details = _events.Describe(wrapper);
         Outbox outbox = new();
         lock (_gate)
         {
             // A wrapper validated under a verifier the target fork no longer uses is never offered.
             if (_disposed || verifier != _verifier || !_store.TryAdd(new(announcement, (byte[])wrapper.Clone(), hashes, envelopes, verifier))) return false;
             _tombstones.Remove(announcement.Hash);
+            Record(ProofWrapperEventTypes.Offered, wrapper: announcement.Hash, length: announcement.Length, count: envelopes.Count, details: details,
+                result: resolved is null ? "local aggregate" : "validated",
+                detail: "stored with its envelopes in the bounded wrapper-envelope cache; announcing to peers not known to hold it");
             long now = _clock.GetTimestamp();
             foreach (WrapperPeer peer in _peers)
             {
@@ -392,7 +422,11 @@ public sealed partial class ProofWrapperTransport : IDisposable
             peer.ToAnnounce.RemoveRange(0, count);
             if (batch.Count == 0) continue;
             batch.Sort(static (a, b) => a.Hash.CompareTo(b.Hash));
-            foreach (WrapperAnnouncement announcement in batch) peer.Known.Add(announcement.Hash);
+            foreach (WrapperAnnouncement announcement in batch)
+            {
+                peer.Known.Add(announcement.Hash);
+                Record(ProofWrapperEventTypes.Announced, peer, announcement.Hash, "NewProofWrapperHashes", length: announcement.Length, count: batch.Count);
+            }
             outbox.Send(peer, new NewProofWrapperHashesMessage([.. batch]));
             WrapperMetrics.Record(WrapperEvent.Announced, batch.Count);
         }
@@ -417,7 +451,18 @@ public sealed partial class ProofWrapperTransport : IDisposable
                 content += entry.Wrapper.Length;
             }
             // Beyond the serving budget a responder answers with an empty list.
-            if (served.Count > 0 && !peer.Serving.TryTake(content)) served.Clear();
+            if (served.Count > 0 && !peer.Serving.TryTake(content))
+            {
+                served.Clear();
+                Record(ProofWrapperEventTypes.Served, peer, message: "ProofWrappers", requestId: request.RequestId, result: "empty: serving budget exhausted");
+            }
+            if (_events.IsEnabled)
+                foreach (ValueHash256 wrapperHash in request.Hashes)
+                {
+                    int position = served.FindIndex(entry => entry.Announcement.Hash == wrapperHash);
+                    Record(ProofWrapperEventTypes.Served, peer, wrapperHash, "ProofWrappers", request.RequestId,
+                        position >= 0 ? "served" : "unavailable", length: position >= 0 ? served[position].Wrapper.Length : null);
+                }
             byte[][] wrappers = new byte[served.Count][];
             for (int i = 0; i < wrappers.Length; i++)
             {
@@ -442,7 +487,40 @@ public sealed partial class ProofWrapperTransport : IDisposable
             if (_disposed || !_store.TryGetEnvelope(hash, out envelope)) return false;
         }
         transaction = TryDecode(envelope, hash);
+        if (transaction is not null && _events.IsEnabled)
+            _events.Record(new()
+            {
+                Type = ProofWrapperEventTypes.EnvelopeServed,
+                Message = "PooledTransactions",
+                Transactions = [transaction.Hash!],
+                Detail = "served from the wrapper-envelope cache"
+            });
         return transaction is not null;
+    }
+
+    /// <summary>Records a debug event when the feed is enabled.</summary>
+    private void Record(string type, WrapperPeer? peer = null, ValueHash256? wrapper = null, string? message = null, long? requestId = null,
+        string? result = null, string? detail = null, int? length = null, int? count = null, double? durationMs = null,
+        Hash256[]? transactions = null, int? mode = null, ProofWrapperDetails? details = null)
+    {
+        if (!_events.IsEnabled) return;
+        _events.Record(new()
+        {
+            Type = type,
+            Wrapper = wrapper is { } hash ? new Hash256(hash) : null,
+            Peer = peer?.ToString(),
+            PeerId = peer?.Link.NodeId,
+            Message = message,
+            RequestId = requestId,
+            Result = result,
+            Detail = detail,
+            Length = length ?? details?.Length,
+            Count = count,
+            DurationMs = durationMs,
+            Transactions = transactions ?? details?.Transactions,
+            Dependencies = details?.Dependencies,
+            Mode = mode ?? details?.Mode
+        });
     }
 
     /// <summary>The message-data length of <c>[request_id, [items]]</c> whose items encode in <paramref name="itemsLength"/> bytes.</summary>

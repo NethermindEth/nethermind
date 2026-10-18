@@ -60,5 +60,6 @@ namespace Nethermind.Network.Config
         public bool FilterDiscoveryNodesByRecentIp { get; set; } = true;
         public bool FilterDiscoveryNodesBySameSubnet { get; set; } = true;
         public long ProofWrapperForkGraceBlocks { get; set; } = 64;
+        public int ProofWrapperEventBufferSize { get; set; }
     }
 }

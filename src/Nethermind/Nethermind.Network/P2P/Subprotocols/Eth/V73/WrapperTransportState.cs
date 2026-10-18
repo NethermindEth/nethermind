@@ -17,6 +17,9 @@ internal interface IWrapperLink
 {
     string Description { get; }
 
+    /// <summary>The remote node's public key, for debug events.</summary>
+    string? NodeId => null;
+
     /// <summary>Sends a wrapper message or an envelope-recovery GetPooledTransactions.</summary>
     void Send(P2PMessage message);
 
