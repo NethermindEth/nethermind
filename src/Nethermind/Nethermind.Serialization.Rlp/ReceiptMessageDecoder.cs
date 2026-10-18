@@ -12,7 +12,7 @@ namespace Nethermind.Serialization.Rlp
     [Rlp.Decoder(RlpDecoderKey.Default)]
     [Rlp.Decoder(RlpDecoderKey.Trie)]
     [method: DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(ReceiptMessageDecoder))]
-    public sealed class ReceiptMessageDecoder(bool skipStateAndStatus = false, bool skipBloom = false) : RlpDecoder<TxReceipt>
+    public sealed partial class ReceiptMessageDecoder(bool skipStateAndStatus = false, bool skipBloom = false) : RlpDecoder<TxReceipt>
     {
         [return: MaybeNull]
         protected override TxReceipt DecodeInternal(ref RlpReader ctx, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -155,6 +155,10 @@ namespace Nethermind.Serialization.Rlp
                 return Rlp.OfEmptyList.Length;
             }
 
+            int length = -1;
+            if (!skipStateAndStatus && !skipBloom) GetLengthInOnePass(item, rlpBehaviors, ref length);
+            if (length >= 0) return length;
+
             (int Total, _) = GetContentLength(item, rlpBehaviors);
             int receiptPayloadLength = Rlp.LengthOfSequence(Total);
 
@@ -181,6 +185,11 @@ namespace Nethermind.Serialization.Rlp
             return bytes;
         }
 
+        partial void GetLengthInOnePass(TxReceipt item, RlpBehaviors rlpBehaviors, ref int length);
+
+        partial void EncodeInOnePass<TWriter>(ref TWriter writer, TxReceipt item, RlpBehaviors rlpBehaviors, ref bool encoded)
+            where TWriter : struct, IRlpWriteBackend, allows ref struct;
+
         public override void Encode<TWriter>(ref TWriter writer, TxReceipt item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)
@@ -188,6 +197,10 @@ namespace Nethermind.Serialization.Rlp
                 writer.EncodeNullObject();
                 return;
             }
+
+            bool encoded = false;
+            if (!skipStateAndStatus && !skipBloom) EncodeInOnePass(ref writer, item, rlpBehaviors, ref encoded);
+            if (encoded) return;
 
             (int totalContentLength, int innerLength) = GetContentLength(item, rlpBehaviors);
             int sequenceLength = Rlp.LengthOfSequence(totalContentLength);

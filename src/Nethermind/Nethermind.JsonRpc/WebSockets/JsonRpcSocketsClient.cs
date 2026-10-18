@@ -5,10 +5,12 @@ using System;
 using System.Buffers;
 using System.IO;
 using System.IO.Pipelines;
+using System.Net;
 using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Primitives;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Utils;
 using Nethermind.JsonRpc.Modules;
@@ -54,13 +56,15 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
         JsonRpcUrl? url = null,
         long? maxBatchResponseBodySize = null,
         int concurrency = 1,
-        long? maxRequestBodySize = null)
+        long? maxRequestBodySize = null,
+        IPAddress? remoteAddress = null,
+        StringValues forwardedFor = default)
         : base(clientName, stream, jsonSerializer, RequestSizeLimit(maxRequestBodySize))
     {
         _jsonRpcProcessor = jsonRpcProcessor;
         _jsonRpcLocalStats = jsonRpcLocalStats;
         _maxBatchResponseBodySize = maxBatchResponseBodySize;
-        _jsonRpcContext = new JsonRpcContext(endpointType, this, url);
+        _jsonRpcContext = new JsonRpcContext(endpointType, this, url) { RemoteAddress = remoteAddress, ForwardedFor = forwardedFor };
         _processChannel = Channel.CreateBounded<ProcessRequest>(new BoundedChannelOptions(concurrency)
         {
             SingleWriter = true
@@ -84,7 +88,6 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
         {
             _sendFailure.Dispose();
         }
-        _jsonRpcContext.Dispose();
         Closed?.Invoke(this, EventArgs.Empty);
     }
 

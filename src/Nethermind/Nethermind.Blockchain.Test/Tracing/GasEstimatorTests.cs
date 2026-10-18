@@ -374,6 +374,26 @@ public class GasEstimatorTests
     }
 
     [Test]
+    public void Estimate_runs_a_copy_of_the_request_and_leaves_the_request_unchanged()
+    {
+        ScriptedTransactionProcessor processor = new(gasUsed: 30_000, peakGas: 30_000, requiredGasLimit: 200_000);
+        Transaction tx = CreateCall();
+        tx.MaxFeePerBlobGas = 7;
+
+        GasEstimation estimation = Estimate(processor, tx, CreateStateProvider(UInt256.Zero, isContract: true));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(estimation.Gas, Is.EqualTo(200_973ul));
+            Assert.That(processor.Transactions, Has.None.SameAs(tx));
+            Assert.That(processor.Transactions, Has.Count.GreaterThan(1).And.All.SameAs(processor.Transactions[0]));
+            Assert.That(processor.MaxFeesPerBlobGas, Has.Count.EqualTo(processor.GasLimits.Count).And.All.EqualTo((UInt256?)7));
+            Assert.That(tx.GasLimit, Is.EqualTo(RequestedGas));
+            Assert.That(tx.MaxFeePerBlobGas, Is.EqualTo((UInt256?)7));
+        }
+    }
+
+    [Test]
     public void Failure_text_rerun_cut_short_by_cancellation_keeps_the_processor_text()
     {
         ITransactionProcessor processor = Substitute.For<ITransactionProcessor>();
@@ -427,10 +447,14 @@ public class GasEstimatorTests
         string? failureDescription = null) : ITransactionProcessor
     {
         public List<ulong> GasLimits { get; } = [];
+        public List<UInt256?> MaxFeesPerBlobGas { get; } = [];
+        public List<Transaction> Transactions { get; } = [];
 
         public TransactionResult Process(Transaction transaction, ITxTracer txTracer, ExecutionOptions options)
         {
             GasLimits.Add(transaction.GasLimit);
+            MaxFeesPerBlobGas.Add(transaction.MaxFeePerBlobGas);
+            Transactions.Add(transaction);
 
             if (rejection is { } rejected)
                 return rejected;
