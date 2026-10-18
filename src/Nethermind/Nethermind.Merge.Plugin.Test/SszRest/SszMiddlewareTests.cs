@@ -1647,6 +1647,37 @@ public class SszMiddlewareTests
             ParentBeaconBlockRoot = TestItem.KeccakA,
         });
 
+    [Test]
+    public async Task NewPayloadV5_empty_block_access_list_returns_invalid_status()
+    {
+        _engineModule.engine_newPayloadV5(Arg.Any<ExecutionPayloadV4>(), Arg.Any<Hash256?[]>(), Arg.Any<Hash256?>(), Arg.Any<byte[][]?>())
+            .Returns(static call =>
+            {
+                ExecutionPayloadParams<ExecutionPayloadV4> payloadParams = new(
+                    call.ArgAt<ExecutionPayloadV4>(0), call.ArgAt<Hash256?[]>(1), call.ArgAt<Hash256?>(2), call.ArgAt<byte[][]?>(3));
+                bool invalid = payloadParams.ValidateParams(Amsterdam.Instance, EngineApiVersions.NewPayload.V5, out string? error) is Nethermind.Merge.Plugin.Data.ValidationResult.Invalid;
+                return ResultWrapper<PayloadStatusV1>.Success(invalid
+                    ? new PayloadStatusV1 { Status = PayloadStatus.Invalid, ValidationError = error }
+                    : new PayloadStatusV1 { Status = PayloadStatus.Valid, LatestValidHash = TestItem.KeccakA });
+            });
+
+        byte[] body = NewPayloadV5RequestWire.Encode(new NewPayloadV5RequestWire
+        {
+            ExecutionPayload = new SszExecutionPayloadV4(SszTestData.MakeV4Payload(blockAccessList: [], slotNumber: 0)),
+            ParentBeaconBlockRoot = TestItem.KeccakA,
+        });
+        DefaultHttpContext ctx = MakePostContext("/engine/v1/payloads", body, fork: "amsterdam");
+
+        await _middleware.InvokeAsync(ctx);
+
+        PayloadStatusWire.Decode(new ReadOnlySequence<byte>(ResponseBytes(ctx)), out PayloadStatusWire status);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
+            Assert.That(status.Status, Is.EqualTo((byte)1), "an empty block_access_list is present and must be INVALID, as over JSON-RPC");
+        }
+    }
+
     // The three Bogota methods must resolve to a handler once advertised over SSZ.
     [Test]
     public async Task NewPayloadV6_bogota_routes_to_engine_newPayloadV6()
