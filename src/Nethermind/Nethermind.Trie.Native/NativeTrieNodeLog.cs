@@ -21,7 +21,27 @@ namespace Nethermind.Trie.Native;
 /// </remarks>
 public sealed unsafe partial class NativeTrieNodeLog : SafeHandle
 {
-    public NativeTrieNodeLog(ulong compressedMaxMemory) : base(IntPtr.Zero, ownsHandle: true) => SetHandle(nm_patricia_log_new(compressedMaxMemory));
+    public NativeTrieNodeLog(ulong compressedMaxMemory) : base(IntPtr.Zero, ownsHandle: true)
+    {
+        SetHandle(nm_patricia_log_new(compressedMaxMemory));
+        nm_patricia_log_set_memory_pressure(this, &ReportMemoryPressure);
+    }
+
+    // The static entry point outlives native compaction and pins without rooting the SafeHandle against finalization.
+    [UnmanagedCallersOnly]
+    private static void ReportMemoryPressure(long bytes)
+    {
+        try
+        {
+            if (bytes > 0) GC.AddMemoryPressure(bytes);
+            else if (bytes < 0) GC.RemoveMemoryPressure(-bytes);
+        }
+        catch (Exception exception)
+        {
+            // Managed exceptions must never unwind through native allocation or compactor frames.
+            Environment.FailFast("Native trie log memory pressure reporting failed", exception);
+        }
+    }
 
     public override bool IsInvalid => handle == IntPtr.Zero;
 
@@ -77,6 +97,9 @@ public sealed unsafe partial class NativeTrieNodeLog : SafeHandle
 
     [LibraryImport(NativePatriciaBulkSet.LibraryName)]
     private static partial nint nm_patricia_log_new(ulong compressedMaxMemory);
+
+    [LibraryImport(NativePatriciaBulkSet.LibraryName)]
+    private static partial void nm_patricia_log_set_memory_pressure(NativeTrieNodeLog log, delegate* unmanaged<long, void> report);
 
     [LibraryImport(NativePatriciaBulkSet.LibraryName)]
     private static partial int nm_patricia_log_node(NativeTrieNodeLog log, ulong pointer, ValueHash256* hashOut, byte** rlpOut);

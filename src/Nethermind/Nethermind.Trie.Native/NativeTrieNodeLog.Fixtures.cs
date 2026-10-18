@@ -14,8 +14,11 @@ namespace Nethermind.Trie.Native;
 
 public sealed partial class NativeTrieNodeLog
 {
-    internal NativeTrieNodeLog(ulong compressedMaxMemory, int generationBytes) : base(IntPtr.Zero, ownsHandle: true) =>
+    internal unsafe NativeTrieNodeLog(ulong compressedMaxMemory, int generationBytes) : base(IntPtr.Zero, ownsHandle: true)
+    {
         SetHandle(nm_patricia_log_fixture_new(compressedMaxMemory, checked((nuint)generationBytes)));
+        nm_patricia_log_set_memory_pressure(this, &ReportMemoryPressure);
+    }
 
     // The input spans are pinned, and the SafeHandle keeps the log alive while Rust decodes and copies the RLP.
     internal unsafe ulong AppendRlp(Hash256? address, in TreePath path, ReadOnlySpan<byte> rlp,

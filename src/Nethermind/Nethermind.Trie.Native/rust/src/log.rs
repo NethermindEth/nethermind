@@ -22,6 +22,20 @@ use crate::node::{
 /// low 32 bits. Zero is no record. Compaction keeps the pointers of the records it keeps.
 pub type LogPointer = u64;
 
+/// Reports allocated bytes as positive deltas and reclaimed bytes as negative deltas. Must not unwind.
+pub(crate) type MemoryPressureFn = unsafe extern "C" fn(i64);
+
+#[derive(Clone, Copy, Default)]
+struct MemoryPressure(Option<MemoryPressureFn>);
+
+impl MemoryPressure {
+    fn report(self, bytes: i64) {
+        if let Some(report) = self.0 {
+            unsafe { report(bytes) };
+        }
+    }
+}
+
 const OFFSET_BITS: u32 = 32;
 const OFFSET_MASK: u64 = (1 << OFFSET_BITS) - 1;
 const LIVE_GENERATIONS: u64 = 8;
@@ -101,6 +115,7 @@ pub struct TrieNodeLog {
     generation_bytes: usize,
     compressed_max_memory: u64,
     temporary: bool,
+    memory_pressure: MemoryPressure,
     state_roots: RootTable,
     storage_roots: RootTable,
 }
@@ -221,18 +236,44 @@ impl TrieNodeLog {
             generation_bytes,
             compressed_max_memory,
             temporary,
+            memory_pressure: MemoryPressure::default(),
             state_roots,
             storage_roots,
         });
-        log.generation(1).start(generation_bytes, temporary);
+        log.generation(1).start(generation_bytes, temporary, log.memory_pressure);
         log
+    }
+
+    /// Installs a reporter on a newly created log before its first use, accounting for its initial allocations once.
+    pub(crate) fn set_memory_pressure(&mut self, report: MemoryPressureFn) {
+        assert!(self.memory_pressure.0.is_none());
+        self.memory_pressure = MemoryPressure(Some(report));
+        self.memory_pressure.report(self.fixed_memory() as i64);
+        for generation in self.generations.iter() {
+            if !generation.base.load(Ordering::Relaxed).is_null() {
+                self.memory_pressure.report(
+                    allocation_size(
+                        generation.length.load(Ordering::Relaxed),
+                        generation.bloom_blocks.load(Ordering::Relaxed),
+                    ) as i64,
+                );
+            }
+        }
+    }
+
+    fn fixed_memory(&self) -> usize {
+        std::mem::size_of::<Self>()
+            + std::mem::size_of_val(&*self.generations)
+            + 3 * MAX_GENERATIONS * std::mem::size_of::<u32>()
+            + std::mem::size_of_val(&*self.state_roots.slots)
+            + std::mem::size_of_val(&*self.storage_roots.slots)
     }
 
     /// Drops every record of a temporary log, which keeps its first generation and nothing else.
     fn empty_temporary(&mut self) {
         let active = *self.active.get_mut();
         for id in 2..=active {
-            self.generation(id).free(true);
+            self.generation(id).free(true, self.memory_pressure);
         }
         *self.generations[slot(1)].used.get_mut() = 0;
         *self.active.get_mut() = 1;
@@ -334,7 +375,7 @@ impl TrieNodeLog {
                 && generation.compressed.load(Ordering::Relaxed).is_null(),
             "too many trie node log generations pinned"
         );
-        generation.start(generation_length, self.temporary);
+        generation.start(generation_length, self.temporary, self.memory_pressure);
         self.active.store(id, Ordering::Release);
         if !self.temporary {
             self.drop_old_generations(&mut state);
@@ -392,12 +433,14 @@ impl TrieNodeLog {
             if let Some(compressed) = compressed {
                 let memory = compressed.memory();
                 metrics::compressed_allocated(memory);
+                self.memory_pressure
+                    .report((memory + std::mem::size_of::<CompressedGeneration>() as u64) as i64);
                 state.compressed_memory += memory;
                 generation
                     .compressed
                     .store(Box::into_raw(compressed), Ordering::Release);
             }
-            generation.free(false);
+            generation.free(false, self.memory_pressure);
             state.oldest_allocated += 1;
             self.evict_compressed(&mut state, 0);
         }
@@ -477,7 +520,9 @@ impl TrieNodeLog {
                     .is_null())
             && state.compressed_pins[slot(state.oldest_compressed)] == 0
         {
-            state.compressed_memory -= self.generation(state.oldest_compressed).free_compressed();
+            state.compressed_memory -= self
+                .generation(state.oldest_compressed)
+                .free_compressed(self.memory_pressure);
             state.oldest_compressed += 1;
         }
     }
@@ -491,9 +536,10 @@ impl Drop for TrieNodeLog {
         }
         drop(state);
         for generation in self.generations.iter() {
-            generation.free(self.temporary);
-            generation.free_compressed();
+            generation.free(self.temporary, self.memory_pressure);
+            generation.free_compressed(self.memory_pressure);
         }
+        self.memory_pressure.report(-(self.fixed_memory() as i64));
     }
 }
 
@@ -511,7 +557,7 @@ impl LogRef {
 impl Generation {
     /// Allocates `length` bytes of records, followed by a bloom filter sized for them unless `temporary`, which is
     /// never compacted.
-    fn start(&self, length: usize, temporary: bool) {
+    fn start(&self, length: usize, temporary: bool, pressure: MemoryPressure) {
         let bloom_blocks = match temporary {
             true => 0,
             false => (length / BLOOM_BYTES_PER_KEY * BLOOM_BITS_PER_KEY).div_ceil(BLOOM_BLOCK_BITS),
@@ -524,9 +570,10 @@ impl Generation {
         self.bloom_blocks.store(bloom_blocks, Ordering::Relaxed);
         self.used.store(0, Ordering::Relaxed);
         self.base.store(allocate(size), Ordering::Release);
+        pressure.report(size as i64);
     }
 
-    fn free(&self, temporary: bool) {
+    fn free(&self, temporary: bool, pressure: MemoryPressure) {
         let base = self.base.swap(std::ptr::null_mut(), Ordering::Relaxed);
         if !base.is_null() {
             let size = allocation_size(
@@ -537,11 +584,12 @@ impl Generation {
                 metrics::generation_freed(size);
             }
             free(base, size);
+            pressure.report(-(size as i64));
         }
     }
 
     /// Frees what compaction kept of the generation and returns the bytes it took.
-    fn free_compressed(&self) -> u64 {
+    fn free_compressed(&self, pressure: MemoryPressure) -> u64 {
         let compressed = self
             .compressed
             .swap(std::ptr::null_mut(), Ordering::Relaxed);
@@ -550,6 +598,7 @@ impl Generation {
         }
         let memory = unsafe { Box::from_raw(compressed) }.memory();
         metrics::compressed_freed(memory);
+        pressure.report(-((memory + std::mem::size_of::<CompressedGeneration>() as u64) as i64));
         memory
     }
 
@@ -964,6 +1013,127 @@ mod tests {
         assert_eq!(cursor.next(), Some((TreePath::default(), pointer)));
         drop(cursor);
         assert_eq!(log.state.lock().unwrap().retains[slot(generation)], 0);
+    }
+
+    #[test]
+    fn memory_pressure_balances_growth_compaction_reclamation_and_drop() {
+        static EVENTS: Mutex<Vec<(i64, std::thread::ThreadId)>> = Mutex::new(Vec::new());
+        unsafe extern "C" fn report(bytes: i64) {
+            EVENTS
+                .lock()
+                .unwrap()
+                .push((bytes, std::thread::current().id()));
+        }
+        fn reported(events: &Mutex<Vec<(i64, std::thread::ThreadId)>>) -> i64 {
+            events.lock().unwrap().iter().map(|&(bytes, _)| bytes).sum()
+        }
+        fn allocated(log: &TrieNodeLog) -> i64 {
+            let _state = log.state.lock().unwrap();
+            let mut bytes = log.fixed_memory();
+            for generation in log.generations.iter() {
+                if !generation.base.load(Ordering::Relaxed).is_null() {
+                    bytes += allocation_size(
+                        generation.length.load(Ordering::Relaxed),
+                        generation.bloom_blocks.load(Ordering::Relaxed),
+                    );
+                }
+                if let Some(compressed) =
+                    unsafe { generation.compressed.load(Ordering::Relaxed).as_ref() }
+                {
+                    bytes += compressed.memory() as usize + std::mem::size_of::<CompressedGeneration>();
+                }
+            }
+            bytes as i64
+        }
+
+        for compressed_max_memory in [0, 1 << 20] {
+            EVENTS.lock().unwrap().clear();
+            let mut log = TrieNodeLog::for_fixtures(MIN_GENERATION_BYTES, compressed_max_memory);
+            unsafe { crate::nm_patricia_log_set_memory_pressure(&mut *log, report) };
+            assert_eq!(reported(&EVENTS), allocated(&log));
+            assert_eq!(EVENTS.lock().unwrap().len(), 2);
+
+            // Failed fixture decoding must neither allocate a generation nor change pressure.
+            let before = reported(&EVENTS);
+            let mut pointer = 0;
+            assert_eq!(
+                unsafe {
+                    crate::nm_patricia_log_fixture_append_rlp(
+                        &*log,
+                        std::ptr::null(),
+                        &TreePath::default(),
+                        [0xff].as_ptr(),
+                        1,
+                        std::ptr::null(),
+                        false,
+                        &mut pointer,
+                    )
+                },
+                crate::Error::CorruptNode.code()
+            );
+            assert_eq!(reported(&EVENTS), before);
+
+            let retained = log.retain_active();
+            log.retain(retained);
+            let writer = log.pin();
+            let first = writer.append_keyed(&leaf(vec![0xaa; 40]), 1);
+            writer.set_root(None, &[0x11; 32], first);
+            let filler = leaf(vec![0xbb; 1000]);
+            while log.active.load(Ordering::Relaxed) <= LIVE_GENERATIONS + 2 {
+                writer.append_keyed(&filler, 2);
+            }
+            assert!(active_length(&log) > MIN_GENERATION_BYTES);
+            assert_eq!(reported(&EVENTS), allocated(&log));
+            log.release(retained);
+            assert_eq!(reported(&EVENTS), allocated(&log));
+            log.release(retained);
+            // This reader lets compaction run but retains its compressed output.
+            let reader = log.pin();
+            drop(writer);
+            wait_for_compaction(&log);
+            assert!(log.state.lock().unwrap().compressed_memory > 0);
+            assert_eq!(reported(&EVENTS), allocated(&log));
+            assert!(EVENTS
+                .lock()
+                .unwrap()
+                .iter()
+                .any(|&(bytes, thread)| bytes < 0 && thread != std::thread::current().id()));
+            assert!(reader.record(first).is_some());
+            drop(reader);
+            wait_for_compaction(&log);
+            assert_eq!(reported(&EVENTS), allocated(&log));
+            if compressed_max_memory == 0 {
+                assert_eq!(log.state.lock().unwrap().compressed_memory, 0);
+            }
+            // Drop may itself have to wait for compaction before its final removals.
+            let writer = log.pin();
+            let active = log.active.load(Ordering::Relaxed);
+            while log.active.load(Ordering::Relaxed) == active {
+                writer.append_keyed(&filler, 2);
+            }
+            drop(writer);
+            drop(log);
+            let events = EVENTS.lock().unwrap();
+            let mut outstanding = 0;
+            for &(bytes, _) in events.iter() {
+                assert_ne!(bytes, 0);
+                outstanding += bytes;
+                assert!(outstanding >= 0);
+            }
+            assert_eq!(outstanding, 0);
+            assert_eq!(
+                events
+                    .iter()
+                    .filter(|&&(bytes, _)| bytes > 0)
+                    .map(|&(bytes, _)| bytes)
+                    .sum::<i64>(),
+                -events
+                    .iter()
+                    .filter(|&&(bytes, _)| bytes < 0)
+                    .map(|&(bytes, _)| bytes)
+                    .sum::<i64>()
+            );
+        }
     }
 
     #[test]

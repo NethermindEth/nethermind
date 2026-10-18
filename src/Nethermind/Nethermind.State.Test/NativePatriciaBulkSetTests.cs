@@ -391,6 +391,39 @@ public class NativePatriciaBulkSetTests
         }
     }
 
+    [Test, NonParallelizable]
+    public void Log_allocation_survives_owner_disposal_until_pins_are_released_and_does_not_root_its_finalizer([Values] bool disposeOwner)
+    {
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        long before = NativeMetrics.NativeTrieNodeLogMemory;
+        WeakReference log = CreatePinnedLog(disposeOwner, before);
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(log.IsAlive, Is.False);
+            Assert.That(NativeMetrics.NativeTrieNodeLogMemory, Is.EqualTo(before));
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        static WeakReference CreatePinnedLog(bool disposeOwner, long before)
+        {
+            NativeTrieNodeLog log = new(256 * 1024);
+            using NativeTrieNodeLogPin pin = log.PinActiveGeneration();
+            using NativeTrieNodeLogPin copy = pin.Copy();
+            long allocated = NativeMetrics.NativeTrieNodeLogMemory;
+            Assert.That(allocated, Is.GreaterThan(before));
+            if (disposeOwner) log.Dispose();
+            pin.Dispose();
+            Assert.That(NativeMetrics.NativeTrieNodeLogMemory, Is.EqualTo(allocated));
+            copy.Dispose();
+            Assert.That(NativeMetrics.NativeTrieNodeLogMemory, Is.EqualTo(disposeOwner ? before : allocated));
+            return new WeakReference(log);
+        }
+    }
+
     [Test]
     public void PinActiveGeneration_keeps_tries_written_after_it_in_the_log_until_every_copy_is_disposed()
     {

@@ -394,6 +394,19 @@ pub extern "C" fn nm_patricia_log_fixture_new(compressed_max_memory: u64, genera
     Box::into_raw(TrieNodeLog::for_fixtures(generation_bytes, compressed_max_memory))
 }
 
+/// Reports the log's initial allocation and all subsequent allocation/reclamation deltas, including on compactor threads.
+///
+/// # Safety
+/// `log` must be newly created, not yet used or shared, and this must be called only once. `report` must remain callable
+/// from any thread until [`nm_patricia_log_free`] returns and must not unwind or re-enter the log.
+#[no_mangle]
+pub unsafe extern "C" fn nm_patricia_log_set_memory_pressure(
+    log: *mut TrieNodeLog,
+    report: log::MemoryPressureFn,
+) {
+    (*log).set_memory_pressure(report);
+}
+
 /// Appends fixture RLP using the live record encoder, linking only matching hash-referenced children.
 ///
 /// # Safety
