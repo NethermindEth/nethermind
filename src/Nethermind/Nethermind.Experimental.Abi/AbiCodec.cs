@@ -13,17 +13,24 @@ public static class AbiCodec
     {
         try
         {
-            int valueSize = signature.Abi.Size(arg);
+            byte[] buffer = new byte[signature.Size(arg)];
+            if (Encode(signature, arg, buffer) != buffer.Length) throw new AbiException();
+            return buffer;
+        }
+        catch (Exception e) when (e is not AbiException)
+        {
+            throw new AbiException(e);
+        }
+    }
 
-            byte[] buffer = new byte[AbiSignature.MethodIdLength + valueSize];
-            BinarySpanWriter w = new(buffer);
-
+    public static int Encode<T>(AbiSignature<T> signature, T arg, Span<byte> destination)
+    {
+        try
+        {
+            BinarySpanWriter w = new(destination);
             w.Write(signature.MethodId);
             signature.Abi.Write(ref w, arg);
-
-            if (w.Written != buffer.Length) throw new AbiException();
-
-            return buffer;
+            return w.Written;
         }
         catch (Exception e) when (e is not AbiException)
         {

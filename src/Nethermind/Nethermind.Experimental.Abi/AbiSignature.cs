@@ -36,5 +36,7 @@ public sealed class AbiSignature<T>(string name, Abi<T> abi)
 
     public ReadOnlySpan<byte> MethodId => _methodId;
 
+    public int Size(T value) => AbiSignature.MethodIdLength + Abi.Size(value);
+
     public override string ToString() => $"{Name}{Abi}";
 }
