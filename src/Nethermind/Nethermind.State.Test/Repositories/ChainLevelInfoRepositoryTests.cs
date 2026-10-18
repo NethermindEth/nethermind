@@ -115,7 +115,7 @@ public class ChainLevelInfoRepositoryTests
     }
 
     [Test]
-    public void LoadLevel_keeps_a_level_persisted_while_the_load_read_the_db()
+    public void LoadLevel_keeps_a_level_persisted_while_the_load_read_the_db([Values] bool withoutCaching)
     {
         TestMemDb db = new();
         using IContainer container = CreateContainer(db);
@@ -130,8 +130,9 @@ public class ChainLevelInfoRepositoryTests
             return staleRlp;
         };
 
-        Assert.That(repository.LoadLevel(1), Is.SameAs(persisted));
-        Assert.That(repository.LoadLevel(1), Is.SameAs(persisted));
+        Func<ChainLevelInfo> load = withoutCaching ? () => repository.LoadLevelWithoutCaching(1) : () => repository.LoadLevel(1);
+        Assert.That(load(), Is.SameAs(persisted));
+        Assert.That(load(), Is.SameAs(persisted));
     }
 
     [Test]

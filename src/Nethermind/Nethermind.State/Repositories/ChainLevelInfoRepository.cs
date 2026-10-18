@@ -105,8 +105,15 @@ namespace Nethermind.State.Repositories
             return level;
         }
 
-        public ChainLevelInfo? LoadLevelWithoutCaching(ulong number) =>
-            _blockInfoCache.TryGetNoRefresh(new LevelNumber(number), out ChainLevelInfo? level) ? level : _blockInfoDb.Get(number, _decoder);
+        public ChainLevelInfo? LoadLevelWithoutCaching(ulong number)
+        {
+            LevelNumber key = new(number);
+            if (_blockInfoCache.TryGetNoRefresh(in key, out ChainLevelInfo? level)) return level;
+
+            level = _blockInfoDb.Get(number, _decoder);
+            // A level persisted while this load ran is newer than the one read.
+            return _blockInfoCache.TryGetNoRefresh(in key, out ChainLevelInfo? cached) ? cached : level;
+        }
 
         public IOwnedReadOnlyList<ChainLevelInfo?> MultiLoadLevel(in ArrayPoolListRef<ulong> blockNumbers)
         {
