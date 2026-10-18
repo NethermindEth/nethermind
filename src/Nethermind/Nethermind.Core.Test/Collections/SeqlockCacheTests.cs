@@ -777,7 +777,7 @@ public class SeqlockCacheTests
             values[i] = new object(); // unique reference identity
         }
 
-        using CancellationTokenSource cts = new(TimeSpan.FromSeconds(2));
+        using CancellationTokenSource cts = new();
         string? failure = null;
         int failureCount = 0;
 
@@ -835,6 +835,9 @@ public class SeqlockCacheTests
             });
         }
 
+        // Cancel from the test thread: a timer callback needs a pool thread, which the spinning tasks can starve.
+        Thread.Sleep(TimeSpan.FromSeconds(2));
+        cts.Cancel();
         writing.Wait();
         Task.WaitAll(readers);
 
