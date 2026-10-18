@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core.Collections;
+using Nethermind.Evm.Tracing;
 
 namespace Nethermind.Evm;
 
@@ -15,6 +16,8 @@ public partial struct EvmPooledMemory
     private const int MaxLargePooledArrayLength = 1 << 22;
     private static readonly System.Buffers.ArrayPool<byte> _largeArrayPool =
         System.Buffers.ArrayPool<byte>.Create(maxArrayLength: MaxLargePooledArrayLength, maxArraysPerBucket: 16);
+
+    private static readonly TraceMemory EmptyTraceMemory = new(0, default);
 
     private static byte[] RentLarge(int minLength, out ulong initializedSize)
     {

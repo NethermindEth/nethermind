@@ -42,7 +42,7 @@ namespace Nethermind.Core.Collections
                 _set.Remove(item);
             }
 
-            CollectionsMarshal.SetCount(_items, snapshot + 1);
+            Truncate(snapshot + 1);
         }
 
         [DoesNotReturn, StackTraceHidden]
@@ -62,6 +62,7 @@ namespace Nethermind.Core.Collections
         }
 
         public partial void Clear();
+        private partial void Truncate(int count);
 
         /// <summary>Enumerates the items in the order they were first added, excluding those dropped by <see cref="Restore"/>.</summary>
         public List<T>.Enumerator GetEnumerator() => _items.GetEnumerator();

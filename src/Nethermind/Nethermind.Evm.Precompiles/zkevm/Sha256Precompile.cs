@@ -11,6 +11,8 @@ namespace Nethermind.Evm.Precompiles;
 
 public partial class Sha256Precompile : IPrecompile<Sha256Precompile>
 {
+    public static Address Address => field ??= Address.FromNumber(2);
+
     // Reused buffer: the zkVM guest is single-threaded and copies the result out before the next call.
     private static readonly byte[] _output = new byte[SHA256.HashSizeInBytes];
 

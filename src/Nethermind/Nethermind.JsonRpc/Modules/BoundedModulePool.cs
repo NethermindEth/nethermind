@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.JsonRpc.Exceptions;
@@ -78,7 +79,8 @@ namespace Nethermind.JsonRpc.Modules
         private readonly int _timeout;
         private readonly T _shared;
         private readonly Task<T> _sharedAsTask;
-        private readonly ConcurrentQueue<T> _pool = new();
+        private readonly ConcurrentQueue<Task<T>> _pool = new();
+        private readonly Dictionary<object, Task<T>> _exclusiveAsTasks = new(ReferenceEqualityComparer.Instance);
         private readonly SemaphoreSlim _semaphore;
         private readonly RpcLimits _limits;
 
@@ -96,14 +98,16 @@ namespace Nethermind.JsonRpc.Modules
             _semaphore = new SemaphoreSlim(exclusiveCapacity);
             for (int i = 0; i < exclusiveCapacity; i++)
             {
-                _pool.Enqueue(Factory.Create());
+                Task<T> exclusive = Task.FromResult(Factory.Create());
+                _exclusiveAsTasks[exclusive.Result] = exclusive;
+                _pool.Enqueue(exclusive);
             }
 
             _shared = factory.Create();
             _sharedAsTask = Task.FromResult(_shared);
         }
 
-        public Task<T> GetModule(bool canBeShared) => canBeShared ? SharedPath() : SlowPath();
+        public Task<T> GetModule(bool canBeShared) => canBeShared ? SharedPath() : ExclusivePath();
 
         private Task<T> SharedPath()
         {
@@ -111,25 +115,29 @@ namespace Nethermind.JsonRpc.Modules
             return _sharedAsTask;
         }
 
+        private Task<T> ExclusivePath() => _semaphore.Wait(0) ? Dequeue() : SlowPath();
+
         private async Task<T> SlowPath()
         {
-            if (!_semaphore.Wait(0))
+            _limits.AcquireQueuedSlot();
+            try
             {
-                _limits.AcquireQueuedSlot();
-                try
+                if (!await _semaphore.WaitAsync(_timeout))
                 {
-                    if (!await _semaphore.WaitAsync(_timeout))
-                    {
-                        throw new ModuleRentalTimeoutException($"Unable to rent an instance of {typeof(T).Name}. Too many concurrent requests.");
-                    }
-                }
-                finally
-                {
-                    _limits.DecrementQueuedCalls();
+                    throw new ModuleRentalTimeoutException($"Unable to rent an instance of {typeof(T).Name}. Too many concurrent requests.");
                 }
             }
+            finally
+            {
+                _limits.DecrementQueuedCalls();
+            }
 
-            _pool.TryDequeue(out T result);
+            return await Dequeue();
+        }
+
+        private Task<T> Dequeue()
+        {
+            _pool.TryDequeue(out Task<T> result);
             return result;
         }
 
@@ -141,7 +149,7 @@ namespace Nethermind.JsonRpc.Modules
                 return;
             }
 
-            _pool.Enqueue(module);
+            _pool.Enqueue(_exclusiveAsTasks.GetValueOrDefault(module) ?? Task.FromResult(module));
             _semaphore.Release();
         }
 

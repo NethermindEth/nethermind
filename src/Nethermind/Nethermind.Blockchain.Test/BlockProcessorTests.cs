@@ -188,6 +188,81 @@ public partial class BlockProcessorTests
     }
 
     [Test]
+    public async Task TransactionTraceBlockProcessor_Replay_MaterializesLogsOnlyForTracersThatReadThem([Values] bool tracerReadsLogs)
+    {
+        using BasicTestBlockchain chain = await CreatePrefixReplayChain(Prague.Instance);
+        BlockHeader parent = chain.BlockTree.Head!.Header;
+        Block block = await AddLogEmittingBlock(chain);
+        ITxTracer txTracer = Substitute.For<ITxTracer>();
+        txTracer.IsTracingReceipt.Returns(true);
+        txTracer.IsCollectingLogs.Returns(tracerReadsLogs);
+        int successes = 0;
+        int logs = 0;
+        txTracer.When(static t => t.MarkAsSuccess(Arg.Any<Address>(), Arg.Any<GasConsumed>(), Arg.Any<byte[]>(), Arg.Any<LogEntry[]>(), Arg.Any<Hash256?>()))
+            .Do(call =>
+            {
+                successes++;
+                logs += call.ArgAt<LogEntry[]>(3).Length;
+            });
+        IBlockTracer blockTracer = Substitute.For<IBlockTracer>();
+        blockTracer.StartNewTxTrace(Arg.Any<Transaction>()).Returns(txTracer);
+
+        ReplayInTraceEnvironment(chain, parent, block, blockTracer);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(successes, Is.EqualTo(block.Transactions.Length));
+            Assert.That(logs, Is.EqualTo(tracerReadsLogs ? block.Transactions.Length : 0),
+                "a replay builds no receipts, so only a tracer that reads logs makes them materialize");
+        }
+    }
+
+    [Test]
+    public async Task TransactionTraceBlockProcessor_Replay_KeepsReceiptsOfCallerReceiptsTracer()
+    {
+        using BasicTestBlockchain chain = await CreatePrefixReplayChain(Prague.Instance);
+        BlockHeader parent = chain.BlockTree.Head!.Header;
+        Block block = await AddLogEmittingBlock(chain);
+        TxReceipt[] stored = chain.ReceiptStorage.Get(block);
+        BlockReceiptsTracer callerTracer = new();
+
+        ReplayInTraceEnvironment(chain, parent, block, callerTracer);
+
+        Assert.That(callerTracer.TxReceipts.Length, Is.EqualTo(stored.Length));
+        using (Assert.EnterMultipleScope())
+        {
+            for (int i = 0; i < stored.Length; i++)
+            {
+                Assert.That(callerTracer.TxReceipts[i].Logs, Is.EqualTo(stored[i].Logs).Using<LogEntry>(static (a, b) =>
+                    a.Address == b.Address && a.Data.AsSpan().SequenceEqual(b.Data) && a.Topics.AsSpan().SequenceEqual(b.Topics)));
+                Assert.That(callerTracer.TxReceipts[i].GasUsedTotal, Is.EqualTo(stored[i].GasUsedTotal));
+            }
+        }
+    }
+
+    private static async Task<Block> AddLogEmittingBlock(BasicTestBlockchain chain)
+    {
+        byte[] logInInitCode = Prepare.EvmCode.PushData(TestItem.KeccakA.Bytes.ToArray()).PushData(0).PushData(0).Op(Instruction.LOG1).Done;
+        Transaction[] deploys = new Transaction[2];
+        for (int i = 0; i < deploys.Length; i++)
+        {
+            deploys[i] = Build.A.Transaction.WithCode(logInInitCode).WithTo(null).WithNonce((ulong)i).WithGasLimit(1_000_000)
+                .SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        }
+        Block block = await chain.AddBlock(deploys);
+        Assert.That(chain.ReceiptStorage.Get(block).Sum(static r => r.Logs!.Length), Is.EqualTo(deploys.Length),
+            "precondition: every transaction must log");
+        return block;
+    }
+
+    private static void ReplayInTraceEnvironment(BasicTestBlockchain chain, BlockHeader parent, Block block, IBlockTracer tracer)
+    {
+        using ParallelBlockTracer.OwnedEnvironment environment = BuildParallelEnvironment(chain);
+        using Scope<ParallelBlockTracer.Components> scope = environment.BuildAndOverride(parent);
+        scope.Component.Processor.Process(block, TraceProcessingOptions.ReadOnlyReplay, tracer, CancellationToken.None);
+    }
+
+    [Test]
     public async Task Eip7668_ProducedBlock_HasZeroLengthBloomsAndLogsStayFindable([Values] bool eip7668)
     {
         IReleaseSpec spec = eip7668 ? new OverridableReleaseSpec(Bogota.Instance) { IsEip7668Enabled = true } : Bogota.Instance;
@@ -819,22 +894,37 @@ public partial class BlockProcessorTests
         using SnapshotableMemColumnsDb<FlatHistoryColumns> columns = new();
         TransactionChangesetIndex index = new(columns, new FlatDbConfig { HistoryTransactionIndexEnabled = true }, new TestSpecProvider(spec));
         ChangesetPrefixStateSeedSource seeds = new(index);
-        using BasicTestBlockchain chain = await CreatePrefixReplayChain(spec, seeds);
+        // CALLVALUE, PUSH1 1, SSTORE: every transfer writes the value it carries to slot 1 of the recipient.
+        byte[] storeValue = [0x34, 0x60, 0x01, 0x55];
+        using BasicTestBlockchain chain = await CreatePrefixReplayChain(spec, seeds, builder => builder.WithGenesisPostProcessor((_, state) =>
+        {
+            foreach (Address recipient in (ReadOnlySpan<Address>)[TestItem.AddressC, TestItem.AddressE])
+            {
+                state.CreateAccount(recipient, 0);
+                state.InsertCode(recipient, storeValue, spec);
+            }
+        }));
         GethTraceOptions traceOptions = new() { Tracer = "prestateTracer" };
         using ParallelTraceBudget budget = new(2);
         using ParallelBlockTracer parallel = new(() => BuildParallelEnvironment(chain), seeds, Budgets(chain, budget), LimboLogs.Instance);
 
-        // The beneficiary takes the reward after the transactions, so the rows never describe it; it is also what
-        // every block's transactions pay here, which is the shape the chain has to refuse: the first block holds a
-        // balance the second has since changed.
         BlockHeader first = chain.BlockTree.Head!.Header;
-        Block one = await AddThreeTransferBlock(chain, TestItem.AddressC);
+        Block one = await AddThreeTransferBlock(chain, TestItem.AddressE);
         BlockHeader second = chain.BlockTree.Head!.Header;
-        // The withdrawal credits an address the first block's transactions wrote, and only the second block refuses
-        // it: the first block's node holds the balance the withdrawal has since changed.
+        // The withdrawal credits the recipient of the block's transactions after them, so the chain refuses it.
         Block two = await AddBlockWithWithdrawal(chain, new Withdrawal { Address = TestItem.AddressC, Index = 1, ValidatorIndex = 1, AmountInGwei = 7 }, 3);
         BlockHeader third = chain.BlockTree.Head!.Header;
-        Block three = await AddThreeTransferBlock(chain, TestItem.AddressC, 6);
+        // The first transaction runs on the parent state alone; only the ones after it are seeded, so the second one
+        // is the first to read slot 1 of E, which only the first block wrote, through the chain.
+        Address[] recipients = [TestItem.AddressC, TestItem.AddressE, TestItem.AddressE];
+        Transaction[] transfers = new Transaction[recipients.Length];
+        for (int i = 0; i < transfers.Length; i++)
+        {
+            transfers[i] = Build.A.Transaction.WithTo(recipients[i]).WithNonce(6 + (ulong)i)
+                .WithValue((UInt256)(i + 1)).WithGasLimit(100_000).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        }
+        Block three = await chain.AddBlock(transfers);
+        Assert.That(three.Transactions, Has.Length.EqualTo(3), "precondition: the block must contain the complete test sequence");
         // The test chain seals with a difficulty of one; mark the blocks the way the merge recovery step marks a
         // block it processes, which is what makes them proof of stake in memory. A block read back from the store
         // carries zero difficulty instead, which CoveredBlockTests covers.
@@ -846,14 +936,11 @@ public partial class BlockProcessorTests
         TraceInParallel(parallel, chain, first, one, traceOptions);
         TraceInParallel(parallel, chain, second, two, traceOptions);
 
-        // At the first transaction the block's own prefix is empty, so whatever answers here came from the blocks
-        // before it: an address they only wrote in a transaction must be answered, and the one a withdrawal credited
-        // after the transactions must not, even though an earlier block of the chain does hold it.
         Assert.That(seeds.TryOpenBlock(three, out ICoveredBlock? covered), Is.True);
         StateReadOverlaySlot slot = new();
         Assert.That(covered!.CreateWorkerSeeds().TrySeed(three, 0, slot), Is.True);
-        bool chained = slot.ParentState!.TryGetAccount(TestItem.AddressB, null, out _);
-        bool withdrawalRecipientRefused = !slot.ParentState.TryGetAccount(TestItem.AddressC, null, out _);
+        bool chained = slot.ParentState!.TryGetStorage(TestItem.AddressE, 1, out UInt256 chainedSlot);
+        bool withdrawalRecipientRefused = !slot.ParentState.TryGetStorage(TestItem.AddressC, 1, out _);
         covered.Dispose();
 
         string expected = chain.JsonSerializer.Serialize(new GethLikeTxTraceCollection(TraceWholeBlockThroughTraceEnvironment(chain, third, three,
@@ -862,8 +949,8 @@ public partial class BlockProcessorTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(chained, Is.True, "precondition: the sender, whose nonce every earlier block wrote, is read through the chain, or the test proves nothing");
-            Assert.That(withdrawalRecipientRefused, Is.True, "an address one block wrote after its transactions is refused by the whole chain, including by the older node that still holds it");
+            Assert.That(chained && chainedSlot == 3, Is.True, "precondition: the slot the first block's last transfer wrote is read through the chain, or the test proves nothing");
+            Assert.That(withdrawalRecipientRefused, Is.True, "an address one block wrote after its transactions is refused by the whole chain");
             Assert.That(actual, Is.EqualTo(expected), "the prestate of a block read through a chain of earlier blocks is the prestate the replay reports");
         }
     }
@@ -1285,6 +1372,25 @@ public partial class BlockProcessorTests
         executed = recording.Started;
         using GethLikeTxTraceCollection result = new(tracer.BuildResult());
         return chain.JsonSerializer.Serialize(result);
+    }
+
+    private sealed class BalApplyRecordingState(IWorldState state, Action afterApply) : WorldStateDecorator(state), IWorldState
+    {
+        public int Applied { get; private set; }
+        public int RootRecalculations { get; private set; }
+
+        void IWorldState.ApplyBal(ReadOnlyBlockAccessList bal)
+        {
+            ApplyBal(bal);
+            Applied++;
+            afterApply();
+        }
+
+        public override void RecalculateStateRoot()
+        {
+            RootRecalculations++;
+            base.RecalculateStateRoot();
+        }
     }
 
     private sealed class OverlayRefusingState(IWorldState state) : WorldStateDecorator(state)
@@ -2104,12 +2210,13 @@ public partial class BlockProcessorTests
     }
 
     [Test]
-    public void ProcessOne_wraps_only_parallel_bal_failure_for_sequential_retry([Values] bool balFailure)
+    public void ProcessOne_rejects_parallel_failure_without_sequential_retry([Values] bool balFailure)
     {
         IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
         ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
         IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor = Substitute.For<IBlockProcessor.IBlockTransactionsExecutor>();
         IBlockAccessListManager balManager = new ParallelTestBlockAccessListManager(Substitute.For<ITransactionProcessorAdapter>());
+        TestLogger logger = new();
         BlockProcessor processor = new(
             HoodiSpecProvider.Instance,
             TestBlockValidator.AlwaysValid,
@@ -2119,14 +2226,14 @@ public partial class BlockProcessorTests
             NullReceiptStorage.Instance,
             new BeaconBlockRootHandler(transactionProcessor, stateProvider),
             Substitute.For<IBlockhashStore>(),
-            LimboLogs.Instance,
+            new OneLoggerLogManager(new(logger)),
             new WithdrawalProcessor(stateProvider, LimboLogs.Instance),
             new ExecutionRequestsProcessor(transactionProcessor),
             balManager);
 
         Block block = Build.A.Block.WithHeader(Build.A.BlockHeader.WithAuthor(TestItem.AddressD).TestObject).TestObject;
-        // A plain tx failure reproduces sequentially whenever the BAL is right, and a wrong BAL fails the hash
-        // check anyway, so only a BAL failure is worth a sequential retry.
+        // The BAL is bound to the block hash, so a BAL failure makes the block invalid just as a tx failure does;
+        // re-executing it sequentially would only double the cost of rejecting it.
         InvalidBlockException failure = balFailure
             ? new BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException(block.Header, "invalid BAL")
             : new InvalidTransactionException(block.Header, "invalid tx", TransactionResult.ErrorType.MalformedTransaction);
@@ -2139,21 +2246,18 @@ public partial class BlockProcessorTests
             .Returns(_ => throw parallelFailure);
 
         using IDisposable scope = stateProvider.BeginScope(null);
+        long rejectionsBefore = Interlocked.Read(ref Metrics.ParallelBlockAccessListRejections);
 
         InvalidBlockException? exception = Assert.Catch<InvalidBlockException>(
             () => processor.ProcessOne(block, ProcessingOptions.NoValidation, NullBlockTracer.Instance, HoodiSpecProvider.Instance.GetSpec(block.Header), CancellationToken.None));
 
-        if (balFailure)
-        {
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(exception, Is.TypeOf<BlockProcessor.BlockAccessListSequentialRetryException>());
-                Assert.That(exception!.InnerException, Is.SameAs(failure));
-            }
-        }
-        else
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(exception, Is.SameAs(parallelFailure));
+            Assert.That(logger.LogList, Has.Exactly(balFailure ? 1 : 0).Contains("for its block access list"),
+                "a parallel BAL rejection has no sequential fallback, so it must be visible");
+            // The metric is process-wide and other tests may bump it concurrently, so only growth is asserted.
+            if (balFailure) Assert.That(Interlocked.Read(ref Metrics.ParallelBlockAccessListRejections), Is.GreaterThan(rejectionsBefore));
         }
     }
 
@@ -2882,30 +2986,31 @@ public partial class BlockProcessorTests
     }
 
     [Test]
-    public void Registered_parallel_and_fallback_validation_publish_only_accepted_canonical_receipt_events(
-        [Values] bool retry,
+    public void Registered_parallel_validation_publishes_only_accepted_canonical_receipt_events(
+        [Values] bool balFailure,
         [Values] bool validationSucceeds,
         [Values] bool eip8116)
     {
-        CanonicalReceiptEventSetup setup = BuildCanonicalReceiptEventSetup(retry, validationSucceeds, eip8116);
+        CanonicalReceiptEventSetup setup = BuildCanonicalReceiptEventSetup(balFailure, validationSucceeds, eip8116);
         using IContainer container = setup.Container;
+        bool accepted = validationSucceeds && !balFailure;
 
-        if (validationSucceeds)
+        if (accepted)
         {
             setup.BranchProcessor.Process(setup.Parent, [setup.Block], ProcessingOptions.None, NullBlockTracer.Instance);
         }
         else
         {
-            Assert.Throws<InvalidBlockException>(() =>
+            Assert.Catch<InvalidBlockException>(() =>
                 setup.BranchProcessor.Process(setup.Parent, [setup.Block], ProcessingOptions.None, NullBlockTracer.Instance));
         }
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(setup.BalManager.ProcessingAttempts, Is.EqualTo(retry ? 2 : 1));
+            Assert.That(setup.BalManager.ProcessingAttempts, Is.EqualTo(1), "an invalid block access list must not be re-executed sequentially");
             Assert.That(
                 setup.Handler.Events,
-                validationSucceeds ? Is.EqualTo(eip8116 ? Eip8116ReceiptEvents : CanonicalReceiptEvents) : Is.Empty,
+                accepted ? Is.EqualTo(eip8116 ? Eip8116ReceiptEvents : CanonicalReceiptEvents) : Is.Empty,
                 "only an accepted processing attempt may publish callbacks");
         }
     }
@@ -2913,7 +3018,7 @@ public partial class BlockProcessorTests
     [Test]
     public void Rejected_block_releases_the_transaction_events_it_staged()
     {
-        CanonicalReceiptEventSetup setup = BuildCanonicalReceiptEventSetup(retry: false, validationSucceeds: false);
+        CanonicalReceiptEventSetup setup = BuildCanonicalReceiptEventSetup(balFailure: false, validationSucceeds: false);
         using IContainer container = setup.Container;
 
         Assert.Throws<InvalidBlockException>(() =>
@@ -3444,7 +3549,7 @@ public partial class BlockProcessorTests
 
         using (Assert.EnterMultipleScope())
         {
-            // The worker's own failure surfaces, so a BAL failure still reaches the sequential retry.
+            // The worker's own failure surfaces, so a BAL failure is rejected as itself.
             Assert.That(ex, Is.InstanceOf<BlockAccessListManager.ParallelExecutionException>());
             Assert.That(Volatile.Read(ref leadExecuted), Is.False);
             if (balFailure)
@@ -3459,6 +3564,83 @@ public partial class BlockProcessorTests
             }
             Assert.That(transactionProcessor.ExecutedCount, Is.AtMost(lead + 1 + 2 * Environment.ProcessorCount));
         }
+    }
+
+    public enum BalRejectionCause { None, TxFailure, ValidatorFailure, GasLimit }
+    public enum BalRejectionPoint { DuringWarmup, DuringApply }
+
+    [Test]
+    public void Parallel_validation_stops_applying_the_bal_once_the_block_is_rejected(
+        [Values] BalRejectionCause cause,
+        [Values] BalRejectionPoint rejectedAt)
+    {
+        Assume.That(Environment.ProcessorCount, Is.GreaterThan(1));
+
+        bool rejected = cause != BalRejectionCause.None;
+        BlockProcessor.ParallelBlockValidationTransactionsExecutor? executor = null;
+        // Set only once every slot is filled, by which point the workers have recorded any failure or gas overrun.
+        using ManualResetEventSlim slotsFilled = new();
+        void HoldUntilRejected(BalRejectionPoint point)
+        {
+            if (!rejected || rejectedAt != point) return;
+            // The executor sees a validator failure only once the exception has left the validator.
+            if (cause == BalRejectionCause.ValidatorFailure) SpinWait.SpinUntil(() => HasValidationFailed(executor!), TimeSpan.FromSeconds(10));
+            else slotsFilled.Wait(TimeSpan.FromSeconds(10));
+        }
+
+        void RejectOnceAllSlotsAreFilled(Block b, GasValidationResultSlot[] gasResults)
+        {
+            for (int i = 0; i < b.Transactions.Length; i++) gasResults[i].GetResult();
+            slotsFilled.Set();
+            throw new InvalidBlockException(b, "invalid block access list");
+        }
+
+        // Two txs of 1.5M gas exceed the 2M block gas limit only once both have run.
+        Block block = BuildParallelValidationBlock(2);
+        IWorldState worldState = TestWorldStateFactory.CreateForTest();
+        using IDisposable scope = worldState.BeginScope(IWorldState.PreGenesis);
+        // Holds the txs until iteration 0 is past its pre-apply checks, so it cannot skip the apply early.
+        using ManualResetEventSlim applying = new();
+        BalApplyRecordingState stateProvider = new(worldState, () =>
+        {
+            applying.Set();
+            HoldUntilRejected(BalRejectionPoint.DuringApply);
+        });
+        using ManualResetEventSlim validationFinished = new(true);
+        GatedTailTransactionProcessorAdapter transactionProcessor = new(int.MaxValue, cause == BalRejectionCause.GasLimit ? 1_500_000ul : 21_000ul, validationFinished, outcome: _ =>
+        {
+            if (rejectedAt == BalRejectionPoint.DuringApply) applying.Wait(TimeSpan.FromSeconds(10));
+            return cause == BalRejectionCause.TxFailure ? TransactionResult.ErrorType.MalformedTransaction.WithDetail("rejected") : TransactionResult.Ok;
+        });
+        ParallelTestBlockAccessListManager balManager = new(transactionProcessor)
+        {
+            BalWarmupAction = () => HoldUntilRejected(BalRejectionPoint.DuringWarmup),
+            IncrementalValidationAction = rejected ? RejectOnceAllSlotsAreFilled : null,
+        };
+        executor = new(
+            Substitute.For<IBlockProcessor.IBlockTransactionsExecutor>(),
+            stateProvider,
+            new TestSingleReleaseSpecProvider(Amsterdam.Instance),
+            balManager,
+            LimboLogs.Instance);
+
+        void Process() => executor.ProcessTransactions(block, ProcessingOptions.None, new BlockReceiptsTracer(), CancellationToken.None);
+        if (rejected) Assert.That(Process, Throws.InstanceOf<InvalidBlockException>());
+        else Assert.That(Process, Throws.Nothing);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(stateProvider.Applied, Is.EqualTo(rejected && rejectedAt == BalRejectionPoint.DuringWarmup ? 0 : 1), "BAL applications");
+            Assert.That(stateProvider.RootRecalculations, Is.EqualTo(rejected ? 0 : 1), "state root recalculations");
+        }
+    }
+
+    private static bool HasValidationFailed(BlockProcessor.ParallelBlockValidationTransactionsExecutor executor)
+    {
+        object? validation = typeof(BlockProcessor.ParallelBlockValidationTransactionsExecutor)
+            .GetField("_incrementalValidationWorkItem", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .GetValue(executor);
+        return validation is not null && (bool)validation.GetType().GetProperty("HasFailed")!.GetValue(validation)!;
     }
 
     /// <summary>Runs the canonical prefix, a 21k-gas tx scheduled last to hold the in-order validator, then a
@@ -3578,7 +3760,7 @@ public partial class BlockProcessorTests
     }
 
     /// <summary>Mirrors <see cref="BlockAccessListManager.IncrementalValidation"/>'s ordering and its
-    /// running EIP-8037 header gas, so tests can exercise the staging and retry wiring without the real
+    /// running EIP-8037 header gas, so tests can exercise the staging wiring without the real
     /// manager. Receipt index and cumulative receipt gas are deliberately left to the executor under
     /// test; <see cref="IncrementalValidation_publishes_canonical_receipt_metadata"/> is what covers the
     /// real manager's own metadata contract.</summary>
@@ -3714,9 +3896,9 @@ public partial class BlockProcessorTests
         IContainer Container);
 
     /// <summary>Wires the registered parallel decorator over a real <see cref="BlockProcessor"/> and
-    /// <see cref="BranchProcessor"/> so a test can drive whole processing attempts — including the BAL
-    /// sequential retry — against a recording transaction-processed handler.</summary>
-    private static CanonicalReceiptEventSetup BuildCanonicalReceiptEventSetup(bool retry, bool validationSucceeds, bool eip8116 = false)
+    /// <see cref="BranchProcessor"/> so a test can drive whole processing attempts — including a BAL
+    /// failure — against a recording transaction-processed handler.</summary>
+    private static CanonicalReceiptEventSetup BuildCanonicalReceiptEventSetup(bool balFailure, bool validationSucceeds, bool eip8116 = false)
     {
         GasConsumed[] gasConsumed = CanonicalReceiptGasConsumed();
         Block block = BuildParallelValidationBlock(gasConsumed.Length);
@@ -3736,7 +3918,7 @@ public partial class BlockProcessorTests
         ReceiptMetadataTransactionProcessorAdapter transactionProcessorAdapter = new(gasConsumed);
         ParallelTestBlockAccessListManager balManager = new(transactionProcessorAdapter)
         {
-            FailFirstSetBlockAccessList = retry,
+            FailFirstSetBlockAccessList = balFailure,
         };
         IContainer container = new ContainerBuilder()
             .AddSingleton<IWorldState>(stateProvider)
@@ -4015,6 +4197,7 @@ public partial class BlockProcessorTests
         }
 
         public Action<Block, GasValidationResultSlot[]>? IncrementalValidationAction { get; init; }
+        public Action? BalWarmupAction { get; init; }
         public bool FailFirstSetBlockAccessList { get; init; }
         public int ProcessingAttempts { get; private set; }
 
@@ -4030,9 +4213,7 @@ public partial class BlockProcessorTests
             ParallelExecutionEnabled = !options.ContainsFlag(ProcessingOptions.ForceSequentialBlockAccessList);
         }
 
-        public void WaitForBalWarmup()
-        {
-        }
+        public void WaitForBalWarmup() => BalWarmupAction?.Invoke();
 
         public void Setup(Block block)
         {
@@ -4075,7 +4256,7 @@ public partial class BlockProcessorTests
         {
             if (FailFirstSetBlockAccessList && ProcessingAttempts == 1)
             {
-                throw new BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException(block.Header, "retry after transaction validation");
+                throw new BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException(block.Header, "invalid BAL after transaction validation");
             }
         }
 
@@ -4262,7 +4443,7 @@ public partial class BlockProcessorTests
                     new(suggestedBlock.Header, "invalid BAL");
                 if (retryable)
                 {
-                    throw new BlockProcessor.BlockAccessListSequentialRetryException(failure);
+                    throw new BlockProcessor.BlockAccessListSequentialRetryException(failure.InvalidBlock, failure.Message, failure);
                 }
 
                 throw failure;
