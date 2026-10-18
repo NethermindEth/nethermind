@@ -342,7 +342,7 @@ namespace Nethermind.Trie
             try
             {
                 int nibblesCount = 2 * rawKey.Length;
-                Span<byte> nibbles = (rawKey.Length <= MaxKeyStackAlloc
+                Span<byte> nibbles = (nibblesCount <= MaxKeyStackAlloc
                         ? stackalloc byte[MaxKeyStackAlloc]
                         : array = ArrayPool<byte>.Shared.Rent(nibblesCount))
                     [..nibblesCount]; // Slice to exact size;
@@ -387,7 +387,7 @@ namespace Nethermind.Trie
             try
             {
                 int nibblesCount = 2 * rawKey.Length;
-                Span<byte> nibbles = (rawKey.Length <= MaxKeyStackAlloc
+                Span<byte> nibbles = (nibblesCount <= MaxKeyStackAlloc
                         ? stackalloc byte[MaxKeyStackAlloc]
                         : array = ArrayPool<byte>.Shared.Rent(nibblesCount))
                     [..nibblesCount]; // Slice to exact size;
@@ -527,7 +527,7 @@ namespace Nethermind.Trie
             try
             {
                 int nibblesCount = 2 * rawKey.Length;
-                Span<byte> nibbles = (rawKey.Length <= MaxKeyStackAlloc
+                Span<byte> nibbles = (nibblesCount <= MaxKeyStackAlloc
                         ? stackalloc byte[MaxKeyStackAlloc] // Fixed size stack allocation
                         : array = ArrayPool<byte>.Shared.Rent(nibblesCount))
                     [..nibblesCount]; // Slice to exact size
