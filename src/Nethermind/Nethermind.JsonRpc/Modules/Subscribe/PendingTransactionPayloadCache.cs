@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Runtime.CompilerServices;
 using System.Threading;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Serialization.Json;
@@ -16,9 +16,10 @@ namespace Nethermind.JsonRpc.Modules.Subscribe;
 /// transactions, instead of building and serializing it once per subscriber.
 /// </summary>
 /// <remarks>
-/// Subscribers drain their queues at their own pace, so the most recent transactions are kept in a small table.
-/// A subscriber far enough behind for its slot to be reused serializes the transaction itself. The table is cleared
-/// when the last subscriber that reads it leaves, so it does not keep transactions the pool has dropped.
+/// Subscribers drain their queues at their own pace, so the most recent transactions are kept in a small table keyed
+/// by hash. A subscriber far enough behind for its slot to be reused serializes the transaction itself. Entries hold
+/// only the hash and the JSON, never the transaction, so blob sidecars are not kept alive. The table is used only
+/// while a subscriber that reads it exists, and is cleared when the last one leaves.
 /// </remarks>
 internal sealed class PendingTransactionPayloadCache(ISpecProvider specProvider)
 {
@@ -35,18 +36,21 @@ internal sealed class PendingTransactionPayloadCache(ISpecProvider specProvider)
 
     public SerializedJson Get(Transaction transaction)
     {
-        // By reference: entries match by reference too, and a pending transaction may not have its hash yet.
-        ref Entry? slot = ref _entries[RuntimeHelpers.GetHashCode(transaction) & (Size - 1)];
-        Entry? entry = Volatile.Read(ref slot);
-        if (entry is null || !ReferenceEquals(entry.Transaction, transaction))
-        {
-            TransactionForRpc payload = TransactionForRpc.FromTransaction(transaction, new(specProvider.ChainId));
-            entry = new Entry(transaction, new SerializedJson(JsonRpcResponseWriter.SerializePayload(payload, EthereumJsonSerializer.JsonOptions)));
-            Volatile.Write(ref slot, entry);
-        }
+        Hash256? hash = transaction.Hash;
+        if (hash is null) return Serialize(transaction);
 
-        return entry.Json;
+        ref Entry? slot = ref _entries[hash.GetHashCode() & (Size - 1)];
+        Entry? entry = Volatile.Read(ref slot);
+        if (entry is not null && entry.Hash == hash) return entry.Json;
+
+        SerializedJson json = Serialize(transaction);
+        // A queue still draining after its subscriber left must not refill a table nobody clears.
+        if (Volatile.Read(ref _subscribers) > 0) Volatile.Write(ref slot, new Entry(hash, json));
+        return json;
     }
 
-    private sealed record Entry(Transaction Transaction, SerializedJson Json);
+    private SerializedJson Serialize(Transaction transaction) =>
+        new(JsonRpcResponseWriter.SerializePayload(TransactionForRpc.FromTransaction(transaction, new(specProvider.ChainId)), EthereumJsonSerializer.JsonOptions));
+
+    private sealed record Entry(Hash256 Hash, SerializedJson Json);
 }

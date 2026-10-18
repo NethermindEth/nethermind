@@ -17,9 +17,10 @@ public class PendingTransactionPayloadCacheTests
 {
     [TestCase(true, TestName = "WithHash")]
     [TestCase(false, TestName = "WithoutHash")]
-    public void Get_ForTheSameTransaction_SerializesItOnce(bool withHash)
+    public void Get_ForTheSameTransaction_SerializesItOnceWhenItHasAHash(bool withHash)
     {
         PendingTransactionPayloadCache payloads = new(MainnetSpecProvider.Instance);
+        payloads.AddSubscriber();
         Transaction transaction = Build.A.Transaction.SignedAndResolved().TestObject;
         if (!withHash) transaction.Hash = null;
 
@@ -28,7 +29,8 @@ public class PendingTransactionPayloadCacheTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(second.Utf8Json, Is.SameAs(first.Utf8Json), "every subscriber must share one serialized transaction");
+            Assert.That(ReferenceEquals(second.Utf8Json, first.Utf8Json), Is.EqualTo(withHash), "subscribers share one serialized transaction; a transaction without a hash is not kept");
+            Assert.That(second.Utf8Json, Is.EqualTo(first.Utf8Json));
             Assert.That(Encoding.UTF8.GetString(first.Utf8Json), Is.EqualTo(new EthereumJsonSerializer().Serialize(
                 TransactionForRpc.FromTransaction(transaction, new(MainnetSpecProvider.Instance.ChainId)))), "the shared payload is what a subscriber serialized on its own");
         }
@@ -38,6 +40,7 @@ public class PendingTransactionPayloadCacheTests
     public void Get_ForAnotherTransaction_SerializesItsOwnPayload()
     {
         PendingTransactionPayloadCache payloads = new(MainnetSpecProvider.Instance);
+        payloads.AddSubscriber();
         Transaction first = Build.A.Transaction.WithNonce(0).SignedAndResolved().TestObject;
         Transaction second = Build.A.Transaction.WithNonce(1).SignedAndResolved().TestObject;
 
@@ -61,5 +64,16 @@ public class PendingTransactionPayloadCacheTests
         payloads.RemoveSubscriber();
         payloads.AddSubscriber();
         Assert.That(payloads.Get(transaction).Utf8Json, Is.Not.SameAs(first.Utf8Json), "the last subscriber leaving cleared the table");
+    }
+
+    [Test]
+    public void Get_WithoutSubscribers_DoesNotKeepThePayload()
+    {
+        PendingTransactionPayloadCache payloads = new(MainnetSpecProvider.Instance);
+        Transaction transaction = Build.A.Transaction.SignedAndResolved().TestObject;
+
+        SerializedJson first = payloads.Get(transaction);
+
+        Assert.That(payloads.Get(transaction).Utf8Json, Is.Not.SameAs(first.Utf8Json), "a queue draining after its last subscriber left must not refill the table");
     }
 }
