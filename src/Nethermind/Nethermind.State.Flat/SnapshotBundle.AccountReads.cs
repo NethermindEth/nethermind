@@ -8,6 +8,22 @@ namespace Nethermind.State.Flat;
 
 public sealed partial class SnapshotBundle
 {
+    internal bool TryGetCachedAccount(Address address, out Account? account)
+    {
+        GuardDispose();
+        HashedKey<Address> key = new(address);
+        if (_changedAccounts.TryGetValue(key, out account) || _readAccounts.TryGetValue(key, out account)) return true;
+        for (int i = _snapshots.Count - 1; i >= 0; i--)
+        {
+            if (!_snapshots[i].TryGetAccount(key, out account)) continue;
+            PromoteAccount(key, account);
+            return true;
+        }
+        if (!_readOnlySnapshotBundle.TryGetCachedAccount(address, key, out account)) return false;
+        PromoteAccount(key, account);
+        return true;
+    }
+
     internal void GetAccounts(ReadOnlySpan<Address> addresses, Span<Account?> accounts)
     {
         GuardDispose();

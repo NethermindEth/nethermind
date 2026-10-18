@@ -38,6 +38,21 @@ namespace Nethermind.State.Flat.Test;
 public class FlatWorldStateScopeProviderTests
 {
     [Test]
+    public void TryGetCachedAccount_WithTrieVerification_DoesNotBypassVerification([Values] bool verifyWithTrie, [Values] bool missing)
+    {
+        using TestContext context = new(config: new FlatDbConfig { VerifyWithTrie = verifyWithTrie });
+        FlatWorldStateScope scope = context.Scope;
+        Account? expected = missing ? null : new Account(31, 47);
+        scope.HintGet(TestItem.AddressA, expected);
+
+        bool found = ((IAccountBatchReader)scope).TryGetCachedAccount(TestItem.AddressA, out Account? actual);
+
+        Assert.That(found, Is.EqualTo(!verifyWithTrie));
+        if (found) Assert.That(actual, Is.EqualTo(expected));
+        context.PersistenceReader.DidNotReceive().GetAccount(Arg.Any<Address>());
+    }
+
+    [Test]
     public void TryBeginScope_ReturnsFalseWhenStateIsRemovedAfterAdvisoryCheck()
     {
         bool stateAvailable = true;

@@ -248,6 +248,17 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
         private readonly bool _recordDetailedMetrics = Db.Metrics.DetailedMetricsEnabled;
         private int _disposed;
 
+        public bool TryGetCachedAccount(Address address, out Account? account)
+        {
+            if (parent.IsCurrent(generation) && parent._accounts.TryGetValue(address, out account) && parent.IsCurrent(generation))
+            {
+                if (_recordDetailedMetrics) Metrics.IncrementCarryForwardAccountHits();
+                return true;
+            }
+            account = null;
+            return false;
+        }
+
         public void GetAccounts(ReadOnlySpan<Address> addresses, Span<Account?> accounts)
         {
             ArgumentOutOfRangeException.ThrowIfNotEqual(accounts.Length, addresses.Length, nameof(accounts));

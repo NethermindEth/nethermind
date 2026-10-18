@@ -50,7 +50,7 @@ namespace Nethermind.Consensus.Test;
 public class BlockCachePreWarmerTests
 {
     [Test]
-    public void WarmupTransactionAccounts_WithoutBal_UsesBoundedBatchesAndIncludesInclusionList([Values(1, 17, 80)] int count)
+    public void WarmupTransactionAccounts_WithoutBal_UsesBoundedBatchesAndIncludesInclusionList([Values(1, 3, 4, 17, 32, 33, 80)] int count)
     {
         Transaction[] transactions = new Transaction[count];
         List<Address> expected = [];
@@ -63,7 +63,9 @@ public class BlockCachePreWarmerTests
         }
         Block block = Build.A.Block.WithTransactions(transactions[..(count / 2)]).TestObject;
         block.InclusionListTransactions = transactions[(count / 2)..];
-        RecordingAccountPrewarmer warmer = new(Substitute.For<IWorldState>());
+        IWorldState state = Substitute.For<IWorldState>();
+        RecordingAccountPrewarmer warmer = new(state);
+        state.When(value => value.WarmUp(Arg.Any<Address>())).Do(call => warmer.Addresses.Add(call.Arg<Address>()));
 
         BlockCachePreWarmer.AddressWarmer.WarmupTransactionAccounts(block, 0, count, warmer, CancellationToken.None);
 
@@ -71,6 +73,8 @@ public class BlockCachePreWarmerTests
         {
             Assert.That(warmer.Addresses, Is.EqualTo(expected), "ordinary and inclusion-list sender/recipient order must be preserved");
             Assert.That(warmer.LargestBatch, Is.LessThanOrEqualTo(64), "temporary batches must remain bounded");
+            if (count < 4) Assert.That(warmer.LargestBatch, Is.Zero);
+            else Assert.That(warmer.LargestBatch, Is.GreaterThan(0));
         }
     }
 

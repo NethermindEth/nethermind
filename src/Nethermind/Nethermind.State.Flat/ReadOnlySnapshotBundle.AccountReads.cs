@@ -12,6 +12,33 @@ namespace Nethermind.State.Flat;
 public sealed partial class ReadOnlySnapshotBundle
 {
     private static readonly StringLabel _readAccountPersistenceBatchLabel = new("account_persistence_batch");
+    internal bool TryGetCachedAccount(Address address, HashedKey<Address> key, out Account? account)
+    {
+        GuardDispose();
+        long start = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
+        for (int i = snapshots.Count - 1; i >= 0; i--)
+        {
+            if (!snapshots[i].TryGetAccount(key, out account)) continue;
+            if (recordDetailedMetrics)
+                Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - start, _readAccountSnapshotLabel);
+            return true;
+        }
+        if (_persistedSnapshotCount > 0 && persistedSnapshots.TryGetAccount(address, out account)) return true;
+        if (persistenceReader is IAccountBatchReader batch)
+        {
+            start = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
+            if (batch.TryGetCachedAccount(address, out account))
+            {
+                if (recordDetailedMetrics)
+                    Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - start,
+                        account is null ? _readAccountPersistenceNullLabel : _readAccountPersistenceLabel);
+                return true;
+            }
+        }
+        account = null;
+        return false;
+    }
+
     internal void GetAccounts(ReadOnlySpan<Address> addresses, Span<Account?> accounts) => GetAccounts(addresses, default, accounts);
 
     internal void GetAccounts(ReadOnlySpan<Address> addresses, ReadOnlySpan<HashedKey<Address>> keys, Span<Account?> accounts)

@@ -38,6 +38,13 @@ public class RefCountingPersistenceReader : RefCountingDisposable, IPersistence.
     public Account? GetAccount(Address address) =>
         _innerReader.GetAccount(address);
 
+    bool IAccountBatchReader.TryGetCachedAccount(Address address, out Account? account)
+    {
+        if (_innerReader is IAccountBatchReader batch) return batch.TryGetCachedAccount(address, out account);
+        account = null;
+        return false;
+    }
+
     void IAccountBatchReader.GetAccounts(ReadOnlySpan<Address> addresses, Span<Account?> accounts) =>
         _innerReader.ReadAccounts(addresses, accounts);
 

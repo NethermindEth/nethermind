@@ -1846,34 +1846,46 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
             return i < txs.Length ? txs[i] : block.InclusionListTransactions![i - txs.Length];
         }
 
+        [InlineArray(64)]
+        private struct AccountAddressBuffer
+        {
+            private Address _element0;
+        }
+
         internal static void WarmupTransactionAccounts(Block block, int start, int end, IWorldState worldState,
             CancellationToken cancellationToken)
         {
-            if (worldState is not IAccountPrewarmer prewarmer)
+            if (end - start >= 4 && worldState is IAccountPrewarmer prewarmer)
             {
-                for (int i = start; i < end && !cancellationToken.IsCancellationRequested; i++)
-                {
-                    Transaction tx = TransactionAt(block, i);
-                    WarmupSender(tx.SenderAddress, tx.To, worldState);
-                }
+                WarmupAccountBatches(block, start, end, prewarmer, cancellationToken);
                 return;
             }
+            for (int i = start; i < end && !cancellationToken.IsCancellationRequested; i++)
+            {
+                Transaction tx = TransactionAt(block, i);
+                WarmupSender(tx.SenderAddress, tx.To, worldState);
+            }
+        }
 
-            const int batchSize = 64;
-            using ArrayPoolListRef<Address> addresses = new(batchSize);
+        private static void WarmupAccountBatches(Block block, int start, int end, IAccountPrewarmer prewarmer,
+            CancellationToken cancellationToken)
+        {
+            AccountAddressBuffer buffer = default;
+            Span<Address> addresses = buffer;
+            int count = 0;
             for (int i = start; i < end; i++)
             {
                 if (cancellationToken.IsCancellationRequested) return;
                 Transaction tx = TransactionAt(block, i);
-                if (tx.SenderAddress is { } sender) addresses.Add(sender);
-                if (tx.To is { } recipient) addresses.Add(recipient);
-                if (addresses.Count >= batchSize - 1)
+                if (tx.SenderAddress is { } sender) addresses[count++] = sender;
+                if (tx.To is { } recipient) addresses[count++] = recipient;
+                if (count >= addresses.Length - 1)
                 {
-                    prewarmer.WarmUpAccounts(addresses.AsSpan(), cancellationToken);
-                    addresses.Clear();
+                    prewarmer.WarmUpAccounts(addresses[..count], cancellationToken);
+                    count = 0;
                 }
             }
-            if (addresses.Count > 0) prewarmer.WarmUpAccounts(addresses.AsSpan(), cancellationToken);
+            if (count > 0) prewarmer.WarmUpAccounts(addresses[..count], cancellationToken);
         }
 
         /// <summary>Warms every system-contract hint.</summary>

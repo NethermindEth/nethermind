@@ -66,6 +66,13 @@ public class WorldStateMetricsScopeProvider(IWorldStateScopeProvider baseProvide
 
         public Account? Get(Address address) => baseScope.Get(address);
 
+        public bool TryGetCachedAccount(Address address, out Account? account)
+        {
+            if (baseScope is IAccountBatchReader batch) return batch.TryGetCachedAccount(address, out account);
+            account = null;
+            return false;
+        }
+
         public void GetAccounts(ReadOnlySpan<Address> addresses, Span<Account?> accounts)
         {
             ArgumentOutOfRangeException.ThrowIfNotEqual(accounts.Length, addresses.Length, nameof(accounts));

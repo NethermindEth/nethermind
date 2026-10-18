@@ -975,17 +975,39 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         }
 
         using AccountReadBatch misses = new(addresses.Length);
-        foreach (Address address in addresses)
-        {
-            GetOrAddBlockChange(address, out bool exists);
-            if (exists) _metrics.IncrementStateTreeCacheHits();
-            else misses.Add(address);
-        }
-        if (misses.Count == 0) return;
-
-        using ArrayPoolListRef<Account?> accounts = new(misses.Count, misses.Count);
+        Address? pending = null;
         try
         {
+            foreach (Address address in addresses)
+            {
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    foreach (Address unresolved in misses.Addresses) _blockChanges.Remove(unresolved);
+                    return;
+                }
+                pending = address;
+                bool cached;
+                {
+                    ref ChangeTrace change = ref GetOrAddBlockChange(address, out bool exists);
+                    if (exists)
+                    {
+                        _metrics.IncrementStateTreeCacheHits();
+                        cached = true;
+                    }
+                    else if (batch.TryGetCachedAccount(address, out Account? account))
+                    {
+                        change = new(account, account);
+                        _metrics.IncrementStateTreeReads();
+                        cached = true;
+                    }
+                    else cached = false;
+                }
+                if (!cached) misses.Add(address);
+                pending = null;
+            }
+            if (misses.Count == 0) return;
+
+            using ArrayPoolListRef<Account?> accounts = new(misses.Count, misses.Count);
             if (misses.Count < AccountReadBatch.MinReadSize)
             {
                 for (int i = 0; i < misses.Count; i++) accounts[i] = Tree.Get(misses.Addresses[i]);
@@ -1001,11 +1023,13 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         catch (MissingTrieNodeException)
         {
             foreach (Address address in misses.Addresses) _blockChanges.Remove(address);
-            WarmUpAccountsIndividually(misses.Addresses, cancellationToken);
+            if (pending is not null) _blockChanges.Remove(pending);
+            WarmUpAccountsIndividually(addresses, cancellationToken);
         }
         catch
         {
             foreach (Address address in misses.Addresses) _blockChanges.Remove(address);
+            if (pending is not null) _blockChanges.Remove(pending);
             throw;
         }
     }

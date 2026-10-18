@@ -1975,6 +1975,11 @@ public class ScopeProviderTests(bool useFlat)
         AddressAsKey cachedNullKey = addresses[1];
         caches.StateCache.Set(in cachedKey, expected[0]);
         caches.StateCache.Set(in cachedNullKey, null);
+        IAccountBatchReader batch = (IAccountBatchReader)scope;
+        Assert.That(batch.TryGetCachedAccount(addresses[0], out Account cached), Is.True);
+        Assert.That(cached, Is.EqualTo(expected[0]));
+        Assert.That(batch.TryGetCachedAccount(addresses[1], out Account missing), Is.True);
+        Assert.That(missing, Is.Null);
         Account[] values = new Account[addresses.Length];
 
         ((IAccountBatchReader)scope).GetAccounts(addresses, values);

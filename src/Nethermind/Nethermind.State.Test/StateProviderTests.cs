@@ -1113,6 +1113,73 @@ public class CodeDbTests
 public class AccountBatchPrewarmingTests
 {
     [Test]
+    public void WarmUpAccounts_WithCachedRows_BatchesOnlyUnresolvedAccounts([Values(0, 12, 20)] int cachedCount)
+    {
+        Address[] addresses = TestItem.Addresses[..20];
+        AccountBatchScope scope = new();
+        for (int i = 0; i < cachedCount; i++)
+            scope.CachedAccounts[addresses[i]] = i % 3 == 0 ? null : new Account((ulong)(i + 11), (ulong)(i + 29));
+        StateProvider provider = new(LimboLogs.Instance, new LocalMetrics());
+        provider.SetScope(scope);
+
+        provider.WarmUpAccounts(addresses, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(scope.BatchReads, Is.EqualTo(cachedCount == addresses.Length ? 0 : 1));
+            Assert.That(scope.BatchAddresses, Is.EqualTo(addresses[cachedCount..]));
+            Assert.That(scope.ScalarReads, Is.Zero);
+        }
+        foreach (Address address in addresses)
+        {
+            Account? expected = scope.CachedAccounts.TryGetValue(address, out Account? cached)
+                ? cached : address == TestItem.AddressB ? null : scope.Account;
+            Assert.That(provider.GetPureRead(address), Is.EqualTo(expected));
+        }
+    }
+
+    [Test]
+    public void WarmUpAccounts_WhenCacheProbeFails_RemovesPendingAndQueuedPlaceholders([Values] bool missingTrie)
+    {
+        AccountBatchScope scope = new()
+        {
+            ProbeFailureAddress = TestItem.AddressC,
+            Failure = missingTrie
+                ? new MissingTrieNodeException("test cache probe", null, default, Keccak.Zero)
+                : new InvalidOperationException("test cache probe")
+        };
+        StateProvider provider = new(LimboLogs.Instance, new LocalMetrics());
+        provider.SetScope(scope);
+        Address[] addresses = [TestItem.AddressA, TestItem.AddressC, .. TestItem.Addresses[10..18]];
+
+        if (missingTrie) provider.WarmUpAccounts(addresses, CancellationToken.None);
+        else Assert.Throws<InvalidOperationException>(() => provider.WarmUpAccounts(addresses, CancellationToken.None));
+        if (missingTrie) Assert.That(scope.ScalarAddresses, Does.Contain(addresses[^1]));
+        scope.Failure = null;
+        scope.ProbeFailureAddress = null;
+
+        Assert.That(provider.GetPureRead(TestItem.AddressA), Is.EqualTo(scope.Account));
+        Assert.That(provider.GetPureRead(TestItem.AddressC), Is.EqualTo(scope.Account));
+    }
+
+    [Test]
+    public void WarmUpAccounts_WhenCancelledDuringGather_DoesNotLeaveUnresolvedAccountsCached()
+    {
+        using CancellationTokenSource cancellation = new();
+        AccountBatchScope scope = new() { OnProbe = _ => cancellation.Cancel() };
+        StateProvider provider = new(LimboLogs.Instance, new LocalMetrics());
+        provider.SetScope(scope);
+
+        provider.WarmUpAccounts([TestItem.AddressA, TestItem.AddressC, .. TestItem.Addresses[10..18]], cancellation.Token);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(scope.BatchReads + scope.ScalarReads, Is.Zero);
+            Assert.That(provider.GetPureRead(TestItem.AddressA), Is.EqualTo(scope.Account));
+        }
+    }
+
+    [Test]
     public void WarmUpAccounts_WithRepeatedAndMissingAccounts_ReadsEachMissOnce()
     {
         AccountBatchScope scope = new();
@@ -1171,10 +1238,21 @@ public class AccountBatchPrewarmingTests
         internal Account Account { get; } = new(7, 3);
         internal Exception? Failure { get; set; }
         internal int ScalarReads { get; private set; }
+        internal List<Address> ScalarAddresses { get; } = [];
         internal int BatchReads { get; private set; }
         internal Address[] BatchAddresses { get; private set; } = [];
+        internal Dictionary<Address, Account?> CachedAccounts { get; } = [];
+        internal Address? ProbeFailureAddress { get; set; }
+        internal Action<Address>? OnProbe { get; set; }
         public Hash256 RootHash => Keccak.EmptyTreeHash;
         public IWorldStateScopeProvider.ICodeDb CodeDb { get; } = Substitute.For<IWorldStateScopeProvider.ICodeDb>();
+
+        public bool TryGetCachedAccount(Address address, out Account? account)
+        {
+            OnProbe?.Invoke(address);
+            if (address == ProbeFailureAddress && Failure is not null) throw Failure;
+            return CachedAccounts.TryGetValue(address, out account);
+        }
 
         public void GetAccounts(ReadOnlySpan<Address> addresses, Span<Account?> accounts)
         {
@@ -1187,6 +1265,7 @@ public class AccountBatchPrewarmingTests
         public Account? Get(Address address)
         {
             ScalarReads++;
+            ScalarAddresses.Add(address);
             if (Failure is MissingTrieNodeException && address == TestItem.AddressA) throw Failure;
             return address == TestItem.AddressB ? null : Account;
         }

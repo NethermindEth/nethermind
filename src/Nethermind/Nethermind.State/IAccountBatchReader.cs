@@ -11,5 +11,11 @@ namespace Nethermind.State;
 
 internal interface IAccountBatchReader
 {
+    bool TryGetCachedAccount(Address address, out Account? account)
+    {
+        account = null;
+        return false;
+    }
+
     void GetAccounts(ReadOnlySpan<Address> addresses, Span<Account?> accounts);
 }

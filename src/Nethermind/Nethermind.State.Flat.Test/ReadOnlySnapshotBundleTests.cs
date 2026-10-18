@@ -46,6 +46,41 @@ public class ReadOnlySnapshotBundleTests
             PersistedSnapshotStack.Empty(recordDetailedMetrics));
 
     [Test]
+    public void TryGetCachedAccount_ResolvesNewestValuesWithoutPersistenceReads([Values] bool detailedMetrics)
+    {
+        Address[] addresses = TestItem.Addresses[..5];
+        Account account = new(37, 43);
+        AccountBatchReaderProbe reader = new();
+        reader.CachedAccounts[addresses[0]] = null;
+        reader.CachedAccounts[addresses[1]] = account;
+        reader.CachedAccounts[addresses[2]] = account;
+        reader.CachedAccounts[addresses[3]] = null;
+        using ReadOnlySnapshotBundle bundle = Bundle(
+            FlatTestHelpers.SnapshotList(MakeSnapshot(content =>
+            {
+                content.Accounts[new HashedKey<Address>(addresses[0])] = null;
+                content.Accounts[new HashedKey<Address>(addresses[1])] = account;
+            }), MakeSnapshot(content =>
+            {
+                content.Accounts[new HashedKey<Address>(addresses[0])] = account;
+                content.Accounts[new HashedKey<Address>(addresses[1])] = null;
+            })), reader, detailedMetrics);
+        Account?[] expected = [account, null, account, null];
+
+        for (int i = 0; i < addresses.Length; i++)
+        {
+            bool found = bundle.TryGetCachedAccount(addresses[i], new HashedKey<Address>(addresses[i]), out Account? actual);
+            Assert.That(found, Is.EqualTo(i < expected.Length));
+            if (found) Assert.That(actual, Is.EqualTo(expected[i]));
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reader.ScalarReads, Is.Zero);
+            Assert.That(reader.BatchAddresses, Is.Empty);
+        }
+    }
+
+    [Test]
     public void GetAccounts_WithSnapshotHits_ReadsOnlyPersistedMisses([Values] bool detailedMetrics)
     {
         Address[] addresses = TestItem.Addresses[..12];
@@ -265,6 +300,8 @@ public class ReadOnlySnapshotBundleTests
             int index = Array.IndexOf(TestItem.Addresses, address);
             return index % 3 == 0 ? null : new Account((ulong)(index + 1), (ulong)(index + 2));
         }
+        internal Dictionary<Address, Account?> CachedAccounts { get; } = [];
+        public bool TryGetCachedAccount(Address address, out Account? account) => CachedAccounts.TryGetValue(address, out account);
         internal Address[] BatchAddresses { get; private set; } = [];
         internal int ScalarReads { get; private set; }
         public StateId CurrentState => StateId.PreGenesis;
@@ -405,6 +442,28 @@ public class ReadOnlySnapshotBundleFilterTests
         // Without the clear the same definite miss reaches persistence.
         bundle.GetSlotFiltered(-1, (address, (UInt256)1), out value);
         Assert.That(value, Is.EqualTo((UInt256?)11));
+    }
+
+    [Test]
+    public void TryGetCachedAccount_PersistedSnapshotPrecedesPersistenceCache([Values] bool detailedMetrics)
+    {
+        Account account = new(47, 59);
+        using LayerStack stack = new();
+        stack.AddPersisted(_blobs, Arena, MakeSnapshot(0, content =>
+        {
+            content.Accounts[new HashedKey<Address>(Addresses[0])] = account;
+            content.Accounts[new HashedKey<Address>(Addresses[1])] = null;
+        }));
+        using ReadOnlySnapshotBundle bundle = stack.CreateBundle(RealBitsPerKey, detailedMetrics, out DictionaryReader reader);
+        reader.CachedAccounts[Addresses[0]] = null;
+        reader.CachedAccounts[Addresses[1]] = account;
+        Account?[] expected = [account, null];
+        for (int i = 0; i < expected.Length; i++)
+        {
+            Assert.That(bundle.TryGetCachedAccount(Addresses[i], new HashedKey<Address>(Addresses[i]), out Account? actual), Is.True);
+            Assert.That(actual, Is.EqualTo(expected[i]));
+        }
+        Assert.That(reader.AccountReads, Is.Zero);
     }
 
     [Test]
@@ -1270,12 +1329,23 @@ public class ReadOnlySnapshotBundleFilterTests
     private sealed class DictionaryReader(
         Dictionary<(Address, UInt256), UInt256> slots,
         Dictionary<Address, Account> accounts,
-        StateId currentState) : IPersistence.IPersistenceReader
+        StateId currentState) : IPersistence.IPersistenceReader, IAccountBatchReader
     {
+        public Dictionary<Address, Account?> CachedAccounts { get; } = [];
+        public int AccountReads { get; private set; }
+        public bool TryGetCachedAccount(Address address, out Account? account) => CachedAccounts.TryGetValue(address, out account);
+        public void GetAccounts(ReadOnlySpan<Address> addresses, Span<Account?> values)
+        {
+            for (int i = 0; i < addresses.Length; i++) values[i] = GetAccount(addresses[i]);
+        }
         private int _slotReads;
         public int SlotReads => Volatile.Read(ref _slotReads);
 
-        public Account? GetAccount(Address address) => accounts.GetValueOrDefault(address);
+        public Account? GetAccount(Address address)
+        {
+            AccountReads++;
+            return accounts.GetValueOrDefault(address);
+        }
 
         public bool TryGetSlot(Address address, in UInt256 slot, ref UInt256 outValue)
         {

@@ -283,6 +283,37 @@ public class PrewarmerScopeProvider(
             _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.UpdateRootHash);
         }
 
+        public bool TryGetCachedAccount(Address address, out Account? account)
+        {
+            if (_appliedBalAccounts is not null)
+            {
+                account = null;
+                return false;
+            }
+            AddressAsKey key = address;
+            long start = _measureMetric ? Stopwatch.GetTimestamp() : 0;
+            if (preBlockCache.TryGetValue(in key, out account))
+            {
+                if (!isPrewarmer)
+                {
+                    baseScope.HintGet(address, account);
+                    _metrics.IncrementPreBlockAccountHits();
+                }
+                _metrics.IncrementStateTreeCacheHits();
+                if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - start, _labels.AddressHit);
+                return true;
+            }
+            if (baseScope is IAccountBatchReader batch && batch.TryGetCachedAccount(address, out account))
+            {
+                preBlockCache.Set(in key, account);
+                if (!isPrewarmer) _metrics.IncrementPreBlockAccountMisses();
+                if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - start, _labels.AddressMiss);
+                return true;
+            }
+            account = null;
+            return false;
+        }
+
         public void GetAccounts(ReadOnlySpan<Address> addresses, Span<Account?> accounts)
         {
             ArgumentOutOfRangeException.ThrowIfNotEqual(accounts.Length, addresses.Length, nameof(accounts));
