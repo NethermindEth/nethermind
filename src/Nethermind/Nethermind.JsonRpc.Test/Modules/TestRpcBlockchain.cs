@@ -193,7 +193,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             @this.Bridge,
             @this.BlockFinder,
             @this.BlockTree,
-            @this.ReceiptFinder,
+            @this.Container.ResolveKeyed<IReceiptFinder>(IReceiptFinder.RegenerableKey),
             @this.StateReader,
             @this.TxPool,
             @this.TxSender,
@@ -217,7 +217,8 @@ namespace Nethermind.JsonRpc.Test.Modules
                 Substitute.For<IHistoryConfig>(),
                 Substitute.For<IHistoryPruner>()),
             @this.Container.ResolveOptional<IBlockForRpcFactory>() ?? new BlockForRpcFactory(),
-            @this.Container.ResolveOptional<HashesOnlyBlockReader>());
+            @this.Container.ResolveOptional<HashesOnlyBlockReader>(),
+            @this.ReceiptFinder);
 
         protected override async Task<TestBlockchain> Build(Action<ContainerBuilder>? configurer = null)
         {

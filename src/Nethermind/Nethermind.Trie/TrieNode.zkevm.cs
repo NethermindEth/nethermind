@@ -226,6 +226,12 @@ namespace Nethermind.Trie
         /// the trie decodes 34,789 times, so 8,764 of those decodes are repeats.</remarks>
         private const bool PruneTraversedChildren = false;
 
+        /// <summary>Whether a re-encoded branch keeps its previous RLP's value as it stands, rather than walking to it to drop it.</summary>
+        /// <remarks>Every branch RLP in the guest comes from the witness, under the parent block's state root, or from this
+        /// encoder, and neither holds a value: state and storage keys are all 32 bytes. So the value is the last byte, 0x80,
+        /// and copying it spares the walk over the slots past a branch's last changed child.</remarks>
+        private static bool CopiesBranchValue => true;
+
         /// <summary>How <see cref="GetChildWithChildPath"/> is inlined: always.</summary>
         /// <remarks><see cref="PatriciaTree"/>'s set walk outgrows the inliner's budget and
         /// would otherwise call it out of line per level, a frame and five saved registers for a slot load and a type test.</remarks>

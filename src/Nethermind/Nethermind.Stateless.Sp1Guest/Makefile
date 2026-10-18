@@ -9,6 +9,9 @@ SRC_DIR := /nethermind/src
 
 GUEST_LIBC := sp1
 
+# MUL on the uint256_mul precompile without the frame a call from managed code takes.
+GUEST_OBJECTS := mul.o
+
 # BIN_DIR must be set before the include - BFLAT_REFS expands it.
 include $(MAKEFILE_DIR)/../Nethermind.Stateless.Guest/build.mk
 # Execution harness. SP1 publishes no image that executes an arbitrary ELF, so

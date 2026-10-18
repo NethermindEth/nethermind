@@ -56,7 +56,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         JsonRpcProcessingOptions options,
         CancellationToken cancellationToken = default)
     {
-        CancellationTokenSource? timeoutSource = BeginRequest(context);
+        CancellationTokenSource? timeoutSource = RentTimeout(context);
 
         return ProcessCoreAsync(reader, context, sink, options, timeoutSource, timeoutSource?.Token ?? CancellationToken.None, cancellationToken);
     }
@@ -66,21 +66,8 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         JsonRpcContext context,
         IJsonRpcResponseSink sink,
         JsonRpcProcessingOptions options,
-        CancellationToken cancellationToken = default)
-    {
-        JsonRpcContext.Current.Value = context;
-
-        return ProcessMemoryCoreAsync(requestBody, context, sink, options, cancellationToken);
-    }
-
-    /// <summary>Publishes the ambient context and takes a timeout budget for callers that are subject to one.</summary>
-    /// <returns>The pooled source the caller must return, or <c>null</c> when the caller is not timed out.</returns>
-    private CancellationTokenSource? BeginRequest(JsonRpcContext context)
-    {
-        JsonRpcContext.Current.Value = context;
-
-        return RentTimeout(context);
-    }
+        CancellationToken cancellationToken = default) =>
+        ProcessMemoryCoreAsync(requestBody, context, sink, options, cancellationToken);
 
     private CancellationTokenSource? RentTimeout(JsonRpcContext context) =>
         context.IsAuthenticated ? null : _jsonRpcConfig.BuildTimeoutCancellationToken();
