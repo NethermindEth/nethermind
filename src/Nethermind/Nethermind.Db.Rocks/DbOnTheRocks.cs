@@ -1166,38 +1166,22 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     /// </summary>
     /// <remarks>
     /// The probe reads the latest version, not the caller's snapshot: it only decides whether a prefetch is worth
-    /// sending, and the latest version lives in the same memtables and blocks. Any read error counts as not cached;
-    /// <c>Incomplete</c> is the expected one, and the read that follows reports a real failure.
+    /// sending, and the latest version lives in the same memtables and blocks. A miss is a status, not an exception,
+    /// and the empty destination copies no value. A failed read counts as not cached; the read that follows reports it.
     /// </remarks>
-    [SkipLocalsInit]
     internal bool IsCached(ReadOnlySpan<byte> key, IColumnFamilyHandle? cf)
     {
         if (_isDisposing) return true;
-        // One native call into a stack buffer, without the pinned-slice allocation and release of a key check.
-        Span<byte> value = stackalloc byte[CacheProbeBufferSize];
         try
         {
-            _db.Get(key, value, cf, _cacheOnlyReadOptions);
-            return true;
-        }
-        catch (RocksDbException)
-        {
-            // An incomplete read: the value is not in memory.
-            return false;
-        }
-        catch (ArgumentException)
-        {
-            // Found in memory, only larger than the probe buffer.
-            return true;
+            GetResult result = _db.TryGet(key, default, out _, cf, _cacheOnlyReadOptions);
+            return result is GetResult.Found or GetResult.NotFound;
         }
         catch (ObjectDisposedException)
         {
             return true;
         }
     }
-
-    // Larger than a flat account or slot value, so their probes never overflow.
-    private const int CacheProbeBufferSize = 256;
 
     internal int GetCStyleWithColumnFamily(scoped ReadOnlySpan<byte> key, Span<byte> output, IColumnFamilyHandle? cf, ReadOptions readOptions)
     {
