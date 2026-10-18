@@ -225,12 +225,12 @@ public sealed partial class KeccakHash
     }
 
     /// <inheritdoc cref="KeccakHash.DonateConsumedInput" />
-    /// <remarks>Only on SP1, whose input lies in writable memory. SP1 charges for every word of memory a run touches,
-    /// far more than for the instructions writing it, and the input is touched already, so states kept in it are
-    /// nearly free while fresh memory for them is not.</remarks>
+    /// <remarks>Only where <see cref="FirstTouchMemoryFlag"/> is on, which assumes the input lies in writable memory, as
+    /// on SP1. SP1 charges for every word of memory a run touches, far more than for the instructions writing it, and
+    /// the input is touched already, so states kept in it are nearly free while fresh memory for them is not.</remarks>
     internal static partial void DonateConsumedInput(ReadOnlySpan<byte> consumed)
     {
-        if (!Sp1ReusableInputFlag.IsActive) return;
+        if (!FirstTouchMemoryFlag.IsActive) return;
 
         unsafe
         {
@@ -249,7 +249,7 @@ public sealed partial class KeccakHash
     /// state of its own.</remarks>
     internal static partial void ComputeHash256OfWitnessNodes(byte[][] nodes, int count, Span<ValueHash256> hashes)
     {
-        if (Sp1ReusableInputFlag.IsActive)
+        if (FirstTouchMemoryFlag.IsActive)
         {
             ComputeHash256OfWitnessNodesPacked(nodes, count, hashes);
             return;
@@ -421,7 +421,7 @@ public sealed partial class KeccakHash
         nuint retainedLength = Math.Min(length / HASH_DATA_AREA, RetainedBlocks) * HASH_DATA_AREA;
         nuint offset = 0;
         // One state past the one the matching blocks leave.
-        nuint next = (Sp1ReusableInputFlag.IsActive ? WitnessNodes.Slots[index] : index) * RetainedLanes;
+        nuint next = (FirstTouchMemoryFlag.IsActive ? WitnessNodes.Slots[index] : index) * RetainedLanes;
         while (offset < retainedLength && BlockEquals(data + offset, original + offset))
         {
             offset += HASH_DATA_AREA;

@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Core.Crypto;
+using Nethermind.Core;
 using Nethermind.Evm.CodeAnalysis;
 
 namespace Nethermind.Stateless.Execution.IO;
@@ -13,8 +13,8 @@ public sealed partial class WitnessCode
     /// touches, and the input is touched already, so code kept there is nearly free while a copy in fresh memory is not.
     /// </remarks>
     private static partial ReadOnlyMemory<byte> Hold(ReadOnlySpan<byte> code) =>
-        Sp1ReusableInputFlag.IsActive ? ExecutableCodeMemory.Wrap(code) : ExecutableCodeMemory.Copy(code);
+        FirstTouchMemoryFlag.IsActive ? ExecutableCodeMemory.Wrap(code) : ExecutableCodeMemory.Copy(code);
 
     internal static partial int PlaceInConsumedInput(SszWitnessCodes[] codes, ReadOnlySpan<byte> consumed) =>
-        Sp1ReusableInputFlag.IsActive ? MoveToFront(codes, consumed) : 0;
+        FirstTouchMemoryFlag.IsActive ? MoveToFront(codes, consumed) : 0;
 }

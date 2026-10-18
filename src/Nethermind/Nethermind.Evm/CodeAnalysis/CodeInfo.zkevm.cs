@@ -5,7 +5,6 @@ using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Zkvm.Abstractions;
 
 namespace Nethermind.Evm.CodeAnalysis;
@@ -25,7 +24,7 @@ public sealed partial class CodeInfo
     partial void InitializeCode(ReadOnlyMemory<byte> code) =>
         _code = code.IsEmpty ? code
             : ExecutableCodeMemory.TryGetExecutionBuffer(code, out byte[]? buffer) ? buffer.AsMemory(0, code.Length)
-            : Sp1ReusableInputFlag.IsActive && ExecutableCodeMemory.IsPlaced(code) ? code
+            : FirstTouchMemoryFlag.IsActive && ExecutableCodeMemory.IsPlaced(code) ? code
             : CreatePaddedCode(code.Span).AsMemory(0, code.Length);
 
     public partial ReadOnlyMemory<byte> Code => _code;
