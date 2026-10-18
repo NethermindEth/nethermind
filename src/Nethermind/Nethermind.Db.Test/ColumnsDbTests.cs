@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
 using System.IO;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -146,6 +147,37 @@ public class ColumnsDbTests
         public FlushOnExitMode FlushOnExit => inner.FlushOnExit;
         public nint? BlockCache => inner.BlockCache;
         public bool CompactOnDeletions => inner.CompactOnDeletions;
+    }
+
+    [Test]
+    public void Snapshot_prefetch_starts_one_batch_and_leaves_values_unchanged([Values] bool disposeSnapshotFirst)
+    {
+        const int count = 100;
+        const int keyLength = 8;
+        IDb column = _db.GetColumnDb(ReceiptsColumns.Blocks);
+        byte[] keys = new byte[count * keyLength];
+        for (int i = 0; i < count; i++)
+        {
+            BinaryPrimitives.WriteInt64BigEndian(keys.AsSpan(i * keyLength, keyLength), i * 31L);
+            if (i % 4 != 3) column.Set(keys.AsSpan(i * keyLength, keyLength), [(byte)i, 1]);
+        }
+        _db.Flush();
+        long before = Metrics.PrefetchedKeys;
+
+        IColumnDbSnapshot<ReceiptsColumns> snapshot = ((IColumnsDb<ReceiptsColumns>)_db).CreateSnapshot();
+        IReadPrefetcher prefetcher = (IReadPrefetcher)snapshot.GetColumn(ReceiptsColumns.Blocks);
+        prefetcher.Prefetch(keys, keyLength);
+        if (disposeSnapshotFirst) snapshot.Dispose();
+
+        Assert.That(Metrics.PrefetchedKeys - before, Is.EqualTo(count));
+        for (int i = 0; i < count; i++)
+        {
+            byte[]? value = column.Get(keys.AsSpan(i * keyLength, keyLength));
+            Assert.That(value, i % 4 == 3 ? Is.Null : Is.EqualTo(new byte[] { (byte)i, 1 }));
+        }
+
+        if (!disposeSnapshotFirst) snapshot.Dispose();
+        Assert.DoesNotThrow(() => prefetcher.Prefetch(keys, 0));
     }
 
     [Test]
