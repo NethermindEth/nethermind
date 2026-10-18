@@ -162,12 +162,17 @@ namespace Nethermind.Facade.Find
         }
 
         /// <summary>Scans <paramref name="source"/> on worker tasks and yields the logs in source order.</summary>
-        /// <remarks>At most one chunk per worker is in flight, so memory is bounded by that window rather than the range.</remarks>
-        private IEnumerable<TLog> ScanInOrderedChunks<T, TLog>(IEnumerable<T> source, Func<T, IEnumerable<TLog>> worker)
+        /// <remarks>
+        /// At most one chunk per worker is in flight, so memory is bounded by that window rather than the range.
+        /// Logs scanned but never yielded are disposed when they are <see cref="IDisposable"/>, as <see cref="SerializedLogs"/> hold pooled buffers.
+        /// </remarks>
+        internal IEnumerable<TLog> ScanInOrderedChunks<T, TLog>(IEnumerable<T> source, Func<T, IEnumerable<TLog>> worker)
         {
             Queue<Task<List<TLog>>> pending = new(_rpcConfigGetLogsThreads);
             using CancellationTokenSource abandoned = new();
             using IEnumerator<T> items = source.GetEnumerator();
+            List<TLog>? current = null;
+            int delivered = 0;
             try
             {
                 bool sourceDrained = false;
@@ -185,9 +190,10 @@ namespace Nethermind.Facade.Find
 
                     if (!pending.TryDequeue(out Task<List<TLog>>? next)) yield break;
 
-                    foreach (TLog log in next.GetAwaiter().GetResult())
+                    current = next.GetAwaiter().GetResult();
+                    for (delivered = 0; delivered < current.Count;)
                     {
-                        yield return log;
+                        yield return current[delivered++];
                     }
                 }
             }
@@ -196,19 +202,41 @@ namespace Nethermind.Facade.Find
                 // Workers must not outlive the parallel slot.
                 abandoned.Cancel();
                 ((Task)Task.WhenAll(pending)).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing).GetAwaiter().GetResult();
+
+                if (current is not null) DisposeFrom(current, delivered);
+                foreach (Task<List<TLog>> task in pending)
+                {
+                    if (task.IsCompletedSuccessfully) DisposeFrom(task.Result, 0);
+                }
             }
         }
 
         private static List<TLog> ScanChunk<T, TLog>(List<T> chunk, Func<T, IEnumerable<TLog>> worker, CancellationToken abandoned)
         {
             List<TLog> logs = [];
-            foreach (T item in chunk)
+            try
             {
-                if (abandoned.IsCancellationRequested) break;
-                logs.AddRange(worker(item));
+                foreach (T item in chunk)
+                {
+                    if (abandoned.IsCancellationRequested) break;
+                    logs.AddRange(worker(item));
+                }
+            }
+            catch
+            {
+                DisposeFrom(logs, 0);
+                throw;
             }
 
             return logs;
+        }
+
+        private static void DisposeFrom<TLog>(List<TLog> logs, int start)
+        {
+            for (int i = start; i < logs.Count; i++)
+            {
+                if (logs[i] is IDisposable disposable) disposable.Dispose();
+            }
         }
 
         private IEnumerable<TLog> FilterLogsIteratively<TBlockLogs, TLog>(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken)

@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -239,6 +240,37 @@ public class LogFinderTests
             Assert.That(counting.Calls, Is.EqualTo(callsAfterDispose), "no worker may keep scanning once the result is disposed");
             if (logsTaken == 1) Assert.That(callsAfterDispose, Is.LessThan(expected.Length / 2));
         }
+    }
+
+    [Test]
+    [MaxTime(Timeout.MaxTestTime)]
+    [NonParallelizable]
+    public void Parallel_scan_disposes_the_logs_it_never_yields([Values] bool workerFails)
+    {
+        const int failingItem = 300;
+        LogFinder logFinder = CreateLogFinder();
+        ConcurrentQueue<TrackedLog> scanned = new();
+        List<TrackedLog> yielded = [];
+
+        IEnumerable<TrackedLog> Scan(int item)
+        {
+            if (workerFails && item == failingItem) throw new InvalidOperationException();
+            TrackedLog log = new();
+            scanned.Enqueue(log);
+            return [log];
+        }
+
+        try
+        {
+            foreach (TrackedLog log in logFinder.ScanInOrderedChunks(Enumerable.Range(0, 2 * failingItem), Scan))
+            {
+                yielded.Add(log);
+                if (!workerFails) break;
+            }
+        }
+        catch (InvalidOperationException) when (workerFails) { }
+
+        Assert.That(scanned.Where(static l => !l.Disposed), Is.EquivalentTo(yielded));
     }
 
     [Test]
@@ -823,6 +855,13 @@ public class LogFinderTests
         }
 
         private Exception Create() => (Exception)Activator.CreateInstance(exceptionType, "receipts path failure")!;
+    }
+
+    private sealed class TrackedLog : IDisposable
+    {
+        public bool Disposed { get; private set; }
+
+        public void Dispose() => Disposed = true;
     }
 
     private sealed class CountingReceiptFinder(IReceiptFinder inner) : IReceiptFinder
