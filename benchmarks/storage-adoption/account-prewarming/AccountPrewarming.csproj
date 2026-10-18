@@ -3,8 +3,12 @@
     <OutputType>Exe</OutputType>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <GenerateTestingPlatformEntryPoint>false</GenerateTestingPlatformEntryPoint>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="*.cs" />
     <ProjectReference Include="../../src/Nethermind/Nethermind.Core.Test/Nethermind.Core.Test.csproj" />
     <ProjectReference Include="../../src/Nethermind/Nethermind.Db.Rocks/Nethermind.Db.Rocks.csproj" />
     <ProjectReference Include="../../src/Nethermind/Nethermind.Init/Nethermind.Init.csproj" />
