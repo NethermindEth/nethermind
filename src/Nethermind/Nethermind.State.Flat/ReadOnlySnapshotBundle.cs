@@ -74,7 +74,7 @@ public sealed class ReadOnlySnapshotBundle(
     public void Prefetch(ReadOnlySpan<Address> accounts, ReadOnlySpan<StorageCell> slots)
     {
         GuardDispose();
-        persistenceReader.Prefetch(accounts, slots);
+        if (persistenceReader is IPersistence.IPrefetchingReader prefetcher) prefetcher.Prefetch(accounts, slots);
     }
 
     public Account? GetAccount(Address address) => GetAccount(address, address);

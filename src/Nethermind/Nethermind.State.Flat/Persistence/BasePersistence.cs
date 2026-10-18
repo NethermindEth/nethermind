@@ -529,7 +529,7 @@ public static class BasePersistence
         TTrieReader trieReader,
         StateId currentState,
         IDisposable disposer)
-        : IPersistence.IPersistenceReader
+        : IPersistence.IPersistenceReader, IPersistence.IPrefetchingReader
         where TFlatReader : struct, IFlatReader
         where TTrieReader : struct, ITrieReader
     {

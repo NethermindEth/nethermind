@@ -273,7 +273,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             {
                 // First, on this task: the backend decides from a few cached probes, so a cached block costs only
                 // those, and a cold one has its reads in flight before phase 1 reads them one at a time.
-                if (_configuration.AsyncReadPrefetch) PrefetchBal(accountChanges);
+                PrefetchBal(accountChanges);
 
                 // Phase 1: trie warmup + GetAccount + sink.OnAccountRead. Sink slot reads are
                 // deferred to phase 2 so one huge account doesn't bottleneck a single worker.
@@ -484,12 +484,9 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     internal void DecrementOutstandingWarmups() => CompleteWarmup();
 
-    public void Prefetch(ReadOnlySpan<Address> accounts, ReadOnlySpan<StorageCell> slots)
-    {
-        if (_configuration.AsyncReadPrefetch) _snapshotBundle.Prefetch(accounts, slots);
-    }
+    public void Prefetch(ReadOnlySpan<Address> accounts, ReadOnlySpan<StorageCell> slots) => _snapshotBundle.Prefetch(accounts, slots);
 
-    public bool SupportsPrefetch => _configuration.AsyncReadPrefetch;
+    public bool SupportsPrefetch => true;
 
     public void HintWarmAccount(Address address)
     {

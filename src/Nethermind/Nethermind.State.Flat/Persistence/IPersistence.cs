@@ -49,9 +49,13 @@ public interface IPersistence
         IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey);
         IFlatIterator CreateStorageIterator(in ValueHash256 accountKey, in ValueHash256 startSlotKey, in ValueHash256 endSlotKey);
         bool IsPreimageMode { get; }
+    }
 
-        /// <summary>Starts reading accounts and slots from the backing store ahead of use; does nothing by default.</summary>
-        void Prefetch(ReadOnlySpan<Address> accounts, ReadOnlySpan<StorageCell> slots) { }
+    /// <summary>A persistence reader that can start reading accounts and slots from its store ahead of use.</summary>
+    /// <remarks>An optional capability, so readers that cannot prefetch, test doubles included, need not implement it.</remarks>
+    public interface IPrefetchingReader
+    {
+        void Prefetch(ReadOnlySpan<Address> accounts, ReadOnlySpan<StorageCell> slots);
     }
 
     public interface IWriteBatch : IDisposable

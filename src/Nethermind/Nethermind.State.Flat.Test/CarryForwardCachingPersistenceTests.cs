@@ -65,7 +65,7 @@ public class CarryForwardCachingPersistenceTests
 
         using (IPersistence.IPersistenceReader reader = cache.CreateReader())
         {
-            reader.Prefetch([TestItem.AddressA, TestItem.AddressB],
+            ((IPersistence.IPrefetchingReader)reader).Prefetch([TestItem.AddressA, TestItem.AddressB],
                 [new StorageCell(TestItem.AddressA, 1), new StorageCell(TestItem.AddressA, 2), new StorageCell(TestItem.AddressB, 1)]);
         }
 
@@ -1040,7 +1040,7 @@ public class CarryForwardCachingPersistenceTests
         public void Flush() { }
         public void Clear() { }
 
-        private sealed class Reader(FakePersistence parent) : IPersistence.IPersistenceReader
+        private sealed class Reader(FakePersistence parent) : IPersistence.IPersistenceReader, IPersistence.IPrefetchingReader
         {
             public Account? GetAccount(Address address)
             {

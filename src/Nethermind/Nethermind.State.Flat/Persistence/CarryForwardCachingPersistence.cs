@@ -240,7 +240,7 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
     }
 
     private sealed class CachingReader(CarryForwardCachingPersistence parent, IPersistence.IPersistenceReader inner, long generation)
-        : IPersistence.IPersistenceReader
+        : IPersistence.IPersistenceReader, IPersistence.IPrefetchingReader
     {
         // A reader is shared by every thread reading its state, so enabled counters must support concurrent updates.
         // DetailedMetricsEnabled is captured once per reader after normal startup registration to avoid its hot-path
@@ -304,9 +304,10 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
         /// <summary>Forwards only the keys this cache cannot serve, so a prefetch never reads what a later read finds here.</summary>
         public void Prefetch(ReadOnlySpan<Address> accounts, ReadOnlySpan<StorageCell> slots)
         {
+            if (inner is not IPersistence.IPrefetchingReader prefetcher) return;
             if (!parent.IsCurrent(generation))
             {
-                inner.Prefetch(accounts, slots);
+                prefetcher.Prefetch(accounts, slots);
                 return;
             }
 
@@ -323,7 +324,7 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
                 if (!parent._slots.TryGet(hash, cell.Address, cell.Index, out _, out _)) uncachedSlots.Add(cell);
             }
 
-            inner.Prefetch(uncachedAccounts.AsSpan(), uncachedSlots.AsSpan());
+            prefetcher.Prefetch(uncachedAccounts.AsSpan(), uncachedSlots.AsSpan());
         }
 
         /// <remarks>
