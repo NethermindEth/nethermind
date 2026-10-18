@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.IO.Abstractions;
 using System.IO.Pipelines;
 using System.Linq;
@@ -455,6 +456,7 @@ public class GethStyleTracer(
         TxReceipt[] receipts;
         try
         {
+            if (TryCountStoredLogs(block, out int[]? counted)) return counted;
             receipts = receiptFinder.Get(block);
         }
         catch (ResourceNotFoundException)
@@ -474,6 +476,41 @@ public class GethStyleTracer(
         }
 
         return firstLogIndexes;
+    }
+
+    /// <summary>Counts the logs of the stored receipts without decoding them, their topics or their data.</summary>
+    /// <returns><c>false</c> when the iterator does not hold one receipt per transaction; the full read then decides.</returns>
+    private bool TryCountStoredLogs(Block block, [NotNullWhen(true)] out int[]? firstLogIndexes)
+    {
+        firstLogIndexes = null;
+        if (block.Hash is not { } blockHash || !receiptFinder.TryGetReceiptsIterator(block.Number, blockHash, out ReceiptsIterator iterator)) return false;
+
+        int[] counted = new int[block.Transactions.Length];
+        int next = 0;
+        int count = 0;
+        using (ReceiptsIterator receipts = iterator)
+        {
+            while (receipts.TryGetNext(out TxReceiptStructRef receipt))
+            {
+                if (count == counted.Length) return false;
+                counted[count++] = next;
+                next += CountLogs(in receipt);
+            }
+        }
+
+        if (count != counted.Length) return false;
+        firstLogIndexes = counted;
+        return true;
+    }
+
+    private static int CountLogs(in TxReceiptStructRef receipt)
+    {
+        if (receipt.Logs is not null) return receipt.Logs.Length;
+        if (receipt.LogsRlp.IsEmpty) return 0;
+
+        RlpReader logs = new(receipt.LogsRlp);
+        logs.SkipLength();
+        return logs.PeekNumberOfItemsRemaining();
     }
 
     /// <summary>A JavaScript tracer owns a script engine; one per worker at once is not a cost a block trace should pay.</summary>

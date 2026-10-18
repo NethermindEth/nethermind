@@ -24,11 +24,28 @@ public sealed class TransactionTraceExecutor(
     StateReadOverlaySlot? readOverlay = null)
     : IBlockProcessor.IBlockTransactionsExecutor
 {
+    private const int OverlayUnprobed = 0;
+    private const int OverlayAccepted = 1;
+    private const int OverlayRefused = 2;
+    private int _overlaySupport;
+
     /// <summary>Probes basic overlay support without requiring full BAL construction.</summary>
-    /// <remarks>Applies an empty overlay on a fresh scope, which may invalidate account caches. This does not
-    /// guarantee that a populated overlay will be accepted; conditional refusal falls back to prefix replay.</remarks>
-    public bool CanSeed => readOverlay is not null && !balManager.ForceConstructGeneratedBlockAccessList
-        && state.TryApplyAccountOverlay(EmptyOverlay.Instance);
+    /// <remarks>Applies an empty overlay once per environment, which may invalidate account caches; the state the
+    /// environment was built with keeps its answer for every later rent. This does not guarantee that a populated
+    /// overlay will be accepted; conditional refusal falls back to prefix replay.</remarks>
+    public bool CanSeed => readOverlay is not null && !balManager.ForceConstructGeneratedBlockAccessList && StateAcceptsOverlay();
+
+    private bool StateAcceptsOverlay()
+    {
+        int support = Volatile.Read(ref _overlaySupport);
+        if (support == OverlayUnprobed)
+        {
+            support = state.TryApplyAccountOverlay(EmptyOverlay.Instance) ? OverlayAccepted : OverlayRefused;
+            Volatile.Write(ref _overlaySupport, support);
+        }
+
+        return support == OverlayAccepted;
+    }
 
     /// <summary>Whether processed transactions are reported with their receipts.</summary>
     internal bool ReportsProcessedTransactions => transactionProcessed is not null;
