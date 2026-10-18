@@ -1067,12 +1067,15 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     /// Whether a read of <paramref name="key"/> is served from the memtables or block cache. The probe runs at the
     /// block-cache read tier, which never reads a file, so a value that would need disk IO reports not cached.
     /// </summary>
+    [SkipLocalsInit]
     internal bool IsCached(ReadOnlySpan<byte> key, IColumnFamilyHandle? cf)
     {
         if (_isDisposing) return true;
+        // One native call into a stack buffer, without the pinned-slice allocation and release of a key check.
+        Span<byte> value = stackalloc byte[CacheProbeBufferSize];
         try
         {
-            _db.HasKey(key, cf, _cacheOnlyReadOptions);
+            _db.Get(key, value, cf, _cacheOnlyReadOptions);
             return true;
         }
         catch (RocksDbException)
@@ -1080,11 +1083,19 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             // An incomplete read: the value is not in memory.
             return false;
         }
+        catch (ArgumentException)
+        {
+            // Found in memory, only larger than the probe buffer.
+            return true;
+        }
         catch (ObjectDisposedException)
         {
             return true;
         }
     }
+
+    // Larger than a flat account or slot value, so their probes never overflow.
+    private const int CacheProbeBufferSize = 256;
 
     internal int GetCStyleWithColumnFamily(scoped ReadOnlySpan<byte> key, Span<byte> output, IColumnFamilyHandle? cf, ReadOptions readOptions)
     {
