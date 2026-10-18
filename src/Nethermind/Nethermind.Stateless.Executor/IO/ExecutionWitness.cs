@@ -170,13 +170,19 @@ public sealed partial class WitnessCode
         byte* start = Address(consumed);
         byte* end = start + consumed.Length;
 
-        // In order, no code lies before the next one to move.
-        for (int i = 1; i < codes.Length; i++)
+        // In order, no code lies before the next one to move; inside the input, none is written past its end.
+        byte* previousEnd = start;
+        for (int i = 0; i < codes.Length; i++)
         {
-            ReadOnlyMemory<byte> previous = codes[i - 1].Bytes.Code;
-            if (Address(codes[i].Bytes.Code.Span) < Address(previous.Span) + previous.Length)
+            ReadOnlySpan<byte> code = codes[i].Bytes.Code.Span;
+            if (Address(code) < previousEnd)
                 return CopyAll(codes);
+
+            previousEnd = Address(code) + code.Length;
         }
+
+        if (previousEnd > end)
+            return CopyAll(codes);
 
         byte* free = Align(start);
         for (int i = 0; i < codes.Length; i++)

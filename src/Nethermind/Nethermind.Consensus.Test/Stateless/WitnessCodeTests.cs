@@ -54,18 +54,22 @@ public class WitnessCodeTests
         }
     }
 
-    [Test]
-    public void Copies_every_code_out_of_input_order()
+    [TestCase(256, 200, 100, TestName = "Copies_every_code_out_of_input_order")]
+    // The first code padded would reach past the input, which ends before the second code.
+    [TestCase(64, 10, 100, TestName = "Copies_every_code_when_one_lies_past_the_input")]
+    public void Copies_every_code(int consumedLength, int firstOffset, int secondOffset)
     {
         byte[] input = GC.AllocateArray<byte>(256, pinned: true);
-        SszWitnessCodes[] codes = InInput(input, (200, 4), (100, 4));
+        SszWitnessCodes[] codes = InInput(input, (firstOffset, 40), (secondOffset, 4));
         byte[][] expected = Contents(codes);
+        byte[] untouched = input.ToArray();
 
-        int taken = WitnessCode.MoveToFront(codes, input);
+        int taken = WitnessCode.MoveToFront(codes, input.AsSpan(0, consumedLength));
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(taken, Is.Zero);
+            Assert.That(input, Is.EqualTo(untouched));
             for (int i = 0; i < codes.Length; i++)
             {
                 Assert.That(ExecutableCodeMemory.TryGetExecutionBuffer(codes[i].Bytes.Code, out _), Is.True);
