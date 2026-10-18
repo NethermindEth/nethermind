@@ -88,6 +88,15 @@ namespace Nethermind.Facade
         SingleCallWitnessResult GenerateExecutionWitness(BlockHeader header, Transaction tx, CancellationToken cancellationToken = default);
 
         ReadOnlyBlockAccessList? GetBlockAccessList(ulong blockNumber, Hash256 blockHash);
+
+        /// <summary>Gets the transaction at <paramref name="index"/> of a stored block, decoding no other transaction.</summary>
+        /// <returns>False when the block body is not stored; true otherwise, with a null transaction for an index past the end.</returns>
+        bool TryGetStoredTransaction(BlockHeader header, int index, out Transaction? transaction, out int transactionCount)
+        {
+            transaction = null;
+            transactionCount = 0;
+            return false;
+        }
         MemoryManager<byte>? GetBlockAccessListRlp(ulong blockNumber, Hash256 blockHash);
         void DeleteBlockAccessList(ulong blockNumber, Hash256 blockHash);
     }
