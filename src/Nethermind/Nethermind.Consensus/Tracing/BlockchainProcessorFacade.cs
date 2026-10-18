@@ -32,9 +32,8 @@ public sealed class BlockchainProcessorFacade(
 
         IReleaseSpec spec = specProvider.GetSpec(block.Header);
 
-        // Mirror BranchProcessor: a traced block runs the sequential EIP-7928 BAL path. This facade bypasses
-        // BranchProcessor, so it also bypasses its parallel BlockAccessListSequentialRetryException handler —
-        // forcing sequential here keeps traced processing off the unhandled parallel path.
+        // Mirror BranchProcessor: a traced block runs the sequential EIP-7928 BAL path, because parallel workers
+        // trace into their own pooled receipts tracers rather than the caller's tracer.
         ProcessingOptions blockOptions = tracer == NullBlockTracer.Instance
             ? options
             : options | ProcessingOptions.ForceSequentialBlockAccessList;

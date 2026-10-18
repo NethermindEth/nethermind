@@ -28,6 +28,7 @@ using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
+using Nethermind.State;
 using static Nethermind.Consensus.Processing.IBlockProcessor;
 
 namespace Nethermind.Consensus.Processing;
@@ -94,6 +95,14 @@ public partial class BlockProcessor(
             ValidateProcessedBlock(suggestedBlock, options, block, receipts);
             _blockTransactionsExecutor.PublishTransactionProcessedEvents();
         }
+        catch (InvalidBlockException ex) when (_balManager.ParallelExecutionEnabled && IsBlockAccessListFailure(ex))
+        {
+            // Some checks run only on the parallel path, and no sequential re-execution backs them up, so a false
+            // positive on a valid block must stand out from ordinary invalid blocks.
+            Interlocked.Increment(ref Blockchain.Metrics.ParallelBlockAccessListRejections);
+            if (_logger.IsWarn) _logger.Warn($"Parallel validation rejected block {suggestedBlock.ToString(Block.Format.FullHashAndNumber)} for its block access list: {ex.Message}");
+            throw;
+        }
         finally
         {
             _blockTransactionsExecutor.ClearTransactionProcessedEvents();
@@ -107,6 +116,10 @@ public partial class BlockProcessor(
 
         return (block, receipts);
     }
+
+    private static bool IsBlockAccessListFailure(InvalidBlockException e) =>
+        e is BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException
+            or BlockAccessListManager.ParallelExecutionException { InnerException: BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException };
 
     private void ValidateProcessedBlock(Block suggestedBlock, ProcessingOptions options, Block block, TxReceipt[] receipts)
     {

@@ -2197,6 +2197,7 @@ public partial class BlockProcessorTests
         ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
         IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor = Substitute.For<IBlockProcessor.IBlockTransactionsExecutor>();
         IBlockAccessListManager balManager = new ParallelTestBlockAccessListManager(Substitute.For<ITransactionProcessorAdapter>());
+        TestLogger logger = new();
         BlockProcessor processor = new(
             HoodiSpecProvider.Instance,
             TestBlockValidator.AlwaysValid,
@@ -2206,7 +2207,7 @@ public partial class BlockProcessorTests
             NullReceiptStorage.Instance,
             new BeaconBlockRootHandler(transactionProcessor, stateProvider),
             Substitute.For<IBlockhashStore>(),
-            LimboLogs.Instance,
+            new OneLoggerLogManager(new(logger)),
             new WithdrawalProcessor(stateProvider, LimboLogs.Instance),
             new ExecutionRequestsProcessor(transactionProcessor),
             balManager);
@@ -2226,11 +2227,19 @@ public partial class BlockProcessorTests
             .Returns(_ => throw parallelFailure);
 
         using IDisposable scope = stateProvider.BeginScope(null);
+        long rejectionsBefore = Interlocked.Read(ref Metrics.ParallelBlockAccessListRejections);
 
         InvalidBlockException? exception = Assert.Catch<InvalidBlockException>(
             () => processor.ProcessOne(block, ProcessingOptions.NoValidation, NullBlockTracer.Instance, HoodiSpecProvider.Instance.GetSpec(block.Header), CancellationToken.None));
 
-        Assert.That(exception, Is.SameAs(parallelFailure));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exception, Is.SameAs(parallelFailure));
+            Assert.That(logger.LogList, Has.Exactly(balFailure ? 1 : 0).Contains("for its block access list"),
+                "a parallel BAL rejection has no sequential fallback, so it must be visible");
+            // The metric is process-wide and other tests may bump it concurrently, so only growth is asserted.
+            if (balFailure) Assert.That(Interlocked.Read(ref Metrics.ParallelBlockAccessListRejections), Is.GreaterThan(rejectionsBefore));
+        }
     }
 
     [Test]
