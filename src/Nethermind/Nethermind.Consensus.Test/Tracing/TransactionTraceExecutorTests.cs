@@ -13,9 +13,8 @@ namespace Nethermind.Consensus.Test.Tracing;
 
 public class TransactionTraceExecutorTests
 {
-    [TestCase(true)]
-    [TestCase(false)]
-    public void CanSeed_probes_the_state_once_per_environment(bool accepts)
+    [Test]
+    public void CanSeed_probes_the_state_once_per_environment([Values] bool accepts)
     {
         CountingOverlayState state = new(accepts);
         TransactionTraceExecutor executor = Create(state, Substitute.For<IBlockAccessListManager>());

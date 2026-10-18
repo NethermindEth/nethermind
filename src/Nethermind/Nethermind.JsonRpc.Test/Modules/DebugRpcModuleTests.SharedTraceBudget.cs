@@ -353,7 +353,7 @@ public partial class DebugRpcModuleTests
         }
     }
 
-    public enum ReceiptAvailability { Stored, Missing, Unreproducible }
+    public enum ReceiptAvailability { Stored, Missing, Truncated, Unreproducible }
 
     // Without usable receipts both paths number the logs from the body they replay, as the receipts would.
     [Test]
@@ -399,7 +399,7 @@ public partial class DebugRpcModuleTests
             // Read once on the calling thread: the parallel workers share it, and the replay it falls back to reads none.
             // Stored receipts are counted without decoding them; only an iterator that cannot answer leads to the full read.
             Assert.That(blockTraceIterators, Is.EqualTo(1));
-            Assert.That(blockTraceGets, Is.EqualTo(availability == ReceiptAvailability.Missing ? 1 : 0));
+            Assert.That(blockTraceGets, Is.EqualTo(availability is ReceiptAvailability.Missing or ReceiptAvailability.Truncated ? 1 : 0));
         }
     }
 
@@ -439,6 +439,10 @@ public partial class DebugRpcModuleTests
                     return false;
                 case ReceiptAvailability.Unreproducible:
                     throw new ResourceNotFoundException($"No receipts for block {blockNumber}");
+                case ReceiptAvailability.Truncated:
+                    // Fewer stored receipts than transactions: the count cannot be trusted, so the full read decides.
+                    iterator = new ReceiptsIterator(inner.Get(blockHash)[..^1]);
+                    return true;
                 default:
                     return inner.TryGetReceiptsIterator(blockNumber, blockHash, out iterator);
             }
