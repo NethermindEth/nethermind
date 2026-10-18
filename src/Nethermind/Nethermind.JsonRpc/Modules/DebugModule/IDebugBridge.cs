@@ -19,7 +19,11 @@ namespace Nethermind.JsonRpc.Modules.DebugModule;
 public interface IDebugBridge
 {
     GethLikeTxTrace? GetTransactionTrace(Hash256 transactionHash, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null);
-    GethLikeTxTrace? GetTransactionTrace(Hash256 blockHash, Hash256 transactionHash, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null);
+
+    /// <summary>Traces a transaction whose canonical block the caller has already found, without looking it up again.</summary>
+    /// <remarks>The default looks the block up again, so out-of-tree implementations keep compiling.</remarks>
+    GethLikeTxTrace? GetTransactionTrace(Hash256 blockHash, Hash256 transactionHash, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null) =>
+        GetTransactionTrace(transactionHash, cancellationToken, gethTraceOptions, writer, pipeWriter);
 
     /// <remarks>Retained for out-of-tree plugins; nothing in the repository calls it.</remarks>
     [Obsolete("Use the Hash256 overload: a block number resolves only the canonical block at that height.")]

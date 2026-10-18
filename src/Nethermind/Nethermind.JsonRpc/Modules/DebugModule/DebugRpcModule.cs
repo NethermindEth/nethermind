@@ -347,7 +347,7 @@ public class DebugRpcModule(
                     debugBridge.GetTransactionTrace(block, targetTxHash, token, effective, writer, pipeWriter)));
         }
 
-        // Stops after the target, as the streaming path does, instead of tracing the whole block to keep one entry.
+        // Like the streaming path, stops after the target.
         using RentedTimeout timeout = jsonRpcConfig.RentTimeout();
         GethLikeTxTrace? transactionTrace = debugBridge.GetTransactionTrace(block, targetTxHash, timeout.Token, WithBufferedLimit(options));
 

@@ -24,7 +24,9 @@ public interface IGethStyleTracer
     GethLikeTxTrace? Trace(Hash256 txHash, GethTraceOptions options, CancellationToken cancellationToken, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null);
 
     /// <summary>Traces a transaction whose canonical block the caller has already found, without looking it up again.</summary>
-    GethLikeTxTrace? Trace(Hash256 blockHash, Hash256 txHash, GethTraceOptions options, CancellationToken cancellationToken, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null);
+    /// <remarks>The default looks the block up again, so out-of-tree implementations keep compiling.</remarks>
+    GethLikeTxTrace? Trace(Hash256 blockHash, Hash256 txHash, GethTraceOptions options, CancellationToken cancellationToken, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null) =>
+        Trace(txHash, options, cancellationToken, writer, pipeWriter);
     GethLikeTxTrace? Trace(ulong blockNumber, Transaction transaction, GethTraceOptions options, CancellationToken cancellationToken);
 
     /// <remarks>Retained for out-of-tree plugins; in-tree only the matching deprecated debug-bridge overload forwards to it.</remarks>
