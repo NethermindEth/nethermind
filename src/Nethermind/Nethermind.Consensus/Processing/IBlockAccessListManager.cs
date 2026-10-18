@@ -68,7 +68,7 @@ public interface IBlockAccessListManager
     /// The state after the block's transactions and before its post-execution changes, when the world state no longer
     /// holds it because the whole block access list was applied to it up front; otherwise <c>null</c>.
     /// </summary>
-    IReadOnlyStateProvider? GetPostTransactionsState(Block block) => null;
+    IReadOnlyStateProvider? GetPostTransactionsState(Block block);
     void ValidateBlockAccessList(Block block, uint index, bool validateStorageReads = true);
     void StoreBeaconRoot(Block block, IReleaseSpec spec);
     void ApplyBlockhashStateChanges(BlockHeader header, IReleaseSpec spec);

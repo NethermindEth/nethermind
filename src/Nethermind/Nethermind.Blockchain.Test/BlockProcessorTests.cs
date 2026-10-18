@@ -4167,6 +4167,8 @@ public partial class BlockProcessorTests
             }
         }
 
+        public IReadOnlyStateProvider? GetPostTransactionsState(Block block) => null;
+
         public void ValidateBlockAccessList(Block block, uint index, bool validateStorageReads = true)
         {
         }

@@ -8,6 +8,7 @@ using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
+using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.Consensus.Processing;
@@ -35,6 +36,7 @@ public class NullBlockAccessListManager : IBlockAccessListManager
     public void ReturnTxProcessor(uint balIndex) { }
     public void IncrementalValidation(Block block, GasValidationResultSlot[] gasResults, BlockReceiptsTracer[] receiptsTracers, BlockProcessor.BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessedEventHandler, CancellationToken token) { }
     public void SetBlockAccessList(Block block) { }
+    public IReadOnlyStateProvider? GetPostTransactionsState(Block block) => null;
     public void ValidateBlockAccessList(Block block, uint index, bool validateStorageReads = true) { }
     public void StoreBeaconRoot(Block block, IReleaseSpec spec) { }
     public void ApplyBlockhashStateChanges(BlockHeader header, IReleaseSpec spec) { }
