@@ -284,7 +284,7 @@ namespace Nethermind.Trie
                         return result;
                     }
 
-                    pool.SafeReturn(result);
+                    if (!KeepsRlpOfHashedBranch) pool.SafeReturn(result);
                 }
 
                 if (!previousRlp.IsEmpty)
