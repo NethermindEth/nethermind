@@ -218,8 +218,8 @@ public partial class BlockProcessor
                                 if (state.ExecutedGas.Failure is { } failure)
                                 {
                                     // The validator throws at or before the failed slot, so the rest cannot change the
-                                    // outcome. Reusing the failure keeps a BAL failure retryable sequentially, and the
-                                    // rejection names the failing tx even when this slot comes before it.
+                                    // outcome. Reusing the failure makes the rejection name the failing tx even when this
+                                    // slot comes before it.
                                     state.GasResults[txIndex].TrySetResult(new GasValidationResult(0, 0, failure));
                                     return state;
                                 }
