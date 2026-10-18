@@ -4,6 +4,7 @@
 using System.Numerics;
 using System.Text;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 
 namespace Nethermind.Experimental.Abi;
@@ -192,6 +193,13 @@ public static partial class AbiType
             w.WritePadded(bytes);
         },
         HeadSize = Math.PadTo32(length)
+    };
+
+    public static readonly Abi<ValueHash256> Bytes32 = new()
+    {
+        Name = "bytes32",
+        Read = (ref BinarySpanReader r) => new ValueHash256(r.ReadBytes(32)),
+        Write = (ref BinarySpanWriter w, ValueHash256 v) => v.Bytes.CopyTo(w.Take(32)),
     };
 
     private static readonly UTF8Encoding StrictUtf8 = new(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);

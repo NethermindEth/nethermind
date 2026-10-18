@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using NUnit.Framework;
@@ -140,6 +141,23 @@ public class Dynamics
             "0000000000000000000000000000000000000000000000000000000000000002" + // Length of the array
             "0000000000000000000000005a4eab120fb44eb6684e5e32785702ff45ea344d" + // First element, `0x5a4eab120fb44eb6684e5e32785702ff45ea344d`
             "000000000000000000000000dac17f958d2ee523a2206206994597c13d831ec7"); // Second element, `0xdac17f958d2ee523a2206206994597c13d831ec7`
+    }
+
+    [Test]
+    public void ArrayOfBytes32()
+    {
+        AbiSignature<ValueHash256[]> signature = new AbiSignature("f")
+            .With(
+                AbiType.Array(AbiType.Bytes32)
+            );
+
+        ValueHash256[] arguments = [ValueKeccak.Compute("a"), ValueKeccak.Compute("b")];
+        AssertRoundTrip(signature, "a8cb663c", arguments,
+            "a8cb663c" + // `MethodId`
+            "0000000000000000000000000000000000000000000000000000000000000020" + // Offset to the start of the array
+            "0000000000000000000000000000000000000000000000000000000000000002" + // Length of the array
+            "3ac225168df54212a25c1c01fd35bebfea408fdac2e31ddd6f80a4bbf9a5f1cb" + // First element, `keccak256("a")`
+            "b5553de315e0edf504d9150af82dafa5c4667fa618ed0a6f19c69b41166c5510"); // Second element, `keccak256("b")`
     }
 
     [Test]
