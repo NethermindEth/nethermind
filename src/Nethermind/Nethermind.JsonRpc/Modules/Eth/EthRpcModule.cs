@@ -1195,11 +1195,12 @@ public partial class EthRpcModule(
     protected void RecoverTxSenderIfNeeded(Transaction transaction) => transaction.SenderAddress ??= _blockchainBridge.RecoverTxSender(transaction);
 
     /// <summary>Gets the transaction at <paramref name="positionIndex"/> from the stored block, decoding no other
-    /// transaction. False for a pending block or a block whose body is not stored, which the caller then searches as
-    /// before, so the results and errors stay the same.</summary>
+    /// transaction. False for a pending or earliest block, or a block whose body is not stored, which the caller then
+    /// searches as before, so the results and errors stay the same.</summary>
     private bool TryGetStoredTransaction(BlockParameter blockParameter, UInt256 positionIndex, out BlockHeader? header, out Transaction? transaction, out int transactionCount)
     {
-        header = blockParameter.Type == BlockParameterType.Pending ? null : _blockFinder.FindHeader(blockParameter);
+        // Pending has no stored block, and the earliest header lookup throws where the block search returns null.
+        header = blockParameter.Type is BlockParameterType.Pending or BlockParameterType.Earliest ? null : _blockFinder.FindHeader(blockParameter);
         if (header is null || positionIndex > int.MaxValue
             || !_blockchainBridge.TryGetStoredTransaction(header, (int)positionIndex, out transaction, out transactionCount))
         {
