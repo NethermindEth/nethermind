@@ -164,6 +164,7 @@ public class HistoryPruner : IHistoryPruner
             }
             Metrics.PruningCutoffBlocknumber = CutoffBlockNumber;
             Metrics.BlockAccessListPruningCutoffBlocknumber = BalCutoffBlockNumber;
+            WarnIfDefaultRetentionPrunesBacklog(persistedPointer);
 
             blockProcessingQueue.ProcessingQueueEmpty += OnBlockProcessorQueueEmpty;
         }
@@ -171,6 +172,22 @@ public class HistoryPruner : IHistoryPruner
         {
             Metrics.BlockAccessListPruningCutoffBlocknumber = BalCutoffBlockNumber;
             blockProcessingQueue.ProcessingQueueEmpty += OnBlockProcessorQueueEmpty;
+        }
+    }
+
+    // A node upgraded from the old 82125-epoch default deletes more than a whole window on its first pass.
+    private void WarnIfDefaultRetentionPrunesBacklog(ulong? persistedPointer)
+    {
+        if (_historyConfig.Pruning != PruningModes.Rolling || _historyConfig.RetentionEpochs is not null || !_logger.IsWarn
+            || persistedPointer is not { } oldest || CutoffBlockNumber is not { } cutoff)
+        {
+            return;
+        }
+
+        ulong blocksToPrune = cutoff.SaturatingSub(oldest);
+        if (blocksToPrune > GetRetentionBlocks(RetentionEpochs))
+        {
+            _logger.Warn($"History.RetentionEpochs is not set, so Rolling pruning keeps the chain floor of {RetentionEpochs} epochs and will delete about {blocksToPrune} blocks of bodies and receipts (#{oldest} to #{cutoff}). Set History.RetentionEpochs to keep more.");
         }
     }
 
@@ -185,9 +202,12 @@ public class HistoryPruner : IHistoryPruner
 
             return _historyConfig.Pruning == PruningModes.UseAncientBarriers
                 ? _ancientBarrier
-                : CalculateRollingCutoff(_historyConfig.RetentionEpochs);
+                // One extra epoch: the CL serves from the start of the epoch N back, up to 31 slots below head - N*32.
+                : CalculateRollingCutoff(RetentionEpochs + 1);
         }
     }
+
+    public ulong RetentionEpochs => _historyConfig.RetentionEpochs ?? _minHistoryRetentionEpochs;
 
     // One extra epoch: the CL serves from the start of the epoch N back, up to 31 slots below head - N*32.
     public ulong? BalCutoffBlockNumber => _enabled || _balPruningOnly ? CalculateRollingCutoff(_balRetentionEpochs + 1) : null;
@@ -571,7 +591,7 @@ public class HistoryPruner : IHistoryPruner
 
     private void CheckConfig()
     {
-        if (_historyConfig.RetentionEpochs < _minHistoryRetentionEpochs)
+        if (RetentionEpochs < _minHistoryRetentionEpochs)
         {
             throw new HistoryPrunerException($"HistoryRetentionEpochs must be at least {_minHistoryRetentionEpochs}.");
         }

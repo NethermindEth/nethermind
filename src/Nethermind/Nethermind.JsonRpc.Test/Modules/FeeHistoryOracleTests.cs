@@ -370,7 +370,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
 
         [Test]
-        public async Task GetFeeHistory_RewardPercentilesWeighEachReceiptByItsOwnGas([Values] bool eip8116Enabled)
+        public async Task GetFeeHistory_RewardPercentilesWeighEachReceiptByItsOwnGas([Values] bool eip8116Enabled, [Values] ReceiptSource receiptSource)
         {
             using BasicTestBlockchain chain = await BasicTestBlockchain.Create();
             Block headBlock = Build.A.Block.WithParent(chain.BlockTree.Head!).WithBaseFeePerGas(3).WithGasUsed(100).WithTransactions(GetTestTransactions()).TestObject;
@@ -378,7 +378,15 @@ namespace Nethermind.JsonRpc.Test.Modules
             chain.BlockTree.SuggestBlock(headBlock, BlockTreeSuggestOptions.None);
             chain.BlockTree.TryUpdateMainChain(headBlock.Header, true, preloadedBlocks: headBlock);
             BlockParameter newestBlockParameter = new(headBlock.Number);
-            IReceiptStorage receiptStorage = GetTestReceiptStorageForBlockWithGasUsed(headBlock, [10, 20, 30, 40], eip8116Enabled);
+            IReceiptStorage receiptStorage = receiptSource switch
+            {
+                ReceiptSource.InMemory => new InMemoryReceiptStorage(),
+                ReceiptSource.InMemoryWithoutIterator => new InMemoryReceiptStorage(allowReceiptIterator: false),
+                _ => chain.ReceiptStorage,
+            };
+            receiptStorage.Insert(headBlock, BuildReceiptsWithGasUsed([10, 20, 30, 40], eip8116Enabled), ensureCanonical: false);
+            // Read the receipts back from the database rather than the insert-populated cache.
+            if (receiptSource == ReceiptSource.Database) ((PersistentReceiptStorage)receiptStorage).ClearCache();
             TestSpecProvider specProvider = new(new OverridableReleaseSpec(Bogota.Instance) { IsEip8116Enabled = eip8116Enabled });
             using FeeHistoryOracle feeHistoryOracle = GetSubstitutedFeeHistoryOracle(blockTree: chain.BlockTree, receiptStorage: receiptStorage, specProvider: specProvider);
 
@@ -462,21 +470,30 @@ namespace Nethermind.JsonRpc.Test.Modules
             }
         }
 
-        private static IReceiptStorage GetTestReceiptStorageForBlockWithGasUsed(Block block, ulong[] gasUsedArray, bool eip8116Receipts = false)
+        private static IReceiptStorage GetTestReceiptStorageForBlockWithGasUsed(Block block, ulong[] gasUsedArray)
         {
-            IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
+            InMemoryReceiptStorage receiptStorage = new();
+            receiptStorage.Insert(block, BuildReceiptsWithGasUsed(gasUsedArray, eip8116Receipts: false), ensureCanonical: false);
+            return receiptStorage;
+        }
 
+        public enum ReceiptSource
+        {
+            InMemory,
+            InMemoryWithoutIterator,
+            Database,
+        }
+
+        private static TxReceipt[] BuildReceiptsWithGasUsed(ulong[] gasUsedArray, bool eip8116Receipts)
+        {
             TxReceipt[] txReceiptsArray = new TxReceipt[gasUsedArray.Length];
             ulong gasUsedTotal = 0;
             for (int i = 0; i < gasUsedArray.Length; i++)
             {
                 gasUsedTotal += gasUsedArray[i];
-                txReceiptsArray[i] = new TxReceipt() { GasUsedTotal = eip8116Receipts ? gasUsedArray[i] : gasUsedTotal };
+                txReceiptsArray[i] = new TxReceipt() { GasUsedTotal = eip8116Receipts ? gasUsedArray[i] : gasUsedTotal, Logs = [Build.A.LogEntry.TestObject] };
             }
-            // Match by hash: a block read back from a real block tree is a different instance.
-            receiptStorage.Get(Arg.Is<Block>(b => b.Hash == block.Hash)).Returns(txReceiptsArray);
-            receiptStorage.Get(Arg.Is<Block>(b => b.Hash == block.Hash), false).Returns(txReceiptsArray);
-            return receiptStorage;
+            return txReceiptsArray;
         }
 
         private static Transaction[] GetTestTransactions()
@@ -549,11 +566,9 @@ namespace Nethermind.JsonRpc.Test.Modules
                 blockTree.FindParent(secondBlock, BlockTreeLookupOptions.RequireCanonical).Returns(firstBlock);
                 blockTree.FindBlock(firstBlock.Hash!, options, firstBlock.Number).Returns(firstBlock);
 
-                IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
-                receiptStorage.Get(firstBlock).Returns(new TxReceipt[] { new() { GasUsed = 3 } });
-                receiptStorage.Get(firstBlock, false).Returns(new TxReceipt[] { new() { GasUsed = 3 } });
-                receiptStorage.Get(secondBlock).Returns(new TxReceipt[] { new() { GasUsed = 2 } });
-                receiptStorage.Get(secondBlock, false).Returns(new TxReceipt[] { new() { GasUsed = 2 } });
+                InMemoryReceiptStorage receiptStorage = new();
+                receiptStorage.Insert(firstBlock, [new() { GasUsed = 3 }], ensureCanonical: false);
+                receiptStorage.Insert(secondBlock, [new() { GasUsed = 2 }], ensureCanonical: false);
                 FeeHistoryOracle feeHistoryOracle1 =
                     GetSubstitutedFeeHistoryOracle(blockTree: blockTree, receiptStorage: receiptStorage, spec: spec);
                 return feeHistoryOracle1;
@@ -589,7 +604,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);
             specProvider.GetSpec(Arg.Any<ForkActivation>()).BaseFeeCalculator.Returns(new DefaultBaseFeeCalculator());
 
-            FeeHistoryOracle oracle = new(blockTree, Substitute.For<IReceiptStorage>(), specProvider);
+            FeeHistoryOracle oracle = new(blockTree, NullReceiptStorage.Instance, specProvider);
             using ResultWrapper<FeeHistoryResults> result = oracle.GetFeeHistory(1, new BlockParameter(0UL), []);
 
             ArrayPoolList<UInt256> fees = result.Data.BaseFeePerBlobGas;
@@ -628,7 +643,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             return new(
                 blockTree ?? Substitute.For<IBlockTree>(),
-                receiptStorage ?? Substitute.For<IReceiptStorage>(),
+                receiptStorage ?? NullReceiptStorage.Instance,
                 provider,
                 maxDistFromHead);
         }
