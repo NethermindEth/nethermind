@@ -3594,7 +3594,7 @@ public partial class BlockProcessorTests
         {
             for (int i = 0; i < b.Transactions.Length; i++) gasResults[i].GetResult();
             slotsFilled.Set();
-            throw new InvalidBlockException(b, "invalid block access list");
+            if (rejected) throw new InvalidBlockException(b, "invalid block access list");
         }
 
         // Two txs of 1.5M gas exceed the 2M block gas limit only once both have run.
@@ -3612,7 +3612,7 @@ public partial class BlockProcessorTests
         GatedTailTransactionProcessorAdapter transactionProcessor = new(int.MaxValue, cause == BalRejectionCause.GasLimit ? 1_500_000ul : 21_000ul, validationFinished, outcome: _ =>
         {
             if (rejectedAt == BalRejectionPoint.DuringApply) applying.Wait(TimeSpan.FromSeconds(10));
-            return cause == BalRejectionCause.TxFailure ? TransactionResult.ErrorType.MalformedTransaction.WithDetail("rejected") : TransactionResult.Ok;
+            return rejected && cause == BalRejectionCause.TxFailure ? TransactionResult.ErrorType.MalformedTransaction.WithDetail("rejected") : TransactionResult.Ok;
         });
         ParallelTestBlockAccessListManager balManager = new(transactionProcessor)
         {
@@ -3630,11 +3630,29 @@ public partial class BlockProcessorTests
         if (rejected) Assert.That(Process, Throws.InstanceOf<InvalidBlockException>());
         else Assert.That(Process, Throws.Nothing);
 
+        int applyStarts = stateProvider.ApplyStarts;
+        int rootRecalculations = stateProvider.RootRecalculations;
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(stateProvider.ApplyStarts, Is.EqualTo(rejected && rejectedAt == BalRejectionPoint.DuringWarmup ? 0 : 1), "BAL applications started");
+            Assert.That(applyStarts, Is.EqualTo(rejected && rejectedAt == BalRejectionPoint.DuringWarmup ? 0 : 1), "BAL applications started");
             Assert.That(stateProvider.CancelledApplies, Is.EqualTo(rejected && rejectedAt == BalRejectionPoint.DuringApply ? 1 : 0), "BAL applications cancelled");
-            Assert.That(stateProvider.RootRecalculations, Is.EqualTo(rejected ? 0 : 1), "state root recalculations");
+            Assert.That(rootRecalculations, Is.EqualTo(rejected ? 0 : 1), "state root recalculations");
+        }
+
+        // The executor lives for the whole node run, so a rejection must not carry over to the next valid block.
+        rejected = false;
+        block = Build.A.Block
+            .WithNumber(2)
+            .WithGasLimit(4_000_000)
+            .WithTransactions(CreateParallelValidationTransactions(2))
+            .WithBlockAccessList(new ReadOnlyBlockAccessList())
+            .TestObject;
+        Assert.That(Process, Throws.Nothing);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(stateProvider.ApplyStarts, Is.EqualTo(applyStarts + 1), "BAL applications started on the next block");
+            Assert.That(stateProvider.RootRecalculations, Is.EqualTo(rootRecalculations + 1), "state root recalculations on the next block");
         }
     }
 
