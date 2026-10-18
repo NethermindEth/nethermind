@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Int256;
@@ -70,16 +70,16 @@ public class SlotChangesDecoder : RlpDecoder<ReadOnlySlotChanges>
     {
         writer.StartSequence(GetContentLength(item, rlpBehaviors));
         writer.Encode(item.Key);
-        EncodeStorageChanges(ref writer, item.Changes, rlpBehaviors);
+        EncodeStorageChanges(ref writer, CollectionsMarshal.AsSpan(item.Changes), rlpBehaviors);
     }
 
     public static int GetContentLength(ReadOnlySlotChanges item, RlpBehaviors rlpBehaviors)
         => Rlp.LengthOf(item.Key) + StorageChangesSequenceLength(item.Changes, rlpBehaviors);
 
     public static int GetContentLength(GeneratedSlotChanges item, RlpBehaviors rlpBehaviors)
-        => Rlp.LengthOf(item.Key) + StorageChangesSequenceLength(item.Changes, rlpBehaviors);
+        => Rlp.LengthOf(item.Key) + StorageChangesSequenceLength(CollectionsMarshal.AsSpan(item.Changes), rlpBehaviors);
 
-    private static int StorageChangesSequenceLength(IEnumerable<StorageChange> changes, RlpBehaviors rlpBehaviors)
+    private static int StorageChangesSequenceLength(ReadOnlySpan<StorageChange> changes, RlpBehaviors rlpBehaviors)
     {
         int len = 0;
         foreach (StorageChange c in changes)
@@ -89,7 +89,7 @@ public class SlotChangesDecoder : RlpDecoder<ReadOnlySlotChanges>
         return Rlp.LengthOfSequence(len);
     }
 
-    private static void EncodeStorageChanges<TWriter>(ref TWriter writer, IEnumerable<StorageChange> changes, RlpBehaviors rlpBehaviors)
+    private static void EncodeStorageChanges<TWriter>(ref TWriter writer, ReadOnlySpan<StorageChange> changes, RlpBehaviors rlpBehaviors)
         where TWriter : struct, IRlpWriteBackend, allows ref struct
     {
         int len = 0;
