@@ -55,7 +55,8 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
             yield return new TestConfiguration(new FlatDbConfig()
             {
                 Enabled = true,
-                Layout = layout
+                Layout = layout,
+                TrieNodeLogEnabled = false
             }, layout.ToString());
 
             // A generation small enough that the scenarios roll and merge generations while readers are open.

@@ -107,6 +107,9 @@ public class TrieNodeLogTests
         Metrics.TrieNodeLogSecondLevelStoredBytes.TryGetValue(TrieNodeLogLabel.State, out long bytes) ? bytes : 0;
 
     [Test]
+    public void Trie_node_log_is_enabled_by_default() => Assert.That(new FlatDbConfig().TrieNodeLogEnabled, Is.True);
+
+    [Test]
     public void Readers_see_the_version_of_their_snapshot_across_overwrites_and_merges()
     {
         using IPersistence.IPersistenceReader before = _persistence.CreateReader();
