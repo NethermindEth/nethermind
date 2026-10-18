@@ -31,6 +31,16 @@ namespace Nethermind.Facade
         TxReceipt GetReceipt(Hash256 txHash);
         (TxReceipt? Receipt, ulong BlockTimestamp, TxGasInfo? GasInfo, int LogIndexStart) GetTxReceiptInfo(Hash256 txHash);
         bool TryGetTransaction(Hash256 txHash, [NotNullWhen(true)] out TransactionLookupResult? result, bool checkTxnPool = true);
+
+        /// <summary>Gets the transaction at <paramref name="index"/> of a stored block, decoding no other transaction.</summary>
+        /// <returns>False when the block body is not stored; true otherwise, with a null transaction for an index past the end.</returns>
+        bool TryGetStoredTransaction(BlockHeader header, int index, out Transaction? transaction, out int transactionCount)
+        {
+            transaction = null;
+            transactionCount = 0;
+            return false;
+        }
+
         CallOutput Call(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride = null, UInt256? blobBaseFeeOverride = null, BlockOverride? blockOverride = null, bool noBaseFee = false, CancellationToken cancellationToken = default);
         SimulateOutput<TTrace> Simulate<TTrace>(BlockHeader header, SimulatePayload<TransactionWithSourceDetails> payload, ISimulateBlockTracerFactory<TTrace> simulateBlockTracerFactory, ulong gasCapLimit, CancellationToken cancellationToken);
         CallOutput EstimateGas(BlockHeader header, Transaction tx, int errorMarginBasisPoints, Dictionary<Address, AccountOverride>? stateOverride = null, UInt256? blobBaseFeeOverride = null, BlockOverride? blockOverride = null, ulong gasCap = 0, bool noBaseFee = false, CancellationToken cancellationToken = default);
@@ -88,15 +98,6 @@ namespace Nethermind.Facade
         SingleCallWitnessResult GenerateExecutionWitness(BlockHeader header, Transaction tx, CancellationToken cancellationToken = default);
 
         ReadOnlyBlockAccessList? GetBlockAccessList(ulong blockNumber, Hash256 blockHash);
-
-        /// <summary>Gets the transaction at <paramref name="index"/> of a stored block, decoding no other transaction.</summary>
-        /// <returns>False when the block body is not stored; true otherwise, with a null transaction for an index past the end.</returns>
-        bool TryGetStoredTransaction(BlockHeader header, int index, out Transaction? transaction, out int transactionCount)
-        {
-            transaction = null;
-            transactionCount = 0;
-            return false;
-        }
         MemoryManager<byte>? GetBlockAccessListRlp(ulong blockNumber, Hash256 blockHash);
         void DeleteBlockAccessList(ulong blockNumber, Hash256 blockHash);
     }
