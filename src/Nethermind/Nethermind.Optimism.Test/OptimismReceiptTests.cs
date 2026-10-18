@@ -1,13 +1,17 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Linq;
+using System.Text.Json;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
 using Nethermind.Int256;
+using Nethermind.JsonRpc.Data;
 using Nethermind.Optimism.Rpc;
+using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using NSubstitute;
 using NUnit.Framework;
@@ -142,6 +146,48 @@ public class OptimismReceiptTests
             Assert.That(receipt.BlobGasUsed, Is.EqualTo(expectedBlobGasUsed));
             // The receipt has to agree with the per-transaction estimate the header's blobGasUsed sums.
             if (isJovian) Assert.That(receipt.BlobGasUsed, Is.EqualTo((ulong)OptimismCostHelper.ComputeDaUsageEstimate(tx) * expectedDaFootprintGasScalar));
+        }
+    }
+
+    // ReceiptForRpc has a generated writer that matches only its exact type, so the subclass must keep the metadata path
+    // and its Optimism fields, while writing every base field as the generated writer does.
+    [Test]
+    public void Receipt_json_keeps_optimism_fields_and_writes_base_fields_as_the_base_receipt([Values] bool deposit)
+    {
+        LogEntry[] logs = [new(TestItem.AddressA, [1, 2], [TestItem.KeccakC])];
+        TxReceipt txReceipt = new()
+        {
+            TxType = deposit ? TxType.DepositTx : TxType.EIP1559,
+            StatusCode = 1,
+            TxHash = TestItem.KeccakA,
+            BlockHash = TestItem.KeccakB,
+            BlockNumber = 1_000,
+            Index = 2,
+            GasUsed = 21_000,
+            GasUsedTotal = 42_000,
+            Sender = TestItem.AddressA,
+            Recipient = TestItem.AddressB,
+            Logs = logs,
+            Bloom = new Bloom(logs),
+        };
+        TxGasInfo gasInfo = new(10 * Unit.GWei);
+        OptimismReceiptForRpc receipt = deposit
+            ? new(TestItem.KeccakA, txReceipt, 1_700_000_000, gasInfo, logIndexStart: 3) { DepositNonce = 7, DepositReceiptVersion = 1 }
+            : new(TestItem.KeccakA, txReceipt, 1_700_000_000, gasInfo, logIndexStart: 3) { L1Fee = 1, L1GasPrice = 2, L1GasUsed = 3, L1FeeScalar = "4", L1BaseFeeScalar = 5, L1BlobBaseFee = 6, L1BlobBaseFeeScalar = 7, OperatorFeeScalar = 8, OperatorFeeConstant = 9, DaFootprintGasScalar = 10 };
+        string[] optimismFields = deposit
+            ? ["depositNonce", "depositReceiptVersion"]
+            : ["l1Fee", "l1GasPrice", "l1GasUsed", "l1FeeScalar", "l1BaseFeeScalar", "l1BlobBaseFee", "l1BlobBaseFeeScalar", "operatorFeeScalar", "operatorFeeConstant", "daFootprintGasScalar"];
+
+        using JsonDocument full = JsonDocument.Parse(JsonSerializer.SerializeToUtf8Bytes(receipt, EthereumJsonSerializer.JsonOptions.GetTypeInfo(typeof(OptimismReceiptForRpc))));
+        using JsonDocument asBase = JsonDocument.Parse(JsonSerializer.SerializeToUtf8Bytes(receipt, EthereumJsonSerializer.JsonOptions.GetTypeInfo(typeof(ReceiptForRpc))));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(full.RootElement.EnumerateObject().Select(static p => p.Name).Except(asBase.RootElement.EnumerateObject().Select(static p => p.Name)), Is.EquivalentTo(optimismFields));
+            foreach (JsonProperty property in asBase.RootElement.EnumerateObject())
+            {
+                Assert.That(full.RootElement.GetProperty(property.Name).GetRawText(), Is.EqualTo(property.Value.GetRawText()), property.Name);
+            }
         }
     }
 
