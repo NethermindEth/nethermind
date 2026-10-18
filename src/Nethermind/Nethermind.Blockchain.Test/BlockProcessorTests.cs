@@ -2212,12 +2212,13 @@ public partial class BlockProcessorTests
     }
 
     [Test]
-    public void ProcessOne_wraps_only_parallel_bal_failure_for_sequential_retry([Values] bool balFailure)
+    public void ProcessOne_rejects_parallel_failure_without_sequential_retry([Values] bool balFailure)
     {
         IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
         ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
         IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor = Substitute.For<IBlockProcessor.IBlockTransactionsExecutor>();
         IBlockAccessListManager balManager = new ParallelTestBlockAccessListManager(Substitute.For<ITransactionProcessorAdapter>());
+        TestLogger logger = new();
         BlockProcessor processor = new(
             HoodiSpecProvider.Instance,
             TestBlockValidator.AlwaysValid,
@@ -2227,14 +2228,14 @@ public partial class BlockProcessorTests
             NullReceiptStorage.Instance,
             new BeaconBlockRootHandler(transactionProcessor, stateProvider),
             Substitute.For<IBlockhashStore>(),
-            LimboLogs.Instance,
+            new OneLoggerLogManager(new(logger)),
             new WithdrawalProcessor(stateProvider, LimboLogs.Instance),
             new ExecutionRequestsProcessor(transactionProcessor),
             balManager);
 
         Block block = Build.A.Block.WithHeader(Build.A.BlockHeader.WithAuthor(TestItem.AddressD).TestObject).TestObject;
-        // A plain tx failure reproduces sequentially whenever the BAL is right, and a wrong BAL fails the hash
-        // check anyway, so only a BAL failure is worth a sequential retry.
+        // The BAL is bound to the block hash, so a BAL failure makes the block invalid just as a tx failure does;
+        // re-executing it sequentially would only double the cost of rejecting it.
         InvalidBlockException failure = balFailure
             ? new BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException(block.Header, "invalid BAL")
             : new InvalidTransactionException(block.Header, "invalid tx", TransactionResult.ErrorType.MalformedTransaction);
@@ -2247,21 +2248,18 @@ public partial class BlockProcessorTests
             .Returns(_ => throw parallelFailure);
 
         using IDisposable scope = stateProvider.BeginScope(null);
+        long rejectionsBefore = Interlocked.Read(ref Metrics.ParallelBlockAccessListRejections);
 
         InvalidBlockException? exception = Assert.Catch<InvalidBlockException>(
             () => processor.ProcessOne(block, ProcessingOptions.NoValidation, NullBlockTracer.Instance, HoodiSpecProvider.Instance.GetSpec(block.Header), CancellationToken.None));
 
-        if (balFailure)
-        {
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(exception, Is.TypeOf<BlockProcessor.BlockAccessListSequentialRetryException>());
-                Assert.That(exception!.InnerException, Is.SameAs(failure));
-            }
-        }
-        else
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(exception, Is.SameAs(parallelFailure));
+            Assert.That(logger.LogList, Has.Exactly(balFailure ? 1 : 0).Contains("for its block access list"),
+                "a parallel BAL rejection has no sequential fallback, so it must be visible");
+            // The metric is process-wide and other tests may bump it concurrently, so only growth is asserted.
+            if (balFailure) Assert.That(Interlocked.Read(ref Metrics.ParallelBlockAccessListRejections), Is.GreaterThan(rejectionsBefore));
         }
     }
 
@@ -2990,30 +2988,31 @@ public partial class BlockProcessorTests
     }
 
     [Test]
-    public void Registered_parallel_and_fallback_validation_publish_only_accepted_canonical_receipt_events(
-        [Values] bool retry,
+    public void Registered_parallel_validation_publishes_only_accepted_canonical_receipt_events(
+        [Values] bool balFailure,
         [Values] bool validationSucceeds,
         [Values] bool eip8116)
     {
-        CanonicalReceiptEventSetup setup = BuildCanonicalReceiptEventSetup(retry, validationSucceeds, eip8116);
+        CanonicalReceiptEventSetup setup = BuildCanonicalReceiptEventSetup(balFailure, validationSucceeds, eip8116);
         using IContainer container = setup.Container;
+        bool accepted = validationSucceeds && !balFailure;
 
-        if (validationSucceeds)
+        if (accepted)
         {
             setup.BranchProcessor.Process(setup.Parent, [setup.Block], ProcessingOptions.None, NullBlockTracer.Instance);
         }
         else
         {
-            Assert.Throws<InvalidBlockException>(() =>
+            Assert.Catch<InvalidBlockException>(() =>
                 setup.BranchProcessor.Process(setup.Parent, [setup.Block], ProcessingOptions.None, NullBlockTracer.Instance));
         }
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(setup.BalManager.ProcessingAttempts, Is.EqualTo(retry ? 2 : 1));
+            Assert.That(setup.BalManager.ProcessingAttempts, Is.EqualTo(1), "an invalid block access list must not be re-executed sequentially");
             Assert.That(
                 setup.Handler.Events,
-                validationSucceeds ? Is.EqualTo(eip8116 ? Eip8116ReceiptEvents : CanonicalReceiptEvents) : Is.Empty,
+                accepted ? Is.EqualTo(eip8116 ? Eip8116ReceiptEvents : CanonicalReceiptEvents) : Is.Empty,
                 "only an accepted processing attempt may publish callbacks");
         }
     }
@@ -3021,7 +3020,7 @@ public partial class BlockProcessorTests
     [Test]
     public void Rejected_block_releases_the_transaction_events_it_staged()
     {
-        CanonicalReceiptEventSetup setup = BuildCanonicalReceiptEventSetup(retry: false, validationSucceeds: false);
+        CanonicalReceiptEventSetup setup = BuildCanonicalReceiptEventSetup(balFailure: false, validationSucceeds: false);
         using IContainer container = setup.Container;
 
         Assert.Throws<InvalidBlockException>(() =>
@@ -3552,7 +3551,7 @@ public partial class BlockProcessorTests
 
         using (Assert.EnterMultipleScope())
         {
-            // The worker's own failure surfaces, so a BAL failure still reaches the sequential retry.
+            // The worker's own failure surfaces, so a BAL failure is rejected as itself.
             Assert.That(ex, Is.InstanceOf<BlockAccessListManager.ParallelExecutionException>());
             Assert.That(Volatile.Read(ref leadExecuted), Is.False);
             if (balFailure)
@@ -3764,7 +3763,7 @@ public partial class BlockProcessorTests
     }
 
     /// <summary>Mirrors <see cref="BlockAccessListManager.IncrementalValidation"/>'s ordering and its
-    /// running EIP-8037 header gas, so tests can exercise the staging and retry wiring without the real
+    /// running EIP-8037 header gas, so tests can exercise the staging wiring without the real
     /// manager. Receipt index and cumulative receipt gas are deliberately left to the executor under
     /// test; <see cref="IncrementalValidation_publishes_canonical_receipt_metadata"/> is what covers the
     /// real manager's own metadata contract.</summary>
@@ -3900,9 +3899,9 @@ public partial class BlockProcessorTests
         IContainer Container);
 
     /// <summary>Wires the registered parallel decorator over a real <see cref="BlockProcessor"/> and
-    /// <see cref="BranchProcessor"/> so a test can drive whole processing attempts — including the BAL
-    /// sequential retry — against a recording transaction-processed handler.</summary>
-    private static CanonicalReceiptEventSetup BuildCanonicalReceiptEventSetup(bool retry, bool validationSucceeds, bool eip8116 = false)
+    /// <see cref="BranchProcessor"/> so a test can drive whole processing attempts — including a BAL
+    /// failure — against a recording transaction-processed handler.</summary>
+    private static CanonicalReceiptEventSetup BuildCanonicalReceiptEventSetup(bool balFailure, bool validationSucceeds, bool eip8116 = false)
     {
         GasConsumed[] gasConsumed = CanonicalReceiptGasConsumed();
         Block block = BuildParallelValidationBlock(gasConsumed.Length);
@@ -3922,7 +3921,7 @@ public partial class BlockProcessorTests
         ReceiptMetadataTransactionProcessorAdapter transactionProcessorAdapter = new(gasConsumed);
         ParallelTestBlockAccessListManager balManager = new(transactionProcessorAdapter)
         {
-            FailFirstSetBlockAccessList = retry,
+            FailFirstSetBlockAccessList = balFailure,
         };
         IContainer container = new ContainerBuilder()
             .AddSingleton<IWorldState>(stateProvider)
@@ -4260,7 +4259,7 @@ public partial class BlockProcessorTests
         {
             if (FailFirstSetBlockAccessList && ProcessingAttempts == 1)
             {
-                throw new BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException(block.Header, "retry after transaction validation");
+                throw new BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException(block.Header, "invalid BAL after transaction validation");
             }
         }
 
@@ -4447,7 +4446,7 @@ public partial class BlockProcessorTests
                     new(suggestedBlock.Header, "invalid BAL");
                 if (retryable)
                 {
-                    throw new BlockProcessor.BlockAccessListSequentialRetryException(failure);
+                    throw new BlockProcessor.BlockAccessListSequentialRetryException(failure.InvalidBlock, failure.Message, failure);
                 }
 
                 throw failure;

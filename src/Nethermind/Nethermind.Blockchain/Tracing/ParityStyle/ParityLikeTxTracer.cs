@@ -571,7 +571,7 @@ public partial class ParityLikeTxTracer : TxTracer
                 $"{nameof(ReportActionEnd)} called when result is not yet prepared.");
         }
 
-        _currentAction.Result.Output = output.ToArray();
+        _currentAction.Result.Output = output.AsArray();
         _currentAction.Result.GasUsed = _currentAction.Gas - gas;
         PopAction();
     }
@@ -585,7 +585,7 @@ public partial class ParityLikeTxTracer : TxTracer
     public override void ReportActionRevert(ulong gas, ReadOnlyMemory<byte> output)
     {
         ParityTraceResult result = _currentAction!.Result!;
-        result.Output = output.ToArray();
+        result.Output = output.AsArray();
         result.GasUsed = _currentAction.Gas - gas;
         _currentAction.Error = GetErrorDescription(EvmExceptionType.Revert);
         PopAction();
@@ -607,7 +607,7 @@ public partial class ParityLikeTxTracer : TxTracer
         }
 
         _currentAction.Result.Address = deploymentAddress;
-        _currentAction.Result.Code = deployedCode.ToArray();
+        _currentAction.Result.Code = deployedCode.AsArray();
         _currentAction.Result.GasUsed = _currentAction.Gas - gas;
         PopAction();
     }
