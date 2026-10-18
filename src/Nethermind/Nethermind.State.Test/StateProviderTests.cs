@@ -23,6 +23,7 @@ using Nethermind.Int256;
 using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Logging;
 using Nethermind.Evm.State;
+using Nethermind.Evm.Tracing.State;
 using Nethermind.State;
 using Nethermind.Trie.Pruning;
 using NSubstitute;
@@ -431,6 +432,38 @@ public class StateProviderTests(bool useFlat)
     }
 
     [Test]
+    public void TryGetAccount_reports_account_with_storage_root_without_allocating()
+    {
+        using Context ctx = new(useFlat, UnavailableStateHeaderProvider.Instance);
+        IWorldState provider = ctx.WorldState;
+        using IDisposable _ = provider.BeginScope(IWorldState.PreGenesis);
+        byte[] code = [0x60, 0x01];
+        provider.CreateAccount(_address1, 5, 2);
+        provider.InsertCode(_address1, code, Cancun.Instance);
+        provider.Set(new StorageCell(_address1, 1), 0x11);
+        provider.Commit(Cancun.Instance);
+        provider.CommitTree(0);
+
+        provider.TryGetAccount(_address1, out AccountStruct _);
+        long allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
+        bool exists = provider.TryGetAccount(_address1, out AccountStruct account);
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exists, Is.True);
+            Assert.That(account.Nonce, Is.EqualTo(2UL));
+            Assert.That(account.Balance, Is.EqualTo((UInt256)5));
+            Assert.That(account.CodeHash, Is.EqualTo(Keccak.Compute(code).ValueHash256));
+            Assert.That(account.StorageRoot, Is.EqualTo(((WorldState)provider).GetStorageRoot(_address1)));
+            Assert.That(account.IsStorageEmpty, Is.False);
+            Assert.That(allocated, Is.Zero);
+            Assert.That(provider.TryGetAccount(TestItem.AddressB, out AccountStruct missing), Is.False);
+            Assert.That(missing, Is.EqualTo(AccountStruct.TotallyEmpty));
+        }
+    }
+
+    [Test]
     public void Returns_empty_byte_code_for_non_existing_accounts()
     {
         using Context ctx = new(useFlat, UnavailableStateHeaderProvider.Instance);
@@ -634,6 +667,27 @@ public class StateProviderTests(bool useFlat)
         provider.GetBalance(_address1); // justcache
         provider.AddToBalance(_address1, 0, SpuriousDragon.Instance); // touch
         Assert.DoesNotThrow(() => provider.Commit(SpuriousDragon.Instance, tracer));
+    }
+
+    [Test]
+    public void Cancelled_state_reporting_does_not_leak_changes_into_the_next_commit()
+    {
+        using Context ctx = new(useFlat, UnavailableStateHeaderProvider.Instance);
+        IWorldState provider = ctx.WorldState;
+        using IDisposable _ = provider.BeginScope(IWorldState.PreGenesis);
+        IWorldStateTracer cancelled = Substitute.For<IWorldStateTracer>();
+        cancelled.IsTracingState.Returns(true);
+        cancelled.When(static t => t.ReportBalanceChange(Arg.Any<Address>(), Arg.Any<UInt256?>(), Arg.Any<UInt256?>()))
+            .Do(static _ => throw new OperationCanceledException());
+        provider.CreateAccount(TestItem.AddressA, 1);
+
+        Assert.Throws<OperationCanceledException>(() => provider.Commit(Frontier.Instance, cancelled));
+        provider.Reset();
+        ParityLikeTxTracer next = new(Build.A.Block.TestObject, null, ParityTraceTypes.StateDiff);
+        provider.CreateAccount(TestItem.AddressB, 2);
+        provider.Commit(Frontier.Instance, next);
+
+        Assert.That(next.BuildResult().StateChanges!.Keys, Is.EqualTo(new[] { TestItem.AddressB }));
     }
 
     [Test]

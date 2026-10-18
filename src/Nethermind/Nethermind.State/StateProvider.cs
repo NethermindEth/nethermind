@@ -46,6 +46,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
     // code-hash update referencing it, so Restore can drop code whose deployment an ancestor frame reverted.
     private readonly List<(int Position, ValueHash256 CodeHash, int Length)> _codeInsertJournal = [];
     private readonly OptimizedDictionary<AddressAsKey, ChangeTrace> _blockChanges = new(4_096);
+    private Dictionary<AddressAsKey, ChangeTrace>? _commitTrace;
     private List<AddressAsKey> _removedWithStorage = [];
     // Handed back by a detached write-back once it is done with the list it took.
     private List<AddressAsKey>? _spareRemovedWithStorage;
@@ -666,7 +667,8 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         ReadOnlySpan<Change> changes = CollectionsMarshal.AsSpan(_changes);
         if (stateTracer.IsTracingState)
         {
-            Dictionary<AddressAsKey, ChangeTrace> trace = [];
+            Dictionary<AddressAsKey, ChangeTrace> trace = _commitTrace ??= [];
+            trace.ClearAndTrim();
             CommitChanges<OnFlag>(changes, removeEmptyAccounts, isTracing, trace);
             // Reporting code changes reads both the code DB and the lookup recycled by the flush worker.
             AwaitCodeFlush(codeFlushTask);

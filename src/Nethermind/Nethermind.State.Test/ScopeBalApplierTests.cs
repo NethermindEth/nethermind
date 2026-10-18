@@ -11,6 +11,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Threading;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -79,7 +80,7 @@ public class ScopeBalApplierTests
 
         // The largest batch fails first on a single worker, leaving batch 7 for exceptional cleanup.
         using ParallelUnbalancedWork.WorkerScope workerScope = ParallelUnbalancedWork.BeginWorkerScope(disposalAlsoFails ? 1 : Environment.ProcessorCount);
-        Exception? failure = Assert.Catch(() => ScopeBalApplier.Apply(scope, bal));
+        Exception? failure = Assert.Catch(() => ScopeBalApplier.Apply(scope, bal, LimboLogs.Instance));
         parent.Received(1).Dispose();
         using (Assert.EnterMultipleScope())
         {
