@@ -16,6 +16,7 @@ using Nethermind.Evm.Precompiles;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth;
 using Nethermind.Facade.Eth.RpcTransaction;
+using Nethermind.Facade.Find;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Facade.Simulate;
 using Nethermind.Int256;
@@ -1208,16 +1209,24 @@ public partial class EthRpcModule(
             return response;
         }
 
-        ArrayPoolList<FilterLog> logs = new(0);
+        SerializedLogsResult logs = new(filterLogs);
 
-        foreach (FilterLog log in filterLogs)
+        try
         {
-            logs.Add(log);
-            if (enforceMaxLogs && logs.Count > _rpcConfig.MaxLogsPerResponse)
+            foreach (SerializedLogs blockLogs in FoundLogs.Serialize(filterLogs))
             {
-                logs.Dispose();
-                return ResultWrapper<IEnumerable<FilterLog>>.Fail($"Too many logs requested. Max logs per response is {_rpcConfig.MaxLogsPerResponse}.", ErrorCodes.LimitExceeded);
+                logs.Add(blockLogs);
+                if (enforceMaxLogs && logs.Count > _rpcConfig.MaxLogsPerResponse)
+                {
+                    logs.Dispose();
+                    return ResultWrapper<IEnumerable<FilterLog>>.Fail($"Too many logs requested. Max logs per response is {_rpcConfig.MaxLogsPerResponse}.", ErrorCodes.LimitExceeded);
+                }
             }
+        }
+        catch
+        {
+            logs.Dispose();
+            throw;
         }
 
         return ResultWrapper<IEnumerable<FilterLog>>.Success(logs);
