@@ -7,6 +7,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm;
+using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 
@@ -14,9 +15,13 @@ namespace Nethermind.Blockchain.Tracing.GethStyle;
 
 public class GethLikeTxFileTracer : GethLikeTxTracer<GethTxFileTraceEntry>
 {
+    private const int MinMemoryBufferSize = 1024;
+
     private readonly IGethFileTraceSink _sink;
     private readonly Stack<ulong>? _actionGas;
     private GethTxFileTraceEntry? _reusableEntry;
+    private byte[] _stackBuffer = [];
+    private byte[] _memoryBuffer = [];
     private TopLevelGasTracker _gasTracker;
     private bool _captureStopped;
 
@@ -68,6 +73,31 @@ public class GethLikeTxFileTracer : GethLikeTxTracer<GethTxFileTraceEntry>
         if (_captureStopped) return;
         base.StartOperation(pc, opcode, gas, in env);
         if (_captureStopped) CurrentTraceEntry = null;
+    }
+
+    // The entry is written to the sink before the next opcode starts, so the snapshots can live in buffers reused across opcodes.
+    public override void SetOperationStack(TraceStack stack)
+    {
+        if (CurrentTraceEntry is null) return;
+
+        int length = stack.RawByteLength;
+        if (_stackBuffer.Length < length)
+            _stackBuffer = new byte[Math.Max(length, EvmStack.MaxStackSize * EvmStack.WordSize)];
+
+        stack.CopyRawBytesTo(_stackBuffer);
+        CurrentTraceEntry.Stack = _stackBuffer.AsMemory(0, length);
+    }
+
+    public override void SetOperationMemory(TraceMemory memoryTrace)
+    {
+        if (!IsTracingFullMemory || CurrentTraceEntry is null) return;
+
+        int length = memoryTrace.RawWordByteLength;
+        if (_memoryBuffer.Length < length)
+            _memoryBuffer = new byte[Math.Max(length, Math.Max(_memoryBuffer.Length * 2, MinMemoryBufferSize))];
+
+        memoryTrace.CopyRawWordBytesTo(_memoryBuffer);
+        CurrentTraceEntry.Memory = _memoryBuffer.AsMemory(0, length);
     }
 
     public override void MarkAsSuccess(Address recipient, in GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)

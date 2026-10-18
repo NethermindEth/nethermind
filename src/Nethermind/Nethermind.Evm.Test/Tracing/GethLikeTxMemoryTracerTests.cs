@@ -595,6 +595,38 @@ public class GethLikeTxMemoryTracerTests : GethLikeTracerTestsBase
     }
 
     [Test]
+    public void Unchanged_returndata_shares_one_hex_string_across_opcodes()
+    {
+        const string word = "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff";
+        const string otherWord = "ffeeddccbbaa99887766554433221100ffeeddccbbaa99887766554433221100";
+
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
+        TestState.InsertCode(TestItem.AddressC, Prepare.EvmCode.StoreDataInMemory(0, word).Return(32, 0).Done, Spec);
+        TestState.CreateAccount(TestItem.AddressD, 1.Ether);
+        TestState.InsertCode(TestItem.AddressD, Prepare.EvmCode.StoreDataInMemory(0, otherWord).Return(32, 0).Done, Spec);
+        TestState.Commit(Spec);
+
+        byte[] code = Prepare.EvmCode
+            .Call(TestItem.AddressC, 50000)
+            .Call(TestItem.AddressC, 50000)
+            .Call(TestItem.AddressD, 50000)
+            .Op(Instruction.STOP)
+            .Done;
+
+        GethLikeTxTrace trace = ExecuteAndTrace(GethTraceOptions.Default with { EnableReturnData = true }, code);
+
+        GethTxTraceEntry[] firstReturn = trace.Entries.Where(e => e.Depth == 1 && e.ReturnData == $"0x{word}").ToArray();
+        GethTxTraceEntry topLevelStop = trace.Entries.Last(e => e.Opcode == "STOP" && e.Depth == 1);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(firstReturn, Has.Length.GreaterThan(1));
+            Assert.That(firstReturn.All(e => ReferenceEquals(e.ReturnData, firstReturn[0].ReturnData)), Is.True);
+            Assert.That(topLevelStop.ReturnData, Is.EqualTo($"0x{otherWord}"));
+        }
+    }
+
+    [Test]
     public void ReturnData_is_omitted_when_not_enabled()
     {
         const string word = "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff";

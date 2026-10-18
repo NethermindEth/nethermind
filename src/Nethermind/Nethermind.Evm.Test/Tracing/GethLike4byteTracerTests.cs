@@ -40,6 +40,28 @@ public class GethLike4byteTracerTests : VirtualMachineTestsBase
         }
     }
 
+    [Test]
+    public void ReportAction_CountsRepeatedIdsAndFormatsSelectorAndSize()
+    {
+        using Native4ByteTracer tracer = new(Build.A.Transaction.TestObject, GethTraceOptions.Default);
+        byte[] longInput = new byte[4 + 1234];
+        longInput[0] = 0xde;
+        longInput[1] = 0xad;
+        longInput[2] = 0xbe;
+        longInput[3] = 0xef;
+
+        tracer.ReportAction(100, UInt256.Zero, TestItem.AddressA, TestItem.AddressB, longInput, ExecutionType.TRANSACTION);
+        tracer.ReportAction(50, UInt256.Zero, TestItem.AddressB, TestItem.AddressC, new byte[] { 0xde, 0xad, 0xbe, 0xef }, ExecutionType.CALL);
+        tracer.ReportAction(25, UInt256.Zero, TestItem.AddressC, TestItem.AddressB, longInput, ExecutionType.CALL);
+        Dictionary<string, int> result = (Dictionary<string, int>)tracer.BuildResult().CustomTracerResult!.Value!;
+
+        Assert.That(result, Is.EqualTo(new Dictionary<string, int>
+        {
+            { "0xdeadbeef-1234", 2 },
+            { "0xdeadbeef-0", 1 }
+        }));
+    }
+
     [TestCaseSource(nameof(FourByteTracerTests))]
     public Dictionary<string, int>? four_byte_tracer_executes_correctly(byte[] code, byte[]? input) =>
         (Dictionary<string, int>)ExecuteAndTrace(code, input).CustomTracerResult?.Value;

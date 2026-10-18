@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
@@ -29,7 +30,7 @@ public sealed class Native4ByteTracer : GethLikeNativeTxTracer
     public const string FourByteTracer = "4byteTracer";
 
     private readonly Transaction _transaction;
-    private readonly Dictionary<string, int> _4ByteIds = [];
+    private readonly Dictionary<FourByteId, int> _4ByteIds = [];
 
     public Native4ByteTracer(Transaction transaction, GethTraceOptions options) : base(options)
     {
@@ -49,7 +50,7 @@ public sealed class Native4ByteTracer : GethLikeNativeTxTracer
         GethLikeTxTrace result = base.BuildResult();
 
         result.TxHash = _transaction.Hash;
-        result.CustomTracerResult = new GethLikeCustomTrace { Value = _4ByteIds };
+        result.CustomTracerResult = new GethLikeCustomTrace { Value = FormatIds() };
 
         return result;
     }
@@ -90,30 +91,42 @@ public sealed class Native4ByteTracer : GethLikeNativeTxTracer
     /*
      * Store4ByteIds counts the occurrences of 4byteId keys and stores them in a dictionary.
      * Each 4byteId key is composed of the function signature along with the size of the supplied call data.
+     * The key is formatted only once per distinct id, when the result is built.
      *
      * 4byteId format: SELECTOR-CALLDATASIZE
      * example 4byteId: 0x27dc297e-128
      */
     private void Store4ByteIds(ReadOnlyMemory<byte> input, int size)
     {
-        static int GetDigitsBase10(int n) => n == 0 ? 1 : (int)Math.Floor(Math.Log10(Math.Abs(n)) + 1);
-        const int length = 4;
+        FourByteId id = new(BinaryPrimitives.ReadUInt32BigEndian(input.Span), size);
+        CollectionsMarshal.GetValueRefOrAddDefault(_4ByteIds, id, out _) += 1;
+    }
 
-        /*
-         * To optimize performance, string.Create is used to build the 4byteId key instead of using string concatenation.
-         *
-         * This is equivalent to the following code:
-         * string _4byteId = input.Span[..4].ToHexString() + '-' + size;
-         */
-        string _4byteId = string.Create(2 + length * 2 + 1 + GetDigitsBase10(size), (input, size), static (span, state) =>
+    private Dictionary<string, int> FormatIds()
+    {
+        Dictionary<string, int> ids = new(_4ByteIds.Count);
+        foreach (KeyValuePair<FourByteId, int> entry in _4ByteIds)
         {
-            ref char charsRef = ref MemoryMarshal.GetReference(span);
-            ReadOnlySpan<byte> bytes = state.input.Span[..length];
-            Bytes.OutputBytesToCharHex(ref MemoryMarshal.GetReference(bytes), length, ref charsRef, true, 0);
-            span[2 + length * 2] = '-';
-            state.size.TryFormat(span[(2 + length * 2 + 1)..], out _);
-        });
+            ids.Add(entry.Key.ToString(), entry.Value);
+        }
 
-        CollectionsMarshal.GetValueRefOrAddDefault(_4ByteIds, _4byteId, out _) += 1;
+        return ids;
+    }
+
+    private readonly record struct FourByteId(uint Selector, int Size)
+    {
+        private const int SelectorChars = 2 + sizeof(uint) * 2;
+
+        public override string ToString() =>
+            string.Create(SelectorChars + 1 + GetDigitsBase10(Size), this, static (span, id) =>
+            {
+                Span<byte> selector = stackalloc byte[sizeof(uint)];
+                BinaryPrimitives.WriteUInt32BigEndian(selector, id.Selector);
+                Bytes.OutputBytesToCharHex(ref MemoryMarshal.GetReference(selector), sizeof(uint), ref MemoryMarshal.GetReference(span), true, 0);
+                span[SelectorChars] = '-';
+                id.Size.TryFormat(span[(SelectorChars + 1)..], out _);
+            });
+
+        private static int GetDigitsBase10(int n) => n == 0 ? 1 : (int)Math.Floor(Math.Log10(Math.Abs(n)) + 1);
     }
 }

@@ -115,6 +115,8 @@ public abstract class GethLikeTxTracer<TEntry>(GethTraceOptions options, long? d
     protected TEntry? CurrentTraceEntry { get; set; }
 
     private bool _gasCostAlreadySetForCurrentOp;
+    private byte[]? _lastReturnData;
+    private string? _lastReturnDataHex;
 
     public override void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env)
     {
@@ -167,7 +169,20 @@ public abstract class GethLikeTxTracer<TEntry>(GethTraceOptions options, long? d
     public override void SetOperationReturnData(ReadOnlySpan<byte> returnData)
     {
         if (CurrentTraceEntry is not null && !returnData.IsEmpty)
-            CurrentTraceEntry.ReturnData = returnData.ToHexString(true);
+            CurrentTraceEntry.ReturnData = GetReturnDataHex(returnData);
+    }
+
+    // Return data only changes when a call returns, so consecutive opcodes share one hex string.
+    private string GetReturnDataHex(ReadOnlySpan<byte> returnData)
+    {
+        ReadOnlySpan<byte> lastReturnData = _lastReturnData;
+        if (_lastReturnDataHex is null || !returnData.SequenceEqual(lastReturnData))
+        {
+            _lastReturnData = returnData.ToArray();
+            _lastReturnDataHex = returnData.ToHexString(true);
+        }
+
+        return _lastReturnDataHex;
     }
 
     public override GethLikeTxTrace BuildResult()
