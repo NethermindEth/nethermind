@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers.Binary;
+using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
@@ -19,13 +20,34 @@ internal static unsafe class BN254
     internal const int PairSize = 192;
     private const int MaxStackPairCount = 32;
 
+    // The curve seed x: p = 36x^4 + 36x^3 + 24x^2 + 6x + 1, r = 36x^4 + 36x^3 + 18x^2 + 6x + 1
+    internal const ulong Seed = 4965661367192848881;
+
+    // ξ^((p - 1) / 3) and ξ^((p - 1) / 2) for ξ = 9 + u, the coefficients of ψ
+    private static readonly mclBnFp2* PsiCoefficients;
+
     static BN254()
     {
         if (mclBn_init(MCL_BN_SNARK1, MCLBN_COMPILED_TIME_VAR) != 0)
             throw new InvalidOperationException("MCL initialization failed");
 
-        // Let mclBnG2_isValid check only the curve equation; the subgroup is checked once, explicitly
+        // Let mclBnG2_isValid check only the curve equation; the subgroup is checked by IsInG2
         mclBn_verifyOrderG2(0);
+
+        PsiCoefficients = (mclBnFp2*)NativeMemory.Alloc(2, (nuint)sizeof(mclBnFp2));
+        SetFp(ref PsiCoefficients[0].d0, "21575463638280843010398324269430826099269044274347216827212613867836435027261"u8);
+        SetFp(ref PsiCoefficients[0].d1, "10307601595873709700152284273816112264069230130616436755625194854815875713954"u8);
+        SetFp(ref PsiCoefficients[1].d0, "2821565182194536844548159561693502659359617185244120367078079554186484126554"u8);
+        SetFp(ref PsiCoefficients[1].d1, "3505843767911556378687030309984248845540243509899259641013678093033130930403"u8);
+    }
+
+    private static void SetFp(ref mclBnFp fp, ReadOnlySpan<byte> value)
+    {
+        fixed (byte* ptr = value)
+        {
+            if (mclBnFp_setStr(ref fp, ptr, (nuint)value.Length, 10) != 0)
+                throw new InvalidOperationException("MCL field element initialization failed");
+        }
     }
 
     /// <summary>Adds two BN254 G1 points and writes the normalized result (EIP-196).</summary>
@@ -297,7 +319,49 @@ internal static unsafe class BN254
         if (mclBnG2_isValid(point) == 0)
             return Errors.Bn254NotOnCurve;
 
-        return mclBnG2_isValidOrder(point) == 1 ? null : Errors.Bn254NotInSubgroup;
+        return IsInG2(point) ? null : Errors.Bn254NotInSubgroup;
+    }
+
+    /// <summary>Whether a point on the twist lies in G2, the subgroup of order r.</summary>
+    /// <remarks>
+    /// Tests [x + 1]Q + ψ([x]Q) + ψ²([x]Q) = ψ³([2x]Q) for the seed x (eprint 2022/348), which needs a 63-bit
+    /// scalar multiplication instead of the 254-bit one by r. The test is exact on the whole twist: ψ² = tψ - p there,
+    /// so it reduces to (a + bψ)Q = 0, and the degree a² + abt + b²p shares only the prime r with the twist order.
+    /// </remarks>
+    internal static bool IsInG2(in mclBnG2 point)
+    {
+        // Double-and-add rather than mclBnG2_mul, which may use endomorphism acceleration that assumes the point is in G2
+        mclBnG2 xQ = point;
+        for (int bit = BitOperations.Log2(Seed) - 1; bit >= 0; bit--)
+        {
+            mclBnG2_dbl(ref xQ, xQ);
+            if ((Seed >> bit & 1) != 0)
+                mclBnG2_add(ref xQ, xQ, point);
+        }
+
+        Unsafe.SkipInit(out mclBnG2 left);
+        mclBnG2_add(ref left, xQ, point);
+        mclBnG2 psi = xQ;
+        Psi(ref psi);
+        mclBnG2_add(ref left, left, psi);
+        Psi(ref psi);
+        mclBnG2_add(ref left, left, psi);
+        Psi(ref psi);
+        mclBnG2_dbl(ref psi, psi);
+        return mclBnG2_isEqual(left, psi) == 1;
+    }
+
+    /// <summary>
+    /// Applies the untwist-Frobenius-twist endomorphism ψ(x, y) = (conj(x)·ξ^((p - 1) / 3), conj(y)·ξ^((p - 1) / 2)).
+    /// </summary>
+    /// <remarks>Conjugation is a field automorphism, so conjugating z as well keeps it valid in mcl's Jacobian coordinates.</remarks>
+    private static void Psi(ref mclBnG2 point)
+    {
+        mclBnFp_neg(ref point.x.d1, point.x.d1);
+        mclBnFp_neg(ref point.y.d1, point.y.d1);
+        mclBnFp_neg(ref point.z.d1, point.z.d1);
+        mclBnFp2_mul(ref point.x, point.x, PsiCoefficients[0]);
+        mclBnFp2_mul(ref point.y, point.y, PsiCoefficients[1]);
     }
 
     private static bool SerializeG1(in mclBnG1 point, byte[] output)
