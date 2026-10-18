@@ -1816,6 +1816,25 @@ public partial class EthRpcModuleTests
         Assert.That(JToken.Parse(serialized)["result"]!.Value<string>(), Is.EqualTo(expectedResult));
     }
 
+    // Withdrawals need a block to be processed in; a single call builds none, so the override is refused, not ignored.
+    [TestCase("eth_call")]
+    [TestCase("eth_estimateGas")]
+    public async Task Single_call_methods_reject_a_withdrawals_block_override(string method)
+    {
+        object? transaction = JsonSerializer.Deserialize<object>("""{"to":"0xc200000000000000000000000000000000000000","gas":"0x30D40"}""");
+        object? blockOverride = JsonSerializer.Deserialize<object>("""{"withdrawals":[{"index":"0x0","validatorIndex":"0x0","address":"0x00000000000000000000000000000000000000ee","amount":"0x1"}]}""");
+        using Context ctx = await Context.Create();
+
+        string serialized = await ctx.Test.TestEthRpc(method, transaction, "latest", null, blockOverride);
+
+        JToken error = JToken.Parse(serialized)["error"]!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(error["code"]!.Value<int>(), Is.EqualTo(ErrorCodes.InvalidParams));
+            Assert.That(error["message"]!.Value<string>(), Is.EqualTo(BlockOverride.WithdrawalsNotSupported));
+        }
+    }
+
     [Test]
     public async Task Eth_call_feeless_with_positive_blockOverride_baseFeePerGas_uses_zero_base_fee()
     {
