@@ -18,4 +18,8 @@ internal interface IAccountBatchReader
     }
 
     void GetAccounts(ReadOnlySpan<Address> addresses, Span<Account?> accounts);
+
+    /// <summary>Reads addresses rejected by cache probes in the same unchanged read-only scope.</summary>
+    /// <remarks>Readers that cannot bypass their caches retain the ordinary read path.</remarks>
+    void GetUncachedAccounts(ReadOnlySpan<Address> addresses, Span<Account?> accounts) => GetAccounts(addresses, accounts);
 }

@@ -296,6 +296,15 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
             }
         }
 
+        public void GetUncachedAccounts(ReadOnlySpan<Address> addresses, Span<Account?> accounts)
+        {
+            ArgumentOutOfRangeException.ThrowIfNotEqual(accounts.Length, addresses.Length, nameof(accounts));
+            if (_recordDetailedMetrics && parent.IsCurrent(generation))
+                for (int i = 0; i < addresses.Length; i++) Metrics.IncrementCarryForwardAccountMisses();
+            inner.ReadAccounts(addresses, accounts);
+            for (int i = 0; i < addresses.Length; i++) parent.TryCacheAccount(addresses[i], accounts[i], generation);
+        }
+
         public Account? GetAccount(Address address)
         {
             bool current = parent.IsCurrent(generation);

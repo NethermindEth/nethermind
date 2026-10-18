@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
@@ -966,59 +967,50 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
     }
 
     public void WarmUpAccounts(ReadOnlySpan<Address> addresses, CancellationToken cancellationToken)
+        => WarmUpAccounts(new AccountAddressEnumerator(addresses), cancellationToken);
+
+    public void WarmUpAccounts<TEnumerator>(TEnumerator addresses, CancellationToken cancellationToken)
+        where TEnumerator : struct, IEnumerator<(Address? Sender, Address? Recipient)>, allows ref struct
     {
         if (cancellationToken.IsCancellationRequested) return;
-        if (addresses.Length < AccountReadBatch.MinReadSize || Tree is not IAccountBatchReader batch)
+        if (Tree is not IAccountBatchReader batch)
         {
             WarmUpAccountsIndividually(addresses, cancellationToken);
             return;
         }
 
-        using AccountReadBatch misses = new(addresses.Length);
+        const int batchCapacity = 64;
+        using AccountReadBatch misses = new(batchCapacity);
         Address? pending = null;
+        TEnumerator remaining = addresses;
         try
         {
-            foreach (Address address in addresses)
+            while (!cancellationToken.IsCancellationRequested && remaining.MoveNext())
             {
-                if (cancellationToken.IsCancellationRequested)
+                (Address? sender, Address? recipient) = remaining.Current;
+                if (sender is not null)
                 {
-                    foreach (Address unresolved in misses.Addresses) _blockChanges.Remove(unresolved);
-                    return;
+                    pending = sender;
+                    if (!TryWarmUpAccount(sender, batch)) misses.Add(sender);
+                    pending = null;
                 }
-                pending = address;
-                bool cached;
+                if (recipient is not null)
                 {
-                    ref ChangeTrace change = ref GetOrAddBlockChange(address, out bool exists);
-                    if (exists)
-                    {
-                        _metrics.IncrementStateTreeCacheHits();
-                        cached = true;
-                    }
-                    else if (batch.TryGetCachedAccount(address, out Account? account))
-                    {
-                        change = new(account, account);
-                        _metrics.IncrementStateTreeReads();
-                        cached = true;
-                    }
-                    else cached = false;
+                    pending = recipient;
+                    if (!TryWarmUpAccount(recipient, batch)) misses.Add(recipient);
+                    pending = null;
                 }
-                if (!cached) misses.Add(address);
-                pending = null;
+                if (misses.Count < batchCapacity - 1) continue;
+                if (cancellationToken.IsCancellationRequested) break;
+                ReadWarmUpMisses(batch, misses);
+                misses.Clear();
             }
-            if (misses.Count == 0) return;
-
-            using ArrayPoolListRef<Account?> accounts = new(misses.Count, misses.Count);
-            if (misses.Count < AccountReadBatch.MinReadSize)
+            if (cancellationToken.IsCancellationRequested)
             {
-                for (int i = 0; i < misses.Count; i++) accounts[i] = Tree.Get(misses.Addresses[i]);
+                foreach (Address unresolved in misses.Addresses) _blockChanges.Remove(unresolved);
+                return;
             }
-            else batch.GetAccounts(misses.Addresses, accounts.AsSpan());
-            for (int i = 0; i < misses.Count; i++)
-            {
-                Account? account = accounts[i];
-                _blockChanges[misses.Addresses[i]] = new(account, account);
-                _metrics.IncrementStateTreeReads();
-            }
+            ReadWarmUpMisses(batch, misses);
         }
         catch (MissingTrieNodeException)
         {
@@ -1034,20 +1026,76 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         }
     }
 
-    private void WarmUpAccountsIndividually(ReadOnlySpan<Address> addresses, CancellationToken cancellationToken)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private bool TryWarmUpAccount(Address address, IAccountBatchReader batch)
     {
-        foreach (Address address in addresses)
         {
-            if (cancellationToken.IsCancellationRequested) return;
-            try
+            ref ChangeTrace change = ref GetOrAddBlockChange(address, out bool exists);
+            if (exists)
             {
-                WarmUp(address);
+                _metrics.IncrementStateTreeCacheHits();
+                return true;
             }
-            catch (MissingTrieNodeException)
+            if (batch.TryGetCachedAccount(address, out Account? account))
             {
-                _blockChanges.Remove(address);
+                change = new(account, account);
+                _metrics.IncrementStateTreeReads();
+                return true;
             }
         }
+        return false;
+    }
+
+    private void ReadWarmUpMisses(IAccountBatchReader batch, AccountReadBatch misses)
+    {
+        if (misses.Count == 0) return;
+        using ArrayPoolListRef<Account?> accounts = new(misses.Count, misses.Count);
+        if (misses.Count < AccountReadBatch.MinReadSize)
+        {
+            for (int i = 0; i < misses.Count; i++) accounts[i] = Tree.Get(misses.Addresses[i]);
+        }
+        else batch.GetUncachedAccounts(misses.Addresses, accounts.AsSpan());
+        for (int i = 0; i < misses.Count; i++)
+        {
+            Account? account = accounts[i];
+            _blockChanges[misses.Addresses[i]] = new(account, account);
+            _metrics.IncrementStateTreeReads();
+        }
+    }
+
+    private void WarmUpAccountsIndividually<TEnumerator>(TEnumerator addresses, CancellationToken cancellationToken)
+        where TEnumerator : struct, IEnumerator<(Address? Sender, Address? Recipient)>, allows ref struct
+    {
+        while (!cancellationToken.IsCancellationRequested && addresses.MoveNext())
+        {
+            (Address? sender, Address? recipient) = addresses.Current;
+            WarmUpAccountIndividually(sender);
+            WarmUpAccountIndividually(recipient);
+        }
+    }
+
+    private void WarmUpAccountIndividually(Address? address)
+    {
+        if (address is null) return;
+        try
+        {
+            WarmUp(address);
+        }
+        catch (MissingTrieNodeException)
+        {
+            _blockChanges.Remove(address);
+        }
+    }
+
+    private ref struct AccountAddressEnumerator(ReadOnlySpan<Address> addresses) : IEnumerator<(Address? Sender, Address? Recipient)>
+    {
+        private readonly ReadOnlySpan<Address> _addresses = addresses;
+        private int _index = -1;
+        public (Address? Sender, Address? Recipient) Current => (_addresses[_index], null);
+        object IEnumerator.Current => Current;
+        public bool MoveNext() => ++_index < _addresses.Length;
+        public void Reset() => _index = -1;
+        public void Dispose() { }
     }
 
     public bool WarmUp(Address address)

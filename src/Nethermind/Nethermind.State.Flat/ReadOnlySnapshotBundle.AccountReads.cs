@@ -39,6 +39,17 @@ public sealed partial class ReadOnlySnapshotBundle
         return false;
     }
 
+    internal void GetUncachedAccounts(ReadOnlySpan<Address> addresses, Span<Account?> accounts)
+    {
+        GuardDispose();
+        ArgumentOutOfRangeException.ThrowIfNotEqual(accounts.Length, addresses.Length, nameof(accounts));
+        long start = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
+        if (persistenceReader is IAccountBatchReader batch) batch.GetUncachedAccounts(addresses, accounts);
+        else persistenceReader.ReadAccounts(addresses, accounts);
+        if (recordDetailedMetrics)
+            Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - start, _readAccountPersistenceBatchLabel);
+    }
+
     internal void GetAccounts(ReadOnlySpan<Address> addresses, Span<Account?> accounts) => GetAccounts(addresses, default, accounts);
 
     internal void GetAccounts(ReadOnlySpan<Address> addresses, ReadOnlySpan<HashedKey<Address>> keys, Span<Account?> accounts)

@@ -38,6 +38,25 @@ namespace Nethermind.State.Flat.Test;
 public class FlatWorldStateScopeProviderTests
 {
     [Test]
+    public void GetUncachedAccounts_WithMutableOrVerifiedScope_PreservesNormalReads([Values] bool verifyWithTrie)
+    {
+        using TestContext context = new(config: new FlatDbConfig { VerifyWithTrie = verifyWithTrie }, isReadOnly: verifyWithTrie);
+        FlatWorldStateScope scope = context.Scope;
+        Account expected = new(31, 47);
+        scope.HintGet(TestItem.AddressA, expected);
+        Account?[] values = new Account?[1];
+
+        if (verifyWithTrie)
+            Assert.Throws<TrieException>(() => ((IAccountBatchReader)scope).GetUncachedAccounts([TestItem.AddressA], values));
+        else
+        {
+            ((IAccountBatchReader)scope).GetUncachedAccounts([TestItem.AddressA], values);
+            Assert.That(values[0], Is.EqualTo(expected));
+        }
+        context.PersistenceReader.DidNotReceive().GetAccount(Arg.Any<Address>());
+    }
+
+    [Test]
     public void TryGetCachedAccount_WithTrieVerification_DoesNotBypassVerification([Values] bool verifyWithTrie, [Values] bool missing)
     {
         using TestContext context = new(config: new FlatDbConfig { VerifyWithTrie = verifyWithTrie });
@@ -213,7 +232,7 @@ public class FlatWorldStateScopeProviderTests
         public IPersistence.IPersistenceReader PersistenceReader => field ??= Container.Resolve<IPersistence.IPersistenceReader>();
         public Snapshot? LastCommittedSnapshot { get; set; }
 
-        public TestContext(IBlockTree? blockTree = null, FlatDbConfig? config = null, ITrieWarmer? trieWarmer = null, bool historical = false, ITrieNodeCache? trieNodeCache = null)
+        public TestContext(IBlockTree? blockTree = null, FlatDbConfig? config = null, ITrieWarmer? trieWarmer = null, bool historical = false, ITrieNodeCache? trieNodeCache = null, bool isReadOnly = false)
         {
             config ??= new FlatDbConfig();
 
@@ -285,7 +304,7 @@ public class FlatWorldStateScopeProviderTests
                 .ExternallyOwned();
 
             ConfigureSnapshotBundle();
-            ConfigureFlatWorldStateScope();
+            ConfigureFlatWorldStateScope(isReadOnly);
         }
 
         private void ConfigureSnapshotBundle() =>
@@ -294,9 +313,10 @@ public class FlatWorldStateScopeProviderTests
                 .WithParameter(TypedParameter.From(ResourcePool.Usage.MainBlockProcessing))
                 .ExternallyOwned();
 
-        private void ConfigureFlatWorldStateScope() => _containerBuilder.RegisterType<FlatWorldStateScope>()
+        private void ConfigureFlatWorldStateScope(bool isReadOnly) => _containerBuilder.RegisterType<FlatWorldStateScope>()
                 .SingleInstance()
                 .WithParameter(TypedParameter.From(new StateId(0, Keccak.EmptyTreeHash)))
+                .WithParameter(new NamedParameter("isReadOnly", isReadOnly))
                 ;
 
         public FlatWorldStateScope Scope => Container.Resolve<FlatWorldStateScope>();

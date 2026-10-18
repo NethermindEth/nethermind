@@ -52,7 +52,7 @@ public class CarryForwardCachingPersistenceTests
     }
 
     [Test]
-    public async Task GetAccounts_AfterCacheGenerationAdvances_UsesPinnedReaderValues([Values] bool accountExists)
+    public async Task GetAccounts_AfterCacheGenerationAdvances_UsesPinnedReaderValues([Values] bool accountExists, [Values] bool knownMisses)
     {
         FakePersistence inner = new()
         {
@@ -68,10 +68,15 @@ public class CarryForwardCachingPersistenceTests
         Account?[] expected = new Account?[addresses.Length];
         for (int i = 0; i < addresses.Length; i++) expected[i] = inner.AccountAt!(addresses[i]);
         IAccountBatchReader batch = (IAccountBatchReader)oldReader;
+        void ReadBatch(IAccountBatchReader reader, Account?[] values)
+        {
+            if (knownMisses) reader.GetUncachedAccounts(addresses, values);
+            else reader.GetAccounts(addresses, values);
+        }
         Assert.That(batch.TryGetCachedAccount(addresses[0], out _), Is.False);
         Assert.That(inner.AccountReads, Is.Zero);
         Account?[] first = new Account?[addresses.Length];
-        batch.GetAccounts(addresses, first);
+        ReadBatch(batch, first);
         Assert.That(first, Is.EqualTo(expected), "the first batch must match independently constructed account values");
         for (int i = 0; i < addresses.Length; i++)
         {
@@ -95,7 +100,7 @@ public class CarryForwardCachingPersistenceTests
         using IPersistence.IPersistenceReader currentReader = cache.CreateReader();
         IAccountBatchReader currentBatch = (IAccountBatchReader)currentReader;
         Account?[] currentValues = new Account?[addresses.Length];
-        currentBatch.GetAccounts(addresses, currentValues);
+        ReadBatch(currentBatch, currentValues);
         for (int i = 0; i < addresses.Length; i++)
         {
             Assert.That(currentValues[i], Is.EqualTo(replacements[addresses[i]]));
@@ -106,7 +111,7 @@ public class CarryForwardCachingPersistenceTests
         Assert.That(inner.AccountReads, Is.EqualTo(addresses.Length * 2));
         inner.AccountAt = originalAccountAt;
         Account?[] second = new Account?[addresses.Length];
-        ((IAccountBatchReader)oldReader).GetAccounts(addresses, second);
+        ReadBatch(batch, second);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(second, Is.EqualTo(expected), "old readers must retain their pinned values after cache invalidation");

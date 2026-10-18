@@ -24,6 +24,13 @@ public sealed partial class SnapshotBundle
         return true;
     }
 
+    internal void GetUncachedAccounts(ReadOnlySpan<Address> addresses, Span<Account?> accounts)
+    {
+        GuardDispose();
+        _readOnlySnapshotBundle.GetUncachedAccounts(addresses, accounts);
+        for (int i = 0; i < addresses.Length; i++) PromoteAccount(addresses[i], accounts[i]);
+    }
+
     internal void GetAccounts(ReadOnlySpan<Address> addresses, Span<Account?> accounts)
     {
         GuardDispose();

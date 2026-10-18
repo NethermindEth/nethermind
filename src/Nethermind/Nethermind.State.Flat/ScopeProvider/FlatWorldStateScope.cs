@@ -242,6 +242,16 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         _snapshotBundle.GetAccounts(addresses, accounts);
     }
 
+    void IAccountBatchReader.GetUncachedAccounts(ReadOnlySpan<Address> addresses, Span<Account?> accounts)
+    {
+        if (!_isReadOnly || _configuration.VerifyWithTrie && !_trieless)
+        {
+            ((IAccountBatchReader)this).GetAccounts(addresses, accounts);
+            return;
+        }
+        _snapshotBundle.GetUncachedAccounts(addresses, accounts);
+    }
+
     public Account? Get(Address address)
     {
         Account? account = _snapshotBundle.GetAccount(address, out bool isInCurrentSnapshot);

@@ -1113,6 +1113,56 @@ public class CodeDbTests
 public class AccountBatchPrewarmingTests
 {
     [Test]
+    public void WarmUpAccounts_WithMoreThanOneBatch_KeepsReadsBoundedAndDeduplicated([Values(63, 64, 65, 128, 130)] int count, [Values] bool paired)
+    {
+        Address[] unique = TestItem.Addresses[..count];
+        Address[] addresses = [.. unique, .. unique];
+        AccountBatchScope scope = new();
+        StateProvider provider = new(LimboLogs.Instance, new LocalMetrics());
+        provider.SetScope(scope);
+
+        if (paired)
+        {
+            List<(Address? Sender, Address? Recipient)> pairs = [(addresses[0], null)];
+            for (int i = 1; i < addresses.Length; i += 2)
+                pairs.Add((addresses[i], i + 1 < addresses.Length ? addresses[i + 1] : null));
+            using List<(Address? Sender, Address? Recipient)>.Enumerator source = pairs.GetEnumerator();
+            provider.WarmUpAccounts(source, CancellationToken.None);
+        }
+        else provider.WarmUpAccounts(addresses, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(scope.BatchSizes, Is.All.LessThanOrEqualTo(64));
+            Assert.That(scope.UncachedReads, Is.EqualTo(scope.BatchReads));
+            Address[] reads = [.. scope.AllBatchAddresses, .. scope.ScalarAddresses];
+            Assert.That(reads, Is.EquivalentTo(unique));
+        }
+        foreach (Address address in unique)
+            Assert.That(provider.GetPureRead(address), Is.EqualTo(address == TestItem.AddressB ? null : scope.Account));
+        Assert.That(scope.CacheProbeReads, Is.EqualTo(count), "repeated addresses must end at the block-change cache");
+    }
+
+    [Test]
+    public void WarmUpAccounts_WhenCancelledAfterOneBatch_PreservesCompletedValuesAndSkipsTail()
+    {
+        using CancellationTokenSource cancellation = new();
+        AccountBatchScope scope = new() { OnBatch = _ => cancellation.Cancel() };
+        StateProvider provider = new(LimboLogs.Instance, new LocalMetrics());
+        provider.SetScope(scope);
+        Address[] addresses = TestItem.Addresses[..130];
+
+        provider.WarmUpAccounts(addresses, cancellation.Token);
+
+        Assert.That(scope.BatchReads, Is.EqualTo(1));
+        Assert.That(scope.ScalarReads, Is.Zero);
+        Assert.That(provider.GetPureRead(addresses[0]), Is.EqualTo(addresses[0] == TestItem.AddressB ? null : scope.Account));
+        Assert.That(scope.ScalarReads, Is.Zero, "completed reads remain valid after cancellation");
+        provider.GetPureRead(addresses[^1]);
+        Assert.That(scope.ScalarReads, Is.EqualTo(1), "unprocessed tail must remain unresolved");
+    }
+
+    [Test]
     public void WarmUpAccounts_WithCachedRows_BatchesOnlyUnresolvedAccounts([Values(0, 12, 20)] int cachedCount)
     {
         Address[] addresses = TestItem.Addresses[..20];
@@ -1240,6 +1290,11 @@ public class AccountBatchPrewarmingTests
         internal int ScalarReads { get; private set; }
         internal List<Address> ScalarAddresses { get; } = [];
         internal int BatchReads { get; private set; }
+        internal int UncachedReads { get; private set; }
+        internal int CacheProbeReads { get; private set; }
+        internal List<int> BatchSizes { get; } = [];
+        internal List<Address> AllBatchAddresses { get; } = [];
+        internal Action<int>? OnBatch { get; set; }
         internal Address[] BatchAddresses { get; private set; } = [];
         internal Dictionary<Address, Account?> CachedAccounts { get; } = [];
         internal Address? ProbeFailureAddress { get; set; }
@@ -1249,6 +1304,7 @@ public class AccountBatchPrewarmingTests
 
         public bool TryGetCachedAccount(Address address, out Account? account)
         {
+            CacheProbeReads++;
             OnProbe?.Invoke(address);
             if (address == ProbeFailureAddress && Failure is not null) throw Failure;
             return CachedAccounts.TryGetValue(address, out account);
@@ -1257,9 +1313,18 @@ public class AccountBatchPrewarmingTests
         public void GetAccounts(ReadOnlySpan<Address> addresses, Span<Account?> accounts)
         {
             BatchReads++;
+            BatchSizes.Add(addresses.Length);
             BatchAddresses = addresses.ToArray();
+            AllBatchAddresses.AddRange(BatchAddresses);
+            OnBatch?.Invoke(BatchReads);
             if (Failure is not null) throw Failure;
             for (int i = 0; i < addresses.Length; i++) accounts[i] = addresses[i] == TestItem.AddressB ? null : Account;
+        }
+
+        public void GetUncachedAccounts(ReadOnlySpan<Address> addresses, Span<Account?> accounts)
+        {
+            UncachedReads++;
+            GetAccounts(addresses, accounts);
         }
 
         public Account? Get(Address address)

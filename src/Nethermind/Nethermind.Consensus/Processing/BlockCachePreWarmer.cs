@@ -4,6 +4,7 @@
 using System;
 using System.Buffers;
 using System.Collections.Concurrent;
+using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
@@ -1846,18 +1847,13 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
             return i < txs.Length ? txs[i] : block.InclusionListTransactions![i - txs.Length];
         }
 
-        [InlineArray(64)]
-        private struct AccountAddressBuffer
-        {
-            private Address _element0;
-        }
-
         internal static void WarmupTransactionAccounts(Block block, int start, int end, IWorldState worldState,
             CancellationToken cancellationToken)
         {
-            if (end - start >= 4 && worldState is IAccountPrewarmer prewarmer)
+            if (end - start >= 16 && worldState is IAccountPrewarmer prewarmer)
             {
-                WarmupAccountBatches(block, start, end, prewarmer, cancellationToken);
+                using TransactionAccountEnumerator addresses = new(block, start, end);
+                prewarmer.WarmUpAccounts(addresses, cancellationToken);
                 return;
             }
             for (int i = start; i < end && !cancellationToken.IsCancellationRequested; i++)
@@ -1867,25 +1863,21 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
             }
         }
 
-        private static void WarmupAccountBatches(Block block, int start, int end, IAccountPrewarmer prewarmer,
-            CancellationToken cancellationToken)
+        private struct TransactionAccountEnumerator(Block block, int start, int end) : IEnumerator<(Address? Sender, Address? Recipient)>
         {
-            AccountAddressBuffer buffer = default;
-            Span<Address> addresses = buffer;
-            int count = 0;
-            for (int i = start; i < end; i++)
+            private int _index = start - 1;
+            public (Address? Sender, Address? Recipient) Current
             {
-                if (cancellationToken.IsCancellationRequested) return;
-                Transaction tx = TransactionAt(block, i);
-                if (tx.SenderAddress is { } sender) addresses[count++] = sender;
-                if (tx.To is { } recipient) addresses[count++] = recipient;
-                if (count >= addresses.Length - 1)
+                get
                 {
-                    prewarmer.WarmUpAccounts(addresses[..count], cancellationToken);
-                    count = 0;
+                    Transaction tx = TransactionAt(block, _index);
+                    return (tx.SenderAddress, tx.To);
                 }
             }
-            if (count > 0) prewarmer.WarmUpAccounts(addresses[..count], cancellationToken);
+            object IEnumerator.Current => Current;
+            public bool MoveNext() => ++_index < end;
+            public void Reset() => _index = start - 1;
+            public void Dispose() { }
         }
 
         /// <summary>Warms every system-contract hint.</summary>

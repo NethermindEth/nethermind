@@ -50,7 +50,7 @@ namespace Nethermind.Consensus.Test;
 public class BlockCachePreWarmerTests
 {
     [Test]
-    public void WarmupTransactionAccounts_WithoutBal_UsesBoundedBatchesAndIncludesInclusionList([Values(1, 3, 4, 17, 32, 33, 80)] int count)
+    public void WarmupTransactionAccounts_WithoutBal_StreamsAccountsAndIncludesInclusionList([Values(1, 3, 4, 15, 16, 17, 32, 33, 80)] int count)
     {
         Transaction[] transactions = new Transaction[count];
         List<Address> expected = [];
@@ -72,9 +72,7 @@ public class BlockCachePreWarmerTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(warmer.Addresses, Is.EqualTo(expected), "ordinary and inclusion-list sender/recipient order must be preserved");
-            Assert.That(warmer.LargestBatch, Is.LessThanOrEqualTo(64), "temporary batches must remain bounded");
-            if (count < 4) Assert.That(warmer.LargestBatch, Is.Zero);
-            else Assert.That(warmer.LargestBatch, Is.GreaterThan(0));
+            Assert.That(warmer.Streams, Is.EqualTo(count < 16 ? 0 : 1));
         }
     }
 
@@ -3750,12 +3748,18 @@ public class BlockCachePreWarmerTests
     private sealed class RecordingAccountPrewarmer(IWorldState inner) : WorldStateDecorator(inner), IAccountPrewarmer
     {
         internal List<Address> Addresses { get; } = [];
-        internal int LargestBatch { get; private set; }
+        internal int Streams { get; private set; }
 
-        public void WarmUpAccounts(ReadOnlySpan<Address> addresses, CancellationToken cancellationToken = default)
+        public void WarmUpAccounts<TEnumerator>(TEnumerator addresses, CancellationToken cancellationToken = default)
+            where TEnumerator : struct, IEnumerator<(Address? Sender, Address? Recipient)>, allows ref struct
         {
-            LargestBatch = Math.Max(LargestBatch, addresses.Length);
-            foreach (Address address in addresses) Addresses.Add(address);
+            Streams++;
+            while (!cancellationToken.IsCancellationRequested && addresses.MoveNext())
+            {
+                (Address? sender, Address? recipient) = addresses.Current;
+                if (sender is not null) Addresses.Add(sender);
+                if (recipient is not null) Addresses.Add(recipient);
+            }
         }
     }
 

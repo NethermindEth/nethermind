@@ -48,6 +48,12 @@ public class RefCountingPersistenceReader : RefCountingDisposable, IPersistence.
     void IAccountBatchReader.GetAccounts(ReadOnlySpan<Address> addresses, Span<Account?> accounts) =>
         _innerReader.ReadAccounts(addresses, accounts);
 
+    void IAccountBatchReader.GetUncachedAccounts(ReadOnlySpan<Address> addresses, Span<Account?> accounts)
+    {
+        if (_innerReader is IAccountBatchReader batch) batch.GetUncachedAccounts(addresses, accounts);
+        else _innerReader.ReadAccounts(addresses, accounts);
+    }
+
     public bool TryGetSlot(Address address, in UInt256 slot, ref UInt256 outValue) =>
         _innerReader.TryGetSlot(address, in slot, ref outValue);
 

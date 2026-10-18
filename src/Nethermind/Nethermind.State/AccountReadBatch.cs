@@ -40,6 +40,13 @@ internal ref struct AccountReadBatch(int capacity)
         _keys.Add(key);
     }
 
+    internal void Clear()
+    {
+        _keys.Clear();
+        _positions.Clear();
+        _addresses.Clear();
+    }
+
     public void Dispose()
     {
         _keys.Dispose();

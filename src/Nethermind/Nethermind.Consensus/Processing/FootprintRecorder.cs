@@ -59,17 +59,18 @@ internal sealed class FootprintRecorder(IWorldState state) : WorldStateDecorator
     /// <summary>The machine the env runs transactions on; without it a run is taken to read every block context field.</summary>
     public VirtualMachine<EthereumGasPolicy>? Machine { get; set; }
 
-    public void WarmUpAccounts(ReadOnlySpan<Address> addresses, CancellationToken cancellationToken = default)
+    public void WarmUpAccounts<TEnumerator>(TEnumerator addresses, CancellationToken cancellationToken = default)
+        where TEnumerator : struct, IEnumerator<(Address? Sender, Address? Recipient)>, allows ref struct
     {
         if (State is IAccountPrewarmer prewarmer)
         {
             prewarmer.WarmUpAccounts(addresses, cancellationToken);
             return;
         }
-        foreach (Address address in addresses)
+        while (!cancellationToken.IsCancellationRequested && addresses.MoveNext())
         {
-            if (cancellationToken.IsCancellationRequested) return;
-            BlockCachePreWarmer.AddressWarmer.WarmupSender(address, null, State);
+            (Address? sender, Address? recipient) = addresses.Current;
+            BlockCachePreWarmer.AddressWarmer.WarmupSender(sender, recipient, State);
         }
     }
 

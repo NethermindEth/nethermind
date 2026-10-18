@@ -372,6 +372,25 @@ public class PrewarmerScopeProvider(
             }
         }
 
+        public void GetUncachedAccounts(ReadOnlySpan<Address> addresses, Span<Account?> accounts)
+        {
+            ArgumentOutOfRangeException.ThrowIfNotEqual(accounts.Length, addresses.Length, nameof(accounts));
+            if (_appliedBalAccounts is not null || baseScope is not IAccountBatchReader batch)
+            {
+                GetAccounts(addresses, accounts);
+                return;
+            }
+            long start = _measureMetric ? Stopwatch.GetTimestamp() : 0;
+            batch.GetUncachedAccounts(addresses, accounts);
+            if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - start, _labels.AddressBatchMiss);
+            for (int i = 0; i < addresses.Length; i++)
+            {
+                AddressAsKey key = addresses[i];
+                preBlockCache.Set(in key, accounts[i]);
+                if (!isPrewarmer) _metrics.IncrementPreBlockAccountMisses();
+            }
+        }
+
         public Account? Get(Address address)
         {
             if (_appliedBalAccounts is not null) return baseScope.Get(address);
