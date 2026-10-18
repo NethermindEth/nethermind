@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Threading;
@@ -147,6 +148,9 @@ public partial class BlockAccessListManager
         if (block.BlockAccessList is null) return;
 
         CheckInitialized();
+
+        // A mismatch throws and rejects the block, so counting before the checks is safe.
+        if (index == _validatedRowCount) _validatedRowCount++;
 
         if (TryFastPath(block, index, validateStorageReads)) return;
 
@@ -412,6 +416,52 @@ public partial class BlockAccessListManager
     [DoesNotReturn, StackTraceHidden]
     private static void ThrowSurplusChanges(Block block, Address address, uint index)
         => throw new InvalidBlockLevelAccessListException(block.Header, $"Suggested block-level access list contained surplus changes for {address} at index {index}.");
+
+    /// <summary>
+    /// Counterpart of <see cref="ValidateStructuralEquivalence"/> for a constructed <see cref="GeneratedBlockAccessList"/>:
+    /// checks the account set and the exact storage_reads per account against the suggested BAL.
+    /// </summary>
+    /// <remarks>
+    /// Reads the constructed list's per-account read sets directly, so the generated index does not have to
+    /// track and sort the reads. The decoder rejects duplicate suggested reads, so equal counts plus containment
+    /// mean equal sets.
+    /// </remarks>
+    private void ValidateGeneratedStructuralEquivalence(Block block)
+    {
+        if (_generatedValidationIndex!.TryGetGeneratedOverflow(out Address overflowAddress, out uint overflowIndex))
+        {
+            ThrowIncorrectChanges(block, overflowAddress, overflowIndex);
+        }
+
+        GeneratedBlockAccessList generated = GeneratedBlockAccessList;
+        ReadOnlyBlockAccessList suggested = block.BlockAccessList!;
+        if (generated.AccountChanges.Count != suggested.AccountChanges.Count)
+        {
+            throw new InvalidBlockLevelAccessListException(block.Header,
+                $"Account-set size mismatch: suggested={suggested.AccountChanges.Count}, generated={generated.AccountChanges.Count}.");
+        }
+
+        foreach (ReadOnlyAccountChanges suggestedAccount in suggested.AccountChanges)
+        {
+            GeneratedAccountChanges generatedAccount = generated.GetAccountChanges(suggestedAccount.Address)
+                ?? throw new InvalidBlockLevelAccessListException(block.Header, $"Suggested BAL declares account {suggestedAccount.Address} which execution did not touch.");
+
+            IReadOnlySet<UInt256> generatedReads = generatedAccount.StorageReads;
+            ReadOnlySpan<UInt256> suggestedReads = suggestedAccount.StorageReads;
+            if (generatedReads.Count != suggestedReads.Length)
+            {
+                throw new InvalidBlockLevelAccessListException(block.Header, $"storage_reads count mismatch for {suggestedAccount.Address}.");
+            }
+
+            foreach (UInt256 slot in suggestedReads)
+            {
+                if (!generatedReads.Contains(slot))
+                {
+                    throw new InvalidBlockLevelAccessListException(block.Header, $"storage_reads mismatch for {suggestedAccount.Address}.");
+                }
+            }
+        }
+    }
 
     /// <summary>
     /// Closes the gap between the column-index per-row validation and what the end-of-block

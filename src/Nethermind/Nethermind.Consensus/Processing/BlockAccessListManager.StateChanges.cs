@@ -39,6 +39,20 @@ public partial class BlockAccessListManager
         }
 
         block.GeneratedBlockAccessList = GeneratedBlockAccessList;
+
+        uint postExecutionIndex = (uint)(block.Transactions.Length + 1);
+        if (_validatedRowCount == postExecutionIndex
+            && _generatedValidationIndex is not null
+            && block.BlockAccessList?.WireHash is { } wireHash)
+        {
+            // Rows 0..txCount already matched the suggested BAL. Once the post-execution row and the structure match
+            // too, the generated BAL encodes to the suggested canonical wire bytes, so their hash stands in for the re-encode.
+            ValidateBlockAccessList(block, postExecutionIndex);
+            ValidateGeneratedStructuralEquivalence(block);
+            block.Header.BlockAccessListHash = wireHash;
+            return;
+        }
+
         block.EncodedBlockAccessList = BlockAccessListDecoder.EncodeToBytes(GeneratedBlockAccessList);
         block.Header.BlockAccessListHash = new(ValueKeccak.Compute(block.EncodedBlockAccessList).Bytes);
     }
