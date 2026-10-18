@@ -208,7 +208,11 @@ public sealed partial class KeccakHash
         /// <summary>How many of <see cref="Nodes"/> were keyed, those with an entry in <see cref="States"/>.</summary>
         public static nint Count;
         /// <summary>Per node, <see cref="RetainedLanes"/> lanes: the states its leading whole rate blocks leave, up to <see cref="RetainedBlocks"/>.</summary>
+        /// <remarks>Packed where the guest reuses its input: only nodes that keep states have them, at the index
+        /// <see cref="Slots"/> holds.</remarks>
         public static unsafe ulong* States;
+        /// <summary>Where the guest reuses its input, per node that keeps states, the index of its states in <see cref="States"/>.</summary>
+        public static unsafe uint* Slots;
         /// <summary>The tag <see cref="NoteWitnessNodeLoaded"/> was given last.</summary>
         public static nint Loaded;
     }
@@ -245,13 +249,19 @@ public sealed partial class KeccakHash
     /// state of its own.</remarks>
     internal static partial void ComputeHash256OfWitnessNodes(byte[][] nodes, int count, Span<ValueHash256> hashes)
     {
+        if (Sp1ReusableInputFlag.IsActive)
+        {
+            ComputeHash256OfWitnessNodesPacked(nodes, count, hashes);
+            return;
+        }
+
         unsafe
         {
             // Unchecked, the counts checked once: a bounds check per node loads a 32-bit length, a narrow access.
             ArgumentOutOfRangeException.ThrowIfGreaterThan((uint)count, (uint)Math.Min(nodes.Length, hashes.Length));
             // Native rather than a managed array, which the guest's allocator zeroes word by word. Left uninitialized: only
             // the states of a node's whole leading blocks are written, and ComputeHash256OfEdited reads no other.
-            ulong* states = AllocateStates((nuint)count);
+            ulong* states = (ulong*)NativeMemory.Alloc((nuint)count, RetainedLanes * sizeof(ulong));
             Debug.Assert(((nuint)states & 7) == 0);
             ref byte[] firstNode = ref MemoryMarshal.GetArrayDataReference(nodes);
             ref ValueHash256 firstHash = ref MemoryMarshal.GetReference(hashes);
@@ -288,25 +298,70 @@ public sealed partial class KeccakHash
             WitnessNodes.Nodes = nodes;
             WitnessNodes.Count = count;
             WitnessNodes.States = states;
-            // States in the input are freed too: the guest's bump heap frees nothing.
             NativeMemory.Free(released);
         }
     }
 
-    /// <summary>Allocates the states of <paramref name="count"/> nodes, in the input <see cref="DonateConsumedInput"/>
-    /// was given while it has room for them.</summary>
-    /// <remarks>Out of line, so that the keying loop is compiled alike whether the guest reuses its input or not.</remarks>
+    /// <summary><see cref="ComputeHash256OfWitnessNodes"/> where the guest reuses its input.</summary>
+    /// <remarks>Keeps states only for the nodes <see cref="IsResumable"/> accepts, packed, and records where each one's
+    /// are: about half the nodes keep none, and the room in the input left to them is short of a slot for every node.
+    /// </remarks>
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static unsafe ulong* AllocateStates(nuint count)
+    private static unsafe void ComputeHash256OfWitnessNodesPacked(byte[][] nodes, int count, Span<ValueHash256> hashes)
     {
-        nuint size = count * (RetainedLanes * sizeof(ulong));
-        if (!Sp1ReusableInputFlag.IsActive || size > FreeInput.Length)
-            return (ulong*)NativeMemory.Alloc(size);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan((uint)count, (uint)Math.Min(nodes.Length, hashes.Length));
+        ref byte[] firstNode = ref MemoryMarshal.GetArrayDataReference(nodes);
+        ref ValueHash256 firstHash = ref MemoryMarshal.GetReference(hashes);
+        nuint resumable = 0;
+        for (nint i = 0; i < count; i++)
+        {
+            if (IsResumable(Unsafe.Add(ref firstNode, i).Length)) resumable++;
+        }
 
-        ulong* states = (ulong*)FreeInput.Start;
+        ulong* states = (ulong*)AllocateInInput(resumable * (RetainedLanes * sizeof(ulong)) + (nuint)count * sizeof(uint));
+        uint* slots = (uint*)(states + resumable * RetainedLanes);
+        Unsafe.SkipInit(out KeccakState stateBuffer);
+        ref ulong lane = ref Unsafe.As<KeccakState, ulong>(ref stateBuffer);
+        uint slot = 0;
+        for (nint i = 0; i < count; i++)
+        {
+            byte[] node = Unsafe.Add(ref firstNode, i);
+            ref ValueHash256 hash = ref Unsafe.Add(ref firstHash, i);
+            if (IsResumable(node.Length))
+            {
+                ref ulong retained = ref states[slot * (nuint)RetainedLanes];
+                if (node.Length == Hash532InputLength) ComputeHash532Retaining(node, ref retained, ref hash);
+                else ComputeHashRetaining(node, ref retained, ref hash);
+                slots[i] = slot++;
+                continue;
+            }
+
+            fixed (byte* data = node)
+            {
+                Sponge(ref lane, StrictAlignmentFlag.IsActive ? AlignedDown(data) : data, (nuint)node.Length);
+            }
+
+            hash = Unsafe.As<ulong, ValueHash256>(ref lane);
+        }
+
+        WitnessNodes.Nodes = nodes;
+        WitnessNodes.Count = count;
+        WitnessNodes.States = states;
+        WitnessNodes.Slots = slots;
+    }
+
+    /// <summary>Allocates <paramref name="size"/> bytes, in the input <see cref="DonateConsumedInput"/> was given while it
+    /// has room for them.</summary>
+    private static unsafe void* AllocateInInput(nuint size)
+    {
+        size = (size + 7) & ~(nuint)7;
+        if (size > FreeInput.Length)
+            return NativeMemory.Alloc(size);
+
+        byte* allocated = FreeInput.Start;
         FreeInput.Start += size;
         FreeInput.Length -= size;
-        return states;
+        return allocated;
     }
 
     /// <inheritdoc cref="KeccakHash.NoteWitnessNodeLoaded" />
@@ -366,7 +421,7 @@ public sealed partial class KeccakHash
         nuint retainedLength = Math.Min(length / HASH_DATA_AREA, RetainedBlocks) * HASH_DATA_AREA;
         nuint offset = 0;
         // One state past the one the matching blocks leave.
-        nuint next = index * RetainedLanes;
+        nuint next = (Sp1ReusableInputFlag.IsActive ? WitnessNodes.Slots[index] : index) * RetainedLanes;
         while (offset < retainedLength && BlockEquals(data + offset, original + offset))
         {
             offset += HASH_DATA_AREA;
@@ -406,7 +461,10 @@ public sealed partial class KeccakHash
 
     /// <summary>Hashes a full branch into <paramref name="hash"/>, leaving the state after each of its leading rate blocks in <paramref name="retained"/>.</summary>
     /// <param name="retained">Lane 0 of <see cref="RetainedBlocks"/> consecutive states.</param>
+    /// <remarks>Inlined: the keying loops run it for about half the nodes, and with two of them calling it, it is no
+    /// longer inlined on its own.</remarks>
     [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static unsafe void ComputeHash532Retaining(byte[] node, ref ulong retained, ref ValueHash256 hash)
     {
         Unsafe.SkipInit(out KeccakState stateBuffer);
