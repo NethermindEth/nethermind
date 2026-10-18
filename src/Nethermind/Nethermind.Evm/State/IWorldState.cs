@@ -125,7 +125,7 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     void WarmUp(Address address);
 
     /// <inheritdoc cref="IWorldStateScopeProvider.IScope.Prefetch"/>
-    void Prefetch(ReadOnlySpan<Address> accounts, ReadOnlySpan<StorageCell> slots) { }
+    void Prefetch(Span<Address> accounts, Span<StorageCell> slots) { }
 
     /// <inheritdoc cref="IWorldStateScopeProvider.IScope.SupportsPrefetch"/>
     bool SupportsPrefetch => false;

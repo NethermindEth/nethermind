@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers;
 using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -381,17 +382,29 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         foreach (ReadOnlyAccountChanges changes in accountChanges.AsSpan())
             slotCount += changes.StorageChanges.Length + changes.StorageReads.Length;
 
-        using ArrayPoolListRef<Address> accounts = new(accountChanges.Count);
-        using ArrayPoolListRef<StorageCell> slots = new(slotCount);
-        foreach (ReadOnlyAccountChanges changes in accountChanges.AsSpan())
+        // The one copy of the keys: the access list holds them per account, the batched read needs them contiguous.
+        // An account's slots stay adjacent, so its hash is computed once below.
+        Address[] accounts = ArrayPool<Address>.Shared.Rent(accountChanges.Count);
+        StorageCell[] slots = ArrayPool<StorageCell>.Shared.Rent(slotCount);
+        try
         {
-            Address address = changes.Address;
-            accounts.Add(address);
-            foreach (ReadOnlySlotChanges slotChanges in changes.StorageChanges) slots.Add(new StorageCell(address, slotChanges.Key));
-            foreach (UInt256 slot in changes.StorageReads) slots.Add(new StorageCell(address, slot));
-        }
+            int accountIndex = 0;
+            int slotIndex = 0;
+            foreach (ReadOnlyAccountChanges changes in accountChanges.AsSpan())
+            {
+                Address address = changes.Address;
+                accounts[accountIndex++] = address;
+                foreach (ReadOnlySlotChanges slotChanges in changes.StorageChanges) slots[slotIndex++] = new StorageCell(address, slotChanges.Key);
+                foreach (UInt256 slot in changes.StorageReads) slots[slotIndex++] = new StorageCell(address, slot);
+            }
 
-        _snapshotBundle.Prefetch(accounts.AsSpan(), slots.AsSpan());
+            _snapshotBundle.Prefetch(accounts.AsSpan(0, accountIndex), slots.AsSpan(0, slotIndex));
+        }
+        finally
+        {
+            ArrayPool<Address>.Shared.Return(accounts, clearArray: true);
+            ArrayPool<StorageCell>.Shared.Return(slots, clearArray: true);
+        }
     }
 
     private void RunSinkSlotReads(
@@ -498,7 +511,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     internal void DecrementOutstandingWarmups() => CompleteWarmup();
 
-    public void Prefetch(ReadOnlySpan<Address> accounts, ReadOnlySpan<StorageCell> slots) => _snapshotBundle.Prefetch(accounts, slots);
+    public void Prefetch(Span<Address> accounts, Span<StorageCell> slots) => _snapshotBundle.Prefetch(accounts, slots);
 
     public bool SupportsPrefetch => true;
 

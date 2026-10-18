@@ -58,7 +58,7 @@ public class WorldStateScopeOperationLogger(IWorldStateScopeProvider baseScopePr
 
         public void HintWarmSlot(Address address, in UInt256 index) => innerScope.HintWarmSlot(address, in index);
 
-        public void Prefetch(ReadOnlySpan<Address> accounts, ReadOnlySpan<StorageCell> slots) => innerScope.Prefetch(accounts, slots);
+        public void Prefetch(Span<Address> accounts, Span<StorageCell> slots) => innerScope.Prefetch(accounts, slots);
 
         public bool SupportsPrefetch => innerScope.SupportsPrefetch;
 

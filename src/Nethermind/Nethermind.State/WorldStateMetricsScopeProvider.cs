@@ -53,7 +53,7 @@ public class WorldStateMetricsScopeProvider(IWorldStateScopeProvider baseProvide
 
         public void HintWarmSlot(Address address, in UInt256 index) => baseScope.HintWarmSlot(address, in index);
 
-        public void Prefetch(ReadOnlySpan<Address> accounts, ReadOnlySpan<StorageCell> slots) => baseScope.Prefetch(accounts, slots);
+        public void Prefetch(Span<Address> accounts, Span<StorageCell> slots) => baseScope.Prefetch(accounts, slots);
 
         public bool SupportsPrefetch => baseScope.SupportsPrefetch;
 

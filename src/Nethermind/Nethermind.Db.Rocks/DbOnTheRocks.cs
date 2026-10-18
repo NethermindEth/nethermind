@@ -1042,17 +1042,13 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     {
         if (_isDisposing || keyLength <= 0 || keys.Length < keyLength) return;
         int count = keys.Length / keyLength;
-        byte[][] keyArrays = new byte[count][];
-        for (int i = 0; i < count; i++) keyArrays[i] = keys.Slice(i * keyLength, keyLength).ToArray();
-        IColumnFamilyHandle[]? families = null;
-        if (cf is not null)
-        {
-            families = new IColumnFamilyHandle[count];
-            Array.Fill(families, cf);
-        }
-
+        // The binding copies the keys and handles before it returns, so this thread's arrays serve the next batch.
+        byte[][] keyArrays = PrefetchBuffers.Keys(keyLength, count);
+        IColumnFamilyHandle[]? families = cf is null ? null : PrefetchBuffers.Families(count);
         try
         {
+            for (int i = 0; i < count; i++) keys.Slice(i * keyLength, keyLength).CopyTo(keyArrays[i]);
+            if (families is not null) Array.Fill(families, cf);
             Task read = _db.MultiGetAsync(keyArrays, families, readOptions).AsTask();
             if (!read.IsCompletedSuccessfully)
                 _ = read.ContinueWith(static t => _ = t.Exception, CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
@@ -1060,6 +1056,76 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         }
         catch (Exception e) when (e is RocksDbException or ObjectDisposedException)
         {
+        }
+        finally
+        {
+            // A reused array must not keep a disposed database's column family reachable.
+            if (families is not null) Array.Clear(families);
+        }
+    }
+
+    /// <summary>
+    /// Per-thread key and column family arrays for <see cref="Prefetch"/>, one exact-length array per batch size, so
+    /// a batch allocates nothing on the caller side. Batches larger than <see cref="MaxReusedKeys"/> allocate.
+    /// </summary>
+    private static class PrefetchBuffers
+    {
+        private const int MaxReusedKeys = 64;
+        private const int MaxReusedKeyLengths = 4;
+
+        [ThreadStatic] private static KeyArrays?[]? t_keys;
+        [ThreadStatic] private static IColumnFamilyHandle[][]? t_families;
+
+        public static byte[][] Keys(int keyLength, int count)
+        {
+            if (count > MaxReusedKeys) return NewKeys(keyLength, count);
+            KeyArrays?[] byLength = t_keys ??= new KeyArrays?[MaxReusedKeyLengths];
+            for (int i = 0; i < byLength.Length; i++)
+            {
+                KeyArrays? keys = byLength[i];
+                if (keys is null) return (byLength[i] = new KeyArrays(keyLength)).ForCount(count);
+                if (keys.KeyLength == keyLength) return keys.ForCount(count);
+            }
+
+            return NewKeys(keyLength, count);
+        }
+
+        public static IColumnFamilyHandle[] Families(int count)
+        {
+            if (count > MaxReusedKeys) return new IColumnFamilyHandle[count];
+            IColumnFamilyHandle[][] byCount = t_families ??= NewFamilies();
+            return byCount[count];
+        }
+
+        private static IColumnFamilyHandle[][] NewFamilies()
+        {
+            IColumnFamilyHandle[][] byCount = new IColumnFamilyHandle[MaxReusedKeys + 1][];
+            for (int count = 0; count < byCount.Length; count++) byCount[count] = new IColumnFamilyHandle[count];
+            return byCount;
+        }
+
+        private static byte[][] NewKeys(int keyLength, int count)
+        {
+            byte[][] keys = new byte[count][];
+            for (int i = 0; i < keys.Length; i++) keys[i] = new byte[keyLength];
+            return keys;
+        }
+
+        /// <summary>One set of key buffers; the array for each batch size references the first buffers of the set.</summary>
+        private sealed class KeyArrays
+        {
+            private readonly byte[][][] _byCount = new byte[MaxReusedKeys + 1][][];
+
+            public KeyArrays(int keyLength)
+            {
+                KeyLength = keyLength;
+                byte[][] keys = NewKeys(keyLength, MaxReusedKeys);
+                for (int count = 0; count < _byCount.Length; count++) _byCount[count] = keys[..count];
+            }
+
+            public int KeyLength { get; }
+
+            public byte[][] ForCount(int count) => _byCount[count];
         }
     }
 

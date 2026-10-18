@@ -1065,7 +1065,7 @@ public class CarryForwardCachingPersistenceTests
             public IPersistence.IFlatIterator CreateStorageIterator(in ValueHash256 accountKey, in ValueHash256 startSlotKey, in ValueHash256 endSlotKey) => throw new NotSupportedException();
             public bool IsPreimageMode => false;
 
-            public void Prefetch(ReadOnlySpan<Address> accounts, ReadOnlySpan<StorageCell> slots)
+            public void Prefetch(Span<Address> accounts, Span<StorageCell> slots)
             {
                 parent.PrefetchedAccounts.AddRange(accounts);
                 parent.PrefetchedSlots.AddRange(slots);

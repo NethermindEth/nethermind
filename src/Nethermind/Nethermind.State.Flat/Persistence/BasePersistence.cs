@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Buffers;
 using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
@@ -290,14 +289,23 @@ public static class BasePersistence
         public IPersistence.IFlatIterator CreateStorageIterator(in ValueHash256 accountKey, in ValueHash256 startSlotKey, in ValueHash256 endSlotKey);
         public bool IsPreimageMode { get; }
 
-        /// <summary>Starts reading hashed account keys and (account, slot) key pairs ahead of use; does nothing by default.</summary>
-        public void Prefetch(ReadOnlySpan<ValueHash256> accounts, ReadOnlySpan<ValueHash256> slotAccounts, ReadOnlySpan<ValueHash256> slots) { }
+        /// <summary>Starts reading the hashed keys that <paramref name="keys"/> produces ahead of use; does nothing by default.</summary>
+        public void Prefetch<TKeys>(ref TKeys keys) where TKeys : struct, IHashedPrefetchKeys, allows ref struct { }
 
         /// <summary>Whether reading this account is answered from memory; true when the store cannot prefetch.</summary>
         public bool IsAccountCached(in ValueHash256 account) => true;
 
         /// <summary>Whether reading this slot is answered from memory; true when the store cannot prefetch.</summary>
         public bool IsSlotCached(in ValueHash256 account, in ValueHash256 slot) => true;
+    }
+
+    /// <summary>The hashed keys of one prefetch, computed as they are encoded so no hashed copy is kept.</summary>
+    public interface IHashedPrefetchKeys
+    {
+        public int AccountCount { get; }
+        public int SlotCount { get; }
+        public void GetAccount(int index, out ValueHash256 account);
+        public void GetSlot(int index, out ValueHash256 account, out ValueHash256 slot);
     }
 
     public interface IHashedFlatWriteBatch
@@ -329,7 +337,8 @@ public static class BasePersistence
         public bool IsPreimageMode { get; }
 
         /// <summary>Starts reading accounts and slots ahead of use; does nothing by default.</summary>
-        public void Prefetch(ReadOnlySpan<Address> accounts, ReadOnlySpan<StorageCell> slots) { }
+        /// <remarks>The spans are the caller's scratch: readers may filter them in place.</remarks>
+        public void Prefetch(Span<Address> accounts, Span<StorageCell> slots) { }
     }
 
     public interface IFlatWriteBatch
@@ -460,7 +469,7 @@ public static class BasePersistence
 
         public bool IsPreimageMode => _flatReader.IsPreimageMode;
 
-        public void Prefetch(ReadOnlySpan<Address> accounts, ReadOnlySpan<StorageCell> slots)
+        public void Prefetch(Span<Address> accounts, Span<StorageCell> slots)
         {
             // A few spread-out keys decide before the rest are hashed: when all of them are in memory the block is
             // treated as cached and costs only those probes.
@@ -471,28 +480,36 @@ public static class BasePersistence
                 Db.Metrics.IncrementPrefetchesSkippedCached();
                 return;
             }
-            int total = accounts.Length + slots.Length * 2;
-            ValueHash256[] rented = ArrayPool<ValueHash256>.Shared.Rent(total);
-            try
-            {
-                Span<ValueHash256> accountHashes = rented.AsSpan(0, accounts.Length);
-                for (int i = 0; i < accounts.Length; i++) accountHashes[i] = accounts[i].ToAccountPath;
 
-                Span<ValueHash256> slotAccounts = rented.AsSpan(accounts.Length, slots.Length);
-                Span<ValueHash256> slotHashes = rented.AsSpan(accounts.Length + slots.Length, slots.Length);
-                for (int i = 0; i < slots.Length; i++)
+            HashingPrefetchKeys keys = new(accounts, slots);
+            _flatReader.Prefetch(ref keys);
+        }
+
+        /// <summary>Hashes each key when the reader encodes it; one account's adjacent slots share one account hash.</summary>
+        private ref struct HashingPrefetchKeys(ReadOnlySpan<Address> accounts, ReadOnlySpan<StorageCell> slots) : IHashedPrefetchKeys
+        {
+            private readonly ReadOnlySpan<Address> _accounts = accounts;
+            private readonly ReadOnlySpan<StorageCell> _slots = slots;
+            private Address? _slotAccount;
+            private ValueHash256 _slotAccountHash;
+
+            public readonly int AccountCount => _accounts.Length;
+            public readonly int SlotCount => _slots.Length;
+
+            public readonly void GetAccount(int index, out ValueHash256 account) => account = _accounts[index].ToAccountPath;
+
+            public void GetSlot(int index, out ValueHash256 account, out ValueHash256 slot)
+            {
+                ref readonly StorageCell cell = ref _slots[index];
+                if (_slotAccount is null || !cell.Address.Equals(_slotAccount))
                 {
-                    slotAccounts[i] = slots[i].Address.ToAccountPath;
-                    ValueHash256 slotHash = ValueKeccak.Zero;
-                    StorageTree.ComputeKeyWithLookup(slots[i].Index, ref slotHash);
-                    slotHashes[i] = slotHash;
+                    _slotAccount = cell.Address;
+                    _slotAccountHash = cell.Address.ToAccountPath;
                 }
 
-                _flatReader.Prefetch(accountHashes, slotAccounts, slotHashes);
-            }
-            finally
-            {
-                ArrayPool<ValueHash256>.Shared.Return(rented);
+                account = _slotAccountHash;
+                slot = ValueKeccak.Zero;
+                StorageTree.ComputeKeyWithLookup(cell.Index, ref slot);
             }
         }
 
@@ -566,7 +583,7 @@ public static class BasePersistence
 
         public bool IsPreimageMode => _flatReader.IsPreimageMode;
 
-        public void Prefetch(ReadOnlySpan<Address> accounts, ReadOnlySpan<StorageCell> slots) =>
+        public void Prefetch(Span<Address> accounts, Span<StorageCell> slots) =>
             _flatReader.Prefetch(accounts, slots);
     }
 

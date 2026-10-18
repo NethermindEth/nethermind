@@ -150,36 +150,46 @@ public static class BaseFlatPersistence
 
         public bool IsPreimageMode => isPreimageMode;
 
+        [SkipLocalsInit]
         public bool IsAccountCached(in ValueHash256 account) =>
             state is not IReadPrefetcher prefetcher || prefetcher.IsCached(EncodeAccountKeyHashed(stackalloc byte[AccountKeyLength], account));
 
+        [SkipLocalsInit]
         public bool IsSlotCached(in ValueHash256 account, in ValueHash256 slot) =>
             storage is not IReadPrefetcher prefetcher || prefetcher.IsCached(EncodeStorageKey(stackalloc byte[StorageKeyLength], account, slot, fullAddressStorageKey));
 
         [SkipLocalsInit]
-        public void Prefetch(ReadOnlySpan<ValueHash256> accounts, ReadOnlySpan<ValueHash256> slotAccounts, ReadOnlySpan<ValueHash256> slots)
+        public void Prefetch<TKeys>(ref TKeys keys) where TKeys : struct, BasePersistence.IHashedPrefetchKeys, allows ref struct
         {
-            if (!accounts.IsEmpty && state is IReadPrefetcher accountPrefetcher)
+            int accounts = keys.AccountCount;
+            if (accounts != 0 && state is IReadPrefetcher accountPrefetcher)
             {
-                Span<byte> keys = stackalloc byte[PrefetchBatchSize * AccountKeyLength];
-                for (int start = 0; start < accounts.Length; start += PrefetchBatchSize)
+                Span<byte> batch = stackalloc byte[PrefetchBatchSize * AccountKeyLength];
+                for (int start = 0; start < accounts; start += PrefetchBatchSize)
                 {
-                    int count = Math.Min(PrefetchBatchSize, accounts.Length - start);
+                    int count = Math.Min(PrefetchBatchSize, accounts - start);
                     for (int i = 0; i < count; i++)
-                        EncodeAccountKeyHashed(keys.Slice(i * AccountKeyLength, AccountKeyLength), accounts[start + i]);
-                    accountPrefetcher.Prefetch(keys[..(count * AccountKeyLength)], AccountKeyLength);
+                    {
+                        keys.GetAccount(start + i, out ValueHash256 account);
+                        EncodeAccountKeyHashed(batch.Slice(i * AccountKeyLength, AccountKeyLength), account);
+                    }
+                    accountPrefetcher.Prefetch(batch[..(count * AccountKeyLength)], AccountKeyLength);
                 }
             }
 
-            if (!slots.IsEmpty && storage is IReadPrefetcher storagePrefetcher)
+            int slots = keys.SlotCount;
+            if (slots != 0 && storage is IReadPrefetcher storagePrefetcher)
             {
-                Span<byte> keys = stackalloc byte[PrefetchBatchSize * StorageKeyLength];
-                for (int start = 0; start < slots.Length; start += PrefetchBatchSize)
+                Span<byte> batch = stackalloc byte[PrefetchBatchSize * StorageKeyLength];
+                for (int start = 0; start < slots; start += PrefetchBatchSize)
                 {
-                    int count = Math.Min(PrefetchBatchSize, slots.Length - start);
+                    int count = Math.Min(PrefetchBatchSize, slots - start);
                     for (int i = 0; i < count; i++)
-                        EncodeStorageKey(keys.Slice(i * StorageKeyLength, StorageKeyLength), slotAccounts[start + i], slots[start + i], fullAddressStorageKey);
-                    storagePrefetcher.Prefetch(keys[..(count * StorageKeyLength)], StorageKeyLength);
+                    {
+                        keys.GetSlot(start + i, out ValueHash256 account, out ValueHash256 slot);
+                        EncodeStorageKey(batch.Slice(i * StorageKeyLength, StorageKeyLength), account, slot, fullAddressStorageKey);
+                    }
+                    storagePrefetcher.Prefetch(batch[..(count * StorageKeyLength)], StorageKeyLength);
                 }
             }
         }

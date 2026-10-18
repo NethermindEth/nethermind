@@ -52,10 +52,13 @@ public interface IPersistence
     }
 
     /// <summary>A persistence reader that can start reading accounts and slots from its store ahead of use.</summary>
-    /// <remarks>An optional capability, so readers that cannot prefetch, test doubles included, need not implement it.</remarks>
+    /// <remarks>
+    /// An optional capability, so readers that cannot prefetch, test doubles included, need not implement it. The spans
+    /// are the caller's scratch: readers filter them in place, so their contents may change.
+    /// </remarks>
     public interface IPrefetchingReader
     {
-        void Prefetch(ReadOnlySpan<Address> accounts, ReadOnlySpan<StorageCell> slots);
+        void Prefetch(Span<Address> accounts, Span<StorageCell> slots);
     }
 
     public interface IWriteBatch : IDisposable

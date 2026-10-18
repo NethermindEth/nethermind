@@ -201,7 +201,7 @@ namespace Nethermind.State
 
         public void WarmUp(Address address) => _stateProvider.WarmUp(address);
 
-        public void Prefetch(ReadOnlySpan<Address> accounts, ReadOnlySpan<StorageCell> slots) =>
+        public void Prefetch(Span<Address> accounts, Span<StorageCell> slots) =>
             _currentScope?.Prefetch(accounts, slots);
 
         public bool SupportsPrefetch => _currentScope?.SupportsPrefetch ?? false;

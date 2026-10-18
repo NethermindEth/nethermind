@@ -70,7 +70,8 @@ public interface IWorldStateScopeProvider
         /// Starts reading accounts and slots that will be read soon from persisted state, without returning them,
         /// so that cold disk reads overlap. No-op for backends without asynchronous reads.
         /// </summary>
-        void Prefetch(ReadOnlySpan<Address> accounts, ReadOnlySpan<StorageCell> slots) { }
+        /// <remarks>The spans are the caller's scratch: layers filter them in place, so their contents may change.</remarks>
+        void Prefetch(Span<Address> accounts, Span<StorageCell> slots) { }
 
         /// <summary>Whether <see cref="Prefetch"/> does anything, so callers can skip gathering keys.</summary>
         bool SupportsPrefetch => false;

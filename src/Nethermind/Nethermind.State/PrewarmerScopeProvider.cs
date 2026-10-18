@@ -322,22 +322,23 @@ public class PrewarmerScopeProvider(
         /// Unlike the warm hints below, a capturing scope forwards a prefetch too: its keys are named by the block's own
         /// transactions, never derived from placeholder values.
         /// </remarks>
-        public void Prefetch(ReadOnlySpan<Address> accounts, ReadOnlySpan<StorageCell> slots)
+        public void Prefetch(Span<Address> accounts, Span<StorageCell> slots)
         {
-            using ArrayPoolListRef<Address> uncachedAccounts = new(accounts.Length);
+            // Compacted in place: cached keys are dropped without copying the others.
+            int keptAccounts = 0;
             foreach (Address address in accounts)
             {
                 AddressAsKey key = address;
-                if (!preBlockCache.TryGetValue(in key, out _)) uncachedAccounts.Add(address);
+                if (!preBlockCache.TryGetValue(in key, out _)) accounts[keptAccounts++] = address;
             }
 
-            using ArrayPoolListRef<StorageCell> uncachedSlots = new(slots.Length);
+            int keptSlots = 0;
             foreach (StorageCell cell in slots)
             {
-                if (!storageCache.TryGetValue(in cell, out _)) uncachedSlots.Add(cell);
+                if (!storageCache.TryGetValue(in cell, out _)) slots[keptSlots++] = cell;
             }
 
-            if (uncachedAccounts.Count != 0 || uncachedSlots.Count != 0) baseScope.Prefetch(uncachedAccounts.AsSpan(), uncachedSlots.AsSpan());
+            if (keptAccounts != 0 || keptSlots != 0) baseScope.Prefetch(accounts[..keptAccounts], slots[..keptSlots]);
         }
 
         // Populator hints target the block's consumer scope (whose commit walks the hinted paths);

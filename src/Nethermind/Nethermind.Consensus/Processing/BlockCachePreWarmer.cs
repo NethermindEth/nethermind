@@ -1653,6 +1653,36 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
     internal const int MinCalldataWordsForAddressWarm = 8;
     internal const int MaxCalldataAddressesPerBlock = 4096;
 
+    /// <summary>Sorts <paramref name="items"/> and moves each distinct item to the front once.</summary>
+    /// <returns>The distinct items, a prefix of <paramref name="items"/>.</returns>
+    internal static Span<T> SortUnique<T, TComparer>(Span<T> items, TComparer comparer) where TComparer : IComparer<T>
+    {
+        if (items.Length < 2) return items;
+        items.Sort(comparer);
+        int unique = 1;
+        for (int i = 1; i < items.Length; i++)
+        {
+            if (comparer.Compare(items[i], items[unique - 1]) != 0) items[unique++] = items[i];
+        }
+
+        return items[..unique];
+    }
+
+    internal readonly struct AddressComparer : IComparer<Address>
+    {
+        public int Compare(Address? x, Address? y) => x!.CompareTo(y);
+    }
+
+    /// <summary>Orders by account, then slot, so the slots of one account are adjacent.</summary>
+    internal readonly struct StorageCellComparer : IComparer<StorageCell>
+    {
+        public int Compare(StorageCell x, StorageCell y)
+        {
+            int byAddress = x.Address.CompareTo(y.Address);
+            return byAddress != 0 ? byAddress : x.Index.CompareTo(y.Index);
+        }
+    }
+
     /// <summary>The distinct addresses the block's large calldata names as ABI words, in calldata order; the caller disposes the list.</summary>
     /// <remarks>
     /// Words are deduplicated as they are: an ABI address word is the address left-padded to 32 bytes, the
@@ -1858,40 +1888,52 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         private void PrefetchKnownState(Block block, IWorldState worldState, CancellationToken token)
         {
             int count = block.Transactions.Length + (block.InclusionListTransactions?.Length ?? 0);
-            using PooledSet<AddressAsKey> accounts = [];
-            using PooledSet<StorageCell> slots = [];
+            int accountCapacity = 2 * count + 1 + (WarmWithdrawals ? block.Withdrawals!.Length : 0);
+            int slotCapacity = 0;
             for (int i = 0; i < count; i++)
             {
-                if ((i & 0x3F) == 0 && token.IsCancellationRequested) return;
-                Transaction tx = TransactionAt(block, i);
-                if (tx.SenderAddress is { } sender) accounts.Add(sender);
-                if (tx.To is { } recipient) accounts.Add(recipient);
-                if (tx.AccessList is { IsEmpty: false } accessList)
+                if (TransactionAt(block, i).AccessList is { IsEmpty: false } accessList)
                 {
-                    foreach ((Address address, AccessList.StorageKeysEnumerable storages) in accessList)
-                    {
-                        accounts.Add(address);
-                        foreach (UInt256 storage in storages) slots.Add(new StorageCell(address, in storage));
-                    }
+                    (int addresses, int storageKeys) = accessList.Count;
+                    accountCapacity += addresses;
+                    slotCapacity += storageKeys;
                 }
             }
 
-            if (Beneficiary is { } beneficiary) accounts.Add(beneficiary);
-            if (WarmWithdrawals)
-            {
-                foreach (Withdrawal withdrawal in block.Withdrawals!) accounts.Add(withdrawal.Address);
-            }
-
-            if (accounts.Count == 0 && slots.Count == 0) return;
-
-            Address[] accountArray = ArrayPool<Address>.Shared.Rent(accounts.Count);
-            StorageCell[] slotArray = ArrayPool<StorageCell>.Shared.Rent(slots.Count);
+            // Filled once at the exact bound, then sorted and deduplicated in place: no set, no second copy.
+            Address[] accounts = ArrayPool<Address>.Shared.Rent(accountCapacity);
+            StorageCell[] slots = ArrayPool<StorageCell>.Shared.Rent(slotCapacity);
             try
             {
-                int a = 0;
-                foreach (AddressAsKey address in accounts) accountArray[a++] = address;
-                slots.CopyTo(slotArray, 0);
-                worldState.Prefetch(accountArray.AsSpan(0, accounts.Count), slotArray.AsSpan(0, slots.Count));
+                int accountCount = 0;
+                int slotCount = 0;
+                for (int i = 0; i < count; i++)
+                {
+                    if ((i & 0x3F) == 0 && token.IsCancellationRequested) return;
+                    Transaction tx = TransactionAt(block, i);
+                    if (tx.SenderAddress is { } sender) accounts[accountCount++] = sender;
+                    if (tx.To is { } recipient) accounts[accountCount++] = recipient;
+                    if (tx.AccessList is { IsEmpty: false } accessList)
+                    {
+                        foreach ((Address address, AccessList.StorageKeysEnumerable storages) in accessList)
+                        {
+                            accounts[accountCount++] = address;
+                            foreach (UInt256 storage in storages) slots[slotCount++] = new StorageCell(address, in storage);
+                        }
+                    }
+                }
+
+                if (Beneficiary is { } beneficiary) accounts[accountCount++] = beneficiary;
+                if (WarmWithdrawals)
+                {
+                    foreach (Withdrawal withdrawal in block.Withdrawals!) accounts[accountCount++] = withdrawal.Address;
+                }
+
+                Span<Address> uniqueAccounts = SortUnique(accounts.AsSpan(0, accountCount), default(AddressComparer));
+                // Sorting by account also keeps each account's slots adjacent, so its hash is computed once.
+                Span<StorageCell> uniqueSlots = SortUnique(slots.AsSpan(0, slotCount), default(StorageCellComparer));
+                if (uniqueAccounts.IsEmpty && uniqueSlots.IsEmpty) return;
+                worldState.Prefetch(uniqueAccounts, uniqueSlots);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
@@ -1900,8 +1942,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
             }
             finally
             {
-                ArrayPool<Address>.Shared.Return(accountArray, clearArray: true);
-                ArrayPool<StorageCell>.Shared.Return(slotArray, clearArray: true);
+                ArrayPool<Address>.Shared.Return(accounts, clearArray: true);
+                ArrayPool<StorageCell>.Shared.Return(slots, clearArray: true);
             }
         }
 

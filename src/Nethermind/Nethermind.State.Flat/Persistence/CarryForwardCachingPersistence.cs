@@ -3,7 +3,6 @@
 
 using System.Collections.Concurrent;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Trie;
@@ -302,29 +301,30 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
         public bool IsPreimageMode => inner.IsPreimageMode;
 
         /// <summary>Forwards only the keys this cache cannot serve, so a prefetch never reads what a later read finds here.</summary>
-        public void Prefetch(ReadOnlySpan<Address> accounts, ReadOnlySpan<StorageCell> slots)
+        public void Prefetch(Span<Address> accounts, Span<StorageCell> slots)
         {
             if (inner is not IPersistence.IPrefetchingReader prefetcher) return;
-            if (!parent.IsCurrent(generation))
+            if (parent.IsCurrent(generation))
             {
-                prefetcher.Prefetch(accounts, slots);
-                return;
+                // Compacted in place: cached keys are dropped without copying the others.
+                int keptAccounts = 0;
+                foreach (Address address in accounts)
+                {
+                    if (!parent._accounts.ContainsKey(address)) accounts[keptAccounts++] = address;
+                }
+
+                int keptSlots = 0;
+                foreach (StorageCell cell in slots)
+                {
+                    ulong hash = CarryForwardSlotTable.Hash(cell.Address, cell.Index);
+                    if (!parent._slots.TryGet(hash, cell.Address, cell.Index, out _, out _)) slots[keptSlots++] = cell;
+                }
+
+                accounts = accounts[..keptAccounts];
+                slots = slots[..keptSlots];
             }
 
-            using ArrayPoolListRef<Address> uncachedAccounts = new(accounts.Length);
-            foreach (Address address in accounts)
-            {
-                if (!parent._accounts.ContainsKey(address)) uncachedAccounts.Add(address);
-            }
-
-            using ArrayPoolListRef<StorageCell> uncachedSlots = new(slots.Length);
-            foreach (StorageCell cell in slots)
-            {
-                ulong hash = CarryForwardSlotTable.Hash(cell.Address, cell.Index);
-                if (!parent._slots.TryGet(hash, cell.Address, cell.Index, out _, out _)) uncachedSlots.Add(cell);
-            }
-
-            prefetcher.Prefetch(uncachedAccounts.AsSpan(), uncachedSlots.AsSpan());
+            prefetcher.Prefetch(accounts, slots);
         }
 
         /// <remarks>

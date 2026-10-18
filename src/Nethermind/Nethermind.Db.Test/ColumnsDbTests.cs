@@ -4,6 +4,7 @@
 using System;
 using System.Buffers.Binary;
 using System.IO;
+using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Test;
@@ -200,6 +201,54 @@ public class ColumnsDbTests
         Assert.That(prefetcher.IsCached(key), Is.False);
         Assert.That(reopened.GetColumnDb(ReceiptsColumns.Blocks).Get(key), Is.EqualTo(new byte[] { 9, 9 }));
         Assert.That(prefetcher.IsCached(key), Is.True);
+    }
+
+    [Test]
+    public void Snapshot_prefetch_reads_every_key_when_batches_of_several_lengths_and_sizes_share_a_thread()
+    {
+        string path = DbPath + "-prefetch-batches";
+        // One key per data block, so a key is cached only when the prefetch read that exact key.
+        byte[] value = new byte[64 * 1024];
+        int[] batchSizes = [64, 3, 64, 1, 17];
+        byte[][] blockKeys = CreateKeys(batchSizes, keyLength: 8, seed: 1);
+        byte[][] transactionKeys = CreateKeys(batchSizes, keyLength: 32, seed: 2);
+        using (ColumnsDb<ReceiptsColumns> db = CreateDb(path, new DbConfig()))
+        {
+            foreach (byte[] key in blockKeys) db.GetColumnDb(ReceiptsColumns.Blocks).Set(key, value);
+            foreach (byte[] key in transactionKeys) db.GetColumnDb(ReceiptsColumns.Transactions).Set(key, value);
+            db.Flush();
+        }
+
+        using ColumnsDb<ReceiptsColumns> reopened = new(path, new("Blocks", path), new DbConfig(),
+            new RocksDbConfigFactory(new DbConfig(), new PruningConfig(), new TestHardwareInfo(), LimboLogs.Instance, validateConfig: false),
+            LimboLogs.Instance, Enum.GetValues<ReceiptsColumns>());
+        using IColumnDbSnapshot<ReceiptsColumns> snapshot = ((IColumnsDb<ReceiptsColumns>)reopened).CreateSnapshot();
+        IReadPrefetcher blocks = (IReadPrefetcher)snapshot.GetColumn(ReceiptsColumns.Blocks);
+        IReadPrefetcher transactions = (IReadPrefetcher)snapshot.GetColumn(ReceiptsColumns.Transactions);
+        Assert.That(blockKeys.Concat(transactionKeys).Count(key => KeyIsCached(key)), Is.Zero);
+
+        int start = 0;
+        foreach (int size in batchSizes)
+        {
+            blocks.Prefetch(Concat(blockKeys, start, size), 8);
+            transactions.Prefetch(Concat(transactionKeys, start, size), 32);
+            start += size;
+        }
+
+        Assert.That(() => blockKeys.All(key => blocks.IsCached(key)) && transactionKeys.All(key => transactions.IsCached(key)),
+            Is.True.After(10_000, 20));
+
+        bool KeyIsCached(byte[] key) => key.Length == 8 ? blocks.IsCached(key) : transactions.IsCached(key);
+
+        static byte[][] CreateKeys(int[] batchSizes, int keyLength, int seed)
+        {
+            Random random = new(seed);
+            byte[][] keys = new byte[batchSizes.Sum()][];
+            for (int i = 0; i < keys.Length; i++) random.NextBytes(keys[i] = new byte[keyLength]);
+            return keys;
+        }
+
+        static byte[] Concat(byte[][] keys, int start, int count) => keys.Skip(start).Take(count).SelectMany(static key => key).ToArray();
     }
 
     [Test]

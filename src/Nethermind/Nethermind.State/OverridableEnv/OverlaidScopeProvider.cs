@@ -49,7 +49,7 @@ public sealed class OverlaidScopeProvider(IWorldStateScopeProvider inner, StateR
 
         public void HintWarmSlot(Address address, in UInt256 index) => inner.HintWarmSlot(address, in index);
 
-        public void Prefetch(ReadOnlySpan<Address> accounts, ReadOnlySpan<StorageCell> slots) => inner.Prefetch(accounts, slots);
+        public void Prefetch(Span<Address> accounts, Span<StorageCell> slots) => inner.Prefetch(accounts, slots);
 
         public bool SupportsPrefetch => inner.SupportsPrefetch;
 
