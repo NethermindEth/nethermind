@@ -183,20 +183,20 @@ public sealed class SnapshotBundle : IDisposable
         GuardDispose();
 
         HashedKey<TreePath> key = new(path);
-        (int shardIdx, int hashCode) = TrieNodeCache.GetShardAndHashCode(null, path);
 
         if (_trieChanged && _changedStateNodes.TryGetValue(key, out TrieNode? node))
         {
             Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
+            return node;
         }
-        else if (_transientResource.TryGetNode(shardIdx, hashCode, hash, out node) && node.NodeType != NodeType.Unknown)
+
+        // Computed after the changed nodes, whose hit needs no cache hash.
+        (int shardIdx, int hashCode) = TrieNodeCache.GetShardAndHashCode(null, path);
+        if (_transientResource.TryGetNode(shardIdx, hashCode, hash, out node) && node.NodeType != NodeType.Unknown)
         {
             Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
         }
-        else if (DoFindStateNodeExternal(key, shardIdx, hashCode, hash, out node))
-        {
-        }
-        else
+        else if (!DoFindStateNodeExternal(key, shardIdx, hashCode, hash, out node))
         {
             node = new TrieNode(NodeType.Unknown, hash);
         }
@@ -312,21 +312,20 @@ public sealed class SnapshotBundle : IDisposable
     {
         GuardDispose();
 
-        (int shardIdx, int hashCode) = TrieNodeCache.GetShardAndHashCode(address, path);
-
         if (_trieChanged && _changedStorageNodes.TryGetValue(address, path, out TrieNode? node))
         {
             Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
+            return node;
         }
-        else if (_transientResource.TryGetNode(shardIdx, hashCode, hash, out node)
-                 && node.NodeType != NodeType.Unknown)
+
+        // Computed after the changed nodes, whose hit needs no cache hash.
+        (int shardIdx, int hashCode) = TrieNodeCache.GetShardAndHashCode(address, path);
+        if (_transientResource.TryGetNode(shardIdx, hashCode, hash, out node)
+            && node.NodeType != NodeType.Unknown)
         {
             Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
         }
-        else if (DoTryFindStorageNodeExternal(address, path, shardIdx, hashCode, hash, out node) && node is not null)
-        {
-        }
-        else
+        else if (!DoTryFindStorageNodeExternal(address, path, shardIdx, hashCode, hash, out node) || node is null)
         {
             node = new TrieNode(NodeType.Unknown, hash);
         }
