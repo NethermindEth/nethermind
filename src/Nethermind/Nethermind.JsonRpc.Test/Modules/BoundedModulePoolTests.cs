@@ -73,7 +73,8 @@ public class BoundedModulePoolTests
                 Substitute.For<IHistoryConfig>(),
                 Substitute.For<IHistoryPruner>()),
             new BlockForRpcFactory(),
-            new HashesOnlyBlockReader(new MemDb(), new HeaderDecoder(), new ChainLevelInfoRepository(new MemDb()), Substitute.For<IHeaderStore>(), blockTree, Substitute.For<ISpecProvider>())),
+            new HashesOnlyBlockReader(new MemDb(), new HeaderDecoder(), new ChainLevelInfoRepository(new MemDb()), Substitute.For<IHeaderStore>(), blockTree, Substitute.For<ISpecProvider>()),
+            Substitute.For<IReceiptStorage>()),
              1, 1000);
 
         return Task.CompletedTask;
@@ -188,6 +189,17 @@ public class BoundedModulePoolTests
     {
         IEthRpcModule ethRpcModule = await _modulePool.GetModule(canBeShared);
         _modulePool.ReturnModule(ethRpcModule);
+    }
+
+    [Test]
+    public async Task Available_module_is_rented_as_the_same_completed_task([Values] bool canBeShared)
+    {
+        Task<IEthRpcModule> first = _modulePool.GetModule(canBeShared);
+        _modulePool.ReturnModule(await first);
+
+        Task<IEthRpcModule> second = _modulePool.GetModule(canBeShared);
+        Assert.That(second.IsCompletedSuccessfully, Is.True);
+        Assert.That(second, Is.SameAs(first));
     }
 
     [Test]

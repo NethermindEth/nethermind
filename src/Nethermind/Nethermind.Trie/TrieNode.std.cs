@@ -220,6 +220,11 @@ namespace Nethermind.Trie
         /// persisted path it has ever walked. See <c>TrieNode.zkevm.cs</c> for why the guest declines.</remarks>
         private const bool PruneTraversedChildren = true;
 
+        /// <summary>Whether a re-encoded branch keeps its previous RLP's value as it stands, rather than walking to it to drop it.</summary>
+        /// <remarks>Not on the host, whose stores can hold a branch read from anywhere: like a fresh encoding, the re-encode drops
+        /// any value. See <c>TrieNode.zkevm.cs</c> for why the guest keeps it.</remarks>
+        private static bool CopiesBranchValue => false;
+
         /// <summary>How <see cref="GetChildWithChildPath"/> is inlined: left to the JIT.</summary>
         private const MethodImplOptions GetChildWithChildPathInlining = default;
 

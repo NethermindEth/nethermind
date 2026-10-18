@@ -132,6 +132,39 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
     }
 
     [Test]
+    public void Nested_results_are_not_overwritten_by_later_calls([Values("return", "revert", "identity", "create")] string target)
+    {
+        // If the tracing guard were dropped, a shorter ID output would be a slice of the precompile scratch, which is copied anyway.
+        int length = target == "identity" ? VirtualMachineStatics.MinPrecompileScratch : 32;
+        byte[] first = Enumerable.Repeat((byte)0xa1, length).ToArray();
+        byte[] second = Enumerable.Repeat((byte)0xb2, length).ToArray();
+        Address callee = target == "identity" ? Address.FromNumber(4) : TestItem.AddressC;
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
+        TestState.InsertCode(TestItem.AddressC, Prepare.EvmCode
+            .Op(Instruction.CALLDATASIZE).PushData(0).PushData(0).Op(Instruction.CALLDATACOPY)
+            .Op(Instruction.CALLDATASIZE).PushData(0).Op(target == "revert" ? Instruction.REVERT : Instruction.RETURN)
+            .Done, Spec);
+
+        byte[] code = target == "create"
+            ? Prepare.EvmCode.Create(Prepare.EvmCode.ForInitOf(first).Done, 0).Create(Prepare.EvmCode.ForInitOf(second).Done, 0).Op(Instruction.STOP).Done
+            : CallWithValue(CallWithValue(Prepare.EvmCode, first), second).Op(Instruction.STOP).Done;
+        (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(ParityTraceTypes.Trace, code);
+
+        // Zero-value precompile calls are left out of a parity trace.
+        Prepare CallWithValue(Prepare prepare, byte[] input) => prepare
+            .StoreDataInMemory(0, input)
+            .PushData(0).PushData(0).PushData(input.Length).PushData(0).PushData(1).PushData(callee).PushData(50000)
+            .Op(Instruction.CALL);
+
+        List<ParityTraceAction> subtraces = trace.Action!.Subtraces;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(target == "create" ? subtraces[0].Result!.Code : subtraces[0].Result!.Output, Is.EqualTo(first));
+            Assert.That(target == "create" ? subtraces[1].Result!.Code : subtraces[1].Result!.Output, Is.EqualTo(second));
+        }
+    }
+
+    [Test]
     public void Failed_frame_uses_parity_error_label(
         [Values("Mutable Call In Static Context", "Out of stack", "Out of bounds", "Invalid code")] string expectedError)
     {
