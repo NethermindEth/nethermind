@@ -187,8 +187,7 @@ public partial class BlockProcessor
                         static (i, state) =>
                         {
                             // Block already rejected — executing the rest cannot change the outcome.
-                            // Iteration 0 checks for itself, between the steps of applying the list.
-                            if (i != 0 && state.IncrementalValidation.HasFailed) return state;
+                            if (state.IncrementalValidation.HasFailed) return state;
 
                             // Propagate the parent thread's IsBlockProcessingThread flag onto the
                             // worker so processing-stats heuristics (e.g. allocation-thread filters)
