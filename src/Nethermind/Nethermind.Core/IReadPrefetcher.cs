@@ -16,8 +16,8 @@ public interface IReadPrefetcher
     void Prefetch(ReadOnlySpan<byte> keys, int keyLength);
 
     /// <summary>
-    /// Whether a prefetch is worth preparing now. False while recent prefetches found their keys cached; true
-    /// from time to time even then, to notice when reads turn cold.
+    /// Whether a read of <paramref name="key"/> is answered from memory, without disk IO. A key known to be absent
+    /// from memory-resident filters counts as cached.
     /// </summary>
-    bool ShouldPrefetch();
+    bool IsCached(ReadOnlySpan<byte> key);
 }

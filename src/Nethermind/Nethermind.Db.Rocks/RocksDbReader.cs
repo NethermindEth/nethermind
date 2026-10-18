@@ -91,7 +91,7 @@ public class RocksDbReader(DbOnTheRocks mainDb,
 
     public void Prefetch(ReadOnlySpan<byte> keys, int keyLength) => _mainDb.Prefetch(keys, keyLength, _columnFamily, _options);
 
-    public bool ShouldPrefetch() => _mainDb.PrefetchGateFor(_columnFamily).ShouldPrefetch();
+    public bool IsCached(ReadOnlySpan<byte> key) => _mainDb.IsCached(key, _columnFamily);
 
     public bool KeyExists(ReadOnlySpan<byte> key) => _mainDb.KeyExistsWithColumn(key, _columnFamily);
 

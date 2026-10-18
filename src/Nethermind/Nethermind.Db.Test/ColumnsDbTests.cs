@@ -181,6 +181,28 @@ public class ColumnsDbTests
     }
 
     [Test]
+    public void Snapshot_cache_probe_reports_disk_reads_as_not_cached()
+    {
+        string path = DbPath + "-cache-probe";
+        byte[] key = [1, 2, 3, 4, 5, 6, 7, 8];
+        using (ColumnsDb<ReceiptsColumns> db = CreateDb(path, new DbConfig()))
+        {
+            db.GetColumnDb(ReceiptsColumns.Blocks).Set(key, [9, 9]);
+            db.Flush();
+        }
+
+        using ColumnsDb<ReceiptsColumns> reopened = new(path, new("Blocks", path), new DbConfig(),
+            new RocksDbConfigFactory(new DbConfig(), new PruningConfig(), new TestHardwareInfo(), LimboLogs.Instance, validateConfig: false),
+            LimboLogs.Instance, Enum.GetValues<ReceiptsColumns>());
+        using IColumnDbSnapshot<ReceiptsColumns> snapshot = ((IColumnsDb<ReceiptsColumns>)reopened).CreateSnapshot();
+        IReadPrefetcher prefetcher = (IReadPrefetcher)snapshot.GetColumn(ReceiptsColumns.Blocks);
+
+        Assert.That(prefetcher.IsCached(key), Is.False);
+        Assert.That(reopened.GetColumnDb(ReceiptsColumns.Blocks).Get(key), Is.EqualTo(new byte[] { 9, 9 }));
+        Assert.That(prefetcher.IsCached(key), Is.True);
+    }
+
+    [Test]
     public void SmokeTest()
     {
         IDb colA = _db.GetColumnDb(ReceiptsColumns.Blocks);

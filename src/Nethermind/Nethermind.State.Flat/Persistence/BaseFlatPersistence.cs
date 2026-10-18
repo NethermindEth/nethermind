@@ -150,9 +150,11 @@ public static class BaseFlatPersistence
 
         public bool IsPreimageMode => isPreimageMode;
 
-        public bool ShouldPrefetchAccounts() => state is IReadPrefetcher prefetcher && prefetcher.ShouldPrefetch();
+        public bool IsAccountCached(in ValueHash256 account) =>
+            state is not IReadPrefetcher prefetcher || prefetcher.IsCached(EncodeAccountKeyHashed(stackalloc byte[AccountKeyLength], account));
 
-        public bool ShouldPrefetchSlots() => storage is IReadPrefetcher prefetcher && prefetcher.ShouldPrefetch();
+        public bool IsSlotCached(in ValueHash256 account, in ValueHash256 slot) =>
+            storage is not IReadPrefetcher prefetcher || prefetcher.IsCached(EncodeStorageKey(stackalloc byte[StorageKeyLength], account, slot, fullAddressStorageKey));
 
         [SkipLocalsInit]
         public void Prefetch(ReadOnlySpan<ValueHash256> accounts, ReadOnlySpan<ValueHash256> slotAccounts, ReadOnlySpan<ValueHash256> slots)
