@@ -160,6 +160,34 @@ public static unsafe partial class IlEvm
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static ref EvmPooledMemory IlMemoryOf(VirtualMachine<EthereumGasPolicy> vm) => ref vm.VmState.Memory;
 
+    /// <summary>
+    /// The memory window compiled MLOADs read in place (<see cref="IlEvmSettings.MemoryWindow"/>): the start of the memory,
+    /// with <paramref name="limit"/> set to its active size when all of it is initialized, else to <paramref name="wanted"/>
+    /// (the end of the word being read, at most 2^32 + 32) when the memory up to there is, so that a word ending at or below
+    /// the limit is inside both; else a limit of 0, which no read passes.
+    /// </summary>
+    /// <remarks>
+    /// Valid while the memory keeps its backing: only bodies replace that (compiled MSTOREs write within it), so compiled code
+    /// sets its limit to 0 after any body that may touch memory, and asks again on its next miss.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static ref byte IlMemoryWindow(ref EvmPooledMemory memory, ulong wanted, ref ulong limit) => ref IlMemoryWindowOf(ref memory, wanted, ref limit);
+
+    [MethodImpl(MethodImplOptions.NoInlining | MethodImplOptions.AggressiveOptimization)]
+    private static ref byte IlMemoryWindowAhead(ref EvmPooledMemory memory, ulong wanted, ref ulong limit) => ref IlMemoryWindowOf(ref memory, wanted, ref limit);
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static ref byte IlMemoryWindowOf(ref EvmPooledMemory memory, ulong wanted, ref ulong limit)
+    {
+        // Below 2^31, as the memory is: the offset of its last word is in range for the word read.
+        ulong size = memory.Size;
+        ulong end = size >= EvmStack.WordSize && !Unsafe.IsNullRef(ref GetActiveInitializedWord(ref memory, size - EvmStack.WordSize)) ? size
+            : wanted >= EvmStack.WordSize && wanted <= size && !Unsafe.IsNullRef(ref GetActiveInitializedWord(ref memory, wanted - EvmStack.WordSize)) ? wanted
+            : 0;
+        limit = end;
+        return ref end == 0 ? ref Unsafe.NullRef<byte>() : ref Unsafe.Subtract(ref GetActiveInitializedWord(ref memory, end - EvmStack.WordSize), (nint)(end - EvmStack.WordSize));
+    }
+
     /// <summary>CLZ as a one-word operation, so it compiles as NOT does; the core runs it through a body of its own.</summary>
     internal struct IlOpClz : EvmInstructions.IOpMath1Param
     {
@@ -238,6 +266,60 @@ public static unsafe partial class IlEvm
 
     [MethodImpl(MethodImplOptions.NoInlining | MethodImplOptions.AggressiveOptimization)]
     private static Vector256<ulong> IlBorrowVectorAhead(Vector256<ulong> word) => IlBorrowLimbs(word);
+
+    // Cold-path twins that take their vectors by reference to locals only cold paths use, and write the result over the first
+    // (IlEvmSettings.ColdLocals): a vector passed or returned by value goes through the hot local's own stack home.
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void IlCarryVectorRef(ref Vector256<ulong> word) => word = IlCarryLimbs(word);
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void IlBorrowVectorRef(ref Vector256<ulong> word) => word = IlBorrowLimbs(word);
+
+    [MethodImpl(MethodImplOptions.NoInlining | MethodImplOptions.AggressiveOptimization)]
+    private static void IlCarryVectorRefAhead(ref Vector256<ulong> word) => word = IlCarryLimbs(word);
+
+    [MethodImpl(MethodImplOptions.NoInlining | MethodImplOptions.AggressiveOptimization)]
+    private static void IlBorrowVectorRefAhead(ref Vector256<ulong> word) => word = IlBorrowLimbs(word);
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void IlAddVectorRef(ref Vector256<ulong> a, ref Vector256<ulong> b) => a = IlMath2Vector<EvmInstructions.OpAdd>(a, b);
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void IlSubtractVectorRef(ref Vector256<ulong> a, ref Vector256<ulong> b) => a = IlMath2Vector<EvmInstructions.OpSub>(a, b);
+
+    [MethodImpl(MethodImplOptions.NoInlining | MethodImplOptions.AggressiveOptimization)]
+    private static void IlAddVectorRefAhead(ref Vector256<ulong> a, ref Vector256<ulong> b) => a = IlMath2Vector<EvmInstructions.OpAdd>(a, b);
+
+    [MethodImpl(MethodImplOptions.NoInlining | MethodImplOptions.AggressiveOptimization)]
+    private static void IlSubtractVectorRefAhead(ref Vector256<ulong> a, ref Vector256<ulong> b) => a = IlMath2Vector<EvmInstructions.OpSub>(a, b);
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void IlCallDataWordRef(ref byte input, nint length, ref Vector256<ulong> offset) => offset = IlCallDataWordAt(ref input, length, offset);
+
+    [MethodImpl(MethodImplOptions.NoInlining | MethodImplOptions.AggressiveOptimization)]
+    private static void IlCallDataWordRefAhead(ref byte input, nint length, ref Vector256<ulong> offset) => offset = IlCallDataWordAt(ref input, length, offset);
+
+    /// <summary>Two-word ADD of words in vectors, for the small form's cold path: <paramref name="a"/> the top, <paramref name="b"/> the second.</summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static Vector256<ulong> IlAddVector(Vector256<ulong> a, Vector256<ulong> b) => IlMath2Vector<EvmInstructions.OpAdd>(a, b);
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static Vector256<ulong> IlSubtractVector(Vector256<ulong> a, Vector256<ulong> b) => IlMath2Vector<EvmInstructions.OpSub>(a, b);
+
+    [MethodImpl(MethodImplOptions.NoInlining | MethodImplOptions.AggressiveOptimization)]
+    private static Vector256<ulong> IlAddVectorAhead(Vector256<ulong> a, Vector256<ulong> b) => IlMath2Vector<EvmInstructions.OpAdd>(a, b);
+
+    [MethodImpl(MethodImplOptions.NoInlining | MethodImplOptions.AggressiveOptimization)]
+    private static Vector256<ulong> IlSubtractVectorAhead(Vector256<ulong> a, Vector256<ulong> b) => IlMath2Vector<EvmInstructions.OpSub>(a, b);
+
+    /// <summary>The opcode's operation on words in vectors, <paramref name="a"/> the top operand.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static Vector256<ulong> IlMath2Vector<TOpMath>(Vector256<ulong> a, Vector256<ulong> b) where TOpMath : struct, EvmInstructions.IOpMath2Param
+    {
+        TOpMath.Operation(in Unsafe.As<Vector256<ulong>, UInt256>(ref a), in Unsafe.As<Vector256<ulong>, UInt256>(ref b), out UInt256 result);
+        return Vector256.Create(result.u0, result.u1, result.u2, result.u3);
+    }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static Vector256<ulong> IlCarryLimbs(Vector256<ulong> word)

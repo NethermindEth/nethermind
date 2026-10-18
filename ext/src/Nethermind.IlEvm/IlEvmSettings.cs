@@ -157,6 +157,39 @@ public static class IlEvmSettings
     public static bool VectorForms { get; set; } =
         System.Runtime.Intrinsics.X86.Avx2.IsSupported && Vector256.IsHardwareAccelerated && Environment.GetEnvironmentVariable("NETHERMIND_ILEVM_VECTOR") != "0";
 
+    /// <summary>
+    /// Cold paths hand the words they pass their helpers (an addition's carry, a CALLDATALOAD past the input) by reference to
+    /// locals of their own: passed or returned by value, a 32-byte vector goes through a stack copy that the JIT makes the hot
+    /// local's own home, which keeps that local in memory throughout the chunk. On unless <c>NETHERMIND_ILEVM_COLD_LOCALS=0</c>.
+    /// </summary>
+    public static bool ColdLocals { get; set; } = Environment.GetEnvironmentVariable("NETHERMIND_ILEVM_COLD_LOCALS") != "0";
+
+    /// <summary>
+    /// With the vector forms, two-word ADD and SUB as one vector add or subtract when both words are below 2^63 and a SUB
+    /// does not borrow (one test of the operands and the result); out of line the carries or borrows move up a lane in vector
+    /// registers. <c>NETHERMIND_ILEVM_FAST_ADD=1</c>.
+    /// </summary>
+    public static bool FastAddSub { get; set; } = Environment.GetEnvironmentVariable("NETHERMIND_ILEVM_FAST_ADD") == "1";
+
+    /// <summary>
+    /// Two-word DIV and MOD of a dividend of three 64-bit digits by a divisor of two (2^64 &lt;= divisor &lt; 2^128) divide
+    /// twice, skipping the quotient digit that must be zero, where UInt256 divides three times; <c>NETHERMIND_ILEVM_FAST_DIVIDE=1</c>.
+    /// </summary>
+    public static bool FastDivide { get; set; } = Environment.GetEnvironmentVariable("NETHERMIND_ILEVM_FAST_DIVIDE") == "1";
+
+    /// <summary>
+    /// With the vector forms, MLOAD reads in place, with no call, from a window of the memory a chunk keeps in locals (its start
+    /// and the end below which a word is active and initialized): asked for on a miss, dropped after any body that may touch
+    /// memory; <c>NETHERMIND_ILEVM_MEMORY_WINDOW=1</c>.
+    /// </summary>
+    public static bool MemoryWindow { get; set; } = Environment.GetEnvironmentVariable("NETHERMIND_ILEVM_MEMORY_WINDOW") == "1";
+
+    /// <summary>
+    /// With <see cref="MemoryWindow"/>, MSTORE at a constant offset overwrites a word inside the window in place, with no call;
+    /// <c>NETHERMIND_ILEVM_WINDOW_STORES=1</c>.
+    /// </summary>
+    public static bool WindowStores { get; set; } = Environment.GetEnvironmentVariable("NETHERMIND_ILEVM_WINDOW_STORES") == "1";
+
     /// <summary>Let the JIT inline the bodies compiled code runs directly (CALLDATALOAD and the like) rather than call them out of line.</summary>
     public static bool InlineBodies { get; set; } = Environment.GetEnvironmentVariable("NETHERMIND_ILEVM_INLINE_BODIES") != "0";
 

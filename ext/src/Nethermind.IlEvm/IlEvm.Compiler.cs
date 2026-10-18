@@ -106,6 +106,7 @@ public static unsafe partial class IlEvm
         private static readonly MethodInfo CarryAheadMethod = typeof(IlEvm).GetMethod(nameof(IlCarryAhead), BindingFlags.NonPublic | BindingFlags.Static)!;
         private static readonly MethodInfo VectorCreate = typeof(Vector256).GetMethod(nameof(Vector256.Create), [typeof(ulong), typeof(ulong), typeof(ulong), typeof(ulong)])!;
         private static readonly MethodInfo VectorCreateScalar = typeof(Vector256).GetMethod(nameof(Vector256.CreateScalar), [typeof(ulong)])!;
+        private static readonly MethodInfo VectorBroadcast = typeof(Vector256).GetMethod(nameof(Vector256.Create), [typeof(ulong)])!;
         private static readonly MethodInfo VectorAsByte = typeof(Vector256).GetMethod(nameof(Vector256.AsByte))!.MakeGenericMethod(typeof(ulong));
         private static readonly MethodInfo VectorOnesComplement = typeof(Vector256).GetMethod(nameof(Vector256.OnesComplement))!.MakeGenericMethod(typeof(byte));
         private static readonly MethodInfo BorrowMethod = typeof(IlEvm).GetMethod(nameof(IlBorrow), BindingFlags.NonPublic | BindingFlags.Static)!;
@@ -127,6 +128,8 @@ public static unsafe partial class IlEvm
         private static readonly MethodInfo VecGreaterThanSigned = VectorMethod(nameof(Vector256.GreaterThan), typeof(long), 2);
         private static readonly MethodInfo VecMaskSigned = VectorMethod(nameof(Vector256.ExtractMostSignificantBits), typeof(long), 1);
         private static readonly MethodInfo VecZero = typeof(Vector256<ulong>).GetProperty(nameof(Vector256<ulong>.Zero))!.GetGetMethod()!;
+        private static readonly MethodInfo VecEquals = VectorMethod(nameof(Vector256.Equals), typeof(ulong), 2);
+        private static readonly MethodInfo VecLongAsUInt64 = VectorMethod(nameof(Vector256.AsUInt64), typeof(long), 1);
         private static readonly MethodInfo VecOnesComplement = VectorMethod(nameof(Vector256.OnesComplement), typeof(ulong), 1);
         private static readonly MethodInfo VecGetElement = typeof(Vector256).GetMethods(BindingFlags.Public | BindingFlags.Static)
             .Single(static m => m.Name == nameof(Vector256.GetElement) && m.IsGenericMethodDefinition).MakeGenericMethod(typeof(ulong));
@@ -142,6 +145,34 @@ public static unsafe partial class IlEvm
         private static readonly MethodInfo BorrowVectorMethod = typeof(IlEvm).GetMethod(nameof(IlBorrowVector), BindingFlags.NonPublic | BindingFlags.Static)!;
         private static readonly MethodInfo BorrowVectorAheadMethod = typeof(IlEvm).GetMethod(nameof(IlBorrowVectorAhead), BindingFlags.NonPublic | BindingFlags.Static)!;
         private static readonly MethodInfo BorrowAheadMethod = typeof(IlEvm).GetMethod(nameof(IlBorrowAhead), BindingFlags.NonPublic | BindingFlags.Static)!;
+
+        private static MethodInfo Helper(string name) => typeof(IlEvm).GetMethod(name, BindingFlags.NonPublic | BindingFlags.Static)!;
+        // IlEvmSettings.ColdLocals: the cold paths' helpers taking their vectors by reference.
+        private static readonly MethodInfo CarryVectorRefMethod = Helper(nameof(IlCarryVectorRef));
+        private static readonly MethodInfo CarryVectorRefAheadMethod = Helper(nameof(IlCarryVectorRefAhead));
+        private static readonly MethodInfo BorrowVectorRefMethod = Helper(nameof(IlBorrowVectorRef));
+        private static readonly MethodInfo BorrowVectorRefAheadMethod = Helper(nameof(IlBorrowVectorRefAhead));
+        private static readonly MethodInfo CallDataWordRefMethod = Helper(nameof(IlCallDataWordRef));
+        private static readonly MethodInfo CallDataWordRefAheadMethod = Helper(nameof(IlCallDataWordRefAhead));
+        // IlEvmSettings.FastAddSub: the small ADD and SUB's full operation, by value and by reference.
+        private static readonly MethodInfo AddVectorMethod = Helper(nameof(IlAddVector));
+        private static readonly MethodInfo AddVectorAheadMethod = Helper(nameof(IlAddVectorAhead));
+        private static readonly MethodInfo SubtractVectorMethod = Helper(nameof(IlSubtractVector));
+        private static readonly MethodInfo SubtractVectorAheadMethod = Helper(nameof(IlSubtractVectorAhead));
+        private static readonly MethodInfo AddVectorRefMethod = Helper(nameof(IlAddVectorRef));
+        private static readonly MethodInfo AddVectorRefAheadMethod = Helper(nameof(IlAddVectorRefAhead));
+        private static readonly MethodInfo SubtractVectorRefMethod = Helper(nameof(IlSubtractVectorRef));
+        private static readonly MethodInfo SubtractVectorRefAheadMethod = Helper(nameof(IlSubtractVectorRefAhead));
+        // IlEvmSettings.FastDivide.
+        private static readonly MethodInfo DivideMethod = Helper(nameof(IlDivideCalled));
+        private static readonly MethodInfo DivideAheadMethod = Helper(nameof(IlDivideCalledAhead));
+        private static readonly MethodInfo ModMethod = Helper(nameof(IlModCalled));
+        private static readonly MethodInfo ModAheadMethod = Helper(nameof(IlModCalledAhead));
+        // IlEvmSettings.MemoryWindow.
+        private static readonly MethodInfo MemoryWindowMethod = Helper(nameof(IlMemoryWindow));
+        private static readonly MethodInfo MemoryWindowAheadMethod = Helper(nameof(IlMemoryWindowAhead));
+
+        private static MethodInfo CensusMethod(string name) => typeof(IlEvmCensus).GetMethod(name, BindingFlags.NonPublic | BindingFlags.Static)!;
 
         [UnconditionalSuppressMessage("AOT", "IL3050", Justification = "IlEvmSettings.Enabled is false without dynamic code, so nothing reaches the compiler.")]
         internal static IlContract? Compile(CodeInfo codeInfo, IlFork fork, out string? reason)
@@ -754,9 +785,12 @@ public static unsafe partial class IlEvm
                         bool folds = At(h - 1) == Held.Constant && At(h - 2) == Held.Constant;
                         // A shift by a constant amount is a direct form over the limbs, several times a helper call.
                         bool constantShift = op.Family == IlFamily.Shift && At(h - 1) == Held.Constant;
+                        // The small two-word ADD and SUB: a vector form with its full operation out of line.
+                        bool smallAddSub = Tracked && IlEvmSettings.FastAddSub && At(h - 1) != Held.Constant && At(h - 2) != Held.Constant &&
+                            (op.OperationType == typeof(EvmInstructions.OpAdd) || op.OperationType == typeof(EvmInstructions.OpSub));
                         // With the vector forms a bitwise result, and a constant shift's or addition's, stays in a local.
                         bool tracked = Tracked && !op.IsPredicate &&
-                            (op.Family == IlFamily.Bitwise || ((op.Family == IlFamily.Shift || op.Family == IlFamily.Math2) && (At(h - 1) == Held.Constant || At(h - 2) == Held.Constant)));
+                            (op.Family == IlFamily.Bitwise || smallAddSub || ((op.Family == IlFamily.Shift || op.Family == IlFamily.Math2) && (At(h - 1) == Held.Constant || At(h - 2) == Held.Constant)));
                         Set(h - 1, Held.Memory);
                         _height = h - 1;
                         if (folds)
@@ -766,16 +800,23 @@ public static unsafe partial class IlEvm
                         }
 
                         Set(h - 2, op.IsPredicate ? Held.Flag : tracked ? Held.Constant : Held.Memory);
-                        _il += constantShift ? 72 : op.IsPredicate && Tracked ? 36 : op.IsPredicate || IlEvmSettings.DirectArithmetic ? 24 : 14;
+                        _il += constantShift ? 72 : smallAddSub ? 66 : op.IsPredicate && Tracked ? 36 : op.IsPredicate || IlEvmSettings.DirectArithmetic ? 24 : 14;
                         break;
                     }
+                    case IlKind.MLoad when Tracked && IlEvmSettings.MemoryWindow:
+                        // The read in the window into a local; a cold path asks for the window, then calls the helper, then the body.
+                        _il += 70 + Write * VirtualBelow(h - 1);
+                        Set(h - 1, Held.Constant);
+                        break;
                     case IlKind.MLoad:
                         // The fast path, and the body call on its cold path, which writes out a constant offset first.
                         _il += 40 + (At(h - 1) == Held.Constant ? Write : 0) + Write * VirtualBelow(h - 1);
                         Set(h - 1, Held.Memory);
                         break;
                     case IlKind.MStore:
-                        _il += 50 + (At(h - 1) == Held.Constant ? Write : 0) + (At(h - 2) == Held.Constant ? Write : 0) + Write * VirtualBelow(h - 2);
+                        // With window stores, a constant offset also has its in-place store, the helper and the body then out of line.
+                        _il += (Tracked && IlEvmSettings.MemoryWindow && IlEvmSettings.WindowStores && At(h - 1) == Held.Constant ? 75 : 50) +
+                            (At(h - 1) == Held.Constant ? Write : 0) + (At(h - 2) == Held.Constant ? Write : 0) + Write * VirtualBelow(h - 2);
                         Produce(h - 2, h - 2);
                         break;
                     case IlKind.CheckedBody when Tracked && op.IsCallDataLoad:
