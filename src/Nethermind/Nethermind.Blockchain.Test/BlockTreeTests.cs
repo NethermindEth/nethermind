@@ -2629,6 +2629,37 @@ public class BlockTreeTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Delete_slice_overlapping_a_lookup_does_not_leave_the_deleted_block_cached([Values] bool headerLookup)
+    {
+        TestMemDb blocksDb = new();
+        TestMemDb headersDb = new();
+        BlockTreeBuilder builder = Build.A.BlockTree().WithBlocksDb(blocksDb).WithHeadersDb(headersDb).OfChainLength(4);
+        BlockTree tree = builder.TestObject;
+        Block head = tree.Head!;
+        ((IClearableCache)builder.BlockStore).ClearCache();
+        ((IClearableCache)builder.HeaderStore).ClearCache();
+
+        // The lookup reads the head from the database, then the slice is deleted before the lookup caches it.
+        TestMemDb lookupDb = headerLookup ? headersDb : blocksDb;
+        lookupDb.ReadFunc = key =>
+        {
+            lookupDb.ReadFunc = null;
+            byte[] value = lookupDb.Get(key)!;
+            Assert.That(tree.DeleteChainSlice(head.Number, head.Number), Is.EqualTo(1));
+            return value;
+        };
+        Assert.That(headerLookup
+            ? (object?)tree.FindHeader(head.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded, head.Number)
+            : tree.FindBlock(head.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded, head.Number), Is.Not.Null);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tree.FindHeader(head.Hash!, BlockTreeLookupOptions.None), Is.Null);
+            Assert.That(tree.FindBlock(head.Hash!, BlockTreeLookupOptions.None), Is.Null);
+        }
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Delete_slice_resets_header_only_suggestions([Values] bool beacon)
     {
         BlockTree tree = Build.A.BlockTree().OfChainLength(2).TestObject;

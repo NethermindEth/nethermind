@@ -54,6 +54,8 @@ namespace Nethermind.Blockchain
         private readonly IChainLevelInfoRepository _chainLevelInfoRepository;
         private readonly IStateBoundary _stateBoundary;
         private readonly BlockTreeMutationLock _mutationLock;
+        // Odd while DeleteChainSlice runs; see CacheUnlessDeleted.
+        private long _sliceDeletionSequence;
 
         private readonly Lock _forkChoiceLock = new();
         // Null while unknown; set only after this exact pair was committed. A persisted (null, null) is not unknown.
@@ -593,6 +595,7 @@ namespace Nethermind.Blockchain
                 return null;
             }
 
+            long deletionSequence = Volatile.Read(ref _sliceDeletionSequence);
             BlockHeader? header = _headerStore.Get(blockHash, shouldCache: false, blockNumber: blockNumber);
             if (header is null)
             {
@@ -645,7 +648,7 @@ namespace Nethermind.Blockchain
 
             if (header is not null && ShouldCache(header.Number))
             {
-                _headerStore.Cache(header);
+                CacheUnlessDeleted(deletionSequence, header);
             }
 
             return header;
@@ -1713,6 +1716,7 @@ namespace Nethermind.Blockchain
                 return null;
             }
 
+            long deletionSequence = Volatile.Read(ref _sliceDeletionSequence);
             Block? block = null;
             blockNumber ??= _headerStore.GetBlockNumber(blockHash);
             if (blockNumber is not null)
@@ -1777,11 +1781,32 @@ namespace Nethermind.Blockchain
 
             if (block is not null && ShouldCache(block.Number))
             {
-                _blockStore.Cache(block);
-                _headerStore.Cache(block.Header);
+                CacheUnlessDeleted(deletionSequence, block.Header, block);
             }
 
             return block;
+        }
+
+        /// <summary>Caches a looked-up header (and block) unless a <see cref="DeleteChainSlice"/> overlapped the lookup.</summary>
+        /// <remarks>
+        /// The lookup may have read the entry just before the deletion evicted it from the store caches, so caching it
+        /// afterwards would keep serving a deleted block. A deletion running when the lookup began skips caching; one
+        /// that began before the write below became visible changes the sequence, and both caches are cleared.
+        /// </remarks>
+        private void CacheUnlessDeleted(long deletionSequence, BlockHeader header, Block? block = null)
+        {
+            if ((deletionSequence & 1) != 0) return;
+
+            if (block is not null) _blockStore.Cache(block);
+            _headerStore.Cache(header);
+
+            // Full fence: the sequence must not be read before the cache writes are visible.
+            Interlocked.MemoryBarrier();
+            if (Volatile.Read(ref _sliceDeletionSequence) != deletionSequence)
+            {
+                (_blockStore as IClearableCache)?.ClearCache();
+                (_headerStore as IClearableCache)?.ClearCache();
+            }
         }
 
         private bool IsTotalDifficultyAlwaysZero() =>
@@ -1920,12 +1945,14 @@ namespace Nethermind.Blockchain
             if (!_mutationLock.TryEnter(out BlockTreeMutationLock.Scope mutation)) throw new InvalidOperationException("Chain mutation contention or overlapping maintenance; retry the request.");
             using BlockTreeMutationLock.Scope mutationScope = mutation;
             BlockAcceptingNewBlocks();
+            Interlocked.Increment(ref _sliceDeletionSequence);
             try
             {
                 return DeleteChainSliceCore(startNumber, endNumber, force);
             }
             finally
             {
+                Interlocked.Increment(ref _sliceDeletionSequence);
                 ReleaseAcceptingNewBlocks();
             }
         }
