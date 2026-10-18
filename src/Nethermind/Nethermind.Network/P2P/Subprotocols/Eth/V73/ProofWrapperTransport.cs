@@ -499,7 +499,6 @@ public sealed partial class ProofWrapperTransport : IDisposable
         return transaction is not null;
     }
 
-    /// <summary>Records a debug event when the feed is enabled.</summary>
     private void Record(string type, WrapperPeer? peer = null, ValueHash256? wrapper = null, string? message = null, long? requestId = null,
         string? result = null, string? detail = null, int? length = null, int? count = null, double? durationMs = null,
         Hash256[]? transactions = null, int? mode = null, ProofWrapperDetails? details = null)

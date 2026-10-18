@@ -53,7 +53,7 @@ public sealed partial class ProofWrapperTransport
                 if (!enabled || _store.Contains(wrapperHash)
                     || _tombstones.Contains(wrapperHash, now))
                 {
-                    RecordAnnouncement(peer, announcement, !enabled ? "ignored: EIP-8288 inactive"
+                    if (_events.IsEnabled) RecordAnnouncement(peer, announcement, !enabled ? "ignored: EIP-8288 inactive"
                         : _store.Contains(wrapperHash) ? "already held" : "tombstoned: recently rejected or unresolved");
                     continue;
                 }
@@ -68,7 +68,7 @@ public sealed partial class ProofWrapperTransport
                 if (_fetches.Count >= WrapperTransportLimits.MaxPendingAnnouncements
                     || peer.PendingFetches >= WrapperTransportLimits.MaxPendingAnnouncementsPerPeer)
                 {
-                    RecordAnnouncement(peer, announcement, _fetches.Count >= WrapperTransportLimits.MaxPendingAnnouncements
+                    if (_events.IsEnabled) RecordAnnouncement(peer, announcement, _fetches.Count >= WrapperTransportLimits.MaxPendingAnnouncements
                         ? "dropped: pending announcement cache full" : "dropped: peer's share of pending announcements used");
                     continue;
                 }
@@ -144,8 +144,9 @@ public sealed partial class ProofWrapperTransport
             fetch.Tried.Add(peer);
             fetch.Started ??= now;
             ids[i] = fetch.Announcement.Hash;
-            Record(ProofWrapperEventTypes.WrapperRequested, peer, ids[i], "GetProofWrappers", request.Id, length: fetch.LengthFrom(peer),
-                count: fetch.Tried.Count);
+            if (_events.IsEnabled)
+                Record(ProofWrapperEventTypes.WrapperRequested, peer, ids[i], "GetProofWrappers", request.Id, length: fetch.LengthFrom(peer),
+                    count: fetch.Tried.Count);
         }
         peer.Requests.Add(request.Id, request);
         outbox.Send(peer, new GetProofWrappersMessage(request.Id, ids));
@@ -402,9 +403,9 @@ public sealed partial class ProofWrapperTransport
 
     private void Conclude(WrapperFetch fetch, Verdict verdict, string? error)
     {
+        bool graceRefused = verdict == Verdict.Invalid && _wrappers.IsInVerifierTransition(_forkGraceBlocks);
         if (_events.IsEnabled)
-            Record(ProofWrapperEventTypes.Verdict, fetch.Server, fetch.Announcement.Hash,
-                result: verdict == Verdict.Invalid && _wrappers.IsInVerifierTransition(_forkGraceBlocks) ? "GraceRefused" : verdict.ToString(),
+            Record(ProofWrapperEventTypes.Verdict, fetch.Server, fetch.Announcement.Hash, result: graceRefused ? "GraceRefused" : verdict.ToString(),
                 detail: error, durationMs: _clock.GetElapsedTime(fetch.Announced).TotalMilliseconds);
         switch (verdict)
         {
@@ -414,7 +415,7 @@ public sealed partial class ProofWrapperTransport
                 break;
             // Around a fork that changes the verifier, peers' target-fork estimates can differ by a slot: a proof failure is a
             // local refusal for the configured grace window (EIP-8437).
-            case Verdict.Invalid when _wrappers.IsInVerifierTransition(_forkGraceBlocks):
+            case Verdict.Invalid when graceRefused:
                 WrapperMetrics.Record(WrapperEvent.GraceRefused);
                 lock (_gate) _tombstones.Add(fetch.Announcement.Hash, _clock.GetTimestamp()
                     + (long)(WrapperTransportLimits.SoftTombstone.TotalSeconds * _clock.TimestampFrequency));

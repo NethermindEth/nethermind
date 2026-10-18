@@ -47,8 +47,10 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
         builder.AddSingleton<ILeanProofVerifier, Nethermind.Crypto.NativeLeanProofVerifier>()
             .AddDecorator<ILeanProofVerifier, ProductionProofCache>()
             .AddSingleton<LeanProofStore>(static _ => new LeanProofStore(FrameTxSigHash.ComputeValue))
-            .AddSingleton<ProofWrapperEventFeed>(static ctx => new ProofWrapperEventFeed(
-                ctx.Resolve<INetworkConfig>().ProofWrapperEventBufferSize, ctx.Resolve<IBlockTree>(), ctx.Resolve<ITxPool>()))
+            // Disabled by default: only an enabled feed resolves the block tree and pool it observes.
+            .AddSingleton<ProofWrapperEventFeed>(static ctx => ctx.Resolve<INetworkConfig>().ProofWrapperEventBufferSize is > 0 and var size
+                ? new ProofWrapperEventFeed(size, ctx.Resolve<IBlockTree>(), ctx.Resolve<ITxPool>())
+                : ProofWrapperEventFeed.Disabled)
             .AddSingleton<ProofWrapperService>()
             .AddSingleton<InclusionListProofService>();
 

@@ -77,9 +77,11 @@ public class RpcModules(IJsonRpcConfig jsonRpcConfig) : Module
 
             // Txpool rpc
             .RegisterSingletonJsonRpcModule<ITxPoolRpcModule, TxPoolRpcModule>()
-            .RegisterSingletonJsonRpcModule<IProofWrapperDebugRpcModule, ProofWrapperDebugRpcModule>()
                 .AddSingleton<ITxPoolInfoProvider, IChainHeadInfoProvider, ITxPool>(
                     (chainHeadInfoProvider, txPool) => new TxPoolInfoProvider(chainHeadInfoProvider, txPool))
+
+            // EIP-8288 proof wrapper debug events
+            .RegisterSingletonJsonRpcModule<IProofWrapperDebugRpcModule, ProofWrapperDebugRpcModule>()
 
             // Subscriptions
             .RegisterBoundedJsonRpcModule<ISubscribeRpcModule, AutoRpcModuleFactory<ISubscribeRpcModule>>(2, jsonRpcConfig.Timeout)

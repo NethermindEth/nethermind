@@ -11,6 +11,7 @@ import argparse
 import json
 import mimetypes
 import re
+import socket
 import subprocess
 import threading
 import time
@@ -65,14 +66,20 @@ class Nodes:
         self.discovered, self.at, self.lock = {}, 0.0, threading.Lock()
 
     def all(self):
+        """Configured and discovered nodes; one request at a time refreshes discovery while others use the last result."""
         with self.lock:
-            if self.enclave and time.monotonic() - self.at > 10:
+            refresh = bool(self.enclave) and time.monotonic() - self.at > 10
+            if refresh:
                 self.at = time.monotonic()
-                try:
-                    output = subprocess.run([self.kurtosis, "enclave", "inspect", self.enclave], capture_output=True, text=True, timeout=20, check=True).stdout
-                    self.discovered = dict(parse_inspect(output))
-                except (OSError, subprocess.SubprocessError) as error:
-                    print(f"kurtosis discovery failed: {error}")
+        if refresh:
+            try:
+                output = subprocess.run([self.kurtosis, "enclave", "inspect", self.enclave], capture_output=True, text=True, timeout=20, check=True).stdout
+                discovered = dict(parse_inspect(output))
+                with self.lock:
+                    self.discovered = discovered
+            except (OSError, subprocess.SubprocessError) as error:
+                print(f"kurtosis discovery failed: {error}")
+        with self.lock:
             return {**self.discovered, **self.fixed}
 
 
@@ -170,7 +177,10 @@ def main():
         parser.error("--bind to a non-loopback address also needs --allow-host NAME for the name browsers will use")
     nodes = Nodes(args.node, args.kurtosis)
     print(f"Nodes: {nodes.all() or 'none yet; add them in the page'}")
-    server = ThreadingHTTPServer((args.bind, args.port), handler(nodes, args.port, frozenset(h.lower() for h in args.allow_host)))
+    server_class = ThreadingHTTPServer
+    if ":" in args.bind:
+        server_class = type("ThreadingHTTPServer6", (ThreadingHTTPServer,), {"address_family": socket.AF_INET6})
+    server = server_class((args.bind, args.port), handler(nodes, args.port, frozenset(h.lower() for h in args.allow_host)))
     print(f"Open http://{args.bind}:{args.port}/")
     server.serve_forever()
 
