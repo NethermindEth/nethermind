@@ -497,6 +497,7 @@ public class DebugRpcModule(
             GethTraceOptions effective = options ?? GethTraceOptions.Default;
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Success(BuildStreamingBlockResult(
                 (writer, pipeWriter, token) =>
+                    // By hash: the Block overload never takes the indexed parallel path.
                     debugBridge.GetBlockTrace(new BlockParameter(resolvedBlock.Hash!), token, effective, writer, pipeWriter)));
         }
 
@@ -546,6 +547,7 @@ public class DebugRpcModule(
             GethTraceOptions effective = options ?? GethTraceOptions.Default;
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Success(BuildStreamingBlockResult(
                 (writer, pipeWriter, token) =>
+                    // By hash: the Block overload never takes the indexed parallel path.
                     debugBridge.GetBlockTrace(new BlockParameter(resolvedBlock.Hash!), token, effective, writer, pipeWriter)));
         }
 
