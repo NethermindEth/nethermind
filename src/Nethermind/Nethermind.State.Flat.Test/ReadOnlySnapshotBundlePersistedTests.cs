@@ -16,6 +16,7 @@ using Nethermind.Trie;
 using Nethermind.Trie.NodeLog;
 using NSubstitute;
 using NUnit.Framework;
+using NullTrieNodeLog = Nethermind.State.Flat.Persistence.TrieNodeLog.NullTrieNodeLog;
 
 namespace Nethermind.State.Flat.Test;
 
@@ -185,7 +186,7 @@ public class ReadOnlySnapshotBundlePersistedTests
         byte[] persistedRlp = Bytes.FromHexString(FlatTestHelpers.LeafRlpB);
 
         using SnapshotableMemColumnsDb<FlatDbColumns> db = new();
-        RocksDbPersistence persistence = new(db, LimboLogs.Instance);
+        RocksDbPersistence persistence = new(db, LimboLogs.Instance, NullTrieNodeLog.Instance);
         using (IPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL))
         {
             if (storage) batch.SetStorageTrieNode(address, dbPath, dbRlp);

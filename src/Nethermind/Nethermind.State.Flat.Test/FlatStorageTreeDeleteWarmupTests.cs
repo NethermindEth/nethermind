@@ -20,9 +20,9 @@ using Nethermind.State.Flat.Persistence.TrieNodeLog;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.Trie;
-using Nethermind.Trie.NodeLog;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
+using TrieNodeLog = Nethermind.Trie.NodeLog.TrieNodeLog;
 
 namespace Nethermind.State.Flat.Test;
 

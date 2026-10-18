@@ -29,7 +29,8 @@ using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using Nethermind.State.Flat.Sync;
 using Nethermind.State.Flat.Sync.Snap;
-using Nethermind.Trie.NodeLog;
+using FlatTrieNodeLog = Nethermind.State.Flat.Persistence.TrieNodeLog.TrieNodeLog;
+using TrieNodeLog = Nethermind.Trie.NodeLog.TrieNodeLog;
 
 namespace Nethermind.Init.Modules;
 
@@ -112,10 +113,10 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                 string basePath = Path.Combine(initConfig.BaseDbPath, "flatTrieNodeLog");
                 // The log is recovered across restarts, keeping its deduplication window, unless it is now disabled or
                 // its shard layout changed; then whatever the previous run left is merged into RocksDB first.
-                if (!cfg.TrieNodeLogEnabled || !TrieNodeLog.MatchesOnDiskLayout(basePath, cfg))
-                    TrieNodeLog.MergeAllOnDisk(basePath, db, logManager);
+                if (!cfg.TrieNodeLogEnabled || !FlatTrieNodeLog.MatchesOnDiskLayout(basePath, cfg))
+                    FlatTrieNodeLog.MergeAllOnDisk(basePath, db, logManager);
                 return cfg.TrieNodeLogEnabled
-                    ? new TrieNodeLog(basePath, db, cfg, logManager)
+                    ? new FlatTrieNodeLog(basePath, db, cfg, logManager)
                     : NullTrieNodeLog.Instance;
             })
             .AddSingleton<RocksDbPersistence>()
