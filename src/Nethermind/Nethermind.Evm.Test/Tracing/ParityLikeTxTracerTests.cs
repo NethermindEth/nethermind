@@ -66,6 +66,8 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
             tracer.MarkAsSuccess(TestItem.AddressA, default, [], []);
             tracer.BuildResult();
             tracer.ResetForNextTx(block, tx);
+            // released again in finally: a double release must not return anything twice
+            tracer.ReleaseResources();
         }
         finally
         {
