@@ -26,8 +26,9 @@ public enum ParityTraceStreamMode
 public sealed class StreamingParityLikeBlockTracer : ParityLikeBlockTracer, IDisposable
 {
     /// <summary>Bytes buffered before they go to the wire: a flush per transaction blocks on the socket for traces of
-    /// a few hundred bytes, and in a parallel trace it does so while holding the emitter that every worker waits on.</summary>
-    internal const int FlushThresholdBytes = 1024 * 1024;
+    /// a few hundred bytes, and in a parallel trace it does so while holding the emitter that every worker waits on.
+    /// Small enough that a sparse <c>trace_filter</c> still sends progress.</summary>
+    internal const int FlushThresholdBytes = StreamableResultWriter.FlushThresholdBytes;
 
     private readonly Utf8JsonWriter _writer;
     private readonly PipeWriter? _pipeWriter;
@@ -67,6 +68,7 @@ public sealed class StreamingParityLikeBlockTracer : ParityLikeBlockTracer, IDis
         _cancellationToken = cancellationToken;
         _storeFilter = storeFilter;
         _jsonOptions = EthereumJsonSerializer.JsonOptions;
+        _flushedBytes = writer.BytesCommitted;
     }
 
     public StreamingParityLikeBlockTracer(
@@ -89,6 +91,7 @@ public sealed class StreamingParityLikeBlockTracer : ParityLikeBlockTracer, IDis
         _pipeWriter = pipeWriter;
         _cancellationToken = cancellationToken;
         _jsonOptions = EthereumJsonSerializer.JsonOptions;
+        _flushedBytes = writer.BytesCommitted;
     }
 
     public StreamingParityLikeBlockTracer(
@@ -113,6 +116,7 @@ public sealed class StreamingParityLikeBlockTracer : ParityLikeBlockTracer, IDis
         _pipeWriter = pipeWriter;
         _cancellationToken = cancellationToken;
         _jsonOptions = EthereumJsonSerializer.JsonOptions;
+        _flushedBytes = writer.BytesCommitted;
     }
 
     public override void StartNewBlockTrace(Block block)
