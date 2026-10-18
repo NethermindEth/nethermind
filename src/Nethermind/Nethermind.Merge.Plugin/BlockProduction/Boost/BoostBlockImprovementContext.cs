@@ -31,7 +31,7 @@ public class BoostBlockImprovementContext : IBlockImprovementContext
     internal Action? PassedDisposedCheck;
     internal Action? Pinning;
 
-    public BoostBlockImprovementContext(Block currentBestBlock,
+    public BoostBlockImprovementContext(Block? currentBestBlock,
         IBlockProducer blockProducer,
         TimeSpan timeout,
         BlockHeader parentHeader,
