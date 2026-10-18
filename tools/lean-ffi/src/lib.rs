@@ -975,9 +975,16 @@ mod tests {
             let mut encoded = Reader { bytes: &proof };
             let code = encoded.blob().unwrap();
             // EIP-8288: vk_hash = keccak256(domain_tag || canonical_vk), domain_tag = "ethereum/8288/leanSTARK/vk/v1" || 0x00.
-            assert_eq!(&eip8288_mixed::GENERIC_VK_DOMAIN[..], b"ethereum/8288/leanSTARK/vk/v1\0");
-            assert_eq!(key, keccak(&[b"ethereum/8288/leanSTARK/vk/v1\0".as_slice(), code].concat()));
-            let former_key = keccak(&[b"eip8288/leanstark-vk/leanvm-cpu\0".as_slice(), code].concat());
+            assert_eq!(
+                &eip8288_mixed::GENERIC_VK_DOMAIN[..],
+                b"ethereum/8288/leanSTARK/vk/v1\0"
+            );
+            assert_eq!(
+                key,
+                keccak(&[b"ethereum/8288/leanSTARK/vk/v1\0".as_slice(), code].concat())
+            );
+            let former_key =
+                keccak(&[b"eip8288/leanstark-vk/leanvm-cpu\0".as_slice(), code].concat());
             assert!(!verify_stark(&input, &former_key, &proof));
             for index in [7, 15, 23, 31] {
                 let mut wrong = input;
