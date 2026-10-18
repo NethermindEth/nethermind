@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using Nethermind.Core;
 using Nethermind.Int256;
 using NUnit.Framework;
 
@@ -18,6 +19,7 @@ public class DirtyBuffer
         yield return Case(new AbiSignature("f").With(AbiType.Array(AbiType.String)), ["hello", "my", "friends"]);
         yield return Case(new AbiSignature("f").With(AbiType.Tuple(AbiType.UInt256, AbiType.String)), ((UInt256)1, "a"));
         yield return Case(new AbiSignature("f").With(AbiType.BytesM(10)), "1234567890"u8.ToArray());
+        yield return Case(new AbiSignature("f").With(AbiType.Address), new Address("0x5a4eab120fb44eb6684e5e32785702ff45ea344d"));
         yield return Case(new AbiSignature("sam").With(AbiType.Bytes, AbiType.Bool, AbiType.Array(AbiType.UInt)),
             ("dave"u8.ToArray(), true, [1, 2, 3]));
         yield return Case(new AbiSignature("f").With(AbiType.UInt256, AbiType.Array(AbiType.UInt32), AbiType.BytesM(10), AbiType.Bytes),

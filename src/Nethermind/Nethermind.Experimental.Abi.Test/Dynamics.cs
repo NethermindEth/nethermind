@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using NUnit.Framework;
@@ -122,6 +123,23 @@ public class Dynamics
 
         bool[] decoded = AbiCodec.Decode(signature, encoded);
         Assert.That(decoded, Is.EqualTo(new[] { true, false, true }));
+    }
+
+    [Test]
+    public void ArrayOfAddresses()
+    {
+        AbiSignature<Address[]> signature = new AbiSignature("f")
+            .With(
+                AbiType.Array(AbiType.Address)
+            );
+
+        Address[] arguments = [new Address("0x5a4eab120fb44eb6684e5e32785702ff45ea344d"), new Address("0xdac17f958d2ee523a2206206994597c13d831ec7")];
+        AssertRoundTrip(signature, "290c05ea", arguments,
+            "290c05ea" + // `MethodId`
+            "0000000000000000000000000000000000000000000000000000000000000020" + // Offset to the start of the array
+            "0000000000000000000000000000000000000000000000000000000000000002" + // Length of the array
+            "0000000000000000000000005a4eab120fb44eb6684e5e32785702ff45ea344d" + // First element, `0x5a4eab120fb44eb6684e5e32785702ff45ea344d`
+            "000000000000000000000000dac17f958d2ee523a2206206994597c13d831ec7"); // Second element, `0xdac17f958d2ee523a2206206994597c13d831ec7`
     }
 
     [Test]
