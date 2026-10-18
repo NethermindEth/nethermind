@@ -17,6 +17,7 @@ using DotNetty.Transport.Bootstrapping;
 using DotNetty.Transport.Channels;
 using DotNetty.Transport.Channels.Sockets;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.ServiceStopper;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.Discovery;
@@ -31,7 +32,7 @@ using LogLevel = DotNetty.Handlers.Logging.LogLevel;
 
 namespace Nethermind.Network.Rlpx
 {
-    public class RlpxHost : IRlpxHost, ISessionActivityObserver
+    public class RlpxHost : IRlpxHost, ISessionActivityObserver, IStoppableService
     {
         private IChannel? _bootstrapChannel;
         private IEventLoopGroup? _bossGroup;
@@ -556,6 +557,8 @@ namespace Nethermind.Network.Rlpx
             if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {session} channel disconnected");
             session.MarkDisconnected(DisconnectReason.ConnectionClosed, DisconnectType.Remote, "channel disconnected");
         }
+
+        Task IStoppableService.StopAsync() => Shutdown();
 
         public async Task Shutdown()
         {
