@@ -13,8 +13,10 @@ using Nethermind.Db;
 using Nethermind.Db.Rocks;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Evm.State;
+using Nethermind.Init.Modules;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Monitoring.Config;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Nethermind.State.Flat;
@@ -66,15 +68,19 @@ sealed class AccountPrewarmingFixture : IDisposable
         ConfigProvider config = new(
             new FlatDbConfig { Enabled = true, VerifyWithTrie = false, EnableCarryForwardCache = _shape != "native-warm" },
             new InitConfig { BaseDbPath = _directory },
+            new MetricsConfig { Enabled = true, EnableDetailedMetric = detailed },
             new DbConfig { SharedBlockCacheSize = 32UL * 1024 * 1024 });
         _container = new ContainerBuilder()
             .AddModule(new TestNethermindModule(config))
             .AddSingleton<IDbFactory, RocksDbFactory>()
+            .AddColumnDatabase<FlatDbColumns>(DbNames.Flat, static settings => settings.PersistRepairMarkerUntilAcknowledged = true)
             .AddSingleton<IRocksDbConfigFactory>(ctx => new RocksDbConfigFactory(ctx.Resolve<IDbConfig>(),
                 ctx.Resolve<IPruningConfig>(), ctx.Resolve<IHardwareInfo>(), ctx.Resolve<ILogManager>(), validateConfig: false))
             .AddSingleton<IStateHeaderProvider>(_parents)
             .AddSingleton(new PreBlockCachesConfig { StateCacheSetsBits = 16 })
             .Build();
+        if (_container.Resolve<IColumnsDb<FlatDbColumns>>() is not ColumnsDb<FlatDbColumns> database)
+            throw new InvalidOperationException("Account prewarming must use native RocksDB columns");
         IWorldStateManager manager = _container.Resolve<IWorldStateManager>();
         IMainProcessingModule[] modules = _container.Resolve<IMainProcessingModule[]>();
         _processingScope = _container.BeginLifetimeScope(builder =>
@@ -94,7 +100,11 @@ sealed class AccountPrewarmingFixture : IDisposable
                 state.CommitTree(0);
                 _parents.Parent = Build.A.BlockHeader.WithNumber(0).WithStateRoot(state.StateRoot).TestObject;
             }
-            if (_shape != "snapshot") _container.Resolve<IFlatDbManager>().FlushCache(CancellationToken.None);
+            if (_shape != "snapshot")
+            {
+                _container.Resolve<IFlatDbManager>().FlushCache(CancellationToken.None);
+                database.Flush();
+            }
         }
         _block = Build.A.Block.WithHeader(Build.A.BlockHeader.WithParent(_parents.Parent!).TestObject)
             .WithTransactions(_transactions[..(_transactions.Length / 2)]).TestObject;

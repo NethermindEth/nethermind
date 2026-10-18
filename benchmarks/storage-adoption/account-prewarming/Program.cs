@@ -16,7 +16,7 @@ string output = Environment.GetEnvironmentVariable("ACCOUNT_OUTPUT") ?? "account
 List<object> rows = [];
 List<(int Count, string Shape)> cases = [];
 foreach (int count in new[] { 1, 7, 8, 32, 64, 256, 512 })
-foreach (string shape in new[] { "distinct", "repeated", "shared", "mixed" }) cases.Add((count, shape));
+    foreach (string shape in new[] { "distinct", "repeated", "shared", "mixed" }) cases.Add((count, shape));
 foreach (string shape in new[] { "snapshot", "tail1", "tail7" }) cases.Add((64, shape));
 foreach (int count in new[] { 8, 64, 512 }) cases.Add((count, "native-warm"));
 foreach ((int count, string shape) in cases)
@@ -24,7 +24,16 @@ foreach ((int count, string shape) in cases)
     using AccountPrewarmingFixture fixture = new(count, shape);
     fixture.Verify();
     Console.WriteLine($"Verified Count={count} Shape={shape}");
-    if (verifyOnly) continue;
+    if (verifyOnly)
+    {
+        if (shape == "distinct" && count is 64 or 512)
+        {
+            fixture.ReopenCold();
+            fixture.Verify();
+            Console.WriteLine($"Verified cold reopen Count={count} Shape={shape}");
+        }
+        continue;
+    }
     Stopwatch warmup = Stopwatch.StartNew();
     while (warmup.Elapsed.TotalSeconds < 0.5) { fixture.Prepare(); fixture.Read(); }
     List<object> samples = [];
@@ -43,8 +52,12 @@ foreach ((int count, string shape) in cases)
             allocated += GC.GetTotalAllocatedBytes(precise: true) - before;
             operations++;
         } while ((double)ticks / Stopwatch.Frequency < 0.15);
-        samples.Add(new { nanoseconds = (double)ticks / Stopwatch.Frequency * 1e9 / operations,
-            managedBytes = (double)allocated / operations, operations });
+        samples.Add(new
+        {
+            nanoseconds = (double)ticks / Stopwatch.Frequency * 1e9 / operations,
+            managedBytes = (double)allocated / operations,
+            operations
+        });
     }
     rows.Add(new { count, shape, cache = "warm", detailedMetrics, samples });
     if (shape == "distinct" && count is 64 or 512)
