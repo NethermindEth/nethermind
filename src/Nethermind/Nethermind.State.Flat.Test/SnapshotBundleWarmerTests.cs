@@ -144,7 +144,7 @@ public class SnapshotBundleWarmerTests
         else Assert.That(warmed.TryInsert(null, TreePath.Empty, hash, rlp, out _, out pointer), Is.True);
         (long Hits, long Misses, long IdleHits, long IdleMisses) before = WarmedCacheCounts();
 
-        LogBulkSet.WarmUp(_log, warmed, (in TreePath path, in ValueHash256 nodeHash) => throw new InvalidOperationException("Unexpected persistence read"),
+        LogBulkSet.WarmUp(_log, warmed, (in TreePath path, in ValueHash256 nodeHash, ReadOnlySpanAction<byte, LogBulkSet.WarmUpRead> action, LogBulkSet.WarmUpRead read) => throw new InvalidOperationException("Unexpected persistence read"),
             null, new TrieRoot(hash, pointer), ValueKeccak.Zero);
 
         AssertWarmedCacheCounts(before, hits: inLog ? 0 : 1);
@@ -487,6 +487,7 @@ public class SnapshotBundleWarmerTests
             Assert.That(firstWarmUp, concurrent ? Is.GreaterThanOrEqualTo(persisted.Count) : Is.EqualTo(persisted.Count));
             Assert.That(secondWarmUp, Is.LessThan(firstWarmUp), "the direct-mapped index permits collisions but reuses most warmed records");
             Assert.That(reader.Reads, Is.EqualTo(readsBeforeBulkSet));
+            Assert.That(reader.OwnedReads, Is.Zero, "warming and demand loading must use the borrowed-span API");
             Assert.That(trie.RootHash, Is.EqualTo(expected.RootHash));
         }
 
@@ -558,12 +559,20 @@ public class SnapshotBundleWarmerTests
         ManualResetEventSlim? release = null) : NoopPersistenceReader, IPersistence.IPersistenceReader
     {
         private int _reads;
+        private int _ownedReads;
 
         public int Reads => Volatile.Read(ref _reads);
+        public int OwnedReads => Volatile.Read(ref _ownedReads);
 
-        byte[]? IPersistence.IPersistenceReader.TryLoadStateRlp(in TreePath path, ReadFlags flags) => Load(path);
+        byte[]? IPersistence.IPersistenceReader.TryLoadStateRlp(in TreePath path, ReadFlags flags) => LoadOwned(path);
 
-        byte[]? IPersistence.IPersistenceReader.TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags) => Load(path);
+        byte[]? IPersistence.IPersistenceReader.TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags) => LoadOwned(path);
+
+        private byte[]? LoadOwned(in TreePath path)
+        {
+            Interlocked.Increment(ref _ownedReads);
+            return Load(path);
+        }
 
         bool IPersistence.IPersistenceReader.TryLoadStateRlp<TArg>(in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) =>
             Load(path, action, arg);
@@ -575,7 +584,10 @@ public class SnapshotBundleWarmerTests
         {
             byte[]? rlp = Load(path);
             if (rlp is null) return false;
-            action(rlp, arg);
+            Span<byte> buffer = stackalloc byte[rlp.Length];
+            rlp.CopyTo(buffer);
+            action(buffer, arg);
+            buffer.Fill(0xFF);
             return true;
         }
 

@@ -302,11 +302,7 @@ public sealed class ReadOnlySnapshotBundle(
     {
         GuardDispose();
 
-        if (_persistedSnapshotCount > 0 && persistedSnapshots.TryLoadStateRlp(in path, out byte[]? persistedRlp))
-        {
-            action(persistedRlp, arg);
-            return true;
-        }
+        if (_persistedSnapshotCount > 0 && persistedSnapshots.TryLoadStateRlp(in path, action, arg)) return true;
 
         Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromDbNodesCount();
         long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
@@ -321,11 +317,7 @@ public sealed class ReadOnlySnapshotBundle(
     {
         GuardDispose();
 
-        if (_persistedSnapshotCount > 0 && persistedSnapshots.TryLoadStorageRlp(address, in path, out byte[]? persistedRlp))
-        {
-            action(persistedRlp, arg);
-            return true;
-        }
+        if (_persistedSnapshotCount > 0 && persistedSnapshots.TryLoadStorageRlp(address, in path, action, arg)) return true;
 
         Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromDbNodesCount();
         long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;

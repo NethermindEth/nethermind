@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Linq;
@@ -371,11 +372,15 @@ internal class LogBulkSetTests
         if (missingLeaf == 2) nodes[leafPath] = TrieNodeLogTests.Leaf(9, 8);
         WarmedNodes warmed = new(16);
         int reads = 0;
-        byte[] Load(in TreePath path, in ValueHash256 hash)
+        void Load(in TreePath path, in ValueHash256 hash, ReadOnlySpanAction<byte, LogBulkSet.WarmUpRead> action, LogBulkSet.WarmUpRead read)
         {
             Assert.That(warmed.Count, Is.Zero, "descent must not publish zero-linked ancestors");
             reads++;
-            return nodes.GetValueOrDefault(path);
+            if (!nodes.TryGetValue(path, out byte[] rlp)) return;
+            Span<byte> buffer = stackalloc byte[rlp.Length];
+            rlp.CopyTo(buffer);
+            action(buffer, read);
+            buffer.Fill(0xFF);
         }
         using TrieNodeLog log = new(0, SmallGenerationBytes);
 
@@ -415,6 +420,47 @@ internal class LogBulkSetTests
             currentHash = child.Data;
         }
         Assert.That(linked, Is.EqualTo(warmed.Count));
+    }
+
+    [Test]
+    public void Warm_up_keeps_borrowed_ancestors_alive_at_every_key_depth()
+    {
+        List<(Hash256 key, byte[] value)> items = [(new Hash256(new byte[32]), ExistingValue)];
+        for (int depth = 0; depth < 64; depth++)
+        {
+            byte[] key = new byte[32];
+            key[depth / 2] = depth % 2 == 0 ? (byte)0x10 : (byte)0x01;
+            items.Add((new Hash256(key), ExistingValue));
+        }
+        using TrieNodeLog original = new(0, SmallGenerationBytes);
+        using TrieNodeLogRetain retain = original.RetainActive();
+        TrieRoot root = BulkSet(original, new DictionaryNodeSource(new Dictionary<TreePath, byte[]>(), new WarmedNodes(1), null),
+            null, TrieRoot.Empty, items, false);
+        Dictionary<TreePath, byte[]> nodes = Rlps(original, root);
+        WarmedNodes warmed = new(1024);
+        using TrieNodeLog log = new(0, SmallGenerationBytes);
+
+        LogBulkSet.WarmUp(log, warmed, Load, null, new TrieRoot(root.Hash, 0), ValueKeccak.Zero);
+
+        TreePath path = TreePath.Empty;
+        Assert.That(warmed.TryGet(null, path, root.Hash, out NodeRecordRef record), Is.True);
+        for (int depth = 0; depth <= 64; depth++)
+        {
+            Assert.That(record.Rlp.ToArray(), Is.EqualTo(nodes[path]));
+            if (depth == 64) break;
+            ChildRef child = record.View.Child(0);
+            Assert.That(warmed.TryGet(child.Pointer, child.Data, out record), Is.True);
+            path.AppendMut(0);
+        }
+
+        void Load(in TreePath path, in ValueHash256 hash, ReadOnlySpanAction<byte, LogBulkSet.WarmUpRead> action, LogBulkSet.WarmUpRead read)
+        {
+            byte[] rlp = nodes[path];
+            Span<byte> buffer = stackalloc byte[rlp.Length];
+            rlp.CopyTo(buffer);
+            action(buffer, read);
+            buffer.Fill(0xFF);
+        }
     }
 
     [Test]

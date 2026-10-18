@@ -448,15 +448,13 @@ public sealed class SnapshotBundle : IDisposable
         }
     }
 
-    /// <summary>Supplies owned RLP for a warm-up without publishing unlinked ancestor records during descent.</summary>
+    /// <summary>Supplies borrowed RLP for a warm-up without publishing unlinked ancestor records during descent.</summary>
     private sealed class WarmUpRlpSource(SnapshotBundle bundle, Hash256? address)
     {
-        public byte[]? Load(in TreePath path, in ValueHash256 hash)
+        public void Load(in TreePath path, in ValueHash256 hash, ReadOnlySpanAction<byte, LogBulkSet.WarmUpRead> action, LogBulkSet.WarmUpRead read)
         {
-            Hash256 expectedHash = new(hash);
-            return address is null
-                ? bundle._readOnlySnapshotBundle.TryLoadStateRlp(path, expectedHash, ReadFlags.None)
-                : bundle._readOnlySnapshotBundle.TryLoadStorageRlp(address, path, expectedHash, ReadFlags.None);
+            if (address is null) bundle._readOnlySnapshotBundle.TryLoadStateRlp(path, ReadFlags.None, action, read);
+            else bundle._readOnlySnapshotBundle.TryLoadStorageRlp(address, path, ReadFlags.None, action, read);
         }
     }
 

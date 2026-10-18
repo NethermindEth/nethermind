@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers;
 using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Core.Crypto;
@@ -29,6 +30,12 @@ internal sealed class DictionaryNodeSource(IReadOnlyDictionary<TreePath, byte[]>
 
     public void WarmUp(TrieNodeLog log, TrieRoot root, in ValueHash256 key, bool forDelete = false) =>
         LogBulkSet.WarmUp(log, warmed, LoadRlp, address, root, key, forDelete);
+
+    private void LoadRlp(in TreePath path, in ValueHash256 hash, ReadOnlySpanAction<byte, LogBulkSet.WarmUpRead> action, LogBulkSet.WarmUpRead read)
+    {
+        byte[]? rlp = LoadRlp(path, hash);
+        if (rlp is not null) action(rlp, read);
+    }
 
     private byte[]? LoadRlp(in TreePath path, in ValueHash256 hash)
     {

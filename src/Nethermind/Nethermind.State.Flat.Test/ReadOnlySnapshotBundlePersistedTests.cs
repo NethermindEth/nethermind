@@ -220,6 +220,68 @@ public class ReadOnlySnapshotBundlePersistedTests
             Assert.That(found, Is.EqualTo(expected is not null), path.ToString());
             Assert.That(spanRlp.Value, Is.EqualTo(expected), path.ToString());
         }
+
+        const int reads = 64;
+        Hash256 expectedHash = Keccak.Compute("hash");
+        MeasureReads(owned: true);
+        MeasureReads(owned: false);
+        long ownedBytes = MeasureReads(owned: true);
+        long borrowedBytes = MeasureReads(owned: false);
+        Assert.That(ownedBytes - borrowedBytes, Is.GreaterThanOrEqualTo(reads * persistedRlp.Length),
+            "callback reads must avoid the owned RLP array, not merely hide it behind the callback API");
+
+        long MeasureReads(bool owned)
+        {
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            for (int i = 0; i < reads; i++)
+            {
+                if (owned)
+                {
+                    byte[]? rlp = storage
+                        ? bundle.TryLoadStorageRlp(address, persistedPath, expectedHash, ReadFlags.None)
+                        : bundle.TryLoadStateRlp(persistedPath, expectedHash, ReadFlags.None);
+                    GC.KeepAlive(rlp);
+                }
+                else
+                {
+                    bool found = storage
+                        ? bundle.TryLoadStorageRlp(address, persistedPath, ReadFlags.None, CheckRlp, persistedRlp.AsSpan())
+                        : bundle.TryLoadStateRlp(persistedPath, ReadFlags.None, CheckRlp, persistedRlp.AsSpan());
+                    if (!found) throw new InvalidOperationException("Missing persisted RLP");
+                }
+            }
+            return GC.GetAllocatedBytesForCurrentThread() - before;
+        }
+
+        static void CheckRlp(ReadOnlySpan<byte> rlp, Span<byte> expected)
+        {
+            if (!rlp.SequenceEqual(expected)) throw new InvalidOperationException("Incorrect persisted RLP");
+        }
+    }
+
+    [Test]
+    public void Warm_up_reuses_borrowed_rlp_from_persisted_snapshots([Values] bool storage)
+    {
+        Hash256 address = Keccak.Compute("address");
+        byte[] nodeRlp = FlatTestHelpers.LeafRlp(0x80);
+        ValueHash256 hash = ValueKeccak.Compute(nodeRlp);
+        StateId from = new(0, Keccak.EmptyTreeHash);
+        StateId to = new(1, new Hash256(hash));
+        TrieNodeLogRetain retain = _log.RetainActive();
+        SnapshotContent content = new();
+        if (storage) content.SetStorageNodeRlp(_log, address, TreePath.Empty, nodeRlp);
+        else content.SetStateNodeRlp(_log, TreePath.Empty, nodeRlp);
+        using Snapshot snapshot = new(from, to, content, _pool, ResourcePool.Usage.MainBlockProcessing) { LogRetain = retain };
+        PersistedSnapshotList list = new(1) { CreatePersistedSnapshot(from, to, PersistedSnapshotBuilderTestExtensions.Build(snapshot, _blobs)) };
+        using TrieNodeLog warmedLog = FlatTestHelpers.NewTestLog();
+        using SnapshotBundle bundle = new(
+            new ReadOnlySnapshotBundle(new SnapshotPooledList(0), new NoopPersistenceReader(), false, AlwaysTrueStack(list)),
+            warmedLog, _pool, ResourcePool.Usage.MainBlockProcessing);
+
+        bundle.WarmUp(storage ? address : null, new TrieRoot(hash, 0), ValueKeccak.Zero);
+
+        Assert.That(bundle.TryLoadTrieNodeRecord(storage ? address : null, TreePath.Empty, hash, out NodeRecordRef record), Is.True);
+        Assert.That(record.Rlp.ToArray(), Is.EqualTo(nodeRlp));
     }
 
     // Each test snapshot is constructed without a bloom, so it carries the AlwaysTrue
