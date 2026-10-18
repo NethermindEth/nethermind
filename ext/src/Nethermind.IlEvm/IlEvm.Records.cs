@@ -104,7 +104,7 @@ public static unsafe partial class IlEvm
     /// Whether the code of <paramref name="state"/> came with a request: no cache stamped it, as none stamps a state
     /// override's, or the chain's code database does not hold it; looked up once per code state.
     /// </summary>
-    private static bool IsRequestCode(CodeInfo codeInfo, IlCodeState state)
+    internal static bool IsRequestCode(CodeInfo codeInfo, IlCodeState state)
     {
         byte origin = state.Origin;
         if (origin == 0)

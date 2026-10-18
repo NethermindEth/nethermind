@@ -275,7 +275,9 @@ public sealed class IlEvmStartupStep(
         // Code a cache stamped that the chain does not hold came with a request (IlEvm.IsRequestCode).
         IlEvm.ChainCode = dbProvider?.CodeDb;
         if (_logger.IsInfo)
-            _logger.Info($"IL-EVM: mode {IlEvmSettings.Mode}, scope {IlEvmSettings.Scope}, read-only query surfaces {DescribeSurfaces()}; the exit line counts each surface's frame parts offered and run compiled");
+            _logger.Info($"IL-EVM: mode {IlEvmSettings.Mode}, scope {IlEvmSettings.Scope}, read-only query surfaces {DescribeSurfaces()}; " +
+                (IlEvmSettings.Temperature > 0 ? $"temperature gate on: a query's contract runs compiled only while it ran 1/{IlEvmSettings.Temperature} of the last second's opcodes or frame parts; " : "") +
+                "the exit line counts each surface's frame parts offered and run compiled");
 
         int top = Math.Max(1, config.ProfileTop);
         if (IlEvmSettings.Stats)
@@ -356,7 +358,7 @@ public sealed class IlEvmStartupStep(
             $"list {IlShippedBacklog.Compiled} compiled, {IlShippedBacklog.MissingCount} missing, {IlShippedBacklog.Declined} declined; " +
             $"{IlEvm.PrecompiledCount} precompiled, taken by {IlEvm.PrecompiledAttached} code states; " +
             $"{IlEvmSettings.CompiledContracts} compiled at run time, {IlEvmSettings.FailedContracts} declined, {IlEvmSettings.DeferredCompiles} deferred; " +
-            $"self-check {kept} kept, {probation} probation, {givenBack} given back (keep ratio {IlEvmSettings.SelfCheckKeepRatio}); {shortParts}; " +
+            $"self-check {kept} kept, {probation} probation, {givenBack} given back (keep ratio {IlEvmSettings.SelfCheckKeepRatio}); {shortParts}; {IlTemperature.Describe()}; " +
             $"decided entry {(IlEvmSettings.DecidedEntry ? "on" : "off")}; compile thread busy " +
             $"{IlEvmSettings.CompileBusyTicks / (double)Stopwatch.Frequency:F1} s on {IlEvmSettings.CompileThreads} thread(s), " +
             $"order {(IlEvmSettings.CompileOrderHot ? "hot" : "fifo")}, entry chunk {(IlEvmSettings.EntryChunk ? "on" : "off")}, " +

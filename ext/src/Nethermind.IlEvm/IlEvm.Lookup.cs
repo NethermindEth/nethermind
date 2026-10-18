@@ -58,6 +58,17 @@ public static unsafe partial class IlEvm
         [FieldOffset(92)] public int WindowFrames;
         [FieldOffset(96)] public int Pending;
         [FieldOffset(104)] public string? FailureReason;
+        /// <summary>
+        /// The temperature gate (<see cref="IlTemperature"/>): the opcodes and the frame parts its samples measured for the
+        /// code in window <see cref="TempWindow"/>, each times its weight, and in the window before that one. Written by
+        /// samples only, racily: a lost add only misjudges the code until its next sample. Far from the fields the entry
+        /// reads, so their line stays shared.
+        /// </summary>
+        [FieldOffset(112)] public long TempOps;
+        [FieldOffset(120)] public long PrevOps;
+        [FieldOffset(128)] public long TempParts;
+        [FieldOffset(136)] public long PrevParts;
+        [FieldOffset(144)] public int TempWindow;
     }
 
     /// <summary>A fork's opcode semantics as the compiler sees them, one per interned <see cref="OpcodeBodySet"/>, so specs and forks running the same bodies share compiled contracts.</summary>
@@ -208,6 +219,13 @@ public static unsafe partial class IlEvm
         // Code a query brought is hot by its content, over all its code infos, and only across requests.
         if (query is not null && IlEvmSettings.Threshold > 1 && state.HasContentHash && IsRequestCode(codeInfo, state))
             hot = HotByContent(codeInfo, state, query, frames);
+
+        // The temperature gate holds back the compile of a query's code that is not hot at run time, as it would not run it.
+        if (hot && query is not null && IlEvmSettings.Temperature > 0 && !IlTemperature.IsHot(codeInfo, state))
+        {
+            IlSurfaceCounts.OfThisThread()[IlSurfaceCounts.HeldBackCompiles]++;
+            return null;
+        }
 
         return hot && (state.RetryAfter == 0 || Environment.TickCount64 >= state.RetryAfter) ? IlRequest(codeInfo, state, fork) : null;
     }

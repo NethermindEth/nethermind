@@ -395,14 +395,43 @@ public static class IlEvmSettings
 
     private static bool _decidedEntry = Environment.GetEnvironmentVariable("NETHERMIND_ILEVM_DECIDED_ENTRY") != "0";
 
+    /// <summary>
+    /// The temperature gate, off (0) unless <c>NETHERMIND_ILEVM_TEMPERATURE</c> sets it: with n, the query runners run a
+    /// contract's compiled code only while the contract ran at least 1/n of the opcodes, or of the frame parts, they ran in
+    /// the last one-second window, and compile a contract at run time only once it does (<see cref="IlTemperature"/>). Code
+    /// a request brings is left to the other rules.
+    /// </summary>
+    /// <remarks>
+    /// Compiled code that a contract meets cold in the CPU's caches loses to the interpreter's always-hot handlers on short
+    /// parts, as when a node replays blocks over many contracts that each run rarely; a contract with a large share of the
+    /// opcodes runs often enough to stay warm, or long enough per part to gain anyway. A change voids every decided entry.
+    /// </remarks>
+    public static int Temperature
+    {
+        get => _temperature;
+        set
+        {
+            _temperature = Math.Max(0, value);
+            IlSurfaceCounts.ResetSampling(_temperature > 0);
+            LegacyChanged();
+        }
+    }
+
+    private static int _temperature =
+        int.TryParse(Environment.GetEnvironmentVariable("NETHERMIND_ILEVM_TEMPERATURE"), out int temperature) && temperature > 0 ? temperature : 0;
+
+    /// <summary>The temperature gate's window ended: every decided entry is void, so each code's next part is decided again on the new shares.</summary>
+    internal static void TemperatureTick() => LegacyChanged();
+
     private static int _legacyEpochs;
 
     /// <summary>
     /// What the Legacy rules' decisions kept in code states (<see cref="IlEvm.IlCodeState.Decided"/>) were taken under:
     /// positive while the query runners may act on them, that is under the Legacy rules with the kill switch and
     /// <see cref="DecidedEntry"/> on and neither profiling nor diagnostics, and -1 otherwise. A change of any of those
-    /// switches or of <see cref="SelfCheck"/>, <see cref="BlockRuntimeCompile"/> or <see cref="BlockSelfCheck"/> moves it to
-    /// a value never used before, which voids every decision taken under the old one.
+    /// switches or of <see cref="SelfCheck"/>, <see cref="BlockRuntimeCompile"/>, <see cref="BlockSelfCheck"/> or
+    /// <see cref="Temperature"/>, and with the temperature gate on the end of each of its windows, moves it to a value never
+    /// used before, which voids every decision taken under the old one.
     /// </summary>
     /// <remarks>Last of the initializers, so that the switches it reads have theirs.</remarks>
     internal static int LegacyEpoch = NextLegacyEpoch();

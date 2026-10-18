@@ -76,7 +76,9 @@ public sealed class IlEvmFrameRunner : FrameCodeRunner<EthereumGasPolicy>
     /// <see cref="IlEvmSettings.HotnessSampling"/> drawn for counting. The rest go out of line. Code states are shared by
     /// every runner, and the decisions are the query runners' alone: block processing's runner neither acts on them nor
     /// takes them, so its own rules (<see cref="IlEvmSettings.BlockRuntimeCompile"/>, <see cref="IlEvmSettings.BlockSelfCheck"/>)
-    /// judge every part it is offered.
+    /// judge every part it is offered. With the temperature gate on (<see cref="IlEvmSettings.Temperature"/>), about one part
+    /// in <see cref="IlTemperature.SampleEvery"/> per thread is a sample and goes out of line before anything else
+    /// (<see cref="RunSampled"/>); the rest pay one compare of the thread's part counter for it.
     /// </remarks>
     // Optimized from the first call, as are the helpers compiled code calls: a tier-0 copy would slow the frames run
     // before tiering catches up, and the self-check would judge compiled code by them.
@@ -86,7 +88,9 @@ public sealed class IlEvmFrameRunner : FrameCodeRunner<EthereumGasPolicy>
     {
         long[] counts = IlSurfaceCounts.OfThisThread();
         int surface = (int)Surface;
-        counts[IlSurfaceCounts.Offered + surface]++;
+        // A temperature sample is due: about one part in IlTemperature.SampleEvery while the gate is on, none while off.
+        if (++counts[IlSurfaceCounts.Offered + surface] >= counts[IlSurfaceCounts.SampleAt + surface])
+            return RunSampled(vm, codeInfo, bodies, ref stack, ref gas, ref programCounter, ref opCodesSincePoll, flags, counts, surface);
         bool drawn = false;
         if (!_block && CodeState(codeInfo) is IlEvm.IlCodeState state && Volatile.Read(ref state.DecidedEpoch) == IlEvmSettings.LegacyEpoch)
         {
@@ -134,6 +138,49 @@ public sealed class IlEvmFrameRunner : FrameCodeRunner<EthereumGasPolicy>
         // a hand-back before its first opcode moves nothing.
         if (vm.OpCodeCount != before)
             counts[IlSurfaceCounts.Compiled + surface]++;
+        return result;
+    }
+
+    /// <summary>A temperature sample (<see cref="IlTemperature"/>): the part runs as the rules say, and its opcodes count toward its code's temperature.</summary>
+    /// <remarks>
+    /// The opcodes compiled code ran are counted here; a part the interpreter takes, or finishes, reports its opcodes
+    /// (<see cref="OnInterpreted"/>), which complete the sample. A part the rules declined without wanting a report is
+    /// declined with one all the same, and the report counts for the sample alone.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.NoInlining | MethodImplOptions.AggressiveOptimization)]
+    private EvmExceptionType RunSampled(VirtualMachine<EthereumGasPolicy> vm, CodeInfo codeInfo, OpcodeBodySet bodies, scoped ref EvmStack stack,
+        scoped ref EthereumGasPolicy gas, ref nint programCounter, ref int opCodesSincePoll, FrameRunFlags flags, long[] counts, int surface)
+    {
+        if (IlEvmSettings.Temperature <= 0 || _block)
+        {
+            // The gate was turned off since this thread's clock was set: it stops.
+            counts[IlSurfaceCounts.SampleAt + surface] = long.MaxValue;
+            return RunCounted(vm, codeInfo, bodies, ref stack, ref gas, ref programCounter, ref opCodesSincePoll, flags, counts, surface, drawn: false);
+        }
+
+        counts[IlSurfaceCounts.SampleAt + surface] = counts[IlSurfaceCounts.Offered + surface] + IlTemperature.NextGap();
+        IlTemperature.Roll();
+        int before = vm.OpCodeCount;
+        EvmExceptionType result = RunLegacy(vm, codeInfo, bodies, ref stack, ref gas, ref programCounter, ref opCodesSincePoll, flags, drawn: false);
+        int compiledOps = vm.OpCodeCount - before;
+        if (compiledOps != 0)
+            counts[IlSurfaceCounts.Compiled + surface]++;
+        // Initcode and profiling keep no code state of the plugin's: nothing to count toward.
+        if (CodeState(codeInfo) is not IlEvm.IlCodeState state)
+            return result;
+        if (result == Declined)
+        {
+            IlTemperature.Mark(codeInfo, state, compiledOps, hotness: false);
+            return DeclinedReportingOpcodes;
+        }
+
+        if (result == DeclinedReportingOpcodes)
+        {
+            IlTemperature.Mark(codeInfo, state, compiledOps, hotness: true);
+            return result;
+        }
+
+        IlTemperature.Add(state, compiledOps);
         return result;
     }
 
@@ -188,6 +235,22 @@ public sealed class IlEvmFrameRunner : FrameCodeRunner<EthereumGasPolicy>
 
         bool cancelable = (flags & FrameRunFlags.Cancelable) != 0;
         IlEvmSettings.SawFrame();
+        // The temperature gate: a query's contract that is not hot at run time goes to the interpreter, and so do its next
+        // parts, decided until its next sample or the gate's next window; a hot one runs as the rules below say.
+        if (state is not null && IlEvmSettings.Temperature > 0)
+        {
+            long[] decisions = IlSurfaceCounts.OfThisThread();
+            if (!IlTemperature.IsHot(codeInfo, state))
+            {
+                decisions[IlSurfaceCounts.ColdDecisions]++;
+                if (epoch > 0)
+                    Decide(state, contract, long.MaxValue, epoch);
+                return Declined;
+            }
+
+            decisions[IlSurfaceCounts.HotDecisions]++;
+        }
+
         int verdict = Volatile.Read(ref contract.Check.Verdict);
         if (IlEvmSettings.SelfCheck && (!_block || IlEvmSettings.BlockSelfCheck))
         {
@@ -365,6 +428,9 @@ public sealed class IlEvmFrameRunner : FrameCodeRunner<EthereumGasPolicy>
     [MethodImpl(MethodImplOptions.NoInlining | MethodImplOptions.AggressiveOptimization)]
     private static void OnInterpretedLegacy(CodeInfo codeInfo, int opCodes)
     {
+        // A temperature sample's interpreted opcodes; a part declined only to be measured counts nowhere else.
+        if (IlTemperature.Finish(codeInfo, opCodes))
+            return;
         if (IlEvmSettings.Profile)
         {
             IlEvmProfile.Ops(codeInfo, opCodes);

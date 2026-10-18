@@ -49,10 +49,63 @@ internal sealed class IlSurfaceCounts
 
     public const int Compiled = Padding + Surfaces;
 
-    private readonly long[] _counts = new long[Padding + Surfaces * 2 + Padding];
+    /// <summary>
+    /// The temperature gate's sampling clock (<see cref="IlEvmSettings.Temperature"/>): per surface, the thread's offered
+    /// count from which its next part is a sample. <see cref="long.MaxValue"/> while the gate is off, and always for block
+    /// processing, so the entry's one compare never takes a part out of line then.
+    /// </summary>
+    public const int SampleAt = Padding + 2 * Surfaces;
+
+    /// <summary>The temperature gate: the opcodes the thread's samples measured, each times its weight, over the thread's life.</summary>
+    public const int SampledOps = Padding + 3 * Surfaces;
+
+    /// <summary>The temperature gate: the parts its slow path found hot and ran as the other rules say, and those it found cold.</summary>
+    public const int HotDecisions = SampledOps + 1;
+
+    public const int ColdDecisions = SampledOps + 2;
+
+    /// <summary>The temperature gate: the hot frames whose compile it held back, the code not being hot at run time.</summary>
+    public const int HeldBackCompiles = SampledOps + 3;
+
+    /// <summary>The temperature gate: the parts the thread's samples stand for, each sample its weight, over the thread's life.</summary>
+    public const int SampledParts = Padding + 4 * Surfaces;
+
+    private readonly long[] _counts = new long[Padding + Surfaces * 5 + Padding];
 
     private IlSurfaceCounts()
     {
+        StartSampling(_counts, IlEvmSettings.Temperature > 0);
+    }
+
+    /// <summary>Starts or stops the query surfaces' sampling clocks in <paramref name="counts"/>: due at once, or never.</summary>
+    private static void StartSampling(long[] counts, bool on)
+    {
+        for (int surface = 0; surface < Surfaces; surface++)
+            Volatile.Write(ref counts[SampleAt + surface], on && surface != (int)IlEvmSurface.Blocks ? 0 : long.MaxValue);
+    }
+
+    /// <summary>Starts or stops every thread's sampling clocks, as the temperature gate is turned on or off.</summary>
+    /// <remarks>Racy with the threads' own writes: a thread may take one sample more or less, which only one part feels.</remarks>
+    public static void ResetSampling(bool on)
+    {
+        lock (_all)
+        {
+            foreach (IlSurfaceCounts thread in _all)
+                StartSampling(thread._counts, on);
+        }
+    }
+
+    /// <summary>The sum over every thread so far of the counter at <paramref name="index"/>.</summary>
+    public static long Sum(int index)
+    {
+        long total = 0;
+        lock (_all)
+        {
+            foreach (IlSurfaceCounts thread in _all)
+                total += Volatile.Read(ref thread._counts[index]);
+        }
+
+        return total;
     }
 
     /// <summary>This thread's counts, which only it writes: parts offered at <see cref="Offered"/> plus the surface, parts compiled at <see cref="Compiled"/> plus it.</summary>
