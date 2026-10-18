@@ -37,6 +37,11 @@ public class ParityVmOperationTraceConverter : JsonConverter<ParityVmOperationTr
                 reader.Read();
                 ReadExecuted(ref reader, value, options);
             }
+            else if (reader.ValueTextEquals("op"u8))
+            {
+                reader.Read();
+                value.Op = reader.GetString();
+            }
             else if (reader.ValueTextEquals("pc"u8))
             {
                 reader.Read();
@@ -187,6 +192,11 @@ public class ParityVmOperationTraceConverter : JsonConverter<ParityVmOperationTr
         else
         {
             WriteExecuted(writer, value, options);
+        }
+
+        if (value.Op is not null)
+        {
+            writer.WriteString("op"u8, value.Op);
         }
 
         writer.WriteNumber("pc"u8, value.Pc);

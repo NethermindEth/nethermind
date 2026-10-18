@@ -62,6 +62,14 @@ namespace Nethermind.JsonRpc
         public const int BlockAccessListResourceNotFound = -32001;
 
         /// <summary>
+        /// Block selected by a trace method not found.
+        /// </summary>
+        /// <remarks>
+        /// The execution-apis trace methods require this code for an unknown block.
+        /// </remarks>
+        public const int TraceBlockNotFound = -32001;
+
+        /// <summary>
         /// Transaction creation failed
         /// </summary>
         public const int TransactionRejected = Default;

@@ -200,7 +200,7 @@ public class TraceStoreRpcModule(ITraceRpcModule traceModule,
         SearchResult<BlockHeader> blockSearch = _blockFinder.SearchForHeader(blockParameter);
         if (blockSearch.IsError)
         {
-            return ResultWrapper<IEnumerable<ParityTxTraceFromReplay>>.Fail(blockSearch);
+            return ResultWrapper<IEnumerable<ParityTxTraceFromReplay>>.Fail(TraceRpcModule.ReportUnknownBlock(_blockFinder, blockSearch, blockParameter));
         }
 
         BlockHeader block = blockSearch.Object!;
@@ -258,7 +258,7 @@ public class TraceStoreRpcModule(ITraceRpcModule traceModule,
         {
             if (blockSearch.IsError)
             {
-                return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Fail(blockSearch);
+                return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Fail(TraceRpcModule.ReportUnknownBlock(_blockFinder, blockSearch, fromBlock, toBlock));
             }
 
             if (traces is null)
@@ -318,7 +318,7 @@ public class TraceStoreRpcModule(ITraceRpcModule traceModule,
         SearchResult<BlockHeader> blockSearch = _blockFinder.SearchForHeader(blockParameter);
         if (blockSearch.IsError)
         {
-            return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Fail(blockSearch);
+            return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Fail(TraceRpcModule.ReportUnknownBlock(_blockFinder, blockSearch, blockParameter));
         }
 
         BlockHeader block = blockSearch.Object!;

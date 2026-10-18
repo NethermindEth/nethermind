@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.IO.Pipelines;
 using System.Text.Json;
 using System.Threading;
+using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
@@ -444,6 +445,7 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
             _writer.WriteStartObject();
             _writer.WritePropertyName("sub"u8);
             frame.OuterPendingPc = _pendingPc;
+            frame.OuterPendingOpcode = _pendingOpcode;
             frame.OuterPendingCost = _pendingCost;
             _hasPendingOp = false;
             frame.HasPendingParentOpToClose = true;
@@ -478,6 +480,7 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
 
         bool hadPendingParent = frame.HasPendingParentOpToClose;
         int outerPc = frame.OuterPendingPc;
+        Instruction outerOpcode = frame.OuterPendingOpcode;
         ulong outerCost = frame.OuterPendingCost;
         ReturnFrame(frame);
 
@@ -485,6 +488,7 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
         {
             ReleaseOpBuffers();
             _pendingPc = outerPc;
+            _pendingOpcode = outerOpcode;
             _pendingCost = outerCost;
             _pendingUsed = 0;
             _pushAssigned = false;
@@ -550,6 +554,7 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
     {
         _writer.WriteNumber("cost"u8, _pendingCost);
         WritePendingEx();
+        _writer.WriteString("op"u8, OpcodeJsonNames.Get(_pendingOpcode));
         _writer.WriteNumber("pc"u8, _pendingPc);
         _writer.WriteEndObject();
     }
@@ -559,6 +564,7 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
         _writer.WriteStartObject();
         _writer.WriteNumber("cost"u8, _pendingCost);
         WritePendingEx();
+        _writer.WriteString("op"u8, OpcodeJsonNames.Get(_pendingOpcode));
         _writer.WriteNumber("pc"u8, _pendingPc);
         _writer.WritePropertyName("sub"u8);
     }
@@ -707,6 +713,7 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
         public bool JsonObjectOpened;
         public bool HasPendingParentOpToClose;
         public int OuterPendingPc;
+        public Instruction OuterPendingOpcode;
         public ulong OuterPendingCost;
 
         public void Reset()
@@ -716,6 +723,7 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
             JsonObjectOpened = false;
             HasPendingParentOpToClose = false;
             OuterPendingPc = 0;
+            OuterPendingOpcode = default;
             OuterPendingCost = 0;
         }
 

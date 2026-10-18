@@ -25,6 +25,11 @@ public class ParityVmOperationTrace
     public ParityStorageChangeTrace Store { get; set; }
     public ulong Used { get; set; }
     public int Pc { get; set; }
+
+    /// <summary>The opcode's mnemonic, such as <c>PUSH1</c>, or <see langword="null"/> for a synthetic operation, such as one
+    /// heading an EIP-8141 frame, and for one read from a store written without it.</summary>
+    public string? Op { get; set; }
+
     public ParityVmTrace Sub { get; set; }
 
     /// <summary>The operation began executing and halted exceptionally, so it is serialized with a null <c>ex</c>.</summary>

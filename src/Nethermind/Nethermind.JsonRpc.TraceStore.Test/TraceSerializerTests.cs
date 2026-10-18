@@ -102,6 +102,14 @@ public class TraceSerializerTests
         Assert.That(DeserializeStored(stored)[0].VmTrace!.Operations[0].Memory.Offset, Is.EqualTo(32));
     }
 
+    [Test]
+    public void round_trips_stored_vm_operation_names()
+    {
+        const string vmTrace = """{"code":"0x6000","ops":[{"cost":3,"ex":{"mem":null,"push":["0x0"],"store":null,"used":97},"op":"PUSH1","pc":0,"sub":null}]}""";
+
+        Assert.That(Json.Serialize(DeserializeStored($$"""[{"blockNumber":0,"vmTrace":{{vmTrace}}}]""")[0].VmTrace), Is.EqualTo(vmTrace));
+    }
+
     // Stores written before the deletion markers hold a deleted field as a change to null.
     [Test]
     public void reads_stored_state_deletions()
