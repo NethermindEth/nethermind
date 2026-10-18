@@ -58,6 +58,8 @@ public static unsafe partial class IlEvm
         /// <summary>Whether the code was looked up among the precompiled contracts, which happens on its first frame of a fork they were compiled for.</summary>
         [FieldOffset(96)] public bool PrecompileChecked;
         [FieldOffset(97)] public bool HasContentHash;
+        /// <summary>Legacy: whether the code came with a request or from the chain (<see cref="IsRequestCode"/>), 0 until a query's frame asked.</summary>
+        [FieldOffset(98)] public byte Origin;
         /// <summary>Adaptive: the <see cref="IlRuntime.MissEpoch"/> the misses were recorded at; at a newer one their body sets are looked for again.</summary>
         [FieldOffset(100)] public int MissEpoch;
         /// <summary>Interpreted opcodes counted toward hotness; a long, as sampled frames count with a weight and busy code runs billions.</summary>
@@ -101,23 +103,47 @@ public static unsafe partial class IlEvm
 
     /// <summary>Compiled contracts by code content and fork, so a new <see cref="CodeInfo"/> of known code needs no compile.</summary>
     private static readonly ConcurrentDictionary<IlContractKey, IlContract> _ilContracts = new();
-    /// <summary>The cache's keys in the order they were added, and the IL their contracts hold together.</summary>
+    /// <summary>The cache's keys, oldest pass first, and the IL their contracts hold together.</summary>
     private static readonly ConcurrentQueue<IlContractKey> _ilCacheOrder = new();
     private static long _ilCachedBytes;
 
-    /// <summary>Keeps <paramref name="contract"/> for reuse by content, letting the oldest go past the cache's bounds.</summary>
+    /// <summary>Keeps <paramref name="contract"/> for reuse by content, letting the least recently used go past the cache's bounds.</summary>
+    /// <remarks>
+    /// Second chance, a clock over the keys: past the bounds the oldest key goes unless a new code info found its contract
+    /// since its last pass, which sends it round again. A stream of new contracts, as of code requests bring, so pushes
+    /// out the contracts no code info asks for, not those that keep being found; a contract let go stays compiled where held.
+    /// </remarks>
     private static void IlCache(IlContractKey key, IlContract contract)
     {
         if (!_ilContracts.TryAdd(key, contract))
             return;
         _ilCacheOrder.Enqueue(key);
         long cached = Interlocked.Add(ref _ilCachedBytes, contract.MemoryBytes);
+        // Each key gets at most one more pass per call: a pass clears what it spares, so the next one evicts.
+        int spared = 0;
         while ((cached > IlEvmSettings.MaxCachedIlBytes || _ilContracts.Count > IlEvmSettings.MaxCachedContracts) &&
                _ilCacheOrder.TryDequeue(out IlContractKey oldest))
         {
-            if (_ilContracts.TryRemove(oldest, out IlContract? evicted))
-                cached = Interlocked.Add(ref _ilCachedBytes, -evicted.MemoryBytes);
+            if (!_ilContracts.TryGetValue(oldest, out IlContract? candidate))
+                continue;
+            if (candidate.CacheUsed && spared++ < _ilContracts.Count)
+            {
+                candidate.CacheUsed = false;
+                _ilCacheOrder.Enqueue(oldest);
+                continue;
+            }
+
+            if (_ilContracts.TryRemove(new KeyValuePair<IlContractKey, IlContract>(oldest, candidate)))
+                cached = Interlocked.Add(ref _ilCachedBytes, -candidate.MemoryBytes);
         }
+    }
+
+    /// <summary>Empties the shared cache, for tests.</summary>
+    internal static void ClearSharedCache()
+    {
+        _ilContracts.Clear();
+        _ilCacheOrder.Clear();
+        Interlocked.Exchange(ref _ilCachedBytes, 0);
     }
 
     /// <remarks>Two AES-based hashes, of the whole code and of its second half; a collision only costs a cache miss.</remarks>
@@ -129,7 +155,9 @@ public static unsafe partial class IlEvm
     /// <summary>The compiled contract to run a frame of <paramref name="codeInfo"/> on, or null for the interpreter; counts the frame toward hotness and requests a compile once hot.</summary>
     /// <param name="count">Whether the interpreter should report the frame's opcodes, which counts it toward hotness.</param>
     /// <param name="drawn">The caller drew the part for counting already (<see cref="SkipsCount"/>), so it is not drawn again.</param>
-    internal static IlContract? Find(CodeInfo codeInfo, OpcodeBodySet bodies, out IlCodeState state, out bool count, bool drawn = false)
+    /// <param name="query">The machine of the read-only query the frame runs in, whose request counts toward the hotness of code that came with a request; null elsewhere.</param>
+    internal static IlContract? Find(CodeInfo codeInfo, OpcodeBodySet bodies, out IlCodeState state, out bool count, bool drawn = false,
+        VirtualMachine<EthereumGasPolicy>? query = null)
     {
         ref object? slot = ref IlEvmFrameRunner.CodeSlot(codeInfo);
         if (slot is not IlCodeState existing)
@@ -160,19 +188,42 @@ public static unsafe partial class IlEvm
         if (ReferenceEquals(state.FailedFor, fork))
             return null;
 
+        // Code no cache stamped, a state override's, longer than any deployment may leave is no contract's: the request
+        // made it up, and is never compiled; its frames are not counted either.
+        if (codeInfo.CodeHash == default && codeInfo.CodeSpan.Length > MaxRequestCodeLength)
+        {
+            state.FailureReason = $"code no cache stamped of {codeInfo.CodeSpan.Length} bytes, past {MaxRequestCodeLength}";
+            state.FailedFor = fork;
+            IlEvmSettings.CountFailed(state.FailureReason);
+            return null;
+        }
+
         // Past its second frame, code counts on one random frame in HotnessSampling, with that weight.
         int weight = SamplingWeight;
         if (!drawn && weight > 1 && state.Executions >= 2 && (NextHotnessRandom() & (uint)(weight - 1)) != 0)
             return null;
 
         count = true;
-        int executions = state.Executions += state.Executions < 2 ? 1 : weight;
+        int frames = state.Executions < 2 ? 1 : weight;
+        int executions = state.Executions += frames;
         // Sampled, the rate rule needs two counted frames in its window: one large weighted frame is not steady use.
         bool hot = (executions >= IlEvmSettings.Threshold || state.OpCodesRun >= IlEvmSettings.OpcodeThreshold) &&
             (IlEvmSettings.Threshold <= 1 || (state.WindowOpCodes >= IlEvmSettings.HotOpcodesPerSecond && (weight == 1 || state.WindowFrames >= 2)));
-        // A second frame, or the first hot one, looks the code up by content: it may be compiled under another code info.
-        if ((executions == 2 || hot) && IlShared(codeInfo, state, fork) is { } shared)
-            return shared;
+        // A second frame, or the first hot one, looks the code up by content: it may be compiled under another code info,
+        // or have failed to compile there, which this one then takes. A query's code no cache stamped does so on its first:
+        // its hotness is its content's from its first frame, and a new code info of it, as a state override's gets whenever
+        // the core's override cache lost it, runs compiled from its first part.
+        if (executions == 2 || hot || (executions == 1 && query is not null && codeInfo.CodeHash == default && IlEvmSettings.Threshold > 1))
+        {
+            if (IlShared(codeInfo, state, fork) is { } shared)
+                return shared;
+            if (TakeKnownFailure(state, codeInfo.CodeSpan.Length, fork))
+                return null;
+        }
+
+        // Code a query brought is hot by its content, over all its code infos, and only across requests.
+        if (query is not null && IlEvmSettings.Threshold > 1 && state.HasContentHash && IsRequestCode(codeInfo, state))
+            hot = HotByContent(codeInfo, state, query, frames);
 
         return hot && (state.RetryAfter == 0 || Environment.TickCount64 >= state.RetryAfter) ? IlRequest(codeInfo, state, fork) : null;
     }
@@ -355,6 +406,9 @@ public static unsafe partial class IlEvm
     /// <summary>How long code that a budget turned away waits before asking again.</summary>
     private const int RetryDelayMs = 5_000;
 
+    /// <summary>The longest code a deployment may leave (EIP-170): the most a request's code may be and still be compiled, when no cache stamped it.</summary>
+    internal const int MaxRequestCodeLength = 24 * 1024;
+
     /// <summary>The interpreter ran <paramref name="opCodes"/> opcodes of a frame of <paramref name="codeInfo"/>; what makes it hot.</summary>
     internal static void OnInterpreted(CodeInfo codeInfo, int opCodes)
     {
@@ -375,6 +429,9 @@ public static unsafe partial class IlEvm
 
         state.WindowOpCodes = (int)Math.Min(int.MaxValue, state.WindowOpCodes + ran);
         state.WindowFrames++;
+        // A query's own code is hot by its content (HotByContent): what this code info ran counts there too.
+        if (state.Origin == FromRequest && state.HasContentHash && RecordOf(state.ContentHash, codeInfo.CodeSpan.Length) is { } record)
+            record.Ran(ran, now);
     }
 
     private static IlContract? IlShared(CodeInfo codeInfo, IlCodeState state, IlFork fork)
@@ -399,6 +456,9 @@ public static unsafe partial class IlEvm
         {
             if (IlEvmDiagnostics.Enabled)
                 Interlocked.Increment(ref IlEvmDiagnostics.SharedHits);
+            // Used: the cache's next pass over it spares it.
+            if (!contract.CacheUsed)
+                contract.CacheUsed = true;
             state.Contract = contract;
             return contract;
         }
@@ -416,17 +476,30 @@ public static unsafe partial class IlEvm
         if (Interlocked.Exchange(ref state.Pending, 1) == 1)
             return null;
 
-        // The hot order ranks the layout by the opcodes its code runs on the interpreter from now on.
-        if (!IlCompileQueue.Enqueue((Code: codeInfo, State: state, Fork: fork, QueuedAt: state.OpCodesRun),
+        // A request's code is hot by its content (HotByContent): one layout of it waits at a time, whichever code info asked.
+        bool request = IsRequestCode(codeInfo, state);
+        IlCodeRecord? record = request && state.HasContentHash ? RecordOf(state.ContentHash, codeInfo.CodeSpan.Length) : null;
+        if (record is not null && Interlocked.Exchange(ref record.Pending, 1) == 1)
+        {
+            state.Pending = 0;
+            return null;
+        }
+
+        // The hot order ranks the layout by the opcodes its code runs on the interpreter from now on, by content for a request's.
+        if (!IlCompileQueue.Enqueue((Code: codeInfo, State: state, Fork: fork, Record: record, QueuedAt: record?.OpCodesRun ?? state.OpCodesRun),
                 static s =>
                 {
                     IlCompileInto(s.Code, s.State, s.Fork);
                     s.State.Pending = 0;
+                    if (s.Record is not null)
+                        s.Record.Pending = 0;
                 },
-                static s => s.State.OpCodesRun - s.QueuedAt))
+                static s => (s.Record?.OpCodesRun ?? s.State.OpCodesRun) - s.QueuedAt, request))
         {
             state.RetryAfter = Environment.TickCount64 + RetryDelayMs;
             state.Pending = 0;
+            if (record is not null)
+                record.Pending = 0;
         }
 
         return null;
@@ -443,6 +516,8 @@ public static unsafe partial class IlEvm
         {
             if (IlShared(codeInfo, state, fork) is { } shared)
                 return shared;
+            if (TakeKnownFailure(state, codeInfo.CodeSpan.Length, fork))
+                return null;
 
             if (IlEvmSettings.CompileThreads > 1)
             {
@@ -466,9 +541,7 @@ public static unsafe partial class IlEvm
             IlContract? contract = IlCompiler.Compile(codeInfo, fork, out string? reason);
             if (contract is null)
             {
-                state.FailureReason = reason;
-                state.FailedFor = fork;
-                IlEvmSettings.CountFailed(reason);
+                Failed(codeInfo, state, fork, reason);
                 return null;
             }
 
@@ -488,6 +561,8 @@ public static unsafe partial class IlEvm
                 contract.CompileChunk(entries[0]);
             // Both counts are sampled alike (IlEvm.OnInterpreted), so their ratio is the code's opcodes per part.
             contract.OpsPerPart = Math.Max(1, state.OpCodesRun / Math.Max(1, state.Executions));
+            // Its chunks' JITs are paced as its layout was.
+            contract.FromRequest = IsRequestCode(codeInfo, state);
             // A contract the self-check gives back keeps its verdict, not its code.
             contract.Check.OnGivenBack = contract.Release;
             contract.Check.Name = contract.Name;
@@ -498,9 +573,7 @@ public static unsafe partial class IlEvm
         }
         catch (Exception exception)
         {
-            state.FailureReason = exception.ToString();
-            state.FailedFor = fork;
-            IlEvmSettings.CountFailed(state.FailureReason);
+            Failed(codeInfo, state, fork, exception.ToString());
             return null;
         }
         finally
@@ -508,6 +581,16 @@ public static unsafe partial class IlEvm
             if (claimed)
                 _ilCompiling.TryRemove(key, out _);
         }
+    }
+
+    /// <summary>Records that the code of <paramref name="state"/> failed to compile for <paramref name="fork"/>: in the state, and by content for its other code infos.</summary>
+    private static void Failed(CodeInfo codeInfo, IlCodeState state, IlFork fork, string? reason)
+    {
+        state.FailureReason = reason;
+        state.FailedFor = fork;
+        if (state.HasContentHash)
+            RecordFor(state.ContentHash, codeInfo.CodeSpan.Length).Failed(fork, reason);
+        IlEvmSettings.CountFailed(reason);
     }
 
     /// <summary>Why the compiler last declined <paramref name="codeInfo"/>, for tests and diagnostics.</summary>

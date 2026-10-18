@@ -385,11 +385,14 @@ public sealed class IlEvmFrameRunner : FrameCodeRunner<EthereumGasPolicy>
     {
         if (!IlEvmSettings.Enabled)
             return IlEvmDiagnostics.Enabled ? TimeInterpreted(handedBack: false) : Declined;
+        // Initcode is never compiled, as under the other rules: it is never in the code database, so never shipped, and a
+        // call without a recipient brings any it likes, with a new code info each time that its own frames, offered again on
+        // every resume, would make hot. Nothing is counted for it, and its code state is never made.
+        if (vm.VmState.ExecutionType.IsAnyCreate())
+            return Declined;
         if (IlEvmSettings.Profile)
         {
-            // Initcode is never in the code database, so never shipped. A frame is offered again on each resume: counted on entry, its opcodes on every part.
-            if (vm.VmState.ExecutionType.IsAnyCreate())
-                return Declined;
+            // A frame is offered again on each resume: counted on entry, its opcodes on every part.
             IlEvmProfile.Frame(codeInfo, entry: programCounter == 0);
             return DeclinedReportingOpcodes;
         }
@@ -407,7 +410,7 @@ public sealed class IlEvmFrameRunner : FrameCodeRunner<EthereumGasPolicy>
         }
         else
         {
-            contract = IlEvm.Find(codeInfo, bodies, out IlEvm.IlCodeState found, out count, drawn);
+            contract = IlEvm.Find(codeInfo, bodies, out IlEvm.IlCodeState found, out count, drawn, _block ? null : vm);
             state = _block ? null : found;
         }
 

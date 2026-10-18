@@ -159,6 +159,12 @@ public static unsafe partial class IlEvm
 
         /// <summary>Set once a precompiled contract first meets a frame.</summary>
         public int Attached;
+
+        /// <summary>Whether a code info found the contract in the shared cache by content since the cache's last pass over it (<see cref="IlCache"/>).</summary>
+        public volatile bool CacheUsed;
+
+        /// <summary>Legacy: whether the contract is of code a request brought, whose chunks' JITs the compile queue paces (<see cref="IlCompileQueue"/>).</summary>
+        public bool FromRequest;
         /// <summary>Whether <see cref="IlBytes"/> counts toward <see cref="IlEvmSettings.LiveIlBytes"/>; cleared once by release or collection.</summary>
         private int _live;
 
@@ -332,7 +338,7 @@ public static unsafe partial class IlEvm
                 bool queued = IlEvmSettings.Mode == IlMode.Adaptive
                     ? IlScheduler.TryEnqueue(new ChunkJob(this, chunk))
                     : IlCompileQueue.Enqueue((Contract: this, Chunk: chunk), static s => s.Contract.CompileChunk(s.Chunk),
-                        static s => Volatile.Read(ref s.Contract._entries[s.Chunk]) * s.Contract.OpsPerPart);
+                        static s => Volatile.Read(ref s.Contract._entries[s.Chunk]) * s.Contract.OpsPerPart, FromRequest);
                 if (!queued)
                 {
                     _entries[chunk] = 0;

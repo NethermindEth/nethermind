@@ -389,6 +389,8 @@ public sealed class IlEvmStartupStep(
             return Task.CompletedTask;
 
         processExit.Token.Register(LogSummary);
+        // Code a cache stamped that the chain does not hold came with a request (IlEvm.IsRequestCode).
+        IlEvm.ChainCode = dbProvider?.CodeDb;
         if (_logger.IsInfo)
             _logger.Info($"IL-EVM: mode {IlEvmSettings.Mode}, scope {IlEvmSettings.Scope}, read-only query surfaces {DescribeSurfaces()}; the exit line counts each surface's frame parts offered and run compiled");
         if (IlEvmSettings.ScopeForcedToAll && _logger.IsWarn)

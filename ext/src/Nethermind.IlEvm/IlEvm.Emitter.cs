@@ -60,10 +60,6 @@ public static unsafe partial class IlEvm
             private LocalBuilder _failGas = null!;
             private LocalBuilder _failOps = null!;
             private LocalBuilder? _memory;
-            /// <summary>The memory window MLOADs read in place (<see cref="IlEvmSettings.MemoryWindow"/>): its start, and the end below which a word is active and initialized, 0 for no window.</summary>
-            private LocalBuilder? _memBase, _memLimit;
-            private LocalBuilder? _coldLimit;
-            private readonly bool _window = IlEvmSettings.MemoryWindow && IlEvmSettings.VectorForms && IlEvmSettings.DirectArithmetic;
             // The segment whose precondition failed, and the opcode count change of a body that left, for the shared paths.
             private LocalBuilder _failSegment = null!;
             private LocalBuilder _opsAdjust = null!;
@@ -106,11 +102,6 @@ public static unsafe partial class IlEvm
                     {
                         if (instruction.Op.Kind is IlKind.MLoad or IlKind.MStore)
                             _memory ??= il.DeclareLocal(typeof(EvmPooledMemory).MakeByRefType());
-                        if (instruction.Op.Kind is IlKind.MLoad && _window && _memLimit is null)
-                        {
-                            _memBase = il.DeclareLocal(typeof(byte).MakeByRefType());
-                            _memLimit = il.DeclareLocal(typeof(ulong));
-                        }
                     }
                 }
                 _word = il.DeclareLocal(typeof(EvmWord));
@@ -256,10 +247,6 @@ public static unsafe partial class IlEvm
                     il.Emit(OpCodes.Call, MemoryOf);
                     il.Emit(OpCodes.Stloc, _memory);
                 }
-
-                // No memory window yet: the first MLOAD asks for one.
-                if (_memLimit is not null)
-                    CloseMemoryWindow();
                 // The chain's opcode count and poll mark stay in the run state, in memory: as locals the JIT moved them at nearly every block boundary.
 
                 Label[] entries = new Label[units.Count];
@@ -520,22 +507,11 @@ public static unsafe partial class IlEvm
                             break;
                         case IlKind.EmbeddedBody:
                         {
-                            string? censusExp = IlEvmCensus.Enabled && instruction.Opcode == (byte)Instruction.EXP
-                                ? $"EXP base {ConstClass(Virtual(delta - 2))} exponent {ConstClass(Virtual(delta - 1))}"
-                                : null;
                             for (int position = delta - op.StackInputs; position < delta; position++)
                                 Materialize(position);
                             int after = delta + op.StackGrowth;
                             // Aliases of the slots the body writes read them first; the hand-back snapshot names where.
                             BeforeWrite(delta - op.StackInputs, Math.Max(delta, after));
-                            if (censusExp is not null)
-                            {
-                                Slot(delta - 1);
-                                il.Emit(OpCodes.Ldc_I4, IlEvmCensus.Site(censusExp, IlEvmCensus.ExpClasses));
-                                il.Emit(OpCodes.Call, CensusMethod(nameof(IlEvmCensus.Exp)));
-                            }
-                            if (IlEvmCensus.Enabled && WritesMemory((Instruction)instruction.Opcode))
-                                _censusMemory.Clear();
                             EmbeddedCall(segment, i, delta, after, Snapshot(after));
                             delta = after;
                             break;
@@ -622,102 +598,8 @@ public static unsafe partial class IlEvm
                 return flag;
             }
 
-            /// <summary>Census only: what the segment so far left at constant memory offsets, "store" or "load", for the forwarding count.</summary>
-            private readonly Dictionary<ulong, string> _censusMemory = [];
-
-            /// <summary>Census only: the class of a value known at compile time, "var" for one that is not.</summary>
-            private static string ConstClass(VVal? value)
-            {
-                if (value is not { Kind: VKind.Const })
-                    return "var";
-                if (value.IsZero) return "0";
-                if (value is { U0: 1, U1: 0, U2: 0, U3: 0 }) return "1";
-                if (PowerOfTwo(value) >= 0) return "pow2";
-                if (value.U1 == ulong.MaxValue && value.U2 == ulong.MaxValue && value.U3 == ulong.MaxValue && value.U0 >= 0xFFFF_FFFF_0000_0000)
-                    return "-small";
-                if (value is { U1: 0, U2: 0, U3: 0 }) return value.U0 <= uint.MaxValue ? "u32" : "u64";
-                if (value is { U2: 0, U3: 0 }) return "u128";
-                if (value.U3 == 0) return "u192";
-                return (value.U3 & SignBit) != 0 ? "negative" : "wide";
-            }
-
-            /// <summary>Census only: a constant memory offset, the scratch and free-memory-pointer words by name.</summary>
-            private static string OffsetClass(ulong offset) => offset switch
-            {
-                0x00 => "0x00",
-                0x20 => "0x20",
-                0x40 => "0x40",
-                0x60 => "0x60",
-                0x80 => "0x80",
-                < 0x400 => "<0x400",
-                _ => ">=0x400",
-            };
-
-            /// <summary>Census only: the embedded bodies that may write words of memory compiled code knows.</summary>
-            private static bool WritesMemory(Instruction instruction) => instruction is Instruction.MSTORE8 or Instruction.CALLDATACOPY or
-                Instruction.CODECOPY or Instruction.EXTCODECOPY or Instruction.RETURNDATACOPY or Instruction.MCOPY;
-
-            /// <summary>Census only: counts a run of a binary arithmetic form that calls a helper, with its operands' run-time classes; operands not constant are in their slots.</summary>
-            private void CensusHelper(IlOp op, VVal? va, VVal? vb, int top, int second)
-            {
-                if (!IlEvmCensus.Enabled || op.Family != IlFamily.Math2 || op.IsPredicate)
-                    return;
-                string name = OperationOf(op)?.Name ?? op.Name ?? "?";
-                bool divide = name is "OpDiv" or "OpMod" or "OpSDiv" or "OpSMod";
-                if (va is { Kind: VKind.Const })
-                {
-                    // The constant is the top operand: a dividend over the word in the second slot.
-                    int id = IlEvmCensus.Site($"{name} helper const-top {ConstClass(va)}", divide ? IlEvmCensus.DivisorClasses : null);
-                    Slot(second);
-                    il.Emit(OpCodes.Ldc_I4, id);
-                    if (divide)
-                    {
-                        EmitLimbs(va);
-                        il.Emit(OpCodes.Call, CensusMethod(nameof(IlEvmCensus.ConstantByDivisor)));
-                    }
-                    else
-                    {
-                        il.Emit(OpCodes.Call, CensusMethod(nameof(IlEvmCensus.Operand)));
-                    }
-                }
-                else if (vb is { Kind: VKind.Const })
-                {
-                    int id = IlEvmCensus.Site($"{name} helper const-second {ConstClass(vb)}", divide ? IlEvmCensus.DivisorClasses : null);
-                    Slot(top);
-                    il.Emit(OpCodes.Ldc_I4, id);
-                    if (divide)
-                    {
-                        EmitLimbs(vb);
-                        il.Emit(OpCodes.Call, CensusMethod(nameof(IlEvmCensus.DivideByConstant)));
-                    }
-                    else
-                    {
-                        il.Emit(OpCodes.Call, CensusMethod(nameof(IlEvmCensus.Operand)));
-                    }
-                }
-                else
-                {
-                    int id = IlEvmCensus.Site($"{name} helper two-word", divide ? IlEvmCensus.DivisorClasses : IlEvmCensus.WidthPairClasses);
-                    Slot(top);
-                    il.Emit(OpCodes.Ldc_I4, id);
-                    il.Emit(OpCodes.Call, CensusMethod(divide ? nameof(IlEvmCensus.Divide) : nameof(IlEvmCensus.Multiply)));
-                }
-            }
-
-            /// <summary>Census only: counts a run of a binary arithmetic form compiled without a helper.</summary>
-            private void CensusDirect(IlOp op, VVal? va, VVal? vb)
-            {
-                if (!IlEvmCensus.Enabled || op.Family != IlFamily.Math2 || op.IsPredicate)
-                    return;
-                VVal? constant = va is { Kind: VKind.Const } ? va : vb;
-                string side = va is { Kind: VKind.Const } ? "top" : "second";
-                il.Emit(OpCodes.Ldc_I4, IlEvmCensus.Site($"{OperationOf(op)?.Name} direct const-{side} {ConstClass(constant)}"));
-                il.Emit(OpCodes.Call, CensusMethod(nameof(IlEvmCensus.Hit)));
-            }
-
             private void EndSegment()
             {
-                _censusMemory.Clear();
                 _virtual.Clear();
                 foreach (LocalBuilder flag in _segmentFlags)
                     _freeFlags.Push(flag);
@@ -1140,12 +1022,8 @@ public static unsafe partial class IlEvm
 
                 _virtual.Remove(second);
                 if (IlEvmSettings.DirectArithmetic && TryEmitWithConstant(op, va, vb, top, second))
-                {
-                    CensusDirect(op, va, vb);
                     return;
-                }
 
-                CensusHelper(op, va, vb, top, second);
                 if (va is not null)
                 {
                     // The constant was on top; the other operand and the result share the second slot.
@@ -1166,7 +1044,7 @@ public static unsafe partial class IlEvm
                 else
                 {
                     Slot(top);
-                    il.Emit(OpCodes.Call, TwoWordHelper(op));
+                    il.Emit(OpCodes.Call, Arithmetic(op.Native!));
                 }
             }
 
@@ -1497,7 +1375,6 @@ public static unsafe partial class IlEvm
 
                 if (TryEmitVectorForm(op, va, vb, top, second))
                 {
-                    CensusDirect(op, va, vb);
                     _virtual.Remove(top);
                     BindScratch(second);
                     return;
@@ -1509,7 +1386,6 @@ public static unsafe partial class IlEvm
                 _virtual.Remove(top);
                 _virtual.Remove(second);
                 BeforeWrite(second, second + 1);
-                CensusHelper(op, va, vb, top, second);
                 if (va is not null)
                 {
                     Slot(second);
@@ -1529,22 +1405,8 @@ public static unsafe partial class IlEvm
                 else
                 {
                     Slot(top);
-                    il.Emit(OpCodes.Call, TwoWordHelper(op));
+                    il.Emit(OpCodes.Call, Arithmetic(op.Native!));
                 }
-            }
-
-            /// <summary>The helper of a two-word arithmetic opcode: the opcode's own, but DIV and MOD's of <see cref="IlEvmSettings.FastDivide"/>.</summary>
-            private static MethodInfo TwoWordHelper(IlOp op)
-            {
-                if (IlEvmSettings.FastDivide && System.Runtime.Intrinsics.X86.X86Base.X64.IsSupported)
-                {
-                    if (op.OperationType == typeof(EvmInstructions.OpDiv))
-                        return _layingOutAhead ? DivideAheadMethod : DivideMethod;
-                    if (op.OperationType == typeof(EvmInstructions.OpMod))
-                        return _layingOutAhead ? ModAheadMethod : ModMethod;
-                }
-
-                return Arithmetic(op.Native!);
             }
 
             /// <summary>AND, OR, XOR; SHL and SHR by a constant; ADD and SUB of a constant below 2^64, or whose two's complement is: the result left in <see cref="VecScratch"/>.</summary>
@@ -1564,15 +1426,10 @@ public static unsafe partial class IlEvm
                     return true;
                 }
 
-                // Two-word arithmetic stays with the helpers, but for ADD and SUB of small words: a vector ADD and SUB carrying between limbs measured slower.
+                // Two-word arithmetic stays with the helpers: a vector ADD and SUB carrying between limbs measured slower.
                 VVal? constant = va is { Kind: VKind.Const } ? va : vb is { Kind: VKind.Const } ? vb : null;
                 if (constant is null)
-                {
-                    if (!IlEvmSettings.FastAddSub || (operation != typeof(EvmInstructions.OpAdd) && operation != typeof(EvmInstructions.OpSub)))
-                        return false;
-                    EmitSmallAddSub(operation == typeof(EvmInstructions.OpAdd), va, vb, top, second);
-                    return true;
-                }
+                    return false;
 
                 bool constantOnTop = ReferenceEquals(constant, va);
                 int x = constantOnTop ? second : top;
@@ -1678,142 +1535,12 @@ public static unsafe partial class IlEvm
                 AddOutOfLine(() =>
                 {
                     il.MarkLabel(wrapped);
-                    ColdVectorCall(!subtract ? (_layingOutAhead ? CarryVectorAheadMethod : CarryVectorMethod) : (_layingOutAhead ? BorrowVectorAheadMethod : BorrowVectorMethod),
-                        !subtract ? (_layingOutAhead ? CarryVectorRefAheadMethod : CarryVectorRefMethod) : (_layingOutAhead ? BorrowVectorRefAheadMethod : BorrowVectorRefMethod),
-                        VecScratch, VecScratch);
+                    il.Emit(OpCodes.Ldloc, VecScratch);
+                    il.Emit(OpCodes.Call, !subtract ? (_layingOutAhead ? CarryVectorAheadMethod : CarryVectorMethod) : (_layingOutAhead ? BorrowVectorAheadMethod : BorrowVectorMethod));
+                    il.Emit(OpCodes.Stloc, VecScratch);
                     il.Emit(OpCodes.Br, back);
                 });
                 return true;
-            }
-
-            private LocalBuilder? _coldArgument0, _coldArgument1;
-
-            /// <summary>
-            /// A cold path's call of a vector helper: <paramref name="arguments"/> go in, after any the caller pushed already, and
-            /// the result to <paramref name="result"/>. With <see cref="IlEvmSettings.ColdLocals"/> the arguments are copied to
-            /// locals only cold paths use and <paramref name="byReference"/> takes those by reference, writing the result over the
-            /// first; else <paramref name="byValue"/> takes them by value. The ABI passes and returns a 32-byte vector through a
-            /// stack copy, which the JIT makes the hot local's own home, keeping that local in memory throughout the chunk.
-            /// </summary>
-            private void ColdVectorCall(MethodInfo byValue, MethodInfo byReference, LocalBuilder result, params LocalBuilder[] arguments)
-            {
-                if (!IlEvmSettings.ColdLocals)
-                {
-                    foreach (LocalBuilder argument in arguments)
-                        il.Emit(OpCodes.Ldloc, argument);
-                    il.Emit(OpCodes.Call, byValue);
-                    il.Emit(OpCodes.Stloc, result);
-                    return;
-                }
-
-                for (int i = 0; i < arguments.Length; i++)
-                {
-                    il.Emit(OpCodes.Ldloc, arguments[i]);
-                    il.Emit(OpCodes.Stloc, ColdArgument(i));
-                }
-
-                for (int i = 0; i < arguments.Length; i++)
-                    il.Emit(OpCodes.Ldloca, ColdArgument(i));
-                il.Emit(OpCodes.Call, byReference);
-                il.Emit(OpCodes.Ldloc, ColdArgument(0));
-                il.Emit(OpCodes.Stloc, result);
-            }
-
-            private LocalBuilder ColdArgument(int index) => index == 0
-                ? _coldArgument0 ??= il.DeclareLocal(typeof(Vector256<ulong>))
-                : _coldArgument1 ??= il.DeclareLocal(typeof(Vector256<ulong>));
-
-            private LocalBuilder? _vecScratchC;
-
-            /// <summary>A third scratch vector, for the second operand of a two-word form, read again on its cold path.</summary>
-            private LocalBuilder VecScratchC => _vecScratchC ??= il.DeclareLocal(typeof(Vector256<ulong>));
-
-            /// <summary>
-            /// Two-word ADD (top + second) or SUB (top - second) into <see cref="VecScratch"/>: one vector add or subtract,
-            /// exact while both words are below 2^63 and a SUB does not borrow, which one test of the operands (and a SUB's
-            /// result, whose low limb then has its sign bit set) tells. Out of line, the lanes' carries or borrows are moved up
-            /// a lane and taken, all in vector registers; only one that runs on through a full lane calls the full operation.
-            /// </summary>
-            private void EmitSmallAddSub(bool add, VVal? va, VVal? vb, int top, int second)
-            {
-                LocalBuilder a = VecScratchB, b = VecScratchC;
-                LoadVec(top, va);
-                il.Emit(OpCodes.Stloc, a);
-                LoadVec(second, vb);
-                il.Emit(OpCodes.Stloc, b);
-                il.Emit(OpCodes.Ldloc, a);
-                il.Emit(OpCodes.Ldloc, b);
-                il.Emit(OpCodes.Call, add ? VecAdd : VecSubtract);
-                il.Emit(OpCodes.Stloc, VecScratch);
-                il.Emit(OpCodes.Ldloc, a);
-                il.Emit(OpCodes.Ldloc, b);
-                il.Emit(OpCodes.Call, VecOr);
-                if (!add)
-                {
-                    il.Emit(OpCodes.Ldloc, VecScratch);
-                    il.Emit(OpCodes.Call, VecOr);
-                }
-
-                Label slow = NewLabel();
-                Label back = NewLabel();
-                EmitVecConst(SignBit, ulong.MaxValue, ulong.MaxValue, ulong.MaxValue);
-                il.Emit(OpCodes.Call, TestZ);
-                il.Emit(OpCodes.Brfalse, slow);
-                il.MarkLabel(back);
-                AddOutOfLine(() =>
-                {
-                    il.MarkLabel(slow);
-                    Label call = NewLabel();
-                    // The lanes that carried out (an add whose lane came out below the top word's) or borrowed (a subtract whose
-                    // top lane was below the second's), as all-ones masks, moved up one lane: the carry or borrow each lane takes.
-                    LocalBuilder taken = ColdArgument(0);
-                    LoadFlipped(add ? a : b, SignBit);
-                    LoadFlipped(add ? VecScratch : a, SignBit);
-                    il.Emit(OpCodes.Call, VecGreaterThanSigned);
-                    il.Emit(OpCodes.Call, VecLongAsUInt64);
-                    il.Emit(OpCodes.Ldc_I4, 0b10_01_00_00);
-                    il.Emit(OpCodes.Call, Permute4x64);
-                    EmitVecConst(0, ulong.MaxValue, ulong.MaxValue, ulong.MaxValue);
-                    il.Emit(OpCodes.Call, VecAnd);
-                    il.Emit(OpCodes.Stloc, taken);
-                    // A lane that takes one and is all ones (an add) or zero (a subtract) passes it on again: out of line.
-                    il.Emit(OpCodes.Ldloc, taken);
-                    il.Emit(OpCodes.Ldloc, VecScratch);
-                    if (add)
-                        EmitVecBroadcast(ulong.MaxValue);
-                    else
-                        il.Emit(OpCodes.Call, VecZero);
-                    il.Emit(OpCodes.Call, VecEquals);
-                    il.Emit(OpCodes.Call, TestZ);
-                    il.Emit(OpCodes.Brfalse, call);
-                    // Taking one: an add's lanes go up by one (minus all ones), a subtract's down by one (plus all ones).
-                    il.Emit(OpCodes.Ldloc, VecScratch);
-                    il.Emit(OpCodes.Ldloc, taken);
-                    il.Emit(OpCodes.Call, add ? VecSubtract : VecAdd);
-                    il.Emit(OpCodes.Stloc, VecScratch);
-                    il.Emit(OpCodes.Br, back);
-                    il.MarkLabel(call);
-                    ColdVectorCall(add ? (_layingOutAhead ? AddVectorAheadMethod : AddVectorMethod) : (_layingOutAhead ? SubtractVectorAheadMethod : SubtractVectorMethod),
-                        add ? (_layingOutAhead ? AddVectorRefAheadMethod : AddVectorRefMethod) : (_layingOutAhead ? SubtractVectorRefAheadMethod : SubtractVectorRefMethod),
-                        VecScratch, a, b);
-                    il.Emit(OpCodes.Br, back);
-                });
-            }
-
-            /// <summary>Pushes the word in <paramref name="local"/> with each limb's top bit flipped, as signed limbs that compare as the unsigned ones do.</summary>
-            private void LoadFlipped(LocalBuilder local, ulong flip)
-            {
-                il.Emit(OpCodes.Ldloc, local);
-                EmitVecBroadcast(flip);
-                il.Emit(OpCodes.Call, VecXor);
-                il.Emit(OpCodes.Call, VecAsInt64);
-            }
-
-            /// <summary>Pushes a vector of four equal limbs, which the JIT loads from its data as any constant; one IL load, not four.</summary>
-            private void EmitVecBroadcast(ulong limb)
-            {
-                il.Emit(OpCodes.Ldc_I8, (long)limb);
-                il.Emit(OpCodes.Call, VectorBroadcast);
             }
 
             /// <summary>AND and OR with a constant, SHL and SHR by a constant, ADD of a constant below 2^64 and SUB of one from the top, written into the second slot.</summary>
@@ -2013,7 +1740,9 @@ public static unsafe partial class IlEvm
                     il.Emit(OpCodes.Call, StackInputData);
                     il.Emit(OpCodes.Ldarg_S, ArgStack);
                     il.Emit(OpCodes.Call, StackInputDataLength);
-                    ColdVectorCall(_layingOutAhead ? CallDataWordAheadMethod : CallDataWordMethod, _layingOutAhead ? CallDataWordRefAheadMethod : CallDataWordRefMethod, VecScratch, at);
+                    il.Emit(OpCodes.Ldloc, at);
+                    il.Emit(OpCodes.Call, _layingOutAhead ? CallDataWordAheadMethod : CallDataWordMethod);
+                    il.Emit(OpCodes.Stloc, VecScratch);
                     il.Emit(OpCodes.Br, back);
                 });
             }
@@ -2077,142 +1806,10 @@ public static unsafe partial class IlEvm
                 return bit;
             }
 
-            /// <summary>Drops the memory window (a limit of 0), after a body that may have grown the memory or given it a new backing.</summary>
-            private void CloseMemoryWindow()
-            {
-                il.Emit(OpCodes.Ldc_I8, 0L);
-                il.Emit(OpCodes.Stloc, _memLimit!);
-            }
-
-            /// <summary>The embedded bodies that leave the memory as it was: no write, no growth.</summary>
-            private static bool KeepsMemory(Instruction instruction) => instruction is Instruction.SLOAD or Instruction.SSTORE or Instruction.TLOAD or
-                Instruction.TSTORE or Instruction.BALANCE or Instruction.EXTCODESIZE or Instruction.EXTCODEHASH or Instruction.BLOCKHASH or
-                Instruction.SELFBALANCE or Instruction.BLOBHASH or Instruction.EXP;
-
-            /// <summary>
-            /// MLOAD from the memory window (<see cref="IlEvmSettings.MemoryWindow"/>): a word ending within it is read in place
-            /// into a vector local; a miss asks for the window again and retries, then goes to the helper, then to the body.
-            /// </summary>
-            /// <param name="value">The offset when it is a constant below 2^32, else null.</param>
-            private void EmitMLoadWindow(IlUnit segment, int index, IlOp op, int delta, VVal? value)
-            {
-                int offset = delta - 1;
-                Label hit = NewLabel(), miss = NewLabel(), slow = NewLabel(), back = NewLabel();
-                LocalBuilder at = OffsetScratch;
-                if (value is not null)
-                {
-                    // A constant offset: in the window when its word ends at or below the limit.
-                    il.Emit(OpCodes.Ldloc, _memLimit!);
-                    il.Emit(OpCodes.Ldc_I8, (long)(value.U0 + EvmStack.WordSize));
-                    il.Emit(OpCodes.Blt_Un, miss);
-                    il.MarkLabel(hit);
-                    il.Emit(OpCodes.Ldloc, _memBase!);
-                    il.Emit(OpCodes.Ldc_I8, (long)value.U0);
-                    il.Emit(OpCodes.Conv_I);
-                    il.Emit(OpCodes.Add);
-                }
-                else
-                {
-                    LoadVec(offset, Virtual(offset));
-                    il.Emit(OpCodes.Stloc, at);
-                    BranchUnlessOffset(at, slow);
-                    il.Emit(OpCodes.Ldloc, at);
-                    il.Emit(OpCodes.Call, VecToScalar);
-                    il.Emit(OpCodes.Ldc_I8, (long)EvmStack.WordSize);
-                    il.Emit(OpCodes.Add);
-                    il.Emit(OpCodes.Ldloc, _memLimit!);
-                    il.Emit(OpCodes.Bgt_Un, miss);
-                    il.MarkLabel(hit);
-                    il.Emit(OpCodes.Ldloc, _memBase!);
-                    il.Emit(OpCodes.Ldloc, at);
-                    il.Emit(OpCodes.Call, VecToScalar);
-                    il.Emit(OpCodes.Conv_I);
-                    il.Emit(OpCodes.Add);
-                }
-
-                il.Emit(OpCodes.Unaligned, (byte)1);
-                il.Emit(OpCodes.Ldobj, typeof(Vector256<ulong>));
-                EmitByteSwap();
-                il.Emit(OpCodes.Stloc, VecScratch);
-                il.MarkLabel(back);
-                _virtual.Remove(offset);
-                (int Position, VVal Value)[] live = Snapshot(offset);
-                BindScratch(offset);
-                VVal? constantOffset = value;
-                AddOutOfLine(() =>
-                {
-                    // The window asked for again, and the read retried in it.
-                    il.MarkLabel(miss);
-                    il.Emit(OpCodes.Ldloc, _memory!);
-                    if (constantOffset is not null)
-                    {
-                        il.Emit(OpCodes.Ldc_I8, (long)(constantOffset.U0 + EvmStack.WordSize));
-                    }
-                    else
-                    {
-                        il.Emit(OpCodes.Ldloc, at);
-                        il.Emit(OpCodes.Call, VecToScalar);
-                        il.Emit(OpCodes.Ldc_I8, (long)EvmStack.WordSize);
-                        il.Emit(OpCodes.Add);
-                    }
-
-                    _coldLimit ??= il.DeclareLocal(typeof(ulong));
-                    il.Emit(OpCodes.Ldloca, _coldLimit);
-                    il.Emit(OpCodes.Call, _layingOutAhead ? MemoryWindowAheadMethod : MemoryWindowMethod);
-                    il.Emit(OpCodes.Stloc, _memBase!);
-                    il.Emit(OpCodes.Ldloc, _coldLimit);
-                    il.Emit(OpCodes.Stloc, _memLimit!);
-                    if (constantOffset is not null)
-                    {
-                        il.Emit(OpCodes.Ldloc, _memLimit!);
-                        il.Emit(OpCodes.Ldc_I8, (long)(constantOffset.U0 + EvmStack.WordSize));
-                        il.Emit(OpCodes.Bge_Un, hit);
-                    }
-                    else
-                    {
-                        il.Emit(OpCodes.Ldloc, at);
-                        il.Emit(OpCodes.Call, VecToScalar);
-                        il.Emit(OpCodes.Ldc_I8, (long)EvmStack.WordSize);
-                        il.Emit(OpCodes.Add);
-                        il.Emit(OpCodes.Ldloc, _memLimit!);
-                        il.Emit(OpCodes.Ble_Un, hit);
-                    }
-
-                    // Not in the window, so not inside the active and initialized memory (the window covers the word wanted whenever
-                    // it is), or at an offset past 2^32: the offset to its slot, and the body.
-                    il.MarkLabel(slow);
-                    if (constantOffset is not null)
-                    {
-                        StoreConstant(offset, constantOffset.U0, 0, 0, 0);
-                    }
-                    else
-                    {
-                        Slot(offset);
-                        il.Emit(OpCodes.Ldloc, at);
-                        il.Emit(OpCodes.Stobj, typeof(Vector256<ulong>));
-                    }
-
-                    EmbeddedCall(segment, index, delta, delta + op.StackGrowth, live);
-                    Slot(offset);
-                    il.Emit(OpCodes.Ldobj, typeof(Vector256<ulong>));
-                    il.Emit(OpCodes.Stloc, VecScratch);
-                    il.Emit(OpCodes.Br, back);
-                });
-            }
-
-
             private void EmitMLoad(IlUnit segment, int index, IlOp op, int delta)
             {
                 int offset = delta - 1;
                 VVal? value = Virtual(offset);
-                if (_memLimit is not null && value is not { Kind: VKind.Const, FitsOffset: false })
-                {
-                    // The slow path writes the offset's slot: its aliases read it first, before anything else is emitted.
-                    BeforeWrite(offset, offset + 1);
-                    EmitMLoadWindow(segment, index, op, delta, value is { Kind: VKind.Const } ? value : null);
-                    return;
-                }
-
                 if (value is not null && (value.Kind != VKind.Const || !value.FitsOffset))
                 {
                     Materialize(offset);
@@ -2221,25 +1818,6 @@ public static unsafe partial class IlEvm
 
                 // The word loaded lands in the offset's slot.
                 BeforeWrite(offset, offset + 1);
-
-                if (IlEvmCensus.Enabled)
-                {
-                    il.Emit(OpCodes.Ldloc, _memory!);
-                    if (value is not null)
-                    {
-                        string seen = _censusMemory.TryGetValue(value.U0, out string? before) ? " after " + before : "";
-                        _censusMemory[value.U0] = before ?? "load";
-                        il.Emit(OpCodes.Ldc_I8, (long)value.U0);
-                        il.Emit(OpCodes.Ldc_I4, IlEvmCensus.Site($"MLOAD const {OffsetClass(value.U0)}{seen}", IlEvmCensus.MemoryClasses));
-                        il.Emit(OpCodes.Call, CensusMethod(nameof(IlEvmCensus.MLoadAt)));
-                    }
-                    else
-                    {
-                        Slot(offset);
-                        il.Emit(OpCodes.Ldc_I4, IlEvmCensus.Site("MLOAD var", IlEvmCensus.MemoryClasses));
-                        il.Emit(OpCodes.Call, CensusMethod(nameof(IlEvmCensus.MLoad)));
-                    }
-                }
 
                 Label slow = NewLabel();
                 Label back = NewLabel();
@@ -2272,82 +1850,6 @@ public static unsafe partial class IlEvm
                 });
             }
 
-            /// <summary>
-            /// MSTORE at a constant offset into the memory window (<see cref="IlEvmSettings.WindowStores"/>): a word inside it is
-            /// overwritten in place, which needs no gas and changes no size; else, out of line, the helper, which may grow the
-            /// memory within its backing, then the body.
-            /// </summary>
-            private void EmitMStoreWindow(IlUnit segment, int index, int delta, VVal vo, VVal? vw)
-            {
-                int offset = delta - 1;
-                int word = delta - 2;
-                Label cold = NewLabel(), back = NewLabel();
-                il.Emit(OpCodes.Ldloc, _memLimit!);
-                il.Emit(OpCodes.Ldc_I8, (long)(vo.U0 + EvmStack.WordSize));
-                il.Emit(OpCodes.Blt_Un, cold);
-                il.Emit(OpCodes.Ldloc, _memBase!);
-                il.Emit(OpCodes.Ldc_I8, (long)vo.U0);
-                il.Emit(OpCodes.Conv_I);
-                il.Emit(OpCodes.Add);
-                if (vw is { Kind: VKind.Const })
-                {
-                    // The constant in memory byte order: big-endian limbs, most significant first.
-                    EmitVecConst(System.Buffers.Binary.BinaryPrimitives.ReverseEndianness(vw.U3), System.Buffers.Binary.BinaryPrimitives.ReverseEndianness(vw.U2),
-                        System.Buffers.Binary.BinaryPrimitives.ReverseEndianness(vw.U1), System.Buffers.Binary.BinaryPrimitives.ReverseEndianness(vw.U0));
-                }
-                else
-                {
-                    LoadVec(word, vw);
-                    EmitByteSwap();
-                }
-
-                il.Emit(OpCodes.Unaligned, (byte)1);
-                il.Emit(OpCodes.Stobj, typeof(Vector256<ulong>));
-                il.MarkLabel(back);
-                _virtual.Remove(offset);
-                _virtual.Remove(word);
-                (int Position, VVal Value)[] live = Snapshot(delta - 2);
-                AddOutOfLine(() =>
-                {
-                    il.MarkLabel(cold);
-                    Label slow = NewLabel();
-                    il.Emit(OpCodes.Ldloc, _memory!);
-                    il.Emit(OpCodes.Ldc_I8, (long)vo.U0);
-                    if (vw is { Kind: VKind.Const })
-                    {
-                        il.Emit(OpCodes.Ldc_I8, (long)System.Buffers.Binary.BinaryPrimitives.ReverseEndianness(vw.U3));
-                        il.Emit(OpCodes.Ldc_I8, (long)System.Buffers.Binary.BinaryPrimitives.ReverseEndianness(vw.U2));
-                        il.Emit(OpCodes.Ldc_I8, (long)System.Buffers.Binary.BinaryPrimitives.ReverseEndianness(vw.U1));
-                        il.Emit(OpCodes.Ldc_I8, (long)System.Buffers.Binary.BinaryPrimitives.ReverseEndianness(vw.U0));
-                        il.Emit(OpCodes.Ldloc, _gas);
-                        il.Emit(OpCodes.Call, Memory(TryMStoreWordAt));
-                    }
-                    else
-                    {
-                        // The helper reads the word from its slot.
-                        if (vw is not null)
-                            EmitStore(word, vw);
-                        Slot(word);
-                        il.Emit(OpCodes.Ldloc, _gas);
-                        il.Emit(OpCodes.Call, Memory(TryMStoreAt));
-                    }
-
-                    il.Emit(OpCodes.Stloc, _limb);
-                    il.Emit(OpCodes.Ldloc, _limb);
-                    il.Emit(OpCodes.Ldc_I8, -1L);
-                    il.Emit(OpCodes.Beq, slow);
-                    il.Emit(OpCodes.Ldloc, _limb);
-                    il.Emit(OpCodes.Stloc, _gas);
-                    il.Emit(OpCodes.Br, back);
-                    il.MarkLabel(slow);
-                    EmitStore(offset, vo);
-                    if (vw is { Kind: VKind.Const })
-                        EmitStore(word, vw);
-                    EmbeddedCall(segment, index, delta, delta - 2, live);
-                    il.Emit(OpCodes.Br, back);
-                });
-            }
-
             private void EmitMStore(IlUnit segment, int index, int delta)
             {
                 int offset = delta - 1;
@@ -2356,12 +1858,6 @@ public static unsafe partial class IlEvm
                 BeforeWrite(word, offset + 1);
                 VVal? vo = Virtual(offset);
                 VVal? vw = Virtual(word);
-                if (_memLimit is not null && IlEvmSettings.WindowStores && vo is { Kind: VKind.Const, FitsOffset: true })
-                {
-                    EmitMStoreWindow(segment, index, delta, vo, vw);
-                    return;
-                }
-
                 if (vw is not null && vw.Kind != VKind.Const)
                 {
                     Materialize(word);
@@ -2376,27 +1872,6 @@ public static unsafe partial class IlEvm
                 {
                     Materialize(word);
                     vw = null;
-                }
-
-                if (IlEvmCensus.Enabled)
-                {
-                    il.Emit(OpCodes.Ldloc, _memory!);
-                    if (vo is not null)
-                    {
-                        foreach (ulong known in _censusMemory.Keys.Where(k => k + 32 > vo.U0 && k < vo.U0 + 32).ToArray())
-                            _censusMemory.Remove(known);
-                        _censusMemory[vo.U0] = "store";
-                        il.Emit(OpCodes.Ldc_I8, (long)vo.U0);
-                        il.Emit(OpCodes.Ldc_I4, IlEvmCensus.Site($"MSTORE const {OffsetClass(vo.U0)} {(vw is not null ? "const word" : "word")}", IlEvmCensus.MemoryClasses));
-                        il.Emit(OpCodes.Call, CensusMethod(nameof(IlEvmCensus.MStoreAt)));
-                    }
-                    else
-                    {
-                        _censusMemory.Clear();
-                        Slot(offset);
-                        il.Emit(OpCodes.Ldc_I4, IlEvmCensus.Site("MSTORE var", IlEvmCensus.MemoryClasses));
-                        il.Emit(OpCodes.Call, CensusMethod(nameof(IlEvmCensus.MStore)));
-                    }
                 }
 
                 Label slow = NewLabel();
@@ -2478,8 +1953,6 @@ public static unsafe partial class IlEvm
                 il.Emit(OpCodes.Ldarg_S, ArgGas);
                 il.Emit(OpCodes.Ldfld, GasValue);
                 il.Emit(OpCodes.Stloc, _gas);
-                if (_memLimit is not null && !KeepsMemory((Instruction)instruction.Opcode))
-                    CloseMemoryWindow();
 
                 _usesLeaveSite = true;
                 AddOutOfLine(() =>
@@ -2526,9 +1999,6 @@ public static unsafe partial class IlEvm
                 il.Emit(OpCodes.Ldfld, StackHead);
                 il.Emit(OpCodes.Stloc, _head);
                 AddOps(1);
-                // A call, a create or a return may grow the memory, and give it a new backing.
-                if (_memLimit is not null)
-                    CloseMemoryWindow();
 
                 if (op.Kind == IlKind.TerminatingBody)
                 {
