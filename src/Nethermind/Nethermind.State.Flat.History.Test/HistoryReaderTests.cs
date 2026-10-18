@@ -7,12 +7,10 @@ using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.IO;
 using Nethermind.Db;
 using Nethermind.Db.Rocks;
-using Nethermind.Db.Rocks.Config;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using NUnit.Framework;
@@ -137,7 +135,7 @@ public class HistoryReaderTests
     public void A_row_landing_under_a_v3_read_is_observed_only_when_a_capture_was_published(bool publishCapture, ulong expectedNonce, bool scoped)
     {
         using TempPath directory = TempPath.GetTempDirectory();
-        using ColumnsDb<FlatHistoryColumns>? rocks = scoped ? CreateRocksHistory(directory.Path) : null;
+        using ColumnsDb<FlatHistoryColumns>? rocks = scoped ? RocksHistoryTestDb.CreateColumns(directory.Path) : null;
         IColumnsDb<FlatHistoryColumns> history = rocks is null ? _historyColumns : rocks;
         FlatDbConfig config = new() { HistoryEnabled = true, HistoryRetention = HistoryRetentionMode.Rolling, HistoryRetentionBlocks = 100 };
         (HistoryAvailability availability, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(history, config);
@@ -168,7 +166,7 @@ public class HistoryReaderTests
     public void A_storage_row_landing_under_a_v3_read_is_observed_only_when_a_capture_was_published(bool publishCapture, bool expectedFound, bool scoped)
     {
         using TempPath directory = TempPath.GetTempDirectory();
-        using ColumnsDb<FlatHistoryColumns>? rocks = scoped ? CreateRocksHistory(directory.Path) : null;
+        using ColumnsDb<FlatHistoryColumns>? rocks = scoped ? RocksHistoryTestDb.CreateColumns(directory.Path) : null;
         IColumnsDb<FlatHistoryColumns> history = rocks is null ? _historyColumns : rocks;
         FlatDbConfig config = new() { HistoryEnabled = true, HistoryRetention = HistoryRetentionMode.Rolling, HistoryRetentionBlocks = 100 };
         (HistoryAvailability availability, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(history, config);
@@ -246,7 +244,7 @@ public class HistoryReaderTests
     public void PersistenceReader_AfterTheFirstRead_ReusesAndDisposesNativeViews([Values] bool storage)
     {
         using TempPath directory = TempPath.GetTempDirectory();
-        using ColumnsDb<FlatHistoryColumns> history = CreateRocksHistory(directory.Path);
+        using ColumnsDb<FlatHistoryColumns> history = RocksHistoryTestDb.CreateColumns(directory.Path);
         HistoryColumnsWriter.RecordAccountV3(history, Address, 20, new Account(5, 500));
         HistoryColumnsWriter.RecordStorageV3(history, Address, Slot, 20, [0x55]);
         HistoryColumnsWriter.MarkBlockV3(history, 10, Keccak.EmptyTreeHash);
@@ -307,13 +305,6 @@ public class HistoryReaderTests
         }
     }
 
-    private static ColumnsDb<FlatHistoryColumns> CreateRocksHistory(string path)
-    {
-        DbConfig config = new();
-        RocksDbConfigFactory factory = new(config, new PruningConfig(), new TestHardwareInfo(), LimboLogs.Instance, validateConfig: false);
-        return new ColumnsDb<FlatHistoryColumns>(path, new DbSettings("FlatHistory", "history"), config, factory,
-            LimboLogs.Instance, Enum.GetValues<FlatHistoryColumns>());
-    }
 
     private sealed class HookedColumns<TKey>(IColumnsDb<TKey> inner, TKey hookedColumn, Action onFirstRead, Func<ISortedView, ISortedView>? onView = null)
         : IColumnsDb<TKey> where TKey : struct, Enum

@@ -3,12 +3,10 @@
 
 using System;
 using Nethermind.Core;
-using Nethermind.Core.Test.IO;
-using Nethermind.Db.Rocks;
-using Nethermind.Db.Rocks.Config;
-using Nethermind.Logging;
 using Nethermind.Core.Test;
+using Nethermind.Core.Test.IO;
 using Nethermind.Db;
+using Nethermind.Db.Rocks;
 using NUnit.Framework;
 
 namespace Nethermind.State.Flat.History.Test;
@@ -131,9 +129,7 @@ public class HistoryStoreV3Tests
         [Values(0, 1, 64)] int bufferLength, [Values] bool empty)
     {
         using TempPath directory = TempPath.GetTempDirectory();
-        DbConfig config = new();
-        RocksDbConfigFactory factory = new(config, new PruningConfig(), new TestHardwareInfo(), LimboLogs.Instance, validateConfig: false);
-        using DbOnTheRocks db = new(directory.Path, new DbSettings("Blocks", "history"), config, factory, LimboLogs.Instance);
+        using DbOnTheRocks db = RocksHistoryTestDb.CreateDb(directory.Path);
         using SnapshotCeilingDb observed = new(db);
         HistoryStoreV3 store = new(observed);
         using (IWriteBatch batch = db.StartWriteBatch())
@@ -166,9 +162,7 @@ public class HistoryStoreV3Tests
     public void ReadScope_WhenCaptureGenerationChanges_RefreshesTheSnapshot([Values] bool flush)
     {
         using TempPath directory = TempPath.GetTempDirectory();
-        DbConfig config = new();
-        RocksDbConfigFactory factory = new(config, new PruningConfig(), new TestHardwareInfo(), LimboLogs.Instance, validateConfig: false);
-        using DbOnTheRocks db = new(directory.Path, new DbSettings("Blocks", "history"), config, factory, LimboLogs.Instance);
+        using DbOnTheRocks db = RocksHistoryTestDb.CreateDb(directory.Path);
         HistoryStoreV3 store = new(db);
         using (IWriteBatch batch = db.StartWriteBatch()) store.RecordPreValue(20, KeyA, [0xAA], batch);
         if (flush) db.Flush();
