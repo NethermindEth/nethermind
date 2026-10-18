@@ -175,6 +175,8 @@ sealed class ReadSet
     public required StorageCell[] Slots { get; init; }
     public required Dictionary<Address, int> Indexes { get; init; }
     public int ExpectedSlotReads { get; init; }
+    /// <summary>A random 60% of the read set, warmed before a partial-cold run.</summary>
+    public required bool[] WarmMask { get; init; }
 
     public static ReadSet Create(int totalAccounts, int slotAccounts, int plainAccounts, int slotsPerAccount, Random random)
     {
@@ -220,6 +222,7 @@ sealed class ReadSet
             Slots = [.. slots],
             Indexes = map,
             ExpectedSlotReads = expectedSlots,
+            WarmMask = [.. Enumerable.Range(0, indexes.Count).Select(_ => random.NextDouble() < 0.6)],
         };
     }
 }

@@ -47,6 +47,8 @@ foreach (string name in cases)
     string temperature = name[(name.IndexOf('-') + 1)..];
     Dictionary<bool, List<double>> samples = new() { [false] = [], [true] = [] };
     Dictionary<bool, long> prefetched = new() { [false] = 0, [true] = 0 };
+    Dictionary<bool, long> coldBatches = new() { [false] = 0, [true] = 0 };
+    Dictionary<bool, long> warmBatches = new() { [false] = 0, [true] = 0 };
     Random random = new(HashCode.Combine(name, 20261018));
 
     for (int round = 0; round < rounds; round++)
@@ -64,8 +66,12 @@ foreach (string name in cases)
             }
 
             long before = Metrics.PrefetchedKeys;
+            long coldBefore = Metrics.PrefetchColdBatches;
+            long warmBefore = Metrics.PrefetchWarmBatches;
             (double us, int mismatches) = Run(set, prefetch, bal);
             prefetched[prefetch] += Metrics.PrefetchedKeys - before;
+            coldBatches[prefetch] += Metrics.PrefetchColdBatches - coldBefore;
+            warmBatches[prefetch] += Metrics.PrefetchWarmBatches - warmBefore;
             if (mismatches != 0)
             {
                 failures++;
@@ -78,12 +84,15 @@ foreach (string name in cases)
 
     double offMedian = Median(samples[false]);
     double onMedian = Median(samples[true]);
+    // Completions are asynchronous; let the last batches report before reading the counters.
+    Thread.Sleep(200);
     rows.Add(new CaseResult(name,
-        new ArmResult(offMedian, samples[false].Average(), Percentile(samples[false], 0.9), samples[false], prefetched[false]),
-        new ArmResult(onMedian, samples[true].Average(), Percentile(samples[true], 0.9), samples[true], prefetched[true]),
+        new ArmResult(offMedian, samples[false].Average(), Percentile(samples[false], 0.9), samples[false], prefetched[false], coldBatches[false], warmBatches[false]),
+        new ArmResult(onMedian, samples[true].Average(), Percentile(samples[true], 0.9), samples[true], prefetched[true], coldBatches[true], warmBatches[true]),
         (onMedian / offMedian - 1) * 100, offMedian / onMedian));
     File.WriteAllText(output, JsonSerializer.Serialize(rows, new JsonSerializerOptions { WriteIndented = true }));
-    if (prefetched[false] != 0 || prefetched[true] == 0)
+    // A warm database closes the gate, so only cold cases must prefetch; no case may prefetch with the flag off.
+    if (prefetched[false] != 0 || (temperature != "warm" && prefetched[true] == 0))
     {
         failures++;
         Console.Error.WriteLine($"FAILED {name}: prefetched keys off={prefetched[false]} on={prefetched[true]}");
@@ -91,10 +100,10 @@ foreach (string name in cases)
 }
 
 Console.WriteLine();
-Console.WriteLine("| case | off median us | on median us | time change | speedup | off p90 | on p90 |");
-Console.WriteLine("|---|---:|---:|---:|---:|---:|---:|");
+Console.WriteLine("| case | off median us | on median us | time change | speedup | off p90 | on p90 | prefetched keys | cold/warm batches |");
+Console.WriteLine("|---|---:|---:|---:|---:|---:|---:|---:|---:|");
 foreach (CaseResult row in rows)
-    Console.WriteLine($"| {row.Name} | {row.Off.Median:F0} | {row.On.Median:F0} | {row.TimeChangePercent:+0.0;-0.0}% | {row.Speedup:F2}x | {row.Off.P90:F0} | {row.On.P90:F0} |");
+    Console.WriteLine($"| {row.Name} | {row.Off.Median:F0} | {row.On.Median:F0} | {row.TimeChangePercent:+0.0;-0.0}% | {row.Speedup:F2}x | {row.Off.P90:F0} | {row.On.P90:F0} | {row.On.PrefetchedKeys} | {row.On.ColdBatches}/{row.On.WarmBatches} |");
 return failures == 0 ? 0 : 2;
 
 (double Us, int Mismatches) Run(ReadSet set, bool prefetch, bool bal)
@@ -127,15 +136,18 @@ return failures == 0 ? 0 : 2;
 
 void WarmPart(ReadSet set, bool bal)
 {
-    int warmCount = set.Addresses.Length * 6 / 10;
     using FlatWorldStateScope scope = fixture.OpenScope(prefetch: false);
     if (bal)
     {
-        ReadOnlyAccountChanges[] part = [.. set.Bal.AccountChanges.AsSpan()[..warmCount]];
+        ReadOnlyAccountChanges[] all = [.. set.Bal.AccountChanges.AsSpan()];
+        ReadOnlyAccountChanges[] part = [.. all.Where((_, k) => set.WarmMask[k])];
         scope.HintBal(new ReadOnlyBlockAccessList(part, part.Length), new VerifyingSink(set.Indexes)).GetAwaiter().GetResult();
         return;
     }
-    for (int k = 0; k < warmCount; k++) scope.Get(set.Addresses[k]);
+    for (int k = 0; k < set.Addresses.Length; k++)
+    {
+        if (set.WarmMask[k]) scope.Get(set.Addresses[k]);
+    }
 }
 
 static double Median(List<double> values) => Percentile(values, 0.5);
@@ -149,5 +161,5 @@ static double Percentile(List<double> values, double p)
     return sorted[low] + (sorted[high] - sorted[low]) * (rank - low);
 }
 
-record ArmResult(double Median, double Mean, double P90, List<double> Samples, long PrefetchedKeys);
+record ArmResult(double Median, double Mean, double P90, List<double> Samples, long PrefetchedKeys, long ColdBatches, long WarmBatches);
 record CaseResult(string Name, ArmResult Off, ArmResult On, double TimeChangePercent, double Speedup);
