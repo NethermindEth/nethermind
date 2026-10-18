@@ -55,19 +55,18 @@ public class RawTrieStoreTests
         }
     }
 
-    [TestCase(33)]
-    [TestCase(40)]
-    [TestCase(64)]
-    [TestCase(65)]
-    public void Keys_longer_than_32_bytes_can_be_set_and_read(int keyLength)
+    [Test]
+    public void Keys_longer_than_32_bytes_can_be_set_and_read([Values(33, 40, 64, 65)] int keyLength)
     {
         PatriciaTree patriciaTree = new(new RawTrieStore(new MemDb()).GetTrieStore(null), LimboLogs.Instance);
         byte[] key = new byte[keyLength];
         key[^1] = 1;
         byte[] value = TestItem.KeccakA.BytesToArray();
 
+        patriciaTree.WarmUpPath(key);
         patriciaTree.Set(key, value);
         patriciaTree.Commit();
+        patriciaTree.WarmUpPath(key);
 
         Assert.That(patriciaTree.Get(key).ToArray(), Is.EqualTo(value));
     }
