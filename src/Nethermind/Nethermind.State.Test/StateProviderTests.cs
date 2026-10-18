@@ -93,7 +93,6 @@ public class StateProviderTests(bool useFlat)
                     .WithCodeChanges(new CodeChange(1, code))
                     .WithStorageChanges(5, new StorageChange(1, 7))
                     .TestObject,
-                // Storage-only, like the beacon-root and history system contracts in every block.
                 Build.An.AccountChanges
                     .WithAddress(TestItem.AddressD)
                     .WithStorageChanges(1, new StorageChange(1, 0x55))
@@ -1138,9 +1137,12 @@ public class AccountBatchPrewarmingTests
     [Test]
     public void WarmUpAccounts_WhenBatchFails_DoesNotCacheUnresolvedNulls([Values] bool missingTrie)
     {
-        AccountBatchScope scope = new() { Failure = missingTrie
+        AccountBatchScope scope = new()
+        {
+            Failure = missingTrie
             ? new MissingTrieNodeException("test missing account", null, default, Keccak.Zero)
-            : new InvalidOperationException("test failed batch") };
+            : new InvalidOperationException("test failed batch")
+        };
         StateProvider provider = new(LimboLogs.Instance, new LocalMetrics());
         provider.SetScope(scope);
         Address[] addresses = [TestItem.AddressA, TestItem.AddressC, .. TestItem.Addresses[10..18]];
