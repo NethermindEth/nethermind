@@ -388,16 +388,7 @@ public class HashesOnlyBlockReaderTests
     [Test]
     public async Task eth_getBlockByNumber_BlockBelowTheHeadWindow_ReturnsTheBlockTreeResponse()
     {
-        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(static builder =>
-            builder.AddSingleton<HashesOnlyBlockReader, IDbProvider, IHeaderDecoder, IChainLevelInfoRepository, IHeaderStore, IBlockTree, ISpecProvider>(
-                static (dbProvider, headerDecoder, chainLevels, headerStore, blockTree, specProvider) => new HashesOnlyBlockReader(
-                    dbProvider.BlocksDb, headerDecoder, chainLevels, headerStore, blockTree, specProvider, headWindow: 0, CacheBudget)));
-        await chain.AddBlock(
-            Build.A.Transaction.WithNonce(0).WithType(TxType.Legacy).SignedAndResolved(TestItem.PrivateKeyB).TestObject,
-            Build.A.Transaction.WithNonce(0).WithType(TxType.EIP1559).WithMaxFeePerGas(20.GWei).SignedAndResolved(TestItem.PrivateKeyC).TestObject);
-        await chain.AddBlock();
-        // The reader reads the block store directly, so the deferred body writes must have landed first.
-        chain.Container.Resolve<IDeferredBlockDataWriter>().Drain();
+        using TestRpcBlockchain chain = await BuildRpcChainWithoutHeadWindow();
         HashesOnlyBlockReader reader = chain.Container.Resolve<HashesOnlyBlockReader>();
         BlockForRpcFactory factory = new();
 
@@ -420,6 +411,60 @@ public class HashesOnlyBlockReaderTests
                     $"block {number} must have been read through the reader");
             }
         }
+    }
+
+    [Test]
+    public async Task CountMethods_BlockBelowTheHeadWindow_ReturnTheBlockTreeCounts([Values] bool byHash, [Values] bool uncles)
+    {
+        using TestRpcBlockchain chain = await BuildRpcChainWithoutHeadWindow();
+        HashesOnlyBlockReader reader = chain.Container.Resolve<HashesOnlyBlockReader>();
+        IEthRpcModule eth = chain.EthRpcModule;
+
+        for (ulong number = 1; number < chain.BlockTree.Head!.Number; number++)
+        {
+            Block block = chain.BlockFinder.FindBlock(number)!;
+            BlockParameter parameter = byHash ? new BlockParameter(block.Hash!) : new BlockParameter(number);
+
+            // One method per case, so the reader read below can only come from the method under test.
+            UInt256? count = (uncles, byHash) switch
+            {
+                (true, true) => eth.eth_getUncleCountByBlockHash(block.Hash!).Data,
+                (true, false) => eth.eth_getUncleCountByBlockNumber(parameter).Data,
+                (false, true) => eth.eth_getBlockTransactionCountByHash(block.Hash!).Data,
+                (false, false) => eth.eth_getBlockTransactionCountByNumber(parameter).Data,
+            };
+
+            // Only the module's own read can have cached the block once its body is gone from the store.
+            chain.DbProvider.BlocksDb.Delete(block.Number, block.Hash!);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(count, Is.EqualTo((UInt256)(uncles ? block.Uncles.Length : block.Transactions.Length)), $"block {number} count");
+                Assert.That(reader.Find(chain.BlockFinder, parameter), Is.Not.Null, $"block {number} must have been read through the reader");
+            }
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(eth.eth_getBlockTransactionCountByHash(TestItem.KeccakA).Data, Is.Null, "an unknown hash has no transaction count");
+            Assert.That(eth.eth_getUncleCountByBlockHash(TestItem.KeccakA).Data, Is.Null, "an unknown hash has no uncle count");
+            Assert.That(eth.eth_getBlockTransactionCountByNumber(new BlockParameter(0xFFFFFFFFUL)).Data, Is.Null, "a block above the head has no transaction count");
+            Assert.That(eth.eth_getUncleCountByBlockNumber(new BlockParameter(0xFFFFFFFFUL)).Data, Is.Null, "a block above the head has no uncle count");
+        }
+    }
+
+    private static async Task<TestRpcBlockchain> BuildRpcChainWithoutHeadWindow()
+    {
+        TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(static builder =>
+            builder.AddSingleton<HashesOnlyBlockReader, IDbProvider, IHeaderDecoder, IChainLevelInfoRepository, IHeaderStore, IBlockTree, ISpecProvider>(
+                static (dbProvider, headerDecoder, chainLevels, headerStore, blockTree, specProvider) => new HashesOnlyBlockReader(
+                    dbProvider.BlocksDb, headerDecoder, chainLevels, headerStore, blockTree, specProvider, headWindow: 0, CacheBudget)));
+        await chain.AddBlock(
+            Build.A.Transaction.WithNonce(0).WithType(TxType.Legacy).SignedAndResolved(TestItem.PrivateKeyB).TestObject,
+            Build.A.Transaction.WithNonce(0).WithType(TxType.EIP1559).WithMaxFeePerGas(20.GWei).SignedAndResolved(TestItem.PrivateKeyC).TestObject);
+        await chain.AddBlock();
+        // The reader reads the block store directly, so the deferred body writes must have landed first.
+        chain.Container.Resolve<IDeferredBlockDataWriter>().Drain();
+        return chain;
     }
 
     private static (IBlockTree BlockTree, HashesOnlyBlockReader Reader) BuildChain()
