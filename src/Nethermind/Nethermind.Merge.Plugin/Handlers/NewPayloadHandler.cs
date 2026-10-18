@@ -436,6 +436,10 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     /// undecidable from state alone: only execution records the gas dimensions appendability is judged on,
     /// so the caller must fall through to it rather than guess.
     /// After cache loss or restart, even resending the current head can therefore answer SYNCING.
+    /// Unlike a judgment on the block's own state, this one, and <see cref="TryEvaluate"/> for the forkchoice head,
+    /// is therefore also null after a restart that kept only the head's state, once the access list store has
+    /// dropped the block's list, or on a chain that enables EIP-7805 without EIP-7928; a resent payload then
+    /// answers SYNCING or is re-executed.
     /// </remarks>
     private ResultWrapper<PayloadStatusV1>? EvaluateInclusionListFromState(Block block)
     {
