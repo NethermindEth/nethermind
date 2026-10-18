@@ -719,10 +719,11 @@ public class GuestDispatchDifferentialTests
             code[immediate + 1] = (byte)destination;
         }
 
+        List<int> shortJumpDestinations = jumpDestinations.FindAll(static destination => destination <= byte.MaxValue);
         foreach (int immediate in shortDestinationImmediates)
         {
-            code[immediate] = (byte)(jumpDestinations.Count > 0 && random.Next(5) != 0
-                ? jumpDestinations[random.Next(jumpDestinations.Count)]
+            code[immediate] = (byte)(shortJumpDestinations.Count > 0 && random.Next(5) != 0
+                ? shortJumpDestinations[random.Next(shortJumpDestinations.Count)]
                 : random.Next(0, code.Count + 3));
         }
 
