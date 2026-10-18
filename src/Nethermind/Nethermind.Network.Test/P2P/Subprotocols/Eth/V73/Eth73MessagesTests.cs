@@ -95,8 +95,9 @@ public class Eth73MessagesTests
             Assert.That(ProofWrapperTransport.ResponseLength(long.MaxValue, Eth73Protocol.MaxWrapperBytes), Is.LessThanOrEqualTo(Eth73Protocol.LocalMaxResponseBytes));
             Assert.That(Eth73Protocol.ExceedsMessageLimit(Eth73MessageCode.ProofWrappers, Eth73Protocol.LocalMaxResponseBytes), Is.False);
             Assert.That(Eth73Protocol.ExceedsMessageLimit(Eth73MessageCode.ProofWrappers, Eth73Protocol.LocalMaxResponseBytes + 1), Is.True);
-            Assert.That(Eth73Protocol.ExceedsMessageLimit(Eth73MessageCode.GetProofWrappers, Eth73Protocol.LocalMaxRequestBytes + 1), Is.True);
-            Assert.That(Eth73Protocol.ExceedsMessageLimit(Eth73MessageCode.NewProofWrapperHashes, Eth73Protocol.LocalMaxRequestBytes), Is.False);
+            Assert.That(Eth73Protocol.ExceedsMessageLimit(Eth73MessageCode.GetProofWrappers, Eth73Protocol.MaxGetProofWrappersBytes + 1), Is.True);
+            Assert.That(Eth73Protocol.ExceedsMessageLimit(Eth73MessageCode.NewProofWrapperHashes, Eth73Protocol.MaxNewProofWrapperHashesBytes), Is.False);
+            Assert.That(Eth73Protocol.ExceedsMessageLimit(Eth73MessageCode.NewProofWrapperHashes, Eth73Protocol.MaxNewProofWrapperHashesBytes + 1), Is.True);
             Assert.That(Eth73Protocol.ExceedsMessageLimit(0x0a, int.MaxValue), Is.False, "PooledTransactions keeps its eth limits");
             Assert.That(Eth73Protocol.ExceedsMessageLimit(0x15, int.MaxValue), Is.False, "eth/72 messages keep their own limits");
         }
@@ -111,9 +112,9 @@ public class Eth73MessagesTests
         ValueHash256[] requested = [.. Enumerable.Range(1, Eth73Protocol.MaxWrappersPerRequest).Select(i => new ValueHash256(Word(i)))];
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(new NewProofWrapperHashesMessageSerializer().Encode(new(announced)), Has.Length.EqualTo(2435));
+            Assert.That(new NewProofWrapperHashesMessageSerializer().Encode(new(announced)), Has.Length.EqualTo(Eth73Protocol.MaxNewProofWrapperHashesBytes).And.Length.EqualTo(2435));
             // EIP-8437 check_vectors.py also asserts request ID 2**63 - 1, the largest this client issues, at 2,127 bytes.
-            Assert.That(new GetProofWrappersMessageSerializer().Encode(new(long.MaxValue, requested)), Has.Length.EqualTo(2127));
+            Assert.That(new GetProofWrappersMessageSerializer().Encode(new(long.MaxValue, requested)), Has.Length.EqualTo(Eth73Protocol.MaxGetProofWrappersBytes).And.Length.EqualTo(2127));
             Assert.That(new GetProofWrappersMessageSerializer().Encode(new(7, [default])).ToHexString(), Is.EqualTo("e307e1a0" + new string('0', 64)));
         }
 

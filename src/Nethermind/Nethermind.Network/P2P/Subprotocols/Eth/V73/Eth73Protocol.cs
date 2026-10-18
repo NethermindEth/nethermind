@@ -36,10 +36,13 @@ public static class Eth73Protocol
     /// wrapper, so a response holds one wrapper of up to <see cref="MaxWrapperBytes"/> plus its RLP framing.</remarks>
     public const int LocalMaxResponseBytes = SoftResponseLimit + 1024;
 
-    /// <summary>This client's own cap on NewProofWrapperHashes and GetProofWrappers message data, checked before
-    /// decompression.</summary>
-    /// <remarks>Not an EIP-8437 constant: at their 64-entry limits these messages encode in at most 2,435 and 2,127 bytes.</remarks>
-    public const int LocalMaxRequestBytes = 4 * 1024;
+    /// <summary>The largest valid NewProofWrapperHashes, 64 entries at their widest, bounding message data before
+    /// decompression (EIP-8437).</summary>
+    public const int MaxNewProofWrapperHashesBytes = 2435;
+
+    /// <summary>The largest valid GetProofWrappers, 64 hashes under the widest request ID, bounding message data before
+    /// decompression (EIP-8437).</summary>
+    public const int MaxGetProofWrappersBytes = 2127;
 
     /// <summary>Entries per NewProofWrapperHashes.</summary>
     public const int MaxAnnouncements = 64;
@@ -58,7 +61,8 @@ public static class Eth73Protocol
     public static bool ExceedsMessageLimit(int code, int uncompressedLength) => code switch
     {
         Eth73MessageCode.ProofWrappers => uncompressedLength > LocalMaxResponseBytes,
-        Eth73MessageCode.NewProofWrapperHashes or Eth73MessageCode.GetProofWrappers => uncompressedLength > LocalMaxRequestBytes,
+        Eth73MessageCode.NewProofWrapperHashes => uncompressedLength > MaxNewProofWrapperHashesBytes,
+        Eth73MessageCode.GetProofWrappers => uncompressedLength > MaxGetProofWrappersBytes,
         _ => false
     };
 }

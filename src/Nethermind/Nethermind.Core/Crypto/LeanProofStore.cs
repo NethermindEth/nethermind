@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using System.Threading;
 
 namespace Nethermind.Core.Crypto;
@@ -26,6 +27,8 @@ public sealed class LeanProofStore(Func<Transaction, ValueHash256> computeSignat
     private readonly object _lock = new();
     private readonly Dictionary<FrameDependency, ProofRecord> _coverage = [];
     private readonly LinkedList<ProofRecord> _records = [];
+    // Every stored record proving a dependency, in storage order, so losing coverage finds a fallback without a full scan.
+    private readonly Dictionary<FrameDependency, List<ProofRecord>> _holders = [];
     private readonly Dictionary<ValueHash256, ProofRecord> _identities = [];
     private readonly Dictionary<ValueHash256, ProofRecord> _recursiveByDeps = [];
     private readonly LinkedList<ProofRecord> _recursiveCache = [];
@@ -380,6 +383,11 @@ public sealed class LeanProofStore(Func<Transaction, ValueHash256> computeSignat
         record.Node = _records.AddLast(record);
         _identities.Add(record.Identity, record);
         _storedBytes += record.Size;
+        foreach (FrameDependency dependency in record.Dependencies)
+        {
+            ref List<ProofRecord>? holders = ref CollectionsMarshal.GetValueRefOrAddDefault(_holders, dependency, out _);
+            (holders ??= []).Add(record);
+        }
     }
 
     private bool MakeRoom(long size, int records = 1)
@@ -403,6 +411,9 @@ public sealed class LeanProofStore(Func<Transaction, ValueHash256> computeSignat
         _identities.Remove(record.Identity);
         _storedBytes -= record.Size;
         foreach (FrameDependency dependency in record.Dependencies)
+            if (_holders.TryGetValue(dependency, out List<ProofRecord>? holders) && holders.Remove(record) && holders.Count == 0)
+                _holders.Remove(dependency);
+        foreach (FrameDependency dependency in record.Dependencies)
         {
             if (!_coverage.TryGetValue(dependency, out ProofRecord? current) || !ReferenceEquals(current, record)) continue;
             _coverage.Remove(dependency);
@@ -419,10 +430,10 @@ public sealed class LeanProofStore(Func<Transaction, ValueHash256> computeSignat
     /// <summary>A stored record proving <paramref name="dependency"/>, preferring a direct witness.</summary>
     private ProofRecord? FindStoredCoverage(in FrameDependency dependency)
     {
+        if (!_holders.TryGetValue(dependency, out List<ProofRecord>? holders)) return null;
         ProofRecord? recursive = null;
-        foreach (ProofRecord candidate in _records)
+        foreach (ProofRecord candidate in holders)
         {
-            if (Array.IndexOf(candidate.Dependencies, dependency) < 0) continue;
             if (candidate.Witnesses is not null) return candidate;
             recursive ??= candidate;
         }

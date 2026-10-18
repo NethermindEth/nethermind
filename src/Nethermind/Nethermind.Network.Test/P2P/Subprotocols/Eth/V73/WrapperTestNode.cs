@@ -35,9 +35,13 @@ internal sealed class WrapperTestVerifier : ILeanProofVerifier
     public bool VerifyLeanSphincs(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness) => Valid;
     public bool VerifyLeanStark(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness) => Valid;
 
+    /// <summary>When set, recursive STARK checks throw this instead of returning a verdict.</summary>
+    public Exception? Throws { get; set; }
+
     public bool VerifyRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, ReadOnlySpan<byte> proof)
     {
         Interlocked.Increment(ref _calls);
+        if (Throws is { } exception) throw exception;
         return Valid;
     }
 

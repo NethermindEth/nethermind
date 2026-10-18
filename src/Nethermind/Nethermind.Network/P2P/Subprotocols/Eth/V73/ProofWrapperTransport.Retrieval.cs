@@ -332,8 +332,21 @@ public sealed partial class ProofWrapperTransport
             // transaction list is checked once every hash resolves. A failed check stops the recovery.
             using CancellationTokenSource recovery = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
             Task<bool> recovering = RecoverEnvelopesAsync(fetch, hashes, missing, recovered, recovery.Token);
-            (Verdict claims, string? claimsError) = await VerifyAsync(token => _wrappers.VerifyClaimedProofsOwnedAsync(wrapper, token), cancellation)
-                .ConfigureAwait(false);
+            Verdict claims;
+            string? claimsError;
+            try
+            {
+                (claims, claimsError) = await VerifyAsync(token => _wrappers.VerifyClaimedProofsOwnedAsync(wrapper, token), cancellation)
+                    .ConfigureAwait(false);
+            }
+            catch (Exception)
+            {
+                // Stop the recovery before its source is disposed; the verification failure is what propagates.
+                await recovery.CancelAsync().ConfigureAwait(false);
+                try { await recovering.ConfigureAwait(false); }
+                catch (Exception) { }
+                throw;
+            }
             if (claims != Verdict.Valid) await recovery.CancelAsync().ConfigureAwait(false);
             bool resolved;
             try { resolved = await recovering.ConfigureAwait(false); }

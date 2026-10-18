@@ -670,8 +670,10 @@ public class SessionTests
     // PooledTransactions (0x0a), which carries recovered envelopes, keeps its eth limits.
     [TestCase(73, 0x18, Network.P2P.Subprotocols.Eth.V73.Eth73Protocol.LocalMaxResponseBytes, false)]
     [TestCase(73, 0x18, Network.P2P.Subprotocols.Eth.V73.Eth73Protocol.LocalMaxResponseBytes + 1, true)]
-    [TestCase(73, 0x17, Network.P2P.Subprotocols.Eth.V73.Eth73Protocol.LocalMaxRequestBytes + 1, true)]
-    [TestCase(73, 0x16, Network.P2P.Subprotocols.Eth.V73.Eth73Protocol.LocalMaxRequestBytes, false)]
+    [TestCase(73, 0x17, Network.P2P.Subprotocols.Eth.V73.Eth73Protocol.MaxGetProofWrappersBytes + 1, true)]
+    [TestCase(73, 0x17, Network.P2P.Subprotocols.Eth.V73.Eth73Protocol.MaxGetProofWrappersBytes, false)]
+    [TestCase(73, 0x16, Network.P2P.Subprotocols.Eth.V73.Eth73Protocol.MaxNewProofWrapperHashesBytes + 1, true)]
+    [TestCase(73, 0x16, Network.P2P.Subprotocols.Eth.V73.Eth73Protocol.MaxNewProofWrapperHashesBytes, false)]
     [TestCase(73, 0x0a, 16 * 1024 * 1024, false)]
     [TestCase(73, 0x15, 16 * 1024 * 1024, false)]
     [TestCase(72, 0x18, Network.P2P.Subprotocols.Eth.V73.Eth73Protocol.LocalMaxResponseBytes + 1, false)]

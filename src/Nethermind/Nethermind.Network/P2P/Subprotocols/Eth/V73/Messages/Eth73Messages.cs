@@ -82,7 +82,7 @@ public abstract class Eth73MessageSerializer<T>(int maxBytes) : IZeroMessageSeri
     }
 }
 
-public sealed class NewProofWrapperHashesMessageSerializer() : Eth73MessageSerializer<NewProofWrapperHashesMessage>(Eth73Protocol.LocalMaxRequestBytes)
+public sealed class NewProofWrapperHashesMessageSerializer() : Eth73MessageSerializer<NewProofWrapperHashesMessage>(Eth73Protocol.MaxNewProofWrapperHashesBytes)
 {
     public override byte[] Encode(NewProofWrapperHashesMessage message)
     {
@@ -106,7 +106,7 @@ public sealed class NewProofWrapperHashesMessageSerializer() : Eth73MessageSeria
     }
 }
 
-public sealed class GetProofWrappersMessageSerializer() : Eth73MessageSerializer<GetProofWrappersMessage>(Eth73Protocol.LocalMaxRequestBytes)
+public sealed class GetProofWrappersMessageSerializer() : Eth73MessageSerializer<GetProofWrappersMessage>(Eth73Protocol.MaxGetProofWrappersBytes)
 {
     public override byte[] Encode(GetProofWrappersMessage message)
     {

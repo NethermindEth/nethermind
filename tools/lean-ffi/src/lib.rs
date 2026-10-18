@@ -590,6 +590,11 @@ pub fn prove_aggregate(hash: &[u8; 32], input: &[u8]) -> Result<Vec<u8>, ()> {
     }
     let discards: HashSet<_> = r.deps()?.into_iter().collect();
     r.end()?;
+    // EIP-8288: every discard must occur in the input union, matched by its full triple.
+    let union: HashSet<_> = all.iter().copied().collect();
+    if !discards.is_subset(&union) {
+        return Err(());
+    }
     let deps: Vec<_> = all
         .into_iter()
         .filter(|dep| !discards.contains(dep))
@@ -969,6 +974,9 @@ mod tests {
             assert!(verify_stark(&input, &key, &proof));
             let mut encoded = Reader { bytes: &proof };
             let code = encoded.blob().unwrap();
+            // EIP-8288: vk_hash = keccak256(domain_tag || canonical_vk), domain_tag = "ethereum/8288/leanSTARK/vk/v1" || 0x00.
+            assert_eq!(&eip8288_mixed::GENERIC_VK_DOMAIN[..], b"ethereum/8288/leanSTARK/vk/v1\0");
+            assert_eq!(key, keccak(&[b"ethereum/8288/leanSTARK/vk/v1\0".as_slice(), code].concat()));
             let former_key = keccak(&[b"eip8288/leanstark-vk/leanvm-cpu\0".as_slice(), code].concat());
             assert!(!verify_stark(&input, &former_key, &proof));
             for index in [7, 15, 23, 31] {
@@ -1039,9 +1047,9 @@ mod tests {
         put_deps(&mut other_scheme, &[dep]);
         put_blob(&mut other_scheme, &leaf);
         put_deps(&mut other_scheme, &[restated]);
+        // A discard outside the input union is rejected, even when it differs from an input only in its scheme.
         assert!(prove_aggregate(&commitment(&[]), &other_scheme).is_err());
-        let kept = prove_aggregate(&commitment(&[dep]), &other_scheme).unwrap();
-        verify_aggregate(&commitment(&[dep]), &kept).unwrap();
+        assert!(prove_aggregate(&commitment(&[dep]), &other_scheme).is_err());
         // Unknown schemes fail in direct, recursive and discard lists alike.
         for scheme in [0x00, 0x12] {
             let mut unknown = dep;

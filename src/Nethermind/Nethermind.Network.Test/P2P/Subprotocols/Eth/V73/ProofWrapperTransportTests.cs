@@ -395,6 +395,31 @@ public class ProofWrapperTransportTests
     }
 
     [Test]
+    public async Task A_throwing_claims_check_stops_envelope_recovery()
+    {
+        Transaction transaction = FrameTransaction(1);
+        byte[] wrapper = Wrapper(64, transaction);
+        WrapperAnnouncement announcement = Describe(wrapper);
+        using WrapperTestNode node = new();
+        node.Verifier.Throws = new InvalidOperationException("verifier fault");
+        FakeWrapperLink a = new("a"), b = new("b");
+        WrapperPeer peerA = node.Connect(a), peerB = node.Connect(b);
+        node.Transport.OnAnnounce(peerA, new([announcement]));
+        node.Transport.OnAnnounce(peerB, new([announcement]));
+        Answer(node, peerA, a, wrapper);
+        await WrapperTestNode.Until(() => node.Transport.FetchCount == 0);
+        node.Tick(WrapperTransportLimits.RequestTimeout + TimeSpan.FromSeconds(1));
+        await Task.Delay(100);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(a.Sent<GetPooledTransactionsMessage66>(), Has.Length.AtMost(1));
+            Assert.That(b.Sent<GetPooledTransactionsMessage66>(), Is.Empty, "a cancelled recovery asks no other announcer");
+            Assert.That(a.Penalties, Is.Empty, "a local verifier fault blames no peer");
+            Assert.That(node.Pending, Is.Empty);
+        }
+    }
+
+    [Test]
     public async Task Invalid_proof_is_tombstoned_and_its_server_penalized()
     {
         Transaction transaction = FrameTransaction(1);
