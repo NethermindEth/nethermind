@@ -29,18 +29,18 @@ public partial class BlockAccessListManager
         CheckInitialized();
         MergeAndReturnBal(uint.MaxValue);
 
+        uint postExecutionIndex = (uint)(block.Transactions.Length + 1);
         if (VerifyOnly)
         {
             // IncrementalValidation only covered indices 0..txCount; the post-execution row
             // (txCount + 1) was just merged but not yet compared.
-            ValidateBlockAccessList(block, (uint)(block.Transactions.Length + 1));
+            ValidateBlockAccessList(block, postExecutionIndex);
             ValidateStructuralEquivalence(block);
             return;
         }
 
         block.GeneratedBlockAccessList = GeneratedBlockAccessList;
 
-        uint postExecutionIndex = (uint)(block.Transactions.Length + 1);
         if (_validatedRowCount == postExecutionIndex
             && _generatedValidationIndex is not null
             && block.BlockAccessList?.WireHash is { } wireHash)

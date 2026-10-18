@@ -437,30 +437,52 @@ public partial class BlockAccessListManager
         ReadOnlyBlockAccessList suggested = block.BlockAccessList!;
         if (generated.AccountChanges.Count != suggested.AccountChanges.Count)
         {
-            throw new InvalidBlockLevelAccessListException(block.Header,
-                $"Account-set size mismatch: suggested={suggested.AccountChanges.Count}, generated={generated.AccountChanges.Count}.");
+            ThrowStructuralMismatch(block, BlockAccessListValidationIndex.StructuralMismatchKind.AccountCountMismatch, null, generated.AccountChanges.Count);
         }
 
         foreach (ReadOnlyAccountChanges suggestedAccount in suggested.AccountChanges)
         {
-            GeneratedAccountChanges generatedAccount = generated.GetAccountChanges(suggestedAccount.Address)
-                ?? throw new InvalidBlockLevelAccessListException(block.Header, $"Suggested BAL declares account {suggestedAccount.Address} which execution did not touch.");
+            Address address = suggestedAccount.Address;
+            GeneratedAccountChanges? generatedAccount = generated.GetAccountChanges(address);
+            if (generatedAccount is null)
+            {
+                ThrowStructuralMismatch(block, BlockAccessListValidationIndex.StructuralMismatchKind.MissingInGenerated, address, generated.AccountChanges.Count);
+            }
 
             IReadOnlySet<UInt256> generatedReads = generatedAccount.StorageReads;
             ReadOnlySpan<UInt256> suggestedReads = suggestedAccount.StorageReads;
             if (generatedReads.Count != suggestedReads.Length)
             {
-                throw new InvalidBlockLevelAccessListException(block.Header, $"storage_reads count mismatch for {suggestedAccount.Address}.");
+                ThrowStructuralMismatch(block, BlockAccessListValidationIndex.StructuralMismatchKind.StorageReadsCountMismatch, address, generated.AccountChanges.Count);
             }
 
             foreach (UInt256 slot in suggestedReads)
             {
                 if (!generatedReads.Contains(slot))
                 {
-                    throw new InvalidBlockLevelAccessListException(block.Header, $"storage_reads mismatch for {suggestedAccount.Address}.");
+                    ThrowStructuralMismatch(block, BlockAccessListValidationIndex.StructuralMismatchKind.StorageReadsContentMismatch, address, generated.AccountChanges.Count);
                 }
             }
         }
+    }
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowStructuralMismatch(Block block, BlockAccessListValidationIndex.StructuralMismatchKind mismatch, Address? address, int generatedAccountCount)
+    {
+        string error = mismatch switch
+        {
+            BlockAccessListValidationIndex.StructuralMismatchKind.AccountCountMismatch
+                => $"Account-set size mismatch: suggested={block.BlockAccessList!.AccountChanges.Count}, generated={generatedAccountCount}.",
+            BlockAccessListValidationIndex.StructuralMismatchKind.MissingInGenerated
+                => $"Suggested BAL declares account {address} which execution did not touch.",
+            BlockAccessListValidationIndex.StructuralMismatchKind.StorageReadsCountMismatch
+                => $"storage_reads count mismatch for {address}.",
+            BlockAccessListValidationIndex.StructuralMismatchKind.StorageReadsContentMismatch
+                => $"storage_reads mismatch for {address}.",
+            _ => throw new InvalidOperationException($"Unhandled {nameof(BlockAccessListValidationIndex.StructuralMismatchKind)}: {mismatch}"),
+        };
+
+        throw new InvalidBlockLevelAccessListException(block.Header, error);
     }
 
     /// <summary>
@@ -490,21 +512,11 @@ public partial class BlockAccessListManager
         BlockAccessListValidationIndex.StructuralMismatchKind mismatch =
             generatedIndex.FindStructuralMismatch(suggested, out Address? mismatchAddress, out int generatedAccountCount);
 
-        string? error = mismatch switch
+        if (mismatch is not BlockAccessListValidationIndex.StructuralMismatchKind.None)
         {
-            BlockAccessListValidationIndex.StructuralMismatchKind.None => null,
-            BlockAccessListValidationIndex.StructuralMismatchKind.AccountCountMismatch
-                => $"Account-set size mismatch: suggested={suggested.AccountChanges.Count}, generated={generatedAccountCount}.",
-            BlockAccessListValidationIndex.StructuralMismatchKind.MissingInGenerated
-                => $"Suggested BAL declares account {mismatchAddress} which execution did not touch.",
-            BlockAccessListValidationIndex.StructuralMismatchKind.StorageReadsCountMismatch
-                => $"storage_reads count mismatch for {mismatchAddress}.",
-            BlockAccessListValidationIndex.StructuralMismatchKind.StorageReadsContentMismatch
-                => $"storage_reads mismatch for {mismatchAddress}.",
-            _ => throw new InvalidOperationException($"Unhandled {nameof(BlockAccessListValidationIndex.StructuralMismatchKind)}: {mismatch}"),
-        };
+            ThrowStructuralMismatch(block, mismatch, mismatchAddress, generatedAccountCount);
+        }
 
-        if (error is not null) throw new InvalidBlockLevelAccessListException(block.Header, error);
         // EIP-7928: coverage rejects unused declared reads; BlockAccessListBasedWorldState.Get/GetOriginal
         // reject undeclared storage accesses, while incremental validation checks the write lanes.
         if (_readPlan?.TryFindUncovered(out Address? uncovered) == true)
