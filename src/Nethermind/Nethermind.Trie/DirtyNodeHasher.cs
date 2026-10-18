@@ -123,7 +123,7 @@ internal static class DirtyNodeHasher
             (dirtyChildren, root, resolver, pool, maxCollectedNodes),
             static (i, state) =>
             {
-                // The i-th set bit of the mask, so no array of child indexes is allocated per commit.
+                // The i-th set bit of the mask.
                 uint remaining = state.dirtyChildren;
                 for (int skipped = 0; skipped < i; skipped++) remaining &= remaining - 1;
                 int childIndex = BitOperations.TrailingZeroCount(remaining);
