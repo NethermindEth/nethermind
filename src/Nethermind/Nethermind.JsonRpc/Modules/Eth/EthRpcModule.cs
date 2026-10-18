@@ -1345,7 +1345,6 @@ public partial class EthRpcModule(
             return ResultWrapper<AccountAccessForRpc[]?>.Success(null);
         }
 
-        // Only header fields are read, so the body is not decoded.
         SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeaderWithBody(blockParameter);
         if (searchResult.IsError)
         {
