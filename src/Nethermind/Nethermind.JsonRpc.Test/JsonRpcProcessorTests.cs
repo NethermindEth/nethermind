@@ -502,9 +502,14 @@ public class JsonRpcProcessorTests
     {
         int inFlight = 0;
         int maxInFlight = 0;
+        TaskCompletionSource expectedOverlapReached = new(TaskCreationOptions.RunContinuationsAsynchronously);
         IJsonRpcService service = CreateAsyncService(async request =>
         {
-            InterlockedEx.Max(ref maxInFlight, Interlocked.Increment(ref inFlight));
+            int current = Interlocked.Increment(ref inFlight);
+            InterlockedEx.Max(ref maxInFlight, current);
+            if (current == expectedMaxInFlight) expectedOverlapReached.TrySetResult();
+            // The barrier makes reaching the expected overlap independent of thread pool timing; the delay keeps it open for calls beyond the bound.
+            await expectedOverlapReached.Task.WaitAsync(TimeSpan.FromSeconds(10));
             await Task.Delay(100);
             Interlocked.Decrement(ref inFlight);
             return new JsonRpcSuccessResponse { Id = request.Id };
