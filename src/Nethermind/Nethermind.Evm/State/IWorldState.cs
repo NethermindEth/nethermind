@@ -51,7 +51,8 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     /// <see cref="RecalculateStateRoot"/> afterwards.
     /// </remarks>
     /// <param name="bal">The Block Access List whose last change per field is applied.</param>
-    void ApplyBal(ReadOnlyBlockAccessList bal);
+    /// <param name="cancellationToken">Stops the apply between accounts by throwing <see cref="OperationCanceledException"/>; the world state is then only fit to be discarded.</param>
+    void ApplyBal(ReadOnlyBlockAccessList bal, CancellationToken cancellationToken = default);
     bool IsInScope { get; }
     IWorldStateScopeProvider ScopeProvider { get; }
     new ref readonly UInt256 GetBalance(Address address);

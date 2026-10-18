@@ -4,6 +4,7 @@
 using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.ExceptionServices;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
@@ -23,7 +24,8 @@ public static class ScopeBalApplier
     /// <inheritdoc cref="IWorldStateScopeProvider.IScope.ApplyBal"/>
     /// <param name="scope">The scope to write into.</param>
     /// <param name="logManager">Reports adopted code whose bytecode cannot be found.</param>
-    public static void Apply(IWorldStateScopeProvider.IScope scope, ReadOnlyBlockAccessList bal, ILogManager logManager)
+    /// <param name="cancellationToken">Checked before each account and before the storage writes.</param>
+    public static void Apply(IWorldStateScopeProvider.IScope scope, ReadOnlyBlockAccessList bal, ILogManager logManager, CancellationToken cancellationToken = default)
     {
         IWorldStateScopeProvider.ICodeSetter? codeSetter = null;
         // Clones deploying the same code in one block would otherwise all write it: ContainsCode only sees persisted code.
@@ -38,6 +40,7 @@ public static class ScopeBalApplier
                 {
                     foreach (ReadOnlyAccountChanges accountChanges in bal.AccountChanges)
                     {
+                        cancellationToken.ThrowIfCancellationRequested();
                         if (!accountChanges.HasStateChanges) continue;
 
                         Address address = accountChanges.Address;
@@ -70,6 +73,7 @@ public static class ScopeBalApplier
                         // A slot-only change leaves the account as it was.
                         if (delta.ChangesAccount) writeBatch.Set(address, account);
                     }
+                    cancellationToken.ThrowIfCancellationRequested();
                     storageBatches.Apply();
                 }
                 catch (Exception exception)

@@ -4,6 +4,7 @@
 using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
@@ -345,13 +346,14 @@ public class PrewarmerScopeProvider(
             return baseScope.HintBal(bal, sink);
         }
 
-        public void ApplyBal(ReadOnlyBlockAccessList bal)
+        public void ApplyBal(ReadOnlyBlockAccessList bal, CancellationToken cancellationToken)
         {
             ArrayPoolList<AppliedAccount> accounts = new(bal.AccountChanges.Count);
             try
             {
                 foreach (ReadOnlyAccountChanges accountChanges in bal.AccountChanges)
                 {
+                    cancellationToken.ThrowIfCancellationRequested();
                     if (!accountChanges.HasStateChanges) continue;
 
                     // The caches still hold the pre-block state the apply reads, so they spare it the backend reads. An
@@ -370,7 +372,7 @@ public class PrewarmerScopeProvider(
                     accounts.Add(new AppliedAccount(accountChanges, mayRemoveStorage, revival));
                 }
 
-                baseScope.ApplyBal(bal);
+                baseScope.ApplyBal(bal, cancellationToken);
 
                 // Read here, alongside the transactions, rather than on the commit path.
                 foreach (ref AppliedAccount appliedAccount in accounts.AsSpan())

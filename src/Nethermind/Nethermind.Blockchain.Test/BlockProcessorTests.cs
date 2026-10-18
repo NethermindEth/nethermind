@@ -1374,16 +1374,18 @@ public partial class BlockProcessorTests
         return chain.JsonSerializer.Serialize(result);
     }
 
-    private sealed class BalApplyRecordingState(IWorldState state, Action afterApply) : WorldStateDecorator(state), IWorldState
+    private sealed class BalApplyRecordingState(IWorldState state, Action beforeApply) : WorldStateDecorator(state), IWorldState
     {
+        public int ApplyStarts { get; private set; }
         public int Applied { get; private set; }
         public int RootRecalculations { get; private set; }
 
-        void IWorldState.ApplyBal(ReadOnlyBlockAccessList bal)
+        void IWorldState.ApplyBal(ReadOnlyBlockAccessList bal, CancellationToken cancellationToken)
         {
-            ApplyBal(bal);
+            ApplyStarts++;
+            beforeApply();
+            ApplyBal(bal, cancellationToken);
             Applied++;
-            afterApply();
         }
 
         public override void RecalculateStateRoot()
@@ -3631,7 +3633,8 @@ public partial class BlockProcessorTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(stateProvider.Applied, Is.EqualTo(rejected && rejectedAt == BalRejectionPoint.DuringWarmup ? 0 : 1), "BAL applications");
+            Assert.That(stateProvider.ApplyStarts, Is.EqualTo(rejected && rejectedAt == BalRejectionPoint.DuringWarmup ? 0 : 1), "BAL applications started");
+            Assert.That(stateProvider.Applied, Is.EqualTo(rejected ? 0 : 1), "BAL applications completed");
             Assert.That(stateProvider.RootRecalculations, Is.EqualTo(rejected ? 0 : 1), "state root recalculations");
         }
     }

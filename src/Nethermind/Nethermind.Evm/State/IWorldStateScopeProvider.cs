@@ -3,6 +3,7 @@
 
 using System;
 using System.Diagnostics.CodeAnalysis;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
@@ -145,7 +146,8 @@ public interface IWorldStateScopeProvider
         /// call <see cref="UpdateRootHash"/> afterwards. See <see cref="ScopeBalApplier"/> for the generic implementation.
         /// </remarks>
         /// <param name="bal">The Block Access List whose last change per field is applied.</param>
-        void ApplyBal(ReadOnlyBlockAccessList bal);
+        /// <param name="cancellationToken">Stops the apply between accounts by throwing <see cref="OperationCanceledException"/>; the scope is then only fit to be discarded.</param>
+        void ApplyBal(ReadOnlyBlockAccessList bal, CancellationToken cancellationToken = default);
     }
 
     /// <summary>
