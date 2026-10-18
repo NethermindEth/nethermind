@@ -273,7 +273,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             {
                 // First, on this task: the backend decides from a few cached probes, so a cached block costs only
                 // those, and a cold one has its reads in flight before phase 1 reads them one at a time.
-                PrefetchBal(accountChanges);
+                PrefetchBalSafely(accountChanges);
 
                 // Phase 1: trie warmup + GetAccount + sink.OnAccountRead. Sink slot reads are
                 // deferred to phase 2 so one huge account doesn't bottleneck a single worker.
@@ -361,6 +361,20 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     /// the RocksDB block cache before the warmup and execution read them one at a time. The reads that follow are
     /// unchanged; on a warm database the prefetch finds the blocks already cached.
     /// </summary>
+    // A prefetch only warms caches; a failure must not cost the warmup that follows.
+    private void PrefetchBalSafely(ArrayPoolList<ReadOnlyAccountChanges> accountChanges)
+    {
+        try
+        {
+            PrefetchBal(accountChanges);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            ILogger logger = _logManager.GetClassLogger<FlatWorldStateScope>();
+            if (logger.IsDebug) logger.Debug($"State prefetch failed: {ex}");
+        }
+    }
+
     private void PrefetchBal(ArrayPoolList<ReadOnlyAccountChanges> accountChanges)
     {
         int slotCount = 0;
