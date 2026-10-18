@@ -53,6 +53,22 @@ public class ProcessingStatsTests
             AssertStats(stats, blockCount: 2, blockFrom: 1, blockTo: 2, processingMs: 500, mGasPerSecond: 10);
         });
 
+    [Test]
+    public void GenerateReport_does_not_read_beneficiary_balances_when_the_line_is_not_logged() =>
+        WithRestoredBlockchainMetrics(() =>
+        {
+            IStateReader stateReader = Substitute.For<IStateReader>();
+            stateReader.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(true);
+            TestProcessingStats processingStats = new(stateReader);
+            (BlockHeader baseBlock, Block block1, _) = BuildBlockTrio();
+
+            processingStats.AdvanceReportWindow();
+            processingStats.GenerateReportForTest(block1, baseBlock, blockCount: 1, gasUsed: 2_000_000, transactionCount: 2, processingMicroseconds: 200_000);
+
+            stateReader.DidNotReceive().TryGetAccount(Arg.Any<BlockHeader>(), Arg.Any<Address>(), out Arg.Any<AccountStruct>());
+            return Task.CompletedTask;
+        }).GetAwaiter().GetResult();
+
     private static void AssertStats(BlockStatistics stats, long blockCount, ulong blockFrom, ulong blockTo, double processingMs, double mGasPerSecond)
     {
         using (Assert.EnterMultipleScope())
