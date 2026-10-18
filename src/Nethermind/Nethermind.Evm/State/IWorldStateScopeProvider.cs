@@ -67,6 +67,12 @@ public interface IWorldStateScopeProvider
         void HintWarmSlot(Address address, in UInt256 index) { }
 
         /// <summary>
+        /// Starts reading accounts and slots that will be read soon from persisted state, without returning them,
+        /// so that cold disk reads overlap. No-op for backends without asynchronous reads.
+        /// </summary>
+        void Prefetch(ReadOnlySpan<Address> accounts, ReadOnlySpan<StorageCell> slots) { }
+
+        /// <summary>
         /// Get the account information for the following address.
         /// Note: Do not rely on <see cref="Account.StorageRoot"/> as it may be modified after write. Instead use <see cref="IStorageTree.RootHash"/>.
         /// </summary>

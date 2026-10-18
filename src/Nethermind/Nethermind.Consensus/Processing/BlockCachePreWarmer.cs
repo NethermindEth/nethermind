@@ -1761,6 +1761,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
             ObjectPool<IPrewarmerEnv> envPool = PreWarmer._envPool;
             try
             {
+                // With a block access list, HintBal prefetches the whole read set instead.
+                if (Bal is null) PrefetchKnownState(envPool, block, parallelOptions.CancellationToken);
+
                 Address? beneficiary = Beneficiary;
                 if (warmSystemAccessLists || beneficiary is not null || WarmWithdrawals)
                 {
@@ -1840,6 +1843,59 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
             catch (OperationCanceledException)
             {
                 // Ignore, block completed cancel
+            }
+        }
+
+        /// <summary>
+        /// Starts one asynchronous batched read of every account and slot known before execution: senders,
+        /// recipients, declared access lists, the beneficiary and withdrawal recipients. The warm passes that follow
+        /// read the same keys one at a time; with their disk reads already overlapped they find the blocks cached.
+        /// </summary>
+        private void PrefetchKnownState(ObjectPool<IPrewarmerEnv> envPool, Block block, CancellationToken token)
+        {
+            int count = block.Transactions.Length + (block.InclusionListTransactions?.Length ?? 0);
+            using PooledSet<AddressAsKey> accounts = [];
+            using PooledSet<StorageCell> slots = [];
+            for (int i = 0; i < count; i++)
+            {
+                if ((i & 0x3F) == 0 && token.IsCancellationRequested) return;
+                Transaction tx = TransactionAt(block, i);
+                if (tx.SenderAddress is { } sender) accounts.Add(sender);
+                if (tx.To is { } recipient) accounts.Add(recipient);
+                if (tx.AccessList is { IsEmpty: false } accessList)
+                {
+                    foreach ((Address address, AccessList.StorageKeysEnumerable storages) in accessList)
+                    {
+                        accounts.Add(address);
+                        foreach (UInt256 storage in storages) slots.Add(new StorageCell(address, in storage));
+                    }
+                }
+            }
+
+            if (Beneficiary is { } beneficiary) accounts.Add(beneficiary);
+            if (WarmWithdrawals)
+            {
+                foreach (Withdrawal withdrawal in block.Withdrawals!) accounts.Add(withdrawal.Address);
+            }
+
+            if (accounts.Count == 0 && slots.Count == 0) return;
+
+            Address[] accountArray = ArrayPool<Address>.Shared.Rent(accounts.Count);
+            StorageCell[] slotArray = ArrayPool<StorageCell>.Shared.Rent(slots.Count);
+            IPrewarmerEnv env = envPool.Get();
+            try
+            {
+                int a = 0;
+                foreach (AddressAsKey address in accounts) accountArray[a++] = address;
+                slots.CopyTo(slotArray, 0);
+                using IReadOnlyTxProcessingScope scope = env.BuildAtTarget(block.Header);
+                scope.WorldState.Prefetch(accountArray.AsSpan(0, accounts.Count), slotArray.AsSpan(0, slots.Count));
+            }
+            finally
+            {
+                envPool.Return(env);
+                ArrayPool<Address>.Shared.Return(accountArray, clearArray: true);
+                ArrayPool<StorageCell>.Shared.Return(slotArray, clearArray: true);
             }
         }
 

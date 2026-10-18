@@ -200,6 +200,9 @@ namespace Nethermind.State
         }
 
         public void WarmUp(Address address) => _stateProvider.WarmUp(address);
+
+        public void Prefetch(ReadOnlySpan<Address> accounts, ReadOnlySpan<StorageCell> slots) =>
+            _currentScope?.Prefetch(accounts, slots);
         public void ClearStorage(Address address)
         {
             DebugGuardInScope();

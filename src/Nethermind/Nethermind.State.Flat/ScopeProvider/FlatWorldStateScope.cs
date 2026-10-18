@@ -482,6 +482,11 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     internal void DecrementOutstandingWarmups() => CompleteWarmup();
 
+    public void Prefetch(ReadOnlySpan<Address> accounts, ReadOnlySpan<StorageCell> slots)
+    {
+        if (_configuration.AsyncReadPrefetch) _snapshotBundle.Prefetch(accounts, slots);
+    }
+
     public void HintWarmAccount(Address address)
     {
         if (!_warmsTries || IsDisposed || _pausePrewarmer) return;
