@@ -55,7 +55,8 @@ public class ChainLevelInfoRepositoryTests
         IOwnedReadOnlyList<ChainLevelInfo> levels;
         using (IDb db = CreateBatchDb(native, directory))
         {
-            ChainLevelInfoRepository repository = new(db);
+            using IContainer container = CreateContainer(db);
+            IChainLevelInfoRepository repository = container.Resolve<IChainLevelInfoRepository>();
             for (int i = 0; i < count; i++)
             {
                 ulong number = 25_000_000UL + (ulong)(i % 7);
@@ -88,15 +89,19 @@ public class ChainLevelInfoRepositoryTests
     {
         using TempPath directory = TempPath.GetTempDirectory();
         using IDb db = CreateBatchDb(native, directory);
-        ChainLevelInfoRepository repository = new(db);
+        using IContainer container = CreateContainer(db);
+        IChainLevelInfoRepository repository = container.Resolve<IChainLevelInfoRepository>();
         ChainLevelInfo expected = CreateBatchLevel(number);
         repository.PersistLevel(number, expected);
 
         using ArrayPoolListRef<ulong> numbers = new(2, number, number);
         using IOwnedReadOnlyList<ChainLevelInfo> levels = repository.MultiLoadLevel(numbers);
         Assert.That(levels.Count, Is.EqualTo(2));
-        AssertChainLevelInfo(levels[0], expected);
-        AssertChainLevelInfo(levels[1], expected);
+        using (Assert.EnterMultipleScope())
+        {
+            AssertChainLevelInfo(levels[0], expected);
+            AssertChainLevelInfo(levels[1], expected);
+        }
     }
 
     [Test]
@@ -104,7 +109,8 @@ public class ChainLevelInfoRepositoryTests
     {
         using TempPath directory = TempPath.GetTempDirectory();
         using IDb db = CreateBatchDb(native, directory);
-        ChainLevelInfoRepository repository = new(db);
+        using IContainer container = CreateContainer(db);
+        IChainLevelInfoRepository repository = container.Resolve<IChainLevelInfoRepository>();
         ulong[] requested = [ulong.MaxValue, 0, 256, 255, 65_535, 65_536, 16_777_215, 16_777_216, 256, 0];
         for (int i = 0; i < requested.Length; i++)
         {
@@ -152,7 +158,8 @@ public class ChainLevelInfoRepositoryTests
     {
         using TempPath directory = TempPath.GetTempDirectory();
         using IDb db = CreateBatchDb(native, directory);
-        ChainLevelInfoRepository repository = new(db);
+        using IContainer container = CreateContainer(db);
+        IChainLevelInfoRepository repository = container.Resolve<IChainLevelInfoRepository>();
         ChainLevelInfo cached = CreateBatchLevel(1);
         ChainLevelInfo replacement = CreateBatchLevel(2);
         repository.PersistLevel(1, cached);
@@ -170,7 +177,8 @@ public class ChainLevelInfoRepositoryTests
     {
         using TempPath directory = TempPath.GetTempDirectory();
         using IDb db = CreateBatchDb(native, directory);
-        ChainLevelInfoRepository repository = new(db);
+        using IContainer container = CreateContainer(db);
+        IChainLevelInfoRepository repository = container.Resolve<IChainLevelInfoRepository>();
         repository.PersistLevel(1, CreateBatchLevel(1));
         db.PutSpan(secondNumber.ToBigEndianSpanWithoutLeadingZeros(out _), [0x01]);
 
@@ -184,8 +192,11 @@ public class ChainLevelInfoRepositoryTests
         repository.PersistLevel(secondNumber, expected);
         using ArrayPoolListRef<ulong> numbers = new(2, 1UL, secondNumber);
         using IOwnedReadOnlyList<ChainLevelInfo> levels = repository.MultiLoadLevel(numbers);
-        AssertChainLevelInfo(levels[0], CreateBatchLevel(1));
-        AssertChainLevelInfo(levels[1], expected);
+        using (Assert.EnterMultipleScope())
+        {
+            AssertChainLevelInfo(levels[0], CreateBatchLevel(1));
+            AssertChainLevelInfo(levels[1], expected);
+        }
     }
 
     [Test]

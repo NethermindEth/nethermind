@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Autofac;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -9,6 +10,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.IO;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Db;
 using Nethermind.Db.Rocks;
 using Nethermind.Db.Rocks.Config;
@@ -22,7 +24,8 @@ public class ChainLevelBatchReadBenchmark
 {
     private TempPath _directory = null!;
     private DbOnTheRocks _db = null!;
-    private ChainLevelInfoRepository _repository = null!;
+    private IContainer _container = null!;
+    private IChainLevelInfoRepository _repository = null!;
     private ulong[] _numbers = null!;
 
     [Params(1, 2, 32, 256)]
@@ -43,7 +46,11 @@ public class ChainLevelBatchReadBenchmark
             LimboLogs.Instance, validateConfig: false);
         _db = new DbOnTheRocks(_directory.Path, new DbSettings(DbNames.BlockInfos, "levels"),
             config, factory, LimboLogs.Instance);
-        _repository = new ChainLevelInfoRepository(_db);
+        _container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule())
+            .AddKeyedSingleton<IDb>(DbNames.BlockInfos, _db)
+            .Build();
+        _repository = _container.Resolve<IChainLevelInfoRepository>();
         _numbers = new ulong[Count];
         int hits = Count * HitPercent / 100;
         for (int i = 0; i < Count; i++)
@@ -85,6 +92,7 @@ public class ChainLevelBatchReadBenchmark
     [GlobalCleanup]
     public void Cleanup()
     {
+        _container.Dispose();
         _db.Dispose();
         _directory.Dispose();
     }

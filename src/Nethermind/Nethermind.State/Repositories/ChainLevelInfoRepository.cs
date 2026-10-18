@@ -127,14 +127,19 @@ namespace Nethermind.State.Repositories
         {
             int count = blockNumbers.Count;
             int byteCount = checked(count * keyLength);
-            byte[]? rentedKeys = null;
+            if (byteCount <= 256)
+                return ReadFixedLengthLevels(blockNumbers, keyLength, stackalloc byte[byteCount]);
+
+            using ArrayPoolSpan<byte> keys = new(ArrayPool<byte>.Shared, byteCount);
+            return ReadFixedLengthLevels(blockNumbers, keyLength, keys);
+        }
+
+        private IOwnedReadOnlyList<ChainLevelInfo?> ReadFixedLengthLevels(in ArrayPoolListRef<ulong> blockNumbers, int keyLength, Span<byte> keys)
+        {
+            int count = blockNumbers.Count;
             ArrayPoolList<ChainLevelInfo?> levels = new(count, count);
             try
             {
-                Span<byte> keys = byteCount <= 256
-                    ? stackalloc byte[byteCount]
-                    : (rentedKeys = ArrayPool<byte>.Shared.Rent(byteCount)).AsSpan(0, byteCount);
-
                 for (int i = 0; i < count; i++)
                 {
                     blockNumbers[i].ToBigEndianSpanWithoutLeadingZeros(out _).CopyTo(keys.Slice(i * keyLength, keyLength));
@@ -147,10 +152,6 @@ namespace Nethermind.State.Repositories
             {
                 levels.Dispose();
                 throw;
-            }
-            finally
-            {
-                if (rentedKeys is not null) ArrayPool<byte>.Shared.Return(rentedKeys);
             }
         }
 
