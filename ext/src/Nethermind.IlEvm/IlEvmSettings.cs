@@ -13,10 +13,6 @@ namespace Nethermind.IlEvm;
 /// <summary>Which rules the production runner follows, one per process.</summary>
 public enum IlMode
 {
-    /// <summary>The startup list and what live promotion adds, every frame part of them compiled; see <see cref="IlSimple"/>.</summary>
-    Simple,
-    /// <summary>The shipped list and what live profiling promotes, each frame part admitted on its own; see <see cref="IlRuntime"/>.</summary>
-    Adaptive,
     /// <summary>Run-time compiles of hot code, and the shipped contracts on every block frame.</summary>
     Legacy,
     /// <summary>A measurement run (<see cref="IlEvmSettings.Stats"/>): the timed runners, on the Legacy rules.</summary>
@@ -41,7 +37,7 @@ public static class IlEvmSettings
 
     private static bool _enabled = RuntimeFeature.IsDynamicCodeSupported && Environment.GetEnvironmentVariable("NETHERMIND_ILEVM") != "0";
 
-    /// <summary>Which rules the production runner follows, set by <see cref="IlEvmModule"/> from the config; else <c>NETHERMIND_ILEVM_MODE</c>, else Adaptive, and Legacy with <see cref="IlEvmDiagnostics"/> on, whose counters only Legacy keeps.</summary>
+    /// <summary>Which rules the production runner follows, set by <see cref="IlEvmModule"/> from the config; Legacy otherwise.</summary>
     public static IlMode Mode
     {
         get => _mode;
@@ -52,32 +48,13 @@ public static class IlEvmSettings
         }
     }
 
-    private static IlMode _mode = IlEvmDiagnostics.Enabled ? IlMode.Legacy :
-        Enum.TryParse(Environment.GetEnvironmentVariable("NETHERMIND_ILEVM_MODE"), ignoreCase: true, out IlMode mode) && mode is IlMode.Legacy or IlMode.Simple ? mode : IlMode.Adaptive;
+    private static IlMode _mode = IlMode.Legacy;
 
-    /// <summary>Which frames feed live profiling, as the config set it; for the exit line and the live profile.</summary>
-    public static IlEvmPrefer Prefer { get; set; } = IlEvmPrefer.Rpc;
-
-    /// <summary>Where compiled code runs, as <see cref="IlEvmModule"/> attached the runners: the config's, or All where <see cref="IlEvmPrefer.Blocks"/> needs it.</summary>
+    /// <summary>Where compiled code runs, as <see cref="IlEvmModule"/> attached the runners: the config's.</summary>
     public static IlEvmScope Scope { get; set; } = IlEvmScope.Rpc;
-
-    /// <summary>Whether <see cref="IlEvmPrefer.Blocks"/> overrode a configured Scope of Rpc, which the startup step warns of.</summary>
-    public static bool ScopeForcedToAll { get; set; }
 
     /// <summary>The kinds of read-only query whose environments <see cref="IlEvmModule"/> attached a runner to, for the exit line: every kind with <see cref="IlEvmScope.All"/>.</summary>
     public static ReadOnlyQueryKind Surfaces { get; set; } = ReadOnlyQueryKind.All;
-
-    /// <summary>Adaptive: whether the visit gate admits each part of an admitted contract on its own, rather than every part compiled.</summary>
-    public static bool Gate { get; set; } = Environment.GetEnvironmentVariable("NETHERMIND_ILEVM_GATE") != "0";
-
-    /// <summary>Adaptive: whether the read-only queries' runner times compiled code against the interpreter, and takes it away where it loses.</summary>
-    public static bool QueryCheck { get; set; } = true;
-
-    /// <summary>Adaptive: as <see cref="QueryCheck"/>, for block processing's runner.</summary>
-    public static bool BlockCheck { get; set; } = true;
-
-    /// <summary>Adaptive diagnostics: block processing's runner declines every frame, so a run measures the hook alone.</summary>
-    public static bool BlockDeclineAll { get; set; }
 
     /// <summary>The opcodes a contract runs on the interpreter, over all its frames, after which it is compiled: catches few frames running long loops.</summary>
     public static long OpcodeThreshold { get; set; } =

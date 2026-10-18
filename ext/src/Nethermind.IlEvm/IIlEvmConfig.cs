@@ -24,39 +24,6 @@ public enum IlEvmPrecompileSource
     Candidates,
 }
 
-/// <summary>Which rules decide what runs compiled.</summary>
-public enum IlEvmSelection
-{
-    /// <summary>The startup list, and what live promotion adds from the read-only queries' own load: every frame part of a contract in the compiled set runs compiled, with no gate or check.</summary>
-    Simple,
-    /// <summary>The shipped list, compiled at every startup, and what live profiling promotes between blocks; each frame part is admitted on its own.</summary>
-    Adaptive,
-    /// <summary>Contracts compile at run time once hot, and block processing runs the shipped contracts on every frame. For A/B runs within one image.</summary>
-    Legacy,
-}
-
-/// <summary>Which runner's frames feed live profiling, and so which load the contracts compiled between blocks are chosen for.</summary>
-public enum IlEvmPrefer
-{
-    /// <summary>The read-only queries: an RPC node adapts to its own customers' calls.</summary>
-    Rpc,
-    /// <summary>Block processing, of branches of at most two blocks while not syncing; needs block processing's runner, so under the Adaptive rules it sets <see cref="IlEvmScope.All"/>.</summary>
-    Blocks,
-    /// <summary>Neither: only the shipped list runs compiled.</summary>
-    None,
-}
-
-/// <summary>Which of block processing's threads may run compiled code.</summary>
-public enum IlEvmBlockThreads
-{
-    /// <summary>The block-processing thread and the others the block runner serves: prewarming, production, the mempool's session.</summary>
-    Both,
-    /// <summary>Only the block-processing thread, as the core marks it for each processing pass.</summary>
-    Main,
-    /// <summary>Only the other threads the block runner serves.</summary>
-    Workers,
-}
-
 [ConfigCategory(Description = "IL-EVM: compiles hot EVM contracts to native code for faster read-only calls.", HiddenFromDocs = true)]
 public interface IIlEvmConfig : IConfig
 {
@@ -69,71 +36,20 @@ public interface IIlEvmConfig : IConfig
     [ConfigItem(Description = "The kinds of read-only query whose environments run compiled code in Rpc scope, comma-separated: Call (eth_call, eth_estimateGas, eth_createAccessList, and the core's other users of its shared read-only call environments); Trace (debug_traceCall, debug_traceCallMany, debug_traceTransaction and its by-index and in-block variants, debug_traceBlock, debug_traceBlockByNumber, debug_traceBlockByHash, debug_traceBlockFromFile, debug_intermediateRoots, debug_standardTraceBlockToFile, debug_standardTraceBadBlockToFile, trace_call, trace_callMany, trace_rawTransaction, trace_replayTransaction, trace_replayBlockTransactions, trace_block, trace_transaction, trace_get, trace_filter and proof_getTransactionReceipt, the workers that trace a block's transactions in parallel included); Simulate (eth_simulateV1, debug_simulateV1, trace_simulateV1, and debug_traceCallMany when a bundle carries its own state or block override). All is the three, None turns the queries off. The default is Call, which keeps the debug, trace and simulate methods on the interpreter, until every one of them is benchmarked with compiled code; then it becomes All. A transaction traced opcode by opcode (the struct logger, prestateTracer, JavaScript and keccak-preimage tracers, Parity vmTrace) always runs on the interpreter; untraced transactions and system calls replayed around it run compiled.", DefaultValue = "Call")]
     ReadOnlyQueryKind Surfaces { get; set; }
 
-    [ConfigItem(Description = "Simple: the first ListSize entries of the shipped list, compiled at startup, and what live promotion adds from the read-only queries run compiled, every frame part of them. Adaptive: the shipped list, compiled at every startup, and what live profiling promotes between blocks run compiled, each frame part admitted on its own. Legacy: contracts compile at run time once hot, and block processing runs the shipped contracts on every frame, as before Adaptive. Adaptive and Legacy are kept for A/B runs within one image.", DefaultValue = "Legacy", HiddenFromDocs = true)]
-    IlEvmSelection Selection { get; set; }
-
-    [ConfigItem(Description = "Which frames feed live profiling, which compiles the contracts the node's own load runs most: Rpc, the read-only queries; Blocks, block processing (Adaptive only, sets Scope to All; Simple treats it as None); None, neither, so only the shipped list runs compiled.", DefaultValue = "Rpc")]
-    IlEvmPrefer Prefer { get; set; }
-
-    [ConfigItem(Description = "Adaptive only: runs an admitted contract's frame parts compiled only where they are expected to gain: long visits, visits warm on their thread, and visits already long on the interpreter. Off, every part of an admitted contract runs compiled.", DefaultValue = "true")]
-    bool Gate { get; set; }
-
-    [ConfigItem(Description = "Adaptive only: which of block processing's threads may run compiled code: Both, Main (the block-processing thread) or Workers (prewarming and the other threads block processing's runner serves).", DefaultValue = "Both")]
-    IlEvmBlockThreads BlockThreads { get; set; }
-
-    [ConfigItem(Description = "Adaptive only: times compiled code against the interpreter in read-only queries, in short windows, and takes compiled code away from a contract it does not speed up.", DefaultValue = "true")]
-    bool Check { get; set; }
-
-    [ConfigItem(Description = "Adaptive only: as Check, for block processing.", DefaultValue = "true")]
-    bool BlockCheck { get; set; }
-
-    [ConfigItem(Description = "How long the startup compile of the shipped list may take; the entries left compile between blocks. 0 leaves the whole list to those windows. Adaptive only.", DefaultValue = "60")]
-    int StartupCompileSeconds { get; set; }
-
-    [ConfigItem(Description = "How long after block processing finishes a branch, or the head moves, compiling between blocks may start, in milliseconds. Adaptive only.", DefaultValue = "250")]
-    int QuietMs { get; set; }
-
-    [ConfigItem(Description = "How long before the next block is expected no compile step may start, in milliseconds; must exceed the longest step. Adaptive only.", DefaultValue = "300")]
-    int SlotGuardMs { get; set; }
-
-    [ConfigItem(Description = "Threads that compile between blocks (Adaptive) or in a promotion round (Simple); the Legacy rules keep their one background compiler.", DefaultValue = "1")]
-    int CompileThreads { get; set; }
-
-    [ConfigItem(Description = "Threads that compile while no blocks arrive, those of CompileThreads among them; 0 means a quarter of the cores, at least 1 and at most 4. Adaptive only.", DefaultValue = "0")]
-    int IdleCompileThreads { get; set; }
-
-    [ConfigItem(Description = "The most IL and tables the contracts live profiling compiled may hold, in MiB (Adaptive: per source); under Simple a full budget evicts the least used promoted contract for a busier one. MaxLiveIlBytes stays the hard cap.", DefaultValue = "128")]
-    int LiveBudgetMiB { get; set; }
-
-    [ConfigItem(Description = "Simple only: how many leading entries of the shipped list compile at startup; 0 compiles all of them.", DefaultValue = "0")]
-    int ListSize { get; set; }
-
-    [ConfigItem(Description = "Simple only: the time between live promotion rounds, in milliseconds.", DefaultValue = "5000")]
-    int PromoteMs { get; set; }
-
-    [ConfigItem(Description = "Simple only: the interpreted opcodes per second a contract must run in the read-only queries to be promoted to compiled code.", DefaultValue = "1000000")]
-    long PromoteOps { get; set; }
-
-    [ConfigItem(Description = "Adaptive only, diagnostics: block processing's runner is attached but declines every frame, which measures the hook's own cost.", DefaultValue = "false", HiddenFromDocs = true)]
-    bool BlockDeclineAll { get; set; }
-
-    [ConfigItem(Description = "Legacy only: frames a contract runs on the interpreter before it is compiled.", DefaultValue = "32")]
+    [ConfigItem(Description = "Frames a contract runs on the interpreter before it is compiled.", DefaultValue = "32")]
     int Threshold { get; set; }
 
-    [ConfigItem(Description = "Legacy only: opcodes a contract runs on the interpreter, over all its frames, before it is compiled; 0 never compiles on this count.", DefaultValue = "20000")]
+    [ConfigItem(Description = "Opcodes a contract runs on the interpreter, over all its frames, before it is compiled; 0 never compiles on this count.", DefaultValue = "20000")]
     long OpcodeThreshold { get; set; }
 
-    [ConfigItem(Description = "Legacy only: interpreted opcodes per second a contract must also run before it is compiled, so rarely run code stays on the interpreter; 0 disables.", DefaultValue = "50000")]
+    [ConfigItem(Description = "Interpreted opcodes per second a contract must also run before it is compiled, so rarely run code stays on the interpreter; 0 disables.", DefaultValue = "50000")]
     int HotOpcodesPerSecond { get; set; }
 
-    [ConfigItem(Description = "Legacy only: compile on the thread that makes a contract hot instead of in the background. For tests and benchmarks; the Adaptive rules compile only between blocks and ignore it.", DefaultValue = "false", HiddenFromDocs = true)]
+    [ConfigItem(Description = "Compile on the thread that makes a contract hot instead of in the background. For tests and benchmarks.", DefaultValue = "false", HiddenFromDocs = true)]
     bool CompileSynchronously { get; set; }
 
     [ConfigItem(Description = "Compiles the contracts of the list PrecompileList names (or of the file NETHERMIND_ILEVM_PRECOMPILE_LIST names) at startup, before blocks or calls run, so they run compiled from their first frame. Off is an experiment arm: nothing is compiled at startup.", DefaultValue = "true", HiddenFromDocs = true)]
     bool Precompile { get; set; }
-
-    [ConfigItem(Description = "Adaptive only: also compiles at startup the RPC list, contracts read-only calls send as state-override code, which no code database holds. The plugin ships no RPC list, so this loads nothing; a file NETHERMIND_ILEVM_PRECOMPILE_LIST names may carry entries with their bytecode (code=) instead.", DefaultValue = "true", HiddenFromDocs = true)]
-    bool PrecompileRpc { get; set; }
 
     [ConfigItem(Description = "The most entries of the list compiled at startup, in list order, counted after PrecompileMinOpsPerFrame skipped its entries; 0 compiles all of them.", DefaultValue = "0", HiddenFromDocs = true)]
     int PrecompileLimit { get; set; }
@@ -144,10 +60,10 @@ public interface IIlEvmConfig : IConfig
     [ConfigItem(Description = "Skips the list entries whose profile counts (ops= over frames=) give fewer opcodes per frame than this; entries without the counts are kept. 0 keeps every entry.", DefaultValue = "0", HiddenFromDocs = true)]
     int PrecompileMinOpsPerFrame { get; set; }
 
-    [ConfigItem(Description = "Legacy only: in block processing (Scope=All), also compile contracts outside the shipped list once they get hot. Off, block processing runs only the shipped contracts compiled and leaves the rest to the interpreter with no bookkeeping.", DefaultValue = "false")]
+    [ConfigItem(Description = "In block processing (Scope=All), also compile contracts outside the shipped list once they get hot. Off, block processing runs only the shipped contracts compiled and leaves the rest to the interpreter with no bookkeeping.", DefaultValue = "false")]
     bool BlockRuntimeCompile { get; set; }
 
-    [ConfigItem(Description = "Legacy only: in block processing (Scope=All), time compiled code against the interpreter and give contracts back that it does not speed up.", DefaultValue = "false")]
+    [ConfigItem(Description = "In block processing (Scope=All), time compiled code against the interpreter and give contracts back that it does not speed up.", DefaultValue = "false")]
     bool BlockSelfCheck { get; set; }
 
     [ConfigItem(Description = "Counts every contract's frames and interpreted opcodes instead of compiling anything, and logs the busiest at shutdown: the input for the shipped list.", DefaultValue = "false", HiddenFromDocs = true)]
@@ -168,28 +84,11 @@ public class IlEvmConfig : IIlEvmConfig
     public bool Enabled { get; set; }
     public IlEvmScope Scope { get; set; } = IlEvmScope.Rpc;
     public ReadOnlyQueryKind Surfaces { get; set; } = ReadOnlyQueryKind.Call;
-    public IlEvmSelection Selection { get; set; } = IlEvmSelection.Legacy;
-    public IlEvmPrefer Prefer { get; set; } = IlEvmPrefer.Rpc;
-    public bool Gate { get; set; } = true;
-    public IlEvmBlockThreads BlockThreads { get; set; } = IlEvmBlockThreads.Both;
-    public bool Check { get; set; } = true;
-    public bool BlockCheck { get; set; } = true;
-    public int StartupCompileSeconds { get; set; } = 60;
-    public int QuietMs { get; set; } = 250;
-    public int SlotGuardMs { get; set; } = 300;
-    public int CompileThreads { get; set; } = 1;
-    public int IdleCompileThreads { get; set; }
-    public int LiveBudgetMiB { get; set; } = 128;
-    public int ListSize { get; set; } = 0;
-    public int PromoteMs { get; set; } = 5_000;
-    public long PromoteOps { get; set; } = 1_000_000;
-    public bool BlockDeclineAll { get; set; }
     public int Threshold { get; set; } = 32;
     public long OpcodeThreshold { get; set; } = 20_000;
     public int HotOpcodesPerSecond { get; set; } = 50_000;
     public bool CompileSynchronously { get; set; }
     public bool Precompile { get; set; } = true;
-    public bool PrecompileRpc { get; set; } = true;
     public int PrecompileLimit { get; set; }
     public IlEvmPrecompileSource PrecompileList { get; set; } = IlEvmPrecompileSource.Shipped;
     public int PrecompileMinOpsPerFrame { get; set; }

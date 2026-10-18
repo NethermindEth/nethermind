@@ -10,7 +10,7 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="Nethermind.IlEvm.Test" />
-    <!-- The replay harness starts the Adaptive rules as a node's startup does, with no node around it. -->
+    <!-- The replay harness sets the rules and reads the counters as a node does, with no node around it. -->
     <InternalsVisibleTo Include="RpcReplay" />
   </ItemGroup>
 

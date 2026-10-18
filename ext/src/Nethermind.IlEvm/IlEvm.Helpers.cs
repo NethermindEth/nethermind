@@ -179,13 +179,7 @@ public static unsafe partial class IlEvm
 
     /// <summary>CALLDATALOAD of an offset held in a register, past the end of the input or not below 2^32: zeros where the input ends.</summary>
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static Vector256<ulong> IlCallDataWord(ref byte input, nint length, Vector256<ulong> offset) => IlCallDataWordAt(ref input, length, offset);
-
-    [MethodImpl(MethodImplOptions.NoInlining | MethodImplOptions.AggressiveOptimization)]
-    private static Vector256<ulong> IlCallDataWordAhead(ref byte input, nint length, Vector256<ulong> offset) => IlCallDataWordAt(ref input, length, offset);
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static Vector256<ulong> IlCallDataWordAt(ref byte input, nint length, Vector256<ulong> offset)
+    private static Vector256<ulong> IlCallDataWord(ref byte input, nint length, Vector256<ulong> offset)
     {
         // Past the input, or past 2^64, the body reads nothing and pushes zero.
         ulong at = offset.GetElement(0);
@@ -219,28 +213,30 @@ public static unsafe partial class IlEvm
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static ref byte CommitWordOverwrite(ref EvmPooledMemory memory, ulong offset) => ref memory.CommitWordOverwrite(offset);
 
-    /// <summary>Carries one into limb 1 and up of the word at <paramref name="slot"/>, for an addition whose low limb wrapped.</summary>
+    /// <summary>Carries one into limb 1 and up of the word at <paramref name="slot"/>, for an addition whose low limb wrapped; reads and writes the word whole, as compiled code wrote it.</summary>
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static void IlCarry(ref byte slot) => IlCarryWord(ref slot);
+    private static void IlCarry(ref byte slot)
+    {
+        Vector256<ulong> word = Unsafe.ReadUnaligned<Vector256<ulong>>(ref slot);
+        ulong u1 = word.GetElement(1) + 1, u2 = word.GetElement(2), u3 = word.GetElement(3);
+        if (u1 == 0 && ++u2 == 0)
+            u3++;
+        Unsafe.WriteUnaligned(ref slot, Vector256.Create(word.GetElement(0), u1, u2, u3));
+    }
 
     /// <summary>Borrows one from limb 1 and up of the word at <paramref name="slot"/>, for a subtraction whose low limb wrapped.</summary>
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static void IlBorrow(ref byte slot) => IlBorrowWord(ref slot);
+    private static void IlBorrow(ref byte slot)
+    {
+        Vector256<ulong> word = Unsafe.ReadUnaligned<Vector256<ulong>>(ref slot);
+        ulong u1 = word.GetElement(1), u2 = word.GetElement(2), u3 = word.GetElement(3);
+        if (u1-- == 0 && u2-- == 0)
+            u3--;
+        Unsafe.WriteUnaligned(ref slot, Vector256.Create(word.GetElement(0), u1, u2, u3));
+    }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static Vector256<ulong> IlCarryVector(Vector256<ulong> word) => IlCarryLimbs(word);
-
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    private static Vector256<ulong> IlBorrowVector(Vector256<ulong> word) => IlBorrowLimbs(word);
-
-    [MethodImpl(MethodImplOptions.NoInlining | MethodImplOptions.AggressiveOptimization)]
-    private static Vector256<ulong> IlCarryVectorAhead(Vector256<ulong> word) => IlCarryLimbs(word);
-
-    [MethodImpl(MethodImplOptions.NoInlining | MethodImplOptions.AggressiveOptimization)]
-    private static Vector256<ulong> IlBorrowVectorAhead(Vector256<ulong> word) => IlBorrowLimbs(word);
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static Vector256<ulong> IlCarryLimbs(Vector256<ulong> word)
+    private static Vector256<ulong> IlCarryVector(Vector256<ulong> word)
     {
         ulong u1 = word.GetElement(1) + 1, u2 = word.GetElement(2), u3 = word.GetElement(3);
         if (u1 == 0 && ++u2 == 0)
@@ -248,34 +244,13 @@ public static unsafe partial class IlEvm
         return Vector256.Create(word.GetElement(0), u1, u2, u3);
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static Vector256<ulong> IlBorrowLimbs(Vector256<ulong> word)
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static Vector256<ulong> IlBorrowVector(Vector256<ulong> word)
     {
         ulong u1 = word.GetElement(1), u2 = word.GetElement(2), u3 = word.GetElement(3);
         if (u1-- == 0 && u2-- == 0)
             u3--;
         return Vector256.Create(word.GetElement(0), u1, u2, u3);
-    }
-
-    /// <summary>The carry, reading and writing the word whole, as compiled code wrote it.</summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void IlCarryWord(ref byte slot)
-    {
-        Vector256<ulong> word = Unsafe.ReadUnaligned<Vector256<ulong>>(ref slot);
-        ulong u1 = word.GetElement(1) + 1, u2 = word.GetElement(2), u3 = word.GetElement(3);
-        if (u1 == 0 && ++u2 == 0)
-            u3++;
-        Unsafe.WriteUnaligned(ref slot, Vector256.Create(word.GetElement(0), u1, u2, u3));
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void IlBorrowWord(ref byte slot)
-    {
-        Vector256<ulong> word = Unsafe.ReadUnaligned<Vector256<ulong>>(ref slot);
-        ulong u1 = word.GetElement(1), u2 = word.GetElement(2), u3 = word.GetElement(3);
-        if (u1-- == 0 && u2-- == 0)
-            u3--;
-        Unsafe.WriteUnaligned(ref slot, Vector256.Create(word.GetElement(0), u1, u2, u3));
     }
 
     // Called twins: what compiled code calls when the helpers above are not inlined, trading a call for much smaller code; found by the "Called" suffix.
@@ -340,93 +315,20 @@ public static unsafe partial class IlEvm
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static void IlCallDataLoadAtCalled(ref byte input, nint length, ulong offset, ref byte destination) => IlCallDataLoadAt(ref input, length, offset, ref destination);
 
-    // Ahead twins: the same code optimized from its first call, for an ahead copy (IlContract.Ahead) while the called twins run tier-0 code; unprofiled, they lose once those tier up (IlWarmUp.SwitchFromAhead).
+    private static readonly ConcurrentDictionary<MethodInfo, MethodInfo> _ilCalledTwins = new();
 
-    [MethodImpl(MethodImplOptions.NoInlining | MethodImplOptions.AggressiveOptimization)]
-    private static void IlCarryAhead(ref byte slot) => IlCarryWord(ref slot);
-
-    [MethodImpl(MethodImplOptions.NoInlining | MethodImplOptions.AggressiveOptimization)]
-    private static void IlBorrowAhead(ref byte slot) => IlBorrowWord(ref slot);
-
-    [MethodImpl(MethodImplOptions.NoInlining | MethodImplOptions.AggressiveOptimization)]
-    private static void IlMath2CalledAhead<TOpMath>(ref byte top) where TOpMath : struct, EvmInstructions.IOpMath2Param => IlMath2<TOpMath>(ref top);
-
-    [MethodImpl(MethodImplOptions.NoInlining | MethodImplOptions.AggressiveOptimization)]
-    private static void IlMath2InPlaceCalledAhead<TOpMath>(ref byte top) where TOpMath : struct, EvmInstructions.IOpMath2Param => IlMath2InPlace<TOpMath>(ref top);
-
-    [MethodImpl(MethodImplOptions.NoInlining | MethodImplOptions.AggressiveOptimization)]
-    private static void IlMath2ConstCalledAhead<TOpMath>(ref byte operand, ref byte destination, ulong c0, ulong c1, ulong c2, ulong c3, bool constantOnTop)
-        where TOpMath : struct, EvmInstructions.IOpMath2Param =>
-        IlMath2Const<TOpMath>(ref operand, ref destination, c0, c1, c2, c3, constantOnTop);
-
-    [MethodImpl(MethodImplOptions.NoInlining | MethodImplOptions.AggressiveOptimization)]
-    private static void IlBitwiseCalledAhead<TOp>(ref byte top) where TOp : struct, EvmInstructions.IOpBitwise => IlBitwise<TOp>(ref top);
-
-    [MethodImpl(MethodImplOptions.NoInlining | MethodImplOptions.AggressiveOptimization)]
-    private static void IlBitwiseConstCalledAhead<TOp>(ref byte operand, ref byte destination, ulong c0, ulong c1, ulong c2, ulong c3, bool constantOnTop)
-        where TOp : struct, EvmInstructions.IOpBitwise =>
-        IlBitwiseConst<TOp>(ref operand, ref destination, c0, c1, c2, c3, constantOnTop);
-
-    [MethodImpl(MethodImplOptions.NoInlining | MethodImplOptions.AggressiveOptimization)]
-    private static void IlMath1CalledAhead<TOp>(ref byte top) where TOp : struct, EvmInstructions.IOpMath1Param => IlMath1<TOp>(ref top);
-
-    [MethodImpl(MethodImplOptions.NoInlining | MethodImplOptions.AggressiveOptimization)]
-    private static bool IlPredicate2CalledAhead<TOpMath>(ref byte top) where TOpMath : struct, EvmInstructions.IOpMath2Param => IlPredicate2<TOpMath>(ref top);
-
-    [MethodImpl(MethodImplOptions.NoInlining | MethodImplOptions.AggressiveOptimization)]
-    private static bool IlPredicate2ConstCalledAhead<TOpMath>(ref byte operand, ulong c0, ulong c1, ulong c2, ulong c3, bool constantOnTop)
-        where TOpMath : struct, EvmInstructions.IOpMath2Param =>
-        IlPredicate2Const<TOpMath>(ref operand, c0, c1, c2, c3, constantOnTop);
-
-    [MethodImpl(MethodImplOptions.NoInlining | MethodImplOptions.AggressiveOptimization)]
-    private static bool IlPredicateBitwiseCalledAhead<TOp>(ref byte top) where TOp : struct, EvmInstructions.IOpBitwise => IlPredicateBitwise<TOp>(ref top);
-
-    [MethodImpl(MethodImplOptions.NoInlining | MethodImplOptions.AggressiveOptimization)]
-    private static bool IlPredicateBitwiseConstCalledAhead<TOp>(ref byte operand, ulong c0, ulong c1, ulong c2, ulong c3, bool constantOnTop)
-        where TOp : struct, EvmInstructions.IOpBitwise =>
-        IlPredicateBitwiseConst<TOp>(ref operand, c0, c1, c2, c3, constantOnTop);
-
-    [MethodImpl(MethodImplOptions.NoInlining | MethodImplOptions.AggressiveOptimization)]
-    private static bool IlPredicate1CalledAhead<TOp>(ref byte top) where TOp : struct, EvmInstructions.IOpMath1Param => IlPredicate1<TOp>(ref top);
-
-    [MethodImpl(MethodImplOptions.NoInlining | MethodImplOptions.AggressiveOptimization)]
-    private static bool IlTryMLoadCalledAhead(ref EvmPooledMemory memory, ref byte slot) => IlTryMLoad(ref memory, ref slot);
-
-    [MethodImpl(MethodImplOptions.NoInlining | MethodImplOptions.AggressiveOptimization)]
-    private static ulong IlTryMStoreCalledAhead(ref EvmPooledMemory memory, ref byte offsetSlot, ulong gas) => IlTryMStore(ref memory, ref offsetSlot, gas);
-
-    [MethodImpl(MethodImplOptions.NoInlining | MethodImplOptions.AggressiveOptimization)]
-    private static bool IlTryMLoadAtCalledAhead(ref EvmPooledMemory memory, ulong offset, ref byte destination) => IlTryMLoadAt(ref memory, offset, ref destination);
-
-    [MethodImpl(MethodImplOptions.NoInlining | MethodImplOptions.AggressiveOptimization)]
-    private static ulong IlTryMStoreAtCalledAhead(ref EvmPooledMemory memory, ulong offset, ref byte value, ulong gas) => IlTryMStoreAt(ref memory, offset, ref value, gas);
-
-    [MethodImpl(MethodImplOptions.NoInlining | MethodImplOptions.AggressiveOptimization)]
-    private static ulong IlTryMStoreWordAtCalledAhead(ref EvmPooledMemory memory, ulong offset, ulong m0, ulong m1, ulong m2, ulong m3, ulong gas) =>
-        IlTryMStoreWordAt(ref memory, offset, m0, m1, m2, m3, gas);
-
-    [MethodImpl(MethodImplOptions.NoInlining | MethodImplOptions.AggressiveOptimization)]
-    private static void IlCallDataLoadAtCalledAhead(ref byte input, nint length, ulong offset, ref byte destination) => IlCallDataLoadAt(ref input, length, offset, ref destination);
-
-    private static readonly ConcurrentDictionary<MethodInfo, MethodInfo> _ilCalledTwins = new(), _ilAheadTwins = new();
-
-    /// <summary>Whether the code being laid out on this thread is a contract's ahead copy, whose calls go to the ahead twins (<see cref="PrecompileAhead"/>).</summary>
-    [ThreadStatic] private static bool _layingOutAhead;
-
-    /// <summary>The called twin of an inlined helper, found by name; its ahead twin while an ahead copy is laid out.</summary>
+    /// <summary>The called twin of an inlined helper, found by name.</summary>
     [UnconditionalSuppressMessage("AOT", "IL3050", Justification = "IlEvmSettings.Enabled is false without dynamic code, so nothing reaches the compiler.")]
     [UnconditionalSuppressMessage("Trimming", "IL2060", Justification = "Opcode bodies are rooted by the dispatch table; the compiler is off without dynamic code.")]
     [UnconditionalSuppressMessage("Trimming", "IL2075", Justification = "The twins are private static methods of this type, referenced here.")]
-    private static MethodInfo IlCalledTwin(MethodInfo helper) => _layingOutAhead
-        ? _ilAheadTwins.GetOrAdd(helper, static h => IlTwin(h, "CalledAhead"))
-        : _ilCalledTwins.GetOrAdd(helper, static h => IlTwin(h, "Called"));
+    private static MethodInfo IlCalledTwin(MethodInfo helper) => _ilCalledTwins.GetOrAdd(helper, static h => IlTwin(h));
 
     [UnconditionalSuppressMessage("AOT", "IL3050", Justification = "IlEvmSettings.Enabled is false without dynamic code, so nothing reaches the compiler.")]
     [UnconditionalSuppressMessage("Trimming", "IL2060", Justification = "Opcode bodies are rooted by the dispatch table; the compiler is off without dynamic code.")]
     [UnconditionalSuppressMessage("Trimming", "IL2075", Justification = "The twins are private static methods of this type, referenced here.")]
-    private static MethodInfo IlTwin(MethodInfo helper, string suffix)
+    private static MethodInfo IlTwin(MethodInfo helper)
     {
-        MethodInfo twin = typeof(IlEvm).GetMethod(helper.Name + suffix, BindingFlags.NonPublic | BindingFlags.Static)!;
+        MethodInfo twin = typeof(IlEvm).GetMethod(helper.Name + "Called", BindingFlags.NonPublic | BindingFlags.Static)!;
         return helper.IsGenericMethod ? twin.MakeGenericMethod(helper.GetGenericArguments()) : twin;
     }
 
@@ -473,15 +375,7 @@ public static unsafe partial class IlEvm
     /// <param name="opsAdjust">What the caller adds to its opcode count when the frame leaves.</param>
     /// <returns>None to go on; <see cref="IlDeopt"/> to hand over at <paramref name="programCounter"/> once virtual values are written out; else the frame's result. Gas, head and counter are then the frame's.</returns>
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static EvmExceptionType IlEmbedded(IlChunk chunk, int site, VirtualMachine<EthereumGasPolicy> vm, ref EvmStack stack, ref EthereumGasPolicy gas, ref nint programCounter, out int opsAdjust, nint head, ulong gasNow) =>
-        IlEmbeddedRun(chunk, site, vm, ref stack, ref gas, ref programCounter, out opsAdjust, head, gasNow);
-
-    [MethodImpl(MethodImplOptions.NoInlining | MethodImplOptions.AggressiveOptimization)]
-    private static EvmExceptionType IlEmbeddedAhead(IlChunk chunk, int site, VirtualMachine<EthereumGasPolicy> vm, ref EvmStack stack, ref EthereumGasPolicy gas, ref nint programCounter, out int opsAdjust, nint head, ulong gasNow) =>
-        IlEmbeddedRun(chunk, site, vm, ref stack, ref gas, ref programCounter, out opsAdjust, head, gasNow);
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static EvmExceptionType IlEmbeddedRun(IlChunk chunk, int site, VirtualMachine<EthereumGasPolicy> vm, ref EvmStack stack, ref EthereumGasPolicy gas, ref nint programCounter, out int opsAdjust, nint head, ulong gasNow)
+    private static EvmExceptionType IlEmbedded(IlChunk chunk, int site, VirtualMachine<EthereumGasPolicy> vm, ref EvmStack stack, ref EthereumGasPolicy gas, ref nint programCounter, out int opsAdjust, nint head, ulong gasNow)
     {
         ref readonly IlSite info = ref chunk.Sites[site];
         // The interpreter's head and gas before the opcode: the segment's charge for it and the ones after it comes back.

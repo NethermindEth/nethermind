@@ -76,7 +76,7 @@ public sealed class IlEvmModule(IIlEvmConfig config) : Module
     public const ReadOnlyQueryKind AllQueryKinds = ReadOnlyQueryKind.All;
 
     /// <summary>Sets the plugin's rules and switches from <paramref name="config"/>; tools that attach the runners themselves call it too.</summary>
-    /// <returns>Where compiled code runs: the config's scope, or All where <see cref="IlEvmPrefer.Blocks"/> needs it.</returns>
+    /// <returns>Where compiled code runs: the config's scope.</returns>
     internal static IlEvmScope Configure(IIlEvmConfig config)
     {
         IlEvmSettings.Enabled = true;
@@ -93,40 +93,11 @@ public sealed class IlEvmModule(IIlEvmConfig config) : Module
         IlEvmSettings.BlockRuntimeCompile = config.BlockRuntimeCompile;
         IlEvmSettings.BlockSelfCheck = config.BlockSelfCheck;
 
-        // One set of rules per process; the diagnostics' counters exist only on the Legacy path.
-        IlMode mode = config.Stats ? IlMode.Stats
-            : config.Profile ? IlMode.Profile
-            : config.Selection == IlEvmSelection.Legacy || IlEvmDiagnostics.Enabled ? IlMode.Legacy
-            : config.Selection == IlEvmSelection.Simple ? IlMode.Simple
-            : IlMode.Adaptive;
-        IlEvmSettings.Mode = mode;
-        // Live profiling of blocks needs block processing's runner attached.
+        // One set of rules per process.
+        IlEvmSettings.Mode = config.Stats ? IlMode.Stats : config.Profile ? IlMode.Profile : IlMode.Legacy;
         IlEvmScope scope = config.Scope;
-        IlEvmSettings.ScopeForcedToAll = mode == IlMode.Adaptive && config.Prefer == IlEvmPrefer.Blocks && scope != IlEvmScope.All;
-        if (IlEvmSettings.ScopeForcedToAll)
-            scope = IlEvmScope.All;
         IlEvmSettings.Scope = scope;
         IlEvmSettings.Surfaces = scope == IlEvmScope.All ? AllQueryKinds : config.Surfaces & AllQueryKinds;
-        IlEvmSettings.Prefer = config.Prefer;
-        IlRuntime.QueryCounting = mode == IlMode.Adaptive && config.Prefer == IlEvmPrefer.Rpc;
-        IlRuntime.BlocksCounting = false;
-        IlRuntime.BlockThreadsMask = config.BlockThreads switch
-        {
-            IlEvmBlockThreads.Main => IlRuntime.RunMain,
-            IlEvmBlockThreads.Workers => IlRuntime.RunWorkers,
-            _ => IlRuntime.RunMain | IlRuntime.RunWorkers,
-        };
-        IlEvmSettings.Gate = config.Gate;
-        IlLive.BudgetBytes = (long)Math.Max(0, config.LiveBudgetMiB) << 20;
-        IlEvmSettings.QueryCheck = config.Check && IlEvmSettings.SelfCheck;
-        IlEvmSettings.BlockCheck = config.BlockCheck && IlEvmSettings.SelfCheck;
-        IlEvmSettings.BlockDeclineAll = config.BlockDeclineAll;
-        // The Simple rules promote from the read-only queries only; Prefer=Blocks counts as None, which the startup step logs.
-        IlSimple.Promote = mode == IlMode.Simple && config.Prefer == IlEvmPrefer.Rpc;
-        IlSimple.PromoteMs = Math.Max(100, config.PromoteMs);
-        IlSimple.PromoteOps = Math.Max(1, config.PromoteOps);
-        IlSimple.CompileThreads = Math.Max(1, config.CompileThreads);
-        IlSimple.BudgetBytes = (long)Math.Max(0, config.LiveBudgetMiB) << 20;
         return scope;
     }
 }

@@ -100,7 +100,6 @@ public static unsafe partial class IlEvm
         private static readonly MethodInfo StackInputData = typeof(EvmStack).GetProperty(nameof(EvmStack.InputDataStart))!.GetGetMethod()!;
         private static readonly MethodInfo StackInputDataLength = typeof(EvmStack).GetProperty(nameof(EvmStack.InputDataSize))!.GetGetMethod()!;
         private static readonly MethodInfo EmbeddedMethod = typeof(IlEvm).GetMethod(nameof(IlEmbedded), BindingFlags.NonPublic | BindingFlags.Static)!;
-        private static readonly MethodInfo EmbeddedAheadMethod = typeof(IlEvm).GetMethod(nameof(IlEmbeddedAhead), BindingFlags.NonPublic | BindingFlags.Static)!;
         private static readonly Type[] BodySignature = [typeof(EvmStack).MakeByRefType(), typeof(EthereumGasPolicy).MakeByRefType(), typeof(VirtualMachine<EthereumGasPolicy>), typeof(nint).MakeByRefType()];
 
         private static readonly FieldInfo EntryIndexField = typeof(IlChunk).GetField(nameof(IlChunk.EntryIndex))!;
@@ -122,7 +121,6 @@ public static unsafe partial class IlEvm
         private static readonly MethodInfo TryMStoreAt = typeof(IlEvm).GetMethod(nameof(IlTryMStoreAt), BindingFlags.NonPublic | BindingFlags.Static)!;
         private static readonly MethodInfo TryMStoreWordAt = typeof(IlEvm).GetMethod(nameof(IlTryMStoreWordAt), BindingFlags.NonPublic | BindingFlags.Static)!;
         private static readonly MethodInfo CarryMethod = typeof(IlEvm).GetMethod(nameof(IlCarry), BindingFlags.NonPublic | BindingFlags.Static)!;
-        private static readonly MethodInfo CarryAheadMethod = typeof(IlEvm).GetMethod(nameof(IlCarryAhead), BindingFlags.NonPublic | BindingFlags.Static)!;
         private static readonly MethodInfo VectorCreate = typeof(Vector256).GetMethod(nameof(Vector256.Create), [typeof(ulong), typeof(ulong), typeof(ulong), typeof(ulong)])!;
         private static readonly MethodInfo VectorCreateScalar = typeof(Vector256).GetMethod(nameof(Vector256.CreateScalar), [typeof(ulong)])!;
         private static readonly MethodInfo VectorAsByte = typeof(Vector256).GetMethod(nameof(Vector256.AsByte))!.MakeGenericMethod(typeof(ulong));
@@ -151,16 +149,12 @@ public static unsafe partial class IlEvm
             .Single(static m => m.Name == nameof(Vector256.GetElement) && m.IsGenericMethodDefinition).MakeGenericMethod(typeof(ulong));
         private static readonly MethodInfo CarryVectorMethod = typeof(IlEvm).GetMethod(nameof(IlCarryVector), BindingFlags.NonPublic | BindingFlags.Static)!;
         private static readonly MethodInfo CallDataWordMethod = typeof(IlEvm).GetMethod(nameof(IlCallDataWord), BindingFlags.NonPublic | BindingFlags.Static)!;
-        private static readonly MethodInfo CallDataWordAheadMethod = typeof(IlEvm).GetMethod(nameof(IlCallDataWordAhead), BindingFlags.NonPublic | BindingFlags.Static)!;
         private static readonly MethodInfo VecAsByte = VectorMethod(nameof(Vector256.AsByte), typeof(ulong), 1);
         private static readonly MethodInfo VecBytesAsUInt64 = VectorMethod(nameof(Vector256.AsUInt64), typeof(byte), 1);
         private static readonly MethodInfo Permute4x64 = typeof(System.Runtime.Intrinsics.X86.Avx2).GetMethod(nameof(System.Runtime.Intrinsics.X86.Avx2.Permute4x64), [typeof(Vector256<ulong>), typeof(byte)])!;
         private static readonly MethodInfo ShuffleBytes = typeof(System.Runtime.Intrinsics.X86.Avx2).GetMethod(nameof(System.Runtime.Intrinsics.X86.Avx2.Shuffle), [typeof(Vector256<byte>), typeof(Vector256<byte>)])!;
         private static readonly MethodInfo TestZ = typeof(System.Runtime.Intrinsics.X86.Avx).GetMethod(nameof(System.Runtime.Intrinsics.X86.Avx.TestZ), [typeof(Vector256<ulong>), typeof(Vector256<ulong>)])!;
-        private static readonly MethodInfo CarryVectorAheadMethod = typeof(IlEvm).GetMethod(nameof(IlCarryVectorAhead), BindingFlags.NonPublic | BindingFlags.Static)!;
         private static readonly MethodInfo BorrowVectorMethod = typeof(IlEvm).GetMethod(nameof(IlBorrowVector), BindingFlags.NonPublic | BindingFlags.Static)!;
-        private static readonly MethodInfo BorrowVectorAheadMethod = typeof(IlEvm).GetMethod(nameof(IlBorrowVectorAhead), BindingFlags.NonPublic | BindingFlags.Static)!;
-        private static readonly MethodInfo BorrowAheadMethod = typeof(IlEvm).GetMethod(nameof(IlBorrowAhead), BindingFlags.NonPublic | BindingFlags.Static)!;
 
         [UnconditionalSuppressMessage("AOT", "IL3050", Justification = "IlEvmSettings.Enabled is false without dynamic code, so nothing reaches the compiler.")]
         internal static IlContract? Compile(CodeInfo codeInfo, IlFork fork, out string? reason)
@@ -325,8 +319,7 @@ public static unsafe partial class IlEvm
                 if (IlEvmDiagnostics.Enabled)
                     Console.WriteLine($"il-evm laid out {name}: {code.Length} B of code, {units.Count} units, {copies} copies, {chunks.Count} chunks, {contract.IlBytes / 1024} KiB IL");
 
-                // Adaptive: eager chunks are jobs of their own between blocks (LayoutJob), never one long step.
-                if (IlEvmSettings.EagerChunks && IlEvmSettings.Mode != IlMode.Adaptive)
+                if (IlEvmSettings.EagerChunks)
                     contract.CompileAllChunks();
                 reason = null;
                 return contract;
@@ -365,8 +358,6 @@ public static unsafe partial class IlEvm
             IlChunk chunk = new(contract, contract.JumpCases[index], contract.JumpBases[index], segments.ToArray(), sites.ToArray());
             IlRunner runner = (IlRunner)method.CreateDelegate(typeof(IlRunner), chunk);
             contract.IlBytes += generator.ILOffset;
-            contract.ChunkIlBytes[index] = generator.ILOffset;
-            contract.SetCallees(index, generator.Callees);
             failure = null;
             return runner;
         }
@@ -1012,15 +1003,6 @@ public static unsafe partial class IlEvm
             /// <summary>What the emitter is writing, for <see cref="IlEvmDiagnostics"/>; IL instructions are tallied under it.</summary>
             public string Category = "entry";
 
-            /// <summary>Every method the chunk calls, directly or through an opcode body's entry point, which its JIT does not compile with it: they are compiled ahead, off the frames' threads (<see cref="IlWarmUp"/>).</summary>
-            public readonly HashSet<MethodBase> Callees = [];
-
-            public void Calls(MethodBase? method)
-            {
-                if (method is not null)
-                    Callees.Add(method);
-            }
-
             public int ILOffset => generator.ILOffset;
 
             public LocalBuilder DeclareLocal(Type type)
@@ -1118,7 +1100,6 @@ public static unsafe partial class IlEvm
                 Count(opcode);
                 if ((method.MethodImplementationFlags & MethodImplAttributes.AggressiveInlining) != 0)
                     InlineSites++;
-                Callees.Add(method);
                 generator.Emit(opcode, method);
             }
 

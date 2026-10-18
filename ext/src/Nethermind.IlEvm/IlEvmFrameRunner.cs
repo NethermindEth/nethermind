@@ -6,7 +6,6 @@ using System.Diagnostics;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
-using Nethermind.Core.Threading;
 using Nethermind.Evm;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.GasPolicy;
@@ -15,10 +14,7 @@ namespace Nethermind.IlEvm;
 
 /// <summary>Runs the frame parts it is offered on compiled code where the rules say, and leaves the rest to the interpreter.</summary>
 /// <remarks>
-/// Adaptive (<see cref="IlMode.Adaptive"/>): a part runs compiled when its code state names a contract this runner, thread
-/// kind and body set may run (<see cref="IlRuntime"/>), and the visit gate (<see cref="IlGate"/>) expects its visit to gain.
-/// Simple (<see cref="IlMode.Simple"/>): every part of code compiled for this runner and body set runs compiled (<see cref="IlSimple"/>).
-/// Legacy and the measurement modes decline code not compiled yet with a request for its opcode count, which makes it hot.
+/// Code not compiled yet is declined with a request for its opcode count, which makes it hot.
 /// A compiled run that hands back declines from the instruction where it stopped. One instance per <see cref="IlEvmSurface"/>.
 /// </remarks>
 public sealed class IlEvmFrameRunner : FrameCodeRunner<EthereumGasPolicy>
@@ -133,7 +129,7 @@ public sealed class IlEvmFrameRunner : FrameCodeRunner<EthereumGasPolicy>
         scoped ref EthereumGasPolicy gas, ref nint programCounter, ref int opCodesSincePoll, FrameRunFlags flags, long[] counts, int surface, bool drawn)
     {
         int before = vm.OpCodeCount;
-        EvmExceptionType result = RunPart(vm, codeInfo, bodies, ref stack, ref gas, ref programCounter, ref opCodesSincePoll, flags, drawn);
+        EvmExceptionType result = RunLegacy(vm, codeInfo, bodies, ref stack, ref gas, ref programCounter, ref opCodesSincePoll, flags, drawn);
         // Compiled when the opcode count moved: only compiled code moves it before the interpreter takes a part over, and
         // a hand-back before its first opcode moves nothing.
         if (vm.OpCodeCount != before)
@@ -141,251 +137,19 @@ public sealed class IlEvmFrameRunner : FrameCodeRunner<EthereumGasPolicy>
         return result;
     }
 
-    // The counted path inlines all of it: a part past the mark run out of line would pay a second prologue, which costs
-    // the state, settled and admitted parts more than the larger frame costs a Quiet one.
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private EvmExceptionType RunPart(VirtualMachine<EthereumGasPolicy> vm, CodeInfo codeInfo, OpcodeBodySet bodies,
-        scoped ref EvmStack stack, scoped ref EthereumGasPolicy gas, ref nint programCounter, ref int opCodesSincePoll, FrameRunFlags flags, bool drawn)
-    {
-        IlMode mode = IlEvmSettings.Mode;
-        if (mode == IlMode.Simple)
-            return RunSimple(vm, codeInfo, bodies, ref stack, ref gas, ref programCounter, ref opCodesSincePoll, flags);
-        if (mode != IlMode.Adaptive)
-            return RunOther(vm, codeInfo, bodies, ref stack, ref gas, ref programCounter, ref opCodesSincePoll, flags, drawn);
-
-        // Ends the gate's visits of the transaction before, ahead of the mark: the gate sees only the parts it is offered, so
-        // a top-level frame declined from its mark would otherwise leave two transactions' visits of the code it calls one.
-        if (programCounter == 0 && vm.VmState.IsTopLevel)
-            IlThread.TopLevelEntry(_block);
-        // Most code is decided by its slot alone: this runner's mark, or the one for both, declines without reading what the
-        // slot points at, unless this transaction is sampled for live profiling (one in a few, all its visits). Marks exist
-        // only where the Adaptive rules put them, so a mark declines whatever else is switched.
-        object? slot = CodeState(codeInfo);
-        if ((ReferenceEquals(slot, IlRuntime.QuietAll) || ReferenceEquals(slot, _block ? IlRuntime.QuietBlock : IlRuntime.QuietQuery)) && !Sampling())
-            return Declined;
-
-        // The kill switch; the diagnostics' counters exist only on the Legacy path, which they force.
-        if (!IlEvmSettings.Enabled)
-            return Declined;
-
-        bool counting = _block ? IlRuntime.BlocksCounting : IlRuntime.QueryCounting;
-        bool sampling = counting && IlThread.SamplingTransaction;
-        IlEvm.IlCodeState? state = slot as IlEvm.IlCodeState;
-        if (state is null || state.Version != IlRuntime.Version)
-        {
-            state = state is null
-                ? IlRuntime.Resolve(vm, codeInfo, bodies, slot, _block, counting, sampling)
-                : IlRuntime.Refresh(vm, state, codeInfo, bodies, _block, counting, sampling);
-            if (state is null)
-                return Declined;
-        }
-
-        IlEvm.IlContract? contract = _block ? state.BlockRun : state.QueryRun;
-        // Another body set: the profile's contract for it, if any; one that found none skips the lookup until the state resolves again.
-        if (contract is not null && !ReferenceEquals(contract.Bodies, bodies))
-        {
-            contract = ReferenceEquals(_block ? state.BlockMissed : state.QueryMissed, bodies) && state.MissEpoch == IlRuntime.MissEpoch
-                ? null
-                : IlRuntime.ForkMiss(state, codeInfo, bodies, _block);
-        }
-        // Nothing this thread may run: a sampled transaction counts the part for the live profile, with its opcodes.
-        if (contract is null || !MayRun(contract.RunMask))
-        {
-            // A check just took this runner off the contract: a visit under way is no longer seen whole, so it measures nothing.
-            if (contract is not null && (contract.RunMask & (_block ? IlRuntime.CheckOffBlock : IlRuntime.CheckOffQuery)) != 0)
-                IlThread.Current.Unmeasure(vm, state, programCounter, _block);
-            return sampling && state.Profile is not null && IlThread.Current.Sample(vm, state, codeInfo, bodies, programCounter, _block) ? DeclinedReportingOpcodes : Declined;
-        }
-
-        // The gate leaves to the interpreter the parts of visits too short or too cold to gain; off, it admits every part but keeps its bookkeeping.
-        IlThread thread = IlThread.Current;
-        int decision = thread.Offer(vm, state, codeInfo, programCounter, _block, sampling);
-        if (decision != IlGate.Compile)
-            return decision == IlGate.InterpretReport ? DeclinedReportingOpcodes : Declined;
-
-        bool cancelable = (flags & FrameRunFlags.Cancelable) != 0;
-        IlCheck? check = _block ? contract.BlockCheck : contract.QueryCheck;
-        if (check is not null && check.Active)
-        {
-            int tick = Volatile.Read(ref IlCheckClock.Tick);
-            if (check.TakesPart(thread, tick, out long word))
-                return RunSwitchback(thread, check, word, tick, contract, codeInfo, vm, ref stack, ref gas, ref programCounter, ref opCodesSincePoll, cancelable);
-        }
-
-        int before = vm.OpCodeCount;
-        // While a contract has an ahead copy, one part in IlWarmUp.AheadOwnShare runs its own code, so its helpers tier up on real calls.
-        IlEvm.IlContract run = contract.Ahead is { } ahead && (thread.Next() & IlWarmUp.AheadOwnMask) != 0 ? ahead : contract;
-        EvmExceptionType result = run.Run(vm, ref stack, ref gas, ref programCounter, ref opCodesSincePoll, cancelable);
-        thread.AfterCompiled(vm, before, codeInfo, handedBack: result == Declined);
-        // A part handed back mid-way is reported, so its visit counts the interpreter's rest of it too.
-        return result == Declined ? DeclinedReportingOpcodes : result;
-    }
-
-    /// <summary>The Simple rules' part (<see cref="IlSimple"/>): the state's contract runs every part of the code it is compiled for; anything else is declined.</summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private EvmExceptionType RunSimple(VirtualMachine<EthereumGasPolicy> vm, CodeInfo codeInfo, OpcodeBodySet bodies,
-        scoped ref EvmStack stack, scoped ref EthereumGasPolicy gas, ref nint programCounter, ref int opCodesSincePoll, FrameRunFlags flags)
-    {
-        // The kill switch first: the replay harness's interpreter passes turn it off.
-        if (!IlEvmSettings.Enabled)
-            return Declined;
-        object? slot = CodeState(codeInfo);
-        IlSimpleState? state = slot as IlSimpleState;
-        if (state is null || state.Generation != IlSimple.Generation || !ReferenceEquals(state.Bodies, bodies))
-        {
-            if (ReferenceEquals(slot, IlSimple.Nothing) || (_block && ReferenceEquals(slot, IlSimple.NothingBlock)))
-            {
-                CountInterpreted();
-                return Declined;
-            }
-
-            state = IlSimple.Resolve(vm, codeInfo, bodies, slot, _block);
-            if (state is null)
-            {
-                CountInterpreted();
-                return Declined;
-            }
-        }
-
-        // The state's contracts are compiled for its body set, which is this part's.
-        IlEvm.IlContract? contract = _block ? state.Block : state.Query;
-        IlSimpleThread thread = IlSimpleThread.Current;
-        if (contract is not null)
-        {
-            if (_block)
-            {
-                thread.BlockCompiled++;
-            }
-            else
-            {
-                thread.QueryCompiled++;
-                // A promoted contract's use, sampled, which eviction ranks by.
-                if (state.Uses is { } uses && IlSimple.Draw(thread))
-                    uses.Counts.AddCompiled(thread.Stripe);
-            }
-
-            // A part handed back mid-way is the interpreter's from there, unreported.
-            return contract.Run(vm, ref stack, ref gas, ref programCounter, ref opCodesSincePoll, (flags & FrameRunFlags.Cancelable) != 0);
-        }
-
-        if (_block)
-        {
-            thread.BlockInterpreted++;
-            return Declined;
-        }
-
-        thread.QueryInterpreted++;
-        if (state.Count is { } profile && IlSimple.Draw(thread))
-        {
-            IlSimple.Sample(profile, bodies, thread);
-            return DeclinedReportingOpcodes;
-        }
-
-        return Declined;
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private void CountInterpreted()
-    {
-        IlSimpleThread thread = IlSimpleThread.Current;
-        if (_block)
-            thread.BlockInterpreted++;
-        else
-            thread.QueryInterpreted++;
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private bool Sampling() => (_block ? IlRuntime.BlocksCounting : IlRuntime.QueryCounting) && IlThread.SamplingTransaction;
-
-    /// <summary>
-    /// A part the switchback check took (<see cref="IlCheck.TakesPart"/>): an interpreted window's part, timed one in
-    /// <see cref="IlCheck.TimeInterpretedEvery"/>, or a compiled one drawn to be timed. Nothing is timed in a window's first tick.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.NoInlining | MethodImplOptions.AggressiveOptimization)]
-    private EvmExceptionType RunSwitchback(IlThread thread, IlCheck check, long word, int tick, IlEvm.IlContract contract, CodeInfo codeInfo,
-        VirtualMachine<EthereumGasPolicy> vm, scoped ref EvmStack stack, scoped ref EthereumGasPolicy gas, ref nint programCounter, ref int opCodesSincePoll, bool cancelable)
-    {
-        int window = tick / IlCheckClock.WindowTicks;
-        bool settling = tick % IlCheckClock.WindowTicks == 0;
-        bool interpreted = (word & IlCheck.WordInterpreted) != 0, timed = true;
-        uint interpretedMask = IlCheck.TimeInterpretedEvery - 1;
-        if (IlGate.Chaos)
-        {
-            // Differential runs: each part takes a random path and one in two is timed, so every path of the check, and the
-            // verdicts that take the runner off a contract mid-visit, meet the interpreter's results.
-            settling = false;
-            interpreted = (thread.Next() & 1) == 0;
-            timed = (thread.Next() & 1) == 0;
-            interpretedMask = 1;
-        }
-
-        if (interpreted)
-        {
-            // A switchback window: the part runs on the interpreter, reported, so its visit counts it.
-            thread.SwitchedBack(codeInfo);
-            if (!settling && (thread.Next() & interpretedMask) == 0 && MaySample())
-                thread.ArmTimed(check, window, interpreted: true, Stopwatch.GetTimestamp(), compiledOps: 0, events: 0);
-            return DeclinedReportingOpcodes;
-        }
-
-        if (!timed || !MaySample())
-        {
-            int before = vm.OpCodeCount;
-            EvmExceptionType untimed = contract.Run(vm, ref stack, ref gas, ref programCounter, ref opCodesSincePoll, cancelable);
-            thread.AfterCompiled(vm, before, codeInfo, handedBack: untimed == Declined);
-            return untimed == Declined ? DeclinedReportingOpcodes : untimed;
-        }
-
-        int events = Volatile.Read(ref contract.ChunkEvents);
-        int ops = vm.OpCodeCount;
-        IlEvm.IlContract.HitColdChunk = false;
-        long start = Stopwatch.GetTimestamp();
-        EvmExceptionType result = contract.Run(vm, ref stack, ref gas, ref programCounter, ref opCodesSincePoll, cancelable);
-        long ticks = Stopwatch.GetTimestamp() - start;
-        thread.AfterCompiled(vm, ops, codeInfo, handedBack: result == Declined);
-        if (result == Declined)
-        {
-            // The interpreter's rest counts as compiled code's time; a part that waited for a chunk's JIT says nothing of it.
-            if (!IlEvm.IlContract.HitColdChunk)
-                thread.ArmTimed(check, window, interpreted: false, start, vm.OpCodeCount - ops, events);
-            return DeclinedReportingOpcodes;
-        }
-
-        // A part during which a chunk was compiled waited on the JIT.
-        if (Volatile.Read(ref contract.ChunkEvents) == events)
-            thread.AddCompiledSample(check, ticks, vm.OpCodeCount - ops);
-        return result;
-    }
-
-    /// <summary>Whether the part may be timed: always for the read-only queries, for block processing only during a processing pass.</summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private bool MaySample() => !_block || ProcessingThread.IsBlockProcessingThread || IlRuntime.InBranch;
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private bool MayRun(byte runMask)
-    {
-        if (!_block)
-            return (runMask & IlRuntime.RunQuery) != 0;
-        // The core's block-thread mark is read only when the mask tells main and workers apart, which most shipped contracts'
-        // does not: a second thread-static on every part costs as much as the rest.
-        int kinds = runMask & (IlRuntime.RunMain | IlRuntime.RunWorkers);
-        return kinds == (IlRuntime.RunMain | IlRuntime.RunWorkers) ||
-               (kinds != 0 && (kinds & (ProcessingThread.IsBlockProcessingThread ? IlRuntime.RunMain : IlRuntime.RunWorkers)) != 0);
-    }
-
-    /// <summary>The Legacy, measurement and profiling rules' run, kept out of the Adaptive path's way.</summary>
+    /// <summary>The Legacy rules' run of a part its code state does not decide, and the profiling and diagnostics runs'.</summary>
     /// <remarks>
     /// Under the Legacy rules the query runners also decide what the entry does with the code's next parts (<see cref="Decide"/>).
     /// Block processing's runner runs only the shipped contracts compiled unless <see cref="IlEvmSettings.BlockRuntimeCompile"/>
     /// is on, never one a query compiled at run time, and decides nothing.
     /// </remarks>
     [MethodImpl(MethodImplOptions.NoInlining | MethodImplOptions.AggressiveOptimization)]
-    private EvmExceptionType RunOther(VirtualMachine<EthereumGasPolicy> vm, CodeInfo codeInfo, OpcodeBodySet bodies,
+    private EvmExceptionType RunLegacy(VirtualMachine<EthereumGasPolicy> vm, CodeInfo codeInfo, OpcodeBodySet bodies,
         scoped ref EvmStack stack, scoped ref EthereumGasPolicy gas, ref nint programCounter, ref int opCodesSincePoll, FrameRunFlags flags, bool drawn)
     {
         if (!IlEvmSettings.Enabled)
             return IlEvmDiagnostics.Enabled ? TimeInterpreted(handedBack: false) : Declined;
-        // Initcode is never compiled, as under the other rules: it is never in the code database, so never shipped, and a
+        // Initcode is never compiled: it is never in the code database, so never shipped, and a
         // call without a recipient brings any it likes, with a new code info each time that its own frames, offered again on
         // every resume, would make hot. Nothing is counted for it, and its code state is never made.
         if (vm.VmState.ExecutionType.IsAnyCreate())
@@ -595,26 +359,11 @@ public sealed class IlEvmFrameRunner : FrameCodeRunner<EthereumGasPolicy>
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     protected override void OnInterpreted(CodeInfo codeInfo, int opCodes)
     {
-        // A Simple part is reported only when sampled for live promotion.
-        if (IlEvmSettings.Mode == IlMode.Simple && !IlEvmDiagnostics.Enabled)
-        {
-            IlSimple.CountOps(codeInfo, opCodes);
-            return;
-        }
-
-        // The diagnostics time plain frames on the Legacy path, whichever rules are set.
-        if (IlEvmSettings.Mode != IlMode.Adaptive || IlEvmDiagnostics.Enabled)
-        {
-            OnInterpretedOther(codeInfo, opCodes);
-            return;
-        }
-
-        // An Adaptive part is reported only when the visit gate asked: its opcodes count toward its visit.
-        IlThread.CurrentOrNull?.FinishReport(codeInfo, opCodes);
+        OnInterpretedLegacy(codeInfo, opCodes);
     }
 
     [MethodImpl(MethodImplOptions.NoInlining | MethodImplOptions.AggressiveOptimization)]
-    private static void OnInterpretedOther(CodeInfo codeInfo, int opCodes)
+    private static void OnInterpretedLegacy(CodeInfo codeInfo, int opCodes)
     {
         if (IlEvmSettings.Profile)
         {

@@ -1536,7 +1536,7 @@ public static unsafe partial class IlEvm
                 {
                     il.MarkLabel(wrapped);
                     il.Emit(OpCodes.Ldloc, VecScratch);
-                    il.Emit(OpCodes.Call, !subtract ? (_layingOutAhead ? CarryVectorAheadMethod : CarryVectorMethod) : (_layingOutAhead ? BorrowVectorAheadMethod : BorrowVectorMethod));
+                    il.Emit(OpCodes.Call, !subtract ? CarryVectorMethod : BorrowVectorMethod);
                     il.Emit(OpCodes.Stloc, VecScratch);
                     il.Emit(OpCodes.Br, back);
                 });
@@ -1665,7 +1665,7 @@ public static unsafe partial class IlEvm
                     {
                         il.MarkLabel(wrapped);
                         Slot(second);
-                        il.Emit(OpCodes.Call, add ? (_layingOutAhead ? CarryAheadMethod : CarryMethod) : (_layingOutAhead ? BorrowAheadMethod : BorrowMethod));
+                        il.Emit(OpCodes.Call, add ? CarryMethod : BorrowMethod);
                         il.Emit(OpCodes.Br, back);
                     });
                     return true;
@@ -1741,7 +1741,7 @@ public static unsafe partial class IlEvm
                     il.Emit(OpCodes.Ldarg_S, ArgStack);
                     il.Emit(OpCodes.Call, StackInputDataLength);
                     il.Emit(OpCodes.Ldloc, at);
-                    il.Emit(OpCodes.Call, _layingOutAhead ? CallDataWordAheadMethod : CallDataWordMethod);
+                    il.Emit(OpCodes.Call, CallDataWordMethod);
                     il.Emit(OpCodes.Stloc, VecScratch);
                     il.Emit(OpCodes.Br, back);
                 });
@@ -1933,7 +1933,6 @@ public static unsafe partial class IlEvm
                 sites.Add(new IlSite(instruction.Pc, instruction.Pc + instruction.Size, instruction.GasAfter,
                     segment.FirstTableIndex + index + 1, segment.Instructions.Count - index - 1, op.ExecutePointer,
                     deltaBefore, instruction.GasAfter + op.StaticGas));
-                il.Calls(op.Execute);
 
                 // The head and gas go in as they are; the site's table entry adjusts them, which keeps each site small.
                 Label leaves = NewLabel();
@@ -1946,7 +1945,7 @@ public static unsafe partial class IlEvm
                 il.Emit(OpCodes.Ldloca, _opsAdjust);
                 il.Emit(OpCodes.Ldloc, _head);
                 il.Emit(OpCodes.Ldloc, _gas);
-                il.Emit(OpCodes.Call, _layingOutAhead ? EmbeddedAheadMethod : EmbeddedMethod);
+                il.Emit(OpCodes.Call, EmbeddedMethod);
                 il.Emit(OpCodes.Stloc, _result);
                 il.Emit(OpCodes.Ldloc, _result);
                 il.Emit(OpCodes.Brtrue, leaves);
@@ -2360,7 +2359,6 @@ public static unsafe partial class IlEvm
                     il.Emit(OpCodes.Ldc_I8, (long)op.ExecutePointer);
                     il.Emit(OpCodes.Conv_I);
                     il.EmitCalli(typeof(EvmExceptionType), BodySignature);
-                    il.Calls(op.Execute);
                 }
             }
 

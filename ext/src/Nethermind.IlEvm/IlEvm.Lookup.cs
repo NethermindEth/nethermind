@@ -18,24 +18,10 @@ namespace Nethermind.IlEvm;
 
 public static unsafe partial class IlEvm
 {
-    /// <summary>The compiler's state for one <see cref="CodeInfo"/>, in the frame code runner's per-code slot; laid out by hand so the Adaptive fields every offered part reads share the cache line its type check reads.</summary>
+    /// <summary>The compiler's state for one <see cref="CodeInfo"/>, in the frame code runner's per-code slot; laid out by hand so the fields the query runners' entry reads share the cache line its type check reads.</summary>
     [StructLayout(LayoutKind.Explicit)]
     internal sealed class IlCodeState
     {
-        /// <summary>Adaptive: the <see cref="IlRuntime.Version"/> the runs below were resolved at; a state of another version resolves them again.</summary>
-        [FieldOffset(0)] public int Version;
-        /// <summary>Adaptive: spreads the states over each thread's visit table (<see cref="IlThread"/>), read beside the fields here rather than hashing the object.</summary>
-        [FieldOffset(4)] public readonly uint GateHash = IlThread.NextStateHash();
-        /// <summary>Adaptive: what block processing's runner runs the code on, or null for the interpreter; compiled for one body set, which each part checks.</summary>
-        [FieldOffset(8)] public volatile IlContract? BlockRun;
-        /// <summary>Adaptive: what the read-only queries' runner runs the code on, or null for the interpreter.</summary>
-        [FieldOffset(16)] public volatile IlContract? QueryRun;
-        /// <summary>Adaptive: the code's profile, or null when it has none, as for code no runner counts.</summary>
-        [FieldOffset(24)] public IlCodeProfile? Profile;
-        /// <summary>Adaptive: the body set block processing's runner (and the queries', below) last found no contract for (<see cref="IlRuntime.ForkMiss"/>); its parts skip the lookup until the state resolves at a new version.</summary>
-        [FieldOffset(32)] public OpcodeBodySet? BlockMissed;
-        [FieldOffset(40)] public OpcodeBodySet? QueryMissed;
-
         /// <summary>
         /// Legacy: what the query runners' entry does with a part of the code with no lookup, while <see cref="DecidedEpoch"/>
         /// is <see cref="IlEvmSettings.LegacyEpoch"/> and the part's body set is the contract's. With <see cref="DecidedUntil"/>
@@ -47,33 +33,31 @@ public static unsafe partial class IlEvm
         /// interpreter. Only the query runners read or write it: block processing's runner keeps its own rules on every part.
         /// </summary>
         /// <remarks>Written by the runners' slow paths only, field by field: a part that reads a mix of two decisions runs as either says, and compiled code gives the interpreter's results whichever runs.</remarks>
-        [FieldOffset(48)] public IlContract? Decided;
-        [FieldOffset(56)] public long DecidedUntil;
-        [FieldOffset(64)] public int DecidedEpoch;
-        [FieldOffset(68)] public int Executions;
-        [FieldOffset(72)] public volatile IlContract? Contract;
+        [FieldOffset(0)] public IlContract? Decided;
+        [FieldOffset(8)] public long DecidedUntil;
+        [FieldOffset(16)] public int DecidedEpoch;
+        [FieldOffset(20)] public int Executions;
+        [FieldOffset(24)] public volatile IlContract? Contract;
         /// <summary>The precompiled contract for this code, kept apart so a run-time compile for another fork cannot displace it.</summary>
-        [FieldOffset(80)] public volatile IlContract? Shipped;
-        [FieldOffset(88)] public volatile IlFork? FailedFor;
+        [FieldOffset(32)] public volatile IlContract? Shipped;
+        [FieldOffset(40)] public volatile IlFork? FailedFor;
         /// <summary>Whether the code was looked up among the precompiled contracts, which happens on its first frame of a fork they were compiled for.</summary>
-        [FieldOffset(96)] public bool PrecompileChecked;
-        [FieldOffset(97)] public bool HasContentHash;
+        [FieldOffset(48)] public bool PrecompileChecked;
+        [FieldOffset(49)] public bool HasContentHash;
         /// <summary>Legacy: whether the code came with a request or from the chain (<see cref="IsRequestCode"/>), 0 until a query's frame asked.</summary>
-        [FieldOffset(98)] public byte Origin;
-        /// <summary>Adaptive: the <see cref="IlRuntime.MissEpoch"/> the misses were recorded at; at a newer one their body sets are looked for again.</summary>
-        [FieldOffset(100)] public int MissEpoch;
+        [FieldOffset(50)] public byte Origin;
         /// <summary>Interpreted opcodes counted toward hotness; a long, as sampled frames count with a weight and busy code runs billions.</summary>
-        [FieldOffset(104)] public long OpCodesRun;
-        [FieldOffset(112)] public long WindowStart;
+        [FieldOffset(56)] public long OpCodesRun;
+        [FieldOffset(64)] public long WindowStart;
         /// <summary>Until when a hot frame does not ask for a compile again, after one was turned away by a budget.</summary>
-        [FieldOffset(120)] public long RetryAfter;
-        /// <summary>A fast 64-bit hash of the code, taken on its second frame, keying the shared cache; also how unstamped code is found among the shipped contracts and profiles.</summary>
-        [FieldOffset(128)] public long ContentHash;
+        [FieldOffset(72)] public long RetryAfter;
+        /// <summary>A fast 64-bit hash of the code, taken on its second frame, keying the shared cache and the records of a request's code.</summary>
+        [FieldOffset(80)] public long ContentHash;
         /// <summary>Opcodes the interpreter ran for this code in the current one-second window.</summary>
-        [FieldOffset(136)] public int WindowOpCodes;
-        [FieldOffset(140)] public int WindowFrames;
-        [FieldOffset(144)] public int Pending;
-        [FieldOffset(152)] public string? FailureReason;
+        [FieldOffset(88)] public int WindowOpCodes;
+        [FieldOffset(92)] public int WindowFrames;
+        [FieldOffset(96)] public int Pending;
+        [FieldOffset(104)] public string? FailureReason;
     }
 
     /// <summary>A fork's opcode semantics as the compiler sees them, one per interned <see cref="OpcodeBodySet"/>, so specs and forks running the same bodies share compiled contracts.</summary>
@@ -250,14 +234,11 @@ public static unsafe partial class IlEvm
         return weight > 1 && (NextHotnessRandom() & (uint)(weight - 1)) != 0;
     }
 
-    /// <summary>A new state, published over nothing or an Adaptive mark (a process that switched rules); one another thread published first wins, and over anything else it serves the frame unpublished.</summary>
+    /// <summary>A new state, published over nothing; one another thread published first wins, and over anything else it serves the frame unpublished.</summary>
     private static IlCodeState NewState(ref object? slot)
     {
-        object? seen = slot;
-        if (seen is not IlQuiet)
-            seen = null;
         IlCodeState created = new();
-        return Interlocked.CompareExchange(ref slot, created, seen) as IlCodeState ?? created;
+        return Interlocked.CompareExchange(ref slot, created, null) as IlCodeState ?? created;
     }
 
     /// <summary>The weight of a counted frame: <see cref="IlEvmSettings.HotnessSampling"/>, or 1 with diagnostics on, which report every frame.</summary>
@@ -315,29 +296,69 @@ public static unsafe partial class IlEvm
     /// <summary>The contracts compiled from the shipped list, by the keccak of their code; null when there are none.</summary>
     private static Dictionary<ValueHash256, IlContract>? _precompiled;
 
-    /// <summary>Publishes contracts compiled for a list in place of whatever was published, for tests; the startup compile adds through <see cref="IlRuntime.PublishShipped"/>.</summary>
+    /// <summary>The same contracts by code length, to find code no cache stamped by its bytes; null when there are none.</summary>
+    private static Dictionary<int, IlContract[]>? _shippedByLength;
+
+    private static readonly object _publishing = new();
+
+    /// <summary>Publishes contracts compiled for a list in place of whatever was published, for tests; the startup compile adds through <see cref="PublishShipped"/>.</summary>
     internal static void PublishPrecompiled(IReadOnlyDictionary<ValueHash256, IlContract> contracts)
     {
         if (contracts.Count == 0)
             return;
         ClearPrecompiled();
-        IlRuntime.PublishShipped([.. contracts.Select(static c => (new IlEvmPrecompileList.Entry(c.Key), c.Value))]);
+        PublishShipped([.. contracts.Select(static c => (new IlEvmPrecompileList.Entry(c.Key), c.Value))]);
     }
 
-    /// <summary>Adds shipped contracts to those frames find by the keccak of their code, copied on write so frames read the map without a lock.</summary>
-    internal static void AddPrecompiled(IEnumerable<(ValueHash256 Hash, IlContract Contract)> contracts)
+    /// <summary>Adds contracts compiled for list entries to those frames find by the keccak of their code, and by their bytes; copied on write so frames read the maps without a lock.</summary>
+    internal static void PublishShipped(IReadOnlyList<(IlEvmPrecompileList.Entry Entry, IlContract Contract)> shipped)
     {
-        Dictionary<ValueHash256, IlContract> map = Volatile.Read(ref _precompiled) is { } published ? new(published) : [];
-        foreach ((ValueHash256 hash, IlContract contract) in contracts)
-            map[hash] = contract;
-        Volatile.Write(ref _precompiled, map);
+        if (shipped.Count == 0)
+            return;
+        lock (_publishing)
+        {
+            Dictionary<ValueHash256, IlContract> map = Volatile.Read(ref _precompiled) is { } published ? new(published) : [];
+            Dictionary<int, IlContract[]> index = Volatile.Read(ref _shippedByLength) is { } lengths ? new(lengths) : [];
+            foreach ((IlEvmPrecompileList.Entry entry, IlContract contract) in shipped)
+            {
+                // Each length's candidates once each, the list's first first: a hash published again keeps its place.
+                IlContract[] candidates = index.TryGetValue(contract.Code.Length, out IlContract[]? known) ? known : [];
+                int at = map.TryGetValue(entry.Hash, out IlContract? replaced) ? Array.IndexOf(candidates, replaced) : -1;
+                index[contract.Code.Length] = at < 0 ? [.. candidates, contract] : [.. candidates[..at], contract, .. candidates[(at + 1)..]];
+                map[entry.Hash] = contract;
+            }
+
+            Volatile.Write(ref _shippedByLength, index);
+            Volatile.Write(ref _precompiled, map);
+        }
     }
 
-    /// <summary>Forgets the precompiled contracts, and with them every profile the runtime keeps, for tests.</summary>
+    /// <summary>
+    /// The shipped contract whose code these unstamped bytes equal. Not by keccak or content hash: both read all the code,
+    /// and a state override's code info is new on every call its code cache misses; a compare mostly stops early.
+    /// </summary>
+    internal static IlContract? ShippedByContent(CodeInfo codeInfo)
+    {
+        ReadOnlySpan<byte> code = codeInfo.CodeSpan;
+        if (Volatile.Read(ref _shippedByLength) is not { } index || !index.TryGetValue(code.Length, out IlContract[]? candidates))
+            return null;
+        foreach (IlContract contract in candidates)
+        {
+            if (code.SequenceEqual(contract.Code.Span))
+                return contract;
+        }
+
+        return null;
+    }
+
+    /// <summary>Forgets the precompiled contracts, for tests.</summary>
     internal static void ClearPrecompiled()
     {
-        Volatile.Write(ref _precompiled, null);
-        IlRuntime.ResetForTests();
+        lock (_publishing)
+        {
+            Volatile.Write(ref _precompiled, null);
+            Volatile.Write(ref _shippedByLength, null);
+        }
     }
 
     /// <summary>How many contracts the startup compile published, for tests and diagnostics.</summary>
@@ -362,7 +383,7 @@ public static unsafe partial class IlEvm
         else
         {
             // Code no cache stamped, as from a state override, is found by its bytes, never its keccak, which takes tens of microseconds on large code.
-            contract = IlRuntime.ShippedByContent(codeInfo)?.Shipped;
+            contract = ShippedByContent(codeInfo);
             if (contract is null)
                 return null;
         }
@@ -383,21 +404,6 @@ public static unsafe partial class IlEvm
         // Never released: a verdict against it only keeps the runner whose self-check reached it off it.
         contract.Check.Name = contract.Name;
         return contract;
-    }
-
-    /// <summary>As <see cref="Precompile"/>, calling the helpers' ahead twins: a contract's ahead copy (<see cref="IlContract.Ahead"/>).</summary>
-    internal static IlContract? PrecompileAhead(byte[] code, OpcodeBodySet bodies, out string? reason)
-    {
-        bool layingOutAhead = _layingOutAhead;
-        _layingOutAhead = true;
-        try
-        {
-            return Precompile(code, bodies, out reason);
-        }
-        finally
-        {
-            _layingOutAhead = layingOutAhead;
-        }
     }
 
     internal static OpcodeBodySet? BodySetFor(Nethermind.Core.Specs.IReleaseSpec spec) =>
@@ -604,13 +610,8 @@ public static unsafe partial class IlEvm
     /// <summary>Whether <paramref name="codeInfo"/> has a compiled contract, for tests and diagnostics.</summary>
     public static bool IsCompiled(CodeInfo codeInfo) => CompiledOf(codeInfo) is not null;
 
-    /// <summary>The Legacy rules' contract of the code's state, else what an Adaptive runner runs it on.</summary>
-    private static IlContract? CompiledOf(CodeInfo codeInfo) => IlEvmFrameRunner.CodeSlot(codeInfo) switch
-    {
-        IlCodeState state => state.Contract ?? state.QueryRun ?? state.BlockRun,
-        IlSimpleState simple => simple.Query ?? simple.Block,
-        _ => null,
-    };
+    /// <summary>The contract of the code's state.</summary>
+    private static IlContract? CompiledOf(CodeInfo codeInfo) => (IlEvmFrameRunner.CodeSlot(codeInfo) as IlCodeState)?.Contract;
 
     /// <summary>The self-check's verdicts so far in the process: kept compiled, put on probation, given back.</summary>
     public static (int Kept, int Probation, int GivenBack) SelfCheckVerdicts => IlSelfCheck.Verdicts;

@@ -2,8 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
-using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using Nethermind.Core;
@@ -61,22 +59,7 @@ public static unsafe partial class IlEvm
         public readonly OpcodeBodySet Bodies = fork.Bodies;
         /// <summary>The code compiled, to verify a content-hash hit byte for byte.</summary>
         public readonly ReadOnlyMemory<byte> Code = code;
-        /// <summary>Adaptive: the profile of the code, which holds this contract as shipped or live; null for a contract the Legacy rules compiled.</summary>
-        public IlCodeProfile? Profile;
-        /// <summary>Adaptive: which kinds of thread may run the contract (<see cref="IlRuntime.RunMain"/>, <see cref="IlRuntime.RunWorkers"/>, <see cref="IlRuntime.RunQuery"/>); a check that finds compiled code slower clears its runner's bits.</summary>
-        /// <remarks>Written racily, a byte at a time: a frame that reads a stale mask runs one part either way.</remarks>
-        public byte RunMask;
-        public IlOrigin Origin;
-        /// <summary>Adaptive: when a code state first took the contract, in <see cref="Environment.TickCount64"/> milliseconds; 0 until then.</summary>
-        public long AttachedAt;
-        /// <summary>Adaptive: the switchback checks of block processing's runner and of the read-only queries', made at publishing for each whose check is on; null for one whose is off.</summary>
-        public IlCheck? BlockCheck, QueryCheck;
-        /// <summary>Adaptive: the IL and tables live profiling's budget counts for a contract it promoted, while it counts them; 0 for any other, and once released.</summary>
-        public long BudgetBytes;
-        /// <summary>Adaptive: a copy laid out against the helpers' ahead twins (<see cref="PrecompileAhead"/>), which the queries' runner runs until the helpers tier up; null for none, and once dropped (<see cref="IlWarmUp.SwitchFromAhead"/>).</summary>
-        /// <remarks>Only for a shipped contract the list vouches for on every visit (<c>qminv=0</c>), compiled whole at startup.</remarks>
-        public volatile IlContract? Ahead;
-        /// <summary>Per code offset, the chunk of the compiled unit that starts there, or -1; empty once an Adaptive contract is released, so its frames hand back at once.</summary>
+        /// <summary>Per code offset, the chunk of the compiled unit that starts there, or -1.</summary>
         public int[] EntryChunk = entryChunk;
         /// <summary>Per code offset, the index of the compiled unit that starts there within its chunk.</summary>
         public int[] EntryIndex = entryIndex;
@@ -92,31 +75,18 @@ public static unsafe partial class IlEvm
         public readonly IlRunner?[] Runners = new IlRunner?[chunks];
         /// <summary>Each chunk's emitted method, bound to its <see cref="IlChunk"/> but not JIT-compiled until frames reach it.</summary>
         public readonly IlRunner[] Prepared = new IlRunner[chunks];
-        /// <summary>Each chunk's IL in bytes, which the inter-block scheduler estimates its JIT by.</summary>
-        public readonly int[] ChunkIlBytes = new int[chunks];
-        /// <summary>The methods each chunk calls, compiled ahead with it under the Adaptive rules (<see cref="IlWarmUp"/>); null once they are, or with nothing to compile.</summary>
-        private MethodBase[]?[]? _callees = new MethodBase[]?[chunks];
-
-        internal void SetCallees(int chunk, HashSet<MethodBase> callees)
-        {
-            if (_callees is { } all)
-                all[chunk] = [.. callees];
-        }
-
-        internal MethodBase[]? CalleesOf(int chunk) => _callees?[chunk];
         private readonly int[] _entries = new int[chunks];
         private readonly int[] _states = new int[chunks];
         public readonly string Name = name;
         public int ChunkCount => Prepared.Length;
         public string? ChunkFailure;
         public int CompiledChunks;
-        /// <summary>Per segment instruction, its static gas, stack inputs and stack growth, and whether its walk must hand over; empty once an Adaptive contract is released.</summary>
-        private SegmentTables _segments = new(costs, inputs, growths, dynamic, opaque);
+        /// <summary>Per segment instruction, its static gas, stack inputs and stack growth, and whether its walk must hand over.</summary>
+        private readonly SegmentTables _segments = new(costs, inputs, growths, dynamic, opaque);
 
-        /// <summary>The tables a failed segment's walk reads, replaced whole, so a walk reads one set.</summary>
+        /// <summary>The tables a failed segment's walk reads.</summary>
         private sealed class SegmentTables(ulong[] costs, int[] inputs, int[] growths, bool[] dynamic, bool[] opaque)
         {
-            public static readonly SegmentTables Empty = new([], [], [], [], []);
             public readonly ulong[] Costs = costs;
             public readonly int[] Inputs = inputs;
             public readonly int[] Growths = growths;
@@ -194,11 +164,7 @@ public static unsafe partial class IlEvm
         }
 
         /// <summary>Drops the compiled code; its frames run on the interpreter from now on.</summary>
-        /// <remarks>An Adaptive contract, or one released with <paramref name="dropTables"/>, drops its tables too, as code states may hold it a while: frames then hand back on entry, a running chunk keeps its own tables, and a walk hands over.</remarks>
-        public void Release() => Release(dropTables: false);
-
-        /// <inheritdoc cref="Release()"/>
-        public void Release(bool dropTables)
+        public void Release()
         {
             lock (Prepared)
             {
@@ -208,15 +174,6 @@ public static unsafe partial class IlEvm
                     Volatile.Write(ref _states[chunk], ChunkFailed);
                     Volatile.Write(ref Runners[chunk], null);
                     Prepared[chunk] = null!;
-                }
-
-                if (Profile is not null || dropTables)
-                {
-                    Volatile.Write(ref EntryChunk, []);
-                    EntryIndex = JumpOrdinal = JumpBases = [];
-                    JumpCases = [];
-                    Volatile.Write(ref _segments, SegmentTables.Empty);
-                    _callees = null;
                 }
             }
 
@@ -241,7 +198,6 @@ public static unsafe partial class IlEvm
             ref int opCodesSincePoll, bool cancelable)
         {
             nint pc = programCounter;
-            // Read once: a release replaces it with an empty table.
             int[] entryChunk = EntryChunk;
             if ((nuint)pc >= (nuint)entryChunk.Length || entryChunk[pc] < 0)
             {
@@ -313,14 +269,9 @@ public static unsafe partial class IlEvm
             // A chunk that failed to compile is a cost of compiled code the self-check times; one waiting for the JIT is not.
             if (Volatile.Read(ref _states[chunk]) == ChunkFailed)
                 return null;
-            // The Adaptive rules JIT only between blocks, whatever the knob says: never on a frame's thread.
-            IlMode mode = IlEvmSettings.Mode;
-            if (IlEvmSettings.CompileSynchronously && mode is not (IlMode.Adaptive or IlMode.Simple))
+            if (IlEvmSettings.CompileSynchronously)
                 return CompileChunk(chunk);
             HitColdChunk = true;
-            // The Simple rules compile contracts whole: a chunk still cold failed its JIT, or a test left it so, and its frames hand back.
-            if (mode == IlMode.Simple)
-                return null;
             // Queued already: frames do not write the shared counter again, except under the hot order, which counts each hand-back here, racily.
             int chunkState = Volatile.Read(ref _states[chunk]);
             if (chunkState != ChunkCold)
@@ -334,11 +285,9 @@ public static unsafe partial class IlEvm
                 Interlocked.CompareExchange(ref _states[chunk], ChunkQueued, ChunkCold) == ChunkCold)
             {
                 Interlocked.Increment(ref ChunkEvents);
-                // Adaptive: JIT between blocks (only a live contract has cold chunks); Legacy: the background compiler. If turned away, frames ask again.
-                bool queued = IlEvmSettings.Mode == IlMode.Adaptive
-                    ? IlScheduler.TryEnqueue(new ChunkJob(this, chunk))
-                    : IlCompileQueue.Enqueue((Contract: this, Chunk: chunk), static s => s.Contract.CompileChunk(s.Chunk),
-                        static s => Volatile.Read(ref s.Contract._entries[s.Chunk]) * s.Contract.OpsPerPart, FromRequest);
+                // The background compiler JITs it. If turned away, frames ask again.
+                bool queued = IlCompileQueue.Enqueue((Contract: this, Chunk: chunk), static s => s.Contract.CompileChunk(s.Chunk),
+                    static s => Volatile.Read(ref s.Contract._entries[s.Chunk]) * s.Contract.OpsPerPart, FromRequest);
                 if (!queued)
                 {
                     _entries[chunk] = 0;
@@ -385,13 +334,6 @@ public static unsafe partial class IlEvm
             }
 
             TimeSpan jit = System.Diagnostics.Stopwatch.GetElapsedTime(started);
-            // Adaptive: what the chunk calls is compiled here too, off the frames' threads.
-            if (IlEvmSettings.Mode == IlMode.Adaptive && Volatile.Read(ref _callees) is { } allCallees && allCallees[chunk] is { } callees)
-            {
-                IlWarmUp.Prepare(callees);
-                allCallees[chunk] = null;
-            }
-
             lock (Prepared)
             {
                 if (Runners[chunk] is { } raced)
@@ -429,8 +371,7 @@ public static unsafe partial class IlEvm
 
         private EvmExceptionType FailSegment(int first, int count, ref ulong gas, nint head, ref int opCodes)
         {
-            // Read once: a release swaps in empty tables, on which a walk hands over at the segment's start, where the interpreter faults the same way.
-            SegmentTables tables = Volatile.Read(ref _segments);
+            SegmentTables tables = _segments;
             if ((uint)(first + count) > (uint)tables.Costs.Length)
                 return IlDeopt;
             for (int i = first; i < first + count; i++)
@@ -449,8 +390,6 @@ public static unsafe partial class IlEvm
 
             throw new InvalidOperationException("A segment failed its precondition with every opcode fitting.");
         }
-
-        internal bool TablesReleased => EntryChunk.Length == 0 && Volatile.Read(ref _segments) == SegmentTables.Empty;
     }
 
     /// <summary>One compiled chunk: what its dynamic method is bound to, with the tables its code reads.</summary>
