@@ -318,6 +318,8 @@ public class PrewarmerScopeProvider(
         // Populator hints target the block's consumer scope (whose commit walks the hinted paths);
         // consumer hints go straight to the backend. Capturing (discovery) scopes execute on placeholder
         // values, so their hinted addresses and slots can be fictitious — never forward them.
+        public bool SupportsPrefetch => baseScope.SupportsPrefetch;
+
         /// <summary>Forwards only keys the pre-block caches do not hold: a cached key is never read from persistence.</summary>
         public void Prefetch(ReadOnlySpan<Address> accounts, ReadOnlySpan<StorageCell> slots)
         {

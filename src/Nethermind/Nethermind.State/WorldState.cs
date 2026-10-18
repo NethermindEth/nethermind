@@ -203,6 +203,8 @@ namespace Nethermind.State
 
         public void Prefetch(ReadOnlySpan<Address> accounts, ReadOnlySpan<StorageCell> slots) =>
             _currentScope?.Prefetch(accounts, slots);
+
+        public bool SupportsPrefetch => _currentScope?.SupportsPrefetch ?? false;
         public void ClearStorage(Address address)
         {
             DebugGuardInScope();

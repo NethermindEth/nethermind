@@ -72,6 +72,9 @@ public interface IWorldStateScopeProvider
         /// </summary>
         void Prefetch(ReadOnlySpan<Address> accounts, ReadOnlySpan<StorageCell> slots) { }
 
+        /// <summary>Whether <see cref="Prefetch"/> does anything, so callers can skip gathering keys.</summary>
+        bool SupportsPrefetch => false;
+
         /// <summary>
         /// Get the account information for the following address.
         /// Note: Do not rely on <see cref="Account.StorageRoot"/> as it may be modified after write. Instead use <see cref="IStorageTree.RootHash"/>.

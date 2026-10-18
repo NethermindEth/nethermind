@@ -55,6 +55,8 @@ public class WorldStateMetricsScopeProvider(IWorldStateScopeProvider baseProvide
 
         public void Prefetch(ReadOnlySpan<Address> accounts, ReadOnlySpan<StorageCell> slots) => baseScope.Prefetch(accounts, slots);
 
+        public bool SupportsPrefetch => baseScope.SupportsPrefetch;
+
         public void Dispose()
         {
             baseScope.Dispose();

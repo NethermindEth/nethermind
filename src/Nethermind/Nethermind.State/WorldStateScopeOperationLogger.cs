@@ -60,6 +60,8 @@ public class WorldStateScopeOperationLogger(IWorldStateScopeProvider baseScopePr
 
         public void Prefetch(ReadOnlySpan<Address> accounts, ReadOnlySpan<StorageCell> slots) => innerScope.Prefetch(accounts, slots);
 
+        public bool SupportsPrefetch => innerScope.SupportsPrefetch;
+
         public void Dispose()
         {
             innerScope.Dispose();

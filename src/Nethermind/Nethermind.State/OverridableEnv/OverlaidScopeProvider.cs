@@ -51,6 +51,8 @@ public sealed class OverlaidScopeProvider(IWorldStateScopeProvider inner, StateR
 
         public void Prefetch(ReadOnlySpan<Address> accounts, ReadOnlySpan<StorageCell> slots) => inner.Prefetch(accounts, slots);
 
+        public bool SupportsPrefetch => inner.SupportsPrefetch;
+
         public Account? Get(Address address)
         {
             IStateReadOverlay? overlay = slot.Current;
