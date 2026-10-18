@@ -288,6 +288,8 @@ namespace Nethermind.Network.Rlpx
         private async Task<bool> TryConnect(Node node, CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            // Stoppables stop in parallel, so the peer manager can still dial once Shutdown has begun closing the worker group.
+            if (Volatile.Read(ref _shutdownCts) is null) return false;
             ConnectionAttempt attempt = new();
             Bootstrap clientBootstrap = new();
             clientBootstrap
