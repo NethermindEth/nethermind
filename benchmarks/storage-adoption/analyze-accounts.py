@@ -16,6 +16,8 @@ for folder in sorted((root / "accounts").iterdir()):
             "nanoseconds": statistics.mean(times),
             "managedBytes": statistics.mean(sample["managedBytes"] for sample in row["samples"]),
             "samples": times,
+            "preflightCacheMisses": row["preflightCacheMisses"],
+            "coldSampleCacheMisses": [sample["cacheMisses"] for sample in row["samples"]] if row["cache"] == "cold" else [],
         }
     arms[name].append(cases)
 assert [len(arms[name]) for name in ("baseline", "control", "candidate")] == [4, 2, 2]

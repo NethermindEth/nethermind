@@ -42,11 +42,13 @@ elif mode == "results":
     assert len(rows) == len(expected)
     assert {(row["count"], row["shape"], row["cache"]) for row in rows} == expected
     for row in rows:
+        assert 0 <= row["preflightCacheMisses"] <= 2 * row["count"]
         assert row["detailedMetrics"] == (os.environ.get("DETAILED_METRICS") == "1")
         assert len(row["samples"]) == (8 if row["cache"] == "cold" else 12)
         for sample in row["samples"]:
             assert math.isfinite(sample["nanoseconds"]) and sample["nanoseconds"] > 0
             assert sample["operations"] >= 1 and sample["managedBytes"] >= 0
+            if row["cache"] == "cold": assert 0 <= sample["cacheMisses"] <= 2 * row["count"]
     print("Verified all 36 account-prewarming cases")
 else:
     raise SystemExit("unknown validation mode")

@@ -23,6 +23,7 @@ foreach ((int count, string shape) in cases)
 {
     using AccountPrewarmingFixture fixture = new(count, shape);
     fixture.Verify();
+    int preflightCacheMisses = fixture.CacheMisses;
     Console.WriteLine($"Verified Count={count} Shape={shape}");
     if (verifyOnly)
     {
@@ -59,7 +60,7 @@ foreach ((int count, string shape) in cases)
             operations
         });
     }
-    rows.Add(new { count, shape, cache = "warm", detailedMetrics, samples });
+    rows.Add(new { count, shape, cache = "warm", detailedMetrics, preflightCacheMisses, samples });
     if (shape == "distinct" && count is 64 or 512)
     {
         samples = [];
@@ -71,10 +72,11 @@ foreach ((int count, string shape) in cases)
             long start = Stopwatch.GetTimestamp();
             fixture.Read();
             double nanoseconds = Stopwatch.GetElapsedTime(start).TotalNanoseconds;
-            samples.Add(new { nanoseconds, managedBytes = GC.GetTotalAllocatedBytes(precise: true) - before, operations = 1 });
+            long allocated = GC.GetTotalAllocatedBytes(precise: true) - before;
             fixture.VerifyResults();
+            samples.Add(new { nanoseconds, managedBytes = allocated, operations = 1, cacheMisses = fixture.CacheMisses });
         }
-        rows.Add(new { count, shape, cache = "cold", detailedMetrics, samples });
+        rows.Add(new { count, shape, cache = "cold", detailedMetrics, preflightCacheMisses, samples });
     }
     File.WriteAllText(output, JsonSerializer.Serialize(rows, new JsonSerializerOptions { WriteIndented = true }));
 }

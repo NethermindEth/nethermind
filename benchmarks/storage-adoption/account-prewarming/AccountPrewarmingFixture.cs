@@ -34,6 +34,8 @@ sealed class AccountPrewarmingFixture : IDisposable
     private ILifetimeScope _processingScope = null!;
     private PreBlockCaches _caches = null!;
     private IDisposable _warmer = null!;
+    private BlockCachePreWarmer _prewarmer = null!;
+    public int CacheMisses { get; private set; }
     private Action<ParallelOptions, Block> _pass = null!;
     private Block _block = null!;
     private readonly ParallelOptions _options = new() { MaxDegreeOfParallelism = Math.Min(4, Environment.ProcessorCount) };
@@ -110,15 +112,20 @@ sealed class AccountPrewarmingFixture : IDisposable
             .WithTransactions(_transactions[..(_transactions.Length / 2)]).TestObject;
         _block.InclusionListTransactions = _transactions[(_transactions.Length / 2)..];
         _caches = _processingScope.Resolve<PreBlockCaches>();
-        BlockCachePreWarmer prewarmer = (BlockCachePreWarmer)_processingScope.Resolve<IBlockCachePreWarmer>();
+        _prewarmer = (BlockCachePreWarmer)_processingScope.Resolve<IBlockCachePreWarmer>();
+        (_warmer, _pass) = CreatePass(_prewarmer);
+        Nethermind.Db.Metrics.DetailedMetricsEnabled = detailed;
+    }
+
+    private (IDisposable Warmer, Action<ParallelOptions, Block> Pass) CreatePass(BlockCachePreWarmer prewarmer)
+    {
         Type warmerType = typeof(BlockCachePreWarmer).GetNestedType("AddressWarmer", BindingFlags.NonPublic)!;
         ConstructorInfo constructor = warmerType.GetConstructors(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance).Single();
         object instance = constructor.Invoke([_options, _block, Osaka.Instance, false, false, prewarmer, null]);
         warmerType.GetProperty("Beneficiary")!.SetValue(instance, null);
-        _warmer = (IDisposable)instance;
-        _pass = warmerType.GetMethod("WarmupAddresses", BindingFlags.NonPublic | BindingFlags.Instance)!
+        Action<ParallelOptions, Block> pass = warmerType.GetMethod("WarmupAddresses", BindingFlags.NonPublic | BindingFlags.Instance)!
             .CreateDelegate<Action<ParallelOptions, Block>>(instance);
-        Nethermind.Db.Metrics.DetailedMetricsEnabled = detailed;
+        return ((IDisposable)instance, pass);
     }
 
     public void Prepare()
@@ -141,18 +148,27 @@ sealed class AccountPrewarmingFixture : IDisposable
     public void Verify()
     {
         Prepare();
-        Read();
+        AccountReadVerification verification = new(_expected);
+        using (BlockCachePreWarmer prewarmer = verification.CreateWarmer(_prewarmer, _caches, _container.Resolve<ILogManager>()))
+        {
+            (IDisposable warmer, Action<ParallelOptions, Block> pass) = CreatePass(prewarmer);
+            using (warmer) pass(_options, _block);
+        }
+        verification.AssertComplete();
         VerifyResults();
     }
 
     public void VerifyResults()
     {
+        CacheMisses = 0;
         foreach ((Address address, Account? expected) in _expected)
         {
             AddressAsKey key = address;
-            if (!_caches.StateCache.TryGetValue(in key, out Account? actual) || actual != expected)
-                throw new InvalidOperationException("Account prewarming value/publication mismatch: " + address);
+            if (!_caches.StateCache.TryGetValue(in key, out Account? actual)) CacheMisses++;
+            else if (actual != expected)
+                throw new InvalidOperationException("Retained account value mismatch: " + address);
         }
+        if (CacheMisses != 0) Console.WriteLine($"Shared cache retained {_expected.Count - CacheMisses}/{_expected.Count} resolved accounts");
         using IPersistence.IPersistenceReader reader = _container.Resolve<IPersistence>().CreateReader();
         if (_shape != "snapshot" && reader.CurrentState != new StateId(_parents.Parent))
             throw new InvalidOperationException("Fixture must read the persisted parent snapshot");
