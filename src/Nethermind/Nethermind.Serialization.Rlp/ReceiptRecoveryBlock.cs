@@ -65,6 +65,21 @@ public struct ReceiptRecoveryBlock
         return tx;
     }
 
+    /// <summary>Gets the transaction at <paramref name="index"/> as the block decoder decodes it, holding no reference to the block's memory.</summary>
+    /// <remarks>Does not move the position the other readers advance.</remarks>
+    public readonly Transaction GetTransaction(int index)
+    {
+        if ((uint)index >= (uint)TransactionCount) ThrowNoTransactionRemaining();
+        if (_transactions is not null) return _transactions[index];
+
+        // Span-backed, so the decoded fields are copies rather than slices of the database buffer.
+        RlpReader reader = new(_transactionData.Span);
+        for (int i = 0; i < index; i++) reader.SkipItem();
+        Transaction? transaction = new();
+        TxDecoder.Instance.Decode(ref reader, ref transaction);
+        return transaction ?? throw new RlpException("Transaction decoding returned null.");
+    }
+
     /// <summary>Returns the hash of the next transaction without decoding its fields.</summary>
     /// <remarks>
     /// Legacy transactions hash their complete RLP list, while typed transactions hash the contents
