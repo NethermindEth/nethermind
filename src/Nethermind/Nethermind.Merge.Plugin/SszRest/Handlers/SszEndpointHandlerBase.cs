@@ -62,7 +62,7 @@ public abstract class SszEndpointHandlerBase : ISszEndpointHandler
         {
             length = encode(value, pipe);
         }
-        catch
+        catch when (pipe.UnflushedBytes != before)
         {
             // Encode advanced bytes into the pipe before throwing; we can't rewind.
             // Abort the connection so the CL doesn't see a 500 with garbled-binary body.
