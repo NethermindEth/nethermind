@@ -777,7 +777,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
                 if (statusCode == StatusCode.Failure)
                 {
-                    byte[] output = substate.ShouldRevert ? substate.Output.AsReadOnlyArray() : [];
+                    byte[] output = substate.ShouldRevert && _tracerFlags.IsTracingOutput ? substate.Output.AsReadOnlyArray() : [];
                     string? error = substate.Error;
                     if (error is null && substate.EvmExceptionType is not EvmExceptionType.None)
                     {
@@ -788,7 +788,8 @@ namespace Nethermind.Evm.TransactionProcessing
                 else
                 {
                     LogEntry[] logs = substate.Logs is { Count: > 0 } ? substate.LogsToArray() : [];
-                    tracer.MarkAsSuccess(executingAccount, spentGas, substate.Output.AsReadOnlyArray(), logs, stateRoot);
+                    byte[] output = _tracerFlags.IsTracingOutput ? substate.Output.AsReadOnlyArray() : [];
+                    tracer.MarkAsSuccess(executingAccount, spentGas, output, logs, stateRoot);
                 }
             }
 

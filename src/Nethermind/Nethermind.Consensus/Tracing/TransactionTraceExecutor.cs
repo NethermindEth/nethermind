@@ -122,7 +122,8 @@ public sealed class TransactionTraceExecutor(
             // With a seeded prefix the receipts tracer numbers receipts from the first executed transaction, so the
             // receipt of transaction i carries index i - first and a cumulative gas that leaves out the prefix; a
             // handler keyed on either would be told about the wrong transaction, so it is told nothing.
-            if (first == 0) transactionProcessed?.OnTransactionProcessed(new TxProcessedEventArgs(i, tx, block.Header, tracer.TxReceipts[i]));
+            if (first == 0 && transactionProcessed is { HasSubscribers: true } handler)
+                handler.OnTransactionProcessed(new TxProcessedEventArgs(i, tx, block.Header, tracer.TxReceipts[i]));
             if (balManager.Enabled)
             {
                 balManager.NextTransaction();

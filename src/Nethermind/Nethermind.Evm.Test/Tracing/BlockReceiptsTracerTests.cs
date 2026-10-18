@@ -70,6 +70,24 @@ namespace Nethermind.Evm.Test.Tracing
         }
 
         [Test]
+        public void Reads_the_transaction_output_only_for_another_tracer([Values] bool wrapsTracer)
+        {
+            Transaction tx = Build.A.Transaction.TestObject;
+            BlockReceiptsTracer tracer = new();
+            if (wrapsTracer)
+            {
+                IBlockTracer blockTracer = Substitute.For<IBlockTracer>();
+                blockTracer.StartNewTxTrace(tx).Returns(Substitute.For<ITxTracer>());
+                tracer.SetOtherTracer(blockTracer);
+            }
+            tracer.StartNewBlockTrace(Build.A.Block.WithTransactions(tx).TestObject);
+
+            tracer.StartNewTxTrace(tx);
+
+            Assert.That(tracer.IsTracingOutput, Is.EqualTo(wrapsTracer));
+        }
+
+        [Test]
         public void Without_receipts_keeps_block_gas_and_forwards_the_outcome([Values] bool failedFrame)
         {
             Transaction frameTx = Build.A.Transaction.WithType(TxType.FrameTx).TestObject;
