@@ -567,16 +567,19 @@ namespace Nethermind.Trie
             }
         }
 
-        private TrieNode? SetNew(TraverseStack traverseStack, Span<byte> remainingKey, CappedArray<byte> value, ref TreePath path, TrieNode? node)
+        private TrieNode? SetNew(TraverseStack traverseStack, Span<byte> key, CappedArray<byte> value, ref TreePath path, TrieNode? node)
         {
             TrieNode? originalNode = node;
             int originalPathLength = path.Length;
+            // The nibbles walked so far, word-sized: a branch level only reads its nibble and moves on, so it keeps no
+            // sliced span of the rest, whose start and length the guest would store back to the stack per level.
+            nint consumed = 0;
 
             while (true)
             {
                 if (node is null)
                 {
-                    node = value.IsNullOrEmpty ? null : TrieNodeFactory.CreateLeaf(remainingKey, value);
+                    node = value.IsNullOrEmpty ? null : TrieNodeFactory.CreateLeaf(key[(int)consumed..], value);
 
                     // End traverse
                     break;
@@ -587,6 +590,7 @@ namespace Nethermind.Trie
                 // Resolved, so anything but a branch is a leaf or an extension.
                 if (!node.IsBranch)
                 {
+                    Span<byte> remainingKey = key[(int)consumed..];
                     int commonPrefixLength = Nibbles.CommonPrefixLength(remainingKey, node.Key);
                     if (commonPrefixLength == node.Key!.Length)
                     {
@@ -604,7 +608,7 @@ namespace Nethermind.Trie
                             });
 
                             // Continue loop with the child as current node
-                            remainingKey = remainingKey[node!.Key.Length..];
+                            consumed += node!.Key.Length;
                             node = extensionChild;
 
                             continue;
@@ -674,7 +678,7 @@ namespace Nethermind.Trie
                     break;
                 }
 
-                int nib = remainingKey[0];
+                int nib = key[(int)consumed];
                 if (TracksPath) path.AppendMut(nib);
                 TrieNode? child = node.GetChildWithChildPath(TrieStore, ref path, nib);
 
@@ -687,7 +691,7 @@ namespace Nethermind.Trie
 
                 // Continue loop with child as current node
                 node = child;
-                remainingKey = remainingKey[1..];
+                consumed++;
             }
 
             while (traverseStack.TryPop(out TraverseStackFrame cStack))
@@ -695,7 +699,7 @@ namespace Nethermind.Trie
                 TrieNode? child = node;
                 node = cStack.Node;
 
-                if (IsUnchangedPendingLevel(node, cStack.ChildIdx, cStack.OriginalChild, child))
+                if (IsUnchangedPendingLevel(node, (int)cStack.ChildIdx, cStack.OriginalChild, child))
                 {
                     path.TruncateMut(originalPathLength);
                     traverseStack.Clear();
@@ -730,7 +734,7 @@ namespace Nethermind.Trie
                 }
 
                 // Branch only
-                int nib = cStack.ChildIdx;
+                int nib = (int)cStack.ChildIdx;
 
                 bool hasRemove = false;
                 if (TracksPath) path.TruncateOne();
@@ -741,6 +745,7 @@ namespace Nethermind.Trie
                     if (node.IsSealed) node = node.Unseal();
 
                     node.SetChild(nib, child);
+                    if (UnsealsAncestorsAtOnce) traverseStack.UnsealNodes();
                 }
 
                 if (!hasRemove)
@@ -867,42 +872,75 @@ namespace Nethermind.Trie
         private record struct TraverseStackFrame
         {
             public TrieNode Node;
-            public int ChildIdx;
+            // Word-sized, as is the stack's count: a zkVM guest proves a 32-bit access at several times an aligned 64-bit one.
+            public nint ChildIdx;
             public TrieNode? OriginalChild;
         }
 
         private class TraverseStack
         {
-            [InlineArray(64)]
+            private const int Capacity = 64;
+
+            [InlineArray(Capacity)]
             private struct Inline64
             {
                 public TraverseStackFrame Item;
             }
 
             private Inline64 _entries;
-            private int _count;
+            private nint _count;
 
+            /// <remarks>Indexed by the word-sized count itself, checked once against the capacity: the inline array's indexer
+            /// takes an <see langword="int"/>, which the guest re-extends and checks again per push and pop.</remarks>
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            public void Push(TraverseStackFrame frame) => _entries[_count++] = frame;
+            public void Push(TraverseStackFrame frame)
+            {
+                nint count = _count;
+                if ((nuint)count >= Capacity) ThrowStackFull();
+                Unsafe.Add(ref _entries.Item, count) = frame;
+                _count = count + 1;
+            }
 
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public bool TryPop(out TraverseStackFrame frame)
             {
-                if (_count == 0) { frame = default; return false; }
-                frame = _entries[--_count];
-                if (ReleasesPoppedFrames) _entries[_count] = default; // release references
+                nint count = _count - 1;
+                if (count < 0) { frame = default; return false; }
+                ref TraverseStackFrame top = ref Unsafe.Add(ref _entries.Item, count);
+                frame = top;
+                if (ReleasesPoppedFrames) top = default; // release references
+                _count = count;
                 return true;
             }
 
-            public void Clear()
+            /// <summary>Unseals, in place, the node of every frame not yet popped.</summary>
+            /// <remarks>
+            /// Only where <see cref="TrieNode.Unseal"/> returns the node itself; see <see cref="UnsealsAncestorsAtOnce"/>.
+            /// Deepest first, stopping at a node already pending, dirty and unhashed: an earlier write left its ancestors so too.
+            /// Relies on each frame's node holding the next frame's node by reference in its <c>ChildIdx</c> slot, as the descent
+            /// cached it: the climb's early exit checks only the immediate parent, so a slot left holding a hash (a pruned or
+            /// unresolved child) would have a higher ancestor encode its child's stale hash.
+            /// </remarks>
+            public void UnsealNodes()
             {
-                if (_count != 0)
+                Span<TraverseStackFrame> frames = _entries[..(int)_count];
+                for (int i = frames.Length - 1; i >= 0; i--)
                 {
-                    _entries[.._count].Clear();
-                    _count = 0;
+                    TrieNode node = frames[i].Node;
+                    if (node.Keccak is null && node.IsDirty) return;
+                    node.Unseal();
                 }
             }
-            public int Count => _count;
+
+            [DoesNotReturn, StackTraceHidden]
+            private static void ThrowStackFull() => throw new IndexOutOfRangeException("The trie walk is deeper than its stack.");
+
+            public void Clear()
+            {
+                if (ReleasesPoppedFrames && _count != 0) _entries[..(int)_count].Clear();
+                _count = 0;
+            }
+            public int Count => (int)_count;
         }
 
         private CappedArray<byte> GetNew(Span<byte> remainingKey, ref TreePath path, TrieNode? node, bool isNodeRead)

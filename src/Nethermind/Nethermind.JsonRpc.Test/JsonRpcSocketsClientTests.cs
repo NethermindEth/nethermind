@@ -468,7 +468,7 @@ public class JsonRpcSocketsClientTests
         Exception? beforeDisposal = fixture.SendLock.Failure;
         fixture.Sink.Dispose();
         byte[] partial = fixture.Stream.ToArray();
-        using JsonRpcContext context = new(RpcEndpoint.Ws);
+        JsonRpcContext context = new(RpcEndpoint.Ws);
         using SocketJsonRpcResponseSink<MemoryMessageStream> next = new(fixture.Stream, new NullJsonRpcLocalStats(), null, fixture.SendLock, context);
         using JsonRpcSuccessResponse nextResponse = new() { Result = "next" };
         IOException? rejected = await Assert.ThrowsAsync<IOException>(async () => await next.WriteSingleAsync(nextResponse, default, CancellationToken.None));
@@ -484,6 +484,70 @@ public class JsonRpcSocketsClientTests
     }
 
     [Test]
+    public async Task Socket_sends_after_unsent_failure_and_cancelled_flush_are_complete()
+    {
+        using SocketSinkFixture fixture = CreateSocketSink();
+        InvalidOperationException failure = new("unsent");
+        using JsonRpcSuccessResponse failing = new() { Result = new FlushingStreamable(chunks: 0, failure) };
+        Assert.That(await Assert.CatchAsync(async () => await fixture.Sink.WriteSingleAsync(failing, default, CancellationToken.None)), Is.SameAs(failure));
+
+        using JsonRpcSuccessResponse first = new() { Id = 1, Result = "0x1" };
+        await fixture.Sink.WriteSingleAsync(first, default, CancellationToken.None);
+        fixture.SendLock.GetWriter(fixture.Stream, new StreamPipeWriterOptions(), 0).CancelPendingFlush();
+
+        using JsonRpcSuccessResponse second = new() { Id = 2, Result = "0x2" };
+        using JsonRpcSuccessResponse third = new() { Id = 3, Result = "0x3" };
+        await fixture.Sink.BeginBatchAsync(CancellationToken.None);
+        await fixture.Sink.WriteBatchItemAsync(second, default, CancellationToken.None);
+        await fixture.Sink.WriteBatchItemAsync(third, default, CancellationToken.None);
+        await fixture.Sink.EndBatchAsync(CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fixture.SendLock.IsFaulted, Is.False);
+            Assert.That(Encoding.UTF8.GetString(fixture.Stream.ToArray()), Is.EqualTo(
+                "{\"jsonrpc\":\"2.0\",\"result\":\"0x1\",\"id\":1}\n" +
+                "[{\"jsonrpc\":\"2.0\",\"result\":\"0x2\",\"id\":2},{\"jsonrpc\":\"2.0\",\"result\":\"0x3\",\"id\":3}]\n"));
+            Assert.That(fixture.Sink.BytesWritten, Is.EqualTo(fixture.Stream.Length));
+        }
+    }
+
+    [Test]
+    public async Task Socket_sends_after_response_writer_is_completed()
+    {
+        using SocketSinkFixture fixture = CreateSocketSink();
+        using JsonRpcSuccessResponse first = new() { Id = 1, Result = "0x1" };
+        await fixture.Sink.WriteSingleAsync(first, default, CancellationToken.None);
+        await fixture.SendLock.GetWriter(fixture.Stream, new StreamPipeWriterOptions(leaveOpen: true), 0).CompleteAsync();
+
+        using JsonRpcSuccessResponse second = new() { Id = 2, Result = "0x2" };
+        await fixture.Sink.WriteSingleAsync(second, default, CancellationToken.None);
+
+        Assert.That(Encoding.UTF8.GetString(fixture.Stream.ToArray()), Is.EqualTo(
+            "{\"jsonrpc\":\"2.0\",\"result\":\"0x1\",\"id\":1}\n" +
+            "{\"jsonrpc\":\"2.0\",\"result\":\"0x2\",\"id\":2}\n"));
+    }
+
+    [Test]
+    public async Task Disposing_send_lock_completes_the_writer_unless_a_send_holds_it([Values] bool sendInFlight)
+    {
+        using MemoryMessageStream stream = new();
+        SocketSendLock sendLock = new();
+        CountingStreamPipeWriter writer = sendLock.GetWriter(stream, new StreamPipeWriterOptions(leaveOpen: true), 0);
+        await writer.WriteAsync(new byte[] { 1 });
+        writer.Write(new byte[] { 2 });
+        if (sendInFlight) await sendLock.WaitAsync(CancellationToken.None);
+
+        sendLock.Dispose();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(writer.IsCompleted, Is.EqualTo(!sendInFlight));
+            Assert.That(stream.ToArray(), Is.EqualTo(new byte[] { 1 }), "unflushed data must not be written on dispose");
+        }
+    }
+
+    [Test]
     public async Task Abandoned_socket_batch_faults_the_connection()
     {
         using SocketSinkFixture fixture = CreateSocketSink();
@@ -495,7 +559,7 @@ public class JsonRpcSocketsClientTests
         // The processor stops between items, for example when the request is cancelled, and never ends the batch.
         fixture.Sink.Dispose();
 
-        using JsonRpcContext context = new(RpcEndpoint.Ws);
+        JsonRpcContext context = new(RpcEndpoint.Ws);
         using SocketJsonRpcResponseSink<MemoryMessageStream> next = new(fixture.Stream, new NullJsonRpcLocalStats(), null, fixture.SendLock, context);
         using JsonRpcSuccessResponse nextResponse = new() { Result = "next" };
         await Assert.ThrowsAsync<IOException>(async () => await next.WriteSingleAsync(nextResponse, default, CancellationToken.None));

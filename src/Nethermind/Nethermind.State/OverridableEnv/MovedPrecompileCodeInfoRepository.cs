@@ -32,7 +32,7 @@ public class MovedPrecompileCodeInfoRepository(ICodeInfoRepository codeInfoRepos
         {
             worldState.AddAccountRead(codeSource);
             worldState.RecordAccountAccess(codeSource);
-            if (!codeInfo.IsEmpty && ICodeInfoRepository.TryGetDelegatedAddress(codeInfo.CodeSpan, out delegationAddress))
+            if (vmSpec.IsEip7702Enabled && !codeInfo.IsEmpty && ICodeInfoRepository.TryGetDelegatedAddress(codeInfo.CodeSpan, out delegationAddress))
             {
                 return followDelegation ? GetDelegatedCodeInfo(delegationAddress, vmSpec) : codeInfo;
             }

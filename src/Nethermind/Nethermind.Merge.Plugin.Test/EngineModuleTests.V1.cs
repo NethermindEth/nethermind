@@ -17,6 +17,7 @@ using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Headers;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Validators;
@@ -583,6 +584,65 @@ public partial class EngineModuleTests
         ExecutionPayload executionPayload = await CreateBlockRequest(chain, CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD);
         ResultWrapper<PayloadStatusV1> resultWrapper = await rpc.engine_newPayloadV1(executionPayload);
         Assert.That(resultWrapper.Result.ResultType, Is.EqualTo(ResultType.Failure));
+    }
+
+    /// <summary>
+    /// A block whose processing failed without a verdict stays in the tree unprocessed; a forkchoice update naming it
+    /// as head queues it again, without running it on the forkchoice update's own thread, and once it is processed the
+    /// next one moves the head to it.
+    /// </summary>
+    [Test]
+    public async Task forkchoiceUpdatedV1_processes_again_a_head_left_unprocessed_on_a_processed_parent()
+    {
+        // Started off NUnit's synchronization context, which the processing loop would otherwise capture and post every
+        // wake-up to, so the loop resumes inline on a writer's thread as it does in a node.
+        using MergeTestBlockchain chain = await Task.Run(() => CreateBaseBlockchain()
+            .Build(new TestSingleReleaseSpecProvider(London.Instance)));
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+        TestBranchProcessorInterceptor branchProcessor = (TestBranchProcessorInterceptor)chain.BranchProcessor;
+        Hash256 parentHash = chain.BlockTree.HeadHash;
+
+        branchProcessor.ExceptionToThrow = new Exception("unexpected exception");
+        ExecutionPayload executionPayload = await CreateBlockRequest(chain, CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD);
+        TaskCompletionSource processorIdle = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        chain.BlockProcessingQueue.ProcessingQueueEmpty += (_, _) => processorIdle.TrySetResult();
+        Assert.That((await rpc.engine_newPayloadV1(executionPayload)).Result.ResultType, Is.EqualTo(ResultType.Failure));
+        branchProcessor.ExceptionToThrow = null;
+        // The failure is reported before the processor takes the block off its count, and a non-empty queue skips the
+        // retry. Idle, the processor would also run a block queued on the forkchoice update's thread right there.
+        await processorIdle.Task.WaitAsync(GateTimeout);
+
+        ForkchoiceStateV1 forkchoiceState = new(executionPayload.BlockHash, parentHash, parentHash);
+        TaskCompletionSource processingRelease = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        branchProcessor.ProcessingRelease = processingRelease.Task;
+        try
+        {
+            ResultWrapper<ForkchoiceUpdatedV1Result> whileProcessing = await Task.Run(() => rpc.engine_forkchoiceUpdatedV1(forkchoiceState)).WaitAsync(GateTimeout);
+            Assert.That(whileProcessing.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Syncing));
+        }
+        finally
+        {
+            processingRelease.TrySetResult();
+        }
+
+        Assert.That(() => chain.BlockTree.WasProcessed(executionPayload.BlockNumber, executionPayload.BlockHash), Is.True.After(10_000, 50));
+
+        Assert.That((await rpc.engine_forkchoiceUpdatedV1(forkchoiceState)).Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
+        Assert.That(chain.BlockTree.HeadHash, Is.EqualTo(executionPayload.BlockHash));
+    }
+
+    [Test]
+    public async Task forkchoiceUpdatedV1_does_not_create_block_info_for_a_stored_head_without_one()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain();
+        Block parent = chain.BlockTree.Head!;
+        Block head = Build.A.Block.WithParent(parent).WithStateRoot(parent.StateRoot!).TestObject;
+        chain.Container.Resolve<IHeaderStore>().Insert(head.Header);
+        chain.Container.Resolve<IBlockStore>().Insert(head);
+
+        ForkchoiceStateV1 forkchoiceState = new(head.Hash!, parent.Hash!, parent.Hash!);
+        Assert.That((await chain.EngineRpcModule.engine_forkchoiceUpdatedV1(forkchoiceState)).Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Syncing));
+        Assert.That(chain.BlockTree.GetInfo(head.Number, head.Hash!).Info, Is.Null);
     }
 
 
@@ -1165,13 +1225,24 @@ public partial class EngineModuleTests
         Block head = blockTree.Head!;
         Block block = Build.A.Block.WithNumber(head.Number + 1).WithParent(head).WithNonce(0).WithDifficulty(0).WithStateRoot(head.StateRoot!).TestObject;
 
-        if (suggestPending) blockTree.BlockAcceptingNewBlocks();
-        ResultWrapper<PayloadStatusV1> response = await chain.EngineRpcModule.engine_newPayloadV1(ExecutionPayload.Create(block));
-        if (suggestPending) blockTree.ReleaseAcceptingNewBlocks();
-
-        // A verdict in hand beats a budget that also ran out, so a block processed before the request awaits its
-        // verdict is answered VALID.
-        Assert.That(response.Data.Status, suggestPending ? Is.EqualTo(PayloadStatus.Syncing) : Is.AnyOf(PayloadStatus.Syncing, PayloadStatus.Valid));
+        TaskCompletionSource processingRelease = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        ((TestBranchProcessorInterceptor)chain.BranchProcessor).ProcessingRelease = processingRelease.Task;
+        try
+        {
+            if (suggestPending) blockTree.BlockAcceptingNewBlocks();
+            ResultWrapper<PayloadStatusV1> response = await chain.EngineRpcModule.engine_newPayloadV1(ExecutionPayload.Create(block));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(response.Data.Status, Is.EqualTo(PayloadStatus.Syncing));
+                Assert.That(blockTree.FindHeader(block.Hash!, BlockTreeLookupOptions.None) is null || !blockTree.WasProcessed(block.Number, block.Hash!), Is.True,
+                    "processing is held until after the answer");
+            }
+        }
+        finally
+        {
+            processingRelease.TrySetResult();
+            if (suggestPending) blockTree.ReleaseAcceptingNewBlocks();
+        }
 
         using CancellationTokenSource cts = new(GateTimeout);
         while (blockTree.FindHeader(block.Hash!, BlockTreeLookupOptions.None) is null || !blockTree.WasProcessed(block.Number, block.Hash!))
