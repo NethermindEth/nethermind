@@ -404,11 +404,14 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
     }
 
     /// <summary>Whether peers must still serve the height: within the chain's minimum BAL retention of the head.</summary>
-    /// <remarks>The pivot stands in for the head during fast sync, when the head is still near genesis.</remarks>
+    /// <remarks>
+    /// One extra epoch, as in the pruner's cutoff, covers the CL window's epoch-aligned start. The pivot stands in for
+    /// the head during fast sync, when the head is still near genesis.
+    /// </remarks>
     private bool IsInsideServingWindow(ulong blockNumber)
     {
         ulong head = ulong.Max(_blockTree.Head?.Number ?? 0, _blockTree.SyncPivot.BlockNumber);
-        ulong windowBlocks = _historyPruner.GetRetentionBlocks(_specProvider.GenesisSpec.MinBalRetentionEpochs);
+        ulong windowBlocks = _historyPruner.GetRetentionBlocks(_specProvider.GenesisSpec.MinBalRetentionEpochs + 1);
         return blockNumber >= head.SaturatingSub(windowBlocks);
     }
 

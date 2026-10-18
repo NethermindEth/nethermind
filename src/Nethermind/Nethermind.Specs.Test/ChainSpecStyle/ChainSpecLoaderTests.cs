@@ -204,7 +204,6 @@ public class ChainSpecLoaderTests
         Assert.That(chainSpec.Parameters.BlobSchedule, Is.Empty);
     }
 
-    /// <summary>Loads a chain spec whose genesis, at timestamp 0, follows <paramref name="transitionParam"/> set to <paramref name="transitionTimestamp"/>.</summary>
     [Test]
     public void Bal_retention_floor_defaults_to_history_prune_epochs()
     {
@@ -219,6 +218,7 @@ public class ChainSpecLoaderTests
         }
     }
 
+    /// <summary>Loads a chain spec whose genesis, at timestamp 0, follows <paramref name="transitionParam"/> set to <paramref name="transitionTimestamp"/>.</summary>
     private static ChainSpec LoadChainSpecWithTransition(string transitionParam, ulong transitionTimestamp)
     {
         string json = $$"""
