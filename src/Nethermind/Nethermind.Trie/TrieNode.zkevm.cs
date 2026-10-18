@@ -239,9 +239,9 @@ namespace Nethermind.Trie
         /// or none for a branch built in this block, still encodes every null slot, as a slot is only ever filled. So the
         /// new RLP is written to scratch from <see cref="RentBranchRlp"/> and dropped, which spares the memory a stored copy
         /// per encoded branch would first-touch. A branch short enough to be embedded is kept as before: its parent copies it.
-        /// Only where <see cref="ScratchBranchRlpFlag"/> is active.
+        /// Only where <see cref="FirstTouchMemoryFlag"/> is on: the other guests pay more for the scratch bookkeeping than they save.
         /// </remarks>
-        private static bool KeepsRlpOfHashedBranch => ScratchBranchRlpFlag.IsActive;
+        private static bool KeepsRlpOfHashedBranch => FirstTouchMemoryFlag.IsActive;
 
         /// <summary>The scratch branches are encoded into; see <see cref="KeepsRlpOfHashedBranch"/>.</summary>
         /// <remarks>A class of its own, with no initializer, so each access is a plain load rather than a class-initialization check.</remarks>

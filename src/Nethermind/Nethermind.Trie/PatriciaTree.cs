@@ -131,8 +131,13 @@ namespace Nethermind.Trie
             _bufferPool = bufferPool;
         }
 
+        /// <summary>Throws where this build cannot commit a trie; see <c>PatriciaTree.zkevm.cs</c>.</summary>
+        partial void ThrowIfCommitUnsupported();
+
         public void Commit(bool skipRoot = false, WriteFlags writeFlags = WriteFlags.None)
         {
+            ThrowIfCommitUnsupported();
+
             if (!_allowCommits)
             {
                 ThrowReadOnlyTrieException();

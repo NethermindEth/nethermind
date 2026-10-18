@@ -1,7 +1,11 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
+using Nethermind.Core;
 
 namespace Nethermind.Trie;
 
@@ -53,4 +57,15 @@ public partial class PatriciaTree
         parent.Keccak is null && child is not null && ReferenceEquals(originalChild, child) && parent.IsPendingWith(childIndex, child);
 
     partial void AdjustBulkSetFlags(ref Flags flags) => flags |= Flags.DoNotParallelize;
+
+    /// <remarks>Where <see cref="FirstTouchMemoryFlag"/> is on, a branch hashed as soon as it is encoded keeps its previous
+    /// RLP (see <c>TrieNode.KeepsRlpOfHashedBranch</c>), so a commit would persist a stale encoding.</remarks>
+    partial void ThrowIfCommitUnsupported()
+    {
+        if (FirstTouchMemoryFlag.IsActive) ThrowCommitWithStaleBranchRlp();
+    }
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowCommitWithStaleBranchRlp() =>
+        throw new InvalidOperationException("This guest keeps the previous RLP of hashed branches, so it cannot commit a trie.");
 }
