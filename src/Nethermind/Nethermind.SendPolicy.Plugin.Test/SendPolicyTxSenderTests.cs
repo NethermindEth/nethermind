@@ -157,6 +157,35 @@ public class SendPolicyTxSenderTests
         }
     }
 
+    [Test]
+    public async Task Same_metadata_replacement_refuses_previously_allowed_send([Values] bool malformed, [Values] bool atomic)
+    {
+        using TempPath rules = WriteRules([$"from {Owner.Address}", $"to {Friend} 1"]);
+        string path = RulesFile(rules);
+        DateTime timestamp = File.GetLastWriteTimeUtc(path);
+        long size = new FileInfo(path).Length;
+        ITxSender inner = AcceptingSender();
+        SendPolicyTxSender sender = CreateSender(inner, path);
+        (Hash256 _, AcceptTxResult? before) = await sender.SendTransaction(Send(Owner, Friend, 1), TxHandlingOptions.None);
+        Assert.That(before, Is.EqualTo(AcceptTxResult.Accepted));
+
+        string replacement = atomic ? path + ".replacement" : path;
+        File.WriteAllLines(replacement, [$"from {Owner.Address}", malformed ? $"zz {Friend} 1" : $"to {Unlisted} 1"]);
+        File.SetLastWriteTimeUtc(replacement, timestamp);
+        if (atomic) File.Move(replacement, path, true);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(new FileInfo(path).Length, Is.EqualTo(size));
+            Assert.That(File.GetLastWriteTimeUtc(path), Is.EqualTo(timestamp));
+        }
+        inner.ClearReceivedCalls();
+
+        (Hash256 _, AcceptTxResult? after) = await sender.SendTransaction(Send(Owner, Friend, 1), TxHandlingOptions.None);
+
+        Assert.That(after?.ToString(), Does.Contain(malformed ? "unknown rule 'zz'" : "unlisted destination"));
+        await inner.DidNotReceiveWithAnyArgs().SendTransaction(default!, default);
+    }
+
     private static IEnumerable<TestCaseData> SendsUnderCap()
     {
         yield return CapCase("third send in the period", true, (0, 0, true), (1, 0, true), (2, 0, true));

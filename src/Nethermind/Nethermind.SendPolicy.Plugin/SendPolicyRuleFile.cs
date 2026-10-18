@@ -41,6 +41,8 @@ public sealed class SendPolicyRuleFile
             if (loaded is not null && loaded.Snapshot == snapshot) return loaded.Rules;
             lock (_reloadLock)
             {
+                // A delayed reader must not replace a newer cached snapshot.
+                snapshot = FileSnapshot.Of(_path);
                 loaded = _loaded;
                 if (loaded is not null && loaded.Snapshot == snapshot) return loaded.Rules;
                 SendPolicyRules rules = Read(snapshot, loaded?.LastGood ?? SendPolicyRules.Empty);
