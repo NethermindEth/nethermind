@@ -32,7 +32,7 @@ namespace Nethermind.Init;
 /// <remarks>
 /// The work runs off the processing pipeline, on a thread of its own (below normal priority where the OS honours it), so
 /// neither the verdict on the rejected block nor the next queued block waits for it. The block is re-executed on a world state of its own,
-/// opened at its parent, once for all the requested traces. At most one dump runs at a time: a block rejected meanwhile
+/// opened at its parent, once per requested trace. At most one dump runs at a time: a block rejected meanwhile
 /// is dropped, so invalid blocks sent back to back cannot queue up work, and each block is dumped once.
 /// Disposal lets a running dump finish, so the files of the block a node exits on are still written.
 /// </remarks>
@@ -69,7 +69,7 @@ public sealed class InvalidBlockDiagnostics(
             if (_disposed || _dumpedBlocks.Get(block.Hash)) return;
             if (!_running.IsCompleted)
             {
-                if (_logger.IsInfo) _logger.Info($"Skipped diagnostics of invalid block {block.ToString(Block.Format.FullHashAndNumber)}: an earlier dump is still running.");
+                if (_logger.IsWarn) _logger.Warn($"Skipped diagnostics of invalid block {block.ToString(Block.Format.FullHashAndNumber)}: an earlier dump is still running.");
                 return;
             }
 
@@ -114,52 +114,67 @@ public sealed class InvalidBlockDiagnostics(
     {
         BlockHeader? parent = blockTree.FindParentHeader(block.Header, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
         (IOverridableEnv env, ILifetimeScope scope) = _replayEnv ??= CreateReplayEnv();
-        if (parent is null || !env.TryBuildAndOverride(parent, null, null, null, out IDisposable? state))
+        bool validOnRerun = false;
+        // One replay per tracer: a BlockReceiptsTracer only receives receipts as the processor's direct tracer, not inside a CompositeBlockTracer.
+        foreach (IBlockTracer tracer in tracers)
         {
-            if (_logger.IsInfo) _logger.Info($"Skipped traces of invalid block {block.ToString(Block.Format.FullHashAndNumber)}: the state of its parent is unavailable.");
-            return;
-        }
-
-        CompositeBlockTracer tracer = new();
-        tracer.AddRange(tracers);
-        // The rejected block may still be read by the processing pipeline, so the replay mutates a header of its own.
-        Block isolated = block.WithReplacedHeader(block.Header.Clone());
-        Either<Hash256, IList<Block>> outcome;
-        using (state)
-        {
-            try
+            if (parent is null || !env.TryBuildAndOverride(parent, null, null, null, out IDisposable? state))
             {
-                scope.Resolve<BlockchainProcessorFacade>().Process(isolated, ReplayOptions, tracer, _cancellation.Token);
-                outcome = new List<Block> { block };
-            }
-            catch (InvalidBlockException)
-            {
-                outcome = block.Hash!;
-            }
-            catch (Exception exception) when (exception is not OperationCanceledException)
-            {
-                BlockTraceDumper.LogTraceFailure(tracer, parent, exception, _logger);
+                if (_logger.IsInfo) _logger.Info($"Skipped traces of invalid block {block.ToString(Block.Format.FullHashAndNumber)}: the state of its parent is unavailable.");
                 return;
             }
-            finally
+
+            // The rejected block may still be read by the processing pipeline, so the replay mutates a header of its own.
+            Block isolated = block.WithReplacedHeader(block.Header.Clone());
+            Either<Hash256, IList<Block>> outcome;
+            using (state)
             {
-                isolated.DisposeAccountChanges();
+                try
+                {
+                    scope.Resolve<BlockchainProcessorFacade>().Process(isolated, ReplayOptions, tracer, _cancellation.Token);
+                    outcome = new List<Block> { block };
+                    validOnRerun = true;
+                }
+                catch (InvalidBlockException)
+                {
+                    outcome = block.Hash!;
+                }
+                catch (Exception exception) when (exception is not OperationCanceledException)
+                {
+                    BlockTraceDumper.LogTraceFailure(tracer, parent, exception, _logger);
+                    continue;
+                }
+                finally
+                {
+                    isolated.DisposeAccountChanges();
+                }
             }
+
+            BlockTraceDumper.LogDiagnosticTrace(tracer, outcome, _logger);
         }
 
-        foreach (IBlockTracer blockTracer in tracers)
+        if (validOnRerun)
         {
-            BlockTraceDumper.LogDiagnosticTrace(blockTracer, outcome, _logger);
+            Metrics.InvalidBlocksValidOnRerun++;
+            if (_logger.IsWarn) _logger.Warn($"Invalid block {block.ToString(Block.Format.FullHashAndNumber)} was valid when re-executed for diagnostics.");
         }
     }
 
     private (IOverridableEnv, ILifetimeScope) CreateReplayEnv()
     {
         IOverridableEnv env = envFactory.Create();
-        ILifetimeScope scope = rootLifetimeScope.BeginLifetimeScope(builder => builder
-            .AddModule(validationModules)
-            .AddModule(env));
-        return (env, scope);
+        try
+        {
+            ILifetimeScope scope = rootLifetimeScope.BeginLifetimeScope(builder => builder
+                .AddModule(validationModules)
+                .AddModule(env));
+            return (env, scope);
+        }
+        catch
+        {
+            (env as IDisposable)?.Dispose();
+            throw;
+        }
     }
 
     public void Dispose()
