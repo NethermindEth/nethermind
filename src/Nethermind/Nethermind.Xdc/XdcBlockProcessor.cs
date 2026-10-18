@@ -103,6 +103,9 @@ internal class XdcBlockProcessor(
             headerForProcessing.StateRoot = bh.StateRoot;
         }
 
-        return suggestedBlock.WithReplacedHeader(headerForProcessing);
+        Block block = suggestedBlock.WithReplacedHeader(headerForProcessing);
+        block.InclusionListTransactions = suggestedBlock.InclusionListTransactions;
+
+        return block;
     }
 }

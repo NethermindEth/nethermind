@@ -77,6 +77,17 @@ internal class XdcBlockProcessorTests
     }
 
     [Test]
+    public void PrepareBlockForProcessing_KeepsInclusionListTransactions()
+    {
+        Block suggestedBlock = Build.A.Block.WithHeader(Build.A.XdcBlockHeader().TestObject).TestObject;
+        suggestedBlock.InclusionListTransactions = [Build.A.Transaction.TestObject];
+
+        Block preparedBlock = _processor.PrepareBlockForProcessing(suggestedBlock);
+
+        Assert.That(preparedBlock.InclusionListTransactions, Is.SameAs(suggestedBlock.InclusionListTransactions));
+    }
+
+    [Test]
     public void PostValidation_CopiesProcessedRewardsToSuggestedHeader()
     {
         XdcBlockHeader suggestedHeader = Build.A.XdcBlockHeader().TestObject;
