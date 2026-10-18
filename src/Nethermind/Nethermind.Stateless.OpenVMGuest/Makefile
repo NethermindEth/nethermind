@@ -9,6 +9,9 @@ SRC_DIR := /nethermind/src
 
 GUEST_LIBC := openvm
 
+# MUL on the bigint extension without the frame a call from managed code takes.
+GUEST_OBJECTS := mul.o
+
 # BIN_DIR must be set before the include - BFLAT_REFS expands it.
 include $(MAKEFILE_DIR)/../Nethermind.Stateless.Guest/build.mk
 # Execution harness. OpenVM publishes no image and `cargo openvm run` only takes
