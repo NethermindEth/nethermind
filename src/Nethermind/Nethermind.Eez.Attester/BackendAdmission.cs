@@ -25,6 +25,17 @@ internal sealed class BackendAdmission(ILogger<BackendAdmission> logger)
         }
     }
 
+    internal async Task<BackendLease> Acquire(CancellationToken cancellation)
+    {
+        while (true)
+        {
+            cancellation.ThrowIfCancellationRequested();
+            BackendLease? lease = TryAcquire();
+            if (lease is not null) return lease;
+            await WaitUntilIdle().WaitAsync(cancellation).ConfigureAwait(false);
+        }
+    }
+
     internal Task WaitUntilIdle()
     {
         lock (_lock) return _idle?.Task ?? Task.CompletedTask;

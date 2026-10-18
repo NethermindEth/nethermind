@@ -53,7 +53,7 @@ internal static class RollupXOperationsCheck
         }
     }
 
-    private static void VerifyIntermediate(EezStatelessBlockResult result)
+    internal static void VerifyIntermediate(EezStatelessBlockResult result)
     {
         foreach (Transaction transaction in result.Block.Transactions)
             if (transaction.IsEezSystemTransaction() || transaction.SenderAddress == EezConstants.SystemAddress)

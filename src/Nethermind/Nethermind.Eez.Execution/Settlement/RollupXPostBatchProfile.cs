@@ -50,9 +50,8 @@ public static class RollupXPostBatchProfile
         for (int i = 0; i < batch.StaticEntries.Length; i++)
         {
             StaticExecutionEntry entry = batch.StaticEntries[i];
-            Require(entry.DestinationRollupId == rollupId && entry.ExpectedRoots is [{ } pin] && pin.RollupId == rollupId
-                && entry.Calls.Length == 0 && entry.RollingHash == default,
-                $"static entry {i} must pin rollup {rollupId} once, without calls or a rolling hash");
+            Require(entry.DestinationRollupId == rollupId && entry.ExpectedRoots is [{ } pin] && pin.RollupId == rollupId,
+                $"static entry {i} must pin rollup {rollupId} once");
         }
 
         Require(batch.ImmediateStaticEntryCount.IsZero, "the immediate static entry count must be zero");

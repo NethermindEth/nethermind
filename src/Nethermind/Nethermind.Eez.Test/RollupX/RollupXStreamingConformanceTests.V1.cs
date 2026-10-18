@@ -55,7 +55,7 @@ public partial class RollupXStreamingConformanceTests
     [TestCase("predecessor", StatusCode.InvalidArgument, TestName = "ProveV1_WrongPredecessorNumber_Rejects")]
     [TestCase("genesisAcceptance", StatusCode.FailedPrecondition, TestName = "ProveV1_FalseGenesisAcceptance_Rejects")]
     [TestCase("extraEndpoint", StatusCode.FailedPrecondition, TestName = "ProveV1_UnexpectedLiveEndpoint_Rejects")]
-    [TestCase("cached", StatusCode.Unimplemented, TestName = "ProveV1_CachedReference_Rejects")]
+    [TestCase("cached", StatusCode.InvalidArgument, TestName = "ProveV1_CachedReference_Rejects")]
     [TestCase("lookup", StatusCode.FailedPrecondition, TestName = "ProveV1_FalseLookup_Rejects")]
     [TestCase("anchor", StatusCode.FailedPrecondition, TestName = "ProveV1_FalseSettlementAnchor_Rejects")]
     [TestCase("reorg", StatusCode.Aborted, TestName = "ProveV1_ReorgBeforeSigning_Rejects")]
@@ -75,7 +75,7 @@ public partial class RollupXStreamingConformanceTests
     }
 
     [Test]
-    public async Task Capabilities_NativeWorkerBusy_ReturnsHonestInlineLimits()
+    public async Task Capabilities_NativeWorkerBusy_ReturnsEffectivePreparationLimits()
     {
         using JsonDocument document = RollupXRecordedExecutionTests.ReadSelected(DirectoryPath, "baseline-lookup.json");
         await using RollupXStreamingServer server = await RollupXStreamingServer.StartProduction(DirectoryPath, document.RootElement);
@@ -95,16 +95,16 @@ public partial class RollupXStreamingConformanceTests
                 Is.EqualTo((profile.GetProperty("max_window_blocks").GetUInt64(), profile.GetProperty("max_window_bytes").GetUInt64(),
                     profile.GetProperty("max_window_witness_items").GetUInt64())), "advertised admission quotas match the running server");
             Assert.That((capabilities.PreparationMaxBlocks, capabilities.CacheMaxEntries, capabilities.CacheMaxBytes,
-                capabilities.MaximumLeases, capabilities.LeaseLifetimeMillis), Is.EqualTo((0UL, 0UL, 0UL, 0UL, 0UL)),
-                "inline-only support cannot advertise cache or preparation capacity");
+                capabilities.MaximumLeases, capabilities.LeaseLifetimeMillis),
+                Is.EqualTo((Math.Min(64UL, capabilities.MaxWindowBlocks), 131072UL, 512UL * 1024 * 1024, 8UL,
+                    Math.Max(120000UL, capabilities.RequestTimeoutMillis * 2))), "advertised preparation capacity must match its bounded cache");
         }
         using AsyncClientStreamingCall<PrepareChunk, PrepareResponse> prepare = client.PrepareOrdinary();
         try { await prepare.RequestStream.CompleteAsync(); }
         catch (RpcException) { }
         RpcException preparation = (await Assert.ThrowsAsync<RpcException>(async () => await prepare.ResponseAsync))!;
         RpcException retention = (await Assert.ThrowsAsync<RpcException>(async () => await client.RetainOrdinaryRangesAsync(new RetainOrdinaryRangesRequest())))!;
-        Assert.That((preparation.StatusCode, retention.StatusCode), Is.EqualTo((StatusCode.Unimplemented, StatusCode.Unimplemented)),
-            "unsupported cache operations cannot execute or sign through the occupied worker");
+        Assert.That((preparation.StatusCode, retention.StatusCode), Is.EqualTo((StatusCode.InvalidArgument, StatusCode.InvalidArgument)));
     }
 
     [Test]

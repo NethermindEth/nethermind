@@ -22,7 +22,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Eez.Test.RollupX;
 
-public class RollupXObservationCallTests
+public partial class RollupXObservationCallTests
 {
     private IWorldState _state = null!;
     private IDisposable _scope = null!;
@@ -122,15 +122,14 @@ public class RollupXObservationCallTests
         AssertRestored();
     }
 
-    [TestCase(0xf1, TestName = "UnsupportedNestedCallCannotBeCaught")]
-    [TestCase(0xfa, TestName = "UnsupportedNestedStaticCallCannotBeCaught")]
-    public void Execute_UnsupportedNestedCall_RejectsInsteadOfReturningClaimedSuccess(byte opcode)
+    [TestCase(0xf1, TestName = "UnregisteredLocalCallExecutes")]
+    [TestCase(0xfa, TestName = "UnregisteredLocalStaticCallExecutes")]
+    public void Execute_UnregisteredLocalCall_ExecutesNormally(byte opcode)
     {
         byte[] arguments = opcode == 0xf1 ? new byte[] { 0x5f, 0x5f, 0x5f, 0x5f, 0x5f } : [0x5f, 0x5f, 0x5f, 0x5f];
         Deploy([.. arguments, 0x73, .. TestItem.AddressD.Bytes, 0x5a, opcode, 0x50, 0x5f, 0x5f, 0xf3]);
 
-        Assert.That(() => Execute([], ObservationMode.Lookup), Throws.TypeOf<EezSettlementException>(),
-            "a parent cannot catch an unsupported child call and turn it into an accepted observation");
+        Assert.That(Execute([], ObservationMode.Lookup).Success, Is.True);
         AssertRestored();
     }
 
@@ -154,12 +153,11 @@ public class RollupXObservationCallTests
     }
 
     [Test]
-    public void Execute_ValueBearingCall_RejectsBeforeExecution()
+    public void Execute_StaticValueBearingCall_RejectsBeforeExecution()
     {
         Deploy([0x00]);
         Assert.That(() => _calls.ExecuteAtTransactionBoundary(TestItem.AddressA, TestItem.AddressB, ReadOnlyMemory<byte>.Empty,
-            UInt256.One, ObservationMode.Lookup), Throws.TypeOf<EezSettlementException>(),
-            "unimplemented balance-disabled value semantics cannot produce a proof");
+            UInt256.One, ObservationMode.Static), Throws.TypeOf<EezSettlementException>());
         AssertRestored();
     }
 
@@ -248,13 +246,12 @@ public class RollupXObservationCallTests
     }
 
     [Test]
-    public void Execute_PrecheckRejectedNestedCall_RejectsInsteadOfReturningSuccess()
+    public void Execute_PrecheckRejectedLocalCall_ReturnsItsParentResult()
     {
         Deploy([0x5f, 0x5f, 0x5f, 0x5f, 0x60, 1, 0x73, .. TestItem.AddressD.Bytes, 0x5a, 0xf1, 0x50, 0x00]);
         Assert.That(_state.GetBalance(TestItem.AddressB), Is.EqualTo(UInt256.Zero), "precondition: the child value transfer cannot pass the balance check");
 
-        Assert.That(() => Execute([], ObservationMode.Lookup), Throws.TypeOf<EezSettlementException>(),
-            "a rejected child CALL cannot bypass the unsupported-dispatch guard");
+        Assert.That(Execute([], ObservationMode.Lookup).Success, Is.True);
         AssertRestored();
     }
 

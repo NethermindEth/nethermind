@@ -42,6 +42,9 @@ internal sealed class RollupXStreamingFinalizer
         _execution = new RollupXSettlementExecution(l2Specs, rules, context, logs);
     }
 
+    internal Task<PreparedOrdinaryBlock> Prepare(EezStatelessBlock block, CancellationToken cancellation) =>
+        Task.Run(() => _execution.Prepare(block, cancellation), CancellationToken.None);
+
     internal async Task<Proof> Finalize(SessionOperation operation, CancellationToken cancellation)
     {
         cancellation.ThrowIfCancellationRequested();
@@ -92,7 +95,7 @@ internal sealed class RollupXStreamingFinalizer
         cancellation.ThrowIfCancellationRequested();
         try
         {
-            if (window.Blocks.Length == 0 || window.Claims.Length != window.Blocks.Length)
+            if (window.Blocks.Length == 0 || window.Claims.Length == 0)
                 throw new EezSettlementException("Finalization has no exact claimed execution window.");
             BlockHeader parent = Rlp.Decode<BlockHeader>(authorization.ParentHeader.ToByteArray())
                 ?? throw new EezSettlementException("Authorized predecessor header is missing.");
@@ -109,7 +112,7 @@ internal sealed class RollupXStreamingFinalizer
     {
         RollupXSchedule schedule = _rules.Schedule!;
         if (parent.Number == ulong.MaxValue || window.FromBlock != parent.Number + 1 || window.ToBlock < window.FromBlock ||
-            window.ToBlock - window.FromBlock + 1 != (ulong)window.Blocks.Length || !schedule.IsSyncPosition(parent.Number) ||
+            window.ToBlock - window.FromBlock + 1 != (ulong)window.Claims.Length || !schedule.IsSyncPosition(parent.Number) ||
             schedule.AnchorKind(window.ToBlock, input.Target.Timestamp) is not { } kind)
             throw new EezSettlementException("Settlement range is outside the authenticated Sync grid.");
         if (kind == RollupXAnchorKind.CatchUp && input.Stream.Messages.Length != 0)

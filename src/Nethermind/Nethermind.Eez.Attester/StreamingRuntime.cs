@@ -98,7 +98,7 @@ internal sealed class StreamingRuntime : IDisposable
                     pipeline.Context, signer.Address, rules.Schedule, settings.L2GenesisHash!);
                 RollupXStreamingFinalizer nativeFinalizer = new(l1Specs, specs, rules, pipeline.Context, signer, authorizer, logs);
                 finalize = nativeFinalizer.Finalize;
-                native = new NativeProver(nativeFinalizer, NativeProver.ValidationIdentity(options, settings, pipeline.Context));
+                native = new NativeProver(nativeFinalizer, NativeProver.ValidationIdentity(options, settings, pipeline.Context), options);
             }
             else
             {

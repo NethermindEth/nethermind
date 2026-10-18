@@ -20,21 +20,54 @@ internal sealed class RollupXSettlementExecution(ISpecProvider specs, EezChainRu
     private readonly EezStatelessExecutor _executor = new(specs, rules, logs);
     private readonly RollupXObservationReplay _observations = new(specs, rules, logs);
 
+    internal PreparedOrdinaryBlock Prepare(EezStatelessBlock block, CancellationToken cancellation)
+    {
+        cancellation.ThrowIfCancellationRequested();
+        EezStatelessBlockResult result = _executor.Execute([block], [])[0];
+        cancellation.ThrowIfCancellationRequested();
+        return PreparedOrdinaryBlock.Create(result);
+    }
+
     internal ValueHash256 Validate(AdmittedWindow window, RollupXSettlementInput input, BlockHeader parent,
         Hash256 descendantSeed, CancellationToken cancellation)
     {
         cancellation.ThrowIfCancellationRequested();
-        if (window.Blocks.Length == 0 || window.Claims.Length != window.Blocks.Length || parent.Number == ulong.MaxValue ||
+        if (window.Blocks.Length == 0 || window.Claims.Length == 0 || parent.Number == ulong.MaxValue ||
             window.FromBlock != parent.Number + 1 || window.ToBlock < window.FromBlock ||
-            window.ToBlock - window.FromBlock + 1 != (ulong)window.Blocks.Length)
+            window.ToBlock - window.FromBlock + 1 != (ulong)window.Claims.Length)
             throw new EezSettlementException("Finalization has no exact selected execution window.");
         Block terminal = Rlp.Decode<Block>(window.Blocks[^1].Rlp) ?? throw new EezSettlementException("Terminal block is missing.");
         RollupXCheckpointPlan plan = RollupXCheckpointPlan.Create(terminal);
-        EezStatelessBlockResult[] executed = _executor.Execute(window.Blocks, plan.Positions);
+        EezStatelessBlockResult[] executed;
+        if (window.Prepared.Length == 0)
+        {
+            if (window.Blocks.Length != window.Claims.Length) throw new EezSettlementException("Witnessed window length differs.");
+            executed = _executor.Execute(window.Blocks, plan.Positions);
+        }
+        else
+        {
+            if (window.Prepared.Length != window.Claims.Length || window.Prepared[^1] is not null)
+                throw new EezSettlementException("Prepared window requires a fresh witnessed terminal block.");
+            executed = new EezStatelessBlockResult[window.Claims.Length];
+            int fresh = 0;
+            for (int i = 0; i < executed.Length; i++)
+            {
+                cancellation.ThrowIfCancellationRequested();
+                if (window.Prepared[i] is { } prepared) executed[i] = prepared.Materialize();
+                else
+                {
+                    if (fresh == window.Blocks.Length) throw new EezSettlementException("Prepared window is missing a fresh witness.");
+                    executed[i] = _executor.Execute([window.Blocks[fresh++]], i == executed.Length - 1 ? plan.Positions : [])[0];
+                }
+            }
+            if (fresh != window.Blocks.Length) throw new EezSettlementException("Prepared window has unused witnesses.");
+        }
         for (int i = 0; i < executed.Length; i++)
         {
             cancellation.ThrowIfCancellationRequested();
             EezStatelessBlockResult block = executed[i];
+            if (i != 0 && (block.Block.ParentHash != executed[i - 1].Hash || block.PreStateRoot != executed[i - 1].PostStateRoot))
+                throw new EezSettlementException("Prepared window hash or state continuity differs.");
             if (block.Block.Number != window.FromBlock + (ulong)i || block.Hash != window.Claims[i].Hash ||
                 block.Block.ParentHash != window.Claims[i].ParentHash || block.Block.Header.MixHash != descendantSeed)
                 throw new EezSettlementException("Executed window differs from its selected blocks or authorized randomness seed.");

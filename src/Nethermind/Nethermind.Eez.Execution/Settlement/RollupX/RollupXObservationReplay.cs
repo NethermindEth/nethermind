@@ -119,4 +119,9 @@ internal sealed class RollupXObservationReplay(ISpecProvider specs, EezChainRule
 }
 
 internal sealed record RollupXObservationClaim(Hash256 Pin, Address SourceAddress, ulong SourceRollupId,
-    Address Target, byte[] Data, UInt256 Value, ObservationMode Mode, ObservationOutcome Expected);
+    Address Target, byte[] Data, UInt256 Value, ObservationMode Mode, ObservationOutcome Expected)
+{
+    internal RollupXObservationCallback[] Callbacks { get; init; } = [];
+}
+
+internal sealed record RollupXObservationCallback(Address Source, Address Target, byte[] Data, byte[] Output);

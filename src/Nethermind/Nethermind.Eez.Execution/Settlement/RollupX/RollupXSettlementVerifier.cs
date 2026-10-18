@@ -106,7 +106,7 @@ internal static class RollupXSettlementVerifier
                 revertedUntil = Math.Max(revertedUntil, call.RevertEnd);
                 if (call.Encoded.IsStatic)
                 {
-                    VerifyStatic(call);
+                    VerifyStatic(tree, call);
                     continue;
                 }
                 if (_entry >= batch.Entries.Length) throw Invalid("Native inbound call has no settlement entry.");
@@ -129,7 +129,7 @@ internal static class RollupXSettlementVerifier
                 {
                     if (update.NewRoot != _liveRoot || !update.EtherDelta.IsZero || _l1.EntryEvents[_entry - 1].Length != 0)
                         throw Invalid("Inbound lookup changes the canonical commitment, value or outbound events.");
-                    Observe(call, ObservationMode.Lookup);
+                    Observe(tree, call, ObservationMode.Lookup);
                 }
                 MatchEntry(expected);
                 _liveRoot = update.NewRoot;
@@ -137,7 +137,7 @@ internal static class RollupXSettlementVerifier
             if (delivery != deliveries.Length) throw Invalid("Native stream has unconsumed inbound deliveries.");
         }
 
-        private void VerifyStatic(NativeCallTree.Node call)
+        private void VerifyStatic(NativeCallTree tree, NativeCallTree.Node call)
         {
             if (_staticEntry == batch.StaticEntries.Length || _staticEntry == _l1.StaticEntries.Count)
                 throw Invalid("Native static call has no settlement entry.");
@@ -145,15 +145,26 @@ internal static class RollupXSettlementVerifier
             if (expected.ExpectedRoots is not [{ } pin] || pin.Root != _liveRoot ||
                 EezCalldata.StaticEntryHash(expected) != EezCalldata.StaticEntryHash(batch.StaticEntries[_staticEntry++]))
                 throw Invalid("Native static call differs from its FIFO settlement entry.");
-            Observe(call, ObservationMode.Static);
+            Observe(tree, call, ObservationMode.Static);
         }
 
-        private void Observe(NativeCallTree.Node call, ObservationMode mode)
+        private void Observe(NativeCallTree tree, NativeCallTree.Node call, ObservationMode mode)
         {
-            if (call.Children.Count != 0) throw Invalid("Observation callbacks require independently authenticated replay.");
+            if (call.RevertEnd > call.Index + 1)
+                throw Invalid("Observation begins a multi-action rollback region without transient checkpoints.");
+            RollupXObservationCallback[] callbacks = new RollupXObservationCallback[call.Children.Count];
+            for (int i = 0; i < callbacks.Length; i++)
+            {
+                NativeCallTree.Node child = tree.Calls[call.Children[i]];
+                if (mode != ObservationMode.Static || !child.Encoded.IsStatic || !child.Result.Success || child.Children.Count != 0)
+                    throw Invalid("Observation callback is outside the static source-chain profile.");
+                callbacks[i] = new(child.Encoded.SourceAddress, child.Encoded.TargetAddress,
+                    child.Encoded.Data.AsSpan().ToArray(), child.Result.ReturnData.ToArray());
+            }
             _observations.Add(new RollupXObservationClaim(new Hash256(_liveRoot.Bytes), call.Encoded.SourceAddress,
                 call.Encoded.SourceRollupId, call.Encoded.TargetAddress, call.Encoded.Data, call.Encoded.Value, mode,
-                new ObservationOutcome(call.Result.Success, call.Result.ReturnData.ToArray())));
+                new ObservationOutcome(call.Result.Success, call.Result.ReturnData.ToArray()))
+            { Callbacks = callbacks });
         }
 
         private void AddEvents(int transaction)

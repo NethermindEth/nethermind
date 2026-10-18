@@ -41,16 +41,17 @@ internal sealed class RollupXObservationCall(
             throw new EezSettlementException("Observed proxy address is not a canonical ABI address.");
         Address caller = new(proxy.Output.AsSpan(12));
         ObservationOutcome outcome = ExecuteAtTransactionBoundary(caller, claim.Target, claim.Data,
-            claim.Value, claim.Mode, cancellationToken);
+            claim.Value, claim.Mode, cancellationToken, new RollupXObservationDispatch(code, worldState, manager, claim));
         if (outcome.Success != claim.Expected.Success || !outcome.Output.AsSpan().SequenceEqual(claim.Expected.Output))
             throw new EezSettlementException("Observation result differs from its FIFO claim.");
     }
 
     public ObservationOutcome ExecuteAtTransactionBoundary(Address caller, Address target, ReadOnlyMemory<byte> data,
-        in UInt256 value, ObservationMode mode, CancellationToken cancellationToken = default)
+        in UInt256 value, ObservationMode mode, CancellationToken cancellationToken = default, RollupXObservationDispatch? dispatch = null)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        if (!value.IsZero) throw new EezSettlementException("Value-bearing observations are not supported.");
+        if (!value.IsZero && mode != ObservationMode.Lookup)
+            throw new EezSettlementException("Static observations cannot transfer value.");
         if (mode is not (ObservationMode.Lookup or ObservationMode.Static or ObservationMode.Proxy))
             throw new EezSettlementException("Unknown observation call mode.");
         if (virtualMachine.BlockExecutionContext.Spec.IsEip8037Enabled)
@@ -63,22 +64,27 @@ internal sealed class RollupXObservationCall(
             throw new EezSettlementException("Observation replay requires a transaction boundary with empty transient storage.");
         try
         {
-            IVirtualMachine machine = mode == ObservationMode.Lookup ? virtualMachine : new StaticMachine(virtualMachine);
-            ProbeProcessor processor = new(specs, worldState, machine, code, logs);
+            IVirtualMachine machine = new ObservationMachine(virtualMachine, mode != ObservationMode.Lookup, dispatch);
+            UInt256 balance = worldState.GetBalance(caller);
+            if (balance < value)
+                worldState.AddToBalanceAndCreateIfNotExists(caller, value - balance, blockContext.Spec, out _);
+            ProbeProcessor processor = new(specs, worldState, machine, dispatch ?? code, logs);
             Transaction transaction = new()
             {
                 SenderAddress = caller,
                 To = target,
                 Data = data,
+                Value = value,
                 GasLimit = mode == ObservationMode.Proxy ? ProxyGasLimit : TargetGasLimit,
                 ChainId = specs.ChainId,
             };
-            ObservationTracer output = new();
+            ObservationTracer output = new(dispatch);
             using CancellationTxTracer tracer = new(output, cancellationToken);
             TransactionResult result = processor.Run(transaction, tracer);
             cancellationToken.ThrowIfCancellationRequested();
             if (!result.TransactionExecuted)
                 throw new EezSettlementException($"Observation transaction is invalid: {result}");
+            dispatch?.EnsureConsumed();
             return new ObservationOutcome(output.StatusCode == StatusCode.Success, output.ReturnValue ?? []);
         }
         finally
@@ -115,26 +121,35 @@ internal sealed class RollupXObservationCall(
         { }
     }
 
-    private sealed class ObservationTracer : CallOutputTracer
+    private sealed class ObservationTracer(RollupXObservationDispatch? dispatch) : CallOutputTracer, IInstructionTracingFilter
     {
         public override bool IsTracingActions => true;
+        public override bool IsTracingInstructions => dispatch is not null;
+        public UInt256 InstructionMask => DispatchMask;
+
+        private static readonly UInt256 DispatchMask =
+            (UInt256.One << (int)Instruction.CALL) | (UInt256.One << (int)Instruction.STATICCALL) |
+            (UInt256.One << (int)Instruction.DELEGATECALL) | (UInt256.One << (int)Instruction.CALLCODE) |
+            (UInt256.One << (int)Instruction.EXTCODESIZE) | (UInt256.One << (int)Instruction.EXTCODECOPY) |
+            (UInt256.One << (int)Instruction.EXTCODEHASH) | (UInt256.One << (int)Instruction.SETCODEFROM);
+
+        public override void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env) =>
+            dispatch!.StartOperation(opcode);
 
         public override void ReportAction(ulong gas, UInt256 value, Address from, Address to,
             ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false) =>
-            RejectDispatch(callType);
+            Report(from, to, value, input, callType, false);
 
         public override void ReportRejectedAction(ulong gas, ulong gasLeft, UInt256 value, Address from, Address? to,
             ReadOnlyMemory<byte> input, ExecutionType callType, EvmExceptionType error, bool isPrecompileCall = false) =>
-            RejectDispatch(callType);
+            Report(from, to, value, input, callType, true);
 
-        private static void RejectDispatch(ExecutionType callType)
-        {
-            if (callType is ExecutionType.CALL or ExecutionType.STATICCALL)
-                throw new EezSettlementException("Observation replay does not support nested dispatch calls.");
-        }
+        private void Report(Address from, Address? to, UInt256 value, ReadOnlyMemory<byte> input, ExecutionType type, bool rejected) =>
+            dispatch?.Report(from, to, value, input, type, rejected);
+
     }
 
-    private sealed class StaticMachine(IVirtualMachine inner) : IVirtualMachine
+    private sealed class ObservationMachine(IVirtualMachine inner, bool forceStatic, RollupXObservationDispatch? dispatch) : IVirtualMachine
     {
         public ref readonly BlockExecutionContext BlockExecutionContext => ref inner.BlockExecutionContext;
         public ref readonly TxExecutionContext TxExecutionContext => ref inner.TxExecutionContext;
@@ -147,11 +162,17 @@ internal sealed class RollupXObservationCall(
         public TransactionSubstate ExecuteTransaction<TTracingInst>(VmState<EthereumGasPolicy> state,
             IWorldState stateProvider, ITxTracer tracer) where TTracingInst : struct, IFlag
         {
-            using VmState<EthereumGasPolicy> staticState = VmState<EthereumGasPolicy>.RentTopLevel(
-                state.Gas, state.ExecutionType, state.Env, in state.AccessTracker, in state.Snapshot, isStatic: true);
-            TransactionSubstate result = inner.ExecuteTransaction<TTracingInst>(staticState, stateProvider, tracer);
-            state.Gas = staticState.Gas;
-            return result;
+            dispatch?.Begin(in state.AccessTracker);
+            try
+            {
+                if (!forceStatic) return inner.ExecuteTransaction<TTracingInst>(state, stateProvider, tracer);
+                using VmState<EthereumGasPolicy> staticState = VmState<EthereumGasPolicy>.RentTopLevel(
+                    state.Gas, state.ExecutionType, state.Env, in state.AccessTracker, in state.Snapshot, isStatic: true);
+                TransactionSubstate result = inner.ExecuteTransaction<TTracingInst>(staticState, stateProvider, tracer);
+                state.Gas = staticState.Gas;
+                return result;
+            }
+            finally { dispatch?.End(); }
         }
     }
 }

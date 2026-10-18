@@ -134,11 +134,12 @@ public static class Program
 
     internal static async Task StopAndDrain(WebApplication app, BackendAdmission admission)
     {
+        ProverService prover = app.Services.GetRequiredService<ProverService>();
         try
         {
             try { await app.StopAsync(); }
             finally { await app.DisposeAsync(); }
         }
-        finally { await admission.WaitUntilIdle(); }
+        finally { await Task.WhenAll(admission.WaitUntilIdle(), prover.WaitUntilIdle()); }
     }
 }

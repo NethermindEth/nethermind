@@ -9,19 +9,29 @@ using Google.Protobuf;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Eez.Execution.Settlement;
+using Nethermind.Eez.Execution.Stateless;
 using Nethermind.Eez.Prove;
 using Nethermind.Serialization.Rlp;
 using V2 = Nethermind.Eez.Prove.V2;
 
 namespace Nethermind.Eez.Attester;
 
-internal sealed class NativeProver(RollupXStreamingFinalizer finalizer, ByteString identity)
+internal sealed class NativeProver(RollupXStreamingFinalizer finalizer, ByteString identity, AttesterOptions? settings = null)
 {
     internal ByteString Identity { get; } = identity;
+    internal PreparedCache Cache { get; } = new(identity, settings?.RequestTimeout ?? TimeSpan.FromMinutes(5));
+
+    internal Task<PreparedOrdinaryBlock> Prepare(EezStatelessBlock block, CancellationToken cancellation) =>
+        finalizer.Prepare(block, cancellation);
 
     internal CapabilitiesResponse Capabilities(AttesterOptions options) => new()
     {
         ProfileId = 1,
+        PreparationMaxBlocks = (ulong)Math.Min(64, options.Limits.MaxBlocks),
+        CacheMaxEntries = (ulong)Cache.MaxEntries,
+        CacheMaxBytes = (ulong)Cache.MaxBytes,
+        MaximumLeases = PreparedCache.MaximumLeases,
+        LeaseLifetimeMillis = (ulong)Cache.LeaseLifetime.TotalMilliseconds,
         ValidationIdentity = Identity,
         MaxWindowBlocks = (ulong)options.Limits.MaxBlocks,
         MaxRequestBytes = (ulong)options.Limits.MaxBytes,

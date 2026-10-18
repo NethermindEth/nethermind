@@ -19,6 +19,10 @@ namespace Nethermind.Eez.Attester;
 internal sealed class WindowAssembler
 {
     private readonly WindowLimits _limits;
+    private readonly PreparedCache? _cache;
+    private readonly List<PreparedOrdinaryBlock?> _prepared = [];
+    private readonly List<PreparedCache.BorrowedRange> _borrows = [];
+    private long _cachedBytes;
     private readonly ProveHeader _header;
     private readonly int _declared;
     private readonly List<EezStatelessBlock> _blocks;
@@ -26,9 +30,10 @@ internal sealed class WindowAssembler
     private long _bytes;
     private long _witnessItems;
 
-    private WindowAssembler(WindowLimits limits, ProveHeader header, int declared, long bytes)
+    private WindowAssembler(WindowLimits limits, ProveHeader header, int declared, long bytes, PreparedCache? cache)
     {
         _limits = limits;
+        _cache = cache;
         _header = header;
         _declared = declared;
         _bytes = bytes;
@@ -39,7 +44,7 @@ internal sealed class WindowAssembler
     public ulong RollupId => _header.RollupId;
 
     /// <exception cref="RpcException">The first chunk is not an admissible header.</exception>
-    public static WindowAssembler Start(WindowLimits limits, ProveChunk first, ByteString? nativeIdentity = null)
+    public static WindowAssembler Start(WindowLimits limits, ProveChunk first, ByteString? nativeIdentity = null, PreparedCache? cache = null)
     {
         long bytes = Charge(0, CanonicalSize(first), limits.MaxBytes);
         ProveHeader header = first.KindCase switch
@@ -86,22 +91,26 @@ internal sealed class WindowAssembler
             throw Quota($"window {header.FromBlock}..={header.ToBlock} spans {span} blocks, limit is {limits.MaxBlocks}");
         }
 
-        return new WindowAssembler(limits, header.Clone(), (int)span, bytes);
+        return new WindowAssembler(limits, header.Clone(), (int)span, bytes, nativeIdentity is null ? null : cache);
     }
 
     /// <exception cref="RpcException">The chunk is not the next admissible block.</exception>
     public void Push(ProveChunk chunk)
     {
-        _bytes = Charge(_bytes, CanonicalSize(chunk), _limits.MaxBytes);
+        _bytes = Charge(_bytes, CanonicalSize(chunk), _limits.MaxBytes - _cachedBytes);
+        if (chunk.KindCase == ProveChunk.KindOneofCase.CachedRange)
+        {
+            PushCached(chunk.CachedRange);
+            return;
+        }
         BlockWitness block = chunk.KindCase switch
         {
             ProveChunk.KindOneofCase.Block => chunk.Block,
             ProveChunk.KindOneofCase.Header => throw Invalid("duplicate header chunk"),
-            ProveChunk.KindOneofCase.CachedRange => throw new RpcException(new Status(StatusCode.Unimplemented, "cached ordinary ranges are not supported")),
             _ => throw Invalid($"chunk at index {1 + _blocks.Count} carries no kind"),
         };
 
-        int index = _blocks.Count;
+        int index = _claims.Count;
         if (index >= _declared)
         {
             throw Invalid($"window already carries its declared {_declared} blocks");
@@ -140,25 +149,60 @@ internal sealed class WindowAssembler
 
         _claims.Add((hash, parentHash));
         _blocks.Add(new EezStatelessBlock(block.Rlp.ToByteArray(), ToWitness(witness)));
+        _prepared.Add(null);
     }
 
     /// <exception cref="RpcException">The stream ended before the declared span.</exception>
     public AdmittedWindow Finish()
     {
-        if (_blocks.Count != _declared)
+        if (_claims.Count != _declared)
         {
             throw Invalid($"window {_header.FromBlock}..={_header.ToBlock} expects {_declared} blocks, stream ended after {_blocks.Count}");
         }
 
         return new AdmittedWindow(_header.FromBlock, _header.ToBlock, _header.PostBatch.AbiCalldata.ToByteArray(), _blocks.ToArray(), _claims.ToArray())
-        { NativeHeader = _header.ParentProvenance is null ? null : _header };
+        {
+            NativeHeader = _header.ParentProvenance is null ? null : _header,
+            Prepared = _borrows.Count == 0 ? [] : _prepared.ToArray(),
+            CacheBorrows = _borrows.ToArray(),
+        };
     }
 
     public void Abandon()
     {
+        foreach (PreparedCache.BorrowedRange range in _borrows) range.Dispose();
         foreach (EezStatelessBlock block in _blocks)
         {
             block.Witness.Dispose();
+        }
+    }
+
+    private void PushCached(CachedOrdinaryRange selection)
+    {
+        if (_cache is null) throw new RpcException(new Status(StatusCode.Unimplemented, "cached ordinary ranges are not supported"));
+        ulong count = PreparedCache.RangeLength(selection);
+        if (selection.FirstNumber != _header.FromBlock + (ulong)_claims.Count || count >= (ulong)(_declared - _claims.Count))
+            throw Invalid("cached range must cover the next ordinary blocks and leave a fresh terminal witness");
+        PreparedCache.BorrowedRange borrowed = _cache.Borrow(selection);
+        try
+        {
+            long bytes = _cachedBytes;
+            foreach (PreparedOrdinaryBlock fact in borrowed.Facts)
+                bytes = Charge(bytes, fact.RetainedBytes, _limits.MaxBytes - _bytes);
+            if (_claims.Count != 0 && borrowed.Facts[0].ParentHash != _claims[^1].Hash)
+                throw Invalid("cached range breaks the selected hash chain");
+            _cachedBytes = bytes;
+            foreach (PreparedOrdinaryBlock fact in borrowed.Facts)
+            {
+                _claims.Add((fact.Hash, fact.ParentHash));
+                _prepared.Add(fact);
+            }
+            _borrows.Add(borrowed);
+        }
+        catch
+        {
+            borrowed.Dispose();
+            throw;
         }
     }
 

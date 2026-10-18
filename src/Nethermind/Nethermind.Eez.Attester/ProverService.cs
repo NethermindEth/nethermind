@@ -15,7 +15,7 @@ namespace Nethermind.Eez.Attester;
 /// timeouts, then attested by the pipeline. A request that outlives its deadline keeps the slot until its work
 /// reaches a checkpoint, so a retry cannot run concurrently with it.
 /// </summary>
-internal sealed class ProverService : Prover.ProverBase
+internal sealed partial class ProverService : Prover.ProverBase
 {
     private const string DeadlineExceeded = "Prove request deadline exceeded";
     private readonly ulong _rollupId;
@@ -117,12 +117,15 @@ internal sealed class ProverService : Prover.ProverBase
     }
 
     /// <summary>Waits until no request holds the slot, so shutdown lets a running attestation finish.</summary>
-    public Task WaitUntilIdle() => _admission.WaitUntilIdle();
+    public Task WaitUntilIdle()
+    {
+        lock (_preparationLock) return Task.WhenAll(_admission.WaitUntilIdle(), _preparationIdle?.Task ?? Task.CompletedTask);
+    }
 
     private async Task<AdmittedWindow> ReadWindow(IAsyncStreamReader<ProveChunk> stream, CancellationToken aborted, CancellationToken deadline)
     {
         ProveChunk first = await Next(stream, aborted, deadline) ?? throw WindowAssembler.Invalid("empty Prove stream");
-        WindowAssembler assembler = WindowAssembler.Start(_options.Limits, first, _native?.Identity);
+        WindowAssembler assembler = WindowAssembler.Start(_options.Limits, first, _native?.Identity, _native?.Cache);
         if (assembler.RollupId != _rollupId)
         {
             throw new RpcException(new Status(StatusCode.FailedPrecondition, "window rollup identity rejected"));
@@ -144,7 +147,7 @@ internal sealed class ProverService : Prover.ProverBase
         }
     }
 
-    private async Task<ProveChunk?> Next(IAsyncStreamReader<ProveChunk> stream, CancellationToken aborted, CancellationToken deadline)
+    private async Task<T?> Next<T>(IAsyncStreamReader<T> stream, CancellationToken aborted, CancellationToken deadline, string operation = "Prove") where T : class
     {
         using CancellationTokenSource idle = CancellationTokenSource.CreateLinkedTokenSource(aborted, deadline);
         idle.CancelAfter(_options.StreamIdleTimeout);
@@ -154,11 +157,11 @@ internal sealed class ProverService : Prover.ProverBase
         }
         catch (RpcException e) when (e.StatusCode == StatusCode.ResourceExhausted)
         {
-            throw new RpcException(new Status(StatusCode.ResourceExhausted, "Prove message exceeds decoding limit"));
+            throw new RpcException(new Status(StatusCode.ResourceExhausted, $"{operation} message exceeds decoding limit"));
         }
         catch (Exception e) when (e is OperationCanceledException or RpcException { StatusCode: StatusCode.Cancelled } && !aborted.IsCancellationRequested)
         {
-            throw new RpcException(new Status(StatusCode.DeadlineExceeded, deadline.IsCancellationRequested ? DeadlineExceeded : "Prove stream idle timeout"));
+            throw new RpcException(new Status(StatusCode.DeadlineExceeded, deadline.IsCancellationRequested ? $"{operation} request deadline exceeded" : $"{operation} stream idle timeout"));
         }
     }
 }

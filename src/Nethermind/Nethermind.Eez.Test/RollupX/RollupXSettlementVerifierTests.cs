@@ -17,7 +17,7 @@ using SignedInt256 = Nethermind.Int256.Int256;
 
 namespace Nethermind.Eez.Test.RollupX;
 
-public class RollupXSettlementVerifierTests
+public partial class RollupXSettlementVerifierTests
 {
     [Test]
     public void Verify_NestedInbound_BindsBothTablesValueAndEvent([Values] bool reverted)
