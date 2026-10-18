@@ -110,14 +110,14 @@
     stopSchedulers();
     const speed = Number($('replay-speed').value);
     if (speed) state.schedulers.push(sources.replay(capture, store, sink, speed));
-    else { sources.load(capture, store, sink); fitWindow(); }
+    else { sources.load(capture, store, sink); fitWindow(capture); }
     refreshNodeOptions();
   }
 
-  /** After loading a capture at once, centre the time window on its events. */
-  function fitWindow() {
+  /** After loading a capture at once, fit the time window to its events (they are still waiting to be ingested). */
+  function fitWindow(capture) {
     let last = 0, first = Infinity;
-    for (const e of store.events()) { if (e.t > last) last = e.t; if (e.t < first) first = e.t; }
+    for (const list of Object.values(capture.events)) for (const e of list) { const t = Number(e.time); if (t > last) last = t; if (t < first) first = t; }
     state.anchor = last || undefined;
     const span = last - first;
     const option = [...$('f-window').options].find(o => Number(o.value) >= span) || $('f-window').options[$('f-window').options.length - 1];
@@ -235,10 +235,8 @@
       return `<tr data-wrapper="${esc(x.w)}"><td class=hash>${esc(short(x.w))}</td><td>${w?.mode ?? '?'}</td><td class=num>${w?.perNode.size ?? ''}</td><td class=num>${fmtMs(x.ms)}</td></tr>`;
     }).join('');
     const recent = [];
-    for (const w of [...store.wrappers.values()].reverse()) {
-      if (model.wrapperMatches(w, state.filter)) recent.push(w);
-      if (recent.length === 25) break;
-    }
+    for (const w of store.wrappers.values()) if (model.wrapperMatches(w, state.filter)) recent.push(w);
+    recent.sort((a, b) => b.first - a.first).splice(25);
     $('recent').innerHTML = '<tr><th>First seen</th><th>Wrapper</th><th>Mode</th><th class=num>Txs</th><th class=num>Size</th><th class=num>Nodes</th><th>Outcome</th></tr>' + recent.map(w =>
       `<tr data-wrapper="${esc(w.hash)}"><td>${time(w.first)}</td><td class=hash>${esc(short(w.hash))}</td><td>${w.mode ?? '?'}</td><td class=num>${w.txs.length || ''}</td><td class=num>${w.length ? fmtBytes(w.length) : ''}</td><td class=num>${w.perNode.size}</td><td>${pill(w.outcome)}${w.included ? ` block ${w.included.block}` : ''}</td></tr>`).join('');
   }
