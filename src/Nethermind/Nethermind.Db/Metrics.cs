@@ -64,16 +64,10 @@ namespace Nethermind.Db
         public static void IncrementPrefetchedKeys(long value) => Interlocked.Add(ref _prefetchedKeys.Value, value);
 
         [CounterMetric]
-        [Description("Number of prefetch batches slow enough to have read from disk.")]
-        public static long PrefetchColdBatches => _prefetchColdBatches.Value;
-        private static CacheLinePaddedLong _prefetchColdBatches;
-        public static void IncrementPrefetchColdBatches() => Interlocked.Increment(ref _prefetchColdBatches.Value);
-
-        [CounterMetric]
-        [Description("Number of prefetch batches the block cache served.")]
-        public static long PrefetchWarmBatches => _prefetchWarmBatches.Value;
-        private static CacheLinePaddedLong _prefetchWarmBatches;
-        public static void IncrementPrefetchWarmBatches() => Interlocked.Increment(ref _prefetchWarmBatches.Value);
+        [Description("Number of state prefetches skipped because every sampled key was already in memory.")]
+        public static long PrefetchesSkippedCached => _prefetchesSkippedCached.Value;
+        private static CacheLinePaddedLong _prefetchesSkippedCached;
+        public static void IncrementPrefetchesSkippedCached() => Interlocked.Increment(ref _prefetchesSkippedCached.Value);
 
         [CounterMetric]
         [Description("Number of state trie writes.")]

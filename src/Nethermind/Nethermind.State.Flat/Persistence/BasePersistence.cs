@@ -293,11 +293,11 @@ public static class BasePersistence
         /// <summary>Starts reading hashed account keys and (account, slot) key pairs ahead of use; does nothing by default.</summary>
         public void Prefetch(ReadOnlySpan<ValueHash256> accounts, ReadOnlySpan<ValueHash256> slotAccounts, ReadOnlySpan<ValueHash256> slots) { }
 
-        /// <summary>Whether an account prefetch is worth preparing now; see <see cref="IReadPrefetcher.ShouldPrefetch"/>.</summary>
-        public bool ShouldPrefetchAccounts() => false;
+        /// <summary>Whether reading this account is answered from memory; true when the store cannot prefetch.</summary>
+        public bool IsAccountCached(in ValueHash256 account) => true;
 
-        /// <summary>Whether a slot prefetch is worth preparing now; see <see cref="IReadPrefetcher.ShouldPrefetch"/>.</summary>
-        public bool ShouldPrefetchSlots() => false;
+        /// <summary>Whether reading this slot is answered from memory; true when the store cannot prefetch.</summary>
+        public bool IsSlotCached(in ValueHash256 account, in ValueHash256 slot) => true;
     }
 
     public interface IHashedFlatWriteBatch
@@ -462,11 +462,16 @@ public static class BasePersistence
 
         public void Prefetch(ReadOnlySpan<Address> accounts, ReadOnlySpan<StorageCell> slots)
         {
-            // Asked before any hashing: when the stores report their reads cached, a prefetch costs nothing.
-            if (accounts.IsEmpty || !_flatReader.ShouldPrefetchAccounts()) accounts = default;
-            if (slots.IsEmpty || !_flatReader.ShouldPrefetchSlots()) slots = default;
+            // A few spread-out keys decide before the rest are hashed: when all of them are in memory the block is
+            // treated as cached and costs only those probes.
+            if (SampledAccountsCached(accounts)) accounts = default;
+            if (SampledSlotsCached(slots)) slots = default;
+            if (accounts.IsEmpty && slots.IsEmpty)
+            {
+                Db.Metrics.IncrementPrefetchesSkippedCached();
+                return;
+            }
             int total = accounts.Length + slots.Length * 2;
-            if (total == 0) return;
             ValueHash256[] rented = ArrayPool<ValueHash256>.Shared.Rent(total);
             try
             {
@@ -489,6 +494,33 @@ public static class BasePersistence
             {
                 ArrayPool<ValueHash256>.Shared.Return(rented);
             }
+        }
+
+        // Enough probes that a block with a third of its reads cold is sampled cold with over 95% probability.
+        private const int PrefetchSamples = 8;
+
+        private bool SampledAccountsCached(ReadOnlySpan<Address> accounts)
+        {
+            if (accounts.IsEmpty) return true;
+            int step = Math.Max(1, accounts.Length / PrefetchSamples);
+            for (int i = 0; i < accounts.Length; i += step)
+            {
+                if (!_flatReader.IsAccountCached(accounts[i].ToAccountPath)) return false;
+            }
+            return true;
+        }
+
+        private bool SampledSlotsCached(ReadOnlySpan<StorageCell> slots)
+        {
+            if (slots.IsEmpty) return true;
+            int step = Math.Max(1, slots.Length / PrefetchSamples);
+            for (int i = 0; i < slots.Length; i += step)
+            {
+                ValueHash256 slotHash = ValueKeccak.Zero;
+                StorageTree.ComputeKeyWithLookup(slots[i].Index, ref slotHash);
+                if (!_flatReader.IsSlotCached(slots[i].Address.ToAccountPath, slotHash)) return false;
+            }
+            return true;
         }
     }
 

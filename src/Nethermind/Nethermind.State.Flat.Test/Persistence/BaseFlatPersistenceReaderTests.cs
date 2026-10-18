@@ -101,8 +101,31 @@ public class BaseFlatPersistenceReaderTests
         Assert.That(storageStore.PrefetchedKeys, Is.EqualTo(storageStore.ReadKeys));
     }
 
+    // Spread-out probes decide for the whole block: all of them cached skips the prefetch, one cold sample sends it.
+    // 70 keys are probed every 8th; a single cold key between probes is not seen and is read as on master.
+    [TestCase(-1, false)]
+    [TestCase(0, true)]
+    [TestCase(40, true)]
+    [TestCase(35, false)]
+    public void Prefetch_IsSentOnlyWhenASampledKeyIsCold(int coldIndex, bool expectPrefetch)
+    {
+        const int count = 70;
+        Address[] accounts = new Address[count];
+        for (int i = 0; i < count; i++) accounts[i] = Address.FromNumber((UInt256)(i + 1));
+        Span<byte> key = stackalloc byte[BaseFlatPersistence.AccountKeyLength];
+        string? coldKey = coldIndex < 0 ? null : Convert.ToHexString(BaseFlatPersistence.EncodeAccountKeyHashed(key, accounts[coldIndex].ToAccountPath));
+        RecordingStore accountStore = new(cached: k => k != coldKey);
+        BasePersistence.ToHashedFlatReader<BaseFlatPersistence.Reader> reader = new(new BaseFlatPersistence.Reader(accountStore, new RecordingStore()));
+        long skipped = Nethermind.Db.Metrics.PrefetchesSkippedCached;
+
+        reader.Prefetch(accounts, []);
+
+        Assert.That(accountStore.PrefetchedKeys.Count, Is.EqualTo(expectPrefetch ? count : 0));
+        Assert.That(Nethermind.Db.Metrics.PrefetchesSkippedCached - skipped, Is.EqualTo(expectPrefetch ? 0 : 1));
+    }
+
     /// <summary>Records the keys of scalar reads and prefetches; every read misses.</summary>
-    private sealed class RecordingStore : ISortedKeyValueStore, IReadPrefetcher
+    private sealed class RecordingStore(Func<string, bool>? cached = null) : ISortedKeyValueStore, IReadPrefetcher
     {
         public List<string> ReadKeys { get; } = [];
         public List<string> PrefetchedKeys { get; } = [];
@@ -120,7 +143,7 @@ public class BaseFlatPersistenceReaderTests
             return 0;
         }
 
-        public bool ShouldPrefetch() => true;
+        public bool IsCached(ReadOnlySpan<byte> key) => cached?.Invoke(Convert.ToHexString(key)) ?? false;
 
         public void Prefetch(ReadOnlySpan<byte> keys, int keyLength)
         {

@@ -60,6 +60,9 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
     private ReadOptions _defaultReadOptions = null!;
     private ReadOptions _hintCacheMissOptions = null!;
+    // Block-cache read tier: a read that needs a file fails as incomplete instead of reading it.
+    private ReadOptions _cacheOnlyReadOptions = null!;
+    private const int BlockCacheTier = 1;
     private ReadOptions? _readAheadReadOptions;
     private ReadOptions _seekReadOptions = null!;
 
@@ -736,6 +739,9 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         _hintCacheMissOptions = CreateReadOptions();
         _hintCacheMissOptions.SetFillCache(false);
 
+        _cacheOnlyReadOptions = CreateReadOptions();
+        _cacheOnlyReadOptions.SetReadTier(BlockCacheTier);
+
         // When a readahead flag is on, the next keys are expected to be after the current key. Increasing this value
         // will increase the chances that the next keys will be in the cache, which reduces iops and latency. This
         // increases throughput, however, if a lot of the keys are not close to the current key, it will increase read
@@ -1045,14 +1051,11 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             Array.Fill(families, cf);
         }
 
-        PrefetchGate gate = PrefetchGateFor(cf);
-        long start = Stopwatch.GetTimestamp();
         try
         {
             Task read = _db.MultiGetAsync(keyArrays, families, readOptions).AsTask();
-            if (read.IsCompleted) RecordPrefetch(read, gate, start);
-            else _ = read.ContinueWith(static (t, state) => RecordPrefetch(t, ((PrefetchGate, long))state!), (gate, start),
-                CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+            if (!read.IsCompletedSuccessfully)
+                _ = read.ContinueWith(static t => _ = t.Exception, CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
             Db.Metrics.IncrementPrefetchedKeys(count);
         }
         catch (Exception e) when (e is RocksDbException or ObjectDisposedException)
@@ -1060,19 +1063,28 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         }
     }
 
-    private static void RecordPrefetch(Task read, (PrefetchGate Gate, long Start) state) => RecordPrefetch(read, state.Gate, state.Start);
-
-    private static void RecordPrefetch(Task read, PrefetchGate gate, long start)
+    /// <summary>
+    /// Whether a read of <paramref name="key"/> is served from the memtables or block cache. The probe runs at the
+    /// block-cache read tier, which never reads a file, so a value that would need disk IO reports not cached.
+    /// </summary>
+    internal bool IsCached(ReadOnlySpan<byte> key, IColumnFamilyHandle? cf)
     {
-        if (read.IsFaulted) _ = read.Exception;
-        else gate.Record(start);
+        if (_isDisposing) return true;
+        try
+        {
+            _db.HasKey(key, cf, _cacheOnlyReadOptions);
+            return true;
+        }
+        catch (RocksDbException)
+        {
+            // An incomplete read: the value is not in memory.
+            return false;
+        }
+        catch (ObjectDisposedException)
+        {
+            return true;
+        }
     }
-
-    private readonly ConcurrentDictionary<nint, PrefetchGate> _prefetchGates = new();
-
-    /// <summary>The prefetch gate of a column family, or of the default one when <paramref name="cf"/> is null.</summary>
-    internal PrefetchGate PrefetchGateFor(IColumnFamilyHandle? cf) =>
-        _prefetchGates.GetOrAdd(cf?.Handle ?? 0, static _ => new PrefetchGate());
 
     internal int GetCStyleWithColumnFamily(scoped ReadOnlySpan<byte> key, Span<byte> output, IColumnFamilyHandle? cf, ReadOptions readOptions)
     {
@@ -1844,6 +1856,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
         _defaultReadOptions.Dispose();
         _hintCacheMissOptions.Dispose();
+        _cacheOnlyReadOptions.Dispose();
         _readAheadReadOptions?.Dispose();
         _seekReadOptions.Dispose();
 
