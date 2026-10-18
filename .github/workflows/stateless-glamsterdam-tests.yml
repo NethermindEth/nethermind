@@ -108,10 +108,12 @@ jobs:
           # minutes_per_block is the per-block time budget; the job timeout scales with
           # the chunk's block count but is capped at GitHub's 360-minute hosted-runner
           # limit. block_timeout bounds a single guest execution.
+          #
+          # Jobs start in matrix order, so the guests with the longest jobs come first.
           GUESTS = [
-              {"vm": "zisk", "project": "Nethermind.Stateless.ZiskGuest", "max_jobs": 160, "batch_stride": 1, "minutes_per_block": 3, "block_timeout": "5m"},
               {"vm": "sp1", "project": "Nethermind.Stateless.Sp1Guest", "max_jobs": 48, "batch_stride": 50, "minutes_per_block": 3, "block_timeout": "15m"},
               {"vm": "openvm", "project": "Nethermind.Stateless.OpenVMGuest", "max_jobs": 48, "batch_stride": 2, "minutes_per_block": 3, "block_timeout": "5m"},
+              {"vm": "zisk", "project": "Nethermind.Stateless.ZiskGuest", "max_jobs": 160, "batch_stride": 1, "minutes_per_block": 3, "block_timeout": "5m"},
           ]
           MAX_TIMEOUT_MINUTES = 360
 
