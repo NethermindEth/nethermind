@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Numerics;
 using System.Text;
 using Nethermind.Core;
 using Nethermind.Int256;
@@ -24,33 +25,56 @@ public static partial class AbiType
         },
     };
 
-    public static readonly Abi<UInt64> UInt64 = new()
+    public static readonly Abi<Int256.Int256> Int256 = new()
     {
-        Name = "uint64",
-        Read = (ref BinarySpanReader r) => (UInt64)UInt256.Read(ref r),
-        Write = (ref BinarySpanWriter w, UInt64 v) => UInt256.Write(ref w, v),
+        Name = "int256",
+        Read = (ref BinarySpanReader r) => new Int256.Int256(r.ReadBytes(32), isBigEndian: true),
+        Write = (ref BinarySpanWriter w, Int256.Int256 v) => ((UInt256)v).ToBigEndian(w.Take(32)),
     };
 
-    public static readonly Abi<UInt32> UInt32 = new()
+    public static Abi<T> UIntN<T>() where T : IBinaryInteger<T>, IUnsignedNumber<T> => new()
     {
-        Name = "uint32",
-        Read = (ref BinarySpanReader r) => (UInt32)UInt256.Read(ref r),
-        Write = (ref BinarySpanWriter w, UInt32 v) => UInt256.Write(ref w, v),
+        Name = $"uint{T.Zero.GetByteCount() * 8}",
+        Read = (ref BinarySpanReader r) =>
+        {
+            if (!T.TryReadBigEndian(r.ReadBytes(32), isUnsigned: true, out T value)) throw new AbiException();
+            return value;
+        },
+        Write = (ref BinarySpanWriter w, T value) =>
+        {
+            Span<byte> word = w.Take(32);
+            int size = value.GetByteCount();
+            word[..^size].Clear();
+            value.TryWriteBigEndian(word[^size..], out _);
+        },
     };
 
-    public static readonly Abi<UInt16> UInt16 = new()
+    public static Abi<T> IntN<T>() where T : IBinaryInteger<T>, ISignedNumber<T> => new()
     {
-        Name = "uint16",
-        Read = (ref BinarySpanReader r) => (UInt16)UInt256.Read(ref r),
-        Write = (ref BinarySpanWriter w, UInt16 v) => UInt256.Write(ref w, v),
+        Name = $"int{T.Zero.GetByteCount() * 8}",
+        Read = (ref BinarySpanReader r) =>
+        {
+            if (!T.TryReadBigEndian(r.ReadBytes(32), isUnsigned: false, out T value)) throw new AbiException();
+            return value;
+        },
+        Write = (ref BinarySpanWriter w, T value) =>
+        {
+            Span<byte> word = w.Take(32);
+            int size = value.GetByteCount();
+            word[..^size].Fill(T.IsNegative(value) ? (byte)0xff : (byte)0);
+            value.TryWriteBigEndian(word[^size..], out _);
+        },
     };
 
-    public static readonly Abi<Byte> UInt8 = new()
-    {
-        Name = "uint8",
-        Read = (ref BinarySpanReader r) => (Byte)UInt256.Read(ref r),
-        Write = (ref BinarySpanWriter w, Byte v) => UInt256.Write(ref w, v),
-    };
+    public static readonly Abi<UInt64> UInt64 = UIntN<UInt64>();
+    public static readonly Abi<UInt32> UInt32 = UIntN<UInt32>();
+    public static readonly Abi<UInt16> UInt16 = UIntN<UInt16>();
+    public static readonly Abi<Byte> UInt8 = UIntN<Byte>();
+
+    public static readonly Abi<Int64> Int64 = IntN<Int64>();
+    public static readonly Abi<Int32> Int32 = IntN<Int32>();
+    public static readonly Abi<Int16> Int16 = IntN<Int16>();
+    public static readonly Abi<SByte> Int8 = IntN<SByte>();
 
     public static readonly Abi<Boolean> Bool = new()
     {
@@ -204,4 +228,5 @@ public static partial class AbiType
 
     // Synonyms
     public static readonly Abi<UInt256> UInt = UInt256;
+    public static readonly Abi<Int256.Int256> Int = Int256;
 }

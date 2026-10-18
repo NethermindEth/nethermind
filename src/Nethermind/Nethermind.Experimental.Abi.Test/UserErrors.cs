@@ -206,6 +206,7 @@ public class UserErrors
     private static IEnumerable<TestCaseData> NonCanonicalValueTestCases()
     {
         AbiSignature<bool> boolean = new AbiSignature("f").With(AbiType.Bool);
+        AbiSignature<sbyte> int8 = new AbiSignature("f").With(AbiType.Int8);
 
         yield return MalformedInput(boolean,
             "0000000000000000000000000000000000000000000000000000000000000002").SetName("bool of 2");
@@ -213,6 +214,14 @@ public class UserErrors
             "0000000000000000000000000000000000000000000000000000000000000100").SetName("bool with byte 30 set");
         yield return MalformedInput(boolean,
             "8000000000000000000000000000000000000000000000000000000000000001").SetName("bool with high bit and low bit set");
+        yield return MalformedInput(int8,
+            "0000000000000000000000000000000000000000000000000000000000000080").SetName("int8 of 0x80 without sign extension");
+        yield return MalformedInput(int8,
+            "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f").SetName("int8 of -129");
+        yield return MalformedInput(new AbiSignature("f").With(AbiType.Int64),
+            "000000000000000000000000000000000000000000000000ffffffffffffffff").SetName("int64 of -1 without sign extension");
+        yield return MalformedInput(new AbiSignature("f").With(AbiType.UInt64),
+            "0000000000000000000000000000000000000000000000010000000000000000").SetName("uint64 of 2^64");
         yield return MalformedInput(new AbiSignature("f").With(AbiType.Address),
             "0100000000000000000000005a4eab120fb44eb6684e5e32785702ff45ea344d").SetName("address with byte 0 set");
         yield return MalformedInput(new AbiSignature("f").With(AbiType.BytesM(4)),
