@@ -221,12 +221,12 @@ public sealed partial class KeccakHash
     }
 
     /// <inheritdoc cref="KeccakHash.DonateConsumedInput" />
-    /// <remarks>Only on SP1, whose input lies in writable memory. SP1 charges for every word of memory a run touches,
-    /// far more than for the instructions writing it, and the input is touched already, so states kept in it are
-    /// nearly free while fresh memory for them is not.</remarks>
+    /// <remarks>Only where <see cref="FirstTouchMemoryFlag"/> is on, which assumes the input lies in writable memory, as
+    /// on SP1. SP1 charges for every word of memory a run touches, far more than for the instructions writing it, and
+    /// the input is touched already, so states kept in it are nearly free while fresh memory for them is not.</remarks>
     internal static partial void DonateConsumedInput(ReadOnlySpan<byte> consumed)
     {
-        if (!Sp1ReusableInputFlag.IsActive) return;
+        if (!FirstTouchMemoryFlag.IsActive) return;
 
         unsafe
         {
@@ -289,7 +289,7 @@ public sealed partial class KeccakHash
             WitnessNodes.Count = count;
             WitnessNodes.States = states;
             // The states may lie in the input, which the allocator never returned.
-            if (!Sp1ReusableInputFlag.IsActive)
+            if (!FirstTouchMemoryFlag.IsActive)
                 NativeMemory.Free(released);
         }
     }
@@ -301,7 +301,7 @@ public sealed partial class KeccakHash
     private static unsafe ulong* AllocateStates(nuint count)
     {
         nuint size = count * (RetainedLanes * sizeof(ulong));
-        if (!Sp1ReusableInputFlag.IsActive || size > FreeInput.Length)
+        if (!FirstTouchMemoryFlag.IsActive || size > FreeInput.Length)
             return (ulong*)NativeMemory.Alloc(size);
 
         ulong* states = (ulong*)FreeInput.Start;
