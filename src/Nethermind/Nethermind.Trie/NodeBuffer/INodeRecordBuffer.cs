@@ -19,7 +19,11 @@ public interface INodeRecordBuffer : IDisposable
     /// <exception cref="ObjectDisposedException">The buffer is disposed.</exception>
     INodeRecordBufferPin Pin();
 
-    /// <summary>Keeps every record that is readable now, and every later write, readable until the returned pin is disposed.</summary>
+    /// <summary>Keeps every record borrowed while the returned pin lives valid until it is disposed.</summary>
+    /// <remarks>
+    /// A record may stop resolving while the pin lives, so readers fall back on a miss; records already borrowed stay valid.
+    /// This lets overlapping readers not hold old records forever.
+    /// </remarks>
     /// <exception cref="ObjectDisposedException">The buffer is disposed.</exception>
     IDisposable PinAll();
 

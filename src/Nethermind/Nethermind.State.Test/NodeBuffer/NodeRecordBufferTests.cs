@@ -263,6 +263,33 @@ internal class NodeRecordBufferTests
     }
 
     [Test]
+    public void Overlapping_pin_alls_do_not_keep_old_generations_from_being_freed([Values] bool compressed)
+    {
+        using NodeRecordBuffer buffer = new(compressed ? 1UL << 20 : 0, GenerationBytes);
+        ulong pointer = Append(buffer, Leaf(1, 8));
+        buffer.Reserve(0, out NativeNodeBuffer original, out _);
+        IDisposable reader = buffer.PinAll();
+        Assert.That(buffer.TryLocate(pointer, out NodeRecord record), Is.True);
+        // Each reader is pinned before the previous one is released, so some reader always pins the old generations.
+        for (int i = 0; i < 2 * LiveGenerations; i++)
+        {
+            buffer.Reserve(GenerationBytes, out _, out _);
+            IDisposable next = buffer.PinAll();
+            if (i == 0) Assert.That(Matches(record, Leaf(1, 8)), Is.True, "a borrowed record stays valid while its reader pins it");
+            reader.Dispose();
+            reader = next;
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(() => original.IsDisposed, Is.True.After(CompactionTimeoutMilliseconds, PollingMilliseconds), "the in-place storage is freed");
+            Assert.That(() => IsLocatable(buffer, pointer), Is.EqualTo(compressed).After(CompactionTimeoutMilliseconds, PollingMilliseconds), "the compacted record resolves within the budget");
+        }
+
+        reader.Dispose();
+    }
+
+    [Test]
     public void Lookup_uses_full_generation_ids_when_the_ring_slot_is_reused()
     {
         const int generationBytes = 256;
@@ -607,7 +634,7 @@ internal class NodeRecordBufferTests
 
     private static bool Matches(NodeRecord record, byte[] rlp) => record.Rlp.SequenceEqual(rlp) && record.Hash == ValueKeccak.Compute(rlp);
 
-    /// <remarks>Dropped generations stay readable in place until they are compacted in the background.</remarks>
+    /// <remarks>Dropped generations are compacted and evicted in the background.</remarks>
     private static void AssertResolvesFrom(NodeRecordBuffer buffer, List<(ulong Pointer, byte[] Rlp)> records, ulong oldestReadable, string message) =>
         Assert.That(() => records.Select(record => Resolves(buffer, record)).ToArray(), Is.EqualTo(records.Select(record => GenerationOf(record.Pointer) >= oldestReadable)).After(CompactionTimeoutMilliseconds, PollingMilliseconds), message);
 }
