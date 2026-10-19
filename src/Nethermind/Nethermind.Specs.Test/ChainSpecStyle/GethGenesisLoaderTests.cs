@@ -797,6 +797,28 @@ public class GethGenesisLoaderTests
         Assert.That(chainSpec.Parameters.BeaconChainGenesisTimestamp, Is.EqualTo(expected));
     }
 
+    [TestCase("", HistoryRetentionConstants.MinEpochsForBlockRequests)]
+    [TestCase("\"minHistoryRetentionEpochs\": null", HistoryRetentionConstants.MinEpochsForBlockRequests)]
+    [TestCase("\"minHistoryRetentionEpochs\": 14299", HistoryRetentionConstants.HistoryPruneEpochs)]
+    [TestCase("\"minHistoryRetentionEpochs\": \"0x37db\"", HistoryRetentionConstants.HistoryPruneEpochs)]
+    [TestCase("\"minHistoryRetentionEpochs\": 0", 0UL)]
+    [TestCase("\"minHistoryRetentionEpochs\": 18446744073709551615", ulong.MaxValue)]
+    public void Loads_minimum_history_retention(string configExtra, ulong expected)
+    {
+        ChainSpec chainSpec = LoadStandardGethGenesis(configExtra: configExtra);
+        ChainSpecBasedSpecProvider provider = new(chainSpec);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chainSpec.Parameters.MinHistoryRetentionEpochs, Is.EqualTo(expected));
+            Assert.That(provider.GenesisSpec.MinHistoryRetentionEpochs, Is.EqualTo(expected));
+        }
+    }
+
+    [Test]
+    public void Rejects_invalid_minimum_history_retention([Values("-1", "1.5", "true", "[]", "{}", "\"invalid\"")] string value) =>
+        Assert.That(() => LoadStandardGethGenesis(configExtra: $"\"minHistoryRetentionEpochs\": {value}"), Throws.TypeOf<InvalidDataException>());
+
     /// <summary>
     /// Returns EIP numbers newly enabled by <paramref name="fork"/> compared to its <paramref name="parent"/>.
     /// </summary>

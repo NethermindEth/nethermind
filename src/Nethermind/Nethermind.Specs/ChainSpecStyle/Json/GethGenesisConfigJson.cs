@@ -91,6 +91,11 @@ public class GethGenesisConfigJson : IHasNamedForks
     /// </remarks>
     public ulong? BeaconChainGenesisTimestamp { get; set; }
 
+    /// <summary>
+    /// Nethermind's minimum history retention, in epochs; <c>null</c> uses <see cref="HistoryRetentionConstants.MinEpochsForBlockRequests"/>.
+    /// </summary>
+    public ulong? MinHistoryRetentionEpochs { get; set; }
+
     public Dictionary<string, GethBlobScheduleEntry>? BlobSchedule { get; set; }
 
     IReadOnlyDictionary<string, ulong>? IHasNamedForks.NamedForkBlocks => _blocks;

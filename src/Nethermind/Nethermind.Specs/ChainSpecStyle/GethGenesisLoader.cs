@@ -106,7 +106,7 @@ public class GethGenesisLoader(IJsonSerializer serializer, ILogManager? logManag
             GasLimitBoundDivisor = 0x400,
             MaximumExtraDataSize = 32,
             MinGasLimit = 5000,
-            MinHistoryRetentionEpochs = HistoryRetentionConstants.MinEpochsForBlockRequests,
+            MinHistoryRetentionEpochs = config.MinHistoryRetentionEpochs ?? HistoryRetentionConstants.MinEpochsForBlockRequests,
             MinBalRetentionEpochs = HistoryRetentionConstants.WeakSubjectivityPeriodEpochs,
 
             Eip7Transition = config.HomesteadBlock ?? 0,
