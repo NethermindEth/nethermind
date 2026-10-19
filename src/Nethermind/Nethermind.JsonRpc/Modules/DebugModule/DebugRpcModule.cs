@@ -517,6 +517,8 @@ public class DebugRpcModule(
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail("genesis is not traceable", ErrorCodes.InvalidInput);
         }
 
+        if (options?.Tracer is { Length: > 0 }) options = options with { CaptureJavaScriptErrors = true };
+
         if (CanStreamBlockTrace(options)) return StreamBlockTrace(header, options);
 
         using RentedTimeout timeout = jsonRpcConfig.RentTimeout();
