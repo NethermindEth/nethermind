@@ -41,21 +41,30 @@
       } catch { /* admin may be disabled; events still give peers */ }
     }
 
+    /**
+     * Polls by its own cursor: the sink may ingest a page later (per-frame budget), so the store's position would lag and
+     * request the same events again. A node restart starts a new epoch, so the store accepts its sequence numbers anew.
+     */
     async run() {
+      this.cursor = this.node.after;
+      this.epoch = this.node.epoch;
       await this.identify();
       let lastIdentify = Date.now();
       while (!this.stopped) {
         let delay = IDLE_POLL_MS;
         try {
           const started = performance.now();
-          const page = await this.rpc('debug_proofWrapperEvents', [`0x${this.node.after.toString(16)}`, PAGE]);
+          const page = await this.rpc('debug_proofWrapperEvents', [`0x${this.cursor.toString(16)}`, PAGE]);
           const latest = Number(page.latest);
           // A node restart resets its sequence: start again from its oldest retained event.
-          if (latest < this.node.after) { this.node.after = 0; continue; }
+          if (latest < this.cursor) { this.cursor = 0; this.epoch++; continue; }
           this.node.missed += Number(page.missed);
           this.node.clockOffset = Date.now() - page.time;
           this.node.status = 'live'; this.node.error = '';
-          if (page.events.length) this.sink(this.node.key, page.events);
+          if (page.events.length) {
+            this.cursor = Number(page.events[page.events.length - 1].seq);
+            this.sink(this.node.key, page.events, this.epoch);
+          }
           this.pages.push(started);
           while (this.pages.length && this.pages[0] < started - 1000) this.pages.shift();
           // Catch up at once while pages are full, within a page budget and only while the UI keeps up.

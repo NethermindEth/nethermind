@@ -52,6 +52,7 @@
       this.peerIds = new Map(); // node public key -> node key
       this.version = 0;
       this.evicted = 0;
+      this.duplicates = 0;
     }
 
     get minGid() { return this.nextGid - this.size; }
@@ -68,7 +69,7 @@
     node(key, info = {}) {
       let node = this.nodes.get(key);
       if (!node) {
-        node = { key, name: info.name || key, url: info.url, index: this.nodes.size, id: '', after: 0, missed: 0, latest: 0, peers: new Set(), links: new Set(), gauges: new Map(), clockOffset: 0, status: 'idle', error: '' };
+        node = { key, name: info.name || key, url: info.url, index: this.nodes.size, id: '', after: 0, epoch: 0, missed: 0, latest: 0, peers: new Set(), links: new Set(), gauges: new Map(), clockOffset: 0, status: 'idle', error: '' };
         this.nodes.set(key, node);
       }
       Object.assign(node, Object.fromEntries(Object.entries(info).filter(([, v]) => v !== undefined)));
@@ -82,13 +83,23 @@
       return id ? this.peerIds.get(id) : undefined;
     }
 
-    /** Adds raw feed events from one node; returns the normalized events in order. */
-    ingest(nodeKey, raw) {
+    /**
+     * Adds raw feed events from one node; returns the normalized events in order.
+     * @param epoch Increments when the node's feed restarted from sequence 1; batches from an earlier epoch are dropped.
+     * Within an epoch an event at or below the node's last ingested sequence is a duplicate and skipped.
+     */
+    ingest(nodeKey, raw, epoch) {
       const node = this.node(nodeKey);
+      if (epoch !== undefined) {
+        if (epoch < node.epoch) return [];
+        if (epoch > node.epoch) { node.epoch = epoch; node.after = 0; }
+      }
       const added = [];
       for (const r of raw) {
+        const seq = num(r.seq);
+        if (seq !== undefined && seq <= node.after) { this.duplicates++; continue; }
         const e = {
-          gid: this.nextGid++, node: nodeKey, seq: num(r.seq), t: num(r.time), type: String(r.type),
+          gid: this.nextGid++, node: nodeKey, seq, t: num(r.time), type: String(r.type),
           wrapper: text(r.wrapper)?.toLowerCase(), peer: text(r.peer), peerId: text(r.peerId), message: text(r.message), requestId: num(r.requestId),
           result: text(r.result), detail: text(r.detail), mode: num(r.mode), length: num(r.length), transactions: hashes(r.transactions),
           dependencies: texts(r.dependencies), count: num(r.count), durationMs: num(r.durationMs), block: num(r.block), blockHash: text(r.blockHash),
@@ -144,7 +155,8 @@
       let w = this.wrappers.get(hash);
       if (!w) {
         if (this.wrappers.size >= this.maxWrappers) this.forget(this.wrappers.keys().next().value);
-        w = { hash, first: t, last: t, mode: undefined, length: undefined, txs: [], deps: [], perNode: new Map(), events: [], included: undefined, outcome: 'pending' };
+        w = { hash, first: t, last: t, mode: undefined, length: undefined, txs: [], deps: [], perNode: new Map(), events: [], eventSet: new Set(),
+          included: undefined, txIncluded: undefined, outcome: 'pending' };
         this.wrappers.set(hash, w);
       }
       return w;
@@ -175,8 +187,14 @@
       }
     }
 
+    /**
+     * Adds an event to a wrapper's history. Events that name another wrapper or none, linked only because they concern a
+     * transaction this wrapper also lists (inclusion, eviction, serving its envelope), are kept apart from the wrapper's own
+     * steps: a rejected copy of a transaction must not look included when a valid wrapper carried the same transaction.
+     */
     attach(w, e) {
-      if (!w) return;
+      if (!w || w.eventSet.has(e.gid)) return;
+      w.eventSet.add(e.gid);
       if (e.t < w.first) w.first = e.t;
       if (e.t > w.last) w.last = e.t;
       if (e.mode !== undefined && w.mode === undefined) w.mode = e.mode;
@@ -184,9 +202,19 @@
       if (e.dependencies && !w.deps.length) w.deps = e.dependencies;
       if (w.events.length < MAX_WRAPPER_EVENTS) w.events.push(e.gid);
       let n = w.perNode.get(e.node);
-      if (!n) w.perNode.set(e.node, n = { first: e.t, stages: {}, rounds: 0, omitted: 0 });
-      if (!(e.stage in n.stages)) n.stages[e.stage] = e.t;
+      if (!n) w.perNode.set(e.node, n = { first: e.t, stages: {}, txStages: {}, rounds: 0, omitted: 0 });
+      const own = e.wrapper === w.hash;
+      const stages = own ? n.stages : n.txStages;
+      if (!(e.stage in stages)) stages[e.stage] = e.t;
+      if (!own) {
+        if (e.type === 'included' && w.txIncluded === undefined) w.txIncluded = { block: e.block, t: e.t };
+        w.outcome = outcomeOf(w);
+        return;
+      }
       switch (e.type) {
+        case 'announced':
+          if (e.peerId) ((n.announcedTo ||= {})[lower(e.peerId)] ||= []).push(e.t);
+          break;
         case 'announcement-received':
           if (n.announcedAt === undefined) { n.announcedAt = e.t; n.fromId = e.peerId; }
           break;
@@ -197,7 +225,6 @@
         case 'verdict': n.verdict = e.result; n.verdictAt = e.t; break;
         case 'offered': if (n.offeredAt === undefined) { n.offeredAt = e.t; n.local = e.result === 'local aggregate'; } break;
         case 'submitted': if (n.offeredAt === undefined && e.message !== 'eth/73') n.submittedAt = e.t; break;
-        case 'included': if (w.included === undefined) w.included = { block: e.block, t: e.t }; break;
       }
       w.outcome = outcomeOf(w);
     }
@@ -232,18 +259,65 @@
     return r;
   }
 
+  /**
+   * A wrapper's outcome from its own steps. Its transactions' inclusion makes it `included` only if some node validated
+   * or offered this wrapper, or never judged it; a wrapper every node rejected stays `rejected` even when a valid wrapper
+   * carrying the same transaction got it included (`w.included` then stays unset and `w.txIncluded` records the block).
+   */
   function outcomeOf(w) {
-    if (w.included) return 'included';
-    let validated = false, rejected = false, dropped = false;
+    let validated = false, rejected = false, dropped = false, txDropped = false;
     for (const n of w.perNode.values()) {
-      if ('validated' in n.stages || 'relayed' in n.stages) validated = true;
+      if ('validated' in n.stages || 'relayed' in n.stages || 'admitted' in n.stages) validated = true;
       if ('rejected' in n.stages) rejected = true;
       if ('dropped' in n.stages) dropped = true;
+      if ('dropped' in n.txStages) txDropped = true;
     }
-    if (dropped) return 'dropped';
-    if (validated) return 'validated';
+    w.included = w.txIncluded && (validated || !rejected) ? w.txIncluded : undefined;
+    if (w.included) return 'included';
+    if (validated) return dropped || txDropped ? 'dropped' : 'validated';
     if (rejected) return 'rejected';
-    return 'pending';
+    return dropped || txDropped ? 'dropped' : 'pending';
+  }
+
+  /**
+   * Collapses a wrapper's time-ordered events into steps: consecutive events on the same node with the same type, result
+   * and message (announcements from several peers, serving several requesters, per-transaction admission) become one step
+   * with a count; the members keep their own times and peers for the expanded view.
+   * @returns {{e: object, members: object[], own: boolean}[]} steps in time order of their first event.
+   */
+  function groupSteps(w, events) {
+    const steps = [], last = new Map();
+    for (const e of events) {
+      const own = e.wrapper === w.hash;
+      const key = `${e.type}|${e.result ?? ''}|${e.message ?? ''}|${own}`;
+      const previous = last.get(e.node);
+      if (previous && previous.key === key) { previous.step.members.push(e); continue; }
+      const step = { e, members: [e], own };
+      steps.push(step);
+      last.set(e.node, { key, step });
+    }
+    return steps;
+  }
+
+  /** Other wrappers listing one of `w`'s transactions that some node validated: what carried a rejected wrapper's
+   * transaction instead. */
+  function carriers(store, w) {
+    const found = new Set();
+    for (const tx of w.txs)
+      for (const hash of store.txToWrappers.get(tx) || [])
+        if (hash !== w.hash && ['validated', 'included', 'dropped'].includes(store.wrappers.get(hash)?.outcome)) found.add(hash);
+    return [...found];
+  }
+
+  /**
+   * When a hop started on the sending node: its last announcement to the receiver before the receiver heard of the wrapper,
+   * else its own offer. A node that reconnects after a restart is re-announced wrappers offered long before, so measuring
+   * from the original offer would count the outage as propagation latency.
+   */
+  function hopStart(src, receiverId, receivedAt) {
+    let start;
+    for (const t of src.announcedTo?.[receiverId] || []) if (t <= receivedAt && (start === undefined || t > start)) start = t;
+    return start ?? src.offeredAt;
   }
 
   /** Whether a wrapper passes the node / mode / outcome filters. */
@@ -280,9 +354,7 @@
    * @param {{now: number, windowMs: number, binMs: number, top?: number}} view
    */
   function aggregate(store, filter, view) {
-    const { now, windowMs, binMs } = view;
-    const bins = Math.max(1, Math.ceil(windowMs / binMs));
-    const start = now - bins * binMs;
+    const { start, bins, binMs } = alignedWindow(view.now, view.windowMs, view.binMs);
     const stageIds = stages.STAGES.map(s => s.id);
     const heat = stageIds.map(() => new Uint32Array(bins));
     const proving = { leaf: [], merge: [], fold: [], discard: [], cacheHits: 0, invalid: 0 };
@@ -345,9 +417,10 @@
           local.push(n.offeredAt - n.announcedAt);
           const from = store.peerNode(n.fromId);
           const src = from ? w.perNode.get(from) : undefined;
-          if (src?.offeredAt !== undefined && src.offeredAt <= n.offeredAt) {
-            hop.push({ ms: n.offeredAt - src.offeredAt, w: w.hash, from, to: key });
-            series.hop.push([n.offeredAt, n.offeredAt - src.offeredAt]);
+          const start = src && hopStart(src, store.nodes.get(key)?.id, n.announcedAt);
+          if (start !== undefined && start <= n.offeredAt) {
+            hop.push({ ms: n.offeredAt - start, w: w.hash, from, to: key });
+            series.hop.push([n.offeredAt, n.offeredAt - start]);
           }
         }
         if (n.announcedAt !== undefined && n.receivedAt !== undefined) { fetch.push(n.receivedAt - n.announcedAt); series.fetch.push([n.receivedAt, n.receivedAt - n.announcedAt]); }
@@ -366,6 +439,52 @@
     };
   }
 
+  /**
+   * A window of whole bins ending at the bin that contains `now`. Bin edges are multiples of `binMs`, so a redraw a moment
+   * later puts every sample in the same bin as before instead of shifting all edges.
+   */
+  function alignedWindow(now, windowMs, binMs) {
+    const bins = Math.max(1, Math.ceil(windowMs / binMs));
+    const end = (Math.floor(now / binMs) + 1) * binMs;
+    return { start: end - bins * binMs, bins, binMs, end };
+  }
+
+  /**
+   * Points ready to draw: finite values inside [t0, t1], sorted by time, and at most about `maxPoints` of them. Denser
+   * series keep each slice's first, minimum and maximum points, in time order, so spikes survive decimation.
+   */
+  function prepareSeries(points, t0, t1, maxPoints = 1000) {
+    const kept = points.filter(p => p && Number.isFinite(p[0]) && Number.isFinite(p[1]) && p[0] >= t0 && p[0] <= t1);
+    kept.sort((a, b) => a[0] - b[0]);
+    if (kept.length <= maxPoints) return kept;
+    const slices = Math.max(1, Math.floor(maxPoints / 3)), width = (t1 - t0) / slices, out = [];
+    for (let i = 0; i < kept.length;) {
+      const slice = Math.min(slices - 1, Math.floor((kept[i][0] - t0) / width));
+      let first = kept[i], lo = kept[i], hi = kept[i];
+      for (i++; i < kept.length && Math.min(slices - 1, Math.floor((kept[i][0] - t0) / width)) === slice; i++) {
+        if (kept[i][1] < lo[1]) lo = kept[i];
+        if (kept[i][1] > hi[1]) hi = kept[i];
+      }
+      for (const p of [...new Set([first, lo, hi])].sort((a, b) => a[0] - b[0])) out.push(p);
+    }
+    return out;
+  }
+
+  /** Indexes `i` where the step from point i-1 to point i spans more than `maxGap`: no samples arrived in between. */
+  function gaps(points, maxGap) {
+    const found = [];
+    for (let i = 1; i < points.length; i++) if (points[i][0] - points[i - 1][0] > maxGap) found.push(i);
+    return found;
+  }
+
+  /** The point of a time-sorted series nearest to `t`. */
+  function nearest(points, t) {
+    let lo = 0, hi = points.length - 1;
+    if (hi < 0) return undefined;
+    while (lo < hi) { const mid = (lo + hi) >> 1; if (points[mid][0] < t) lo = mid + 1; else hi = mid; }
+    return lo > 0 && t - points[lo - 1][0] < points[lo][0] - t ? points[lo - 1] : points[lo];
+  }
+
   /** p50 and p95 of [t, value] points per bin. */
   function percentileSeries(points, start, bins, binMs) {
     const buckets = Array.from({ length: bins }, () => []);
@@ -380,7 +499,7 @@
     });
   }
 
-  const api = { Store, aggregate, percentileSeries, eventMatches, wrapperMatches, summary, percentile, num };
+  const api = { Store, carriers, groupSteps, alignedWindow, prepareSeries, gaps, nearest, aggregate, percentileSeries, eventMatches, wrapperMatches, summary, percentile, num };
   root.PWV = Object.assign(root.PWV || {}, { model: api });
   if (typeof module !== 'undefined') module.exports = api;
 })(typeof window !== 'undefined' ? window : globalThis);

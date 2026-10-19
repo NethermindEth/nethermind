@@ -71,7 +71,7 @@ test('aggregates per-hop latency, recovery and omissions', () => {
   propagation(store);
   const agg = aggregate(store, {}, { now: 14000, windowMs: 20000, binMs: 1000 });
   assert.equal(agg.hop.n, 1);
-  assert.equal(agg.hop.p50, 47, 'offered on a at 1005, offered on b at 1052');
+  assert.equal(agg.hop.p50, 46, 'a announced to b at 1006, b offered at 1052');
   assert.equal(agg.fetch.p50, 20);
   assert.equal(agg.recovery.p50, 14);
   assert.equal(agg.counts.omissions, 1);
@@ -125,7 +125,7 @@ test('exports a capture that loads back to the same wrappers', () => {
   for (const n of capture.nodes) copy.node(n.key, n);
   for (const [key, list] of Object.entries(capture.events)) copy.ingest(key, list);
   assert.equal(capture.format, 'eip8437-visualiser/1');
-  assert.deepEqual(aggregate(copy, {}, { now: 14000, windowMs: 20000, binMs: 1000 }).hop.p50, 47);
+  assert.deepEqual(aggregate(copy, {}, { now: 14000, windowMs: 20000, binMs: 1000 }).hop.p50, 46);
 });
 
 test('percentile series per bin', () => {
@@ -144,4 +144,85 @@ test('parses node lists, kurtosis enclave inspect and port print output', () => 
   assert.deepEqual(parseNodes(inspect), [{ name: 'el-1', url: 'http://127.0.0.1:41445' }, { name: 'el-2', url: 'http://127.0.0.1:41545' }]);
   assert.deepEqual(parseNodes('el-3=http://10.0.0.3:8545\nhttp://127.0.0.1:41945\n127.0.0.1:1', 3),
     [{ name: 'el-3', url: 'http://10.0.0.3:8545' }, { name: 'node-5', url: 'http://127.0.0.1:41945' }, { name: 'node-6', url: 'http://127.0.0.1:1' }]);
+});
+
+test('drops events already ingested from the same feed, and starts over when the node restarted', () => {
+  const store = new Store();
+  const page = [{ seq: '0x1', time: 1, type: 'offered', wrapper: W }, { seq: '0x2', time: 2, type: 'announced', wrapper: W }];
+  store.ingest('a', page, 0);
+  store.ingest('a', page, 0);
+  assert.equal(store.size, 2, 'a page fetched twice is ingested once');
+  assert.equal(store.duplicates, 2);
+  store.ingest('a', [{ seq: '0x1', time: 10, type: 'offered', wrapper: W }], 1);
+  assert.equal(store.size, 3, 'after a restart the node numbers from 1 again');
+  assert.deepEqual(store.ingest('a', [{ seq: '0x3', time: 3, type: 'served', wrapper: W }], 0), [], 'late batches from before the restart are dropped');
+  assert.equal(store.wrappers.get(W).events.length, 3);
+});
+
+test('a rejected copy is not shown as included when a valid wrapper carried its transaction', () => {
+  const store = new Store();
+  const BAD = '0x' + 'cc'.repeat(32);
+  store.ingest('a', [
+    { seq: 1, time: 1, type: 'submitted', wrapper: BAD, message: 'local', transactions: [TX], mode: 0 },
+    { seq: 2, time: 2, type: 'proof-verified', wrapper: BAD, result: 'invalid', detail: 'a wrapper dependency proof failed verification' },
+    { seq: 3, time: 3, type: 'submitted', wrapper: W, message: 'eth/73', transactions: [TX], mode: 0 },
+    { seq: 4, time: 4, type: 'admitted', wrapper: W, transactions: [TX], result: 'Accepted' },
+    { seq: 5, time: 5, type: 'offered', wrapper: W, result: 'validated', transactions: [TX] },
+    { seq: 6, time: 9, type: 'included', transactions: [TX], block: '0x9' },
+  ]);
+  const bad = store.wrappers.get(BAD), good = store.wrappers.get(W);
+  assert.equal(bad.outcome, 'rejected');
+  assert.equal(bad.included, undefined);
+  assert.deepEqual(bad.txIncluded, { block: 9, t: 9 });
+  assert.equal(good.outcome, 'included');
+  assert.deepEqual(require('../js/model.js').carriers(store, bad), [W]);
+  const steps = require('../js/model.js').groupSteps(bad, bad.events.map(g => store.get(g)));
+  assert.deepEqual(steps.map(s => [s.e.type, s.own]), [['submitted', true], ['proof-verified', true], ['included', false]]);
+});
+
+test('collapses repeated steps on a node into one with a count', () => {
+  const { groupSteps } = require('../js/model.js');
+  const w = { hash: W };
+  const e = (node, type, t, peer, result) => ({ node, type, t, peer, result, wrapper: W });
+  const steps = groupSteps(w, [e('a', 'announced', 1, 'p1'), e('b', 'announcement-received', 2, 'a', 'queued'), e('a', 'announced', 3, 'p2'),
+    e('a', 'announced', 4, 'p3'), e('a', 'served', 5, 'p1', 'served'), e('a', 'announced', 6, 'p4')]);
+  assert.deepEqual(steps.map(s => [s.e.node, s.e.type, s.members.length]),
+    [['a', 'announced', 3], ['b', 'announcement-received', 1], ['a', 'served', 1], ['a', 'announced', 1]]);
+});
+
+test('aligned windows keep bin edges fixed as time passes', () => {
+  const { alignedWindow } = require('../js/model.js');
+  const a = alignedWindow(10_250, 4000, 1000), b = alignedWindow(10_900, 4000, 1000);
+  assert.deepEqual(a, { start: 7000, bins: 4, binMs: 1000, end: 11000 });
+  assert.deepEqual(b, a);
+  assert.equal(alignedWindow(11_000, 4000, 1000).start, 8000);
+});
+
+test('prepares series sorted, windowed and decimated, keeping spikes, with gaps and nearest lookup', () => {
+  const { prepareSeries, gaps, nearest } = require('../js/model.js');
+  assert.deepEqual(prepareSeries([[3, 1], [1, 2], [2, NaN], null, [9, 5], [2, 4]], 0, 5), [[1, 2], [2, 4], [3, 1]]);
+  const dense = Array.from({ length: 10_000 }, (_, i) => [i, i === 5_000 ? 1_000 : 1]);
+  const decimated = prepareSeries(dense, 0, 10_000, 300);
+  assert.ok(decimated.length <= 300, `${decimated.length} points`);
+  assert.ok(decimated.some(p => p[1] === 1_000), 'the spike survives decimation');
+  assert.ok(decimated.every((p, i) => i === 0 || p[0] >= decimated[i - 1][0]), 'still sorted');
+  assert.deepEqual(gaps([[0, 1], [10, 1], [50, 1], [60, 1]], 15), [2]);
+  assert.deepEqual(nearest([[0, 1], [10, 2], [50, 3]], 31), [50, 3]);
+  assert.deepEqual(nearest([[0, 1], [10, 2], [50, 3]], 29), [10, 2]);
+  assert.equal(nearest([], 1), undefined);
+});
+
+test('a hop to a node that reconnected starts at the re-announcement, not the original offer', () => {
+  const store = new Store();
+  store.node('a', { enode: `enode://${A}@1.1.1.1:1` });
+  store.node('b', { enode: `enode://${B}@1.1.1.2:1` });
+  store.ingest('a', [
+    { seq: 1, time: 1000, type: 'offered', wrapper: W, result: 'local aggregate' },
+    { seq: 2, time: 600000, type: 'announced', wrapper: W, peerId: '0x' + B },
+  ]);
+  store.ingest('b', [
+    { seq: 1, time: 600010, type: 'announcement-received', wrapper: W, peerId: '0x' + A, result: 'queued' },
+    { seq: 2, time: 600060, type: 'offered', wrapper: W, result: 'validated' },
+  ]);
+  assert.equal(aggregate(store, {}, { now: 601000, windowMs: 700000, binMs: 1000 }).hop.p50, 60);
 });

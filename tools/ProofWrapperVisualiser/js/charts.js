@@ -143,14 +143,17 @@
   }
 
   /** Line chart of several series over time, one y scale; gaps where a bin has no data. */
-  function lines(canvas, series, { t0, t1, height = 130, format = fmtMs, log = false } = {}) {
+  function lines(canvas, series, { t0, t1, height = 130, format = fmtMs, log = false, gapMs } = {}) {
     const { ctx, width } = prepare(canvas, height);
     const pad = { l: 52, r: 8, t: 8, b: 18 };
+    const plotW = width - pad.l - pad.r, plotH = height - pad.t - pad.b;
+    const { prepareSeries, gaps, nearest } = root.PWV.model;
+    // Sorted, windowed and decimated to about one point per pixel, so redraw cost does not grow with the sample count.
+    const prepared = series.map(s => ({ ...s, points: prepareSeries(s.points, t0, t1, Math.max(60, Math.round(plotW))) }));
     let max = 0, min = Infinity;
-    for (const s of series) for (const p of s.points) if (p && Number.isFinite(p[1])) { max = Math.max(max, p[1]); min = Math.min(min, p[1]); }
+    for (const s of prepared) for (const p of s.points) { max = Math.max(max, p[1]); min = Math.min(min, p[1]); }
     if (min === Infinity) return empty(ctx, width, height, 'No data in this window');
     if (!max) { max = 1; log = false; }
-    const plotW = width - pad.l - pad.r, plotH = height - pad.t - pad.b;
     const lo = log ? Math.max(0.1, min) : 0;
     const yOf = v => pad.t + plotH - (log ? Math.log(Math.max(v, lo) / lo) / Math.log(max / lo || 10) : v / max) * plotH;
     const xOf = t => pad.l + (t - t0) / (t1 - t0) * plotW;
@@ -162,27 +165,32 @@
     }
     ctx.textAlign = 'left';
     axis(ctx, pad.l, height - 4, plotW, t0, t1);
-    ctx.lineWidth = 2; ctx.lineJoin = 'round';
-    for (const s of series) {
-      ctx.strokeStyle = css(s.color); ctx.beginPath();
-      let pen = false;
-      for (const p of s.points) {
-        if (!p || !Number.isFinite(p[1])) { pen = false; continue; }
-        const x = xOf(p[0]), y = yOf(p[1]);
-        pen ? ctx.lineTo(x, y) : ctx.moveTo(x, y); pen = true;
-      }
+    ctx.lineJoin = 'round';
+    for (const s of prepared) {
+      const breaks = new Set(gapMs ? gaps(s.points, gapMs) : []);
+      ctx.strokeStyle = css(s.color);
+      // Solid where consecutive samples are at most gapMs apart; a thin dotted bridge where intervals had no samples.
+      ctx.lineWidth = 2; ctx.setLineDash([]); ctx.beginPath();
+      s.points.forEach((p, i) => (i === 0 || breaks.has(i) ? ctx.moveTo : ctx.lineTo).call(ctx, xOf(p[0]), yOf(p[1])));
       ctx.stroke();
+      ctx.lineWidth = 1; ctx.setLineDash([2, 3]); ctx.beginPath();
+      for (const i of breaks) { ctx.moveTo(xOf(s.points[i - 1][0]), yOf(s.points[i - 1][1])); ctx.lineTo(xOf(s.points[i][0]), yOf(s.points[i][1])); }
+      ctx.stroke(); ctx.setLineDash([]);
+      if (s.points.length === 1 || breaks.size) {
+        ctx.fillStyle = css(s.color);
+        s.points.forEach((p, i) => { if (s.points.length === 1 || breaks.has(i) || breaks.has(i + 1)) { ctx.beginPath(); ctx.arc(xOf(p[0]), yOf(p[1]), 2.5, 0, 2 * Math.PI); ctx.fill(); } });
+      }
     }
     ctx.lineWidth = 1;
-    // One hover column per x position, listing every series.
-    const columns = Math.min(120, Math.max(...series.map(s => s.points.length)));
+    // One hover column per few pixels; each finds its nearest point by binary search.
+    const columns = Math.max(1, Math.min(120, Math.round(plotW / 6)));
     for (let c = 0; c < columns; c++) {
       const t = t0 + (t1 - t0) * (c + 0.5) / columns;
-      const rows = series.map(s => {
-        let best; for (const p of s.points) if (p && (!best || Math.abs(p[0] - t) < Math.abs(best[0] - t))) best = p;
-        return best && Math.abs(best[0] - t) < (t1 - t0) / columns ? `<span class=swatch style="background:${css(s.color)}"></span>${esc(s.label)}: <b>${format(best[1])}</b>` : '';
+      const rows = prepared.map(s => {
+        const best = nearest(s.points, t);
+        return best && Math.abs(best[0] - t) < Math.max((t1 - t0) / columns, gapMs || 0) ? `<span class=swatch style="background:${css(s.color)}"></span>${esc(s.label)}: <b>${format(best[1])}</b> <span class=note>${fmtTime(best[0])}</span>` : '';
       }).filter(Boolean);
-      if (rows.length) canvas.regions.push({ x: pad.l + plotW * c / columns, y: pad.t, w: plotW / columns, h: plotH, tip: `${fmtTime(t)}<br>${rows.join('<br>')}` });
+      canvas.regions.push({ x: pad.l + plotW * c / columns, y: pad.t, w: plotW / columns, h: plotH, tip: rows.length ? rows.join('<br>') : `${fmtTime(t)}<br>no samples in this interval` });
     }
   }
 

@@ -127,7 +127,8 @@ def handler(nodes, port, allowed_hosts=frozenset(), token=None):
                     self.send(401, b'{"error":"invalid token"}')
                     return True
                 rest = urllib.parse.urlencode([(k, v) for k, values in params.items() if k != "token" for v in values])
-                target = "/" + path.lstrip("/") + (f"?{rest}" if rest else "")
+                # Browsers read a leading backslash as a slash, so strip both: the reload must stay on this server.
+                target = "/" + path.lstrip("/\\") + (f"?{rest}" if rest else "")
                 # A same-origin reload rather than a redirect: when the link is followed from another site, browsers withhold a
                 # SameSite=Strict cookie for the whole redirect chain, but not for a navigation the page itself starts.
                 body = f'<!doctype html><meta http-equiv="refresh" content="0;url={html.escape(target, quote=True)}">'.encode()

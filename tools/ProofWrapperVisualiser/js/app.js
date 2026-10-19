@@ -35,8 +35,8 @@
   const incoming = [];
   let pendingEvents = 0;
 
-  function sink(nodeKey, raw) {
-    incoming.push([nodeKey, raw]);
+  function sink(nodeKey, raw, epoch) {
+    incoming.push([nodeKey, raw, epoch]);
     pendingEvents += raw.length;
     while (pendingEvents > MAX_PENDING && incoming.length > 1) {
       const [, dropped] = incoming.shift();
@@ -47,15 +47,15 @@
 
   function drain(deadline) {
     while (incoming.length && performance.now() < deadline) {
-      const [nodeKey, raw] = incoming[0];
+      const [nodeKey, raw, epoch] = incoming[0];
       const chunk = raw.length > 500 ? raw.splice(0, 500) : (incoming.shift(), raw);
       pendingEvents -= chunk.length;
-      ingest(nodeKey, chunk);
+      ingest(nodeKey, chunk, epoch);
     }
   }
 
-  function ingest(nodeKey, raw) {
-    const added = store.ingest(nodeKey, raw);
+  function ingest(nodeKey, raw, epoch) {
+    const added = store.ingest(nodeKey, raw, epoch);
     state.ingested += added.length;
     if (!state.paused) view.pulse(added);
     if (state.logKey) for (const e of added) if (model.eventMatches(store, e, state.filter)) state.log.push(e.gid);
@@ -213,13 +213,14 @@
     charts.histogram($('h-recovery'), agg.recovery, { title: 'envelope recoveries', color: '--series-3' });
     charts.histogram($('h-e2e'), agg.e2e, { title: 'propagations', color: '--series-2' });
     const metric = $('pct-metric').value;
-    const binMs = Math.max(5000, Math.round(state.windowMs / 60));
-    const bins = Math.ceil(state.windowMs / binMs), start = nowAnchor() - bins * binMs;
+    const { start, bins, binMs } = model.alignedWindow(nowAnchor(), state.windowMs, Math.max(5000, Math.round(state.windowMs / 60)));
     const pct = model.percentileSeries(agg.series[metric], start, bins, binMs);
+    const at = i => start + (i + 0.5) * binMs;
+    // Empty bins are left out and bridged with a dotted line rather than breaking the line at random.
     charts.lines($('pct'), [
-      { label: 'p50', color: '--series-1', points: pct.map((p, i) => p && [start + (i + 0.5) * binMs, p.p50]) },
-      { label: 'p95', color: '--series-2', points: pct.map((p, i) => p && [start + (i + 0.5) * binMs, p.p95]) },
-    ], { t0: start, t1: start + bins * binMs, log: true });
+      { label: 'p50', color: '--series-1', points: pct.flatMap((p, i) => p ? [[at(i), p.p50]] : []) },
+      { label: 'p95', color: '--series-2', points: pct.flatMap((p, i) => p ? [[at(i), p.p95]] : []) },
+    ], { t0: start, t1: start + bins * binMs, log: true, gapMs: binMs * 1.5 });
     charts.counts($('outcomes'), [
       { label: 'pending', value: agg.outcomes.pending, color: '--series-1', click: () => setFilter('outcome', 'pending') },
       { label: 'validated', value: agg.outcomes.validated, color: '--status-good', click: () => setFilter('outcome', 'validated') },
@@ -265,7 +266,7 @@
     const t1 = nowAnchor(), t0 = t1 - state.windowMs;
     const nodes = [...store.nodes.values()].filter(n => !state.filter.node || n.key === state.filter.node);
     charts.lines($('gauges'), nodes.map(n => ({ label: n.name, color: `--node-${n.index % 8 + 1}`, points: (n.gauges.get(metric) || []).filter(p => p[0] >= t0) })),
-      { t0, t1, format: /Bytes/.test(metric) ? fmtBytes : v => fmtCount(Math.round(v)) });
+      { t0, t1, format: /Bytes/.test(metric) ? fmtBytes : v => fmtCount(Math.round(v)), gapMs: 5000 });
     $('gauge-legend').innerHTML = nodes.map(n => `<span><i style="background:var(--node-${n.index % 8 + 1})"></i>${esc(n.name)}</span>`).join('');
   }
 
@@ -292,25 +293,50 @@
   function renderWrapper(hash, full) {
     const w = store.wrappers.get(hash);
     if (!w) { $('w-header').innerHTML = `<p class=hint>No wrapper matches. It may have been evicted from the client buffer.</p>`; $('w-swimlane').innerHTML = ''; $('w-steps').innerHTML = ''; return; }
-    const events = w.events.map(g => store.get(g)).filter(Boolean).sort((a, b) => a.t - b.t);
+    const events = w.events.map(g => store.get(g)).filter(Boolean).sort((a, b) => a.t - b.t || a.gid - b.gid);
+    const steps = model.groupSteps(w, events);
     $('w-header').innerHTML = `
       <h2><span class=hash>${esc(w.hash)}</span> ${pill(w.outcome)}${w.included ? ` <span class=note>included in block ${w.included.block}</span>` : ''}</h2>
+      ${explain(w, events)}
       <table><tr><th>Mode</th><td>${w.mode === 0 ? '0 – direct witnesses, one per dependency' : w.mode === 1 ? '1 – one recursive STARK over all dependencies' : 'unknown'}</td>
       <th>Size</th><td>${w.length ? fmtBytes(w.length) : '–'}</td><th>Nodes</th><td>${w.perNode.size}</td><th>Span</th><td>${fmtMs(w.last - w.first)}</td></tr>
       <tr><th>Transactions</th><td colspan=7 class=hash>${w.txs.map(esc).join('<br>') || '–'}</td></tr>
       <tr><th>Dependencies</th><td colspan=7 class=hash>${w.deps.map(d => { const [scheme, data, key] = d.split(':'); return `${esc(scheme)} data ${esc(short(data))} key ${esc(short(key))}`; }).join('<br>') || '–'}</td></tr></table>`;
-    renderSwimlane(w, events);
+    renderSwimlane(w, steps);
     if (full || events.length !== state.wrapperSteps) {
       state.wrapperSteps = events.length;
-      $('w-steps').innerHTML = '<tr><th class=num>+ms</th><th>Node</th><th>Stage</th><th>Step</th><th>Message</th><th>Peer</th><th>Result</th><th>EIP rule</th></tr>' + events.map((e, i) => {
+      let previousRule;
+      $('w-steps').innerHTML = '<tr><th class=num>+ms</th><th>Node</th><th>Stage</th><th>Step</th><th>Message</th><th>Peer</th><th>Result</th><th>EIP rule</th></tr>' + steps.map(({ e, members, own }) => {
         const d = stages.describe(e);
-        const repeated = i > 0 && stages.describe(events[i - 1]).rule === d.rule;
-        return `<tr data-gid="${e.gid}"><td class=num>${(e.t - w.first).toFixed(1)}</td><td>${esc(nodeName(e.node))}</td><td><span class=swatch style="background:var(${stageColor(d.stage)})"></span>${esc(d.stage)}</td><td>${esc(d.label)}${e.durationMs !== undefined ? ` <span class=note>${fmtMs(e.durationMs)}</span>` : ''}${e.requestId !== undefined ? ` <span class=note>#${e.requestId}</span>` : ''}</td><td>${esc(d.message || '')}</td><td>${esc(peerName(e))}</td><td>${esc(e.result || '')}${e.detail ? `<br><span class=note>${esc(e.detail)}</span>` : ''}</td><td class=rule title="${esc(d.rule || '')}">${repeated ? '〃' : esc(d.rule || '')}</td></tr>`;
+        const repeated = previousRule === d.rule;
+        previousRule = d.rule;
+        const count = members.length > 1 ? ` <span class=pill>×${members.length}</span>` : '';
+        const via = own ? '' : ` <span class=note>via transaction ${esc(short((e.transactions || [])[0] || ''))}${e.wrapper ? ` of wrapper ${esc(short(e.wrapper))}` : ''}</span>`;
+        const peers = members.length > 1
+          ? `<details><summary>${esc(peerName(e))}${new Set(members.map(peerName)).size > 1 ? ' and others' : ''}</summary>${members.map(m => `+${(m.t - w.first).toFixed(1)} ms ${esc(peerName(m))}${m.requestId !== undefined ? ` #${m.requestId}` : ''}${m.durationMs !== undefined ? ` ${fmtMs(m.durationMs)}` : ''}`).join('<br>')}</details>`
+          : esc(peerName(e));
+        return `<tr data-gid="${e.gid}"${own ? '' : ' class=via'}><td class=num>${(e.t - w.first).toFixed(1)}</td><td>${esc(nodeName(e.node))}</td><td><span class=swatch style="background:var(${stageColor(d.stage)})"></span>${esc(d.stage)}</td><td>${esc(d.label)}${count}${e.durationMs !== undefined && members.length === 1 ? ` <span class=note>${fmtMs(e.durationMs)}</span>` : ''}${e.requestId !== undefined && members.length === 1 ? ` <span class=note>#${e.requestId}</span>` : ''}${via}</td><td>${esc(d.message || '')}</td><td>${peers}</td><td>${esc(e.result || '')}${e.detail ? `<br><span class=note>${esc(e.detail)}</span>` : ''}</td><td class=rule title="${esc(d.rule || '')}">${repeated ? '〃' : esc(d.rule || '')}</td></tr>`;
       }).join('');
     }
   }
 
-  function renderSwimlane(w, events) {
+  /** One sentence on what happened to the wrapper, naming who rejected it and what else carried its transactions. */
+  function explain(w, events) {
+    const rejections = new Map();
+    for (const e of events) {
+      if (e.wrapper !== w.hash || stages.describe(e).stage !== 'rejected' || rejections.has(e.node)) continue;
+      rejections.set(e.node, `${stages.describe(e).label}${e.result && !/^Verdict/.test(stages.describe(e).label) ? ` (${e.result})` : ''}${e.detail ? `: ${e.detail}` : ''}`);
+    }
+    const parts = [...rejections].map(([node, why]) => `Rejected by ${esc(nodeName(node))}: ${esc(why)}.`);
+    const others = model.carriers(store, w);
+    if (w.txIncluded && !w.included)
+      parts.push(`Its transaction was included in block ${w.txIncluded.block}${others.length ? ` through ${others.map(h => `<a href="#" data-wrapper="${esc(h)}" class=hash>${esc(short(h))}</a>`).join(', ')}, a valid wrapper for the same transaction` : ''}, not through this wrapper.`);
+    else if (rejections.size && w.outcome !== 'rejected')
+      parts.push(`Another node validated it, so the ${w.outcome === 'included' ? 'inclusion' : 'outcome'} shown comes from there.`);
+    return parts.length ? `<p class=explain>${parts.join(' ')}</p>` : '';
+  }
+
+  function renderSwimlane(w, steps) {
     const lanes = [...w.perNode.entries()].sort((a, b) => a[1].first - b[1].first).map(([k]) => k);
     const width = $('w-swimlane').clientWidth || 800, labelW = 110, laneH = 54, top = 22;
     const height = top + lanes.length * laneH + 22;
@@ -337,13 +363,16 @@
     }
     const labelled = new Set();
     const lastLabel = new Map();
-    events.forEach(e => {
+    steps.forEach(({ e, members, own }) => {
       if (!lanes.includes(e.node)) return;
       const d = stages.describe(e);
       const x = xOf(e.t), y = yOf(e.node) + (stages.STAGE_INDEX[d.stage] ?? 6) % 3 * 8 - 8;
       const color = stageColor(d.stage);
-      const tip = `${d.label} · ${d.message || ''} · +${(e.t - w.first).toFixed(1)} ms${e.result ? ' · ' + e.result : ''}${e.detail ? ' · ' + e.detail : ''}\n${d.rule || ''}`;
-      parts.push(`<circle class=mark cx="${x}" cy="${y}" r="${d.stage === 'rejected' || d.stage === 'dropped' ? 6 : 4.5}" fill="var(${color})" stroke="var(--surface-1)" stroke-width="2"><title>${esc(tip)}</title></circle>`);
+      const times = members.length > 1 ? ` ×${members.length} over ${fmtMs(members[members.length - 1].t - e.t)}` : '';
+      const tip = `${d.label}${times} · ${d.message || ''} · +${(e.t - w.first).toFixed(1)} ms${e.result ? ' · ' + e.result : ''}${e.detail ? ' · ' + e.detail : ''}${own ? '' : ' · via a shared transaction, not this wrapper'}\n${d.rule || ''}`;
+      // Steps that concern only a shared transaction are hollow: they did not happen to this wrapper.
+      parts.push(`<circle class=mark cx="${x}" cy="${y}" r="${d.stage === 'rejected' || d.stage === 'dropped' ? 6 : 4.5}" fill="${own ? `var(${color})` : 'var(--surface-1)'}" stroke="${own ? 'var(--surface-1)' : `var(${color})`}" stroke-width="2"><title>${esc(tip)}</title></circle>`);
+      if (members.length > 1) parts.push(`<text x="${x + 5}" y="${y + 12}">×${members.length}</text>`);
       const key = `${e.node}|${d.stage}`;
       // One label per stage and lane, skipped where it would overlap the previous one.
       if (!labelled.has(key) && stages.STAGE_INDEX[d.stage] !== undefined && x - (lastLabel.get(e.node) ?? -Infinity) > 90) {
@@ -448,7 +477,7 @@
   });
   $('pause').addEventListener('click', () => { state.paused = !state.paused; $('pause').setAttribute('aria-pressed', String(state.paused)); $('pause').textContent = state.paused ? 'Resume' : 'Pause'; });
   $('clear').addEventListener('click', () => {
-    const keep = [...store.nodes.values()].filter(n => state.pollers.has(n.key)).map(n => ({ key: n.key, name: n.name, url: n.url, enode: n.enode, after: n.after }));
+    const keep = [...store.nodes.values()].filter(n => state.pollers.has(n.key)).map(n => ({ key: n.key, name: n.name, url: n.url, enode: n.enode, after: n.after, epoch: n.epoch }));
     store.clear();
     for (const n of keep) { store.node(n.key, n); state.pollers.get(n.key).node = store.nodes.get(n.key); }
     state.logKey = ''; state.aggAt = 0; state.wrapper = null; state.anchor = undefined;

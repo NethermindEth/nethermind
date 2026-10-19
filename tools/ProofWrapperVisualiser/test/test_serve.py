@@ -156,7 +156,8 @@ class TokenTests(unittest.TestCase):
         self.assertIn(b'content="0;url=/js/app.js?x=1"', body, "reloads the same path without the token")
         self.assertNotIn(self.TOKEN.encode(), body)
         self.assertEqual(headers["Referrer-Policy"], "no-referrer")
-        self.assertIn(b"url=/evil.example/", self.request(f"//evil.example/?token={self.TOKEN}")[2], "the reload stays on this server")
+        for crafted in ("//evil.example/", "/\\evil.example/", "/\\/evil.example/"):
+            self.assertIn(b'content="0;url=/evil.example/"', self.request(f"{crafted}?token={self.TOKEN}")[2], f"{crafted} stays on this server")
         cookie = headers["Set-Cookie"]
         self.assertTrue(cookie.startswith(f"pwv_token={self.TOKEN};"))
         self.assertIn("HttpOnly", cookie)
