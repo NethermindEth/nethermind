@@ -342,6 +342,33 @@ public class PayloadPreparationServiceTests
             TimeSpan.FromMilliseconds(1));
     }
 
+    [Test]
+    [CancelAfter(30000)]
+    public async Task GetPayload_waits_for_the_improvement_when_there_is_no_empty_block([Values] bool skipCancel)
+    {
+        using TestPayloadPreparationService service = CreateService(new RecordingBlockImprovementContextFactory());
+        TaskCompletionSource<Block?> improvement = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        Block improved = Build.A.Block.WithTransactions(Build.A.Transaction.TestObject).TestObject;
+        BlockProductionSnapshot best = new(null, UInt256.Zero);
+        IBlockImprovementContext context = Substitute.For<IBlockImprovementContext>();
+        context.Best.Returns(_ => best);
+        context.ImprovementTask.Returns(improvement.Task);
+        // Cancelling would fail the build, as it does when the improvement is waiting on the producer lock.
+        context.When(c => c.CancelOngoingImprovements()).Do(_ => improvement.TrySetCanceled());
+        service.Store("payload", context);
+
+        ValueTask<IBlockProductionContext?> payload = service.GetPayload("payload", skipCancel);
+        bool returnedEarly = payload.IsCompleted;
+        best = new(improved, UInt256.One);
+        improvement.TrySetResult(improved);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(returnedEarly, Is.False);
+            Assert.That((await payload)?.CurrentBestBlock, Is.SameAs(improved));
+        }
+    }
+
     private sealed class TestPayloadPreparationService(
         IBlockProducer blockProducer,
         ITxPool txPool,
@@ -367,7 +394,7 @@ public class PayloadPreparationServiceTests
         public void Improve(string payloadId, SharedCancellationTokenSource cts, DateTimeOffset? startDateTime = null) =>
             ImproveBlock(payloadId, ParentHeader, Attributes, Build.A.Block.TestObject, startDateTime ?? DateTimeOffset.UtcNow, UInt256.Zero, cts);
 
-        protected override void ImproveBlock(string payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes, Block currentBestBlock, DateTimeOffset startDateTime, UInt256 currentBlockFees, SharedCancellationTokenSource cts)
+        protected override void ImproveBlock(string payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes, Block? currentBestBlock, DateTimeOffset startDateTime, UInt256 currentBlockFees, SharedCancellationTokenSource cts)
         {
             int improvement = Interlocked.Increment(ref _improvements);
             BeforeImprove?.Invoke(improvement);
@@ -423,7 +450,7 @@ public class PayloadPreparationServiceTests
             }
         }
 
-        public IBlockImprovementContext StartBlockImprovementContext(Block currentBestBlock, BlockHeader parentHeader, PayloadAttributes payloadAttributes, DateTimeOffset startDateTime, UInt256 currentBlockFees, SharedCancellationTokenSource cts)
+        public IBlockImprovementContext StartBlockImprovementContext(Block? currentBestBlock, BlockHeader parentHeader, PayloadAttributes payloadAttributes, DateTimeOffset startDateTime, UInt256 currentBlockFees, SharedCancellationTokenSource cts)
         {
             MockBlockImprovementContext context;
             lock (_contexts)
