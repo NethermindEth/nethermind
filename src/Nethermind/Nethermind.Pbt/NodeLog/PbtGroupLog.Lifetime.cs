@@ -21,11 +21,7 @@ public sealed partial class PbtGroupLog
     /// <summary>Keeps the active generation and every later generation readable until the pin is disposed.</summary>
     public GenerationPin PinActiveGeneration()
     {
-        lock (_lock)
-        {
-            ThrowIfDisposed();
-            return PinGeneration(_active?.Id ?? checked(_lastGeneration + 1));
-        }
+        lock (_lock) return PinGeneration(_active?.Id ?? checked(_lastGeneration + 1));
     }
 
     private GenerationPin PinGeneration(uint generation)
@@ -50,14 +46,7 @@ public sealed partial class PbtGroupLog
         }
     }
 
-    private uint OldestPinnedGeneration
-    {
-        get
-        {
-            foreach ((uint generation, _) in _pins) return generation;
-            return uint.MaxValue;
-        }
-    }
+    private uint OldestPinnedGeneration => _pins.Count == 0 ? uint.MaxValue : _pins.Keys[0];
 
     private bool KeepOpportunistically(Generation generation) =>
         !_disposed && _lastGeneration - generation.Id < (uint)_retainedGenerations;

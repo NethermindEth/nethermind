@@ -22,7 +22,7 @@ public sealed partial class PbtGroupLog : IDisposable
     private const int RecordAlignment = sizeof(ulong);
     private readonly Lock _lock = new();
     private readonly ConcurrentDictionary<uint, Generation> _generations = new();
-    private readonly SortedDictionary<uint, int> _pins = [];
+    private readonly SortedList<uint, int> _pins = [];
     private readonly IRefCountingMemoryProvider _memoryProvider;
     private readonly int _generationBytes;
     private readonly int _retainedGenerations;

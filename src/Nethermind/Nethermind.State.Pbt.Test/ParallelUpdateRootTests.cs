@@ -711,8 +711,7 @@ public class ParallelUpdateRootTests
             Assert.That(Log.TryGetRecord(operation, RootReference, out PbtGroupRecord record), Is.True);
             using PbtGroupLog.GenerationPin parent = Log.PinActiveGeneration();
             RootReference = Log.Append(operation, default, record.Payload.Span, unknownLinks ? PbtGroupLinks.Unknown : record.Links);
-            _content.Dispose();
-            _content = new PbtSnapshotContent(Log, _memory);
+            DiscardUncommittedState();
             _content.SetNodeGroupReference(default(PbtStorageNodePath), RootReference);
         }
 

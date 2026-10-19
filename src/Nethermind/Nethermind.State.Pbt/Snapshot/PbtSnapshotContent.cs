@@ -38,7 +38,7 @@ public sealed class PbtSnapshotContent : IDisposable, IResettable
     public readonly Dictionary<PbtNodePath, PbtGroupReference> CodeNodeGroups = [];
     public readonly Dictionary<PbtStorageNodePath, PbtGroupReference> StorageNodeGroups = [];
     private readonly IRefCountingMemoryProvider _nodeGroupMemory;
-    internal PbtGroupLog.GenerationPin? NodeGroupPin { get; private set; }
+    private PbtGroupLog.GenerationPin? _nodeGroupPin;
 
     /// <summary>Creates content backed by the pool's traversal log and selected payload allocator.</summary>
     public PbtSnapshotContent(PbtGroupLog? nodeGroupLog = null, IRefCountingMemoryProvider? nodeGroupMemory = null)
@@ -51,7 +51,8 @@ public sealed class PbtSnapshotContent : IDisposable, IResettable
     /// <summary>The traversal log whose references this content owns.</summary>
     public PbtGroupLog NodeGroupLog { get; }
 
-    internal void BeginNodeGroupWrites() => NodeGroupPin ??= NodeGroupLog.PinActiveGeneration();
+    /// <summary>Pins the log's active generation, unless already pinned, so later group writes stay readable.</summary>
+    public void BeginNodeGroupWrites() => _nodeGroupPin ??= NodeGroupLog.PinActiveGeneration();
 
     /// <summary>The runs of header slots for <see cref="PbtPath"/> run keys, or of the other slots for <see cref="PbtStoragePath"/> ones.</summary>
     private ConcurrentDictionary<HashedKey<TKey>, PackedSlotRun> Runs<TKey>() where TKey : struct, IPbtKey<TKey> =>
@@ -135,18 +136,13 @@ public sealed class PbtSnapshotContent : IDisposable, IResettable
     /// <summary>Records a group replacement from this content's pinned generation range, or a tombstone.</summary>
     public void SetNodeGroupReference<TPath>(TPath groupKey, PbtGroupReference reference) where TPath : struct, IPbtNodePath<TPath>
     {
+        if (reference.IsUnknown) throw new ArgumentException("A snapshot entry must be a group reference or a tombstone.", nameof(reference));
         switch (PbtPartitions.PartitionOfPath(groupKey))
         {
-            case PbtPartition.Storage: SetNodeGroupReference(StorageNodeGroups, groupKey.ToPath<PbtStorageNodePath>(), reference); break;
-            case PbtPartition.Code: SetNodeGroupReference(CodeNodeGroups, groupKey.ToPath<PbtNodePath>(), reference); break;
-            default: SetNodeGroupReference(AccountNodeGroups, groupKey.ToPath<PbtNodePath>(), reference); break;
+            case PbtPartition.Storage: StorageNodeGroups[groupKey.ToPath<PbtStorageNodePath>()] = reference; break;
+            case PbtPartition.Code: CodeNodeGroups[groupKey.ToPath<PbtNodePath>()] = reference; break;
+            default: AccountNodeGroups[groupKey.ToPath<PbtNodePath>()] = reference; break;
         }
-    }
-
-    private static void SetNodeGroupReference<TStored>(Dictionary<TStored, PbtGroupReference> partition, TStored groupKey, PbtGroupReference reference) where TStored : struct, IPbtNodePath<TStored>
-    {
-        if (reference.IsUnknown) throw new ArgumentException("A snapshot entry must be a group reference or a tombstone.", nameof(reference));
-        partition[groupKey] = reference;
     }
 
     /// <summary>Returns an authoritative group reference or tombstone; false means this layer has no entry.</summary>
@@ -182,11 +178,11 @@ public sealed class PbtSnapshotContent : IDisposable, IResettable
     internal void CopyNodeGroupsFrom(PbtSnapshotContent source)
     {
         Debug.Assert(ReferenceEquals(NodeGroupLog, source.NodeGroupLog));
-        if (source.NodeGroupPin is { } pin && (NodeGroupPin is null || pin.Generation < NodeGroupPin.Generation))
+        if (source._nodeGroupPin is { } pin && (_nodeGroupPin is null || pin.Generation < _nodeGroupPin.Generation))
         {
             PbtGroupLog.GenerationPin copy = pin.Copy();
-            NodeGroupPin?.Dispose();
-            NodeGroupPin = copy;
+            _nodeGroupPin?.Dispose();
+            _nodeGroupPin = copy;
         }
         foreach ((PbtNodePath path, PbtGroupReference reference) in source.AccountNodeGroups) AccountNodeGroups[path] = reference;
         foreach ((PbtNodePath path, PbtGroupReference reference) in source.CodeNodeGroups) CodeNodeGroups[path] = reference;
@@ -205,8 +201,8 @@ public sealed class PbtSnapshotContent : IDisposable, IResettable
         AccountNodeGroups.Clear();
         CodeNodeGroups.Clear();
         StorageNodeGroups.Clear();
-        NodeGroupPin?.Dispose();
-        NodeGroupPin = null;
+        _nodeGroupPin?.Dispose();
+        _nodeGroupPin = null;
     }
 
     public PbtSnapshotPayloadSize GetPayloadSize()

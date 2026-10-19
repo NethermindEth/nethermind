@@ -124,10 +124,10 @@ public class PbtSnapshotBundleTests
         if (persistedTier != 0)
         {
             using PbtSnapshot first = new(StateId.PreGenesis, new StateId(0, default), default,
-                Layer(older), pool, PbtResourcePool.Usage.MainBlockProcessing);
+                Content(path, older), pool, PbtResourcePool.Usage.MainBlockProcessing);
             persisted.Add(persistedStore.Build(first));
             using PbtSnapshot second = new(first.To, new StateId(1, default), default,
-                Layer(persistedTier == 2 ? null : newer), pool, PbtResourcePool.Usage.MainBlockProcessing);
+                Content(path, persistedTier == 2 ? null : newer), pool, PbtResourcePool.Usage.MainBlockProcessing);
             persisted.Add(persistedStore.Build(second));
         }
         PbtSnapshotContent shared = pool.GetSnapshotContent(PbtResourcePool.Usage.MainBlockProcessing);
@@ -160,12 +160,6 @@ public class PbtSnapshotBundleTests
         }
 
         byte[] Encoding(byte seed) => PbtNodeGroupEncoder.Encode(path, [new PbtNodeRecord(path, BranchEncoding(seed))], default);
-        PbtSnapshotContent Layer(byte[]? encoding)
-        {
-            PbtSnapshotContent content = pool.GetSnapshotContent(PbtResourcePool.Usage.MainBlockProcessing);
-            Set(content, encoding);
-            return content;
-        }
         void Set(PbtSnapshotContent content, byte[]? encoding)
         {
             using RefCountingMemory? payload = encoding is null ? null : Memory(encoding);

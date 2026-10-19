@@ -58,8 +58,7 @@ public class PbtSnapshotCompactor(
             }
 
             PbtSnapshot newest = chainOldestFirst[^1];
-            PbtGroupReference rootReference = ReferenceEquals(merged.NodeGroupLog, newest.Content.NodeGroupLog)
-                ? newest.RootGroupReference : newest.TreeRoot == default ? PbtGroupReference.None : PbtGroupReference.Unknown;
+            PbtGroupReference rootReference = newest.RootGroupReference;
             if (merged.TryGetNodeGroupReference(default(PbtStorageNodePath), out PbtGroupReference writtenRoot)) rootReference = writtenRoot;
             return new PbtSnapshot(chainOldestFirst[0].From, newest.To, newest.TreeRoot, merged, resourcePool, usage) { RootGroupReference = rootReference };
         }

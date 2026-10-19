@@ -110,13 +110,8 @@ public sealed class PbtSnapshotBundle(
     /// <summary>Publishes an authoritative group reference from this bundle's traversal log.</summary>
     public void SetNodeGroupReference(PbtStorageNodePath groupKey, PbtGroupReference reference) => WriteBuffer.SetNodeGroupReference(groupKey, reference);
 
-    public RefCountingMemory? GetNodeGroup(PbtStorageNodePath groupKey)
-    {
-        if (WriteBuffer.TryGetNodeGroup(groupKey, out RefCountingMemory? payload)) return payload;
-        for (int index = snapshots.Count - 1; index >= 0; index--)
-            if (snapshots[index].Content.TryGetNodeGroup(groupKey, out payload)) return payload;
-        return readOnlyBundle.TryGetSnapshotNodeGroup(groupKey, out payload) ? payload : GetPersistedNodeGroup(groupKey);
-    }
+    public RefCountingMemory? GetNodeGroup(PbtStorageNodePath groupKey) =>
+        TryGetSnapshotNodeGroup(groupKey, out RefCountingMemory? payload) ? payload : GetPersistedNodeGroup(groupKey);
 
     /// <summary>Returns a caller-owned group lease or a null tombstone from the visible snapshot layers; false means no snapshot has an entry.</summary>
     public bool TryGetSnapshotNodeGroup(PbtStorageNodePath groupKey, out RefCountingMemory? payload)
