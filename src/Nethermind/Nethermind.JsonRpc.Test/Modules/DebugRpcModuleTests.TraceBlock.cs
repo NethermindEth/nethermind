@@ -51,7 +51,7 @@ public partial class DebugRpcModuleTests
 {
     private static IEnumerable<TestCaseData> NativeBooleanConfigCases()
     {
-        foreach (string field in new[] { "onlyTopCall", "withLog", "diffMode" })
+        foreach (string field in new[] { "onlyTopCall", "withLog", "diffMode", "includeEmpty" })
         {
             foreach ((string values, bool expected) in new (string, bool)[]
             {
@@ -79,7 +79,7 @@ public partial class DebugRpcModuleTests
         byte[] code = Prepare.EvmCode.Log(0, 0).Call(TestItem.AddressC, 30_000).STOP().Done;
         Block block = await chain.AddBlock(Build.A.Transaction.WithNonce(nonce).WithCode(code)
             .WithGasLimit(1_000_000).SignedAndResolved(TestItem.PrivateKeyB).TestObject);
-        string tracer = field == "diffMode" ? "prestateTracer" : "callTracer";
+        string tracer = field is "diffMode" or "includeEmpty" ? "prestateTracer" : "callTracer";
         async Task<JToken> Trace(string json)
         {
             string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceBlockByNumber", block.Number,
@@ -94,7 +94,7 @@ public partial class DebugRpcModuleTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(JToken.DeepEquals(actual, baseline), Is.True, actual.ToString());
-            Assert.That(actual["calls"] is not null, Is.EqualTo(field != "diffMode" && !(field == "onlyTopCall" && expected)));
+            Assert.That(actual["calls"] is not null, Is.EqualTo(field is not ("diffMode" or "includeEmpty") && !(field == "onlyTopCall" && expected)));
             Assert.That(actual["logs"] is not null, Is.EqualTo(field == "withLog" && expected));
             Assert.That(actual["pre"] is not null && actual["post"] is not null, Is.EqualTo(field == "diffMode" && expected));
         }
@@ -102,7 +102,7 @@ public partial class DebugRpcModuleTests
 
     [Test]
     public async Task Debug_traceBlockByNumber_native_boolean_config_rejects_invalid_types(
-        [Values("onlyTopCall", "withLog", "diffMode", "disableCode", "disableStorage")] string field,
+        [Values("onlyTopCall", "withLog", "diffMode", "includeEmpty", "disableCode", "disableStorage")] string field,
         [Values("1", "[]", "{}", "\"invalid\"")] string value)
     {
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
