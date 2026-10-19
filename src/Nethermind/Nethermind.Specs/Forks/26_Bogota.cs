@@ -17,6 +17,9 @@ public class Bogota() : NamedReleaseSpec<Bogota>(Amsterdam.Instance)
         spec.Name = "Bogota";
         spec.IsEip7805Enabled = true;
         spec.IsEip8198Enabled = true;
+        spec.TargetBlobCount = 12;
+        spec.MaxBlobCount = 18;
+        spec.BlobBaseFeeUpdateFraction = 12018519;
         spec.EngineApiNewPayloadVersion = EngineApiVersions.NewPayload.V6;
         spec.EngineApiForkchoiceVersion = EngineApiVersions.Fcu.V5;
     }

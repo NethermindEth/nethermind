@@ -486,6 +486,32 @@ public class GethGenesisLoaderTests
     }
 
     [Test]
+    public void Can_load_bogota_blob_schedule([Values(0UL, 100UL)] ulong bogotaTimestamp)
+    {
+        ChainSpec chainSpec = LoadStandardGethGenesis(configExtra: $$"""
+            "cancunTime": 0,
+            "amsterdamTime": 0,
+            "bogotaTime": {{bogotaTimestamp}},
+            "eip8198SlotDurationMs": 12000,
+            "blobSchedule": {
+                "amsterdam": { "target": 14, "max": 21, "baseFeeUpdateFraction": 11684671 },
+                "bogota": { "target": 12, "max": 18, "baseFeeUpdateFraction": 12018519 }
+            }
+            """);
+        ChainSpecBasedSpecProvider provider = new(chainSpec);
+        IReleaseSpec spec = provider.GetSpec(ForkActivation.TimestampOnly(bogotaTimestamp));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(spec.TargetBlobCount, Is.EqualTo(12));
+            Assert.That(spec.MaxBlobCount, Is.EqualTo(18));
+            Assert.That(spec.BlobBaseFeeUpdateFraction, Is.EqualTo(12018519));
+            if (bogotaTimestamp != 0)
+                Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(bogotaTimestamp - 1)).MaxBlobCount, Is.EqualTo(21));
+        }
+    }
+
+    [Test]
     public void Can_load_genesis_with_account_storage_and_code()
     {
         ChainSpec chainSpec = LoadStandardGethGenesis(allocJson: """

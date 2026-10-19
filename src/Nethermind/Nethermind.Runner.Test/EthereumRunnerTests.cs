@@ -615,7 +615,11 @@ public class EthereumRunnerTests
             using Stream source = typeof(IConfig).Assembly.GetManifestResourceStream("Nethermind.Config.chainspec.hoodi.json")!;
             JsonNode genesis = JsonNode.Parse(source)!;
             genesis["config"]!["amsterdamTime"] = 0;
-            if (chain == "bogota") genesis["config"]!["bogotaTime"] = 0;
+            if (chain == "bogota")
+            {
+                genesis["config"]!["bogotaTime"] = 0;
+                genesis["config"]!["eip8198SlotDurationMs"] = 12_000;
+            }
             using MemoryStream modified = new(System.Text.Encoding.UTF8.GetBytes(genesis.ToJsonString()));
             return new AutoDetectingChainSpecLoader(new EthereumJsonSerializer(), NullLogManager.Instance).Load(modified);
         }
