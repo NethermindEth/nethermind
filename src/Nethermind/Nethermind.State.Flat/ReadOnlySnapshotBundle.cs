@@ -77,6 +77,9 @@ public sealed class ReadOnlySnapshotBundle(
         if (persistenceReader is IPersistence.IPrefetchingReader prefetcher) prefetcher.Prefetch(accounts, slots, cancellationToken);
     }
 
+    /// <summary>Whether <see cref="Prefetch"/> reads anything ahead from the persistence below.</summary>
+    public bool SupportsPrefetch => persistenceReader is IPersistence.IPrefetchingReader { SupportsPrefetch: true };
+
     public Account? GetAccount(Address address) => GetAccount(address, address);
 
     public Account? GetAccount(Address address, HashedKey<Address> key)

@@ -1096,13 +1096,14 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     /// Per-thread key and column family arrays for <see cref="Prefetch"/>, one exact-length array per batch size, so
     /// a batch allocates nothing on the caller side. Batches larger than <see cref="MaxReusedKeys"/> allocate.
     /// </summary>
+    /// <remarks>Each array is made the first time a thread uses its batch size, so a thread keeps only the sizes it uses.</remarks>
     private static class PrefetchBuffers
     {
         private const int MaxReusedKeys = 64;
         private const int MaxReusedKeyLengths = 4;
 
         [ThreadStatic] private static KeyArrays?[]? t_keys;
-        [ThreadStatic] private static IColumnFamilyHandle[][]? t_families;
+        [ThreadStatic] private static IColumnFamilyHandle[]?[]? t_families;
 
         public static byte[][] Keys(int keyLength, int count)
         {
@@ -1121,15 +1122,8 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         public static IColumnFamilyHandle[] Families(int count)
         {
             if (count > MaxReusedKeys) return new IColumnFamilyHandle[count];
-            IColumnFamilyHandle[][] byCount = t_families ??= NewFamilies();
-            return byCount[count];
-        }
-
-        private static IColumnFamilyHandle[][] NewFamilies()
-        {
-            IColumnFamilyHandle[][] byCount = new IColumnFamilyHandle[MaxReusedKeys + 1][];
-            for (int count = 0; count < byCount.Length; count++) byCount[count] = new IColumnFamilyHandle[count];
-            return byCount;
+            IColumnFamilyHandle[]?[] byCount = t_families ??= new IColumnFamilyHandle[MaxReusedKeys + 1][];
+            return byCount[count] ??= new IColumnFamilyHandle[count];
         }
 
         private static byte[][] NewKeys(int keyLength, int count)
@@ -1140,20 +1134,21 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         }
 
         /// <summary>One set of key buffers; the array for each batch size references the first buffers of the set.</summary>
-        private sealed class KeyArrays
+        private sealed class KeyArrays(int keyLength)
         {
-            private readonly byte[][][] _byCount = new byte[MaxReusedKeys + 1][][];
+            private readonly byte[]?[] _keys = new byte[MaxReusedKeys][];
+            private readonly byte[][]?[] _byCount = new byte[MaxReusedKeys + 1][][];
 
-            public KeyArrays(int keyLength)
+            public int KeyLength { get; } = keyLength;
+
+            public byte[][] ForCount(int count) => _byCount[count] ?? CreateForCount(count);
+
+            private byte[][] CreateForCount(int count)
             {
-                KeyLength = keyLength;
-                byte[][] keys = NewKeys(keyLength, MaxReusedKeys);
-                for (int count = 0; count < _byCount.Length; count++) _byCount[count] = keys[..count];
+                byte[][] keys = new byte[count][];
+                for (int i = 0; i < count; i++) keys[i] = _keys[i] ??= new byte[KeyLength];
+                return _byCount[count] = keys;
             }
-
-            public int KeyLength { get; }
-
-            public byte[][] ForCount(int count) => _byCount[count];
         }
     }
 

@@ -63,6 +63,8 @@ public class RefCountingPersistenceReader : RefCountingDisposable, IPersistence.
         if (_innerReader is IPersistence.IPrefetchingReader prefetcher) prefetcher.Prefetch(accounts, slots, cancellationToken);
     }
 
+    public bool SupportsPrefetch => _innerReader is IPersistence.IPrefetchingReader { SupportsPrefetch: true };
+
     public IPersistence.IFlatIterator CreateStorageIterator(in ValueHash256 accountKey, in ValueHash256 startSlotKey, in ValueHash256 endSlotKey) =>
         _innerReader.CreateStorageIterator(accountKey, startSlotKey, endSlotKey);
 

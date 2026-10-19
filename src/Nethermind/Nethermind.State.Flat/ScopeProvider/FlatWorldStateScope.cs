@@ -276,7 +276,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                 // those, and a cold one has its reads in flight before phase 1 reads them one at a time.
                 // Skipped like the warmup below once the hint is cancelled, superseded or paused, so a block that
                 // no longer needs it never waits for its key collection and submission in CancelHintBal.
-                if (!token.IsCancellationRequested && _hintSequenceId == snapshot && !_pausePrewarmer)
+                if (!token.IsCancellationRequested && _hintSequenceId == snapshot && !_pausePrewarmer && SupportsPrefetch)
                     PrefetchBalSafely(accountChanges, token);
 
                 // Phase 1: trie warmup + GetAccount + sink.OnAccountRead. Sink slot reads are
@@ -389,25 +389,42 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         // An account's slots stay adjacent, so its hash is computed once below.
         Address[] accounts = ArrayPool<Address>.Shared.Rent(accountChanges.Count);
         StorageCell[] slots = ArrayPool<StorageCell>.Shared.Rent(slotCount);
-        try
+        if (CollectBalKeys(accountChanges, accounts, slots, cancellationToken, out int accountCount, out int collectedSlots))
+            _snapshotBundle.Prefetch(accounts.AsSpan(0, accountCount), slots.AsSpan(0, collectedSlots), cancellationToken);
+
+        ArrayPool<Address>.Shared.Return(accounts, clearArray: true);
+        ArrayPool<StorageCell>.Shared.Return(slots, clearArray: true);
+    }
+
+    // How many slots are copied between cancellation checks, so one account with a large slot list still stops soon.
+    private const int SlotsPerCancellationCheck = 1024;
+
+    /// <returns>False when <paramref name="cancellationToken"/> is cancelled before every key is copied.</returns>
+    internal static bool CollectBalKeys(ArrayPoolList<ReadOnlyAccountChanges> accountChanges, Address[] accounts, StorageCell[] slots,
+        CancellationToken cancellationToken, out int accountCount, out int slotCount)
+    {
+        accountCount = 0;
+        slotCount = 0;
+        foreach (ReadOnlyAccountChanges changes in accountChanges.AsSpan())
         {
-            int accountIndex = 0;
-            int slotIndex = 0;
-            foreach (ReadOnlyAccountChanges changes in accountChanges.AsSpan())
+            if (cancellationToken.IsCancellationRequested) return false;
+
+            Address address = changes.Address;
+            accounts[accountCount++] = address;
+            foreach (ReadOnlySlotChanges slotChanges in changes.StorageChanges)
             {
-                Address address = changes.Address;
-                accounts[accountIndex++] = address;
-                foreach (ReadOnlySlotChanges slotChanges in changes.StorageChanges) slots[slotIndex++] = new StorageCell(address, slotChanges.Key);
-                foreach (UInt256 slot in changes.StorageReads) slots[slotIndex++] = new StorageCell(address, slot);
+                if (++slotCount % SlotsPerCancellationCheck == 0 && cancellationToken.IsCancellationRequested) return false;
+                slots[slotCount - 1] = new StorageCell(address, slotChanges.Key);
             }
 
-            _snapshotBundle.Prefetch(accounts.AsSpan(0, accountIndex), slots.AsSpan(0, slotIndex), cancellationToken);
+            foreach (UInt256 slot in changes.StorageReads)
+            {
+                if (++slotCount % SlotsPerCancellationCheck == 0 && cancellationToken.IsCancellationRequested) return false;
+                slots[slotCount - 1] = new StorageCell(address, slot);
+            }
         }
-        finally
-        {
-            ArrayPool<Address>.Shared.Return(accounts, clearArray: true);
-            ArrayPool<StorageCell>.Shared.Return(slots, clearArray: true);
-        }
+
+        return true;
     }
 
     private void RunSinkSlotReads(
@@ -516,7 +533,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     public void Prefetch(Span<Address> accounts, Span<StorageCell> slots, CancellationToken cancellationToken) => _snapshotBundle.Prefetch(accounts, slots, cancellationToken);
 
-    public bool SupportsPrefetch => true;
+    public bool SupportsPrefetch => _snapshotBundle.SupportsPrefetch;
 
     public void HintWarmAccount(Address address)
     {

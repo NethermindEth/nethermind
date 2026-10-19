@@ -26,9 +26,8 @@ public class WorldStateDecoratorTests
         Assert.That(target.DeclaringType, Is.EqualTo(typeof(WorldStateDecorator)));
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public void Decorator_reports_the_prefetch_support_of_the_decorated_state(bool supported)
+    [Test]
+    public void Decorator_reports_the_prefetch_support_of_the_decorated_state([Values] bool supported)
     {
         IWorldState inner = Substitute.For<IWorldState>();
         inner.SupportsPrefetch.Returns(supported);

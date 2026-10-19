@@ -1962,6 +1962,7 @@ public class FlatWorldStateScopeProviderTests
 
         public List<Address> Accounts { get; } = [];
         public List<StorageCell> Slots { get; } = [];
+        public bool SupportsPrefetch { get; init; } = true;
 
         public void Prefetch(Span<Address> accounts, Span<StorageCell> slots, CancellationToken cancellationToken)
         {
@@ -2088,6 +2089,47 @@ public class FlatWorldStateScopeProviderTests
         {
             Assert.That(reader.Accounts, Is.EquivalentTo(paused ? Array.Empty<Address>() : new[] { TestItem.AddressA, TestItem.AddressB }));
             Assert.That(reader.Slots, Is.EquivalentTo(paused ? Array.Empty<StorageCell>() : new[] { new StorageCell(TestItem.AddressA, 1), new StorageCell(TestItem.AddressB, 1) }));
+        }
+    }
+
+    [Test]
+    public async Task HintBal_StoreThatCannotPrefetch_CollectsNoKeys()
+    {
+        PrefetchRecordingReader reader = new() { SupportsPrefetch = false };
+        using TestContext ctx = new(persistenceReader: reader);
+        FlatWorldStateScope scope = ctx.Scope;
+
+        await scope.HintBal(CreateBal(WrittenAccount(TestItem.AddressA, BalWriteKind.Storage), ReadOnlyAccount(TestItem.AddressB)));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(scope.SupportsPrefetch, Is.False, "the scope reports the store's prefetch support");
+            Assert.That(reader.Accounts, Is.Empty);
+            Assert.That(reader.Slots, Is.Empty);
+        }
+    }
+
+    [Test]
+    public void CollectBalKeys_StopsWhenCancelled([Values] bool cancelled)
+    {
+        const int SlotCount = 3000;
+        UInt256[] reads = new UInt256[SlotCount];
+        for (int i = 0; i < reads.Length; i++) reads[i] = (UInt256)i;
+        using ArrayPoolList<ReadOnlyAccountChanges> accountChanges = new(2)
+        {
+            ReadOnlyAccount(TestItem.AddressA),
+            new ReadOnlyAccountChanges(TestItem.AddressB, [], reads, [], [], [])
+        };
+        Address[] accounts = new Address[accountChanges.Count];
+        StorageCell[] slots = new StorageCell[SlotCount + 1];
+
+        bool completed = FlatWorldStateScope.CollectBalKeys(accountChanges, accounts, slots, new CancellationToken(cancelled), out int accountCount, out int slotCount);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(completed, Is.EqualTo(!cancelled));
+            Assert.That(accountCount, Is.EqualTo(cancelled ? 0 : 2));
+            Assert.That(slotCount, Is.EqualTo(cancelled ? 0 : SlotCount + 1));
         }
     }
 

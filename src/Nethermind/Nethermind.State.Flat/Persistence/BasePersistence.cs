@@ -30,6 +30,9 @@ namespace Nethermind.State.Flat.Persistence;
 /// </summary>
 public static class BasePersistence
 {
+    /// <summary>The index of sample <paramref name="sample"/> of <paramref name="sampleCount"/> spread evenly over <paramref name="length"/> keys.</summary>
+    private static int SampleIndex(int sample, int sampleCount, int length) => (int)((long)sample * length / sampleCount);
+
     public const int StoragePrefixPortion = 4;
 
     private static readonly byte[] CurrentStateKey = Keccak.Compute("CurrentState").BytesToArray();
@@ -304,6 +307,9 @@ public static class BasePersistence
         /// <summary>Starts reading the hashed keys that <paramref name="keys"/> produces ahead of use; does nothing by default.</summary>
         public void Prefetch<TKeys>(ref TKeys keys, CancellationToken cancellationToken) where TKeys : struct, IHashedPrefetchKeys, allows ref struct { }
 
+        /// <summary>Whether <see cref="Prefetch{TKeys}"/> reads anything ahead; false by default, where it does nothing.</summary>
+        public bool SupportsPrefetch => false;
+
         /// <summary>Whether reading this account is answered from memory; true when the store cannot prefetch.</summary>
         public bool IsAccountCached(in ValueHash256 account) => true;
 
@@ -367,6 +373,9 @@ public static class BasePersistence
         /// <summary>Starts reading accounts and slots ahead of use; does nothing by default.</summary>
         /// <remarks>The spans are the caller's scratch: readers may filter them in place.</remarks>
         public void Prefetch(Span<Address> accounts, Span<StorageCell> slots, CancellationToken cancellationToken) { }
+
+        /// <summary>Whether <see cref="Prefetch"/> reads anything ahead; false by default, where it does nothing.</summary>
+        public bool SupportsPrefetch => false;
     }
 
     public interface IFlatWriteBatch
@@ -497,6 +506,8 @@ public static class BasePersistence
 
         public bool IsPreimageMode => _flatReader.IsPreimageMode;
 
+        public bool SupportsPrefetch => _flatReader.SupportsPrefetch;
+
         public void Prefetch(Span<Address> accounts, Span<StorageCell> slots, CancellationToken cancellationToken)
         {
             if (cancellationToken.IsCancellationRequested) return;
@@ -544,9 +555,6 @@ public static class BasePersistence
 
         // Enough probes that a block with a third of its reads cold is sampled cold with over 95% probability.
         private const int PrefetchSamples = 8;
-
-        /// <summary>The index of sample <paramref name="sample"/> of <paramref name="sampleCount"/> spread evenly over <paramref name="length"/> keys.</summary>
-        private static int SampleIndex(int sample, int sampleCount, int length) => (int)((long)sample * length / sampleCount);
 
         private bool SampledAccountsCached(ReadOnlySpan<Address> accounts)
         {
@@ -614,6 +622,8 @@ public static class BasePersistence
             _flatReader.CreateStorageIterator(accountKey, startSlotKey, endSlotKey);
 
         public bool IsPreimageMode => _flatReader.IsPreimageMode;
+
+        public bool SupportsPrefetch => _flatReader.SupportsPrefetch;
 
         public void Prefetch(Span<Address> accounts, Span<StorageCell> slots, CancellationToken cancellationToken) =>
             _flatReader.Prefetch(accounts, slots, cancellationToken);

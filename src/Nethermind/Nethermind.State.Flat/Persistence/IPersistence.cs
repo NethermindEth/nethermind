@@ -66,6 +66,10 @@ public interface IPersistence
         /// what later reads return. The spans are used only during the call and are not kept.
         /// </remarks>
         void Prefetch(Span<Address> accounts, Span<StorageCell> slots, CancellationToken cancellationToken);
+
+        /// <summary>Whether <see cref="Prefetch"/> reads anything ahead. A wrapper reports what the reader it wraps reports,
+        /// so a caller that gets false skips collecting the keys.</summary>
+        bool SupportsPrefetch => true;
     }
 
     public interface IWriteBatch : IDisposable

@@ -150,6 +150,9 @@ public static class BaseFlatPersistence
 
         public bool IsPreimageMode => isPreimageMode;
 
+        /// <summary>True when a store reads ahead; preimage keys are not hashed, so the hashed prefetch keys do not apply.</summary>
+        public bool SupportsPrefetch => !isPreimageMode && (state is IReadPrefetcher || storage is IReadPrefetcher);
+
         [SkipLocalsInit]
         public bool IsAccountCached(in ValueHash256 account) =>
             state is not IReadPrefetcher prefetcher || prefetcher.IsCached(EncodeAccountKeyHashed(stackalloc byte[AccountKeyLength], account));

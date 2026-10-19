@@ -1232,9 +1232,8 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
     /// The prewarmer wraps its world state in a <see cref="FootprintRecorder"/> when handoff is on, the default; the
     /// address warmer prefetches only when that wrapper reports and forwards the backend's prefetch support.
     /// </summary>
-    [TestCase(true)]
-    [TestCase(false)]
-    public void FootprintRecorder_forwards_prefetch_to_the_recorded_state(bool supported)
+    [Test]
+    public void FootprintRecorder_forwards_prefetch_to_the_recorded_state([Values] bool supported)
     {
         PrefetchRecordingState inner = new(Substitute.For<IWorldState>(), supported);
         IWorldState recorder = new FootprintRecorder(inner);
