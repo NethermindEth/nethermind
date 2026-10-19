@@ -48,6 +48,16 @@ public class Unnamed
             "a9059cbb00000000000000000000000000000000000000000000000000000000" + // `fnSignature`
             "0000000000000000000000000000000000000000000000000000000000000001"); // `value`
 
+        yield return Case(new AbiSignature().With(AbiType.Address), new Address("0xdcc703c0e500b653ca82273b7bfad8045d85a470"),
+            "000000000000000000000000dcc703c0e500b653ca82273b7bfad8045d85a470"); // `0xdcc703c0e500b653ca82273b7bfad8045d85a470`
+
+        yield return Case(new AbiSignature().With(AbiType.UInt256), (UInt256)98127491,
+            "0000000000000000000000000000000000000000000000000000000005d94e83"); // `98127491`
+
+        yield return Case(new AbiSignature().With(AbiType.UInt256, AbiType.Address), ((UInt256)324124, new Address("0xcd2a3d9f938e13cd947ec05abc7fe734df8dd826")),
+            "000000000000000000000000000000000000000000000000000000000004f21c" + // First argument, `324124`
+            "000000000000000000000000cd2a3d9f938e13cd947ec05abc7fe734df8dd826"); // Second argument, `0xcd2a3d9f938e13cd947ec05abc7fe734df8dd826`
+
         yield return Case(new AbiSignature().With(), default, "");
     }
 

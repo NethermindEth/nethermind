@@ -90,7 +90,10 @@ public class UserErrors
     {
         AbiSignature<UInt256> uint256 = new AbiSignature("f").With(AbiType.UInt256);
         AbiSignature<string> str = new AbiSignature("f").With(AbiType.String);
+        AbiSignature<bool> boolean = new AbiSignature("f").With(AbiType.Bool);
 
+        yield return new TestCaseData(boolean, Array.Empty<byte>()).SetName("empty input");
+        yield return MalformedInput(boolean, "").SetName("method id without arguments");
         yield return new TestCaseData(uint256, uint256.MethodId[..2].ToArray()).SetName("shorter than method id");
         yield return MalformedInput(uint256, "0102030405").SetName("truncated uint256");
         yield return MalformedInput(str,
@@ -99,6 +102,20 @@ public class UserErrors
             "0000000000000000000000000000000000000000000000000000000000000020" +
             "00000000000000000000000000000000000000000000000000000000000003e8" +
             "6162630000000000000000000000000000000000000000000000000000000000").SetName("string length beyond input");
+        yield return MalformedInput(new AbiSignature("f").With(AbiType.Bytes),
+            "0000000000000000000000000000000000000000000000000000000000000020" + // Offset to the bytes
+            "0000000000000000000000000000000000000000000000000000000000000001"   // Length of the bytes, with no contents after it
+        ).SetName("bytes length one beyond input");
+        yield return MalformedInput(new AbiSignature("DepositEvent").With(AbiType.Bytes, AbiType.Bytes, AbiType.Bytes, AbiType.Bytes, AbiType.Bytes),
+            "00000000000000000000000000000000000000000000000000000000000000a0" + // Offset to first argument
+            "0000000000000000000000000000000000000000000000000000000000000000" + // Offset to second argument
+            "0000000000000000000000000000000000000000000000000000000000000000" + // Offset to third argument
+            "0000000000000000000000000000000000000000000000000000000000000000" + // Offset to fourth argument
+            "0000000000000000000000000000000000000000000000000000000000000000" + // Offset to fifth argument
+            "00000000000000000000000000000000000000000000000000000000000000c8" + // Length of first argument, `200`
+            "0000000000000000000000000000000000000000000000000000000000000000" + // Contents of first argument, 64 of the declared 200 bytes
+            "0000000000000000000000000000000000000000000000000000000000000000"   // Contents of first argument, continued
+        ).SetName("bytes length beyond input among five arguments");
         yield return MalformedInput(new AbiSignature("f").With(AbiType.Bytes),
             "8000000000000000000000000000000000000000000000000000000000000000").SetName("bytes offset overflows int");
         yield return MalformedInput(new AbiSignature("f").With(AbiType.Array(AbiType.UInt256)),
@@ -288,6 +305,35 @@ public class UserErrors
             "0000000000000000000000000000000000000000000000000000000000000400" + // Length of the shared element, 1 KB
             new string('0', 2 * 1024) // Contents of the shared element
         ).SetName("bytes[] elements aliasing one 1 KB tail");
+        yield return MalformedInput(new AbiSignature("f").With(AbiType.Array(AbiType.Array(AbiType.UInt256))),
+            "0000000000000000000000000000000000000000000000000000000000000020" + // Offset to the array
+            "0000000000000000000000000000000000000000000000000000000000000080" + // Length of the array, 128
+            string.Concat(Enumerable.Repeat("0000000000000000000000000000000000000000000000000000000000001000", 128)) + // Offsets to all 128 elements, aliasing the first
+            "0000000000000000000000000000000000000000000000000000000000000080" + // Length of the shared element, 128
+            new string('0', 2 * 128 * 32) // Contents of the shared element
+        ).SetName("uint256[][] elements aliasing one 4 KB tail");
+        yield return MalformedInput(new AbiSignature("f").With(AbiType.Array(AbiType.Array(AbiType.UInt256, 2))),
+            "0000000000000000000000000000000000000000000000000000000000000020" + // Offset to the array
+            "0000000000000000000000000000000000000000000000000000000000002710" + // Length of the array, 10_000
+            new string('0', 2 * 320_000) // One word per element, half of what 10_000 `uint256[2]` elements need
+        ).SetName("uint256[2][] length beyond input at two words per element");
+        yield return MalformedInput(new AbiSignature("f").With(AbiType.String),
+            "0000000000000000000000000000000000000000000000000000000000000020" +
+            "00000000000000000000000000000000000000000000000000000000000f4240").SetName("string length 10^6 beyond input");
+
+        (string Length, string Description)[] lengths =
+        [
+            ("00000000000000000000000000000000000000000000000000000000000f4240", "10^6"),
+            ("000000000000000000000000000000000000000000000000000000007fffffff", "2^31 - 1"),
+            ("ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", "2^256 - 1"),
+        ];
+        foreach ((string length, string description) in lengths)
+        {
+            yield return MalformedInput(new AbiSignature("f").With(AbiType.Bytes),
+                "0000000000000000000000000000000000000000000000000000000000000020" + length).SetName($"bytes length {description} beyond input");
+            yield return MalformedInput(new AbiSignature("f").With(AbiType.Array(AbiType.Bool)),
+                "0000000000000000000000000000000000000000000000000000000000000020" + length).SetName($"bool[] length {description} beyond input");
+        }
     }
 
     [TestCaseSource(nameof(AmplifyingInputTestCases))]

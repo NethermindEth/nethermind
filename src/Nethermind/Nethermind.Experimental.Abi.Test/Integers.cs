@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Numerics;
 using Nethermind.Core.Extensions;
+using Nethermind.Int256;
 using NUnit.Framework;
 
 namespace Nethermind.Experimental.Abi.Test;
@@ -33,6 +34,11 @@ public class Integers
             "0000000000000000000000000000000000000000000000000000000000000000"); // `0`
         yield return Case(AbiType.UInt64, "uint64", ulong.MaxValue,
             "000000000000000000000000000000000000000000000000ffffffffffffffff"); // `2^64 - 1`
+
+        yield return Case(AbiType.UInt256, "uint256", UInt256.Zero,
+            "0000000000000000000000000000000000000000000000000000000000000000"); // `0`
+        yield return Case(AbiType.UInt256, "uint256", UInt256.MaxValue,
+            "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"); // `2^256 - 1`
 
         yield return Case(AbiType.Int8, "int8", sbyte.MinValue,
             "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff80"); // `-128`
