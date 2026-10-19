@@ -492,9 +492,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 ref ulong destination = ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 2));
                 nuint target = (nuint)destination;
                 if ((Unsafe.Add(ref destination, 1) | Unsafe.Add(ref destination, 2) | Unsafe.Add(ref destination, 3)) == 0 &&
-                    target < (nuint)stack.CodeLength)
+                    target < (nuint)AlignedStack(ref stack).CodeLength)
                 {
-                    if (!stack.IsAnalyzedJumpDestination(target))
+                    if (!AlignedStack(ref stack).IsAnalyzedJumpDestination(target))
                     {
                         // Straight to the analysis, which the JUMP handler would only reach after repeating these tests.
                         TFirst.Apply(ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 0)), ref ip);
