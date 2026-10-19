@@ -22,6 +22,7 @@ using Autofac.Core.Lifetime;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Api.Steps;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.CensorshipDetector.Plugin;
 using Nethermind.Config;
@@ -72,6 +73,7 @@ using Nethermind.Runner.Ethereum.Steps;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.State;
 using Nethermind.State.OverridableEnv;
 using Nethermind.Synchronization;
 using Nethermind.Taiko.TaikoSpec;
@@ -377,8 +379,9 @@ public class EthereumRunnerTests
     [Test]
     public async Task Startup_pipeline_warmup_restores_live_metrics_after_warm_reports()
     {
-        using BasicTestBlockchain live = await BasicTestBlockchain.Create();
-        for (int i = 0; i < 4; i++) await live.AddBlock();
+        // A processing live chain would also publish the gauges, from its own unordered thread-pool reports.
+        IBlockTree live = Substitute.For<IBlockTree>();
+        live.Head.Returns(Nethermind.Core.Test.Builders.Build.A.Block.WithNumber(4).TestObject);
         using ManualResetEventSlim reporting = new();
         using ManualResetEventSlim release = new();
         // Holds the warm report on its thread-pool thread, before it publishes the height gauges.
@@ -396,18 +399,18 @@ public class EthereumRunnerTests
         logManager.GetLogger("SlowBlocks").Returns(slowBlocks);
         logManager.GetClassLogger<ProcessingStats>().Returns(statsLogger);
         StartupPipelineWarmer.WarmMetrics warmMetrics = new();
-        IProcessingStats stats = new StartupPipelineWarmer.WarmProcessingStats(live.StateReader, logManager, new BlocksConfig { SlowBlockThresholdMs = 0 }, warmMetrics);
+        IProcessingStats stats = new StartupPipelineWarmer.WarmProcessingStats(Substitute.For<IStateReader>(), logManager, new BlocksConfig { SlowBlockThresholdMs = 0 }, warmMetrics);
 
         stats.UpdateStats([Nethermind.Core.Test.Builders.Build.A.Block.WithNumber(2).TestObject], null, 1_000);
         Assert.That(reporting.Wait(RunnerTimeout), Is.True);
-        Task restore = warmMetrics.RestoreLiveAsync(live.BlockTree);
+        Task restore = warmMetrics.RestoreLiveAsync(live);
         bool restoredBeforeReport = restore.IsCompleted;
         release.Set();
         await restore.WaitAsync(RunnerTimeout);
         // The warm report has published by now, so a restore that ran before it would have been overwritten.
         Assert.That(SpinWait.SpinUntil(() => Volatile.Read(ref warmMetrics.PendingReports) == 0, RunnerTimeout), Is.True);
 
-        ulong liveHead = live.BlockTree.Head!.Number;
+        ulong liveHead = live.Head!.Number;
         using (Assert.EnterMultipleScope())
         {
             Assert.That(restoredBeforeReport, Is.False);
