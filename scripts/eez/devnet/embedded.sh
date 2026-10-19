@@ -24,8 +24,7 @@ cleanup() {
     exit "$status"
 }
 trap cleanup EXIT
-python3 "$HERE/embedded.py" prepare --upstream "$EEZ_UPSTREAM" \
-    --manifest "$EEZ_CI_RESULT_DIR/upstream.json" --output "$EEZ_EMBEDDED_RESULTS/inventory.json"
+test -s "$EEZ_EMBEDDED_RESULTS/inventory.json"
 export EEZ_TEST_LOG_DIR="$EEZ_EMBEDDED_RESULTS/logs"
 mkdir -p "$EEZ_TEST_LOG_DIR"
 (

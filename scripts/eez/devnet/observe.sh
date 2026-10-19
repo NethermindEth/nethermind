@@ -57,6 +57,19 @@ if [[ "$phase" == recovery ]]; then
     kurtosis run --enclave "$KURTOSIS_ENCLAVE" "$EEZ_CI_RESULT_DIR/late-package" \
         --args-file "$EEZ_CI_RESULT_DIR/late-package/args.json"
     verify nethermind-l2-late fresh-follower 1 "$height"
+    if [[ "${EEZ_PROFILE:?}" == rollup0 ]]; then
+        export EEZ_CONTROL_ENDPOINT="$EEZ_DEVNET_PROOF_SIGNER_GRPC"
+        if [[ "$EEZ_CONTROL_ENDPOINT" != http://* && "$EEZ_CONTROL_ENDPOINT" != https://* ]]; then
+            EEZ_CONTROL_ENDPOINT="http://$EEZ_CONTROL_ENDPOINT"
+        fi
+        python3 "$HERE/controls.py" capture
+        (
+            cd "$EEZ_UPSTREAM"
+            timeout 5m cargo test --locked --profile ci-e2e -p eez-node-e2e \
+                --test nethermind_streaming_controls -- --nocapture
+        )
+        python3 "$HERE/controls.py" report
+    fi
 else
     minimum=1
     if [[ "$phase" == verify-eezl2-deployment ]]; then minimum=0; fi

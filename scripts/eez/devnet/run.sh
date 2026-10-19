@@ -49,6 +49,7 @@ if [[ "$profile" == rollup0 ]]; then
     prover_revision="$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$EEZ_PROOF_SIGNER_IMAGE")"
     [[ "$prover_revision" == "$GITHUB_SHA" ]] || { echo "candidate prover image revision mismatch" >&2; exit 1; }
     prover_image_id="$(docker image inspect --format '{{.Id}}' "$EEZ_PROOF_SIGNER_IMAGE")"
+    export EEZ_CONTROL_IMAGE_ID="$prover_image_id"
 else
     docker build -f "$HERE/Dockerfile.upstream" -t "$EEZ_NODE_IMAGE" -t "$EEZ_PROOF_SIGNER_IMAGE" "$EEZ_RUNTIME_DIR"
     docker run --rm --entrypoint eez-proof-signer "$EEZ_PROOF_SIGNER_IMAGE" --help >/dev/null
@@ -70,6 +71,17 @@ export KURTOSIS_ARGS_FILE="$EEZ_CI_RESULT_DIR/ci-args-template.yaml"
     git -C "$EEZ_UPSTREAM" rev-parse HEAD
     git -C "$EEZ_UPSTREAM/eez-core-protocol" rev-parse HEAD
 } > "$EEZ_CI_RESULT_DIR/tools.txt"
+if [[ "$profile" == rollup0 ]]; then
+    mkdir -p "$EEZ_CI_RESULT_DIR/embedded"
+    python3 "$HERE/embedded.py" prepare --upstream "$EEZ_UPSTREAM" \
+        --manifest "$EEZ_CI_RESULT_DIR/upstream.json" --output "$EEZ_CI_RESULT_DIR/embedded/inventory.json"
+    python3 "$HERE/controls.py" install
+    (
+        cd "$EEZ_UPSTREAM"
+        timeout 60m cargo test --locked --profile ci-e2e -p eez-node-e2e --no-run \
+            --test durability --test resumption --test resumption_append --test nethermind_streaming_controls
+    )
+fi
 timeout 80m bash "$EEZ_UPSTREAM/testing/kurtosis/run-ci.sh"
 test -s "$EEZ_CI_RESULT_DIR/fresh-follower.json"
 test -s "$EEZ_CI_RESULT_DIR/after-restart.json"
@@ -79,6 +91,7 @@ jq -e '.result == "pass" and .proof_flow.signed_windows > 0 and .proof_flow.remo
 if [[ "$profile" == rollup0 ]]; then
     [[ "$(docker image inspect --format '{{.Id}}' "$EEZ_PROOF_SIGNER_IMAGE")" == "$prover_image_id" ]] \
         || { echo "candidate prover image was replaced during the upstream run" >&2; exit 1; }
+    test -s "$EEZ_CI_RESULT_DIR/streaming-controls.json"
     python3 "$HERE/prepare.py" report --directory "$EEZ_CI_RESULT_DIR" --revision "$GITHUB_SHA" --image-id "$prover_image_id"
     bash "$HERE/embedded.sh"
 else
