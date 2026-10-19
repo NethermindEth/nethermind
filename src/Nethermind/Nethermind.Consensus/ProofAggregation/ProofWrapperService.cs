@@ -300,9 +300,10 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             }
             // A verifier change during pool insertion purged before this admission committed; purge its leftovers.
             if (RefreshVerifier() is { } current && current != verifier) Purge(current);
-            // EIPs#12473: an object is relayed only once usable for admission, so relay waits for a pending
-            // dependency-bearing transaction; otherwise unfunded or dependency-free wrappers propagate unverified.
-            if (admittedDependencies.Count != 0 && RefreshVerifier() == verifier) WrapperValidated?.Invoke(wrapper, resolved, verifier);
+            // EIPs#12473: relay only once usable for admission, i.e. every transaction it carries is pending and at least one
+            // carries a dependency. Already-pending entries also fill admittedDependencies, so a partly rejected wrapper must not relay.
+            if (admission.IsSuccess && admittedDependencies.Count != 0 && RefreshVerifier() == verifier)
+                WrapperValidated?.Invoke(wrapper, resolved, verifier);
             return new(admission.IsSuccess ? ProofWrapperAcceptanceStatus.Accepted : ProofWrapperAcceptanceStatus.PoolRejected, admission);
         }
         catch (RlpException)

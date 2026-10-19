@@ -820,19 +820,8 @@ public class ProofWrapperServiceTests
     [Test]
     public async Task Recovered_hash_entries_are_admitted_and_the_original_wrapper_is_reported_valid()
     {
-        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, TestItem.KeccakA.ValueHash256, default);
-        Transaction transaction = CreateTransaction(dependency, TestItem.KeccakA);
-        transaction.Hash = transaction.CalculateHash();
-        ITxPool pool = Substitute.For<ITxPool>();
-        pool.SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>()).Returns(AcceptTxResult.Accepted);
-        ProofWrapperService service = CreateService([], new LeanProofStore(FrameTxSigHash.ComputeValue), new FakeLeanProofVerifier(true), pool: pool);
-        byte[] wrapper = MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
-        {
-            Transactions = [new WrapperTransaction(transaction.Hash)],
-            Deps = [dependency],
-            Mode = MempoolWrapper.ModeDirect,
-            Proofs = [[1]]
-        }).Bytes;
+        Transaction transaction = CreateHashedTransaction(TestItem.KeccakA);
+        (ProofWrapperService service, ITxPool pool, byte[] wrapper) = CreateHashWrapper(AcceptTxResult.Accepted, transaction);
         List<byte[]> validated = [];
         List<Transaction> resolved = [];
         service.WrapperValidated += (encoded, transactions, _) =>
@@ -842,8 +831,7 @@ public class ProofWrapperServiceTests
         };
 
         ProofWrapperAcceptance unresolved = await service.AcceptDetailedAsync(wrapper);
-        ProofWrapperAcceptance recovered = await service.AcceptDetailedAsync(wrapper,
-            new Dictionary<ValueHash256, Transaction> { [transaction.Hash.ValueHash256] = transaction });
+        ProofWrapperAcceptance recovered = await service.AcceptDetailedAsync(wrapper, Recovered(transaction));
 
         using (Assert.EnterMultipleScope())
         {
@@ -862,31 +850,69 @@ public class ProofWrapperServiceTests
     [TestCase(false)]
     public async Task Wrapper_is_relayed_only_after_a_transaction_is_admitted(bool poolAccepts)
     {
-        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, TestItem.KeccakA.ValueHash256, default);
-        Transaction transaction = CreateTransaction(dependency, TestItem.KeccakA);
-        transaction.Hash = transaction.CalculateHash();
-        ITxPool pool = Substitute.For<ITxPool>();
-        pool.SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>())
-            .Returns(poolAccepts ? AcceptTxResult.Accepted : AcceptTxResult.InsufficientFunds);
-        ProofWrapperService service = CreateService([], new LeanProofStore(FrameTxSigHash.ComputeValue), new FakeLeanProofVerifier(true), pool: pool);
-        byte[] wrapper = MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
-        {
-            Transactions = [new WrapperTransaction(transaction.Hash)],
-            Deps = [dependency],
-            Mode = MempoolWrapper.ModeDirect,
-            Proofs = [[1]]
-        }).Bytes;
+        Transaction transaction = CreateHashedTransaction(TestItem.KeccakA);
+        (ProofWrapperService service, _, byte[] wrapper) =
+            CreateHashWrapper(poolAccepts ? AcceptTxResult.Accepted : AcceptTxResult.InsufficientFunds, transaction);
         int relayed = 0;
         service.WrapperValidated += (_, _, _) => relayed++;
 
-        ProofWrapperAcceptance result = await service.AcceptDetailedAsync(wrapper,
-            new Dictionary<ValueHash256, Transaction> { [transaction.Hash.ValueHash256] = transaction });
+        ProofWrapperAcceptance result = await service.AcceptDetailedAsync(wrapper, Recovered(transaction));
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Status, Is.EqualTo(poolAccepts ? ProofWrapperAcceptanceStatus.Accepted : ProofWrapperAcceptanceStatus.PoolRejected));
             Assert.That(relayed, Is.EqualTo(poolAccepts ? 1 : 0));
         }
+    }
+
+    // An already-pending funded transaction must not carry rejected junk through relay: admission has to succeed for every entry.
+    [Test]
+    public async Task Wrapper_with_a_pending_transaction_and_rejected_junk_is_not_relayed()
+    {
+        Transaction pending = CreateHashedTransaction(TestItem.KeccakA);
+        Transaction junk = CreateHashedTransaction(TestItem.KeccakB);
+        (ProofWrapperService service, ITxPool pool, byte[] wrapper) = CreateHashWrapper(AcceptTxResult.InsufficientFunds, pending, junk);
+        pool.TryGetPendingTransaction(pending.Hash!.ValueHash256, out Arg.Any<Transaction?>()).Returns(call =>
+        {
+            call[1] = pending;
+            return true;
+        });
+        int relayed = 0;
+        service.WrapperValidated += (_, _, _) => relayed++;
+
+        ProofWrapperAcceptance result = await service.AcceptDetailedAsync(wrapper, Recovered(junk));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Status, Is.EqualTo(ProofWrapperAcceptanceStatus.PoolRejected));
+            Assert.That(relayed, Is.Zero);
+        }
+    }
+
+    private static Transaction CreateHashedTransaction(Hash256 key)
+    {
+        Transaction transaction = CreateTransaction(new(Eip8288Constants.LeanSphincsScheme, key.ValueHash256, default), key);
+        transaction.Hash = transaction.CalculateHash();
+        return transaction;
+    }
+
+    private static Dictionary<ValueHash256, Transaction> Recovered(Transaction transaction) => new() { [transaction.Hash!.ValueHash256] = transaction };
+
+    private static (ProofWrapperService Service, ITxPool Pool, byte[] Wrapper) CreateHashWrapper(AcceptTxResult submitResult, params Transaction[] transactions)
+    {
+        ITxPool pool = Substitute.For<ITxPool>();
+        pool.SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>()).Returns(submitResult);
+        ProofWrapperService service = CreateService([], new LeanProofStore(FrameTxSigHash.ComputeValue), new FakeLeanProofVerifier(true), pool: pool);
+        List<FrameDependency> dependencies = Eip8288Dependencies.Canonicalize(
+            transactions.SelectMany(static transaction => Eip8288Dependencies.ForTransaction(transaction, FrameTxSigHash.ComputeValue)));
+        byte[] wrapper = MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
+        {
+            Transactions = [.. transactions.Select(static transaction => new WrapperTransaction(transaction.Hash!))],
+            Deps = dependencies,
+            Mode = MempoolWrapper.ModeDirect,
+            Proofs = [.. dependencies.Select(static _ => new byte[] { 1 })]
+        }).Bytes;
+        return (service, pool, wrapper);
     }
 
     [TestCase(Eip8288Constants.MaxWrapperBytes + 1, ProofWrapperAcceptanceStatus.Invalid)]
