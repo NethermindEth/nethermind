@@ -484,16 +484,9 @@ public class DebugRpcModule(
             bool hasTransactionToTrace = effective.TxHash is { } txHash
                 ? resolvedBlock.GetTransactionIndex(txHash.ValueHash256) >= 0
                 : resolvedBlock.Transactions.Length != 0;
-            if (hasTransactionToTrace)
+            if (hasTransactionToTrace && effective.ParsedTimeout.Error is { } durationError)
             {
-                try
-                {
-                    effective.ResolveTimeout();
-                }
-                catch (TraceDurationFormatException exception)
-                {
-                    return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail(exception.Message, ErrorCodes.InvalidInput);
-                }
+                return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail(durationError, ErrorCodes.InvalidInput);
             }
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Success(BuildStreamingBlockResult(
                 (writer, pipeWriter, token) =>

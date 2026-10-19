@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
+using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using Nethermind.Blockchain.Tracing.GethStyle;
@@ -56,6 +58,41 @@ public class CustomTimeDurationConverterTests
     [TestCaseSource(nameof(ValidGoDurationCases))]
     public void read_go_duration_format_parses_correctly(string json, TimeSpan? expected) =>
         Assert.That(Deserialize(json), Is.EqualTo(expected));
+
+    [TestCase("5s", 50_000_000L)]
+    [TestCase("\\u0035s", 50_000_000L)]
+    [TestCase("500µs", 5_000L)]
+    [TestCase("500\\u03bcs", 5_000L)]
+    [TestCase("bad", null)]
+    public void read_segmented_duration_matches_contiguous_reader(string text, long? ticks)
+    {
+        byte[] json = Encoding.UTF8.GetBytes($"\"{text}\"");
+        JsonSegment first = new(json.AsMemory(0, 3));
+        JsonSegment last = new(json.AsMemory(3), first);
+        Utf8JsonReader reader = new(new ReadOnlySequence<byte>(first, 0, last, last.Memory.Length));
+        Assert.That(reader.Read(), Is.True);
+
+        ParsedTraceDuration parsed = CustomTimeDurationConverter.ReadDuration(ref reader);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(parsed.Value?.Ticks, Is.EqualTo(ticks));
+            Assert.That(parsed.RawText, Is.EqualTo(ticks is null ? text : null));
+            Assert.That(parsed.Error is null, Is.EqualTo(ticks is not null));
+        }
+    }
+
+    private sealed class JsonSegment : ReadOnlySequenceSegment<byte>
+    {
+        public JsonSegment(ReadOnlyMemory<byte> memory, JsonSegment? previous = null)
+        {
+            Memory = memory;
+            if (previous is not null)
+            {
+                RunningIndex = previous.RunningIndex + previous.Memory.Length;
+                previous.Next = this;
+            }
+        }
+    }
 
     private static IEnumerable<TestCaseData> ValidCSharpTimeSpanCases() =>
     [
