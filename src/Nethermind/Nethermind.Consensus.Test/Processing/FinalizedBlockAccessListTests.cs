@@ -13,6 +13,7 @@ using Nethermind.Blockchain.BlockAccessLists;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Tracing;
+using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
@@ -27,6 +28,7 @@ using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Init.Modules;
+using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.Forks;
@@ -283,14 +285,41 @@ public class FinalizedBlockAccessListTests(bool useFlatDb)
         Assert.That(policy.CanReconstruct(third.Header), Is.False);
     }
 
-    private static long Fallbacks(BalCatchUpFallbackReason reason) => MergeMetrics.BalCatchUpFallbacks.GetValueOrDefault(reason);
+    [Test]
+    public void Evaluate_reports_why_a_block_is_not_reconstructed()
+    {
+        using TestEnvironment env = new(useFlatDb);
+        Block first = env.CreateBlock();
+        Block second = env.CreateBlock(parent: first);
+        Block withTransaction = env.CreateBlock(withTransaction: true);
+        env.Beacon.GetFinalizedHash().Returns(first.Hash);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(env.Policy.Evaluate(first.Header), Is.EqualTo(BalCatchUpEligibility.Eligible));
+            Assert.That(env.Policy.Evaluate(second.Header), Is.EqualTo(BalCatchUpEligibility.NotFinalized));
+            Assert.That(env.Policy.Evaluate(withTransaction.Header), Is.EqualTo(BalCatchUpEligibility.Unsupported), "no receipt store");
+            Assert.That(env.Policy.Evaluate(env.Genesis.Header), Is.EqualTo(BalCatchUpEligibility.Unsupported));
+        }
 
-    private sealed class TestEnvironment : IDisposable
+        env.Beacon.GetFinalizedHash().Returns(Keccak.Zero);
+        Assert.That(env.Policy.Evaluate(first.Header), Is.EqualTo(BalCatchUpEligibility.NotFinalized), "no finalized block reported yet");
+
+        IBlockTree tree = Substitute.For<IBlockTree>();
+        tree.Head.Returns(first);
+        FinalizedBlockAccessListPolicy policy = new(new SyncConfig { ReconstructFinalizedStateFromBlockAccessLists = true },
+            env.Beacon, tree, new Nethermind.Specs.TestSpecProvider(Amsterdam.Instance), env.ReceiptConfig);
+        Assert.That(policy.Evaluate(first.Header), Is.EqualTo(BalCatchUpEligibility.AlreadyProcessed));
+    }
+
+    internal static long Fallbacks(BalCatchUpFallbackReason reason) => MergeMetrics.BalCatchUpFallbacks.GetValueOrDefault(reason);
+
+    internal sealed class TestEnvironment : IDisposable
     {
         private readonly IContainer _container;
         public IBeaconSyncStrategy Beacon { get; } = Substitute.For<IBeaconSyncStrategy>();
         public ReceiptConfig ReceiptConfig { get; } = new() { StoreReceipts = false, DeferredPersistence = false };
         public IBlockTree Tree { get; }
+        public ManualTimestamper Timestamper => (ManualTimestamper)_container.Resolve<ITimestamper>();
         public IWorldState State { get; }
         public IReceiptStorage Receipts { get; }
         public IReceiptsRecovery Recovery => _container.Resolve<IReceiptsRecovery>();
@@ -363,13 +392,20 @@ public class FinalizedBlockAccessListTests(bool useFlatDb)
             return block;
         }
 
+        /// <summary>Sets the clock to just past, or exactly at, the age from which a block counts as caught up.</summary>
+        public void SetBlockAge(Block block, bool catchingUp)
+        {
+            ulong age = FinalizedBlockAccessListProcessor.CatchUpAgeSlots * new BlocksConfig().SecondsPerSlot + (catchingUp ? 1UL : 0UL);
+            Timestamper.Set(DateTimeOffset.FromUnixTimeSeconds((long)(block.Timestamp + age)).UtcDateTime);
+        }
+
         public ReadOnlyBlockAccessList StoredList(Block block) =>
             _container.Resolve<IBlockAccessListStore>().Get(block.Number, block.Hash!)!;
 
         public void Dispose() => _container.Dispose();
     }
 
-    private sealed class TestProcessingModule(ISyncConfig config, ISpecProvider specProvider) : Module, IMainProcessingModule
+    internal sealed class TestProcessingModule(ISyncConfig config, ISpecProvider specProvider) : Module, IMainProcessingModule
     {
         protected override void Load(ContainerBuilder builder) => builder
             .AddScoped<RecordingProcessor>().Bind<IBlockProcessor, RecordingProcessor>()
@@ -390,6 +426,92 @@ public class FinalizedBlockAccessListTests(bool useFlatDb)
             BalanceAtEntry = state.GetBalance(TestItem.AddressA);
             block.Header.StateRoot = state.StateRoot;
             return (block, []);
+        }
+    }
+}
+
+/// <summary>Counts catch-up blocks that execute; the counters are static, so nothing else runs alongside.</summary>
+[TestFixture]
+[NonParallelizable]
+public class FinalizedBlockAccessListMetricTests
+{
+    [Test]
+    public void New_payload_catch_up_blocks_execute_and_are_counted([Values] bool useFlatDb, [Values] bool finalized, [Values] bool catchingUp)
+    {
+        using FinalizedBlockAccessListTests.TestEnvironment env = new(useFlatDb);
+        Block block = env.CreateBlock();
+        env.Beacon.GetFinalizedHash().Returns(finalized ? block.Hash : env.Genesis.Hash);
+        env.SetBlockAge(block, catchingUp);
+        long newPayloadBefore = FinalizedBlockAccessListTests.Fallbacks(BalCatchUpFallbackReason.NewPayload);
+        long notFinalizedBefore = FinalizedBlockAccessListTests.Fallbacks(BalCatchUpFallbackReason.NotFinalized);
+        long reconstructedBefore = MergeMetrics.BalCatchUpBlocks;
+        using IDisposable scope = env.State.BeginScope(env.Genesis.Header);
+        env.Processor.ProcessOne(block, ProcessingOptions.EthereumMerge | ProcessingOptions.StoreReceipts, NullBlockTracer.Instance, Amsterdam.Instance);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(env.Recording.Calls, Is.EqualTo(1), "the engine API validates by executing");
+            Assert.That(MergeMetrics.BalCatchUpBlocks - reconstructedBefore, Is.Zero);
+            Assert.That(FinalizedBlockAccessListTests.Fallbacks(BalCatchUpFallbackReason.NewPayload) - newPayloadBefore, Is.EqualTo(catchingUp && finalized ? 1 : 0));
+            Assert.That(FinalizedBlockAccessListTests.Fallbacks(BalCatchUpFallbackReason.NotFinalized) - notFinalizedBefore, Is.EqualTo(catchingUp && !finalized ? 1 : 0));
+        }
+    }
+
+    [Test]
+    public void Unfinalized_catch_up_blocks_are_counted_only_once_they_are_two_epochs_old([Values] bool useFlatDb, [Values] bool catchingUp)
+    {
+        using FinalizedBlockAccessListTests.TestEnvironment env = new(useFlatDb);
+        Block block = env.CreateBlock();
+        env.Beacon.GetFinalizedHash().Returns(env.Genesis.Hash);
+        env.SetBlockAge(block, catchingUp);
+        long notFinalizedBefore = FinalizedBlockAccessListTests.Fallbacks(BalCatchUpFallbackReason.NotFinalized);
+        using IDisposable scope = env.State.BeginScope(env.Genesis.Header);
+        env.Processor.ProcessOne(block, ProcessingOptions.None, NullBlockTracer.Instance, Amsterdam.Instance);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(env.Recording.Calls, Is.EqualTo(1));
+            Assert.That(FinalizedBlockAccessListTests.Fallbacks(BalCatchUpFallbackReason.NotFinalized) - notFinalizedBefore, Is.EqualTo(catchingUp ? 1 : 0));
+        }
+    }
+
+    [Test]
+    public void A_nested_decorator_delegates_instead_of_counting_again([Values] bool useFlatDb, [Values] bool finalized)
+    {
+        using FinalizedBlockAccessListTests.TestEnvironment env = new(useFlatDb);
+        Block block = env.CreateBlock();
+        env.Beacon.GetFinalizedHash().Returns(finalized ? block.Hash : env.Genesis.Hash);
+        env.SetBlockAge(block, catchingUp: true);
+        // As when the main processing module is loaded twice: the outer decorator wraps the one already installed.
+        FinalizedBlockAccessListProcessor outer = new(env.Processor, env.Policy, env.State, env.Receipts, env.Recovery,
+            env.Timestamper, new BlocksConfig(), LimboLogs.Instance);
+        long notFinalizedBefore = FinalizedBlockAccessListTests.Fallbacks(BalCatchUpFallbackReason.NotFinalized);
+        long reconstructedBefore = MergeMetrics.BalCatchUpBlocks;
+        using IDisposable scope = env.State.BeginScope(env.Genesis.Header);
+        outer.ProcessOne(block, ProcessingOptions.None, NullBlockTracer.Instance, Amsterdam.Instance);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(env.Recording.Calls, Is.EqualTo(finalized ? 0 : 1));
+            Assert.That(MergeMetrics.BalCatchUpBlocks - reconstructedBefore, Is.EqualTo(finalized ? 1 : 0));
+            Assert.That(FinalizedBlockAccessListTests.Fallbacks(BalCatchUpFallbackReason.NotFinalized) - notFinalizedBefore, Is.EqualTo(finalized ? 0 : 1));
+            Assert.That(env.State.StateRoot, Is.EqualTo(finalized ? block.StateRoot : env.Genesis.StateRoot));
+        }
+        block.DisposeAccountChanges();
+    }
+
+    [Test]
+    public void Blocks_that_do_not_support_reconstruction_are_not_counted([Values] bool useFlatDb)
+    {
+        using FinalizedBlockAccessListTests.TestEnvironment env = new(useFlatDb);
+        Block block = env.CreateBlock(withTransaction: true);
+        env.Beacon.GetFinalizedHash().Returns(block.Hash);
+        env.SetBlockAge(block, catchingUp: true);
+        long[] before = [.. Enum.GetValues<BalCatchUpFallbackReason>().Select(FinalizedBlockAccessListTests.Fallbacks)];
+        using IDisposable scope = env.State.BeginScope(env.Genesis.Header);
+        env.Processor.ProcessOne(block, ProcessingOptions.None, NullBlockTracer.Instance, Amsterdam.Instance);
+        env.Processor.ProcessOne(block, ProcessingOptions.EthereumMerge, NullBlockTracer.Instance, Amsterdam.Instance);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(env.Recording.Calls, Is.EqualTo(2));
+            Assert.That(Enum.GetValues<BalCatchUpFallbackReason>().Select(FinalizedBlockAccessListTests.Fallbacks), Is.EqualTo(before), "a node without a receipt store never reconstructs blocks with transactions");
         }
     }
 }

@@ -5,6 +5,7 @@ using System;
 using System.Threading;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Tracing;
+using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -15,15 +16,36 @@ using Nethermind.Logging;
 namespace Nethermind.Merge.Plugin.Synchronization;
 
 /// <summary>Reconstructs finalized catch-up state, falling back to execution when commitments cannot be reproduced.</summary>
+/// <remarks>
+/// Only blocks the consensus client has already reported as finalized are reconstructed, so the gain depends on the
+/// consensus client being ahead of the execution client: a checkpoint-synced or still-running consensus client
+/// beacon-syncs the execution client, whose downloader fetches the lists and receipts of the finalized range.
+/// Blocks delivered one by one through <c>engine_newPayload</c> always execute: the engine API has to validate them,
+/// receipts are not fetched for them, and a consensus client range-syncing them (Lighthouse after an execution
+/// client outage, for example) only finalizes each block about two epochs after handing it over. Such catch-up
+/// blocks are counted in <see cref="Metrics.BalCatchUpFallbacks"/> under
+/// <see cref="BalCatchUpFallbackReason.NewPayload"/> or <see cref="BalCatchUpFallbackReason.NotFinalized"/>.
+/// Lists can only be fetched from peers that still serve them, so an outage longer than the peers' access list
+/// retention executes the older blocks.
+/// </remarks>
 public sealed class FinalizedBlockAccessListProcessor(
     IBlockProcessor inner,
     FinalizedBlockAccessListPolicy policy,
     IWorldState state,
     IReceiptStorage receiptStorage,
     IReceiptsRecovery receiptsRecovery,
+    ITimestamper timestamper,
+    IBlocksConfig blocksConfig,
     ILogManager logManager) : IBlockProcessor
 {
+    /// <summary>
+    /// A block older than this many slots is being caught up rather than followed: the network finalizes a block
+    /// about two epochs after its slot, so a block this old would normally be finalized already.
+    /// </summary>
+    public const ulong CatchUpAgeSlots = 64;
+
     private readonly ILogger _logger = logManager.GetClassLogger<FinalizedBlockAccessListProcessor>();
+    private readonly ulong _catchUpAgeSeconds = CatchUpAgeSlots * Math.Max(blocksConfig.SecondsPerSlot, 1);
     private event Action? _transactionsExecuted;
 
     /// <summary>The processor that executes blocks this decorator does not reconstruct.</summary>
@@ -36,14 +58,55 @@ public sealed class FinalizedBlockAccessListProcessor(
         remove { inner.TransactionsExecuted -= value; _transactionsExecuted -= value; }
     }
 
+    // Set while an instance decides a block, so one nested under it (a pipeline that loads the module twice)
+    // delegates instead of evaluating and counting the same block again.
+    [ThreadStatic] private static bool _deciding;
+
     /// <inheritdoc/>
     public (Block Block, TxReceipt[] Receipts) ProcessOne(Block block, ProcessingOptions options,
         IBlockTracer blockTracer, IReleaseSpec spec, CancellationToken token = default)
     {
+        if (_deciding) return inner.ProcessOne(block, options, blockTracer, spec, token);
+
+        _deciding = true;
+        try
+        {
+            return Decide(block, options, blockTracer, spec, token);
+        }
+        finally
+        {
+            _deciding = false;
+        }
+    }
+
+    private (Block Block, TxReceipt[] Receipts) Decide(Block block, ProcessingOptions options,
+        IBlockTracer blockTracer, IReleaseSpec spec, CancellationToken token)
+    {
         const ProcessingOptions excluded = ProcessingOptions.ReadOnlyChain | ProcessingOptions.ForceProcessing
-            | ProcessingOptions.NoValidation | ProcessingOptions.DoNotUpdateHead | ProcessingOptions.ForceSequentialBlockAccessList;
-        if ((options & excluded) != 0 || blockTracer != NullBlockTracer.Instance || !policy.CanReconstruct(block.Header))
+            | ProcessingOptions.NoValidation | ProcessingOptions.ForceSequentialBlockAccessList;
+        if ((options & excluded) != 0 || blockTracer != NullBlockTracer.Instance)
             return inner.ProcessOne(block, options, blockTracer, spec, token);
+
+        // The engine API validates the payloads it is handed, so those always execute.
+        bool newPayload = options.ContainsFlag(ProcessingOptions.MarkAsProcessed);
+        if (newPayload || options.ContainsFlag(ProcessingOptions.DoNotUpdateHead))
+        {
+            if (newPayload && IsCatchingUp(block.Header))
+            {
+                BalCatchUpEligibility eligibility = policy.Evaluate(block.Header);
+                if (eligibility == BalCatchUpEligibility.Eligible) CountCatchUpExecution(block, BalCatchUpFallbackReason.NewPayload);
+                else if (eligibility == BalCatchUpEligibility.NotFinalized) CountCatchUpExecution(block, BalCatchUpFallbackReason.NotFinalized);
+            }
+            return inner.ProcessOne(block, options, blockTracer, spec, token);
+        }
+
+        BalCatchUpEligibility verdict = policy.Evaluate(block.Header);
+        if (verdict != BalCatchUpEligibility.Eligible)
+        {
+            if (verdict == BalCatchUpEligibility.NotFinalized && IsCatchingUp(block.Header))
+                CountCatchUpExecution(block, BalCatchUpFallbackReason.NotFinalized);
+            return inner.ProcessOne(block, options, blockTracer, spec, token);
+        }
 
         // Queued processing attaches a stored list only when it matches the header's commitment.
         if (block.BlockAccessList is not { } list) return Execute(BalCatchUpFallbackReason.NoBlockAccessList);
@@ -88,4 +151,12 @@ public sealed class FinalizedBlockAccessListProcessor(
 
     private static void CountFallback(BalCatchUpFallbackReason reason) =>
         Metrics.BalCatchUpFallbacks.AddOrUpdate(reason, 1, static (_, count) => count + 1);
+
+    private bool IsCatchingUp(BlockHeader header) => timestamper.UnixTime.Seconds > header.Timestamp + _catchUpAgeSeconds;
+
+    private void CountCatchUpExecution(Block block, BalCatchUpFallbackReason reason)
+    {
+        CountFallback(reason);
+        if (_logger.IsDebug) _logger.Debug($"Executing catch-up {block.ToString(Block.Format.Short)}: {reason}");
+    }
 }

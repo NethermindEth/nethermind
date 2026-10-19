@@ -34,15 +34,18 @@ public sealed class FinalizedBlockAccessListPolicy(
     private ulong _lowestCached;
 
     /// <summary>Whether this header belongs to the finalized ancestry and supports reconstruction.</summary>
-    public bool CanReconstruct(BlockHeader header)
+    public bool CanReconstruct(BlockHeader header) => Evaluate(header) == BalCatchUpEligibility.Eligible;
+
+    /// <summary>Whether this header can be reconstructed and, if not, why.</summary>
+    public BalCatchUpEligibility Evaluate(BlockHeader header)
     {
         if (!syncConfig.ReconstructFinalizedStateFromBlockAccessLists || header.IsGenesis || !header.Difficulty.IsZero
             || header.BlockAccessListHash is null || !beaconSync.MergeTransitionFinished
             || (header.HasTransactions && !receiptConfig.StoreReceipts))
-            return false;
+            return BalCatchUpEligibility.Unsupported;
 
         IReleaseSpec spec = specProvider.GetSpec(header);
-        if (!spec.IsEip7928Enabled || !spec.IsEip6780Enabled) return false;
+        if (!spec.IsEip7928Enabled || !spec.IsEip6780Enabled) return BalCatchUpEligibility.Unsupported;
 
         lock (_lock)
         {
@@ -58,22 +61,24 @@ public sealed class FinalizedBlockAccessListPolicy(
             {
                 while (_lowestCached <= processed && _ancestors.Count > 0) _ancestors.Remove(_lowestCached++);
             }
-            if (header.Number <= processed) return false;
+            if (header.Number <= processed) return BalCatchUpEligibility.AlreadyProcessed;
 
             Hash256? finalized = beaconSync.GetFinalizedHash();
-            if (finalized is null || finalized == Keccak.Zero) return false;
-            if ((_checkpoint != finalized || _oldestAncestor is null) && !UpdateCheckpoint(finalized)) return false;
+            if (finalized is null || finalized == Keccak.Zero) return BalCatchUpEligibility.NotFinalized;
+            if ((_checkpoint != finalized || _oldestAncestor is null) && !UpdateCheckpoint(finalized)) return BalCatchUpEligibility.NotFinalized;
 
             while (_oldestAncestor is { } ancestor && ancestor.Number > header.Number)
             {
                 BlockHeader? parent = blockTree.FindHeader(ancestor.ParentHash!, BlockTreeLookupOptions.None);
-                if (parent is null || parent.Number != ancestor.Number - 1) return false;
+                if (parent is null || parent.Number != ancestor.Number - 1) return BalCatchUpEligibility.NotFinalized;
                 _ancestors[parent.Number] = ancestor.ParentHash!;
                 _lowestCached = Math.Min(_lowestCached, parent.Number);
                 _oldestAncestor = parent;
             }
 
-            return header.Hash is { } hash && _ancestors.TryGetValue(header.Number, out Hash256? expected) && hash == expected;
+            return header.Hash is { } hash && _ancestors.TryGetValue(header.Number, out Hash256? expected) && hash == expected
+                ? BalCatchUpEligibility.Eligible
+                : BalCatchUpEligibility.NotFinalized;
         }
     }
 
