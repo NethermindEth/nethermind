@@ -221,7 +221,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         }
 
         /// <summary><paramref name="stack"/>, rounded down to the word boundary it is already on where <see cref="StrictAlignmentFlag"/> is on.</summary>
-        /// <remarks>As <see cref="AlignedSlot"/>: one <c>andi</c> lets the JIT prove the loads of the stack's fields aligned and drop their tests.</remarks>
+        /// <remarks>
+        /// As in <see cref="AlignedSlot"/>, one <c>andi</c> lets the JIT prove the loads of the stack's fields aligned and drop their tests.
+        /// It masks the pointer directly: the byref is rarely live after the rounding, so the cast costs no register copy.
+        /// </remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static unsafe ref EvmStack AlignedStack(ref EvmStack stack)
         {
