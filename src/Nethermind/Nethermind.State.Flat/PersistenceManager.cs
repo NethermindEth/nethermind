@@ -60,6 +60,7 @@ public class PersistenceManager(
     // Enqueue while holding the mutex, which a Lock.Scope (a ref struct) cannot span.
     private readonly SemaphoreSlim _persistenceLock = new(1, 1);
     private StateId? _lastWarnedStall;
+    private const int InitialShutdownTailCapacity = 256;
 
     // StateId is a 40-byte struct (ulong + ValueHash256), so a direct field read/write is not atomic and
     // query threads calling GetCurrentPersistedStateId could observe a torn (BlockNumber, StateRoot) pair
@@ -524,6 +525,54 @@ public class PersistenceManager(
         }
 
         return currentPersistedState;
+    }
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// For clean shutdown only, once block processing and the persistence queue have stopped. Unlike
+    /// <see cref="FlushToPersistence"/> it leaves RocksDB at the finality-driven boundary, so every block above it
+    /// stays reorgable: the persisted-snapshot tier serves reorgs like the in-memory one. Converts oldest first, each
+    /// block durable before the next, so cancellation or a crash midway leaves a shorter tail to re-execute. Deferred
+    /// block data is made durable first, as before any state persist. Does nothing without long finality, which is
+    /// what provides the persisted-snapshot tier.
+    /// </remarks>
+    public int PersistInMemoryTailForShutdown(CancellationToken cancellationToken)
+    {
+        if (!_enableLongFinality) return 0;
+
+        using SemaphoreSlimExtensions.Scope _ = _persistenceLock.EnterScope();
+        if (snapshotRepository.GetLastCommittedStateId() is not { } head) return 0;
+
+        StateId currentPersistedState = GetCurrentPersistedStateId();
+        using ArrayPoolList<Snapshot> tail = new(InitialShutdownTailCapacity);
+        try
+        {
+            StateId cursor = head;
+            while (!IsOnDisk(cursor, currentPersistedState))
+            {
+                // A gap means the head's state cannot be reached from disk, so converting part of it would not help.
+                if (!snapshotRepository.TryLeaseInMemoryState(cursor, SnapshotTier.InMemoryBase, out Snapshot? snapshot)) return 0;
+                tail.Add(snapshot);
+                cursor = snapshot.From;
+            }
+
+            if (tail.Count == 0) return 0;
+
+            persistenceBarrier.FlushDeferred();
+
+            int converted = 0;
+            for (int i = tail.Count - 1; i >= 0 && !cancellationToken.IsCancellationRequested; i--)
+            {
+                loader.ConvertAndRegister(tail[i]);
+                converted++;
+            }
+
+            return converted;
+        }
+        finally
+        {
+            foreach (Snapshot snapshot in tail.AsSpan()) snapshot.Dispose();
+        }
     }
 
     public void ResetPersistedStateId()

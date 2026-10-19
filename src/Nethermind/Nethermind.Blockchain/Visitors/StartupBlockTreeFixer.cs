@@ -36,6 +36,12 @@ namespace Nethermind.Blockchain.Visitors
 
         private bool _firstBlockVisited = true;
         private bool _suggestBlocks = true;
+
+        // Processed canonical blocks above the head whose state survived the restart (a flat DB keeps its in-memory
+        // tail on a clean shutdown) need no re-execution: the head moves over them before anything is suggested.
+        private bool _fastForwarding = true;
+        private BlockHeader? _fastForwardHead;
+        private ulong _fastForwardedBlocks;
         private readonly BlockTreeSuggestPacer _blockTreeSuggestPacer;
 
         public StartupBlockTreeFixer(
@@ -140,6 +146,22 @@ namespace Nethermind.Blockchain.Visitors
             _blocksCheckedInCurrentLevel++;
             _bodiesInCurrentLevel++;
 
+            // A level without a canonical block ends the run of kept state.
+            if (_fastForwarding && _currentLevel?.MainChainBlock is null) StopFastForwarding();
+
+            if (_fastForwarding && IsMainChainBlock(block))
+            {
+                if (HasProcessedState(block))
+                {
+                    _fastForwardHead = block.Header;
+                    _fastForwardedBlocks++;
+                    return BlockVisitOutcome.None;
+                }
+
+                // Moved before anything is suggested, so processing the rest never sees the head go back.
+                StopFastForwarding();
+            }
+
             if (_firstBlockVisited)
             {
                 _suggestBlocks = CanSuggestBlocks(block);
@@ -165,9 +187,33 @@ namespace Nethermind.Blockchain.Visitors
 
         }
 
+        private bool IsMainChainBlock(Block block) => block.Hash is not null && _currentLevel?.MainChainBlock?.BlockHash == block.Hash;
+
+        private bool HasProcessedState(Block block) =>
+            _currentLevel!.MainChainBlock!.WasProcessed && block.StateRoot is not null && _stateReader.HasStateForBlock(block.Header);
+
+        private void StopFastForwarding()
+        {
+            _fastForwarding = false;
+            if (_fastForwardHead is null) return;
+
+            if (_blockTree.TryUpdateMainChain(_fastForwardHead, wereProcessed: true))
+            {
+                if (_logger.IsInfo) _logger.Info($"Resumed from {_fastForwardHead.ToString(BlockHeader.Format.Short)}: the state of {_fastForwardedBlocks} blocks above the persisted state was kept, so they are not re-executed.");
+            }
+            else if (_logger.IsWarn)
+            {
+                _logger.Warn($"Could not move the head to {_fastForwardHead.ToString(BlockHeader.Format.Short)}; its blocks are re-executed instead.");
+            }
+
+            _fastForwardHead = null;
+        }
+
         Task<LevelVisitOutcome> IBlockTreeVisitor.VisitLevelEnd(ChainLevelInfo chainLevelInfo, ulong levelNumber,
             CancellationToken cancellationToken)
         {
+            if (_fastForwarding && (levelNumber + 1 >= EndLevelExclusive || _gapStart is not null)) StopFastForwarding();
+
             ulong expectedVisitedBlocksCount = (ulong)(_currentLevel?.BlockInfos.Length ?? 0);
             if (_blocksCheckedInCurrentLevel != expectedVisitedBlocksCount)
             {

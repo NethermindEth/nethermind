@@ -12,6 +12,13 @@ public interface IPersistenceManager
     StateId GetCurrentPersistedStateId();
     Task AddToPersistence(StateId latestSnapshot);
     StateId FlushToPersistence(CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Converts the in-memory state of the committed head's ancestry to the persisted-snapshot tier, so a restart
+    /// resumes from the head instead of re-executing the in-memory tail.
+    /// </summary>
+    /// <returns>The number of blocks converted.</returns>
+    int PersistInMemoryTailForShutdown(CancellationToken cancellationToken);
     void ResetPersistedStateId();
 
     /// <summary>Drops every snapshot not on the ancestry of <paramref name="head"/>, serialized against

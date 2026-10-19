@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
@@ -82,6 +83,46 @@ public class StartupTreeFixerTests
         Assert.That(tree.BestSuggestedHeader, Is.EqualTo(block2.Header).UsingBlockHeaderComparer());
         Assert.That(tree.BestSuggestedBody?.Body, Is.EqualTo(block2.Body).UsingBlockBodyComparer());
         Assert.That(tree.BestKnownNumber, Is.EqualTo(2));
+    }
+
+    // A flat DB keeps the state of its in-memory tail on a clean shutdown, so the blocks above the persisted state
+    // need no re-execution; only those whose state was not kept, or that were never processed, are suggested.
+    [TestCase(2ul, 5ul, 2ul, TestName = "Nothing kept: everything above the persisted state is re-executed")]
+    [TestCase(4ul, 5ul, 4ul, TestName = "Part kept: resumes from the last block with state")]
+    [TestCase(5ul, 5ul, 5ul, TestName = "All kept: resumes from the head")]
+    [TestCase(5ul, 3ul, 3ul, TestName = "Unprocessed blocks with state are still executed")]
+    [MaxTime(Timeout.MaxTestTime)]
+    public async Task Resumes_from_the_last_processed_block_whose_state_was_kept(ulong keptUpTo, ulong processedUpTo, ulong expectedHead)
+    {
+        MemDb blockInfosDb = new();
+        BlockTreeBuilder builder = Build.A.BlockTree().WithoutSettingHead.WithBlockInfoDb(blockInfosDb);
+        BlockTree tree = builder.TestObject;
+        Block[] blocks = new Block[6];
+        for (int i = 0; i < blocks.Length; i++)
+        {
+            BlockBuilder block = Build.A.Block.WithNumber((ulong)i).WithDifficulty((ulong)i + 1);
+            blocks[i] = (i == 0 ? block : block.WithParent(blocks[i - 1])).TestObject;
+            tree.SuggestBlock(blocks[i]);
+            if ((ulong)i <= processedUpTo) tree.TryUpdateMainChain(blocks[i].Header, true, preloadedBlocks: [blocks[i]]);
+        }
+
+        // Restart with the persisted state at block 2.
+        tree = Build.A.BlockTree().WithoutSettingHead.WithDatabaseFrom(builder).WithBestPersistedState(2).TestObject;
+        IStateReader stateReader = Substitute.For<IStateReader>();
+        stateReader.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(static c => c.Arg<BlockHeader>().Number <= 5);
+        stateReader.HasStateForBlock(Arg.Is<BlockHeader>(h => h.Number > keptUpTo && h.Number > 2)).Returns(false);
+        System.Collections.Generic.List<ulong> suggested = [];
+        tree.NewBestSuggestedBlock += (_, e) => suggested.Add(e.Block.Number);
+        Assert.That(tree.Head!.Number, Is.EqualTo(2ul));
+
+        using StartupBlockTreeFixer fixer = new(new SyncConfig(), tree, stateReader, NoErrorLimboLogs.Instance);
+        await tree.Accept(fixer, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tree.Head!.Number, Is.EqualTo(expectedHead));
+            Assert.That(suggested, Is.EqualTo(System.Linq.Enumerable.Range((int)expectedHead + 1, 5 - (int)expectedHead).Select(static n => (ulong)n)));
+        }
     }
 
     [MaxTime(Timeout.MaxTestTime * 4)]
