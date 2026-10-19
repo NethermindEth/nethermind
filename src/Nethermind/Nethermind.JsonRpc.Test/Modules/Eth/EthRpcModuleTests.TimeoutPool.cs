@@ -36,30 +36,20 @@ public partial class EthRpcModuleTests
                 });
 
             ctx.Test = await CreateLogsTestBlockchainBuilder(enableLogsStreamMode: true).WithBlockchainBridge(bridge).Build();
-            TrackingCancellationTokenSource timeout = RentTrackingTimeoutSourceForNextRequest();
+            ResultWrapper<IEnumerable<FilterLog>> response = ctx.Test.EthRpcModule.eth_getLogs(new Filter());
 
             try
             {
-                CancellationToken expectedToken = timeout.Token;
-                ResultWrapper<IEnumerable<FilterLog>> response = ctx.Test.EthRpcModule.eth_getLogs(new Filter());
-
-                try
-                {
-                    Assert.That(observedToken, Is.EqualTo(expectedToken));
-                    Assert.That(response.Data, Is.TypeOf<LogsStreamableResult>());
-                    Assert.That(timeout.DisposeCount, Is.EqualTo(0));
-                }
-                finally
-                {
-                    response.Dispose();
-                }
-
-                Assert.That(timeout.DisposeCount, Is.EqualTo(1));
+                Assert.That(observedToken.CanBeCanceled, Is.True);
+                Assert.That(response.Data, Is.TypeOf<LogsStreamableResult>());
+                Assert.That(IsSourceDisposed(observedToken), Is.False);
             }
             finally
             {
-                DisposeIfNotAlreadyObserved(timeout);
+                response.Dispose();
             }
+
+            Assert.That(IsSourceDisposed(observedToken), Is.True);
         }
 
         [Test]
@@ -113,38 +103,46 @@ public partial class EthRpcModuleTests
                 });
 
             ctx.Test = await CreateLogsTestBlockchainBuilder(enableLogsStreamMode: true).WithBlockchainBridge(bridge).Build();
-            TrackingCancellationTokenSource timeout = RentTrackingTimeoutSourceForNextRequest();
+            ResultWrapper<IEnumerable<FilterLog>> response = ctx.Test.EthRpcModule.eth_getLogs(new Filter());
+            response.Id = new JsonRpcId(67L);
+            string serialized;
 
             try
             {
-                CancellationToken expectedToken = timeout.Token;
-                ResultWrapper<IEnumerable<FilterLog>> response = ctx.Test.EthRpcModule.eth_getLogs(new Filter());
-                response.Id = new JsonRpcId(67L);
-                string serialized;
-
-                try
-                {
-                    Assert.That(observedToken, Is.EqualTo(expectedToken));
-                    serialized = await WriteJsonRpcResponseAsync(response);
-                    Assert.That(timeout.DisposeCount, Is.EqualTo(0));
-                }
-                finally
-                {
-                    response.Dispose();
-                }
-
-                Assert.That(serialized, Is.EqualTo(ExpectedFilterLogStreamResponse("failed")));
-                Assert.That(timeout.DisposeCount, Is.EqualTo(1));
+                Assert.That(observedToken.CanBeCanceled, Is.True);
+                serialized = await WriteJsonRpcResponseAsync(response);
+                Assert.That(IsSourceDisposed(observedToken), Is.False);
             }
             finally
             {
-                DisposeIfNotAlreadyObserved(timeout);
+                response.Dispose();
             }
+
+            Assert.That(serialized, Is.EqualTo(ExpectedFilterLogStreamResponse("failed")));
+            Assert.That(IsSourceDisposed(observedToken), Is.True);
 
             static IEnumerable<FilterLog> GetLogs()
             {
                 yield return CreateTestFilterLog();
                 throw new InvalidOperationException("Stream mode failed after a complete log item.");
+            }
+        }
+
+        /// <summary>Whether the source behind <paramref name="token"/> was disposed.</summary>
+        /// <remarks>
+        /// Observes the source the request actually rented, so other tests renting from the shared pool cannot hand
+        /// the request a different one.
+        /// </remarks>
+        private static bool IsSourceDisposed(CancellationToken token)
+        {
+            try
+            {
+                _ = token.WaitHandle;
+                return false;
+            }
+            catch (ObjectDisposedException)
+            {
+                return true;
             }
         }
     }
