@@ -383,11 +383,13 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
     /// </summary>
     /// <remarks>
     /// Counts only the reads of the block's transactions, which block processing makes on its own thread, in order, so
-    /// its counting needs no synchronisation. The block's token is cancelled once the transactions are executed; the
-    /// reads that follow, of the work that finalises the block, may run on other threads and belong to no transaction,
-    /// so they are not counted. Its runs are discovery hand-offs: they share the block's hand-off cap and cell budget,
-    /// put only values read at the parent state into the caches, and record no footprint. The session's end closes it
-    /// after cancelling the block's token, and joins every run it started; none starts after that.
+    /// its counting needs no synchronisation: a block whose transactions run in parallel has an access list and does not
+    /// read ahead (see <see cref="BlockState.ReadsAhead"/>). <see cref="Start"/> still tolerates two callers reaching
+    /// the threshold together, and starts one run per transaction. The block's token is cancelled once the transactions
+    /// are executed; the reads that follow, of the work that finalises the block, may run on other threads and belong to
+    /// no transaction, so they are not counted. Its runs are discovery hand-offs: they share the block's hand-off cap and
+    /// cell budget, put only values read at the parent state into the caches, and record no footprint. The session's end
+    /// closes it after cancelling the block's token, and joins every run it started; none starts after that.
     /// </remarks>
     private sealed class ReadAhead(BlockCachePreWarmer preWarmer, BlockState blockState, int coldReads) : IConsumerColdReadObserver
     {
