@@ -633,6 +633,10 @@ public sealed class SignatureTxValidator : BaseSignatureTxValidator
 {
     public static readonly SignatureTxValidator Instance = new();
     private SignatureTxValidator() { }
+
+    // A typed transaction signs with a y_parity of 0 or 1, never with a V that carries a chain id.
+    protected override ValidationResult ValidateChainId(Transaction transaction, IReleaseSpec releaseSpec) =>
+        TxErrorMessages.InvalidTxSignature;
 }
 
 public sealed class NoContractCreationTxValidator : ITxValidator
