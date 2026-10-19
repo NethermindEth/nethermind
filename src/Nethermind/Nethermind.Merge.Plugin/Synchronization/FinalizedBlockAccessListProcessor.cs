@@ -139,6 +139,7 @@ public sealed class FinalizedBlockAccessListProcessor(
 
         block.AccountChanges = list.GetStateChangedAddresses();
         Metrics.BalCatchUpBlocks++;
+        if (_logger.IsDebug) _logger.Debug($"Reconstructed finalized {block.ToString(Block.Format.Short)} from its block access list");
         return (block, receipts);
 
         (Block, TxReceipt[]) Execute(BalCatchUpFallbackReason reason)
