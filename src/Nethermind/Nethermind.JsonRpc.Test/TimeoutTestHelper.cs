@@ -26,9 +26,11 @@ internal static class TimeoutTestHelper
     }
 
     /// <summary>Removes <paramref name="timeout"/> from the shared pool, wherever other tests' returns have queued it.</summary>
+    /// <remarks>Withdraws an untaken plant first, so a request that never rented its timeout is not reported as returning it.</remarks>
     /// <returns>Whether <paramref name="timeout"/> was in the pool.</returns>
     internal static bool TryTakeFromPool(CancellationTokenSource timeout)
     {
+        JsonRpcConfigExtension.UseForNextTimeoutInFlow(null);
         JsonRpcConfig config = new();
         List<CancellationTokenSource> others = new(TimeoutCancellationTokenPoolSize);
         bool found = false;
