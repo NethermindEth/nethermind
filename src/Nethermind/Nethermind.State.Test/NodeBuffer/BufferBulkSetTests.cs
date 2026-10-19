@@ -817,10 +817,10 @@ internal class BufferBulkSetTests
         return pointers.GetValueOrDefault(TreePath.Empty);
     }
 
-    private static TrieRoot BulkSet(INodeRecordBuffer buffer, INodeRecordSource source, Hash256 address, TrieRoot root, List<(Hash256 key, byte[] value)> items, bool canParallelize)
+    private static TrieRoot BulkSet(INodeRecordBuffer buffer, DictionaryNodeSource source, Hash256 address, TrieRoot root, List<(Hash256 key, byte[] value)> items, bool canParallelize)
     {
         using ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries = Entries(items);
-        return BufferBulkSet.BulkSet(buffer, source, address, root, entries, canParallelize);
+        return BufferBulkSet.BulkSet(source.Over(buffer), address, root, entries, canParallelize);
     }
 
     private static ArrayPoolListRef<PatriciaTree.BulkSetEntry> Entries(List<(Hash256 key, byte[] value)> items)
@@ -843,13 +843,13 @@ internal class BufferBulkSetTests
         buffer.EnumerateNodes(root.Pointer).ToDictionary(node => node.Path, node => node.Record.Rlp.ToArray());
 
     /// <summary>The values at <paramref name="keys"/>, read by a <see cref="PatriciaTree"/> from the records linked from <paramref name="root"/>, falling back to <paramref name="source"/>.</summary>
-    private static byte[][] ReadValues(INodeRecordBuffer buffer, INodeRecordSource source, TrieRoot root, IEnumerable<Hash256> keys)
+    private static byte[][] ReadValues(INodeRecordBuffer buffer, DictionaryNodeSource source, TrieRoot root, IEnumerable<Hash256> keys)
     {
         PatriciaTree tree = new(new LinkedRecordResolver(Rlps(buffer, root), source), LimboLogs.Instance) { RootHash = root.ToHash256() };
         return keys.Select(key => tree.Get(key.Bytes) is { IsEmpty: false } value ? value.ToArray() : null).ToArray();
     }
 
-    private sealed class LinkedRecordResolver(Dictionary<TreePath, byte[]> linked, INodeRecordSource source) : IScopedTrieStore
+    private sealed class LinkedRecordResolver(Dictionary<TreePath, byte[]> linked, DictionaryNodeSource source) : IScopedTrieStore
     {
         public TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash) => new(NodeType.Unknown, hash);
         public byte[] TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>

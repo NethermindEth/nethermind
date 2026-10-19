@@ -393,9 +393,10 @@ public sealed class SnapshotBundle : IDisposable
     }
 
     /// <summary>A leased immutable source with private warmed storage, independent of transient-resource retirement.</summary>
-    internal sealed class BackgroundTrieSource : INodeRecordSource, IDisposable
+    internal sealed class BackgroundTrieSource : INodeRecordStore, IDisposable
     {
         private readonly ReadOnlySnapshotBundle _readOnly;
+        private readonly INodeRecordBuffer _buffer;
         private readonly Hash256 _address;
         private readonly WarmedNodes _warmed;
         private readonly INodeRecordBufferPin _pin;
@@ -405,6 +406,7 @@ public sealed class SnapshotBundle : IDisposable
         {
             _warmed = warmed;
             _readOnly = readOnly;
+            _buffer = buffer;
             _address = address;
             readOnly.AcquireLease();
             try
@@ -426,8 +428,9 @@ public sealed class SnapshotBundle : IDisposable
             }
         }
 
-        public bool TryLoad(in TreePath path, in ValueHash256 hash, out NodeRecord record) =>
-            TryLoad(0, path, hash, out record);
+        public bool TryLocate(ulong pointer, out NodeRecord record) => _buffer.TryLocate(pointer, out record);
+
+        public INodeRecordWriteBatch StartWriteBatch(int alignedTotalLength) => _buffer.StartWriteBatch(alignedTotalLength);
 
         public bool TryLoad(ulong pointer, in TreePath path, in ValueHash256 hash, out NodeRecord record)
         {

@@ -119,7 +119,7 @@ internal static partial class BufferBulkSet
 
             if (hashedCount == 0) return;
 
-            using INodeRecordWriteBatch batch = _buffer.StartWriteBatch(totalLength);
+            using INodeRecordWriteBatch batch = _store.StartWriteBatch(totalLength);
             Span<byte> buffer = batch.Bytes;
             ulong basePointer = batch.BasePointer;
             for (int i = 0; i < hashedCount; i++)

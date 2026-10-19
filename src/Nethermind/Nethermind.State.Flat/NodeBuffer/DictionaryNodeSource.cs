@@ -12,12 +12,15 @@ namespace Nethermind.State.Flat.NodeBuffer;
 
 /// <summary>A node source over path-keyed node RLP, for tests and benchmarks: a fetched node is verified and inserted into <paramref name="warmed"/>, which serves it after.</summary>
 /// <param name="address">The storage trie's address hash, or null for the state trie.</param>
-internal sealed class DictionaryNodeSource(IReadOnlyDictionary<TreePath, byte[]> nodes, WarmedNodes warmed, Hash256? address) : INodeRecordSource
+internal sealed class DictionaryNodeSource(IReadOnlyDictionary<TreePath, byte[]> nodes, WarmedNodes warmed, Hash256? address)
 {
     private int _fetchCount;
 
     /// <summary>Number of lookups that missed the warmed nodes and went to the dictionary.</summary>
     public int FetchCount => Volatile.Read(ref _fetchCount);
+
+    /// <summary>A store that reads and writes <paramref name="buffer"/> and loads the nodes it does not hold from this source.</summary>
+    public INodeRecordStore Over(INodeRecordBuffer buffer) => new Store(this, buffer);
 
     public bool TryLoad(ulong pointer, in TreePath path, in ValueHash256 hash, out NodeRecord record) =>
         warmed.TryGet(pointer, hash, out record) || TryLoad(path, hash, out record);
@@ -43,5 +46,15 @@ internal sealed class DictionaryNodeSource(IReadOnlyDictionary<TreePath, byte[]>
     {
         Interlocked.Increment(ref _fetchCount);
         return nodes.GetValueOrDefault(path);
+    }
+
+    private sealed class Store(DictionaryNodeSource source, INodeRecordBuffer buffer) : INodeRecordStore
+    {
+        public bool TryLocate(ulong pointer, out NodeRecord record) => buffer.TryLocate(pointer, out record);
+
+        public INodeRecordWriteBatch StartWriteBatch(int alignedTotalLength) => buffer.StartWriteBatch(alignedTotalLength);
+
+        public bool TryLoad(ulong pointer, in TreePath path, in ValueHash256 hash, out NodeRecord record) =>
+            source.TryLoad(pointer, path, hash, out record);
     }
 }

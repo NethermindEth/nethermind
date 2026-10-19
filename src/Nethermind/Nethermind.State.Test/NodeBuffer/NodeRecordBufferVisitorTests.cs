@@ -220,18 +220,9 @@ public class NodeRecordBufferVisitorTests
             entries.Add(new PatriciaTree.BulkSetEntry(Key(0, 1), [1]));
             entries.Add(new PatriciaTree.BulkSetEntry(Key(0, 2), [2]));
         }
-        TrieRoot root = BufferBulkSet.BulkSet(buffer, new EmptySource(), address, TrieRoot.Empty, entries, false);
+        TrieRoot root = BufferBulkSet.BulkSet(new DictionaryNodeSource(new Dictionary<TreePath, byte[]>(), new WarmedNodes(1), address).Over(buffer), address, TrieRoot.Empty, entries, false);
         buffer.SetRoot(address, root.Hash, root.Pointer);
         return root;
-    }
-
-    private sealed class EmptySource : INodeRecordSource
-    {
-        public bool TryLoad(in TreePath path, in ValueHash256 hash, out NodeRecord record)
-        {
-            record = default;
-            return false;
-        }
     }
 
     private sealed class RecordingResolver : IScopedTrieStore

@@ -19,7 +19,7 @@ namespace Nethermind.State.Flat.ScopeProvider;
 /// back from the buffer by pointer, which the scope's pin keeps readable.
 /// </remarks>
 /// <param name="root">The trie's root, as <see cref="NodeRecordBufferExtensions.ResolveRoot"/> returns it.</param>
-internal sealed class BufferedTrie(SnapshotBundle bundle, INodeRecordBuffer buffer, Hash256? addressHash, TrieRoot root) : INodeRecordSource
+internal sealed class BufferedTrie(SnapshotBundle bundle, INodeRecordBuffer buffer, Hash256? addressHash, TrieRoot root) : INodeRecordStore
 {
     private Hash256 _rootHash = root.ToHash256();
     private bool _rootDirty;
@@ -33,7 +33,7 @@ internal sealed class BufferedTrie(SnapshotBundle bundle, INodeRecordBuffer buff
 
     /// <inheritdoc cref="BufferBulkSet.BulkSet"/>
     public void BulkSet(in ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries, bool canParallelize) =>
-        SetRoot(BufferBulkSet.BulkSet(buffer, this, addressHash, Root, entries, canParallelize));
+        SetRoot(BufferBulkSet.BulkSet(this, addressHash, Root, entries, canParallelize));
 
     /// <summary>Adopts the root of a completed private update.</summary>
     internal void Adopt(in TrieRoot root) => SetRoot(root);
@@ -80,7 +80,7 @@ internal sealed class BufferedTrie(SnapshotBundle bundle, INodeRecordBuffer buff
                     return TryGetInlineLeaf(child.InlineRlp, keyNibbles[depth..], nodeKey);
             }
 
-            if (!buffer.TryLocate(child.Pointer, out NodeRecord record) && !TryLoad(child.Pointer, path, child.Data, out record))
+            if (!TryLocate(child.Pointer, out NodeRecord record) && !TryLoad(child.Pointer, path, child.Data, out record))
             {
                 throw new MissingTrieNodeException($"Trie node missing hash={child.Data} address={addressHash} path={path}", addressHash, path, new Hash256(child.Data));
             }
@@ -117,11 +117,12 @@ internal sealed class BufferedTrie(SnapshotBundle bundle, INodeRecordBuffer buff
         return nodeKey[..NodeRlp.HexPrefixNibbleCount(hexPrefix.Payload)].SequenceEqual(keyNibbles) ? value.Payload.ToArray() : null;
     }
 
+    public bool TryLocate(ulong pointer, out NodeRecord record) => buffer.TryLocate(pointer, out record);
+
+    public INodeRecordWriteBatch StartWriteBatch(int alignedTotalLength) => buffer.StartWriteBatch(alignedTotalLength);
+
     public bool TryLoad(ulong pointer, in TreePath path, in ValueHash256 hash, out NodeRecord record) =>
         bundle.TryLoadTrieNodeRecord(addressHash, pointer, path, hash, out record);
-
-    public bool TryLoad(in TreePath path, in ValueHash256 hash, out NodeRecord record) =>
-        bundle.TryLoadTrieNodeRecord(addressHash, path, hash, out record);
 
     private void SetRoot(in TrieRoot updated)
     {

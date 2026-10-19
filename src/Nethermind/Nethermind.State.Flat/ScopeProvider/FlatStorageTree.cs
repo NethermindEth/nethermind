@@ -165,7 +165,7 @@ public sealed class FlatStorageTree(
             {
                 OnEarlyPassDrained?.Invoke();
                 // Pool work would run at normal priority rather than this thread's idle priority.
-                _earlyRoot = BufferBulkSet.BulkSet(_bundle.NodeRecordBuffer!, _earlySource!, AddressHash, _earlyRoot, entries, canParallelize: false);
+                _earlyRoot = BufferBulkSet.BulkSet(_earlySource!, AddressHash, _earlyRoot, entries, canParallelize: false);
                 _scope.CountEarlyApplied(entries.Count);
             }
         }
