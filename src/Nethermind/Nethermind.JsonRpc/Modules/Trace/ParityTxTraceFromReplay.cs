@@ -76,10 +76,8 @@ namespace Nethermind.JsonRpc.Modules.Trace
             writer.WritePropertyName("action"u8);
             ParityTraceActionConverter.Instance.Write(writer, value, options);
 
-            // A failed action keeps its result only when it produced output, as a reverted frame does; a halted one has a
-            // null result.
             writer.WritePropertyName("result"u8);
-            TypeInfoJsonSerializer.Serialize(writer, value.Error is null || value.Result?.Output is not null ? value.Result : null, options);
+            TypeInfoJsonSerializer.Serialize(writer, value.Result, options);
 
             if (value.Error is not null)
             {

@@ -102,10 +102,8 @@ public static class ParityReplayEnvelopeWriter
         writer.WritePropertyName("action"u8);
         ParityTraceActionConverter.Instance.Write(writer, action, options);
 
-        // A failed action keeps its result only when it produced output, as a reverted frame does; a halted one has a
-        // null result.
         writer.WritePropertyName("result"u8);
-        TypeInfoJsonSerializer.Serialize(writer, action.Error is null || action.Result?.Output is not null ? action.Result : null, options);
+        TypeInfoJsonSerializer.Serialize(writer, action.Result, options);
 
         if (action.Error is not null)
         {
