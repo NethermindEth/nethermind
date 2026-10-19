@@ -6,11 +6,11 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Experimental.Abi;
 
-public sealed class AbiSignature(string name)
+public sealed class AbiSignature(string? name = null)
 {
     public const int MethodIdLength = 4;
 
-    public string Name { get; } = name;
+    public string? Name { get; } = name;
 
     // TODO: Come up with a better name for this family of methods
     public AbiSignature<ValueTuple> With() => new(Name, AbiType.Tuple());
@@ -37,17 +37,17 @@ public sealed class AbiSignature(string name)
         new(Name, AbiType.Tuple(abi1, abi2, abi3, abi4, abi5, abi6, abi7));
 }
 
-public sealed class AbiSignature<T>(string name, Abi<T> abi)
+public sealed class AbiSignature<T>(string? name, Abi<T> abi)
 {
-    private readonly byte[] _methodId =
+    private readonly byte[] _methodId = name is null ? [] :
         Keccak.Compute(Encoding.ASCII.GetBytes($"{name}{abi}")).Bytes[..AbiSignature.MethodIdLength].ToArray();
 
-    public string Name { get; } = name;
+    public string? Name { get; } = name;
     public Abi<T> Abi { get; } = abi;
 
     public ReadOnlySpan<byte> MethodId => _methodId;
 
-    public int Size(T value) => AbiSignature.MethodIdLength + Abi.Size(value);
+    public int Size(T value) => MethodId.Length + Abi.Size(value);
 
     public override string ToString() => $"{Name}{Abi}";
 }
