@@ -618,6 +618,7 @@ pub fn prove_aggregate(hash: &[u8; 32], input: &[u8]) -> Result<Vec<u8>, ()> {
 }
 
 // Crypto ABI calls bound buffers and contain upstream panics; free requires its exact owned allocation.
+// Calls return 1 for accepted, 0 for rejected input and -1 for a contained panic, so callers never read a fault as a verdict.
 unsafe fn bytes<'a>(ptr: *const u8, len: usize) -> Result<&'a [u8], ()> {
     unsafe { bytes_with_limit(ptr, len, MAX_BYTES) }
 }
@@ -672,9 +673,7 @@ fn checked(f: impl FnOnce() -> Result<bool, ()>) -> i32 {
         });
         f()
     }))
-    .ok()
-    .and_then(Result::ok)
-    .unwrap_or(false) as i32
+    .map_or(-1, |verdict| verdict.unwrap_or(false) as i32)
 }
 #[unsafe(no_mangle)]
 pub extern "C" fn nlean_abi_version() -> u32 {
@@ -1238,7 +1237,8 @@ mod tests {
         );
         assert_eq!(unsafe { nlean_limits(std::ptr::null_mut(), 9) }, 0);
         assert_eq!(unsafe { nlean_limits(limits.as_mut_ptr(), 8) }, 0);
-        assert_eq!(checked(|| panic!("contained upstream failure")), 0);
+        assert_eq!(checked(|| panic!("contained upstream failure")), -1);
+        assert_eq!(checked(|| Err(())), 0);
     }
 
     #[test]
@@ -1497,7 +1497,7 @@ mod tests {
                 });
                 panic!("contained calling thread");
             }),
-            0
+            -1
         );
         assert_eq!(diagnostics.load(Ordering::Relaxed), 1);
         assert!(std::panic::catch_unwind(|| panic!("caller outside ABI")).is_err());

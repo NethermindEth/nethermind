@@ -11,7 +11,7 @@ using Nethermind.Core.Crypto;
 namespace Nethermind.Crypto;
 
 /// <summary>Checks signature claims and public program commitments with the pinned native backend;
-/// unavailable libraries fail verification closed, while proving reports an error.</summary>
+/// a native fault, ABI mismatch or missing library throws instead of returning a verdict.</summary>
 // Pinned spans remain valid for each call; Rust bounds all buffers and owns returned proof allocations.
 public sealed unsafe partial class NativeLeanProofVerifier : ILeanProofVerifier
 {
@@ -73,9 +73,9 @@ public sealed unsafe partial class NativeLeanProofVerifier : ILeanProofVerifier
             fixed (byte* d = dataHash.Bytes)
             fixed (byte* v = verificationKey.Bytes)
             fixed (byte* w = witness)
-                return AbiVersion == ExpectedAbiVersion && nlean_verify_leansphincs(d, v, w, (nuint)witness.Length) == 1;
+                return Verdict(AbiVersion != ExpectedAbiVersion ? -1 : nlean_verify_leansphincs(d, v, w, (nuint)witness.Length));
         }
-        catch (Exception e) when (IsUnavailable(e)) { return false; }
+        catch (Exception e) when (IsUnavailable(e)) { throw new InvalidOperationException("Native Lean backend unavailable", e); }
     }
 
     /// <inheritdoc/>
@@ -87,9 +87,9 @@ public sealed unsafe partial class NativeLeanProofVerifier : ILeanProofVerifier
             fixed (byte* d = dataHash.Bytes)
             fixed (byte* v = verificationKey.Bytes)
             fixed (byte* w = witness)
-                return AbiVersion == ExpectedAbiVersion && nlean_verify_leanstark(d, v, w, (nuint)witness.Length) == 1;
+                return Verdict(AbiVersion != ExpectedAbiVersion ? -1 : nlean_verify_leanstark(d, v, w, (nuint)witness.Length));
         }
-        catch (Exception e) when (IsUnavailable(e)) { return false; }
+        catch (Exception e) when (IsUnavailable(e)) { throw new InvalidOperationException("Native Lean backend unavailable", e); }
     }
 
     /// <inheritdoc/>
@@ -101,9 +101,9 @@ public sealed unsafe partial class NativeLeanProofVerifier : ILeanProofVerifier
             fixed (byte* h = depsHash.Bytes)
             fixed (byte* vk = aggregatedVk)
             fixed (byte* p = proof)
-                return AbiVersion == ExpectedAbiVersion && nlean_verify_recursive(h, vk, (nuint)aggregatedVk.Length, p, (nuint)proof.Length) == 1;
+                return Verdict(AbiVersion != ExpectedAbiVersion ? -1 : nlean_verify_recursive(h, vk, (nuint)aggregatedVk.Length, p, (nuint)proof.Length));
         }
-        catch (Exception e) when (IsUnavailable(e)) { return false; }
+        catch (Exception e) when (IsUnavailable(e)) { throw new InvalidOperationException("Native Lean backend unavailable", e); }
     }
 
     /// <inheritdoc/>
@@ -188,6 +188,14 @@ public sealed unsafe partial class NativeLeanProofVerifier : ILeanProofVerifier
         writer.Write(bytes.Length);
         writer.Write(bytes);
     }
+
+    // A fault is not a rejection: reporting it as false would mark a valid block INVALID and cache it as bad.
+    private static bool Verdict(int result) => result switch
+    {
+        1 => true,
+        0 => false,
+        _ => throw new InvalidOperationException("Native Lean verifier failed or has an incompatible ABI")
+    };
 
     private static bool IsUnavailable(Exception e) => e is DllNotFoundException or EntryPointNotFoundException or BadImageFormatException;
 
