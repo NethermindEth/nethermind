@@ -105,8 +105,21 @@ def prepare(args):
     if os.environ.get("EEZ_SUITE"):
         from partitions import adapt_driver
         commands, names = adapt_driver(commands, package, profile, os.environ["EEZ_SUITE"])
+        commands = partition_observations(commands, names)
     driver.write_text(commands)
     (args.output.parent / "scenario-hooks.json").write_text(json.dumps(names) + "\n")
+
+
+def partition_observations(commands, names):
+    initial = 'bash "$NETHERMIND_OBSERVE_SCRIPT" verify-eezl2-deployment'
+    if len(names) != 2 or commands.count(initial) != 1:
+        raise ValueError("upstream partition observation inventory changed")
+    commands = commands.replace(initial, 'bash "$NETHERMIND_OBSERVE_SCRIPT" genesis')
+    selected = 'bash "$NETHERMIND_OBSERVE_SCRIPT" ' + names[1]
+    if commands.count(selected) != 1:
+        raise ValueError("upstream selected observation boundary changed")
+    commands = commands.replace(selected, initial + "\n" + selected)
+    return commands
 
 def prepare_native_evidence(package):
     path = package / "scripts/verify-static-counter-l2.sh"
@@ -164,6 +177,11 @@ def report(args):
             signed.append(event)
     if len(signed) != counts["signed_windows"]:
         raise ValueError("signed-window evidence differs from upstream counts")
+    if os.environ.get("EEZ_SUITE"):
+        for phase in json.loads((args.directory / "scenario-hooks.json").read_text()):
+            observation = json.loads((args.directory / (phase + ".json")).read_text())
+            if observation["result"] != "pass" or observation.get("verified_blocks", 0) <= 1:
+                raise ValueError("missing complete candidate prefix observation")
     report = {"result": "pass", "implementation": "Nethermind", "wire": "prove.v2",
         "profile": "rollup0-conditional", "transport": "isolated-h2-to-mtls",
         "candidate_revision": args.revision, "image_id": args.image_id,
@@ -191,6 +209,8 @@ def follower_report(args):
         observation = json.loads((args.directory / (phase + ".json")).read_text())
         if observation["result"] != "pass" or observation["profile"] != "rollupx-native" or observation["phase"] != phase:
             raise ValueError("missing native follower observation")
+        if os.environ.get("EEZ_SUITE") and observation.get("verified_blocks", 0) <= 1:
+            raise ValueError("missing complete native follower prefix")
         if phase != "verify-eezl2-deployment" and not all(type(observation[name]) is int and observation[name] > 0 for name in ("verified_blocks", "verified_receipts", "verified_native_transactions")):
             raise ValueError("native follower scenario has no verified work")
         observations[phase] = observation

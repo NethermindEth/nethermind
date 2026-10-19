@@ -131,7 +131,7 @@ class NativePreparationTests(unittest.TestCase):
 
 class NativeFollowerEvidenceTests(unittest.TestCase):
     def test_report_requires_real_native_observations_and_never_claims_candidate_prover(self):
-        for mutation in (None, "source", "zero-proofs", "wrong-profile", "failed-restart", "empty-fresh", "missing-fresh", "streaming"):
+        for mutation in (None, "source", "zero-proofs", "wrong-profile", "failed-restart", "empty-fresh", "missing-fresh", "streaming", "partition", "genesis-only", "missing-prefix"):
             with self.subTest(mutation=mutation), tempfile.TemporaryDirectory() as directory:
                 root = Path(directory)
                 manifest = {"repository": upstream.PROFILES["rollupx"], "profile": "rollupx", "revision": "a" * 40, "core_revision": "b" * 40}
@@ -143,23 +143,26 @@ class NativeFollowerEvidenceTests(unittest.TestCase):
                 (root / "result.json").write_text(json.dumps(result))
                 for phase in ("verify-eezl2-deployment", "before-restart", "after-restart", "fresh-follower"):
                     observation = {"result": "pass", "phase": phase, "profile": "rollupx-native", "verified_blocks": 20, "verified_receipts": 3, "verified_native_transactions": 2}
+                    if mutation == "genesis-only" and phase == "verify-eezl2-deployment": observation["verified_blocks"] = 0
+                    if mutation == "missing-prefix" and phase == "verify-eezl2-deployment": del observation["verified_blocks"]
                     if mutation == "wrong-profile": observation["profile"] = "legacy-rollup0-0x76"
                     if mutation == "failed-restart" and phase == "after-restart": observation["result"] = "fail"
                     if mutation == "empty-fresh" and phase == "fresh-follower": observation["verified_native_transactions"] = 0
                     if mutation != "missing-fresh" or phase != "fresh-follower":
                         (root / (phase + ".json")).write_text(json.dumps(observation))
                 args = SimpleNamespace(directory=root, revision="e" * 40, image_id="sha256:" + "f" * 64)
-                if mutation:
-                    with self.assertRaises((ValueError, FileNotFoundError)):
+                with patch.dict(os.environ, {"EEZ_SUITE": "recovery" if mutation in ("partition", "genesis-only", "missing-prefix") else ""}):
+                    if mutation and mutation != "partition":
+                        with self.assertRaises((ValueError, FileNotFoundError)):
+                            prepare.follower_report(args)
+                        self.assertFalse((root / "candidate-follower.json").exists())
+                    else:
                         prepare.follower_report(args)
-                    self.assertFalse((root / "candidate-follower.json").exists())
-                else:
-                    prepare.follower_report(args)
-                    report = json.loads((root / "candidate-follower.json").read_text())
-                    self.assertEqual(report["role"], "follower")
-                    self.assertEqual(report["prover"], "upstream")
-                    self.assertEqual(report["candidate_revision"], args.revision)
-                    self.assertNotIn("signed_windows", report)
+                        report = json.loads((root / "candidate-follower.json").read_text())
+                        self.assertEqual(report["role"], "follower")
+                        self.assertEqual(report["prover"], "upstream")
+                        self.assertEqual(report["candidate_revision"], args.revision)
+                        self.assertNotIn("signed_windows", report)
                 self.assertFalse((root / "candidate-prover.json").exists())
 
     def test_native_runtime_build_is_bound_to_selected_source_without_rollup0_artifact_fallback(self):

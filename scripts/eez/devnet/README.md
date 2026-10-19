@@ -28,7 +28,7 @@ A separate Rollup0 live control probe uses the upstream generated Rust gRPC clie
 
 Results use an exact canonical L1 registry snapshot. The registered commitment is an L2 block hash. Both nodes must provide its entire ancestry and the same transaction bytes and receipts. Canonical L1 and L2 endpoints are checked again after observations. Missing data, empty required scenarios and any mismatch fail the lane.
 
-The initial observation verifies zero native account balance and nonce at genesis on both nodes. Later observations reuse that passed result only when both nodes still have the same genesis hash, state root and chain ID. They do not require historical genesis state to remain available. Account state at the settled endpoint is still checked on both nodes in every phase.
+Partition jobs check the actual zero native account balance and nonce at genesis before scenario traffic. This capture does not claim settled prefix coverage. They run the full initial prefix check after their selected scenario, followed by the scenario observation. This lets follower startup progress during the scenario. Later observations reuse the passed genesis state only when both nodes still have the same genesis hash, state root and chain ID. Required prefix reports reject genesis-only results. They do not require historical genesis state to remain available. Account state at the settled endpoint is still checked on both nodes in every phase.
 
 PRs and pushes touching EEZ or its execution dependencies start the workflow. The daily schedule detects upstream-only changes after the workflow reaches the default branch. Manual runs can select an exact upstream revision.
 

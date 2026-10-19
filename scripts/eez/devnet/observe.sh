@@ -33,8 +33,13 @@ verify() {
         sleep 2
     done
     (( ready == 1 )) || { echo "Nethermind genesis RPC did not become ready" >&2; return 1; }
-    local genesis_args=()
-    if [[ "$name" != verify-eezl2-deployment ]]; then
+    local genesis_args=() observation_phase="$name"
+    if [[ "$name" == initial-genesis ]]; then
+        genesis_args=(--genesis-only)
+        observation_phase=verify-eezl2-deployment
+    elif [[ "$name" == verify-eezl2-deployment && -s "$EEZ_CI_RESULT_DIR/initial-genesis.json" ]]; then
+        genesis_args=(--genesis-evidence "$EEZ_CI_RESULT_DIR/initial-genesis.json")
+    elif [[ "$name" != verify-eezl2-deployment ]]; then
         genesis_args=(--genesis-evidence "$EEZ_CI_RESULT_DIR/verify-eezl2-deployment.json")
     fi
     python3 "$HERE/verify.py" \
@@ -42,10 +47,12 @@ verify() {
         --registry "$EEZ_REGISTRY_ADDRESS" --registry-call "$(cast calldata 'rollups(uint64)' "$EEZ_ROLLUP_ID")" \
         --genesis "$EEZ_INITIAL_BLOCK_HASH" --l1-chain-id "$(cat "$connection/l1-chain-id")" \
         --l2-chain-id "$(cast chain-id --rpc-url "$EEZ_DEVNET_L2_RPC")" \
-        --profile "${EEZ_PROFILE:-rollup0}" --phase "$name" --minimum-native "$minimum" --minimum-height "$height" \
+        --profile "${EEZ_PROFILE:-rollup0}" --phase "$observation_phase" --minimum-native "$minimum" --minimum-height "$height" \
         --output "$EEZ_CI_RESULT_DIR/$name.json" "${genesis_args[@]}"
 }
-if [[ "$phase" == recovery ]]; then
+if [[ "$phase" == genesis ]]; then
+    verify nethermind-l2 initial-genesis 0 1
+elif [[ "$phase" == recovery ]]; then
     verify nethermind-l2 before-restart 1 1
     height="$(jq -r '.height' "$EEZ_CI_RESULT_DIR/before-restart.json")"
     kurtosis service stop "$KURTOSIS_ENCLAVE" nethermind-l2

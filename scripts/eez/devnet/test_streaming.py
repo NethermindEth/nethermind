@@ -85,7 +85,7 @@ class StreamingSourceTests(unittest.TestCase):
 
 class StreamingEvidenceTests(unittest.TestCase):
     def test_requires_v2_signed_windows_matching_passed_upstream_source_and_counts(self):
-        for mutation in (None, "v1", "absent", "count", "digest", "result", "source", "remote"):
+        for mutation in (None, "v1", "absent", "count", "digest", "result", "source", "remote", "partition", "genesis-only", "missing-prefix"):
             with self.subTest(mutation=mutation), tempfile.TemporaryDirectory() as directory:
                 root = Path(directory)
                 manifest = {"revision": "a" * 40, "core_revision": "b" * 40, "streaming": {"wire": "prove.v2", "profile": "rollup0-conditional"}}
@@ -101,16 +101,23 @@ class StreamingEvidenceTests(unittest.TestCase):
                 (root / "result.json").write_text(json.dumps(result))
                 event = json.dumps({"event_name": "eez.proof_signer.window_signed", "fields": fields}, separators=(",", ":"))
                 (root / "eez-proof-signer.log").write_text("" if mutation == "absent" else "[log prefix] " + event + "\n")
+                (root / "scenario-hooks.json").write_text(json.dumps(["verify-eezl2-deployment", "verify-cross-chain-waves"]))
+                for phase in ("verify-eezl2-deployment", "verify-cross-chain-waves"):
+                    observation = {"result": "pass", "verified_blocks": 20}
+                    if mutation == "genesis-only": observation["verified_blocks"] = 0
+                    if mutation == "missing-prefix": del observation["verified_blocks"]
+                    (root / (phase + ".json")).write_text(json.dumps(observation))
                 args = SimpleNamespace(directory=root, revision="e" * 40, image_id="sha256:" + "f" * 64)
-                if mutation:
-                    with self.assertRaises(ValueError): prepare.report(args)
-                    self.assertFalse((root / "candidate-prover.json").exists())
-                else:
-                    prepare.report(args)
-                    report = json.loads((root / "candidate-prover.json").read_text())
-                    self.assertEqual(report["wire"], "prove.v2")
-                    self.assertEqual(report["signed_windows"], [fields])
-                    self.assertEqual(report["image_id"], args.image_id)
+                with patch.dict(os.environ, {"EEZ_SUITE": "wave-inbound" if mutation in ("partition", "genesis-only", "missing-prefix") else ""}):
+                    if mutation and mutation != "partition":
+                        with self.assertRaises(ValueError): prepare.report(args)
+                        self.assertFalse((root / "candidate-prover.json").exists())
+                    else:
+                        prepare.report(args)
+                        report = json.loads((root / "candidate-prover.json").read_text())
+                        self.assertEqual(report["wire"], "prove.v2")
+                        self.assertEqual(report["signed_windows"], [fields])
+                        self.assertEqual(report["image_id"], args.image_id)
 
 
 class StreamingProxyTests(unittest.TestCase):

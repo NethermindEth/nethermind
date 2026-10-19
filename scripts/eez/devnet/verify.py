@@ -161,12 +161,19 @@ def main():
     parser.add_argument("--max-blocks", type=int, default=8192)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--genesis-evidence", type=Path)
+    parser.add_argument("--genesis-only", action="store_true")
     parser.add_argument("--profile", choices=("rollup0", "rollupx"), default="rollup0")
     args = parser.parse_args()
     deadline = time.monotonic() + 600
     l1, reference, candidate = [Rpc(url, deadline) for url in (args.l1, args.reference, args.candidate)]
     equal(l1.call("eth_chainId"), hex(args.l1_chain_id), "L1 chain identity")
+    if args.genesis_only and args.genesis_evidence is not None:
+        raise ValueError("initial genesis capture cannot reuse prior evidence")
     genesis_state = check_genesis(reference, candidate, args)
+    if args.genesis_only:
+        args.output.write_text(json.dumps({"result": "pass", "scope": "genesis-only", "phase": args.phase,
+                                          "genesis_state": genesis_state}, indent=2) + "\n")
+        return
     attempts = 0
     while time.monotonic() < deadline:
         attempts += 1

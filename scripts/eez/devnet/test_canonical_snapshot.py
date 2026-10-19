@@ -46,6 +46,43 @@ class Node:
 
 
 class CanonicalSnapshotTests(unittest.TestCase):
+    def test_genesis_capture_is_separate_from_full_prefix_and_survives_state_pruning(self):
+        with tempfile.TemporaryDirectory() as directory:
+            nodes = {role: Node(role) for role in ("l1", "reference", "candidate")}
+            result = {"height": 1, "endpoint": "end", "verified_blocks": 2, "verified_receipts": 1, "verified_native_transactions": 1}
+            initial = Path(directory) / "initial.json"
+            prefix = self.invoke(initial, nodes, result, extra=("--genesis-only",))
+            prefix.assert_not_called()
+            captured = json.loads(initial.read_text())
+            self.assertEqual("genesis-only", captured["scope"])
+            self.assertNotIn("verified_blocks", captured)
+            for role in ("reference", "candidate"):
+                self.assertEqual(["eth_getBalance", "eth_getTransactionCount"], nodes[role].genesis_queries)
+                nodes[role].genesis_state_available = False
+            complete = Path(directory) / "complete.json"
+            prefix = self.invoke(complete, nodes, result, extra=("--genesis-evidence", str(initial)))
+            prefix.assert_called_once_with(nodes["reference"], nodes["candidate"], "end", "genesis", 8192)
+            self.assertEqual(2, json.loads(complete.read_text())["verified_blocks"])
+            result["verified_native_transactions"] = 0
+            rejected = Path(directory) / "rejected.json"
+            with self.assertRaisesRegex(AssertionError, "required native scenarios"):
+                self.invoke(rejected, nodes, result, extra=("--genesis-evidence", str(initial)))
+            self.assertFalse(rejected.exists())
+
+    def test_genesis_capture_rejects_wrong_genesis_state_and_reused_evidence(self):
+        for failure in ("balance", "nonce", "unavailable", "reuse"):
+            with self.subTest(failure=failure), tempfile.TemporaryDirectory() as directory:
+                nodes = {role: Node(role) for role in ("l1", "reference", "candidate")}
+                if failure == "balance": nodes["candidate"].genesis_balance = "0x1"
+                if failure == "nonce": nodes["candidate"].genesis_nonce = "0x1"
+                if failure == "unavailable": nodes["candidate"].genesis_state_available = False
+                extra = ("--genesis-only",)
+                if failure == "reuse": extra += ("--genesis-evidence", str(Path(directory) / "old.json"))
+                output = Path(directory) / "capture.json"
+                with self.assertRaises((AssertionError, ValueError, verify.RpcError)):
+                    self.invoke(output, nodes, {}, extra=extra)
+                self.assertFalse(output.exists())
+
     def invoke(self, output, nodes, result, clock=None, extra=()):
         arguments = ["verify", "--l1", "l1", "--reference", "reference", "--candidate", "candidate", "--registry", "registry", "--registry-call", "calldata", "--genesis", "genesis", "--phase", "verify-eezl2-deployment", "--l1-chain-id", "1", "--l2-chain-id", "2", "--output", str(output), *extra]
         with contextlib.ExitStack() as stack:

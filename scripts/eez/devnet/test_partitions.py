@@ -7,9 +7,25 @@ import unittest
 from unittest.mock import patch
 
 import partitions
+import prepare
 
 
 class PartitionTests(unittest.TestCase):
+    def test_partition_captures_genesis_then_runs_scenario_before_full_prefix(self):
+        first = 'bash "$NETHERMIND_OBSERVE_SCRIPT" verify-eezl2-deployment'
+        scenario = 'bash "$HERE/scripts/run-protocol-e2e.sh"'
+        selected = 'bash "$NETHERMIND_OBSERVE_SCRIPT" run-protocol-e2e'
+        source = first + "\n" + scenario + "\n" + selected
+        changed = prepare.partition_observations(source, ["verify-eezl2-deployment", "run-protocol-e2e"])
+        genesis = 'bash "$NETHERMIND_OBSERVE_SCRIPT" genesis'
+        self.assertLess(changed.index(genesis), changed.index(scenario))
+        self.assertLess(changed.index(scenario), changed.index(first))
+        self.assertLess(changed.index(first), changed.index(selected))
+        for value, names in ((source.replace(first, ""), ["initial", "run-protocol-e2e"]),
+                             (source + selected, ["initial", "run-protocol-e2e"]), (source, ["initial"])):
+            with self.subTest(source=value, names=names), self.assertRaises(ValueError):
+                prepare.partition_observations(value, names)
+
     def test_driver_keeps_selected_script_and_removes_only_other_suite_calls(self):
         names = ["verify-eezl2-deployment", "verify-cross-chain-waves", "run-protocol-e2e",
                  "verify-ingress-admission", "verify-fault-recovery"]
