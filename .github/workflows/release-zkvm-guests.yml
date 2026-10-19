@@ -109,7 +109,7 @@ jobs:
             assets+=("${files[@]}")
           done
 
-          # One signature over the checksums covers every asset
+          # One signature over the checksums covers every file
           sha256sum "${assets[@]}" > SHA256SUMS
           cat SHA256SUMS
           gpg --no-tty --batch --yes --pinentry-mode loopback \
@@ -120,7 +120,7 @@ jobs:
           delimiter=$(openssl rand -hex 16)
           printf 'guest-digests<<%s\n%s\n%s\n' "$delimiter" "$digests" "$delimiter" >> $GITHUB_OUTPUT
 
-      # Unlike the key signature, the attestation binds each asset to this workflow and commit
+      # Unlike the key signature, the attestation binds each file to this workflow and commit
       - name: Attest build provenance
         uses: actions/attest-build-provenance@v4
         with:
