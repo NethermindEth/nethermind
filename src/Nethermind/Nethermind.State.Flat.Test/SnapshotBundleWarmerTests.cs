@@ -69,9 +69,7 @@ public class SnapshotBundleWarmerTests
 
         TrieRoot root = NodeRecordBulkSet.BulkSet(source.Over(buffer), address, TrieRoot.Empty, entries, canParallelize: false);
         (TreePath Path, ulong Pointer, NodeRecord Record)[] nodes = buffer.EnumerateNodes(root.Pointer).ToArray();
-        BufferWarmUp.WarmUp(new WarmedNodeRecordBuffer(buffer, warmed), warmed,
-            (in TreePath path, in ValueHash256 hash, ReadOnlySpanAction<byte, BufferWarmUp.WarmUpRead> action, BufferWarmUp.WarmUpRead read) =>
-                throw new InvalidOperationException("Unexpected persistence read"), address, root, keys[0]);
+        source.WarmUp(buffer, root, keys[0]);
         PatriciaTree expected = new(new RawScopedTrieStore(new MemDb()), LimboLogs.Instance);
         foreach (ValueHash256 key in keys) expected.Set(key.Bytes, value);
         buffer.SetRoot(address, root.Hash, root.Pointer);
@@ -84,6 +82,7 @@ public class SnapshotBundleWarmerTests
             Assert.That(buffer.CompletedWrites - batchesBefore, Is.LessThan(nodes.Length), "a batch contains multiple relative record offsets");
             Assert.That(nodes.All(node => node.Record.Hash == ValueKeccak.Compute(node.Record.Rlp)), Is.True);
             Assert.That(root.Hash, Is.EqualTo(expected.RootHash.ValueHash256));
+            Assert.That(source.FetchCount, Is.Zero, "nodes are read from the buffer");
             Assert.That(retain.Buffer, Is.SameAs(buffer));
         }
     }
@@ -186,9 +185,10 @@ public class SnapshotBundleWarmerTests
         else Assert.That(warmed.TryAppend(null, TreePath.Empty, hash, rlp, out _, out pointer), Is.True);
         (long Hits, long Misses, long IdleHits, long IdleMisses) before = WarmedCacheCounts();
 
-        BufferWarmUp.WarmUp(new WarmedNodeRecordBuffer(_buffer, warmed), warmed, (in TreePath path, in ValueHash256 nodeHash, ReadOnlySpanAction<byte, BufferWarmUp.WarmUpRead> action, BufferWarmUp.WarmUpRead read) => throw new InvalidOperationException("Unexpected persistence read"),
-            null, new TrieRoot(hash, pointer), ValueKeccak.Zero);
+        DictionaryNodeSource source = new(new Dictionary<TreePath, byte[]>(), warmed, null);
+        source.WarmUp(_buffer, new TrieRoot(hash, pointer), ValueKeccak.Zero);
 
+        Assert.That(source.FetchCount, Is.Zero, "the node is read from the buffer or the warmed nodes");
         AssertWarmedCacheCounts(before, hits: inBuffer ? 0 : 1);
     }
 

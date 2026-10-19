@@ -366,7 +366,7 @@ public sealed class SnapshotBundle : IDisposable
 
         try
         {
-            BufferWarmUp.WarmUp(CreateTrieNodeBuffer(transientResource)!, transientResource.WarmedNodeLog, new WarmUpRlpSource(this, address).Load, address, root, key, forDelete);
+            BufferWarmUp.WarmUp(CreateTrieNodeBuffer(transientResource)!, transientResource.WarmedNodeLog, _readOnlySnapshotBundle, address, root, key, forDelete);
         }
         finally
         {
@@ -459,15 +459,6 @@ public sealed class SnapshotBundle : IDisposable
     }
 
     /// <summary>Supplies borrowed RLP for a warm-up without publishing unlinked ancestor records during descent.</summary>
-    private sealed class WarmUpRlpSource(SnapshotBundle bundle, Hash256? address)
-    {
-        public void Load(in TreePath path, in ValueHash256 hash, ReadOnlySpanAction<byte, BufferWarmUp.WarmUpRead> action, BufferWarmUp.WarmUpRead read)
-        {
-            if (address is null) bundle._readOnlySnapshotBundle.TryLoadStateRlp(path, ReadFlags.None, action, read);
-            else bundle._readOnlySnapshotBundle.TryLoadStorageRlp(address, path, ReadFlags.None, action, read);
-        }
-    }
-
     /// <summary>Inserts the persisted RLP handed to it into the warmed nodes, if it is the requested node.</summary>
     private readonly ref struct PersistedNodeInsert
     {

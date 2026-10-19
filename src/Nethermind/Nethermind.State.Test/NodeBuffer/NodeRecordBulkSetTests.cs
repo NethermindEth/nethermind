@@ -353,24 +353,14 @@ internal class NodeRecordBulkSetTests
         if (missingLeaf == 1) nodes.Remove(leafPath);
         if (missingLeaf == 2) nodes[leafPath] = NodeRecordBufferTests.Leaf(9, 8);
         WarmedNodeLog warmed = NewWarmedNodeLog(16);
-        int reads = 0;
-        void Load(in TreePath path, in ValueHash256 hash, ReadOnlySpanAction<byte, BufferWarmUp.WarmUpRead> action, BufferWarmUp.WarmUpRead read)
-        {
-            Assert.That(warmed.Count, Is.Zero, "descent must not publish zero-linked ancestors");
-            reads++;
-            if (!nodes.TryGetValue(path, out byte[] rlp)) return;
-            Span<byte> buffer = stackalloc byte[rlp.Length];
-            rlp.CopyTo(buffer);
-            action(buffer, read);
-            buffer.Fill(0xFF);
-        }
+        DictionaryNodeSource source = new(nodes, warmed, null);
         using NodeRecordBuffer buffer = new(0, SmallGenerationBytes);
 
-        BufferWarmUp.WarmUp(new WarmedNodeRecordBuffer(buffer, warmed), warmed, Load, null, new TrieRoot(root.Hash, 0), keyA.ValueHash256);
+        source.WarmUp(buffer, new TrieRoot(root.Hash, 0), keyA.ValueHash256);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(reads, Is.EqualTo(4));
+            Assert.That(source.FetchCount, Is.EqualTo(4));
             Assert.That(warmed.Count, Is.EqualTo(missingLeaf == 0 ? 4 : 3));
         }
         TreePath currentPath = TreePath.Empty;
@@ -422,7 +412,7 @@ internal class NodeRecordBulkSetTests
         WarmedNodeLog warmed = NewWarmedNodeLog(1024);
         using NodeRecordBuffer buffer = new(0, SmallGenerationBytes);
 
-        BufferWarmUp.WarmUp(new WarmedNodeRecordBuffer(buffer, warmed), warmed, Load, null, new TrieRoot(root.Hash, 0), ValueKeccak.Zero);
+        new DictionaryNodeSource(nodes, warmed, null).WarmUp(buffer, new TrieRoot(root.Hash, 0), ValueKeccak.Zero);
 
         TreePath path = TreePath.Empty;
         Assert.That(warmed.TryGet(null, path, root.Hash, out NodeRecord record, out _), Is.True);
@@ -433,15 +423,6 @@ internal class NodeRecordBulkSetTests
             ChildRef child = record.View.Child(0);
             Assert.That(warmed.TryLocate(child.Pointer, out record) && record.Hash == child.Data, Is.True);
             path.AppendMut(0);
-        }
-
-        void Load(in TreePath path, in ValueHash256 hash, ReadOnlySpanAction<byte, BufferWarmUp.WarmUpRead> action, BufferWarmUp.WarmUpRead read)
-        {
-            byte[] rlp = nodes[path];
-            Span<byte> buffer = stackalloc byte[rlp.Length];
-            rlp.CopyTo(buffer);
-            action(buffer, read);
-            buffer.Fill(0xFF);
         }
     }
 

@@ -3,6 +3,8 @@
 
 using System;
 using System.Buffers;
+using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Trie;
 using Nethermind.Trie.NodeBuffer;
@@ -15,206 +17,198 @@ internal static class BufferWarmUp
     private const int MaxKeyNibbles = BulkSetArena.MaxKeyNibbles;
     private const int BranchChildCount = BulkSetArena.BranchChildCount;
 
-    internal delegate void LoadNodeRlp(in TreePath path, in ValueHash256 hash, ReadOnlySpanAction<byte, WarmUpRead> action, WarmUpRead read);
+    private static readonly ReadOnlySpanAction<byte, ArrayPoolList<byte>> CopyRlp = static (rlp, scratch) => scratch.AddRange(rlp);
 
     /// <summary>Reads a pre-block path, then publishes newly fetched records from the deepest node to the root.</summary>
-    /// <remarks>Stops silently where the path ends or persistence misses, retaining its verified prefix. Descent stays inside each read callback so ancestors' borrowed RLP remains valid until their children are published.</remarks>
+    /// <remarks>
+    /// Descends while reading and publishes only once the path is read, so every published record links the records published
+    /// before it. Stops silently where the path ends or <paramref name="reader"/> misses, retaining its verified prefix.
+    /// </remarks>
     /// <param name="buffer">The buffer holding the pre-block trie, which also resolves the pointers of <paramref name="warmed"/>.</param>
+    /// <param name="reader">Reads the nodes neither <paramref name="buffer"/> nor <paramref name="warmed"/> holds.</param>
     /// <param name="forDelete">Also loads the sibling a two-child branch collapses into when its matching leaf is deleted.</param>
-    public static void WarmUp(INodeRecordBuffer buffer, WarmedNodeLog warmed, LoadNodeRlp loadRlp, Hash256? address,
+    public static void WarmUp(INodeRecordBuffer buffer, WarmedNodeLog warmed, ReadOnlySnapshotBundle reader, Hash256? address,
         TrieRoot root, in ValueHash256 key, bool forDelete = false)
     {
         if (root.Hash == ValueKeccak.EmptyTreeHash) return;
         Span<byte> keyNibbles = stackalloc byte[MaxKeyNibbles];
+        Span<byte> nodeKey = stackalloc byte[MaxKeyNibbles];
         Nibbles.BytesToNibbleBytes(key.Bytes, keyNibbles);
-        WarmUpRead.Start(buffer, warmed, loadRlp, address, root, keyNibbles, forDelete);
-    }
+        using ArrayPoolList<Frame> frames = new(MaxKeyNibbles + 1);
+        using ArrayPoolList<byte> scratch = new(1024);
 
-    private readonly ref struct WarmUpSibling(in WarmUpFrame branch, in TreePath path, int childSlot, Span<ulong> pointers)
-    {
-        public readonly WarmUpFrame Branch = branch;
-        public readonly TreePath Path = path;
-        public readonly int ChildSlot = childSlot;
-        public readonly Span<ulong> Pointers = pointers;
-    }
-
-    internal readonly ref struct WarmUpRead
-    {
-        private static readonly ReadOnlySpanAction<byte, WarmUpRead> Read = static (rlp, read) => read.ReadRlp(rlp);
-        private readonly INodeRecordBuffer _buffer;
-        private readonly WarmedNodeLog _warmed;
-        private readonly LoadNodeRlp _loadRlp;
-        private readonly Hash256? _address;
-        private readonly TreePath _path;
-        private readonly ValueHash256 _hash;
-        private readonly ReadOnlySpan<byte> _keyNibbles;
-        private readonly bool _forDelete;
-        private readonly ref ulong _result;
-        private readonly WarmUpSibling _sibling;
-
-        internal static void Start(INodeRecordBuffer buffer, WarmedNodeLog warmed, LoadNodeRlp loadRlp, Hash256? address,
-            TrieRoot root, ReadOnlySpan<byte> keyNibbles, bool forDelete)
+        TreePath path = TreePath.Empty;
+        ChildRef child = ChildRef.ForHash(root.Hash, root.Pointer);
+        // Whether the path ends at a leaf of the key, as only its deletion collapses the branch above it.
+        bool reachedKey = false;
+        while (child.Kind != ChildRefKind.Empty)
         {
-            ulong result = 0;
-            WarmUpRead read = new(buffer, warmed, loadRlp, address, TreePath.Empty, root.Hash, keyNibbles, forDelete, ref result);
-            read.Load(ChildRef.ForHash(root.Hash, root.Pointer));
-        }
-
-        private WarmUpRead(INodeRecordBuffer buffer, WarmedNodeLog warmed, LoadNodeRlp loadRlp, Hash256? address,
-            in TreePath path, in ValueHash256 hash, ReadOnlySpan<byte> keyNibbles, bool forDelete, ref ulong result, WarmUpSibling sibling = default)
-        {
-            _buffer = buffer;
-            _warmed = warmed;
-            _loadRlp = loadRlp;
-            _address = address;
-            _path = path;
-            _hash = hash;
-            _keyNibbles = keyNibbles;
-            _forDelete = forDelete;
-            _result = ref result;
-            _sibling = sibling;
-        }
-
-        private void Load(in ChildRef child)
-        {
-            if (child.Kind == ChildRefKind.Empty) return;
             if (child.Kind == ChildRefKind.Inline)
             {
-                Span<byte> nodeKey = stackalloc byte[MaxKeyNibbles];
-                int length = new WarmUpFrame(child.InlineRlp, NodeRecordKind.Leaf, 0, default, 0).CopyKey(nodeKey);
-                WarmDeleteSibling(nodeKey[..length]);
-                return;
+                // Only leaves are embedded in their parent.
+                int length = Key(child.InlineRlp, nodeKey);
+                reachedKey = nodeKey[..length].SequenceEqual(keyNibbles[path.Length..]);
+                break;
             }
 
-            ulong pointer = child.Pointer;
-            bool found = _buffer.TryLocate(pointer, out NodeRecord record);
-            if (found)
-            {
-                if (NodeRecordCodec.IsTransient(pointer)) Metrics.IncrementWarmedNodeCacheHits();
-            }
-            else
-            {
-                found = _warmed.TryGet(_address, _path, child.Data, out record, out pointer);
-                if (found) Metrics.IncrementWarmedNodeCacheHits();
-                else Metrics.IncrementWarmedNodeCacheMisses();
-            }
+            if (!TryRead(buffer, warmed, reader, address, path, child, scratch, out Frame frame)) break;
 
-            if (found) Walk(new WarmUpFrame(record.Rlp, record.Kind, record.View.HashMask, record, pointer));
-            else _loadRlp(_path, child.Data, Read, this);
-        }
-
-        private void ReadRlp(ReadOnlySpan<byte> rlp)
-        {
-            if (ValueKeccak.Compute(rlp) == _hash && NodeRecordCodec.TryMeasure(rlp, out NodeRecordKind kind, out ushort hashMask))
-                Walk(new WarmUpFrame(rlp, kind, hashMask, default, 0));
-        }
-
-        private void Walk(in WarmUpFrame frame)
-        {
-            Span<byte> nodeKey = stackalloc byte[MaxKeyNibbles];
-            int childSlot = -1;
-            TreePath childPath = _path;
+            ReadOnlySpan<byte> rlp = frame.Rlp(scratch);
+            TreePath childPath = path;
             if (frame.Kind is NodeRecordKind.Leaf or NodeRecordKind.Extension)
             {
-                int length = frame.CopyKey(nodeKey);
-                if (frame.Kind == NodeRecordKind.Leaf)
-                    WarmDeleteSibling(nodeKey[..length]);
-                else if (_keyNibbles[_path.Length..].StartsWith(nodeKey[..length]))
+                int length = Key(rlp, nodeKey);
+                if (frame.Kind == NodeRecordKind.Leaf) reachedKey = nodeKey[..length].SequenceEqual(keyNibbles[path.Length..]);
+                else if (keyNibbles[path.Length..].StartsWith(nodeKey[..length]))
                 {
-                    childSlot = 0;
+                    frame.ChildSlot = 0;
                     childPath.AppendMut(nodeKey[..length]);
                 }
             }
-            else if (_path.Length < MaxKeyNibbles)
+            else if (path.Length < MaxKeyNibbles)
             {
-                childSlot = _keyNibbles[_path.Length];
-                childPath.AppendMut(childSlot);
+                frame.ChildSlot = keyNibbles[path.Length];
+                childPath.AppendMut(frame.ChildSlot);
             }
 
-            Span<ulong> pointers = stackalloc ulong[BranchChildCount];
+            frames.Add(frame);
+            if (frame.ChildSlot < 0) break;
+            child = frame.Child(scratch, frame.ChildSlot);
+            path = childPath;
+        }
+
+        // The parent of the matching leaf: the last frame for an embedded leaf, otherwise the one before it.
+        int branchIndex = frames.Count > 0 && frames[^1].Kind == NodeRecordKind.Leaf ? frames.Count - 2 : frames.Count - 1;
+        if (forDelete && reachedKey && branchIndex >= 0) PrefetchSibling(buffer, warmed, reader, address, ref frames.GetRef(branchIndex), scratch);
+
+        Span<ulong> pointers = stackalloc ulong[BranchChildCount];
+        ulong childPointer = 0;
+        for (int i = frames.Count - 1; i >= 0; i--)
+        {
+            ref Frame frame = ref frames.GetRef(i);
+            if (!frame.Record.IsNull)
+            {
+                childPointer = frame.Pointer;
+                continue;
+            }
+
             pointers.Clear();
-            if (childSlot >= 0)
-            {
-                ChildRef child = frame.Child(childSlot);
-                ulong childResult = 0;
-                WarmUpSibling sibling = frame.Kind is NodeRecordKind.HashedBranch or NodeRecordKind.InlineBranch
-                    ? new WarmUpSibling(frame, _path, childSlot, pointers) : default;
-                WarmUpRead read = new(_buffer, _warmed, _loadRlp, _address, childPath, child.Data, _keyNibbles, _forDelete, ref childResult, sibling);
-                read.Load(child);
-                pointers[childSlot] = childResult;
-            }
-
-            if (frame.Record.IsNull)
-                _warmed.AppendVerified(_address, _path, _hash, frame.Rlp, frame.Kind, frame.HashMask, pointers, out _, out _result);
-            else _result = frame.Pointer;
-        }
-
-        private void WarmDeleteSibling(ReadOnlySpan<byte> nodeKey)
-        {
-            if (_forDelete && !_sibling.Pointers.IsEmpty && nodeKey.SequenceEqual(_keyNibbles[_path.Length..]))
-                PrefetchSibling(_sibling.Branch, _sibling.Path, _sibling.ChildSlot, _sibling.Pointers);
-        }
-
-        private void PrefetchSibling(in WarmUpFrame branch, in TreePath branchPath, int childSlot, Span<ulong> pointers)
-        {
-            int siblingSlot = -1;
-            ChildRef sibling = default;
-            for (int slot = 0; slot < BranchChildCount; slot++)
-            {
-                if (slot == childSlot) continue;
-                ChildRef candidate = branch.Child(slot);
-                if (candidate.Kind == ChildRefKind.Empty) continue;
-                if (siblingSlot >= 0) return;
-                siblingSlot = slot;
-                sibling = candidate;
-            }
-
-            if (sibling.Kind != ChildRefKind.Hash || _buffer.TryLocate(sibling.Pointer, out _)) return;
-            TreePath siblingPath = branchPath.Append(siblingSlot);
-            ulong result = 0;
-            WarmUpRead read = new(_buffer, _warmed, _loadRlp, _address, siblingPath, sibling.Data, [], false, ref result);
-            read.LoadSibling(sibling);
-            pointers[siblingSlot] = result;
-        }
-
-        private void LoadSibling(in ChildRef child)
-        {
-            if (_warmed.TryGet(_address, _path, child.Data, out _, out ulong pointer))
-            {
-                Metrics.IncrementWarmedNodeCacheHits();
-                _result = pointer;
-            }
-            else
-            {
-                Metrics.IncrementWarmedNodeCacheMisses();
-                _loadRlp(_path, child.Data, static (rlp, read) =>
-                {
-                    read._warmed.TryAppend(read._address, read._path, read._hash, rlp, out _, out read._result);
-                }, this);
-            }
+            if (frame.ChildSlot >= 0) pointers[frame.ChildSlot] = childPointer;
+            if (frame.SiblingSlot >= 0) pointers[frame.SiblingSlot] = frame.SiblingPointer;
+            warmed.AppendVerified(address, frame.Path, frame.Hash, frame.Rlp(scratch), frame.Kind, frame.HashMask, pointers, out _, out childPointer);
         }
     }
 
-    private readonly ref struct WarmUpFrame(ReadOnlySpan<byte> rlp, NodeRecordKind kind, ushort hashMask, NodeRecord record, ulong pointer)
+    /// <summary>Reads the node <paramref name="child"/> refers to in place, or copies its verified RLP from <paramref name="reader"/> to <paramref name="scratch"/>.</summary>
+    private static bool TryRead(INodeRecordBuffer buffer, WarmedNodeLog warmed, ReadOnlySnapshotBundle reader, Hash256? address,
+        in TreePath path, in ChildRef child, ArrayPoolList<byte> scratch, out Frame frame)
     {
-        public readonly ReadOnlySpan<byte> Rlp = rlp;
-        public readonly NodeRecordKind Kind = kind;
-        public readonly ushort HashMask = hashMask;
-        public readonly NodeRecord Record = record;
-        public readonly ulong Pointer = pointer;
-
-        public int CopyKey(Span<byte> key)
+        frame = new Frame { Path = path, Hash = child.Data, ChildSlot = -1, SiblingSlot = -1 };
+        ulong pointer = child.Pointer;
+        bool found = buffer.TryLocate(pointer, out NodeRecord record);
+        if (found)
         {
-            NodeRlp.NextItem(Rlp, out NodeRlp.Item node, out _);
-            NodeRlp.NextItem(node.Payload, out NodeRlp.Item prefix, out _);
-            NodeRlp.ReadHexPrefix(prefix.Payload, 0, key);
-            return NodeRlp.HexPrefixNibbleCount(prefix.Payload);
+            if (NodeRecordCodec.IsTransient(pointer)) Metrics.IncrementWarmedNodeCacheHits();
+        }
+        else
+        {
+            found = warmed.TryGet(address, path, child.Data, out record, out pointer);
+            if (found) Metrics.IncrementWarmedNodeCacheHits();
+            else Metrics.IncrementWarmedNodeCacheMisses();
         }
 
-        public ChildRef Child(int slot)
+        if (found)
+        {
+            frame.Record = record;
+            frame.Pointer = pointer;
+            frame.Kind = record.Kind;
+            frame.HashMask = record.View.HashMask;
+            return true;
+        }
+
+        frame.RlpOffset = scratch.Count;
+        if (!TryLoadRlp(reader, address, path, CopyRlp, scratch)) return false;
+        frame.RlpLength = scratch.Count - frame.RlpOffset;
+        ReadOnlySpan<byte> rlp = frame.Rlp(scratch);
+        return ValueKeccak.Compute(rlp) == child.Data && NodeRecordCodec.TryMeasure(rlp, out frame.Kind, out frame.HashMask);
+    }
+
+    /// <summary>Loads the only other child of <paramref name="branch"/>, which it collapses into when the matching leaf is deleted.</summary>
+    private static void PrefetchSibling(INodeRecordBuffer buffer, WarmedNodeLog warmed, ReadOnlySnapshotBundle reader, Hash256? address,
+        ref Frame branch, ArrayPoolList<byte> scratch)
+    {
+        if (branch.Kind is not (NodeRecordKind.HashedBranch or NodeRecordKind.InlineBranch)) return;
+
+        int siblingSlot = -1;
+        ChildRef sibling = default;
+        for (int slot = 0; slot < BranchChildCount; slot++)
+        {
+            if (slot == branch.ChildSlot) continue;
+            ChildRef candidate = branch.Child(scratch, slot);
+            if (candidate.Kind == ChildRefKind.Empty) continue;
+            if (siblingSlot >= 0) return;
+            siblingSlot = slot;
+            sibling = candidate;
+        }
+
+        if (sibling.Kind != ChildRefKind.Hash || buffer.TryLocate(sibling.Pointer, out _)) return;
+
+        TreePath siblingPath = branch.Path.Append(siblingSlot);
+        if (warmed.TryGet(address, siblingPath, sibling.Data, out _, out ulong pointer))
+        {
+            Metrics.IncrementWarmedNodeCacheHits();
+        }
+        else
+        {
+            Metrics.IncrementWarmedNodeCacheMisses();
+            int offset = scratch.Count;
+            if (!TryLoadRlp(reader, address, siblingPath, CopyRlp, scratch)
+                || !warmed.TryAppend(address, siblingPath, sibling.Data, scratch.AsSpan()[offset..], out _, out pointer)) return;
+        }
+
+        branch.SiblingSlot = siblingSlot;
+        branch.SiblingPointer = pointer;
+    }
+
+    private static bool TryLoadRlp<TArg>(ReadOnlySnapshotBundle reader, Hash256? address, in TreePath path, ReadOnlySpanAction<byte, TArg> action, TArg arg)
+        where TArg : allows ref struct =>
+        address is null
+            ? reader.TryLoadStateRlp(path, ReadFlags.None, action, arg)
+            : reader.TryLoadStorageRlp(address, path, ReadFlags.None, action, arg);
+
+    /// <summary>Copies the key nibbles of the leaf or extension <paramref name="rlp"/> to <paramref name="key"/>.</summary>
+    /// <returns>The number of nibbles copied.</returns>
+    private static int Key(ReadOnlySpan<byte> rlp, Span<byte> key)
+    {
+        NodeRlp.NextItem(rlp, out NodeRlp.Item node, out _);
+        NodeRlp.NextItem(node.Payload, out NodeRlp.Item prefix, out _);
+        NodeRlp.ReadHexPrefix(prefix.Payload, 0, key);
+        return NodeRlp.HexPrefixNibbleCount(prefix.Payload);
+    }
+
+    /// <summary>A node on the warmed path: a record read in place, or verified RLP copied to the scratch bytes, to be published.</summary>
+    private struct Frame
+    {
+        public TreePath Path;
+        public ValueHash256 Hash;
+        public NodeRecord Record;
+        public ulong Pointer;
+        public int RlpOffset;
+        public int RlpLength;
+        public NodeRecordKind Kind;
+        public ushort HashMask;
+        // The slot of the child on the path, or -1 where the path ends.
+        public int ChildSlot;
+        // The slot and pointer of the sibling a delete collapses into, or -1 when none is loaded.
+        public int SiblingSlot;
+        public ulong SiblingPointer;
+
+        public readonly ReadOnlySpan<byte> Rlp(ArrayPoolList<byte> scratch) => Record.IsNull ? scratch.AsSpan().Slice(RlpOffset, RlpLength) : Record.Rlp;
+
+        public readonly ChildRef Child(ArrayPoolList<byte> scratch, int slot)
         {
             if (!Record.IsNull) return Record.View.Child(slot);
-            NodeRlp.NextItem(Rlp, out NodeRlp.Item node, out _);
+            NodeRlp.NextItem(Rlp(scratch), out NodeRlp.Item node, out _);
             ReadOnlySpan<byte> remaining = node.Payload;
             int skip = Kind == NodeRecordKind.Extension ? 1 : slot;
             for (int i = 0; i < skip; i++) NodeRlp.NextItem(remaining, out _, out remaining);

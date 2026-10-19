@@ -1,10 +1,15 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Buffers;
 using System.Collections.Generic;
 using System.Threading;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Int256;
+using Nethermind.State.Flat.PersistedSnapshots;
+using Nethermind.State.Flat.Persistence;
 using Nethermind.Trie;
 using Nethermind.Trie.NodeBuffer;
 
@@ -26,24 +31,55 @@ internal sealed class DictionaryNodeSource(IReadOnlyDictionary<TreePath, byte[]>
     {
         if (warmed.TryGet(address, path, hash, out record, out _)) return true;
 
-        byte[]? rlp = LoadRlp(path, hash);
+        byte[]? rlp = LoadRlp(path);
         return rlp is not null && warmed.TryAppend(address, path, hash, rlp, out record, out _);
     }
 
     /// <param name="buffer">The buffer holding the trie, which the warmed nodes are combined with.</param>
-    public void WarmUp(INodeRecordBuffer buffer, TrieRoot root, in ValueHash256 key, bool forDelete = false) =>
-        BufferWarmUp.WarmUp(new WarmedNodeRecordBuffer(buffer, warmed), warmed, LoadRlp, address, root, key, forDelete);
-
-    private void LoadRlp(in TreePath path, in ValueHash256 hash, ReadOnlySpanAction<byte, BufferWarmUp.WarmUpRead> action, BufferWarmUp.WarmUpRead read)
+    public void WarmUp(INodeRecordBuffer buffer, TrieRoot root, in ValueHash256 key, bool forDelete = false)
     {
-        byte[]? rlp = LoadRlp(path, hash);
-        if (rlp is not null) action(rlp, read);
+        using ReadOnlySnapshotBundle reader = new(new SnapshotPooledList(0), new Persistence(this), false, PersistedSnapshotStack.Empty(), bufferPin: null);
+        BufferWarmUp.WarmUp(new WarmedNodeRecordBuffer(buffer, warmed), warmed, reader, address, root, key, forDelete);
     }
 
-    private byte[]? LoadRlp(in TreePath path, in ValueHash256 hash)
+    private byte[]? LoadRlp(in TreePath path)
     {
         Interlocked.Increment(ref _fetchCount);
         return nodes.GetValueOrDefault(path);
+    }
+
+    /// <summary>Serves the trie node RLP of the dictionary by path, counting each read as a fetch.</summary>
+    /// <remarks>Passes RLP as a copy that is scrambled once the callback returns, so a reader keeping the borrowed span fails.</remarks>
+    private sealed class Persistence(DictionaryNodeSource source) : IPersistence.IPersistenceReader
+    {
+        public Account? GetAccount(Address address) => throw new NotSupportedException();
+        public bool TryGetSlot(Address address, in UInt256 slot, ref UInt256 outValue) => throw new NotSupportedException();
+        public StateId CurrentState => throw new NotSupportedException();
+        public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags) => source.LoadRlp(path);
+        public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags) => source.LoadRlp(path);
+
+        public bool TryLoadStateRlp<TArg>(in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg)
+            where TArg : allows ref struct => Pass(source.LoadRlp(path), action, arg);
+
+        public bool TryLoadStorageRlp<TArg>(Hash256 address, in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg)
+            where TArg : allows ref struct => Pass(source.LoadRlp(path), action, arg);
+
+        public byte[]? GetAccountRaw(in ValueHash256 addrHash) => throw new NotSupportedException();
+        public bool TryGetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, ref UInt256 value) => throw new NotSupportedException();
+        public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey) => throw new NotSupportedException();
+        public IPersistence.IFlatIterator CreateStorageIterator(in ValueHash256 accountKey, in ValueHash256 startSlotKey, in ValueHash256 endSlotKey) =>
+            throw new NotSupportedException();
+        public bool IsPreimageMode => false;
+        public void Dispose() { }
+
+        private static bool Pass<TArg>(byte[]? rlp, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
+        {
+            if (rlp is null) return false;
+            byte[] borrowed = rlp.ToArray();
+            action(borrowed, arg);
+            borrowed.AsSpan().Fill(0xFF);
+            return true;
+        }
     }
 
     private sealed class Store(DictionaryNodeSource source, INodeRecordBuffer buffer) : INodeRecordStore
