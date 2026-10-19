@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Text;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Experimental.Abi;
@@ -39,20 +38,18 @@ public sealed class AbiSignature(string? name = null)
 
 public sealed class AbiSignature<T>
 {
-    private readonly byte[] _methodId;
-
     internal AbiSignature(string? name, Abi<T> abi)
     {
         Name = name;
         Abi = abi;
-        _methodId = name is null ? [] :
-            Keccak.Compute(Encoding.ASCII.GetBytes($"{name}{abi}")).Bytes[..AbiSignature.MethodIdLength].ToArray();
+        Hash = Keccak.Compute(ToString());
     }
 
     public string? Name { get; }
     public Abi<T> Abi { get; }
+    public Hash256 Hash { get; }
 
-    public ReadOnlySpan<byte> MethodId => _methodId;
+    public ReadOnlySpan<byte> MethodId => Name is null ? [] : Hash.Bytes[..AbiSignature.MethodIdLength];
 
     public int Size(T value) => MethodId.Length + Abi.Size(value);
 
