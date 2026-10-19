@@ -30,7 +30,7 @@ public sealed class WarmedNodeLog : IDisposable
     public WarmedNodeLog(int capacity)
     {
         _pointers = new(Environment.ProcessorCount, Math.Max(capacity, 1));
-        _pin = _buffer.PinAll();
+        _pin = _buffer.Pin();
     }
 
     /// <summary>Number of indexed node positions.</summary>
@@ -109,7 +109,7 @@ public sealed class WarmedNodeLog : IDisposable
     {
         _pointers.NoResizeClear();
         _pin.Dispose();
-        _pin = _buffer.PinAll();
+        _pin = _buffer.Pin();
     }
 
     public void Dispose()
