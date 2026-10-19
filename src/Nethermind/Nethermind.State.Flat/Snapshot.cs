@@ -96,10 +96,10 @@ public class Snapshot : RefCountingDisposable
     internal IEnumerable<KeyValuePair<HashedKey<(Hash256, TreePath)>, ulong>> StorageNodes => EnumerateStorageNodes();
     internal IEnumerable<KeyValuePair<HashedKey<TreePath>, ulong>> StateNodes => EnumerateStateNodes();
 
-    /// <summary>Iterates reachable state nodes written within this snapshot's range.</summary>
+    /// <summary>Iterates reachable state nodes written within this snapshot's range, in depth-first path order.</summary>
     public NodeIterator<TreePath> GetStateNodeIterator() => new(BufferPin?.Buffer, EnumerateStateNodes().GetEnumerator());
 
-    /// <summary>Iterates reachable storage nodes written within this snapshot's range.</summary>
+    /// <summary>Iterates reachable storage nodes written within this snapshot's range, by address hash and then in depth-first path order.</summary>
     public NodeIterator<(Hash256, TreePath)> GetStorageNodeIterator() => new(BufferPin?.Buffer, EnumerateStorageNodes().GetEnumerator());
 
     /// <summary>Reads snapshot node keys and their RLP, borrowed from the buffer records the snapshot pins.</summary>
@@ -193,7 +193,9 @@ public class Snapshot : RefCountingDisposable
     private IEnumerable<KeyValuePair<HashedKey<(Hash256, TreePath)>, ulong>> EnumerateStorageNodes()
     {
         if (BufferPin is null) yield break;
-        foreach ((Hash256 address, ulong root) in StorageRoots)
+        using ArrayPoolList<KeyValuePair<Hash256, ulong>> roots = new(0, StorageRoots);
+        roots.Sort(static (a, b) => a.Key.CompareTo(b.Key));
+        foreach ((Hash256 address, ulong root) in roots)
         {
             foreach ((TreePath path, ulong pointer, _) in BufferPin.Buffer.EnumerateNodes(root, BufferPin.WriteBoundary))
                 yield return new((address, path), pointer);
