@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.IO.Abstractions;
+using System.Text;
 using Nethermind.Config;
 using Nethermind.Core.Exceptions;
 using Nethermind.Logging;
@@ -31,7 +32,7 @@ public sealed class SendPolicyRuleFile
         if (string.IsNullOrWhiteSpace(config.RulesPath))
             throw new InvalidConfigurationException($"{nameof(ISendPolicyConfig.RulesPath)} must be set when SendPolicy is enabled.", ExitCodes.ConflictingConfigurations);
         _path = config.RulesPath;
-        _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
+        _fileSystem = fileSystem;
         _logger = logManager.GetClassLogger<SendPolicyRuleFile>();
         if (Current.Error is { } error)
             throw new InvalidConfigurationException($"SendPolicy rules at {_path}: {error}", ExitCodes.ConflictingConfigurations);
@@ -41,14 +42,14 @@ public sealed class SendPolicyRuleFile
     {
         get
         {
-            FileSnapshot snapshot = FileSnapshot.Of(_path, _fileSystem);
             Loaded? loaded = _loaded;
+            FileSnapshot snapshot = FileSnapshot.Of(_path, _fileSystem, loaded?.Snapshot.Contents);
             if (loaded is not null && loaded.Snapshot == snapshot) return loaded.Rules;
             lock (_reloadLock)
             {
                 // A delayed reader must not replace a newer cached snapshot.
-                snapshot = FileSnapshot.Of(_path, _fileSystem);
                 loaded = _loaded;
+                snapshot = FileSnapshot.Of(_path, _fileSystem, loaded?.Snapshot.Contents);
                 if (loaded is not null && loaded.Snapshot == snapshot) return loaded.Rules;
                 SendPolicyRules rules = Read(snapshot, loaded?.LastGood ?? SendPolicyRules.Empty);
                 _loaded = new Loaded(snapshot, rules, rules.Error is null ? rules : loaded?.LastGood ?? SendPolicyRules.Empty);
@@ -95,18 +96,44 @@ public sealed class SendPolicyRuleFile
     // Compare the decoded content, and represent read errors as snapshots so cached rules fail closed.
     private readonly record struct FileSnapshot(string? Contents, string? Error)
     {
-        public static FileSnapshot Of(string path, IFileSystem fileSystem)
+        public static FileSnapshot Of(string path, IFileSystem fileSystem, string? previousContents)
         {
             try
             {
                 using Stream stream = fileSystem.File.Open(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
                 using StreamReader reader = new(stream);
-                return new FileSnapshot(reader.ReadToEnd(), null);
+                return new FileSnapshot(ReadContents(reader, previousContents), null);
             }
             catch (Exception e) when (e is IOException or UnauthorizedAccessException)
             {
                 return new FileSnapshot(null, e.Message);
             }
+        }
+
+        private static string ReadContents(StreamReader reader, string? previousContents)
+        {
+            if (previousContents is null) return reader.ReadToEnd();
+
+            Span<char> buffer = stackalloc char[1024];
+            int position = 0;
+            int count;
+            while ((count = reader.Read(buffer)) != 0)
+            {
+                ReadOnlySpan<char> chunk = buffer[..count];
+                if (count > previousContents.Length - position ||
+                    !chunk.SequenceEqual(previousContents.AsSpan(position, count)))
+                {
+                    StringBuilder contents = new();
+                    contents.Append(previousContents.AsSpan(0, position));
+                    contents.Append(chunk);
+                    contents.Append(reader.ReadToEnd());
+                    return contents.ToString();
+                }
+
+                position += count;
+            }
+
+            return position == previousContents.Length ? previousContents : previousContents[..position];
         }
     }
 }

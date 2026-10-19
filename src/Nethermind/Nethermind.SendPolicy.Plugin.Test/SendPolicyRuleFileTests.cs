@@ -3,6 +3,8 @@
 
 using System.IO.Abstractions;
 using System.Reflection;
+using System.Text;
+using Autofac;
 using Nethermind.Core;
 using Nethermind.Core.Test.IO;
 using Nethermind.Logging;
@@ -27,7 +29,8 @@ public class SendPolicyRuleFileTests
         string path = RulesPath(directory);
         long size = new FileInfo(path).Length;
         DateTime timestamp = File.GetLastWriteTimeUtc(path);
-        SendPolicyRuleFile file = Open(path);
+        using IContainer container = Open(path);
+        SendPolicyRuleFile file = container.Resolve<SendPolicyRuleFile>();
         Assert.That(file.Current.Destinations.ContainsKey(PreviousDestination), Is.True);
 
         ReplaceRules(path, [$"from {Sender}", malformed ? $"zz {PreviousDestination} 1" : $"to {NewDestination} 1"], timestamp, atomic);
@@ -58,7 +61,8 @@ public class SendPolicyRuleFileTests
         using TempPath directory = WriteRules();
         string path = RulesPath(directory);
         DateTime timestamp = File.GetLastWriteTimeUtc(path);
-        SendPolicyRuleFile file = Open(path);
+        using IContainer container = Open(path);
+        SendPolicyRuleFile file = container.Resolve<SendPolicyRuleFile>();
         SendPolicyRules rules = file.Current;
 
         ReplaceRules(path, [$"from {Sender}", $"to {PreviousDestination} 1"], timestamp.AddSeconds(1));
@@ -67,11 +71,50 @@ public class SendPolicyRuleFileTests
     }
 
     [Test]
+    public void Content_comparison_handles_chunk_boundaries(
+        [Values(0, 1023, 1024, 1025, 4096)] int prefixLength,
+        [Values("", "# appended\n", "from 0x3333333333333333333333333333333333333333\n")] string suffix,
+        [Values] bool utf16)
+    {
+        using TempPath directory = WriteRules();
+        string path = RulesPath(directory);
+        string prefix = "#" + new string('\u00e9', prefixLength) + "\n";
+        string original = prefix + $"from {Sender}\nto {PreviousDestination} 1\n";
+        Encoding encoding = utf16 ? Encoding.Unicode : Encoding.UTF8;
+        File.WriteAllText(path, original, encoding);
+        using IContainer container = Open(path);
+        SendPolicyRuleFile file = container.Resolve<SendPolicyRuleFile>();
+        SendPolicyRules initial = file.Current;
+        Assert.That(file.Current, Is.SameAs(initial));
+
+        File.WriteAllText(path, prefix + suffix, encoding);
+        SendPolicyRules changed = file.Current;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(changed.Error, Is.Null);
+            Assert.That(changed.GuardedSenders.Contains(Sender), Is.False);
+            Assert.That(changed.GuardedSenders.Contains(NewDestination), Is.EqualTo(suffix.StartsWith("from")));
+            Assert.That(changed.Destinations, Is.Empty);
+            Assert.That(file.Current, Is.SameAs(changed));
+        }
+
+        File.WriteAllText(path, original, encoding);
+        SendPolicyRules restored = file.Current;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(restored.Error, Is.Null);
+            Assert.That(restored.GuardedSenders, Does.Contain(Sender));
+            Assert.That(restored.Destinations.ContainsKey(PreviousDestination), Is.True);
+        }
+    }
+
+    [Test]
     public void Missing_rule_file_preserves_guarded_senders_and_recovers()
     {
         using TempPath directory = WriteRules();
         string path = RulesPath(directory);
-        SendPolicyRuleFile file = Open(path);
+        using IContainer container = Open(path);
+        SendPolicyRuleFile file = container.Resolve<SendPolicyRuleFile>();
 
         File.Delete(path);
         SendPolicyRules unusable = file.Current;
@@ -97,7 +140,8 @@ public class SendPolicyRuleFileTests
         using TempPath directory = WriteRules();
         string path = RulesPath(directory);
         DateTime timestamp = File.GetLastWriteTimeUtc(path);
-        SendPolicyRuleFile file = Open(path);
+        using IContainer container = Open(path);
+        SendPolicyRuleFile file = container.Resolve<SendPolicyRuleFile>();
         ReplaceRules(path, [$"from {Sender}", $"to {PreviousDestination} 2"], timestamp.AddSeconds(1));
         Lock reloadLock = (Lock)typeof(SendPolicyRuleFile).GetField("_reloadLock", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(file)!;
         SendPolicyRules? delayedRules = null;
@@ -152,7 +196,8 @@ public class SendPolicyRuleFileTests
     {
         using TempPath directory = WriteRules();
         string path = RulesPath(directory);
-        SendPolicyRuleFile file = Open(path);
+        using IContainer container = Open(path);
+        SendPolicyRuleFile file = container.Resolve<SendPolicyRuleFile>();
         SendPolicyRules rules = file.Current;
 
         using (new FileStream(path, FileMode.Open, access, FileShare.Read | FileShare.Delete, 4096, options))
@@ -166,7 +211,8 @@ public class SendPolicyRuleFileTests
     {
         using TempPath directory = WriteRules();
         string path = RulesPath(directory);
-        SendPolicyRuleFile file = Open(path);
+        using IContainer container = Open(path);
+        SendPolicyRuleFile file = container.Resolve<SendPolicyRuleFile>();
 
         using (new FileStream(path, FileMode.Open, FileAccess.Write, FileShare.None))
         {
@@ -192,8 +238,12 @@ public class SendPolicyRuleFileTests
 
     private static string RulesPath(TempPath directory) => Path.Combine(directory.Path, "rules");
 
-    private static SendPolicyRuleFile Open(string path) =>
-        new(new SendPolicyConfig { Enabled = true, RulesPath = path }, FileSystem, LimboLogs.Instance);
+    private static IContainer Open(string path) => new ContainerBuilder()
+        .AddModule(new SendPolicyModule())
+        .AddSingleton<ISendPolicyConfig>(new SendPolicyConfig { Enabled = true, RulesPath = path })
+        .AddSingleton<IFileSystem>(FileSystem)
+        .AddSingleton<ILogManager>(LimboLogs.Instance)
+        .Build();
 
     private static void ReplaceRules(string path, string[] lines, DateTime timestamp, bool atomic = false)
     {
