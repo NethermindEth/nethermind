@@ -214,11 +214,12 @@ public class DebugRpcModule(
         return options?.StreamMode ?? jsonRpcConfig.EnableTracingStreamMode;
     }
 
+    /// <remarks>Throws when a native tracer's config is malformed, so it fails as a JSON-RPC error before the stream opens.</remarks>
     private bool CanStreamBlockTrace(GethTraceOptions? options)
     {
-        if (CanStreamStructLogs(options)) return true;
-        if (options is not { TxHash: null } || !GethLikeNativeTracerFactory.IsNativeTracer(options.Tracer)
-            || !(options.StreamMode ?? jsonRpcConfig.EnableTracingStreamMode)) return false;
+        if (!(options?.StreamMode ?? jsonRpcConfig.EnableTracingStreamMode)) return false;
+        if (string.IsNullOrEmpty(options?.Tracer)) return true;
+        if (options.TxHash is not null || !GethLikeNativeTracerFactory.IsNativeTracer(options.Tracer)) return false;
 
         GethLikeNativeTracerFactory.ValidateTracerConfig(options);
         return true;
@@ -247,6 +248,25 @@ public class DebugRpcModule(
             timeoutCts.Dispose();
             throw;
         }
+    }
+
+    /// <remarks>
+    /// The body is looked up only so a missing one fails before the stream opens. The trace goes by hash, as the
+    /// <see cref="Block"/> overload never takes the indexed parallel path.
+    /// </remarks>
+    private ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> StreamBlockTrace(BlockHeader header, GethTraceOptions? options)
+    {
+        if (CheckTraceBaseState<IReadOnlyCollection<GethLikeTxTrace>>(header) is { } baseStateError) return baseStateError;
+
+        if (blockFinder.FindBlock(header.Hash!, header.Number) is null)
+        {
+            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail($"Block body not found for {header.Hash}", ErrorCodes.ResourceNotFound);
+        }
+
+        GethTraceOptions effective = options ?? GethTraceOptions.Default;
+        BlockParameter blockParameter = new(header.Hash!);
+        return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Success(BuildStreamingBlockResult(
+            (writer, pipeWriter, token) => debugBridge.GetBlockTrace(blockParameter, token, effective, writer, pipeWriter)));
     }
 
     private GethLikeTxTraceStreamingBlockResult BuildStreamingBlockResult(
@@ -485,22 +505,7 @@ public class DebugRpcModule(
 
         if (options?.Tracer is { Length: > 0 }) options = options with { CaptureJavaScriptErrors = true };
 
-        if (CanStreamBlockTrace(options))
-        {
-            if (CheckTraceBaseState<IReadOnlyCollection<GethLikeTxTrace>>(header) is { } baseStateError) return baseStateError;
-
-            Block? resolvedBlock = blockFinder.FindBlock(header.Hash!, header.Number);
-            if (resolvedBlock is null)
-            {
-                return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail($"Block body not found for {blockNumber}", ErrorCodes.ResourceNotFound);
-            }
-
-            GethTraceOptions effective = options ?? GethTraceOptions.Default;
-            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Success(BuildStreamingBlockResult(
-                (writer, pipeWriter, token) =>
-                    // By hash: the Block overload never takes the indexed parallel path.
-                    debugBridge.GetBlockTrace(new BlockParameter(resolvedBlock.Hash!), token, effective, writer, pipeWriter)));
-        }
+        if (CanStreamBlockTrace(options)) return StreamBlockTrace(header, options);
 
         using RentedTimeout timeout = jsonRpcConfig.RentTimeout();
         CancellationToken cancellationToken = timeout.Token;
@@ -535,22 +540,7 @@ public class DebugRpcModule(
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail("genesis is not traceable", ErrorCodes.InvalidInput);
         }
 
-        if (CanStreamBlockTrace(options))
-        {
-            if (CheckTraceBaseState<IReadOnlyCollection<GethLikeTxTrace>>(header) is { } baseStateError) return baseStateError;
-
-            Block? resolvedBlock = blockFinder.FindBlock(blockHash);
-            if (resolvedBlock is null)
-            {
-                return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail($"Block body not found for {blockHash}", ErrorCodes.ResourceNotFound);
-            }
-
-            GethTraceOptions effective = options ?? GethTraceOptions.Default;
-            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Success(BuildStreamingBlockResult(
-                (writer, pipeWriter, token) =>
-                    // By hash: the Block overload never takes the indexed parallel path.
-                    debugBridge.GetBlockTrace(new BlockParameter(resolvedBlock.Hash!), token, effective, writer, pipeWriter)));
-        }
+        if (CanStreamBlockTrace(options)) return StreamBlockTrace(header, options);
 
         using RentedTimeout timeout = jsonRpcConfig.RentTimeout();
         CancellationToken cancellationToken = timeout.Token;
