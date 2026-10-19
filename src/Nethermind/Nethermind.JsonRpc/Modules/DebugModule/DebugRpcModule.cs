@@ -96,12 +96,12 @@ public class DebugRpcModule(
             GethTraceOptions effective = options ?? GethTraceOptions.Default;
             return ResultWrapper<GethLikeTxTrace>.Success(BuildStreamingResult(
                 (writer, pipeWriter, token) =>
-                    debugBridge.GetTransactionTrace(transactionHash, token, effective, writer, pipeWriter)));
+                    debugBridge.GetTransactionTrace(blockHash, transactionHash, token, effective, writer, pipeWriter)));
         }
 
         using RentedTimeout timeout = jsonRpcConfig.RentTimeout();
         CancellationToken cancellationToken = timeout.Token;
-        GethLikeTxTrace? transactionTrace = debugBridge.GetTransactionTrace(transactionHash, cancellationToken, WithBufferedLimit(options));
+        GethLikeTxTrace? transactionTrace = debugBridge.GetTransactionTrace(blockHash, transactionHash, cancellationToken, WithBufferedLimit(options));
         if (transactionTrace is null)
         {
             return ResultWrapper<GethLikeTxTrace>.Fail("transaction not found", ErrorCodes.ResourceNotFound);
@@ -334,28 +334,23 @@ public class DebugRpcModule(
             return blockError;
         }
 
+        if (txIndex < 0 || txIndex >= block!.Transactions.Length)
+        {
+            return ResultWrapper<GethLikeTxTrace>.Fail($"Trace is null for RLP {blockRlp.ToHexString()} and transaction index {txIndex}", ErrorCodes.ResourceNotFound);
+        }
+
+        Hash256 targetTxHash = block.Transactions[txIndex].Hash!;
         if (CanStreamStructLogs(options))
         {
-            if (txIndex < 0 || txIndex >= block!.Transactions.Length)
-            {
-                return ResultWrapper<GethLikeTxTrace>.Fail($"Trace is null for RLP {blockRlp.ToHexString()} and transaction index {txIndex}", ErrorCodes.ResourceNotFound);
-            }
-
-            Hash256? targetTxHash = block.Transactions[txIndex].Hash;
             GethTraceOptions effective = options ?? GethTraceOptions.Default;
             return ResultWrapper<GethLikeTxTrace>.Success(BuildStreamingResult(
                 (writer, pipeWriter, token) =>
-                    debugBridge.GetTransactionTrace(block, targetTxHash!, token, effective, writer, pipeWriter)));
+                    debugBridge.GetTransactionTrace(block, targetTxHash, token, effective, writer, pipeWriter)));
         }
 
+        // Like the streaming path, stops after the target.
         using RentedTimeout timeout = jsonRpcConfig.RentTimeout();
-        CancellationToken cancellationToken = timeout.Token;
-        IReadOnlyCollection<GethLikeTxTrace>? blockTrace = debugBridge.GetBlockTrace(block, cancellationToken, WithBufferedLimit(options));
-
-        // Not disposing blockTrace: GethLikeTxTraceCollection.Dispose() disposes every item,
-        // including the one we return. The collection holds no pooled or unmanaged resource of
-        // its own, so abandoning it leaks nothing.
-        GethLikeTxTrace? transactionTrace = blockTrace is null ? null : SelectTraceDisposingTheRest(blockTrace, txIndex);
+        GethLikeTxTrace? transactionTrace = debugBridge.GetTransactionTrace(block, targetTxHash, timeout.Token, WithBufferedLimit(options));
 
         if (transactionTrace is null)
         {
@@ -363,24 +358,6 @@ public class DebugRpcModule(
         }
 
         return ResultWrapper<GethLikeTxTrace>.Success(transactionTrace);
-    }
-
-    private static GethLikeTxTrace? SelectTraceDisposingTheRest(IReadOnlyCollection<GethLikeTxTrace> blockTrace, int txIndex)
-    {
-        GethLikeTxTrace? selected = null;
-        int index = 0;
-        foreach (GethLikeTxTrace trace in blockTrace)
-        {
-            if (index++ == txIndex)
-            {
-                selected = trace;
-                continue;
-            }
-
-            trace.Dispose();
-        }
-
-        return selected;
     }
 
     public async Task<ResultWrapper<bool>> debug_migrateReceipts(ulong from, ulong to) =>

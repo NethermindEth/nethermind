@@ -65,12 +65,16 @@ public class GethStyleTracer(
 
     public GethLikeTxTrace? Trace(BlockParameter blockParameter, Transaction tx, GethTraceOptions options, CancellationToken cancellationToken, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null)
     {
-        Block block = blockTree.FindBlock(blockParameter) ?? throw new InvalidOperationException($"Cannot find block {blockParameter}");
         tx.Hash ??= tx.CalculateHash();
         if (options.TxIndex is { } index)
-            return TraceCallAtIndex(block, tx, index, options, cancellationToken, writer, pipeWriter);
+        {
+            Block parentBlock = blockTree.FindBlock(blockParameter) ?? throw new InvalidOperationException($"Cannot find block {blockParameter}");
+            return TraceCallAtIndex(parentBlock, tx, index, options, cancellationToken, writer, pipeWriter);
+        }
 
-        block = block.WithReplacedBodyCloned(BlockBody.WithOneTransactionOnly(tx));
+        // The call replaces the whole body, so only the header is read.
+        BlockHeader header = blockTree.FindHeader(blockParameter) ?? throw new InvalidOperationException($"Cannot find block {blockParameter}");
+        Block block = new(header.Clone(), BlockBody.WithOneTransactionOnly(tx));
         TransactionProcessorAdapterFactory previousAdapterFactory = transactionProcessorAdapter.CurrentAdapterFactory;
         transactionProcessorAdapter.CurrentAdapterFactory = static processor => new TraceTransactionProcessorAdapter(processor);
 
@@ -186,8 +190,11 @@ public class GethStyleTracer(
     public GethLikeTxTrace? Trace(Hash256 txHash, GethTraceOptions traceOptions, CancellationToken cancellationToken, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null)
     {
         Hash256? blockHash = receiptFinder.FindBlockHash(txHash);
-        if (blockHash is null) return null;
+        return blockHash is null ? null : Trace(blockHash, txHash, traceOptions, cancellationToken, writer, pipeWriter);
+    }
 
+    public GethLikeTxTrace? Trace(Hash256 blockHash, Hash256 txHash, GethTraceOptions traceOptions, CancellationToken cancellationToken, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null)
+    {
         Block? block = blockTree.FindBlock(blockHash, BlockTreeLookupOptions.RequireCanonical);
         if (block is null) return null;
 
