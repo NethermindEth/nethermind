@@ -3,6 +3,7 @@
 
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using NUnit.Framework;
@@ -139,12 +140,12 @@ public class SlotScheduleTests
         IReleaseSpec enabled = new OverridableReleaseSpec(Bogota.Instance) { IsEip8198Enabled = true };
         CustomSpecProvider scheduled = new(
             ((ForkActivation)0, London.Instance),
-            (new ForkActivation(0, 1_000), Bogota.Instance),
+            (new ForkActivation(0, 1_000), Amsterdam.Instance),
             (new ForkActivation(0, 2_000), enabled))
         {
             Eip8198SlotDurationMs = SlotDurationMs
         };
-        CustomSpecProvider unscheduled = new(((ForkActivation)0, London.Instance), (new ForkActivation(0, 1_000), Bogota.Instance));
+        CustomSpecProvider unscheduled = new(((ForkActivation)0, London.Instance), (new ForkActivation(0, 1_000), Amsterdam.Instance));
         CustomSpecProvider atGenesis = new(((ForkActivation)0, enabled));
 
         using (Assert.EnterMultipleScope())
@@ -218,6 +219,18 @@ public class SlotScheduleTests
             Assert.That(schedule.GetSecondsPerSlot(ulong.MaxValue), Is.EqualTo(12UL));
             Assert.That(schedule.AddSlots(148, 3), Is.EqualTo(184UL));
             Assert.That(schedule.GetSlotTimestamp(6), Is.EqualTo(172UL));
+        }
+    }
+
+    [Test]
+    public void Mainnet_unscheduled_bogota_keeps_the_configured_slot_duration()
+    {
+        ISpecProvider provider = MainnetSpecProvider.Instance;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(provider.GetEip8198Timestamp(), Is.Null);
+            Assert.That(provider.GetSlotSchedule(12).GetSecondsPerSlot(1_792_416_379), Is.EqualTo(12UL));
         }
     }
 

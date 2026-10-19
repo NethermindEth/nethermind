@@ -11,6 +11,7 @@ using System.Text.RegularExpressions;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
+using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
@@ -77,7 +78,8 @@ public class ChainSpecHardforkLabelTests
     [TestCaseSource(nameof(AllLabels))]
     public void Label_expands_to_all_constituent_transition_fields(IHardforkLabel label)
     {
-        ChainSpec spec = Load($"\"{ToCamelCase(label.LabelName)}\": \"0x{ActivationValue:x}\"");
+        string slotDuration = label.Eips.Contains(8198) ? ", \"eip8198SlotDurationMs\": 6000" : "";
+        ChainSpec spec = Load($"\"{ToCamelCase(label.LabelName)}\": \"0x{ActivationValue:x}\"{slotDuration}");
 
         foreach (string propName in label.EipPropertyNames)
         {
@@ -138,6 +140,26 @@ public class ChainSpecHardforkLabelTests
                 $"{fork.Name} introduces EIP-{eip} over {parent.Name} — label '{label.LabelName}' should expand it");
         }
     }
+
+    [Test]
+    public void Bogota_label_activates_eip8198_at_its_timestamp()
+    {
+        ChainSpec chainSpec = Load("\"bogota\": 1792416379, \"eip8198SlotDurationMs\": 6000");
+        ChainSpecBasedSpecProvider provider = new(chainSpec);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chainSpec.Parameters.Eip8198TransitionTimestamp, Is.EqualTo(1_792_416_379UL));
+            Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(1_792_416_378)).IsEip8198Enabled, Is.False);
+            Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(1_792_416_379)).IsEip8198Enabled, Is.True);
+            Assert.That(provider.Eip8198SlotDurationMs, Is.EqualTo(6_000UL));
+        }
+    }
+
+    [Test]
+    public void Bogota_label_requires_a_slot_duration() =>
+        Assert.That(() => Load("\"bogota\": 1792416379"),
+            Throws.TypeOf<InvalidDataException>().With.Message.Contains("eip8198SlotDurationMs is not set"));
 
     [Test]
     public void Label_and_redundant_explicit_eip_with_matching_value_is_accepted()

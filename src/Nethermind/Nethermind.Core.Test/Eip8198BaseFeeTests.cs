@@ -19,7 +19,7 @@ public class Eip8198BaseFeeTests
     private const ulong BlockGasLimit = 30_000_000;
     private const ulong GasTarget = BlockGasLimit / 2;
 
-    private static readonly IReleaseSpec Enabled = new OverridableReleaseSpec(Bogota.Instance) { IsEip8198Enabled = true };
+    private static readonly IReleaseSpec Enabled = Bogota.Instance;
     private static readonly IReleaseSpec Disabled = new OverridableReleaseSpec(Bogota.Instance) { IsEip8198Enabled = false };
 
     private static readonly ulong[] BaseFees = [7, 9, 10, 19, 20, 1_000_000_000, 1_000_000_007];
@@ -48,7 +48,7 @@ public class Eip8198BaseFeeTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(Calculate(Disabled, parentBaseFee, parentGasUsed), Is.EqualTo(expected));
-            Assert.That(Calculate(Bogota.Instance, parentBaseFee, parentGasUsed), Is.EqualTo(expected));
+            Assert.That(Calculate(Amsterdam.Instance, parentBaseFee, parentGasUsed), Is.EqualTo(expected));
         }
     }
 
