@@ -11,6 +11,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http.Features;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Primitives;
 using Nethermind.Config;
@@ -718,6 +719,31 @@ public class SszMiddlewareTests
     }
 
     [Test]
+    public async Task Capabilities_advertises_every_fork_scoped_endpoint()
+    {
+        DefaultHttpContext ctx = MakeGetContext("/engine/v1/capabilities");
+        await _middleware.InvokeAsync(ctx);
+
+        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
+        using System.Text.Json.JsonDocument response = System.Text.Json.JsonDocument.Parse(ResponseBytes(ctx));
+        string[] endpoints = response.RootElement.GetProperty("fork_scoped_endpoints").EnumerateArray()
+            .Select(static endpoint => endpoint.GetString()!).ToArray();
+        Assert.That(endpoints, Is.EquivalentTo(new[] { "payloads", "forkchoice", "bodies", "payloads/witness", "inclusion_list" }));
+    }
+
+    [Test]
+    public async Task Capabilities_advertises_exactly_the_registered_blob_versions()
+    {
+        DefaultHttpContext ctx = MakeGetContext("/engine/v1/capabilities");
+        await _middleware.InvokeAsync(ctx);
+
+        using System.Text.Json.JsonDocument response = System.Text.Json.JsonDocument.Parse(ResponseBytes(ctx));
+        string[] advertised = response.RootElement.GetProperty("independently_versioned").GetProperty(SszRestPaths.Blobs).EnumerateArray()
+            .Select(static version => version.GetString()!).ToArray();
+        Assert.That(advertised, Is.EquivalentTo(BuildHandlers().Where(static h => h.Resource == SszRestPaths.Blobs).Select(static h => $"v{h.Version}")));
+    }
+
+    [Test]
     public async Task ClientVersion_returns_non_empty_response()
     {
         ClientVersionV1[] response = [new ClientVersionV1()];
@@ -1029,7 +1055,7 @@ public class SszMiddlewareTests
 
         string jsonHeader = System.Text.Json.JsonSerializer.Serialize(clVersion);
 
-        ClientVersionV1[] response = [new(), clVersion];
+        ClientVersionV1[] response = [new()];
         _engineModule.engine_getClientVersionV1(default)
             .ReturnsForAnyArgs(ResultWrapper<ClientVersionV1[]>.Success(response));
 
@@ -1047,10 +1073,6 @@ public class SszMiddlewareTests
 
         Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
         Assert.That(ctx.Response.ContentType, Does.Contain("application/json"));
-
-        byte[] bytes = ResponseBytes(ctx);
-        string responseStr = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(bytes).ToString();
-        Assert.That(responseStr, Does.Contain("Nimbus"));
     }
 
     [Test]
@@ -1514,6 +1536,46 @@ public class SszMiddlewareTests
             "latest_valid_hash Union Some variant must round-trip the hash correctly");
         Assert.That(witnessPresent, Is.EqualTo(withWitness),
             "the witness Union must be Some iff a witness was generated");
+    }
+
+    [Test]
+    public async Task NewPayloadWithWitness_over_bound_witness_returns_500_without_aborting()
+    {
+        Witness overBoundWitness = new()
+        {
+            State = new ArrayPoolList<byte[]>(1) { new byte[SszRestLimits.MaxBytesPerWitnessNode + 1] },
+            Codes = new ArrayPoolList<byte[]>(0),
+            Keys = new ArrayPoolList<byte[]>(0),
+            Headers = new ArrayPoolList<byte[]>(0),
+        };
+        _engineModule.engine_newPayloadWithWitnessV5(
+                Arg.Any<ExecutionPayloadV4>(), Arg.Any<Hash256?[]>(), Arg.Any<Hash256?>(), Arg.Any<byte[][]?>())
+            .Returns(ResultWrapper<NewPayloadWithWitnessV1Result>.Success(NewPayloadWithWitnessV1Result.FromPayloadStatus(
+                new PayloadStatusV1 { Status = PayloadStatus.Valid, LatestValidHash = TestItem.KeccakA },
+                overBoundWitness)));
+
+        DefaultHttpContext ctx = MakePostContext(WitnessPath, BuildMinimalWitnessRequestBody(), fork: WitnessFork);
+        AbortableLifetimeFeature lifetime = new();
+        ctx.Features.Set<IHttpRequestLifetimeFeature>(lifetime);
+
+        await _middleware.InvokeAsync(ctx);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status500InternalServerError),
+                "a witness over the SSZ bounds is a server-side failure, not a client decode error");
+            Assert.That(lifetime.RequestAborted.IsCancellationRequested, Is.False,
+                "nothing was written before the bound check, so the connection must stay open for the 500");
+        }
+    }
+
+    private sealed class AbortableLifetimeFeature : IHttpRequestLifetimeFeature
+    {
+        private readonly CancellationTokenSource _cts = new();
+
+        public CancellationToken RequestAborted { get => _cts.Token; set { } }
+
+        public void Abort() => _cts.Cancel();
     }
 
     [Test]

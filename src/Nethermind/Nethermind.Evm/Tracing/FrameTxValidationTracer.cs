@@ -190,6 +190,7 @@ public sealed class FrameTxValidationTracer(
             case Instruction.BLOBBASEFEE:
             case Instruction.INVALID:
             case Instruction.SELFDESTRUCT:
+            case Instruction.PAY when spec.IsEip5920Enabled:
             case Instruction.BALANCE:
             case Instruction.SELFBALANCE:
                 Violate($"banned opcode {opcode} in validation prefix");
@@ -202,6 +203,10 @@ public sealed class FrameTxValidationTracer(
             case Instruction.CREATE:
                 // Its address is f(factory, factory.nonce), which any third party can move by making the
                 // factory create again; only CREATE2 makes the deployment a pure function of the transaction.
+                Violate($"banned opcode {opcode} in validation prefix");
+                break;
+            case Instruction.TCREATE when spec.IsEip8360Enabled:
+                // EIP-8360: never installs code at tx.sender, the one creation the prefix admits.
                 Violate($"banned opcode {opcode} in validation prefix");
                 break;
             case Instruction.CREATE2:

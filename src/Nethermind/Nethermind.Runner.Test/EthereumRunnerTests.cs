@@ -9,6 +9,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Net;
+using System.Net.NetworkInformation;
 using System.Reflection;
 using System.Runtime.Loader;
 using System.Text.Json.Nodes;
@@ -20,14 +21,12 @@ using Autofac.Core.Lifetime;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Api.Steps;
-using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.CensorshipDetector.Plugin;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Consensus.Clique;
-using Nethermind.Consensus.Comparers;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
@@ -165,7 +164,7 @@ public class EthereumRunnerTests
         {
             IBlockProcessor wrapped = scenario == WarmupScenario.SupportedBehindCatchUp ? main.BlockProcessor : Substitute.For<IBlockProcessor>();
             api.MainProcessingContext!.BlockProcessor.Returns(new FinalizedBlockAccessListProcessor(wrapped,
-                container.Resolve<FinalizedBlockAccessListPolicy>(), main.WorldState, container.Resolve<IReceiptStorage>(), NullLogManager.Instance));
+                container.Resolve<FinalizedBlockAccessListPolicy>(), main.WorldState, container.Resolve<IReceiptStorage>(), container.Resolve<IReceiptsRecovery>(), NullLogManager.Instance));
             api.MainProcessingContext.TransactionProcessor.Returns(main.TransactionProcessor);
         }
 
@@ -824,10 +823,10 @@ public class EthereumRunnerTests
         }
     }
 
-    [TestCase("gnosis", true)]
-    [TestCase("xdc", true)]
-    [TestCase("mainnet", false)]
-    public async Task Pool_initializer_retains_simulator_and_registers_shutdown_disposal(string network, bool chainSpecific)
+    [TestCase("gnosis")]
+    [TestCase("xdc")]
+    [TestCase("mainnet")]
+    public async Task Pool_retains_simulator_and_is_disposed_on_shutdown(string network)
     {
         ConfigProvider configProvider = new();
         configProvider.AddSource(new JsonConfigSource($"configs/{network}.json"));
@@ -841,26 +840,12 @@ public class EthereumRunnerTests
         TxPool.TxPool? pool = null;
         try
         {
-            INethermindApi api = runner.Api;
-            api.TransactionComparerProvider = new TransactionComparerProvider(api.SpecProvider!, api.BlockTree!.AsReadOnly());
-            IFrameTxPrefixSimulator simulator = api.Context.Resolve<IFrameTxPrefixSimulator>();
-            IEthereumStepsLoader loader = runner.LifetimeScope.Resolve<IEthereumStepsLoader>();
-            foreach (StepInfo step in loader.ResolveStepsImplementations())
-            {
-                if (!typeof(InitializeBlockchain).IsAssignableFrom(step.StepType)) continue;
-                Assert.That(step.StepType != typeof(InitializeBlockchain), Is.EqualTo(chainSpecific));
-                object initializer = runner.LifetimeScope.Resolve(step.StepType);
-                MethodInfo createPool = step.StepType.GetMethod("CreateTxPool", BindingFlags.Instance | BindingFlags.NonPublic)!;
-                pool = (TxPool.TxPool)createPool.Invoke(initializer, [api.Context.Resolve<IChainHeadInfoProvider>()])!;
-                FieldInfo simulatorField = typeof(TxPool.TxPool).GetField("_frameTxPrefixSimulator", BindingFlags.Instance | BindingFlags.NonPublic)!;
-                Assert.That(simulatorField.GetValue(pool), Is.SameAs(simulator));
-                return;
-            }
-            Assert.Fail("No blockchain initializer resolved");
+            pool = (TxPool.TxPool)runner.Api.Context.Resolve<ITxPool>();
+            FieldInfo simulatorField = typeof(TxPool.TxPool).GetField("_frameTxPrefixSimulator", BindingFlags.Instance | BindingFlags.NonPublic)!;
+            Assert.That(simulatorField.GetValue(pool), Is.SameAs(runner.Api.Context.Resolve<IFrameTxPrefixSimulator>()));
         }
         finally
         {
-            await using TxPool.TxPool? poolCleanup = pool;
             await runner.StopAsync();
             if (pool is not null)
             {
@@ -1081,6 +1066,8 @@ public class EthereumRunnerTests
                 try
                 {
                     await runner.StopAsync().WaitAsync(RunnerTimeout);
+                    Assert.That(IPGlobalProperties.GetIPGlobalProperties().GetActiveTcpListeners(), Has.None.Property(nameof(IPEndPoint.Port)).EqualTo(port),
+                        "the P2P listener is closed on stop");
                 }
                 catch (Exception e)
                 {

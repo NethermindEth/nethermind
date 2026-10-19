@@ -32,9 +32,11 @@ namespace Nethermind.Store.Test;
 [TestFixture(false)]
 [TestFixture(true)]
 [Parallelizable(ParallelScope.All)]
-public class StorageProviderTests(bool useFlat)
+public partial class StorageProviderTests(bool useFlat)
 {
     private static readonly ILogManager LogManager = LimboLogs.Instance;
+
+    private bool UseFlat => useFlat;
 
     /// <summary>The test corpus is byte arrays; storage now takes words.</summary>
     private UInt256 Value(int index) => new(_values[index], isBigEndian: true);
@@ -144,6 +146,24 @@ public class StorageProviderTests(bool useFlat)
         provider.Commit(Frontier.Instance, next);
 
         Assert.That(next.Clears, Is.Empty);
+    }
+
+    [Test]
+    public void Cancelled_storage_reporting_does_not_leak_changes_into_the_next_commit()
+    {
+        using Context ctx = new(useFlat);
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell cancelledCell = new(ctx.Address1, 1);
+        StorageCell nextCell = new(ctx.Address1, 2);
+        provider.Set(cancelledCell, 17);
+        ReadCollectingStorageTracer cancelled = new() { CancelOnChange = true };
+
+        Assert.Throws<OperationCanceledException>(() => provider.Commit(Frontier.Instance, cancelled));
+        provider.Set(nextCell, 19);
+        ReadCollectingStorageTracer next = new();
+        provider.Commit(Frontier.Instance, next);
+
+        Assert.That(next.Changes.ConvertAll(static change => change.Cell), Is.EqualTo(new[] { nextCell }));
     }
 
     [Test]
@@ -1339,6 +1359,75 @@ public class StorageProviderTests(bool useFlat)
     }
 
     /// <summary>
+    /// World states whose scopes overlap, as the prewarmer's do, must not each allocate the list that captures the
+    /// originals of the slots they load: it is kept with the world state rather than handed back at every scope end.
+    /// </summary>
+    /// <remarks>
+    /// More scopes than the shared pool can serve at once, which tries two larger sizes before allocating. Reports the
+    /// cheapest of several rounds, as <see cref="Transient_write_does_not_allocate"/> does.
+    /// </remarks>
+    [Test]
+    [NonParallelizable]
+    public void Overlapping_scopes_reuse_their_original_value_lists()
+    {
+        const int Scopes = 4;
+        const int Rounds = 5;
+
+        StorageCell cell = new(TestItem.AddressA, 1);
+        Context[] contexts = new Context[Scopes];
+        BlockHeader[] bases = new BlockHeader[Scopes];
+        IDisposable[] scopes = new IDisposable[Scopes];
+        try
+        {
+            for (int i = 0; i < Scopes; i++)
+            {
+                contexts[i] = new Context(useFlat, setInitialState: false);
+                bases[i] = WriteSlot(contexts[i].StateProvider, in cell);
+            }
+
+            ReadOverlapping();
+            long allocated = long.MaxValue;
+            for (int round = 0; round < Rounds; round++)
+            {
+                allocated = Math.Min(allocated, ReadOverlapping());
+            }
+
+            Assert.That(allocated, Is.LessThan(PersistentStorageProvider.PooledDictionaryCapacity * 16));
+        }
+        finally
+        {
+            foreach (Context context in contexts) context?.Dispose();
+        }
+
+        long ReadOverlapping()
+        {
+            for (int i = 0; i < Scopes; i++) scopes[i] = contexts[i].StateProvider.BeginScope(bases[i]);
+            try
+            {
+                long start = GC.GetAllocatedBytesForCurrentThread();
+                for (int i = 0; i < Scopes; i++) contexts[i].StateProvider.Get(in cell, out _);
+                return GC.GetAllocatedBytesForCurrentThread() - start;
+            }
+            finally
+            {
+                for (int i = 0; i < Scopes; i++) scopes[i].Dispose();
+            }
+        }
+
+        static BlockHeader WriteSlot(WorldState provider, in StorageCell cell)
+        {
+            using (provider.BeginScope(IWorldState.PreGenesis))
+            {
+                provider.CreateAccount(cell.Address, 1);
+                provider.Set(in cell, (UInt256)7);
+                provider.Commit(Frontier.Instance);
+                provider.CommitTree(0);
+                return Build.A.BlockHeader.WithStateRoot(provider.StateRoot).TestObject;
+            }
+        }
+    }
+
+    /// <summary>
     /// Commit will reset transient state
     /// </summary>
     [Test]
@@ -2470,91 +2559,6 @@ public class StorageProviderTests(bool useFlat)
         }
     }
 
-#if ZK_EVM
-    [Test]
-    public void Get_ManyReads_IndexesOriginalValuesEagerly()
-    {
-        using Context ctx = new(useFlat, preBlockCaches: null);
-        WorldState provider = BuildStorageProvider(ctx);
-        provider.Commit(Frontier.Instance);
-        for (int i = 1; i <= 2048; i++)
-        {
-            provider.Get(new StorageCell(ctx.Address1, (UInt256)i), out _);
-        }
-
-        OptimizedDictionary<StorageCell, UInt256> originals =
-            (OptimizedDictionary<StorageCell, UInt256>)GetPrivateField(provider._persistentStorageProvider, "_originalValues");
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(originals.Count, Is.EqualTo(2048), "Guest reads must index every original value immediately.");
-            Assert.That(typeof(PersistentStorageProvider).GetField("_pendingOriginalValues", BindingFlags.Instance | BindingFlags.NonPublic), Is.Null,
-                "The guest must not allocate a deferred capture buffer.");
-        }
-        provider.Commit(Frontier.Instance);
-        Assert.That(originals.Count, Is.Zero, "Commit must clear the guest original-value index.");
-    }
-
-#else
-    [Test]
-    public void Commit_ReadOnlyRounds_ReusesPendingBuffer([Values(2, 2048)] int slotCount)
-    {
-        using Context ctx = new(useFlat, preBlockCaches: null);
-        WorldState provider = BuildStorageProvider(ctx);
-        provider.Get(new StorageCell(ctx.Address1, UInt256.Zero), out _);
-        provider.Commit(Frontier.Instance);
-        object buffer = null;
-        for (int round = 0; round < 3; round++)
-        {
-            for (int i = 1; i <= slotCount; i++)
-            {
-                provider.Get(new StorageCell(ctx.Address1, (UInt256)i), out _);
-            }
-
-            object currentBuffer = GetPrivateField(provider._persistentStorageProvider, "_pendingOriginalValues");
-            buffer ??= currentBuffer;
-            Assert.That(currentBuffer, Is.SameAs(buffer));
-            provider.Commit(Frontier.Instance);
-            Assert.That(GetPrivateField(provider._persistentStorageProvider, "_pendingOriginalValues"), Is.SameAs(buffer));
-            Assert.That(((System.Collections.ICollection)buffer).Count, Is.Zero);
-        }
-    }
-
-    [Test]
-    public void Commit_OversizedPendingBuffer_ReleasesBuffer()
-    {
-        using Context ctx = new(useFlat, preBlockCaches: null);
-        WorldState provider = BuildStorageProvider(ctx);
-        provider.Get(new StorageCell(ctx.Address1, UInt256.Zero), out _);
-        provider.Commit(Frontier.Instance);
-        for (int i = 1; i <= CoreCollectionExtensions.DefaultTrimAboveCapacity + 1; i++)
-        {
-            provider.Get(new StorageCell(ctx.Address1, (UInt256)i), out _);
-        }
-
-        Assert.That(GetPrivateField(provider._persistentStorageProvider, "_pendingOriginalValues"), Is.Not.Null);
-        provider.Commit(Frontier.Instance);
-        Assert.That(GetPrivateField(provider._persistentStorageProvider, "_pendingOriginalValues"), Is.Null);
-    }
-
-    [Test]
-    public void EndScope_RetainedPendingBuffer_ReleasesBuffer()
-    {
-        using Context ctx = new(useFlat, setInitialState: false);
-        WorldState provider = BuildStorageProvider(ctx);
-        using (provider.BeginScope(IWorldState.PreGenesis))
-        {
-            StorageCell cell = new(TestItem.AddressA, UInt256.Zero);
-            provider.Get(cell, out _);
-            provider.Commit(Frontier.Instance);
-            provider.Get(cell, out _);
-            Assert.That(GetPrivateField(provider._persistentStorageProvider, "_pendingOriginalValues"), Is.Not.Null);
-        }
-
-        Assert.That(GetPrivateField(provider._persistentStorageProvider, "_pendingOriginalValues"), Is.Null);
-    }
-
-#endif
-
     [TestCase(RoundBoundary.None)]
     [TestCase(RoundBoundary.ResetKeepingBlockChanges)]
     [TestCase(RoundBoundary.ReadOnlyCommit)]
@@ -2980,6 +2984,7 @@ public class StorageProviderTests(bool useFlat)
         public List<Address> Clears { get; } = [];
         public bool CancelOnClear { get; init; }
         public bool CancelOnRead { get; init; }
+        public bool CancelOnChange { get; init; }
         public List<(StorageCell Cell, byte[] Value)> Restores { get; } = [];
 
         public bool IsTracingState => false;
@@ -2989,7 +2994,11 @@ public class StorageProviderTests(bool useFlat)
         public void ReportCodeChange(Address address, ReadOnlyMemory<byte> before, ReadOnlyMemory<byte> after) { }
         public void ReportNonceChange(Address address, UInt256? before, UInt256? after) { }
         public void ReportAccountRead(Address address) { }
-        public void ReportStorageChange(in StorageCell storageCell, byte[] before, byte[] after) => Changes.Add((storageCell, before, after));
+        public void ReportStorageChange(in StorageCell storageCell, byte[] before, byte[] after)
+        {
+            if (CancelOnChange) throw new OperationCanceledException();
+            Changes.Add((storageCell, before, after));
+        }
         public void ReportStorageRead(in StorageCell storageCell)
         {
             if (CancelOnRead) throw new OperationCanceledException();
