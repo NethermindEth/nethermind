@@ -199,7 +199,19 @@ public partial class DebugRpcModuleTests
         foreach (string method in new[] { "debug_traceBlockByNumber", "debug_traceBlockByHash", "debug_traceBlock" })
         {
             foreach ((string failure, int failAt, int? selectedAt) in cases)
-                yield return new TestCaseData(method, failure, failAt, selectedAt);
+            {
+                string? scenario = (failure, failAt, selectedAt) switch
+                {
+                    ("result", 1, 1) => "txHash_recovers_middle_result_failure",
+                    ("step", 2, 2) => "txHash_recovers_last_step_failure",
+                    ("result", 0, 1) => "txHash_selected_success_keeps_canonical_index_and_state",
+                    ("unknown", -1, 2) => "txHash_reports_constructor_failure_for_selected_transaction",
+                    ("result", 0, -1) => "unknown_txHash_returns_no_trace",
+                    _ => null
+                };
+                TestCaseData testCase = new(method, failure, failAt, selectedAt);
+                yield return scenario is null ? testCase : testCase.SetName($"{nameof(Debug_traceBlock_recovers_js_errors_without_replaying_prefixes)}_{method}_{scenario}");
+            }
         }
     }
 
