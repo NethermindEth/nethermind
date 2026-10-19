@@ -285,6 +285,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             where TContinuable : struct, IFlag
         {
             bool carriesExecutionGas = CarriesExecutionGas<TTracingInst>();
+            nint traceStackHead = DispatchFlags.ConstTracing && !TOpcode.HasCheckedBody
+                && TOpcode.StackInputs > 0 && state.Vm.IsTracingActions ? stack.Head : 0;
 
             // Only a traced run reads the opcode out of the bytecode. The read costs two dependent loads.
             if (TTracingInst.IsActive && typeof(TTracingInst) != typeof(SilentInstructionFlag))
@@ -474,7 +476,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             {
                 Instruction opcode = (Instruction)Unsafe.Add(ref stack.Code, pc - 1);
                 if (opcode is not (Instruction.CALL or Instruction.CALLCODE or Instruction.DELEGATECALL or Instruction.STATICCALL))
-                    state.Vm.TraceActionErrorDetails($"stack underflow ({stack.Head} <=> {TOpcode.StackInputs})");
+                    state.Vm.TraceActionErrorDetails($"stack underflow ({traceStackHead} <=> {TOpcode.StackInputs})");
             }
             return ExitOpcode(ref state, carriesExecutionGas, gas, pc, opCodeCount, exceptionType);
         }

@@ -216,6 +216,9 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         new("6001600055", 26000UL, "out of gas", 22100UL),
         new("600061100052", 21100UL, "out of gas", 422UL),
         new("6001600101", 21006UL, "out of gas", 3UL),
+        new("60016000600037", 21009UL, "out of gas", 3UL),
+        new("60016000600039", 21009UL, "out of gas", 3UL),
+        new("6001600060003e", 21009UL, "out of gas", 3UL),
         new("600060006000600060017300000000000000000000000000000000000056786000f2", 29548UL, "out of gas", 11600UL),
         new("600060006000600060017300000000000000000000000000000000000056786040f2", 29548UL, "out of gas", 11664UL),
         new("60006000620100006000600073000000000000000000000000000000000000beef6000f2", 24000UL, "out of gas", 16936UL),
@@ -253,17 +256,7 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
             Assert.That(fileCost, Is.EqualTo(expectedCost), "file gas cost");
         }
 
-        ArrayBufferWriter<byte> buffer = new();
-        using (Utf8JsonWriter writer = new(buffer))
-        {
-            using GethLikeTxDirectStreamingTracer streamingTracer = new(tx, GethTraceOptions.Default, writer, null, CancellationToken.None);
-            writer.WriteStartArray();
-            _processor.CallAndRestore(tx, block.Header, new CompositeTxTracer(NullTxTracer.Instance, streamingTracer.WithCancellation(CancellationToken.None)));
-            using GethLikeTxTrace streamingResult = streamingTracer.BuildResult();
-            writer.WriteEndArray();
-            writer.Flush();
-        }
-        using JsonDocument streamed = JsonDocument.Parse(buffer.WrittenMemory);
+        using JsonDocument streamed = ExecuteStreamingTrace(block, tx, GethTraceOptions.Default);
         JsonElement last = streamed.RootElement[streamed.RootElement.GetArrayLength() - 1];
         using (Assert.EnterMultipleScope())
         {
@@ -366,17 +359,7 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
             Assert.That(result.Failed, Is.True);
         }
 
-        ArrayBufferWriter<byte> buffer = new();
-        using (Utf8JsonWriter writer = new(buffer))
-        {
-            using GethLikeTxDirectStreamingTracer streamingTracer = new(tx, GethTraceOptions.Default, writer, null, CancellationToken.None);
-            writer.WriteStartArray();
-            _processor.CallAndRestore(tx, block.Header, new CompositeTxTracer(NullTxTracer.Instance, streamingTracer.WithCancellation(CancellationToken.None)));
-            using GethLikeTxTrace streamingResult = streamingTracer.BuildResult();
-            writer.WriteEndArray();
-            writer.Flush();
-        }
-        using JsonDocument streamed = JsonDocument.Parse(buffer.WrittenMemory);
+        using JsonDocument streamed = ExecuteStreamingTrace(block, tx, GethTraceOptions.Default);
         JsonElement last = streamed.RootElement[streamed.RootElement.GetArrayLength() - 1];
         using (Assert.EnterMultipleScope())
         {
@@ -443,19 +426,25 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
             Assert.That(lastStorage.Refund, Is.EqualTo(expectedValue == 0 ? (long?)spec.GasCosts.SClearRefund : null));
         }
 
+        using JsonDocument streamed = ExecuteStreamingTrace(block, tx, GethTraceOptions.Default with { DisableStack = disableStack });
+        using JsonDocument expected = JsonDocument.Parse(JsonSerializer.Serialize(result, SerializerOptions));
+        Assert.That(JsonElement.DeepEquals(streamed.RootElement, expected.RootElement.GetProperty("structLogs")), Is.True);
+    }
+
+    private JsonDocument ExecuteStreamingTrace(Block block, Transaction tx, GethTraceOptions options)
+    {
         ArrayBufferWriter<byte> buffer = new();
         using (Utf8JsonWriter writer = new(buffer))
         {
-            using GethLikeTxDirectStreamingTracer streaming = new(tx, GethTraceOptions.Default with { DisableStack = disableStack }, writer, null, CancellationToken.None);
+            using GethLikeTxDirectStreamingTracer streamingTracer = new(tx, options, writer, null, CancellationToken.None);
             writer.WriteStartArray();
-            _processor.CallAndRestore(tx, block.Header, streaming.WithCancellation(CancellationToken.None));
-            using GethLikeTxTrace streamedResult = streaming.BuildResult();
+            using CompositeTxTracer executionTracer = new(NullTxTracer.Instance, streamingTracer.WithCancellation(CancellationToken.None));
+            _processor.CallAndRestore(tx, block.Header, executionTracer);
+            using GethLikeTxTrace result = streamingTracer.BuildResult();
             writer.WriteEndArray();
             writer.Flush();
         }
-        using JsonDocument streamed = JsonDocument.Parse(buffer.WrittenMemory);
-        using JsonDocument expected = JsonDocument.Parse(JsonSerializer.Serialize(result, SerializerOptions));
-        Assert.That(JsonElement.DeepEquals(streamed.RootElement, expected.RootElement.GetProperty("structLogs")), Is.True);
+        return JsonDocument.Parse(buffer.WrittenMemory);
     }
 
     private static System.Collections.Generic.IEnumerable<TestCaseData> OutOfGasTraceCases()
@@ -575,14 +564,26 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         new("60006000680100000000000000003e", 100000UL, null)
     ];
 
-    [Test]
-    public void Call_partial_pop_underflow_diagnostics_preserve_initial_depth(
-        [Values(Instruction.CALL, Instruction.CALLCODE, Instruction.DELEGATECALL, Instruction.STATICCALL)] Instruction opcode,
-        [Range(0, 5)] int depth)
+    private static System.Collections.Generic.IEnumerable<TestCaseData> PartialPopUnderflowCases()
+    {
+        foreach (Instruction opcode in new[] { Instruction.CALL, Instruction.CALLCODE, Instruction.DELEGATECALL, Instruction.STATICCALL, Instruction.EXTCODECOPY, Instruction.CREATE2 })
+        {
+            int required = opcode switch
+            {
+                Instruction.CALL or Instruction.CALLCODE => 7,
+                Instruction.DELEGATECALL or Instruction.STATICCALL => 6,
+                _ => 4
+            };
+            for (int depth = 0; depth < required; depth++)
+                yield return new TestCaseData(opcode, depth, required);
+        }
+    }
+
+    [TestCaseSource(nameof(PartialPopUnderflowCases))]
+    public void Partial_pop_underflow_diagnostics_preserve_initial_depth(Instruction opcode, int depth, int required)
     {
         Prepare code = Prepare.EvmCode;
         for (int i = 0; i < depth; i++) code.PushData(0);
-        int required = opcode is Instruction.CALL or Instruction.CALLCODE ? 7 : 6;
         Call_trace_diagnostics_do_not_depend_on_opcode_tracer(code.Op(opcode).Done.ToHexString(), 100000UL,
             $"stack underflow ({depth} <=> {required})");
     }

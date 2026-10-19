@@ -1870,27 +1870,42 @@ public partial class VirtualMachine<TGasPolicy>(
                 state.Machine.EndInstructionTrace(implicitStopTracer, state.Gas);
             });
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal void TraceStorageRefund(long refund)
+    {
+        if (DispatchFlags.ConstTracing && _txTracer.IsTracingInstructions)
+            TraceStorageRefundCore(refund);
+    }
+
     [MethodImpl(MethodImplOptions.NoInlining)]
-    internal void TraceStorageRefund(long refund) =>
+    private void TraceStorageRefundCore(long refund) =>
         _txTracer.ForEach<ITraceOperationStorage, long>(
             static tracer => tracer.IsTracingInstructions, refund,
             static (tracer, value) => tracer.ReportStorageRefund(value));
 
-    [MethodImpl(MethodImplOptions.NoInlining)]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal void TraceOperationGasCost(ulong gasCost)
     {
-        if (_txTracer.IsTracingInstructions)
-            _txTracer.ForEach<ITraceOperationGasCost, ulong>(
-                static tracer => tracer.IsTracingInstructions, gasCost,
-                static (tracer, cost) => tracer.ReportOperationGasCost(cost));
+        if (DispatchFlags.ConstTracing && _txTracer.IsTracingInstructions)
+            TraceOperationGasCostCore(gasCost);
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
+    private void TraceOperationGasCostCore(ulong gasCost) =>
+        _txTracer.ForEach<ITraceOperationGasCost, ulong>(
+            static tracer => tracer.IsTracingInstructions, gasCost,
+            static (tracer, cost) => tracer.ReportOperationGasCost(cost));
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal void TraceMemoryOperationGasCost(in UInt256 position, in UInt256 length, ulong additionalGas = 0)
     {
-        if (!_txTracer.IsTracingInstructions)
-            return;
+        if (DispatchFlags.ConstTracing && _txTracer.IsTracingInstructions)
+            TraceMemoryOperationGasCostCore(in position, in length, additionalGas);
+    }
 
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void TraceMemoryOperationGasCostCore(in UInt256 position, in UInt256 length, ulong additionalGas)
+    {
         // Cost calculation changes Size, so diagnostics must not consume the execution's expansion.
         EvmPooledMemory memory = VmState.Memory;
         ulong memoryCost = memory.CalculateMemoryCost(in position, in length, out bool overflow);
@@ -1901,8 +1916,15 @@ public partial class VirtualMachine<TGasPolicy>(
         }
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal void TraceOperationReady(ulong gasCost, string? error = null)
+    {
+        if (DispatchFlags.ConstTracing && _txTracer.IsTracingInstructions)
+            TraceOperationReadyCore(gasCost, error);
+    }
+
     [MethodImpl(MethodImplOptions.NoInlining)]
-    internal void TraceOperationReady(ulong gasCost, string? error = null) =>
+    private void TraceOperationReadyCore(ulong gasCost, string? error) =>
         _txTracer.ForEach<ITraceOperationStart, (ulong Cost, string? Error)>(
             static tracer => tracer.IsTracingInstructions, (gasCost, error),
             static (tracer, operation) => tracer.ReportOperationReady(operation.Cost, operation.Error));
@@ -1931,12 +1953,15 @@ public partial class VirtualMachine<TGasPolicy>(
             : GasCostOf.WarmStateRead;
     }
 
-    [MethodImpl(MethodImplOptions.NoInlining)]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal void TraceActionErrorDetails(string error)
     {
-        if (IsTracingActions)
-            _txTracer.ReportActionErrorDetails(error);
+        if (DispatchFlags.ConstTracing && IsTracingActions)
+            TraceActionErrorDetailsCore(error);
     }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void TraceActionErrorDetailsCore(string error) => _txTracer.ReportActionErrorDetails(error);
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     internal void EndInstructionTrace(ulong gasAvailable, EvmExceptionType? evmExceptionType = null)
