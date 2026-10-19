@@ -8,6 +8,7 @@ using System.Text.Json.Serialization;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Call;
+using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.FourByte;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Prestate;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.StateGas;
 using Nethermind.Blockchain.Tracing.ParityStyle;
@@ -25,6 +26,7 @@ namespace Nethermind.Blockchain.Tracing;
 [JsonSourceGenerationOptions(GenerationMode = JsonSourceGenerationMode.Metadata)]
 [JsonSerializable(typeof(GethLikeCustomTrace))]
 [JsonSerializable(typeof(GethLikeCustomTrace.EmptyValue))]
+[JsonSerializable(typeof(FourByteIdCounts))]
 [JsonSerializable(typeof(GethLikeTxTraceCollection))]
 [JsonSerializable(typeof(NativeCallTracerCallFrame))]
 [JsonSerializable(typeof(NativeCallTracerConfig))]

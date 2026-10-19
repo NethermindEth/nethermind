@@ -191,7 +191,7 @@ public partial class ParityLikeTxTracer : IFrameTxReceiptTracer
             ParityTraceAction action = tracer.RentAction();
             action.TraceAddress = tracer.RentTraceAddress(1);
             action.Type = "call";
-            action.CallType = frame.Mode is FrameMode.Verify or FrameMode.PostTx ? "staticcall" : "call";
+            action.CallType = frame.Mode is FrameMode.Verify or FrameMode.Assert ? "staticcall" : "call";
             action.From = frame.Mode == FrameMode.Sender ? tx.SenderAddress : Eip8141Constants.EntryPointAddress;
             action.To = frame.Target ?? tx.SenderAddress;
             action.Value = frame.Value;
