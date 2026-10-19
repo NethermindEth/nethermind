@@ -590,6 +590,15 @@ jobs:
             echo "fork_alias=Bogota=FramesDevnet1" >> "$GITHUB_OUTPUT"
           fi
 
+          # v0.3 predates the blob IL carve-out; retain its payload checks with corrected IL expectations.
+          if [ "$TEST_TYPE" = "focilTest" ] && [ "$RESOLVED_EEST_VERSION" = "tests-focil-devnet@v0.3.0" ]; then
+            python -m unittest discover -s scripts/ci -p 'test_normalize_legacy_focil.py' -v
+            COMPAT_DIR="$RUNNER_TMP/nethtest-focil-v03"
+            rm -rf "$COMPAT_DIR"
+            python scripts/ci/normalize_legacy_focil.py "$RESOLVED_EEST_VERSION" "$FIXTURE_DIR" "$COMPAT_DIR"
+            FIXTURE_DIR="$COMPAT_DIR"
+          fi
+
           # Fixtures whose expectations are knowingly not met, excluded so the lane still gates on the
           # rest. Patterns match the test id with everything up to `.py::` stripped, so they scope by
           # fork and parameterisation but cannot tell apart two fixture files that define the same
