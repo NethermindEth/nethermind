@@ -112,7 +112,6 @@ public class HistoryPruner : IHistoryPruner
         IHeaderStore headerStore,
         IDbProvider dbProvider,
         IHistoryConfig historyConfig,
-        IPruningConfig pruningConfig,
         IBlocksConfig blocksConfig,
         ISyncConfig syncConfig,
         IProcessExitSource processExitSource,
@@ -134,9 +133,7 @@ public class HistoryPruner : IHistoryPruner
         _historyConfig = historyConfig;
         _receiptRetention = receiptRetention;
         _enabled = historyConfig.Enabled();
-        // An archive node keeps its access lists unless given a retention.
         _balPruningOnly = !_enabled
-            && (historyConfig.BalRetentionEpochs is not null || pruningConfig.Mode != PruningMode.None)
             && specProvider.GetFinalSpec().BlockLevelAccessListsEnabled;
         _pruningInterval = historyConfig.PruningInterval * SlotsPerEpoch;
         _minHistoryRetentionEpochs = specProvider.GenesisSpec.MinHistoryRetentionEpochs;
@@ -680,7 +677,11 @@ public class HistoryPruner : IHistoryPruner
                 // It can stop short, and the rest of the chunk stops with it rather than stranding undecided heights.
                 to = RetainSlicedAndReclaimTheRest(from, to, cancellationToken);
 
-                _blockAccessListStore.DeleteRange(from, to);
+                // Synchronize with the sync feed's cutoff check and insertion.
+                lock (_blockAccessListStore)
+                {
+                    _blockAccessListStore.DeleteRange(from, to);
+                }
 
                 _blocksReclaimCursor = to;
                 if (_balsDeletePointer < to)
@@ -1049,7 +1050,10 @@ public class HistoryPruner : IHistoryPruner
             for (ulong from = start; from < limit;)
             {
                 ulong to = ulong.Min(from + ChunkStep(reclaimed, cancellationToken), limit);
-                _blockAccessListStore.DeleteRange(from, to);
+                lock (_blockAccessListStore)
+                {
+                    _blockAccessListStore.DeleteRange(from, to);
+                }
 
                 _balsDeletePointer = to;
                 Metrics.OldestStoredBlockAccessListBlockNumber = _balsDeletePointer;

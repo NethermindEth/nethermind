@@ -21,6 +21,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Specs;
@@ -151,16 +152,19 @@ public class HistoryPrunerTests
     [TestCase(null, PruningMode.Hybrid, true, 42_400UL)]
     [TestCase(1u, PruningMode.Hybrid, true, 499_936UL)]
     [TestCase(uint.MaxValue, PruningMode.Hybrid, true, 0UL)] // keeps them all
-    [TestCase(null, PruningMode.None, true, null)] // archive keeps them by default
+    [TestCase(null, PruningMode.None, true, 42_400UL)]
     [TestCase(1u, PruningMode.None, true, 499_936UL)]
+    [TestCase(uint.MaxValue, PruningMode.None, true, 0UL)]
     [TestCase(null, PruningMode.Hybrid, false, null)]
+    [TestCase(null, PruningMode.None, false, null)]
     public void Bals_are_pruned_when_history_pruning_is_disabled(uint? balRetentionEpochs, PruningMode stateMode, bool chainHasAccessLists, ulong? expectedCutoff)
     {
-        TestMemDb metadataDb = new();
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
         IBlockAccessListStore balStore = Substitute.For<IBlockAccessListStore>();
-        HistoryPruner pruner = CreateBalOnlyPruner(metadataDb, blockTree, receiptStorage, balStore, balRetentionEpochs, stateMode, chainHasAccessLists);
+        using IContainer container = CreateBalOnlyContainer(blockTree, receiptStorage, balStore, balRetentionEpochs, stateMode, chainHasAccessLists);
+        HistoryPruner pruner = (HistoryPruner)container.Resolve<IHistoryPruner>();
+        IDb metadataDb = container.Resolve<IDbProvider>().MetadataDb;
 
         pruner.TryPruneHistory(CancellationToken.None);
 
@@ -188,10 +192,10 @@ public class HistoryPrunerTests
     [Test]
     public void Bal_only_pruning_resumes_from_persisted_pointer()
     {
-        TestMemDb metadataDb = new();
-        metadataDb.Set(MetadataDbKeys.BlockAccessListPruningDeletePointer, Rlp.Encode(30_000UL).Bytes);
         IBlockAccessListStore balStore = Substitute.For<IBlockAccessListStore>();
-        HistoryPruner pruner = CreateBalOnlyPruner(metadataDb, Substitute.For<IBlockTree>(), Substitute.For<IReceiptStorage>(), balStore);
+        using IContainer container = CreateBalOnlyContainer(Substitute.For<IBlockTree>(), Substitute.For<IReceiptStorage>(), balStore);
+        container.Resolve<IDbProvider>().MetadataDb.Set(MetadataDbKeys.BlockAccessListPruningDeletePointer, Rlp.Encode(30_000UL).Bytes);
+        HistoryPruner pruner = (HistoryPruner)container.Resolve<IHistoryPruner>();
 
         pruner.TryPruneHistory(CancellationToken.None);
 
@@ -204,7 +208,8 @@ public class HistoryPrunerTests
     {
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         IBlockAccessListStore balStore = Substitute.For<IBlockAccessListStore>();
-        HistoryPruner pruner = CreateBalOnlyPruner(new TestMemDb(), blockTree, Substitute.For<IReceiptStorage>(), balStore, balRetentionEpochs: 1);
+        using IContainer container = CreateBalOnlyContainer(blockTree, Substitute.For<IReceiptStorage>(), balStore, balRetentionEpochs: 1);
+        HistoryPruner pruner = (HistoryPruner)container.Resolve<IHistoryPruner>();
         blockTree.SyncPivot.Returns((400_000UL, Keccak.Zero));
 
         pruner.TryPruneHistory(CancellationToken.None);
@@ -223,7 +228,8 @@ public class HistoryPrunerTests
         IBlockAccessListStore balStore = Substitute.For<IBlockAccessListStore>();
         balStore.When(static s => s.DeleteRange(Arg.Any<ulong>(), Arg.Any<ulong>())).Do(_ => deleted.TrySetResult());
         await using BackgroundTaskScheduler scheduler = new(Substitute.For<IBranchProcessor>(), Substitute.For<IChainHeadInfoProvider>(), 1, 16, LimboLogs.Instance);
-        HistoryPruner pruner = CreateBalOnlyPruner(new TestMemDb(), Substitute.For<IBlockTree>(), Substitute.For<IReceiptStorage>(), balStore, scheduler: scheduler);
+        using IContainer container = CreateBalOnlyContainer(Substitute.For<IBlockTree>(), Substitute.For<IReceiptStorage>(), balStore, scheduler: scheduler);
+        HistoryPruner pruner = (HistoryPruner)container.Resolve<IHistoryPruner>();
 
         pruner.SchedulePruneHistory();
 
@@ -235,13 +241,13 @@ public class HistoryPrunerTests
     [TestCase(15_000UL, 19_968UL)]
     public void Default_bal_retention_is_the_chain_floor(ulong minBalRetentionEpochs, ulong expectedCutoff)
     {
-        HistoryPruner pruner = CreateBalOnlyPruner(new TestMemDb(), Substitute.For<IBlockTree>(), Substitute.For<IReceiptStorage>(), Substitute.For<IBlockAccessListStore>(), minBalRetentionEpochs: minBalRetentionEpochs);
+        using IContainer container = CreateBalOnlyContainer(Substitute.For<IBlockTree>(), Substitute.For<IReceiptStorage>(), Substitute.For<IBlockAccessListStore>(), minBalRetentionEpochs: minBalRetentionEpochs);
+        HistoryPruner pruner = (HistoryPruner)container.Resolve<IHistoryPruner>();
 
         Assert.That(pruner.BalCutoffBlockNumber, Is.EqualTo(expectedCutoff));
     }
 
-    private static HistoryPruner CreateBalOnlyPruner(
-        TestMemDb metadataDb,
+    private static IContainer CreateBalOnlyContainer(
         IBlockTree blockTree,
         IReceiptStorage receiptStorage,
         IBlockAccessListStore balStore,
@@ -255,28 +261,20 @@ public class HistoryPrunerTests
         blockTree.Head.Returns(Build.A.Block.WithNumber(BalOnlyHead).TestObject);
         // Lowered to an explicit retention so short windows pass the floor check.
         minBalRetentionEpochs = ulong.Min(minBalRetentionEpochs, balRetentionEpochs ?? ulong.MaxValue);
-        IDbProvider dbProvider = Substitute.For<IDbProvider>();
-        dbProvider.MetadataDb.Returns(metadataDb);
-        dbProvider.BlocksDb.Returns(new TestMemDb());
-        dbProvider.ReceiptsDb.GetColumnDb(Arg.Any<ReceiptsColumns>()).Returns(new TestMemDb());
-
-        return new HistoryPruner(
-            blockTree,
-            receiptStorage,
-            balStore,
-            new TestSpecProvider(new ReleaseSpec { IsEip7928Enabled = chainHasAccessLists, MinBalRetentionEpochs = minBalRetentionEpochs }),
-            Substitute.For<IChainLevelInfoRepository>(),
-            Substitute.For<IHeaderStore>(),
-            dbProvider,
-            new HistoryConfig { Pruning = PruningModes.Disabled, BalRetentionEpochs = balRetentionEpochs, PruningInterval = 0 },
-            new PruningConfig { Mode = stateMode },
-            BlocksConfig,
-            SyncConfig,
-            new ProcessExitSource(new()),
-            scheduler ?? Substitute.For<IBackgroundTaskScheduler>(),
-            Substitute.For<IBlockProcessingQueue>(),
-            NullPrunedReceiptRetention.Instance,
-            LimboLogs.Instance);
+        return new ContainerBuilder()
+            .AddModule(new TestNethermindModule(
+                new HistoryConfig { Pruning = PruningModes.Disabled, BalRetentionEpochs = balRetentionEpochs, PruningInterval = 0 },
+                new PruningConfig { Mode = stateMode },
+                BlocksConfig,
+                SyncConfig))
+            .AddSingleton<ISpecProvider>(new TestSpecProvider(new ReleaseSpec { IsEip7928Enabled = chainHasAccessLists, MinBalRetentionEpochs = minBalRetentionEpochs }))
+            .AddSingleton(blockTree)
+            .AddSingleton(receiptStorage)
+            .AddSingleton(balStore)
+            .AddSingleton(scheduler ?? Substitute.For<IBackgroundTaskScheduler>())
+            .AddSingleton(Substitute.For<IBlockProcessingQueue>())
+            .AddSingleton<IPrunedReceiptRetention>(NullPrunedReceiptRetention.Instance)
+            .Build();
     }
 
     [TestCase(100UL, 1u, 36UL)]
@@ -513,7 +511,6 @@ public class HistoryPrunerTests
             Substitute.For<IHeaderStore>(),
             dbProvider,
             historyConfig,
-            new PruningConfig(),
             BlocksConfig,
             SyncConfig,
             new ProcessExitSource(new()),
@@ -795,7 +792,6 @@ public class HistoryPrunerTests
             Substitute.For<IHeaderStore>(),
             dbProvider,
             new HistoryConfig { Pruning = PruningModes.Rolling, RetentionEpochs = 100, PruningInterval = pruningInterval, BalRetentionEpochs = balRetentionEpochs },
-            new PruningConfig(),
             BlocksConfig,
             new SyncConfig { FastSync = true, PivotNumber = 10_000, DownloadBodiesInFastSync = true, SynchronizationEnabled = synchronizationEnabled },
             new ProcessExitSource(new()),
@@ -1181,7 +1177,6 @@ public class HistoryPrunerTests
         testBlockchain.Container.Resolve<IHeaderStore>(),
         testBlockchain.Container.Resolve<IDbProvider>(),
         testBlockchain.Container.Resolve<IHistoryConfig>(),
-        testBlockchain.Container.Resolve<IPruningConfig>(),
         testBlockchain.Container.Resolve<IBlocksConfig>(),
         testBlockchain.Container.Resolve<ISyncConfig>(),
         testBlockchain.Container.Resolve<IProcessExitSource>(),
