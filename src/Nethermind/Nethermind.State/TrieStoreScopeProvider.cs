@@ -375,12 +375,14 @@ public partial class TrieStoreScopeProvider(
         int estimatedEntries,
         StorageTree storageTree,
         Action<Address, Hash256> onRootUpdated,
-        AddressAsKey address) : IWorldStateScopeProvider.IStorageWriteBatch
+        AddressAsKey address,
+        bool commit = false,
+        int minWritesToHashInParallel = StorageTreeBulkWriteBatch.MinWritesToHashInParallel) : IWorldStateScopeProvider.IStorageWriteBatch
     {
         // Slight optimization on small contract as the index hash can be precalculated in some case.
         public const int MIN_ENTRIES_TO_BATCH = 16;
 
-        /// <summary>Writes above which the storage root is hashed in parallel.</summary>
+        /// <summary>Writes above which a batch that only hashes its tree hashes it in parallel.</summary>
         private const int MinWritesToHashInParallel = 64;
 
         private bool _hasSelfDestruct;
@@ -452,6 +454,9 @@ public partial class TrieStoreScopeProvider(
             _hasSelfDestruct = true;
         }
 
+        /// <summary>Updates the root on dispose even if no slot was set.</summary>
+        public void MarkSet() => _wasSetCalled = true;
+
         public void Dispose()
         {
             bool hasSet = _wasSetCalled || _hasSelfDestruct;
@@ -470,7 +475,14 @@ public partial class TrieStoreScopeProvider(
 
             if (hasSet)
             {
-                storageTree.UpdateRootHash(_writes > MinWritesToHashInParallel);
+                if (commit)
+                {
+                    storageTree.Commit();
+                }
+                else
+                {
+                    storageTree.UpdateRootHash(_writes > minWritesToHashInParallel);
+                }
                 onRootUpdated(address, storageTree.RootHash);
             }
         }

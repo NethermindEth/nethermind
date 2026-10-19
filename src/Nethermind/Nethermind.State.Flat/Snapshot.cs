@@ -93,10 +93,85 @@ public class Snapshot : RefCountingDisposable
     public IEnumerable<KeyValuePair<HashedKey<Address>, Account?>> Accounts => _isSorted ? _sorted!.Accounts : _mutable!.Accounts;
     public IEnumerable<KeyValuePair<HashedKey<Address>, bool>> SelfDestructedStorageAddresses => _isSorted ? _sorted!.SelfDestructedStorageAddresses : _mutable!.SelfDestructedStorageAddresses;
     public IEnumerable<KeyValuePair<HashedKey<(Address, UInt256)>, UInt256?>> Storages => _isSorted ? _sorted!.Storages : _mutable!.Storages;
-    /// <summary>Reachable storage nodes written within this snapshot's range, with pointers protected until their enumerator is disposed.</summary>
-    public IEnumerable<KeyValuePair<HashedKey<(Hash256, TreePath)>, ulong>> StorageNodes => EnumerateStorageNodes();
-    /// <summary>Reachable state nodes written within this snapshot's range, with pointers protected until their enumerator is disposed.</summary>
-    public IEnumerable<KeyValuePair<HashedKey<TreePath>, ulong>> StateNodes => EnumerateStateNodes();
+    internal IEnumerable<KeyValuePair<HashedKey<(Hash256, TreePath)>, ulong>> StorageNodes => EnumerateStorageNodes();
+    internal IEnumerable<KeyValuePair<HashedKey<TreePath>, ulong>> StateNodes => EnumerateStateNodes();
+
+    /// <summary>Iterates reachable state nodes written within this snapshot's range.</summary>
+    public NodeIterator<TreePath> GetStateNodeIterator() => new(BufferRetain?.Buffer, EnumerateStateNodes().GetEnumerator());
+
+    /// <summary>Iterates reachable storage nodes written within this snapshot's range.</summary>
+    public NodeIterator<(Hash256, TreePath)> GetStorageNodeIterator() => new(BufferRetain?.Buffer, EnumerateStorageNodes().GetEnumerator());
+
+    /// <summary>Reads snapshot node keys and borrowed RLP while protecting the underlying buffer records.</summary>
+    /// <remarks>RLP spans must not be used after the iterator is disposed or exhausted unless an outer buffer read lease protects them.</remarks>
+    public sealed class NodeIterator<TKey> : IDisposable where TKey : IEquatable<TKey>
+    {
+        private readonly INodeRecordBuffer? _buffer;
+        private readonly IEnumerator<KeyValuePair<HashedKey<TKey>, ulong>> _inner;
+        private bool _positioned;
+        private bool _disposed;
+
+        internal NodeIterator(INodeRecordBuffer? buffer, IEnumerator<KeyValuePair<HashedKey<TKey>, ulong>> inner)
+        {
+            _buffer = buffer;
+            _inner = inner;
+        }
+
+        /// <summary>The current node's key.</summary>
+        /// <exception cref="InvalidOperationException">The iterator is not positioned on a node.</exception>
+        public HashedKey<TKey> Key
+        {
+            get
+            {
+                GuardPosition();
+                return _inner.Current.Key;
+            }
+        }
+
+        internal ulong Pointer
+        {
+            get
+            {
+                GuardPosition();
+                return _inner.Current.Value;
+            }
+        }
+
+        /// <summary>Advances to the next node, releasing the read operation when exhausted.</summary>
+        public bool MoveNext()
+        {
+            if (_disposed) return false;
+            try
+            {
+                _positioned = _inner.MoveNext();
+                if (!_positioned) Dispose();
+                return _positioned;
+            }
+            catch
+            {
+                Dispose();
+                throw;
+            }
+        }
+
+        /// <summary>Returns the current node's RLP without copying it.</summary>
+        /// <exception cref="InvalidOperationException">The iterator is not positioned on a node.</exception>
+        public ReadOnlySpan<byte> ReadRlp() => _buffer!.GetRecord(Pointer).Rlp;
+
+        /// <inheritdoc/>
+        public void Dispose()
+        {
+            if (_disposed) return;
+            _disposed = true;
+            _positioned = false;
+            _inner.Dispose();
+        }
+
+        private void GuardPosition()
+        {
+            if (!_positioned) throw new InvalidOperationException("The iterator is not positioned on a snapshot node.");
+        }
+    }
     public int AccountsCount => _isSorted ? _sorted!.AccountsCount : Counts.Accounts;
     public int StoragesCount => _isSorted ? _sorted!.StoragesCount : Counts.Storages;
 
@@ -198,10 +273,10 @@ public class Snapshot : RefCountingDisposable
     }
 
     /// <summary>The record a node pointer refers to, borrowed from an active node enumerator or outer buffer read lease.</summary>
-    public NodeRecord GetNodeRecord(ulong pointer) => BufferRetain!.Buffer.GetRecord(pointer);
+    internal NodeRecord GetNodeRecord(ulong pointer) => BufferRetain!.Buffer.GetRecord(pointer);
 
     /// <summary>The RLP of a node pointer, borrowed from an active node enumerator or outer buffer read lease.</summary>
-    public ReadOnlySpan<byte> GetRlp(ulong pointer) => GetNodeRecord(pointer).Rlp;
+    internal ReadOnlySpan<byte> GetRlp(ulong pointer) => GetNodeRecord(pointer).Rlp;
 
     protected override void CleanUp()
     {

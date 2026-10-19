@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Config;
 
 namespace Nethermind.Db;
@@ -129,6 +130,10 @@ public interface IFlatDbConfig : IConfig
 
     [ConfigItem(Description = "Regenerate the per-instance compaction offset on startup instead of loading from metadata DB. Use when restoring one backup to multiple instances. Flag is sticky across restarts — toggle off after first restart.", DefaultValue = "false")]
     bool RegenerateCompactionOffset { get; set; }
+
+    [ConfigItem(Description = "Obsolete trie cache memory target, in bytes. The trie-node cache has been removed, so this setting has no effect.", DefaultValue = "536870912", HiddenFromDocs = true)]
+    [Obsolete("The trie-node cache has been removed. This setting has no effect.")]
+    ulong TrieCacheMemoryBudget { get; set; }
 
     [ConfigItem(Description = "Memory budget, in bytes, for the compacted generations of the trie node buffer; the oldest are freed beyond it. It also sizes the buffer's storage root index.", DefaultValue = "524288000")]
     ulong CompressedNodeRecordBufferMemoryBudget { get; set; }

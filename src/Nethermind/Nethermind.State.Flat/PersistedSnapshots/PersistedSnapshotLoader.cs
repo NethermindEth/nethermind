@@ -193,28 +193,6 @@ public sealed class PersistedSnapshotLoader(
         });
     }
 
-    private BlobArenaWriter WriteSnapshot(Snapshot snapshot, BloomFilter bloom, out SnapshotLocation location, out ArenaReservation reservation)
-    {
-        using PersistedSnapshotBuilder.PreparedSnapshot prepared = new(snapshot);
-        long estimatedSize = prepared.EstimatedSize;
-        BlobArenaWriter blobWriter = blobs.CreateWriter(estimatedSize);
-        try
-        {
-            // Base snapshots are always sub-CompactSize (single-block window) and read-cold after
-            // compaction — pack their metadata into the separate small-arena pool.
-            using ArenaWriter arenaWriter = arena.CreateWriter(estimatedSize, small: true);
-            PersistedSnapshotBuilder.Build(snapshot, prepared, ref arenaWriter.GetWriter(), blobWriter, bloom);
-            Metrics.PersistedSnapshotSize.Observe(arenaWriter.GetWriter().Written);
-            (location, reservation) = arenaWriter.Complete();
-            return blobWriter;
-        }
-        catch
-        {
-            blobWriter.Dispose();
-            throw;
-        }
-    }
-
     /// <inheritdoc/>
     public void ConvertAndRegister(Snapshot snapshot)
     {
@@ -225,7 +203,30 @@ public sealed class PersistedSnapshotLoader(
         // correct — the bloom is only a skip filter, so a saturated tiny one just forgoes the skip.
         BloomFilter bloom = BloomEnabled ? new BloomFilter(1, _bloomBitsPerKey) : BloomFilter.AlwaysTrue();
 
-        using BlobArenaWriter blobWriter = WriteSnapshot(snapshot, bloom, out SnapshotLocation location, out ArenaReservation reservation);
+        BlobArenaWriter pendingBlobWriter;
+        SnapshotLocation location;
+        ArenaReservation reservation;
+        using (PersistedSnapshotBuilder.PreparedSnapshot prepared = new(snapshot))
+        {
+            long estimatedSize = prepared.EstimatedSize;
+            pendingBlobWriter = blobs.CreateWriter(estimatedSize);
+            try
+            {
+                // Base snapshots are always sub-CompactSize (single-block window) and read-cold after
+                // compaction — pack their metadata into the separate small-arena pool.
+                using ArenaWriter arenaWriter = arena.CreateWriter(estimatedSize, small: true);
+                PersistedSnapshotBuilder.Build(snapshot, prepared, ref arenaWriter.GetWriter(), pendingBlobWriter, bloom);
+                Metrics.PersistedSnapshotSize.Observe(arenaWriter.GetWriter().Written);
+                (location, reservation) = arenaWriter.Complete();
+            }
+            catch
+            {
+                pendingBlobWriter.Dispose();
+                throw;
+            }
+        }
+
+        using BlobArenaWriter blobWriter = pendingBlobWriter;
         blobWriter.Complete();
 
         // Durability barrier — fsync both the metadata arena and the blob arena before the

@@ -592,20 +592,22 @@ public class PersistenceManager(
 
             // Traversal includes inherited buffer-resident nodes; persisting them again is harmless.
             long stateNodesSize = 0;
-            foreach (KeyValuePair<HashedKey<TreePath>, ulong> kvp in snapshot.StateNodes)
+            using (Snapshot.NodeIterator<TreePath> nodes = snapshot.GetStateNodeIterator())
+            while (nodes.MoveNext())
             {
-                TreePath path = kvp.Key.Key;
-                ReadOnlySpan<byte> rlp = snapshot.GetRlp(kvp.Value);
+                TreePath path = nodes.Key;
+                ReadOnlySpan<byte> rlp = nodes.ReadRlp();
 
                 stateNodesSize += rlp.Length;
                 batch.SetStateTrieNode(path, rlp);
             }
 
             long storageNodesSize = 0;
-            foreach (KeyValuePair<HashedKey<(Hash256, TreePath)>, ulong> kvp in snapshot.StorageNodes)
+            using (Snapshot.NodeIterator<(Hash256, TreePath)> nodes = snapshot.GetStorageNodeIterator())
+            while (nodes.MoveNext())
             {
-                (Hash256 address, TreePath path) = kvp.Key.Key;
-                ReadOnlySpan<byte> rlp = snapshot.GetRlp(kvp.Value);
+                (Hash256 address, TreePath path) = nodes.Key.Key;
+                ReadOnlySpan<byte> rlp = nodes.ReadRlp();
 
                 storageNodesSize += rlp.Length;
                 batch.SetStorageTrieNode(address, path, rlp);

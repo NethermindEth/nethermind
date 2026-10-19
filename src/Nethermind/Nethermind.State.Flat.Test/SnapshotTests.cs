@@ -1,12 +1,14 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
@@ -147,6 +149,8 @@ public class SnapshotTests
             snapshot.Content.HasStateRoot = true;
         }
         ulong[] pointers = (storage ? snapshot.StorageNodes.Select(kv => kv.Value) : snapshot.StateNodes.Select(kv => kv.Value)).ToArray();
+        if (storage) AssertIteratorEntries(snapshot.GetStorageNodeIterator(), snapshot.StorageNodes.ToArray(), snapshot);
+        else AssertIteratorEntries(snapshot.GetStateNodeIterator(), snapshot.StateNodes.ToArray(), snapshot);
         bool found = storage
             ? snapshot.TryGetStorageNode((address!, TreePath.Empty.Append(1)), out ulong inherited)
             : snapshot.TryGetStateNode(TreePath.Empty.Append(1), out inherited);
@@ -322,23 +326,92 @@ public class SnapshotTests
             snapshot.Content.StateRootPointer = inherited;
             snapshot.Content.HasStateRoot = true;
         }
-        IEnumerator<ulong> enumerator = (storage ? snapshot.StorageNodes.Select(kv => kv.Value) : snapshot.StateNodes.Select(kv => kv.Value)).GetEnumerator();
-        try
+        if (storage) AssertLifetime(snapshot.GetStorageNodeIterator());
+        else AssertLifetime(snapshot.GetStateNodeIterator());
+
+        void AssertLifetime<TKey>(Snapshot.NodeIterator<TKey> nodes) where TKey : IEquatable<TKey>
         {
-            Assert.That(enumerator.MoveNext(), Is.True);
-            ulong first = enumerator.Current;
-            byte[] expectedRlp = snapshot.GetRlp(first).ToArray();
-            snapshot.BufferRetain!.Dispose();
-            for (int i = 0; i < 10; i++) FlatTestHelpers.StartNewGeneration(buffer);
-            Assert.That(() => buffer.FindBloom(inherited) is null, Is.True.After(5_000, 10));
-            if (storage) Assert.That(enumerator.MoveNext(), Is.True, "moving to another address must not release the outer read lease");
-            Assert.That(snapshot.GetRlp(first).ToArray(), Is.EqualTo(expectedRlp));
-        }
-        finally
-        {
-            enumerator.Dispose();
+            using (nodes)
+            {
+                Assert.That(nodes.MoveNext(), Is.True);
+                ReadOnlySpan<byte> firstRlp = nodes.ReadRlp();
+                byte[] expectedRlp = firstRlp.ToArray();
+                snapshot.BufferRetain!.Dispose();
+                for (int i = 0; i < 10; i++) FlatTestHelpers.StartNewGeneration(buffer);
+                Assert.That(() => buffer.FindBloom(inherited) is null, Is.True.After(5_000, 10));
+                if (storage) Assert.That(nodes.MoveNext(), Is.True, "moving to another address must not release the outer read lease");
+                Assert.That(firstRlp.ToArray(), Is.EqualTo(expectedRlp));
+            }
         }
         Assert.That(buffer.TryLocate(inherited, out _), Is.False);
+    }
+
+    [Test]
+    public void NodeIteratorReleasesReadOnCompletionOrEarlyDispose([Values] bool storage, [Values] bool finish)
+    {
+        using ForwardingNodeRecordBuffer buffer = new(FlatTestHelpers.NewTestBuffer());
+        using Snapshot snapshot = FlatTestHelpers.MakeSnapshot(_pool, buffer, content =>
+        {
+            if (storage) content.SetStorageNodeRlp(buffer, TestItem.KeccakA, TreePath.Empty, FlatTestHelpers.LeafRlpA);
+            else content.SetStateNodeRlp(buffer, TreePath.Empty, FlatTestHelpers.LeafRlpA);
+        });
+        if (storage) AssertReads(snapshot.GetStorageNodeIterator());
+        else AssertReads(snapshot.GetStateNodeIterator());
+
+        void AssertReads<TKey>(Snapshot.NodeIterator<TKey> nodes) where TKey : IEquatable<TKey>
+        {
+            Assert.That(buffer.OutstandingReads, Is.Zero);
+            Assert.That(nodes.MoveNext(), Is.True);
+            Assert.That(buffer.OutstandingReads, Is.GreaterThan(0));
+            Assert.That(nodes.ReadRlp().ToArray(), Is.EqualTo(Bytes.FromHexString(FlatTestHelpers.LeafRlpA)));
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            for (int i = 0; i < 1000; i++) _ = nodes.ReadRlp().Length;
+            Assert.That(GC.GetAllocatedBytesForCurrentThread() - before, Is.Zero, "reading RLP must not materialize an array");
+            if (finish) Assert.That(nodes.MoveNext(), Is.False);
+            else nodes.Dispose();
+            nodes.Dispose();
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(buffer.OutstandingReads, Is.Zero);
+                Assert.That(nodes.MoveNext(), Is.False);
+                Assert.That(() => nodes.ReadRlp().Length, Throws.InvalidOperationException);
+                Assert.That(() => nodes.Key, Throws.InvalidOperationException);
+            }
+        }
+    }
+
+    [Test]
+    public void NodeIteratorDisposesItsSourceWhenMoveNextThrows()
+    {
+        IEnumerator<KeyValuePair<HashedKey<TreePath>, ulong>> source = Substitute.For<IEnumerator<KeyValuePair<HashedKey<TreePath>, ulong>>>();
+        source.MoveNext().Returns(_ => throw new InvalidOperationException("Injected iterator failure."));
+        using Snapshot.NodeIterator<TreePath> nodes = new(null, source);
+
+        Assert.That(() => nodes.MoveNext(), Throws.InvalidOperationException);
+        nodes.Dispose();
+        source.Received(1).Dispose();
+        Assert.That(nodes.MoveNext(), Is.False);
+    }
+
+    private static void AssertIteratorEntries<TKey>(Snapshot.NodeIterator<TKey> nodes,
+        KeyValuePair<HashedKey<TKey>, ulong>[] expected, Snapshot snapshot) where TKey : IEquatable<TKey>
+    {
+        using (nodes)
+        {
+            Assert.That(() => nodes.ReadRlp().Length, Throws.InvalidOperationException);
+            Assert.That(() => nodes.Key, Throws.InvalidOperationException);
+            foreach (KeyValuePair<HashedKey<TKey>, ulong> entry in expected)
+            {
+                Assert.That(nodes.MoveNext(), Is.True);
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(nodes.Key, Is.EqualTo(entry.Key));
+                    Assert.That(nodes.ReadRlp().ToArray(), Is.EqualTo(snapshot.GetRlp(entry.Value).ToArray()));
+                }
+            }
+            Assert.That(nodes.MoveNext(), Is.False);
+            Assert.That(() => nodes.ReadRlp().Length, Throws.InvalidOperationException);
+        }
     }
 
     public enum PublishedRootKind { Resolved, Empty, Unresolved }
@@ -368,6 +441,7 @@ public class SnapshotTests
             Assert.That(snapshot.HasStateRoot, Is.EqualTo(kind != PublishedRootKind.Unresolved));
             Assert.That(snapshot.StateRootPointer, Is.EqualTo(root.Pointer));
             Assert.That(snapshot.StateNodes.Count(), Is.EqualTo(kind == PublishedRootKind.Resolved ? 1 : 0));
+            AssertIteratorEntries(snapshot.GetStateNodeIterator(), snapshot.StateNodes.ToArray(), snapshot);
         }
     }
 

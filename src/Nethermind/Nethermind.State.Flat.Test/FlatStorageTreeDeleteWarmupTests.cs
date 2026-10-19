@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -179,8 +180,10 @@ public class FlatStorageTreeDeleteWarmupTests
             using IPersistence.IWriteBatch batch = _persistence.CreateWriteBatch(snapshot.From, snapshot.To, WriteFlags.None);
             foreach (KeyValuePair<HashedKey<Address>, Account?> kv in snapshot.Accounts) batch.SetAccount(kv.Key.Key, kv.Value);
             foreach (KeyValuePair<HashedKey<(Address, UInt256)>, UInt256?> kv in snapshot.Storages) batch.SetStorage(kv.Key.Key.Item1, kv.Key.Key.Item2, kv.Value);
-            foreach (KeyValuePair<HashedKey<TreePath>, ulong> kv in snapshot.StateNodes) batch.SetStateTrieNode(kv.Key.Key, snapshot.GetRlp(kv.Value));
-            foreach (KeyValuePair<HashedKey<(Hash256, TreePath)>, ulong> kv in snapshot.StorageNodes) batch.SetStorageTrieNode(kv.Key.Key.Item1, kv.Key.Key.Item2, snapshot.GetRlp(kv.Value));
+            using Snapshot.NodeIterator<TreePath> stateNodes = snapshot.GetStateNodeIterator();
+            while (stateNodes.MoveNext()) batch.SetStateTrieNode(stateNodes.Key.Key, stateNodes.ReadRlp());
+            using Snapshot.NodeIterator<(Hash256, TreePath)> storageNodes = snapshot.GetStorageNodeIterator();
+            while (storageNodes.MoveNext()) batch.SetStorageTrieNode(storageNodes.Key.Key.Item1, storageNodes.Key.Key.Item2, storageNodes.ReadRlp());
         }
 
         private IRetainableNodeRecordBuffer NewBuffer()
@@ -237,6 +240,18 @@ public class FlatStorageTreeDeleteWarmupTests
         {
             Interlocked.Increment(ref _loads);
             return inner.TryLoadStorageRlp(address, path, flags);
+        }
+
+        public bool TryLoadStateRlp<TArg>(in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
+        {
+            Interlocked.Increment(ref _loads);
+            return inner.TryLoadStateRlp(path, flags, action, arg);
+        }
+
+        public bool TryLoadStorageRlp<TArg>(Hash256 address, in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
+        {
+            Interlocked.Increment(ref _loads);
+            return inner.TryLoadStorageRlp(address, path, flags, action, arg);
         }
 
         public Account? GetAccount(Address address) => inner.GetAccount(address);

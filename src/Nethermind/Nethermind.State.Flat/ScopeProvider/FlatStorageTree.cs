@@ -81,7 +81,7 @@ public sealed class FlatStorageTree(
 
     private Hash256 AddressHash => _addressHash ??= _address.ToAccountPath.ToHash256();
 
-    private BufferedTrie Trie => _trie ??= CreateTrie();
+    private BufferedTrie GetTrie() => _trie ??= CreateTrie();
 
     private BufferedTrie CreateTrie()
     {
@@ -113,11 +113,11 @@ public sealed class FlatStorageTree(
         {
             ValueHash256 key = default;
             StorageTree.ComputeKeyWithLookup(index, ref key);
-            byte[]? encoded = Trie.TryGet(key);
+            byte[]? encoded = GetTrie().TryGet(key);
             UInt256 treeValue = encoded is null ? default : new UInt256(new RlpReader(encoded).DecodeByteArraySpan(), isBigEndian: true);
             if (treeValue != value)
             {
-                throw new TrieException($"Get slot got wrong value. Address {_address}, {Trie.RootHash}, {index}. Tree: {treeValue} vs Flat: {value}. Self destruct it {_selfDestructKnownStateIdx}");
+                throw new TrieException($"Get slot got wrong value. Address {_address}, {GetTrie().RootHash}, {index}. Tree: {treeValue} vs Flat: {value}. Self destruct it {_selfDestructKnownStateIdx}");
             }
         }
     }
@@ -298,7 +298,7 @@ public sealed class FlatStorageTree(
     public IWorldStateScopeProvider.IStorageWriteBatch CreateWriteBatch(int estimatedEntries, Action<Address, Hash256> onRootUpdated)
     {
         if (_scope.Trieless) return new FlatOverlayStorageWriteBatch(this);
-        BufferedTrie trie = Trie;
+        BufferedTrie trie = GetTrie();
         return new BufferedStorageWriteBatch(this, trie, estimatedEntries, onRootUpdated, AdoptEarlyTrie(trie));
     }
 

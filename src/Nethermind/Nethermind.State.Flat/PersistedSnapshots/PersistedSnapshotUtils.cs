@@ -50,20 +50,22 @@ internal static class PersistedSnapshotUtils
         dump["selfDestructed"] = selfDestructed;
 
         Dictionary<string, string> stateNodes = [];
-        foreach (KeyValuePair<HashedKey<TreePath>, ulong> kv in snapshot.StateNodes)
+        using (Snapshot.NodeIterator<TreePath> nodes = snapshot.GetStateNodeIterator())
+        while (nodes.MoveNext())
         {
-            TreePath path = kv.Key;
+            TreePath path = nodes.Key;
             string key = $"{path.Span.ToHexString(false)}:{path.Length}";
-            stateNodes[key] = snapshot.GetRlp(kv.Value).ToHexString(false);
+            stateNodes[key] = nodes.ReadRlp().ToHexString(false);
         }
         dump["stateNodes"] = stateNodes;
 
         Dictionary<string, string> storageNodes = [];
-        foreach (KeyValuePair<HashedKey<(Hash256, TreePath)>, ulong> kv in snapshot.StorageNodes)
+        using (Snapshot.NodeIterator<(Hash256, TreePath)> nodes = snapshot.GetStorageNodeIterator())
+        while (nodes.MoveNext())
         {
-            (Hash256 hash, TreePath path) = kv.Key.Key;
+            (Hash256 hash, TreePath path) = nodes.Key.Key;
             string key = $"{hash.Bytes.ToHexString(false)}:{path.Span.ToHexString(false)}:{path.Length}";
-            storageNodes[key] = snapshot.GetRlp(kv.Value).ToHexString(false);
+            storageNodes[key] = nodes.ReadRlp().ToHexString(false);
         }
         dump["storageNodes"] = storageNodes;
 
@@ -115,22 +117,24 @@ internal static class PersistedSnapshotUtils
                     throw new InvalidOperationException($"SelfDestruct {address} mismatch: expected {kv.Value}, got {flag.Value}");
             }
 
-            foreach (KeyValuePair<HashedKey<TreePath>, ulong> kv in snapshot.StateNodes)
+            using (Snapshot.NodeIterator<TreePath> nodes = snapshot.GetStateNodeIterator())
+            while (nodes.MoveNext())
             {
-                TreePath path = kv.Key;
+                TreePath path = nodes.Key;
                 if (!persisted.TryLoadStateNodeRlp(in path, out byte[]? nodeRlp))
                     throw new InvalidOperationException($"StateNode at path length {path.Length} not found in persisted snapshot");
-                if (!nodeRlp!.AsSpan().SequenceEqual(snapshot.GetRlp(kv.Value)))
+                if (!nodeRlp!.AsSpan().SequenceEqual(nodes.ReadRlp()))
                     throw new InvalidOperationException($"StateNode at path length {path.Length} RLP mismatch");
             }
 
-            foreach (KeyValuePair<HashedKey<(Hash256, TreePath)>, ulong> kv in snapshot.StorageNodes)
+            using (Snapshot.NodeIterator<(Hash256, TreePath)> nodes = snapshot.GetStorageNodeIterator())
+            while (nodes.MoveNext())
             {
-                (Hash256 hash, TreePath path) = kv.Key.Key;
+                (Hash256 hash, TreePath path) = nodes.Key.Key;
                 ValueHash256 hashStruct = hash.ValueHash256;
                 if (!persisted.TryLoadStorageNodeRlp(in hashStruct, path, out byte[]? nodeRlp))
                     throw new InvalidOperationException($"StorageNode {hash} at path length {path.Length} not found in persisted snapshot");
-                if (!nodeRlp!.AsSpan().SequenceEqual(snapshot.GetRlp(kv.Value)))
+                if (!nodeRlp!.AsSpan().SequenceEqual(nodes.ReadRlp()))
                     throw new InvalidOperationException($"StorageNode {hash} at path length {path.Length} RLP mismatch");
             }
         }

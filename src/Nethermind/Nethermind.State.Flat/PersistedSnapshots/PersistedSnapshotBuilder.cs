@@ -87,9 +87,11 @@ public static class PersistedSnapshotBuilder
                 [
                     () =>
                     {
-                        foreach ((HashedKey<TreePath> key, ulong pointer) in snapshot.StateNodes)
+                        using Snapshot.NodeIterator<TreePath> nodes = snapshot.GetStateNodeIterator();
+                        while (nodes.MoveNext())
                         {
-                            TreePath path = key;
+                            TreePath path = nodes.Key;
+                            ulong pointer = nodes.Pointer;
                             (path.Length <= TopPathThreshold ? StateTop : path.Length <= CompactPathThreshold ? StateCompact : StateFallback).Add((path, pointer));
                         }
                         ParallelUnbalancedWork.For(0, 3, i =>
@@ -97,9 +99,11 @@ public static class PersistedSnapshotBuilder
                     },
                     () =>
                     {
-                        foreach ((HashedKey<(Hash256, TreePath)> key, ulong pointer) in snapshot.StorageNodes)
+                        using Snapshot.NodeIterator<(Hash256, TreePath)> nodes = snapshot.GetStorageNodeIterator();
+                        while (nodes.MoveNext())
                         {
-                            (Hash256 address, TreePath path) = key.Key;
+                            (Hash256 address, TreePath path) = nodes.Key.Key;
+                            ulong pointer = nodes.Pointer;
                             (path.Length <= TopPathThreshold ? StorageTop : path.Length <= CompactPathThreshold ? StorageCompact : StorageFallback).Add((address.ValueHash256, path, pointer));
                         }
                         ParallelUnbalancedWork.For(0, 3, i =>

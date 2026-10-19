@@ -3,6 +3,7 @@
 
 #nullable enable
 
+using System.Buffers;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -218,14 +219,16 @@ public class StorageDeleteWarmupBenchmark
         using IPersistence.IWriteBatch batch = persistence.CreateWriteBatch(snapshot.From, snapshot.To, WriteFlags.None);
         foreach (KeyValuePair<HashedKey<Address>, Account?> kv in snapshot.Accounts) batch.SetAccount(kv.Key.Key, kv.Value);
         foreach (KeyValuePair<HashedKey<(Address, UInt256)>, UInt256?> kv in snapshot.Storages) batch.SetStorage(kv.Key.Key.Item1, kv.Key.Key.Item2, kv.Value);
-        foreach (KeyValuePair<HashedKey<TreePath>, ulong> kv in snapshot.StateNodes)
+        using (FlatSnapshot.NodeIterator<TreePath> nodes = snapshot.GetStateNodeIterator())
+        while (nodes.MoveNext())
         {
-            batch.SetStateTrieNode(kv.Key.Key, snapshot.GetRlp(kv.Value));
+            batch.SetStateTrieNode(nodes.Key, nodes.ReadRlp());
         }
 
-        foreach (KeyValuePair<HashedKey<(Hash256, TreePath)>, ulong> kv in snapshot.StorageNodes)
+        using (FlatSnapshot.NodeIterator<(Hash256, TreePath)> nodes = snapshot.GetStorageNodeIterator())
+        while (nodes.MoveNext())
         {
-            batch.SetStorageTrieNode(kv.Key.Key.Item1, kv.Key.Key.Item2, snapshot.GetRlp(kv.Value));
+            batch.SetStorageTrieNode(nodes.Key.Key.Item1, nodes.Key.Key.Item2, nodes.ReadRlp());
         }
     }
 
@@ -278,6 +281,18 @@ public class StorageDeleteWarmupBenchmark
         {
             Read();
             return inner.TryLoadStorageRlp(address, path, flags);
+        }
+
+        public bool TryLoadStateRlp<TArg>(in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
+        {
+            Read();
+            return inner.TryLoadStateRlp(path, flags, action, arg);
+        }
+
+        public bool TryLoadStorageRlp<TArg>(Hash256 address, in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
+        {
+            Read();
+            return inner.TryLoadStorageRlp(address, path, flags, action, arg);
         }
 
         public Account? GetAccount(Address address) => inner.GetAccount(address);
