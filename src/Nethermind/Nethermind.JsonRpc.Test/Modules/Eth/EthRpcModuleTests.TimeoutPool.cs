@@ -87,11 +87,10 @@ public partial class EthRpcModuleTests
                     response.Dispose();
                 }
 
-                using CancellationTokenSource next = new JsonRpcConfig().BuildTimeoutCancellationToken();
                 using (Assert.EnterMultipleScope())
                 {
-                    Assert.That(next, Is.SameAs(timeout));
                     Assert.That(timeout.DisposeCount, Is.Zero);
+                    Assert.That(DisposeIfPooled(timeout), Is.True);
                 }
             }
             finally
