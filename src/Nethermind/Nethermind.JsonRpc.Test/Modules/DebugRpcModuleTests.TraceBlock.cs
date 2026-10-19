@@ -122,6 +122,36 @@ public partial class DebugRpcModuleTests
         Assert.That((string?)error["data"] ?? (string?)error["message"], Does.Contain("Cannot convert"), "native config errors remain top-level even with an expired timeout");
     }
 
+    [Test]
+    public async Task Debug_traceBlock_setup_failure_precedes_timeout_policy(
+        [Values("debug_traceBlockByNumber", "debug_traceBlockByHash", "debug_traceBlock")] string method,
+        [Values("0s", "-1s", "121s")] string timeout)
+    {
+        using Context context = await Context.Create();
+        Block block = await context.Blockchain.AddBlock(CreateTraceBlockTransactions(context.Blockchain));
+        object selector = method switch
+        {
+            "debug_traceBlockByNumber" => block.Number,
+            "debug_traceBlockByHash" => block.Hash!,
+            _ => Rlp.Encode(block).ToString()
+        };
+        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, method, selector,
+            new { tracer = "{fault:function(){},setup:function(){throw Error('setup-before-timeout');},result:function(){return {};}}", timeout });
+        JToken json = JToken.Parse(response);
+        Assert.That(json["error"], Is.Null, response);
+        JArray traces = (JArray)json["result"]!;
+        Assert.That(traces, Has.Count.EqualTo(block.Transactions.Length), response);
+        for (int i = 0; i < traces.Count; i++)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That((string?)traces[i]["txHash"], Is.EqualTo(block.Transactions[i].Hash!.ToString()), response);
+                Assert.That((string?)traces[i]["error"], Does.Contain("setup-before-timeout"), response);
+                Assert.That(traces[i]["result"], Is.Null, response);
+            }
+        }
+    }
+
     private static IEnumerable<TestCaseData> BlockJavaScriptRecoveryCases()
     {
         (string Failure, int FailAt, int? SelectedAt)[] cases =
