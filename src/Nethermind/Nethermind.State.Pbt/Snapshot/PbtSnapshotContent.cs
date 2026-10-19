@@ -178,7 +178,7 @@ public sealed class PbtSnapshotContent : IDisposable, IResettable
     internal void CopyNodeGroupsFrom(PbtSnapshotContent source)
     {
         Debug.Assert(ReferenceEquals(NodeGroupLog, source.NodeGroupLog));
-        if (source._nodeGroupPin is { } pin && (_nodeGroupPin is null || pin.Generation < _nodeGroupPin.Generation))
+        if (source._nodeGroupPin is { } pin && (_nodeGroupPin is null || pin.WriteBoundary.CompareTo(_nodeGroupPin.WriteBoundary) < 0))
         {
             PbtGroupLog.GenerationPin copy = pin.Copy();
             _nodeGroupPin?.Dispose();

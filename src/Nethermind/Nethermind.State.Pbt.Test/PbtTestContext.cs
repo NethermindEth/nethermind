@@ -19,6 +19,7 @@ using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Monitoring.Config;
+using Nethermind.Pbt.NodeLog;
 using Nethermind.Specs.Forks;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.PersistedSnapshots;
@@ -51,7 +52,7 @@ internal sealed class PbtTestContext : IAsyncDisposable
     public PbtStateReader StateReader { get; }
     public PbtWorldStateManager WorldStateManager { get; }
 
-    public PbtTestContext(IColumnsDb<PbtColumns>? db = null, PbtConfig? config = null, IPbtChildHeaderSource? childHeaders = null, IMetricsConfig? metricsConfig = null, IRefCountingMemoryProvider? nodeGroupMemory = null)
+    public PbtTestContext(IColumnsDb<PbtColumns>? db = null, PbtConfig? config = null, IPbtChildHeaderSource? childHeaders = null, IMetricsConfig? metricsConfig = null, IRefCountingMemoryProvider? nodeGroupMemory = null, PbtGroupLog? nodeGroupLog = null)
     {
         metricsConfig ??= new MetricsConfig();
         db ??= new SnapshotableMemColumnsDb<PbtColumns>("pbt");
@@ -64,7 +65,7 @@ internal sealed class PbtTestContext : IAsyncDisposable
         _cachedReaderPersistence = new PbtCachedReaderPersistence(new PbtRocksDbPersistence(db, Config, NullTrieNodeLog.Instance), processExitSource);
         Persistence = Config.CarryForwardCache ? new PbtCarryForwardCachingPersistence(_cachedReaderPersistence, PbtCarryForwardCachingPersistence.DefaultMaxEntriesPerKind) : _cachedReaderPersistence;
         NodeGroupMemory = nodeGroupMemory ?? PooledRefCountingMemoryProvider.Instance;
-        ResourcePool = new PbtResourcePool(Config, nodeGroupMemory: NodeGroupMemory);
+        ResourcePool = new PbtResourcePool(Config, nodeGroupLog, NodeGroupMemory);
         ICompactionSchedule schedule = PbtCoreRegistration.CreateCompactionSchedule(new MemDb(), Config, LimboLogs.Instance);
         PbtSnapshotCompactor compactor = new(ResourcePool, schedule, Repository, Config, LimboLogs.Instance);
         PersistenceManager = new PbtPersistenceManager(Config, FinalizedStateProvider, Persistence, Repository, schedule, NullStatePersistenceBarrier.Instance, LimboLogs.Instance,

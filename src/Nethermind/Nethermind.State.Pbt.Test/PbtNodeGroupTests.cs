@@ -1073,10 +1073,22 @@ public class PbtNodeGroupTests
             references = new PbtGroupReference[16];
             for (int i = 0; i < references.Length; i++)
                 references[i] = context.Log.Append(operation, default, payload, default);
-            Assert.That(context.Log.GenerationCount, Is.GreaterThan(1));
+            using PbtGroupLog.GenerationPin later = context.Log.PinActiveGeneration();
+            PbtGroupReference next = context.Log.Append(operation, default, payload, default);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(context.Log.GenerationCount, Is.GreaterThan(1));
+                Assert.That(references, Is.All.GreaterThanOrEqualTo(pin.WriteBoundary));
+                Assert.That(references, Is.All.LessThan(later.WriteBoundary));
+                Assert.That(next, Is.GreaterThanOrEqualTo(later.WriteBoundary));
+            }
         }
         PbtGroupLog.GenerationPin copy = pin.Copy();
-        Assert.That(copy.Generation, Is.EqualTo(pin.Generation));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(copy.Generation, Is.EqualTo(pin.Generation));
+            Assert.That(copy.WriteBoundary, Is.EqualTo(pin.WriteBoundary));
+        }
         pin.Dispose();
         using (PbtGroupLog.OperationLease operation = context.Log.BeginOperation())
         {
@@ -1098,6 +1110,43 @@ public class PbtNodeGroupTests
             Assert.That(context.Log.ResidentBytes, Is.Zero);
             Assert.That(context.Log.GenerationCount, Is.Zero);
             Assert.That(TrackingMemoryProvider.CountUnreleased(context.Memory.Rented), Is.Zero);
+        }
+    }
+
+    [Test]
+    public void Group_log_root_index_resolves_resident_roots_and_misses_replaced_or_reclaimed_ones([Values] bool native)
+    {
+        using GroupLogContext context = new(native);
+        // Both roots share their first eight bytes, so they index the same slot.
+        ValueHash256 first = new(Bytes.FromHexString("1111111111111111aa0000000000000000000000000000000000000000000000"));
+        ValueHash256 colliding = new(Bytes.FromHexString("1111111111111111bb0000000000000000000000000000000000000000000000"));
+        PbtGroupLog.GenerationPin pin = context.Log.PinActiveGeneration();
+        PbtGroupReference firstRoot;
+        PbtGroupReference collidingRoot;
+        using (PbtGroupLog.OperationLease operation = context.Log.BeginOperation())
+        {
+            firstRoot = context.Log.Append(operation, default, RootGroup(LeafEncoding(0x20)), default);
+            collidingRoot = context.Log.Append(operation, default, RootGroup(LeafEncoding(0x40)), default);
+        }
+        context.Log.SetRoot(first, firstRoot);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(context.Log.FindRoot(first), Is.EqualTo(firstRoot));
+            Assert.That(context.Log.FindRoot(colliding), Is.EqualTo(PbtGroupReference.Unknown));
+        }
+        context.Log.SetRoot(colliding, collidingRoot);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(context.Log.FindRoot(first), Is.EqualTo(PbtGroupReference.Unknown), "a newer root replaces its slot");
+            Assert.That(context.Log.FindRoot(colliding), Is.EqualTo(collidingRoot));
+        }
+        pin.Dispose();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(context.Log.FindRoot(colliding), Is.EqualTo(PbtGroupReference.Unknown), "a reclaimed root record misses");
+            Assert.That(context.Log.RootHits, Is.EqualTo(2));
+            Assert.That(context.Log.RootMisses, Is.EqualTo(3));
+            Assert.Throws<ArgumentException>(() => context.Log.SetRoot(first, PbtGroupReference.Unknown));
         }
     }
 

@@ -19,19 +19,25 @@ public sealed partial class PbtGroupLog
     }
 
     /// <summary>Keeps the active generation and every later generation readable until the pin is disposed.</summary>
+    /// <remarks>The pin's <see cref="GenerationPin.WriteBoundary"/> is the allocation frontier at this call.</remarks>
     public GenerationPin PinActiveGeneration()
     {
-        lock (_lock) return PinGeneration(_active?.Id ?? checked(_lastGeneration + 1));
+        lock (_lock)
+        {
+            Generation? active = _active;
+            uint generation = active?.Id ?? checked(_lastGeneration + 1);
+            return PinGeneration(generation, new PbtGroupReference(generation, active is null ? 0 : Volatile.Read(ref active.Used)));
+        }
     }
 
-    private GenerationPin PinGeneration(uint generation)
+    private GenerationPin PinGeneration(uint generation, PbtGroupReference writeBoundary)
     {
         lock (_lock)
         {
             ThrowIfDisposed();
             _pins.TryGetValue(generation, out int count);
             _pins[generation] = count + 1;
-            return new GenerationPin(this, generation);
+            return new GenerationPin(this, generation, writeBoundary);
         }
     }
 
@@ -101,17 +107,22 @@ public sealed partial class PbtGroupLog
         private readonly PbtGroupLog _log;
         private int _disposed;
 
-        internal GenerationPin(PbtGroupLog log, uint generation)
+        internal GenerationPin(PbtGroupLog log, uint generation, PbtGroupReference writeBoundary)
         {
             _log = log;
             Generation = generation;
+            WriteBoundary = writeBoundary;
         }
 
         /// <summary>The first generation kept by this pin.</summary>
         public uint Generation { get; }
 
+        /// <summary>The inclusive allocation frontier captured when the pin was first acquired.</summary>
+        /// <remarks>Every record reserved after the pin compares greater than or equal to it.</remarks>
+        public PbtGroupReference WriteBoundary { get; }
+
         /// <summary>Keeps the same generation range independently of this pin.</summary>
-        public GenerationPin Copy() => _log.PinGeneration(Generation);
+        public GenerationPin Copy() => _log.PinGeneration(Generation, WriteBoundary);
 
         public void Dispose()
         {

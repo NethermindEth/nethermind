@@ -1,0 +1,59 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System.Runtime.InteropServices;
+using Nethermind.Core.Crypto;
+
+namespace Nethermind.Pbt.NodeLog;
+
+/// <remarks>
+/// The root index maps tree roots to the records of their root groups, so a branch whose base is no longer in memory
+/// can still start from a resident root. A slot keeps the newest root hashing to it; an entry whose record has been
+/// reclaimed reads as a miss.
+/// </remarks>
+public sealed partial class PbtGroupLog
+{
+    private const int RootSlots = 1024;
+
+    private readonly (ValueHash256 Root, PbtGroupReference Reference)[] _roots = new (ValueHash256, PbtGroupReference)[RootSlots];
+    private long _rootHits;
+    private long _rootMisses;
+
+    /// <summary>The number of <see cref="FindRoot"/> calls that resolved a resident root group.</summary>
+    public long RootHits => Interlocked.Read(ref _rootHits);
+
+    /// <summary>The number of <see cref="FindRoot"/> calls that found no resident root group.</summary>
+    public long RootMisses => Interlocked.Read(ref _rootMisses);
+
+    /// <summary>Indexes <paramref name="reference"/> as the root group of <paramref name="root"/>, replacing the slot's previous entry.</summary>
+    /// <exception cref="ArgumentException"><paramref name="reference"/> is not a direct reference.</exception>
+    public void SetRoot(in ValueHash256 root, PbtGroupReference reference)
+    {
+        if (!reference.IsDirect) throw new ArgumentException("Only a published root group can be indexed.", nameof(reference));
+        lock (_lock)
+        {
+            ThrowIfDisposed();
+            _roots[RootSlot(root)] = (root, reference);
+        }
+    }
+
+    /// <summary>The root group of <paramref name="root"/>, or Unknown when it is not indexed or its record is no longer resident.</summary>
+    /// <remarks>A resident record may still be reclaimed after this call; a later miss resolves through the persisted view.</remarks>
+    public PbtGroupReference FindRoot(in ValueHash256 root)
+    {
+        lock (_lock)
+        {
+            ThrowIfDisposed();
+            (ValueHash256 indexed, PbtGroupReference reference) = _roots[RootSlot(root)];
+            if (indexed == root && TryLocate(reference, out _))
+            {
+                _rootHits++;
+                return reference;
+            }
+            _rootMisses++;
+            return PbtGroupReference.Unknown;
+        }
+    }
+
+    private static int RootSlot(in ValueHash256 root) => (int)(MemoryMarshal.Read<ulong>(root.Bytes) & (RootSlots - 1));
+}

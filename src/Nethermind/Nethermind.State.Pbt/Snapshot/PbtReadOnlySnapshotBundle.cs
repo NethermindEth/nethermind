@@ -81,9 +81,10 @@ public sealed class PbtReadOnlySnapshotBundle(
         if (snapshots.Count > 0)
         {
             PbtSnapshot snapshot = snapshots[^1];
-            return ReferenceEquals(snapshot.Content.NodeGroupLog, log) ? snapshot.RootGroupReference : PbtGroupReference.Unknown;
+            if (!ReferenceEquals(snapshot.Content.NodeGroupLog, log)) throw new InvalidOperationException("A branch must share the traversal log of its in-memory snapshots.");
+            return snapshot.RootGroupReference;
         }
-        return TreeRoot == default ? PbtGroupReference.None : PbtGroupReference.Unknown;
+        return TreeRoot == default ? PbtGroupReference.None : log.FindRoot(TreeRoot);
     }
 
     private bool TryAccount(int index, in ValueHash256 address, out PbtAccount? account) =>

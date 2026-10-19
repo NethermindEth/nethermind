@@ -53,7 +53,7 @@ public sealed class PbtSnapshotBundle(
     /// <summary>The traversal log used by the current write buffer.</summary>
     public PbtGroupLog NodeGroupLog => WriteBuffer.NodeGroupLog;
 
-    /// <summary>The last published root reference visible to this branch, or an unresolved persisted root.</summary>
+    /// <summary>The last published root reference visible to this branch, an indexed persisted root, or an unresolved persisted root.</summary>
     public PbtGroupReference RootGroupReference
     {
         get
@@ -62,7 +62,8 @@ public sealed class PbtSnapshotBundle(
             if (snapshots.Count > 0)
             {
                 PbtSnapshot snapshot = snapshots[^1];
-                return ReferenceEquals(snapshot.Content.NodeGroupLog, NodeGroupLog) ? snapshot.RootGroupReference : PbtGroupReference.Unknown;
+                if (!ReferenceEquals(snapshot.Content.NodeGroupLog, NodeGroupLog)) throw new InvalidOperationException("A branch must share the traversal log of its in-memory snapshots.");
+                return snapshot.RootGroupReference;
             }
             return readOnlyBundle.GetRootGroupReference(NodeGroupLog);
         }
@@ -357,6 +358,7 @@ public sealed class PbtSnapshotBundle(
         PbtGroupReference rootReference = treeRoot == TreeRoot ? RootGroupReference : PbtGroupReference.Unknown;
         if (treeRoot == default) rootReference = PbtGroupReference.None;
         if (WriteBuffer.TryGetNodeGroupReference(default(PbtStorageNodePath), out PbtGroupReference writtenRoot)) rootReference = writtenRoot;
+        if (rootReference.IsDirect) NodeGroupLog.SetRoot(treeRoot, rootReference);
         PbtSnapshot snapshot = new(from, to, treeRoot, WriteBuffer, resourcePool, usage) { RootGroupReference = rootReference };
         snapshot.TryLease();
         snapshots.Add(snapshot);

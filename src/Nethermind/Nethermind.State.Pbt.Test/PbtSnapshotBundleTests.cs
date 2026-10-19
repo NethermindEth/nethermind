@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core.Memory;
 using Nethermind.Core;
@@ -215,7 +216,43 @@ public class PbtSnapshotBundleTests
     }
 
     [Test]
-    public void Root_hints_are_not_inherited_for_changed_roots_or_foreign_logs([Values] bool foreignLog)
+    public async Task Persisted_only_base_resolves_its_root_through_the_log_root_index()
+    {
+        // Production retains the newest unpinned generation, which keeps the persisted root record resident.
+        using PbtGroupLog log = new(PooledRefCountingMemoryProvider.Instance, retainedGenerations: 1);
+        await using PbtTestContext context = new(nodeGroupLog: log);
+        Hash256 rootHash;
+        using (PbtWorldStateScope initial = context.BeginScope(null))
+        {
+            using (IWorldStateScopeProvider.IWorldStateWriteBatch batch = initial.StartWriteBatch(2))
+            {
+                batch.Set(TestItem.AddressA, new Account(1, 100));
+                batch.Set(TestItem.AddressB, new Account(1, 200));
+            }
+            initial.Commit(1);
+            rootHash = initial.RootHash;
+        }
+        context.Manager.FlushCache(CancellationToken.None);
+        BlockHeader parent = Build.A.BlockHeader.WithNumber(1).WithStateRoot(rootHash).TestObject;
+        using PbtWorldStateScope next = context.BeginScope(parent, out PbtSnapshotBundle bundle);
+        long hits = bundle.NodeGroupLog.RootHits;
+        Assert.That(bundle.RootGroupReference.IsDirect, Is.True);
+        bundle.SetAccount(TestItem.AddressA, new Account(2, 100));
+        using PbtPartitionBatches changes = bundle.PrepareLeafChanges();
+        using PbtSnapshotStore store = new(bundle);
+        CountingStore counted = new(store);
+        TrieUpdater.UpdateRoot(counted, bundle.TreeRoot, changes, PbtTreeHarness.FoldQuota(), PbtTreeHarness.DefaultFanOut, null, context.NodeGroupMemory);
+        bundle.CompleteLeafChanges();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(bundle.NodeGroupLog.RootHits, Is.GreaterThan(hits));
+            Assert.That(counted.DirectReads, Is.GreaterThan(0));
+            Assert.That(counted.SnapshotReads, Is.Zero);
+        }
+    }
+
+    [Test]
+    public void Root_hints_are_not_inherited_for_changed_roots_and_foreign_logs_are_rejected([Values] bool foreignLog)
     {
         using PbtGroupLog sourceLog = new(PooledRefCountingMemoryProvider.Instance, retainedGenerations: 0);
         using PbtGroupLog otherLog = new(PooledRefCountingMemoryProvider.Instance, retainedGenerations: 0);
@@ -229,8 +266,12 @@ public class PbtSnapshotBundleTests
         PbtSnapshotPooledList chain = new(1) { source };
         PbtReadOnlySnapshotBundle readOnly = new(chain, new Reader(default, null), false, new PbtPersistedSnapshotList(0), slotFilterBitsPerKey: 0);
         using PbtSnapshotBundle branch = new(new PbtSnapshotPooledList(0), readOnly, targetPool, PbtResourcePool.Usage.MainBlockProcessing, filterInMemorySlotReads: false);
-        ValueHash256 root = foreignLog ? TestItem.KeccakA.ValueHash256 : TestItem.KeccakB.ValueHash256;
-        using PbtSnapshot snapshot = branch.CollectSnapshot(source.To, new StateId(2, default), root);
+        if (foreignLog)
+        {
+            Assert.Throws<InvalidOperationException>(() => _ = branch.RootGroupReference);
+            return;
+        }
+        using PbtSnapshot snapshot = branch.CollectSnapshot(source.To, new StateId(2, default), TestItem.KeccakB.ValueHash256);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(snapshot.RootGroupReference.IsUnknown, Is.True);

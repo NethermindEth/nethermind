@@ -4,8 +4,11 @@
 namespace Nethermind.Pbt.NodeLog;
 
 /// <summary>A physical descendant group, an unresolved descendant, or no physical descendant.</summary>
-/// <remarks>Direct references are local to one log. Generation ids are never reused, so a retired reference cannot alias a later record.</remarks>
-public readonly record struct PbtGroupReference
+/// <remarks>
+/// Direct references are local to one log. Generation ids are never reused, so a retired reference cannot alias a later record.
+/// Direct references order by allocation: a later reservation compares greater than an earlier one.
+/// </remarks>
+public readonly record struct PbtGroupReference : IComparable<PbtGroupReference>
 {
     private readonly ulong _value;
 
@@ -27,6 +30,9 @@ public readonly record struct PbtGroupReference
 
     /// <summary>Whether this value identifies a record in a log generation.</summary>
     public bool IsDirect => _value > 1;
+
+    /// <inheritdoc/>
+    public int CompareTo(PbtGroupReference other) => _value.CompareTo(other._value);
 
     internal uint Generation => (uint)(_value >> 32);
     internal int Offset => (int)(uint)_value;
