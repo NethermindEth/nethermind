@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.IO.Abstractions;
 using Nethermind.Config;
 using Nethermind.Core.Exceptions;
 using Nethermind.Logging;
@@ -19,16 +20,18 @@ namespace Nethermind.SendPolicy.Plugin;
 public sealed class SendPolicyRuleFile
 {
     private readonly string _path;
+    private readonly IFileSystem _fileSystem;
     private readonly ILogger _logger;
     private readonly Lock _reloadLock = new();
     private volatile Loaded? _loaded;
 
     /// <exception cref="InvalidConfigurationException">The path is not set, or the file cannot be read or parsed.</exception>
-    public SendPolicyRuleFile(ISendPolicyConfig config, ILogManager logManager)
+    public SendPolicyRuleFile(ISendPolicyConfig config, IFileSystem fileSystem, ILogManager logManager)
     {
         if (string.IsNullOrWhiteSpace(config.RulesPath))
             throw new InvalidConfigurationException($"{nameof(ISendPolicyConfig.RulesPath)} must be set when SendPolicy is enabled.", ExitCodes.ConflictingConfigurations);
         _path = config.RulesPath;
+        _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
         _logger = logManager.GetClassLogger<SendPolicyRuleFile>();
         if (Current.Error is { } error)
             throw new InvalidConfigurationException($"SendPolicy rules at {_path}: {error}", ExitCodes.ConflictingConfigurations);
@@ -38,13 +41,13 @@ public sealed class SendPolicyRuleFile
     {
         get
         {
-            FileSnapshot snapshot = FileSnapshot.Of(_path);
+            FileSnapshot snapshot = FileSnapshot.Of(_path, _fileSystem);
             Loaded? loaded = _loaded;
             if (loaded is not null && loaded.Snapshot == snapshot) return loaded.Rules;
             lock (_reloadLock)
             {
                 // A delayed reader must not replace a newer cached snapshot.
-                snapshot = FileSnapshot.Of(_path);
+                snapshot = FileSnapshot.Of(_path, _fileSystem);
                 loaded = _loaded;
                 if (loaded is not null && loaded.Snapshot == snapshot) return loaded.Rules;
                 SendPolicyRules rules = Read(snapshot, loaded?.LastGood ?? SendPolicyRules.Empty);
@@ -92,11 +95,11 @@ public sealed class SendPolicyRuleFile
     // Compare the decoded content, and represent read errors as snapshots so cached rules fail closed.
     private readonly record struct FileSnapshot(string? Contents, string? Error)
     {
-        public static FileSnapshot Of(string path)
+        public static FileSnapshot Of(string path, IFileSystem fileSystem)
         {
             try
             {
-                using FileStream stream = new(path, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete);
+                using Stream stream = fileSystem.File.Open(path, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete);
                 using StreamReader reader = new(stream);
                 return new FileSnapshot(reader.ReadToEnd(), null);
             }

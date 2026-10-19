@@ -1,17 +1,20 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.IO.Abstractions;
 using System.Reflection;
 using Nethermind.Core;
 using Nethermind.Core.Test.IO;
 using Nethermind.Logging;
 using NUnit.Framework;
+using Testably.Abstractions;
 
 namespace Nethermind.SendPolicy.Plugin.Test;
 
 [Parallelizable(ParallelScope.All)]
 public class SendPolicyRuleFileTests
 {
+    private static readonly IFileSystem FileSystem = new RealFileSystem();
     private static readonly Address Sender = new("0x1111111111111111111111111111111111111111");
     private static readonly Address PreviousDestination = new("0x2222222222222222222222222222222222222222");
     private static readonly Address NewDestination = new("0x3333333333333333333333333333333333333333");
@@ -189,7 +192,7 @@ public class SendPolicyRuleFileTests
     private static string RulesPath(TempPath directory) => Path.Combine(directory.Path, "rules");
 
     private static SendPolicyRuleFile Open(string path) =>
-        new(new SendPolicyConfig { Enabled = true, RulesPath = path }, LimboLogs.Instance);
+        new(new SendPolicyConfig { Enabled = true, RulesPath = path }, FileSystem, LimboLogs.Instance);
 
     private static void ReplaceRules(string path, string[] lines, DateTime timestamp, bool atomic = false)
     {
