@@ -65,25 +65,28 @@ namespace Nethermind.Evm.Benchmark;
 /// <c>ComputeHeavy</c> spends gas without touching state, its best case.</para>
 /// <para>Environment variables, following <c>CodeLoadBenchmarks</c>:</para>
 /// <list type="bullet">
-///   <item><c>NETHERMIND_BALCATCHUP_DB</c>: keep state, blocks, receipts and access lists in RocksDB under this
-///   directory. The synthetic segment is built in a fresh subdirectory; with a fixture it is the node's datadir
-///   holding the pre-state, opened in place (pass a copy: headers, receipts and lists of the segment are added).</item>
+///   <item><c>NETHERMIND_BALCATCHUP_DB</c>: keep state, blocks, receipts and access lists in RocksDB. Synthetic segments
+///   are produced in memory and their genesis written under this directory; with a fixture it is the node's datadir
+///   holding the pre-state. Either way it is only read: each case runs on its own copy.</item>
+///   <item><c>NETHERMIND_BALCATCHUP_WORKDIR</c>: where those copies go (default: the database directory for synthetic
+///   segments, the temp directory for fixtures). It needs room for one copy of the pre-state.</item>
 ///   <item><c>NETHERMIND_BALCATCHUP_FIXTURE</c>: a directory written by <c>scripts/bal-catchup-fixture.py</c>, whose
 ///   <c>segment.jsonl</c> holds real blocks with their access lists and receipts. The segment starts right above the
-///   datadir's persisted state. Needs <c>NETHERMIND_BALCATCHUP_DB</c> and <c>NETHERMIND_BALCATCHUP_CHAINSPEC</c>.</item>
+///   datadir's persisted state, which has to be a flat state database. Needs <c>NETHERMIND_BALCATCHUP_DB</c> and
+///   <c>NETHERMIND_BALCATCHUP_CHAINSPEC</c>.</item>
 ///   <item><c>NETHERMIND_BALCATCHUP_BLOCKS</c>: how many blocks to catch up (default 64, or the whole fixture).</item>
-///   <item><c>NETHERMIND_BALCATCHUP_COLD=1</c>: reopen the databases before every iteration, so no in-process
-///   cache is warm, as after a restart. On-disk only.</item>
-///   <item><c>NETHERMIND_BALCATCHUP_DROP_CACHES=1</c>: on Linux, as root, also empty the page cache before every
-///   iteration.</item>
+///   <item><c>NETHERMIND_BALCATCHUP_COLD=1</c>: start every iteration from a fresh copy of the pre-state with the
+///   databases reopened, so nothing is cached in process, as after a restart. On disk only.</item>
+///   <item><c>NETHERMIND_BALCATCHUP_DROP_CACHES=1</c>: on Linux, as root, also write back and empty the page cache
+///   before every iteration.</item>
 /// </list>
 /// <para>Both arms process the whole segment through <see cref="IBranchProcessor"/> with
 /// <see cref="ProcessingOptions.StoreReceipts"/>; the off arm flips the runtime flag the policy reads, so execution
 /// takes the regular validator path (parallel when enabled) with the list attached. One operation is the whole segment,
-/// whose length setup prints; cleanup prints blocks/s, gas/s and splits each block into processing (execution, or the list's
-/// application) and the state commit after it, where the state root's remaining hashing and the trie writes happen. On
-/// disk it also times persisting the segment's state.
-/// Flat-state trie warming runs with production settings.</para>
+/// whose length setup prints. Cleanup prints the median run's blocks/s and gas/s, and splits each block into processing
+/// (execution, or the list's application) and the state commit after it, where the state root's remaining hashing and
+/// the trie writes happen. On disk it also times persisting the segment's state. Flat-state trie warming runs with
+/// production settings.</para>
 /// <para>Setup refuses to benchmark if the on arm falls back for any block or the off arm reconstructs any.</para>
 /// </remarks>
 [Config(typeof(Config))]
@@ -147,28 +150,53 @@ public class BalCatchUpBenchmark
     private IBranchProcessor _branch = null!;
     private BlockHeader _parent = null!;
     private Block[] _segment = [];
-    private string? _dbPath;
+    private readonly List<SegmentBlock> _segmentData = [];
+    private readonly List<(long Total, long Process)> _samples = [];
+    private string? _pristinePath;
+    private string? _workPath;
     private ulong _nonce;
     private int _recipient;
-    private long _segmentTicks;
-    private long _iterations;
 
     private bool IsFixture => Shape == FixtureShape;
+    private bool OnDisk => DbRoot is not null;
+    private string CaseName => $"{Shape}-{(FlatDb ? "flat" : "trie")}";
 
     [GlobalSetup]
     public void GlobalSetup()
     {
         if (IsFixture && (DbRoot is null || ChainSpecPath is null))
             throw new InvalidOperationException("A fixture needs NETHERMIND_BALCATCHUP_DB (the datadir with the pre-state) and NETHERMIND_BALCATCHUP_CHAINSPEC.");
-        if (Cold && DbRoot is null)
+        if (Cold && !OnDisk)
             throw new InvalidOperationException("NETHERMIND_BALCATCHUP_COLD needs NETHERMIND_BALCATCHUP_DB: in-memory databases do not survive reopening.");
+        if (BlockLimit is <= 0)
+            throw new InvalidOperationException("NETHERMIND_BALCATCHUP_BLOCKS must be positive.");
+        if (IsFixture && !Directory.Exists(Path.Combine(DbRoot!, DbNames.Flat)))
+            throw new InvalidOperationException($"{DbRoot} holds no flat state database; fixtures need a flat datadir.");
 
-        _dbPath = IsFixture ? DbRoot : DbRoot is null ? null : FreshDirectory(Path.Combine(DbRoot, $"{Shape}-{(FlatDb ? "flat" : "trie")}-{(BalCatchUp ? "on" : "off")}"));
-        _syncConfig.ReconstructFinalizedStateFromBlockAccessLists = true;
-        BuildContainer();
+        if (!IsFixture)
+        {
+            // Produced in memory, so the on-disk pre-state below holds nothing but genesis.
+            BuildContainer(null);
+            BuildSyntheticSegment();
+            if (OnDisk)
+            {
+                _container.Dispose();
+                _pristinePath = FreshDirectory(Path.Combine(DbRoot!, $"{CaseName}-pristine"));
+                BuildContainer(_pristinePath);
+                Hash256? genesis = CreateGenesis(_container.Resolve<MainProcessingContext>().WorldState, _container.Resolve<IBlockTree>()).Hash;
+                if (genesis != _parent.Hash) throw new InvalidOperationException("The on-disk genesis differs from the one the segment was produced on.");
+                _container.Resolve<IWorldStateManager>().FlushCache(CancellationToken.None);
+                _container.Dispose();
+            }
+        }
+        else
+        {
+            _pristinePath = DbRoot;
+        }
 
+        if (OnDisk) OpenWorkingCopy();
         if (IsFixture) LoadFixture();
-        else BuildSyntheticSegment();
+        InstallSegment();
 
         _beacon.Finalized = _segment[^1].Hash;
         _syncConfig.ReconstructFinalizedStateFromBlockAccessLists = BalCatchUp;
@@ -181,9 +209,7 @@ public class BalCatchUpBenchmark
         if (reconstructed != (BalCatchUp ? _segment.Length : 0) || fallbacks != 0)
             throw new InvalidOperationException($"BalCatchUp={BalCatchUp}: {reconstructed} blocks reconstructed and {fallbacks} fell back, so the arm does not measure the path it names.");
         IterationCleanup();
-        _timing.Reset();
-        _segmentTicks = 0;
-        _iterations = 0;
+        _samples.Clear();
 
         ulong gas = _segment.Aggregate(0UL, static (sum, b) => sum + b.GasUsed);
         int txs = _segment.Sum(static b => b.Transactions.Length);
@@ -191,7 +217,7 @@ public class BalCatchUpBenchmark
         int n = _segment.Length;
         IFlatDbConfig flat = _container.Resolve<IFlatDbConfig>();
         Console.WriteLine($"// {Shape}: {n} blocks {_segment[0].Number}-{_segment[^1].Number}, {gas / (ulong)n:N0} gas/block, {txs / n} txs/block, {items / n} BAL items/block, " +
-            $"{(_dbPath is null ? "in memory" : "on disk")}{(Cold ? ", cold" : "")}, trie warmers {flat.TrieWarmerWorkerCount}");
+            $"{(OnDisk ? "on disk" : "in memory")}{(Cold ? ", cold" : "")}, trie warmers {flat.TrieWarmerWorkerCount}");
     }
 
     [IterationSetup]
@@ -199,11 +225,19 @@ public class BalCatchUpBenchmark
     {
         if (Cold)
         {
+            // Closing the databases persists what the last iteration left in memory, so every cold iteration starts
+            // from a fresh copy of the pre-state instead.
             _container.Dispose();
-            BuildContainer();
+            OpenWorkingCopy();
+            InstallSegment();
         }
 
-        if (DropCaches) File.WriteAllText("/proc/sys/vm/drop_caches", "3");
+        if (DropCaches)
+        {
+            // Dirty pages survive a drop, so write them back first.
+            using (Process sync = Process.Start("sync")) sync.WaitForExit();
+            File.WriteAllText("/proc/sys/vm/drop_caches", "3");
+        }
     }
 
     [IterationCleanup]
@@ -215,19 +249,22 @@ public class BalCatchUpBenchmark
     [GlobalCleanup]
     public void GlobalCleanup()
     {
-        if (_iterations > 0)
+        // The first call is BenchmarkDotNet's jitting run; the median of the rest matches its Median column.
+        (long Total, long Process)[] samples = [.. _samples.Skip(_samples.Count > 1 ? 1 : 0).OrderBy(static s => s.Total)];
+        if (samples.Length > 0)
         {
-            double blocks = _segment.Length * (double)_iterations;
-            double gas = _segment.Aggregate(0UL, static (sum, b) => sum + b.GasUsed) * (double)_iterations;
-            double totalMs = Stopwatch.GetElapsedTime(0, _segmentTicks).TotalMilliseconds;
-            double processMs = _timing.ProcessMs;
-            Console.WriteLine($"// {Shape} BalCatchUp={BalCatchUp} FlatDb={FlatDb}: {blocks / totalMs * 1000:N1} blocks/s, {gas / totalMs / 1000:N1} Mgas/s; " +
+            (long total, long process) = samples[samples.Length / 2];
+            double blocks = _segment.Length;
+            double totalMs = Stopwatch.GetElapsedTime(0, total).TotalMilliseconds;
+            double processMs = Stopwatch.GetElapsedTime(0, process).TotalMilliseconds;
+            double gas = _segment.Aggregate(0UL, static (sum, b) => sum + b.GasUsed);
+            Console.WriteLine($"// {Shape} BalCatchUp={BalCatchUp} FlatDb={FlatDb}: median of {samples.Length} runs {blocks / totalMs * 1000:N1} blocks/s, {gas / totalMs / 1000:N1} Mgas/s; " +
                 $"per block {totalMs / blocks:N3} ms = processing {processMs / blocks:N3} ms + state commit {(totalMs - processMs) / blocks:N3} ms");
         }
 
-        if (_dbPath is not null)
+        if (OnDisk)
         {
-            // Persisting moves the database past the pre-state, so it runs once, after the last iteration.
+            // The working copy is discarded afterwards, so persisting it past the pre-state is harmless.
             long start = Stopwatch.GetTimestamp();
             _container.Resolve<IWorldStateManager>().FlushCache(CancellationToken.None);
             double persistMs = Stopwatch.GetElapsedTime(start).TotalMilliseconds;
@@ -235,31 +272,54 @@ public class BalCatchUpBenchmark
         }
 
         _container.Dispose();
-        if (_dbPath is not null && !IsFixture) Directory.Delete(_dbPath, recursive: true);
+        if (_workPath is not null) Directory.Delete(_workPath, recursive: true);
+        if (!IsFixture && _pristinePath is not null) Directory.Delete(_pristinePath, recursive: true);
     }
 
     [Benchmark]
     public Block[] CatchUp()
     {
+        long processBefore = _timing.ProcessTicks;
         long start = Stopwatch.GetTimestamp();
         Block[] processed = _branch.Process(_parent, _segment, ProcessingOptions.StoreReceipts, NullBlockTracer.Instance);
-        _segmentTicks += Stopwatch.GetTimestamp() - start;
-        _iterations++;
+        _samples.Add((Stopwatch.GetTimestamp() - start, _timing.ProcessTicks - processBefore));
         return processed;
     }
 
-    private void BuildContainer()
+    /// <summary>Copies the pristine pre-state to a working directory and opens it, so nothing the benchmark writes
+    /// reaches the pre-state.</summary>
+    private void OpenWorkingCopy()
+    {
+        _workPath = Path.Combine(WorkRoot, $"{CaseName}-{(BalCatchUp ? "on" : "off")}");
+        if (Directory.Exists(_workPath)) Directory.Delete(_workPath, recursive: true);
+        CopyDirectory(_pristinePath!, _workPath);
+        BuildContainer(_workPath);
+    }
+
+    private static string WorkRoot => Environment.GetEnvironmentVariable("NETHERMIND_BALCATCHUP_WORKDIR")
+        ?? (FixtureDir is null ? DbRoot! : Path.Combine(Path.GetTempPath(), "nethermind-balcatchup"));
+
+    private static void CopyDirectory(string source, string target)
+    {
+        Directory.CreateDirectory(target);
+        foreach (string directory in Directory.EnumerateDirectories(source, "*", SearchOption.AllDirectories))
+            Directory.CreateDirectory(Path.Combine(target, Path.GetRelativePath(source, directory)));
+        foreach (string file in Directory.EnumerateFiles(source, "*", SearchOption.AllDirectories))
+            File.Copy(file, Path.Combine(target, Path.GetRelativePath(source, file)));
+    }
+
+    private void BuildContainer(string? dbPath)
     {
         ContainerBuilder builder = new();
         if (IsFixture)
         {
             ChainSpec chainSpec = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboLogs.Instance).LoadEmbeddedOrFromFile(ChainSpecPath!);
-            builder.AddModule(new TestNethermindModule(new ConfigProvider(new FlatDbConfig { Enabled = true }, new InitConfig { BaseDbPath = _dbPath! }),
+            builder.AddModule(new TestNethermindModule(new ConfigProvider(new FlatDbConfig { Enabled = true }, new InitConfig { BaseDbPath = dbPath! }),
                 chainSpec, useTestSpecProvider: false));
         }
         else
         {
-            builder.AddModule(new TestNethermindModule(new FlatDbConfig { Enabled = FlatDb }, new InitConfig { BaseDbPath = _dbPath ?? "db" }))
+            builder.AddModule(new TestNethermindModule(new FlatDbConfig { Enabled = FlatDb }, new InitConfig { BaseDbPath = dbPath ?? "db" }))
                 .AddSingleton<ISpecProvider>(new TestSpecProvider(Amsterdam.Instance));
         }
 
@@ -279,7 +339,7 @@ public class BalCatchUpBenchmark
                 config.WarmReadConcurrency = defaults.WarmReadConcurrency;
             });
 
-        if (_dbPath is not null)
+        if (dbPath is not null)
         {
             // The test modules keep every database in memory; put them back on RocksDB under the datadir.
             builder
@@ -294,42 +354,43 @@ public class BalCatchUpBenchmark
     private void BuildSyntheticSegment()
     {
         MainProcessingContext main = _container.Resolve<MainProcessingContext>();
-        IBlockTree tree = _container.Resolve<IBlockTree>();
-        _parent = CreateGenesis(main.WorldState, tree);
-        // On disk the pre-state has to be in the database, so a cold iteration that reopens it starts from there.
-        if (_dbPath is not null) _container.Resolve<IWorldStateManager>().FlushCache(CancellationToken.None);
-        _segment = ProduceSegment(tree, BlockLimit ?? SyntheticBlocks);
-
-        IBlockAccessListStore lists = _container.Resolve<IBlockAccessListStore>();
-        BlockAccessListRecoveryStep recovery = _container.Resolve<IEnumerable<IBlockPreprocessorStep>>().OfType<BlockAccessListRecoveryStep>().Single();
-        foreach (Block block in _segment)
-        {
-            lists.Insert(block.Number, block.Hash!, block.EncodedBlockAccessList!);
-            block.EncodedBlockAccessList = null;
-            block.GeneratedBlockAccessList = null;
-            recovery.RecoverDataForQueuedProcessing(block);
-            if (block.BlockAccessList is null) throw new InvalidOperationException($"No access list attached to block {block.Number}.");
-        }
+        _parent = CreateGenesis(main.WorldState, _container.Resolve<IBlockTree>());
+        ProduceSegment(BlockLimit ?? SyntheticBlocks);
     }
 
-    /// <summary>Loads the fixture's blocks above the datadir's persisted state, stores their lists and receipts as
-    /// forward sync does, and recovers senders and lists as queued processing does.</summary>
-    private void LoadFixture()
+    /// <summary>Stores the segment's headers, lists and receipts as forward sync does, and recovers senders and lists
+    /// as queued processing does.</summary>
+    private void InstallSegment()
     {
         IBlockTree tree = _container.Resolve<IBlockTree>();
-        _parent = tree.Head?.Header ?? throw new InvalidOperationException($"{_dbPath} has no head block.");
         IBlockAccessListStore lists = _container.Resolve<IBlockAccessListStore>();
         IReceiptStorage receipts = _container.Resolve<IReceiptStorage>();
-        ISpecProvider specProvider = _container.Resolve<ISpecProvider>();
         IBlockPreprocessorStep[] steps = [.. _container.Resolve<IEnumerable<IBlockPreprocessorStep>>()];
+        foreach ((Block block, byte[] encodedList, TxReceipt[] blockReceipts) in _segmentData)
+        {
+            if (tree.FindHeader(block.Hash!, BlockTreeLookupOptions.None) is null) tree.Insert(block.Header);
+            lists.Insert(block.Number, block.Hash!, encodedList);
+            receipts.Insert(block, blockReceipts, ensureCanonical: false);
+            block.BlockAccessList = null;
+            foreach (IBlockPreprocessorStep step in steps) step.RecoverDataForQueuedProcessing(block);
+            if (block.BlockAccessList is null) throw new InvalidOperationException($"No access list attached to block {block.Number}.");
+        }
 
-        List<Block> segment = [];
+        _segment = [.. _segmentData.Select(static s => s.Block)];
+    }
+
+    /// <summary>Loads the fixture's blocks above the working copy's persisted state.</summary>
+    private void LoadFixture()
+    {
+        _parent = _container.Resolve<IBlockTree>().Head?.Header ?? throw new InvalidOperationException($"{DbRoot} has no head block.");
+        ISpecProvider specProvider = _container.Resolve<ISpecProvider>();
+
         BlockHeader parent = _parent;
         foreach (string line in File.ReadLines(Path.Combine(FixtureDir!, "segment.jsonl")))
         {
-            FixtureBlock entry = JsonSerializer.Deserialize<FixtureBlock>(line)!;
+            FixtureBlock entry = JsonSerializer.Deserialize<FixtureBlock>(line) ?? throw new InvalidDataException("Empty fixture line.");
             if (entry.number <= _parent.Number) continue;
-            if (segment.Count == (BlockLimit ?? int.MaxValue)) break;
+            if (_segmentData.Count == (BlockLimit ?? int.MaxValue)) break;
 
             Block block = Rlp.Decode<Block>(Bytes.FromHexString(entry.block)) ?? throw new InvalidDataException($"Fixture block {entry.number} does not decode.");
             block.Header.Hash = block.Header.CalculateHash();
@@ -339,22 +400,15 @@ public class BalCatchUpBenchmark
             byte[] encodedList = Bytes.FromHexString(entry.bal);
             if (Keccak.Compute(encodedList) != block.Header.BlockAccessListHash)
                 throw new InvalidOperationException($"Fixture block {entry.number}: the access list does not match the header.");
-            TxReceipt[] blockReceipts = [.. entry.receipts.Select(r => Rlp.Decode<TxReceipt>(Bytes.FromHexString(r), RlpBehaviors.SkipTypedWrapping)!)];
+            TxReceipt[] blockReceipts = [.. entry.receipts.Select(static r => Rlp.Decode<TxReceipt>(Bytes.FromHexString(r), RlpBehaviors.SkipTypedWrapping)!)];
             if (ReceiptsRootCalculator.Instance.GetReceiptsRoot(blockReceipts, specProvider.GetSpec(block.Header), block.ReceiptsRoot) != block.ReceiptsRoot)
                 throw new InvalidOperationException($"Fixture block {entry.number}: the receipts do not match the header.");
 
-            if (tree.FindHeader(block.Hash!, BlockTreeLookupOptions.None) is null) tree.Insert(block.Header);
-            lists.Insert(block.Number, block.Hash!, encodedList);
-            receipts.Insert(block, blockReceipts, ensureCanonical: false);
-            foreach (IBlockPreprocessorStep step in steps) step.RecoverDataForQueuedProcessing(block);
-            if (block.BlockAccessList is null) throw new InvalidOperationException($"No access list attached to block {block.Number}.");
-
-            segment.Add(block);
+            _segmentData.Add(new SegmentBlock(block, encodedList, blockReceipts));
             parent = block.Header;
         }
 
-        if (segment.Count == 0) throw new InvalidOperationException($"The fixture has no blocks above the datadir's persisted state (block {_parent.Number}).");
-        _segment = [.. segment];
+        if (_segmentData.Count == 0) throw new InvalidOperationException($"The fixture has no blocks above the datadir's persisted state (block {_parent.Number}).");
     }
 
     private static string FreshDirectory(string path)
@@ -399,9 +453,8 @@ public class BalCatchUpBenchmark
         }
     }
 
-    private Block[] ProduceSegment(IBlockTree tree, int count)
+    private void ProduceSegment(int count)
     {
-        Block[] segment = new Block[count];
         BlockHeader parent = _parent;
         for (int i = 0; i < count; i++)
         {
@@ -419,15 +472,12 @@ public class BalCatchUpBenchmark
 
             BlockHeader header = produced.Header;
             header.Hash = header.CalculateHash();
-            Block block = new(header, produced.Body) { EncodedBlockAccessList = produced.EncodedBlockAccessList };
+            // The next block opens its parent's state through the parent's header.
+            _container.Resolve<IBlockTree>().Insert(header);
+            _segmentData.Add(new SegmentBlock(new Block(header, produced.Body), produced.EncodedBlockAccessList!, [.. tracer.TxReceipts]));
             produced.DisposeAccountChanges();
-            tree.Insert(header);
-            _container.Resolve<IReceiptStorage>().Insert(block, tracer.TxReceipts.ToArray(), ensureCanonical: false);
-            segment[i] = block;
             parent = header;
         }
-
-        return segment;
     }
 
     private Transaction[] BuildTransactions() => Shape switch
@@ -475,15 +525,15 @@ public class BalCatchUpBenchmark
         return code.Op(Instruction.STOP).Done;
     }
 
+    private sealed record SegmentBlock(Block Block, byte[] EncodedList, TxReceipt[] Receipts);
+
     // One line of segment.jsonl, as scripts/bal-catchup-fixture.py writes it.
     private sealed record FixtureBlock(ulong number, string block, string bal, string[] receipts);
 
     private sealed class BlockTiming
     {
-        private long _processTicks;
-        public double ProcessMs => Stopwatch.GetElapsedTime(0, _processTicks).TotalMilliseconds;
-        public void Add(long ticks) => _processTicks += ticks;
-        public void Reset() => _processTicks = 0;
+        public long ProcessTicks { get; private set; }
+        public void Add(long ticks) => ProcessTicks += ticks;
     }
 
     private sealed class TimingModule(BlockTiming timing) : Autofac.Module, IMainProcessingModule

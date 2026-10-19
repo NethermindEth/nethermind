@@ -23,13 +23,24 @@ import urllib.request
 
 
 def call(url, method, params):
-    body = json.dumps({"jsonrpc": "2.0", "id": 1, "method": method, "params": params}).encode()
+    return batch(url, [(method, params)])[0]
+
+
+def batch(url, calls):
+    """Sends the calls as one JSON-RPC batch and returns their results in order, failing on any error or null."""
+    body = json.dumps([{"jsonrpc": "2.0", "id": i, "method": m, "params": p} for i, (m, p) in enumerate(calls)]).encode()
     request = urllib.request.Request(url, body, {"Content-Type": "application/json"})
     with urllib.request.urlopen(request, timeout=60) as response:
-        reply = json.load(response)
-    if "error" in reply:
-        raise RuntimeError(f"{method}{params}: {reply['error']}")
-    return reply["result"]
+        replies = {reply["id"]: reply for reply in json.load(response)}
+    results = []
+    for i, (method, params) in enumerate(calls):
+        reply = replies.get(i, {"error": "no reply"})
+        if "error" in reply:
+            raise RuntimeError(f"{method}{params}: {reply['error']}")
+        if reply.get("result") is None:
+            raise RuntimeError(f"{method}{params} returned nothing: the node may have pruned it (History.BalRetentionEpochs)")
+        results.append(reply["result"])
+    return results
 
 
 def main():
@@ -47,13 +58,13 @@ def main():
     with open(os.path.join(args.out, "segment.jsonl"), "w") as segment:
         for number in range(args.first, args.last + 1):
             tag = hex(number)
-            header = call(args.rpc, "eth_getBlockByNumber", [tag, False])
-            line = {
-                "number": number,
-                "block": call(args.rpc, "debug_getRawBlock", [tag]),
-                "bal": call(args.rpc, "debug_getRawBlockAccessList", [tag]),
-                "receipts": call(args.rpc, "debug_getRawReceipts", [tag]),
-            }
+            header, block, bal, receipts = batch(args.rpc, [
+                ("eth_getBlockByNumber", [tag, False]),
+                ("debug_getRawBlock", [tag]),
+                ("debug_getRawBlockAccessList", [tag]),
+                ("debug_getRawReceipts", [tag]),
+            ])
+            line = {"number": number, "block": block, "bal": bal, "receipts": receipts}
             segment.write(json.dumps(line) + "\n")
             gas.append(int(header["gasUsed"], 16))
             if number % 100 == 0:
