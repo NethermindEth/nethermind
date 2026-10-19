@@ -37,12 +37,12 @@ public class ClHealthRequestsTracker(ITimestamper timestamper, IHealthChecksConf
         if (_timer is not null) await _timer.DisposeAsync();
     }
 
-    private void ReportClStatus(object _)
+    internal void ReportClStatus(object _)
     {
         if (!CheckClAlive())
         {
             if (_logger.IsWarn)
-                _logger.Warn("Not receiving ForkChoices from the consensus client that are required to sync.");
+                _logger.Warn("Not receiving ForkChoices from the consensus client that are required to sync. You can find how to set up a consensus client in our docs: https://docs.nethermind.io/get-started/running-node/consensus-clients/");
         }
     }
 

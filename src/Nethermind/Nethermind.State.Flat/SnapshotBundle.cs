@@ -28,6 +28,7 @@ public sealed class SnapshotBundle : IDisposable
     private SnapshotContent _currentPooledContent = null!;
     // These maps are direct reference from members in _currentPooledContent.
     private ConcurrentDictionary<HashedKey<Address>, Account?> _changedAccounts = null!;
+    private ConcurrentDictionary<HashedKey<Address>, Account?> _readAccounts = null!;
     private ConcurrentDictionary<HashedKey<(Address, UInt256)>, UInt256?> _changedSlots = null!;
     private Dictionary<HashedKey<TreePath>, TrieNode> _changedStateNodes = null!;
     private AddressStorageNodeDictionary _changedStorageNodes = null!;
@@ -80,6 +81,7 @@ public sealed class SnapshotBundle : IDisposable
     private void ExpandCurrentPooledContent()
     {
         _changedAccounts = _currentPooledContent.Accounts;
+        _readAccounts = _currentPooledContent.ReadAccounts;
         _changedSlots = _currentPooledContent.Storages;
         _changedStorageNodes = _currentPooledContent.StorageNodes;
         _changedStateNodes = _currentPooledContent.StateNodes;
@@ -97,7 +99,7 @@ public sealed class SnapshotBundle : IDisposable
 
         HashedKey<Address> key = new(address);
 
-        if (!excludeChanged && _changedAccounts.TryGetValue(key, out Account? acc))
+        if (!excludeChanged && (_changedAccounts.TryGetValue(key, out Account? acc) || _readAccounts.TryGetValue(key, out acc)))
         {
             isInCurrentSnapshot = true;
             return acc;
@@ -493,13 +495,23 @@ public sealed class SnapshotBundle : IDisposable
     {
         // ContainsKey is lock-free; TryAdd alone would take the bucket lock on every hot re-promote.
         HashedKey<Address> key = new(address);
-        if (!_changedAccounts.ContainsKey(key))
+        if (!_changedAccounts.ContainsKey(key) && !_readAccounts.ContainsKey(key))
         {
-            _changedAccounts.TryAdd(key, account);
+            _readAccounts.TryAdd(key, account);
         }
     }
 
     public void SetChangedSlot(Address address, in UInt256 index, in UInt256 value)
+    {
+        SetChangedSlotValue(address, index, value);
+        RegisterAddressWithChangedSlots(address);
+    }
+
+    /// <summary>Like <see cref="SetChangedSlot"/>, but leaves registering the address to the caller.</summary>
+    /// <remarks>The caller must also call <see cref="RegisterAddressWithChangedSlots"/> for <paramref name="address"/>,
+    /// once after each <see cref="ClearStorage"/> of it or <see cref="CollectAndApplySnapshot"/>, or a later clear leaves
+    /// the slot behind.</remarks>
+    internal void SetChangedSlotValue(Address address, in UInt256 index, in UInt256 value)
     {
         // So right now, if the value is zero, then it is a deletion. This is not the case with verkle where you
         // can set a value to be zero. Because of this distinction, the zerobytes logic is handled here instead of
@@ -513,7 +525,10 @@ public sealed class SnapshotBundle : IDisposable
         {
             _changedSlots[key] = value;
         }
+    }
 
+    internal void RegisterAddressWithChangedSlots(Address address)
+    {
         ConcurrentDictionary<HashedKey<Address>, byte> addressesWithChangedSlots =
             Volatile.Read(ref _addressesWithChangedSlots) ?? CreateAddressesWithChangedSlots();
         if (!addressesWithChangedSlots.ContainsKey(address))
@@ -627,9 +642,11 @@ public sealed class SnapshotBundle : IDisposable
             _trieChanged = false;
 
             // Make and apply new snapshot content.
+            SnapshotContent committedContent = _currentPooledContent;
             _currentPooledContent = _resourcePool.GetSnapshotContent(_usage);
             ExpandCurrentPooledContent();
             _addressesWithChangedSlots?.NoLockClear();
+            DropReadAccounts(committedContent);
 
             return (snapshot, transientResource);
         }
@@ -650,6 +667,14 @@ public sealed class SnapshotBundle : IDisposable
         }
     }
 
+    /// <summary>Empties the read cache of content that was just handed to a snapshot.</summary>
+    /// <remarks>
+    /// A snapshot never reads these entries, so keeping them would only hold memory that its estimate does not count.
+    /// The clear takes the stripe locks because a warmer can still be promoting into this content, and it keeps the
+    /// grown table for the next block that reuses the pooled content.
+    /// </remarks>
+    private static void DropReadAccounts(SnapshotContent content) => content.ReadAccounts.NoResizeClear();
+
     private void SwapTransientResource() =>
         Volatile.Write(ref _transientResource, _resourcePool.GetCachedResource(_usage));
 
@@ -665,6 +690,7 @@ public sealed class SnapshotBundle : IDisposable
         _snapshots = null!;
         _changedSlots = null!;
         _changedAccounts = null!;
+        _readAccounts = null!;
         _changedStorageNodes = null!;
         _selfDestructedAccountAddresses = null!;
 

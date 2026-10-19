@@ -9,6 +9,7 @@ using Nethermind.Facade.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Db.LogIndex;
 using Nethermind.History;
 using Nethermind.Logging;
@@ -27,12 +28,13 @@ public class IndexedLogFinder(
     IReceiptStorage receiptStorage,
     ILogManager logManager,
     IReceiptsRecovery receiptsRecovery,
+    ISpecProvider specProvider,
     ILogIndexStorage logIndexStorage,
     int minBlocksToUseIndex = 32,
     IReceiptConfig? receiptConfig = null,
     IPrunedLogsRetention? prunedLogsRetention = null,
     IHistoryPruner? historyPruner = null)
-    : LogFinder(blockFinder, receiptFinder, receiptStorage, logManager, receiptsRecovery, receiptConfig, prunedLogsRetention)
+    : LogFinder(blockFinder, receiptFinder, receiptStorage, logManager, receiptsRecovery, specProvider, receiptConfig, prunedLogsRetention)
 {
     private readonly ILogIndexStorage _logIndexStorage = logIndexStorage ?? throw new ArgumentNullException(nameof(logIndexStorage));
     // CS9107: a primary-ctor parameter that also flows to the base ctor cannot be used in a method body.
@@ -41,13 +43,16 @@ public class IndexedLogFinder(
     public override IEnumerable<FilterLog> FindLogs(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken = default) =>
         GetLogIndexRange(filter, fromBlock, toBlock) is not { } indexRange
             ? base.FindLogs(filter, fromBlock, toBlock, cancellationToken)
-            : FindIndexedLogs(filter, fromBlock, toBlock, indexRange, cancellationToken);
+            : new FoundLogs(
+                FindIndexedLogs<BlockFilterLogs, FilterLog>(filter, fromBlock, toBlock, indexRange, cancellationToken),
+                FindIndexedLogs<BlockSerializedLogs, SerializedLogs>(filter, fromBlock, toBlock, indexRange, cancellationToken));
 
-    private IEnumerable<FilterLog> FindIndexedLogs(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, (int from, int to) indexRange, CancellationToken cancellationToken)
+    private IEnumerable<TLog> FindIndexedLogs<TBlockLogs, TLog>(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, (int from, int to) indexRange, CancellationToken cancellationToken)
+        where TBlockLogs : struct, IBlockLogs<TBlockLogs, TLog>
     {
         if ((ulong)indexRange.from > fromBlock.Number && FindHeaderOrLogError((ulong)(indexRange.from - 1), cancellationToken) is { } beforeIndex)
         {
-            foreach (FilterLog log in base.FindLogs(filter, fromBlock, beforeIndex, cancellationToken))
+            foreach (TLog log in TBlockLogs.From(base.FindLogs(filter, fromBlock, beforeIndex, cancellationToken)))
                 yield return log;
         }
 
@@ -57,7 +62,7 @@ public class IndexedLogFinder(
             .EnumerateBlockNumbersFor(filter, (ulong)indexRange.from, (ulong)indexRange.to)
             .Select(static n => (ulong)n);
 
-        foreach (FilterLog log in FilterLogsInBlocksParallel(filter, indexBlockNumbers, cancellationToken: cancellationToken))
+        foreach (TLog log in FilterLogsInBlocksParallel<TBlockLogs, TLog>(filter, indexBlockNumbers, cancellationToken: cancellationToken))
         {
             yield return log;
         }
@@ -66,7 +71,7 @@ public class IndexedLogFinder(
 
         if ((ulong)indexRange.to < toBlock.Number && FindHeaderOrLogError((ulong)(indexRange.to + 1), cancellationToken) is { } afterIndex)
         {
-            foreach (FilterLog log in base.FindLogs(filter, afterIndex, toBlock, cancellationToken))
+            foreach (TLog log in TBlockLogs.From(base.FindLogs(filter, afterIndex, toBlock, cancellationToken)))
                 yield return log;
         }
     }

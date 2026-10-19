@@ -49,6 +49,11 @@ namespace Nethermind.JsonRpc
         }
 
         /// <summary>
+        /// Rents a timeout source like <see cref="BuildTimeoutCancellationToken"/> for a caller whose token does not outlive the lease.
+        /// </summary>
+        internal static RentedTimeout RentTimeout(this IJsonRpcConfig config) => new(config.BuildTimeoutCancellationToken());
+
+        /// <summary>
         /// Returns a CTS to the pool if it can be reset, otherwise disposes it.
         /// </summary>
         [MethodImpl(MethodImplOptions.NoInlining)]

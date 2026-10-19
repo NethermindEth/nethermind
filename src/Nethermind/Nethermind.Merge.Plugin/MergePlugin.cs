@@ -151,6 +151,8 @@ public class BaseMergePluginModule : Module
 
             .AddSingleton<IMainProcessingModule, IRpcCapabilitiesProvider>(static capabilitiesProvider =>
                 new WitnessCapturingMainProcessingModule(IsWitnessCaptureEnabled(capabilitiesProvider)))
+            .AddSingleton<IMainProcessingModule, FinalizedBlockAccessListModule>()
+            .AddSingleton<FinalizedBlockAccessListPolicy>()
             .AddSingleton<WitnessRendezvous>()
             .AddSingleton<WitnessCapturingBlockProcessingEnv>()
 
@@ -185,6 +187,7 @@ public class BaseMergePluginModule : Module
                 .Bind<IAsyncHandler<ExecutionPayload, PayloadStatusV1>, NewPayloadHandler>()
                 .Bind<IInclusionListComplianceEvaluator, NewPayloadHandler>()
                 .AddSingleton<IForkchoiceUpdatedHandler, ForkchoiceUpdatedHandler>()
+                .AddDecorator<IForkchoiceUpdatedHandler, ReprocessingForkchoiceUpdatedHandler>()
                 .AddSingleton<IHandler<IReadOnlyList<Hash256>, IReadOnlyList<ExecutionPayloadBodyV1Result?>>, GetPayloadBodiesByHashV1Handler>()
                 .AddSingleton<IGetPayloadBodiesByRangeV1Handler, GetPayloadBodiesByRangeV1Handler>()
                 .AddSingleton<IHandler<TransitionConfigurationV1, TransitionConfigurationV1>, ExchangeTransitionConfigurationV1Handler>()

@@ -86,7 +86,7 @@ public partial class ParityLikeTxTracer : TxTracer
 
     private static string GetCallType(ExecutionType executionType) => executionType switch
     {
-        ExecutionType.CREATE or ExecutionType.CREATE2 => "create",
+        ExecutionType.CREATE or ExecutionType.CREATE2 or ExecutionType.TCREATE => "create",
         ExecutionType.CALL or ExecutionType.TRANSACTION => "call",
         ExecutionType.DELEGATECALL => "delegatecall",
         ExecutionType.STATICCALL => "staticcall",
@@ -96,7 +96,7 @@ public partial class ParityLikeTxTracer : TxTracer
 
     private static string GetActionType(ExecutionType executionType) => executionType switch
     {
-        ExecutionType.CREATE or ExecutionType.CREATE2 => "create",
+        ExecutionType.CREATE or ExecutionType.CREATE2 or ExecutionType.TCREATE => "create",
         _ => "call"
     };
 
@@ -547,6 +547,7 @@ public partial class ParityLikeTxTracer : TxTracer
     {
         ExecutionType.CREATE => "create",
         ExecutionType.CREATE2 => "create2",
+        ExecutionType.TCREATE => "tcreate",
         _ => null
     };
 
@@ -570,7 +571,7 @@ public partial class ParityLikeTxTracer : TxTracer
                 $"{nameof(ReportActionEnd)} called when result is not yet prepared.");
         }
 
-        _currentAction.Result.Output = output.ToArray();
+        _currentAction.Result.Output = output.AsArray();
         _currentAction.Result.GasUsed = _currentAction.Gas - gas;
         PopAction();
     }
@@ -584,7 +585,7 @@ public partial class ParityLikeTxTracer : TxTracer
     public override void ReportActionRevert(ulong gas, ReadOnlyMemory<byte> output)
     {
         ParityTraceResult result = _currentAction!.Result!;
-        result.Output = output.ToArray();
+        result.Output = output.AsArray();
         result.GasUsed = _currentAction.Gas - gas;
         _currentAction.Error = GetErrorDescription(EvmExceptionType.Revert);
         PopAction();
@@ -606,7 +607,7 @@ public partial class ParityLikeTxTracer : TxTracer
         }
 
         _currentAction.Result.Address = deploymentAddress;
-        _currentAction.Result.Code = deployedCode.ToArray();
+        _currentAction.Result.Code = deployedCode.AsArray();
         _currentAction.Result.GasUsed = _currentAction.Gas - gas;
         PopAction();
     }

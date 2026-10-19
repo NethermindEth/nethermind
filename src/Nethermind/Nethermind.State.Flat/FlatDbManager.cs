@@ -277,14 +277,18 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         await jobTask;
     }
 
-    public SnapshotBundle GatherSnapshotBundle(in StateId baseBlock, ResourcePool.Usage usage)
+    public SnapshotBundle GatherSnapshotBundle(in StateId baseBlock, ResourcePool.Usage usage) =>
+        GatherSnapshotBundle(baseBlock, usage, filterInMemorySlotReads: false);
+
+    public SnapshotBundle GatherSnapshotBundle(in StateId baseBlock, ResourcePool.Usage usage, bool filterInMemorySlotReads)
     {
         if (_logger.IsTrace) _logger.Trace($"Gathering {baseBlock}.");
         return new SnapshotBundle(
             GatherReadOnlySnapshotBundle(baseBlock),
             _trieNodeCache,
             _resourcePool,
-            usage: usage);
+            usage: usage,
+            filterInMemorySlotReads: filterInMemorySlotReads);
     }
 
     private static readonly StringLabel _depthInMemoryLabel = new("in_memory");
@@ -312,6 +316,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 
         long sw = 0;
         int attempt = 0;
+        bool persistedAtBase = false;
         while (true)
         {
             // Fastpath: Share a recently created ReadOnlySnapshotBundle
@@ -351,7 +356,12 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
                 assembled.Dispose();
                 persistenceReader.Dispose();
 
-                if (!HasStateForBlock(baseBlock))
+                // Persistence publishes its pointer only once the write is readable, so while the pointer stays at
+                // baseBlock, a reader leased after it got there reads baseBlock. One that doesn't means the pointer is
+                // stale against the database (e.g. after the snap-sync wipe), which no retry can fix either.
+                bool wasPersistedAtBase = persistedAtBase;
+                persistedAtBase = _persistenceManager.GetCurrentPersistedStateId() == baseBlock;
+                if (!HasStateForBlock(baseBlock) || (wasPersistedAtBase && persistedAtBase))
                 {
                     throw new StateNotRetainedException($"No state available for block {baseBlock.BlockNumber} with state root {baseBlock.StateRoot}");
                 }

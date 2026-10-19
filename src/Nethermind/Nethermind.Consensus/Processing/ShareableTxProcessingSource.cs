@@ -44,7 +44,7 @@ public class ShareableTxProcessingSource(IReadOnlyTxProcessingEnvFactory envFact
 
     private class EnvPoolPolicy(IReadOnlyTxProcessingEnvFactory envFactory) : IPooledObjectPolicy<IReadOnlyTxProcessorSource>
     {
-        public IReadOnlyTxProcessorSource Create() => envFactory.Create();
+        public IReadOnlyTxProcessorSource Create() => envFactory.Create(forReadOnlyQueries: true);
 
         public bool Return(IReadOnlyTxProcessorSource obj) => true;
     }

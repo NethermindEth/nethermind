@@ -375,7 +375,7 @@ public partial class BlockAccessListManager
             {
                 // A build without the capability never constructs the parallel pool; failing here
                 // keeps a mis-wired processor from producing a wrong BAL.
-                if (!ExecutionFlags.ParallelExecution) ThrowParallelExecutionUnavailable();
+                if (ZkEvmFlag.IsActive) ThrowParallelExecutionUnavailable();
                 _balWorldState = new BlockAccessListBasedWorldState(stateProvider, logManager);
                 worldState = _balWorldState;
             }

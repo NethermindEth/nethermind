@@ -57,6 +57,7 @@ public class PrewarmerScopeProvider(
 {
     private readonly PreBlockCaches preBlockCaches = prewarmerState.Caches;
     private readonly bool isPrewarmer = prewarmerState.IsPrewarmer;
+    private readonly CommittedStorageWrites? committedWrites = prewarmerState.CommittedWrites;
     private readonly ILogger logger = logManager.GetClassLogger<PrewarmerScopeProvider>();
 
     public bool HasRoot(BlockHeader? baseBlock) => baseProvider.HasRoot(baseBlock);
@@ -93,7 +94,7 @@ public class PrewarmerScopeProvider(
         {
             try
             {
-                // Opening joins any speculative session, so the check below and the scope's reads see no other writer.
+                // Opening stops any speculative session, so the check below and the scope's reads see no other writer.
                 preBlockCaches.BeginConsumerScope();
                 preBlockCaches.MainScope = scope;
                 // The consumer reads the state at the opened root through the caches, which may still describe another state.
@@ -114,7 +115,7 @@ public class PrewarmerScopeProvider(
             }
         }
         PreBlockCaches.StorageReadCapture? storageReadCapture = isPrewarmer ? preBlockCaches.CurrentStorageReadCapture : null;
-        return new ScopeWrapper(scope, preBlockCaches, logManager, isPrewarmer, storageReadCapture, metrics, stateRoot, codeCache, prefetchCode);
+        return new ScopeWrapper(scope, preBlockCaches, logManager, isPrewarmer, storageReadCapture, metrics, stateRoot, codeCache, prefetchCode, committedWrites);
     }
 
     private sealed class ScopeWrapper(
@@ -126,7 +127,8 @@ public class PrewarmerScopeProvider(
         LocalMetrics metrics,
         Hash256? baseStateRoot,
         ICodeCache? codeCache,
-        bool prefetchCode) : IWorldStateScopeProvider.IScope
+        bool prefetchCode,
+        CommittedStorageWrites? committedWrites) : IWorldStateScopeProvider.IScope
     {
         private readonly IWorldStateScopeProvider.IScope baseScope = baseScope;
         public bool StorageRootsAreAuthoritative => baseScope.StorageRootsAreAuthoritative;
@@ -196,7 +198,7 @@ public class PrewarmerScopeProvider(
             bool bypassCache = preBlockCaches.BypassesStorageCache(address);
             return storageReadCapture is not null
                 ? new CapturingStorageTreeWrapper(baseTree, storageReadCapture, storageCache, address, bypassCache)
-                : new StorageTreeWrapper(baseTree, storageCache, address, isPrewarmer, _metrics, bypassCache);
+                : new StorageTreeWrapper(baseTree, storageCache, address, isPrewarmer, _metrics, bypassCache, committedWrites);
         }
 
         public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum)
@@ -358,10 +360,14 @@ public class PrewarmerScopeProvider(
                     bool cached = preBlockCache.TryGetValue(in key, out Account? preBlockAccount);
                     if (cached) baseScope.HintGet(accountChanges.Address, preBlockAccount);
 
-                    // Only an account change can remove an account; whether it took storage along is known only when cached.
-                    bool changesAccount = accountChanges.BalanceChanges.Length > 0 || accountChanges.NonceChanges.Length > 0 || accountChanges.CodeChanges.Length > 0;
-                    bool mayRemoveStorage = changesAccount && (!cached || preBlockAccount is { HasStorage: true } || !baseScope.StorageRootsAreAuthoritative);
-                    accounts.Add(new AppliedAccount(accountChanges, mayRemoveStorage));
+                    // Whether a removal took storage along is known only when cached.
+                    bool mayRemoveStorage = !cached || preBlockAccount is { HasStorage: true } || !baseScope.StorageRootsAreAuthoritative;
+                    // A revived account keeps only the slots written after its removal; the scope's own read keeps this exact.
+                    BalAccountDelta? revival = BalAccountDelta.CanEmpty(accountChanges)
+                        && BalAccountDelta.Compute(baseScope.Get(accountChanges.Address), accountChanges) is { WipesStorage: true, Account: not null } delta
+                        ? delta
+                        : null;
+                    accounts.Add(new AppliedAccount(accountChanges, mayRemoveStorage, revival));
                 }
 
                 baseScope.ApplyBal(bal);
@@ -422,10 +428,12 @@ public class PrewarmerScopeProvider(
     }
 
     /// <summary>An account a BAL changed, with its final value once applied.</summary>
-    private struct AppliedAccount(ReadOnlyAccountChanges changes, bool mayRemoveStorage)
+    private struct AppliedAccount(ReadOnlyAccountChanges changes, bool mayRemoveStorage, BalAccountDelta? revival)
     {
         public readonly ReadOnlyAccountChanges Changes = changes;
         public readonly bool MayRemoveStorage = mayRemoveStorage;
+        /// <summary>Set when the BAL removed the account and then recreated it, wiping its earlier storage.</summary>
+        public readonly BalAccountDelta? Revival = revival;
         public Account? Account;
     }
 
@@ -449,6 +457,17 @@ public class PrewarmerScopeProvider(
 
                     using IWorldStateScopeProvider.IStorageWriteBatch clearBatch = writeBatch.CreateStorageWriteBatch(changes.Address, 0);
                     clearBatch.Clear();
+                    continue;
+                }
+
+                if (appliedAccount.Revival is { } revival)
+                {
+                    using IWorldStateScopeProvider.IStorageWriteBatch revivedBatch = writeBatch.CreateStorageWriteBatch(changes.Address, changes.StorageChanges.Length);
+                    revivedBatch.Clear();
+                    foreach (ReadOnlySlotChanges slotChanges in changes.StorageChanges)
+                    {
+                        if (revival.TryGetFinalValue(slotChanges, out UInt256 value)) revivedBatch.Set(slotChanges.Key, value);
+                    }
                     continue;
                 }
 
@@ -500,7 +519,8 @@ public class PrewarmerScopeProvider(
         Address address,
         bool isPrewarmer,
         LocalMetrics metrics,
-        bool bypassCache) : IWorldStateScopeProvider.IStorageTree
+        bool bypassCache,
+        CommittedStorageWrites? committedWrites) : IWorldStateScopeProvider.IStorageTree
     {
         private readonly IWorldStateScopeProvider.IStorageTree baseStorageTree = baseStorageTree;
         private readonly SeqlockCache<StorageCell, UInt256> preBlockCache = preBlockCache;
@@ -543,8 +563,14 @@ public class PrewarmerScopeProvider(
 
         public void HintSet(in UInt256 index, in UInt256 value)
         {
-            if (isPrewarmer) baseStorageTree.HintSet(in index);
-            else baseStorageTree.HintSet(in index, in value);
+            if (isPrewarmer)
+            {
+                baseStorageTree.HintSet(in index);
+                return;
+            }
+
+            committedWrites?.Add(address, in index, in value);
+            baseStorageTree.HintSet(in index, in value);
         }
 
         private void LoadFromTreeStorage(in StorageCell storageCell, out UInt256 value)
