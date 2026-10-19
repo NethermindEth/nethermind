@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -68,11 +69,13 @@ namespace Nethermind.JsonRpc.Modules
                 : new SearchResult<BlockHeader>(header);
         }
 
-        /// <param name="unknownBlockErrorCode">
-        /// The code for a block that is not known, including an unresolvable safe or finalized tag, instead of
-        /// <see cref="ErrorCodes.ResourceNotFound"/> and <see cref="ErrorCodes.UnknownBlockError"/>. When set, a known header
-        /// whose body is missing is reported as <see cref="BlockBodyNotFound"/>, which without it reads as an unknown block.
-        /// </param>
+        /// <param name="unknownBlockErrorCode">The code for a block that is not known, instead of <see cref="ErrorCodes.ResourceNotFound"/>.</param>
+        /// <remarks>
+        /// With <paramref name="unknownBlockErrorCode"/>, a block missing from the first lookup is looked up again through its
+        /// header, so a known header without a body is reported as <see cref="BlockBodyNotFound"/> and an unresolvable safe or
+        /// finalized tag as unknown. Without it, such a tag is <see cref="ErrorCodes.UnknownBlockError"/>, and a known header
+        /// without a body reads as unknown unless a canonical hash selects it.
+        /// </remarks>
         public static SearchResult<Block> SearchForBlock(this IBlockFinder blockFinder, BlockParameter? blockParameter, bool allowNulls = false, int? unknownBlockErrorCode = null)
         {
             blockParameter ??= BlockParameter.Latest;
@@ -93,9 +96,9 @@ namespace Nethermind.JsonRpc.Modules
 
             if (block is null)
             {
-                if (blockParameter.Equals(BlockParameter.Finalized) || blockParameter.Equals(BlockParameter.Safe))
+                if (unknownBlockErrorCode is null && (blockParameter.Equals(BlockParameter.Finalized) || blockParameter.Equals(BlockParameter.Safe)))
                 {
-                    return new SearchResult<Block>("Unknown block error", unknownBlockErrorCode ?? ErrorCodes.UnknownBlockError);
+                    return new SearchResult<Block>("Unknown block error", ErrorCodes.UnknownBlockError);
                 }
 
                 if (blockFinder.IsBlockPruned(blockParameter))
@@ -107,13 +110,31 @@ namespace Nethermind.JsonRpc.Modules
 
                 if (!allowNulls)
                 {
-                    return isCanonicalBodyMissing || (unknownBlockErrorCode is not null && blockFinder.FindHeader(blockParameter) is not null)
-                        ? new SearchResult<Block>(BlockBodyNotFound, ErrorCodes.ResourceNotFound)
-                        : new SearchResult<Block>(HeaderNotFound, unknownBlockErrorCode ?? ErrorCodes.ResourceNotFound);
+                    return unknownBlockErrorCode is null
+                        ? new SearchResult<Block>(isCanonicalBodyMissing ? BlockBodyNotFound : HeaderNotFound, ErrorCodes.ResourceNotFound)
+                        : SearchForBlockByHeader(blockFinder, blockParameter, unknownBlockErrorCode.Value);
                 }
             }
 
             return new SearchResult<Block>(block);
+        }
+
+        /// <summary>
+        /// Finds the selected header and the block with its hash: the block is unknown only when its header is, a known
+        /// header without a body is missing history, and a block imported since the first lookup is found.
+        /// </summary>
+        private static SearchResult<Block> SearchForBlockByHeader(IBlockFinder blockFinder, BlockParameter blockParameter, int unknownBlockErrorCode)
+        {
+            BlockHeader? header = blockFinder.FindHeader(blockParameter);
+            if (header?.Hash is null)
+            {
+                return new SearchResult<Block>(HeaderNotFound, unknownBlockErrorCode);
+            }
+
+            Block? block = blockFinder.FindBlock(header.Hash, BlockTreeLookupOptions.None, header.Number);
+            return block is null
+                ? new SearchResult<Block>(BlockBodyNotFound, ErrorCodes.ResourceNotFound)
+                : new SearchResult<Block>(block);
         }
 
         /// <summary>

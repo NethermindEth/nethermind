@@ -319,6 +319,61 @@ public class TraceRpcModuleTests
         Assert.That(JToken.Parse(response)["error"]?["code"]?.Value<int>(), Is.EqualTo(ErrorCodes.StandardResourceNotFound), response);
     }
 
+    // The block is missing from the first lookup and imported right after, as one at the tip can be.
+    [Test]
+    public async Task Trace_methods_trace_a_block_imported_during_its_lookup([Values("trace_block", "trace_replayBlockTransactions")] string method)
+    {
+        Context context = new();
+        await context.Build();
+        using TestRpcBlockchain blockchain = context.Blockchain;
+        Block head = blockchain.BlockTree.Head!;
+        using ILifetimeScope scope = WithStateAvailability(blockchain, _ => true, new BlockImportedAfterLookupBlockTree(blockchain.BlockTree, head.Number));
+        ITraceRpcModule module = scope.Resolve<TraceModuleFactory>().Create();
+        string block = $"0x{head.Number:x}";
+
+        string response = method == "trace_block"
+            ? await RpcTest.TestSerializedRequest(module, method, block)
+            : await RpcTest.TestSerializedRequest(module, method, block, new[] { "trace" });
+
+        Assert.That(JToken.Parse(response)["result"]?.Type, Is.EqualTo(JTokenType.Array), response);
+    }
+
+    private sealed class BlockImportedAfterLookupBlockTree(IBlockTree inner, ulong importedNumber) : BlockTreeTestDouble(inner)
+    {
+        private bool _lookedUp;
+
+        public override Block? FindBlock(ulong blockNumber, BlockTreeLookupOptions options)
+        {
+            if (blockNumber != importedNumber) return base.FindBlock(blockNumber, options);
+            bool known = _lookedUp;
+            _lookedUp = true;
+            return known ? base.FindBlock(blockNumber, options) : null;
+        }
+    }
+
+    [Test]
+    public async Task Trace_methods_report_a_safe_block_without_a_body_as_unavailable(
+        [Values("trace_block", "trace_replayBlockTransactions")] string method, [Values] bool isPruned)
+    {
+        Context context = new();
+        await context.Build();
+        using TestRpcBlockchain blockchain = context.Blockchain;
+        Block bodyless = blockchain.BlockTree.FindBlock(blockchain.BlockTree.Head!.Number - 1)!;
+        using ILifetimeScope scope = WithStateAvailability(blockchain, _ => true, new PrunedBodyBlockTree(blockchain.BlockTree, bodyless, isPruned, isSafe: true));
+        ITraceRpcModule module = scope.Resolve<TraceModuleFactory>().Create();
+
+        string response = method == "trace_block"
+            ? await RpcTest.TestSerializedRequest(module, method, "safe")
+            : await RpcTest.TestSerializedRequest(module, method, "safe", new[] { "trace" });
+
+        JToken? error = JToken.Parse(response)["error"];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(error?["code"]?.Value<int>(), Is.EqualTo(isPruned ? ErrorCodes.PrunedHistoryUnavailable : ErrorCodes.ResourceNotFound), response);
+            Assert.That(error?["message"]?.Value<string>(), isPruned ? Does.StartWith(ErrorMessages.PrunedHistoryUnavailable) : Is.EqualTo(BlockFinderExtensions.BlockBodyNotFound), response);
+        }
+    }
+
     private sealed class ImportedAfterLookupBlockTree(IBlockTree inner, BlockHeader imported) : BlockTreeTestDouble(inner)
     {
         private bool _lookedUp;
@@ -759,8 +814,10 @@ public class TraceRpcModuleTests
 
     public enum UnavailableHistory { State, ParentHeader, PrunedBody }
 
-    private sealed class PrunedBodyBlockTree(IBlockTree inner, Block prunedBlock, bool isPruned = true) : BlockTreeTestDouble(inner)
+    private sealed class PrunedBodyBlockTree(IBlockTree inner, Block prunedBlock, bool isPruned = true, bool isSafe = false) : BlockTreeTestDouble(inner)
     {
+        public override Hash256? SafeHash => isSafe ? prunedBlock.Hash : base.SafeHash;
+
         public override Block? FindBlock(Hash256 blockHash, BlockTreeLookupOptions options, ulong? blockNumber = null) =>
             blockHash == prunedBlock.Hash ? null : base.FindBlock(blockHash, options, blockNumber);
 
@@ -3668,15 +3725,17 @@ public class TraceRpcModuleTests
         Assert.That(call["ex"]!["mem"], Is.EqualTo(JToken.Parse($$"""{"data":"0xffee{{tail[4..]}}","off":256}""")).Using(JToken.EqualityComparer));
     }
 
-    // A creation whose initcode reverts, so the CREATE's operation is completed after a sub-trace with operations of its own.
+    // A creation whose initcode reverts, so the CREATE's operation is completed after a sub-trace with operations of its own,
+    // either before the next operation or, when the code ends with it, as its frame ends.
     [Test]
-    public async Task VmTrace_operations_name_their_opcode([Values] bool streaming)
+    public async Task VmTrace_operations_name_their_opcode([Values] bool streaming, [Values] bool endsWithCreate)
     {
         Context context = new();
         await context.Build();
         using TestRpcBlockchain blockchain = context.Blockchain;
         blockchain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = streaming;
-        byte[] code = Prepare.EvmCode.Create(RevertDeadbeefCode, 0).Op(Instruction.STOP).Done;
+        Prepare creation = Prepare.EvmCode.Create(RevertDeadbeefCode, 0);
+        byte[] code = endsWithCreate ? creation.Done : creation.Op(Instruction.STOP).Done;
 
         JToken vmTrace = await TraceCallVmTrace(context, code.ToHexString(true), "vmTrace");
 
