@@ -88,6 +88,27 @@ namespace Nethermind.Evm.Test.Tracing
         }
 
         [Test]
+        public void Reads_the_transaction_output_for_a_composite_of_block_tracers()
+        {
+            Transaction tx = Build.A.Transaction.TestObject;
+            CompositeBlockTracer composite = new();
+            for (int i = 0; i < 2; i++)
+            {
+                IBlockTracer blockTracer = Substitute.For<IBlockTracer>();
+                blockTracer.StartNewTxTrace(tx).Returns(Substitute.For<ITxTracer>());
+                composite.Add(blockTracer);
+            }
+
+            BlockReceiptsTracer tracer = new();
+            tracer.SetOtherTracer(composite.GetTracer());
+            tracer.StartNewBlockTrace(Build.A.Block.WithTransactions(tx).TestObject);
+
+            tracer.StartNewTxTrace(tx);
+
+            Assert.That(tracer.IsTracingOutput, Is.True, "plugin tracers and produced-block dumps run through a composite");
+        }
+
+        [Test]
         public void Without_receipts_keeps_block_gas_and_forwards_the_outcome([Values] bool failedFrame)
         {
             Transaction frameTx = Build.A.Transaction.WithType(TxType.FrameTx).TestObject;
