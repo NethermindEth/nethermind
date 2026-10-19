@@ -17,12 +17,12 @@ using Nethermind.Trie.Pruning;
 namespace Nethermind.Benchmarks.Store;
 
 /// <summary>
-/// Compares <see cref="PatriciaTree.BulkSet"/> followed by hashing and committing against <see cref="BufferBulkSet"/>,
+/// Compares <see cref="PatriciaTree.BulkSet"/> followed by hashing and committing against <see cref="NodeRecordBulkSet"/>,
 /// which hashes and writes to the trie node buffer as part of the bulk set. Every batch starts from the same preloaded trie.
 /// </summary>
 [MemoryDiagnoser]
 [MinIterationTime(1000)]
-public class BufferBulkSetBenchmarks
+public class NodeRecordBulkSetBenchmarks
 {
     private const int EntryCount = 1024 * 10;
     private const int ColdGenerationBytes = 4 * 1024 * 1024;
@@ -89,17 +89,17 @@ public class BufferBulkSetBenchmarks
         }
     }
 
-    [IterationSetup(Target = nameof(BufferBulkSetColdBuffer))]
+    [IterationSetup(Target = nameof(NodeRecordBulkSetColdBuffer))]
     public void CreateColdBuffer() => _coldBuffer = new NodeRecordBuffer(0, ColdGenerationBytes);
 
-    [IterationCleanup(Target = nameof(BufferBulkSetColdBuffer))]
+    [IterationCleanup(Target = nameof(NodeRecordBulkSetColdBuffer))]
     public void ReleaseColdBuffer() => _coldBuffer.Dispose();
 
     /// <summary>Every batch reads the preloaded trie from the node source and writes to a buffer created for the iteration.</summary>
     [Benchmark]
-    public void BufferBulkSetColdBuffer() => DoBufferBulkSet(_coldBuffer, new TrieRoot(_preloadedRootHash.ValueHash256, 0));
+    public void NodeRecordBulkSetColdBuffer() => DoNodeRecordBulkSet(_coldBuffer, new TrieRoot(_preloadedRootHash.ValueHash256, 0));
 
-    [IterationSetup(Target = nameof(BufferBulkSetWarmBuffer))]
+    [IterationSetup(Target = nameof(NodeRecordBulkSetWarmBuffer))]
     public void CreateWarmBuffer()
     {
         _warmBuffer = new NodeRecordBuffer(WarmCompressedMaxMemory, NodeRecordBuffer.DefaultGenerationBytes);
@@ -108,7 +108,7 @@ public class BufferBulkSetBenchmarks
         _fetchCountBeforeWarmBuffer = _nodeSource.FetchCount;
     }
 
-    [IterationCleanup(Target = nameof(BufferBulkSetWarmBuffer))]
+    [IterationCleanup(Target = nameof(NodeRecordBulkSetWarmBuffer))]
     public void ReleaseWarmBuffer()
     {
         _warmBuffer.Dispose();
@@ -117,30 +117,30 @@ public class BufferBulkSetBenchmarks
     }
 
     /// <summary>
-    /// Like <see cref="BufferBulkSetColdBuffer"/>, but every batch reads the preloaded trie in place from a buffer the iteration's
+    /// Like <see cref="NodeRecordBulkSetColdBuffer"/>, but every batch reads the preloaded trie in place from a buffer the iteration's
     /// preload filled and retains, as a scope's retain keeps the nodes of in-memory blocks readable.
     /// </summary>
     [Benchmark]
-    public void BufferBulkSetWarmBuffer() => DoBufferBulkSet(_warmBuffer, _warmRoot);
+    public void NodeRecordBulkSetWarmBuffer() => DoNodeRecordBulkSet(_warmBuffer, _warmRoot);
 
     private TrieRoot PreloadBuffer(INodeRecordBuffer buffer)
     {
         if (_preload.Length == 0) return TrieRoot.Empty;
 
         using ArrayPoolListRef<PatriciaTree.BulkSetEntry> preloadSet = new(_preload);
-        TrieRoot root = BufferBulkSet.BulkSet(_nodeSource.Over(buffer), null, TrieRoot.Empty, preloadSet, canParallelize: true);
+        TrieRoot root = NodeRecordBulkSet.BulkSet(_nodeSource.Over(buffer), null, TrieRoot.Empty, preloadSet, canParallelize: true);
         if (root.Hash != _preloadedRootHash.ValueHash256) throw new InvalidOperationException($"Buffer root {root.Hash} differs from {_preloadedRootHash}");
         return root;
     }
 
-    private void DoBufferBulkSet(INodeRecordBuffer buffer, TrieRoot root)
+    private void DoNodeRecordBulkSet(INodeRecordBuffer buffer, TrieRoot root)
     {
         using ArrayPoolListRef<PatriciaTree.BulkSetEntry> batch = new(BatchSize);
         for (int start = 0; start < EntryCount; start += BatchSize)
         {
             batch.Clear();
             batch.AddRange(_entries.AsSpan(start, BatchSize));
-            BufferBulkSet.BulkSet(_nodeSource.Over(buffer), null, root, batch, canParallelize: true);
+            NodeRecordBulkSet.BulkSet(_nodeSource.Over(buffer), null, root, batch, canParallelize: true);
             // Every batch stands for a block, which fetches the nodes it reads again.
             _warmedNodes.Reset();
         }
