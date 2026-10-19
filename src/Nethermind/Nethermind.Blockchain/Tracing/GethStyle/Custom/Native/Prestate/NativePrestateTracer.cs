@@ -152,6 +152,9 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
     {
         LookupAccount(cell.Address);
         LookupStorage(cell.Address, cell.Index);
+        // Protocol-managed storage exists independently of the account record (EIP-8250).
+        if (!_disableStorage)
+            _initiallyEmptyAccounts?.Remove(cell.Address);
     }
 
     protected override GethLikeTxTrace CreateTrace() => new();
