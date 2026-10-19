@@ -23,6 +23,7 @@ public class ProcessedTransactionsDbCleaner : IDisposable
     private ulong _lastFinalizedBlock = 0;
     private ulong _pendingFinalizedBlock = 0;
     private bool _isCleaning;
+    private bool _disposed;
     public Task CleaningTask { get; private set; } = Task.CompletedTask;
 
     public ProcessedTransactionsDbCleaner(IBlockTree blockTree, IDbProvider dbProvider, ILogManager logManager, ITxPoolConfig txPoolConfig)
@@ -48,9 +49,8 @@ public class ProcessedTransactionsDbCleaner : IDisposable
 
             if (_isCleaning) return;
             _isCleaning = true;
+            CleaningTask = Task.Run(RunCleaner);
         }
-
-        CleaningTask = Task.Run(RunCleaner);
     }
 
     private void RunCleaner()
@@ -63,7 +63,7 @@ public class ProcessedTransactionsDbCleaner : IDisposable
                 lock (_cleaningLock)
                 {
                     target = _pendingFinalizedBlock;
-                    if (target <= _lastFinalizedBlock)
+                    if (_disposed || target <= _lastFinalizedBlock)
                     {
                         // Publishing idle has to be atomic with deciding there is nothing left to clean,
                         // or a finalization recorded in between would find a cleaner that is already leaving.
@@ -128,5 +128,17 @@ public class ProcessedTransactionsDbCleaner : IDisposable
         }
     }
 
-    public void Dispose() => _blockTree.BlocksFinalized -= OnBlocksFinalized;
+    /// <remarks>Waits for a running clean, so the processed transactions column is not touched after its db is disposed.</remarks>
+    public void Dispose()
+    {
+        Task cleaningTask;
+        lock (_cleaningLock)
+        {
+            _disposed = true;
+            cleaningTask = CleaningTask;
+        }
+
+        _blockTree.BlocksFinalized -= OnBlocksFinalized;
+        cleaningTask.Wait();
+    }
 }

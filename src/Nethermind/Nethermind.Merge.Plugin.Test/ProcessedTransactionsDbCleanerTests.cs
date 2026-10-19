@@ -80,68 +80,120 @@ public class ProcessedTransactionsDbCleanerTests
     [Test]
     public async Task should_clean_to_the_highest_finalized_block_when_a_finalization_arrives_while_cleaning()
     {
-        const ulong AlreadyFinalized = 101;
-        const ulong FinalizedWhileCleaning = 110;
-        ulong[] blocks = [1, AlreadyFinalized, 102, 105, FinalizedWhileCleaning];
-
-        IColumnsDb<BlobTxsColumns> columnsDb = new MemColumnsDb<BlobTxsColumns>(BlobTxsColumns.ProcessedTxs);
-        BlobTxStorage blobTxStorage = new(columnsDb);
-        foreach (ulong block in blocks)
-        {
-            using ArrayPoolListRef<Transaction> txs = new(2, GetTx(TestItem.PrivateKeyA), GetTx(TestItem.PrivateKeyB));
-            blobTxStorage.AddBlobTransactionsFromBlock(block, txs);
-        }
-
-        IDb processedTxsDb = columnsDb.GetColumnDb(BlobTxsColumns.ProcessedTxs);
-        Assert.That(processedTxsDb.GetAllKeys().Count(), Is.EqualTo(3 * blocks.Length),
-            "expected the block-number key and the two transaction keys of every block");
-
-        using ManualResetEventSlim cleaningStarted = new();
-        using ManualResetEventSlim releaseCleaning = new();
-        int batchesStarted = 0;
-
-        // Park the first clean inside the database, so the second finalization provably arrives while it runs.
-        IDb gatedDb = Substitute.For<IDb>();
-        gatedDb.GetAllKeys().Returns(_ => processedTxsDb.GetAllKeys());
-        gatedDb.StartWriteBatch().Returns(_ =>
-        {
-            if (Interlocked.Increment(ref batchesStarted) == 1)
-            {
-                cleaningStarted.Set();
-                releaseCleaning.Wait();
-            }
-
-            return processedTxsDb.StartWriteBatch();
-        });
-
-        IColumnsDb<BlobTxsColumns> gatedColumnsDb = Substitute.For<IColumnsDb<BlobTxsColumns>>();
-        gatedColumnsDb.GetColumnDb(BlobTxsColumns.ProcessedTxs).Returns(gatedDb);
-        IDbProvider dbProvider = Substitute.For<IDbProvider>();
-        dbProvider.BlobTransactionsDb.Returns(gatedColumnsDb);
-
-        IBlockTree blockTree = Substitute.For<IBlockTree>();
-        ProcessedTransactionsDbCleaner dbCleaner = new(blockTree, dbProvider, _logManager, new TxPoolConfig());
+        using ParkedCleaner parked = new(_logManager);
 
         try
         {
-            blockTree.BlocksFinalized += Raise.EventWith(
-                new FinalizeEventArgs(Build.A.BlockHeader.WithNumber(AlreadyFinalized).TestObject));
-            Assert.That(cleaningStarted.Wait(TimeSpan.FromSeconds(10)), Is.True, "the first clean never started");
+            parked.FinalizeBlock(AlreadyFinalized);
+            Assert.That(parked.CleaningStarted.Wait(TimeSpan.FromSeconds(10)), Is.True, "the first clean never started");
 
-            blockTree.BlocksFinalized += Raise.EventWith(
-                new FinalizeEventArgs(Build.A.BlockHeader.WithNumber(FinalizedWhileCleaning).TestObject));
+            parked.FinalizeBlock(FinalizedWhileCleaning);
         }
         finally
         {
-            releaseCleaning.Set();
+            parked.ReleaseCleaning.Set();
         }
 
-        await dbCleaner.CleaningTask;
+        await parked.Cleaner.CleaningTask;
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(processedTxsDb.GetAllKeys(), Is.Empty);
-            Assert.That(blobTxStorage.TryGetBlobTransactionsFromBlock(FinalizedWhileCleaning, out _), Is.False);
+            Assert.That(parked.ProcessedTxsDb.GetAllKeys(), Is.Empty);
+            Assert.That(parked.BlobTxStorage.TryGetBlobTransactionsFromBlock(FinalizedWhileCleaning, out _), Is.False);
+        }
+    }
+
+    [Test]
+    public void dispose_should_wait_for_the_running_clean_and_not_start_another()
+    {
+        using ParkedCleaner parked = new(_logManager);
+        // Release the parked clean only once Dispose has marked the cleaner disposed, then let Dispose wait for it.
+        parked.BlockTree.When(b => b.BlocksFinalized -= Arg.Any<EventHandler<FinalizeEventArgs>>())
+            .Do(_ => parked.ReleaseCleaning.Set());
+
+        try
+        {
+            parked.FinalizeBlock(AlreadyFinalized);
+            Assert.That(parked.CleaningStarted.Wait(TimeSpan.FromSeconds(10)), Is.True, "the first clean never started");
+
+            parked.FinalizeBlock(FinalizedWhileCleaning);
+            parked.Cleaner.Dispose();
+        }
+        finally
+        {
+            parked.ReleaseCleaning.Set();
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(parked.Cleaner.CleaningTask.IsCompleted, Is.True);
+            Assert.That(parked.BatchesStarted, Is.EqualTo(1));
+            Assert.That(parked.BlobTxStorage.TryGetBlobTransactionsFromBlock(AlreadyFinalized, out _), Is.False);
+            Assert.That(parked.BlobTxStorage.TryGetBlobTransactionsFromBlock(FinalizedWhileCleaning, out _), Is.True);
+        }
+    }
+
+    private const ulong AlreadyFinalized = 101;
+    private const ulong FinalizedWhileCleaning = 110;
+
+    /// <summary>A cleaner whose first clean parks inside the database until <see cref="ReleaseCleaning"/> is set.</summary>
+    private sealed class ParkedCleaner : IDisposable
+    {
+        private int _batchesStarted;
+
+        public IDb ProcessedTxsDb { get; }
+        public BlobTxStorage BlobTxStorage { get; }
+        public IBlockTree BlockTree { get; } = Substitute.For<IBlockTree>();
+        public ProcessedTransactionsDbCleaner Cleaner { get; }
+        public ManualResetEventSlim CleaningStarted { get; } = new();
+        public ManualResetEventSlim ReleaseCleaning { get; } = new();
+        public int BatchesStarted => Volatile.Read(ref _batchesStarted);
+
+        public ParkedCleaner(ILogManager logManager)
+        {
+            ulong[] blocks = [1, AlreadyFinalized, 102, 105, FinalizedWhileCleaning];
+
+            IColumnsDb<BlobTxsColumns> columnsDb = new MemColumnsDb<BlobTxsColumns>(BlobTxsColumns.ProcessedTxs);
+            BlobTxStorage = new(columnsDb);
+            foreach (ulong block in blocks)
+            {
+                using ArrayPoolListRef<Transaction> txs = new(2, GetTx(TestItem.PrivateKeyA), GetTx(TestItem.PrivateKeyB));
+                BlobTxStorage.AddBlobTransactionsFromBlock(block, txs);
+            }
+
+            ProcessedTxsDb = columnsDb.GetColumnDb(BlobTxsColumns.ProcessedTxs);
+            Assert.That(ProcessedTxsDb.GetAllKeys().Count(), Is.EqualTo(3 * blocks.Length),
+                "expected the block-number key and the two transaction keys of every block");
+
+            // Park the first clean inside the database, so the second finalization provably arrives while it runs.
+            IDb gatedDb = Substitute.For<IDb>();
+            gatedDb.GetAllKeys().Returns(_ => ProcessedTxsDb.GetAllKeys());
+            gatedDb.StartWriteBatch().Returns(_ =>
+            {
+                if (Interlocked.Increment(ref _batchesStarted) == 1)
+                {
+                    CleaningStarted.Set();
+                    ReleaseCleaning.Wait();
+                }
+
+                return ProcessedTxsDb.StartWriteBatch();
+            });
+
+            IColumnsDb<BlobTxsColumns> gatedColumnsDb = Substitute.For<IColumnsDb<BlobTxsColumns>>();
+            gatedColumnsDb.GetColumnDb(BlobTxsColumns.ProcessedTxs).Returns(gatedDb);
+            IDbProvider dbProvider = Substitute.For<IDbProvider>();
+            dbProvider.BlobTransactionsDb.Returns(gatedColumnsDb);
+
+            Cleaner = new(BlockTree, dbProvider, logManager, new TxPoolConfig());
+        }
+
+        public void FinalizeBlock(ulong blockNumber) =>
+            BlockTree.BlocksFinalized += Raise.EventWith(new FinalizeEventArgs(Build.A.BlockHeader.WithNumber(blockNumber).TestObject));
+
+        public void Dispose()
+        {
+            CleaningStarted.Dispose();
+            ReleaseCleaning.Dispose();
         }
     }
 }
