@@ -162,7 +162,7 @@ public partial class DebugRpcModuleTests
             ("result", 0, -1)
         ];
 
-        foreach (string method in new[] { "debug_traceBlockByNumber", "debug_traceBlockByHash" })
+        foreach (string method in new[] { "debug_traceBlockByNumber", "debug_traceBlockByHash", "debug_traceBlock" })
         {
             foreach ((string failure, int failAt, int? selectedAt) in cases)
                 yield return new TestCaseData(method, failure, failAt, selectedAt);
@@ -233,7 +233,12 @@ public partial class DebugRpcModuleTests
         };
         Hash256 selectedHash = selectedAt >= 0 ? block.Transactions[selectedAt.Value].Hash! : TestItem.KeccakA;
         object traceOptions = selectedAt is null ? new { tracer } : new { tracer, txHash = selectedHash };
-        object blockSelector = method == "debug_traceBlockByHash" ? block.Hash! : block.Number;
+        object blockSelector = method switch
+        {
+            "debug_traceBlockByHash" => block.Hash!,
+            "debug_traceBlock" => Rlp.Encode(block).Bytes,
+            _ => block.Number
+        };
         string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, method, blockSelector, traceOptions);
         JToken actual = JToken.Parse(response);
         Assert.That(actual["error"], Is.Null, response);
@@ -277,9 +282,10 @@ public partial class DebugRpcModuleTests
         if (selectedAt is not null) return;
 
         observations.Enabled = false;
-        string legacy = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceBlock", Rlp.Encode(block).Bytes, new { tracer });
-        Assert.That(JToken.Parse(legacy)["error"], Is.Not.Null, "raw block tracing retains its existing error behavior");
-        string native = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceBlockByNumber", block.Number,
+        string legacy = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceTransaction",
+            block.Transactions[Math.Max(failAt, 0)].Hash!, new { tracer });
+        Assert.That(JToken.Parse(legacy)["error"], Is.Not.Null, "single-transaction tracing retains its existing error behavior");
+        string native = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, method, blockSelector,
             new { tracer = "callTracer", tracerConfig = new { onlyTopCall = "not-a-boolean" } });
         Assert.That(JToken.Parse(native)["error"], Is.Not.Null, "native tracer failures remain top-level");
     }
