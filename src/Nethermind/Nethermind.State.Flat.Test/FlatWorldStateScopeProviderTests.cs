@@ -1041,7 +1041,7 @@ public class FlatWorldStateScopeProviderTests
             }
             scope.Commit(1);
             // The root predates the worker's active generation, so retaining only its new writes is insufficient.
-            for (int i = 0; i < 10; i++) ctx.NodeRecordBuffer.Reserve(64 * 1024, out _);
+            for (int i = 0; i < 10; i++) ctx.NodeRecordBuffer.StartWriteBatch(64 * 1024).Dispose();
         }
 
         FlatStorageTree tree = (FlatStorageTree)scope.CreateStorageTree(address);
@@ -1074,7 +1074,7 @@ public class FlatWorldStateScopeProviderTests
             });
             Assert.That(owner.Wait(5000), Is.True, "commit/dispose must not wait for an unfinished pass");
             ctx.PersistenceReader.DidNotReceive().Dispose();
-            for (int i = 0; i < 10; i++) ctx.NodeRecordBuffer.Reserve(64 * 1024, out _);
+            for (int i = 0; i < 10; i++) ctx.NodeRecordBuffer.StartWriteBatch(64 * 1024).Dispose();
         }
         finally
         {

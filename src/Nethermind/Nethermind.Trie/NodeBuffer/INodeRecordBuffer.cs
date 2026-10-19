@@ -31,19 +31,13 @@ public interface INodeRecordBuffer : IDisposable
     /// <exception cref="TrieException">The pointer no longer resolves to a record.</exception>
     NodeRecord GetRecord(ulong pointer);
 
-    /// <summary>Reserves contiguous, zero-filled bytes and returns their first pointer.</summary>
+    /// <summary>Reserves contiguous, zero-filled bytes for node records, registered with the buffer when the batch is disposed.</summary>
     /// <remarks>
-    /// The length must be record-aligned. The returned span covers exactly the reservation; adding a relative byte offset
-    /// to the returned pointer addresses the same byte in that span. The reservation cannot cross a pointer-address boundary.
-    /// The writer must keep the reservation protected until all written records and their roots are published.
+    /// The reservation cannot cross a pointer-address boundary. The writer holds a pin no newer than the batch until all written
+    /// records and their roots are published.
     /// </remarks>
-    ulong Reserve(int alignedTotalLength, out Span<byte> bytes);
-
-    /// <summary>Registers fully encoded records before their roots are published.</summary>
-    /// <param name="basePointer">The pointer returned by the reservation.</param>
-    /// <param name="bytes">The reserved bytes containing the completed records.</param>
-    /// <param name="recordOffsets">Offsets of ordinary node records relative to the reservation, excluding root-index records.</param>
-    void CompleteWrite(ulong basePointer, ReadOnlySpan<byte> bytes, ReadOnlySpan<int> recordOffsets);
+    /// <param name="alignedTotalLength">The total length of the records, a multiple of the record alignment.</param>
+    INodeRecordWriteBatch StartWriteBatch(int alignedTotalLength);
 
     /// <summary>Finds the newest available indexed pointer for a trie root, or returns zero.</summary>
     /// <param name="address">The storage trie address hash, or null for the state trie.</param>

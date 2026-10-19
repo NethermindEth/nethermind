@@ -28,7 +28,7 @@ internal class NodeRecordBufferTests
     internal const int PollingMilliseconds = 10;
 
     [Test]
-    public void Contract_write_completion_registers_every_relative_record_offset()
+    public void Contract_write_batch_registers_every_record_on_dispose()
     {
         using NodeRecordBuffer implementation = new(0, GenerationBytes);
         INodeRecordBuffer buffer = implementation;
@@ -36,16 +36,20 @@ internal class NodeRecordBufferTests
         buffer.AppendRecordFromRlp(null, TreePath.Empty, ValueKeccak.Compute(Leaf(0, 8)), Leaf(0, 8));
         byte[][] rlps = [Leaf(1, 8), Leaf(2, 8)];
         int recordLength = NodeRecordCodec.AlignedLength(NodeRecordCodec.Length(0, rlps[0].Length));
-        ulong pointer = buffer.Reserve(recordLength * 2, out Span<byte> bytes);
         ulong[] keys = [NodeRecordCodec.NodeKey(null, TreePath.FromHexString("1")), NodeRecordCodec.NodeKey(null, TreePath.FromHexString("2"))];
+        INodeRecordWriteBatch batch = buffer.StartWriteBatch(recordLength * 2);
+        ulong pointer = batch.BasePointer;
+        int length = batch.Bytes.Length;
         for (int i = 0; i < rlps.Length; i++)
-            NodeRecordCodec.WriteFromRlp(rlps[i], NodeRecordKind.Leaf, 0, ValueKeccak.Compute(rlps[i]), keys[i], bytes[(i * recordLength)..]);
+            NodeRecordCodec.WriteFromRlp(rlps[i], NodeRecordKind.Leaf, 0, ValueKeccak.Compute(rlps[i]), keys[i], batch.Bytes[(i * recordLength)..]);
 
-        buffer.CompleteWrite(pointer, bytes, stackalloc int[] { 0, recordLength });
         BloomFilter bloom = implementation.FindBloom(pointer)!;
+        bool registeredEarly = keys.Any(key => bloom.MightContain(key));
+        batch.Dispose();
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(bytes.Length, Is.EqualTo(recordLength * 2));
+            Assert.That(length, Is.EqualTo(recordLength * 2));
+            Assert.That(registeredEarly, Is.False, "records are registered on dispose");
             for (int i = 0; i < rlps.Length; i++)
             {
                 Assert.That(bloom.MightContain(keys[i]), Is.True);

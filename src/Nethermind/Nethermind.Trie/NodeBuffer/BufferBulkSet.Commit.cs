@@ -119,7 +119,9 @@ internal static partial class BufferBulkSet
 
             if (hashedCount == 0) return;
 
-            ulong basePointer = _buffer.Reserve(totalLength, out Span<byte> buffer);
+            using INodeRecordWriteBatch batch = _buffer.StartWriteBatch(totalLength);
+            Span<byte> buffer = batch.Bytes;
+            ulong basePointer = batch.BasePointer;
             for (int i = 0; i < hashedCount; i++)
             {
                 ref PendingNode node = ref _arena.Nodes[hashed[i]];
@@ -135,7 +137,6 @@ internal static partial class BufferBulkSet
                 ulong pointer = basePointer + (ulong)recordStarts[i];
                 Link(hashed[i], top, ChildRef.ForHash(hashes[i], pointer), ref topReference);
             }
-            _buffer.CompleteWrite(basePointer, buffer, recordStarts.AsSpan(0, hashedCount));
         }
 
         private void Link(int index, int top, in ChildRef reference, ref ChildRef topReference)

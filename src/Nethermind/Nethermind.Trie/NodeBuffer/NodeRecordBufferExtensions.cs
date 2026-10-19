@@ -24,10 +24,9 @@ public static partial class NodeRecordBufferExtensions
         if (!NodeRecordCodec.TryMeasure(rlp, out NodeRecordKind kind, out ushort hashMask)) ThrowInvalidRlp();
 
         int length = NodeRecordCodec.Length(BitOperations.PopCount(hashMask), rlp.Length);
-        ulong pointer = buffer.Reserve(NodeRecordCodec.AlignedLength(length), out Span<byte> bytes);
-        NodeRecordCodec.WriteFromRlp(rlp, kind, hashMask, hash, NodeRecordCodec.NodeKey(address, path), bytes);
-        buffer.CompleteWrite(pointer, bytes, stackalloc int[] { 0 });
-        return pointer;
+        using INodeRecordWriteBatch batch = buffer.StartWriteBatch(NodeRecordCodec.AlignedLength(length));
+        NodeRecordCodec.WriteFromRlp(rlp, kind, hashMask, hash, NodeRecordCodec.NodeKey(address, path), batch.Bytes);
+        return batch.BasePointer;
     }
 
     [DoesNotReturn, StackTraceHidden]

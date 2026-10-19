@@ -182,10 +182,9 @@ public static class FlatTestHelpers
                 position += NodeRecordCodec.PointerLength;
             }
 
-            ulong pointer = buffer.Reserve(NodeRecordCodec.AlignedLength(length), out Span<byte> storage);
-            record.CopyTo(storage);
-            buffer.CompleteWrite(pointer, storage, stackalloc int[] { 0 });
-            return ChildRef.ForHash(hash, pointer);
+            using INodeRecordWriteBatch batch = buffer.StartWriteBatch(NodeRecordCodec.AlignedLength(length));
+            record.CopyTo(batch.Bytes);
+            return ChildRef.ForHash(hash, batch.BasePointer);
         }
     }
 
@@ -322,14 +321,7 @@ internal sealed class ForwardingNodeRecordBuffer(INodeRecordBuffer inner) : INod
 
     public bool TryLocate(ulong pointer, out NodeRecord record) => inner.TryLocate(pointer, out record);
     public NodeRecord GetRecord(ulong pointer) => inner.GetRecord(pointer);
-    public ulong Reserve(int alignedTotalLength, out Span<byte> bytes) => inner.Reserve(alignedTotalLength, out bytes);
-
-    public void CompleteWrite(ulong basePointer, ReadOnlySpan<byte> bytes, ReadOnlySpan<int> recordOffsets)
-    {
-        Interlocked.Increment(ref CompletedWrites);
-        Interlocked.Add(ref CompletedRecords, recordOffsets.Length);
-        inner.CompleteWrite(basePointer, bytes, recordOffsets);
-    }
+    public INodeRecordWriteBatch StartWriteBatch(int alignedTotalLength) => new ForwardedWriteBatch(this, inner.StartWriteBatch(alignedTotalLength));
 
     public ulong FindRoot(Hash256? address, in ValueHash256 root) => inner.FindRoot(address, root);
     public void SetRoot(Hash256? address, in ValueHash256 root, ulong rootPointer) => inner.SetRoot(address, root, rootPointer);
@@ -341,6 +333,22 @@ internal sealed class ForwardingNodeRecordBuffer(INodeRecordBuffer inner) : INod
     {
         Interlocked.Increment(ref OutstandingPins);
         return new ForwardedPin(this, pin);
+    }
+
+    private sealed class ForwardedWriteBatch(ForwardingNodeRecordBuffer owner, INodeRecordWriteBatch innerBatch) : INodeRecordWriteBatch
+    {
+        public ulong BasePointer => innerBatch.BasePointer;
+        public Span<byte> Bytes => innerBatch.Bytes;
+
+        public void Dispose()
+        {
+            ReadOnlySpan<byte> bytes = innerBatch.Bytes;
+            int records = 0;
+            for (int offset = 0, length; offset < bytes.Length && (length = NodeRecordCodec.Length(bytes[offset..])) != NodeRecordCodec.HeaderLength; offset += NodeRecordCodec.AlignedLength(length)) records++;
+            Interlocked.Increment(ref owner.CompletedWrites);
+            Interlocked.Add(ref owner.CompletedRecords, records);
+            innerBatch.Dispose();
+        }
     }
 
     private sealed class ForwardedPin(ForwardingNodeRecordBuffer owner, INodeRecordBufferPin innerPin) : INodeRecordBufferPin

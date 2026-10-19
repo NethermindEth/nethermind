@@ -146,19 +146,23 @@ public sealed partial class NodeRecordBuffer : INodeRecordBuffer
 
     bool INodeRecordBuffer.TryLocate(ulong pointer, out NodeRecord record) => TryLocate(pointer, out record);
 
-    ulong INodeRecordBuffer.Reserve(int alignedTotalLength, out Span<byte> bytes)
-    {
-        ulong pointer = Reserve(alignedTotalLength, out NativeNodeBuffer buffer, out int offset);
-        bytes = buffer.AsSpan(offset, alignedTotalLength);
-        return pointer;
-    }
+    /// <inheritdoc/>
+    public INodeRecordWriteBatch StartWriteBatch(int alignedTotalLength) => WriteBatch.Start(this, alignedTotalLength);
 
-    void INodeRecordBuffer.CompleteWrite(ulong basePointer, ReadOnlySpan<byte> bytes, ReadOnlySpan<int> recordOffsets)
+    /// <summary>Adds the node keys of the records written to <paramref name="bytes"/> to the bloom of their generation.</summary>
+    private void CompleteWrite(ulong basePointer, ReadOnlySpan<byte> bytes)
     {
         BloomFilter? bloom = FindBloom(basePointer);
         if (bloom is null) return;
-        foreach (int offset in recordOffsets)
-            bloom.Add(BinaryPrimitives.ReadUInt64LittleEndian(bytes[(offset + NodeRecordCodec.NodeKeyOffset)..]));
+        for (int offset = 0; offset + NodeRecordCodec.HeaderLength <= bytes.Length;)
+        {
+            ReadOnlySpan<byte> record = bytes[offset..];
+            int length = NodeRecordCodec.Length(record);
+            // Past the last record a failed write leaves zeros, which read as a record without RLP.
+            if (length == NodeRecordCodec.HeaderLength) break;
+            bloom.Add(BinaryPrimitives.ReadUInt64LittleEndian(record[NodeRecordCodec.NodeKeyOffset..]));
+            offset += NodeRecordCodec.AlignedLength(length);
+        }
     }
 
     /// <summary>Reserves contiguous zero-filled bytes in the active generation.</summary>
@@ -237,6 +241,43 @@ public sealed partial class NodeRecordBuffer : INodeRecordBuffer
 
     [DoesNotReturn, StackTraceHidden]
     private static void ThrowTooManyPinned() => throw new TrieException("Too many pinned trie node buffer generations.");
+
+    /// <remarks>Reused per thread once disposed, so starting a batch allocates nothing.</remarks>
+    private sealed class WriteBatch : INodeRecordWriteBatch
+    {
+        [ThreadStatic] private static WriteBatch? _cached;
+
+        private NodeRecordBuffer? _buffer;
+        private NativeNodeBuffer? _data;
+        private int _offset;
+        private int _length;
+
+        public ulong BasePointer { get; private set; }
+
+        public Span<byte> Bytes => _data!.AsSpan(_offset, _length);
+
+        public static WriteBatch Start(NodeRecordBuffer buffer, int alignedTotalLength)
+        {
+            ulong pointer = buffer.Reserve(alignedTotalLength, out NativeNodeBuffer data, out int offset);
+            WriteBatch batch = _cached ?? new WriteBatch();
+            _cached = null;
+            batch._buffer = buffer;
+            batch._data = data;
+            batch._offset = offset;
+            batch._length = alignedTotalLength;
+            batch.BasePointer = pointer;
+            return batch;
+        }
+
+        public void Dispose()
+        {
+            if (_buffer is not { } buffer) return;
+            buffer.CompleteWrite(BasePointer, Bytes);
+            _buffer = null;
+            _data = null;
+            _cached = this;
+        }
+    }
 
     private sealed class AllGenerationsPin(NodeRecordBuffer buffer, ulong oldest, ulong newest) : IDisposable
     {
