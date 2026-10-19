@@ -432,6 +432,8 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
                 || JavaScriptTraceFailure.IsRecoverable(exception, observedNullThrow)))
         {
             _engine.ThrowIfInterrupted();
+            if (function == TracerFunctions.setup)
+                throw new JavaScriptTraceFailure(exception, inputError ?? exception.Message);
             _traceError = inputError ?? exception.Message;
             return null;
         }
