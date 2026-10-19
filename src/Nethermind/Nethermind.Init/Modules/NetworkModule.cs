@@ -83,9 +83,12 @@ public class NetworkModule(IConfigProvider configProvider) : Module
             .AddFirst<IP2PCapabilityResolver, DefaultP2PCapabilityResolver>()
             .AddLast<IP2PCapabilityResolver, SnapP2PCapabilityResolver>()
             // Debug-only EIP-8288 / EIP-8437 event feed, disabled by default: only an enabled feed resolves the block tree and
-            // pool it observes. Registered here rather than with block processing, which builds without the network config.
-            .AddSingleton<ProofWrapperEventFeed>(static ctx => ctx.Resolve<INetworkConfig>().ProofWrapperEventBufferSize is > 0 and var size
-                ? new ProofWrapperEventFeed(size, ctx.Resolve<IBlockTree>(), ctx.Resolve<ITxPool>())
+            // pool whose inclusion and eviction events it records. Registered here rather than with block processing, which the
+            // stateless guests compile without the network config or the pool's network-facing types.
+            .AddSingleton<V73.ProofWrapperChainEvents>(static ctx => new(new ProofWrapperEventFeed(ctx.Resolve<INetworkConfig>().ProofWrapperEventBufferSize),
+                ctx.Resolve<IBlockTree>(), ctx.Resolve<ITxPool>()))
+            .AddSingleton<ProofWrapperEventFeed>(static ctx => ctx.Resolve<INetworkConfig>().ProofWrapperEventBufferSize > 0
+                ? ctx.Resolve<V73.ProofWrapperChainEvents>().Feed
                 : ProofWrapperEventFeed.Disabled)
             .AddSingleton<V73.ProofWrapperTransport>()
             .AddSingleton<V73.ProofWrapperGossip>()

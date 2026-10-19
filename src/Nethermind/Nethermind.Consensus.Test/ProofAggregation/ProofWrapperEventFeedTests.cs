@@ -3,15 +3,11 @@
 
 using System;
 using System.Linq;
-using Nethermind.Blockchain;
 using Nethermind.Consensus.ProofAggregation;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Threading;
-using Nethermind.Int256;
-using Nethermind.TxPool;
-using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Consensus.Test.ProofAggregation;
@@ -21,11 +17,9 @@ public class ProofWrapperEventFeedTests
     private static ProofWrapperEvent Event(string type = ProofWrapperEventTypes.Announced) => new() { Type = type };
 
     [Test]
-    public void Disabled_feed_records_nothing_and_subscribes_to_nothing()
+    public void Disabled_feed_records_nothing()
     {
-        IBlockTree blockTree = Substitute.For<IBlockTree>();
-        ITxPool txPool = Substitute.For<ITxPool>();
-        using ProofWrapperEventFeed feed = new(0, blockTree, txPool);
+        ProofWrapperEventFeed feed = new(0);
         feed.Record(Event());
         ProofWrapperEventPage page = feed.Read(0, 10);
         using (Assert.EnterMultipleScope())
@@ -36,8 +30,6 @@ public class ProofWrapperEventFeedTests
             Assert.That(page.Latest, Is.Zero);
             Assert.That(feed.Describe([0xc0]), Is.Null, "a disabled feed never parses wrappers");
         }
-        blockTree.DidNotReceiveWithAnyArgs().BlockAddedToMain += null;
-        txPool.DidNotReceiveWithAnyArgs().EvictedPending += null;
     }
 
     [TestCase(4, 10, 0, 7, 6)]
@@ -117,46 +109,5 @@ public class ProofWrapperEventFeedTests
             Assert.That(details.Dependencies, Is.EqualTo(new[] { $"leanSPHINCS:{dependency.DataHash}:{dependency.VerificationKey}" }));
             Assert.That(feed.Describe([0xc0]), Is.Null, "a malformed wrapper has no description");
         }
-    }
-
-    [Test]
-    public void Records_inclusion_and_pool_eviction_of_dependency_bearing_transactions_only()
-    {
-        IBlockTree blockTree = Substitute.For<IBlockTree>();
-        ITxPool txPool = Substitute.For<ITxPool>();
-        using ProofWrapperEventFeed feed = new(8, blockTree, txPool);
-        Transaction bearing = DependencyBearing();
-        Transaction plain = Build.A.Transaction.WithHash(TestItem.KeccakB).TestObject;
-        Block block = Build.A.Block.WithNumber(7).WithTransactions(bearing, plain).TestObject;
-
-        blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(block));
-        txPool.EvictedPending += Raise.Event<EventHandler<TxEventArgs>>(txPool, new TxEventArgs(bearing));
-        txPool.EvictedPending += Raise.Event<EventHandler<TxEventArgs>>(txPool, new TxEventArgs(plain));
-        feed.Dispose();
-        blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(block));
-
-        ProofWrapperEvent[] events = feed.Read(0, 10).Events;
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(events.Select(e => e.Type), Is.EqualTo(new[] { ProofWrapperEventTypes.Included, ProofWrapperEventTypes.PoolEvicted }));
-            Assert.That(events[0].Block, Is.EqualTo(7));
-            Assert.That(events[0].BlockHash, Is.EqualTo(block.Hash));
-            Assert.That(events.Select(e => e.Transactions!.Single()), Is.All.EqualTo(bearing.Hash));
-        }
-    }
-
-    private static Transaction DependencyBearing()
-    {
-        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute([3]), default);
-        return new()
-        {
-            Type = TxType.FrameTx,
-            NonceKeys = [UInt256.Zero],
-            ChainId = 1,
-            SenderAddress = Address.Zero,
-            Hash = TestItem.KeccakC,
-            Frames = [new(FrameMode.DepVerify, FrameFlags.None, null, Eip8288Constants.LeanSphincsVerificationGas,
-                UInt256.Zero, Eip8288Dependencies.Serialize([dependency]))]
-        };
     }
 }

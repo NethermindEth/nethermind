@@ -4,12 +4,9 @@
 using System;
 using System.Collections.Generic;
 using System.Threading;
-using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Crypto;
 using Nethermind.Serialization.Rlp;
-using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.ProofAggregation;
 
@@ -68,10 +65,11 @@ public sealed record ProofWrapperDetails(int Mode, Hash256[] Transactions, strin
 /// </summary>
 /// <remarks>
 /// Disabled when the capacity is 0, the default: callers check <see cref="IsEnabled"/> before building an event, so a disabled
-/// feed costs one field read per call site and never parses wrappers or subscribes to chain events. When enabled, the newest
-/// <see cref="Capacity"/> events are kept in a ring buffer.
+/// feed costs one field read per call site and never parses wrappers. When enabled, the newest <see cref="Capacity"/> events
+/// are kept in a ring buffer. Chain and pool events (inclusion, eviction) are fed in by the network layer, which keeps this
+/// type free of transaction pool dependencies for the stateless guests that compile block processing.
 /// </remarks>
-public sealed class ProofWrapperEventFeed : IDisposable
+public sealed class ProofWrapperEventFeed
 {
     private const int MaxDescribedWrappers = 256;
     private const int MaxPageSize = 2_000;
@@ -84,8 +82,6 @@ public sealed class ProofWrapperEventFeed : IDisposable
     private readonly Lock _lock = new();
     private readonly Dictionary<ValueHash256, ProofWrapperDetails> _details = [];
     private readonly Queue<ValueHash256> _detailsOrder = [];
-    private readonly IBlockTree? _blockTree;
-    private readonly ITxPool? _txPool;
     private long _latest;
 
     public ProofWrapperEventFeed(int capacity, TimeProvider? clock = null)
@@ -94,16 +90,6 @@ public sealed class ProofWrapperEventFeed : IDisposable
         _ring = new ProofWrapperEvent?[capacity];
         _clock = clock ?? TimeProvider.System;
         IsEnabled = capacity > 0;
-    }
-
-    /// <summary>Also records the inclusion and pool eviction of dependency-bearing transactions while enabled.</summary>
-    public ProofWrapperEventFeed(int capacity, IBlockTree blockTree, ITxPool txPool, TimeProvider? clock = null) : this(capacity, clock)
-    {
-        if (!IsEnabled) return;
-        _blockTree = blockTree;
-        _txPool = txPool;
-        blockTree.BlockAddedToMain += OnBlockAddedToMain;
-        txPool.EvictedPending += OnEvictedPending;
     }
 
     public bool IsEnabled { get; }
@@ -191,33 +177,6 @@ public sealed class ProofWrapperEventFeed : IDisposable
             _ => $"0x{dependency.Scheme:x2}"
         };
         return $"{scheme}:{dependency.DataHash}:{dependency.VerificationKey}";
-    }
-
-    private void OnBlockAddedToMain(object? sender, BlockReplacementEventArgs e)
-    {
-        foreach (Transaction transaction in e.Block.Transactions)
-        {
-            if (!Eip8288Dependencies.IsDependencyBearing(transaction)) continue;
-            Record(new()
-            {
-                Type = ProofWrapperEventTypes.Included,
-                Transactions = [transaction.Hash ?? transaction.CalculateHash()],
-                Block = (long)e.Block.Number,
-                BlockHash = e.Block.Hash
-            });
-        }
-    }
-
-    private void OnEvictedPending(object? sender, TxEventArgs e)
-    {
-        if (!Eip8288Dependencies.IsDependencyBearing(e.Transaction)) return;
-        Record(new() { Type = ProofWrapperEventTypes.PoolEvicted, Transactions = [e.Transaction.Hash!], Detail = "evicted by pool policy" });
-    }
-
-    public void Dispose()
-    {
-        if (_blockTree is not null) _blockTree.BlockAddedToMain -= OnBlockAddedToMain;
-        if (_txPool is not null) _txPool.EvictedPending -= OnEvictedPending;
     }
 }
 
