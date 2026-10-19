@@ -339,7 +339,7 @@ internal class NodeRecordBulkSetTests
     }
 
     [Test]
-    public void Warm_up_publishes_a_linked_verified_prefix_only_after_descent([Values(0, 1, 2)] int missingLeaf)
+    public void Warm_up_publishes_a_linked_prefix_only_after_descent([Values] bool missingLeaf)
     {
         Hash256 keyA = new("1000000000000000000000000000000000000000000000000000000000000001");
         Hash256 keyB = new("1000000000000000000000000000000000000000000000000000000000000002");
@@ -350,8 +350,7 @@ internal class NodeRecordBulkSetTests
             null, TrieRoot.Empty, [(keyA, ExistingValue), (keyB, ExistingValue), (keyC, ExistingValue)], false);
         Dictionary<TreePath, byte[]> nodes = Rlps(original, root);
         TreePath leafPath = TreePath.FromPath(keyA.Bytes);
-        if (missingLeaf == 1) nodes.Remove(leafPath);
-        if (missingLeaf == 2) nodes[leafPath] = NodeRecordBufferTests.Leaf(9, 8);
+        if (missingLeaf) nodes.Remove(leafPath);
         WarmedNodeLog warmed = NewWarmedNodeLog(16);
         DictionaryNodeSource source = new(nodes, warmed, null);
         using NodeRecordBuffer buffer = new(0, SmallGenerationBytes);
@@ -361,7 +360,7 @@ internal class NodeRecordBulkSetTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(source.FetchCount, Is.EqualTo(4));
-            Assert.That(warmed.Count, Is.EqualTo(missingLeaf == 0 ? 4 : 3));
+            Assert.That(warmed.Count, Is.EqualTo(missingLeaf ? 3 : 4));
         }
         TreePath currentPath = TreePath.Empty;
         ValueHash256 currentHash = root.Hash;
@@ -378,7 +377,7 @@ internal class NodeRecordBulkSetTests
             if (currentPath.Length == 0) Assert.That(record.View.Child(2).Pointer, Is.Zero, "off-path subtrees remain unknown");
             if (child.Pointer == 0)
             {
-                Assert.That(missingLeaf, Is.Not.Zero, "a complete warmed path must link every hashed child");
+                Assert.That(missingLeaf, Is.True, "a complete warmed path must link every hashed child");
                 break;
             }
             Assert.That(warmed.TryLocate(child.Pointer, out NodeRecord linkedChild) && linkedChild.Hash == child.Data, Is.True);

@@ -99,7 +99,8 @@ internal static class BufferWarmUp
         }
     }
 
-    /// <summary>Reads the node <paramref name="child"/> refers to in place, or copies its verified RLP from <paramref name="reader"/> to <paramref name="scratch"/>.</summary>
+    /// <summary>Reads the node <paramref name="child"/> refers to in place, or copies its RLP from <paramref name="reader"/> to <paramref name="scratch"/>.</summary>
+    /// <remarks>Read RLP is trusted to be the node of the hash its parent holds: the pre-block path reaches the reader only below a subtree unchanged since persistence.</remarks>
     private static bool TryRead(INodeRecordBuffer buffer, WarmedNodeLog warmed, ReadOnlySnapshotBundle reader, Hash256? address,
         in TreePath path, in ChildRef child, ArrayPoolList<byte> scratch, out Frame frame)
     {
@@ -130,7 +131,7 @@ internal static class BufferWarmUp
         if (!TryLoadRlp(reader, address, path, CopyRlp, scratch)) return false;
         frame.RlpLength = scratch.Count - frame.RlpOffset;
         ReadOnlySpan<byte> rlp = frame.Rlp(scratch);
-        return ValueKeccak.Compute(rlp) == child.Data && NodeRecordCodec.TryMeasure(rlp, out frame.Kind, out frame.HashMask);
+        return NodeRecordCodec.TryMeasure(rlp, out frame.Kind, out frame.HashMask);
     }
 
     /// <summary>Loads the only other child of <paramref name="branch"/>, which it collapses into when the matching leaf is deleted.</summary>
@@ -162,8 +163,10 @@ internal static class BufferWarmUp
         {
             Metrics.IncrementWarmedNodeCacheMisses();
             int offset = scratch.Count;
-            if (!TryLoadRlp(reader, address, siblingPath, CopyRlp, scratch)
-                || !warmed.TryAppend(address, siblingPath, sibling.Data, scratch.AsSpan()[offset..], out _, out pointer)) return;
+            if (!TryLoadRlp(reader, address, siblingPath, CopyRlp, scratch)) return;
+            ReadOnlySpan<byte> rlp = scratch.AsSpan()[offset..];
+            if (!NodeRecordCodec.TryMeasure(rlp, out NodeRecordKind kind, out ushort hashMask)) return;
+            warmed.AppendVerified(address, siblingPath, sibling.Data, rlp, kind, hashMask, [], out _, out pointer);
         }
 
         branch.SiblingSlot = siblingSlot;
@@ -186,7 +189,7 @@ internal static class BufferWarmUp
         return NodeRlp.HexPrefixNibbleCount(prefix.Payload);
     }
 
-    /// <summary>A node on the warmed path: a record read in place, or verified RLP copied to the scratch bytes, to be published.</summary>
+    /// <summary>A node on the warmed path: a record read in place, or RLP copied to the scratch bytes, to be published.</summary>
     private struct Frame
     {
         public TreePath Path;
