@@ -10,7 +10,7 @@ using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Flat.Collections;
-using Nethermind.Trie.NodeLog;
+using Nethermind.Trie.NodeBuffer;
 
 namespace Nethermind.State.Flat;
 
@@ -168,7 +168,7 @@ public class SnapshotCompactor(
         }
 
         // The oldest retain covers every merged snapshot, whose retains may be released before the compacted snapshot.
-        return new Snapshot(from, to, content, _resourcePool, usage) { LogRetain = OldestLogRetain(snapshots)?.Copy() };
+        return new Snapshot(from, to, content, _resourcePool, usage) { BufferRetain = OldestBufferRetain(snapshots)?.Copy() };
     }
 
     private static void MergeRoots(SortedSnapshotContent content, SnapshotPooledList snapshots)
@@ -199,12 +199,12 @@ public class SnapshotCompactor(
         }
     }
 
-    private static TrieNodeLogRetain? OldestLogRetain(SnapshotPooledList snapshots)
+    private static NodeRecordBufferRetain? OldestBufferRetain(SnapshotPooledList snapshots)
     {
-        TrieNodeLogRetain? oldest = null;
+        NodeRecordBufferRetain? oldest = null;
         for (int i = 0; i < snapshots.Count; i++)
         {
-            if (snapshots[i].LogRetain is { } retain && (oldest is null || retain.WriteBoundary < oldest.WriteBoundary)) oldest = retain;
+            if (snapshots[i].BufferRetain is { } retain && (oldest is null || retain.WriteBoundary < oldest.WriteBoundary)) oldest = retain;
         }
 
         return oldest;

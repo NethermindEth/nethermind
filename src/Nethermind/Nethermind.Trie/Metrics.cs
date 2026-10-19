@@ -53,32 +53,32 @@ namespace Nethermind.Trie
         }
 
         [GaugeMetric]
-        [Description("Bytes of trie node log generations readable in place.")]
-        public static long TrieNodeLogMemory { get; set; }
+        [Description("Bytes of trie node buffer generations readable in place.")]
+        public static long NodeRecordBufferMemory { get; set; }
 
         [GaugeMetric]
-        [Description("Number of trie node log generations readable in place.")]
-        public static long TrieNodeLogGenerations { get; set; }
+        [Description("Number of trie node buffer generations readable in place.")]
+        public static long NodeRecordBufferGenerations { get; set; }
 
         [GaugeMetric]
-        [Description("Bytes of the records and tables kept by compacted trie node log generations.")]
-        public static long TrieNodeLogCompressedMemory { get; set; }
+        [Description("Bytes of the records and tables kept by compacted trie node buffer generations.")]
+        public static long NodeRecordBufferCompressedMemory { get; set; }
 
         [GaugeMetric]
-        [Description("Number of compacted trie node log generations held.")]
-        public static long TrieNodeLogCompressedGenerations { get; set; }
+        [Description("Number of compacted trie node buffer generations held.")]
+        public static long NodeRecordBufferCompressedGenerations { get; set; }
 
         [CounterMetric]
-        [Description("Number of trie root lookups resolved by the trie node log.")]
-        public static long TrieNodeLogRootHits => _trieNodeLogRootHits.Sum;
-        private static readonly StripedLong _trieNodeLogRootHits = new();
-        internal static void IncrementTrieNodeLogRootHits() => _trieNodeLogRootHits.Increment();
+        [Description("Number of trie root lookups resolved by the trie node buffer.")]
+        public static long NodeRecordBufferRootHits => _nodeRecordBufferRootHits.Sum;
+        private static readonly StripedLong _nodeRecordBufferRootHits = new();
+        internal static void IncrementNodeRecordBufferRootHits() => _nodeRecordBufferRootHits.Increment();
 
         [CounterMetric]
-        [Description("Number of trie root lookups not resolved by the trie node log.")]
-        public static long TrieNodeLogRootMisses => _trieNodeLogRootMisses.Sum;
-        private static readonly StripedLong _trieNodeLogRootMisses = new();
-        internal static void IncrementTrieNodeLogRootMisses() => _trieNodeLogRootMisses.Increment();
+        [Description("Number of trie root lookups not resolved by the trie node buffer.")]
+        public static long NodeRecordBufferRootMisses => _nodeRecordBufferRootMisses.Sum;
+        private static readonly StripedLong _nodeRecordBufferRootMisses = new();
+        internal static void IncrementNodeRecordBufferRootMisses() => _nodeRecordBufferRootMisses.Increment();
 
         [CounterMetric]
         [Description("Number of node lookups served by the normal per-block warmed-node cache, including warm-up reads.")]
@@ -105,13 +105,13 @@ namespace Nethermind.Trie
         internal static void IncrementIdleWarmedNodeCacheMisses() => _idleWarmedNodeCacheMisses.Increment();
 
         [CounterMetric]
-        [Description("Number of trie nodes a bulk set read in place from the trie node log.")]
-        public static long BulkSetNodesFromLog => _bulkSetNodesFromLog.Sum;
-        private static readonly StripedLong _bulkSetNodesFromLog = new();
-        internal static void AddBulkSetNodesFromLog(long count) => _bulkSetNodesFromLog.Add(count);
+        [Description("Number of trie nodes a bulk set read in place from the trie node buffer.")]
+        public static long BulkSetNodesFromBuffer => _bulkSetNodesFromBuffer.Sum;
+        private static readonly StripedLong _bulkSetNodesFromBuffer = new();
+        internal static void AddBulkSetNodesFromBuffer(long count) => _bulkSetNodesFromBuffer.Add(count);
 
         [CounterMetric]
-        [Description("Number of trie nodes a bulk set loaded from its node source because the trie node log did not hold them.")]
+        [Description("Number of trie nodes a bulk set loaded from its node source because the trie node buffer did not hold them.")]
         public static long BulkSetNodesFromSource => _bulkSetNodesFromSource.Sum;
         private static readonly StripedLong _bulkSetNodesFromSource = new();
         internal static void AddBulkSetNodesFromSource(long count) => _bulkSetNodesFromSource.Add(count);

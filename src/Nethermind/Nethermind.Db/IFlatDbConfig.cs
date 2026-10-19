@@ -130,8 +130,8 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Regenerate the per-instance compaction offset on startup instead of loading from metadata DB. Use when restoring one backup to multiple instances. Flag is sticky across restarts — toggle off after first restart.", DefaultValue = "false")]
     bool RegenerateCompactionOffset { get; set; }
 
-    [ConfigItem(Description = "Memory budget, in bytes, for the compacted generations of the trie node log; the oldest are freed beyond it. It also sizes the log's storage root index.", DefaultValue = "524288000")]
-    ulong CompressedTrieNodeLogMemoryBudget { get; set; }
+    [ConfigItem(Description = "Memory budget, in bytes, for the compacted generations of the trie node buffer; the oldest are freed beyond it. It also sizes the buffer's storage root index.", DefaultValue = "524288000")]
+    ulong CompressedNodeRecordBufferMemoryBudget { get; set; }
 
     [ConfigItem(Description = "Trie warmer worker count (-1 for 3/4 of processor count, 0 to disable)", DefaultValue = "-1")]
     int TrieWarmerWorkerCount { get; set; }

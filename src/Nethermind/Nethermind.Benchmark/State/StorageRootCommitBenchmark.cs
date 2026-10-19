@@ -12,7 +12,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.State.Flat;
-using Nethermind.Trie.NodeLog;
+using Nethermind.Trie.NodeBuffer;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.ScopeProvider;
@@ -44,7 +44,7 @@ public class StorageRootCommitBenchmark
 
     private FlatDbConfig _config = null!;
     private ResourcePool _resourcePool = null!;
-    private TrieNodeLog _trieNodeLog = null!;
+    private NodeRecordBuffer _nodeRecordBuffer = null!;
     private List<FlatSnapshot> _baseSnapshots = null!;
     private StateId _baseStateId;
     private Address _address = null!;
@@ -62,7 +62,7 @@ public class StorageRootCommitBenchmark
 
         _config = new FlatDbConfig();
         _resourcePool = new ResourcePool(_config);
-        _trieNodeLog = new TrieNodeLog(0, TrieNodeLog.DefaultGenerationBytes);
+        _nodeRecordBuffer = new NodeRecordBuffer(0, NodeRecordBuffer.DefaultGenerationBytes);
         _baseSnapshots = new List<FlatSnapshot>(1);
         _address = DeriveAddress(1);
 
@@ -73,7 +73,7 @@ public class StorageRootCommitBenchmark
             prevSnapshots, new NoopPersistenceReader(), recordDetailedMetrics: false,
             PersistedSnapshotStack.Empty());
         SnapshotBundle bundle = new(
-            readOnly, _trieNodeLog, _resourcePool, ResourcePool.Usage.MainBlockProcessing);
+            readOnly, _nodeRecordBuffer, _resourcePool, ResourcePool.Usage.MainBlockProcessing);
         CapturingCommitTarget commitTarget = new();
         using FlatWorldStateScope scope = new(
             currentStateId: initialStateId,
@@ -110,7 +110,7 @@ public class StorageRootCommitBenchmark
     {
         IterationCleanup();
         foreach (FlatSnapshot snapshot in _baseSnapshots) snapshot.Dispose();
-        _trieNodeLog.Dispose();
+        _nodeRecordBuffer.Dispose();
     }
 
     [IterationSetup]
@@ -127,7 +127,7 @@ public class StorageRootCommitBenchmark
             prevSnapshots, new NoopPersistenceReader(), recordDetailedMetrics: false,
             PersistedSnapshotStack.Empty());
         SnapshotBundle bundle = new(
-            readOnly, _trieNodeLog, _resourcePool, ResourcePool.Usage.MainBlockProcessing);
+            readOnly, _nodeRecordBuffer, _resourcePool, ResourcePool.Usage.MainBlockProcessing);
         _commitTarget = new CapturingCommitTarget();
         _scope = new FlatWorldStateScope(
             currentStateId: _baseStateId,

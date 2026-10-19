@@ -19,7 +19,7 @@ using Nethermind.Logging;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.Trie;
-using Nethermind.Trie.NodeLog;
+using Nethermind.Trie.NodeBuffer;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 
@@ -32,26 +32,26 @@ public class SnapshotBundleWarmerTests
     private static readonly TimeSpan BailOutTimeout = TimeSpan.FromSeconds(30);
 
     private ResourcePool _pool = null!;
-    private TrieNodeLog _log = null!;
+    private NodeRecordBuffer _buffer = null!;
 
     [SetUp]
     public void SetUp()
     {
         _pool = new ResourcePool(new FlatDbConfig());
-        _log = FlatTestHelpers.NewTestLog();
+        _buffer = FlatTestHelpers.NewTestBuffer();
     }
 
     [TearDown]
-    public void TearDown() => _log.Dispose();
+    public void TearDown() => _buffer.Dispose();
 
     private SnapshotBundle NewBundle(NodeReader reader) =>
-        new(FlatTestHelpers.MakeBundle(_pool, reader), _log, _pool, ResourcePool.Usage.MainBlockProcessing);
+        new(FlatTestHelpers.MakeBundle(_pool, reader), _buffer, _pool, ResourcePool.Usage.MainBlockProcessing);
 
     /// <summary>A trie whose root is the leaf <paramref name="rootRlp"/>, as its root and the persisted nodes serving it.</summary>
     private static (TrieRoot Root, Dictionary<TreePath, byte[]> Nodes) LeafTrie(byte[] rootRlp) =>
         (new TrieRoot(ValueKeccak.Compute(rootRlp), 0), new Dictionary<TreePath, byte[]> { [TreePath.Empty] = rootRlp });
 
-    // Committed snapshot nodes stay in the retained log; only persisted nodes enter the warmed source.
+    // Committed snapshot nodes stay in the retained buffer; only persisted nodes enter the warmed source.
     [Test]
     public void Warm_up_reads_persistence_only_and_ignores_the_bundle_snapshots([Values] bool storage)
     {
@@ -61,7 +61,7 @@ public class SnapshotBundleWarmerTests
         TrieRoot committedRoot = new(ValueKeccak.Compute(committedRlp), 0);
         using SnapshotBundle bundle = NewBundle(new NodeReader(persisted));
 
-        TrieNodeLogRetain retain = _log.RetainActive();
+        NodeRecordBufferRetain retain = _buffer.RetainActive();
         committedRoot = new TrieRoot(committedRoot.Hash, PublishNode(bundle, address, TreePath.Empty, committedRlp));
         bundle.CollectAndApplySnapshot(StateId.PreGenesis, new StateId(1, TestItem.KeccakA), retain, returnSnapshot: false);
 
@@ -77,7 +77,7 @@ public class SnapshotBundleWarmerTests
                 Assert.That(retired!.WarmedNodes.TryGet(address, TreePath.Empty, persistedRoot.Hash, out _), Is.True, "persisted node warmed");
                 Assert.That(retired.WarmedNodes.TryGet(address, TreePath.Empty, committedRoot.Hash, out _), Is.False, "committed node warmed");
                 Assert.That(committedLoadable, Is.False, "the source must skip committed snapshot nodes");
-                Assert.That(_log.GetRecord(committedRoot.Pointer).Rlp.ToArray(), Is.EqualTo(committedRlp), "committed node remains in the retained log");
+                Assert.That(_buffer.GetRecord(committedRoot.Pointer).Rlp.ToArray(), Is.EqualTo(committedRlp), "committed node remains in the retained buffer");
             }
         }
         finally
@@ -121,7 +121,7 @@ public class SnapshotBundleWarmerTests
         using ReadOnlySnapshotBundle readOnly = FlatTestHelpers.MakeBundle(_pool, reader);
         using SnapshotPooledList snapshots = new(1);
         WarmedNodes warmed = new(1);
-        using SnapshotBundle.BackgroundTrieSource source = new(readOnly, _log, snapshots, warmed, address);
+        using SnapshotBundle.BackgroundTrieSource source = new(readOnly, _buffer, snapshots, warmed, address);
         (long Hits, long Misses, long IdleHits, long IdleMisses) before = WarmedCacheCounts();
 
         Assert.That(source.TryLoad(TreePath.Empty, root.Hash, out _), Is.True);
@@ -134,20 +134,20 @@ public class SnapshotBundleWarmerTests
     }
 
     [Test, NonParallelizable]
-    public void Warm_up_metrics_count_transient_pointer_hits_but_not_main_log_hits([Values] bool inLog)
+    public void Warm_up_metrics_count_transient_pointer_hits_but_not_main_buffer_hits([Values] bool inBuffer)
     {
         byte[] rlp = FlatTestHelpers.LeafRlp(0x80);
         ValueHash256 hash = ValueKeccak.Compute(rlp);
         WarmedNodes warmed = new(1);
         ulong pointer;
-        if (inLog) pointer = _log.AppendRecordFromRlp(null, TreePath.Empty, hash, rlp);
+        if (inBuffer) pointer = _buffer.AppendRecordFromRlp(null, TreePath.Empty, hash, rlp);
         else Assert.That(warmed.TryInsert(null, TreePath.Empty, hash, rlp, out _, out pointer), Is.True);
         (long Hits, long Misses, long IdleHits, long IdleMisses) before = WarmedCacheCounts();
 
-        LogBulkSet.WarmUp(_log, warmed, (in TreePath path, in ValueHash256 nodeHash, ReadOnlySpanAction<byte, LogBulkSet.WarmUpRead> action, LogBulkSet.WarmUpRead read) => throw new InvalidOperationException("Unexpected persistence read"),
+        BufferBulkSet.WarmUp(_buffer, warmed, (in TreePath path, in ValueHash256 nodeHash, ReadOnlySpanAction<byte, BufferBulkSet.WarmUpRead> action, BufferBulkSet.WarmUpRead read) => throw new InvalidOperationException("Unexpected persistence read"),
             null, new TrieRoot(hash, pointer), ValueKeccak.Zero);
 
-        AssertWarmedCacheCounts(before, hits: inLog ? 0 : 1);
+        AssertWarmedCacheCounts(before, hits: inBuffer ? 0 : 1);
     }
 
     private static (long Hits, long Misses, long IdleHits, long IdleMisses) WarmedCacheCounts() =>
@@ -449,27 +449,27 @@ public class SnapshotBundleWarmerTests
         for (int i = 0; i < keys.Length; i++) keys[i] = ValueKeccak.Compute([(byte)i]);
         byte[] newValue = Bytes.FromHexString("0xff");
 
-        using TrieNodeLog persistedLog = FlatTestHelpers.NewTestLog();
-        using TrieNodeLogRetain persistedRetain = persistedLog.RetainActive();
+        using NodeRecordBuffer persistedBuffer = FlatTestHelpers.NewTestBuffer();
+        using NodeRecordBufferRetain persistedRetain = persistedBuffer.RetainActive();
         TrieRoot root;
         using (ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries = new(keys.Length))
         {
             for (int i = 0; i < keys.Length; i++) entries.Add(new PatriciaTree.BulkSetEntry(keys[i], [(byte)(i + 1)]));
-            root = LogBulkSet.BulkSet(persistedLog, new DictionaryNodeSource(new Dictionary<TreePath, byte[]>(), new WarmedNodes(1), address),
+            root = BufferBulkSet.BulkSet(persistedBuffer, new DictionaryNodeSource(new Dictionary<TreePath, byte[]>(), new WarmedNodes(1), address),
                 address, TrieRoot.Empty, entries, canParallelize: false);
         }
 
-        Dictionary<TreePath, byte[]> persisted = persistedLog.EnumerateNodes(root.Pointer)
+        Dictionary<TreePath, byte[]> persisted = persistedBuffer.EnumerateNodes(root.Pointer)
             .ToDictionary(node => node.Path, node => node.Record.Rlp.ToArray());
         NodeReader reader = new(persisted);
         using SnapshotBundle bundle = NewBundle(reader);
-        using TrieNodeLogRetain retain = _log.RetainActive();
-        TrieRoot preBlockRoot = LogBulkSet.ResolveRoot(_log, address, root.Hash);
+        using NodeRecordBufferRetain retain = _buffer.RetainActive();
+        TrieRoot preBlockRoot = BufferBulkSet.ResolveRoot(_buffer, address, root.Hash);
 
         int firstWarmUp = WarmUpAll();
         int secondWarmUp = WarmUpAll();
         int readsBeforeBulkSet = reader.Reads;
-        LoggedTrie trie = new(bundle, _log, address, preBlockRoot);
+        BufferedTrie trie = new(bundle, _buffer, address, preBlockRoot);
         using (ArrayPoolListRef<PatriciaTree.BulkSetEntry> change = new(1))
         {
             change.Add(new PatriciaTree.BulkSetEntry(keys[0], newValue));
@@ -483,7 +483,7 @@ public class SnapshotBundleWarmerTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(preBlockRoot.Pointer, Is.Zero, "root held by the log");
+            Assert.That(preBlockRoot.Pointer, Is.Zero, "root held by the buffer");
             Assert.That(firstWarmUp, concurrent ? Is.GreaterThanOrEqualTo(persisted.Count) : Is.EqualTo(persisted.Count));
             Assert.That(secondWarmUp, Is.LessThan(firstWarmUp), "the direct-mapped index permits collisions but reuses most warmed records");
             Assert.That(reader.Reads, Is.EqualTo(readsBeforeBulkSet));
@@ -499,18 +499,18 @@ public class SnapshotBundleWarmerTests
             Assert.That(published, Does.Contain(trie.Root.Pointer), "the root is published into the snapshot");
             foreach (ulong pointer in published)
             {
-                Assert.That(NodeRecord.IsTransient(pointer), Is.False, "snapshot pointers are real-log records");
-                RecordView view = _log.GetRecord(pointer).View;
+                Assert.That(NodeRecordCodec.IsTransient(pointer), Is.False, "snapshot pointers are real-buffer records");
+                NodeRecordRef view = _buffer.GetRecord(pointer).View;
                 for (int slot = 0; slot < 16; slot++)
                 {
-                    if ((view.HashMask & (1 << slot)) != 0) Assert.That(NodeRecord.IsTransient(view.Child(slot).Pointer), Is.False, "published records cannot retain temporary children");
+                    if ((view.HashMask & (1 << slot)) != 0) Assert.That(NodeRecordCodec.IsTransient(view.Child(slot).Pointer), Is.False, "published records cannot retain temporary children");
                 }
             }
 
             int links = 0;
             foreach ((TreePath path, byte[] rlp) in persisted)
             {
-                if (!retired!.WarmedNodes.TryGet(address, path, ValueKeccak.Compute(rlp), out NodeRecordRef record)) continue;
+                if (!retired!.WarmedNodes.TryGet(address, path, ValueKeccak.Compute(rlp), out NodeRecord record)) continue;
                 Assert.That(record.Rlp.ToArray(), Is.EqualTo(rlp), "published bytes remain complete under overlapping warm-ups");
                 for (int slot = 0; slot < 16; slot++)
                 {
@@ -542,10 +542,10 @@ public class SnapshotBundleWarmerTests
     private ulong PublishNode(SnapshotBundle bundle, Hash256? address, in TreePath path, byte[] rlp)
     {
         ValueHash256 hash = ValueKeccak.Compute(rlp);
-        ulong pointer = _log.AppendRecordFromRlp(address, path, hash, rlp);
+        ulong pointer = _buffer.AppendRecordFromRlp(address, path, hash, rlp);
         TrieRoot root = new(hash, pointer);
-        if (address is null) bundle.PublishLoggedStateRoot(root);
-        else bundle.PublishLoggedStorageRoot(address, root);
+        if (address is null) bundle.PublishBufferedStateRoot(root);
+        else bundle.PublishBufferedStorageRoot(address, root);
         return pointer;
     }
 

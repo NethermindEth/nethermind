@@ -54,7 +54,7 @@ public class FlatDbConfig : IFlatDbConfig
     public int WarmReadConcurrency { get; set; } = -1;
     public ulong BlockCacheSizeBudget { get; set; } = 1UL.GiB;
     public long CompactionOffset { get; set; } = -1;
-    public ulong CompressedTrieNodeLogMemoryBudget { get; set; } = 500UL.MiB;
+    public ulong CompressedNodeRecordBufferMemoryBudget { get; set; } = 500UL.MiB;
     public bool EnableLongFinality { get; set; } = true;
     public ulong LongFinalityMaxReorgDepth { get; set; } = 90000;
     public int MaxInMemoryBaseSnapshotCount { get; set; } = 160;

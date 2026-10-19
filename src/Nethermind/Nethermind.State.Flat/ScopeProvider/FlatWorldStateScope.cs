@@ -15,7 +15,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
-using Nethermind.Trie.NodeLog;
+using Nethermind.Trie.NodeBuffer;
 
 namespace Nethermind.State.Flat.ScopeProvider;
 
@@ -31,13 +31,13 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     private readonly bool _isReadOnly;
     private readonly bool _trieless;
     // Taken before the block's first trie write and handed to its snapshot at commit, so every node the block writes stays readable.
-    private TrieNodeLogRetain? _logRetain;
+    private NodeRecordBufferRetain? _bufferRetain;
 
     private readonly Hash256 _initialStateRoot;
     // The state root warm-ups walk from; default in a trie-less scope.
     private readonly TrieRoot _initialTrieRoot;
     // Null in a trie-less scope.
-    private readonly LoggedTrie? _stateTrie;
+    private readonly BufferedTrie? _stateTrie;
     private readonly Dictionary<AddressAsKey, FlatStorageTree> _storages = [];
     private ConcurrentDictionary<AddressAsKey, FlatStorageTree?>? _hintWarmStorages;
     private bool _isDisposed = false;
@@ -103,10 +103,10 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         _trieless = snapshotBundle.IsHistorical;
         if (!_trieless)
         {
-            TrieNodeLog log = snapshotBundle.TrieNodeLog!;
-            _logRetain = log.RetainActive();
-            _initialTrieRoot = LogBulkSet.ResolveRoot(log, null, _initialStateRoot.ValueHash256);
-            _stateTrie = new LoggedTrie(snapshotBundle, log, null, _initialTrieRoot);
+            NodeRecordBuffer buffer = snapshotBundle.NodeRecordBuffer!;
+            _bufferRetain = buffer.RetainActive();
+            _initialTrieRoot = BufferBulkSet.ResolveRoot(buffer, null, _initialStateRoot.ValueHash256);
+            _stateTrie = new BufferedTrie(snapshotBundle, buffer, null, _initialTrieRoot);
         }
 
         if (configuration.ApplyStorageWritesOnIdleThread && !isReadOnly && !_trieless && !configuration.VerifyWithTrie
@@ -149,7 +149,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         WaitForOutstandingWarmups();
         _snapshotBundle.Dispose();
         ReleaseStorageTrees();
-        _logRetain?.Dispose();
+        _bufferRetain?.Dispose();
         _warmer.OnExitScope();
     }
 
@@ -540,8 +540,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
         StateId newStateId = new(blockNumber, RootHash);
         bool shouldAddSnapshot = !_isReadOnly && _currentStateId != newStateId;
-        (Snapshot? newSnapshot, TransientResource? cachedResource) = _snapshotBundle.CollectAndApplySnapshot(_currentStateId, newStateId, _logRetain, shouldAddSnapshot);
-        _logRetain = _trieless ? null : _snapshotBundle.TrieNodeLog!.RetainActive();
+        (Snapshot? newSnapshot, TransientResource? cachedResource) = _snapshotBundle.CollectAndApplySnapshot(_currentStateId, newStateId, _bufferRetain, shouldAddSnapshot);
+        _bufferRetain = _trieless ? null : _snapshotBundle.NodeRecordBuffer!.RetainActive();
 
         if (shouldAddSnapshot)
         {

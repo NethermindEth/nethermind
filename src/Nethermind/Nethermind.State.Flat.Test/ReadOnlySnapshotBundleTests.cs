@@ -27,7 +27,7 @@ using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.Trie;
-using Nethermind.Trie.NodeLog;
+using Nethermind.Trie.NodeBuffer;
 using Bloom = Nethermind.Core.Collections.BloomFilter;
 
 namespace Nethermind.State.Flat.Test;
@@ -163,10 +163,10 @@ public class ReadOnlySnapshotBundleTests
     public void TryFindStateNodes_ReturnsTrueWhenPresentInSnapshot()
     {
         TreePath path = TreePath.FromHexString("12");
-        using TrieNodeLog log = FlatTestHelpers.NewTestLog();
+        using NodeRecordBuffer buffer = FlatTestHelpers.NewTestBuffer();
 
         using ReadOnlySnapshotBundle bundle = Bundle(FlatTestHelpers.SnapshotList(
-            FlatTestHelpers.MakeSnapshot(_pool, log, c => c.SetStateNodeRlp(log, path, FlatTestHelpers.LeafRlpA))),
+            FlatTestHelpers.MakeSnapshot(_pool, buffer, c => c.SetStateNodeRlp(buffer, path, FlatTestHelpers.LeafRlpA))),
             recordDetailedMetrics: true);
 
         Assert.That(bundle.TryFindStateNodes(path, Keccak.Compute(Bytes.FromHexString(FlatTestHelpers.LeafRlpA)), out TrieNode? found), Is.True);
@@ -188,10 +188,10 @@ public class ReadOnlySnapshotBundleTests
     {
         Hash256 address = TestItem.KeccakA;
         TreePath path = TreePath.FromHexString("ab");
-        using TrieNodeLog log = FlatTestHelpers.NewTestLog();
+        using NodeRecordBuffer buffer = FlatTestHelpers.NewTestBuffer();
 
         using ReadOnlySnapshotBundle bundle = Bundle(FlatTestHelpers.SnapshotList(
-            FlatTestHelpers.MakeSnapshot(_pool, log, c => c.SetStorageNodeRlp(log, address, path, FlatTestHelpers.LeafRlpB))),
+            FlatTestHelpers.MakeSnapshot(_pool, buffer, c => c.SetStorageNodeRlp(buffer, address, path, FlatTestHelpers.LeafRlpB))),
             recordDetailedMetrics: true);
 
         Assert.That(bundle.TryFindStorageNodes(address, path, Keccak.Compute(Bytes.FromHexString(FlatTestHelpers.LeafRlpB)), out TrieNode? found), Is.True);
@@ -261,7 +261,7 @@ public class ReadOnlySnapshotBundleFilterTests
     private IArenaManager Arena => _tier.Resolve<IArenaManager>();
     private BlobArenaManager _blobs = null!;
     private FlatTestContainer _tier = null!;
-    private TrieNodeLog _log = null!;
+    private NodeRecordBuffer _buffer = null!;
 
     public enum FilterMode
     {
@@ -283,14 +283,14 @@ public class ReadOnlySnapshotBundleFilterTests
         _pool = _tier.ResourcePool;
         _compactor = _tier.Resolve<ISnapshotCompactor>();
         _blobs = _tier.Blobs;
-        _log = FlatTestHelpers.NewTestLog();
+        _buffer = FlatTestHelpers.NewTestBuffer();
     }
 
     [TearDown]
     public void TearDown()
     {
         _tier.Dispose();
-        _log.Dispose();
+        _buffer.Dispose();
     }
 
     [Test]
@@ -298,7 +298,7 @@ public class ReadOnlySnapshotBundleFilterTests
     public void Persisted_snapshot_helper_releases_reservation_and_blob_leases()
     {
         using Snapshot snapshot = MakeSnapshot(0, content =>
-            content.SetStateNodeRlp(_log, new TreePath(Keccak.Compute("p"), 8), FlatTestHelpers.LeafRlpA));
+            content.SetStateNodeRlp(_buffer, new TreePath(Keccak.Compute("p"), 8), FlatTestHelpers.LeafRlpA));
         long blobBytes = Metrics.BlobAllocatedBytes;
         byte[] table = PersistedSnapshotBuilderTestExtensions.Build(snapshot, _blobs);
         long reservations = Metrics.ArenaReservationCount;
@@ -1085,7 +1085,7 @@ public class ReadOnlySnapshotBundleFilterTests
 
     private Snapshot MakeSnapshot(ulong block, Action<SnapshotContent>? populate = null)
     {
-        Snapshot snapshot = _pool.CreateSnapshot(CreateStateId(block), CreateStateId(block + 1), ResourcePool.Usage.MainBlockProcessing, _log);
+        Snapshot snapshot = _pool.CreateSnapshot(CreateStateId(block), CreateStateId(block + 1), ResourcePool.Usage.MainBlockProcessing, _buffer);
         populate?.Invoke(snapshot.Content);
         return snapshot;
     }

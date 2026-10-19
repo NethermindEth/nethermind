@@ -11,7 +11,7 @@ using Nethermind.State.Flat;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.ScopeProvider;
-using Nethermind.Trie.NodeLog;
+using Nethermind.Trie.NodeBuffer;
 using static Nethermind.Benchmarks.State.FlatWorldStateBenchmarkHarness;
 
 namespace Nethermind.Benchmarks.State;
@@ -25,7 +25,7 @@ public class ReadOnlyScopeLifecycleBenchmark
 {
     private FlatDbConfig _config = null!;
     private ResourcePool _resourcePool = null!;
-    private TrieNodeLog _trieNodeLog = null!;
+    private NodeRecordBuffer _nodeRecordBuffer = null!;
     private NoopTrieWarmer _warmer = null!;
     private Address[] _addresses = null!;
 
@@ -37,21 +37,21 @@ public class ReadOnlyScopeLifecycleBenchmark
     {
         _config = new FlatDbConfig();
         _resourcePool = new ResourcePool(_config);
-        _trieNodeLog = new TrieNodeLog(0, TrieNodeLog.DefaultGenerationBytes);
+        _nodeRecordBuffer = new NodeRecordBuffer(0, NodeRecordBuffer.DefaultGenerationBytes);
         _warmer = new NoopTrieWarmer();
         _addresses = new Address[16];
         for (int i = 0; i < _addresses.Length; i++) _addresses[i] = DeriveAddress(i + 1);
     }
 
     [GlobalCleanup]
-    public void GlobalCleanup() => _trieNodeLog.Dispose();
+    public void GlobalCleanup() => _nodeRecordBuffer.Dispose();
 
     [Benchmark]
     public void CreateHintDispose()
     {
         ReadOnlySnapshotBundle readOnly = new(
             new SnapshotPooledList(0), new NoopPersistenceReader(), recordDetailedMetrics: false, PersistedSnapshotStack.Empty());
-        SnapshotBundle bundle = new(readOnly, _trieNodeLog, _resourcePool, ResourcePool.Usage.ReadOnlyProcessingEnv);
+        SnapshotBundle bundle = new(readOnly, _nodeRecordBuffer, _resourcePool, ResourcePool.Usage.ReadOnlyProcessingEnv);
         using FlatWorldStateScope scope = new(
             new StateId(0, Keccak.EmptyTreeHash),
             bundle,

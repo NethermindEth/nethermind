@@ -12,7 +12,7 @@ using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
-using Nethermind.Trie.NodeLog;
+using Nethermind.Trie.NodeBuffer;
 
 namespace Nethermind.State.Flat.ScopeProvider;
 
@@ -33,7 +33,7 @@ public sealed class FlatStorageTree(
     private Hash256? _addressHash;
 
     // Created on the owner thread by the first write batch or verified read; null in a trie-less scope.
-    private LoggedTrie? _trie;
+    private BufferedTrie? _trie;
     // The root a trie created from now on starts at.
     private Hash256 _rootBeforeTrie = storageRoot;
     // The root warm-ups walk from, resolved by the first one on a warmer thread.
@@ -53,17 +53,17 @@ public sealed class FlatStorageTree(
     {
         public readonly SnapshotBundle.BackgroundTrieSource Source;
         public readonly ConcurrentQueue<(UInt256 Slot, UInt256 Value)> Writes = new();
-        public readonly TrieNodeLog Log;
+        public readonly NodeRecordBuffer Buffer;
         public readonly Dictionary<UInt256, UInt256> Applied = [];
         public TrieRoot Root;
 
         public EarlyTrie(SnapshotBundle bundle, Hash256 address, Hash256 root)
         {
-            Log = bundle.TrieNodeLog!;
+            Buffer = bundle.NodeRecordBuffer!;
             Source = bundle.CreateBackgroundTrieSource(address);
             try
             {
-                Root = LogBulkSet.ResolveRoot(Log, address, root.ValueHash256);
+                Root = BufferBulkSet.ResolveRoot(Buffer, address, root.ValueHash256);
             }
             catch
             {
@@ -81,19 +81,19 @@ public sealed class FlatStorageTree(
 
     private Hash256 AddressHash => _addressHash ??= _address.ToAccountPath.ToHash256();
 
-    private LoggedTrie Trie => _trie ??= CreateTrie();
+    private BufferedTrie Trie => _trie ??= CreateTrie();
 
-    private LoggedTrie CreateTrie()
+    private BufferedTrie CreateTrie()
     {
-        TrieNodeLog log = _bundle.TrieNodeLog!;
-        return new LoggedTrie(_bundle, log, AddressHash, LogBulkSet.ResolveRoot(log, AddressHash, _rootBeforeTrie.ValueHash256));
+        NodeRecordBuffer buffer = _bundle.NodeRecordBuffer!;
+        return new BufferedTrie(_bundle, buffer, AddressHash, BufferBulkSet.ResolveRoot(buffer, AddressHash, _rootBeforeTrie.ValueHash256));
     }
 
     private TrieRoot PreBlockRoot => (Volatile.Read(ref _preBlockRoot) ?? ResolvePreBlockRoot()).Value;
 
     private StrongBox<TrieRoot> ResolvePreBlockRoot()
     {
-        StrongBox<TrieRoot> resolved = new(LogBulkSet.ResolveRoot(_bundle.TrieNodeLog!, AddressHash, _storageRoot.ValueHash256));
+        StrongBox<TrieRoot> resolved = new(BufferBulkSet.ResolveRoot(_bundle.NodeRecordBuffer!, AddressHash, _storageRoot.ValueHash256));
         Volatile.Write(ref _preBlockRoot, resolved);
         return resolved;
     }
@@ -169,7 +169,7 @@ public sealed class FlatStorageTree(
             {
                 OnEarlyPassDrained?.Invoke();
                 // Pool work would run at normal priority rather than this thread's idle priority.
-                early.Root = LogBulkSet.BulkSet(early.Log, early.Source, AddressHash, early.Root, entries, canParallelize: false);
+                early.Root = BufferBulkSet.BulkSet(early.Buffer, early.Source, AddressHash, early.Root, entries, canParallelize: false);
                 _scope.CountEarlyApplied(entries.Count);
             }
         }
@@ -193,7 +193,7 @@ public sealed class FlatStorageTree(
     internal Action? OnEarlyPassDrained;
     internal Action? OnEarlyPassCompleted;
 
-    private Dictionary<UInt256, UInt256>? AdoptEarlyTrie(LoggedTrie trie)
+    private Dictionary<UInt256, UInt256>? AdoptEarlyTrie(BufferedTrie trie)
     {
         int previous = ClaimEarlyTrie();
         if (previous == EarlyApplying)
@@ -298,14 +298,14 @@ public sealed class FlatStorageTree(
     public IWorldStateScopeProvider.IStorageWriteBatch CreateWriteBatch(int estimatedEntries, Action<Address, Hash256> onRootUpdated)
     {
         if (_scope.Trieless) return new FlatOverlayStorageWriteBatch(this);
-        LoggedTrie trie = Trie;
-        return new LoggedStorageWriteBatch(this, trie, estimatedEntries, onRootUpdated, AdoptEarlyTrie(trie));
+        BufferedTrie trie = Trie;
+        return new BufferedStorageWriteBatch(this, trie, estimatedEntries, onRootUpdated, AdoptEarlyTrie(trie));
     }
 
     // Normal scope: maintain the storage trie (for the root) and mirror values into the flat overlay.
-    private sealed class LoggedStorageWriteBatch(
+    private sealed class BufferedStorageWriteBatch(
         FlatStorageTree storageTree,
-        LoggedTrie trie,
+        BufferedTrie trie,
         int estimatedEntries,
         Action<Address, Hash256> onRootUpdated,
         Dictionary<UInt256, UInt256>? earlyApplied) : IWorldStateScopeProvider.IStorageWriteBatch

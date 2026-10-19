@@ -15,7 +15,7 @@ using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Proofs;
 using Nethermind.Trie;
-using Nethermind.Trie.NodeLog;
+using Nethermind.Trie.NodeBuffer;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 
@@ -25,16 +25,16 @@ public class FlatStateReaderTests
 {
     private static readonly BlockHeader _header = Build.A.BlockHeader.WithNumber(5).WithStateRoot(TestItem.KeccakA).TestObject;
 
-    private TrieNodeLog _log = null!;
+    private NodeRecordBuffer _buffer = null!;
 
     [SetUp]
-    public void SetUp() => _log = FlatTestHelpers.NewTestLog();
+    public void SetUp() => _buffer = FlatTestHelpers.NewTestBuffer();
 
     [TearDown]
-    public void TearDown() => _log.Dispose();
+    public void TearDown() => _buffer.Dispose();
 
     private FlatStateReader CreateReader(IFlatDbManager manager) =>
-        new(new MemDb(), manager, NullHistoricalTrieVisitor.Instance, _log);
+        new(new MemDb(), manager, NullHistoricalTrieVisitor.Instance, _buffer);
 
     public static readonly TestCaseData[] UnavailableStateReads =
     [
@@ -87,13 +87,13 @@ public class FlatStateReaderTests
     }
 
     [Test]
-    public void RunTreeVisitor_ReadsLogRootsWithoutPersistence([Values] bool fullScan, [Values] bool includeSnapshot)
+    public void RunTreeVisitor_ReadsBufferRootsWithoutPersistence([Values] bool fullScan, [Values] bool includeSnapshot)
     {
         CountingTrieReader trieReader = CountingTrieReader.WithSingleAccountAndSlot(TestItem.AddressA, 1, out Hash256 stateRoot);
         BlockHeader header = Build.A.BlockHeader.WithNumber(5).WithStateRoot(stateRoot).TestObject;
         ResourcePool pool = new(new FlatDbConfig());
-        using Snapshot snapshot = pool.CreateSnapshot(StateId.PreGenesis, new StateId(header), ResourcePool.Usage.MainBlockProcessing, _log);
-        trieReader.AddRootsTo(snapshot, _log);
+        using Snapshot snapshot = pool.CreateSnapshot(StateId.PreGenesis, new StateId(header), ResourcePool.Usage.MainBlockProcessing, _buffer);
+        trieReader.AddRootsTo(snapshot, _buffer);
         trieReader.StateAvailable = false;
         trieReader.StorageAvailable = false;
         FlatStateReader reader = CreateReader(new CurrentBundleFlatDbManager(trieReader, includeSnapshot ? snapshot : null));
@@ -108,23 +108,23 @@ public class FlatStateReaderTests
     }
 
     [Test]
-    public void RunTreeVisitor_ReadsStateAndStorageFromDifferentTiers([Values] bool storageFromLog, [Values] bool fullScan)
+    public void RunTreeVisitor_ReadsStateAndStorageFromDifferentTiers([Values] bool storageFromBuffer, [Values] bool fullScan)
     {
         CountingTrieReader trieReader = CountingTrieReader.WithSingleAccountAndSlot(TestItem.AddressA, 1, out Hash256 stateRoot);
         BlockHeader header = Build.A.BlockHeader.WithNumber(5).WithStateRoot(stateRoot).TestObject;
         ResourcePool pool = new(new FlatDbConfig());
-        using Snapshot snapshot = pool.CreateSnapshot(StateId.PreGenesis, new StateId(header), ResourcePool.Usage.MainBlockProcessing, _log);
-        trieReader.AddRootsTo(snapshot, _log, state: !storageFromLog, storage: storageFromLog);
-        trieReader.StateAvailable = storageFromLog;
-        trieReader.StorageAvailable = !storageFromLog;
+        using Snapshot snapshot = pool.CreateSnapshot(StateId.PreGenesis, new StateId(header), ResourcePool.Usage.MainBlockProcessing, _buffer);
+        trieReader.AddRootsTo(snapshot, _buffer, state: !storageFromBuffer, storage: storageFromBuffer);
+        trieReader.StateAvailable = storageFromBuffer;
+        trieReader.StorageAvailable = !storageFromBuffer;
         FlatStateReader reader = CreateReader(new CurrentBundleFlatDbManager(trieReader));
 
         AssertVisit(reader, header, stateRoot, fullScan);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(trieReader.StateRlpLoads, Is.EqualTo(storageFromLog ? 1 : 0));
-            Assert.That(trieReader.StorageRlpLoads, Is.EqualTo(storageFromLog ? 0 : 1));
+            Assert.That(trieReader.StateRlpLoads, Is.EqualTo(storageFromBuffer ? 1 : 0));
+            Assert.That(trieReader.StorageRlpLoads, Is.EqualTo(storageFromBuffer ? 0 : 1));
         }
     }
 
@@ -134,8 +134,8 @@ public class FlatStateReaderTests
         CountingTrieReader trieReader = CountingTrieReader.WithSingleAccountAndSlot(TestItem.AddressA, 1, out Hash256 stateRoot, inlineStorage: true);
         BlockHeader header = Build.A.BlockHeader.WithNumber(5).WithStateRoot(stateRoot).TestObject;
         ResourcePool pool = new(new FlatDbConfig());
-        using Snapshot snapshot = pool.CreateSnapshot(StateId.PreGenesis, new StateId(header), ResourcePool.Usage.MainBlockProcessing, _log);
-        trieReader.AddRootsTo(snapshot, _log);
+        using Snapshot snapshot = pool.CreateSnapshot(StateId.PreGenesis, new StateId(header), ResourcePool.Usage.MainBlockProcessing, _buffer);
+        trieReader.AddRootsTo(snapshot, _buffer);
         trieReader.StateAvailable = false;
         FlatStateReader reader = CreateReader(new CurrentBundleFlatDbManager(trieReader));
 
@@ -153,10 +153,10 @@ public class FlatStateReaderTests
     {
         CountingTrieReader trieReader = CountingTrieReader.WithSingleAccountAndSlot(TestItem.AddressA, 1, out Hash256 stateRoot);
         BlockHeader header = Build.A.BlockHeader.WithNumber(5).WithStateRoot(stateRoot).TestObject;
-        using TrieNodeLog sourceLog = FlatTestHelpers.NewTestLog();
+        using NodeRecordBuffer sourceBuffer = FlatTestHelpers.NewTestBuffer();
         ResourcePool pool = new(new FlatDbConfig());
-        using Snapshot snapshot = pool.CreateSnapshot(StateId.PreGenesis, new StateId(header), ResourcePool.Usage.MainBlockProcessing, sourceLog);
-        trieReader.AddRootsTo(snapshot, sourceLog);
+        using Snapshot snapshot = pool.CreateSnapshot(StateId.PreGenesis, new StateId(header), ResourcePool.Usage.MainBlockProcessing, sourceBuffer);
+        trieReader.AddRootsTo(snapshot, sourceBuffer);
         using TempPath arenaPath = TempPath.GetTempDirectory();
         using TempPath blobsPath = TempPath.GetTempDirectory();
         using ArenaManager arena = TestFixtureHelpers.CreateArenaManager(arenaPath.Path);
@@ -278,17 +278,17 @@ public class FlatStateReaderTests
             return new CountingTrieReader(addressHash, stateTree, storageTree);
         }
 
-        public void AddRootsTo(Snapshot snapshot, TrieNodeLog log, bool state = true, bool storage = true)
+        public void AddRootsTo(Snapshot snapshot, NodeRecordBuffer buffer, bool state = true, bool storage = true)
         {
             if (state)
             {
-                ulong pointer = snapshot.Content.SetStateNodeRlp(log, TreePath.Empty, stateTree.GetNodeByPath([])!);
-                log.SetRoot(null, stateTree.RootHash, pointer);
+                ulong pointer = snapshot.Content.SetStateNodeRlp(buffer, TreePath.Empty, stateTree.GetNodeByPath([])!);
+                buffer.SetRoot(null, stateTree.RootHash, pointer);
             }
             if (storage)
             {
-                ulong pointer = snapshot.Content.SetStorageNodeRlp(log, addressHash, TreePath.Empty, storageTree.GetNodeByPath([])!);
-                log.SetRoot(addressHash, storageTree.RootHash, pointer);
+                ulong pointer = snapshot.Content.SetStorageNodeRlp(buffer, addressHash, TreePath.Empty, storageTree.GetNodeByPath([])!);
+                buffer.SetRoot(addressHash, storageTree.RootHash, pointer);
             }
         }
 

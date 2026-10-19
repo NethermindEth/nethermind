@@ -67,7 +67,7 @@ public static class PersistedSnapshotBuilder
     private static readonly Comparison<ValueAddress> ValueAddressComparer = (a, b) =>
         a.AsSpan.SequenceCompareTo(b.AsSpan);
 
-    /// <summary>Temporary serialization input protecting buffered log pointers through their final RLP copy.</summary>
+    /// <summary>Temporary serialization input protecting trie buffer pointers through their final RLP copy.</summary>
     internal sealed class PreparedSnapshot : IDisposable
     {
         private readonly IDisposable? _readScope;
@@ -78,7 +78,7 @@ public static class PersistedSnapshotBuilder
 
         internal PreparedSnapshot(Snapshot snapshot)
         {
-            _readScope = snapshot.LogRetain?.Log.BeginReadScope();
+            _readScope = snapshot.BufferRetain?.Buffer.BeginReadScope();
             try
             {
                 using ParallelUnbalancedWork.WorkerScope workers = ParallelUnbalancedWork.BeginWorkerScope(Environment.ProcessorCount);

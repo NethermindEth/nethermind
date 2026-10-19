@@ -10,7 +10,7 @@ using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Trie;
-using Nethermind.Trie.NodeLog;
+using Nethermind.Trie.NodeBuffer;
 using NonBlocking;
 
 namespace Nethermind.State.Flat.ScopeProvider;
@@ -26,14 +26,14 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
     private readonly IResourcePool _resourcePool;
     private readonly IFlatDbManager _flatDbManager;
     private readonly KnownHeadersScopeProvider _worldState;
-    private readonly TrieNodeLog _trieNodeLog;
+    private readonly NodeRecordBuffer _nodeRecordBuffer;
     private bool _isDisposed = false;
 
     public FlatOverridableWorldScope(
         [KeyFilter(DbNames.Code)] IDb codeDb,
         IFlatDbManager flatDbManager,
         IFlatDbConfig configuration,
-        TrieNodeLog trieNodeLog,
+        NodeRecordBuffer nodeRecordBuffer,
         IResourcePool resourcePool,
         IStateHeaderProvider stateHeaderProvider,
         ILogManager logManager)
@@ -42,7 +42,7 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
         _codeDbOverlay = new ReadOnlyDb(codeDb, true);
         _resourcePool = resourcePool;
         _flatDbManager = flatDbManager;
-        _trieNodeLog = trieNodeLog;
+        _nodeRecordBuffer = nodeRecordBuffer;
         _worldState = new KnownHeadersScopeProvider(stateHeaderProvider, headerProvider => new OverridableFlatScopeProvider(
             this,
             configuration,
@@ -112,7 +112,7 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
         // snapshots' negative filter.
         return new SnapshotBundle(
             readOnlySnapshotBundle,
-            _trieNodeLog,
+            _nodeRecordBuffer,
             _resourcePool,
             ResourcePool.Usage.ReadOnlyProcessingEnv,
             snapshots,

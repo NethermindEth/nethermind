@@ -590,7 +590,7 @@ public class PersistenceManager(
                 batch.SetStorage(addr, slot, kv.Value);
             }
 
-            // Traversal includes inherited log-resident nodes; persisting them again is harmless.
+            // Traversal includes inherited buffer-resident nodes; persisting them again is harmless.
             long stateNodesSize = 0;
             foreach (KeyValuePair<HashedKey<TreePath>, ulong> kvp in snapshot.StateNodes)
             {

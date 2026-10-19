@@ -173,7 +173,7 @@ public class HistoricalTraceReExecutionTests
     private FlatDbManager CreateManager() => new(
         _resourcePool,
         _processExitSource,
-        FlatTestHelpers.NewTestLog(),
+        FlatTestHelpers.NewTestBuffer(),
         _snapshotCompactor,
         _snapshotRepository,
         _persistenceManager,

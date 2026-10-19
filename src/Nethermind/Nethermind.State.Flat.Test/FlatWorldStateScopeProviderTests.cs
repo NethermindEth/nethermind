@@ -30,7 +30,7 @@ using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.Sync.Snap;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.Trie;
-using Nethermind.Trie.NodeLog;
+using Nethermind.Trie.NodeBuffer;
 using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
@@ -54,7 +54,7 @@ public class FlatWorldStateScopeProviderTests
         context.FlatDbManager.GatherSnapshotBundle(Arg.Any<StateId>(), Arg.Any<ResourcePool.Usage>(), Arg.Any<bool>()).Returns(_ =>
         {
             if (!stateAvailable) throw CreateStateUnavailableException();
-            return CreateSnapshotBundle(context.ResourcePool, context.TrieNodeLog);
+            return CreateSnapshotBundle(context.ResourcePool, context.NodeRecordBuffer);
         });
 
         IWorldStateScopeProvider provider = manager.GlobalWorldState;
@@ -142,7 +142,7 @@ public class FlatWorldStateScopeProviderTests
 
         using TestContext context = new(blockTree);
         context.FlatDbManager.GatherSnapshotBundle(Arg.Any<StateId>(), Arg.Any<ResourcePool.Usage>(), Arg.Any<bool>())
-            .Returns(_ => CreateSnapshotBundle(context.ResourcePool, context.TrieNodeLog, persistenceReader));
+            .Returns(_ => CreateSnapshotBundle(context.ResourcePool, context.NodeRecordBuffer, persistenceReader));
 
         Assert.That(context.WorldStateManager.GlobalWorldState.TryBeginScopeAtTarget(target, new LocalMetrics(), out IWorldStateScopeProvider.IScope? scope), Is.True);
         Assert.That(readerDisposed, Is.False);
@@ -173,12 +173,12 @@ public class FlatWorldStateScopeProviderTests
 
     private static Exception CreateStateUnavailableException() => new StateUnavailableException("state removed during acquisition");
 
-    private static SnapshotBundle CreateSnapshotBundle(ResourcePool resourcePool, TrieNodeLog trieNodeLog, IPersistence.IPersistenceReader? persistenceReader = null)
+    private static SnapshotBundle CreateSnapshotBundle(ResourcePool resourcePool, NodeRecordBuffer nodeRecordBuffer, IPersistence.IPersistenceReader? persistenceReader = null)
     {
         persistenceReader ??= Substitute.For<IPersistence.IPersistenceReader>();
         return new SnapshotBundle(
             new ReadOnlySnapshotBundle(new SnapshotPooledList(0), persistenceReader, false, PersistedSnapshotStack.Empty()),
-            trieNodeLog,
+            nodeRecordBuffer,
             resourcePool,
             ResourcePool.Usage.ReadOnlyProcessingEnv);
     }
@@ -192,7 +192,7 @@ public class FlatWorldStateScopeProviderTests
         private IContainer Container => _container ??= _containerBuilder.Build();
 
         public ResourcePool ResourcePool => field ??= Container.Resolve<ResourcePool>();
-        public TrieNodeLog TrieNodeLog => field ??= Container.Resolve<TrieNodeLog>();
+        public NodeRecordBuffer NodeRecordBuffer => field ??= Container.Resolve<NodeRecordBuffer>();
         public IFlatDbManager FlatDbManager => field ??= Container.Resolve<IFlatDbManager>();
         public IWorldStateManager WorldStateManager => field ??= Container.Resolve<IWorldStateManager>();
         public SnapshotBundle SnapshotBundle => Container.Resolve<SnapshotBundle>();
@@ -207,7 +207,7 @@ public class FlatWorldStateScopeProviderTests
 
             _containerBuilder = new ContainerBuilder()
                     .AddModule(new FlatWorldStateModule(config))
-                    .AddSingleton<TrieNodeLog>(_ => FlatTestHelpers.NewTestLog())
+                    .AddSingleton<NodeRecordBuffer>(_ => FlatTestHelpers.NewTestBuffer())
                     .Bind<IWorldStateManager, FlatWorldStateManager>()
                     .AddSingleton<IPersistence>(Substitute.For<IPersistence>())
                     .AddSingleton<IFlatStateRootIndex>(Substitute.For<IFlatStateRootIndex>())
@@ -238,7 +238,7 @@ public class FlatWorldStateScopeProviderTests
                             });
 
                         flatDiff.GatherSnapshotBundle(Arg.Any<StateId>(), Arg.Any<ResourcePool.Usage>(), Arg.Any<bool>())
-                            .Returns(_ => CreateSnapshotBundle(Container.Resolve<ResourcePool>(), Container.Resolve<TrieNodeLog>()));
+                            .Returns(_ => CreateSnapshotBundle(Container.Resolve<ResourcePool>(), Container.Resolve<NodeRecordBuffer>()));
                         flatDiff.GatherReadOnlySnapshotBundle(Arg.Any<StateId>())
                             .Returns(_ => new ReadOnlySnapshotBundle(new SnapshotPooledList(0), Substitute.For<IPersistence.IPersistenceReader>(), false, PersistedSnapshotStack.Empty()));
                         flatDiff.HasStateForBlock(Arg.Any<StateId>()).Returns(true);
@@ -301,7 +301,7 @@ public class FlatWorldStateScopeProviderTests
         }
 
         public void AddSnapshot(Action<SnapshotContent> populator) =>
-            ReadOnlySnapshots.Add(FlatTestHelpers.MakeSnapshot(ResourcePool, TrieNodeLog, populator));
+            ReadOnlySnapshots.Add(FlatTestHelpers.MakeSnapshot(ResourcePool, NodeRecordBuffer, populator));
     }
 
 
@@ -1014,7 +1014,7 @@ public class FlatWorldStateScopeProviderTests
             }
             scope.Commit(1);
             // The root predates the worker's active generation, so retaining only its new writes is insufficient.
-            for (int i = 0; i < 10; i++) ctx.TrieNodeLog.Reserve(64 * 1024, out _, out _);
+            for (int i = 0; i < 10; i++) ctx.NodeRecordBuffer.Reserve(64 * 1024, out _, out _);
         }
 
         FlatStorageTree tree = (FlatStorageTree)scope.CreateStorageTree(address);
@@ -1047,7 +1047,7 @@ public class FlatWorldStateScopeProviderTests
             });
             Assert.That(owner.Wait(5000), Is.True, "commit/dispose must not wait for an unfinished pass");
             ctx.PersistenceReader.DidNotReceive().Dispose();
-            for (int i = 0; i < 10; i++) ctx.TrieNodeLog.Reserve(64 * 1024, out _, out _);
+            for (int i = 0; i < 10; i++) ctx.NodeRecordBuffer.Reserve(64 * 1024, out _, out _);
         }
         finally
         {
@@ -1320,7 +1320,7 @@ public class FlatWorldStateScopeProviderTests
         }
         expectedState.Commit();
 
-        // The tries start from nodes only persistence holds, so the blocks load and warm nodes from outside the trie node log.
+        // The tries start from nodes only persistence holds, so the blocks load and warm nodes from outside the trie node buffer.
         Dictionary<(Hash256? Storage, TreePath Path), byte[]> persistedNodes = CollectNodes(expectedStore.GetTrieStore(null), expectedState.RootHash).Rlps;
         InlineTrieWarmer warmer = new();
         using TestContext ctx = new(config: config, trieWarmer: warmer, stateRoot: expectedState.RootHash);
@@ -1338,7 +1338,7 @@ public class FlatWorldStateScopeProviderTests
 
         int lastBlock = blocksBetweenCommits + 2;
         // The first and last blocks write every contract and the ones in between one each, so the last block
-        // updates tries committed many blocks, and log generations, before.
+        // updates tries committed many blocks, and buffer generations, before.
         (int First, int End) ContractsOf(int block) =>
             block == 1 || block == lastBlock ? (0, contractCount) : (block % contractCount, block % contractCount + 1);
         UInt256 SlotOf(int block, int i) => (UInt256)((block * 7 + i) % (2 * slotsPerContract));
@@ -1402,7 +1402,7 @@ public class FlatWorldStateScopeProviderTests
     public void TryLoadTrieNodeRecord_reads_warmed_then_verified_persisted_and_skips_in_memory_snapshot_nodes([Values] bool storage)
     {
         ResourcePool pool = new(new FlatDbConfig());
-        using TrieNodeLog log = FlatTestHelpers.NewTestLog();
+        using NodeRecordBuffer buffer = FlatTestHelpers.NewTestBuffer();
         Hash256? address = storage ? TestItem.KeccakA : null;
         TreePath persistedPath = TreePath.FromHexString("12");
         TreePath readOnlySnapshotPath = TreePath.FromHexString("34");
@@ -1411,22 +1411,22 @@ public class FlatWorldStateScopeProviderTests
         byte[] readOnlySnapshotRlp = FlatTestHelpers.LeafRlp(0x02);
         byte[] ownSnapshotRlp = FlatTestHelpers.LeafRlp(0x03);
 
-        Snapshot SnapshotWithNode(TreePath path, byte[] rlp) => FlatTestHelpers.MakeSnapshot(pool, log, content =>
+        Snapshot SnapshotWithNode(TreePath path, byte[] rlp) => FlatTestHelpers.MakeSnapshot(pool, buffer, content =>
         {
-            if (address is null) content.SetStateNodeRlp(log, path, rlp);
-            else content.SetStorageNodeRlp(log, address, path, rlp);
+            if (address is null) content.SetStateNodeRlp(buffer, path, rlp);
+            else content.SetStorageNodeRlp(buffer, address, path, rlp);
         });
 
         SinglePersistedNodeReader reader = new(persistedPath, persistedRlp);
         using SnapshotBundle bundle = new(
             new ReadOnlySnapshotBundle(FlatTestHelpers.SnapshotList(SnapshotWithNode(readOnlySnapshotPath, readOnlySnapshotRlp)), reader, false, PersistedSnapshotStack.Empty()),
-            log,
+            buffer,
             pool,
             ResourcePool.Usage.MainBlockProcessing,
             FlatTestHelpers.SnapshotList(SnapshotWithNode(ownSnapshotPath, ownSnapshotRlp)));
 
         byte[]? Load(TreePath path, byte[] rlp) =>
-            bundle.TryLoadTrieNodeRecord(address, path, ValueKeccak.Compute(rlp), out NodeRecordRef record) ? record.Rlp.ToArray() : null;
+            bundle.TryLoadTrieNodeRecord(address, path, ValueKeccak.Compute(rlp), out NodeRecord record) ? record.Rlp.ToArray() : null;
 
         using (Assert.EnterMultipleScope())
         {
@@ -1434,24 +1434,24 @@ public class FlatWorldStateScopeProviderTests
             Assert.That(Load(persistedPath, persistedRlp), Is.EqualTo(persistedRlp), "warmed");
             Assert.That(reader.Loads, Is.EqualTo(1), "warmed node read again from persistence");
             Assert.That(Load(persistedPath, ownSnapshotRlp), Is.Null, "persisted RLP of another hash");
-            Assert.That(Load(readOnlySnapshotPath, readOnlySnapshotRlp), Is.Null, "read-only bundle snapshot must be read through the log");
-            Assert.That(Load(ownSnapshotPath, ownSnapshotRlp), Is.Null, "own snapshot must be read through the log");
+            Assert.That(Load(readOnlySnapshotPath, readOnlySnapshotRlp), Is.Null, "read-only bundle snapshot must be read through the buffer");
+            Assert.That(Load(ownSnapshotPath, ownSnapshotRlp), Is.Null, "own snapshot must be read through the buffer");
             Assert.That(Load(ownSnapshotPath, readOnlySnapshotRlp), Is.Null, "snapshot node of another hash");
         }
     }
 
     [Test]
-    public void Retained_snapshot_roots_are_read_and_updated_from_the_log_after_rotation(
+    public void Retained_snapshot_roots_are_read_and_updated_from_the_buffer_after_rotation(
         [Values] bool storage, [Values] bool readOnlySnapshots)
     {
         const int keyCount = 48;
         const int versionCount = 3;
         ResourcePool pool = new(new FlatDbConfig());
-        using TrieNodeLog log = new(1024 * 1024, 64 * 1024);
+        using NodeRecordBuffer buffer = new(1024 * 1024, 64 * 1024);
         Hash256? address = storage ? TestItem.KeccakA : null;
         byte[] oldRlp = FlatTestHelpers.LeafRlp(0x01);
-        ulong oldPointer = log.AppendRecordFromRlp(address, TreePath.FromHexString("f"), ValueKeccak.Compute(oldRlp), oldRlp);
-        FlatTestHelpers.StartNewGeneration(log);
+        ulong oldPointer = buffer.AppendRecordFromRlp(address, TreePath.FromHexString("f"), ValueKeccak.Compute(oldRlp), oldRlp);
+        FlatTestHelpers.StartNewGeneration(buffer);
 
         ValueHash256[] keys = new ValueHash256[keyCount];
         for (int i = 0; i < keys.Length; i++) keys[i] = ValueKeccak.Compute($"snapshot-key-{i}");
@@ -1461,13 +1461,13 @@ public class FlatWorldStateScopeProviderTests
         SinglePersistedNodeReader reader = new(TreePath.FromHexString("abcdef"), oldRlp);
         using (SnapshotBundle writer = new(
             new ReadOnlySnapshotBundle(new SnapshotPooledList(0), new NoopPersistenceReader(), false, PersistedSnapshotStack.Empty()),
-            log, pool, ResourcePool.Usage.MainBlockProcessing))
+            buffer, pool, ResourcePool.Usage.MainBlockProcessing))
         {
             TrieRoot root = TrieRoot.Empty;
             for (int version = 0; version < versionCount; version++)
             {
-                TrieNodeLogRetain retain = log.RetainActive();
-                LoggedTrie trie = new(writer, log, address, root);
+                NodeRecordBufferRetain retain = buffer.RetainActive();
+                BufferedTrie trie = new(writer, buffer, address, root);
                 using ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries = new(keyCount);
                 values[version] = version == 0 ? new byte[keyCount][] : (byte[][])values[version - 1].Clone();
                 for (int i = 0; i < (version == 0 ? keyCount : 1); i++)
@@ -1485,22 +1485,22 @@ public class FlatWorldStateScopeProviderTests
                 Snapshot snapshot = writer._snapshots[version];
                 snapshot.AcquireLease();
                 snapshots.Add(snapshot);
-                FlatTestHelpers.StartNewGeneration(log);
+                FlatTestHelpers.StartNewGeneration(buffer);
             }
         }
 
         using SnapshotBundle bundle = new(
             new ReadOnlySnapshotBundle(readOnlySnapshots ? snapshots : new SnapshotPooledList(0), reader, false, PersistedSnapshotStack.Empty()),
-            log, pool, ResourcePool.Usage.MainBlockProcessing,
+            buffer, pool, ResourcePool.Usage.MainBlockProcessing,
             readOnlySnapshots ? null : snapshots);
-        for (int i = 0; i < 12; i++) FlatTestHelpers.StartNewGeneration(log);
-        Assert.That(() => log.FindBloom(oldPointer) is null, Is.True.After(10_000, 10), "the unretained generation is compacted while snapshots retain later generations");
+        for (int i = 0; i < 12; i++) FlatTestHelpers.StartNewGeneration(buffer);
+        Assert.That(() => buffer.FindBloom(oldPointer) is null, Is.True.After(10_000, 10), "the unretained generation is compacted while snapshots retain later generations");
 
-        using TrieNodeLogRetain writeRetain = log.RetainActive();
+        using NodeRecordBufferRetain writeRetain = buffer.RetainActive();
         for (int version = 0; version < versionCount; version++)
         {
-            Assert.That(LogBulkSet.ResolveRoot(log, address, roots[version].Hash).Pointer, Is.EqualTo(roots[version].Pointer), $"indexed root {version}");
-            LoggedTrie trie = new(bundle, log, address, LogBulkSet.ResolveRoot(log, address, roots[version].Hash));
+            Assert.That(BufferBulkSet.ResolveRoot(buffer, address, roots[version].Hash).Pointer, Is.EqualTo(roots[version].Pointer), $"indexed root {version}");
+            BufferedTrie trie = new(bundle, buffer, address, BufferBulkSet.ResolveRoot(buffer, address, roots[version].Hash));
             using (Assert.EnterMultipleScope())
             {
                 for (int i = 0; i < keys.Length; i++) Assert.That(trie.TryGet(keys[i]), Is.EqualTo(values[version][i]), $"version {version}, key {i}");
@@ -1518,7 +1518,7 @@ public class FlatWorldStateScopeProviderTests
             }
         }
 
-        Assert.That(reader.Loads, Is.Zero, "in-memory nodes must resolve through the retained log, without source fetches");
+        Assert.That(reader.Loads, Is.Zero, "in-memory nodes must resolve through the retained buffer, without source fetches");
     }
 
     /// <summary>The hash-referenced nodes of the state trie at <paramref name="root"/> and its storage tries, by address hash, path and RLP.</summary>
@@ -1718,11 +1718,11 @@ public class FlatWorldStateScopeProviderTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(resumedSnapshot.LogRetain!.Generation, Is.EqualTo(interleavedSnapshot.LogRetain!.Generation));
-            Assert.That(resumedSnapshot.LogRetain.WriteBoundary, Is.LessThan(interleavedSnapshot.LogRetain.WriteBoundary));
-            Assert.That(resumed, Has.Some.LessThan(interleavedSnapshot.LogRetain.WriteBoundary), "the paused scope retains its earlier reachable writes");
+            Assert.That(resumedSnapshot.BufferRetain!.Generation, Is.EqualTo(interleavedSnapshot.BufferRetain!.Generation));
+            Assert.That(resumedSnapshot.BufferRetain.WriteBoundary, Is.LessThan(interleavedSnapshot.BufferRetain.WriteBoundary));
+            Assert.That(resumed, Has.Some.LessThan(interleavedSnapshot.BufferRetain.WriteBoundary), "the paused scope retains its earlier reachable writes");
             Assert.That(resumed, Does.Not.Contain(interleavedSnapshot.StateRootPointer));
-            Assert.That(resumed.Length, Is.EqualTo(ctx.TrieNodeLog.EnumerateNodes(resumedSnapshot.StateRootPointer).Count()));
+            Assert.That(resumed.Length, Is.EqualTo(ctx.NodeRecordBuffer.EnumerateNodes(resumedSnapshot.StateRootPointer).Count()));
             Assert.That(interleavedSnapshot.StateNodes.Count(), Is.EqualTo(1));
         }
     }
@@ -1880,7 +1880,7 @@ public class FlatWorldStateScopeProviderTests
             content.Storages[(addr1, slot1)] = BaseFlatPersistence.DecodeSlotValue(value1);
 
             // Also add a storage trie node for addr1 at root path
-            content.SetStorageNodeRlp(ctx.TrieNodeLog, addr1Hash, TreePath.Empty, FlatTestHelpers.LeafRlpA);
+            content.SetStorageNodeRlp(ctx.NodeRecordBuffer, addr1Hash, TreePath.Empty, FlatTestHelpers.LeafRlpA);
         });
 
         // Create local commits for addr2 (NOT addr1) - this creates local _snapshots
@@ -2217,8 +2217,8 @@ public class FlatWorldStateScopeProviderTests
         ReadOnlySnapshotBundle readOnlyBundle = new(new SnapshotPooledList(0), reader, recordDetailedMetrics: false, PersistedSnapshotStack.Empty());
         FlatDbConfig config = new();
         ResourcePool resourcePool = new(config);
-        using TrieNodeLog log = FlatTestHelpers.NewTestLog();
-        SnapshotBundle bundle = new(readOnlyBundle, log, resourcePool, ResourcePool.Usage.MainBlockProcessing);
+        using NodeRecordBuffer buffer = FlatTestHelpers.NewTestBuffer();
+        SnapshotBundle bundle = new(readOnlyBundle, buffer, resourcePool, ResourcePool.Usage.MainBlockProcessing);
         await using TrieWarmer warmer = new(LimboLogs.Instance, config);
 
         using FlatWorldStateScope scope = new(

@@ -9,7 +9,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.Trie;
-using Nethermind.Trie.NodeLog;
+using Nethermind.Trie.NodeBuffer;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -64,12 +64,12 @@ public class FlatReadOnlyTrieStoreTests
     {
         TreePath path = TreePath.FromHexString("12");
         Hash256 storageAddress = TestItem.KeccakA;
-        using TrieNodeLog log = FlatTestHelpers.NewTestLog();
+        using NodeRecordBuffer buffer = FlatTestHelpers.NewTestBuffer();
 
-        _flatDbManager.GatherReadOnlySnapshotBundle(Arg.Any<StateId>()).Returns(FlatTestHelpers.MakeBundle(_pool, log, c =>
+        _flatDbManager.GatherReadOnlySnapshotBundle(Arg.Any<StateId>()).Returns(FlatTestHelpers.MakeBundle(_pool, buffer, c =>
         {
-            c.SetStateNodeRlp(log, path, FlatTestHelpers.LeafRlpA);
-            c.SetStorageNodeRlp(log, storageAddress, path, FlatTestHelpers.LeafRlpB);
+            c.SetStateNodeRlp(buffer, path, FlatTestHelpers.LeafRlpA);
+            c.SetStorageNodeRlp(buffer, storageAddress, path, FlatTestHelpers.LeafRlpB);
         }));
 
         using IDisposable scope = _store.BeginScope(Build.A.BlockHeader.TestObject);

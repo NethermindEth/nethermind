@@ -11,7 +11,7 @@ using Nethermind.Core.Utils;
 using Nethermind.Int256;
 using Nethermind.State.Flat.Collections;
 using Nethermind.Trie;
-using Nethermind.Trie.NodeLog;
+using Nethermind.Trie.NodeBuffer;
 using IResettable = Nethermind.Core.Resettables.IResettable;
 
 namespace Nethermind.State.Flat;
@@ -84,9 +84,9 @@ public class Snapshot : RefCountingDisposable
 
     public bool IsSorted => _isSorted;
 
-    /// <summary>The retain on the trie node log generation that was active when this snapshot's first block started writing; released with the snapshot.</summary>
-    /// <remarks>Protects this generation and later writes. Traversals lease the log to protect any inherited older records they encounter.</remarks>
-    internal TrieNodeLogRetain? LogRetain { get; init; }
+    /// <summary>The retain on the trie node buffer generation that was active when this snapshot's first block started writing; released with the snapshot.</summary>
+    /// <remarks>Protects this generation and later writes. Traversals lease the buffer to protect any inherited older records they encounter.</remarks>
+    internal NodeRecordBufferRetain? BufferRetain { get; init; }
 
     public StateId From => _from;
     public StateId To => _to;
@@ -110,18 +110,18 @@ public class Snapshot : RefCountingDisposable
 
     private IEnumerable<KeyValuePair<HashedKey<TreePath>, ulong>> EnumerateStateNodes()
     {
-        if (!HasStateRoot || LogRetain is null || From.StateRoot == To.StateRoot) yield break;
-        foreach ((TreePath path, ulong pointer, _) in LogRetain.Log.EnumerateNodes(StateRootPointer, LogRetain.WriteBoundary))
+        if (!HasStateRoot || BufferRetain is null || From.StateRoot == To.StateRoot) yield break;
+        foreach ((TreePath path, ulong pointer, _) in BufferRetain.Buffer.EnumerateNodes(StateRootPointer, BufferRetain.WriteBoundary))
             yield return new(path, pointer);
     }
 
     private IEnumerable<KeyValuePair<HashedKey<(Hash256, TreePath)>, ulong>> EnumerateStorageNodes()
     {
-        if (LogRetain is null) yield break;
-        using IDisposable lease = LogRetain.Log.BeginReadScope();
+        if (BufferRetain is null) yield break;
+        using IDisposable lease = BufferRetain.Buffer.BeginReadScope();
         foreach ((Hash256 address, ulong root) in StorageRoots)
         {
-            foreach ((TreePath path, ulong pointer, _) in LogRetain.Log.EnumerateNodes(root, LogRetain.WriteBoundary))
+            foreach ((TreePath path, ulong pointer, _) in BufferRetain.Buffer.EnumerateNodes(root, BufferRetain.WriteBoundary))
                 yield return new((address, path), pointer);
         }
     }
@@ -169,45 +169,45 @@ public class Snapshot : RefCountingDisposable
         }
     }
 
-    /// <summary>The log pointer of the state node at <paramref name="key"/>, readable through <see cref="GetNodeRecord"/> or <see cref="GetRlp"/> under a log read lease.</summary>
+    /// <summary>The buffer pointer of the state node at <paramref name="key"/>, readable through <see cref="GetNodeRecord"/> or <see cref="GetRlp"/> under a buffer read lease.</summary>
     internal bool TryGetStateNode(HashedKey<TreePath> key, out ulong pointer)
     {
         pointer = 0;
-        return HasStateRoot && LogRetain is not null && LogRetain.Log.TryGetNodePointer(StateRootPointer, key.Key, out pointer);
+        return HasStateRoot && BufferRetain is not null && BufferRetain.Buffer.TryGetNodePointer(StateRootPointer, key.Key, out pointer);
     }
 
     public bool TryGetStateNode(HashedKey<TreePath> key, [NotNullWhen(true)] out TrieNode? node)
     {
         node = null;
-        return HasStateRoot && LogRetain is not null && LogRetain.Log.TryGetNode(StateRootPointer, key.Key, out node);
+        return HasStateRoot && BufferRetain is not null && BufferRetain.Buffer.TryGetNode(StateRootPointer, key.Key, out node);
     }
 
-    /// <summary>The log pointer of the storage node at <paramref name="key"/>, readable through <see cref="GetNodeRecord"/> or <see cref="GetRlp"/> under a log read lease.</summary>
+    /// <summary>The buffer pointer of the storage node at <paramref name="key"/>, readable through <see cref="GetNodeRecord"/> or <see cref="GetRlp"/> under a buffer read lease.</summary>
     internal bool TryGetStorageNode(HashedKey<(Hash256, TreePath)> key, out ulong pointer)
     {
         pointer = 0;
-        return LogRetain is not null && TryGetStorageRoot(key.Key.Item1, out ulong root)
-            && LogRetain.Log.TryGetNodePointer(root, key.Key.Item2, out pointer);
+        return BufferRetain is not null && TryGetStorageRoot(key.Key.Item1, out ulong root)
+            && BufferRetain.Buffer.TryGetNodePointer(root, key.Key.Item2, out pointer);
     }
 
     public bool TryGetStorageNode(HashedKey<(Hash256, TreePath)> key, [NotNullWhen(true)] out TrieNode? node)
     {
         node = null;
-        return LogRetain is not null && TryGetStorageRoot(key.Key.Item1, out ulong root)
-            && LogRetain.Log.TryGetNode(root, key.Key.Item2, out node);
+        return BufferRetain is not null && TryGetStorageRoot(key.Key.Item1, out ulong root)
+            && BufferRetain.Buffer.TryGetNode(root, key.Key.Item2, out node);
     }
 
-    /// <summary>The record a node pointer refers to, borrowed from an active node enumerator or outer log read lease.</summary>
-    public NodeRecordRef GetNodeRecord(ulong pointer) => LogRetain!.Log.GetRecord(pointer);
+    /// <summary>The record a node pointer refers to, borrowed from an active node enumerator or outer buffer read lease.</summary>
+    public NodeRecord GetNodeRecord(ulong pointer) => BufferRetain!.Buffer.GetRecord(pointer);
 
-    /// <summary>The RLP of a node pointer, borrowed from an active node enumerator or outer log read lease.</summary>
+    /// <summary>The RLP of a node pointer, borrowed from an active node enumerator or outer buffer read lease.</summary>
     public ReadOnlySpan<byte> GetRlp(ulong pointer) => GetNodeRecord(pointer).Rlp;
 
     protected override void CleanUp()
     {
         if (_isSorted) _resourcePool.ReturnSortedSnapshotContent(_usage, _sorted!);
         else _resourcePool.ReturnSnapshotContent(_usage, _mutable!);
-        LogRetain?.Dispose();
+        BufferRetain?.Dispose();
     }
 
     public bool TryAcquire() => TryAcquireLease();
