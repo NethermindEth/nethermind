@@ -55,6 +55,7 @@ namespace Nethermind.Init.Steps
 
         private async Task RunBlockTreeInitTasks(CancellationToken cancellationToken)
         {
+            KeptStateResumer.Resume(blockTree, worldStateManager.GlobalStateReader, logManager);
             using StartupBlockTreeFixer fixer = new(syncConfig, blockTree, worldStateManager.GlobalStateReader, logManager);
             await blockTree.Accept(fixer, cancellationToken).ContinueWith(t =>
             {

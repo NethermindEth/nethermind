@@ -535,6 +535,9 @@ public class PersistenceManager(
     /// block durable before the next, so cancellation or a crash midway leaves a shorter tail to re-execute. Deferred
     /// block data is made durable first, as before any state persist. Does nothing without long finality, which is
     /// what provides the persisted-snapshot tier.
+    /// <para>The converted blocks are not handed to the persisted-snapshot compactor, whose workers stop when the
+    /// process exits. After the restart they stay single-block snapshots, each with its own bloom, until finality
+    /// persists them to RocksDB, so a read that misses them checks up to <c>MaxInMemoryBaseSnapshotCount</c> blooms.</para>
     /// </remarks>
     public int PersistInMemoryTailForShutdown(CancellationToken cancellationToken)
     {

@@ -1,12 +1,14 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Visitors;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
@@ -106,22 +108,29 @@ public class StartupTreeFixerTests
             if ((ulong)i <= processedUpTo) tree.TryUpdateMainChain(blocks[i].Header, true, preloadedBlocks: [blocks[i]]);
         }
 
+        // An orphaned sibling of block 3, as a devnet leaves in the in-memory window; its state was kept too.
+        Block fork = Build.A.Block.WithNumber(3).WithDifficulty(1).WithParent(blocks[2]).WithExtraData([1]).TestObject;
+        tree.SuggestBlock(fork);
+
         // Restart with the persisted state at block 2.
         tree = Build.A.BlockTree().WithoutSettingHead.WithDatabaseFrom(builder).WithBestPersistedState(2).TestObject;
         IStateReader stateReader = Substitute.For<IStateReader>();
-        stateReader.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(static c => c.Arg<BlockHeader>().Number <= 5);
-        stateReader.HasStateForBlock(Arg.Is<BlockHeader>(h => h.Number > keptUpTo && h.Number > 2)).Returns(false);
-        System.Collections.Generic.List<ulong> suggested = [];
-        tree.NewBestSuggestedBlock += (_, e) => suggested.Add(e.Block.Number);
+        stateReader.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(c => c.Arg<BlockHeader>().Number <= System.Math.Max(keptUpTo, 2));
+        List<Hash256> suggested = [];
+        tree.NewBestSuggestedBlock += (_, e) => suggested.Add(e.Block.Hash!);
         Assert.That(tree.Head!.Number, Is.EqualTo(2ul));
 
+        ulong moved = KeptStateResumer.Resume(tree, stateReader, NoErrorLimboLogs.Instance);
         using StartupBlockTreeFixer fixer = new(new SyncConfig(), tree, stateReader, NoErrorLimboLogs.Instance);
         await tree.Accept(fixer, CancellationToken.None);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(tree.Head!.Number, Is.EqualTo(expectedHead));
-            Assert.That(suggested, Is.EqualTo(System.Linq.Enumerable.Range((int)expectedHead + 1, 5 - (int)expectedHead).Select(static n => (ulong)n)));
+            Assert.That(moved, Is.EqualTo(expectedHead - 2));
+            Assert.That(tree.Head!.Hash, Is.EqualTo(blocks[expectedHead].Hash));
+            Assert.That(tree.FindHeader(3, BlockTreeLookupOptions.RequireCanonical)!.Hash, Is.EqualTo(blocks[3].Hash), "the fork stays off the canonical chain");
+            Assert.That(suggested.Where(h => h != fork.Hash), Is.EqualTo(blocks[((int)expectedHead + 1)..].Select(static b => b.Hash)));
+            Assert.That(suggested.Contains(fork.Hash!), Is.EqualTo(expectedHead < 3), "a fork below the resumed head is not re-executed");
         }
     }
 
