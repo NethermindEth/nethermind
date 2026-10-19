@@ -35,7 +35,7 @@ public interface IPbtNodeGroupSink
 /// <summary>Backing store used by <see cref="TrieUpdater"/> for canonical complete-key mutations.</summary>
 public interface IPbtStore
 {
-    /// <summary>The direct group reference for this store's exact input root, or Unknown when unavailable.</summary>
+    /// <summary>The input root's group reference, None for a known empty root, or Unknown when unavailable.</summary>
     PbtGroupReference RootGroupReference => PbtGroupReference.Unknown;
 
     /// <summary>Borrows a direct record for this path, or returns false to use the exact store lookup.</summary>

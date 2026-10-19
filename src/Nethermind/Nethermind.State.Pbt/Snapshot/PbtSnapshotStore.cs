@@ -41,13 +41,15 @@ public sealed class PbtSnapshotStore(PbtSnapshotBundle bundle) : IPbtStore, IDis
     /// <inheritdoc/>
     public void CompleteFold() => _complete = true;
 
+    /// <inheritdoc/>
+    /// <remarks>Snapshot pins keep in-memory changes in the log, so misses read only the captured persisted layers.</remarks>
     public RefCountingMemory? GetNodeGroup(scoped in PbtTraversalPath groupKey)
     {
         PbtStorageNodePath storagePath = groupKey.ToPath<PbtStorageNodePath>();
-        if (!_recordReadTimes) return bundle.GetNodeGroup(storagePath);
+        if (!_recordReadTimes) return bundle.GetPersistedNodeGroup(storagePath);
 
         long start = Stopwatch.GetTimestamp();
-        RefCountingMemory? payload = bundle.GetNodeGroup(storagePath);
+        RefCountingMemory? payload = bundle.GetPersistedNodeGroup(storagePath);
         Metrics.PbtTrieUpdaterNodeGroupReadTimes.Observe(
             Stopwatch.GetTimestamp() - start,
             (payload is null ? _nullLabels : _foundLabels)[ReadLabelIndex(storagePath)]);

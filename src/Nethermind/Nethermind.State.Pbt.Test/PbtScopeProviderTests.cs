@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -14,6 +15,7 @@ using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
+using Nethermind.State.Pbt.Persistence;
 using Nethermind.State.Pbt.ScopeProvider;
 using NUnit.Framework;
 
@@ -160,6 +162,48 @@ public class PbtScopeProviderTests
         foreach (Address address in addresses) PbtReferenceModel.SetAccount(model, address, 2, 150);
         Assert.That(root2, Is.EqualTo(PbtReferenceModel.Root(model).ToHash256()));
         Assert.That(root2, Is.Not.EqualTo(root1), "the accounts changed, so the root must move");
+    }
+
+    [Test]
+    public async Task Delete_all_persisted_accounts_then_insert_before_commit_does_not_resurrect_them([Values] bool native)
+    {
+        using NativeBucketedMemoryPool nativePool = PbtNodeGroupMemory.CreateNativePool();
+        IRefCountingMemoryProvider memory = native ? nativePool : PooledRefCountingMemoryProvider.Instance;
+        await using PbtTestContext ctx = new(nodeGroupMemory: memory);
+        Hash256 persistedRoot;
+        using (PbtWorldStateScope initial = ctx.BeginScope(null))
+        {
+            using (IWorldStateScopeProvider.IWorldStateWriteBatch batch = initial.StartWriteBatch(2))
+            {
+                batch.Set(TestItem.AddressA, new Account(1, 100));
+                batch.Set(TestItem.AddressB, new Account(1, 200));
+            }
+            initial.Commit(1);
+            persistedRoot = initial.RootHash;
+        }
+        ctx.Manager.FlushCache(CancellationToken.None);
+        BlockHeader parent = Build.A.BlockHeader.WithNumber(1).WithStateRoot(persistedRoot).TestObject;
+        using PbtWorldStateScope scope = ctx.BeginScope(parent);
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch batch = scope.StartWriteBatch(2))
+        {
+            batch.Set(TestItem.AddressA, null);
+            batch.Set(TestItem.AddressB, null);
+        }
+        scope.UpdateRootHash();
+        Assert.That(scope.RootHash, Is.EqualTo(default(ValueHash256).ToHash256()));
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch batch = scope.StartWriteBatch(1))
+            batch.Set(TestItem.AddressC, new Account(1, 300));
+        scope.UpdateRootHash();
+        Dictionary<string, byte[]> model = [];
+        PbtReferenceModel.SetAccount(model, TestItem.AddressC, 1, 300);
+        using IPbtPersistence.IReader persisted = ctx.Persistence.CreateReader();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(scope.RootHash, Is.EqualTo(PbtReferenceModel.Root(model).ToHash256()));
+            Assert.That(scope.Get(TestItem.AddressA), Is.Null);
+            Assert.That(scope.Get(TestItem.AddressB), Is.Null);
+            Assert.That(persisted.CurrentRoot, Is.EqualTo(persistedRoot.ValueHash256), "the old nonempty root is still in persistence");
+        }
     }
 
     [Test]

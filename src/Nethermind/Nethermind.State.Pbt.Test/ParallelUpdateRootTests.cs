@@ -425,16 +425,30 @@ public class ParallelUpdateRootTests
 
     private static void AssertLoggedFold(LoggedGroupStore store, PbtTreeHarness expected, (byte[] Key, byte[]? Value)[] writes, FoldFanOut fanOut)
     {
-        bool emptyInput = store.RootReference.IsNone;
         ValueHash256 actual = store.Fold(writes, fanOut);
         expected.ApplyBatch(writes);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(actual, Is.EqualTo(expected.RootHash));
             Assert.That(store.Payloads().PhysicalRecords(), Is.EqualTo(expected.PhysicalPayloads.PhysicalRecords()));
-            Assert.That(store.LastFallbackReads, Is.EqualTo(emptyInput ? 1 : 0));
+            Assert.That(store.LastFallbackReads, Is.Zero);
             Assert.That(store.StoreReads, Is.EqualTo(store.LastFallbackReads));
         }
+    }
+
+    [Test]
+    public void Empty_root_after_memory_deletions_does_not_fetch_the_old_persisted_tree([Values] bool native)
+    {
+        using NativeBucketedMemoryPool nativePool = PbtNodeGroupMemory.CreateNativePool();
+        using LoggedGroupStore store = new(native ? nativePool : PooledRefCountingMemoryProvider.Instance);
+        using PbtTreeHarness expected = new();
+        (byte[] Key, byte[]? Value)[] entries = ZoneEntries(3, compressed: true);
+        expected.ApplyBatch(entries);
+        store.Seed(expected.RootHash, expected.PhysicalPayloads);
+        (byte[] Key, byte[]? Value)[] deletes = entries.Select(static entry => (entry.Key, (byte[]?)null)).ToArray();
+        Assert.That(store.Fold(deletes, SplitFanOut(true)), Is.EqualTo(default(ValueHash256)));
+        expected.ApplyBatch(deletes);
+        AssertLoggedFold(store, expected, [(entries[0].Key, Value(0xA5))], SplitFanOut(true));
     }
 
     [Test]
@@ -487,8 +501,9 @@ public class ParallelUpdateRootTests
             Assert.That(store.LastComplete, Is.False);
             Assert.That(store.Payloads().PhysicalRecords(), Is.EqualTo(initial));
             Assert.That(store.RootReference, Is.EqualTo(PbtGroupReference.Unknown));
-            Assert.That(log.UsedBytes, Is.EqualTo(initialBytes), "unowned partial generations were reclaimed");
             if (failAfterWrite) Assert.That(store.LastUsedBytes, Is.GreaterThan(initialBytes), "the failure followed actual private group writes");
+            store.DiscardUncommittedState();
+            Assert.That(log.UsedBytes, Is.EqualTo(initialBytes), "aborting the scope releases its generation pin");
         }
     }
 
@@ -566,7 +581,7 @@ public class ParallelUpdateRootTests
     private sealed class LoggedGroupStore : IPbtStore, IDisposable
     {
         private readonly IRefCountingMemoryProvider _memory;
-        private readonly PbtSnapshotContent _content;
+        private PbtSnapshotContent _content;
         private readonly bool _ownsLog;
         private PbtNodeGroupStore? _persisted;
         private ValueHash256 _root;
@@ -636,8 +651,7 @@ public class ParallelUpdateRootTests
         {
             Interlocked.Increment(ref _storeReads);
             if (FailDescendantReads && path.BitDepth != 0) throw new InvalidDataException("Configured descendant read failure.");
-            return _content.TryGetNodeGroup(path.ToPath<PbtStorageNodePath>(), out RefCountingMemory? payload)
-                ? payload : _persisted?.GetNodeGroup(path);
+            return _persisted?.GetNodeGroup(path);
         }
 
         public ValueHash256 Fold((byte[] Key, byte[]? Value)[] writes, FoldFanOut fanOut, PbtGroupReference? rootOverride = null)
@@ -673,14 +687,17 @@ public class ParallelUpdateRootTests
             return _root = root;
         }
 
+        public void DiscardUncommittedState()
+        {
+            _content.Dispose();
+            _content = new PbtSnapshotContent(Log, _memory);
+        }
+
         public void Seed(ValueHash256 root, IReadOnlyList<PbtPhysicalPayload> groups)
         {
-            foreach (PbtPhysicalPayload group in groups)
-            {
-                using RefCountingMemory payload = _memory.Rent(group.Payload.Length);
-                group.Payload.Span.CopyTo(payload.GetSpan());
-                _content.SetNodeGroup(group.Key, payload);
-            }
+            DiscardUncommittedState();
+            _persisted?.Dispose();
+            _persisted = PbtNodeGroupStore.FromPhysicalPayloads(groups);
             _root = root;
             RootReference = PbtGroupReference.Unknown;
         }
@@ -690,17 +707,13 @@ public class ParallelUpdateRootTests
             PbtNodeGroupStore persisted = PbtNodeGroupStore.FromPhysicalPayloads(Payloads());
             _persisted?.Dispose();
             _persisted = persisted;
-            using PbtGroupLog.RecordOwner parent = Log.CreateOwner();
-            parent.Retain(RootReference);
-            _content.Reset();
+            using PbtGroupLog.OperationLease operation = Log.BeginOperation();
+            Assert.That(Log.TryGetRecord(operation, RootReference, out PbtGroupRecord record), Is.True);
+            using PbtGroupLog.GenerationPin parent = Log.PinActiveGeneration();
+            RootReference = Log.Append(operation, default, record.Payload.Span, unknownLinks ? PbtGroupLinks.Unknown : record.Links);
+            _content.Dispose();
+            _content = new PbtSnapshotContent(Log, _memory);
             _content.SetNodeGroupReference(default(PbtStorageNodePath), RootReference);
-            if (unknownLinks)
-            {
-                using PbtGroupLog.OperationLease operation = Log.BeginOperation();
-                Assert.That(Log.TryGetRecord(operation, RootReference, out PbtGroupRecord record), Is.True);
-                RootReference = Log.Append(operation, default, record.Payload.Span, PbtGroupLinks.Unknown);
-                _content.SetNodeGroupReference(default(PbtStorageNodePath), RootReference);
-            }
         }
 
         public IReadOnlyList<PbtPhysicalPayload> Payloads()

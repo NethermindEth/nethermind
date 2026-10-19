@@ -1062,36 +1062,37 @@ public class PbtNodeGroupTests
     }
 
     [Test]
-    public void Group_log_authoritative_owners_transfer_and_balance_generation_retention([Values] bool native)
+    public void Group_log_generation_pins_retain_their_generation_range_and_copies([Values] bool native)
     {
         using GroupLogContext context = new(native);
-        using PbtGroupLog.RecordOwner first = context.Log.CreateOwner();
-        using PbtGroupLog.RecordOwner second = context.Log.CreateOwner();
-        PbtGroupReference reference;
+        PbtGroupLog.GenerationPin pin = context.Log.PinActiveGeneration();
         byte[] payload = RootGroup(LeafEncoding(0x20));
+        PbtGroupReference[] references;
         using (PbtGroupLog.OperationLease operation = context.Log.BeginOperation())
         {
-            reference = context.Log.Append(operation, default, payload, default);
-            first.Retain(reference);
-            first.Retain(reference);
-            second.Retain(reference);
-            for (int i = 0; i < 16; i++) context.Log.Append(operation, default, payload, default);
+            references = new PbtGroupReference[16];
+            for (int i = 0; i < references.Length; i++)
+                references[i] = context.Log.Append(operation, default, payload, default);
             Assert.That(context.Log.GenerationCount, Is.GreaterThan(1));
         }
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(context.Log.GenerationCount, Is.EqualTo(1));
-            Assert.That(context.Log.PinnedBytes, Is.EqualTo(context.Log.ResidentBytes));
-            Assert.That(TrackingMemoryProvider.CountUnreleased(context.Memory.Rented), Is.EqualTo(1));
-        }
-        first.Release(reference);
-        first.Dispose();
+        PbtGroupLog.GenerationPin copy = pin.Copy();
+        Assert.That(copy.Generation, Is.EqualTo(pin.Generation));
+        pin.Dispose();
         using (PbtGroupLog.OperationLease operation = context.Log.BeginOperation())
         {
-            Assert.That(context.Log.TryGetRecord(operation, reference, out PbtGroupRecord record), Is.True);
-            Assert.That(record.Payload.ToArray(), Is.EqualTo(payload));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(context.Log.GenerationCount, Is.GreaterThan(1));
+                Assert.That(context.Log.PinnedBytes, Is.EqualTo(context.Log.ResidentBytes));
+                Assert.That(TrackingMemoryProvider.CountUnreleased(context.Memory.Rented), Is.GreaterThan(1));
+            }
+            foreach (PbtGroupReference reference in references)
+            {
+                Assert.That(context.Log.TryGetRecord(operation, reference, out PbtGroupRecord record), Is.True);
+                Assert.That(record.Payload.ToArray(), Is.EqualTo(payload));
+            }
         }
-        second.Release(reference);
+        copy.Dispose();
         using (Assert.EnterMultipleScope())
         {
             Assert.That(context.Log.ResidentBytes, Is.Zero);
@@ -1101,21 +1102,20 @@ public class PbtNodeGroupTests
     }
 
     [Test]
-    public void Group_log_operation_protects_borrowed_views_after_owner_and_log_disposal([Values] bool native, [Values(0, 32)] int rotations)
+    public void Group_log_operation_protects_borrowed_views_after_generation_pin_and_log_disposal([Values] bool native, [Values(0, 32)] int rotations)
     {
         using GroupLogContext context = new(native);
-        using PbtGroupLog.RecordOwner owner = context.Log.CreateOwner();
+        PbtGroupLog.GenerationPin pin = context.Log.PinActiveGeneration();
         using PbtGroupLog.OperationLease operation = context.Log.BeginOperation();
         byte[] payload = RootGroup(LeafEncoding(0x40));
         PbtGroupReference reference = context.Log.Append(operation, default, payload, default);
-        owner.Retain(reference);
         Assert.That(context.Log.TryGetRecord(operation, reference, out PbtGroupRecord record), Is.True);
         Parallel.For(0, rotations, index =>
         {
             context.Log.Append(operation, default, RootGroup(LeafEncoding((byte)(index + 1))), default);
             Assert.That(record.Payload.ToArray(), Is.EqualTo(payload));
         });
-        owner.Dispose();
+        pin.Dispose();
         context.Log.Dispose();
         using (Assert.EnterMultipleScope())
         {

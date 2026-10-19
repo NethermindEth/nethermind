@@ -165,11 +165,16 @@ public sealed class PbtReadOnlySnapshotBundle(
         return false;
     }
 
+    /// <summary>Reads persisted snapshots and the captured persistence reader, without probing in-memory snapshots.</summary>
     public RefCountingMemory? GetPersistedNodeGroup(PbtStorageNodePath groupKey)
     {
         GuardDispose();
         long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
-        RefCountingMemory? result = reader.GetNodeGroup(groupKey);
+        RefCountingMemory? result = null;
+        bool found = false;
+        for (int index = persistedSnapshots.Count - 1; index >= 0; index--)
+            if (persistedSnapshots[index].TryGetNodeGroup(groupKey, out result)) { found = true; break; }
+        if (!found) result = reader.GetNodeGroup(groupKey);
         if (recordDetailedMetrics)
         {
             int partition = (int)PbtPartitions.PartitionOfPath(groupKey);

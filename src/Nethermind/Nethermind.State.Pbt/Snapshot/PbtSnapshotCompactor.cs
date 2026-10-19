@@ -57,7 +57,6 @@ public class PbtSnapshotCompactor(
                 merged.CopyNodeGroupsFrom(content);
             }
 
-            merged.RepackNodeGroups();
             PbtSnapshot newest = chainOldestFirst[^1];
             PbtGroupReference rootReference = ReferenceEquals(merged.NodeGroupLog, newest.Content.NodeGroupLog)
                 ? newest.RootGroupReference : newest.TreeRoot == default ? PbtGroupReference.None : PbtGroupReference.Unknown;

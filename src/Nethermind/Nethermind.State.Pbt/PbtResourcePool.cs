@@ -104,8 +104,13 @@ public class PbtResourcePool : IPbtResourcePool
         private readonly ResourcePool.PooledResourceLabel _writeBatchLabel = new(usage.ToString(), "PbtWriteBatchBuilder");
         private readonly ResourcePool.PooledResourceLabel _snapshotLabel = new(usage.ToString(), nameof(PbtSnapshotContent));
 
-        public PbtSnapshotContent GetSnapshotContent() =>
-            TryRent(_snapshotPool, _snapshotLabel, out PbtSnapshotContent? content) ? content : new PbtSnapshotContent(nodeGroupLog, nodeGroupMemory);
+        public PbtSnapshotContent GetSnapshotContent()
+        {
+            PbtSnapshotContent content = TryRent(_snapshotPool, _snapshotLabel, out PbtSnapshotContent? pooled)
+                ? pooled : new PbtSnapshotContent(nodeGroupLog, nodeGroupMemory);
+            content.BeginNodeGroupWrites();
+            return content;
+        }
 
         public void ReturnSnapshotContent(PbtSnapshotContent content)
         {

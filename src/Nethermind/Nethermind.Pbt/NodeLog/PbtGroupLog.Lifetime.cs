@@ -18,18 +18,28 @@ public sealed partial class PbtGroupLog
         }
     }
 
-    /// <summary>Creates a set of authoritative record owners, normally one per snapshot content.</summary>
-    public RecordOwner CreateOwner()
+    /// <summary>Keeps the active generation and every later generation readable until the pin is disposed.</summary>
+    public GenerationPin PinActiveGeneration()
     {
         lock (_lock)
         {
             ThrowIfDisposed();
-            return new RecordOwner(this);
+            return PinGeneration(_active?.Id ?? checked(_lastGeneration + 1));
         }
     }
 
-    /// <summary>Stops new operations and reservations, releasing buffers after outstanding operations and owners finish.</summary>
-    /// <remarks>Does not wait for leases, which may be released by the disposing thread. Repeated calls have no effect.</remarks>
+    private GenerationPin PinGeneration(uint generation)
+    {
+        lock (_lock)
+        {
+            ThrowIfDisposed();
+            _pins.TryGetValue(generation, out int count);
+            _pins[generation] = count + 1;
+            return new GenerationPin(this, generation);
+        }
+    }
+
+    /// <summary>Stops new operations and writes, releasing buffers after outstanding operations and pins finish.</summary>
     public void Dispose()
     {
         lock (_lock)
@@ -40,15 +50,25 @@ public sealed partial class PbtGroupLog
         }
     }
 
+    private uint OldestPinnedGeneration
+    {
+        get
+        {
+            foreach ((uint generation, _) in _pins) return generation;
+            return uint.MaxValue;
+        }
+    }
+
     private bool KeepOpportunistically(Generation generation) =>
         !_disposed && _lastGeneration - generation.Id < (uint)_retainedGenerations;
 
     private void Trim()
     {
         if (_operations != 0) return;
+        uint oldestPinned = OldestPinnedGeneration;
         foreach ((uint id, Generation generation) in _generations)
         {
-            if (generation.Owners != 0 || KeepOpportunistically(generation)) continue;
+            if (id >= oldestPinned || KeepOpportunistically(generation)) continue;
             _generations.TryRemove(id, out _);
             if (ReferenceEquals(_active, generation)) Volatile.Write(ref _active, null);
             Interlocked.Add(ref _residentBytes, -generation.Buffer.Capacity);
@@ -56,7 +76,7 @@ public sealed partial class PbtGroupLog
         }
     }
 
-    /// <summary>An operation-wide lease that can be shared by parallel workers without taking a lock per group read.</summary>
+    /// <summary>An operation-wide lease shared by workers without taking a lock per group read.</summary>
     /// <remarks>The owner must join all workers and stop using borrowed records before disposing this lease.</remarks>
     public sealed class OperationLease : IDisposable
     {
@@ -75,7 +95,6 @@ public sealed partial class PbtGroupLog
             if (!ReferenceEquals(_log, log)) throw new ArgumentException("The operation belongs to a different group log.", nameof(log));
         }
 
-        /// <summary>Releases operation protection once all workers and borrowed views are finished.</summary>
         public void Dispose()
         {
             if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
@@ -87,67 +106,32 @@ public sealed partial class PbtGroupLog
         }
     }
 
-    /// <summary>Keeps only the generations containing authoritative records, with balanced retention per held reference.</summary>
-    /// <remarks>
-    /// Retain a replacement before releasing the record it replaces. Tombstones need no storage. Dispose releases every
-    /// generation held by the owner; retained-generation counts are safe to update from several partition writers.
-    /// </remarks>
-    public sealed class RecordOwner : IDisposable
+    /// <summary>Keeps one generation and every later generation available to snapshot readers.</summary>
+    public sealed class GenerationPin : IDisposable
     {
         private readonly PbtGroupLog _log;
-        private readonly Dictionary<uint, int> _counts = [];
-        private bool _disposed;
+        private int _disposed;
 
-        internal RecordOwner(PbtGroupLog log) => _log = log;
-
-        /// <summary>Retains the generation of one authoritative record, or does nothing for a tombstone.</summary>
-        /// <exception cref="InvalidOperationException">The reference is unresolved or retired.</exception>
-        public void Retain(PbtGroupReference reference)
+        internal GenerationPin(PbtGroupLog log, uint generation)
         {
-            lock (_log._lock)
-            {
-                ObjectDisposedException.ThrowIf(_disposed, this);
-                _log.ThrowIfDisposed();
-                if (reference.IsNone) return;
-                if (!_log.TryLocate(reference, out _)) throw new InvalidOperationException("An authoritative group reference must resolve to a record.");
-                uint id = reference.Generation;
-                if (_counts.TryGetValue(id, out int count)) _counts[id] = count + 1;
-                else
-                {
-                    _counts.Add(id, 1);
-                    _log._generations[id].Owners++;
-                }
-            }
+            _log = log;
+            Generation = generation;
         }
 
-        /// <summary>Releases one held reference; the generation can retire after its last owner and operation finish.</summary>
-        public void Release(PbtGroupReference reference)
-        {
-            lock (_log._lock)
-            {
-                ObjectDisposedException.ThrowIf(_disposed, this);
-                if (reference.IsNone) return;
-                uint id = reference.Generation;
-                if (!_counts.TryGetValue(id, out int count)) throw new InvalidOperationException("The group generation is not held by this owner.");
-                if (count > 1) _counts[id] = count - 1;
-                else
-                {
-                    _counts.Remove(id);
-                    _log._generations[id].Owners--;
-                    _log.Trim();
-                }
-            }
-        }
+        /// <summary>The first generation kept by this pin.</summary>
+        public uint Generation { get; }
 
-        /// <summary>Releases all authoritative generation leases owned by this set.</summary>
+        /// <summary>Keeps the same generation range independently of this pin.</summary>
+        public GenerationPin Copy() => _log.PinGeneration(Generation);
+
         public void Dispose()
         {
+            if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
             lock (_log._lock)
             {
-                if (_disposed) return;
-                _disposed = true;
-                foreach (uint id in _counts.Keys) _log._generations[id].Owners--;
-                _counts.Clear();
+                int count = _log._pins[Generation];
+                if (count == 1) _log._pins.Remove(Generation);
+                else _log._pins[Generation] = count - 1;
                 _log.Trim();
             }
         }

@@ -48,8 +48,8 @@ public class PbtSnapshotCompactorTests
         PbtStorageNodePath alternateGroupKey = new([], 0);
         PbtVariableTreeKey key = PbtTestLeaves.SlotKey(TestItem.AddressA, 64);
         TrackingMemoryProvider memoryProvider = new();
-        PbtSnapshotContent older = new();
-        PbtSnapshotContent newer = new();
+        PbtSnapshotContent older = _pool.GetSnapshotContent(PbtResourcePool.Usage.MainBlockProcessing);
+        PbtSnapshotContent newer = _pool.GetSnapshotContent(PbtResourcePool.Usage.MainBlockProcessing);
         older.SetSlot(key, new UInt256(TestItem.KeccakA.Bytes, isBigEndian: true));
         newer.SetSlot(key, new UInt256(TestItem.KeccakB.Bytes, isBigEndian: true));
         byte[] expected;
@@ -88,7 +88,7 @@ public class PbtSnapshotCompactorTests
     }
 
     [Test]
-    public void Compact_repacks_authoritative_records_and_relinks_surviving_descendants([Values] bool native)
+    public void Compact_keeps_original_records_and_descendant_references_pinned([Values] bool native)
     {
         using NativeBucketedMemoryPool nativePool = PbtNodeGroupMemory.CreateNativePool();
         IRefCountingMemoryProvider memory = native ? nativePool : PooledRefCountingMemoryProvider.Instance;
@@ -122,13 +122,13 @@ public class PbtSnapshotCompactorTests
         using PbtSnapshot compacted = Compact(pool, older, newer);
         using PbtGroupLog.OperationLease read = log.BeginOperation();
         Assert.That(log.TryGetRecord(read, compacted.RootGroupReference, out PbtGroupRecord root), Is.True);
-        PbtGroupReference relocatedChild = root.GetLink(0);
+        PbtGroupReference childReference = root.GetLink(0);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(compacted.RootGroupReference, Is.Not.EqualTo(original[default]));
-            Assert.That(log.TryGetRecord(read, original[default], out _), Is.False, "source-only generations are reclaimed");
-            Assert.That(relocatedChild, Is.Not.EqualTo(original[childPath]));
-            Assert.That(log.TryGetRecord(read, relocatedChild, out PbtGroupRecord child), Is.True);
+            Assert.That(compacted.RootGroupReference, Is.EqualTo(original[default]));
+            Assert.That(log.TryGetRecord(read, original[default], out _), Is.True, "the compacted snapshot inherits the oldest generation pin");
+            Assert.That(childReference, Is.EqualTo(original[childPath]));
+            Assert.That(log.TryGetRecord(read, childReference, out PbtGroupRecord child), Is.True);
             Assert.That(child.Path, Is.EqualTo(childPath));
         }
         foreach (PbtPhysicalPayload expected in payloads)
@@ -149,14 +149,14 @@ public class PbtSnapshotCompactorTests
         UInt256 replacement = (UInt256)0x02;
         CodeInfo code = new(Bytes.FromHexString("6001600055"));
         Account account = Build.An.Account.WithNonce(7).WithBalance(9).WithStorageRoot(TestItem.KeccakB).WithCode(code.Code.ToArray()).TestObject;
-        PbtSnapshotContent older = new();
+        PbtSnapshotContent older = _pool.GetSnapshotContent(PbtResourcePool.Usage.MainBlockProcessing);
         older.Accounts[addressHash] = Build.An.Account.TestObject.ToPbtAccount();
         older.SetSlot(key, original);
         older.SetSlot(otherSlot, original);
         older.SetSlot(otherAddress, original);
-        PbtSnapshotContent clearing = new();
+        PbtSnapshotContent clearing = _pool.GetSnapshotContent(PbtResourcePool.Usage.MainBlockProcessing);
         clearing.ClearStorage(addressHash);
-        PbtSnapshotContent writing = new();
+        PbtSnapshotContent writing = _pool.GetSnapshotContent(PbtResourcePool.Usage.MainBlockProcessing);
         writing.SetSlot(key, replacement);
         PackedSlotRun writtenRun = writing.GetRun(key);
         writing.Accounts[addressHash] = PbtAccount.From(account, code);

@@ -110,6 +110,70 @@ public class PbtSnapshotBundleTests
     }
 
     [Test]
+    public void Log_misses_skip_all_memory_tiers_and_preserve_persisted_precedence(
+        [Values(0, 1, 2)] int memoryTier, [Values(0, 1, 2)] int persistedTier)
+    {
+        using PbtPersistedTestStore persistedStore = new();
+        PbtResourcePool pool = new(new PbtConfig());
+        PbtStorageNodePath path = default;
+        byte[] database = Encoding(1);
+        byte[] older = Encoding(2);
+        byte[] newer = Encoding(3);
+        byte[] memory = Encoding(4);
+        PbtPersistedSnapshotList persisted = new(2);
+        if (persistedTier != 0)
+        {
+            using PbtSnapshot first = new(StateId.PreGenesis, new StateId(0, default), default,
+                Layer(older), pool, PbtResourcePool.Usage.MainBlockProcessing);
+            persisted.Add(persistedStore.Build(first));
+            using PbtSnapshot second = new(first.To, new StateId(1, default), default,
+                Layer(persistedTier == 2 ? null : newer), pool, PbtResourcePool.Usage.MainBlockProcessing);
+            persisted.Add(persistedStore.Build(second));
+        }
+        PbtSnapshotContent shared = pool.GetSnapshotContent(PbtResourcePool.Usage.MainBlockProcessing);
+        PbtSnapshotContent local = pool.GetSnapshotContent(PbtResourcePool.Usage.MainBlockProcessing);
+        if (memoryTier == 2) Set(shared, memory);
+        if (memoryTier == 1) Set(local, memory);
+        Reader reader = new(default, null) { GroupPayload = database };
+        PbtReadOnlySnapshotBundle readOnly = new(PbtSnapshotBundleTestExtensions.Chain(pool, shared), reader, false, persisted, slotFilterBitsPerKey: 0);
+        using PbtSnapshotBundle bundle = new(PbtSnapshotBundleTestExtensions.Chain(pool, local), readOnly, pool,
+            PbtResourcePool.Usage.MainBlockProcessing, filterInMemorySlotReads: false);
+        if (memoryTier == 0)
+        {
+            using RefCountingMemory payload = Memory(memory);
+            bundle.SetNodeGroup(path, payload);
+        }
+        using PbtSnapshotStore store = new(bundle);
+        PbtTraversalPath cursor = new(Span<byte>.Empty);
+        Assert.That(store.TryGetNodeGroupRecord(PbtGroupReference.Unknown, cursor, out _), Is.False);
+        byte[]? expected = persistedTier switch { 0 => database, 1 => newer, _ => null };
+        for (int attempt = 0; attempt < 2; attempt++)
+        {
+            using RefCountingMemory? actual = store.GetNodeGroup(cursor);
+            Assert.That(actual?.GetSpan().ToArray(), Is.EqualTo(expected));
+        }
+        using RefCountingMemory? visible = bundle.GetNodeGroup(path);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(visible!.GetSpan().ToArray(), Is.EqualTo(memory), "ordinary bundle reads still observe memory overlays");
+            Assert.That(reader.GroupReadCount, Is.EqualTo(persistedTier == 0 ? 1 : 0), "persisted tombstones stop the captured-reader fallback");
+        }
+
+        byte[] Encoding(byte seed) => PbtNodeGroupEncoder.Encode(path, [new PbtNodeRecord(path, BranchEncoding(seed))], default);
+        PbtSnapshotContent Layer(byte[]? encoding)
+        {
+            PbtSnapshotContent content = pool.GetSnapshotContent(PbtResourcePool.Usage.MainBlockProcessing);
+            Set(content, encoding);
+            return content;
+        }
+        void Set(PbtSnapshotContent content, byte[]? encoding)
+        {
+            using RefCountingMemory? payload = encoding is null ? null : Memory(encoding);
+            content.SetNodeGroup(path, payload);
+        }
+    }
+
+    [Test]
     public async Task No_op_commits_and_compaction_preserve_the_exact_warm_root_hint([Values(1, 3, 128)] int noOpBlocks)
     {
         await using PbtTestContext context = new(config: new PbtConfig { CompactSize = 1, CompactionOffset = 0, EnableLongFinality = false });
@@ -264,7 +328,8 @@ public class PbtSnapshotBundleTests
     public void SnapshotContent_DisjointGroupReplacementAndResetPreserveReadLeases([Values(1, 8)] int groupCount, [Values] bool tombstone, [Values] bool replaceViaStoragePath)
     {
         TrackingMemoryProvider memoryProvider = new();
-        using PbtSnapshotContent content = new(nodeGroupMemory: memoryProvider);
+        using PbtGroupLog log = new(memoryProvider, generationBytes: 256, retainedGenerations: 0);
+        using PbtSnapshotContent content = new(log, memoryProvider);
         for (int round = 0; round < 2; round++)
         {
             RefCountingMemory?[] persisted = new RefCountingMemory?[groupCount];
@@ -286,6 +351,7 @@ public class PbtSnapshotBundleTests
                         content.SetNodeGroup(groupPath, payload);
                         content.SetNodeGroup(groupPath, payload);
                     }
+                    Assert.That(content.TryGetNodeGroupReference(groupPath, out PbtGroupReference originalReference), Is.True);
                     Assert.That(content.TryGetNodeGroup(storagePath, out persisted[index]), Is.True);
                     Assert.That(persisted[index], Is.Not.Null);
 
@@ -297,11 +363,14 @@ public class PbtSnapshotBundleTests
                     }
                     bool found = content.TryGetNodeGroup(groupPath, out RefCountingMemory? current);
                     using (current)
+                    using (PbtGroupLog.OperationLease operation = log.BeginOperation())
                     using (Assert.EnterMultipleScope())
                     {
                         Assert.That(found, Is.True);
                         Assert.That(current?.GetSpan().ToArray(), Is.EqualTo(tombstone ? null : replacement));
                         Assert.That(persisted[index]!.GetSpan().ToArray(), Is.EqualTo(original));
+                        Assert.That(log.TryGetRecord(operation, originalReference, out PbtGroupRecord originalRecord), Is.True);
+                        Assert.That(originalRecord.Payload.ToArray(), Is.EqualTo(original), "overwriting the index does not retire pinned records");
                     }
                     expectedNodeBytes[index] = storagePath.ToPathArray().Length + (tombstone ? 0 : replacement.Length);
                 }
@@ -312,7 +381,8 @@ public class PbtSnapshotBundleTests
                 {
                     Assert.That(content.NodeGroupCount(), Is.EqualTo(groupCount));
                     Assert.That(content.GetPayloadSize(), Is.EqualTo(new PbtSnapshotPayloadSize(0, nodeBytes)));
-                    Assert.That(TrackingMemoryProvider.CountUnreleased(memoryProvider.Rented), Is.EqualTo(groupCount + (tombstone ? 0 : 1)), "independent read copies plus one authoritative log generation");
+                    Assert.That(log.GenerationCount, Is.GreaterThan(1));
+                    Assert.That(TrackingMemoryProvider.CountUnreleased(memoryProvider.Rented), Is.EqualTo(groupCount + log.GenerationCount), "the snapshot pin keeps overwritten records until reset");
                 }
 
                 content.Reset();
@@ -409,11 +479,18 @@ public class PbtSnapshotBundleTests
         using (PbtSnapshotStore store = new(bundle)) updatedRoot = store.Fold(root, [(key.Bytes.ToArray(), delete ? null : Value(2))]);
 
         using PbtSnapshotStore reader = new(bundle);
+        PbtTraversalPath rootPath = new(Span<byte>.Empty);
+        byte[]? encoding = null;
+        if (reader.TryGetNodeGroupRecord(reader.RootGroupReference, rootPath, out PbtGroupRecord record))
+        {
+            using GroupFrameReader<PbtVariableTreeKey, PbtStorageNodePath> frame = new(record);
+            encoding = frame.GetEncoding(PbtThreeLevelGroupGeometry.RootPosition).ToArray();
+        }
         using (Assert.EnterMultipleScope())
         {
             Assert.That(bundle.GetSlot(TestItem.AddressA, 1), Is.EqualTo(new UInt256(flatValue.Bytes, isBigEndian: true)));
             Assert.That(updatedRoot, Is.EqualTo(delete ? default : PbtTreeHarness.HashLeaf(key.Bytes, Value(2))));
-            Assert.That(reader.GetNode(new PbtNodePath([], 0)), Is.EqualTo(delete ? null : PbtTreeHarness.EncodeLeaf(key)));
+            Assert.That(encoding, Is.EqualTo(delete ? null : PbtTreeHarness.EncodeLeaf(key)));
         }
     }
 

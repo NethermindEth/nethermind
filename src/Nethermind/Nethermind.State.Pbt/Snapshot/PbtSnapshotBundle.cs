@@ -115,8 +115,7 @@ public sealed class PbtSnapshotBundle(
         if (WriteBuffer.TryGetNodeGroup(groupKey, out RefCountingMemory? payload)) return payload;
         for (int index = snapshots.Count - 1; index >= 0; index--)
             if (snapshots[index].Content.TryGetNodeGroup(groupKey, out payload)) return payload;
-        if (TryGetKeptNodeGroup(groupKey, out payload)) return payload;
-        return readOnlyBundle.TryGetSnapshotNodeGroup(groupKey, out payload) ? payload : ReadPersistedNodeGroup(groupKey);
+        return readOnlyBundle.TryGetSnapshotNodeGroup(groupKey, out payload) ? payload : GetPersistedNodeGroup(groupKey);
     }
 
     /// <summary>Returns a caller-owned group lease or a null tombstone from the visible snapshot layers; false means no snapshot has an entry.</summary>
@@ -128,8 +127,7 @@ public sealed class PbtSnapshotBundle(
         return readOnlyBundle.TryGetSnapshotNodeGroup(groupKey, out payload);
     }
 
-    /// <summary>Returns a persisted group already kept for the block, or else reads it and keeps it for <see cref="GetNodeGroup"/> until the write buffer is sealed.</summary>
-    /// <remarks>Only a group that <see cref="TryGetSnapshotNodeGroup"/> did not find may be read, as the kept group is served ahead of the read-only base's snapshots.</remarks>
+    /// <summary>Reads only persisted layers, keeping the result for this block's later misses.</summary>
     public RefCountingMemory? GetPersistedNodeGroup(PbtStorageNodePath groupKey) =>
         TryGetKeptNodeGroup(groupKey, out RefCountingMemory? payload) ? payload : ReadPersistedNodeGroup(groupKey);
 

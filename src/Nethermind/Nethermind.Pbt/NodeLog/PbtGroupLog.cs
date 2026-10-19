@@ -11,8 +11,8 @@ namespace Nethermind.Pbt.NodeLog;
 /// <summary>An append-only in-memory log of canonical PBT groups and direct descendant references.</summary>
 /// <remarks>
 /// One operation lease protects all borrowed records and concurrent writers in a fold. Generations are reclaimed only
-/// between operations, after their authoritative owners release them. Reads and reservations within an operation do not
-/// take the lifetime lock; only generation rotation and ownership changes do. The memory provider is borrowed, not owned.
+/// between operations. Snapshot pins keep their generation and every later generation readable in place. Reads and
+/// reservations do not take the lifetime lock; only rotation and pin changes do. The memory provider is borrowed, not owned.
 /// </remarks>
 public sealed partial class PbtGroupLog : IDisposable
 {
@@ -22,6 +22,7 @@ public sealed partial class PbtGroupLog : IDisposable
     private const int RecordAlignment = sizeof(ulong);
     private readonly Lock _lock = new();
     private readonly ConcurrentDictionary<uint, Generation> _generations = new();
+    private readonly SortedDictionary<uint, int> _pins = [];
     private readonly IRefCountingMemoryProvider _memoryProvider;
     private readonly int _generationBytes;
     private readonly int _retainedGenerations;
@@ -34,7 +35,7 @@ public sealed partial class PbtGroupLog : IDisposable
     /// <summary>Creates a log using the selected native or managed memory provider.</summary>
     /// <param name="memoryProvider">Allocates generation buffers and remains owned by the caller.</param>
     /// <param name="generationBytes">Requested generation capacity in bytes; a larger record gets a generation large enough for it.</param>
-    /// <param name="retainedGenerations">Number of newest generations to keep opportunistically, in addition to authoritative owners.</param>
+    /// <param name="retainedGenerations">Number of newest generations to keep opportunistically, in addition to snapshot pins.</param>
     public PbtGroupLog(IRefCountingMemoryProvider memoryProvider, int generationBytes = DefaultGenerationBytes, int retainedGenerations = 1)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(generationBytes, PbtGroupRecordHeader.Size + 1);
@@ -47,8 +48,7 @@ public sealed partial class PbtGroupLog : IDisposable
     /// <summary>Capacity in bytes of currently allocated generations, including metadata and unused space.</summary>
     public long ResidentBytes => Interlocked.Read(ref _residentBytes);
 
-    /// <summary>Capacity in bytes retained by authoritative owners beyond the opportunistic generation window.</summary>
-    /// <remarks>This includes live payload bytes, not just obsolete records sharing their generations.</remarks>
+    /// <summary>Capacity in bytes kept by snapshot pins beyond the opportunistic generation window.</summary>
     public long PinnedBytes
     {
         get
@@ -56,8 +56,9 @@ public sealed partial class PbtGroupLog : IDisposable
             lock (_lock)
             {
                 long bytes = 0;
-                foreach ((_, Generation generation) in _generations)
-                    if (generation.Owners != 0 && !KeepOpportunistically(generation)) bytes += generation.Buffer.Capacity;
+                uint oldestPinned = OldestPinnedGeneration;
+                foreach ((uint id, Generation generation) in _generations)
+                    if (id >= oldestPinned && !KeepOpportunistically(generation)) bytes += generation.Buffer.Capacity;
                 return bytes;
             }
         }
@@ -124,7 +125,7 @@ public sealed partial class PbtGroupLog : IDisposable
     }
 
     /// <summary>Resolves a direct reference without searching snapshot layers.</summary>
-    /// <remarks>A miss requires the caller's exact snapshot lookup. The operation must outlive all uses of the returned view.</remarks>
+    /// <remarks>A miss is resolved through the caller's persisted view. The operation must outlive all uses of the returned view.</remarks>
     public bool TryGetRecord(OperationLease operation, PbtGroupReference reference, out PbtGroupRecord record)
     {
         operation.EnsureActive(this);
@@ -169,6 +170,5 @@ public sealed partial class PbtGroupLog : IDisposable
         public RefCountingMemory Buffer { get; } = buffer;
         public Memory<byte> Memory { get; } = buffer.Memory;
         public int Used;
-        public int Owners;
     }
 }
