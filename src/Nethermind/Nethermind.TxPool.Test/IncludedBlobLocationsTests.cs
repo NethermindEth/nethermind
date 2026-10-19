@@ -44,11 +44,8 @@ public class IncludedBlobLocationsTests
         }
     }
 
-    [TestCase(32)]
-    [TestCase(0)]
-    [TestCase(31)]
-    [TestCase(33)]
-    public void Lookup_misses_a_hash_that_was_not_recorded(int hashLength)
+    [Test]
+    public void Lookup_misses_a_hash_that_was_not_recorded([Values(32, 0, 31, 33)] int hashLength)
     {
         _locations.Record(10, null, [BlobTx(1)]);
         byte[] hash = new byte[hashLength];
@@ -57,11 +54,8 @@ public class IncludedBlobLocationsTests
         Assert.That(_locations.TryGetLocation(hash, out _), Is.False);
     }
 
-    [TestCase(10UL)]
-    [TestCase(12UL)]
-    [TestCase(13UL)]
-    [TestCase(14UL)]
-    public void Recording_a_block_drops_the_batches_at_its_height_and_above(ulong reRecordedHeight)
+    [Test]
+    public void Recording_a_block_drops_the_batches_at_its_height_and_above([Values(10UL, 12UL, 13UL, 14UL)] ulong reRecordedHeight)
     {
         for (ulong height = 10; height <= 13; height++)
         {
@@ -95,11 +89,8 @@ public class IncludedBlobLocationsTests
         Assert.That(_locations.TryGetLocation(Hash(1), out _), Is.EqualTo(expectedFound));
     }
 
-    [TestCase(9UL)]
-    [TestCase(11UL)]
-    [TestCase(13UL)]
-    [TestCase(20UL)]
-    public void Finality_prune_drops_the_batches_at_and_below_the_finalized_block(ulong finalizedBlockNumber)
+    [Test]
+    public void Finality_prune_drops_the_batches_at_and_below_the_finalized_block([Values(9UL, 11UL, 13UL, 20UL)] ulong finalizedBlockNumber)
     {
         for (ulong height = 10; height <= 13; height++)
         {
@@ -134,9 +125,8 @@ public class IncludedBlobLocationsTests
         }
     }
 
-    [TestCase(Prune.Finality)]
-    [TestCase(Prune.Distance)]
-    public void A_hash_recorded_again_by_a_later_block_survives_pruning_of_the_earlier_block(Prune prune)
+    [Test]
+    public void A_hash_recorded_again_by_a_later_block_survives_pruning_of_the_earlier_block([Values] Prune prune)
     {
         _locations.Record(10, null, [BlobTx(1)]);
         _locations.Record(12, null, [BlobTx(2), BlobTx(1)]);
@@ -150,9 +140,8 @@ public class IncludedBlobLocationsTests
         }
     }
 
-    [TestCase(Prune.Finality)]
-    [TestCase(Prune.Distance)]
-    public void A_hash_recorded_twice_by_one_block_is_removed_with_it(Prune prune)
+    [Test]
+    public void A_hash_recorded_twice_by_one_block_is_removed_with_it([Values] Prune prune)
     {
         _locations.Record(10, null, [BlobTx(1), BlobTx(1)]);
 
@@ -161,11 +150,8 @@ public class IncludedBlobLocationsTests
         Assert.That(_locations.Count, Is.Zero);
     }
 
-    [TestCase(10UL, true)]
-    [TestCase(11UL, true)]
-    [TestCase(10UL, false)]
-    [TestCase(11UL, false)]
-    public void Recording_nothing_keeps_the_batch_of_the_same_block_and_drops_the_heights_above(ulong height, bool sameBlock)
+    [Test]
+    public void Recording_nothing_keeps_the_batch_of_the_same_block_and_drops_the_heights_above([Values(10UL, 11UL)] ulong height, [Values] bool sameBlock)
     {
         for (ulong h = 10; h <= 12; h++)
         {
@@ -246,10 +232,8 @@ public class IncludedBlobLocationsTests
         }
     }
 
-    [TestCase(0UL)]
-    [TestCase(MaxBlockDistance)]
-    [TestCase(64UL)]
-    public void Entry_count_never_exceeds_the_window_times_the_entries_per_block(ulong maxBlockDistance)
+    [Test]
+    public void Entry_count_never_exceeds_the_window_times_the_entries_per_block([Values(0UL, MaxBlockDistance, 64UL)] ulong maxBlockDistance)
     {
         const int maxEntriesPerBlock = 6;
         IncludedBlobLocations locations = new(maxBlockDistance);

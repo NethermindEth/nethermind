@@ -225,9 +225,8 @@ public class BlobTxStorageTests
         else Assert.That(transaction, Is.Null);
     }
 
-    [TestCase(357UL)]
-    [TestCase(359UL)]
-    public void TryGetProcessedTransaction_should_miss_for_a_block_without_rows(ulong blockNumber)
+    [Test]
+    public void TryGetProcessedTransaction_should_miss_for_a_block_without_rows([Values(357UL, 359UL)] ulong blockNumber)
     {
         BlobTxStorage storage = new();
         SaveProcessed(storage, 358, CreateV1BlobTransactions(1));

@@ -1809,8 +1809,11 @@ namespace Nethermind.TxPool.Test
                 if (_txPool.TryGetBlobAndProofV0(hashes[i], out byte[] blob, out byte[] proof))
                 {
                     served++;
-                    Assert.That(blob, Is.EqualTo(wrapper.Blobs[i]), $"blob {i}");
-                    Assert.That(proof, Is.EqualTo(wrapper.Proofs[i]), $"blob proof {i}");
+                    using (Assert.EnterMultipleScope())
+                    {
+                        Assert.That(blob, Is.EqualTo(wrapper.Blobs[i]), $"blob {i}");
+                        Assert.That(proof, Is.EqualTo(wrapper.Proofs[i]), $"blob proof {i}");
+                    }
                 }
             }
 
@@ -1826,8 +1829,11 @@ namespace Nethermind.TxPool.Test
             {
                 if (blobs[i] is not null)
                 {
-                    Assert.That(blobs[i], Is.EqualTo(wrapper.Blobs[i]), $"blob {i}");
-                    Assert.That(proofs[i], Is.SequenceEqualTo(wrapper.Proofs.AsSpan(i * Ckzg.CellsPerExtBlob, Ckzg.CellsPerExtBlob)), $"cell proofs {i}");
+                    using (Assert.EnterMultipleScope())
+                    {
+                        Assert.That(blobs[i], Is.EqualTo(wrapper.Blobs[i]), $"blob {i}");
+                        Assert.That(proofs[i], Is.SequenceEqualTo(wrapper.Proofs.AsSpan(i * Ckzg.CellsPerExtBlob, Ckzg.CellsPerExtBlob)), $"cell proofs {i}");
+                    }
                 }
             }
 
@@ -1844,9 +1850,12 @@ namespace Nethermind.TxPool.Test
                 if (_txPool.TryGetBlobCellsAndProofsV1(hashes[i], requestedMask, out BlobCellMask availableMask, out byte[][] cells, out byte[][] proofs))
                 {
                     served++;
-                    Assert.That(availableMask, Is.EqualTo(requestedMask), $"cell mask {i}");
-                    Assert.That(cells, Is.EqualTo(expectedCells.AsSpan(i * requestedMask.Count, requestedMask.Count).ToArray()), $"cells {i}");
-                    Assert.That(proofs, Is.EqualTo(BlobCellsHelper.SelectProofs(wrapper, i, requestedMask)), $"cell proofs {i}");
+                    using (Assert.EnterMultipleScope())
+                    {
+                        Assert.That(availableMask, Is.EqualTo(requestedMask), $"cell mask {i}");
+                        Assert.That(cells, Is.EqualTo(expectedCells.AsSpan(i * requestedMask.Count, requestedMask.Count).ToArray()), $"cells {i}");
+                        Assert.That(proofs, Is.EqualTo(BlobCellsHelper.SelectProofs(wrapper, i, requestedMask)), $"cell proofs {i}");
+                    }
                 }
             }
 
