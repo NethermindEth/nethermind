@@ -139,6 +139,18 @@ public class FinalizedBlockAccessListTests(bool useFlatDb)
     }
 
     [Test]
+    public void Inclusion_list_requires_transaction_execution([Values] bool nonemptyList)
+    {
+        using TestEnvironment env = new(useFlatDb);
+        Block block = env.CreateBlock();
+        block.InclusionListTransactions = nonemptyList ? [Build.A.Transaction.TestObject] : [];
+        env.Beacon.GetFinalizedHash().Returns(block.Hash);
+        using IDisposable scope = env.State.BeginScope(env.Genesis.Header);
+        env.Processor.ProcessOne(block, ProcessingOptions.None, NullBlockTracer.Instance, Amsterdam.Instance);
+        Assert.That(env.Recording.Calls, Is.EqualTo(nonemptyList ? 1 : 0));
+    }
+
+    [Test]
     public void Reconstruction_needs_and_returns_stored_receipts([Values] bool stored)
     {
         using TestEnvironment env = new(useFlatDb);

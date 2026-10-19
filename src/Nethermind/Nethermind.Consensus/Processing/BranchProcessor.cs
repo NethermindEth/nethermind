@@ -90,11 +90,20 @@ public class BranchProcessor(
         Exception? processingException = null;
         bool verdictGiven = false;
 
+        InclusionListState? inclusionListState = null;
+        // Production, tracing and simulation do not report inclusion-list compliance.
+        bool checkInclusionList = !options.ContainsFlag(ProcessingOptions.NoValidation);
+
         // Subscribe to cancel background work (prewarmer, prefetch) once transactions finish,
         // freeing the thread pool for parallel post-tx work (blooms, receipts root, state root).
         // The handler captures backgroundCancellation by reference, so it always cancels the current CTS.
-        void CancelBackgroundWork() => backgroundCancellation?.Cancel();
-        blockProcessor.TransactionsExecuted += CancelBackgroundWork;
+        void OnTransactionsExecuted()
+        {
+            backgroundCancellation?.Cancel();
+            if (checkInclusionList && suggestedBlock.InclusionListTransactions is { Length: > 0 } inclusionList)
+                inclusionListState = new InclusionListState(inclusionList, stateProvider);
+        }
+        blockProcessor.TransactionsExecuted += OnTransactionsExecuted;
 
         try
         {
@@ -112,14 +121,13 @@ public class BranchProcessor(
             BlockHeader? preBlockBaseBlock = baseBlock;
 
             bool notReadOnly = !options.ContainsFlag(ProcessingOptions.ReadOnlyChain);
-            // Production, tracing and eth_simulate never report inclusion-list compliance.
-            bool checkInclusionList = !options.ContainsFlag(ProcessingOptions.NoValidation);
             int blocksCount = suggestedBlocks.Count;
             Block[] processedBlocks = new Block[blocksCount];
 
             for (int i = 0; i < blocksCount; i++)
             {
                 suggestedBlock = suggestedBlocks[i];
+                inclusionListState = null;
                 using ParallelUnbalancedWork.WorkerScope workers = workerGroup.Enter();
                 if (i > 0)
                 {
@@ -141,7 +149,9 @@ public class BranchProcessor(
                     BlockProcessing?.Invoke(this, new BlockEventArgs(suggestedBlock));
                 }
 
-                ProcessingOptions blockOptions = blockTracer == NullBlockTracer.Instance
+                // Parallel BAL application includes post-execution changes before the transaction boundary.
+                bool captureInclusionList = checkInclusionList && suggestedBlock.InclusionListTransactions is { Length: > 0 };
+                ProcessingOptions blockOptions = blockTracer == NullBlockTracer.Instance && !captureInclusionList
                     ? options
                     : options | ProcessingOptions.ForceSequentialBlockAccessList;
                 Block processedBlock;
@@ -175,10 +185,11 @@ public class BranchProcessor(
                 if (processedBlock.GasUsed == 0) processedBlock.Header.GasUsedPerDimension ??= (0, 0);
                 suggestedBlock.Header.GasUsedPerDimension = processedBlock.Header.GasUsedPerDimension;
 
-                // A signal, not a rejection: the block is still committed, and it reads post-execution
-                // state. Assigned even under NoValidation, to clear a stale false on a reused instance.
-                bool inclusionListSatisfied = !checkInclusionList
-                    || inclusionListSatisfactionChecker.IsSatisfied(processedBlock, suggestedBlock, stateProvider);
+                // A signal, not a rejection: the block is still committed. Use the transaction-boundary
+                // snapshot so post-execution credits cannot make an omitted entry appendable.
+                bool inclusionListSatisfied = !checkInclusionList || suggestedBlock.InclusionListTransactions is not { Length: > 0 }
+                    || inclusionListSatisfactionChecker.IsSatisfied(processedBlock, suggestedBlock,
+                        inclusionListState ?? throw new InvalidOperationException("Inclusion-list state was not captured after transactions"));
                 processedBlock.IsInclusionListSatisfied = inclusionListSatisfied;
                 suggestedBlock.IsInclusionListSatisfied = inclusionListSatisfied;
 
@@ -257,7 +268,7 @@ public class BranchProcessor(
         {
             try
             {
-                blockProcessor.TransactionsExecuted -= CancelBackgroundWork;
+                blockProcessor.TransactionsExecuted -= OnTransactionsExecuted;
                 worldStateCloser?.Dispose();
             }
             finally
