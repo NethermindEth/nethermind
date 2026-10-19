@@ -98,7 +98,9 @@ namespace Nethermind.Facade.Find
             }
             cancellationToken.ThrowIfCancellationRequested();
 
-            return FilterLogsIteratively(filter, fromBlock, toBlock, cancellationToken);
+            return new FoundLogs(
+                FilterLogsIteratively<BlockFilterLogs, FilterLog>(filter, fromBlock, toBlock, cancellationToken),
+                FilterLogsIteratively<BlockSerializedLogs, SerializedLogs>(filter, fromBlock, toBlock, cancellationToken));
         }
 
         protected bool RetainsLogsForFilter(LogFilter filter, ulong fromBlock, ulong toBlock) =>
@@ -106,11 +108,12 @@ namespace Nethermind.Facade.Find
             && filter.AddressFilter.Addresses.Count != 0
             && prunedLogsRetention.RetainsLogsFor(filter.AddressFilter.Addresses, fromBlock, toBlock);
 
-        protected IEnumerable<FilterLog> FilterLogsInBlocksParallel(LogFilter filter, IEnumerable<ulong> blockNumbers, bool tryParallel = true, CancellationToken cancellationToken = default) =>
+        private protected IEnumerable<TLog> FilterLogsInBlocksParallel<TBlockLogs, TLog>(LogFilter filter, IEnumerable<ulong> blockNumbers, bool tryParallel = true, CancellationToken cancellationToken = default)
+            where TBlockLogs : struct, IBlockLogs<TBlockLogs, TLog> =>
             RunParallel(blockNumbers,
-                number => FindLogsInBlock(filter, FindHeaderOrLogError(number, cancellationToken), cancellationToken), tryParallel, cancellationToken);
+                number => FindLogsInBlock<TBlockLogs, TLog>(filter, FindHeaderOrLogError(number, cancellationToken), cancellationToken), tryParallel, cancellationToken);
 
-        private IEnumerable<FilterLog> RunParallel<T>(IEnumerable<T> source, Func<T, IEnumerable<FilterLog>> worker, bool tryParallel, CancellationToken cancellationToken)
+        private IEnumerable<TLog> RunParallel<T, TLog>(IEnumerable<T> source, Func<T, IEnumerable<TLog>> worker, bool tryParallel, CancellationToken cancellationToken)
         {
             if (!tryParallel)
             {
@@ -125,7 +128,7 @@ namespace Nethermind.Facade.Find
         // Must stay a lazy iterator: the lock is acquired on the first MoveNext and released in the finally,
         // so acquire and release share one enumerator lifetime. An eager version would leak the lock when the
         // result is never enumerated.
-        private IEnumerable<FilterLog> RunParallelLazy<T>(IEnumerable<T> source, Func<T, IEnumerable<FilterLog>> worker, CancellationToken cancellationToken)
+        private IEnumerable<TLog> RunParallelLazy<T, TLog>(IEnumerable<T> source, Func<T, IEnumerable<TLog>> worker, CancellationToken cancellationToken)
         {
             bool canRunParallel = Interlocked.CompareExchange(ref ParallelLock, 1, 0) == 0;
             int parallelExecutions = Interlocked.Increment(ref ParallelExecutions) - 1;
@@ -139,7 +142,7 @@ namespace Nethermind.Facade.Find
                     ? source.AsParallel().AsOrdered().WithDegreeOfParallelism(_rpcConfigGetLogsThreads)
                     : source;
 
-                using IEnumerator<FilterLog> enumerator = wrapped.SelectMany(worker).GetEnumerator();
+                using IEnumerator<TLog> enumerator = wrapped.SelectMany(worker).GetEnumerator();
                 while (true)
                 {
                     try
@@ -191,7 +194,8 @@ namespace Nethermind.Facade.Find
             return notFound ?? transient;
         }
 
-        private IEnumerable<FilterLog> FilterLogsIteratively(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken)
+        private IEnumerable<TLog> FilterLogsIteratively<TBlockLogs, TLog>(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken)
+            where TBlockLogs : struct, IBlockLogs<TBlockLogs, TLog>
         {
             static IEnumerable<ulong> BlockNumbers(ulong from, ulong count)
             {
@@ -200,33 +204,36 @@ namespace Nethermind.Facade.Find
 
             ulong rangeSize = toBlock.Number - fromBlock.Number + 1;
             bool tryParallel = ScansInParallel(rangeSize, _rpcConfigGetLogsThreads);
-            return FilterLogsInBlocksParallel(filter, BlockNumbers(fromBlock.Number, rangeSize), tryParallel, cancellationToken);
+            return FilterLogsInBlocksParallel<TBlockLogs, TLog>(filter, BlockNumbers(fromBlock.Number, rangeSize), tryParallel, cancellationToken);
         }
 
         internal static bool ScansInParallel(ulong rangeSize, int workers) => rangeSize >= (ulong)(workers * MinBlocksPerParallelWorker);
 
-        private IEnumerable<FilterLog> FindLogsInBlock(LogFilter filter, BlockHeader? block, CancellationToken cancellationToken) =>
+        private IEnumerable<TLog> FindLogsInBlock<TBlockLogs, TLog>(LogFilter filter, BlockHeader? block, CancellationToken cancellationToken)
+            where TBlockLogs : struct, IBlockLogs<TBlockLogs, TLog> =>
             block is not null && filter.Matches(block.Bloom!)
-                ? FindLogsInBlock(filter, block.Hash, block.Number, block.Timestamp, cancellationToken)
+                ? FindLogsInBlock<TBlockLogs, TLog>(filter, block.Hash, block.Number, block.Timestamp, cancellationToken)
                 : [];
 
-        private IEnumerable<FilterLog> FindLogsInBlock(LogFilter filter, Hash256? blockHash, ulong blockNumber, ulong blockTimestamp, CancellationToken cancellationToken)
+        private IEnumerable<TLog> FindLogsInBlock<TBlockLogs, TLog>(LogFilter filter, Hash256? blockHash, ulong blockNumber, ulong blockTimestamp, CancellationToken cancellationToken)
+            where TBlockLogs : struct, IBlockLogs<TBlockLogs, TLog>
         {
             if (blockHash is not null)
             {
                 // EIP-8116: logIndex counts within the receipt.
                 bool logIndexPerReceipt = _eip8116.IsEnabled(blockNumber, blockTimestamp);
                 return _receiptFinder.TryGetReceiptsIterator(blockNumber, blockHash, out ReceiptsIterator iterator)
-                    ? FilterLogsInBlockLowMemoryAllocation(filter, ref iterator, blockHash, blockNumber, blockTimestamp, logIndexPerReceipt, cancellationToken)
-                    : FilterLogsInBlockHighMemoryAllocation(filter, blockHash, blockNumber, blockTimestamp, logIndexPerReceipt, cancellationToken);
+                    ? FilterLogsInBlockLowMemoryAllocation<TBlockLogs, TLog>(filter, ref iterator, blockHash, blockNumber, blockTimestamp, logIndexPerReceipt, cancellationToken)
+                    : TBlockLogs.FromBlock(FilterLogsInBlockHighMemoryAllocation(filter, blockHash, blockNumber, blockTimestamp, logIndexPerReceipt, cancellationToken));
             }
 
-            return Array.Empty<FilterLog>();
+            return Array.Empty<TLog>();
         }
 
-        private static IEnumerable<FilterLog> FilterLogsInBlockLowMemoryAllocation(LogFilter filter, ref ReceiptsIterator iterator, Hash256 blockHash, ulong blockNumber, ulong blockTimestamp, bool logIndexPerReceipt, CancellationToken cancellationToken)
+        private static IEnumerable<TLog> FilterLogsInBlockLowMemoryAllocation<TBlockLogs, TLog>(LogFilter filter, ref ReceiptsIterator iterator, Hash256 blockHash, ulong blockNumber, ulong blockTimestamp, bool logIndexPerReceipt, CancellationToken cancellationToken)
+            where TBlockLogs : struct, IBlockLogs<TBlockLogs, TLog>
         {
-            List<FilterLog> logList = null;
+            TBlockLogs logs = new();
             try
             {
                 long logIndexInBlock = 0;
@@ -249,24 +256,11 @@ namespace Nethermind.Facade.Find
                                 // On CL workload, recovery happens about 70% of the time.
                                 iterator.RecoverLogFieldsIfNeeded(ref receipt, out Hash256? recoveredTransactionHash);
 
-                                logList ??= [];
                                 Hash256[] topics = log.Topics;
 
                                 topics ??= iterator.DecodeTopics(new RlpReader(log.TopicsRlp));
 
-                                byte[] data = log.DataLength == 0 ? [] : new byte[log.DataLength];
-                                log.CopyDataTo(data);
-
-                                logList.Add(new FilterLog(
-                                    logIndexInBlock,
-                                    blockNumber,
-                                    blockTimestamp,
-                                    blockHash,
-                                    receipt.Index,
-                                    txHash ??= recoveredTransactionHash ?? receipt.TxHash.ToCommitment(),
-                                    log.Address.ToAddress(),
-                                    data,
-                                    topics));
+                                logs.Add(logIndexInBlock, blockNumber, blockTimestamp, blockHash, receipt, recoveredTransactionHash, ref txHash, log, topics);
                             }
 
                             logIndexInBlock++;
@@ -281,13 +275,18 @@ namespace Nethermind.Facade.Find
                     }
                 }
             }
+            catch
+            {
+                logs.Dispose();
+                throw;
+            }
             finally
             {
                 // Confusingly, the `using` statement causes the recovery context to be null during the dispose.
                 iterator.Dispose();
             }
 
-            return logList ?? (IEnumerable<FilterLog>)[];
+            return logs.Complete();
         }
 
         private IEnumerable<FilterLog> FilterLogsInBlockHighMemoryAllocation(LogFilter filter, Hash256 blockHash, ulong blockNumber, ulong blockTimestamp, bool logIndexPerReceipt, CancellationToken cancellationToken)
@@ -369,6 +368,94 @@ namespace Nethermind.Facade.Find
             }
 
             return block;
+        }
+
+        /// <summary>Collects the logs of one block that the filter accepts, in the shape <typeparamref name="TLog"/>.</summary>
+        private protected interface IBlockLogs<TSelf, TLog> : IDisposable where TSelf : struct, IBlockLogs<TSelf, TLog>
+        {
+            void Add(long logIndex, ulong blockNumber, ulong blockTimestamp, Hash256 blockHash, in TxReceiptStructRef receipt,
+                Hash256? recoveredTransactionHash, ref Hash256? transactionHash, in LogEntryStructRef log, Hash256[] topics);
+
+            IEnumerable<TLog> Complete();
+
+            /// <summary>Converts the logs of any number of blocks, a block at a time where they allow it.</summary>
+            static abstract IEnumerable<TLog> From(IEnumerable<FilterLog> logs);
+
+            /// <summary>Converts the logs of a single block.</summary>
+            static abstract IEnumerable<TLog> FromBlock(IEnumerable<FilterLog> blockLogs);
+        }
+
+        private protected struct BlockFilterLogs : IBlockLogs<BlockFilterLogs, FilterLog>
+        {
+            private List<FilterLog>? _logs;
+
+            public void Add(long logIndex, ulong blockNumber, ulong blockTimestamp, Hash256 blockHash, in TxReceiptStructRef receipt,
+                Hash256? recoveredTransactionHash, ref Hash256? transactionHash, in LogEntryStructRef log, Hash256[] topics)
+            {
+                byte[] data = log.DataLength == 0 ? [] : new byte[log.DataLength];
+                log.CopyDataTo(data);
+
+                (_logs ??= []).Add(new FilterLog(
+                    logIndex,
+                    blockNumber,
+                    blockTimestamp,
+                    blockHash,
+                    receipt.Index,
+                    transactionHash ??= recoveredTransactionHash ?? receipt.TxHash.ToCommitment(),
+                    log.Address.ToAddress(),
+                    data,
+                    topics));
+            }
+
+            public readonly IEnumerable<FilterLog> Complete() => _logs ?? (IEnumerable<FilterLog>)[];
+
+            public readonly void Dispose() { }
+
+            public static IEnumerable<FilterLog> From(IEnumerable<FilterLog> logs) => logs;
+
+            public static IEnumerable<FilterLog> FromBlock(IEnumerable<FilterLog> blockLogs) => blockLogs;
+        }
+
+        private protected struct BlockSerializedLogs : IBlockLogs<BlockSerializedLogs, SerializedLogs>
+        {
+            private SerializedLogs? _logs;
+
+            public void Add(long logIndex, ulong blockNumber, ulong blockTimestamp, Hash256 blockHash, in TxReceiptStructRef receipt,
+                Hash256? recoveredTransactionHash, ref Hash256? transactionHash, in LogEntryStructRef log, Hash256[] topics) =>
+                (_logs ??= new SerializedLogs()).Add(
+                    logIndex,
+                    blockNumber,
+                    blockTimestamp,
+                    blockHash,
+                    receipt.Index,
+                    recoveredTransactionHash is null ? receipt.TxHash.Bytes : recoveredTransactionHash.Bytes,
+                    log,
+                    topics);
+
+            public readonly IEnumerable<SerializedLogs> Complete() => _logs is null ? [] : [_logs];
+
+            public readonly void Dispose() => _logs?.Dispose();
+
+            public static IEnumerable<SerializedLogs> From(IEnumerable<FilterLog> logs) => FoundLogs.Serialize(logs);
+
+            public static IEnumerable<SerializedLogs> FromBlock(IEnumerable<FilterLog> blockLogs)
+            {
+                SerializedLogs? serialized = null;
+                try
+                {
+                    foreach (FilterLog log in blockLogs)
+                    {
+                        (serialized ??= new SerializedLogs()).Add(log);
+                    }
+                }
+                catch
+                {
+                    serialized?.Dispose();
+                    throw;
+                }
+
+                return serialized is null ? [] : [serialized];
+            }
         }
     }
 }

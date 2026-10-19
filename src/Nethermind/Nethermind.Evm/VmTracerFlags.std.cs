@@ -19,6 +19,7 @@ internal readonly struct VmTracerFlags
     public readonly bool IsCancelable;
 
     /// <summary>Whether nested call output may be staged in reusable scratch, which no tracer of it may hold on to.</summary>
+    /// <remarks>Never set for action tracers: parity action results keep the VM output arrays, per <see cref="ITxTracer.ReportActionEnd(ulong, System.ReadOnlyMemory{byte})"/>.</remarks>
     public readonly bool AllowsReturnScratch;
 
     public VmTracerFlags(ITxTracer tracer)
