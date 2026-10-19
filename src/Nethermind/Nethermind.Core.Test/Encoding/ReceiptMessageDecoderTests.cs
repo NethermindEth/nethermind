@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
@@ -53,6 +54,14 @@ public class ReceiptMessageDecoderTests
         byte[] encoded = ReceiptRlpBuilder.EncodeReceiptWithFirstItem(new byte[length]);
 
         Assert.That(() => DecodeReceipt(encoded), Throws.TypeOf<RlpException>());
+    }
+
+    [Test]
+    public void Decode_accepts_valid_post_state_length([Values(0, 32)] int length)
+    {
+        byte[] encoded = ReceiptRlpBuilder.EncodeReceiptWithFirstItem(new byte[length]);
+
+        Assert.That(DecodeReceipt(encoded).PostTransactionState, Is.EqualTo(length == 0 ? null : Keccak.Zero));
     }
 
     internal static TxReceipt DecodeReceipt(byte[] bytes)

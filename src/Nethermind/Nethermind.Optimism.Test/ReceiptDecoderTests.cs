@@ -105,6 +105,18 @@ public class ReceiptDecoderTests
     }
 
     [Test]
+    public void Optimism_compact_receipt_storage_decoding_normalizes_invalid_post_state_length_to_rlp_exception([Values(5, 31, 33, 34)] int length)
+    {
+        byte[] encoded = Rlp.Encode(Rlp.Encode(new byte[length])).Bytes;
+
+        Assert.That(() =>
+        {
+            RlpReader reader = new(encoded);
+            new OptimismCompactReceiptStorageDecoder().Decode(ref reader);
+        }, Throws.TypeOf<RlpException>());
+    }
+
+    [Test]
     public void Optimism_compact_receipt_storage_decoding_skips_empty_log_entry()
     {
         byte[] encoded = EncodeCompactReceiptWithNullLogEntry();

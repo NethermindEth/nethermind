@@ -87,6 +87,14 @@ public class ReceiptMessageDecoder69Tests
     }
 
     [Test]
+    public void Decode_accepts_valid_post_state_length([Values(0, 32)] int length)
+    {
+        byte[] encoded = ReceiptRlpBuilder.EncodeReceipt69WithFirstItem(TxType.EIP1559, new byte[length]);
+
+        Assert.That(Decode(encoded)!.PostTransactionState, Is.EqualTo(length == 0 ? null : Keccak.Zero));
+    }
+
+    [Test]
     public void Encoding_throws_on_null_logs([Values("length", "encode")] string operation)
     {
         TxReceipt receipt = new() { Logs = null };
