@@ -151,7 +151,7 @@ public class HistoryWalkVerificationCoordinatorTests
     }
 
     [Test]
-    public async Task WithProofsOnAndTheFlagOff_NoWalkRunsWithoutAPivotImage()
+    public void WithProofsOnAndTheFlagOff_NoWalkRunsWithoutAPivotImage()
     {
         FlatDbConfig config = new() { HistoryEnabled = true, ArchiveProofBuildEnabled = true };
         (HistoryAvailability availability, HistoryRowFormat rowFormat) = CreateShared(config);
@@ -160,13 +160,12 @@ public class HistoryWalkVerificationCoordinatorTests
 
         using HistoryWalkVerificationCoordinator coordinator = CreateCoordinator(config, headers);
         coordinator.Start();
-        await Task.Delay(200);
 
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(coordinator.VerificationLoop, Is.SameAs(Task.CompletedTask), "Start must launch no loop that could poll for a pivot image that never comes");
             Assert.That(coordinator.LastVerdict, Is.Null, "a history synced from genesis is walked only when the flag asks for it");
             Assert.That(CreateMetadata().TryGetWalkInProgress(out _, out _), Is.False);
-            Assert.That(coordinator.VerificationLoop.IsCompleted, Is.True, "nothing may poll for a pivot image that never comes");
         }
     }
 

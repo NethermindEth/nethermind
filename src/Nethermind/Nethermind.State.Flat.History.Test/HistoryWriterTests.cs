@@ -7,6 +7,10 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
+using Nethermind.Api;
+using Nethermind.Blockchain;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -15,14 +19,19 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
+using Nethermind.Init;
+using Nethermind.Init.Modules;
+using Nethermind.Init.Steps;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.Test;
 using Nethermind.Trie.Pruning;
 using System.IO;
+using System.IO.Abstractions;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
 using NUnit.Framework;
@@ -1151,7 +1160,12 @@ public class HistoryWriterTests
         _db.GetColumnDb(FlatDbColumns.Storage).PutSpan(StorageKey(AddrA, Slot1), slotValueBuffer[..slotValueLength]);
 
         fixture.Writer.SeedPivot(1000, pivot.StateRoot);
-        await Task.Delay(200);
+        // Two reads of the persisted state: the worker found it was not the pivot yet and polled again.
+        for (int poll = 0; poll < 2; poll++)
+        {
+            Assert.That(source.PersistedStateRead.Wait(TimeSpan.FromSeconds(10)), Is.True);
+            source.PersistedStateRead.Reset();
+        }
 
         using (Assert.EnterMultipleScope())
         {
@@ -1276,16 +1290,28 @@ public class HistoryWriterTests
 
         // After a restart the flat state pointer is at the pivot while no watermark exists yet: the image covers that.
         BasePersistence.SetCurrentState(_db.GetColumnDb(FlatDbColumns.Metadata), pivot);
-        ListStateSource source = new((AddrA, new Account(5, 500)), (AddrB, new Account(1, 7))) { PersistedState = pivot };
-        using PivotFixture fixture = CreatePivotFixture(source, start: false);
+        ListStateSource source = new((AddrA, new Account(5, 500)), (AddrB, new Account(1, 7))) { PersistedState = pivot, BlockFromPartition = partitionOfA };
+        using PivotFixture fixture = CreatePivotFixture(source, start: false, configure: builder => builder
+            .AddSingleton<FlatStateActivationPolicy>(ActiveFlatPolicy())
+            .AddSingleton<ChainSpec>(new ChainSpec { Allocations = new() { [AddrB] = new ChainSpecAllocation(7) } })
+            .AddSingleton<IBlockTree>(BlockTreeWithGenesis()));
 
         Assert.That(fixture.Writer.HoldsFlatPersist, Is.True, "the hold must stand before any persist can run after the restart");
 
         fixture.Image.Start();
+        Assert.That(source.Blocked.Wait(TimeSpan.FromSeconds(10)), Is.True);
+
+        // The genesis seeding step runs at the same startup, while the image is still being written.
+        await fixture.Container.Resolve<SeedFlatHistoryGenesis>().Execute(CancellationToken.None);
+        Assert.That(fixture.Availability.TryGetWatermark(out _), Is.False, "a genesis watermark under the image would make its pivot floor fail");
+
+        source.Resume.Set();
         await fixture.Image.Released.WaitAsync(TimeSpan.FromSeconds(10));
 
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(fixture.Availability.TryGetWatermark(out ulong watermark) && watermark == 1000, Is.True, "the image publishes the pivot as the watermark");
+            Assert.That(fixture.Availability.TryGetPendingPivotImage(out _), Is.False);
             Assert.That(source.PartitionsRead, Is.EqualTo(1), "only the partition that was not done is read again");
             Assert.That(fixture.Availability.TryGetPivotImageBlock(out ulong imageBlock) && imageBlock == 512, Is.True, "the resumed image keeps the block it was recorded at");
             Assert.That(HasMarker(512) && HasMarker(1000), Is.True);
@@ -1422,31 +1448,88 @@ public class HistoryWriterTests
         }
     }
 
-    private PivotFixture CreatePivotFixture(ListStateSource source, FlatLayout layout = FlatLayout.Flat, bool start = true)
+    private PivotFixture CreatePivotFixture(ListStateSource source, FlatLayout layout = FlatLayout.Flat, bool start = true, Action<ContainerBuilder>? configure = null)
     {
         FlatDbConfig config = new() { HistoryEnabled = true, Layout = layout };
-        (HistoryAvailability availability, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, config);
-        PivotHistoryImageWriter image = new(_db, _historyColumns, config, availability, rowFormat, new Lazy<IPivotStateSource>(source), LimboLogs.Instance, parallelism: 1);
-        HistoryWriter writer = new(_db, _historyColumns, config, availability, rowFormat, LimboLogs.Instance, commitments: null, Proofs.CommitmentDepthPolicy.Default, image);
-        HistoryReader reader = new(_db, _historyColumns, availability, rowFormat, LimboLogs.Instance);
-        if (start) image.Start();
-        return new PivotFixture(config, availability, image, writer, reader);
+        ContainerBuilder builder = new ContainerBuilder()
+            .AddModule(new FlatHistoryModule())
+            .AddSingleton<IColumnsDb<FlatDbColumns>>(_db)
+            .AddSingleton<IColumnsDb<FlatHistoryColumns>>(_historyColumns)
+            .AddSingleton<IFlatDbConfig>(config)
+            .AddSingleton<ISyncConfig>(new SyncConfig())
+            .AddSingleton<ILogManager>(LimboLogs.Instance)
+            .AddSingleton<IPivotStateSource>(source);
+        // One partition at a time, so a test that blocks a partition knows that every partition before it is done.
+        builder.RegisterType<PivotHistoryImageWriter>().WithParameter("parallelism", 1).SingleInstance();
+        configure?.Invoke(builder);
+
+        PivotFixture fixture = new(builder.Build(), source, config);
+        if (start) fixture.Image.Start();
+        return fixture;
     }
 
-    private sealed record PivotFixture(FlatDbConfig Config, HistoryAvailability Availability, PivotHistoryImageWriter Image, HistoryWriter Writer, HistoryReader Reader) : IDisposable
+    // Selects flat on the existing flat state of _db, as at a restart; the patricia database is never opened then.
+    private FlatStateActivationPolicy ActiveFlatPolicy() =>
+        new(
+            new FlatDbConfig { Enabled = true },
+            new TestHardwareInfo(32L * 1024 * 1024 * 1024),
+            new Lazy<IColumnsDb<FlatDbColumns>>(_db),
+            new Lazy<IDb>(Substitute.For<IDb>()),
+            new SyncConfig(),
+            new InitConfig { BaseDbPath = "/data" },
+            Substitute.For<IFileSystem>(),
+            LimboLogs.Instance);
+
+    private static IBlockTree BlockTreeWithGenesis()
     {
-        public void Dispose() => Image.Dispose();
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        blockTree.Genesis.Returns(Build.A.BlockHeader.WithNumber(0).WithStateRoot(new Hash256(StateAt(0).StateRoot.Bytes)).TestObject);
+        return blockTree;
     }
 
-    private sealed class ListStateSource(params (Address Address, Account Account)[] accounts) : IPivotStateSource
+    private sealed record PivotFixture(IContainer Container, ListStateSource Source, FlatDbConfig Config) : IDisposable
+    {
+        public HistoryAvailability Availability { get; } = Container.Resolve<HistoryAvailability>();
+        public PivotHistoryImageWriter Image { get; } = Container.Resolve<PivotHistoryImageWriter>();
+        public HistoryWriter Writer { get; } = Container.Resolve<HistoryWriter>();
+        public HistoryReader Reader { get; } = Container.Resolve<HistoryReader>();
+
+        public void Dispose()
+        {
+            Container.Dispose();
+            Source.Dispose();
+        }
+    }
+
+    private sealed class ListStateSource(params (Address Address, Account Account)[] accounts) : IPivotStateSource, IDisposable
     {
         private int _partitionsRead;
+        private StateId _persistedState = StateId.PreGenesis;
 
-        public StateId PersistedState { get; set; } = StateId.PreGenesis;
+        public StateId PersistedState
+        {
+            get
+            {
+                StateId persisted = _persistedState;
+                PersistedStateRead.Set();
+                return persisted;
+            }
+            set => _persistedState = value;
+        }
+
         public Exception? Failure { get; init; }
         public int BlockFromPartition { get; init; } = int.MaxValue;
         public ManualResetEventSlim Blocked { get; } = new();
+        public ManualResetEventSlim Resume { get; } = new();
+        public ManualResetEventSlim PersistedStateRead { get; } = new();
         public int PartitionsRead => Volatile.Read(ref _partitionsRead);
+
+        public void Dispose()
+        {
+            Blocked.Dispose();
+            Resume.Dispose();
+            PersistedStateRead.Dispose();
+        }
 
         public void ForEachAccount(in ValueHash256 stateRoot, byte partition, Action<ValueHash256, Account> sink, CancellationToken cancellationToken)
         {
@@ -1455,7 +1538,7 @@ public class HistoryWriterTests
             if (partition >= BlockFromPartition)
             {
                 Blocked.Set();
-                cancellationToken.WaitHandle.WaitOne();
+                WaitHandle.WaitAny([cancellationToken.WaitHandle, Resume.WaitHandle]);
             }
 
             cancellationToken.ThrowIfCancellationRequested();

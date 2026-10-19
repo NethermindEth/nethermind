@@ -22,6 +22,13 @@ public static class FlatArchiveMode
     private const string Category = "FlatDb";
     private const string TypeCategory = nameof(FlatDbConfig);
 
+    /// <summary>Turns on unbounded history, and for a snap-synced archive also proof building and serving, when the
+    /// flat backend runs with <c>Pruning.Mode=None</c>. Does nothing on patricia or with any other pruning mode.</summary>
+    /// <param name="flatDbConfig">Changed in place; only the settings <paramref name="configProvider"/> reports unset.</param>
+    /// <param name="pruningConfig">Selects archive mode with <see cref="PruningMode.None"/>.</param>
+    /// <param name="syncConfig">Snap sync (fast sync with snap) starts the history at the pivot.</param>
+    /// <param name="configProvider">Tells an explicit setting, from any config source, from one left unset.</param>
+    /// <param name="logger">Receives the resulting mode and any setting that keeps it from being a full archive.</param>
     public static void Apply(IFlatDbConfig flatDbConfig, IPruningConfig pruningConfig, ISyncConfig syncConfig, IConfigProvider configProvider, ILogger logger)
     {
         if (!flatDbConfig.Enabled || pruningConfig.Mode != PruningMode.None) return;

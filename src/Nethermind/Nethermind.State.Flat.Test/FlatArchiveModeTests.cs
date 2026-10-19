@@ -67,10 +67,8 @@ public class FlatArchiveModeTests
     public enum Source { Arguments, Json, Environment }
 
     // Each source names the category its own way, so the real provider is the only proof that a setting is seen.
-    [TestCase(Source.Arguments)]
-    [TestCase(Source.Json)]
-    [TestCase(Source.Environment)]
-    public void An_explicit_setting_from_any_config_source_stands(Source source)
+    [Test]
+    public void An_explicit_setting_from_any_config_source_stands([Values] Source source)
     {
         ConfigProvider configProvider = new();
         string? jsonPath = null;

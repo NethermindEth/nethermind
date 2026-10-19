@@ -273,6 +273,8 @@ public sealed class HistoryAvailability
         return true;
     }
 
+    /// <summary>Removes the record of the snap-pivot image, once the image is complete, cannot be written, or belongs to
+    /// a sync that did not complete. Not synced to the write-ahead log here; the caller syncs when it must be durable.</summary>
     public void ClearPendingPivotImage() => _availableBlocks.Remove(PivotImagePendingKey);
 
     /// <summary>Forgets the watermark and floor observed so far, after the caller removed every record to restart the

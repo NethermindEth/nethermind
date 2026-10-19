@@ -5,6 +5,7 @@ using System;
 using System.Threading;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -1599,7 +1600,8 @@ public class PersistenceManagerTests
     public async Task AddToPersistence_WhileTheCaptureHookHoldsTheFlatPersist_PersistsNothingUntilReleased()
     {
         RecordingCaptureHook hook = new();
-        using PersistenceManager manager = CreateManager(hook);
+        using ILifetimeScope scope = CreateManagerScope(hook);
+        PersistenceManager manager = scope.Resolve<PersistenceManager>();
 
         StateId to = CreateStateId(16);
         StateId latest = CreateStateId(100);
@@ -1627,7 +1629,8 @@ public class PersistenceManagerTests
     public async Task AddToPersistence_HeldPastTheBackstop_WaitsForTheReleaseInsteadOfForcingAPersist()
     {
         RecordingCaptureHook hook = new();
-        using PersistenceManager manager = CreateManager(hook);
+        using ILifetimeScope scope = CreateManagerScope(hook);
+        PersistenceManager manager = scope.Resolve<PersistenceManager>();
 
         StateId latest = CreateStateId(95000);
         StateId tierTip = CreateStateId(_config.CompactSize);
@@ -1637,7 +1640,7 @@ public class PersistenceManagerTests
 
         hook.Hold();
         Task persist = manager.AddToPersistence(latest);
-        await Task.Delay(100);
+        await hook.ReleaseAwaited.WaitAsync(TimeSpan.FromSeconds(10));
 
         using (Assert.EnterMultipleScope())
         {
@@ -1655,7 +1658,8 @@ public class PersistenceManagerTests
     public void FlushToPersistence_WhileTheCaptureHookHoldsTheFlatPersist_KeepsThePersistedState()
     {
         RecordingCaptureHook hook = new();
-        using PersistenceManager manager = CreateManager(hook);
+        using ILifetimeScope scope = CreateManagerScope(hook);
+        PersistenceManager manager = scope.Resolve<PersistenceManager>();
 
         StateId to = CreateStateId(16);
         _ = CreateSnapshot(Block0, to, compacted: true);
@@ -1674,18 +1678,12 @@ public class PersistenceManagerTests
         }
     }
 
-    private PersistenceManager CreateManager(IFlatPersistenceCaptureHook hook) => new(
-        _config,
-        ScheduleHelper.CreateWithOffset(_config, 0),
-        _finalizedStateProvider,
-        _persistence,
-        _snapshotRepository,
-        NullStatePersistenceBarrier.Instance,
-        LimboLogs.Instance,
-        _persistedSnapshotCompactor,
-        _tier.Loader,
-        Substitute.For<IProcessExitSource>(),
-        hook);
+    // The production registration over the shared tier, with this fixture's persistence and compactor and the given hook.
+    private ILifetimeScope CreateManagerScope(IFlatPersistenceCaptureHook hook) => _tier.BeginScope(builder => builder
+        .AddSingleton<IPersistence>(_persistence)
+        .AddSingleton<IPersistedSnapshotCompactor>(_persistedSnapshotCompactor)
+        .AddSingleton<IFlatPersistenceCaptureHook>(hook)
+        .AddSingleton<IPersistenceManager, PersistenceManager>());
 
     // The flush path (genesis-loader / shutdown) must uphold the same capture-before-persist invariant.
     [Test]
@@ -2109,15 +2107,26 @@ public class PersistenceManagerTests
 
     private sealed class RecordingCaptureHook : IFlatPersistenceCaptureHook
     {
+        private readonly TaskCompletionSource _releaseAwaited = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private TaskCompletionSource _released = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         public RecordingCaptureHook() => _released.SetResult();
+
+        /// <summary>Completes once the persistence manager takes <see cref="FlatPersistReleased"/> to wait on it.</summary>
+        public Task ReleaseAwaited => _releaseAwaited.Task;
 
         public StateId? CapturedUpTo { get; private set; }
 
         public bool HoldsFlatPersist { get; private set; }
 
-        public Task FlatPersistReleased => _released.Task;
+        public Task FlatPersistReleased
+        {
+            get
+            {
+                _releaseAwaited.TrySetResult();
+                return _released.Task;
+            }
+        }
 
         public void CaptureUpTo(in StateId persistedHead, ISnapshotRepository snapshotRepository, System.Threading.CancellationToken cancellationToken) =>
             CapturedUpTo = persistedHead;

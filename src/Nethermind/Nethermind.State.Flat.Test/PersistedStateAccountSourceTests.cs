@@ -33,7 +33,7 @@ public class PersistedStateAccountSourceTests
     private void BuildTrie(int accountCount)
     {
         _loads = 0;
-        MemDb trieDb = new();
+        using MemDb trieDb = new();
         StateTree tree = new(new RawScopedTrieStore(trieDb), LimboLogs.Instance);
         _accounts = [];
         Random random = new(42);
@@ -58,9 +58,8 @@ public class PersistedStateAccountSourceTests
 
     // Few accounts put their leaves right below the root, above the partition depth: every partition sharing the
     // leaf's first nibble reaches it, and only the one its hash starts with may report it.
-    [TestCase(AccountCount)]
-    [TestCase(3)]
-    public void Every_account_is_read_once_in_the_partition_of_its_first_hash_byte(int accountCount)
+    [Test]
+    public void Every_account_is_read_once_in_the_partition_of_its_first_hash_byte([Values(AccountCount, 3)] int accountCount)
     {
         BuildTrie(accountCount);
         PersistedStateAccountSource source = CreateSource();
