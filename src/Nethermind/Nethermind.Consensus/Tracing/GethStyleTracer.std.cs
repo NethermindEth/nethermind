@@ -354,13 +354,16 @@ public class GethStyleTracer(
     public static IBlockTracer<GethLikeTxTrace> CreateOptionsTracer(BlockHeader block, GethTraceOptions options, IWorldState worldState, ISpecProvider specProvider, Func<Block, Transaction, BlockLogIndex>? logIndex = null) =>
         options switch
         {
-            { Tracer: var t } when GethLikeNativeTracerFactory.IsNativeTracer(t) => new GethLikeBlockNativeTracer(options.TxHash, (b, tx) => GethLikeNativeTracerFactory.CreateTracer(
-                logIndex is null ? options : options with { LogIndex = logIndex(b, tx) }, b, tx, worldState, specProvider.GetSpec(b.Header))),
+            { Tracer: var t } when GethLikeNativeTracerFactory.IsNativeTracer(t) => new GethLikeBlockNativeTracer(options.TxHash, CreateNativeTracerFactory(options, worldState, specProvider, logIndex)),
             { Tracer.Length: > 0, CaptureJavaScriptErrors: true } => new RecoveringJavaScriptBlockTracer(
                 () => new GethLikeBlockJavaScriptTracer(worldState, specProvider.GetSpec(block), options), options.TxHash),
             { Tracer.Length: > 0 } => new GethLikeBlockJavaScriptTracer(worldState, specProvider.GetSpec(block), options),
             _ => new GethLikeBlockMemoryTracer(options, (long)specProvider.GetSpec(block).GasCosts.DestroyRefund),
         };
+
+    private static NativeTracerFactory CreateNativeTracerFactory(GethTraceOptions options, IWorldState worldState, ISpecProvider specProvider, Func<Block, Transaction, BlockLogIndex>? logIndex) =>
+        (b, tx) => GethLikeNativeTracerFactory.CreateTracer(
+            logIndex is null ? options : options with { LogIndex = logIndex(b, tx) }, b, tx, worldState, specProvider.GetSpec(b.Header));
 
     private IReadOnlyCollection<GethLikeTxTrace> TraceBlockImpl(Block? block, GethTraceOptions options, CancellationToken cancellationToken, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null, bool allowIndexed = true)
     {
@@ -376,14 +379,27 @@ public class GethStyleTracer(
             return new GethLikeTxTraceCollection(filtered);
         }
 
+        bool streamsNative = writer is not null && options.TxHash is null && GethLikeNativeTracerFactory.IsNativeTracer(options.Tracer);
         bool wantsLogIndex = WantsLogIndex(options);
-        if (allowIndexed && writer is null && options.TxHash is null && options.StateOverrides is null && parallelTracer is not null && !IsJavaScriptTracer(options)
-            && TryGetParallelLogIndex(block, wantsLogIndex, out Func<Block, Transaction, BlockLogIndex>? parallelLogIndex)
-            && parallelTracer.TryTrace(block, FindParent(block),
-                (state, txHash) => CreateOptionsTracer(block.Header, options with { TxHash = txHash }, state, specProvider, parallelLogIndex),
-                afterTransactions: null, cancellationToken, out IReadOnlyList<GethLikeTxTrace>? parallel))
+        if (allowIndexed && (writer is null || streamsNative) && options.TxHash is null && options.StateOverrides is null && parallelTracer is not null && !IsJavaScriptTracer(options)
+            && TryGetParallelLogIndex(block, wantsLogIndex, out Func<Block, Transaction, BlockLogIndex>? parallelLogIndex))
         {
-            return new GethLikeTxTraceCollection(parallel);
+            Func<IWorldState, Hash256, IBlockTracer<GethLikeTxTrace>> forTransaction =
+                (state, txHash) => CreateOptionsTracer(block.Header, options with { TxHash = txHash }, state, specProvider, parallelLogIndex);
+            if (writer is null)
+            {
+                if (parallelTracer.TryTrace(block, FindParent(block), forTransaction, afterTransactions: null, cancellationToken, out IReadOnlyList<GethLikeTxTrace>? parallel))
+                    return new GethLikeTxTraceCollection(parallel);
+            }
+            else if (parallelTracer.TryStream(block, FindParent(block), forTransaction, afterTransactions: null,
+                traces =>
+                {
+                    foreach (GethLikeTxTrace trace in traces) GethLikeBlockNativeStreamingTracer.Write(writer, pipeWriter, trace, cancellationToken);
+                },
+                cancellationToken))
+            {
+                return Array.Empty<GethLikeTxTrace>();
+            }
         }
 
         // The replay numbers logs from the body it runs, so a filtered trace still traces the transactions before
@@ -399,9 +415,12 @@ public class GethStyleTracer(
         using Scope<BlockProcessingComponents> scope = blockProcessingEnv.BuildAndOverrideAtTarget(block.Header, options.StateOverrides);
 
         long destroyRefund = (long)specProvider.GetSpec(block.Header).GasCosts.DestroyRefund;
+        Func<Block, Transaction, BlockLogIndex>? logIndex = sharedLogIndex is null ? null : (_, _) => sharedLogIndex;
         IBlockTracer<GethLikeTxTrace> tracer = writer is null
-            ? CreateOptionsTracer(block.Header, options, scope.Component.WorldState, specProvider, sharedLogIndex is null ? null : (_, _) => sharedLogIndex)
-            : new GethLikeBlockEnvelopeStreamingTracer(options, writer, pipeWriter, cancellationToken, destroyRefund);
+            ? CreateOptionsTracer(block.Header, options, scope.Component.WorldState, specProvider, logIndex)
+            : streamsNative
+                ? new GethLikeBlockNativeStreamingTracer(CreateNativeTracerFactory(options, scope.Component.WorldState, specProvider, logIndex), writer, pipeWriter, cancellationToken)
+                : new GethLikeBlockEnvelopeStreamingTracer(options, writer, pipeWriter, cancellationToken, destroyRefund);
 
         try
         {
