@@ -146,16 +146,17 @@ public class GethLikeTxDirectStreamingTracerTests : GethLikeTracerTestsBase
         GethLikeTxDirectStreamingTracer reused = new(null, GethTraceOptions.Default, reusedWriter, pipeWriter: null, CancellationToken.None);
         reusedWriter.WriteStartArray();
 
-        long allocated = 0;
+        long[] allocatedPerTx = new long[measuredTxs];
         for (int tx = 0; tx <= lastTx; tx++)
         {
             if (tx > 0) reused.ResetForNextTx(null);
             long before = GC.GetAllocatedBytesForCurrentThread();
             TraceSstores(reused, tx);
-            if (tx >= warmupTxs) allocated += GC.GetAllocatedBytesForCurrentThread() - before;
+            if (tx >= warmupTxs) allocatedPerTx[tx - warmupTxs] = GC.GetAllocatedBytesForCurrentThread() - before;
             reused.BuildResult();
         }
         Complete(reused, reusedWriter);
+        Array.Sort(allocatedPerTx);
 
         ArrayBufferWriter<byte> freshOutput = new();
         using Utf8JsonWriter freshWriter = new(freshOutput);
@@ -172,7 +173,9 @@ public class GethLikeTxDirectStreamingTracerTests : GethLikeTracerTestsBase
             Assert.That(reusedLogs.RootElement.EnumerateArray().TakeLast(expected.Length).Select(static e => e.GetRawText()), Is.EqualTo(expected),
                 "storage of earlier txs must not leak into a later tx");
             // Tier-0 code boxes a few keys while the maps grow; one storage-map array alone exceeds the bound.
-            Assert.That(allocated / measuredTxs, Is.LessThan(1024), "storage maps must be reused across txs");
+            // The upper median ignores up to 3 txs whose pooled arrays another thread took from the shared ArrayPool,
+            // yet still fails a regression that reallocates the maps on every other tx.
+            Assert.That(allocatedPerTx[measuredTxs / 2], Is.LessThan(1024), "storage maps must be reused across txs");
         }
     }
 
