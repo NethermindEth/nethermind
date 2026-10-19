@@ -27,6 +27,7 @@ public partial class EngineRpcModule : IEngineRpcModule
     private readonly IForkchoiceUpdatedHandler _forkchoiceUpdatedV1Handler = forkchoiceUpdatedV1Handler;
     private readonly IHandler<TransitionConfigurationV1, TransitionConfigurationV1> _transitionConfigurationHandler = transitionConfigurationHandler;
     private readonly IEngineRequestsTracker _engineRequestsTracker = engineRequestsTracker;
+    private readonly PayloadTransactionCountGuard? _transactionCountGuard = transactionCountGuard;
     private readonly SemaphoreSlim _locker = new(1, 1);
     /// <summary>How long an engine API call waits for the lock another call holds.</summary>
     internal static readonly TimeSpan LockTimeout = TimeSpan.FromSeconds(8);
@@ -114,6 +115,12 @@ public partial class EngineRpcModule : IEngineRpcModule
         IReleaseSpec releaseSpec = _specProvider.GetSpec(executionPayload.BlockNumber, executionPayload.Timestamp);
         // The converter reads "0x" as the EIP-7668 bloom; before the fork it is the zero bloom, as it always was.
         if (executionPayload.LogsBloom is { IsZeroLength: true } && !releaseSpec.IsEip7668Enabled) executionPayload.LogsBloom = new Bloom();
+
+        if (_transactionCountGuard is { } guard && !guard.IsWithinParentGasLimit(executionPayload, releaseSpec, out string? countError))
+        {
+            if (_logger.IsWarn) _logger.Warn(countError);
+            return ResultWrapper<PayloadStatusV1>.Success(PayloadStatusV1.Invalid(null, countError));
+        }
 
         ValidationResult validationResult = executionPayloadParams.ValidateParams(releaseSpec, version, out string? error);
         if (validationResult != ValidationResult.Success)
