@@ -361,7 +361,8 @@ public class EthereumRunnerTests
     [Test]
     public async Task Startup_pipeline_warmup_keeps_live_head_metrics()
     {
-        using BasicTestBlockchain live = await BasicTestBlockchain.Create();
+        // The live chain's own unordered thread-pool reports could leave an older height in the gauges, so only the restore sets them.
+        using BasicTestBlockchain live = await BasicTestBlockchain.Create(builder => builder.AddScoped(Substitute.For<IProcessingStats>()));
         // Live heights above the warm chain's make a warm value left in a gauge visible.
         for (int i = 0; i < 4; i++) await live.AddBlock();
         using TempPath dataDirectory = TempPath.GetTempDirectory();
