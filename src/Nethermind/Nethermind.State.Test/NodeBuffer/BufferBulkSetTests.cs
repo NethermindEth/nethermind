@@ -120,7 +120,7 @@ internal class BufferBulkSetTests
             Assert.That(root.Hash, Is.EqualTo(tree.RootHash.ValueHash256), "root");
             Assert.That(NodeRecordCodec.IsTransient(root.Pointer), Is.False, "returned root");
             Assert.That(InvalidRecords(existingBuffer, existingRoot).Concat(InvalidRecords(buffer, root)), Is.Empty, "reachable records hash to their hash and parse");
-            Assert.That(Rlps(buffer, root), Is.EquivalentTo(expectedBufferNodes), "reachable nodes");
+            Assert.That(Rlps(buffer, root).OrderBy(node => node.Key), Is.EqualTo(expectedBufferNodes.OrderBy(node => node.Key)), "reachable nodes");
             if (!fromSource) Assert.That(fetchCount, Is.Zero, "nodes the first bulk set wrote are read from the buffer");
             Assert.That(ReadValues(buffer, source, root, keys), Is.EqualTo(keys.Select(key => expectedValues.GetValueOrDefault(key))), "values");
         }
@@ -155,7 +155,7 @@ internal class BufferBulkSetTests
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(root.Hash, Is.EqualTo(expectedRoot.ValueHash256));
-                Assert.That(Rlps(buffer, root), Is.EquivalentTo(expectedNodes));
+                Assert.That(Rlps(buffer, root).OrderBy(node => node.Key), Is.EqualTo(expectedNodes.OrderBy(node => node.Key)));
                 Assert.That(InvalidRecords(buffer, root), Is.Empty);
                 Assert.That(source.FetchCount, Is.Zero);
             }
