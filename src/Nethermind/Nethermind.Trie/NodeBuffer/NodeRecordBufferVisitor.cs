@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Threading;
 using Nethermind.Serialization.Rlp;
@@ -53,9 +54,14 @@ internal sealed class NodeRecordBufferVisitor<TNodeContext> where TNodeContext :
 
     private TrieNode Reference(Hash256 hash, in TreePath path)
     {
+        RecordLookup(path);
+        return new TrieNode(NodeType.Unknown, hash);
+    }
+
+    private void RecordLookup(in TreePath path)
+    {
         _diagnostics?.RecordLookup();
         _diagnostics?.ObserveDepth(path.Length);
-        return new TrieNode(NodeType.Unknown, hash);
     }
 
     private bool TryLoad(ref TrieNode node, ulong pointer, ITrieNodeResolver persistence, in TreePath path,
@@ -66,14 +72,14 @@ internal sealed class NodeRecordBufferVisitor<TNodeContext> where TNodeContext :
         {
             if (_buffer.TryLocate(pointer, out record))
             {
-                node = record.ToTrieNode();
+                node = new TrieNode(NodeType.Unknown, node.Keccak!, record.Rlp);
             }
             else if (node.NodeType == NodeType.Unknown && node.FullRlp.IsNull)
             {
                 _diagnostics?.RecordCacheMiss();
                 byte[] rlp = persistence.LoadRlp(path, node.Keccak!, _readFlags)
                     ?? throw new TrieException($"Trie returned a NULL RLP for node {node.Keccak}");
-                node = new TrieNode(NodeType.Unknown, node.Keccak!, rlp.AsSpan());
+                node = new TrieNode(NodeType.Unknown, node.Keccak!, new CappedArray<byte>(rlp));
             }
             node.ResolveNode(NullTrieNodeResolver.Instance, path);
         }
@@ -159,11 +165,7 @@ internal sealed class NodeRecordBufferVisitor<TNodeContext> where TNodeContext :
         }
 
         TrieNode? node = parent.GetChild(NullTrieNodeResolver.Instance, ref parentPath, index);
-        if (node?.Keccak is not null)
-        {
-            _diagnostics?.RecordLookup();
-            _diagnostics?.ObserveDepth(childPath.Length);
-        }
+        if (node?.Keccak is not null) RecordLookup(childPath);
         return node;
     }
 
