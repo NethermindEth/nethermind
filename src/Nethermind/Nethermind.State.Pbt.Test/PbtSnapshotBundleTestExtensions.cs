@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core.Memory;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -15,12 +16,15 @@ namespace Nethermind.State.Pbt.Test;
 
 internal static class PbtSnapshotBundleTestExtensions
 {
+    /// <summary>A read-only bundle pin for tests whose group log records outlive the bundle.</summary>
+    public static IDisposable NoNodeGroupPin => new Reactive.AnonymousDisposable(static () => { });
+
     public static void SetSlot(this PbtSnapshotBundle bundle, Address address, in UInt256 slot, in UInt256 value) =>
         bundle.SetSlots(address, Eip8297KeyDerivation.AddressHash(address.ToHash().Bytes), [(slot, value)]);
 
     public static PbtSnapshotBundle CreateBundle(IPbtResourcePool pool, IPbtPersistence.IReader reader) => new(
         new PbtSnapshotPooledList(0),
-        new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), reader, recordDetailedMetrics: false, new PbtPersistedSnapshotList(0), slotFilterBitsPerKey: 0),
+        new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), reader, recordDetailedMetrics: false, new PbtPersistedSnapshotList(0), NoNodeGroupPin, slotFilterBitsPerKey: 0),
         pool, PbtResourcePool.Usage.MainBlockProcessing, filterInMemorySlotReads: false);
 
     /// <summary>Folds the bundle's pending leaf changes into the tree at <paramref name="root"/> and returns the new root.</summary>
@@ -50,7 +54,7 @@ internal static class PbtSnapshotBundleTestExtensions
     }
 
     public static PbtReadOnlySnapshotBundle ReadOnlyBundle(PbtAssembledSnapshotResult assembled, IPbtPersistence.IReader reader, double slotFilterBitsPerKey) =>
-        new(assembled.InMemory, reader, recordDetailedMetrics: false, assembled.Persisted, slotFilterBitsPerKey);
+        new(assembled.InMemory, reader, recordDetailedMetrics: false, assembled.Persisted, NoNodeGroupPin, slotFilterBitsPerKey);
 
     private static PbtSnapshot Layer(IPbtResourcePool pool, PbtSnapshotContent content, int index) =>
         new(index == 0 ? StateId.PreGenesis : new StateId((ulong)index, default), new StateId((ulong)index + 1, default), default, content, pool, PbtResourcePool.Usage.MainBlockProcessing);

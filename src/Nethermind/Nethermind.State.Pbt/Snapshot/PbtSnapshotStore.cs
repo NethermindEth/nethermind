@@ -15,8 +15,9 @@ namespace Nethermind.State.Pbt.Snapshot;
 /// <summary>Adapts a writable snapshot bundle to the canonical <see cref="TrieUpdater"/> store contract.</summary>
 /// <remarks>
 /// One store serves one root fold. Workers reserve log records and hand their references over on disposal.
-/// The owner publishes the new tree's root on store disposal only after a successful fold, while its operation lease still
-/// protects all borrowed and unpublished records. A removed group is simply no longer linked, so nothing records its removal.
+/// The owner publishes the new tree's root on store disposal only after a successful fold. The bundle's read-only base pins
+/// every record the fold borrows, and its write buffer's generation pin every record the fold writes. A removed group is
+/// simply no longer linked, so nothing records its removal.
 /// </remarks>
 public sealed class PbtSnapshotStore(PbtSnapshotBundle bundle) : IPbtStore, IDisposable
 {
@@ -26,7 +27,6 @@ public sealed class PbtSnapshotStore(PbtSnapshotBundle bundle) : IPbtStore, IDis
     // Detailed observers stay no-ops unless Metrics.EnableDetailedMetric, so the timestamps are skipped with them.
     private readonly bool _recordReadTimes = Metrics.PbtTrieUpdaterNodeGroupReadTimes is not NoopMetricObserver;
     private readonly ArrayPoolList<ArrayPoolList<BufferedNodeGroup>> _handedOff = new(16);
-    private readonly PbtGroupLog.OperationLease _operation = bundle.NodeGroupLog.BeginOperation();
     private bool _complete;
     private PbtGroupLog Log => bundle.NodeGroupLog;
 
@@ -35,7 +35,7 @@ public sealed class PbtSnapshotStore(PbtSnapshotBundle bundle) : IPbtStore, IDis
 
     /// <inheritdoc/>
     public bool TryGetNodeGroupRecord(PbtGroupReference reference, scoped in PbtTraversalPath groupKey, out PbtGroupRecord record) =>
-        bundle.NodeGroupLog.TryGetRecord(_operation, reference, out record)
+        bundle.NodeGroupLog.TryGetRecord(reference, out record)
         && PbtNodePathOperations.Equal(record.Path, groupKey.ToPath<PbtStorageNodePath>());
 
     /// <inheritdoc/>
@@ -68,10 +68,9 @@ public sealed class PbtSnapshotStore(PbtSnapshotBundle bundle) : IPbtStore, IDis
 
     public IPbtConcurrentWriter CreateWriter() => new ConcurrentWriter(this);
 
-    /// <summary>Publishes a successful fold's handed-off groups on the owner thread and releases the operation lease.</summary>
+    /// <summary>Publishes a successful fold's handed-off groups on the owner thread.</summary>
     public void Dispose()
     {
-        using PbtGroupLog.OperationLease operation = _operation;
         try
         {
             if (_complete)
@@ -108,7 +107,7 @@ public sealed class PbtSnapshotStore(PbtSnapshotBundle bundle) : IPbtStore, IDis
             PbtStorageNodePath path = groupKey.ToPath<PbtStorageNodePath>();
             payload = default;
             PbtGroupReference reference = length == 0 ? PbtGroupReference.None
-                : store.Log.Reserve(store._operation, path, length, links, out payload);
+                : store.Log.Reserve(path, length, links, out payload);
             _buffer.Add(new BufferedNodeGroup(path, reference, length));
             return reference;
         }

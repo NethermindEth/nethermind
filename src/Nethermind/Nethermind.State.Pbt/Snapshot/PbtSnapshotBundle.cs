@@ -30,6 +30,9 @@ public sealed class PbtSnapshotBundle(
     bool filterInMemorySlotReads) : IDisposable
 {
     private PbtSnapshotContent? _writeBuffer = resourcePool.GetSnapshotContent(usage);
+    // Taken before the first root index lookup and after the write buffer's generation pin, so with it this covers an
+    // indexed root written after the read-only base was pinned.
+    private IDisposable? _rootLookupPin;
     private readonly PbtPartitionBatchesBuilder _leafChanges = new(
         resourcePool.GetWriteBatch(usage), resourcePool.GetWriteBatch(usage), resourcePool.GetStorageWriteBatch(usage));
     // Accounts set before their code arrived; they reach the write buffer once the code converts them to their stem.
@@ -64,6 +67,11 @@ public sealed class PbtSnapshotBundle(
                 PbtSnapshot snapshot = snapshots[^1];
                 if (!ReferenceEquals(snapshot.Content.NodeGroupLog, NodeGroupLog)) throw new InvalidOperationException("A branch must share the traversal log of its in-memory snapshots.");
                 return snapshot.RootGroupReference;
+            }
+            if (Volatile.Read(ref _rootLookupPin) is null)
+            {
+                IDisposable pin = NodeGroupLog.PinAll();
+                if (Interlocked.CompareExchange(ref _rootLookupPin, pin, null) is not null) pin.Dispose();
             }
             return readOnlyBundle.GetRootGroupReference(NodeGroupLog);
         }
@@ -389,6 +397,7 @@ public sealed class PbtSnapshotBundle(
         _hintedAccounts.Clear();
         ReleasePersistedNodeGroups();
         ReturnReplacedRuns();
+        Interlocked.Exchange(ref _rootLookupPin, null)?.Dispose();
         PbtSnapshotContent? buffer = _writeBuffer;
         _writeBuffer = null;
         try

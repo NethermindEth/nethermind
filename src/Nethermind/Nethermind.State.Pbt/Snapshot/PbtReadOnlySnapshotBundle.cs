@@ -22,6 +22,8 @@ using Nethermind.State.Pbt.PersistedSnapshots;
 namespace Nethermind.State.Pbt.Snapshot;
 
 /// <summary>An immutable canonical state view composed from snapshot diffs over one persistence snapshot.</summary>
+/// <param name="nodeGroupPin">A <see cref="PbtGroupLog.PinAll"/> keeping every group log record the bundle's readers may
+/// borrow valid; released with the bundle.</param>
 /// <param name="slotFilterBitsPerKey">Bits per key of the negative filter <see cref="RentRunFiltered"/> builds over the
 /// in-memory layers' slot runs; 0 never builds one.</param>
 public sealed class PbtReadOnlySnapshotBundle(
@@ -29,6 +31,7 @@ public sealed class PbtReadOnlySnapshotBundle(
     IPbtPersistence.IReader reader,
     bool recordDetailedMetrics,
     PbtPersistedSnapshotList persistedSnapshots,
+    IDisposable nodeGroupPin,
     double slotFilterBitsPerKey) : RefCountingDisposable
 {
     private const int SlotFilterNotBuilt = 0;
@@ -362,6 +365,7 @@ public sealed class PbtReadOnlySnapshotBundle(
         finally
         {
             reader.Dispose();
+            nodeGroupPin.Dispose();
         }
     }
 

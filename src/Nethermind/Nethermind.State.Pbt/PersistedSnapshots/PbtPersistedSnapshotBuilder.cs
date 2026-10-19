@@ -52,8 +52,7 @@ public static class PbtPersistedSnapshotBuilder
         foreach ((HashedKey<PbtStoragePath> key, PackedSlotRun value) in c.Storages) entries.Add(new(PbtPersistedKey.Run(key.Key), value));
         foreach ((ValueHash256 key, CodeInfo value) in c.Codes) entries.Add(new(PbtPersistedKey.CodeEntity(key), value));
         foreach ((ValueHash256 key, bool value) in c.SelfDestructedStorageAddresses) entries.Add(new(PbtPersistedKey.AddressEntity(key, PbtPersistedKey.Clear), value));
-        using (PbtGroupLog.OperationLease operation = c.NodeGroupLog.BeginOperation())
-            foreach (PbtGroupRecord group in c.EnumerateNodeGroups(operation)) entries.Add(new(PbtPersistedKey.Group(group.Path), group.Payload.ToArray()));
+        foreach (PbtGroupRecord group in c.EnumerateNodeGroups()) entries.Add(new(PbtPersistedKey.Group(group.Path), group.Payload.ToArray()));
         entries.Sort(static (a, b) => a.Key.AsSpan().SequenceCompareTo(b.Key));
         SortedTableBuilder<TWriter> table = new(ref writer);
         try

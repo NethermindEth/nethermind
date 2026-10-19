@@ -102,7 +102,6 @@ internal static class PbtSnapshotTestExtensions
         Dictionary<PbtStorageNodePath, PbtGroupReference> published = [];
         int count = 0;
         long bytes = 0;
-        using PbtGroupLog.OperationLease operation = log.BeginOperation();
         foreach ((PbtStorageNodePath path, byte[]? payload) in tree.OrderByDescending(static group => group.Key.BitDepth))
         {
             if (payload is null)
@@ -119,7 +118,7 @@ internal static class PbtSnapshotTestExtensions
                 PbtNodePathOperations.CopyTo(child, childBytes);
                 links[TrieUpdater.BoundarySlot(childBytes, path.BitDepth)] = reference;
             }
-            published[path] = log.Append(operation, path, payload, links);
+            published[path] = log.Append(path, payload, links);
             count++;
             bytes += ((path.BitDepth + 7) >> 3) + payload.Length;
         }

@@ -426,7 +426,7 @@ public class ParallelUpdateRootTests
     private static void AssertLoggedFold(LoggedGroupStore store, PbtTreeHarness expected, (byte[] Key, byte[]? Value)[] writes, FoldFanOut fanOut)
     {
         PbtStorageNodePath[] previous = store.TreePayloads().Select(static group => group.Key).ToArray();
-        using PbtGroupLog.GenerationPin pin = store.Log.PinActiveGeneration();
+        using PbtGroupLog.GenerationPin pin = store.Log.Pin();
         ValueHash256 actual = store.Fold(writes, fanOut);
         expected.ApplyBatch(writes);
         HashSet<PbtStorageNodePath> current = expected.PhysicalPayloads.Select(static group => group.Key).ToHashSet();
@@ -467,9 +467,7 @@ public class ParallelUpdateRootTests
         using PbtTreeHarness expected = new();
         (byte[] Key, byte[]? Value)[] entries = ZoneEntries(3, compressed: true);
         expected.ApplyBatch(entries);
-        PbtGroupReference unavailable;
-        using (PbtGroupLog.OperationLease operation = store.Log.BeginOperation())
-            unavailable = store.Log.Append(operation, default, expected.PhysicalPayloads.Single(static group => group.Key.BitDepth == 0).Payload.Span, PbtGroupLinks.Unknown);
+        PbtGroupReference unavailable = store.Log.Append(default, expected.PhysicalPayloads.Single(static group => group.Key.BitDepth == 0).Payload.Span, PbtGroupLinks.Unknown);
         store.Seed(expected.RootHash, expected.PhysicalPayloads);
         (byte[] Key, byte[]? Value)[] changes = Changes(entries);
         ValueHash256 actual = store.Fold(changes, SplitFanOut(true), retired ? unavailable : PbtGroupReference.Unknown);
@@ -532,25 +530,19 @@ public class ParallelUpdateRootTests
         second.Fold(secondEntries, SplitFanOut(true));
         firstExpected.ApplyBatch(firstEntries);
         secondExpected.ApplyBatch(secondEntries);
-        PbtGroupReference firstChild;
-        PbtGroupReference secondChild;
-        using (PbtGroupLog.OperationLease operation = log.BeginOperation())
-        {
-            Assert.That(log.TryGetRecord(operation, first.RootReference, out PbtGroupRecord firstParent), Is.True);
-            Assert.That(log.TryGetRecord(operation, second.RootReference, out PbtGroupRecord secondParent), Is.True);
-            firstChild = firstParent.GetLink(0);
-            secondChild = secondParent.GetLink(0);
-            Assert.That(firstChild.IsDirect && secondChild.IsDirect, Is.True);
-        }
+        Assert.That(log.TryGetRecord(first.RootReference, out PbtGroupRecord firstParent), Is.True);
+        Assert.That(log.TryGetRecord(second.RootReference, out PbtGroupRecord secondParent), Is.True);
+        PbtGroupReference firstChild = firstParent.GetLink(0);
+        PbtGroupReference secondChild = secondParent.GetLink(0);
+        Assert.That(firstChild.IsDirect && secondChild.IsDirect, Is.True);
         first.RetireDescendants(unknownChildren);
         second.RetireDescendants(unknownChildren);
-        using (PbtGroupLog.OperationLease operation = log.BeginOperation())
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(log.TryGetRecord(operation, first.RootReference, out _), Is.True);
-            Assert.That(log.TryGetRecord(operation, second.RootReference, out _), Is.True);
-            Assert.That(log.TryGetRecord(operation, firstChild, out _), Is.False, "the live parent must not require its old child generation to stay resident");
-            Assert.That(log.TryGetRecord(operation, secondChild, out _), Is.False);
+            Assert.That(log.TryGetRecord(first.RootReference, out _), Is.True);
+            Assert.That(log.TryGetRecord(second.RootReference, out _), Is.True);
+            Assert.That(log.TryGetRecord(firstChild, out _), Is.False, "the live parent must not require its old child generation to stay resident");
+            Assert.That(log.TryGetRecord(secondChild, out _), Is.False);
         }
         (byte[] Key, byte[]? Value)[] firstChanges = Changes(firstEntries);
         (byte[] Key, byte[]? Value)[] secondChanges = [(secondEntries[0].Key, Value(0xE1)), (secondEntries[^1].Key, null)];
@@ -597,7 +589,6 @@ public class ParallelUpdateRootTests
         private long _storeReads;
         private long _directReads;
         private long _fallbackReads;
-        private PbtGroupLog.OperationLease _operation = null!;
         private PbtGroupReference _inputRoot;
         private readonly List<List<(PbtStorageNodePath Path, PbtGroupReference Reference)>> _writes = [];
         // Groups the folds published, with None for removed ones, over the persisted groups.
@@ -628,7 +619,7 @@ public class ParallelUpdateRootTests
 
         public bool TryGetNodeGroupRecord(PbtGroupReference reference, scoped in PbtTraversalPath path, out PbtGroupRecord record)
         {
-            if (Log.TryGetRecord(_operation, reference, out record) && PbtNodePathOperations.Equal(record.Path, path.ToPath<PbtStorageNodePath>()))
+            if (Log.TryGetRecord(reference, out record) && PbtNodePathOperations.Equal(record.Path, path.ToPath<PbtStorageNodePath>()))
             {
                 Interlocked.Increment(ref _directReads);
                 return true;
@@ -645,7 +636,7 @@ public class ParallelUpdateRootTests
             {
                 PbtStorageNodePath key = path.ToPath<PbtStorageNodePath>();
                 payload = default;
-                PbtGroupReference reference = length == 0 ? PbtGroupReference.None : store.Log.Reserve(store._operation, key, length, links, out payload);
+                PbtGroupReference reference = length == 0 ? PbtGroupReference.None : store.Log.Reserve(key, length, links, out payload);
                 _buffer.Add((key, reference));
                 return reference;
             }
@@ -668,8 +659,6 @@ public class ParallelUpdateRootTests
 
         public ValueHash256 Fold((byte[] Key, byte[]? Value)[] writes, FoldFanOut fanOut, PbtGroupReference? rootOverride = null)
         {
-            using PbtGroupLog.OperationLease operation = Log.BeginOperation();
-            _operation = operation;
             _inputRoot = rootOverride ?? RootReference;
             _writes.Clear();
             _directReads = _fallbackReads = 0;
@@ -722,26 +711,21 @@ public class ParallelUpdateRootTests
             PbtNodeGroupStore persisted = PbtNodeGroupStore.FromPhysicalPayloads(Payloads());
             _persisted?.Dispose();
             _persisted = persisted;
-            using PbtGroupLog.OperationLease operation = Log.BeginOperation();
-            Assert.That(Log.TryGetRecord(operation, RootReference, out PbtGroupRecord record), Is.True);
-            using PbtGroupLog.GenerationPin parent = Log.PinActiveGeneration();
-            RootReference = Log.Append(operation, default, record.Payload.Span, unknownLinks ? PbtGroupLinks.Unknown : record.Links);
+            Assert.That(Log.TryGetRecord(RootReference, out PbtGroupRecord record), Is.True);
+            using PbtGroupLog.GenerationPin parent = Log.Pin();
+            RootReference = Log.Append(default, record.Payload.Span, unknownLinks ? PbtGroupLinks.Unknown : record.Links);
             DiscardUncommittedState();
             _groups[default] = RootReference;
         }
 
         /// <summary>The groups reached by walking the log from <see cref="RootReference"/>, pruned below <paramref name="lowerBound"/>.</summary>
-        public IReadOnlyList<PbtPhysicalPayload> TreePayloads(PbtGroupReference lowerBound = default)
-        {
-            using PbtGroupLog.OperationLease operation = Log.BeginOperation();
-            return Log.EnumerateGroups(operation, RootReference, lowerBound).Select(static record => new PbtPhysicalPayload(record.Path, record.Payload.Span)).ToArray();
-        }
+        public IReadOnlyList<PbtPhysicalPayload> TreePayloads(PbtGroupReference lowerBound = default) =>
+            Log.EnumerateGroups(RootReference, lowerBound).Select(static record => new PbtPhysicalPayload(record.Path, record.Payload.Span)).ToArray();
 
         /// <summary>The payload of the group at <paramref name="path"/> in the tree under <see cref="RootReference"/>, empty when the tree has none, or null when unresolved.</summary>
         public byte[]? FindGroup(PbtStorageNodePath path)
         {
-            using PbtGroupLog.OperationLease operation = Log.BeginOperation();
-            PbtGroupReference reference = Log.FindGroup(operation, RootReference, path, out PbtGroupRecord record);
+            PbtGroupReference reference = Log.FindGroup(RootReference, path, out PbtGroupRecord record);
             return reference.IsDirect ? record.Payload.ToArray() : reference.IsNone ? [] : null;
         }
 
@@ -750,11 +734,10 @@ public class ParallelUpdateRootTests
             Dictionary<PbtStorageNodePath, PbtPhysicalPayload> groups = [];
             if (_persisted is not null)
                 foreach (PbtPhysicalPayload group in _persisted.ExportPhysicalPayloads()) groups[group.Key] = group;
-            using PbtGroupLog.OperationLease operation = Log.BeginOperation();
             foreach ((PbtStorageNodePath key, PbtGroupReference reference) in _groups)
             {
                 if (reference.IsNone) { groups.Remove(key); continue; }
-                Assert.That(Log.TryGetRecord(operation, reference, out PbtGroupRecord record), Is.True);
+                Assert.That(Log.TryGetRecord(reference, out PbtGroupRecord record), Is.True);
                 groups[key] = new PbtPhysicalPayload(key, record.Payload.Span);
             }
             return groups.Values.ToArray();

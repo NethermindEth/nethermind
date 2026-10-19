@@ -11,10 +11,10 @@ namespace Nethermind.Pbt.NodeLog;
 
 /// <summary>An append-only in-memory log of canonical PBT groups and direct descendant references.</summary>
 /// <remarks>
-/// One operation lease protects all borrowed records and concurrent writers in a fold. Snapshot pins keep their generation and
-/// every later generation readable in place; other generations are dropped, compacted and reclaimed once no operation that
-/// began before them remains. Reads and reservations do not take the lifetime lock; only rotation, pin and operation changes
-/// do. The memory provider is borrowed, not owned.
+/// A writer holds a <see cref="Pin"/> no newer than the generations it writes, which keeps that generation and every later one
+/// readable in place. A reader holds a <see cref="PinAll"/> taken before it looks up the records it borrows. Other generations
+/// are dropped, compacted and reclaimed once no pin covers them. Reads and reservations do not take the lifetime lock; only
+/// rotation and pin changes do. The memory provider is borrowed, not owned.
 /// </remarks>
 public sealed partial class PbtGroupLog : IDisposable
 {
@@ -62,7 +62,7 @@ public sealed partial class PbtGroupLog : IDisposable
                 long bytes = 0;
                 uint oldestPinned = OldestPinnedGeneration;
                 foreach ((uint id, Generation generation) in _generations)
-                    if (id >= oldestPinned && !KeepOpportunistically(generation)) bytes += generation.Buffer?.Capacity ?? 0;
+                    if (id >= oldestPinned && !KeepOpportunistically(id)) bytes += generation.Buffer?.Capacity ?? 0;
                 return bytes;
             }
         }
@@ -90,11 +90,10 @@ public sealed partial class PbtGroupLog : IDisposable
     /// <returns>The record's generation and offset reference.</returns>
     /// <remarks>
     /// Only the header is initialized. The caller must fill <paramref name="payload"/> before handing the reference to a parent,
-    /// journal, or owner, and keep the operation lease alive while using the span.
+    /// journal, or owner, and hold a <see cref="Pin"/> taken before the reservation while using the span.
     /// </remarks>
-    public PbtGroupReference Reserve(OperationLease operation, PbtStorageNodePath path, int payloadLength, in PbtGroupLinks links, out Span<byte> payload)
+    public PbtGroupReference Reserve(PbtStorageNodePath path, int payloadLength, in PbtGroupLinks links, out Span<byte> payload)
     {
-        operation.EnsureActive(this);
         ThrowIfUnavailable();
         if (!PbtThreeLevelGroupGeometry.IsGroupDepth(path.BitDepth)) throw new ArgumentException("The path is not a PBT group boundary.", nameof(path));
         ArgumentOutOfRangeException.ThrowIfLessThan(payloadLength, 1);
@@ -123,18 +122,17 @@ public sealed partial class PbtGroupLog : IDisposable
     }
 
     /// <summary>Copies an existing canonical group into a new immutable record.</summary>
-    public PbtGroupReference Append(OperationLease operation, PbtStorageNodePath path, ReadOnlySpan<byte> payload, in PbtGroupLinks links)
+    public PbtGroupReference Append(PbtStorageNodePath path, ReadOnlySpan<byte> payload, in PbtGroupLinks links)
     {
-        PbtGroupReference reference = Reserve(operation, path, payload.Length, links, out Span<byte> destination);
+        PbtGroupReference reference = Reserve(path, payload.Length, links, out Span<byte> destination);
         payload.CopyTo(destination);
         return reference;
     }
 
     /// <summary>Resolves a direct reference without searching snapshot layers.</summary>
-    /// <remarks>A miss is resolved through the caller's persisted view. The operation must outlive all uses of the returned view.</remarks>
-    public bool TryGetRecord(OperationLease operation, PbtGroupReference reference, out PbtGroupRecord record)
+    /// <remarks>A miss is resolved through the caller's persisted view. The caller's pin must outlive all uses of the returned view.</remarks>
+    public bool TryGetRecord(PbtGroupReference reference, out PbtGroupRecord record)
     {
-        operation.EnsureActive(this);
         record = default;
         if (!TryLocate(reference, out ReadOnlyMemory<byte> memory)) return false;
         record = new PbtGroupRecord(reference, memory);
@@ -144,7 +142,7 @@ public sealed partial class PbtGroupLog : IDisposable
     private bool TryLocate(PbtGroupReference reference, out ReadOnlyMemory<byte> record)
     {
         record = default;
-        if (!reference.IsDirect || !_generations.TryGetValue(reference.Generation, out Generation? generation)) return false;
+        if (!reference.IsDirect || !_generations.TryGetValue(reference.Generation, out Generation? generation) || Volatile.Read(ref generation.Dropping)) return false;
         // A compacted generation publishes its copy before it unlinks its buffer.
         if (Volatile.Read(ref generation.Buffer) is null) return Volatile.Read(ref generation.Compressed)?.TryFind(reference, out record) == true;
         int offset = reference.Offset;
@@ -167,6 +165,7 @@ public sealed partial class PbtGroupLog : IDisposable
             _generations[generation.Id] = generation;
             Interlocked.Add(ref _residentBytes, buffer.Capacity);
             Volatile.Write(ref _active, generation);
+            Trim(keepActive: true);
         }
     }
 
@@ -182,7 +181,9 @@ public sealed partial class PbtGroupLog : IDisposable
         // The paths reserved here, which later compactions of older generations consult; null when the log does not compact.
         public BloomFilter? Bloom = bloom;
         public CompressedGeneration? Compressed;
-        // The epoch the generation was dropped in, or zero while a pin or the retention window keeps it.
-        public ulong DroppedAt;
+        // The PinAll pins covering the generation; the head pins of GenerationPin are counted in _pins.
+        public int PinCount;
+        // Set once the generation is due to be compacted or evicted: lookups then miss it and PinAll skips it.
+        public bool Dropping;
     }
 }

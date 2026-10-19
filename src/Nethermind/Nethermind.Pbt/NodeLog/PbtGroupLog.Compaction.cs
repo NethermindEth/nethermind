@@ -22,7 +22,6 @@ public sealed partial class PbtGroupLog
     private const double BloomBitsPerKey = 14;
 
     private readonly long _compressedMemoryBudget;
-    private readonly Queue<Generation> _compressed = new();
     private long _compressedBytes;
     private bool _compacting;
     private Exception? _compactionFailure;
@@ -41,7 +40,7 @@ public sealed partial class PbtGroupLog
     {
         get
         {
-            lock (_lock) return _compressed.Count;
+            lock (_lock) return (int)(_oldestInPlace - _oldestCompressed);
         }
     }
 
@@ -50,9 +49,9 @@ public sealed partial class PbtGroupLog
     private BloomFilter? CreateBloom(int length) =>
         _compressedMemoryBudget > 0 ? new BloomFilter(Math.Max(1, length / BloomBytesPerKey), BloomBitsPerKey) : null;
 
-    private void ScheduleCompaction(ulong oldestOperation)
+    private void ScheduleCompaction()
     {
-        if (_compacting || NextCompactable(oldestOperation) is null) return;
+        if (_compacting || !IsCompactable) return;
         _compacting = true;
         try
         {
@@ -65,14 +64,6 @@ public sealed partial class PbtGroupLog
         }
     }
 
-    private Generation? NextCompactable(ulong oldestOperation)
-    {
-        Generation? next = null;
-        foreach (Generation generation in _dropped)
-            if (generation.DroppedAt < oldestOperation && (next is null || generation.Id < next.Id)) next = generation;
-        return next;
-    }
-
     private void CompactDropped()
     {
         try
@@ -81,49 +72,31 @@ public sealed partial class PbtGroupLog
             {
                 Generation generation;
                 Generation[] later;
-                OperationLease reading;
                 lock (_lock)
                 {
-                    if (!CompactsDropped || NextCompactable(OldestOperationEpoch) is not { } next) return;
-                    generation = next;
-                    List<Generation> newer = [];
-                    foreach ((uint id, Generation candidate) in _generations)
-                        if (id > generation.Id && candidate.Bloom is not null) newer.Add(candidate);
-                    later = [.. newer];
-                    reading = BeginOperation();
+                    if (!CompactsDropped || !IsCompactable) return;
+                    generation = _generations[_oldestInPlace];
+                    later = new Generation[_lastGeneration - generation.Id];
+                    for (int index = 0; index < later.Length; index++) later[index] = _generations[generation.Id + 1 + (uint)index];
                 }
-                using (reading)
+
+                // Only this compactor frees in-place generations while compaction is on, so the later ones keep their blooms.
+                CompressedGeneration? compressed = Compress(generation, later);
+                lock (_lock)
                 {
-                    CompressedGeneration? compressed = Compress(generation, later);
-                    lock (_lock)
+                    if (_disposed)
                     {
-                        if (!CompactsDropped)
-                        {
-                            compressed?.Dispose();
-                            return;
-                        }
-                        ulong epoch = _epoch++;
-                        _dropped.Remove(generation);
-                        Interlocked.Add(ref _residentBytes, -generation.Buffer!.Capacity);
-                        Retire(epoch, generation.Buffer);
-                        Retire(epoch, generation.Bloom);
-                        if (compressed is null) _generations.TryRemove(generation.Id, out _);
-                        else
-                        {
-                            Volatile.Write(ref generation.Compressed, compressed);
-                            _compressed.Enqueue(generation);
-                            _compressedBytes += compressed.Memory;
-                        }
-                        Volatile.Write(ref generation.Buffer, null);
-                        generation.Bloom = null;
-                        EvictCompressed();
+                        compressed?.Dispose();
+                        return;
                     }
+                    Release(generation, compressed);
+                    EvictCompressed();
                 }
             }
         }
         catch (Exception exception)
         {
-            // Reported by the next foreground call; the dropped generation is then unlinked uncompacted.
+            // Reported by the next foreground call; dropped generations are then freed uncompacted.
             Volatile.Write(ref _compactionFailure, exception);
         }
         finally
@@ -131,7 +104,7 @@ public sealed partial class PbtGroupLog
             lock (_lock)
             {
                 _compacting = false;
-                Trim();
+                Trim(keepActive: false);
             }
         }
     }
@@ -167,10 +140,26 @@ public sealed partial class PbtGroupLog
 
     private static int AlignedLength(int payloadLength) => (PbtGroupRecordHeader.Size + payloadLength + RecordAlignment - 1) & -RecordAlignment;
 
-    /// <summary>Unlinks compacted generations, oldest first, while they take more than the budget or the log is disposed.</summary>
+    /// <summary>Evicts compacted generations, oldest first, while they take more than the budget or kept nothing.</summary>
+    /// <remarks>Each one is marked first and evicted once the pins taken before the mark are released.</remarks>
     private void EvictCompressed()
     {
-        while (_compressed.Count > 0 && (_disposed || _compressedBytes > _compressedMemoryBudget)) Unlink(_compressed.Dequeue());
+        long retainedBytes = _compressedBytes;
+        for (uint id = _oldestCompressed; id < _oldestInPlace; id++)
+        {
+            Generation generation = _generations[id];
+            CompressedGeneration? compressed = generation.Compressed;
+            if (compressed is not null && retainedBytes <= _compressedMemoryBudget) return;
+
+            retainedBytes -= compressed?.Memory ?? 0;
+            Volatile.Write(ref generation.Dropping, true);
+            if (id != _oldestCompressed || generation.PinCount != 0) continue;
+
+            _compressedBytes -= compressed?.Memory ?? 0;
+            compressed?.Dispose();
+            _generations.TryRemove(id, out _);
+            _oldestCompressed++;
+        }
     }
 
     /// <summary>The records compaction kept of a generation, found by their original reference.</summary>

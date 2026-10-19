@@ -13,6 +13,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Monitoring.Config;
 using Nethermind.Pbt;
+using Nethermind.Pbt.NodeLog;
 using Nethermind.State.Flat;
 using Nethermind.State.Pbt.Common;
 using Nethermind.State.Pbt.Persistence;
@@ -30,6 +31,7 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
     private readonly PbtPersistenceManager _persistenceManager;
     private readonly IPbtPersistence _persistence;
     private readonly IPbtResourcePool _resourcePool;
+    private readonly PbtGroupLog _nodeGroupLog;
     private readonly PbtSnapshotCompactor _compactor;
     private readonly ILogger _logger;
     private readonly Channel<StateId> _persistenceJobs;
@@ -58,6 +60,7 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
         PbtPersistenceManager persistenceManager,
         IPbtPersistence persistence,
         IPbtResourcePool resourcePool,
+        PbtGroupLog nodeGroupLog,
         PbtSnapshotCompactor compactor,
         IProcessExitSource processExitSource,
         ILogManager logManager,
@@ -69,6 +72,7 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
         _persistenceManager = persistenceManager;
         _persistence = persistence;
         _resourcePool = resourcePool;
+        _nodeGroupLog = nodeGroupLog;
         _compactor = compactor;
         _logger = logManager.GetClassLogger<PbtDbManager>();
         _processExitToken = processExitSource.Token;
@@ -91,7 +95,7 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
 
     public PbtReadOnlySnapshotBundle GatherReadOnlyBundle(in StateId stateId)
     {
-        if (stateId == StateId.PreGenesis) return new(new PbtSnapshotPooledList(0), EmptyPersistenceReader.Instance, _recordDetailedMetrics, new PbtPersistedSnapshotList(0), slotFilterBitsPerKey: 0);
+        if (stateId == StateId.PreGenesis) return new(new PbtSnapshotPooledList(0), EmptyPersistenceReader.Instance, _recordDetailedMetrics, new PbtPersistedSnapshotList(0), _nodeGroupLog.PinAll(), slotFilterBitsPerKey: 0);
         long started = 0;
         int attempt = 0;
         while (true)
@@ -126,7 +130,7 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
                     (assembled.InMemory.Count > 0 ? assembled.InMemory[^1].To.BlockNumber - assembled.InMemory[0].From.BlockNumber : 0)
                     + (assembled.Persisted.Count > 0 ? assembled.Persisted[^1].To.BlockNumber - assembled.Persisted[0].From.BlockNumber : 0));
                 // Nothing is built here: the first filtered read builds the filter.
-                bundle = new(assembled.InMemory, reader, _recordDetailedMetrics, assembled.Persisted, _inMemorySlotFilterBitsPerKey);
+                bundle = new(assembled.InMemory, reader, _recordDetailedMetrics, assembled.Persisted, _nodeGroupLog.PinAll(), _inMemorySlotFilterBitsPerKey);
             }
             catch { assembled.Dispose(); reader.Dispose(); throw; }
             bundle.TryLease();

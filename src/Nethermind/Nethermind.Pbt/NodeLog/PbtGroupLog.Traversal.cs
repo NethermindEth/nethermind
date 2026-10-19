@@ -16,10 +16,9 @@ public sealed partial class PbtGroupLog
     /// The group's direct reference, with its record in <paramref name="record"/>; None when the tree has no group at
     /// <paramref name="path"/>; or Unknown when the walk reaches a link that is unresolved or no longer resident.
     /// </returns>
-    /// <remarks>The operation must outlive all uses of the returned record.</remarks>
-    public PbtGroupReference FindGroup(OperationLease operation, PbtGroupReference root, PbtStorageNodePath path, out PbtGroupRecord record)
+    /// <remarks>The caller's pin must outlive all uses of the returned record.</remarks>
+    public PbtGroupReference FindGroup(PbtGroupReference root, PbtStorageNodePath path, out PbtGroupRecord record)
     {
-        operation.EnsureActive(this);
         if (!PbtThreeLevelGroupGeometry.IsGroupDepth(path.BitDepth)) throw new ArgumentException("The path is not a PBT group boundary.", nameof(path));
         record = default;
         Span<byte> target = stackalloc byte[PbtVariableTreeKey.MaxLength];
@@ -29,7 +28,7 @@ public sealed partial class PbtGroupLog
         PbtGroupReference reference = root;
         while (reference.IsDirect)
         {
-            if (!TryGetRecord(operation, reference, out record)) return PbtGroupReference.Unknown;
+            if (!TryGetRecord(reference, out record)) return PbtGroupReference.Unknown;
             PbtStorageNodePath recordPath = record.Path;
             if (recordPath.BitDepth > path.BitDepth) return PbtGroupReference.None;
             linked.Clear();
@@ -44,19 +43,18 @@ public sealed partial class PbtGroupLog
 
     /// <summary>Enumerates the records of the tree under <paramref name="root"/> reserved at or after <paramref name="lowerBound"/>.</summary>
     /// <remarks>
-    /// Links below <paramref name="lowerBound"/>, and unresolved or absent links, are not followed. The operation must outlive
-    /// the enumeration and every use of the records it yields.
+    /// Links below <paramref name="lowerBound"/>, and unresolved or absent links, are not followed. A pin at or below
+    /// <paramref name="lowerBound"/> must outlive the enumeration and every use of the records it yields.
     /// </remarks>
     /// <exception cref="InvalidOperationException">A record at or above <paramref name="lowerBound"/> is no longer resident.</exception>
-    public IEnumerable<PbtGroupRecord> EnumerateGroups(OperationLease operation, PbtGroupReference root, PbtGroupReference lowerBound)
+    public IEnumerable<PbtGroupRecord> EnumerateGroups(PbtGroupReference root, PbtGroupReference lowerBound)
     {
-        operation.EnsureActive(this);
         Stack<PbtGroupReference> pending = new();
         pending.Push(root);
         while (pending.TryPop(out PbtGroupReference reference))
         {
             if (!reference.IsDirect || reference.CompareTo(lowerBound) < 0) continue;
-            if (!TryGetRecord(operation, reference, out PbtGroupRecord record))
+            if (!TryGetRecord(reference, out PbtGroupRecord record))
                 throw new InvalidOperationException("A group record written since the lower bound is no longer resident.");
             yield return record;
             PbtGroupLinks links = record.Links;

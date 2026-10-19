@@ -187,10 +187,7 @@ public class PbtResourcePoolTests
             Assert.That(rented.GetPayloadSize(), Is.EqualTo(default(PbtSnapshotPayloadSize)));
             Assert.That(rented.NodeGroupLog.ResidentBytes, Is.Zero);
         }
-        using (PbtGroupLog.OperationLease operation = rented.NodeGroupLog.BeginOperation())
-        {
-            Assert.That(rented.NodeGroupLog.TryGetRecord(operation, reference, out _), Is.False);
-        }
+        Assert.That(rented.NodeGroupLog.TryGetRecord(reference, out _), Is.False);
         _pool.ReturnSnapshotContent(PbtResourcePool.Usage.MainBlockProcessing, rented);
     }
 

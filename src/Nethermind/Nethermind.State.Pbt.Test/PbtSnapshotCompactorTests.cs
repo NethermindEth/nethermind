@@ -63,11 +63,10 @@ public class PbtSnapshotCompactorTests
         {
             bool found = compacted.Content.TryFindNodeGroup(compacted.RootGroupReference, default, out RefCountingMemory? payload);
             using RefCountingMemory? payloadLease = payload;
-            using PbtGroupLog.OperationLease operation = compacted.Content.NodeGroupLog.BeginOperation();
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(compacted.Content.GetSlot(key), Is.EqualTo(new UInt256(TestItem.KeccakB.Bytes, isBigEndian: true)));
-                Assert.That(compacted.Content.EnumerateNodeGroups(operation).Count(), Is.EqualTo(emptied ? 0 : 1), "only the newest tree's groups remain");
+                Assert.That(compacted.Content.EnumerateNodeGroups().Count(), Is.EqualTo(emptied ? 0 : 1), "only the newest tree's groups remain");
                 Assert.That(found, Is.True);
                 Assert.That(payload?.Memory.ToArray(), Is.EqualTo(emptied ? null : expected));
             }
@@ -104,31 +103,27 @@ public class PbtSnapshotCompactorTests
         PbtSnapshotContent older = pool.GetSnapshotContent(PbtResourcePool.Usage.MainBlockProcessing);
         PbtSnapshotContent newer = pool.GetSnapshotContent(PbtResourcePool.Usage.MainBlockProcessing);
         Dictionary<PbtStorageNodePath, PbtGroupReference> original = [];
-        using (PbtGroupLog.OperationLease operation = log.BeginOperation())
+        foreach (PbtPhysicalPayload group in payloads)
         {
-            foreach (PbtPhysicalPayload group in payloads)
-            {
-                PbtGroupLinks links = PbtGroupLinks.Unknown;
-                if (group.Key.BitDepth == 0) links[0] = original[childPath];
-                original[group.Key] = log.Append(operation, group.Key, group.Payload.Span, links);
-            }
+            PbtGroupLinks links = PbtGroupLinks.Unknown;
+            if (group.Key.BitDepth == 0) links[0] = original[childPath];
+            original[group.Key] = log.Append(group.Key, group.Payload.Span, links);
         }
         older.RootGroupReference = original[default];
         // An unchanged block inherits its parent's root.
         newer.RootGroupReference = original[default];
         using PbtSnapshot compacted = Compact(pool, older, newer);
-        using PbtGroupLog.OperationLease read = log.BeginOperation();
-        Assert.That(log.TryGetRecord(read, compacted.RootGroupReference, out PbtGroupRecord root), Is.True);
+        Assert.That(log.TryGetRecord(compacted.RootGroupReference, out PbtGroupRecord root), Is.True);
         PbtGroupReference childReference = root.GetLink(0);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(compacted.RootGroupReference, Is.EqualTo(original[default]));
-            Assert.That(log.TryGetRecord(read, original[default], out _), Is.True, "the compacted snapshot inherits the oldest generation pin");
+            Assert.That(log.TryGetRecord(original[default], out _), Is.True, "the compacted snapshot inherits the oldest generation pin");
             Assert.That(childReference, Is.EqualTo(original[childPath]));
-            Assert.That(log.TryGetRecord(read, childReference, out PbtGroupRecord child), Is.True);
+            Assert.That(log.TryGetRecord(childReference, out PbtGroupRecord child), Is.True);
             Assert.That(child.Path, Is.EqualTo(childPath));
         }
-        Assert.That(compacted.Content.EnumerateNodeGroups(read).Select(static record => record.Reference), Is.EquivalentTo(new[] { original[default], original[childPath] }),
+        Assert.That(compacted.Content.EnumerateNodeGroups().Select(static record => record.Reference), Is.EquivalentTo(new[] { original[default], original[childPath] }),
             "the compacted snapshot persists its newest tree's groups by their original references");
     }
 

@@ -56,7 +56,7 @@ public static class PbtCoreRegistration
                 ctx.Resolve<IPbtPersistedSnapshotLoader>(), ctx.Resolve<IPbtPersistedSnapshotCompactor>(), ctx.Resolve<IProcessExitSource>().Token))
             .AddSingleton<IPbtDbManager>(ctx => new PbtDbManager(
                 ctx.Resolve<PbtSnapshotRepository>(), ctx.Resolve<PbtPersistenceManager>(), ctx.Resolve<IPbtPersistence>(),
-                ctx.Resolve<IPbtResourcePool>(), ctx.Resolve<PbtSnapshotCompactor>(), ctx.Resolve<IProcessExitSource>(),
+                ctx.Resolve<IPbtResourcePool>(), ctx.Resolve<PbtGroupLog>(), ctx.Resolve<PbtSnapshotCompactor>(), ctx.Resolve<IProcessExitSource>(),
                 ctx.Resolve<ILogManager>(), ctx.Resolve<IMetricsConfig>(), ctx.Resolve<IPbtPersistedSnapshotLoader>()))
             .AddSingleton<PbtStateReader>()
             .AddSingleton<PbtWorldStateManager>()

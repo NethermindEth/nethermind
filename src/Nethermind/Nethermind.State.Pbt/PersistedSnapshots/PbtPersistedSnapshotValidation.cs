@@ -17,8 +17,7 @@ public static class PbtPersistedSnapshotValidation
     {
         if (source.From != persisted.From || source.To != persisted.To || source.TreeRoot != persisted.TreeRoot) throw Mismatch();
         PbtSnapshotContent content = source.Content;
-        using PbtGroupLog.OperationLease operation = content.NodeGroupLog.BeginOperation();
-        PbtGroupRecord[] groups = [.. content.EnumerateNodeGroups(operation)];
+        PbtGroupRecord[] groups = [.. content.EnumerateNodeGroups()];
         long count = 0;
         using (PbtPersistedScanner scanner = persisted.Scan())
             while (scanner.MoveNext())

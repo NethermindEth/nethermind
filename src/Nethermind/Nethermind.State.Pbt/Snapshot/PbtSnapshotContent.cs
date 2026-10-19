@@ -49,7 +49,7 @@ public sealed class PbtSnapshotContent : IDisposable, IResettable
     public PbtGroupLog NodeGroupLog { get; }
 
     /// <summary>Pins the log's active generation, unless already pinned, so later group writes stay readable.</summary>
-    public void BeginNodeGroupWrites() => _nodeGroupPin ??= NodeGroupLog.PinActiveGeneration();
+    public void BeginNodeGroupWrites() => _nodeGroupPin ??= NodeGroupLog.Pin();
 
     /// <summary>The root group of the tree this layer published, None for an empty tree, or Unknown when it published none.</summary>
     public PbtGroupReference RootGroupReference { get; set; } = PbtGroupReference.Unknown;
@@ -67,9 +67,12 @@ public sealed class PbtSnapshotContent : IDisposable, IResettable
     }
 
     /// <summary>Enumerates the groups of this layer's tree that were written since its generation pin.</summary>
-    /// <remarks>Groups the tree inherits from earlier layers, and groups replaced within this layer, are not enumerated.</remarks>
-    public IEnumerable<PbtGroupRecord> EnumerateNodeGroups(PbtGroupLog.OperationLease operation) =>
-        _nodeGroupPin is null ? [] : NodeGroupLog.EnumerateGroups(operation, RootGroupReference, _nodeGroupPin.WriteBoundary);
+    /// <remarks>
+    /// Groups the tree inherits from earlier layers, and groups replaced within this layer, are not enumerated. The layer's
+    /// generation pin keeps the records valid while the layer is not reset.
+    /// </remarks>
+    public IEnumerable<PbtGroupRecord> EnumerateNodeGroups() =>
+        _nodeGroupPin is null ? [] : NodeGroupLog.EnumerateGroups(RootGroupReference, _nodeGroupPin.WriteBoundary);
 
     /// <summary>The runs of header slots for <see cref="PbtPath"/> run keys, or of the other slots for <see cref="PbtStoragePath"/> ones.</summary>
     private ConcurrentDictionary<HashedKey<TKey>, PackedSlotRun> Runs<TKey>() where TKey : struct, IPbtKey<TKey> =>
@@ -141,11 +144,11 @@ public sealed class PbtSnapshotContent : IDisposable, IResettable
 
     /// <summary>Resolves <paramref name="groupKey"/> in the tree whose root group is <paramref name="root"/>, as an independent caller-owned payload or a null absence.</summary>
     /// <returns>False when the root is unresolved or the walk reaches a group that is not resident, which the persisted view must then provide.</returns>
+    /// <remarks>The caller holds a <see cref="PbtGroupLog.PinAll"/> of the log, as a read-only bundle does.</remarks>
     public bool TryFindNodeGroup(PbtGroupReference root, PbtStorageNodePath groupKey, out RefCountingMemory? payload)
     {
         payload = null;
-        using PbtGroupLog.OperationLease operation = NodeGroupLog.BeginOperation();
-        PbtGroupReference reference = NodeGroupLog.FindGroup(operation, root, groupKey, out PbtGroupRecord record);
+        PbtGroupReference reference = NodeGroupLog.FindGroup(root, groupKey, out PbtGroupRecord record);
         if (reference.IsUnknown) return false;
         if (reference.IsDirect)
         {

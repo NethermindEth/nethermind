@@ -25,6 +25,7 @@ using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Memory;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Evm.State;
@@ -1481,7 +1482,7 @@ public class PbtDbManagerTests
         public PersistenceManagerHarness(PbtConfig config)
         {
             Config = config;
-            Pool = new(config);
+            Pool = new(config, NodeGroupLog, PooledRefCountingMemoryProvider.Instance);
             Schedule = PbtCoreRegistration.CreateCompactionSchedule(Metadata, config, LimboLogs.Instance);
             IPbtPersistence.IReader reader = Substitute.For<IPbtPersistence.IReader>();
             reader.CurrentState.Returns(PersistenceState(0));
@@ -1493,6 +1494,7 @@ public class PbtDbManagerTests
 
         public PbtConfig Config { get; }
         public PbtResourcePool Pool { get; }
+        public PbtGroupLog NodeGroupLog { get; } = new(PooledRefCountingMemoryProvider.Instance, compressedMemoryBudget: 0, retainedGenerations: 0);
         public PbtSnapshotRepository Repository { get; } = new(new MetricsConfig(), NullSnapshotCatalog.Instance, new PbtPersistedPublicationGate());
         public MemDb Metadata { get; } = new();
         public ICompactionSchedule Schedule { get; }
@@ -1502,7 +1504,7 @@ public class PbtDbManagerTests
         public PbtPersistenceManager PersistenceManager { get; }
 
         public PbtDbManager CreateManager(IProcessExitSource exitSource, ILogManager logs) =>
-            new(Repository, PersistenceManager, Persistence, Pool, new PbtSnapshotCompactor(Pool, Schedule, Repository, Config, logs), exitSource, logs,
+            new(Repository, PersistenceManager, Persistence, Pool, NodeGroupLog, new PbtSnapshotCompactor(Pool, Schedule, Repository, Config, logs), exitSource, logs,
                 new MetricsConfig(), NullPbtPersistedSnapshotLoader.Instance);
 
         public void Dispose()
@@ -1526,17 +1528,33 @@ public class PbtDbManagerTests
         string path = Path.Combine(Path.GetTempPath(), "pbt-flat-differential-" + Guid.NewGuid().ToString("N"));
         PbtConfig pbtConfig = new()
         {
-            Enabled = true, EnableLongFinality = longFinality, CompactSize = 4, CompactionOffset = offset,
-            MinReorgDepth = 2, MaxReorgDepth = 6, LongFinalityMaxReorgDepth = 32,
-            MaxInMemoryBaseSnapshotCount = memoryLimit, MaxInMemorySnapshotBytes = bytePressure ? 1UL : 0UL, ArenaFileSizeBytes = 1048576,
-            PersistedSnapshotDedicatedArenaThresholdBytes = 1048576, PersistedSnapshotArenaPageCacheBytes = 0,
+            Enabled = true,
+            EnableLongFinality = longFinality,
+            CompactSize = 4,
+            CompactionOffset = offset,
+            MinReorgDepth = 2,
+            MaxReorgDepth = 6,
+            LongFinalityMaxReorgDepth = 32,
+            MaxInMemoryBaseSnapshotCount = memoryLimit,
+            MaxInMemorySnapshotBytes = bytePressure ? 1UL : 0UL,
+            ArenaFileSizeBytes = 1048576,
+            PersistedSnapshotDedicatedArenaThresholdBytes = 1048576,
+            PersistedSnapshotArenaPageCacheBytes = 0,
         };
         FlatDbConfig flatConfig = new()
         {
-            Enabled = true, EnableLongFinality = longFinality, CompactSize = 4, CompactionOffset = offset,
-            MinReorgDepth = 2, MaxReorgDepth = 6, LongFinalityMaxReorgDepth = 32,
-            MaxInMemoryBaseSnapshotCount = memoryLimit, MaxInMemorySnapshotBytes = bytePressure ? 1UL : 0UL, ArenaFileSizeBytes = 1048576,
-            PersistedSnapshotDedicatedArenaThresholdBytes = 1048576, PersistedSnapshotArenaPageCacheBytes = 0,
+            Enabled = true,
+            EnableLongFinality = longFinality,
+            CompactSize = 4,
+            CompactionOffset = offset,
+            MinReorgDepth = 2,
+            MaxReorgDepth = 6,
+            LongFinalityMaxReorgDepth = 32,
+            MaxInMemoryBaseSnapshotCount = memoryLimit,
+            MaxInMemorySnapshotBytes = bytePressure ? 1UL : 0UL,
+            ArenaFileSizeBytes = 1048576,
+            PersistedSnapshotDedicatedArenaThresholdBytes = 1048576,
+            PersistedSnapshotArenaPageCacheBytes = 0,
         };
         PbtTestContext.TestFinalizedStateProvider finality = new() { FinalizedBlockNumber = (ulong)finalized };
         for (ulong height = 0; height <= (ulong)finalized; height++) finality.SetCanonicalRoot(height, TestItem.KeccakA);

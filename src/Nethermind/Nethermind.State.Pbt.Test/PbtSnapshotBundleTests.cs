@@ -90,7 +90,7 @@ public class PbtSnapshotBundleTests
         PbtResourcePool pool = new(new PbtConfig());
         PbtSnapshotContent sharedContent = new();
         if (heldByLayer) sharedContent.SetSlot(layerKey, layer);
-        using PbtSnapshotBundle bundle = new(new PbtSnapshotPooledList(0), new PbtReadOnlySnapshotBundle(PbtSnapshotBundleTestExtensions.Chain(pool, sharedContent), new Reader(persistedKey, new ValueHash256(Value(1))), recordDetailedMetrics: false, new PbtPersistedSnapshotList(0), slotFilterBitsPerKey: 0), pool, PbtResourcePool.Usage.MainBlockProcessing, filterInMemorySlotReads: false);
+        using PbtSnapshotBundle bundle = new(new PbtSnapshotPooledList(0), new PbtReadOnlySnapshotBundle(PbtSnapshotBundleTestExtensions.Chain(pool, sharedContent), new Reader(persistedKey, new ValueHash256(Value(1))), recordDetailedMetrics: false, new PbtPersistedSnapshotList(0), PbtSnapshotBundleTestExtensions.NoNodeGroupPin, slotFilterBitsPerKey: 0), pool, PbtResourcePool.Usage.MainBlockProcessing, filterInMemorySlotReads: false);
         bundle.SetSlot(TestItem.AddressA, 3, local);
         UInt256[] afterWrite = [bundle.GetSlot(TestItem.AddressA, 3), bundle.GetSlot(TestItem.AddressA, 5), bundle.GetSlot(TestItem.AddressA, 6)];
         bundle.SetSlot(TestItem.AddressA, heldByLayer ? 6u : 5u, default);
@@ -132,7 +132,7 @@ public class PbtSnapshotBundleTests
         if (memoryTier == 2) shared.SetTree((path, memory));
         if (memoryTier == 1) local.SetTree((path, memory));
         Reader reader = new(default, null) { GroupPayload = database };
-        PbtReadOnlySnapshotBundle readOnly = new(PbtSnapshotBundleTestExtensions.Chain(pool, shared), reader, false, persisted, slotFilterBitsPerKey: 0);
+        PbtReadOnlySnapshotBundle readOnly = new(PbtSnapshotBundleTestExtensions.Chain(pool, shared), reader, false, persisted, PbtSnapshotBundleTestExtensions.NoNodeGroupPin, slotFilterBitsPerKey: 0);
         using PbtSnapshotBundle bundle = new(PbtSnapshotBundleTestExtensions.Chain(pool, local), readOnly, pool,
             PbtResourcePool.Usage.MainBlockProcessing, filterInMemorySlotReads: false);
         if (memoryTier == 0) PublishRoot(bundle, memory);
@@ -252,7 +252,7 @@ public class PbtSnapshotBundleTests
         content.SetTree((path, encoding));
         PbtSnapshot source = new(StateId.PreGenesis, new StateId(1, default), TestItem.KeccakA.ValueHash256, content, sourcePool, PbtResourcePool.Usage.MainBlockProcessing);
         PbtSnapshotPooledList chain = new(1) { source };
-        PbtReadOnlySnapshotBundle readOnly = new(chain, new Reader(default, null), false, new PbtPersistedSnapshotList(0), slotFilterBitsPerKey: 0);
+        PbtReadOnlySnapshotBundle readOnly = new(chain, new Reader(default, null), false, new PbtPersistedSnapshotList(0), PbtSnapshotBundleTestExtensions.NoNodeGroupPin, slotFilterBitsPerKey: 0);
         using PbtSnapshotBundle branch = new(new PbtSnapshotPooledList(0), readOnly, targetPool, PbtResourcePool.Usage.MainBlockProcessing, filterInMemorySlotReads: false);
         if (foreignLog) Assert.Throws<InvalidOperationException>(() => _ = branch.RootGroupReference);
         else Assert.Throws<InvalidOperationException>(() => branch.CollectSnapshot(source.To, new StateId(2, default), TestItem.KeccakB.ValueHash256));
@@ -284,8 +284,7 @@ public class PbtSnapshotBundleTests
             Assert.That(independentlyOwned!.GetSpan().ToArray(), Is.EqualTo(encoding));
             Assert.That(repository.HasState(source.To), Is.False);
         }
-        using (PbtGroupLog.OperationLease operation = log.BeginOperation())
-            Assert.That(log.TryGetRecord(operation, rootReference, out _), Is.True);
+        Assert.That(log.TryGetRecord(rootReference, out _), Is.True);
         branch.Dispose();
         using (Assert.EnterMultipleScope())
         {
@@ -504,7 +503,7 @@ public class PbtSnapshotBundleTests
         PbtSnapshotPooledList localSnapshots = newestTier >= 2
             ? PbtSnapshotBundleTestExtensions.Chain(pool, Content(groupKey, shared, pool), Content(wideGroupKey, newestTier == 2 && tombstone ? null : local, pool))
             : new(0);
-        using PbtSnapshotBundle bundle = new(localSnapshots, new PbtReadOnlySnapshotBundle(sharedSnapshots, reader, recordDetailedMetrics: false, new PbtPersistedSnapshotList(0), slotFilterBitsPerKey: 0), pool, PbtResourcePool.Usage.MainBlockProcessing, filterInMemorySlotReads: false);
+        using PbtSnapshotBundle bundle = new(localSnapshots, new PbtReadOnlySnapshotBundle(sharedSnapshots, reader, recordDetailedMetrics: false, new PbtPersistedSnapshotList(0), PbtSnapshotBundleTestExtensions.NoNodeGroupPin, slotFilterBitsPerKey: 0), pool, PbtResourcePool.Usage.MainBlockProcessing, filterInMemorySlotReads: false);
         if (newestTier == 3) PublishRoot(bundle, tombstone ? null : write);
 
         bool snapshotFound = bundle.TryGetSnapshotNodeGroup(wideGroupKey, out RefCountingMemory? snapshotPayload);
@@ -987,8 +986,7 @@ public class PbtSnapshotBundleTests
     /// <summary>Publishes a root group holding <paramref name="encoding"/>, or an emptied tree, as the bundle's current fold result.</summary>
     private static void PublishRoot(PbtSnapshotBundle bundle, byte[]? encoding)
     {
-        using PbtGroupLog.OperationLease operation = bundle.NodeGroupLog.BeginOperation();
-        PbtGroupReference root = encoding is null ? PbtGroupReference.None : bundle.NodeGroupLog.Append(operation, default, encoding, PbtGroupLinks.Unknown);
+        PbtGroupReference root = encoding is null ? PbtGroupReference.None : bundle.NodeGroupLog.Append(default, encoding, PbtGroupLinks.Unknown);
         bundle.PublishNodeGroups(root, encoding is null ? 0 : 1, encoding?.Length ?? 0);
     }
 

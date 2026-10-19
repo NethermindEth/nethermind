@@ -196,7 +196,7 @@ public class PbtMetricsTests
         // An unchanged block inherits its parent's tree.
         using PbtSnapshotContent emptyContent = new(content.NodeGroupLog);
         emptyContent.RootGroupReference = content.RootGroupReference;
-        using PbtReadOnlySnapshotBundle bundle = new(PbtSnapshotBundleTestExtensions.Chain(pool, content, emptyContent), reader, detailedMetrics, new PbtPersistedSnapshotList(0), slotFilterBitsPerKey: 0);
+        using PbtReadOnlySnapshotBundle bundle = new(PbtSnapshotBundleTestExtensions.Chain(pool, content, emptyContent), reader, detailedMetrics, new PbtPersistedSnapshotList(0), PbtSnapshotBundleTestExtensions.NoNodeGroupPin, slotFilterBitsPerKey: 0);
 
         Account? actualAccount = bundle.GetAccount(TestItem.AddressA)?.ToAccount();
         UInt256 actualHeaderSlot = bundle.GetSlot(TestItem.AddressA, 1);
