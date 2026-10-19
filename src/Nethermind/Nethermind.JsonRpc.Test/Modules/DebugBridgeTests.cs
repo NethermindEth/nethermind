@@ -41,6 +41,7 @@ using Nethermind.Synchronization;
 using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.ParallelSync;
+using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -48,7 +49,7 @@ namespace Nethermind.JsonRpc.Test.Modules;
 
 public class DebugBridgeTests
 {
-    public enum RawTransactionLookup { Present, ReceiptsRemoved, Unindexed, Mismatched }
+    public enum RawTransactionLookup { Present, ReceiptsRemoved, Unindexed, Mismatched, Pending }
 
     [TestCaseSource(nameof(RawTransactionLookupCases))]
     public async Task GetTransactionFromHash_WithStoredLocator_DoesNotReadReceiptBodies(
@@ -59,10 +60,19 @@ public class DebugBridgeTests
     {
         IReceiptFinder receiptFinder = Substitute.For<IReceiptFinder>();
         receiptFinder.Get(Arg.Any<Block>()).Returns(_ => throw new InvalidOperationException("Receipt bodies must not be read"));
+        Transaction pending = Build.A.Transaction.WithNonce(3).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        ITxPool txPool = Substitute.For<ITxPool>();
+        txPool.TryGetPendingTransaction(pending.Hash!, out Arg.Any<Transaction?>())
+            .Returns(call =>
+            {
+                call[1] = pending;
+                return true;
+            });
         await using IContainer container = new ContainerBuilder()
             .AddModule(new TestNethermindModule(new ReceiptConfig { TxLookupLimit = 0, CompactTxIndex = compactIndex, DeferredPersistence = false }))
             .AddKeyedSingleton<IReceiptFinder>(IReceiptFinder.RegenerableKey, receiptFinder)
             .AddSingleton<IGethStyleTracer>(Substitute.For<IGethStyleTracer>())
+            .AddSingleton<ITxPool>(txPool)
             .Build();
         IBlockTree tree = container.Resolve<IBlockTree>();
         Block genesis = Build.A.Block.Genesis.TestObject;
@@ -90,6 +100,10 @@ public class DebugBridgeTests
         {
             hash = TestItem.KeccakA;
         }
+        else if (lookup == RawTransactionLookup.Pending)
+        {
+            hash = pending.Hash!;
+        }
         else if (lookup == RawTransactionLookup.Mismatched)
         {
             container.Resolve<IDbProvider>().ReceiptsDb!.GetColumnDb(ReceiptsColumns.Transactions)
@@ -98,7 +112,7 @@ public class DebugBridgeTests
         }
 
         Transaction? actual = container.Resolve<IDebugBridge>().GetTransactionFromHash(hash);
-        Assert.That(actual?.Hash, Is.EqualTo(lookup is RawTransactionLookup.Present or RawTransactionLookup.ReceiptsRemoved ? hash : null));
+        Assert.That(actual?.Hash, Is.EqualTo(lookup is RawTransactionLookup.Present or RawTransactionLookup.ReceiptsRemoved or RawTransactionLookup.Pending ? hash : null));
         receiptFinder.DidNotReceiveWithAnyArgs().Get(default(Block)!);
     }
 
@@ -1155,7 +1169,7 @@ public class DebugBridgeTests
             Substitute.For<IBlockStore>(),
             worldStateManager,
             logManager, new BlockTreeMutationLock(), pauseControl, processingQueue,
-            Substitute.For<ISyncProgressResolver>(), Substitute.For<ISyncPointers>());
+            Substitute.For<ISyncProgressResolver>(), Substitute.For<ISyncPointers>(), Substitute.For<ITxPool>());
 
         List<(Hash256 CleanupTarget, Hash256? LiveHead, byte[]? PersistedHead)> cleanupHeads = [];
         worldStateManager.When(manager => manager.DropStateNotReachableFrom(Arg.Any<BlockHeader>()))
@@ -1199,6 +1213,7 @@ public class DebugBridgeTests
 
             yield return new TestCaseData(RawTransactionLookup.Unindexed, 0, compactIndex, TxType.Legacy);
             yield return new TestCaseData(RawTransactionLookup.Mismatched, 0, compactIndex, TxType.Legacy);
+            yield return new TestCaseData(RawTransactionLookup.Pending, 0, compactIndex, TxType.Legacy);
         }
     }
 }
