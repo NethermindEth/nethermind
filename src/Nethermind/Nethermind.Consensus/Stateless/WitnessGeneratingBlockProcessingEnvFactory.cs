@@ -79,7 +79,7 @@ public class WitnessGeneratingBlockProcessingEnvFactory(
         WitnessGeneratingWorldState witnessWorldState = new(
             baseWorldState, worldStateManager.GlobalStateReader, trieStore, headerRecorder, headerStore);
 
-        // proof_call runs a single call through this env's tx processor, so a POST_TX frame must be able
+        // proof_call runs a single call through this env's tx processor, so an ASSERT frame must be able
         // to start its own slice here exactly as it does under eth_call.
         IReleaseSpec finalSpec = specProvider.GetFinalSpec();
         bool recordsTransactionDiffs = finalSpec.IsEip7906Enabled && finalSpec.BlockLevelAccessListsEnabled;
