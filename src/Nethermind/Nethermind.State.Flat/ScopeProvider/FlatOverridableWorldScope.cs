@@ -57,11 +57,8 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
     public IWorldStateScopeProvider WorldState => _worldState;
     public IStateReader GlobalStateReader { get; }
 
-    /// <remarks>Created on the first scope after a reset and disposed by the next reset, so the global buffer stays pinned only that long.</remarks>
-    private OverlayNodeRecordBuffer WriteBuffer => _overlayNodeRecordBuffer ??= new OverlayNodeRecordBuffer(_nodeRecordBuffer);
-
-    /// <remarks>Without an overlay there are no local snapshots, so the global buffer holds every record a read can reach.</remarks>
-    private INodeRecordBuffer ReadBuffer => (INodeRecordBuffer?)_overlayNodeRecordBuffer ?? _nodeRecordBuffer;
+    /// <remarks>Created on first use after a reset and disposed by the next reset, so the global buffer stays pinned only that long.</remarks>
+    private OverlayNodeRecordBuffer OverlayBuffer => _overlayNodeRecordBuffer ??= new OverlayNodeRecordBuffer(_nodeRecordBuffer);
 
     public void ResetOverrides()
     {
@@ -98,7 +95,7 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
         transientResource.ReleaseLease();
     }
 
-    private SnapshotBundle GatherSnapshotBundle(BlockHeader? baseBlock, INodeRecordBuffer nodeRecordBuffer)
+    private SnapshotBundle GatherSnapshotBundle(BlockHeader? baseBlock)
     {
         StateId currentState = new(baseBlock);
 
@@ -127,7 +124,7 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
         // snapshots' negative filter.
         return new SnapshotBundle(
             readOnlySnapshotBundle,
-            nodeRecordBuffer,
+            OverlayBuffer,
             _resourcePool,
             ResourcePool.Usage.ReadOnlyProcessingEnv,
             snapshots,
@@ -170,7 +167,7 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
             SnapshotBundle snapshotBundle;
             try
             {
-                snapshotBundle = flatOverrideScope.GatherSnapshotBundle(baseBlock, flatOverrideScope.WriteBuffer);
+                snapshotBundle = flatOverrideScope.GatherSnapshotBundle(baseBlock);
             }
             catch (StateUnavailableException)
             {
@@ -194,7 +191,7 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
     {
         public bool TryGetAccount(BlockHeader? baseBlock, Address address, out AccountStruct account)
         {
-            using SnapshotBundle snapshotBundle = overridableWorldScope.GatherSnapshotBundle(baseBlock, overridableWorldScope.ReadBuffer);
+            using SnapshotBundle snapshotBundle = overridableWorldScope.GatherSnapshotBundle(baseBlock);
             if (snapshotBundle.GetAccount(address) is { } acc)
             {
                 account = acc.ToStruct();
@@ -206,7 +203,7 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
 
         public void GetStorage(BlockHeader? baseBlock, Address address, in UInt256 index, out UInt256 value)
         {
-            using SnapshotBundle snapshotBundle = overridableWorldScope.GatherSnapshotBundle(baseBlock, overridableWorldScope.ReadBuffer);
+            using SnapshotBundle snapshotBundle = overridableWorldScope.GatherSnapshotBundle(baseBlock);
             int selfDestructIdx = snapshotBundle.DetermineSelfDestructSnapshotIdx(address);
             snapshotBundle.GetSlot(address, index, selfDestructIdx, out UInt256? slot);
             value = slot.GetValueOrDefault();
@@ -221,7 +218,7 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
         public void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, BlockHeader? baseBlock, VisitingOptions? visitingOptions = null, VisitingStats? diagnostics = null) where TCtx : struct, INodeContext<TCtx>
         {
             StateId stateId = new(baseBlock);
-            using SnapshotBundle snapshotBundle = overridableWorldScope.GatherSnapshotBundle(baseBlock, overridableWorldScope.ReadBuffer);
+            using SnapshotBundle snapshotBundle = overridableWorldScope.GatherSnapshotBundle(baseBlock);
 
             // Mirrors FlatStateReader.RunTreeVisitor: a historical bundle is trie-less, so fail as state-unavailable
             // instead of throwing NotSupportedException mid-walk.
