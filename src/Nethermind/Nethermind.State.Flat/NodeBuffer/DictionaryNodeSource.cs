@@ -12,26 +12,24 @@ namespace Nethermind.State.Flat.NodeBuffer;
 
 /// <summary>A node source over path-keyed node RLP, for tests and benchmarks: a fetched node is verified and inserted into <paramref name="warmed"/>, which serves it after.</summary>
 /// <param name="address">The storage trie's address hash, or null for the state trie.</param>
-internal sealed class DictionaryNodeSource(IReadOnlyDictionary<TreePath, byte[]> nodes, WarmedNodes warmed, Hash256? address) : INodeRecordSource
+internal sealed class DictionaryNodeSource(IReadOnlyDictionary<TreePath, byte[]> nodes, WarmedNodeLog warmed, Hash256? address) : INodeRecordSource
 {
     private int _fetchCount;
 
     /// <summary>Number of lookups that missed the warmed nodes and went to the dictionary.</summary>
     public int FetchCount => Volatile.Read(ref _fetchCount);
 
-    public bool TryLoad(ulong pointer, in TreePath path, in ValueHash256 hash, out NodeRecord record) =>
-        warmed.TryGet(pointer, hash, out record) || TryLoad(path, hash, out record);
-
     public bool TryLoad(in TreePath path, in ValueHash256 hash, out NodeRecord record)
     {
-        if (warmed.TryGet(address, path, hash, out record)) return true;
+        if (warmed.TryGet(address, path, hash, out record, out _)) return true;
 
         byte[]? rlp = LoadRlp(path, hash);
-        return rlp is not null && warmed.TryInsert(address, path, hash, rlp, out record);
+        return rlp is not null && warmed.TryAppend(address, path, hash, rlp, out record, out _);
     }
 
+    /// <param name="buffer">The buffer holding the trie, which the warmed nodes are combined with.</param>
     public void WarmUp(INodeRecordBuffer buffer, TrieRoot root, in ValueHash256 key, bool forDelete = false) =>
-        BufferWarmUp.WarmUp(buffer, warmed, LoadRlp, address, root, key, forDelete);
+        BufferWarmUp.WarmUp(new WarmedNodeRecordBuffer(buffer, warmed), warmed, LoadRlp, address, root, key, forDelete);
 
     private void LoadRlp(in TreePath path, in ValueHash256 hash, ReadOnlySpanAction<byte, BufferWarmUp.WarmUpRead> action, BufferWarmUp.WarmUpRead read)
     {

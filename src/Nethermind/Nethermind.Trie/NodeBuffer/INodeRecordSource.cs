@@ -10,8 +10,4 @@ internal interface INodeRecordSource
 {
     /// <returns>False when the source has no node of <paramref name="hash"/> at <paramref name="path"/>.</returns>
     bool TryLoad(in TreePath path, in ValueHash256 hash, out NodeRecord record);
-
-    /// <summary>Resolves a source-owned pointer, falling back to the node's position and hash.</summary>
-    bool TryLoad(ulong pointer, in TreePath path, in ValueHash256 hash, out NodeRecord record) =>
-        TryLoad(path, hash, out record);
 }

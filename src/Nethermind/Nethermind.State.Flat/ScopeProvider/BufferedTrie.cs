@@ -14,12 +14,12 @@ namespace Nethermind.State.Flat.ScopeProvider;
 /// <paramref name="addressHash"/> is null, otherwise that account's storage trie.
 /// </summary>
 /// <remarks>
-/// Written nodes go to <paramref name="buffer"/> at once, but reach the bundle only on <see cref="Publish"/>, so like the
+/// Written nodes go to the bundle's <see cref="SnapshotBundle.TrieNodeBuffer"/> at once, but reach the bundle only on <see cref="Publish"/>, so like the
 /// managed tries nothing is visible to the bundle's readers before the scope commits. Until then the bulk sets read them
 /// back from the buffer by pointer, which the scope's pin keeps readable.
 /// </remarks>
 /// <param name="root">The trie's root, as <see cref="NodeRecordBufferExtensions.ResolveRoot"/> returns it.</param>
-internal sealed class BufferedTrie(SnapshotBundle bundle, INodeRecordBuffer buffer, Hash256? addressHash, TrieRoot root) : INodeRecordSource
+internal sealed class BufferedTrie(SnapshotBundle bundle, Hash256? addressHash, TrieRoot root) : INodeRecordSource
 {
     private Hash256 _rootHash = root.ToHash256();
     private bool _rootDirty;
@@ -33,7 +33,7 @@ internal sealed class BufferedTrie(SnapshotBundle bundle, INodeRecordBuffer buff
 
     /// <inheritdoc cref="BufferBulkSet.BulkSet"/>
     public void BulkSet(in ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries, bool canParallelize) =>
-        SetRoot(BufferBulkSet.BulkSet(buffer, this, addressHash, Root, entries, canParallelize));
+        SetRoot(BufferBulkSet.BulkSet(bundle.TrieNodeBuffer!, this, addressHash, Root, entries, canParallelize));
 
     /// <summary>Adopts the root of a completed private update.</summary>
     internal void Adopt(in TrieRoot root) => SetRoot(root);
@@ -45,7 +45,7 @@ internal sealed class BufferedTrie(SnapshotBundle bundle, INodeRecordBuffer buff
         if (addressHash is not null && !_rootDirty) return;
 
         long start = Stopwatch.GetTimestamp();
-        if (_rootDirty && Root.Pointer != 0) buffer.SetRoot(addressHash, Root.Hash, Root.Pointer);
+        if (_rootDirty && Root.Pointer != 0) bundle.TrieNodeBuffer!.SetRoot(addressHash, Root.Hash, Root.Pointer);
         if (addressHash is null) bundle.PublishBufferedStateRoot(Root);
         else bundle.PublishBufferedStorageRoot(addressHash, Root);
 
@@ -64,6 +64,7 @@ internal sealed class BufferedTrie(SnapshotBundle bundle, INodeRecordBuffer buff
     /// <exception cref="MissingTrieNodeException">A node on the path is in neither the buffer nor the bundle.</exception>
     public byte[]? TryGet(in ValueHash256 key)
     {
+        INodeRecordBuffer buffer = bundle.TrieNodeBuffer!;
         Span<byte> keyNibbles = stackalloc byte[BulkSetArena.MaxKeyNibbles];
         Span<byte> nodeKey = stackalloc byte[BulkSetArena.MaxKeyNibbles];
         Nibbles.BytesToNibbleBytes(key.Bytes, keyNibbles);
@@ -80,7 +81,7 @@ internal sealed class BufferedTrie(SnapshotBundle bundle, INodeRecordBuffer buff
                     return TryGetInlineLeaf(child.InlineRlp, keyNibbles[depth..], nodeKey);
             }
 
-            if (!buffer.TryLocate(child.Pointer, out NodeRecord record) && !TryLoad(child.Pointer, path, child.Data, out record))
+            if (!buffer.TryLocate(child.Pointer, out NodeRecord record) && !TryLoad(path, child.Data, out record))
             {
                 throw new MissingTrieNodeException($"Trie node missing hash={child.Data} address={addressHash} path={path}", addressHash, path, new Hash256(child.Data));
             }
@@ -116,9 +117,6 @@ internal sealed class BufferedTrie(SnapshotBundle bundle, INodeRecordBuffer buff
         NodeRlp.ReadHexPrefix(hexPrefix.Payload, 0, nodeKey);
         return nodeKey[..NodeRlp.HexPrefixNibbleCount(hexPrefix.Payload)].SequenceEqual(keyNibbles) ? value.Payload.ToArray() : null;
     }
-
-    public bool TryLoad(ulong pointer, in TreePath path, in ValueHash256 hash, out NodeRecord record) =>
-        bundle.TryLoadTrieNodeRecord(addressHash, pointer, path, hash, out record);
 
     public bool TryLoad(in TreePath path, in ValueHash256 hash, out NodeRecord record) =>
         bundle.TryLoadTrieNodeRecord(addressHash, path, hash, out record);

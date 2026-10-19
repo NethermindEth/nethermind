@@ -372,7 +372,7 @@ internal static partial class BufferBulkSet
                 return Source.ForRecord(record, 0);
             }
 
-            if (_source.TryLoad(child.Pointer, path, child.Data, out record))
+            if (_source.TryLoad(path, child.Data, out record))
             {
                 _arena.NodesFromSource++;
                 return Source.ForRecord(record, 0);

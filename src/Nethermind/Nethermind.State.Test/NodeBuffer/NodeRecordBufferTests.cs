@@ -76,9 +76,9 @@ internal class NodeRecordBufferTests
         using NodeRecordBuffer buffer = new(0, GenerationBytes);
         byte[] rlp = Leaf(1, 8);
         ulong realPointer = Append(buffer, rlp);
-        WarmedNodes warmed = new(1);
+        using WarmedNodeLog warmed = new(1);
         ValueHash256 hash = ValueKeccak.Compute(rlp);
-        warmed.TryInsert(null, TreePath.Empty, hash, rlp, out _, out ulong temporaryPointer);
+        warmed.TryAppend(null, TreePath.Empty, hash, rlp, out _, out ulong temporaryPointer);
 
         using (Assert.EnterMultipleScope())
         {
@@ -89,7 +89,7 @@ internal class NodeRecordBufferTests
             Assert.That(buffer.TryGetNodePointer(realPointer | NodeRecordCodec.TransientPointerMask, TreePath.Empty, out _), Is.False);
             Assert.That(buffer.EnumerateNodes(temporaryPointer), Is.Empty);
             Assert.That(buffer.EnumerateNodes(realPointer | NodeRecordCodec.TransientPointerMask), Is.Empty);
-            Assert.That(warmed.TryGet(realPointer, hash, out _), Is.False);
+            Assert.That(warmed.TryLocate(realPointer, out _), Is.False);
             Assert.That(NodeRecordCodec.PersistentPointer(temporaryPointer), Is.Zero);
             Assert.That(NodeRecordCodec.PersistentPointer(realPointer), Is.EqualTo(realPointer));
         }

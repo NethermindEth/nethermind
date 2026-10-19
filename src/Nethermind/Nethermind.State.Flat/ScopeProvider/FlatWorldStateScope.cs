@@ -106,7 +106,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             INodeRecordBuffer buffer = snapshotBundle.NodeRecordBuffer!;
             _bufferPin = buffer.Pin();
             _initialTrieRoot = buffer.ResolveRoot(null, _initialStateRoot.ValueHash256);
-            _stateTrie = new BufferedTrie(snapshotBundle, buffer, null, _initialTrieRoot);
+            _stateTrie = new BufferedTrie(snapshotBundle, null, _initialTrieRoot);
         }
 
         if (configuration.ApplyStorageWritesOnIdleThread && !isReadOnly && !_trieless && !configuration.VerifyWithTrie

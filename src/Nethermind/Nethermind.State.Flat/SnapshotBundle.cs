@@ -41,8 +41,7 @@ public sealed class SnapshotBundle : IDisposable
     // The cached resource holds some items that are pooled.
     // Notably, it holds loaded caches from trie warmer.
     private TransientResource _transientResource = null!;
-    // Not pooled: abandoned idle passes may keep this block's warmed records after retirement.
-    private WarmedNodes? _earlyWarmedNodes;
+    private WarmedNodeRecordBuffer? _trieNodeBuffer;
 
     internal SnapshotPooledList _snapshots;
     private readonly INodeRecordBuffer? _nodeRecordBuffer;
@@ -75,6 +74,7 @@ public sealed class SnapshotBundle : IDisposable
 
         _currentPooledContent = resourcePool.GetSnapshotContent(usage);
         _transientResource = resourcePool.GetCachedResource(usage);
+        _trieNodeBuffer = CreateTrieNodeBuffer(_transientResource);
 
         ExpandCurrentPooledContent();
 
@@ -83,6 +83,13 @@ public sealed class SnapshotBundle : IDisposable
 
     /// <summary>The buffer the trie nodes written through this bundle are recorded in; <c>null</c> for a trie-less bundle.</summary>
     internal INodeRecordBuffer? NodeRecordBuffer => _nodeRecordBuffer;
+
+    /// <summary>The <see cref="NodeRecordBuffer"/> that also resolves the nodes warmed for the current block; <c>null</c> for a trie-less bundle.</summary>
+    /// <remarks>Replaced when <see cref="CollectAndApplySnapshot"/> retires the block's transient resource, so read it for each operation.</remarks>
+    internal INodeRecordBuffer? TrieNodeBuffer => _trieNodeBuffer;
+
+    private WarmedNodeRecordBuffer? CreateTrieNodeBuffer(TransientResource transientResource) =>
+        _nodeRecordBuffer is null ? null : new WarmedNodeRecordBuffer(_nodeRecordBuffer, transientResource.WarmedNodeLog);
 
     private void ExpandCurrentPooledContent()
     {
@@ -322,27 +329,24 @@ public sealed class SnapshotBundle : IDisposable
 
     /// <summary>Loads the record of a trie node the trie node buffer does not hold, for a bulk set or point read.</summary>
     /// <remarks>
-    /// Tries the nodes warmed for this block, then persistence, whose node is verified against
-    /// <paramref name="hash"/> and added to the warmed nodes. The nodes of this bundle's changes and of every in-memory snapshot
-    /// are in the buffer, which their pins keep readable, so this source skips them and only fetches persisted nodes.
+    /// Tries the nodes warmed for this block by position, then persistence, whose node is verified against
+    /// <paramref name="hash"/> and appended to the warmed nodes. The nodes of this bundle's changes and of every in-memory snapshot
+    /// are in the buffer, which their pins keep readable, and <see cref="TrieNodeBuffer"/> resolves warmed nodes by pointer,
+    /// so this source only fetches nodes the buffers reach by no pointer.
     /// </remarks>
     /// <param name="address">The storage trie's address hash, or null for the state trie.</param>
-    internal bool TryLoadTrieNodeRecord(Hash256? address, in TreePath path, in ValueHash256 hash, out NodeRecord record) =>
-        TryLoadTrieNodeRecord(address, 0, path, hash, out record);
-
-    /// <inheritdoc cref="TryLoadTrieNodeRecord(Hash256, in TreePath, in ValueHash256, out NodeRecord)"/>
-    internal bool TryLoadTrieNodeRecord(Hash256? address, ulong pointer, in TreePath path, in ValueHash256 hash, out NodeRecord record)
+    internal bool TryLoadTrieNodeRecord(Hash256? address, in TreePath path, in ValueHash256 hash, out NodeRecord record)
     {
         GuardDispose();
 
-        WarmedNodes warmed = _transientResource.WarmedNodes;
-        if (warmed.TryGet(pointer, hash, out record) || warmed.TryGet(address, path, hash, out record))
+        WarmedNodeLog warmed = _transientResource.WarmedNodeLog;
+        if (warmed.TryGet(address, path, hash, out record, out _))
         {
-            Nethermind.Trie.Metrics.IncrementWarmedNodeCacheHits();
+            Metrics.IncrementWarmedNodeCacheHits();
             return true;
         }
 
-        Nethermind.Trie.Metrics.IncrementWarmedNodeCacheMisses();
+        Metrics.IncrementWarmedNodeCacheMisses();
         return TryInsertPersistedRecord(warmed, address, path, hash, out record);
     }
 
@@ -362,7 +366,7 @@ public sealed class SnapshotBundle : IDisposable
 
         try
         {
-            BufferWarmUp.WarmUp(_nodeRecordBuffer!, transientResource.WarmedNodes, new WarmUpRlpSource(this, address).Load, address, root, key, forDelete);
+            BufferWarmUp.WarmUp(CreateTrieNodeBuffer(transientResource)!, transientResource.WarmedNodeLog, new WarmUpRlpSource(this, address).Load, address, root, key, forDelete);
         }
         finally
         {
@@ -371,10 +375,10 @@ public sealed class SnapshotBundle : IDisposable
     }
 
     /// <summary>Reads the node at <paramref name="path"/> from persistence into <paramref name="warmed"/>, if it hashes to <paramref name="hash"/>.</summary>
-    private bool TryInsertPersistedRecord(WarmedNodes warmed, Hash256? address, in TreePath path, in ValueHash256 hash, out NodeRecord record) =>
+    private bool TryInsertPersistedRecord(WarmedNodeLog warmed, Hash256? address, in TreePath path, in ValueHash256 hash, out NodeRecord record) =>
         TryInsertPersistedRecord(_readOnlySnapshotBundle, warmed, address, path, hash, out record);
 
-    private static bool TryInsertPersistedRecord(ReadOnlySnapshotBundle readOnly, WarmedNodes warmed, Hash256? address, in TreePath path, in ValueHash256 hash, out NodeRecord record)
+    private static bool TryInsertPersistedRecord(ReadOnlySnapshotBundle readOnly, WarmedNodeLog warmed, Hash256? address, in TreePath path, in ValueHash256 hash, out NodeRecord record)
     {
         record = default;
         bool inserted = false;
@@ -388,22 +392,23 @@ public sealed class SnapshotBundle : IDisposable
     internal BackgroundTrieSource CreateBackgroundTrieSource(Hash256 address)
     {
         GuardDispose();
-        return new BackgroundTrieSource(_readOnlySnapshotBundle, _nodeRecordBuffer!, _snapshots,
-            _earlyWarmedNodes ??= new WarmedNodes(1024), address);
+        return new BackgroundTrieSource(_readOnlySnapshotBundle, _nodeRecordBuffer!, _snapshots, address);
     }
 
     /// <summary>A leased immutable source with private warmed storage, independent of transient-resource retirement.</summary>
     internal sealed class BackgroundTrieSource : INodeRecordSource, IDisposable
     {
+        private const int WarmedNodeCapacity = 1024;
+
         private readonly ReadOnlySnapshotBundle _readOnly;
         private readonly Hash256 _address;
-        private readonly WarmedNodes _warmed;
+        private readonly WarmedNodeLog _warmed = new(WarmedNodeCapacity);
         private readonly INodeRecordBufferPin _pin;
         private readonly INodeRecordBufferPin? _snapshotPin;
 
-        internal BackgroundTrieSource(ReadOnlySnapshotBundle readOnly, INodeRecordBuffer buffer, SnapshotPooledList snapshots, WarmedNodes warmed, Hash256 address)
+        internal BackgroundTrieSource(ReadOnlySnapshotBundle readOnly, INodeRecordBuffer buffer, SnapshotPooledList snapshots, Hash256 address)
         {
-            _warmed = warmed;
+            Buffer = new WarmedNodeRecordBuffer(buffer, _warmed);
             _readOnly = readOnly;
             _address = address;
             readOnly.AcquireLease();
@@ -422,22 +427,23 @@ public sealed class SnapshotBundle : IDisposable
             {
                 readOnly.Dispose();
                 _pin?.Dispose();
+                _warmed.Dispose();
                 throw;
             }
         }
 
-        public bool TryLoad(in TreePath path, in ValueHash256 hash, out NodeRecord record) =>
-            TryLoad(0, path, hash, out record);
+        /// <summary>The buffer to update the trie in, which also resolves the nodes this source warmed.</summary>
+        public INodeRecordBuffer Buffer { get; }
 
-        public bool TryLoad(ulong pointer, in TreePath path, in ValueHash256 hash, out NodeRecord record)
+        public bool TryLoad(in TreePath path, in ValueHash256 hash, out NodeRecord record)
         {
-            if (_warmed.TryGet(pointer, hash, out record) || _warmed.TryGet(_address, path, hash, out record))
+            if (_warmed.TryGet(_address, path, hash, out record, out _))
             {
-                Nethermind.Trie.Metrics.IncrementIdleWarmedNodeCacheHits();
+                Metrics.IncrementIdleWarmedNodeCacheHits();
                 return true;
             }
 
-            Nethermind.Trie.Metrics.IncrementIdleWarmedNodeCacheMisses();
+            Metrics.IncrementIdleWarmedNodeCacheMisses();
             return TryInsertPersistedRecord(_readOnly, _warmed, _address, path, hash, out record);
         }
 
@@ -446,6 +452,7 @@ public sealed class SnapshotBundle : IDisposable
             _snapshotPin?.Dispose();
             _pin.Dispose();
             _readOnly.Dispose();
+            _warmed.Dispose();
         }
     }
 
@@ -463,9 +470,9 @@ public sealed class SnapshotBundle : IDisposable
     private readonly ref struct PersistedNodeInsert
     {
         public static readonly ReadOnlySpanAction<byte, PersistedNodeInsert> Insert =
-            static (rlp, insert) => insert._inserted = insert._warmed.TryInsert(insert._address, insert._path, insert._hash, rlp, out insert._record);
+            static (rlp, insert) => insert._inserted = insert._warmed.TryAppend(insert._address, insert._path, insert._hash, rlp, out insert._record, out _);
 
-        private readonly WarmedNodes _warmed;
+        private readonly WarmedNodeLog _warmed;
         private readonly Hash256? _address;
         private readonly ref readonly TreePath _path;
         private readonly ref readonly ValueHash256 _hash;
@@ -474,7 +481,7 @@ public sealed class SnapshotBundle : IDisposable
 
         /// <param name="record">Set to the inserted record.</param>
         /// <param name="inserted">Set to whether the RLP was verified and inserted.</param>
-        public PersistedNodeInsert(WarmedNodes warmed, Hash256? address, ref readonly TreePath path, ref readonly ValueHash256 hash,
+        public PersistedNodeInsert(WarmedNodeLog warmed, Hash256? address, ref readonly TreePath path, ref readonly ValueHash256 hash,
             ref NodeRecord record, ref bool inserted)
         {
             _warmed = warmed;
@@ -665,8 +672,9 @@ public sealed class SnapshotBundle : IDisposable
 
     private void SwapTransientResource()
     {
-        Volatile.Write(ref _transientResource, _resourcePool.GetCachedResource(_usage));
-        _earlyWarmedNodes = null;
+        TransientResource transientResource = _resourcePool.GetCachedResource(_usage);
+        _trieNodeBuffer = CreateTrieNodeBuffer(transientResource);
+        Volatile.Write(ref _transientResource, transientResource);
     }
 
     private void GuardDispose() => ObjectDisposedException.ThrowIf(_isDisposed, this);

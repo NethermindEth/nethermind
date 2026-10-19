@@ -119,7 +119,8 @@ public class PersistedSnapshotTests
         using ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries = new(512);
         for (int i = 0; i < 512; i++)
             entries.Add(new PatriciaTree.BulkSetEntry(Keccak.Compute(BitConverter.GetBytes(i)).ValueHash256, new byte[32]));
-        DictionaryNodeSource source = new(new Dictionary<TreePath, byte[]>(), new WarmedNodes(1), address);
+        using WarmedNodeLog warmed = new(1);
+        DictionaryNodeSource source = new(new Dictionary<TreePath, byte[]>(), warmed, address);
         TrieRoot root = BufferBulkSet.BulkSet(_buffer, source, address, TrieRoot.Empty, entries, canParallelize: true);
         FlatTestHelpers.StartNewGeneration(_buffer);
         using Snapshot snapshot = new(StateId.PreGenesis, new StateId(1, root.Hash), new SnapshotContent(), _resourcePool, ResourcePool.Usage.MainBlockProcessing) { BufferPin = original.Copy() };
@@ -144,7 +145,8 @@ public class PersistedSnapshotTests
     public void IncrementalSnapshotsPersistOnlyChangedNodesAndReadBackTheCompleteTrie([Values] bool storage)
     {
         Hash256? address = storage ? TestItem.KeccakA : null;
-        DictionaryNodeSource source = new(new Dictionary<TreePath, byte[]>(), new WarmedNodes(1), address);
+        using WarmedNodeLog warmed = new(1);
+        DictionaryNodeSource source = new(new Dictionary<TreePath, byte[]>(), warmed, address);
         Hash256[] keys = Enumerable.Range(0, 256).Select(i => Keccak.Compute(BitConverter.GetBytes(i))).ToArray();
         INodeRecordBufferPin firstRetain = _buffer.Pin();
         using ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries = new(keys.Length);

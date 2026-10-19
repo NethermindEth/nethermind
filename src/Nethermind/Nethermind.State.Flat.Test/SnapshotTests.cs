@@ -135,7 +135,8 @@ public class SnapshotTests
         using INodeRecordBuffer buffer = FlatTestHelpers.NewTestBuffer();
         using INodeRecordBufferPin originalRetain = buffer.Pin();
         Hash256? address = storage ? TestItem.KeccakA : null;
-        DictionaryNodeSource source = new(new Dictionary<TreePath, byte[]>(), new WarmedNodes(1), address);
+        using WarmedNodeLog warmed = new(1);
+        DictionaryNodeSource source = new(new Dictionary<TreePath, byte[]>(), warmed, address);
         Hash256 firstKey = new("1000000000000000000000000000000000000000000000000000000000000000");
         Hash256 lastKey = new("f000000000000000000000000000000000000000000000000000000000000000");
         TrieRoot original = Write(TrieRoot.Empty, firstKey, 1, lastKey);

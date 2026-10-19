@@ -10,7 +10,7 @@ using Nethermind.Core.Crypto;
 namespace Nethermind.Trie.NodeBuffer;
 
 /// <summary>A trie node record held in place inside a buffer of the trie node buffer or warmed nodes.</summary>
-/// <remarks>Buffer records borrow native storage for the lifetime of the pin protecting them. Managed warmed records remain valid until their owning record table is reset.</remarks>
+/// <remarks>Buffer records borrow native storage for the lifetime of the pin protecting them.</remarks>
 public readonly struct NodeRecord
 {
     private readonly ReadOnlyMemory<byte> _buffer;

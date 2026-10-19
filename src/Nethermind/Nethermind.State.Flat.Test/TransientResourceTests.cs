@@ -5,8 +5,8 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
+using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.Trie;
-using Nethermind.Trie.NodeBuffer;
 using NUnit.Framework;
 
 namespace Nethermind.State.Flat.Test;
@@ -59,37 +59,33 @@ public class TransientResourceTests
     }
 
     [Test]
-    public void Reset_GrowsTheWarmedNodesOnlyPastTheirCapacity([Values] bool pastCapacity)
+    public void Reset_ClearsTheWarmedNodeLogAndGrowsItsSizeOnlyPastItsCapacity([Values] bool pastCapacity)
     {
         const int capacity = 4;
         using TransientResource resource = new(new TransientResource.Size(1024, capacity));
-        WarmedNodes warmedNodes = resource.WarmedNodes;
+        WarmedNodeLog warmedNodeLog = resource.WarmedNodeLog;
         int nodeCount = pastCapacity ? capacity + 1 : capacity;
         ulong originalPointer = 0;
         for (byte value = 0; value < nodeCount; value++)
         {
             byte[] rlp = FlatTestHelpers.LeafRlp(value);
-            warmedNodes.TryInsert(null, TreePath.Empty, ValueKeccak.Compute(rlp), rlp, out _, out ulong pointer);
+            warmedNodeLog.TryAppend(null, TreePath.Empty.Append(value), ValueKeccak.Compute(rlp), rlp, out _, out ulong pointer);
             if (value == 0) originalPointer = pointer;
         }
 
         resource.Reset();
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(resource.WarmedNodes, pastCapacity ? Is.Not.SameAs(warmedNodes) : Is.SameAs(warmedNodes));
-            Assert.That(resource.WarmedNodes.Count, Is.Zero);
-            Assert.That(resource.GetSize().NodesCacheSize, Is.EqualTo(nodeCount));
-        }
-
         byte[] originalRlp = FlatTestHelpers.LeafRlp(0);
         ValueHash256 originalHash = ValueKeccak.Compute(originalRlp);
-        resource.WarmedNodes.TryInsert(null, TreePath.Empty, originalHash, originalRlp, out _, out ulong newPointer);
+        bool foundAfterReset = warmedNodeLog.TryGet(null, TreePath.Empty.Append(0), originalHash, out _, out _);
+        warmedNodeLog.TryAppend(null, TreePath.Empty.Append(0), originalHash, originalRlp, out _, out ulong newPointer);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(newPointer, Is.Not.EqualTo(originalPointer), "growth and reuse both change pointer identity");
-            Assert.That(resource.WarmedNodes.TryGet(originalPointer, originalHash, out _), Is.False);
-            Assert.That(resource.WarmedNodes.TryGet(newPointer, originalHash, out _), Is.True);
+            Assert.That(resource.WarmedNodeLog, Is.SameAs(warmedNodeLog));
+            Assert.That(foundAfterReset, Is.False);
+            Assert.That(resource.GetSize().NodesCacheSize, Is.EqualTo(nodeCount));
+            Assert.That(newPointer, Is.Not.EqualTo(originalPointer), "a reset never reuses a pointer");
+            Assert.That(warmedNodeLog.TryGet(null, TreePath.Empty.Append(0), originalHash, out _, out ulong indexedPointer) && indexedPointer == newPointer, Is.True);
         }
     }
 

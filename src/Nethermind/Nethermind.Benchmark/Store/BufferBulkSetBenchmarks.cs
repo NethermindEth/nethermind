@@ -44,7 +44,7 @@ public class BufferBulkSetBenchmarks
     private INodeRecordBufferPin _warmBufferRetain;
     private TrieRoot _warmRoot;
     private int _fetchCountBeforeWarmBuffer;
-    private WarmedNodes _warmedNodes;
+    private WarmedNodeLog _warmedNodes;
     private DictionaryNodeSource _nodeSource;
 
     [GlobalSetup]
@@ -57,7 +57,7 @@ public class BufferBulkSetBenchmarks
         _preloadedRootHash = Keccak.EmptyTreeHash;
         _preload = GenerateEntries(random, PreloadedCount);
         Dictionary<TreePath, byte[]> preloadedNodes = [];
-        _warmedNodes = new WarmedNodes(BatchSize * WarmedNodesPerEntry);
+        _warmedNodes = new WarmedNodeLog(BatchSize * WarmedNodesPerEntry);
         _nodeSource = new DictionaryNodeSource(preloadedNodes, _warmedNodes, null);
         if (PreloadedCount > 0)
         {
@@ -72,6 +72,9 @@ public class BufferBulkSetBenchmarks
             foreach ((TreePath path, _, NodeRecord record) in preloadBuffer.EnumerateNodes(root.Pointer)) preloadedNodes[path] = record.Rlp.ToArray();
         }
     }
+
+    [GlobalCleanup]
+    public void Cleanup() => _warmedNodes.Dispose();
 
     /// <summary>The production flow before the trie node buffer: hash with the write batch, persist at the end of the block.</summary>
     [Benchmark(Baseline = true)]

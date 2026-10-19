@@ -5,7 +5,6 @@ using System;
 using System.Buffers.Binary;
 using System.Numerics;
 using System.Runtime.InteropServices;
-using System.Threading;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Trie.NodeBuffer;
@@ -59,13 +58,6 @@ internal static class NodeRecordCodec
     public static bool IsTransient(ulong pointer) => (pointer & TransientPointerMask) != 0;
 
     public static ulong PersistentPointer(ulong pointer) => IsTransient(pointer) ? 0 : pointer;
-
-    internal static uint NextTransientGeneration(ref long epochCounter)
-    {
-        long epoch = Interlocked.Increment(ref epochCounter);
-        if ((ulong)epoch >= TransientGenerationMask) throw new TrieException("Transient trie node generation IDs exhausted.");
-        return TransientGenerationMask | (uint)epoch;
-    }
 
     private const int BranchChildCount = 16;
     private const int MaxKeyNibbles = 64;

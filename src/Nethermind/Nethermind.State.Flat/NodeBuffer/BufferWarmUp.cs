@@ -9,7 +9,7 @@ using Nethermind.Trie.NodeBuffer;
 
 namespace Nethermind.State.Flat.NodeBuffer;
 
-/// <summary>Loads the nodes on a trie path into <see cref="WarmedNodes"/> ahead of a <see cref="BufferBulkSet"/> that changes it.</summary>
+/// <summary>Loads the nodes on a trie path into a <see cref="WarmedNodeLog"/> ahead of a <see cref="BufferBulkSet"/> that changes it.</summary>
 internal static class BufferWarmUp
 {
     private const int MaxKeyNibbles = BulkSetArena.MaxKeyNibbles;
@@ -19,8 +19,9 @@ internal static class BufferWarmUp
 
     /// <summary>Reads a pre-block path, then publishes newly fetched records from the deepest node to the root.</summary>
     /// <remarks>Stops silently where the path ends or persistence misses, retaining its verified prefix. Descent stays inside each read callback so ancestors' borrowed RLP remains valid until their children are published.</remarks>
+    /// <param name="buffer">The buffer holding the pre-block trie, which also resolves the pointers of <paramref name="warmed"/>.</param>
     /// <param name="forDelete">Also loads the sibling a two-child branch collapses into when its matching leaf is deleted.</param>
-    public static void WarmUp(INodeRecordBuffer buffer, WarmedNodes warmed, LoadNodeRlp loadRlp, Hash256? address,
+    public static void WarmUp(INodeRecordBuffer buffer, WarmedNodeLog warmed, LoadNodeRlp loadRlp, Hash256? address,
         TrieRoot root, in ValueHash256 key, bool forDelete = false)
     {
         if (root.Hash == ValueKeccak.EmptyTreeHash) return;
@@ -41,7 +42,7 @@ internal static class BufferWarmUp
     {
         private static readonly ReadOnlySpanAction<byte, WarmUpRead> Read = static (rlp, read) => read.ReadRlp(rlp);
         private readonly INodeRecordBuffer _buffer;
-        private readonly WarmedNodes _warmed;
+        private readonly WarmedNodeLog _warmed;
         private readonly LoadNodeRlp _loadRlp;
         private readonly Hash256? _address;
         private readonly TreePath _path;
@@ -51,7 +52,7 @@ internal static class BufferWarmUp
         private readonly ref ulong _result;
         private readonly WarmUpSibling _sibling;
 
-        internal static void Start(INodeRecordBuffer buffer, WarmedNodes warmed, LoadNodeRlp loadRlp, Hash256? address,
+        internal static void Start(INodeRecordBuffer buffer, WarmedNodeLog warmed, LoadNodeRlp loadRlp, Hash256? address,
             TrieRoot root, ReadOnlySpan<byte> keyNibbles, bool forDelete)
         {
             ulong result = 0;
@@ -59,7 +60,7 @@ internal static class BufferWarmUp
             read.Load(ChildRef.ForHash(root.Hash, root.Pointer));
         }
 
-        private WarmUpRead(INodeRecordBuffer buffer, WarmedNodes warmed, LoadNodeRlp loadRlp, Hash256? address,
+        private WarmUpRead(INodeRecordBuffer buffer, WarmedNodeLog warmed, LoadNodeRlp loadRlp, Hash256? address,
             in TreePath path, in ValueHash256 hash, ReadOnlySpan<byte> keyNibbles, bool forDelete, ref ulong result, WarmUpSibling sibling = default)
         {
             _buffer = buffer;
@@ -87,11 +88,15 @@ internal static class BufferWarmUp
 
             ulong pointer = child.Pointer;
             bool found = _buffer.TryLocate(pointer, out NodeRecord record);
-            if (!found)
+            if (found)
             {
-                found = _warmed.TryGet(pointer, child.Data, out record) || _warmed.TryGet(_address, _path, child.Data, out record, out pointer);
-                if (found) Nethermind.Trie.Metrics.IncrementWarmedNodeCacheHits();
-                else Nethermind.Trie.Metrics.IncrementWarmedNodeCacheMisses();
+                if (NodeRecordCodec.IsTransient(pointer)) Metrics.IncrementWarmedNodeCacheHits();
+            }
+            else
+            {
+                found = _warmed.TryGet(_address, _path, child.Data, out record, out pointer);
+                if (found) Metrics.IncrementWarmedNodeCacheHits();
+                else Metrics.IncrementWarmedNodeCacheMisses();
             }
 
             if (found) Walk(new WarmUpFrame(record.Rlp, record.Kind, record.View.HashMask, record, pointer));
@@ -140,7 +145,7 @@ internal static class BufferWarmUp
             }
 
             if (frame.Record.IsNull)
-                _warmed.TryInsertVerified(_address, _path, _hash, frame.Rlp, frame.Kind, frame.HashMask, pointers, out _, out _result);
+                _warmed.AppendVerified(_address, _path, _hash, frame.Rlp, frame.Kind, frame.HashMask, pointers, out _, out _result);
             else _result = frame.Pointer;
         }
 
@@ -174,19 +179,17 @@ internal static class BufferWarmUp
 
         private void LoadSibling(in ChildRef child)
         {
-            ulong pointer = child.Pointer;
-            bool found = _warmed.TryGet(pointer, child.Data, out NodeRecord record) || _warmed.TryGet(_address, _path, child.Data, out record, out pointer);
-            if (found)
+            if (_warmed.TryGet(_address, _path, child.Data, out _, out ulong pointer))
             {
-                Nethermind.Trie.Metrics.IncrementWarmedNodeCacheHits();
+                Metrics.IncrementWarmedNodeCacheHits();
                 _result = pointer;
             }
             else
             {
-                Nethermind.Trie.Metrics.IncrementWarmedNodeCacheMisses();
+                Metrics.IncrementWarmedNodeCacheMisses();
                 _loadRlp(_path, child.Data, static (rlp, read) =>
                 {
-                    read._warmed.TryInsert(read._address, read._path, read._hash, rlp, out _, out read._result);
+                    read._warmed.TryAppend(read._address, read._path, read._hash, rlp, out _, out read._result);
                 }, this);
             }
         }

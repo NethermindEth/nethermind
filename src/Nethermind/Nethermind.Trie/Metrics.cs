@@ -53,30 +53,6 @@ namespace Nethermind.Trie
         }
 
         [CounterMetric]
-        [Description("Number of node lookups served by the normal per-block warmed-node cache, including warm-up reads.")]
-        public static long WarmedNodeCacheHits => _warmedNodeCacheHits.Sum;
-        private static readonly StripedLong _warmedNodeCacheHits = new();
-        internal static void IncrementWarmedNodeCacheHits() => _warmedNodeCacheHits.Increment();
-
-        [CounterMetric]
-        [Description("Number of node lookups missing from the normal per-block warmed-node cache, including warm-up reads.")]
-        public static long WarmedNodeCacheMisses => _warmedNodeCacheMisses.Sum;
-        private static readonly StripedLong _warmedNodeCacheMisses = new();
-        internal static void IncrementWarmedNodeCacheMisses() => _warmedNodeCacheMisses.Increment();
-
-        [CounterMetric]
-        [Description("Number of node lookups served by the idle storage worker's private warmed-node cache.")]
-        public static long IdleWarmedNodeCacheHits => _idleWarmedNodeCacheHits.Sum;
-        private static readonly StripedLong _idleWarmedNodeCacheHits = new();
-        internal static void IncrementIdleWarmedNodeCacheHits() => _idleWarmedNodeCacheHits.Increment();
-
-        [CounterMetric]
-        [Description("Number of node lookups missing from the idle storage worker's private warmed-node cache.")]
-        public static long IdleWarmedNodeCacheMisses => _idleWarmedNodeCacheMisses.Sum;
-        private static readonly StripedLong _idleWarmedNodeCacheMisses = new();
-        internal static void IncrementIdleWarmedNodeCacheMisses() => _idleWarmedNodeCacheMisses.Increment();
-
-        [CounterMetric]
         [Description("Number of trie nodes a bulk set read in place from the trie node buffer.")]
         public static long BulkSetNodesFromBuffer => _bulkSetNodesFromBuffer.Sum;
         private static readonly StripedLong _bulkSetNodesFromBuffer = new();

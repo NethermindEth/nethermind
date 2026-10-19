@@ -65,7 +65,7 @@ public sealed class FlatStorageTree(
     private BufferedTrie CreateTrie()
     {
         INodeRecordBuffer buffer = _bundle.NodeRecordBuffer!;
-        return new BufferedTrie(_bundle, buffer, AddressHash, buffer.ResolveRoot(AddressHash, _rootBeforeTrie.ValueHash256));
+        return new BufferedTrie(_bundle, AddressHash, buffer.ResolveRoot(AddressHash, _rootBeforeTrie.ValueHash256));
     }
 
     private TrieRoot PreBlockRoot => (Volatile.Read(ref _preBlockRoot) ?? ResolvePreBlockRoot()).Value;
@@ -165,7 +165,7 @@ public sealed class FlatStorageTree(
             {
                 OnEarlyPassDrained?.Invoke();
                 // Pool work would run at normal priority rather than this thread's idle priority.
-                _earlyRoot = BufferBulkSet.BulkSet(_bundle.NodeRecordBuffer!, _earlySource!, AddressHash, _earlyRoot, entries, canParallelize: false);
+                _earlyRoot = BufferBulkSet.BulkSet(_earlySource!.Buffer, _earlySource, AddressHash, _earlyRoot, entries, canParallelize: false);
                 _scope.CountEarlyApplied(entries.Count);
             }
         }
