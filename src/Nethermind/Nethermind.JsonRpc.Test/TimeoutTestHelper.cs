@@ -29,10 +29,34 @@ internal static class TimeoutTestHelper
         return timeout;
     }
 
+    /// <summary>Removes <paramref name="timeout"/> from the shared pool, wherever other tests' returns have queued it.</summary>
+    /// <returns>Whether <paramref name="timeout"/> was in the pool.</returns>
+    internal static bool TryTakeFromPool(CancellationTokenSource timeout)
+    {
+        JsonRpcConfig config = new();
+        List<CancellationTokenSource> others = new(TimeoutCancellationTokenPoolSize);
+        bool found = false;
+        for (int i = 0; i < TimeoutCancellationTokenPoolSize && !found; i++)
+        {
+            CancellationTokenSource rented = config.BuildTimeoutCancellationToken();
+            if (ReferenceEquals(rented, timeout)) found = true;
+            else others.Add(rented);
+        }
+
+        for (int i = 0; i < others.Count; i++)
+        {
+            JsonRpcConfigExtension.ReturnTimeoutCancellationToken(others[i]);
+        }
+
+        return found;
+    }
+
     internal static void DisposeIfNotAlreadyObserved(TrackingCancellationTokenSource timeout)
     {
         if (timeout.DisposeCount == 0)
         {
+            // A disposed source left in the pool would fail the next rent anywhere in the process.
+            TryTakeFromPool(timeout);
             timeout.Dispose();
         }
     }
