@@ -620,42 +620,49 @@ public class FlatWorldStateScopeProviderTests
     }
 
     [Test]
-    public void ApplyBal_WithAccountAndStorageChanges_WithVerifyWithTrie([Values] bool existingAccount)
+    public void ApplyBal_WithAccountAndStorageChanges_WithVerifyWithTrie([Values] bool existingAccount, [Values(1, 8)] int accountCount)
     {
         using TestContext ctx = new(config: new FlatDbConfig { VerifyWithTrie = true });
         FlatWorldStateScope scope = ctx.Scope;
-        Address address = TestItem.AddressA;
+        Address[] addresses = new Address[accountCount];
+        for (int i = 0; i < accountCount; i++) addresses[i] = Address.FromNumber((UInt256)(i + 1));
         if (existingAccount)
         {
-            using IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1);
-            writeBatch.Set(address, new Account(nonce: 1, balance: 5));
+            using IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(accountCount);
+            foreach (Address address in addresses) writeBatch.Set(address, new Account(nonce: 1, balance: 5));
         }
 
         byte[] code = [0x60, 0x00];
-        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
-            .WithAccountChanges(Build.An.AccountChanges
-                .WithAddress(address)
+        ReadOnlyAccountChanges[] changes = new ReadOnlyAccountChanges[accountCount];
+        for (int i = 0; i < accountCount; i++)
+        {
+            changes[i] = Build.An.AccountChanges
+                .WithAddress(addresses[i])
                 .WithBalanceChanges(new BalanceChange(1, 10))
                 .WithNonceChanges(new NonceChange(1, 2))
                 .WithCodeChanges(new CodeChange(1, code))
                 .WithStorageChanges(1, new StorageChange(1, 0xCAFE))
-                .TestObject)
-            .TestObject;
+                .TestObject;
+        }
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList.WithAccountChanges(changes).TestObject;
 
         scope.ApplyBal(bal);
         scope.UpdateRootHash();
 
-        Account? account = scope.Get(address);
-        Assert.That(account, Is.Not.Null);
-        scope.CreateStorageTree(address).Get((UInt256)1, out UInt256 value);
-        using (Assert.EnterMultipleScope())
+        foreach (Address address in addresses)
         {
-            Assert.That(account!.Nonce, Is.EqualTo(2ul));
-            Assert.That(account.Balance, Is.EqualTo((UInt256)10));
-            Assert.That(account.CodeHash, Is.EqualTo(Keccak.Compute(code)));
-            Assert.That(value, Is.EqualTo((UInt256)0xCAFE));
-            Assert.That(scope.RootHash, Is.Not.EqualTo(Keccak.EmptyTreeHash));
+            Account? account = scope.Get(address);
+            Assert.That(account, Is.Not.Null);
+            scope.CreateStorageTree(address).Get((UInt256)1, out UInt256 value);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(account!.Nonce, Is.EqualTo(2ul));
+                Assert.That(account.Balance, Is.EqualTo((UInt256)10));
+                Assert.That(account.CodeHash, Is.EqualTo(Keccak.Compute(code)));
+                Assert.That(value, Is.EqualTo((UInt256)0xCAFE));
+            }
         }
+        Assert.That(scope.RootHash, Is.Not.EqualTo(Keccak.EmptyTreeHash));
     }
 
     [Test]
@@ -1308,6 +1315,55 @@ public class FlatWorldStateScopeProviderTests
         // Verify
         Account? resultAccount = scope.Get(testAddress);
         Assert.That(resultAccount!.StorageRoot, Is.EqualTo(expectedRoot));
+    }
+
+    [Test]
+    public void StorageClear_RemovesSlotsWrittenAfterAnEarlierClearInTheSameBlock([Values] bool setInTheClearingBatch)
+    {
+        using TestContext ctx = new();
+        FlatWorldStateScope scope = ctx.Scope;
+
+        Address testAddress = TestItem.AddressA;
+        UInt256 slot1 = 1;
+        UInt256 slot2 = 2;
+        UInt256 value = 0xAA;
+        ctx.PersistenceReader.GetAccount(testAddress).Returns(TestItem.GenerateRandomAccount());
+
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+        using (IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(testAddress, 1))
+        {
+            storageBatch.Set(slot1, value);
+        }
+
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+        using (IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(testAddress, 1))
+        {
+            storageBatch.Clear();
+            if (setInTheClearingBatch) storageBatch.Set(slot2, value);
+        }
+
+        if (!setInTheClearingBatch)
+        {
+            using IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1);
+            using IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(testAddress, 1);
+            storageBatch.Set(slot2, value);
+        }
+
+        // The slot written after the first clear must still be found by the second one.
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+        using (IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(testAddress, 0))
+        {
+            storageBatch.Clear();
+        }
+
+        IWorldStateScopeProvider.IStorageTree storageTree = scope.CreateStorageTree(testAddress);
+        storageTree.Get(slot1, out UInt256 slot1Value);
+        storageTree.Get(slot2, out UInt256 slot2Value);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(slot1Value, Is.EqualTo(UInt256.Zero));
+            Assert.That(slot2Value, Is.EqualTo(UInt256.Zero));
+        }
     }
 
     [Test]
@@ -2062,13 +2118,13 @@ public class FlatWorldStateScopeProviderTests
             }
         }
 
-        public bool PushSlotJob(ITrieWarmer.IStorageWarmer storageTree, in UInt256 index, int sequenceId)
+        public bool PushSlotJob(ITrieWarmer.IStorageWarmer storageTree, in UInt256 index, int sequenceId, bool isDelete)
         {
             SlotJobPushes++;
             return acceptSlotJob;
         }
 
-        public bool PushSlotJobMpmc(ITrieWarmer.IStorageWarmer storageTree, in UInt256 index, int sequenceId)
+        public bool PushSlotJobMpmc(ITrieWarmer.IStorageWarmer storageTree, in UInt256 index, int sequenceId, bool isDelete)
         {
             MpmcSlotJobPushes++;
             return acceptMpmcSlotJob;
@@ -2096,13 +2152,13 @@ public class FlatWorldStateScopeProviderTests
         public int SlotJobs { get; private set; }
         public int LowestCountAfterCompletion { get; private set; } = int.MaxValue;
 
-        public bool PushSlotJob(ITrieWarmer.IStorageWarmer storageTree, in UInt256 index, int sequenceId)
-            => PushSlotJobMpmc(storageTree, index, sequenceId);
+        public bool PushSlotJob(ITrieWarmer.IStorageWarmer storageTree, in UInt256 index, int sequenceId, bool isDelete)
+            => PushSlotJobMpmc(storageTree, index, sequenceId, isDelete);
 
-        public bool PushSlotJobMpmc(ITrieWarmer.IStorageWarmer storageTree, in UInt256 index, int sequenceId)
+        public bool PushSlotJobMpmc(ITrieWarmer.IStorageWarmer storageTree, in UInt256 index, int sequenceId, bool isDelete)
         {
             // The mocked persistence holds no trie nodes; the real warmer drops the same exception.
-            try { storageTree.WarmUpStorageTrie(index, sequenceId); }
+            try { storageTree.WarmUpStorageTrie(index, sequenceId, isDelete); }
             catch (TrieNodeException) { }
             SlotJobs++;
             return Record();

@@ -40,6 +40,7 @@ public class ChainSpecLoaderTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(chainSpec.Parameters.Eip1559BaseFeeInitialValue, Is.EqualTo(1.GWei), $"fork base fee");
+            Assert.That(chainSpec.Parameters.MinHistoryRetentionEpochs, Is.EqualTo(HistoryRetentionConstants.MinEpochsForBlockRequests));
             Assert.That(chainSpec.NetworkId, Is.EqualTo(1), $"{nameof(chainSpec.NetworkId)}");
             Assert.That(chainSpec.Name, Is.EqualTo("Ethereum"), $"{nameof(chainSpec.Name)}");
             Assert.That(chainSpec.DataDir, Is.EqualTo("ethereum"), $"{nameof(chainSpec.Name)}");
@@ -108,6 +109,7 @@ public class ChainSpecLoaderTests
 
             Assert.That(chainSpec.LondonBlockNumber, Is.EqualTo(0L));
             Assert.That(chainSpec.ShanghaiTimestamp, Is.EqualTo(1677557088));
+            Assert.That(chainSpec.Parameters.MinHistoryRetentionEpochs, Is.EqualTo(HistoryRetentionConstants.HistoryPruneEpochs), "Glamsterdam is live");
         }
     }
 
@@ -176,6 +178,29 @@ public class ChainSpecLoaderTests
         ChainSpec chainSpec = new ChainSpecLoader(new EthereumJsonSerializer(), LimboLogs.Instance).Load(stream);
 
         Assert.That(chainSpec.Parameters.Eip2565Transition, Is.Null);
+    }
+
+    [Test]
+    public void Can_load_explicit_null_blob_schedule()
+    {
+        const string json = """
+            {
+                "name": "Test",
+                "engine": { "NethDev": {} },
+                "params": { "networkID": "1", "blobSchedule": null },
+                "genesis": {
+                    "seal": { "ethereum": { "nonce": "0x0", "mixHash": "0x0000000000000000000000000000000000000000000000000000000000000000" } },
+                    "difficulty": "0x1",
+                    "gasLimit": "0x1000000",
+                    "timestamp": "0x0"
+                }
+            }
+            """;
+
+        using MemoryStream stream = new(Encoding.UTF8.GetBytes(json));
+        ChainSpec chainSpec = new ChainSpecLoader(new EthereumJsonSerializer(), LimboLogs.Instance).Load(stream);
+
+        Assert.That(chainSpec.Parameters.BlobSchedule, Is.Empty);
     }
 
     /// <summary>Loads a chain spec whose genesis, at timestamp 0, follows <paramref name="transitionParam"/> set to <paramref name="transitionTimestamp"/>.</summary>
@@ -312,8 +337,8 @@ public class ChainSpecLoaderTests
         if (underlyingType == typeof(UInt256)) return (UInt256)77777;
         if (underlyingType == typeof(Address)) return new Address("0x1111111111111111111111111111111111111111");
         if (underlyingType == typeof(Hash256)) return new Hash256("0x1111111111111111111111111111111111111111111111111111111111111111");
-        if (type == typeof(SortedSet<BlobScheduleSettings>))
-            return new SortedSet<BlobScheduleSettings> { new() { Timestamp = 100, Target = 3, Max = 6, BaseFeeUpdateFraction = 3338477 } };
+        if (type == typeof(List<BlobScheduleSettings>))
+            return new List<BlobScheduleSettings> { new() { Timestamp = 100, Target = 3, Max = 6, BaseFeeUpdateFraction = 3338477 } };
         return null;
     }
 

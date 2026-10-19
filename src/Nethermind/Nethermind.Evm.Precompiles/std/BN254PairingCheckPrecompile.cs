@@ -9,6 +9,8 @@ namespace Nethermind.Evm.Precompiles;
 
 public partial class BN254PairingCheckPrecompile
 {
+    public static Address Address { get; } = Address.FromNumber(8);
+
     public partial Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec _)
     {
         Metrics.Bn254PairingPrecompile++;

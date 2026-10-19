@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -37,8 +38,12 @@ public static class WitnessExtensions
     {
         public INodeStorage CreateNodeStorage() => WitnessNodeStorage.Create(witness.State);
 
+        /// <remarks>Codes that can also be read as memory are served as that memory, which code decoded into
+        /// executable code memory then runs from without another copy.</remarks>
         public IKeyValueStoreWithBatching CreateCodeDb()
         {
+            if (witness.Codes is IReadOnlyList<ReadOnlyMemory<byte>> codes) return new WitnessCodeDb(codes);
+
             IKeyValueStoreWithBatching db = MemDb.WithCapacity(witness.Codes.Count);
             foreach (byte[] code in witness.Codes)
             {
