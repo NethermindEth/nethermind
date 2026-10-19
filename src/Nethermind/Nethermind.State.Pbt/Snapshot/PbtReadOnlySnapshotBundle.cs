@@ -149,21 +149,17 @@ public sealed class PbtReadOnlySnapshotBundle(
     {
         GuardDispose();
         long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
-        for (int index = LayerCount - 1; index >= 0; index--)
-        {
-            if (TryGroup(index, groupKey, out payload))
-            {
-                if (recordDetailedMetrics)
-                {
-                    int partition = (int)PbtPartitions.PartitionOfPath(groupKey);
-                    Metrics.PbtReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, (payload is null ? _readNodeGroupSnapshotNullLabels : _readNodeGroupSnapshotLabels)[partition]);
-                    if (payload is not null) Metrics.PbtReadOnlySnapshotBundleNodeGroupBytes.AddBy(_readNodeGroupSnapshotSizeKeys[partition], payload.GetSpan().Length);
-                }
-                return true;
-            }
-        }
         payload = null;
-        return false;
+        bool found = snapshots.Count > 0 && snapshots[^1].Content.TryFindNodeGroup(snapshots[^1].RootGroupReference, groupKey, out payload);
+        for (int index = LayerCount - 1; !found && index >= 0; index--) found = TryGroup(index, groupKey, out payload);
+        if (!found) return false;
+        if (recordDetailedMetrics)
+        {
+            int partition = (int)PbtPartitions.PartitionOfPath(groupKey);
+            Metrics.PbtReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, (payload is null ? _readNodeGroupSnapshotNullLabels : _readNodeGroupSnapshotLabels)[partition]);
+            if (payload is not null) Metrics.PbtReadOnlySnapshotBundleNodeGroupBytes.AddBy(_readNodeGroupSnapshotSizeKeys[partition], payload.GetSpan().Length);
+        }
+        return true;
     }
 
     /// <summary>Reads persisted snapshots and the captured persistence reader, without probing in-memory snapshots.</summary>

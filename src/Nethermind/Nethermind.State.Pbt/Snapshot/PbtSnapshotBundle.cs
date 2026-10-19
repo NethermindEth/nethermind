@@ -117,6 +117,10 @@ public sealed class PbtSnapshotBundle(
     /// <summary>Returns a caller-owned group lease or a null tombstone from the visible snapshot layers; false means no snapshot has an entry.</summary>
     public bool TryGetSnapshotNodeGroup(PbtStorageNodePath groupKey, out RefCountingMemory? payload)
     {
+        if (WriteBuffer.TryGetNodeGroupReference(default(PbtStorageNodePath), out PbtGroupReference root)
+                ? WriteBuffer.TryFindNodeGroup(root, groupKey, out payload)
+                : snapshots.Count > 0 && snapshots[^1].Content.TryFindNodeGroup(snapshots[^1].RootGroupReference, groupKey, out payload))
+            return true;
         if (WriteBuffer.TryGetNodeGroup(groupKey, out payload)) return true;
         for (int index = snapshots.Count - 1; index >= 0; index--)
             if (snapshots[index].Content.TryGetNodeGroup(groupKey, out payload)) return true;

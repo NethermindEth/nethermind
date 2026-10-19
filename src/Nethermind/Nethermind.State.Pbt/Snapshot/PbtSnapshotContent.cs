@@ -167,6 +167,23 @@ public sealed class PbtSnapshotContent : IDisposable, IResettable
         return true;
     }
 
+    /// <summary>Resolves <paramref name="groupKey"/> in the tree whose root group is <paramref name="root"/>, as an independent caller-owned payload or a null absence.</summary>
+    /// <returns>False when the root is not a resident record or the walk reaches a group that is not resident.</returns>
+    public bool TryFindNodeGroup(PbtGroupReference root, PbtStorageNodePath groupKey, out RefCountingMemory? payload)
+    {
+        payload = null;
+        if (!root.IsDirect) return false;
+        using PbtGroupLog.OperationLease operation = NodeGroupLog.BeginOperation();
+        PbtGroupReference reference = NodeGroupLog.FindGroup(operation, root, groupKey, out PbtGroupRecord record);
+        if (reference.IsUnknown) return false;
+        if (reference.IsDirect)
+        {
+            payload = _nodeGroupMemory.Rent(record.Payload.Length);
+            record.Payload.Span.CopyTo(payload.GetSpan());
+        }
+        return true;
+    }
+
     internal ReadOnlyMemory<byte>? GetNodeGroupPayload(PbtGroupLog.OperationLease operation, PbtGroupReference reference)
     {
         if (reference.IsNone) return null;

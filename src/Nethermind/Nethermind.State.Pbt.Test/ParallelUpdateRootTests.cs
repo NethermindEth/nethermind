@@ -425,14 +425,23 @@ public class ParallelUpdateRootTests
 
     private static void AssertLoggedFold(LoggedGroupStore store, PbtTreeHarness expected, (byte[] Key, byte[]? Value)[] writes, FoldFanOut fanOut)
     {
+        PbtStorageNodePath[] previous = store.TreePayloads().Select(static group => group.Key).ToArray();
+        using PbtGroupLog.GenerationPin pin = store.Log.PinActiveGeneration();
         ValueHash256 actual = store.Fold(writes, fanOut);
         expected.ApplyBatch(writes);
+        HashSet<PbtStorageNodePath> current = expected.PhysicalPayloads.Select(static group => group.Key).ToHashSet();
         using (Assert.EnterMultipleScope())
         {
             Assert.That(actual, Is.EqualTo(expected.RootHash));
             Assert.That(store.Payloads().PhysicalRecords(), Is.EqualTo(expected.PhysicalPayloads.PhysicalRecords()));
             Assert.That(store.LastFallbackReads, Is.Zero);
             Assert.That(store.StoreReads, Is.EqualTo(store.LastFallbackReads));
+            Assert.That(store.TreePayloads().PhysicalRecords(), Is.EqualTo(expected.PhysicalPayloads.PhysicalRecords()), "the walk from the root reaches exactly the tree's groups");
+            Assert.That(store.TreePayloads(pin.WriteBoundary).Select(static group => group.Key), Is.EquivalentTo(store.LastWrittenGroups), "a bounded walk yields only the fold's own groups");
+            foreach (PbtPhysicalPayload group in expected.PhysicalPayloads)
+                Assert.That(store.FindGroup(group.Key), Is.EqualTo(group.Payload.ToArray()));
+            foreach (PbtStorageNodePath removed in previous.Where(key => !current.Contains(key)))
+                Assert.That(store.FindGroup(removed), Is.Empty, "a removed group resolves as absent rather than unresolved");
         }
     }
 
@@ -608,6 +617,7 @@ public class ParallelUpdateRootTests
         public bool FailDescendantReads { get; set; }
         public bool LastComplete { get; private set; }
         public long LastUsedBytes { get; private set; }
+        public List<PbtStorageNodePath> LastWrittenGroups { get; } = [];
         public int FoldConcurrency { get; set; } = Environment.ProcessorCount;
 
         public PbtGroupReference RootGroupReference => _inputRoot;
@@ -674,12 +684,14 @@ public class ParallelUpdateRootTests
                 LastUsedBytes = Log.UsedBytes;
                 LastDirectReads = _directReads;
                 LastFallbackReads = _fallbackReads;
+                LastWrittenGroups.Clear();
                 if (LastComplete)
                     foreach (List<(PbtStorageNodePath Path, PbtGroupReference Reference)> buffer in _writes)
                         foreach ((PbtStorageNodePath path, PbtGroupReference reference) in buffer)
                         {
                             _content.SetNodeGroupReference(path, reference);
                             if (path.BitDepth == 0) RootReference = reference;
+                            if (reference.IsDirect) LastWrittenGroups.Add(path);
                         }
                 _writes.Clear();
             }
@@ -713,6 +725,21 @@ public class ParallelUpdateRootTests
             RootReference = Log.Append(operation, default, record.Payload.Span, unknownLinks ? PbtGroupLinks.Unknown : record.Links);
             DiscardUncommittedState();
             _content.SetNodeGroupReference(default(PbtStorageNodePath), RootReference);
+        }
+
+        /// <summary>The groups reached by walking the log from <see cref="RootReference"/>, pruned below <paramref name="lowerBound"/>.</summary>
+        public IReadOnlyList<PbtPhysicalPayload> TreePayloads(PbtGroupReference lowerBound = default)
+        {
+            using PbtGroupLog.OperationLease operation = Log.BeginOperation();
+            return Log.EnumerateGroups(operation, RootReference, lowerBound).Select(static record => new PbtPhysicalPayload(record.Path, record.Payload.Span)).ToArray();
+        }
+
+        /// <summary>The payload of the group at <paramref name="path"/> in the tree under <see cref="RootReference"/>, empty when the tree has none, or null when unresolved.</summary>
+        public byte[]? FindGroup(PbtStorageNodePath path)
+        {
+            using PbtGroupLog.OperationLease operation = Log.BeginOperation();
+            PbtGroupReference reference = Log.FindGroup(operation, RootReference, path, out PbtGroupRecord record);
+            return reference.IsDirect ? record.Payload.ToArray() : reference.IsNone ? [] : null;
         }
 
         public IReadOnlyList<PbtPhysicalPayload> Payloads()
