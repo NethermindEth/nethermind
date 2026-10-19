@@ -329,6 +329,112 @@ public class TraceRpcModuleTests
             $"{{\"jsonrpc\":\"2.0\",\"error\":{{\"code\":{ErrorCodes.ResourceNotFound},\"message\":\"{BlockFinderExtensions.HeaderNotFound}\"}},\"id\":67}}"));
     }
 
+    [Test]
+    public async Task Trace_filter_reports_an_unavailable_body_in_the_range_before_missing_state(
+        [Values] bool streaming, [Values] bool isPruned)
+    {
+        Context context = new();
+        await context.Build();
+        using TestRpcBlockchain blockchain = context.Blockchain;
+        blockchain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = streaming;
+        ulong headNumber = blockchain.BlockTree.Head!.Number;
+        Block bodyless = blockchain.BlockTree.FindBlock(headNumber - 1)!;
+        using ILifetimeScope scope = WithStateAvailability(blockchain, header => header.Number != headNumber - 3,
+            new PrunedBodyBlockTree(blockchain.BlockTree, bodyless, isPruned));
+        ITraceRpcModule module = scope.Resolve<TraceModuleFactory>().Create();
+
+        string response = await RpcTest.TestSerializedRequest(module, "trace_filter",
+            new { fromBlock = $"0x{headNumber - 2:x}", toBlock = "latest" });
+
+        using JsonDocument document = JsonDocument.Parse(response);
+        Assert.That(document.RootElement.TryGetProperty("error", out JsonElement error), Is.True, response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(error.GetProperty("code").GetInt32(), Is.EqualTo(isPruned ? ErrorCodes.PrunedHistoryUnavailable : ErrorCodes.ResourceNotFound), response);
+            Assert.That(error.GetProperty("message").GetString(), isPruned
+                ? Does.StartWith(ErrorMessages.PrunedHistoryUnavailable)
+                : Is.EqualTo(BlockFinderExtensions.HeaderNotFound), response);
+        }
+    }
+
+    [Test]
+    public async Task Trace_filter_reports_a_body_pruned_after_the_range_check_as_pruned_history()
+    {
+        Context context = new();
+        await context.Build();
+        using TestRpcBlockchain blockchain = context.Blockchain;
+        blockchain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = false;
+        ulong headNumber = blockchain.BlockTree.Head!.Number;
+        using ILifetimeScope scope = WithStateAvailability(blockchain, _ => true,
+            new BodyPrunedAfterCheckBlockTree(blockchain.BlockTree, blockchain.BlockTree.FindHeader(headNumber - 1)!.Hash!));
+        ITraceRpcModule module = scope.Resolve<TraceModuleFactory>().Create();
+
+        string response = await RpcTest.TestSerializedRequest(module, "trace_filter",
+            new { fromBlock = $"0x{headNumber - 2:x}", toBlock = "latest" });
+
+        using JsonDocument document = JsonDocument.Parse(response);
+        Assert.That(document.RootElement.TryGetProperty("error", out JsonElement error), Is.True, response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(error.GetProperty("code").GetInt32(), Is.EqualTo(ErrorCodes.PrunedHistoryUnavailable), response);
+            Assert.That(error.GetProperty("message").GetString(), Does.StartWith(ErrorMessages.PrunedHistoryUnavailable), response);
+        }
+    }
+
+    /// <summary>Reports the body as stored, then fails to load it, as when the pruner deletes it mid-request.</summary>
+    private sealed class BodyPrunedAfterCheckBlockTree(IBlockTree inner, Hash256 prunedHash) : BlockTreeTestDouble(inner)
+    {
+        public override Block? FindBlock(Hash256 blockHash, BlockTreeLookupOptions options, ulong? blockNumber = null) =>
+            blockHash == prunedHash ? null : base.FindBlock(blockHash, options, blockNumber);
+    }
+
+    [Test]
+    public async Task Trace_filter_loads_block_bodies_only_while_streaming()
+    {
+        Context context = new();
+        await context.Build();
+        using TestRpcBlockchain blockchain = context.Blockchain;
+        blockchain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = true;
+        BodyLoadRecordingBlockTree blockTree = new(blockchain.BlockTree);
+        using ILifetimeScope scope = WithStateAvailability(blockchain, _ => true, blockTree);
+        ITraceRpcModule module = scope.Resolve<TraceModuleFactory>().Create();
+        ulong headNumber = blockchain.BlockTree.Head!.Number;
+        Hash256[] range = [.. Enumerable.Range(1, (int)headNumber).Select(n => blockchain.BlockTree.FindHeader((ulong)n)!.Hash!)];
+
+        using ResultWrapper<IEnumerable<ParityTxTraceFromStore>> result = module.trace_filter(new TraceFilterForRpc
+        {
+            FromBlock = new BlockParameter(1),
+            ToBlock = BlockParameter.Latest
+        });
+        Assert.That(blockTree.LoadedBodies, Is.Empty);
+
+        ArrayBufferWriter<byte> buffer = new();
+        using (Utf8JsonWriter writer = new(buffer))
+        {
+            ((JsonStreamingResultBase)result.Data).WriteAsJson(writer);
+        }
+
+        Assert.That(blockTree.LoadedBodies, Is.SupersetOf(range));
+    }
+
+    private sealed class BodyLoadRecordingBlockTree(IBlockTree inner) : BlockTreeTestDouble(inner)
+    {
+        public List<Hash256> LoadedBodies { get; } = [];
+
+        public override Block? FindBlock(Hash256 blockHash, BlockTreeLookupOptions options, ulong? blockNumber = null)
+        {
+            LoadedBodies.Add(blockHash);
+            return base.FindBlock(blockHash, options, blockNumber);
+        }
+
+        public override Block? FindBlock(ulong blockNumber, BlockTreeLookupOptions options)
+        {
+            Block? block = base.FindBlock(blockNumber, options);
+            if (block is not null) LoadedBodies.Add(block.Hash!);
+            return block;
+        }
+    }
+
     private static ILifetimeScope WithStateAvailability(TestRpcBlockchain blockchain, Func<BlockHeader, bool> hasState, IBlockFinder? blockFinder = null)
     {
         IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
@@ -488,20 +594,27 @@ public class TraceRpcModuleTests
         config.EnableTracingStreamMode = true;
         // A zero timeout cancels the replay as soon as it starts.
         if (replayFails) config.Timeout = 0;
-        using CancellationTokenSource timeout = TimeoutTestHelper.RentTrackingTimeoutSourceForNextRequest();
+        TimeoutTestHelper.TrackingCancellationTokenSource timeout = TimeoutTestHelper.RentTrackingTimeoutSourceForNextRequest();
         Hash256 txHash = blockchain.BlockTree.Head!.Transactions[0].Hash!;
 
-        if (replayFails)
+        try
         {
-            Assert.That(() => context.TraceRpcModule.trace_get(txHash, []), Throws.InstanceOf<OperationCanceledException>());
-        }
-        else
-        {
-            using ResultWrapper<ParityTxTraceFromStore?> result = context.TraceRpcModule.trace_get(txHash, []);
-            Assert.That(result.Data!.TransactionHash, Is.EqualTo(txHash));
-        }
+            if (replayFails)
+            {
+                Assert.That(() => context.TraceRpcModule.trace_get(txHash, []), Throws.InstanceOf<OperationCanceledException>());
+            }
+            else
+            {
+                using ResultWrapper<ParityTxTraceFromStore?> result = context.TraceRpcModule.trace_get(txHash, []);
+                Assert.That(result.Data!.TransactionHash, Is.EqualTo(txHash));
+            }
 
-        Assert.Throws<ObjectDisposedException>(() => _ = timeout.Token);
+            Assert.Throws<ObjectDisposedException>(() => _ = timeout.Token);
+        }
+        finally
+        {
+            TimeoutTestHelper.DisposeIfNotAlreadyObserved(timeout);
+        }
     }
 
     [Test]
@@ -580,6 +693,12 @@ public class TraceRpcModuleTests
     {
         public override Block? FindBlock(Hash256 blockHash, BlockTreeLookupOptions options, ulong? blockNumber = null) =>
             blockHash == prunedBlock.Hash ? null : base.FindBlock(blockHash, options, blockNumber);
+
+        public override Block? FindBlock(ulong blockNumber, BlockTreeLookupOptions options) =>
+            blockNumber == prunedBlock.Number ? null : base.FindBlock(blockNumber, options);
+
+        public override bool HasBlock(ulong blockNumber, Hash256 blockHash) =>
+            blockHash != prunedBlock.Hash && base.HasBlock(blockNumber, blockHash);
 
         public override ulong GetLowestBlock() => isPruned ? prunedBlock.Number + 1 : base.GetLowestBlock();
     }
@@ -2338,7 +2457,7 @@ public class TraceRpcModuleTests
         string response = await RpcTest.TestSerializedRequest(context.TraceRpcModule, method, parameters);
 
         Assert.That(JToken.Parse(response)["error"]?["message"]?.Value<string>(),
-            Does.Contain(RpcTransactionErrors.AtLeastOneBlobInBlobTransaction), response);
+            Does.Contain(RpcTransactionErrors.BlobFeeCapWithoutBlobHashes), response);
     }
 
     // Shaped like trace-interop's field-null-blobVersionedHashes-unpriced and field-null-authorizationList-unpriced probes.
@@ -3574,6 +3693,21 @@ public class TraceRpcModuleTests
             tracer.ReleaseResources();
             return Task.CompletedTask;
         })).SetName("ReleaseResources: idempotent across repeated calls");
+
+        yield return new TestCaseData((Func<Task>)(() =>
+        {
+            ArrayBufferWriter<byte> sink = new();
+            using Utf8JsonWriter writer = new(sink, new JsonWriterOptions { SkipValidation = true });
+            using CancellationTokenSource cts = new();
+            cts.Cancel();
+            using StreamingParityLikeBlockTracer tracer = new(ParityTraceTypes.Trace, ParityTraceStreamMode.Store, includeTxHash: false, writer, pipeWriter: null, cts.Token);
+            IReadOnlyCollection<ParityLikeTxTrace> traces = Substitute.For<IReadOnlyCollection<ParityLikeTxTrace>, IDisposable>();
+            traces.GetEnumerator().Returns(_ => new List<ParityLikeTxTrace> { new() }.GetEnumerator());
+
+            Assert.Throws<OperationCanceledException>(() => tracer.WriteTraces(traces));
+            ((IDisposable)traces).Received(1).Dispose();
+            return Task.CompletedTask;
+        })).SetName("WriteTraces: disposes the traces when writing them is cancelled");
     }
 
     [TestCaseSource(nameof(StreamingResourceSafetyCases))]

@@ -181,8 +181,7 @@ internal static class SocketJsonRpcResponseWriter
     public static async ValueTask<long> WriteAsync(
         Stream stream, SocketSendLock sendLock, JsonRpcResponse response, bool isBatch, long initialWrittenCount, CancellationToken cancellationToken)
     {
-        CountingStreamPipeWriter writer = new(stream, ResponsePipeWriterOptions, initialWrittenCount);
-        Exception? failure = null;
+        CountingStreamPipeWriter writer = sendLock.GetWriter(stream, ResponsePipeWriterOptions, initialWrittenCount);
         try
         {
             await JsonRpcResponseWriter.WriteAsync(writer, response, EthereumJsonSerializer.JsonOptions, isBatch, cancellationToken);
@@ -191,13 +190,9 @@ internal static class SocketJsonRpcResponseWriter
         }
         catch (Exception ex)
         {
-            failure = ex;
             if (writer.MayHaveWrittenToStream) sendLock.Fault(ex);
+            writer.Reset(0);
             throw;
-        }
-        finally
-        {
-            await writer.CompleteAsync(failure);
         }
     }
 }

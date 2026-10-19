@@ -18,7 +18,7 @@ public class StartHistoryPruner(IHistoryPruner historyPruner, IHistoryConfig his
 {
     public Task Execute(CancellationToken cancellationToken)
     {
-        if (historyConfig.Enabled()) historyPruner.SchedulePruneHistory();
+        if (historyConfig.Enabled() || historyPruner.BalCutoffBlockNumber is not null) historyPruner.SchedulePruneHistory();
         return Task.CompletedTask;
     }
 }

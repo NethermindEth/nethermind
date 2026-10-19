@@ -35,6 +35,8 @@ using ITimer = Nethermind.Core.Timers.ITimer;
 
 [assembly: InternalsVisibleTo("Nethermind.Blockchain.Test")]
 [assembly: InternalsVisibleTo("Nethermind.Network")]
+[assembly: InternalsVisibleTo("Nethermind.Network.Test")]
+[assembly: InternalsVisibleTo("DynamicProxyGenAssembly2")]
 
 namespace Nethermind.TxPool
 {
@@ -350,7 +352,7 @@ namespace Nethermind.TxPool
                 new RecoverAuthorityFilter(ecdsa),
                 new DelegatedAccountFilter(_transactions, _blobTransactions, chainHeadInfoProvider.ReadOnlyStateProvider, _pendingDelegations),
                 new FrameTxSimulationBudgetFilter(frameTxPrefixSimulator, _logger), // before FrameTxSignatureFilter: no recoveries for a transaction the spent budget will defer anyway
-                new FrameTxSignatureFilter(_specProvider, ecdsa, _logger), // last: elliptic-curve recovery per signature, up to the decoder's 1024, so let the cheap filters reject first
+                new FrameTxSignatureFilter(_specProvider, ecdsa, _logger, _headInfo), // last: elliptic-curve work per signature, up to what FrameTxVerifyGasFilter allows, so let the cheap filters reject first
             ];
 
             if (incomingTxFilters is not null)
@@ -1062,7 +1064,7 @@ namespace Nethermind.TxPool
                     {
                         continue;
                     }
-                    SubmitTx(tx, isEip155Enabled ? TxHandlingOptions.None : TxHandlingOptions.PreEip155Signing);
+                    SubmitTx(tx, isEip155Enabled ? TxHandlingOptions.None : TxHandlingOptions.PreEip155Signing, ownsTransaction: false, out _, out _, reAddedFromReorg: true);
                 }
 
                 if (_blobReorgsSupportEnabled
@@ -1083,7 +1085,7 @@ namespace Nethermind.TxPool
 
                             blobTx.SenderAddress = senderAddress;
                         }
-                        SubmitTx(blobTx, isEip155Enabled ? TxHandlingOptions.None : TxHandlingOptions.PreEip155Signing);
+                        SubmitTx(blobTx, isEip155Enabled ? TxHandlingOptions.None : TxHandlingOptions.PreEip155Signing, ownsTransaction: false, out _, out _, reAddedFromReorg: true);
                     }
                     if (_logger.IsTrace) _logger.Trace($"Readded txs from reorged block {previousBlock.Number} (hash {previousBlock.Hash}) to blob pool");
 
@@ -1736,21 +1738,42 @@ namespace Nethermind.TxPool
         }
 
         public AcceptTxResult SubmitTx(Transaction tx, TxHandlingOptions handlingOptions)
-            => SubmitTx(tx, handlingOptions, ownsTransaction: false, out _);
+            => SubmitTx(tx, handlingOptions, ownsTransaction: false, out _, out _);
 
-        AcceptTxResult IRecyclableTxPool.SubmitOwnedTx(Transaction tx, out bool canRecycle)
+        AcceptTxResult IRecyclableTxPool.SubmitOwnedTx(Transaction tx, out bool canRecycle, out bool frameValidationRan)
         {
             // A derived pool can reimplement ITxPool and retain transactions on rejection.
             if (GetType() != typeof(TxPool))
             {
                 canRecycle = false;
+                frameValidationRan = false;
                 return ((ITxPool)this).SubmitTx(tx, TxHandlingOptions.None);
             }
-            return SubmitTx(tx, TxHandlingOptions.None, ownsTransaction: true, out canRecycle);
+            return SubmitTx(tx, TxHandlingOptions.None, ownsTransaction: true, out canRecycle, out frameValidationRan);
         }
 
-        private AcceptTxResult SubmitTx(Transaction tx, TxHandlingOptions handlingOptions, bool ownsTransaction, out bool canRecycle)
+        bool IRecyclableTxPool.TrySubmitKnown(in ValueHash256 hash)
         {
+            // Only what SubmitTx settles without reading the body: a syncing pool answers Syncing first,
+            // and a NewDiscovered subscriber is handed the transaction itself.
+            if (GetType() != typeof(TxPool)
+                || (!AcceptTxWhenNotSynced && _headInfo.IsSyncing)
+                || NewDiscovered is not null
+                || !_hashCache.Get(in hash))
+            {
+                return false;
+            }
+
+            Metrics.PendingTransactionsReceived++;
+            Metrics.PendingTransactionsKnown++;
+            Metrics.PendingTransactionsDiscarded++;
+            if (!_retryCache.IsAwaitingAnnouncement(in hash)) _retryCache.Received(in hash);
+            return true;
+        }
+
+        private AcceptTxResult SubmitTx(Transaction tx, TxHandlingOptions handlingOptions, bool ownsTransaction, out bool canRecycle, out bool frameValidationRan, bool reAddedFromReorg = false)
+        {
+            frameValidationRan = false;
             canRecycle = ownsTransaction && handlingOptions == TxHandlingOptions.None;
             if (!canRecycle)
                 PooledBlobBuffers.Disown(tx);
@@ -1806,7 +1829,7 @@ namespace Nethermind.TxPool
                 IReleaseSpec headSpec = _specProvider.GetCurrentHeadSpec();
                 // Observation and insertion share the head lock so an A -> B -> A transition cannot cross a validation publish unseen.
                 ObserveHeadSpec(headSpec);
-                state = new(tx, _accounts, headSpec);
+                state = new(tx, _accounts, headSpec) { ReAddedFromReorg = reAddedFromReorg };
                 accepted = FilterTransactions(tx, handlingOptions, ref state, ref canRecycle);
                 if (accepted)
                 {
@@ -1854,12 +1877,14 @@ namespace Nethermind.TxPool
                 _newHeadLock.ExitReadLock();
             }
 
-            if (state.FrameSimulationYielded && _retryCache.TryDefer(tx.Hash!))
+            frameValidationRan = state.FrameValidationRan;
+
+            if (state.FrameValidationYielded && _retryCache.TryDefer(tx.Hash!))
             {
                 _hashCache.DeleteFromCurrentBlock(tx.Hash!);
             }
             // A yielded push stays known, so resends buy no validation, and waits for an announcement to refetch it.
-            else if (!(state.FrameSimulationYielded && _retryCache.TryAwaitAnnouncement(tx.Hash!))
+            else if (!(state.FrameValidationYielded && _retryCache.TryAwaitAnnouncement(tx.Hash!))
                 && accepted != AcceptTxResult.Invalid
                 && accepted != AcceptTxResult.InvalidBlobProofs
                 && !(accepted == AcceptTxResult.AlreadyKnown && _retryCache.IsAwaitingAnnouncement(tx.Hash!)))
@@ -2195,7 +2220,7 @@ namespace Nethermind.TxPool
             bool evictNextTxs = false;
             int invalidatedByFork = 0;
 
-            foreach (Transaction tx in transactions)
+            foreach (Transaction tx in TxDistinctSortedPool.InOrder(transactions))
             {
                 if (KeyedNonceManager.UsesKeyedNonce(tx))
                 {
