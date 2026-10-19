@@ -19,9 +19,13 @@ public class TransactionTraceExecutorTests
         CountingOverlayState state = new(accepts);
         TransactionTraceExecutor executor = Create(state, Substitute.For<IBlockAccessListManager>());
 
-        for (int i = 0; i < 3; i++) Assert.That(executor.CanSeed, Is.EqualTo(accepts));
+        bool[] answers = [executor.CanSeed, executor.CanSeed, executor.CanSeed];
 
-        Assert.That(state.Probes, Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(answers, Is.All.EqualTo(accepts));
+            Assert.That(state.Probes, Is.EqualTo(1));
+        }
     }
 
     [Test]
@@ -35,8 +39,11 @@ public class TransactionTraceExecutorTests
         balManager.ForceConstructGeneratedBlockAccessList.Returns(true);
         Assert.That(executor.CanSeed, Is.False);
         balManager.ForceConstructGeneratedBlockAccessList.Returns(false);
-        Assert.That(executor.CanSeed, Is.True);
-        Assert.That(state.Probes, Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(executor.CanSeed, Is.True);
+            Assert.That(state.Probes, Is.EqualTo(1));
+        }
     }
 
     [Test]
@@ -49,8 +56,11 @@ public class TransactionTraceExecutorTests
             state,
             Substitute.For<IBlockAccessListManager>());
 
-        Assert.That(executor.CanSeed, Is.False);
-        Assert.That(state.Probes, Is.Zero);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(executor.CanSeed, Is.False);
+            Assert.That(state.Probes, Is.Zero);
+        }
     }
 
     private static TransactionTraceExecutor Create(IWorldState state, IBlockAccessListManager balManager) => new(
