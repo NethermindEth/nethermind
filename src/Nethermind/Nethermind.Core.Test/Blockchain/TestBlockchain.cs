@@ -213,7 +213,6 @@ public class TestBlockchain : IDisposable
         }
 
         ContainerBuilder builder = ConfigureContainer(new ContainerBuilder(), configProvider);
-        ConfigureContainer(builder, configProvider);
         configurer?.Invoke(builder);
         builder.ConfigureTestConfiguration(conf => conf.SealEngineType = SealEngineType);
 

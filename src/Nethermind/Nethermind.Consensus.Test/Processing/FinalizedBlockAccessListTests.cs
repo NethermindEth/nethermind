@@ -28,7 +28,6 @@ using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Init.Modules;
-using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.Forks;
@@ -442,7 +441,7 @@ public class FinalizedBlockAccessListMetricTests
         Block block = env.CreateBlock();
         env.Beacon.GetFinalizedHash().Returns(finalized ? block.Hash : env.Genesis.Hash);
         env.SetBlockAge(block, catchingUp);
-        long newPayloadBefore = FinalizedBlockAccessListTests.Fallbacks(BalCatchUpFallbackReason.NewPayload);
+        long engineApiBefore = FinalizedBlockAccessListTests.Fallbacks(BalCatchUpFallbackReason.EngineApi);
         long notFinalizedBefore = FinalizedBlockAccessListTests.Fallbacks(BalCatchUpFallbackReason.NotFinalized);
         long reconstructedBefore = MergeMetrics.BalCatchUpBlocks;
         using IDisposable scope = env.State.BeginScope(env.Genesis.Header);
@@ -451,7 +450,7 @@ public class FinalizedBlockAccessListMetricTests
         {
             Assert.That(env.Recording.Calls, Is.EqualTo(1), "the engine API validates by executing");
             Assert.That(MergeMetrics.BalCatchUpBlocks - reconstructedBefore, Is.Zero);
-            Assert.That(FinalizedBlockAccessListTests.Fallbacks(BalCatchUpFallbackReason.NewPayload) - newPayloadBefore, Is.EqualTo(catchingUp && finalized ? 1 : 0));
+            Assert.That(FinalizedBlockAccessListTests.Fallbacks(BalCatchUpFallbackReason.EngineApi) - engineApiBefore, Is.EqualTo(catchingUp && finalized ? 1 : 0));
             Assert.That(FinalizedBlockAccessListTests.Fallbacks(BalCatchUpFallbackReason.NotFinalized) - notFinalizedBefore, Is.EqualTo(catchingUp && !finalized ? 1 : 0));
         }
     }
@@ -471,30 +470,6 @@ public class FinalizedBlockAccessListMetricTests
             Assert.That(env.Recording.Calls, Is.EqualTo(1));
             Assert.That(FinalizedBlockAccessListTests.Fallbacks(BalCatchUpFallbackReason.NotFinalized) - notFinalizedBefore, Is.EqualTo(catchingUp ? 1 : 0));
         }
-    }
-
-    [Test]
-    public void A_nested_decorator_delegates_instead_of_counting_again([Values] bool useFlatDb, [Values] bool finalized)
-    {
-        using FinalizedBlockAccessListTests.TestEnvironment env = new(useFlatDb);
-        Block block = env.CreateBlock();
-        env.Beacon.GetFinalizedHash().Returns(finalized ? block.Hash : env.Genesis.Hash);
-        env.SetBlockAge(block, catchingUp: true);
-        // As when the main processing module is loaded twice: the outer decorator wraps the one already installed.
-        FinalizedBlockAccessListProcessor outer = new(env.Processor, env.Policy, env.State, env.Receipts, env.Recovery,
-            env.Timestamper, new BlocksConfig(), LimboLogs.Instance);
-        long notFinalizedBefore = FinalizedBlockAccessListTests.Fallbacks(BalCatchUpFallbackReason.NotFinalized);
-        long reconstructedBefore = MergeMetrics.BalCatchUpBlocks;
-        using IDisposable scope = env.State.BeginScope(env.Genesis.Header);
-        outer.ProcessOne(block, ProcessingOptions.None, NullBlockTracer.Instance, Amsterdam.Instance);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(env.Recording.Calls, Is.EqualTo(finalized ? 0 : 1));
-            Assert.That(MergeMetrics.BalCatchUpBlocks - reconstructedBefore, Is.EqualTo(finalized ? 1 : 0));
-            Assert.That(FinalizedBlockAccessListTests.Fallbacks(BalCatchUpFallbackReason.NotFinalized) - notFinalizedBefore, Is.EqualTo(finalized ? 0 : 1));
-            Assert.That(env.State.StateRoot, Is.EqualTo(finalized ? block.StateRoot : env.Genesis.StateRoot));
-        }
-        block.DisposeAccountChanges();
     }
 
     [Test]

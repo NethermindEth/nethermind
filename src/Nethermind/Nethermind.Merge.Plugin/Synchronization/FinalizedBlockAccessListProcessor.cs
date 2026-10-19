@@ -24,7 +24,7 @@ namespace Nethermind.Merge.Plugin.Synchronization;
 /// receipts are not fetched for them, and a consensus client range-syncing them (Lighthouse after an execution
 /// client outage, for example) only finalizes each block about two epochs after handing it over. Such catch-up
 /// blocks are counted in <see cref="Metrics.BalCatchUpFallbacks"/> under
-/// <see cref="BalCatchUpFallbackReason.NewPayload"/> or <see cref="BalCatchUpFallbackReason.NotFinalized"/>.
+/// <see cref="BalCatchUpFallbackReason.EngineApi"/> or <see cref="BalCatchUpFallbackReason.NotFinalized"/>.
 /// Lists can only be fetched from peers that still serve them, so an outage longer than the peers' access list
 /// retention executes the older blocks.
 /// </remarks>
@@ -58,29 +58,9 @@ public sealed class FinalizedBlockAccessListProcessor(
         remove { inner.TransactionsExecuted -= value; _transactionsExecuted -= value; }
     }
 
-    // Set while an instance decides a block, so one nested under it (a pipeline that loads the module twice)
-    // delegates instead of evaluating and counting the same block again.
-    [ThreadStatic] private static bool _deciding;
-
     /// <inheritdoc/>
     public (Block Block, TxReceipt[] Receipts) ProcessOne(Block block, ProcessingOptions options,
         IBlockTracer blockTracer, IReleaseSpec spec, CancellationToken token = default)
-    {
-        if (_deciding) return inner.ProcessOne(block, options, blockTracer, spec, token);
-
-        _deciding = true;
-        try
-        {
-            return Decide(block, options, blockTracer, spec, token);
-        }
-        finally
-        {
-            _deciding = false;
-        }
-    }
-
-    private (Block Block, TxReceipt[] Receipts) Decide(Block block, ProcessingOptions options,
-        IBlockTracer blockTracer, IReleaseSpec spec, CancellationToken token)
     {
         const ProcessingOptions excluded = ProcessingOptions.ReadOnlyChain | ProcessingOptions.ForceProcessing
             | ProcessingOptions.NoValidation | ProcessingOptions.ForceSequentialBlockAccessList;
@@ -88,13 +68,13 @@ public sealed class FinalizedBlockAccessListProcessor(
             return inner.ProcessOne(block, options, blockTracer, spec, token);
 
         // The engine API validates the payloads it is handed, so those always execute.
-        bool newPayload = options.ContainsFlag(ProcessingOptions.MarkAsProcessed);
-        if (newPayload || options.ContainsFlag(ProcessingOptions.DoNotUpdateHead))
+        bool engineApi = options.ContainsFlag(ProcessingOptions.MarkAsProcessed);
+        if (engineApi || options.ContainsFlag(ProcessingOptions.DoNotUpdateHead))
         {
-            if (newPayload && IsCatchingUp(block.Header))
+            if (engineApi && IsCatchingUp(block.Header))
             {
                 BalCatchUpEligibility eligibility = policy.Evaluate(block.Header);
-                if (eligibility == BalCatchUpEligibility.Eligible) CountCatchUpExecution(block, BalCatchUpFallbackReason.NewPayload);
+                if (eligibility == BalCatchUpEligibility.Eligible) CountCatchUpExecution(block, BalCatchUpFallbackReason.EngineApi);
                 else if (eligibility == BalCatchUpEligibility.NotFinalized) CountCatchUpExecution(block, BalCatchUpFallbackReason.NotFinalized);
             }
             return inner.ProcessOne(block, options, blockTracer, spec, token);

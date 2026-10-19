@@ -18,9 +18,10 @@ public enum BalCatchUpFallbackReason
     /// <summary>Applying the list did not reproduce the header's state root.</summary>
     StateRootMismatch,
 
-    /// <summary>A finalized block arrived through <c>engine_newPayload</c>, which always executes.</summary>
+    /// <summary>A finalized block arrived through the engine API, which always executes: <c>engine_newPayload</c>,
+    /// or a <c>forkchoiceUpdated</c> that queues an unprocessed head again.</summary>
     /// <remarks>Counted only for blocks older than two epochs, so following the chain head does not add to it.</remarks>
-    NewPayload,
+    EngineApi,
 
     /// <summary>The block is more than two epochs old, so it is being caught up, but the consensus client has not
     /// reported it finalized yet.</summary>
