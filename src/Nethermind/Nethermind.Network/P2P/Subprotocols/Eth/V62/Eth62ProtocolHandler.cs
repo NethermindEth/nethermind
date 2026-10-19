@@ -27,7 +27,7 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 {
-    public class Eth62ProtocolHandler : SyncPeerProtocolHandlerBase, IZeroProtocolHandler
+    public class Eth62ProtocolHandler : SyncPeerProtocolHandlerBase, IZeroProtocolHandler, IKnownTransactionFilter
     {
         protected bool _statusReceived;
         private readonly TxFloodController _floodController;
@@ -76,6 +76,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
         internal bool IsFloodDowngraded => _floodController.IsDowngraded;
 
         private protected void IgnorePooledTransactionResponse() => _floodController.ClearPooledTransactionRequests();
+
+        /// <summary>This peer's budget for failing frame transaction validation, or <see langword="null"/> when unlimited.</summary>
+        private protected virtual PeerValidationGasBudget? FrameValidationBudget => null;
 
         public static string Code => Protocol.Eth;
         public override byte ProtocolVersion => EthVersions.Eth62;
@@ -275,7 +278,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
             try
             {
-                message = Deserialize<T>(packet.Content);
+                // Pooled responses keep every item: the flood controller and announcement checks judge the response as sent.
+                using (TransactionsMessageSerializer.SkipKnown(typeof(T) == typeof(TransactionsMessage) ? this : null))
+                {
+                    message = Deserialize<T>(packet.Content);
+                }
                 TransactionsMessage transactions = getTransactions(message);
                 reservation.Attach(transactions.Transactions);
                 transactions.Transactions = reservation;
@@ -287,6 +294,29 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                 reservation?.Dispose();
             }
         }
+
+        bool IKnownTransactionFilter.TrySettleKnown(in ValueHash256 hash, TxType type, int size)
+        {
+            // A closing peer's transactions are dropped by HandleSlow, so none is settled.
+            if (Session.IsClosing
+                || !MatchesAnnouncedShape(in hash, type, size)
+                || _txPool is not IRecyclableTxPool recyclablePool
+                || !recyclablePool.TrySubmitKnown(in hash))
+            {
+                return false;
+            }
+
+            NotifiedTransactions.Set(hash);
+            _floodController.Report(AcceptTxResult.AlreadyKnown);
+            return true;
+        }
+
+        /// <summary>Whether a broadcast transaction matches whatever this peer announced about its type and size.</summary>
+        /// <remarks>
+        /// Lets a known transaction be settled undecoded only when <see cref="HandleSlow"/> would also accept its shape;
+        /// on a mismatch the transaction is decoded, and rejected there.
+        /// </remarks>
+        private protected virtual bool MatchesAnnouncedShape(in ValueHash256 hash, TxType type, int size) => true;
 
         protected void Handle(TransactionsMessage msg)
         {
@@ -417,6 +447,17 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                 NotifiedTransactions.Set(tx.Hash.ValueHash256);
             }
 
+            PeerValidationGasBudget? budget = tx.SupportsFrames ? FrameValidationBudget : null;
+            ulong validationGas = budget is null ? 0 : FrameTxValidation.ValidationWorkGas(tx);
+            if (budget is not null && !budget.TryReserve(validationGas))
+            {
+                // Out of budget: dropped unvalidated, and counted against the peer whose failing validations spent it.
+                _floodController.Report(AcceptTxResult.FramePeerValidationBudgetSpent);
+                if (isTrace) Log(tx, AcceptTxResult.FramePeerValidationBudgetSpent);
+                ReturnUnsubmittedTransactions(new ReadOnlySpan<Transaction>(in tx));
+                return;
+            }
+
             // A blob tx hash does not cover the sidecar: if a copy with a bad sidecar was rejected first, judge this
             // copy on its own, as the sparse path does. Done before the only submission, since a rejected owned tx
             // has its sidecar buffers returned to the pool.
@@ -426,9 +467,16 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             }
 
             bool canRecycle = false;
+            bool validationRan = false;
             AcceptTxResult accepted = _txPool is IRecyclableTxPool recyclablePool
-                ? recyclablePool.SubmitOwnedTx(tx, out canRecycle)
+                ? recyclablePool.SubmitOwnedTx(tx, out canRecycle, out validationRan)
                 : _txPool.SubmitTx(tx, TxHandlingOptions.None);
+            // Validation the pool ran for a transaction it then rejected stays charged, whichever filter rejected it,
+            // unless the pool deferred it for a bound of its own: that load is the node's, not this peer's.
+            bool charged = !accepted
+                && accepted != AcceptTxResult.FrameSimulationDeferred
+                && (validationRan || accepted == AcceptTxResult.FrameSimulationFailed);
+            if (budget is not null && !charged) budget.Refund(validationGas);
             _floodController.Report(accepted);
             if (isTrace) Log(tx, accepted);
             if (!accepted && canRecycle) ReturnUnsubmittedTransactions(new ReadOnlySpan<Transaction>(in tx));

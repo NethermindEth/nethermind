@@ -6,6 +6,7 @@ using System.Text.Json;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Prestate;
@@ -13,6 +14,7 @@ using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using NUnit.Framework;
 
@@ -659,6 +661,9 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
             },
             "0x24cd2edba056b7c654a50e8201b619d4f624fdda": {
               "codeHash": "0x0000000000000000000000000000000000000000000000000000000000000000"
+            },
+            "0x76e68a8696537e4141926f3e528733af9e237d69": {
+              "balance": "0x56bc75e2d63100001"
             }
           }
         }
@@ -679,6 +684,209 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
             .BuildResult();
 
         AssertTrace(trace, expectedTrace);
+    }
+
+    private static readonly UInt256 VictimBalance = 7;
+    private static readonly UInt256 HeirBalance = 1;
+
+    /// <summary>As in geth, the account executing SELFDESTRUCT is marked deleted when the opcode runs, even if the
+    /// transaction reverts: it stays whole in pre and is left out of post. After EIP-6780 a pre-existing account
+    /// survives, so it is a regular diff.</summary>
+    [Test]
+    public void Test_PrestateTrace_SelfDestruct_OfExistingAccount_DeletesItOnlyBeforeCancun([Values] bool cancun, [Values] bool toItself, [Values] bool revert)
+    {
+        bool deleted = !cancun;
+        bool changed = !toItself && !revert;
+        byte[] victimCode = toItself
+            ? Prepare.EvmCode.Op(Instruction.ADDRESS).Op(Instruction.SELFDESTRUCT).Done
+            : Prepare.EvmCode.SELFDESTRUCT(TestItem.AddressE).Done;
+        NativePrestateTracerDiffMode diff = TraceSelfDestruct(cancun, victimCode, revert);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(diff.pre.TryGetValue(TestItem.AddressC, out NativePrestateTracerAccount? pre), Is.EqualTo(deleted || changed));
+            Assert.That(pre?.Balance, Is.EqualTo(deleted || changed ? (UInt256?)VictimBalance : null));
+            Assert.That(diff.post.TryGetValue(TestItem.AddressC, out NativePrestateTracerAccount? post), Is.EqualTo(!deleted && changed));
+            Assert.That(post?.Balance, Is.EqualTo(!deleted && changed ? (UInt256?)UInt256.Zero : null));
+        }
+    }
+
+    /// <summary>Port of geth's <c>prestate_tracer_with_diff_mode/suicide_cancun.json</c>: a pre-existing contract
+    /// that writes storage and self-destructs under Cancun stays in post with a zero balance.</summary>
+    [Test]
+    public void Test_PrestateTrace_SelfDestruct_SuicideCancun()
+    {
+        Address victim = new("0x2222222222222222222222222222222222222222");
+        Address heir = new("0x1111111111111111111111111111111111111111");
+        byte[] victimCode = Bytes.FromHexString("0x6099600155731111111111111111111111111111111111111111ff");
+        TestState.CreateAccount(Address.Zero, 100.Ether);
+        TestState.CreateAccount(heir, 0);
+        TestState.CreateAccount(victim, 1.Ether, 1);
+        TestState.InsertCode(victim, victimCode, Spec);
+        TestState.Set(new StorageCell(victim, 1), (UInt256)0xabcd);
+        TestState.Set(new StorageCell(victim, 2), (UInt256)0x1234);
+
+        IReleaseSpec spec = SpecProvider.GetSpec(MainnetSpecProvider.CancunActivation);
+        NativePrestateTracer tracer = new(TestState, GetGethTraceOptions(DiffMode), Hash256.Zero, TestItem.AddressA, TestItem.AddressB, Address.Zero, releaseSpec: spec);
+        Execute(tracer, Prepare.EvmCode.Call(victim, 50_000).Done, MainnetSpecProvider.CancunActivation);
+        NativePrestateTracerDiffMode diff = (NativePrestateTracerDiffMode)tracer.BuildResult().CustomTracerResult!.Value;
+
+        using (Assert.EnterMultipleScope())
+        {
+            NativePrestateTracerAccount pre = diff.pre[victim];
+            Assert.That(pre.Balance, Is.EqualTo((UInt256?)1.Ether));
+            Assert.That(pre.Nonce, Is.EqualTo((UInt256?)1));
+            Assert.That(pre.Code.ToArray(), Is.EqualTo(victimCode));
+            Assert.That(pre.Storage, Is.EquivalentTo(new Dictionary<UInt256, UInt256> { [1] = 0xabcd }));
+
+            NativePrestateTracerAccount post = diff.post[victim];
+            Assert.That(post.Balance, Is.EqualTo((UInt256?)UInt256.Zero));
+            Assert.That(post.Nonce, Is.Null);
+            Assert.That(post.Code.IsEmpty, Is.True);
+            Assert.That(post.Storage, Is.EquivalentTo(new Dictionary<UInt256, UInt256> { [1] = 0x99 }));
+            Assert.That(diff.post[heir].Balance, Is.EqualTo((UInt256?)1.Ether));
+        }
+    }
+
+    [Test]
+    public void Test_PrestateTrace_SelfDestruct_BeneficiaryIsABalanceChange([Values] bool cancun)
+    {
+        NativePrestateTracerDiffMode diff = TraceSelfDestruct(cancun, Prepare.EvmCode.SELFDESTRUCT(TestItem.AddressE).Done);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(diff.pre[TestItem.AddressE].Balance, Is.EqualTo((UInt256?)HeirBalance));
+            Assert.That(diff.post[TestItem.AddressE].Balance, Is.EqualTo((UInt256?)(HeirBalance + VictimBalance)));
+        }
+    }
+
+    /// <summary>An account created and self-destructed in one transaction is deleted under every fork; it shows in
+    /// pre only when it held a balance before the transaction.</summary>
+    [Test]
+    public void Test_PrestateTrace_SelfDestruct_OfSameTxCreation_DeletesIt([Values] bool cancun, [Values] bool prefunded)
+    {
+        const int endowment = 3;
+        UInt256 prefund = prefunded ? 2u : 0u;
+        byte[] initCode = Prepare.EvmCode.SELFDESTRUCT(TestItem.AddressE).Done;
+        Address created = ContractAddress.From(TestItem.AddressC, 0);
+        if (prefunded) TestState.CreateAccount(created, prefund);
+
+        NativePrestateTracerDiffMode diff = TraceSelfDestruct(cancun, Prepare.EvmCode.Create(initCode, endowment).Done);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(diff.pre.TryGetValue(created, out NativePrestateTracerAccount? pre), Is.EqualTo(prefunded));
+            if (prefunded) Assert.That(pre!.Balance, Is.EqualTo((UInt256?)prefund));
+            Assert.That(diff.post.ContainsKey(created), Is.False);
+            Assert.That(diff.post[TestItem.AddressE].Balance, Is.EqualTo((UInt256?)(HeirBalance + endowment + prefund)));
+        }
+    }
+
+    /// <summary>As in geth, the contract of a contract-creation transaction counts as created in it, so initcode
+    /// that self-destructs deletes it under every fork.</summary>
+    [Test]
+    public void Test_PrestateTrace_SelfDestruct_InCreationTx_DeletesTheCreatedContract([Values] bool cancun)
+    {
+        const int prefund = 2;
+        ForkActivation fork = cancun ? MainnetSpecProvider.CancunActivation : MainnetSpecProvider.ShanghaiActivation;
+        TestState.CreateAccount(TestItem.AddressE, HeirBalance);
+        (Block block, Transaction transaction) = PrepareInitTx(fork, 100_000, Prepare.EvmCode.SELFDESTRUCT(TestItem.AddressE).Done);
+        Address created = ContractAddress.From(transaction.SenderAddress!, transaction.Nonce);
+        TestState.CreateAccount(created, prefund);
+        TestState.Commit(SpecProvider.GenesisSpec);
+
+        IReleaseSpec spec = SpecProvider.GetSpec(block.Header);
+        NativePrestateTracer tracer = new(TestState, GetGethTraceOptions(DiffMode), transaction.Hash, transaction.SenderAddress, null, block.Beneficiary, transaction, spec);
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, spec), tracer);
+        NativePrestateTracerDiffMode diff = (NativePrestateTracerDiffMode)tracer.BuildResult().CustomTracerResult!.Value;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(diff.pre[created].Balance, Is.EqualTo((UInt256?)(UInt256)prefund));
+            Assert.That(diff.post.ContainsKey(created), Is.False);
+            Assert.That(diff.post[TestItem.AddressE].Balance, Is.EqualTo((UInt256?)(HeirBalance + prefund + transaction.Value)));
+        }
+    }
+
+    /// <summary>EIP-8246: a same-transaction creation that self-destructs keeps the balance it ends the transaction
+    /// with, whether kept by a SELFDESTRUCT to itself or received afterwards, so it shows in post as a balance-only
+    /// account; with no balance EIP-161 removes it and it shows nowhere.</summary>
+    [Test]
+    public void Test_PrestateTrace_SelfDestruct_UnderEip8246_KeepsTheBalance([Values] bool toItself, [Values] bool funded)
+    {
+        const int balance = 3;
+        Address created = ContractAddress.From(TestItem.AddressC, 0);
+        byte[] initCode = toItself
+            ? Prepare.EvmCode.Op(Instruction.ADDRESS).Op(Instruction.SELFDESTRUCT).Done
+            : Prepare.EvmCode.SELFDESTRUCT(TestItem.AddressE).Done;
+        Prepare victimCode = Prepare.EvmCode.Create(initCode, toItself && funded ? balance : 0u);
+        if (!toItself && funded) victimCode = victimCode.CallWithValue(created, 50_000, balance);
+
+        NativePrestateTracerDiffMode diff = TraceSelfDestruct(MainnetSpecProvider.AmsterdamActivation, victimCode.Done);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(diff.post[TestItem.AddressC].Nonce, Is.EqualTo((UInt256?)1), "CREATE must succeed");
+            Assert.That(diff.pre.ContainsKey(created), Is.False);
+            Assert.That(diff.post.TryGetValue(created, out NativePrestateTracerAccount? post), Is.EqualTo(funded));
+            if (funded)
+            {
+                Assert.That(post!.Balance, Is.EqualTo((UInt256?)(UInt256)balance));
+                Assert.That(post.Nonce, Is.Null);
+                Assert.That(post.Code.IsEmpty, Is.True);
+                Assert.That(post.Storage, Is.Null);
+            }
+        }
+    }
+
+    /// <summary>EIP-8246: the contract of a contract-creation transaction whose initcode self-destructs to itself keeps
+    /// its balance.</summary>
+    [Test]
+    public void Test_PrestateTrace_SelfDestruct_InCreationTxUnderEip8246_KeepsTheBalance()
+    {
+        const int prefund = 2;
+        ForkActivation fork = MainnetSpecProvider.AmsterdamActivation;
+        // EIP-8037 state gas makes an Amsterdam creation tx cost far more than 100k.
+        (Block block, Transaction transaction) = PrepareInitTx(fork, 1_000_000, Prepare.EvmCode.Op(Instruction.ADDRESS).Op(Instruction.SELFDESTRUCT).Done);
+        Address created = ContractAddress.From(transaction.SenderAddress!, transaction.Nonce);
+        TestState.CreateAccount(created, prefund);
+        TestState.Commit(SpecProvider.GenesisSpec);
+
+        IReleaseSpec spec = SpecProvider.GetSpec(block.Header);
+        NativePrestateTracer tracer = new(TestState, GetGethTraceOptions(DiffMode), transaction.Hash, transaction.SenderAddress, null, block.Beneficiary, transaction, spec);
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, spec), tracer);
+        NativePrestateTracerDiffMode diff = (NativePrestateTracerDiffMode)tracer.BuildResult().CustomTracerResult!.Value;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(diff.pre[created].Balance, Is.EqualTo((UInt256?)(UInt256)prefund));
+            Assert.That(diff.post.TryGetValue(created, out NativePrestateTracerAccount? post), Is.True);
+            Assert.That(post?.Balance, Is.EqualTo((UInt256?)(prefund + transaction.Value)));
+        }
+    }
+
+    /// <summary>Calls <see cref="TestItem.AddressC"/>, which runs <paramref name="victimCode"/>, with
+    /// <see cref="TestItem.AddressE"/> as an existing beneficiary.</summary>
+    private NativePrestateTracerDiffMode TraceSelfDestruct(bool cancun, byte[] victimCode, bool revert = false) =>
+        TraceSelfDestruct(cancun ? MainnetSpecProvider.CancunActivation : MainnetSpecProvider.ShanghaiActivation, victimCode, revert);
+
+    private NativePrestateTracerDiffMode TraceSelfDestruct(ForkActivation fork, byte[] victimCode, bool revert = false)
+    {
+        TestState.CreateAccount(Address.Zero, 100.Ether);
+        TestState.CreateAccount(TestItem.AddressE, HeirBalance);
+        TestState.CreateAccount(TestItem.AddressC, VictimBalance);
+        TestState.InsertCode(TestItem.AddressC, victimCode, Spec);
+
+        // EIP-8037 state gas makes an Amsterdam CREATE cost far more than 50k.
+        Prepare code = Prepare.EvmCode.Call(TestItem.AddressC, 500_000);
+        if (revert) code = code.Revert(0, 0);
+
+        (Block block, Transaction transaction) = PrepareTx(fork, 1_000_000, code.Done);
+        IReleaseSpec spec = SpecProvider.GetSpec(block.Header);
+        NativePrestateTracer tracer = new(TestState, GetGethTraceOptions(DiffMode), Hash256.Zero, TestItem.AddressA, TestItem.AddressB, Address.Zero,
+            releaseSpec: spec);
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, spec), tracer);
+        return (NativePrestateTracerDiffMode)tracer.BuildResult().CustomTracerResult!.Value;
     }
 
     private GethLikeTxTrace ExecutePrestate(NativePrestateTracer tracer, byte[] code, bool wrapped)

@@ -23,6 +23,7 @@ using Nethermind.Int256;
 using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Logging;
 using Nethermind.Evm.State;
+using Nethermind.Evm.Tracing.State;
 using Nethermind.State;
 using Nethermind.Trie.Pruning;
 using NSubstitute;
@@ -431,6 +432,38 @@ public class StateProviderTests(bool useFlat)
     }
 
     [Test]
+    public void TryGetAccount_reports_account_with_storage_root_without_allocating()
+    {
+        using Context ctx = new(useFlat, UnavailableStateHeaderProvider.Instance);
+        IWorldState provider = ctx.WorldState;
+        using IDisposable _ = provider.BeginScope(IWorldState.PreGenesis);
+        byte[] code = [0x60, 0x01];
+        provider.CreateAccount(_address1, 5, 2);
+        provider.InsertCode(_address1, code, Cancun.Instance);
+        provider.Set(new StorageCell(_address1, 1), 0x11);
+        provider.Commit(Cancun.Instance);
+        provider.CommitTree(0);
+
+        provider.TryGetAccount(_address1, out AccountStruct _);
+        long allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
+        bool exists = provider.TryGetAccount(_address1, out AccountStruct account);
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exists, Is.True);
+            Assert.That(account.Nonce, Is.EqualTo(2UL));
+            Assert.That(account.Balance, Is.EqualTo((UInt256)5));
+            Assert.That(account.CodeHash, Is.EqualTo(Keccak.Compute(code).ValueHash256));
+            Assert.That(account.StorageRoot, Is.EqualTo(((WorldState)provider).GetStorageRoot(_address1)));
+            Assert.That(account.IsStorageEmpty, Is.False);
+            Assert.That(allocated, Is.Zero);
+            Assert.That(provider.TryGetAccount(TestItem.AddressB, out AccountStruct missing), Is.False);
+            Assert.That(missing, Is.EqualTo(AccountStruct.TotallyEmpty));
+        }
+    }
+
+    [Test]
     public void Returns_empty_byte_code_for_non_existing_accounts()
     {
         using Context ctx = new(useFlat, UnavailableStateHeaderProvider.Instance);
@@ -451,11 +484,12 @@ public class StateProviderTests(bool useFlat)
         provider.AddToBalance(_address1, 1, Frontier.Instance);
         provider.AddToBalance(_address1, 1, Frontier.Instance);
         provider.AddToBalance(_address1, 1, Frontier.Instance);
+        Snapshot snapshot = provider.TakeSnapshot();
         provider.AddToBalance(_address1, 1, Frontier.Instance);
         provider.AddToBalance(_address1, 1, Frontier.Instance);
         provider.AddToBalance(_address1, 1, Frontier.Instance);
         provider.AddToBalance(_address1, 1, Frontier.Instance);
-        provider.Restore(new Snapshot(Snapshot.Storage.Empty, 4));
+        provider.Restore(snapshot);
         provider.AddToBalance(_address1, 1, Frontier.Instance);
         provider.AddToBalance(_address1, 1, Frontier.Instance);
         provider.AddToBalance(_address1, 1, Frontier.Instance);
@@ -464,7 +498,7 @@ public class StateProviderTests(bool useFlat)
         provider.AddToBalance(_address1, 1, Frontier.Instance);
         provider.AddToBalance(_address1, 1, Frontier.Instance);
         provider.AddToBalance(_address1, 1, Frontier.Instance);
-        provider.Restore(new Snapshot(Snapshot.Storage.Empty, 4));
+        provider.Restore(snapshot);
         Assert.That(provider.GetBalance(_address1), Is.EqualTo((UInt256)4));
     }
 
@@ -499,6 +533,138 @@ public class StateProviderTests(bool useFlat)
     }
 
     [Test]
+    public void Account_updates_coalesce_only_between_snapshots()
+    {
+        using Context ctx = new(useFlat, UnavailableStateHeaderProvider.Instance);
+        IWorldState provider = ctx.WorldState;
+        using IDisposable _ = provider.BeginScope(IWorldState.PreGenesis);
+        provider.CreateAccount(_address1, 100);
+        provider.Commit(Frontier.Instance);
+
+        Snapshot txStart = provider.TakeSnapshot(newTransactionStart: true);
+        provider.SubtractFromBalance(_address1, 10, Frontier.Instance);
+        provider.IncrementNonce(_address1);
+        Snapshot callStart = provider.TakeSnapshot();
+        provider.SubtractFromBalance(_address1, 5, Frontier.Instance);
+        provider.AddToBalance(_address1, 2, Frontier.Instance);
+        Snapshot callEnd = provider.TakeSnapshot();
+        provider.AddToBalance(_address1, 1, Frontier.Instance);
+
+        using (Assert.EnterMultipleScope())
+        {
+            // The cold read takes position 0 and each frame's updates share one change.
+            Assert.That(callStart.StateSnapshot, Is.EqualTo(1));
+            Assert.That(callEnd.StateSnapshot, Is.EqualTo(2));
+            Assert.That(provider.GetBalance(_address1), Is.EqualTo((UInt256)88));
+            Assert.That(provider.GetOriginalBalance(_address1), Is.EqualTo((UInt256)100));
+        }
+
+        provider.Restore(callEnd);
+        Assert.That(provider.GetBalance(_address1), Is.EqualTo((UInt256)87));
+
+        provider.Restore(callStart);
+        AssertAccount(provider, 90, 1);
+
+        // The restore point stays protected, so restoring it again undoes only the later update.
+        provider.AddToBalance(_address1, 3, Frontier.Instance);
+        provider.Restore(callStart);
+        AssertAccount(provider, 90, 1);
+
+        provider.Restore(txStart);
+        AssertAccount(provider, 100, 0);
+
+        void AssertAccount(IWorldState provider, UInt256 balance, ulong nonce)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(provider.GetBalance(_address1), Is.EqualTo(balance));
+                Assert.That(provider.GetNonce(_address1), Is.EqualTo(nonce));
+            }
+        }
+    }
+
+    [Test]
+    public void Balance_coalesced_into_a_code_update_is_restored_with_the_code()
+    {
+        using Context ctx = new(useFlat, UnavailableStateHeaderProvider.Instance);
+        IWorldState provider = ctx.WorldState;
+        using IDisposable _ = provider.BeginScope(IWorldState.PreGenesis);
+        IReleaseSpec spec = Prague.Instance;
+        byte[] code = [0x60, 0x03, 0x60, 0x00, 0xf3];
+        ValueHash256 codeHash = ValueKeccak.Compute(code);
+        provider.CreateAccount(_address1, 100);
+        provider.Commit(spec);
+
+        Snapshot txStart = provider.TakeSnapshot(newTransactionStart: true);
+        provider.InsertCode(_address1, code, spec);
+        provider.AddToBalance(_address1, 5, spec);
+
+        // The cold read takes position 0 and the balance update joins the code change at 1.
+        Assert.That(provider.TakeSnapshot().StateSnapshot, Is.EqualTo(1));
+
+        provider.Restore(txStart);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(provider.GetBalance(_address1), Is.EqualTo((UInt256)100));
+            Assert.That(provider.GetCodeHash(_address1), Is.EqualTo(Keccak.OfAnEmptyString));
+            Assert.That(CodeBatchContains((WorldState)provider, codeHash), Is.False);
+        }
+    }
+
+    [Test]
+    public void Coalesced_account_updates_trace_the_state_before_the_transaction()
+    {
+        ParityLikeTxTracer tracer = new(Build.A.Block.TestObject, null, ParityTraceTypes.StateDiff);
+        using Context ctx = new(useFlat, UnavailableStateHeaderProvider.Instance);
+        IWorldState provider = ctx.WorldState;
+        using IDisposable _ = provider.BeginScope(IWorldState.PreGenesis);
+        provider.CreateAccount(_address1, 100);
+        provider.Commit(Frontier.Instance);
+
+        provider.SubtractFromBalance(_address1, 10, Frontier.Instance);
+        provider.IncrementNonce(_address1);
+        provider.AddToBalance(_address1, 3, Frontier.Instance);
+        provider.Commit(Frontier.Instance, tracer);
+
+        ParityAccountStateChange change = tracer.BuildResult().StateChanges![_address1];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(change.Balance!.Before, Is.EqualTo((UInt256)100));
+            Assert.That(change.Balance.After, Is.EqualTo((UInt256)93));
+            Assert.That(change.Nonce!.Before, Is.EqualTo(UInt256.Zero));
+            Assert.That(change.Nonce.After, Is.EqualTo(UInt256.One));
+        }
+    }
+
+    [Test]
+    public void Fee_after_a_refund_coalesced_past_a_cold_read_is_committed()
+    {
+        ParityLikeTxTracer tracer = new(Build.A.Block.TestObject, null, ParityTraceTypes.StateDiff);
+        using Context ctx = new(useFlat, UnavailableStateHeaderProvider.Instance);
+        IWorldState provider = ctx.WorldState;
+        using IDisposable _ = provider.BeginScope(IWorldState.PreGenesis);
+        Address coinbase = new(Hash2);
+        provider.CreateAccount(_address1, 100);
+        provider.CreateAccount(coinbase, 1);
+        provider.Commit(Frontier.Instance);
+
+        provider.TakeSnapshot(newTransactionStart: true);
+        provider.SubtractFromBalance(_address1, 10, Frontier.Instance);
+        Assert.That(provider.GetBalance(coinbase), Is.EqualTo(UInt256.One));
+        provider.AddToBalance(_address1, 4, Frontier.Instance);
+        provider.AddToBalanceAndCreateIfNotEmpty(coinbase, 6, Frontier.Instance);
+        provider.Commit(Frontier.Instance, tracer);
+
+        Dictionary<Address, ParityAccountStateChange> changes = tracer.BuildResult().StateChanges!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(changes[coinbase].Balance!.After, Is.EqualTo((UInt256)7));
+            Assert.That(changes[_address1].Balance!.After, Is.EqualTo((UInt256)94));
+            Assert.That(provider.GetBalance(coinbase), Is.EqualTo((UInt256)7));
+        }
+    }
+
+    [Test]
     public void Keep_in_cache()
     {
         using Context ctx = new(useFlat, UnavailableStateHeaderProvider.Instance);
@@ -525,31 +691,129 @@ public class StateProviderTests(bool useFlat)
         IWorldState provider = ctx.WorldState;
         using IDisposable _ = provider.BeginScope(IWorldState.PreGenesis);
         provider.CreateAccount(_address1, 1);
+        Snapshot afterCreate = provider.TakeSnapshot();
         provider.AddToBalance(_address1, 1, Frontier.Instance);
+        Snapshot afterBalance = provider.TakeSnapshot();
         provider.IncrementNonce(_address1);
+        Snapshot afterNonce = provider.TakeSnapshot();
         provider.InsertCode(_address1, new byte[] { 1 }, Frontier.Instance, false);
+        Snapshot afterCode = provider.TakeSnapshot();
 
         Assert.That(provider.GetNonce(_address1), Is.EqualTo(1UL));
         Assert.That(provider.GetBalance(_address1), Is.EqualTo(UInt256.One + 1));
         Assert.That(provider.GetCode(_address1), Is.SequenceEqualTo(code));
-        provider.Restore(new Snapshot(Snapshot.Storage.Empty, 3));
+        provider.Restore(afterCode);
         Assert.That(provider.GetNonce(_address1), Is.EqualTo(1UL));
         Assert.That(provider.GetBalance(_address1), Is.EqualTo(UInt256.One + 1));
         Assert.That(provider.GetCode(_address1), Is.SequenceEqualTo(code));
-        provider.Restore(new Snapshot(Snapshot.Storage.Empty, 2));
+        provider.Restore(afterNonce);
         Assert.That(provider.GetNonce(_address1), Is.EqualTo(1UL));
         Assert.That(provider.GetBalance(_address1), Is.EqualTo(UInt256.One + 1));
         Assert.That(provider.GetCode(_address1), Is.SequenceEqualTo(Array.Empty<byte>()));
-        provider.Restore(new Snapshot(Snapshot.Storage.Empty, 1));
+        provider.Restore(afterBalance);
         Assert.That(provider.GetNonce(_address1), Is.EqualTo(0UL));
         Assert.That(provider.GetBalance(_address1), Is.EqualTo(UInt256.One + 1));
         Assert.That(provider.GetCode(_address1), Is.SequenceEqualTo(Array.Empty<byte>()));
-        provider.Restore(new Snapshot(Snapshot.Storage.Empty, 0));
+        provider.Restore(afterCreate);
         Assert.That(provider.GetNonce(_address1), Is.EqualTo(0UL));
         Assert.That(provider.GetBalance(_address1), Is.EqualTo(UInt256.One));
         Assert.That(provider.GetCode(_address1), Is.SequenceEqualTo(Array.Empty<byte>()));
-        provider.Restore(new Snapshot(Snapshot.Storage.Empty, -1));
+        provider.Restore(Snapshot.Empty);
         Assert.That(provider.AccountExists(_address1), Is.EqualTo(false));
+    }
+
+    [Test]
+    public void Consecutive_updates_restore_to_every_snapshot_between_them()
+    {
+        using Context ctx = new(useFlat, UnavailableStateHeaderProvider.Instance);
+        IWorldState provider = ctx.WorldState;
+        using IDisposable _ = provider.BeginScope(IWorldState.PreGenesis);
+        provider.CreateAccount(_address1, 10);
+        provider.Commit(Frontier.Instance);
+
+        Snapshot beforeUpdates = provider.TakeSnapshot();
+        provider.SubtractFromBalance(_address1, 1, Frontier.Instance);
+        provider.IncrementNonce(_address1);
+        Snapshot afterFirstUpdates = provider.TakeSnapshot();
+        provider.AddToBalance(_address1, 4, Frontier.Instance);
+        provider.IncrementNonce(_address1);
+        provider.SubtractFromBalance(_address1, 2, Frontier.Instance);
+
+        Assert.That(provider.TakeSnapshot().StateSnapshot, Is.EqualTo(afterFirstUpdates.StateSnapshot + 1), "updates after the first overwrite it in place");
+        Assert.That(provider.GetBalance(_address1), Is.EqualTo((UInt256)11));
+        Assert.That(provider.GetNonce(_address1), Is.EqualTo(2UL));
+        provider.Restore(afterFirstUpdates);
+        Assert.That(provider.GetBalance(_address1), Is.EqualTo((UInt256)9));
+        Assert.That(provider.GetNonce(_address1), Is.EqualTo(1UL));
+        provider.Restore(beforeUpdates);
+        Assert.That(provider.GetBalance(_address1), Is.EqualTo((UInt256)10));
+        Assert.That(provider.GetNonce(_address1), Is.EqualTo(0UL));
+    }
+
+    [Test]
+    public void Update_after_a_cold_read_of_another_account_is_committed()
+    {
+        Address coinbase = TestItem.AddressB;
+        Hash256 expectedRoot;
+        using (Context expectedCtx = new(useFlat, UnavailableStateHeaderProvider.Instance))
+        {
+            IWorldState expected = expectedCtx.WorldState;
+            using IDisposable _ = expected.BeginScope(IWorldState.PreGenesis);
+            expected.CreateAccount(_address1, 6);
+            expected.CreateAccount(coinbase, 13);
+            expected.Commit(Frontier.Instance);
+            expected.CommitTree(0);
+            expectedRoot = expected.StateRoot;
+        }
+
+        using Context ctx = new(useFlat, UnavailableStateHeaderProvider.Instance);
+        IWorldState provider = ctx.WorldState;
+        using IDisposable scope = provider.BeginScope(IWorldState.PreGenesis);
+        provider.CreateAccount(_address1, 10);
+        provider.CreateAccount(coinbase, 10);
+        provider.Commit(Frontier.Instance);
+        provider.CommitTree(0);
+
+        // Sender pays, the cold coinbase read appends its cached account as the tail, then refund and fee.
+        provider.TakeSnapshot(newTransactionStart: true);
+        provider.SubtractFromBalance(_address1, 5, Frontier.Instance);
+        provider.GetBalance(coinbase);
+        provider.AddToBalance(_address1, 1, Frontier.Instance);
+        provider.AddToBalance(coinbase, 3, Frontier.Instance);
+        provider.Commit(Frontier.Instance);
+        provider.CommitTree(1);
+
+        Assert.That(provider.StateRoot, Is.EqualTo(expectedRoot));
+    }
+
+    [Test]
+    public void Updates_do_not_change_an_account_value_already_handed_out([Values] bool asBalanceReference)
+    {
+        using Context ctx = new(useFlat, UnavailableStateHeaderProvider.Instance);
+        IWorldState provider = ctx.WorldState;
+        using IDisposable _ = provider.BeginScope(IWorldState.PreGenesis);
+        provider.CreateAccount(_address1, 1);
+        provider.Commit(Frontier.Instance);
+        provider.AddToBalance(_address1, 1, Frontier.Instance);
+
+        if (asBalanceReference)
+        {
+            ref readonly UInt256 balance = ref provider.GetBalance(_address1);
+            provider.AddToBalance(_address1, 1, Frontier.Instance);
+            provider.IncrementNonce(_address1);
+            Assert.That(balance, Is.EqualTo((UInt256)2));
+        }
+        else
+        {
+            Account account = ((WorldState)provider).GetAccount(_address1);
+            provider.AddToBalance(_address1, 1, Frontier.Instance);
+            provider.IncrementNonce(_address1);
+            Assert.That(account.Balance, Is.EqualTo((UInt256)2));
+            Assert.That(account.Nonce, Is.EqualTo(0UL));
+        }
+
+        Assert.That(provider.GetBalance(_address1), Is.EqualTo((UInt256)3));
+        Assert.That(provider.GetNonce(_address1), Is.EqualTo(1UL));
     }
 
     [Test(Description = "It was failing before as touch was marking the accounts as committed but not adding to trace list")]
@@ -571,6 +835,27 @@ public class StateProviderTests(bool useFlat)
         provider.GetBalance(_address1); // justcache
         provider.AddToBalance(_address1, 0, SpuriousDragon.Instance); // touch
         Assert.DoesNotThrow(() => provider.Commit(SpuriousDragon.Instance, tracer));
+    }
+
+    [Test]
+    public void Cancelled_state_reporting_does_not_leak_changes_into_the_next_commit()
+    {
+        using Context ctx = new(useFlat, UnavailableStateHeaderProvider.Instance);
+        IWorldState provider = ctx.WorldState;
+        using IDisposable _ = provider.BeginScope(IWorldState.PreGenesis);
+        IWorldStateTracer cancelled = Substitute.For<IWorldStateTracer>();
+        cancelled.IsTracingState.Returns(true);
+        cancelled.When(static t => t.ReportBalanceChange(Arg.Any<Address>(), Arg.Any<UInt256?>(), Arg.Any<UInt256?>()))
+            .Do(static _ => throw new OperationCanceledException());
+        provider.CreateAccount(TestItem.AddressA, 1);
+
+        Assert.Throws<OperationCanceledException>(() => provider.Commit(Frontier.Instance, cancelled));
+        provider.Reset();
+        ParityLikeTxTracer next = new(Build.A.Block.TestObject, null, ParityTraceTypes.StateDiff);
+        provider.CreateAccount(TestItem.AddressB, 2);
+        provider.Commit(Frontier.Instance, next);
+
+        Assert.That(next.BuildResult().StateChanges!.Keys, Is.EqualTo(new[] { TestItem.AddressB }));
     }
 
     [Test]

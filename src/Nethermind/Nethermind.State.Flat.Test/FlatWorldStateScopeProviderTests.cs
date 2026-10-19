@@ -994,17 +994,31 @@ public class FlatWorldStateScopeProviderTests
 
         int ownerThread = Environment.CurrentManagedThreadId;
         bool backgroundRootLookup = false;
+        int rootLookups = 0;
+        bool OnLookup(TreePath path)
+        {
+            if (path.Length != 0) return false;
+            Interlocked.Increment(ref rootLookups);
+            if (Environment.CurrentManagedThreadId != ownerThread)
+            {
+                backgroundRootLookup = true;
+                // Dispose after the mutable lookup's guard, before it reads the snapshot list.
+                scope.Dispose();
+            }
+            return false;
+        }
+        // Both overloads: a substitute answers the precomputed-hash overload itself instead of running its default body.
         nodeCache.TryGet(Arg.Any<Hash256>(), Arg.Any<TreePath>(), Arg.Any<Hash256>(), out Arg.Any<TrieNode?>())
             .Returns(call =>
             {
                 call[3] = null;
-                if (call.ArgAt<TreePath>(1).Length == 0 && Environment.CurrentManagedThreadId != ownerThread)
-                {
-                    backgroundRootLookup = true;
-                    // Dispose after the mutable lookup's guard, before it reads the snapshot list.
-                    scope.Dispose();
-                }
-                return false;
+                return OnLookup(call.ArgAt<TreePath>(1));
+            });
+        nodeCache.TryGet(Arg.Any<Hash256>(), Arg.Any<TreePath>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<Hash256>(), out Arg.Any<TrieNode?>())
+            .Returns(call =>
+            {
+                call[5] = null;
+                return OnLookup(call.ArgAt<TreePath>(1));
             });
         FlatStorageTree storageTree = (FlatStorageTree)scope.CreateStorageTree(address);
 
@@ -1013,6 +1027,7 @@ public class FlatWorldStateScopeProviderTests
 
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(rootLookups, Is.GreaterThan(0), "the stub must see the root lookup, or the check below proves nothing");
             Assert.That(backgroundRootLookup, Is.False);
             Assert.That(scope.EarlyApplyCounts.Applied, Is.EqualTo(1));
         }
@@ -1315,6 +1330,55 @@ public class FlatWorldStateScopeProviderTests
         // Verify
         Account? resultAccount = scope.Get(testAddress);
         Assert.That(resultAccount!.StorageRoot, Is.EqualTo(expectedRoot));
+    }
+
+    [Test]
+    public void StorageClear_RemovesSlotsWrittenAfterAnEarlierClearInTheSameBlock([Values] bool setInTheClearingBatch)
+    {
+        using TestContext ctx = new();
+        FlatWorldStateScope scope = ctx.Scope;
+
+        Address testAddress = TestItem.AddressA;
+        UInt256 slot1 = 1;
+        UInt256 slot2 = 2;
+        UInt256 value = 0xAA;
+        ctx.PersistenceReader.GetAccount(testAddress).Returns(TestItem.GenerateRandomAccount());
+
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+        using (IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(testAddress, 1))
+        {
+            storageBatch.Set(slot1, value);
+        }
+
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+        using (IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(testAddress, 1))
+        {
+            storageBatch.Clear();
+            if (setInTheClearingBatch) storageBatch.Set(slot2, value);
+        }
+
+        if (!setInTheClearingBatch)
+        {
+            using IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1);
+            using IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(testAddress, 1);
+            storageBatch.Set(slot2, value);
+        }
+
+        // The slot written after the first clear must still be found by the second one.
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+        using (IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(testAddress, 0))
+        {
+            storageBatch.Clear();
+        }
+
+        IWorldStateScopeProvider.IStorageTree storageTree = scope.CreateStorageTree(testAddress);
+        storageTree.Get(slot1, out UInt256 slot1Value);
+        storageTree.Get(slot2, out UInt256 slot2Value);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(slot1Value, Is.EqualTo(UInt256.Zero));
+            Assert.That(slot2Value, Is.EqualTo(UInt256.Zero));
+        }
     }
 
     [Test]
