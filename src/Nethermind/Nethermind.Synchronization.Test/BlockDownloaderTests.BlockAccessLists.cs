@@ -10,6 +10,7 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
@@ -26,30 +27,43 @@ namespace Nethermind.Synchronization.Test;
 public partial class BlockDownloaderTests
 {
     [Test]
-    public async Task Does_not_report_breach_when_peer_returns_unavailable_block_access_list()
+    public async Task Does_not_report_breach_when_peer_returns_unavailable_block_access_list([Values] bool isStatic, [Values] bool isTrusted)
     {
+        InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+        logger.IsWarn.Returns(true);
         IForwardHeaderProvider forwardHeaderProvider = Substitute.For<IForwardHeaderProvider>();
-        await using IContainer node = CreateNode(builder => builder.AddSingleton<IForwardHeaderProvider>(forwardHeaderProvider));
+        await using IContainer node = CreateNode(builder => builder
+            .AddSingleton<IForwardHeaderProvider>(forwardHeaderProvider)
+            .AddSingleton<ILogManager>(new OneLoggerLogManager(new ILogger(logger))));
         Context ctx = node.Resolve<Context>();
-        ConfigureBlockAccessListRequest(ctx, forwardHeaderProvider);
-
-        BlocksRequest request = (await ctx.FullSyncFeedComponent.BlockDownloader.PrepareRequest(
-            DownloaderOptions.Insert,
-            0,
-            CancellationToken.None))!;
-        request.BlockAccessLists = BuildBlockAccessLists((byte[]?)null);
+        byte[] servedAccessList = [0xc0];
+        ConfigureBlockAccessListRequest(ctx, forwardHeaderProvider, Keccak.Compute(servedAccessList), TestItem.KeccakA);
+        using BlocksRequest? bodyRequest = await ctx.FullSyncFeedComponent.BlockDownloader.PrepareRequest(DownloaderOptions.Insert, 0, CancellationToken.None);
 
         ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
         syncPeer.ProtocolVersion.Returns(EthVersions.Eth71);
+        syncPeer.Node.Returns(new Node(TestItem.PublicKeyA, "127.0.0.1", 30303, isStatic) { IsTrusted = isTrusted });
         PeerInfo peerInfo = new(syncPeer);
 
-        SyncResponseHandlingResult result = ctx.FullSyncFeedComponent.BlockDownloader.HandleResponse(request, peerInfo);
+        // Serving one list does not offset withholding another, and a repeated answer does not repeat the warning.
+        byte[]?[][] responses = [[servedAccessList, null], [null]];
+        List<SyncResponseHandlingResult> results = [];
+        foreach (byte[]?[] response in responses)
+        {
+            BlocksRequest request = (await ctx.FullSyncFeedComponent.BlockDownloader.PrepareRequest(DownloaderOptions.Insert, 0, CancellationToken.None))!;
+            request.BlockAccessLists = BuildBlockAccessLists(response);
+            results.Add(ctx.FullSyncFeedComponent.BlockDownloader.HandleResponse(request, peerInfo));
+        }
 
-        Assert.That(result, Is.EqualTo(SyncResponseHandlingResult.LesserQuality));
-        ctx.PeerPool.DidNotReceive().ReportBreachOfProtocol(
-            Arg.Any<PeerInfo>(),
-            Arg.Any<DisconnectReason>(),
-            Arg.Any<string>());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(results, Is.All.EqualTo(SyncResponseHandlingResult.LesserQuality));
+            ctx.PeerPool.DidNotReceive().ReportBreachOfProtocol(
+                Arg.Any<PeerInfo>(),
+                Arg.Any<DisconnectReason>(),
+                Arg.Any<string>());
+            logger.Received(isStatic || isTrusted ? 1 : 0).Warn(Arg.Is<string>(message => message.Contains("block access list")));
+        }
     }
 
     [Test]
@@ -192,25 +206,31 @@ public partial class BlockDownloaderTests
             Arg.Any<string>());
     }
 
-    private static void ConfigureBlockAccessListRequest(Context ctx, IForwardHeaderProvider forwardHeaderProvider)
+    private static void ConfigureBlockAccessListRequest(Context ctx, IForwardHeaderProvider forwardHeaderProvider, params Hash256[] accessListHashes)
     {
-        BlockHeader parent = ctx.BlockTree.Genesis!;
-        BlockHeader header = Build.A.BlockHeader
-            .WithParent(parent)
-            .WithBlockAccessListHash(TestItem.KeccakA)
-            .TestObject;
+        if (accessListHashes.Length == 0) accessListHashes = [TestItem.KeccakA];
+
+        BlockHeader[] chain = new BlockHeader[accessListHashes.Length + 1];
+        chain[0] = ctx.BlockTree.Genesis!;
+        for (int i = 0; i < accessListHashes.Length; i++)
+        {
+            chain[i + 1] = Build.A.BlockHeader
+                .WithParent(chain[i])
+                .WithBlockAccessListHash(accessListHashes[i])
+                .TestObject;
+        }
 
         forwardHeaderProvider
             .GetBlockHeaders(Arg.Any<ulong>(), Arg.Any<ulong>(), Arg.Any<CancellationToken>())
             .Returns(_ =>
             {
-                IOwnedReadOnlyList<BlockHeader?> headers = new ArrayPoolList<BlockHeader?>(2) { parent, header };
+                IOwnedReadOnlyList<BlockHeader?> headers = new ArrayPoolList<BlockHeader?>(chain.Length, chain);
                 return Task.FromResult<IOwnedReadOnlyList<BlockHeader?>?>(headers);
             });
 
         ctx.PeerPool
             .EstimateRequestLimit(Arg.Any<RequestType>(), Arg.Any<IPeerAllocationStrategy>(), Arg.Any<AllocationContexts>(), Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult<int?>(1));
+            .Returns(Task.FromResult<int?>(accessListHashes.Length));
     }
 
     private static IOwnedReadOnlyList<byte[]?> BuildBlockAccessLists(params byte[]?[] blockAccessLists) =>
