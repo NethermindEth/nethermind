@@ -92,6 +92,7 @@ public class DebugModuleTests
         _blockFinder.Head.Returns(Build.A.Block.WithHeader(header).TestObject);
         _blockFinder.FindHeader(Arg.Any<BlockParameter>()).Returns(header);
         _blockFinder.FindHeader(header.ParentHash!, BlockTreeLookupOptions.None, parent.Number).Returns(parent);
+        _blockFinder.FindBlock(header.Hash!, header.Number).Returns(new Block(header));
         _blockchainBridge.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(true);
         FormatException failure = new("host state format failure");
         _debugBridge.GetBlockTrace(Arg.Any<BlockParameter>(), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>(),
