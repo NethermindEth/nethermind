@@ -388,6 +388,35 @@ public class DebugModuleTests
             Assert.That((int?)json["error"]?["code"], Is.EqualTo(-32000), response);
             Assert.That((string?)json["error"]?["message"], Is.EqualTo($"block #{number} not found"), response);
             Assert.That(json["result"], Is.Null, response);
+            _debugBridge.DidNotReceiveWithAnyArgs().GetBlockTrace(default(BlockParameter)!, default, default);
+        }
+    }
+
+    [Test]
+    public void Debug_traceBlockByNumber_with_body_preserves_selector_replay([Values] bool filtered, [Values] bool replayThrows)
+    {
+        BlockHeader parent = Build.A.BlockHeader.WithNumber(0).TestObject;
+        Block block = Build.A.Block.WithParent(parent).WithTransactions(Build.A.Transaction.SignedAndResolved().TestObject).TestObject;
+        BlockParameter selector = new(block.Number);
+        _blockFinder.Head.Returns(block);
+        _blockFinder.FindHeader(Arg.Any<BlockParameter>()).Returns(block.Header);
+        _blockFinder.FindHeader(parent.Hash!, BlockTreeLookupOptions.None, parent.Number).Returns(parent);
+        _blockFinder.FindBlock(block.Hash!, block.Number).Returns(block);
+        _blockchainBridge.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(true);
+        _debugBridge.GetBlockTrace(Arg.Any<BlockParameter>(), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>())
+            .Returns(_ => replayThrows ? throw new ArgumentNullException("block") : new GethLikeTxTraceCollection([new GethLikeTxTrace()]));
+        GethTraceOptions options = new() { StreamMode = false, TxHash = filtered ? block.Transactions[0].Hash : null };
+
+        using ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> response = CreateModule().debug_traceBlockByNumber(selector, options);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Result.ResultType, Is.EqualTo(replayThrows ? ResultType.Failure : ResultType.Success), response.Result.Error);
+            if (replayThrows)
+                Assert.That(response.Result.Error, Is.EqualTo($"Trace is null for block {selector}"));
+            _debugBridge.Received(1).GetBlockTrace(Arg.Any<BlockParameter>(), Arg.Any<CancellationToken>(),
+                Arg.Is<GethTraceOptions>(actual => actual.TxHash == options.TxHash));
+            _debugBridge.DidNotReceiveWithAnyArgs().GetBlockTrace(default(Block)!, default, default);
         }
     }
 
