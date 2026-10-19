@@ -226,3 +226,44 @@ test('a hop to a node that reconnected starts at the re-announcement, not the or
   ]);
   assert.equal(aggregate(store, {}, { now: 601000, windowMs: 700000, binMs: 1000 }).hop.p50, 60);
 });
+
+test('builds one row per node and phase with outcome and summary', () => {
+  const { phases } = require('../js/model.js');
+  const store = new Store();
+  propagation(store);
+  const w = store.wrappers.get(W);
+  const rows = phases(w, w.events.map(g => store.get(g)).sort((a, b) => a.t - b.t));
+  assert.deepEqual(rows.map(r => `${r.node}:${r.phase}:${r.outcome}`), [
+    'a:originate:ok', 'a:relay:ok', 'b:announce:ok', 'b:fetch:ok', 'b:recover:ok', 'b:validate:ok', 'b:relay:ok', 'a:include:ok']);
+  const recover = rows.find(r => r.phase === 'recover');
+  assert.equal(recover.end - recover.start, 14, 'validation started at 1031, recovery finished at 1045');
+  assert.match(recover.summary, /^1 GetPooledTransactions round, 1 with omissions/);
+  assert.equal(recover.events.length, 4, 'validation-started with missing envelopes, request, response and the summary');
+});
+
+test('a rejected copy shows a failed Validate row and inclusion only as a shared-transaction note', () => {
+  const { phases } = require('../js/model.js');
+  const store = new Store();
+  const BAD = '0x' + 'cc'.repeat(32);
+  store.ingest('a', [
+    { seq: 1, time: 1, type: 'submitted', wrapper: BAD, message: 'local', transactions: [TX], mode: 1 },
+    { seq: 2, time: 98, type: 'proof-verified', wrapper: BAD, result: 'invalid', detail: 'a wrapper dependency proof failed verification' },
+    { seq: 3, time: 99, type: 'submitted', wrapper: W, message: 'eth/73', transactions: [TX] },
+    { seq: 4, time: 9000, type: 'included', transactions: [TX], block: '0xe1' },
+  ]);
+  const bad = store.wrappers.get(BAD);
+  const rows = phases(bad, bad.events.map(g => store.get(g)));
+  assert.deepEqual(rows.map(r => [r.phase, r.own, r.outcome]), [['originate', true, 'ok'], ['validate', true, 'fail'], ['include', false, 'info']]);
+  assert.equal(rows[1].summary, 'invalid: a wrapper dependency proof failed verification');
+  assert.match(rows[2].summary, /^included in block 225 \(via a shared transaction/);
+});
+
+test('every feed event type has a phase entry, a spec link and a meaning', () => {
+  for (const [type, [phase, happy, spec, meaning]] of Object.entries(stages.AUDIT)) {
+    assert.ok(phase === null || stages.PHASE_INDEX[phase] !== undefined, type);
+    assert.equal(typeof happy, 'boolean', type);
+    assert.match(spec, /^https:\/\/eips\.ethereum\.org\/EIPS\/eip-(8437|8288)#/, type);
+    assert.ok(meaning.length > 20, type);
+  }
+  assert.deepEqual(Object.keys(stages.AUDIT).sort(), Object.keys(stages.TYPES).sort());
+});

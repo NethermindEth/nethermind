@@ -24,6 +24,33 @@
 
   const STAGE_INDEX = Object.fromEntries(STAGES.map((s, i) => [s.id, i]));
 
+  const SPEC = {
+    announce: 'https://eips.ethereum.org/EIPS/eip-8437#newproofwrapperhashes-0x16',
+    request: 'https://eips.ethereum.org/EIPS/eip-8437#getproofwrappers-0x17',
+    response: 'https://eips.ethereum.org/EIPS/eip-8437#proofwrappers-0x18',
+    propagation: 'https://eips.ethereum.org/EIPS/eip-8437#transaction-propagation',
+    validation: 'https://eips.ethereum.org/EIPS/eip-8437#validation',
+    security: 'https://eips.ethereum.org/EIPS/eip-8437#security-considerations',
+    wrapper: 'https://eips.ethereum.org/EIPS/eip-8288#mempool-wrapper-object',
+    aggregation: 'https://eips.ethereum.org/EIPS/eip-8288#recursive-mempool-aggregation',
+    block: 'https://eips.ethereum.org/EIPS/eip-8288#block-validity-recursive-stark',
+  };
+
+  // What a wrapper goes through on one node, in order. Each feed event belongs to one phase; the wrapper view shows one row
+  // per phase per node and keeps the raw events behind it.
+  const PHASES = [
+    { id: 'originate', label: 'Originate', spec: SPEC.aggregation, blurb: 'The wrapper starts on this node: submitted over JSON-RPC, or built by background aggregation.' },
+    { id: 'announce', label: 'Announce', spec: SPEC.announce, blurb: 'A peer announced the wrapper with NewProofWrapperHashes (0x16); the node decides whether to fetch it.' },
+    { id: 'fetch', label: 'Fetch', spec: SPEC.request, blurb: 'GetProofWrappers (0x17) to an announcer, answered by ProofWrappers (0x18) matched by hash and announced length.' },
+    { id: 'recover', label: 'Recover envelopes', spec: SPEC.propagation, blurb: 'GetPooledTransactions (0x09) rounds for listed transactions the node lacks; omissions move on to another announcer.' },
+    { id: 'validate', label: 'Validate', spec: SPEC.validation, blurb: 'Encoding, length and hash, every envelope resolved, then full EIP-8288 validation (claimed proofs may be checked during recovery).' },
+    { id: 'admit', label: 'Admit', spec: SPEC.validation, blurb: 'The covered transactions enter the pool; a pool refusal leaves a valid proof standing and is not a peer fault.' },
+    { id: 'relay', label: 'Relay', spec: SPEC.announce, blurb: 'Offered with its envelopes, announced to peers not known to hold it, and served on request.' },
+    { id: 'include', label: 'Include', spec: SPEC.block, blurb: 'A transaction the wrapper lists landed in a canonical block.' },
+    { id: 'drop', label: 'Drop / evict', spec: SPEC.validation, blurb: 'Removed by the EIP-8288 upgrade rule or pool eviction, or the fetch was given up.' },
+  ];
+  const PHASE_INDEX = Object.fromEntries(PHASES.map((p, i) => [p.id, i]));
+
   // Spec text quoted or closely paraphrased from EIP-8437 / EIP-8288, shown next to each step.
   const RULES = {
     connect: 'EIP-8437: peers SHOULD announce offered wrappers on connection.',
@@ -103,6 +130,57 @@
     'gauges': { stage: 'metrics', label: 'Queue depths' },
   };
 
+  // Every feed event type: the phase it belongs to (null when it is not about one wrapper), whether it occurs on the happy
+  // path, its spec section, and a plain-English meaning. This is the step audit shown in the Guide tab.
+  const AUDIT = {
+    'submitted': ['originate', true, SPEC.wrapper, 'A wrapper entered EIP-8288 validation: over eth_sendProofWrapper ("local"), or after eth/73 retrieval ("eth/73", folded into Validate).'],
+    'aggregated': ['originate', true, SPEC.aggregation, 'Background aggregation built a new mode-1 wrapper over the pending pool: proven fresh, extended from the previous aggregate, or reusing a cached proof.'],
+    'announcement-received': ['announce', true, SPEC.announce, 'A peer announced the wrapper. Queued for fetching, added as another source, or ignored (already held, recently rejected, pending cache full or the peer\'s share used up).'],
+    'wrapper-requested': ['fetch', true, SPEC.request, 'GetProofWrappers sent to an announcer.'],
+    'wrapper-received': ['fetch', true, SPEC.response, 'ProofWrappers returned the wrapper, matching the requested hash and the announced length; it is queued for validation.'],
+    'wrapper-unavailable': ['fetch', false, SPEC.response, 'The responder omitted the wrapper: unavailable there, not misbehaviour; another announcer is tried.'],
+    'wrapper-truncated': ['fetch', false, SPEC.response, 'The response stopped before this wrapper at the 2 MiB soft limit; it is requested again from the same peer.'],
+    'fetch-abandoned': ['drop', false, SPEC.security, 'The node gave up fetching: every source tried, the pending lifetime passed, or the recovery deadline.'],
+    'validation-started': ['recover', true, SPEC.validation, 'Validation began; the count is how many listed envelopes are missing (0 means none to recover, folded into Validate).'],
+    'envelope-requested': ['recover', true, SPEC.propagation, 'GetPooledTransactions for missing envelopes, first to the peer that served the wrapper, then to other announcers.'],
+    'envelope-response': ['recover', true, SPEC.propagation, 'PooledTransactions answered; envelopes omitted before the last returned one are unavailable from that peer.'],
+    'envelope-recovery': ['recover', true, SPEC.validation, 'Recovery finished: complete, or incomplete (the wrapper is unresolved, not invalid).'],
+    'claims-checked': ['validate', true, SPEC.validation, 'The claimed proofs were verified against the declared dependencies while envelopes were being recovered.'],
+    'proof-verified': ['validate', true, SPEC.wrapper, 'Full EIP-8288 validation of the wrapper against its resolved transactions.'],
+    'verdict-cached': ['validate', false, SPEC.wrapper, 'The same wrapper was validated before under this verifier; the remembered verdict is reused.'],
+    'verdict': ['validate', true, SPEC.validation, 'The eth/73 transport\'s conclusion: Valid, Invalid (server penalised), GraceRefused, Refused or Unresolved.'],
+    'violation': ['validate', false, SPEC.validation, 'The peer sent invalid or unmatched data and was disconnected.'],
+    'admitted': ['admit', true, SPEC.validation, 'Pool admission of one listed transaction: Accepted, already pending, or the pool\'s refusal reason.'],
+    'offered': ['relay', true, SPEC.announce, 'Stored with its envelopes in the bounded wrapper-envelope cache and offered to peers.'],
+    'announced': ['relay', true, SPEC.announce, 'NewProofWrapperHashes sent to a peer not known to hold the wrapper (again after a reconnect).'],
+    'served': ['relay', true, SPEC.response, 'ProofWrappers answered a peer\'s request: served, unavailable, or held but cut by the soft limit or serving budget.'],
+    'envelope-served': ['relay', true, SPEC.propagation, 'A listed envelope served from the wrapper-envelope cache after the pool no longer held it.'],
+    'included': ['include', true, SPEC.block, 'A listed transaction was included in a canonical block (recorded when this node processed the block).'],
+    'upgrade-kept': ['drop', false, SPEC.validation, 'Verifier change: this mode-0 wrapper re-validated and stays offered.'],
+    'upgrade-dropped': ['drop', false, SPEC.validation, 'Verifier change: dropped and never announced or served again.'],
+    'upgrade-evicted': ['drop', false, SPEC.validation, 'Verifier change: a pending transaction lost its proof coverage and left the pool.'],
+    'pool-evicted': ['drop', false, SPEC.validation, 'The pool evicted a listed transaction under its own policy.'],
+    'peer-connected': [null, true, SPEC.announce, 'An eth/73 peer connected; offered wrappers are announced to it.'],
+    'peer-disconnected': [null, false, SPEC.validation, 'An eth/73 peer disconnected.'],
+    'announcements-ignored': [null, false, SPEC.security, 'A NewProofWrapperHashes message over the peer\'s announcement rate was ignored.'],
+    'request-expired': [null, false, SPEC.security, 'A GetProofWrappers or GetPooledTransactions request got no response in time.'],
+    'verifier-changed': [null, false, SPEC.validation, 'The target fork changed AGGREGATED_VK and the upgrade rule ran.'],
+    'proof-step': [null, true, SPEC.aggregation, 'One native proving call (leaf, merge, fold or discard) or a proof-cache hit.'],
+    'recursive-verify': [null, true, SPEC.block, 'A recursive STARK verification: cold, or answered from the verification cache.'],
+    'production-scheduled': [null, false, SPEC.block, 'Block production found no ready proof and scheduled one off the deadline path.'],
+    'production-proof': [null, false, SPEC.block, 'A scheduled production proof finished, was superseded by a later slot, or failed.'],
+    'production-pass': [null, true, SPEC.block, 'A block-production pass: its proof was reused, prepared, proven inline, or not ready by the deadline.'],
+    'gauges': [null, true, SPEC.security, 'Once a second: peers, pending announcements, validation queue, offered wrappers and charged bytes.'],
+  };
+
+  /** Phase of an event within a wrapper's history; eth/73 admission entry and an empty recovery fold into Validate. */
+  function phaseOf(e) {
+    if (e.type === 'submitted' && e.message === 'eth/73') return 'validate';
+    if (e.type === 'validation-started' && !(e.count > 0)) return 'validate';
+    if (e.type === 'announcement-received' && (e.result || '').startsWith('dropped')) return 'announce';
+    return AUDIT[e.type]?.[0] ?? null;
+  }
+
   const value = (v, e) => typeof v === 'function' ? v(e) : v;
 
   function describe(e) {
@@ -110,7 +188,7 @@
     return { stage: value(t.stage, e), label: value(t.label, e), message: value(t.message, e) || e.message, rule: value(t.rule, e), wire: t.wire };
   }
 
-  const api = { STAGES, STAGE_INDEX, RULES, TYPES, describe };
+  const api = { STAGES, STAGE_INDEX, PHASES, PHASE_INDEX, SPEC, AUDIT, RULES, TYPES, describe, phaseOf };
   root.PWV = Object.assign(root.PWV || {}, { stages: api });
   if (typeof module !== 'undefined') module.exports = api;
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -124,6 +124,9 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .explain { margin: 8px 0 0; padding: 6px 8px; border-left: 3px solid var(--status-serious); background: var(--surface-2); }
 .steps tr.via td { color: var(--text-secondary); }
 .steps details summary { cursor: pointer; }
+.steps table.raw { margin-top: 4px; }
+.steps table.raw td { font-size: 11px; padding: 2px 4px; }
+.steps tr.phase > td { vertical-align: top; }
 .steps td.rule { color: var(--text-muted); font-size: 11px; max-width: 420px; }
 .guide dt { font-weight: 600; margin-top: 8px; }
 .guide dd { margin: 2px 0 0 0; color: var(--text-secondary); }

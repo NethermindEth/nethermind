@@ -288,7 +288,7 @@
   function groupSteps(w, events) {
     const steps = [], last = new Map();
     for (const e of events) {
-      const own = e.wrapper === w.hash;
+      const own = ownEvent(w, e);
       const key = `${e.type}|${e.result ?? ''}|${e.message ?? ''}|${own}`;
       const previous = last.get(e.node);
       if (previous && previous.key === key) { previous.step.members.push(e); continue; }
@@ -297,6 +297,105 @@
       last.set(e.node, { key, step });
     }
     return steps;
+  }
+
+  /** Whether an event is part of this wrapper's own story: it names the wrapper, or it names none (a transaction-level event
+   * such as inclusion) and the wrapper was not rejected, so its transaction did not need another wrapper to get there. */
+  const ownEvent = (w, e) => e.wrapper ? e.wrapper === w.hash : w.outcome !== 'rejected';
+
+  const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+  const ms = v => !Number.isFinite(v) ? '' : v < 1 ? `${v.toFixed(2)} ms` : v < 1000 ? `${Math.round(v)} ms` : `${(v / 1000).toFixed(1)} s`;
+
+  /**
+   * One row per node and phase (Originate, Announce, Fetch, Recover envelopes, Validate, Admit, Relay, Include, Drop) in
+   * the order they started, each with its duration, outcome and a one-line summary, and the grouped raw steps behind it.
+   * Events that only concern a transaction this wrapper shares with another wrapper keep their own rows, marked `own:
+   * false`, so they never read as something that happened to this wrapper.
+   * @param {(e: object) => string} peerName names an event's peer for summaries.
+   */
+  function phases(w, events, peerName = e => e.peer || '') {
+    const rows = new Map();
+    for (const e of events) {
+      const phase = stages.phaseOf(e);
+      if (!phase) continue;
+      const own = ownEvent(w, e);
+      const key = `${e.node}|${phase}|${own}`;
+      let row = rows.get(key);
+      if (!row) rows.set(key, row = { node: e.node, phase, own, start: e.t, end: e.t, events: [] });
+      row.events.push(e);
+      row.end = Math.max(row.end, e.t);
+    }
+    const list = [...rows.values()];
+    for (const row of list) Object.assign(row, summarise(row, peerName), { steps: groupSteps(w, row.events) });
+    return list.sort((a, b) => a.start - b.start || stages.PHASE_INDEX[a.phase] - stages.PHASE_INDEX[b.phase]);
+  }
+
+  /** Outcome (`ok`, `fail` or `info`) and summary of one phase row. */
+  function summarise({ phase, events, own }, peerName) {
+    const of = type => events.filter(e => e.type === type);
+    const last = type => of(type).at(-1);
+    const peers = type => [...new Set(of(type).map(peerName).filter(Boolean))];
+    if (!own) {
+      const e = events[0];
+      return { outcome: 'info', summary: `${e.type === 'included' ? `included in block ${e.block}` : e.type.replace(/-/g, ' ')} (via a shared transaction${e.wrapper ? `, wrapper ${e.wrapper.slice(0, 10)}…` : ''})` };
+    }
+    switch (phase) {
+      case 'originate': {
+        const a = last('aggregated'), s = last('submitted');
+        return { outcome: 'ok', summary: a ? `aggregated by this node: ${a.result}${a.durationMs !== undefined ? ` in ${ms(a.durationMs)}` : ''}` : `submitted over JSON-RPC${s?.mode !== undefined ? `, mode ${s.mode}` : ''}${s?.transactions ? `, ${plural(s.transactions.length, 'transaction')}` : ''}` };
+      }
+      case 'announce': {
+        const all = of('announcement-received'), from = peers('announcement-received');
+        const queued = all.find(e => e.result === 'queued');
+        const dropped = all.filter(e => (e.result || '').startsWith('dropped') || (e.result || '').startsWith('tombstoned'));
+        const summary = `from ${from.slice(0, 2).join(', ')}${from.length > 2 ? ` +${from.length - 2}` : ''}: ${queued ? 'queued' : all.at(-1).result || 'seen'}${all.length > 1 ? ` (${plural(all.length, 'announcement')})` : ''}`;
+        return { outcome: queued ? 'ok' : dropped.length === all.length ? 'fail' : 'info', summary };
+      }
+      case 'fetch': {
+        const got = of('wrapper-received').find(e => (e.result || '').startsWith('matched'));
+        const requests = of('wrapper-requested').length, misses = of('wrapper-unavailable').length + of('wrapper-truncated').length;
+        if (got) return { outcome: 'ok', summary: `${plural(requests, 'request')} → received from ${peerName(got)}${got.length ? `, ${Math.round(got.length / 1024)} KiB` : ''}${misses ? `, ${misses} retried` : ''}` };
+        const gaveUp = last('fetch-abandoned');
+        return { outcome: gaveUp ? 'fail' : 'info', summary: gaveUp ? `gave up: ${gaveUp.result}` : `${plural(requests, 'request')}, no wrapper yet` };
+      }
+      case 'recover': {
+        const done = last('envelope-recovery'), rounds = of('envelope-requested').length, omitted = of('envelope-response').filter(e => /omitted/.test(e.detail || '')).length;
+        const summary = `${plural(rounds, 'GetPooledTransactions round')}${omitted ? `, ${omitted} with omissions` : ''}${done ? `: ${done.detail || done.result}` : ''}`;
+        return { outcome: !done ? 'info' : done.result === 'complete' ? 'ok' : 'fail', summary };
+      }
+      case 'validate': {
+        const verdict = last('verdict'), proof = last('proof-verified'), cached = last('verdict-cached'), violation = last('violation');
+        const bad = [verdict, proof, cached, last('claims-checked')].find(e => e && /invalid|Invalid|Refused|Unresolved|LocalFailure/.test(e.result || ''));
+        if (bad) return { outcome: 'fail', summary: `${bad.result}${bad.detail ? `: ${bad.detail}` : ''}${violation ? ' — peer disconnected' : ''}` };
+        const took = proof?.durationMs ?? verdict?.durationMs;
+        if (verdict || proof || cached) return { outcome: 'ok', summary: `valid${cached && !proof ? ' (verdict cache)' : ''}${Number.isFinite(took) ? ` in ${ms(took)}` : ''}${last('claims-checked')?.durationMs !== undefined ? `, claimed proofs ${ms(last('claims-checked').durationMs)}` : ''}` };
+        return { outcome: 'info', summary: 'in progress' };
+      }
+      case 'admit': {
+        const results = of('admitted').map(e => e.result);
+        const counts = Object.entries(results.reduce((a, r) => (a[r] = (a[r] || 0) + 1, a), {})).map(([r, n]) => n > 1 ? `${r} ×${n}` : r);
+        return { outcome: results.every(r => /Accepted|already-pending/.test(r || '')) ? 'ok' : 'fail', summary: counts.join(', ') };
+      }
+      case 'relay': {
+        const offered = last('offered'), to = peers('announced'), served = of('served').filter(e => e.result === 'served').length, envelopes = of('envelope-served').length;
+        const parts = [offered ? (offered.result === 'local aggregate' ? 'offered (own aggregate)' : 'offered') : '', to.length ? `announced to ${to.join(', ')}` : '',
+          served ? `served ${served}×` : '', envelopes ? `${plural(envelopes, 'envelope')} served from cache` : ''].filter(Boolean);
+        return { outcome: 'ok', summary: parts.join('; ') };
+      }
+      case 'include': return { outcome: 'ok', summary: `block ${[...new Set(of('included').map(e => e.block))].join(', ')}` };
+      case 'drop': {
+        const kept = of('upgrade-kept').length, e = events.find(x => x.type !== 'upgrade-kept') ?? events[0];
+        return { outcome: kept && events.length === kept ? 'ok' : 'fail', summary: `${stages.describe(e).label}${e.result && e.type !== 'upgrade-kept' ? `: ${e.result}` : ''}` };
+      }
+    }
+    return { outcome: 'info', summary: '' };
+  }
+
+  /** Nodes on which something happened to this wrapper itself, not only to a transaction it shares with another wrapper. */
+  function reach(w) {
+    let n = 0;
+    for (const node of w.perNode.values()) if (Object.keys(node.stages).length) n++;
+    return n;
   }
 
   /** Other wrappers listing one of `w`'s transactions that some node validated: what carried a rejected wrapper's
@@ -499,7 +598,7 @@
     });
   }
 
-  const api = { Store, carriers, groupSteps, alignedWindow, prepareSeries, gaps, nearest, aggregate, percentileSeries, eventMatches, wrapperMatches, summary, percentile, num };
+  const api = { Store, carriers, reach, groupSteps, phases, alignedWindow, prepareSeries, gaps, nearest, aggregate, percentileSeries, eventMatches, wrapperMatches, summary, percentile, num };
   root.PWV = Object.assign(root.PWV || {}, { model: api });
   if (typeof module !== 'undefined') module.exports = api;
 })(typeof window !== 'undefined' ? window : globalThis);

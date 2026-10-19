@@ -233,13 +233,13 @@
     ]);
     $('slowest').innerHTML = '<tr><th>Wrapper</th><th>Mode</th><th class=num>Nodes</th><th class=num>End to end</th></tr>' + agg.slowest.map(x => {
       const w = store.wrappers.get(x.w);
-      return `<tr data-wrapper="${esc(x.w)}"><td class=hash>${esc(short(x.w))}</td><td>${w?.mode ?? '?'}</td><td class=num>${w?.perNode.size ?? ''}</td><td class=num>${fmtMs(x.ms)}</td></tr>`;
+      return `<tr data-wrapper="${esc(x.w)}"><td class=hash>${esc(short(x.w))}</td><td>${w?.mode ?? '?'}</td><td class=num>${w ? model.reach(w) : ''}</td><td class=num>${fmtMs(x.ms)}</td></tr>`;
     }).join('');
     const recent = [];
     for (const w of store.wrappers.values()) if (model.wrapperMatches(w, state.filter)) recent.push(w);
     recent.sort((a, b) => b.first - a.first).splice(25);
     $('recent').innerHTML = '<tr><th>First seen</th><th>Wrapper</th><th>Mode</th><th class=num>Txs</th><th class=num>Size</th><th class=num>Nodes</th><th>Outcome</th></tr>' + recent.map(w =>
-      `<tr data-wrapper="${esc(w.hash)}"><td>${time(w.first)}</td><td class=hash>${esc(short(w.hash))}</td><td>${w.mode ?? '?'}</td><td class=num>${w.txs.length || ''}</td><td class=num>${w.length ? fmtBytes(w.length) : ''}</td><td class=num>${w.perNode.size}</td><td>${pill(w.outcome)}${w.included ? ` block ${w.included.block}` : ''}</td></tr>`).join('');
+      `<tr data-wrapper="${esc(w.hash)}"><td>${time(w.first)}</td><td class=hash>${esc(short(w.hash))}</td><td>${w.mode ?? '?'}</td><td class=num>${w.txs.length || ''}</td><td class=num>${w.length ? fmtBytes(w.length) : ''}</td><td class=num>${model.reach(w)}</td><td>${pill(w.outcome)}${w.included ? ` block ${w.included.block}` : ''}</td></tr>`).join('');
   }
 
   function renderProving(agg) {
@@ -294,31 +294,34 @@
     const w = store.wrappers.get(hash);
     if (!w) { $('w-header').innerHTML = `<p class=hint>No wrapper matches. It may have been evicted from the client buffer.</p>`; $('w-swimlane').innerHTML = ''; $('w-steps').innerHTML = ''; return; }
     const events = w.events.map(g => store.get(g)).filter(Boolean).sort((a, b) => a.t - b.t || a.gid - b.gid);
-    const steps = model.groupSteps(w, events);
     $('w-header').innerHTML = `
       <h2><span class=hash>${esc(w.hash)}</span> ${pill(w.outcome)}${w.included ? ` <span class=note>included in block ${w.included.block}</span>` : ''}</h2>
       ${explain(w, events)}
       <table><tr><th>Mode</th><td>${w.mode === 0 ? '0 – direct witnesses, one per dependency' : w.mode === 1 ? '1 – one recursive STARK over all dependencies' : 'unknown'}</td>
-      <th>Size</th><td>${w.length ? fmtBytes(w.length) : '–'}</td><th>Nodes</th><td>${w.perNode.size}</td><th>Span</th><td>${fmtMs(w.last - w.first)}</td></tr>
+      <th>Size</th><td>${w.length ? fmtBytes(w.length) : '–'}</td><th>Nodes</th><td>${model.reach(w)}</td><th>Span</th><td>${fmtMs(w.last - w.first)}</td></tr>
       <tr><th>Transactions</th><td colspan=7 class=hash>${w.txs.map(esc).join('<br>') || '–'}</td></tr>
       <tr><th>Dependencies</th><td colspan=7 class=hash>${w.deps.map(d => { const [scheme, data, key] = d.split(':'); return `${esc(scheme)} data ${esc(short(data))} key ${esc(short(key))}`; }).join('<br>') || '–'}</td></tr></table>`;
-    renderSwimlane(w, steps);
+    const rows = model.phases(w, events, peerName);
+    renderSwimlane(w, rows);
     if (full || events.length !== state.wrapperSteps) {
       state.wrapperSteps = events.length;
-      let previousRule;
-      $('w-steps').innerHTML = '<tr><th class=num>+ms</th><th>Node</th><th>Stage</th><th>Step</th><th>Message</th><th>Peer</th><th>Result</th><th>EIP rule</th></tr>' + steps.map(({ e, members, own }) => {
-        const d = stages.describe(e);
-        const repeated = previousRule === d.rule;
-        previousRule = d.rule;
-        const count = members.length > 1 ? ` <span class=pill>×${members.length}</span>` : '';
-        const via = own ? '' : ` <span class=note>via transaction ${esc(short((e.transactions || [])[0] || ''))}${e.wrapper ? ` of wrapper ${esc(short(e.wrapper))}` : ''}</span>`;
-        const peers = members.length > 1
-          ? `<details><summary>${esc(peerName(e))}${new Set(members.map(peerName)).size > 1 ? ' and others' : ''}</summary>${members.map(m => `+${(m.t - w.first).toFixed(1)} ms ${esc(peerName(m))}${m.requestId !== undefined ? ` #${m.requestId}` : ''}${m.durationMs !== undefined ? ` ${fmtMs(m.durationMs)}` : ''}`).join('<br>')}</details>`
-          : esc(peerName(e));
-        return `<tr data-gid="${e.gid}"${own ? '' : ' class=via'}><td class=num>${(e.t - w.first).toFixed(1)}</td><td>${esc(nodeName(e.node))}</td><td><span class=swatch style="background:var(${stageColor(d.stage)})"></span>${esc(d.stage)}</td><td>${esc(d.label)}${count}${e.durationMs !== undefined && members.length === 1 ? ` <span class=note>${fmtMs(e.durationMs)}</span>` : ''}${e.requestId !== undefined && members.length === 1 ? ` <span class=note>#${e.requestId}</span>` : ''}${via}</td><td>${esc(d.message || '')}</td><td>${peers}</td><td>${esc(e.result || '')}${e.detail ? `<br><span class=note>${esc(e.detail)}</span>` : ''}</td><td class=rule title="${esc(d.rule || '')}">${repeated ? '〃' : esc(d.rule || '')}</td></tr>`;
+      const OUTCOME = { ok: 'good', fail: 'bad', info: 'info' };
+      $('w-steps').innerHTML = '<tr><th class=num>+ms</th><th>Node</th><th>Phase</th><th class=num>Took</th><th>Outcome</th><th>Detail</th></tr>' + rows.map((row, i) => {
+        const p = stages.PHASES[stages.PHASE_INDEX[row.phase]];
+        const raw = row.steps.map(({ e, members, own }) => {
+          const d = stages.describe(e), audit = stages.AUDIT[e.type];
+          const who = [...new Set(members.map(peerName).filter(Boolean))];
+          return `<tr${own ? '' : ' class=via'}><td class=num>${(e.t - w.first).toFixed(1)}</td><td><span title="${esc(audit?.[3] || '')}">${esc(d.label)}</span>${members.length > 1 ? ` <span class=pill>×${members.length}</span>` : ''}${e.durationMs !== undefined && members.length === 1 ? ` <span class=note>${fmtMs(e.durationMs)}</span>` : ''}</td><td>${esc(d.message || '')}</td><td>${esc(who.slice(0, 3).join(', '))}${who.length > 3 ? ` +${who.length - 3}` : ''}</td><td>${esc(e.result || '')}${e.detail ? ` <span class=note>${esc(e.detail)}</span>` : ''}</td><td>${audit?.[2] ? `<a href="${esc(audit[2])}" target=_blank rel=noopener>spec</a>` : ''}</td></tr>`;
+        }).join('');
+        return `<tr class="phase${row.own ? '' : ' via'}" data-row="${i}"><td class=num>${(row.start - w.first).toFixed(1)}</td><td>${esc(nodeName(row.node))}</td>
+          <td><span class=swatch style="background:var(${PHASE_COLOR[row.phase]})"></span><span title="${esc(p.blurb)}">${esc(p.label)}</span> <a class=note href="${esc(p.spec)}" target=_blank rel=noopener>spec</a></td>
+          <td class=num>${row.end > row.start ? fmtMs(row.end - row.start) : ''}</td><td><span class="pill ${OUTCOME[row.outcome]}">${row.outcome === 'ok' ? 'ok' : row.outcome === 'fail' ? 'failed' : 'note'}</span></td>
+          <td>${esc(row.summary)}<details><summary class=note>${row.events.length} event${row.events.length > 1 ? 's' : ''}</summary><table class="list raw">${raw}</table></details></td></tr>`;
       }).join('');
     }
   }
+
+  const PHASE_COLOR = { originate: '--series-5', announce: '--series-1', fetch: '--seq-550', recover: '--series-3', validate: '--series-7', admit: '--series-6', relay: '--series-2', include: '--series-4', drop: '--status-critical' };
 
   /** One sentence on what happened to the wrapper, naming who rejected it and what else carried its transactions. */
   function explain(w, events) {
@@ -336,15 +339,17 @@
     return parts.length ? `<p class=explain>${parts.join(' ')}</p>` : '';
   }
 
-  function renderSwimlane(w, steps) {
+  /** One lane per node; each phase is a bar from its first to its last event (a dot when instant), coloured by phase and
+   * outlined red when it failed. Rows about a shared transaction only are hollow. */
+  function renderSwimlane(w, rows) {
     const lanes = [...w.perNode.entries()].sort((a, b) => a[1].first - b[1].first).map(([k]) => k);
-    const width = $('w-swimlane').clientWidth || 800, labelW = 110, laneH = 54, top = 22;
+    const width = $('w-swimlane').clientWidth || 800, labelW = 110, laneH = 46, top = 22;
     const height = top + lanes.length * laneH + 22;
     const span = Math.max(1, w.last - w.first);
     // Log time axis: hop-level milliseconds and slot-level seconds stay readable together.
     const xOf = t => labelW + Math.log1p(Math.max(0, t - w.first)) / Math.log1p(span) * (width - labelW - 20);
     const yOf = node => top + lanes.indexOf(node) * laneH + laneH / 2;
-    const parts = [`<svg viewBox="0 0 ${width} ${height}" height="${height}" role="img" aria-label="Wrapper timeline across nodes">`];
+    const parts = [`<svg viewBox="0 0 ${width} ${height}" height="${height}" role="img" aria-label="Wrapper phases across nodes">`];
     lanes.forEach((k, i) => {
       parts.push(`<rect class=lane x="${labelW}" y="${top + i * laneH + 4}" width="${width - labelW - 10}" height="${laneH - 8}" rx="4"></rect>`);
       parts.push(`<text x="0" y="${top + i * laneH + laneH / 2 + 4}">${esc(nodeName(k))}</text>`);
@@ -361,26 +366,19 @@
       if (src?.offeredAt !== undefined && n.announcedAt !== undefined && lanes.includes(from))
         parts.push(`<line x1="${xOf(src.offeredAt)}" y1="${yOf(from)}" x2="${xOf(n.announcedAt)}" y2="${yOf(k)}" stroke="var(--series-1)" stroke-width="1.5" stroke-dasharray="4 3" opacity="0.7"></line>`);
     }
-    const labelled = new Set();
     const lastLabel = new Map();
-    steps.forEach(({ e, members, own }) => {
-      if (!lanes.includes(e.node)) return;
-      const d = stages.describe(e);
-      const x = xOf(e.t), y = yOf(e.node) + (stages.STAGE_INDEX[d.stage] ?? 6) % 3 * 8 - 8;
-      const color = stageColor(d.stage);
-      const times = members.length > 1 ? ` ×${members.length} over ${fmtMs(members[members.length - 1].t - e.t)}` : '';
-      const tip = `${d.label}${times} · ${d.message || ''} · +${(e.t - w.first).toFixed(1)} ms${e.result ? ' · ' + e.result : ''}${e.detail ? ' · ' + e.detail : ''}${own ? '' : ' · via a shared transaction, not this wrapper'}\n${d.rule || ''}`;
-      // Steps that concern only a shared transaction are hollow: they did not happen to this wrapper.
-      parts.push(`<circle class=mark cx="${x}" cy="${y}" r="${d.stage === 'rejected' || d.stage === 'dropped' ? 6 : 4.5}" fill="${own ? `var(${color})` : 'var(--surface-1)'}" stroke="${own ? 'var(--surface-1)' : `var(${color})`}" stroke-width="2"><title>${esc(tip)}</title></circle>`);
-      if (members.length > 1) parts.push(`<text x="${x + 5}" y="${y + 12}">×${members.length}</text>`);
-      const key = `${e.node}|${d.stage}`;
-      // One label per stage and lane, skipped where it would overlap the previous one.
-      if (!labelled.has(key) && stages.STAGE_INDEX[d.stage] !== undefined && x - (lastLabel.get(e.node) ?? -Infinity) > 90) {
-        labelled.add(key);
-        lastLabel.set(e.node, x);
-        parts.push(`<text x="${x + 6}" y="${y - 7}">${esc(stages.STAGES[stages.STAGE_INDEX[d.stage]].label)}</text>`);
+    for (const row of rows) {
+      if (!lanes.includes(row.node)) continue;
+      const p = stages.PHASES[stages.PHASE_INDEX[row.phase]];
+      const x1 = xOf(row.start), x2 = Math.max(x1 + 8, xOf(row.end)), y = yOf(row.node) - 5;
+      const color = `var(${PHASE_COLOR[row.phase]})`;
+      const tip = `${p.label} on ${nodeName(row.node)}: ${row.summary}\n+${(row.start - w.first).toFixed(1)} ms${row.end > row.start ? `, took ${fmtMs(row.end - row.start)}` : ''}\n${p.blurb}`;
+      parts.push(`<rect class=mark x="${x1}" y="${y}" width="${x2 - x1}" height="10" rx="5" fill="${row.own ? color : 'var(--surface-1)'}" stroke="${row.outcome === 'fail' ? 'var(--status-critical)' : row.own ? 'var(--surface-1)' : color}" stroke-width="${row.outcome === 'fail' ? 2.5 : 1.5}"><title>${esc(tip)}</title></rect>`);
+      if (x1 - (lastLabel.get(row.node) ?? -Infinity) > 70) {
+        lastLabel.set(row.node, x1);
+        parts.push(`<text x="${x1}" y="${y - 3}">${esc(p.label)}${row.outcome === 'fail' ? ' ✕' : ''}</text>`);
       }
-    });
+    }
     parts.push('</svg>');
     $('w-swimlane').innerHTML = parts.join('');
   }
@@ -434,6 +432,9 @@
   function renderGuide() {
     $('guide').innerHTML = `<h2>Reading the dashboard</h2>
       <p>Each node records what happens to proof wrappers in a bounded ring buffer, read with <code>debug_proofWrapperEvents</code>. The page polls every node by cursor, keeps the newest ${fmtCount(store.capacity)} events and ${fmtCount(store.maxWrappers)} wrappers, and draws aggregates first; open a wrapper from a table, the log or the search box to follow it step by step across nodes.</p>
+      <h2>Phases of a wrapper on a node</h2><dl>${stages.PHASES.map(p => `<dt><span class=swatch style="background:var(${PHASE_COLOR[p.id]})"></span>${esc(p.label)} <a class=note href="${esc(p.spec)}" target=_blank rel=noopener>spec</a></dt><dd>${esc(p.blurb)}</dd>`).join('')}</dl>
+      <h2>Every feed event</h2><table class="list audit"><tr><th>Event</th><th>Phase</th><th>Happy path</th><th>Meaning</th><th>Spec</th></tr>${Object.entries(stages.AUDIT).map(([type, [phase, happy, spec, meaning]]) =>
+        `<tr><td class=hash>${esc(type)}</td><td>${esc(phase ? stages.PHASES[stages.PHASE_INDEX[phase]].label : '– (node-wide)')}</td><td>${happy ? 'yes' : 'no'}</td><td>${esc(meaning)}</td><td><a href="${esc(spec)}" target=_blank rel=noopener>link</a></td></tr>`).join('')}</table>
       <h2>Lifecycle stages</h2><dl>${stages.STAGES.map(s => `<dt><span class=swatch style="background:var(${GROUP_COLOR[s.group]})"></span>${esc(s.label)}</dt><dd>${esc(s.blurb)}</dd>`).join('')}</dl>
       <h2>Spec rules shown on each step</h2><dl>${Object.values(stages.RULES).map(r => `<dd>${esc(r)}</dd>`).join('')}</dl>`;
   }
