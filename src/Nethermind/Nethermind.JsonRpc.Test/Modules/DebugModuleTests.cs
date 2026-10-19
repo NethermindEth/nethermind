@@ -629,6 +629,7 @@ public class DebugModuleTests
         {
             _debugBridge.Received(1).GetBlockTrace(Arg.Is<BlockParameter>(p => p.BlockHash == validated.Hash),
                 Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>());
+        }
     }
 
     [Test]
