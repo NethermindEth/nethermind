@@ -349,7 +349,7 @@ public abstract class PrewarmerReadAheadTestBase(IReleaseSpec spec) : PrewarmerH
             public void Commit(ulong blockNumber) => inner.Commit(blockNumber);
             public void WriteBackCommittedState(Func<IWorldStateScopeProvider.IBlockChangeSnapshot> takeSnapshot) => inner.WriteBackCommittedState(takeSnapshot);
             public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null) => inner.HintBal(bal, sink);
-            public void ApplyBal(ReadOnlyBlockAccessList bal) => inner.ApplyBal(bal);
+            public void ApplyBal(ReadOnlyBlockAccessList bal, CancellationToken cancellationToken) => inner.ApplyBal(bal, cancellationToken);
             public void Dispose() => inner.Dispose();
         }
 
