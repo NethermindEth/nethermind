@@ -207,9 +207,10 @@ public sealed class FlatStateActivationPolicy(
         db.Flush();
         db.AcknowledgeRepair();
         if (logger.IsInfo) logger.Info("Flat DB wiped; the state sync refills it.");
-        // A windowed history keeps its watermark across this wipe, so the sync's pivot lands inside the captured window
-        // and HistoryWriter.SeedPivot refuses it at FinalizeSync, which cannot be retried in-process.
-        if (flatDbConfig.HistoryEnabled && flatDbConfig.IsHistoryWindowed() && logger.IsWarn)
+        // History keeps its watermark across this wipe. HistoryWriter.SeedPivot refuses the new pivot at FinalizeSync,
+        // which cannot be retried in-process: a windowed history when the pivot lands inside its captured window, an
+        // unwindowed one whenever it already holds history, since its rows resolve through the state the sync replaces.
+        if (flatDbConfig.HistoryEnabled && logger.IsWarn)
             logger.Warn("The flatHistory DB was not wiped. Stop the node and wipe it too, or the state sync cannot finish.");
     }
 

@@ -685,6 +685,23 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         }
     }
 
+    // An insert from sync or era import, and a read by block hash (a peer's GetReceipts), recover without senders. On a
+    // block decoded from the database, whose transactions carry none, a creation's contract address then stays unset,
+    // so those receipts must not serve a later read that asks for full recovery (eth_getBlockReceipts).
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Does_not_cache_receipts_recovered_without_senders([Values] bool readByBlockHash)
+    {
+        Transaction creation = Build.A.Transaction.WithTo(null).WithCode([0x00]).SignedAndResolved().TestObject;
+        Address deployed = ContractAddress.From(creation.SenderAddress, creation.Nonce);
+        (Block block, TxReceipt[] receipts) = PrepareBlock(Build.A.Block.WithNumber(1).WithTransactions(creation).WithReceiptsRoot(TestItem.KeccakA).TestObject);
+
+        creation.SenderAddress = null;
+        _storage.Insert(block, receipts);
+        if (readByBlockHash) _storage.Get(block.Hash!);
+
+        Assert.That(_storage.Get(block)[0].ContractAddress, Is.EqualTo(deployed));
+    }
+
     [Test]
     public void Adds_should_attempt_hash_key_first_if_inserted_with_hashkey()
     {

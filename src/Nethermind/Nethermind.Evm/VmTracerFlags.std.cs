@@ -22,6 +22,10 @@ internal readonly struct VmTracerFlags
     /// <remarks>Never set for action tracers: parity action results keep the VM output arrays, per <see cref="ITxTracer.ReportActionEnd(ulong, System.ReadOnlyMemory{byte})"/>.</remarks>
     public readonly bool AllowsReturnScratch;
 
+    /// <summary>Whether the top-level call output may also be staged in reusable scratch.</summary>
+    /// <remarks>Only for a tracer that reads no transaction output, see <see cref="ITxOutputTracingFilter"/>.</remarks>
+    public readonly bool AllowsTopLevelReturnScratch;
+
     public VmTracerFlags(ITxTracer tracer)
     {
         IsTracingActions = tracer.IsTracingActions;
@@ -32,5 +36,6 @@ internal readonly struct VmTracerFlags
         IsTracingLogs = tracer.IsTracingLogs;
         IsCancelable = tracer.IsCancelable;
         AllowsReturnScratch = !IsTracingActions && !IsTracingInstructions && !tracer.IsTracingMemory && !tracer.IsTracingReturnData;
+        AllowsTopLevelReturnScratch = AllowsReturnScratch && tracer is ITxOutputTracingFilter { IsTracingOutput: false };
     }
 }
