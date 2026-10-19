@@ -7,6 +7,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
+using Nethermind.Crypto;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.Forks;
@@ -35,6 +36,24 @@ public class TransactionForRpcDeserializationTests
         "\"input\":\"0x600160005260206000f3\",\"data\":\"0x602a60005260206000f3\"",
         "\"data\":\"0x602a60005260206000f3\",\"input\":\"0x\"",
     ];
+
+    [TestCase(EthereumEcdsaExtensions.MaxEip155ChainId, 1, false)]
+    [TestCase(EthereumEcdsaExtensions.MaxEip155ChainId + 1, 0, false)]
+    [TestCase(EthereumEcdsaExtensions.MaxEip155ChainId + 1, 1, true)]
+    [TestCase(ulong.MaxValue, 0, true)]
+    public void Protected_legacy_v_fails_where_no_eip155_v_fits_the_chain_id(ulong chainId, int yParity, bool isError)
+    {
+        TransactionForRpc transactionForRpc = _serializer.Deserialize<TransactionForRpc>(
+            $"{{\"type\":\"0x0\",\"chainId\":\"0x{chainId:x}\",\"v\":\"0x{yParity}\",\"r\":\"0x1\",\"s\":\"0x1\"}}")!;
+
+        Result<Transaction> result = transactionForRpc.ToTransaction();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.IsError, Is.EqualTo(isError));
+            if (!isError) Assert.That(result.Data!.Signature!.ChainId, Is.EqualTo(chainId));
+        }
+    }
 
     [TestCaseSource(nameof(TxJsonTestCases))]
     public TxType Test_TxTypeIsDetected_ForDifferentFieldSet(string txJson)

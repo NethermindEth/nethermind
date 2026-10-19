@@ -255,33 +255,84 @@ public class InvalidChainTrackerTest
     }
 
     [Test]
-    public void processed_parent_is_only_known_when_validated_before_disposal([Values] bool wasValidated, [Values] bool disposed)
+    public void processed_parent_is_only_known_when_validated_before_disposal(
+        [Values] bool wasValidated, [Values] bool disposed, [Values] bool invalidBeforeProcessing)
     {
         IBranchProcessor branchProcessor = SetupProcessingInterceptor();
         if (disposed) _tracker.Dispose();
         Block parent = Build.A.Block.TestObject;
 
+        if (invalidBeforeProcessing)
+        {
+            RecordInvalidChain();
+            AssertInvalidWithUnknownLastValidHash(TestItem.KeccakA);
+            AssertInvalidWithUnknownLastValidHash(TestItem.KeccakB);
+        }
         branchProcessor.BlockProcessed += Raise.EventWith(new BlockProcessedEventArgs(parent, []) { WasValidated = wasValidated });
-        _tracker.OnInvalidBlock(TestItem.KeccakA, parent.Hash);
+        if (!invalidBeforeProcessing) RecordInvalidChain();
 
         bool invalid = _tracker.IsOnKnownInvalidChain(TestItem.KeccakA, out Hash256? lastValidHash);
+        bool descendantInvalid = _tracker.IsOnKnownInvalidChain(TestItem.KeccakB, out Hash256? descendantHash);
+        bool siblingInvalid = _tracker.IsOnKnownInvalidChain(TestItem.KeccakC, out _);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(invalid, Is.True);
             Assert.That(lastValidHash, Is.EqualTo(wasValidated && !disposed ? parent.Hash : null));
+            Assert.That(descendantInvalid, Is.True);
+            Assert.That(descendantHash, Is.EqualTo(lastValidHash));
+            Assert.That(siblingInvalid, Is.False);
+        }
+
+        void RecordInvalidChain()
+        {
+            _tracker.OnInvalidBlock(TestItem.KeccakA, parent.Hash);
+            _tracker.SetChildParent(TestItem.KeccakB, TestItem.KeccakA);
+            _tracker.SetChildParent(TestItem.KeccakC, parent.Hash!);
         }
     }
 
     [Test]
-    public void validated_pow_parent_is_reported_as_zero_without_a_stored_header()
+    public void validated_pow_parent_is_reported_as_zero_without_a_stored_header([Values] bool invalidBeforeProcessing)
     {
         IBranchProcessor branchProcessor = SetupProcessingInterceptor(NoPoS.Instance);
         Block parent = Build.A.Block.TestObject;
 
+        if (invalidBeforeProcessing) _tracker.OnInvalidBlock(TestItem.KeccakA, parent.Hash);
         branchProcessor.BlockProcessed += Raise.EventWith(new BlockProcessedEventArgs(parent, []) { WasValidated = true });
-        _tracker.OnInvalidBlock(TestItem.KeccakA, parent.Hash);
+        if (!invalidBeforeProcessing) _tracker.OnInvalidBlock(TestItem.KeccakA, parent.Hash);
 
         AssertInvalid(TestItem.KeccakA, Keccak.Zero);
+    }
+
+    [Test]
+    public void invalid_parent_processing_event_does_not_refresh_unknown_descendants()
+    {
+        IBranchProcessor branchProcessor = SetupProcessingInterceptor();
+        Block parent = Build.A.Block.TestObject;
+        _tracker.OnInvalidBlock(parent.Hash!, TestItem.KeccakA);
+        _tracker.OnInvalidBlock(TestItem.KeccakB, parent.Hash);
+
+        branchProcessor.BlockProcessed += Raise.EventWith(new BlockProcessedEventArgs(parent, []) { WasValidated = true });
+
+        AssertInvalidWithUnknownLastValidHash(TestItem.KeccakB);
+    }
+
+    [Test]
+    public void parent_validated_during_invalid_verdict_resolution_refreshes_the_verdict()
+    {
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        IBranchProcessor branchProcessor = SetupProcessingInterceptor(blockTree: blockTree);
+        Block parent = Build.A.Block.TestObject;
+        blockTree.FindHeader(parent.Hash!, Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>()).Returns(parent.Header);
+        blockTree.GetInfo(parent.Number, parent.Hash!).Returns(_ =>
+        {
+            branchProcessor.BlockProcessed += Raise.EventWith(new BlockProcessedEventArgs(parent, []) { WasValidated = true });
+            return (new BlockInfo(parent.Hash!, 0), null);
+        });
+
+        _tracker.OnInvalidBlock(TestItem.KeccakA, parent.Hash);
+
+        AssertInvalid(TestItem.KeccakA, parent.Hash);
     }
 
     [Test]
@@ -319,10 +370,10 @@ public class InvalidChainTrackerTest
         AssertInvalid(TestItem.KeccakB, parent.Hash);
     }
 
-    private IBranchProcessor SetupProcessingInterceptor(IPoSSwitcher? poSSwitcher = null)
+    private IBranchProcessor SetupProcessingInterceptor(IPoSSwitcher? poSSwitcher = null, IBlockTree? blockTree = null)
     {
         IBranchProcessor branchProcessor = Substitute.For<IBranchProcessor>();
-        _tracker = new(poSSwitcher ?? AlwaysPoS.Instance, Substitute.For<IBlockTree>(), new BlockCacheService(), new TestLogManager());
+        _tracker = new(poSSwitcher ?? AlwaysPoS.Instance, blockTree ?? Substitute.For<IBlockTree>(), new BlockCacheService(), new TestLogManager());
         _tracker.SetupBlockchainProcessorInterceptor(Substitute.For<IBlockProcessingQueue>(), branchProcessor);
         return branchProcessor;
     }

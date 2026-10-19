@@ -8,6 +8,7 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Handlers;
@@ -54,6 +55,7 @@ public class InvalidChainTracker(
             Hash256 hash = args.Block.Hash!;
             // A valid prefix survives a later block's failure, which prevents the branch's WasProcessed markers.
             _validatedBlocks.Set(hash, _poSSwitcher.IsPostMerge(args.Block.Header) ? hash : Keccak.Zero);
+            if (_tree.TryGet(hash, out Node node)) RefreshLastValidHashes(hash, node);
         }
     }
 
@@ -71,9 +73,46 @@ public class InvalidChainTracker(
         {
             PropagateLastValidHash(parentNode);
         }
+        else if (_validatedBlocks.TryGet(parent, out _) && _tree.TryGet(child, out Node childNode))
+        {
+            Hash256? lastValidHash = GetLastValidHash(parent);
+            if (lastValidHash is not null) RefreshInvalidChild(childNode, lastValidHash);
+        }
     }
 
     private Node GetNode(Hash256 hash) => _tree.SetOrGet(hash, 0, static (_, _) => new Node());
+
+    private void RefreshLastValidHashes(Hash256 parent, Node parentNode)
+    {
+        Hash256? lastValidHash = GetLastValidHash(parent);
+        if (lastValidHash is null) return;
+
+        // Release the parent lock before taking child locks: recorded links may contain cycles.
+        using ArrayPoolListRef<Node> children = new(0);
+        lock (parentNode)
+        {
+            foreach (Hash256 childHash in parentNode.Children)
+            {
+                if (_tree.TryGet(childHash, out Node child)) children.Add(child);
+            }
+        }
+
+        foreach (Node child in children)
+        {
+            RefreshInvalidChild(child, lastValidHash);
+        }
+    }
+
+    private void RefreshInvalidChild(Node child, Hash256 lastValidHash)
+    {
+        lock (child)
+        {
+            if (!child.IsInvalid || child.LastValidHash is not null) return;
+            child.LastValidHash = lastValidHash;
+        }
+
+        PropagateLastValidHash(child);
+    }
 
     private void PropagateLastValidHash(Node node)
     {
@@ -151,6 +190,7 @@ public class InvalidChainTracker(
             failedBlockNode.LastValidHash = lastValidHash;
         }
         PropagateLastValidHash(failedBlockNode);
+        SetChildParent(failedBlock, parent);
     }
 
     private Hash256? GetLastValidHash(Hash256 parent)
