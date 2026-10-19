@@ -15,6 +15,7 @@ using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -261,6 +262,213 @@ public class HistoryPrunerTests
         }
 
         CheckHeadPreserved(testBlockchain, blocks);
+    }
+
+    [Test]
+    public async Task Full_sync_prunes_with_zero_sync_pivot()
+    {
+        const int blocks = 100;
+        const ulong expectedBoundary = 36;
+
+        HistoryConfig historyConfig = new() { Pruning = PruningModes.Rolling, RetentionEpochs = 2, BalRetentionEpochs = 2, PruningInterval = 0 };
+        List<Hash256> blockHashes = [];
+        using BasicTestBlockchain testBlockchain = await CreateBlockchainWithBlocks(
+            historyConfig,
+            blocks,
+            syncPivot: 0,
+            blockHashes: blockHashes,
+            fullSync: true);
+
+        IBlockAccessListStore blockAccessListStore = testBlockchain.Container.Resolve<IBlockAccessListStore>();
+        blockAccessListStore.Insert(10, blockHashes[10], Build.A.BlockAccessList.WithPrecompileChanges(Keccak.Zero, 10).TestObject);
+        blockAccessListStore.Insert(80, blockHashes[80], Build.A.BlockAccessList.WithPrecompileChanges(Keccak.Zero, 80).TestObject);
+
+        HistoryPruner historyPruner = (HistoryPruner)testBlockchain.Container.Resolve<IHistoryPruner>();
+        historyPruner.TryPruneHistory(CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            CheckGenesisPreserved(testBlockchain, blockHashes[0]);
+            CheckBlockPruned(testBlockchain, blockHashes, expectedBoundary - 1);
+            CheckBlockPreserved(testBlockchain, blockHashes, expectedBoundary);
+            CheckHeadPreserved(testBlockchain, blocks);
+            Assert.That(historyPruner.OldestBlockHeader?.Number, Is.EqualTo(expectedBoundary));
+            Assert.That(historyPruner.BalsDeletePointer, Is.EqualTo(expectedBoundary));
+            Assert.That(blockAccessListStore.Exists(10, blockHashes[10]), Is.False);
+            Assert.That(blockAccessListStore.Exists(80, blockHashes[80]), Is.True);
+        }
+    }
+
+    [Test]
+    public async Task Full_sync_uses_processed_head_when_sync_pivot_is_stale()
+    {
+        const int blocks = 100;
+        const ulong expectedBoundary = 36;
+
+        HistoryConfig historyConfig = new() { Pruning = PruningModes.Rolling, RetentionEpochs = 2, BalRetentionEpochs = 2, PruningInterval = 0 };
+        List<Hash256> blockHashes = [];
+        using BasicTestBlockchain testBlockchain = await CreateBlockchainWithBlocks(
+            historyConfig,
+            blocks,
+            syncPivot: 20,
+            blockHashes: blockHashes,
+            fullSync: true);
+
+        HistoryPruner historyPruner = (HistoryPruner)testBlockchain.Container.Resolve<IHistoryPruner>();
+        historyPruner.TryPruneHistory(CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            CheckBlockPruned(testBlockchain, blockHashes, expectedBoundary - 1);
+            CheckBlockPreserved(testBlockchain, blockHashes, expectedBoundary);
+            Assert.That(historyPruner.OldestBlockHeader?.Number, Is.EqualTo(expectedBoundary));
+            Assert.That(historyPruner.BalsDeletePointer, Is.EqualTo(expectedBoundary));
+        }
+    }
+
+    [Test]
+    public async Task Full_sync_does_not_prune_a_body_ahead_of_processed_head()
+    {
+        const int blocks = 100;
+
+        HistoryConfig historyConfig = new() { Pruning = PruningModes.Rolling, RetentionEpochs = 2, PruningInterval = 0 };
+        List<Hash256> blockHashes = [];
+        using BasicTestBlockchain testBlockchain = await CreateBlockchainWithBlocks(
+            historyConfig,
+            blocks,
+            syncPivot: 0,
+            blockHashes: blockHashes,
+            fullSync: true);
+
+        Block pending = Build.A.Block.WithNumber((ulong)blocks + 1).WithParent(testBlockchain.BlockTree.Head!).TestObject;
+        Assert.That(testBlockchain.BlockTree.Insert(pending, BlockTreeInsertBlockOptions.SaveHeader), Is.EqualTo(AddBlockResult.Added));
+        Assert.That(testBlockchain.BlockTree.Head?.Number, Is.EqualTo((ulong)blocks));
+        Assert.That(testBlockchain.BlockTree.BestSuggestedHeader?.Number, Is.EqualTo((ulong)blocks + 1));
+
+        IDb metadataDb = testBlockchain.Container.Resolve<IDbProvider>().MetadataDb;
+        metadataDb.Set(MetadataDbKeys.HistoryPruningDeletePointer, Rlp.Encode((ulong)blocks + 100).Bytes);
+        metadataDb.Set(MetadataDbKeys.HistoryPruningReclaimCursor, Rlp.Encode(1UL).Bytes);
+
+        HistoryPruner historyPruner = NewPrunerOver(testBlockchain);
+        historyPruner.TryPruneHistory(CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(testBlockchain.BlockTree.FindBlock((ulong)blocks, BlockTreeLookupOptions.None), Is.Not.Null,
+                "a stale persisted boundary must not reclaim the processed head");
+            Assert.That(testBlockchain.BlockTree.FindBlock((ulong)blocks + 1, BlockTreeLookupOptions.None), Is.Not.Null,
+                "an unprocessed body beyond the head must remain available");
+        }
+    }
+
+    [Test]
+    public async Task Full_sync_head_trigger_prunes_when_processing_queue_stays_nonempty()
+    {
+        const int initialBlocks = 40;
+        const int additionalBlocks = 56;
+        HistoryConfig historyConfig = new() { Pruning = PruningModes.Rolling, RetentionEpochs = 1, BalRetentionEpochs = 1, PruningInterval = 0 };
+        ImmediateBackgroundTaskScheduler scheduler = new();
+        List<Hash256> blockHashes = [];
+        using BasicTestBlockchain testBlockchain = await CreateBlockchainWithBlocks(
+            historyConfig,
+            initialBlocks,
+            blockHashes: blockHashes,
+            scheduler: scheduler,
+            fullSync: true);
+
+        HistoryPruner historyPruner = (HistoryPruner)testBlockchain.Container.Resolve<IHistoryPruner>();
+        historyPruner.TryPruneHistory(CancellationToken.None);
+        await scheduler.WaitForIdle();
+        int initialCompletedCalls = scheduler.CompletedCalls;
+        scheduler.Hold();
+        for (int i = 0; i < additionalBlocks; i++)
+        {
+            await testBlockchain.AddBlock();
+        }
+        Assert.That(testBlockchain.BlockTree.Head?.Number, Is.EqualTo((ulong)(initialBlocks + additionalBlocks)));
+        await scheduler.WaitForPending();
+        scheduler.Release();
+        await scheduler.WaitForIdle();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(scheduler.CompletedCalls, Is.GreaterThan(initialCompletedCalls));
+            Assert.That(historyPruner.OldestBlockHeader?.Number, Is.EqualTo((ulong)(initialBlocks + additionalBlocks - 32)));
+            Assert.That(testBlockchain.BlockTree.FindBlock((ulong)(initialBlocks + additionalBlocks - 32), BlockTreeLookupOptions.None), Is.Not.Null);
+            Assert.That(testBlockchain.BlockTree.FindBlock((ulong)(initialBlocks + additionalBlocks - 33), BlockTreeLookupOptions.None), Is.Null);
+        }
+    }
+
+    [Test]
+    public async Task Full_sync_head_trigger_crosses_a_nonzero_interval_after_a_head_jump()
+    {
+        const int initialBlocks = 40;
+        const int additionalBlocks = 100;
+        HistoryConfig historyConfig = new() { Pruning = PruningModes.Rolling, RetentionEpochs = 1, PruningInterval = 2 };
+        ImmediateBackgroundTaskScheduler scheduler = new();
+        List<Hash256> blockHashes = [];
+        using BasicTestBlockchain testBlockchain = await CreateBlockchainWithBlocks(
+            historyConfig,
+            initialBlocks,
+            blockHashes: blockHashes,
+            scheduler: scheduler,
+            fullSync: true);
+
+        HistoryPruner historyPruner = (HistoryPruner)testBlockchain.Container.Resolve<IHistoryPruner>();
+        historyPruner.TryPruneHistory(CancellationToken.None);
+        await scheduler.WaitForIdle();
+        int initialCompletedCalls = scheduler.CompletedCalls;
+        scheduler.Hold();
+        for (int i = 0; i < additionalBlocks; i++)
+        {
+            await testBlockchain.AddBlock();
+        }
+        Assert.That(testBlockchain.BlockTree.Head?.Number, Is.EqualTo((ulong)(initialBlocks + additionalBlocks)));
+        await scheduler.WaitForPending();
+        scheduler.Release();
+        await scheduler.WaitForIdle();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(scheduler.CompletedCalls, Is.GreaterThan(initialCompletedCalls));
+            Assert.That(historyPruner.OldestBlockHeader?.Number, Is.EqualTo(108UL));
+            Assert.That(testBlockchain.BlockTree.FindBlock(108UL, BlockTreeLookupOptions.None), Is.Not.Null);
+            Assert.That(testBlockchain.BlockTree.FindBlock(107UL, BlockTreeLookupOptions.None), Is.Null);
+        }
+    }
+
+    [Test]
+    public async Task Full_sync_pruning_resumes_persisted_reclaim_after_restart_with_zero_pivot()
+    {
+        const int blocks = 100;
+        const ulong boundary = 36;
+
+        HistoryConfig historyConfig = new() { Pruning = PruningModes.Rolling, RetentionEpochs = 2, PruningInterval = 0 };
+        List<Hash256> blockHashes = [];
+        using BasicTestBlockchain testBlockchain = await CreateBlockchainWithBlocks(
+            historyConfig,
+            blocks,
+            syncPivot: 0,
+            blockHashes: blockHashes,
+            fullSync: true);
+
+        IDb metadataDb = testBlockchain.Container.Resolve<IDbProvider>().MetadataDb;
+        metadataDb.Set(MetadataDbKeys.HistoryPruningDeletePointer, Rlp.Encode(boundary).Bytes);
+        metadataDb.Set(MetadataDbKeys.HistoryPruningReclaimCursor, Rlp.Encode(1UL).Bytes);
+
+        NewPrunerOver(testBlockchain).TryPruneHistory(CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            CheckGenesisPreserved(testBlockchain, blockHashes[0]);
+            for (ulong number = 1; number < boundary; number++)
+            {
+                Assert.That(testBlockchain.BlockTree.FindBlock(number, BlockTreeLookupOptions.None), Is.Null,
+                    $"block {number} should be reclaimed after the persisted cursor is loaded");
+            }
+
+            Assert.That(testBlockchain.BlockTree.FindBlock(boundary, BlockTreeLookupOptions.None), Is.Not.Null);
+        }
     }
 
     [Test]
@@ -1102,9 +1310,10 @@ public class HistoryPrunerTests
         int blocks,
         ulong? syncPivot = null,
         List<Hash256> blockHashes = null,
-        IBackgroundTaskScheduler scheduler = null)
+        IBackgroundTaskScheduler scheduler = null,
+        bool fullSync = false)
     {
-        BasicTestBlockchain bc = await BasicTestBlockchain.Create(BuildContainer(historyConfig, scheduler));
+        BasicTestBlockchain bc = await BasicTestBlockchain.Create(BuildContainer(historyConfig, scheduler, fullSync));
         bc.Container.Resolve<IDbProvider>().MetadataDb.Set(MetadataDbKeys.LowestInsertedBodyNumber, Rlp.Encode(1UL).Bytes);
         blockHashes?.Add(bc.BlockTree.Head!.Hash!);
         for (int i = 0; i < blocks; i++)
@@ -1130,13 +1339,127 @@ public class HistoryPrunerTests
             }, timeout);
     }
 
-    private static Action<ContainerBuilder> BuildContainer(IHistoryConfig historyConfig, IBackgroundTaskScheduler scheduler = null)
+    private sealed class ImmediateBackgroundTaskScheduler : IBackgroundTaskScheduler
+    {
+        private readonly object _gate = new();
+        private readonly List<Action> _pending = [];
+        private int _calls;
+        private int _activeCalls;
+        private int _completedCalls;
+        private bool _hold;
+
+        public int Calls => Volatile.Read(ref _calls);
+        public int ActiveCalls => Volatile.Read(ref _activeCalls);
+        public int CompletedCalls => Volatile.Read(ref _completedCalls);
+
+        public void Hold()
+        {
+            lock (_gate)
+            {
+                _hold = true;
+            }
+        }
+
+        public bool TryScheduleTask<TReq>(TReq request, Func<TReq, CancellationToken, Task> fulfillFunc, TimeSpan? timeout = null)
+            where TReq : notnull, IBackgroundTaskRequest<TReq>
+        {
+            Interlocked.Increment(ref _calls);
+            Action execute = () =>
+            {
+                Interlocked.Increment(ref _activeCalls);
+                try
+                {
+                    fulfillFunc(request, CancellationToken.None).GetAwaiter().GetResult();
+                }
+                finally
+                {
+                    Interlocked.Decrement(ref _activeCalls);
+                    Interlocked.Increment(ref _completedCalls);
+                }
+            };
+
+            lock (_gate)
+            {
+                if (_hold)
+                {
+                    _pending.Add(execute);
+                    return true;
+                }
+            }
+
+            execute();
+            return true;
+        }
+
+        public async Task WaitForPending()
+        {
+            DateTime deadline = DateTime.UtcNow.AddSeconds(5);
+            while (DateTime.UtcNow < deadline)
+            {
+                lock (_gate)
+                {
+                    if (_pending.Count > 0) return;
+                }
+
+                await Task.Delay(10);
+            }
+
+            Assert.Fail("No scheduled pruning task was held while processing the head jump.");
+        }
+
+        public void Release()
+        {
+            Action[] pending;
+            lock (_gate)
+            {
+                _hold = false;
+                pending = _pending.ToArray();
+                _pending.Clear();
+            }
+
+            foreach (Action execute in pending)
+                execute();
+        }
+
+        public async Task WaitForIdle()
+        {
+            DateTime deadline = DateTime.UtcNow.AddSeconds(5);
+            int observedCalls = Calls;
+            while (ActiveCalls != 0 && DateTime.UtcNow < deadline)
+            {
+                await Task.Delay(10);
+            }
+
+            while (DateTime.UtcNow < deadline)
+            {
+                await Task.Delay(10);
+                if (ActiveCalls == 0 && Calls == observedCalls) return;
+
+                observedCalls = Calls;
+            }
+
+            Assert.That(ActiveCalls, Is.Zero);
+        }
+    }
+
+    private static Action<ContainerBuilder> BuildContainer(IHistoryConfig historyConfig, IBackgroundTaskScheduler scheduler = null, bool fullSync = false)
     {
         // n.b. in prod MinHistoryRetentionEpochs should be 33024, however not feasible to test this
         ISpecProvider specProvider = new TestSpecProvider(new ReleaseSpec() { MinHistoryRetentionEpochs = 0 });
 
         // prevent pruner being triggered by empty queue
         IBlockProcessingQueue blockProcessingQueue = Substitute.For<IBlockProcessingQueue>();
+
+        ISyncConfig syncConfig = fullSync
+            ? new SyncConfig
+            {
+                AncientBodiesBarrier = BeaconGenesisBlockNumber,
+                AncientReceiptsBarrier = BeaconGenesisBlockNumber,
+                PivotNumber = 100,
+                FastSync = false,
+                SnapSync = false
+            }
+            : SyncConfig;
 
         return containerBuilder =>
         {
@@ -1145,7 +1468,7 @@ public class HistoryPrunerTests
             .AddSingleton(blockProcessingQueue)
             .AddSingleton(historyConfig)
             .AddSingleton(BlocksConfig)
-            .AddSingleton(SyncConfig);
+            .AddSingleton(syncConfig);
 
             if (scheduler is not null)
                 containerBuilder.AddSingleton(scheduler);

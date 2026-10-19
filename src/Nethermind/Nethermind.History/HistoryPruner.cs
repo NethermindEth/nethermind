@@ -95,6 +95,8 @@ public class HistoryPruner : IHistoryPruner
     // Consumed under _pruneLock after an eligible pass; the lock-free read only decides whether to enter the lock.
     private int _initialPruningPassPending = 1;
     private int _currentlyPruning;
+    private ulong _lastFullSyncHeadTriggerBucket;
+    private ulong _lastFullSyncPruningHead;
 
     public event EventHandler<OnNewOldestBlockArgs>? NewOldestBlock;
 
@@ -157,6 +159,10 @@ public class HistoryPruner : IHistoryPruner
             Metrics.BlockAccessListPruningCutoffBlocknumber = BalCutoffBlockNumber;
 
             blockProcessingQueue.ProcessingQueueEmpty += OnBlockProcessorQueueEmpty;
+            if (!_fastSync)
+            {
+                blockTree.NewHeadBlock += OnFullSyncNewHeadBlock;
+            }
         }
     }
 
@@ -178,6 +184,8 @@ public class HistoryPruner : IHistoryPruner
     public ulong? BalCutoffBlockNumber => _enabled ? CalculateRollingCutoff(_historyConfig.BalRetentionEpochs) : null;
 
     internal ulong BalsDeletePointer => _balsDeletePointer;
+
+    private ulong PruningUpperBound => _fastSync ? _blockTree.SyncPivot.BlockNumber : _blockTree.Head?.Number ?? 0;
 
     public BlockHeader? OldestBlockHeader
     {
@@ -231,6 +239,19 @@ public class HistoryPruner : IHistoryPruner
 
     private void OnBlockProcessorQueueEmpty(object? sender, EventArgs e)
         => SchedulePruneHistory(_processExitSource.Token);
+
+    private void OnFullSyncNewHeadBlock(object? sender, BlockEventArgs e)
+    {
+        ulong triggerInterval = _pruningInterval == 0 ? SlotsPerEpoch : _pruningInterval;
+        ulong triggerBucket = e.Block.Header.Number / triggerInterval;
+        ulong previousBucket = Volatile.Read(ref _lastFullSyncHeadTriggerBucket);
+        if (triggerBucket <= previousBucket || Interlocked.CompareExchange(ref _lastFullSyncHeadTriggerBucket, triggerBucket, previousBucket) != previousBucket)
+        {
+            return;
+        }
+
+        SchedulePruneHistory(_processExitSource.Token);
+    }
 
     /// <summary>
     /// Schedules a pruning operation if one is not already running. The first eligible pruning pass bypasses the
@@ -287,7 +308,7 @@ public class HistoryPruner : IHistoryPruner
     {
         // Trustworthy only once loaded: on in-memory defaults a collapsed cutoff would hide a persisted backlog.
         if (_blockTree.Head is null ||
-            _blockTree.SyncPivot.BlockNumber == 0 ||
+            PruningUpperBound == 0 ||
             (_hasLoadedDeletePointers && _stampsValidated && !ShouldPruneHistory(Volatile.Read(ref _initialPruningPassPending) != 0)))
         {
             SkipLocalPruning();
@@ -325,15 +346,19 @@ public class HistoryPruner : IHistoryPruner
                 }
 
                 _initialPruningPassPending = 0;
+                if (!_fastSync)
+                {
+                    _lastFullSyncPruningHead = _blockTree.Head!.Number;
+                }
 
                 ulong? blockCutoff = CutoffBlockNumber;
                 ulong? balCutoff = BalCutoffBlockNumber;
                 Metrics.PruningCutoffBlocknumber = blockCutoff;
                 Metrics.BlockAccessListPruningCutoffBlocknumber = balCutoff;
 
-                ulong syncPivot = _blockTree.SyncPivot.BlockNumber;
-                ulong blockUpper = blockCutoff is null ? _blocksDeletePointer : ulong.Min(blockCutoff.Value, syncPivot);
-                ulong balUpper = balCutoff is null ? _balsDeletePointer : ulong.Min(balCutoff.Value, syncPivot);
+                ulong pruningUpperBound = PruningUpperBound;
+                ulong blockUpper = ulong.Min(blockCutoff ?? _blocksDeletePointer, pruningUpperBound);
+                ulong balUpper = ulong.Min(balCutoff ?? _balsDeletePointer, pruningUpperBound);
 
                 // From the cursor, not the boundary: the boundary is raised before any reclaim happens.
                 ulong blocksRemaining = blockUpper.SaturatingSub(_blocksReclaimCursor);
@@ -391,7 +416,7 @@ public class HistoryPruner : IHistoryPruner
 
         ulong? oldestBlockNumber = BlockTree.BinarySearchBlockNumber(
             _minDeletableBlockNumber,
-            _blockTree.SyncPivot.BlockNumber,
+            PruningUpperBound,
             BlockExists,
             BlockTree.BinarySearchDirection.Down);
 
@@ -540,7 +565,14 @@ public class HistoryPruner : IHistoryPruner
     }
 
     private bool PruningIntervalHasElapsed()
-        => _pruningInterval == 0 || _blockTree.Head!.Number % _pruningInterval == 0;
+    {
+        if (_pruningInterval == 0) return true;
+
+        ulong head = _blockTree.Head!.Number;
+        return _fastSync
+            ? head % _pruningInterval == 0
+            : head / _pruningInterval > _lastFullSyncPruningHead / _pruningInterval;
+    }
 
     private const ulong ReclaimChunkBlocks = 1_000_000;
 
@@ -573,7 +605,7 @@ public class HistoryPruner : IHistoryPruner
     /// already declared absent, so interrupting it leaves the node honest and merely fat.</summary>
     private void PruneBlocksAndReceipts(ulong upperExclusive, CancellationToken cancellationToken)
     {
-        ulong target = ulong.Min(upperExclusive, _blockTree.SyncPivot.BlockNumber);
+        ulong target = ulong.Min(upperExclusive, PruningUpperBound);
 
         if (target > _blocksDeletePointer)
         {
@@ -583,7 +615,7 @@ public class HistoryPruner : IHistoryPruner
         }
 
         // Chases the published boundary, not the cutoff: they part company the moment a pass is interrupted.
-        ulong limit = ulong.Min(_blocksDeletePointer, _blockTree.SyncPivot.BlockNumber);
+        ulong limit = ulong.Min(_blocksDeletePointer, PruningUpperBound);
         ulong start = ulong.Max(_blocksReclaimCursor, _minDeletableBlockNumber);
         if (start >= limit) return;
 
@@ -956,7 +988,7 @@ public class HistoryPruner : IHistoryPruner
 
     private void PruneBlockAccessLists(ulong upperExclusive, CancellationToken cancellationToken)
     {
-        ulong limit = ulong.Min(upperExclusive, _blockTree.SyncPivot.BlockNumber);
+        ulong limit = ulong.Min(upperExclusive, PruningUpperBound);
         ulong start = ulong.Max(_balsDeletePointer, _minDeletableBlockNumber);
         if (start >= limit) return;
 
