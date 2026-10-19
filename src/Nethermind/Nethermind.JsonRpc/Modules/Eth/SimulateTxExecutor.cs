@@ -23,7 +23,9 @@ public class SimulateTxExecutor<TTrace>(
     IJsonRpcConfig rpcConfig,
     ISpecProvider specProvider,
     ISimulateBlockTracerFactory<TTrace> simulateBlockTracerFactory,
-    ulong? secondsPerSlot = null)
+    ulong? secondsPerSlot = null,
+    bool readLoneBlobFeeCapAsAbsent = true,
+    bool callSemantics = false)
     : ExecutorBase<IReadOnlyList<SimulateBlockResult<TTrace>>, SimulatePayload<TransactionForRpc>,
     SimulatePayload<TransactionWithSourceDetails>>(blockchainBridge, blockFinder, rpcConfig)
 {
@@ -52,7 +54,9 @@ public class SimulateTxExecutor<TTrace>(
 
                     for (int i = 0; i < blockStateCall.Calls.Length; i++)
                     {
-                        TransactionForRpc callTransactionModel = blockStateCall.Calls[i];
+                        TransactionForRpc callTransactionModel = readLoneBlobFeeCapAsAbsent
+                            ? BlobTransactionForRpc.WithLoneBlobFeeCapOmitted(blockStateCall.Calls[i])
+                            : blockStateCall.Calls[i];
                         LegacyTransactionForRpc? asLegacy = callTransactionModel as LegacyTransactionForRpc;
                         bool hadGasLimitInRequest = asLegacy?.Gas is not null;
                         bool hadNonceInRequest = asLegacy?.Nonce is not null;
@@ -69,6 +73,8 @@ public class SimulateTxExecutor<TTrace>(
                         calls[i] = new TransactionWithSourceDetails
                         {
                             HadGasLimitInRequest = hadGasLimitInRequest,
+                            // The block checks the gas as requested, before the conversion clamped it to the RPC gas cap.
+                            GasLimitToFitBlock = !callSemantics && hadGasLimitInRequest ? asLegacy!.Gas : null,
                             HadNonceInRequest = hadNonceInRequest,
                             Transaction = tx
                         };

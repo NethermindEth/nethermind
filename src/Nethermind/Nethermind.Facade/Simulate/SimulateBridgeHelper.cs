@@ -12,6 +12,7 @@ using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.State;
+using Nethermind.State.Proofs;
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
@@ -153,11 +154,11 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
 
                 TransactionWithSourceDetails[] calls = blockCall.Calls ?? [];
 
-                env.SimulateRequestState.SetTxsWithExplicitGas(calls);
+                env.SimulateRequestState.Calls = calls;
 
                 PrepareState(blockCall, env.WorldState, env.CodeInfoRepository, callHeader.Number, spec);
 
-                BlockBody body = AssembleBody(calls, stateProvider, nonceCache, spec);
+                BlockBody body = AssembleBody(calls, blockCall.BlockOverrides?.Withdrawals, stateProvider, nonceCache, spec);
                 Block callBlock = new(callHeader, body);
 
                 ProcessingOptions processingFlags = payload.Validation
@@ -196,6 +197,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
 
     private BlockBody AssembleBody(
         TransactionWithSourceDetails[] calls,
+        Withdrawal[]? withdrawalOverrides,
         IWorldState stateProvider,
         Dictionary<Address, ulong> nonceCache,
         IReleaseSpec spec)
@@ -206,11 +208,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
             transactions[i] = CreateTransaction(calls[i], stateProvider, nonceCache);
         }
 
-        Withdrawal[]? withdrawals = null;
-        if (spec.WithdrawalsEnabled)
-        {
-            withdrawals = [];
-        }
+        Withdrawal[]? withdrawals = spec.WithdrawalsEnabled ? withdrawalOverrides ?? [] : null;
 
         BlockBody body = new(transactions, null, withdrawals);
         return body;
@@ -302,7 +300,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
 
         IReleaseSpec spec = specProvider.GetSpec(GetSimulatedActivation(block.BlockOverrides, result));
 
-        if (spec.WithdrawalsEnabled) result.WithdrawalsRoot = Keccak.EmptyTreeHash;
+        if (spec.WithdrawalsEnabled) result.WithdrawalsRoot = GetWithdrawalsRoot(block.BlockOverrides?.Withdrawals);
         if (spec.IsBeaconBlockRootAvailable) result.ParentBeaconBlockRoot = Hash256.Zero;
         result.SlotNumber = GetSlotNumber(spec, specProvider, parent, result.SlotNumber, block.BlockOverrides?.Time ?? result.Timestamp);
 
@@ -379,6 +377,9 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
         ulong slot = (timestamp - genesis) / secondsPerSlot;
         return slot <= previousSlot ? previousSlot + 1 : slot;
     }
+
+    private static Hash256 GetWithdrawalsRoot(Withdrawal[]? withdrawals) =>
+        withdrawals is null || withdrawals.Length == 0 ? Keccak.EmptyTreeHash : new WithdrawalTrie(withdrawals).RootHash;
 
     private static ForkActivation GetSimulatedActivation(BlockOverride? overrides, BlockHeader header) =>
         new(overrides?.Number ?? (ulong)header.Number, overrides?.Time ?? header.Timestamp);

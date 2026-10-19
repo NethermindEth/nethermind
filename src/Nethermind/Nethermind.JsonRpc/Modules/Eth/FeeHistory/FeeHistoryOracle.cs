@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
@@ -278,28 +277,20 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
 
         private List<RewardInfo> GetRewardsInBlock(Block block, IReleaseSpec spec, out ulong gasUsedTotal)
         {
-            // EIP-8116 receipts carry each transaction's own gas used; earlier receipts carry the block's running total.
-            static IEnumerable<ulong> CalculateGasUsed(TxReceipt[] txReceipts, bool isEip8116Enabled)
+            Transaction[] txs = block.Transactions;
+            using ArrayPoolListRef<ulong> gasUsed = new(txs.Length, txs.Length);
+            Span<ulong> gasUsedSpan = gasUsed.AsSpan();
+            if (txs.Length > 0 && !TryGetReceiptsGasUsed(block, spec.IsEip8116Enabled, gasUsedSpan))
             {
-                ulong previousGasUsedTotal = 0;
-                foreach (TxReceipt receipt in txReceipts)
+                // If no receipts available, approximate on GasLimit
+                // We could just go with null here too and just don't return percentiles
+                for (int i = 0; i < txs.Length; i++)
                 {
-                    ulong gasUsedTotal = receipt.GasUsedTotal;
-                    yield return isEip8116Enabled ? gasUsedTotal : gasUsedTotal - previousGasUsedTotal;
-                    previousGasUsedTotal = gasUsedTotal;
+                    gasUsedSpan[i] = txs[i].GasLimit;
                 }
             }
 
-            TxReceipt[] receipts = _receiptStorage.Get(block, false);
-            Transaction[] txs = block.Transactions;
-            using ArrayPoolListRef<ulong> gasUsed = new(txs.Length, receipts.Length == block.Transactions.Length
-                ? CalculateGasUsed(receipts, spec.IsEip8116Enabled)
-                // If no receipts available, approximate on GasLimit
-                // We could just go with null here too and just don't return percentiles
-                : txs.Select(static tx => tx.GasLimit));
-
             List<RewardInfo> rewardInfos = new(txs.Length);
-            Span<ulong> gasUsedSpan = gasUsed.AsSpan();
             gasUsedTotal = 0;
             for (int i = 0; i < txs.Length; i++)
             {
@@ -311,6 +302,44 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
             CollectionsMarshal.AsSpan(rewardInfos).Sort(default(RewardInfoByPremiumAscendingComparer));
 
             return rewardInfos;
+        }
+
+        /// <summary>Reads each receipt's gas used, through the receipts iterator when the storage offers one, so its logs and bloom are not decoded.</summary>
+        /// <returns>Whether there is exactly one receipt per transaction.</returns>
+        private bool TryGetReceiptsGasUsed(Block block, bool isEip8116Enabled, Span<ulong> gasUsed)
+        {
+            if (_receiptStorage.TryGetReceiptsIterator(block.Number, block.Hash!, out ReceiptsIterator iterator))
+            {
+                int count = 0;
+                using ReceiptsIterator receipts = iterator;
+                while (receipts.TryGetNext(out TxReceiptStructRef receipt))
+                {
+                    if (count == gasUsed.Length) return false;
+                    gasUsed[count++] = receipt.GasUsedTotal;
+                }
+
+                if (count != gasUsed.Length) return false;
+            }
+            else
+            {
+                TxReceipt[] receipts = _receiptStorage.Get(block, false);
+                if (receipts.Length != gasUsed.Length) return false;
+                for (int i = 0; i < receipts.Length; i++)
+                {
+                    gasUsed[i] = receipts[i].GasUsedTotal;
+                }
+            }
+
+            // EIP-8116 receipts carry each transaction's own gas used; earlier receipts carry the block's running total.
+            if (!isEip8116Enabled)
+            {
+                for (int i = gasUsed.Length - 1; i > 0; i--)
+                {
+                    gasUsed[i] -= gasUsed[i - 1];
+                }
+            }
+
+            return true;
         }
 
         private static ArrayPoolList<UInt256> CalculatePercentileValues(
