@@ -65,20 +65,24 @@ public class GetBlobsHandlerV4(ITxPool txPool, IEthSyncingInfo? ethSyncingInfo) 
         int found = 0;
         bool allRequestedCellsAvailable = true;
         BlobCellsAndProofs?[]? response = null;
+        BlobCellMask[] availableMasks = new BlobCellMask[n];
+        byte[][]?[] availableCellsPerBlob = new byte[n][][];
+        byte[][]?[] availableProofsPerBlob = new byte[n][][];
         try
         {
             response = ArrayPool<BlobCellsAndProofs?>.Shared.Rent(n);
             Array.Clear(response, 0, n);
 
+            txPool.TryGetBlobCellsAndProofsV1(request.BlobVersionedHashes, requestedMask, availableMasks, availableCellsPerBlob, availableProofsPerBlob);
             for (int i = 0; i < n; i++)
             {
-                byte[] blobVersionedHash = request.BlobVersionedHashes[i];
-                if (!txPool.TryGetBlobCellsAndProofsV1(blobVersionedHash, requestedMask, out BlobCellMask availableMask, out byte[][]? availableCells, out byte[][]? availableProofs))
+                if (availableCellsPerBlob[i] is not { } availableCells || availableProofsPerBlob[i] is not { } availableProofs)
                 {
                     allRequestedCellsAvailable = false;
                     continue;
                 }
 
+                BlobCellMask availableMask = availableMasks[i];
                 if (!availableMask.IsEmpty)
                 {
                     found++;

@@ -1844,17 +1844,19 @@ namespace Nethermind.TxPool.Test
         {
             BlobCellMask requestedMask = IncludedBlobRequestedCells;
             Assert.That(BlobCellsHelper.TryGetFlattenedCells(wrapper, requestedMask, out byte[][] expectedCells), Is.True, "precondition: the tx's own cells");
-            int served = 0;
+            BlobCellMask[] availableMasks = new BlobCellMask[hashes.Length];
+            byte[][][] cells = new byte[hashes.Length][][];
+            byte[][][] proofs = new byte[hashes.Length][][];
+            int served = _txPool.TryGetBlobCellsAndProofsV1(hashes, requestedMask, availableMasks, cells, proofs);
             for (int i = 0; i < hashes.Length; i++)
             {
-                if (_txPool.TryGetBlobCellsAndProofsV1(hashes[i], requestedMask, out BlobCellMask availableMask, out byte[][] cells, out byte[][] proofs))
+                if (cells[i] is not null)
                 {
-                    served++;
                     using (Assert.EnterMultipleScope())
                     {
-                        Assert.That(availableMask, Is.EqualTo(requestedMask), $"cell mask {i}");
-                        Assert.That(cells, Is.EqualTo(expectedCells.AsSpan(i * requestedMask.Count, requestedMask.Count).ToArray()), $"cells {i}");
-                        Assert.That(proofs, Is.EqualTo(BlobCellsHelper.SelectProofs(wrapper, i, requestedMask)), $"cell proofs {i}");
+                        Assert.That(availableMasks[i], Is.EqualTo(requestedMask), $"cell mask {i}");
+                        Assert.That(cells[i], Is.EqualTo(expectedCells.AsSpan(i * requestedMask.Count, requestedMask.Count).ToArray()), $"cells {i}");
+                        Assert.That(proofs[i], Is.EqualTo(BlobCellsHelper.SelectProofs(wrapper, i, requestedMask)), $"cell proofs {i}");
                     }
                 }
             }
@@ -2074,7 +2076,7 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
-        public async Task should_read_the_processed_row_once_per_blob_cells_request()
+        public async Task should_read_a_processed_row_once_for_all_its_requested_blob_cells()
         {
             ProcessedRowReadCountingStorage storage = new();
             Transaction tx = SubmitBlobTxsToNewPool(BlobsSupportMode.StorageWithReorgs, Osaka.Instance, storage, [TestItem.PrivateKeyA], blobCount: 3)[0];
@@ -2084,7 +2086,7 @@ namespace Nethermind.TxPool.Test
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(LookUpBlobs(tx, BlobLookup.GetBlobsV4), Is.EqualTo(3));
-                Assert.That(storage.ProcessedRowReads, Is.EqualTo(3), "one read per requested blob");
+                Assert.That(storage.ProcessedRowReads, Is.EqualTo(1));
             }
         }
 
