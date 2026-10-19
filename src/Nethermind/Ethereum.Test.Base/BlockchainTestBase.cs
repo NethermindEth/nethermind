@@ -105,8 +105,13 @@ public abstract class BlockchainTestBase
         if (test.NetworkAfterTransition is not null)
             transitions.Add((test.TransitionForkActivation!.Value, test.NetworkAfterTransition));
 
-        return new CustomSpecProvider(test.ChainId, test.ChainId, transitions.ToArray());
+        // Fixtures carry no consensus-layer slot duration. It only places slots (payload pacing, simulated timestamps),
+        // never validates blocks, so the engine path gets the mainnet SLOT_DURATION_MS_EIP8198.
+        return new CustomSpecProvider(test.ChainId, test.ChainId, transitions.ToArray()) { Eip8198SlotDurationMs = MainnetEip8198SlotDurationMs };
     }
+
+    /// <summary>Consensus-layer <c>SLOT_DURATION_MS_EIP8198</c> on mainnet.</summary>
+    private const ulong MainnetEip8198SlotDurationMs = 10_000;
 
     protected async Task<EthereumTestResult> RunTest(
         BlockchainTest test,
