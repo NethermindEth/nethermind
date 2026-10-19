@@ -34,7 +34,7 @@ internal enum NodeRecordKind : byte
 /// 2   2   hash mask: bit i set when child i is referenced by hash (an extension's child is bit 0)
 /// 4   4   RLP length
 /// 8   32  keccak256 of the RLP
-/// 40  8   node key, <see cref="NodeKey"/>
+/// 40  8   node key hash, <see cref="NodeKeyHash"/>
 /// 48  8 * popcount(mask)  buffer pointers of the hash children, ascending child index, 0 when unknown
 /// ..  RLP length          the node's standard RLP, exactly the bytes that are hashed and persisted
 /// </code>
@@ -51,7 +51,7 @@ internal static class NodeRecordCodec
     public const int HashMaskOffset = 2;
     public const int RlpLengthOffset = 4;
     public const int HashOffset = 8;
-    public const int NodeKeyOffset = 40;
+    public const int NodeKeyHashOffset = 40;
 
     public const uint TransientGenerationMask = 1u << 31;
     public const ulong TransientPointerMask = (ulong)TransientGenerationMask << OffsetBits;
@@ -81,9 +81,9 @@ internal static class NodeRecordCodec
 
     public static int AlignedLength(int length) => (length + RecordAlignment - 1) & -RecordAlignment;
 
-    /// <summary>A well-mixed 64-bit key of a node position, which identifies the records of one trie path.</summary>
+    /// <summary>A well-mixed 64-bit hash of a node position, which identifies the records of one trie path.</summary>
     /// <param name="address">The storage trie's address hash, or null for the state trie.</param>
-    public static ulong NodeKey(Hash256? address, in TreePath path)
+    public static ulong NodeKeyHash(Hash256? address, in TreePath path)
     {
         ulong addressWord = address is null ? 0 : MemoryMarshal.Read<ulong>(address.Bytes);
         ReadOnlySpan<ulong> pathWords = MemoryMarshal.Cast<byte, ulong>(path.Path.Bytes);
@@ -131,7 +131,7 @@ internal static class NodeRecordCodec
     /// <param name="kind">From <see cref="TryMeasure"/>.</param>
     /// <param name="hashMask">From <see cref="TryMeasure"/>.</param>
     /// <param name="destination">At least <see cref="Length(int, int)"/> bytes.</param>
-    public static void WriteFromRlp(ReadOnlySpan<byte> rlp, NodeRecordKind kind, ushort hashMask, in ValueHash256 hash, ulong nodeKey, Span<byte> destination)
+    public static void WriteFromRlp(ReadOnlySpan<byte> rlp, NodeRecordKind kind, ushort hashMask, in ValueHash256 hash, ulong nodeKeyHash, Span<byte> destination)
     {
         int pointersLength = PointerLength * BitOperations.PopCount(hashMask);
         destination[..HashOffset].Clear();
@@ -139,7 +139,7 @@ internal static class NodeRecordCodec
         BinaryPrimitives.WriteUInt16LittleEndian(destination[HashMaskOffset..], hashMask);
         BinaryPrimitives.WriteUInt32LittleEndian(destination[RlpLengthOffset..], (uint)rlp.Length);
         hash.Bytes.CopyTo(destination[HashOffset..]);
-        BinaryPrimitives.WriteUInt64LittleEndian(destination[NodeKeyOffset..], nodeKey);
+        BinaryPrimitives.WriteUInt64LittleEndian(destination[NodeKeyHashOffset..], nodeKeyHash);
         destination.Slice(HeaderLength, pointersLength).Clear();
         rlp.CopyTo(destination[(HeaderLength + pointersLength)..]);
     }

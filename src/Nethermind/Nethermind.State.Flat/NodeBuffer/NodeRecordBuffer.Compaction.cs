@@ -13,7 +13,7 @@ namespace Nethermind.State.Flat.NodeBuffer;
 
 /// <remarks>
 /// A dropped generation stays readable in place until it is compacted in the background, oldest first and one at a time.
-/// Compaction keeps every root key record, and the last record of every node key that no bloom filter of a later generation holds,
+/// Compaction keeps every root key record, and the last record of every node key hash that no bloom filter of a later generation holds,
 /// since a later generation then likely holds a newer node at the same position. Newer records reference the unchanged subtrees of older ones
 /// by pointer, so the records kept are those likely still reachable from current roots. They keep their pointers and resolve through a
 /// <see cref="CompressedGeneration"/>, which is evicted oldest first while compressed generations take more than the compressed memory budget,
@@ -32,7 +32,7 @@ public sealed partial class NodeRecordBuffer
     private ulong _compressedMemory;
     private bool _compacting;
 
-    /// <summary>The bloom filter of the node keys written to the generation of <paramref name="pointer"/>, or null once it is compacted.</summary>
+    /// <summary>The bloom filter of the node key hashes written to the generation of <paramref name="pointer"/>, or null once it is compacted.</summary>
     /// <remarks>The caller must hold a pin for the entire use of the filter.</remarks>
     internal BloomFilter? FindBloom(ulong pointer)
     {
@@ -128,7 +128,7 @@ public sealed partial class NodeRecordBuffer
         // Reservations that did not fit leave Used past the end.
         long end = Math.Min(Volatile.Read(ref generation.Used), data.Length);
         using ArrayPoolList<int> kept = new(InitialKeptCapacity);
-        Dictionary<ulong, int> lastOffsetByNodeKey = [];
+        Dictionary<ulong, int> lastOffsetByNodeKeyHash = [];
         for (int offset = 0; offset + NodeRecordCodec.HeaderLength <= end;)
         {
             ReadOnlySpan<byte> record = data.AsSpan(offset);
@@ -136,14 +136,14 @@ public sealed partial class NodeRecordBuffer
             if ((NodeRecordKind)record[0] == NodeRecordKind.RootKey) kept.Add(offset);
             // Past the last record the generation is zero-filled, which reads as a record without RLP.
             else if (length == NodeRecordCodec.HeaderLength) break;
-            else lastOffsetByNodeKey[BinaryPrimitives.ReadUInt64LittleEndian(record[NodeRecordCodec.NodeKeyOffset..])] = offset;
+            else lastOffsetByNodeKeyHash[BinaryPrimitives.ReadUInt64LittleEndian(record[NodeRecordCodec.NodeKeyHashOffset..])] = offset;
 
             offset += NodeRecordCodec.AlignedLength(length);
         }
 
-        foreach ((ulong nodeKey, int offset) in lastOffsetByNodeKey)
+        foreach ((ulong nodeKeyHash, int offset) in lastOffsetByNodeKeyHash)
         {
-            if (!IsWrittenAfter(generation.Id, newest, nodeKey)) kept.Add(offset);
+            if (!IsWrittenAfter(generation.Id, newest, nodeKeyHash)) kept.Add(offset);
         }
 
         if (kept.Count == 0) return null;
@@ -153,12 +153,12 @@ public sealed partial class NodeRecordBuffer
         return new CompressedGeneration(data, generation.Id, kept.AsSpan());
     }
 
-    private bool IsWrittenAfter(ulong id, ulong newest, ulong nodeKey)
+    private bool IsWrittenAfter(ulong id, ulong newest, ulong nodeKeyHash)
     {
         // Only this compactor retires blooms; later generations keep theirs until this pass finishes.
         for (ulong later = id + 1; later <= newest; later++)
         {
-            if (_generations[later & GenerationSlotMask]!.Bloom!.MightContain(nodeKey)) return true;
+            if (_generations[later & GenerationSlotMask]!.Bloom!.MightContain(nodeKeyHash)) return true;
         }
 
         return false;

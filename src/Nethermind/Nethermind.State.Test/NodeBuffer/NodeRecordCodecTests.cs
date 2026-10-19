@@ -46,7 +46,7 @@ internal class NodeRecordCodecTests
         Assert.That(NodeRecordCodec.TryMeasure(rlp, out NodeRecordKind kind, out ushort hashMask), Is.True);
 
         byte[] buffer = new byte[NodeRecordCodec.Length(BitOperations.PopCount(hashMask), rlp.Length)];
-        NodeRecordCodec.WriteFromRlp(rlp, kind, hashMask, ValueKeccak.Compute(rlp), nodeKey: 0, buffer);
+        NodeRecordCodec.WriteFromRlp(rlp, kind, hashMask, ValueKeccak.Compute(rlp), nodeKeyHash: 0, buffer);
         NodeRecord record = new(buffer, 0);
 
         TrieNode node = new(NodeType.Unknown, rlp);

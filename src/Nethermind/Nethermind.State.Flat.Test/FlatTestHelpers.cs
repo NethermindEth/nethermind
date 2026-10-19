@@ -155,7 +155,7 @@ public static class FlatTestHelpers
             ValueHash256 hash = ValueKeccak.Compute(rlp);
             int length = NodeRecordCodec.Length(BitOperations.PopCount(mask), rlp.Length);
             byte[] record = new byte[length];
-            NodeRecordCodec.WriteFromRlp(rlp, kind, mask, hash, NodeRecordCodec.NodeKey(address, path), record);
+            NodeRecordCodec.WriteFromRlp(rlp, kind, mask, hash, NodeRecordCodec.NodeKeyHash(address, path), record);
             NodeRecordRef view = new(record);
             int position = NodeRecordCodec.HeaderLength;
             Span<byte> keyNibbles = stackalloc byte[64];

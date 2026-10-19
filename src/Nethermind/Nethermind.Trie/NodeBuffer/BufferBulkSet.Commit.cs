@@ -125,7 +125,7 @@ internal static partial class BufferBulkSet
             for (int i = 0; i < hashedCount; i++)
             {
                 ref PendingNode node = ref _arena.Nodes[hashed[i]];
-                int rlpOffset = WriteRecord(ref node, buffer[recordStarts[i]..], messages[i].Length, NodeRecordCodec.NodeKey(_address, node.Path));
+                int rlpOffset = WriteRecord(ref node, buffer[recordStarts[i]..], messages[i].Length, NodeRecordCodec.NodeKeyHash(_address, node.Path));
                 messages[i] = (recordStarts[i] + rlpOffset, messages[i].Length);
             }
 
@@ -155,7 +155,7 @@ internal static partial class BufferBulkSet
 
         /// <summary>Writes the record of <paramref name="node"/>, all but its hash, into the zero-filled <paramref name="record"/>.</summary>
         /// <returns>The offset of the RLP in the record.</returns>
-        private int WriteRecord(ref PendingNode node, Span<byte> record, int rlpLength, ulong nodeKey)
+        private int WriteRecord(ref PendingNode node, Span<byte> record, int rlpLength, ulong nodeKeyHash)
         {
             ReadOnlySpan<ChildRef> children = node.Kind switch
             {
@@ -185,7 +185,7 @@ internal static partial class BufferBulkSet
             record[0] = (byte)kind;
             BinaryPrimitives.WriteUInt16LittleEndian(record[NodeRecordCodec.HashMaskOffset..], hashMask);
             BinaryPrimitives.WriteUInt32LittleEndian(record[NodeRecordCodec.RlpLengthOffset..], (uint)rlpLength);
-            BinaryPrimitives.WriteUInt64LittleEndian(record[NodeRecordCodec.NodeKeyOffset..], nodeKey);
+            BinaryPrimitives.WriteUInt64LittleEndian(record[NodeRecordCodec.NodeKeyHashOffset..], nodeKeyHash);
             Encode(ref node, record[pointerOffset..]);
             return pointerOffset;
         }

@@ -149,7 +149,7 @@ public sealed partial class NodeRecordBuffer : INodeRecordBuffer
     /// <inheritdoc/>
     public INodeRecordWriteBatch StartWriteBatch(int alignedTotalLength) => WriteBatch.Start(this, alignedTotalLength);
 
-    /// <summary>Adds the node keys of the records written to <paramref name="bytes"/> to the bloom of their generation.</summary>
+    /// <summary>Adds the node key hashes of the records written to <paramref name="bytes"/> to the bloom of their generation.</summary>
     private void CompleteWrite(ulong basePointer, ReadOnlySpan<byte> bytes)
     {
         BloomFilter? bloom = FindBloom(basePointer);
@@ -160,7 +160,7 @@ public sealed partial class NodeRecordBuffer : INodeRecordBuffer
             int length = NodeRecordCodec.Length(record);
             // Past the last record a failed write leaves zeros, which read as a record without RLP.
             if (length == NodeRecordCodec.HeaderLength) break;
-            bloom.Add(BinaryPrimitives.ReadUInt64LittleEndian(record[NodeRecordCodec.NodeKeyOffset..]));
+            bloom.Add(BinaryPrimitives.ReadUInt64LittleEndian(record[NodeRecordCodec.NodeKeyHashOffset..]));
             offset += NodeRecordCodec.AlignedLength(length);
         }
     }

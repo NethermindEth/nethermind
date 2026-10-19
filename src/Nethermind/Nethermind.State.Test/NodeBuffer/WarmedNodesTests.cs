@@ -110,10 +110,10 @@ internal class WarmedNodesTests
         TreePath path = Path(0);
         byte[] rlp = NodeRecordBufferTests.Leaf(0, 8);
         ValueHash256 hash = ValueKeccak.Compute(rlp);
-        Assert.That(NodeRecordCodec.NodeKey(TestItem.KeccakA, path), Is.EqualTo(NodeRecordCodec.NodeKey(otherAddress, path)), "same mixed key");
+        Assert.That(NodeRecordCodec.NodeKeyHash(TestItem.KeccakA, path), Is.EqualTo(NodeRecordCodec.NodeKeyHash(otherAddress, path)), "same mixed key");
 
         warmed.TryInsert(TestItem.KeccakA, path, hash, rlp, out _, out ulong originalPointer);
-        Assert.That(Get(warmed, otherAddress, path, hash), Is.Null, "a matching node key is not a matching address");
+        Assert.That(Get(warmed, otherAddress, path, hash), Is.Null, "a matching node key hash is not a matching address");
         warmed.TryInsert(otherAddress, path, hash, rlp, out _, out ulong otherPointer);
 
         using (Assert.EnterMultipleScope())
@@ -186,15 +186,15 @@ internal class WarmedNodesTests
 
     private static TreePath Path(int seed) => new(ValueKeccak.Compute(BitConverter.GetBytes(seed)), 64);
 
-    /// <summary>A path whose node key shares the low 16 bits with <paramref name="path"/>'s, so it takes the same slot in any table of up to 65536 slots.</summary>
+    /// <summary>A path whose node key hash shares the low 16 bits with <paramref name="path"/>'s, so it takes the same slot in any table of up to 65536 slots.</summary>
     private static TreePath CollidingPath(Hash256 address, in TreePath path)
     {
-        ulong nodeKey = NodeRecordCodec.NodeKey(address, path);
+        ulong nodeKeyHash = NodeRecordCodec.NodeKeyHash(address, path);
         for (int seed = 1_000_000; ; seed++)
         {
             TreePath candidate = Path(seed);
-            ulong candidateKey = NodeRecordCodec.NodeKey(address, candidate);
-            if (((candidateKey ^ nodeKey) & 0xFFFF) == 0 && candidateKey != nodeKey) return candidate;
+            ulong candidateKey = NodeRecordCodec.NodeKeyHash(address, candidate);
+            if (((candidateKey ^ nodeKeyHash) & 0xFFFF) == 0 && candidateKey != nodeKeyHash) return candidate;
         }
     }
 

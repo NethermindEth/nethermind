@@ -793,7 +793,7 @@ internal class BufferBulkSetTests
         {
             NodeRecordCodec.TryMeasure(rlp, out NodeRecordKind kind, out ushort hashMask);
             byte[] bytes = new byte[NodeRecordCodec.Length(BitOperations.PopCount(hashMask), rlp.Length)];
-            NodeRecordCodec.WriteFromRlp(rlp, kind, hashMask, ValueKeccak.Compute(rlp), NodeRecordCodec.NodeKey(null, path), bytes);
+            NodeRecordCodec.WriteFromRlp(rlp, kind, hashMask, ValueKeccak.Compute(rlp), NodeRecordCodec.NodeKeyHash(null, path), bytes);
             NodeRecordRef view = new(bytes);
             childPointers.Clear();
             for (int slot = 0; slot < 16; slot++)
@@ -876,7 +876,7 @@ internal class BufferBulkSetTests
             }
 
             if (ValueKeccak.Compute(rlp) != record.Hash || !parses || kind != record.Kind || hashMask != record.View.HashMask
-                || record.View.NodeKey != NodeRecordCodec.NodeKey(null, path) || transientPointer)
+                || record.View.NodeKeyHash != NodeRecordCodec.NodeKeyHash(null, path) || transientPointer)
             {
                 invalid.Add(path.ToString());
             }

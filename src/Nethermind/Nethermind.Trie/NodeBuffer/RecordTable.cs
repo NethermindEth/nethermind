@@ -11,7 +11,7 @@ namespace Nethermind.Trie.NodeBuffer;
 
 /// <summary>A lock-free map from a node position to one node record, over an arena of record copies.</summary>
 /// <remarks>
-/// The table is direct-mapped by the low bits of <see cref="NodeRecordCodec.NodeKey"/> and checks the full address and path.
+/// The table is direct-mapped by the low bits of <see cref="NodeRecordCodec.NodeKeyHash"/> and checks the full address and path.
 /// An add that collides with another position replaces it. The arena is a list of 1 MiB chunks that never move.
 /// Adds run under a lock and publish an immutable entry after copying its record, so readers need no lock.
 /// Pointers encode a resource/reset generation and an arena position, independent of the replaceable index entries.
@@ -53,8 +53,8 @@ internal sealed class RecordTable(int slotCount)
     /// <param name="pointer">The transient pointer to the matching record, or zero on a miss.</param>
     public bool TryGet(Hash256? address, in TreePath path, in ValueHash256 hash, out NodeRecord record, out ulong pointer)
     {
-        ulong nodeKey = NodeRecordCodec.NodeKey(address, path);
-        Entry? entry = Volatile.Read(ref _slots[nodeKey & _slotMask]);
+        ulong nodeKeyHash = NodeRecordCodec.NodeKeyHash(address, path);
+        Entry? entry = Volatile.Read(ref _slots[nodeKeyHash & _slotMask]);
         if (entry is not null && entry.Address == address && entry.Path == path)
         {
             record = RecordAt(entry.Position);
@@ -97,16 +97,16 @@ internal sealed class RecordTable(int slotCount)
     /// <summary>Copies <paramref name="record"/> into the arena and maps its node position to the copy.</summary>
     /// <param name="address">The storage trie's address hash, or null for the state trie.</param>
     /// <param name="path">The path of the node in its trie.</param>
-    /// <param name="record">A whole record of the node at <paramref name="path"/>; its node key picks the slot.</param>
+    /// <param name="record">A whole record of the node at <paramref name="path"/>; its node key hash picks the slot.</param>
     /// <param name="added">The copy, or the record already mapped when it has the same position and hash.</param>
     /// <param name="pointer">The transient pointer to the added or existing record, or zero when the arena is full.</param>
     /// <returns>False when the arena is full.</returns>
     public bool TryAdd(Hash256? address, in TreePath path, ReadOnlySpan<byte> record, out NodeRecord added, out ulong pointer)
     {
         NodeRecordRef view = new(record);
-        ulong nodeKey = view.NodeKey;
-        Debug.Assert(nodeKey == NodeRecordCodec.NodeKey(address, path), "The record is not of the node at the path.");
-        ref Entry? slot = ref _slots[nodeKey & _slotMask];
+        ulong nodeKeyHash = view.NodeKeyHash;
+        Debug.Assert(nodeKeyHash == NodeRecordCodec.NodeKeyHash(address, path), "The record is not of the node at the path.");
+        ref Entry? slot = ref _slots[nodeKeyHash & _slotMask];
         lock (_lock)
         {
             if (slot is { } existing && existing.Address == address && existing.Path == path)

@@ -73,7 +73,7 @@ internal sealed class WarmedNodes(int capacity)
             ? stackalloc byte[MaxStackRecordLength]
             : rented = ArrayPool<byte>.Shared.Rent(length);
         Span<byte> recordBytes = buffer[..length];
-        NodeRecordCodec.WriteFromRlp(rlp, kind, hashMask, hash, NodeRecordCodec.NodeKey(address, path), recordBytes);
+        NodeRecordCodec.WriteFromRlp(rlp, kind, hashMask, hash, NodeRecordCodec.NodeKeyHash(address, path), recordBytes);
         int pointerOffset = NodeRecordCodec.HeaderLength;
         for (int slot = 0; slot < childPointers.Length; slot++)
         {
