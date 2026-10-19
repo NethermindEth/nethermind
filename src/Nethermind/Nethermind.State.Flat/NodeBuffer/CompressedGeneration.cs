@@ -4,8 +4,10 @@
 using System;
 using System.Numerics;
 using System.Runtime.CompilerServices;
+using Nethermind.Trie;
+using Nethermind.Trie.NodeBuffer;
 
-namespace Nethermind.Trie.NodeBuffer;
+namespace Nethermind.State.Flat.NodeBuffer;
 
 /// <summary>The records compaction kept of a trie node buffer generation, found by their original buffer pointer.</summary>
 /// <remarks>

@@ -15,6 +15,7 @@ using Nethermind.Core.Threading;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.State.Flat.Io;
+using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.State.Flat.Test.Io;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;

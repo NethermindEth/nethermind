@@ -3,8 +3,10 @@
 
 using System;
 using System.Threading;
+using Nethermind.Trie;
+using Nethermind.Trie.NodeBuffer;
 
-namespace Nethermind.Trie.NodeBuffer;
+namespace Nethermind.State.Flat.NodeBuffer;
 
 /// <summary>Keeps a generation of a <see cref="NodeRecordBuffer"/>, and every later one, readable in place until disposed.</summary>
 /// <remarks>Obtained from <see cref="NodeRecordBuffer.RetainActive"/> or <see cref="Copy"/>, which have already retained <see cref="Generation"/>.</remarks>

@@ -22,6 +22,7 @@ using Nethermind.Logging;
 using Nethermind.Monitoring.Config;
 using Nethermind.Api;
 using Nethermind.State.Flat;
+using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.ScopeProvider;

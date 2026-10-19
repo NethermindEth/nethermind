@@ -30,6 +30,34 @@ public static class Metrics
     public static IMetricObserver TrieNodePublishTime { get; set; } = new NoopMetricObserver();
 
     [GaugeMetric]
+    [Description("Bytes of trie node buffer generations readable in place.")]
+    public static long NodeRecordBufferMemory { get; set; }
+
+    [GaugeMetric]
+    [Description("Number of trie node buffer generations readable in place.")]
+    public static long NodeRecordBufferGenerations { get; set; }
+
+    [GaugeMetric]
+    [Description("Bytes of the records and tables kept by compacted trie node buffer generations.")]
+    public static long NodeRecordBufferCompressedMemory { get; set; }
+
+    [GaugeMetric]
+    [Description("Number of compacted trie node buffer generations held.")]
+    public static long NodeRecordBufferCompressedGenerations { get; set; }
+
+    [CounterMetric]
+    [Description("Number of trie root lookups resolved by the trie node buffer.")]
+    public static long NodeRecordBufferRootHits => _nodeRecordBufferRootHits.Sum;
+    private static readonly StripedLong _nodeRecordBufferRootHits = new();
+    internal static void IncrementNodeRecordBufferRootHits() => _nodeRecordBufferRootHits.Increment();
+
+    [CounterMetric]
+    [Description("Number of trie root lookups not resolved by the trie node buffer.")]
+    public static long NodeRecordBufferRootMisses => _nodeRecordBufferRootMisses.Sum;
+    private static readonly StripedLong _nodeRecordBufferRootMisses = new();
+    internal static void IncrementNodeRecordBufferRootMisses() => _nodeRecordBufferRootMisses.Increment();
+
+    [GaugeMetric]
     [Description("Average snapshot bundle size in terms of num of snapshot")]
     public static long SnapshotBundleSize { get; set; }
 

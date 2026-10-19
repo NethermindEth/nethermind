@@ -5,8 +5,10 @@ using System;
 using System.Buffers;
 using System.Runtime.InteropServices;
 using System.Threading;
+using Nethermind.Trie;
+using Nethermind.Trie.NodeBuffer;
 
-namespace Nethermind.Trie.NodeBuffer;
+namespace Nethermind.State.Flat.NodeBuffer;
 
 /// <summary>Native record storage, retired only after the buffer's readers have released their leases.</summary>
 internal sealed unsafe class NativeNodeBuffer : MemoryManager<byte>

@@ -13,6 +13,7 @@ using System.Threading.Tasks;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.Trie;
 using Nethermind.Trie.NodeBuffer;
 using NUnit.Framework;
@@ -528,13 +529,13 @@ internal class NodeRecordBufferTests
         retain.Dispose();
         while (GenerationOf(Append(buffer, Leaf(0, 1000))) < GenerationOf(droppedPointer) + LiveGenerations) { }
 
-        long missesBefore = Metrics.NodeRecordBufferRootMisses;
+        long missesBefore = Nethermind.State.Flat.Metrics.NodeRecordBufferRootMisses;
         buffer.SetRoot(address, Root(-2), droppedPointer);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(() => buffer.FindRoot(address, Root(-2)), Is.Zero.After(CompactionTimeoutMilliseconds, PollingMilliseconds), "a root whose record dropped");
             Assert.That(() => buffer.FindRoot(address, roots[0]), Is.Zero.After(CompactionTimeoutMilliseconds, PollingMilliseconds), "a root whose root key dropped");
-            Assert.That(Metrics.NodeRecordBufferRootMisses, Is.GreaterThanOrEqualTo(missesBefore + 2), "misses are counted");
+            Assert.That(Nethermind.State.Flat.Metrics.NodeRecordBufferRootMisses, Is.GreaterThanOrEqualTo(missesBefore + 2), "misses are counted");
         }
     }
 

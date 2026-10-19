@@ -6,8 +6,10 @@ using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Core.Collections;
+using Nethermind.Trie;
+using Nethermind.Trie.NodeBuffer;
 
-namespace Nethermind.Trie.NodeBuffer;
+namespace Nethermind.State.Flat.NodeBuffer;
 
 /// <remarks>
 /// A dropped generation stays readable in place until it is compacted in the background, oldest first and one at a time.

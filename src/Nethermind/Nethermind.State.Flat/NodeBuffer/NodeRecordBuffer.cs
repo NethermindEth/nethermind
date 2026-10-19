@@ -9,8 +9,10 @@ using System.Numerics;
 using System.Threading;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Trie;
+using Nethermind.Trie.NodeBuffer;
 
-namespace Nethermind.Trie.NodeBuffer;
+namespace Nethermind.State.Flat.NodeBuffer;
 
 /// <summary>An append-only buffer of trie node records, split into generations and addressed by 64-bit pointers.</summary>
 /// <remarks>

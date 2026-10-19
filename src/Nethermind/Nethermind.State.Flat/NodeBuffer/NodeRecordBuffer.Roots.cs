@@ -6,8 +6,10 @@ using System.Buffers.Binary;
 using System.Runtime.InteropServices;
 using System.Threading;
 using Nethermind.Core.Crypto;
+using Nethermind.Trie;
+using Nethermind.Trie.NodeBuffer;
 
-namespace Nethermind.Trie.NodeBuffer;
+namespace Nethermind.State.Flat.NodeBuffer;
 
 /// <remarks>
 /// The root index is two tables of slots, one for the state trie and one for storage tries. A slot holds the pointer of the newest root key
