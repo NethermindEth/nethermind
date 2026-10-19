@@ -39,6 +39,7 @@ public partial class BlockProcessor
             transactionProcessedEventHandler is null ? null : [];
         private IncrementalValidationWorkItem? _incrementalValidationWorkItem;
         private ExecutedGasTally? _executedGasTally;
+        private CancellationTokenSource _rejection = new();
         private BlockReceiptsTracer[] _receiptsTracerPool = [];
         private GasValidationResultSlot[] _gasResultPool = [];
         private int[] _txExecutionOrder = [];
@@ -158,8 +159,11 @@ public partial class BlockProcessor
             _pooledSlotsInUse = len;
 
             IncrementalValidationWorkItem incrementalValidation = _incrementalValidationWorkItem ??= new();
+            // Cancelled once the block is rejected; a source that was cancelled cannot be reset, so it is replaced.
+            if (!_rejection.TryReset()) _rejection = new();
+            CancellationTokenSource rejection = _rejection;
             ExecutedGasTally executedGas = _executedGasTally ??= new();
-            executedGas.Reset();
+            executedGas.Reset(rejection);
             BuildTxExecutionOrder(block.Transactions, _txExecutionOrder, _txExecutionSortKeys, GetCanonicalExecutionLead(len));
 
             try
@@ -172,7 +176,8 @@ public partial class BlockProcessor
                         gasResults,
                         receiptsTracers,
                         transactionProcessedEventHandler is { HasSubscribers: true } ? this : null,
-                        token);
+                        token,
+                        rejection);
 
                     // Iterations: 0 = ApplyBal, 1..len = tx (scheduled order =
                     // _txExecutionOrder[i-1]; balIndex = scheduledTxIndex+1). Pre-execution
@@ -186,7 +191,7 @@ public partial class BlockProcessor
                             ? new ParallelOptions { MaxDegreeOfParallelism = ParallelUnbalancedWork.DefaultOptions.MaxDegreeOfParallelism, CancellationToken = token }
                             : ParallelUnbalancedWork.DefaultOptions,
                         new ParallelTxLoopState(block, processingOptions, stateProvider, balManager, receiptsTracers, gasResults,
-                            specProvider, _txExecutionOrder, isBlockProcessingThread, inner, incrementalValidation, executedGas),
+                            specProvider, _txExecutionOrder, isBlockProcessingThread, inner, incrementalValidation, executedGas, rejection.Token),
                         static (i, state) =>
                         {
                             // Block already rejected — executing the rest cannot change the outcome.
@@ -212,7 +217,7 @@ public partial class BlockProcessor
                                     // Pre-block writes on the shared state (e.g. AuRa's system accounts) are only committed to
                                     // the journal; flush them to the scope before the BAL's values are laid over them.
                                     state.StateProvider.Commit(state.SpecProvider.GetSpec(state.Block.Header));
-                                    state.StateProvider.ApplyBal(bal);
+                                    state.StateProvider.ApplyBal(bal, state.Rejection);
                                     if (state.IsBlockRejected) return state;
                                     state.StateProvider.RecalculateStateRoot();
                                     return state;
@@ -567,7 +572,8 @@ public partial class BlockProcessor
             bool isBlockProcessingThread,
             IBlockProcessor.IBlockTransactionsExecutor inner,
             IncrementalValidationWorkItem incrementalValidation,
-            ExecutedGasTally executedGas)
+            ExecutedGasTally executedGas,
+            CancellationToken rejection)
         {
             public readonly Block Block = block;
             public readonly ProcessingOptions ProcessingOptions = processingOptions;
@@ -582,9 +588,10 @@ public partial class BlockProcessor
             public readonly IBlockProcessor.IBlockTransactionsExecutor Inner = inner;
             public readonly IncrementalValidationWorkItem IncrementalValidation = incrementalValidation;
             public readonly ExecutedGasTally ExecutedGas = executedGas;
+            public readonly CancellationToken Rejection = rejection;
 
             /// <summary>Whether the block is already known to be invalid, so nothing still to run can save it.</summary>
-            public bool IsBlockRejected => IncrementalValidation.HasFailed || ExecutedGas.Failure is not null || ExecutedGas.ExceedsLimit;
+            public bool IsBlockRejected => Rejection.IsCancellationRequested;
         }
 
         /// <summary>Block gas used by the transactions executed so far, in whatever order they ran, and the first
@@ -602,20 +609,26 @@ public partial class BlockProcessor
             private ulong _stateGas;
             private volatile bool _exceedsLimit;
             private InvalidBlockException? _failure;
+            private CancellationTokenSource? _rejection;
 
             public bool ExceedsLimit => _exceedsLimit;
 
             public InvalidBlockException? Failure => Volatile.Read(ref _failure);
 
-            public void Reset()
+            public void Reset(CancellationTokenSource rejection)
             {
+                _rejection = rejection;
                 _executionGas = 0;
                 _stateGas = 0;
                 _exceedsLimit = false;
                 _failure = null;
             }
 
-            public void Fail(InvalidBlockException exception) => Interlocked.CompareExchange(ref _failure, exception, null);
+            public void Fail(InvalidBlockException exception)
+            {
+                Interlocked.CompareExchange(ref _failure, exception, null);
+                _rejection!.Cancel();
+            }
 
             public void Add(ulong executionGas, ulong stateGas, ulong gasLimit)
             {
@@ -623,6 +636,7 @@ public partial class BlockProcessor
                 if (Interlocked.Add(ref _executionGas, executionGas) > gasLimit | Interlocked.Add(ref _stateGas, stateGas) > gasLimit)
                 {
                     _exceedsLimit = true;
+                    _rejection!.Cancel();
                 }
             }
         }
@@ -636,6 +650,7 @@ public partial class BlockProcessor
             private BlockReceiptsTracer[]? _receiptsTracers;
             private BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? _transactionProcessedEventHandler;
             private CancellationToken _token;
+            private CancellationTokenSource? _rejection;
             private volatile Exception? _exception;
 
             /// <summary>Whether validation has terminally failed, so <see cref="GetResult"/> is
@@ -648,14 +663,16 @@ public partial class BlockProcessor
                 GasValidationResultSlot[] gasResults,
                 BlockReceiptsTracer[] receiptsTracers,
                 BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessedEventHandler,
-                CancellationToken token)
+                CancellationToken token,
+                CancellationTokenSource rejection)
             {
                 _completed.Reset();
                 _exception = null;
+                _rejection = rejection;
 
                 if (token.IsCancellationRequested)
                 {
-                    _exception = new TaskCanceledException();
+                    Fail(new TaskCanceledException());
                     _completed.Set();
                     return;
                 }
@@ -700,12 +717,19 @@ public partial class BlockProcessor
                 }
                 catch (Exception ex)
                 {
-                    _exception = ex;
+                    Fail(ex);
                 }
                 finally
                 {
                     _completed.Set();
                 }
+            }
+
+            /// <remarks>Rejects the block before publishing the failure, so whoever sees <see cref="HasFailed"/> also sees the rejection.</remarks>
+            private void Fail(Exception exception)
+            {
+                _rejection!.Cancel();
+                _exception = exception;
             }
         }
     }
