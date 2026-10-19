@@ -21,15 +21,15 @@ internal static class TimeoutTestHelper
         return timeout;
     }
 
-    /// <summary>Empties the timeout pool and reports whether <paramref name="timeout"/> was in it.</summary>
+    /// <summary>Empties the timeout pool, disposing what it held, and reports whether <paramref name="timeout"/> was in it.</summary>
     /// <remarks>Other tests return sources to the shared pool at any time, so the planted source need not be the next one rented.</remarks>
-    internal static bool TakeFromPool(TrackingCancellationTokenSource timeout)
+    internal static bool DisposeIfPooled(TrackingCancellationTokenSource timeout)
     {
         bool pooled = false;
         foreach (CancellationTokenSource drained in DrainPool())
         {
-            if (ReferenceEquals(drained, timeout)) pooled = true;
-            else drained.Dispose();
+            pooled |= ReferenceEquals(drained, timeout);
+            drained.Dispose();
         }
 
         return pooled;
@@ -39,9 +39,8 @@ internal static class TimeoutTestHelper
     {
         if (timeout.DisposeCount == 0)
         {
-            // Disposed while still pooled, it would be handed to whichever test rents next.
-            TakeFromPool(timeout);
-            timeout.Dispose();
+            // Not pooled means a concurrent test rented it, and disposing it would fail that renter, so it is left to the GC.
+            DisposeIfPooled(timeout);
         }
     }
 

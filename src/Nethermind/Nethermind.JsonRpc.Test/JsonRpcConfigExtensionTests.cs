@@ -26,7 +26,7 @@ public class JsonRpcConfigExtensionTests
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(timeout.DisposeCount, Is.EqualTo(cancelled ? 1 : 0));
-                Assert.That(TimeoutTestHelper.TakeFromPool(timeout), Is.EqualTo(!cancelled));
+                Assert.That(TimeoutTestHelper.DisposeIfPooled(timeout), Is.EqualTo(!cancelled));
                 Assert.That(timeout.IsCancellationRequested, Is.EqualTo(cancelled));
             }
         }

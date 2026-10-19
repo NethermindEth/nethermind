@@ -89,8 +89,8 @@ public partial class EthRpcModuleTests
 
                 using (Assert.EnterMultipleScope())
                 {
-                    Assert.That(TakeFromPool(timeout), Is.True);
                     Assert.That(timeout.DisposeCount, Is.Zero);
+                    Assert.That(DisposeIfPooled(timeout), Is.True);
                 }
             }
             finally
