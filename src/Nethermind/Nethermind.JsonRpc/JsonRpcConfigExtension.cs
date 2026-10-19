@@ -15,18 +15,26 @@ namespace Nethermind.JsonRpc
         private static readonly ConcurrentQueue<CancellationTokenSource> _ctsPool = new();
         private const int MaxPoolSize = 64;
         private static int _ctsPoolSize;
-        private static readonly AsyncLocal<StrongBox<CancellationTokenSource?>?> _nextTimeoutInFlow = new();
+        private static readonly AsyncLocal<FlowTimeout?> _flowTimeout = new();
 
         /// <summary>
-        /// Hands <paramref name="cts"/> to the next <see cref="BuildTimeoutCancellationToken"/> in the current async flow;
-        /// <see langword="null"/> withdraws a source that was not taken.
+        /// Hands <paramref name="cts"/> to the next <see cref="BuildTimeoutCancellationToken"/> in the current async flow,
+        /// and keeps it out of the shared pool when <see cref="ReturnTimeoutCancellationToken"/> gets it back.
         /// </summary>
         /// <remarks>
-        /// Lets tests observe and cancel the source a request rents. Queueing it in the shared pool instead would let
+        /// Lets tests observe and cancel the source a request rents. Passing it through the shared pool instead would let
         /// a request of any concurrently running test take it.
         /// </remarks>
-        internal static void UseForNextTimeoutInFlow(CancellationTokenSource? cts) =>
-            _nextTimeoutInFlow.Value = cts is null ? null : new StrongBox<CancellationTokenSource?>(cts);
+        internal static void UseForNextTimeoutInFlow(CancellationTokenSource cts) => _flowTimeout.Value = new FlowTimeout(cts);
+
+        /// <summary>Ends <see cref="UseForNextTimeoutInFlow"/> in the current async flow.</summary>
+        /// <returns>Whether <paramref name="cts"/> was rented and then returned in a reusable state.</returns>
+        internal static bool EndTimeoutInFlow(CancellationTokenSource cts)
+        {
+            FlowTimeout? flow = _flowTimeout.Value;
+            _flowTimeout.Value = null;
+            return flow is not null && ReferenceEquals(flow.Source, cts) && Volatile.Read(ref flow.State) == FlowTimeout.Returned;
+        }
 
         public static void EnableModules(this IJsonRpcConfig config, params string[] modules)
         {
@@ -45,12 +53,12 @@ namespace Nethermind.JsonRpc
         /// </summary>
         public static CancellationTokenSource BuildTimeoutCancellationToken(this IJsonRpcConfig config)
         {
-            // The box is shared by the flows forked after it was set, so clearing it hands the source out only once.
-            if (_nextTimeoutInFlow.Value is { Value: { } planted } next)
+            // The flows forked after the plant share it, so the exchange hands the source out only once.
+            if (_flowTimeout.Value is { } flow
+                && Interlocked.CompareExchange(ref flow.State, FlowTimeout.Rented, FlowTimeout.Planted) == FlowTimeout.Planted)
             {
-                next.Value = null;
-                planted.CancelAfter(config.Timeout);
-                return planted;
+                flow.Source.CancelAfter(config.Timeout);
+                return flow.Source;
             }
 
             if (Debugger.IsAttached)
@@ -81,6 +89,12 @@ namespace Nethermind.JsonRpc
         {
             if (cts.TryReset())
             {
+                if (_flowTimeout.Value is { } flow && ReferenceEquals(flow.Source, cts))
+                {
+                    Volatile.Write(ref flow.State, FlowTimeout.Returned);
+                    return;
+                }
+
                 if (Interlocked.Increment(ref _ctsPoolSize) <= MaxPoolSize)
                 {
                     _ctsPool.Enqueue(cts);
@@ -91,6 +105,16 @@ namespace Nethermind.JsonRpc
             }
 
             cts.Dispose();
+        }
+
+        private sealed class FlowTimeout(CancellationTokenSource source)
+        {
+            public const int Planted = 0;
+            public const int Rented = 1;
+            public const int Returned = 2;
+
+            public readonly CancellationTokenSource Source = source;
+            public int State = Planted;
         }
     }
 }
