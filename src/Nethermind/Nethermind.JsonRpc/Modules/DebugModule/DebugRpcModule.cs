@@ -197,13 +197,14 @@ public class DebugRpcModule(
             error = ResultWrapper<GethLikeTxTrace>.Fail("no transaction in genesis", ErrorCodes.InvalidInput);
             return null;
         }
+        _ = TryGetHeaderAndCheckState(block.ParentHash!, out error);
+        if (error is not null) return null;
         if (txIndex >= (ulong)Math.Max(block.Transactions.Length, 1))
         {
             error = ResultWrapper<GethLikeTxTrace>.Fail($"transaction index {txIndex} out of range for block {block.Hash}", ErrorCodes.InvalidInput);
             return null;
         }
-        _ = TryGetHeaderAndCheckState(block.ParentHash!, out error);
-        return error is null ? block.Header : null;
+        return block.Header;
     }
 
     private bool CanStreamStructLogs(GethTraceOptions? options)
