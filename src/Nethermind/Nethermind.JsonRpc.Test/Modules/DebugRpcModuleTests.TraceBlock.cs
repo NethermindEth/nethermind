@@ -28,6 +28,7 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom;
+using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Call;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.FourByte;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Noop;
@@ -53,7 +54,19 @@ public partial class DebugRpcModuleTests
     public async Task Debug_traceBlockByNumber_native_config_errors_are_execution_input_errors(
         [Values("callTracer", "prestateTracer", "noopTracer")] string tracer,
         [Values("17", "[]", "\"bad\"", "{\"onlyTopCall\":17,\"diffMode\":17}")] string configuration,
-        [Values] bool empty)
+        [Values] bool empty) =>
+        await AssertNativeConfigError("debug_traceBlockByNumber", tracer, configuration, empty);
+
+    [TestCase("debug_traceBlock", "{\"diffMode\":[]}", false, false)]
+    [TestCase("debug_traceBlock", "{\"diffMode\":[]}", true, false)]
+    [TestCase("debug_traceBlock", "{}", false, false)]
+    [TestCase("debug_traceBlock", "{\"diffMode\":[]}", false, true)]
+    [TestCase("debug_traceTransactionInBlockByHash", "{\"diffMode\":[]}", false, false)]
+    public async Task Debug_traceBlock_native_config_errors_are_execution_input_errors(
+        string method, string configuration, bool empty, bool invalidRlp) =>
+        await AssertNativeConfigError(method, "prestateTracer", configuration, empty, invalidRlp);
+
+    private static async Task AssertNativeConfigError(string method, string tracer, string configuration, bool empty, bool invalidRlp = false, int? expectedError = null)
     {
         using Context context = await Context.Create();
         Block block = empty
@@ -61,28 +74,50 @@ public partial class DebugRpcModuleTests
             : await context.Blockchain.AddBlock(CreateTraceBlockTransactions(context.Blockchain));
         using JsonDocument config = JsonDocument.Parse(configuration);
 
-        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceBlockByNumber", block.Number,
-            new { tracer, tracerConfig = config.RootElement });
+        object options = new { tracer, tracerConfig = config.RootElement, timeout = "5s" };
+        object target = method == "debug_traceBlockByNumber" ? block.Number : invalidRlp ? "0xc0" : Rlp.Encode(block).ToString();
+        object[] parameters = method == "debug_traceTransactionInBlockByHash"
+            ? [target, block.Transactions[0].Hash!, options]
+            : [target, options];
+        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, method, parameters);
         JToken json = JToken.Parse(response);
 
-        if (!empty && tracer != "noopTracer")
+        if (expectedError is not null || invalidRlp || !empty && tracer != "noopTracer" && configuration != "{}")
         {
             using (Assert.EnterMultipleScope())
             {
-                Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidInput), response);
+                Assert.That((int?)json["error"]?["code"], Is.EqualTo(expectedError ?? (method == "debug_traceTransactionInBlockByHash" ? ErrorCodes.InvalidParams : ErrorCodes.InvalidInput)), response);
                 Assert.That(json["result"], Is.Null, response);
+                if (method == "debug_traceBlock" && expectedError is null)
+                    Assert.That((string?)json["error"]?["message"], Does.Contain(invalidRlp ? "decoding block RLP" : "Cannot convert"), response);
             }
         }
         else
         {
             Assert.That(json["error"], Is.Null, response);
-            Assert.That((JArray)json["result"]!, Has.Count.EqualTo(block.Transactions.Length), response);
+            JArray traces = (JArray)json["result"]!;
+            Assert.That(traces, Has.Count.EqualTo(block.Transactions.Length), response);
+            if (method == "debug_traceBlock")
+                for (int i = 0; i < traces.Count; i++)
+                    Assert.That((string?)traces[i]["txHash"], Is.EqualTo(block.Transactions[i].Hash!.ToString()), response);
         }
     }
 
     [Test]
+    [NonParallelizable]
+    public async Task Debug_native_tracer_host_errors_keep_existing_classification(
+        [Values("debug_traceBlock", "debug_traceBlockByNumber")] string method, [Values] bool jsonError)
+    {
+        string tracer = nameof(Debug_native_tracer_host_errors_keep_existing_classification) + method + jsonError;
+        Exception failure = jsonError ? new JsonException("host construction failure") : new FormatException("host construction failure");
+        GethLikeNativeTracerFactory.RegisterTracer(tracer, (_, _, _, _) => throw failure);
+        await AssertNativeConfigError(method, tracer, "{}", empty: false,
+            expectedError: jsonError ? ErrorCodes.InvalidParams : ErrorCodes.InternalError);
+    }
+
+    [Test]
     public async Task Debug_native_config_errors_keep_sibling_invalid_params(
-        [Values("debug_traceBlockByHash", "debug_traceBlock", "debug_traceTransaction", "debug_traceCall")] string method,
+        [Values("debug_traceBlockByHash", "debug_traceTransaction", "debug_traceCall")] string method,
         [Values("callTracer", "prestateTracer")] string tracer)
     {
         using Context context = await Context.Create();
