@@ -246,7 +246,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             throw new InvalidOperationException("Guest tail dispatch was not woven.");
 
         /// <summary>
-        /// A comparison, fused with the branch after it - <c>PUSH2</c> <c>JUMPI</c>, or <c>ISZERO</c> <c>PUSH2</c> <c>JUMPI</c> -
+        /// A comparison, fused with the branch after it - <c>PUSH2</c> <c>JUMPI</c>, <c>ISZERO</c> <c>PUSH2</c> <c>JUMPI</c>, or <c>PUSH1</c> <c>JUMPI</c> -
         /// whenever that branch falls through or lands on a destination the incremental bitmap already holds.
         /// </summary>
         /// <remarks>
@@ -354,6 +354,41 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                                     ip = ref Unsafe.Add(ref code, (nint)destination + 1);
                                     goto Dispatch;
                                 }
+                            }
+                        }
+                    }
+                    // Code shorter than 256 bytes pushes its destinations with PUSH1.
+                    else if ((byte)branch == (byte)Instruction.PUSH1 && (byte)(branch >> 16) == (byte)Instruction.JUMPI)
+                    {
+                        if (condition == 0)
+                        {
+                            if (TryCharge(ref gas, 2 * VeryLowGasCost.GasCost + JumpIGasCost.GasCost))
+                            {
+                                head -= TCondition.Inputs;
+                                sp = ref Moved(ref sp, -TCondition.Inputs);
+                                ip = ref Unsafe.Add(ref ip, 4);
+                                goto Dispatch;
+                            }
+                        }
+                        else
+                        {
+                            ulong jumpGas = JumpIGasCost.GasCost + JumpDestGasCost.GasCost;
+                            nuint destination = (byte)(branch >> 8);
+                            if (destination < (nuint)stack.CodeLength && TryCharge(ref gas, 2 * VeryLowGasCost.GasCost + jumpGas))
+                            {
+                                if (!stack.IsAnalyzedJumpDestination(destination))
+                                {
+                                    analyzed = destination;
+                                    skipped = 1 + 2;
+                                    // The analysis charges the jump itself.
+                                    gas += jumpGas;
+                                    goto AnalyzeBranch;
+                                }
+
+                                head -= TCondition.Inputs;
+                                sp = ref Moved(ref sp, -TCondition.Inputs);
+                                ip = ref Unsafe.Add(ref code, (nint)destination + 1);
+                                goto Dispatch;
                             }
                         }
                     }

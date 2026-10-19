@@ -141,6 +141,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     paired[(int)Instruction.MLOAD] = Entry(&ExecutePush1MLoad);
                 if (handlers[(int)Instruction.MSTORE] == Entry(&ExecuteMStoreInsideBacking))
                     paired[(int)Instruction.MSTORE] = Entry(&ExecutePush1MStore);
+                if (handlers[(int)Instruction.JUMP] == Entry(&ExecuteJumpToAnalyzedDestination))
+                    paired[(int)Instruction.JUMP] = Entry(&ExecutePush1Jump<OffFlag>);
+                if (handlers[(int)Instruction.JUMPI] == Entry(&ExecuteJumpIfToAnalyzedDestination))
+                    paired[(int)Instruction.JUMPI] = Entry(&ExecutePush1Jump<OnFlag>);
                 if (handlers[(int)Instruction.SHL] == ShiftLeftStep.Handler &&
                     handlers[(int)Instruction.SUB] == BinaryStep<SubtractOperation>.Handler &&
                     handlers[(int)Instruction.AND] == BinaryStep<AndOperation>.Handler)
@@ -701,6 +705,81 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 gas += 2 * VeryLowGasCost.GasCost;
             }
 
+            nint alone = Push1Step.Handler;
+            return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, alone);
+        }
+
+        /// <summary>
+        /// PUSH1 fused with the JUMP or, with <typeparamref name="TConditional"/>, the JUMPI after it, as
+        /// <see cref="ExecutePush2"/> fuses a PUSH2 with them.
+        /// </summary>
+        /// <remarks>
+        /// Code shorter than 256 bytes pushes its destinations with PUSH1. A taken jump into the code that the bitmap does
+        /// not hold yet pushes and goes to <see cref="ExecuteJumpToUnanalyzedDestination{TConditional}"/>. Every case that
+        /// could fault - short gas, a full stack or a JUMPI's condition missing - runs the PUSH1 alone, and the jump after it.
+        /// </remarks>
+        [SkipLocalsInit]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal static EvmExceptionType ExecutePush1Jump<TConditional>(
+            ref EvmStack stack,
+            ulong gas,
+            ref DispatchState state,
+            ref byte ip,
+            nint head,
+            nint* handlers,
+            ref byte code,
+            ref byte sp)
+            where TConditional : struct, IFlag
+        {
+            if (head < EvmStack.MaxStackSize - 1 && (!TConditional.IsActive || head > 0))
+            {
+                if (TConditional.IsActive)
+                {
+                    ref ulong condition = ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 1));
+                    if ((condition | Unsafe.Add(ref condition, 1) | Unsafe.Add(ref condition, 2) | Unsafe.Add(ref condition, 3)) == 0)
+                    {
+                        if (TryCharge(ref gas, VeryLowGasCost.GasCost + JumpIGasCost.GasCost))
+                        {
+                            head--;
+                            sp = ref Moved(ref sp, -1);
+                            ip = ref Unsafe.Add(ref ip, 3);
+                            nint notTaken = handlers[PairAt(ref ip)];
+                            return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, notTaken);
+                        }
+
+                        goto Alone;
+                    }
+                }
+
+                nuint destination = Unsafe.Add(ref ip, 1);
+                ulong jumpGas = JumpAndJumpDestGas<TConditional>();
+                if (destination < (nuint)stack.CodeLength && TryCharge(ref gas, VeryLowGasCost.GasCost + jumpGas))
+                {
+                    if (!stack.IsAnalyzedJumpDestination(destination))
+                    {
+                        // The analysis charges the jump itself.
+                        gas += jumpGas;
+                        SetWord(ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 0)), destination);
+                        ip = ref Unsafe.Add(ref ip, 2);
+                        head++;
+                        sp = ref Moved(ref sp, 1);
+                        nint analyze = Entry(&ExecuteJumpToUnanalyzedDestination<TConditional>);
+                        return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, analyze);
+                    }
+
+                    if (TConditional.IsActive)
+                    {
+                        head--;
+                        sp = ref Moved(ref sp, -1);
+                    }
+
+                    ip = ref Unsafe.Add(ref code, (nint)destination + 1);
+                    nint taken = handlers[PairAt(ref ip)];
+                    return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, taken);
+                }
+            }
+
+        Alone:
             nint alone = Push1Step.Handler;
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, alone);
         }
