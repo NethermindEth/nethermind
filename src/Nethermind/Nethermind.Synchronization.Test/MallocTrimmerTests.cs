@@ -28,8 +28,7 @@ public class MallocTrimmerTests
         syncModeSelector.Changed += Raise.EventWith(null,
             new SyncModeChangedEventArgs(SyncMode.FastSync, mode));
 
-        // The timer ticks on the thread pool, which a loaded runner may not get to within a fixed delay, so a syncing
-        // mode waits for the first trim; the other modes can only show that none happens within the delay.
+        // The timer ticks on the thread pool and may be late on a loaded runner, so wait for the first trim.
         await Task.WhenAny(trimmed.Task, Task.Delay(TimeSpan.FromMilliseconds(doReceive ? 10_000 : 100)));
 
         syncModeSelector.Changed += Raise.EventWith(null,
