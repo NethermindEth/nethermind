@@ -10,6 +10,16 @@ public static class ReleaseSpecSubstitute
 {
     public static IReleaseSpec Create() => Configure(Substitute.For<IReleaseSpec>());
 
+    /// <summary>A frame-transaction fork with EIP-7906 as asked, and EIP-8141 with EIP-8288 only when dependency frames are wanted.</summary>
+    public static IReleaseSpec CreateFrame(bool postTxEnabled = true, bool dependencyEnabled = false)
+    {
+        IReleaseSpec spec = Create();
+        spec.IsEip7906Enabled.Returns(postTxEnabled);
+        spec.IsEip8141Enabled.Returns(dependencyEnabled);
+        spec.IsEip8288Enabled.Returns(dependencyEnabled);
+        return spec;
+    }
+
     /// <summary>Arranges the members a bare <see cref="IReleaseSpec"/> substitute cannot answer itself.</summary>
     /// <remarks>Chain-specific substitutes route through this rather than repeating the arrangement, so a
     /// member that has to be taught to a substitute is taught to all of them at once.</remarks>

@@ -16,20 +16,12 @@ namespace Nethermind.Core.Test;
 /// constraint is pinned by name. A case resting on a rule stated outside §Constraints cites where it comes from.</summary>
 public class FrameTxValidationTests
 {
-    /// <summary>A fork with EIP-7906 as asked and EIP-8288 off, so dependency frames stay rejected.</summary>
-    public static IReleaseSpec FrameSpec(bool postTxEnabled = true)
-    {
-        IReleaseSpec spec = ReleaseSpecSubstitute.Create();
-        spec.IsEip7906Enabled.Returns(postTxEnabled);
-        return spec;
-    }
-
     [TestCaseSource(nameof(ConstraintCases))]
     public void IsWellFormed_SpecConstraintMatrix_ReturnsExpectedError(Action<Transaction> mutate, string? expectedError)
     {
         Transaction tx = CreateValidFrameTx(mutate);
 
-        bool wellFormed = FrameTxValidation.IsWellFormed(tx, FrameSpec(), out string? error);
+        bool wellFormed = FrameTxValidation.IsWellFormed(tx, ReleaseSpecSubstitute.CreateFrame(), out string? error);
 
         Assert.That(wellFormed, Is.EqualTo(expectedError is null));
         Assert.That(error, Is.EqualTo(expectedError));
@@ -42,7 +34,7 @@ public class FrameTxValidationTests
         Transaction tx = CreateValidFrameTx(static tx =>
             tx.Frames = [SelfVerifyFrame(), Frame(mode: FrameMode.PostTx)]);
 
-        bool wellFormed = FrameTxValidation.IsWellFormed(tx, FrameSpec(postTxEnabled), out string? error);
+        bool wellFormed = FrameTxValidation.IsWellFormed(tx, ReleaseSpecSubstitute.CreateFrame(postTxEnabled), out string? error);
 
         Assert.That(wellFormed, Is.EqualTo(expectedError is null));
         Assert.That(error, Is.EqualTo(expectedError));
@@ -313,7 +305,7 @@ public class FrameTxValidationTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(FrameTxValidation.IsWellFormed(tx, FrameSpec(), out string? error), Is.True, error);
+            Assert.That(FrameTxValidation.IsWellFormed(tx, ReleaseSpecSubstitute.CreateFrame(), out string? error), Is.True, error);
             Assert.That(FrameTxValidation.HasVerifyFrameAfterPrefix(probed), Is.EqualTo(boundaryFound));
             Assert.That(FrameTxValidation.GetPrefixPaymaster(tx), Is.EqualTo(paymaster));
             Assert.That(FrameTxValidation.ValidationWorkGas(tx), Is.EqualTo(workGas));
@@ -722,11 +714,7 @@ public class FrameTxValidationTests
     public void IsWellFormed_Eip8288DependencyFrames_ReturnsExpectedError(Action<Transaction> mutate, string? expectedError)
     {
         Transaction tx = CreateValidFrameTx(mutate);
-        IReleaseSpec spec = ReleaseSpecSubstitute.Create();
-        spec.IsEip8141Enabled.Returns(true);
-        spec.IsEip8288Enabled.Returns(true);
-
-        bool wellFormed = FrameTxValidation.IsWellFormed(tx, spec, out string? error);
+        bool wellFormed = FrameTxValidation.IsWellFormed(tx, ReleaseSpecSubstitute.CreateFrame(postTxEnabled: false, dependencyEnabled: true), out string? error);
 
         Assert.That(wellFormed, Is.EqualTo(expectedError is null));
         Assert.That(error, Is.EqualTo(expectedError));
