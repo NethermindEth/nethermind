@@ -193,6 +193,8 @@ public partial class DebugRpcModuleTests
     [TestCase("unmatched-opcode", false)]
     [TestCase("unmatched-opcode", true)]
     [TestCase("javascript-valid", false)]
+    [TestCase("native-null-config", false)]
+    [TestCase("native-null-config-valid", false)]
     public async Task Debug_traceBlockByNumber_defers_timeout_per_transaction_without_changing_routes(string scenario, bool streamMode)
     {
         using Context context = await Context.Create();
@@ -201,7 +203,7 @@ public partial class DebugRpcModuleTests
         Block block = empty
             ? await context.Blockchain.AddBlock()
             : await context.Blockchain.AddBlock(CreateTraceBlockTransactions(context.Blockchain));
-        bool valid = scenario == "javascript-valid";
+        bool valid = scenario.EndsWith("-valid", StringComparison.Ordinal);
         Dictionary<string, object> options = new()
         {
             ["timeout"] = valid ? "5s" : "bad",
@@ -211,6 +213,11 @@ public partial class DebugRpcModuleTests
         if (scenario.Contains("native", StringComparison.Ordinal)) options["tracer"] = NativeNoopTracer.NoopTracer;
         if (scenario.Contains("javascript", StringComparison.Ordinal))
             options["tracer"] = "{fault:function(){},result:function(){return {};}}";
+        if (scenario.StartsWith("native-null-config", StringComparison.Ordinal))
+        {
+            options["tracer"] = "callTracer";
+            options["tracerConfig"] = JsonSerializer.Deserialize<JsonElement>("""{"onlyTopCall":true,"onlyTopCall":null,"withLog":null}""");
+        }
 
         string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceBlockByNumber", block.Number, options);
         JToken json = JToken.Parse(response);
