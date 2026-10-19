@@ -22,6 +22,7 @@ public class TxPoolConfig : ITxPoolConfig
     public int MaxPendingTxsPerSender { get; set; } = 0;
     public ulong FrameTxMaxVerifyGas { get; set; } = Eip8141Constants.MaxVerifyGas;
     public ulong FrameTxMaxVerifyStateGas { get; set; } = 500_000;
+    public int FrameTxMaxPendingPerDelegatingCode { get; set; } = 16;
     public int FrameTxSimulationTimeoutMs { get; set; } = 250;
     public int FrameTxSimulationBudgetPerHeadMs { get; set; } = 1000;
     public int FrameTxEvictionRetryBudget { get; set; } = 1;

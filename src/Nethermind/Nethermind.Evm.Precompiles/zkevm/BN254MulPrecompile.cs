@@ -3,12 +3,15 @@
 
 using System;
 using System.Runtime.CompilerServices;
+using Nethermind.Core;
 using Nethermind.Zkvm.Abstractions;
 
 namespace Nethermind.Evm.Precompiles;
 
 public partial class BN254MulPrecompile
 {
+    public static Address Address => field ??= Address.FromNumber(7);
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static string? Mul(ReadOnlySpan<byte> input, byte[] output) =>
         Accelerators.BN254G1Mul(

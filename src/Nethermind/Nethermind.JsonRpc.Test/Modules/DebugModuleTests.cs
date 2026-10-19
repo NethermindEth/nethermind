@@ -4,6 +4,7 @@
 using System;
 using System.Buffers;
 using System.Collections.Generic;
+using System.IO;
 using System.IO.Pipelines;
 using System.Linq;
 using System.Text.Json;
@@ -23,6 +24,7 @@ using Nethermind.Core.Resettables;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.IO;
 using Nethermind.Db;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Facade;
@@ -116,13 +118,14 @@ public class DebugModuleTests
     }
 
     [Test]
-    public async Task DebugGetRawHeader_WhenBlockExists_ReturnsHeaderRlp()
+    public async Task DebugGetRawHeader_WhenHeaderExists_ReturnsHeaderRlpWithoutLoadingBlock()
     {
-        Block block = Build.A.Block.WithNumber(0).TestObject;
-        _debugBridge.GetBlock(new BlockParameter(0UL)).Returns(block);
+        BlockHeader header = Build.A.BlockHeader.WithNumber(0).TestObject;
+        _blockFinder.FindHeader(new BlockParameter(0UL)).Returns(header);
 
         using JsonRpcResponse response = await Request("debug_getRawHeader", "0x0");
-        Assert.That(RpcTest.AssertSuccess<ArrayPoolList<byte>>(response).AsSpan(), Is.SequenceEqualTo(new HeaderDecoder().Encode(block.Header).Bytes));
+        Assert.That(RpcTest.AssertSuccess<ArrayPoolList<byte>>(response).AsSpan(), Is.SequenceEqualTo(new HeaderDecoder().Encode(header).Bytes));
+        _debugBridge.DidNotReceiveWithAnyArgs().GetBlock(null!);
     }
 
     [TestCaseSource(nameof(RawBlockCases))]
@@ -418,7 +421,7 @@ public class DebugModuleTests
     }
 
     [TestCaseSource(nameof(TraceBaseStateGuardErrorCases))]
-    public void DebugTraceTransactionByIndex_WhenTraceBaseStateGuardRejects_ReturnsResourceUnavailable(
+    public void DebugTraceTransaction_WhenTraceBaseStateGuardRejects_ReturnsResourceUnavailable(
         Func<DebugRpcModule, BlockHeader, ResultWrapper<GethLikeTxTrace>> invoke,
         Action<BlockHeader, BlockHeader, IBlockFinder, IBlockchainBridge> setup,
         string expectedErrorSubstring)
@@ -427,12 +430,38 @@ public class DebugModuleTests
         BlockHeader header = Build.A.BlockHeader.WithParent(parent).TestObject;
 
         setup(header, parent, _blockFinder, _blockchainBridge);
+        _debugBridge.GetTransactionBlockHash(TestItem.KeccakA).Returns(header.Hash);
 
         ResultWrapper<GethLikeTxTrace> actual = invoke(CreateModule(), header);
 
-        Assert.That(actual.Result.ResultType, Is.EqualTo(ResultType.Failure));
-        Assert.That(actual.ErrorCode, Is.EqualTo(ErrorCodes.ResourceUnavailable));
-        Assert.That(actual.Result.Error, Does.Contain(expectedErrorSubstring));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actual.Result.ResultType, Is.EqualTo(ResultType.Failure));
+            Assert.That(actual.ErrorCode, Is.EqualTo(ErrorCodes.ResourceUnavailable));
+            Assert.That(actual.Result.Error, Does.Contain(expectedErrorSubstring));
+        }
+    }
+
+    [Test]
+    public void DebugTraceTransaction_WithRetainedParentAndMissingPoststate_ReachesTracer()
+    {
+        BlockHeader parent = Build.A.BlockHeader.WithNumber(1).TestObject;
+        BlockHeader header = Build.A.BlockHeader.WithParent(parent).TestObject;
+        _debugBridge.GetTransactionBlockHash(TestItem.KeccakA).Returns(header.Hash);
+        _blockFinder.FindHeader(header.Hash!).Returns(header);
+        _blockFinder.FindHeader(header.ParentHash!, BlockTreeLookupOptions.None, parent.Number).Returns(parent);
+        _blockchainBridge.HasStateForBlock(header).Returns(false);
+        _blockchainBridge.HasStateForBlock(parent).Returns(true);
+        GethLikeTxTrace trace = new();
+        _debugBridge.GetTransactionTrace(TestItem.KeccakA, Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>()).Returns(trace);
+
+        using ResultWrapper<GethLikeTxTrace> actual = CreateModule().debug_traceTransaction(TestItem.KeccakA,
+            new GethTraceOptions { Tracer = "noopTracer" });
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actual.Result.ResultType, Is.EqualTo(ResultType.Success));
+            Assert.That(actual.Data, Is.SameAs(trace));
+        }
     }
 
     [Test]
@@ -499,6 +528,263 @@ public class DebugModuleTests
         {
             Assert.That(blocks.Data.ElementAt(0).Hash, Is.EqualTo(block1.Hash));
             Assert.That(blocks.Data.ElementAt(0).Block.Difficulty, Is.EqualTo(new UInt256(2)));
+        }
+    }
+
+    [Test]
+    public async Task DebugGetBadBlocks_WhenFileOmittedOrNull_ReturnsList([Values] bool explicitNull, [Values(0, 1)] int count)
+    {
+        Block[] blocks = Enumerable.Range(1, count).Select(static n => Build.A.Block.WithNumber(n).TestObject).ToArray();
+        _debugBridge.GetBadBlocks().Returns(blocks);
+
+        string response = explicitNull
+            ? await SerializedRequest("debug_getBadBlocks", new object?[] { null })
+            : await SerializedRequest("debug_getBadBlocks");
+
+        JToken? result = JToken.Parse(response)["result"];
+        Assert.That(result?.Select(static b => (string?)b["hash"]), Is.EqualTo(blocks.Select(static b => b.Hash!.ToString())));
+    }
+
+    [Test]
+    public async Task DebugGetBadBlocks_WhenFileGiven_WritesListAndReturnsNull()
+    {
+        _debugBridge.GetBadBlocks().Returns([Build.A.Block.WithNumber(1).TestObject]);
+        using TempPath file = TempPath.GetTempFile();
+
+        JToken listResult = JToken.Parse(await SerializedRequest("debug_getBadBlocks"))["result"]!;
+        JToken fileResult = JToken.Parse(await SerializedRequest("debug_getBadBlocks", file.Path))["result"]!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fileResult.Type, Is.EqualTo(JTokenType.Null));
+            Assert.That(JToken.DeepEquals(JToken.Parse(await File.ReadAllTextAsync(file.Path)), listResult), Is.True);
+        }
+    }
+
+    [Test]
+    public async Task DebugGetBadBlocks_WhenFileExists_ReturnsErrorAndKeepsFile()
+    {
+        _debugBridge.GetBadBlocks().Returns([]);
+        using TempPath file = TempPath.GetTempFile();
+        await File.WriteAllTextAsync(file.Path, "existing");
+
+        using JsonRpcResponse response = await Request("debug_getBadBlocks", file.Path);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(RpcTest.AssertError(response).Message, Is.EqualTo("location would overwrite an existing file"));
+            Assert.That(await File.ReadAllTextAsync(file.Path), Is.EqualTo("existing"));
+        }
+    }
+
+    [Test]
+    public async Task DebugGetBadBlocks_WhenDirectoryMissing_ReturnsError()
+    {
+        _debugBridge.GetBadBlocks().Returns([]);
+        string path = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString(), "bad-blocks.json");
+
+        using JsonRpcResponse response = await Request("debug_getBadBlocks", path);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(RpcTest.AssertError(response).Code, Is.EqualTo(ErrorCodes.Default));
+            Assert.That(File.Exists(path), Is.False);
+        }
+    }
+
+    private static IEnumerable<TestCaseData> NonAbsoluteFileArguments()
+    {
+        yield return new TestCaseData(123, "123");
+        yield return new TestCaseData(true, "true");
+        yield return new TestCaseData(new Dictionary<string, string>(), "{}");
+        yield return new TestCaseData("bad-blocks.json", "bad-blocks.json");
+    }
+
+    [TestCaseSource(nameof(NonAbsoluteFileArguments))]
+    public async Task DebugGetBadBlocks_WhenFileNotAbsolute_ReturnsInvalidParamsAndWritesNothing(object argument, string fileName)
+    {
+        _debugBridge.GetBadBlocks().Returns([]);
+
+        using JsonRpcResponse response = await Request("debug_getBadBlocks", argument);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(RpcTest.AssertError(response).Code, Is.EqualTo(ErrorCodes.InvalidParams));
+            Assert.That(File.Exists(fileName), Is.False);
+        }
+    }
+
+    [Test]
+    public async Task DebugGetBadBlocks_WhenFileIsNetworkOrDevicePath_ReturnsInvalidParamsAndWritesNothing([Values("//", @"\\?\")] string prefix)
+    {
+        _debugBridge.GetBadBlocks().Returns([]);
+        using TempPath file = TempPath.GetTempFile();
+
+        // "//" + an absolute path is a UNC path on Windows and the same local file on Unix; "\\?\" is a Windows device path.
+        using JsonRpcResponse response = await Request("debug_getBadBlocks", prefix + file.Path);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(RpcTest.AssertError(response).Code, Is.EqualTo(ErrorCodes.InvalidParams));
+            Assert.That(File.Exists(file.Path), Is.False);
+        }
+    }
+
+    [Test]
+    public async Task DebugGetBadBlocks_WhenPathIsDirectory_ReturnsExistingFileError()
+    {
+        _debugBridge.GetBadBlocks().Returns([]);
+        using TempPath directory = TempPath.GetTempDirectory();
+        Directory.CreateDirectory(directory.Path);
+
+        using JsonRpcResponse response = await Request("debug_getBadBlocks", directory.Path);
+
+        Assert.That(RpcTest.AssertError(response).Message, Is.EqualTo("location would overwrite an existing file"));
+    }
+
+    [Test]
+    public async Task DebugGetBadBlocks_WhileWriting_TargetHoldsNoPartialFile()
+    {
+        using TempPath directory = TempPath.GetTempDirectory();
+        Directory.CreateDirectory(directory.Path);
+        string file = Path.Combine(directory.Path, "bad-blocks.json");
+        Block block = Build.A.Block.WithNumber(1).TestObject;
+        bool targetExistedDuringWrite = true;
+        _debugBridge.GetBadBlocks().Returns(CheckTargetWhileWriting());
+
+        using JsonRpcResponse response = await Request("debug_getBadBlocks", file);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(RpcTest.AssertSuccess<IEnumerable<BadBlock>>(response), Is.Null);
+            Assert.That(targetExistedDuringWrite, Is.False, "readers must not see a partial file at the target path");
+            Assert.That(Directory.GetFileSystemEntries(directory.Path), Is.EqualTo(new[] { file }));
+            Assert.That(JToken.Parse(await File.ReadAllTextAsync(file)).Select(static b => (string?)b["hash"]), Is.EqualTo(new[] { block.Hash!.ToString() }));
+        }
+
+        IEnumerable<Block> CheckTargetWhileWriting()
+        {
+            yield return block;
+            targetExistedDuringWrite = File.Exists(file);
+        }
+    }
+
+    [Test]
+    public async Task DebugGetBadBlocks_WhenWriteFails_LeavesNoFileSoRetrySucceeds()
+    {
+        using TempPath directory = TempPath.GetTempDirectory();
+        Directory.CreateDirectory(directory.Path);
+        string file = Path.Combine(directory.Path, "bad-blocks.json");
+        Block block = Build.A.Block.WithNumber(1).TestObject;
+        _debugBridge.GetBadBlocks().Returns(FailAfter(block), [block]);
+
+        using JsonRpcResponse failed = await Request("debug_getBadBlocks", file);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(RpcTest.AssertError(failed).Code, Is.EqualTo(ErrorCodes.Default));
+            Assert.That(Directory.GetFileSystemEntries(directory.Path), Is.Empty, "neither the target nor a temporary file is left behind");
+        }
+
+        using JsonRpcResponse retried = await Request("debug_getBadBlocks", file);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(RpcTest.AssertSuccess<IEnumerable<BadBlock>>(retried), Is.Null);
+            Assert.That(JToken.Parse(await File.ReadAllTextAsync(file)).Select(static b => (string?)b["hash"]), Is.EqualTo(new[] { block.Hash!.ToString() }));
+        }
+
+        static IEnumerable<Block> FailAfter(Block block)
+        {
+            yield return block;
+            throw new IOException("No space left on device");
+        }
+    }
+
+    [Test]
+    public async Task DebugGetBadBlocks_WhenFileCreatedByOthersDuringFailedWrite_KeepsIt()
+    {
+        using TempPath directory = TempPath.GetTempDirectory();
+        Directory.CreateDirectory(directory.Path);
+        string file = Path.Combine(directory.Path, "bad-blocks.json");
+        _debugBridge.GetBadBlocks().Returns(FailAfterOtherWriterCreatesFile());
+
+        using JsonRpcResponse response = await Request("debug_getBadBlocks", file);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(RpcTest.AssertError(response).Message, Is.EqualTo("original write error"));
+            Assert.That(File.Exists(file) ? await File.ReadAllTextAsync(file) : null, Is.EqualTo("other writer"), "a failed write must only remove what it created");
+        }
+
+        IEnumerable<Block> FailAfterOtherWriterCreatesFile()
+        {
+            yield return Build.A.Block.WithNumber(1).TestObject;
+            if (File.Exists(file)) File.Delete(file); // Unix allows unlinking a file that is still open for writing.
+            File.WriteAllText(file, "other writer");
+            throw new IOException("original write error");
+        }
+    }
+
+    [Test]
+    public async Task DebugGetBadBlocks_WhenFileCreatedByOthersDuringWrite_ReturnsExistingFileErrorAndKeepsIt()
+    {
+        using TempPath directory = TempPath.GetTempDirectory();
+        Directory.CreateDirectory(directory.Path);
+        string file = Path.Combine(directory.Path, "bad-blocks.json");
+        _debugBridge.GetBadBlocks().Returns(OtherWriterCreatesFile());
+
+        using JsonRpcResponse response = await Request("debug_getBadBlocks", file);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(RpcTest.AssertError(response).Message, Is.EqualTo("location would overwrite an existing file"));
+            Assert.That(Directory.GetFileSystemEntries(directory.Path), Is.EqualTo(new[] { file }), "the temporary file is removed");
+            Assert.That(await File.ReadAllTextAsync(file), Is.EqualTo("other writer"));
+        }
+
+        IEnumerable<Block> OtherWriterCreatesFile()
+        {
+            yield return Build.A.Block.WithNumber(1).TestObject;
+            File.WriteAllText(file, "other writer");
+        }
+    }
+
+    [Test]
+    public async Task DebugGetBadBlocks_WhenExtraParamGiven_ReturnsInvalidParams()
+    {
+        _debugBridge.GetBadBlocks().Returns([]);
+
+        using JsonRpcResponse response = await Request("debug_getBadBlocks", null, 1);
+
+        Assert.That(RpcTest.AssertError(response).Code, Is.EqualTo(ErrorCodes.InvalidParams));
+    }
+
+    [Test]
+    [Platform("Linux,MacOsX")]
+    public async Task DebugGetBadBlocks_WhenTemporaryFileCleanupFails_PreservesWriteError()
+    {
+        using TempPath directory = TempPath.GetTempDirectory();
+        Directory.CreateDirectory(directory.Path);
+        string file = Path.Combine(directory.Path, "bad-blocks.json");
+        _debugBridge.GetBadBlocks().Returns(FailAfterReplacingTemporaryFile());
+
+        using JsonRpcResponse response = await Request("debug_getBadBlocks", file);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(RpcTest.AssertError(response).Code, Is.EqualTo(ErrorCodes.Default));
+            Assert.That(RpcTest.AssertError(response).Message, Is.EqualTo("original write error"));
+        }
+
+        IEnumerable<Block> FailAfterReplacingTemporaryFile()
+        {
+            yield return Build.A.Block.WithNumber(1).TestObject;
+            // Unix allows unlinking the open output; a directory at that path makes cleanup fail.
+            string temporary = Directory.GetFiles(directory.Path).Single();
+            File.Delete(temporary);
+            Directory.CreateDirectory(temporary);
+            throw new IOException("original write error");
         }
     }
 
@@ -721,6 +1007,10 @@ public class DebugModuleTests
             (Action<IDebugBridge>)(b => b.GetBlock(new BlockParameter(Keccak.Zero)).ReturnsNull()),
             "debug_getRawBlock", (object)Keccak.Zero)
         { TestName = "RawBlock_ByHash" };
+        yield return new TestCaseData(
+            (Action<IDebugBridge>)(_ => { }),
+            "debug_getRawHeader", (object)"0x1")
+        { TestName = "RawHeader_ByNumber" };
     }
 
     private static IEnumerable<TestCaseData> RawBlockAccessListErrorCases()
@@ -784,6 +1074,16 @@ public class DebugModuleTests
             (
                 "ByBlockhashAndIndex",
                 static (module, header) => module.debug_traceTransactionByBlockhashAndIndex(header.Hash!, 0),
+                static (header, finder) => finder.FindHeader(header.Hash!).Returns(header)
+            ),
+            (
+                "ByTransactionHash",
+                static (module, _) => module.debug_traceTransaction(TestItem.KeccakA, new GethTraceOptions { Tracer = "noopTracer" }),
+                static (header, finder) => finder.FindHeader(header.Hash!).Returns(header)
+            ),
+            (
+                "ByTransactionHashStreaming",
+                static (module, _) => module.debug_traceTransaction(TestItem.KeccakA),
                 static (header, finder) => finder.FindHeader(header.Hash!).Returns(header)
             )
         ];

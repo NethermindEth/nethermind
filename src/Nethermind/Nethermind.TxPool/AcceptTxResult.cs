@@ -186,9 +186,13 @@ namespace Nethermind.TxPool
         /// <summary>An EIP-8141 frame transaction paying through an already fully-committed non-canonical paymaster.</summary>
         public static readonly AcceptTxResult NonCanonicalPaymasterLimitReached = new(TxPoolErrorMessages.NonCanonicalPaymasterLimitReached);
 
+        /// <summary>An EIP-8141 frame transaction whose prefix relies on EIP-8298 mutable code already relied on by the maximum number of pending transactions.</summary>
+        public static readonly AcceptTxResult FrameTxCodeDependencyLimitReached = new(TxPoolErrorMessages.FrameTxCodeDependencyLimitReached);
+
         /// <summary>
-        /// The node declined to simulate an EIP-8141 validation prefix because its own admission bounds were
-        /// spent, so the transaction was never judged.
+        /// The node declined to simulate an EIP-8141 validation prefix because its own admission bounds were spent,
+        /// or stopped simulating it or verifying its signatures to yield to its own block work, so the transaction was
+        /// never judged.
         /// </summary>
         /// <remarks>
         /// Distinct from <see cref="FrameSimulationFailed"/> so peer scoring can tell load shedding apart from

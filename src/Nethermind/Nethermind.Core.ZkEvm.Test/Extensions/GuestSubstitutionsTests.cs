@@ -12,19 +12,21 @@ using NUnit.Framework;
 namespace Nethermind.Core.ZkEvm.Test.Extensions;
 
 /// <summary>
-/// Resolves every method the ZisK and SP1 guests' substitutions.xml files name. ILC applies a substitution only to a
+/// Resolves every method the shared, ZisK, SP1 and OpenVM guests' substitutions.xml files name. ILC applies a substitution only to a
 /// method it finds and otherwise keeps the original body, so a renamed member or a stale signature would
-/// quietly undo the substitution - <c>ZkEvmBitOperations.HasByteReverse</c> would stay false and ZisK would
-/// go back to the mask form without any build noticing.
+/// quietly undo the substitution - <c>ZiskFlag</c> would stay false and ZisK would lose its accelerators
+/// without any build noticing.
 /// </summary>
 public class GuestSubstitutionsTests
 {
     private const BindingFlags AnyMethod =
         BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance | BindingFlags.DeclaredOnly;
 
+    private static readonly HashSet<string> NativeAotOnlyCoreLibTypes = ["System.RuntimeExceptionHelpers"];
+
     private static IEnumerable<TestCaseData> SubstitutedMethods()
     {
-        foreach (string guest in new[] { "ZiskGuest", "Sp1Guest" })
+        foreach (string guest in new[] { "Guest", "ZiskGuest", "Sp1Guest", "OpenVMGuest" })
         {
             XDocument document = XDocument.Load(Path.Combine(TestContext.CurrentContext.TestDirectory, $"{guest}.substitutions.xml"));
             foreach (XElement assembly in document.Root!.Elements("assembly"))
@@ -50,9 +52,14 @@ public class GuestSubstitutionsTests
         Assembly assembly = Assembly.Load(assemblyName);
 
         Type? type = assembly.GetType(typeName);
+        if (type is null && assemblyName == "System.Private.CoreLib" && NativeAotOnlyCoreLibTypes.Contains(typeName))
+        {
+            Assert.Ignore($"{typeName} is NativeAOT-only, so the host's CoreLib cannot resolve it");
+        }
+
         Assert.That(type, Is.Not.Null, $"{typeName} is not in {assemblyName}");
 
-        // "ReturnType Name(ParamType,ParamType)", with full type names, as ILLink writes them.
+        // "ReturnType Name(ParamType,ParamType)", with full type names and '/' for nesting, as ILLink writes them.
         int space = signature.IndexOf(' ');
         int open = signature.IndexOf('(');
         string returnType = signature[..space];
@@ -61,9 +68,11 @@ public class GuestSubstitutionsTests
 
         bool found = type!.GetMethods(AnyMethod).Any(m =>
             m.Name == name
-            && m.ReturnType.FullName == returnType
-            && m.GetParameters().Select(p => p.ParameterType.FullName).SequenceEqual(parameters));
+            && IlLinkName(m.ReturnType) == returnType
+            && m.GetParameters().Select(p => IlLinkName(p.ParameterType)).SequenceEqual(parameters));
 
         Assert.That(found, Is.True, $"{typeName} has no method {signature}");
     }
+
+    private static string? IlLinkName(Type type) => type.FullName?.Replace('+', '/');
 }

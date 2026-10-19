@@ -23,6 +23,7 @@ using Nethermind.Int256;
 using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Logging;
 using Nethermind.Evm.State;
+using Nethermind.Evm.Tracing.State;
 using Nethermind.State;
 using Nethermind.Trie.Pruning;
 using NSubstitute;
@@ -64,9 +65,12 @@ public class StateProviderTests(bool useFlat)
     }
 
     [Test]
-    public void ApplyBal_MatchesTheSameChangesMadeThroughTheWorldState()
+    public void ApplyBal_MatchesTheSameChangesMadeThroughTheWorldState([Values(1, 32)] int extraStorageSlots)
     {
         byte[] code = Bytes.FromHexString("0x60006000");
+        // EIP-8298: AddressE adopts by hash the code AddressF deposits and later replaces, so only F's first change has it.
+        byte[] adoptedCode = Bytes.FromHexString("0x60016001");
+        byte[] replacementCode = Bytes.FromHexString("0x60026002");
         ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
             .WithAccountChanges(
                 Build.An.AccountChanges
@@ -90,8 +94,33 @@ public class StateProviderTests(bool useFlat)
                 Build.An.AccountChanges
                     .WithAddress(TestItem.AddressD)
                     .WithStorageChanges(1, new StorageChange(1, 0x55))
+                    .TestObject,
+                Build.An.AccountChanges
+                    .WithAddress(TestItem.AddressE)
+                    .WithCodeChanges(CodeChange.Adopted(2, ValueKeccak.Compute(adoptedCode)))
+                    .TestObject,
+                Build.An.AccountChanges
+                    .WithAddress(TestItem.AddressF)
+                    .WithCodeChanges(new CodeChange(1, adoptedCode), new CodeChange(3, replacementCode))
                     .TestObject)
             .TestObject;
+
+        ReadOnlyAccountChanges[] expanded = new ReadOnlyAccountChanges[bal.AccountChanges.Count];
+        int accountIndex = 0;
+        foreach (ReadOnlyAccountChanges account in bal.AccountChanges)
+        {
+            if (account.Address != TestItem.AddressA && account.Address != TestItem.AddressC && account.Address != TestItem.AddressD)
+            {
+                expanded[accountIndex++] = account;
+                continue;
+            }
+            ReadOnlySlotChanges[] slots = new ReadOnlySlotChanges[account.StorageChanges.Length + extraStorageSlots];
+            account.StorageChanges.CopyTo(slots, 0);
+            for (int i = 0; i < extraStorageSlots; i++)
+                slots[account.StorageChanges.Length + i] = new ReadOnlySlotChanges((UInt256)(10 + i), [new StorageChange(1, (UInt256)(i + 1))]);
+            expanded[accountIndex++] = new ReadOnlyAccountChanges(account.Address, slots, account.StorageReads, account.BalanceChanges, account.NonceChanges, account.CodeChanges);
+        }
+        bal = Build.A.BlockAccessList.WithAccountChanges(expanded).TestObject;
 
         using Context executed = new(useFlat, UnavailableStateHeaderProvider.Instance);
         Hash256 executedRoot = CommitBlockOverGenesis(executed.WorldState, state =>
@@ -105,6 +134,14 @@ public class StateProviderTests(bool useFlat)
             state.InsertCode(TestItem.AddressC, code, Amsterdam.Instance);
             state.Set(new StorageCell(TestItem.AddressC, 5), 7);
             state.Set(new StorageCell(TestItem.AddressD, 1), 0x55);
+            foreach (Address address in new[] { TestItem.AddressA, TestItem.AddressC, TestItem.AddressD })
+                for (int i = 0; i < extraStorageSlots; i++)
+                    state.Set(new StorageCell(address, (UInt256)(10 + i)), (UInt256)(i + 1));
+            state.CreateAccount(TestItem.AddressF, 0);
+            state.InsertCode(TestItem.AddressF, adoptedCode, Amsterdam.Instance);
+            state.CreateAccount(TestItem.AddressE, 0);
+            state.InsertCode(TestItem.AddressE, adoptedCode, Amsterdam.Instance);
+            state.InsertCode(TestItem.AddressF, replacementCode, Amsterdam.Instance);
         }, readBack: static _ => { });
 
         using Context applied = new(useFlat, UnavailableStateHeaderProvider.Instance);
@@ -130,6 +167,8 @@ public class StateProviderTests(bool useFlat)
                 Assert.That(newSlot, Is.EqualTo((UInt256)7));
                 state.Get(new StorageCell(TestItem.AddressD, 1), out UInt256 storageOnlySlot);
                 Assert.That(storageOnlySlot, Is.EqualTo((UInt256)0x55));
+                Assert.That(state.GetCode(TestItem.AddressE), Is.SequenceEqualTo(adoptedCode), "adopted code");
+                Assert.That(state.GetCode(TestItem.AddressF), Is.SequenceEqualTo(replacementCode), "replaced code");
             }
         });
 
@@ -393,6 +432,38 @@ public class StateProviderTests(bool useFlat)
     }
 
     [Test]
+    public void TryGetAccount_reports_account_with_storage_root_without_allocating()
+    {
+        using Context ctx = new(useFlat, UnavailableStateHeaderProvider.Instance);
+        IWorldState provider = ctx.WorldState;
+        using IDisposable _ = provider.BeginScope(IWorldState.PreGenesis);
+        byte[] code = [0x60, 0x01];
+        provider.CreateAccount(_address1, 5, 2);
+        provider.InsertCode(_address1, code, Cancun.Instance);
+        provider.Set(new StorageCell(_address1, 1), 0x11);
+        provider.Commit(Cancun.Instance);
+        provider.CommitTree(0);
+
+        provider.TryGetAccount(_address1, out AccountStruct _);
+        long allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
+        bool exists = provider.TryGetAccount(_address1, out AccountStruct account);
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exists, Is.True);
+            Assert.That(account.Nonce, Is.EqualTo(2UL));
+            Assert.That(account.Balance, Is.EqualTo((UInt256)5));
+            Assert.That(account.CodeHash, Is.EqualTo(Keccak.Compute(code).ValueHash256));
+            Assert.That(account.StorageRoot, Is.EqualTo(((WorldState)provider).GetStorageRoot(_address1)));
+            Assert.That(account.IsStorageEmpty, Is.False);
+            Assert.That(allocated, Is.Zero);
+            Assert.That(provider.TryGetAccount(TestItem.AddressB, out AccountStruct missing), Is.False);
+            Assert.That(missing, Is.EqualTo(AccountStruct.TotallyEmpty));
+        }
+    }
+
+    [Test]
     public void Returns_empty_byte_code_for_non_existing_accounts()
     {
         using Context ctx = new(useFlat, UnavailableStateHeaderProvider.Instance);
@@ -428,6 +499,36 @@ public class StateProviderTests(bool useFlat)
         provider.AddToBalance(_address1, 1, Frontier.Instance);
         provider.Restore(new Snapshot(Snapshot.Storage.Empty, 4));
         Assert.That(provider.GetBalance(_address1), Is.EqualTo((UInt256)4));
+    }
+
+    [Test]
+    public void Original_balance_is_the_balance_at_transaction_start()
+    {
+        using Context ctx = new(useFlat, UnavailableStateHeaderProvider.Instance);
+        IWorldState provider = ctx.WorldState;
+        using IDisposable _ = provider.BeginScope(IWorldState.PreGenesis);
+        provider.CreateAccount(_address1, 1);
+        provider.Commit(Frontier.Instance);
+
+        // After a commit the committed state is the transaction start.
+        provider.AddToBalance(_address1, 2, Frontier.Instance);
+        Assert.That(provider.GetOriginalBalance(_address1), Is.EqualTo((UInt256)1));
+        Assert.That(provider.GetOriginalBalance(TestItem.AddressB), Is.EqualTo(UInt256.Zero));
+
+        // A transaction stacked without a commit starts at its snapshot.
+        Snapshot txStart = provider.TakeSnapshot(newTransactionStart: true);
+        provider.AddToBalance(_address1, 4, Frontier.Instance);
+        provider.AddToBalance(_address1, 8, Frontier.Instance);
+        Assert.That(provider.GetBalance(_address1), Is.EqualTo((UInt256)15));
+        Assert.That(provider.GetOriginalBalance(_address1), Is.EqualTo((UInt256)3));
+
+        // Reverting the transaction drops its start, back to the commit.
+        provider.Restore(new Snapshot(Snapshot.Storage.Empty, txStart.StateSnapshot - 1));
+        Assert.That(provider.GetOriginalBalance(_address1), Is.EqualTo((UInt256)1));
+
+        // A write after the revert must not see the dropped start.
+        provider.AddToBalance(_address1, 16, Frontier.Instance);
+        Assert.That(provider.GetOriginalBalance(_address1), Is.EqualTo((UInt256)1));
     }
 
     [Test]
@@ -503,6 +604,27 @@ public class StateProviderTests(bool useFlat)
         provider.GetBalance(_address1); // justcache
         provider.AddToBalance(_address1, 0, SpuriousDragon.Instance); // touch
         Assert.DoesNotThrow(() => provider.Commit(SpuriousDragon.Instance, tracer));
+    }
+
+    [Test]
+    public void Cancelled_state_reporting_does_not_leak_changes_into_the_next_commit()
+    {
+        using Context ctx = new(useFlat, UnavailableStateHeaderProvider.Instance);
+        IWorldState provider = ctx.WorldState;
+        using IDisposable _ = provider.BeginScope(IWorldState.PreGenesis);
+        IWorldStateTracer cancelled = Substitute.For<IWorldStateTracer>();
+        cancelled.IsTracingState.Returns(true);
+        cancelled.When(static t => t.ReportBalanceChange(Arg.Any<Address>(), Arg.Any<UInt256?>(), Arg.Any<UInt256?>()))
+            .Do(static _ => throw new OperationCanceledException());
+        provider.CreateAccount(TestItem.AddressA, 1);
+
+        Assert.Throws<OperationCanceledException>(() => provider.Commit(Frontier.Instance, cancelled));
+        provider.Reset();
+        ParityLikeTxTracer next = new(Build.A.Block.TestObject, null, ParityTraceTypes.StateDiff);
+        provider.CreateAccount(TestItem.AddressB, 2);
+        provider.Commit(Frontier.Instance, next);
+
+        Assert.That(next.BuildResult().StateChanges!.Keys, Is.EqualTo(new[] { TestItem.AddressB }));
     }
 
     [Test]
@@ -606,6 +728,51 @@ public class StateProviderTests(bool useFlat)
 
         Assert.That(provider.GetCode(keptCodeHash), Is.SequenceEqualTo(keptCode));
         Assert.That(() => provider.GetCode(revertedCodeHash), Throws.InstanceOf<InvalidOperationException>());
+    }
+
+    [Test]
+    public void Transient_code_is_readable_until_the_transaction_ends_and_is_not_persisted([Values] bool endsWithCommit, [Values] bool alsoDeployedPersistently)
+    {
+        using Context ctx = new(useFlat, UnavailableStateHeaderProvider.Instance);
+        IWorldState provider = ctx.WorldState;
+        using IDisposable _ = provider.BeginScope(IWorldState.PreGenesis);
+
+        IReleaseSpec spec = Prague.Instance;
+        byte[] code = [0x60, 0x02, 0x60, 0x00, 0xf3];
+        ValueHash256 codeHash = ValueKeccak.Compute(code);
+
+        provider.CreateAccount(TestItem.AddressB, 0);
+        provider.InsertTransientCode(TestItem.AddressB, codeHash, code, spec);
+        if (alsoDeployedPersistently)
+        {
+            provider.CreateAccount(TestItem.AddressC, 0);
+            provider.InsertCode(TestItem.AddressC, code, spec);
+        }
+
+        // Transient storage is discarded between EIP-8141 frames, but the code lasts the whole transaction.
+        provider.ResetTransient();
+        Assert.That(provider.GetCode(TestItem.AddressB), Is.SequenceEqualTo(code));
+        Assert.That(provider.GetCode(codeHash), Is.SequenceEqualTo(code));
+
+        // The transaction's finalization removes the account before it ends.
+        provider.DeleteAccount(TestItem.AddressB);
+        if (endsWithCommit) provider.Commit(spec, commitRoots: false);
+        else provider.DiscardTransientCode();
+        if (!alsoDeployedPersistently)
+        {
+            Assert.That(() => provider.GetCode(codeHash), Throws.InstanceOf<InvalidOperationException>());
+        }
+
+        provider.Commit(spec);
+
+        if (alsoDeployedPersistently)
+        {
+            Assert.That(provider.GetCode(codeHash), Is.SequenceEqualTo(code));
+        }
+        else
+        {
+            Assert.That(() => provider.GetCode(codeHash), Throws.InstanceOf<InvalidOperationException>());
+        }
     }
 
     [Test]

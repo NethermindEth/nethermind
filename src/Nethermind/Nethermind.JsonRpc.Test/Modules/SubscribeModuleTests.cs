@@ -31,6 +31,8 @@ using Nethermind.Network;
 using Nethermind.Serialization.Json;
 using Nethermind.Sockets;
 using Nethermind.Specs;
+using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.TxPool;
@@ -70,7 +72,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             _specProvider = Substitute.For<ISpecProvider>();
             _filterStore = new FilterStore(new TimerFactory());
             _jsonRpcDuplexClient = Substitute.For<IJsonRpcDuplexClient>();
-            _receiptCanonicalityMonitor = new ReceiptCanonicalityMonitor(_receiptStorage, _blockTree, _logManager);
+            _receiptCanonicalityMonitor = new ReceiptCanonicalityMonitor(_receiptStorage, _blockTree, _logManager, MainnetSpecProvider.Instance);
             _syncConfig = new SyncConfig();
             _syncProgressResolver = Substitute.For<ISyncProgressResolver>();
             _ethSyncingInfo = new EthSyncingInfo(_blockTree, Substitute.For<ISyncPointers>(), _syncConfig,
@@ -172,7 +174,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 manualResetEvent.Set();
             }));
 
-            _txPool.NewPending += Raise.EventWith(new object(), txEventArgs);
+            _txPool.NewPending += Raise.Event<EventHandler<TxEventArgs>>(new object(), txEventArgs);
             manualResetEvent.WaitOne(TimeSpan.FromMilliseconds(100));
 
             subscriptionId = newPendingTransactionsSubscription.Id;
@@ -191,7 +193,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 manualResetEvent.Set();
             }));
 
-            _txPool.EvictedPending += Raise.EventWith(new object(), txEventArgs);
+            _txPool.EvictedPending += Raise.Event<EventHandler<TxEventArgs>>(new object(), txEventArgs);
             manualResetEvent.WaitOne(TimeSpan.FromMilliseconds(1000));
 
             subscriptionId = droppedPendingTransactionsSubscription.Id;
@@ -779,6 +781,27 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
 
         [Test]
+        public void LogsSubscription_logIndex_follows_the_published_block_spec([Values] bool eip8116Enabled)
+        {
+            LogEntry logEntry = Build.A.LogEntry.WithAddress(TestItem.AddressA).TestObject;
+            Block block = Build.A.Block.WithNumber(55555).TestObject;
+            _receiptStorage.Get(block).Returns(
+            [
+                Build.A.Receipt.WithBlockNumber(block.Number).WithIndex(0).WithLogs(logEntry).TestObject,
+                Build.A.Receipt.WithBlockNumber(block.Number).WithIndex(1).WithLogs(logEntry, logEntry).TestObject
+            ]);
+            TestSpecProvider specProvider = new(new OverridableReleaseSpec(Bogota.Instance) { IsEip8116Enabled = eip8116Enabled });
+            using ReceiptCanonicalityMonitor monitor = new(_receiptStorage, _blockTree, _logManager, specProvider);
+            using LogsSubscription logsSubscription = new(_jsonRpcDuplexClient, monitor, _filterStore, _blockTree, _logManager);
+
+            List<JsonRpcResult> results = CollectResults(logsSubscription, 3,
+                () => _receiptStorage.NewCanonicalReceipts += Raise.EventWith(new object(), new BlockReplacementEventArgs(block)));
+
+            string[] logIndexes = [.. results.Select(static r => JToken.Parse(RpcTest.SerializeResponse(r.Response))["params"]!["result"]!["logIndex"]!.Value<string>()!)];
+            Assert.That(logIndexes, Is.EqualTo(eip8116Enabled ? new[] { "0x0", "0x0", "0x1" } : new[] { "0x0", "0x1", "0x2" }));
+        }
+
+        [Test]
         public void LogsSubscription_on_NewHeadBlock_event_with_few_TxReceipts_with_few_logs_with_some_address_mismatches()
         {
             ulong blockNumber = 55555;
@@ -1076,7 +1099,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             for (int i = 0; i < messages; i++)
             {
                 Transaction tx = new();
-                txPool.NewPending += Raise.EventWith(new TxEventArgs(tx));
+                txPool.NewPending += Raise.Event<EventHandler<TxEventArgs>>(txPool, new TxEventArgs(tx));
             }
 
             // Wait until all messages are sent
@@ -1115,7 +1138,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 for (int i = 0; i < messages; i++)
                 {
                     Transaction tx = new();
-                    txPool.NewPending += Raise.EventWith(new TxEventArgs(tx));
+                    txPool.NewPending += Raise.Event<EventHandler<TxEventArgs>>(txPool, new TxEventArgs(tx));
                 }
             });
             Task subB = Task.Run(() =>

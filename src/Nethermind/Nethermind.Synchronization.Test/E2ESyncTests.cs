@@ -26,6 +26,7 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Events;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
@@ -39,6 +40,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.BlockProduction;
+using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Core.Container;
@@ -117,6 +119,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
     private const int PartialBalSyncChainLength = 1_000;
     private const int BalCatchUpChainLength = 600;
     private const int PartialBalActivationBlock = 400;
+    private const int UnprocessedParentChainLength = 20;
     private const ulong PartialBalSyncHeadPivotDistance = 500;
     private const int BalSyncBuildProgressInterval = 1_000;
     private const int BalSyncVerificationProgressInterval = 3_000;
@@ -525,6 +528,79 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             await client.Resolve<SyncTestContext>().SyncFromServer(_server, cancellationToken);
         });
 
+    /// <summary>
+    /// A newPayload child of a block whose processing failed without a verdict is inserted for beacon sync, which
+    /// processes the failed block and the child once a forkchoice update names the child as head.
+    /// </summary>
+    [Test]
+    [Category("Flaky"), Retry(2)]
+    public async Task ForkchoiceUpdated_head_on_top_of_a_block_left_unprocessed_is_processed_by_sync()
+    {
+        if (!isPostMerge || dbMode != DbMode.Default)
+        {
+            Assert.Ignore("Engine API recovery is covered on the default post-merge fixture.");
+        }
+
+        await RunWithTimeout(TestTimeout, async cancellationToken =>
+        {
+            PrivateKey serverKey = TestItem.PrivateKeyE;
+            await using IContainer server = await CreateNode(serverKey, (cfg, spec) =>
+            {
+                ConfigureLocalNetwork(cfg, AllocatePort());
+                return Task.CompletedTask;
+            }, serverKey);
+            await StartServerAndBuildStorageChain(server, UnprocessedParentChainLength, cancellationToken, "Unprocessed parent server");
+
+            await using IContainer client = await CreateNode(TestItem.PrivateKeyF, (cfg, spec) =>
+            {
+                ConfigureLocalNetwork(cfg, AllocatePort());
+                return Task.CompletedTask;
+            }, serverKey);
+            await client.Resolve<SyncTestContext>().SyncFromServer(server, cancellationToken);
+
+            IBlockTree serverBlockTree = server.Resolve<IBlockTree>();
+            Hash256 processedHash = serverBlockTree.HeadHash;
+            SyncTestContext serverContext = server.Resolve<SyncTestContext>();
+            await serverContext.BuildBlockWithStorage(UnprocessedParentChainLength, cancellationToken);
+            await serverContext.BuildBlockWithStorage(UnprocessedParentChainLength + 1, cancellationToken);
+            Block head = serverBlockTree.Head!;
+            Block dropped = serverBlockTree.FindBlock(head.ParentHash!, BlockTreeLookupOptions.None)!;
+
+            IBlockTree blockTree = client.Resolve<IBlockTree>();
+            IAsyncHandler<ExecutionPayload, PayloadStatusV1> newPayload = client.Resolve<IAsyncHandler<ExecutionPayload, PayloadStatusV1>>();
+            IForkchoiceUpdatedHandler forkchoiceUpdated = client.Resolve<IForkchoiceUpdatedHandler>();
+            bool failed = false;
+            client.Resolve<IMainProcessingContext>().BranchProcessor.BlockProcessing += (_, e) =>
+            {
+                if (failed || e.Block.Hash != dropped.Hash) return;
+                failed = true;
+                throw new InvalidOperationException("Injected processing failure");
+            };
+
+            await Assert.ThrowsAsync<BlockchainException>(() => newPayload.HandleAsync(CreatePayload(dropped)));
+            Assert.That((await newPayload.HandleAsync(CreatePayload(head))).Data.Status, Is.EqualTo(PayloadStatus.Syncing));
+
+            ForkchoiceStateV1 forkchoiceState = new(head.Hash!, processedHash, processedHash);
+            Assert.That((await forkchoiceUpdated.Handle(forkchoiceState, null, 3)).Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Syncing));
+
+            while (!blockTree.WasProcessed(head.Number, head.Hash!))
+            {
+                await Task.Delay(50, cancellationToken);
+            }
+
+            Assert.That(blockTree.WasProcessed(dropped.Number, dropped.Hash!), Is.True);
+            Assert.That((await forkchoiceUpdated.Handle(forkchoiceState, null, 3)).Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
+            Assert.That(blockTree.HeadHash, Is.EqualTo(head.Hash));
+        });
+    }
+
+    private static ExecutionPayload CreatePayload(Block block)
+    {
+        ExecutionPayloadV4 payload = ExecutionPayloadV4.Create(block);
+        payload.ExecutionRequests = block.RequestsHash is null ? null : block.ExecutionRequests ?? [];
+        return payload;
+    }
+
     [Test]
     [Category("Flaky"), Retry(2)]
     public async Task FastSync()
@@ -848,7 +924,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             TestContext.Progress.WriteLine($"Partial BAL sync test: head {PartialBalSyncChainLength}, pivot {syncPivotNumber}, activation {PartialBalActivationBlock}.");
 
             await client.Resolve<SyncTestContext>().SyncFromServerAndVerifyAccessLists(server, syncPivotNumber, cancellationToken);
-            Assert.That(client.Resolve<ISyncPointers>().LowestInsertedBlockAccessListBlockNumber, Is.LessThanOrEqualTo(1));
+            Assert.That(client.Resolve<ISyncPointers>().LowestInsertedBlockAccessListBlockNumber, Is.InRange(PartialBalActivationBlock - 2, PartialBalActivationBlock - 1));
         });
     }
 

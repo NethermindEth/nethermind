@@ -19,7 +19,7 @@ using NUnit.Framework;
 namespace Nethermind.Core.Test
 {
     [TestFixture]
-    public class BytesTests
+    public partial class BytesTests
     {
         [OneTimeSetUp]
         public void Check_instruction_set_expectations() => VectorIsaExpectations.AssertPinnedInstructionSet();
@@ -827,40 +827,6 @@ namespace Nethermind.Core.Test
             return SpanExtensions.FastHashAesShort(ref start, input.Length, aesSeed, finalSeed);
         }
 
-#if !ZK_EVM
-        [TestCase(false, TestName = "FastHash_StructuredEightByteInputs_AreDistributed_PublicPath")]
-        [TestCase(true, TestName = "FastHash_StructuredEightByteInputs_AreDistributed_ScalarFallback")]
-        public void FastHash_StructuredEightByteInputs_AreDistributed(bool forceScalar)
-        {
-            const int count = 1024;
-            ulong pairedDelta = SolveCrcInput(0);
-            byte[] input0 = new byte[sizeof(ulong)];
-            byte[] input1 = new byte[sizeof(ulong)];
-            int equalPairs = 0;
-
-            foreach (uint seed in HashSeeds)
-                Assert.That(SpanExtensions.CombineHash(seed, pairedDelta),
-                    Is.EqualTo(SpanExtensions.CombineHash(seed, 0)), "raw CRC collision survives changing the seed");
-
-            for (uint value = 0; value < count; value++)
-            {
-                ulong word = value * 0x9E3779B97F4A7C15UL;
-                BinaryPrimitives.WriteUInt64LittleEndian(input0, word);
-                BinaryPrimitives.WriteUInt64LittleEndian(input1, word ^ pairedDelta);
-
-                int hash0 = forceScalar
-                    ? SpanExtensions.FastHashFallback(input0)
-                    : input0.FastHash();
-                int hash1 = forceScalar
-                    ? SpanExtensions.FastHashFallback(input1)
-                    : input1.FastHash();
-                if (SpanExtensions.CombineHash(0, (uint)hash0) == SpanExtensions.CombineHash(0, (uint)hash1)) equalPairs++;
-            }
-
-            Assert.That(equalPairs, Is.LessThan(2), $"structured pairs produced {equalPairs}/{count} equal chained hashes");
-        }
-#endif
-
         /// <remarks>
         /// Covers the widths that have their own paths, not just a pair that shares one. 20 against 32
         /// is the case that matters: both are dominant key widths with dedicated handling, and a
@@ -1322,7 +1288,7 @@ namespace Nethermind.Core.Test
         /// </summary>
         [Test]
         public void CountZerosWordAtATime_matches_naive(
-            [Values(0, 7, 8, 247, 248, 249, 255, 256, 257, 496, 1000, 2049)] int length,
+            [Values(0, 7, 8, 31, 32, 39, 223, 224, 225, 231, 247, 248, 249, 255, 256, 257, 496, 1000, 2049)] int length,
             [Values(-1, 0x00, 0x01, 0x7F, 0x80, 0xFF)] int fill)
         {
             Random rng = new(length);

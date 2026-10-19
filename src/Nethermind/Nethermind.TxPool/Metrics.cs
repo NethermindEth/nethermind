@@ -117,6 +117,10 @@ namespace Nethermind.TxPool
         public static long PendingTransactionsFrameTxPaymasterLimitReached;
 
         [CounterMetric]
+        [Description("Number of pending EIP-8141 frame transactions received that were ignored because their validation prefix relies on EIP-8298 mutable code already relied on by the maximum number of pending transactions.")]
+        public static long PendingTransactionsFrameTxCodeDependencyLimitReached;
+
+        [CounterMetric]
         [Description("Number of pending EIP-8141 frame transactions received that were ignored because simulating their validation prefix rejected it.")]
         public static long PendingTransactionsFrameTxSimulationFailed;
 
@@ -159,6 +163,10 @@ namespace Nethermind.TxPool
         [CounterMetric]
         [Description("Number of EIP-8141 validation-prefix simulations stopped or not started because block processing preempted them.")]
         public static long FrameTxSimulationsPreempted;
+
+        [CounterMetric]
+        [Description("Number of EIP-8141 frame transaction signature verifications at admission stopped because block processing or building preempted them.")]
+        public static long FrameTxSignatureVerificationsPreempted;
 
         [CounterMetric]
         [Description("Number of pending EIP-8141 frame transactions received that were deferred because this node had spent its own validation-prefix simulation bounds, not because the prefix was judged.")]

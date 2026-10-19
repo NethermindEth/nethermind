@@ -50,15 +50,20 @@ namespace Nethermind.JsonRpc.Modules.Eth
             /// </summary>
             protected virtual bool AcceptsZeroBlobFeeCap => true;
 
+            /// <summary>
+            /// Whether the call is rejected for a field the fork it runs in lacks; a transaction to build is estimated
+            /// as a call without this check.
+            /// </summary>
+            public bool ChecksFork { private get; init; } = true;
+
             protected override Result<Transaction> Prepare(TransactionForRpc call, BlockHeader header)
             {
                 if (AcceptsZeroBlobFeeCap)
                     call = BlobTransactionForRpc.WithZeroBlobFeeCapOmitted(call);
 
-                IReleaseSpec spec = GetSpec(header);
-                Result<Transaction> result = ValidatesFeeCapOrder
-                    ? call.ToValidatedTransaction(gasCap: _rpcConfig.GasCap, spec: spec)
-                    : call.ToTransaction(validateUserInput: true, gasCap: _rpcConfig.GasCap, spec: spec);
+                // The call converts against the fork it runs in, which a block override can change.
+                IReleaseSpec spec = GetSpec(_blockOverride?.ApplyTo(header) ?? header);
+                Result<Transaction> result = call.ToCallTransaction(spec, _rpcConfig.GasCap, validateFeeCapOrder: ValidatesFeeCapOrder, checksFork: ChecksFork);
                 if (result.IsError) return result;
 
                 Transaction tx = result.Data;
@@ -84,20 +89,11 @@ namespace Nethermind.JsonRpc.Modules.Eth
                     }
                 }
 
-                BlockHeader clonedHeader = header.Clone();
-
-                if (NoBaseFee)
-                {
-                    clonedHeader.BaseFeePerGas = 0;
-                }
-
-                clonedHeader.GasUsed = 0;
-
                 // The block override is applied later, inside the bridge, after the read-only state scope is opened
                 // on this (base) header — so the overridden block number does not leak into state selection.
-                if (!_requestToken.CanBeCanceled) return ExecuteTx(clonedHeader, tx, stateOverride, token);
+                if (!_requestToken.CanBeCanceled) return ExecuteTx(header, tx, stateOverride, token);
                 using CancellationTokenSource linked = CancellationTokenSource.CreateLinkedTokenSource(token, _requestToken);
-                return ExecuteTx(clonedHeader, tx, stateOverride, linked.Token);
+                return ExecuteTx(header, tx, stateOverride, linked.Token);
             }
 
             public override ResultWrapper<TResult> Execute(
@@ -115,6 +111,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
             public ResultWrapper<TResult> ExecuteTx(TransactionForRpc transactionCall, BlockParameter? blockParameter, Dictionary<Address, AccountOverride>? stateOverride = null,
                 BlockOverride? blockOverride = null, CancellationToken requestToken = default, SearchResult<BlockHeader>? searchResult = null)
             {
+                if (blockOverride?.Withdrawals is not null)
+                    return ResultWrapper<TResult>.Fail(BlockOverride.WithdrawalsNotSupported, ErrorCodes.InvalidParams);
                 ulong gasCap = _rpcConfig.GasCap.EffectiveGasCap();
                 if (blockOverride?.GasLimit > gasCap)
                     return ResultWrapper<TResult>.Fail($"GasLimit value is too large, max value {gasCap}", ErrorCodes.InvalidInput);
@@ -157,7 +155,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
             protected override ResultWrapper<HexBytes> ExecuteTx(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken token)
             {
-                CallOutput result = _blockchainBridge.Call(header, tx, stateOverride, BlobBaseFeeOverride, BlockOverrideForExecution, token);
+                CallOutput result = _blockchainBridge.Call(header, tx, stateOverride, BlobBaseFeeOverride, BlockOverrideForExecution, NoBaseFee, token);
 
                 if (!result.ExecutionReverted && result.Error is not null)
                 {
@@ -205,7 +203,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
             protected override ResultWrapper<UInt256?> ExecuteTx(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride> stateOverride, CancellationToken token)
             {
-                CallOutput result = _blockchainBridge.EstimateGas(header, tx, _errorMargin, stateOverride, BlobBaseFeeOverride, BlockOverrideForExecution, _rpcConfig.GasCap ?? 0, token);
+                CallOutput result = _blockchainBridge.EstimateGas(header, tx, _errorMargin, stateOverride, BlobBaseFeeOverride, BlockOverrideForExecution, _rpcConfig.GasCap ?? 0, NoBaseFee, token);
 
                 // A transaction rejected before execution reports, as GasSpent, the gas limit it was rejected at.
                 string? errorMessage = result.InputError
@@ -288,7 +286,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
             protected override ResultWrapper<AccessListResultForRpc?> ExecuteTx(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride> stateOverride, CancellationToken token)
             {
-                CallOutput result = _blockchainBridge.CreateAccessList(header, tx, stateOverride, optimize, BlobBaseFeeOverride, token);
+                CallOutput result = _blockchainBridge.CreateAccessList(header, tx, stateOverride, optimize, BlobBaseFeeOverride, NoBaseFee, token);
 
                 AccessListResultForRpc rpcAccessListResult = new(
                     accessList: AccessListForRpc.FromAccessList(result.AccessList ?? tx.AccessList),

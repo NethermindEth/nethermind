@@ -188,11 +188,11 @@ namespace Nethermind.Trie
         private PreviousRlp ReadPreviousRlp() => new(_rlpArray, (nint)(_rlpSeqAndLength >> 32));
 
         /// <summary>Computes the keccak of <paramref name="rlp"/>, this node's encoding.</summary>
-        /// <remarks>A full branch re-encoded from a witness node resumes from the sponge state of its unchanged leading
+        /// <remarks>A branch re-encoded from a witness node resumes from the sponge state of its unchanged leading
         /// rate blocks; see <see cref="KeccakHash.ComputeHash256OfEdited"/>.</remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static Hash256 ComputeKeccak(ReadOnlySpan<byte> rlp, in PreviousRlp previous) =>
-            rlp.Length == FullBranchRlpLength
+            KeccakHash.IsResumable(rlp.Length)
                 ? new Hash256(KeccakHash.ComputeHash256OfEdited(rlp, previous.Array, previous.Tag))
                 : Nethermind.Core.Crypto.Keccak.Compute(rlp);
 
@@ -225,6 +225,12 @@ namespace Nethermind.Trie
         /// next time the path is walked. Over a mainnet block the witness holds 26,025 distinct nodes while
         /// the trie decodes 34,789 times, so 8,764 of those decodes are repeats.</remarks>
         private const bool PruneTraversedChildren = false;
+
+        /// <summary>Whether a re-encoded branch keeps its previous RLP's value as it stands, rather than walking to it to drop it.</summary>
+        /// <remarks>Every branch RLP in the guest comes from the witness, under the parent block's state root, or from this
+        /// encoder, and neither holds a value: state and storage keys are all 32 bytes. So the value is the last byte, 0x80,
+        /// and copying it spares the walk over the slots past a branch's last changed child.</remarks>
+        private static bool CopiesBranchValue => true;
 
         /// <summary>How <see cref="GetChildWithChildPath"/> is inlined: always.</summary>
         /// <remarks><see cref="PatriciaTree"/>'s set walk outgrows the inliner's budget and
