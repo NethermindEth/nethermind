@@ -5,11 +5,14 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Autofac;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.Logging;
@@ -268,7 +271,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
 
         [Test]
-        public void GetGasPricesFromRecentBlocks_IfBlockHasMoreThanThreeValidTxs_ReturnsLowestGasPricesInAscendingOrder()
+        public async Task GetGasPricesFromRecentBlocks_IfBlockHasMoreThanThreeValidTxs_ReturnsLowestGasPricesInAscendingOrder()
         {
             Transaction[] transactions =
             [
@@ -279,14 +282,21 @@ namespace Nethermind.JsonRpc.Test.Modules
                 Build.A.Transaction.WithGasPrice(3).TestObject,
                 Build.A.Transaction.WithGasPrice(5).TestObject
             ];
-            Block testBlock = Build.A.Block.WithTransactions(transactions).TestObject;
-            IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
-            blockFinder.FindBlock(0UL).Returns(testBlock);
-            GasPriceOracle testGasPriceOracle = new(blockFinder, Substitute.For<ISpecProvider>(), LimboLogs.Instance);
+            await using IContainer container = new ContainerBuilder().AddModule(new TestNethermindModule()).Build();
+            IBlockTree blockTree = container.Resolve<IBlockTree>();
+            Block genesis = Build.A.Block.Genesis.TestObject;
+            Block testBlock = Build.A.Block.WithParent(genesis).WithTransactions(transactions).TestObject;
+            foreach (Block block in (Block[])[genesis, testBlock])
+            {
+                blockTree.SuggestBlock(block);
+                blockTree.TryUpdateMainChain(block.Header, wereProcessed: true, forceUpdateHeadBlock: true, block);
+            }
 
-            IEnumerable<UInt256> results = testGasPriceOracle.GetGasPricesFromRecentBlocks(0);
+            GasPriceOracle testGasPriceOracle = (GasPriceOracle)container.Resolve<IGasPriceOracle>();
 
-            Assert.That(results, Is.EqualTo((UInt256[])[3, 3, 4]));
+            IEnumerable<UInt256> results = testGasPriceOracle.GetGasPricesFromRecentBlocks(testBlock.Number);
+
+            Assert.That(results.Take(EthGasPriceConstants.TxLimitFromABlock), Is.EqualTo((UInt256[])[3, 3, 4]), "the empty genesis block after it adds its own price");
         }
 
         private Transaction[] GetFiveTransactionsWithDifferentGasPrices()

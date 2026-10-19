@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Config;
@@ -110,11 +111,11 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
         private IEnumerable<UInt256> GetGasPricesFromRecentBlocks(IEnumerable<Block> blocks, int blocksToGoBack, CalculateGas calculateGasFromTransaction, UInt256? substituteForEmptyBlock)
         {
             int txCount = 0;
-            UInt256[] lowestGasPrices = new UInt256[EthGasPriceConstants.TxLimitFromABlock];
+            LowestGasPrices lowestGasPrices = default;
 
             foreach (Block currentBlock in blocks)
             {
-                int txFromCurrentBlock = SelectLowestGasPrices(currentBlock, calculateGasFromTransaction, lowestGasPrices);
+                int txFromCurrentBlock = SelectLowestGasPrices(currentBlock, calculateGasFromTransaction, ref lowestGasPrices);
                 for (int i = 0; i < txFromCurrentBlock; i++)
                 {
                     yield return lowestGasPrices[i];
@@ -142,8 +143,9 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
 
         /// <summary>Fills <paramref name="lowest"/> with the block's lowest gas prices at or above <see cref="IgnoreUnder"/>, in ascending order.</summary>
         /// <returns>The number of gas prices written.</returns>
-        private int SelectLowestGasPrices(Block block, CalculateGas calculateGasFromTransaction, UInt256[] lowest)
+        private int SelectLowestGasPrices(Block block, CalculateGas calculateGasFromTransaction, ref LowestGasPrices lowestGasPrices)
         {
+            Span<UInt256> lowest = lowestGasPrices;
             bool eip1559Enabled = SpecProvider.GetSpec(block.Header).IsEip1559Enabled;
             UInt256 baseFee = block.BaseFeePerGas;
             int count = 0;
@@ -171,6 +173,12 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
             }
 
             return count;
+        }
+
+        [InlineArray(EthGasPriceConstants.TxLimitFromABlock)]
+        private struct LowestGasPrices
+        {
+            private UInt256 _element0;
         }
 
         private static UInt256? GetGasPriceAtPercentile(List<UInt256> txGasPriceList)
