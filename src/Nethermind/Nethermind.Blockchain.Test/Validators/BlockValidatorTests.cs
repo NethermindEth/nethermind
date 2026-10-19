@@ -444,6 +444,54 @@ public class BlockValidatorTests
         AssertValidation(expectedValid, isValid, error, "BlockAccessListGasLimitExceeded");
     }
 
+    // WithPrecompileChanges yields 25 BAL items. A list reattached from the store for queued processing (sync,
+    // restart replay, reorg) never went through ValidateSuggestedBlock, and parallel execution verifies against it
+    // without building a generated list, so the attached list must be checked after execution too.
+    [TestCase(50_000ul, true)]
+    [TestCase(49_999ul, false)]
+    public void ValidateProcessedBlock_enforces_bal_item_gas_limit_boundary_for_attached_lists(ulong gasLimit, bool expectedValid)
+    {
+        BlockHeader parent = Build.A.BlockHeader.TestObject;
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList.WithPrecompileChanges(parent.Hash!, timestamp: 12).TestObject;
+        Block suggestedBlock = Build.A.Block
+            .WithParent(parent)
+            .WithGasLimit(gasLimit)
+            .WithBlobGasUsed(0)
+            .WithWithdrawals([])
+            .WithBal(bal)
+            .TestObject;
+        Block processedBlock = suggestedBlock.WithReplacedHeader(suggestedBlock.Header.Clone());
+
+        BlockValidator sut = AmsterdamSut();
+
+        bool isValid = sut.ValidateProcessedBlock(processedBlock, [], suggestedBlock, out string? error);
+
+        AssertValidation(expectedValid, isValid, error, "BlockAccessListGasLimitExceeded");
+    }
+
+    // A divergent block with an over-limit attached list reports the mismatch, as on master.
+    [Test]
+    public void ValidateProcessedBlock_reports_mismatch_before_attached_bal_item_limit()
+    {
+        BlockHeader parent = Build.A.BlockHeader.TestObject;
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList.WithPrecompileChanges(parent.Hash!, timestamp: 12).TestObject;
+        Block suggestedBlock = Build.A.Block
+            .WithParent(parent)
+            .WithGasLimit(49_999)
+            .WithBlobGasUsed(0)
+            .WithWithdrawals([])
+            .WithBal(bal)
+            .TestObject;
+        BlockHeader processedHeader = suggestedBlock.Header.Clone();
+        processedHeader.StateRoot = Keccak.Zero;
+        processedHeader.Hash = processedHeader.CalculateHash();
+        Block processedBlock = suggestedBlock.WithReplacedHeader(processedHeader);
+
+        bool isValid = AmsterdamSut().ValidateProcessedBlock(processedBlock, [], suggestedBlock, out string? error);
+
+        AssertValidation(false, isValid, error, "InvalidStateRoot");
+    }
+
     // EIP-7928 BlockAccessIndex must be in [0, txCount + 1]: 0 = pre-execution,
     // 1..n = transaction indices, n+1 = post-execution.
     // For a block with 0 transactions, valid indices are 0 and 1.

@@ -166,12 +166,8 @@ namespace Nethermind.TxPool.Collections
                 }
                 else if (Equals(lastElement, tx))
                 {
-                    bool reAdd = _worstSortedValues.Remove(tx);
                     change(tx);
-                    if (reAdd)
-                    {
-                        _worstSortedValues.Add(tx, tx.Hash!);
-                    }
+                    _worstSortedValues.Update(tx);
 
                     UpdateWorstValue();
                 }
@@ -238,12 +234,8 @@ namespace Nethermind.TxPool.Collections
             }
             else if (Equals(lastElement, tx))
             {
-                bool reAdd = _worstSortedValues.Remove(tx);
                 tx.GasBottleneck = changedGasBottleneck;
-                if (reAdd)
-                {
-                    _worstSortedValues.Add(tx, tx.Hash!);
-                }
+                _worstSortedValues.Update(tx);
 
                 UpdateWorstValue();
             }

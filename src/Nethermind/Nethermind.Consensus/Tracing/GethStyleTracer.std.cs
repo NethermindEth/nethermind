@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.IO.Abstractions;
 using System.IO.Pipelines;
 using System.Linq;
@@ -14,6 +15,7 @@ using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -317,7 +319,7 @@ public class GethStyleTracer(
             // Stored receipts describe only the unaltered canonical body; anything else numbers its logs from the
             // transactions it runs, which then have to be traced too.
             int txIndex = Array.FindIndex(block.Transactions, t => t.Hash == txHash);
-            int[]? firstLogIndexes = unaltered && txIndex >= 0 ? FirstLogIndexes(block) : null;
+            using ArrayPoolList<int>? firstLogIndexes = unaltered && txIndex >= 0 ? FirstLogIndexes(block) : null;
             tracePreceding = firstLogIndexes is null;
             logIndex = new BlockLogIndex(tracePreceding ? 0 : firstLogIndexes![txIndex]);
         }
@@ -385,13 +387,13 @@ public class GethStyleTracer(
             options = options with { TxHash = null };
         }
 
-        BlockLogIndex sharedLogIndex = new();
+        BlockLogIndex? sharedLogIndex = wantsLogIndex ? new() : null;
 
         using Scope<BlockProcessingComponents> scope = blockProcessingEnv.BuildAndOverrideAtTarget(block.Header, options.StateOverrides);
 
         long destroyRefund = (long)specProvider.GetSpec(block.Header).GasCosts.DestroyRefund;
         IBlockTracer<GethLikeTxTrace> tracer = writer is null
-            ? CreateOptionsTracer(block.Header, options, scope.Component.WorldState, specProvider, (_, _) => sharedLogIndex)
+            ? CreateOptionsTracer(block.Header, options, scope.Component.WorldState, specProvider, sharedLogIndex is null ? null : (_, _) => sharedLogIndex)
             : new GethLikeBlockEnvelopeStreamingTracer(options, writer, pipeWriter, cancellationToken, destroyRefund);
 
         try
@@ -434,7 +436,7 @@ public class GethStyleTracer(
         logIndex = null;
         if (!wantsLogIndex) return true;
 
-        int[]? firstLogIndexes = FirstLogIndexes(block);
+        using ArrayPoolList<int>? firstLogIndexes = FirstLogIndexes(block);
         if (firstLogIndexes is null) return false;
 
         Dictionary<Hash256, int> firstLogIndexByTx = new(block.Transactions.Length);
@@ -450,11 +452,12 @@ public class GethStyleTracer(
 
     /// <summary>The block-wide index of each transaction's first log, from the block's receipts.</summary>
     /// <returns><c>null</c> when the receipts are neither stored nor reproducible, or do not match the body.</returns>
-    private int[]? FirstLogIndexes(Block block)
+    private ArrayPoolList<int>? FirstLogIndexes(Block block)
     {
         TxReceipt[] receipts;
         try
         {
+            if (TryCountStoredLogs(block, out ArrayPoolList<int>? counted)) return counted;
             receipts = receiptFinder.Get(block);
         }
         catch (ResourceNotFoundException)
@@ -465,7 +468,7 @@ public class GethStyleTracer(
 
         if (receipts.Length != block.Transactions.Length) return null;
 
-        int[] firstLogIndexes = new int[receipts.Length];
+        ArrayPoolList<int> firstLogIndexes = new(receipts.Length, receipts.Length);
         int next = 0;
         for (int i = 0; i < receipts.Length; i++)
         {
@@ -474,6 +477,52 @@ public class GethStyleTracer(
         }
 
         return firstLogIndexes;
+    }
+
+    /// <summary>Counts the logs of the stored receipts without decoding them, their topics or their data.</summary>
+    /// <returns><c>false</c> when the iterator does not hold one receipt per transaction; the full read then decides.</returns>
+    private bool TryCountStoredLogs(Block block, [NotNullWhen(true)] out ArrayPoolList<int>? firstLogIndexes)
+    {
+        firstLogIndexes = null;
+        if (block.Hash is not { } blockHash || !receiptFinder.TryGetReceiptsIterator(block.Number, blockHash, out ReceiptsIterator iterator)) return false;
+
+        int txCount = block.Transactions.Length;
+        ArrayPoolList<int> counted = new(txCount, txCount);
+        int next = 0;
+        int count = 0;
+        using (ReceiptsIterator receipts = iterator)
+        {
+            while (receipts.TryGetNext(out TxReceiptStructRef receipt))
+            {
+                if (count == txCount)
+                {
+                    counted.Dispose();
+                    return false;
+                }
+
+                counted[count++] = next;
+                next += CountLogs(in receipt);
+            }
+        }
+
+        if (count != txCount)
+        {
+            counted.Dispose();
+            return false;
+        }
+
+        firstLogIndexes = counted;
+        return true;
+    }
+
+    private static int CountLogs(in TxReceiptStructRef receipt)
+    {
+        if (receipt.Logs is not null) return receipt.Logs.Length;
+        if (receipt.LogsRlp.IsEmpty) return 0;
+
+        RlpReader logs = new(receipt.LogsRlp);
+        logs.SkipLength();
+        return logs.PeekNumberOfItemsRemaining();
     }
 
     /// <summary>A JavaScript tracer owns a script engine; one per worker at once is not a cost a block trace should pay.</summary>

@@ -146,7 +146,7 @@ namespace Nethermind.TxPool.Test
             if (listenerMode != 0) _txPool.NewDiscovered += listener;
 
             AcceptTxResult result = ownsTransaction
-                ? ((IRecyclableTxPool)_txPool).SubmitOwnedTx(tx, out _)
+                ? ((IRecyclableTxPool)_txPool).SubmitOwnedTx(tx, out _, out _)
                 : _txPool.SubmitTx(tx, TxHandlingOptions.None);
             Assert.That(result, Is.EqualTo(rejection switch
             {
@@ -176,6 +176,33 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test, NonParallelizable]
+        public void TrySubmitKnown_settles_only_a_known_hash_that_needs_no_body([Values("known", "unknown", "discovery", "syncing")] string scenario)
+        {
+            if (scenario == "syncing")
+            {
+                _blockTree.Head = Build.A.Block.WithNumber(1).TestObject;
+            }
+            _txPool = CreatePool();
+            _txPool.AcceptTxWhenNotSynced = true;
+            Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+            Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+
+            _txPool.AcceptTxWhenNotSynced = false;
+            if (scenario == "discovery") _txPool.NewDiscovered += static (_, _) => { };
+            ValueHash256 hash = scenario == "unknown" ? TestItem.KeccakH : tx.Hash!;
+            long known = Metrics.PendingTransactionsKnown;
+
+            bool settled = ((IRecyclableTxPool)_txPool).TrySubmitKnown(in hash);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(settled, Is.EqualTo(scenario == "known"));
+                Assert.That(Metrics.PendingTransactionsKnown - known, Is.EqualTo(settled ? 1 : 0));
+            }
+        }
+
+        [Test, NonParallelizable]
         public void Duplicate_blob_returns_buffers_but_validation_rejection_keeps_them()
         {
             _txPool = CreatePool();
@@ -185,7 +212,7 @@ namespace Nethermind.TxPool.Test
 
             Transaction duplicate = DecodeReceivedBlob(0x11, pooled: true);
             byte[] duplicateBlob = ((ShardBlobNetworkWrapper)duplicate.NetworkWrapper).Blobs[0];
-            Assert.That(((IRecyclableTxPool)_txPool).SubmitOwnedTx(duplicate, out _), Is.EqualTo(AcceptTxResult.AlreadyKnown));
+            Assert.That(((IRecyclableTxPool)_txPool).SubmitOwnedTx(duplicate, out _, out _), Is.EqualTo(AcceptTxResult.AlreadyKnown));
 
             Transaction next = DecodeReceivedBlob(0x22, pooled: true);
             using (Assert.EnterMultipleScope())
@@ -212,7 +239,7 @@ namespace Nethermind.TxPool.Test
             };
             if (listenerMode != 0) _txPool.NewDiscovered += listener;
 
-            AcceptTxResult result = ((IRecyclableTxPool)_txPool).SubmitOwnedTx(tx, out bool canRecycle);
+            AcceptTxResult result = ((IRecyclableTxPool)_txPool).SubmitOwnedTx(tx, out bool canRecycle, out _);
 
             using (Assert.EnterMultipleScope())
             {
@@ -256,7 +283,7 @@ namespace Nethermind.TxPool.Test
         {
             _txPool = CreatePool();
             Transaction tx = GetTransaction(TestItem.PrivateKeyA, Address.Zero);
-            AcceptTxResult result = ((IRecyclableTxPool)_txPool).SubmitOwnedTx(tx, out bool canRecycle);
+            AcceptTxResult result = ((IRecyclableTxPool)_txPool).SubmitOwnedTx(tx, out bool canRecycle, out _);
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
@@ -273,7 +300,7 @@ namespace Nethermind.TxPool.Test
             _txPool = CreatePool(incomingTxFilter: filter);
             Transaction tx = GetTransaction(TestItem.PrivateKeyA, Address.Zero);
 
-            AcceptTxResult result = ((IRecyclableTxPool)_txPool).SubmitOwnedTx(tx, out bool canRecycle);
+            AcceptTxResult result = ((IRecyclableTxPool)_txPool).SubmitOwnedTx(tx, out bool canRecycle, out _);
 
             using (Assert.EnterMultipleScope())
             {
@@ -303,7 +330,7 @@ namespace Nethermind.TxPool.Test
             _txPool = derived;
             Transaction tx = Build.A.Transaction.SignedAndResolved().TestObject;
 
-            AcceptTxResult result = ((IRecyclableTxPool)derived).SubmitOwnedTx(tx, out bool canRecycle);
+            AcceptTxResult result = ((IRecyclableTxPool)derived).SubmitOwnedTx(tx, out bool canRecycle, out _);
 
             using (Assert.EnterMultipleScope())
             {
@@ -336,8 +363,8 @@ namespace Nethermind.TxPool.Test
             RlpReader reader = new(encoded.Bytes);
             Transaction duplicate = TxDecoder.Instance.Decode(ref reader);
 
-            AcceptTxResult invalid = ((IRecyclableTxPool)_txPool).SubmitOwnedTx(tx, out bool canRecycleInvalid);
-            AcceptTxResult known = ((IRecyclableTxPool)_txPool).SubmitOwnedTx(duplicate, out bool canRecycleDuplicate);
+            AcceptTxResult invalid = ((IRecyclableTxPool)_txPool).SubmitOwnedTx(tx, out bool canRecycleInvalid, out _);
+            AcceptTxResult known = ((IRecyclableTxPool)_txPool).SubmitOwnedTx(duplicate, out bool canRecycleDuplicate, out _);
 
             using (Assert.EnterMultipleScope())
             {
@@ -2636,11 +2663,9 @@ namespace Nethermind.TxPool.Test
         {
             _txPool = CreatePool();
             _ = AddTransactionToPool();
-            ITxPoolPeer txPoolPeer = Substitute.For<ITxPoolPeer>();
-            txPoolPeer.HeadNumber.Returns(peerHeadNumber);
-            txPoolPeer.Id.Returns(TestItem.PublicKeyA);
+            RecordingTxPoolPeer txPoolPeer = new(TestItem.PublicKeyA, peerHeadNumber);
             _txPool.AddPeer(txPoolPeer);
-            txPoolPeer.Received(expectedAnnouncements).SendNewTransactions(Arg.Any<IEnumerable<Transaction>>(), false);
+            Assert.That(txPoolPeer.BatchCount(sendFullTx: false), Is.EqualTo(expectedAnnouncements));
         }
 
         [TestCase(12_000_000UL, 0, TestName = "should_not_notify_added_peer_at_the_tip_while_syncing")]
@@ -2656,12 +2681,11 @@ namespace Nethermind.TxPool.Test
         public void should_notify_peer_only_once()
         {
             _txPool = CreatePool();
-            ITxPoolPeer txPoolPeer = Substitute.For<ITxPoolPeer>();
-            txPoolPeer.Id.Returns(TestItem.PublicKeyA);
+            RecordingTxPoolPeer txPoolPeer = new(TestItem.PublicKeyA);
             _txPool.AddPeer(txPoolPeer);
             _ = AddTransactionToPool();
-            Assert.That(() => txPoolPeer.ReceivedCallsMatching(p => p.SendNewTransaction(Arg.Any<Transaction>())), Is.True.After(500, 10));
-            txPoolPeer.DidNotReceive().SendNewTransactions(Arg.Any<IEnumerable<Transaction>>(), false);
+            Assert.That(() => txPoolPeer.BatchCount(sendFullTx: true), Is.Not.Zero.After(500, 10));
+            Assert.That(txPoolPeer.BatchCount(sendFullTx: false), Is.Zero);
         }
 
         [TestCase(true, TestName = "should_send_to_peers_full_newly_added_local_tx")]
@@ -3805,13 +3829,13 @@ namespace Nethermind.TxPool.Test
         }
 
         /// <summary>The frame-transaction properties a change of head specification can turn from valid to invalid.</summary>
-        public enum FrameForkGate { PostTx, ExecutionGasCap }
+        public enum FrameForkGate { Assert, ExecutionGasCap }
 
         // Each is admitted under a head that allows it, and the block that included it under the next head would
         // be invalid, so the pool must drop it at the transition. The retained rows hold the same transaction
         // across the same transition with the gate untouched, so the flipped flag is the only variable.
-        [TestCase(FrameForkGate.PostTx, true, TestName = "post_tx_frame_is_evicted_when_the_new_head_drops_eip7906")]
-        [TestCase(FrameForkGate.PostTx, false, TestName = "post_tx_frame_is_retained_while_eip7906_stays_active")]
+        [TestCase(FrameForkGate.Assert, true, TestName = "assert_frame_is_evicted_when_the_new_head_drops_eip7906")]
+        [TestCase(FrameForkGate.Assert, false, TestName = "assert_frame_is_retained_while_eip7906_stays_active")]
         [TestCase(FrameForkGate.ExecutionGasCap, true, TestName = "frame_execution_reservation_is_evicted_when_repriced_over_the_cap")]
         [TestCase(FrameForkGate.ExecutionGasCap, false, TestName = "frame_execution_reservation_is_retained_while_the_price_holds")]
         public async Task Frame_transaction_invalidated_by_the_new_head_is_evicted(FrameForkGate gate, bool revokedAtFork)
@@ -3821,12 +3845,12 @@ namespace Nethermind.TxPool.Test
 
             OverridableReleaseSpec preForkSpec = new(Eip8141Prototype.Instance)
             {
-                IsEip7906Enabled = gate == FrameForkGate.PostTx,
+                IsEip7906Enabled = gate == FrameForkGate.Assert,
                 IsEip2780Enabled = false
             };
             OverridableReleaseSpec postForkSpec = new(Eip8141Prototype.Instance)
             {
-                IsEip7906Enabled = preForkSpec.IsEip7906Enabled && !(revokedAtFork && gate == FrameForkGate.PostTx),
+                IsEip7906Enabled = preForkSpec.IsEip7906Enabled && !(revokedAtFork && gate == FrameForkGate.Assert),
                 IsEip2780Enabled = revokedAtFork && gate == FrameForkGate.ExecutionGasCap
             };
             TestSpecProvider provider = new(preForkSpec)
@@ -3852,9 +3876,9 @@ namespace Nethermind.TxPool.Test
         {
             switch (gate)
             {
-                case FrameForkGate.PostTx:
+                case FrameForkGate.Assert:
                     return SelfVerifyFrameTx(
-                        new TxFrame(FrameMode.PostTx, FrameFlags.None, TestItem.AddressB, gasLimit: 1_000, UInt256.Zero, Array.Empty<byte>()));
+                        new TxFrame(FrameMode.Assert, FrameFlags.None, TestItem.AddressB, gasLimit: 1_000, UInt256.Zero, Array.Empty<byte>()));
                 default:
                     // Reserving half the EIP-2780 transfer charge below the cap, so pricing the transfer at the
                     // next head is the whole difference. The half also absorbs the few tokens by which a fresh
@@ -4752,6 +4776,34 @@ namespace Nethermind.TxPool.Test
 
             Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None),
                 Is.EqualTo(sponsorCoversMaxCost ? AcceptTxResult.Accepted : AcceptTxResult.FrameTxPayerExposureExceeded));
+        }
+
+        // A peer's validation budget stays charged when the pool rejects a transaction after validating it, so a
+        // prefix that approves and then fails a later filter cannot hand the peer its charge back.
+        [TestCase(true, TestName = "SubmitOwnedTx_ReportsFrameValidationRan_AfterSignaturesAndSimulation")]
+        [TestCase(false, TestName = "SubmitOwnedTx_ReportsFrameValidationRan_AfterSimulationAlone")]
+        public void SubmitOwnedTx_ReportsFrameValidationRan_ForARejectionAfterSimulationButNotForADuplicate(bool withSignatures)
+        {
+            CreatePoolWithSimulator(FrameTxSimulationResult.Accept(TestItem.AddressD));
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.Zero);
+            Transaction tx = SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD);
+            if (!withSignatures)
+            {
+                tx.FrameSignatures = [];
+                tx.Hash = tx.CalculateHash();
+            }
+            EnsureSenderBalance(TestItem.AddressD, MaxCostOf(tx) - 1);
+
+            AcceptTxResult rejected = ((IRecyclableTxPool)_txPool).SubmitOwnedTx(tx, out _, out bool ranForRejected);
+            AcceptTxResult duplicate = ((IRecyclableTxPool)_txPool).SubmitOwnedTx(tx, out _, out bool ranForDuplicate);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(rejected, Is.EqualTo(AcceptTxResult.FrameTxPayerExposureExceeded));
+                Assert.That(ranForRejected, Is.True, "the prefix ran before the exposure filter rejected the transaction");
+                Assert.That(duplicate, Is.EqualTo(AcceptTxResult.AlreadyKnown));
+                Assert.That(ranForDuplicate, Is.False, "a duplicate is turned away before any validation work");
+            }
         }
 
         [Test]
@@ -7343,7 +7395,7 @@ namespace Nethermind.TxPool.Test
                 Frames =
                 [
                     FrameTxTestFrames.SelfVerify(FrameTxTestFrames.PrefixFrameGas),
-                    new TxFrame(FrameMode.PostTx, FrameFlags.None, TestItem.AddressB, gasLimit: 1_000, UInt256.Zero, Array.Empty<byte>())
+                    new TxFrame(FrameMode.Assert, FrameFlags.None, TestItem.AddressB, gasLimit: 1_000, UInt256.Zero, Array.Empty<byte>())
                 ],
                 FrameSignatures = [],
                 NonceKeys = [UInt256.One],
