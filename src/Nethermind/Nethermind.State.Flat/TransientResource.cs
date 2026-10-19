@@ -140,6 +140,9 @@ public record TransientResource(TransientResource.Size size) : IDisposable, IRes
 
     public bool TryGetStorageNode(Hash256AsKey address, in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node) => Nodes.TryGet(address, path, hash, out node);
 
+    /// <summary>Looks a state or storage node up by the shard and hash from <see cref="TrieNodeCache.GetShardAndHashCode"/>.</summary>
+    public bool TryGetNode(int shardIdx, int hashCode, Hash256 hash, [NotNullWhen(true)] out TrieNode? node) => Nodes.TryGet(shardIdx, hashCode, hash, out node);
+
     public TrieNode GetOrAddStorageNode(Hash256AsKey address, in TreePath path, TrieNode trieNode) => Nodes.GetOrAdd(address, path, trieNode);
 
     public void UpdateStorageNode(Hash256AsKey address, in TreePath path, TrieNode node) => Nodes.Set(address, path, node);

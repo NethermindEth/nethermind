@@ -1443,19 +1443,28 @@ public class SszMiddlewareTests
         Assert.That(body, Does.Contain("request-too-large"));
     }
 
+    /// <remarks>
+    /// The query string accepts <c>from=0</c>; the engine handler then rejects <c>start &lt; 1</c> with -32602,
+    /// which the spec's error table maps to 422 invalid-body.
+    /// </remarks>
     [Test]
-    public async Task GetPayloadBodiesByRange_from_zero_is_valid()
+    public async Task GetPayloadBodiesByRange_from_zero_is_rejected_by_the_engine_as_invalid_body()
     {
+        GetPayloadBodiesByRangeV1Handler handler = new(Substitute.For<Blockchain.IBlockTree>(), Substitute.For<Blockchain.Blocks.IBlockStore>(), LimboLogs.Instance);
         _engineModule.engine_getPayloadBodiesByRangeV1(Arg.Any<ulong>(), Arg.Any<ulong>())
-            .Returns(ResultWrapper<IReadOnlyList<ExecutionPayloadBodyV1Result?>>.Success([]));
+            .Returns(call => handler.Handle(call.ArgAt<ulong>(0), call.ArgAt<ulong>(1)));
 
         DefaultHttpContext ctx = MakeGetContext("/engine/v1/bodies", fork: "shanghai");
         ctx.Request.QueryString = new QueryString("?from=0&count=1");
 
         await _middleware.InvokeAsync(ctx);
 
-        Assert.That(ctx.Response.StatusCode, Is.Not.EqualTo(StatusCodes.Status400BadRequest),
-            "from=0 (genesis block) must be accepted");
+        using (Assert.EnterMultipleScope())
+        {
+            await _engineModule.Received(1).engine_getPayloadBodiesByRangeV1(0, 1);
+            Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status422UnprocessableEntity));
+            Assert.That(System.Text.Encoding.UTF8.GetString(ResponseBytes(ctx)), Does.Contain("invalid-body"));
+        }
     }
 
     [Test]
@@ -1645,6 +1654,8 @@ public class SszMiddlewareTests
             .SetName("NewPayloadWithWitness_unsupported_fork_maps_to_400"),
         new TestCaseData(ErrorCodes.InternalError, "Something exploded", StatusCodes.Status500InternalServerError, "/engine-api/errors/internal")
             .SetName("NewPayloadWithWitness_internal_error_maps_to_500"),
+        new TestCaseData(ErrorCodes.InvalidParams, "Invalid requests", StatusCodes.Status422UnprocessableEntity, "/engine-api/errors/invalid-body")
+            .SetName("NewPayloadWithWitness_invalid_params_maps_to_422"),
     ];
 
     [TestCaseSource(nameof(WitnessEngineErrorCases))]
@@ -1672,6 +1683,37 @@ public class SszMiddlewareTests
             ExecutionPayload = new SszExecutionPayloadV4(SszTestData.MakeV4Payload(blockAccessList: [0xc0], slotNumber: 0)),
             ParentBeaconBlockRoot = TestItem.KeccakA,
         });
+
+    [Test]
+    public async Task NewPayloadV5_empty_block_access_list_returns_invalid_status()
+    {
+        _engineModule.engine_newPayloadV5(Arg.Any<ExecutionPayloadV4>(), Arg.Any<Hash256?[]>(), Arg.Any<Hash256?>(), Arg.Any<byte[][]?>())
+            .Returns(static call =>
+            {
+                ExecutionPayloadParams<ExecutionPayloadV4> payloadParams = new(
+                    call.ArgAt<ExecutionPayloadV4>(0), call.ArgAt<Hash256?[]>(1), call.ArgAt<Hash256?>(2), call.ArgAt<byte[][]?>(3));
+                bool invalid = payloadParams.ValidateParams(Amsterdam.Instance, EngineApiVersions.NewPayload.V5, out string? error) is Nethermind.Merge.Plugin.Data.ValidationResult.Invalid;
+                return ResultWrapper<PayloadStatusV1>.Success(invalid
+                    ? new PayloadStatusV1 { Status = PayloadStatus.Invalid, ValidationError = error }
+                    : new PayloadStatusV1 { Status = PayloadStatus.Valid, LatestValidHash = TestItem.KeccakA });
+            });
+
+        byte[] body = NewPayloadV5RequestWire.Encode(new NewPayloadV5RequestWire
+        {
+            ExecutionPayload = new SszExecutionPayloadV4(SszTestData.MakeV4Payload(blockAccessList: [], slotNumber: 0)),
+            ParentBeaconBlockRoot = TestItem.KeccakA,
+        });
+        DefaultHttpContext ctx = MakePostContext("/engine/v1/payloads", body, fork: "amsterdam");
+
+        await _middleware.InvokeAsync(ctx);
+
+        PayloadStatusWire.Decode(new ReadOnlySequence<byte>(ResponseBytes(ctx)), out PayloadStatusWire status);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
+            Assert.That(status.Status, Is.EqualTo((byte)1), "an empty block_access_list is present and must be INVALID, as over JSON-RPC");
+        }
+    }
 
     // The three Bogota methods must resolve to a handler once advertised over SSZ.
     [Test]

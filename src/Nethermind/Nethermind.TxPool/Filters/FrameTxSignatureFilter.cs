@@ -54,7 +54,10 @@ internal sealed class FrameTxSignatureFilter(
             ? SecP256r1Precompile.Instance
             : null;
         bool local = (txHandlingOptions & TxHandlingOptions.PersistentBroadcast) != 0;
-        if (!FrameTxSignatureValidator.Validate(tx, ecdsa, p256Precompile, spec, local || state.ReAddedFromReorg ? null : _blockWorkInProgress, out bool preempted, out string? error))
+        bool valid = FrameTxSignatureValidator.Validate(tx, ecdsa, p256Precompile, spec, local || state.ReAddedFromReorg ? null : _blockWorkInProgress, out bool preempted, out string? error);
+        // A verification that yielded to this node's own block work is deferred, not charged to the sending peer.
+        state.FrameValidationRan = !preempted;
+        if (!valid)
         {
             if (preempted)
             {

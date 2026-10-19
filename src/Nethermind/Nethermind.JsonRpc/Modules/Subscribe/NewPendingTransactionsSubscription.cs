@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Specs;
-using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
 using Nethermind.TxPool;
@@ -14,8 +14,9 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
     public class NewPendingTransactionsSubscription : Subscription
     {
         private readonly ITxPool _txPool;
-        private readonly ISpecProvider _specProvider;
+        private readonly PendingTransactionPayloadCache _payloads;
         private readonly bool _includeTransactions;
+        private int _disposed;
 
         [ConstructorWithSideEffect]
         public NewPendingTransactionsSubscription(
@@ -24,12 +25,24 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             ISpecProvider? specProvider,
             ILogManager? logManager,
             TransactionsOption? options = null)
+            : this(jsonRpcDuplexClient, txPool, new PendingTransactionPayloadCache(specProvider ?? throw new ArgumentNullException(nameof(specProvider))), logManager, options)
+        {
+        }
+
+        [ConstructorWithSideEffect]
+        internal NewPendingTransactionsSubscription(
+            IJsonRpcDuplexClient jsonRpcDuplexClient,
+            ITxPool? txPool,
+            PendingTransactionPayloadCache payloads,
+            ILogManager? logManager,
+            TransactionsOption? options = null)
             : base(jsonRpcDuplexClient, MaxQueuedEvents)
         {
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
-            _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+            _payloads = payloads;
             _logger = logManager?.GetClassLogger<NewPendingTransactionsSubscription>() ?? throw new ArgumentNullException(nameof(logManager));
             _includeTransactions = options?.IncludeTransactions ?? false;
+            if (_includeTransactions) _payloads.AddSubscriber();
 
             _txPool.NewPending += OnNewPending;
             if (_logger.IsTrace) _logger.Trace($"NewPendingTransactions subscription {Id} will track NewPendingTransactions");
@@ -38,7 +51,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         private void OnNewPending(object? sender, TxEventArgs e) => ScheduleAction(async () =>
         {
             using JsonRpcResult result = _includeTransactions
-                ? CreateSubscriptionMessage(TransactionForRpc.FromTransaction(e.Transaction, new(_specProvider.ChainId)))
+                ? CreateSubscriptionMessage(_payloads.Get(e.Transaction))
                 : CreateSubscriptionMessage(e.Transaction.Hash!);
             await JsonRpcDuplexClient.SendJsonRpcResult(result);
             if (_logger.IsTrace) _logger.Trace($"NewPendingTransactions subscription {Id} printed hash of NewPendingTransaction.");
@@ -49,6 +62,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         public override void Dispose()
         {
             _txPool.NewPending -= OnNewPending;
+            if (_includeTransactions && Interlocked.Exchange(ref _disposed, 1) == 0) _payloads.RemoveSubscriber();
             base.Dispose();
             if (_logger.IsTrace) _logger.Trace($"NewPendingTransactions subscription {Id} will no longer track NewPendingTransactions");
         }
