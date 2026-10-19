@@ -6,6 +6,7 @@
     <AssemblyName>Nethermind.Stateless.Executor</AssemblyName>
     <RootNamespace>Nethermind.Stateless.Execution</RootNamespace>
     <IsAotCompatible>true</IsAotCompatible>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
   <ItemGroup>

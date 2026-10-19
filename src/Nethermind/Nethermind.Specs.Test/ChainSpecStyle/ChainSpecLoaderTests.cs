@@ -16,6 +16,7 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.ChainSpecStyle.Json;
+using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
 namespace Nethermind.Specs.Test.ChainSpecStyle;
@@ -199,6 +200,20 @@ public class ChainSpecLoaderTests
         ChainSpec chainSpec = new ChainSpecLoader(new EthereumJsonSerializer(), LimboLogs.Instance).Load(stream);
 
         Assert.That(chainSpec.Parameters.BlobSchedule, Is.Empty);
+    }
+
+    [Test]
+    public void Bal_retention_floor_defaults_to_history_prune_epochs()
+    {
+        string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../", "Chains/spaceneth.json");
+        using MemoryStream gethGenesis = new(Encoding.UTF8.GetBytes("""{ "config": { "chainId": 1 }, "difficulty": "0x1", "gasLimit": "0x8000000", "alloc": {} }"""));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(LoadChainSpec(path).Parameters.MinBalRetentionEpochs, Is.EqualTo(HistoryRetentionConstants.HistoryPruneEpochs), "chainspec");
+            Assert.That(new GethGenesisLoader(new EthereumJsonSerializer()).Load(gethGenesis).Parameters.MinBalRetentionEpochs, Is.EqualTo(HistoryRetentionConstants.HistoryPruneEpochs), "geth genesis");
+            Assert.That(Olympic.Instance.MinBalRetentionEpochs, Is.EqualTo(HistoryRetentionConstants.HistoryPruneEpochs), "built-in forks");
+        }
     }
 
     /// <summary>Loads a chain spec whose genesis, at timestamp 0, follows <paramref name="transitionParam"/> set to <paramref name="transitionTimestamp"/>.</summary>

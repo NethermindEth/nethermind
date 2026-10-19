@@ -12,6 +12,7 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Events;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -73,10 +74,11 @@ public class SyncPeerPoolTests
             Task.FromResult<IOwnedReadOnlyList<BlockHeader>?>(ArrayPoolList<BlockHeader>.Empty());
 
         public Task<IOwnedReadOnlyList<BlockHeader>?> GetBlockHeaders(Hash256 startHash, int maxBlocks, int skip, CancellationToken token) =>
-            Task.FromResult<IOwnedReadOnlyList<BlockHeader>?>(
-                AnswersWithNullHeader ? new ArrayPoolList<BlockHeader>([null!])
-                    : HeaderToReturn is null ? ArrayPoolList<BlockHeader>.Empty()
-                        : new ArrayPoolList<BlockHeader>([HeaderToReturn]));
+            _headersByHashFailure is not null ? Task.FromException<IOwnedReadOnlyList<BlockHeader>?>(_headersByHashFailure)
+                : Task.FromResult<IOwnedReadOnlyList<BlockHeader>?>(
+                    AnswersWithNullHeader ? new ArrayPoolList<BlockHeader>([null!])
+                        : HeaderToReturn is null ? ArrayPoolList<BlockHeader>.Empty()
+                            : new ArrayPoolList<BlockHeader>([HeaderToReturn]));
 
         /// <summary>
         /// Header this peer answers header requests with, whatever hash was asked for. When unset, head-header
@@ -96,9 +98,9 @@ public class SyncPeerPoolTests
 
         public async Task<BlockHeader?> GetHeadBlockHeader(Hash256? hash, CancellationToken token)
         {
-            if (_shouldFail)
+            if (_headHeaderFailure is not null)
             {
-                throw new Exception("Failed");
+                throw _headHeaderFailure;
             }
 
             if (_shouldTimeout)
@@ -131,7 +133,9 @@ public class SyncPeerPoolTests
 
         private int? _headerResponseTime;
 
-        private bool _shouldFail;
+        private Exception? _headHeaderFailure;
+
+        private Exception? _headersByHashFailure;
 
         private bool _shouldTimeout;
 
@@ -145,8 +149,15 @@ public class SyncPeerPoolTests
             _headerResponseTime = responseTime;
         }
 
-        public void SetHeaderFailure(bool shouldFail) =>
-            _shouldFail = shouldFail;
+        /// <summary>
+        /// Makes the peer fail by-hash header requests with <paramref name="failure"/>, and head-header requests
+        /// too unless <paramref name="byHashOnly"/> is set.
+        /// </summary>
+        public void SetHeaderFailure(Exception? failure, bool byHashOnly = false)
+        {
+            _headHeaderFailure = byHashOnly ? null : failure;
+            _headersByHashFailure = failure;
+        }
 
         public void RegisterSatelliteProtocol<T>(string protocol, T protocolHandler) where T : class =>
             throw new NotImplementedException();
@@ -585,7 +596,7 @@ public class SyncPeerPoolTests
     {
         await using Context ctx = new();
         SimpleSyncPeerMock peer = new(TestItem.PublicKeyA);
-        peer.SetHeaderFailure(true);
+        peer.SetHeaderFailure(new Exception("Failed"));
         ctx.Pool.Start();
         ctx.Pool.AddPeer(peer);
         // GetHeadBlockHeader throws, so refresh routes through ReportRefreshFailed -> Disconnect.
@@ -866,6 +877,68 @@ public class SyncPeerPoolTests
 
         Assert.That(result, Is.Null);
         Assert.That(peers[0].DisconnectRequested, Is.False);
+    }
+
+    [Test]
+    public async Task Fetch_header_ignores_a_peer_at_its_concurrent_request_limit()
+    {
+        await using Context ctx = new();
+        SimpleSyncPeerMock[] peers = await SetupPeers(ctx, 2);
+
+        BlockHeader requested = Build.A.BlockHeader.WithNumber(10).TestObject;
+        peers[0].SetHeaderFailure(new ConcurrencyLimitReachedException("Concurrent request limit reached."));
+        peers[1].HeaderToReturn = requested;
+        peers[1].SetHeaderResponseTime(100);
+
+        BlockHeader? result = await ctx.Pool.FetchHeaderFromPeer(requested.Hash!);
+
+        Assert.That(result, Is.SameAs(requested));
+    }
+
+    [Test]
+    public async Task Fetch_header_returns_null_when_the_allocated_peer_is_at_its_concurrent_request_limit()
+    {
+        await using Context ctx = new();
+        SimpleSyncPeerMock[] peers = await SetupPeers(ctx, 2);
+
+        BlockHeader requested = Build.A.BlockHeader.WithNumber(10).TestObject;
+        foreach (SimpleSyncPeerMock peer in peers)
+        {
+            peer.SetHeaderFailure(new ConcurrencyLimitReachedException("Concurrent request limit reached."));
+        }
+
+        BlockHeader? result = await ctx.Pool.FetchHeaderFromPeer(requested.Hash!);
+
+        Assert.That(result, Is.Null);
+    }
+
+    /// <summary>
+    /// Only expected request failures mean "this peer has no header". Anything else is a bug and must not be
+    /// reported as an unavailable header. <see cref="InvalidOperationException"/> is the base type of
+    /// <see cref="ConcurrencyLimitReachedException"/>, so this also checks that the catch is not widened to it.
+    /// </summary>
+    [TestCase(false, TestName = "Fetch_header_propagates_an_unexpected_peer_failure")]
+    [TestCase(true, TestName = "Fetch_header_propagates_an_unexpected_allocated_peer_failure")]
+    public async Task Fetch_header_propagates_an_unexpected_request_failure(bool inFallback)
+    {
+        await using Context ctx = new();
+        SimpleSyncPeerMock[] peers = await SetupPeers(ctx, 2);
+
+        BlockHeader requested = Build.A.BlockHeader.WithNumber(10).TestObject;
+        foreach (SimpleSyncPeerMock peer in peers)
+        {
+            peer.HeaderToReturn = requested;
+            peer.HeadHeaderUnavailable = true;
+            // In the fallback case every peer answers the head-header request with nothing, so the allocated
+            // peer's by-hash request is the one that fails; otherwise one peer fails its head-header request.
+            if (inFallback || peer == peers[0])
+            {
+                peer.SetHeaderFailure(new InvalidOperationException("Unexpected"), byHashOnly: inFallback);
+            }
+        }
+
+        Assert.That(async () => await ctx.Pool.FetchHeaderFromPeer(requested.Hash!),
+            Throws.TypeOf<InvalidOperationException>().With.Message.EqualTo("Unexpected"));
     }
 
     [Test]
