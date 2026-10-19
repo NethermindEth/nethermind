@@ -174,21 +174,7 @@ public class SnapshotCompactor(
     private static void MergeRoots(SortedSnapshotContent content, SnapshotPooledList snapshots)
     {
         Snapshot final = snapshots[^1];
-        content.HasStateRoot = final.HasStateRoot;
         content.StateRootPointer = final.StateRootPointer;
-        if (content.StateRootPointer == 0 && final.To.StateRoot != ValueKeccak.EmptyTreeHash)
-        {
-            for (int i = snapshots.Count - 2; i >= 0; i--)
-            {
-                Snapshot source = snapshots[i];
-                if (source.HasStateRoot && source.To.StateRoot == final.To.StateRoot && source.StateRootPointer != 0)
-                {
-                    content.HasStateRoot = true;
-                    content.StateRootPointer = source.StateRootPointer;
-                    break;
-                }
-            }
-        }
 
         foreach (Snapshot source in snapshots)
         {

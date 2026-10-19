@@ -83,6 +83,33 @@ public class SnapshotBundleWarmerTests
         }
     }
 
+    [Test]
+    public void Publishing_a_root_the_buffer_does_not_hold_copies_its_record_in()
+    {
+        byte[] rlp = FlatTestHelpers.LeafRlp(new byte[40]);
+        (TrieRoot root, Dictionary<TreePath, byte[]> nodes) = LeafTrie(rlp);
+        using SnapshotBundle bundle = NewBundle(new NodeReader(nodes));
+        using INodeRecordBufferPin retain = _buffer.Pin();
+        new BufferedTrie(bundle, null, root).Publish();
+
+        (Snapshot? snapshot, TransientResource? retired) = bundle.CollectAndApplySnapshot(StateId.PreGenesis, new StateId(1, root.Hash), retain.Copy());
+        try
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(snapshot!.StateRootPointer, Is.Not.Zero);
+                Assert.That(snapshot.TryGetStateNode(TreePath.Empty, out TrieNode? node), Is.True);
+                Assert.That(node!.FullRlp.ToArray(), Is.EqualTo(rlp));
+                Assert.That(_buffer.FindRoot(null, root.Hash), Is.EqualTo(snapshot.StateRootPointer), "the copy is indexed");
+            }
+        }
+        finally
+        {
+            snapshot?.Dispose();
+            retired?.ReleaseLease();
+        }
+    }
+
     private SnapshotBundle NewBundle(NodeReader reader) =>
         new(FlatTestHelpers.MakeBundle(_pool, reader), _buffer, _pool, ResourcePool.Usage.MainBlockProcessing);
 

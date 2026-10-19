@@ -194,8 +194,7 @@ public sealed class SnapshotBundle : IDisposable
     {
         GuardDispose();
 
-        if (_currentPooledContent.HasStateRoot
-            && _nodeRecordBuffer!.TryGetNode(_currentPooledContent.StateRootPointer, path, out TrieNode? node))
+        if (_nodeRecordBuffer!.TryGetNode(_currentPooledContent.StateRootPointer, path, out TrieNode? node))
         {
             Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
         }
@@ -313,8 +312,8 @@ public sealed class SnapshotBundle : IDisposable
     internal void PublishBufferedStateRoot(in TrieRoot root)
     {
         GuardDispose();
+        Debug.Assert(root.Pointer != 0 || root.Hash == ValueKeccak.EmptyTreeHash);
         _currentPooledContent.StateRootPointer = root.Pointer;
-        _currentPooledContent.HasStateRoot = root.Pointer != 0 || root.Hash == ValueKeccak.EmptyTreeHash;
     }
 
     /// <summary>Makes a changed storage trie readable from this bundle, including a change to empty.</summary>
@@ -327,7 +326,7 @@ public sealed class SnapshotBundle : IDisposable
 
     /// <summary>Loads the record of a trie node the trie node buffer does not hold, for a bulk set or point read.</summary>
     /// <remarks>
-    /// Tries the nodes warmed for this block by position, then persistence, whose node is verified against
+    /// Tries the nodes warmed for this block by position, then persistence, whose node is trusted to be the one of
     /// <paramref name="hash"/> and appended to the warmed nodes. The nodes of this bundle's changes and of every in-memory snapshot
     /// are in the buffer, which their pins keep readable, and <see cref="TrieNodeBuffer"/> resolves warmed nodes by pointer,
     /// so this source only fetches nodes the buffers reach by no pointer.
@@ -372,7 +371,7 @@ public sealed class SnapshotBundle : IDisposable
         }
     }
 
-    /// <summary>Reads the node at <paramref name="path"/> from persistence into <paramref name="warmed"/>, if it hashes to <paramref name="hash"/>.</summary>
+    /// <summary>Reads the node at <paramref name="path"/> from persistence into <paramref name="warmed"/> as the node of <paramref name="hash"/>.</summary>
     private bool TryInsertPersistedRecord(WarmedNodeLog warmed, Hash256? address, in TreePath path, in ValueHash256 hash, out NodeRecord record) =>
         TryInsertPersistedRecord(_readOnlySnapshotBundle, warmed, address, path, hash, out record);
 

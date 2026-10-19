@@ -179,7 +179,6 @@ public class Snapshot : RefCountingDisposable
     public int AccountsCount => _isSorted ? _sorted!.AccountsCount : Counts.Accounts;
     public int StoragesCount => _isSorted ? _sorted!.StoragesCount : Counts.Storages;
 
-    internal bool HasStateRoot => _isSorted ? _sorted!.HasStateRoot : _mutable!.HasStateRoot;
     internal ulong StateRootPointer => _isSorted ? _sorted!.StateRootPointer : _mutable!.StateRootPointer;
     internal IEnumerable<KeyValuePair<Hash256, ulong>> StorageRoots => _isSorted ? _sorted!.StorageRoots : _mutable!.StorageRoots;
 
@@ -189,7 +188,7 @@ public class Snapshot : RefCountingDisposable
 
     private IEnumerable<KeyValuePair<HashedKey<TreePath>, ulong>> EnumerateStateNodes()
     {
-        if (!HasStateRoot || BufferPin is null || From.StateRoot == To.StateRoot) yield break;
+        if (BufferPin is null || From.StateRoot == To.StateRoot) yield break;
         foreach ((TreePath path, ulong pointer, _) in BufferPin.Buffer.EnumerateNodes(StateRootPointer, BufferPin.WriteBoundary))
             yield return new(path, pointer);
     }
@@ -252,7 +251,7 @@ public class Snapshot : RefCountingDisposable
     public bool TryGetStateNode(HashedKey<TreePath> key, [NotNullWhen(true)] out TrieNode? node)
     {
         node = null;
-        return HasStateRoot && BufferPin is not null && BufferPin.Buffer.TryGetNode(StateRootPointer, key.Key, out node);
+        return BufferPin is not null && BufferPin.Buffer.TryGetNode(StateRootPointer, key.Key, out node);
     }
 
     public bool TryGetStorageNode(HashedKey<(Hash256, TreePath)> key, [NotNullWhen(true)] out TrieNode? node)
@@ -293,10 +292,8 @@ public sealed class SnapshotContent : IDisposable, IResettable
     public readonly ConcurrentDictionary<HashedKey<(Address, UInt256)>, UInt256?> Storages = new();
     public readonly ConcurrentDictionary<HashedKey<Address>, bool> SelfDestructedStorageAddresses = new();
 
-    /// <summary>The final published state-root pointer, zero for an empty or unavailable root.</summary>
+    /// <summary>The final published state-root pointer, zero only for the empty root.</summary>
     public ulong StateRootPointer;
-    /// <summary>Whether this content has published a state root, including the empty root.</summary>
-    public bool HasStateRoot;
     /// <summary>Final roots of changed storage tries. Missing addresses are unchanged; zero marks an empty trie.</summary>
     public readonly ConcurrentDictionary<Hash256, ulong> StorageRoots = new();
 
@@ -317,7 +314,6 @@ public sealed class SnapshotContent : IDisposable, IResettable
         Storages.NoLockClear();
         SelfDestructedStorageAddresses.NoLockClear();
         StateRootPointer = 0;
-        HasStateRoot = false;
         StorageRoots.NoLockClear();
     }
 
@@ -330,7 +326,7 @@ public sealed class SnapshotContent : IDisposable, IResettable
         Accounts.Count,
         Storages.Count,
         SelfDestructedStorageAddresses.Count,
-        HasStateRoot ? 1 : 0,
+        StateRootPointer != 0 ? 1 : 0,
         StorageRoots.Count);
 
     public long EstimateMemory() => CaptureCounts().EstimateMemory();

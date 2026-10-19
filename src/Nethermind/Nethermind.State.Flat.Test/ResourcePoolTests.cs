@@ -58,7 +58,6 @@ public class ResourcePoolTests
 
         content1.Accounts[new Address("0x1234567890123456789012345678901234567890")] = new Account(1, 2);
         content1.StateRootPointer = 1;
-        content1.HasStateRoot = true;
         content1.StorageRoots[TestItem.KeccakA] = 2;
         using (Assert.EnterMultipleScope())
         {
@@ -77,7 +76,6 @@ public class ResourcePoolTests
         {
             Assert.That(content2.Accounts, Is.Empty);
             Assert.That(content2.StateRootPointer, Is.Zero);
-            Assert.That(content2.HasStateRoot, Is.False);
             Assert.That(content2.StorageRoots, Is.Empty);
         }
     }
@@ -88,7 +86,6 @@ public class ResourcePoolTests
         ResourcePool.Usage usage = ResourcePool.Usage.Compact2;
         SortedSnapshotContent content = _resourcePool.GetSortedSnapshotContent(usage);
         content.StateRootPointer = 1;
-        content.HasStateRoot = true;
         content.StorageRoots[TestItem.KeccakA] = 2;
 
         _resourcePool.ReturnSortedSnapshotContent(usage, content);
@@ -98,7 +95,6 @@ public class ResourcePoolTests
         {
             Assert.That(recycled, Is.SameAs(content));
             Assert.That(recycled.StateRootPointer, Is.Zero);
-            Assert.That(recycled.HasStateRoot, Is.False);
             Assert.That(recycled.StorageRoots, Is.Empty);
         }
     }

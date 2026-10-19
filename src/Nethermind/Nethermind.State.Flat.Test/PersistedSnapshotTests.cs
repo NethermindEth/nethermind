@@ -124,7 +124,6 @@ public class PersistedSnapshotTests
         else
         {
             snapshot.Content.StateRootPointer = root.Pointer;
-            snapshot.Content.HasStateRoot = true;
         }
 
         using PersistedSnapshot persisted = tier.ConvertToPersistedBase(snapshot);
@@ -178,7 +177,6 @@ public class PersistedSnapshotTests
             if (storage) snapshot.Content.StorageRoots[address!] = root.Pointer;
             else
             {
-                snapshot.Content.HasStateRoot = true;
                 snapshot.Content.StateRootPointer = root.Pointer;
             }
             return snapshot;
@@ -245,6 +243,7 @@ public class PersistedSnapshotTests
         clear.Content.SelfDestructedStorageAddresses[TestItem.AddressA] = false;
         clear.Content.StorageRoots[address] = 0;
         Snapshot final = _resourcePool.CreateSnapshot(clearId, finalId, ResourcePool.Usage.MainBlockProcessing, _buffer);
+        final.Content.SetStateNodeRlp(_buffer, TreePath.Empty, finalState);
         if (recreate)
         {
             final.Content.SetStorageNodeRlp(_buffer, address, newStorage, FlatTestHelpers.LeafRlp(4));
@@ -258,7 +257,7 @@ public class PersistedSnapshotTests
             Assert.That(persisted.From, Is.EqualTo(StateId.PreGenesis));
             Assert.That(persisted.To, Is.EqualTo(finalId));
             Assert.That(persisted.TryLoadStateNodeRlp(TreePath.Empty, out byte[]? state), Is.True);
-            Assert.That(state, Is.EqualTo(finalState), "unchanged endpoint inherits the final matching state root");
+            Assert.That(state, Is.EqualTo(finalState), "the unchanged endpoint publishes its own copy of the state root");
             Assert.That(persisted.TryLoadStorageNodeRlp(address.ValueHash256, oldStorage, out _), Is.False);
             Assert.That(persisted.TryLoadStorageNodeRlp(address.ValueHash256, newStorage, out _), Is.EqualTo(recreate));
             Assert.That(persisted.TryGetSelfDestructFlag(TestItem.AddressA), Is.False);

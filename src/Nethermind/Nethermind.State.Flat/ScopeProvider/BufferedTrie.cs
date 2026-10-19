@@ -45,12 +45,23 @@ internal sealed class BufferedTrie(SnapshotBundle bundle, Hash256? addressHash, 
         if (addressHash is not null && !_rootDirty) return;
 
         long start = Stopwatch.GetTimestamp();
+        // A published root always points at its record, so a root the buffer no longer holds is copied back in.
+        if (Root.Pointer == 0 && Root.Hash != ValueKeccak.EmptyTreeHash) SetRoot(new TrieRoot(Root.Hash, CopyRootRecord()));
         if (_rootDirty && Root.Pointer != 0) bundle.TrieNodeBuffer!.SetRoot(addressHash, Root.Hash, Root.Pointer);
         if (addressHash is null) bundle.PublishBufferedStateRoot(Root);
         else bundle.PublishBufferedStorageRoot(addressHash, Root);
 
         _rootDirty = false;
         Metrics.TrieNodePublishTime.Observe(Stopwatch.GetTimestamp() - start);
+    }
+
+    /// <exception cref="MissingTrieNodeException">Neither the warmed nodes nor persistence hold the root.</exception>
+    private ulong CopyRootRecord()
+    {
+        if (!TryLoad(TreePath.Empty, Root.Hash, out NodeRecord record))
+            throw new MissingTrieNodeException($"Trie node missing hash={Root.Hash} address={addressHash} path={TreePath.Empty}", addressHash, TreePath.Empty, _rootHash);
+
+        return bundle.TrieNodeBuffer!.AppendRecordFromRlp(addressHash, TreePath.Empty, Root.Hash, record.Rlp, []);
     }
 
     /// <summary>Empties the trie and drops the unpublished nodes, as when the storage is cleared.</summary>

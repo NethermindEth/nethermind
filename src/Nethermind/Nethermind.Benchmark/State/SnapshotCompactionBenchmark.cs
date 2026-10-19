@@ -110,7 +110,6 @@ public class SnapshotCompactionBenchmark
         }
 
         content.StateRootPointer = PlaceholderNode;
-        content.HasStateRoot = true;
 
         int hotSlots = (int)(SlotsPerContract * HotFraction);
         for (int c = 0; c < StorageContracts; c++)

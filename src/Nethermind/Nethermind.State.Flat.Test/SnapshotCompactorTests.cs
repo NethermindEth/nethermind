@@ -408,27 +408,11 @@ public class SnapshotCompactorTests
     }
 
     [Test]
-    public void CompactSnapshotBundle_NoOpEndpointOnlyInheritsMatchingStateRoot([Values] bool matchingHash)
-    {
-        byte[] rlp = Bytes.FromHexString(FlatTestHelpers.LeafRlpA);
-        Hash256 hash = new(ValueKeccak.Compute(rlp));
-        using Snapshot older = _resourcePool.CreateSnapshot(new(0, Keccak.EmptyTreeHash), new(1, hash), ResourcePool.Usage.ReadOnlyProcessingEnv, _buffer);
-        older.Content.SetStateNodeRlp(_buffer, TreePath.Empty, rlp);
-        using Snapshot final = _resourcePool.CreateSnapshot(older.To, new(2, matchingHash ? hash : TestItem.KeccakB), ResourcePool.Usage.ReadOnlyProcessingEnv, _buffer);
-
-        using Snapshot compacted = _compactor.CompactSnapshotBundle(new(2) { older, final });
-
-        Assert.That(compacted.TryGetStateNode(TreePath.Empty, out TrieNode? node), Is.EqualTo(matchingHash));
-        if (matchingHash) Assert.That(node!.FullRlp.ToArray(), Is.EqualTo(rlp));
-    }
-
-    [Test]
     public void CompactSnapshotBundle_FinalEmptyStateDoesNotResurrectEarlierRoot()
     {
         using Snapshot older = _resourcePool.CreateSnapshot(new(0, Keccak.EmptyTreeHash), new(1, Keccak.Zero), ResourcePool.Usage.ReadOnlyProcessingEnv, _buffer);
         older.Content.SetStateNodeRlp(_buffer, TreePath.Empty, FlatTestHelpers.LeafRlpA);
         using Snapshot final = _resourcePool.CreateSnapshot(older.To, new(2, Keccak.EmptyTreeHash), ResourcePool.Usage.ReadOnlyProcessingEnv, _buffer);
-        final.Content.HasStateRoot = true;
 
         using Snapshot compacted = _compactor.CompactSnapshotBundle(new(2) { older, final });
 

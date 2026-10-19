@@ -142,7 +142,6 @@ public class SnapshotTests
         else
         {
             snapshot.Content.StateRootPointer = updated.Pointer;
-            snapshot.Content.HasStateRoot = true;
         }
         ulong[] pointers = (storage ? snapshot.StorageNodes.Select(kv => kv.Value) : snapshot.StateNodes.Select(kv => kv.Value)).ToArray();
         if (storage) AssertIteratorEntries(snapshot.GetStorageNodeIterator(), snapshot.StorageNodes.ToArray(), snapshot);
@@ -180,7 +179,6 @@ public class SnapshotTests
         using Snapshot snapshot = _pool.CreateSnapshot(new(1, hash), new(2, hash), ResourcePool.Usage.MainBlockProcessing, buffer);
         ulong root = duplicateRoot ? buffer.AppendRecordFromRlp(null, TreePath.Empty, hash, rlp, []) : original;
         snapshot.Content.StateRootPointer = root;
-        snapshot.Content.HasStateRoot = true;
 
         using (Assert.EnterMultipleScope())
         {
@@ -393,22 +391,15 @@ public class SnapshotTests
         }
     }
 
-    public enum PublishedRootKind { Resolved, Empty, Unresolved }
-
     [Test]
-    public void StateRootPublicationDistinguishesUnresolvedAndEmptyRoots([Values] PublishedRootKind kind)
+    public void StateRootPublicationRecordsResolvedAndEmptyRoots([Values] bool empty)
     {
         using INodeRecordBuffer buffer = FlatTestHelpers.NewTestBuffer();
         using SnapshotBundle bundle = new(FlatTestHelpers.MakeBundle(_pool), buffer, _pool, ResourcePool.Usage.MainBlockProcessing);
         INodeRecordBufferPin retain = buffer.Pin();
         byte[] rlp = FlatTestHelpers.LeafRlp(1);
         ValueHash256 hash = ValueKeccak.Compute(rlp);
-        TrieRoot root = kind switch
-        {
-            PublishedRootKind.Resolved => new(hash, buffer.AppendRecordFromRlp(null, TreePath.Empty, hash, rlp, [])),
-            PublishedRootKind.Empty => TrieRoot.Empty,
-            _ => new(hash, 0)
-        };
+        TrieRoot root = empty ? TrieRoot.Empty : new(hash, buffer.AppendRecordFromRlp(null, TreePath.Empty, hash, rlp, []));
         bundle.PublishBufferedStateRoot(root);
         (Snapshot? published, TransientResource? retired) = bundle.CollectAndApplySnapshot(
             StateId.PreGenesis, new(1, root.Hash), retain);
@@ -417,9 +408,8 @@ public class SnapshotTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(snapshot.HasStateRoot, Is.EqualTo(kind != PublishedRootKind.Unresolved));
             Assert.That(snapshot.StateRootPointer, Is.EqualTo(root.Pointer));
-            Assert.That(snapshot.StateNodes.Count(), Is.EqualTo(kind == PublishedRootKind.Resolved ? 1 : 0));
+            Assert.That(snapshot.StateNodes.Count(), Is.EqualTo(empty ? 0 : 1));
             AssertIteratorEntries(snapshot.GetStateNodeIterator(), snapshot.StateNodes.ToArray(), snapshot);
         }
     }

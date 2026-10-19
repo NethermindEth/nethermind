@@ -74,10 +74,9 @@ public static class FlatTestHelpers
     public static ulong SetStateNodeRlp(this SnapshotContent content, INodeRecordBuffer buffer, in TreePath path, byte[] rlp)
     {
         FixtureTrie trie = _fixtureNodes.GetValue(content, static _ => new FixtureNodes()).State;
-        if (!content.HasStateRoot || content.StateRootPointer != trie.RootPointer) trie.Nodes.Clear();
+        if (content.StateRootPointer != trie.RootPointer) trie.Nodes.Clear();
         ulong pointer = trie.Set(buffer, null, path, rlp);
         content.StateRootPointer = trie.RootPointer;
-        content.HasStateRoot = true;
         return pointer;
     }
 
