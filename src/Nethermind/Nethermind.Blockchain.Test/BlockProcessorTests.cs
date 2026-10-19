@@ -1829,7 +1829,7 @@ public partial class BlockProcessorTests
     }
 
     [Test]
-    public void Parallel_validation_parent_reader_scope_is_per_worker_and_kept_until_the_next_block()
+    public void Parallel_validation_parent_reader_scope_is_per_worker_and_released_when_the_block_finishes([Values] bool finishBlock)
     {
         IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
         Hash256 parentStateRoot;
@@ -1889,6 +1889,13 @@ public partial class BlockProcessorTests
         int pooled = Math.Min(2, Environment.ProcessorCount);
         Assert.That(parentReaderFactory.DisposedScopes, Is.EqualTo(2 - pooled), "a pooled processor keeps its parent reader for the block");
 
+        if (finishBlock)
+        {
+            balManager.SetBlockAccessList(block);
+            Assert.That(parentReaderFactory.DisposedScopes, Is.EqualTo(parentReaderFactory.BuiltHeaders.Count), "merging the post-execution slice releases every kept parent reader");
+            return;
+        }
+
         Block nextBlock = Build.A.Block
             .WithNumber(7)
             .WithParentHash(parentHash)
@@ -1897,7 +1904,7 @@ public partial class BlockProcessorTests
             .TestObject;
         PrepareSetup(balManager, nextBlock, Amsterdam.Instance);
 
-        Assert.That(parentReaderFactory.DisposedScopes, Is.EqualTo(2), "the next block's setup releases the kept parent readers");
+        Assert.That(parentReaderFactory.DisposedScopes, Is.EqualTo(2), "for a block that failed before its post-execution slice, the next block's setup releases the kept parent readers");
     }
 
     /// <summary>A block that does not run in parallel releases the parent readers an earlier parallel block kept.</summary>

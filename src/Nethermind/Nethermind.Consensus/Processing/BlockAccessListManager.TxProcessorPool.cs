@@ -27,8 +27,9 @@ namespace Nethermind.Consensus.Processing;
 ///     the validator can merge them in canonical order. Each processor keeps a pooled
 ///     <see cref="ParentReaderLease"/> for the whole block — a snapshot of the parent-state
 ///     world from which the BAL-backed world state reads any value the suggested BAL doesn't
-///     carry at the current index. The lease is attached per tx and released on the next
-///     block's <c>Setup</c>, or when the processor is disposed.
+///     carry at the current index. The lease is attached per tx and released when the block's
+///     post-execution slice is merged, by the next block's <c>Setup</c> if the block failed before
+///     that, or when the processor is disposed.
 ///   * <see cref="SequentialTxProcessorWithWorldStateManager"/> reuses a single processor
 ///     for the whole block.
 /// <see cref="TxProcessorWithWorldState"/> bundles the tx processor with its world states
@@ -119,11 +120,15 @@ public partial class BlockAccessListManager
 
         /// <summary>A parent reader serves one block: it reads that block's parent state through caches that change
         /// between blocks, and holds the snapshots under it until released.</summary>
+        /// <remarks>Runs while no worker rents a processor. It rotates the queue instead of enumerating it, because
+        /// enumerating a <see cref="ConcurrentQueue{T}"/> freezes its segments and makes the next enqueues allocate new ones.</remarks>
         public void ReleaseKeptParentReaders()
         {
-            foreach (TxProcessorWithWorldState processor in _processors)
+            int pooled = Volatile.Read(ref _processorCount);
+            for (int i = 0; i < pooled && _processors.TryDequeue(out TxProcessorWithWorldState? processor); i++)
             {
                 processor.ReleaseParentReader();
+                _processors.Enqueue(processor);
             }
         }
 
