@@ -102,7 +102,10 @@ internal sealed class BlockFootprints(Block block, bool seedsAlongsideWarms = fa
         Index(index, footprint, seededAt);
     }
 
-    /// <summary>Stores <paramref name="footprint"/> unless a footprint is already stored at <paramref name="index"/>.</summary>
+    /// <summary>
+    /// Stores <paramref name="footprint"/> unless a footprint is already stored at <paramref name="index"/>, or block
+    /// processing has executed the transaction there.
+    /// </summary>
     /// <returns>Whether it was stored.</returns>
     public bool TryStoreIfEmpty(int index, TransactionFootprint footprint) => StoreLocked(index, footprint, -1, onlyIfEmpty: true);
 
@@ -111,7 +114,9 @@ internal sealed class BlockFootprints(Block block, bool seedsAlongsideWarms = fa
         bool invalidated;
         lock (_lock)
         {
-            if (onlyIfEmpty && _footprints[index] is not null) return false;
+            // A run that ends after block processing executed its transaction is not indexed, so it is not stored
+            // either: the footprint at a position is always the one indexed for it.
+            if (_executed[index] || (onlyIfEmpty && _footprints[index] is not null)) return false;
             Volatile.Write(ref _footprints[index], footprint);
             invalidated = IndexLocked(index, footprint, seededAt);
         }

@@ -2361,6 +2361,32 @@ public class BlockFootprintsSeedingTests
     }
 
     /// <remarks>
+    /// Block processing reported executing a transaction and the writes were applied: a seed or a warm run that ends
+    /// after that is not indexed for the position, so it is not stored there either, and a seed is not counted as stored.
+    /// </remarks>
+    [Test]
+    public void Nothing_is_stored_at_a_position_block_processing_has_executed([Values] bool seed)
+    {
+        (BlockFootprints footprints, Transaction[] txs) = PrewarmerHandoffMechanicsTests.Footprints(2, seedsAlongsideWarms: true);
+        StorageCell cell = new(TestItem.AddressC, 0x4e4d);
+        footprints.QueueExecuted(0, new[] { (cell, (UInt256)7) });
+        footprints.ApplyExecuted();
+        TransactionFootprint late = PrewarmerHandoffMechanicsTests.Footprint(txs[0], writes: [(cell, 9)]);
+
+        bool stored = true;
+        if (seed) stored = footprints.TryStoreIfEmpty(0, late);
+        else footprints.Store(0, late);
+
+        using (Assert.EnterMultipleScope())
+        {
+            if (seed) Assert.That(stored, Is.False, "a seed for an executed position is not counted as stored");
+            Assert.That(footprints.Get(0), Is.Null);
+            Assert.That(footprints.IndexedAt(0), Is.Null);
+            Assert.That(footprints.ValueBefore(cell, 1), Is.EqualTo((UInt256)7), "the executed writes stay indexed");
+        }
+    }
+
+    /// <remarks>
     /// A refreshed run is excused reading one of its own seeded slots at another value only while no footprint was
     /// stored since the refresh read them: a seed taken over in between counts as one, a seed refused does not.
     /// </remarks>
