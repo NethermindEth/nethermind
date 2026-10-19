@@ -52,7 +52,7 @@ public class SnapshotBundleWarmerTests
         using ForwardingNodeRecordBuffer buffer = new(FlatTestHelpers.NewTestBuffer());
         using INodeRecordBufferPin retain = buffer.Pin();
         byte[] prefix = FlatTestHelpers.LeafRlp(0x80);
-        buffer.AppendRecordFromRlp(address, TreePath.Empty, prefix, []);
+        buffer.AppendRecordFromRlp(address, TreePath.Empty, ValueKeccak.Compute(prefix), prefix, []);
         int completedBefore = buffer.CompletedRecords;
         int batchesBefore = buffer.CompletedWrites;
         ValueHash256[] keys = new ValueHash256[64];
@@ -112,8 +112,8 @@ public class SnapshotBundleWarmerTests
         {
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(retired!.WarmedNodeLog.TryGet(address, TreePath.Empty, persistedRoot.Hash, out _, out _), Is.True, "persisted node warmed");
-                Assert.That(retired.WarmedNodeLog.TryGet(address, TreePath.Empty, committedRoot.Hash, out _, out _), Is.False, "committed node warmed");
+                Assert.That(retired!.WarmedNodeLog.TryGet(address, TreePath.Empty, out NodeRecord warmedRoot, out _), Is.True);
+                Assert.That(warmedRoot.Hash, Is.EqualTo(persistedRoot.Hash), "the persisted node is warmed, the committed one is not");
                 Assert.That(_buffer.GetRecord(committedRoot.Pointer).Rlp.ToArray(), Is.EqualTo(committedRlp), "committed node remains in the retained buffer");
             }
         }
@@ -175,7 +175,7 @@ public class SnapshotBundleWarmerTests
         ValueHash256 hash = ValueKeccak.Compute(rlp);
         using WarmedNodeLog warmed = new(1);
         ulong pointer;
-        if (inBuffer) pointer = _buffer.AppendRecordFromRlp(null, TreePath.Empty, rlp, []);
+        if (inBuffer) pointer = _buffer.AppendRecordFromRlp(null, TreePath.Empty, hash, rlp, []);
         else Assert.That(warmed.TryAppend(null, TreePath.Empty, hash, rlp, out _, out pointer), Is.True);
         (long Hits, long Misses, long IdleHits, long IdleMisses) before = WarmedCacheCounts();
 
@@ -226,7 +226,7 @@ public class SnapshotBundleWarmerTests
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(recycled, Is.SameAs(rented));
-                Assert.That(recycled.WarmedNodeLog.TryGet(address, TreePath.Empty, hash, out _, out _), Is.False);
+                Assert.That(recycled.WarmedNodeLog.TryGet(address, TreePath.Empty, out _, out _), Is.False);
             }
         }
         finally
@@ -433,7 +433,7 @@ public class SnapshotBundleWarmerTests
             int recordCount = retired!.WarmedNodeLog.Count;
             retiredRecords += recordCount;
             foreignRecords += Math.Max(0, recordCount - 1);
-            if (recordCount != 0 && !retired.WarmedNodeLog.TryGet(null, TreePath.Empty, current.Root.Hash, out _, out _)) foreignRecords++;
+            if (recordCount != 0 && !(retired.WarmedNodeLog.TryGet(null, TreePath.Empty, out NodeRecord warmedRoot, out _) && warmedRoot.Hash == current.Root.Hash)) foreignRecords++;
             snapshot!.Dispose();
             retired.ReleaseLease();
             retirements++;
@@ -528,7 +528,7 @@ public class SnapshotBundleWarmerTests
             WarmedNodeRecordBuffer warmedView = new(_buffer, retired!.WarmedNodeLog);
             Assert.That(_buffer.EnumerateNodes(trie.Root.Pointer).Count(), Is.EqualTo(warmedView.EnumerateNodes(trie.Root.Pointer).Count()), "published records cannot retain temporary children");
 
-            Assert.That(retired.WarmedNodeLog.TryGet(address, TreePath.Empty, root.Hash, out _, out ulong warmedRoot), Is.True);
+            Assert.That(retired.WarmedNodeLog.TryGet(address, TreePath.Empty, out _, out ulong warmedRoot), Is.True);
             (TreePath Path, ulong Pointer, NodeRecord Record)[] warmedNodes = warmedView.EnumerateNodes(warmedRoot).ToArray();
             Assert.That(warmedNodes, Has.Length.GreaterThan(1), "warm-up must populate child pointers, not just path entries");
             foreach ((TreePath path, _, NodeRecord record) in warmedNodes)
@@ -553,7 +553,7 @@ public class SnapshotBundleWarmerTests
     private ulong PublishNode(SnapshotBundle bundle, Hash256? address, in TreePath path, byte[] rlp)
     {
         ValueHash256 hash = ValueKeccak.Compute(rlp);
-        ulong pointer = _buffer.AppendRecordFromRlp(address, path, rlp, []);
+        ulong pointer = _buffer.AppendRecordFromRlp(address, path, hash, rlp, []);
         TrieRoot root = new(hash, pointer);
         if (address is null) bundle.PublishBufferedStateRoot(root);
         else bundle.PublishBufferedStorageRoot(address, root);

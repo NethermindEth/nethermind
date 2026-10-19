@@ -31,7 +31,7 @@ public sealed class DictionaryNodeSource(IReadOnlyDictionary<TreePath, byte[]> n
 
     public bool TryLoad(in TreePath path, in ValueHash256 hash, out NodeRecord record)
     {
-        if (warmed.TryGet(address, path, hash, out record, out _)) return true;
+        if (warmed.TryGet(address, path, out record, out _)) return true;
 
         byte[]? rlp = LoadRlp(path);
         if (rlp is not null && ValueKeccak.Compute(rlp) == hash) return warmed.TryAppend(address, path, hash, rlp, out record, out _);

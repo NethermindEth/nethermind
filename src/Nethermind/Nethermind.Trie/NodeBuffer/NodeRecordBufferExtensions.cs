@@ -23,27 +23,24 @@ public static class NodeRecordBufferExtensions
     internal static TrieRoot ResolveRoot(this INodeRecordBuffer buffer, Hash256? address, in ValueHash256 rootHash) =>
         new(rootHash, rootHash == ValueKeccak.EmptyTreeHash ? 0 : buffer.FindRoot(address, rootHash));
 
-    /// <summary>Appends a node's RLP, pointing each hashed child at its candidate record when that record holds the referenced hash.</summary>
-    /// <remarks>The caller pins the candidate records.</remarks>
+    /// <summary>Appends a node's RLP with the given pointers to the records of its hashed children.</summary>
     /// <param name="address">The storage trie's address hash, or null for the state trie.</param>
-    /// <param name="childPointers">Candidate child records by branch nibble, or at index zero for an extension; zero for none.</param>
+    /// <param name="hash">The keccak of <paramref name="rlp"/>, trusted as given.</param>
+    /// <param name="childPointers">Child record pointers by branch nibble, or at index zero for an extension; zero or absent when unknown.</param>
     /// <exception cref="TrieException">The RLP is not a valid trie node.</exception>
-    public static ulong AppendRecordFromRlp(this INodeRecordBuffer buffer, Hash256? address, in TreePath path, ReadOnlySpan<byte> rlp, ReadOnlySpan<ulong> childPointers)
+    public static ulong AppendRecordFromRlp(this INodeRecordBuffer buffer, Hash256? address, in TreePath path, in ValueHash256 hash, ReadOnlySpan<byte> rlp, ReadOnlySpan<ulong> childPointers)
     {
         if (!NodeRecordCodec.TryMeasure(rlp, out NodeRecordKind kind, out ushort hashMask)) ThrowInvalidRlp();
 
         int length = NodeRecordCodec.Length(BitOperations.PopCount(hashMask), rlp.Length);
         using INodeRecordWriteBatch batch = buffer.StartWriteBatch(NodeRecordCodec.AlignedLength(length));
         Span<byte> record = batch.Bytes;
-        NodeRecordCodec.WriteFromRlp(rlp, kind, hashMask, ValueKeccak.Compute(rlp), NodeRecordCodec.NodeKeyHash(address, path), record);
-        NodeRecordRef view = new(record);
+        NodeRecordCodec.WriteFromRlp(rlp, kind, hashMask, hash, NodeRecordCodec.NodeKeyHash(address, path), record);
         int position = NodeRecordCodec.HeaderLength;
-        for (int index = 0; index < 16; index++)
+        for (int index = 0; index < childPointers.Length; index++)
         {
             if ((hashMask & (1 << index)) == 0) continue;
-            ulong candidate = index < childPointers.Length ? childPointers[index] : 0;
-            if (candidate != 0 && buffer.TryLocate(candidate, out NodeRecord child) && child.Hash == view.Child(index).Data)
-                BinaryPrimitives.WriteUInt64LittleEndian(record[position..], candidate);
+            BinaryPrimitives.WriteUInt64LittleEndian(record[position..], childPointers[index]);
             position += NodeRecordCodec.PointerLength;
         }
         return batch.BasePointer;

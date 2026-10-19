@@ -310,9 +310,10 @@ internal class NodeRecordBulkSetTests
         ValueHash256 currentHash = root.Hash;
         int linked = 0;
         Span<byte> extensionKey = stackalloc byte[64];
-        while (warmed.TryGet(null, currentPath, currentHash, out NodeRecord record, out ulong pointer))
+        while (warmed.TryGet(null, currentPath, out NodeRecord record, out ulong pointer))
         {
             linked++;
+            Assert.That(record.Hash, Is.EqualTo(currentHash));
             Assert.That(ValueKeccak.Compute(record.Rlp), Is.EqualTo(record.Hash));
             Assert.That(NodeRecordCodec.IsTransient(pointer), Is.True);
             if (record.Kind == NodeRecordKind.Leaf) break;
@@ -358,7 +359,7 @@ internal class NodeRecordBulkSetTests
         new DictionaryNodeSource(nodes, warmed, null).WarmUp(buffer, new TrieRoot(root.Hash, 0), ValueKeccak.Zero);
 
         TreePath path = TreePath.Empty;
-        Assert.That(warmed.TryGet(null, path, root.Hash, out NodeRecord record, out _), Is.True);
+        Assert.That(warmed.TryGet(null, path, out NodeRecord record, out _), Is.True);
         for (int depth = 0; depth <= 64; depth++)
         {
             Assert.That(record.Rlp.ToArray(), Is.EqualTo(nodes[path]));
@@ -391,7 +392,7 @@ internal class NodeRecordBulkSetTests
         source.WarmUp(buffer, persistedRoot, keyA.ValueHash256, forDelete);
         TreePath branchPath = TreePath.FromPath(keyA.Bytes);
         branchPath.TruncateOne();
-        Assert.That(warmed.TryGet(null, branchPath, ValueKeccak.Compute(persisted[branchPath]), out NodeRecord warmedBranch, out _), Is.True);
+        Assert.That(warmed.TryGet(null, branchPath, out NodeRecord warmedBranch, out _), Is.True);
         ChildRef warmedSibling = warmedBranch.View.Child(2);
         Assert.That(warmedSibling.Pointer, forDelete && !threeChildren ? Is.Not.Zero : Is.Zero, "only a required collapse sibling is linked");
         if (warmedSibling.Pointer != 0) Assert.That(warmed.TryLocate(warmedSibling.Pointer, out NodeRecord sibling) && sibling.Hash == warmedSibling.Data, Is.True);
@@ -593,7 +594,7 @@ internal class NodeRecordBulkSetTests
             (new Hash256("2000000000000000000000000000000000000000000000000000000000000000"), ExistingValue),
         ], false);
         NodeRecord rootRecord = buffer.GetRecord(root.Pointer);
-        ulong unlinked = buffer.AppendRecordFromRlp(null, TreePath.Empty, rootRecord.Rlp, []);
+        ulong unlinked = buffer.AppendRecordFromRlp(null, TreePath.Empty, rootRecord.Hash, rootRecord.Rlp, []);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(buffer.EnumerateNodes(unlinked).Select(node => (node.Path, node.Pointer)).ToArray(), Is.EqualTo(new[] { (TreePath.Empty, unlinked) }));

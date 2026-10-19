@@ -125,11 +125,11 @@ public static class FlatTestHelpers
             {
                 TrieNode node = new(NodeType.Unknown, rlp);
                 node.ResolveNode(NullTrieNodeResolver.Instance, path);
-                if (node.IsExtension && node.GetChildHash(0) is not null)
-                    childPointers[0] = BuildBelow(buffer, address, path.Append(node.Key), nodes, target, ref targetPointer);
+                if (node.IsExtension && node.GetChildHash(0) is { } extensionChild)
+                    childPointers[0] = BuildBelow(buffer, address, path.Append(node.Key), extensionChild, nodes, target, ref targetPointer);
                 else if (node.IsBranch)
                     for (int i = 0; i < 16; i++)
-                        if (node.GetChildHash(i) is not null) childPointers[i] = BuildBelow(buffer, address, path.Append(i), nodes, target, ref targetPointer);
+                        if (node.GetChildHash(i) is { } branchChild) childPointers[i] = BuildBelow(buffer, address, path.Append(i), branchChild, nodes, target, ref targetPointer);
             }
             else
             {
@@ -153,15 +153,19 @@ public static class FlatTestHelpers
                 }
             }
 
-            ulong pointer = buffer.AppendRecordFromRlp(address, path, rlp, childPointers);
+            ulong pointer = buffer.AppendRecordFromRlp(address, path, ValueKeccak.Compute(rlp), rlp, childPointers);
             if (path == target) targetPointer = pointer;
             return (pointer, rlp);
         }
 
-        private static ulong BuildBelow(INodeRecordBuffer buffer, Hash256? address, in TreePath childPath, KeyValuePair<TreePath, byte[]>[] nodes, in TreePath target, ref ulong targetPointer)
+        /// <returns>The pointer of the built child, or zero when there is none or <paramref name="referencedHash"/> is not its hash.</returns>
+        private static ulong BuildBelow(INodeRecordBuffer buffer, Hash256? address, in TreePath childPath, Hash256 referencedHash, KeyValuePair<TreePath, byte[]>[] nodes, in TreePath target, ref ulong targetPointer)
         {
             KeyValuePair<TreePath, byte[]>[] descendants = Descendants(nodes, childPath);
-            return descendants.Length == 0 ? 0 : Build(buffer, address, childPath, descendants, target, ref targetPointer).Pointer;
+            if (descendants.Length == 0) return 0;
+
+            ulong pointer = Build(buffer, address, childPath, descendants, target, ref targetPointer).Pointer;
+            return buffer.GetRecord(pointer).Hash == referencedHash.ValueHash256 ? pointer : 0;
         }
 
         private static KeyValuePair<TreePath, byte[]>[] Descendants(KeyValuePair<TreePath, byte[]>[] nodes, TreePath path) =>
@@ -181,7 +185,7 @@ public static class FlatTestHelpers
         Rlp.Encode([.. Enumerable.Range(0, 16).Select(i => children.ElementAtOrDefault(i) is { } child ? Rlp.Encode(Keccak.Compute(child)) : Rlp.OfEmptyByteArray), Rlp.OfEmptyByteArray]).Bytes;
 
     private static ulong AppendNode(INodeRecordBuffer buffer, Hash256? address, in TreePath path, byte[] rlp) =>
-        buffer.AppendRecordFromRlp(address, path, rlp, []);
+        buffer.AppendRecordFromRlp(address, path, ValueKeccak.Compute(rlp), rlp, []);
 
     /// <summary>Bulk-sets <paramref name="entries"/> over <paramref name="root"/> into <paramref name="buffer"/>, as a scope's commit does.</summary>
     public static TrieRoot BulkSet(ResourcePool pool, INodeRecordBuffer buffer, Hash256? address, TrieRoot root, in ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries, bool canParallelize)

@@ -338,7 +338,7 @@ public sealed class SnapshotBundle : IDisposable
         GuardDispose();
 
         WarmedNodeLog warmed = _transientResource.WarmedNodeLog;
-        if (warmed.TryGet(address, path, hash, out record, out _))
+        if (warmed.TryGet(address, path, out record, out _))
         {
             Metrics.IncrementWarmedNodeCacheHits();
             return true;
@@ -437,7 +437,7 @@ public sealed class SnapshotBundle : IDisposable
 
         public bool TryLoad(in TreePath path, in ValueHash256 hash, out NodeRecord record)
         {
-            if (_warmed.TryGet(_address, path, hash, out record, out _))
+            if (_warmed.TryGet(_address, path, out record, out _))
             {
                 Metrics.IncrementIdleWarmedNodeCacheHits();
                 return true;

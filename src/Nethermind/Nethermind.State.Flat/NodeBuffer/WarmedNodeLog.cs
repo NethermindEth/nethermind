@@ -46,11 +46,11 @@ public sealed class WarmedNodeLog : IDisposable
         return false;
     }
 
-    /// <returns>True when the node at the position is a record of <paramref name="hash"/>.</returns>
+    /// <returns>True when the position holds a record.</returns>
     /// <param name="pointer">The pointer to the record, or zero on a miss.</param>
-    public bool TryGet(Hash256? address, in TreePath path, in ValueHash256 hash, out NodeRecord record, out ulong pointer)
+    public bool TryGet(Hash256? address, in TreePath path, out NodeRecord record, out ulong pointer)
     {
-        if (_pointers.TryGetValue((address, path), out pointer) && TryLocate(pointer, out record) && record.Hash == hash) return true;
+        if (_pointers.TryGetValue((address, path), out pointer) && TryLocate(pointer, out record)) return true;
 
         record = default;
         pointer = 0;
@@ -58,7 +58,7 @@ public sealed class WarmedNodeLog : IDisposable
     }
 
     /// <summary>Appends the record of <paramref name="rlp"/>, trusted to be the node of <paramref name="hash"/>, with every child pointer zero.</summary>
-    /// <param name="record">The appended record, or the one already held for the same position and hash.</param>
+    /// <param name="record">The appended record, or the one already held for the same position.</param>
     /// <param name="pointer">The pointer to the record, or zero when the RLP is invalid.</param>
     /// <returns>False when the RLP is not a valid trie node.</returns>
     public bool TryAppend(Hash256? address, in TreePath path, in ValueHash256 hash, ReadOnlySpan<byte> rlp, out NodeRecord record, out ulong pointer)
@@ -74,12 +74,12 @@ public sealed class WarmedNodeLog : IDisposable
         return true;
     }
 
-    /// <summary>Appends the record of verified RLP with the known child pointers, unless the position already holds it.</summary>
+    /// <summary>Appends the record of verified RLP with the known child pointers, unless the position already holds a record.</summary>
     /// <param name="childPointers">Pointers by child slot, or empty to leave every pointer zero.</param>
     internal void AppendVerified(Hash256? address, in TreePath path, in ValueHash256 hash, ReadOnlySpan<byte> rlp,
         NodeRecordKind kind, ushort hashMask, ReadOnlySpan<ulong> childPointers, out NodeRecord record, out ulong pointer)
     {
-        if (TryGet(address, path, hash, out record, out pointer)) return;
+        if (TryGet(address, path, out record, out pointer)) return;
 
         int length = NodeRecordCodec.Length(BitOperations.PopCount(hashMask), rlp.Length);
         ulong localPointer;

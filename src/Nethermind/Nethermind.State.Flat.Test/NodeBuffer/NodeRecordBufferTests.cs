@@ -34,10 +34,10 @@ public class NodeRecordBufferTests
     {
         using NodeRecordBuffer buffer = new(0, GenerationBytes);
         using IDisposable pin = buffer.PinAll();
-        buffer.AppendRecordFromRlp(null, TreePath.Empty, Leaf(0, 8), []);
+        buffer.AppendRecordFromRlp(null, TreePath.Empty, ValueKeccak.Compute(Leaf(0, 8)), Leaf(0, 8), []);
         byte[][] rlps = [Leaf(1, 8), Leaf(2, 8)];
         using NodeRecordBuffer scratch = new(0, GenerationBytes);
-        byte[][] records = [.. rlps.Select(rlp => scratch.GetRecord(scratch.AppendRecordFromRlp(null, TreePath.Empty, rlp, [])).Span.ToArray())];
+        byte[][] records = [.. rlps.Select(rlp => scratch.GetRecord(scratch.AppendRecordFromRlp(null, TreePath.Empty, ValueKeccak.Compute(rlp), rlp, [])).Span.ToArray())];
         int recordLength = (records[0].Length + RecordAlignment - 1) & -RecordAlignment;
         ulong pointer;
         int length;
@@ -596,7 +596,7 @@ public class NodeRecordBufferTests
 
     private static ulong Append(NodeRecordBuffer buffer, byte[] rlp) => AppendAt(buffer, null, rlp);
 
-    private static ulong AppendAt(NodeRecordBuffer buffer, Hash256? address, byte[] rlp) => buffer.AppendRecordFromRlp(address, TreePath.Empty, rlp, []);
+    private static ulong AppendAt(NodeRecordBuffer buffer, Hash256? address, byte[] rlp) => buffer.AppendRecordFromRlp(address, TreePath.Empty, ValueKeccak.Compute(rlp), rlp, []);
 
     public static byte[] Leaf(int seed, int valueLength)
     {

@@ -176,9 +176,9 @@ public class SnapshotTests
         using INodeRecordBuffer buffer = FlatTestHelpers.NewTestBuffer();
         byte[] rlp = FlatTestHelpers.LeafRlp(1);
         ValueHash256 hash = ValueKeccak.Compute(rlp);
-        ulong original = buffer.AppendRecordFromRlp(null, TreePath.Empty, rlp, []);
+        ulong original = buffer.AppendRecordFromRlp(null, TreePath.Empty, hash, rlp, []);
         using Snapshot snapshot = _pool.CreateSnapshot(new(1, hash), new(2, hash), ResourcePool.Usage.MainBlockProcessing, buffer);
-        ulong root = duplicateRoot ? buffer.AppendRecordFromRlp(null, TreePath.Empty, rlp, []) : original;
+        ulong root = duplicateRoot ? buffer.AppendRecordFromRlp(null, TreePath.Empty, hash, rlp, []) : original;
         snapshot.Content.StateRootPointer = root;
         snapshot.Content.HasStateRoot = true;
 
@@ -241,7 +241,7 @@ public class SnapshotTests
         if (storage) snapshot.Content.SetStorageNodeRlp(buffer, TestItem.KeccakA, oldPath, FlatTestHelpers.LeafRlpA);
         else snapshot.Content.SetStateNodeRlp(buffer, oldPath, FlatTestHelpers.LeafRlpA);
         byte[] replacement = FlatTestHelpers.LeafRlp(2);
-        ulong root = buffer.AppendRecordFromRlp(storage ? TestItem.KeccakA : null, TreePath.Empty, replacement, []);
+        ulong root = buffer.AppendRecordFromRlp(storage ? TestItem.KeccakA : null, TreePath.Empty, ValueKeccak.Compute(replacement), replacement, []);
         if (storage) snapshot.Content.StorageRoots[TestItem.KeccakA] = root;
         else snapshot.Content.StateRootPointer = root;
 
@@ -405,7 +405,7 @@ public class SnapshotTests
         ValueHash256 hash = ValueKeccak.Compute(rlp);
         TrieRoot root = kind switch
         {
-            PublishedRootKind.Resolved => new(hash, buffer.AppendRecordFromRlp(null, TreePath.Empty, rlp, [])),
+            PublishedRootKind.Resolved => new(hash, buffer.AppendRecordFromRlp(null, TreePath.Empty, hash, rlp, [])),
             PublishedRootKind.Empty => TrieRoot.Empty,
             _ => new(hash, 0)
         };

@@ -198,7 +198,7 @@ public class NodeRecordBufferVisitorTests
     {
         Assert.That(source.TryLocate(root.Pointer, out NodeRecord record), Is.True);
         INodeRecordBuffer buffer = NewBuffer();
-        buffer.SetRoot(null, root.Hash, buffer.AppendRecordFromRlp(null, TreePath.Empty, record.Rlp, []));
+        buffer.SetRoot(null, root.Hash, buffer.AppendRecordFromRlp(null, TreePath.Empty, root.Hash, record.Rlp, []));
         return buffer;
     }
 

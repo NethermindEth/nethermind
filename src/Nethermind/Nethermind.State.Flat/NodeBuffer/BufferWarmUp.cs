@@ -112,7 +112,7 @@ internal static class BufferWarmUp
         }
         else
         {
-            found = warmed.TryGet(address, path, child.Data, out record, out pointer);
+            found = warmed.TryGet(address, path, out record, out pointer);
             if (found) Metrics.IncrementWarmedNodeCacheHits();
             else Metrics.IncrementWarmedNodeCacheMisses();
         }
@@ -154,7 +154,7 @@ internal static class BufferWarmUp
         if (sibling.Kind != ChildRefKind.Hash || buffer.TryLocate(sibling.Pointer, out _)) return;
 
         TreePath siblingPath = branch.Path.Append(siblingSlot);
-        if (warmed.TryGet(address, siblingPath, sibling.Data, out _, out ulong pointer))
+        if (warmed.TryGet(address, siblingPath, out _, out ulong pointer))
         {
             Metrics.IncrementWarmedNodeCacheHits();
         }
