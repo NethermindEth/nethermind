@@ -5,17 +5,25 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using Nethermind.Api.Extensions;
 using Nethermind.Config;
 using Nethermind.Config.Test;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Logging;
 using NUnit.Framework;
+using Testably.Abstractions;
 
 namespace Nethermind.Runner.Test;
 
 [Parallelizable(ParallelScope.All)]
 public class ConfigDefaultValueTests
 {
+    // TypeDiscovery caches on first use, so plugin assemblies must be loaded before the test cases are built,
+    // or the cache misses plugin configs and breaks every later plugin load in this process
+    static ConfigDefaultValueTests() =>
+        new PluginLoader("plugins", new RealFileSystem(), NullLogger.Instance, NethermindPlugins.EmbeddedPlugins).Load();
+
     /// <summary>
     /// Properties whose default depends on the machine or on process-wide state, so no literal
     /// <c>DefaultValue</c> can match it in every run.
