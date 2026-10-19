@@ -719,7 +719,7 @@ public class TrieNodeLogTests
         {
             Assert.That(view.GetColumn(FlatDbColumns.StateTopNodes).Get(Bytes.FromHexString("0x123455")), Is.EqualTo(Rlp1)); // TopPath's column key
         }
-        Assert.That(() => drain.Wait(TimeSpan.FromSeconds(5)), Throws.Nothing);
+        Assert.That(drain.Wait(TimeSpan.FromSeconds(5)), Is.True);
     }
 
     [Test]

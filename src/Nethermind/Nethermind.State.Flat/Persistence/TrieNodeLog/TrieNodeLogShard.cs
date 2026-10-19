@@ -769,6 +769,8 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
         try
         {
             generation.Truncate(frontier);
+            // Durable before later versions are committed, which would confirm a cut tail that a crash brings back.
+            if (frontier < fileLength) generation.Fsync();
 
             // Second pass: index the surviving records; a later record of the same key replaces the earlier slot.
             Span<byte> buffer = stackalloc byte[TrieNodeLogRecord.HeaderLength + TrieNodeLogRecord.MaxKeyLength];
