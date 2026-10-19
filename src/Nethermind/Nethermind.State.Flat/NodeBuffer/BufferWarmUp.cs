@@ -9,7 +9,7 @@ using Nethermind.Trie.NodeBuffer;
 
 namespace Nethermind.State.Flat.NodeBuffer;
 
-/// <summary>Loads the nodes on a trie path into a <see cref="WarmedNodeLog"/> ahead of a <see cref="BufferBulkSet"/> that changes it.</summary>
+/// <summary>Loads the nodes on a trie path into a <see cref="WarmedNodeLog"/> ahead of a <see cref="NodeRecordBulkSet"/> that changes it.</summary>
 internal static class BufferWarmUp
 {
     private const int MaxKeyNibbles = BulkSetArena.MaxKeyNibbles;

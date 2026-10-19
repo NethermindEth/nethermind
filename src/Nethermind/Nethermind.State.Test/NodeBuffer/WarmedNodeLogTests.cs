@@ -30,7 +30,7 @@ internal class WarmedNodeLogTests
         Hash256 otherAddress = storage ? null : TestItem.KeccakA;
         byte[] addressBytes = TestItem.KeccakA.Bytes.ToArray();
         addressBytes[^1] ^= 1;
-        Hash256 sameNodeKeyAddress = new(addressBytes);
+        Hash256 sameNodeKeyHashAddress = new(addressBytes);
         byte[] rlp = NodeRecordBufferTests.Leaf(0, 8);
         ValueHash256 hash = ValueKeccak.Compute(rlp);
         byte[] otherRlp = NodeRecordBufferTests.Leaf(1, 8);
@@ -38,7 +38,7 @@ internal class WarmedNodeLogTests
         byte[] truncatedExtensionRlp = Bytes.FromHexString("e215a0" + "22222222222222222222222222222222222222222222222222222222222222");
         byte[] oversizedRlp = NodeRecordBufferTests.Leaf(2, 2 * GenerationBytes);
         TreePath path = Path(0);
-        Assert.That(NodeRecordCodec.NodeKey(TestItem.KeccakA, path), Is.EqualTo(NodeRecordCodec.NodeKey(sameNodeKeyAddress, path)), "same mixed key");
+        Assert.That(NodeRecordCodec.NodeKeyHash(TestItem.KeccakA, path), Is.EqualTo(NodeRecordCodec.NodeKeyHash(sameNodeKeyHashAddress, path)), "same mixed key");
 
         bool appended = warmed.TryAppend(address, path, hash, rlp, out NodeRecord record, out ulong pointer);
         bool reappended = warmed.TryAppend(address, path, hash, rlp, out _, out ulong repeatedPointer);
@@ -54,7 +54,7 @@ internal class WarmedNodeLogTests
             Assert.That(warmed.TryGet(address, path, hash, out _, out ulong indexedPointer) && indexedPointer == pointer, Is.True, "indexed pointer");
             Assert.That(Get(warmed, address, path, otherHash), Is.Null, "wrong hash");
             Assert.That(Get(warmed, otherAddress, path, hash), Is.Null, "other address");
-            Assert.That(Get(warmed, sameNodeKeyAddress, path, hash), Is.Null, "a matching node key is not a matching address");
+            Assert.That(Get(warmed, sameNodeKeyHashAddress, path, hash), Is.Null, "a matching node key hash is not a matching address");
             Assert.That(Get(warmed, address, Path(1), hash), Is.Null, "other path");
             Assert.That(warmed.TryAppend(address, Path(2), otherHash, rlp, out _, out _), Is.False, "keccak mismatch");
             Assert.That(warmed.TryAppend(address, Path(3), ValueKeccak.Compute(truncatedExtensionRlp), truncatedExtensionRlp, out _, out _), Is.False, "invalid RLP");

@@ -10,7 +10,7 @@ using Nethermind.Trie.NodeBuffer;
 namespace Nethermind.State.Flat.ScopeProvider;
 
 /// <summary>
-/// One trie of a <see cref="SnapshotBundle"/>, written by <see cref="BufferBulkSet"/>: the state trie when
+/// One trie of a <see cref="SnapshotBundle"/>, written by <see cref="NodeRecordBulkSet"/>: the state trie when
 /// <paramref name="addressHash"/> is null, otherwise that account's storage trie.
 /// </summary>
 /// <remarks>
@@ -31,9 +31,9 @@ internal sealed class BufferedTrie(SnapshotBundle bundle, Hash256? addressHash, 
     /// <summary>Whether the root changed since the last <see cref="Publish"/>, including a change to empty.</summary>
     public bool HasUnpublishedNodes => _rootDirty;
 
-    /// <inheritdoc cref="BufferBulkSet.BulkSet"/>
+    /// <inheritdoc cref="NodeRecordBulkSet.BulkSet"/>
     public void BulkSet(in ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries, bool canParallelize) =>
-        SetRoot(BufferBulkSet.BulkSet(this, addressHash, Root, entries, canParallelize));
+        SetRoot(NodeRecordBulkSet.BulkSet(this, addressHash, Root, entries, canParallelize));
 
     /// <summary>Adopts the root of a completed private update.</summary>
     internal void Adopt(in TrieRoot root) => SetRoot(root);

@@ -221,7 +221,7 @@ public class NodeRecordBufferVisitorTests
             entries.Add(new PatriciaTree.BulkSetEntry(Key(0, 2), [2]));
         }
         using WarmedNodeLog warmed = new(1);
-        TrieRoot root = BufferBulkSet.BulkSet(new DictionaryNodeSource(new Dictionary<TreePath, byte[]>(), warmed, address).Over(buffer), address, TrieRoot.Empty, entries, false);
+        TrieRoot root = NodeRecordBulkSet.BulkSet(new DictionaryNodeSource(new Dictionary<TreePath, byte[]>(), warmed, address).Over(buffer), address, TrieRoot.Empty, entries, false);
         buffer.SetRoot(address, root.Hash, root.Pointer);
         return root;
     }

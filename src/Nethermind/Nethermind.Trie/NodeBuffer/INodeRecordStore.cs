@@ -5,7 +5,7 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Trie.NodeBuffer;
 
-/// <summary>The node records of one trie that a <see cref="BufferBulkSet"/> reads and writes: a trie node buffer and the records it does not hold.</summary>
+/// <summary>The node records of one trie that a <see cref="NodeRecordBulkSet"/> reads and writes: a trie node buffer and the records it does not hold.</summary>
 internal interface INodeRecordStore
 {
     /// <inheritdoc cref="INodeRecordBuffer.TryLocate"/>

@@ -36,7 +36,7 @@ internal class NodeRecordBufferTests
         buffer.AppendRecordFromRlp(null, TreePath.Empty, ValueKeccak.Compute(Leaf(0, 8)), Leaf(0, 8));
         byte[][] rlps = [Leaf(1, 8), Leaf(2, 8)];
         int recordLength = NodeRecordCodec.AlignedLength(NodeRecordCodec.Length(0, rlps[0].Length));
-        ulong[] keys = [NodeRecordCodec.NodeKey(null, TreePath.FromHexString("1")), NodeRecordCodec.NodeKey(null, TreePath.FromHexString("2"))];
+        ulong[] keys = [NodeRecordCodec.NodeKeyHash(null, TreePath.FromHexString("1")), NodeRecordCodec.NodeKeyHash(null, TreePath.FromHexString("2"))];
         INodeRecordWriteBatch batch = buffer.StartWriteBatch(recordLength * 2);
         ulong pointer = batch.BasePointer;
         int length = batch.Bytes.Length;
@@ -297,7 +297,7 @@ internal class NodeRecordBufferTests
         ulong pointer = Append(buffer, Leaf(1, 8));
         NodeRecord record = buffer.GetRecord(pointer);
         BloomFilter bloom = buffer.FindBloom(pointer)!;
-        ulong nodeKey = NodeRecordCodec.NodeKey(null, TreePath.Empty);
+        ulong nodeKeyHash = NodeRecordCodec.NodeKeyHash(null, TreePath.Empty);
         buffer.Reserve(0, out NativeNodeBuffer storage, out _);
         IDisposable reader = buffer.PinAll();
         buffer.Dispose();
@@ -305,7 +305,7 @@ internal class NodeRecordBufferTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(storage.IsDisposed, Is.False);
-            Assert.That(bloom.MightContain(nodeKey), Is.True);
+            Assert.That(bloom.MightContain(nodeKeyHash), Is.True);
             Assert.That(Matches(record, Leaf(1, 8)), Is.True);
             Assert.That(() => buffer.Pin(), Throws.InstanceOf<ObjectDisposedException>());
             Assert.That(() => retain.Copy(), Throws.InstanceOf<ObjectDisposedException>());
@@ -319,7 +319,7 @@ internal class NodeRecordBufferTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(storage.IsDisposed, Is.False, "the other owner still borrows native memory");
-            Assert.That(bloom.MightContain(nodeKey), Is.True);
+            Assert.That(bloom.MightContain(nodeKeyHash), Is.True);
             Assert.That(Matches(record, Leaf(1, 8)), Is.True);
         }
         if (readerFinishesFirst) retain.Dispose();
@@ -327,7 +327,7 @@ internal class NodeRecordBufferTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(storage.IsDisposed, Is.True);
-            Assert.That(() => bloom.MightContain(nodeKey), Throws.InstanceOf<ObjectDisposedException>());
+            Assert.That(() => bloom.MightContain(nodeKeyHash), Throws.InstanceOf<ObjectDisposedException>());
         }
     }
 

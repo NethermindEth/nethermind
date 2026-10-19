@@ -86,7 +86,7 @@ internal sealed class WarmedNodeLog : IDisposable
         using (INodeRecordWriteBatch batch = _buffer.StartWriteBatch(NodeRecordCodec.AlignedLength(length)))
         {
             Span<byte> recordBytes = batch.Bytes;
-            NodeRecordCodec.WriteFromRlp(rlp, kind, hashMask, hash, NodeRecordCodec.NodeKey(address, path), recordBytes);
+            NodeRecordCodec.WriteFromRlp(rlp, kind, hashMask, hash, NodeRecordCodec.NodeKeyHash(address, path), recordBytes);
             int pointerOffset = NodeRecordCodec.HeaderLength;
             for (int slot = 0; slot < childPointers.Length; slot++)
             {

@@ -22,7 +22,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Store.Test.NodeBuffer;
 
-internal class BufferBulkSetTests
+internal class NodeRecordBulkSetTests
 {
     private const int SmallGenerationBytes = 64 * 1024;
 
@@ -781,7 +781,7 @@ internal class BufferBulkSetTests
         {
             NodeRecordCodec.TryMeasure(rlp, out NodeRecordKind kind, out ushort hashMask);
             byte[] bytes = new byte[NodeRecordCodec.Length(BitOperations.PopCount(hashMask), rlp.Length)];
-            NodeRecordCodec.WriteFromRlp(rlp, kind, hashMask, ValueKeccak.Compute(rlp), NodeRecordCodec.NodeKey(null, path), bytes);
+            NodeRecordCodec.WriteFromRlp(rlp, kind, hashMask, ValueKeccak.Compute(rlp), NodeRecordCodec.NodeKeyHash(null, path), bytes);
             NodeRecordRef view = new(bytes);
             childPointers.Clear();
             for (int slot = 0; slot < 16; slot++)
@@ -808,7 +808,7 @@ internal class BufferBulkSetTests
     private static TrieRoot BulkSet(INodeRecordBuffer buffer, DictionaryNodeSource source, Hash256 address, TrieRoot root, List<(Hash256 key, byte[] value)> items, bool canParallelize)
     {
         using ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries = Entries(items);
-        return BufferBulkSet.BulkSet(source.Over(buffer), address, root, entries, canParallelize);
+        return NodeRecordBulkSet.BulkSet(source.Over(buffer), address, root, entries, canParallelize);
     }
 
     private static ArrayPoolListRef<PatriciaTree.BulkSetEntry> Entries(List<(Hash256 key, byte[] value)> items)
@@ -864,7 +864,7 @@ internal class BufferBulkSetTests
             }
 
             if (ValueKeccak.Compute(rlp) != record.Hash || !parses || kind != record.Kind || hashMask != record.View.HashMask
-                || record.View.NodeKey != NodeRecordCodec.NodeKey(null, path) || transientPointer)
+                || record.View.NodeKeyHash != NodeRecordCodec.NodeKeyHash(null, path) || transientPointer)
             {
                 invalid.Add(path.ToString());
             }

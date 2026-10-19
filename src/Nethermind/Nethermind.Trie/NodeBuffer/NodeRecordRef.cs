@@ -23,7 +23,7 @@ internal readonly ref struct NodeRecordRef(ReadOnlySpan<byte> record)
 
     public ref readonly ValueHash256 Hash => ref MemoryMarshal.AsRef<ValueHash256>(_record.Slice(NodeRecordCodec.HashOffset, ValueHash256.MemorySize));
 
-    public ulong NodeKey => BinaryPrimitives.ReadUInt64LittleEndian(_record[NodeRecordCodec.NodeKeyOffset..]);
+    public ulong NodeKeyHash => BinaryPrimitives.ReadUInt64LittleEndian(_record[NodeRecordCodec.NodeKeyHashOffset..]);
 
     public ReadOnlySpan<byte> Rlp => _record.Slice(
         NodeRecordCodec.HeaderLength + NodeRecordCodec.PointerLength * BitOperations.PopCount(HashMask),

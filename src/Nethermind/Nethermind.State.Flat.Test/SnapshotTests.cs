@@ -110,21 +110,19 @@ public class SnapshotTests
     [Test]
     public void ArenaSizingUsesLiveCountsNotSealedCounts()
     {
-        // The arena writer throws if the persisted write overruns the prepared extent,
+        // The arena writer throws if the persisted write overruns the extent sized from EstimateSize,
         // so persist-time sizing must reflect content written after the counts were sealed.
         using Snapshot snapshot = FlatTestHelpers.MakeSnapshot(_pool, content =>
             content.Accounts[new(TestItem.AddressA)] = new(1, 100));
 
         long sealedEstimate = snapshot.EstimateMemory(); // seals the ledger value
-        using PersistedSnapshotBuilder.PreparedSnapshot before = new(snapshot);
-        long sizeBeforeMutation = before.EstimatedSize;
+        long sizeBeforeMutation = PersistedSnapshotBuilder.EstimateSize(snapshot);
         snapshot.Content.Accounts[new(TestItem.AddressB)] = new(2, 200);
 
-        using PersistedSnapshotBuilder.PreparedSnapshot after = new(snapshot);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(snapshot.EstimateMemory(), Is.EqualTo(sealedEstimate), "ledger value must stay sealed");
-            Assert.That(after.EstimatedSize, Is.GreaterThan(sizeBeforeMutation),
+            Assert.That(PersistedSnapshotBuilder.EstimateSize(snapshot), Is.GreaterThan(sizeBeforeMutation),
                 "arena sizing must see the post-seal write");
         }
     }
@@ -171,7 +169,7 @@ public class SnapshotTests
             using ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries = new(2);
             entries.Add(new(key.ValueHash256, Enumerable.Repeat(value, 32).ToArray()));
             if (other is not null) entries.Add(new(other.ValueHash256, new byte[32]));
-            return BufferBulkSet.BulkSet(source.Over(buffer), address, root, entries, canParallelize: false);
+            return NodeRecordBulkSet.BulkSet(source.Over(buffer), address, root, entries, canParallelize: false);
         }
     }
 
@@ -306,6 +304,34 @@ public class SnapshotTests
             Assert.That(connected.EstimateMemory(), Is.EqualTo(single.EstimateMemory()));
             Assert.That(connected.EstimateCompactedMemory(), Is.EqualTo(single.EstimateCompactedMemory()));
         }
+    }
+
+    [Test]
+    public void NodesEnumerateInAddressHashThenPathOrder([Values] bool storage)
+    {
+        using INodeRecordBuffer buffer = FlatTestHelpers.NewTestBuffer();
+        Hash256[] addresses = [TestItem.KeccakH, TestItem.KeccakA, TestItem.KeccakF, TestItem.KeccakC, TestItem.KeccakE, TestItem.KeccakB, TestItem.KeccakG, TestItem.KeccakD];
+        string[] paths = ["f", "0", "37", "3a", "3c01234567", "3b0123456789abcdef01", "3b0123456789abcdef02"];
+        using Snapshot snapshot = FlatTestHelpers.MakeSnapshot(_pool, buffer, content =>
+        {
+            foreach (string path in paths)
+            {
+                if (!storage) content.SetStateNodeRlp(buffer, TreePath.FromHexString(path), FlatTestHelpers.LeafRlpA);
+                else foreach (Hash256 address in addresses) content.SetStorageNodeRlp(buffer, address, TreePath.FromHexString(path), FlatTestHelpers.LeafRlpA);
+            }
+        });
+
+        string[] keys = storage
+            ? snapshot.StorageNodes.Select(kv => SortKey(kv.Key.Key.Item1, kv.Key.Key.Item2)).ToArray()
+            : snapshot.StateNodes.Select(kv => SortKey(null, kv.Key.Key)).ToArray();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(keys, Has.Length.GreaterThan(paths.Length * (storage ? addresses.Length : 1)), "synthesized ancestors are enumerated too");
+            Assert.That(keys, Is.Ordered.Using((IComparer<string>)StringComparer.Ordinal));
+        }
+
+        static string SortKey(Hash256? address, in TreePath path) => $"{address}:{path.Path}:{path.Length:D2}";
     }
 
     [Test]
