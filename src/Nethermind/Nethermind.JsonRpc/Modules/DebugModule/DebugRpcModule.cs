@@ -434,6 +434,8 @@ public class DebugRpcModule(
             return blockError;
         }
 
+        if (options?.Tracer is { Length: > 0 }) options = options with { CaptureJavaScriptErrors = true };
+
         if (CanStreamBlockTrace(options))
         {
             if (CheckTraceBaseState<IReadOnlyCollection<GethLikeTxTrace>>(block!.Header) is { } baseStateError) return baseStateError;
