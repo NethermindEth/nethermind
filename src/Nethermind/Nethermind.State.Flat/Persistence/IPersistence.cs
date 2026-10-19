@@ -58,6 +58,13 @@ public interface IPersistence
     /// </remarks>
     public interface IPrefetchingReader
     {
+        /// <summary>Starts reading <paramref name="accounts"/> and <paramref name="slots"/> from the store so later reads find them in memory.</summary>
+        /// <param name="accounts">The accounts to read ahead. The reader may reorder, filter or overwrite them in place.</param>
+        /// <param name="slots">The slots to read ahead. The reader may reorder, filter or overwrite them in place.</param>
+        /// <remarks>
+        /// Best effort: the call returns without waiting for the reads, never reports a failed read, and does not change
+        /// what later reads return. The spans are used only during the call and are not kept.
+        /// </remarks>
         void Prefetch(Span<Address> accounts, Span<StorageCell> slots);
     }
 

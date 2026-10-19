@@ -95,10 +95,13 @@ public class BaseFlatPersistenceReaderTests
         foreach (Address address in accounts) reader.GetAccount(address);
         foreach (StorageCell slot in slots) reader.TryGetSlot(slot.Address, slot.Index, ref value);
 
-        Assert.That(accountStore.PrefetchBatches, Is.EqualTo(new[] { 64, 6 }));
-        Assert.That(storageStore.PrefetchBatches, Is.EqualTo(new[] { 64, 6 }));
-        Assert.That(accountStore.PrefetchedKeys, Is.EqualTo(accountStore.ReadKeys));
-        Assert.That(storageStore.PrefetchedKeys, Is.EqualTo(storageStore.ReadKeys));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(accountStore.PrefetchBatches, Is.EqualTo(new[] { 64, 6 }));
+            Assert.That(storageStore.PrefetchBatches, Is.EqualTo(new[] { 64, 6 }));
+            Assert.That(accountStore.PrefetchedKeys, Is.EqualTo(accountStore.ReadKeys));
+            Assert.That(storageStore.PrefetchedKeys, Is.EqualTo(storageStore.ReadKeys));
+        }
     }
 
     // Spread-out probes decide for the whole block: all of them cached skips the prefetch, one cold sample sends it.
@@ -120,8 +123,11 @@ public class BaseFlatPersistenceReaderTests
 
         reader.Prefetch(accounts, []);
 
-        Assert.That(accountStore.PrefetchedKeys.Count, Is.EqualTo(expectPrefetch ? count : 0));
-        Assert.That(Nethermind.Db.Metrics.PrefetchesSkippedCached - skipped, Is.EqualTo(expectPrefetch ? 0 : 1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(accountStore.PrefetchedKeys.Count, Is.EqualTo(expectPrefetch ? count : 0));
+            Assert.That(Nethermind.Db.Metrics.PrefetchesSkippedCached - skipped, Is.EqualTo(expectPrefetch ? 0 : 1));
+        }
     }
 
     /// <summary>Records the keys of scalar reads and prefetches; every read misses.</summary>

@@ -45,6 +45,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
     private bool _isDisposing;
     private int _pinnedSlices;
+    private int _prefetchesInFlight;
     private bool _nativeCloseDeferred;
     private int _nativeClosed;
     private bool _isDisposed;
@@ -1035,34 +1036,64 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     /// before the scalar reads that need them. The values are discarded.
     /// </summary>
     /// <remarks>
-    /// The native batch overlaps its disk reads, which scalar reads on one thread cannot. Errors are ignored: the
-    /// scalar read that follows performs and reports the read itself.
+    /// The native batch overlaps its disk reads, which scalar reads on one thread cannot. A failed prefetch is only
+    /// logged: the scalar read that follows performs and reports the read itself. <see cref="Dispose"/> refuses new
+    /// prefetches and waits for the ones in flight before it closes the database.
     /// </remarks>
     internal void Prefetch(ReadOnlySpan<byte> keys, int keyLength, IColumnFamilyHandle? cf, ReadOptions readOptions)
     {
-        if (_isDisposing || keyLength <= 0 || keys.Length < keyLength) return;
+        if (keyLength <= 0 || keys.Length < keyLength) return;
+        // Counted before the disposing check, so Dispose either waits for this read or this read sees it disposing.
+        Interlocked.Increment(ref _prefetchesInFlight);
+        bool pending = false;
         int count = keys.Length / keyLength;
-        // The binding copies the keys and handles before it returns, so this thread's arrays serve the next batch.
-        byte[][] keyArrays = PrefetchBuffers.Keys(keyLength, count);
-        IColumnFamilyHandle[]? families = cf is null ? null : PrefetchBuffers.Families(count);
+        IColumnFamilyHandle[]? families = null;
         try
         {
+            if (_isDisposing) return;
+            // The binding copies the keys and handles before it returns, so this thread's arrays serve the next batch.
+            byte[][] keyArrays = PrefetchBuffers.Keys(keyLength, count);
+            families = cf is null ? null : PrefetchBuffers.Families(count);
             for (int i = 0; i < count; i++) keys.Slice(i * keyLength, keyLength).CopyTo(keyArrays[i]);
             if (families is not null) Array.Fill(families, cf);
             Task read = _db.MultiGetAsync(keyArrays, families, readOptions).AsTask();
-            if (!read.IsCompletedSuccessfully)
-                _ = read.ContinueWith(static t => _ = t.Exception, CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
             Db.Metrics.IncrementPrefetchedKeys(count);
+            if (read.IsCompleted)
+            {
+                if (read.IsFaulted) LogPrefetchFailure(read.Exception!);
+            }
+            else
+            {
+                _ = read.ContinueWith(static (t, state) => ((DbOnTheRocks)state!).EndPrefetch(t), this,
+                    CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+                pending = true;
+            }
         }
         catch (Exception e) when (e is RocksDbException or ObjectDisposedException)
         {
+            LogPrefetchFailure(e);
         }
         finally
         {
             // A reused array must not keep a disposed database's column family reachable.
             if (families is not null) Array.Clear(families);
+            if (!pending) Interlocked.Decrement(ref _prefetchesInFlight);
         }
     }
+
+    private void EndPrefetch(Task read)
+    {
+        if (read.IsFaulted) LogPrefetchFailure(read.Exception!);
+        Interlocked.Decrement(ref _prefetchesInFlight);
+    }
+
+    private void LogPrefetchFailure(Exception e)
+    {
+        if (_logger.IsDebug) _logger.Debug($"DB {Name} prefetch failed: {e.Message}");
+    }
+
+    /// <summary>The prefetch reads that have started and not completed.</summary>
+    internal int PrefetchesInFlight => Volatile.Read(ref _prefetchesInFlight);
 
     /// <summary>
     /// Per-thread key and column family arrays for <see cref="Prefetch"/>, one exact-length array per batch size, so
@@ -1294,11 +1325,13 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     /// A pinned slice must be released before its database closes, and a background reader, such as a code read ahead
     /// of execution, can still hold one when shutdown disposes the database.
     /// </remarks>
-    private bool WaitForPinnedSlices()
+    private bool WaitForPinnedSlices() => WaitForZero(ref _pinnedSlices);
+
+    private bool WaitForZero(ref int count)
     {
         long start = Stopwatch.GetTimestamp();
         SpinWait spin = default;
-        while (Volatile.Read(ref _pinnedSlices) != 0)
+        while (Volatile.Read(ref count) != 0)
         {
             if (Stopwatch.GetElapsedTime(start) > PinnedSliceDrainTimeout) return false;
             spin.SpinOnce();
@@ -1951,6 +1984,9 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
         if (_logger.IsInfo) _logger.Info($"Disposing DB {Name}");
         bool drained = WaitForPinnedSlices();
+        // An unfinished prefetch holds its own lease on the native database, which then closes when the read completes.
+        if (!WaitForZero(ref _prefetchesInFlight) && _logger.IsWarn)
+            _logger.Warn($"DB {Name} closes when its {PrefetchesInFlight} prefetch reads complete");
 
         foreach (IDisposable dbMetricsUpdater in _metricsUpdaters)
         {

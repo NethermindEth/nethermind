@@ -313,7 +313,6 @@ public class BlockCachePreWarmerTests
         }
     }
 
-    /// <summary>Inclusion-list transactions are scanned after the block's own, as the sender and recipient pass covers them.</summary>
     [Test]
     public void SortUnique_KeepsEachSlotOnceWithEachAccountsSlotsAdjacent()
     {
@@ -335,10 +334,8 @@ public class BlockCachePreWarmerTests
         }));
     }
 
-    [TestCase(0)]
-    [TestCase(1)]
-    [TestCase(5)]
-    public void SortUnique_KeepsEachAccountOnce(int repeats)
+    [Test]
+    public void SortUnique_KeepsEachAccountOnce([Values(0, 1, 5)] int repeats)
     {
         Address[] accounts = new Address[3 * (repeats + 1)];
         for (int i = 0; i < accounts.Length; i++) accounts[i] = (i % 3) switch { 0 => TestItem.AddressC, 1 => TestItem.AddressA, _ => TestItem.AddressB };
@@ -350,6 +347,7 @@ public class BlockCachePreWarmerTests
         Assert.That(unique.ToArray(), Is.EqualTo(expected));
     }
 
+    /// <summary>Inclusion-list transactions are scanned after the block's own, as the sender and recipient pass covers them.</summary>
     [Test]
     public void CollectCalldataAddresses_ScansInclusionListTransactionsAfterTheBlocks()
     {

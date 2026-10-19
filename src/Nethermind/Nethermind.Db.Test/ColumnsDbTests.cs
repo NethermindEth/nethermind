@@ -6,11 +6,16 @@ using System.Buffers.Binary;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
+using Autofac;
+using Nethermind.Api;
+using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db.Rocks;
 using Nethermind.Db.Rocks.Config;
+using Nethermind.Init.Modules;
 using Nethermind.Logging;
 using NUnit.Framework;
 
@@ -165,7 +170,7 @@ public class ColumnsDbTests
         _db.Flush();
         long before = Metrics.PrefetchedKeys;
 
-        IColumnDbSnapshot<ReceiptsColumns> snapshot = ((IColumnsDb<ReceiptsColumns>)_db).CreateSnapshot();
+        using IColumnDbSnapshot<ReceiptsColumns> snapshot = ((IColumnsDb<ReceiptsColumns>)_db).CreateSnapshot();
         IReadPrefetcher prefetcher = (IReadPrefetcher)snapshot.GetColumn(ReceiptsColumns.Blocks);
         prefetcher.Prefetch(keys, keyLength);
         if (disposeSnapshotFirst) snapshot.Dispose();
@@ -192,9 +197,8 @@ public class ColumnsDbTests
             db.Flush();
         }
 
-        using ColumnsDb<ReceiptsColumns> reopened = new(path, new("Blocks", path), new DbConfig(),
-            new RocksDbConfigFactory(new DbConfig(), new PruningConfig(), new TestHardwareInfo(), LimboLogs.Instance, validateConfig: false),
-            LimboLogs.Instance, Enum.GetValues<ReceiptsColumns>());
+        using IContainer container = CreateConfigContainer(path);
+        using ColumnsDb<ReceiptsColumns> reopened = Reopen(path, container);
         using IColumnDbSnapshot<ReceiptsColumns> snapshot = ((IColumnsDb<ReceiptsColumns>)reopened).CreateSnapshot();
         IReadPrefetcher prefetcher = (IReadPrefetcher)snapshot.GetColumn(ReceiptsColumns.Blocks);
 
@@ -219,9 +223,8 @@ public class ColumnsDbTests
             db.Flush();
         }
 
-        using ColumnsDb<ReceiptsColumns> reopened = new(path, new("Blocks", path), new DbConfig(),
-            new RocksDbConfigFactory(new DbConfig(), new PruningConfig(), new TestHardwareInfo(), LimboLogs.Instance, validateConfig: false),
-            LimboLogs.Instance, Enum.GetValues<ReceiptsColumns>());
+        using IContainer container = CreateConfigContainer(path);
+        using ColumnsDb<ReceiptsColumns> reopened = Reopen(path, container);
         using IColumnDbSnapshot<ReceiptsColumns> snapshot = ((IColumnsDb<ReceiptsColumns>)reopened).CreateSnapshot();
         IReadPrefetcher blocks = (IReadPrefetcher)snapshot.GetColumn(ReceiptsColumns.Blocks);
         IReadPrefetcher transactions = (IReadPrefetcher)snapshot.GetColumn(ReceiptsColumns.Transactions);
@@ -250,6 +253,57 @@ public class ColumnsDbTests
 
         static byte[] Concat(byte[][] keys, int start, int count) => keys.Skip(start).Take(count).SelectMany(static key => key).ToArray();
     }
+
+    [Test]
+    public void Dispose_waits_for_prefetches_in_flight_and_refuses_new_ones()
+    {
+        const int count = 64;
+        const int keyLength = 8;
+        string path = DbPath + "-prefetch-dispose";
+        // One key per data block, so the prefetch after the reopen reads every block from disk.
+        byte[] value = new byte[64 * 1024];
+        byte[] keys = new byte[count * keyLength];
+        new Random(3).NextBytes(keys);
+        using (ColumnsDb<ReceiptsColumns> db = CreateDb(path, new DbConfig()))
+        {
+            for (int i = 0; i < count; i++) db.GetColumnDb(ReceiptsColumns.Blocks).Set(keys.AsSpan(i * keyLength, keyLength), value);
+            db.Flush();
+        }
+
+        using IContainer container = CreateConfigContainer(path);
+        ColumnsDb<ReceiptsColumns> reopened = Reopen(path, container);
+        using IColumnDbSnapshot<ReceiptsColumns> snapshot = ((IColumnsDb<ReceiptsColumns>)reopened).CreateSnapshot();
+        IReadPrefetcher prefetcher = (IReadPrefetcher)snapshot.GetColumn(ReceiptsColumns.Blocks);
+        for (int i = 0; i < 8; i++) prefetcher.Prefetch(keys, keyLength);
+
+        reopened.Dispose();
+        long before = Metrics.PrefetchedKeys;
+        prefetcher.Prefetch(keys, keyLength);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reopened.PrefetchesInFlight, Is.Zero);
+            Assert.That(Metrics.PrefetchedKeys, Is.EqualTo(before));
+        }
+    }
+
+    private static IContainer CreateConfigContainer(string path)
+    {
+        InitConfig initConfig = new() { BaseDbPath = path };
+        return new ContainerBuilder()
+            .AddModule(new DbModule(initConfig, new ReceiptConfig(), new SyncConfig()))
+            // Large enough for every block a prefetch test reads, so no prefetched block is evicted before it is checked.
+            .AddSingleton<IDbConfig>(new DbConfig { ReceiptsDbAdditionalRocksDbOptions = "block_based_table_factory.block_cache=64000000;" })
+            .AddSingleton<IInitConfig>(initConfig)
+            .AddSingleton<IPruningConfig>(new PruningConfig())
+            .AddSingleton<IHardwareInfo>(new TestHardwareInfo())
+            .AddSingleton<ILogManager>(LimboLogs.Instance)
+            .Build();
+    }
+
+    private static ColumnsDb<ReceiptsColumns> Reopen(string path, IContainer container) =>
+        new(path, new(nameof(DbNames.Receipts), path), container.Resolve<IDbConfig>(), container.Resolve<IRocksDbConfigFactory>(),
+            LimboLogs.Instance, Enum.GetValues<ReceiptsColumns>());
 
     [Test]
     public void SmokeTest()

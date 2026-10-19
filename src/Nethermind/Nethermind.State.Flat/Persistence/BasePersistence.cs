@@ -302,9 +302,25 @@ public static class BasePersistence
     /// <summary>The hashed keys of one prefetch, computed as they are encoded so no hashed copy is kept.</summary>
     public interface IHashedPrefetchKeys
     {
+        /// <summary>The number of accounts; valid account indexes are 0 to <see cref="AccountCount"/> - 1.</summary>
         public int AccountCount { get; }
+
+        /// <summary>The number of slots; valid slot indexes are 0 to <see cref="SlotCount"/> - 1.</summary>
         public int SlotCount { get; }
+
+        /// <summary>Gets the hashed key of the account at <paramref name="index"/>.</summary>
+        /// <param name="index">The account index, from 0 to <see cref="AccountCount"/> - 1.</param>
+        /// <param name="account">The account path hash.</param>
         public void GetAccount(int index, out ValueHash256 account);
+
+        /// <summary>Gets the hashed account and slot keys of the slot at <paramref name="index"/>.</summary>
+        /// <param name="index">The slot index, from 0 to <see cref="SlotCount"/> - 1.</param>
+        /// <param name="account">The path hash of the account that owns the slot.</param>
+        /// <param name="slot">The storage key hash of the slot.</param>
+        /// <remarks>
+        /// Any index may be read in any order. Ascending order is cheapest: one account's slots are adjacent, and an
+        /// implementation may reuse the account hash of the previous call.
+        /// </remarks>
         public void GetSlot(int index, out ValueHash256 account, out ValueHash256 slot);
     }
 

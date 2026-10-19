@@ -69,8 +69,11 @@ public class CarryForwardCachingPersistenceTests
                 [new StorageCell(TestItem.AddressA, 1), new StorageCell(TestItem.AddressA, 2), new StorageCell(TestItem.AddressB, 1)]);
         }
 
-        Assert.That(inner.PrefetchedAccounts, Is.EqualTo(new[] { TestItem.AddressB }));
-        Assert.That(inner.PrefetchedSlots, Is.EqualTo(new[] { new StorageCell(TestItem.AddressA, 2), new StorageCell(TestItem.AddressB, 1) }));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(inner.PrefetchedAccounts, Is.EqualTo(new[] { TestItem.AddressB }));
+            Assert.That(inner.PrefetchedSlots, Is.EqualTo(new[] { new StorageCell(TestItem.AddressA, 2), new StorageCell(TestItem.AddressB, 1) }));
+        }
     }
 
     [Test]
