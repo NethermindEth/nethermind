@@ -27,11 +27,11 @@ using Nethermind.Core.Test.IO;
 using Nethermind.Db;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Call;
+using Nethermind.Evm;
+using Nethermind.Evm.Precompiles;
 using Nethermind.Facade;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Facade.Simulate;
-using Nethermind.Evm;
-using Nethermind.Evm.Precompiles;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
@@ -40,6 +40,7 @@ using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using NSubstitute;
+using NSubstitute.Core;
 using NSubstitute.ReturnsExtensions;
 using NUnit.Framework;
 using Newtonsoft.Json.Linq;
@@ -697,7 +698,7 @@ public class DebugModuleTests
             Assert.That(actual.ErrorCode, Is.EqualTo(ErrorCodes.InvalidInput));
             Assert.That(actual.Result.Error, Is.EqualTo($"account {TestItem.AddressB} is already overridden"));
             _codeInfoRepository.Received(1).GetPrecompile(TestItem.AddressA, Arg.Any<IReleaseSpec>());
-            foreach (NSubstitute.Core.ICall received in _codeInfoRepository.ReceivedCalls())
+            foreach (ICall received in _codeInfoRepository.ReceivedCalls())
                 Assert.That(received.GetMethodInfo().Name, Is.EqualTo(nameof(ICodeInfoRepository.GetPrecompile)),
                     "preflight must not read account code, reset/move overrides or mutate the repository");
             _debugBridge.DidNotReceiveWithAnyArgs().GetTransactionTrace(default(Transaction)!, default!, default, default, default, default);
