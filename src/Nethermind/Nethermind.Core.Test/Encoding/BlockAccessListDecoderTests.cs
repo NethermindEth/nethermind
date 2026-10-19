@@ -42,6 +42,27 @@ public class BlockAccessListDecoderTests
         Assert.That(bal.WireHash, Is.EqualTo(new Hash256(ValueKeccak.Compute(bytes))));
     }
 
+    // Block processing reuses WireHash as the header commitment of the generated BAL, which holds only
+    // if every encoding the decoder accepts is the canonical one.
+    [TestCaseSource(nameof(BlockAccessListEncodingFormsSource))]
+    public bool Decode_accepts_only_the_canonical_encoding(string rlp)
+    {
+        byte[] bytes = Bytes.FromHexString(rlp);
+
+        ReadOnlyBlockAccessList? decoded;
+        try
+        {
+            decoded = Rlp.Decode<ReadOnlyBlockAccessList>(bytes);
+        }
+        catch (RlpException)
+        {
+            return false;
+        }
+
+        Assert.That(Rlp.Encode(decoded).Bytes, Is.EqualTo(bytes), "accepted a non-canonical encoding");
+        return true;
+    }
+
     [Test]
     public void Decode_handles_envelope_with_trailing_bytes_and_hashes_only_the_bal_slice()
     {
@@ -691,6 +712,37 @@ public class BlockAccessListDecoderTests
             yield return new TestCaseData(balanceChangesRlp, expected) { TestName = "balance_changes" };
         }
     }
+
+    private static IEnumerable<TestCaseData> BlockAccessListEncodingFormsSource
+    {
+        get
+        {
+            string address = "94" + TestItem.AddressA.ToString(false, false);
+            string Account(string balanceChange, string codeChanges = "c0", string extraField = "")
+                => RlpList(address, "c0", "c0", RlpList(balanceChange), "c0", codeChanges, extraField);
+            string Bal(string balanceChange, string codeChanges = "c0", string extraField = "")
+                => RlpList(Account(balanceChange, codeChanges, extraField));
+
+            yield return new TestCaseData(Bal(RlpList("01", "64"))).Returns(true).SetName("canonical");
+            yield return new TestCaseData(Bal(RlpList("01", "64"), extraField: "80")).Returns(false).SetName("extra_account_field");
+            yield return new TestCaseData(Bal(RlpList("01", "64", "80"))).Returns(false).SetName("extra_balance_change_field");
+            yield return new TestCaseData(Bal(RlpList("01", "8164"))).Returns(false).SetName("single_byte_with_0x81_prefix");
+            yield return new TestCaseData(Bal(RlpList("01", "820064"))).Returns(false).SetName("integer_with_leading_zero");
+            yield return new TestCaseData(Bal(RlpList("820001", "64"))).Returns(false).SetName("index_with_leading_zero");
+            yield return new TestCaseData(Bal(RlpList("01", "00"))).Returns(false).SetName("zero_as_0x00");
+            yield return new TestCaseData(Bal(RlpList("01", "64"), RlpList(RlpList("01", "82abcd", "a0" + TestItem.KeccakA.ToString(false))))).Returns(false).SetName("adopted_code_change_with_code");
+            yield return new TestCaseData(RlpList(InLongForm(Account(RlpList("01", "64"))))).Returns(false).SetName("short_list_in_long_form");
+        }
+    }
+
+    private static string RlpList(params string[] items)
+    {
+        string content = string.Concat(items);
+        int length = content.Length / 2;
+        return length < 56 ? $"{0xc0 + length:x2}{content}" : $"f8{length:x2}{content}";
+    }
+
+    private static string InLongForm(string shortList) => $"f8{shortList.Length / 2 - 1:x2}{shortList[2..]}";
 
     private static IEnumerable<TestCaseData> AccountChangesTestSource
     {

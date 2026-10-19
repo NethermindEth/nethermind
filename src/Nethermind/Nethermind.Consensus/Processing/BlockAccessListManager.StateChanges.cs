@@ -47,6 +47,7 @@ public partial class BlockAccessListManager
         {
             // Rows 0..txCount already matched the suggested BAL. Once the post-execution row and the structure match
             // too, the generated BAL encodes to the suggested canonical wire bytes, so their hash stands in for the re-encode.
+            // This holds only because the decoder accepts nothing but the canonical encoding.
             ValidateBlockAccessList(block, postExecutionIndex);
             ValidateGeneratedStructuralEquivalence(block);
             block.Header.BlockAccessListHash = wireHash;
