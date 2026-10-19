@@ -35,7 +35,8 @@ public class FlatStorageTreeDeleteWarmupTests
 
     // The per-block node cache is direct-mapped, so a few warmed nodes are evicted by others whatever is written;
     // a delete must not add the nodes its collapse needs on top of that. Which nodes collide follows the per-process
-    // hash seed: hinted deletes read up to ~5 more than updates, and deletes warmed only along their path read 25 more.
+    // hash seed, so the allowance sits about midway between the extra reads of hinted deletes under an unlucky seed and
+    // those of deletes warmed only along their path.
     private const int CollisionAllowance = 12;
 
     private static readonly Address Contract = TestItem.AddressA;
