@@ -132,7 +132,7 @@ namespace Nethermind.TxPool.Test
             object wrapper = tx.NetworkWrapper;
             bool canRecycle = false;
             AcceptTxResult result = ownsTransaction
-                ? ((IRecyclableTxPool)_txPool).SubmitOwnedTx(tx, out canRecycle)
+                ? ((IRecyclableTxPool)_txPool).SubmitOwnedTx(tx, out canRecycle, out _)
                 : _txPool.SubmitTx(tx, TxHandlingOptions.None);
             Assert.That(result, Is.EqualTo(AcceptTxResult.Invalid));
             Assert.That(canRecycle, Is.EqualTo(ownsTransaction));
