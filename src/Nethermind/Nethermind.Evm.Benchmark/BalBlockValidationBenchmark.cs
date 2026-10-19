@@ -12,21 +12,16 @@ using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
-using Nethermind.Core.Container;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Core.Test.Db;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Crypto;
-using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
-using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.Forks;
-using Nethermind.State;
 
 namespace Nethermind.Evm.Benchmark;
 
@@ -71,8 +66,6 @@ public class BalBlockValidationBenchmark
 
     private static readonly IReleaseSpec Spec = Amsterdam.Instance;
 
-    private static readonly byte[] StopCode = [0x00];
-
     private static readonly byte[] CallTargetCode = Prepare.EvmCode
         .PushData(0x01)
         .Op(Instruction.STOP)
@@ -91,7 +84,11 @@ public class BalBlockValidationBenchmark
     private static readonly Address CallTargetAddress = new("0x00000000000000000000000000000000000000bb");
     private static readonly Address SlotWriterAddress = new("0x00000000000000000000000000000000000000bc");
 
-    private readonly PrivateKey _senderKey = TestItem.PrivateKeyA;
+    /// <summary>Senders the transactions rotate through, so the list spreads balance and nonce changes over
+    /// several accounts, as a mainnet block does.</summary>
+    private const int SenderCount = 16;
+
+    private readonly PrivateKey[] _senderKeys = TestItem.PrivateKeys[..SenderCount];
 
     private IContainer _container = null!;
     private ILifetimeScope _processingScope = null!;
@@ -110,25 +107,16 @@ public class BalBlockValidationBenchmark
             .AddModule(new TestNethermindModule(Spec))
             .Build();
 
-        IDbProvider dbProvider = TestMemDbProvider.Init();
-        TestStateHeaderProvider stateHeaderProvider = new();
-        IWorldStateManager wsm = TestWorldStateFactory.CreateWorldStateManagerForTest(dbProvider, stateHeaderProvider, NullLogManager.Instance);
-        IWorldStateScopeProvider scopeProvider = wsm.GlobalWorldState;
-
-        IBlockValidationModule[] validationModules = _container.Resolve<IBlockValidationModule[]>();
-        IMainProcessingModule[] mainProcessingModules = _container.Resolve<IMainProcessingModule[]>();
-        _processingScope = _container.BeginLifetimeScope(b =>
-        {
-            b.RegisterInstance(scopeProvider).As<IWorldStateScopeProvider>().ExternallyOwned();
-            b.RegisterInstance(wsm).As<IWorldStateManager>().ExternallyOwned();
-            b.AddModule(validationModules);
-            b.AddModule(mainProcessingModules);
-        });
+        _processingScope = BlockProcessingBenchmarkSetup.BeginProcessingScope(_container, out TestStateHeaderProvider stateHeaderProvider);
 
         IWorldState stateProvider = _processingScope.Resolve<IWorldState>();
         using (stateProvider.BeginScope(IWorldState.PreGenesis))
         {
-            stateProvider.CreateAccount(_senderKey.Address, 1_000_000.Ether);
+            foreach (PrivateKey senderKey in _senderKeys)
+            {
+                stateProvider.CreateAccount(senderKey.Address, 1_000_000.Ether);
+            }
+
             stateProvider.CreateAccount(TransferTargetAddress, UInt256.One);
 
             stateProvider.CreateAccount(CallTargetAddress, UInt256.Zero);
@@ -142,15 +130,7 @@ public class BalBlockValidationBenchmark
                 stateProvider.Set(new StorageCell(SlotWriterAddress, (UInt256)slot), UInt256.One);
             }
 
-            foreach (Address systemContract in (Address[])[
-                Eip7002Constants.WithdrawalRequestPredeployAddress,
-                Eip7251Constants.ConsolidationRequestPredeployAddress,
-                Eip8282Constants.BuilderDepositRequestPredeployAddress,
-                Eip8282Constants.BuilderExitRequestPredeployAddress])
-            {
-                stateProvider.CreateAccount(systemContract, UInt256.Zero);
-                stateProvider.InsertCode(systemContract, StopCode, Spec);
-            }
+            BlockProcessingBenchmarkSetup.SeedSystemContracts(stateProvider, Spec);
 
             stateProvider.Commit(Spec);
             stateProvider.CommitTree(0);
@@ -178,7 +158,6 @@ public class BalBlockValidationBenchmark
             .WithGasLimit(200_000)));
     }
 
-    /// <summary>Disposes the processing scope and the container.</summary>
     [GlobalCleanup]
     public void GlobalCleanup()
     {
@@ -186,7 +165,7 @@ public class BalBlockValidationBenchmark
         _container.Dispose();
     }
 
-    /// <summary>Value transfers from one sender to one seeded account.</summary>
+    /// <summary>Value transfers to one seeded account.</summary>
     [Benchmark]
     public Block[] Transfers() => Process(_transfersBlock);
 
@@ -207,9 +186,9 @@ public class BalBlockValidationBenchmark
         for (int i = 0; i < transactions.Length; i++)
         {
             transactions[i] = shape(i)
-                .WithNonce((ulong)i)
+                .WithNonce((ulong)(i / SenderCount))
                 .WithGasPrice(2.GWei)
-                .SignedAndResolved(_senderKey)
+                .SignedAndResolved(_senderKeys[i % SenderCount])
                 .TestObject;
         }
 
@@ -230,7 +209,7 @@ public class BalBlockValidationBenchmark
 
         BlockReceiptsTracer tracer = new();
         Block generated = _branchProcessor.Process(_parentHeader, [producerShape], ProcessingOptions.NoValidation, tracer)[0];
-        EnsureSucceeded(tracer);
+        BlockProcessingBenchmarkSetup.EnsureAllSucceeded(tracer, $"with {TxCount} transactions");
 
         Block validatorShape = new(generated.Header.Clone(), generated.Body,
             Rlp.Decode<ReadOnlyBlockAccessList>(generated.EncodedBlockAccessList!));
@@ -244,16 +223,5 @@ public class BalBlockValidationBenchmark
         }
 
         return validatorShape;
-    }
-
-    private static void EnsureSucceeded(BlockReceiptsTracer tracer)
-    {
-        foreach (TxReceipt receipt in tracer.TxReceipts)
-        {
-            if (receipt.StatusCode != StatusCode.Success)
-            {
-                throw new InvalidOperationException($"A transaction failed ({receipt.Error}) - the benchmark number would be meaningless.");
-            }
-        }
     }
 }
