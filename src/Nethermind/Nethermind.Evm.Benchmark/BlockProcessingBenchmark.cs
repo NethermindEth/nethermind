@@ -479,7 +479,7 @@ public class BlockProcessingBenchmark
         // matching the live client's block processing path.
         IDbProvider dbProvider = TestMemDbProvider.Init();
         TestStateHeaderProvider stateHeaderProvider = new();
-        IWorldStateManager wsm = TestWorldStateFactory.CreateWorldStateManagerForTest(dbProvider, stateHeaderProvider, LimboLogs.Instance);
+        IWorldStateManager wsm = TestWorldStateFactory.CreateWorldStateManagerForTest(dbProvider, stateHeaderProvider, NullLogManager.Instance);
         IWorldStateScopeProvider scopeProvider = wsm.GlobalWorldState;
 
         IBlockValidationModule[] validationModules = _container.Resolve<IBlockValidationModule[]>();

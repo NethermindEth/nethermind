@@ -108,9 +108,29 @@ namespace Nethermind.JsonRpc.Modules
             return new SearchResult<Block>(block);
         }
 
-        public static IEnumerable<SearchResult<Block>> SearchForBlocksOnMainChain(this IBlockFinder blockFinder, BlockParameter fromBlock, BlockParameter toBlock)
+        /// <summary>
+        /// Same result as <see cref="SearchForBlock"/>, but returns the header and decodes no body when one is stored.
+        /// </summary>
+        private static SearchResult<BlockHeader> SearchForHeaderWithBody(IBlockFinder blockFinder, BlockParameter blockParameter)
         {
-            SearchResult<Block> startingBlock = SearchForBlock(blockFinder, fromBlock);
+            BlockHeader? header = blockFinder.FindHeader(blockParameter);
+            if (header?.Hash is not null && blockFinder.HasBlock(header.Number, header.Hash))
+            {
+                return new SearchResult<BlockHeader>(header);
+            }
+
+            SearchResult<Block> blockSearch = SearchForBlock(blockFinder, blockParameter);
+            return blockSearch.IsError
+                ? new SearchResult<BlockHeader>(blockSearch.Error!, blockSearch.ErrorCode)
+                : new SearchResult<BlockHeader>(blockSearch.Object!.Header);
+        }
+
+        /// <summary>
+        /// Searches the canonical headers of a block range, failing as <see cref="SearchForBlock"/> would for a block whose body is unavailable.
+        /// </summary>
+        public static IEnumerable<SearchResult<BlockHeader>> SearchForHeadersOnMainChain(this IBlockFinder blockFinder, BlockParameter fromBlock, BlockParameter toBlock)
+        {
+            SearchResult<BlockHeader> startingBlock = SearchForHeaderWithBody(blockFinder, fromBlock);
             if (startingBlock.IsError || startingBlock.Object is null)
                 yield return startingBlock;
             else
@@ -118,22 +138,22 @@ namespace Nethermind.JsonRpc.Modules
                 SearchResult<BlockHeader> finalBlockHeader = SearchForHeader(blockFinder, toBlock);
                 if (finalBlockHeader.IsError || finalBlockHeader.Object is null)
                 {
-                    yield return new SearchResult<Block>(finalBlockHeader.Error ?? string.Empty, finalBlockHeader.ErrorCode);
+                    yield return new SearchResult<BlockHeader>(finalBlockHeader.Error ?? string.Empty, finalBlockHeader.ErrorCode);
                     yield break;
                 }
                 bool isFinalBlockOnMainChain = blockFinder.IsMainChain(finalBlockHeader.Object);
-                bool isStartingBlockOnMainChain = blockFinder.IsMainChain(startingBlock.Object.Header);
+                bool isStartingBlockOnMainChain = blockFinder.IsMainChain(startingBlock.Object);
                 if (!isFinalBlockOnMainChain || !isStartingBlockOnMainChain)
                 {
                     Hash256? notCanonicalBlockHash = isFinalBlockOnMainChain
                         ? startingBlock.Object.Hash
                         : finalBlockHeader.Object.Hash;
-                    yield return new SearchResult<Block>($"{notCanonicalBlockHash} block is not canonical", ErrorCodes.InvalidInput);
+                    yield return new SearchResult<BlockHeader>($"{notCanonicalBlockHash} block is not canonical", ErrorCodes.InvalidInput);
                 }
                 // During sync a block past the processed head can be canonical without having been executed or validated.
                 else if (finalBlockHeader.Object.Number > blockFinder.Head!.Number)
                 {
-                    yield return new SearchResult<Block>($"{finalBlockHeader.Object.Hash} block is not processed", ErrorCodes.ResourceUnavailable);
+                    yield return new SearchResult<BlockHeader>($"{finalBlockHeader.Object.Hash} block is not processed", ErrorCodes.ResourceUnavailable);
                 }
                 else
                 {
@@ -142,12 +162,12 @@ namespace Nethermind.JsonRpc.Modules
                     ulong finalBlockNumber = finalBlockHeader.Object.Number;
                     if (startingBlockNumber > finalBlockNumber)
                     {
-                        yield return new SearchResult<Block>($"From block number: {startingBlockNumber} is greater than to block number {finalBlockNumber}", ErrorCodes.InvalidParams);
+                        yield return new SearchResult<BlockHeader>($"From block number: {startingBlockNumber} is greater than to block number {finalBlockNumber}", ErrorCodes.InvalidParams);
                     }
 
                     for (ulong i = startingBlock.Object.Number + 1; i <= finalBlockHeader.Object.Number; ++i)
                     {
-                        yield return SearchForBlock(blockFinder, new BlockParameter(i));
+                        yield return SearchForHeaderWithBody(blockFinder, new BlockParameter(i));
                     }
                 }
 

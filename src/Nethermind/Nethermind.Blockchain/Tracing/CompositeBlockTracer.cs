@@ -9,7 +9,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Blockchain.Tracing;
 
-public class CompositeBlockTracer : IBlockTracer
+public class CompositeBlockTracer : IBlockTracer, ITxDiscardAwareTracer
 {
     private readonly List<IBlockTracer> _childTracers = [];
     private IBlockTracer? _parallelSafeTracerCache;
@@ -18,6 +18,14 @@ public class CompositeBlockTracer : IBlockTracer
     private int _version;
 
     public bool IsTracingRewards { get; private set; }
+
+    public void DiscardLastTx()
+    {
+        foreach (IBlockTracer childTracer in _childTracers)
+        {
+            if (childTracer is ITxDiscardAwareTracer discardAware) discardAware.DiscardLastTx();
+        }
+    }
 
     public void EndTxTrace()
     {
