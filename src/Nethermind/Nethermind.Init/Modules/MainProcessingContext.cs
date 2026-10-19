@@ -90,6 +90,7 @@ public class MainProcessingContext : IMainProcessingContext, BlockProcessor.Bloc
     public IGenesisLoader GenesisLoader => _components.GenesisLoader;
     public event EventHandler<TxProcessedEventArgs>? TransactionProcessed;
     public void OnTransactionProcessed(TxProcessedEventArgs txProcessedEventArgs) => TransactionProcessed?.Invoke(this, txProcessedEventArgs);
+    public bool HasSubscribers => TransactionProcessed is not null;
 
     private record Components(
         ITransactionProcessor TransactionProcessor,

@@ -22,6 +22,17 @@ OPT_FLAGS += \
 	--codegenopt JitExtDefaultPolicyMaxILRoot=800 \
 	--codegenopt JitExtDefaultPolicyMaxBB=40
 
+# Fewer executed instructions for more compile time and code size (values in hex).
+# Tracking every local is most of the gain: the default 0x400 leaves locals of the
+# largest methods out of register allocation.
+OPT_FLAGS += \
+	--codegenopt JitMaxLocalsToTrack=10000 \
+	--codegenopt JitCloneLoopsSizeLimit=1000 \
+	--codegenopt JitLoopInversionSizeLimit=400 \
+	--codegenopt 'JitOptRepeat=*' \
+	--codegenopt JitOptRepeatCount=2 \
+	--codegenopt JitEnableHeadTailMerge=0
+
 ZISK_IMAGE ?= nethermindeth/zisk:1.3.2-alpha@sha256:31a0c7f9de175765e7e81da719bdc2409060de8d23ec8683672d7ee22b798a3f
 
 run:
