@@ -15,6 +15,7 @@ public class ServiceStopper(ILogManager logManager) : IServiceStopper
     private readonly HashSet<IStoppableService> _stoppables = [];
     // Init steps run in parallel, so registrations can arrive from several threads at once.
     private readonly Lock _stoppablesLock = new();
+    private bool _stopping;
     private readonly ILogger _logger = logManager.GetClassLogger<ServiceStopper>();
 
 
@@ -23,6 +24,7 @@ public class ServiceStopper(ILogManager logManager) : IServiceStopper
         IStoppableService[] stoppables;
         lock (_stoppablesLock)
         {
+            _stopping = true;
             stoppables = [.. _stoppables];
         }
 
@@ -35,8 +37,15 @@ public class ServiceStopper(ILogManager logManager) : IServiceStopper
     {
         lock (_stoppablesLock)
         {
-            _stoppables.Add(stoppableService);
+            if (!_stopping)
+            {
+                _stoppables.Add(stoppableService);
+                return;
+            }
         }
+
+        // Shutdown can begin while init steps are still registering; those services would otherwise never be stopped.
+        _ = Task.Run(() => Stop(stoppableService));
     }
 
     private async Task Stop(IStoppableService stoppableService)

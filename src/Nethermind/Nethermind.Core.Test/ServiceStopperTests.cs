@@ -57,7 +57,7 @@ public class ServiceStopperTests
     }
 
     [Test]
-    public async Task StopsEveryConcurrentRegistrationOnce()
+    public async Task StopsEveryConcurrentRegistrationOnce([Values] bool registerAfterStop)
     {
         // Init steps run in parallel and register stoppables from several threads at once.
         const int count = 10_000;
@@ -68,11 +68,12 @@ public class ServiceStopperTests
         IServiceStopper stopper = container.Resolve<IServiceStopper>();
         CountingService[] services = Enumerable.Range(0, count).Select(static _ => new CountingService()).ToArray();
 
+        if (registerAfterStop) await stopper.StopAllServices();
         Parallel.For(0, count, new ParallelOptions { MaxDegreeOfParallelism = Math.Max(4, Environment.ProcessorCount) },
             i => stopper.AddStoppable(services[i]));
-        await stopper.StopAllServices();
+        if (!registerAfterStop) await stopper.StopAllServices();
 
-        Assert.That(services.Select(static s => s.StopCount), Is.All.EqualTo(1));
+        Assert.That(() => services.Select(static s => s.StopCount), Is.All.EqualTo(1).After(5000, 10));
     }
 
     internal class Service1 : IStoppableService
