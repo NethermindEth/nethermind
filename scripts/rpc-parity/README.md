@@ -21,6 +21,8 @@ URLs can be locally forwarded RPC ports. Alternatively, use `--candidate-host ro
 
 The script selects a common recent block with two real prefix transactions and at least one prefix log. Use `--block 0xNUMBER` to choose an explicit retained block. It regenerates only block-number-dependent BLOCKHASH bytecode/overrides, selected hash selectors, and prefix-sender fixtures **before** either client receives the requests. Each materialized request is then identical on both clients. An unavailable fixture, transport error, missing state, missing/duplicate response, changed version, or changed block/state-root fails the run; no case is skipped or silently repinned.
 
+Fixture validation compares the complete prefix receipt objects exactly, including any optional or client-specific fields. Both endpoints must therefore return the same receipt field set and values. A difference fails the run with `Prefix receipts differ between clients`; this is a fixture-validation failure, not evidence of a tracing-result mismatch.
+
 The output records the selected reference SHA separately from the historical corpus reference SHA, and includes materialized requests, raw responses, block/hash/state-root brackets, versions, prefix receipts, classifications and corpus SHA-256. Existing output files are never overwritten. Failure also leaves partial evidence with `status: failed`; only `status: completed` and all 304 accepted requests constitute a successful run. Exit status is nonzero on failure.
 
 ## Acceptance policy
