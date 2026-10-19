@@ -10,7 +10,7 @@ namespace Nethermind.JsonRpc.Test;
 public class JsonRpcConfigExtensionTests
 {
     [Test]
-    public void Rented_timeout_returns_to_pool_unless_cancelled([Values] bool cancelled)
+    public void Rented_timeout_returns_to_pool_unless_cancelled([Values] bool cancelled, [Values] bool otherSourceReturnedMeanwhile)
     {
         JsonRpcConfig config = new();
         TimeoutTestHelper.TrackingCancellationTokenSource timeout = TimeoutTestHelper.RentTrackingTimeoutSourceForNextRequest();
@@ -20,17 +20,15 @@ public class JsonRpcConfigExtensionTests
             {
                 Assert.That(rented.Token, Is.EqualTo(timeout.Token));
                 if (cancelled) timeout.Cancel();
+                if (otherSourceReturnedMeanwhile) JsonRpcConfigExtension.ReturnTimeoutCancellationToken(new CancellationTokenSource());
             }
 
-            CancellationTokenSource next = config.BuildTimeoutCancellationToken();
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(timeout.DisposeCount, Is.EqualTo(cancelled ? 1 : 0));
-                Assert.That(next, cancelled ? Is.Not.SameAs(timeout) : Is.SameAs(timeout));
-                Assert.That(next.IsCancellationRequested, Is.False);
+                Assert.That(TimeoutTestHelper.TakeFromPool(timeout), Is.EqualTo(!cancelled));
+                Assert.That(timeout.IsCancellationRequested, Is.EqualTo(cancelled));
             }
-
-            next.Dispose();
         }
         finally
         {
