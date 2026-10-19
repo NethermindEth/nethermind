@@ -171,7 +171,7 @@ public class SnapshotTests
             using ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries = new(2);
             entries.Add(new(key.ValueHash256, Enumerable.Repeat(value, 32).ToArray()));
             if (other is not null) entries.Add(new(other.ValueHash256, new byte[32]));
-            return BufferBulkSet.BulkSet(buffer, source, address, root, entries, canParallelize: false);
+            return BufferBulkSet.BulkSet(source.Over(buffer), address, root, entries, canParallelize: false);
         }
     }
 

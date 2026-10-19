@@ -115,7 +115,7 @@ internal class BufferBulkSetTests
         using NodeRecordBuffer buffer = fromSource ? new(0, generationBytes) : existingBuffer;
         using NodeRecordBufferPin retain = buffer.Pin();
         ulong temporaryRootPointer = fromSource ? InsertLinkedRecords(warmed, existingNodes) : 0;
-        TrieRoot root = BulkSet(new WarmedNodeRecordBuffer(buffer, warmed), source, null, fromSource ? new TrieRoot(expectedExistingRoot.ValueHash256, temporaryRootPointer) : existingRoot, items, canParallelize);
+        TrieRoot root = BulkSet(buffer, source, null, fromSource ? new TrieRoot(expectedExistingRoot.ValueHash256, temporaryRootPointer) : existingRoot, items, canParallelize);
         int fetchCount = source.FetchCount;
 
         Dictionary<Hash256, byte[]> expectedValues = [];
@@ -226,7 +226,7 @@ internal class BufferBulkSetTests
         TrieRoot temporaryRoot = new(root.Hash, pointer);
 
         ulong before = buffer.Reserve(0, out _, out _);
-        TrieRoot after = BulkSet(new WarmedNodeRecordBuffer(buffer, warmed), source, null, temporaryRoot, emptyBatch ? [] : [(key, ExistingValue)], false);
+        TrieRoot after = BulkSet(buffer, source, null, temporaryRoot, emptyBatch ? [] : [(key, ExistingValue)], false);
 
         using (Assert.EnterMultipleScope())
         {
@@ -267,7 +267,7 @@ internal class BufferBulkSetTests
         warmed.TryAppend(null, TreePath.Empty.Append(3), ValueKeccak.Compute(displacedRlp), displacedRlp, out _, out _);
         DictionaryNodeSource source = new(nodes, warmed, null);
 
-        TrieRoot after = BulkSet(new WarmedNodeRecordBuffer(buffer, warmed), source, null, new TrieRoot(root.Hash, temporaryRootPointer), [(keyC, NewValue)], false);
+        TrieRoot after = BulkSet(buffer, source, null, new TrieRoot(root.Hash, temporaryRootPointer), [(keyC, NewValue)], false);
         ChildRef realChild = buffer.GetRecord(after.Pointer).View.Child(1);
         ChildRef transientChild = buffer.GetRecord(after.Pointer).View.Child(2);
         PatriciaTree expected = new(new RawScopedTrieStore(new MemDb()), LimboLogs.Instance);
@@ -314,7 +314,7 @@ internal class BufferBulkSetTests
         int again = WarmUp(persistedBuffer, persistedRoot, items[0].key);
         foreach ((Hash256 key, _) in items) WarmUp(persistedBuffer, persistedRoot, key);
         int fetchesBeforeBulkSet = source.FetchCount;
-        TrieRoot newRoot = BulkSet(new WarmedNodeRecordBuffer(persistedBuffer, warmed), source, address, persistedRoot, [(items[0].key, NewValue)], canParallelize: false);
+        TrieRoot newRoot = BulkSet(persistedBuffer, source, address, persistedRoot, [(items[0].key, NewValue)], canParallelize: false);
 
         PatriciaTree tree = new(new RawScopedTrieStore(new MemDb()), LimboLogs.Instance);
         foreach ((Hash256 key, byte[] value) in items) tree.Set(key.Bytes, value);
@@ -472,7 +472,7 @@ internal class BufferBulkSetTests
         Assert.That(warmedSibling.Pointer, forDelete && !threeChildren ? Is.Not.Zero : Is.Zero, "only a required collapse sibling is linked");
         if (warmedSibling.Pointer != 0) Assert.That(warmed.TryLocate(warmedSibling.Pointer, out NodeRecord sibling) && sibling.Hash == warmedSibling.Data, Is.True);
         int before = source.FetchCount;
-        TrieRoot updated = BulkSet(new WarmedNodeRecordBuffer(buffer, warmed), source, null, persistedRoot, [(keyA, null)], false);
+        TrieRoot updated = BulkSet(buffer, source, null, persistedRoot, [(keyA, null)], false);
         PatriciaTree expected = new(new RawScopedTrieStore(new MemDb()), LimboLogs.Instance);
         foreach ((Hash256 key, byte[] value) in items.Where(item => item.key != keyA)) expected.Set(key.Bytes, value);
         expected.UpdateRootHash();
@@ -805,10 +805,10 @@ internal class BufferBulkSetTests
         return pointers.GetValueOrDefault(TreePath.Empty);
     }
 
-    private static TrieRoot BulkSet(INodeRecordBuffer buffer, INodeRecordSource source, Hash256 address, TrieRoot root, List<(Hash256 key, byte[] value)> items, bool canParallelize)
+    private static TrieRoot BulkSet(INodeRecordBuffer buffer, DictionaryNodeSource source, Hash256 address, TrieRoot root, List<(Hash256 key, byte[] value)> items, bool canParallelize)
     {
         using ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries = Entries(items);
-        return BufferBulkSet.BulkSet(buffer, source, address, root, entries, canParallelize);
+        return BufferBulkSet.BulkSet(source.Over(buffer), address, root, entries, canParallelize);
     }
 
     private static ArrayPoolListRef<PatriciaTree.BulkSetEntry> Entries(List<(Hash256 key, byte[] value)> items)
@@ -831,13 +831,13 @@ internal class BufferBulkSetTests
         buffer.EnumerateNodes(root.Pointer).ToDictionary(node => node.Path, node => node.Record.Rlp.ToArray());
 
     /// <summary>The values at <paramref name="keys"/>, read by a <see cref="PatriciaTree"/> from the records linked from <paramref name="root"/>, falling back to <paramref name="source"/>.</summary>
-    private static byte[][] ReadValues(INodeRecordBuffer buffer, INodeRecordSource source, TrieRoot root, IEnumerable<Hash256> keys)
+    private static byte[][] ReadValues(INodeRecordBuffer buffer, DictionaryNodeSource source, TrieRoot root, IEnumerable<Hash256> keys)
     {
         PatriciaTree tree = new(new LinkedRecordResolver(Rlps(buffer, root), source), LimboLogs.Instance) { RootHash = root.ToHash256() };
         return keys.Select(key => tree.Get(key.Bytes) is { IsEmpty: false } value ? value.ToArray() : null).ToArray();
     }
 
-    private sealed class LinkedRecordResolver(Dictionary<TreePath, byte[]> linked, INodeRecordSource source) : IScopedTrieStore
+    private sealed class LinkedRecordResolver(Dictionary<TreePath, byte[]> linked, DictionaryNodeSource source) : IScopedTrieStore
     {
         public TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash) => new(NodeType.Unknown, hash);
         public byte[] TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>

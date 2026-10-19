@@ -131,7 +131,7 @@ public class BufferBulkSetBenchmarks
         if (_preload.Length == 0) return TrieRoot.Empty;
 
         using ArrayPoolListRef<PatriciaTree.BulkSetEntry> preloadSet = new(_preload);
-        TrieRoot root = BufferBulkSet.BulkSet(buffer, _nodeSource, null, TrieRoot.Empty, preloadSet, canParallelize: true);
+        TrieRoot root = BufferBulkSet.BulkSet(_nodeSource.Over(buffer), null, TrieRoot.Empty, preloadSet, canParallelize: true);
         if (root.Hash != _preloadedRootHash.ValueHash256) throw new InvalidOperationException($"Buffer root {root.Hash} differs from {_preloadedRootHash}");
         return root;
     }
@@ -143,7 +143,7 @@ public class BufferBulkSetBenchmarks
         {
             batch.Clear();
             batch.AddRange(_entries.AsSpan(start, BatchSize));
-            BufferBulkSet.BulkSet(buffer, _nodeSource, null, root, batch, canParallelize: true);
+            BufferBulkSet.BulkSet(_nodeSource.Over(buffer), null, root, batch, canParallelize: true);
             // Every batch stands for a block, which fetches the nodes it reads again.
             _warmedNodes.Reset();
         }

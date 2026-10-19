@@ -396,11 +396,12 @@ public sealed class SnapshotBundle : IDisposable
     }
 
     /// <summary>A leased immutable source with private warmed storage, independent of transient-resource retirement.</summary>
-    internal sealed class BackgroundTrieSource : INodeRecordSource, IDisposable
+    internal sealed class BackgroundTrieSource : INodeRecordStore, IDisposable
     {
         private const int WarmedNodeCapacity = 1024;
 
         private readonly ReadOnlySnapshotBundle _readOnly;
+        private readonly INodeRecordBuffer _buffer;
         private readonly Hash256 _address;
         private readonly WarmedNodeLog _warmed = new(WarmedNodeCapacity);
         private readonly INodeRecordBufferPin _pin;
@@ -408,8 +409,8 @@ public sealed class SnapshotBundle : IDisposable
 
         internal BackgroundTrieSource(ReadOnlySnapshotBundle readOnly, INodeRecordBuffer buffer, SnapshotPooledList snapshots, Hash256 address)
         {
-            Buffer = new WarmedNodeRecordBuffer(buffer, _warmed);
             _readOnly = readOnly;
+            _buffer = new WarmedNodeRecordBuffer(buffer, _warmed);
             _address = address;
             readOnly.AcquireLease();
             try
@@ -432,8 +433,9 @@ public sealed class SnapshotBundle : IDisposable
             }
         }
 
-        /// <summary>The buffer to update the trie in, which also resolves the nodes this source warmed.</summary>
-        public INodeRecordBuffer Buffer { get; }
+        public bool TryLocate(ulong pointer, out NodeRecord record) => _buffer.TryLocate(pointer, out record);
+
+        public INodeRecordWriteBatch StartWriteBatch(int alignedTotalLength) => _buffer.StartWriteBatch(alignedTotalLength);
 
         public bool TryLoad(in TreePath path, in ValueHash256 hash, out NodeRecord record)
         {

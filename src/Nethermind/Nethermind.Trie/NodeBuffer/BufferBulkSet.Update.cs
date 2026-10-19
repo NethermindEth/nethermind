@@ -259,7 +259,7 @@ internal static partial class BufferBulkSet
             BulkSetArena arena = BulkSetArena.Rent();
             try
             {
-                Context context = new(_buffer, _source, _address, arena, _entries, _sortBuffer, _canParallelize);
+                Context context = new(_store, _address, arena, _entries, _sortBuffer, _canParallelize);
                 (int start, int count) = level.Ranges[nibble];
                 Span<BulkSetEntry> entries = (level.Flipped ? _sortBuffer : _entries).AsSpan(start, count);
                 Span<BulkSetEntry> sortBuffer = (level.Flipped ? _entries : _sortBuffer).AsSpan(start, count);
@@ -349,12 +349,12 @@ internal static partial class BufferBulkSet
         }
 
         /// <summary>The root node, read by its supplied pointer like any child.</summary>
-        /// <exception cref="MissingTrieNodeException">The node is in neither the buffer nor the source.</exception>
+        /// <exception cref="MissingTrieNodeException">The store has no such node.</exception>
         public Source LoadRoot(in TrieRoot root) =>
             root.Hash == ValueKeccak.EmptyTreeHash ? default : Load(TreePath.Empty, ChildRef.ForHash(root.Hash, root.Pointer));
 
-        /// <summary>The node <paramref name="child"/> at <paramref name="path"/> refers to, read in place from the buffer when its pointer resolves, otherwise from the source.</summary>
-        /// <exception cref="MissingTrieNodeException">The node is in neither.</exception>
+        /// <summary>The node <paramref name="child"/> at <paramref name="path"/> refers to, read in place from the buffer when its pointer resolves, otherwise loaded by the store.</summary>
+        /// <exception cref="MissingTrieNodeException">The store has no such node.</exception>
         public Source Load(in TreePath path, in ChildRef child)
         {
             switch (child.Kind)
@@ -366,13 +366,13 @@ internal static partial class BufferBulkSet
             }
 
             Debug.Assert(child.Kind == ChildRefKind.Hash, "Only children of nodes read are loaded.");
-            if (_buffer.TryLocate(child.Pointer, out NodeRecord record))
+            if (_store.TryLocate(child.Pointer, out NodeRecord record))
             {
                 _arena.NodesFromBuffer++;
                 return Source.ForRecord(record, 0);
             }
 
-            if (_source.TryLoad(path, child.Data, out record))
+            if (_store.TryLoad(path, child.Data, out record))
             {
                 _arena.NodesFromSource++;
                 return Source.ForRecord(record, 0);

@@ -14,7 +14,7 @@ namespace Nethermind.Trie.NodeBuffer;
 
 /// <summary>Applies entries to a trie of node records, writing every new node to the trie node buffer, like <see cref="PatriciaTree.BulkSet"/>.</summary>
 /// <remarks>
-/// A node referenced by hash is read in place from the buffer when its pointer resolves, and otherwise from the node source, without being
+/// A node referenced by hash is read in place from the store's buffer when its pointer resolves, and otherwise loaded by the store, without being
 /// added to the buffer. Entries are bucketed by nibble one level at a time; a leaf or extension the entries split is walked in place, less
 /// the key nibbles the split dropped, and copied out only when it changes. New nodes stay pending in a <see cref="BulkSetArena"/> until
 /// the commit encodes them straight into the buffer one path depth at a time, deepest first, hashing each level together.
@@ -34,9 +34,9 @@ internal static partial class BufferBulkSet
     /// <param name="address">The storage trie's address hash, or null for the state trie.</param>
     /// <param name="entries">Reordered in place; keys must be unique.</param>
     /// <param name="canParallelize">Whether the children of a full branch level with enough entries may be updated in parallel.</param>
-    /// <exception cref="MissingTrieNodeException">A node on a changed path is in neither the buffer nor the source.</exception>
+    /// <exception cref="MissingTrieNodeException">The store has no node on a changed path.</exception>
     /// <exception cref="InvalidOperationException">Two entries have the same key.</exception>
-    public static TrieRoot BulkSet(INodeRecordBuffer buffer, INodeRecordSource source, Hash256? address, TrieRoot root,
+    public static TrieRoot BulkSet(INodeRecordStore store, Hash256? address, TrieRoot root,
         in ArrayPoolListRef<BulkSetEntry> entries, bool canParallelize)
     {
         if (entries.Count == 0) return new TrieRoot(root.Hash, NodeRecordCodec.PersistentPointer(root.Pointer));
@@ -56,14 +56,14 @@ internal static partial class BufferBulkSet
             {
                 // The in-place sorts below the threshold need no separate buffer.
                 BulkSetEntry[] entriesArray = entries.UnsafeGetInternalArray();
-                context = new(buffer, source, address, arena, entriesArray, entriesArray, canParallelize);
+                context = new(store, address, arena, entriesArray, entriesArray, canParallelize);
                 rootNode = context.LoadRoot(root);
                 updated = context.Update(entries.AsSpan(), entries.AsSpan(), flipped: false, ref path, rootNode);
             }
             else
             {
                 using ArrayPoolListRef<BulkSetEntry> sortBuffer = new(entries.Count, entries.Count);
-                context = new(buffer, source, address, arena, entries.UnsafeGetInternalArray(), sortBuffer.UnsafeGetInternalArray(), canParallelize);
+                context = new(store, address, arena, entries.UnsafeGetInternalArray(), sortBuffer.UnsafeGetInternalArray(), canParallelize);
                 rootNode = context.LoadRoot(root);
                 updated = context.Update(entries.AsSpan(), sortBuffer.AsSpan(), flipped: false, ref path, rootNode);
             }
@@ -94,14 +94,13 @@ internal static partial class BufferBulkSet
     [DoesNotReturn, StackTraceHidden]
     private static void ThrowNonUniqueKeys() => throw new InvalidOperationException("Non unique entry keys");
 
-    /// <summary>What a bulk set on one arena shares: the buffer and source it reads, the trie it writes and the arrays its entries are in.</summary>
+    /// <summary>What a bulk set on one arena shares: the store it reads and writes, the trie it writes and the arrays its entries are in.</summary>
     /// <param name="entries">The array of the entries passed in.</param>
     /// <param name="sortBuffer">The array of the sort buffer, the same as <paramref name="entries"/> when there is none.</param>
-    private readonly partial struct Context(INodeRecordBuffer buffer, INodeRecordSource source, Hash256? address, BulkSetArena arena,
+    private readonly partial struct Context(INodeRecordStore store, Hash256? address, BulkSetArena arena,
         BulkSetEntry[] entries, BulkSetEntry[] sortBuffer, bool canParallelize)
     {
-        private readonly INodeRecordBuffer _buffer = buffer;
-        private readonly INodeRecordSource _source = source;
+        private readonly INodeRecordStore _store = store;
         private readonly Hash256? _address = address;
         private readonly BulkSetArena _arena = arena;
         private readonly BulkSetEntry[] _entries = entries;
