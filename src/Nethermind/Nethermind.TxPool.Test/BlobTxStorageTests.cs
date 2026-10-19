@@ -367,11 +367,9 @@ public class BlobTxStorageTests
         Transaction[] results = Enumerable.Repeat<Transaction>(stored[0], count + 1).ToArray();
         Transaction[] expected = new Transaction[count + 1];
         expected[^1] = stored[0];
-        DbConfig config = new();
-        RocksDbConfigFactory factory = new(config, new PruningConfig(), new TestHardwareInfo(1.GiB),
-            LimboLogs.Instance, validateConfig: false);
+        using IContainer configs = new ContainerBuilder().AddModule(new TestNethermindModule()).Build();
         using (ColumnsDb<BlobTxsColumns> db = new(directory.Path, new DbSettings(DbNames.BlobTransactions, "blobs"),
-            config, factory, LimboLogs.Instance, Enum.GetValues<BlobTxsColumns>()))
+            configs.Resolve<IDbConfig>(), configs.Resolve<IRocksDbConfigFactory>(), LimboLogs.Instance, Enum.GetValues<BlobTxsColumns>()))
         {
             using IContainer container = new ContainerBuilder()
                 .AddModule(new TestNethermindModule())
@@ -409,10 +407,13 @@ public class BlobTxStorageTests
             }
         }
 
-        for (int i = 0; i < results.Length; i++)
+        using (Assert.EnterMultipleScope())
         {
-            Assert.That(results[i], Is.EqualTo(expected[i])
-                .UsingTransactionComparer(nameof(Transaction.GasBottleneck), nameof(Transaction.PoolIndex)));
+            for (int i = 0; i < results.Length; i++)
+            {
+                Assert.That(results[i], Is.EqualTo(expected[i])
+                    .UsingTransactionComparer(nameof(Transaction.GasBottleneck), nameof(Transaction.PoolIndex)));
+            }
         }
     }
 
