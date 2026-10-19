@@ -29,7 +29,6 @@ using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.Trie;
 using Nethermind.Trie.NodeBuffer;
-using Bloom = Nethermind.Core.Collections.BloomFilter;
 
 namespace Nethermind.State.Flat.Test;
 
@@ -414,7 +413,7 @@ public class ReadOnlySnapshotBundleFilterTests
 
         using ReadOnlySnapshotBundle bundle = stack.CreateBundle(RealBitsPerKey, detailedMetrics: false, out _);
         bundle.GetSlotFiltered(-1, (Addresses[0], (UInt256)1), out _);
-        Bloom filter = bundle.SlotFilter!;
+        BloomFilter filter = bundle.SlotFilter!;
 
         Assert.That(written.Where(key => !filter.MightContain(Snapshot.StorageFilterKey(key))), Is.Empty);
     }
@@ -504,7 +503,7 @@ public class ReadOnlySnapshotBundleFilterTests
         ReadOnlySnapshotBundle bundle = stack.CreateBundle(RealBitsPerKey, detailedMetrics: false, out _);
         Assert.That(bundle.TryLease(), Is.True);
         bundle.GetSlotFiltered(-1, (Addresses[0], (UInt256)1), out _);
-        Bloom filter = bundle.SlotFilter!;
+        BloomFilter filter = bundle.SlotFilter!;
 
         using (Assert.EnterMultipleScope())
         {
