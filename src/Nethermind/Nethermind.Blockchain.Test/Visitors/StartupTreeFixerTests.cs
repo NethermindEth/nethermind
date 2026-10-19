@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -115,7 +116,7 @@ public class StartupTreeFixerTests
         // Restart with the persisted state at block 2.
         tree = Build.A.BlockTree().WithoutSettingHead.WithDatabaseFrom(builder).WithBestPersistedState(2).TestObject;
         IStateReader stateReader = Substitute.For<IStateReader>();
-        stateReader.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(c => c.Arg<BlockHeader>().Number <= System.Math.Max(keptUpTo, 2));
+        stateReader.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(c => c.Arg<BlockHeader>().Number <= Math.Max(keptUpTo, 2));
         List<Hash256> suggested = [];
         tree.NewBestSuggestedBlock += (_, e) => suggested.Add(e.Block.Hash!);
         Assert.That(tree.Head!.Number, Is.EqualTo(2ul));

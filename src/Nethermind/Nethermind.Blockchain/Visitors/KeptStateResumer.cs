@@ -16,6 +16,8 @@ namespace Nethermind.Blockchain.Visitors;
 /// Runs before <see cref="StartupBlockTreeFixer"/>, which then suggests only the blocks above the new head. Stops at
 /// the first canonical block that was not processed or has no state, so the head moves over an unbroken run. If the
 /// head cannot be moved nothing changes and every block is re-executed as before.
+/// <para>It does not depend on the state backend: a backend that keeps no state above the persisted head, such as the
+/// trie, or the flat DB without long finality, leaves it nothing to do.</para>
 /// </remarks>
 public static class KeptStateResumer
 {
