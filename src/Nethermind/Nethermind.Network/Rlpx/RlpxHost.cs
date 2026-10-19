@@ -61,6 +61,7 @@ namespace Nethermind.Network.Rlpx
         private readonly TimeSpan _shutdownQuietPeriod;
         private readonly TimeSpan _shutdownCloseTimeout;
         private CancellationTokenSource? _shutdownCts = new();
+        private readonly Lock _dialLock = new();
 
         public RlpxHost(
             IMessageSerializationService serializationService,
@@ -288,8 +289,6 @@ namespace Nethermind.Network.Rlpx
         private async Task<bool> TryConnect(Node node, CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            // Stoppables stop in parallel, so the peer manager can still dial once Shutdown has begun closing the worker group.
-            if (Volatile.Read(ref _shutdownCts) is null) return false;
             ConnectionAttempt attempt = new();
             Bootstrap clientBootstrap = new();
             clientBootstrap
@@ -302,7 +301,16 @@ namespace Nethermind.Network.Rlpx
                 .Option(ChannelOption.ConnectTimeout, _connectTimeout);
             clientBootstrap.Handler(new OutboundChannelInitializer(this, node, attempt));
 
-            Task<IChannel> connectTask = clientBootstrap.ConnectAsync(node.Address);
+            Task<IChannel> connectTask;
+            // Stoppables stop in parallel, so the peer manager can still dial during Shutdown. ConnectAsync queues the
+            // channel registration synchronously, so under the lock a dial either reaches the worker group before
+            // Shutdown starts closing it or is skipped.
+            lock (_dialLock)
+            {
+                if (_shutdownCts is null) return false;
+                connectTask = clientBootstrap.ConnectAsync(node.Address);
+            }
+
             using CancellationTokenSource delayCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             Task firstTask = await Task.WhenAny(connectTask, Task.Delay(_connectTimeout.Add(TimeSpan.FromSeconds(2)), delayCancellation.Token));
             if (firstTask != connectTask)
@@ -566,7 +574,10 @@ namespace Nethermind.Network.Rlpx
 
         public async Task Shutdown()
         {
-            CancellationTokenExtensions.CancelDisposeAndClear(ref _shutdownCts);
+            lock (_dialLock)
+            {
+                CancellationTokenExtensions.CancelDisposeAndClear(ref _shutdownCts);
+            }
 
             // Close channels first so Disconnected handlers fire while subscriptions are still active
             await (_bootstrapChannel?.CloseAsync().ContinueWith(t =>
