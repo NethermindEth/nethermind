@@ -82,6 +82,7 @@ jobs:
         with:
           name: ${{ env.PACKAGE_PREFIX }}-linux-arm64-package
           path: ${{ github.workspace }}/${{ env.PACKAGE_DIR }}/*linux-arm64*
+          compression-level: 0
           retention-days: ${{ env.PACKAGE_RETENTION }}
 
       - name: Upload Nethermind Linux x64 package
@@ -89,6 +90,7 @@ jobs:
         with:
           name: ${{ env.PACKAGE_PREFIX }}-linux-x64-package
           path: ${{ github.workspace }}/${{ env.PACKAGE_DIR }}/*linux-x64*
+          compression-level: 0
           retention-days: ${{ env.PACKAGE_RETENTION }}
 
       - name: Upload Nethermind macOS arm64 package
@@ -96,6 +98,7 @@ jobs:
         with:
           name: ${{ env.PACKAGE_PREFIX }}-macos-arm64-package
           path: ${{ github.workspace }}/${{ env.PACKAGE_DIR }}/*macos-arm64*
+          compression-level: 0
           retention-days: ${{ env.PACKAGE_RETENTION }}
 
       - name: Upload Nethermind macOS x64 package
@@ -103,6 +106,7 @@ jobs:
         with:
           name: ${{ env.PACKAGE_PREFIX }}-macos-x64-package
           path: ${{ github.workspace }}/${{ env.PACKAGE_DIR }}/*macos-x64*
+          compression-level: 0
           retention-days: ${{ env.PACKAGE_RETENTION }}
 
       - name: Upload Nethermind Windows arm64 package
@@ -110,6 +114,7 @@ jobs:
         with:
           name: ${{ env.PACKAGE_PREFIX }}-windows-arm64-package
           path: ${{ github.workspace }}/${{ env.PACKAGE_DIR }}/*windows-arm64*
+          compression-level: 0
           retention-days: ${{ env.PACKAGE_RETENTION }}
 
       - name: Upload Nethermind Windows x64 package
@@ -117,6 +122,7 @@ jobs:
         with:
           name: ${{ env.PACKAGE_PREFIX }}-windows-x64-package
           path: ${{ github.workspace }}/${{ env.PACKAGE_DIR }}/*windows-x64*
+          compression-level: 0
           retention-days: ${{ env.PACKAGE_RETENTION }}
 
       - name: Upload Nethermind reference assemblies
@@ -124,6 +130,7 @@ jobs:
         with:
           name: ${{ env.PACKAGE_PREFIX }}-ref-assemblies-package
           path: ${{ github.workspace }}/${{ env.PACKAGE_DIR }}/*ref-assemblies*
+          compression-level: 0
           retention-days: ${{ env.PACKAGE_RETENTION }}
 
   approval:
@@ -251,6 +258,10 @@ jobs:
       attestations: write
       contents: read
       id-token: write
+    strategy:
+      matrix:
+        # One image per job, so each is attested while the job's Docker Hub token is still valid
+        dockerfile: [Dockerfile, Dockerfile.chiseled]
     steps:
       - name: Check out Nethermind repository
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
@@ -279,6 +290,8 @@ jobs:
 
       - name: Build and push image to Docker Hub
         id: build
+        env:
+          DOCKERFILE: ${{ matrix.dockerfile }}
         run: |
           image=nethermind/nethermind
           # The OCI created label must be RFC 3339 and must come from the same commit timestamp
@@ -286,31 +299,26 @@ jobs:
           source_date_epoch=$(git log -1 --format=%ct)
           build_timestamp=$(date -u -d @$source_date_epoch +%Y-%m-%dT%H:%M:%SZ)
 
-          for suffix in "" ".chiseled"; do
-            tag_suffix=$([[ -z "$suffix" ]] && echo "" || echo "-${suffix:1}")
-            docker buildx build . --platform=linux/amd64,linux/arm64 -f Dockerfile$suffix \
-              ${{ needs.build.outputs.prerelease == 'false' && '-t $image:latest$tag_suffix' || '' }} \
-              -t "$image:${{ needs.build.outputs.version }}$tag_suffix" \
-              --build-arg CI=$CI \
-              --build-arg COMMIT_HASH=$GITHUB_SHA \
-              --build-arg VERSION=${{ needs.build.outputs.version }} \
-              --build-arg SOURCE_DATE_EPOCH=$source_date_epoch \
-              --build-arg BUILD_TIMESTAMP=$build_timestamp \
-              --metadata-file "$RUNNER_TEMP/metadata$suffix.json" \
-              --output type=registry,rewrite-timestamp=true
-            echo "digest${suffix/./-}=$(jq -r '."containerimage.digest"' "$RUNNER_TEMP/metadata$suffix.json")" >> $GITHUB_OUTPUT
-          done
+          suffix=${DOCKERFILE#Dockerfile}
+          tag_suffix=$([[ -z "$suffix" ]] && echo "" || echo "-${suffix:1}")
+          # BuildKit's own provenance embeds a per-build invocation ID in the image index, so it is
+          # disabled to keep the index digest reproducible; the attestation below replaces it.
+          docker buildx build . --platform=linux/amd64,linux/arm64 -f $DOCKERFILE \
+            ${{ needs.build.outputs.prerelease == 'false' && '-t $image:latest$tag_suffix' || '' }} \
+            -t "$image:${{ needs.build.outputs.version }}$tag_suffix" \
+            --build-arg CI=$CI \
+            --build-arg COMMIT_HASH=$GITHUB_SHA \
+            --build-arg VERSION=${{ needs.build.outputs.version }} \
+            --build-arg SOURCE_DATE_EPOCH=$source_date_epoch \
+            --build-arg BUILD_TIMESTAMP=$build_timestamp \
+            --provenance=false \
+            --metadata-file "$RUNNER_TEMP/metadata.json" \
+            --output type=registry,rewrite-timestamp=true
+          echo "digest=$(jq -r '."containerimage.digest"' "$RUNNER_TEMP/metadata.json")" >> $GITHUB_OUTPUT
 
       - name: Attest image build provenance
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-name: index.docker.io/nethermind/nethermind
           subject-digest: ${{ steps.build.outputs.digest }}
-          push-to-registry: true
-
-      - name: Attest chiseled image build provenance
-        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
-        with:
-          subject-name: index.docker.io/nethermind/nethermind
-          subject-digest: ${{ steps.build.outputs.digest-chiseled }}
           push-to-registry: true
