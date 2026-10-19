@@ -9,6 +9,7 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Precompiles;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -84,9 +85,9 @@ public static class VirtualMachineStatics
         255, 255, 255, 255, 255, 255, 255, 255
     };
 
-    public static readonly PrecompileExecutionFailureException PrecompileExecutionFailureException = new();
-    public static readonly OutOfGasException PrecompileOutOfGasException = new();
-    internal static readonly Address Ripemd160Address = Address.FromNumber(3);
+    public static PrecompileExecutionFailureException PrecompileExecutionFailureException => field ??= new();
+    public static OutOfGasException PrecompileOutOfGasException => field ??= new();
+    internal static readonly Address Ripemd160Address = PrecompiledAddresses.Ripemd160;
     internal const string EcRecoverPrecompileName = "ECREC";
 
     /// <summary>
@@ -111,8 +112,6 @@ public static class VirtualMachineStatics
 /// <summary>Retains nested return scratch and tracks the logical length of the currently staged output.</summary>
 internal struct ReturnDataScratch
 {
-    internal const int MaxRetainedLength = 32 * 1024;
-
     private byte[] _retained;
     private byte[]? _staged;
     private int _stagedLength;
@@ -230,30 +229,35 @@ public partial class VirtualMachine<TGasPolicy>(
     public ref readonly UInt256 ChainId => ref _chainId;
     public ref ReadOnlyMemory<byte> ReturnDataBuffer => ref _returnDataBuffer;
 
-    internal void StageReturnData(ReadOnlySpan<byte> returnData)
+    internal void StageReturnData(ReadOnlySpan<byte> returnData, bool isRevert)
     {
-        // Only nested non-create outputs are consumed before this buffer can be reused by a later child call.
-        bool allowReuse = _tracerAllowsReturnScratch
-            && !returnData.IsEmpty
-            && returnData.Length <= ReturnDataScratch.MaxRetainedLength
-            && !_currentState.IsTopLevel
-            && !_currentState.ExecutionType.IsAnyCreate();
+        // Nested outputs are consumed before this buffer can be reused by a later child call, and a create's
+        // output may become the deployed code. A top-level call output may reuse it only when the tracer reads no
+        // transaction output: the substate is then consumed before this VM runs again.
+        bool allowReuse = !returnData.IsEmpty
+            && returnData.Length <= MaxRetainedReturnDataLength
+            && (_currentState.IsTopLevel
+                ? _tracerFlags.AllowsTopLevelReturnScratch && !_currentState.ExecutionType.IsAnyCreate()
+                : _tracerFlags.AllowsReturnScratch
+                    && (!_currentState.ExecutionType.IsAnyCreate() || IsUndeployableCreateOutput(returnData.Length, isRevert)));
 
         ReturnData = _returnDataScratch.Stage(returnData, allowReuse);
     }
+
+    /// <summary>Whether a create frame's output of <paramref name="length"/> bytes, reverted or returned, is never deployed, so nothing reads it once the frame returns.</summary>
+    private partial bool IsUndeployableCreateOutput(int length, bool isRevert);
 
     public PoppedAddressCache AddressCache { get; } = new();
     public IBlockhashProvider BlockHashProvider => _blockHashProvider;
     protected VmStateStack<TGasPolicy> StateStack => _stateStack;
     // Tracer capabilities are fixed for one execution. IsCancelable also selects both the dispatch table
     // and its matching loop specialization; IsTracingImplicitStop avoids walking the tracer graph at frame exit.
-    internal bool IsTracingActions { get => DispatchFlags.Tracing(field); private set; }
-    internal bool IsTracingRefunds { get => DispatchFlags.Tracing(field); private set; }
-    private bool _isCancelableCached;
-    internal bool IsTracingAccess { get => DispatchFlags.Tracing(field); private set; }
-    internal bool IsTracingOpLevelStorage { get => DispatchFlags.Tracing(field); private set; }
+    private VmTracerFlags _tracerFlags;
+    internal bool IsTracingActions => _tracerFlags.IsTracingActions;
+    internal bool IsTracingRefunds => _tracerFlags.IsTracingRefunds;
+    internal bool IsTracingAccess => _tracerFlags.IsTracingAccess;
+    internal bool IsTracingOpLevelStorage => _tracerFlags.IsTracingOpLevelStorage;
     private bool IsTracingImplicitStop { get => DispatchFlags.Tracing(field); set; }
-    private bool _tracerAllowsReturnScratch;
 
     private BlockExecutionContext _blockExecutionContext;
     public virtual void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
@@ -327,16 +331,8 @@ public partial class VirtualMachine<TGasPolicy>(
     {
         // Initialize dependencies for transaction tracing and state access.
         _txTracer = txTracer;
-        IsTracingActions = txTracer.IsTracingActions;
-        IsTracingRefunds = txTracer.IsTracingRefunds;
-        _isCancelableCached = txTracer.IsCancelable;
-        IsTracingAccess = txTracer.IsTracingAccess;
-        IsTracingOpLevelStorage = txTracer.IsTracingOpLevelStorage;
+        _tracerFlags = new(txTracer);
         IsTracingImplicitStop = TTracingInst.IsActive && txTracer.Any<ITraceImplicitStop>(static tracer => tracer.IsTracingInstructions);
-        _tracerAllowsReturnScratch = !txTracer.IsTracingActions
-            && !txTracer.IsTracingInstructions
-            && !txTracer.IsTracingMemory
-            && !txTracer.IsTracingReturnData;
         DispatchFlags.Validate(txTracer);
         _worldState = worldState;
         _isInstructionTraceActive = false;
@@ -709,6 +705,12 @@ public partial class VirtualMachine<TGasPolicy>(
             executionDepositCost = ulong.MaxValue;
             stateDepositCost = long.MaxValue;
         }
+        else if (previousState.ExecutionType == ExecutionType.TCREATE)
+        {
+            // EIP-8360: TCREATE code is discarded at the end of the transaction, so it pays no code-deposit cost.
+            executionDepositCost = 0;
+            stateDepositCost = 0;
+        }
 
         bool invalidCode = CodeDepositHandler.CodeIsInvalid(spec, callResult.Output);
         TryChargeAndDepositCode(previousState, gasAvailableForCodeDeposit, ref previousStateSucceeded,
@@ -758,13 +760,21 @@ public partial class VirtualMachine<TGasPolicy>(
         {
             TGasPolicy gasAfterCodeDeposit = _currentState.Gas;
             // EIP-8279: the deployed code joins the block access list once its deposit is paid for; an out-of-gas
-            // there fails the deposit.
+            // there fails the deposit. EIP-8360 TCREATE code is discarded at the end of the transaction.
             chargedCodeDeposit = TGasPolicy.TryConsumeStateAndExecutionGas(ref gasAfterCodeDeposit, stateDepositCost, executionDepositCost)
-                && TryMeterBalData((ulong)code.Length);
+                && (previousState.ExecutionType == ExecutionType.TCREATE || TryMeterBalData((ulong)code.Length));
             if (chargedCodeDeposit)
             {
                 _currentState.Gas = gasAfterCodeDeposit;
-                _codeInfoRepository.InsertCode(code, callCodeOwner, spec);
+                if (previousState.ExecutionType == ExecutionType.TCREATE)
+                {
+                    // EIP-8360: paid no deposit, so the code must not reach the code database.
+                    _codeInfoRepository.InsertTransientCode(code, callCodeOwner, spec);
+                }
+                else
+                {
+                    _codeInfoRepository.InsertCode(code, callCodeOwner, spec);
+                }
                 if (IsTracingActions)
                 {
                     _txTracer.ReportActionEnd(TGasPolicy.GetRemainingGas(previousState.Gas) - codeDepositGasCost, callCodeOwner, code);
@@ -1285,7 +1295,7 @@ public partial class VirtualMachine<TGasPolicy>(
             Environment.Exit(ExitCodes.MissingPrecompile);
             throw; // Unreachable
         }
-        catch (Exception exception) when (exception is not KzgSetupUnavailableException)
+        catch (Exception exception) when (!IsNodeFault(exception))
         {
             if (_logger.IsError) LogExecutionException(precompile, exception);
             output = default;
@@ -1399,9 +1409,15 @@ public partial class VirtualMachine<TGasPolicy>(
     private unsafe CallResult RunPrecompile(VmState<TGasPolicy> state) =>
         GetExecutionHandlers().RunPrecompile(this, state);
 
-    private CallResult RunPrecompile<Eip158>(VmState<TGasPolicy> state)
+    private CallResult RunPrecompile<Eip158, Eip8360>(VmState<TGasPolicy> state)
         where Eip158 : struct, IFlag
+        where Eip8360 : struct, IFlag
     {
+        if (Eip8360.IsActive && state.AccessTracker.TransientCreates is not null && !TryChargeTransientCreateTransfer(state, isNewTransientCreate: false))
+        {
+            return new(default, precompileSuccess: false, shouldRevert: true, EvmExceptionType.OutOfGas);
+        }
+
         ReadOnlyMemory<byte> callData = state.Env.InputData;
         ref readonly UInt256 transferValue = ref state.ExecutionType.GetBalanceCredit(in state.Env.Value);
         TGasPolicy gas = state.Gas;
@@ -1445,6 +1461,10 @@ public partial class VirtualMachine<TGasPolicy>(
     /// Subclasses may override this to support precompile variants that compute and report their own dynamic
     /// gas consumption after execution.
     /// </summary>
+    /// <remarks>
+    /// An exception from <see cref="IPrecompile.Run"/> fails the call, except a missing KZG setup and running out of
+    /// memory (even as an inner exception): those are node faults with no counterpart in the execution spec, so they propagate instead.
+    /// </remarks>
     protected virtual CallResult ExecutePrecompileCall(
         VmState<TGasPolicy> state,
         IPrecompile precompile,
@@ -1482,7 +1502,7 @@ public partial class VirtualMachine<TGasPolicy>(
             Environment.Exit(ExitCodes.MissingPrecompile);
             throw; // Unreachable
         }
-        catch (Exception exception) when (exception is not KzgSetupUnavailableException)
+        catch (Exception exception) when (!IsNodeFault(exception))
         {
             if (_logger.IsError) LogExecutionException(precompile, exception);
             return new(default, precompileSuccess: false, shouldRevert: true);
@@ -1543,6 +1563,9 @@ public partial class VirtualMachine<TGasPolicy>(
         _ => throw new ArgumentOutOfRangeException(nameof(exception)),
     };
 
+    private static bool IsNodeFault(Exception exception) =>
+        exception is KzgSetupUnavailableException or OutOfMemoryException or { InnerException: OutOfMemoryException };
+
     /// <summary>The error of a call whose precompile rejected its input: the precompile's own reason, as go-ethereum reports it.</summary>
     protected static string GetErrorString(string? error)
         => error ?? EvmExceptionType.PrecompileFailure.GetEvmExceptionDescription()!;
@@ -1590,7 +1613,10 @@ public partial class VirtualMachine<TGasPolicy>(
         // If this is the first call frame (not a continuation), adjust account balances and nonces.
         if (!vmState.IsContinuation)
         {
-            GetExecutionHandlers().InitializeFrame(this, vmState);
+            if (!GetExecutionHandlers().InitializeFrame(this, vmState))
+            {
+                return new CallResult(EvmExceptionType.OutOfGas);
+            }
         }
 
         // If no machine code is present, treat the call as empty.
@@ -1675,7 +1701,7 @@ public partial class VirtualMachine<TGasPolicy>(
         // - OnFlag is used when cancellation is enabled.
         // This leverages the compile-time evaluation of TTracingInst to optimize away runtime checks.
         // Read from the value pinned at transaction start, which is also what chose the dispatch table.
-        return DispatchFlags.Cancelable(_isCancelableCached) switch
+        return DispatchFlags.Cancelable(_tracerFlags.IsCancelable) switch
         {
             false => RunByteCode<TTracingInst, OffFlag>(ref stack, ref gas),
             true => RunByteCode<TTracingInst, OnFlag>(ref stack, ref gas),
@@ -1768,7 +1794,7 @@ public partial class VirtualMachine<TGasPolicy>(
 
     private CallResult GetFailureReturn(ulong gasAvailable, EvmExceptionType exceptionType)
     {
-        if (DispatchFlags.ConstTracing && _txTracer.IsTracingInstructions) EndInstructionTrace(gasAvailable, exceptionType);
+        if (_tracerFlags.IsTracingInstructions) EndInstructionTrace(gasAvailable, exceptionType);
         if (IsTracingActions) _txTracer.ReportActionRemainingGas(gasAvailable);
 
         return exceptionType switch
@@ -1856,7 +1882,7 @@ public partial class VirtualMachine<TGasPolicy>(
     {
         VmState.AccessTracker.Logs.Add(logEntry);
 
-        if (DispatchFlags.ConstTracing && TxTracer.IsTracingLogs)
+        if (_tracerFlags.IsTracingLogs)
         {
             TxTracer.ReportLog(logEntry);
         }

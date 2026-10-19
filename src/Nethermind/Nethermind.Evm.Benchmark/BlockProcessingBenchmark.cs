@@ -479,7 +479,7 @@ public class BlockProcessingBenchmark
         // matching the live client's block processing path.
         IDbProvider dbProvider = TestMemDbProvider.Init();
         TestStateHeaderProvider stateHeaderProvider = new();
-        IWorldStateManager wsm = TestWorldStateFactory.CreateWorldStateManagerForTest(dbProvider, stateHeaderProvider, LimboLogs.Instance);
+        IWorldStateManager wsm = TestWorldStateFactory.CreateWorldStateManagerForTest(dbProvider, stateHeaderProvider, NullLogManager.Instance);
         IWorldStateScopeProvider scopeProvider = wsm.GlobalWorldState;
 
         IBlockValidationModule[] validationModules = _container.Resolve<IBlockValidationModule[]>();
@@ -559,6 +559,11 @@ public class BlockProcessingBenchmark
                 .WithGasLimit(30_000_000)
                 .TestObject;
             stateHeaderProvider.Parent = _parentHeader;
+
+            // Every scenario block shares _header, and BranchProcessor opens a block's scope at the state of the
+            // header its ParentHash resolves to.
+            _header.ParentHash = _parentHeader.Hash;
+            _header.Hash = _header.CalculateHash();
         }
 
         _branchProcessor = _processingScope.Resolve<IBranchProcessor>();

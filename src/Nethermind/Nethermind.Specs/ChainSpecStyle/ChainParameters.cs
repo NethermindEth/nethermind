@@ -192,6 +192,7 @@ public class ChainParameters
     /// <summary>EIP-8347 activation Unix timestamp in seconds; null disables activation.</summary>
     public ulong? Eip8347TransitionTimestamp { get; set; }
     public ulong? Eip8253TransitionTimestamp { get; set; }
+    public ulong? Eip7709TransitionTimestamp { get; set; }
     public ulong? Eip8038TransitionTimestamp { get; set; }
     public ulong? Eip8282TransitionTimestamp { get; set; }
     public ulong? Eip8141TransitionTimestamp { get; set; }
@@ -204,6 +205,9 @@ public class ChainParameters
     public ulong? Eip7843TransitionTimestamp { get; set; }
     public ulong? Eip7954TransitionTimestamp { get; set; }
     public ulong? Eip2780TransitionTimestamp { get; set; }
+    public ulong? Eip5920TransitionTimestamp { get; set; }
+    public ulong? Eip8116TransitionTimestamp { get; set; }
+    public ulong? Eip8360TransitionTimestamp { get; set; }
     public ulong? Eip3298TransitionTimestamp { get; set; }
     public ulong? Eip8131TransitionTimestamp { get; set; }
     public ulong? Eip8279TransitionTimestamp { get; set; }

@@ -142,7 +142,7 @@ public sealed class SortedSpool : IDisposable
                 _segment = null;
                 spool.Submit(segment);
             }
-            Interlocked.Decrement(ref spool._openWriters);
+            lock (spool._lock) spool._openWriters--;
         }
     }
 

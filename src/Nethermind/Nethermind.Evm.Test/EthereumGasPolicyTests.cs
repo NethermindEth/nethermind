@@ -430,10 +430,10 @@ public class EthereumGasPolicyTests
         spec.ClearReceivedCalls();
         bool actual = (eip3860, eip8038) switch
         {
-            (true, true) => ChargeCreate<EvmInstructions.CreateSpec<OffFlag, OffFlag, OnFlag, Eip8038On, OffFlag>>(ref specializedGas, spec, eip8037, create2, words),
-            (true, false) => ChargeCreate<EvmInstructions.CreateSpec<OffFlag, OffFlag, OnFlag, Eip8038Off, OffFlag>>(ref specializedGas, spec, eip8037, create2, words),
-            (false, true) => ChargeCreate<EvmInstructions.CreateSpec<OffFlag, OffFlag, OffFlag, Eip8038On, OffFlag>>(ref specializedGas, spec, eip8037, create2, words),
-            (false, false) => ChargeCreate<EvmInstructions.CreateSpec<OffFlag, OffFlag, OffFlag, Eip8038Off, OffFlag>>(ref specializedGas, spec, eip8037, create2, words),
+            (true, true) => ChargeCreate<EvmInstructions.CreateSpec<OffFlag, OffFlag, OnFlag, Eip8038On, OffFlag, OffFlag>>(ref specializedGas, spec, eip8037, create2, words),
+            (true, false) => ChargeCreate<EvmInstructions.CreateSpec<OffFlag, OffFlag, OnFlag, Eip8038Off, OffFlag, OffFlag>>(ref specializedGas, spec, eip8037, create2, words),
+            (false, true) => ChargeCreate<EvmInstructions.CreateSpec<OffFlag, OffFlag, OffFlag, Eip8038On, OffFlag, OffFlag>>(ref specializedGas, spec, eip8037, create2, words),
+            (false, false) => ChargeCreate<EvmInstructions.CreateSpec<OffFlag, OffFlag, OffFlag, Eip8038Off, OffFlag, OffFlag>>(ref specializedGas, spec, eip8037, create2, words),
         };
 
         using (Assert.EnterMultipleScope())
@@ -539,6 +539,19 @@ public class EthereumGasPolicyTests
             Assert.That(EthereumGasPolicy.GetStateReservoir(in available), Is.Zero);
             Assert.That(EthereumGasPolicy.GetStateGasUsed(in available), Is.EqualTo(expectedSuccess ? intrinsic.StateReservoir : 0));
         }
+    }
+
+    [Test]
+    public void CreateAvailableFromIntrinsic_moves_gas_above_the_execution_cap_to_the_reservoir_only_when_capped([Values] bool capExecutionGas)
+    {
+        EthereumGasPolicy intrinsic = new() { Value = 21_000 };
+        ulong gasLimit = Eip7825Constants.DefaultTxGasLimitCap * 2;
+
+        Assert.That(EthereumGasPolicy.TryCreateAvailableFromIntrinsic(gasLimit, in intrinsic, Amsterdam.Instance, out EthereumGasPolicy available, capExecutionGas), Is.True);
+
+        ulong expectedRemaining = capExecutionGas ? Eip7825Constants.DefaultTxGasLimitCap - 21_000 : gasLimit - 21_000;
+        Assert.That((EthereumGasPolicy.GetRemainingGas(in available), EthereumGasPolicy.GetStateReservoir(in available)),
+            Is.EqualTo((expectedRemaining, (long)(gasLimit - 21_000 - expectedRemaining))));
     }
 
     [Test]

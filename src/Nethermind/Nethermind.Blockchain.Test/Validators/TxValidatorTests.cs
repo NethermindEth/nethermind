@@ -98,6 +98,25 @@ public class TxValidatorTests
         Assert.That(txValidator.IsWellFormed(tx, MuirGlacier.Instance).AsBool(), Is.False);
     }
 
+    // 2 * chainId + 36 must fit in a ulong v; above that the EIP-155 values cannot be represented at all.
+    [MaxTime(Timeout.MaxTestTime)]
+    [TestCase(EthereumEcdsaExtensions.MaxEip155ChainId, 2 * EthereumEcdsaExtensions.MaxEip155ChainId + 35, ExpectedResult = true)]
+    [TestCase(EthereumEcdsaExtensions.MaxEip155ChainId, 2 * EthereumEcdsaExtensions.MaxEip155ChainId + 36, ExpectedResult = true)]
+    [TestCase(EthereumEcdsaExtensions.MaxEip155ChainId + 1, 2 * EthereumEcdsaExtensions.MaxEip155ChainId + 37, ExpectedResult = true)]
+    [TestCase((1ul << 63) - 1, 33ul, ExpectedResult = false)]
+    [TestCase((1ul << 63) - 1, 34ul, ExpectedResult = false)]
+    [TestCase(1ul << 63, 35ul, ExpectedResult = false)]
+    [TestCase(1ul << 63, 36ul, ExpectedResult = false)]
+    [TestCase(ulong.MaxValue, 33ul, ExpectedResult = false)]
+    public bool Legacy_v_is_checked_against_large_chain_ids(ulong chainId, ulong v)
+    {
+        Signature signature = new(UInt256.One, UInt256.One, v);
+        Transaction tx = Build.A.Transaction.WithSignature(signature).TestObject;
+
+        TxValidator txValidator = new(chainId);
+        return txValidator.IsWellFormed(tx, MuirGlacier.Instance);
+    }
+
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void No_chain_id_legacy_tx_is_valid()
     {
@@ -1468,17 +1487,17 @@ public class TxValidatorTests
     }
 }
 
-/// <summary>The EIP-7906 fork gate on the <c>POST_TX</c> frame mode.</summary>
+/// <summary>The EIP-7906 fork gate on the <c>ASSERT</c> frame mode.</summary>
 /// <remarks>
 /// Before the fork the mode is undefined, and a node treating such a frame as DEFAULT would execute
 /// it with write access, which the assertion semantics forbid.
 /// </remarks>
 [TestFixture]
-public class FrameTxPostTxModeGateTests
+public class FrameTxAssertFrameModeGateTests
 {
-    [TestCase(false, ExpectedResult = true, TestName = "PostTx frame is admitted once EIP-7906 is enabled")]
-    [TestCase(true, ExpectedResult = false, TestName = "PostTx frame is rejected before EIP-7906")]
-    public bool IsWellFormed_PostTxFrame_IsGatedOnTheFork(bool beforeTheFork)
+    [TestCase(false, ExpectedResult = true, TestName = "ASSERT frame is admitted once EIP-7906 is enabled")]
+    [TestCase(true, ExpectedResult = false, TestName = "ASSERT frame is rejected before EIP-7906")]
+    public bool IsWellFormed_AssertFrame_IsGatedOnTheFork(bool beforeTheFork)
     {
         OverridableReleaseSpec spec = new(Eip8141Prototype.Instance) { IsEip7906Enabled = !beforeTheFork };
         Transaction tx = new()
@@ -1488,7 +1507,7 @@ public class FrameTxPostTxModeGateTests
             Frames =
             [
                 SelfVerify(PrefixFrameGas),
-                PostTx(PrefixFrameGas),
+                AssertFrame(PrefixFrameGas),
             ],
         };
 

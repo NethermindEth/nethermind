@@ -110,6 +110,7 @@ public class DiscoveryModule(IInitConfig initConfig, INetworkConfig networkConfi
             builder
                 .AddSingleton<IDiscoveryApp, CompositeDiscoveryApp>()
                 .AddSingleton<INodeRecordProvider, NodeRecordProvider>()
+                .AddSingleton<SnapEnrAdvertisement>()
 
                 .AddNetworkStorage(DbNames.DiscoveryNodes, DbNames.DiscoveryNodes)
                 .AddNetworkStorage(DbNames.DiscoveryV5Nodes, DbNames.DiscoveryV5Nodes)

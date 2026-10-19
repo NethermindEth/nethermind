@@ -83,7 +83,7 @@ public class MigrationEngineRpcE2ETests
         }
 
         BlockParameter unavailableRequested = new(unavailable.Hash!);
-        ResultWrapper<UInt256?> unavailableBalance = await eth.eth_getBalance(Address.Zero, unavailableRequested);
+        ResultWrapper<UInt256?> unavailableBalance = eth.eth_getBalance(Address.Zero, unavailableRequested);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(unavailableBalance.ErrorCode, Is.EqualTo(-32002));
@@ -106,7 +106,7 @@ public class MigrationEngineRpcE2ETests
         }
         Assert.That(harness.Reader.HasStateForBlock(head.Header), Is.True);
         BlockParameter requested = new(head.Hash!);
-        ResultWrapper<UInt256?> balance = await eth.eth_getBalance(Address.Zero, requested);
+        ResultWrapper<UInt256?> balance = eth.eth_getBalance(Address.Zero, requested);
         Assert.That(balance.Result.ResultType, Is.EqualTo(ResultType.Success), balance.Result.Error);
         UInt256 balanceValue = Eip8347FixtureState.LoadAllocation(harness.FixtureDirectory, "a4")[Address.Zero].Balance!.Value;
         IResultWrapper proof = eth.eth_getProof(Address.Zero, [], requested);

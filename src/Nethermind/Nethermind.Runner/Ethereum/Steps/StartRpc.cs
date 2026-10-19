@@ -26,6 +26,7 @@ using Nethermind.KeyStore.Config;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.Synchronization;
+using Nethermind.Network;
 using Nethermind.Runner.JsonRpc;
 using Nethermind.Sockets;
 using Nethermind.Specs.ChainSpecStyle;
@@ -95,7 +96,8 @@ public class StartRpc(INethermindApi api, IJsonRpcServiceConfigurer[] serviceCon
                 jsonRpcUrlCollection,
                 auth,
                 jsonRpcConfig.MaxBatchResponseBodySize,
-                jsonRpcConfig.WebSocketsProcessingConcurrency);
+                jsonRpcConfig.WebSocketsProcessingConcurrency,
+                jsonRpcConfig.MaxRequestBodySize);
 
             webSocketsManager!.AddModule(webSocketsModule, true);
         }
@@ -126,7 +128,7 @@ public class StartRpc(INethermindApi api, IJsonRpcServiceConfigurer[] serviceCon
         {
             await jsonRpcRunner.Start(cancellationToken);
         }
-        catch (Exception e) when (authentication is null && logger.IsError)
+        catch (Exception e) when (e is not ListenerBindException && authentication is null && logger.IsError)
         {
             if (logger.IsError) logger.Error("Error during jsonRpc runner start", e);
         }
