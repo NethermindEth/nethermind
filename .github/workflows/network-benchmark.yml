@@ -62,11 +62,20 @@ jobs:
         env:
           # Not the tip of master, which may hold commits the head lacks.
           BASE_INPUT: ${{ inputs.base }}
+        # Assignments rather than substitutions inside echo, so that a revision that fails to resolve fails the step
+        # instead of writing an empty output, which the base checkout would read as the dispatching ref.
         run: |
-          base="${BASE_INPUT:-$(git merge-base origin/master HEAD)}"
+          if [[ -z "${BASE_INPUT}" ]]; then
+            base=$(git merge-base origin/master HEAD)
+          else
+            # Branches other than the checked-out one exist only as remote-tracking branches.
+            base=$(git rev-parse --verify --quiet "${BASE_INPUT}^{commit}" || git rev-parse --verify --quiet "origin/${BASE_INPUT}^{commit}") ||
+              { echo "::error::Cannot resolve the base '${BASE_INPUT}'"; exit 1; }
+          fi
+          head=$(git rev-parse HEAD)
           {
-            echo "base=$(git rev-parse --verify "${base}^{commit}")"
-            echo "head=$(git rev-parse HEAD)"
+            echo "base=${base}"
+            echo "head=${head}"
           } >> "${GITHUB_OUTPUT}"
 
       # A checkout rather than a worktree: the self-hosted runner keeps its workspace between runs, and
