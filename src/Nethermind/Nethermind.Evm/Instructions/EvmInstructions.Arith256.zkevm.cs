@@ -27,7 +27,7 @@ public static unsafe partial class EvmInstructions
 
         Unsafe.SkipInit(out result);
         fixed (UInt256* pa = &a, pb = &b, pm = &m, pr = &result)
-            Accelerators.AddMod256((ulong*)pa, (ulong*)pb, (ulong*)pm, (ulong*)pr);
+            ZiskArithmetic.AddMod((ulong*)pa, (ulong*)pb, (ulong*)pm, (ulong*)pr);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -35,16 +35,17 @@ public static unsafe partial class EvmInstructions
     {
         if (!ZiskFlag.IsActive)
         {
-            if (Sp1Uint256MulModFlag.IsActive)
+            // Only SP1's runtime exports zkvm_uint256_mulmod, and only OpenVM's the division hint and its check.
+            if (Sp1Flag.IsActive)
                 Sp1MulMod256(in a, in b, in m, out result);
-            else if (!OpenVmMulModHintFlag.IsActive || a >= m || b >= m || !TryMulModHint(in a, in b, in m, out result))
+            else if (!OpenVmFlag.IsActive || a >= m || b >= m || !TryMulModHint(in a, in b, in m, out result))
                 UInt256.MultiplyMod(in a, in b, in m, out result);
             return;
         }
 
         Unsafe.SkipInit(out result);
         fixed (UInt256* pa = &a, pb = &b, pm = &m, pr = &result)
-            Accelerators.MulMod256((ulong*)pa, (ulong*)pb, (ulong*)pm, (ulong*)pr);
+            ZiskArithmetic.MulMod((ulong*)pa, (ulong*)pb, (ulong*)pm, (ulong*)pr);
     }
 
     /// <remarks>
@@ -94,7 +95,7 @@ public static unsafe partial class EvmInstructions
 
         Unsafe.SkipInit(out result);
         fixed (UInt256* pa = &a, pb = &b, pr = &result)
-            Accelerators.ReduceMod256((ulong*)pa, (ulong*)pb, (ulong*)pr);
+            ZiskArithmetic.Mod((ulong*)pa, (ulong*)pb, (ulong*)pr);
     }
 
     /// <summary>Takes <c>(a * b) mod m</c> from the runner, for <paramref name="a"/> and <paramref name="b"/> below <paramref name="m"/>.</summary>

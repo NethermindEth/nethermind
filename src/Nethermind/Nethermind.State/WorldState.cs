@@ -394,13 +394,13 @@ namespace Nethermind.State
         }
 
         /// <inheritdoc/>
-        public void ApplyBal(ReadOnlyBlockAccessList bal)
+        public void ApplyBal(ReadOnlyBlockAccessList bal, CancellationToken cancellationToken = default)
         {
             GuardInScope();
             // The block's change record still feeds the cache write-back with what the BAL did not cover (AuRa's
             // contract rewrites and system accounts); only the BAL's own accounts leave it, now that the scope holds them.
             _stateProvider.ForgetBlockChanges(bal, _currentScope);
-            _currentScope.ApplyBal(bal);
+            _currentScope.ApplyBal(bal, cancellationToken);
             Reset(resetBlockChanges: false);
             _persistentStorageProvider.ForgetBlockChanges(bal);
         }
@@ -501,6 +501,12 @@ namespace Nethermind.State
         {
             DebugGuardInScope();
             _stateProvider.SetNonce(address, nonce);
+        }
+
+        public void SubtractFromBalanceAndSetNonce(Address address, in UInt256 balanceChange, ulong nonce, IReleaseSpec spec)
+        {
+            DebugGuardInScope();
+            _stateProvider.SubtractFromBalanceAndSetNonce(address, in balanceChange, nonce);
         }
 
         public void CreateAccountIfNotExists(Address address, in UInt256 balance, in ulong nonce = default)

@@ -232,13 +232,15 @@ public partial class VirtualMachine<TGasPolicy>(
 
     internal void StageReturnData(ReadOnlySpan<byte> returnData, bool isRevert)
     {
-        // Only nested outputs are consumed before this buffer can be reused by a later child call, and a create's
-        // output may become the deployed code.
-        bool allowReuse = _tracerFlags.AllowsReturnScratch
-            && !returnData.IsEmpty
+        // Nested outputs are consumed before this buffer can be reused by a later child call, and a create's
+        // output may become the deployed code. A top-level call output may reuse it only when the tracer reads no
+        // transaction output: the substate is then consumed before this VM runs again.
+        bool allowReuse = !returnData.IsEmpty
             && returnData.Length <= MaxRetainedReturnDataLength
-            && !_currentState.IsTopLevel
-            && (!_currentState.ExecutionType.IsAnyCreate() || IsUndeployableCreateOutput(returnData.Length, isRevert));
+            && (_currentState.IsTopLevel
+                ? _tracerFlags.AllowsTopLevelReturnScratch && !_currentState.ExecutionType.IsAnyCreate()
+                : _tracerFlags.AllowsReturnScratch
+                    && (!_currentState.ExecutionType.IsAnyCreate() || IsUndeployableCreateOutput(returnData.Length, isRevert)));
 
         ReturnData = _returnDataScratch.Stage(returnData, allowReuse);
     }

@@ -54,6 +54,8 @@ namespace Nethermind.Blockchain
         private readonly IChainLevelInfoRepository _chainLevelInfoRepository;
         private readonly IStateBoundary _stateBoundary;
         private readonly BlockTreeMutationLock _mutationLock;
+        // Low 32 bits: deletions in progress; high 32 bits: deletions completed.
+        private long _deletions;
 
         private readonly Lock _forkChoiceLock = new();
         // Null while unknown; set only after this exact pair was committed. A persisted (null, null) is not unknown.
@@ -584,6 +586,29 @@ namespace Nethermind.Blockchain
             return blockHash is null ? null : FindHeader(blockHash, options, blockNumber: number);
         }
 
+        /// <inheritdoc/>
+        /// <remarks>A level outside the cached window is read without caching it, as long scans read many.</remarks>
+        public BlockHeader? FindCanonicalHeaderIfBloomMatches(ulong blockNumber, Func<ReadOnlySpan<byte>, bool> bloomMatches, out bool found)
+        {
+            bool shouldCache = ShouldCache(blockNumber);
+            ChainLevelInfo? level = shouldCache ? LoadLevel(blockNumber) : _chainLevelInfoRepository.LoadLevelWithoutCaching(blockNumber);
+            if (level?.MainChainBlock is not { } blockInfo || blockInfo.BlockHash == Keccak.Zero)
+            {
+                found = false;
+                return null;
+            }
+
+            BlockHeader? header = _headerStore.GetIfBloomMatches(blockInfo.BlockHash, blockNumber, bloomMatches, out found);
+            if (header is not null)
+            {
+                header.Hash ??= blockInfo.BlockHash;
+                SetTotalDifficultyFromBlockInfo(header, blockInfo);
+                if (shouldCache) _headerStore.Cache(header);
+            }
+
+            return header;
+        }
+
         public Hash256? FindBlockHash(ulong blockNumber) => GetBlockHashOnMainOrBestDifficultyHash(blockNumber);
 
         public bool HasBlock(ulong blockNumber, Hash256 blockHash) => _blockStore.HasBlock(blockNumber, blockHash);
@@ -596,6 +621,7 @@ namespace Nethermind.Blockchain
                 return null;
             }
 
+            long deletions = Volatile.Read(ref _deletions);
             BlockHeader? header = _headerStore.Get(blockHash, shouldCache: false, blockNumber: blockNumber);
             if (header is null)
             {
@@ -649,6 +675,7 @@ namespace Nethermind.Blockchain
             if (header is not null && ShouldCache(header.Number))
             {
                 _headerStore.Cache(header);
+                if (OverlappedDeletion(deletions)) (_headerStore as IClearableCache)?.ClearCache();
             }
 
             return header;
@@ -847,6 +874,7 @@ namespace Nethermind.Blockchain
             BestSuggestedBody = Head;
 
             BlockAcceptingNewBlocks();
+            BeginDeletion();
 
             try
             {
@@ -854,6 +882,7 @@ namespace Nethermind.Blockchain
             }
             finally
             {
+                EndDeletion();
                 ReleaseAcceptingNewBlocks();
             }
         }
@@ -1716,6 +1745,7 @@ namespace Nethermind.Blockchain
                 return null;
             }
 
+            long deletions = Volatile.Read(ref _deletions);
             Block? block = null;
             blockNumber ??= _headerStore.GetBlockNumber(blockHash);
             if (blockNumber is not null)
@@ -1782,10 +1812,31 @@ namespace Nethermind.Blockchain
             {
                 _blockStore.Cache(block);
                 _headerStore.Cache(block.Header);
+                if (OverlappedDeletion(deletions))
+                {
+                    (_blockStore as IClearableCache)?.ClearCache();
+                    (_headerStore as IClearableCache)?.ClearCache();
+                }
             }
 
             return block;
         }
+
+        /// <summary>Whether a block deletion ran during a lookup that began at <paramref name="deletionsAtLookup"/>.</summary>
+        /// <remarks>
+        /// Lookups cache what they read without the mutation lock, so one overlapping a deletion can re-cache a block it
+        /// has just removed. Call after caching: the fence orders that write before the counter read, so either the
+        /// deletion evicts the entry or this sees the deletion and the caller drops the cache.
+        /// </remarks>
+        private bool OverlappedDeletion(long deletionsAtLookup)
+        {
+            Interlocked.MemoryBarrier();
+            return (uint)deletionsAtLookup != 0 || Volatile.Read(ref _deletions) != deletionsAtLookup;
+        }
+
+        private void BeginDeletion() => Interlocked.Increment(ref _deletions);
+
+        private void EndDeletion() => Interlocked.Add(ref _deletions, (1L << 32) - 1);
 
         private bool IsTotalDifficultyAlwaysZero() =>
             // In some Ethereum tests and possible testnets difficulty of all blocks might be zero
@@ -1923,12 +1974,14 @@ namespace Nethermind.Blockchain
             if (!_mutationLock.TryEnter(out BlockTreeMutationLock.Scope mutation)) throw new InvalidOperationException("Chain mutation contention or overlapping maintenance; retry the request.");
             using BlockTreeMutationLock.Scope mutationScope = mutation;
             BlockAcceptingNewBlocks();
+            BeginDeletion();
             try
             {
                 return DeleteChainSliceCore(startNumber, endNumber, force);
             }
             finally
             {
+                EndDeletion();
                 ReleaseAcceptingNewBlocks();
             }
         }
