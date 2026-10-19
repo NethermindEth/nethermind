@@ -60,6 +60,7 @@ internal sealed class BufferedTrie(SnapshotBundle bundle, Hash256? addressHash, 
         _rootDirty = true;
     }
 
+    /// <remarks>Only for <see cref="Nethermind.Db.IFlatDbConfig.VerifyWithTrie"/>, which checks flat reads against the trie; normal reads never walk the trie.</remarks>
     /// <returns>The value at <paramref name="key"/>, or null when the trie has none.</returns>
     /// <exception cref="MissingTrieNodeException">A node on the path is in neither the buffer nor the bundle.</exception>
     public byte[]? TryGet(in ValueHash256 key)
