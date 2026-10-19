@@ -2,85 +2,106 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
+using Nethermind.Core.Specs;
 
 namespace Nethermind.Core;
 
 /// <summary>
-/// The beacon slot grid as the execution layer sees it: slots of the configured length from the beacon genesis,
-/// then slots of the chain's EIP-8198 slot duration (<see cref="Specs.ISpecProvider.Eip8198SlotDurationMs"/>) from the fork.
+/// The beacon slot grid as the execution layer sees it: slots of the configured length from the beacon genesis, then
+/// slots of each <see cref="SlotDurationScheduleEntry"/> from its timestamp.
 /// </summary>
 /// <remarks>
-/// Mirrors the consensus layer's <c>compute_slot_at_time_ms</c> and <c>compute_time_at_slot_ms</c> (consensus-specs
-/// EIP-8198): the fork starts at the first slot boundary at or after its activation timestamp, which is the boundary
-/// itself on a correctly scheduled chain. Without a beacon genesis only durations and steps are known, so the fork
-/// starts at its activation timestamp and slot numbers are unavailable. Without EIP-8198 every slot has the
-/// configured length.
+/// Mirrors the consensus layer's <c>compute_slot_at_time_ms</c> and <c>compute_time_at_slot_ms</c> over
+/// <c>SLOT_DURATION_SCHEDULE</c> (consensus-specs EIP-8198): each entry starts at the first slot boundary at or after its
+/// timestamp, which is the timestamp itself on a correctly scheduled chain, and an entry at or before the beacon genesis
+/// applies from genesis. Without a beacon genesis only durations and steps are known, so each entry starts at its
+/// timestamp and slot numbers are unavailable. Without entries every slot has the configured length.
 /// </remarks>
-/// <param name="secondsPerSlot">Slot length before EIP-8198, or throughout without it; zero is treated as one second.</param>
-/// <param name="genesisTimestamp">Beacon chain genesis timestamp, when known.</param>
-public sealed class SlotSchedule(ulong secondsPerSlot, ulong? genesisTimestamp = null)
+public sealed class SlotSchedule
 {
-    private readonly ulong _secondsPerSlot = Math.Max(1UL, secondsPerSlot);
-    private readonly ulong? _genesisTimestamp = genesisTimestamp;
-    private readonly ulong _eip8198SecondsPerSlot;
-    private readonly bool _hasFork;
-    private readonly ulong _forkTimestamp;
-    private readonly ulong _forkSlot;
+    private const ulong MillisecondsPerSecond = 1_000;
 
-    /// <summary>A grid that switches slot length at the EIP-8198 fork.</summary>
-    /// <param name="secondsPerSlot">Slot length before EIP-8198; zero is treated as one second.</param>
+    private readonly ulong? _genesisTimestamp;
+    private readonly Segment[] _segments;
+
+    /// <summary>A grid where every slot has the configured length.</summary>
+    /// <param name="secondsPerSlot">Slot length; zero is treated as one second.</param>
     /// <param name="genesisTimestamp">Beacon chain genesis timestamp, when known.</param>
-    /// <param name="eip8198Timestamp">EIP-8198 activation timestamp.</param>
-    /// <param name="eip8198SlotDurationMs">Slot length from EIP-8198, in milliseconds; see <see cref="ValidateSlotDurationMs"/>.</param>
-    public SlotSchedule(ulong secondsPerSlot, ulong? genesisTimestamp, ulong eip8198Timestamp, ulong eip8198SlotDurationMs)
-        : this(secondsPerSlot, genesisTimestamp)
+    public SlotSchedule(ulong secondsPerSlot, ulong? genesisTimestamp = null) : this(secondsPerSlot, genesisTimestamp, []) { }
+
+    /// <summary>A grid that changes slot length at each schedule entry.</summary>
+    /// <param name="secondsPerSlot">Slot length before the first entry; zero is treated as one second.</param>
+    /// <param name="genesisTimestamp">Beacon chain genesis timestamp, when known.</param>
+    /// <param name="schedule">Slot duration changes; see <see cref="ValidateSchedule"/>.</param>
+    public SlotSchedule(ulong secondsPerSlot, ulong? genesisTimestamp, IReadOnlyList<SlotDurationScheduleEntry> schedule)
     {
-        ValidateSlotDurationMs(eip8198SlotDurationMs);
-        _eip8198SecondsPerSlot = eip8198SlotDurationMs / MillisecondsPerSecond;
-        _hasFork = true;
-        if (_genesisTimestamp is { } genesis)
+        ValidateSchedule(schedule);
+        _genesisTimestamp = genesisTimestamp;
+
+        List<Segment> segments = [new(genesisTimestamp ?? 0, 0, Math.Max(1UL, secondsPerSlot))];
+        foreach (SlotDurationScheduleEntry entry in schedule)
         {
-            _forkSlot = eip8198Timestamp <= genesis ? 0 : CeilDiv(eip8198Timestamp - genesis, _secondsPerSlot);
-            _forkTimestamp = genesis + _forkSlot * _secondsPerSlot;
+            Segment last = segments[^1];
+            ulong seconds = entry.SlotDurationMs / MillisecondsPerSecond;
+            if (entry.Timestamp <= last.Start)
+            {
+                segments[^1] = last with { Seconds = seconds };
+                continue;
+            }
+
+            if (genesisTimestamp is null)
+            {
+                segments.Add(new(entry.Timestamp, 0, seconds));
+                continue;
+            }
+
+            ulong slots = CeilDiv(entry.Timestamp - last.Start, last.Seconds);
+            segments.Add(new(last.Start + slots * last.Seconds, last.StartSlot + slots, seconds));
         }
-        else
-        {
-            _forkTimestamp = eip8198Timestamp;
-        }
+
+        _segments = [.. segments];
     }
 
     /// <summary>The length of the slot that starts at, or contains, <paramref name="timestamp"/>.</summary>
-    public ulong GetSecondsPerSlot(ulong timestamp) =>
-        IsAfterFork(timestamp) ? _eip8198SecondsPerSlot : _secondsPerSlot;
+    public ulong GetSecondsPerSlot(ulong timestamp) => _segments[SegmentAt(timestamp)].Seconds;
 
     /// <summary>The timestamp one slot after <paramref name="timestamp"/>.</summary>
     public ulong GetNextSlotTimestamp(ulong timestamp) => AddSlots(timestamp, 1);
 
     /// <summary>The timestamp <paramref name="slots"/> slots after <paramref name="timestamp"/>.</summary>
-    /// <remarks>Each step has the length of the slot it starts in, so steps from before the fork switch length once past it.</remarks>
+    /// <remarks>Each step has the length of the slot it starts in, so steps switch length once past a schedule boundary.</remarks>
     public ulong AddSlots(ulong timestamp, ulong slots)
     {
-        if (!_hasFork) return timestamp + slots * _secondsPerSlot;
-        if (timestamp >= _forkTimestamp) return timestamp + slots * _eip8198SecondsPerSlot;
+        for (int i = SegmentAt(timestamp); ; i = SegmentAt(timestamp))
+        {
+            ulong seconds = _segments[i].Seconds;
+            if (i + 1 == _segments.Length) return timestamp + slots * seconds;
 
-        ulong stepsToFork = CeilDiv(_forkTimestamp - timestamp, _secondsPerSlot);
-        return slots <= stepsToFork
-            ? timestamp + slots * _secondsPerSlot
-            : timestamp + stepsToFork * _secondsPerSlot + (slots - stepsToFork) * _eip8198SecondsPerSlot;
+            ulong stepsToNext = CeilDiv(_segments[i + 1].Start - timestamp, seconds);
+            if (slots <= stepsToNext) return timestamp + slots * seconds;
+
+            timestamp += stepsToNext * seconds;
+            slots -= stepsToNext;
+        }
     }
 
     /// <summary>The first timestamp at least one slot after <paramref name="timestamp"/> and not before <paramref name="target"/>.</summary>
     public ulong AddSlotsUntil(ulong timestamp, ulong target)
     {
-        if (!_hasFork) return timestamp + StepsTo(timestamp, target, _secondsPerSlot) * _secondsPerSlot;
-        if (timestamp >= _forkTimestamp) return timestamp + StepsTo(timestamp, target, _eip8198SecondsPerSlot) * _eip8198SecondsPerSlot;
+        ulong minSteps = 1;
+        for (int i = SegmentAt(timestamp); ; i = SegmentAt(timestamp))
+        {
+            ulong seconds = _segments[i].Seconds;
+            ulong steps = Math.Max(minSteps, target > timestamp ? CeilDiv(target - timestamp, seconds) : 0);
+            if (i + 1 == _segments.Length) return timestamp + steps * seconds;
 
-        ulong stepsToFork = CeilDiv(_forkTimestamp - timestamp, _secondsPerSlot);
-        ulong steps = StepsTo(timestamp, target, _secondsPerSlot);
-        if (steps <= stepsToFork) return timestamp + steps * _secondsPerSlot;
+            ulong stepsToNext = CeilDiv(_segments[i + 1].Start - timestamp, seconds);
+            if (steps <= stepsToNext) return timestamp + steps * seconds;
 
-        ulong atFork = timestamp + stepsToFork * _secondsPerSlot;
-        return atFork + CeilDiv(target - atFork, _eip8198SecondsPerSlot) * _eip8198SecondsPerSlot;
+            timestamp += stepsToNext * seconds;
+            minSteps = 0;
+        }
     }
 
     /// <summary>The slot containing <paramref name="timestamp"/>; false without a beacon genesis or before it.</summary>
@@ -92,42 +113,62 @@ public sealed class SlotSchedule(ulong secondsPerSlot, ulong? genesisTimestamp =
             return false;
         }
 
-        slot = !IsAfterFork(timestamp)
-            ? (timestamp - genesis) / _secondsPerSlot
-            : _forkSlot + (timestamp - _forkTimestamp) / _eip8198SecondsPerSlot;
+        Segment segment = _segments[SegmentAt(timestamp)];
+        slot = segment.StartSlot + (timestamp - segment.Start) / segment.Seconds;
         return true;
     }
 
     /// <summary>The start of <paramref name="slot"/>; null without a beacon genesis.</summary>
-    public ulong? GetSlotTimestamp(ulong slot) =>
-        _genesisTimestamp is not { } genesis ? null
-        : !_hasFork || slot <= _forkSlot ? genesis + slot * _secondsPerSlot
-        : _forkTimestamp + (slot - _forkSlot) * _eip8198SecondsPerSlot;
+    public ulong? GetSlotTimestamp(ulong slot)
+    {
+        if (_genesisTimestamp is null) return null;
+
+        int i = _segments.Length - 1;
+        while (_segments[i].StartSlot > slot) i--;
+        Segment segment = _segments[i];
+        return segment.Start + (slot - segment.StartSlot) * segment.Seconds;
+    }
 
     /// <summary>Whether <paramref name="timestamp"/> is a slot boundary; false without a beacon genesis.</summary>
     public bool IsSlotStart(ulong timestamp) => TryGetSlot(timestamp, out ulong slot) && GetSlotTimestamp(slot) == timestamp;
 
     /// <summary>
-    /// Throws unless <paramref name="slotDurationMs"/> is a positive whole number of seconds: execution-layer timestamps are
-    /// in seconds, so a fractional slot length would put slot boundaries between representable timestamps.
+    /// Throws unless the entries are strictly increasing by timestamp and each duration is a positive whole number of
+    /// seconds, since execution-layer timestamps are in seconds.
     /// </summary>
-    public static void ValidateSlotDurationMs(ulong slotDurationMs)
+    /// <exception cref="ArgumentException">The schedule is invalid.</exception>
+    public static void ValidateSchedule(IReadOnlyList<SlotDurationScheduleEntry> schedule)
     {
-        if (slotDurationMs == 0 || slotDurationMs % MillisecondsPerSecond != 0)
+        for (int i = 0; i < schedule.Count; i++)
         {
-            throw new ArgumentOutOfRangeException(
-                nameof(slotDurationMs),
-                slotDurationMs,
-                $"EIP-8198 slot duration must be a positive multiple of {MillisecondsPerSecond} ms, since execution-layer timestamps are whole seconds.");
+            SlotDurationScheduleEntry entry = schedule[i];
+            if (i > 0 && entry.Timestamp <= schedule[i - 1].Timestamp)
+            {
+                throw new ArgumentException(
+                    $"Slot duration schedule entries must be strictly increasing by timestamp, but {entry.Timestamp} follows {schedule[i - 1].Timestamp}.",
+                    nameof(schedule));
+            }
+
+            if (entry.SlotDurationMs == 0 || entry.SlotDurationMs % MillisecondsPerSecond != 0)
+            {
+                throw new ArgumentException(
+                    $"Slot duration {entry.SlotDurationMs} ms at timestamp {entry.Timestamp} must be a positive multiple of {MillisecondsPerSecond} ms, since execution-layer timestamps are whole seconds.",
+                    nameof(schedule));
+            }
         }
     }
 
-    private const ulong MillisecondsPerSecond = 1_000;
-
-    private bool IsAfterFork(ulong timestamp) => _hasFork && timestamp >= _forkTimestamp;
-
-    private static ulong StepsTo(ulong timestamp, ulong target, ulong secondsPerSlot) =>
-        target > timestamp ? Math.Max(1UL, CeilDiv(target - timestamp, secondsPerSlot)) : 1UL;
+    private int SegmentAt(ulong timestamp)
+    {
+        int i = _segments.Length - 1;
+        while (i > 0 && _segments[i].Start > timestamp) i--;
+        return i;
+    }
 
     private static ulong CeilDiv(ulong value, ulong divisor) => value / divisor + (value % divisor == 0 ? 0UL : 1UL);
+
+    /// <param name="Start">First timestamp of the segment; a slot boundary when the beacon genesis is known.</param>
+    /// <param name="StartSlot">Slot starting at <paramref name="Start"/>; zero without a beacon genesis.</param>
+    /// <param name="Seconds">Slot length within the segment.</param>
+    private readonly record struct Segment(ulong Start, ulong StartSlot, ulong Seconds);
 }

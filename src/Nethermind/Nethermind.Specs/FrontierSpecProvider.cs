@@ -29,7 +29,7 @@ namespace Nethermind.Specs
 
         public ulong? DaoBlockNumber { get; } = null;
         public ulong? BeaconChainGenesisTimestamp => null;
-        public ulong? Eip8198SlotDurationMs => null;
+        public IReadOnlyList<SlotDurationScheduleEntry> SlotDurationSchedule => [];
 
         public ulong NetworkId => Core.BlockchainIds.Mainnet;
         public ulong ChainId => NetworkId;

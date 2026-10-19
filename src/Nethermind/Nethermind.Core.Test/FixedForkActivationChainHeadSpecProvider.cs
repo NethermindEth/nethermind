@@ -26,7 +26,7 @@ namespace Nethermind.Core.Test
 
         public ulong? BeaconChainGenesisTimestamp => specProvider.BeaconChainGenesisTimestamp;
 
-        public ulong? Eip8198SlotDurationMs => specProvider.Eip8198SlotDurationMs;
+        public IReadOnlyList<SlotDurationScheduleEntry> SlotDurationSchedule => specProvider.SlotDurationSchedule;
 
         public ulong NetworkId => specProvider.NetworkId;
         public ulong ChainId => specProvider.ChainId;

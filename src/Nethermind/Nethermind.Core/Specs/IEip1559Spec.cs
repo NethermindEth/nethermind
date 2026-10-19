@@ -29,7 +29,7 @@ namespace Nethermind.Core.Specs
         /// </summary>
         /// <remarks>
         /// Declared here rather than on <see cref="IReleaseSpec"/> because <see cref="IBaseFeeCalculator"/> only sees this interface.
-        /// The rest of the EIP is chainspec data: the slot duration (<c>eip8198SlotDurationMs</c>, see <see cref="ISpecProvider.Eip8198SlotDurationMs"/>) and <c>blobSchedule</c>.
+        /// The rest of the EIP is chainspec data: <c>slotDurationSchedule</c> (see <see cref="ISpecProvider.SlotDurationSchedule"/>) and <c>blobSchedule</c>.
         /// </remarks>
         bool IsEip8198Enabled { get; }
     }
