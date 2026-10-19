@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.IO.Abstractions;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -19,6 +20,7 @@ using Nethermind.State.Flat.Persistence.TrieNodeLog;
 using Nethermind.Trie;
 using NSubstitute;
 using NUnit.Framework;
+using Testably.Abstractions;
 
 namespace Nethermind.State.Flat.Test.Persistence;
 
@@ -30,6 +32,7 @@ public class TrieNodeLogTests
     private static readonly byte[] Rlp1 = Bytes.FromHexString("0x1111111111");
     private static readonly byte[] Rlp2 = Bytes.FromHexString("0x2222222222");
     private static readonly byte[] Rlp3 = Bytes.FromHexString("0x3333333333");
+    private static readonly IFileSystem FileSystem = new RealFileSystem();
 
     private TempPath _directory = null!;
     private SnapshotableMemColumnsDb<FlatDbColumns> _db = null!;
@@ -57,7 +60,7 @@ public class TrieNodeLogTests
 
     private void Open()
     {
-        _log = new TrieNodeLog(_directory.Path, _db, _config, LimboLogs.Instance);
+        _log = new TrieNodeLog(_directory.Path, FileSystem, _db, _config, LimboLogs.Instance);
         _persistence = new RocksDbPersistence(_db, LimboLogs.Instance, _log);
     }
 
@@ -357,7 +360,7 @@ public class TrieNodeLogTests
         await _log.DisposeAsync();
         _config.TrieNodeLogMergeLag = 0;
         _config.TrieNodeLogSecondLevelMergeLag = 0;
-        _log = new TrieNodeLog(_directory.Path, WithUnflushable(static column => column != FlatDbColumns.Metadata), _config, LimboLogs.Instance);
+        _log = new TrieNodeLog(_directory.Path, FileSystem, WithUnflushable(static column => column != FlatDbColumns.Metadata), _config, LimboLogs.Instance);
         _persistence = new RocksDbPersistence(_db, LimboLogs.Instance, _log);
         WriteFullGenerations(3);
         Assert.That(() => ShardFiles("state-0-l2"), Has.Length.EqualTo(2).After(5000, 20));
@@ -486,7 +489,7 @@ public class TrieNodeLogTests
 
         WriteTop(3, 4, Rlp3);
         await _log.DisposeAsync();
-        TrieNodeLog.MergeAllOnDisk(_directory.Path, _db, LimboLogs.Instance);
+        TrieNodeLog.MergeAllOnDisk(_directory.Path, FileSystem, _db, LimboLogs.Instance);
         Open();
         using (Assert.EnterMultipleScope())
         {
@@ -561,7 +564,7 @@ public class TrieNodeLogTests
         await _log.DisposeAsync();
         Assert.That(Raw().TryLoadStateRlp(highPath, ReadFlags.None), Is.Null);
 
-        TrieNodeLog.MergeAllOnDisk(_directory.Path, _db, LimboLogs.Instance);
+        TrieNodeLog.MergeAllOnDisk(_directory.Path, FileSystem, _db, LimboLogs.Instance);
 
         // The directory is clean, so a different shard count starts from an empty log and reads come from RocksDB.
         _config.TrieNodeLogStateShardCount = 1;
@@ -586,7 +589,7 @@ public class TrieNodeLogTests
         await _log.DisposeAsync();
         _config.TrieNodeLogStateShardCount = stateShardCount;
 
-        Assert.That(TrieNodeLog.MatchesOnDiskLayout(_directory.Path, _config), Is.EqualTo(matches));
+        Assert.That(TrieNodeLog.MatchesOnDiskLayout(_directory.Path, FileSystem, _config), Is.EqualTo(matches));
     }
 
     [TestCase(true, true, true)]
@@ -604,7 +607,7 @@ public class TrieNodeLogTests
         await _log.DisposeAsync();
         _config.TrieNodeLogSecondLevelMergeLag = secondLevelEnabled ? 0 : -1;
 
-        Assert.That(TrieNodeLog.MatchesOnDiskLayout(_directory.Path, _config), Is.EqualTo(matches));
+        Assert.That(TrieNodeLog.MatchesOnDiskLayout(_directory.Path, FileSystem, _config), Is.EqualTo(matches));
     }
 
     [Test]
@@ -614,7 +617,7 @@ public class TrieNodeLogTests
         await _log.DisposeAsync();
         Directory.CreateDirectory(Path.Combine(_directory.Path, "state_top-0"));
 
-        Assert.That(TrieNodeLog.MatchesOnDiskLayout(_directory.Path, _config), Is.False);
+        Assert.That(TrieNodeLog.MatchesOnDiskLayout(_directory.Path, FileSystem, _config), Is.False);
     }
 
     [Test]
@@ -762,7 +765,7 @@ public class TrieNodeLogTests
         foreach (string shardDirectory in Directory.GetDirectories(_directory.Path)) Directory.Delete(shardDirectory, recursive: true);
 
         // A disabled log merges whatever is on disk at startup instead of recovering it.
-        Action restart = logDisabledAtRestart ? () => TrieNodeLog.MergeAllOnDisk(_directory.Path, _db, LimboLogs.Instance) : Open;
+        Action restart = logDisabledAtRestart ? () => TrieNodeLog.MergeAllOnDisk(_directory.Path, FileSystem, _db, LimboLogs.Instance) : Open;
         Assert.That(restart, Throws.TypeOf<InvalidDataException>().With.Message.Contains("missing"));
     }
 
@@ -845,7 +848,7 @@ public class TrieNodeLogTests
 
         // Every flush fails: the recovered first-level copy waits on the second level's full backlog, and the manifest
         // cannot be made durable.
-        Assert.That(async () => await Task.Run(() => new TrieNodeLog(_directory.Path, WithUnflushable(static _ => true), _config, LimboLogs.Instance)).WaitAsync(TimeSpan.FromSeconds(10)), Throws.TypeOf<IOException>());
+        Assert.That(async () => await Task.Run(() => new TrieNodeLog(_directory.Path, FileSystem, WithUnflushable(static _ => true), _config, LimboLogs.Instance)).WaitAsync(TimeSpan.FromSeconds(10)), Throws.TypeOf<IOException>());
         Assert.That(TrieNodeLogGeneration.AliveCount, Is.EqualTo(alive), "the recovered generations are released");
 
         Open();

@@ -3,6 +3,7 @@
 
 using System;
 using System.IO;
+using System.IO.Abstractions;
 using Autofac;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
@@ -106,15 +107,15 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                     Path.Combine("persistedSnapshot", "catalog"))))
             .AddSingleton<SnapshotCatalog>()
             .AddSingleton<ISnapshotCatalog>(ctx => ctx.Resolve<SnapshotCatalog>())
-            .AddSingleton<ITrieNodeLog, IFlatDbConfig, IInitConfig, IColumnsDb<FlatDbColumns>, ILogManager>((cfg, initConfig, db, logManager) =>
+            .AddSingleton<ITrieNodeLog, IFlatDbConfig, IInitConfig, IColumnsDb<FlatDbColumns>, IFileSystem, ILogManager>((cfg, initConfig, db, fileSystem, logManager) =>
             {
-                string basePath = Path.Combine(initConfig.BaseDbPath, "flatTrieNodeLog");
+                string basePath = fileSystem.Path.Combine(initConfig.BaseDbPath, "flatTrieNodeLog");
                 // The log is recovered across restarts, keeping its deduplication window, unless it is now disabled or
                 // its shard layout changed; then whatever the previous run left is merged into RocksDB first.
-                if (!cfg.TrieNodeLogEnabled || !TrieNodeLog.MatchesOnDiskLayout(basePath, cfg))
-                    TrieNodeLog.MergeAllOnDisk(basePath, db, logManager);
+                if (!cfg.TrieNodeLogEnabled || !TrieNodeLog.MatchesOnDiskLayout(basePath, fileSystem, cfg))
+                    TrieNodeLog.MergeAllOnDisk(basePath, fileSystem, db, logManager);
                 return cfg.TrieNodeLogEnabled
-                    ? new TrieNodeLog(basePath, db, cfg, logManager)
+                    ? new TrieNodeLog(basePath, fileSystem, db, cfg, logManager)
                     : NullTrieNodeLog.Instance;
             })
             .AddSingleton<RocksDbPersistence>()

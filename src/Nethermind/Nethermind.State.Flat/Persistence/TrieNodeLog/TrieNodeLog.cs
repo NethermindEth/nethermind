@@ -4,6 +4,7 @@
 using System.Buffers;
 using System.Buffers.Binary;
 using System.Diagnostics;
+using System.IO.Abstractions;
 using System.Numerics;
 using System.Text;
 using System.Threading.Channels;
@@ -47,7 +48,7 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
     private readonly ILogger _logger;
     private int _disposed;
 
-    public TrieNodeLog(string basePath, IColumnsDb<FlatDbColumns> db, IFlatDbConfig config, ILogManager logManager)
+    public TrieNodeLog(string basePath, IFileSystem fileSystem, IColumnsDb<FlatDbColumns> db, IFlatDbConfig config, ILogManager logManager)
     {
         if (config.TrieNodeLogMaxConcurrentMerges < 1)
             throw new InvalidConfigurationException($"{nameof(IFlatDbConfig.TrieNodeLogMaxConcurrentMerges)} must be at least 1, got {config.TrieNodeLogMaxConcurrentMerges}", -1);
@@ -60,7 +61,7 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
         _drainOnShutdown = config.TrieNodeLogDrainOnShutdown;
         _logger = logManager.GetClassLogger<TrieNodeLog>();
         // Before the manifest is replaced: a shard of the previous layout that no longer exists must still have its files.
-        ValidateRecordedShards(basePath, db);
+        ValidateRecordedShards(basePath, fileSystem, db);
 
         // A generation's index is 1/IndexRatio of its bytes and rolls it at three-quarters occupancy, so the ratio
         // follows the partition's typical record size: state nodes are mostly branches, storage has smaller leaves.
@@ -88,10 +89,10 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
                     if (SecondLevelEnabled(config))
                     {
                         string secondLevelName = name + SecondLevelSuffix;
-                        secondLevel = new TrieNodeLogShard(secondLevelName, name, columns, Path.Combine(basePath, secondLevelName), db, budget / shardCount, SecondLevelIndexRatio, config.TrieNodeLogSecondLevelMergeLag, config.TrieNodeLogMergeBacklogMargin, _secondLevelMergeLimiter, secondLevel: null, logManager);
+                        secondLevel = new TrieNodeLogShard(secondLevelName, name, columns, fileSystem.Path.Combine(basePath, secondLevelName), fileSystem, db, budget / shardCount, SecondLevelIndexRatio, config.TrieNodeLogSecondLevelMergeLag, config.TrieNodeLogMergeBacklogMargin, _secondLevelMergeLimiter, secondLevel: null, logManager);
                         secondLevelShards.Add(secondLevel);
                     }
-                    shards.Add(new TrieNodeLogShard(name, name, columns, Path.Combine(basePath, name), db, budget / shardCount, indexRatio, config.TrieNodeLogMergeLag, config.TrieNodeLogMergeBacklogMargin, _mergeLimiter, secondLevel, logManager));
+                    shards.Add(new TrieNodeLogShard(name, name, columns, fileSystem.Path.Combine(basePath, name), fileSystem, db, budget / shardCount, indexRatio, config.TrieNodeLogMergeLag, config.TrieNodeLogMergeBacklogMargin, _mergeLimiter, secondLevel, logManager));
                 }
                 foreach (FlatDbColumns column in columns) db.GetColumnDb(column).SetWriteBuffer(WriteBufferAdjuster.MaxWriteBufferSize(column));
             }
@@ -120,10 +121,10 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
     /// count is not, since the shard a key maps to depends on that count. Second-level directories are held to the
     /// same rule when the second level is enabled, and do not match when it is disabled.
     /// </summary>
-    public static bool MatchesOnDiskLayout(string basePath, IFlatDbConfig config)
+    public static bool MatchesOnDiskLayout(string basePath, IFileSystem fileSystem, IFlatDbConfig config)
     {
-        if (!Directory.Exists(basePath)) return true;
-        HashSet<string> onDisk = Directory.GetDirectories(basePath).Select(Path.GetFileName).ToHashSet()!;
+        if (!fileSystem.Directory.Exists(basePath)) return true;
+        HashSet<string> onDisk = fileSystem.Directory.GetDirectories(basePath).Select(fileSystem.Path.GetFileName).ToHashSet()!;
         string[] suffixes = SecondLevelEnabled(config) ? ["", SecondLevelSuffix] : [""];
         foreach ((string name, int shardCount) in new[] { (StatePartitionName, config.TrieNodeLogStateShardCount), (StoragePartitionName, config.TrieNodeLogStorageShardCount) })
         {
@@ -157,13 +158,13 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
     /// under <paramref name="basePath"/>: a database restored without its log directory, whatever the layout it is
     /// started with. A database without a manifest is only checked shard by shard as its directories are opened.
     /// </summary>
-    public static void ValidateRecordedShards(string basePath, IColumnsDb<FlatDbColumns> db)
+    public static void ValidateRecordedShards(string basePath, IFileSystem fileSystem, IColumnsDb<FlatDbColumns> db)
     {
         IReadOnlyKeyValueStore metadata = db.GetColumnDb(FlatDbColumns.Metadata);
         byte[]? manifest = metadata.Get(ShardManifestKey);
         if (manifest is null) return;
         foreach (string name in Encoding.UTF8.GetString(manifest).Split('\n', StringSplitOptions.RemoveEmptyEntries))
-            TrieNodeLogShard.ThrowIfConfirmedGenerationsMissing(metadata, name, Path.Combine(basePath, name));
+            TrieNodeLogShard.ThrowIfConfirmedGenerationsMissing(metadata, name, fileSystem.Path.Combine(basePath, name), fileSystem);
     }
 
     /// <summary>
@@ -172,15 +173,15 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
     /// Run before the log is constructed; the configured shards then start empty.
     /// </summary>
     /// <remarks>Second-level shards go first: they hold what their first-level shards merged before.</remarks>
-    public static void MergeAllOnDisk(string basePath, IColumnsDb<FlatDbColumns> db, ILogManager logManager)
+    public static void MergeAllOnDisk(string basePath, IFileSystem fileSystem, IColumnsDb<FlatDbColumns> db, ILogManager logManager)
     {
-        ValidateRecordedShards(basePath, db);
-        if (!Directory.Exists(basePath)) return;
+        ValidateRecordedShards(basePath, fileSystem, db);
+        if (!fileSystem.Directory.Exists(basePath)) return;
         ILogger logger = logManager.GetClassLogger<TrieNodeLog>();
         using SemaphoreSlim mergeLimiter = new(1, 1);
-        foreach (string directory in Directory.GetDirectories(basePath).OrderBy(static directory => directory.EndsWith(SecondLevelSuffix) ? 0 : 1))
+        foreach (string directory in fileSystem.Directory.GetDirectories(basePath).OrderBy(static directory => directory.EndsWith(SecondLevelSuffix) ? 0 : 1))
         {
-            string name = Path.GetFileName(directory);
+            string name = fileSystem.Path.GetFileName(directory);
             FlatDbColumns[]? columns = name.Split('-')[0] switch
             {
                 "state_top" or StatePartitionName => StateColumns,
@@ -195,7 +196,7 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
 
             if (logger.IsInfo) logger.Info($"Merging trie node log shard {name} left by the previous run");
             string versionName = name.EndsWith(SecondLevelSuffix) ? name[..^SecondLevelSuffix.Length] : name;
-            TrieNodeLogShard shard = new(name, versionName, columns, directory, db, generationBytes: 0, indexRatio: 1, mergeLag: 0, backlogMargin: 1, mergeLimiter, secondLevel: null, logManager);
+            TrieNodeLogShard shard = new(name, versionName, columns, directory, fileSystem, db, generationBytes: 0, indexRatio: 1, mergeLag: 0, backlogMargin: 1, mergeLimiter, secondLevel: null, logManager);
             try
             {
                 shard.Drain();
@@ -204,7 +205,7 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
             {
                 shard.DisposeAsync().AsTask().GetAwaiter().GetResult();
             }
-            Directory.Delete(directory, recursive: true);
+            fileSystem.Directory.Delete(directory, recursive: true);
         }
         db.GetColumnDb(FlatDbColumns.Metadata).Remove(ShardManifestKey);
     }

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers.Binary;
+using System.IO.Abstractions;
 using System.Numerics;
 using System.Runtime.InteropServices;
 using Microsoft.Win32.SafeHandles;
@@ -36,6 +37,7 @@ internal sealed unsafe class TrieNodeLogGeneration : RefCountingDisposable
     private readonly int _mask;
     private int _preserve;
     private bool _directorySynced;
+    private readonly IFileSystem _fileSystem;
     private readonly Action<string, Exception> _onDeleteFailed;
 
     public ulong Number { get; }
@@ -57,14 +59,15 @@ internal sealed unsafe class TrieNodeLogGeneration : RefCountingDisposable
     public bool IsFlushed { get; set; }
 
     /// <param name="onDeleteFailed">Called with the file path when the last release fails to delete the file.</param>
-    public TrieNodeLogGeneration(ulong number, string path, int capacity, Action<string, Exception> onDeleteFailed)
+    public TrieNodeLogGeneration(ulong number, string path, IFileSystem fileSystem, int capacity, Action<string, Exception> onDeleteFailed)
     {
         Number = number;
         Path = path;
+        _fileSystem = fileSystem;
         _onDeleteFailed = onDeleteFailed;
         Capacity = Math.Max(MinCapacity, (int)BitOperations.RoundUpToPowerOf2((uint)capacity));
         _mask = Capacity - 1;
-        Handle = File.OpenHandle(path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.ReadWrite);
+        Handle = fileSystem.File.OpenHandle(path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.ReadWrite);
         // Zeroed native memory so the table never touches the GC heap; freed exactly once in CleanUp.
         _slots = (ulong*)NativeMemory.AllocZeroed((nuint)Capacity, sizeof(ulong));
         Interlocked.Increment(ref _aliveCount);
@@ -99,11 +102,11 @@ internal sealed unsafe class TrieNodeLogGeneration : RefCountingDisposable
     /// Whether the file at <paramref name="path"/> carries this format's header. A short or zero-filled header (a
     /// creation cut short before its first commit) yields false; a header of another format throws.
     /// </summary>
-    public static bool HasFileHeader(string path)
+    public static bool HasFileHeader(string path, IFileSystem fileSystem)
     {
-        using SafeFileHandle handle = File.OpenHandle(path);
+        using SafeFileHandle handle = fileSystem.File.OpenHandle(path);
         Span<byte> header = stackalloc byte[FileHeaderLength];
-        int read = RandomAccess.Read(handle, header, 0);
+        int read = fileSystem.RandomAccess.Read(handle, header, 0);
         if (read < FileHeaderLength || !header.ContainsAnyExcept((byte)0)) return false;
         if (!header[..Magic.Length].SequenceEqual(Magic))
             throw new InvalidDataException($"{path} is not a trie node log generation file");
@@ -170,14 +173,14 @@ internal sealed unsafe class TrieNodeLogGeneration : RefCountingDisposable
         return false;
     }
 
-    public int ReadAt(long offset, Span<byte> destination) => ReadAt(Handle, offset, destination);
+    public int ReadAt(long offset, Span<byte> destination) => ReadAt(_fileSystem, Handle, offset, destination);
 
-    public static int ReadAt(SafeFileHandle handle, long offset, Span<byte> destination)
+    public static int ReadAt(IFileSystem fileSystem, SafeFileHandle handle, long offset, Span<byte> destination)
     {
         int total = 0;
         while (total < destination.Length)
         {
-            int read = RandomAccess.Read(handle, destination[total..], offset + total);
+            int read = fileSystem.RandomAccess.Read(handle, destination[total..], offset + total);
             if (read <= 0) break;
             total += read;
         }
@@ -196,14 +199,14 @@ internal sealed unsafe class TrieNodeLogGeneration : RefCountingDisposable
         return value;
     }
 
-    public void Write(long offset, ReadOnlySpan<byte> data) => RandomAccess.Write(Handle, data, offset);
+    public void Write(long offset, ReadOnlySpan<byte> data) => _fileSystem.RandomAccess.Write(Handle, data, offset);
 
     /// <summary>Makes the file's content durable; the first call also makes its directory entry durable.</summary>
     public void Fsync()
     {
-        RandomAccess.FlushToDisk(Handle);
+        _fileSystem.RandomAccess.FlushToDisk(Handle);
         if (_directorySynced) return;
-        FsyncDirectory(System.IO.Path.GetDirectoryName(Path)!);
+        FsyncDirectory(_fileSystem.Path.GetDirectoryName(Path)!);
         _directorySynced = true;
     }
 
@@ -211,13 +214,13 @@ internal sealed unsafe class TrieNodeLogGeneration : RefCountingDisposable
     /// Creates <paramref name="path"/> and its missing parents, making each new directory's entry durable in its
     /// parent, so a generation confirmed in it is not lost with a directory a crash dropped.
     /// </summary>
-    public static void CreateDirectoryDurably(string path)
+    public static void CreateDirectoryDurably(string path, IFileSystem fileSystem)
     {
-        string fullPath = System.IO.Path.GetFullPath(path);
-        if (Directory.Exists(fullPath)) return;
-        string parent = System.IO.Path.GetDirectoryName(fullPath)!;
-        CreateDirectoryDurably(parent);
-        Directory.CreateDirectory(fullPath);
+        string fullPath = fileSystem.Path.GetFullPath(path);
+        if (fileSystem.Directory.Exists(fullPath)) return;
+        string parent = fileSystem.Path.GetDirectoryName(fullPath)!;
+        CreateDirectoryDurably(parent, fileSystem);
+        fileSystem.Directory.CreateDirectory(fullPath);
         FsyncDirectory(parent);
     }
 
@@ -253,7 +256,7 @@ internal sealed unsafe class TrieNodeLogGeneration : RefCountingDisposable
 
     public void Truncate(long length)
     {
-        RandomAccess.SetLength(Handle, length);
+        _fileSystem.RandomAccess.SetLength(Handle, length);
         WriteFrontier = length;
         Frontier = length;
     }
@@ -270,7 +273,7 @@ internal sealed unsafe class TrieNodeLogGeneration : RefCountingDisposable
         {
             try
             {
-                File.Delete(Path);
+                _fileSystem.File.Delete(Path);
             }
             catch (Exception e) when (e is IOException or UnauthorizedAccessException)
             {

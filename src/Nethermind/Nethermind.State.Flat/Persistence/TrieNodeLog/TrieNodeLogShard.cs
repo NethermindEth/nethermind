@@ -5,6 +5,7 @@ using System.Buffers;
 using System.Collections.Concurrent;
 using System.Buffers.Binary;
 using System.Diagnostics;
+using System.IO.Abstractions;
 using Microsoft.Win32.SafeHandles;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -38,6 +39,7 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
     private static long _listCountTotal;
 
     private readonly string _basePath;
+    private readonly IFileSystem _fileSystem;
     private readonly IColumnsDb<FlatDbColumns> _db;
     private readonly ILogger _logger;
     private readonly long _generationBytes;
@@ -85,7 +87,7 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
     /// <param name="mergeLimiter">Caps concurrent merges across every shard of the log.</param>
     /// <param name="backlogMargin">Sealed generations allowed beyond <paramref name="mergeLag"/> before a roll waits for a merge.</param>
     /// <param name="secondLevel">Shard a merged generation is copied into instead of RocksDB; null merges into RocksDB.</param>
-    public TrieNodeLogShard(string name, string versionName, FlatDbColumns[] columns, string basePath, IColumnsDb<FlatDbColumns> db, long generationBytes, int indexRatio, int mergeLag, int backlogMargin, SemaphoreSlim mergeLimiter, TrieNodeLogShard? secondLevel, ILogManager logManager)
+    public TrieNodeLogShard(string name, string versionName, FlatDbColumns[] columns, string basePath, IFileSystem fileSystem, IColumnsDb<FlatDbColumns> db, long generationBytes, int indexRatio, int mergeLag, int backlogMargin, SemaphoreSlim mergeLimiter, TrieNodeLogShard? secondLevel, ILogManager logManager)
     {
         Name = name;
         IsSecondLevel = versionName != name;
@@ -95,6 +97,7 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
         FlushedGenerationKey = FlushedGenerationKeyFor(name);
         GenerationKey = GenerationKeyFor(name);
         _basePath = basePath;
+        _fileSystem = fileSystem;
         _db = db;
         _logger = logManager.GetClassLogger<TrieNodeLogShard>();
         _generationBytes = generationBytes;
@@ -105,7 +108,7 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
         _label = new TrieNodeLogLabel(name);
         _secondLevel = secondLevel;
 
-        TrieNodeLogGeneration.CreateDirectoryDurably(basePath);
+        TrieNodeLogGeneration.CreateDirectoryDurably(basePath, fileSystem);
         Recover();
         _flushWorker = Task.Run(FlushWorker);
     }
@@ -137,14 +140,14 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
     /// its merged marker has no file in <paramref name="directory"/>: the database holds nodes only up to that
     /// marker, so a database restored without the log directory must not start with those nodes silently gone.
     /// </summary>
-    internal static void ThrowIfConfirmedGenerationsMissing(IReadOnlyKeyValueStore metadata, string name, string directory)
+    internal static void ThrowIfConfirmedGenerationsMissing(IReadOnlyKeyValueStore metadata, string name, string directory, IFileSystem fileSystem)
     {
         if (BasePersistence.ReadWipedForSync(metadata)) return;
         ulong flushedGeneration = ReadUInt64(metadata.Get(FlushedGenerationKeyFor(name)));
         ulong committedGeneration = ReadUInt64(metadata.Get(GenerationKeyFor(name)));
         for (ulong number = flushedGeneration + 1; number <= committedGeneration; number++)
         {
-            if (!File.Exists(System.IO.Path.Combine(directory, FileName(number))))
+            if (!fileSystem.File.Exists(fileSystem.Path.Combine(directory, FileName(number))))
                 throw new InvalidDataException($"Trie node log shard {name}: the database confirms generation {number} but its file is missing from {directory}; the trie node log directory must be kept or restored together with the database");
         }
     }
@@ -359,7 +362,7 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
     {
         WaitForBacklog();
         using Lock.Scope _ = _lock.EnterScope();
-        TrieNodeLogGeneration generation = new(_nextGeneration, System.IO.Path.Combine(_basePath, FileName(_nextGeneration)), _indexCapacity, OnDeleteFailed);
+        TrieNodeLogGeneration generation = new(_nextGeneration, _fileSystem.Path.Combine(_basePath, FileName(_nextGeneration)), _fileSystem, _indexCapacity, OnDeleteFailed);
         try
         {
             generation.WriteFileHeader();
@@ -492,7 +495,7 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
         {
             try
             {
-                File.Delete(path);
+                _fileSystem.File.Delete(path);
                 Metrics.AddTrieNodeLogUndeletedFiles(-1);
             }
             catch (Exception e) when (e is IOException or UnauthorizedAccessException)
@@ -561,7 +564,7 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
             using (IColumnsWriteBatch<FlatDbColumns>? batch = _secondLevel is null ? _db.StartWriteBatch() : null)
             {
                 Core.IWriteBatch?[] columnBatches = new Core.IWriteBatch?[TrieNodeLogLabel.ColumnCount];
-                Scanner scanner = new(generation.Handle, generation.Frontier);
+                Scanner scanner = new(_fileSystem, generation.Handle, generation.Frontier);
                 try
                 {
                     while (scanner.MoveNext())
@@ -683,12 +686,12 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
         bool wiped = BasePersistence.ReadWipedForSync(metadata);
         _version = committedVersion;
         _nextGeneration = flushedGeneration + 1;
-        ThrowIfConfirmedGenerationsMissing(metadata, Name, _basePath);
+        ThrowIfConfirmedGenerationsMissing(metadata, Name, _basePath, _fileSystem);
 
         List<(ulong Number, string Path)> files = [];
-        foreach (string path in Directory.GetFiles(_basePath, $"{FilePrefix}*{FileExtension}"))
+        foreach (string path in _fileSystem.Directory.GetFiles(_basePath, $"{FilePrefix}*{FileExtension}"))
         {
-            string name = System.IO.Path.GetFileNameWithoutExtension(path);
+            string name = _fileSystem.Path.GetFileNameWithoutExtension(path);
             if (ulong.TryParse(name.AsSpan(FilePrefix.Length), out ulong number)) files.Add((number, path));
         }
         files.Sort();
@@ -714,9 +717,9 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
             {
                 // A file without a complete header is one whose creation was cut short before anything in it was
                 // confirmed.
-                if (wiped || number <= flushedGeneration || !TrieNodeLogGeneration.HasFileHeader(path))
+                if (wiped || number <= flushedGeneration || !TrieNodeLogGeneration.HasFileHeader(path, _fileSystem))
                 {
-                    File.Delete(path);
+                    _fileSystem.File.Delete(path);
                     continue;
                 }
 
@@ -749,14 +752,14 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
 
     private TrieNodeLogGeneration RecoverGeneration(ulong number, string path, ulong committedVersion)
     {
-        long fileLength = new FileInfo(path).Length;
+        long fileLength = _fileSystem.FileInfo.New(path).Length;
 
         // First pass: the frontier is the end of the last commit record the metadata column confirms. The index is
         // sized by the record count rather than the configured ratio, so a file written under another ratio fits.
         long frontier = TrieNodeLogGeneration.FileHeaderLength;
         int records = 0;
-        using (SafeFileHandle handle = File.OpenHandle(path))
-        using (Scanner scanner = new(handle, fileLength))
+        using (SafeFileHandle handle = _fileSystem.File.OpenHandle(path))
+        using (Scanner scanner = new(_fileSystem, handle, fileLength))
         {
             while (scanner.MoveNext() && scanner.Header.Version <= committedVersion)
             {
@@ -765,7 +768,7 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
             }
         }
 
-        TrieNodeLogGeneration generation = new(number, path, TrieNodeLogGeneration.CapacityForRecords(records), OnDeleteFailed);
+        TrieNodeLogGeneration generation = new(number, path, _fileSystem, TrieNodeLogGeneration.CapacityForRecords(records), OnDeleteFailed);
         try
         {
             generation.Truncate(frontier);
@@ -774,7 +777,7 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
 
             // Second pass: index the surviving records; a later record of the same key replaces the earlier slot.
             Span<byte> buffer = stackalloc byte[TrieNodeLogRecord.HeaderLength + TrieNodeLogRecord.MaxKeyLength];
-            using Scanner scanner = new(generation.Handle, frontier);
+            using Scanner scanner = new(_fileSystem, generation.Handle, frontier);
             while (scanner.MoveNext())
             {
                 if (scanner.Header.IsCommit) continue;
@@ -796,7 +799,7 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
     private static ulong ReadUInt64(byte[]? bytes) => bytes is { Length: 8 } ? BinaryPrimitives.ReadUInt64BigEndian(bytes) : 0;
 
     /// <summary>Sequential record reader over <c>[0, end)</c> of a generation file; stops at the first implausible header.</summary>
-    private sealed class Scanner(SafeFileHandle handle, long end) : IDisposable
+    private sealed class Scanner(IFileSystem fileSystem, SafeFileHandle handle, long end) : IDisposable
     {
         private byte[] _buffer = ArrayPool<byte>.Shared.Rent(ScanBufferSize);
         private long _bufferOffset; // file offset of _buffer[0]
@@ -837,7 +840,7 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
             }
 
             _bufferOffset = _next;
-            _buffered = TrieNodeLogGeneration.ReadAt(handle, _next, _buffer.AsSpan(0, (int)Math.Min(_buffer.Length, end - _next)));
+            _buffered = TrieNodeLogGeneration.ReadAt(fileSystem, handle, _next, _buffer.AsSpan(0, (int)Math.Min(_buffer.Length, end - _next)));
             _recordStart = 0;
             return _buffered >= length;
         }
