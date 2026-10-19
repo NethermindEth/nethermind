@@ -17,6 +17,10 @@ jobs:
   build:
     name: Build Nethermind packages
     runs-on: ubuntu-latest
+    permissions:
+      attestations: write
+      contents: read
+      id-token: write
     outputs:
       version: ${{ steps.version.outputs.version }}
       package-prefix: ${{ steps.version.outputs.package-prefix }}
@@ -66,6 +70,12 @@ jobs:
           gpg --no-tty --batch --yes --pinentry-mode loopback \
             --passphrase-file <(printf '%s' "$GPG_PASSPHRASE") \
             -o SHA256SUMS.asc -ab SHA256SUMS
+
+      # Unlike the key signature, the attestation binds each package to this workflow and commit
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-checksums: ${{ env.PACKAGE_DIR }}/SHA256SUMS
 
       - name: Upload checksums
         uses: actions/upload-artifact@v7
@@ -177,6 +187,8 @@ jobs:
           #### Build signatures
 
           `SHA256SUMS` lists every package and is signed with the following OpenPGP key: `AD12 7976 5093 C675 9CD8 A400 24A7 7461 6F1E 617E`
+
+          Each package also has a build provenance attestation: `gh attestation verify <file> --repo ${{ github.repository }}`
           EOF
           )
             gh release create "$GIT_TAG" --target "$GITHUB_SHA" -t "v$GIT_TAG" -d ${prerelease:+-p} -F <(printf '%s' "$relnotes")
