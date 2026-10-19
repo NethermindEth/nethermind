@@ -26,6 +26,7 @@ public class MainProcessingContext : IMainProcessingContext, BlockProcessor.Bloc
         IMainProcessingModule[] mainProcessingModules,
         IWorldStateManager worldStateManager,
         IProcessExitSource processExitSource,
+        InvalidBlockDiagnostics invalidBlockDiagnostics,
         ILogManager logManager)
     {
 
@@ -49,7 +50,6 @@ public class MainProcessingContext : IMainProcessingContext, BlockProcessor.Bloc
                 .AddScoped<BlockchainProcessor.Options, IReceiptConfig, IBlocksConfig>((receiptConfig, blocksConfig) => new()
                 {
                     StoreReceiptsByDefault = receiptConfig.StoreReceipts,
-                    DumpOptions = initConfig.AutoDump,
                     ProcessingCores = blocksConfig.ProcessingCores,
                     BlockProcessingTimeoutMs = blocksConfig.BlockProcessingTimeoutMs
                 })
@@ -62,6 +62,7 @@ public class MainProcessingContext : IMainProcessingContext, BlockProcessor.Bloc
         });
 
         _components = innerScope.Resolve<Components>();
+        _components.BlockProcessingQueue.InvalidBlock += invalidBlockDiagnostics.OnInvalidBlock;
 
         if (initConfig.ExitOnInvalidBlock)
         {

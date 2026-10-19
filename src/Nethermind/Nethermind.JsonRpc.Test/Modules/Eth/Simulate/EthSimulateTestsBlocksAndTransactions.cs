@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
@@ -28,6 +29,7 @@ using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
+using Nethermind.State.Proofs;
 using Nethermind.State.Repositories;
 using NUnit.Framework;
 using ResultType = Nethermind.Facade.Proxy.Models.Simulate.ResultType;
@@ -36,6 +38,100 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth.Simulate;
 
 public class EthSimulateTestsBlocksAndTransactions
 {
+    private const string Calls = "\"calls\":[{\"from\":\"0xc000000000000000000000000000000000000000\",\"to\":\"0xc100000000000000000000000000000000000000\"}]";
+
+    [TestCase("{\"blockOverrides\":{\"bogusField\":\"0x1\"}," + Calls + "}", TestName = "Simulate rejects an unknown block override key")]
+    [TestCase("{\"stateOverrides\":{\"0xc100000000000000000000000000000000000000\":{\"balance\":\"0x1\",\"bogusField\":\"0x1\"}}," + Calls + "}", TestName = "Simulate rejects an unknown account override key")]
+    [TestCase("{\"blockOverrides\":{\"difficulty\":\"0x1\"}," + Calls + "}", TestName = "Simulate rejects a difficulty override")]
+    [TestCase("{\"blockOverrides\":{\"beaconRoot\":\"0x0000000000000000000000000000000000000000000000000000000000000001\"}," + Calls + "}", TestName = "Simulate rejects a beacon root override")]
+    [TestCase("{\"blockOverrides\":{\"number\":\"0x80\",\"Number\":\"0x81\"}," + Calls + "}", TestName = "Simulate rejects two block override keys for one field")]
+    [TestCase("{\"stateOverrides\":{\"0xc100000000000000000000000000000000000000\":{\"code\":\"0x00\",\"Code\":\"0x01\"}}," + Calls + "}", TestName = "Simulate rejects two account override keys for one field")]
+    public async Task Simulate_rejects_override_keys_it_does_not_support(string blockStateCall)
+    {
+        using TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+
+        string response = await chain.TestEthRpc("eth_simulateV1", SimulatePayloadJson(blockStateCall), "latest");
+
+        Assert.That(ErrorCode(response), Is.EqualTo(ErrorCodes.InvalidParams), response);
+    }
+
+    [TestCase("{\"blockOverrides\":{\"Number\":\"0x80\"}," + Calls + "}", TestName = "Simulate takes a block override key in another case")]
+    [TestCase("{\"stateOverrides\":{\"0xc100000000000000000000000000000000000000\":{\"Code\":\"0x00\"}}," + Calls + "}", TestName = "Simulate takes an account override key in another case")]
+    [TestCase("{\"blockOverrides\":{\"number\":\"0x80\",\"time\":\"0xffffffff\",\"gasLimit\":\"0x1c9c380\",\"feeRecipient\":\"0xc200000000000000000000000000000000000000\",\"prevRandao\":\"0x0000000000000000000000000000000000000000000000000000000000000001\",\"baseFeePerGas\":\"0x0\",\"blobBaseFee\":\"0x1\",\"withdrawals\":[]},\"stateOverrides\":{\"0xc100000000000000000000000000000000000000\":{\"nonce\":\"0x1\",\"balance\":\"0x1\",\"code\":\"0x00\",\"stateDiff\":{\"0x0000000000000000000000000000000000000000000000000000000000000001\":\"0x0000000000000000000000000000000000000000000000000000000000000002\"}},\"0xc200000000000000000000000000000000000000\":{\"state\":{\"0x0000000000000000000000000000000000000000000000000000000000000001\":\"0x0000000000000000000000000000000000000000000000000000000000000002\"}},\"0x0000000000000000000000000000000000000001\":{\"movePrecompileToAddress\":\"0xc400000000000000000000000000000000000000\"}}," + Calls + "}", TestName = "Simulate takes every supported override key")]
+    public async Task Simulate_takes_override_keys_it_supports(string blockStateCall)
+    {
+        using TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+
+        string response = await chain.TestEthRpc("eth_simulateV1", SimulatePayloadJson(blockStateCall), "latest");
+
+        Assert.That(ErrorCode(response), Is.Null, response);
+    }
+
+    [Test]
+    public async Task Simulate_processes_withdrawal_overrides()
+    {
+        using TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain(Osaka.Instance);
+        // PUSH20 0xc3.. BALANCE PUSH1 0 MSTORE PUSH1 32 PUSH1 0 RETURN
+        const string balanceOfRecipient = "0x73c30000000000000000000000000000000000000031600052602060" + "00f3";
+        const string withdrawal = "{\"index\":\"0x0\",\"validatorIndex\":\"0x1\",\"address\":\"0xc300000000000000000000000000000000000000\",\"amount\":\"0x2\"}";
+        JsonElement payload = SimulatePayloadJson(
+            "{\"blockOverrides\":{\"withdrawals\":[" + withdrawal + "]},\"stateOverrides\":{\"0xc100000000000000000000000000000000000000\":{\"code\":\"" + balanceOfRecipient + "\"}}}," +
+            "{" + Calls + "}");
+
+        string response = await chain.TestEthRpc("eth_simulateV1", payload, "latest");
+
+        using JsonDocument document = JsonDocument.Parse(response);
+        JsonElement blocks = document.RootElement.GetProperty("result");
+        Hash256 expectedRoot = new WithdrawalTrie([new Withdrawal { Index = 0, ValidatorIndex = 1, Address = new Address("0xc300000000000000000000000000000000000000"), AmountInGwei = 2 }]).RootHash;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blocks[0].GetProperty("withdrawals").GetArrayLength(), Is.EqualTo(1), response);
+            Assert.That(blocks[0].GetProperty("withdrawalsRoot").GetString(), Is.EqualTo(expectedRoot.ToString()), response);
+            Assert.That(blocks[1].GetProperty("withdrawalsRoot").GetString(), Is.EqualTo(Keccak.EmptyTreeHash.ToString()), response);
+            Assert.That(blocks[1].GetProperty("calls")[0].GetProperty("returnData").GetString(), Is.EqualTo("0x" + 2_000_000_000UL.ToString("x64")), response);
+        }
+    }
+
+    [TestCase("debug_simulateV1")]
+    [TestCase("trace_simulateV1")]
+    public async Task Debug_and_trace_simulate_reject_an_unknown_override_key(string method)
+    {
+        using TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+        JsonElement payload = SimulatePayloadJson("{\"blockOverrides\":{\"bogusField\":\"0x1\"}," + Calls + "}");
+
+        string response = method == "debug_simulateV1"
+            ? await RpcTest.TestSerializedRequest(chain.DebugRpcModule, method, payload, "latest")
+            : await RpcTest.TestSerializedRequest(chain.TraceRpcModule, method, payload, "latest");
+
+        Assert.That(ErrorCode(response), Is.EqualTo(ErrorCodes.InvalidParams), response);
+    }
+
+    [Test]
+    public async Task Eth_call_still_ignores_an_unknown_account_override_key()
+    {
+        using TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+        JsonElement call = ParseJson("{\"from\":\"0xc000000000000000000000000000000000000000\",\"to\":\"0xc100000000000000000000000000000000000000\"}");
+        JsonElement stateOverride = ParseJson("{\"0xc100000000000000000000000000000000000000\":{\"balance\":\"0x1\",\"bogusField\":\"0x1\"}}");
+
+        string response = await chain.TestEthRpc("eth_call", call, "latest", stateOverride);
+
+        Assert.That(ErrorCode(response), Is.Null, response);
+    }
+
+    private static JsonElement SimulatePayloadJson(string blockStateCall) => ParseJson($"{{\"blockStateCalls\":[{blockStateCall}]}}");
+
+    private static JsonElement ParseJson(string json)
+    {
+        using JsonDocument document = JsonDocument.Parse(json);
+        return document.RootElement.Clone();
+    }
+
+    private static int? ErrorCode(string response)
+    {
+        using JsonDocument document = JsonDocument.Parse(response);
+        return document.RootElement.TryGetProperty("error", out JsonElement error) ? error.GetProperty("code").GetInt32() : null;
+    }
+
     private const ulong StateGasBlockLimit = 200_000;
     private const ulong RemainingStateGasAfterSstore = StateGasBlockLimit - (ulong)GasCostOf.SSetState;
     private const ulong TwoSstoreRequestGasCap = 200_000;
