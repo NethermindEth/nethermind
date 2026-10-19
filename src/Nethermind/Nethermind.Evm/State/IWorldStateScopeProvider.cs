@@ -3,8 +3,8 @@
 
 using System;
 using System.Diagnostics.CodeAnalysis;
-using System.Threading.Tasks;
 using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
@@ -159,7 +159,8 @@ public interface IWorldStateScopeProvider
         /// call <see cref="UpdateRootHash"/> afterwards. See <see cref="ScopeBalApplier"/> for the generic implementation.
         /// </remarks>
         /// <param name="bal">The Block Access List whose last change per field is applied.</param>
-        void ApplyBal(ReadOnlyBlockAccessList bal);
+        /// <param name="cancellationToken">Once cancelled, the apply returns early, leaving the scope partially written and fit only to be discarded.</param>
+        void ApplyBal(ReadOnlyBlockAccessList bal, CancellationToken cancellationToken = default);
     }
 
     /// <summary>

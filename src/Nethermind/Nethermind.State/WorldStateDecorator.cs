@@ -42,8 +42,8 @@ public abstract class WorldStateDecorator(IWorldState state) : IWorldState
     public void Prefetch(Span<Address> accounts, Span<StorageCell> slots, CancellationToken cancellationToken)
         => State.Prefetch(accounts, slots, cancellationToken);
 
-    public void ApplyBal(ReadOnlyBlockAccessList bal)
-        => State.ApplyBal(bal);
+    public void ApplyBal(ReadOnlyBlockAccessList bal, CancellationToken cancellationToken = default)
+        => State.ApplyBal(bal, cancellationToken);
 
     public bool HasStateForBlock(BlockHeader? baseBlock)
         => State.HasStateForBlock(baseBlock);

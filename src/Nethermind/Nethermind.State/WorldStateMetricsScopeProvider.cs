@@ -4,8 +4,8 @@
 using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
-using System.Threading.Tasks;
 using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
@@ -92,7 +92,7 @@ public class WorldStateMetricsScopeProvider(IWorldStateScopeProvider baseProvide
         public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null)
             => baseScope.HintBal(bal, sink);
 
-        public void ApplyBal(ReadOnlyBlockAccessList bal)
-            => baseScope.ApplyBal(bal);
+        public void ApplyBal(ReadOnlyBlockAccessList bal, CancellationToken cancellationToken)
+            => baseScope.ApplyBal(bal, cancellationToken);
     }
 }
