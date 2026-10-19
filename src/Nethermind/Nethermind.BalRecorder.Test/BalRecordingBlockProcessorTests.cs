@@ -54,8 +54,8 @@ public class BalRecordingBlockProcessorTests
         BalRecordingBlockProcessor sut = new(inner, new FakeRecordedBalStore(), Substitute.For<IBlockAccessListManager>());
 
         int count = 0;
-        sut.TransactionsExecuted += () => count++;
-        inner.RaiseTransactionsExecuted();
+        sut.TransactionsExecuted += _ => count++;
+        inner.RaiseTransactionsExecuted(Build.A.Block.TestObject);
 
         Assert.That(count, Is.EqualTo(1));
     }
@@ -67,8 +67,8 @@ public class BalRecordingBlockProcessorTests
         public (Block Block, TxReceipt[] Receipts) ProcessOne(Block suggestedBlock, ProcessingOptions options, IBlockTracer blockTracer, IReleaseSpec spec, CancellationToken token)
             => (ProcessedBlock ?? suggestedBlock, []);
 
-        public event Action? TransactionsExecuted;
+        public event Action<Block>? TransactionsExecuted;
 
-        public void RaiseTransactionsExecuted() => TransactionsExecuted?.Invoke();
+        public void RaiseTransactionsExecuted(Block block) => TransactionsExecuted?.Invoke(block);
     }
 }

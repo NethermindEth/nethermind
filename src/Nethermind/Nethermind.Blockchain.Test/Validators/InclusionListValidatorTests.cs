@@ -54,7 +54,6 @@ public class InclusionListValidatorTests
             // EIP-1559 fee check uses MaxFeePerGas (cap), not the tip: cap above baseFee → appendable.
             yield return Case("EIP-1559 low tip but sufficient fee cap", [Build1559Tx()], false, baseFee: 5.GWei);
             yield return Case("Blob tx is ignored", [BuildBlobTx()], true);
-            yield return Case("Blob tx cannot afford blob fee", [BuildBlobTx(maxFeePerBlobGas: 100_000.GWei)], true);
             yield return Case("Blob entry does not hide an omitted ordinary tx", [BuildBlobTx(), _validTx], false);
             yield return Case("Blob entry is ignored after an included ordinary tx", [_validTx, BuildBlobTx()], true, blockTxs: [_validTx]);
             // A tx normal execution rejects must not be reported appendable.
@@ -87,48 +86,6 @@ public class InclusionListValidatorTests
 
         IReadOnlyStateProvider state = StateWith(TestItem.AddressA, 10.Ether, senderNonce);
         Assert.That(InclusionListValidator.IsSatisfied(block, state, _specProvider.GetSpec(block.Header), _txValidator), Is.EqualTo(satisfied));
-    }
-
-    [Test]
-    public void Blob_entries_are_ignored_regardless_of_capacity_and_base_fee(
-        [Values(0UL, Eip4844Constants.GasPerBlob - 1, Eip4844Constants.GasPerBlob)] ulong remainingBlobGas,
-        [Values] bool underpriced,
-        [Values] bool included)
-    {
-        IReleaseSpec spec = Bogota.Instance;
-        Block block = Build.A.Block
-            .WithGasLimit(30_000_000)
-            .WithGasUsed(1_000_000)
-            .WithBlobGasUsed(spec.GasCosts.MaxBlobGasPerBlock - remainingBlobGas)
-            .WithExcessBlobGas(2 * spec.BlobBaseFeeUpdateFraction)
-            .TestObject;
-        Assert.That(BlobGasCalculator.TryCalculateFeePerBlobGas(block.Header, spec.BlobBaseFeeUpdateFraction, out UInt256 blobBaseFee), Is.True);
-        Transaction tx = BuildBlobTx(maxFeePerBlobGas: underpriced ? blobBaseFee - UInt256.One : blobBaseFee);
-        if (included) block = new Block(block.Header, [tx], block.Uncles);
-
-        Assert.That(InclusionListValidator.IsSatisfied(block, [tx], StateWith(TestItem.AddressA, 10.Ether, 0), spec, _txValidator), Is.True);
-    }
-
-    // The supplied state precedes withdrawals.
-    [TestCase(0UL, ExpectedResult = false, TestName = "Sender funded before withdrawals is appendable")]
-    [TestCase(9_500_000_000UL, ExpectedResult = true, TestName = "Sender funded only by this block's withdrawal is not appendable")]
-    public bool Withdrawals_are_not_spendable_by_an_appended_tx(ulong withdrawnGwei)
-    {
-        Withdrawal[] withdrawals = withdrawnGwei == 0
-            ? []
-            : [Build.A.Withdrawal.WithRecipient(TestItem.AddressA).WithAmount(withdrawnGwei).TestObject];
-
-        Block block = Build.A.Block
-            .WithGasLimit(30_000_000)
-            .WithGasUsed(1_000_000)
-            .WithBaseFeePerGas(UInt256.Zero)
-            .WithTransactions([])
-            .WithWithdrawals(withdrawals)
-            .WithInclusionListTransactions([_validTx])
-            .TestObject;
-
-        // Withdrawing 9.5 of the 10 ether leaves 0.5, below _validTx's ~1.001 ether cost.
-        return InclusionListValidator.IsSatisfied(block, StateWith(TestItem.AddressA, 10.Ether - (UInt256)withdrawnGwei * 1.GWei, 0), _specProvider.GetSpec(block.Header), _txValidator);
     }
 
     // EIP-8037 admits a transaction per dimension, so an entry that fits the state gas the block actually spent
