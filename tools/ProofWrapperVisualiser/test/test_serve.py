@@ -120,5 +120,72 @@ class ServeTests(unittest.TestCase):
             self.assertEqual([n["name"] for n in json.loads(response.read())], ["el-1"])
 
 
+class TokenTests(unittest.TestCase):
+    TOKEN = "s3cret-token-0123456789"
+
+    @classmethod
+    def setUpClass(cls):
+        cls.upstream = ThreadingHTTPServer(("127.0.0.1", 0), Upstream)
+        upstream_url = start(cls.upstream)
+        cls.server = ThreadingHTTPServer(("127.0.0.1", 0), serve.handler(serve.Nodes([], None), 0))
+        cls.port = cls.server.server_address[1]
+        cls.server.RequestHandlerClass = serve.handler(serve.Nodes([("el-1", upstream_url)], None), cls.port, token=cls.TOKEN)
+        cls.url = start(cls.server)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.server.shutdown()
+        cls.upstream.shutdown()
+
+    class NoRedirect(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, *_):
+            return None
+
+    def request(self, path, data=None, headers=None):
+        opener = urllib.request.build_opener(self.NoRedirect)
+        request = urllib.request.Request(self.url + path, data, {"Content-Type": "application/json", **(headers or {})})
+        try:
+            with opener.open(request, timeout=5) as response:
+                return response.status, response.headers, response.read()
+        except urllib.error.HTTPError as error:
+            return error.code, error.headers, error.read()
+
+    def test_exchanges_a_valid_query_token_for_a_strict_http_only_cookie(self):
+        status, headers, _ = self.request(f"/js/app.js?token={self.TOKEN}&x=1")
+        self.assertEqual(status, 303)
+        self.assertEqual(headers["Location"], "/js/app.js?x=1")
+        cookie = headers["Set-Cookie"]
+        self.assertTrue(cookie.startswith(f"pwv_token={self.TOKEN};"))
+        self.assertIn("HttpOnly", cookie)
+        self.assertIn("SameSite=Strict", cookie)
+
+    def test_accepts_the_cookie_for_pages_and_proxied_calls(self):
+        jar = {"Cookie": f"pwv_token={self.TOKEN}"}
+        self.assertEqual(self.request("/", headers=jar)[0], 200)
+        body = json.dumps({"method": "debug_proofWrapperEvents", "params": []}).encode()
+        self.assertEqual(self.request("/rpc/el-1", body, {**jar, "Origin": f"http://127.0.0.1:{self.port}"})[0], 200)
+
+    def test_rejects_missing_or_wrong_tokens(self):
+        sent = len(Upstream.received)
+        body = json.dumps({"method": "debug_proofWrapperEvents", "params": []}).encode()
+        for path, headers in (("/", {}), ("/?token=wrong", {}), ("/api/nodes", {"Cookie": "pwv_token=wrong"}),
+                              ("/css/app.css", {"Cookie": "other=1"})):
+            self.assertEqual(self.request(path, headers=headers)[0], 401, path)
+        self.assertEqual(self.request("/rpc/el-1", body)[0], 401)
+        self.assertEqual(self.request(f"/rpc/el-1?token={self.TOKEN}", body)[0], 401, "the query token is only exchanged on GET")
+        self.assertEqual(len(Upstream.received), sent, "nothing reaches the node")
+
+    def test_still_checks_host_and_origin_with_a_valid_token(self):
+        jar = {"Cookie": f"pwv_token={self.TOKEN}"}
+        self.assertEqual(self.request("/", headers={**jar, "Host": f"rebound.example:{self.port}"})[0], 421)
+        body = json.dumps({"method": "debug_proofWrapperEvents", "params": []}).encode()
+        self.assertEqual(self.request("/rpc/el-1", body, {**jar, "Origin": "http://attacker.example"})[0], 403)
+
+    def test_compares_tokens_exactly(self):
+        self.assertTrue(serve.token_matches(self.TOKEN, self.TOKEN))
+        self.assertFalse(serve.token_matches(self.TOKEN[:-1], self.TOKEN))
+        self.assertFalse(serve.token_matches(None, self.TOKEN))
+
+
 if __name__ == "__main__":
     unittest.main()

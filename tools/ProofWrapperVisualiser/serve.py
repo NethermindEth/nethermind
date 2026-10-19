@@ -6,16 +6,23 @@
 Nodes come from --node NAME=URL and, with --kurtosis ENCLAVE, from the enclave's execution-layer services. The proxy only
 forwards to those URLs and only the methods the page needs, so it is not an open relay. Requests must name an allowed Host
 (loopback unless --allow-host adds more), which defeats DNS rebinding, and proxied POSTs must come from the page's own origin.
+With --token every request must also carry a shared token: the first page load passes it as ?token=, which is exchanged for
+an HttpOnly, SameSite=Strict cookie that the page's own requests then carry. Binding beyond loopback requires a token.
 """
 import argparse
+import hmac
+import http.cookies
 import json
 import mimetypes
+import os
 import re
+import secrets
 import socket
 import subprocess
 import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -26,6 +33,8 @@ ALLOWED_METHODS = {"debug_proofWrapperEvents", "admin_nodeInfo", "admin_peers", 
 MAX_REQUEST = 64 * 1024
 MAX_RESPONSE = 32 * 1024 * 1024
 LOOPBACK = {"localhost", "127.0.0.1", "[::1]"}
+TOKEN_COOKIE = "pwv_token"
+TOKEN_ENV = "VISUALISER_TOKEN"
 SERVICE = re.compile(r"^[0-9a-f]{12}\s+(\S+)")
 RPC_PORT = re.compile(r"(?<![\w-])rpc:\s*\d+/tcp\s*->\s*(\S+)")
 
@@ -98,13 +107,51 @@ def origin_allowed(origin, host):
     return origin is None or origin == f"http://{host}"
 
 
-def handler(nodes, port, allowed_hosts=frozenset()):
+def token_matches(given, token):
+    """Constant-time comparison of a presented token with the configured one."""
+    return given is not None and hmac.compare_digest(given.encode(), token.encode())
+
+
+def handler(nodes, port, allowed_hosts=frozenset(), token=None):
     class Handler(BaseHTTPRequestHandler):
+        def unauthorised(self):
+            """With a token configured: exchanges a valid ?token= for a cookie (redirecting to the same path without it), and
+            rejects requests carrying neither a valid query token nor a valid cookie."""
+            if token is None:
+                return False
+            path, _, query = self.path.partition("?")
+            params = urllib.parse.parse_qs(query)
+            if "token" in params:
+                if self.command != "GET" or not token_matches(params["token"][0], token):
+                    self.send(401, b'{"error":"invalid token"}')
+                    return True
+                rest = urllib.parse.urlencode([(k, v) for k, values in params.items() if k != "token" for v in values])
+                self.send_response(303)
+                self.send_header("Location", path + (f"?{rest}" if rest else ""))
+                self.send_header("Set-Cookie", f"{TOKEN_COOKIE}={token}; HttpOnly; SameSite=Strict; Path=/")
+                self.send_header("Cache-Control", "no-store")
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return True
+            cookies = http.cookies.SimpleCookie()
+            try:
+                cookies.load(self.headers.get("Cookie") or "")
+            except http.cookies.CookieError:
+                pass
+            cookie = cookies.get(TOKEN_COOKIE)
+            if not token_matches(cookie.value if cookie else None, token):
+                self.send(401, b'{"error":"token required: open the link with ?token=..."}')
+                return True
+            return False
+
         def refused(self):
-            """Rejects requests for another host name (DNS rebinding) or, for POST, from another origin (CSRF)."""
+            """Rejects requests for another host name (DNS rebinding), without the token when one is set, or, for POST, from
+            another origin (CSRF)."""
             host = self.headers.get("Host")
             if not host_allowed(host, port, allowed_hosts):
                 self.send(421, b'{"error":"unexpected Host"}')
+                return True
+            if self.unauthorised():
                 return True
             if self.command == "POST" and not origin_allowed(self.headers.get("Origin"), host):
                 self.send(403, b'{"error":"cross-origin request"}')
@@ -172,17 +219,23 @@ def main():
     parser.add_argument("--port", type=int, default=8437)
     parser.add_argument("--node", action="append", type=parse_node, default=[], help="NAME=URL of a node's JSON-RPC endpoint; repeatable")
     parser.add_argument("--kurtosis", metavar="ENCLAVE", help="discover el-* RPC endpoints with `kurtosis enclave inspect ENCLAVE`")
+    parser.add_argument("--token", nargs="?", const="", metavar="TOKEN",
+                        help=f"require this token on every request; without a value, take ${TOKEN_ENV} or generate one")
     args = parser.parse_args()
-    if args.bind not in ("127.0.0.1", "localhost", "::1") and not args.allow_host:
-        parser.error("--bind to a non-loopback address also needs --allow-host NAME for the name browsers will use")
+    if args.token == "":
+        args.token = os.environ.get(TOKEN_ENV) or secrets.token_urlsafe(24)
+    if args.token is not None and not re.fullmatch(r"[A-Za-z0-9_-]{16,}", args.token):
+        parser.error("the token needs at least 16 URL-safe characters (letters, digits, - and _)")
+    if args.bind not in ("127.0.0.1", "localhost", "::1") and not (args.allow_host and args.token):
+        parser.error("--bind to a non-loopback address also needs --allow-host NAME for the name browsers will use, and --token")
     nodes = Nodes(args.node, args.kurtosis)
     print(f"Nodes: {nodes.all() or 'none yet; add them in the page'}")
     server_class = ThreadingHTTPServer
     if ":" in args.bind:
         server_class = type("ThreadingHTTPServer6", (ThreadingHTTPServer,), {"address_family": socket.AF_INET6})
-    server = server_class((args.bind, args.port), handler(nodes, args.port, frozenset(h.lower() for h in args.allow_host)))
-    host = f"[{args.bind}]" if ":" in args.bind else args.bind
-    print(f"Open http://{host}:{args.port}/")
+    server = server_class((args.bind, args.port), handler(nodes, args.port, frozenset(h.lower() for h in args.allow_host), args.token))
+    host = args.allow_host[0] if args.allow_host else f"[{args.bind}]" if ":" in args.bind else args.bind
+    print(f"Open http://{host}:{args.port}/" + (f"?token={args.token}" if args.token else ""), flush=True)
     server.serve_forever()
 
 
