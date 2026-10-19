@@ -87,6 +87,28 @@ public partial class BlockDownloaderTests
     }
 
     [Test]
+    public async Task Sizes_each_request_type_by_the_peers_that_serve_it([Values] bool blockAccessListsPeerFree)
+    {
+        IForwardHeaderProvider forwardHeaderProvider = Substitute.For<IForwardHeaderProvider>();
+        await using IContainer node = CreateNode(builder => builder.AddSingleton<IForwardHeaderProvider>(forwardHeaderProvider));
+        Context ctx = node.Resolve<Context>();
+        ConfigureBlockAccessListRequest(ctx, forwardHeaderProvider);
+        ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
+        syncPeer.ProtocolVersion.Returns(blockAccessListsPeerFree ? EthVersions.Eth71 : EthVersions.Eth70);
+        syncPeer.IsInitialized.Returns(true);
+        ctx.PeerPool.InitializedPeers.Returns([new PeerInfo(syncPeer)]);
+
+        using BlocksRequest bodyRequest = (await ctx.FullSyncFeedComponent.BlockDownloader.PrepareRequest(DownloaderOptions.Insert, 0, CancellationToken.None))!;
+        using BlocksRequest blockAccessListRequest = (await ctx.FullSyncFeedComponent.BlockDownloader.PrepareRequest(DownloaderOptions.Insert, 0, CancellationToken.None))!;
+
+        await ctx.PeerPool.Received().EstimateRequestLimit(RequestType.Bodies, BlocksSyncPeerAllocationStrategyFactory.AllocationStrategy, AllocationContexts.Blocks, Arg.Any<CancellationToken>());
+        await ctx.PeerPool.Received().EstimateRequestLimit(RequestType.Receipts, BlocksSyncPeerAllocationStrategyFactory.ReceiptsAllocationStrategy, AllocationContexts.Blocks, Arg.Any<CancellationToken>());
+        // Without a free eth/71 peer the estimate would only wait for an allocation, so the default size is used.
+        await ctx.PeerPool.Received(blockAccessListsPeerFree ? 1 : 0).EstimateRequestLimit(RequestType.BlockAccessLists, BlocksSyncPeerAllocationStrategyFactory.BlockAccessListsAllocationStrategy, AllocationContexts.BlockAccessLists, Arg.Any<CancellationToken>());
+        Assert.That(blockAccessListRequest.BlockAccessListsRequests.Count, Is.EqualTo(1));
+    }
+
+    [Test]
     public async Task Full_sync_processing_does_not_request_block_access_lists()
     {
         IForwardHeaderProvider forwardHeaderProvider = Substitute.For<IForwardHeaderProvider>();

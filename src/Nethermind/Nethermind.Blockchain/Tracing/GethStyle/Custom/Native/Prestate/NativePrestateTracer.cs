@@ -36,10 +36,17 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
     private readonly HashSet<AddressAsKey> _deletedAccounts;
     // EIP-8360: storage opcodes of these accounts act on transient storage, so they read no state.
     private HashSet<AddressAsKey>? _transientCreates;
+    private List<AddressAsKey>? _nonexistentAccounts;
     private readonly bool _diffMode;
     // Before EIP-5920, 0xfc is an undefined opcode and its operand is no account.
     private readonly bool _isEip5920Enabled;
     private readonly bool _isEip8298Enabled;
+    // EIP-6780: SELFDESTRUCT deletes only an account created in the same transaction.
+    private readonly bool _isEip6780Enabled;
+    // EIP-8246: a self-destructed account that ends the transaction with a balance survives.
+    private readonly bool _isEip8246Enabled;
+    private readonly bool _disableCode;
+    private readonly bool _disableStorage;
 
     public NativePrestateTracer(
         IWorldState worldState,
@@ -62,6 +69,8 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
         _txHash = txHash;
         _isEip5920Enabled = releaseSpec?.IsEip5920Enabled == true;
         _isEip8298Enabled = releaseSpec?.IsEip8298Enabled == true;
+        _isEip6780Enabled = releaseSpec?.IsEip6780Enabled == true;
+        _isEip8246Enabled = releaseSpec?.IsEip8246Enabled == true;
         UInt256 instructionMask = CaptureMask;
         if (_isEip5920Enabled) instructionMask |= UInt256.One << (int)Instruction.PAY;
         if (_isEip8298Enabled) instructionMask |= UInt256.One << (int)Instruction.SETCODEFROM;
@@ -69,6 +78,8 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
 
         NativePrestateTracerConfig config = TypeInfoJsonSerializer.Deserialize<NativePrestateTracerConfig>(options.TracerConfig, EthereumJsonSerializer.JsonOptions) ?? new NativePrestateTracerConfig();
         _diffMode = config.DiffMode;
+        _disableCode = config.DisableCode;
+        _disableStorage = config.DisableStorage;
         if (_diffMode)
         {
             _poststate = [];
@@ -78,7 +89,13 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
 
         LookupAccount(from!);
         if (transaction?.Frames is null)
-            LookupAccount(to ?? ContractAddress.From(from, _prestate[from].Nonce ?? 0));
+        {
+            Address recipient = to ?? ContractAddress.From(from, _prestate[from].Nonce ?? 0);
+            LookupAccount(recipient);
+            // As in geth, a contract-creation transaction creates its recipient.
+            if (_diffMode && to is null)
+                _createdAccounts.Add(recipient);
+        }
         else
             LookupFrameTxState(from, transaction);
         LookupAccount(beneficiary ?? Address.Zero);
@@ -221,8 +238,11 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
                 {
                     address = stack.PeekAddress(0);
                     LookupAccount(address);
-                    if (_diffMode && _op == Instruction.SELFDESTRUCT)
-                        _deletedAccounts.Add(address);
+                    // As in geth, the executing account is deleted when the opcode runs, but after EIP-6780 only if
+                    // it was created in this transaction.
+                    if (_diffMode && _op == Instruction.SELFDESTRUCT
+                        && (!_isEip6780Enabled || _createdAccounts.Contains(_executingAccount!)))
+                        _deletedAccounts.Add(_executingAccount!);
                 }
                 break;
             // EIP-8298: SETCODEFROM reads the source account's code.
@@ -293,8 +313,12 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
             if (_worldState!.TryGetAccount(addr, out AccountStruct account))
             {
                 UInt256 nonce = account.Nonce;
-                ReadOnlyMemory<byte> code = _worldState.GetCode(addr);
-                _prestate.Add(addr, new NativePrestateTracerAccount(account.Balance, nonce, code));
+                ReadOnlyMemory<byte> code = _disableCode ? default : _worldState.GetCode(addr);
+                _prestate.Add(addr, new NativePrestateTracerAccount(account.Balance, nonce, code)
+                {
+                    CodeHash = account.CodeHash != default(ValueHash256) && account.CodeHash != Keccak.OfAnEmptyString.ValueHash256
+                        ? account.CodeHash : (ValueHash256?)null
+                });
             }
             else
             {
@@ -302,12 +326,16 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
                 {
                     Balance = UInt256.Zero
                 });
+                if (_diffMode && !_worldState.AccountExists(addr))
+                    (_nonexistentAccounts ??= []).Add(addr);
             }
         }
     }
 
     protected void LookupStorage(Address addr, UInt256 index)
     {
+        if (_disableStorage) return;
+
         NativePrestateTracerAccount account = _prestate[addr];
         account.Storage ??= [];
 
@@ -319,21 +347,23 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
     }
 
     private static bool IsEmpty(NativePrestateTracerAccount account) =>
-        (account.Balance ?? UInt256.Zero).IsZero && account.Nonce is null && account.Code.IsEmpty;
+        (account.Balance ?? UInt256.Zero).IsZero && account.Nonce is null && account.Code.IsEmpty && account.CodeHash is null;
 
     private void ProcessDiffState()
     {
         foreach ((AddressAsKey addr, NativePrestateTracerAccount prestateAccount) in _prestate)
         {
-            // If an account was deleted then don't show it in the postState trace
-            if (_deletedAccounts.Contains(addr))
+            // If an account was deleted then don't show it in the postState trace. Unlike geth, under EIP-8246 one
+            // that still exists kept its balance as a balance-only account, so it is a normal diff; EIP-161 removed
+            // it if the balance was zero.
+            if (_deletedAccounts.Contains(addr) && !(_isEip8246Enabled && _worldState!.AccountExists(addr)))
                 continue;
 
             _worldState!.TryGetAccount(addr, out AccountStruct poststateAccountStruct);
             NativePrestateTracerAccount poststateAccount = new(
                 poststateAccountStruct.Balance,
                 poststateAccountStruct.Nonce,
-                _worldState.GetCode(addr));
+                _disableCode ? default : _worldState.GetCode(addr));
             NativePrestateTracerAccount? diffAccount = new();
 
             bool modified = false;
@@ -347,13 +377,20 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
                 modified = true;
                 diffAccount.Nonce = poststateAccount.Nonce;
             }
-            if (!poststateAccount.Code.Span.SequenceEqual(prestateAccount.Code.Span))
+            ValueHash256 postCodeHash = _worldState.AccountExists(addr) ? poststateAccountStruct.CodeHash : default;
+            if (postCodeHash != (prestateAccount.CodeHash ?? Keccak.OfAnEmptyString.ValueHash256))
+            {
+                modified = true;
+                diffAccount.CodeHash = postCodeHash;
+            }
+            if (!_disableCode && !poststateAccount.Code.Span.SequenceEqual(prestateAccount.Code.Span))
             {
                 modified = true;
                 diffAccount.Code = poststateAccount.Code;
+                diffAccount.IncludeEmptyCode = poststateAccount.Code.IsEmpty;
             }
 
-            if (prestateAccount.Storage is not null)
+            if (!_disableStorage && prestateAccount.Storage is not null)
             {
                 foreach ((UInt256 index, UInt256 prestateStorage) in prestateAccount.Storage)
                 {
@@ -384,9 +421,19 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
                 _poststate.Add(addr, diffAccount);
 
             // If no account fields were modified or the account was created then remove it from the prestate trace;
-            // a created account counts as new when it was empty before, judged by balance, nonce and code alone.
+            // a created account counts as new when it was empty before, judged by balance, nonce and code hash.
             if (!modified || (_createdAccounts.Contains(addr) && IsEmpty(prestateAccount)))
                 _prestate.Remove(addr);
+        }
+
+        if (_nonexistentAccounts is not null)
+        {
+            foreach (AddressAsKey addr in _nonexistentAccounts)
+            {
+                // EIP-8250's nonce manager can have storage without an account record.
+                if (_prestate.TryGetValue(addr, out NativePrestateTracerAccount? account) && account.Storage is not { Count: > 0 })
+                    _prestate.Remove(addr);
+            }
         }
     }
 }

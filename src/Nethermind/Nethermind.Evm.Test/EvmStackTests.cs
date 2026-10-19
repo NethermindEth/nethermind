@@ -297,6 +297,27 @@ public class EvmStackTests
     }
 
     [Test]
+    public void Traced_PushByte_reports_the_byte_without_allocating([Values(0, 1, 0x80, 0xff)] int value)
+    {
+        using VmState<EthereumGasPolicy> vmState = CreateEvmState();
+        BytePushTracer tracer = new();
+        vmState.InitializeStacks(tracer, default, out EvmStack stack);
+        stack.PushByte<OnFlag, OnFlag>((byte)value);
+
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        EvmExceptionType result = stack.PushByte<OnFlag, OnFlag>((byte)value);
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(EvmExceptionType.None));
+            Assert.That(tracer.Length, Is.EqualTo(1));
+            Assert.That(tracer.Value, Is.EqualTo((byte)value));
+            Assert.That(allocated, Is.Zero);
+        }
+    }
+
+    [Test]
     public void Shifts_preserve_unaligned_native_slots(
         [Values(Instruction.SHL, Instruction.SHR, Instruction.SAR)] Instruction instruction,
         [Values(0, 1, 7)] int offset,
@@ -578,5 +599,17 @@ public class EvmStackTests
         public byte[] StackItem { get; private set; } = [];
 
         public override void ReportStackPush(in ReadOnlySpan<byte> stackItem) => StackItem = stackItem.ToArray();
+    }
+
+    private sealed class BytePushTracer : TxTracer
+    {
+        public int Length { get; private set; }
+        public byte Value { get; private set; }
+
+        public override void ReportStackPush(in ReadOnlySpan<byte> stackItem)
+        {
+            Length = stackItem.Length;
+            Value = stackItem[0];
+        }
     }
 }

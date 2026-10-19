@@ -96,9 +96,8 @@ namespace Nethermind.State
         public bool TryGetAccount(Address address, out AccountStruct account)
         {
             // Note: This call is for compatibility with `IAccountStateProvider` and should not be called directly by VM. Because its slower.
-            account = _stateProvider.GetAccount(address)
-                .WithChangedStorageRoot(_persistentStorageProvider.GetStorageRoot(address))
-                .ToStruct();
+            Account stateAccount = _stateProvider.GetAccount(address);
+            account = new AccountStruct(stateAccount.Nonce, stateAccount.Balance, _persistentStorageProvider.GetStorageRoot(address), stateAccount.CodeHash);
 
             return !account.IsTotallyEmpty;
         }

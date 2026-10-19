@@ -48,7 +48,7 @@ internal sealed class FrameTxSimulationFilter(
             tx,
             signaturesPreValidated: state.FrameSignaturesVerified,
             local: local,
-            preempt: local ? null : _blockWorkInProgress);
+            preempt: local || state.ReAddedFromReorg ? null : _blockWorkInProgress);
         switch (result.Outcome)
         {
             case FrameTxSimulationOutcome.Rejected:
@@ -58,7 +58,7 @@ internal sealed class FrameTxSimulationFilter(
                 if (result.NodeBound)
                 {
                     Interlocked.Increment(ref Metrics.PendingTransactionsFrameTxSimulationDeferred);
-                    state.FrameSimulationYielded = result.Yielded && !local && !tx.CarriesBlobs;
+                    state.FrameValidationYielded = result.Yielded && !local && !tx.CarriesBlobs;
                     if (logger.IsTrace) logger.Trace($"Deferred frame transaction {tx.Hash}, this node's validation-prefix simulation bounds were spent: {result.Reason}.");
                     return AcceptTxResult.FrameSimulationDeferred.WithMessage(result.Reason ?? TxPoolErrorMessages.FrameSimulationDeferred);
                 }

@@ -9,6 +9,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Net;
+using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Reflection;
 using System.Runtime.Loader;
@@ -164,7 +165,7 @@ public class EthereumRunnerTests
         {
             IBlockProcessor wrapped = scenario == WarmupScenario.SupportedBehindCatchUp ? main.BlockProcessor : Substitute.For<IBlockProcessor>();
             api.MainProcessingContext!.BlockProcessor.Returns(new FinalizedBlockAccessListProcessor(wrapped,
-                container.Resolve<FinalizedBlockAccessListPolicy>(), main.WorldState, container.Resolve<IReceiptStorage>(), NullLogManager.Instance));
+                container.Resolve<FinalizedBlockAccessListPolicy>(), main.WorldState, container.Resolve<IReceiptStorage>(), container.Resolve<IReceiptsRecovery>(), NullLogManager.Instance));
             api.MainProcessingContext.TransactionProcessor.Returns(main.TransactionProcessor);
         }
 
@@ -1094,6 +1095,8 @@ public class EthereumRunnerTests
                 try
                 {
                     await runner.StopAsync().WaitAsync(RunnerTimeout);
+                    Assert.That(IPGlobalProperties.GetIPGlobalProperties().GetActiveTcpListeners(), Has.None.Property(nameof(IPEndPoint.Port)).EqualTo(port),
+                        "the P2P listener is closed on stop");
                 }
                 catch (Exception e)
                 {

@@ -47,7 +47,8 @@ public partial class TrieStoreScopeProvider(
     private readonly IStateHeaderProvider _stateHeaderProvider = stateHeaderProvider;
     private readonly ILogManager _logManager = logManager;
     protected StateTree? _backingStateTree;
-    private readonly KeyValueWithBatchingBackedCodeDb _codeDb = new(codeDb, codeDbIsPersistent);
+    // Used as is: the stateless witness' store serves code as executable memory, which the EVM runs without a copy.
+    private readonly IWorldStateScopeProvider.ICodeDb _codeDb = codeDb as IWorldStateScopeProvider.ICodeDb ?? new KeyValueWithBatchingBackedCodeDb(codeDb, codeDbIsPersistent);
 
     protected StateTree BackingStateTree =>
         _backingStateTree ?? throw new InvalidOperationException("A state tree is only available within a world-state scope.");
@@ -139,7 +140,7 @@ public partial class TrieStoreScopeProvider(
 
         public void HintGet(Address address, Account? account) => _loadedAccounts.TryAdd(address, account);
 
-        public void ApplyBal(ReadOnlyBlockAccessList bal) => ScopeBalApplier.Apply(this, bal);
+        public void ApplyBal(ReadOnlyBlockAccessList bal) => ScopeBalApplier.Apply(this, bal, _logManager);
 
         public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null)
         {

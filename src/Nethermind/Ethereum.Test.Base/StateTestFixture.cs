@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using NUnit.Framework;
 
 namespace Ethereum.Test.Base;
@@ -15,7 +16,7 @@ public abstract class LegacyStateTestFixture<TSelf, TPrefix> : GeneralStateTestB
     where TPrefix : ITestDirectoryPrefix
 {
     [TestCaseSource(nameof(LoadTests))]
-    public void Test(GeneralStateTest test) => Assert.That(RunTest(test).Pass, Is.True);
+    public async Task Test(GeneralStateTest test) => Assert.That((await RunTest(test)).Pass, Is.True);
 
     public static IEnumerable<GeneralStateTest> LoadTests() =>
         new TestsSourceLoader(new LoadLegacyGeneralStateTestsStrategy(),
@@ -34,7 +35,7 @@ public abstract class LegacyRetryStateTestFixture<TSelf, TPrefix> : GeneralState
 {
     [TestCaseSource(nameof(LoadTests))]
     [Retry(3)]
-    public void Test(GeneralStateTest test) => Assert.That(RunTest(test).Pass, Is.True);
+    public async Task Test(GeneralStateTest test) => Assert.That((await RunTest(test)).Pass, Is.True);
 
     public static IEnumerable<GeneralStateTest> LoadTests() =>
         new TestsSourceLoader(new LoadLegacyGeneralStateTestsStrategy(),

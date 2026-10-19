@@ -176,6 +176,33 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test, NonParallelizable]
+        public void TrySubmitKnown_settles_only_a_known_hash_that_needs_no_body([Values("known", "unknown", "discovery", "syncing")] string scenario)
+        {
+            if (scenario == "syncing")
+            {
+                _blockTree.Head = Build.A.Block.WithNumber(1).TestObject;
+            }
+            _txPool = CreatePool();
+            _txPool.AcceptTxWhenNotSynced = true;
+            Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+            Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+
+            _txPool.AcceptTxWhenNotSynced = false;
+            if (scenario == "discovery") _txPool.NewDiscovered += static (_, _) => { };
+            ValueHash256 hash = scenario == "unknown" ? TestItem.KeccakH : tx.Hash!;
+            long known = Metrics.PendingTransactionsKnown;
+
+            bool settled = ((IRecyclableTxPool)_txPool).TrySubmitKnown(in hash);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(settled, Is.EqualTo(scenario == "known"));
+                Assert.That(Metrics.PendingTransactionsKnown - known, Is.EqualTo(settled ? 1 : 0));
+            }
+        }
+
+        [Test, NonParallelizable]
         public void Duplicate_blob_returns_buffers_but_validation_rejection_keeps_them()
         {
             _txPool = CreatePool();
@@ -2636,11 +2663,9 @@ namespace Nethermind.TxPool.Test
         {
             _txPool = CreatePool();
             _ = AddTransactionToPool();
-            ITxPoolPeer txPoolPeer = Substitute.For<ITxPoolPeer>();
-            txPoolPeer.HeadNumber.Returns(peerHeadNumber);
-            txPoolPeer.Id.Returns(TestItem.PublicKeyA);
+            RecordingTxPoolPeer txPoolPeer = new(TestItem.PublicKeyA, peerHeadNumber);
             _txPool.AddPeer(txPoolPeer);
-            txPoolPeer.Received(expectedAnnouncements).SendNewTransactions(Arg.Any<IEnumerable<Transaction>>(), false);
+            Assert.That(txPoolPeer.BatchCount(sendFullTx: false), Is.EqualTo(expectedAnnouncements));
         }
 
         [TestCase(12_000_000UL, 0, TestName = "should_not_notify_added_peer_at_the_tip_while_syncing")]
@@ -2656,12 +2681,11 @@ namespace Nethermind.TxPool.Test
         public void should_notify_peer_only_once()
         {
             _txPool = CreatePool();
-            ITxPoolPeer txPoolPeer = Substitute.For<ITxPoolPeer>();
-            txPoolPeer.Id.Returns(TestItem.PublicKeyA);
+            RecordingTxPoolPeer txPoolPeer = new(TestItem.PublicKeyA);
             _txPool.AddPeer(txPoolPeer);
             _ = AddTransactionToPool();
-            Assert.That(() => txPoolPeer.ReceivedCallsMatching(p => p.SendNewTransaction(Arg.Any<Transaction>())), Is.True.After(500, 10));
-            txPoolPeer.DidNotReceive().SendNewTransactions(Arg.Any<IEnumerable<Transaction>>(), false);
+            Assert.That(() => txPoolPeer.BatchCount(sendFullTx: true), Is.Not.Zero.After(500, 10));
+            Assert.That(txPoolPeer.BatchCount(sendFullTx: false), Is.Zero);
         }
 
         [TestCase(true, TestName = "should_send_to_peers_full_newly_added_local_tx")]
@@ -5490,6 +5514,40 @@ namespace Nethermind.TxPool.Test
             }
         }
 
+        // Asserts against the shared preemption counter.
+        [NonParallelizable]
+        [TestCase(true, 2)]
+        [TestCase(false, 1)]
+        public void Gossiped_frame_tx_whose_signature_verification_yielded_is_refetchable_once_per_request(bool announced, int expectedYields)
+        {
+            _txPool = CreatePool(null, new TestSpecProvider(Eip8141Prototype.Instance));
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+            Transaction tx = BuildFrameTx(nonce: 0, TestItem.PrivateKeyA.Address, deadline: null);
+            // Two signatures: the first verifying entry always runs, so only a later one can yield.
+            tx.FrameSignatures = [FrameTxTestFrames.DigestSignature(TestItem.PrivateKeyB, 1), FrameTxTestFrames.DigestSignature(TestItem.PrivateKeyC, 2)];
+            tx.Hash = tx.CalculateHash();
+            IMessageHandler<PooledTransactionRequestMessage> peer = Substitute.For<IMessageHandler<PooledTransactionRequestMessage>>();
+            if (announced) Assert.That(_txPool.NotifyAboutTx(tx.Hash!, peer), Is.EqualTo(AnnounceResult.RequestRequired));
+            long before = Metrics.FrameTxSignatureVerificationsPreempted;
+            _blockTree.IsProcessingBlock = true;
+
+            Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.FrameSimulationDeferred));
+            Assert.That(_txPool.IsKnown(tx.Hash), Is.EqualTo(!announced));
+            for (int resend = 0; resend < 3; resend++)
+            {
+                _txPool.SubmitTx(tx, TxHandlingOptions.None);
+            }
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(Metrics.FrameTxSignatureVerificationsPreempted - before, Is.EqualTo(expectedYields));
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.Zero);
+                Assert.That(_txPool.IsKnown(tx.Hash), Is.True);
+                // A yielded push waits for its first announcement to refetch it; an announced one spent its retry.
+                Assert.That(_txPool.NotifyAboutTx(tx.Hash!, peer), Is.EqualTo(announced ? AnnounceResult.Delayed : AnnounceResult.RequestRequired));
+            }
+        }
+
         [Test]
         public void Repushed_frame_tx_whose_simulation_yielded_is_not_simulated_again()
         {
@@ -5511,6 +5569,33 @@ namespace Nethermind.TxPool.Test
             {
                 Assert.That(simulator.ReceivedCalls().Count(static c => c.GetMethodInfo().Name == nameof(IFrameTxPrefixSimulator.Simulate)), Is.EqualTo(1));
                 Assert.That(_txPool.NotifyAboutTx(tx.Hash!, peer), Is.EqualTo(AnnounceResult.RequestRequired));
+            }
+        }
+
+        [Test]
+        public async Task Frame_tx_readded_from_a_reorg_during_block_work_is_not_deferred()
+        {
+            _txPool = CreatePool(null, new TestSpecProvider(Eip8141Prototype.Instance));
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+            Transaction tx = BuildFrameTx(nonce: 0, TestItem.PrivateKeyA.Address, deadline: null);
+            // Two signatures: only an entry after the first can yield, so this tx would be deferred if gossiped now.
+            tx.FrameSignatures = [FrameTxTestFrames.DigestSignature(TestItem.PrivateKeyB, 1), FrameTxTestFrames.DigestSignature(TestItem.PrivateKeyC, 2)];
+            tx.Hash = tx.CalculateHash();
+            Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+
+            Block blockA = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
+            await RaiseBlockAddedToMainAndWaitForNewHead(blockA);
+            Assert.That(_txPool.TryGetPendingTransaction(tx.Hash!, out _), Is.False, "the included tx must have left the pool");
+
+            long before = Metrics.FrameTxSignatureVerificationsPreempted;
+            _blockTree.IsProcessingBlock = true;
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).TestObject, blockA);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.TryGetPendingTransaction(tx.Hash!, out _), Is.True,
+                    "a re-added tx has no peer to refetch it from, so block work must not defer it");
+                Assert.That(Metrics.FrameTxSignatureVerificationsPreempted, Is.EqualTo(before));
             }
         }
 

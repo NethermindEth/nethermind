@@ -462,6 +462,7 @@ public partial class FrameTxProcessorTests
         DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
         Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
         tx.BlockGasUsed = sentinel;
+        tx.SpentGas = sentinel;
 
         Block block = Build.A.Block.WithNumber(1)
             .WithBeneficiary(Beneficiary)
@@ -476,6 +477,7 @@ public partial class FrameTxProcessorTests
         {
             Assert.That(result.TransactionExecuted, Is.True, "must reach settlement, else this pins nothing");
             Assert.That(tx.BlockGasUsed, warmup ? Is.EqualTo(sentinel) : Is.Not.EqualTo(sentinel));
+            Assert.That(tx.SpentGas, warmup ? Is.EqualTo(sentinel) : Is.Not.EqualTo(sentinel));
         }
     }
 
@@ -1959,9 +1961,10 @@ public partial class FrameTxProcessorTests
         }
     }
 
-    /// <remarks>EIP-8250 prices <c>rlp(nonce_keys) || rlp(nonce_seq)</c> as transaction data. The baseline is
-    /// standard-bound and the keyed transaction floor-bound, so the extra gas is the floor charge for the added
-    /// bytes less the baseline's headroom over its own floor.</remarks>
+    /// <remarks>EIP-8250 prices <c>rlp(nonce_keys) || rlp(nonce_seq)</c> as transaction data and charges
+    /// <c>KEYED_NONCE_ACCESS_COST</c> per key. The baseline is standard-bound and the keyed transaction floor-bound,
+    /// so the extra gas is the floor charge for the added bytes plus the access cost, less the baseline's headroom
+    /// over its own floor.</remarks>
     [TestCaseSource(nameof(NonceCalldataCases))]
     public void Execute_KeyedNoncePayload_ChargesItsCalldataCost(UInt256[] nonceKeys, int nonceCalldataBytes)
     {
@@ -1983,7 +1986,7 @@ public partial class FrameTxProcessorTests
         ulong floorPerByte = spec.GasCosts.TxDataNonZeroMultiplier * spec.GasCosts.TotalCostFloorPerToken;
         FrameTxValidation.TryCalculateGasBudget(plainTx, spec, out _, out ulong plainFloor, out _);
         ulong baselineHeadroom = plain.GasSpent - plainFloor;
-        Assert.That(keyedTracer.GasSpent - plain.GasSpent, Is.EqualTo((ulong)nonceCalldataBytes * floorPerByte - baselineHeadroom));
+        Assert.That(keyedTracer.GasSpent - plain.GasSpent, Is.EqualTo((ulong)nonceCalldataBytes * floorPerByte + (ulong)nonceKeys.Length * Eip8250Constants.KeyedNonceAccessCost - baselineHeadroom));
     }
 
     /// <remarks>The transitions are independent, so an 8141-on / 8250-off window is representable; a key set
@@ -2589,6 +2592,65 @@ public partial class FrameTxProcessorTests
             Assert.That(tracer.FrameReceipts![1].Status, Is.EqualTo(expectedStatus));
             Assert.That(tracer.FrameReceipts[1].StateGasUsed, Is.EqualTo(expectedStateGasUsed));
             AssertStorage(sponsorA, 0, (UInt256)expectedStorage);
+        }
+    }
+
+    [Test]
+    public void Execute_PaymentApprovalChargesCreationOfASenderEmptiedByAnEarlierFrame()
+    {
+        Address sponsor = TestItem.AddressD;
+        _stateProvider.CreateAccount(Sender, 1);
+        _stateProvider.Commit(Spec);
+        _stateProvider.CommitTree(0);
+        DeployContract(Recipient, Prepare.EvmCode.Op(Instruction.STOP).Done);
+        DeployContract(sponsor, ApproveCode(FrameFlags.ApprovePayment), 1.Ether);
+
+        Transaction tx = FrameTx(nonce: 0,
+            new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecution, target: null, gasLimit: 200_000, UInt256.Zero, default),
+            Frame(FrameMode.Sender, target: Recipient, value: 1),
+            new TxFrame(FrameMode.Default, FrameFlags.ApprovePayment, sponsor, executionGasLimit: 200_000, (ulong)GasCostOf.NewAccountState, UInt256.Zero, default));
+        tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, null, default, default)];
+        SignCanonicalHash(tx, index: 0, TestItem.PrivateKeyA, signer: null);
+
+        FrameReceiptTracer tracer = new();
+        TransactionResult result = Process(tx, tracer: tracer);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.True);
+            Assert.That(tracer.FrameReceipts![2].Status, Is.EqualTo(TxFrameReceipt.StatusSuccess));
+            Assert.That(tracer.FrameReceipts[2].StateGasUsed, Is.EqualTo((ulong)GasCostOf.NewAccountState));
+            Assert.That(_stateProvider.GetBalance(Recipient), Is.EqualTo(UInt256.One));
+            Assert.That(_stateProvider.GetNonce(Sender), Is.EqualTo(1UL));
+        }
+    }
+
+    [TestCase((byte)FrameFlags.ApprovePayment, TestName = "Execute_RefusedApproval_PayerAlreadySet_ChargesMemoryExpansion")]
+    [TestCase((byte)FrameFlags.ApproveExecution, TestName = "Execute_RefusedApproval_ScopeNotAllowed_ChargesMemoryExpansion")]
+    [TestCase((byte)FrameFlags.AtomicBatch, TestName = "Execute_RefusedApproval_ScopeBeyondMask_ChargesMemoryExpansion")]
+    public void Execute_RefusedApprovalChargesTheMemoryExpansionOfItsReturnData(byte scope)
+    {
+        const ulong returnDataMemoryExpansionGas = 98;
+        Address withoutReturnData = TestItem.AddressD;
+        Address withReturnData = TestItem.AddressF;
+        DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
+        DeployContract(withoutReturnData, Prepare.EvmCode.PushData(scope).PushData(0).PushData(0).Op(Instruction.APPROVE).Done);
+        DeployContract(withReturnData, Prepare.EvmCode.PushData(scope).PushData(1024).PushData(0).Op(Instruction.APPROVE).Done);
+
+        Transaction tx = FrameTx(nonce: 0,
+            SelfVerifyFrame(),
+            Frame(FrameMode.Default, flags: FrameFlags.ApprovePayment, target: withoutReturnData),
+            Frame(FrameMode.Default, flags: FrameFlags.ApprovePayment, target: withReturnData));
+
+        FrameReceiptTracer tracer = new();
+        TransactionResult result = Process(tx, tracer: tracer);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.True);
+            Assert.That(tracer.FrameReceipts![1].Status, Is.EqualTo(TxFrameReceipt.StatusFailure));
+            Assert.That(tracer.FrameReceipts[2].Status, Is.EqualTo(TxFrameReceipt.StatusFailure));
+            Assert.That(tracer.FrameReceipts[2].GasUsed - tracer.FrameReceipts[1].GasUsed, Is.EqualTo(returnDataMemoryExpansionGas));
         }
     }
 
