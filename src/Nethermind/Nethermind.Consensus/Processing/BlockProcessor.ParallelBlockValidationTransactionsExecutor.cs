@@ -120,8 +120,11 @@ public partial class BlockProcessor
                 balManager.SpendGas(currentTx.BlockGasUsed);
                 if (shouldValidateBal) balManager.ValidateBlockAccessList(block, i + 1);
 
-                _pendingTransactionProcessedEvents?.Add(
-                    new TxProcessedEventArgs((int)i, currentTx, block.Header, receiptsTracer.TxReceipts[(int)i]));
+                if (_pendingTransactionProcessedEvents is not null && transactionProcessedEventHandler!.HasSubscribers)
+                {
+                    _pendingTransactionProcessedEvents.Add(
+                        new TxProcessedEventArgs((int)i, currentTx, block.Header, receiptsTracer.TxReceipts[(int)i]));
+                }
             }
 
             return [.. receiptsTracer.TxReceipts];
@@ -168,7 +171,7 @@ public partial class BlockProcessor
                         block,
                         gasResults,
                         receiptsTracers,
-                        transactionProcessedEventHandler is null ? null : this,
+                        transactionProcessedEventHandler is { HasSubscribers: true } ? this : null,
                         token);
 
                     // Iterations: 0 = ApplyBal, 1..len = tx (scheduled order =
@@ -326,6 +329,9 @@ public partial class BlockProcessor
 
         void BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler.OnTransactionProcessed(TxProcessedEventArgs args) =>
             _pendingTransactionProcessedEvents?.Add(args);
+
+        bool BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler.HasSubscribers =>
+            transactionProcessedEventHandler?.HasSubscribers ?? false;
 
         /// <inheritdoc/>
         public void PublishTransactionProcessedEvents()

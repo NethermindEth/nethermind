@@ -15,7 +15,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Blockchain.Tracing;
 
-public partial class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTracer, IJournal<int>, ITxTracerWrapper, IFrameTxReceiptTracer, IInstructionTracingFilter, ITxDiscardAwareTracer
+public partial class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTracer, IJournal<int>, ITxTracerWrapper, IFrameTxReceiptTracer, IInstructionTracingFilter, ITxDiscardAwareTracer, ITxOutputTracingFilter
 {
     private IBlockTracer _otherTracer = NullBlockTracer.Instance;
 
@@ -58,6 +58,7 @@ public partial class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, 
     internal bool BuildsReceipts { get; set; } = true;
 
     public bool IsTracingReceipt => true;
+    public bool IsTracingOutput => !IsTracingOnlyReceipts;
     public bool IsCollectingLogs => BuildsReceipts || _currentTxTracer.IsCollectingLogs || _otherTracer is ITxTracer { IsCollectingLogs: true };
     public bool IsTracingActions => _currentTxTracer.IsTracingActions;
     public bool IsTracingOpLevelStorage => _currentTxTracer.IsTracingOpLevelStorage;

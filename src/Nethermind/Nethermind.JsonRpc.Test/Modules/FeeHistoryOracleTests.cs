@@ -4,15 +4,18 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
@@ -302,6 +305,57 @@ namespace Nethermind.JsonRpc.Test.Modules
                 Assert.That(result.BaseFeePerBlobGas.Count, Is.EqualTo(4));
                 Assert.That(result.Reward?.Count, Is.EqualTo(withRewards ? 3 : null));
                 if (result.Reward is not null) Assert.That(result.Reward, Has.None.Null);
+            }
+        }
+
+        [Test]
+        public async Task GetFeeHistory_IfNewestBlockIsCached_DoesNotLoadItsBody()
+        {
+            await using IContainer container = new ContainerBuilder()
+                .AddModule(new TestNethermindModule())
+                .AddDecorator<IBlockTree, BodyLoadCountingBlockTree>()
+                .Build();
+            BodyLoadCountingBlockTree blockTree = (BodyLoadCountingBlockTree)container.Resolve<IBlockTree>();
+            Block genesis = Build.A.Block.Genesis.TestObject;
+            Block block = Build.A.Block.WithParent(genesis).WithGasLimit(100).WithGasUsed(50).TestObject;
+            AddToMainChain(blockTree, genesis);
+            AddToMainChain(blockTree, block);
+            IFeeHistoryOracle feeHistoryOracle = container.Resolve<IFeeHistoryOracle>();
+            BlockParameter newestBlock = new(block.Number);
+
+            feeHistoryOracle.GetFeeHistory(1, newestBlock, []).Dispose();
+            int bodyLoadsBefore = blockTree.BodyLoads;
+            using ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(1, newestBlock, []);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(bodyLoadsBefore, Is.GreaterThan(0), "the first call loads the body");
+                Assert.That(resultWrapper.Data.OldestBlock, Is.EqualTo(block.Number));
+                Assert.That(resultWrapper.Data.GasUsedRatio, Is.EqualTo((double[])[0.5]));
+                Assert.That(blockTree.BodyLoads, Is.EqualTo(bodyLoadsBefore), "a cached newest block is not loaded again");
+            }
+        }
+
+        private static void AddToMainChain(IBlockTree blockTree, Block block)
+        {
+            blockTree.SuggestBlock(block);
+            blockTree.TryUpdateMainChain(block.Header, wereProcessed: true, forceUpdateHeadBlock: true, block);
+        }
+
+        private sealed class BodyLoadCountingBlockTree(IBlockTree inner) : BlockTreeTestDouble(inner)
+        {
+            public int BodyLoads { get; private set; }
+
+            public override Block? FindBlock(Hash256 blockHash, BlockTreeLookupOptions options, ulong? blockNumber = null)
+            {
+                BodyLoads++;
+                return base.FindBlock(blockHash, options, blockNumber);
+            }
+
+            public override Block? FindBlock(ulong blockNumber, BlockTreeLookupOptions options)
+            {
+                BodyLoads++;
+                return base.FindBlock(blockNumber, options);
             }
         }
 

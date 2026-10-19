@@ -82,8 +82,10 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
 
         private BlockFeeHistorySearchInfo? GetHistorySearchInfo(BlockParameter blockParameter)
         {
-            if (blockParameter.Type == BlockParameterType.BlockHash
-                && _feeHistoryCache.TryGetValue(blockParameter.BlockHash!, out BlockFeeHistorySearchInfo i))
+            Hash256? hash = blockParameter.Type == BlockParameterType.BlockHash
+                ? blockParameter.BlockHash
+                : _blockTree.FindHeader(blockParameter)?.Hash;
+            if (hash is not null && _feeHistoryCache.TryGetValue(hash, out BlockFeeHistorySearchInfo i))
             {
                 return i;
             }

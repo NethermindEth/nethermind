@@ -3016,6 +3016,18 @@ public partial class BlockProcessorTests
     }
 
     [Test]
+    public void Registered_parallel_validation_hands_transaction_events_only_to_subscribers([Values] bool hasSubscribers)
+    {
+        CanonicalReceiptEventSetup setup = BuildCanonicalReceiptEventSetup(balFailure: false, validationSucceeds: true, hasSubscribers: hasSubscribers);
+        using IContainer container = setup.Container;
+
+        setup.BranchProcessor.Process(setup.Parent, [setup.Block], ProcessingOptions.None, NullBlockTracer.Instance);
+
+        Assert.That(setup.Handler.Events, hasSubscribers ? Has.Count.EqualTo(setup.Block.Transactions.Length) : Is.Empty,
+            "every transaction reaches a handler with subscribers, and none reaches one without");
+    }
+
+    [Test]
     public void Rejected_block_releases_the_transaction_events_it_staged()
     {
         CanonicalReceiptEventSetup setup = BuildCanonicalReceiptEventSetup(balFailure: false, validationSucceeds: false);
@@ -3898,7 +3910,7 @@ public partial class BlockProcessorTests
     /// <summary>Wires the registered parallel decorator over a real <see cref="BlockProcessor"/> and
     /// <see cref="BranchProcessor"/> so a test can drive whole processing attempts — including a BAL
     /// failure — against a recording transaction-processed handler.</summary>
-    private static CanonicalReceiptEventSetup BuildCanonicalReceiptEventSetup(bool balFailure, bool validationSucceeds, bool eip8116 = false)
+    private static CanonicalReceiptEventSetup BuildCanonicalReceiptEventSetup(bool balFailure, bool validationSucceeds, bool eip8116 = false, bool hasSubscribers = true)
     {
         GasConsumed[] gasConsumed = CanonicalReceiptGasConsumed();
         Block block = BuildParallelValidationBlock(gasConsumed.Length);
@@ -3914,7 +3926,7 @@ public partial class BlockProcessorTests
         }
 
         TestSingleReleaseSpecProvider specProvider = new(new OverridableReleaseSpec(Amsterdam.Instance) { IsEip8116Enabled = eip8116 });
-        RecordingTransactionProcessedEventHandler handler = new();
+        RecordingTransactionProcessedEventHandler handler = new() { HasSubscribers = hasSubscribers };
         ReceiptMetadataTransactionProcessorAdapter transactionProcessorAdapter = new(gasConsumed);
         ParallelTestBlockAccessListManager balManager = new(transactionProcessorAdapter)
         {
@@ -4335,6 +4347,8 @@ public partial class BlockProcessorTests
         : BlockProcessor.BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler
     {
         public List<TransactionProcessedSnapshot> Events { get; } = [];
+
+        public bool HasSubscribers { get; init; } = true;
 
         public void OnTransactionProcessed(TxProcessedEventArgs args) => Events.Add(new(
             args.Index,
