@@ -29,9 +29,9 @@ public static class FrameTxValidation
     public const string AtomicBatchFollowedByVerifyFrame = "an atomic batch frame must not be followed by a VERIFY frame";
     public const string AtomicBatchFollowedByAssertFrame = "an atomic batch frame must not be followed by an ASSERT frame";
     public const string ApprovalScopeInAtomicBatch = "frames belonging to an atomic batch must not carry approval scope";
-    public const string PostTxExemptWrongMode = "POST_TX_EXEMPT is valid only in DEFAULT and SENDER frames";
-    public const string PostTxExemptSplitsAtomicBatch = "atomic batch frames must agree on POST_TX_EXEMPT";
-    public const string PostTxExemptAfterNonExemptFrame = "a POST_TX_EXEMPT frame must not follow a non-exempt body frame";
+    public const string AssertExemptWrongMode = "ASSERT_EXEMPT is valid only in DEFAULT and SENDER frames";
+    public const string AssertExemptSplitsAtomicBatch = "atomic batch frames must agree on ASSERT_EXEMPT";
+    public const string AssertExemptAfterNonExemptFrame = "an ASSERT_EXEMPT frame must not follow a non-exempt body frame";
     public const string FrameGasOverflow = "total frame gas must not exceed 2^64 - 1";
     /// <summary>The EIP-7825 gas-cap failure message, which names the offending amounts rather than being a
     /// fixed constant.</summary>
@@ -68,7 +68,7 @@ public static class FrameTxValidation
     /// <param name="transaction">The frame transaction to check. Must carry <see cref="Transaction.Frames"/> and a
     /// resolved <see cref="Transaction.SenderAddress"/>; both are reported as failures rather than thrown on.</param>
     /// <param name="assertEnabled">Whether EIP-7906 is active, which decides only whether
-    /// <see cref="FrameMode.Assert"/> frames and the <see cref="FrameFlags.PostTxExempt"/> flag are admitted at all.</param>
+    /// <see cref="FrameMode.Assert"/> frames and the <see cref="FrameFlags.AssertExempt"/> flag are admitted at all.</param>
     /// <param name="error">On failure, the first violated constraint, always one of this type's message constants;
     /// <see langword="null"/> on success.</param>
     /// <returns><see langword="true"/> if every stateless constraint holds.</returns>
@@ -92,7 +92,7 @@ public static class FrameTxValidation
         ulong totalFrameGas = 0;
         bool hasExpiryFrame = false;
         FrameFlags definedFlags = TxFrame.ApproveScopeMask | FrameFlags.AtomicBatch
-            | (assertEnabled ? FrameFlags.PostTxExempt : FrameFlags.None);
+            | (assertEnabled ? FrameFlags.AssertExempt : FrameFlags.None);
         bool exemptAllowed = true;
         bool paymentSeen = false;
         for (int i = 0; i < frames.Length; i++)
@@ -185,7 +185,7 @@ public static class FrameTxValidation
                 return false;
             }
 
-            if (!TryValidatePostTxExemption(frames, i, exemptAllowed, out error))
+            if (!TryValidateAssertExemption(frames, i, exemptAllowed, out error))
             {
                 return false;
             }
@@ -194,7 +194,7 @@ public static class FrameTxValidation
             {
                 paymentSeen = true;
             }
-            else if (paymentSeen && frame.Mode is (FrameMode.Default or FrameMode.Sender) && !frame.IsPostTxExempt)
+            else if (paymentSeen && frame.Mode is (FrameMode.Default or FrameMode.Sender) && !frame.IsAssertExempt)
             {
                 exemptAllowed = false;
             }
@@ -279,25 +279,25 @@ public static class FrameTxValidation
             || (i > 0 && (frames[i - 1].Flags & FrameFlags.AtomicBatch) != 0);
     }
 
-    private static bool TryValidatePostTxExemption(TxFrame[] frames, int i, bool exemptAllowed, out string? error)
+    private static bool TryValidateAssertExemption(TxFrame[] frames, int i, bool exemptAllowed, out string? error)
     {
         TxFrame frame = frames[i];
 
-        if (frame.IsPostTxExempt && frame.Mode is not (FrameMode.Default or FrameMode.Sender))
+        if (frame.IsAssertExempt && frame.Mode is not (FrameMode.Default or FrameMode.Sender))
         {
-            error = PostTxExemptWrongMode;
+            error = AssertExemptWrongMode;
             return false;
         }
 
-        if (i > 0 && frames[i - 1].IsAtomicBatch && frames[i - 1].IsPostTxExempt != frame.IsPostTxExempt)
+        if (i > 0 && frames[i - 1].IsAtomicBatch && frames[i - 1].IsAssertExempt != frame.IsAssertExempt)
         {
-            error = PostTxExemptSplitsAtomicBatch;
+            error = AssertExemptSplitsAtomicBatch;
             return false;
         }
 
-        if (frame.IsPostTxExempt && !exemptAllowed)
+        if (frame.IsAssertExempt && !exemptAllowed)
         {
-            error = PostTxExemptAfterNonExemptFrame;
+            error = AssertExemptAfterNonExemptFrame;
             return false;
         }
 

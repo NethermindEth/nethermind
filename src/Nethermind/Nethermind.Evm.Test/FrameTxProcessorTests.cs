@@ -2116,7 +2116,7 @@ public partial class FrameTxProcessorTests
 
     private static IEnumerable<TestCaseData> StructurallyInvalidFrameLists()
     {
-        TxFrame reserved = Frame(FrameMode.Default, flags: (FrameFlags)((byte)FrameFlags.PostTxExempt << 1), target: Observer);
+        TxFrame reserved = Frame(FrameMode.Default, flags: (FrameFlags)((byte)FrameFlags.AssertExempt << 1), target: Observer);
         TxFrame batched = Frame(FrameMode.Default, flags: FrameFlags.AtomicBatch, target: Observer);
 
         yield return Case("ReservedFlagBits", FrameTxValidation.InvalidFlags, SelfVerifyFrame(), reserved);
@@ -2317,11 +2317,11 @@ public partial class FrameTxProcessorTests
             "the sender nonce bump is part of the prefix that payment approval committed");
     }
 
-    [TestCase(false, false, true, TestName = "Execute_PostTxReverts_KeepsTheExemptFrames")]
-    [TestCase(true, false, true, TestName = "Execute_PostTxReverts_KeepsTheExemptAtomicBatch")]
-    [TestCase(false, true, true, TestName = "Execute_ExemptFrameFails_PostTxRevertStillKeepsTheExemptFrameAheadOfIt")]
-    [TestCase(true, true, false, TestName = "Execute_ExemptAtomicBatchUnrolls_PostTxRevertUnwindsToBeforeTheBatch")]
-    public void Execute_PostTxReverts_KeepsExemptFramesAndUnwindsTheRest(bool batched, bool secondExemptFrameFails, bool exemptWriteSurvives)
+    [TestCase(false, false, true, TestName = "Execute_AssertReverts_KeepsTheExemptFrames")]
+    [TestCase(true, false, true, TestName = "Execute_AssertReverts_KeepsTheExemptAtomicBatch")]
+    [TestCase(false, true, true, TestName = "Execute_ExemptFrameFails_AssertRevertStillKeepsTheExemptFrameAheadOfIt")]
+    [TestCase(true, true, false, TestName = "Execute_ExemptAtomicBatchUnrolls_AssertRevertUnwindsToBeforeTheBatch")]
+    public void Execute_AssertReverts_KeepsExemptFramesAndUnwindsTheRest(bool batched, bool secondExemptFrameFails, bool exemptWriteSurvives)
     {
         Address exemptWriter = TestItem.AddressF;
         DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
@@ -2331,8 +2331,8 @@ public partial class FrameTxProcessorTests
 
         Transaction tx = FrameTx(nonce: 0,
             SelfVerifyFrame(),
-            Frame(FrameMode.Sender, batched ? FrameFlags.AtomicBatch | FrameFlags.PostTxExempt : FrameFlags.PostTxExempt, target: exemptWriter),
-            Frame(FrameMode.Sender, FrameFlags.PostTxExempt, target: secondExemptFrameFails ? Recipient : exemptWriter),
+            Frame(FrameMode.Sender, batched ? FrameFlags.AtomicBatch | FrameFlags.AssertExempt : FrameFlags.AssertExempt, target: exemptWriter),
+            Frame(FrameMode.Sender, FrameFlags.AssertExempt, target: secondExemptFrameFails ? Recipient : exemptWriter),
             Frame(FrameMode.Sender, target: Observer),
             Frame(FrameMode.Assert, target: Recipient));
 
