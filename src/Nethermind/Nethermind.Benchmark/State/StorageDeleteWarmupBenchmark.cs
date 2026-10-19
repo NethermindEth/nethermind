@@ -19,6 +19,7 @@ using Nethermind.Logging;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.State.Flat.Persistence;
+using Nethermind.State.Flat.Persistence.TrieNodeLog;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.Trie;
@@ -132,7 +133,7 @@ public class StorageDeleteWarmupBenchmark
         _baseStateId = new StateId(BaseBlockNumber, scope.RootHash);
 
         FlatSnapshot snapshot = commitTarget.LastSnapshot ?? throw new InvalidOperationException("The base commit produced no snapshot");
-        _persistence = new RocksDbPersistence(new SnapshotableMemColumnsDb<FlatDbColumns>(), NullLogManager.Instance);
+        _persistence = new RocksDbPersistence(new SnapshotableMemColumnsDb<FlatDbColumns>(), NullLogManager.Instance, NullTrieNodeLog.Instance);
         Persist(_persistence, snapshot);
         snapshot.Dispose();
         _resourcePool.ReturnCachedResource(ResourcePool.Usage.MainBlockProcessing, commitTarget.LastResource);

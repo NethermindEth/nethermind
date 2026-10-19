@@ -12,6 +12,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Persistence;
+using Nethermind.State.Flat.Persistence.TrieNodeLog;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.Sync.Snap;
 using Nethermind.State.Snap;
@@ -40,7 +41,7 @@ public class SnapFlatStateServerTests
     public void SetUp()
     {
         _columnsDb = new SnapshotableMemColumnsDb<FlatDbColumns>();
-        _persistence = new RocksDbPersistence(_columnsDb, LimboLogs.Instance);
+        _persistence = new RocksDbPersistence(_columnsDb, LimboLogs.Instance, NullTrieNodeLog.Instance);
 
         byte[] rootRlp = BuildRootRlp(out _rootHash);
         _stateId = new StateId(0, _rootHash.ValueHash256);

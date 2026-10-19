@@ -3,6 +3,7 @@
 
 using System;
 using System.Runtime.CompilerServices;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
@@ -22,7 +23,8 @@ public static class ScopeBalApplier
     /// <inheritdoc cref="IWorldStateScopeProvider.IScope.ApplyBal"/>
     /// <param name="scope">The scope to write into.</param>
     /// <param name="logManager">Reports adopted code whose bytecode cannot be found, and disposal failures swallowed after a failed apply.</param>
-    public static void Apply(IWorldStateScopeProvider.IScope scope, ReadOnlyBlockAccessList bal, ILogManager logManager)
+    /// <param name="cancellationToken">Checked before each account and before the storage writes.</param>
+    public static void Apply(IWorldStateScopeProvider.IScope scope, ReadOnlyBlockAccessList bal, ILogManager logManager, CancellationToken cancellationToken = default)
     {
         ILogger logger = logManager.GetClassLogger(typeof(ScopeBalApplier));
         IWorldStateScopeProvider.ICodeSetter? codeSetter = null;
@@ -40,6 +42,7 @@ public static class ScopeBalApplier
                     using StorageBatches storageBatches = new(logger);
                     foreach (ReadOnlyAccountChanges accountChanges in bal.AccountChanges)
                     {
+                        if (cancellationToken.IsCancellationRequested) break;
                         if (!accountChanges.HasStateChanges) continue;
 
                         Address address = accountChanges.Address;
@@ -72,7 +75,7 @@ public static class ScopeBalApplier
                         // A slot-only change leaves the account as it was.
                         if (delta.ChangesAccount) writeBatch.Set(address, account);
                     }
-                    storageBatches.Apply();
+                    if (!cancellationToken.IsCancellationRequested) storageBatches.Apply();
                 }
                 catch
                 {

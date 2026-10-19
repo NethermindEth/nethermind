@@ -266,7 +266,7 @@ public sealed class FrameTxFieldsTxValidator : ITxValidator
             return error!;
         }
 
-        // The POST_TX gate the head validator also carries is already answered by the call above.
+        // The ASSERT gate the head validator also carries is already answered by the call above.
         ValidationResult gasReservationResult = FrameTxHeadFieldsTxValidator.ValidateGasReservation(transaction, releaseSpec);
         if (!gasReservationResult)
         {
@@ -292,9 +292,9 @@ public sealed class FrameTxFieldsTxValidator : ITxValidator
 }
 
 /// <summary>The frame-transaction rules of <see cref="FrameTxFieldsTxValidator"/> whose verdict a change of
-/// head specification can flip: the EIP-7906 POST_TX gate and the spec-priced execution-gas reservation.</summary>
+/// head specification can flip: the EIP-7906 ASSERT gate and the spec-priced execution-gas reservation.</summary>
 /// <remarks>
-/// A POST_TX frame admitted after EIP-7906 is invalid on a head below it, and a repricing of the intrinsic or
+/// An ASSERT frame admitted after EIP-7906 is invalid on a head below it, and a repricing of the intrinsic or
 /// floored gas moves the reservation across the EIP-7825 cap while <see cref="GasLimitCapTxValidator"/> skips
 /// frame transactions. This therefore also runs in <see cref="HeadTxValidator"/>.
 /// What that validator checks and this one does not is either fork-independent frame shape, or the EIP-7594 blob
@@ -315,9 +315,9 @@ public sealed class FrameTxHeadFieldsTxValidator : ITxValidator
         {
             foreach (TxFrame frame in frames)
             {
-                if (frame.Mode == FrameMode.PostTx)
+                if (frame.Mode == FrameMode.Assert)
                 {
-                    return FrameTxValidation.PostTxNotEnabled;
+                    return FrameTxValidation.AssertFrameNotEnabled;
                 }
             }
         }
@@ -325,7 +325,7 @@ public sealed class FrameTxHeadFieldsTxValidator : ITxValidator
         return ValidateGasReservation(transaction, releaseSpec);
     }
 
-    /// <summary>The reservation leg alone, for the caller that has already answered the POST_TX gate.</summary>
+    /// <summary>The reservation leg alone, for the caller that has already answered the ASSERT gate.</summary>
     internal static ValidationResult ValidateGasReservation(Transaction transaction, IReleaseSpec releaseSpec)
     {
         if (transaction.Frames is null)

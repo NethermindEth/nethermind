@@ -868,6 +868,11 @@ public partial class EthRpcModule(
 
     private ResultWrapper<ArrayPoolList<byte>?> GetRawTransactionByBlockAndIndex(BlockParameter blockParameter, UInt256 positionIndex)
     {
+        if (TryGetStoredTransaction(blockParameter, positionIndex, out _, out Transaction? stored, out _))
+        {
+            return ResultWrapper<ArrayPoolList<byte>?>.Success(stored is null ? null : TxRlpDecoder.EncodeToArrayPoolList(stored, RlpBehaviors.SkipTypedWrapping));
+        }
+
         SearchResult<Block> searchResult = _blockFinder.SearchForBlock(blockParameter);
         if (searchResult.IsError)
         {
@@ -887,29 +892,43 @@ public partial class EthRpcModule(
 
     protected virtual ResultWrapper<TransactionForRpc?> GetTransactionByBlockAndIndex(BlockParameter blockParameter, UInt256 positionIndex)
     {
-        SearchResult<Block> searchResult = _blockFinder.SearchForBlock(blockParameter);
-        if (searchResult.IsError)
+        BlockHeader header;
+        Transaction transaction;
+        if (TryGetStoredTransaction(blockParameter, positionIndex, out BlockHeader? storedHeader, out Transaction? stored, out int transactionCount))
         {
-            return ResultWrapper<TransactionForRpc?>.Success(null);
+            if (stored is null) return ResultWrapper<TransactionForRpc?>.Success(null);
+            header = storedHeader!;
+            transaction = stored;
+        }
+        else
+        {
+            SearchResult<Block> searchResult = _blockFinder.SearchForBlock(blockParameter);
+            if (searchResult.IsError)
+            {
+                return ResultWrapper<TransactionForRpc?>.Success(null);
+            }
+
+            Block block = searchResult.Object!;
+            if (positionIndex >= block.Transactions.Length)
+            {
+                return ResultWrapper<TransactionForRpc?>.Success(null);
+            }
+
+            header = block.Header;
+            transaction = block.Transactions[(int)positionIndex];
+            transactionCount = block.Transactions.Length;
         }
 
-        Block block = searchResult.Object!;
-        if (positionIndex >= block.Transactions.Length)
-        {
-            return ResultWrapper<TransactionForRpc?>.Success(null);
-        }
-
-        Transaction transaction = block.Transactions[(int)positionIndex];
-        transaction.SenderAddress ??= FindStoredTxSender(block, (int)positionIndex);
+        transaction.SenderAddress ??= FindStoredTxSender(header, transactionCount, (int)positionIndex);
         RecoverTxSenderIfNeeded(transaction);
 
         TransactionForRpcContext extraData = new(
             chainId: _specProvider.ChainId,
-            blockHash: block.Hash,
-            blockNumber: block.Number,
+            blockHash: header.Hash,
+            blockNumber: header.Number,
             txIndex: (int)positionIndex,
-            blockTimestamp: block.Timestamp,
-            baseFee: block.BaseFeePerGas,
+            blockTimestamp: header.Timestamp,
+            baseFee: header.BaseFeePerGas,
             receipt: null);
         TransactionForRpc transactionModel = TransactionForRpc.FromTransaction(transaction, extraData);
         return ResultWrapper<TransactionForRpc?>.Success(transactionModel);
@@ -1175,13 +1194,31 @@ public partial class EthRpcModule(
 
     protected void RecoverTxSenderIfNeeded(Transaction transaction) => transaction.SenderAddress ??= _blockchainBridge.RecoverTxSender(transaction);
 
-    /// <summary>Returns the sender stored with the receipt of the block's transaction at <paramref name="index"/>, if any.</summary>
-    private Address? FindStoredTxSender(Block block, int index)
+    /// <summary>Gets the transaction at <paramref name="positionIndex"/> from the stored block, decoding no other
+    /// transaction. False for a pending or earliest block, or a block whose body is not stored, which the caller then
+    /// searches as before, so the results and errors stay the same.</summary>
+    private bool TryGetStoredTransaction(BlockParameter blockParameter, UInt256 positionIndex, out BlockHeader? header, out Transaction? transaction, out int transactionCount)
     {
-        if (_storedReceiptFinder?.TryGetReceiptsIterator(block.Number, block.Hash!, out ReceiptsIterator iterator) is not true) return null;
+        // Pending has no stored block, and the earliest header lookup throws where the block search returns null.
+        header = blockParameter.Type is BlockParameterType.Pending or BlockParameterType.Earliest ? null : _blockFinder.FindHeader(blockParameter);
+        if (header is null || positionIndex > int.MaxValue
+            || !_blockchainBridge.TryGetStoredTransaction(header, (int)positionIndex, out transaction, out transactionCount))
+        {
+            transaction = null;
+            transactionCount = 0;
+            return false;
+        }
+
+        return true;
+    }
+
+    /// <summary>Returns the sender stored with the receipt of the block's transaction at <paramref name="index"/>, if any.</summary>
+    private Address? FindStoredTxSender(BlockHeader header, int transactionCount, int index)
+    {
+        if (_storedReceiptFinder?.TryGetReceiptsIterator(header.Number, header.Hash!, out ReceiptsIterator iterator) is not true) return null;
 
         using ReceiptsIterator receipts = iterator;
-        if (receipts.CountRemaining() != block.Transactions.Length) return null;
+        if (receipts.CountRemaining() != transactionCount) return null;
 
         receipts.Skip(index);
         // An absent sender decodes to the shared zero address, which a stored one never aliases.
@@ -1303,12 +1340,12 @@ public partial class EthRpcModule(
     {
         ForkActivationsSummary forks = forkInfo.GetForkActivationsSummary(_blockFinder.Head?.Header);
 
-        return ResultWrapper<JsonNode>.Success(JsonNode.Parse(TypeInfoJsonSerializer.Serialize((new ForkConfigSummary
+        return ResultWrapper<JsonNode>.Success(JsonSerializer.SerializeToNode(new ForkConfigSummary
         {
             Current = GetForkConfig(forks.Current, _specProvider)!,
             Next = GetForkConfig(forks.Next, _specProvider),
             Last = GetForkConfig(forks.Last, _specProvider)
-        }), UnchangedDictionaryKeyOptions)));
+        }, TypeInfoJsonSerializer.GetTypeInfo<ForkConfigSummary>(UnchangedDictionaryKeyOptions))!);
 
         static ForkConfig? GetForkConfig(Fork? fork, ISpecProvider specProvider)
         {

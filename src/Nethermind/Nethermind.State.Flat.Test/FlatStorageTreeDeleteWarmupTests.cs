@@ -18,6 +18,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.State.Flat.Persistence;
+using Nethermind.State.Flat.Persistence.TrieNodeLog;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.Trie;
@@ -78,7 +79,7 @@ public class FlatStorageTreeDeleteWarmupTests
     {
         private readonly FlatDbConfig _config = new() { ApplyStorageWritesOnIdleThread = false };
         private readonly ResourcePool _resourcePool;
-        private readonly RocksDbPersistence _persistence = new(new SnapshotableMemColumnsDb<FlatDbColumns>(), LimboLogs.Instance);
+        private readonly RocksDbPersistence _persistence = new(new SnapshotableMemColumnsDb<FlatDbColumns>(), LimboLogs.Instance, NullTrieNodeLog.Instance);
         private readonly StateId _baseState;
         private readonly List<INodeRecordBuffer> _buffers = [];
         private readonly List<Snapshot> _snapshots = [];

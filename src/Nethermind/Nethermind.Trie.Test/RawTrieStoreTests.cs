@@ -54,4 +54,18 @@ public class RawTrieStoreTests
             Assert.That(scoped.FindCachedOrUnknown(TreePath.Empty, TestItem.KeccakA), Is.Not.SameAs(firstScoped));
         }
     }
+
+    [Test]
+    public void Keys_longer_than_32_bytes_can_be_set_and_read([Values(33, 40, 64, 65)] int keyLength)
+    {
+        PatriciaTree patriciaTree = new(new RawTrieStore(new MemDb()).GetTrieStore(null), LimboLogs.Instance);
+        byte[] key = new byte[keyLength];
+        key[^1] = 1;
+        byte[] value = TestItem.KeccakA.BytesToArray();
+
+        patriciaTree.Set(key, value);
+        patriciaTree.Commit();
+
+        Assert.That(patriciaTree.Get(key).ToArray(), Is.EqualTo(value));
+    }
 }

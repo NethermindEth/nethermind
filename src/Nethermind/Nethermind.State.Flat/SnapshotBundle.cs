@@ -495,6 +495,16 @@ public sealed class SnapshotBundle : IDisposable
 
     public void SetChangedSlot(Address address, in UInt256 index, in UInt256 value)
     {
+        SetChangedSlotValue(address, index, value);
+        RegisterAddressWithChangedSlots(address);
+    }
+
+    /// <summary>Like <see cref="SetChangedSlot"/>, but leaves registering the address to the caller.</summary>
+    /// <remarks>The caller must also call <see cref="RegisterAddressWithChangedSlots"/> for <paramref name="address"/>,
+    /// once after each <see cref="ClearStorage"/> of it or <see cref="CollectAndApplySnapshot"/>, or a later clear leaves
+    /// the slot behind.</remarks>
+    internal void SetChangedSlotValue(Address address, in UInt256 index, in UInt256 value)
+    {
         // So right now, if the value is zero, then it is a deletion. This is not the case with verkle where you
         // can set a value to be zero. Because of this distinction, the zerobytes logic is handled here instead of
         // lower down.
@@ -507,7 +517,10 @@ public sealed class SnapshotBundle : IDisposable
         {
             _changedSlots[key] = value;
         }
+    }
 
+    internal void RegisterAddressWithChangedSlots(Address address)
+    {
         ConcurrentDictionary<HashedKey<Address>, byte> addressesWithChangedSlots =
             Volatile.Read(ref _addressesWithChangedSlots) ?? CreateAddressesWithChangedSlots();
         if (!addressesWithChangedSlots.ContainsKey(address))
