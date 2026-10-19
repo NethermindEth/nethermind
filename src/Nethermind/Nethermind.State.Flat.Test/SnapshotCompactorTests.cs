@@ -10,6 +10,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.Trie;
 using Nethermind.Trie.NodeBuffer;
 using NUnit.Framework;
@@ -156,14 +157,14 @@ public class SnapshotCompactorTests
         AssertSlotValueEqual(slotValue2, storedSlot2);
 
         Assert.That(compacted.StateNodes.Count(), Is.EqualTo(3));
-        Assert.That(compacted.TryGetStateNode(statePath1, out ulong stateNode1), Is.True);
-        Assert.That(compacted.GetRlp(stateNode1).ToArray(), Is.EqualTo(Bytes.FromHexString(FlatTestHelpers.LeafRlpA)));
-        Assert.That(compacted.TryGetStateNode(statePath2, out ulong stateNode2), Is.True);
-        Assert.That(compacted.GetRlp(stateNode2).ToArray(), Is.EqualTo(Bytes.FromHexString(FlatTestHelpers.LeafRlpB)));
+        Assert.That(compacted.TryGetStateNode(statePath1, out TrieNode? stateNode1), Is.True);
+        Assert.That(stateNode1!.FullRlp.ToArray(), Is.EqualTo(Bytes.FromHexString(FlatTestHelpers.LeafRlpA)));
+        Assert.That(compacted.TryGetStateNode(statePath2, out TrieNode? stateNode2), Is.True);
+        Assert.That(stateNode2!.FullRlp.ToArray(), Is.EqualTo(Bytes.FromHexString(FlatTestHelpers.LeafRlpB)));
 
         Assert.That(compacted.StorageNodes.Count(), Is.EqualTo(2));
-        Assert.That(compacted.TryGetStorageNode((address2Hash, storageNodePath2), out ulong storageNode2), Is.True);
-        Assert.That(compacted.GetRlp(storageNode2).ToArray(), Is.EqualTo(Bytes.FromHexString(FlatTestHelpers.LeafRlpB)));
+        Assert.That(compacted.TryGetStorageNode((address2Hash, storageNodePath2), out TrieNode? storageNode2), Is.True);
+        Assert.That(storageNode2!.FullRlp.ToArray(), Is.EqualTo(Bytes.FromHexString(FlatTestHelpers.LeafRlpB)));
     }
 
     [Test]
@@ -215,10 +216,10 @@ public class SnapshotCompactorTests
         Assert.That(compacted.StoragesCount, Is.EqualTo(2));
         Assert.That(compacted.StateNodes.Count(), Is.EqualTo(3));
         Assert.That(compacted.StorageNodes.Count(), Is.EqualTo(2));
-        Assert.That((snapshot1.BufferPin!.WriteBoundary >> NodeRecordCodec.OffsetBits), Is.GreaterThan((snapshot0.BufferPin!.WriteBoundary >> NodeRecordCodec.OffsetBits)));
-        Assert.That((compacted.BufferPin!.WriteBoundary >> NodeRecordCodec.OffsetBits), Is.EqualTo((snapshot0.BufferPin.WriteBoundary >> NodeRecordCodec.OffsetBits)));
-        Assert.That(compacted.TryGetStateNode(statePath1, out ulong stateNode1), Is.True);
-        Assert.That(compacted.GetRlp(stateNode1).ToArray(), Is.EqualTo(Bytes.FromHexString(FlatTestHelpers.LeafRlpA)));
+        Assert.That((snapshot1.BufferPin!.WriteBoundary >> NodeRecordBuffer.OffsetBits), Is.GreaterThan((snapshot0.BufferPin!.WriteBoundary >> NodeRecordBuffer.OffsetBits)));
+        Assert.That((compacted.BufferPin!.WriteBoundary >> NodeRecordBuffer.OffsetBits), Is.EqualTo((snapshot0.BufferPin.WriteBoundary >> NodeRecordBuffer.OffsetBits)));
+        Assert.That(compacted.TryGetStateNode(statePath1, out TrieNode? stateNode1), Is.True);
+        Assert.That(stateNode1!.FullRlp.ToArray(), Is.EqualTo(Bytes.FromHexString(FlatTestHelpers.LeafRlpA)));
     }
 
     [Test]
@@ -268,11 +269,11 @@ public class SnapshotCompactorTests
         AssertSlotValueEqual(slotValue2, storedSlot);
 
         Assert.That(compacted.StateNodes.Count(), Is.EqualTo(1));
-        Assert.That(compacted.TryGetStateNode(statePath, out ulong stateNode), Is.True);
-        Assert.That(compacted.GetRlp(stateNode).ToArray(), Is.EqualTo(Bytes.FromHexString(FlatTestHelpers.LeafRlpB)));
+        Assert.That(compacted.TryGetStateNode(statePath, out TrieNode? stateNode), Is.True);
+        Assert.That(stateNode!.FullRlp.ToArray(), Is.EqualTo(Bytes.FromHexString(FlatTestHelpers.LeafRlpB)));
         Assert.That(compacted.StorageNodes.Count(), Is.EqualTo(1));
-        Assert.That(compacted.TryGetStorageNode((addressHash, storageNodePath), out ulong storageNode), Is.True);
-        Assert.That(compacted.GetRlp(storageNode).ToArray(), Is.EqualTo(Bytes.FromHexString(FlatTestHelpers.LeafRlpB)));
+        Assert.That(compacted.TryGetStorageNode((addressHash, storageNodePath), out TrieNode? storageNode), Is.True);
+        Assert.That(storageNode!.FullRlp.ToArray(), Is.EqualTo(Bytes.FromHexString(FlatTestHelpers.LeafRlpB)));
     }
 
     [Test]
@@ -347,22 +348,22 @@ public class SnapshotCompactorTests
 
         // Written strictly before the first clear: always removed.
         Assert.That(compacted.TryGetStorage((a, new UInt256(1)), out _), Is.False);
-        Assert.That(compacted.TryGetStorageNode((aHash, pBefore), out ulong _), Is.False);
+        Assert.That(compacted.TryGetStorageNode((aHash, pBefore), out _), Is.False);
 
         // Written after the last clear: always kept.
         Assert.That(compacted.TryGetStorage((a, new UInt256(3)), out UInt256? slotAfter), Is.True);
         AssertSlotValueEqual(Slot(0xA3), slotAfter);
-        Assert.That(compacted.TryGetStorageNode((aHash, pAfter), out ulong _), Is.True);
+        Assert.That(compacted.TryGetStorageNode((aHash, pAfter), out _), Is.True);
 
         // Written in the first-clear block: kept unless a later clear raises the boundary past it.
         bool slotSameKept = !selfDestructAgainInLastSnapshot;
         Assert.That(compacted.TryGetStorage((a, new UInt256(2)), out _), Is.EqualTo(slotSameKept));
-        Assert.That(compacted.TryGetStorageNode((aHash, pSame), out ulong _), Is.EqualTo(slotSameKept));
+        Assert.That(compacted.TryGetStorageNode((aHash, pSame), out _), Is.EqualTo(slotSameKept));
 
         // Unrelated address is never touched by another address's self-destruct.
         Assert.That(compacted.TryGetStorage((b, new UInt256(1)), out UInt256? slotB), Is.True);
         AssertSlotValueEqual(Slot(0xBB), slotB);
-        Assert.That(compacted.TryGetStorageNode((bHash, pB), out ulong _), Is.True);
+        Assert.That(compacted.TryGetStorageNode((bHash, pB), out _), Is.True);
     }
 
     [Test]
@@ -378,7 +379,7 @@ public class SnapshotCompactorTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That((first.BufferPin!.WriteBoundary >> NodeRecordCodec.OffsetBits), Is.EqualTo((earliest.WriteBoundary >> NodeRecordCodec.OffsetBits)));
+            Assert.That((first.BufferPin!.WriteBoundary >> NodeRecordBuffer.OffsetBits), Is.EqualTo((earliest.WriteBoundary >> NodeRecordBuffer.OffsetBits)));
             Assert.That(first.BufferPin!.WriteBoundary, Is.GreaterThan(earliest.WriteBoundary));
             Assert.That(result.BufferPin!.WriteBoundary, Is.EqualTo(earliest.WriteBoundary));
             Assert.That(result.StateNodes.Count(), Is.EqualTo(2));
@@ -399,9 +400,9 @@ public class SnapshotCompactorTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(compacted.TryGetStateNode(oldPath, out ulong _), Is.False);
-            Assert.That(compacted.TryGetStateNode(finalPath, out ulong pointer), Is.True);
-            Assert.That(compacted.GetRlp(pointer).ToArray(), Is.EqualTo(Bytes.FromHexString(FlatTestHelpers.LeafRlpB)));
+            Assert.That(compacted.TryGetStateNode(oldPath, out _), Is.False);
+            Assert.That(compacted.TryGetStateNode(finalPath, out TrieNode? node), Is.True);
+            Assert.That(node!.FullRlp.ToArray(), Is.EqualTo(Bytes.FromHexString(FlatTestHelpers.LeafRlpB)));
             Assert.That(compacted.StateNodes.Select(kv => kv.Value), Is.EqualTo(final.StateNodes.Select(kv => kv.Value)));
         }
     }
@@ -417,8 +418,8 @@ public class SnapshotCompactorTests
 
         using Snapshot compacted = _compactor.CompactSnapshotBundle(new(2) { older, final });
 
-        Assert.That(compacted.TryGetStateNode(TreePath.Empty, out ulong pointer), Is.EqualTo(matchingHash));
-        if (matchingHash) Assert.That(compacted.GetRlp(pointer).ToArray(), Is.EqualTo(rlp));
+        Assert.That(compacted.TryGetStateNode(TreePath.Empty, out TrieNode? node), Is.EqualTo(matchingHash));
+        if (matchingHash) Assert.That(node!.FullRlp.ToArray(), Is.EqualTo(rlp));
     }
 
     [Test]
@@ -434,7 +435,7 @@ public class SnapshotCompactorTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(compacted.StateNodes, Is.Empty);
-            Assert.That(compacted.TryGetStateNode(TreePath.Empty, out ulong _), Is.False);
+            Assert.That(compacted.TryGetStateNode(TreePath.Empty, out _), Is.False);
         }
     }
 
@@ -452,8 +453,8 @@ public class SnapshotCompactorTests
 
         using Snapshot compacted = _compactor.CompactSnapshotBundle(new(2) { compactedClear, final });
 
-        Assert.That(compacted.TryGetStorageNode((addressHash, TreePath.Empty), out ulong pointer), Is.EqualTo(recreate));
-        if (recreate) Assert.That(compacted.GetRlp(pointer).ToArray(), Is.EqualTo(Bytes.FromHexString(FlatTestHelpers.LeafRlpB)));
+        Assert.That(compacted.TryGetStorageNode((addressHash, TreePath.Empty), out TrieNode? node), Is.EqualTo(recreate));
+        if (recreate) Assert.That(node!.FullRlp.ToArray(), Is.EqualTo(Bytes.FromHexString(FlatTestHelpers.LeafRlpB)));
         else Assert.That(compacted.StorageNodes, Is.Empty);
     }
 

@@ -249,25 +249,10 @@ public class Snapshot : RefCountingDisposable
         }
     }
 
-    /// <summary>The buffer pointer of the state node at <paramref name="key"/>, readable through <see cref="GetNodeRecord"/> or <see cref="GetRlp"/> while the snapshot holds its pin.</summary>
-    internal bool TryGetStateNode(HashedKey<TreePath> key, out ulong pointer)
-    {
-        pointer = 0;
-        return HasStateRoot && BufferPin is not null && BufferPin.Buffer.TryGetNodePointer(StateRootPointer, key.Key, out pointer);
-    }
-
     public bool TryGetStateNode(HashedKey<TreePath> key, [NotNullWhen(true)] out TrieNode? node)
     {
         node = null;
         return HasStateRoot && BufferPin is not null && BufferPin.Buffer.TryGetNode(StateRootPointer, key.Key, out node);
-    }
-
-    /// <summary>The buffer pointer of the storage node at <paramref name="key"/>, readable through <see cref="GetNodeRecord"/> or <see cref="GetRlp"/> while the snapshot holds its pin.</summary>
-    internal bool TryGetStorageNode(HashedKey<(Hash256, TreePath)> key, out ulong pointer)
-    {
-        pointer = 0;
-        return BufferPin is not null && TryGetStorageRoot(key.Key.Item1, out ulong root)
-            && BufferPin.Buffer.TryGetNodePointer(root, key.Key.Item2, out pointer);
     }
 
     public bool TryGetStorageNode(HashedKey<(Hash256, TreePath)> key, [NotNullWhen(true)] out TrieNode? node)

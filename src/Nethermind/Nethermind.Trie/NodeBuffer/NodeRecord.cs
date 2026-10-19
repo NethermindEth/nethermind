@@ -16,9 +16,6 @@ public readonly struct NodeRecord
     private readonly ReadOnlyMemory<byte> _buffer;
     private readonly int _offset;
 
-    /// <summary>References a record at <paramref name="offset"/> inside a managed buffer.</summary>
-    public NodeRecord(byte[] buffer, int offset) : this(buffer.AsMemory(), offset) { }
-
     internal NodeRecord(ReadOnlyMemory<byte> buffer, int offset)
     {
         _buffer = buffer;

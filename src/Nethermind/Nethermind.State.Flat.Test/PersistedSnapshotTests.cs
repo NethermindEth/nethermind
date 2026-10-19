@@ -117,9 +117,7 @@ public class PersistedSnapshotTests
         using ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries = new(512);
         for (int i = 0; i < 512; i++)
             entries.Add(new PatriciaTree.BulkSetEntry(Keccak.Compute(BitConverter.GetBytes(i)).ValueHash256, new byte[32]));
-        using WarmedNodeLog warmed = new(1);
-        DictionaryNodeSource source = new(new Dictionary<TreePath, byte[]>(), warmed, address);
-        TrieRoot root = NodeRecordBulkSet.BulkSet(source.Over(_buffer), address, TrieRoot.Empty, entries, canParallelize: true);
+        TrieRoot root = FlatTestHelpers.BulkSet(_resourcePool, _buffer, address, TrieRoot.Empty, entries, canParallelize: true);
         FlatTestHelpers.StartNewGeneration(_buffer);
         using Snapshot snapshot = new(StateId.PreGenesis, new StateId(1, root.Hash), new SnapshotContent(), _resourcePool, ResourcePool.Usage.MainBlockProcessing) { BufferPin = original.Copy() };
         if (storage) snapshot.Content.StorageRoots[address!] = root.Pointer;
@@ -134,7 +132,6 @@ public class PersistedSnapshotTests
         {
             Assert.That(snapshot.EstimateMemory(), Is.LessThan(256), "only root metadata is retained");
             Assert.That(persisted.Size, Is.GreaterThan(4096), "fixed arena must accommodate the reachable node table");
-            Assert.That(source.FetchCount, Is.Zero);
             Assert.DoesNotThrow(() => PersistedSnapshotUtils.ValidatePersistedSnapshot(snapshot, persisted, dumpWhenFailed: false));
         }
     }
@@ -143,18 +140,16 @@ public class PersistedSnapshotTests
     public void IncrementalSnapshotsPersistOnlyChangedNodesAndReadBackTheCompleteTrie([Values] bool storage)
     {
         Hash256? address = storage ? TestItem.KeccakA : null;
-        using WarmedNodeLog warmed = new(1);
-        DictionaryNodeSource source = new(new Dictionary<TreePath, byte[]>(), warmed, address);
         Hash256[] keys = Enumerable.Range(0, 256).Select(i => Keccak.Compute(BitConverter.GetBytes(i))).ToArray();
         INodeRecordBufferPin firstRetain = _buffer.Pin();
         using ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries = new(keys.Length);
         foreach (Hash256 key in keys) entries.Add(new(key.ValueHash256, new byte[32]));
-        TrieRoot firstRoot = NodeRecordBulkSet.BulkSet(source.Over(_buffer), address, TrieRoot.Empty, entries, canParallelize: true);
+        TrieRoot firstRoot = FlatTestHelpers.BulkSet(_resourcePool, _buffer, address, TrieRoot.Empty, entries, canParallelize: true);
         using Snapshot first = Create(0, ValueKeccak.EmptyTreeHash, firstRoot, firstRetain);
         INodeRecordBufferPin secondRetain = _buffer.Pin();
         entries.Clear();
         entries.Add(new(keys[0].ValueHash256, Enumerable.Repeat((byte)1, 32).ToArray()));
-        TrieRoot secondRoot = NodeRecordBulkSet.BulkSet(source.Over(_buffer), address, firstRoot, entries, canParallelize: false);
+        TrieRoot secondRoot = FlatTestHelpers.BulkSet(_resourcePool, _buffer, address, firstRoot, entries, canParallelize: false);
         using Snapshot second = Create(1, firstRoot.Hash, secondRoot, secondRetain);
         int firstCount = storage ? first.StorageNodes.Count() : first.StateNodes.Count();
         int secondCount = storage ? second.StorageNodes.Count() : second.StateNodes.Count();
@@ -166,7 +161,7 @@ public class PersistedSnapshotTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That((firstRetain.WriteBoundary >> NodeRecordCodec.OffsetBits), Is.EqualTo((secondRetain.WriteBoundary >> NodeRecordCodec.OffsetBits)));
+            Assert.That((firstRetain.WriteBoundary >> NodeRecordBuffer.OffsetBits), Is.EqualTo((secondRetain.WriteBoundary >> NodeRecordBuffer.OffsetBits)));
             Assert.That(secondCount, Is.InRange(1, 16));
             Assert.That(firstCount, Is.GreaterThan(secondCount * 8));
             foreach ((TreePath path, _, NodeRecord record) in _buffer.EnumerateNodes(secondRoot.Pointer))
@@ -198,11 +193,7 @@ public class PersistedSnapshotTests
         TreePath persistedPath = TreePath.FromHexString("2");
         byte[] availableRlp = FlatTestHelpers.LeafRlp(new byte[40]);
         byte[] persistedRlp = FlatTestHelpers.LeafRlp(new byte[41]);
-        ChildRef[] children = new ChildRef[16];
-        children[1] = ChildRef.ForHash(ValueKeccak.Compute(availableRlp), 0);
-        children[2] = ChildRef.ForHash(ValueKeccak.Compute(persistedRlp), 0);
-        byte[] rootRlp = new byte[NodeRlp.BranchLength(children)];
-        NodeRlp.WriteBranch(children, rootRlp);
+        byte[] rootRlp = FlatTestHelpers.BranchRlp([null, availableRlp, persistedRlp]);
         using Snapshot snapshot = FlatTestHelpers.MakeSnapshot(_resourcePool, _buffer, content =>
         {
             if (storage)

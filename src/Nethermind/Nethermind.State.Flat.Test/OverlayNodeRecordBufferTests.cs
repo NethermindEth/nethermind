@@ -55,7 +55,7 @@ public class OverlayNodeRecordBufferTests
     private static ulong Append(INodeRecordBuffer buffer, byte[] leaf)
     {
         ValueHash256 hash = ValueKeccak.Compute(leaf);
-        ulong pointer = buffer.AppendRecordFromRlp(null, TreePath.Empty, hash, leaf);
+        ulong pointer = buffer.AppendRecordFromRlp(null, TreePath.Empty, leaf, []);
         buffer.SetRoot(null, hash, pointer);
         return pointer;
     }

@@ -57,20 +57,20 @@ public sealed class WarmedNodeLog : IDisposable
         return false;
     }
 
-    /// <summary>Verifies <paramref name="rlp"/> against <paramref name="expectedHash"/> and appends its record.</summary>
+    /// <summary>Appends the record of <paramref name="rlp"/>, trusted to be the node of <paramref name="hash"/>, with every child pointer zero.</summary>
     /// <param name="record">The appended record, or the one already held for the same position and hash.</param>
-    /// <param name="pointer">The pointer to the record, or zero when verification fails.</param>
-    /// <returns>False when the RLP does not hash to <paramref name="expectedHash"/> or is not a valid trie node.</returns>
-    public bool TryAppend(Hash256? address, in TreePath path, in ValueHash256 expectedHash, ReadOnlySpan<byte> rlp, out NodeRecord record, out ulong pointer)
+    /// <param name="pointer">The pointer to the record, or zero when the RLP is invalid.</param>
+    /// <returns>False when the RLP is not a valid trie node.</returns>
+    public bool TryAppend(Hash256? address, in TreePath path, in ValueHash256 hash, ReadOnlySpan<byte> rlp, out NodeRecord record, out ulong pointer)
     {
-        if (ValueKeccak.Compute(rlp) != expectedHash || !NodeRecordCodec.TryMeasure(rlp, out NodeRecordKind kind, out ushort hashMask))
+        if (!NodeRecordCodec.TryMeasure(rlp, out NodeRecordKind kind, out ushort hashMask))
         {
             record = default;
             pointer = 0;
             return false;
         }
 
-        AppendVerified(address, path, expectedHash, rlp, kind, hashMask, [], out record, out pointer);
+        AppendVerified(address, path, hash, rlp, kind, hashMask, [], out record, out pointer);
         return true;
     }
 

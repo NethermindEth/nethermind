@@ -15,6 +15,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.NodeBuffer;
+using Nethermind.State.Flat.Test;
 using Nethermind.Trie;
 using Nethermind.Trie.NodeBuffer;
 using Nethermind.Trie.Pruning;
@@ -197,7 +198,7 @@ public class NodeRecordBufferVisitorTests
     {
         Assert.That(source.TryLocate(root.Pointer, out NodeRecord record), Is.True);
         INodeRecordBuffer buffer = NewBuffer();
-        buffer.SetRoot(null, root.Hash, buffer.AppendRecordFromRlp(null, TreePath.Empty, root.Hash, record.Rlp));
+        buffer.SetRoot(null, root.Hash, buffer.AppendRecordFromRlp(null, TreePath.Empty, record.Rlp, []));
         return buffer;
     }
 

@@ -461,11 +461,7 @@ public sealed class SnapshotBundle : IDisposable
     private readonly ref struct PersistedNodeInsert
     {
         public static readonly ReadOnlySpanAction<byte, PersistedNodeInsert> Insert = static (rlp, insert) =>
-        {
-            if (!NodeRecordCodec.TryMeasure(rlp, out NodeRecordKind kind, out ushort hashMask)) return;
-            insert._warmed.AppendVerified(insert._address, insert._path, insert._hash, rlp, kind, hashMask, [], out insert._record, out _);
-            insert._inserted = true;
-        };
+            insert._inserted = insert._warmed.TryAppend(insert._address, insert._path, insert._hash, rlp, out insert._record, out _);
 
         private readonly WarmedNodeLog _warmed;
         private readonly Hash256? _address;

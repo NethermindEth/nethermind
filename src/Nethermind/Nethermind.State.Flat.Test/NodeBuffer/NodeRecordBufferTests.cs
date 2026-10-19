@@ -13,55 +13,53 @@ using System.Threading.Tasks;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.Trie;
 using Nethermind.Trie.NodeBuffer;
 using NUnit.Framework;
 
-namespace Nethermind.Store.Test.NodeBuffer;
+namespace Nethermind.State.Flat.Test.NodeBuffer;
 
-internal class NodeRecordBufferTests
+public class NodeRecordBufferTests
 {
     private const int GenerationBytes = 64 * 1024;
-    internal const int LiveGenerations = 8;
-    internal const int CompactionTimeoutMilliseconds = 10_000;
-    internal const int PollingMilliseconds = 10;
+    private const int RecordAlignment = 8;
+    public const int LiveGenerations = 8;
+    public const int CompactionTimeoutMilliseconds = 10_000;
+    public const int PollingMilliseconds = 10;
 
     [Test]
-    public void Contract_write_batch_registers_every_record_on_dispose()
+    public void Contract_write_batch_holds_every_record_written_to_it()
     {
-        using NodeRecordBuffer implementation = new(0, GenerationBytes);
-        INodeRecordBuffer buffer = implementation;
+        using NodeRecordBuffer buffer = new(0, GenerationBytes);
         using IDisposable pin = buffer.PinAll();
-        buffer.AppendRecordFromRlp(null, TreePath.Empty, ValueKeccak.Compute(Leaf(0, 8)), Leaf(0, 8));
+        buffer.AppendRecordFromRlp(null, TreePath.Empty, Leaf(0, 8), []);
         byte[][] rlps = [Leaf(1, 8), Leaf(2, 8)];
-        int recordLength = NodeRecordCodec.AlignedLength(NodeRecordCodec.Length(0, rlps[0].Length));
-        ulong[] keys = [NodeRecordCodec.NodeKeyHash(null, TreePath.FromHexString("1")), NodeRecordCodec.NodeKeyHash(null, TreePath.FromHexString("2"))];
-        INodeRecordWriteBatch batch = buffer.StartWriteBatch(recordLength * 2);
-        ulong pointer = batch.BasePointer;
-        int length = batch.Bytes.Length;
-        for (int i = 0; i < rlps.Length; i++)
-            NodeRecordCodec.WriteFromRlp(rlps[i], NodeRecordKind.Leaf, 0, ValueKeccak.Compute(rlps[i]), keys[i], batch.Bytes[(i * recordLength)..]);
+        using NodeRecordBuffer scratch = new(0, GenerationBytes);
+        byte[][] records = [.. rlps.Select(rlp => scratch.GetRecord(scratch.AppendRecordFromRlp(null, TreePath.Empty, rlp, [])).Span.ToArray())];
+        int recordLength = (records[0].Length + RecordAlignment - 1) & -RecordAlignment;
+        ulong pointer;
+        int length;
+        using (INodeRecordWriteBatch batch = ((INodeRecordBuffer)buffer).StartWriteBatch(recordLength * 2))
+        {
+            pointer = batch.BasePointer;
+            length = batch.Bytes.Length;
+            for (int i = 0; i < records.Length; i++) records[i].CopyTo(batch.Bytes[(i * recordLength)..]);
+        }
 
-        BloomFilter bloom = implementation.FindBloom(pointer)!;
-        bool registeredEarly = keys.Any(key => bloom.MightContain(key));
-        batch.Dispose();
         using (Assert.EnterMultipleScope())
         {
             Assert.That(length, Is.EqualTo(recordLength * 2));
-            Assert.That(registeredEarly, Is.False, "records are registered on dispose");
             for (int i = 0; i < rlps.Length; i++)
-            {
-                Assert.That(bloom.MightContain(keys[i]), Is.True);
                 Assert.That(buffer.GetRecord(pointer + (ulong)(i * recordLength)).Rlp.ToArray(), Is.EqualTo(rlps[i]));
-            }
         }
     }
 
     [Test]
     public void Generation_ids_stop_before_the_transient_namespace()
     {
-        ulong last = NodeRecordBuffer.NextGeneration(NodeRecordCodec.TransientGenerationMask - 2);
+        ulong last = NodeRecordBuffer.NextGeneration((1UL << 31) - 2);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(last, Is.EqualTo(0x7fffffffUL));
@@ -83,15 +81,9 @@ internal class NodeRecordBufferTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(buffer.TryLocate(temporaryPointer, out _), Is.False);
-            Assert.That(buffer.TryLocate(realPointer | NodeRecordCodec.TransientPointerMask, out _), Is.False);
             Assert.That(buffer.TryLocate(realPointer, out _), Is.True);
-            Assert.That(buffer.TryGetNode(temporaryPointer, TreePath.Empty, out _), Is.False);
-            Assert.That(buffer.TryGetNodePointer(realPointer | NodeRecordCodec.TransientPointerMask, TreePath.Empty, out _), Is.False);
             Assert.That(buffer.EnumerateNodes(temporaryPointer), Is.Empty);
-            Assert.That(buffer.EnumerateNodes(realPointer | NodeRecordCodec.TransientPointerMask), Is.Empty);
             Assert.That(warmed.TryLocate(realPointer, out _), Is.False);
-            Assert.That(NodeRecordCodec.PersistentPointer(temporaryPointer), Is.Zero);
-            Assert.That(NodeRecordCodec.PersistentPointer(realPointer), Is.EqualTo(realPointer));
         }
     }
 
@@ -102,7 +94,7 @@ internal class NodeRecordBufferTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(buffer.Length, Is.EqualTo(length));
-            Assert.That(buffer.AsSpan().IndexOfAnyExcept((byte)0), Is.EqualTo(-1));
+            Assert.That(buffer.GetSpan().IndexOfAnyExcept((byte)0), Is.EqualTo(-1));
         }
     }
 
@@ -125,10 +117,10 @@ internal class NodeRecordBufferTests
     public void Generation_buffers_stay_at_the_same_native_address_during_compacting_collections([Values(2 * 1024 * 1024, 4 * 1024 * 1024 + 1)] int length)
     {
         using NodeRecordBuffer nodeBuffer = new(0, length);
-        nodeBuffer.Reserve(NodeRecordCodec.RecordAlignment, out NativeNodeBuffer buffer, out _);
-        ref byte address = ref MemoryMarshal.GetReference(buffer.AsSpan());
-        buffer.AsSpan()[0] = 1;
-        buffer.AsSpan()[^1] = 2;
+        nodeBuffer.Reserve(RecordAlignment, out NativeNodeBuffer buffer, out _);
+        ref byte address = ref MemoryMarshal.GetReference(buffer.GetSpan());
+        buffer.GetSpan()[0] = 1;
+        buffer.GetSpan()[^1] = 2;
 
         GCLargeObjectHeapCompactionMode previous = GCSettings.LargeObjectHeapCompactionMode;
         try
@@ -143,9 +135,9 @@ internal class NodeRecordBufferTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(Unsafe.AreSame(ref address, ref MemoryMarshal.GetReference(buffer.AsSpan())), Is.True);
-            Assert.That(buffer.AsSpan()[0], Is.EqualTo(1));
-            Assert.That(buffer.AsSpan()[^1], Is.EqualTo(2));
+            Assert.That(Unsafe.AreSame(ref address, ref MemoryMarshal.GetReference(buffer.GetSpan())), Is.True);
+            Assert.That(buffer.GetSpan()[0], Is.EqualTo(1));
+            Assert.That(buffer.GetSpan()[^1], Is.EqualTo(2));
         }
     }
 
@@ -154,14 +146,14 @@ internal class NodeRecordBufferTests
     {
         using NodeRecordBuffer buffer = new(0, GenerationBytes);
         using NodeRecordBufferPin first = buffer.Pin();
-        ulong firstPointer = buffer.Reserve(NodeRecordCodec.RecordAlignment, out _, out _);
+        ulong firstPointer = buffer.Reserve(RecordAlignment, out _, out _);
         using NodeRecordBufferPin second = buffer.Pin();
-        ulong secondPointer = buffer.Reserve(NodeRecordCodec.RecordAlignment, out _, out _);
+        ulong secondPointer = buffer.Reserve(RecordAlignment, out _, out _);
         using NodeRecordBufferPin copy = first.Copy();
         buffer.Reserve(GenerationBytes, out _, out _);
-        buffer.Reserve(NodeRecordCodec.RecordAlignment, out _, out _);
+        buffer.Reserve(RecordAlignment, out _, out _);
         using NodeRecordBufferPin rotated = buffer.Pin();
-        ulong rotatedPointer = buffer.Reserve(NodeRecordCodec.RecordAlignment, out _, out _);
+        ulong rotatedPointer = buffer.Reserve(RecordAlignment, out _, out _);
 
         using (Assert.EnterMultipleScope())
         {
@@ -181,11 +173,11 @@ internal class NodeRecordBufferTests
         object active = typeof(NodeRecordBuffer).GetField("_active", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(buffer)!;
         active.GetType().GetField("Used")!.SetValue(active, used);
         using NodeRecordBufferPin retain = buffer.Pin();
-        ulong pointer = buffer.Reserve(NodeRecordCodec.RecordAlignment, out _, out _);
+        ulong pointer = buffer.Reserve(RecordAlignment, out _, out _);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(retain.WriteBoundary, Is.EqualTo(retain.Generation << NodeRecordCodec.OffsetBits | GenerationBytes));
+            Assert.That(retain.WriteBoundary, Is.EqualTo(retain.Generation << NodeRecordBuffer.OffsetBits | GenerationBytes));
             Assert.That(pointer, Is.GreaterThan(retain.WriteBoundary));
         }
     }
@@ -199,7 +191,7 @@ internal class NodeRecordBufferTests
             for (int i = 0; i < 1024; i++)
             {
                 using NodeRecordBufferPin retain = buffer.Pin();
-                ulong pointer = buffer.Reserve(NodeRecordCodec.RecordAlignment, out _, out _);
+                ulong pointer = buffer.Reserve(RecordAlignment, out _, out _);
                 Assert.That(pointer, Is.GreaterThanOrEqualTo(retain.WriteBoundary));
             }
         });
@@ -213,8 +205,8 @@ internal class NodeRecordBufferTests
         ((IDisposable)buffer).Dispose();
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(buffer.IsDisposed, Is.True);
-            Assert.That(() => buffer.AsSpan().ToArray(), Throws.InstanceOf<ObjectDisposedException>());
+            Assert.That(IsDisposed(buffer), Is.True);
+            Assert.That(() => buffer.GetSpan().ToArray(), Throws.InstanceOf<ObjectDisposedException>());
         }
     }
 
@@ -229,23 +221,20 @@ internal class NodeRecordBufferTests
         if (compressed)
         {
             AdvanceTo(LiveGenerations + 1);
-            Assert.That(() => original.IsDisposed, Is.True.After(CompactionTimeoutMilliseconds, PollingMilliseconds));
+            Assert.That(() => IsDisposed(original), Is.True.After(CompactionTimeoutMilliseconds, PollingMilliseconds));
         }
 
         IDisposable first = buffer.PinAll();
         IDisposable second = overlapping ? buffer.PinAll() : first;
         Assert.That(buffer.TryLocate(pointer, out NodeRecord record), Is.True);
-        ValueRef pendingValue = record.LeafValue;
-        byte[] expectedValue = pendingValue.Span.ToArray();
         ulong later = AppendAt(buffer, TestItem.KeccakB, Leaf(2, 1000));
         AdvanceTo(GenerationOf(later) + 2 * LiveGenerations);
         if (overlapping) first.Dispose();
         using (Assert.EnterMultipleScope())
         {
             Assert.That(record.Rlp.ToArray(), Is.EqualTo(rlp));
-            Assert.That(pendingValue.Span.ToArray(), Is.EqualTo(expectedValue), "a pending bulk-set value borrows the same pinned storage");
             Assert.That(buffer.FindBloom(later), Is.Not.Null, "a pinned generation is not compacted");
-            Assert.That(original.IsDisposed, Is.EqualTo(compressed));
+            Assert.That(IsDisposed(original), Is.EqualTo(compressed));
         }
 
         second.Dispose();
@@ -282,7 +271,7 @@ internal class NodeRecordBufferTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(() => original.IsDisposed, Is.True.After(CompactionTimeoutMilliseconds, PollingMilliseconds), "the in-place storage is freed");
+            Assert.That(() => IsDisposed(original), Is.True.After(CompactionTimeoutMilliseconds, PollingMilliseconds), "the in-place storage is freed");
             Assert.That(() => IsLocatable(buffer, pointer), Is.EqualTo(compressed).After(CompactionTimeoutMilliseconds, PollingMilliseconds), "the compacted record resolves within the budget");
         }
 
@@ -324,15 +313,14 @@ internal class NodeRecordBufferTests
         ulong pointer = Append(buffer, Leaf(1, 8));
         NodeRecord record = buffer.GetRecord(pointer);
         BloomFilter bloom = buffer.FindBloom(pointer)!;
-        ulong nodeKeyHash = NodeRecordCodec.NodeKeyHash(null, TreePath.Empty);
         buffer.Reserve(0, out NativeNodeBuffer storage, out _);
         IDisposable reader = buffer.PinAll();
         buffer.Dispose();
         buffer.Dispose();
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(storage.IsDisposed, Is.False);
-            Assert.That(bloom.MightContain(nodeKeyHash), Is.True);
+            Assert.That(IsDisposed(storage), Is.False);
+            Assert.That(() => bloom.MightContain(0), Throws.Nothing);
             Assert.That(Matches(record, Leaf(1, 8)), Is.True);
             Assert.That(() => buffer.Pin(), Throws.InstanceOf<ObjectDisposedException>());
             Assert.That(() => retain.Copy(), Throws.InstanceOf<ObjectDisposedException>());
@@ -345,16 +333,16 @@ internal class NodeRecordBufferTests
         else retain.Dispose();
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(storage.IsDisposed, Is.False, "the other owner still borrows native memory");
-            Assert.That(bloom.MightContain(nodeKeyHash), Is.True);
+            Assert.That(IsDisposed(storage), Is.False, "the other owner still borrows native memory");
+            Assert.That(() => bloom.MightContain(0), Throws.Nothing);
             Assert.That(Matches(record, Leaf(1, 8)), Is.True);
         }
         if (readerFinishesFirst) retain.Dispose();
         else reader.Dispose();
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(storage.IsDisposed, Is.True);
-            Assert.That(() => bloom.MightContain(nodeKeyHash), Throws.InstanceOf<ObjectDisposedException>());
+            Assert.That(IsDisposed(storage), Is.True);
+            Assert.That(() => bloom.MightContain(0), Throws.InstanceOf<ObjectDisposedException>());
         }
     }
 
@@ -366,7 +354,7 @@ internal class NodeRecordBufferTests
         BloomFilter bloom = buffer.FindBloom(pointer)!;
         while (GenerationOf(buffer.Reserve(GenerationBytes, out _, out _)) < LiveGenerations + 1) { }
         buffer.Dispose();
-        Assert.That(() => first.IsDisposed, Is.True.After(CompactionTimeoutMilliseconds, PollingMilliseconds));
+        Assert.That(() => IsDisposed(first), Is.True.After(CompactionTimeoutMilliseconds, PollingMilliseconds));
         // Wait for the disposal lock to cover the rest of this generation's cleanup, too.
         buffer.Dispose();
         Assert.That(() => bloom.MightContain(0), Throws.InstanceOf<ObjectDisposedException>());
@@ -378,12 +366,12 @@ internal class NodeRecordBufferTests
         using NodeRecordBuffer buffer = new(0, GenerationBytes);
         ulong pointer = buffer.Reserve(GenerationBytes, out NativeNodeBuffer malformed, out _);
         BloomFilter bloom = buffer.FindBloom(pointer)!;
-        malformed.AsSpan()[0] = (byte)NodeRecordKind.Leaf;
-        BinaryPrimitives.WriteUInt32LittleEndian(malformed.AsSpan(NodeRecordCodec.RlpLengthOffset), GenerationBytes);
+        // A garbage header claims far more RLP than the generation holds.
+        malformed.GetSpan()[..RecordAlignment].Fill(0x7F);
         while (GenerationOf(buffer.Reserve(GenerationBytes, out _, out _)) < LiveGenerations + 1) { }
         Assert.That(CompactionFailed, Is.True.After(CompactionTimeoutMilliseconds, PollingMilliseconds));
         buffer.Dispose();
-        Assert.That(() => malformed.IsDisposed, Is.True.After(CompactionTimeoutMilliseconds, PollingMilliseconds));
+        Assert.That(() => IsDisposed(malformed), Is.True.After(CompactionTimeoutMilliseconds, PollingMilliseconds));
         buffer.Dispose();
         Assert.That(() => bloom.MightContain(0), Throws.InstanceOf<ObjectDisposedException>());
 
@@ -406,8 +394,8 @@ internal class NodeRecordBufferTests
     {
         using NodeRecordBuffer buffer = new(0, GenerationBytes);
         using NodeRecordBufferPin first = buffer.Pin();
-        NodeRecordBufferPin middle = null;
-        NodeRecordBufferPin middleCopy = null;
+        NodeRecordBufferPin? middle = null;
+        NodeRecordBufferPin? middleCopy = null;
         List<(ulong Pointer, byte[] Rlp)> records = [];
         while (records.Count == 0 || GenerationOf(records[^1].Pointer) < 24)
         {
@@ -424,10 +412,10 @@ internal class NodeRecordBufferTests
         ulong activeGeneration = GenerationOf(records[^1].Pointer);
         Assert.That(records.Select(record => Resolves(buffer, record)), Is.All.True, "everything resolves while the first generation is retained");
 
-        middle.Dispose();
+        middle!.Dispose();
         middle.Dispose();
         first.Dispose();
-        AssertResolvesFrom(buffer, records, middleCopy.Generation, "a copy keeps its generation and every later one after the original is disposed");
+        AssertResolvesFrom(buffer, records, middleCopy!.Generation, "a copy keeps its generation and every later one after the original is disposed");
         Assert.That(() => buffer.GetRecord(records[0].Pointer), Throws.InstanceOf<TrieException>());
 
         middleCopy.Dispose();
@@ -462,7 +450,7 @@ internal class NodeRecordBufferTests
     public void Root_index_returns_the_newest_matching_root([Values] bool storage)
     {
         using NodeRecordBuffer buffer = new(0, GenerationBytes);
-        Hash256 address = storage ? TestItem.KeccakA : null;
+        Hash256? address = storage ? TestItem.KeccakA : null;
         NodeRecordBufferPin retain = buffer.Pin();
         ulong droppedPointer = Append(buffer, Leaf(-1, 8));
 
@@ -475,7 +463,7 @@ internal class NodeRecordBufferTests
             buffer.SetRoot(address, roots[i], pointers[i]);
         }
 
-        Hash256 otherAddress = storage ? SameSlotAddress(address) : Hash256.Zero;
+        Hash256 otherAddress = storage ? SameSlotAddress(address!) : Hash256.Zero;
         ulong otherAddressPointer = Append(buffer, Leaf(-2, 8));
         buffer.SetRoot(otherAddress, roots[0], otherAddressPointer);
         pointers[1] = Append(buffer, Leaf(-3, 8));
@@ -549,9 +537,9 @@ internal class NodeRecordBufferTests
         const int recordsPerThread = 10_000;
         const int recordsPerRetain = 1_000;
         using NodeRecordBuffer buffer = new(1 << 20, GenerationBytes);
-        using NodeRecordBufferPin retain = compacting ? null : buffer.Pin();
+        using NodeRecordBufferPin? retain = compacting ? null : buffer.Pin();
         ulong[][] pointers = new ulong[threadCount][];
-        NodeRecordBufferPin[] threadRetains = new NodeRecordBufferPin[threadCount];
+        NodeRecordBufferPin?[] threadRetains = new NodeRecordBufferPin?[threadCount];
 
         Parallel.For(0, threadCount, new ParallelOptions { MaxDegreeOfParallelism = threadCount }, thread =>
         {
@@ -587,7 +575,7 @@ internal class NodeRecordBufferTests
             }
         }
 
-        foreach (NodeRecordBufferPin threadRetain in threadRetains) threadRetain.Dispose();
+        foreach (NodeRecordBufferPin? threadRetain in threadRetains) threadRetain!.Dispose();
         Assert.That(failures, Is.Empty);
     }
 
@@ -598,9 +586,9 @@ internal class NodeRecordBufferTests
         return new Hash256(bytes);
     }
 
-    private static Hash256 ConcurrentAddress(int thread) => thread % 2 == 0 ? null : Keccak.Compute(BitConverter.GetBytes(thread));
+    private static Hash256? ConcurrentAddress(int thread) => thread % 2 == 0 ? null : Keccak.Compute(BitConverter.GetBytes(thread));
 
-    internal static ulong GenerationOf(ulong pointer) => pointer >> 32;
+    public static ulong GenerationOf(ulong pointer) => pointer >> 32;
 
     private static ValueHash256 Root(int seed) => ValueKeccak.Compute(BitConverter.GetBytes(seed));
 
@@ -608,19 +596,29 @@ internal class NodeRecordBufferTests
 
     private static ulong Append(NodeRecordBuffer buffer, byte[] rlp) => AppendAt(buffer, null, rlp);
 
-    private static ulong AppendAt(NodeRecordBuffer buffer, Hash256 address, byte[] rlp) => buffer.AppendRecordFromRlp(address, TreePath.Empty, ValueKeccak.Compute(rlp), rlp);
+    private static ulong AppendAt(NodeRecordBuffer buffer, Hash256? address, byte[] rlp) => buffer.AppendRecordFromRlp(address, TreePath.Empty, rlp, []);
 
-    internal static byte[] Leaf(int seed, int valueLength)
+    public static byte[] Leaf(int seed, int valueLength)
     {
         byte[] value = new byte[valueLength];
         BinaryPrimitives.WriteInt32LittleEndian(value, seed);
-        byte[] keyNibbles = [1, 2];
-        byte[] rlp = new byte[NodeRlp.LeafLength(keyNibbles, value)];
-        NodeRlp.WriteLeaf(keyNibbles, value, rlp);
-        return rlp;
+        return Rlp.Encode(Rlp.Encode(HexPrefix.ToBytes([1, 2], isLeaf: true)), Rlp.Encode(value)).Bytes;
     }
 
-    internal static bool IsLocatable(NodeRecordBuffer buffer, ulong pointer)
+    private static bool IsDisposed(NativeNodeBuffer buffer)
+    {
+        try
+        {
+            buffer.GetSpan();
+            return false;
+        }
+        catch (ObjectDisposedException)
+        {
+            return true;
+        }
+    }
+
+    public static bool IsLocatable(NodeRecordBuffer buffer, ulong pointer)
     {
         using IDisposable pin = buffer.PinAll();
         return buffer.TryLocate(pointer, out _);

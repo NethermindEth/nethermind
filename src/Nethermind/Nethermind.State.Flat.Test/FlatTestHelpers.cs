@@ -3,21 +3,23 @@
 
 using System;
 using System.Buffers;
-using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Linq;
-using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
+using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
+using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.Trie;
 using Nethermind.Trie.NodeBuffer;
+using Nethermind.Trie.Pruning;
 using NSubstitute;
 
 namespace Nethermind.State.Flat.Test;
@@ -110,18 +112,24 @@ public static class FlatTestHelpers
             TreePath normalizedPath = CanonicalPath(path.Path, path.Length);
             Nodes[normalizedPath] = rlp;
             using IDisposable pin = buffer.PinAll();
-            RootPointer = Build(buffer, address, TreePath.Empty, Nodes.ToArray()).Pointer;
-            return buffer.TryGetNodePointer(RootPointer, path, out ulong pointer) ? pointer : AppendNode(buffer, address, path, rlp);
+            ulong pointer = 0;
+            RootPointer = Build(buffer, address, TreePath.Empty, Nodes.ToArray(), normalizedPath, ref pointer).Pointer;
+            return pointer;
         }
 
-        private static ChildRef Build(INodeRecordBuffer buffer, Hash256? address, TreePath path, KeyValuePair<TreePath, byte[]>[] nodes)
+        private static (ulong Pointer, byte[] Rlp) Build(INodeRecordBuffer buffer, Hash256? address, TreePath path, KeyValuePair<TreePath, byte[]>[] nodes, in TreePath target, ref ulong targetPointer)
         {
-            KeyValuePair<TreePath, byte[]> exact = nodes.FirstOrDefault(n => n.Key == path);
-            byte[] rlp;
-            ChildRef[]? references = null;
-            if (exact.Value is not null)
+            byte[]? rlp = nodes.FirstOrDefault(n => n.Key == path).Value;
+            ulong[] childPointers = new ulong[16];
+            if (rlp is not null)
             {
-                rlp = exact.Value;
+                TrieNode node = new(NodeType.Unknown, rlp);
+                node.ResolveNode(NullTrieNodeResolver.Instance, path);
+                if (node.IsExtension && node.GetChildHash(0) is not null)
+                    childPointers[0] = BuildBelow(buffer, address, path.Append(node.Key), nodes, target, ref targetPointer);
+                else if (node.IsBranch)
+                    for (int i = 0; i < 16; i++)
+                        if (node.GetChildHash(i) is not null) childPointers[i] = BuildBelow(buffer, address, path.Append(i), nodes, target, ref targetPointer);
             }
             else
             {
@@ -129,75 +137,60 @@ public static class FlatTestHelpers
                 while (shared < nodes[0].Key.Length && nodes.All(n => n.Key.Length > shared && n.Key[shared] == nodes[0].Key[shared])) shared++;
                 if (shared > path.Length)
                 {
-                    TreePath childPath = nodes[0].Key.Truncate(shared);
-                    ChildRef child = Build(buffer, address, childPath, nodes);
-                    references = [child];
-                    byte[] key = Enumerable.Range(path.Length, shared - path.Length).Select(i => (byte)nodes[0].Key[i]).ToArray();
-                    rlp = new byte[NodeRlp.ExtensionLength(key, child)];
-                    NodeRlp.WriteExtension(key, child, rlp);
+                    (childPointers[0], byte[] child) = Build(buffer, address, nodes[0].Key.Truncate(shared), nodes, target, ref targetPointer);
+                    rlp = ExtensionRlp(Enumerable.Range(path.Length, shared - path.Length).Select(i => (byte)nodes[0].Key[i]).ToArray(), child);
                 }
                 else
                 {
-                    ChildRef[] children = new ChildRef[16];
-                    for (int i = 0; i < children.Length; i++)
+                    byte[]?[] children = new byte[16][];
+                    for (int i = 0; i < 16; i++)
                     {
                         TreePath childPath = path.Append(i);
-                        KeyValuePair<TreePath, byte[]>[] descendants = nodes.Where(n => n.Key.Length >= childPath.Length && n.Key.StartsWith(childPath)).ToArray();
-                        if (descendants.Length > 0) children[i] = Build(buffer, address, childPath, descendants);
+                        KeyValuePair<TreePath, byte[]>[] descendants = Descendants(nodes, childPath);
+                        if (descendants.Length > 0) (childPointers[i], children[i]) = Build(buffer, address, childPath, descendants, target, ref targetPointer);
                     }
-                    references = children;
-                    rlp = new byte[NodeRlp.BranchLength(children)];
-                    NodeRlp.WriteBranch(children, rlp);
+                    rlp = BranchRlp(children);
                 }
             }
 
-            if (!NodeRecordCodec.TryMeasure(rlp, out NodeRecordKind kind, out ushort mask)) throw new ArgumentException("Invalid fixture node RLP.", nameof(nodes));
-            ValueHash256 hash = ValueKeccak.Compute(rlp);
-            int length = NodeRecordCodec.Length(BitOperations.PopCount(mask), rlp.Length);
-            byte[] record = new byte[length];
-            NodeRecordCodec.WriteFromRlp(rlp, kind, mask, hash, NodeRecordCodec.NodeKeyHash(address, path), record);
-            NodeRecordRef view = new(record);
-            int position = NodeRecordCodec.HeaderLength;
-            Span<byte> keyNibbles = stackalloc byte[64];
-            for (int i = 0; i < 16; i++)
-            {
-                if ((mask & (1 << i)) == 0) continue;
-                ChildRef child = view.Child(i);
-                TreePath childPath;
-                if (kind == NodeRecordKind.Extension)
-                {
-                    view.CopyKey(0, keyNibbles);
-                    childPath = path.Append(keyNibbles[..view.KeyLength(0)]);
-                }
-                else childPath = path.Append(i);
-                ChildRef connected = default;
-                if (references is not null) connected = references[i];
-                else
-                {
-                    KeyValuePair<TreePath, byte[]>[] descendants = nodes.Where(n => n.Key.Length >= childPath.Length && n.Key.StartsWith(childPath)).ToArray();
-                    if (descendants.Length > 0) connected = Build(buffer, address, childPath, descendants);
-                }
-                if (connected.Kind == ChildRefKind.Hash && connected.Data == child.Data)
-                    BinaryPrimitives.WriteUInt64LittleEndian(record.AsSpan(position), connected.Pointer);
-                position += NodeRecordCodec.PointerLength;
-            }
-
-            using INodeRecordWriteBatch batch = buffer.StartWriteBatch(NodeRecordCodec.AlignedLength(length));
-            record.CopyTo(batch.Bytes);
-            return ChildRef.ForHash(hash, batch.BasePointer);
+            ulong pointer = buffer.AppendRecordFromRlp(address, path, rlp, childPointers);
+            if (path == target) targetPointer = pointer;
+            return (pointer, rlp);
         }
+
+        private static ulong BuildBelow(INodeRecordBuffer buffer, Hash256? address, in TreePath childPath, KeyValuePair<TreePath, byte[]>[] nodes, in TreePath target, ref ulong targetPointer)
+        {
+            KeyValuePair<TreePath, byte[]>[] descendants = Descendants(nodes, childPath);
+            return descendants.Length == 0 ? 0 : Build(buffer, address, childPath, descendants, target, ref targetPointer).Pointer;
+        }
+
+        private static KeyValuePair<TreePath, byte[]>[] Descendants(KeyValuePair<TreePath, byte[]>[] nodes, TreePath path) =>
+            nodes.Where(n => n.Key.Length >= path.Length && n.Key.StartsWith(path)).ToArray();
     }
 
     /// <summary>The RLP of a leaf with an empty key holding <paramref name="value"/>, a distinct valid trie node per value.</summary>
-    public static byte[] LeafRlp(params byte[] value)
-    {
-        byte[] rlp = new byte[NodeRlp.LeafLength([], value)];
-        NodeRlp.WriteLeaf([], value, rlp);
-        return rlp;
-    }
+    public static byte[] LeafRlp(params byte[] value) => Rlp.Encode(Rlp.Encode(HexPrefix.ToBytes([], isLeaf: true)), Rlp.Encode(value)).Bytes;
+
+    /// <summary>The RLP of an extension over the <paramref name="key"/> nibbles referencing <paramref name="childRlp"/> by hash.</summary>
+    public static byte[] ExtensionRlp(byte[] key, byte[] childRlp) =>
+        Rlp.Encode(Rlp.Encode(HexPrefix.ToBytes(key, isLeaf: false)), Rlp.Encode(Keccak.Compute(childRlp))).Bytes;
+
+    /// <summary>The RLP of a valueless branch referencing <paramref name="children"/> by nibble and hash, null for none.</summary>
+    /// <remarks>Short children are referenced by hash too, so each stays a record of its own.</remarks>
+    public static byte[] BranchRlp(byte[]?[] children) =>
+        Rlp.Encode([.. Enumerable.Range(0, 16).Select(i => children.ElementAtOrDefault(i) is { } child ? Rlp.Encode(Keccak.Compute(child)) : Rlp.OfEmptyByteArray), Rlp.OfEmptyByteArray]).Bytes;
 
     private static ulong AppendNode(INodeRecordBuffer buffer, Hash256? address, in TreePath path, byte[] rlp) =>
-        buffer.AppendRecordFromRlp(address, path, ValueKeccak.Compute(rlp), rlp);
+        buffer.AppendRecordFromRlp(address, path, rlp, []);
+
+    /// <summary>Bulk-sets <paramref name="entries"/> over <paramref name="root"/> into <paramref name="buffer"/>, as a scope's commit does.</summary>
+    public static TrieRoot BulkSet(ResourcePool pool, INodeRecordBuffer buffer, Hash256? address, TrieRoot root, in ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries, bool canParallelize)
+    {
+        using SnapshotBundle bundle = new(MakeBundle(pool), buffer, pool, ResourcePool.Usage.MainBlockProcessing);
+        BufferedTrie trie = new(bundle, address, root);
+        trie.BulkSet(entries, canParallelize);
+        return trie.Root;
+    }
 
     public static SnapshotPooledList SnapshotList(params Snapshot[] snapshots)
     {
@@ -342,12 +335,14 @@ internal sealed class ForwardingNodeRecordBuffer(INodeRecordBuffer inner) : INod
 
         public void Dispose()
         {
-            ReadOnlySpan<byte> bytes = innerBatch.Bytes;
+            int length = innerBatch.Bytes.Length;
+            ulong basePointer = innerBatch.BasePointer;
+            innerBatch.Dispose();
             int records = 0;
-            for (int offset = 0, length; offset < bytes.Length && (length = NodeRecordCodec.Length(bytes[offset..])) != NodeRecordCodec.HeaderLength; offset += NodeRecordCodec.AlignedLength(length)) records++;
+            // Records are 8-byte aligned and the unused tail is zero-filled, which reads as a record with no RLP.
+            for (int offset = 0; offset < length && owner.TryLocate(basePointer + (ulong)offset, out NodeRecord record) && !record.Rlp.IsEmpty; offset += (record.Span.Length + 7) & -8) records++;
             Interlocked.Increment(ref owner.CompletedWrites);
             Interlocked.Add(ref owner.CompletedRecords, records);
-            innerBatch.Dispose();
         }
     }
 

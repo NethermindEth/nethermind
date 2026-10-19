@@ -47,8 +47,6 @@ internal sealed unsafe class NativeNodeBuffer : MemoryManager<byte>
 
     public int Length { get; }
 
-    internal bool IsDisposed => Volatile.Read(ref _address) == 0;
-
     public static NativeNodeBuffer Allocate(int length) => new(length);
 
     // Native spans do not root their owner: the pin protecting them must outlive their use.
@@ -59,7 +57,6 @@ internal sealed unsafe class NativeNodeBuffer : MemoryManager<byte>
         return new Span<byte>((void*)address, Length);
     }
 
-    public Span<byte> AsSpan() => GetSpan();
     public Span<byte> AsSpan(int start) => GetSpan()[start..];
     public Span<byte> AsSpan(int start, int length) => GetSpan().Slice(start, length);
 

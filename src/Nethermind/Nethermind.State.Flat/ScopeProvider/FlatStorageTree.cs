@@ -113,7 +113,6 @@ public sealed class FlatStorageTree(
         WarmUpSlot(index, isDelete: value.IsZero);
         if (!_scope.AppliesStorageWritesEarly || Volatile.Read(ref _earlyState) >= EarlyClaimed) return;
 
-        OnEarlyHintAccepted?.Invoke();
         ConcurrentQueue<(UInt256 Slot, UInt256 Value)> writes = _earlyWrites ?? CreateEarlyWrites();
         writes.Enqueue((index, value));
         // Clearing this before draining makes a hint during a pass queue another pass.
@@ -178,7 +177,6 @@ public sealed class FlatStorageTree(
         {
             // Keep the disposed source as a tombstone: an accepted hint may still arrive after a failed pass.
             if (Interlocked.CompareExchange(ref _earlyState, EarlyIdle, EarlyApplying) != EarlyApplying) _earlySource!.Dispose();
-            OnEarlyPassCompleted?.Invoke();
         }
     }
 
@@ -186,9 +184,8 @@ public sealed class FlatStorageTree(
     internal bool EarlyWritesDrained => Volatile.Read(ref _earlyWrites) is not { IsEmpty: false }
         && Volatile.Read(ref _earlyState) != EarlyApplying && Volatile.Read(ref _earlyQueued) == 0;
 
-    internal Action? OnEarlyHintAccepted;
+    /// <summary>Called once a pass has taken its writes. For tests.</summary>
     internal Action? OnEarlyPassDrained;
-    internal Action? OnEarlyPassCompleted;
 
     private Dictionary<UInt256, UInt256>? AdoptEarlyTrie(BufferedTrie trie)
     {

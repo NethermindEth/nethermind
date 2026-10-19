@@ -992,7 +992,7 @@ public class FlatWorldStateScopeProviderTests
         Assert.That(ctx.Scope.EarlyApplyCounts.Reused, Is.EqualTo(1));
         ctx.Scope.Commit(1);
         AssertStorageRoot(ctx, [0, 123]);
-        Assert.That(ctx.LastCommittedSnapshot!.TryGetStorageNode((address.ToAccountPath.ToHash256(), TreePath.Empty), out ulong _), Is.True,
+        Assert.That(ctx.LastCommittedSnapshot!.TryGetStorageNode((address.ToAccountPath.ToHash256(), TreePath.Empty), out _), Is.True,
             "adoption must publish the private root even when the final batch hashes nothing");
         Assert.That(ctx.LastCommittedSnapshot.StorageNodes, Is.Not.Empty, "the boundary precedes adopted idle-thread writes");
     }
@@ -1047,9 +1047,7 @@ public class FlatWorldStateScopeProviderTests
         FlatStorageTree tree = (FlatStorageTree)scope.CreateStorageTree(address);
         using ManualResetEventSlim started = new();
         using ManualResetEventSlim resume = new();
-        using ManualResetEventSlim completed = new();
         tree.OnEarlyPassDrained = () => { started.Set(); resume.Wait(); };
-        tree.OnEarlyPassCompleted = completed.Set;
         try
         {
             tree.HintSet(1, 20);
@@ -1079,19 +1077,19 @@ public class FlatWorldStateScopeProviderTests
         finally
         {
             resume.Set();
-            Assert.That(completed.Wait(5000), Is.True);
         }
+        // The pass disposes its source last.
+        Assert.That(() => ctx.PersistenceReader.ReceivedCalls().Count(call => call.GetMethodInfo().Name == nameof(IDisposable.Dispose)), Is.EqualTo(1).After(5000, 10));
         using (Assert.EnterMultipleScope())
         {
             Assert.That(scope.EarlyApplyCounts.Applied, Is.EqualTo(1), "the detached pass must finish after bundle teardown");
-            ctx.PersistenceReader.Received(1).Dispose();
             Assert.That(backgroundLoads, persistedRoot ? Is.Positive : Is.Zero);
         }
     }
 
     [Test]
     [NonParallelizable]
-    public void EarlyStorageApply_FailedPassIsNotAdopted([Values] bool raceNextHint)
+    public void EarlyStorageApply_FailedPassIsNotAdopted()
     {
         using IDisposable gap = SetMinIdleGap(TimeSpan.Zero);
         using TestContext ctx = new();
@@ -1100,35 +1098,22 @@ public class FlatWorldStateScopeProviderTests
         FlatStorageTree tree = (FlatStorageTree)ctx.Scope.CreateStorageTree(address);
         using ManualResetEventSlim started = new();
         using ManualResetEventSlim resume = new();
-        using ManualResetEventSlim completed = new();
         tree.OnEarlyPassDrained = () =>
         {
             started.Set();
             resume.Wait();
             throw new InvalidOperationException("failed early pass");
         };
-        tree.OnEarlyPassCompleted = completed.Set;
         try
         {
             tree.HintSet(1, 123);
             Assert.That(started.Wait(5000), Is.True);
-            if (raceNextHint)
-            {
-                tree.OnEarlyHintAccepted = () =>
-                {
-                    resume.Set();
-                    Assert.That(completed.Wait(5000), Is.True);
-                };
-                // The pass fails after the second hint checks its state, but before it captures the context.
-                Assert.DoesNotThrow(() => tree.HintSet(2, 999));
-            }
         }
         finally
         {
             resume.Set();
-            Assert.That(completed.Wait(5000), Is.True);
-            tree.OnEarlyHintAccepted = null;
         }
+        Assert.That(() => tree.EarlyWritesDrained, Is.True.After(5000, 10));
 
         using (IWorldStateScopeProvider.IWorldStateWriteBatch batch = ctx.Scope.StartWriteBatch(1))
         {
@@ -1157,7 +1142,7 @@ public class FlatWorldStateScopeProviderTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(ctx.Scope.Get(address)!.StorageRoot, Is.EqualTo(Keccak.EmptyTreeHash));
-            Assert.That(ctx.LastCommittedSnapshot!.TryGetStorageNode((address.ToAccountPath.ToHash256(), TreePath.Empty), out ulong _), Is.False);
+            Assert.That(ctx.LastCommittedSnapshot!.TryGetStorageNode((address.ToAccountPath.ToHash256(), TreePath.Empty), out _), Is.False);
             Assert.That(ctx.LastCommittedSnapshot.StorageNodes, Is.Empty, "unreachable speculative writes are not snapshot changes");
         }
         ctx.Scope.Dispose();
@@ -1191,9 +1176,7 @@ public class FlatWorldStateScopeProviderTests
     {
         using ManualResetEventSlim started = new();
         using ManualResetEventSlim resume = new();
-        using ManualResetEventSlim completed = new();
         tree.OnEarlyPassDrained = () => { started.Set(); resume.Wait(); };
-        tree.OnEarlyPassCompleted = () => { if (tree.EarlyWritesDrained) completed.Set(); };
         try
         {
             hint();
@@ -1202,9 +1185,8 @@ public class FlatWorldStateScopeProviderTests
         finally
         {
             resume.Set();
-            Assert.That(completed.Wait(5000), Is.True);
+            Assert.That(() => tree.EarlyWritesDrained, Is.True.After(5000, 10));
             tree.OnEarlyPassDrained = null;
-            tree.OnEarlyPassCompleted = null;
         }
     }
 
@@ -1476,7 +1458,7 @@ public class FlatWorldStateScopeProviderTests
         using NodeRecordBuffer buffer = new(1024 * 1024, 64 * 1024);
         Hash256? address = storage ? TestItem.KeccakA : null;
         byte[] oldRlp = FlatTestHelpers.LeafRlp(0x01);
-        ulong oldPointer = buffer.AppendRecordFromRlp(address, TreePath.FromHexString("f"), ValueKeccak.Compute(oldRlp), oldRlp);
+        ulong oldPointer = buffer.AppendRecordFromRlp(address, TreePath.FromHexString("f"), oldRlp, []);
         FlatTestHelpers.StartNewGeneration(buffer);
 
         ValueHash256[] keys = new ValueHash256[keyCount];
@@ -1525,8 +1507,8 @@ public class FlatWorldStateScopeProviderTests
         using INodeRecordBufferPin writeRetain = buffer.Pin();
         for (int version = 0; version < versionCount; version++)
         {
-            Assert.That(buffer.ResolveRoot(address, roots[version].Hash).Pointer, Is.EqualTo(roots[version].Pointer), $"indexed root {version}");
-            BufferedTrie trie = new(bundle, address, buffer.ResolveRoot(address, roots[version].Hash));
+            Assert.That(buffer.FindRoot(address, roots[version].Hash), Is.EqualTo(roots[version].Pointer), $"indexed root {version}");
+            BufferedTrie trie = new(bundle, address, new TrieRoot(roots[version].Hash, buffer.FindRoot(address, roots[version].Hash)));
             using (Assert.EnterMultipleScope())
             {
                 for (int i = 0; i < keys.Length; i++) Assert.That(trie.TryGet(keys[i]), Is.EqualTo(values[version][i]), $"version {version}, key {i}");
@@ -1744,7 +1726,7 @@ public class FlatWorldStateScopeProviderTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That((resumedSnapshot.BufferPin!.WriteBoundary >> NodeRecordCodec.OffsetBits), Is.EqualTo((interleavedSnapshot.BufferPin!.WriteBoundary >> NodeRecordCodec.OffsetBits)));
+            Assert.That((resumedSnapshot.BufferPin!.WriteBoundary >> NodeRecordBuffer.OffsetBits), Is.EqualTo((interleavedSnapshot.BufferPin!.WriteBoundary >> NodeRecordBuffer.OffsetBits)));
             Assert.That(resumedSnapshot.BufferPin!.WriteBoundary, Is.LessThan(interleavedSnapshot.BufferPin!.WriteBoundary));
             Assert.That(resumed, Has.Some.LessThan(interleavedSnapshot.BufferPin!.WriteBoundary), "the paused scope retains its earlier reachable writes");
             Assert.That(resumed, Does.Not.Contain(interleavedSnapshot.StateRootPointer));
@@ -1777,7 +1759,7 @@ public class FlatWorldStateScopeProviderTests
             Assert.That(snapshot.From, Is.EqualTo(initial));
             Assert.That(snapshot.To.StateRoot, Is.EqualTo(initial.StateRoot));
             Assert.That(snapshot.StateNodes, Is.Empty);
-            Assert.That(snapshot.TryGetStateNode(TreePath.Empty, out ulong _), Is.True);
+            Assert.That(snapshot.TryGetStateNode(TreePath.Empty, out _), Is.True);
         }
     }
 

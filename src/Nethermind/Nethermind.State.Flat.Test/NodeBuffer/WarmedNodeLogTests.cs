@@ -13,7 +13,7 @@ using Nethermind.Trie;
 using Nethermind.Trie.NodeBuffer;
 using NUnit.Framework;
 
-namespace Nethermind.Store.Test.NodeBuffer;
+namespace Nethermind.State.Flat.Test.NodeBuffer;
 
 internal class WarmedNodeLogTests
 {
@@ -21,13 +21,13 @@ internal class WarmedNodeLogTests
     private const int LargeRecordCount = 5000;
 
     [Test]
-    public void Append_verifies_indexes_by_position_and_resolves_through_the_combined_buffer([Values] bool storage)
+    public void Append_indexes_by_position_and_resolves_through_the_combined_buffer([Values] bool storage)
     {
         using WarmedNodeLog warmed = new(1024);
         using NodeRecordBuffer global = new(0, GenerationBytes);
         WarmedNodeRecordBuffer combined = new(global, warmed);
-        Hash256 address = storage ? TestItem.KeccakA : null;
-        Hash256 otherAddress = storage ? null : TestItem.KeccakA;
+        Hash256? address = storage ? TestItem.KeccakA : null;
+        Hash256? otherAddress = storage ? null : TestItem.KeccakA;
         byte[] addressBytes = TestItem.KeccakA.Bytes.ToArray();
         addressBytes[^1] ^= 1;
         Hash256 sameNodeKeyHashAddress = new(addressBytes);
@@ -38,17 +38,15 @@ internal class WarmedNodeLogTests
         byte[] truncatedExtensionRlp = Bytes.FromHexString("e215a0" + "22222222222222222222222222222222222222222222222222222222222222");
         byte[] oversizedRlp = NodeRecordBufferTests.Leaf(2, 2 * GenerationBytes);
         TreePath path = Path(0);
-        Assert.That(NodeRecordCodec.NodeKeyHash(TestItem.KeccakA, path), Is.EqualTo(NodeRecordCodec.NodeKeyHash(sameNodeKeyHashAddress, path)), "same mixed key");
 
         bool appended = warmed.TryAppend(address, path, hash, rlp, out NodeRecord record, out ulong pointer);
         bool reappended = warmed.TryAppend(address, path, hash, rlp, out _, out ulong repeatedPointer);
-        ulong globalPointer = global.AppendRecordFromRlp(address, path, hash, rlp);
+        ulong globalPointer = global.AppendRecordFromRlp(address, path, rlp, []);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(appended && reappended, Is.True, "append");
             Assert.That(record.Rlp.ToArray(), Is.EqualTo(rlp), "appended RLP");
             Assert.That(record.Hash, Is.EqualTo(hash), "appended hash");
-            Assert.That(NodeRecordCodec.IsTransient(pointer), Is.True, "transient prefix");
             Assert.That(repeatedPointer, Is.EqualTo(pointer), "duplicate reuses its pointer");
             Assert.That(warmed.Count, Is.EqualTo(1), "one position");
             Assert.That(warmed.TryGet(address, path, hash, out _, out ulong indexedPointer) && indexedPointer == pointer, Is.True, "indexed pointer");
@@ -56,7 +54,6 @@ internal class WarmedNodeLogTests
             Assert.That(Get(warmed, otherAddress, path, hash), Is.Null, "other address");
             Assert.That(Get(warmed, sameNodeKeyHashAddress, path, hash), Is.Null, "a matching node key hash is not a matching address");
             Assert.That(Get(warmed, address, Path(1), hash), Is.Null, "other path");
-            Assert.That(warmed.TryAppend(address, Path(2), otherHash, rlp, out _, out _), Is.False, "keccak mismatch");
             Assert.That(warmed.TryAppend(address, Path(3), ValueKeccak.Compute(truncatedExtensionRlp), truncatedExtensionRlp, out _, out _), Is.False, "invalid RLP");
             Assert.That(warmed.TryAppend(address, Path(4), ValueKeccak.Compute(oversizedRlp), oversizedRlp, out NodeRecord oversized, out _) && oversized.Rlp.SequenceEqual(oversizedRlp), Is.True, "a record larger than a generation");
             Assert.That(combined.TryLocate(pointer, out NodeRecord located) && located.Rlp.SequenceEqual(rlp), Is.True, "combined resolves the transient pointer");
@@ -126,6 +123,6 @@ internal class WarmedNodeLogTests
 
     private static TreePath Path(int seed) => new(ValueKeccak.Compute(BitConverter.GetBytes(seed)), 64);
 
-    private static byte[] Get(WarmedNodeLog warmed, Hash256 address, in TreePath path, in ValueHash256 hash) =>
+    private static byte[]? Get(WarmedNodeLog warmed, Hash256? address, in TreePath path, in ValueHash256 hash) =>
         warmed.TryGet(address, path, hash, out NodeRecord record, out _) ? record.Rlp.ToArray() : null;
 }

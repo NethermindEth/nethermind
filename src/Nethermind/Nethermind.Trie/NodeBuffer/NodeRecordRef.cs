@@ -6,7 +6,6 @@ using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
-using System.Runtime.InteropServices;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Trie.NodeBuffer;
@@ -20,10 +19,6 @@ internal readonly ref struct NodeRecordRef(ReadOnlySpan<byte> record)
     public NodeRecordKind Kind => (NodeRecordKind)_record[0];
 
     public ushort HashMask => BinaryPrimitives.ReadUInt16LittleEndian(_record[NodeRecordCodec.HashMaskOffset..]);
-
-    public ref readonly ValueHash256 Hash => ref MemoryMarshal.AsRef<ValueHash256>(_record.Slice(NodeRecordCodec.HashOffset, ValueHash256.MemorySize));
-
-    public ulong NodeKeyHash => BinaryPrimitives.ReadUInt64LittleEndian(_record[NodeRecordCodec.NodeKeyHashOffset..]);
 
     public ReadOnlySpan<byte> Rlp => _record.Slice(
         NodeRecordCodec.HeaderLength + NodeRecordCodec.PointerLength * BitOperations.PopCount(HashMask),

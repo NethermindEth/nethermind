@@ -23,15 +23,29 @@ public static class NodeRecordBufferExtensions
     internal static TrieRoot ResolveRoot(this INodeRecordBuffer buffer, Hash256? address, in ValueHash256 rootHash) =>
         new(rootHash, rootHash == ValueKeccak.EmptyTreeHash ? 0 : buffer.FindRoot(address, rootHash));
 
-    /// <summary>Appends a node's RLP with every child pointer unset.</summary>
+    /// <summary>Appends a node's RLP, pointing each hashed child at its candidate record when that record holds the referenced hash.</summary>
+    /// <remarks>The caller pins the candidate records.</remarks>
+    /// <param name="address">The storage trie's address hash, or null for the state trie.</param>
+    /// <param name="childPointers">Candidate child records by branch nibble, or at index zero for an extension; zero for none.</param>
     /// <exception cref="TrieException">The RLP is not a valid trie node.</exception>
-    internal static ulong AppendRecordFromRlp(this INodeRecordBuffer buffer, Hash256? address, in TreePath path, in ValueHash256 hash, ReadOnlySpan<byte> rlp)
+    public static ulong AppendRecordFromRlp(this INodeRecordBuffer buffer, Hash256? address, in TreePath path, ReadOnlySpan<byte> rlp, ReadOnlySpan<ulong> childPointers)
     {
         if (!NodeRecordCodec.TryMeasure(rlp, out NodeRecordKind kind, out ushort hashMask)) ThrowInvalidRlp();
 
         int length = NodeRecordCodec.Length(BitOperations.PopCount(hashMask), rlp.Length);
         using INodeRecordWriteBatch batch = buffer.StartWriteBatch(NodeRecordCodec.AlignedLength(length));
-        NodeRecordCodec.WriteFromRlp(rlp, kind, hashMask, hash, NodeRecordCodec.NodeKeyHash(address, path), batch.Bytes);
+        Span<byte> record = batch.Bytes;
+        NodeRecordCodec.WriteFromRlp(rlp, kind, hashMask, ValueKeccak.Compute(rlp), NodeRecordCodec.NodeKeyHash(address, path), record);
+        NodeRecordRef view = new(record);
+        int position = NodeRecordCodec.HeaderLength;
+        for (int index = 0; index < 16; index++)
+        {
+            if ((hashMask & (1 << index)) == 0) continue;
+            ulong candidate = index < childPointers.Length ? childPointers[index] : 0;
+            if (candidate != 0 && buffer.TryLocate(candidate, out NodeRecord child) && child.Hash == view.Child(index).Data)
+                BinaryPrimitives.WriteUInt64LittleEndian(record[position..], candidate);
+            position += NodeRecordCodec.PointerLength;
+        }
         return batch.BasePointer;
     }
 
@@ -46,21 +60,13 @@ public static class NodeRecordBufferExtensions
         return node is not null;
     }
 
-    /// <summary>Finds the buffer pointer of the node at the exact path from the given root.</summary>
-    /// <remarks>
-    /// The returned pointer does not pin its record. A caller looking it up later must hold a pin protecting it.
-    /// Inline children have no separate pointer.
-    /// </remarks>
-    internal static bool TryGetNodePointer(this INodeRecordBuffer buffer, ulong rootPointer, in TreePath path, out ulong pointer) =>
-        TryFindRecord(buffer, rootPointer, path, out pointer, out _);
-
     /// <summary>Enumerates reachable buffer records in depth-first path order, stopping at unavailable child pointers.</summary>
     /// <remarks>
     /// Returned records are borrowed: the caller holds a pin protecting them for as long as it uses them.
     /// Inline children are contained in their parent's RLP and are not emitted as separate records.
     /// Pointers below <paramref name="lowerBound"/> and their subtrees are skipped: immutable buffer parents are written after their children.
     /// </remarks>
-    internal static IEnumerable<(TreePath Path, ulong Pointer, NodeRecord Record)> EnumerateNodes(this INodeRecordBuffer buffer, ulong rootPointer, ulong lowerBound = 0) => new NodeEnumerable(buffer, rootPointer, lowerBound);
+    public static IEnumerable<(TreePath Path, ulong Pointer, NodeRecord Record)> EnumerateNodes(this INodeRecordBuffer buffer, ulong rootPointer, ulong lowerBound = 0) => new NodeEnumerable(buffer, rootPointer, lowerBound);
 
     private static bool TryFindRecord(INodeRecordBuffer buffer, ulong rootPointer, in TreePath path, out ulong pointer, out NodeRecord record)
     {

@@ -11,6 +11,7 @@ using System.Threading;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Cpu;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Threading;
 
 using BulkSetEntry = Nethermind.Trie.PatriciaTree.BulkSetEntry;
@@ -328,7 +329,7 @@ internal static class NodeRecordBulkSet
         private void UpdateInParallel(ParallelChildren level, Span<BulkSetEntry> entries, bool flipped, in TreePath path, ReadOnlySpan<int> indexes,
             in Source node, int childrenStart, int remainderNibble, in Source remainder)
         {
-            int offset = PatriciaTree.GetSpanOffset(flipped ? _sortBuffer : _entries, entries);
+            int offset = entries.OffsetIn(flipped ? _sortBuffer : _entries);
             level.Flipped = flipped;
             level.Path = path;
             level.RemainderNibble = remainderNibble;

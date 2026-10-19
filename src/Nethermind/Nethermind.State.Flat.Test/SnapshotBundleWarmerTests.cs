@@ -52,14 +52,12 @@ public class SnapshotBundleWarmerTests
         using ForwardingNodeRecordBuffer buffer = new(FlatTestHelpers.NewTestBuffer());
         using INodeRecordBufferPin retain = buffer.Pin();
         byte[] prefix = FlatTestHelpers.LeafRlp(0x80);
-        buffer.AppendRecordFromRlp(address, TreePath.Empty, ValueKeccak.Compute(prefix), prefix);
+        buffer.AppendRecordFromRlp(address, TreePath.Empty, prefix, []);
         int completedBefore = buffer.CompletedRecords;
         int batchesBefore = buffer.CompletedWrites;
         ValueHash256[] keys = new ValueHash256[64];
         byte[] value = new byte[40];
         value.AsSpan().Fill(0x42);
-        using WarmedNodeLog warmed = new(1);
-        DictionaryNodeSource source = new(new Dictionary<TreePath, byte[]>(), warmed, address);
         using ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries = new(keys.Length);
         for (int i = 0; i < keys.Length; i++)
         {
@@ -67,9 +65,8 @@ public class SnapshotBundleWarmerTests
             entries.Add(new PatriciaTree.BulkSetEntry(keys[i], value));
         }
 
-        TrieRoot root = NodeRecordBulkSet.BulkSet(source.Over(buffer), address, TrieRoot.Empty, entries, canParallelize: false);
+        TrieRoot root = FlatTestHelpers.BulkSet(_pool, buffer, address, TrieRoot.Empty, entries, canParallelize: false);
         (TreePath Path, ulong Pointer, NodeRecord Record)[] nodes = buffer.EnumerateNodes(root.Pointer).ToArray();
-        source.WarmUp(buffer, root, keys[0]);
         PatriciaTree expected = new(new RawScopedTrieStore(new MemDb()), LimboLogs.Instance);
         foreach (ValueHash256 key in keys) expected.Set(key.Bytes, value);
         buffer.SetRoot(address, root.Hash, root.Pointer);
@@ -77,12 +74,11 @@ public class SnapshotBundleWarmerTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(buffer.ResolveRoot(address, root.Hash), Is.EqualTo(root));
+            Assert.That(buffer.FindRoot(address, root.Hash), Is.EqualTo(root.Pointer));
             Assert.That(buffer.CompletedRecords - completedBefore, Is.EqualTo(nodes.Length));
             Assert.That(buffer.CompletedWrites - batchesBefore, Is.LessThan(nodes.Length), "a batch contains multiple relative record offsets");
             Assert.That(nodes.All(node => node.Record.Hash == ValueKeccak.Compute(node.Record.Rlp)), Is.True);
             Assert.That(root.Hash, Is.EqualTo(expected.RootHash.ValueHash256));
-            Assert.That(source.FetchCount, Is.Zero, "nodes are read from the buffer");
             Assert.That(retain.Buffer, Is.SameAs(buffer));
         }
     }
@@ -179,7 +175,7 @@ public class SnapshotBundleWarmerTests
         ValueHash256 hash = ValueKeccak.Compute(rlp);
         using WarmedNodeLog warmed = new(1);
         ulong pointer;
-        if (inBuffer) pointer = _buffer.AppendRecordFromRlp(null, TreePath.Empty, hash, rlp);
+        if (inBuffer) pointer = _buffer.AppendRecordFromRlp(null, TreePath.Empty, rlp, []);
         else Assert.That(warmed.TryAppend(null, TreePath.Empty, hash, rlp, out _, out pointer), Is.True);
         (long Hits, long Misses, long IdleHits, long IdleMisses) before = WarmedCacheCounts();
 
@@ -482,13 +478,11 @@ public class SnapshotBundleWarmerTests
 
         using INodeRecordBuffer persistedBuffer = FlatTestHelpers.NewTestBuffer();
         using INodeRecordBufferPin persistedRetain = persistedBuffer.Pin();
-        using WarmedNodeLog unusedWarmed = new(1);
         TrieRoot root;
         using (ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries = new(keys.Length))
         {
             for (int i = 0; i < keys.Length; i++) entries.Add(new PatriciaTree.BulkSetEntry(keys[i], [(byte)(i + 1)]));
-            root = NodeRecordBulkSet.BulkSet(new DictionaryNodeSource(new Dictionary<TreePath, byte[]>(), unusedWarmed, address).Over(persistedBuffer),
-                address, TrieRoot.Empty, entries, canParallelize: false);
+            root = FlatTestHelpers.BulkSet(_pool, persistedBuffer, address, TrieRoot.Empty, entries, canParallelize: false);
         }
 
         Dictionary<TreePath, byte[]> persisted = persistedBuffer.EnumerateNodes(root.Pointer)
@@ -496,7 +490,7 @@ public class SnapshotBundleWarmerTests
         NodeReader reader = new(persisted);
         using SnapshotBundle bundle = NewBundle(reader);
         using INodeRecordBufferPin retain = _buffer.Pin();
-        TrieRoot preBlockRoot = _buffer.ResolveRoot(address, root.Hash);
+        TrieRoot preBlockRoot = new(root.Hash, _buffer.FindRoot(address, root.Hash));
 
         int firstWarmUp = WarmUpAll();
         int secondWarmUp = WarmUpAll();
@@ -529,31 +523,16 @@ public class SnapshotBundleWarmerTests
         {
             ulong[] published = storage ? snapshot!.StorageNodes.Select(node => node.Value).ToArray() : snapshot!.StateNodes.Select(node => node.Value).ToArray();
             Assert.That(published, Does.Contain(trie.Root.Pointer), "the root is published into the snapshot");
-            foreach (ulong pointer in published)
-            {
-                Assert.That(NodeRecordCodec.IsTransient(pointer), Is.False, "snapshot pointers are real-buffer records");
-                NodeRecordRef view = _buffer.GetRecord(pointer).View;
-                for (int slot = 0; slot < 16; slot++)
-                {
-                    if ((view.HashMask & (1 << slot)) != 0) Assert.That(NodeRecordCodec.IsTransient(view.Child(slot).Pointer), Is.False, "published records cannot retain temporary children");
-                }
-            }
+            Assert.That(published.All(pointer => _buffer.TryLocate(pointer, out _)), Is.True, "snapshot pointers are real-buffer records");
+            // A published record linking a warmed child would end the walk through the real buffer early.
+            WarmedNodeRecordBuffer warmedView = new(_buffer, retired!.WarmedNodeLog);
+            Assert.That(_buffer.EnumerateNodes(trie.Root.Pointer).Count(), Is.EqualTo(warmedView.EnumerateNodes(trie.Root.Pointer).Count()), "published records cannot retain temporary children");
 
-            int links = 0;
-            foreach ((TreePath path, byte[] rlp) in persisted)
-            {
-                if (!retired!.WarmedNodeLog.TryGet(address, path, ValueKeccak.Compute(rlp), out NodeRecord record, out _)) continue;
-                Assert.That(record.Rlp.ToArray(), Is.EqualTo(rlp), "published bytes remain complete under overlapping warm-ups");
-                for (int slot = 0; slot < 16; slot++)
-                {
-                    if ((record.View.HashMask & (1 << slot)) == 0) continue;
-                    ChildRef child = record.View.Child(slot);
-                    if (child.Pointer == 0) continue;
-                    links++;
-                    Assert.That(retired.WarmedNodeLog.TryLocate(child.Pointer, out NodeRecord linked) && linked.Hash == child.Data, Is.True, "every published link resolves in its resource");
-                }
-            }
-            Assert.That(links, Is.GreaterThan(0), "warm-up must populate child pointers, not just path entries");
+            Assert.That(retired.WarmedNodeLog.TryGet(address, TreePath.Empty, root.Hash, out _, out ulong warmedRoot), Is.True);
+            (TreePath Path, ulong Pointer, NodeRecord Record)[] warmedNodes = warmedView.EnumerateNodes(warmedRoot).ToArray();
+            Assert.That(warmedNodes, Has.Length.GreaterThan(1), "warm-up must populate child pointers, not just path entries");
+            foreach ((TreePath path, _, NodeRecord record) in warmedNodes)
+                Assert.That(record.Rlp.ToArray(), Is.EqualTo(persisted[path]), "published bytes remain complete under overlapping warm-ups");
         }
         finally
         {
@@ -574,7 +553,7 @@ public class SnapshotBundleWarmerTests
     private ulong PublishNode(SnapshotBundle bundle, Hash256? address, in TreePath path, byte[] rlp)
     {
         ValueHash256 hash = ValueKeccak.Compute(rlp);
-        ulong pointer = _buffer.AppendRecordFromRlp(address, path, hash, rlp);
+        ulong pointer = _buffer.AppendRecordFromRlp(address, path, rlp, []);
         TrieRoot root = new(hash, pointer);
         if (address is null) bundle.PublishBufferedStateRoot(root);
         else bundle.PublishBufferedStorageRoot(address, root);

@@ -12,7 +12,6 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
-using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.Trie;
 using Nethermind.Trie.NodeBuffer;
@@ -132,8 +131,6 @@ public class SnapshotTests
         using INodeRecordBuffer buffer = FlatTestHelpers.NewTestBuffer();
         using INodeRecordBufferPin originalRetain = buffer.Pin();
         Hash256? address = storage ? TestItem.KeccakA : null;
-        using WarmedNodeLog warmed = new(1);
-        DictionaryNodeSource source = new(new Dictionary<TreePath, byte[]>(), warmed, address);
         Hash256 firstKey = new("1000000000000000000000000000000000000000000000000000000000000000");
         Hash256 lastKey = new("f000000000000000000000000000000000000000000000000000000000000000");
         TrieRoot original = Write(TrieRoot.Empty, firstKey, 1, lastKey);
@@ -151,16 +148,17 @@ public class SnapshotTests
         if (storage) AssertIteratorEntries(snapshot.GetStorageNodeIterator(), snapshot.StorageNodes.ToArray(), snapshot);
         else AssertIteratorEntries(snapshot.GetStateNodeIterator(), snapshot.StateNodes.ToArray(), snapshot);
         bool found = storage
-            ? snapshot.TryGetStorageNode((address!, TreePath.Empty.Append(1)), out ulong inherited)
+            ? snapshot.TryGetStorageNode((address!, TreePath.Empty.Append(1)), out TrieNode? inherited)
             : snapshot.TryGetStateNode(TreePath.Empty.Append(1), out inherited);
+        ulong inheritedPointer = buffer.EnumerateNodes(updated.Pointer).First(node => node.Path == TreePath.Empty.Append(1)).Pointer;
         using (Assert.EnterMultipleScope())
         {
             Assert.That(updated.Pointer >> 32, Is.EqualTo(original.Pointer >> 32));
             Assert.That(pointers, Has.Length.EqualTo(2));
             Assert.That(pointers, Does.Not.Contain(unrelated.Pointer));
-            Assert.That(pointers, Does.Not.Contain(inherited));
+            Assert.That(pointers, Does.Not.Contain(inheritedPointer));
             Assert.That(found, Is.True);
-            Assert.That(snapshot.GetRlp(inherited).ToArray(), Is.Not.Empty);
+            Assert.That(inherited!.FullRlp.ToArray(), Is.Not.Empty);
         }
 
         TrieRoot Write(TrieRoot root, Hash256 key, byte value, Hash256? other = null)
@@ -168,7 +166,7 @@ public class SnapshotTests
             using ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries = new(2);
             entries.Add(new(key.ValueHash256, Enumerable.Repeat(value, 32).ToArray()));
             if (other is not null) entries.Add(new(other.ValueHash256, new byte[32]));
-            return NodeRecordBulkSet.BulkSet(source.Over(buffer), address, root, entries, canParallelize: false);
+            return FlatTestHelpers.BulkSet(_pool, buffer, address, root, entries, canParallelize: false);
         }
     }
 
@@ -178,18 +176,17 @@ public class SnapshotTests
         using INodeRecordBuffer buffer = FlatTestHelpers.NewTestBuffer();
         byte[] rlp = FlatTestHelpers.LeafRlp(1);
         ValueHash256 hash = ValueKeccak.Compute(rlp);
-        ulong original = buffer.AppendRecordFromRlp(null, TreePath.Empty, hash, rlp);
+        ulong original = buffer.AppendRecordFromRlp(null, TreePath.Empty, rlp, []);
         using Snapshot snapshot = _pool.CreateSnapshot(new(1, hash), new(2, hash), ResourcePool.Usage.MainBlockProcessing, buffer);
-        ulong root = duplicateRoot ? buffer.AppendRecordFromRlp(null, TreePath.Empty, hash, rlp) : original;
+        ulong root = duplicateRoot ? buffer.AppendRecordFromRlp(null, TreePath.Empty, rlp, []) : original;
         snapshot.Content.StateRootPointer = root;
         snapshot.Content.HasStateRoot = true;
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(snapshot.StateNodes, Is.Empty);
-            Assert.That(snapshot.TryGetStateNode(TreePath.Empty, out ulong found), Is.True);
-            Assert.That(found, Is.EqualTo(root));
-            Assert.That(snapshot.GetRlp(found).ToArray(), Is.EqualTo(rlp));
+            Assert.That(snapshot.TryGetStateNode(TreePath.Empty, out TrieNode? found), Is.True);
+            Assert.That(found!.FullRlp.ToArray(), Is.EqualTo(rlp));
         }
     }
 
@@ -222,17 +219,15 @@ public class SnapshotTests
         using INodeRecordBuffer buffer = FlatTestHelpers.NewTestBuffer();
         using Snapshot snapshot = _pool.CreateSnapshot(StateId.PreGenesis, new(1, Keccak.Zero), ResourcePool.Usage.MainBlockProcessing, buffer);
         byte[] leafRlp = FlatTestHelpers.LeafRlp(new byte[40]);
-        ChildRef child = ChildRef.ForHash(ValueKeccak.Compute(leafRlp), 0);
-        byte[] rootRlp = new byte[NodeRlp.ExtensionLength([1, 2], child)];
-        NodeRlp.WriteExtension([1, 2], child, rootRlp);
+        byte[] rootRlp = FlatTestHelpers.ExtensionRlp([1, 2], leafRlp);
         snapshot.Content.SetStateNodeRlp(buffer, TreePath.Empty, rootRlp);
         snapshot.Content.SetStateNodeRlp(buffer, TreePath.FromHexString("12"), leafRlp);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(snapshot.GetRlp(snapshot.Content.StateRootPointer).ToArray(), Is.EqualTo(rootRlp));
-            Assert.That(snapshot.TryGetStateNode(TreePath.FromHexString("12"), out ulong pointer), Is.True);
-            Assert.That(snapshot.GetRlp(pointer).ToArray(), Is.EqualTo(leafRlp));
+            Assert.That(snapshot.TryGetStateNode(TreePath.FromHexString("12"), out TrieNode? node), Is.True);
+            Assert.That(node!.FullRlp.ToArray(), Is.EqualTo(leafRlp));
             Assert.That(snapshot.StateNodes.Count(), Is.EqualTo(2));
         }
     }
@@ -246,13 +241,13 @@ public class SnapshotTests
         if (storage) snapshot.Content.SetStorageNodeRlp(buffer, TestItem.KeccakA, oldPath, FlatTestHelpers.LeafRlpA);
         else snapshot.Content.SetStateNodeRlp(buffer, oldPath, FlatTestHelpers.LeafRlpA);
         byte[] replacement = FlatTestHelpers.LeafRlp(2);
-        ulong root = buffer.AppendRecordFromRlp(storage ? TestItem.KeccakA : null, TreePath.Empty, ValueKeccak.Compute(replacement), replacement);
+        ulong root = buffer.AppendRecordFromRlp(storage ? TestItem.KeccakA : null, TreePath.Empty, replacement, []);
         if (storage) snapshot.Content.StorageRoots[TestItem.KeccakA] = root;
         else snapshot.Content.StateRootPointer = root;
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(storage ? snapshot.TryGetStorageNode((TestItem.KeccakA, oldPath), out ulong _) : snapshot.TryGetStateNode(oldPath, out ulong _), Is.False);
+            Assert.That(storage ? snapshot.TryGetStorageNode((TestItem.KeccakA, oldPath), out _) : snapshot.TryGetStateNode(oldPath, out _), Is.False);
             Assert.That(storage ? snapshot.StorageNodes.Count() : snapshot.StateNodes.Count(), Is.EqualTo(1));
             Assert.That(storage ? snapshot.StorageNodes.Single().Value : snapshot.StateNodes.Single().Value, Is.EqualTo(root));
         }
@@ -277,7 +272,7 @@ public class SnapshotTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(storage ? snapshot.StorageNodes.Count() : snapshot.StateNodes.Count(), Is.Zero);
-            Assert.That(storage ? snapshot.TryGetStorageNode((TestItem.KeccakA, TreePath.Empty), out ulong _) : snapshot.TryGetStateNode(TreePath.Empty, out ulong _), Is.False);
+            Assert.That(storage ? snapshot.TryGetStorageNode((TestItem.KeccakA, TreePath.Empty), out _) : snapshot.TryGetStateNode(TreePath.Empty, out _), Is.False);
         }
     }
 
@@ -410,7 +405,7 @@ public class SnapshotTests
         ValueHash256 hash = ValueKeccak.Compute(rlp);
         TrieRoot root = kind switch
         {
-            PublishedRootKind.Resolved => new(hash, buffer.AppendRecordFromRlp(null, TreePath.Empty, hash, rlp)),
+            PublishedRootKind.Resolved => new(hash, buffer.AppendRecordFromRlp(null, TreePath.Empty, rlp, [])),
             PublishedRootKind.Empty => TrieRoot.Empty,
             _ => new(hash, 0)
         };

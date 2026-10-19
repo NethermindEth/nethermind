@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
@@ -47,7 +48,7 @@ internal class NodeRecordCodecTests
 
         byte[] buffer = new byte[NodeRecordCodec.Length(BitOperations.PopCount(hashMask), rlp.Length)];
         NodeRecordCodec.WriteFromRlp(rlp, kind, hashMask, ValueKeccak.Compute(rlp), nodeKeyHash: 0, buffer);
-        NodeRecord record = new(buffer, 0);
+        NodeRecord record = new(buffer.AsMemory(), 0);
 
         TrieNode node = new(NodeType.Unknown, rlp);
         node.ResolveNode(NullTrieNodeResolver.Instance, TreePath.Empty);
