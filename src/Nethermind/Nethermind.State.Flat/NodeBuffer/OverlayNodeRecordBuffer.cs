@@ -61,11 +61,7 @@ internal sealed class OverlayNodeRecordBuffer : INodeRecordBuffer
         IsLocal(pointer) ? _local.GetRecord(pointer - _localOffset) : _global.GetRecord(pointer);
 
     /// <inheritdoc/>
-    public ulong Reserve(int alignedTotalLength, out Span<byte> bytes) => _local.Reserve(alignedTotalLength, out bytes) + _localOffset;
-
-    /// <inheritdoc/>
-    public void CompleteWrite(ulong basePointer, ReadOnlySpan<byte> bytes, ReadOnlySpan<int> recordOffsets) =>
-        _local.CompleteWrite(basePointer - _localOffset, bytes, recordOffsets);
+    public INodeRecordWriteBatch StartWriteBatch(int alignedTotalLength) => new LocalWriteBatch(_local.StartWriteBatch(alignedTotalLength), _localOffset);
 
     /// <inheritdoc/>
     public ulong FindRoot(Hash256? address, in ValueHash256 root)
@@ -105,6 +101,15 @@ internal sealed class OverlayNodeRecordBuffer : INodeRecordBuffer
             localPin.Dispose();
             throw;
         }
+    }
+
+    private sealed class LocalWriteBatch(INodeRecordWriteBatch local, ulong localOffset) : INodeRecordWriteBatch
+    {
+        public ulong BasePointer => local.BasePointer + localOffset;
+
+        public Span<byte> Bytes => local.Bytes;
+
+        public void Dispose() => local.Dispose();
     }
 
     private sealed class OverlayPin(OverlayNodeRecordBuffer buffer, INodeRecordBufferPin localPin, INodeRecordBufferPin globalPin) : INodeRecordBufferPin
