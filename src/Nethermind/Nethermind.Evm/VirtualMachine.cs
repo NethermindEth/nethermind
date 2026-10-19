@@ -927,6 +927,13 @@ public partial class VirtualMachine<TGasPolicy>(
             };
         }
 
+        UnwindHaltedChild(ref previousCallOutputLength);
+        shouldExit = false;
+        return default;
+    }
+
+    private void UnwindHaltedChild(scoped ref nuint previousCallOutputLength)
+    {
         _previousCallResult = (null, false);
         bool failedCreate = _currentState.ExecutionType.IsAnyCreate();
         // Captured before the pop: the parent refunds NEW_ACCOUNT for the failed *CALL's uncreated recipient.
@@ -949,9 +956,6 @@ public partial class VirtualMachine<TGasPolicy>(
         {
             CreditStateGasRefund(ref _currentState.Gas, TGasPolicy.GetNewAccountStateCost());
         }
-
-        shouldExit = false;
-        return default;
     }
 
     /// <summary>
@@ -1116,28 +1120,7 @@ public partial class VirtualMachine<TGasPolicy>(
             };
         }
 
-        _previousCallResult = (null, false);
-        bool failedCreate = _currentState.ExecutionType.IsAnyCreate();
-        // Captured before the pop: the parent refunds NEW_ACCOUNT for the halted *CALL's uncreated recipient.
-        bool childNewAccountCharged = _currentState.NewAccountCharged;
-        bool childCreateStateGasCharged = _currentState.IsCreateStateGasCharged;
-
-        // Nothing is copied back, but the output window is still reported to instruction tracers.
-        SetPreviousCallOutputWindow(_currentState);
-        ReturnDataBuffer = default;
-        previousCallOutputLength = 0;
-
-        PopAndRestoreParentState();
-        if (failedCreate && childCreateStateGasCharged)
-        {
-            CreditStateGasRefund(ref _currentState.Gas, TGasPolicy.GetCreateStateCost());
-        }
-        else if (childNewAccountCharged)
-        {
-            CreditStateGasRefund(ref _currentState.Gas, TGasPolicy.GetNewAccountStateCost());
-        }
-
-        // Return null to indicate that the failure was handled and execution should continue in the parent frame.
+        UnwindHaltedChild(ref previousCallOutputLength);
         shouldExit = false;
         return default;
     }
@@ -1510,7 +1493,7 @@ public partial class VirtualMachine<TGasPolicy>(
     }
 
     private bool CanReturnIdentityOutputInScratch(VmState<TGasPolicy> state) =>
-        !state.IsTopLevel && !IsTracingActions && !_txTracer.IsTracingInstructions;
+        !state.IsTopLevel && !IsTracingActions && !_tracerFlags.IsTracingInstructions;
 
     /// <remarks>By name, not type or address: the result cache wraps ecRecover, a state override can move it, and this
     /// assembly cannot reference its type. The constant is interned, so a match is a reference comparison.</remarks>
