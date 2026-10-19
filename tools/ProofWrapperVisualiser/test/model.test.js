@@ -267,3 +267,16 @@ test('every feed event type has a phase entry, a spec link and a meaning', () =>
   }
   assert.deepEqual(Object.keys(stages.AUDIT).sort(), Object.keys(stages.TYPES).sort());
 });
+
+test('sources without an epoch keep out-of-order events and skip only exact repeats', () => {
+  const store = new Store();
+  const late = { seq: 5, time: 50, type: 'announced', wrapper: W }, early = { seq: 3, time: 60, type: 'claims-checked', wrapper: W };
+  store.ingest('sim', [late]);
+  store.ingest('sim', [early]);
+  assert.equal(store.size, 2, 'a lower sequence delivered later is a real event for captures, replays and synthetic load');
+  store.ingest('sim', [early, late]);
+  assert.equal(store.size, 2, 'an identical event is a repeat');
+  assert.equal(store.duplicates, 2);
+  store.ingest('sim', [{ seq: 5, time: 70, type: 'announced', wrapper: W }]);
+  assert.equal(store.size, 3, 'the same sequence at another time comes from a restarted node');
+});

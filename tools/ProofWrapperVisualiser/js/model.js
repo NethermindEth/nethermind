@@ -69,7 +69,7 @@
     node(key, info = {}) {
       let node = this.nodes.get(key);
       if (!node) {
-        node = { key, name: info.name || key, url: info.url, index: this.nodes.size, id: '', after: 0, epoch: 0, missed: 0, latest: 0, peers: new Set(), links: new Set(), gauges: new Map(), clockOffset: 0, status: 'idle', error: '' };
+        node = { key, name: info.name || key, url: info.url, index: this.nodes.size, id: '', after: 0, epoch: 0, seen: new Set(), missed: 0, latest: 0, peers: new Set(), links: new Set(), gauges: new Map(), clockOffset: 0, status: 'idle', error: '' };
         this.nodes.set(key, node);
       }
       Object.assign(node, Object.fromEntries(Object.entries(info).filter(([, v]) => v !== undefined)));
@@ -85,8 +85,10 @@
 
     /**
      * Adds raw feed events from one node; returns the normalized events in order.
-     * @param epoch Increments when the node's feed restarted from sequence 1; batches from an earlier epoch are dropped.
-     * Within an epoch an event at or below the node's last ingested sequence is a duplicate and skipped.
+     * @param epoch Only the live poller passes one: it delivers each node's events in sequence order, so within an epoch an
+     * event at or below the node's last ingested sequence is a duplicate, and batches from an earlier epoch (before the
+     * node restarted) are dropped. Other sources (captures, replays, synthetic load) may deliver out of sequence order or
+     * span a restart, so for them only an exact repeat of an event (same sequence, time and type) is skipped.
      */
     ingest(nodeKey, raw, epoch) {
       const node = this.node(nodeKey);
@@ -97,7 +99,7 @@
       const added = [];
       for (const r of raw) {
         const seq = num(r.seq);
-        if (seq !== undefined && seq <= node.after) { this.duplicates++; continue; }
+        if (epoch !== undefined ? seq !== undefined && seq <= node.after : this.repeated(node, seq, r)) { this.duplicates++; continue; }
         const e = {
           gid: this.nextGid++, node: nodeKey, seq, t: num(r.time), type: String(r.type),
           wrapper: text(r.wrapper)?.toLowerCase(), peer: text(r.peer), peerId: text(r.peerId), message: text(r.message), requestId: num(r.requestId),
@@ -115,6 +117,15 @@
       }
       if (added.length) this.version++;
       return added;
+    }
+
+    /** Whether a non-live event was already ingested from this node, remembering at most `capacity` identities per node. */
+    repeated(node, seq, r) {
+      const identity = `${seq}|${num(r.time)}|${r.type}`;
+      if (node.seen.has(identity)) return true;
+      node.seen.add(identity);
+      if (node.seen.size > this.capacity) node.seen.delete(node.seen.values().next().value);
+      return false;
     }
 
     push(e) {

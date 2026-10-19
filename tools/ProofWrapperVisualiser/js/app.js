@@ -174,7 +174,8 @@
     const behind = pendingEvents ? ` · ${fmtCount(pendingEvents)} to ingest` : '';
     const dropped = state.dropped ? ` · ${fmtCount(state.dropped)} dropped` : '';
     const throttled = state.synthetic?.throttled ? ` · generator throttled ${state.synthetic.throttled}×` : '';
-    $('perf').textContent = `${state.fps} fps · ${fmtCount(state.rate)} events/s · ${fmtCount(store.size)}/${fmtCount(store.capacity)} events · ${fmtCount(store.wrappers.size)} wrappers${pending ? ` · ${fmtCount(pending)} scheduled` : ''}${behind}${dropped}${throttled} · update ${Math.round(state.aggCost)} ms${mem}`;
+    const repeats = store.duplicates ? ` · ${fmtCount(store.duplicates)} repeated events skipped` : '';
+    $('perf').textContent = `${state.fps} fps · ${fmtCount(state.rate)} events/s · ${fmtCount(store.size)}/${fmtCount(store.capacity)} events · ${fmtCount(store.wrappers.size)} wrappers${pending ? ` · ${fmtCount(pending)} scheduled` : ''}${behind}${dropped}${throttled}${repeats} · update ${Math.round(state.aggCost)} ms${mem}`;
   }
 
   function nowAnchor() { return state.anchor || Date.now(); }
