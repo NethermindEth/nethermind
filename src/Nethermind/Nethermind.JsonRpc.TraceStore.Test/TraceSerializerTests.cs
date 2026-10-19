@@ -102,12 +102,16 @@ public class TraceSerializerTests
         Assert.That(DeserializeStored(stored)[0].VmTrace!.Operations[0].Memory.Offset, Is.EqualTo(32));
     }
 
-    [Test]
-    public void round_trips_stored_vm_operation_names()
+    // An operation is named by its frame's code at its pc, also when stored without a name; the operations heading
+    // EIP-8141 frames sit in a frame without code and have none.
+    [TestCase("0x6000", ",\"op\":\"PUSH1\"")]
+    [TestCase("0x", "")]
+    public void names_stored_vm_operations_by_their_code(string code, string op)
     {
-        const string vmTrace = """{"code":"0x6000","ops":[{"cost":3,"ex":{"mem":null,"push":["0x0"],"store":null,"used":97},"op":"PUSH1","pc":0,"sub":null}]}""";
+        string stored = $$$"""[{"blockNumber":0,"vmTrace":{"code":"{{{code}}}","ops":[{"cost":3,"ex":{"mem":null,"push":["0x0"],"store":null,"used":97},"pc":0,"sub":null}]}}]""";
 
-        Assert.That(Json.Serialize(DeserializeStored($$"""[{"blockNumber":0,"vmTrace":{{vmTrace}}}]""")[0].VmTrace), Is.EqualTo(vmTrace));
+        Assert.That(Json.Serialize(DeserializeStored(stored)[0].VmTrace),
+            Is.EqualTo($$$"""{"code":"{{{code}}}","ops":[{"cost":3,"ex":{"mem":null,"push":["0x0"],"store":null,"used":97}{{{op}}},"pc":0,"sub":null}]}"""));
     }
 
     // Stores written before the deletion markers hold a deleted field as a change to null.

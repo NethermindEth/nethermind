@@ -6,7 +6,6 @@ using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
-using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
@@ -345,7 +344,6 @@ public partial class ParityLikeTxTracer : TxTracer
         ParityVmOperationTrace operationTrace = new();
         _gasAlreadySetForCurrentOp = false;
         operationTrace.Pc = pc;
-        operationTrace.Op = OpcodeJsonNames.GetName(opcode);
         operationTrace.Cost = gas;
         _currentOperation = operationTrace;
         _currentOpcode = opcode;

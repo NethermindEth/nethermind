@@ -290,9 +290,9 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
     {
         if (!_streamVmTrace) { base.StartOperation(pc, opcode, gas, env); return; }
 
-        FinalizePendingOp(closeWithNullSub: true);
-
         VmFrame frame = PeekLast(_streamingFrames);
+        FinalizePendingOp(frame, closeWithNullSub: true);
+
         if (!frame.JsonObjectOpened)
         {
             OpenFrameJson(frame);
@@ -445,7 +445,6 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
             _writer.WriteStartObject();
             _writer.WritePropertyName("sub"u8);
             frame.OuterPendingPc = _pendingPc;
-            frame.OuterPendingOpcode = _pendingOpcode;
             frame.OuterPendingCost = _pendingCost;
             _hasPendingOp = false;
             frame.HasPendingParentOpToClose = true;
@@ -466,7 +465,7 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
             return;
         }
 
-        FinalizePendingOp(closeWithNullSub: true);
+        FinalizePendingOp(frame, closeWithNullSub: true);
 
         if (frame.JsonObjectOpened)
         {
@@ -480,7 +479,6 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
 
         bool hadPendingParent = frame.HasPendingParentOpToClose;
         int outerPc = frame.OuterPendingPc;
-        Instruction outerOpcode = frame.OuterPendingOpcode;
         ulong outerCost = frame.OuterPendingCost;
         ReturnFrame(frame);
 
@@ -488,7 +486,6 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
         {
             ReleaseOpBuffers();
             _pendingPc = outerPc;
-            _pendingOpcode = outerOpcode;
             _pendingCost = outerCost;
             _pendingUsed = 0;
             _pushAssigned = false;
@@ -512,7 +509,7 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
     {
         if (_streamVmTrace)
         {
-            FinalizePendingOp(closeWithNullSub: true);
+            FinalizePendingOp(_streamingFrames.Count > 0 ? PeekLast(_streamingFrames) : null, closeWithNullSub: true);
         }
         ParityTraceAction? action = _trace.Action;
         ParityLikeTxTrace result = base.BuildResult();
@@ -525,18 +522,19 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
         return result;
     }
 
-    private void FinalizePendingOp(bool closeWithNullSub)
+    /// <param name="frame">The frame the pending operation runs in, whose code names it.</param>
+    private void FinalizePendingOp(VmFrame? frame, bool closeWithNullSub)
     {
         if (!_hasPendingOp) return;
 
         if (_outerOpHasSubWritten)
         {
-            EmitOuterOpTail();
+            EmitOuterOpTail(frame);
             _outerOpHasSubWritten = false;
         }
         else
         {
-            EmitPendingOpUpToSub();
+            EmitPendingOpUpToSub(frame);
             if (closeWithNullSub)
             {
                 _writer.WriteNullValue();
@@ -550,23 +548,31 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
         MaybeFlushToWire();
     }
 
-    private void EmitOuterOpTail()
+    private void EmitOuterOpTail(VmFrame? frame)
     {
         _writer.WriteNumber("cost"u8, _pendingCost);
         WritePendingEx();
-        _writer.WriteString("op"u8, OpcodeJsonNames.Get(_pendingOpcode));
+        WritePendingOpName(frame);
         _writer.WriteNumber("pc"u8, _pendingPc);
         _writer.WriteEndObject();
     }
 
-    private void EmitPendingOpUpToSub()
+    private void EmitPendingOpUpToSub(VmFrame? frame)
     {
         _writer.WriteStartObject();
         _writer.WriteNumber("cost"u8, _pendingCost);
         WritePendingEx();
-        _writer.WriteString("op"u8, OpcodeJsonNames.Get(_pendingOpcode));
+        WritePendingOpName(frame);
         _writer.WriteNumber("pc"u8, _pendingPc);
         _writer.WritePropertyName("sub"u8);
+    }
+
+    private void WritePendingOpName(VmFrame? frame)
+    {
+        if (frame is not null && (uint)_pendingPc < (uint)frame.CodeLength)
+        {
+            _writer.WriteString("op"u8, OpcodeJsonNames.Get((Instruction)frame.CodeBuffer![_pendingPc]));
+        }
     }
 
     private void WritePendingEx()
@@ -713,7 +719,6 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
         public bool JsonObjectOpened;
         public bool HasPendingParentOpToClose;
         public int OuterPendingPc;
-        public Instruction OuterPendingOpcode;
         public ulong OuterPendingCost;
 
         public void Reset()
@@ -723,7 +728,6 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
             JsonObjectOpened = false;
             HasPendingParentOpToClose = false;
             OuterPendingPc = 0;
-            OuterPendingOpcode = default;
             OuterPendingCost = 0;
         }
 

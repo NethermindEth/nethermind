@@ -13,11 +13,33 @@ public class ParityVmTraceConverter : JsonConverter<ParityVmTrace>
 {
     public override void Write(Utf8JsonWriter writer, ParityVmTrace value, JsonSerializerOptions options)
     {
+        byte[] code = value.Code ?? [];
         writer.WriteStartObject();
         writer.WritePropertyName("code"u8);
-        TypeInfoJsonSerializer.Serialize(writer, value.Code ?? [], options);
+        TypeInfoJsonSerializer.Serialize(writer, code, options);
         writer.WritePropertyName("ops"u8);
-        TypeInfoJsonSerializer.Serialize(writer, value.Operations, options);
+        if (value.Operations is null)
+        {
+            writer.WriteNullValue();
+        }
+        else
+        {
+            writer.WriteStartArray();
+            foreach (ParityVmOperationTrace? operation in value.Operations)
+            {
+                if (operation is null)
+                {
+                    writer.WriteNullValue();
+                }
+                else
+                {
+                    ParityVmOperationTraceConverter.WriteOperation(writer, operation, code, options);
+                }
+            }
+
+            writer.WriteEndArray();
+        }
+
         writer.WriteEndObject();
     }
 
