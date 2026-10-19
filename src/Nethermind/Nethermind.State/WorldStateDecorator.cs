@@ -161,6 +161,13 @@ public abstract class WorldStateDecorator(IWorldState state) : IWorldState
     public virtual void SetNonce(Address address, in ulong nonce)
         => State.SetNonce(address, in nonce);
 
+    // Split, so a subclass that records either call sees both changes.
+    public virtual void SubtractFromBalanceAndSetNonce(Address address, in UInt256 balanceChange, ulong nonce, IReleaseSpec spec)
+    {
+        SubtractFromBalance(address, in balanceChange, spec, out _);
+        SetNonce(address, nonce);
+    }
+
     public virtual void Commit(IReleaseSpec releaseSpec, IWorldStateTracer tracer, bool isGenesis = false, bool commitRoots = true)
         => State.Commit(releaseSpec, tracer, isGenesis, commitRoots);
 
