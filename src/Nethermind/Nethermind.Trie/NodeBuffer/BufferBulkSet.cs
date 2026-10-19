@@ -39,7 +39,6 @@ internal static partial class BufferBulkSet
     public static TrieRoot BulkSet(INodeRecordBuffer buffer, INodeRecordSource source, Hash256? address, TrieRoot root,
         in ArrayPoolListRef<BulkSetEntry> entries, bool canParallelize)
     {
-        using NodeRecordBufferReadLease lease = buffer.BeginRead();
         if (entries.Count == 0) return new TrieRoot(root.Hash, NodeRecordCodec.PersistentPointer(root.Pointer));
 
         using ParallelUnbalancedWork.WorkerScope? workers = canParallelize && !RuntimeInformation.IsSingleProcessor
@@ -73,77 +72,11 @@ internal static partial class BufferBulkSet
             if (updated.PendingIndex < 0) return TrieRoot.Empty;
 
             ChildRef top = context.Commit(updated.PendingIndex, TreePath.Empty, isRoot: true);
-            buffer.SetRoot(address, top.Data, top.Pointer);
             return new TrieRoot(top.Data, top.Pointer);
         }
         finally
         {
             ReturnArena(arena);
-        }
-    }
-
-    /// <summary>The root of <paramref name="rootHash"/>, with its record pointer when the buffer indexes it.</summary>
-    public static TrieRoot ResolveRoot(INodeRecordBuffer buffer, Hash256? address, in ValueHash256 rootHash) =>
-        new(rootHash, rootHash == ValueKeccak.EmptyTreeHash ? 0 : buffer.FindRoot(address, rootHash));
-
-    /// <param name="root">Its pointer is used as given, as <see cref="ResolveRoot"/> returns it.</param>
-    /// <returns>The value at <paramref name="key"/>, or null when the trie has none.</returns>
-    /// <exception cref="MissingTrieNodeException">A node on the path is in neither the buffer nor the source.</exception>
-    public static byte[]? TryGet(INodeRecordBuffer buffer, INodeRecordSource source, Hash256? address, TrieRoot root, in ValueHash256 key)
-    {
-        using NodeRecordBufferReadLease lease = buffer.BeginRead();
-        Source leaf = Walk(buffer, source, address, root, key, out int depth);
-        if (leaf.Kind == SourceKind.None) return null;
-
-        Span<byte> keyNibbles = stackalloc byte[MaxKeyNibbles];
-        Span<byte> leafKey = stackalloc byte[MaxKeyNibbles];
-        Nibbles.BytesToNibbleBytes(key.Bytes, keyNibbles);
-        int leafKeyLength = leaf.CopyKey(leafKey);
-        return leafKey[..leafKeyLength].SequenceEqual(keyNibbles[depth..]) ? leaf.LeafValue().Span.ToArray() : null;
-    }
-
-    /// <returns>The leaf on the path to <paramref name="key"/>, at <paramref name="depth"/>, or none when the path ends before one.</returns>
-    private static Source Walk(INodeRecordBuffer buffer, INodeRecordSource source, Hash256? address, in TrieRoot root, in ValueHash256 key, out int depth)
-    {
-        TreePath path = TreePath.Empty;
-        ChildRef child = root.Hash == ValueKeccak.EmptyTreeHash ? default : ChildRef.ForHash(root.Hash, root.Pointer);
-        Span<byte> keyNibbles = stackalloc byte[MaxKeyNibbles];
-        Span<byte> extensionKey = stackalloc byte[MaxKeyNibbles];
-        Nibbles.BytesToNibbleBytes(key.Bytes, keyNibbles);
-        while (true)
-        {
-            depth = path.Length;
-            switch (child.Kind)
-            {
-                case ChildRefKind.Empty:
-                    return default;
-                case ChildRefKind.Inline:
-                    return Source.ForInline(child);
-            }
-
-            if (!buffer.TryLocate(child.Pointer, out NodeRecord record) && !source.TryLoad(child.Pointer, path, child.Data, out record))
-            {
-                return ThrowMissingNode(address, path, child.Data);
-            }
-
-            NodeRecordRef view = record.View;
-            switch (view.Kind)
-            {
-                case NodeRecordKind.Leaf:
-                    return Source.ForRecord(record, 0);
-                case NodeRecordKind.Extension:
-                    int keyLength = view.KeyLength(0);
-                    view.CopyKey(0, extensionKey);
-                    if (!keyNibbles[depth..].StartsWith(extensionKey[..keyLength])) return default;
-
-                    path.AppendMut(extensionKey[..keyLength]);
-                    child = view.Child(0);
-                    break;
-                default:
-                    path.AppendMut(keyNibbles[depth]);
-                    child = view.Child(keyNibbles[depth]);
-                    break;
-            }
         }
     }
 

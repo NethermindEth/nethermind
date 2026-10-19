@@ -2,108 +2,19 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
-using System.Diagnostics;
 using System.Threading;
 using Nethermind.Trie;
-using Nethermind.Trie.NodeBuffer;
 
 namespace Nethermind.State.Flat.NodeBuffer;
 
 public sealed partial class NodeRecordBuffer
 {
-    private readonly List<IDisposable> _retired = [];
-    // Lookup-only references to owners already kept by _retired, keyed by full id rather than a reusable ring slot.
-    private readonly Dictionary<ulong, RetiredGeneration> _retiredGenerations = [];
-    private int _readers;
-    private int _retainCount;
+    private int _pinCount;
     private bool _disposed;
     private Exception? _compactionFailure;
 
-    void INodeRecordBuffer.EnterRead() => EnterRead();
-
-    void INodeRecordBuffer.ExitRead() => EndRead();
-
-    private void EnterRead()
-    {
-        lock (_lock)
-        {
-            ThrowIfUnavailable();
-            _readers++;
-        }
-    }
-
-    private void EndRead()
-    {
-        lock (_lock)
-        {
-            Debug.Assert(_readers > 0);
-            if (--_readers == 0) DrainRetired();
-            TryCompleteDispose();
-        }
-    }
-
-    private void Retire(IDisposable? owner)
-    {
-        if (owner is null) return;
-        if (_readers == 0) owner.Dispose();
-        else _retired.Add(owner);
-    }
-
-    private void Retire(ulong generation, NativeNodeBuffer? data)
-    {
-        if (data is null) return;
-        if (_readers > 0)
-        {
-            _retiredGenerations.TryGetValue(generation, out RetiredGeneration retired);
-            retired.Data = data;
-            _retiredGenerations[generation] = retired;
-        }
-        Retire(data);
-    }
-
-    private void Retire(ulong generation, CompressedGeneration? compressed)
-    {
-        if (compressed is null) return;
-        if (_readers > 0)
-        {
-            _retiredGenerations.TryGetValue(generation, out RetiredGeneration retired);
-            retired.Compressed = compressed;
-            _retiredGenerations[generation] = retired;
-        }
-        Retire(compressed);
-    }
-
-    private bool TryLocateRetired(ulong pointer, out NodeRecord record)
-    {
-        lock (_lock)
-        {
-            if (_retiredGenerations.TryGetValue(pointer >> OffsetBits, out RetiredGeneration retired))
-            {
-                if (retired.Data is { } data)
-                {
-                    record = new NodeRecord(data.Memory, (int)(uint)pointer);
-                    return true;
-                }
-                if (retired.Compressed?.TryFind(pointer, out record) == true) return true;
-            }
-            record = default;
-            return false;
-        }
-    }
-
-    private void DrainRetired()
-    {
-        _retiredGenerations.Clear();
-        foreach (IDisposable owner in _retired) owner.Dispose();
-        _retired.Clear();
-    }
-
-    private struct RetiredGeneration
-    {
-        public NativeNodeBuffer? Data;
-        public CompressedGeneration? Compressed;
-    }
+    /// <remarks>Only storage of a generation no pin covers is retired, so no reader can still borrow it.</remarks>
+    private static void Retire(IDisposable? owner) => owner?.Dispose();
 
     private void ThrowIfUnavailable()
     {
@@ -112,8 +23,8 @@ public sealed partial class NodeRecordBuffer
             throw new TrieException("Trie node buffer compaction failed.", failure);
     }
 
-    /// <summary>Stops new operations and releases native storage once outstanding readers, retains and compaction finish.</summary>
-    /// <remarks>Does not wait for outstanding owners, which may be released by the disposing thread itself. Later calls do nothing.</remarks>
+    /// <summary>Stops new operations and releases native storage once outstanding pins and compaction finish.</summary>
+    /// <remarks>Does not wait for outstanding pins, which may be released by the disposing thread itself. Later calls do nothing.</remarks>
     public void Dispose()
     {
         lock (_lock)
@@ -126,7 +37,7 @@ public sealed partial class NodeRecordBuffer
 
     private void TryCompleteDispose()
     {
-        if (!_disposed || _readers != 0 || _retainCount != 0 || _compacting) return;
+        if (!_disposed || _pinCount != 0 || _compacting) return;
 
         foreach (Generation? generation in _generations)
         {
@@ -138,7 +49,6 @@ public sealed partial class NodeRecordBuffer
             generation.Bloom = null;
             generation.Compressed = null;
         }
-        DrainRetired();
         _inPlaceBytes = 0;
         _compressedMemory = 0;
         UpdateMetrics();

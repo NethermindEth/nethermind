@@ -18,7 +18,8 @@ namespace Nethermind.State.Flat.NodeBuffer;
 /// by pointer, so the records kept are those likely still reachable from current roots. They keep their pointers and resolve through a
 /// <see cref="CompressedGeneration"/>, which is evicted oldest first while compressed generations take more than the compressed memory budget,
 /// or once its ring slot is needed.
-/// No generation is written once dropped, as a writer retains a generation no newer than those it writes.
+/// No generation is written once dropped, as a writer pins a generation no newer than those it writes, and no pinned generation is
+/// compacted or evicted, as a reader pins every generation it may read.
 /// </remarks>
 public sealed partial class NodeRecordBuffer
 {
@@ -32,7 +33,7 @@ public sealed partial class NodeRecordBuffer
     private bool _compacting;
 
     /// <summary>The bloom filter of the node keys written to the generation of <paramref name="pointer"/>, or null once it is compacted.</summary>
-    /// <remarks>The caller must hold an operation lease or generation retain for the entire use of the filter.</remarks>
+    /// <remarks>The caller must hold a pin for the entire use of the filter.</remarks>
     internal BloomFilter? FindBloom(ulong pointer)
     {
         ulong id = pointer >> OffsetBits;
@@ -40,7 +41,7 @@ public sealed partial class NodeRecordBuffer
         return generation?.Id == id ? Volatile.Read(ref generation.Bloom) : null;
     }
 
-    private bool IsCompactable => _oldestAllocated < _oldestLive;
+    private bool IsCompactable => _oldestAllocated < _oldestLive && _pinCounts[_oldestAllocated & GenerationSlotMask] == 0;
 
     private void Reclaim()
     {
@@ -79,7 +80,8 @@ public sealed partial class NodeRecordBuffer
                 {
                     lock (_lock)
                     {
-                        if (_disposed) return;
+                        // A reader pinned it while it was being compressed; compaction resumes once the reader releases it.
+                        if (_disposed || _pinCounts[generation.Id & GenerationSlotMask] != 0) return;
                         if (compressed is not null)
                         {
                             _compressedMemory += (ulong)compressed.Memory;
@@ -88,7 +90,7 @@ public sealed partial class NodeRecordBuffer
                         }
 
                         _inPlaceBytes -= generation.Data!.Length;
-                        Retire(generation.Id, generation.Data);
+                        Retire(generation.Data);
                         Volatile.Write(ref generation.Data, null);
                         Retire(generation.Bloom);
                         Volatile.Write(ref generation.Bloom, null);
@@ -167,12 +169,13 @@ public sealed partial class NodeRecordBuffer
     {
         while (_oldestCompressed < _oldestAllocated)
         {
+            if (_pinCounts[_oldestCompressed & GenerationSlotMask] != 0) return;
             Generation generation = _generations[_oldestCompressed & GenerationSlotMask]!;
             CompressedGeneration? compressed = generation.Compressed;
             if (compressed is not null && _compressedMemory <= _compressedMaxMemory && _oldestCompressed >= before) return;
 
             _compressedMemory -= (ulong)(compressed?.Memory ?? 0);
-            Retire(generation.Id, compressed);
+            Retire(compressed);
             Volatile.Write(ref generation.Compressed, null);
             _oldestCompressed++;
         }

@@ -14,12 +14,15 @@ using Nethermind.Int256;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.Trie;
+using Nethermind.Trie.NodeBuffer;
 
 namespace Nethermind.State.Flat;
 
 /// <summary>
 /// A read-only bundle of <see cref="Snapshot"/>s backed by a persistence reader.
 /// </summary>
+/// <param name="bufferPin">A <see cref="INodeRecordBuffer.PinAll"/> keeping every trie node buffer record the bundle's readers may
+/// look up readable, released with the bundle; null when nothing reads the buffer through this bundle.</param>
 /// <param name="slotFilterBitsPerKey">Bits per key of the negative filter <see cref="GetSlotFiltered"/> builds over the
 /// in-memory snapshots' slots; 0 never builds one.</param>
 public sealed class ReadOnlySnapshotBundle(
@@ -27,6 +30,7 @@ public sealed class ReadOnlySnapshotBundle(
     IPersistence.IPersistenceReader persistenceReader,
     bool recordDetailedMetrics,
     PersistedSnapshotStack persistedSnapshots,
+    IDisposable? bufferPin,
     bool isHistorical = false,
     double slotFilterBitsPerKey = 0)
     : RefCountingDisposable
@@ -396,5 +400,6 @@ public sealed class ReadOnlySnapshotBundle(
 
         // Null them in case unexpected mutation from trie warmer
         persistenceReader.Dispose();
+        bufferPin?.Dispose();
     }
 }

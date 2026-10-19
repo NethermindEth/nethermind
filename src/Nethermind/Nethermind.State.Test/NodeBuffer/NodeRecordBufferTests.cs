@@ -32,7 +32,7 @@ internal class NodeRecordBufferTests
     {
         using NodeRecordBuffer implementation = new(0, GenerationBytes);
         INodeRecordBuffer buffer = implementation;
-        using NodeRecordBufferReadLease lease = buffer.BeginRead();
+        using IDisposable pin = buffer.PinAll();
         buffer.AppendRecordFromRlp(null, TreePath.Empty, ValueKeccak.Compute(Leaf(0, 8)), Leaf(0, 8));
         byte[][] rlps = [Leaf(1, 8), Leaf(2, 8)];
         int recordLength = NodeRecordCodec.AlignedLength(NodeRecordCodec.Length(0, rlps[0].Length));
@@ -106,7 +106,7 @@ internal class NodeRecordBufferTests
     public void Generation_blooms_have_at_least_one_key_of_capacity([Values(0, 1, 127, 128, GenerationBytes)] int generationBytes)
     {
         using NodeRecordBuffer buffer = new(0, generationBytes);
-        using NodeRecordBufferReadLease lease = buffer.BeginRead();
+        using IDisposable pin = buffer.PinAll();
         ulong pointer = buffer.Reserve(0, out _, out _);
         BloomFilter bloom = buffer.FindBloom(pointer)!;
         using (Assert.EnterMultipleScope())
@@ -149,14 +149,14 @@ internal class NodeRecordBufferTests
     public void Retains_capture_exact_allocation_boundaries_and_copies_preserve_them()
     {
         using NodeRecordBuffer buffer = new(0, GenerationBytes);
-        using NodeRecordBufferRetain first = buffer.RetainActive();
+        using NodeRecordBufferPin first = buffer.Pin();
         ulong firstPointer = buffer.Reserve(NodeRecordCodec.RecordAlignment, out _, out _);
-        using NodeRecordBufferRetain second = buffer.RetainActive();
+        using NodeRecordBufferPin second = buffer.Pin();
         ulong secondPointer = buffer.Reserve(NodeRecordCodec.RecordAlignment, out _, out _);
-        using NodeRecordBufferRetain copy = first.Copy();
+        using NodeRecordBufferPin copy = first.Copy();
         buffer.Reserve(GenerationBytes, out _, out _);
         buffer.Reserve(NodeRecordCodec.RecordAlignment, out _, out _);
-        using NodeRecordBufferRetain rotated = buffer.RetainActive();
+        using NodeRecordBufferPin rotated = buffer.Pin();
         ulong rotatedPointer = buffer.Reserve(NodeRecordCodec.RecordAlignment, out _, out _);
 
         using (Assert.EnterMultipleScope())
@@ -176,7 +176,7 @@ internal class NodeRecordBufferTests
         using NodeRecordBuffer buffer = new(0, GenerationBytes);
         object active = typeof(NodeRecordBuffer).GetField("_active", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(buffer)!;
         active.GetType().GetField("Used")!.SetValue(active, used);
-        using NodeRecordBufferRetain retain = buffer.RetainActive();
+        using NodeRecordBufferPin retain = buffer.Pin();
         ulong pointer = buffer.Reserve(NodeRecordCodec.RecordAlignment, out _, out _);
 
         using (Assert.EnterMultipleScope())
@@ -194,7 +194,7 @@ internal class NodeRecordBufferTests
         {
             for (int i = 0; i < 1024; i++)
             {
-                using NodeRecordBufferRetain retain = buffer.RetainActive();
+                using NodeRecordBufferPin retain = buffer.Pin();
                 ulong pointer = buffer.Reserve(NodeRecordCodec.RecordAlignment, out _, out _);
                 Assert.That(pointer, Is.GreaterThanOrEqualTo(retain.WriteBoundary));
             }
@@ -215,61 +215,41 @@ internal class NodeRecordBufferTests
     }
 
     [Test]
-    public void Reader_keeps_retired_records_and_pending_leaf_values_alive([Values] bool compressed)
+    public void Pin_all_keeps_generations_in_place_until_every_pin_is_released([Values] bool compressed, [Values] bool overlapping)
     {
         const int generationBytes = 4096;
         using NodeRecordBuffer buffer = new(2048, generationBytes);
         buffer.Reserve(0, out NativeNodeBuffer original, out _);
         byte[] rlp = Leaf(1, 1000);
         ulong pointer = AppendAt(buffer, TestItem.KeccakA, rlp);
-        BloomFilter bloom = buffer.FindBloom(pointer)!;
-        ulong nodeKey = NodeRecordCodec.NodeKey(TestItem.KeccakA, TreePath.Empty);
         if (compressed)
         {
             AdvanceTo(LiveGenerations + 1);
             Assert.That(() => original.IsDisposed, Is.True.After(CompactionTimeoutMilliseconds, PollingMilliseconds));
         }
 
-        NodeRecord record;
-        ValueRef pendingValue;
-        using (buffer.BeginRead())
-        {
-            Assert.That(buffer.TryLocate(pointer, out record), Is.True);
-            pendingValue = record.LeafValue;
-            byte[] expectedValue = pendingValue.Span.ToArray();
-            if (compressed)
-            {
-                ulong later = AppendAt(buffer, TestItem.KeccakB, Leaf(2, 1000));
-                AdvanceTo(GenerationOf(later) + LiveGenerations);
-                Assert.That(() => buffer.FindBloom(later) is null, Is.True.After(CompactionTimeoutMilliseconds, PollingMilliseconds));
-                using (buffer.BeginRead()) Assert.That(buffer.TryLocate(pointer, out _), Is.True, "retired compressed lookup is protected by the reader");
-            }
-            else
-            {
-                AdvanceTo(LiveGenerations + 1);
-                Assert.That(() => buffer.TryLocate(pointer, out NodeRecord current) && !current.Span.Overlaps(record.Span),
-                    Is.True.After(CompactionTimeoutMilliseconds, PollingMilliseconds), "the original buffer has been replaced by compressed storage");
-                using (Assert.EnterMultipleScope())
-                {
-                    Assert.That(original.IsDisposed, Is.False);
-                    Assert.That(buffer.FindBloom(pointer), Is.Null, "the compacted generation no longer exposes its bloom");
-                    Assert.That(bloom.MightContain(nodeKey), Is.True, "the reader still borrows the retired bloom");
-                }
-            }
-
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(record.Rlp.ToArray(), Is.EqualTo(rlp));
-                Assert.That(pendingValue.Span.ToArray(), Is.EqualTo(expectedValue), "a pending bulk-set value borrows the same retired storage");
-            }
-        }
-
+        IDisposable first = buffer.PinAll();
+        IDisposable second = overlapping ? buffer.PinAll() : first;
+        Assert.That(buffer.TryLocate(pointer, out NodeRecord record), Is.True);
+        ValueRef pendingValue = record.LeafValue;
+        byte[] expectedValue = pendingValue.Span.ToArray();
+        ulong later = AppendAt(buffer, TestItem.KeccakB, Leaf(2, 1000));
+        AdvanceTo(GenerationOf(later) + 2 * LiveGenerations);
+        if (overlapping) first.Dispose();
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(() => record.Rlp.ToArray(), Throws.InstanceOf<ObjectDisposedException>(), "the final reader deterministically freed its retired native owner");
-            Assert.That(() => pendingValue.Span.ToArray(), Throws.InstanceOf<ObjectDisposedException>());
-            Assert.That(original.IsDisposed, Is.True);
-            Assert.That(() => bloom.MightContain(nodeKey), Throws.InstanceOf<ObjectDisposedException>());
+            Assert.That(record.Rlp.ToArray(), Is.EqualTo(rlp));
+            Assert.That(pendingValue.Span.ToArray(), Is.EqualTo(expectedValue), "a pending bulk-set value borrows the same pinned storage");
+            Assert.That(buffer.FindBloom(later), Is.Not.Null, "a pinned generation is not compacted");
+            Assert.That(original.IsDisposed, Is.EqualTo(compressed));
+        }
+
+        second.Dispose();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(() => buffer.FindBloom(later) is null, Is.True.After(CompactionTimeoutMilliseconds, PollingMilliseconds), "released generations are compacted");
+            Assert.That(() => IsLocatable(buffer, pointer), Is.False.After(CompactionTimeoutMilliseconds, PollingMilliseconds), "and evicted over the budget");
+            Assert.That(() => record.Rlp.ToArray(), Throws.InstanceOf<ObjectDisposedException>(), "the released native owner is freed");
         }
 
         void AdvanceTo(ulong generation)
@@ -279,73 +259,24 @@ internal class NodeRecordBufferTests
     }
 
     [Test]
-    public void Overlapping_readers_keep_compacted_away_records_lookupable_until_the_last_reader_finishes()
-    {
-        using NodeRecordBuffer buffer = new(1UL << 20, GenerationBytes);
-        buffer.Reserve(0, out NativeNodeBuffer original, out _);
-        byte[] previous = Leaf(1, 8);
-        ulong pointer = Append(buffer, previous);
-        AppendAt(buffer, TestItem.KeccakA, Leaf(3, 8));
-        buffer.Reserve(GenerationBytes, out _, out _);
-        Append(buffer, Leaf(2, 8));
-        NodeRecordBufferReadLease first = buffer.BeginRead();
-        NodeRecordBufferReadLease second = buffer.BeginRead();
-        bool firstReleased = false;
-        try
-        {
-            while (GenerationOf(buffer.Reserve(GenerationBytes, out _, out _)) < LiveGenerations + 1) { }
-            Assert.That(() => buffer.FindBloom(pointer) is null, Is.True.After(CompactionTimeoutMilliseconds, PollingMilliseconds));
-            using (buffer.BeginRead()) Assert.That(buffer.GetRecord(pointer).Rlp.ToArray(), Is.EqualTo(previous), "raw records omitted by compaction stay lookupable");
-            first.Dispose();
-            firstReleased = true;
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(buffer.GetRecord(pointer).Rlp.ToArray(), Is.EqualTo(previous), "the overlapping reader still owns the retired generation");
-                Assert.That(original.IsDisposed, Is.False);
-            }
-        }
-        finally
-        {
-            if (!firstReleased) first.Dispose();
-            second.Dispose();
-        }
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(original.IsDisposed, Is.True);
-            Assert.That(IsLocatable(buffer, pointer), Is.False, "a new reader cannot recover records evicted before it began");
-        }
-    }
-
-    [Test]
-    public void Retired_lookup_uses_full_generation_ids_when_the_ring_slot_is_reused()
+    public void Lookup_uses_full_generation_ids_when_the_ring_slot_is_reused()
     {
         const int generationBytes = 256;
         using NodeRecordBuffer buffer = new(0, generationBytes);
         byte[] previous = Leaf(1, 8);
         byte[] current = Leaf(2, 8);
         ulong pointer = Append(buffer, previous);
-        ulong replacement;
-        using (buffer.BeginRead())
-        {
-            AdvanceTo(LiveGenerations + 1);
-            Assert.That(() => buffer.FindBloom(pointer) is null, Is.True.After(CompactionTimeoutMilliseconds, PollingMilliseconds));
-            // The first slot is clear before generation 4097 reuses it.
-            using (buffer.BeginRead()) { }
-            AdvanceTo(4096);
-            replacement = Append(buffer, current);
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(GenerationOf(replacement), Is.EqualTo(GenerationOf(pointer) + 4096));
-                Assert.That((uint)replacement, Is.EqualTo((uint)pointer));
-                Assert.That(buffer.GetRecord(pointer).Rlp.ToArray(), Is.EqualTo(previous));
-                Assert.That(buffer.GetRecord(replacement).Rlp.ToArray(), Is.EqualTo(current));
-                Assert.That(buffer.TryLocate(pointer + (8192UL << 32), out _), Is.False, "same slot and offset do not match another full generation id");
-            }
-        }
+        AdvanceTo(LiveGenerations + 1);
+        Assert.That(() => buffer.FindBloom(pointer) is null, Is.True.After(CompactionTimeoutMilliseconds, PollingMilliseconds));
+        AdvanceTo(4096);
+        ulong replacement = Append(buffer, current);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(IsLocatable(buffer, pointer), Is.False);
-            Assert.That(IsLocatable(buffer, replacement), Is.True);
+            Assert.That(GenerationOf(replacement), Is.EqualTo(GenerationOf(pointer) + 4096));
+            Assert.That((uint)replacement, Is.EqualTo((uint)pointer));
+            Assert.That(IsLocatable(buffer, pointer), Is.False, "the older full generation id of the same slot and offset misses");
+            Assert.That(buffer.GetRecord(replacement).Rlp.ToArray(), Is.EqualTo(current));
+            Assert.That(buffer.TryLocate(pointer + (8192UL << 32), out _), Is.False, "same slot and offset do not match another full generation id");
         }
 
         void AdvanceTo(ulong generation)
@@ -355,16 +286,16 @@ internal class NodeRecordBufferTests
     }
 
     [Test]
-    public void Shutdown_defers_free_until_readers_and_retains_finish([Values] bool readerFinishesFirst)
+    public void Shutdown_defers_free_until_every_pin_is_released([Values] bool readerFinishesFirst)
     {
         using NodeRecordBuffer buffer = new(0, GenerationBytes);
-        using NodeRecordBufferRetain retain = buffer.RetainActive();
+        using NodeRecordBufferPin retain = buffer.Pin();
         ulong pointer = Append(buffer, Leaf(1, 8));
         NodeRecord record = buffer.GetRecord(pointer);
         BloomFilter bloom = buffer.FindBloom(pointer)!;
         ulong nodeKey = NodeRecordCodec.NodeKey(null, TreePath.Empty);
         buffer.Reserve(0, out NativeNodeBuffer storage, out _);
-        NodeRecordBufferReadLease reader = buffer.BeginRead();
+        IDisposable reader = buffer.PinAll();
         buffer.Dispose();
         buffer.Dispose();
         using (Assert.EnterMultipleScope())
@@ -372,11 +303,11 @@ internal class NodeRecordBufferTests
             Assert.That(storage.IsDisposed, Is.False);
             Assert.That(bloom.MightContain(nodeKey), Is.True);
             Assert.That(Matches(record, Leaf(1, 8)), Is.True);
-            Assert.That(() => buffer.RetainActive(), Throws.InstanceOf<ObjectDisposedException>());
+            Assert.That(() => buffer.Pin(), Throws.InstanceOf<ObjectDisposedException>());
             Assert.That(() => retain.Copy(), Throws.InstanceOf<ObjectDisposedException>());
             Assert.That(() => buffer.GetRecord(pointer), Throws.InstanceOf<ObjectDisposedException>());
             Assert.That(() => buffer.Reserve(8, out _, out _), Throws.InstanceOf<ObjectDisposedException>());
-            Assert.That(() => BufferBulkSet.TryGet(buffer, null, null, TrieRoot.Empty, default), Throws.InstanceOf<ObjectDisposedException>());
+            Assert.That(() => buffer.PinAll(), Throws.InstanceOf<ObjectDisposedException>());
         }
 
         if (readerFinishesFirst) reader.Dispose();
@@ -429,7 +360,7 @@ internal class NodeRecordBufferTests
         {
             try
             {
-                using NodeRecordBufferReadLease lease = buffer.BeginRead();
+                using IDisposable pin = buffer.PinAll();
                 return false;
             }
             catch (TrieException exception) when (exception.Message == "Trie node buffer compaction failed.")
@@ -443,15 +374,15 @@ internal class NodeRecordBufferTests
     public void Records_resolve_in_place_until_their_generation_drops()
     {
         using NodeRecordBuffer buffer = new(0, GenerationBytes);
-        using NodeRecordBufferRetain first = buffer.RetainActive();
-        NodeRecordBufferRetain middle = null;
-        NodeRecordBufferRetain middleCopy = null;
+        using NodeRecordBufferPin first = buffer.Pin();
+        NodeRecordBufferPin middle = null;
+        NodeRecordBufferPin middleCopy = null;
         List<(ulong Pointer, byte[] Rlp)> records = [];
         while (records.Count == 0 || GenerationOf(records[^1].Pointer) < 24)
         {
             if (middle is null && records.Count > 0 && GenerationOf(records[^1].Pointer) == 6)
             {
-                middle = buffer.RetainActive();
+                middle = buffer.Pin();
                 middleCopy = middle.Copy();
             }
 
@@ -488,12 +419,12 @@ internal class NodeRecordBufferTests
     public void Retain_copy_cannot_resurrect_a_generation_dropped_by_a_concurrent_release()
     {
         using NodeRecordBuffer buffer = new(0, GenerationBytes);
-        using NodeRecordBufferRetain retain = buffer.RetainActive();
+        using NodeRecordBufferPin retain = buffer.Pin();
         while (GenerationOf(buffer.Reserve(GenerationBytes, out _, out _)) < LiveGenerations + 1) { }
         retain.Dispose();
 
         // Copy may have passed its disposed check before the releasing thread acquired the buffer lock.
-        Assert.That(() => buffer.Retain(retain.Generation), Throws.InstanceOf<ObjectDisposedException>());
+        Assert.That(() => buffer.AddPin(retain.Generation), Throws.InstanceOf<ObjectDisposedException>());
     }
 
     [Test]
@@ -501,7 +432,7 @@ internal class NodeRecordBufferTests
     {
         using NodeRecordBuffer buffer = new(0, GenerationBytes);
         Hash256 address = storage ? TestItem.KeccakA : null;
-        NodeRecordBufferRetain retain = buffer.RetainActive();
+        NodeRecordBufferPin retain = buffer.Pin();
         ulong droppedPointer = Append(buffer, Leaf(-1, 8));
 
         ValueHash256[] roots = new ValueHash256[1500];
@@ -587,9 +518,9 @@ internal class NodeRecordBufferTests
         const int recordsPerThread = 10_000;
         const int recordsPerRetain = 1_000;
         using NodeRecordBuffer buffer = new(1 << 20, GenerationBytes);
-        using NodeRecordBufferRetain retain = compacting ? null : buffer.RetainActive();
+        using NodeRecordBufferPin retain = compacting ? null : buffer.Pin();
         ulong[][] pointers = new ulong[threadCount][];
-        NodeRecordBufferRetain[] threadRetains = new NodeRecordBufferRetain[threadCount];
+        NodeRecordBufferPin[] threadRetains = new NodeRecordBufferPin[threadCount];
 
         Parallel.For(0, threadCount, new ParallelOptions { MaxDegreeOfParallelism = threadCount }, thread =>
         {
@@ -600,7 +531,7 @@ internal class NodeRecordBufferTests
                 if (i % recordsPerRetain == 0)
                 {
                     threadRetains[thread]?.Dispose();
-                    threadRetains[thread] = buffer.RetainActive();
+                    threadRetains[thread] = buffer.Pin();
                 }
 
                 int seed = thread * recordsPerThread + i;
@@ -617,7 +548,7 @@ internal class NodeRecordBufferTests
                 int seed = thread * recordsPerThread + i;
                 ulong pointer = pointers[thread][i];
                 bool retained = !compacting || i >= recordsPerThread - recordsPerRetain;
-                using NodeRecordBufferReadLease lease = buffer.BeginRead();
+                using IDisposable pin = buffer.PinAll();
                 bool located = buffer.TryLocate(pointer, out NodeRecord record);
                 if (located ? !Matches(record, Leaf(seed, 8)) : retained) failures.Add($"record {seed}");
                 ulong root = buffer.FindRoot(ConcurrentAddress(thread), Root(seed));
@@ -625,7 +556,7 @@ internal class NodeRecordBufferTests
             }
         }
 
-        foreach (NodeRecordBufferRetain threadRetain in threadRetains) threadRetain.Dispose();
+        foreach (NodeRecordBufferPin threadRetain in threadRetains) threadRetain.Dispose();
         Assert.That(failures, Is.Empty);
     }
 
@@ -660,13 +591,13 @@ internal class NodeRecordBufferTests
 
     internal static bool IsLocatable(NodeRecordBuffer buffer, ulong pointer)
     {
-        using NodeRecordBufferReadLease lease = buffer.BeginRead();
+        using IDisposable pin = buffer.PinAll();
         return buffer.TryLocate(pointer, out _);
     }
 
     private static bool Resolves(NodeRecordBuffer buffer, (ulong Pointer, byte[] Rlp) record)
     {
-        using NodeRecordBufferReadLease lease = buffer.BeginRead();
+        using IDisposable pin = buffer.PinAll();
         return buffer.TryLocate(record.Pointer, out NodeRecord located) && Matches(located, record.Rlp);
     }
 

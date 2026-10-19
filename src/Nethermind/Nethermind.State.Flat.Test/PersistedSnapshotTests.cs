@@ -69,7 +69,7 @@ public class PersistedSnapshotTests
             else content.SetStateNodeRlp(buffer, TreePath.Empty, FlatTestHelpers.LeafRlpA);
         }))
         {
-            using INodeRecordBufferRetain copy = snapshot.BufferRetain!.Copy();
+            using INodeRecordBufferPin copy = snapshot.BufferPin!.Copy();
             using PersistedSnapshot persisted = CreatePersistedSnapshot(snapshot.From, snapshot.To,
                 PersistedSnapshotBuilderTestExtensions.Build(snapshot, _blobs));
             bool found = storage
@@ -80,11 +80,10 @@ public class PersistedSnapshotTests
                 Assert.That(found, Is.True);
                 Assert.That(rlp, Is.EqualTo(Bytes.FromHexString(FlatTestHelpers.LeafRlpA)));
                 Assert.That(copy.Buffer, Is.SameAs(buffer));
-                Assert.That(copy.WriteBoundary, Is.EqualTo(snapshot.BufferRetain.WriteBoundary));
-                Assert.That(buffer.OutstandingReads, Is.Zero);
+                Assert.That(copy.WriteBoundary, Is.EqualTo(snapshot.BufferPin.WriteBoundary));
             }
         }
-        Assert.That(buffer.OutstandingRetains, Is.Zero);
+        Assert.That(buffer.OutstandingPins, Is.Zero);
     }
 
     [Test]
@@ -92,7 +91,7 @@ public class PersistedSnapshotTests
     {
         StateId from = new(0, Keccak.EmptyTreeHash);
         StateId to = new(1, Keccak.Compute("scoped-snapshot"));
-        INodeRecordBufferRetain bufferRetain = _buffer.RetainActive();
+        INodeRecordBufferPin bufferPin = _buffer.Pin();
         SnapshotContent content = new();
         for (int i = 0; i < 256; i++)
         {
@@ -101,7 +100,7 @@ public class PersistedSnapshotTests
             content.SetStateNodeRlp(_buffer, path, FlatTestHelpers.LeafRlp(0xC2, 0x80, 0x80));
             content.SetStorageNodeRlp(_buffer, TestItem.KeccakA, path, FlatTestHelpers.LeafRlp(0xC2, 0x80, 0x80));
         }
-        using Snapshot snapshot = new(from, to, content, _resourcePool, ResourcePool.Usage.MainBlockProcessing) { BufferRetain = bufferRetain };
+        using Snapshot snapshot = new(from, to, content, _resourcePool, ResourcePool.Usage.MainBlockProcessing) { BufferPin = bufferPin };
         using ParallelUnbalancedWork.WorkerScope workers = ParallelUnbalancedWork.BeginWorkerScope(budget);
 
         byte[] data = PersistedSnapshotBuilderTestExtensions.Build(snapshot, _blobs);
@@ -115,7 +114,7 @@ public class PersistedSnapshotTests
     {
         using FlatTestContainer tier = new(new FlatDbConfig { PersistedSnapshotDedicatedArenaThresholdBytes = 1 },
             arenaFileSizeBytes: 4096, blobFileSizeBytes: 4 * 1024 * 1024);
-        using INodeRecordBufferRetain original = _buffer.RetainActive();
+        using INodeRecordBufferPin original = _buffer.Pin();
         Hash256? address = storage ? TestItem.KeccakA : null;
         using ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries = new(512);
         for (int i = 0; i < 512; i++)
@@ -123,7 +122,7 @@ public class PersistedSnapshotTests
         DictionaryNodeSource source = new(new Dictionary<TreePath, byte[]>(), new WarmedNodes(1), address);
         TrieRoot root = BufferBulkSet.BulkSet(_buffer, source, address, TrieRoot.Empty, entries, canParallelize: true);
         FlatTestHelpers.StartNewGeneration(_buffer);
-        using Snapshot snapshot = new(StateId.PreGenesis, new StateId(1, root.Hash), new SnapshotContent(), _resourcePool, ResourcePool.Usage.MainBlockProcessing) { BufferRetain = original.Copy() };
+        using Snapshot snapshot = new(StateId.PreGenesis, new StateId(1, root.Hash), new SnapshotContent(), _resourcePool, ResourcePool.Usage.MainBlockProcessing) { BufferPin = original.Copy() };
         if (storage) snapshot.Content.StorageRoots[address!] = root.Pointer;
         else
         {
@@ -147,12 +146,12 @@ public class PersistedSnapshotTests
         Hash256? address = storage ? TestItem.KeccakA : null;
         DictionaryNodeSource source = new(new Dictionary<TreePath, byte[]>(), new WarmedNodes(1), address);
         Hash256[] keys = Enumerable.Range(0, 256).Select(i => Keccak.Compute(BitConverter.GetBytes(i))).ToArray();
-        INodeRecordBufferRetain firstRetain = _buffer.RetainActive();
+        INodeRecordBufferPin firstRetain = _buffer.Pin();
         using ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries = new(keys.Length);
         foreach (Hash256 key in keys) entries.Add(new(key.ValueHash256, new byte[32]));
         TrieRoot firstRoot = BufferBulkSet.BulkSet(_buffer, source, address, TrieRoot.Empty, entries, canParallelize: true);
         using Snapshot first = Create(0, ValueKeccak.EmptyTreeHash, firstRoot, firstRetain);
-        INodeRecordBufferRetain secondRetain = _buffer.RetainActive();
+        INodeRecordBufferPin secondRetain = _buffer.Pin();
         entries.Clear();
         entries.Add(new(keys[0].ValueHash256, Enumerable.Repeat((byte)1, 32).ToArray()));
         TrieRoot secondRoot = BufferBulkSet.BulkSet(_buffer, source, address, firstRoot, entries, canParallelize: false);
@@ -178,9 +177,9 @@ public class PersistedSnapshotTests
             }
         }
 
-        Snapshot Create(ulong block, ValueHash256 from, TrieRoot root, INodeRecordBufferRetain retain)
+        Snapshot Create(ulong block, ValueHash256 from, TrieRoot root, INodeRecordBufferPin retain)
         {
-            Snapshot snapshot = new(new(block, from), new(block + 1, root.Hash), new SnapshotContent(), _resourcePool, ResourcePool.Usage.MainBlockProcessing) { BufferRetain = retain };
+            Snapshot snapshot = new(new(block, from), new(block + 1, root.Hash), new SnapshotContent(), _resourcePool, ResourcePool.Usage.MainBlockProcessing) { BufferPin = retain };
             if (storage) snapshot.Content.StorageRoots[address!] = root.Pointer;
             else
             {
@@ -252,7 +251,7 @@ public class PersistedSnapshotTests
         CallbackWriter writer = new(pooled, () =>
         {
             called = true;
-            snapshot.BufferRetain!.Dispose();
+            snapshot.BufferPin!.Dispose();
             for (int i = 0; i < 10; i++) FlatTestHelpers.StartNewGeneration(_buffer);
             Assert.That(() => _buffer.FindBloom(statePointer) is null, Is.True.After(5_000, 10));
             Assert.That(_buffer.TryLocate(statePointer, out _), Is.True, "buffered pointers still resolve after extraction enumerators finish");
@@ -363,35 +362,35 @@ public class PersistedSnapshotTests
 
     private static IEnumerable<TestCaseData> RoundTripTestCases()
     {
-        yield return new TestCaseData((Action<SnapshotContent, IRetainableNodeRecordBuffer>)((c, buffer) =>
+        yield return new TestCaseData((Action<SnapshotContent, INodeRecordBuffer>)((c, buffer) =>
         {
             c.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance(1000).TestObject;
         })).SetName("Account");
 
-        yield return new TestCaseData((Action<SnapshotContent, IRetainableNodeRecordBuffer>)((c, buffer) =>
+        yield return new TestCaseData((Action<SnapshotContent, INodeRecordBuffer>)((c, buffer) =>
         {
             c.SelfDestructedStorageAddresses[TestItem.AddressA] = false;
         })).SetName("SelfDestruct");
 
-        yield return new TestCaseData((Action<SnapshotContent, IRetainableNodeRecordBuffer>)((c, buffer) =>
+        yield return new TestCaseData((Action<SnapshotContent, INodeRecordBuffer>)((c, buffer) =>
         {
             TreePath path = FlatTestHelpers.CanonicalPath(Keccak.Compute("path"), 4);
             c.SetStateNodeRlp(buffer, path, FlatTestHelpers.LeafRlp(0xC2, 0x80, 0x80));
         })).SetName("StateNode_TopPath");
 
-        yield return new TestCaseData((Action<SnapshotContent, IRetainableNodeRecordBuffer>)((c, buffer) =>
+        yield return new TestCaseData((Action<SnapshotContent, INodeRecordBuffer>)((c, buffer) =>
         {
             TreePath path = FlatTestHelpers.CanonicalPath(Keccak.Compute("path"), 8);
             c.SetStateNodeRlp(buffer, path, FlatTestHelpers.LeafRlp(0xC2, 0x80, 0x80));
         })).SetName("StateNode_CompactPath");
 
-        yield return new TestCaseData((Action<SnapshotContent, IRetainableNodeRecordBuffer>)((c, buffer) =>
+        yield return new TestCaseData((Action<SnapshotContent, INodeRecordBuffer>)((c, buffer) =>
         {
             TreePath longPath = FlatTestHelpers.CanonicalPath(Keccak.Compute("longpath"), 20);
             c.SetStateNodeRlp(buffer, longPath, FlatTestHelpers.LeafRlp(0xC2, 0x80, 0x81));
         })).SetName("StateNode_LongPath");
 
-        yield return new TestCaseData((Action<SnapshotContent, IRetainableNodeRecordBuffer>)((c, buffer) =>
+        yield return new TestCaseData((Action<SnapshotContent, INodeRecordBuffer>)((c, buffer) =>
         {
             byte[] value = new byte[32];
             value[31] = 0xFF;
@@ -400,21 +399,21 @@ public class PersistedSnapshotTests
 
         // Single significant byte < 0x80: RLP wraps it to the byte itself (1 byte), so the
         // stored length is still 1 — distinct from the length-0 absent sentinel.
-        yield return new TestCaseData((Action<SnapshotContent, IRetainableNodeRecordBuffer>)((c, buffer) =>
+        yield return new TestCaseData((Action<SnapshotContent, INodeRecordBuffer>)((c, buffer) =>
         {
             byte[] value = new byte[32];
             value[31] = 0x05;
             c.Storages[(TestItem.AddressA, (UInt256)9)] = new UInt256(value, isBigEndian: true);
         })).SetName("Storage_SmallSingleByteSlot");
 
-        yield return new TestCaseData((Action<SnapshotContent, IRetainableNodeRecordBuffer>)((c, buffer) =>
+        yield return new TestCaseData((Action<SnapshotContent, INodeRecordBuffer>)((c, buffer) =>
         {
             byte[] value = new byte[32];
             value[31] = 0xAB;
             c.Storages[(TestItem.AddressA, UInt256.Zero)] = new UInt256(value, isBigEndian: true);
         })).SetName("Storage_ZeroSlot");
 
-        yield return new TestCaseData((Action<SnapshotContent, IRetainableNodeRecordBuffer>)((c, buffer) =>
+        yield return new TestCaseData((Action<SnapshotContent, INodeRecordBuffer>)((c, buffer) =>
         {
             c.Storages[(TestItem.AddressA, (UInt256)1)] = null;
             byte[] val = new byte[32];
@@ -422,7 +421,7 @@ public class PersistedSnapshotTests
             c.Storages[(TestItem.AddressA, (UInt256)2)] = new UInt256(val, isBigEndian: true);
         })).SetName("Storage_NullSlot");
 
-        yield return new TestCaseData((Action<SnapshotContent, IRetainableNodeRecordBuffer>)((c, buffer) =>
+        yield return new TestCaseData((Action<SnapshotContent, INodeRecordBuffer>)((c, buffer) =>
         {
             byte[] val1 = new byte[32]; val1[31] = 0x01;
             byte[] val2 = new byte[32]; val2[31] = 0x02;
@@ -432,28 +431,28 @@ public class PersistedSnapshotTests
             c.Storages[(TestItem.AddressB, (UInt256)5)] = new UInt256(val3, isBigEndian: true);
         })).SetName("Storage_MultipleAddresses");
 
-        yield return new TestCaseData((Action<SnapshotContent, IRetainableNodeRecordBuffer>)((c, buffer) =>
+        yield return new TestCaseData((Action<SnapshotContent, INodeRecordBuffer>)((c, buffer) =>
         {
             Hash256 address = Keccak.Compute("address");
             TreePath path = FlatTestHelpers.CanonicalPath(Keccak.Compute("path"), 4);
             c.SetStorageNodeRlp(buffer, address, path, FlatTestHelpers.LeafRlp(0xC1, 0x80));
         })).SetName("StorageNode_TopPath");
 
-        yield return new TestCaseData((Action<SnapshotContent, IRetainableNodeRecordBuffer>)((c, buffer) =>
+        yield return new TestCaseData((Action<SnapshotContent, INodeRecordBuffer>)((c, buffer) =>
         {
             Hash256 address = Keccak.Compute("address");
             TreePath path = FlatTestHelpers.CanonicalPath(Keccak.Compute("path"), 6);
             c.SetStorageNodeRlp(buffer, address, path, FlatTestHelpers.LeafRlp(0xC1, 0x80));
         })).SetName("StorageNode_CompactPath");
 
-        yield return new TestCaseData((Action<SnapshotContent, IRetainableNodeRecordBuffer>)((c, buffer) =>
+        yield return new TestCaseData((Action<SnapshotContent, INodeRecordBuffer>)((c, buffer) =>
         {
             Hash256 address = Keccak.Compute("address");
             TreePath longPath = FlatTestHelpers.CanonicalPath(Keccak.Compute("longpath"), 18);
             c.SetStorageNodeRlp(buffer, address, longPath, FlatTestHelpers.LeafRlp(0xC3, 0x80, 0x81, 0x82));
         })).SetName("StorageNode_LongPath");
 
-        yield return new TestCaseData((Action<SnapshotContent, IRetainableNodeRecordBuffer>)((c, buffer) =>
+        yield return new TestCaseData((Action<SnapshotContent, INodeRecordBuffer>)((c, buffer) =>
         {
             c.Accounts[TestItem.AddressA] = Build.An.Account
                 .WithBalance(12345).WithNonce(7).TestObject;
@@ -494,16 +493,16 @@ public class PersistedSnapshotTests
     }
 
     [TestCaseSource(nameof(RoundTripTestCases))]
-    public void RoundTrip(Action<SnapshotContent, IRetainableNodeRecordBuffer> populateContent)
+    public void RoundTrip(Action<SnapshotContent, INodeRecordBuffer> populateContent)
     {
         StateId from = new(0, Keccak.EmptyTreeHash);
         StateId to = new(1, Keccak.Compute("1"));
 
-        INodeRecordBufferRetain bufferRetain = _buffer.RetainActive();
+        INodeRecordBufferPin bufferPin = _buffer.Pin();
         SnapshotContent content = new();
         populateContent(content, _buffer);
 
-        using Snapshot snapshot = new(from, to, content, _resourcePool, ResourcePool.Usage.MainBlockProcessing) { BufferRetain = bufferRetain };
+        using Snapshot snapshot = new(from, to, content, _resourcePool, ResourcePool.Usage.MainBlockProcessing) { BufferPin = bufferPin };
         byte[] data = PersistedSnapshotBuilderTestExtensions.Build(snapshot, _blobs);
         PersistedSnapshot persisted = CreatePersistedSnapshot(from, to, data);
 
@@ -569,7 +568,7 @@ public class PersistedSnapshotTests
 
         byte[] slotVal = new byte[32]; slotVal[31] = 0x11;
 
-        INodeRecordBufferRetain bufferRetain = _buffer.RetainActive();
+        INodeRecordBufferPin bufferPin = _buffer.Pin();
         SnapshotContent content = new();
         content.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance(1000).WithNonce(3).TestObject;
         content.Accounts[TestItem.AddressC] = null;                          // deleted marker
@@ -591,7 +590,7 @@ public class PersistedSnapshotTests
         content.SetStorageNodeRlp(_buffer, storageAddr, snMid, FlatTestHelpers.LeafRlp(0xC1, 0x82));
         content.SetStorageNodeRlp(_buffer, storageAddr, snLong, FlatTestHelpers.LeafRlp(0xC3, 0x80, 0x81, 0x82));
 
-        using Snapshot snapshot = new(from, to, content, _resourcePool, ResourcePool.Usage.MainBlockProcessing) { BufferRetain = bufferRetain };
+        using Snapshot snapshot = new(from, to, content, _resourcePool, ResourcePool.Usage.MainBlockProcessing) { BufferPin = bufferPin };
         byte[] data = PersistedSnapshotBuilderTestExtensions.Build(snapshot, _blobs);
         using PersistedSnapshot persisted = CreatePersistedSnapshot(from, to, data);
 
@@ -767,7 +766,7 @@ public class PersistedSnapshotTests
         StateId from = new(0, Keccak.EmptyTreeHash);
         StateId to = new(1, Keccak.Compute("absent"));
 
-        INodeRecordBufferRetain bufferRetain = _buffer.RetainActive();
+        INodeRecordBufferPin bufferPin = _buffer.Pin();
         SnapshotContent content = new();
         TreePath onlyTop = FlatTestHelpers.CanonicalPath(Keccak.Compute("only-top"), 3);
         content.SetStateNodeRlp(_buffer, onlyTop, FlatTestHelpers.LeafRlp(0xC1, 0x80));
@@ -775,7 +774,7 @@ public class PersistedSnapshotTests
         TreePath onlyFallback = FlatTestHelpers.CanonicalPath(Keccak.Compute("only-fallback"), 18);
         content.SetStorageNodeRlp(_buffer, storageAddr, onlyFallback, FlatTestHelpers.LeafRlp(0xC3, 0x80, 0x81, 0x82));
 
-        using Snapshot snapshot = new(from, to, content, _resourcePool, ResourcePool.Usage.MainBlockProcessing) { BufferRetain = bufferRetain };
+        using Snapshot snapshot = new(from, to, content, _resourcePool, ResourcePool.Usage.MainBlockProcessing) { BufferPin = bufferPin };
         byte[] data = PersistedSnapshotBuilderTestExtensions.Build(snapshot, _blobs);
         using PersistedSnapshot persisted = CreatePersistedSnapshot(from, to, data);
 
@@ -804,7 +803,7 @@ public class PersistedSnapshotTests
         StateId to = new(1, Keccak.Compute("miss"));
 
         byte[] slotVal = new byte[32]; slotVal[31] = 0x07;
-        INodeRecordBufferRetain bufferRetain = _buffer.RetainActive();
+        INodeRecordBufferPin bufferPin = _buffer.Pin();
         SnapshotContent content = new();
         content.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance(5).TestObject;
         content.Accounts[TestItem.AddressC] = Build.An.Account.WithBalance(9).TestObject; // 2nd address → real address BTree
@@ -816,7 +815,7 @@ public class PersistedSnapshotTests
         TreePath storagePath = FlatTestHelpers.CanonicalPath(Keccak.Compute("stp"), 4);
         content.SetStorageNodeRlp(_buffer, storageHashObj, storagePath, FlatTestHelpers.LeafRlp(0xC1, 0x81));
 
-        using Snapshot snapshot = new(from, to, content, _resourcePool, ResourcePool.Usage.MainBlockProcessing) { BufferRetain = bufferRetain };
+        using Snapshot snapshot = new(from, to, content, _resourcePool, ResourcePool.Usage.MainBlockProcessing) { BufferPin = bufferPin };
         byte[] data = PersistedSnapshotBuilderTestExtensions.Build(snapshot, _blobs);
         using PersistedSnapshot persisted = CreatePersistedSnapshot(from, to, data);
 
@@ -881,7 +880,7 @@ public class PersistedSnapshotTests
         byte[] v1 = new byte[32]; v1[31] = 0x11;
         byte[] v2 = new byte[32]; v2[31] = 0x22;
 
-        INodeRecordBufferRetain olderBufferRetain = _buffer.RetainActive();
+        INodeRecordBufferPin olderBufferRetain = _buffer.Pin();
         SnapshotContent older = new();
         older.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance(100).TestObject;
         older.Accounts[TestItem.AddressD] = Build.An.Account.WithBalance(40).TestObject;
@@ -898,7 +897,7 @@ public class PersistedSnapshotTests
         newer.Accounts[TestItem.AddressB] = Build.An.Account.WithBalance(7).TestObject;
         newer.Storages[(TestItem.AddressA, (UInt256)2)] = new UInt256(v2, isBigEndian: true);
 
-        using Snapshot olderSnapshot = new(s0, s1, older, _resourcePool, ResourcePool.Usage.MainBlockProcessing) { BufferRetain = olderBufferRetain };
+        using Snapshot olderSnapshot = new(s0, s1, older, _resourcePool, ResourcePool.Usage.MainBlockProcessing) { BufferPin = olderBufferRetain };
         byte[] olderData = PersistedSnapshotBuilderTestExtensions.Build(olderSnapshot, _blobs);
         byte[] newerData = PersistedSnapshotBuilderTestExtensions.Build(
             new Snapshot(s1, s2, newer, _resourcePool, ResourcePool.Usage.MainBlockProcessing), _blobs);
@@ -979,7 +978,7 @@ public class PersistedSnapshotTests
         StateId from = new(0, Keccak.EmptyTreeHash);
         StateId to = new(1, Keccak.Compute("reset"));
 
-        using Snapshot inMem = new(from, to, new SnapshotContent(), _resourcePool, ResourcePool.Usage.MainBlockProcessing) { BufferRetain = _buffer.RetainActive() };
+        using Snapshot inMem = new(from, to, new SnapshotContent(), _resourcePool, ResourcePool.Usage.MainBlockProcessing) { BufferPin = _buffer.Pin() };
         TreePath path = FlatTestHelpers.CanonicalPath(Keccak.Compute("p"), 8);
         inMem.Content.SetStateNodeRlp(_buffer, path, FlatTestHelpers.LeafRlp(0xC2, 0x80, 0x80));
 
@@ -1024,15 +1023,15 @@ public class PersistedSnapshotTests
         byte[] rlp1 = FlatTestHelpers.LeafRlp(0xC0);
         byte[] rlp2 = FlatTestHelpers.LeafRlp(0xC1, 0x80);
 
-        INodeRecordBufferRetain bufferRetain1 = _buffer.RetainActive();
+        INodeRecordBufferPin bufferRetain1 = _buffer.Pin();
         SnapshotContent content1 = new();
         content1.SetStateNodeRlp(_buffer, path, rlp1);
-        using Snapshot snap1 = new(s0, s1, content1, _resourcePool, ResourcePool.Usage.MainBlockProcessing) { BufferRetain = bufferRetain1 };
+        using Snapshot snap1 = new(s0, s1, content1, _resourcePool, ResourcePool.Usage.MainBlockProcessing) { BufferPin = bufferRetain1 };
 
-        INodeRecordBufferRetain bufferRetain2 = _buffer.RetainActive();
+        INodeRecordBufferPin bufferRetain2 = _buffer.Pin();
         SnapshotContent content2 = new();
         content2.SetStateNodeRlp(_buffer, path, rlp2);
-        using Snapshot snap2 = new(s1, s2, content2, _resourcePool, ResourcePool.Usage.MainBlockProcessing) { BufferRetain = bufferRetain2 };
+        using Snapshot snap2 = new(s1, s2, content2, _resourcePool, ResourcePool.Usage.MainBlockProcessing) { BufferPin = bufferRetain2 };
 
         byte[] data1 = PersistedSnapshotBuilderTestExtensions.Build(snap1, _blobs);
         byte[] data2 = PersistedSnapshotBuilderTestExtensions.Build(snap2, _blobs);
@@ -1182,7 +1181,7 @@ public class PersistedSnapshotTests
         TreePath storagePath = FlatTestHelpers.CanonicalPath(Keccak.Compute("warmup-spath"), 6);
         byte[] storageNodeRlp = FlatTestHelpers.LeafRlp(0xC3, 0x80, 0x81, 0x82);
 
-        INodeRecordBufferRetain bufferRetain = _buffer.RetainActive();
+        INodeRecordBufferPin bufferPin = _buffer.Pin();
         SnapshotContent content = new();
         content.Accounts[addr] = expectedAccount;
         content.SelfDestructedStorageAddresses[addr] = true;
@@ -1194,7 +1193,7 @@ public class PersistedSnapshotTests
             content.Storages[(addr, (UInt256)i + 1)] = new UInt256(val, isBigEndian: true);
         }
 
-        using Snapshot snapshot = new(from, to, content, _resourcePool, ResourcePool.Usage.MainBlockProcessing) { BufferRetain = bufferRetain };
+        using Snapshot snapshot = new(from, to, content, _resourcePool, ResourcePool.Usage.MainBlockProcessing) { BufferPin = bufferPin };
         byte[] data = PersistedSnapshotBuilderTestExtensions.Build(snapshot, _blobs);
         // The flat sorted table materialises a full record per slot, so a large slot count exceeds
         // the shared 64 KiB fixture arena — use a roomier local arena for this case.

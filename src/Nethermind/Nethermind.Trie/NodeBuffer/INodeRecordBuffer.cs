@@ -9,21 +9,25 @@ namespace Nethermind.Trie.NodeBuffer;
 /// <summary>Stores encoded trie-node records and indexes trie roots by hash.</summary>
 /// <remarks>
 /// Pointers are buffer-local byte addresses; zero means absent. Implementations must not reuse a pointer for a different record
-/// while a caller can still hold it. Records and reserved spans are borrowed and require an enclosing read operation or retain.
+/// while a caller can still hold it. Records and reserved spans are borrowed: a writer holds a <see cref="Pin"/> no newer than
+/// what it writes, and a reader holds a <see cref="PinAll"/> taken before it looks up the records it reads.
+/// Allocation pointers are ordered across reservations, so writes following a pin's boundary have pointers at or above it.
 /// </remarks>
 public interface INodeRecordBuffer : IDisposable
 {
-    /// <summary>Protects records and lookup metadata borrowed during an operation.</summary>
-    void EnterRead();
+    /// <summary>Keeps the current allocation frontier and every later write readable until the pin is disposed.</summary>
+    /// <exception cref="ObjectDisposedException">The buffer is disposed.</exception>
+    INodeRecordBufferPin Pin();
 
-    /// <summary>Releases one successfully entered read operation.</summary>
-    void ExitRead();
+    /// <summary>Keeps every record that is readable now, and every later write, readable until the returned pin is disposed.</summary>
+    /// <exception cref="ObjectDisposedException">The buffer is disposed.</exception>
+    IDisposable PinAll();
 
     /// <summary>Finds a borrowed record, or misses when its pointer is absent or no longer available.</summary>
     bool TryLocate(ulong pointer, out NodeRecord record);
 
     /// <summary>Returns the borrowed record at a pointer.</summary>
-    /// <remarks>The caller must protect the record and its spans with a read operation or retain.</remarks>
+    /// <remarks>The caller must protect the record and its spans with a pin.</remarks>
     /// <exception cref="TrieException">The pointer no longer resolves to a record.</exception>
     NodeRecord GetRecord(ulong pointer);
 

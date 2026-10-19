@@ -16,9 +16,9 @@ namespace Nethermind.State.Flat.ScopeProvider;
 /// <remarks>
 /// Written nodes go to <paramref name="buffer"/> at once, but reach the bundle only on <see cref="Publish"/>, so like the
 /// managed tries nothing is visible to the bundle's readers before the scope commits. Until then the bulk sets read them
-/// back from the buffer by pointer, which the scope's retain keeps readable.
+/// back from the buffer by pointer, which the scope's pin keeps readable.
 /// </remarks>
-/// <param name="root">The trie's root, as <see cref="BufferBulkSet.ResolveRoot"/> returns it.</param>
+/// <param name="root">The trie's root, as <see cref="NodeRecordBufferExtensions.ResolveRoot"/> returns it.</param>
 internal sealed class BufferedTrie(SnapshotBundle bundle, INodeRecordBuffer buffer, Hash256? addressHash, TrieRoot root) : INodeRecordSource
 {
     private Hash256 _rootHash = root.ToHash256();
@@ -45,6 +45,7 @@ internal sealed class BufferedTrie(SnapshotBundle bundle, INodeRecordBuffer buff
         if (addressHash is not null && !_rootDirty) return;
 
         long start = Stopwatch.GetTimestamp();
+        if (_rootDirty && Root.Pointer != 0) buffer.SetRoot(addressHash, Root.Hash, Root.Pointer);
         if (addressHash is null) bundle.PublishBufferedStateRoot(Root);
         else bundle.PublishBufferedStorageRoot(addressHash, Root);
 
@@ -59,8 +60,62 @@ internal sealed class BufferedTrie(SnapshotBundle bundle, INodeRecordBuffer buff
         _rootDirty = true;
     }
 
-    /// <inheritdoc cref="BufferBulkSet.TryGet"/>
-    public byte[]? TryGet(in ValueHash256 key) => BufferBulkSet.TryGet(buffer, this, addressHash, Root, key);
+    /// <returns>The value at <paramref name="key"/>, or null when the trie has none.</returns>
+    /// <exception cref="MissingTrieNodeException">A node on the path is in neither the buffer nor the bundle.</exception>
+    public byte[]? TryGet(in ValueHash256 key)
+    {
+        Span<byte> keyNibbles = stackalloc byte[BulkSetArena.MaxKeyNibbles];
+        Span<byte> nodeKey = stackalloc byte[BulkSetArena.MaxKeyNibbles];
+        Nibbles.BytesToNibbleBytes(key.Bytes, keyNibbles);
+        TreePath path = TreePath.Empty;
+        ChildRef child = Root.Hash == ValueKeccak.EmptyTreeHash ? default : ChildRef.ForHash(Root.Hash, Root.Pointer);
+        while (true)
+        {
+            int depth = path.Length;
+            switch (child.Kind)
+            {
+                case ChildRefKind.Empty:
+                    return null;
+                case ChildRefKind.Inline:
+                    return TryGetInlineLeaf(child.InlineRlp, keyNibbles[depth..], nodeKey);
+            }
+
+            if (!buffer.TryLocate(child.Pointer, out NodeRecord record) && !TryLoad(child.Pointer, path, child.Data, out record))
+            {
+                throw new MissingTrieNodeException($"Trie node missing hash={child.Data} address={addressHash} path={path}", addressHash, path, new Hash256(child.Data));
+            }
+
+            NodeRecordRef view = record.View;
+            switch (view.Kind)
+            {
+                case NodeRecordKind.Leaf:
+                    view.CopyKey(0, nodeKey);
+                    return nodeKey[..view.KeyLength(0)].SequenceEqual(keyNibbles[depth..]) ? record.LeafValue.Span.ToArray() : null;
+                case NodeRecordKind.Extension:
+                    int keyLength = view.KeyLength(0);
+                    view.CopyKey(0, nodeKey);
+                    if (!keyNibbles[depth..].StartsWith(nodeKey[..keyLength])) return null;
+
+                    path.AppendMut(nodeKey[..keyLength]);
+                    child = view.Child(0);
+                    break;
+                default:
+                    path.AppendMut(keyNibbles[depth]);
+                    child = view.Child(keyNibbles[depth]);
+                    break;
+            }
+        }
+    }
+
+    /// <remarks>A node embedded in its parent is always a leaf here, as the bulk set only embeds leaves.</remarks>
+    private static byte[]? TryGetInlineLeaf(ReadOnlySpan<byte> rlp, ReadOnlySpan<byte> keyNibbles, Span<byte> nodeKey)
+    {
+        NodeRlp.NextItem(rlp, out NodeRlp.Item node, out _);
+        NodeRlp.NextItem(node.Payload, out NodeRlp.Item hexPrefix, out ReadOnlySpan<byte> rest);
+        NodeRlp.NextItem(rest, out NodeRlp.Item value, out _);
+        NodeRlp.ReadHexPrefix(hexPrefix.Payload, 0, nodeKey);
+        return nodeKey[..NodeRlp.HexPrefixNibbleCount(hexPrefix.Payload)].SequenceEqual(keyNibbles) ? value.Payload.ToArray() : null;
+    }
 
     public bool TryLoad(ulong pointer, in TreePath path, in ValueHash256 hash, out NodeRecord record) =>
         bundle.TryLoadTrieNodeRecord(addressHash, pointer, path, hash, out record);

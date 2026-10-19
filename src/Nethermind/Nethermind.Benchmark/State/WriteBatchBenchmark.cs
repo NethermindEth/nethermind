@@ -32,7 +32,7 @@ public class WriteBatchBenchmark
 
     private FlatDbConfig _config = null!;
     private ResourcePool _resourcePool = null!;
-    private IRetainableNodeRecordBuffer _nodeRecordBuffer = null!;
+    private INodeRecordBuffer _nodeRecordBuffer = null!;
     private List<FlatSnapshot> _baseSnapshots = null!;
     private StateId _currentStateId;
     private Address[] _addresses = null!;
@@ -71,7 +71,7 @@ public class WriteBatchBenchmark
 
             ReadOnlySnapshotBundle readOnly = new(
                 prevSnapshots, new NoopPersistenceReader(), recordDetailedMetrics: false,
-                PersistedSnapshotStack.Empty());
+                PersistedSnapshotStack.Empty(), _nodeRecordBuffer.PinAll());
             SnapshotBundle bundle = new(
                 readOnly, _nodeRecordBuffer, _resourcePool, ResourcePool.Usage.MainBlockProcessing);
             CapturingCommitTarget commitTarget = new();
@@ -160,7 +160,7 @@ public class WriteBatchBenchmark
 
         ReadOnlySnapshotBundle readOnly = new(
             prevSnapshots, new NoopPersistenceReader(), recordDetailedMetrics: false,
-            PersistedSnapshotStack.Empty());
+            PersistedSnapshotStack.Empty(), _nodeRecordBuffer.PinAll());
         SnapshotBundle bundle = new(
             readOnly, _nodeRecordBuffer, _resourcePool, ResourcePool.Usage.MainBlockProcessing);
         CapturingCommitTarget commitTarget = new();

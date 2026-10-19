@@ -10,7 +10,7 @@ using Nethermind.Trie.NodeBuffer;
 
 namespace Nethermind.State.Flat.NodeBuffer;
 
-/// <summary>Native record storage, retired only after the buffer's readers have released their leases.</summary>
+/// <summary>Native record storage, released only once no pin covers its generation.</summary>
 internal sealed unsafe class NativeNodeBuffer : MemoryManager<byte>
 {
     private const nuint HugePageBytes = 2 * 1024 * 1024;
@@ -55,7 +55,7 @@ internal sealed unsafe class NativeNodeBuffer : MemoryManager<byte>
 
     public static NativeNodeBuffer Allocate(int length) => new(length);
 
-    // Native spans do not root their owner: the enclosing operation lease or generation retain must outlive their use.
+    // Native spans do not root their owner: the pin protecting them must outlive their use.
     public override Span<byte> GetSpan()
     {
         nint address = Volatile.Read(ref _address);

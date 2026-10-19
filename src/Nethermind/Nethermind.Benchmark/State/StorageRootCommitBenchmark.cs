@@ -45,7 +45,7 @@ public class StorageRootCommitBenchmark
 
     private FlatDbConfig _config = null!;
     private ResourcePool _resourcePool = null!;
-    private IRetainableNodeRecordBuffer _nodeRecordBuffer = null!;
+    private INodeRecordBuffer _nodeRecordBuffer = null!;
     private List<FlatSnapshot> _baseSnapshots = null!;
     private StateId _baseStateId;
     private Address _address = null!;
@@ -72,7 +72,7 @@ public class StorageRootCommitBenchmark
         SnapshotPooledList prevSnapshots = new(0);
         ReadOnlySnapshotBundle readOnly = new(
             prevSnapshots, new NoopPersistenceReader(), recordDetailedMetrics: false,
-            PersistedSnapshotStack.Empty());
+            PersistedSnapshotStack.Empty(), _nodeRecordBuffer.PinAll());
         SnapshotBundle bundle = new(
             readOnly, _nodeRecordBuffer, _resourcePool, ResourcePool.Usage.MainBlockProcessing);
         CapturingCommitTarget commitTarget = new();
@@ -126,7 +126,7 @@ public class StorageRootCommitBenchmark
 
         ReadOnlySnapshotBundle readOnly = new(
             prevSnapshots, new NoopPersistenceReader(), recordDetailedMetrics: false,
-            PersistedSnapshotStack.Empty());
+            PersistedSnapshotStack.Empty(), _nodeRecordBuffer.PinAll());
         SnapshotBundle bundle = new(
             readOnly, _nodeRecordBuffer, _resourcePool, ResourcePool.Usage.MainBlockProcessing);
         _commitTarget = new CapturingCommitTarget();

@@ -32,7 +32,7 @@ public static class FlatTestHelpers
     }
 
     /// <summary>A buffer with 64 KiB generations, so tests can rotate it cheaply.</summary>
-    public static IRetainableNodeRecordBuffer NewTestBuffer() => new NodeRecordBuffer(0, 64 * 1024);
+    public static INodeRecordBuffer NewTestBuffer() => new NodeRecordBuffer(0, 64 * 1024);
 
     /// <summary>A trie-node path with all nibbles after its length cleared.</summary>
     public static TreePath CanonicalPath(in ValueHash256 hash, int length) => new TreePath(hash, 64).Truncate(length);
@@ -42,11 +42,11 @@ public static class FlatTestHelpers
     public const string LeafRlpC = "c482200103";
 
     /// <summary>Creates a snapshot owning a retain on the active generation of <paramref name="buffer"/>.</summary>
-    public static Snapshot CreateSnapshot(this IResourcePool pool, in StateId from, in StateId to, ResourcePool.Usage usage, IRetainableNodeRecordBuffer buffer) =>
-        new(from, to, pool.GetSnapshotContent(usage), pool, usage) { BufferRetain = buffer.RetainActive() };
+    public static Snapshot CreateSnapshot(this IResourcePool pool, in StateId from, in StateId to, ResourcePool.Usage usage, INodeRecordBuffer buffer) =>
+        new(from, to, pool.GetSnapshotContent(usage), pool, usage) { BufferPin = buffer.Pin() };
 
     /// <summary>Appends records until <paramref name="buffer"/> starts a new generation.</summary>
-    public static void StartNewGeneration(IRetainableNodeRecordBuffer buffer)
+    public static void StartNewGeneration(INodeRecordBuffer buffer)
     {
         byte[] leaf = Bytes.FromHexString(LeafRlpA);
         ulong generation = AppendNode(buffer, null, TreePath.Empty, leaf) >> 32;
@@ -54,7 +54,7 @@ public static class FlatTestHelpers
     }
 
     /// <summary>Makes a snapshot owning a retain on <paramref name="buffer"/> taken before <paramref name="populate"/> writes its nodes.</summary>
-    public static Snapshot MakeSnapshot(IResourcePool pool, IRetainableNodeRecordBuffer buffer, Action<SnapshotContent> populate)
+    public static Snapshot MakeSnapshot(IResourcePool pool, INodeRecordBuffer buffer, Action<SnapshotContent> populate)
     {
         Snapshot snapshot = pool.CreateSnapshot(StateId.PreGenesis, new(1, Keccak.Zero), ResourcePool.Usage.MainBlockProcessing, buffer);
         populate(snapshot.Content);
@@ -65,11 +65,11 @@ public static class FlatTestHelpers
 
     /// <summary>Connects supplied state nodes to the snapshot root, synthesizing missing ancestors.</summary>
     /// <remarks>Supplied parent RLP is authoritative; inputs it does not reference remain unreachable.</remarks>
-    public static ulong SetStateNodeRlp(this SnapshotContent content, IRetainableNodeRecordBuffer buffer, in TreePath path, string rlpHex) =>
+    public static ulong SetStateNodeRlp(this SnapshotContent content, INodeRecordBuffer buffer, in TreePath path, string rlpHex) =>
         content.SetStateNodeRlp(buffer, path, Bytes.FromHexString(rlpHex));
 
-    /// <inheritdoc cref="SetStateNodeRlp(SnapshotContent, IRetainableNodeRecordBuffer, in TreePath, string)"/>
-    public static ulong SetStateNodeRlp(this SnapshotContent content, IRetainableNodeRecordBuffer buffer, in TreePath path, byte[] rlp)
+    /// <inheritdoc cref="SetStateNodeRlp(SnapshotContent, INodeRecordBuffer, in TreePath, string)"/>
+    public static ulong SetStateNodeRlp(this SnapshotContent content, INodeRecordBuffer buffer, in TreePath path, byte[] rlp)
     {
         FixtureTrie trie = _fixtureNodes.GetValue(content, static _ => new FixtureNodes()).State;
         if (!content.HasStateRoot || content.StateRootPointer != trie.RootPointer) trie.Nodes.Clear();
@@ -80,11 +80,11 @@ public static class FlatTestHelpers
     }
 
     /// <summary>Connects the supplied storage node to its address's root, synthesizing missing ancestors.</summary>
-    public static ulong SetStorageNodeRlp(this SnapshotContent content, IRetainableNodeRecordBuffer buffer, Hash256 address, in TreePath path, string rlpHex) =>
+    public static ulong SetStorageNodeRlp(this SnapshotContent content, INodeRecordBuffer buffer, Hash256 address, in TreePath path, string rlpHex) =>
         content.SetStorageNodeRlp(buffer, address, path, Bytes.FromHexString(rlpHex));
 
-    /// <inheritdoc cref="SetStorageNodeRlp(SnapshotContent, IRetainableNodeRecordBuffer, Hash256, in TreePath, string)"/>
-    public static ulong SetStorageNodeRlp(this SnapshotContent content, IRetainableNodeRecordBuffer buffer, Hash256 address, in TreePath path, byte[] rlp)
+    /// <inheritdoc cref="SetStorageNodeRlp(SnapshotContent, INodeRecordBuffer, Hash256, in TreePath, string)"/>
+    public static ulong SetStorageNodeRlp(this SnapshotContent content, INodeRecordBuffer buffer, Hash256 address, in TreePath path, byte[] rlp)
     {
         FixtureNodes fixtures = _fixtureNodes.GetValue(content, static _ => new FixtureNodes());
         if (!fixtures.Storage.TryGetValue(address, out FixtureTrie? trie)) fixtures.Storage[address] = trie = new();
@@ -105,11 +105,11 @@ public static class FlatTestHelpers
         public readonly Dictionary<TreePath, byte[]> Nodes = [];
         public ulong RootPointer;
 
-        public ulong Set(IRetainableNodeRecordBuffer buffer, Hash256? address, in TreePath path, byte[] rlp)
+        public ulong Set(INodeRecordBuffer buffer, Hash256? address, in TreePath path, byte[] rlp)
         {
             TreePath normalizedPath = CanonicalPath(path.Path, path.Length);
             Nodes[normalizedPath] = rlp;
-            using NodeRecordBufferReadLease lease = buffer.BeginRead();
+            using IDisposable pin = buffer.PinAll();
             RootPointer = Build(buffer, address, TreePath.Empty, Nodes.ToArray()).Pointer;
             return buffer.TryGetNodePointer(RootPointer, path, out ulong pointer) ? pointer : AppendNode(buffer, address, path, rlp);
         }
@@ -197,7 +197,7 @@ public static class FlatTestHelpers
         return rlp;
     }
 
-    private static ulong AppendNode(IRetainableNodeRecordBuffer buffer, Hash256? address, in TreePath path, byte[] rlp) =>
+    private static ulong AppendNode(INodeRecordBuffer buffer, Hash256? address, in TreePath path, byte[] rlp) =>
         buffer.AppendRecordFromRlp(address, path, ValueKeccak.Compute(rlp), rlp);
 
     public static SnapshotPooledList SnapshotList(params Snapshot[] snapshots)
@@ -221,13 +221,13 @@ public static class FlatTestHelpers
         IPersistence.IPersistenceReader reader,
         Action<SnapshotContent>? populate = null) =>
         new(SnapshotList(MakeSnapshot(pool, populate)), reader,
-            recordDetailedMetrics: false, PersistedSnapshotStack.Empty());
+            recordDetailedMetrics: false, PersistedSnapshotStack.Empty(), bufferPin: null);
 
     /// <inheritdoc cref="MakeBundle(ResourcePool, Action{SnapshotContent})"/>
     /// <param name="buffer">The buffer <paramref name="populate"/> records nodes in; the snapshot retains it.</param>
-    public static ReadOnlySnapshotBundle MakeBundle(ResourcePool pool, IRetainableNodeRecordBuffer buffer, Action<SnapshotContent> populate) =>
+    public static ReadOnlySnapshotBundle MakeBundle(ResourcePool pool, INodeRecordBuffer buffer, Action<SnapshotContent> populate) =>
         new(SnapshotList(MakeSnapshot(pool, buffer, populate)), Substitute.For<IPersistence.IPersistenceReader>(),
-            recordDetailedMetrics: false, PersistedSnapshotStack.Empty());
+            recordDetailedMetrics: false, PersistedSnapshotStack.Empty(), bufferPin: null);
 }
 
 /// <summary>
@@ -314,24 +314,11 @@ internal sealed class FakeWriteBatch : IPersistence.IWriteBatch
     public void Dispose() => DisposeCount++;
 }
 
-internal sealed class ForwardingNodeRecordBuffer(IRetainableNodeRecordBuffer inner) : IRetainableNodeRecordBuffer
+internal sealed class ForwardingNodeRecordBuffer(INodeRecordBuffer inner) : INodeRecordBuffer
 {
     public int CompletedWrites;
     public int CompletedRecords;
-    public int OutstandingReads;
-    public int OutstandingRetains;
-
-    public void EnterRead()
-    {
-        inner.EnterRead();
-        Interlocked.Increment(ref OutstandingReads);
-    }
-
-    public void ExitRead()
-    {
-        Interlocked.Decrement(ref OutstandingReads);
-        inner.ExitRead();
-    }
+    public int OutstandingPins;
 
     public bool TryLocate(ulong pointer, out NodeRecord record) => inner.TryLocate(pointer, out record);
     public NodeRecord GetRecord(ulong pointer) => inner.GetRecord(pointer);
@@ -346,27 +333,28 @@ internal sealed class ForwardingNodeRecordBuffer(IRetainableNodeRecordBuffer inn
 
     public ulong FindRoot(Hash256? address, in ValueHash256 root) => inner.FindRoot(address, root);
     public void SetRoot(Hash256? address, in ValueHash256 root, ulong rootPointer) => inner.SetRoot(address, root, rootPointer);
-    public INodeRecordBufferRetain RetainActive() => Wrap(inner.RetainActive());
+    public INodeRecordBufferPin Pin() => Wrap(inner.Pin());
+    public IDisposable PinAll() => inner.PinAll();
     public void Dispose() => inner.Dispose();
 
-    private INodeRecordBufferRetain Wrap(INodeRecordBufferRetain retain)
+    private INodeRecordBufferPin Wrap(INodeRecordBufferPin pin)
     {
-        Interlocked.Increment(ref OutstandingRetains);
-        return new Retain(this, retain);
+        Interlocked.Increment(ref OutstandingPins);
+        return new ForwardedPin(this, pin);
     }
 
-    private sealed class Retain(ForwardingNodeRecordBuffer owner, INodeRecordBufferRetain innerRetain) : INodeRecordBufferRetain
+    private sealed class ForwardedPin(ForwardingNodeRecordBuffer owner, INodeRecordBufferPin innerPin) : INodeRecordBufferPin
     {
         private int _disposed;
         public INodeRecordBuffer Buffer => owner;
-        public ulong WriteBoundary => innerRetain.WriteBoundary;
-        public INodeRecordBufferRetain Copy() => owner.Wrap(innerRetain.Copy());
+        public ulong WriteBoundary => innerPin.WriteBoundary;
+        public INodeRecordBufferPin Copy() => owner.Wrap(innerPin.Copy());
 
         public void Dispose()
         {
             if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
-            innerRetain.Dispose();
-            Interlocked.Decrement(ref owner.OutstandingRetains);
+            innerPin.Dispose();
+            Interlocked.Decrement(ref owner.OutstandingPins);
         }
     }
 }

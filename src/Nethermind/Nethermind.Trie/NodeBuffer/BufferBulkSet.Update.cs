@@ -348,26 +348,10 @@ internal static partial class BufferBulkSet
             return childrenStart;
         }
 
-        /// <summary>The root node, read by its supplied buffer or source-owned pointer, otherwise through the buffer's root index and source position.</summary>
+        /// <summary>The root node, read by its supplied pointer like any child.</summary>
         /// <exception cref="MissingTrieNodeException">The node is in neither the buffer nor the source.</exception>
-        public Source LoadRoot(in TrieRoot root)
-        {
-            if (root.Hash == ValueKeccak.EmptyTreeHash) return default;
-
-            if (_buffer.TryLocate(root.Pointer, out NodeRecord record))
-            {
-                _arena.NodesFromBuffer++;
-                return Source.ForRecord(record, 0);
-            }
-
-            if (NodeRecordCodec.IsTransient(root.Pointer) && _source.TryLoad(root.Pointer, TreePath.Empty, root.Hash, out record))
-            {
-                _arena.NodesFromSource++;
-                return Source.ForRecord(record, 0);
-            }
-
-            return Load(TreePath.Empty, ChildRef.ForHash(root.Hash, _buffer.FindRoot(_address, root.Hash)));
-        }
+        public Source LoadRoot(in TrieRoot root) =>
+            root.Hash == ValueKeccak.EmptyTreeHash ? default : Load(TreePath.Empty, ChildRef.ForHash(root.Hash, root.Pointer));
 
         /// <summary>The node <paramref name="child"/> at <paramref name="path"/> refers to, read in place from the buffer when its pointer resolves, otherwise from the source.</summary>
         /// <exception cref="MissingTrieNodeException">The node is in neither.</exception>

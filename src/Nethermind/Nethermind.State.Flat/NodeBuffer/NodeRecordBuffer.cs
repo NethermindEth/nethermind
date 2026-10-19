@@ -19,11 +19,12 @@ namespace Nethermind.State.Flat.NodeBuffer;
 /// A pointer is <c>(generationId &lt;&lt; 32) | byteOffset</c> and 0 means none. Generation ids start at 1 and are never reused,
 /// and a lookup checks the id held by the generation's ring slot, so a stale pointer misses rather than resolving to another record.
 /// The newest <see cref="LiveGenerations"/> generations are readable in place; older ones are dropped, except that a generation held by a
-/// <see cref="NodeRecordBufferRetain"/>, and every later generation, is never dropped.
-/// Appends are lock-free bump reservations into the active generation; rotation, retains and drops run under a lock.
-/// Readers borrow native records within an operation lease or generation retain; retired storage is freed after readers finish.
+/// <see cref="NodeRecordBufferPin"/>, and every later generation, is never dropped.
+/// Appends are lock-free bump reservations into the active generation; rotation, pins and drops run under a lock.
+/// A generation's storage is compacted, evicted or freed only while no pin covers it, so a reader borrows native records for as
+/// long as its <see cref="PinAll"/> lives.
 /// </remarks>
-public sealed partial class NodeRecordBuffer : IRetainableNodeRecordBuffer
+public sealed partial class NodeRecordBuffer : INodeRecordBuffer
 {
     /// <summary>The default size of a generation in bytes.</summary>
     public const int DefaultGenerationBytes = 64 * 1024 * 1024;
@@ -35,7 +36,7 @@ public sealed partial class NodeRecordBuffer : IRetainableNodeRecordBuffer
 
     private readonly Lock _lock = new();
     private readonly Generation?[] _generations = new Generation?[MaxGenerations];
-    private readonly int[] _retains = new int[MaxGenerations];
+    private readonly int[] _pinCounts = new int[MaxGenerations];
     private readonly int _generationBytes;
     private Generation _active;
     private ulong _oldestLive = 1;
@@ -53,39 +54,59 @@ public sealed partial class NodeRecordBuffer : IRetainableNodeRecordBuffer
         UpdateMetrics();
     }
 
-    /// <summary>Keeps the active generation, and every later one, readable in place until the returned retain is disposed.</summary>
-    public NodeRecordBufferRetain RetainActive()
+    /// <summary>Keeps the active generation, and every later one, readable in place until the returned pin is disposed.</summary>
+    public NodeRecordBufferPin Pin()
     {
         lock (_lock)
         {
             ThrowIfUnavailable();
             ulong generation = _active.Id;
             long used = Math.Min(Volatile.Read(ref _active.Used), _active.Data!.Length);
-            NodeRecordBufferRetain retain = new(this, generation, generation << OffsetBits | (uint)used);
-            _retainCount++;
-            _retains[generation & GenerationSlotMask]++;
-            return retain;
+            NodeRecordBufferPin pin = new(this, generation, generation << OffsetBits | (uint)used);
+            _pinCount++;
+            _pinCounts[generation & GenerationSlotMask]++;
+            return pin;
         }
     }
 
-    internal void Retain(ulong generation)
+    INodeRecordBufferPin INodeRecordBuffer.Pin() => Pin();
+
+    /// <inheritdoc/>
+    /// <remarks>Pins every generation that still holds storage, so none is dropped, compacted or evicted while the pin lives.</remarks>
+    public IDisposable PinAll()
     {
         lock (_lock)
         {
             ThrowIfUnavailable();
-            if (generation < _oldestLive || generation > _active.Id) throw new ObjectDisposedException(nameof(NodeRecordBufferRetain));
-            _retainCount++;
-            _retains[generation & GenerationSlotMask]++;
+            for (ulong generation = _oldestCompressed; generation <= _active.Id; generation++) _pinCounts[generation & GenerationSlotMask]++;
+            _pinCount++;
+            return new AllGenerationsPin(this, _oldestCompressed, _active.Id);
         }
     }
 
-    internal void Release(ulong generation)
+    internal void AddPin(ulong generation)
     {
         lock (_lock)
         {
-            Debug.Assert(_retains[generation & GenerationSlotMask] > 0, "Only a retained generation can be released.");
-            _retains[generation & GenerationSlotMask]--;
-            _retainCount--;
+            ThrowIfUnavailable();
+            if (generation < _oldestLive || generation > _active.Id) throw new ObjectDisposedException(nameof(NodeRecordBufferPin));
+            _pinCount++;
+            _pinCounts[generation & GenerationSlotMask]++;
+        }
+    }
+
+    internal void RemovePin(ulong generation) => RemovePins(generation, generation);
+
+    private void RemovePins(ulong oldest, ulong newest)
+    {
+        lock (_lock)
+        {
+            for (ulong generation = oldest; generation <= newest; generation++)
+            {
+                Debug.Assert(_pinCounts[generation & GenerationSlotMask] > 0, "Only a pinned generation can be released.");
+                _pinCounts[generation & GenerationSlotMask]--;
+            }
+            _pinCount--;
             if (_disposed) TryCompleteDispose();
             else DropOldGenerations();
         }
@@ -100,18 +121,20 @@ public sealed partial class NodeRecordBuffer : IRetainableNodeRecordBuffer
         }
         ulong id = pointer >> OffsetBits;
         Generation? generation = Volatile.Read(ref _generations[id & GenerationSlotMask]);
-        if (generation?.Id != id) return TryLocateRetired(pointer, out record);
-
-        NativeNodeBuffer? data = Volatile.Read(ref generation.Data);
-        if (data is not null)
+        if (generation?.Id == id)
         {
-            record = new NodeRecord(data.Memory, (int)(uint)pointer);
-            return true;
+            NativeNodeBuffer? data = Volatile.Read(ref generation.Data);
+            if (data is not null)
+            {
+                record = new NodeRecord(data.Memory, (int)(uint)pointer);
+                return true;
+            }
+
+            if (Volatile.Read(ref generation.Compressed)?.TryFind(pointer, out record) == true) return true;
         }
 
-        CompressedGeneration? compressed = Volatile.Read(ref generation.Compressed);
-        if (compressed?.TryFind(pointer, out record) == true) return true;
-        return TryLocateRetired(pointer, out record);
+        record = default;
+        return false;
     }
 
     /// <inheritdoc/>
@@ -122,8 +145,6 @@ public sealed partial class NodeRecordBuffer : IRetainableNodeRecordBuffer
     }
 
     bool INodeRecordBuffer.TryLocate(ulong pointer, out NodeRecord record) => TryLocate(pointer, out record);
-
-    INodeRecordBufferRetain IRetainableNodeRecordBuffer.RetainActive() => RetainActive();
 
     ulong INodeRecordBuffer.Reserve(int alignedTotalLength, out Span<byte> bytes)
     {
@@ -141,7 +162,7 @@ public sealed partial class NodeRecordBuffer : IRetainableNodeRecordBuffer
     }
 
     /// <summary>Reserves contiguous zero-filled bytes in the active generation.</summary>
-    /// <remarks>The writer holds a generation retain no newer than the reservation until all reserved records are published.</remarks>
+    /// <remarks>The writer holds a pin no newer than the reservation until all reserved records are published.</remarks>
     /// <param name="alignedTotalLength">A multiple of <see cref="NodeRecordCodec.RecordAlignment"/>.</param>
     /// <returns>The pointer of the first reserved byte, which is at <paramref name="offset"/> in <paramref name="buffer"/>.</returns>
     internal ulong Reserve(int alignedTotalLength, out NativeNodeBuffer buffer, out int offset)
@@ -171,7 +192,7 @@ public sealed partial class NodeRecordBuffer : IRetainableNodeRecordBuffer
 
             ulong id = NextGeneration(fullGeneration);
             EvictCompressed(id >= MaxGenerations ? id + 1 - MaxGenerations : 0);
-            if (_generations[id & GenerationSlotMask] is { } reused && (reused.Data is not null || reused.Compressed is not null)) ThrowTooManyRetained();
+            if (_generations[id & GenerationSlotMask] is { } reused && (reused.Data is not null || reused.Compressed is not null)) ThrowTooManyPinned();
 
             Volatile.Write(ref _active, StartGeneration(id, Math.Max(_generationBytes, length)));
             DropOldGenerations();
@@ -194,7 +215,7 @@ public sealed partial class NodeRecordBuffer : IRetainableNodeRecordBuffer
 
     private void DropOldGenerations()
     {
-        while (_oldestLive + LiveGenerations <= _active.Id && _retains[_oldestLive & GenerationSlotMask] == 0)
+        while (_oldestLive + LiveGenerations <= _active.Id && _pinCounts[_oldestLive & GenerationSlotMask] == 0)
         {
             _oldestLive++;
         }
@@ -215,7 +236,17 @@ public sealed partial class NodeRecordBuffer : IRetainableNodeRecordBuffer
     private static NodeRecord ThrowNotLocatable(ulong pointer) => throw new TrieException($"Trie node buffer pointer {pointer:x16} does not resolve to a record.");
 
     [DoesNotReturn, StackTraceHidden]
-    private static void ThrowTooManyRetained() => throw new TrieException("Too many retained trie node buffer generations.");
+    private static void ThrowTooManyPinned() => throw new TrieException("Too many pinned trie node buffer generations.");
+
+    private sealed class AllGenerationsPin(NodeRecordBuffer buffer, ulong oldest, ulong newest) : IDisposable
+    {
+        private int _disposed;
+
+        public void Dispose()
+        {
+            if (Interlocked.Exchange(ref _disposed, 1) == 0) buffer.RemovePins(oldest, newest);
+        }
+    }
 
     private sealed class Generation
     {

@@ -44,7 +44,7 @@ public sealed class SnapshotBundle : IDisposable
     private WarmedNodes? _earlyWarmedNodes;
 
     internal SnapshotPooledList _snapshots;
-    private readonly IRetainableNodeRecordBuffer? _nodeRecordBuffer;
+    private readonly INodeRecordBuffer? _nodeRecordBuffer;
     private bool _isDisposed;
     private readonly IResourcePool _resourcePool;
 
@@ -58,7 +58,7 @@ public sealed class SnapshotBundle : IDisposable
     /// <see cref="ReadOnlySnapshotBundle.GetSlotFiltered"/>; for read-only execution only.</param>
     public SnapshotBundle(
         ReadOnlySnapshotBundle readOnlySnapshotBundle,
-        IRetainableNodeRecordBuffer? nodeRecordBuffer,
+        INodeRecordBuffer? nodeRecordBuffer,
         IResourcePool resourcePool,
         ResourcePool.Usage usage,
         SnapshotPooledList? snapshots = null,
@@ -81,7 +81,7 @@ public sealed class SnapshotBundle : IDisposable
     }
 
     /// <summary>The buffer the trie nodes written through this bundle are recorded in; <c>null</c> for a trie-less bundle.</summary>
-    internal IRetainableNodeRecordBuffer? NodeRecordBuffer => _nodeRecordBuffer;
+    internal INodeRecordBuffer? NodeRecordBuffer => _nodeRecordBuffer;
 
     private void ExpandCurrentPooledContent()
     {
@@ -323,7 +323,7 @@ public sealed class SnapshotBundle : IDisposable
     /// <remarks>
     /// Tries the nodes warmed for this block, then persistence, whose node is verified against
     /// <paramref name="hash"/> and added to the warmed nodes. The nodes of this bundle's changes and of every in-memory snapshot
-    /// are in the buffer, which their retains keep readable, so this source skips them and only fetches persisted nodes.
+    /// are in the buffer, which their pins keep readable, so this source skips them and only fetches persisted nodes.
     /// </remarks>
     /// <param name="address">The storage trie's address hash, or null for the state trie.</param>
     internal bool TryLoadTrieNodeRecord(Hash256? address, in TreePath path, in ValueHash256 hash, out NodeRecord record) =>
@@ -352,7 +352,7 @@ public sealed class SnapshotBundle : IDisposable
     /// until the walk ends. Does nothing once the bundle is being torn down.
     /// </remarks>
     /// <param name="address">The storage trie's address hash, or null for the state trie.</param>
-    /// <param name="root">The trie's root before the block, as <see cref="BufferBulkSet.ResolveRoot"/> returns it.</param>
+    /// <param name="root">The trie's root before the block, as <see cref="NodeRecordBufferExtensions.ResolveRoot"/> returns it.</param>
     /// <param name="forDelete">Also warms the sibling needed when deleting the leaf collapses its branch.</param>
     internal void WarmUp(Hash256? address, TrieRoot root, in ValueHash256 key, bool forDelete = false)
     {
@@ -361,7 +361,7 @@ public sealed class SnapshotBundle : IDisposable
 
         try
         {
-            BufferBulkSet.WarmUp(_nodeRecordBuffer!, transientResource.WarmedNodes, new WarmUpRlpSource(this, address).Load, address, root, key, forDelete);
+            BufferWarmUp.WarmUp(_nodeRecordBuffer!, transientResource.WarmedNodes, new WarmUpRlpSource(this, address).Load, address, root, key, forDelete);
         }
         finally
         {
@@ -397,10 +397,10 @@ public sealed class SnapshotBundle : IDisposable
         private readonly ReadOnlySnapshotBundle _readOnly;
         private readonly Hash256 _address;
         private readonly WarmedNodes _warmed;
-        private readonly INodeRecordBufferRetain _retain;
-        private readonly INodeRecordBufferRetain? _snapshotRetain;
+        private readonly INodeRecordBufferPin _pin;
+        private readonly INodeRecordBufferPin? _snapshotPin;
 
-        internal BackgroundTrieSource(ReadOnlySnapshotBundle readOnly, IRetainableNodeRecordBuffer buffer, SnapshotPooledList snapshots, WarmedNodes warmed, Hash256 address)
+        internal BackgroundTrieSource(ReadOnlySnapshotBundle readOnly, INodeRecordBuffer buffer, SnapshotPooledList snapshots, WarmedNodes warmed, Hash256 address)
         {
             _warmed = warmed;
             _readOnly = readOnly;
@@ -408,19 +408,19 @@ public sealed class SnapshotBundle : IDisposable
             readOnly.AcquireLease();
             try
             {
-                _retain = buffer.RetainActive();
-                // The read-only lease protects its snapshots; the oldest local retain protects later local roots too.
+                _pin = buffer.Pin();
+                // The read-only lease protects its snapshots; the oldest local pin protects later local roots too.
                 foreach (Snapshot snapshot in snapshots)
                 {
-                    if (snapshot.BufferRetain is not { } retain) continue;
-                    _snapshotRetain = retain.Copy();
+                    if (snapshot.BufferPin is not { } pin) continue;
+                    _snapshotPin = pin.Copy();
                     break;
                 }
             }
             catch
             {
                 readOnly.Dispose();
-                _retain?.Dispose();
+                _pin?.Dispose();
                 throw;
             }
         }
@@ -442,8 +442,8 @@ public sealed class SnapshotBundle : IDisposable
 
         public void Dispose()
         {
-            _snapshotRetain?.Dispose();
-            _retain.Dispose();
+            _snapshotPin?.Dispose();
+            _pin.Dispose();
             _readOnly.Dispose();
         }
     }
@@ -451,7 +451,7 @@ public sealed class SnapshotBundle : IDisposable
     /// <summary>Supplies borrowed RLP for a warm-up without publishing unlinked ancestor records during descent.</summary>
     private sealed class WarmUpRlpSource(SnapshotBundle bundle, Hash256? address)
     {
-        public void Load(in TreePath path, in ValueHash256 hash, ReadOnlySpanAction<byte, BufferBulkSet.WarmUpRead> action, BufferBulkSet.WarmUpRead read)
+        public void Load(in TreePath path, in ValueHash256 hash, ReadOnlySpanAction<byte, BufferWarmUp.WarmUpRead> action, BufferWarmUp.WarmUpRead read)
         {
             if (address is null) bundle._readOnlySnapshotBundle.TryLoadStateRlp(path, ReadFlags.None, action, read);
             else bundle._readOnlySnapshotBundle.TryLoadStorageRlp(address, path, ReadFlags.None, action, read);
@@ -597,8 +597,8 @@ public sealed class SnapshotBundle : IDisposable
     internal void ReleaseReadOnlyBundleLease() => _readOnlySnapshotBundle.Dispose();
 
     /// <summary>Turns the changes written since the previous snapshot into a new snapshot and starts collecting the next one.</summary>
-    /// <param name="bufferRetain">The retain covering the trie nodes written since the previous snapshot; the snapshot takes ownership.</param>
-    public (Snapshot?, TransientResource?) CollectAndApplySnapshot(StateId from, StateId to, INodeRecordBufferRetain? bufferRetain, bool returnSnapshot = true)
+    /// <param name="bufferPin">The pin covering the trie nodes written since the previous snapshot; the snapshot takes ownership.</param>
+    public (Snapshot?, TransientResource?) CollectAndApplySnapshot(StateId from, StateId to, INodeRecordBufferPin? bufferPin, bool returnSnapshot = true)
     {
         // When assembling the snapshot, we straight up pass the _currentPooledContent into the new snapshot
         // This is because copying the values have a measurable impact on overall performance.
@@ -609,7 +609,7 @@ public sealed class SnapshotBundle : IDisposable
             resourcePool: _resourcePool,
             usage: _usage)
         {
-            BufferRetain = bufferRetain
+            BufferPin = bufferPin
         };
 
         snapshot.AcquireLease(); // For this SnapshotBundle.

@@ -167,8 +167,8 @@ public class SnapshotCompactor(
             throw;
         }
 
-        // The oldest retain covers every merged snapshot, whose retains may be released before the compacted snapshot.
-        return new Snapshot(from, to, content, _resourcePool, usage) { BufferRetain = OldestBufferRetain(snapshots)?.Copy() };
+        // The oldest pin covers every merged snapshot, whose pins may be released before the compacted snapshot.
+        return new Snapshot(from, to, content, _resourcePool, usage) { BufferPin = OldestBufferPin(snapshots)?.Copy() };
     }
 
     private static void MergeRoots(SortedSnapshotContent content, SnapshotPooledList snapshots)
@@ -199,12 +199,12 @@ public class SnapshotCompactor(
         }
     }
 
-    private static INodeRecordBufferRetain? OldestBufferRetain(SnapshotPooledList snapshots)
+    private static INodeRecordBufferPin? OldestBufferPin(SnapshotPooledList snapshots)
     {
-        INodeRecordBufferRetain? oldest = null;
+        INodeRecordBufferPin? oldest = null;
         for (int i = 0; i < snapshots.Count; i++)
         {
-            if (snapshots[i].BufferRetain is { } retain && (oldest is null || retain.WriteBoundary < oldest.WriteBoundary)) oldest = retain;
+            if (snapshots[i].BufferPin is { } pin && (oldest is null || pin.WriteBoundary < oldest.WriteBoundary)) oldest = pin;
         }
 
         return oldest;

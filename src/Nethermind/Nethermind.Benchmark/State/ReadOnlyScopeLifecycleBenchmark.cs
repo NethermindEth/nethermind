@@ -26,7 +26,7 @@ public class ReadOnlyScopeLifecycleBenchmark
 {
     private FlatDbConfig _config = null!;
     private ResourcePool _resourcePool = null!;
-    private IRetainableNodeRecordBuffer _nodeRecordBuffer = null!;
+    private INodeRecordBuffer _nodeRecordBuffer = null!;
     private NoopTrieWarmer _warmer = null!;
     private Address[] _addresses = null!;
 
@@ -51,7 +51,7 @@ public class ReadOnlyScopeLifecycleBenchmark
     public void CreateHintDispose()
     {
         ReadOnlySnapshotBundle readOnly = new(
-            new SnapshotPooledList(0), new NoopPersistenceReader(), recordDetailedMetrics: false, PersistedSnapshotStack.Empty());
+            new SnapshotPooledList(0), new NoopPersistenceReader(), recordDetailedMetrics: false, PersistedSnapshotStack.Empty(), _nodeRecordBuffer.PinAll());
         SnapshotBundle bundle = new(readOnly, _nodeRecordBuffer, _resourcePool, ResourcePool.Usage.ReadOnlyProcessingEnv);
         using FlatWorldStateScope scope = new(
             new StateId(0, Keccak.EmptyTreeHash),

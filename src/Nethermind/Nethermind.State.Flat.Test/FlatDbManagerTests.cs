@@ -35,7 +35,7 @@ public class FlatDbManagerTests
     private IFlatDbConfig _config = null!;
     private IBlocksConfig _blocksConfig = null!;
     private CancellationTokenSource _cts = null!;
-    private IRetainableNodeRecordBuffer _buffer = null!;
+    private INodeRecordBuffer _buffer = null!;
 
     private const long HistoryBarrier = 100;
     private static readonly Address HistoryAddr = new("0x0000000000000000000000000000000000000abc");

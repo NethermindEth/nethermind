@@ -25,7 +25,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
     private readonly IPersistenceManager _persistenceManager;
     private readonly ISnapshotCompactor _snapshotCompactor;
     private readonly ISnapshotRepository _snapshotRepository;
-    private readonly IRetainableNodeRecordBuffer _nodeRecordBuffer;
+    private readonly INodeRecordBuffer _nodeRecordBuffer;
     private readonly IResourcePool _resourcePool;
 
     // Cache for assembling `ReadOnlySnapshotBundle`. Its not actually slow, but its called 1.8k per sec so caching
@@ -58,7 +58,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
     public FlatDbManager(
         IResourcePool resourcePool,
         IProcessExitSource processExitSource,
-        IRetainableNodeRecordBuffer nodeRecordBuffer,
+        INodeRecordBuffer nodeRecordBuffer,
         ISnapshotCompactor snapshotCompactor,
         ISnapshotRepository snapshotRepository,
         IPersistenceManager persistenceManager,
@@ -260,7 +260,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         if (baseBlock == StateId.PreGenesis)
         {
             // PreGenesis is a sentinel; Nethermind always generates genesis, so this path is always transient.
-            return new ReadOnlySnapshotBundle(new SnapshotPooledList(0), new NoopPersistenceReader(), _enableDetailedMetrics, PersistedSnapshotStack.Empty(_enableDetailedMetrics));
+            return new ReadOnlySnapshotBundle(new SnapshotPooledList(0), new NoopPersistenceReader(), _enableDetailedMetrics, PersistedSnapshotStack.Empty(_enableDetailedMetrics), bufferPin: null);
         }
 
         long sw = 0;
@@ -326,7 +326,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
             // Flagged bundles are one-off full scans (trie verification) that never read through the slot filter, so
             // only shared bundles get bits per key. Nothing is built here: the first filtered read builds the filter.
             ReadOnlySnapshotBundle res = new(assembled.InMemory, persistenceReader, _enableDetailedMetrics,
-                new PersistedSnapshotStack(assembled.Persisted, _enableDetailedMetrics),
+                new PersistedSnapshotStack(assembled.Persisted, _enableDetailedMetrics), _nodeRecordBuffer.PinAll(),
                 slotFilterBitsPerKey: shareable ? _inMemorySlotFilterBitsPerKey : 0);
 
             if (!shareable) return res;

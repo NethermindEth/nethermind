@@ -80,14 +80,14 @@ public class FlatStorageTreeDeleteWarmupTests
         private readonly ResourcePool _resourcePool;
         private readonly RocksDbPersistence _persistence = new(new SnapshotableMemColumnsDb<FlatDbColumns>(), LimboLogs.Instance);
         private readonly StateId _baseState;
-        private readonly List<IRetainableNodeRecordBuffer> _buffers = [];
+        private readonly List<INodeRecordBuffer> _buffers = [];
         private readonly List<Snapshot> _snapshots = [];
 
         public Fixture()
         {
             _resourcePool = new ResourcePool(_config);
             SnapshotBundle bundle = new(
-                new ReadOnlySnapshotBundle(new SnapshotPooledList(0), new NoopPersistenceReader(), recordDetailedMetrics: false, PersistedSnapshotStack.Empty()),
+                new ReadOnlySnapshotBundle(new SnapshotPooledList(0), new NoopPersistenceReader(), recordDetailedMetrics: false, PersistedSnapshotStack.Empty(), bufferPin: null),
                 NewBuffer(), _resourcePool, ResourcePool.Usage.MainBlockProcessing);
             CapturingCommitTarget target = new(_snapshots);
             using FlatWorldStateScope scope = new(StateId.PreGenesis, bundle, new NullCodeDb(), target, _config, new NoopTrieWarmer(), LimboLogs.Instance);
@@ -149,7 +149,7 @@ public class FlatStorageTreeDeleteWarmupTests
         {
             CountingReader reader = new(_persistence.CreateReader());
             SnapshotBundle bundle = new(
-                new ReadOnlySnapshotBundle(new SnapshotPooledList(0), reader, recordDetailedMetrics: false, PersistedSnapshotStack.Empty()),
+                new ReadOnlySnapshotBundle(new SnapshotPooledList(0), reader, recordDetailedMetrics: false, PersistedSnapshotStack.Empty(), bufferPin: null),
                 NewBuffer(), _resourcePool, ResourcePool.Usage.MainBlockProcessing);
             FlatWorldStateScope scope = new(_baseState, bundle, new NullCodeDb(), new CapturingCommitTarget(_snapshots), _config, new InlineTrieWarmer(passDeleteFlag), LimboLogs.Instance);
             return (scope, reader);
@@ -186,9 +186,9 @@ public class FlatStorageTreeDeleteWarmupTests
             while (storageNodes.MoveNext()) batch.SetStorageTrieNode(storageNodes.Key.Key.Item1, storageNodes.Key.Key.Item2, storageNodes.ReadRlp());
         }
 
-        private IRetainableNodeRecordBuffer NewBuffer()
+        private INodeRecordBuffer NewBuffer()
         {
-            IRetainableNodeRecordBuffer buffer = FlatTestHelpers.NewTestBuffer();
+            INodeRecordBuffer buffer = FlatTestHelpers.NewTestBuffer();
             _buffers.Add(buffer);
             return buffer;
         }
@@ -197,7 +197,7 @@ public class FlatStorageTreeDeleteWarmupTests
         {
             _persistence.Clear();
             foreach (Snapshot snapshot in _snapshots) snapshot.Dispose();
-            foreach (IRetainableNodeRecordBuffer buffer in _buffers) buffer.Dispose();
+            foreach (INodeRecordBuffer buffer in _buffers) buffer.Dispose();
         }
     }
 

@@ -46,7 +46,7 @@ public class ReadOnlySnapshotBundleTests
 
     private static ReadOnlySnapshotBundle Bundle(SnapshotPooledList snapshots, IPersistence.IPersistenceReader? reader = null, bool recordDetailedMetrics = false) =>
         new(snapshots, reader ?? Substitute.For<IPersistence.IPersistenceReader>(), recordDetailedMetrics,
-            PersistedSnapshotStack.Empty(recordDetailedMetrics));
+            PersistedSnapshotStack.Empty(recordDetailedMetrics), bufferPin: null);
 
     [Test]
     public void GetAccount_FoundInSnapshot_ReturnsIt([Values] bool detailedMetrics)
@@ -164,7 +164,7 @@ public class ReadOnlySnapshotBundleTests
     public void TryFindStateNodes_ReturnsTrueWhenPresentInSnapshot()
     {
         TreePath path = TreePath.FromHexString("12");
-        using IRetainableNodeRecordBuffer buffer = FlatTestHelpers.NewTestBuffer();
+        using INodeRecordBuffer buffer = FlatTestHelpers.NewTestBuffer();
 
         using ReadOnlySnapshotBundle bundle = Bundle(FlatTestHelpers.SnapshotList(
             FlatTestHelpers.MakeSnapshot(_pool, buffer, c => c.SetStateNodeRlp(buffer, path, FlatTestHelpers.LeafRlpA))),
@@ -189,7 +189,7 @@ public class ReadOnlySnapshotBundleTests
     {
         Hash256 address = TestItem.KeccakA;
         TreePath path = TreePath.FromHexString("ab");
-        using IRetainableNodeRecordBuffer buffer = FlatTestHelpers.NewTestBuffer();
+        using INodeRecordBuffer buffer = FlatTestHelpers.NewTestBuffer();
 
         using ReadOnlySnapshotBundle bundle = Bundle(FlatTestHelpers.SnapshotList(
             FlatTestHelpers.MakeSnapshot(_pool, buffer, c => c.SetStorageNodeRlp(buffer, address, path, FlatTestHelpers.LeafRlpB))),
@@ -262,7 +262,7 @@ public class ReadOnlySnapshotBundleFilterTests
     private IArenaManager Arena => _tier.Resolve<IArenaManager>();
     private BlobArenaManager _blobs = null!;
     private FlatTestContainer _tier = null!;
-    private IRetainableNodeRecordBuffer _buffer = null!;
+    private INodeRecordBuffer _buffer = null!;
 
     public enum FilterMode
     {
@@ -1212,7 +1212,7 @@ public class ReadOnlySnapshotBundleFilterTests
 
             reader = new DictionaryReader(PersistenceSlots, PersistenceAccounts, StateId.PreGenesis);
             return new ReadOnlySnapshotBundle(LeaseInMemory(), reader, detailedMetrics,
-                new PersistedSnapshotStack(persisted, detailedMetrics), slotFilterBitsPerKey: bitsPerKey);
+                new PersistedSnapshotStack(persisted, detailedMetrics), bufferPin: null, slotFilterBitsPerKey: bitsPerKey);
         }
 
         public void Dispose()

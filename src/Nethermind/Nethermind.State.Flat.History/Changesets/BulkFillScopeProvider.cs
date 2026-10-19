@@ -45,7 +45,7 @@ public sealed class BulkFillScopeProvider(
             return false;
         }
 
-        ReadOnlySnapshotBundle readOnly = new(new SnapshotPooledList(0), session.CreateReader(), false, PersistedSnapshotStack.Empty(), isHistorical: true);
+        ReadOnlySnapshotBundle readOnly = new(new SnapshotPooledList(0), session.CreateReader(), false, PersistedSnapshotStack.Empty(), bufferPin: null, isHistorical: true);
         SnapshotBundle bundle = new(readOnly, null, resources, ResourcePool.Usage.ReadOnlyProcessingEnv);
         try
         {

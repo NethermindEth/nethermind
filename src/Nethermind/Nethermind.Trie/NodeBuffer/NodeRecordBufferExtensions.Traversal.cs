@@ -19,27 +19,21 @@ public static partial class NodeRecordBufferExtensions
     /// <remarks>Inline children have no separate record and are not returned.</remarks>
     internal static bool TryGetNode(this INodeRecordBuffer buffer, ulong rootPointer, in TreePath path, [NotNullWhen(true)] out TrieNode? node)
     {
-        using NodeRecordBufferReadLease lease = buffer.BeginRead();
         node = TryFindRecord(buffer, rootPointer, path, out _, out NodeRecord record) ? record.ToTrieNode() : null;
         return node is not null;
     }
 
     /// <summary>Finds the buffer pointer of the node at the exact path from the given root.</summary>
     /// <remarks>
-    /// The returned pointer does not retain its record. A caller looking it up later must hold an operation lease
-    /// spanning lookup and use, or a generation retain protecting it. Inline children have no separate pointer.
+    /// The returned pointer does not pin its record. A caller looking it up later must hold a pin protecting it.
+    /// Inline children have no separate pointer.
     /// </remarks>
-    internal static bool TryGetNodePointer(this INodeRecordBuffer buffer, ulong rootPointer, in TreePath path, out ulong pointer)
-    {
-        using NodeRecordBufferReadLease lease = buffer.BeginRead();
-        return TryFindRecord(buffer, rootPointer, path, out pointer, out _);
-    }
+    internal static bool TryGetNodePointer(this INodeRecordBuffer buffer, ulong rootPointer, in TreePath path, out ulong pointer) =>
+        TryFindRecord(buffer, rootPointer, path, out pointer, out _);
 
     /// <summary>Enumerates reachable buffer records in depth-first path order, stopping at unavailable child pointers.</summary>
     /// <remarks>
-    /// Each enumerator holds a read lease through completion or disposal. It protects records and lookup metadata retired
-    /// during enumeration, but cannot restore pointers already unavailable when it started. Returned records borrow this
-    /// operation's memory; buffering records or pointers past enumeration requires an outer read lease.
+    /// Returned records are borrowed: the caller holds a pin protecting them for as long as it uses them.
     /// Inline children are contained in their parent's RLP and are not emitted as separate records.
     /// Pointers below <paramref name="lowerBound"/> and their subtrees are skipped: immutable buffer parents are written after their children.
     /// </remarks>
@@ -98,32 +92,14 @@ public static partial class NodeRecordBufferExtensions
         IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
     }
 
-    private sealed class NodeEnumerator : IEnumerator<(TreePath Path, ulong Pointer, NodeRecord Record)>
+    private sealed class NodeEnumerator(INodeRecordBuffer buffer, ulong rootPointer, ulong lowerBound) : IEnumerator<(TreePath Path, ulong Pointer, NodeRecord Record)>
     {
-        private readonly INodeRecordBuffer _buffer;
-        private readonly ulong _rootPointer;
-        private readonly ulong _lowerBound;
-        private readonly ArrayPoolList<Frame> _stack;
+        private readonly INodeRecordBuffer _buffer = buffer;
+        private readonly ulong _rootPointer = rootPointer;
+        private readonly ulong _lowerBound = lowerBound;
+        private readonly ArrayPoolList<Frame> _stack = new(4);
         private bool _started;
         private bool _disposed;
-
-        public NodeEnumerator(INodeRecordBuffer buffer, ulong rootPointer, ulong lowerBound)
-        {
-            _buffer = buffer;
-            _rootPointer = rootPointer;
-            _lowerBound = lowerBound;
-            _stack = new ArrayPoolList<Frame>(4);
-            try
-            {
-                // Unlike an iterator method, this enumerator can own a read operation across MoveNext calls.
-                buffer.EnterRead();
-            }
-            catch
-            {
-                _stack.Dispose();
-                throw;
-            }
-        }
 
         public (TreePath Path, ulong Pointer, NodeRecord Record) Current { get; private set; }
 
@@ -206,7 +182,6 @@ public static partial class NodeRecordBufferExtensions
             _disposed = true;
             _stack.Dispose();
             Current = default;
-            _buffer.ExitRead();
         }
 
         public void Reset() => throw new NotSupportedException();

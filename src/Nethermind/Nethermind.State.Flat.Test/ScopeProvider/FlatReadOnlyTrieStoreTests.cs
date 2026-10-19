@@ -64,7 +64,7 @@ public class FlatReadOnlyTrieStoreTests
     {
         TreePath path = TreePath.FromHexString("12");
         Hash256 storageAddress = TestItem.KeccakA;
-        using IRetainableNodeRecordBuffer buffer = FlatTestHelpers.NewTestBuffer();
+        using INodeRecordBuffer buffer = FlatTestHelpers.NewTestBuffer();
 
         _flatDbManager.GatherReadOnlySnapshotBundle(Arg.Any<StateId>()).Returns(FlatTestHelpers.MakeBundle(_pool, buffer, c =>
         {

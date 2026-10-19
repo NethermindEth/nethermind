@@ -132,17 +132,17 @@ public class SnapshotTests
     [Test]
     public void EnumerationIncludesOnlyReachableWritesSinceRetain([Values] bool storage)
     {
-        using IRetainableNodeRecordBuffer buffer = FlatTestHelpers.NewTestBuffer();
-        using INodeRecordBufferRetain originalRetain = buffer.RetainActive();
+        using INodeRecordBuffer buffer = FlatTestHelpers.NewTestBuffer();
+        using INodeRecordBufferPin originalRetain = buffer.Pin();
         Hash256? address = storage ? TestItem.KeccakA : null;
         DictionaryNodeSource source = new(new Dictionary<TreePath, byte[]>(), new WarmedNodes(1), address);
         Hash256 firstKey = new("1000000000000000000000000000000000000000000000000000000000000000");
         Hash256 lastKey = new("f000000000000000000000000000000000000000000000000000000000000000");
         TrieRoot original = Write(TrieRoot.Empty, firstKey, 1, lastKey);
-        INodeRecordBufferRetain updateRetain = buffer.RetainActive();
+        INodeRecordBufferPin updateRetain = buffer.Pin();
         TrieRoot unrelated = Write(TrieRoot.Empty, firstKey, 3);
         TrieRoot updated = Write(original, lastKey, 2);
-        using Snapshot snapshot = new(new(1, original.Hash), new(2, updated.Hash), new SnapshotContent(), _pool, ResourcePool.Usage.MainBlockProcessing) { BufferRetain = updateRetain };
+        using Snapshot snapshot = new(new(1, original.Hash), new(2, updated.Hash), new SnapshotContent(), _pool, ResourcePool.Usage.MainBlockProcessing) { BufferPin = updateRetain };
         if (storage) snapshot.Content.StorageRoots[address!] = updated.Pointer;
         else
         {
@@ -177,7 +177,7 @@ public class SnapshotTests
     [Test]
     public void UnchangedStateRootOmitsEvenRecordsWrittenAfterRetain([Values] bool duplicateRoot)
     {
-        using IRetainableNodeRecordBuffer buffer = FlatTestHelpers.NewTestBuffer();
+        using INodeRecordBuffer buffer = FlatTestHelpers.NewTestBuffer();
         byte[] rlp = FlatTestHelpers.LeafRlp(1);
         ValueHash256 hash = ValueKeccak.Compute(rlp);
         ulong original = buffer.AppendRecordFromRlp(null, TreePath.Empty, hash, rlp);
@@ -198,7 +198,7 @@ public class SnapshotTests
     [Test]
     public void FixtureConnectsPathsWithUnnormalizedTrailingBytes([Values] bool storage)
     {
-        using IRetainableNodeRecordBuffer buffer = FlatTestHelpers.NewTestBuffer();
+        using INodeRecordBuffer buffer = FlatTestHelpers.NewTestBuffer();
         TreePath path = new(TestItem.KeccakA, 3);
         byte[] rlp = FlatTestHelpers.LeafRlp(1);
         using Snapshot snapshot = FlatTestHelpers.MakeSnapshot(_pool, buffer, content =>
@@ -221,7 +221,7 @@ public class SnapshotTests
     [Test]
     public void SuppliedRootRlpIsPreservedWhenItsChildrenArriveLater()
     {
-        using IRetainableNodeRecordBuffer buffer = FlatTestHelpers.NewTestBuffer();
+        using INodeRecordBuffer buffer = FlatTestHelpers.NewTestBuffer();
         using Snapshot snapshot = _pool.CreateSnapshot(StateId.PreGenesis, new(1, Keccak.Zero), ResourcePool.Usage.MainBlockProcessing, buffer);
         byte[] leafRlp = FlatTestHelpers.LeafRlp(new byte[40]);
         ChildRef child = ChildRef.ForHash(ValueKeccak.Compute(leafRlp), 0);
@@ -242,7 +242,7 @@ public class SnapshotTests
     [Test]
     public void ReplacingRootOmitsDisconnectedEarlierNodes([Values] bool storage)
     {
-        using IRetainableNodeRecordBuffer buffer = FlatTestHelpers.NewTestBuffer();
+        using INodeRecordBuffer buffer = FlatTestHelpers.NewTestBuffer();
         using Snapshot snapshot = _pool.CreateSnapshot(StateId.PreGenesis, new(1, Keccak.Zero), ResourcePool.Usage.MainBlockProcessing, buffer);
         TreePath oldPath = TreePath.FromHexString("12");
         if (storage) snapshot.Content.SetStorageNodeRlp(buffer, TestItem.KeccakA, oldPath, FlatTestHelpers.LeafRlpA);
@@ -263,7 +263,7 @@ public class SnapshotTests
     [Test]
     public void ExplicitEmptyRootEnumeratesNoNodes([Values] bool storage)
     {
-        using IRetainableNodeRecordBuffer buffer = FlatTestHelpers.NewTestBuffer();
+        using INodeRecordBuffer buffer = FlatTestHelpers.NewTestBuffer();
         using Snapshot snapshot = _pool.CreateSnapshot(StateId.PreGenesis, new(1, Keccak.EmptyTreeHash), ResourcePool.Usage.MainBlockProcessing, buffer);
         if (storage)
         {
@@ -286,7 +286,7 @@ public class SnapshotTests
     [Test]
     public void RootMetadataEstimatesDoNotScaleWithReachableNodes([Values] bool storage)
     {
-        using IRetainableNodeRecordBuffer buffer = FlatTestHelpers.NewTestBuffer();
+        using INodeRecordBuffer buffer = FlatTestHelpers.NewTestBuffer();
         using Snapshot single = FlatTestHelpers.MakeSnapshot(_pool, buffer, content =>
         {
             if (storage) content.SetStorageNodeRlp(buffer, TestItem.KeccakA, TreePath.Empty, FlatTestHelpers.LeafRlpA);
@@ -337,7 +337,7 @@ public class SnapshotTests
                 Assert.That(nodes.MoveNext(), Is.True);
                 ReadOnlySpan<byte> firstRlp = nodes.ReadRlp();
                 byte[] expectedRlp = firstRlp.ToArray();
-                snapshot.BufferRetain!.Dispose();
+                snapshot.BufferPin!.Dispose();
                 for (int i = 0; i < 10; i++) FlatTestHelpers.StartNewGeneration(buffer);
                 Assert.That(() => buffer.FindBloom(inherited) is null, Is.True.After(5_000, 10));
                 if (storage) Assert.That(nodes.MoveNext(), Is.True, "moving to another address must not release the outer read lease");
@@ -348,7 +348,7 @@ public class SnapshotTests
     }
 
     [Test]
-    public void NodeIteratorReleasesReadOnCompletionOrEarlyDispose([Values] bool storage, [Values] bool finish)
+    public void NodeIteratorStopsOnCompletionOrEarlyDispose([Values] bool storage, [Values] bool finish)
     {
         using ForwardingNodeRecordBuffer buffer = new(FlatTestHelpers.NewTestBuffer());
         using Snapshot snapshot = FlatTestHelpers.MakeSnapshot(_pool, buffer, content =>
@@ -361,9 +361,7 @@ public class SnapshotTests
 
         void AssertReads<TKey>(Snapshot.NodeIterator<TKey> nodes) where TKey : IEquatable<TKey>
         {
-            Assert.That(buffer.OutstandingReads, Is.Zero);
             Assert.That(nodes.MoveNext(), Is.True);
-            Assert.That(buffer.OutstandingReads, Is.GreaterThan(0));
             Assert.That(nodes.ReadRlp().ToArray(), Is.EqualTo(Bytes.FromHexString(FlatTestHelpers.LeafRlpA)));
             long before = GC.GetAllocatedBytesForCurrentThread();
             for (int i = 0; i < 1000; i++) _ = nodes.ReadRlp().Length;
@@ -373,7 +371,6 @@ public class SnapshotTests
             nodes.Dispose();
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(buffer.OutstandingReads, Is.Zero);
                 Assert.That(nodes.MoveNext(), Is.False);
                 Assert.That(() => nodes.ReadRlp().Length, Throws.InvalidOperationException);
                 Assert.That(() => nodes.Key, Throws.InvalidOperationException);
@@ -420,9 +417,9 @@ public class SnapshotTests
     [Test]
     public void StateRootPublicationDistinguishesUnresolvedAndEmptyRoots([Values] PublishedRootKind kind)
     {
-        using IRetainableNodeRecordBuffer buffer = FlatTestHelpers.NewTestBuffer();
+        using INodeRecordBuffer buffer = FlatTestHelpers.NewTestBuffer();
         using SnapshotBundle bundle = new(FlatTestHelpers.MakeBundle(_pool), buffer, _pool, ResourcePool.Usage.MainBlockProcessing);
-        INodeRecordBufferRetain retain = buffer.RetainActive();
+        INodeRecordBufferPin retain = buffer.Pin();
         byte[] rlp = FlatTestHelpers.LeafRlp(1);
         ValueHash256 hash = ValueKeccak.Compute(rlp);
         TrieRoot root = kind switch
@@ -451,7 +448,7 @@ public class SnapshotTests
     [Test]
     public void RequestedHashSkipsUnrelatedNewerNodes([Values] bool storage, [Values] ReaderTier tier, [Values] bool newerHasPath)
     {
-        using IRetainableNodeRecordBuffer buffer = FlatTestHelpers.NewTestBuffer();
+        using INodeRecordBuffer buffer = FlatTestHelpers.NewTestBuffer();
         Hash256 address = TestItem.KeccakA;
         TreePath targetPath = TreePath.FromHexString("1");
         TreePath newerPath = newerHasPath ? targetPath : TreePath.FromHexString("2");
@@ -459,7 +456,7 @@ public class SnapshotTests
         Hash256 expectedHash = new(ValueKeccak.Compute(expectedRlp));
         ReadOnlySnapshotBundle readOnly = new(
             FlatTestHelpers.SnapshotList(NodeSnapshot(expectedRlp, targetPath), NodeSnapshot(FlatTestHelpers.LeafRlp(2), newerPath)),
-            Substitute.For<IPersistence.IPersistenceReader>(), false, PersistedSnapshotStack.Empty());
+            Substitute.For<IPersistence.IPersistenceReader>(), false, PersistedSnapshotStack.Empty(), bufferPin: null);
         using SnapshotBundle bundle = new(readOnly, buffer, _pool, ResourcePool.Usage.MainBlockProcessing,
             tier == ReaderTier.ReadOnly ? null : FlatTestHelpers.SnapshotList(NodeSnapshot(FlatTestHelpers.LeafRlp(3), newerPath)));
         if (tier == ReaderTier.Current)

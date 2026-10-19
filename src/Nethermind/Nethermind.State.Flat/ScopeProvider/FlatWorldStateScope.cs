@@ -31,7 +31,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     private readonly bool _isReadOnly;
     private readonly bool _trieless;
     // Taken before the block's first trie write and handed to its snapshot at commit, so every node the block writes stays readable.
-    private INodeRecordBufferRetain? _bufferRetain;
+    private INodeRecordBufferPin? _bufferPin;
 
     private readonly Hash256 _initialStateRoot;
     // The state root warm-ups walk from; default in a trie-less scope.
@@ -103,9 +103,9 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         _trieless = snapshotBundle.IsHistorical;
         if (!_trieless)
         {
-            IRetainableNodeRecordBuffer buffer = snapshotBundle.NodeRecordBuffer!;
-            _bufferRetain = buffer.RetainActive();
-            _initialTrieRoot = BufferBulkSet.ResolveRoot(buffer, null, _initialStateRoot.ValueHash256);
+            INodeRecordBuffer buffer = snapshotBundle.NodeRecordBuffer!;
+            _bufferPin = buffer.Pin();
+            _initialTrieRoot = buffer.ResolveRoot(null, _initialStateRoot.ValueHash256);
             _stateTrie = new BufferedTrie(snapshotBundle, buffer, null, _initialTrieRoot);
         }
 
@@ -149,7 +149,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         WaitForOutstandingWarmups();
         _snapshotBundle.Dispose();
         ReleaseStorageTrees();
-        _bufferRetain?.Dispose();
+        _bufferPin?.Dispose();
         _warmer.OnExitScope();
     }
 
@@ -540,8 +540,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
         StateId newStateId = new(blockNumber, RootHash);
         bool shouldAddSnapshot = !_isReadOnly && _currentStateId != newStateId;
-        (Snapshot? newSnapshot, TransientResource? cachedResource) = _snapshotBundle.CollectAndApplySnapshot(_currentStateId, newStateId, _bufferRetain, shouldAddSnapshot);
-        _bufferRetain = _trieless ? null : _snapshotBundle.NodeRecordBuffer!.RetainActive();
+        (Snapshot? newSnapshot, TransientResource? cachedResource) = _snapshotBundle.CollectAndApplySnapshot(_currentStateId, newStateId, _bufferPin, shouldAddSnapshot);
+        _bufferPin = _trieless ? null : _snapshotBundle.NodeRecordBuffer!.Pin();
 
         if (shouldAddSnapshot)
         {

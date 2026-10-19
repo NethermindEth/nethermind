@@ -31,7 +31,7 @@ namespace Nethermind.Benchmarks.State;
 public class ReadOnlySnapshotBundleBenchmark
 {
     private ReadOnlySnapshotBundle _bundle = null!;
-    private IRetainableNodeRecordBuffer _nodeRecordBuffer = null!;
+    private INodeRecordBuffer _nodeRecordBuffer = null!;
 
     // Hit arrays — sampled from actually written data
     private Address[] _hitAccounts = null!;
@@ -101,7 +101,7 @@ public class ReadOnlySnapshotBundleBenchmark
             // Build ReadOnlySnapshotBundle from previously captured snapshots
             ReadOnlySnapshotBundle readOnly = new(
                 prevSnapshots, new NoopPersistenceReader(), recordDetailedMetrics: false,
-                PersistedSnapshotStack.Empty());
+                PersistedSnapshotStack.Empty(), _nodeRecordBuffer.PinAll());
             SnapshotBundle bundle = new(
                 readOnly, _nodeRecordBuffer, resourcePool, ResourcePool.Usage.MainBlockProcessing);
             CapturingCommitTarget commitTarget = new();
@@ -190,7 +190,7 @@ public class ReadOnlySnapshotBundleBenchmark
         // Build final ReadOnlySnapshotBundle with all 8 snapshots
         _bundle = new ReadOnlySnapshotBundle(
             finalSnapshots, new NoopPersistenceReader(), recordDetailedMetrics: false,
-            PersistedSnapshotStack.Empty());
+            PersistedSnapshotStack.Empty(), bufferPin: null);
 
         // --- Hit arrays ---
         _hitAccounts = new Address[ArraySize];

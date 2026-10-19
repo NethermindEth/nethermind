@@ -68,10 +68,9 @@ public static class PersistedSnapshotBuilder
     private static readonly Comparison<ValueAddress> ValueAddressComparer = (a, b) =>
         a.AsSpan.SequenceCompareTo(b.AsSpan);
 
-    /// <summary>Temporary serialization input protecting trie buffer pointers through their final RLP copy.</summary>
+    /// <summary>Temporary serialization input: trie buffer pointers of the snapshot, which its pin keeps readable through their final RLP copy.</summary>
     internal sealed class PreparedSnapshot : IDisposable
     {
-        private readonly IDisposable? _readScope;
         internal readonly NativeMemoryList<(TreePath Path, ulong Pointer)> StateTop = new(0), StateCompact = new(0), StateFallback = new(0);
         internal readonly NativeMemoryList<(ValueHash256 AddrHash, TreePath Path, ulong Pointer)> StorageTop = new(0), StorageCompact = new(0), StorageFallback = new(0);
         internal readonly NativeMemoryList<((ValueAddress Addr, UInt256 Slot) Key, UInt256? Value)> Storages = new(0);
@@ -79,7 +78,6 @@ public static class PersistedSnapshotBuilder
 
         internal PreparedSnapshot(Snapshot snapshot)
         {
-            _readScope = snapshot.BufferRetain?.Buffer.BeginReadScope();
             try
             {
                 using ParallelUnbalancedWork.WorkerScope workers = ParallelUnbalancedWork.BeginWorkerScope(Environment.ProcessorCount);
@@ -157,7 +155,6 @@ public static class PersistedSnapshotBuilder
             StorageFallback.Dispose();
             Storages.Dispose();
             Addresses.Dispose();
-            _readScope?.Dispose();
         }
     }
 

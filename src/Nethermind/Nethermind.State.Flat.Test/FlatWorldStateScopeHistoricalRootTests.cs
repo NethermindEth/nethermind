@@ -24,7 +24,7 @@ namespace Nethermind.State.Flat.Test;
 public class FlatWorldStateScopeHistoricalRootTests
 {
     private ResourcePool _pool = null!;
-    private IRetainableNodeRecordBuffer _buffer = null!;
+    private INodeRecordBuffer _buffer = null!;
 
     [SetUp]
     public void SetUp()
@@ -188,7 +188,7 @@ public class FlatWorldStateScopeHistoricalRootTests
     {
         IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
         using ReadOnlySnapshotBundle readOnlyBundle =
-            new(FlatTestHelpers.SnapshotList(FlatTestHelpers.MakeSnapshot(_pool)), reader, recordDetailedMetrics: false, PersistedSnapshotStack.Empty());
+            new(FlatTestHelpers.SnapshotList(FlatTestHelpers.MakeSnapshot(_pool)), reader, recordDetailedMetrics: false, PersistedSnapshotStack.Empty(), bufferPin: null);
 
         Assert.That(readOnlyBundle.IsHistorical, Is.False);
     }
@@ -219,7 +219,7 @@ public class FlatWorldStateScopeHistoricalRootTests
             FlatTestHelpers.SnapshotList(FlatTestHelpers.MakeSnapshot(_pool)),
             reader,
             recordDetailedMetrics: false,
-            PersistedSnapshotStack.Empty(),
+            PersistedSnapshotStack.Empty(), bufferPin: null,
             isHistorical: isHistorical);
 
         return new SnapshotBundle(

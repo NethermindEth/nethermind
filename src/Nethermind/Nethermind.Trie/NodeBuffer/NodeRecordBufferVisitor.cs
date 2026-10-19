@@ -36,7 +36,6 @@ internal sealed class NodeRecordBufferVisitor<TNodeContext> where TNodeContext :
 
     internal void Accept(Hash256 rootHash, ITrieNodeResolver persistence)
     {
-        using NodeRecordBufferReadLease lease = _buffer.BeginRead();
         if (!_visitor.IsFullDbScan) _visitor.VisitTree(default, rootHash);
         if (rootHash == Keccak.EmptyTreeHash)
         {

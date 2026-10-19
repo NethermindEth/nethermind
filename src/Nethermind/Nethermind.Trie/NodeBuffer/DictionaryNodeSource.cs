@@ -29,9 +29,9 @@ internal sealed class DictionaryNodeSource(IReadOnlyDictionary<TreePath, byte[]>
     }
 
     public void WarmUp(INodeRecordBuffer buffer, TrieRoot root, in ValueHash256 key, bool forDelete = false) =>
-        BufferBulkSet.WarmUp(buffer, warmed, LoadRlp, address, root, key, forDelete);
+        BufferWarmUp.WarmUp(buffer, warmed, LoadRlp, address, root, key, forDelete);
 
-    private void LoadRlp(in TreePath path, in ValueHash256 hash, ReadOnlySpanAction<byte, BufferBulkSet.WarmUpRead> action, BufferBulkSet.WarmUpRead read)
+    private void LoadRlp(in TreePath path, in ValueHash256 hash, ReadOnlySpanAction<byte, BufferWarmUp.WarmUpRead> action, BufferWarmUp.WarmUpRead read)
     {
         byte[]? rlp = LoadRlp(path, hash);
         if (rlp is not null) action(rlp, read);

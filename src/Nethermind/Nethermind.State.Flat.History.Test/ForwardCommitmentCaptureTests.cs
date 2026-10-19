@@ -29,7 +29,7 @@ public class ForwardCommitmentCaptureTests
     private SnapshotableMemColumnsDb<FlatDbColumns> _db = null!;
     private SnapshotableMemColumnsDb<FlatHistoryColumns> _historyColumns = null!;
     private ResourcePool _resourcePool = null!;
-    private IRetainableNodeRecordBuffer _buffer = null!;
+    private INodeRecordBuffer _buffer = null!;
     private FlatTestContainer _tier = null!;
     private SnapshotRepository _repository = null!;
     private HistoryWriter _writer = null!;
@@ -80,6 +80,7 @@ public class ForwardCommitmentCaptureTests
         _tier.Dispose();
         _db.Dispose();
         _historyColumns.Dispose();
+        _buffer.Dispose();
     }
 
     [Test]

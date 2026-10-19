@@ -131,6 +131,7 @@ public sealed class HistoricalFlatDbManager(
                 reader,
                 enableDetailedMetrics,
                 PersistedSnapshotStack.Empty(enableDetailedMetrics),
+                bufferPin: null,
                 isHistorical: true);
         }
         catch

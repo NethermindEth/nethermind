@@ -84,9 +84,9 @@ public class Snapshot : RefCountingDisposable
 
     public bool IsSorted => _isSorted;
 
-    /// <summary>The retain on the trie node buffer generation that was active when this snapshot's first block started writing; released with the snapshot.</summary>
-    /// <remarks>Protects this generation and later writes. Traversals lease the buffer to protect any inherited older records they encounter.</remarks>
-    internal INodeRecordBufferRetain? BufferRetain { get; init; }
+    /// <summary>The pin on the trie node buffer generation that was active when this snapshot's first block started writing; released with the snapshot.</summary>
+    /// <remarks>Protects this generation and later writes. Traversals into inherited older records rely on the reader's own pin.</remarks>
+    internal INodeRecordBufferPin? BufferPin { get; init; }
 
     public StateId From => _from;
     public StateId To => _to;
@@ -97,13 +97,13 @@ public class Snapshot : RefCountingDisposable
     internal IEnumerable<KeyValuePair<HashedKey<TreePath>, ulong>> StateNodes => EnumerateStateNodes();
 
     /// <summary>Iterates reachable state nodes written within this snapshot's range.</summary>
-    public NodeIterator<TreePath> GetStateNodeIterator() => new(BufferRetain?.Buffer, EnumerateStateNodes().GetEnumerator());
+    public NodeIterator<TreePath> GetStateNodeIterator() => new(BufferPin?.Buffer, EnumerateStateNodes().GetEnumerator());
 
     /// <summary>Iterates reachable storage nodes written within this snapshot's range.</summary>
-    public NodeIterator<(Hash256, TreePath)> GetStorageNodeIterator() => new(BufferRetain?.Buffer, EnumerateStorageNodes().GetEnumerator());
+    public NodeIterator<(Hash256, TreePath)> GetStorageNodeIterator() => new(BufferPin?.Buffer, EnumerateStorageNodes().GetEnumerator());
 
-    /// <summary>Reads snapshot node keys and borrowed RLP while protecting the underlying buffer records.</summary>
-    /// <remarks>RLP spans must not be used after the iterator is disposed or exhausted unless an outer buffer read lease protects them.</remarks>
+    /// <summary>Reads snapshot node keys and their RLP, borrowed from the buffer records the snapshot pins.</summary>
+    /// <remarks>RLP spans must not be used after the snapshot is released.</remarks>
     public sealed class NodeIterator<TKey> : IDisposable where TKey : IEquatable<TKey>
     {
         private readonly INodeRecordBuffer? _buffer;
@@ -137,7 +137,7 @@ public class Snapshot : RefCountingDisposable
             }
         }
 
-        /// <summary>Advances to the next node, releasing the read operation when exhausted.</summary>
+        /// <summary>Advances to the next node, releasing the enumeration when exhausted.</summary>
         public bool MoveNext()
         {
             if (_disposed) return false;
@@ -185,18 +185,17 @@ public class Snapshot : RefCountingDisposable
 
     private IEnumerable<KeyValuePair<HashedKey<TreePath>, ulong>> EnumerateStateNodes()
     {
-        if (!HasStateRoot || BufferRetain is null || From.StateRoot == To.StateRoot) yield break;
-        foreach ((TreePath path, ulong pointer, _) in BufferRetain.Buffer.EnumerateNodes(StateRootPointer, BufferRetain.WriteBoundary))
+        if (!HasStateRoot || BufferPin is null || From.StateRoot == To.StateRoot) yield break;
+        foreach ((TreePath path, ulong pointer, _) in BufferPin.Buffer.EnumerateNodes(StateRootPointer, BufferPin.WriteBoundary))
             yield return new(path, pointer);
     }
 
     private IEnumerable<KeyValuePair<HashedKey<(Hash256, TreePath)>, ulong>> EnumerateStorageNodes()
     {
-        if (BufferRetain is null) yield break;
-        using IDisposable lease = BufferRetain.Buffer.BeginReadScope();
+        if (BufferPin is null) yield break;
         foreach ((Hash256 address, ulong root) in StorageRoots)
         {
-            foreach ((TreePath path, ulong pointer, _) in BufferRetain.Buffer.EnumerateNodes(root, BufferRetain.WriteBoundary))
+            foreach ((TreePath path, ulong pointer, _) in BufferPin.Buffer.EnumerateNodes(root, BufferPin.WriteBoundary))
                 yield return new((address, path), pointer);
         }
     }
@@ -244,45 +243,45 @@ public class Snapshot : RefCountingDisposable
         }
     }
 
-    /// <summary>The buffer pointer of the state node at <paramref name="key"/>, readable through <see cref="GetNodeRecord"/> or <see cref="GetRlp"/> under a buffer read lease.</summary>
+    /// <summary>The buffer pointer of the state node at <paramref name="key"/>, readable through <see cref="GetNodeRecord"/> or <see cref="GetRlp"/> while the snapshot holds its pin.</summary>
     internal bool TryGetStateNode(HashedKey<TreePath> key, out ulong pointer)
     {
         pointer = 0;
-        return HasStateRoot && BufferRetain is not null && BufferRetain.Buffer.TryGetNodePointer(StateRootPointer, key.Key, out pointer);
+        return HasStateRoot && BufferPin is not null && BufferPin.Buffer.TryGetNodePointer(StateRootPointer, key.Key, out pointer);
     }
 
     public bool TryGetStateNode(HashedKey<TreePath> key, [NotNullWhen(true)] out TrieNode? node)
     {
         node = null;
-        return HasStateRoot && BufferRetain is not null && BufferRetain.Buffer.TryGetNode(StateRootPointer, key.Key, out node);
+        return HasStateRoot && BufferPin is not null && BufferPin.Buffer.TryGetNode(StateRootPointer, key.Key, out node);
     }
 
-    /// <summary>The buffer pointer of the storage node at <paramref name="key"/>, readable through <see cref="GetNodeRecord"/> or <see cref="GetRlp"/> under a buffer read lease.</summary>
+    /// <summary>The buffer pointer of the storage node at <paramref name="key"/>, readable through <see cref="GetNodeRecord"/> or <see cref="GetRlp"/> while the snapshot holds its pin.</summary>
     internal bool TryGetStorageNode(HashedKey<(Hash256, TreePath)> key, out ulong pointer)
     {
         pointer = 0;
-        return BufferRetain is not null && TryGetStorageRoot(key.Key.Item1, out ulong root)
-            && BufferRetain.Buffer.TryGetNodePointer(root, key.Key.Item2, out pointer);
+        return BufferPin is not null && TryGetStorageRoot(key.Key.Item1, out ulong root)
+            && BufferPin.Buffer.TryGetNodePointer(root, key.Key.Item2, out pointer);
     }
 
     public bool TryGetStorageNode(HashedKey<(Hash256, TreePath)> key, [NotNullWhen(true)] out TrieNode? node)
     {
         node = null;
-        return BufferRetain is not null && TryGetStorageRoot(key.Key.Item1, out ulong root)
-            && BufferRetain.Buffer.TryGetNode(root, key.Key.Item2, out node);
+        return BufferPin is not null && TryGetStorageRoot(key.Key.Item1, out ulong root)
+            && BufferPin.Buffer.TryGetNode(root, key.Key.Item2, out node);
     }
 
-    /// <summary>The record a node pointer refers to, borrowed from an active node enumerator or outer buffer read lease.</summary>
-    internal NodeRecord GetNodeRecord(ulong pointer) => BufferRetain!.Buffer.GetRecord(pointer);
+    /// <summary>The record a node pointer refers to, borrowed for as long as the snapshot holds its pin.</summary>
+    internal NodeRecord GetNodeRecord(ulong pointer) => BufferPin!.Buffer.GetRecord(pointer);
 
-    /// <summary>The RLP of a node pointer, borrowed from an active node enumerator or outer buffer read lease.</summary>
+    /// <summary>The RLP of a node pointer, borrowed for as long as the snapshot holds its pin.</summary>
     internal ReadOnlySpan<byte> GetRlp(ulong pointer) => GetNodeRecord(pointer).Rlp;
 
     protected override void CleanUp()
     {
         if (_isSorted) _resourcePool.ReturnSortedSnapshotContent(_usage, _sorted!);
         else _resourcePool.ReturnSnapshotContent(_usage, _mutable!);
-        BufferRetain?.Dispose();
+        BufferPin?.Dispose();
     }
 
     public bool TryAcquire() => TryAcquireLease();

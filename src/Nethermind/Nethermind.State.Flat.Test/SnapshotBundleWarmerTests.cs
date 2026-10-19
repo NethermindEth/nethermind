@@ -33,7 +33,7 @@ public class SnapshotBundleWarmerTests
     private static readonly TimeSpan BailOutTimeout = TimeSpan.FromSeconds(30);
 
     private ResourcePool _pool = null!;
-    private IRetainableNodeRecordBuffer _buffer = null!;
+    private INodeRecordBuffer _buffer = null!;
 
     [SetUp]
     public void SetUp()
@@ -50,7 +50,7 @@ public class SnapshotBundleWarmerTests
     {
         Hash256? address = storage ? TestItem.KeccakC : null;
         using ForwardingNodeRecordBuffer buffer = new(FlatTestHelpers.NewTestBuffer());
-        using INodeRecordBufferRetain retain = buffer.RetainActive();
+        using INodeRecordBufferPin retain = buffer.Pin();
         byte[] prefix = FlatTestHelpers.LeafRlp(0x80);
         buffer.AppendRecordFromRlp(address, TreePath.Empty, ValueKeccak.Compute(prefix), prefix);
         int completedBefore = buffer.CompletedRecords;
@@ -68,42 +68,22 @@ public class SnapshotBundleWarmerTests
 
         TrieRoot root = BufferBulkSet.BulkSet(buffer, source, address, TrieRoot.Empty, entries, canParallelize: false);
         (TreePath Path, ulong Pointer, NodeRecord Record)[] nodes = buffer.EnumerateNodes(root.Pointer).ToArray();
-        BufferBulkSet.WarmUp(buffer, new WarmedNodes(1),
-            (in TreePath path, in ValueHash256 hash, ReadOnlySpanAction<byte, BufferBulkSet.WarmUpRead> action, BufferBulkSet.WarmUpRead read) =>
+        BufferWarmUp.WarmUp(buffer, new WarmedNodes(1),
+            (in TreePath path, in ValueHash256 hash, ReadOnlySpanAction<byte, BufferWarmUp.WarmUpRead> action, BufferWarmUp.WarmUpRead read) =>
                 throw new InvalidOperationException("Unexpected persistence read"), address, root, keys[0]);
+        PatriciaTree expected = new(new RawScopedTrieStore(new MemDb()), LimboLogs.Instance);
+        foreach (ValueHash256 key in keys) expected.Set(key.Bytes, value);
+        buffer.SetRoot(address, root.Hash, root.Pointer);
+        expected.UpdateRootHash();
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(BufferBulkSet.ResolveRoot(buffer, address, root.Hash), Is.EqualTo(root));
+            Assert.That(buffer.ResolveRoot(address, root.Hash), Is.EqualTo(root));
             Assert.That(buffer.CompletedRecords - completedBefore, Is.EqualTo(nodes.Length));
             Assert.That(buffer.CompletedWrites - batchesBefore, Is.LessThan(nodes.Length), "a batch contains multiple relative record offsets");
             Assert.That(nodes.All(node => node.Record.Hash == ValueKeccak.Compute(node.Record.Rlp)), Is.True);
-            foreach (ValueHash256 key in keys)
-                Assert.That(BufferBulkSet.TryGet(buffer, source, address, root, key), Is.EqualTo(value));
-            Assert.That(buffer.OutstandingReads, Is.Zero);
+            Assert.That(root.Hash, Is.EqualTo(expected.RootHash.ValueHash256));
             Assert.That(retain.Buffer, Is.SameAs(buffer));
-        }
-    }
-
-    [Test]
-    public void Buffer_contract_stack_read_leases_do_not_allocate()
-    {
-        using ForwardingNodeRecordBuffer buffer = new(FlatTestHelpers.NewTestBuffer());
-        for (int i = 0; i < 100; i++)
-        {
-            using NodeRecordBufferReadLease lease = buffer.BeginRead();
-        }
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        for (int i = 0; i < 1_000; i++)
-        {
-            using NodeRecordBufferReadLease lease = buffer.BeginRead();
-        }
-        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(allocated, Is.Zero);
-            Assert.That(buffer.OutstandingReads, Is.Zero);
         }
     }
 
@@ -124,7 +104,7 @@ public class SnapshotBundleWarmerTests
         TrieRoot committedRoot = new(ValueKeccak.Compute(committedRlp), 0);
         using SnapshotBundle bundle = NewBundle(new NodeReader(persisted));
 
-        INodeRecordBufferRetain retain = _buffer.RetainActive();
+        INodeRecordBufferPin retain = _buffer.Pin();
         committedRoot = new TrieRoot(committedRoot.Hash, PublishNode(bundle, address, TreePath.Empty, committedRlp));
         bundle.CollectAndApplySnapshot(StateId.PreGenesis, new StateId(1, TestItem.KeccakA), retain, returnSnapshot: false);
 
@@ -207,7 +187,7 @@ public class SnapshotBundleWarmerTests
         else Assert.That(warmed.TryInsert(null, TreePath.Empty, hash, rlp, out _, out pointer), Is.True);
         (long Hits, long Misses, long IdleHits, long IdleMisses) before = WarmedCacheCounts();
 
-        BufferBulkSet.WarmUp(_buffer, warmed, (in TreePath path, in ValueHash256 nodeHash, ReadOnlySpanAction<byte, BufferBulkSet.WarmUpRead> action, BufferBulkSet.WarmUpRead read) => throw new InvalidOperationException("Unexpected persistence read"),
+        BufferWarmUp.WarmUp(_buffer, warmed, (in TreePath path, in ValueHash256 nodeHash, ReadOnlySpanAction<byte, BufferWarmUp.WarmUpRead> action, BufferWarmUp.WarmUpRead read) => throw new InvalidOperationException("Unexpected persistence read"),
             null, new TrieRoot(hash, pointer), ValueKeccak.Zero);
 
         AssertWarmedCacheCounts(before, hits: inBuffer ? 0 : 1);
@@ -512,8 +492,8 @@ public class SnapshotBundleWarmerTests
         for (int i = 0; i < keys.Length; i++) keys[i] = ValueKeccak.Compute([(byte)i]);
         byte[] newValue = Bytes.FromHexString("0xff");
 
-        using IRetainableNodeRecordBuffer persistedBuffer = FlatTestHelpers.NewTestBuffer();
-        using INodeRecordBufferRetain persistedRetain = persistedBuffer.RetainActive();
+        using INodeRecordBuffer persistedBuffer = FlatTestHelpers.NewTestBuffer();
+        using INodeRecordBufferPin persistedRetain = persistedBuffer.Pin();
         TrieRoot root;
         using (ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries = new(keys.Length))
         {
@@ -526,8 +506,8 @@ public class SnapshotBundleWarmerTests
             .ToDictionary(node => node.Path, node => node.Record.Rlp.ToArray());
         NodeReader reader = new(persisted);
         using SnapshotBundle bundle = NewBundle(reader);
-        using INodeRecordBufferRetain retain = _buffer.RetainActive();
-        TrieRoot preBlockRoot = BufferBulkSet.ResolveRoot(_buffer, address, root.Hash);
+        using INodeRecordBufferPin retain = _buffer.Pin();
+        TrieRoot preBlockRoot = _buffer.ResolveRoot(address, root.Hash);
 
         int firstWarmUp = WarmUpAll();
         int secondWarmUp = WarmUpAll();

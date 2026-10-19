@@ -218,7 +218,9 @@ public class NodeRecordBufferVisitorTests
             entries.Add(new PatriciaTree.BulkSetEntry(Key(0, 1), [1]));
             entries.Add(new PatriciaTree.BulkSetEntry(Key(0, 2), [2]));
         }
-        return BufferBulkSet.BulkSet(buffer, new EmptySource(), address, TrieRoot.Empty, entries, false);
+        TrieRoot root = BufferBulkSet.BulkSet(buffer, new EmptySource(), address, TrieRoot.Empty, entries, false);
+        buffer.SetRoot(address, root.Hash, root.Pointer);
+        return root;
     }
 
     private sealed class EmptySource : INodeRecordSource

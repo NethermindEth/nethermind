@@ -7,8 +7,12 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Trie.NodeBuffer;
 
-internal static partial class BufferBulkSet
+/// <summary>Loads the nodes on a trie path into <see cref="WarmedNodes"/> ahead of a <see cref="BufferBulkSet"/> that changes it.</summary>
+internal static class BufferWarmUp
 {
+    private const int MaxKeyNibbles = BulkSetArena.MaxKeyNibbles;
+    private const int BranchChildCount = BulkSetArena.BranchChildCount;
+
     internal delegate void LoadNodeRlp(in TreePath path, in ValueHash256 hash, ReadOnlySpanAction<byte, WarmUpRead> action, WarmUpRead read);
 
     /// <summary>Reads a pre-block path, then publishes newly fetched records from the deepest node to the root.</summary>
@@ -17,7 +21,6 @@ internal static partial class BufferBulkSet
     public static void WarmUp(INodeRecordBuffer buffer, WarmedNodes warmed, LoadNodeRlp loadRlp, Hash256? address,
         TrieRoot root, in ValueHash256 key, bool forDelete = false)
     {
-        using NodeRecordBufferReadLease lease = buffer.BeginRead();
         if (root.Hash == ValueKeccak.EmptyTreeHash) return;
         Span<byte> keyNibbles = stackalloc byte[MaxKeyNibbles];
         Nibbles.BytesToNibbleBytes(key.Bytes, keyNibbles);
@@ -75,8 +78,7 @@ internal static partial class BufferBulkSet
             if (child.Kind == ChildRefKind.Inline)
             {
                 Span<byte> nodeKey = stackalloc byte[MaxKeyNibbles];
-                Source leaf = Source.ForInline(child);
-                int length = leaf.CopyKey(nodeKey);
+                int length = new WarmUpFrame(child.InlineRlp, NodeRecordKind.Leaf, 0, default, 0).CopyKey(nodeKey);
                 WarmDeleteSibling(nodeKey[..length]);
                 return;
             }

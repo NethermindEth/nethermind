@@ -156,7 +156,7 @@ public class ReadOnlySnapshotBundleSlotFilterBenchmark
             snapshots.Add(layer);
         }
 
-        return new ReadOnlySnapshotBundle(snapshots, _persistence, recordDetailedMetrics: false, PersistedSnapshotStack.Empty(),
+        return new ReadOnlySnapshotBundle(snapshots, _persistence, recordDetailedMetrics: false, PersistedSnapshotStack.Empty(), bufferPin: null,
             slotFilterBitsPerKey: Filtered ? BitsPerKey : 0);
     }
 

@@ -39,9 +39,9 @@ public class BufferBulkSetBenchmarks
     private PatriciaTree.BulkSetEntry[] _preload;
     private ParallelCommitTrieStore _trieStore;
     private Hash256 _preloadedRootHash;
-    private IRetainableNodeRecordBuffer _coldBuffer;
-    private IRetainableNodeRecordBuffer _warmBuffer;
-    private INodeRecordBufferRetain _warmBufferRetain;
+    private INodeRecordBuffer _coldBuffer;
+    private INodeRecordBuffer _warmBuffer;
+    private INodeRecordBufferPin _warmBufferRetain;
     private TrieRoot _warmRoot;
     private int _fetchCountBeforeWarmBuffer;
     private WarmedNodes _warmedNodes;
@@ -66,8 +66,8 @@ public class BufferBulkSetBenchmarks
             preloadTree.Commit();
             _preloadedRootHash = preloadTree.RootHash;
 
-            using IRetainableNodeRecordBuffer preloadBuffer = new NodeRecordBuffer(0, NodeRecordBuffer.DefaultGenerationBytes);
-            using INodeRecordBufferRetain preloadRetain = preloadBuffer.RetainActive();
+            using INodeRecordBuffer preloadBuffer = new NodeRecordBuffer(0, NodeRecordBuffer.DefaultGenerationBytes);
+            using INodeRecordBufferPin preloadRetain = preloadBuffer.Pin();
             TrieRoot root = PreloadBuffer(preloadBuffer);
             foreach ((TreePath path, _, NodeRecord record) in preloadBuffer.EnumerateNodes(root.Pointer)) preloadedNodes[path] = record.Rlp.ToArray();
         }
@@ -103,7 +103,7 @@ public class BufferBulkSetBenchmarks
     public void CreateWarmBuffer()
     {
         _warmBuffer = new NodeRecordBuffer(WarmCompressedMaxMemory, NodeRecordBuffer.DefaultGenerationBytes);
-        _warmBufferRetain = _warmBuffer.RetainActive();
+        _warmBufferRetain = _warmBuffer.Pin();
         _warmRoot = PreloadBuffer(_warmBuffer);
         _fetchCountBeforeWarmBuffer = _nodeSource.FetchCount;
     }
@@ -123,7 +123,7 @@ public class BufferBulkSetBenchmarks
     [Benchmark]
     public void BufferBulkSetWarmBuffer() => DoBufferBulkSet(_warmBuffer, _warmRoot);
 
-    private TrieRoot PreloadBuffer(IRetainableNodeRecordBuffer buffer)
+    private TrieRoot PreloadBuffer(INodeRecordBuffer buffer)
     {
         if (_preload.Length == 0) return TrieRoot.Empty;
 
@@ -133,7 +133,7 @@ public class BufferBulkSetBenchmarks
         return root;
     }
 
-    private void DoBufferBulkSet(IRetainableNodeRecordBuffer buffer, TrieRoot root)
+    private void DoBufferBulkSet(INodeRecordBuffer buffer, TrieRoot root)
     {
         using ArrayPoolListRef<PatriciaTree.BulkSetEntry> batch = new(BatchSize);
         for (int start = 0; start < EntryCount; start += BatchSize)

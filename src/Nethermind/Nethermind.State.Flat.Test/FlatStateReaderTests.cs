@@ -26,7 +26,7 @@ public class FlatStateReaderTests
 {
     private static readonly BlockHeader _header = Build.A.BlockHeader.WithNumber(5).WithStateRoot(TestItem.KeccakA).TestObject;
 
-    private IRetainableNodeRecordBuffer _buffer = null!;
+    private INodeRecordBuffer _buffer = null!;
 
     [SetUp]
     public void SetUp() => _buffer = FlatTestHelpers.NewTestBuffer();
@@ -154,7 +154,7 @@ public class FlatStateReaderTests
     {
         CountingTrieReader trieReader = CountingTrieReader.WithSingleAccountAndSlot(TestItem.AddressA, 1, out Hash256 stateRoot);
         BlockHeader header = Build.A.BlockHeader.WithNumber(5).WithStateRoot(stateRoot).TestObject;
-        using IRetainableNodeRecordBuffer sourceBuffer = FlatTestHelpers.NewTestBuffer();
+        using INodeRecordBuffer sourceBuffer = FlatTestHelpers.NewTestBuffer();
         ResourcePool pool = new(new FlatDbConfig());
         using Snapshot snapshot = pool.CreateSnapshot(StateId.PreGenesis, new StateId(header), ResourcePool.Usage.MainBlockProcessing, sourceBuffer);
         trieReader.AddRootsTo(snapshot, sourceBuffer);
@@ -234,7 +234,7 @@ public class FlatStateReaderTests
                 Assert.That(persisted.TryAcquire(), Is.True);
                 persistedSnapshots = new(new PersistedSnapshotList(1) { persisted }, recordDetailedMetrics: false);
             }
-            return new(snapshots, persistenceReader, false, persistedSnapshots);
+            return new(snapshots, persistenceReader, false, persistedSnapshots, bufferPin: null);
         }
 
         public SnapshotBundle GatherSnapshotBundle(in StateId baseBlock, ResourcePool.Usage usage) => throw new NotSupportedException();
@@ -279,7 +279,7 @@ public class FlatStateReaderTests
             return new CountingTrieReader(addressHash, stateTree, storageTree);
         }
 
-        public void AddRootsTo(Snapshot snapshot, IRetainableNodeRecordBuffer buffer, bool state = true, bool storage = true)
+        public void AddRootsTo(Snapshot snapshot, INodeRecordBuffer buffer, bool state = true, bool storage = true)
         {
             if (state)
             {
@@ -351,7 +351,7 @@ public class FlatStateReaderTests
         public bool IsHistoricalState(in StateId stateId) => false;
 
         public ReadOnlySnapshotBundle GatherReadOnlySnapshotBundle(in StateId baseBlock) =>
-            new(new SnapshotPooledList(0), new NoopPersistenceReader(), false, PersistedSnapshotStack.Empty(false), isHistorical: true);
+            new(new SnapshotPooledList(0), new NoopPersistenceReader(), false, PersistedSnapshotStack.Empty(false), bufferPin: null, isHistorical: true);
 
         public SnapshotBundle GatherSnapshotBundle(in StateId baseBlock, ResourcePool.Usage usage) => throw new NotSupportedException();
         public void FlushCache(CancellationToken cancellationToken) { }

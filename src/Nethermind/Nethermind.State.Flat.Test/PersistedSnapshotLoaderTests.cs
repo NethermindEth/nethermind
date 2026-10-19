@@ -33,7 +33,7 @@ public class PersistedSnapshotLoaderTests
     }
 
     [Test]
-    public void ConversionReleasesPreparationBeforeRegistrationOrAfterArenaFailure([Values] bool failArena)
+    public void ConversionRegistersOnlyWhenTheArenaSucceeds([Values] bool failArena)
     {
         using ForwardingNodeRecordBuffer buffer = new(FlatTestHelpers.NewTestBuffer());
         ResourcePool pool = new(new FlatDbConfig());
@@ -43,15 +43,9 @@ public class PersistedSnapshotLoaderTests
         IArenaManager arena = failArena ? Substitute.For<IArenaManager>() : realArena;
         if (failArena)
         {
-            arena.CreateWriter(Arg.Any<long>(), small: true).Returns(_ =>
-            {
-                Assert.That(buffer.OutstandingReads, Is.GreaterThan(0), "preparation protects records while allocating the arena");
-                throw new IOException("Injected arena allocation failure.");
-            });
+            arena.CreateWriter(Arg.Any<long>(), small: true).Returns(_ => throw new IOException("Injected arena allocation failure."));
         }
         ISnapshotCatalog catalog = Substitute.For<ISnapshotCatalog>();
-        catalog.When(c => c.Add(Arg.Any<CatalogEntry>())).Do(_ =>
-            Assert.That(buffer.OutstandingReads, Is.Zero, "preparation must end before durable registration"));
         using BlobArenaManager blobs = new(Path.Combine(_testDir, "blobs"), 64 * 1024);
         using PersistedSnapshotLoader loader = new(Substitute.For<ISnapshotRepository>(), arena, blobs, catalog,
             new FlatDbConfig { PersistedSnapshotBloomBitsPerKey = 0 }, LimboLogs.Instance);
@@ -59,12 +53,8 @@ public class PersistedSnapshotLoaderTests
         if (failArena) Assert.That(() => loader.ConvertAndRegister(snapshot), Throws.TypeOf<IOException>());
         else loader.ConvertAndRegister(snapshot);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(buffer.OutstandingReads, Is.Zero);
-            if (failArena) catalog.DidNotReceive().Add(Arg.Any<CatalogEntry>());
-            else catalog.Received(1).Add(Arg.Any<CatalogEntry>());
-        }
+        if (failArena) catalog.DidNotReceive().Add(Arg.Any<CatalogEntry>());
+        else catalog.Received(1).Add(Arg.Any<CatalogEntry>());
     }
 
     [Test]
