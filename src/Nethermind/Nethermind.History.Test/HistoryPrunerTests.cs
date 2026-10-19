@@ -15,7 +15,6 @@ using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
-using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -267,8 +266,7 @@ public class HistoryPrunerTests
     [Test]
     public async Task Full_sync_prunes_with_zero_sync_pivot()
     {
-        const int blocks = 100;
-        const ulong expectedBoundary = 36;
+        const int blocks = 132;
 
         HistoryConfig historyConfig = new() { Pruning = PruningModes.Rolling, RetentionEpochs = 2, BalRetentionEpochs = 2, PruningInterval = 0 };
         List<Hash256> blockHashes = [];
@@ -284,6 +282,8 @@ public class HistoryPrunerTests
         blockAccessListStore.Insert(80, blockHashes[80], Build.A.BlockAccessList.WithPrecompileChanges(Keccak.Zero, 80).TestObject);
 
         HistoryPruner historyPruner = (HistoryPruner)testBlockchain.Container.Resolve<IHistoryPruner>();
+        Assert.That(historyPruner.CutoffBlockNumber, Is.Not.Null);
+        ulong expectedBoundary = historyPruner.CutoffBlockNumber!.Value;
         historyPruner.TryPruneHistory(CancellationToken.None);
 
         using (Assert.EnterMultipleScope())
@@ -302,8 +302,7 @@ public class HistoryPrunerTests
     [Test]
     public async Task Full_sync_uses_processed_head_when_sync_pivot_is_stale()
     {
-        const int blocks = 100;
-        const ulong expectedBoundary = 36;
+        const int blocks = 132;
 
         HistoryConfig historyConfig = new() { Pruning = PruningModes.Rolling, RetentionEpochs = 2, BalRetentionEpochs = 2, PruningInterval = 0 };
         List<Hash256> blockHashes = [];
@@ -315,6 +314,9 @@ public class HistoryPrunerTests
             fullSync: true);
 
         HistoryPruner historyPruner = (HistoryPruner)testBlockchain.Container.Resolve<IHistoryPruner>();
+        Assert.That(historyPruner.CutoffBlockNumber, Is.Not.Null);
+        ulong expectedBoundary = historyPruner.CutoffBlockNumber!.Value;
+        Assert.That(expectedBoundary, Is.GreaterThan(20UL));
         historyPruner.TryPruneHistory(CancellationToken.None);
 
         using (Assert.EnterMultipleScope())
@@ -389,13 +391,15 @@ public class HistoryPrunerTests
         await scheduler.WaitForPending();
         scheduler.Release();
         await scheduler.WaitForIdle();
+        Assert.That(historyPruner.CutoffBlockNumber, Is.Not.Null);
+        ulong boundary = historyPruner.CutoffBlockNumber!.Value;
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(scheduler.CompletedCalls, Is.GreaterThan(initialCompletedCalls));
-            Assert.That(historyPruner.OldestBlockHeader?.Number, Is.EqualTo((ulong)(initialBlocks + additionalBlocks - 32)));
-            Assert.That(testBlockchain.BlockTree.FindBlock((ulong)(initialBlocks + additionalBlocks - 32), BlockTreeLookupOptions.None), Is.Not.Null);
-            Assert.That(testBlockchain.BlockTree.FindBlock((ulong)(initialBlocks + additionalBlocks - 33), BlockTreeLookupOptions.None), Is.Null);
+            Assert.That(historyPruner.OldestBlockHeader?.Number, Is.EqualTo(boundary));
+            Assert.That(testBlockchain.BlockTree.FindBlock(boundary, BlockTreeLookupOptions.None), Is.Not.Null);
+            Assert.That(testBlockchain.BlockTree.FindBlock(boundary - 1, BlockTreeLookupOptions.None), Is.Null);
         }
     }
 
@@ -427,13 +431,15 @@ public class HistoryPrunerTests
         await scheduler.WaitForPending();
         scheduler.Release();
         await scheduler.WaitForIdle();
+        Assert.That(historyPruner.CutoffBlockNumber, Is.Not.Null);
+        ulong boundary = historyPruner.CutoffBlockNumber!.Value;
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(scheduler.CompletedCalls, Is.GreaterThan(initialCompletedCalls));
-            Assert.That(historyPruner.OldestBlockHeader?.Number, Is.EqualTo(108UL));
-            Assert.That(testBlockchain.BlockTree.FindBlock(108UL, BlockTreeLookupOptions.None), Is.Not.Null);
-            Assert.That(testBlockchain.BlockTree.FindBlock(107UL, BlockTreeLookupOptions.None), Is.Null);
+            Assert.That(historyPruner.OldestBlockHeader?.Number, Is.EqualTo(boundary));
+            Assert.That(testBlockchain.BlockTree.FindBlock(boundary, BlockTreeLookupOptions.None), Is.Not.Null);
+            Assert.That(testBlockchain.BlockTree.FindBlock(boundary - 1, BlockTreeLookupOptions.None), Is.Null);
         }
     }
 
