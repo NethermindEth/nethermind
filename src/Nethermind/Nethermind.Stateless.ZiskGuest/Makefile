@@ -15,7 +15,7 @@ GUEST_EXTLIB := libziskos
 include $(MAKEFILE_DIR)/../Nethermind.Stateless.Guest/build.mk
 
 # A larger inlining budget and inlinee size limits (values in hex): code size costs
-# a zkVM next to nothing. Measured flat on SP1 and OpenVM, so only this guest sets them.
+# a zkVM next to nothing. Measured flat on OpenVM, which does not set them.
 OPT_FLAGS += \
 	--codegenopt JitInlineBudget=100 \
 	--codegenopt JitExtDefaultPolicyMaxIL=400 \

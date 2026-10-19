@@ -87,6 +87,10 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
     private long _cachedEpoch = -1;
     private long _epoch;
 
+    // Position of the newest non-cache change when its account was allocated for it and no snapshot, commit or
+    // reference-returning read has happened since, so nothing but that change can observe an overwrite of it.
+    private int _overwritableChange = -1;
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private bool IsFrontCacheHit(Address address) =>
         _cachedEpoch == _epoch && _cachedAddress is not null && _cachedAddress.Equals(address);
@@ -125,7 +129,11 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
 
     public bool AccountExists(Address address) => GetThroughCache(address) is not null;
 
-    public Account GetAccount(Address address) => GetThroughCache(address) ?? Account.TotallyEmpty;
+    public Account GetAccount(Address address)
+    {
+        _overwritableChange = -1;
+        return GetThroughCache(address) ?? Account.TotallyEmpty;
+    }
 
     public bool IsDeadAccount(Address address)
     {
@@ -141,6 +149,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
 
     public ref readonly UInt256 GetBalance(Address address)
     {
+        _overwritableChange = -1;
         Account? account = GetThroughCache(address);
         return ref account is not null ? ref account.Balance : ref _zero;
     }
@@ -318,10 +327,9 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         oldBalance = account.Balance;
         UInt256 newBalance = isSubtracting ? account.Balance - balanceChange : account.Balance + balanceChange;
 
-        Account changedAccount = account.WithChangedBalance(newBalance);
         if (_logger.IsTrace) TraceUpdate(address, in balanceChange, isSubtracting, account, in newBalance);
 
-        PushUpdate(address, changedAccount);
+        PushUpdate(address, account, account.Nonce, in newBalance);
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         void TraceTouch(Address address) => _logger.Trace($"Touch {address} (balance)");
@@ -354,14 +362,14 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         _needsStateRootUpdate = true;
         Account account = GetThroughCache(address) ?? ThrowNullAccount(address);
         oldNonce = account.Nonce;
-        Account changedAccount = account.WithChangedNonce(oldNonce + delta);
-        if (_logger.IsTrace) Trace(address, account, changedAccount);
+        ulong newNonce = oldNonce + delta;
+        if (_logger.IsTrace) Trace(address, oldNonce, newNonce);
 
-        PushUpdate(address, changedAccount);
+        PushUpdate(address, account, newNonce, in account.Balance);
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        void Trace(Address address, Account account, Account changedAccount)
-            => _logger.Trace($"Update {address} N {account.Nonce.ToHexString(skipLeadingZeros: true)} -> {changedAccount.Nonce.ToHexString(skipLeadingZeros: true)}");
+        void Trace(Address address, ulong oldNonce, ulong newNonce)
+            => _logger.Trace($"Update {address} N {oldNonce.ToHexString(skipLeadingZeros: true)} -> {newNonce.ToHexString(skipLeadingZeros: true)}");
 
         [DoesNotReturn, StackTraceHidden]
         static Account ThrowNullAccount(Address address)
@@ -372,14 +380,14 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
     {
         _needsStateRootUpdate = true;
         Account? account = GetThroughCache(address) ?? ThrowNullAccount(address);
-        Account changedAccount = account.WithChangedNonce(account.Nonce - delta);
-        if (_logger.IsTrace) Trace(address, account, changedAccount);
+        ulong newNonce = account.Nonce - delta;
+        if (_logger.IsTrace) Trace(address, account.Nonce, newNonce);
 
-        PushUpdate(address, changedAccount);
+        PushUpdate(address, account, newNonce, in account.Balance);
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        void Trace(Address address, Account account, Account changedAccount)
-            => _logger.Trace($"  Update {address} N {account.Nonce.ToHexString(skipLeadingZeros: true)} -> {changedAccount.Nonce.ToHexString(skipLeadingZeros: true)}");
+        void Trace(Address address, ulong oldNonce, ulong newNonce)
+            => _logger.Trace($"  Update {address} N {oldNonce.ToHexString(skipLeadingZeros: true)} -> {newNonce.ToHexString(skipLeadingZeros: true)}");
 
         [DoesNotReturn, StackTraceHidden]
         static Account ThrowNullAccount(Address address)
@@ -442,6 +450,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
     {
         int currentPosition = _changes.Count - 1;
         _protectedPosition = currentPosition;
+        _overwritableChange = -1;
         if (_logger.IsTrace) Trace(currentPosition);
         if (newTransactionStart && currentPosition != Resettable.EmptyPosition)
         {
@@ -460,7 +469,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
     /// while preserving lightweight cache-only entries.
     /// </summary>
     /// <param name="snapshot">Zero-based index representing the position in the change log to restore to.
-    /// Must be a position returned by <see cref="TakeSnapshot"/> or the current last change index: updates after the
+    /// Must be a position returned by <see cref="TakeSnapshot"/>, -1 or the current last change index: updates after the
     /// newest snapshot are coalesced, so any other position can fall inside a rewritten change.</param>
     /// <exception cref="InvalidOperationException">
     /// Thrown if <paramref name="snapshot"/> is beyond the current position,
@@ -471,6 +480,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         if (snapshot > lastIndex) ThrowCannotRestore(lastIndex, snapshot);
         Debug.Assert(snapshot <= _protectedPosition || snapshot == lastIndex, "Restoring to a position no snapshot protects");
         if (_logger.IsTrace) Trace(snapshot);
+        _overwritableChange = -1;
         // Ahead of the no-op check: an unanchored re-stage sits one past the log, so it is unwound
         // even by a restore to the current position.
         if (_codeInsertJournal.Count > 0) RestoreCodeInserts(snapshot);
@@ -637,6 +647,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         // Committed code can no longer be reverted, and the change-log positions it was journaled
         // against are about to be discarded.
         _codeInsertJournal.Clear();
+        _overwritableChange = -1;
 
         Task codeFlushTask = !commitRoots || _codeBatch is null || _codeBatch.Count == 0
             ? Task.CompletedTask
@@ -1081,6 +1092,29 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
     private void PushUpdate(Address address, Account account)
         => Push(address, account, ChangeType.Update, coalesce: true);
 
+    /// <summary>Records <paramref name="account"/>, the current value of <paramref name="address"/>, with a new nonce and balance.</summary>
+    /// <remarks>
+    /// Overwrites the account in place when it is the one at <see cref="_overwritableChange"/>: no snapshot can restore
+    /// to its value and no caller holds it, so the journal would never read it back. Otherwise allocates a new account.
+    /// </remarks>
+    private void PushUpdate(Address address, Account account, ulong nonce, in UInt256 balance)
+    {
+        if (_overwritableChange != -1 && ReferenceEquals(_changes[_overwritableChange].Account, account))
+        {
+            Debug.Assert(_changes[_overwritableChange].Address == address);
+            Unsafe.AsRef(in account.Nonce) = nonce;
+            Unsafe.AsRef(in account.Balance) = balance;
+            return;
+        }
+
+        Account changedAccount = nonce == account.Nonce ? account.WithChangedBalance(balance) : account.WithChangedNonce(nonce);
+        Debug.Assert(changedAccount.Balance == balance);
+        int count = _changes.Count;
+        PushUpdate(address, changedAccount);
+        // Only an appended change holds changedAccount; otherwise the tail may be another address's cached account.
+        if (_changes.Count > count) _overwritableChange = _changes.Count - 1;
+    }
+
     private void PushTouch(Address address, Account account, IReleaseSpec releaseSpec, bool isZero)
     {
         if (isZero && address == releaseSpec.Eip158IgnoredAccount) return;
@@ -1098,6 +1132,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
     /// </param>
     private void Push(Address address, Account? touchedAccount, ChangeType changeType, bool coalesce = false)
     {
+        if (changeType != ChangeType.JustCache) _overwritableChange = -1;
         ref int head = ref _intraTxCache.GetValueRefOrAddDefault(address, out bool exists);
         if (changeType == ChangeType.Touch
             && exists && _changes[head].ChangeType == ChangeType.Touch)
@@ -1175,6 +1210,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
     public void Reset(bool resetBlockChanges = true)
     {
         if (_logger.IsTrace) Trace();
+        _overwritableChange = -1;
         // The changes being discarded are exactly the ones the journal covers (it is cleared on every
         // commit), so unwind it on both paths: otherwise its code either reaches CodeDb unreferenced
         // or, when the batch is dropped below, stays counted as written without ever being written.
@@ -1213,14 +1249,13 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
     {
         _needsStateRootUpdate = true;
         Account account = GetThroughCache(address) ?? ThrowNullAccount(address);
-        Account changedAccount = account.WithChangedNonce(nonce);
-        if (_logger.IsTrace) Trace(address, account, changedAccount);
+        if (_logger.IsTrace) Trace(address, account.Nonce, nonce);
 
-        PushUpdate(address, changedAccount);
+        PushUpdate(address, account, nonce, in account.Balance);
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        void Trace(Address address, Account account, Account changedAccount)
-            => _logger.Trace($"Update {address} N {account.Nonce} -> {changedAccount.Nonce}");
+        void Trace(Address address, ulong oldNonce, ulong newNonce)
+            => _logger.Trace($"Update {address} N {oldNonce} -> {newNonce}");
 
         [DoesNotReturn, StackTraceHidden]
         static Account ThrowNullAccount(Address address)

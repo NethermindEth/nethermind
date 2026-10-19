@@ -268,7 +268,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
 
         if (_isFrameTx)
         {
-            // A frame transaction fails at the transaction level — a POST_TX frame failing before dispatch
+            // A frame transaction fails at the transaction level — an ASSERT frame failing before dispatch
             // reports no EVM error at all — so the reason the processor gives is the root's.
             firstCallFrame.Error = error ?? EvmExceptionType.Revert.GetEvmExceptionDescription();
         }
@@ -400,7 +400,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
 
                 if (_config.WithLog && frameReceipt.Logs.Length == 0)
                 {
-                    // The receipt is what the frame committed: an unrolled atomic batch and a POST_TX
+                    // The receipt is what the frame committed: an unrolled atomic batch and an ASSERT
                     // rollback both keep the frame's success status while dropping its logs.
                     ClearFailedLogs(frameCallFrame, parentFailed: true);
                 }
@@ -423,7 +423,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
     private NativeCallTracerCallFrame BuildUndispatchedFrame(int frameIndex, TxFrameReceipt frameReceipt)
     {
         TxFrame frame = _frames![frameIndex];
-        bool isStatic = frame.Mode is FrameMode.Verify or FrameMode.PostTx;
+        bool isStatic = frame.Mode is FrameMode.Verify or FrameMode.Assert;
         return new NativeCallTracerCallFrame
         {
             Type = isStatic ? Instruction.STATICCALL : Instruction.CALL,

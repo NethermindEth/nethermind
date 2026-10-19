@@ -138,6 +138,7 @@ internal class FrameTxSignatureFilterTests
             Assert.That(result, Is.EqualTo(deferred ? AcceptTxResult.FrameSimulationDeferred : AcceptTxResult.Accepted), result.ToString());
             Assert.That(state.FrameSignaturesVerified, Is.EqualTo(!deferred));
             Assert.That(state.FrameValidationYielded, Is.EqualTo(refetchable));
+            Assert.That(state.FrameValidationRan, Is.EqualTo(!deferred), "a yield is not charged to the sending peer's validation budget");
             Assert.That(Metrics.PendingTransactionsFrameTxSignatureInvalid, Is.EqualTo(invalid), "a yield is not a verdict on the signature");
             Assert.That(Metrics.FrameTxSignatureVerificationsPreempted, Is.EqualTo(deferred ? preempted + 1 : preempted));
         }

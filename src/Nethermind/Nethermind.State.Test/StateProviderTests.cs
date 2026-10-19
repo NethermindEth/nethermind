@@ -718,8 +718,102 @@ public class StateProviderTests(bool useFlat)
         Assert.That(provider.GetNonce(_address1), Is.EqualTo(0UL));
         Assert.That(provider.GetBalance(_address1), Is.EqualTo(UInt256.One));
         Assert.That(provider.GetCode(_address1), Is.SequenceEqualTo(Array.Empty<byte>()));
-        provider.Restore(new Snapshot(Snapshot.Storage.Empty, -1));
+        provider.Restore(Snapshot.Empty);
         Assert.That(provider.AccountExists(_address1), Is.EqualTo(false));
+    }
+
+    [Test]
+    public void Consecutive_updates_restore_to_every_snapshot_between_them()
+    {
+        using Context ctx = new(useFlat, UnavailableStateHeaderProvider.Instance);
+        IWorldState provider = ctx.WorldState;
+        using IDisposable _ = provider.BeginScope(IWorldState.PreGenesis);
+        provider.CreateAccount(_address1, 10);
+        provider.Commit(Frontier.Instance);
+
+        Snapshot beforeUpdates = provider.TakeSnapshot();
+        provider.SubtractFromBalance(_address1, 1, Frontier.Instance);
+        provider.IncrementNonce(_address1);
+        Snapshot afterFirstUpdates = provider.TakeSnapshot();
+        provider.AddToBalance(_address1, 4, Frontier.Instance);
+        provider.IncrementNonce(_address1);
+        provider.SubtractFromBalance(_address1, 2, Frontier.Instance);
+
+        Assert.That(provider.TakeSnapshot().StateSnapshot, Is.EqualTo(afterFirstUpdates.StateSnapshot + 1), "updates after the first overwrite it in place");
+        Assert.That(provider.GetBalance(_address1), Is.EqualTo((UInt256)11));
+        Assert.That(provider.GetNonce(_address1), Is.EqualTo(2UL));
+        provider.Restore(afterFirstUpdates);
+        Assert.That(provider.GetBalance(_address1), Is.EqualTo((UInt256)9));
+        Assert.That(provider.GetNonce(_address1), Is.EqualTo(1UL));
+        provider.Restore(beforeUpdates);
+        Assert.That(provider.GetBalance(_address1), Is.EqualTo((UInt256)10));
+        Assert.That(provider.GetNonce(_address1), Is.EqualTo(0UL));
+    }
+
+    [Test]
+    public void Update_after_a_cold_read_of_another_account_is_committed()
+    {
+        Address coinbase = TestItem.AddressB;
+        Hash256 expectedRoot;
+        using (Context expectedCtx = new(useFlat, UnavailableStateHeaderProvider.Instance))
+        {
+            IWorldState expected = expectedCtx.WorldState;
+            using IDisposable _ = expected.BeginScope(IWorldState.PreGenesis);
+            expected.CreateAccount(_address1, 6);
+            expected.CreateAccount(coinbase, 13);
+            expected.Commit(Frontier.Instance);
+            expected.CommitTree(0);
+            expectedRoot = expected.StateRoot;
+        }
+
+        using Context ctx = new(useFlat, UnavailableStateHeaderProvider.Instance);
+        IWorldState provider = ctx.WorldState;
+        using IDisposable scope = provider.BeginScope(IWorldState.PreGenesis);
+        provider.CreateAccount(_address1, 10);
+        provider.CreateAccount(coinbase, 10);
+        provider.Commit(Frontier.Instance);
+        provider.CommitTree(0);
+
+        // Sender pays, the cold coinbase read appends its cached account as the tail, then refund and fee.
+        provider.TakeSnapshot(newTransactionStart: true);
+        provider.SubtractFromBalance(_address1, 5, Frontier.Instance);
+        provider.GetBalance(coinbase);
+        provider.AddToBalance(_address1, 1, Frontier.Instance);
+        provider.AddToBalance(coinbase, 3, Frontier.Instance);
+        provider.Commit(Frontier.Instance);
+        provider.CommitTree(1);
+
+        Assert.That(provider.StateRoot, Is.EqualTo(expectedRoot));
+    }
+
+    [Test]
+    public void Updates_do_not_change_an_account_value_already_handed_out([Values] bool asBalanceReference)
+    {
+        using Context ctx = new(useFlat, UnavailableStateHeaderProvider.Instance);
+        IWorldState provider = ctx.WorldState;
+        using IDisposable _ = provider.BeginScope(IWorldState.PreGenesis);
+        provider.CreateAccount(_address1, 1);
+        provider.Commit(Frontier.Instance);
+        provider.AddToBalance(_address1, 1, Frontier.Instance);
+
+        if (asBalanceReference)
+        {
+            ref readonly UInt256 balance = ref provider.GetBalance(_address1);
+            provider.AddToBalance(_address1, 1, Frontier.Instance);
+            provider.IncrementNonce(_address1);
+            Assert.That(balance, Is.EqualTo((UInt256)2));
+        }
+        else
+        {
+            Account account = ((WorldState)provider).GetAccount(_address1);
+            provider.AddToBalance(_address1, 1, Frontier.Instance);
+            provider.IncrementNonce(_address1);
+            Assert.That(account.Balance, Is.EqualTo((UInt256)2));
+            Assert.That(account.Nonce, Is.EqualTo(0UL));
+        }
+
+        Assert.That(provider.GetBalance(_address1), Is.EqualTo((UInt256)3));
+        Assert.That(provider.GetNonce(_address1), Is.EqualTo(1UL));
     }
 
     [Test(Description = "It was failing before as touch was marking the accounts as committed but not adding to trace list")]
