@@ -176,7 +176,7 @@ public class SnapshotBundleWarmerTests
         using WarmedNodeLog warmed = new(1);
         ulong pointer;
         if (inBuffer) pointer = _buffer.AppendRecordFromRlp(null, TreePath.Empty, hash, rlp, []);
-        else Assert.That(warmed.TryAppend(null, TreePath.Empty, hash, rlp, out _, out pointer), Is.True);
+        else warmed.Append(null, TreePath.Empty, hash, rlp, [], out _, out pointer);
         (long Hits, long Misses, long IdleHits, long IdleMisses) before = WarmedCacheCounts();
 
         DictionaryNodeSource source = new(new Dictionary<TreePath, byte[]>(), warmed, null);
@@ -213,7 +213,7 @@ public class SnapshotBundleWarmerTests
         TransientResource rented = _pool.GetCachedResource(usage);
         try
         {
-            Assert.That(rented.WarmedNodeLog.TryAppend(address, TreePath.Empty, hash, rlp, out _, out _), Is.True);
+            rented.WarmedNodeLog.Append(address, TreePath.Empty, hash, rlp, [], out _, out _);
         }
         finally
         {

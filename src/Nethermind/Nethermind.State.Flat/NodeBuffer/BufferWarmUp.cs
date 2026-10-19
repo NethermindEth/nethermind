@@ -94,7 +94,7 @@ internal static class BufferWarmUp
             pointers.Clear();
             if (frame.ChildSlot >= 0) pointers[frame.ChildSlot] = childPointer;
             if (frame.SiblingSlot >= 0) pointers[frame.SiblingSlot] = frame.SiblingPointer;
-            warmed.AppendVerified(address, frame.Path, frame.Hash, frame.Rlp(scratch), frame.Kind, frame.HashMask, pointers, out _, out childPointer);
+            warmed.Append(address, frame.Path, frame.Hash, frame.Rlp(scratch), pointers, out _, out childPointer);
         }
     }
 
@@ -163,9 +163,7 @@ internal static class BufferWarmUp
             Metrics.IncrementWarmedNodeCacheMisses();
             int offset = scratch.Count;
             if (!TryLoadRlp(reader, address, siblingPath, CopyRlp, scratch)) return;
-            ReadOnlySpan<byte> rlp = scratch.AsSpan()[offset..];
-            if (!NodeRecordCodec.TryMeasure(rlp, out NodeRecordKind kind, out ushort hashMask)) return;
-            warmed.AppendVerified(address, siblingPath, sibling.Data, rlp, kind, hashMask, [], out _, out pointer);
+            warmed.Append(address, siblingPath, sibling.Data, scratch.AsSpan()[offset..], [], out _, out pointer);
         }
 
         branch.SiblingSlot = siblingSlot;

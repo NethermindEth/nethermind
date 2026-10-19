@@ -221,9 +221,8 @@ internal class NodeRecordBulkSetTests
         DictionaryNodeSource source = new(new Dictionary<TreePath, byte[]>(), warmed, null);
         TrieRoot root = BulkSet(original, source, null, TrieRoot.Empty, [(key, ExistingValue)], false);
         byte[] rlp = original.GetRecord(root.Pointer).Rlp.ToArray();
-        warmed.TryAppend(null, TreePath.Empty, root.Hash, rlp, out _, out ulong pointer);
-        byte[] otherRlp = NodeRecordBufferTests.Leaf(1, 8);
-        warmed.TryAppend(null, TreePath.Empty, ValueKeccak.Compute(otherRlp), otherRlp, out _, out _);
+        // Indexed off the root's position, so only the supplied pointer finds it.
+        warmed.Append(null, TreePath.FromHexString("1"), root.Hash, rlp, [], out _, out ulong pointer);
         TrieRoot temporaryRoot = new(root.Hash, pointer);
 
         ulong before = Frontier(buffer);

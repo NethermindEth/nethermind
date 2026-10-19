@@ -69,7 +69,7 @@ public class TransientResourceTests
         for (byte value = 0; value < nodeCount; value++)
         {
             byte[] rlp = FlatTestHelpers.LeafRlp(value);
-            warmedNodeLog.TryAppend(null, TreePath.Empty.Append(value), ValueKeccak.Compute(rlp), rlp, out _, out ulong pointer);
+            warmedNodeLog.Append(null, TreePath.Empty.Append(value), ValueKeccak.Compute(rlp), rlp, [], out _, out ulong pointer);
             if (value == 0) originalPointer = pointer;
         }
 
@@ -78,7 +78,7 @@ public class TransientResourceTests
         byte[] originalRlp = FlatTestHelpers.LeafRlp(0);
         ValueHash256 originalHash = ValueKeccak.Compute(originalRlp);
         bool foundAfterReset = warmedNodeLog.TryGet(null, TreePath.Empty.Append(0), out _, out _);
-        warmedNodeLog.TryAppend(null, TreePath.Empty.Append(0), originalHash, originalRlp, out _, out ulong newPointer);
+        warmedNodeLog.Append(null, TreePath.Empty.Append(0), originalHash, originalRlp, [], out _, out ulong newPointer);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(resource.WarmedNodeLog, Is.SameAs(warmedNodeLog));

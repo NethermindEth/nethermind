@@ -461,7 +461,10 @@ public sealed class SnapshotBundle : IDisposable
     private readonly ref struct PersistedNodeInsert
     {
         public static readonly ReadOnlySpanAction<byte, PersistedNodeInsert> Insert = static (rlp, insert) =>
-            insert._inserted = insert._warmed.TryAppend(insert._address, insert._path, insert._hash, rlp, out insert._record, out _);
+        {
+            insert._warmed.Append(insert._address, insert._path, insert._hash, rlp, [], out insert._record, out _);
+            insert._inserted = true;
+        };
 
         private readonly WarmedNodeLog _warmed;
         private readonly Hash256? _address;
@@ -471,7 +474,7 @@ public sealed class SnapshotBundle : IDisposable
         private readonly ref bool _inserted;
 
         /// <param name="record">Set to the inserted record.</param>
-        /// <param name="inserted">Set to whether the RLP was verified and inserted.</param>
+        /// <param name="inserted">Set to whether the RLP was inserted.</param>
         public PersistedNodeInsert(WarmedNodeLog warmed, Hash256? address, ref readonly TreePath path, ref readonly ValueHash256 hash,
             ref NodeRecord record, ref bool inserted)
         {

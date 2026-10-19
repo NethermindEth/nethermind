@@ -3,6 +3,8 @@
 
 using System.Buffers.Binary;
 using System.Collections.Concurrent;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -11,7 +13,7 @@ using Nethermind.Trie.NodeBuffer;
 
 namespace Nethermind.State.Flat.NodeBuffer;
 
-/// <summary>The trie nodes fetched from persistence for one block, as hash-verified records in a private node-record buffer, also indexed by node position.</summary>
+/// <summary>The trie nodes fetched from persistence for one block, as records in a private node-record buffer, also indexed by node position.</summary>
 /// <remarks>
 /// Pointers carry <see cref="NodeRecordCodec.TransientPointerMask"/>, so <see cref="WarmedNodeRecordBuffer"/> can tell them from the global buffer's.
 /// Transient pointers live only in this log's records and position index: records committed to the global buffer drop them,
@@ -57,29 +59,22 @@ public sealed class WarmedNodeLog : IDisposable
         return false;
     }
 
-    /// <summary>Appends the record of <paramref name="rlp"/>, trusted to be the node of <paramref name="hash"/>, with every child pointer zero.</summary>
-    /// <param name="record">The appended record, or the one already held for the same position.</param>
-    /// <param name="pointer">The pointer to the record, or zero when the RLP is invalid.</param>
-    /// <returns>False when the RLP is not a valid trie node.</returns>
-    public bool TryAppend(Hash256? address, in TreePath path, in ValueHash256 hash, ReadOnlySpan<byte> rlp, out NodeRecord record, out ulong pointer)
-    {
-        if (!NodeRecordCodec.TryMeasure(rlp, out NodeRecordKind kind, out ushort hashMask))
-        {
-            record = default;
-            pointer = 0;
-            return false;
-        }
-
-        AppendVerified(address, path, hash, rlp, kind, hashMask, [], out record, out pointer);
-        return true;
-    }
-
-    /// <summary>Appends the record of verified RLP with the known child pointers, unless the position already holds a record.</summary>
+    /// <summary>Appends the record of the node <paramref name="rlp"/> with the known child pointers, unless the position already holds a record.</summary>
+    /// <remarks>
+    /// The node is trusted to be the one of <paramref name="hash"/>, which only debug builds check. Nodes are appended along a traversal
+    /// from a known root, each read for the hash its parent references, so a correct traversal appends correct nodes and links a correct
+    /// graph. For the same reason, a record read back from the log is not verified either: it is always reached through that traversal.
+    /// </remarks>
     /// <param name="childPointers">Pointers by child slot, or empty to leave every pointer zero.</param>
-    internal void AppendVerified(Hash256? address, in TreePath path, in ValueHash256 hash, ReadOnlySpan<byte> rlp,
-        NodeRecordKind kind, ushort hashMask, ReadOnlySpan<ulong> childPointers, out NodeRecord record, out ulong pointer)
+    /// <param name="record">The appended record, or the one already held for the same position.</param>
+    /// <exception cref="TrieException">The RLP is not a valid trie node.</exception>
+    public void Append(Hash256? address, in TreePath path, in ValueHash256 hash, ReadOnlySpan<byte> rlp, ReadOnlySpan<ulong> childPointers,
+        out NodeRecord record, out ulong pointer)
     {
         if (TryGet(address, path, out record, out pointer)) return;
+
+        Debug.Assert(ValueKeccak.Compute(rlp) == hash, "A traversal only appends the node its parent references.");
+        if (!NodeRecordCodec.TryMeasure(rlp, out NodeRecordKind kind, out ushort hashMask)) ThrowInvalidRlp();
 
         int length = NodeRecordCodec.Length(BitOperations.PopCount(hashMask), rlp.Length);
         ulong localPointer;
@@ -102,6 +97,9 @@ public sealed class WarmedNodeLog : IDisposable
         _pointers[(address, path)] = pointer;
         record = _buffer.GetRecord(localPointer);
     }
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowInvalidRlp() => throw new TrieException("Invalid trie node RLP.");
 
     /// <summary>Empties the position index and releases the records appended so far.</summary>
     /// <remarks>No reader or writer may be running, and no record or pointer handed out before may be used after.</remarks>

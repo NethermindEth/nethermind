@@ -34,10 +34,14 @@ public sealed class DictionaryNodeSource(IReadOnlyDictionary<TreePath, byte[]> n
         if (warmed.TryGet(address, path, out record, out _)) return true;
 
         byte[]? rlp = LoadRlp(path);
-        if (rlp is not null && ValueKeccak.Compute(rlp) == hash) return warmed.TryAppend(address, path, hash, rlp, out record, out _);
+        if (rlp is null || ValueKeccak.Compute(rlp) != hash)
+        {
+            record = default;
+            return false;
+        }
 
-        record = default;
-        return false;
+        warmed.Append(address, path, hash, rlp, [], out record, out _);
+        return true;
     }
 
     /// <param name="buffer">The buffer holding the trie, which the warmed nodes are combined with.</param>

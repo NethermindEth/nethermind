@@ -39,12 +39,11 @@ internal class WarmedNodeLogTests
         byte[] oversizedRlp = NodeRecordBufferTests.Leaf(2, 2 * GenerationBytes);
         TreePath path = Path(0);
 
-        bool appended = warmed.TryAppend(address, path, hash, rlp, out NodeRecord record, out ulong pointer);
-        bool reappended = warmed.TryAppend(address, path, hash, rlp, out _, out ulong repeatedPointer);
+        warmed.Append(address, path, hash, rlp, [], out NodeRecord record, out ulong pointer);
+        warmed.Append(address, path, hash, rlp, [], out _, out ulong repeatedPointer);
         ulong globalPointer = global.AppendRecordFromRlp(address, path, hash, rlp, []);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(appended && reappended, Is.True, "append");
             Assert.That(record.Rlp.ToArray(), Is.EqualTo(rlp), "appended RLP");
             Assert.That(record.Hash, Is.EqualTo(hash), "appended hash");
             Assert.That(repeatedPointer, Is.EqualTo(pointer), "duplicate reuses its pointer");
@@ -53,8 +52,9 @@ internal class WarmedNodeLogTests
             Assert.That(Get(warmed, otherAddress, path), Is.Null, "other address");
             Assert.That(Get(warmed, sameNodeKeyHashAddress, path), Is.Null, "a matching node key hash is not a matching address");
             Assert.That(Get(warmed, address, Path(1)), Is.Null, "other path");
-            Assert.That(warmed.TryAppend(address, Path(3), ValueKeccak.Compute(truncatedExtensionRlp), truncatedExtensionRlp, out _, out _), Is.False, "invalid RLP");
-            Assert.That(warmed.TryAppend(address, Path(4), ValueKeccak.Compute(oversizedRlp), oversizedRlp, out NodeRecord oversized, out _) && oversized.Rlp.SequenceEqual(oversizedRlp), Is.True, "a record larger than a generation");
+            Assert.That(() => warmed.Append(address, Path(3), ValueKeccak.Compute(truncatedExtensionRlp), truncatedExtensionRlp, [], out _, out _), Throws.TypeOf<TrieException>(), "invalid RLP");
+            warmed.Append(address, Path(4), ValueKeccak.Compute(oversizedRlp), oversizedRlp, [], out NodeRecord oversized, out _);
+            Assert.That(oversized.Rlp.ToArray(), Is.EqualTo(oversizedRlp), "a record larger than a generation");
             Assert.That(combined.TryLocate(pointer, out NodeRecord located) && located.Rlp.SequenceEqual(rlp), Is.True, "combined resolves the transient pointer");
             Assert.That(combined.TryLocate(globalPointer, out located) && located.Rlp.SequenceEqual(rlp), Is.True, "combined resolves the global pointer");
             Assert.That(combined.FindRoot(address, hash), Is.Zero, "roots stay global");
@@ -62,12 +62,12 @@ internal class WarmedNodeLogTests
             Assert.That(warmed.TryLocate(globalPointer, out _), Is.False, "the log misses global pointers");
         }
 
-        warmed.TryAppend(address, path, otherHash, otherRlp, out _, out ulong repeatedPositionPointer);
+        warmed.Append(address, path, otherHash, otherRlp, [], out _, out ulong repeatedPositionPointer);
         List<(byte[] Rlp, ulong Pointer)> largeRecords = [];
         for (int i = 0; i < LargeRecordCount; i++)
         {
             byte[] largeRlp = NodeRecordBufferTests.Leaf(i, 400);
-            warmed.TryAppend(address, Path(1000 + i), ValueKeccak.Compute(largeRlp), largeRlp, out _, out ulong largePointer);
+            warmed.Append(address, Path(1000 + i), ValueKeccak.Compute(largeRlp), largeRlp, [], out _, out ulong largePointer);
             largeRecords.Add((largeRlp, largePointer));
         }
 
@@ -86,7 +86,7 @@ internal class WarmedNodeLogTests
             Assert.That(Enumerable.Range(0, LargeRecordCount).Select(i => Get(warmed, address, Path(1000 + i))), Is.All.Null, "nothing remains");
         }
 
-        warmed.TryAppend(address, path, hash, rlp, out _, out ulong resetPointer);
+        warmed.Append(address, path, hash, rlp, [], out _, out ulong resetPointer);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(Get(warmed, address, path), Is.EqualTo(rlp), "reusable after reset");
@@ -106,10 +106,10 @@ internal class WarmedNodeLogTests
         Parallel.For(0, count, i =>
         {
             TreePath path = Path(samePosition ? 0 : i);
-            bool appended = warmed.TryAppend(null, path, hash, rlp, out NodeRecord record, out ulong pointer);
+            warmed.Append(null, path, hash, rlp, [], out NodeRecord record, out ulong pointer);
             bool resolved = warmed.TryLocate(pointer, out NodeRecord located);
             bool indexed = warmed.TryGet(null, path, out NodeRecord current, out _) && current.Rlp.SequenceEqual(rlp);
-            complete[i] = appended && resolved && record.Rlp.SequenceEqual(rlp) && located.Rlp.SequenceEqual(rlp) && indexed;
+            complete[i] = resolved && record.Rlp.SequenceEqual(rlp) && located.Rlp.SequenceEqual(rlp) && indexed;
         });
 
         using (Assert.EnterMultipleScope())
