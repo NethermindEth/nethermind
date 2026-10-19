@@ -9,6 +9,7 @@ using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.Trie;
 using Nethermind.Trie.NodeBuffer;
 using NonBlocking;
@@ -27,6 +28,7 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
     private readonly IFlatDbManager _flatDbManager;
     private readonly KnownHeadersScopeProvider _worldState;
     private readonly INodeRecordBuffer _nodeRecordBuffer;
+    private OverlayNodeRecordBuffer? _overlayNodeRecordBuffer;
     private bool _isDisposed = false;
 
     public FlatOverridableWorldScope(
@@ -55,6 +57,12 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
     public IWorldStateScopeProvider WorldState => _worldState;
     public IStateReader GlobalStateReader { get; }
 
+    /// <remarks>Created on the first scope after a reset and disposed by the next reset, so the global buffer stays pinned only that long.</remarks>
+    private OverlayNodeRecordBuffer WriteBuffer => _overlayNodeRecordBuffer ??= new OverlayNodeRecordBuffer(_nodeRecordBuffer);
+
+    /// <remarks>Without an overlay there are no local snapshots, so the global buffer holds every record a read can reach.</remarks>
+    private INodeRecordBuffer ReadBuffer => (INodeRecordBuffer?)_overlayNodeRecordBuffer ?? _nodeRecordBuffer;
+
     public void ResetOverrides()
     {
         _codeDbOverlay.ClearTempChanges();
@@ -65,6 +73,13 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
         }
 
         _snapshots.Clear();
+        DisposeOverlay();
+    }
+
+    private void DisposeOverlay()
+    {
+        _overlayNodeRecordBuffer?.Dispose();
+        _overlayNodeRecordBuffer = null;
     }
 
     private bool HasStateForBlock(BlockHeader? baseBlock)
@@ -83,7 +98,7 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
         transientResource.ReleaseLease();
     }
 
-    private SnapshotBundle GatherSnapshotBundle(BlockHeader? baseBlock)
+    private SnapshotBundle GatherSnapshotBundle(BlockHeader? baseBlock, INodeRecordBuffer nodeRecordBuffer)
     {
         StateId currentState = new(baseBlock);
 
@@ -112,7 +127,7 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
         // snapshots' negative filter.
         return new SnapshotBundle(
             readOnlySnapshotBundle,
-            _nodeRecordBuffer,
+            nodeRecordBuffer,
             _resourcePool,
             ResourcePool.Usage.ReadOnlyProcessingEnv,
             snapshots,
@@ -128,6 +143,7 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
             kvp.Value.Dispose();
         }
         _snapshots.Clear();
+        DisposeOverlay();
     }
 
     private class OverridableFlatScopeProvider(
@@ -154,7 +170,7 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
             SnapshotBundle snapshotBundle;
             try
             {
-                snapshotBundle = flatOverrideScope.GatherSnapshotBundle(baseBlock);
+                snapshotBundle = flatOverrideScope.GatherSnapshotBundle(baseBlock, flatOverrideScope.WriteBuffer);
             }
             catch (StateUnavailableException)
             {
@@ -178,7 +194,7 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
     {
         public bool TryGetAccount(BlockHeader? baseBlock, Address address, out AccountStruct account)
         {
-            using SnapshotBundle snapshotBundle = overridableWorldScope.GatherSnapshotBundle(baseBlock);
+            using SnapshotBundle snapshotBundle = overridableWorldScope.GatherSnapshotBundle(baseBlock, overridableWorldScope.ReadBuffer);
             if (snapshotBundle.GetAccount(address) is { } acc)
             {
                 account = acc.ToStruct();
@@ -190,7 +206,7 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
 
         public void GetStorage(BlockHeader? baseBlock, Address address, in UInt256 index, out UInt256 value)
         {
-            using SnapshotBundle snapshotBundle = overridableWorldScope.GatherSnapshotBundle(baseBlock);
+            using SnapshotBundle snapshotBundle = overridableWorldScope.GatherSnapshotBundle(baseBlock, overridableWorldScope.ReadBuffer);
             int selfDestructIdx = snapshotBundle.DetermineSelfDestructSnapshotIdx(address);
             snapshotBundle.GetSlot(address, index, selfDestructIdx, out UInt256? slot);
             value = slot.GetValueOrDefault();
@@ -205,7 +221,7 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
         public void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, BlockHeader? baseBlock, VisitingOptions? visitingOptions = null, VisitingStats? diagnostics = null) where TCtx : struct, INodeContext<TCtx>
         {
             StateId stateId = new(baseBlock);
-            using SnapshotBundle snapshotBundle = overridableWorldScope.GatherSnapshotBundle(baseBlock);
+            using SnapshotBundle snapshotBundle = overridableWorldScope.GatherSnapshotBundle(baseBlock, overridableWorldScope.ReadBuffer);
 
             // Mirrors FlatStateReader.RunTreeVisitor: a historical bundle is trie-less, so fail as state-unavailable
             // instead of throwing NotSupportedException mid-walk.

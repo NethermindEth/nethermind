@@ -1,0 +1,124 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Trie;
+using Nethermind.Trie.NodeBuffer;
+
+namespace Nethermind.State.Flat.NodeBuffer;
+
+/// <summary>A node-record buffer that reads a pinned global buffer and keeps its own writes in a private buffer.</summary>
+/// <remarks>
+/// Pointers below the boundary of the global pin taken at construction resolve in the global buffer, and the rest in a private
+/// <see cref="NodeRecordBuffer"/> that takes every write. Private generations are exposed numbered after the pinned global one,
+/// so the two pointer ranges never overlap and the private records are freed with this buffer instead of growing the global one.
+/// Every pin of this buffer also holds the global pin, so the global records it reads outlive <see cref="Dispose"/> until its last pin is released.
+/// </remarks>
+internal sealed class OverlayNodeRecordBuffer : INodeRecordBuffer
+{
+    private const int LocalGenerationBytes = 1024 * 1024;
+
+    private readonly INodeRecordBuffer _global;
+    private readonly INodeRecordBufferPin _globalPin;
+    private readonly INodeRecordBuffer _local = new NodeRecordBuffer(0, LocalGenerationBytes);
+    private readonly ulong _globalBoundary;
+    private readonly ulong _localOffset;
+
+    public OverlayNodeRecordBuffer(INodeRecordBuffer global)
+    {
+        _global = global;
+        _globalPin = global.Pin();
+        _globalBoundary = _globalPin.WriteBoundary;
+        _localOffset = _globalBoundary >> NodeRecordBuffer.OffsetBits << NodeRecordBuffer.OffsetBits;
+    }
+
+    /// <inheritdoc/>
+    public INodeRecordBufferPin Pin() => CombinePin(_local.Pin(), _globalPin);
+
+    /// <inheritdoc/>
+    public IDisposable PinAll()
+    {
+        IDisposable localPin = _local.PinAll();
+        try
+        {
+            return new CompositeDisposable { localPin, _global.PinAll() };
+        }
+        catch
+        {
+            localPin.Dispose();
+            throw;
+        }
+    }
+
+    /// <inheritdoc/>
+    public bool TryLocate(ulong pointer, out NodeRecord record) =>
+        IsLocal(pointer) ? _local.TryLocate(pointer - _localOffset, out record) : _global.TryLocate(pointer, out record);
+
+    /// <inheritdoc/>
+    public NodeRecord GetRecord(ulong pointer) =>
+        IsLocal(pointer) ? _local.GetRecord(pointer - _localOffset) : _global.GetRecord(pointer);
+
+    /// <inheritdoc/>
+    public ulong Reserve(int alignedTotalLength, out Span<byte> bytes) => _local.Reserve(alignedTotalLength, out bytes) + _localOffset;
+
+    /// <inheritdoc/>
+    public void CompleteWrite(ulong basePointer, ReadOnlySpan<byte> bytes, ReadOnlySpan<int> recordOffsets) =>
+        _local.CompleteWrite(basePointer - _localOffset, bytes, recordOffsets);
+
+    /// <inheritdoc/>
+    public ulong FindRoot(Hash256? address, in ValueHash256 root)
+    {
+        ulong pointer = _local.FindRoot(address, root);
+        if (pointer != 0) return pointer + _localOffset;
+
+        // A root the global buffer indexed after the pin would resolve in the private buffer instead.
+        pointer = _global.FindRoot(address, root);
+        return IsLocal(pointer) ? 0 : pointer;
+    }
+
+    /// <inheritdoc/>
+    /// <remarks>A root among the global records is not indexed, as that would write to the global buffer.</remarks>
+    public void SetRoot(Hash256? address, in ValueHash256 root, ulong rootPointer)
+    {
+        if (IsLocal(rootPointer)) _local.SetRoot(address, root, rootPointer - _localOffset);
+    }
+
+    /// <summary>Stops new operations; the private records and the global pin are released once every pin of this buffer is.</summary>
+    public void Dispose()
+    {
+        _local.Dispose();
+        _globalPin.Dispose();
+    }
+
+    private bool IsLocal(ulong pointer) => pointer >= _globalBoundary && !NodeRecordCodec.IsTransient(pointer);
+
+    private OverlayPin CombinePin(INodeRecordBufferPin localPin, INodeRecordBufferPin globalPin)
+    {
+        try
+        {
+            return new OverlayPin(this, localPin, globalPin.Copy());
+        }
+        catch
+        {
+            localPin.Dispose();
+            throw;
+        }
+    }
+
+    private sealed class OverlayPin(OverlayNodeRecordBuffer buffer, INodeRecordBufferPin localPin, INodeRecordBufferPin globalPin) : INodeRecordBufferPin
+    {
+        public INodeRecordBuffer Buffer => buffer;
+
+        public ulong WriteBoundary => localPin.WriteBoundary + buffer._localOffset;
+
+        public INodeRecordBufferPin Copy() => buffer.CombinePin(localPin.Copy(), globalPin);
+
+        public void Dispose()
+        {
+            localPin.Dispose();
+            globalPin.Dispose();
+        }
+    }
+}
