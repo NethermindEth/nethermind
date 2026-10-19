@@ -51,7 +51,8 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     /// <see cref="RecalculateStateRoot"/> afterwards.
     /// </remarks>
     /// <param name="bal">The Block Access List whose last change per field is applied.</param>
-    void ApplyBal(ReadOnlyBlockAccessList bal);
+    /// <param name="cancellationToken">Once cancelled, the apply returns early, leaving the world state partially written and fit only to be discarded.</param>
+    void ApplyBal(ReadOnlyBlockAccessList bal, CancellationToken cancellationToken = default);
     bool IsInScope { get; }
     IWorldStateScopeProvider ScopeProvider { get; }
     new ref readonly UInt256 GetBalance(Address address);
@@ -208,6 +209,17 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     void DecrementNonce(Address address) => DecrementNonce(address, 1);
 
     void SetNonce(Address address, in ulong nonce);
+
+    /// <summary>Same state effect as <see cref="SubtractFromBalance"/> followed by <see cref="SetNonce"/>.</summary>
+    /// <remarks>
+    /// Lets an implementation write the account once. A forwarding implementation that records either call must keep
+    /// this default, as deriving from <c>WorldStateDecorator</c> does, or record both changes itself.
+    /// </remarks>
+    void SubtractFromBalanceAndSetNonce(Address address, in UInt256 balanceChange, ulong nonce, IReleaseSpec spec)
+    {
+        SubtractFromBalance(address, in balanceChange, spec, out _);
+        SetNonce(address, nonce);
+    }
 
     /* snapshots */
     void Commit(IReleaseSpec releaseSpec, IWorldStateTracer tracer, bool isGenesis = false, bool commitRoots = true);

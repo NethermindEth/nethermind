@@ -506,10 +506,10 @@ public class BackgroundTaskSchedulerTests
     /// </summary>
     private static async Task BlockTheOnlyWorker(BackgroundTaskScheduler scheduler, SemaphoreSlim release)
     {
-        DotNetty.Common.Concurrency.TaskCompletionSource running = new();
+        TaskCompletionSource running = new(TaskCreationOptions.RunContinuationsAsynchronously);
         Assert.That(Schedule(scheduler, async (_, token) =>
         {
-            running.TrySetResult(0);
+            running.TrySetResult();
             // Observes the token so disposing the scheduler cannot deadlock on an unreleased semaphore
             await release.WaitAsync(token);
         }), Is.True);

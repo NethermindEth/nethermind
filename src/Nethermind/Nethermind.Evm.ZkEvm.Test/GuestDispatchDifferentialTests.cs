@@ -264,6 +264,56 @@ public class GuestDispatchDifferentialTests
         Assert.That(mismatches, Is.Empty);
     }
 
+    /// <remarks>
+    /// A fused branch or memory step charges all of its opcodes in one test, so each runs at every gas around that charge
+    /// and at both ends of the stack, onto a destination the bitmap does not hold yet and onto one it does.
+    /// </remarks>
+    [Test]
+    public void Fused_steps_charged_at_once_match_the_shared_handlers([Values(
+            "600160021061000A57005B1900",
+            "60016002101561000B57005B1900",
+            "600260011061000A57005B1900",
+            "60026001101561000B57005B1900",
+            "6001600210600957005B1900",
+            "6002600110600957005B1900",
+            "6002600110600357005B1900",
+            "600456005B1900",
+            "600356005B1900",
+            "6000600657005B1900",
+            "6001600657005B1900",
+            "6001600457005B1900",
+            "61000556005B1900",
+            "600061000757005B1900",
+            "600161000757005B1900",
+            "63123456788063123456781461001157005B1900",
+            "63123456788063123456791461001157005B1900",
+            "602A604081521900",
+            "6020602001511900",
+            "808000",
+            "808200",
+            "809100")] string sequence)
+    {
+        byte[] code = Convert.FromHexString(sequence);
+        List<string> mismatches = [];
+        foreach (int head in (int[])[0, 1, 2, 3, 1020, 1021, 1022, 1023, 1024])
+        {
+            CodeInfo untracedInfo = new(code);
+            CodeInfo tracedInfo = new(code);
+            for (ulong gas = 0; gas <= 40 && mismatches.Count < 5; gas++)
+            {
+                Outcome untraced = Run(gas, [], head, new CodeInfo(code), Table.Untraced);
+                Outcome traced = Run(gas, [], head, new CodeInfo(code), Table.Traced);
+                // The codes reused across the gas amounts hold the destination once a run has reached it.
+                Outcome untracedAnalyzed = Run(gas, [], head, untracedInfo, Table.Untraced);
+                Outcome tracedAnalyzed = Run(gas, [], head, tracedInfo, Table.Traced);
+                if (!Matches(untraced, traced) || !Matches(untracedAnalyzed, tracedAnalyzed))
+                    mismatches.Add($"code {sequence} head {head} gas {gas}\n untraced {untraced}\n traced   {traced}\n untraced analyzed {untracedAnalyzed}\n traced analyzed   {tracedAnalyzed}");
+            }
+        }
+
+        Assert.That(mismatches, Is.Empty);
+    }
+
     /// <remarks>POP, CALLDATALOAD and CLZ run checked in every table, so the random programs cannot cover them.</remarks>
     [Test]
     public void Always_checked_bodies_keep_the_carried_head([Values] Table table)
@@ -358,9 +408,9 @@ public class GuestDispatchDifferentialTests
     /// </remarks>
     [Test]
     public void Fused_operands_match_the_shared_handlers(
-        [Values(Instruction.PUSH0, Instruction.PUSH1, Instruction.DUP2, Instruction.DUP3, Instruction.DUP5)] Instruction first,
+        [Values(Instruction.PUSH0, Instruction.PUSH1, Instruction.DUP1, Instruction.DUP2, Instruction.DUP3, Instruction.DUP5)] Instruction first,
         [Values(Instruction.ADD, Instruction.SUB, Instruction.AND, Instruction.OR, Instruction.XOR, Instruction.SAR, Instruction.SHL,
-            Instruction.SHR, Instruction.NOT, Instruction.SIGNEXTEND, Instruction.BYTE, Instruction.SWAP1, Instruction.SWAP2)] Instruction op,
+            Instruction.SHR, Instruction.NOT, Instruction.SIGNEXTEND, Instruction.BYTE, Instruction.SWAP1, Instruction.SWAP2, Instruction.DUP1, Instruction.DUP3)] Instruction op,
         [Range(0, 3)] int seed)
     {
         List<string> mismatches = [];
@@ -555,6 +605,7 @@ public class GuestDispatchDifferentialTests
     {
         List<byte> code = [];
         List<int> destinationImmediates = [];
+        List<int> shortDestinationImmediates = [];
         if (random.Next(6) == 0)
         {
             // Pushes the destinations far enough out for a look-back to decide them.
@@ -624,13 +675,13 @@ public class GuestDispatchDifferentialTests
                             _ => (byte)Instruction.ISZERO
                         });
                         if (random.Next(2) == 0) code.Add((byte)Instruction.ISZERO);
-                        destinationImmediates.Add(code.Count + 1);
-                        code.AddRange([(byte)Instruction.PUSH2, 0, 0, (byte)Instruction.JUMPI]);
+                        AddDestinationPush(random, code, destinationImmediates, shortDestinationImmediates);
+                        code.Add((byte)Instruction.JUMPI);
                         break;
                     }
                 case < 92:
-                    destinationImmediates.Add(code.Count + 1);
-                    code.AddRange([(byte)Instruction.PUSH2, 0, 0, random.Next(2) == 0 ? (byte)Instruction.JUMP : (byte)Instruction.JUMPI]);
+                    AddDestinationPush(random, code, destinationImmediates, shortDestinationImmediates);
+                    code.Add(random.Next(2) == 0 ? (byte)Instruction.JUMP : (byte)Instruction.JUMPI);
                     break;
                 case < 94: code.AddRange([(byte)Instruction.PUSH2, (byte)random.Next(0, 5), (byte)random.Next(256), (byte)Instruction.MSTORE]); break;
                 case < 96: code.AddRange([(byte)Instruction.PUSH2, (byte)random.Next(0, 5), (byte)random.Next(256), (byte)Instruction.MLOAD]); break;
@@ -668,9 +719,32 @@ public class GuestDispatchDifferentialTests
             code[immediate + 1] = (byte)destination;
         }
 
+        List<int> shortJumpDestinations = jumpDestinations.FindAll(static destination => destination <= byte.MaxValue);
+        foreach (int immediate in shortDestinationImmediates)
+        {
+            code[immediate] = (byte)(shortJumpDestinations.Count > 0 && random.Next(5) != 0
+                ? shortJumpDestinations[random.Next(shortJumpDestinations.Count)]
+                : random.Next(0, code.Count + 3));
+        }
+
         // Sometimes cut the last opcode's immediates short.
         if (code.Count > 1 && random.Next(3) == 0) code.RemoveAt(code.Count - 1);
         return code.Count == 0 ? [(byte)Instruction.STOP] : code.ToArray();
+    }
+
+    /// <summary>A PUSH2 of a jump destination, or a PUSH1 of one as code shorter than 256 bytes has it, filled in once the code is complete.</summary>
+    private static void AddDestinationPush(Random random, List<byte> code, List<int> destinationImmediates, List<int> shortDestinationImmediates)
+    {
+        if (random.Next(3) == 0)
+        {
+            shortDestinationImmediates.Add(code.Count + 1);
+            code.AddRange([(byte)Instruction.PUSH1, 0]);
+        }
+        else
+        {
+            destinationImmediates.Add(code.Count + 1);
+            code.AddRange([(byte)Instruction.PUSH2, 0, 0]);
+        }
     }
 
     /// <summary>The opcode pairs the guest fuses, read off the paired untraced table.</summary>

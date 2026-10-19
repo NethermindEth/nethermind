@@ -40,7 +40,7 @@ public class GeneratedAccountChanges(Address address) : IComparable<GeneratedAcc
     public IReadOnlyCollection<GeneratedSlotChanges> StorageChanges => _storageChanges.Values;
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
-    public IReadOnlyCollection<UInt256> StorageReads => _storageReads;
+    public IReadOnlySet<UInt256> StorageReads => _storageReads;
 
     /// <summary>
     /// Slot-key-sorted snapshot; pooled, dispose after use.
