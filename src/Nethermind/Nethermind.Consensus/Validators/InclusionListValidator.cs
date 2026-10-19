@@ -69,6 +69,8 @@ public static class InclusionListValidator
         for (int i = 0; i < il.Length; i++)
         {
             if (included[i]) continue;
+            // EIP-7805 excludes blob transactions from the appendability check.
+            if (il[i].SupportsBlobs) continue;
             // The rules below judge appendability on the account nonce, which a frame transaction does not
             // use (EIP-8369 Profile 2), so reading one through them reports an honest payload as censoring.
             if (il[i].SupportsFrames) continue;
@@ -84,11 +86,6 @@ public static class InclusionListValidator
         // Appendability must match normal execution, so reuse the full well-formedness check, not a subset.
         if (!txValidator.IsWellFormed(tx, spec, block.GasLimit)) return false;
         if (tx.MaxFeePerGas < block.BaseFeePerGas) return false;
-        if (tx.SupportsBlobs
-            && (BlobGasCalculator.CalculateBlobGas(tx) > spec.GasCosts.MaxBlobGasPerBlock - (block.Header.BlobGasUsed ?? 0)
-                || !BlobGasCalculator.TryCalculateFeePerBlobGas(block.Header, spec.BlobBaseFeeUpdateFraction, out UInt256 blobBaseFee)
-                || (tx.MaxFeePerBlobGas ?? UInt256.Zero) < blobBaseFee))
-            return false;
 
         senderCache ??= [];
         ref AccountStruct account = ref CollectionsMarshal.GetValueRefOrAddDefault(senderCache, tx.SenderAddress, out bool cached);
@@ -101,12 +98,6 @@ public static class InclusionListValidator
         // Overflow-checked like TransactionProcessor.BuyGas: an adversarial MaxFeePerGas must not wrap the cost.
         if (UInt256.MultiplyOverflow((UInt256)tx.GasLimit, tx.MaxFeePerGas, out UInt256 txCost)
             || UInt256.AddOverflow(txCost, tx.Value, out txCost))
-            return false;
-
-        // A blob tx must also cover maxFeePerBlobGas × blob gas up front, or it could never have executed.
-        if (tx.SupportsBlobs
-            && (!BlobGasCalculator.TryCalculateBlobMaxFee(tx.BlobVersionedHashes?.Length ?? 0, tx.MaxFeePerBlobGas ?? UInt256.Zero, out UInt256 blobFee)
-                || UInt256.AddOverflow(txCost, blobFee, out txCost)))
             return false;
 
         return SpendableBalance(block, tx.SenderAddress, in account) >= txCost && account.Nonce == tx.Nonce;
