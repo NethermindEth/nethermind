@@ -24,7 +24,7 @@ public class ShutterBlockImprovementContextFactory(
     TimeSpan slotLength) : IBlockImprovementContextFactory
 {
     public IBlockImprovementContext StartBlockImprovementContext(
-        Block currentBestBlock,
+        Block? currentBestBlock,
         BlockHeader parentHeader,
         PayloadAttributes payloadAttributes,
         DateTimeOffset startDateTime,
@@ -77,7 +77,7 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
         IShutterTxSignal shutterTxSignal,
         IShutterConfig shutterConfig,
         SlotTime time,
-        Block currentBestBlock,
+        Block? currentBestBlock,
         BlockHeader parentHeader,
         PayloadAttributes payloadAttributes,
         DateTimeOffset startDateTime,

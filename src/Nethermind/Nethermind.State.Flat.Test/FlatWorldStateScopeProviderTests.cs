@@ -1318,6 +1318,55 @@ public class FlatWorldStateScopeProviderTests
     }
 
     [Test]
+    public void StorageClear_RemovesSlotsWrittenAfterAnEarlierClearInTheSameBlock([Values] bool setInTheClearingBatch)
+    {
+        using TestContext ctx = new();
+        FlatWorldStateScope scope = ctx.Scope;
+
+        Address testAddress = TestItem.AddressA;
+        UInt256 slot1 = 1;
+        UInt256 slot2 = 2;
+        UInt256 value = 0xAA;
+        ctx.PersistenceReader.GetAccount(testAddress).Returns(TestItem.GenerateRandomAccount());
+
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+        using (IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(testAddress, 1))
+        {
+            storageBatch.Set(slot1, value);
+        }
+
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+        using (IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(testAddress, 1))
+        {
+            storageBatch.Clear();
+            if (setInTheClearingBatch) storageBatch.Set(slot2, value);
+        }
+
+        if (!setInTheClearingBatch)
+        {
+            using IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1);
+            using IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(testAddress, 1);
+            storageBatch.Set(slot2, value);
+        }
+
+        // The slot written after the first clear must still be found by the second one.
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+        using (IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(testAddress, 0))
+        {
+            storageBatch.Clear();
+        }
+
+        IWorldStateScopeProvider.IStorageTree storageTree = scope.CreateStorageTree(testAddress);
+        storageTree.Get(slot1, out UInt256 slot1Value);
+        storageTree.Get(slot2, out UInt256 slot2Value);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(slot1Value, Is.EqualTo(UInt256.Zero));
+            Assert.That(slot2Value, Is.EqualTo(UInt256.Zero));
+        }
+    }
+
+    [Test]
     public void TestEmptyStorageRootWhenNoSlots()
     {
         using TestContext ctx = new();
