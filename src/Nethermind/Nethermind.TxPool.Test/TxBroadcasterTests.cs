@@ -868,10 +868,10 @@ public class TxBroadcasterTests
         Assert.That(gossipPolicy.ShouldGossipTransaction(frameBlobTx), Is.EqualTo(versionMatches));
     }
 
-    // EIP-8437: dependency-bearing transactions, those with a dependency frame even if it carries no triples, are never
-    // announced or broadcast; peers discover them through proof wrappers.
+    // EIP-8437: dependency-bearing transactions, those with a dependency frame even if it carries no triples, propagate like
+    // others; each connection carries them only from eth/73.
     [Test]
-    public void Withholds_dependency_bearing_transactions([Values] bool dependencyFrame, [Values] bool withoutTriples)
+    public void Gossips_dependency_bearing_transactions([Values] bool dependencyFrame, [Values] bool withoutTriples)
     {
         SpecDrivenTxGossipPolicy gossipPolicy = new(Substitute.For<IChainHeadInfoProvider>());
         Transaction frameTx = new()
@@ -880,7 +880,7 @@ public class TxBroadcasterTests
             Frames = [new(dependencyFrame ? FrameMode.DepVerify : FrameMode.Verify, FrameFlags.None, null, 0, UInt256.Zero,
                 new byte[withoutTriples ? 0 : Eip8288Constants.DependencyTripleLength])]
         };
-        Assert.That(gossipPolicy.ShouldGossipTransaction(frameTx), Is.EqualTo(!dependencyFrame));
+        Assert.That(gossipPolicy.ShouldGossipTransaction(frameTx), Is.True);
     }
 
     // EIP-8288: a dependency-bearing transaction is held only in the pool, where losing its proof coverage evicts it; a

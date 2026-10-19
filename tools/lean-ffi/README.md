@@ -247,28 +247,37 @@ own key, so proofs under any other key fail.
 
 ## eth/73 proof wrapper propagation
 
-When the EIP-8288 fork is active, the node advertises the placeholder `eth/73` of
-[EIP-8437](https://github.com/ethereum/EIPs/pull/12423), which extends `eth/72` with five
-messages at the placeholder IDs `0x16`–`0x1a`: AnnounceProofWrappers, GetProofWrappers,
-ProofWrappers, GetWrapperEnvelopes and WrapperEnvelopes. Status is unchanged and peers negotiate
-no verifier: each validates under its own target fork.
+When the EIP-8288 fork is active, the node advertises the provisional `eth/73` of
+[EIP-8437](https://github.com/ethereum/EIPs/pull/12423), which extends `eth/72` with three
+messages at the provisional IDs `0x16`–`0x18`: NewProofWrapperHashes, GetProofWrappers and
+ProofWrappers. Status is unchanged and peers negotiate no verifier: each validates under its own
+target fork.
 
 The only object is the canonical hash-only EIP-8288 wrapper
 `[transaction_hashes, mode, [dependencies, proof_content]]`, at most `MAX_WRAPPER_BYTES` (2 MiB).
-A descriptor is `[byte_length, content_hash]` and the object ID is the `content_hash`. Responses
-carry whole objects under the 2 MiB `eth` soft response limit: the first requested item is always
-included, so a ProofWrappers response holds one maximum-sized wrapper. A requester recovers
-missing listed envelopes with GetWrapperEnvelopes from the peer that served or announced the
-wrapper; a holder serves every listed envelope, including ones evicted from its pool, or answers
-empty. No wrapper is announced, served, admitted or reaggregated before full validation.
+An announcement entry is `[mode, length, hash]`; a returned wrapper must match the responding
+peer's announced mode and length as well as the hash. NewProofWrapperHashes and GetProofWrappers
+are bounded before decompression at their largest valid sizes, 2,499 and 2,127 bytes. Responses
+carry whole wrappers under the 2 MiB `eth` soft response limit, always including the first one.
+A wrapper is announced to every `eth/73` peer once validated, except a hash already announced or
+sent on that connection, or one whose transactions the peer's exchanged wrappers already cover
+without more proof bytes or verification work. No wrapper is announced, served, admitted or
+reaggregated before full validation.
 
-Dependency-bearing transactions never travel in Transactions, NewPooledTransactionHashes or
-PooledTransactions, on any `eth` version: they are not broadcast or announced, GetPooledTransactions
-answers them as unavailable, and one received there is not admitted.
+Dependency-bearing transactions propagate on `eth/73` through Transactions and
+NewPooledTransactionHashes alongside their covering wrappers; below `eth/73` they are neither
+broadcast nor announced, and GetPooledTransactions answers them as unavailable. An envelope
+received before its covering wrapper is retained for 60 seconds within byte, count and per-peer
+limits and stands in for recovery, but its transaction is admitted only with the validated
+wrapper. One that expires with no covering wrapper on its connection counts against the sender's
+gossip score, unless the sender's announcements are unresolved or a local limit intervened.
+Missing envelopes are recovered with GetPooledTransactions from peers that announced or served
+the wrapper, checked against any type and size the responding peer announced. A holder serves
+every listed envelope, including ones evicted from its pool, from a bounded wrapper-envelope cache.
 
 Local policy follows the EIP-8437 recommended defaults: 30-second requests, 120-second recovery
 across at most three sources, 8 MiB/s served per peer, four announcements per second per peer and
-1,024 pending descriptors kept for 60 seconds. Received wrappers and recovered envelopes are
+1,024 pending announcements, at most a quarter per peer, kept for 60 seconds. Received wrappers and recovered envelopes are
 charged to per-peer and global byte budgets before allocation. Around a fork that changes the
 verifier, a peer's proof failure is a local refusal from when the local target fork switches to it,
 or the fork after the target fork does, until the head is `Network.ProofWrapperForkGraceBlocks`

@@ -147,8 +147,8 @@ public class ProofWrapperTransportTests
         WrapperPeer liarPeer = node.Connect(liar), honestPeer = node.Connect(honest);
         byte[] wrapper = Wrapper(64, FrameTransaction(1));
         WrapperAnnouncement truth = Describe(wrapper);
-        WrapperAnnouncement lie = WrapperAnnouncement.Decode(Eth73Rlp.EncodeList(Eth73Rlp.EncodeUInt((ulong)wrapper.Length + 1),
-            Eth73Rlp.EncodeBytes(truth.Hash.Bytes)));
+        WrapperAnnouncement lie = WrapperAnnouncement.Decode(Eth73Rlp.EncodeList(Eth73Rlp.EncodeUInt((ulong)truth.Mode),
+            Eth73Rlp.EncodeUInt((ulong)wrapper.Length + 1), Eth73Rlp.EncodeBytes(truth.Hash.Bytes)));
         node.Transport.OnAnnounce(liarPeer, new([lie]));
         node.Transport.OnAnnounce(honestPeer, new([truth]));
         node.Transport.OnProofWrappers(liarPeer, new(liar.Sent<GetProofWrappersMessage>().Single().RequestId, []));
@@ -171,7 +171,8 @@ public class ProofWrapperTransportTests
         for (int message = 0; message < 6; message++)
         {
             WrapperAnnouncement[] batch = [.. Enumerable.Range(0, Eth73Protocol.MaxAnnouncements)
-                .Select(_ => WrapperAnnouncement.Decode(Eth73Rlp.EncodeList(Eth73Rlp.EncodeUInt(64), Eth73Rlp.EncodeBytes(Keccak.Compute($"silent:{announced++}").Bytes))))
+                .Select(_ => WrapperAnnouncement.Decode(Eth73Rlp.EncodeList(Eth73Rlp.EncodeUInt(1), Eth73Rlp.EncodeUInt(64),
+                    Eth73Rlp.EncodeBytes(Keccak.Compute($"silent:{announced++}").Bytes))))
                 .OrderBy(a => a.Hash)];
             node.Transport.OnAnnounce(silentPeer, new(batch));
             node.Tick(TimeSpan.FromSeconds(1));

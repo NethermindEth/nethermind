@@ -67,8 +67,19 @@ internal sealed class FakeWrapperLink(string name = "peer") : IWrapperLink
 
     public void Penalize(string reason) { lock (_penalties) _penalties.Add(reason); }
 
+    private readonly List<string> _scores = [];
+    public void LowerScore(string reason) { lock (_scores) _scores.Add(reason); }
+
+    /// <summary>The type and size this peer announced per transaction hash through NewPooledTransactionHashes.</summary>
+    public Dictionary<Hash256, (TxType Type, int Size)> AnnouncedShapes { get; } = [];
+
+    public bool MatchesAnnouncedShape(Transaction transaction) =>
+        !AnnouncedShapes.TryGetValue(transaction.Hash!, out (TxType Type, int Size) shape)
+        || shape.Type == transaction.Type && shape.Size == transaction.GetLength();
+
     public T[] Sent<T>() where T : P2PMessage { lock (_sent) return [.. _sent.OfType<T>()]; }
     public string[] Penalties { get { lock (_penalties) return [.. _penalties]; } }
+    public string[] ScoreReductions { get { lock (_scores) return [.. _scores]; } }
     public void Clear() { lock (_sent) _sent.Clear(); }
 }
 
@@ -137,7 +148,7 @@ internal static class WrapperTestObjects
     /// <summary>A frame transaction with one leanSPHINCS dependency.</summary>
     public static Transaction FrameTransaction(int seed)
     {
-        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute([(byte)seed]), default);
+        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute(BitConverter.GetBytes(seed)), default);
         Transaction transaction = new()
         {
             Type = TxType.FrameTx,
@@ -157,12 +168,16 @@ internal static class WrapperTestObjects
     public static byte[] PooledItem(Transaction transaction) => TxDecoder.Instance.Encode(transaction, RlpBehaviors.InMempoolForm).Bytes;
 
     /// <summary>A hash-only mode-1 wrapper over <paramref name="transactions"/> with an opaque proof.</summary>
-    public static byte[] Wrapper(int proofBytes, params Transaction[] transactions)
+    public static byte[] Wrapper(int proofBytes, params Transaction[] transactions) => Wrapper(proofBytes, proofBytes, transactions);
+
+    /// <summary>A hash-only mode-1 wrapper whose opaque proof is drawn from <paramref name="seed"/>, so wrappers of equal size
+    /// over the same transactions differ.</summary>
+    public static byte[] Wrapper(int proofBytes, int seed, params Transaction[] transactions)
     {
         Transaction[] sorted = [.. transactions.OrderBy(t => t.Hash!.ToString())];
         List<FrameDependency> deps = Eip8288Dependencies.Canonicalize(sorted.SelectMany(tx => Eip8288Dependencies.ForTransaction(tx, FrameTxSigHash.ComputeValue)));
         byte[] proof = new byte[proofBytes];
-        new Random(proofBytes).NextBytes(proof);
+        new Random(seed).NextBytes(proof);
         return MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
         {
             Transactions = [.. sorted.Select(t => new WrapperTransaction(t.Hash!))],

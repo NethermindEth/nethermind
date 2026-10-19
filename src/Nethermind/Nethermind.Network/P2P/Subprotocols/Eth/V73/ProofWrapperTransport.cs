@@ -39,6 +39,7 @@ public sealed partial class ProofWrapperTransport : IDisposable
     private readonly WrapperStore _store = new();
     private readonly Dictionary<ValueHash256, WrapperFetch> _fetches = [];
     private readonly WrapperBoundedSet _tombstones = new(WrapperTransportLimits.MaxTombstones);
+    private readonly RetainedEnvelopes _retained = new();
     private readonly Queue<WrapperFetch> _validation = [];
     private readonly SemaphoreSlim _verification = new(1, 1);
     private readonly CancellationTokenSource _stop = new();
@@ -95,14 +96,9 @@ public sealed partial class ProofWrapperTransport : IDisposable
             if (_disposed) return null;
             peer = new(link, _clock);
             _peers.Add(peer);
-            // Peers announce the wrappers they offer on connection, within the announcement rate limit.
-            long now = _clock.GetTimestamp();
+            // Peers announce the wrappers they offer on connection, most recent first, within the announcement rate limit.
             foreach (WrapperStore.Entry entry in _store.Recent())
-            {
-                if (peer.ToAnnounce.Count == Eth73Protocol.MaxAnnouncements) break;
-                if (entry.Verifier != _verifier) continue;
-                if (!peer.Known.Contains(entry.Announcement.Hash, now)) peer.ToAnnounce.Add(entry.Announcement);
-            }
+                if (entry.Verifier == _verifier) peer.ToAnnounce.Add(entry.Announcement);
             FlushAnnouncements(peer, outbox);
         }
         outbox.Flush();
@@ -128,6 +124,7 @@ public sealed partial class ProofWrapperTransport : IDisposable
         foreach (WrapperRequest request in peer.Requests.Values) Abandon(peer, request, outbox);
         peer.Requests.Clear();
         peer.ToAnnounce.Clear();
+        _retained.RemoveFrom(peer);
         foreach (WrapperFetch fetch in _fetches.Values) fetch.Sources.Remove(peer);
     }
 
@@ -212,6 +209,7 @@ public sealed partial class ProofWrapperTransport : IDisposable
                 FlushAnnouncements(peer, outbox);
             }
             ExpireFetches(now, outbox);
+            ExpireRetained(now, outbox);
             Schedule(outbox);
             WrapperMetrics.Gauges(_peers.Count, _store.Count, _fetches.Count, _chargedBytes);
         }
@@ -244,6 +242,7 @@ public sealed partial class ProofWrapperTransport : IDisposable
         private List<(WrapperPeer Peer, string Reason)>? _penalties;
         private List<TaskCompletionSource<Transaction[]?>>? _completions;
         private List<CancellationTokenSource>? _cancellations;
+        private List<(WrapperPeer Peer, string Reason)>? _scores;
 
         public void Send(WrapperPeer peer, P2PMessage message)
         {
@@ -252,6 +251,8 @@ public sealed partial class ProofWrapperTransport : IDisposable
         }
 
         public void Penalize(WrapperPeer peer, string reason) => (_penalties ??= []).Add((peer, reason));
+
+        public void LowerScore(WrapperPeer peer, string reason) => (_scores ??= []).Add((peer, reason));
 
         /// <summary>Ends an envelope request without a response, after the lock is released.</summary>
         public void Complete(TaskCompletionSource<Transaction[]?> completion) => (_completions ??= []).Add(completion);
@@ -268,6 +269,7 @@ public sealed partial class ProofWrapperTransport : IDisposable
                 catch (ObjectDisposedException) { }
             }
             foreach (WrapperPeer peer in _recipients ?? []) Drain(peer);
+            foreach ((WrapperPeer peer, string reason) in _scores ?? []) peer.Link.LowerScore(reason);
             foreach ((WrapperPeer peer, string reason) in _penalties ?? []) peer.Link.Penalize(reason);
         }
 
@@ -342,7 +344,8 @@ public sealed partial class ProofWrapperTransport : IDisposable
     {
         if (!IsEnabled || wrapper.Length is 0 or > Eth73Protocol.MaxWrapperBytes) return false;
         ValueHash256[] hashes;
-        try { hashes = WrapperBodies.ParseWrapper(wrapper); }
+        WrapperShape shape;
+        try { hashes = WrapperBodies.ParseWrapper(wrapper, out shape); }
         catch (RlpException) { return false; }
         Dictionary<ValueHash256, byte[]> envelopes = new(hashes.Length);
         long bytes = wrapper.Length;
@@ -351,19 +354,22 @@ public sealed partial class ProofWrapperTransport : IDisposable
             byte[]? envelope = null;
             if (resolved?.TryGetValue(hash, out Transaction? transaction) == true || _txPool.TryGetPendingTransaction(hash, out transaction))
                 envelope = TxDecoder.Instance.Encode(transaction!, RlpBehaviors.SkipTypedWrapping).Bytes;
-            else lock (_gate) if (_store.TryGetEnvelope(hash, out byte[] retained)) envelope = retained;
+            else lock (_gate) if (_store.TryGetEnvelope(hash, out byte[] retained) || _retained.TryGet(hash, out retained)) envelope = retained;
             if (envelope is null || ValueKeccak.Compute(envelope) != hash) return false;
             bytes += envelope.Length;
             if (bytes > WrapperTransportLimits.MaxStoreBytes) return false;
             envelopes[hash] = envelope;
         }
-        WrapperAnnouncement announcement = WrapperAnnouncement.Create(wrapper);
+        WrapperAnnouncement announcement = WrapperAnnouncement.Create(wrapper, shape.Mode);
         Outbox outbox = new();
         lock (_gate)
         {
             // A wrapper validated under a verifier the target fork no longer uses is never offered.
-            if (_disposed || verifier != _verifier || !_store.TryAdd(new(announcement, (byte[])wrapper.Clone(), hashes, envelopes, verifier))) return false;
+            if (_disposed || verifier != _verifier
+                || !_store.TryAdd(new(announcement, (byte[])wrapper.Clone(), hashes, envelopes, verifier, shape))) return false;
             _tombstones.Remove(announcement.Hash);
+            // Envelopes pushed ahead of this wrapper are now covered, and served from the wrapper-envelope cache.
+            foreach (ValueHash256 hash in hashes) _retained.Remove(hash);
             long now = _clock.GetTimestamp();
             foreach (WrapperPeer peer in _peers)
             {
@@ -379,6 +385,8 @@ public sealed partial class ProofWrapperTransport : IDisposable
     }
 
     /// <summary>Sends queued announcements within the per-peer rate limit, at most 64 entries per message.</summary>
+    /// <remarks>EIP-8437 suppression is applied when an announcement is sent, against what the connection has seen by then: a
+    /// hash already announced or sent in either direction, or a wrapper whose transactions the peer already has covered.</remarks>
     private void FlushAnnouncements(WrapperPeer peer, Outbox outbox)
     {
         long now = _clock.GetTimestamp();
@@ -387,8 +395,16 @@ public sealed partial class ProofWrapperTransport : IDisposable
             int count = Math.Min(peer.ToAnnounce.Count, Eth73Protocol.MaxAnnouncements);
             List<WrapperAnnouncement> batch = [];
             foreach (WrapperAnnouncement announcement in peer.ToAnnounce.GetRange(0, count))
-                if (!peer.Known.Contains(announcement.Hash, now) && TryGetOffered(announcement.Hash, out _) && batch.TrueForAll(d => d.Hash != announcement.Hash))
-                    batch.Add(announcement);
+            {
+                if (peer.Known.Contains(announcement.Hash, now) || !TryGetOffered(announcement.Hash, out WrapperStore.Entry entry)
+                    || !batch.TrueForAll(d => d.Hash != announcement.Hash)) continue;
+                if (IsRedundantFor(peer, entry, now))
+                {
+                    WrapperMetrics.Record(WrapperEvent.AnnouncementSuppressed);
+                    continue;
+                }
+                batch.Add(announcement);
+            }
             peer.ToAnnounce.RemoveRange(0, count);
             if (batch.Count == 0) continue;
             batch.Sort(static (a, b) => a.Hash.CompareTo(b.Hash));
@@ -396,6 +412,51 @@ public sealed partial class ProofWrapperTransport : IDisposable
             outbox.Send(peer, new NewProofWrapperHashesMessage([.. batch]));
             WrapperMetrics.Record(WrapperEvent.Announced, batch.Count);
         }
+    }
+
+    /// <summary>Whether wrappers exchanged with <paramref name="peer"/> already cover every transaction of
+    /// <paramref name="entry"/> under the same verifier, with no more proof bytes and no more verification work.</summary>
+    /// <remarks>
+    /// EIP-8437: a wrapper is not announced when its transactions are covered by wrappers sent to or received from the
+    /// recipient, or announced by it, unless it reduces proof bytes or verification work. Only held wrappers can be compared,
+    /// since an announcement alone does not reveal what a wrapper covers. The cover is chosen greedily, preferring wrappers
+    /// that cover more of the remaining transactions and then cheaper ones; verification work prices direct dependencies at
+    /// their EIP-8288 verification gas and a recursive STARK at one leanSTARK verification.
+    /// </remarks>
+    private bool IsRedundantFor(WrapperPeer peer, WrapperStore.Entry entry, long now)
+    {
+        HashSet<ValueHash256> uncovered = [.. entry.Hashes];
+        Dictionary<ValueHash256, WrapperStore.Entry> candidates = [];
+        foreach (ValueHash256 transaction in entry.Hashes)
+            foreach (ValueHash256 wrapperHash in _store.Listing(transaction))
+                if (wrapperHash != entry.Announcement.Hash && !candidates.ContainsKey(wrapperHash)
+                    && _store.TryGet(wrapperHash, out WrapperStore.Entry candidate) && candidate.Verifier == entry.Verifier
+                    && peer.Exchanged.Contains(wrapperHash, now))
+                    candidates[wrapperHash] = candidate;
+        if (candidates.Count == 0) return false;
+        long proofBytes = 0, work = 0;
+        while (uncovered.Count > 0)
+        {
+            WrapperStore.Entry? best = null;
+            int bestCovered = 0;
+            foreach (WrapperStore.Entry candidate in candidates.Values)
+            {
+                int covered = 0;
+                foreach (ValueHash256 transaction in candidate.Hashes) if (uncovered.Contains(transaction)) covered++;
+                if (covered > bestCovered || covered == bestCovered && covered > 0 && best is not null
+                    && candidate.Shape.VerificationWork < best.Shape.VerificationWork)
+                {
+                    best = candidate;
+                    bestCovered = covered;
+                }
+            }
+            if (best is null) return false;
+            candidates.Remove(best.Announcement.Hash);
+            foreach (ValueHash256 transaction in best.Hashes) uncovered.Remove(transaction);
+            proofBytes += best.Shape.ProofBytes;
+            work += best.Shape.VerificationWork;
+        }
+        return entry.Shape.ProofBytes >= proofBytes && entry.Shape.VerificationWork >= work;
     }
 
     // ---- Responder ---------------------------------------------------------------------------------------------------
@@ -409,9 +470,11 @@ public sealed partial class ProofWrapperTransport : IDisposable
             if (peer.Closed) return;
             List<WrapperStore.Entry> served = [];
             int content = 0;
+            long now = _clock.GetTimestamp();
             foreach (ValueHash256 wrapperHash in request.Hashes)
             {
-                if (!TryGetOffered(wrapperHash, out WrapperStore.Entry entry)) continue;
+                // Requests name wrappers the recipient announced; others are answered as unavailable.
+                if (!peer.Known.Contains(wrapperHash, now) || !TryGetOffered(wrapperHash, out WrapperStore.Entry entry)) continue;
                 if (served.Count > 0 && ResponseLength(request.RequestId, content + entry.Wrapper.Length) > Eth73Protocol.SoftResponseLimit) break;
                 served.Add(entry);
                 content += entry.Wrapper.Length;
@@ -423,6 +486,7 @@ public sealed partial class ProofWrapperTransport : IDisposable
             {
                 wrappers[i] = served[i].Wrapper;
                 peer.Known.Add(served[i].Announcement.Hash);
+                peer.Exchanged.Add(served[i].Announcement.Hash);
             }
             if (wrappers.Length > 0) WrapperMetrics.Record(WrapperEvent.Served, wrappers.Length);
             outbox.Send(peer, new ProofWrappersMessage(request.RequestId, wrappers));

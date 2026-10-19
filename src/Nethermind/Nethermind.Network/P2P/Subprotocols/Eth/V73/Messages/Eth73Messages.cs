@@ -74,12 +74,10 @@ public abstract class Eth73MessageSerializer<T>(int maxBytes) : IZeroMessageSeri
 
     protected abstract T Decode(ref Eth73RlpReader fields);
 
-    protected static long ReadRequestId(ref Eth73RlpReader fields)
-    {
-        ulong requestId = fields.ReadUInt64();
-        if (requestId > long.MaxValue) throw new RlpException("Request ID exceeds 63 bits");
-        return (long)requestId;
-    }
+    /// <summary>Reads an EIP-2481 request ID, any 64-bit value, held as its two's-complement <see cref="long"/> so it is echoed
+    /// back unchanged.</summary>
+    /// <remarks>This client issues IDs from 1 upward, so a response under an ID above 2^63 - 1 matches no request.</remarks>
+    protected static long ReadRequestId(ref Eth73RlpReader fields) => unchecked((long)fields.ReadUInt64());
 }
 
 public sealed class NewProofWrapperHashesMessageSerializer() : Eth73MessageSerializer<NewProofWrapperHashesMessage>(Eth73Protocol.MaxNewProofWrapperHashesBytes)

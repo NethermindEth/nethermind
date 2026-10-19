@@ -22,6 +22,13 @@ internal interface IWrapperLink
 
     /// <summary>Disconnects the peer for invalid peer data or a protocol violation.</summary>
     void Penalize(string reason);
+
+    /// <summary>Lowers the peer's transaction-gossip score without disconnecting it.</summary>
+    void LowerScore(string reason);
+
+    /// <summary>Whether a returned transaction agrees with the type and size the peer announced for it through
+    /// NewPooledTransactionHashes; true when it announced none (EIP-5793).</summary>
+    bool MatchesAnnouncedShape(Transaction transaction);
 }
 
 /// <summary>Bounded LRU set, optionally with expiring entries, for known-object sets and tombstones.</summary>
@@ -82,9 +89,12 @@ internal sealed class WrapperRateLimit(double perSecond, TimeProvider clock)
 internal sealed class WrapperStore(long maxBytes = WrapperTransportLimits.MaxStoreBytes, int maxObjects = WrapperTransportLimits.MaxStoreObjects)
 {
     internal sealed class Entry(WrapperAnnouncement announcement, byte[] wrapper, ValueHash256[] hashes, Dictionary<ValueHash256, byte[]> envelopes,
-        Eip8288Verifier verifier)
+        Eip8288Verifier verifier, WrapperShape shape)
     {
         public WrapperAnnouncement Announcement { get; } = announcement;
+
+        /// <summary>Mode, proof bytes and verification work, compared when suppressing redundant announcements.</summary>
+        public WrapperShape Shape { get; } = shape;
 
         /// <summary>The verifier the wrapper was validated under; it is offered only while that is the target fork's.</summary>
         public Eip8288Verifier Verifier { get; set; } = verifier;
@@ -108,6 +118,7 @@ internal sealed class WrapperStore(long maxBytes = WrapperTransportLimits.MaxSto
 
     private readonly Dictionary<ValueHash256, Entry> _objects = [];
     private readonly Dictionary<ValueHash256, ValueHash256> _byEnvelope = [];
+    private readonly Dictionary<ValueHash256, List<ValueHash256>> _byTransaction = [];
     private readonly LinkedList<ValueHash256> _order = new();
 
     public long Bytes { get; private set; }
@@ -134,8 +145,17 @@ internal sealed class WrapperStore(long maxBytes = WrapperTransportLimits.MaxSto
         _objects[wrapperHash] = entry;
         Bytes += entry.Bytes;
         foreach (ValueHash256 transaction in entry.Envelopes.Keys) _byEnvelope[transaction] = wrapperHash;
+        foreach (ValueHash256 transaction in entry.Hashes)
+        {
+            if (!_byTransaction.TryGetValue(transaction, out List<ValueHash256>? holders)) _byTransaction[transaction] = holders = [];
+            holders.Add(wrapperHash);
+        }
         return true;
     }
+
+    /// <summary>The held wrappers listing <paramref name="transaction"/>.</summary>
+    public IReadOnlyList<ValueHash256> Listing(in ValueHash256 transaction) =>
+        _byTransaction.TryGetValue(transaction, out List<ValueHash256>? holders) ? holders : [];
 
     /// <summary>Every held wrapper.</summary>
     public IReadOnlyCollection<Entry> All => _objects.Values;
@@ -154,6 +174,9 @@ internal sealed class WrapperStore(long maxBytes = WrapperTransportLimits.MaxSto
         Bytes -= entry.Bytes;
         foreach (ValueHash256 transaction in entry.Envelopes.Keys)
             if (_byEnvelope.TryGetValue(transaction, out ValueHash256 current) && current == wrapperHash) _byEnvelope.Remove(transaction);
+        foreach (ValueHash256 transaction in entry.Hashes)
+            if (_byTransaction.TryGetValue(transaction, out List<ValueHash256>? holders) && holders.Remove(wrapperHash) && holders.Count == 0)
+                _byTransaction.Remove(transaction);
     }
 }
 
@@ -165,6 +188,17 @@ internal sealed class WrapperPeer(IWrapperLink link, TimeProvider clock)
 
     /// <summary>Object IDs the peer is known to hold, having announced or sent them, or having been told of them.</summary>
     public WrapperBoundedSet Known { get; } = new(WrapperTransportLimits.MaxKnownPerPeer);
+
+    /// <summary>Wrappers sent to or received from this peer, or announced by it: the coverage it already has, against which
+    /// a redundant announcement is suppressed. Unlike <see cref="Known"/>, wrappers this node merely announced are excluded.</summary>
+    public WrapperBoundedSet Exchanged { get; } = new(WrapperTransportLimits.MaxKnownPerPeer);
+
+    /// <summary>When a local limit last refused this peer's announcements, wrappers or envelopes, or one of its announcements ended
+    /// unresolved; envelopes it pushed before then lower no score if they expire uncovered.</summary>
+    public long ScoreExemptAt { get; set; } = long.MinValue;
+
+    /// <summary>Envelopes this peer pushed that await a covering wrapper, held to its share of the retention cache.</summary>
+    public int RetainedEnvelopes { get; set; }
 
     public long LastIssued { get; set; }
 
@@ -246,19 +280,22 @@ internal sealed class WrapperFetch(WrapperAnnouncement announcement, long now)
     /// <summary>Cancels validation and envelope recovery at the recovery deadline or shutdown.</summary>
     public CancellationTokenSource? Processing { get; set; }
 
-    /// <summary>The length each source announced; a response is held to its own server's length, so one peer's
-    /// false length cannot make an honest server's response look mismatched.</summary>
-    private readonly Dictionary<WrapperPeer, int> _lengths = [];
+    /// <summary>The mode and length each source announced; a response is held to its own server's metadata, so one peer's
+    /// false metadata cannot make an honest server's response look mismatched.</summary>
+    private readonly Dictionary<WrapperPeer, (int Mode, int Length)> _metadata = [];
 
-    public void AddSource(WrapperPeer peer, int length)
+    public void AddSource(WrapperPeer peer, int mode, int length)
     {
         if (Sources.Contains(peer) || Sources.Count >= WrapperTransportLimits.MaxSourcesPerWrapper) return;
         Sources.Add(peer);
-        _lengths[peer] = length;
+        _metadata[peer] = (mode, length);
     }
 
     /// <summary>The length <paramref name="peer"/> announced, or the first announcement's.</summary>
-    public int LengthFrom(WrapperPeer peer) => _lengths.TryGetValue(peer, out int length) ? length : Announcement.Length;
+    public int LengthFrom(WrapperPeer peer) => _metadata.TryGetValue(peer, out (int Mode, int Length) metadata) ? metadata.Length : Announcement.Length;
+
+    /// <summary>The mode <paramref name="peer"/> announced, or the first announcement's.</summary>
+    public int ModeFrom(WrapperPeer peer) => _metadata.TryGetValue(peer, out (int Mode, int Length) metadata) ? metadata.Mode : Announcement.Mode;
 
     /// <summary>The next peer to ask for the body, or null once every source was tried or the source budget is spent.</summary>
     public WrapperPeer? NextSource()
@@ -267,5 +304,80 @@ internal sealed class WrapperFetch(WrapperAnnouncement announcement, long now)
         foreach (WrapperPeer peer in Sources)
             if (!peer.Closed && !Tried.Contains(peer)) return peer;
         return null;
+    }
+}
+
+/// <summary>Dependency-bearing envelopes received through transaction messages before a covering wrapper, within finite byte,
+/// count and time limits (EIP-8437). They are never admitted or relayed on their own; a wrapper's validation uses them in place
+/// of GetPooledTransactions.</summary>
+internal sealed class RetainedEnvelopes(long maxBytes = WrapperTransportLimits.MaxRetainedEnvelopeBytes, int maxCount = WrapperTransportLimits.MaxRetainedEnvelopes)
+{
+    internal sealed class Item(ValueHash256 hash, byte[] envelope, WrapperPeer from, long received)
+    {
+        public ValueHash256 Hash { get; } = hash;
+        public byte[] Envelope { get; } = envelope;
+
+        /// <summary>The peer that pushed the envelope, scored if no covering wrapper follows on that connection.</summary>
+        public WrapperPeer From { get; } = from;
+        public long Received { get; } = received;
+        public LinkedListNode<Item>? Node { get; set; }
+    }
+
+    private readonly Dictionary<ValueHash256, Item> _items = [];
+    private readonly LinkedList<Item> _order = new();
+
+    public long Bytes { get; private set; }
+    public int Count => _items.Count;
+
+    public bool Contains(in ValueHash256 hash) => _items.ContainsKey(hash);
+
+    public bool TryGet(in ValueHash256 hash, out byte[] envelope)
+    {
+        envelope = null!;
+        if (!_items.TryGetValue(hash, out Item? item)) return false;
+        envelope = item.Envelope;
+        return true;
+    }
+
+    /// <summary>Adds an envelope unless the cache is full; retained envelopes are not evicted early, since each one's expiry
+    /// may score its sender.</summary>
+    public bool TryAdd(Item item)
+    {
+        if (_items.ContainsKey(item.Hash) || _items.Count >= maxCount || item.Envelope.Length > maxBytes - Bytes) return false;
+        item.Node = _order.AddLast(item);
+        _items[item.Hash] = item;
+        Bytes += item.Envelope.Length;
+        item.From.RetainedEnvelopes++;
+        return true;
+    }
+
+    public Item? Remove(in ValueHash256 hash)
+    {
+        if (!_items.Remove(hash, out Item? item)) return null;
+        _order.Remove(item.Node!);
+        Bytes -= item.Envelope.Length;
+        item.From.RetainedEnvelopes--;
+        return item;
+    }
+
+    /// <summary>Removes and returns the envelopes received at or before <paramref name="cutoff"/>, oldest first.</summary>
+    public List<Item>? RemoveReceivedBy(long cutoff)
+    {
+        List<Item>? expired = null;
+        while (_order.First is { } node && node.Value.Received <= cutoff)
+        {
+            (expired ??= []).Add(node.Value);
+            Remove(node.Value.Hash);
+        }
+        return expired;
+    }
+
+    /// <summary>Forgets a disconnected peer's envelopes: a closed connection can no longer announce coverage.</summary>
+    public void RemoveFrom(WrapperPeer peer)
+    {
+        List<ValueHash256>? hashes = null;
+        foreach (Item item in _items.Values)
+            if (item.From == peer) (hashes ??= []).Add(item.Hash);
+        foreach (ValueHash256 hash in hashes ?? []) Remove(hash);
     }
 }

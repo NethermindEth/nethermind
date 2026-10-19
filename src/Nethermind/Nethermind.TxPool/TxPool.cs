@@ -2121,7 +2121,9 @@ namespace Nethermind.TxPool
                     Metrics.PendingTransactionsEvicted++;
                 }
 
-                _broadcaster.Broadcast(tx, isPersistentBroadcast);
+                // EIP-8437: a pooled dependency-bearing transaction is relayed once, alongside its covering wrapper's
+                // announcement, and never kept for persistent rebroadcast.
+                _broadcaster.Broadcast(tx, isPersistentBroadcast && !Eip8288Dependencies.IsDependencyBearing(tx));
 
                 _hashCache.SetLongTerm(tx.Hash!);
                 NewPending?.Invoke(this, new TxEventArgs(tx));
