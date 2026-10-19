@@ -9,6 +9,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm;
@@ -223,7 +224,9 @@ namespace Nethermind.JsonRpc.Modules.Eth
             protected override bool AcceptsZeroBlobFeeCap => false;
 
             protected override Result<Transaction> Prepare(TransactionForRpc call, BlockHeader header) =>
-                feeDefaults.Error is { } feeDefaultsError ? feeDefaultsError : base.Prepare(call, header);
+                feeDefaults.Error is { } feeDefaultsError ? feeDefaultsError
+                : GetSpec(header) is { IsEip2930Enabled: false } spec ? TxErrorMessages.InvalidTxType(spec.Name)
+                : base.Prepare(call, header);
 
             /// <summary>What filling a request's fee defaults found: the rule it broke, and a filled fee cap wider than 256 bits.</summary>
             public readonly record struct FeeDefaults(string? Error, BigInteger? FeeCapBeyond256Bits);

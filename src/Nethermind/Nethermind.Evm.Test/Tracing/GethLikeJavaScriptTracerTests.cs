@@ -111,6 +111,26 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
     public void Usable_tracer_is_accepted_on_construction(string tracer) =>
         Assert.That(() => GetTracer(tracer).Dispose(), Throws.Nothing);
 
+    [Test]
+    public void Tracer_does_not_request_per_operation_storage_or_return_data()
+    {
+        using GethLikeBlockJavaScriptTracer tracer = new(TestState, Shanghai.Instance,
+            GethTraceOptions.Default with { EnableReturnData = true, Tracer = "{ fault: function(log, db) { }, result: function(ctx, db) { return null } }" });
+        Transaction tx = Build.A.Transaction.SignedAndResolved().TestObject;
+        tracer.StartNewBlockTrace(Build.A.Block.WithTransactions(tx).TestObject);
+
+        ITxTracer txTracer = ((IBlockTracer)tracer).StartNewTxTrace(tx);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(txTracer.IsTracingOpLevelStorage, Is.False);
+            Assert.That(txTracer.IsTracingReturnData, Is.False);
+            Assert.That(txTracer.IsTracingStack, Is.True);
+            Assert.That(txTracer.IsTracingMemory, Is.True);
+        }
+
+        ((IBlockTracer)tracer).EndTxTrace();
+    }
+
     private GethLikeBlockJavaScriptTracer GetTracer(string userTracer) => new(TestState, Shanghai.Instance, GethTraceOptions.Default with { EnableMemory = true, Tracer = userTracer });
 
 
@@ -136,7 +156,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
     [TestCase((Instruction)0x0f, "opcode 0xf not defined")]
     public void Log_opcode_to_string_uses_geth_names(Instruction instruction, string expected)
     {
-        Log.Opcode opcode = new(instruction);
+        Log.Opcode opcode = Log.Opcode.Of(instruction);
 
         Assert.That(opcode.toString(), Is.EqualTo(expected));
     }
@@ -228,6 +248,79 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
         string caller = "1:942921b14f1b1c385cd7e0cc2ef7abe5598c8358";
         string callee = "2:76e68a8696537e4141926f3e528733af9e237d69";
         AssertResult(traces, new[] { caller, callee, caller });
+    }
+
+    [Test]
+    public void log_op_stack_and_contract_are_read_per_step_across_call_frames()
+    {
+        string userTracer = @"{
+                    retVal: [],
+                    step: function(log, db) {
+                        var stack = log.stack.length() > 0 ? log.stack.length() + '/' + log.stack.peek(0) : '0';
+                        this.retVal.push(log.getDepth() + ':' + log.op.toString() + ':' + stack + '|'
+                            + toHex(log.contract.getAddress()) + ':' + toHex(log.contract.getCaller()) + ':' + log.contract.getValue());
+                    },
+                    fault: function(log, db) { },
+                    result: function(ctx, db) { return this.retVal }
+                }";
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
+        TestState.InsertCode(TestItem.AddressC, Prepare.EvmCode
+            .PushData(7)
+            .Op(Instruction.STOP)
+            .Done, Spec);
+        byte[] code = Prepare.EvmCode
+            .Call(TestItem.AddressC, 50000)
+            .Op(Instruction.STOP)
+            .Done;
+        using GethLikeBlockJavaScriptTracer tracer = ExecuteBlock(
+                GetTracer(userTracer),
+                code,
+                MainnetSpecProvider.CancunActivation);
+        using GethLikeTxTrace traces = tracer.BuildResult().First();
+        const string caller = "|942921b14f1b1c385cd7e0cc2ef7abe5598c8358:b7705ae4c6f81b66cdb323c65f4e8133690fc099:1";
+        const string callee = "|76e68a8696537e4141926f3e528733af9e237d69:942921b14f1b1c385cd7e0cc2ef7abe5598c8358:0";
+        AssertResult(traces, new[]
+        {
+            "1:PUSH1:0" + caller,
+            "1:PUSH1:1/0" + caller,
+            "1:PUSH1:2/0" + caller,
+            "1:PUSH1:3/0" + caller,
+            "1:PUSH1:4/0" + caller,
+            "1:PUSH20:5/0" + caller,
+            "1:PUSH2:6/6.788021496459886e+47" + caller,
+            "1:CALL:7/50000" + caller,
+            "2:PUSH1:0" + callee,
+            "2:STOP:1/7" + callee,
+            "1:STOP:1/1" + caller,
+        });
+    }
+
+    [Test]
+    public void log_contract_byte_arrays_are_fresh_on_each_call()
+    {
+        string userTracer = @"{
+                    retVal: [],
+                    step: function(log, db) {
+                        var address = log.contract.getAddress();
+                        var caller = log.contract.getCaller();
+                        this.retVal.push(toHex(address) + ':' + toHex(caller));
+                        address[0] = 0;
+                        caller[0] = 0;
+                    },
+                    fault: function(log, db) { },
+                    result: function(ctx, db) { return this.retVal }
+                }";
+        byte[] code = Prepare.EvmCode
+            .PushData(1)
+            .Op(Instruction.STOP)
+            .Done;
+        using GethLikeBlockJavaScriptTracer tracer = ExecuteBlock(
+                GetTracer(userTracer),
+                code,
+                MainnetSpecProvider.CancunActivation);
+        using GethLikeTxTrace traces = tracer.BuildResult().First();
+        const string expected = "942921b14f1b1c385cd7e0cc2ef7abe5598c8358:b7705ae4c6f81b66cdb323c65f4e8133690fc099";
+        AssertResult(traces, new[] { expected, expected });
     }
 
     [Test]
