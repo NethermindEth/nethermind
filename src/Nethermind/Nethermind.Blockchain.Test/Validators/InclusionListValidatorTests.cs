@@ -109,8 +109,7 @@ public class InclusionListValidatorTests
         Assert.That(InclusionListValidator.IsSatisfied(block, [tx], StateWith(TestItem.AddressA, 10.Ether, 0), spec, _txValidator), Is.True);
     }
 
-    // Withdrawals land after the block's transactions, so judging against the raw post-block balance
-    // would make an honest builder look like a censor.
+    // The supplied state precedes withdrawals.
     [TestCase(0UL, ExpectedResult = false, TestName = "Sender funded before withdrawals is appendable")]
     [TestCase(9_500_000_000UL, ExpectedResult = true, TestName = "Sender funded only by this block's withdrawal is not appendable")]
     public bool Withdrawals_are_not_spendable_by_an_appended_tx(ulong withdrawnGwei)
@@ -129,7 +128,7 @@ public class InclusionListValidatorTests
             .TestObject;
 
         // Withdrawing 9.5 of the 10 ether leaves 0.5, below _validTx's ~1.001 ether cost.
-        return InclusionListValidator.IsSatisfied(block, StateWith(TestItem.AddressA, 10.Ether, 0), _specProvider.GetSpec(block.Header), _txValidator);
+        return InclusionListValidator.IsSatisfied(block, StateWith(TestItem.AddressA, 10.Ether - (UInt256)withdrawnGwei * 1.GWei, 0), _specProvider.GetSpec(block.Header), _txValidator);
     }
 
     // EIP-8037 admits a transaction per dimension, so an entry that fits the state gas the block actually spent

@@ -9,9 +9,12 @@ using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing;
+using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Container;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
@@ -21,6 +24,8 @@ using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
+using Nethermind.Specs.Forks;
+using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
 using Nethermind.Core.Test;
@@ -29,6 +34,70 @@ namespace Nethermind.Consensus.Test.Processing;
 
 public class BranchProcessorVerdictTests
 {
+    [Test]
+    public void Inclusion_list_uses_state_before_post_execution_credits([Values] bool fundedBeforeTransactions, [Values] bool withdrawal, [Values(0UL, 1UL)] ulong nonce)
+    {
+        Transaction tx = Build.A.Transaction.WithNonce(nonce).WithGasLimit(100_000).WithGasPrice(1).WithValue(0)
+            .WithTo(TestItem.AddressB).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        Block block = Build.A.Block.WithNumber(0).WithGasLimit(30_000_000).WithBaseFeePerGas(0)
+            .WithTransactions([])
+            .WithWithdrawals(withdrawal ? [Build.A.Withdrawal.WithRecipient(TestItem.AddressA).WithAmount(1).TestObject] : [])
+            .WithInclusionListTransactions([tx]).TestObject;
+        IExecutionRequestsProcessor requests = Substitute.For<IExecutionRequestsProcessor>();
+        requests.When(processor => processor.ProcessExecutionRequests(Arg.Any<Block>(), Arg.Any<IWorldState>(), Arg.Any<TxReceipt[]>(), Arg.Any<IReleaseSpec>()))
+            .Do(call =>
+            {
+                if (!withdrawal) call.Arg<IWorldState>().AddToBalanceAndCreateIfNotExists(TestItem.AddressA, 1.GWei, Bogota.Instance);
+            });
+        IBlockValidator validator = Substitute.For<IBlockValidator>();
+        validator.ValidateProcessedBlock(Arg.Any<Block>(), Arg.Any<TxReceipt[]>(), Arg.Any<Block>(), out Arg.Any<string>()).Returns(true);
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(Bogota.Instance))
+            .AddSingleton(validator)
+            .AddSingleton(requests)
+            .Build();
+        IMainProcessingContext context = container.Resolve<IMainProcessingContext>();
+        using IDisposable scope = context.WorldState.BeginScope(IWorldState.PreGenesis);
+        if (fundedBeforeTransactions || nonce != 0)
+            context.WorldState.CreateAccount(TestItem.AddressA, fundedBeforeTransactions ? 1.GWei : 0, nonce);
+        context.WorldState.Commit(Bogota.Instance);
+        ValidationResult txValidation = container.Resolve<ITxValidator>().IsWellFormed(tx, Bogota.Instance, block.GasLimit);
+        Assert.That((bool)txValidation, Is.True, txValidation.ToString());
+        Assert.That(InclusionListValidator.IsSatisfied(block, context.WorldState, Bogota.Instance, container.Resolve<ITxValidator>()), Is.EqualTo(!fundedBeforeTransactions), "Before processing");
+
+        Block[] processed = context.BranchProcessor.Process(null, [block], ProcessingOptions.None, NullBlockTracer.Instance);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(processed[0].IsInclusionListSatisfied, Is.EqualTo(!fundedBeforeTransactions));
+            Assert.That(block.IsInclusionListSatisfied, Is.EqualTo(!fundedBeforeTransactions));
+            Assert.That(context.WorldState.GetBalance(TestItem.AddressA), Is.GreaterThanOrEqualTo(1.GWei));
+        }
+    }
+
+    [Test]
+    public void Inclusion_list_requires_sequential_transaction_boundary([Values] bool nonemptyList)
+    {
+        Block block = Build.A.Block.WithNumber(0).WithInclusionListTransactions(nonemptyList ? [Build.A.Transaction.TestObject] : []).TestObject;
+        IBlockProcessor processor = Substitute.For<IBlockProcessor>();
+        ProcessingOptions actualOptions = ProcessingOptions.None;
+        processor.ProcessOne(Arg.Any<Block>(), Arg.Any<ProcessingOptions>(), Arg.Any<IBlockTracer>(), Arg.Any<IReleaseSpec>(), Arg.Any<CancellationToken>())
+            .Returns(call =>
+            {
+                actualOptions = call.Arg<ProcessingOptions>();
+                processor.TransactionsExecuted += Raise.Event<Action>();
+                return (block, Array.Empty<TxReceipt>());
+            });
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(Bogota.Instance))
+            .AddSingleton(processor)
+            .Build();
+
+        container.Resolve<IMainProcessingContext>().BranchProcessor.Process(null, [block], ProcessingOptions.None, NullBlockTracer.Instance);
+
+        Assert.That(actualOptions.ContainsFlag(ProcessingOptions.ForceSequentialBlockAccessList), Is.EqualTo(nonemptyList));
+    }
+
     [Test]
     public async Task Concurrent_processing_uses_invocation_worker_groups([Values] bool readOnly, [Values] bool ambient)
     {

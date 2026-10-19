@@ -42,7 +42,8 @@ public sealed class FinalizedBlockAccessListProcessor(
     {
         const ProcessingOptions excluded = ProcessingOptions.ReadOnlyChain | ProcessingOptions.ForceProcessing
             | ProcessingOptions.NoValidation | ProcessingOptions.DoNotUpdateHead | ProcessingOptions.ForceSequentialBlockAccessList;
-        if ((options & excluded) != 0 || blockTracer != NullBlockTracer.Instance || !policy.CanReconstruct(block.Header))
+        if ((options & excluded) != 0 || block.InclusionListTransactions is { Length: > 0 }
+            || blockTracer != NullBlockTracer.Instance || !policy.CanReconstruct(block.Header))
             return inner.ProcessOne(block, options, blockTracer, spec, token);
 
         // Queued processing attaches a stored list only when it matches the header's commitment.
