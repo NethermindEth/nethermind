@@ -368,6 +368,7 @@ public sealed class PbtSnapshotBundle(
         PbtSnapshot snapshot = new(from, to, treeRoot, WriteBuffer, resourcePool, usage);
         snapshot.TryLease();
         snapshots.Add(snapshot);
+        Metrics.ObserveGroupLog(NodeGroupLog);
         _hintedAccounts.Clear();
         ReleasePersistedNodeGroups();
         ReturnReplacedRuns();

@@ -14,11 +14,13 @@ using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Int256;
 using Nethermind.Monitoring.Config;
 using Nethermind.Pbt;
+using Nethermind.Pbt.NodeLog;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Pbt.Common;
 using Nethermind.State.Pbt.Persistence;
 using Nethermind.State.Pbt.PersistedSnapshots;
+using Nethermind.State.Pbt.ScopeProvider;
 using Nethermind.State.Pbt.Snapshot;
 using NSubstitute;
 using NUnit.Framework;
@@ -61,6 +63,30 @@ public class PbtMetricsTests
         Metrics.PbtRootHashTime = _originalRootHashTime;
         Metrics.PbtPrepareLeafChangesTime = _originalPrepareLeafChangesTime;
         Metrics.PbtTrieUpdaterTime = _originalTrieUpdaterTime;
+    }
+
+    [Test]
+    [NonParallelizable]
+    public async Task Collected_snapshots_report_the_group_log()
+    {
+        await using PbtTestContext context = new();
+        using (PbtWorldStateScope scope = context.BeginScope(null))
+        {
+            using (IWorldStateScopeProvider.IWorldStateWriteBatch batch = scope.StartWriteBatch(1)) batch.Set(TestItem.AddressA, new Account(1, 100));
+            scope.Commit(1);
+        }
+        PbtSnapshotContent probe = context.ResourcePool.GetSnapshotContent(PbtResourcePool.Usage.MainBlockProcessing);
+        PbtGroupLog log = probe.NodeGroupLog;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Metrics.PbtGroupLogGenerations, Is.EqualTo(log.GenerationCount).And.GreaterThan(0));
+            Assert.That(Metrics.PbtGroupLogMemory, Is.EqualTo(log.ResidentBytes).And.GreaterThan(0));
+            Assert.That(Metrics.PbtGroupLogCompressedMemory, Is.EqualTo(log.CompressedBytes));
+            Assert.That(Metrics.PbtGroupLogCompressedGenerations, Is.EqualTo(log.CompressedGenerationCount));
+            Assert.That(Metrics.PbtGroupLogRootHits, Is.EqualTo(log.RootHits));
+            Assert.That(Metrics.PbtGroupLogRootMisses, Is.EqualTo(log.RootMisses));
+        }
+        context.ResourcePool.ReturnSnapshotContent(PbtResourcePool.Usage.MainBlockProcessing, probe);
     }
 
     [Test]
