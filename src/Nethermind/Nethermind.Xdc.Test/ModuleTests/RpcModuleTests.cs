@@ -241,15 +241,29 @@ public class RpcModuleTests
         _specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(XdcTestHelper.CreateXdcReleaseSpec(switchEpoch: 5, configsCount: (int)epochNumber));
         _epochSwitchManager.GetBlockByEpochNumber(epochNumber).Returns(new BlockRoundInfo(TestItem.KeccakA, 100, 500));
 
+        using JsonDocument response = await SendUnderStrictHexFormat(method, epochJson);
+        Assert.That(response.RootElement.GetProperty("result").GetProperty("epochFirstBlockNumber").GetString(), Is.EqualTo("0x1f4"));
+    }
+
+    [Test]
+    public async Task CalculateBlockInfoByV1EpochNum_ShouldBindPlainNumberOrHex_UnderStrictHexFormat(
+        [Values("10", "\"0xa\"")] string epochJson)
+    {
+        using JsonDocument response = await SendUnderStrictHexFormat("XDPoS_calculateBlockInfoByV1EpochNum", epochJson);
+
+        JsonElement error = response.RootElement.GetProperty("error");
+        Assert.That(error.GetProperty("code").GetInt32(), Is.EqualTo(ErrorCodes.InternalError));
+        Assert.That(error.GetProperty("message").GetString(), Is.EqualTo("V1 epoch is not supported"));
+    }
+
+    private async Task<JsonDocument> SendUnderStrictHexFormat(string method, string epochJson)
+    {
         bool strictHexFormat = EthereumJsonSerializer.StrictHexFormat;
         EthereumJsonSerializer.StrictHexFormat = true;
         try
         {
             using JsonDocument epoch = JsonDocument.Parse(epochJson);
-            string json = await RpcTest.TestSerializedRequest<IXdcRpcModule>(_rpcModule, method, epoch.RootElement);
-
-            using JsonDocument response = JsonDocument.Parse(json);
-            Assert.That(response.RootElement.GetProperty("result").GetProperty("epochFirstBlockNumber").GetString(), Is.EqualTo("0x1f4"));
+            return JsonDocument.Parse(await RpcTest.TestSerializedRequest<IXdcRpcModule>(_rpcModule, method, epoch.RootElement));
         }
         finally
         {
