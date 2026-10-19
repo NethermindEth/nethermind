@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Threading;
+using Autofac;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -11,6 +12,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.IO;
 using Nethermind.Db;
 using Nethermind.Db.Rocks;
+using Nethermind.Init.Modules;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using NUnit.Framework;
@@ -250,7 +252,6 @@ public class HistoryReaderTests
         HistoryColumnsWriter.MarkBlockV3(history, 10, Keccak.EmptyTreeHash);
         HistoryColumnsWriter.SetWatermarkV3(history, 20);
         FlatDbConfig config = new() { HistoryEnabled = true, HistoryRetention = HistoryRetentionMode.Rolling, HistoryRetentionBlocks = 100 };
-        (HistoryAvailability availability, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(history, config);
         List<TrackedView> views = [];
         HookedColumns<FlatHistoryColumns> observed = new(history,
             storage ? FlatHistoryColumns.StorageHistory : FlatHistoryColumns.AccountHistory, static () => { }, view =>
@@ -259,8 +260,15 @@ public class HistoryReaderTests
                 views.Add(tracked);
                 return tracked;
             });
-        HistoryReader historyReader = new(_db, observed, availability, rowFormat, LimboLogs.Instance);
-        HistoryScopeGate gate = new();
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new FlatHistoryModule())
+            .AddSingleton<IColumnsDb<FlatDbColumns>>(_db)
+            .AddSingleton<IColumnsDb<FlatHistoryColumns>>(observed)
+            .AddSingleton<IFlatDbConfig>(config)
+            .AddSingleton<ILogManager>(LimboLogs.Instance)
+            .Build();
+        HistoryReader historyReader = container.Resolve<HistoryReader>();
+        HistoryScopeGate gate = container.Resolve<HistoryScopeGate>();
         using HistoryBackedPersistenceReader reader = new(historyReader, new StateId(10, Keccak.EmptyTreeHash), gate);
 
         for (int i = 0; i < 4; i++)
