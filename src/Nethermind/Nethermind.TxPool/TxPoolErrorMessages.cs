@@ -38,6 +38,7 @@ public static class TxPoolErrorMessages
     public const string FrameTxRecentRootUnmet = "recent root reference is not committed or out of range";
     public const string FrameSimulationFailed = "frame transaction validation-prefix simulation failed";
     public const string FrameSimulationDeferred = "frame transaction validation-prefix simulation deferred";
+    public const string FramePeerValidationBudgetSpent = "peer spent its frame transaction validation gas budget";
     public const string FrameSignatureVerificationDeferred = "frame transaction signature verification deferred";
     public const string FrameSimulationBudgetSpent = "validation-prefix simulation budget exhausted for this head";
     public const string FrameTxMissingSidecar = "blob-carrying frame transaction is missing its blob sidecar";

@@ -22,6 +22,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Container;
+using Nethermind.Core.Test.Threading;
 using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
@@ -1287,10 +1288,15 @@ public partial class EngineModuleTests
     [NonParallelizable]
     public async Task NewPayloadV6_answers_a_resend_after_a_timeout_against_its_own_list(bool resendSameList, bool satisfied)
     {
+        const int budgetMs = 3_000;
         CommitWaitProbe probe = new();
+        // The handler's budget runs on this clock, so only the first request times out, and only when the test says so.
+        ManualTimeProvider clock = new();
         using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance,
-            new MergeConfig { TerminalTotalDifficulty = "0", NewPayloadBlockProcessingTimeout = 3_000 },
-            configurer: builder => builder.AddDecorator<IBlockProcessingQueue>((_, inner) => new CommitWaitObservingQueue(inner, probe, typeof(NewPayloadHandler))));
+            new MergeConfig { TerminalTotalDifficulty = "0", NewPayloadBlockProcessingTimeout = budgetMs },
+            configurer: builder => builder
+                .AddDecorator<IBlockProcessingQueue>((_, inner) => new CommitWaitObservingQueue(inner, probe, typeof(NewPayloadHandler)))
+                .UpdateSingleton<NewPayloadHandler>(inner => inner.AddSingleton<TimeProvider>(clock)));
         IEngineRpcModule rpc = chain.EngineRpcModule;
         Block parent = chain.BlockTree.Head!;
         byte[][] inclusionList = [Rlp.Encode(BuildInclusionListTransfer()).Bytes];
@@ -1305,10 +1311,14 @@ public partial class EngineModuleTests
         int copiesQueued = 0;
         int executed = 0;
         TaskCompletionSource resendAnswered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource firstCopyQueued = new(TaskCreationOptions.RunContinuationsAsynchronously);
         TaskCompletionSource secondCopyQueued = new(TaskCreationOptions.RunContinuationsAsynchronously);
         chain.BlockProcessingQueue.BlockAdded += (_, e) =>
         {
-            if (e.Block.Hash == payload.BlockHash && Interlocked.Increment(ref copiesQueued) == 2) secondCopyQueued.TrySetResult();
+            if (e.Block.Hash != payload.BlockHash) return;
+            int copy = Interlocked.Increment(ref copiesQueued);
+            if (copy == 1) firstCopyQueued.TrySetResult();
+            else if (copy == 2) secondCopyQueued.TrySetResult();
         };
         chain.BlockProcessingQueue.BlockExecuted += (_, e) =>
         {
@@ -1322,7 +1332,12 @@ public partial class EngineModuleTests
         try
         {
             OccupyBlockProcessor(chain, parent, releaseProcessing.Task);
-            ResultWrapper<PayloadStatusV2> timedOut = await rpc.engine_newPayloadV6(payload, [], Keccak.Zero, requests, inclusionList);
+            Task<ResultWrapper<PayloadStatusV2>> timingOut = rpc.engine_newPayloadV6(payload, [], Keccak.Zero, requests, inclusionList);
+            // Out of budget only once its copy is queued, so the request leaves that copy behind with its list. The
+            // clock fires only the last timer it created, which here is this request's timeout.
+            await firstCopyQueued.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            clock.AdvanceAndFireTimer(TimeSpan.FromMilliseconds(budgetMs));
+            ResultWrapper<PayloadStatusV2> timedOut = await timingOut.WaitAsync(TimeSpan.FromSeconds(10));
             Assert.That(timedOut.Data.Status, Is.EqualTo(PayloadStatus.Syncing));
 
             probe.Watch(payload.BlockHash);
@@ -1335,7 +1350,7 @@ public partial class EngineModuleTests
             branchProcessor.ProcessingRelease = null;
         }
 
-        ResultWrapper<PayloadStatusV2> result = await resend;
+        ResultWrapper<PayloadStatusV2> result = await resend.WaitAsync(TimeSpan.FromSeconds(10));
         resendAnswered.TrySetResult();
         await WaitForCommit(chain, payload.BlockHash);
         using (Assert.EnterMultipleScope())
