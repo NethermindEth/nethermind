@@ -61,6 +61,8 @@ public class PseudoNethermindModule(ChainSpec spec, IConfigProvider configProvid
                 // Dont want to make it very slow
                 flatDbConfig.TrieWarmerWorkerCount = 0;
                 flatDbConfig.WarmReadConcurrency = 2;
+                // The default 512 MiB budget allocates a 33.5 MB trie node cache per container.
+                flatDbConfig.TrieCacheMemoryBudget = MemorySizes.MiB;
                 // Matches the inert persisted tier wired above: a replacement IFlatDbConfig defaulting to long finality
                 // would convert in-memory snapshots into the no-op loader and lose that state.
                 flatDbConfig.EnableLongFinality = false;
