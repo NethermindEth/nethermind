@@ -15,6 +15,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Extensions;
+using Nethermind.History;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
@@ -47,6 +48,7 @@ namespace Nethermind.Synchronization.Blocks
         private readonly IForwardHeaderProvider _forwardHeaderProvider;
         private readonly ISyncPeerPool _syncPeerPool;
         private readonly IBlockProcessingQueue _processingQueue;
+        private readonly BlockAccessListServingWindow _balServingWindow;
         private readonly ILogger _logger;
 
         // Estimated maximum tx in buffer used to estimate memory limit. Each tx is on average about 1KB.
@@ -88,6 +90,7 @@ namespace Nethermind.Synchronization.Blocks
             IReceiptsRecovery receiptsRecovery,
             IBlockProcessingQueue processingQueue,
             ISyncConfig syncConfig,
+            BlockAccessListServingWindow balServingWindow,
             ILogManager logManager)
         {
             _blockTree = blockTree;
@@ -105,6 +108,7 @@ namespace Nethermind.Synchronization.Blocks
             _maxTxInInProcessingQueue = (int)(syncConfig.ForwardSyncBlockProcessingQueueMemoryBudget / 1000);
             _receiptsRecovery = receiptsRecovery;
             _processingQueue = processingQueue;
+            _balServingWindow = balServingWindow;
             _blockTree.NewHeadBlock += BlockTreeOnNewHeadBlock;
         }
 
@@ -654,12 +658,16 @@ namespace Nethermind.Synchronization.Blocks
             {
                 entry.RecordMissingAccessList();
                 entry.RetryAccessListRequest();
-                // A list the block cannot be inserted without lies inside every peer's retention window,
-                // so an unavailable answer is withholding.
-                if (!entry.CanExecuteMissingData)
+                bool mustServe = _balServingWindow.Contains(header.Number);
+                if (mustServe || !entry.CanExecuteMissingData)
                 {
                     result = SyncResponseHandlingResult.LesserQuality;
                     WarnWithheldAccessList(header, peer);
+                    // The peer that served this block's body or receipts has the block, so it is withholding the list.
+                    if (mustServe && peer is not null && ReferenceEquals(entry.PeerInfo, peer))
+                    {
+                        _syncPeerPool.ReportBreachOfProtocol(peer, DisconnectReason.ForwardSyncFailed, $"withheld block access list. Block: {header.ToString(BlockHeader.Format.Short)}");
+                    }
                 }
                 return false;
             }

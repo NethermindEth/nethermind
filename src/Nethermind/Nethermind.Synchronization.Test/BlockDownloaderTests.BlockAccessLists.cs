@@ -26,8 +26,12 @@ namespace Nethermind.Synchronization.Test;
 
 public partial class BlockDownloaderTests
 {
-    [Test]
-    public async Task Does_not_report_breach_when_peer_returns_unavailable_block_access_list([Values] bool isStatic, [Values] bool isTrusted)
+    [TestCase(false, false, false)]
+    [TestCase(true, false, false)]
+    [TestCase(false, true, false)]
+    // Having served the block's body, the peer has the block, so withholding its list is a breach.
+    [TestCase(false, false, true)]
+    public async Task Reports_peer_returning_unavailable_block_access_list(bool isStatic, bool isTrusted, bool peerServedBody)
     {
         InterfaceLogger logger = Substitute.For<InterfaceLogger>();
         logger.IsWarn.Returns(true);
@@ -37,16 +41,25 @@ public partial class BlockDownloaderTests
             .AddSingleton<ILogManager>(new OneLoggerLogManager(new ILogger(logger))));
         Context ctx = node.Resolve<Context>();
         byte[] servedAccessList = [0xc0];
-        ConfigureBlockAccessListRequest(ctx, forwardHeaderProvider, Keccak.Compute(servedAccessList), TestItem.KeccakA);
-        using BlocksRequest? bodyRequest = await ctx.FullSyncFeedComponent.BlockDownloader.PrepareRequest(DownloaderOptions.Insert, 0, CancellationToken.None);
-
+        ConfigureBlockAccessListRequest(ctx, forwardHeaderProvider, TestItem.KeccakA, Keccak.Compute(servedAccessList));
         ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
         syncPeer.ProtocolVersion.Returns(EthVersions.Eth71);
         syncPeer.Node.Returns(new Node(TestItem.PublicKeyA, "127.0.0.1", 30303, isStatic) { IsTrusted = isTrusted });
         PeerInfo peerInfo = new(syncPeer);
 
+        BlocksRequest bodyRequest = (await ctx.FullSyncFeedComponent.BlockDownloader.PrepareRequest(DownloaderOptions.Insert, 0, CancellationToken.None))!;
+        if (peerServedBody)
+        {
+            bodyRequest.OwnedBodies = new OwnedBlockBodies([new BlockBody(), new BlockBody()]);
+            ctx.FullSyncFeedComponent.BlockDownloader.HandleResponse(bodyRequest, peerInfo);
+        }
+        else
+        {
+            bodyRequest.Dispose();
+        }
+
         // Serving one list does not offset withholding another, and a repeated answer does not repeat the warning.
-        byte[]?[][] responses = [[servedAccessList, null], [null]];
+        byte[]?[][] responses = [[null, servedAccessList], [null]];
         List<SyncResponseHandlingResult> results = [];
         foreach (byte[]?[] response in responses)
         {
@@ -58,7 +71,7 @@ public partial class BlockDownloaderTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(results, Is.All.EqualTo(SyncResponseHandlingResult.LesserQuality));
-            ctx.PeerPool.DidNotReceive().ReportBreachOfProtocol(
+            ctx.PeerPool.Received(peerServedBody ? responses.Length : 0).ReportBreachOfProtocol(
                 Arg.Any<PeerInfo>(),
                 Arg.Any<DisconnectReason>(),
                 Arg.Any<string>());
