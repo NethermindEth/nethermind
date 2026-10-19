@@ -316,6 +316,11 @@ public partial class BlockProcessor(
             header.Hash = header.CalculateHash();
         }
 
+        if (BlockchainProcessor.IsMainProcessingThread)
+        {
+            Evm.Metrics.PublishBlockGasPrices(block.Transactions, spec.IsEip1559Enabled, header.BaseFeePerGas);
+        }
+
         return receipts;
     }
 
