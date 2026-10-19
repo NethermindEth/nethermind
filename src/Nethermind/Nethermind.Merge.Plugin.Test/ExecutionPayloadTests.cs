@@ -9,6 +9,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Merge.Plugin.Data;
@@ -47,48 +48,77 @@ public class ExecutionPayloadTests
         byte[] control = EncodeTx(TxType.Legacy);
         if (malformed) encoded[^1] = [.. encoded[^1], 0xDC, 0xAF];
         int factoryCalls = 0;
-        using Lock.Scope _ = DecoderSwapLock.EnterScope();
-        IRlpDecoder<Transaction> original = Rlp.GetDecoder<Transaction>()!;
         FactoryTrackingDecoder decoder = new(() =>
         {
             Interlocked.Increment(ref factoryCalls);
             return new Transaction();
         });
-        Rlp.RegisterDecoder(typeof(Transaction), new InputScopedDecoder(encoded, decoder, original));
-        try
+        using DecoderSwap _ = new(encoded, decoder);
+        string? error;
+        Transaction[]? transactions;
+        if (borrowMemory)
         {
-            string? error;
-            Transaction[]? transactions;
-            if (borrowMemory)
-            {
-                Result<Transaction[]> result = new ExecutionPayload { Transactions = encoded }.TryGetTransactions();
-                error = result.Error;
-                transactions = result.Data;
-            }
-            else
-            {
-                TransactionDecodingResult result = TxsDecoder.DecodeTxs(encoded, skipErrors: false);
-                error = result.Error;
-                transactions = result.Transactions;
-            }
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(error is not null, Is.EqualTo(malformed));
-                Assert.That(decoder.TrackedDecodes, malformed ? Is.GreaterThanOrEqualTo(count) : Is.EqualTo(count),
-                    "Payload decoding must route through the tracked decoder.");
-                Assert.That(Volatile.Read(ref factoryCalls), Is.Zero, "Payload decoding must bypass the reusable transaction factory.");
-                if (!malformed)
-                {
-                    Assert.That(transactions!, Has.Length.EqualTo(count));
-                }
-            }
-            RlpReader reader = new(control);
-            decoder.DecodeCompleteNotNull(ref reader, RlpBehaviors.SkipTypedWrapping);
-            Assert.That(Volatile.Read(ref factoryCalls), Is.EqualTo(1), "Ordinary decoding must exercise the tracked factory.");
+            Result<Transaction[]> result = new ExecutionPayload { Transactions = encoded }.TryGetTransactions();
+            error = result.Error;
+            transactions = result.Data;
         }
-        finally
+        else
         {
-            Rlp.RegisterDecoder(typeof(Transaction), original);
+            TransactionDecodingResult result = TxsDecoder.DecodeTxs(encoded, skipErrors: false);
+            error = result.Error;
+            transactions = result.Transactions;
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(error is not null, Is.EqualTo(malformed));
+            Assert.That(decoder.TrackedDecodes, malformed ? Is.GreaterThanOrEqualTo(count) : Is.EqualTo(count),
+                "Payload decoding must route through the tracked decoder.");
+            Assert.That(Volatile.Read(ref factoryCalls), Is.Zero, "Payload decoding must bypass the reusable transaction factory.");
+            if (!malformed)
+            {
+                Assert.That(transactions!, Has.Length.EqualTo(count));
+            }
+        }
+        RlpReader reader = new(control);
+        decoder.DecodeCompleteNotNull(ref reader, RlpBehaviors.SkipTypedWrapping);
+        Assert.That(Volatile.Read(ref factoryCalls), Is.EqualTo(1), "Ordinary decoding must exercise the tracked factory.");
+    }
+
+    [Test, NonParallelizable]
+    public void Parallel_decoding_stops_claiming_entries_after_first_failure()
+    {
+        const int count = 10_000;
+        byte[] emptySignatureLegacyTx = Bytes.FromHexString("c9808080808080808080");
+        byte[][] encoded = Enumerable.Repeat(emptySignatureLegacyTx, count).ToArray();
+        FactoryTrackingDecoder decoder = new(static () => new Transaction());
+        using DecoderSwap _ = new(encoded, decoder);
+
+        TransactionDecodingResult result = TxsDecoder.DecodeTxs(encoded, skipErrors: false);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Error, Does.StartWith("Transaction 0 is not valid"));
+            Assert.That(decoder.TrackedDecodes, Is.LessThan(count / 10), "Workers must not decode the tail after the first failure.");
+        }
+    }
+
+    /// <summary>Registers an <see cref="InputScopedDecoder"/> for <paramref name="inputs"/> until disposed.</summary>
+    private readonly ref struct DecoderSwap
+    {
+        private readonly Lock.Scope _lock;
+        private readonly IRlpDecoder<Transaction> _original;
+
+        public DecoderSwap(byte[][] inputs, IRlpDecoder<Transaction> own)
+        {
+            _lock = DecoderSwapLock.EnterScope();
+            _original = Rlp.GetDecoder<Transaction>()!;
+            Rlp.RegisterDecoder(typeof(Transaction), new InputScopedDecoder(inputs, own, _original));
+        }
+
+        public void Dispose()
+        {
+            Rlp.RegisterDecoder(typeof(Transaction), _original);
+            _lock.Dispose();
         }
     }
 
