@@ -128,6 +128,79 @@ public class HistoryWalkVerificationCoordinatorTests
         }
     }
 
+    // The default snap-synced archive builds proofs without FlatDb.HistoryVerifyEveryBlock; the walk is what builds
+    // the pivot's commitments, so it must run for a pivot image and for nothing else.
+    [Test]
+    public async Task WithProofsOnAndTheFlagOff_TheWalkRunsForASnapPivotImage()
+    {
+        FlatDbConfig config = new() { HistoryEnabled = true, ArchiveProofBuildEnabled = true };
+        (HistoryAvailability availability, HistoryRowFormat rowFormat) = CreateShared(config);
+        FakeHeaders headers = CreateEmptyHeaders(rowFormat);
+        availability.PublishWatermark(8, rowFormat.FormatVersion);
+        availability.PublishUnwindowedPivotFloor(8, 0);
+
+        using HistoryWalkVerificationCoordinator coordinator = CreateCoordinator(config, headers);
+        coordinator.Start();
+        await coordinator.VerificationLoop.WaitAsync(TimeSpan.FromSeconds(30));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(coordinator.Started, Is.True);
+            Assert.That(coordinator.LastVerdict?.Verified, Is.True);
+        }
+    }
+
+    [Test]
+    public void WithProofsOnAndTheFlagOff_NoWalkRunsWithoutAPivotImage()
+    {
+        FlatDbConfig config = new() { HistoryEnabled = true, ArchiveProofBuildEnabled = true };
+        (HistoryAvailability availability, HistoryRowFormat rowFormat) = CreateShared(config);
+        FakeHeaders headers = CreateEmptyHeaders(rowFormat);
+        availability.PublishWatermark(8, rowFormat.FormatVersion);
+
+        using HistoryWalkVerificationCoordinator coordinator = CreateCoordinator(config, headers);
+        coordinator.Start();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(coordinator.VerificationLoop, Is.SameAs(Task.CompletedTask), "Start must launch no loop that could poll for a pivot image that never comes");
+            Assert.That(coordinator.LastVerdict, Is.Null, "a history synced from genesis is walked only when the flag asks for it");
+            Assert.That(CreateMetadata().TryGetWalkInProgress(out _, out _), Is.False);
+        }
+    }
+
+    // A node starts before its snap sync completes: the image comes later, and the walk must wait for it.
+    [Test]
+    public async Task WithProofsOnAndTheFlagOff_TheWalkWaitsForAPivotImageStillToBeWritten()
+    {
+        FlatDbConfig config = new() { HistoryEnabled = true, ArchiveProofBuildEnabled = true };
+        (HistoryAvailability availability, HistoryRowFormat rowFormat) = CreateShared(config);
+        FakeHeaders headers = CreateEmptyHeaders(rowFormat);
+
+        using HistoryWalkVerificationCoordinator coordinator = CreateCoordinator(config, headers);
+        coordinator.Start();
+        availability.PublishUnwindowedPivotFloor(8, 0);
+        availability.PublishWatermark(8, rowFormat.FormatVersion);
+        await coordinator.VerificationLoop.WaitAsync(TimeSpan.FromSeconds(30));
+
+        Assert.That(coordinator.LastVerdict?.Verified, Is.True);
+    }
+
+    [Test]
+    public void WithProofsOnAndTheFlagOff_ALeftoverWalkCheckpointWithoutAPivotImageIsAbandoned()
+    {
+        FlatDbConfig config = new() { HistoryEnabled = true, ArchiveProofBuildEnabled = true };
+        (HistoryAvailability availability, HistoryRowFormat rowFormat) = CreateShared(config);
+        CommitmentMetadata metadata = CreateMetadata();
+        metadata.BeginWalk(0, 100, HistoryWalkRun.WorkItems, buildCommitments: true);
+
+        using HistoryWalkVerificationCoordinator coordinator = new(
+            _db, _historyColumns, new FakeHeaders(), availability, rowFormat, config, CreateRetrofit(metadata, config, rowFormat), metadata, LimboLogs.Instance, pollDelay: TimeSpan.FromMilliseconds(10));
+        coordinator.Start();
+
+        Assert.That(metadata.TryGetWalkInProgress(out _, out _), Is.False, "a checkpoint left by a run with the flag on would hold reclaim back on every restart");
+    }
+
     [Test]
     public async Task WhenTheWatermarkAppears_RunsTheWalkOnceAndReportsTheVerdict()
     {

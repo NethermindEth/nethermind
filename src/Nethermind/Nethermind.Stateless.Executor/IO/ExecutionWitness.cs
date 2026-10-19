@@ -138,17 +138,85 @@ public partial struct SszWitnessCodes
 }
 
 /// <summary>Contract code from the witness, held in executable code memory when decoded so the EVM runs it in place.</summary>
-public sealed class WitnessCode
+public sealed partial class WitnessCode
 {
-    /// <summary>Copies <paramref name="code"/> into executable code memory, which the EVM runs it from without another copy.</summary>
-    public WitnessCode(ReadOnlySpan<byte> code) => Code = ExecutableCodeMemory.Copy(code);
+    /// <summary>Holds <paramref name="code"/>, decoded from the input, in executable code memory, which the EVM runs it
+    /// from without another copy.</summary>
+    /// <remarks>See <c>WitnessCode.std.cs</c> and <c>.zkevm.cs</c>.</remarks>
+    public WitnessCode(ReadOnlySpan<byte> code) => Code = Hold(code);
 
     /// <summary>Wraps <paramref name="code"/> as it is.</summary>
     internal WitnessCode(ReadOnlyMemory<byte> code) => Code = code;
 
-    public ReadOnlyMemory<byte> Code { get; }
+    public ReadOnlyMemory<byte> Code { get; private set; }
 
     public ReadOnlySpan<byte> AsSpan() => Code.Span;
+
+    private static partial ReadOnlyMemory<byte> Hold(ReadOnlySpan<byte> code);
+
+    /// <summary>Moves the decoded <paramref name="codes"/> that still lie in the input to the front of
+    /// <paramref name="consumed"/>, the decoded input, which nothing else reads again.</summary>
+    /// <returns>The number of bytes at the front of <paramref name="consumed"/> the codes now take.</returns>
+    /// <remarks>See <c>WitnessCode.std.cs</c> and <c>.zkevm.cs</c>.</remarks>
+    internal static partial int PlaceInConsumedInput(SszWitnessCodes[] codes, ReadOnlySpan<byte> consumed);
+
+    /// <summary>Moves <paramref name="codes"/>, which lie in <paramref name="consumed"/>, to its front, each padded for
+    /// execution.</summary>
+    /// <returns>The number of bytes at the front of <paramref name="consumed"/> the codes now take.</returns>
+    /// <remarks>A code goes where it overwrites no code still to be moved; one that would is copied to fresh memory
+    /// instead, as are all of them unless they lie in order.</remarks>
+    internal static unsafe int MoveToFront(SszWitnessCodes[] codes, ReadOnlySpan<byte> consumed)
+    {
+        byte* start = Address(consumed);
+        byte* end = start + consumed.Length;
+
+        // In order, no code lies before the next one to move; inside the input, none is written past its end.
+        byte* previousEnd = start;
+        for (int i = 0; i < codes.Length; i++)
+        {
+            ReadOnlySpan<byte> code = codes[i].Bytes.Code.Span;
+            if (Address(code) < previousEnd)
+                return CopyAll(codes);
+
+            previousEnd = Address(code) + code.Length;
+        }
+
+        if (previousEnd > end)
+            return CopyAll(codes);
+
+        byte* free = Align(start);
+        for (int i = 0; i < codes.Length; i++)
+        {
+            WitnessCode code = codes[i].Bytes;
+            ReadOnlySpan<byte> source = code.Code.Span;
+            byte* next = i + 1 < codes.Length ? Address(codes[i + 1].Bytes.Code.Span) : end;
+            byte* placedEnd = free + source.Length + CodeInfo.ExecutionPadding;
+
+            if (placedEnd <= next)
+            {
+                code.Code = ExecutableCodeMemory.Place(new Span<byte>(free, (int)(placedEnd - free)), source);
+                free = Align(placedEnd);
+            }
+            else
+            {
+                code.Code = ExecutableCodeMemory.Copy(source);
+            }
+        }
+
+        return free > end ? consumed.Length : (int)(free - start);
+    }
+
+    private static int CopyAll(SszWitnessCodes[] codes)
+    {
+        foreach (SszWitnessCodes code in codes)
+            code.Bytes.Code = ExecutableCodeMemory.Copy(code.Bytes.Code.Span);
+
+        return 0;
+    }
+
+    private static unsafe byte* Address(ReadOnlySpan<byte> span) => (byte*)Unsafe.AsPointer(ref MemoryMarshal.GetReference(span));
+
+    private static unsafe byte* Align(byte* pointer) => (byte*)(((nuint)pointer + 7) & ~(nuint)7);
 }
 
 [SszContainer(isCollectionItself: true)]

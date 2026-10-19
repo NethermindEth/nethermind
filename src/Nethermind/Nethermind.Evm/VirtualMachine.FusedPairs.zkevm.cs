@@ -93,9 +93,14 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         /// A handler that has read the next opcode alone, to test it for a fusion of its own, indexes by that byte instead
         /// of reading two: that is the entry for the opcode followed by STOP, which no pair ends in, so it holds the
         /// opcode's own handler.
+        /// <para>
+        /// Where <see cref="StrictAlignmentFlag"/> is on, the two bytes are read one at a time: an opcode is at an odd
+        /// address half the time, and there the alignment-tested 16-bit load would assemble them from bytes anyway.
+        /// </para>
         /// </remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static nint PairAt(ref byte ip) => Unsafe.ReadUnaligned<ushort>(ref ip);
+        private static nint PairAt(ref byte ip) =>
+            StrictAlignmentFlag.IsActive ? ip | (Unsafe.Add(ref ip, 1) << 8) : Unsafe.ReadUnaligned<ushort>(ref ip);
 
         /// <summary>Installs the fused handlers of the pairs that run often enough in mainnet blocks to pay for one.</summary>
         /// <param name="handlers">The 256-entry table the paired one expands.</param>
@@ -141,6 +146,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     paired[(int)Instruction.MLOAD] = Entry(&ExecutePush1MLoad);
                 if (handlers[(int)Instruction.MSTORE] == Entry(&ExecuteMStoreInsideBacking))
                     paired[(int)Instruction.MSTORE] = Entry(&ExecutePush1MStore);
+                if (handlers[(int)Instruction.JUMP] == Entry(&ExecuteJumpToAnalyzedDestination))
+                    paired[(int)Instruction.JUMP] = Entry(&ExecutePush1Jump<OffFlag>);
+                if (handlers[(int)Instruction.JUMPI] == Entry(&ExecuteJumpIfToAnalyzedDestination))
+                    paired[(int)Instruction.JUMPI] = Entry(&ExecutePush1Jump<OnFlag>);
                 if (handlers[(int)Instruction.SHL] == ShiftLeftStep.Handler &&
                     handlers[(int)Instruction.SUB] == BinaryStep<SubtractOperation>.Handler &&
                     handlers[(int)Instruction.AND] == BinaryStep<AndOperation>.Handler)
@@ -492,9 +501,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 ref ulong destination = ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 2));
                 nuint target = (nuint)destination;
                 if ((Unsafe.Add(ref destination, 1) | Unsafe.Add(ref destination, 2) | Unsafe.Add(ref destination, 3)) == 0 &&
-                    target < (nuint)stack.CodeLength)
+                    target < (nuint)AlignedStack(ref stack).CodeLength)
                 {
-                    if (!stack.IsAnalyzedJumpDestination(target))
+                    if (!AlignedStack(ref stack).IsAnalyzedJumpDestination(target))
                     {
                         // Straight to the analysis, which the JUMP handler would only reach after repeating these tests.
                         TFirst.Apply(ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 0)), ref ip);
@@ -513,7 +522,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     head += TFirst.Growth - 1;
                     sp = ref Moved(ref sp, TFirst.Growth - 1);
                     ip = ref Unsafe.Add(ref code, (nint)target + 1);
-                    nint next = handlers[PairAt(ref ip)];
+                    nint next = AlignedTable(handlers)[PairAt(ref ip)];
                     return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
                 }
 
@@ -571,7 +580,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         head -= 2;
                         sp = ref Moved(ref sp, -2);
                         ip = ref Unsafe.Add(ref ip, 1);
-                        nint next = handlers[PairAt(ref ip)];
+                        nint next = AlignedTable(handlers)[PairAt(ref ip)];
                         return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
                     }
                 }
@@ -619,7 +628,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     {
                         LoadBigEndian(ref slot, ref source);
                         ip = ref Unsafe.Add(ref ip, 1);
-                        nint next = handlers[PairAt(ref ip)];
+                        nint next = AlignedTable(handlers)[PairAt(ref ip)];
                         return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
                     }
                 }
@@ -656,7 +665,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     head++;
                     sp = ref Moved(ref sp, 1);
                     ip = ref Unsafe.Add(ref ip, 3);
-                    nint next = handlers[PairAt(ref ip)];
+                    nint next = AlignedTable(handlers)[PairAt(ref ip)];
                     return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
                 }
 
@@ -694,13 +703,88 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     head--;
                     sp = ref Moved(ref sp, -1);
                     ip = ref Unsafe.Add(ref ip, 3);
-                    nint next = handlers[PairAt(ref ip)];
+                    nint next = AlignedTable(handlers)[PairAt(ref ip)];
                     return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
                 }
 
                 gas += 2 * VeryLowGasCost.GasCost;
             }
 
+            nint alone = Push1Step.Handler;
+            return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, alone);
+        }
+
+        /// <summary>
+        /// PUSH1 fused with the JUMP or, with <typeparamref name="TConditional"/>, the JUMPI after it, as
+        /// <see cref="ExecutePush2"/> fuses a PUSH2 with them.
+        /// </summary>
+        /// <remarks>
+        /// Code shorter than 256 bytes pushes its destinations with PUSH1. A taken jump into the code that the bitmap does
+        /// not hold yet pushes and goes to <see cref="ExecuteJumpToUnanalyzedDestination{TConditional}"/>. Every case that
+        /// could fault - short gas, a full stack or a JUMPI's condition missing - runs the PUSH1 alone, and the jump after it.
+        /// </remarks>
+        [SkipLocalsInit]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal static EvmExceptionType ExecutePush1Jump<TConditional>(
+            ref EvmStack stack,
+            ulong gas,
+            ref DispatchState state,
+            ref byte ip,
+            nint head,
+            nint* handlers,
+            ref byte code,
+            ref byte sp)
+            where TConditional : struct, IFlag
+        {
+            if (head < EvmStack.MaxStackSize - 1 && (!TConditional.IsActive || head > 0))
+            {
+                if (TConditional.IsActive)
+                {
+                    ref ulong condition = ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 1));
+                    if ((condition | Unsafe.Add(ref condition, 1) | Unsafe.Add(ref condition, 2) | Unsafe.Add(ref condition, 3)) == 0)
+                    {
+                        if (TryCharge(ref gas, VeryLowGasCost.GasCost + JumpIGasCost.GasCost))
+                        {
+                            head--;
+                            sp = ref Moved(ref sp, -1);
+                            ip = ref Unsafe.Add(ref ip, 3);
+                            nint notTaken = handlers[PairAt(ref ip)];
+                            return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, notTaken);
+                        }
+
+                        goto Alone;
+                    }
+                }
+
+                nuint destination = Unsafe.Add(ref ip, 1);
+                ulong jumpGas = JumpAndJumpDestGas<TConditional>();
+                if (destination < (nuint)stack.CodeLength && TryCharge(ref gas, VeryLowGasCost.GasCost + jumpGas))
+                {
+                    if (!stack.IsAnalyzedJumpDestination(destination))
+                    {
+                        // The analysis charges the jump itself.
+                        gas += jumpGas;
+                        SetWord(ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 0)), destination);
+                        ip = ref Unsafe.Add(ref ip, 2);
+                        head++;
+                        sp = ref Moved(ref sp, 1);
+                        nint analyze = Entry(&ExecuteJumpToUnanalyzedDestination<TConditional>);
+                        return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, analyze);
+                    }
+
+                    if (TConditional.IsActive)
+                    {
+                        head--;
+                        sp = ref Moved(ref sp, -1);
+                    }
+
+                    ip = ref Unsafe.Add(ref code, (nint)destination + 1);
+                    nint taken = handlers[PairAt(ref ip)];
+                    return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, taken);
+                }
+            }
+
+        Alone:
             nint alone = Push1Step.Handler;
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, alone);
         }
@@ -723,7 +807,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             ref byte sp)
         {
             // Indexed first and offset after, so the offset folds into the load.
-            nint next = Unsafe.Add(ref handlers[Unsafe.Add(ref ip, 2)], -FollowerHandlersLength);
+            nint next = Unsafe.Add(ref AlignedTable(handlers)[Unsafe.Add(ref ip, 2)], -FollowerHandlersLength);
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
         }
 
@@ -764,7 +848,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         Unsafe.Add(ref word, 2) &= LowBitsOfLimb(bits, 2);
                         Unsafe.Add(ref word, 3) &= LowBitsOfLimb(bits, 3);
                         ip = ref Unsafe.Add(ref ip, 9);
-                        nint masked = handlers[PairAt(ref ip)];
+                        nint masked = AlignedTable(handlers)[PairAt(ref ip)];
                         return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, masked);
                     }
                 }
@@ -778,12 +862,12 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     head++;
                     sp = ref Moved(ref sp, 1);
                     ip = ref Unsafe.Add(ref ip, 8);
-                    nint pushed = handlers[PairAt(ref ip)];
+                    nint pushed = AlignedTable(handlers)[PairAt(ref ip)];
                     return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, pushed);
                 }
             }
 
-            nint next = Unsafe.Add(ref handlers[following], -FollowerHandlersLength);
+            nint next = Unsafe.Add(ref AlignedTable(handlers)[following], -FollowerHandlersLength);
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
         }
 
@@ -847,7 +931,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     }
 
                     ip = ref Unsafe.Add(ref ip, TOpCount.Count + 2);
-                    nint next = handlers[PairAt(ref ip)];
+                    nint next = AlignedTable(handlers)[PairAt(ref ip)];
                     return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
                 }
 
@@ -906,7 +990,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 head += TFirst.Growth + TSecond.Growth;
                 sp = ref Moved(ref sp, TFirst.Growth + TSecond.Growth);
                 ip = ref Unsafe.Add(ref ip, TFirst.Length + TSecond.Length);
-                nint next = handlers[PairAt(ref ip)];
+                nint next = AlignedTable(handlers)[PairAt(ref ip)];
                 return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
             }
 
