@@ -61,7 +61,7 @@ public partial class EthRpcModule
         Result<Transaction> converted = request.ToCallTransaction(spec, _rpcConfig.GasCap, validateFeeCapOrder: false, checksFork: checksFork);
         if (!converted.Success(out Transaction? tx, out string? error)) return Result<FrameForRpc[]>.Fail(error);
         tx.ChainId = _blockchainBridge.GetChainId();
-        if (!FrameTxValidation.IsWellFormed(tx, spec.IsEip7906Enabled, out error)) return Result<FrameForRpc[]>.Fail(error!);
+        if (!FrameTxValidation.IsWellFormed(tx, spec, out error)) return Result<FrameForRpc[]>.Fail(error!);
 
         FrameForRpc[] input = request.Frames!;
         bool[] fillExecution = new bool[input.Length];

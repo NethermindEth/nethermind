@@ -119,6 +119,27 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
+    public async Task FrameGas_FillTransaction_AcceptsDependencyFrame()
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Eip8288Prototype.Instance));
+        FrameTransactionForRpc request = FrameGasRequest();
+        request.MaxFeePerGas = 1_000_000_000;
+        byte[] dependency = new byte[Eip8288Constants.DependencyTripleLength];
+        dependency[31] = Eip8288Constants.LeanSphincsScheme;
+        request.Frames = [.. request.Frames!, new FrameForRpc
+        {
+            Mode = (byte)FrameMode.DepVerify,
+            ExecutionGas = Eip8288Constants.LeanSphincsVerificationGas,
+            StateGas = 0,
+            Data = dependency,
+        }];
+
+        string response = await ctx.Test.TestEthRpc("eth_fillTransaction", request);
+
+        Assert.That(JToken.Parse(response)["error"], Is.Null, response);
+    }
+
+    [Test]
     public async Task FrameGas_ExplicitZeroGas_IsNotFilled([Values("eth_fillTransaction", "eth_call", "eth_createAccessList")] string method, [Values] bool stateGas)
     {
         using Context ctx = await Context.Create(new TestSpecProvider(Eip8141Prototype.Instance));
