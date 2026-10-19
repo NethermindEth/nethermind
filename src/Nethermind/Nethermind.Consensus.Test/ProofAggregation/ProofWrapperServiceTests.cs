@@ -848,7 +848,7 @@ public class ProofWrapperServiceTests
     // rejects (for example unfunded) is not republished.
     [TestCase(true)]
     [TestCase(false)]
-    public async Task Wrapper_is_relayed_only_after_a_transaction_is_admitted(bool poolAccepts)
+    public async Task Wrapper_is_relayed_only_when_admission_succeeds(bool poolAccepts)
     {
         Transaction transaction = CreateHashedTransaction(TestItem.KeccakA);
         (ProofWrapperService service, _, byte[] wrapper) =
