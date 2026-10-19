@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Text.Json;
-using Nethermind.Serialization.Json;
 
 namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Prestate;
 
@@ -18,7 +17,7 @@ public class NativePrestateTracerConfig
 
     internal static NativePrestateTracerConfig FromJson(JsonElement? json, JsonSerializerOptions options)
     {
-        JsonConfig? config = TypeInfoJsonSerializer.Deserialize<JsonConfig>(json, options);
+        JsonConfig? config = GethLikeNativeTracerFactory.ParseConfig<JsonConfig>(json, options);
         return new()
         {
             DiffMode = config?.DiffMode ?? false,

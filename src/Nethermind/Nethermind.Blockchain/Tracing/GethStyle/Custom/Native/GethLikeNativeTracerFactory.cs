@@ -43,11 +43,11 @@ public static class GethLikeNativeTracerFactory
     public static void RegisterTracer(string tracerName, GethLikeNativeTracerFactoryDelegate tracerDelegate) =>
         _tracers.Add(tracerName, (options, block, transaction, worldState, _) => tracerDelegate(options, block, transaction, worldState));
 
-    internal static T? ParseConfig<T>(JsonElement? config) where T : class
+    internal static T? ParseConfig<T>(JsonElement? config, JsonSerializerOptions options) where T : class
     {
         try
         {
-            return TypeInfoJsonSerializer.Deserialize<T>(config, EthereumJsonSerializer.JsonOptions);
+            return TypeInfoJsonSerializer.Deserialize<T>(config, options);
         }
         catch (JsonException exception)
         {
