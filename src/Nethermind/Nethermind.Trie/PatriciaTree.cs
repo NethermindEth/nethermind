@@ -131,6 +131,9 @@ namespace Nethermind.Trie
             _bufferPool = bufferPool;
         }
 
+        /// <summary>Throws where this build cannot commit a trie; see <c>PatriciaTree.zkevm.cs</c>.</summary>
+        partial void ThrowIfCommitUnsupported();
+
         public void Commit(bool skipRoot = false, WriteFlags writeFlags = WriteFlags.None)
         {
             if (!_allowCommits)
@@ -167,6 +170,8 @@ namespace Nethermind.Trie
 
             // Sometimes RootRef is set to null, so we still need to reset roothash to empty tree hash.
             SetRootHash(RootRef?.Keccak, true);
+
+            ThrowIfCommitUnsupported();
         }
 
         private TrieNode Commit(ICommitter committer, ref TreePath path, TrieNode node, bool skipSelf = false)
@@ -342,7 +347,7 @@ namespace Nethermind.Trie
             try
             {
                 int nibblesCount = 2 * rawKey.Length;
-                Span<byte> nibbles = (rawKey.Length <= MaxKeyStackAlloc
+                Span<byte> nibbles = (nibblesCount <= MaxKeyStackAlloc
                         ? stackalloc byte[MaxKeyStackAlloc]
                         : array = ArrayPool<byte>.Shared.Rent(nibblesCount))
                     [..nibblesCount]; // Slice to exact size;
@@ -387,7 +392,7 @@ namespace Nethermind.Trie
             try
             {
                 int nibblesCount = 2 * rawKey.Length;
-                Span<byte> nibbles = (rawKey.Length <= MaxKeyStackAlloc
+                Span<byte> nibbles = (nibblesCount <= MaxKeyStackAlloc
                         ? stackalloc byte[MaxKeyStackAlloc]
                         : array = ArrayPool<byte>.Shared.Rent(nibblesCount))
                     [..nibblesCount]; // Slice to exact size;
@@ -527,7 +532,7 @@ namespace Nethermind.Trie
             try
             {
                 int nibblesCount = 2 * rawKey.Length;
-                Span<byte> nibbles = (rawKey.Length <= MaxKeyStackAlloc
+                Span<byte> nibbles = (nibblesCount <= MaxKeyStackAlloc
                         ? stackalloc byte[MaxKeyStackAlloc] // Fixed size stack allocation
                         : array = ArrayPool<byte>.Shared.Rent(nibblesCount))
                     [..nibblesCount]; // Slice to exact size
@@ -745,6 +750,7 @@ namespace Nethermind.Trie
                     if (node.IsSealed) node = node.Unseal();
 
                     node.SetChild(nib, child);
+                    if (UnsealsAncestorsAtOnce) traverseStack.UnsealNodes();
                 }
 
                 if (!hasRemove)
@@ -912,16 +918,32 @@ namespace Nethermind.Trie
                 return true;
             }
 
+            /// <summary>Unseals, in place, the node of every frame not yet popped.</summary>
+            /// <remarks>
+            /// Only where <see cref="TrieNode.Unseal"/> returns the node itself; see <see cref="UnsealsAncestorsAtOnce"/>.
+            /// Deepest first, stopping at a node already pending, dirty and unhashed: an earlier write left its ancestors so too.
+            /// Relies on each frame's node holding the next frame's node by reference in its <c>ChildIdx</c> slot, as the descent
+            /// cached it: the climb's early exit checks only the immediate parent, so a slot left holding a hash (a pruned or
+            /// unresolved child) would have a higher ancestor encode its child's stale hash.
+            /// </remarks>
+            public void UnsealNodes()
+            {
+                Span<TraverseStackFrame> frames = _entries[..(int)_count];
+                for (int i = frames.Length - 1; i >= 0; i--)
+                {
+                    TrieNode node = frames[i].Node;
+                    if (node.Keccak is null && node.IsDirty) return;
+                    node.Unseal();
+                }
+            }
+
             [DoesNotReturn, StackTraceHidden]
             private static void ThrowStackFull() => throw new IndexOutOfRangeException("The trie walk is deeper than its stack.");
 
             public void Clear()
             {
-                if (_count != 0)
-                {
-                    _entries[..(int)_count].Clear();
-                    _count = 0;
-                }
+                if (ReleasesPoppedFrames && _count != 0) _entries[..(int)_count].Clear();
+                _count = 0;
             }
             public int Count => (int)_count;
         }

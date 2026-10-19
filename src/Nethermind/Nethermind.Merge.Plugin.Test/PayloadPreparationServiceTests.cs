@@ -342,6 +342,79 @@ public class PayloadPreparationServiceTests
             TimeSpan.FromMilliseconds(1));
     }
 
+    [Test]
+    [CancelAfter(30000)]
+    public async Task GetPayload_waits_for_the_improvement_when_there_is_no_empty_block([Values] bool skipCancel)
+    {
+        using TestPayloadPreparationService service = CreateService(new RecordingBlockImprovementContextFactory());
+        TaskCompletionSource<Block?> improvement = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        Block improved = Build.A.Block.WithTransactions(Build.A.Transaction.TestObject).TestObject;
+        BlockProductionSnapshot best = new(null, UInt256.Zero);
+        IBlockImprovementContext context = Substitute.For<IBlockImprovementContext>();
+        context.Best.Returns(_ => best);
+        context.ImprovementTask.Returns(improvement.Task);
+        // Cancelling would fail the build, as it does when the improvement is waiting on the producer lock.
+        context.When(c => c.CancelOngoingImprovements()).Do(_ => improvement.TrySetCanceled());
+        service.Store("payload", context);
+
+        ValueTask<IBlockProductionContext?> payload = service.GetPayload("payload", skipCancel);
+        bool returnedEarly = payload.IsCompleted;
+        best = new(improved, UInt256.One);
+        improvement.TrySetResult(improved);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(returnedEarly, Is.False);
+            Assert.That((await payload)?.CurrentBestBlock, Is.SameAs(improved));
+        }
+    }
+
+    [Test]
+    [CancelAfter(30000)]
+    public async Task GetPayload_keeps_a_block_finished_after_the_missing_block_wait_times_out()
+    {
+        using TestPayloadPreparationService service = CreateService(new RecordingBlockImprovementContextFactory());
+        TaskCompletionSource<Block?> improvement = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        Block partial = Build.A.Block.WithTransactions(Build.A.Transaction.TestObject).TestObject;
+        BlockProductionSnapshot best = new(null, UInt256.Zero);
+        bool disposed = false;
+        IBlockImprovementContext context = Substitute.For<IBlockImprovementContext>();
+        context.Best.Returns(_ => best);
+        context.ImprovementTask.Returns(improvement.Task);
+        context.When(c => c.Dispose()).Do(_ => Volatile.Write(ref disposed, true));
+        context.When(c => c.DisposeAndCancelOngoingImprovements()).Do(_ => Volatile.Write(ref disposed, true));
+        // The build only finishes once cancelled, and like TrySetBest it is rejected once the context is disposed.
+        context.When(c => c.CancelOngoingImprovements()).Do(_ => Task.Run(() =>
+        {
+            if (!Volatile.Read(ref disposed)) best = new(partial, UInt256.One);
+            improvement.TrySetResult(partial);
+        }));
+        service.Store("payload", context);
+
+        IBlockProductionContext? payload = await service.GetPayload("payload");
+
+        Assert.That(payload?.CurrentBestBlock, Is.SameAs(partial));
+    }
+
+    [Test]
+    [CancelAfter(30000)]
+    public void CancelBlockProduction_does_not_wait_for_a_missing_block()
+    {
+        using TestPayloadPreparationService service = CreateService(new RecordingBlockImprovementContextFactory());
+        TaskCompletionSource<Block?> improvement = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        bool disposed = false;
+        IBlockImprovementContext context = Substitute.For<IBlockImprovementContext>();
+        context.Best.Returns(new BlockProductionSnapshot(null, UInt256.Zero));
+        context.ImprovementTask.Returns(improvement.Task);
+        context.When(c => c.Dispose()).Do(_ => disposed = true);
+        context.When(c => c.DisposeAndCancelOngoingImprovements()).Do(_ => disposed = true);
+        service.Store("payload", context);
+
+        service.CancelBlockProduction("payload");
+
+        Assert.That(disposed, Is.True);
+    }
+
     private sealed class TestPayloadPreparationService(
         IBlockProducer blockProducer,
         ITxPool txPool,
@@ -367,7 +440,7 @@ public class PayloadPreparationServiceTests
         public void Improve(string payloadId, SharedCancellationTokenSource cts, DateTimeOffset? startDateTime = null) =>
             ImproveBlock(payloadId, ParentHeader, Attributes, Build.A.Block.TestObject, startDateTime ?? DateTimeOffset.UtcNow, UInt256.Zero, cts);
 
-        protected override void ImproveBlock(string payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes, Block currentBestBlock, DateTimeOffset startDateTime, UInt256 currentBlockFees, SharedCancellationTokenSource cts)
+        protected override void ImproveBlock(string payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes, Block? currentBestBlock, DateTimeOffset startDateTime, UInt256 currentBlockFees, SharedCancellationTokenSource cts)
         {
             int improvement = Interlocked.Increment(ref _improvements);
             BeforeImprove?.Invoke(improvement);
@@ -423,7 +496,7 @@ public class PayloadPreparationServiceTests
             }
         }
 
-        public IBlockImprovementContext StartBlockImprovementContext(Block currentBestBlock, BlockHeader parentHeader, PayloadAttributes payloadAttributes, DateTimeOffset startDateTime, UInt256 currentBlockFees, SharedCancellationTokenSource cts)
+        public IBlockImprovementContext StartBlockImprovementContext(Block? currentBestBlock, BlockHeader parentHeader, PayloadAttributes payloadAttributes, DateTimeOffset startDateTime, UInt256 currentBlockFees, SharedCancellationTokenSource cts)
         {
             MockBlockImprovementContext context;
             lock (_contexts)
