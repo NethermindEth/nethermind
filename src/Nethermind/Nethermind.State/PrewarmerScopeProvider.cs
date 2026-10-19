@@ -5,6 +5,7 @@ using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Threading.Tasks;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
@@ -322,7 +323,7 @@ public class PrewarmerScopeProvider(
         /// Unlike the warm hints below, a capturing scope forwards a prefetch too: its keys are named by the block's own
         /// transactions, never derived from placeholder values.
         /// </remarks>
-        public void Prefetch(Span<Address> accounts, Span<StorageCell> slots)
+        public void Prefetch(Span<Address> accounts, Span<StorageCell> slots, CancellationToken cancellationToken)
         {
             // Compacted in place: cached keys are dropped without copying the others.
             int keptAccounts = 0;
@@ -338,7 +339,7 @@ public class PrewarmerScopeProvider(
                 if (!storageCache.TryGetValue(in cell, out _)) slots[keptSlots++] = cell;
             }
 
-            if (keptAccounts != 0 || keptSlots != 0) baseScope.Prefetch(accounts[..keptAccounts], slots[..keptSlots]);
+            if (keptAccounts != 0 || keptSlots != 0) baseScope.Prefetch(accounts[..keptAccounts], slots[..keptSlots], cancellationToken);
         }
 
         // Populator hints target the block's consumer scope (whose commit walks the hinted paths);

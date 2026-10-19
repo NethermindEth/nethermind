@@ -58,9 +58,9 @@ public class RefCountingPersistenceReader : RefCountingDisposable, IPersistence.
     public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey) =>
         _innerReader.CreateAccountIterator(startKey, endKey);
 
-    public void Prefetch(Span<Address> accounts, Span<StorageCell> slots)
+    public void Prefetch(Span<Address> accounts, Span<StorageCell> slots, CancellationToken cancellationToken)
     {
-        if (_innerReader is IPersistence.IPrefetchingReader prefetcher) prefetcher.Prefetch(accounts, slots);
+        if (_innerReader is IPersistence.IPrefetchingReader prefetcher) prefetcher.Prefetch(accounts, slots, cancellationToken);
     }
 
     public IPersistence.IFlatIterator CreateStorageIterator(in ValueHash256 accountKey, in ValueHash256 startSlotKey, in ValueHash256 endSlotKey) =>

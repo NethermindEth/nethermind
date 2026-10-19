@@ -45,7 +45,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
     private bool _isDisposing;
     private int _pinnedSlices;
-    private int _prefetchesInFlight;
+    private readonly InFlightOperations _prefetches = new();
     private bool _nativeCloseDeferred;
     private int _nativeClosed;
     private bool _isDisposed;
@@ -1042,15 +1042,12 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     /// </remarks>
     internal void Prefetch(ReadOnlySpan<byte> keys, int keyLength, IColumnFamilyHandle? cf, ReadOptions readOptions)
     {
-        if (keyLength <= 0 || keys.Length < keyLength) return;
-        // Counted before the disposing check, so Dispose either waits for this read or this read sees it disposing.
-        Interlocked.Increment(ref _prefetchesInFlight);
+        if (keyLength <= 0 || keys.Length < keyLength || !_prefetches.TryBegin()) return;
         bool pending = false;
         int count = keys.Length / keyLength;
         IColumnFamilyHandle[]? families = null;
         try
         {
-            if (_isDisposing) return;
             // The binding copies the keys and handles before it returns, so this thread's arrays serve the next batch.
             byte[][] keyArrays = PrefetchBuffers.Keys(keyLength, count);
             families = cf is null ? null : PrefetchBuffers.Families(count);
@@ -1077,14 +1074,14 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         {
             // A reused array must not keep a disposed database's column family reachable.
             if (families is not null) Array.Clear(families);
-            if (!pending) Interlocked.Decrement(ref _prefetchesInFlight);
+            if (!pending) _prefetches.End();
         }
     }
 
     private void EndPrefetch(Task read)
     {
         if (read.IsFaulted) LogPrefetchFailure(read.Exception!);
-        Interlocked.Decrement(ref _prefetchesInFlight);
+        _prefetches.End();
     }
 
     private void LogPrefetchFailure(Exception e)
@@ -1093,7 +1090,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     }
 
     /// <summary>The prefetch reads that have started and not completed.</summary>
-    internal int PrefetchesInFlight => Volatile.Read(ref _prefetchesInFlight);
+    internal int PrefetchesInFlight => _prefetches.Count;
 
     /// <summary>
     /// Per-thread key and column family arrays for <see cref="Prefetch"/>, one exact-length array per batch size, so
@@ -1309,13 +1306,11 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     /// A pinned slice must be released before its database closes, and a background reader, such as a code read ahead
     /// of execution, can still hold one when shutdown disposes the database.
     /// </remarks>
-    private bool WaitForPinnedSlices() => WaitForZero(ref _pinnedSlices);
-
-    private bool WaitForZero(ref int count)
+    private bool WaitForPinnedSlices()
     {
         long start = Stopwatch.GetTimestamp();
         SpinWait spin = default;
-        while (Volatile.Read(ref count) != 0)
+        while (Volatile.Read(ref _pinnedSlices) != 0)
         {
             if (Stopwatch.GetElapsedTime(start) > PinnedSliceDrainTimeout) return false;
             spin.SpinOnce();
@@ -1965,11 +1960,12 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     public void Dispose()
     {
         if (Interlocked.CompareExchange(ref _isDisposing, true, false)) return;
+        _prefetches.Close();
 
         if (_logger.IsInfo) _logger.Info($"Disposing DB {Name}");
         bool drained = WaitForPinnedSlices();
         // An unfinished prefetch holds its own lease on the native database, which then closes when the read completes.
-        if (!WaitForZero(ref _prefetchesInFlight) && _logger.IsWarn)
+        if (!_prefetches.WaitForAll(PinnedSliceDrainTimeout) && _logger.IsWarn)
             _logger.Warn($"DB {Name} closes when its {PrefetchesInFlight} prefetch reads complete");
 
         foreach (IDisposable dbMetricsUpdater in _metricsUpdaters)

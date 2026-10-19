@@ -271,7 +271,8 @@ public class ColumnsDbTests
         }
 
         using IContainer container = CreateConfigContainer(path);
-        ColumnsDb<ReceiptsColumns> reopened = Reopen(path, container);
+        // Disposed explicitly below; the declaration also closes it when an earlier step throws.
+        using ColumnsDb<ReceiptsColumns> reopened = Reopen(path, container);
         using IColumnDbSnapshot<ReceiptsColumns> snapshot = ((IColumnsDb<ReceiptsColumns>)reopened).CreateSnapshot();
         IReadPrefetcher prefetcher = (IReadPrefetcher)snapshot.GetColumn(ReceiptsColumns.Blocks);
         for (int i = 0; i < 8; i++) prefetcher.Prefetch(keys, keyLength);

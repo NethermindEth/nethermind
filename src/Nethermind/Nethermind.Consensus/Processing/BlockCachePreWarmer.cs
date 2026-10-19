@@ -1918,7 +1918,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
                 // Sorting by account also keeps each account's slots adjacent, so its hash is computed once.
                 Span<StorageCell> uniqueSlots = SortUnique(slots.AsSpan(0, slotCount), default(StorageCellComparer));
                 if (uniqueAccounts.IsEmpty && uniqueSlots.IsEmpty) return;
-                worldState.Prefetch(uniqueAccounts, uniqueSlots);
+                worldState.Prefetch(uniqueAccounts, uniqueSlots, token);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {

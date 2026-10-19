@@ -66,7 +66,8 @@ public class CarryForwardCachingPersistenceTests
         using (IPersistence.IPersistenceReader reader = cache.CreateReader())
         {
             ((IPersistence.IPrefetchingReader)reader).Prefetch([TestItem.AddressA, TestItem.AddressB],
-                [new StorageCell(TestItem.AddressA, 1), new StorageCell(TestItem.AddressA, 2), new StorageCell(TestItem.AddressB, 1)]);
+                [new StorageCell(TestItem.AddressA, 1), new StorageCell(TestItem.AddressA, 2), new StorageCell(TestItem.AddressB, 1)],
+                CancellationToken.None);
         }
 
         using (Assert.EnterMultipleScope())
@@ -1068,7 +1069,7 @@ public class CarryForwardCachingPersistenceTests
             public IPersistence.IFlatIterator CreateStorageIterator(in ValueHash256 accountKey, in ValueHash256 startSlotKey, in ValueHash256 endSlotKey) => throw new NotSupportedException();
             public bool IsPreimageMode => false;
 
-            public void Prefetch(Span<Address> accounts, Span<StorageCell> slots)
+            public void Prefetch(Span<Address> accounts, Span<StorageCell> slots, CancellationToken cancellationToken)
             {
                 parent.PrefetchedAccounts.AddRange(accounts);
                 parent.PrefetchedSlots.AddRange(slots);

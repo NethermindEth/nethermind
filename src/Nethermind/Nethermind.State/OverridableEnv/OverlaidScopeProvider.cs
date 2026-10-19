@@ -4,6 +4,7 @@
 using System;
 using System.Diagnostics.CodeAnalysis;
 using System.Threading.Tasks;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
@@ -49,7 +50,7 @@ public sealed class OverlaidScopeProvider(IWorldStateScopeProvider inner, StateR
 
         public void HintWarmSlot(Address address, in UInt256 index) => inner.HintWarmSlot(address, in index);
 
-        public void Prefetch(Span<Address> accounts, Span<StorageCell> slots) => inner.Prefetch(accounts, slots);
+        public void Prefetch(Span<Address> accounts, Span<StorageCell> slots, CancellationToken cancellationToken) => inner.Prefetch(accounts, slots, cancellationToken);
 
         public bool SupportsPrefetch => inner.SupportsPrefetch;
 

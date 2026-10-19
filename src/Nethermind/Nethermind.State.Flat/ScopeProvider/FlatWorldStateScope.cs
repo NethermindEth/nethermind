@@ -274,7 +274,10 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             {
                 // First, on this task: the backend decides from a few cached probes, so a cached block costs only
                 // those, and a cold one has its reads in flight before phase 1 reads them one at a time.
-                PrefetchBalSafely(accountChanges);
+                // Skipped like the warmup below once the hint is cancelled, superseded or paused, so a block that
+                // no longer needs it never waits for its key collection and submission in CancelHintBal.
+                if (!token.IsCancellationRequested && _hintSequenceId == snapshot && !_pausePrewarmer)
+                    PrefetchBalSafely(accountChanges, token);
 
                 // Phase 1: trie warmup + GetAccount + sink.OnAccountRead. Sink slot reads are
                 // deferred to phase 2 so one huge account doesn't bottleneck a single worker.
@@ -363,11 +366,11 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     /// unchanged; on a warm database the prefetch finds the blocks already cached.
     /// </summary>
     // A prefetch only warms caches; a failure must not cost the warmup that follows.
-    private void PrefetchBalSafely(ArrayPoolList<ReadOnlyAccountChanges> accountChanges)
+    private void PrefetchBalSafely(ArrayPoolList<ReadOnlyAccountChanges> accountChanges, CancellationToken cancellationToken)
     {
         try
         {
-            PrefetchBal(accountChanges);
+            PrefetchBal(accountChanges, cancellationToken);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -376,7 +379,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         }
     }
 
-    private void PrefetchBal(ArrayPoolList<ReadOnlyAccountChanges> accountChanges)
+    private void PrefetchBal(ArrayPoolList<ReadOnlyAccountChanges> accountChanges, CancellationToken cancellationToken)
     {
         int slotCount = 0;
         foreach (ReadOnlyAccountChanges changes in accountChanges.AsSpan())
@@ -398,7 +401,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                 foreach (UInt256 slot in changes.StorageReads) slots[slotIndex++] = new StorageCell(address, slot);
             }
 
-            _snapshotBundle.Prefetch(accounts.AsSpan(0, accountIndex), slots.AsSpan(0, slotIndex));
+            _snapshotBundle.Prefetch(accounts.AsSpan(0, accountIndex), slots.AsSpan(0, slotIndex), cancellationToken);
         }
         finally
         {
@@ -511,7 +514,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     internal void DecrementOutstandingWarmups() => CompleteWarmup();
 
-    public void Prefetch(Span<Address> accounts, Span<StorageCell> slots) => _snapshotBundle.Prefetch(accounts, slots);
+    public void Prefetch(Span<Address> accounts, Span<StorageCell> slots, CancellationToken cancellationToken) => _snapshotBundle.Prefetch(accounts, slots, cancellationToken);
 
     public bool SupportsPrefetch => true;
 

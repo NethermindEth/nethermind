@@ -5,6 +5,7 @@ using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Threading.Tasks;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
@@ -53,7 +54,7 @@ public class WorldStateMetricsScopeProvider(IWorldStateScopeProvider baseProvide
 
         public void HintWarmSlot(Address address, in UInt256 index) => baseScope.HintWarmSlot(address, in index);
 
-        public void Prefetch(Span<Address> accounts, Span<StorageCell> slots) => baseScope.Prefetch(accounts, slots);
+        public void Prefetch(Span<Address> accounts, Span<StorageCell> slots, CancellationToken cancellationToken) => baseScope.Prefetch(accounts, slots, cancellationToken);
 
         public bool SupportsPrefetch => baseScope.SupportsPrefetch;
 

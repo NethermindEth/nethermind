@@ -4,6 +4,7 @@
 using System;
 using System.Diagnostics.CodeAnalysis;
 using System.Threading.Tasks;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
@@ -70,8 +71,11 @@ public interface IWorldStateScopeProvider
         /// Starts reading accounts and slots that will be read soon from persisted state, without returning them,
         /// so that cold disk reads overlap. No-op for backends without asynchronous reads.
         /// </summary>
-        /// <remarks>The spans are the caller's scratch: layers filter them in place, so their contents may change.</remarks>
-        void Prefetch(Span<Address> accounts, Span<StorageCell> slots) { }
+        /// <remarks>
+        /// The spans are the caller's scratch: layers filter them in place, so their contents may change. Once
+        /// <paramref name="cancellationToken"/> is cancelled no further batch is started; reads already started complete.
+        /// </remarks>
+        void Prefetch(Span<Address> accounts, Span<StorageCell> slots, CancellationToken cancellationToken) { }
 
         /// <summary>Whether <see cref="Prefetch"/> does anything, so callers can skip gathering keys.</summary>
         bool SupportsPrefetch => false;

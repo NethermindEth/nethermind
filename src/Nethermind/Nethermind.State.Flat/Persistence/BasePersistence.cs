@@ -290,7 +290,7 @@ public static class BasePersistence
         public bool IsPreimageMode { get; }
 
         /// <summary>Starts reading the hashed keys that <paramref name="keys"/> produces ahead of use; does nothing by default.</summary>
-        public void Prefetch<TKeys>(ref TKeys keys) where TKeys : struct, IHashedPrefetchKeys, allows ref struct { }
+        public void Prefetch<TKeys>(ref TKeys keys, CancellationToken cancellationToken) where TKeys : struct, IHashedPrefetchKeys, allows ref struct { }
 
         /// <summary>Whether reading this account is answered from memory; true when the store cannot prefetch.</summary>
         public bool IsAccountCached(in ValueHash256 account) => true;
@@ -354,7 +354,7 @@ public static class BasePersistence
 
         /// <summary>Starts reading accounts and slots ahead of use; does nothing by default.</summary>
         /// <remarks>The spans are the caller's scratch: readers may filter them in place.</remarks>
-        public void Prefetch(Span<Address> accounts, Span<StorageCell> slots) { }
+        public void Prefetch(Span<Address> accounts, Span<StorageCell> slots, CancellationToken cancellationToken) { }
     }
 
     public interface IFlatWriteBatch
@@ -485,8 +485,9 @@ public static class BasePersistence
 
         public bool IsPreimageMode => _flatReader.IsPreimageMode;
 
-        public void Prefetch(Span<Address> accounts, Span<StorageCell> slots)
+        public void Prefetch(Span<Address> accounts, Span<StorageCell> slots, CancellationToken cancellationToken)
         {
+            if (cancellationToken.IsCancellationRequested) return;
             // A few spread-out keys decide before the rest are hashed: when all of them are in memory the block is
             // treated as cached and costs only those probes.
             if (SampledAccountsCached(accounts)) accounts = default;
@@ -498,7 +499,7 @@ public static class BasePersistence
             }
 
             HashingPrefetchKeys keys = new(accounts, slots);
-            _flatReader.Prefetch(ref keys);
+            _flatReader.Prefetch(ref keys, cancellationToken);
         }
 
         /// <summary>Hashes each key when the reader encodes it; one account's adjacent slots share one account hash.</summary>
@@ -532,26 +533,29 @@ public static class BasePersistence
         // Enough probes that a block with a third of its reads cold is sampled cold with over 95% probability.
         private const int PrefetchSamples = 8;
 
+        /// <summary>The index of sample <paramref name="sample"/> of <paramref name="sampleCount"/> spread evenly over <paramref name="length"/> keys.</summary>
+        private static int SampleIndex(int sample, int sampleCount, int length) => (int)((long)sample * length / sampleCount);
+
         private bool SampledAccountsCached(ReadOnlySpan<Address> accounts)
         {
-            if (accounts.IsEmpty) return true;
-            int step = Math.Max(1, accounts.Length / PrefetchSamples);
-            for (int i = 0; i < accounts.Length; i += step)
+            int sampleCount = Math.Min(accounts.Length, PrefetchSamples);
+            for (int sample = 0; sample < sampleCount; sample++)
             {
-                if (!_flatReader.IsAccountCached(accounts[i].ToAccountPath)) return false;
+                Address address = accounts[SampleIndex(sample, sampleCount, accounts.Length)];
+                if (!_flatReader.IsAccountCached(address.ToAccountPath)) return false;
             }
             return true;
         }
 
         private bool SampledSlotsCached(ReadOnlySpan<StorageCell> slots)
         {
-            if (slots.IsEmpty) return true;
-            int step = Math.Max(1, slots.Length / PrefetchSamples);
-            for (int i = 0; i < slots.Length; i += step)
+            int sampleCount = Math.Min(slots.Length, PrefetchSamples);
+            for (int sample = 0; sample < sampleCount; sample++)
             {
+                ref readonly StorageCell cell = ref slots[SampleIndex(sample, sampleCount, slots.Length)];
                 ValueHash256 slotHash = ValueKeccak.Zero;
-                StorageTree.ComputeKeyWithLookup(slots[i].Index, ref slotHash);
-                if (!_flatReader.IsSlotCached(slots[i].Address.ToAccountPath, slotHash)) return false;
+                StorageTree.ComputeKeyWithLookup(cell.Index, ref slotHash);
+                if (!_flatReader.IsSlotCached(cell.Address.ToAccountPath, slotHash)) return false;
             }
             return true;
         }
@@ -599,8 +603,8 @@ public static class BasePersistence
 
         public bool IsPreimageMode => _flatReader.IsPreimageMode;
 
-        public void Prefetch(Span<Address> accounts, Span<StorageCell> slots) =>
-            _flatReader.Prefetch(accounts, slots);
+        public void Prefetch(Span<Address> accounts, Span<StorageCell> slots, CancellationToken cancellationToken) =>
+            _flatReader.Prefetch(accounts, slots, cancellationToken);
     }
 
     public class WriteBatch<TFlatWriteBatch, TTrieWriteBatch>(

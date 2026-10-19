@@ -301,7 +301,7 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
         public bool IsPreimageMode => inner.IsPreimageMode;
 
         /// <summary>Forwards only the keys this cache cannot serve, so a prefetch never reads what a later read finds here.</summary>
-        public void Prefetch(Span<Address> accounts, Span<StorageCell> slots)
+        public void Prefetch(Span<Address> accounts, Span<StorageCell> slots, CancellationToken cancellationToken)
         {
             if (inner is not IPersistence.IPrefetchingReader prefetcher) return;
             if (parent.IsCurrent(generation))
@@ -324,7 +324,7 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
                 slots = slots[..keptSlots];
             }
 
-            prefetcher.Prefetch(accounts, slots);
+            prefetcher.Prefetch(accounts, slots, cancellationToken);
         }
 
         /// <remarks>

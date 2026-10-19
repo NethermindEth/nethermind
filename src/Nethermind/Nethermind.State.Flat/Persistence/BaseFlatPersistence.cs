@@ -159,7 +159,7 @@ public static class BaseFlatPersistence
             storage is not IReadPrefetcher prefetcher || prefetcher.IsCached(EncodeStorageKey(stackalloc byte[StorageKeyLength], account, slot, fullAddressStorageKey));
 
         [SkipLocalsInit]
-        public void Prefetch<TKeys>(ref TKeys keys) where TKeys : struct, BasePersistence.IHashedPrefetchKeys, allows ref struct
+        public void Prefetch<TKeys>(ref TKeys keys, CancellationToken cancellationToken) where TKeys : struct, BasePersistence.IHashedPrefetchKeys, allows ref struct
         {
             int accounts = keys.AccountCount;
             if (accounts != 0 && state is IReadPrefetcher accountPrefetcher)
@@ -167,6 +167,7 @@ public static class BaseFlatPersistence
                 Span<byte> batch = stackalloc byte[PrefetchBatchSize * AccountKeyLength];
                 for (int start = 0; start < accounts; start += PrefetchBatchSize)
                 {
+                    if (cancellationToken.IsCancellationRequested) return;
                     int count = Math.Min(PrefetchBatchSize, accounts - start);
                     for (int i = 0; i < count; i++)
                     {
@@ -183,6 +184,7 @@ public static class BaseFlatPersistence
                 Span<byte> batch = stackalloc byte[PrefetchBatchSize * StorageKeyLength];
                 for (int start = 0; start < slots; start += PrefetchBatchSize)
                 {
+                    if (cancellationToken.IsCancellationRequested) return;
                     int count = Math.Min(PrefetchBatchSize, slots - start);
                     for (int i = 0; i < count; i++)
                     {

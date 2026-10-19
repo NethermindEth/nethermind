@@ -65,7 +65,7 @@ public interface IPersistence
         /// Best effort: the call returns without waiting for the reads, never reports a failed read, and does not change
         /// what later reads return. The spans are used only during the call and are not kept.
         /// </remarks>
-        void Prefetch(Span<Address> accounts, Span<StorageCell> slots);
+        void Prefetch(Span<Address> accounts, Span<StorageCell> slots, CancellationToken cancellationToken);
     }
 
     public interface IWriteBatch : IDisposable
