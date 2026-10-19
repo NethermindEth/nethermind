@@ -189,6 +189,9 @@ public static class BlockErrorMessages
     public static string BlockAccessListGasLimitExceeded(ulong balItems, ulong maxBalItems) =>
         $"BlockAccessListGasLimitExceeded: BAL has {balItems} items, exceeds limit of {maxBalItems} (block_gas_limit / {Eip7928Constants.ItemCost}).";
 
+    public static string MinimumBlockGasAboveGasLimit(ulong minimumBlockGas, ulong gasLimit) =>
+        $"Block gas limit exceeded: transactions charge at least {minimumBlockGas} gas, above block gas limit {gasLimit}.";
+
     public static string BlockLevelAccessListIndexOutOfRange(uint index, uint maxAllowed) =>
         $"InvalidBlockLevelAccessList: BlockAccessIndex {index} exceeds allowed range [0, {maxAllowed}] (txCount + 1).";
 

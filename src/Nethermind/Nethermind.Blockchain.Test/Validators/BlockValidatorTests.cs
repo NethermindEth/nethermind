@@ -22,6 +22,7 @@ using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Core.Test;
 using Nethermind.Crypto;
+using Nethermind.Evm;
 
 namespace Nethermind.Blockchain.Test.Validators;
 
@@ -353,7 +354,7 @@ public class BlockValidatorTests
             .TestObject;
         Block suggestedBlock = Build.A.Block
             .WithParent(parent)
-            .WithGasLimit(10_000ul)
+            .WithGasLimit(1_000_000ul)
             .WithTransactions(2, Amsterdam.Instance)
             .WithBlobGasUsed(0)
             .WithWithdrawals([])
@@ -364,6 +365,36 @@ public class BlockValidatorTests
         bool isValid = sut.ValidateSuggestedBlock(suggestedBlock, parent, out string? error);
 
         AssertValidation(expectedValid, isValid, error, "InvalidBlockLevelAccessList");
+    }
+
+    [Test]
+    public void ValidateSuggestedBlock_rejects_transactions_whose_minimum_gas_exceeds_gas_limit([Values] bool fits, [Values] bool senderKnown)
+    {
+        const int txCount = 1000;
+        BlockHeader parent = Build.A.BlockHeader.TestObject;
+        Transaction[] transactions = new Transaction[txCount];
+        for (int i = 0; i < txCount; i++)
+        {
+            transactions[i] = Build.A.Transaction.To(TestItem.AddressB).WithValue(1).WithGasLimit(1_000_000).TestObject;
+            transactions[i].SenderAddress = senderKnown ? TestItem.AddressA : null;
+        }
+
+        // An unrecovered sender could still turn out to be the recipient, so it is held to the self-transfer price.
+        Transaction priced = Build.A.Transaction.To(TestItem.AddressB).WithValue(1).WithSenderAddress(senderKnown ? TestItem.AddressA : TestItem.AddressB).TestObject;
+        ulong minimumBlockGas = (ulong)txCount * IntrinsicGasCalculator.Calculate(priced, Amsterdam.Instance).MinimalGas;
+        Block suggestedBlock = Build.A.Block
+            .WithParent(parent)
+            .WithGasLimit(fits ? minimumBlockGas : minimumBlockGas - 1)
+            .WithTransactions(transactions)
+            .WithBlobGasUsed(0)
+            .WithWithdrawals([])
+            .WithBal(new ReadOnlyBlockAccessList())
+            .TestObject;
+        BlockValidator sut = AmsterdamSut(Always.Valid);
+
+        bool isValid = sut.ValidateSuggestedBlock(suggestedBlock, parent, out string? error);
+
+        AssertValidation(fits, isValid, error, "Block gas limit exceeded");
     }
 
     [Test]
