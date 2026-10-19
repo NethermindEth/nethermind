@@ -44,9 +44,18 @@ namespace Nethermind.Core.Extensions
             return first;
         }
 
-        /// <summary>The beacon slot grid for <paramref name="secondsPerSlot"/>, the slot length before EIP-8198.</summary>
-        public static SlotSchedule GetSlotSchedule(this ISpecProvider specProvider, ulong secondsPerSlot) =>
-            new(secondsPerSlot, specProvider.BeaconChainGenesisTimestamp, specProvider.GetEip8198Timestamp());
+        /// <summary>
+        /// The beacon slot grid for <paramref name="secondsPerSlot"/>, the slot length before EIP-8198, and the chain's
+        /// <see cref="ISpecProvider.Eip8198SlotDurationMs"/> from the fork.
+        /// </summary>
+        /// <remarks>The EIP-8198 slot duration is only read when the fork is scheduled.</remarks>
+        public static SlotSchedule GetSlotSchedule(this ISpecProvider specProvider, ulong secondsPerSlot)
+        {
+            ulong? eip8198Timestamp = specProvider.GetEip8198Timestamp();
+            return eip8198Timestamp is null
+                ? new(secondsPerSlot, specProvider.BeaconChainGenesisTimestamp)
+                : new(secondsPerSlot, specProvider.BeaconChainGenesisTimestamp, eip8198Timestamp, specProvider.Eip8198SlotDurationMs);
+        }
 
         public static ulong GetFinalMaxBlobGasPerBlock(this ISpecProvider specProvider) => Eip4844Constants.GasPerBlob * specProvider.GetFinalSpec().MaxBlobCount;
     }

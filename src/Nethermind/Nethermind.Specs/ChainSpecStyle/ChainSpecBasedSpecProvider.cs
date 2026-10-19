@@ -447,6 +447,7 @@ namespace Nethermind.Specs.ChainSpecStyle
 
         public ulong? DaoBlockNumber => _chainSpec.DaoForkBlockNumber;
         public ulong? BeaconChainGenesisTimestamp => _chainSpec.Parameters.BeaconChainGenesisTimestamp;
+        public ulong Eip8198SlotDurationMs => _chainSpec.Parameters.Eip8198SlotDurationMs ?? Eip8198Constants.DefaultSlotDurationMs;
 
         public ulong NetworkId => _chainSpec.NetworkId;
         public ulong ChainId => _chainSpec.ChainId;

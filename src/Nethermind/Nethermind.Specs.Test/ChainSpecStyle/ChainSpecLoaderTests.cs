@@ -11,6 +11,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.ExecutionRequest;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
@@ -236,6 +237,50 @@ public class ChainSpecLoaderTests
         }
     }
 
+    private static ChainSpec LoadChainSpecWithParams(string extraParams)
+    {
+        string json = $$"""
+            {
+                "name": "Test",
+                "engine": { "NethDev": {} },
+                "params": { "networkID": "1"{{extraParams}} },
+                "genesis": {
+                    "seal": { "ethereum": { "nonce": "0x0", "mixHash": "0x0000000000000000000000000000000000000000000000000000000000000000" } },
+                    "difficulty": "0x1",
+                    "gasLimit": "0x1000000",
+                    "timestamp": "0x0"
+                }
+            }
+            """;
+        using MemoryStream stream = new(Encoding.UTF8.GetBytes(json));
+        return new ChainSpecLoader(new EthereumJsonSerializer(), LimboLogs.Instance).Load(stream);
+    }
+
+    [TestCase(", \"eip8198TransitionTimestamp\": \"0x64\", \"eip8198SlotDurationMs\": \"0x1770\"", 6_000UL, 6_000UL)]
+    [TestCase(", \"eip8198TransitionTimestamp\": \"0x64\", \"eip8198SlotDurationMs\": \"0x2ee0\"", 12_000UL, 12_000UL)]
+    [TestCase(", \"eip8198TransitionTimestamp\": \"0x64\"", null, Eip8198Constants.DefaultSlotDurationMs)]
+    [TestCase("", null, Eip8198Constants.DefaultSlotDurationMs)]
+    public void Loads_eip8198_slot_duration(string extraParams, ulong? expectedParameter, ulong expectedDurationMs)
+    {
+        ChainSpec chainSpec = LoadChainSpecWithParams(extraParams);
+        ChainSpecBasedSpecProvider provider = new(chainSpec);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chainSpec.Parameters.Eip8198SlotDurationMs, Is.EqualTo(expectedParameter));
+            Assert.That(provider.Eip8198SlotDurationMs, Is.EqualTo(expectedDurationMs));
+            Assert.That(((ISpecProvider)provider).Eip8198SlotDurationMs, Is.EqualTo(expectedDurationMs));
+        }
+    }
+
+    [TestCase("0x0")]
+    [TestCase("0x1f4")]
+    [TestCase("0x2904")]
+    public void Rejects_eip8198_slot_duration_that_is_not_whole_seconds(string slotDurationMs) =>
+        Assert.That(
+            () => LoadChainSpecWithParams($", \"eip8198TransitionTimestamp\": \"0x64\", \"eip8198SlotDurationMs\": \"{slotDurationMs}\""),
+            Throws.TypeOf<InvalidDataException>().With.Message.Contains("EIP-8198 slot duration"));
+
     [Test]
     public void Eip8116_activates_at_its_transition_timestamp()
     {
@@ -293,6 +338,9 @@ public class ChainSpecLoaderTests
             if (testValue is not null)
                 prop.SetValue(paramsJson, testValue);
         }
+
+        // ChainSpecLoader.ValidateParams only accepts a whole number of seconds.
+        paramsJson.Eip8198SlotDurationMs = 6_000;
 
         // Serialize and wrap in a minimal valid chain spec JSON
         EthereumJsonSerializer serializer = new();

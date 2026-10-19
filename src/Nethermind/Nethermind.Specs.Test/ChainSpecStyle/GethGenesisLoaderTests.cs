@@ -715,6 +715,28 @@ public class GethGenesisLoaderTests
         Assert.That(chainSpec.Parameters.BeaconChainGenesisTimestamp, Is.EqualTo(expected));
     }
 
+    [TestCase("\"eip8198SlotDurationMs\": 6000", 6_000UL, 6_000UL)]
+    [TestCase("\"eip8198SlotDurationMs\": 12000", 12_000UL, 12_000UL)]
+    [TestCase("", null, Eip8198Constants.DefaultSlotDurationMs)]
+    public void Loads_eip8198_slot_duration(string configExtra, ulong? expectedParameter, ulong expectedDurationMs)
+    {
+        ChainSpec chainSpec = LoadStandardGethGenesis(configExtra: configExtra);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chainSpec.Parameters.Eip8198SlotDurationMs, Is.EqualTo(expectedParameter));
+            Assert.That(new ChainSpecBasedSpecProvider(chainSpec).Eip8198SlotDurationMs, Is.EqualTo(expectedDurationMs));
+        }
+    }
+
+    [TestCase(0UL)]
+    [TestCase(500UL)]
+    [TestCase(10_500UL)]
+    public void Rejects_eip8198_slot_duration_that_is_not_whole_seconds(ulong slotDurationMs) =>
+        Assert.That(
+            () => LoadStandardGethGenesis(configExtra: $"\"eip8198SlotDurationMs\": {slotDurationMs}"),
+            Throws.TypeOf<InvalidDataException>().With.Message.Contains("EIP-8198 slot duration"));
+
     /// <summary>
     /// Returns EIP numbers newly enabled by <paramref name="fork"/> compared to its <paramref name="parent"/>.
     /// </summary>

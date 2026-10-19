@@ -214,6 +214,9 @@ public class ChainSpecParamsJson : IHasNamedForks
     public ulong? Eip8116TransitionTimestamp { get; set; }
     public ulong? Eip8360TransitionTimestamp { get; set; }
     public ulong? Eip8198TransitionTimestamp { get; set; }
+
+    /// <summary>Slot length from the EIP-8198 fork, in milliseconds, mirroring the consensus-layer <c>SLOT_DURATION_MS_EIP8198</c>.</summary>
+    public ulong? Eip8198SlotDurationMs { get; set; }
     public ulong? Eip3298TransitionTimestamp { get; set; }
     public ulong? Eip8131TransitionTimestamp { get; set; }
     public ulong? Eip8279TransitionTimestamp { get; set; }

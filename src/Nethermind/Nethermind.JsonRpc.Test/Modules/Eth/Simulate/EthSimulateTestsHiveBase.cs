@@ -162,7 +162,7 @@ new object[] {"multicall-transaction-too-low-nonce-38010", true, "{\"blockStateC
         Assert.That((simulated.Timestamp - parent.Timestamp), Is.EqualTo((UInt256)secondsPerSlot));
     }
 
-    /// <summary>Without a time override each simulated block, fillers included, lands one slot on; EIP-8198 slots are 10 seconds.</summary>
+    /// <summary>Without a time override each simulated block, fillers included, lands one slot on; EIP-8198 slots default to 10 seconds.</summary>
     [Test]
     public async Task TestSimulate_DefaultTimestampsFollowTheEip8198SlotLength()
     {

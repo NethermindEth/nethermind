@@ -91,6 +91,15 @@ public class GethGenesisConfigJson : IHasNamedForks
     /// </remarks>
     public ulong? BeaconChainGenesisTimestamp { get; set; }
 
+    /// <summary>
+    /// Slot length from the EIP-8198 fork, in milliseconds; <c>null</c> means <see cref="Eip8198Constants.DefaultSlotDurationMs"/>.
+    /// </summary>
+    /// <remarks>
+    /// Not part of EIP-7949; mirrors <c>params.eip8198SlotDurationMs</c> of Parity-style chainspecs and the consensus-layer
+    /// <c>SLOT_DURATION_MS_EIP8198</c>.
+    /// </remarks>
+    public ulong? Eip8198SlotDurationMs { get; set; }
+
     public Dictionary<string, GethBlobScheduleEntry>? BlobSchedule { get; set; }
 
     IReadOnlyDictionary<string, ulong>? IHasNamedForks.NamedForkBlocks => _blocks;

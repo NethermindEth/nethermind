@@ -21,7 +21,9 @@ public static class Eip8198Constants
     public static readonly UInt256 BaseFeeMaxChangeDenominator = 48;
 
     /// <summary>
-    /// Slot length from the fork: consensus-specs <c>SLOT_DURATION_MS_EIP8198</c> (10000 ms on mainnet).
+    /// Slot length from the fork, in milliseconds, when the chainspec leaves <c>eip8198SlotDurationMs</c> unset:
+    /// the mainnet value of the consensus-layer config <c>SLOT_DURATION_MS_EIP8198</c>.
     /// </summary>
-    public const ulong SecondsPerSlot = 10;
+    /// <remarks>A network config value rather than a protocol constant; see <see cref="Specs.ISpecProvider.Eip8198SlotDurationMs"/>.</remarks>
+    public const ulong DefaultSlotDurationMs = 10_000;
 }
