@@ -7,13 +7,68 @@ from pathlib import Path
 import tempfile
 import unittest
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import embedded
 from test_canonical_snapshot import Node
 
 
 class EmbeddedCoverageTests(unittest.TestCase):
+    def test_native_accounting_checks_genesis_and_settled_state_on_both_nodes(self):
+        expected = {"system_balance": "0x7", "system_nonce": "0x2", "recipient": "recipient", "recipient_balance": "0x10"}
+        values = {("eth_getBalance", embedded.SYSTEM, "0x0"): "0x0",
+                  ("eth_getTransactionCount", embedded.SYSTEM, "0x0"): "0x0",
+                  ("eth_getBalance", embedded.SYSTEM, "settled"): "0x7",
+                  ("eth_getTransactionCount", embedded.SYSTEM, "settled"): "0x2",
+                  ("eth_getBalance", "recipient", "settled"): "0x10"}
+        for failed_node in (0, 1):
+            for changed in (None, *values):
+                with self.subTest(failed_node=failed_node, changed=changed):
+                    def node(index):
+                        def call(method, address, context):
+                            if isinstance(context, dict):
+                                self.assertEqual({"blockHash": "end", "requireCanonical": True}, context)
+                                context = "settled"
+                            key = method, address, context
+                            return "0xff" if index == failed_node and key == changed else values[key]
+                        return Mock(call=Mock(side_effect=call))
+                    nodes = node(0), node(1)
+                    if changed is None:
+                        embedded.check_native_state(*nodes, "end", expected)
+                        self.assertEqual(5, nodes[0].call.call_count)
+                        self.assertEqual(5, nodes[1].call.call_count)
+                    else:
+                        with self.assertRaises(AssertionError):
+                            embedded.check_native_state(*nodes, "end", expected)
+
+    def test_native_report_requires_new_database_and_identical_recovered_accounting(self):
+        revision, image = "a" * 40, "sha256:" + "b" * 64
+        for mutation in (None, "fresh-database", "advanced-database", "fresh-state", "missing-native"):
+            with self.subTest(mutation=mutation), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                inventory = root / "inventory.json"
+                inventory.write_text(json.dumps({"cases": [{"source": "crates/eez-node-e2e/tests/native_system.rs",
+                    "test": "two_composers_two_keyless_followers", "candidate_status": "planned"}]}))
+                phases = embedded.CASES["native_system"]["two_composers_two_keyless_followers"][1]
+                for index, phase in enumerate(phases):
+                    observation = {"result": "pass", "case": "native-system", "phase": phase,
+                        "verified_blocks": 5, "verified_native_transactions": 1 if index == 0 else 2,
+                        "candidate_revision": revision, "image_id": image,
+                        "database_id": "fresh" if index == 2 else "existing",
+                        "native_state": {"system_nonce": "0x1" if index == 0 else "0x2", "recipient_balance": "0x10"}}
+                    if mutation == "fresh-database" and index == 2: observation["database_id"] = "existing"
+                    if mutation == "advanced-database" and index == 1: observation["database_id"] = "wrong"
+                    if mutation == "fresh-state" and index == 2: observation["native_state"]["recipient_balance"] = "0x0"
+                    if mutation == "missing-native" and index == 1: observation["verified_native_transactions"] = 0
+                    (root / ("native-system-" + phase + ".json")).write_text(json.dumps(observation))
+                args = SimpleNamespace(inventory=inventory, directory=root)
+                with patch.dict(os.environ, {"GITHUB_SHA": revision, "EEZ_CANDIDATE_IMAGE": image, "EEZ_SUITE": "embedded-native_system"}):
+                    if mutation is None:
+                        embedded.report(args)
+                        self.assertEqual("passed", json.loads((root / "candidate-coverage.json").read_text())["cases"][0]["candidate_status"])
+                    else:
+                        with self.assertRaises((ValueError, AssertionError)): embedded.report(args)
+
     def test_new_upstream_case_is_missing_and_ignored_case_is_not_passed(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -104,43 +159,54 @@ class EmbeddedCoverageTests(unittest.TestCase):
 
     def test_actual_verification_checks_running_image_source_and_canonical_prefix(self):
         revision, image = "a" * 40, "sha256:" + "b" * 64
-        for failure in (None, "image", "source", "container", "l1-reorg", "candidate-fork", "prefix"):
-            with self.subTest(failure=failure), tempfile.TemporaryDirectory() as directory:
-                root = Path(directory)
-                image_info = {"Id": image, "Config": {"Labels": {"org.opencontainers.image.revision": revision}}}
-                container = {"Id": "container-id", "Image": image}
-                if failure == "image": image_info["Id"] = "other-image"
-                if failure == "source": image_info["Config"]["Labels"]["org.opencontainers.image.revision"] = "c" * 40
-                if failure == "container": container["Image"] = "other-image"
-                nodes = {role: Node(role) for role in ("l1", "reference", "candidate")}
-                if failure == "l1-reorg": nodes["l1"].l1_hash = "fork"
-                if failure == "candidate-fork": nodes["candidate"].canonical_hash = "fork"
-                settings = {"case": "resumption", "phase": "after-resumption", "candidate_revision": revision,
-                    "image_id": image, "container": "container-name", "database_id": "database",
-                    "result_directory": directory, "rollup_id": "1", "l1_chain_id": "1",
-                    "registry": "registry", "minimum_height": 1, **{role: role for role in nodes}}
-                settings_path = root / "settings.json"
-                settings_path.write_text(json.dumps(settings))
-                result = {"height": 1, "endpoint": "end", "verified_blocks": 2, "verified_receipts": 1, "verified_native_transactions": 1}
-                with contextlib.ExitStack() as stack:
-                    stack.enter_context(patch.dict(os.environ, {"GITHUB_SHA": revision, "EEZ_EMBEDDED_RESULTS": directory}))
-                    stack.enter_context(patch("embedded.subprocess.check_output", side_effect=[json.dumps([image_info]), json.dumps([container]), "calldata"]))
-                    stack.enter_context(patch("embedded.Rpc", side_effect=lambda role, deadline: nodes[role]))
-                    stack.enter_context(patch("embedded.registry", return_value="end"))
-                    prefix = stack.enter_context(patch("embedded.verify_prefix", return_value=dict(result)))
-                    stack.enter_context(contextlib.redirect_stdout(io.StringIO()))
-                    if failure == "prefix": prefix.side_effect = AssertionError("actual prefix differs")
-                    output = root / "resumption-after-resumption.json"
-                    if failure is None:
-                        embedded.verify(settings_path)
-                        prefix.assert_called_once_with(nodes["reference"], nodes["candidate"], "end", "genesis", 8192)
-                        self.assertEqual("container-id", json.loads(output.read_text())["container"])
-                    else:
-                        expected = {"image": "candidate image", "source": "candidate image source",
-                            "container": "running candidate image", "l1-reorg": "canonical L1 recheck",
-                            "candidate-fork": "canonical settled endpoint", "prefix": "actual prefix differs"}[failure]
-                        with self.assertRaisesRegex(AssertionError, expected): embedded.verify(settings_path)
-                        self.assertFalse(output.exists())
+        for case in ("resumption", "native-system"):
+            failures = (None, "image", "source", "container", "l1-reorg", "candidate-fork", "prefix")
+            if case == "native-system": failures += ("native-state", "native-count")
+            for failure in failures:
+                with self.subTest(failure=failure), tempfile.TemporaryDirectory() as directory:
+                    root = Path(directory)
+                    image_info = {"Id": image, "Config": {"Labels": {"org.opencontainers.image.revision": revision}}}
+                    container = {"Id": "container-id", "Image": image}
+                    if failure == "image": image_info["Id"] = "other-image"
+                    if failure == "source": image_info["Config"]["Labels"]["org.opencontainers.image.revision"] = "c" * 40
+                    if failure == "container": container["Image"] = "other-image"
+                    nodes = {role: Node(role) for role in ("l1", "reference", "candidate")}
+                    if failure == "l1-reorg": nodes["l1"].l1_hash = "fork"
+                    if failure == "candidate-fork": nodes["candidate"].canonical_hash = "fork"
+                    phase = "after-outbound" if case == "native-system" else "after-resumption"
+                    settings = {"case": case, "phase": phase, "native_state": {"system_nonce": "0x2"}, "candidate_revision": revision,
+                        "image_id": image, "container": "container-name", "database_id": "database",
+                        "result_directory": directory, "rollup_id": "1", "l1_chain_id": "1",
+                        "registry": "registry", "minimum_height": 1, **{role: role for role in nodes}}
+                    settings_path = root / "settings.json"
+                    settings_path.write_text(json.dumps(settings))
+                    result = {"height": 1, "endpoint": "end", "verified_blocks": 2, "verified_receipts": 1, "verified_native_transactions": 2 if case == "native-system" and failure != "native-count" else 1}
+                    with contextlib.ExitStack() as stack:
+                        stack.enter_context(patch.dict(os.environ, {"GITHUB_SHA": revision, "EEZ_EMBEDDED_RESULTS": directory}))
+                        stack.enter_context(patch("embedded.subprocess.check_output", side_effect=[json.dumps([image_info]), json.dumps([container]), "calldata"]))
+                        stack.enter_context(patch("embedded.Rpc", side_effect=lambda role, deadline: nodes[role]))
+                        stack.enter_context(patch("embedded.registry", return_value="end"))
+                        prefix = stack.enter_context(patch("embedded.verify_prefix", return_value=dict(result)))
+                        native_state = stack.enter_context(patch("embedded.check_native_state"))
+                        if failure == "native-state": native_state.side_effect = AssertionError("native state differs")
+                        stack.enter_context(contextlib.redirect_stdout(io.StringIO()))
+                        if failure == "prefix": prefix.side_effect = AssertionError("actual prefix differs")
+                        output = root / (case + "-" + phase + ".json")
+                        if failure is None:
+                            embedded.verify(settings_path)
+                            prefix.assert_called_once_with(nodes["reference"], nodes["candidate"], "end", "genesis", 8192)
+                            self.assertEqual("container-id", json.loads(output.read_text())["container"])
+                            if case == "native-system":
+                                native_state.assert_called_once_with(nodes["reference"], nodes["candidate"], "end", settings["native_state"])
+                            else:
+                                native_state.assert_not_called()
+                        else:
+                            expected = {"image": "candidate image", "source": "candidate image source",
+                                "container": "running candidate image", "l1-reorg": "canonical L1 recheck",
+                                "candidate-fork": "canonical settled endpoint", "prefix": "actual prefix differs",
+                                "native-state": "native state differs", "native-count": "native scenario did not execute"}[failure]
+                            with self.assertRaisesRegex(ValueError if failure == "native-count" else AssertionError, expected): embedded.verify(settings_path)
+                            self.assertFalse(output.exists())
 
     def test_adaptation_cannot_remove_an_upstream_assertion(self):
         with tempfile.TemporaryDirectory() as directory:

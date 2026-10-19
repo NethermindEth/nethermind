@@ -1,0 +1,152 @@
+import copy
+import json
+import os
+from pathlib import Path
+import tempfile
+import unittest
+from unittest.mock import patch
+
+import partitions
+
+
+class PartitionTests(unittest.TestCase):
+    def test_driver_keeps_selected_script_and_removes_only_other_suite_calls(self):
+        names = ["verify-eezl2-deployment", "verify-cross-chain-waves", "run-protocol-e2e",
+                 "verify-ingress-admission", "verify-fault-recovery"]
+        driver = "write_result() { original_result; }\ntrap cleanup EXIT\n"
+        for name in names:
+            driver += 'bash "$HERE/scripts/' + name + '.sh"\nbash "$NETHERMIND_OBSERVE_SCRIPT" ' + name + '\n'
+        driver += 'bash "$NETHERMIND_OBSERVE_SCRIPT" recovery\nwrite_result pass 0\n'
+        driver += 'if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then\n echo misleading-full-pass\nfi\n'
+        with tempfile.TemporaryDirectory() as directory:
+            changed, hooks = partitions.adapt_driver(driver, Path(directory), "rollup0", "ingress")
+        self.assertEqual(["verify-eezl2-deployment", "verify-ingress-admission"], hooks)
+        self.assertIn('bash "$HERE/scripts/verify-ingress-admission.sh"', changed)
+        self.assertNotIn('bash "$HERE/scripts/run-protocol-e2e.sh"', changed)
+        self.assertNotIn('bash "$NETHERMIND_OBSERVE_SCRIPT" recovery', changed)
+        self.assertNotIn("misleading-full-pass", changed)
+        with self.assertRaises(AssertionError):
+            partitions.adapt_driver(driver + 'bash "$NETHERMIND_OBSERVE_SCRIPT" new-suite\n', Path("unused"), "rollup0", "ingress")
+        with self.assertRaises(ValueError):
+            partitions.adapt_driver(driver.replace('bash "$HERE/scripts/verify-ingress-admission.sh"', ""), Path("unused"), "rollup0", "ingress")
+
+    def test_report_requires_original_result_candidate_and_every_observation(self):
+        for mutation in (None, "missing-observation", "failed-observation", "failed-result", "wrong-source", "missing-candidate"):
+            with self.subTest(mutation=mutation), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                manifest = {"profile": "rollup0", "revision": "a" * 40, "core_revision": "b" * 40}
+                plan = {"upstream": manifest, "protocol_cases": [], "suites": {name: {} for name in partitions.suites("rollup0")}}
+                result = {"profile": "rollup0", "suite": "wave-inbound", "result": "pass", "exit_code": 0,
+                          "commits": {"root": manifest["revision"], "protocol": manifest["core_revision"]}}
+                if mutation == "failed-result": result["result"] = "fail"
+                if mutation == "wrong-source": result["commits"]["root"] = "c" * 40
+                files = {"upstream.json": manifest, "partitions.json": plan, "result.json": result,
+                         "scenario-hooks.json": ["verify-eezl2-deployment", "verify-cross-chain-waves"],
+                         "verify-eezl2-deployment.json": {"result": "pass"},
+                         "verify-cross-chain-waves.json": {"result": "fail" if mutation == "failed-observation" else "pass"},
+                         "candidate-prover.json": {"result": "pass"}}
+                if mutation == "missing-observation": del files["verify-cross-chain-waves.json"]
+                if mutation == "missing-candidate": del files["candidate-prover.json"]
+                for name, value in files.items(): (root / name).write_text(json.dumps(value))
+                with patch.dict(os.environ, {"EEZ_PROFILE": "rollup0", "EEZ_SUITE": "wave-inbound", "GITHUB_SHA": "d" * 40}):
+                    if mutation is None:
+                        partitions.report(root)
+                        self.assertEqual("pass", json.loads((root / "partition.json").read_text())["result"])
+                    else:
+                        with self.assertRaises((AssertionError, ValueError, FileNotFoundError)):
+                            partitions.report(root)
+                        self.assertFalse((root / "partition.json").exists())
+
+    def test_plan_uses_current_supported_targets_and_assigns_each_once(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            driver = root / "testing/kurtosis/scripts/run-protocol-e2e.sh"
+            driver.parent.mkdir(parents=True)
+            driver.write_text("SUPPORTED_TARGETS=(\n one_way # comment\n multi_tx\n new_target\n)\n")
+            result = partitions.plan(root, {"profile": "rollup0"})
+            targets = [target for name, item in result["suites"].items() if name.startswith("protocol-") for target in item["targets"]]
+            self.assertCountEqual(["one_way", "multi_tx", "new_target"], targets)
+            self.assertEqual(len(targets), len(set(targets)))
+
+    def test_native_plan_keeps_upstream_exclusions_and_new_scenarios(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for index in range(6):
+                path = root / "eez-core-protocol/script/e2e/scenarios/group" / ("case" + str(index)) / "E2E.s.sol"
+                path.parent.mkdir(parents=True)
+                path.write_text("// E2E_EXCLUDE_FROM_ALL: local only\n" if index == 5 else "original assertion")
+            result = partitions.plan(root, {"profile": "rollupx"})
+            self.assertCountEqual(["case" + str(index) for index in range(5)], result["protocol_cases"])
+
+    def test_scope_cannot_claim_unexecuted_full_suite(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            value = {"result": "pass", "exit_code": 0, "commits": {}, "images": {}, "proof_flow": {},
+                     "state_chaining": "pass", "modes": ["inbound", "outbound"], "safe_head_convergence": "pass"}
+            (root / "result.json").write_text(json.dumps(value))
+            with patch.dict(os.environ, {"EEZ_PROFILE": "rollupx", "EEZ_SUITE": "wave-inbound", "GITHUB_SHA": "a" * 40}):
+                partitions.scope(root)
+            result = json.loads((root / "result.json").read_text())
+            self.assertFalse(result["suite_complete"])
+            self.assertNotIn("state_chaining", result)
+            self.assertNotIn("modes", result)
+
+    def test_wave_partitions_keep_original_command_arguments(self):
+        original = '''#!/usr/bin/env bash
+for mode in inbound outbound mixed; do
+    run_check "cross-chain-wave-$mode" env EEZ_WAVE_MODE="$mode" EEZ_WAVE_COUNT=1 EEZ_INCLUDE_REVERTS=1 bash "$HERE/cross-chain-wave.sh"
+done
+
+run_check "cross-chain-wave-mixed-pure" env EEZ_WAVE_MODE=mixed-pure EEZ_WAVE_COUNT="${EEZ_MIXED_PURE_WAVE_COUNT:-3}" bash "$HERE/cross-chain-wave.sh"
+
+run_check "state-chaining" bash "$HERE/verify-state-chaining.sh"
+'''
+        for selected in partitions.WAVES:
+            with self.subTest(selected=selected), tempfile.TemporaryDirectory() as directory:
+                path = Path(directory) / "waves.sh"
+                path.write_text(original)
+                partitions.adapt_waves(path, selected)
+                adapted = path.read_text()
+                if selected in ("inbound", "outbound", "mixed"):
+                    self.assertIn("EEZ_INCLUDE_REVERTS=1", adapted)
+                    self.assertIn("EEZ_WAVE_COUNT=1", adapted)
+                    self.assertIn("for mode in " + selected + "; do", adapted)
+                elif selected == "mixed-pure":
+                    self.assertIn("${EEZ_MIXED_PURE_WAVE_COUNT:-3}", adapted)
+                else:
+                    self.assertIn('bash "$HERE/verify-state-chaining.sh"', adapted)
+
+    def test_aggregate_rejects_missing_duplicate_failed_or_changed_partitions(self):
+        revision = "a" * 40
+        for failure in (None, "missing", "duplicate", "failed", "candidate", "source", "plan", "missing-target", "duplicate-target"):
+            with self.subTest(failure=failure), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                records = []
+                for profile in partitions.PROTOCOL_PARTS:
+                    plan = {"upstream": {"profile": profile}, "protocol_cases": ["case" + str(i) for i in range(partitions.PROTOCOL_PARTS[profile])],
+                            "suites": {suite: {} for suite in partitions.suites(profile)}}
+                    for i in range(partitions.PROTOCOL_PARTS[profile]):
+                        plan["suites"]["protocol-" + str(i + 1)]["targets"] = ["case" + str(i)]
+                    if failure == "missing-target": plan["suites"]["protocol-1"]["targets"] = []
+                    if failure == "duplicate-target": plan["suites"]["protocol-1"]["targets"] = ["case1"]
+                    for suite in partitions.suites(profile):
+                        records.append({"result": "pass", "profile": profile, "suite": suite,
+                                        "candidate_revision": revision, "upstream": plan["upstream"], "plan": copy.deepcopy(plan)})
+                if failure == "missing": records.pop()
+                if failure == "duplicate": records.append(copy.deepcopy(records[0]))
+                if failure == "failed": records[0]["result"] = "fail"
+                if failure == "candidate": records[0]["candidate_revision"] = "b" * 40
+                if failure == "source": records[0]["upstream"] = {"profile": "other"}
+                if failure == "plan": records[0]["plan"]["unexpected"] = True
+                for index, record in enumerate(records):
+                    path = root / str(index)
+                    path.mkdir()
+                    (path / "partition.json").write_text(json.dumps(record))
+                with patch.dict(os.environ, {"GITHUB_SHA": revision}):
+                    if failure is None:
+                        partitions.aggregate(root)
+                        self.assertEqual("pass", json.loads((root / "summary.json").read_text())["result"])
+                    else:
+                        with self.assertRaises((ValueError, AssertionError)):
+                            partitions.aggregate(root)
+                        self.assertFalse((root / "summary.json").exists())

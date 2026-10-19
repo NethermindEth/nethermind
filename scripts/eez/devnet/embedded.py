@@ -9,7 +9,7 @@ import shutil
 import subprocess
 import time
 
-from verify import Rpc, equal, registry, verify_prefix
+from verify import Rpc, SYSTEM, equal, registry, verify_prefix
 
 
 CASES = {
@@ -24,6 +24,10 @@ CASES = {
     "resumption_append": {
         "a_resumed_batch_appends_the_l2_content_of_the_entries_it_settled":
             ("resumption-append", ("before-resumption", "after-resumption")),
+    },
+    "native_system": {
+        "two_composers_two_keyless_followers":
+            ("native-system", ("after-deposit", "after-outbound", "fresh-follower")),
     },
 }
 
@@ -65,8 +69,14 @@ def adapt(suite, source):
         source = insert(source, marker, addition)
         additions.append(addition)
 
-    after("use std::time::Duration;", '\n\n#[path = "nethermind/mod.rs"]\nmod nethermind;')
-    if suite == "durability":
+    module_marker = "use serde_json::{Value, json};" if suite == "native_system" else "use std::time::Duration;"
+    after(module_marker, '\n\n#[path = "nethermind/mod.rs"]\nmod nethermind;')
+    if suite == "native_system":
+        after("    let withdrawal_before = l2_balance(&l1_rpc, world.withdrawal_recipient).await?;", '\n    let candidate = nethermind::Candidate::start("native-system", &world.cfg.l2_genesis.0, &world.follower_env()).await?;\n    let mut native_expected = json!({\n        "system_balance": "0x0", "system_nonce": "0x1",\n        "recipient": world.recipient, "recipient_balance": format!("{:#x}", recipient_before + deposit),\n    });')
+        after("    // Drain any already accepted Composer 1 bundle before switching producers.",
+              '\n    candidate.verify_native(&primary_rpc, 1, "after-deposit", &native_expected).await?;')
+        after("    world.node.assert_no_divergence_failure_logs();", '\n    native_expected["system_balance"] = json!(format!("{withdrawal:#x}"));\n    native_expected["system_nonce"] = json!("0x2");\n    candidate.verify_native(&primary_rpc, final_height, "after-outbound", &native_expected).await?;\n    drop(candidate);\n    let fresh = nethermind::Candidate::start("native-system", &world.cfg.l2_genesis.0, &world.follower_env()).await?;\n    fresh.verify_native(&primary_rpc, final_height, "fresh-follower", &native_expected).await?;')
+    elif suite == "durability":
         after("    let states_before = chain.executed_states().await.unwrap();", "\n    let mut candidate = nethermind::Candidate::start(\"durability\", harness.l2_genesis_path(), &harness.follower_env(None).await.unwrap()).await.unwrap();")
         after('        .expect("composer did not retain its newly settled safe block");', '\n        candidate.verify(&node.l2_rpc_url(), settled_before_restart.0, "before-restart").await.unwrap();\n        candidate.restart().await.unwrap();')
         after('    .expect("restarted composer did not restore the exact pre-crash safe prefix");', '\n    candidate.verify(&restarted.l2_rpc_url(), settled_before_restart.0, "after-restart").await.unwrap();')
@@ -159,6 +169,14 @@ def verify(settings_path):
             time.sleep(1)
             continue
         result = verify_prefix(reference, candidate, commitment, genesis, 8192)
+        if case == "native-system":
+            state = settings["native_state"]
+            check_native_state(reference, candidate, commitment, state)
+            minimum = 1 if phase == "after-deposit" else 2
+            if result["verified_native_transactions"] < minimum:
+                raise ValueError("native scenario did not execute the required system transactions")
+            equal(state["system_nonce"], hex(minimum), "native scenario nonce")
+            result["native_state"] = state
         equal(l1.call("eth_getBlockByNumber", snapshot["number"], False)["hash"], snapshot["hash"], "canonical L1 recheck")
         for node in (reference, candidate):
             equal(node.call("eth_getBlockByNumber", hex(result["height"]), False)["hash"], commitment, "canonical settled endpoint")
@@ -173,12 +191,26 @@ def verify(settings_path):
     raise TimeoutError("candidate did not derive the required settled prefix")
 
 
+
+def check_native_state(reference, candidate, commitment, expected):
+    context = {"blockHash": commitment, "requireCanonical": True}
+    for node in (reference, candidate):
+        equal(node.call("eth_getBalance", SYSTEM, "0x0"), "0x0", "native genesis balance")
+        equal(node.call("eth_getTransactionCount", SYSTEM, "0x0"), "0x0", "native genesis nonce")
+        equal(node.call("eth_getBalance", SYSTEM, context), expected["system_balance"], "native system balance")
+        equal(node.call("eth_getTransactionCount", SYSTEM, context), expected["system_nonce"], "native system nonce")
+        equal(node.call("eth_getBalance", expected["recipient"], context), expected["recipient_balance"], "native recipient balance")
+
+
 def report(args):
     result = json.loads(args.inventory.read_text())
     for case in result["cases"]:
         if case["candidate_status"] != "planned":
             continue
         suite = Path(case["source"]).stem
+        partition = os.environ.get("EEZ_SUITE")
+        if partition and partition != "embedded-" + suite:
+            continue
         label, phases = CASES[suite][case["test"]]
         observations = []
         for phase in phases:
@@ -194,12 +226,23 @@ def report(args):
                 raise ValueError("restart must retain its database; fresh recovery must use a different database")
             if before["container"] == restarted["container"]:
                 raise ValueError("candidate did not restart")
+        if suite == "native_system":
+            before, advanced, fresh = observations
+            if before["database_id"] != advanced["database_id"] or fresh["database_id"] == before["database_id"]:
+                raise ValueError("native recovery must use a new database after normal follower execution")
+            equal(advanced["native_state"], fresh["native_state"], "native fresh recovery state")
+            for index, observation in enumerate(observations):
+                minimum = 1 if index == 0 else 2
+                if observation["verified_native_transactions"] < minimum:
+                    raise ValueError("missing native scenario execution")
+                equal(observation["native_state"]["system_nonce"], hex(minimum), "native scenario nonce")
         case["candidate_status"] = "passed"
         case["observations"] = observations
-    if not (args.directory / "contracts.json").stat().st_size:
-        raise ValueError("upstream contract test results are missing")
-    result["contracts"] = {"result": "pass", "command": "forge test --root contracts --json",
-                           "candidate_role": None, "note": "upstream contract tests; separate from candidate execution evidence"}
+    if not os.environ.get("EEZ_SUITE"):
+        if not (args.directory / "contracts.json").stat().st_size:
+            raise ValueError("upstream contract test results are missing")
+        result["contracts"] = {"result": "pass", "command": "forge test --root contracts --json",
+                               "candidate_role": None, "note": "upstream contract tests; separate from candidate execution evidence"}
     result["scope"] = "candidate follower; upstream composer and prover"
     result["coverage_complete"] = all(case["candidate_status"] == "passed" for case in result["cases"])
     (args.directory / "candidate-coverage.json").write_text(json.dumps(result, indent=2) + "\n")

@@ -64,6 +64,8 @@ impl Candidate {
             "/data/logs".into(),
             "--JsonRpc.JwtSecretFile".into(),
             "/data/jwt".into(),
+            "--KeyStore.KeyStoreDirectory".into(),
+            "/data/keystore".into(),
             "--Eez.Enabled".into(),
             "true".into(),
             "--Eez.SkipConsensusLayerCalls".into(),
@@ -176,7 +178,31 @@ impl Candidate {
     }
 
     pub async fn verify(&self, reference: &str, minimum: u64, phase: &str) -> Result<()> {
+        self.observe(reference, minimum, phase, None).await
+    }
+
+    pub async fn verify_native(
+        &self,
+        reference: &str,
+        minimum: u64,
+        phase: &str,
+        expected: &Value,
+    ) -> Result<()> {
+        self.observe(reference, minimum, phase, Some(expected))
+            .await
+    }
+
+    async fn observe(
+        &self,
+        reference: &str,
+        minimum: u64,
+        phase: &str,
+        expected: Option<&Value>,
+    ) -> Result<()> {
         let mut settings = self.settings.clone();
+        if let Some(state) = expected {
+            settings["native_state"] = state.clone();
+        }
         settings["reference"] = json!(reference);
         settings["candidate"] = json!(self.url());
         settings["container"] = json!(&self.name);

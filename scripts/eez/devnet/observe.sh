@@ -65,8 +65,8 @@ if [[ "$phase" == recovery ]]; then
         python3 "$HERE/controls.py" capture
         (
             cd "$EEZ_UPSTREAM"
-            timeout 5m cargo test --locked --profile ci-e2e -p eez-node-e2e \
-                --test nethermind_streaming_controls -- --nocapture
+            control_binary="$(jq -er '.nethermind_streaming_controls' "$EEZ_CI_RESULT_DIR/test-binaries.json")"
+            timeout 5m "$EEZ_UPSTREAM/$control_binary" --nocapture
         )
         python3 "$HERE/controls.py" report
     fi

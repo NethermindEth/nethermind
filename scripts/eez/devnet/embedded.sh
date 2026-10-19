@@ -9,7 +9,8 @@ export EEZ_EMBEDDED_SCRIPT="$HERE/embedded.py"
 export EEZ_CANDIDATE_RUN="eez-embedded-${GITHUB_RUN_ID:?}-${GITHUB_RUN_ATTEMPT:?}"
 export EEZ_CANDIDATE_IMAGE
 EEZ_CANDIDATE_IMAGE="$(docker image inspect --format '{{.Id}}' "$EEZ_NETHERMIND_BASE_IMAGE")"
-export EEZ_CANDIDATE_USER="$(id -u):$(id -g)"
+export EEZ_CANDIDATE_USER
+EEZ_CANDIDATE_USER="$(id -u):$(id -g)"
 export EEZ_CANDIDATE_SKIP_CONSENSUS_CALLS
 EEZ_CANDIDATE_SKIP_CONSENSUS_CALLS="$(jq -er '.streaming.skip_consensus_layer_calls | if type == "boolean" then tostring else error("missing execution profile") end' "$EEZ_CI_RESULT_DIR/upstream.json")"
 mkdir -p "$EEZ_EMBEDDED_RESULTS"
@@ -29,9 +30,8 @@ export EEZ_TEST_LOG_DIR="$EEZ_EMBEDDED_RESULTS/logs"
 mkdir -p "$EEZ_TEST_LOG_DIR"
 (
     cd "$EEZ_UPSTREAM"
-    timeout 15m forge test --root contracts --json > "$EEZ_EMBEDDED_RESULTS/contracts.json"
-    test -s "$EEZ_EMBEDDED_RESULTS/contracts.json"
-    timeout 40m cargo test --locked --profile ci-e2e -p eez-node-e2e \
-        --test durability --test resumption --test resumption_append -- --test-threads=1
+    suite="${EEZ_SUITE#embedded-}"
+    binary="$(jq -er --arg suite "$suite" '.[$suite]' "$EEZ_CI_RESULT_DIR/test-binaries.json")"
+    timeout 10m "$EEZ_UPSTREAM/$binary" --test-threads=1
 )
 python3 "$HERE/embedded.py" report --inventory "$EEZ_EMBEDDED_RESULTS/inventory.json" --directory "$EEZ_EMBEDDED_RESULTS"

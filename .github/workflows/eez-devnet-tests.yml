@@ -57,27 +57,45 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  follower:
-    name: ${{ matrix.role }}
+  candidate:
+    name: Build Nethermind images once
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Build follower and prover
+        run: |
+          mkdir -p artifacts/eez-candidate
+          docker build -t "nethermind:eez-$GITHUB_RUN_ID" --build-arg COMMIT_HASH="$GITHUB_SHA" -f Dockerfile .
+          docker build -t "nethermind-eez-attester:eez-$GITHUB_RUN_ID" --build-arg COMMIT_HASH="$GITHUB_SHA" -f src/Nethermind/Nethermind.Eez.Attester/Dockerfile .
+          docker save "nethermind:eez-$GITHUB_RUN_ID" "nethermind-eez-attester:eez-$GITHUB_RUN_ID" | zstd -T0 -3 > artifacts/eez-candidate/images.tar.zst
+      - uses: actions/upload-artifact@v4
+        with:
+          name: eez-candidate-${{ github.run_id }}
+          path: artifacts/eez-candidate
+          compression-level: 0
+          overwrite: true
+          retention-days: 1
+
+  prepare:
+    name: Build ${{ matrix.profile }} inputs once
     strategy:
       fail-fast: false
       matrix:
         include:
           - profile: rollup0
             repository: eez-association/eez-rollup0
-            role: Rollup0 follower and prover
           - profile: rollupx
             repository: eez-association/eez-rollupX
-            role: RollupX follower with upstream prover
-    runs-on: ubuntu-latest
-    timeout-minutes: 180
+    runs-on: ubuntu-24.04
+    timeout-minutes: 100
     env:
       EEZ_PROFILE: ${{ matrix.profile }}
       EEZ_UPSTREAM: ${{ github.workspace }}/upstream
-      EEZ_CI_RESULT_DIR: ${{ github.workspace }}/artifacts/eez-live-${{ matrix.profile }}
-      EEZ_RUNTIME_DIR: ${{ github.workspace }}/artifacts/eez-runtime
-      EEZ_NETHERMIND_BASE_IMAGE: nethermind:eez-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.profile }}
-      EEZ_NETHERMIND_PROVER_BASE_IMAGE: nethermind-eez-attester:eez-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.profile }}
+      EEZ_CI_RESULT_DIR: ${{ github.workspace }}/artifacts/eez-inputs-${{ matrix.profile }}
+      EEZ_RUNTIME_DIR: ${{ github.workspace }}/artifacts/eez-inputs-${{ matrix.profile }}/runtime
     steps:
       - uses: actions/checkout@v6
         with:
@@ -104,12 +122,19 @@ jobs:
         run: |
           python3 -m unittest discover -s scripts/eez/devnet -p 'test_*.py'
           for script in scripts/eez/devnet/*.sh; do bash -n "$script"; done
+      - name: Reuse prepared inputs for the exact source and adapters
+        id: prepared
+        uses: actions/cache@v4
+        with:
+          path: artifacts/eez-inputs-${{ matrix.profile }}
+          key: eez-inputs-v1-ubuntu24-${{ matrix.profile }}-${{ hashFiles('artifacts/eez-inputs-*/upstream.json', 'scripts/eez/devnet/embedded.*', 'scripts/eez/devnet/controls.*', 'scripts/eez/devnet/build-*.sh', 'scripts/eez/devnet/bundle.py', 'scripts/eez/devnet/partitions.py') }}
       - name: Fetch matching trusted runtime
+        if: steps.prepared.outputs.cache-hit != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: python3 scripts/eez/devnet/upstream.py runtime --manifest "$EEZ_CI_RESULT_DIR/upstream.json" --output "$EEZ_RUNTIME_DIR"
       - name: Install upstream integration test toolchain
-        if: matrix.profile == 'rollup0'
+        if: matrix.profile == 'rollup0' && steps.prepared.outputs.cache-hit != 'true'
         run: |
           sudo apt-get update
           sudo apt-get install -y libclang-dev pkg-config libssl-dev cmake protobuf-compiler
@@ -119,57 +144,123 @@ jobs:
           echo '/usr/lib/llvm-22/bin' >> "$GITHUB_PATH"
           rustup toolchain install stable --profile minimal
           rustup default stable
-      - name: Build selected upstream revision if needed
-        timeout-minutes: 90
+      - name: Build matching runtime
+        if: steps.prepared.outputs.cache-hit != 'true'
+        run: bash scripts/eez/devnet/build-runtime.sh
+      - name: Install Foundry
+        if: steps.prepared.outputs.cache-hit != 'true'
+        uses: foundry-rs/foundry-toolchain@b00af27efadbc7b4ca8b82abbd903b17cc874d2a
+        with:
+          version: v1.7.1
+      - name: Build contracts, test executables and deploy image
+        if: steps.prepared.outputs.cache-hit != 'true'
+        run: bash scripts/eez/devnet/build-fixtures.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: eez-inputs-${{ matrix.profile }}-${{ github.run_id }}
+          path: artifacts/eez-inputs-${{ matrix.profile }}
+          compression-level: 0
+          overwrite: true
+          retention-days: 1
+
+  tests:
+    name: ${{ matrix.profile }} / ${{ matrix.suite }}
+    needs: [candidate, prepare]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - profile: rollup0
+            suite: wave-inbound
+          - profile: rollup0
+            suite: wave-outbound
+          - profile: rollup0
+            suite: wave-mixed
+          - profile: rollup0
+            suite: wave-mixed-pure
+          - profile: rollup0
+            suite: wave-state-chaining
+          - profile: rollup0
+            suite: protocol-1
+          - profile: rollup0
+            suite: protocol-2
+          - profile: rollup0
+            suite: ingress
+          - profile: rollup0
+            suite: faults
+          - profile: rollup0
+            suite: recovery
+          - profile: rollup0
+            suite: embedded-durability
+          - profile: rollup0
+            suite: embedded-resumption
+          - profile: rollup0
+            suite: embedded-resumption_append
+          - profile: rollup0
+            suite: embedded-native_system
+          - profile: rollup0
+            suite: contracts
+          - profile: rollupx
+            suite: wave-inbound
+          - profile: rollupx
+            suite: wave-outbound
+          - profile: rollupx
+            suite: wave-mixed
+          - profile: rollupx
+            suite: wave-mixed-pure
+          - profile: rollupx
+            suite: wave-state-chaining
+          - profile: rollupx
+            suite: protocol-1
+          - profile: rollupx
+            suite: protocol-2
+          - profile: rollupx
+            suite: protocol-3
+          - profile: rollupx
+            suite: protocol-4
+          - profile: rollupx
+            suite: recovery
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      EEZ_PROFILE: ${{ matrix.profile }}
+      EEZ_SUITE: ${{ matrix.suite }}
+      EEZ_UPSTREAM: ${{ github.workspace }}/upstream
+      EEZ_CI_RESULT_DIR: ${{ github.workspace }}/artifacts/eez-live-${{ matrix.profile }}-${{ matrix.suite }}
+      EEZ_RUNTIME_DIR: ${{ github.workspace }}/artifacts/eez-live-${{ matrix.profile }}-${{ matrix.suite }}/runtime
+      EEZ_NETHERMIND_BASE_IMAGE: nethermind:eez-${{ github.run_id }}
+      EEZ_NETHERMIND_PROVER_BASE_IMAGE: nethermind-eez-attester:eez-${{ github.run_id }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: eez-inputs-${{ matrix.profile }}-${{ github.run_id }}
+          path: ${{ env.EEZ_CI_RESULT_DIR }}
+      - uses: actions/download-artifact@v4
+        if: matrix.suite != 'contracts'
+        with:
+          name: eez-candidate-${{ github.run_id }}
+          path: artifacts/eez-candidate
+      - name: Load prepared sources and images
         run: |
-          if test ! -x "$EEZ_RUNTIME_DIR/eez-composer"; then
-            if [[ "$EEZ_PROFILE" == rollup0 ]]; then
-              cd "$EEZ_UPSTREAM"
-              cargo build --locked --profile ci-e2e -p eez-node -p eez-follower -p eez-prover-stateless --bins --examples
-              cp target/ci-e2e/eez-composer target/ci-e2e/eez-follower target/ci-e2e/eez-proof-signer "$EEZ_RUNTIME_DIR/"
-              cp target/ci-e2e/examples/genesis_state_root "$EEZ_RUNTIME_DIR/eez-genesis-state-root"
-              cp target/ci-e2e/examples/genesis_block_hash "$EEZ_RUNTIME_DIR/eez-genesis-block-hash"
-            else
-              rust_image="$(sed -n 's/^ARG RUST_IMAGE=//p' "$EEZ_UPSTREAM/Dockerfile.runtime")"
-              [[ "$rust_image" =~ ^rust:[0-9]+\.[0-9]+\.[0-9]+-bookworm$ ]] || { echo "upstream build/runtime platform changed" >&2; exit 1; }
-              docker run --rm -v "$EEZ_UPSTREAM:/build" -v "$EEZ_RUNTIME_DIR:/out" -w /build "$rust_image" bash -euo pipefail -c '
-                apt-get update
-                apt-get install -y clang libclang-dev pkg-config libssl-dev cmake protobuf-compiler mold
-                bash scripts/ci/install-llvm.sh
-                export LLVM_SYS_221_PREFIX=/usr/lib/llvm-22 PATH="/usr/lib/llvm-22/bin:$PATH" RUST_MIN_STACK=16777216
-                git config --global --add safe.directory /build
-                git config --file .gitmodules --get-regexp "^submodule\\..*\\.path$" | while read -r key path; do
-                  git config --global --add safe.directory "/build/$path"
-                done
-                export RUSTFLAGS="-C link-arg=-fuse-ld=mold"
-                cargo build --locked --release -p eez-node -p eez-follower -p eez-proof-signer -p eez-protocol -p eez-l1 \
-                  --bin eez-composer --bin eez-follower --bin eez-proof-signer \
-                  --example genesis_state_root --example genesis_block_hash --example e2e-causal-verify --example verify_blob_evidence
-                cp target/release/eez-composer target/release/eez-follower target/release/eez-proof-signer /out/
-                cp target/release/examples/e2e-causal-verify target/release/examples/verify_blob_evidence /out/
-                cp target/release/examples/genesis_state_root /out/eez-genesis-state-root
-                cp target/release/examples/genesis_block_hash /out/eez-genesis-block-hash
-                rustc --version > /out/rustc-version.txt
-                cargo --version > /out/cargo-version.txt
-              '
-            fi
-            python3 "$GITHUB_WORKSPACE/scripts/eez/devnet/upstream.py" record-build --manifest "$EEZ_CI_RESULT_DIR/upstream.json" --checkout "$EEZ_UPSTREAM" --output "$EEZ_RUNTIME_DIR"
+          mkdir -p "$EEZ_UPSTREAM"
+          tar -I zstd -xf "$EEZ_CI_RESULT_DIR/sources.tar.zst" -C "$EEZ_UPSTREAM"
+          tar -I zstd -xf "$EEZ_CI_RESULT_DIR/runtime.tar.zst" -C "$EEZ_CI_RESULT_DIR"
+          if [[ "$EEZ_SUITE" != contracts ]]; then
+            zstd -dc artifacts/eez-candidate/images.tar.zst | docker load
+            zstd -dc "$EEZ_CI_RESULT_DIR/upstream-images.tar.zst" | docker load
           fi
           echo "$EEZ_RUNTIME_DIR" >> "$GITHUB_PATH"
-      - name: Build Nethermind follower and prover images
-        run: |
-          docker build -t "$EEZ_NETHERMIND_BASE_IMAGE" --build-arg COMMIT_HASH="$GITHUB_SHA" -f Dockerfile .
-          docker run --rm --entrypoint /bin/sh "$EEZ_NETHERMIND_BASE_IMAGE" -c 'test -f /nethermind/plugins/Nethermind.Eez.dll'
-          if [[ "$EEZ_PROFILE" == rollup0 ]]; then
-            docker build -t "$EEZ_NETHERMIND_PROVER_BASE_IMAGE" --build-arg COMMIT_HASH="$GITHUB_SHA" \
-              -f src/Nethermind/Nethermind.Eez.Attester/Dockerfile .
-          fi
-          git rev-parse HEAD > "$EEZ_CI_RESULT_DIR/nethermind-revision.txt"
+          echo "LD_LIBRARY_PATH=$EEZ_RUNTIME_DIR/lib" >> "$GITHUB_ENV"
+          echo 'RUST_MIN_STACK=16777216' >> "$GITHUB_ENV"
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@b00af27efadbc7b4ca8b82abbd903b17cc874d2a
         with:
           version: v1.7.1
       - name: Install Kurtosis
+        if: matrix.suite != 'contracts' && !startsWith(matrix.suite, 'embedded-')
         run: |
           echo 'deb [trusted=yes] https://sdk.kurtosis.com/kurtosis-cli-release-artifacts/ /' | sudo tee /etc/apt/sources.list.d/kurtosis.list
           sudo apt-get update
@@ -178,13 +269,44 @@ jobs:
           export DOCKER_API_VERSION
           echo "DOCKER_API_VERSION=$DOCKER_API_VERSION" >> "$GITHUB_ENV"
           kurtosis engine start
-      - name: Execute current upstream scenarios and verify Nethermind
-        run: bash scripts/eez/devnet/run.sh
-      - name: Upload live results and diagnostics
+      - name: Run upstream test partition
+        run: bash scripts/eez/devnet/test-partition.sh
+      - name: Upload partition results
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: eez-live-${{ matrix.profile }}-${{ github.run_id }}-${{ github.run_attempt }}
-          path: artifacts/eez-live-${{ matrix.profile }}
+          name: eez-live-${{ matrix.profile }}-${{ matrix.suite }}
+          path: |
+            artifacts/eez-live-${{ matrix.profile }}-${{ matrix.suite }}/**/*.json
+            artifacts/eez-live-${{ matrix.profile }}-${{ matrix.suite }}/**/*.jsonl
+            artifacts/eez-live-${{ matrix.profile }}-${{ matrix.suite }}/**/*.log
+            artifacts/eez-live-${{ matrix.profile }}-${{ matrix.suite }}/**/*.txt
           if-no-files-found: error
           retention-days: 14
+          overwrite: true
+
+  complete:
+    name: All upstream partitions
+    needs: tests
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: eez-live-*
+          path: artifacts/eez-partitions
+      - name: Require every upstream partition
+        env:
+          TEST_RESULT: ${{ needs.tests.result }}
+        run: |
+          test "$TEST_RESULT" = success
+          python3 scripts/eez/devnet/partitions.py aggregate --directory artifacts/eez-partitions
+      - uses: actions/upload-artifact@v4
+        with:
+          name: eez-live-summary
+          path: artifacts/eez-partitions/summary.json
+          overwrite: true

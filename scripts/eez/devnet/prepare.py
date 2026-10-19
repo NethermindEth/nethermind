@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import json
+import os
 from pathlib import Path
 import re
 import shutil
@@ -101,6 +102,9 @@ def prepare(args):
         commands = commands.replace(capture,
             '    [[ ! -s "$RESULT_DIR/$service.log" ]] || return 0\n'
             '    timeout 30s kurtosis service logs --all "$KURTOSIS_ENCLAVE" "$service" ')
+    if os.environ.get("EEZ_SUITE"):
+        from partitions import adapt_driver
+        commands, names = adapt_driver(commands, package, profile, os.environ["EEZ_SUITE"])
     driver.write_text(commands)
     (args.output.parent / "scenario-hooks.json").write_text(json.dumps(names) + "\n")
 
@@ -180,7 +184,10 @@ def follower_report(args):
     if not re.fullmatch(r"[0-9a-f]{40}", args.revision) or not re.fullmatch(r"sha256:[0-9a-f]{64}", args.image_id):
         raise ValueError("invalid candidate provenance")
     observations = {}
-    for phase in ("verify-eezl2-deployment", "before-restart", "after-restart", "fresh-follower"):
+    phases = ("verify-eezl2-deployment", "before-restart", "after-restart", "fresh-follower")
+    if os.environ.get("EEZ_SUITE") and os.environ["EEZ_SUITE"] != "recovery":
+        phases = json.loads((args.directory / "scenario-hooks.json").read_text())
+    for phase in phases:
         observation = json.loads((args.directory / (phase + ".json")).read_text())
         if observation["result"] != "pass" or observation["profile"] != "rollupx-native" or observation["phase"] != phase:
             raise ValueError("missing native follower observation")

@@ -9,7 +9,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 : "${GITHUB_SHA:?}"
 profile="$(jq -er '.profile' "$EEZ_CI_RESULT_DIR/upstream.json")"
 [[ "$profile" == "${EEZ_PROFILE:?}" && ( "$profile" == rollup0 || "$profile" == rollupx ) ]] || { echo "unexpected live profile" >&2; exit 1; }
-suffix="${GITHUB_RUN_ID:?}-${GITHUB_RUN_ATTEMPT:?}-$profile"
+suffix="${GITHUB_RUN_ID:?}-${GITHUB_RUN_ATTEMPT:?}-$profile-${EEZ_SUITE:?}"
 export KURTOSIS_ENCLAVE="eez-nm-$suffix"
 export EEZ_NODE_IMAGE="eez-composer:$suffix"
 export EEZ_PROOF_SIGNER_IMAGE="eez-proof-signer:$suffix"
@@ -20,6 +20,13 @@ export EEZ_PREBUILT_BIN_DIR="$EEZ_RUNTIME_DIR"
 export KURTOSIS_PRIVILEGED=0
 export EEZ_PRUNE_BUILD_CACHE=0
 export EEZ_SKIP_PROOF_SIGNER_BUILD=1
+export EEZ_SKIP_NODE_BUILD=1
+export EEZ_SKIP_DEPLOY_BUILD=1
+export EEZ_PARTITION_SCRIPT="$HERE/partitions.py"
+prepared_node="$(jq -er '.node | select(test("^sha256:[0-9a-f]{64}$"))' "$EEZ_CI_RESULT_DIR/prepared-images.json")"
+prepared_deploy="$(jq -er '.deploy | select(test("^sha256:[0-9a-f]{64}$"))' "$EEZ_CI_RESULT_DIR/prepared-images.json")"
+docker tag "$prepared_node" "$EEZ_NODE_IMAGE"
+docker tag "$prepared_deploy" "$EEZ_DEPLOY_IMAGE"
 mkdir -p "$EEZ_CI_RESULT_DIR"
 {
     free -h
@@ -51,7 +58,7 @@ if [[ "$profile" == rollup0 ]]; then
     prover_image_id="$(docker image inspect --format '{{.Id}}' "$EEZ_PROOF_SIGNER_IMAGE")"
     export EEZ_CONTROL_IMAGE_ID="$prover_image_id"
 else
-    docker build -f "$HERE/Dockerfile.upstream" -t "$EEZ_NODE_IMAGE" -t "$EEZ_PROOF_SIGNER_IMAGE" "$EEZ_RUNTIME_DIR"
+    docker tag "$EEZ_NODE_IMAGE" "$EEZ_PROOF_SIGNER_IMAGE"
     docker run --rm --entrypoint eez-proof-signer "$EEZ_PROOF_SIGNER_IMAGE" --help >/dev/null
     export EEZ_SKIP_NODE_BUILD=1
     export EEZ_CAUSAL_VERIFIER_BIN="$EEZ_RUNTIME_DIR/e2e-causal-verify"
@@ -71,29 +78,19 @@ export KURTOSIS_ARGS_FILE="$EEZ_CI_RESULT_DIR/ci-args-template.yaml"
     git -C "$EEZ_UPSTREAM" rev-parse HEAD
     git -C "$EEZ_UPSTREAM/eez-core-protocol" rev-parse HEAD
 } > "$EEZ_CI_RESULT_DIR/tools.txt"
-if [[ "$profile" == rollup0 ]]; then
-    mkdir -p "$EEZ_CI_RESULT_DIR/embedded"
-    python3 "$HERE/embedded.py" prepare --upstream "$EEZ_UPSTREAM" \
-        --manifest "$EEZ_CI_RESULT_DIR/upstream.json" --output "$EEZ_CI_RESULT_DIR/embedded/inventory.json"
-    python3 "$HERE/controls.py" install
-    (
-        cd "$EEZ_UPSTREAM"
-        timeout 60m cargo test --locked --profile ci-e2e -p eez-node-e2e --no-run \
-            --test durability --test resumption --test resumption_append --test nethermind_streaming_controls
-    )
+timeout 12m bash "$EEZ_UPSTREAM/testing/kurtosis/run-ci.sh"
+if [[ "$EEZ_SUITE" == recovery ]]; then
+    test -s "$EEZ_CI_RESULT_DIR/fresh-follower.json"
+    test -s "$EEZ_CI_RESULT_DIR/after-restart.json"
 fi
-timeout 80m bash "$EEZ_UPSTREAM/testing/kurtosis/run-ci.sh"
-test -s "$EEZ_CI_RESULT_DIR/fresh-follower.json"
-test -s "$EEZ_CI_RESULT_DIR/after-restart.json"
 [[ "$(docker image inspect --format '{{.Id}}' "$EEZ_NETHERMIND_IMAGE")" == "$follower_image_id" ]] \
     || { echo "candidate follower image was replaced during the upstream run" >&2; exit 1; }
 jq -e '.result == "pass" and .proof_flow.signed_windows > 0 and .proof_flow.remote_attestations > 0' "$EEZ_CI_RESULT_DIR/result.json" >/dev/null
 if [[ "$profile" == rollup0 ]]; then
     [[ "$(docker image inspect --format '{{.Id}}' "$EEZ_PROOF_SIGNER_IMAGE")" == "$prover_image_id" ]] \
         || { echo "candidate prover image was replaced during the upstream run" >&2; exit 1; }
-    test -s "$EEZ_CI_RESULT_DIR/streaming-controls.json"
+    if [[ "$EEZ_SUITE" == recovery ]]; then test -s "$EEZ_CI_RESULT_DIR/streaming-controls.json"; fi
     python3 "$HERE/prepare.py" report --directory "$EEZ_CI_RESULT_DIR" --revision "$GITHUB_SHA" --image-id "$prover_image_id"
-    bash "$HERE/embedded.sh"
 else
     python3 "$HERE/prepare.py" follower-report --directory "$EEZ_CI_RESULT_DIR" --revision "$GITHUB_SHA" --image-id "$follower_image_id"
 fi
