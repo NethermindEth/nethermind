@@ -105,7 +105,7 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
         _label = new TrieNodeLogLabel(name);
         _secondLevel = secondLevel;
 
-        Directory.CreateDirectory(basePath);
+        TrieNodeLogGeneration.CreateDirectoryDurably(basePath);
         Recover();
         _flushWorker = Task.Run(FlushWorker);
     }
@@ -304,7 +304,7 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
         metadata.FlushOrThrow();
     }
 
-    /// <summary>Fails any roll waiting on the merge backlog and stops the merge worker, ahead of <see cref="DisposeAsync"/>.</summary>
+    /// <summary>Stops the merge worker ahead of <see cref="DisposeAsync"/>; a roll waiting on the merge backlog then merges itself.</summary>
     internal void CancelBackgroundWork() => _cancellation.Cancel();
 
     public async ValueTask DisposeAsync()
@@ -401,8 +401,15 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
                 sw = Stopwatch.GetTimestamp();
                 if (_logger.IsWarn) _logger.Warn($"Trie node log {Name} has {backlog} unmerged generations (limit {_maxBacklog}); persistence is waiting for a merge");
             }
+            if (_cancellation.IsCancellationRequested)
+            {
+                // The merge worker is stopping for shutdown, so the merge runs here: the roll then completes, or fails
+                // with the merge's own error, instead of waiting on a worker that is gone.
+                FlushSealedGenerations(mergeLag: 0);
+                continue;
+            }
             _flushSignal.Release(); // a merge that failed is retried rather than leaving persistence stuck
-            if (!_merged.Wait(TimeSpan.FromSeconds(10), _cancellation.Token) && _logger.IsWarn)
+            if (WaitHandle.WaitAny([_merged.WaitHandle, _cancellation.Token.WaitHandle], TimeSpan.FromSeconds(10)) == WaitHandle.WaitTimeout && _logger.IsWarn)
                 _logger.Warn($"Trie node log {Name} still has {backlog} unmerged generations after {Stopwatch.GetElapsedTime(sw).TotalSeconds:F0} s; persistence is still waiting");
         }
 

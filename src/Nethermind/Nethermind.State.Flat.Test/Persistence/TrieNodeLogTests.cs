@@ -330,6 +330,40 @@ public class TrieNodeLogTests
 
     private string[] ShardFiles(string shard) => Directory.GetFiles(Path.Combine(_directory.Path, shard));
 
+    private static TreePath DistinctPath(ulong block) => TreePath.FromHexString($"1234{block}"); // StateTopNodes, first state shard
+
+    /// <summary>Writes one node per block that fills a generation, each under its own key, so no merge or copy skips one.</summary>
+    private void WriteFullGenerations(ulong count)
+    {
+        for (ulong block = 0; block < count; block++)
+        {
+            using IPersistence.IWriteBatch batch = Batch(block, block + 1);
+            batch.SetStateTrieNode(DistinctPath(block), Value((byte)block, 4096));
+        }
+    }
+
+    private byte[]? ReadNode(ulong block)
+    {
+        using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
+        return reader.TryLoadStateRlp(DistinctPath(block), ReadFlags.None);
+    }
+
+    /// <summary>
+    /// Reopens the log with second-level merges failing at the trie columns' flush, which first-level copies never
+    /// flush, and fills the second level's backlog until the third first-level copy waits on it.
+    /// </summary>
+    private async Task SaturateSecondLevel()
+    {
+        await _log.DisposeAsync();
+        _config.TrieNodeLogMergeLag = 0;
+        _config.TrieNodeLogSecondLevelMergeLag = 0;
+        _log = new TrieNodeLog(_directory.Path, WithUnflushable(static column => column != FlatDbColumns.Metadata), _config, LimboLogs.Instance);
+        _persistence = new RocksDbPersistence(_db, LimboLogs.Instance, _log);
+        WriteFullGenerations(3);
+        Assert.That(() => ShardFiles("state-0-l2"), Has.Length.EqualTo(2).After(5000, 20));
+        Assert.That(() => ShardFiles("state-0"), Has.Length.EqualTo(1).After(5000, 20), "the third copy is waiting");
+    }
+
     [Test]
     public async Task Second_level_takes_merged_generations_and_merges_its_own_full_ones_into_RocksDB()
     {
@@ -773,56 +807,81 @@ public class TrieNodeLogTests
     }
 
     [Test]
-    public async Task Disposal_completes_while_second_level_merges_keep_failing()
+    public async Task Disposal_completes_while_second_level_merges_keep_failing([Values] bool drainOnShutdown)
+    {
+        _config.TrieNodeLogDrainOnShutdown = drainOnShutdown;
+        await SaturateSecondLevel();
+
+        await Task.Run(() => _log.DisposeAsync().AsTask()).WaitAsync(TimeSpan.FromSeconds(10)); // the drain runs synchronously
+
+        Open(); // the generations that could not be merged were kept
+        for (ulong block = 0; block < 3; block++) Assert.That(ReadNode(block), Is.EqualTo(Value((byte)block, 4096)));
+    }
+
+    [Test]
+    public async Task A_shutdown_drain_merges_a_full_second_level_itself()
     {
         await _log.DisposeAsync();
-        _config.TrieNodeLogMergeLag = 0;
+        _config.TrieNodeLogDrainOnShutdown = true;
+        _config.TrieNodeLogMergeLag = 8; // the first level keeps its generations until the drain
         _config.TrieNodeLogSecondLevelMergeLag = 0;
-        // Second-level merges fail at the trie columns' flush; first-level copies into the second level never flush them.
-        _log = new TrieNodeLog(_directory.Path, WithUnflushable(static column => column != FlatDbColumns.Metadata), _config, LimboLogs.Instance);
-        _persistence = new RocksDbPersistence(_db, LimboLogs.Instance, _log);
+        Open();
+        WriteFullGenerations(5); // the drain copies them into more second-level generations than its backlog allows
 
-        // Every write fills and seals a first-level generation with a key no later write supersedes, so every generation
-        // is copied; the third copy finds the second level's backlog full.
-        for (ulong block = 0; block < 3; block++)
+        await _log.DisposeAsync();
+        using (Assert.EnterMultipleScope())
         {
-            using IPersistence.IWriteBatch batch = Batch(block, block + 1);
-            batch.SetStateTrieNode(TreePath.FromHexString($"1234{block}"), Value((byte)block, 4096));
+            for (ulong block = 0; block < 5; block++) Assert.That(Raw().TryLoadStateRlp(DistinctPath(block), ReadFlags.None), Is.EqualTo(Value((byte)block, 4096)));
+            Assert.That(LogFiles(), Is.Empty);
         }
-        Assert.That(() => ShardFiles("state-0-l2"), Has.Length.EqualTo(2).After(5000, 20));
-        Assert.That(() => ShardFiles("state-0"), Has.Length.EqualTo(1).After(5000, 20), "the third copy is waiting");
-
-        Assert.That(_log.DisposeAsync().AsTask().Wait(TimeSpan.FromSeconds(10)), Is.True, "shutdown must not wait on the second level's backlog");
     }
 
     [Test]
     public async Task A_failed_manifest_write_releases_the_recovered_shards()
     {
-        WriteTop(0, 1, Rlp1);
+        await SaturateSecondLevel();
         await _log.DisposeAsync();
         long alive = TrieNodeLogGeneration.AliveCount;
 
-        Assert.That(() => new TrieNodeLog(_directory.Path, WithUnflushable(static column => column == FlatDbColumns.Metadata), _config, LimboLogs.Instance), Throws.TypeOf<IOException>());
+        // Every flush fails: the recovered first-level copy waits on the second level's full backlog, and the manifest
+        // cannot be made durable.
+        Assert.That(async () => await Task.Run(() => new TrieNodeLog(_directory.Path, WithUnflushable(static _ => true), _config, LimboLogs.Instance)).WaitAsync(TimeSpan.FromSeconds(10)), Throws.TypeOf<IOException>());
         Assert.That(TrieNodeLogGeneration.AliveCount, Is.EqualTo(alive), "the recovered generations are released");
 
         Open();
-        Assert.That(ReadTop(), Is.EqualTo(Rlp1));
+        Assert.That(ReadNode(2), Is.EqualTo(Value(2, 4096)));
     }
 
     [Test]
     public void A_WAL_sync_failure_does_not_confirm_the_log()
+    {
+        RocksDbPersistence persistence = new(WithFailingWalSync(), LimboLogs.Instance, _log);
+
+        IPersistence.IWriteBatch writeBatch = persistence.CreateWriteBatch(State(0), State(1), WriteFlags.None);
+        writeBatch.SetStateTrieNode(TopPath, Rlp1);
+        Assert.That(writeBatch.Dispose, Throws.TypeOf<IOException>());
+        Assert.That(() => Batch(1, 2), Throws.InvalidOperationException.With.Message.Contains("restart"), "the batch's version was never confirmed");
+    }
+
+    [Test]
+    public void Without_the_log_the_WAL_flush_keeps_its_error_handling()
+    {
+        IColumnsDb<FlatDbColumns> db = WithFailingWalSync();
+        RocksDbPersistence persistence = new(db, LimboLogs.Instance, NullTrieNodeLog.Instance);
+
+        persistence.CreateWriteBatch(State(0), State(1), WriteFlags.None).Dispose();
+        db.Received(1).Flush(onlyWal: true);
+    }
+
+    /// <summary>The test database with a throwing WAL sync.</summary>
+    private IColumnsDb<FlatDbColumns> WithFailingWalSync()
     {
         IColumnsDb<FlatDbColumns> db = Substitute.For<IColumnsDb<FlatDbColumns>>();
         db.GetColumnDb(Arg.Any<FlatDbColumns>()).Returns(call => _db.GetColumnDb(call.Arg<FlatDbColumns>()));
         db.CreateSnapshot().Returns(_ => _db.CreateSnapshot());
         db.StartWriteBatch().Returns(_ => _db.StartWriteBatch());
         db.When(static db => db.SyncWal()).Do(static _ => throw new IOException("WAL sync failed"));
-        RocksDbPersistence persistence = new(db, LimboLogs.Instance, _log);
-
-        IPersistence.IWriteBatch writeBatch = persistence.CreateWriteBatch(State(0), State(1), WriteFlags.None);
-        writeBatch.SetStateTrieNode(TopPath, Rlp1);
-        Assert.That(writeBatch.Dispose, Throws.TypeOf<IOException>());
-        Assert.That(() => Batch(1, 2), Throws.InvalidOperationException.With.Message.Contains("restart"), "the batch's version was never confirmed");
+        return db;
     }
 
     [Test]

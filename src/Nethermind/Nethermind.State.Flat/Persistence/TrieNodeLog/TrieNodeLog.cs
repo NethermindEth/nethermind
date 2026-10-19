@@ -102,6 +102,7 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
         catch
         {
             // A shard that failed to recover must not leave the ones already started running.
+            foreach (TrieNodeLogShard shard in secondLevelShards) shard.CancelBackgroundWork();
             foreach (TrieNodeLogShard shard in shards) shard.DisposeAsync().AsTask().GetAwaiter().GetResult();
             foreach (TrieNodeLogShard shard in secondLevelShards) shard.DisposeAsync().AsTask().GetAwaiter().GetResult();
             throw;
@@ -315,6 +316,10 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+        // A first-level merge copying into a full second level waits on its backlog while holding the first level's
+        // merge lock, which the drain and the first-level disposal both wait for. Once the second level is cancelled
+        // that copy merges the second level itself, so it completes, or fails if those merges keep failing.
+        foreach (TrieNodeLogShard shard in _secondLevelShards) shard.CancelBackgroundWork();
         if (_drainOnShutdown)
         {
             try
@@ -326,9 +331,6 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
                 if (_logger.IsError) _logger.Error("Trie node log merge at shutdown failed; the generations are kept for the next start", e);
             }
         }
-        // A first-level merge copying into a second level whose own merges keep failing waits on its backlog; that
-        // wait is cancelled first so the first-level workers can be awaited.
-        foreach (TrieNodeLogShard shard in _secondLevelShards) shard.CancelBackgroundWork();
         // First-level merges may still be copying into the second level.
         foreach (TrieNodeLogShard shard in _shards) await shard.DisposeAsync();
         foreach (TrieNodeLogShard shard in _secondLevelShards) await shard.DisposeAsync();

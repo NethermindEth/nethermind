@@ -53,35 +53,43 @@ public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db, ILogManage
     public IPersistence.IPersistenceReader CreateReader(ReaderFlags flags = ReaderFlags.None)
     {
         ITrieNodeLog.IView view = trieNodeLog.OpenView(db, flags);
-        IColumnDbSnapshot<FlatDbColumns> snapshot = view.Snapshot;
-        BaseTriePersistence.Reader trieReader = new(
-            view.GetColumn(FlatDbColumns.StateTopNodes),
-            view.GetColumn(FlatDbColumns.StateNodes),
-            view.GetColumn(FlatDbColumns.StorageNodes),
-            view.GetColumn(FlatDbColumns.FallbackNodes)
-        );
+        try
+        {
+            IColumnDbSnapshot<FlatDbColumns> snapshot = view.Snapshot;
+            BaseTriePersistence.Reader trieReader = new(
+                view.GetColumn(FlatDbColumns.StateTopNodes),
+                view.GetColumn(FlatDbColumns.StateNodes),
+                view.GetColumn(FlatDbColumns.StorageNodes),
+                view.GetColumn(FlatDbColumns.FallbackNodes)
+            );
 
-        StateId currentState = BasePersistence.ReadCurrentState(snapshot.GetColumn(FlatDbColumns.Metadata));
+            StateId currentState = BasePersistence.ReadCurrentState(snapshot.GetColumn(FlatDbColumns.Metadata));
 
-        ISortedKeyValueStore state = (ISortedKeyValueStore)snapshot.GetColumn(FlatDbColumns.Account);
-        ISortedKeyValueStore storage = (ISortedKeyValueStore)snapshot.GetColumn(FlatDbColumns.Storage);
+            ISortedKeyValueStore state = (ISortedKeyValueStore)snapshot.GetColumn(FlatDbColumns.Account);
+            ISortedKeyValueStore storage = (ISortedKeyValueStore)snapshot.GetColumn(FlatDbColumns.Storage);
 
-        FakeHashFlatReader<BaseFlatPersistence.Reader> flatReader = new(
-            new BaseFlatPersistence.Reader(
-                state,
-                storage,
-                isPreimageMode: true,
-                rlpWrapSlots: _rlpWrapSlots,
-                fullAddressStorageKey: _fullAddressStorageKey
-            )
-        );
+            FakeHashFlatReader<BaseFlatPersistence.Reader> flatReader = new(
+                new BaseFlatPersistence.Reader(
+                    state,
+                    storage,
+                    isPreimageMode: true,
+                    rlpWrapSlots: _rlpWrapSlots,
+                    fullAddressStorageKey: _fullAddressStorageKey
+                )
+            );
 
-        return new BasePersistence.Reader<FakeHashFlatReader<BaseFlatPersistence.Reader>, BaseTriePersistence.Reader>(
-            flatReader,
-            trieReader,
-            currentState,
-            view
-        );
+            return new BasePersistence.Reader<FakeHashFlatReader<BaseFlatPersistence.Reader>, BaseTriePersistence.Reader>(
+                flatReader,
+                trieReader,
+                currentState,
+                view
+            );
+        }
+        catch
+        {
+            view.Dispose();
+            throw;
+        }
     }
 
     public IPersistence.IWriteBatch CreateWriteBatch(in StateId from, in StateId to, WriteFlags flags)
@@ -165,8 +173,9 @@ public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db, ILogManage
                     batch.Dispose();
                     if (!flags.HasFlag(WriteFlags.DisableWAL))
                     {
-                        // A log-backed batch needs the sync to throw, so a version RocksDB did not make durable is never confirmed.
-                        if (bypass) db.Flush(onlyWal: true);
+                        // A log-backed batch needs the sync to throw, so a version RocksDB did not make durable is never confirmed;
+                        // without the log the WAL flush keeps its previous error handling.
+                        if (bypass || trieNodeLog is NullTrieNodeLog) db.Flush(onlyWal: true);
                         else db.SyncWal();
                     }
                     logBatch.Confirm();

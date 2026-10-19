@@ -207,6 +207,20 @@ internal sealed unsafe class TrieNodeLogGeneration : RefCountingDisposable
         _directorySynced = true;
     }
 
+    /// <summary>
+    /// Creates <paramref name="path"/> and its missing parents, making each new directory's entry durable in its
+    /// parent, so a generation confirmed in it is not lost with a directory a crash dropped.
+    /// </summary>
+    public static void CreateDirectoryDurably(string path)
+    {
+        string fullPath = System.IO.Path.GetFullPath(path);
+        if (Directory.Exists(fullPath)) return;
+        string parent = System.IO.Path.GetDirectoryName(fullPath)!;
+        CreateDirectoryDurably(parent);
+        Directory.CreateDirectory(fullPath);
+        FsyncDirectory(parent);
+    }
+
     private const int O_RDONLY = 0; // enough to fsync a directory; O_DIRECTORY's value differs between architectures
 
     [DllImport("libc", EntryPoint = "open", SetLastError = true)]
