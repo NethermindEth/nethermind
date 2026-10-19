@@ -362,8 +362,8 @@ run_corpus() {
   if [[ "$ACCESS_PREDICTABILITY" == "true" ]]; then
     report_dir="$OUT_DIR/corpus/$clabel/$label"; mkdir -p "$report_dir"
     echo "-- ACCESS PREDICTABILITY $clabel: $label --"
-    # A native keccak keeps the derivation search to seconds; the script falls back to a reduced search without one.
-    python3 -c 'import Crypto.Hash.keccak' 2>/dev/null || python3 -m pip install --quiet --user pycryptodome >/dev/null 2>&1 || true
+    # Mapping slots are searched with keccak; without a native library the script hashes in batches through the
+    # node's web3_sha3, so the node must also serve Web3 (node_config.jsonrpc_modules).
     python3 "$here/access_predictability.py" --corpus "$corpus" --rpc-url "$RPC" --out "$report_dir/access-predictability.json" \
       || { echo "::warning::access predictability replay failed for $label on corpus $clabel"; cell_fail=$((cell_fail + 1)); }
   fi

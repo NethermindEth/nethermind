@@ -121,6 +121,50 @@ class TraceTests(unittest.TestCase):
         self.assertEqual(ap._trace(url, [{}, "latest", {}])[0], {TOKEN: {"balance": "0x1"}})
 
 
+class BatchedHashTests(unittest.TestCase):
+    def test_derivation_hashes_in_batches_through_the_backend(self):
+        batches = []
+
+        def many(preimages):
+            batches.append(len(preimages))
+            return [ap.KECCAK(p) for p in preimages]
+
+        words = ap.call_words(_call("0xdd62ed3e", OWNER, SPENDER))
+        allowance = _slot(_address_word(SPENDER), _slot(_address_word(OWNER), ap._word(4)).to_bytes(32, "big"))
+
+        found = ap.derive({allowance}, words, ap.HashCache(many))
+
+        self.assertEqual(found[allowance][0], ap.NESTED)
+        self.assertLessEqual(len(batches), 2, "single and nested candidates are hashed in one batch each")
+
+    def test_the_node_backend_hashes_through_web3_sha3_batches(self):
+        class Handler(BaseHTTPRequestHandler):
+            def do_POST(self):
+                calls = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+                body = json.dumps([{"jsonrpc": "2.0", "id": c["id"],
+                                    "result": "0x" + ap.KECCAK(bytes.fromhex(c["params"][0][2:])).hex()}
+                                   for c in calls]).encode()
+                self.send_response(200)
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, *args):
+                pass
+
+        server = HTTPServer(("127.0.0.1", 0), Handler)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        self.addCleanup(server.shutdown)
+
+        many = ap.node_keccak(f"http://127.0.0.1:{server.server_port}")
+
+        self.assertIsNotNone(many)
+        self.assertEqual(many([b"x" * 64] * 3), [ap.KECCAK(b"x" * 64)] * 3)
+
+    def test_a_node_without_web3_falls_back(self):
+        self.assertIsNone(ap.node_keccak("http://127.0.0.1:9"))
+
+
 class StagingTests(unittest.TestCase):
     def test_the_report_passes_the_staging_validator(self):
         result = ap.report(ap.Totals(), ap.Model(), 0, 0.0, ap.HashCache())

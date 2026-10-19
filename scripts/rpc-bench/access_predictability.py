@@ -134,21 +134,33 @@ def _is_address_word(word: bytes) -> bool:
 
 
 class HashCache:
-    """keccak results by preimage, kept across records: senders and tokens repeat."""
+    """keccak results by preimage, kept across records: senders and tokens repeat.
 
-    def __init__(self, limit: int = 2_000_000) -> None:
+    ``many`` hashes a list at once; the node's web3_sha3 in one batch request is far faster than Python per hash.
+    """
+
+    def __init__(self, many=None, limit: int = 2_000_000) -> None:
         self._values: dict[bytes, int] = {}
         self._limit = limit
+        self._many = many
         self.computed = 0
+
+    def prefetch(self, preimages) -> None:
+        missing = list(dict.fromkeys(p for p in preimages if p not in self._values))
+        if not missing:
+            return
+        digests = self._many(missing) if self._many else [KECCAK(p) for p in missing]
+        if len(self._values) + len(missing) > self._limit:
+            self._values.clear()
+        for preimage, digest in zip(missing, digests):
+            self._values[preimage] = int.from_bytes(digest, "big")
+        self.computed += len(missing)
 
     def __call__(self, preimage: bytes) -> int:
         value = self._values.get(preimage)
         if value is None:
-            value = int.from_bytes(KECCAK(preimage), "big")
-            self.computed += 1
-            if len(self._values) >= self._limit:
-                self._values.clear()
-            self._values[preimage] = value
+            self.prefetch([preimage])
+            value = self._values[preimage]
         return value
 
 
@@ -170,8 +182,21 @@ def evaluate(pattern: tuple, words: list[bytes], keccak: HashCache) -> int | Non
 
 
 # Without a native keccak the full search costs seconds per record; the reduced one keeps address keys only.
-REDUCED_SEARCH = KECCAK_SOURCE == "python"
+REDUCED_SEARCH = KECCAK_SOURCE == "python"  # cleared in run() when the node can hash for us
 REDUCED_BASE_SLOTS = 16
+
+
+def prefetch_patterns(patterns, words: list[bytes], keccak: HashCache) -> None:
+    """Hash every preimage the patterns need in two batches: the outer nested hash depends on the inner one."""
+    inner: list[bytes] = []
+    for _, (kind, first, base, second, _) in patterns:
+        if first >= len(words) or (kind == NESTED and second >= len(words)):
+            continue
+        inner.append(_BASES[base] + words[first] if kind == SINGLE_REVERSED else words[first] + _BASES[base])
+    keccak.prefetch(inner)
+    keccak.prefetch([words[second] + _word(keccak(words[first] + _BASES[base]))
+                     for _, (kind, first, base, second, _) in patterns
+                     if kind == NESTED and first < len(words) and second < len(words)])
 
 
 def derive(slots: set[int], words: list[bytes], keccak: HashCache) -> dict[int, tuple]:
@@ -182,8 +207,10 @@ def derive(slots: set[int], words: list[bytes], keccak: HashCache) -> dict[int, 
     wanted = {slot - offset: (slot, offset) for slot in slots for offset in range(MAX_OFFSET + 1)}
     single: list[tuple[int, int, int]] = []
     bases = REDUCED_BASE_SLOTS if REDUCED_SEARCH else BASE_SLOTS
+    indexes = [i for i, w in enumerate(words) if not REDUCED_SEARCH or _is_address_word(w)]
+    keccak.prefetch([p for i in indexes for b in _BASES[:bases] for p in (words[i] + b, b + words[i])])
     for index, word in enumerate(words):
-        if REDUCED_SEARCH and not _is_address_word(word):
+        if index not in indexes:
             continue
         for base in range(bases):
             for kind, preimage in ((SINGLE, word + _BASES[base]), (SINGLE_REVERSED, _BASES[base] + word)):
@@ -197,6 +224,8 @@ def derive(slots: set[int], words: list[bytes], keccak: HashCache) -> dict[int, 
     if remaining:
         wanted = {slot - offset: (slot, offset) for slot in remaining for offset in range(MAX_OFFSET + 1)}
         address_indexes = [i for i, w in enumerate(words) if _is_address_word(w)]
+        keccak.prefetch([words[second] + _word(inner) for first, _, inner in single if first in address_indexes
+                         for second in address_indexes])
         for first, base, inner in single:
             if first not in address_indexes:
                 continue
@@ -270,6 +299,7 @@ def score(model: Model, totals: Totals, tx: dict, prestate: dict, keccak: HashCa
         static = {item for item in seen}
         majority = {item for item, count in seen.items() if 2 * count >= calls}
         derived: set[tuple] = set()
+        prefetch_patterns(model.patterns[key], words, keccak)
         for address, pattern in model.patterns[key]:
             slot = evaluate(pattern, words, keccak)
             if slot is not None:
@@ -377,6 +407,34 @@ def report(totals: Totals, model: Model, failed: int, elapsed: float, keccak: Ha
 
 
 FAILURE_REASONS = ("transport", "http_status", "rpc_error", "not_an_object")
+HASH_BATCH = 1000
+
+
+def node_keccak(url: str):
+    """keccak through the node's web3_sha3, in JSON-RPC batches; None when the node does not answer it correctly."""
+    parsed = urllib.parse.urlsplit(url)
+
+    def many(preimages: list[bytes]) -> list[bytes]:
+        digests: list[bytes] = []
+        connection = http.client.HTTPConnection(parsed.hostname, parsed.port, timeout=TIMEOUT_SECONDS)
+        try:
+            for start in range(0, len(preimages), HASH_BATCH):
+                chunk = preimages[start:start + HASH_BATCH]
+                body = json.dumps([{"jsonrpc": "2.0", "id": i, "method": "web3_sha3", "params": ["0x" + p.hex()]}
+                                   for i, p in enumerate(chunk)], separators=(",", ":")).encode()
+                connection.request("POST", parsed.path or "/", body=body, headers={"Content-Type": "application/json"})
+                replies = {r["id"]: r["result"] for r in json.loads(connection.getresponse().read())}
+                digests.extend(bytes.fromhex(replies[i][2:]) for i in range(len(chunk)))
+        finally:
+            connection.close()
+        return digests
+
+    try:
+        if many([b"", b"abc"]) == [_keccak256(b""), _keccak256(b"abc")]:
+            return many
+    except (http.client.HTTPException, OSError, ValueError, KeyError, TypeError):
+        pass
+    return None
 
 
 def _trace(url: str, params: list) -> tuple[dict | None, str, int]:
@@ -415,8 +473,15 @@ def run(corpus: str, rpc_url: str, out: str, concurrency: int, limit: int | None
     if probe is None and all(_trace(rpc_url, r)[0] is None for r in records[1:5]):
         raise SystemExit(f"debug_traceCall with the prestateTracer fails on the first records ({reason} {code}); "
                          "the node must serve the Debug module (node_config.jsonrpc_modules).")
+    global REDUCED_SEARCH
+    many = None
+    if KECCAK_SOURCE == "python":
+        many = node_keccak(rpc_url)
+        REDUCED_SEARCH = many is None
+        print(f"  access predictability: keccak via {'the node (web3_sha3 batches)' if many else 'Python, reduced search'}",
+              flush=True)
     started = time.perf_counter()
-    model, totals, keccak = Model(), Totals(), HashCache()
+    model, totals, keccak = Model(), Totals(), HashCache(many)
     failed = 0
     failures = {f"{reason}": 0 for reason in FAILURE_REASONS}
     failure_codes: dict[str, int] = defaultdict(int)
