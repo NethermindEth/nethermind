@@ -131,6 +131,9 @@ namespace Nethermind.Trie
             _bufferPool = bufferPool;
         }
 
+        /// <summary>Throws where this build cannot commit a trie; see <c>PatriciaTree.zkevm.cs</c>.</summary>
+        partial void ThrowIfCommitUnsupported();
+
         public void Commit(bool skipRoot = false, WriteFlags writeFlags = WriteFlags.None)
         {
             if (!_allowCommits)
@@ -167,6 +170,8 @@ namespace Nethermind.Trie
 
             // Sometimes RootRef is set to null, so we still need to reset roothash to empty tree hash.
             SetRootHash(RootRef?.Keccak, true);
+
+            ThrowIfCommitUnsupported();
         }
 
         private TrieNode Commit(ICommitter committer, ref TreePath path, TrieNode node, bool skipSelf = false)
@@ -342,7 +347,7 @@ namespace Nethermind.Trie
             try
             {
                 int nibblesCount = 2 * rawKey.Length;
-                Span<byte> nibbles = (rawKey.Length <= MaxKeyStackAlloc
+                Span<byte> nibbles = (nibblesCount <= MaxKeyStackAlloc
                         ? stackalloc byte[MaxKeyStackAlloc]
                         : array = ArrayPool<byte>.Shared.Rent(nibblesCount))
                     [..nibblesCount]; // Slice to exact size;
@@ -387,7 +392,7 @@ namespace Nethermind.Trie
             try
             {
                 int nibblesCount = 2 * rawKey.Length;
-                Span<byte> nibbles = (rawKey.Length <= MaxKeyStackAlloc
+                Span<byte> nibbles = (nibblesCount <= MaxKeyStackAlloc
                         ? stackalloc byte[MaxKeyStackAlloc]
                         : array = ArrayPool<byte>.Shared.Rent(nibblesCount))
                     [..nibblesCount]; // Slice to exact size;
@@ -527,7 +532,7 @@ namespace Nethermind.Trie
             try
             {
                 int nibblesCount = 2 * rawKey.Length;
-                Span<byte> nibbles = (rawKey.Length <= MaxKeyStackAlloc
+                Span<byte> nibbles = (nibblesCount <= MaxKeyStackAlloc
                         ? stackalloc byte[MaxKeyStackAlloc] // Fixed size stack allocation
                         : array = ArrayPool<byte>.Shared.Rent(nibblesCount))
                     [..nibblesCount]; // Slice to exact size

@@ -353,7 +353,7 @@ public partial class DebugRpcModuleTests
         }
     }
 
-    public enum ReceiptAvailability { Stored, Missing, Unreproducible }
+    public enum ReceiptAvailability { Stored, Missing, Truncated, Unreproducible }
 
     // Without usable receipts both paths number the logs from the body they replay, as the receipts would.
     [Test]
@@ -382,9 +382,11 @@ public partial class DebugRpcModuleTests
         CountingReceiptFinder receipts = (CountingReceiptFinder)chain.Container.ResolveKeyed<IReceiptFinder>(IReceiptFinder.RegenerableKey);
 
         int before = receipts.BlockGets;
+        int iteratorsBefore = receipts.IteratorReads;
         GethTraceOptions options = new() { Tracer = "callTracer", TracerConfig = JsonSerializer.Deserialize<JsonElement>("""{"withLog":true}""") };
         string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceBlockByHash", block.Hash, options);
         int blockTraceGets = receipts.BlockGets - before;
+        int blockTraceIterators = receipts.IteratorReads - iteratorsBefore;
         string single = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceTransaction", transactions[^1].Hash, options);
 
         JArray result = (JArray)JToken.Parse(response)["result"]!;
@@ -395,15 +397,20 @@ public partial class DebugRpcModuleTests
                 Assert.That((string)result[i]!["result"]!["logs"]![0]!["index"]!, Is.EqualTo($"0x{i:x}"), response);
             Assert.That((string)JToken.Parse(single)["result"]!["logs"]![0]!["index"]!, Is.EqualTo($"0x{transactions.Length - 1:x}"), single);
             // Read once on the calling thread: the parallel workers share it, and the replay it falls back to reads none.
-            Assert.That(blockTraceGets, Is.EqualTo(1));
+            // Stored receipts are counted without decoding them; only an iterator that cannot answer leads to the full read.
+            Assert.That(blockTraceIterators, Is.EqualTo(1));
+            Assert.That(blockTraceGets, Is.EqualTo(availability is ReceiptAvailability.Missing or ReceiptAvailability.Truncated ? 1 : 0));
         }
     }
 
     private sealed class CountingReceiptFinder(IReceiptFinder inner, ReceiptAvailability availability) : IReceiptFinder
     {
         private int _blockGets;
+        private int _iteratorReads;
 
         public int BlockGets => Volatile.Read(ref _blockGets);
+
+        public int IteratorReads => Volatile.Read(ref _iteratorReads);
 
         public Hash256? FindBlockHash(Hash256 txHash) => inner.FindBlockHash(txHash);
 
@@ -422,8 +429,24 @@ public partial class DebugRpcModuleTests
 
         public bool CanGetReceiptsByHash(ulong blockNumber) => inner.CanGetReceiptsByHash(blockNumber);
 
-        public bool TryGetReceiptsIterator(ulong blockNumber, Hash256 blockHash, out ReceiptsIterator iterator) =>
-            inner.TryGetReceiptsIterator(blockNumber, blockHash, out iterator);
+        public bool TryGetReceiptsIterator(ulong blockNumber, Hash256 blockHash, out ReceiptsIterator iterator)
+        {
+            Interlocked.Increment(ref _iteratorReads);
+            switch (availability)
+            {
+                case ReceiptAvailability.Missing:
+                    iterator = default;
+                    return false;
+                case ReceiptAvailability.Unreproducible:
+                    throw new ResourceNotFoundException($"No receipts for block {blockNumber}");
+                case ReceiptAvailability.Truncated:
+                    // Fewer stored receipts than transactions: the count cannot be trusted, so the full read decides.
+                    iterator = new ReceiptsIterator(inner.Get(blockHash)[..^1]);
+                    return true;
+                default:
+                    return inner.TryGetReceiptsIterator(blockNumber, blockHash, out iterator);
+            }
+        }
     }
 
     private static void IndexThroughTheCapture(TestRpcBlockchain chain, TransactionChangesetIndex index, Block block, BlockHeader parent)

@@ -9,6 +9,8 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Net;
+using System.Net.NetworkInformation;
+using System.Net.Sockets;
 using System.Reflection;
 using System.Runtime.Loader;
 using System.Text.Json.Nodes;
@@ -615,7 +617,11 @@ public class EthereumRunnerTests
             using Stream source = typeof(IConfig).Assembly.GetManifestResourceStream("Nethermind.Config.chainspec.hoodi.json")!;
             JsonNode genesis = JsonNode.Parse(source)!;
             genesis["config"]!["amsterdamTime"] = 0;
-            if (chain == "bogota") genesis["config"]!["bogotaTime"] = 0;
+            if (chain == "bogota")
+            {
+                genesis["config"]!["bogotaTime"] = 0;
+                genesis["config"]!["eip8198SlotDurationMs"] = 12_000;
+            }
             using MemoryStream modified = new(System.Text.Encoding.UTF8.GetBytes(genesis.ToJsonString()));
             return new AutoDetectingChainSpecLoader(new EthereumJsonSerializer(), NullLogManager.Instance).Load(modified);
         }
@@ -1030,6 +1036,34 @@ public class EthereumRunnerTests
             networkConfig.P2PPort = port;
             networkConfig.DiscoveryPort = port;
 
+            // A taken RPC port fails startup, so move the RPC listeners off defaults such as 8545/8551 that the host may hold.
+            IJsonRpcConfig jsonRpcConfig = configProvider.GetConfig<IJsonRpcConfig>();
+            Dictionary<int, int> rpcPorts = [];
+            int FreePort(int configuredPort)
+            {
+                if (!rpcPorts.TryGetValue(configuredPort, out int freePort))
+                {
+                    using TcpListener listener = new(IPAddress.Loopback, 0);
+                    listener.Start();
+                    rpcPorts[configuredPort] = freePort = ((IPEndPoint)listener.LocalEndpoint).Port;
+                }
+
+                return freePort;
+            }
+
+            jsonRpcConfig.Port = FreePort(jsonRpcConfig.Port);
+            jsonRpcConfig.WebSocketsPort = FreePort(jsonRpcConfig.WebSocketsPort);
+            if (jsonRpcConfig.EnginePort is int enginePort)
+                jsonRpcConfig.EnginePort = FreePort(enginePort);
+            string[] additionalRpcUrls = (string[])jsonRpcConfig.AdditionalRpcUrls.Clone();
+            for (int i = 0; i < additionalRpcUrls.Length; i++)
+            {
+                int separator = additionalRpcUrls[i].IndexOf('|');
+                Uri url = new(additionalRpcUrls[i][..separator]);
+                additionalRpcUrls[i] = $"{url.Scheme}://{url.Host}:{FreePort(url.Port)}{additionalRpcUrls[i][separator..]}";
+            }
+            jsonRpcConfig.AdditionalRpcUrls = additionalRpcUrls;
+
             PluginLoader pluginLoader = new(
                 "plugins",
                 new RealFileSystem(),
@@ -1065,6 +1099,8 @@ public class EthereumRunnerTests
                 try
                 {
                     await runner.StopAsync().WaitAsync(RunnerTimeout);
+                    Assert.That(IPGlobalProperties.GetIPGlobalProperties().GetActiveTcpListeners(), Has.None.Property(nameof(IPEndPoint.Port)).EqualTo(port),
+                        "the P2P listener is closed on stop");
                 }
                 catch (Exception e)
                 {

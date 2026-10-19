@@ -101,7 +101,7 @@ public class GethGenesisLoader(IJsonSerializer serializer) : IChainSpecLoader
             MaximumExtraDataSize = 32,
             MinGasLimit = 5000,
             MinHistoryRetentionEpochs = HistoryRetentionConstants.MinEpochsForBlockRequests,
-            MinBalRetentionEpochs = HistoryRetentionConstants.WeakSubjectivityPeriodEpochs,
+            MinBalRetentionEpochs = HistoryRetentionConstants.HistoryPruneEpochs,
 
             Eip7Transition = config.HomesteadBlock ?? 0,
 
@@ -190,6 +190,7 @@ public class GethGenesisLoader(IJsonSerializer serializer) : IChainSpecLoader
             [nameof(BPO3)] = new(6),
             [nameof(BPO4)] = new(7),
             [nameof(BPO5)] = new(8),
+            [nameof(Bogota)] = new(9),
         };
 
     private static void LoadGenesis(GethGenesisJson gethGenesisJson, GethGenesisConfigJson config, ChainSpec chainSpec)

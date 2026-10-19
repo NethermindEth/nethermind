@@ -3,6 +3,7 @@
 
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using NUnit.Framework;
@@ -136,15 +137,15 @@ public class SlotScheduleTests
     [Test]
     public void Spec_provider_reports_the_eip8198_activation()
     {
-        IReleaseSpec enabled = new OverridableReleaseSpec(Bogota.Instance) { IsEip8198Enabled = true };
+        IReleaseSpec enabled = Bogota.Instance;
         CustomSpecProvider scheduled = new(
             ((ForkActivation)0, London.Instance),
-            (new ForkActivation(0, 1_000), Bogota.Instance),
+            (new ForkActivation(0, 1_000), Amsterdam.Instance),
             (new ForkActivation(0, 2_000), enabled))
         {
             Eip8198SlotDurationMs = SlotDurationMs
         };
-        CustomSpecProvider unscheduled = new(((ForkActivation)0, London.Instance), (new ForkActivation(0, 1_000), Bogota.Instance));
+        CustomSpecProvider unscheduled = new(((ForkActivation)0, London.Instance), (new ForkActivation(0, 1_000), Amsterdam.Instance));
         CustomSpecProvider atGenesis = new(((ForkActivation)0, enabled));
 
         using (Assert.EnterMultipleScope())
@@ -160,7 +161,7 @@ public class SlotScheduleTests
     [Test]
     public void Spec_provider_slot_duration_reaches_the_schedule()
     {
-        IReleaseSpec enabled = new OverridableReleaseSpec(Bogota.Instance) { IsEip8198Enabled = true };
+        IReleaseSpec enabled = Bogota.Instance;
         CustomSpecProvider provider = new(((ForkActivation)0, London.Instance), (new ForkActivation(0, 2_000), enabled))
         {
             Eip8198SlotDurationMs = 6_000
@@ -222,9 +223,21 @@ public class SlotScheduleTests
     }
 
     [Test]
+    public void Mainnet_unscheduled_bogota_keeps_the_configured_slot_duration()
+    {
+        ISpecProvider provider = MainnetSpecProvider.Instance;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(provider.GetEip8198Timestamp(), Is.Null);
+            Assert.That(provider.GetSlotSchedule(12).GetSecondsPerSlot(1_792_416_379), Is.EqualTo(12UL));
+        }
+    }
+
+    [Test]
     public void Spec_provider_scheduling_eip8198_without_slot_duration_throws()
     {
-        IReleaseSpec enabled = new OverridableReleaseSpec(Bogota.Instance) { IsEip8198Enabled = true };
+        IReleaseSpec enabled = Bogota.Instance;
         CustomSpecProvider provider = new(((ForkActivation)0, London.Instance), (new ForkActivation(0, 2_000), enabled));
 
         Assert.That(() => provider.GetSlotSchedule(12),

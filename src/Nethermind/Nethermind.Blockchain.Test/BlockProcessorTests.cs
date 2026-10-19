@@ -1285,7 +1285,8 @@ public partial class BlockProcessorTests
         using SnapshotableMemColumnsDb<FlatHistoryColumns> columns = new();
         TransactionChangesetIndex index = new(columns, new FlatDbConfig { HistoryTransactionIndexEnabled = true });
         ChangesetPrefixStateSeedSource seeds = new(index);
-        using BasicTestBlockchain chain = await CreatePrefixReplayChain(spec, seeds);
+        // A calculator that does not rule rewards out, so the reward pass runs and its boundary is checked.
+        using BasicTestBlockchain chain = await CreatePrefixReplayChain(spec, seeds, builder => builder.AddSingleton<IRewardCalculatorSource>(new UnhintedNoRewards()));
         BlockHeader parent = chain.BlockTree.Head!.Header;
         Block block = await AddThreeTransferBlock(chain);
         IndexThroughTheCapture(chain, index, block, parent, spec);
@@ -1313,7 +1314,7 @@ public partial class BlockProcessorTests
 
     private sealed class BoundaryHidingBlockProcessor(IBlockProcessor inner, bool rewards) : IBlockProcessor
     {
-        public event Action? TransactionsExecuted
+        public event Action<Block>? TransactionsExecuted
         {
             add => inner.TransactionsExecuted += value;
             remove => inner.TransactionsExecuted -= value;
@@ -1338,6 +1339,13 @@ public partial class BlockProcessorTests
         IBlockTracer<TTrace> tracer = tracerFor(scope.Resolve<IWorldState>());
         processor.Process(block, TraceProcessingOptions.ReadOnlyReplay, tracer, CancellationToken.None);
         return tracer.BuildResult();
+    }
+
+    private sealed class UnhintedNoRewards : IRewardCalculatorSource, IRewardCalculator
+    {
+        public IRewardCalculator Get(ITransactionProcessor processor) => this;
+
+        public BlockReward[] CalculateRewards(Block block) => [];
     }
 
     private sealed class ZeroRewardToTheBeneficiary : IRewardCalculatorSource, IRewardCalculator
@@ -1374,16 +1382,18 @@ public partial class BlockProcessorTests
         return chain.JsonSerializer.Serialize(result);
     }
 
-    private sealed class BalApplyRecordingState(IWorldState state, Action afterApply) : WorldStateDecorator(state), IWorldState
+    private sealed class BalApplyRecordingState(IWorldState state, Action beforeApply) : WorldStateDecorator(state), IWorldState
     {
-        public int Applied { get; private set; }
+        public int ApplyStarts { get; private set; }
+        public int CancelledApplies { get; private set; }
         public int RootRecalculations { get; private set; }
 
-        void IWorldState.ApplyBal(ReadOnlyBlockAccessList bal)
+        void IWorldState.ApplyBal(ReadOnlyBlockAccessList bal, CancellationToken cancellationToken)
         {
-            ApplyBal(bal);
-            Applied++;
-            afterApply();
+            ApplyStarts++;
+            beforeApply();
+            ApplyBal(bal, cancellationToken);
+            if (cancellationToken.IsCancellationRequested) CancelledApplies++;
         }
 
         public override void RecalculateStateRoot()
@@ -2024,6 +2034,7 @@ public partial class BlockProcessorTests
             Substitute.For<IBlockhashProvider>(),
             new InclusionListSatisfactionChecker(HoodiSpecProvider.Instance, Substitute.For<ITxValidator>()),
             LimboLogs.Instance,
+            Substitute.For<IWorldStateManager>(),
             preWarmer);
 
         return (processor, branchProcessor, stateProvider, stateHeaderProvider);
@@ -2054,7 +2065,7 @@ public partial class BlockProcessorTests
         (BlockProcessor processor, BranchProcessor branchProcessor, _, _) = CreateProcessorAndBranch(preWarmer: preWarmer);
         Block block = Build.A.Block.WithHeader(Build.A.BlockHeader.WithParent(parent).TestObject).TestObject;
         bool executed = false;
-        processor.TransactionsExecuted += () => executed = true;
+        processor.TransactionsExecuted += _ => executed = true;
 
         StateNotRetainedException exception = Assert.Throws<StateNotRetainedException>(() =>
             branchProcessor.Process(parent, [block], ProcessingOptions.None, NullBlockTracer.Instance))!;
@@ -2197,7 +2208,7 @@ public partial class BlockProcessorTests
         (BlockProcessor processor, _, IWorldState stateProvider, _) = CreateProcessorAndBranch();
 
         bool eventFired = false;
-        processor.TransactionsExecuted += () => eventFired = true;
+        processor.TransactionsExecuted += _ => eventFired = true;
 
         using IDisposable scope = stateProvider.BeginScope(null);
         BlockHeader header = Build.A.BlockHeader.WithAuthor(TestItem.AddressD).TestObject;
@@ -2386,7 +2397,7 @@ public partial class BlockProcessorTests
             NullBlockTracer.Instance);
 
         int externalHandlerCallCount = 0;
-        processor.TransactionsExecuted += () => externalHandlerCallCount++;
+        processor.TransactionsExecuted += _ => externalHandlerCallCount++;
 
         using IDisposable scope = stateProvider.BeginScope(null);
         Block block2 = Build.A.Block.WithHeader(Build.A.BlockHeader.WithAuthor(TestItem.AddressD).TestObject).TestObject;
@@ -2492,7 +2503,7 @@ public partial class BlockProcessorTests
     {
         IBlockProcessor processor = NullBlockProcessor.Instance;
 
-        Action handler = () => { };
+        Action<Block> handler = _ => { };
         processor.TransactionsExecuted += handler;
         processor.TransactionsExecuted -= handler;
     }
@@ -3013,6 +3024,18 @@ public partial class BlockProcessorTests
                 accepted ? Is.EqualTo(eip8116 ? Eip8116ReceiptEvents : CanonicalReceiptEvents) : Is.Empty,
                 "only an accepted processing attempt may publish callbacks");
         }
+    }
+
+    [Test]
+    public void Registered_parallel_validation_hands_transaction_events_only_to_subscribers([Values] bool hasSubscribers)
+    {
+        CanonicalReceiptEventSetup setup = BuildCanonicalReceiptEventSetup(balFailure: false, validationSucceeds: true, hasSubscribers: hasSubscribers);
+        using IContainer container = setup.Container;
+
+        setup.BranchProcessor.Process(setup.Parent, [setup.Block], ProcessingOptions.None, NullBlockTracer.Instance);
+
+        Assert.That(setup.Handler.Events, hasSubscribers ? Has.Count.EqualTo(setup.Block.Transactions.Length) : Is.Empty,
+            "every transaction reaches a handler with subscribers, and none reaches one without");
     }
 
     [Test]
@@ -3592,7 +3615,7 @@ public partial class BlockProcessorTests
         {
             for (int i = 0; i < b.Transactions.Length; i++) gasResults[i].GetResult();
             slotsFilled.Set();
-            throw new InvalidBlockException(b, "invalid block access list");
+            if (rejected) throw new InvalidBlockException(b, "invalid block access list");
         }
 
         // Two txs of 1.5M gas exceed the 2M block gas limit only once both have run.
@@ -3610,7 +3633,7 @@ public partial class BlockProcessorTests
         GatedTailTransactionProcessorAdapter transactionProcessor = new(int.MaxValue, cause == BalRejectionCause.GasLimit ? 1_500_000ul : 21_000ul, validationFinished, outcome: _ =>
         {
             if (rejectedAt == BalRejectionPoint.DuringApply) applying.Wait(TimeSpan.FromSeconds(10));
-            return cause == BalRejectionCause.TxFailure ? TransactionResult.ErrorType.MalformedTransaction.WithDetail("rejected") : TransactionResult.Ok;
+            return rejected && cause == BalRejectionCause.TxFailure ? TransactionResult.ErrorType.MalformedTransaction.WithDetail("rejected") : TransactionResult.Ok;
         });
         ParallelTestBlockAccessListManager balManager = new(transactionProcessor)
         {
@@ -3628,10 +3651,29 @@ public partial class BlockProcessorTests
         if (rejected) Assert.That(Process, Throws.InstanceOf<InvalidBlockException>());
         else Assert.That(Process, Throws.Nothing);
 
+        int applyStarts = stateProvider.ApplyStarts;
+        int rootRecalculations = stateProvider.RootRecalculations;
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(stateProvider.Applied, Is.EqualTo(rejected && rejectedAt == BalRejectionPoint.DuringWarmup ? 0 : 1), "BAL applications");
-            Assert.That(stateProvider.RootRecalculations, Is.EqualTo(rejected ? 0 : 1), "state root recalculations");
+            Assert.That(applyStarts, Is.EqualTo(rejected && rejectedAt == BalRejectionPoint.DuringWarmup ? 0 : 1), "BAL applications started");
+            Assert.That(stateProvider.CancelledApplies, Is.EqualTo(rejected && rejectedAt == BalRejectionPoint.DuringApply ? 1 : 0), "BAL applications cancelled");
+            Assert.That(rootRecalculations, Is.EqualTo(rejected ? 0 : 1), "state root recalculations");
+        }
+
+        // The executor lives for the whole node run, so a rejection must not carry over to the next valid block.
+        rejected = false;
+        block = Build.A.Block
+            .WithNumber(2)
+            .WithGasLimit(4_000_000)
+            .WithTransactions(CreateParallelValidationTransactions(2))
+            .WithBlockAccessList(new ReadOnlyBlockAccessList())
+            .TestObject;
+        Assert.That(Process, Throws.Nothing);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(stateProvider.ApplyStarts, Is.EqualTo(applyStarts + 1), "BAL applications started on the next block");
+            Assert.That(stateProvider.RootRecalculations, Is.EqualTo(rootRecalculations + 1), "state root recalculations on the next block");
         }
     }
 
@@ -3898,7 +3940,7 @@ public partial class BlockProcessorTests
     /// <summary>Wires the registered parallel decorator over a real <see cref="BlockProcessor"/> and
     /// <see cref="BranchProcessor"/> so a test can drive whole processing attempts — including a BAL
     /// failure — against a recording transaction-processed handler.</summary>
-    private static CanonicalReceiptEventSetup BuildCanonicalReceiptEventSetup(bool balFailure, bool validationSucceeds, bool eip8116 = false)
+    private static CanonicalReceiptEventSetup BuildCanonicalReceiptEventSetup(bool balFailure, bool validationSucceeds, bool eip8116 = false, bool hasSubscribers = true)
     {
         GasConsumed[] gasConsumed = CanonicalReceiptGasConsumed();
         Block block = BuildParallelValidationBlock(gasConsumed.Length);
@@ -3914,7 +3956,7 @@ public partial class BlockProcessorTests
         }
 
         TestSingleReleaseSpecProvider specProvider = new(new OverridableReleaseSpec(Amsterdam.Instance) { IsEip8116Enabled = eip8116 });
-        RecordingTransactionProcessedEventHandler handler = new();
+        RecordingTransactionProcessedEventHandler handler = new() { HasSubscribers = hasSubscribers };
         ReceiptMetadataTransactionProcessorAdapter transactionProcessorAdapter = new(gasConsumed);
         ParallelTestBlockAccessListManager balManager = new(transactionProcessorAdapter)
         {
@@ -3953,7 +3995,8 @@ public partial class BlockProcessorTests
             stateProvider,
             Substitute.For<IBlockhashProvider>(),
             new InclusionListSatisfactionChecker(specProvider, Substitute.For<ITxValidator>()),
-            LimboLogs.Instance);
+            LimboLogs.Instance,
+            Substitute.For<IWorldStateManager>());
 
         return new(block, stateHeaderProvider.Parent!, balManager, handler, executor, branchProcessor, container);
     }
@@ -4336,6 +4379,8 @@ public partial class BlockProcessorTests
     {
         public List<TransactionProcessedSnapshot> Events { get; } = [];
 
+        public bool HasSubscribers { get; init; } = true;
+
         public void OnTransactionProcessed(TxProcessedEventArgs args) => Events.Add(new(
             args.Index,
             args.TxReceipt.Index,
@@ -4414,7 +4459,7 @@ public partial class BlockProcessorTests
 
         public int Attempts { get; private set; }
 
-        public event Action? TransactionsExecuted
+        public event Action<Block>? TransactionsExecuted
         {
             add => inner.TransactionsExecuted += value;
             remove => inner.TransactionsExecuted -= value;
@@ -4463,7 +4508,7 @@ public partial class BlockProcessorTests
         public int Attempts { get; private set; }
         public ProcessingOptions ObservedOptions { get; private set; }
 
-        public event Action? TransactionsExecuted
+        public event Action<Block>? TransactionsExecuted
         {
             add => inner.TransactionsExecuted += value;
             remove => inner.TransactionsExecuted -= value;

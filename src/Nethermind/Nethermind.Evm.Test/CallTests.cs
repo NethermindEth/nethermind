@@ -443,6 +443,56 @@ namespace Nethermind.Evm.Test
                 "a tracer that may keep a nested output must disable the reusable return scratch");
         }
 
+        [Test]
+        public void Top_level_output_uses_scratch_only_when_the_tracer_reads_no_output(
+            [Values] bool reverts, [Values] bool tracesOutput, [Values] bool isCreate)
+        {
+            byte[] data = [0x01, 0x02, 0x03];
+            Prepare code = Prepare.EvmCode.StoreDataInMemory(0, data);
+
+            TransactionSubstate result = ExecuteDirect(
+                (reverts ? code.REVERT(0, (UInt256)data.Length) : code.RETURN(0, (UInt256)data.Length)).Done,
+                new OutputFilterTracer(tracesOutput),
+                isCreate ? ExecutionType.CREATE : ExecutionType.TRANSACTION);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result.ShouldRevert, Is.EqualTo(reverts));
+                Assert.That(result.Output, Is.SequenceEqualTo(data));
+                Assert.That(Machine.RetainedReturnDataScratchLength,
+                    tracesOutput || isCreate ? Is.Zero : Is.GreaterThanOrEqualTo(data.Length),
+                    "only a call whose output no tracer reads may stage it in the reusable scratch");
+            }
+        }
+
+        [Test]
+        public void Transaction_output_reaches_only_a_tracer_that_reads_it([Values] bool reverts, [Values] bool tracesOutput)
+        {
+            byte[] data = [0x01, 0x02, 0x03];
+            Prepare code = Prepare.EvmCode.StoreDataInMemory(0, data);
+
+            OutputFilterAllTracer tracer = Execute(
+                new OutputFilterAllTracer(tracesOutput),
+                (reverts ? code.REVERT(0, (UInt256)data.Length) : code.RETURN(0, (UInt256)data.Length)).Done);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(tracer.StatusCode, Is.EqualTo(reverts ? StatusCode.Failure : StatusCode.Success));
+                Assert.That(tracer.ReturnValue, tracesOutput ? Is.EqualTo(data) : Is.Empty);
+            }
+        }
+
+        private sealed class OutputFilterTracer(bool tracesOutput) : TxTracer, ITxOutputTracingFilter
+        {
+            public override bool IsTracingReceipt => true;
+            public bool IsTracingOutput => tracesOutput;
+        }
+
+        private sealed class OutputFilterAllTracer(bool tracesOutput) : TestAllTracerWithOutput, ITxOutputTracingFilter
+        {
+            public bool IsTracingOutput => tracesOutput;
+        }
+
         private (Address LargeTarget, Address SmallTarget, byte[] LargeOutput, byte[] SmallOutput) SetUpSiblingReturnTargets(bool smallReverts)
         {
             Address largeTarget = TestItem.AddressC;
@@ -504,7 +554,7 @@ namespace Nethermind.Evm.Test
             }
         }
 
-        private TransactionSubstate ExecuteDirect(byte[] code, ITxTracer? tracer = null)
+        private TransactionSubstate ExecuteDirect(byte[] code, ITxTracer? tracer = null, ExecutionType executionType = ExecutionType.TRANSACTION)
         {
             if (!TestState.AccountExists(Recipient)) TestState.CreateAccount(Recipient, UInt256.Zero);
 
@@ -513,7 +563,7 @@ namespace Nethermind.Evm.Test
             using StackAccessTracker accessTracker = new();
             Snapshot snapshot = TestState.TakeSnapshot();
             using VmState<EthereumGasPolicy> vmState = VmState<EthereumGasPolicy>.RentTopLevel(
-                EthereumGasPolicy.FromULong(1_000_000), ExecutionType.TRANSACTION, env, in accessTracker, in snapshot);
+                EthereumGasPolicy.FromULong(1_000_000), executionType, env, in accessTracker, in snapshot);
             Machine.SetBlockExecutionContext(new BlockExecutionContext(Build.A.Block.TestObject.Header, Spec));
             Machine.SetTxExecutionContext(new TxExecutionContext(Sender, CodeInfoRepository, null, UInt256.Zero));
 

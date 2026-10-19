@@ -1657,6 +1657,7 @@ public partial class EthRpcModuleTests
         Address target = Eip8253Constants.MainnetAccounts[0];
         TestSpecProvider specProvider = new(Bogota.Instance)
         {
+            Eip8198SlotDurationMs = 12_000,
             NextForkSpec = new OverridableReleaseSpec(Bogota.Instance) { IsEip8253Enabled = true },
             ForkOnBlockNumber = ulong.MaxValue,
             ChainId = BlockchainIds.Mainnet,
@@ -2468,6 +2469,30 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
+    public async Task Eth_createAccessList_is_rejected_before_berlin([Values] bool berlin)
+    {
+        IReleaseSpec spec = berlin ? Berlin.Instance : Istanbul.Instance;
+        using Context ctx = await Context.Create(new TestSpecProvider(spec));
+        using JsonDocument call = JsonDocument.Parse($"{{\"from\":\"{TestItem.AddressA}\",\"to\":\"{TestItem.AddressB}\"}}");
+
+        string response = await ctx.Test.TestEthRpc("eth_createAccessList", call.RootElement, "latest");
+
+        JToken parsed = JToken.Parse(response);
+        if (berlin)
+        {
+            Assert.That(parsed["error"], Is.Null, response);
+        }
+        else
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(parsed["error"]?["code"]?.Value<int>(), Is.EqualTo(ErrorCodes.InvalidInput), response);
+                Assert.That(parsed["error"]?["message"]?.Value<string>(), Does.Contain(TxErrorMessages.InvalidTxType(spec.Name)), response);
+            }
+        }
+    }
+
+    [Test]
     public async Task Eth_createAccessList_without_gas_defaults_to_gas_cap_not_block_gas_limit()
     {
         using Context ctx = await Context.Create();
@@ -2699,7 +2724,8 @@ public partial class EthRpcModuleTests
     public async Task Eth_createAccessList_omits_entries_that_only_raise_the_eip8131_content_floor()
     {
         using Context ctx = await Context.Create(new TestSpecProvider(
-            new OverridableReleaseSpec(Bogota.Instance) { IsEip7981Enabled = false, IsEip8131Enabled = true }));
+            new OverridableReleaseSpec(Bogota.Instance) { IsEip7981Enabled = false, IsEip8131Enabled = true })
+        { Eip8198SlotDurationMs = 12_000 });
         const string contractAddr = "0xc200000000000000000000000000000000000000";
         const int calldataBytes = 1000;
         // PUSH20 0xdeadbeef; BALANCE; POP; STOP: one cold account access, under a calldata-bound content floor.
