@@ -53,7 +53,7 @@ public static class NodeRecordBufferExtensions
     /// <remarks>Inline children have no separate record and are not returned.</remarks>
     internal static bool TryGetNode(this INodeRecordBuffer buffer, ulong rootPointer, in TreePath path, [NotNullWhen(true)] out TrieNode? node)
     {
-        node = TryFindRecord(buffer, rootPointer, path, out _, out NodeRecord record) ? record.ToTrieNode() : null;
+        node = TryFindRecord(buffer, rootPointer, path, out NodeRecord record) ? record.ToTrieNode() : null;
         return node is not null;
     }
 
@@ -65,10 +65,10 @@ public static class NodeRecordBufferExtensions
     /// </remarks>
     public static IEnumerable<(TreePath Path, ulong Pointer, NodeRecord Record)> EnumerateNodes(this INodeRecordBuffer buffer, ulong rootPointer, ulong lowerBound = 0) => new NodeEnumerable(buffer, rootPointer, lowerBound);
 
-    private static bool TryFindRecord(INodeRecordBuffer buffer, ulong rootPointer, in TreePath path, out ulong pointer, out NodeRecord record)
+    private static bool TryFindRecord(INodeRecordBuffer buffer, ulong rootPointer, in TreePath path, out NodeRecord record)
     {
         Span<byte> extensionKey = stackalloc byte[MaxPathNibbles];
-        pointer = rootPointer;
+        ulong pointer = rootPointer;
         int depth = 0;
         while (pointer != 0 && buffer.TryLocate(pointer, out record))
         {
@@ -80,11 +80,11 @@ public static class NodeRecordBufferExtensions
             {
                 case NodeRecordKind.Extension:
                     int length = view.KeyLength(0);
-                    if (length > path.Length - depth) return Miss(out pointer, out record);
+                    if (length > path.Length - depth) return Miss(out record);
                     view.CopyKey(0, extensionKey);
                     for (int i = 0; i < length; i++)
                     {
-                        if (extensionKey[i] != path[depth + i]) return Miss(out pointer, out record);
+                        if (extensionKey[i] != path[depth + i]) return Miss(out record);
                     }
                     depth += length;
                     child = view.Child(0);
@@ -94,19 +94,18 @@ public static class NodeRecordBufferExtensions
                     child = view.Child(path[depth++]);
                     break;
                 default:
-                    return Miss(out pointer, out record);
+                    return Miss(out record);
             }
 
-            if (child.Kind != ChildRefKind.Hash) return Miss(out pointer, out record);
+            if (child.Kind != ChildRefKind.Hash) return Miss(out record);
             pointer = child.Pointer;
         }
 
-        return Miss(out pointer, out record);
+        return Miss(out record);
     }
 
-    private static bool Miss(out ulong pointer, out NodeRecord record)
+    private static bool Miss(out NodeRecord record)
     {
-        pointer = 0;
         record = default;
         return false;
     }

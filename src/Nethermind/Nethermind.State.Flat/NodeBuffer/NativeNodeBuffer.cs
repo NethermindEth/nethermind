@@ -50,12 +50,7 @@ internal sealed unsafe class NativeNodeBuffer : MemoryManager<byte>
     public static NativeNodeBuffer Allocate(int length) => new(length);
 
     // Native spans do not root their owner: the pin protecting them must outlive their use.
-    public override Span<byte> GetSpan()
-    {
-        nint address = Volatile.Read(ref _address);
-        ObjectDisposedException.ThrowIf(address == 0, this);
-        return new Span<byte>((void*)address, Length);
-    }
+    public override Span<byte> GetSpan() => new((void*)UnsafeAddress(), Length);
 
     public Span<byte> AsSpan(int start) => GetSpan()[start..];
     public Span<byte> AsSpan(int start, int length) => GetSpan().Slice(start, length);

@@ -344,7 +344,7 @@ public sealed class SnapshotBundle : IDisposable
         }
 
         Metrics.IncrementWarmedNodeCacheMisses();
-        return TryInsertPersistedRecord(warmed, address, path, hash, out record);
+        return TryInsertPersistedRecord(_readOnlySnapshotBundle, warmed, address, path, hash, out record);
     }
 
     /// <summary>Warms the nodes on the path to <paramref name="key"/> that the trie node buffer does not hold, for this block's bulk sets.</summary>
@@ -356,7 +356,7 @@ public sealed class SnapshotBundle : IDisposable
     /// <param name="address">The storage trie's address hash, or null for the state trie.</param>
     /// <param name="root">The trie's root before the block, as <see cref="NodeRecordBufferExtensions.ResolveRoot"/> returns it.</param>
     /// <param name="forDelete">Also warms the sibling needed when deleting the leaf collapses its branch.</param>
-    internal void WarmUp(Hash256? address, TrieRoot root, in ValueHash256 key, bool forDelete = false)
+    internal void WarmUp(Hash256? address, TrieRoot root, in ValueHash256 key, bool forDelete)
     {
         TransientResource? transientResource = TryLeaseTransientResource();
         if (transientResource is null) return;
@@ -372,17 +372,10 @@ public sealed class SnapshotBundle : IDisposable
     }
 
     /// <summary>Reads the node at <paramref name="path"/> from persistence into <paramref name="warmed"/> as the node of <paramref name="hash"/>.</summary>
-    private bool TryInsertPersistedRecord(WarmedNodeLog warmed, Hash256? address, in TreePath path, in ValueHash256 hash, out NodeRecord record) =>
-        TryInsertPersistedRecord(_readOnlySnapshotBundle, warmed, address, path, hash, out record);
-
     private static bool TryInsertPersistedRecord(ReadOnlySnapshotBundle readOnly, WarmedNodeLog warmed, Hash256? address, in TreePath path, in ValueHash256 hash, out NodeRecord record)
     {
         record = default;
-        bool inserted = false;
-        PersistedNodeInsert insert = new(warmed, address, in path, in hash, ref record, ref inserted);
-        if (address is null) readOnly.TryLoadPersistedStateRlp(path, ReadFlags.None, PersistedNodeInsert.Insert, insert);
-        else readOnly.TryLoadPersistedStorageRlp(address, path, ReadFlags.None, PersistedNodeInsert.Insert, insert);
-        return inserted;
+        return readOnly.TryLoadPersistedRlp(address, path, ReadFlags.None, PersistedNodeInsert.Insert, new PersistedNodeInsert(warmed, address, in path, in hash, ref record));
     }
 
     /// <summary>Captures a source for private trie updates that may outlive this bundle.</summary>
@@ -467,29 +460,23 @@ public sealed class SnapshotBundle : IDisposable
     private readonly ref struct PersistedNodeInsert
     {
         public static readonly ReadOnlySpanAction<byte, PersistedNodeInsert> Insert = static (rlp, insert) =>
-        {
             insert._warmed.Append(insert._address, insert._path, insert._hash, rlp, [], out insert._record, out _);
-            insert._inserted = true;
-        };
 
         private readonly WarmedNodeLog _warmed;
         private readonly Hash256? _address;
         private readonly ref readonly TreePath _path;
         private readonly ref readonly ValueHash256 _hash;
         private readonly ref NodeRecord _record;
-        private readonly ref bool _inserted;
 
         /// <param name="record">Set to the inserted record.</param>
-        /// <param name="inserted">Set to whether the RLP was inserted.</param>
         public PersistedNodeInsert(WarmedNodeLog warmed, Hash256? address, ref readonly TreePath path, ref readonly ValueHash256 hash,
-            ref NodeRecord record, ref bool inserted)
+            ref NodeRecord record)
         {
             _warmed = warmed;
             _address = address;
             _path = ref path;
             _hash = ref hash;
             _record = ref record;
-            _inserted = ref inserted;
         }
     }
 

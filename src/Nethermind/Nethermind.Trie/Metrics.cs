@@ -51,17 +51,5 @@ namespace Nethermind.Trie
             if (IsBlockProcessingThread) Interlocked.Increment(ref _mainTreeNodeRlpDecodings.Value);
             else _otherTreeNodeRlpDecodings.Increment();
         }
-
-        [CounterMetric]
-        [Description("Number of trie nodes a bulk set read in place from the trie node buffer.")]
-        public static long BulkSetNodesFromBuffer => _bulkSetNodesFromBuffer.Sum;
-        private static readonly StripedLong _bulkSetNodesFromBuffer = new();
-        internal static void AddBulkSetNodesFromBuffer(long count) => _bulkSetNodesFromBuffer.Add(count);
-
-        [CounterMetric]
-        [Description("Number of trie nodes a bulk set loaded from its node source because the trie node buffer did not hold them.")]
-        public static long BulkSetNodesFromSource => _bulkSetNodesFromSource.Sum;
-        private static readonly StripedLong _bulkSetNodesFromSource = new();
-        internal static void AddBulkSetNodesFromSource(long count) => _bulkSetNodesFromSource.Add(count);
     }
 }

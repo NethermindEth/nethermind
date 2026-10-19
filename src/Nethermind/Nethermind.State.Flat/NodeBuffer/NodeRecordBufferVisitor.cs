@@ -22,7 +22,7 @@ internal sealed class NodeRecordBufferVisitor<TNodeContext> where TNodeContext :
     private readonly ConcurrencyController _workers;
     private readonly ReadFlags _readFlags;
 
-    internal NodeRecordBufferVisitor(INodeRecordBuffer buffer, ITreeVisitor<TNodeContext> visitor, VisitingOptions? options = null, VisitingStats? diagnostics = null)
+    internal NodeRecordBufferVisitor(INodeRecordBuffer buffer, ITreeVisitor<TNodeContext> visitor, VisitingOptions? options, VisitingStats? diagnostics)
     {
         _buffer = buffer;
         _visitor = visitor;

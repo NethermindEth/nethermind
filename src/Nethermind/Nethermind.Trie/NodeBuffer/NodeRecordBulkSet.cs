@@ -82,20 +82,16 @@ internal static class NodeRecordBulkSet
         }
         finally
         {
-            ReturnArena(arena);
+            BulkSetArena.Return(arena);
         }
     }
 
-    private static void ReturnArena(BulkSetArena arena)
-    {
-        Metrics.AddBulkSetNodesFromBuffer(arena.NodesFromBuffer);
-        Metrics.AddBulkSetNodesFromSource(arena.NodesFromSource);
-        BulkSetArena.Return(arena);
-    }
-
     [DoesNotReturn, StackTraceHidden]
-    private static Source ThrowMissingNode(Hash256? address, in TreePath path, in ValueHash256 hash) =>
-        throw new MissingTrieNodeException($"Trie node missing hash={hash} address={address} path={path}", address, path, new Hash256(hash));
+    private static Source ThrowMissingNode(Hash256? address, in TreePath path, in ValueHash256 hash) => throw MissingNode(address, path, hash);
+
+    /// <summary>The exception for a node on a trie path that no store holds.</summary>
+    internal static MissingTrieNodeException MissingNode(Hash256? address, in TreePath path, in ValueHash256 hash) =>
+        new($"Trie node missing hash={hash} address={address} path={path}", address, path, new Hash256(hash));
 
     [DoesNotReturn, StackTraceHidden]
     private static void ThrowNonUniqueKeys() => throw new InvalidOperationException("Non unique entry keys");
@@ -369,7 +365,7 @@ internal static class NodeRecordBulkSet
             }
             finally
             {
-                ReturnArena(arena);
+                BulkSetArena.Return(arena);
             }
         }
 
@@ -462,17 +458,8 @@ internal static class NodeRecordBulkSet
             }
 
             Debug.Assert(child.Kind == ChildRefKind.Hash, "Only children of nodes read are loaded.");
-            if (_store.TryLocate(child.Pointer, out NodeRecord record))
-            {
-                _arena.NodesFromBuffer++;
+            if (_store.TryLocate(child.Pointer, out NodeRecord record) || _store.TryLoad(path, child.Data, out record))
                 return Source.ForRecord(record, 0);
-            }
-
-            if (_store.TryLoad(path, child.Data, out record))
-            {
-                _arena.NodesFromSource++;
-                return Source.ForRecord(record, 0);
-            }
 
             return ThrowMissingNode(_address, path, child.Data);
         }

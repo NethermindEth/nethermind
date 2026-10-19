@@ -1,11 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Buffers.Binary;
 using System.Collections.Concurrent;
 using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
-using System.Numerics;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Trie;
@@ -74,32 +71,11 @@ public sealed class WarmedNodeLog : IDisposable
         if (TryGet(address, path, out record, out pointer)) return;
 
         Debug.Assert(ValueKeccak.Compute(rlp) == hash, "A traversal only appends the node its parent references.");
-        if (!NodeRecordCodec.TryDecode(rlp, out NodeRecordKind kind, out ushort hashMask)) ThrowInvalidRlp();
-
-        int length = NodeRecordCodec.Length(BitOperations.PopCount(hashMask), rlp.Length);
-        ulong localPointer;
-        using (INodeRecordWriteBatch batch = _buffer.StartWriteBatch(NodeRecordCodec.AlignedLength(length)))
-        {
-            Span<byte> recordBytes = batch.Bytes;
-            NodeRecordCodec.WriteFromRlp(rlp, kind, hashMask, hash, NodeRecordCodec.NodeKeyHash(address, path), recordBytes);
-            int pointerOffset = NodeRecordCodec.HeaderLength;
-            for (int slot = 0; slot < childPointers.Length; slot++)
-            {
-                if ((hashMask & (1 << slot)) == 0) continue;
-                BinaryPrimitives.WriteUInt64LittleEndian(recordBytes[pointerOffset..], childPointers[slot]);
-                pointerOffset += NodeRecordCodec.PointerLength;
-            }
-
-            localPointer = batch.BasePointer;
-        }
-
+        ulong localPointer = _buffer.AppendRecordFromRlp(address, path, hash, rlp, childPointers);
         pointer = localPointer | NodeRecordCodec.TransientPointerMask;
         _pointers[(address, path)] = pointer;
         record = _buffer.GetRecord(localPointer);
     }
-
-    [DoesNotReturn, StackTraceHidden]
-    private static void ThrowInvalidRlp() => throw new TrieException("Invalid trie node RLP.");
 
     /// <summary>Empties the position index and releases the records appended so far.</summary>
     /// <remarks>No reader or writer may be running, and no record or pointer handed out before may be used after.</remarks>

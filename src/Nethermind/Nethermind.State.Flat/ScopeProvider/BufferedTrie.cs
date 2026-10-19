@@ -60,7 +60,7 @@ internal sealed class BufferedTrie(SnapshotBundle bundle, Hash256? addressHash, 
     private ulong CopyRootRecord()
     {
         if (!TryLoad(TreePath.Empty, Root.Hash, out NodeRecord record))
-            throw new MissingTrieNodeException($"Trie node missing hash={Root.Hash} address={addressHash} path={TreePath.Empty}", addressHash, TreePath.Empty, _rootHash);
+            throw NodeRecordBulkSet.MissingNode(addressHash, TreePath.Empty, Root.Hash);
 
         return bundle.TrieNodeBuffer!.AppendRecordFromRlp(addressHash, TreePath.Empty, Root.Hash, record.Rlp, []);
     }
@@ -95,7 +95,7 @@ internal sealed class BufferedTrie(SnapshotBundle bundle, Hash256? addressHash, 
 
             if (!TryLocate(child.Pointer, out NodeRecord record) && !TryLoad(path, child.Data, out record))
             {
-                throw new MissingTrieNodeException($"Trie node missing hash={child.Data} address={addressHash} path={path}", addressHash, path, new Hash256(child.Data));
+                throw NodeRecordBulkSet.MissingNode(addressHash, path, child.Data);
             }
 
             NodeRecordRef view = record.View;

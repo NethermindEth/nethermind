@@ -30,7 +30,7 @@ internal static class BufferWarmUp
     /// <param name="reader">Reads the nodes neither <paramref name="buffer"/> nor <paramref name="warmed"/> holds.</param>
     /// <param name="forDelete">Also loads the sibling a two-child branch collapses into when its matching leaf is deleted.</param>
     public static void WarmUp(INodeRecordBuffer buffer, WarmedNodeLog warmed, ReadOnlySnapshotBundle reader, Hash256? address,
-        TrieRoot root, in ValueHash256 key, bool forDelete = false)
+        TrieRoot root, in ValueHash256 key, bool forDelete)
     {
         if (root.Hash == ValueKeccak.EmptyTreeHash) return;
         Span<byte> keyNibbles = stackalloc byte[MaxKeyNibbles];
@@ -133,7 +133,7 @@ internal static class BufferWarmUp
         }
 
         scratch.Clear();
-        if (!TryLoadRlp(reader, address, path, CopyRlp, scratch)
+        if (!reader.TryLoadPersistedRlp(address, path, ReadFlags.None, CopyRlp, scratch)
             || !NodeRecordCodec.TryDecode(scratch.AsSpan(), out NodeRecordKind kind, out ushort hashMask)) return false;
 
         int length = NodeRecordCodec.Length(BitOperations.PopCount(hashMask), scratch.Count);
@@ -173,19 +173,13 @@ internal static class BufferWarmUp
         {
             Metrics.IncrementWarmedNodeCacheMisses();
             scratch.Clear();
-            if (!TryLoadRlp(reader, address, siblingPath, CopyRlp, scratch)) return;
+            if (!reader.TryLoadPersistedRlp(address, siblingPath, ReadFlags.None, CopyRlp, scratch)) return;
             warmed.Append(address, siblingPath, sibling.Data, scratch.AsSpan(), [], out _, out pointer);
         }
 
         branch.SiblingSlot = siblingSlot;
         branch.SiblingPointer = pointer;
     }
-
-    private static bool TryLoadRlp<TArg>(ReadOnlySnapshotBundle reader, Hash256? address, in TreePath path, ReadOnlySpanAction<byte, TArg> action, TArg arg)
-        where TArg : allows ref struct =>
-        address is null
-            ? reader.TryLoadPersistedStateRlp(path, ReadFlags.None, action, arg)
-            : reader.TryLoadPersistedStorageRlp(address, path, ReadFlags.None, action, arg);
 
     /// <summary>Copies the key nibbles of the leaf or extension <paramref name="rlp"/> to <paramref name="key"/>.</summary>
     /// <returns>The number of nibbles copied.</returns>

@@ -428,7 +428,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             {
                 // Note: tree root not changed after writing batch. Also, not cleared. So the result is not correct.
                 // this is just for warming up
-                _snapshotBundle.WarmUp(null, _initialTrieRoot, address.ToAccountPath);
+                _snapshotBundle.WarmUp(null, _initialTrieRoot, address.ToAccountPath, forDelete: false);
 
                 return true;
             }
@@ -655,24 +655,6 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         private void MarkDirty(AddressAsKey address, Hash256 storageTreeRootHash) =>
             _dirtyStorageTree.Enqueue((address, storageTreeRootHash));
 
-        [SkipLocalsInit]
-        private static ArrayPoolListRef<PatriciaTree.BulkSetEntry> CreateAccountEntries(Dictionary<AddressAsKey, Account?> accounts)
-        {
-            ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries = new(accounts.Count);
-            Unsafe.SkipInit(out KeyHashBatch batch);
-            batch.Initialize(Address.Size);
-            foreach (KeyValuePair<AddressAsKey, Account?> entry in accounts)
-            {
-                batch.Add(entry.Key.Value.Bytes, entries.Count, out ValueHash256 hash);
-                Account? account = entry.Value;
-                byte[]? encoded = account is null ? null : account.IsTotallyEmpty ? StateTree.EmptyAccountRlp.Bytes : AccountDecoder.Instance.EncodeAsBytes(account);
-                entries.Add(new(in hash, encoded));
-                if (batch.IsFull) batch.Flush(entries.AsSpan());
-            }
-            batch.Flush(entries.AsSpan());
-            return entries;
-        }
-
         public void Dispose()
         {
             try
@@ -704,7 +686,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                 // normal scope additionally bulk-applies the dirty accounts into the state trie.
                 if (!scope._trieless)
                 {
-                    using ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries = CreateAccountEntries(_dirtyAccounts);
+                    using ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries = StateTree.CreateAccountEntries(_dirtyAccounts);
                     scope._stateTrie!.BulkSet(entries, canParallelize: true);
                 }
             }

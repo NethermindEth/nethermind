@@ -97,9 +97,6 @@ internal sealed class BulkSetArena
     public (int Start, int Length)[] Messages = [];
     public ValueHash256[] Hashes = [];
 
-    public long NodesFromBuffer;
-    public long NodesFromSource;
-
     public static BulkSetArena Rent() => Pool.TryDequeue(out BulkSetArena? arena) ? arena : new BulkSetArena();
 
     public static void Return(BulkSetArena arena)
@@ -108,8 +105,6 @@ internal sealed class BulkSetArena
         Array.Clear(arena.Frames);
         arena.NodeCount = 0;
         arena.ChildCount = 0;
-        arena.NodesFromBuffer = 0;
-        arena.NodesFromSource = 0;
         if (Pool.Count < MaxPooled && arena.Nodes.Length <= MaxPooledNodeCapacity && arena.Children.Length <= MaxPooledNodeCapacity * BranchChildCount)
         {
             Pool.Enqueue(arena);

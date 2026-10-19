@@ -131,8 +131,8 @@ public class SnapshotBundleWarmerTests
         committedRoot = new TrieRoot(committedRoot.Hash, PublishNode(bundle, address, TreePath.Empty, committedRlp));
         bundle.CollectAndApplySnapshot(StateId.PreGenesis, new StateId(1, TestItem.KeccakA), retain, returnSnapshot: false);
 
-        bundle.WarmUp(address, committedRoot, ValueKeccak.Zero);
-        bundle.WarmUp(address, persistedRoot, ValueKeccak.Zero);
+        bundle.WarmUp(address, committedRoot, ValueKeccak.Zero, forDelete: false);
+        bundle.WarmUp(address, persistedRoot, ValueKeccak.Zero, forDelete: false);
 
         (Snapshot? snapshot, TransientResource? retired) = bundle.CollectAndApplySnapshot(new StateId(1, TestItem.KeccakA), new StateId(2, TestItem.KeccakA), null);
         try
@@ -162,8 +162,8 @@ public class SnapshotBundleWarmerTests
 
         if (warmUp)
         {
-            bundle.WarmUp(address, root, ValueKeccak.Zero);
-            bundle.WarmUp(address, root, ValueKeccak.Zero);
+            bundle.WarmUp(address, root, ValueKeccak.Zero, forDelete: false);
+            bundle.WarmUp(address, root, ValueKeccak.Zero, forDelete: false);
         }
         else
         {
@@ -269,13 +269,13 @@ public class SnapshotBundleWarmerTests
         (TrieRoot root, Dictionary<TreePath, byte[]> persisted) = LeafTrie(FlatTestHelpers.LeafRlp(0x80));
         NodeReader reader = new(persisted);
         using SnapshotBundle bundle = NewBundle(reader);
-        bundle.WarmUp(address, root, ValueKeccak.Zero);
+        bundle.WarmUp(address, root, ValueKeccak.Zero, forDelete: false);
         Assert.That(reader.Reads, Is.EqualTo(1));
 
         (Snapshot? snapshot, TransientResource? retired) = bundle.CollectAndApplySnapshot(StateId.PreGenesis, new StateId(1, TestItem.KeccakA), null);
         snapshot?.Dispose();
         retired!.ReleaseLease();
-        bundle.WarmUp(address, root, ValueKeccak.Zero);
+        bundle.WarmUp(address, root, ValueKeccak.Zero, forDelete: false);
 
         using (Assert.EnterMultipleScope())
         {
@@ -293,7 +293,7 @@ public class SnapshotBundleWarmerTests
         using ManualResetEventSlim releaseRead = new(false);
         using SnapshotBundle bundle = NewBundle(new NodeReader(persisted, readEntered, releaseRead));
 
-        Task warmUp = Task.Run(() => bundle.WarmUp(null, root, ValueKeccak.Zero));
+        Task warmUp = Task.Run(() => bundle.WarmUp(null, root, ValueKeccak.Zero, forDelete: false));
         Assert.That(readEntered.Wait(BailOutTimeout), Is.True, "the warm-up did not reach persistence");
 
         (Snapshot? snapshot, TransientResource? retired) = bundle.CollectAndApplySnapshot(StateId.PreGenesis, new StateId(1, TestItem.KeccakA), null);
@@ -335,7 +335,7 @@ public class SnapshotBundleWarmerTests
         NodeReader reader = new(new Dictionary<TreePath, byte[]> { [TreePath.Empty] = persistedRlp });
         using SnapshotBundle bundle = NewBundle(reader);
 
-        bundle.WarmUp(address, root, ValueKeccak.Zero);
+        bundle.WarmUp(address, root, ValueKeccak.Zero, forDelete: false);
 
         (Snapshot? snapshot, TransientResource? retired) = bundle.CollectAndApplySnapshot(StateId.PreGenesis, new StateId(1, TestItem.KeccakA), null);
         try
@@ -370,7 +370,7 @@ public class SnapshotBundleWarmerTests
 
             Task<bool> warmUp = Task.Run(() =>
             {
-                bundle.WarmUp(null, root, ValueKeccak.Zero);
+                bundle.WarmUp(null, root, ValueKeccak.Zero, forDelete: false);
                 return bundle.ShouldQueuePrewarm(TestItem.AddressA);
             });
 
@@ -425,7 +425,7 @@ public class SnapshotBundleWarmerTests
                         if (!epoch.Bundle.TryLeaseReadOnlyBundle()) continue;
                         try
                         {
-                            epoch.Bundle.WarmUp(null, epoch.Root, ValueKeccak.Zero);
+                            epoch.Bundle.WarmUp(null, epoch.Root, ValueKeccak.Zero, forDelete: false);
                             Interlocked.Increment(ref warmUps);
 
                             UInt256 slot = (UInt256)Interlocked.Increment(ref slotCounter);
@@ -570,8 +570,8 @@ public class SnapshotBundleWarmerTests
         int WarmUpAll()
         {
             int before = reader.Reads;
-            if (concurrent) Parallel.ForEach(keys, key => bundle.WarmUp(address, preBlockRoot, key));
-            else foreach (ValueHash256 key in keys) bundle.WarmUp(address, preBlockRoot, key);
+            if (concurrent) Parallel.ForEach(keys, key => bundle.WarmUp(address, preBlockRoot, key, forDelete: false));
+            else foreach (ValueHash256 key in keys) bundle.WarmUp(address, preBlockRoot, key, forDelete: false);
             return reader.Reads - before;
         }
     }

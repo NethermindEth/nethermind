@@ -67,7 +67,7 @@ public class NodeRecordBufferVisitorTests
         using INodeRecordBuffer buffer = RootOnlyBuffer(sourceBuffer, root);
         RecordingVisitor visitor = new() { Prune = prune };
         VisitingStats stats = new();
-        new NodeRecordBufferVisitor<Context>(buffer, visitor, diagnostics: stats).Accept(root.ToHash256(), persistence);
+        new NodeRecordBufferVisitor<Context>(buffer, visitor, null, stats).Accept(root.ToHash256(), persistence);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(persistence.Loads.Count, prune ? Is.Zero : Is.GreaterThan(0));
@@ -84,7 +84,7 @@ public class NodeRecordBufferVisitorTests
         TrieRoot root = Build(sourceBuffer, null, true);
         using INodeRecordBuffer buffer = RootOnlyBuffer(sourceBuffer, root);
         RecordingVisitor visitor = new();
-        new NodeRecordBufferVisitor<Context>(buffer, visitor).Accept(root.ToHash256(), new RecordingResolver { RejectFind = true });
+        new NodeRecordBufferVisitor<Context>(buffer, visitor, null, null).Accept(root.ToHash256(), new RecordingResolver { RejectFind = true });
         Assert.That(visitor.Events.Where(e => e.StartsWith("missing")), Is.EqualTo(new[] { "missing:0", "missing:1" }));
     }
 
@@ -95,7 +95,7 @@ public class NodeRecordBufferVisitorTests
         TrieRoot root = Build(buffer, null, true);
         Exception failure = cancellation ? new OperationCanceledException() : new TrieException("visitor failure");
         RecordingVisitor visitor = new() { OnLeaf = _ => throw failure };
-        Assert.That(() => new NodeRecordBufferVisitor<Context>(buffer, visitor).Accept(root.ToHash256(), new RecordingResolver { RejectFind = true }),
+        Assert.That(() => new NodeRecordBufferVisitor<Context>(buffer, visitor, null, null).Accept(root.ToHash256(), new RecordingResolver { RejectFind = true }),
             Throws.Exception.SameAs(failure));
         Assert.That(visitor.Events.Any(e => e.StartsWith("missing")), Is.False);
     }
@@ -107,7 +107,7 @@ public class NodeRecordBufferVisitorTests
         RecordingResolver persistence = new() { RejectFind = true };
         RecordingVisitor visitor = new() { IsFullDbScan = fullScan };
         Hash256 root = empty ? Keccak.EmptyTreeHash : Keccak.Zero;
-        new NodeRecordBufferVisitor<Context>(buffer, visitor).Accept(root, persistence);
+        new NodeRecordBufferVisitor<Context>(buffer, visitor, null, null).Accept(root, persistence);
         string[] expected = empty ? ["tree"] : fullScan ? ["missing:"] : ["tree", "missing:"];
         Assert.That(visitor.Events, Is.EqualTo(expected));
     }
@@ -118,7 +118,7 @@ public class NodeRecordBufferVisitorTests
         using INodeRecordBuffer buffer = NewBuffer();
         RecordingResolver persistence = new() { RejectFind = true };
         RecordingVisitor visitor = new() { IsFullDbScan = fullScan, ExtraReadFlag = ReadFlags.HintCacheMiss };
-        new NodeRecordBufferVisitor<Context>(buffer, visitor).Accept(Keccak.Zero, persistence);
+        new NodeRecordBufferVisitor<Context>(buffer, visitor, null, null).Accept(Keccak.Zero, persistence);
         Assert.That(persistence.Loads.Single(), Is.EqualTo(ReadFlags.HintCacheMiss | (fullScan ? ReadFlags.HintReadAhead : ReadFlags.None)));
     }
 
@@ -136,7 +136,7 @@ public class NodeRecordBufferVisitorTests
         persistence.Nodes[leaf.Keccak!] = leaf.FullRlp.ToArray()!;
         persistence.RejectFind = true;
         RecordingVisitor visitor = new() { ExpectAccounts = expectAccounts };
-        new NodeRecordBufferVisitor<Context>(buffer, visitor).Accept(leaf.Keccak!, persistence);
+        new NodeRecordBufferVisitor<Context>(buffer, visitor, null, null).Accept(leaf.Keccak!, persistence);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(persistence.Loads.Count, Is.EqualTo(1));
@@ -176,7 +176,7 @@ public class NodeRecordBufferVisitorTests
             }
         };
         Task visit = Task.Run(() => new NodeRecordBufferVisitor<Context>(buffer, visitor,
-            new VisitingOptions { MaxDegreeOfParallelism = 2 }).Accept(root.ToHash256(), new RecordingResolver { RejectFind = true }));
+            new VisitingOptions { MaxDegreeOfParallelism = 2 }, null).Accept(root.ToHash256(), new RecordingResolver { RejectFind = true }));
         try
         {
             Assert.That(failed.Wait(TimeSpan.FromSeconds(10)), Is.True);

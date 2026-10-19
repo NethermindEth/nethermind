@@ -213,9 +213,7 @@ public class ReadOnlySnapshotBundlePersistedTests
                 : bundle.TryLoadStateRlp(path, Keccak.Compute("hash"), ReadFlags.None);
 
             StrongBox<byte[]?> spanRlp = new();
-            bool found = storage
-                ? bundle.TryLoadPersistedStorageRlp(address, path, ReadFlags.None, static (rlp, box) => box.Value = rlp.ToArray(), spanRlp)
-                : bundle.TryLoadPersistedStateRlp(path, ReadFlags.None, static (rlp, box) => box.Value = rlp.ToArray(), spanRlp);
+            bool found = bundle.TryLoadPersistedRlp(storage ? address : null, path, ReadFlags.None, static (rlp, box) => box.Value = rlp.ToArray(), spanRlp);
 
             Assert.That(arrayRlp, Is.EqualTo(expected), path.ToString());
             Assert.That(found, Is.EqualTo(expected is not null), path.ToString());
@@ -245,9 +243,7 @@ public class ReadOnlySnapshotBundlePersistedTests
                 }
                 else
                 {
-                    bool found = storage
-                        ? bundle.TryLoadPersistedStorageRlp(address, persistedPath, ReadFlags.None, CheckRlp, persistedRlp.AsSpan())
-                        : bundle.TryLoadPersistedStateRlp(persistedPath, ReadFlags.None, CheckRlp, persistedRlp.AsSpan());
+                    bool found = bundle.TryLoadPersistedRlp(storage ? address : null, persistedPath, ReadFlags.None, CheckRlp, persistedRlp.AsSpan());
                     if (!found) throw new InvalidOperationException("Missing persisted RLP");
                 }
             }
@@ -279,7 +275,7 @@ public class ReadOnlySnapshotBundlePersistedTests
             new ReadOnlySnapshotBundle(new SnapshotPooledList(0), new NoopPersistenceReader(), false, AlwaysTrueStack(list), bufferPin: null),
             warmedBuffer, _pool, ResourcePool.Usage.MainBlockProcessing);
 
-        bundle.WarmUp(storage ? address : null, new TrieRoot(hash, 0), ValueKeccak.Zero);
+        bundle.WarmUp(storage ? address : null, new TrieRoot(hash, 0), ValueKeccak.Zero, forDelete: false);
 
         Assert.That(bundle.TryLoadTrieNodeRecord(storage ? address : null, TreePath.Empty, hash, out NodeRecord record), Is.True);
         Assert.That(record.Rlp.ToArray(), Is.EqualTo(nodeRlp));
