@@ -53,6 +53,24 @@ public class ProcessingStatsTests
             AssertStats(stats, blockCount: 2, blockFrom: 1, blockTo: 2, processingMs: 500, mGasPerSecond: 10);
         });
 
+    [TestCase(LogLevel.Warn, 1L, 0, TestName = "GenerateReport_ReadsNoBalances_WhenInfoIsOff")]
+    [TestCase(LogLevel.Info, 2L, 0, TestName = "GenerateReport_ReadsNoBalances_ForAMultiBlockLine")]
+    [TestCase(LogLevel.Info, 1L, 2, TestName = "GenerateReport_ReadsBothBalances_ForASingleBlockLine")]
+    public Task GenerateReport_reads_beneficiary_balances_only_for_the_logged_single_block_line(LogLevel logLevel, long blockCount, int expectedReads) =>
+        WithRestoredBlockchainMetrics(() =>
+        {
+            IStateReader stateReader = Substitute.For<IStateReader>();
+            stateReader.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(true);
+            TestProcessingStats processingStats = new(stateReader, logLevel);
+            (BlockHeader baseBlock, Block block1, _) = BuildBlockTrio();
+
+            processingStats.AdvanceReportWindow();
+            processingStats.GenerateReportForTest(block1, baseBlock, blockCount, gasUsed: 2_000_000, transactionCount: 2, processingMicroseconds: 200_000);
+
+            stateReader.Received(expectedReads).TryGetAccount(Arg.Any<BlockHeader>(), Arg.Any<Address>(), out Arg.Any<AccountStruct>());
+            return Task.CompletedTask;
+        });
+
     private static void AssertStats(BlockStatistics stats, long blockCount, ulong blockFrom, ulong blockTo, double processingMs, double mGasPerSecond)
     {
         using (Assert.EnterMultipleScope())
@@ -138,8 +156,8 @@ public class ProcessingStatsTests
         }
     }
 
-    private sealed class TestProcessingStats(IStateReader stateReader)
-        : ProcessingStats(stateReader, new TestLogManager(LogLevel.Warn))
+    private sealed class TestProcessingStats(IStateReader stateReader, LogLevel logLevel = LogLevel.Warn)
+        : ProcessingStats(stateReader, new TestLogManager(logLevel))
     {
         private long _reportMs;
 
