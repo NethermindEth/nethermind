@@ -63,7 +63,7 @@ public class BackgroundTaskSchedulerBenchmarks
     public async Task ScheduleAndDrainDuringBlockProcessing()
     {
         await using BackgroundTaskScheduler scheduler = new(
-            _branchProcessor, _chainHeadInfo, Concurrency, Capacity, LimboLogs.Instance);
+            _branchProcessor, _chainHeadInfo, Concurrency, Capacity, NullLogManager.Instance);
 
         int totalScheduled = 0;
         int totalExecuted = 0;
@@ -115,7 +115,7 @@ public class BackgroundTaskSchedulerBenchmarks
     public async Task ScheduleAndDrainWithoutBlockProcessing()
     {
         await using BackgroundTaskScheduler scheduler = new(
-            _branchProcessor, _chainHeadInfo, Concurrency, Capacity, LimboLogs.Instance);
+            _branchProcessor, _chainHeadInfo, Concurrency, Capacity, NullLogManager.Instance);
 
         int totalScheduled = 0;
         int totalExecuted = 0;

@@ -169,6 +169,10 @@ public static class Metrics
     [Description("Number of invalid blocks with extra data set to 'Nethermind'.")]
     public static long BadBlocksByNethermindNodes;
 
+    [CounterMetric]
+    [Description("Number of blocks rejected for their block access list by parallel validation.")]
+    public static long ParallelBlockAccessListRejections;
+
     [GaugeMetric]
     [Description("State root calculation time")]
     public static double StateMerkleizationTime { get; set; }

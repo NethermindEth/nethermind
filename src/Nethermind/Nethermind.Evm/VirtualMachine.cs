@@ -231,13 +231,15 @@ public partial class VirtualMachine<TGasPolicy>(
 
     internal void StageReturnData(ReadOnlySpan<byte> returnData, bool isRevert)
     {
-        // Only nested outputs are consumed before this buffer can be reused by a later child call, and a create's
-        // output may become the deployed code.
-        bool allowReuse = _tracerAllowsReturnScratch
-            && !returnData.IsEmpty
+        // Nested outputs are consumed before this buffer can be reused by a later child call, and a create's
+        // output may become the deployed code. A top-level call output may reuse it only when the tracer reads no
+        // transaction output: the substate is then consumed before this VM runs again.
+        bool allowReuse = !returnData.IsEmpty
             && returnData.Length <= MaxRetainedReturnDataLength
-            && !_currentState.IsTopLevel
-            && (!_currentState.ExecutionType.IsAnyCreate() || IsUndeployableCreateOutput(returnData.Length, isRevert));
+            && (_currentState.IsTopLevel
+                ? _tracerFlags.AllowsTopLevelReturnScratch && !_currentState.ExecutionType.IsAnyCreate()
+                : _tracerFlags.AllowsReturnScratch
+                    && (!_currentState.ExecutionType.IsAnyCreate() || IsUndeployableCreateOutput(returnData.Length, isRevert)));
 
         ReturnData = _returnDataScratch.Stage(returnData, allowReuse);
     }
@@ -250,13 +252,12 @@ public partial class VirtualMachine<TGasPolicy>(
     protected VmStateStack<TGasPolicy> StateStack => _stateStack;
     // Tracer capabilities are fixed for one execution. IsCancelable also selects both the dispatch table
     // and its matching loop specialization; IsTracingImplicitStop avoids walking the tracer graph at frame exit.
-    internal bool IsTracingActions { get => DispatchFlags.Tracing(field); private set; }
-    internal bool IsTracingRefunds { get => DispatchFlags.Tracing(field); private set; }
-    private bool _isCancelableCached;
-    internal bool IsTracingAccess { get => DispatchFlags.Tracing(field); private set; }
-    internal bool IsTracingOpLevelStorage { get => DispatchFlags.Tracing(field); private set; }
+    private VmTracerFlags _tracerFlags;
+    internal bool IsTracingActions => _tracerFlags.IsTracingActions;
+    internal bool IsTracingRefunds => _tracerFlags.IsTracingRefunds;
+    internal bool IsTracingAccess => _tracerFlags.IsTracingAccess;
+    internal bool IsTracingOpLevelStorage => _tracerFlags.IsTracingOpLevelStorage;
     private bool IsTracingImplicitStop { get => DispatchFlags.Tracing(field); set; }
-    private bool _tracerAllowsReturnScratch;
 
     private BlockExecutionContext _blockExecutionContext;
     public virtual void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
@@ -330,16 +331,8 @@ public partial class VirtualMachine<TGasPolicy>(
     {
         // Initialize dependencies for transaction tracing and state access.
         _txTracer = txTracer;
-        IsTracingActions = txTracer.IsTracingActions;
-        IsTracingRefunds = txTracer.IsTracingRefunds;
-        _isCancelableCached = txTracer.IsCancelable;
-        IsTracingAccess = txTracer.IsTracingAccess;
-        IsTracingOpLevelStorage = txTracer.IsTracingOpLevelStorage;
+        _tracerFlags = new(txTracer);
         IsTracingImplicitStop = TTracingInst.IsActive && txTracer.Any<ITraceImplicitStop>(static tracer => tracer.IsTracingInstructions);
-        _tracerAllowsReturnScratch = !txTracer.IsTracingActions
-            && !txTracer.IsTracingInstructions
-            && !txTracer.IsTracingMemory
-            && !txTracer.IsTracingReturnData;
         DispatchFlags.Validate(txTracer);
         _worldState = worldState;
         _isInstructionTraceActive = false;
@@ -1708,7 +1701,7 @@ public partial class VirtualMachine<TGasPolicy>(
         // - OnFlag is used when cancellation is enabled.
         // This leverages the compile-time evaluation of TTracingInst to optimize away runtime checks.
         // Read from the value pinned at transaction start, which is also what chose the dispatch table.
-        return DispatchFlags.Cancelable(_isCancelableCached) switch
+        return DispatchFlags.Cancelable(_tracerFlags.IsCancelable) switch
         {
             false => RunByteCode<TTracingInst, OffFlag>(ref stack, ref gas),
             true => RunByteCode<TTracingInst, OnFlag>(ref stack, ref gas),
@@ -1801,7 +1794,7 @@ public partial class VirtualMachine<TGasPolicy>(
 
     private CallResult GetFailureReturn(ulong gasAvailable, EvmExceptionType exceptionType)
     {
-        if (DispatchFlags.ConstTracing && _txTracer.IsTracingInstructions) EndInstructionTrace(gasAvailable, exceptionType);
+        if (_tracerFlags.IsTracingInstructions) EndInstructionTrace(gasAvailable, exceptionType);
         if (IsTracingActions) _txTracer.ReportActionRemainingGas(gasAvailable);
 
         return exceptionType switch
@@ -1889,7 +1882,7 @@ public partial class VirtualMachine<TGasPolicy>(
     {
         VmState.AccessTracker.Logs.Add(logEntry);
 
-        if (DispatchFlags.ConstTracing && TxTracer.IsTracingLogs)
+        if (_tracerFlags.IsTracingLogs)
         {
             TxTracer.ReportLog(logEntry);
         }
