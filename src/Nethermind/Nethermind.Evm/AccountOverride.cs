@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -28,5 +29,6 @@ public class AccountOverride
     /// <summary>
     /// Returns <see langword="true"/> if any account-state field is set (balance, nonce, code, state, or stateDiff).
     /// </summary>
+    [JsonIgnore]
     public bool HasStateChanges => Balance is not null || Nonce is not null || Code is not null || State is not null || StateDiff is not null;
 }

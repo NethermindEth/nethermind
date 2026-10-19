@@ -55,11 +55,12 @@ public class BlockAccessListRecoveryStepTests
         Assert.That(block.BlockAccessList?.WireHash, expectAttached ? Is.EqualTo(StoredHash) : Is.Null);
     }
 
-    [TestCase(Eip7928Constants.ItemCost, true)]
-    [TestCase(Eip7928Constants.ItemCost - 1, false)]
-    public void Stored_list_is_attached_only_within_the_item_limit(ulong gasLimit, bool expectAttached)
+    [TestCase(0, true, TestName = "List at the item limit is attached")]
+    [TestCase(1, false, TestName = "List over the item limit is left off")]
+    public void Stored_list_is_attached_only_within_the_item_limit(int itemsOverLimit, bool expectAttached)
     {
         TestMemDb db = new();
+        ulong gasLimit = (ulong)(StoredBal.ItemCount - itemsOverLimit) * Eip7928Constants.ItemCost;
         Block block = Build.A.Block.WithNumber(BlockNumber).WithGasLimit(gasLimit).WithBlockAccessListHash(StoredHash).TestObject;
         new BlockAccessListStore(db).Insert(BlockNumber, block.Hash!, StoredRlp);
 

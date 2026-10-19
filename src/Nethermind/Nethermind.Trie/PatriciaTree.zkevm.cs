@@ -20,8 +20,17 @@ public partial class PatriciaTree
 
     /// <inheritdoc cref="ReleasesPoppedFrames" path="/summary"/>
     /// <remarks>Not in the guest: it verifies one block and exits, so what the stack keeps alive costs nothing, while
-    /// the clear is a second index computation and three stores per level of every write's climb.</remarks>
+    /// the clear is a second index computation and three stores per level of every write's climb, and a memset for
+    /// every write that ends its climb early.</remarks>
     private static bool ReleasesPoppedFrames => false;
+
+    /// <summary>Whether a trie write that changes a level unseals every ancestor still on its stack at once.</summary>
+    /// <remarks>
+    /// Once a level takes a changed child, every level above it does too, and here <see cref="TrieNode.Unseal"/> leaves the
+    /// node in place. Unsealing the rest of the stack in one loop leaves each ancestor pending with the child it already
+    /// holds, so <see cref="IsUnchangedPendingLevel"/> ends the climb at the next level instead of each paying a full step.
+    /// </remarks>
+    private static bool UnsealsAncestorsAtOnce => true;
 
     /// <summary>Whether a trie write may stop climbing at this level, the rest of the climb changing nothing.</summary>
     /// <remarks>
