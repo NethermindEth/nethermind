@@ -59,22 +59,40 @@ public static class Metrics
     internal static void IncrementNodeRecordBufferRootMisses() => _nodeRecordBufferRootMisses.Increment();
 
     [CounterMetric]
-    [Description("Number of trie node reads served by the trie node buffer through a record pointer, including warm-up reads.")]
+    [Description("Number of trie node reads a bulk set served from the trie node buffer through a record pointer.")]
     public static long NodeRecordBufferHits => _nodeRecordBufferHits.Sum;
     private static readonly StripedLong _nodeRecordBufferHits = new();
     internal static void IncrementNodeRecordBufferHits() => _nodeRecordBufferHits.Increment();
 
     [CounterMetric]
-    [Description("Number of trie node reads served by the normal per-block warmed-node log through a pointer or by position, including warm-up reads.")]
+    [Description("Number of trie node reads a bulk set served from the normal per-block warmed-node log through a pointer or by position.")]
     public static long WarmedNodeCacheHits => _warmedNodeCacheHits.Sum;
     private static readonly StripedLong _warmedNodeCacheHits = new();
     internal static void IncrementWarmedNodeCacheHits() => _warmedNodeCacheHits.Increment();
 
     [CounterMetric]
-    [Description("Number of trie node reads neither the trie node buffer nor the normal per-block warmed-node log held, so read from persistence, including warm-up reads.")]
+    [Description("Number of trie node reads of a bulk set that neither the trie node buffer nor the normal per-block warmed-node log held, so read from persistence.")]
     public static long WarmedNodeCacheMisses => _warmedNodeCacheMisses.Sum;
     private static readonly StripedLong _warmedNodeCacheMisses = new();
     internal static void IncrementWarmedNodeCacheMisses() => _warmedNodeCacheMisses.Increment();
+
+    [CounterMetric]
+    [Description("Number of trie node reads a trie warm-up served from the trie node buffer through a record pointer.")]
+    public static long WarmUpNodeRecordBufferHits => _warmUpNodeRecordBufferHits.Sum;
+    private static readonly StripedLong _warmUpNodeRecordBufferHits = new();
+    internal static void IncrementWarmUpNodeRecordBufferHits() => _warmUpNodeRecordBufferHits.Increment();
+
+    [CounterMetric]
+    [Description("Number of trie node reads a trie warm-up served from the normal per-block warmed-node log through a pointer or by position.")]
+    public static long WarmUpWarmedNodeCacheHits => _warmUpWarmedNodeCacheHits.Sum;
+    private static readonly StripedLong _warmUpWarmedNodeCacheHits = new();
+    internal static void IncrementWarmUpWarmedNodeCacheHits() => _warmUpWarmedNodeCacheHits.Increment();
+
+    [CounterMetric]
+    [Description("Number of trie node reads of a trie warm-up that neither the trie node buffer nor the normal per-block warmed-node log held, so read from persistence.")]
+    public static long WarmUpWarmedNodeCacheMisses => _warmUpWarmedNodeCacheMisses.Sum;
+    private static readonly StripedLong _warmUpWarmedNodeCacheMisses = new();
+    internal static void IncrementWarmUpWarmedNodeCacheMisses() => _warmUpWarmedNodeCacheMisses.Increment();
 
     [CounterMetric]
     [Description("Number of trie node reads the idle storage worker served from the trie node buffer through a record pointer.")]

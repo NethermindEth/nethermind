@@ -158,7 +158,7 @@ public class SnapshotBundleWarmerTests
         (TrieRoot root, Dictionary<TreePath, byte[]> persisted) = LeafTrie(FlatTestHelpers.LeafRlp(0x80));
         NodeReader reader = new(persisted);
         using SnapshotBundle bundle = NewBundle(reader);
-        (long Hits, long Misses, long IdleHits, long IdleMisses) before = WarmedCacheCounts();
+        long[] before = ReadCounts();
 
         if (warmUp)
         {
@@ -172,7 +172,8 @@ public class SnapshotBundleWarmerTests
         }
 
         Assert.That(reader.Reads, Is.EqualTo(1));
-        AssertWarmedCacheCounts(before, hits: 1, misses: 1);
+        if (warmUp) AssertReadCounts(before, warmUpHits: 1, warmUpMisses: 1);
+        else AssertReadCounts(before, hits: 1, misses: 1);
     }
 
     [Test, NonParallelizable]
@@ -185,18 +186,18 @@ public class SnapshotBundleWarmerTests
         using ReadOnlySnapshotBundle readOnly = FlatTestHelpers.MakeBundle(_pool, reader);
         using SnapshotPooledList snapshots = new(1);
         using SnapshotBundle.BackgroundTrieSource source = new(readOnly, _buffer, snapshots, address);
-        (long Hits, long Misses, long IdleHits, long IdleMisses) before = WarmedCacheCounts();
+        long[] before = ReadCounts();
 
         Assert.That(source.TryLoad(TreePath.Empty, root.Hash, out _), Is.True);
         Assert.That(source.TryLoad(TreePath.Empty, root.Hash, out NodeRecord record), Is.True);
         Assert.That(record.Rlp.ToArray(), Is.EqualTo(rlp));
 
         Assert.That(reader.Reads, Is.EqualTo(1));
-        AssertWarmedCacheCounts(before, idleHits: 1, idleMisses: 1);
+        AssertReadCounts(before, idleHits: 1, idleMisses: 1);
     }
 
     [Test, NonParallelizable]
-    public void Warm_up_metrics_count_transient_pointer_hits_but_not_main_buffer_hits([Values] bool inBuffer)
+    public void Warm_up_metrics_tell_main_buffer_hits_from_warmed_log_hits([Values] bool inBuffer)
     {
         byte[] rlp = FlatTestHelpers.LeafRlp(0x80);
         ValueHash256 hash = ValueKeccak.Compute(rlp);
@@ -204,30 +205,28 @@ public class SnapshotBundleWarmerTests
         ulong pointer;
         if (inBuffer) pointer = _buffer.AppendRecordFromRlp(null, TreePath.Empty, hash, rlp, []);
         else warmed.Append(null, TreePath.Empty, hash, rlp, [], out _, out pointer);
-        (long Hits, long Misses, long IdleHits, long IdleMisses) before = WarmedCacheCounts();
+        long[] before = ReadCounts();
 
         DictionaryNodeSource source = new(new Dictionary<TreePath, byte[]>(), warmed, null);
         source.WarmUp(_buffer, new TrieRoot(hash, pointer), ValueKeccak.Zero);
 
         Assert.That(source.FetchCount, Is.Zero, "the node is read from the buffer or the warmed nodes");
-        AssertWarmedCacheCounts(before, hits: inBuffer ? 0 : 1);
+        if (inBuffer) AssertReadCounts(before, warmUpBufferHits: 1);
+        else AssertReadCounts(before, warmUpHits: 1);
     }
 
-    private static (long Hits, long Misses, long IdleHits, long IdleMisses) WarmedCacheCounts() =>
-        (Metrics.WarmedNodeCacheHits, Metrics.WarmedNodeCacheMisses,
-            Metrics.IdleWarmedNodeCacheHits, Metrics.IdleWarmedNodeCacheMisses);
+    /// <summary>The trie node read counters of bulk sets, warm-ups and the idle worker: buffer hits, warmed-log hits, persistence reads.</summary>
+    private static long[] ReadCounts() =>
+    [
+        Metrics.NodeRecordBufferHits, Metrics.WarmedNodeCacheHits, Metrics.WarmedNodeCacheMisses,
+        Metrics.WarmUpNodeRecordBufferHits, Metrics.WarmUpWarmedNodeCacheHits, Metrics.WarmUpWarmedNodeCacheMisses,
+        Metrics.IdleNodeRecordBufferHits, Metrics.IdleWarmedNodeCacheHits, Metrics.IdleWarmedNodeCacheMisses,
+    ];
 
-    private static void AssertWarmedCacheCounts((long Hits, long Misses, long IdleHits, long IdleMisses) before,
-        long hits = 0, long misses = 0, long idleHits = 0, long idleMisses = 0)
-    {
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(Metrics.WarmedNodeCacheHits - before.Hits, Is.EqualTo(hits));
-            Assert.That(Metrics.WarmedNodeCacheMisses - before.Misses, Is.EqualTo(misses));
-            Assert.That(Metrics.IdleWarmedNodeCacheHits - before.IdleHits, Is.EqualTo(idleHits));
-            Assert.That(Metrics.IdleWarmedNodeCacheMisses - before.IdleMisses, Is.EqualTo(idleMisses));
-        }
-    }
+    private static void AssertReadCounts(long[] before, long bufferHits = 0, long hits = 0, long misses = 0,
+        long warmUpBufferHits = 0, long warmUpHits = 0, long warmUpMisses = 0, long idleBufferHits = 0, long idleHits = 0, long idleMisses = 0) =>
+        Assert.That(ReadCounts().Zip(before, static (now, then) => now - then),
+            Is.EqualTo(new[] { bufferHits, hits, misses, warmUpBufferHits, warmUpHits, warmUpMisses, idleBufferHits, idleHits, idleMisses }));
 
     [Test]
     public void Returned_transient_resource_clears_warmed_nodes([Values] bool storage)

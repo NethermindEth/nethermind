@@ -115,14 +115,14 @@ internal static class BufferWarmUp
         bool found = buffer.TryLocate(pointer, out NodeRecord record);
         if (found)
         {
-            if (NodeRecordCodec.IsTransient(pointer)) Metrics.IncrementWarmedNodeCacheHits();
-            else Metrics.IncrementNodeRecordBufferHits();
+            if (NodeRecordCodec.IsTransient(pointer)) Metrics.IncrementWarmUpWarmedNodeCacheHits();
+            else Metrics.IncrementWarmUpNodeRecordBufferHits();
         }
         else
         {
             found = warmed.TryGet(address, path, out record, out pointer);
-            if (found) Metrics.IncrementWarmedNodeCacheHits();
-            else Metrics.IncrementWarmedNodeCacheMisses();
+            if (found) Metrics.IncrementWarmUpWarmedNodeCacheHits();
+            else Metrics.IncrementWarmUpWarmedNodeCacheMisses();
         }
 
         if (found)
@@ -167,11 +167,11 @@ internal static class BufferWarmUp
         TreePath siblingPath = branch.Path.Append(siblingSlot);
         if (warmed.TryGet(address, siblingPath, out _, out ulong pointer))
         {
-            Metrics.IncrementWarmedNodeCacheHits();
+            Metrics.IncrementWarmUpWarmedNodeCacheHits();
         }
         else
         {
-            Metrics.IncrementWarmedNodeCacheMisses();
+            Metrics.IncrementWarmUpWarmedNodeCacheMisses();
             scratch.Clear();
             if (!reader.TryLoadPersistedRlp(address, siblingPath, ReadFlags.None, CopyRlp, scratch)) return;
             warmed.Append(address, siblingPath, sibling.Data, scratch.AsSpan(), [], out _, out pointer);
