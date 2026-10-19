@@ -20,7 +20,7 @@ public interface IParallelBlockTracer
     /// <param name="forTransaction">Builds the tracer for one transaction over the world state it will run in.</param>
     /// <param name="afterTransactions">Builds the tracer for what follows the transactions, the rewards, run once with
     /// the seed for the end of the block armed throughout, so it sees the state the last transaction left; null when
-    /// nothing follows.</param>
+    /// nothing follows. It is not built for a block the reward calculator says is never rewarded.</param>
     bool TryTrace<TTrace>(
         Block block,
         BlockHeader parent,
