@@ -287,7 +287,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
                 UInt256.AddOverflow(sourceOffset, _operationStack.PeekUInt256(2), out UInt256 endOffset);
                 byte[] faultStack = _operationStack.ToRawBytes();
                 endOffset.ToBigEndian(faultStack.AsSpan((_operationStack.Count - 2) * EvmStack.WordSize, EvmStack.WordSize));
-                _log.stack = new Log.Stack(new TraceStack(faultStack), _captureErrors ? _engine : null);
+                _log.stack.Items = new TraceStack(faultStack);
             }
         }
         Invoke(TracerFunctions.fault);

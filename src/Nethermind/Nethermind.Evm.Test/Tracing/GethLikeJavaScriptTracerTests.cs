@@ -621,8 +621,8 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
                 code,
                 MainnetSpecProvider.CancunActivation);
         using GethLikeTxTrace traces = tracer.BuildResult().First();
-        const string caller = "|942921b14f1b1c385cd7e0cc2ef7abe5598c8358:b7705ae4c6f81b66cdb323c65f4e8133690fc099:1";
-        const string callee = "|76e68a8696537e4141926f3e528733af9e237d69:942921b14f1b1c385cd7e0cc2ef7abe5598c8358:0";
+        const string caller = "|0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358:0xb7705ae4c6f81b66cdb323c65f4e8133690fc099:1";
+        const string callee = "|0x76e68a8696537e4141926f3e528733af9e237d69:0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358:0";
         AssertResult(traces, new[]
         {
             "1:PUSH1:0" + caller,
@@ -663,7 +663,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
                 code,
                 MainnetSpecProvider.CancunActivation);
         using GethLikeTxTrace traces = tracer.BuildResult().First();
-        const string expected = "942921b14f1b1c385cd7e0cc2ef7abe5598c8358:b7705ae4c6f81b66cdb323c65f4e8133690fc099";
+        const string expected = "0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358:0xb7705ae4c6f81b66cdb323c65f4e8133690fc099";
         AssertResult(traces, new[] { expected, expected });
     }
 
