@@ -6,9 +6,9 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Int256;
+using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.Trie;
-using Nethermind.Trie.NodeBuffer;
 
 namespace Nethermind.State.Flat;
 

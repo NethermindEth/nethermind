@@ -10,7 +10,7 @@ using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Flat.Collections;
-using Nethermind.Trie.NodeBuffer;
+using Nethermind.State.Flat.NodeBuffer;
 
 namespace Nethermind.State.Flat;
 

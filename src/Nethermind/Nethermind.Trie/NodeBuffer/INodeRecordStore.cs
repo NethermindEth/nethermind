@@ -8,10 +8,15 @@ namespace Nethermind.Trie.NodeBuffer;
 /// <summary>The node records of one trie that a <see cref="NodeRecordBulkSet"/> reads and writes: a trie node buffer and the records it does not hold.</summary>
 public interface INodeRecordStore
 {
-    /// <inheritdoc cref="INodeRecordBuffer.TryLocate"/>
+    /// <summary>Finds a borrowed record, or misses when its pointer is absent or no longer available.</summary>
     bool TryLocate(ulong pointer, out NodeRecord record);
 
-    /// <inheritdoc cref="INodeRecordBuffer.StartWriteBatch"/>
+    /// <summary>Reserves contiguous, zero-filled bytes for node records, registered with the buffer when the batch is disposed.</summary>
+    /// <remarks>
+    /// The reservation cannot cross a pointer-address boundary. The writer holds a pin no newer than the batch until all written
+    /// records and their roots are published.
+    /// </remarks>
+    /// <param name="alignedTotalLength">The total length of the records, a multiple of the record alignment.</param>
     INodeRecordWriteBatch StartWriteBatch(int alignedTotalLength);
 
     /// <summary>Loads a node <see cref="TryLocate"/> does not resolve, by its position and hash.</summary>

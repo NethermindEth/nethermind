@@ -29,7 +29,6 @@ using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using Nethermind.State.Flat.Sync;
 using Nethermind.State.Flat.Sync.Snap;
-using Nethermind.Trie.NodeBuffer;
 
 namespace Nethermind.Init.Modules;
 

@@ -14,10 +14,10 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Db;
 using Nethermind.State.Flat.Io;
+using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using Nethermind.Trie;
-using Nethermind.Trie.NodeBuffer;
 using NSubstitute;
 using NUnit.Framework;
 

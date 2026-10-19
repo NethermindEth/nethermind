@@ -14,6 +14,7 @@ using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
+using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.Trie;
 using Nethermind.Trie.NodeBuffer;
 

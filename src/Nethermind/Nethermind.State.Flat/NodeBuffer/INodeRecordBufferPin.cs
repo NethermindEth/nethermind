@@ -1,9 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-
-namespace Nethermind.Trie.NodeBuffer;
+namespace Nethermind.State.Flat.NodeBuffer;
 
 /// <summary>Keeps an allocation frontier and every later write of a node-record buffer readable until disposed.</summary>
 public interface INodeRecordBufferPin : IDisposable

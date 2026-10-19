@@ -7,9 +7,9 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
+using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.Trie;
-using Nethermind.Trie.NodeBuffer;
 using NSubstitute;
 using NUnit.Framework;
 

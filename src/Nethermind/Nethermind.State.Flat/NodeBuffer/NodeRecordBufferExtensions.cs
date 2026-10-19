@@ -1,17 +1,17 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Buffers.Binary;
 using System.Collections;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Trie;
+using Nethermind.Trie.NodeBuffer;
 
-namespace Nethermind.Trie.NodeBuffer;
+namespace Nethermind.State.Flat.NodeBuffer;
 
 /// <summary>Operations on the shared node-record representation, independent of buffer storage policy.</summary>
 public static class NodeRecordBufferExtensions

@@ -11,7 +11,6 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.Trie;
-using Nethermind.Trie.NodeBuffer;
 using NonBlocking;
 
 namespace Nethermind.State.Flat.ScopeProvider;

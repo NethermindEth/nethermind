@@ -1,17 +1,16 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Generic;
-using System.IO;
-using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Threading;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Trie;
+using Nethermind.Trie.NodeBuffer;
 using Nethermind.Trie.Pruning;
 
-namespace Nethermind.Trie.NodeBuffer;
+namespace Nethermind.State.Flat.NodeBuffer;
 
 internal sealed class NodeRecordBufferVisitor<TNodeContext> where TNodeContext : struct, INodeContext<TNodeContext>
 {

@@ -12,7 +12,6 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.Trie;
-using Nethermind.Trie.NodeBuffer;
 using NUnit.Framework;
 
 namespace Nethermind.State.Flat.Test;

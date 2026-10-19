@@ -15,9 +15,9 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.History;
+using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
-using Nethermind.Trie.NodeBuffer;
 using NSubstitute;
 using NUnit.Framework;
 

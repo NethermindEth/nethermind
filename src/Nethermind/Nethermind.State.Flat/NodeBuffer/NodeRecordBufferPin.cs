@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Trie.NodeBuffer;
-
 namespace Nethermind.State.Flat.NodeBuffer;
 
 /// <summary>Keeps a generation of a <see cref="NodeRecordBuffer"/>, and every later one, readable in place until disposed.</summary>

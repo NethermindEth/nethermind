@@ -9,10 +9,10 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State.Flat.History.Proofs;
+using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.State.Flat.Test;
 using Nethermind.Core.Buffers;
 using Nethermind.Trie;
-using Nethermind.Trie.NodeBuffer;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 

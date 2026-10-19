@@ -6,7 +6,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.Trie;
-using Nethermind.Trie.NodeBuffer;
 using NUnit.Framework;
 
 namespace Nethermind.State.Flat.Test;

@@ -1,10 +1,11 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using Nethermind.Core.Crypto;
+using Nethermind.Trie;
+using Nethermind.Trie.NodeBuffer;
 
-namespace Nethermind.Trie.NodeBuffer;
+namespace Nethermind.State.Flat.NodeBuffer;
 
 /// <summary>Stores encoded trie-node records and indexes trie roots by hash.</summary>
 /// <remarks>
@@ -27,7 +28,7 @@ public interface INodeRecordBuffer : IDisposable
     /// <exception cref="ObjectDisposedException">The buffer is disposed.</exception>
     IDisposable PinAll();
 
-    /// <summary>Finds a borrowed record, or misses when its pointer is absent or no longer available.</summary>
+    /// <inheritdoc cref="INodeRecordStore.TryLocate"/>
     bool TryLocate(ulong pointer, out NodeRecord record);
 
     /// <summary>Returns the borrowed record at a pointer.</summary>
@@ -35,12 +36,7 @@ public interface INodeRecordBuffer : IDisposable
     /// <exception cref="TrieException">The pointer no longer resolves to a record.</exception>
     NodeRecord GetRecord(ulong pointer);
 
-    /// <summary>Reserves contiguous, zero-filled bytes for node records, registered with the buffer when the batch is disposed.</summary>
-    /// <remarks>
-    /// The reservation cannot cross a pointer-address boundary. The writer holds a pin no newer than the batch until all written
-    /// records and their roots are published.
-    /// </remarks>
-    /// <param name="alignedTotalLength">The total length of the records, a multiple of the record alignment.</param>
+    /// <inheritdoc cref="INodeRecordStore.StartWriteBatch"/>
     INodeRecordWriteBatch StartWriteBatch(int alignedTotalLength);
 
     /// <summary>Finds the newest available indexed pointer for a trie root, or returns zero.</summary>

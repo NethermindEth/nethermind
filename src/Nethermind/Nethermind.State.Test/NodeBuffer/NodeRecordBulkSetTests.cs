@@ -5,6 +5,7 @@ using System;
 using System.Buffers;
 using System.Buffers.Binary;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Numerics;
 using Nethermind.Core;
@@ -496,15 +497,15 @@ internal class NodeRecordBulkSetTests
             Assert.That(actual.Select(node => node.Path), Is.EqualTo(expectedPaths.Select(TreePath.FromHexString)));
             foreach ((TreePath path, ulong pointer) in actual)
             {
-                Assert.That(buffer.TryGetNode(root.Pointer, path, out TrieNode node), Is.True, path.ToString());
+                Assert.That(TryGetNode(buffer, root.Pointer, path, out TrieNode node), Is.True, path.ToString());
                 Assert.That(node?.FullRlp.ToArray(), Is.EqualTo(buffer.GetRecord(pointer).Rlp.ToArray()), path.ToString());
             }
             foreach (string path in new[] { "3", "10", "11", "20" })
             {
-                Assert.That(buffer.TryGetNode(root.Pointer, TreePath.FromHexString(path), out _), Is.False, path);
+                Assert.That(TryGetNode(buffer, root.Pointer, TreePath.FromHexString(path), out _), Is.False, path);
             }
             TreePath leafPath = TreePath.FromHexString("1000000000000000000000000000000000000000000000000000000000000001");
-            Assert.That(buffer.TryGetNode(root.Pointer, leafPath, out _), Is.EqualTo(!inlineLeaves), "inline leaves have no separate buffer record");
+            Assert.That(TryGetNode(buffer, root.Pointer, leafPath, out _), Is.EqualTo(!inlineLeaves), "inline leaves have no separate buffer record");
             Assert.That(source.FetchCount, Is.Zero);
         }
     }
@@ -597,11 +598,11 @@ internal class NodeRecordBulkSetTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(buffer.EnumerateNodes(unlinked).Select(node => (node.Path, node.Pointer)).ToArray(), Is.EqualTo(new[] { (TreePath.Empty, unlinked) }));
-            Assert.That(buffer.TryGetNode(unlinked, TreePath.Empty, out _), Is.True);
-            Assert.That(buffer.TryGetNode(unlinked, TreePath.FromHexString("1"), out _), Is.False);
-            Assert.That(buffer.TryGetNode(unlinked, TreePath.FromHexString("2"), out _), Is.False);
+            Assert.That(TryGetNode(buffer, unlinked, TreePath.Empty, out _), Is.True);
+            Assert.That(TryGetNode(buffer, unlinked, TreePath.FromHexString("1"), out _), Is.False);
+            Assert.That(TryGetNode(buffer, unlinked, TreePath.FromHexString("2"), out _), Is.False);
             Assert.That(buffer.EnumerateNodes(0), Is.Empty);
-            Assert.That(buffer.TryGetNode(0, TreePath.Empty, out _), Is.False);
+            Assert.That(TryGetNode(buffer, 0, TreePath.Empty, out _), Is.False);
             Assert.That(source.FetchCount, Is.Zero);
         }
     }
@@ -622,12 +623,12 @@ internal class NodeRecordBulkSetTests
         Assert.That(() => NodeRecordBufferTests.IsLocatable(buffer, root.Pointer), Is.False.After(NodeRecordBufferTests.CompactionTimeoutMilliseconds, NodeRecordBufferTests.PollingMilliseconds));
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(buffer.TryGetNode(updated.Pointer, TreePath.Empty, out _), Is.True);
-            Assert.That(buffer.TryGetNode(updated.Pointer, TreePath.FromHexString("1"), out _), Is.True);
-            Assert.That(buffer.TryGetNode(updated.Pointer, TreePath.FromHexString("2"), out _), Is.False);
+            Assert.That(TryGetNode(buffer, updated.Pointer, TreePath.Empty, out _), Is.True);
+            Assert.That(TryGetNode(buffer, updated.Pointer, TreePath.FromHexString("1"), out _), Is.True);
+            Assert.That(TryGetNode(buffer, updated.Pointer, TreePath.FromHexString("2"), out _), Is.False);
             Assert.That(buffer.EnumerateNodes(updated.Pointer).Select(node => node.Path), Is.EqualTo(new[] { TreePath.Empty, TreePath.FromHexString("1") }));
             Assert.That(buffer.EnumerateNodes(root.Pointer), Is.Empty);
-            Assert.That(buffer.TryGetNode(root.Pointer, TreePath.Empty, out _), Is.False);
+            Assert.That(TryGetNode(buffer, root.Pointer, TreePath.Empty, out _), Is.False);
             Assert.That(source.FetchCount, Is.Zero);
         }
     }
@@ -654,7 +655,7 @@ internal class NodeRecordBulkSetTests
                 .Concat(Enumerable.Range(0, 64).Select(depth => TreePath.FromHexString(new string('0', depth) + "1")))
                 .Append(TreePath.FromHexString(new string('0', 64)));
             Assert.That(buffer.EnumerateNodes(root.Pointer).Select(node => node.Path), Is.EquivalentTo(expected));
-            Assert.That(buffer.TryGetNode(root.Pointer, TreePath.FromHexString(new string('0', 64)), out TrieNode leaf), Is.True);
+            Assert.That(TryGetNode(buffer, root.Pointer, TreePath.FromHexString(new string('0', 64)), out TrieNode leaf), Is.True);
             Assert.That(leaf?.FullRlp.ToArray(), Is.EqualTo(expectedLeafRlp));
         }
     }
@@ -666,7 +667,7 @@ internal class NodeRecordBulkSetTests
         DictionaryNodeSource source = new(new Dictionary<TreePath, byte[]>(), NewWarmedNodeLog(), null);
         TrieRoot root;
         using (buffer.Pin()) root = BulkSet(buffer, source, null, TrieRoot.Empty, [(TestItem.KeccakA, ExistingValue)], false);
-        Assert.That(buffer.TryGetNode(root.Pointer, TreePath.Empty, out TrieNode node), Is.True);
+        Assert.That(TryGetNode(buffer, root.Pointer, TreePath.Empty, out TrieNode node), Is.True);
         byte[] expected = node.FullRlp.ToArray();
         buffer.Dispose();
         Assert.That(node.FullRlp.ToArray(), Is.EqualTo(expected));
@@ -690,6 +691,14 @@ internal class NodeRecordBulkSetTests
             Assert.That(borrowed.Rlp.ToArray(), Is.EqualTo(expected), "the pin covers records after enumerator disposal");
         }
         Assert.That(() => borrowed.Rlp.ToArray(), Throws.InstanceOf<ObjectDisposedException>());
+    }
+
+    /// <summary>The buffered node at exactly <paramref name="path"/> below <paramref name="rootPointer"/>, reached by record pointers.</summary>
+    private static bool TryGetNode(INodeRecordBuffer buffer, ulong rootPointer, TreePath path, [NotNullWhen(true)] out TrieNode node)
+    {
+        (TreePath Path, ulong Pointer, NodeRecord Record) match = buffer.EnumerateNodes(rootPointer).FirstOrDefault(found => found.Path == path);
+        node = match.Pointer == 0 ? null : match.Record.ToTrieNode();
+        return node is not null;
     }
 
     /// <summary>The buffer's allocation frontier, which every reservation advances.</summary>

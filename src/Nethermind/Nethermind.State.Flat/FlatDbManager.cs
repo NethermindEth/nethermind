@@ -7,10 +7,10 @@ using System.Threading.Channels;
 using Nethermind.Config;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.Core.Attributes;
 using Nethermind.State.Flat.PersistedSnapshots;
-using Nethermind.Trie.NodeBuffer;
 
 namespace Nethermind.State.Flat;
 

@@ -10,18 +10,19 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.NodeBuffer;
-using Nethermind.State.Flat.Test;
 using Nethermind.Trie;
 using Nethermind.Trie.NodeBuffer;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 
-namespace Nethermind.Store.Test.NodeBuffer;
+namespace Nethermind.State.Flat.Test.NodeBuffer;
 
 [Parallelizable(ParallelScope.All)]
 public class NodeRecordBufferVisitorTests
@@ -129,7 +130,7 @@ public class NodeRecordBufferVisitorTests
         TrieRoot storage = Build(buffer, address, false);
         RecordingResolver persistence = new();
         byte[] accountRlp = Rlp.Encode(new Account(1, 2, storage.ToHash256(), Keccak.OfAnEmptySequenceRlp)).Bytes;
-        TrieNode leaf = new(NodeType.Leaf) { Key = new byte[64], Value = accountRlp };
+        TrieNode leaf = TrieNodeFactory.CreateLeaf(new byte[64], new CappedArray<byte>(accountRlp));
         TreePath path = TreePath.Empty;
         leaf.ResolveKey(NullTrieNodeResolver.Instance, ref path);
         persistence.Nodes[leaf.Keccak!] = leaf.FullRlp.ToArray()!;
@@ -221,8 +222,7 @@ public class NodeRecordBufferVisitorTests
             entries.Add(new PatriciaTree.BulkSetEntry(Key(0, 1), [1]));
             entries.Add(new PatriciaTree.BulkSetEntry(Key(0, 2), [2]));
         }
-        using WarmedNodeLog warmed = new(1);
-        TrieRoot root = NodeRecordBulkSet.BulkSet(new DictionaryNodeSource(new Dictionary<TreePath, byte[]>(), warmed, address).Over(buffer), address, TrieRoot.Empty, entries, false);
+        TrieRoot root = FlatTestHelpers.BulkSet(new ResourcePool(new FlatDbConfig()), buffer, address, TrieRoot.Empty, entries, false);
         buffer.SetRoot(address, root.Hash, root.Pointer);
         return root;
     }
