@@ -13,6 +13,8 @@ namespace Nethermind.SendPolicy.Plugin;
 /// <remarks>
 /// The file must be usable when the node starts. Its content is checked on every send, so even a same-size
 /// replacement that preserves the file timestamp takes effect without a restart. Safe to call from concurrent JSON-RPC requests.
+/// Update rules by writing and closing a temporary file in the same directory, then atomically replacing this file.
+/// In-place writes can expose an incomplete but syntactically valid policy.
 /// </remarks>
 public sealed class SendPolicyRuleFile
 {
@@ -92,7 +94,12 @@ public sealed class SendPolicyRuleFile
     {
         public static FileSnapshot Of(string path)
         {
-            try { return new FileSnapshot(File.ReadAllText(path), null); }
+            try
+            {
+                using FileStream stream = new(path, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete);
+                using StreamReader reader = new(stream);
+                return new FileSnapshot(reader.ReadToEnd(), null);
+            }
             catch (Exception e) when (e is IOException or UnauthorizedAccessException)
             {
                 return new FileSnapshot(null, e.Message);

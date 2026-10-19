@@ -142,6 +142,42 @@ public class SendPolicyRuleFileTests
         }
     }
 
+    [Test, Platform("Win")]
+    public void Rule_file_open_for_deletion_remains_readable()
+    {
+        using TempPath directory = WriteRules();
+        string path = RulesPath(directory);
+        SendPolicyRuleFile file = Open(path);
+        SendPolicyRules rules = file.Current;
+
+        using (new FileStream(path, FileMode.Open, FileAccess.Read,
+            FileShare.Read | FileShare.Delete, 4096, FileOptions.DeleteOnClose))
+        {
+            Assert.That(file.Current, Is.SameAs(rules));
+        }
+    }
+
+    [Test]
+    public void Exclusive_writer_refuses_guarded_senders_and_recovers()
+    {
+        using TempPath directory = WriteRules();
+        string path = RulesPath(directory);
+        SendPolicyRuleFile file = Open(path);
+
+        using (new FileStream(path, FileMode.Open, FileAccess.Write, FileShare.None))
+        {
+            SendPolicyRules unusable = file.Current;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(unusable.Error, Is.Not.Null);
+                Assert.That(unusable.GuardedSenders, Does.Contain(Sender));
+                Assert.That(unusable.Destinations, Is.Empty);
+            }
+        }
+
+        Assert.That(file.Current.Error, Is.Null);
+    }
+
     private static TempPath WriteRules()
     {
         TempPath directory = TempPath.GetTempDirectory();

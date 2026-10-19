@@ -10,7 +10,7 @@ public interface ISendPolicyConfig : IConfig
     [ConfigItem(DefaultValue = "false", Description = "Whether to check transactions submitted through this node's JSON-RPC against the rule file.")]
     bool Enabled { get; set; }
 
-    [ConfigItem(DefaultValue = "null", Description = "The path to the rule file. The file is re-read when it changes.")]
+    [ConfigItem(DefaultValue = "null", Description = "The path to the rule file. The file is re-read when it changes. Update it by atomically replacing it with a fully written and closed temporary file in the same directory; in-place writes can expose incomplete rules.")]
     string? RulesPath { get; set; }
 
     [ConfigItem(DefaultValue = "null", Description = "The path to the journal of transactions submitted by guarded senders. Defaults to the rule file path with `.journal` appended.")]
