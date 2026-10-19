@@ -94,8 +94,7 @@ internal class MineModuleTests
         {
             Assert.Fail("Timeout waiting for new round event");
         }
-        // The chain's XdcBlockSuggester handles BlockProduced first and suggests the block, so the votes on it can
-        // finish the round before the tracker is invoked: wait for the tracker instead of reading the count right away.
+        // XdcBlockSuggester handles BlockProduced first, so the round can finish before the tracker runs.
         await tracker.FirstProposal.Task.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.That(tracker.Count, Is.EqualTo(1));
     }
