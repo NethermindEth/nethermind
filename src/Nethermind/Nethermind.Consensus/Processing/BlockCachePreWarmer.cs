@@ -429,15 +429,16 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
                 CancellationToken token = _token;
                 // A transaction the block's up-front discovery is still on is left to it.
                 if (tx.SenderAddress is null || token.IsCancellationRequested
-                    || (blockState.IsDiscoveredUpFront(index) && !blockState.UpFrontDiscoveryEnded)
-                    || !blockState.TryClaimDiscoveryHandOff())
+                    || (blockState.IsDiscoveredUpFront(index) && !blockState.UpFrontDiscoveryEnded))
                 {
                     return;
                 }
 
                 lock (_gate)
                 {
-                    if (_closed) return;
+                    // One run per transaction, even if reads on two threads both reached the threshold; the hand-off
+                    // is claimed only for the run that starts.
+                    if (_closed || index == _startedIndex || !blockState.TryClaimDiscoveryHandOff()) return;
                     Interlocked.Increment(ref _running);
                     try
                     {
@@ -628,7 +629,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
                 return;
             }
 
-            if (inFlight) Blockchain.Metrics.PrewarmInFlightRounds++;
+            // Two read-aheads can run their rounds at once, so the counters are updated atomically.
+            if (inFlight) Interlocked.Increment(ref Blockchain.Metrics.PrewarmInFlightRounds);
             int capturedCount = roundCells.Count;
             roundCells.ExceptWith(allDiscoveredCells);
             // Cells an earlier round already found were charged again by this round's captures.
@@ -641,7 +643,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
             {
                 allDiscoveredCells.UnionWith(roundCells);
                 if (!WarmDiscoveredStorage(block.Header, roundCells, cancellationToken)) return;
-                if (inFlight) Blockchain.Metrics.PrewarmInFlightCells += roundCells.Count;
+                if (inFlight) Interlocked.Add(ref Blockchain.Metrics.PrewarmInFlightCells, roundCells.Count);
                 // An exhausted shared budget ends discovery at the next round's budget check.
                 if (allDiscoveredCells.Count >= MaxDiscoveredCells) return;
             }

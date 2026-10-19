@@ -319,6 +319,49 @@ public class PrewarmerReadAheadTests
     }
 
     /// <summary>
+    /// The cold-read observer may be told about reads on several threads at once. Reads that reach the threshold together
+    /// start one read-ahead of the transaction, not one per thread that saw the threshold.
+    /// </summary>
+    [Test]
+    public void Reads_on_several_threads_that_reach_the_threshold_together_start_one_read_ahead()
+    {
+        const int Rounds = 30;
+        int threads = Math.Max(4, Environment.ProcessorCount);
+        using BlockCachePreWarmer preWarmer = CreatePreWarmer(readAhead: true, coldReads: 3);
+        for (int round = 0; round < Rounds; round++)
+        {
+            Block block = BuildBlock(WalkerCall(TestItem.PrivateKeyA, 0, 0x5000, 6), Transfer(TestItem.PrivateKeyB, 0), Transfer(TestItem.PrivateKeyC, 0));
+            int before = preWarmer.ReadAheadsStarted;
+            bool idle;
+            using (OpenSession(preWarmer, block))
+            {
+                _caches.StorageCache.Clear();
+                preWarmer.OnBeforeTxExecution();
+                using Barrier barrier = new(threads);
+                Thread[] readers = new Thread[threads];
+                for (int t = 0; t < threads; t++)
+                {
+                    readers[t] = new Thread(() =>
+                    {
+                        barrier.SignalAndWait();
+                        for (int i = 0; i < 4; i++) _caches.ReportConsumerColdRead();
+                    });
+                    readers[t].Start();
+                }
+
+                foreach (Thread reader in readers) reader.Join();
+                idle = SpinWait.SpinUntil(() => preWarmer.ReadAheadsRunning == 0, Timeout);
+            }
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(idle, Is.True);
+                Assert.That(preWarmer.ReadAheadsStarted - before, Is.EqualTo(1), $"round {round}: one read-ahead per transaction");
+            }
+        }
+    }
+
+    /// <summary>
     /// The block's token is cancelled once its transactions are executed. The reads that follow, of the work that
     /// finalises the block, belong to no transaction, and may come from other threads: they are not counted.
     /// </summary>

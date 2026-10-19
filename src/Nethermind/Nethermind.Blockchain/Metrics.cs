@@ -115,11 +115,11 @@ public static class Metrics
 
     [CounterMetric]
     [Description("Discovery rounds run for transactions block processing was executing")]
-    public static long PrewarmInFlightRounds { get; set; }
+    public static long PrewarmInFlightRounds;
 
     [CounterMetric]
     [Description("Storage cells discovered and read for transactions block processing was executing")]
-    public static long PrewarmInFlightCells { get; set; }
+    public static long PrewarmInFlightCells;
 
     [CounterMetric]
     [Description("Reads past the pre-block caches block processing made in a transaction after its in-flight discovery started")]
