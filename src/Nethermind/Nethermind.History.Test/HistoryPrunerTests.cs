@@ -499,7 +499,7 @@ public class HistoryPrunerTests
             Assert.DoesNotThrow(action);
     }
 
-    private static HistoryPruner CreatePruner(IBlockTree blockTree, ISpecProvider specProvider, IHistoryConfig historyConfig)
+    private static HistoryPruner CreatePruner(IBlockTree blockTree, ISpecProvider specProvider, IHistoryConfig historyConfig, ILogManager logManager = null)
     {
         IDbProvider dbProvider = Substitute.For<IDbProvider>();
         dbProvider.MetadataDb.Returns(new TestMemDb());
@@ -520,7 +520,31 @@ public class HistoryPrunerTests
             Substitute.For<IBackgroundTaskScheduler>(),
             Substitute.For<IBlockProcessingQueue>(),
             NullPrunedReceiptRetention.Instance,
-            LimboLogs.Instance);
+            logManager ?? LimboLogs.Instance);
+    }
+
+    // No pointer is persisted until the first pass, so a node switching to Rolling falls back to the oldest stored block.
+    [TestCase(3_000_000UL, 0UL, true, TestName = "Rolling_default_warns_about_a_backlog_when_no_pointer_is_persisted")]
+    [TestCase(2_000_000UL, 0UL, false, TestName = "Rolling_default_does_not_warn_about_less_than_a_window")]
+    [TestCase(3_000_000UL, 1_000_000UL, false, TestName = "Rolling_default_does_not_warn_below_the_lowest_stored_block")]
+    public void Rolling_default_warns_about_a_backlog_when_no_pointer_is_persisted(ulong head, ulong lowestBlock, bool warns)
+    {
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        blockTree.Head.Returns(Build.A.Block.WithNumber(head).TestObject);
+        blockTree.GetLowestBlock().Returns(lowestBlock);
+        InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+        logger.IsWarn.Returns(true);
+        ILogger wrappedLogger = new(logger);
+        ILogManager logManager = Substitute.For<ILogManager>();
+        logManager.GetClassLogger<HistoryPruner>().Returns(wrappedLogger);
+
+        CreatePruner(
+            blockTree,
+            new TestSpecProvider(new ReleaseSpec { MinHistoryRetentionEpochs = 33024 }),
+            new HistoryConfig { Pruning = PruningModes.Rolling },
+            logManager);
+
+        logger.Received(warns ? 1 : 0).Warn(Arg.Is<string>(m => m.Contains("History.RetentionEpochs is not set")));
     }
 
     [TestCase(null, false, TestName = "SetDeletePointerToOldestBlock_never_searches_while_no_body_was_inserted")]
