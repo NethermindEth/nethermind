@@ -856,6 +856,39 @@ public class ProofWrapperServiceTests
         }
     }
 
+    // EIPs#12473: a wrapper is relayed only once usable for admission, so a verified proof over transactions the pool
+    // rejects (for example unfunded) is not republished.
+    [TestCase(true)]
+    [TestCase(false)]
+    public async Task Wrapper_is_relayed_only_after_a_transaction_is_admitted(bool poolAccepts)
+    {
+        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, TestItem.KeccakA.ValueHash256, default);
+        Transaction transaction = CreateTransaction(dependency, TestItem.KeccakA);
+        transaction.Hash = transaction.CalculateHash();
+        ITxPool pool = Substitute.For<ITxPool>();
+        pool.SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>())
+            .Returns(poolAccepts ? AcceptTxResult.Accepted : AcceptTxResult.InsufficientFunds);
+        ProofWrapperService service = CreateService([], new LeanProofStore(FrameTxSigHash.ComputeValue), new FakeLeanProofVerifier(true), pool: pool);
+        byte[] wrapper = MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
+        {
+            Transactions = [new WrapperTransaction(transaction.Hash)],
+            Deps = [dependency],
+            Mode = MempoolWrapper.ModeDirect,
+            Proofs = [[1]]
+        }).Bytes;
+        int relayed = 0;
+        service.WrapperValidated += (_, _, _) => relayed++;
+
+        ProofWrapperAcceptance result = await service.AcceptDetailedAsync(wrapper,
+            new Dictionary<ValueHash256, Transaction> { [transaction.Hash.ValueHash256] = transaction });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Status, Is.EqualTo(poolAccepts ? ProofWrapperAcceptanceStatus.Accepted : ProofWrapperAcceptanceStatus.PoolRejected));
+            Assert.That(relayed, Is.EqualTo(poolAccepts ? 1 : 0));
+        }
+    }
+
     [TestCase(Eip8288Constants.MaxWrapperBytes + 1, ProofWrapperAcceptanceStatus.Invalid)]
     public async Task Wrapper_size_above_the_local_limit_is_refused_and_above_max_wrapper_bytes_is_invalid(int size, ProofWrapperAcceptanceStatus expected)
     {
