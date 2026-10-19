@@ -99,7 +99,7 @@ public class DebugRpcModule(
                     debugBridge.GetTransactionTrace(transactionHash, token, effective, writer, pipeWriter)));
         }
 
-        using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
+        using RentedTimeout timeout = jsonRpcConfig.RentTimeout();
         CancellationToken cancellationToken = timeout.Token;
         GethLikeTxTrace? transactionTrace = debugBridge.GetTransactionTrace(transactionHash, cancellationToken, WithBufferedLimit(options));
         if (transactionTrace is null)
@@ -113,6 +113,9 @@ public class DebugRpcModule(
 
     public ResultWrapper<GethLikeTxTrace> debug_traceCall(TransactionForRpc call, BlockParameter? blockParameter = null, GethTraceOptions? options = null)
     {
+        if (options?.BlockOverrides?.Withdrawals is not null)
+            return ResultWrapper<GethLikeTxTrace>.Fail(BlockOverride.WithdrawalsNotSupported, ErrorCodes.InvalidParams);
+
         blockParameter ??= BlockParameter.Latest;
         if (blockParameter.Type == BlockParameterType.Pending)
         {
@@ -156,7 +159,7 @@ public class DebugRpcModule(
                     debugBridge.GetTransactionTrace(tx, blockParameter, token, effective, writer, pipeWriter)));
         }
 
-        using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
+        using RentedTimeout timeout = jsonRpcConfig.RentTimeout();
         CancellationToken cancellationToken = timeout.Token;
 
         GethLikeTxTrace? transactionTrace;
@@ -284,7 +287,7 @@ public class DebugRpcModule(
                     debugBridge.GetTransactionTrace(blockHash, index, token, effective, writer, pipeWriter)));
         }
 
-        using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
+        using RentedTimeout timeout = jsonRpcConfig.RentTimeout();
         GethLikeTxTrace? transactionTrace = debugBridge.GetTransactionTrace(blockHash, index, timeout.Token, WithBufferedLimit(options));
         if (transactionTrace is null)
         {
@@ -311,7 +314,7 @@ public class DebugRpcModule(
                     debugBridge.GetTransactionTrace(block!, transactionHash, token, effective, writer, pipeWriter)));
         }
 
-        using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
+        using RentedTimeout timeout = jsonRpcConfig.RentTimeout();
         CancellationToken cancellationToken = timeout.Token;
         GethLikeTxTrace? transactionTrace = debugBridge.GetTransactionTrace(block, transactionHash, cancellationToken, WithBufferedLimit(options));
         if (transactionTrace is null)
@@ -344,7 +347,7 @@ public class DebugRpcModule(
                     debugBridge.GetTransactionTrace(block, targetTxHash!, token, effective, writer, pipeWriter)));
         }
 
-        using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
+        using RentedTimeout timeout = jsonRpcConfig.RentTimeout();
         CancellationToken cancellationToken = timeout.Token;
         IReadOnlyCollection<GethLikeTxTrace>? blockTrace = debugBridge.GetBlockTrace(block, cancellationToken, WithBufferedLimit(options));
 
@@ -430,7 +433,7 @@ public class DebugRpcModule(
                     debugBridge.GetBlockTrace(block!, token, effective, writer, pipeWriter)));
         }
 
-        using CancellationTokenSource? timeout = BuildTimeoutCancellationTokenSource();
+        using RentedTimeout timeout = jsonRpcConfig.RentTimeout();
         CancellationToken cancellationToken = timeout.Token;
         try
         {
@@ -482,7 +485,7 @@ public class DebugRpcModule(
                     debugBridge.GetBlockTrace(resolvedBlock, token, effective, writer, pipeWriter)));
         }
 
-        using CancellationTokenSource? timeout = BuildTimeoutCancellationTokenSource();
+        using RentedTimeout timeout = jsonRpcConfig.RentTimeout();
         CancellationToken cancellationToken = timeout.Token;
 
         try
@@ -529,7 +532,7 @@ public class DebugRpcModule(
                     debugBridge.GetBlockTrace(resolvedBlock, token, effective, writer, pipeWriter)));
         }
 
-        using CancellationTokenSource? timeout = BuildTimeoutCancellationTokenSource();
+        using RentedTimeout timeout = jsonRpcConfig.RentTimeout();
         CancellationToken cancellationToken = timeout.Token;
 
         try
@@ -557,7 +560,7 @@ public class DebugRpcModule(
             return headerError;
         }
 
-        using CancellationTokenSource? timeout = BuildTimeoutCancellationTokenSource();
+        using RentedTimeout timeout = jsonRpcConfig.RentTimeout();
         CancellationToken cancellationToken = timeout.Token;
 
         IReadOnlyCollection<Hash256> roots;
@@ -693,10 +696,10 @@ public class DebugRpcModule(
 
     public ResultWrapper<ArrayPoolList<byte>> debug_getRawHeader(BlockParameter blockParameter)
     {
-        Block? block = debugBridge.GetBlock(blockParameter);
-        return block is null
+        BlockHeader? header = blockFinder.FindHeader(blockParameter);
+        return header is null
             ? ResultWrapper<ArrayPoolList<byte>>.Fail($"Block {blockParameter} was not found", ErrorCodes.ResourceNotFound)
-            : ResultWrapper<ArrayPoolList<byte>>.Success(Rlp.GetDecoderOrThrow<BlockHeader>().EncodeToArrayPoolList(block.Header));
+            : ResultWrapper<ArrayPoolList<byte>>.Success(Rlp.GetDecoderOrThrow<BlockHeader>().EncodeToArrayPoolList(header));
     }
 
     public Task<ResultWrapper<SyncReportSummary>> debug_getSyncStage() => ResultWrapper<SyncReportSummary>.Success(debugBridge.GetCurrentSyncStage());
@@ -709,7 +712,7 @@ public class DebugRpcModule(
             return headerError;
         }
 
-        using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
+        using RentedTimeout timeout = jsonRpcConfig.RentTimeout();
         CancellationToken cancellationToken = timeout.Token;
 
         IEnumerable<string>? files = debugBridge.TraceBlockToFile(blockHash, cancellationToken, options);
@@ -727,7 +730,7 @@ public class DebugRpcModule(
             return headerError;
         }
 
-        using CancellationTokenSource cancellationTokenSource = BuildTimeoutCancellationTokenSource();
+        using RentedTimeout cancellationTokenSource = jsonRpcConfig.RentTimeout();
         CancellationToken cancellationToken = cancellationTokenSource.Token;
 
         IEnumerable<string>? files = debugBridge.TraceBadBlockToFile(blockHash, cancellationToken, options);
@@ -820,6 +823,8 @@ public class DebugRpcModule(
         {
             if (bundles[i]?.Transactions is null)
                 return ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>>.Fail($"Bundle at index {i} has null transactions", ErrorCodes.InvalidParams);
+            if (bundles[i].BlockOverride?.Withdrawals is not null)
+                return ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>>.Fail(BlockOverride.WithdrawalsNotSupported, ErrorCodes.InvalidParams);
         }
 
         blockParameter ??= BlockParameter.Latest;
@@ -943,8 +948,6 @@ public class DebugRpcModule(
         }
 
         BlockParameter concreteBlockParameter = new(header.Number);
-
-        using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
 
         ResultWrapper<IReadOnlyList<SimulateBlockResult<GethLikeTxTrace>>> simulationResult =
             new SimulateTxExecutor<GethLikeTxTrace>(

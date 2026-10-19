@@ -88,7 +88,6 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
         {
             _sendFailure.Dispose();
         }
-        _jsonRpcContext.Dispose();
         Closed?.Invoke(this, EventArgs.Empty);
     }
 

@@ -205,28 +205,26 @@ jobs:
               project="${target%%:*}"
               names="${target#*:}"
               filter="FullyQualifiedName~${names//|/|FullyQualifiedName~}"
-              dotnet restore "../$project/$project.csproj"
-              dotnet test --project "../$project/$project.csproj" -c release --no-build --no-restore \
+              "../artifacts/bin/$project/release/$project" --results-directory "../$project/TestResults" \
                 --hangdump --hangdump-timeout 8m --hangdump-type Mini \
-                --crashdump --crashdump-type Mini --crash-report-if-supported -- --filter "$filter"
+                --crashdump --crashdump-type Mini --crash-report-if-supported --filter "$filter"
             done
             echo "${{ matrix.variant.label }}: all selected test projects passed with runtime ISA assertions enabled." >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
-          dotnet restore ${{ matrix.project }}.csproj
           # A hung test host is killed with a dump of every thread instead of running into the job
           # timeout, which kills the job without one. The timeout counts inactivity, not runtime, and
           # a mini dump keeps the write and upload inside whatever job budget the hang leaves.
           # A host that dies mid-run leaves a dump, a crash report where the runtime writes one, and a
           # sequence log of the tests in flight; on its own, exit code 7 names neither test nor cause.
-          test_args=(--no-build --no-restore
+          test_args=(--results-directory TestResults
             --hangdump --hangdump-timeout 8m --hangdump-type Mini
             --crashdump --crashdump-type Mini --crash-report-if-supported)
           if [[ "${{ matrix.variant.label }}" == "no-avx2" ]]; then
-            test_args+=(-- --filter "FullyQualifiedName~HexPrefixTests|FullyQualifiedName~NibbleTests|FullyQualifiedName~BytesTests|FullyQualifiedName~Nethermind.Core.Test.Json.")
+            test_args+=(--filter "FullyQualifiedName~HexPrefixTests|FullyQualifiedName~NibbleTests|FullyQualifiedName~BytesTests|FullyQualifiedName~Nethermind.Core.Test.Json.")
           fi
 
-          dotnet test --project ${{ matrix.project }}.csproj -c release "${test_args[@]}"
+          ../artifacts/bin/${{ matrix.project }}/release/${{ matrix.project }} "${test_args[@]}"
 
       - name: Upload dumps
         if: ${{ failure() || cancelled() }}
@@ -290,17 +288,16 @@ jobs:
           TEST_CHUNK: ${{ matrix.test.chunk }}
           TEST_SKIP_HEAVY: 1
         run: |
-          dotnet restore ${{ matrix.test.project }}.csproj
           # A hung test host is killed with a dump of every thread instead of running into the job
           # timeout, which kills the job without one. The timeout counts inactivity, not runtime, and
           # a mini dump keeps the write and upload inside whatever job budget the hang leaves.
           # A host that dies mid-run leaves a dump, a crash report where the runtime writes one, and a
           # sequence log of the tests in flight; on its own, exit code 7 names neither test nor cause.
-          test_args=(--no-build --no-restore
+          test_args=(--results-directory TestResults
             --hangdump --hangdump-timeout 8m --hangdump-type Mini
             --crashdump --crashdump-type Mini --crash-report-if-supported)
 
-          dotnet test --project ${{ matrix.test.project }}.csproj -c release "${test_args[@]}"
+          ../artifacts/bin/${{ matrix.test.project }}/release/${{ matrix.test.project }} "${test_args[@]}"
 
       - name: Upload dumps
         if: ${{ failure() || cancelled() }}
