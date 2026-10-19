@@ -148,8 +148,8 @@ public class CodeLoadBenchmarks
             dbConfig.CodeDbRowCacheSize = 16UL * 1024 * 1024;
         }
 
-        RocksDbConfigFactory configFactory = new(dbConfig, new PruningConfig(), new TestHardwareInfo(8L * 1024 * 1024 * 1024), LimboLogs.Instance, validateConfig: false);
-        _db = new DbOnTheRocks(basePath, new DbSettings(DbNames.Code, DbNames.Code), dbConfig, configFactory, LimboLogs.Instance);
+        RocksDbConfigFactory configFactory = new(dbConfig, new PruningConfig(), new TestHardwareInfo(8L * 1024 * 1024 * 1024), NullLogManager.Instance, validateConfig: false);
+        _db = new DbOnTheRocks(basePath, new DbSettings(DbNames.Code, DbNames.Code), dbConfig, configFactory, NullLogManager.Instance);
         _codeDb = new CountingCodeDb(new TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb(_db));
 
         _pool = new ValueHash256[poolSize];

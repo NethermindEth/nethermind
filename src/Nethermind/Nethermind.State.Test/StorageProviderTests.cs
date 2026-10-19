@@ -6,6 +6,7 @@ using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Reflection;
+using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Core;
@@ -146,6 +147,24 @@ public partial class StorageProviderTests(bool useFlat)
         provider.Commit(Frontier.Instance, next);
 
         Assert.That(next.Clears, Is.Empty);
+    }
+
+    [Test]
+    public void Cancelled_storage_reporting_does_not_leak_changes_into_the_next_commit()
+    {
+        using Context ctx = new(useFlat);
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell cancelledCell = new(ctx.Address1, 1);
+        StorageCell nextCell = new(ctx.Address1, 2);
+        provider.Set(cancelledCell, 17);
+        ReadCollectingStorageTracer cancelled = new() { CancelOnChange = true };
+
+        Assert.Throws<OperationCanceledException>(() => provider.Commit(Frontier.Instance, cancelled));
+        provider.Set(nextCell, 19);
+        ReadCollectingStorageTracer next = new();
+        provider.Commit(Frontier.Instance, next);
+
+        Assert.That(next.Changes.ConvertAll(static change => change.Cell), Is.EqualTo(new[] { nextCell }));
     }
 
     [Test]
@@ -2892,8 +2911,8 @@ public partial class StorageProviderTests(bool useFlat)
             public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink sink = null)
                 => baseScope.HintBal(bal, sink);
 
-            public void ApplyBal(ReadOnlyBlockAccessList bal)
-                => baseScope.ApplyBal(bal);
+            public void ApplyBal(ReadOnlyBlockAccessList bal, CancellationToken cancellationToken)
+                => baseScope.ApplyBal(bal, cancellationToken);
 
             public IWorldStateScopeProvider.ICodeDb CodeDb => baseScope.CodeDb;
 
@@ -2966,6 +2985,7 @@ public partial class StorageProviderTests(bool useFlat)
         public List<Address> Clears { get; } = [];
         public bool CancelOnClear { get; init; }
         public bool CancelOnRead { get; init; }
+        public bool CancelOnChange { get; init; }
         public List<(StorageCell Cell, byte[] Value)> Restores { get; } = [];
 
         public bool IsTracingState => false;
@@ -2975,7 +2995,11 @@ public partial class StorageProviderTests(bool useFlat)
         public void ReportCodeChange(Address address, ReadOnlyMemory<byte> before, ReadOnlyMemory<byte> after) { }
         public void ReportNonceChange(Address address, UInt256? before, UInt256? after) { }
         public void ReportAccountRead(Address address) { }
-        public void ReportStorageChange(in StorageCell storageCell, byte[] before, byte[] after) => Changes.Add((storageCell, before, after));
+        public void ReportStorageChange(in StorageCell storageCell, byte[] before, byte[] after)
+        {
+            if (CancelOnChange) throw new OperationCanceledException();
+            Changes.Add((storageCell, before, after));
+        }
         public void ReportStorageRead(in StorageCell storageCell)
         {
             if (CancelOnRead) throw new OperationCanceledException();

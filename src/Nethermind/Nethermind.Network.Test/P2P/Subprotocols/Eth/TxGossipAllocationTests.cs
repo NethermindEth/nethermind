@@ -174,7 +174,7 @@ public class TxGossipAllocationTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(measured.AnnouncePerHashPerPeer, Is.LessThanOrEqualTo(96), "announce, bytes per hash per peer");
+            Assert.That(measured.AnnouncePerHashPerPeer, Is.LessThanOrEqualTo(10), "announce, bytes per hash per peer");
             Assert.That(measured.DeliverPerTx, Is.LessThanOrEqualTo(1440), "deliver, bytes per tx");
             Assert.That(measured.DuplicatePerTxPerPeer, Is.LessThanOrEqualTo(8), "duplicate, bytes per tx per peer");
             Assert.That(measured.ServePerTx, Is.LessThanOrEqualTo(8), "serve, bytes per tx");
@@ -188,7 +188,7 @@ public class TxGossipAllocationTests
         double perPeerPerTick = double.MaxValue;
         for (int i = 0; i < MeasuredRuns; i++) perPeerPerTick = Math.Min(perPeerPerTick, RunBroadcastTick(CreateBatch()));
 
-        Assert.That(perPeerPerTick, Is.LessThanOrEqualTo(480), "bytes per peer per tick");
+        Assert.That(perPeerPerTick, Is.LessThanOrEqualTo(170), "bytes per peer per tick");
     }
 
     private RoundTripAllocations RunRoundTrip(Transaction[] txs)
@@ -435,6 +435,11 @@ public class TxGossipAllocationTests
 
         public int DeliverMessage<T>(T message) where T : P2PMessage
         {
+            // Serialize first: a message the real session cannot send must not count as delivered.
+            IByteBuffer buffer = serializer.ZeroSerialize(message);
+            int size = buffer.ReadableBytes;
+            buffer.Release();
+
             switch (message)
             {
                 case GetPooledTransactionsMessage request:
@@ -450,9 +455,6 @@ public class TxGossipAllocationTests
                     break;
             }
 
-            IByteBuffer buffer = serializer.ZeroSerialize(message);
-            int size = buffer.ReadableBytes;
-            buffer.Release();
             message.Dispose();
             return size;
         }

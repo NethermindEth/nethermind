@@ -35,11 +35,15 @@ jobs:
       !github.event.pull_request.draft &&
       github.event.pull_request.head.repo.full_name == github.repository &&
       github.event.pull_request.user.login != 'dependabot[bot]'
-    uses: NethermindEth/github-workflows/.github/workflows/ai-review.yaml@v2.4.0
+    uses: NethermindEth/github-workflows/.github/workflows/ai-review.yaml@v5.1.1
     with:
       secret_path: /apps/litellm/nethermind-ai-reviewer
       num_max_findings: 8
       extra_instructions: ${{ needs.instructions.outputs.instructions }}
+      # Advisory, not a required check: no label, and LLM/gateway failures stay green.
+      # A real security_concerns finding still fails the check.
+      label: ""
+      fail_on_missing_review: false
     secrets:
       infisical_identity_id: ${{ secrets.INFISICAL_IDENTITY_ID }}
       infisical_project_id: ${{ secrets.INFISICAL_PROJECT_ID }}

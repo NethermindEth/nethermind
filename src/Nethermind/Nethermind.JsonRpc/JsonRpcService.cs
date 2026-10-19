@@ -135,12 +135,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         IResultWrapper? resultWrapper = null;
         try
         {
-            object? invocationResult = parameterCount switch
-            {
-                0 when method.DirectNoParameterInvoker is { } directInvoker => directInvoker(rpcModule),
-                > 0 when method.DirectParameterInvoker is { } directInvoker => directInvoker(rpcModule, parameters!),
-                _ => method.Invoker.Invoke(rpcModule, parameters.AsSpan(0, parameterCount)),
-            };
+            object? invocationResult = Invoke(method, rpcModule, parameters, parameterCount, context);
             ReturnParameters(parameters, returnParametersToPool);
 
             switch (invocationResult)
@@ -193,6 +188,26 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         }
 
         return HandleUnsupportedResultWrapper(request, methodName, returnAction);
+    }
+
+    /// <summary>Invokes the method with <paramref name="context"/> as <see cref="JsonRpcContext.Current"/> until it returns or yields.</summary>
+    private static object? Invoke(ResolvedMethodInfo method, IRpcModule rpcModule, object?[]? parameters, int parameterCount, JsonRpcContext context)
+    {
+        JsonRpcContext? outerContext = JsonRpcContext.Current;
+        JsonRpcContext.Current = context;
+        try
+        {
+            return parameterCount switch
+            {
+                0 when method.DirectNoParameterInvoker is { } directInvoker => directInvoker(rpcModule),
+                > 0 when method.DirectParameterInvoker is { } directInvoker => directInvoker(rpcModule, parameters!),
+                _ => method.Invoker.Invoke(rpcModule, parameters.AsSpan(0, parameterCount)),
+            };
+        }
+        finally
+        {
+            JsonRpcContext.Current = outerContext;
+        }
     }
 
     // Kept out of ExecuteAsync so its state machine does not hoist the captured locals into a closure on every call.
