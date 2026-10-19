@@ -6,8 +6,6 @@ using Autofac;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
-using Nethermind.Core.Extensions;
-using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.IO;
 using Nethermind.Core.Test.Modules;
@@ -41,11 +39,12 @@ public class ChainLevelBatchReadBenchmark
     public void Setup()
     {
         _directory = TempPath.GetTempDirectory();
-        DbConfig config = new();
-        RocksDbConfigFactory factory = new(config, new PruningConfig(), new TestHardwareInfo(1.GiB),
-            LimboLogs.Instance, validateConfig: false);
-        _db = new DbOnTheRocks(_directory.Path, new DbSettings(DbNames.BlockInfos, "levels"),
-            config, factory, LimboLogs.Instance);
+        using (IContainer configs = new ContainerBuilder().AddModule(new TestNethermindModule()).Build())
+        {
+            _db = new DbOnTheRocks(_directory.Path, new DbSettings(DbNames.BlockInfos, "levels"),
+                configs.Resolve<IDbConfig>(), configs.Resolve<IRocksDbConfigFactory>(), LimboLogs.Instance);
+        }
+
         _container = new ContainerBuilder()
             .AddModule(new TestNethermindModule())
             .AddKeyedSingleton<IDb>(DbNames.BlockInfos, _db)

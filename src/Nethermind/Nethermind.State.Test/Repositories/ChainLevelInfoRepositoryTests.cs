@@ -47,7 +47,7 @@ public class ChainLevelInfoRepositoryTests
 
     [Test]
     public void MultiLoadLevel_WithFixedLengthKeys_PreservesOwnedResults(
-        [Values(false, true)] bool native, [Values(0, 1, 2, 33, 257)] int count)
+        [Values] bool native, [Values(0, 1, 2, 33, 257)] int count)
     {
         using TempPath directory = TempPath.GetTempDirectory();
         ulong[] requested = new ulong[count];
@@ -85,7 +85,7 @@ public class ChainLevelInfoRepositoryTests
 
     [Test]
     public void MultiLoadLevel_AtEveryKeyLengthBoundary_PreservesFixedLengthReads(
-        [Values(false, true)] bool native, [ValueSource(nameof(KeyLengthBoundaries))] ulong number)
+        [Values] bool native, [ValueSource(nameof(KeyLengthBoundaries))] ulong number)
     {
         using TempPath directory = TempPath.GetTempDirectory();
         using IDb db = CreateBatchDb(native, directory);
@@ -105,7 +105,7 @@ public class ChainLevelInfoRepositoryTests
     }
 
     [Test]
-    public void MultiLoadLevel_WithMixedLengthKeys_PreservesEncodingAndRequestOrder([Values(false, true)] bool native)
+    public void MultiLoadLevel_WithMixedLengthKeys_PreservesEncodingAndRequestOrder([Values] bool native)
     {
         using TempPath directory = TempPath.GetTempDirectory();
         using IDb db = CreateBatchDb(native, directory);
@@ -134,7 +134,7 @@ public class ChainLevelInfoRepositoryTests
     }
 
     [Test]
-    public void MultiLoadLevel_WithFixedOrMixedKeyLengths_UsesExpectedBatchPath([Values(false, true)] bool mixedLengths)
+    public void MultiLoadLevel_WithFixedOrMixedKeyLengths_UsesExpectedBatchPath([Values] bool mixedLengths)
     {
         BatchTrackingDb db = new(mixedLengths);
         using IContainer container = CreateContainer(db);
@@ -154,7 +154,7 @@ public class ChainLevelInfoRepositoryTests
     }
 
     [Test]
-    public void MultiLoadLevel_WhenStoredValueChanges_BypassesSingleLevelCache([Values(false, true)] bool native)
+    public void MultiLoadLevel_WhenStoredValueChanges_BypassesSingleLevelCache([Values] bool native)
     {
         using TempPath directory = TempPath.GetTempDirectory();
         using IDb db = CreateBatchDb(native, directory);
@@ -173,7 +173,7 @@ public class ChainLevelInfoRepositoryTests
 
     [Test]
     public void MultiLoadLevel_WhenDecodeFails_AllowsTheNextBatch(
-        [Values(false, true)] bool native, [Values(2UL, 256UL)] ulong secondNumber)
+        [Values] bool native, [Values(2UL, 256UL)] ulong secondNumber)
     {
         using TempPath directory = TempPath.GetTempDirectory();
         using IDb db = CreateBatchDb(native, directory);
@@ -351,11 +351,9 @@ public class ChainLevelInfoRepositoryTests
     private static IDb CreateBatchDb(bool native, TempPath directory)
     {
         if (!native) return new MemDb();
-        DbConfig config = new();
-        RocksDbConfigFactory factory = new(config, new PruningConfig(), new TestHardwareInfo(1.GiB),
-            LimboLogs.Instance, validateConfig: false);
+        using IContainer configs = new ContainerBuilder().AddModule(new TestNethermindModule()).Build();
         return new DbOnTheRocks(directory.Path, new DbSettings(DbNames.BlockInfos, "levels"),
-            config, factory, LimboLogs.Instance);
+            configs.Resolve<IDbConfig>(), configs.Resolve<IRocksDbConfigFactory>(), LimboLogs.Instance);
     }
 
     private static IEnumerable<ulong> KeyLengthBoundaries()
