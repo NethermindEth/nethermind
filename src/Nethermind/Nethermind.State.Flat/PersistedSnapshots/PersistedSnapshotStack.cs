@@ -6,7 +6,7 @@ using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
-using Nethermind.State.Flat.Persistence.BloomFilter;
+using Nethermind.Core.Collections;
 using Nethermind.Trie;
 
 namespace Nethermind.State.Flat.PersistedSnapshots;

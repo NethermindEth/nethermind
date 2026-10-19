@@ -26,7 +26,7 @@ using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.Trie;
-using Bloom = Nethermind.State.Flat.Persistence.BloomFilter.BloomFilter;
+using Bloom = Nethermind.Core.Collections.BloomFilter;
 
 namespace Nethermind.State.Flat.Test;
 

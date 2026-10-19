@@ -8,7 +8,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using NUnit.Framework;
-using Bloom = Nethermind.State.Flat.Persistence.BloomFilter.BloomFilter;
+using Bloom = Nethermind.Core.Collections.BloomFilter;
 
 namespace Nethermind.State.Flat.Test.Persistence.BloomFilter;
 
@@ -147,8 +147,8 @@ public class BloomFilterTests
     [Test]
     public void AlwaysTrue_MightContain_AnyKey_ReturnsTrue([Values(0UL, 1UL, 0xDEADBEEFCAFEBABEUL, ulong.MaxValue)] ulong key)
     {
-        using Nethermind.State.Flat.Persistence.BloomFilter.BloomFilter bloom =
-            Nethermind.State.Flat.Persistence.BloomFilter.BloomFilter.AlwaysTrue();
+        using Nethermind.Core.Collections.BloomFilter bloom =
+            Nethermind.Core.Collections.BloomFilter.AlwaysTrue();
 
         Assert.That(bloom.MightContain(key), Is.True, "AlwaysTrue sentinel must match every probe");
     }

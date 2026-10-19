@@ -5,7 +5,7 @@ using System.Buffers.Binary;
 using Nethermind.Core;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.Io;
-using Nethermind.State.Flat.Persistence.BloomFilter;
+using Nethermind.Core.Collections;
 using Nethermind.State.Flat.PersistedSnapshots.Sorted;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
 

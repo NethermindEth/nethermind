@@ -15,7 +15,6 @@ using Nethermind.Int256;
 using Nethermind.Db;
 using Nethermind.State.Flat.Io;
 using Nethermind.State.Flat.PersistedSnapshots;
-using Nethermind.State.Flat.Persistence.BloomFilter;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using Nethermind.Trie;
 using NSubstitute;

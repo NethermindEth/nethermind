@@ -10,7 +10,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Utils;
 using Nethermind.Int256;
 using Nethermind.State.Flat.Collections;
-using Nethermind.State.Flat.Persistence.BloomFilter;
 using Nethermind.Trie;
 using IResettable = Nethermind.Core.Resettables.IResettable;
 

@@ -4,7 +4,7 @@
 using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.State.Flat.Io;
-using Nethermind.State.Flat.Persistence.BloomFilter;
+using Nethermind.Core.Collections;
 using Nethermind.State.Flat.PersistedSnapshots.Sorted;
 
 namespace Nethermind.State.Flat.PersistedSnapshots;

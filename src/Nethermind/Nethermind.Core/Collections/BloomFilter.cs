@@ -1,13 +1,14 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
 using System.Runtime.Intrinsics.X86;
-using Nethermind.Core;
+using System.Threading;
 
-namespace Nethermind.State.Flat.Persistence.BloomFilter;
+namespace Nethermind.Core.Collections;
 
 /// <summary>
 /// Pure in-memory cache-local (64B / 512-bit) Bloom filter.

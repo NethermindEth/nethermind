@@ -12,7 +12,6 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Pbt;
 using Nethermind.Pbt.NodeLog;
-using Nethermind.State.Flat.Persistence.BloomFilter;
 using Nethermind.State.Pbt.Common;
 using IResettable = Nethermind.Core.Resettables.IResettable;
 

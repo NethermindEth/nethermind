@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using Nethermind.Core.Buffers;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using Nethermind.State.Pbt.PersistedSnapshots;
+using Nethermind.Core.Collections;
 using Nethermind.State.Flat.Persistence.BloomFilter;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
