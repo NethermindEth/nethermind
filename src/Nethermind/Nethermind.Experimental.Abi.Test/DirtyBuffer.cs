@@ -27,6 +27,12 @@ public class DirtyBuffer
             ("dave"u8.ToArray(), true, [1, 2, 3]));
         yield return Case(new AbiSignature("f").With(AbiType.UInt256, AbiType.Array(AbiType.UInt32), AbiType.BytesM(10), AbiType.Bytes),
             (0x123, [0x456, 0x789], "1234567890"u8.ToArray(), "Hello, world!"u8.ToArray()));
+        yield return Case(new AbiSignature("f").With(AbiType.Bytes, AbiType.Bytes, AbiType.Bytes, AbiType.Bytes, AbiType.Bytes),
+            ([0x11], [0x22, 0x22], [], "dave"u8.ToArray(), "Hello, world!"u8.ToArray()));
+        yield return Case(new AbiSignature("f").With(AbiType.UInt64, AbiType.UInt64, AbiType.Bytes32, AbiType.Address, AbiType.Bytes, AbiType.UInt256),
+            (3UL, 42UL, ValueKeccak.Compute("a"), new Address("0x5a4eab120fb44eb6684e5e32785702ff45ea344d"), "cipher"u8.ToArray(), (UInt256)21_000));
+        yield return Case(new AbiSignature("f").With(AbiType.Bool, AbiType.String, AbiType.Int8, AbiType.BytesM(10), AbiType.Array(AbiType.UInt32), AbiType.Address, AbiType.Bytes),
+            (true, "hello", 1, "1234567890"u8.ToArray(), [0x456, 0x789], new Address("0xdac17f958d2ee523a2206206994597c13d831ec7"), "dave"u8.ToArray()));
     }
 
     private static TestCaseData Case<T>(AbiSignature<T> signature, T value) =>

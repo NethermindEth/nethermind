@@ -24,6 +24,15 @@ public sealed class AbiSignature(string name)
 
     public AbiSignature<(T1, T2, T3, T4)> With<T1, T2, T3, T4>(Abi<T1> abi1, Abi<T2> abi2, Abi<T3> abi3, Abi<T4> abi4) =>
         new(Name, AbiType.Tuple(abi1, abi2, abi3, abi4));
+
+    public AbiSignature<(T1, T2, T3, T4, T5)> With<T1, T2, T3, T4, T5>(Abi<T1> abi1, Abi<T2> abi2, Abi<T3> abi3, Abi<T4> abi4, Abi<T5> abi5) =>
+        new(Name, AbiType.Tuple(abi1, abi2, abi3, abi4, abi5));
+
+    public AbiSignature<(T1, T2, T3, T4, T5, T6)> With<T1, T2, T3, T4, T5, T6>(Abi<T1> abi1, Abi<T2> abi2, Abi<T3> abi3, Abi<T4> abi4, Abi<T5> abi5, Abi<T6> abi6) =>
+        new(Name, AbiType.Tuple(abi1, abi2, abi3, abi4, abi5, abi6));
+
+    public AbiSignature<(T1, T2, T3, T4, T5, T6, T7)> With<T1, T2, T3, T4, T5, T6, T7>(Abi<T1> abi1, Abi<T2> abi2, Abi<T3> abi3, Abi<T4> abi4, Abi<T5> abi5, Abi<T6> abi6, Abi<T7> abi7) =>
+        new(Name, AbiType.Tuple(abi1, abi2, abi3, abi4, abi5, abi6, abi7));
 }
 
 public sealed class AbiSignature<T>(string name, Abi<T> abi)
