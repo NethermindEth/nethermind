@@ -85,6 +85,27 @@ public class DebugModuleTests
             : rpcModule.debug_standardTraceBlockToFile(blockHash);
 
     [Test]
+    public void DebugTraceBlockByHash_missing_header_preserves_temporary_status([Values] bool temporary)
+    {
+        _debugBridge.HaveNotSyncedHeadersYet().Returns(temporary);
+        using ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> result = CreateModule().debug_traceBlockByHash(TestItem.KeccakA);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.ResourceNotFound));
+            Assert.That(result.Result.Error, Is.EqualTo($"block {TestItem.KeccakA} not found"));
+            Assert.That(result.IsTemporary, Is.EqualTo(temporary));
+        }
+    }
+
+    [Test]
+    public void DebugTraceBlockByHash_preserves_lookup_exception()
+    {
+        InvalidOperationException failure = new("lookup unavailable");
+        _blockFinder.FindHeader(TestItem.KeccakA).Returns(_ => throw failure);
+        Assert.That(Assert.Throws<InvalidOperationException>(() => CreateModule().debug_traceBlockByHash(TestItem.KeccakA)), Is.SameAs(failure));
+    }
+
+    [Test]
     public async Task DebugGetFromDb_WhenValueExists_ReturnsValue()
     {
         byte[] key = [1, 2, 3];

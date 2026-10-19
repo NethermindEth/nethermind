@@ -637,6 +637,57 @@ public partial class DebugRpcModuleTests
         public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext) => inner.SetBlockExecutionContext(in blockExecutionContext);
     }
 
+    [Test]
+    public async Task Debug_traceBlockByHash_unknown_hash_uses_block_error([Values] bool streaming)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = streaming }).Build();
+        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceBlockByHash", TestItem.KeccakD);
+        JToken actual = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actual["result"], Is.Null);
+            Assert.That((int?)actual["error"]?["code"], Is.EqualTo(ErrorCodes.ResourceNotFound));
+            Assert.That((string?)actual["error"]?["message"], Is.EqualTo($"block {TestItem.KeccakD} not found"));
+        }
+    }
+
+    [Test]
+    public async Task Debug_traceBlockByHash_replays_retained_orphan([Values] bool streaming)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = streaming }).Build();
+        BlockHeader parent = chain.BlockTree.Head!.Header;
+        Block canonical = await chain.AddBlock();
+        Block orphan = Build.A.Block.WithParent(parent).WithExtraData([0x01]).TestObject;
+        chain.BlockTree.SuggestBlock(orphan, BlockTreeSuggestOptions.ForceDontSetAsMain);
+        Assert.That(chain.BlockTree.FindHash(orphan.Number), Is.EqualTo(canonical.Hash));
+        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceBlockByHash", orphan.Hash!);
+        JToken actual = JToken.Parse(response);
+        Assert.That(actual["error"], Is.Null, response);
+        Assert.That((JArray)actual["result"]!, Is.Empty);
+    }
+
+    [Test]
+    public async Task Debug_traceBlockByHash_checks_genesis_body_before_rejecting_replay([Values] bool streaming, [Values] bool bodyAvailable)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = streaming }).Build();
+        BlockHeader genesis = chain.BlockTree.Genesis!;
+        if (!bodyAvailable) chain.BlockTree.DeleteOldBlock(genesis.Number, genesis.Hash!);
+        Assert.That(chain.BlockTree.FindHeader(genesis.Hash!), Is.Not.Null);
+        Assert.That(chain.BlockTree.FindBlock(genesis.Hash!), bodyAvailable ? Is.Not.Null : Is.Null);
+        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceBlockByHash", genesis.Hash!);
+        JToken actual = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actual["result"], Is.Null);
+            Assert.That((int?)actual["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidInput));
+            Assert.That((string?)actual["error"]?["message"], Is.EqualTo(bodyAvailable
+                ? "genesis is not traceable" : $"block {genesis.Hash} not found"));
+        }
+    }
+
     private static IEnumerable<TestCaseData> ReplayAvailabilityCases()
     {
         string[] methods = ["debug_traceBlockByHash", "debug_traceBlockByNumber", "debug_traceBlock",
@@ -646,7 +697,7 @@ public partial class DebugRpcModuleTests
                 foreach (bool parentAvailable in new[] { false, true })
                 {
                     yield return new TestCaseData(method, streaming, parentAvailable, true, false);
-                    if (method == "debug_traceBlockByNumber")
+                    if (method is "debug_traceBlockByNumber" or "debug_traceBlockByHash")
                     {
                         yield return new TestCaseData(method, streaming, parentAvailable, false, false);
                         yield return new TestCaseData(method, streaming, parentAvailable, true, true);
@@ -717,7 +768,8 @@ public partial class DebugRpcModuleTests
             {
                 Assert.That(actual["result"], Is.Null, response);
                 Assert.That(actual["error"]?["code"]?.Value<int>(), Is.EqualTo(ErrorCodes.ResourceNotFound));
-                Assert.That(actual["error"]?["message"]?.Value<string>(), Is.EqualTo($"block #{unprocessed.Number} not found"));
+                Assert.That(actual["error"]?["message"]?.Value<string>(), Is.EqualTo(method == "debug_traceBlockByHash"
+                    ? $"block {unprocessed.Hash} not found" : $"block #{unprocessed.Number} not found"));
             }
             return;
         }
