@@ -24,14 +24,15 @@ internal class E2StoreReaderTests
         long nextPosition = sut.ReadEntryAndDecode(
             0, static buffer => buffer.ToArray(), EntryTypes.AccumulatorRoot, out byte[] value);
 
-        Assert.That(value, Is.EqualTo(payload));
-        Assert.That(nextPosition, Is.EqualTo(EntryHeaderSize + payload.Length));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(value, Is.EqualTo(payload));
+            Assert.That(nextPosition, Is.EqualTo(EntryHeaderSize + payload.Length));
+        }
     }
 
-    [TestCase(1)]
-    [TestCase(4)]
-    [TestCase(8)]
-    public void ReadEntryAndDecode_WhenPayloadTruncated_ThrowsEraFormatException(int missingBytes)
+    [Test]
+    public void ReadEntryAndDecode_WhenPayloadTruncated_ThrowsEraFormatException([Values(1, 4, 8)] int missingBytes)
     {
         byte[] payload = new byte[32];
         using TempPath tmpFile = WriteEntry(EntryTypes.AccumulatorRoot, payload, missingBytes);
@@ -90,9 +91,8 @@ internal class E2StoreReaderTests
             Throws.TypeOf<EraFormatException>());
     }
 
-    [TestCase(1)]
-    [TestCase(8)]
-    public void ReadSnappyCompressedEntryAndDecode_WhenPayloadTruncated_ThrowsEraFormatException(int missingBytes)
+    [Test]
+    public void ReadSnappyCompressedEntryAndDecode_WhenPayloadTruncated_ThrowsEraFormatException([Values(1, 8)] int missingBytes)
     {
         byte[] payload = new byte[64];
         using TempPath tmpFile = WriteEntry(EntryTypes.CompressedHeader, payload, missingBytes);

@@ -124,9 +124,11 @@ public sealed class E2StoreReader : IDisposable
         if (position < 0 || position > _fileLength - EntryHeaderSize)
             throw new EraFormatException($"Entry header at position {position} extends past the end of the file ({_fileLength} bytes).");
 
-        ushort type = ReadUInt16(position);
-        uint length = ReadUInt32(position + 2);
-        ushort reserved = ReadUInt16(position + 6);
+        Span<byte> header = stackalloc byte[EntryHeaderSize];
+        ReadExactly(position, header);
+        ushort type = BinaryPrimitives.ReadUInt16LittleEndian(header);
+        uint length = BinaryPrimitives.ReadUInt32LittleEndian(header[2..]);
+        ushort reserved = BinaryPrimitives.ReadUInt16LittleEndian(header[6..]);
 
         Entry entry = new(type, length);
         if (expectedType.HasValue && entry.Type != expectedType)
@@ -227,20 +229,6 @@ public sealed class E2StoreReader : IDisposable
             throw new InvalidDataException("Unable to get buffer from memory stream.");
 
         return decoder(segment);
-    }
-
-    private ushort ReadUInt16(long position)
-    {
-        Span<byte> buff = stackalloc byte[2];
-        ReadExactly(position, buff);
-        return BinaryPrimitives.ReadUInt16LittleEndian(buff);
-    }
-
-    private uint ReadUInt32(long position)
-    {
-        Span<byte> buff = stackalloc byte[4];
-        ReadExactly(position, buff);
-        return BinaryPrimitives.ReadUInt32LittleEndian(buff);
     }
 
     private long ReadInt64(long position)
