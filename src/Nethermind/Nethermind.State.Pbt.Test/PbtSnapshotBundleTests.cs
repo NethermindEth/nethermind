@@ -204,10 +204,10 @@ public class PbtSnapshotBundleTests
     }
 
     [Test]
-    public async Task Persisted_only_base_resolves_its_root_through_the_log_root_index()
+    public async Task Persisted_only_base_starts_from_its_indexed_root_or_copies_the_root_group_back([Values] bool indexed)
     {
         // Production retains the newest unpinned generation, which keeps the persisted root record resident.
-        using PbtGroupLog log = new(PooledRefCountingMemoryProvider.Instance, compressedMemoryBudget: 0, retainedGenerations: 1);
+        using PbtGroupLog log = new(PooledRefCountingMemoryProvider.Instance, compressedMemoryBudget: 0, retainedGenerations: indexed ? 1 : 0);
         await using PbtTestContext context = new(nodeGroupLog: log);
         Hash256 rootHash;
         using (PbtWorldStateScope initial = context.BeginScope(null))
@@ -224,7 +224,11 @@ public class PbtSnapshotBundleTests
         BlockHeader parent = Build.A.BlockHeader.WithNumber(1).WithStateRoot(rootHash).TestObject;
         using PbtWorldStateScope next = context.BeginScope(parent, out PbtSnapshotBundle bundle);
         long hits = bundle.NodeGroupLog.RootHits;
-        Assert.That(bundle.RootGroupReference.IsDirect, Is.True);
+        Assert.That(bundle.RootGroupReference.IsDirect, Is.EqualTo(indexed));
+        using PbtSnapshot unchanged = bundle.CollectSnapshot(new StateId(parent), new StateId(2, rootHash), bundle.TreeRoot);
+        Assert.That(log.TryGetRecord(unchanged.RootGroupReference, out PbtGroupRecord root), Is.True, "an unchanged non-empty tree always publishes a resident root group");
+        using (RefCountingMemory persisted = bundle.GetPersistedNodeGroup(default)!)
+            Assert.That(root.Payload.ToArray(), Is.EqualTo(persisted.GetSpan().ToArray()));
         bundle.SetAccount(TestItem.AddressA, new Account(2, 100));
         using PbtPartitionBatches changes = bundle.PrepareLeafChanges();
         using PbtSnapshotStore store = new(bundle);
@@ -233,9 +237,10 @@ public class PbtSnapshotBundleTests
         bundle.CompleteLeafChanges();
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(bundle.NodeGroupLog.RootHits, Is.GreaterThan(hits));
-            Assert.That(counted.DirectReads, Is.GreaterThan(0));
-            Assert.That(counted.SnapshotReads, Is.Zero);
+            Assert.That(bundle.NodeGroupLog.RootHits, indexed ? Is.GreaterThan(hits) : Is.EqualTo(hits));
+            Assert.That(counted.DirectReads, Is.GreaterThan(0), "the fold reads its root group from the log");
+            // A copied root group links to no descendants, which the fold then reads from persistence.
+            Assert.That(counted.SnapshotReads, indexed ? Is.Zero : Is.GreaterThan(0));
         }
     }
 

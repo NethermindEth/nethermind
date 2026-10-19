@@ -360,6 +360,10 @@ public sealed class PbtSnapshotBundle(
     }
 
     /// <summary>Seals the write buffer into a snapshot and hands its initial lease to the caller.</summary>
+    /// <remarks>
+    /// The snapshot's root group reference is None only for the empty tree: a root group the log no longer holds is copied
+    /// back in from the persisted layers.
+    /// </remarks>
     public PbtSnapshot CollectSnapshot(in StateId from, in StateId to, in ValueHash256 treeRoot)
     {
         if (_accountsAwaitingCode.Count != 0 || PendingMutationCount != 0)
@@ -368,8 +372,8 @@ public sealed class PbtSnapshotBundle(
         if (rootReference.IsUnknown)
         {
             if (treeRoot == default) rootReference = PbtGroupReference.None;
-            else if (treeRoot == TreeRoot) rootReference = RootGroupReference;
-            else throw new InvalidOperationException("The tree root changed without a published root group.");
+            else if (treeRoot != TreeRoot) throw new InvalidOperationException("The tree root changed without a published root group.");
+            else rootReference = RootGroupReference.IsDirect ? RootGroupReference : CopyRootGroup();
         }
         if (rootReference.IsDirect) NodeGroupLog.SetRoot(treeRoot, rootReference);
         WriteBuffer.RootGroupReference = rootReference;
@@ -382,6 +386,16 @@ public sealed class PbtSnapshotBundle(
         ReturnReplacedRuns();
         _writeBuffer = resourcePool.GetSnapshotContent(usage);
         return snapshot;
+    }
+
+    /// <exception cref="InvalidDataException">The persisted layers hold no root group for the non-empty tree.</exception>
+    private PbtGroupReference CopyRootGroup()
+    {
+        using RefCountingMemory payload = GetPersistedNodeGroup(default) ?? throw new InvalidDataException("A referenced PBT node group is missing.");
+        ReadOnlySpan<byte> bytes = payload.GetSpan();
+        PbtGroupReference reference = NodeGroupLog.Append(default, bytes, PbtGroupLinks.Unknown);
+        WriteBuffer.AddNodeGroups(1, bytes.Length);
+        return reference;
     }
 
     private void ReturnReplacedRuns()
