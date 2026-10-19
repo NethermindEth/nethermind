@@ -18,7 +18,7 @@ public static partial class EvmInstructions
         => UInt256.MultiplyMod(in a, in b, in m, out result);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static partial void Divide256(in UInt256 a, in UInt256 b, out UInt256 result)
+    internal static partial void Divide256(in UInt256 a, in UInt256 b, out UInt256 result)
         => UInt256.Divide(in a, in b, out result);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

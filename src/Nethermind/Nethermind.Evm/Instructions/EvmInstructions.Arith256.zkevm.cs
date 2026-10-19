@@ -70,7 +70,7 @@ public static unsafe partial class EvmInstructions
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static partial void Divide256(in UInt256 a, in UInt256 b, out UInt256 result)
+    internal static partial void Divide256(in UInt256 a, in UInt256 b, out UInt256 result)
     {
         if (!ZiskFlag.IsActive)
         {

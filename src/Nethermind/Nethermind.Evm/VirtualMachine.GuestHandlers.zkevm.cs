@@ -2214,8 +2214,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         /// <summary>The rest of <see cref="ExecuteDiv"/>, for wider operands whose divisor is not a power of two.</summary>
         /// <remarks>
         /// Entered only from there, with the stack checked and the gas charged. A zero divisor leaves the zero its slot
-        /// holds. In the ZisK guest a dividend below the divisor gives a zero quotient and the rest go to ZisK's 256-bit
-        /// division; elsewhere <see cref="UInt256.Divide(in UInt256, in UInt256, out UInt256)"/> takes them all, which
+        /// holds. In the ZisK guest a dividend below the divisor gives a zero quotient without
+        /// entering its 256-bit division; elsewhere <see cref="UInt256.Divide(in UInt256, in UInt256, out UInt256)"/>
         /// compares the operands itself.
         /// </remarks>
         [SkipLocalsInit]
@@ -2239,20 +2239,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 }
                 else
                 {
-                    if (ZiskFlag.IsActive)
-                    {
-                        UInt256 result, remainder;
-                        // The stack is pinned. The quotient must not alias an operand.
-                        ulong* divisor = (ulong*)Unsafe.AsPointer(ref quotient);
-                        Accelerators.DivRem256(divisor + LimbsPerWord, divisor, (ulong*)&result, (ulong*)&remainder);
-                        *(UInt256*)divisor = result;
-                    }
-                    else
-                    {
-                        ref UInt256 divisor = ref Unsafe.As<ulong, UInt256>(ref quotient);
-                        UInt256.Divide(in Unsafe.Add(ref divisor, 1), in divisor, out UInt256 result);
-                        divisor = result;
-                    }
+                    ref UInt256 divisor = ref Unsafe.As<ulong, UInt256>(ref quotient);
+                    // The quotient must not alias an operand.
+                    EvmInstructions.Divide256(in Unsafe.Add(ref divisor, 1), in divisor, out UInt256 result);
+                    divisor = result;
 
                     // Reloaded rather than held across the call, where each would take a callee-saved register.
                     handlers = state.OpcodeHandlers;
