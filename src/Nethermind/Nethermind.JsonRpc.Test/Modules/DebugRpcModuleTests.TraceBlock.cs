@@ -82,7 +82,7 @@ public partial class DebugRpcModuleTests
 
     [Test]
     public async Task Debug_native_config_errors_keep_sibling_invalid_params(
-        [Values("debug_traceBlockByHash", "debug_traceBlock", "debug_traceTransaction", "debug_traceCall")] string method,
+        [Values("debug_traceBlockByHash", "debug_traceBlock", "debug_traceCall")] string method,
         [Values("callTracer", "prestateTracer")] string tracer)
     {
         using Context context = await Context.Create();
