@@ -2691,7 +2691,7 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
-    public async Task Eth_createAccessList_omits_entries_that_do_not_reduce_gas_under_eip7981()
+    public async Task Eth_createAccessList_keeps_entries_that_do_not_reduce_gas_under_eip7981()
     {
         using Context ctx = await Context.CreateWithAmsterdamEnabled();
         const string contractAddr = "0xc200000000000000000000000000000000000000";
@@ -2700,112 +2700,59 @@ public partial class EthRpcModuleTests
         string stateOverride = $$$"""{"{{{contractAddr}}}":{"code":"0x7300000000000000000000000000000000deadbeef315000"}}""";
         string transaction = $$"""{"from":"{{CreateAccessListSender}}","to":"{{contractAddr}}"}""";
 
-        // optimize=false keeps the entry, proving the account is genuinely accessed.
-        (JToken unoptimized, long unoptimizedGas) = await CallCreateAccessList(ctx, transaction, stateOverride, optimize: false);
-        Address[] unoptimizedAddresses = unoptimized["accessList"]!.Select(static e => new Address(e["address"]!.Value<string>()!)).ToArray();
-        Assert.That(unoptimizedAddresses, Does.Contain(new Address(accessedAccount)));
-
-        // Under EIP-7981 the entry's floor-token surcharge outweighs the cold-access saving, so the
-        // gas-minimal list is empty. The reported gas must be the empty-list gas (18005); keeping the
-        // one optimisable entry would report 18005 + 1280 (a 20-byte address at 4 tokens x 16 gas,
-        // EIP-7981 + EIP-7976), so pinning it guards against reporting the discovered-list gas.
+        // Under EIP-7981 the entry's floor-token surcharge outweighs the cold-access saving. The list still
+        // reports the accessed account (execution-apis#946), and the gas is the run with that list:
+        // 18005 without it, plus 1280 for a 20-byte address at 4 tokens x 16 gas (EIP-7981 + EIP-7976).
         (JToken optimized, long optimizedGas) = await CallCreateAccessList(ctx, transaction, stateOverride, optimize: true);
+        Address[] addresses = optimized["accessList"]!.Select(static e => new Address(e["address"]!.Value<string>()!)).ToArray();
         using (Assert.EnterMultipleScope())
         {
             Assert.That(optimized["error"], Is.Null);
-            Assert.That(optimized["accessList"]!.ToArray(), Is.Empty);
-            Assert.That(optimizedGas, Is.EqualTo(18005));
-            Assert.That(optimizedGas, Is.LessThan(unoptimizedGas));
+            Assert.That(addresses, Is.EqualTo(new[] { new Address(accessedAccount) }));
+            Assert.That(optimizedGas, Is.EqualTo(18005 + 1280));
         }
     }
 
     [Test]
-    public async Task Eth_createAccessList_omits_entries_that_only_raise_the_eip8131_content_floor()
+    public async Task Eth_createAccessList_keeps_entries_that_only_raise_the_eip8131_content_floor()
     {
         using Context ctx = await Context.Create(new TestSpecProvider(
             new OverridableReleaseSpec(Bogota.Instance) { IsEip7981Enabled = false, IsEip8131Enabled = true }));
         const string contractAddr = "0xc200000000000000000000000000000000000000";
+        const string accessedAccount = "0x00000000000000000000000000000000deadbeef";
         const int calldataBytes = 1000;
         // PUSH20 0xdeadbeef; BALANCE; POP; STOP: one cold account access, under a calldata-bound content floor.
         string stateOverride = $$$"""{"{{{contractAddr}}}":{"code":"0x7300000000000000000000000000000000deadbeef315000"}}""";
         string transaction = $$"""{"from":"{{CreateAccessListSender}}","to":"{{contractAddr}}","data":"0x{{new string('0', 2 * calldataBytes)}}"}""";
 
-        // The entry saves nothing at the standard rate but adds 20 bytes to the binding floor, so the empty list wins.
+        // The entry adds 20 bytes to the binding floor, so the run without it is cheaper. The list still reports it,
+        // and the gas is the floor with those 20 bytes.
         (JToken optimized, long optimizedGas) = await CallCreateAccessList(ctx, transaction, stateOverride, optimize: true);
+        Address[] addresses = optimized["accessList"]!.Select(static e => new Address(e["address"]!.Value<string>()!)).ToArray();
         using (Assert.EnterMultipleScope())
         {
             Assert.That(optimized["error"], Is.Null);
-            Assert.That(optimized["accessList"]!.ToArray(), Is.Empty);
-            Assert.That(optimizedGas, Is.EqualTo((long)(GasCostOf.TransactionEip2780 + Eip8038Constants.ColdAccountAccess + calldataBytes * Eip8131Constants.FloorGasPerByte)));
+            Assert.That(addresses, Is.EqualTo(new[] { new Address(accessedAccount) }));
+            Assert.That(optimizedGas, Is.EqualTo((long)(GasCostOf.TransactionEip2780 + Eip8038Constants.ColdAccountAccess + (calldataBytes + Address.Size) * Eip8131Constants.FloorGasPerByte)));
         }
     }
 
     [Test]
-    public async Task Eth_createAccessList_optimize_drops_caller_supplied_entries_that_do_not_reduce_gas()
-    {
-        using Context ctx = await Context.CreateWithAmsterdamEnabled();
-        const string contractAddr = "0xc200000000000000000000000000000000000000";
-        // Caller pre-declares the account it will touch; optimize must still return the gas-minimal
-        // empty list rather than echoing the supplied entry back (AccessList.Empty, not null).
-        string stateOverride = $$$"""{"{{{contractAddr}}}":{"code":"0x7300000000000000000000000000000000deadbeef315000"}}""";
-        string transaction = $$"""{"from":"{{CreateAccessListSender}}","to":"{{contractAddr}}","accessList":[{"address":"0x00000000000000000000000000000000deadbeef","storageKeys":[]}]}""";
-
-        (JToken optimized, _) = await CallCreateAccessList(ctx, transaction, stateOverride, optimize: true);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(optimized["error"], Is.Null);
-            Assert.That(optimized["accessList"]!.ToArray(), Is.Empty);
-        }
-    }
-
-    [Test]
-    public async Task Eth_createAccessList_keeps_discovered_list_when_empty_rerun_changes_execution()
+    public async Task Eth_createAccessList_optimize_keeps_caller_supplied_entries_that_do_not_reduce_gas()
     {
         using Context ctx = await Context.CreateWithAmsterdamEnabled();
         const string contractAddr = "0xc200000000000000000000000000000000000000";
         const string accessedAccount = "0x00000000000000000000000000000000deadbeef";
-        const long gas = 200_000;
+        string stateOverride = $$$"""{"{{{contractAddr}}}":{"code":"0x7300000000000000000000000000000000deadbeef315000"}}""";
+        string transaction = $$"""{"from":"{{CreateAccessListSender}}","to":"{{contractAddr}}","accessList":[{"address":"{{accessedAccount}}","storageKeys":[]}]}""";
 
-        // Probe the gasleft the contract observes right after touching the account, with and without
-        // the list pre-warming it. Removing the list shifts the EIP-7981 surcharge out of intrinsic,
-        // so the empty rerun reaches the check with more gasleft. PUSH20 acct; BALANCE; POP; GAS;
-        // PUSH1 0; MSTORE; PUSH1 0x20; PUSH1 0; RETURN.
-        const string probeCode = "0x7300000000000000000000000000000000deadbeef31505a60005260206000f3";
-        long gasleftEmpty = await ProbeGasleft(ctx, contractAddr, probeCode, gas, withList: false);
-        long gasleftWithList = await ProbeGasleft(ctx, contractAddr, probeCode, gas, withList: true);
-        Assert.That(gasleftEmpty, Is.GreaterThan(gasleftWithList), "precondition: the empty rerun must observe more gasleft");
-
-        // Revert iff gasleft > midpoint: the empty rerun (more gasleft) reverts while the
-        // discovered-list run (less gasleft) succeeds. The gas-only winner would be the reverting
-        // empty run, so this exercises the status-parity guard — the discovered list must be kept.
-        // PUSH20 acct; BALANCE; POP; GAS; PUSH3 threshold; LT; PUSH1 0x21; JUMPI; STOP;
-        // JUMPDEST; PUSH1 0; PUSH1 0; REVERT.
-        long threshold = (gasleftEmpty + gasleftWithList) / 2;
-        Assert.That(threshold, Is.LessThanOrEqualTo(0xffffff), "threshold must fit the PUSH3 immediate");
-        string revertingCode = "0x7300000000000000000000000000000000deadbeef31505a62" + threshold.ToString("x6") + "10602157005b60006000fd";
-        string stateOverride = $$$"""{"{{{contractAddr}}}":{"code":"{{{revertingCode}}}"}}""";
-        string transaction = $$"""{"from":"{{CreateAccessListSender}}","to":"{{contractAddr}}","gas":"0x30d40"}""";
-
-        (JToken result, _) = await CallCreateAccessList(ctx, transaction, stateOverride, optimize: true);
-        Address[] addresses = result["accessList"]!.Select(static e => new Address(e["address"]!.Value<string>()!)).ToArray();
+        (JToken optimized, _) = await CallCreateAccessList(ctx, transaction, stateOverride, optimize: true);
+        Address[] addresses = optimized["accessList"]!.Select(static e => new Address(e["address"]!.Value<string>()!)).ToArray();
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(result["error"], Is.Null, "discovered list run succeeds, so no error is surfaced");
-            Assert.That(addresses, Does.Contain(new Address(accessedAccount)), "the discovered entry must be kept, not dropped for the cheaper-but-reverting empty run");
+            Assert.That(optimized["error"], Is.Null);
+            Assert.That(addresses, Is.EqualTo(new[] { new Address(accessedAccount) }));
         }
-    }
-
-    private static async Task<long> ProbeGasleft(Context ctx, string contractAddr, string code, long gas, bool withList)
-    {
-        string listFragment = withList
-            ? ",\"accessList\":[{\"address\":\"0x00000000000000000000000000000000deadbeef\",\"storageKeys\":[]}],\"type\":\"0x1\""
-            : "";
-        object tx = JsonSerializer.Deserialize<object>(
-            $"{{\"from\":\"{CreateAccessListSender}\",\"to\":\"{contractAddr}\",\"gas\":\"0x{gas:x}\"{listFragment}}}")!;
-        object stateOverride = JsonSerializer.Deserialize<object>($"{{\"{contractAddr}\":{{\"code\":\"{code}\"}}}}")!;
-        string serialized = await ctx.Test.TestEthRpc("eth_call", tx, "latest", stateOverride);
-        string ret = JToken.Parse(serialized)["result"]!.Value<string>()![2..];
-        return Convert.ToInt64(ret[^16..], 16);
     }
 
     [Test]
