@@ -31,7 +31,11 @@ def batch(url, calls):
     body = json.dumps([{"jsonrpc": "2.0", "id": i, "method": m, "params": p} for i, (m, p) in enumerate(calls)]).encode()
     request = urllib.request.Request(url, body, {"Content-Type": "application/json"})
     with urllib.request.urlopen(request, timeout=60) as response:
-        replies = {reply["id"]: reply for reply in json.load(response)}
+        reply = json.load(response)
+    if isinstance(reply, dict):
+        # A node that rejects the batch as a whole answers with a single error.
+        raise RuntimeError(f"batch of {[m for m, _ in calls]}: {reply.get('error', reply)}")
+    replies = {r["id"]: r for r in reply}
     results = []
     for i, (method, params) in enumerate(calls):
         reply = replies.get(i, {"error": "no reply"})

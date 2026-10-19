@@ -76,7 +76,8 @@ namespace Nethermind.Evm.Benchmark;
 ///   <c>NETHERMIND_BALCATCHUP_CHAINSPEC</c>.</item>
 ///   <item><c>NETHERMIND_BALCATCHUP_BLOCKS</c>: how many blocks to catch up (default 64, or the whole fixture).</item>
 ///   <item><c>NETHERMIND_BALCATCHUP_COLD=1</c>: start every iteration from a fresh copy of the pre-state with the
-///   databases reopened, so nothing is cached in process, as after a restart. On disk only.</item>
+///   databases reopened, so nothing is cached in process, as after a restart. On disk only, and needed there for
+///   segments longer than <c>FlatDb.MinReorgDepth</c>, past which persistence moves the database off the pre-state.</item>
 ///   <item><c>NETHERMIND_BALCATCHUP_DROP_CACHES=1</c>: on Linux, as root, also write back and empty the page cache
 ///   before every iteration.</item>
 /// </list>
@@ -98,6 +99,7 @@ public class BalCatchUpBenchmark
     private const int SlotsPerWrite = 10;
     private const int HashesPerCompute = 1_500;
     private const string FixtureShape = "Fixture";
+    private const int WarmupRuns = 3;
 
     private static readonly string? DbRoot = Environment.GetEnvironmentVariable("NETHERMIND_BALCATCHUP_DB");
     private static readonly string? FixtureDir = Environment.GetEnvironmentVariable("NETHERMIND_BALCATCHUP_FIXTURE");
@@ -131,8 +133,8 @@ public class BalCatchUpBenchmark
     [Params(true, false)]
     public bool BalCatchUp { get; set; }
 
-    /// <summary>Whether state is held in the flat database, the client default, or the trie database. A fixture's
-    /// datadir decides for itself and runs as flat.</summary>
+    /// <summary>Whether state is held in the flat database, the client default, or the trie database. Fixtures need a
+    /// flat datadir and always run as flat.</summary>
     [ParamsSource(nameof(Backends))]
     public bool FlatDb { get; set; }
 
@@ -198,6 +200,12 @@ public class BalCatchUpBenchmark
         if (IsFixture) LoadFixture();
         InstallSegment();
 
+        // Warm iterations replay on one database, which only works while flat finality-driven persistence leaves its
+        // base at the parent; past the reorg window it moves the base on, so longer segments start each run afresh.
+        int warmLimit = (int)_container.Resolve<IFlatDbConfig>().MinReorgDepth;
+        if (OnDisk && !Cold && _segment.Length > warmLimit)
+            throw new InvalidOperationException($"A warm run on disk replays at most {warmLimit} blocks; set NETHERMIND_BALCATCHUP_COLD=1 or NETHERMIND_BALCATCHUP_BLOCKS.");
+
         _beacon.Finalized = _segment[^1].Hash;
         _syncConfig.ReconstructFinalizedStateFromBlockAccessLists = BalCatchUp;
 
@@ -249,8 +257,8 @@ public class BalCatchUpBenchmark
     [GlobalCleanup]
     public void GlobalCleanup()
     {
-        // The first call is BenchmarkDotNet's jitting run; the median of the rest matches its Median column.
-        (long Total, long Process)[] samples = [.. _samples.Skip(_samples.Count > 1 ? 1 : 0).OrderBy(static s => s.Total)];
+        // The first three calls are BenchmarkDotNet's jitting run and the job's two warm-ups.
+        (long Total, long Process)[] samples = [.. _samples.Skip(_samples.Count > WarmupRuns ? WarmupRuns : 0).OrderBy(static s => s.Total)];
         if (samples.Length > 0)
         {
             (long total, long process) = samples[samples.Length / 2];
