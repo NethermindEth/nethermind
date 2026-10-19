@@ -88,6 +88,7 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
         ISyncConfig syncConfig,
         ISyncReport syncReport,
         IHistoryPruner historyPruner,
+        BlockAccessListServingWindow servingWindow,
         [KeyFilter(DbNames.Metadata)] IDb metadataDb,
         ILogManager logManager)
         : base(metadataDb, specProvider, logManager?.GetClassLogger<BlockAccessListsSyncFeed>() ?? default)
@@ -100,7 +101,7 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
         _blockTree = blockTree;
         _historyPruner = historyPruner;
         _blockAccessListDownloadStrategy = new(blockTree, syncReport, historyPruner);
-        _servingWindow = new(blockTree, historyPruner, specProvider);
+        _servingWindow = servingWindow;
         _blockAccessListsEverEnabled = specProvider.GetFinalSpec().BlockLevelAccessListsEnabled;
 
         if (!_syncConfig.FastSync)
