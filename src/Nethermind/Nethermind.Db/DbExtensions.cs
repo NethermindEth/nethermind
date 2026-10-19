@@ -17,7 +17,7 @@ namespace Nethermind.Db
         public static void GetMany<T, TDecoder>(this IDb db, ReadOnlySpan<byte> keys, int keyLength,
             Span<T> values, TDecoder decoder) where TDecoder : IValueDecoder<T>
         {
-            if (decoder is null) throw new ArgumentNullException(nameof(decoder));
+            ArgumentNullException.ThrowIfNull(decoder);
             ArgumentOutOfRangeException.ThrowIfNegativeOrZero(keyLength);
             if ((long)keys.Length != (long)values.Length * keyLength)
                 throw new ArgumentException("The key buffer must contain one fixed-length key per output.", nameof(keys));

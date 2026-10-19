@@ -16,7 +16,7 @@ public partial class DbOnTheRocks
         TDecoder decoder, IColumnFamilyHandle? family) where TDecoder : IValueDecoder<T>
     {
         ThrowIfDisposing();
-        if (decoder is null) throw new ArgumentNullException(nameof(decoder));
+        ArgumentNullException.ThrowIfNull(decoder);
         UpdateReadMetrics(values.Length);
         try
         {
