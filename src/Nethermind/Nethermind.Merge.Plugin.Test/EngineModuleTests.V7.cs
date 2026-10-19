@@ -48,6 +48,24 @@ namespace Nethermind.Merge.Plugin.Test;
 public partial class EngineModuleTests
 {
     [Test]
+    public void Inclusion_list_bal_view_skips_state_for_full_or_included_blocks([Values] bool fullBlock)
+    {
+        Transaction entry = BuildInclusionListTransfer();
+        Block block = Build.A.Block.WithGasLimit(30_000_000).WithGasUsed(fullBlock ? 30_000_000UL : 0)
+            .WithTransactions(fullBlock ? [] : [entry]).WithInclusionListTransactions([entry]).TestObject;
+        IReadOnlyStateProvider committed = Substitute.For<IReadOnlyStateProvider>();
+        IReadOnlyStateProvider parent = Substitute.For<IReadOnlyStateProvider>();
+        InclusionListCommittedState state = new(committed, (uint)block.Transactions.Length + 1,
+            () => throw new AssertionException("The validator must not decode an unused BAL."), () => parent);
+
+        bool satisfied = InclusionListValidator.IsSatisfied(block, state, Bogota.Instance, Substitute.For<ITxValidator>());
+
+        Assert.That(satisfied, Is.True);
+        committed.DidNotReceive().TryGetAccount(Arg.Any<Address>(), out Arg.Any<AccountStruct>());
+        parent.DidNotReceive().TryGetAccount(Arg.Any<Address>(), out Arg.Any<AccountStruct>());
+    }
+
+    [Test]
     public void Inclusion_list_committed_state_uses_latest_bal_values([Values(0U, 1U)] uint priorIndex)
     {
         byte[] delegation = [.. Eip7702Constants.DelegationHeader, .. TestItem.AddressA.Bytes];
@@ -55,7 +73,6 @@ public partial class EngineModuleTests
         IReadOnlyStateProvider committed = Substitute.For<IReadOnlyStateProvider>();
         committed.TryGetAccount(TestItem.AddressB, out Arg.Any<AccountStruct>()).Returns(call => { call[1] = finalAccount; return true; });
         ValueHash256 oldCodeHash = ValueKeccak.Compute(delegation);
-        committed.GetCode(in oldCodeHash).Returns(delegation);
         ReadOnlyAccountChanges changes = new(TestItem.AddressB, [], [],
             [new(priorIndex, 1.Ether), new(2, 2.Ether)], [new(priorIndex, 7), new(2, 8)],
             [new(priorIndex, delegation), new(2, [0x00])]);
@@ -69,6 +86,103 @@ public partial class EngineModuleTests
             Assert.That(account.Nonce, Is.EqualTo(7));
             Assert.That(account.CodeHash, Is.EqualTo(oldCodeHash));
             Assert.That(((IReadOnlyStateProvider)state).IsDelegatedCode(TestItem.AddressB), Is.True);
+            Assert.That(state.Available, Is.True);
+        }
+    }
+
+    [Test]
+    public void Inclusion_list_committed_state_restores_storage([Values] bool priorChange, [Values] bool finalizationChanged)
+    {
+        StorageCell cell = new(TestItem.AddressB, UInt256.One);
+        IReadOnlyStateProvider committed = Substitute.For<IReadOnlyStateProvider>();
+        committed.When(state => state.Get(in cell, out Arg.Any<UInt256>())).Do(call => call[1] = (UInt256)5);
+        IReadOnlyStateProvider parent = Substitute.For<IReadOnlyStateProvider>();
+        parent.When(state => state.Get(in cell, out Arg.Any<UInt256>())).Do(call => call[1] = (UInt256)3);
+        StorageChange[] changes = finalizationChanged
+            ? priorChange ? [new(1, 4), new(2, 5)] : [new(2, 5)]
+            : [new(1, 5)];
+        ReadOnlyAccountChanges account = new(TestItem.AddressB, [new(cell.Index, changes)], [], [], [], []);
+        InclusionListCommittedState state = new(committed, 2, () => new([account], 1), () => parent);
+
+        state.Get(in cell, out UInt256 value);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(value, Is.EqualTo((UInt256)(finalizationChanged ? priorChange ? 4 : 3 : 5)));
+            Assert.That(state.Available, Is.True);
+        }
+    }
+
+    [Test]
+    public void Inclusion_list_committed_state_reads_addresses_outside_the_bal()
+    {
+        AccountStruct expected = new(0, 1.Ether);
+        IReadOnlyStateProvider committed = Substitute.For<IReadOnlyStateProvider>();
+        committed.TryGetAccount(TestItem.AddressB, out Arg.Any<AccountStruct>()).Returns(call => { call[1] = expected; return true; });
+        InclusionListCommittedState state = new(committed, 2, () => new(), () => null);
+
+        bool found = state.TryGetAccount(TestItem.AddressB, out AccountStruct account);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found, Is.True);
+            Assert.That(account, Is.EqualTo(expected));
+            Assert.That(state.Available, Is.True);
+        }
+    }
+
+    [Test]
+    public void Inclusion_list_committed_state_preserves_empty_account_existence([Values] bool existed, [Values] bool finalizationCreatedBalance)
+    {
+        IReadOnlyStateProvider committed = Substitute.For<IReadOnlyStateProvider>();
+        AccountStruct finalAccount = finalizationCreatedBalance ? new(1.Ether) : AccountStruct.TotallyEmpty;
+        committed.TryGetAccount(TestItem.AddressB, out Arg.Any<AccountStruct>())
+            .Returns(call => { call[1] = finalAccount; return finalizationCreatedBalance || existed; });
+        IReadOnlyStateProvider parent = Substitute.For<IReadOnlyStateProvider>();
+        parent.TryGetAccount(TestItem.AddressB, out Arg.Any<AccountStruct>())
+            .Returns(call => { call[1] = AccountStruct.TotallyEmpty; return existed; });
+        ReadOnlyAccountChanges changes = new(TestItem.AddressB, [], [], finalizationCreatedBalance ? [new(2, 1.Ether)] : [], [], []);
+        InclusionListCommittedState state = new(committed, 2, () => new([changes], 1), () => parent);
+
+        bool found = state.TryGetAccount(TestItem.AddressB, out AccountStruct account);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found, Is.EqualTo(existed));
+            Assert.That(state.AccountExists(TestItem.AddressB), Is.EqualTo(existed), "cached existence");
+            Assert.That(account.IsEmpty, Is.True);
+            Assert.That(state.Available, Is.True);
+        }
+    }
+
+    [Test]
+    public void Inclusion_list_committed_state_serves_empty_code_without_reading_state()
+    {
+        InclusionListCommittedState state = new(Substitute.For<IReadOnlyStateProvider>(), 2,
+            () => throw new AssertionException("Empty code needs no BAL."), () => null);
+
+        ReadOnlyMemory<byte> code = state.GetCode(Keccak.OfAnEmptyString.ValueHash256);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(code.IsEmpty, Is.True);
+            Assert.That(state.Available, Is.True);
+        }
+    }
+
+    [Test]
+    public void Inclusion_list_committed_state_keeps_accounts_deleted_before_finalization_absent()
+    {
+        IReadOnlyStateProvider committed = Substitute.For<IReadOnlyStateProvider>();
+        AccountStruct finalAccount = new(1.Ether);
+        committed.TryGetAccount(TestItem.AddressB, out Arg.Any<AccountStruct>()).Returns(call => { call[1] = finalAccount; return true; });
+        ReadOnlyAccountChanges changes = new(TestItem.AddressB, [], [], [new(1, 0), new(2, 1.Ether)], [], []);
+        InclusionListCommittedState state = new(committed, 2, () => new([changes], 1),
+            () => throw new AssertionException("The prefix already records the account deletion."));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(state.AccountExists(TestItem.AddressB), Is.False);
             Assert.That(state.Available, Is.True);
         }
     }

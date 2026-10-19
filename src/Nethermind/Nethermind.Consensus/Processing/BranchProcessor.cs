@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Tracing;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
@@ -16,6 +17,8 @@ using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp.Eip7928;
+using Nethermind.State;
 
 namespace Nethermind.Consensus.Processing;
 
@@ -26,10 +29,13 @@ public class BranchProcessor(
     IBlockhashProvider blockhashProvider,
     IInclusionListSatisfactionChecker inclusionListSatisfactionChecker,
     ILogManager logManager,
+    IWorldStateManager worldStateManager,
     IBlockCachePreWarmer? preWarmer = null)
     : IBranchProcessor
 {
     private readonly ILogger _logger = logManager.GetClassLogger<BranchProcessor>();
+
+    private readonly Lazy<IWorldStateScopeProvider> _inclusionListParentState = new(worldStateManager.CreateResettableWorldState);
 
     private const int MaxUncommittedBlocks = 64;
 
@@ -50,6 +56,10 @@ public class BranchProcessor(
     }
 
     private IDisposable BeginTargetScope(Block targetBlock) => stateProvider.BeginScopeAtTarget(targetBlock.Header);
+
+    private IWorldStateScopeProvider.IScope OpenInclusionListParentScope(BlockHeader? parent)
+        => _inclusionListParentState.Value.TryBeginScope(parent, new LocalMetrics(), out IWorldStateScopeProvider.IScope? scope)
+            ? scope : throw new StateNotRetainedException("Parent state is unavailable for inclusion-list validation");
 
     public Block[] Process(BlockHeader? baseBlock, IReadOnlyList<Block> suggestedBlocks, ProcessingOptions options, IBlockTracer blockTracer, CancellationToken token = default)
     {
@@ -90,18 +100,19 @@ public class BranchProcessor(
         Exception? processingException = null;
         bool verdictGiven = false;
 
-        InclusionListState? inclusionListState = null;
+        bool useBalForInclusionList = false;
+        bool? boundaryInclusionListSatisfied = null;
         // Production, tracing and simulation do not report inclusion-list compliance.
         bool checkInclusionList = !options.ContainsFlag(ProcessingOptions.NoValidation);
 
         // Subscribe to cancel background work (prewarmer, prefetch) once transactions finish,
         // freeing the thread pool for parallel post-tx work (blooms, receipts root, state root).
         // The handler captures backgroundCancellation by reference, so it always cancels the current CTS.
-        void OnTransactionsExecuted()
+        void OnTransactionsExecuted(Block processedBlock)
         {
             backgroundCancellation?.Cancel();
-            if (checkInclusionList && suggestedBlock.InclusionListTransactions is { Length: > 0 } inclusionList)
-                inclusionListState = new InclusionListState(inclusionList, stateProvider);
+            if (checkInclusionList && !useBalForInclusionList && suggestedBlock.InclusionListTransactions is { Length: > 0 })
+                boundaryInclusionListSatisfied = inclusionListSatisfactionChecker.IsSatisfied(processedBlock, suggestedBlock, stateProvider);
         }
         blockProcessor.TransactionsExecuted += OnTransactionsExecuted;
 
@@ -127,7 +138,7 @@ public class BranchProcessor(
             for (int i = 0; i < blocksCount; i++)
             {
                 suggestedBlock = suggestedBlocks[i];
-                inclusionListState = null;
+                boundaryInclusionListSatisfied = null;
                 using ParallelUnbalancedWork.WorkerScope workers = workerGroup.Enter();
                 if (i > 0)
                 {
@@ -149,9 +160,11 @@ public class BranchProcessor(
                     BlockProcessing?.Invoke(this, new BlockEventArgs(suggestedBlock));
                 }
 
-                // Parallel BAL application includes post-execution changes before the transaction boundary.
-                bool captureInclusionList = checkInclusionList && suggestedBlock.InclusionListTransactions is { Length: > 0 };
-                ProcessingOptions blockOptions = blockTracer == NullBlockTracer.Instance && !captureInclusionList
+                useBalForInclusionList = checkInclusionList && suggestedBlock.InclusionListTransactions is { Length: > 0 }
+                    && spec.BlockLevelAccessListsEnabled && !suggestedBlock.IsGenesis;
+                using IWorldStateScopeProvider.IScope? inclusionListParentScope = useBalForInclusionList
+                    ? OpenInclusionListParentScope(preBlockBaseBlock) : null;
+                ProcessingOptions blockOptions = blockTracer == NullBlockTracer.Instance
                     ? options
                     : options | ProcessingOptions.ForceSequentialBlockAccessList;
                 Block processedBlock;
@@ -185,11 +198,22 @@ public class BranchProcessor(
                 if (processedBlock.GasUsed == 0) processedBlock.Header.GasUsedPerDimension ??= (0, 0);
                 suggestedBlock.Header.GasUsedPerDimension = processedBlock.Header.GasUsedPerDimension;
 
-                // A signal, not a rejection: the block is still committed. Use the transaction-boundary
-                // snapshot so post-execution credits cannot make an omitted entry appendable.
-                bool inclusionListSatisfied = !checkInclusionList || suggestedBlock.InclusionListTransactions is not { Length: > 0 }
-                    || inclusionListSatisfactionChecker.IsSatisfied(processedBlock, suggestedBlock,
-                        inclusionListState ?? throw new InvalidOperationException("Inclusion-list state was not captured after transactions"));
+                // Finalized BAL values include post-execution credits; reverse them only for accounts the checker reads.
+                bool inclusionListSatisfied = true;
+                if (useBalForInclusionList)
+                {
+                    ScopeReadOnlyStateProvider parentState = new(inclusionListParentScope!);
+                    InclusionListCommittedState boundaryState = new(stateProvider, (uint)processedBlock.Transactions.Length + 1,
+                        () => processedBlock.BlockAccessList ?? (processedBlock.EncodedBlockAccessList is { } encoded
+                            ? BlockAccessListDecoder.Instance.Decode(encoded) : null), () => parentState);
+                    inclusionListSatisfied = inclusionListSatisfactionChecker.IsSatisfied(processedBlock, suggestedBlock, boundaryState);
+                    if (!boundaryState.Available) throw new InvalidOperationException("Inclusion-list transaction-boundary state is unavailable");
+                }
+                else if (checkInclusionList && suggestedBlock.InclusionListTransactions is { Length: > 0 })
+                {
+                    inclusionListSatisfied = boundaryInclusionListSatisfied
+                        ?? throw new InvalidOperationException("Inclusion list was not checked after transactions");
+                }
                 processedBlock.IsInclusionListSatisfied = inclusionListSatisfied;
                 suggestedBlock.IsInclusionListSatisfied = inclusionListSatisfied;
 
