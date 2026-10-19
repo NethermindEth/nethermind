@@ -492,6 +492,9 @@ public class DebugRpcModule(
                     debugBridge.GetBlockTrace(resolvedBlock, token, effective, writer, pipeWriter)));
         }
 
+        if (blockNumber.Type == BlockParameterType.BlockNumber && blockFinder.FindBlock(header.Hash!, header.Number) is null)
+            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail($"block #{blockNumber.BlockNumber} not found", ErrorCodes.ResourceNotFound);
+
         using RentedTimeout timeout = jsonRpcConfig.RentTimeout();
         CancellationToken cancellationToken = timeout.Token;
 
@@ -505,12 +508,6 @@ public class DebugRpcModule(
             if (_logger.IsTrace) _logger.Trace($"{nameof(debug_traceBlockByNumber)} request {blockNumber}, result: {blockTrace}");
 
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Success(new GethLikeTxTraceStreamingResult(blockTrace));
-        }
-        // TraceBlockImpl signals a missing body with ThrowIfNull(block). Keep the selector overload
-        // rather than pre-resolving a Block, which would disable indexed replay.
-        catch (ArgumentNullException exception) when (exception.ParamName == "block" && blockNumber.Type == BlockParameterType.BlockNumber)
-        {
-            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail($"block #{blockNumber.BlockNumber} not found", ErrorCodes.ResourceNotFound);
         }
         catch (ArgumentNullException)
         {
