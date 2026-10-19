@@ -373,10 +373,9 @@ public class DebugModuleTests
         _blockFinder.FindHeader(parent.Hash!, BlockTreeLookupOptions.None, parent.Number).Returns(parent);
         _blockchainBridge.HasStateForBlock(parent).Returns(true);
         _blockchainBridge.HasStateForBlock(header).Returns(poststateAvailable);
-        if (isBadBlock) _debugBridge.GetBadBlocks().Returns([new Block(header)]);
-
         if (isBadBlock)
         {
+            _debugBridge.GetBadBlocks().Returns([new Block(header)]);
             _debugBridge
                 .TraceBadBlockToFile(Arg.Is(blockHash), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>())
                 .Returns(static c => GetFileNames(c.ArgAt<Hash256>(0)));
