@@ -4,15 +4,18 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
@@ -163,21 +166,50 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
 
         [Test]
-        public void GetFeeHistory_DoesNotLoadTheParentOfTheOldestBlock()
+        public async Task GetFeeHistory_DoesNotLoadTheParentOfTheOldestBlock()
         {
-            IBlockTree blockTree = Substitute.For<IBlockTree>();
-            BlockHeader blockHeader = Build.A.BlockHeader.WithNumber(5).WithParentHash(TestItem.KeccakA).WithGasLimit(100).WithGasUsed(50).TestObject;
-            Block headBlock = Build.A.Block.WithHeader(blockHeader).TestObject;
-            BlockParameter newestBlock = new(5UL);
-            blockTree.FindBlock(newestBlock).Returns(headBlock);
-            FeeHistoryOracle feeHistoryOracle = GetSubstitutedFeeHistoryOracle(blockTree: blockTree, specProvider: GetSpecProviderWithEip1559EnabledAs(true));
+            await using IContainer container = new ContainerBuilder()
+                .AddModule(new TestNethermindModule())
+                .AddDecorator<IBlockTree, BodyLoadRecordingBlockTree>()
+                .Build();
+            BodyLoadRecordingBlockTree blockTree = (BodyLoadRecordingBlockTree)container.Resolve<IBlockTree>();
+            Block genesis = Build.A.Block.Genesis.TestObject;
+            Block parent = Build.A.Block.WithParent(genesis).TestObject;
+            Block oldest = Build.A.Block.WithParent(parent).WithGasLimit(100).WithGasUsed(50).TestObject;
+            foreach (Block block in (Block[])[genesis, parent, oldest])
+            {
+                blockTree.SuggestBlock(block);
+                blockTree.TryUpdateMainChain(block.Header, wereProcessed: true, forceUpdateHeadBlock: true, block);
+            }
 
-            using ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(1, newestBlock, []);
+            IFeeHistoryOracle feeHistoryOracle = container.Resolve<IFeeHistoryOracle>();
+            blockTree.LoadedBodies.Clear();
+
+            using ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(1, new BlockParameter(oldest.Number), []);
 
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(resultWrapper.Data.OldestBlock, Is.EqualTo(5UL));
-                blockTree.DidNotReceive().FindBlock(TestItem.KeccakA, Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>());
+                Assert.That(resultWrapper.Data.OldestBlock, Is.EqualTo(oldest.Number));
+                Assert.That(blockTree.LoadedBodies, Does.Contain(oldest.Hash), "the requested block is loaded");
+                Assert.That(blockTree.LoadedBodies, Does.Not.Contain(parent.Hash), "the parent of the oldest block is not loaded");
+            }
+        }
+
+        private sealed class BodyLoadRecordingBlockTree(IBlockTree inner) : BlockTreeTestDouble(inner)
+        {
+            public List<Hash256> LoadedBodies { get; } = [];
+
+            public override Block? FindBlock(Hash256 blockHash, BlockTreeLookupOptions options, ulong? blockNumber = null)
+            {
+                LoadedBodies.Add(blockHash);
+                return base.FindBlock(blockHash, options, blockNumber);
+            }
+
+            public override Block? FindBlock(ulong blockNumber, BlockTreeLookupOptions options)
+            {
+                Block? block = base.FindBlock(blockNumber, options);
+                if (block is not null) LoadedBodies.Add(block.Hash!);
+                return block;
             }
         }
 
