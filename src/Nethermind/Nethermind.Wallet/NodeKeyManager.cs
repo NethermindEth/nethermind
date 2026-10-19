@@ -76,7 +76,10 @@ namespace Nethermind.Wallet
                     PrivateKey nodeKey = _fileSystem.File.Exists(oldFile) ? new PrivateKey(_fileSystem.File.ReadAllBytes(oldFile)) : privateKeyGenerator.Generate();
                     string keyStoreDirectory = _config.KeyStoreDirectory.GetApplicationResourcePath();
                     _fileSystem.Directory.CreateDirectory(keyStoreDirectory);
-                    _fileSystem.File.WriteAllBytes(newFile, nodeKey.KeyBytes);
+                    using (FileSystemStream stream = _fileSystem.FileStream.New(newFile, OwnerOnlyFile.CreateWriteOptions()))
+                    {
+                        stream.Write(nodeKey.KeyBytes);
+                    }
                     SecureString nodeKeyPassword = CreateNodeKeyPassword(8);
                     _keyStore.StoreKey(nodeKey, nodeKeyPassword);
                     if (_logger.IsInfo) _logger.Info("Store this password for unlocking the node key for JSON RPC - this is not secure - this log message will be in your log files. Use only in DEV contexts.");

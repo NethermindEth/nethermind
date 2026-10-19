@@ -317,6 +317,30 @@ public partial class DebugRpcModuleTests
         }
     }
 
+    [Test]
+    public async Task Debug_traceCall_txIndex_checks_parent_state_before_bounds()
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
+        Block parent = chain.BlockTree.Head!;
+        Block empty = await chain.AddBlock();
+        parent.Header.StateRoot = TestItem.KeccakA;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chain.Bridge.HasStateForBlock(parent.Header), Is.False);
+            Assert.That(chain.Bridge.HasStateForBlock(empty.Header), Is.True);
+        }
+
+        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceCall",
+            new { to = TestItem.AddressD.ToString(), gas = "0x186a0" }, empty.Hash!.ToString(), new { txIndex = "0x1" });
+        JToken json = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.ResourceUnavailable), response);
+            Assert.That((string?)json["error"]?["message"],
+                Is.EqualTo($"No state available for block {parent.Header.ToString(BlockHeader.Format.FullHashAndNumber)}"), response);
+        }
+    }
+
     [TestCase(true, "0x0", -32000, false)]
     [TestCase(true, "0x0", -32000, true)]
     [TestCase(false, "0x0", null, false)]
