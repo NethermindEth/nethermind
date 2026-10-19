@@ -9,6 +9,10 @@ namespace Nethermind.Evm.Precompiles;
 
 internal static partial class Eip2537
 {
+    // The accelerator standard leaves the point layout open. ZisK and OpenVM take EIP-2537's order (each Fp2 as
+    // c0 || c1, the point at infinity as zeros); SP1's libzkevm takes zkcrypto's uncompressed encoding (c1 || c0,
+    // infinity as a flag bit in the first byte) and rejects any other G2 point as off the curve.
+
     /// <summary>The bit SP1's layout sets in a point's first byte to denote the point at infinity.</summary>
     internal const byte Sp1InfinityBit = 0x40;
 
@@ -16,7 +20,7 @@ internal static partial class Eip2537
     /// <param name="destination">Must be zero-initialized.</param>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static void EncodeG1(ReadOnlySpan<byte> source, Span<byte> destination)
-        => EncodeG1<Sp1Bls12381LayoutFlag>(source, destination);
+        => EncodeG1<Sp1Flag>(source, destination);
 
     /// <inheritdoc cref="EncodeG1(ReadOnlySpan{byte}, Span{byte})"/>
     /// <typeparam name="TSp1Layout">Whether <paramref name="source"/> is in SP1's layout.</typeparam>
@@ -35,7 +39,7 @@ internal static partial class Eip2537
     /// <param name="destination">Must be zero-initialized.</param>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static void EncodeG2(ReadOnlySpan<byte> source, Span<byte> destination)
-        => EncodeG2<Sp1Bls12381LayoutFlag>(source, destination);
+        => EncodeG2<Sp1Flag>(source, destination);
 
     /// <inheritdoc cref="EncodeG2(ReadOnlySpan{byte}, Span{byte})"/>
     /// <typeparam name="TSp1Layout">Whether <paramref name="source"/> is in SP1's layout.</typeparam>
@@ -87,7 +91,7 @@ internal static partial class Eip2537
     /// <param name="destination">Must have <see cref="LenFpTrimmed"/> * 2 bytes length.</param>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static bool TryDecodeFp2(ReadOnlySpan<byte> source, Span<byte> destination)
-        => TryDecodeFp2<Sp1Bls12381LayoutFlag>(source, destination);
+        => TryDecodeFp2<Sp1Flag>(source, destination);
 
     /// <inheritdoc cref="TryDecodeFp2(ReadOnlySpan{byte}, Span{byte})"/>
     /// <typeparam name="TSp1Layout">Whether to write <paramref name="destination"/> in SP1's layout.</typeparam>
@@ -105,7 +109,7 @@ internal static partial class Eip2537
     /// <param name="destination">Must have <see cref="LenFpTrimmed"/> * 2 bytes length.</param>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static bool TryDecodeG1(ReadOnlySpan<byte> source, Span<byte> destination)
-        => TryDecodeG1<Sp1Bls12381LayoutFlag>(source, destination);
+        => TryDecodeG1<Sp1Flag>(source, destination);
 
     /// <inheritdoc cref="TryDecodeG1(ReadOnlySpan{byte}, Span{byte})"/>
     /// <typeparam name="TSp1Layout">Whether to write <paramref name="destination"/> in SP1's layout.</typeparam>
@@ -126,7 +130,7 @@ internal static partial class Eip2537
     /// <param name="destination">Must have <see cref="LenFpTrimmed"/> * 4 bytes length.</param>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static bool TryDecodeG2(ReadOnlySpan<byte> source, Span<byte> destination)
-        => TryDecodeG2<Sp1Bls12381LayoutFlag>(source, destination);
+        => TryDecodeG2<Sp1Flag>(source, destination);
 
     /// <inheritdoc cref="TryDecodeG2(ReadOnlySpan{byte}, Span{byte})"/>
     /// <typeparam name="TSp1Layout">Whether to write <paramref name="destination"/> in SP1's layout.</typeparam>

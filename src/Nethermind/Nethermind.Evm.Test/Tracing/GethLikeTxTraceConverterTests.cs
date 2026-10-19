@@ -8,6 +8,7 @@ using System.Text.Json;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
@@ -171,8 +172,10 @@ public class GethLikeTxTraceConverterTests
     [Test]
     public void Hex_return_data_increases_estimate_by_its_serialized_size([Values(1, 32, 1024)] int byteCount)
     {
-        GethTxTraceEntry empty = new() { ReturnData = "0x" };
-        GethTxTraceEntry populated = new() { ReturnData = "0x" + new string('f', byteCount * 2) };
+        byte[] data = new byte[byteCount];
+        Array.Fill(data, byte.MaxValue);
+        GethTxTraceEntry empty = new() { ReturnData = Array.Empty<byte>() };
+        GethTxTraceEntry populated = new() { ReturnData = data };
 
         Assert.That(GethLikeTxTraceConverter.EstimateEntrySize(populated, null) - GethLikeTxTraceConverter.EstimateEntrySize(empty, null),
             Is.EqualTo(SerializedSize(populated, null) - SerializedSize(empty, null)));
@@ -199,8 +202,10 @@ public class GethLikeTxTraceConverterTests
         string?[] strings = [null, "", "STOP", "opcode 0xc not defined", "0x0123456789abcdef", "\"\\\n\r\t\0", "<>&'+", "é漢", "😀", "\ud800", "\udc00"];
         foreach (string? text in strings)
             yield return new() { Opcode = text, Error = text };
-        string?[] returnData = [null, "", "0x", "0x0123456789abcdef", "0x" + new string('f', 2048)];
-        foreach (string? data in returnData)
+        byte[] longReturnData = new byte[1024];
+        Array.Fill(longReturnData, byte.MaxValue);
+        ReadOnlyMemory<byte>?[] returnData = [null, Array.Empty<byte>(), Bytes.FromHexString("0x0123456789abcdef"), longReturnData];
+        foreach (ReadOnlyMemory<byte>? data in returnData)
             yield return new() { ReturnData = data };
         yield return new() { Opcode = new string('漢', 1024), Error = new string('\n', 1024), ReturnData = returnData[^1] };
         yield return new() { Stack = Array.Empty<byte>(), Memory = Array.Empty<byte>(), Storage = new Dictionary<UInt256, UInt256>() };

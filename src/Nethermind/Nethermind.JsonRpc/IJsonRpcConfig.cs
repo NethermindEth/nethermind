@@ -240,6 +240,9 @@ public interface IJsonRpcConfig : IConfig
     [ConfigItem(Description = "The number of requests one IPC connection processes at a time. Requests pipelined on one connection are processed and answered in any order; each response carries its request id, and a batch is still processed and answered in order as one message. When `JsonRpc.EnabledModules` includes the Engine module, IPC always processes its requests one by one. Set to 1 if a client relies on the order, for example when it pipelines dependent transactions such as blob transactions with consecutive nonces.", DefaultValue = "16")]
     int IpcProcessingConcurrency { get; set; }
 
+    [ConfigItem(Description = "The number of consecutive `eth_call`, `eth_estimateGas` and `eth_createAccessList` requests of one batch that execute at a time, capped at `JsonRpc.EthModuleConcurrentInstances`. Responses keep the request order, and any other request in the batch waits for the ones before it and executes alone. Set to 1 to execute batch requests one by one.", DefaultValue = "4")]
+    int BatchProcessingConcurrency { get; set; }
+
     [ConfigItem(Description = "Enable per-method call metric", DefaultValue = "true")]
     bool EnablePerMethodMetrics { get; set; }
 

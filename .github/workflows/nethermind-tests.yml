@@ -75,6 +75,7 @@ jobs:
           - Nethermind.History.Test
           - Nethermind.Hive.Test
           - Nethermind.Init.Snapshot.Test
+          - Nethermind.Init.Test
           - Nethermind.JsonRpc.Test
           - Nethermind.JsonRpc.TraceStore.Test
           - Nethermind.KeyStore.Test
@@ -236,7 +237,8 @@ jobs:
           - { runner: macos-latest, project: Nethermind.Network.Dns.Test, chunk: '' }
           - { runner: macos-latest, project: Nethermind.Network.Enr.Test, chunk: '' }
           - { runner: macos-latest, project: Nethermind.Network.Test, chunk: '' }
-          - { runner: macos-latest, project: Nethermind.Runner.Test, chunk: '' }
+          - { runner: macos-latest, project: Nethermind.Runner.Test, chunk: 1of2 }
+          - { runner: macos-latest, project: Nethermind.Runner.Test, chunk: 2of2 }
           - { runner: macos-latest, project: Nethermind.Sockets.Test, chunk: '' }
           - { runner: macos-latest, project: Nethermind.Synchronization.Test, chunk: 1of4 }
           - { runner: macos-latest, project: Nethermind.Synchronization.Test, chunk: 2of4 }
@@ -250,7 +252,8 @@ jobs:
           - { runner: windows-latest, project: Nethermind.Network.Dns.Test, chunk: '' }
           - { runner: windows-latest, project: Nethermind.Network.Enr.Test, chunk: '' }
           - { runner: windows-latest, project: Nethermind.Network.Test, chunk: '' }
-          - { runner: windows-latest, project: Nethermind.Runner.Test, chunk: '' }
+          - { runner: windows-latest, project: Nethermind.Runner.Test, chunk: 1of2 }
+          - { runner: windows-latest, project: Nethermind.Runner.Test, chunk: 2of2 }
           - { runner: windows-latest, project: Nethermind.Sockets.Test, chunk: '' }
           - { runner: windows-latest, project: Nethermind.Synchronization.Test, chunk: 1of4 }
           - { runner: windows-latest, project: Nethermind.Synchronization.Test, chunk: 2of4 }
@@ -258,7 +261,8 @@ jobs:
           - { runner: windows-latest, project: Nethermind.Synchronization.Test, chunk: 4of4 }
           - { runner: windows-11-arm, project: Nethermind.Db.Test, chunk: '' }
           - { runner: windows-11-arm, project: Nethermind.Evm.Test, chunk: '' }
-          - { runner: windows-11-arm, project: Nethermind.Runner.Test, chunk: '' }
+          - { runner: windows-11-arm, project: Nethermind.Runner.Test, chunk: 1of2 }
+          - { runner: windows-11-arm, project: Nethermind.Runner.Test, chunk: 2of2 }
     steps: *test-steps
   tests-spec:
     name: Run ${{ matrix.project }}${{ matrix.chunk && format(' ({0})', matrix.chunk) || '' }} (${{ matrix.runner }})

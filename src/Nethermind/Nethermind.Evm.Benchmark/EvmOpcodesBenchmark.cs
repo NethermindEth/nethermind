@@ -187,8 +187,8 @@ public unsafe class EvmOpcodesBenchmark
 
         // Create VM with opcode table - mirrors VirtualMachine.Warmup pattern
         IReleaseSpec spec = IsExtendedStackOpcode(Opcode) ? Amsterdam.Instance : Fork.GetLatest();
-        _vm = new BenchmarkVm(new NoOpBlockhashProvider(), MainnetSpecProvider.Instance, LimboLogs.Instance);
-        _stateProvider = TestWorldStateFactory.CreateForTest();
+        _vm = new BenchmarkVm(new NoOpBlockhashProvider(), MainnetSpecProvider.Instance, NullLogManager.Instance);
+        _stateProvider = TestWorldStateFactory.CreateForTest(logManager: NullLogManager.Instance);
         _stateScope = _stateProvider.BeginScope(IWorldState.PreGenesis);
 
         Address address = Address.SystemUser;
