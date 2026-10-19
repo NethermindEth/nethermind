@@ -404,13 +404,18 @@ internal sealed class XdcMasternodeEthModule(
             return ResultWrapper<uint>.Success(0);
         }
 
+        // Signatures only finalize the canonical chain; a block on a discarded branch never gains finality.
+        if (header.Hash is null || !tree.IsMainChain(header.Hash, throwOnMissingHash: false))
+        {
+            return ResultWrapper<uint>.Success(0);
+        }
+
         if (!TryGetSigningMasternodes(xdcHeader, signedHeader, spec, out Address[] masternodes, out string? error, out int errorCode))
         {
             return ResultWrapper<uint>.Fail(error, errorCode);
         }
 
-        // Signatures only finalize the canonical chain; a block on a discarded branch never gains finality.
-        if (masternodes.Length == 0 || header.Hash is null || !tree.IsMainChain(header.Hash, throwOnMissingHash: false))
+        if (masternodes.Length == 0)
         {
             return ResultWrapper<uint>.Success(0);
         }
