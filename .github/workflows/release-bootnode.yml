@@ -133,12 +133,13 @@ jobs:
         run: |
           printf '%s' "$GPG_SECRET_KEY" | base64 --decode | gpg --import --no-tty --batch --yes
 
-          # One signature over the checksums covers every package
+          # One signature over the checksums covers every file
+          cat SHA256SUMS
           gpg --no-tty --batch --yes --pinentry-mode loopback \
             --passphrase-file <(printf '%s' "$GPG_PASSPHRASE") \
             -o SHA256SUMS.asc -ab SHA256SUMS
 
-      # Unlike the key signature, the attestation binds each package to this workflow and commit
+      # Unlike the key signature, the attestation binds each file to this workflow and commit
       - name: Attest build provenance
         uses: actions/attest-build-provenance@v4
         with:
@@ -203,11 +204,11 @@ jobs:
           docker pull nethermind/bootnode:$RELEASE_VERSION
           \`\`\`
 
-          ## Build signatures
+          ## Build signature
 
-          \`SHA256SUMS\` lists every package and is signed with the following OpenPGP key: \`AD12 7976 5093 C675 9CD8 A400 24A7 7461 6F1E 617E\`.
+          \`SHA256SUMS\` lists every file and is signed with the following OpenPGP key: \`AD12 7976 5093 C675 9CD8 A400 24A7 7461 6F1E 617E\`
 
-          Each package also has a build provenance attestation: \`gh attestation verify <file> --repo $GITHUB_REPOSITORY\`
+          Each file also has a build provenance attestation: \`gh attestation verify <file> --repo $GITHUB_REPOSITORY\`
           EOF
           )
 
