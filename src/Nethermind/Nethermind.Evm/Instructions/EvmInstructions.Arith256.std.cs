@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 
 namespace Nethermind.Evm;
@@ -19,7 +20,10 @@ public static partial class EvmInstructions
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static partial void Divide256(in UInt256 a, in UInt256 b, out UInt256 result)
-        => UInt256.Divide(in a, in b, out result);
+    {
+        Debug.Assert(!b.IsZero);
+        UInt256.Divide(in a, in b, out result);
+    }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static partial void Mod256(in UInt256 a, in UInt256 b, out UInt256 result)
