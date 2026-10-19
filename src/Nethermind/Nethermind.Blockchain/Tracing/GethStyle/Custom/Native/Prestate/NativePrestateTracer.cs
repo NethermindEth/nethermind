@@ -270,8 +270,9 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
                     catch
                     {
                         /*
-                         * The operation fails and its error is reported through ReportOperationError;
-                         * it touches no account here
+                         * The init code cannot be read: an offset or length that does not fit, or a slice
+                         * past the traced memory's 1 MiB padding limit (as in geth). The account is then not
+                         * looked up; StartOperation resets the state for the next operation
                          */
                     }
                 }
