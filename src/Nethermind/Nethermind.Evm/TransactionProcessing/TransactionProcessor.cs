@@ -86,7 +86,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
         /// <summary>Whether LOG may skip materialising its entry: a prewarming run nobody observes.</summary>
         /// <remarks>Deliberately narrower than the tracer-requirement test the non-frame path uses: a frame
-        /// transaction reads its own logs from a POST_TX frame (EIP-7906), which no tracer flag describes.
+        /// transaction reads its own logs from an ASSERT frame (EIP-7906), which no tracer flag describes.
         /// A cancellation wrapper that traces nothing of its own is looked through.</remarks>
         private protected static bool ShouldSuppressLogs(ExecutionOptions opts, ITxTracer tracer) =>
             opts.HasFlag(ExecutionOptions.Warmup)
@@ -269,7 +269,7 @@ namespace Nethermind.Evm.TransactionProcessing
             IReleaseSpec spec = GetSpec(header);
             if (tx.Type == TxType.FrameTx)
             {
-                IBlockAccessListSource? diffRecorder = BeginPostTxDiffRecording(tx, opts, spec);
+                IBlockAccessListSource? diffRecorder = BeginAssertFrameDiffRecording(tx, opts, spec);
                 try
                 {
                     return tracer.IsTracing
@@ -283,7 +283,7 @@ namespace Nethermind.Evm.TransactionProcessing
                     // view's diff and log payload would stay rooted while the processor sits idle.
                     if (VirtualMachine.TxExecutionContext.FrameTxContext is { } frameContext)
                     {
-                        frameContext.PostTxDiffView = null;
+                        frameContext.AssertFrameDiffView = null;
                     }
                 }
             }
