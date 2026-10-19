@@ -217,6 +217,17 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 : ref slot;
         }
 
+        /// <summary><paramref name="stack"/>, rounded down to the word boundary it is already on where <see cref="StrictAlignmentFlag"/> is on.</summary>
+        /// <remarks>As <see cref="AlignedSlot"/>: one <c>andi</c> lets the JIT prove the loads of the stack's fields aligned and drop their tests.</remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static unsafe ref EvmStack AlignedStack(ref EvmStack stack)
+        {
+            Debug.Assert(((nuint)Unsafe.AsPointer(ref stack) & (nuint)(sizeof(nint) - 1)) == 0);
+            return ref StrictAlignmentFlag.IsActive
+                ? ref Unsafe.AsRef<EvmStack>((void*)((nuint)Unsafe.AsPointer(ref stack) & ~(nuint)(sizeof(nint) - 1)))
+                : ref stack;
+        }
+
         /// <summary>The big-endian 16-bit value in the two lowest bytes of <paramref name="bytes"/>; the bytes above them are ignored.</summary>
         /// <remarks>
         /// The full-width byte reversal leaves it zero-extended by its shift, where a 16-bit one needs one more instruction
@@ -289,9 +300,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         {
                             ulong jumpGas = JumpIGasCost.GasCost + JumpDestGasCost.GasCost;
                             nuint destination = ReadBigEndianUInt16(branch >> 8);
-                            if (destination < (nuint)stack.CodeLength && TryCharge(ref gas, 2 * VeryLowGasCost.GasCost + jumpGas))
+                            if (destination < (nuint)AlignedStack(ref stack).CodeLength && TryCharge(ref gas, 2 * VeryLowGasCost.GasCost + jumpGas))
                             {
-                                if (!stack.IsAnalyzedJumpDestination(destination))
+                                if (!AlignedStack(ref stack).IsAnalyzedJumpDestination(destination))
                                 {
                                     analyzed = destination;
                                     skipped = 1 + 3;
@@ -327,9 +338,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                             {
                                 ulong jumpGas = JumpIGasCost.GasCost + JumpDestGasCost.GasCost;
                                 nuint destination = ReadBigEndianUInt16(inverted >> 8);
-                                if (destination < (nuint)stack.CodeLength && TryCharge(ref gas, 3 * VeryLowGasCost.GasCost + jumpGas))
+                                if (destination < (nuint)AlignedStack(ref stack).CodeLength && TryCharge(ref gas, 3 * VeryLowGasCost.GasCost + jumpGas))
                                 {
-                                    if (!stack.IsAnalyzedJumpDestination(destination))
+                                    if (!AlignedStack(ref stack).IsAnalyzedJumpDestination(destination))
                                     {
                                         analyzed = destination;
                                         skipped = 1 + 1 + 3;
@@ -900,9 +911,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         {
                             ulong jumpGas = JumpIGasCost.GasCost + JumpDestGasCost.GasCost;
                             nuint destination = ReadBigEndianUInt16(branch >> 8);
-                            if (destination < (nuint)stack.CodeLength && TryCharge(ref gas, 4 * VeryLowGasCost.GasCost + jumpGas))
+                            if (destination < (nuint)AlignedStack(ref stack).CodeLength && TryCharge(ref gas, 4 * VeryLowGasCost.GasCost + jumpGas))
                             {
-                                if (!stack.IsAnalyzedJumpDestination(destination))
+                                if (!AlignedStack(ref stack).IsAnalyzedJumpDestination(destination))
                                 {
                                     // Straight to the analysis: the opcodes before the JUMPI leave it a condition of 1 and its destination.
                                     ref ulong taken = ref Unsafe.Add(ref top, LimbsPerWord);
@@ -1285,13 +1296,13 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             nint analyze;
             if (following == (byte)Instruction.JUMP)
             {
-                if (value < (nuint)stack.CodeLength)
+                if (value < (nuint)AlignedStack(ref stack).CodeLength)
                 {
                     ulong jumpGas = JumpGasCost.GasCost + JumpDestGasCost.GasCost;
                     if (!TryCharge(ref gas, pushGas + jumpGas))
                         goto Shared;
 
-                    if (!stack.IsAnalyzedJumpDestination(value))
+                    if (!AlignedStack(ref stack).IsAnalyzedJumpDestination(value))
                     {
                         // The analysis charges the jump itself.
                         gas += jumpGas;
@@ -1321,13 +1332,13 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     goto Dispatch;
                 }
 
-                if (value < (nuint)stack.CodeLength)
+                if (value < (nuint)AlignedStack(ref stack).CodeLength)
                 {
                     ulong jumpGas = JumpIGasCost.GasCost + JumpDestGasCost.GasCost;
                     if (!TryCharge(ref gas, pushGas + jumpGas))
                         goto Shared;
 
-                    if (!stack.IsAnalyzedJumpDestination(value))
+                    if (!AlignedStack(ref stack).IsAnalyzedJumpDestination(value))
                     {
                         // The analysis charges the jump itself.
                         gas += jumpGas;
@@ -2242,9 +2253,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 ref ulong destination = ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 1));
                 nuint target = (nuint)destination;
                 if ((Unsafe.Add(ref destination, 1) | Unsafe.Add(ref destination, 2) | Unsafe.Add(ref destination, 3)) == 0 &&
-                    target < (nuint)stack.CodeLength)
+                    target < (nuint)AlignedStack(ref stack).CodeLength)
                 {
-                    if (!stack.IsAnalyzedJumpDestination(target))
+                    if (!AlignedStack(ref stack).IsAnalyzedJumpDestination(target))
                     {
                         gas += jumpAndJumpDestGas;
                         nint analyze = Entry(&ExecuteJumpToUnanalyzedDestination<OffFlag>);
@@ -2301,9 +2312,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 nuint target = (nuint)destination;
                 if (gas >= jumpIAndJumpDestGas &&
                     (Unsafe.Add(ref destination, 1) | Unsafe.Add(ref destination, 2) | Unsafe.Add(ref destination, 3)) == 0 &&
-                    target < (nuint)stack.CodeLength)
+                    target < (nuint)AlignedStack(ref stack).CodeLength)
                 {
-                    if (!stack.IsAnalyzedJumpDestination(target))
+                    if (!AlignedStack(ref stack).IsAnalyzedJumpDestination(target))
                     {
                         nint analyze = Entry(&ExecuteJumpToUnanalyzedDestination<OnFlag>);
                         return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, analyze);
