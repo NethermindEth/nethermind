@@ -27,10 +27,10 @@ public sealed class DefaultBaseFeeCalculator : IBaseFeeCalculator
             if (isForkBlockNumber)
                 parentGasTarget = parent.GasLimit;
 
-            // EIP-8198 replaces the 1/denominator maximum change with 5/48, multiplying before dividing.
-            bool isEip8198 = specFor1559.IsEip8198Enabled;
-            UInt256 maxChangeNumerator = isEip8198 ? Eip8198Constants.BaseFeeMaxChangeNumerator : UInt256.One;
-            UInt256 maxChangeDenominator = isEip8198 ? Eip8198Constants.BaseFeeMaxChangeDenominator : specFor1559.BaseFeeMaxChangeDenominator;
+            // Multiplying by the numerator before dividing by the denominator matches EIP-8198; with a numerator of 1 it is
+            // the EIP-1559 rule.
+            UInt256 maxChangeNumerator = specFor1559.BaseFeeMaxChangeNumerator;
+            UInt256 maxChangeDenominator = specFor1559.BaseFeeMaxChangeDenominator;
 
             if (parent.GasUsed == parentGasTarget)
             {

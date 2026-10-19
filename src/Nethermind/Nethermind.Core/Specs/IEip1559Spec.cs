@@ -19,16 +19,19 @@ namespace Nethermind.Core.Specs
         public Address? FeeCollector => null;
         public UInt256? Eip1559BaseFeeMinValue => null;
         public UInt256 ForkBaseFee { get; }
+        /// <summary>Numerator of the maximum per-block base fee change, <c>numerator / denominator</c>; 1 before EIP-8198.</summary>
+        public UInt256 BaseFeeMaxChangeNumerator { get; }
+
+        /// <summary>Denominator of the maximum per-block base fee change, <c>numerator / denominator</c>.</summary>
         public UInt256 BaseFeeMaxChangeDenominator { get; }
         public ulong ElasticityMultiplier { get; }
         public IBaseFeeCalculator BaseFeeCalculator { get; }
 
         /// <summary>
-        /// EIP-8198: Quick Slots. Lowers the maximum per-block base fee change to
-        /// <see cref="Eip8198Constants.BaseFeeMaxChangeNumerator"/> / <see cref="Eip8198Constants.BaseFeeMaxChangeDenominator"/>.
+        /// EIP-8198: Quick Slots. Lowers the maximum per-block base fee change to 5/48, set through
+        /// <see cref="BaseFeeMaxChangeNumerator"/> and <see cref="BaseFeeMaxChangeDenominator"/>.
         /// </summary>
         /// <remarks>
-        /// Declared here rather than on <see cref="IReleaseSpec"/> because <see cref="IBaseFeeCalculator"/> only sees this interface.
         /// The rest of the EIP is chainspec data: <c>slotDurationSchedule</c> (see <see cref="ISpecProvider.SlotDurationSchedule"/>) and <c>blobSchedule</c>.
         /// </remarks>
         bool IsEip8198Enabled { get; }
@@ -41,6 +44,7 @@ namespace Nethermind.Core.Specs
         public Address? FeeCollector { get; init; } = spec.FeeCollector;
         public UInt256? Eip1559BaseFeeMinValue { get; init; } = spec.Eip1559BaseFeeMinValue;
         public UInt256 ForkBaseFee { get; init; } = spec.ForkBaseFee;
+        public UInt256 BaseFeeMaxChangeNumerator { get; init; } = spec.BaseFeeMaxChangeNumerator;
         public UInt256 BaseFeeMaxChangeDenominator { get; init; } = spec.BaseFeeMaxChangeDenominator;
         public ulong ElasticityMultiplier { get; init; } = spec.ElasticityMultiplier;
         public IBaseFeeCalculator BaseFeeCalculator { get; init; } = spec.BaseFeeCalculator;

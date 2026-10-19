@@ -20,7 +20,6 @@ public class Eip8198BaseFeeTests
     private const ulong GasTarget = BlockGasLimit / 2;
 
     private static readonly IReleaseSpec Enabled = Bogota.Instance;
-    private static readonly IReleaseSpec Disabled = new OverridableReleaseSpec(Bogota.Instance) { IsEip8198Enabled = false };
 
     private static readonly ulong[] BaseFees = [7, 9, 10, 19, 20, 1_000_000_000, 1_000_000_007];
 
@@ -42,33 +41,81 @@ public class Eip8198BaseFeeTests
         Assert.That(Calculate(Enabled, parentBaseFee, parentGasUsed), Is.EqualTo(Reference(parentBaseFee, parentGasUsed, 5, 48)));
 
     [TestCaseSource(nameof(Matrix))]
-    public void Disabled_keeps_one_eighth_rule(ulong parentBaseFee, ulong parentGasUsed)
+    public void Earlier_forks_keep_one_eighth_rule(ulong parentBaseFee, ulong parentGasUsed)
     {
         UInt256 expected = Reference(parentBaseFee, parentGasUsed, 1, 8);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(Calculate(Disabled, parentBaseFee, parentGasUsed), Is.EqualTo(expected));
             Assert.That(Calculate(Amsterdam.Instance, parentBaseFee, parentGasUsed), Is.EqualTo(expected));
+            Assert.That(Calculate(London.Instance, parentBaseFee, parentGasUsed), Is.EqualTo(expected));
         }
     }
 
     [Test]
-    public void Enabled_ignores_configured_denominator()
+    public void Bogota_sets_five_forty_eighths_and_earlier_forks_one_eighth()
     {
-        IReleaseSpec spec = new OverridableReleaseSpec(Bogota.Instance) { IsEip8198Enabled = true, BaseFeeMaxChangeDenominator = 50 };
-        Assert.That(Calculate(spec, 1_000_000_000, BlockGasLimit), Is.EqualTo((UInt256)1_104_166_666));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Enabled.BaseFeeMaxChangeNumerator, Is.EqualTo((UInt256)5));
+            Assert.That(Enabled.BaseFeeMaxChangeDenominator, Is.EqualTo((UInt256)48));
+            Assert.That(Amsterdam.Instance.BaseFeeMaxChangeNumerator, Is.EqualTo(UInt256.One));
+            Assert.That(Amsterdam.Instance.BaseFeeMaxChangeDenominator, Is.EqualTo((UInt256)8));
+        }
+    }
+
+    [TestCase(1UL, 50UL)]
+    [TestCase(5UL, 50UL)]
+    [TestCase(1UL, 250UL)]
+    public void Calculator_applies_the_spec_fraction(ulong numerator, ulong denominator)
+    {
+        IReleaseSpec spec = new OverridableReleaseSpec(London.Instance)
+        {
+            BaseFeeMaxChangeNumerator = numerator,
+            BaseFeeMaxChangeDenominator = denominator
+        };
+
+        using (Assert.EnterMultipleScope())
+        {
+            foreach (ulong gasUsed in GasUsedCases)
+            {
+                Assert.That(Calculate(spec, 1_000_000_007, gasUsed), Is.EqualTo(Reference(1_000_000_007, gasUsed, (int)numerator, (int)denominator)));
+            }
+        }
     }
 
     [Test]
-    public void Overridable_eip1559_spec_carries_flag()
+    public void Overridable_eip1559_spec_carries_the_fraction()
     {
         OverridableEip1559Spec spec = new(Enabled);
+        OverridableEip1559Spec overridden = new(Enabled) { BaseFeeMaxChangeNumerator = 1, BaseFeeMaxChangeDenominator = 8 };
         using (Assert.EnterMultipleScope())
         {
             Assert.That(spec.IsEip8198Enabled, Is.True);
             Assert.That(Calculate(spec, 1_000_000_000, 0), Is.EqualTo((UInt256)895_833_334));
+            Assert.That(Calculate(overridden, 1_000_000_000, 0), Is.EqualTo((UInt256)875_000_000));
         }
     }
+
+    [TestCase(10_000UL, 12_000UL, 1UL, 8UL, 5UL, 48UL, TestName = "ScaledToSlot_10s_is_five_forty_eighths")]
+    [TestCase(8_000UL, 12_000UL, 1UL, 8UL, 1UL, 12UL, TestName = "ScaledToSlot_8s_is_one_twelfth")]
+    [TestCase(12_000UL, 12_000UL, 1UL, 8UL, 1UL, 8UL, TestName = "ScaledToSlot_12s_is_one_eighth")]
+    [TestCase(6_000UL, 12_000UL, 1UL, 8UL, 1UL, 16UL, TestName = "ScaledToSlot_6s_is_one_sixteenth")]
+    [TestCase(10_000UL, 12_000UL, 2UL, 8UL, 5UL, 24UL, TestName = "ScaledToSlot_reduces_a_non_unit_base")]
+    [TestCase(5_000UL, 10_000UL, 5UL, 48UL, 5UL, 96UL, TestName = "ScaledToSlot_from_another_reference")]
+    public void ScaledToSlot_keeps_the_per_second_rate_in_lowest_terms(
+        ulong designMs, ulong referenceMs, ulong baseNumerator, ulong baseDenominator, ulong numerator, ulong denominator)
+    {
+        (UInt256 actualNumerator, UInt256 actualDenominator) = BaseFeeMaxChange.ScaledToSlot(designMs, referenceMs, baseNumerator, baseDenominator);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actualNumerator, Is.EqualTo((UInt256)numerator));
+            Assert.That(actualDenominator, Is.EqualTo((UInt256)denominator));
+        }
+    }
+
+    [Test]
+    public void ScaledToSlot_of_the_eip8198_design_slot_is_five_forty_eighths() =>
+        Assert.That(BaseFeeMaxChange.ScaledToSlot(Eip8198Constants.DesignSlotDurationMs), Is.EqualTo(((UInt256)5, (UInt256)48)));
 
     private static IEnumerable<TestCaseData> Matrix()
     {

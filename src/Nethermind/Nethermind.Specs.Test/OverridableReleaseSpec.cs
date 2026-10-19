@@ -120,6 +120,7 @@ namespace Nethermind.Specs.Test
         public bool IsEip7823Enabled { get; set; } = spec.IsEip7823Enabled;
         public bool IsEip7825Enabled { get; set; } = spec.IsEip7825Enabled;
         public UInt256 ForkBaseFee { get; set; } = spec.ForkBaseFee;
+        public UInt256 BaseFeeMaxChangeNumerator { get; set; } = spec.BaseFeeMaxChangeNumerator;
         public UInt256 BaseFeeMaxChangeDenominator { get; set; } = spec.BaseFeeMaxChangeDenominator;
         public bool IsEip8198Enabled { get; set; } = spec.IsEip8198Enabled;
         public ulong ElasticityMultiplier { get; set; } = spec.ElasticityMultiplier;

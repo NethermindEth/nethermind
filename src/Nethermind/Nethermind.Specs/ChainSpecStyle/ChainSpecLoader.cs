@@ -214,6 +214,7 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
             TerminalTotalDifficulty = parameters.TerminalTotalDifficulty,
             TerminalPoWBlockNumber = parameters.TerminalPoWBlockNumber,
             BlobSchedule = CollapseBlobSchedule(parameters.BlobSchedule),
+            SlotDurationSchedule = [.. parameters.SlotDurationSchedule ?? []],
 
             Eip7594TransitionTimestamp = parameters.Eip7594TransitionTimestamp,
             Eip7939TransitionTimestamp = parameters.Eip7939TransitionTimestamp,
@@ -247,7 +248,6 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
             Eip8116TransitionTimestamp = parameters.Eip8116TransitionTimestamp,
             Eip8360TransitionTimestamp = parameters.Eip8360TransitionTimestamp,
             Eip8198TransitionTimestamp = parameters.Eip8198TransitionTimestamp,
-            Eip8198SlotDurationMs = parameters.Eip8198SlotDurationMs,
             Eip3298TransitionTimestamp = parameters.Eip3298TransitionTimestamp,
             Eip8131TransitionTimestamp = parameters.Eip8131TransitionTimestamp,
             Eip8279TransitionTimestamp = parameters.Eip8279TransitionTimestamp,
@@ -320,7 +320,7 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
             throw new InvalidOperationException("Both 'Eip2200Transition' and 'Eip1706Transition' are provided. Please provide either 'Eip2200Transition' or pair of 'Eip1283ReenableTransition' and 'Eip1706Transition' as they have same meaning.");
         }
 
-        parameters.ValidateEip8198SlotDuration();
+        parameters.ValidateSlotDurationSchedule();
     }
 
     private static void LoadTransitions(ChainSpecJson chainSpecJson, ChainSpec chainSpec)

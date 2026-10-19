@@ -1,11 +1,13 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
+using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Specs.ChainSpecStyle.Json;
 
@@ -163,6 +165,29 @@ public class ChainParameters
 
     public SortedSet<BlobScheduleSettings>? BlobSchedule { get; set; } = [];
 
+    /// <summary>Slot duration changes in timestamp order; see <see cref="ISpecProvider.SlotDurationSchedule"/>.</summary>
+    /// <remarks>
+    /// Entries may exist without EIP-8198, since the slot length is consensus-layer config that later forks may change again,
+    /// but EIP-8198 needs one at its activation.
+    /// </remarks>
+    public SlotDurationScheduleEntry[] SlotDurationSchedule { get; set; } = [];
+
+    /// <summary>
+    /// Checks <see cref="SlotDurationSchedule"/> with <see cref="SlotSchedule.ValidateSchedule"/>, and that it has an entry at the
+    /// EIP-8198 activation when EIP-8198 is scheduled, by its own field or a fork label.
+    /// </summary>
+    /// <exception cref="InvalidConfigurationException">EIP-8198 is scheduled without a matching entry.</exception>
+    internal void ValidateSlotDurationSchedule()
+    {
+        SlotSchedule.ValidateSchedule(SlotDurationSchedule);
+        if (Eip8198TransitionTimestamp is { } transition && Array.FindIndex(SlotDurationSchedule, e => e.Timestamp == transition) < 0)
+        {
+            throw new InvalidConfigurationException(
+                $"EIP-8198 is scheduled at timestamp {transition} but slotDurationSchedule has no entry at that timestamp. Add one with the consensus-layer slot duration from that fork.",
+                ExitCodes.MissingChainspecEipConfiguration);
+        }
+    }
+
     #region EIP-4844 parameters
     /// <summary>
     /// Gets or sets the <c>BLOB_GASPRICE_UPDATE_FRACTION</c> parameter defined in
@@ -209,28 +234,6 @@ public class ChainParameters
     public ulong? Eip8116TransitionTimestamp { get; set; }
     public ulong? Eip8360TransitionTimestamp { get; set; }
     public ulong? Eip8198TransitionTimestamp { get; set; }
-
-    /// <summary>
-    /// Slot length from the EIP-8198 fork, in milliseconds; required whenever <see cref="Eip8198TransitionTimestamp"/> is set.
-    /// </summary>
-    public ulong? Eip8198SlotDurationMs { get; set; }
-
-    /// <summary>
-    /// Requires <see cref="Eip8198SlotDurationMs"/> when EIP-8198 is scheduled, and checks it is a positive whole number of seconds.
-    /// </summary>
-    internal void ValidateEip8198SlotDuration()
-    {
-        if (Eip8198SlotDurationMs is { } slotDurationMs)
-        {
-            SlotSchedule.ValidateSlotDurationMs(slotDurationMs);
-        }
-        else if (Eip8198TransitionTimestamp is { } transition)
-        {
-            throw new InvalidConfigurationException(
-                $"EIP-8198 is scheduled at timestamp {transition} but eip8198SlotDurationMs is not set. Set it to the consensus-layer SLOT_DURATION_MS_EIP8198 of the network.",
-                ExitCodes.MissingChainspecEipConfiguration);
-        }
-    }
 
     public ulong? Eip3298TransitionTimestamp { get; set; }
     public ulong? Eip8131TransitionTimestamp { get; set; }

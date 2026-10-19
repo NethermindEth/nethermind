@@ -73,6 +73,7 @@ public class ReleaseSpec : IReleaseSpec
     public Address? FeeCollector { get; set; }
     public UInt256? Eip1559BaseFeeMinValue { get; set; }
     public UInt256 ForkBaseFee { get; set; } = Eip1559Constants.DefaultForkBaseFee;
+    public UInt256 BaseFeeMaxChangeNumerator { get; set; } = UInt256.One;
     public UInt256 BaseFeeMaxChangeDenominator { get; set; } = Eip1559Constants.DefaultBaseFeeMaxChangeDenominator;
     public ulong ElasticityMultiplier { get; set; } = Eip1559Constants.DefaultElasticityMultiplier;
     public IBaseFeeCalculator BaseFeeCalculator { get; set; } = new DefaultBaseFeeCalculator();

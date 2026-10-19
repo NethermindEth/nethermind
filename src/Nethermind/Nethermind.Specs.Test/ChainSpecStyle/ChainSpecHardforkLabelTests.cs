@@ -78,7 +78,9 @@ public class ChainSpecHardforkLabelTests
     [TestCaseSource(nameof(AllLabels))]
     public void Label_expands_to_all_constituent_transition_fields(IHardforkLabel label)
     {
-        string slotDuration = label.Eips.Contains(8198) ? ", \"eip8198SlotDurationMs\": 6000" : "";
+        string slotDuration = label.Eips.Contains(8198)
+            ? $", \"slotDurationSchedule\": [{{ \"timestamp\": \"0x{ActivationValue:x}\", \"slotDurationMs\": 6000 }}]"
+            : "";
         ChainSpec spec = Load($"\"{ToCamelCase(label.LabelName)}\": \"0x{ActivationValue:x}\"{slotDuration}");
 
         foreach (string propName in label.EipPropertyNames)
@@ -144,7 +146,7 @@ public class ChainSpecHardforkLabelTests
     [Test]
     public void Bogota_label_activates_eip8198_at_its_timestamp()
     {
-        ChainSpec chainSpec = Load("\"bogota\": 1792416379, \"eip8198SlotDurationMs\": 6000");
+        ChainSpec chainSpec = Load("\"bogota\": 1792416379, \"slotDurationSchedule\": [{ \"timestamp\": 1792416379, \"slotDurationMs\": 6000 }]");
         ChainSpecBasedSpecProvider provider = new(chainSpec);
 
         using (Assert.EnterMultipleScope())
@@ -152,14 +154,14 @@ public class ChainSpecHardforkLabelTests
             Assert.That(chainSpec.Parameters.Eip8198TransitionTimestamp, Is.EqualTo(1_792_416_379UL));
             Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(1_792_416_378)).IsEip8198Enabled, Is.False);
             Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(1_792_416_379)).IsEip8198Enabled, Is.True);
-            Assert.That(provider.Eip8198SlotDurationMs, Is.EqualTo(6_000UL));
+            Assert.That(provider.SlotDurationSchedule, Is.EqualTo(new[] { new SlotDurationScheduleEntry(1_792_416_379, 6_000) }));
         }
     }
 
     [Test]
-    public void Bogota_label_requires_a_slot_duration() =>
-        Assert.That(() => Load("\"bogota\": 1792416379"),
-            Throws.TypeOf<InvalidDataException>().With.Message.Contains("eip8198SlotDurationMs is not set"));
+    public void Bogota_label_requires_a_slot_duration_entry_at_its_timestamp([Values("", ", \"slotDurationSchedule\": [{ \"timestamp\": 1792416380, \"slotDurationMs\": 6000 }]")] string schedule) =>
+        Assert.That(() => Load($"\"bogota\": 1792416379{schedule}"),
+            Throws.TypeOf<InvalidDataException>().With.Message.Contains("slotDurationSchedule has no entry at that timestamp"));
 
     [Test]
     public void Label_and_redundant_explicit_eip_with_matching_value_is_accepted()

@@ -620,7 +620,7 @@ public class EthereumRunnerTests
             if (chain == "bogota")
             {
                 genesis["config"]!["bogotaTime"] = 0;
-                genesis["config"]!["eip8198SlotDurationMs"] = 12_000;
+                genesis["config"]!["slotDurationSchedule"] = new JsonArray(new JsonObject { ["timestamp"] = 0, ["slotDurationMs"] = 12_000 });
             }
             using MemoryStream modified = new(System.Text.Encoding.UTF8.GetBytes(genesis.ToJsonString()));
             return new AutoDetectingChainSpecLoader(new EthereumJsonSerializer(), NullLogManager.Instance).Load(modified);

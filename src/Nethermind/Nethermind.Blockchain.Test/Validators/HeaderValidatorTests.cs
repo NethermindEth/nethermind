@@ -559,7 +559,7 @@ public class HeaderValidatorTests
     [TestCase(30_000_000UL, 1_125_000_000UL, false, TestName = "Eip8198_full_parent_one_eighth_increase_is_invalid")]
     public void Eip8198_base_fee_is_validated_with_five_forty_eighths(ulong parentGasUsed, ulong baseFee, bool expected)
     {
-        TestSpecProvider specProvider = new(new OverridableReleaseSpec(London.Instance) { Eip1559TransitionBlock = 0, IsEip8198Enabled = true });
+        TestSpecProvider specProvider = new(new OverridableReleaseSpec(London.Instance) { Eip1559TransitionBlock = 0, IsEip8198Enabled = true, BaseFeeMaxChangeNumerator = 5, BaseFeeMaxChangeDenominator = 48 });
         _validator = new HeaderValidator(_blockTree, Always.Valid, specProvider, new OneLoggerLogManager(new(_testLogger)));
 
         _parentBlock = Build.A.Block

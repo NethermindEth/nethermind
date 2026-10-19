@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 using System.Text;
 using Nethermind.Consensus.Ethash;
@@ -271,19 +272,20 @@ public class ChainSpecLoaderTests
         return new ChainSpecLoader(new EthereumJsonSerializer(), LimboLogs.Instance).Load(stream);
     }
 
-    [TestCase(", \"eip8198TransitionTimestamp\": \"0x64\", \"eip8198SlotDurationMs\": \"0x1770\"", 6_000UL)]
-    [TestCase(", \"eip8198TransitionTimestamp\": \"0x64\", \"eip8198SlotDurationMs\": \"0x2ee0\"", 12_000UL)]
-    [TestCase(", \"eip8198SlotDurationMs\": \"0x2710\"", 10_000UL)]
-    [TestCase("", null)]
-    public void Loads_eip8198_slot_duration(string extraParams, ulong? expected)
+    [TestCase(", \"eip8198TransitionTimestamp\": \"0x64\", \"slotDurationSchedule\": [{ \"timestamp\": \"0x64\", \"slotDurationMs\": 10000 }]", new ulong[] { 100 }, new ulong[] { 10_000 }, TestName = "EIP-8198 entry")]
+    [TestCase(", \"eip8198TransitionTimestamp\": \"0x64\", \"slotDurationSchedule\": [{ \"timestamp\": \"0x64\", \"slotDurationMs\": \"0x2710\" }, { \"timestamp\": \"0xc8\", \"slotDurationMs\": 6000 }, { \"timestamp\": \"0x12c\", \"slotDurationMs\": 12000 }]", new ulong[] { 100, 200, 300 }, new ulong[] { 10_000, 6_000, 12_000 }, TestName = "Three entries")]
+    [TestCase(", \"slotDurationSchedule\": [{ \"timestamp\": \"0x64\", \"slotDurationMs\": 6000 }]", new ulong[] { 100 }, new ulong[] { 6_000 }, TestName = "Entry without EIP-8198")]
+    [TestCase("", new ulong[0], new ulong[0], TestName = "No schedule")]
+    public void Loads_slot_duration_schedule(string extraParams, ulong[] timestamps, ulong[] durations)
     {
         ChainSpec chainSpec = LoadChainSpecWithParams(extraParams);
         ISpecProvider provider = new ChainSpecBasedSpecProvider(chainSpec);
+        SlotDurationScheduleEntry[] expected = [.. timestamps.Select((t, i) => new SlotDurationScheduleEntry(t, durations[i]))];
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(chainSpec.Parameters.Eip8198SlotDurationMs, Is.EqualTo(expected));
-            Assert.That(provider.Eip8198SlotDurationMs, Is.EqualTo(expected));
+            Assert.That(chainSpec.Parameters.SlotDurationSchedule, Is.EqualTo(expected));
+            Assert.That(provider.SlotDurationSchedule, Is.EqualTo(expected));
         }
     }
 
@@ -294,24 +296,26 @@ public class ChainSpecLoaderTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(provider.Eip8198SlotDurationMs, Is.Null);
+            Assert.That(provider.SlotDurationSchedule, Is.Empty);
             Assert.That(provider.GetSlotSchedule(12).GetSecondsPerSlot(ulong.MaxValue), Is.EqualTo(12UL));
         }
     }
 
-    [Test]
-    public void Rejects_scheduled_eip8198_without_slot_duration() =>
+    [TestCase("", TestName = "No schedule")]
+    [TestCase(", \"slotDurationSchedule\": [{ \"timestamp\": \"0x65\", \"slotDurationMs\": 10000 }]", TestName = "Entry at another timestamp")]
+    public void Rejects_scheduled_eip8198_without_a_matching_entry(string schedule) =>
         Assert.That(
-            () => LoadChainSpecWithParams(", \"eip8198TransitionTimestamp\": \"0x64\""),
-            Throws.TypeOf<InvalidDataException>().With.Message.Contains("eip8198SlotDurationMs is not set"));
+            () => LoadChainSpecWithParams($", \"eip8198TransitionTimestamp\": \"0x64\"{schedule}"),
+            Throws.TypeOf<InvalidDataException>().With.Message.Contains("slotDurationSchedule has no entry at that timestamp"));
 
-    [TestCase("0x0")]
-    [TestCase("0x1f4")]
-    [TestCase("0x2904")]
-    public void Rejects_eip8198_slot_duration_that_is_not_whole_seconds(string slotDurationMs) =>
+    [TestCase("[{ \"timestamp\": \"0xc8\", \"slotDurationMs\": 10000 }, { \"timestamp\": \"0x64\", \"slotDurationMs\": 6000 }]", "strictly increasing", TestName = "Unsorted")]
+    [TestCase("[{ \"timestamp\": \"0x64\", \"slotDurationMs\": 10000 }, { \"timestamp\": \"0x64\", \"slotDurationMs\": 6000 }]", "strictly increasing", TestName = "Duplicate timestamp")]
+    [TestCase("[{ \"timestamp\": \"0x64\", \"slotDurationMs\": 0 }]", "positive multiple of 1000 ms", TestName = "Zero duration")]
+    [TestCase("[{ \"timestamp\": \"0x64\", \"slotDurationMs\": 10500 }]", "positive multiple of 1000 ms", TestName = "Not whole seconds")]
+    public void Rejects_invalid_slot_duration_schedule(string schedule, string message) =>
         Assert.That(
-            () => LoadChainSpecWithParams($", \"eip8198TransitionTimestamp\": \"0x64\", \"eip8198SlotDurationMs\": \"{slotDurationMs}\""),
-            Throws.TypeOf<InvalidDataException>().With.Message.Contains("EIP-8198 slot duration"));
+            () => LoadChainSpecWithParams($", \"slotDurationSchedule\": {schedule}"),
+            Throws.TypeOf<InvalidDataException>().With.Message.Contains(message));
 
     [Test]
     public void Eip8116_activates_at_its_transition_timestamp()
@@ -371,8 +375,8 @@ public class ChainSpecLoaderTests
                 prop.SetValue(paramsJson, testValue);
         }
 
-        // ChainSpecLoader.ValidateParams only accepts a whole number of seconds.
-        paramsJson.Eip8198SlotDurationMs = 6_000;
+        // ChainSpecLoader.ValidateParams needs a slot duration entry at the EIP-8198 activation.
+        paramsJson.SlotDurationSchedule = [new(paramsJson.Eip8198TransitionTimestamp!.Value, 6_000)];
 
         // Serialize and wrap in a minimal valid chain spec JSON
         EthereumJsonSerializer serializer = new();

@@ -1126,6 +1126,34 @@ public class ChainSpecBasedSpecProviderTests
     }
 
     [Test]
+    public void Eip8198_fraction_overrides_a_configured_denominator_only_while_active()
+    {
+        const ulong eip8198Timestamp = 70;
+        ChainSpec chainSpec = new()
+        {
+            Parameters = new ChainParameters
+            {
+                Eip1559Transition = 0,
+                Eip1559BaseFeeMaxChangeDenominator = 250,
+                Eip8198TransitionTimestamp = eip8198Timestamp
+            },
+            EngineChainSpecParametersProvider = TestChainSpecParametersProvider.NethDev
+        };
+
+        ChainSpecBasedSpecProvider provider = new(chainSpec);
+        IReleaseSpec before = provider.GetSpec(new ForkActivation(11, eip8198Timestamp - 1));
+        IReleaseSpec after = provider.GetSpec(new ForkActivation(11, eip8198Timestamp));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(before.BaseFeeMaxChangeNumerator, Is.EqualTo(UInt256.One));
+            Assert.That(before.BaseFeeMaxChangeDenominator, Is.EqualTo((UInt256)250));
+            Assert.That(after.BaseFeeMaxChangeNumerator, Is.EqualTo((UInt256)5));
+            Assert.That(after.BaseFeeMaxChangeDenominator, Is.EqualTo((UInt256)48));
+        }
+    }
+
+    [Test]
     public void Eip2200_is_set_correctly_directly()
     {
         ChainSpec chainSpec = new()

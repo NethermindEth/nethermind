@@ -394,6 +394,13 @@ namespace Nethermind.Specs.ChainSpecStyle
                 item.ApplyToReleaseSpec(releaseSpec, block, releaseStartTimestamp);
             }
 
+            // EIP-8198 fixes the fraction, overriding a configured eip1559BaseFeeMaxChangeDenominator while it is active.
+            if (releaseSpec.IsEip8198Enabled)
+            {
+                (releaseSpec.BaseFeeMaxChangeNumerator, releaseSpec.BaseFeeMaxChangeDenominator) =
+                    BaseFeeMaxChange.ScaledToSlot(Eip8198Constants.DesignSlotDurationMs);
+            }
+
             SetBlobScheduleParameters();
 
             return releaseSpec;
