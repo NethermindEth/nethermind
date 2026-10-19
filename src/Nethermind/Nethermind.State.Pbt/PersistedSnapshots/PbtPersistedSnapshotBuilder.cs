@@ -27,7 +27,7 @@ public static class PbtPersistedSnapshotBuilder
     {
         PbtSnapshotContent c = snapshot.Content;
         long entries = c.Accounts.Count + c.HeaderStorages.Count + c.Storages.Count + c.Codes.Count
-            + c.SelfDestructedStorageAddresses.Count + c.AccountNodeGroups.Count + c.CodeNodeGroups.Count + c.StorageNodeGroups.Count;
+            + c.SelfDestructedStorageAddresses.Count + c.NodeGroupCount;
         // Each inline record has at most 255 value bytes and 72 key bytes. Account for block/restart
         // overhead and ownership/chunk records conservatively rather than under-mapping the arena.
         long bytes = snapshot.PayloadSize.Leaf + snapshot.PayloadSize.Node;
@@ -39,8 +39,7 @@ public static class PbtPersistedSnapshotBuilder
         // Page padding can at most double a short payload; large chunks have no page padding.
         // Include per-entity RLP headers even when payload sizing counted only logical bytes.
         long entries = (long)snapshot.Content.HeaderStorages.Count + snapshot.Content.Storages.Count
-            + snapshot.Content.Codes.Count + snapshot.Content.AccountNodeGroups.Count
-            + snapshot.Content.CodeNodeGroups.Count + snapshot.Content.StorageNodeGroups.Count;
+            + snapshot.Content.Codes.Count + snapshot.Content.NodeGroupCount;
         return checked(4096 + 2 * (snapshot.PayloadSize.Leaf + snapshot.PayloadSize.Node) + entries * 16);
     }
 
@@ -54,10 +53,8 @@ public static class PbtPersistedSnapshotBuilder
         foreach ((HashedKey<PbtStoragePath> key, PackedSlotRun value) in c.Storages) entries.Add(new(PbtPersistedKey.Run(key.Key), value));
         foreach ((ValueHash256 key, CodeInfo value) in c.Codes) entries.Add(new(PbtPersistedKey.CodeEntity(key), value));
         foreach ((ValueHash256 key, bool value) in c.SelfDestructedStorageAddresses) entries.Add(new(PbtPersistedKey.AddressEntity(key, PbtPersistedKey.Clear), value));
-        using PbtGroupLog.OperationLease operation = c.NodeGroupLog.BeginOperation();
-        foreach ((PbtNodePath key, PbtGroupReference value) in c.AccountNodeGroups) entries.Add(new(PbtPersistedKey.Group(key), value));
-        foreach ((PbtNodePath key, PbtGroupReference value) in c.CodeNodeGroups) entries.Add(new(PbtPersistedKey.Group(key), value));
-        foreach ((PbtStorageNodePath key, PbtGroupReference value) in c.StorageNodeGroups) entries.Add(new(PbtPersistedKey.Group(key), value));
+        using (PbtGroupLog.OperationLease operation = c.NodeGroupLog.BeginOperation())
+            foreach (PbtGroupRecord group in c.EnumerateNodeGroups(operation)) entries.Add(new(PbtPersistedKey.Group(group.Path), group.Payload.ToArray()));
         entries.Sort(static (a, b) => a.Key.AsSpan().SequenceCompareTo(b.Key));
         SortedTableBuilder<TWriter> table = new(ref writer);
         try
@@ -66,7 +63,7 @@ public static class PbtPersistedSnapshotBuilder
             foreach (Entry entry in entries)
             {
                 bloom.AddUnsynchronized(PbtPersistedKey.BloomHash(entry.Key));
-                byte[]? payload = Encode(entry.Value, c, operation);
+                byte[]? payload = Encode(entry.Value);
                 WriteEntity(ref table, entry.Key, payload, blobs);
             }
             PbtPersistedFormat.WriteMetadata(ref table, new(snapshot.From, snapshot.To, snapshot.TreeRoot));
@@ -75,7 +72,7 @@ public static class PbtPersistedSnapshotBuilder
         finally { table.Dispose(); }
     }
 
-    private static byte[]? Encode(object? value, PbtSnapshotContent content, PbtGroupLog.OperationLease operation)
+    private static byte[]? Encode(object? value)
     {
         switch (value)
         {
@@ -91,7 +88,7 @@ public static class PbtPersistedSnapshotBuilder
                 run.Encode(runBytes);
                 return runBytes;
             case CodeInfo code: return code.CodeSpan.ToArray();
-            case PbtGroupReference group: return content.GetNodeGroupPayload(operation, group)?.ToArray();
+            case byte[] group: return group;
             default: throw new InvalidOperationException("Unsupported persisted PBT payload.");
         }
     }

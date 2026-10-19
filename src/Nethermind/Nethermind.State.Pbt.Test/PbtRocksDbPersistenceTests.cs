@@ -23,7 +23,6 @@ using Nethermind.State.Pbt.Common;
 using Nethermind.State.Pbt.PersistedSnapshots;
 using Nethermind.Core.Memory;
 using Nethermind.Core;
-using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -305,11 +304,7 @@ public class PbtRocksDbPersistenceTests
                     StateId next = new(number, TestItem.KeccakA.ValueHash256);
                     PbtSnapshotContent content = pool.GetSnapshotContent(PbtResourcePool.Usage.MainBlockProcessing);
                     content.Accounts[addressHash] = new Account(number, number + 10).ToPbtAccount();
-                    foreach (PbtPhysicalPayload physical in tree.PhysicalPayloads)
-                    {
-                        using RefCountingMemory payload = RefCountingMemory.OwningRocksDb(new ArrayMemoryManager(physical.Payload.ToArray()));
-                        content.SetNodeGroup(physical.Key, payload);
-                    }
+                    content.SetPhysicalTree(tree.PhysicalPayloads);
                     repository.TryAdd(new PbtSnapshot(last, next, tree.RootHash, content, pool, PbtResourcePool.Usage.MainBlockProcessing));
                     compactor.DoCompactSnapshot(next);
                     last = next;

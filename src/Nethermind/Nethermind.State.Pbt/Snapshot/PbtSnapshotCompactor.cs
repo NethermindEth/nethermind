@@ -8,7 +8,6 @@ using Nethermind.Db;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Core.Crypto;
 using Nethermind.Pbt;
-using Nethermind.Pbt.NodeLog;
 using Nethermind.Logging;
 using Nethermind.State.Flat;
 using Nethermind.State.Pbt.Common;
@@ -58,9 +57,8 @@ public class PbtSnapshotCompactor(
             }
 
             PbtSnapshot newest = chainOldestFirst[^1];
-            PbtGroupReference rootReference = newest.RootGroupReference;
-            if (merged.TryGetNodeGroupReference(default(PbtStorageNodePath), out PbtGroupReference writtenRoot)) rootReference = writtenRoot;
-            return new PbtSnapshot(chainOldestFirst[0].From, newest.To, newest.TreeRoot, merged, resourcePool, usage) { RootGroupReference = rootReference };
+            merged.RootGroupReference = newest.RootGroupReference;
+            return new PbtSnapshot(chainOldestFirst[0].From, newest.To, newest.TreeRoot, merged, resourcePool, usage);
         }
         catch
         {

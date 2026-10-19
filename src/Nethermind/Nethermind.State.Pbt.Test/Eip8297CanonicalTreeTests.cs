@@ -1060,13 +1060,14 @@ public class Eip8297CanonicalTreeTests
     }
 
     [Test]
-    public void Non_empty_update_discovers_persisted_root_instead_of_using_stale_current_root([Values] bool useDefaultRoot)
+    public void Non_empty_update_discovers_persisted_root_instead_of_using_stale_current_root()
     {
         using PbtNodeGroupStore source = new();
         ValueHash256 actualRoot = source.Fold(default, [
             (AccountKey(0x12), Value(1)), (AccountKey(0x92), Value(2)), (AccountKey(0xF0), Value(3))]);
         PbtPhysicalPayload[] initialPayloads = [.. source.ExportPhysicalPayloads()];
-        ValueHash256 staleRoot = useDefaultRoot ? default : new ValueHash256(Value(0xEE));
+        // An empty current root is authoritative, as a stale root group may outlive the tree that owned it.
+        ValueHash256 staleRoot = new(Value(0xEE));
         (byte[] Key, byte[]? Value)[] changes = [(AccountKey(0x12), Value(4)), (AccountKey(0xA0), Value(5))];
 
         using PbtNodeGroupStore staleStore = PbtNodeGroupStore.FromPhysicalPayloads(initialPayloads);

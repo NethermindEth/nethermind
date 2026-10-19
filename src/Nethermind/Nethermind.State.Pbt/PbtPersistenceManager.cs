@@ -227,18 +227,13 @@ public class PbtPersistenceManager(IPbtConfig config, IStateHeaderProvider final
                 foreach ((HashedKey<PbtPath> runKey, PackedSlotRun run) in content.HeaderStorages) batch.SetSlotRun(runKey.Key, run);
                 foreach ((HashedKey<PbtStoragePath> runKey, PackedSlotRun run) in content.Storages) batch.SetSlotRun(runKey.Key, run);
                 foreach ((ValueHash256 codeHash, CodeInfo code) in content.Codes) batch.SetCode(codeHash, code);
+                // Only groups reachable from the new root are written; a removed group's stale bytes stay unreachable.
                 using PbtGroupLog.OperationLease operation = content.NodeGroupLog.BeginOperation();
-                PersistGroups(content.AccountNodeGroups);
-                PersistGroups(content.CodeNodeGroups);
-                PersistGroups(content.StorageNodeGroups);
-
-                void PersistGroups<TPath>(Dictionary<TPath, PbtGroupReference> groups) where TPath : struct, IPbtNodePath<TPath>
+                foreach (PbtGroupRecord group in content.EnumerateNodeGroups(operation))
                 {
-                    foreach ((TPath path, _) in groups)
-                    {
-                        content.TryGetNodeGroup(path, out RefCountingMemory? payload);
-                        using (payload) batch.SetNodeGroup(path, payload);
-                    }
+                    using RefCountingMemory payload = PooledRefCountingMemoryProvider.Instance.Rent(group.Payload.Length);
+                    group.Payload.Span.CopyTo(payload.GetSpan());
+                    batch.SetNodeGroup(group.Path, payload);
                 }
             }
             else candidate.Persisted!.ApplyTo(batch, cancellationToken);

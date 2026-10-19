@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -10,6 +11,7 @@ using Nethermind.Core.Memory;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
@@ -204,6 +206,60 @@ public class PbtScopeProviderTests
             Assert.That(scope.Get(TestItem.AddressB), Is.Null);
             Assert.That(persisted.CurrentRoot, Is.EqualTo(persistedRoot.ValueHash256), "the old nonempty root is still in persistence");
         }
+    }
+
+    [Test]
+    public async Task Removed_groups_stay_on_disk_and_a_reopened_state_reads_only_the_live_tree()
+    {
+        SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
+        Address[] addresses = TestItem.Addresses[..64];
+        Hash256 firstRoot;
+        Hash256 secondRoot;
+        int storedBefore;
+        int storedAfter;
+        await using (PbtTestContext ctx = new(db))
+        {
+            using (PbtWorldStateScope first = ctx.BeginScope(null))
+            {
+                using (IWorldStateScopeProvider.IWorldStateWriteBatch batch = first.StartWriteBatch(addresses.Length))
+                    for (int index = 0; index < addresses.Length; index++) batch.Set(addresses[index], new Account(1, (UInt256)(index + 1)));
+                first.Commit(1);
+                firstRoot = first.RootHash;
+            }
+            ctx.Manager.FlushCache(CancellationToken.None);
+            storedBefore = StoredGroups(db);
+            using (PbtWorldStateScope second = ctx.BeginScope(Build.A.BlockHeader.WithNumber(1).WithStateRoot(firstRoot).TestObject))
+            {
+                using (IWorldStateScopeProvider.IWorldStateWriteBatch batch = second.StartWriteBatch(addresses.Length - 1))
+                    foreach (Address address in addresses[1..]) batch.Set(address, null);
+                second.Commit(2);
+                secondRoot = second.RootHash;
+            }
+            ctx.Manager.FlushCache(CancellationToken.None);
+            storedAfter = StoredGroups(db);
+        }
+        Dictionary<string, byte[]> model = [];
+        PbtReferenceModel.SetAccount(model, addresses[0], 1, 1);
+        ValueHash256 expectedSecondRoot = PbtReferenceModel.Root(model);
+        PbtReferenceModel.SetAccount(model, addresses[1], 1, 2);
+
+        await using PbtTestContext reopened = new(db);
+        using PbtWorldStateScope scope = reopened.BeginScope(Build.A.BlockHeader.WithNumber(2).WithStateRoot(secondRoot).TestObject);
+        Account? removed = scope.Get(addresses[2]);
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch batch = scope.StartWriteBatch(1)) batch.Set(addresses[1], new Account(1, 2));
+        scope.UpdateRootHash();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(storedBefore, Is.GreaterThan(1));
+            Assert.That(storedAfter, Is.GreaterThanOrEqualTo(storedBefore), "removing accounts deletes no stored group");
+            Assert.That(secondRoot.ValueHash256, Is.EqualTo(expectedSecondRoot));
+            Assert.That(removed, Is.Null);
+            Assert.That(scope.RootHash.ValueHash256, Is.EqualTo(PbtReferenceModel.Root(model)), "stale groups never reach the reopened tree");
+        }
+
+        static int StoredGroups(SnapshotableMemColumnsDb<PbtColumns> db) =>
+            new[] { PbtColumns.TopNodeGroups, PbtColumns.AccountNodeGroups, PbtColumns.CodeNodeGroups, PbtColumns.StorageNodeGroups }
+                .Sum(column => db.GetColumnDb(column).GetAllKeys().Count());
     }
 
     [Test]

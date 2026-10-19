@@ -72,23 +72,18 @@ public static partial class TrieUpdater
             ? accountFold.Fold(slot, boundary, descendantBytes, encoding)
             : storageFold.Fold(slot, boundary, descendantBytes, encoding);
         PbtTraversalPath rootPath = new(Span<byte>.Empty);
-        PbtGroupReference rootReference = store.RootGroupReference;
-        if (currentRoot == default && rootReference.IsNone)
+        // An empty tree owns no groups; a group left at the root path by an earlier tree is stale.
+        if (currentRoot == default)
         {
             AbsentGroupFrame<PbtVariableTreeKey, PbtStorageNodePath> emptyRoot = new(0, 0, 0);
             return FoldRoot(store, ref emptyRoot, default, touchedSlots, foldSlot, foldQuota, fanOut, memoryProvider);
         }
         GroupFrameReader<PbtVariableTreeKey, PbtStorageNodePath> rootReader;
-        if (store.TryGetNodeGroupRecord(rootReference, rootPath, out PbtGroupRecord rootRecord))
+        if (store.TryGetNodeGroupRecord(store.RootGroupReference, rootPath, out PbtGroupRecord rootRecord))
             rootReader = new(rootRecord);
         else
         {
-            if (store.GetNodeGroup(rootPath) is not { } rootGroup)
-            {
-                if (currentRoot != default) throw new InvalidDataException("A referenced PBT node group is missing.");
-                AbsentGroupFrame<PbtVariableTreeKey, PbtStorageNodePath> emptyRoot = new(0, 0, 0);
-                return FoldRoot(store, ref emptyRoot, default, touchedSlots, foldSlot, foldQuota, fanOut, memoryProvider);
-            }
+            if (store.GetNodeGroup(rootPath) is not { } rootGroup) throw new InvalidDataException("A referenced PBT node group is missing.");
             rootReader = new(rootGroup, rootPath.BitDepth);
         }
         using (new GroupFrameReader<PbtVariableTreeKey, PbtStorageNodePath>.Scope(ref rootReader))

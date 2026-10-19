@@ -34,6 +34,7 @@ using NUnit.Framework;
 using NSubstitute;
 using Nethermind.Logging;
 using Nethermind.Pbt;
+using Nethermind.Pbt.NodeLog;
 using Nethermind.Monitoring.Config;
 using Nethermind.State.Pbt.Persistence;
 using Nethermind.State.Pbt.Snapshot;
@@ -441,7 +442,7 @@ public class PbtDbManagerTests
         content.SelfDestructedStorageAddresses[address] = false;
         content.HeaderStorages[SlotRun.RunKey(Eip8297KeyDerivation.HeaderStorageKey(address, 0))] = SlotRun.Empty;
         content.Storages[SlotRun.RunKey(Eip8297KeyDerivation.StorageKey(TestItem.AddressA.ToHash().Bytes, address, 1000))] = SlotRun.Empty;
-        content.AccountNodeGroups[default] = default;
+        content.RootGroupReference = PbtGroupReference.None;
         return new(from, to, TestItem.KeccakB.ValueHash256, content, pool, PbtResourcePool.Usage.MainBlockProcessing);
     }
 

@@ -15,8 +15,8 @@ namespace Nethermind.State.Pbt.Snapshot;
 /// <summary>Adapts a writable snapshot bundle to the canonical <see cref="TrieUpdater"/> store contract.</summary>
 /// <remarks>
 /// One store serves one root fold. Workers reserve log records and hand their references over on disposal.
-/// The owner publishes them on store disposal only after a successful fold, while its operation lease still protects
-/// all borrowed and unpublished records.
+/// The owner publishes the new tree's root on store disposal only after a successful fold, while its operation lease still
+/// protects all borrowed and unpublished records. A removed group is simply no longer linked, so nothing records its removal.
 /// </remarks>
 public sealed class PbtSnapshotStore(PbtSnapshotBundle bundle) : IPbtStore, IDisposable
 {
@@ -75,8 +75,20 @@ public sealed class PbtSnapshotStore(PbtSnapshotBundle bundle) : IPbtStore, IDis
         try
         {
             if (_complete)
+            {
+                PbtGroupReference? root = null;
+                int count = 0;
+                long bytes = 0;
                 foreach (ArrayPoolList<BufferedNodeGroup> buffer in _handedOff)
-                    foreach (BufferedNodeGroup group in buffer) bundle.SetNodeGroupReference(group.Path, group.Reference);
+                    foreach (BufferedNodeGroup group in buffer)
+                    {
+                        if (group.Path.BitDepth == 0) root = group.Reference;
+                        if (!group.Reference.IsDirect) continue;
+                        count++;
+                        bytes += ((group.Path.BitDepth + 7) >> 3) + group.Length;
+                    }
+                if (root is { } published) bundle.PublishNodeGroups(published, count, bytes);
+            }
         }
         finally
         {
@@ -85,7 +97,7 @@ public sealed class PbtSnapshotStore(PbtSnapshotBundle bundle) : IPbtStore, IDis
         }
     }
 
-    private readonly record struct BufferedNodeGroup(PbtStorageNodePath Path, PbtGroupReference Reference);
+    private readonly record struct BufferedNodeGroup(PbtStorageNodePath Path, PbtGroupReference Reference, int Length);
 
     private sealed class ConcurrentWriter(PbtSnapshotStore store) : IPbtConcurrentWriter
     {
@@ -97,16 +109,13 @@ public sealed class PbtSnapshotStore(PbtSnapshotBundle bundle) : IPbtStore, IDis
             payload = default;
             PbtGroupReference reference = length == 0 ? PbtGroupReference.None
                 : store.Log.Reserve(store._operation, path, length, links, out payload);
-            _buffer.Add(new BufferedNodeGroup(path, reference));
+            _buffer.Add(new BufferedNodeGroup(path, reference, length));
             return reference;
         }
 
-        public void SetNodeGroup(scoped in PbtTraversalPath groupKey, RefCountingMemory? payload)
-        {
-            if (payload is not null) PbtNodeGroupCodec.DebugValidateNodes(groupKey.ToPath<PbtStorageNodePath>(), payload.GetSpan());
-            ReserveNodeGroup(groupKey, payload?.Memory.Length ?? 0, PbtGroupLinks.Unknown, out Span<byte> destination);
-            if (payload is not null) payload.GetSpan().CopyTo(destination);
-        }
+        /// <remarks>Never called: reservations here always return a log reference, so folds write groups in place.</remarks>
+        public void SetNodeGroup(scoped in PbtTraversalPath groupKey, RefCountingMemory? payload) =>
+            throw new NotSupportedException("Snapshot folds write reserved log records.");
 
         public void Dispose()
         {

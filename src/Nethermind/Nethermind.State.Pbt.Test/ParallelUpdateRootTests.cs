@@ -331,7 +331,7 @@ public class ParallelUpdateRootTests
         int nullWrites = 0;
         int survivingNullWrites = 0;
         ApplyAndCheck(entries);
-        Assert.That(store.Reads, Has.Count.EqualTo(1), "building from empty reads only the root group");
+        Assert.That(store.Reads, Is.Empty, "building from an empty tree reads no group");
         ApplyAndCheck(Changes(entries));
         List<(byte[] Key, byte[]? Value)> promotions = [];
         List<(byte[] Key, byte[]? Value)> deletions = [];
@@ -600,6 +600,8 @@ public class ParallelUpdateRootTests
         private PbtGroupLog.OperationLease _operation = null!;
         private PbtGroupReference _inputRoot;
         private readonly List<List<(PbtStorageNodePath Path, PbtGroupReference Reference)>> _writes = [];
+        // Groups the folds published, with None for removed ones, over the persisted groups.
+        private readonly Dictionary<PbtStorageNodePath, PbtGroupReference> _groups = [];
 
         public LoggedGroupStore(IRefCountingMemoryProvider memory, PbtGroupLog? log = null)
         {
@@ -689,7 +691,7 @@ public class ParallelUpdateRootTests
                     foreach (List<(PbtStorageNodePath Path, PbtGroupReference Reference)> buffer in _writes)
                         foreach ((PbtStorageNodePath path, PbtGroupReference reference) in buffer)
                         {
-                            _content.SetNodeGroupReference(path, reference);
+                            _groups[path] = reference;
                             if (path.BitDepth == 0) RootReference = reference;
                             if (reference.IsDirect) LastWrittenGroups.Add(path);
                         }
@@ -703,6 +705,7 @@ public class ParallelUpdateRootTests
         {
             _content.Dispose();
             _content = new PbtSnapshotContent(Log, _memory);
+            _groups.Clear();
         }
 
         public void Seed(ValueHash256 root, IReadOnlyList<PbtPhysicalPayload> groups)
@@ -724,7 +727,7 @@ public class ParallelUpdateRootTests
             using PbtGroupLog.GenerationPin parent = Log.PinActiveGeneration();
             RootReference = Log.Append(operation, default, record.Payload.Span, unknownLinks ? PbtGroupLinks.Unknown : record.Links);
             DiscardUncommittedState();
-            _content.SetNodeGroupReference(default(PbtStorageNodePath), RootReference);
+            _groups[default] = RootReference;
         }
 
         /// <summary>The groups reached by walking the log from <see cref="RootReference"/>, pruned below <paramref name="lowerBound"/>.</summary>
@@ -748,21 +751,13 @@ public class ParallelUpdateRootTests
             if (_persisted is not null)
                 foreach (PbtPhysicalPayload group in _persisted.ExportPhysicalPayloads()) groups[group.Key] = group;
             using PbtGroupLog.OperationLease operation = Log.BeginOperation();
-            Add(_content.AccountNodeGroups);
-            Add(_content.CodeNodeGroups);
-            Add(_content.StorageNodeGroups);
-            return groups.Values.ToArray();
-
-            void Add<TPath>(Dictionary<TPath, PbtGroupReference> entries) where TPath : struct, IPbtNodePath<TPath>
+            foreach ((PbtStorageNodePath key, PbtGroupReference reference) in _groups)
             {
-                foreach ((TPath path, PbtGroupReference reference) in entries)
-                {
-                    PbtStorageNodePath key = path.ToPath<PbtStorageNodePath>();
-                    if (reference.IsNone) { groups.Remove(key); continue; }
-                    Assert.That(Log.TryGetRecord(operation, reference, out PbtGroupRecord record), Is.True);
-                    groups[key] = new PbtPhysicalPayload(key, record.Payload.Span);
-                }
+                if (reference.IsNone) { groups.Remove(key); continue; }
+                Assert.That(Log.TryGetRecord(operation, reference, out PbtGroupRecord record), Is.True);
+                groups[key] = new PbtPhysicalPayload(key, record.Payload.Span);
             }
+            return groups.Values.ToArray();
         }
 
         public void Dispose()

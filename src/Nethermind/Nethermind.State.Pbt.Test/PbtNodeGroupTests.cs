@@ -462,7 +462,7 @@ public class PbtNodeGroupTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(root, Is.EqualTo(expected.ApplyBatch(changes)));
-            Assert.That(store.Fetches, Is.EqualTo(1), "only the root group needs reading");
+            Assert.That(store.Fetches, Is.EqualTo(split ? 1 : 0), "only a non-empty tree's root group needs reading");
             Assert.That(store.Loads, Is.EqualTo(split ? 1 : 0));
         }
     }

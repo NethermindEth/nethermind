@@ -58,7 +58,7 @@ public sealed class PbtSnapshotBundle(
     {
         get
         {
-            if (WriteBuffer.TryGetNodeGroupReference(default(PbtStorageNodePath), out PbtGroupReference reference)) return reference;
+            if (!WriteBuffer.RootGroupReference.IsUnknown) return WriteBuffer.RootGroupReference;
             if (snapshots.Count > 0)
             {
                 PbtSnapshot snapshot = snapshots[^1];
@@ -106,26 +106,23 @@ public sealed class PbtSnapshotBundle(
 
     public void CompleteLeafChanges() => _leafChanges.Reset();
 
-    public void SetNodeGroup(PbtStorageNodePath groupKey, RefCountingMemory? payload) => WriteBuffer.SetNodeGroup(groupKey, payload);
-
-    /// <summary>Publishes an authoritative group reference from this bundle's traversal log.</summary>
-    public void SetNodeGroupReference(PbtStorageNodePath groupKey, PbtGroupReference reference) => WriteBuffer.SetNodeGroupReference(groupKey, reference);
+    /// <summary>Publishes a completed fold's root group from this bundle's traversal log and accounts for the groups the fold wrote.</summary>
+    /// <param name="root">The new tree's root group, or None for an empty tree.</param>
+    /// <param name="count">The number of groups the fold wrote.</param>
+    /// <param name="bytes">Their path and payload bytes.</param>
+    public void PublishNodeGroups(PbtGroupReference root, int count, long bytes)
+    {
+        WriteBuffer.RootGroupReference = root;
+        WriteBuffer.AddNodeGroups(count, bytes);
+    }
 
     public RefCountingMemory? GetNodeGroup(PbtStorageNodePath groupKey) =>
         TryGetSnapshotNodeGroup(groupKey, out RefCountingMemory? payload) ? payload : GetPersistedNodeGroup(groupKey);
 
-    /// <summary>Returns a caller-owned group lease or a null tombstone from the visible snapshot layers; false means no snapshot has an entry.</summary>
-    public bool TryGetSnapshotNodeGroup(PbtStorageNodePath groupKey, out RefCountingMemory? payload)
-    {
-        if (WriteBuffer.TryGetNodeGroupReference(default(PbtStorageNodePath), out PbtGroupReference root)
-                ? WriteBuffer.TryFindNodeGroup(root, groupKey, out payload)
-                : snapshots.Count > 0 && snapshots[^1].Content.TryFindNodeGroup(snapshots[^1].RootGroupReference, groupKey, out payload))
-            return true;
-        if (WriteBuffer.TryGetNodeGroup(groupKey, out payload)) return true;
-        for (int index = snapshots.Count - 1; index >= 0; index--)
-            if (snapshots[index].Content.TryGetNodeGroup(groupKey, out payload)) return true;
-        return readOnlyBundle.TryGetSnapshotNodeGroup(groupKey, out payload);
-    }
+    /// <summary>Returns a caller-owned group lease, or null when the branch's tree has no group there, from its resident tree or the persisted snapshots.</summary>
+    /// <returns>False when neither resolves the group, which the persistence reader must then provide.</returns>
+    public bool TryGetSnapshotNodeGroup(PbtStorageNodePath groupKey, out RefCountingMemory? payload) =>
+        WriteBuffer.TryFindNodeGroup(RootGroupReference, groupKey, out payload) || readOnlyBundle.TryGetSnapshotNodeGroup(groupKey, out payload);
 
     /// <summary>Reads only persisted layers, keeping the result for this block's later misses.</summary>
     public RefCountingMemory? GetPersistedNodeGroup(PbtStorageNodePath groupKey) =>
@@ -359,11 +356,16 @@ public sealed class PbtSnapshotBundle(
     {
         if (_accountsAwaitingCode.Count != 0 || PendingMutationCount != 0)
             throw new InvalidOperationException("Pending leaf changes must be folded before collecting a snapshot.");
-        PbtGroupReference rootReference = treeRoot == TreeRoot ? RootGroupReference : PbtGroupReference.Unknown;
-        if (treeRoot == default) rootReference = PbtGroupReference.None;
-        if (WriteBuffer.TryGetNodeGroupReference(default(PbtStorageNodePath), out PbtGroupReference writtenRoot)) rootReference = writtenRoot;
+        PbtGroupReference rootReference = WriteBuffer.RootGroupReference;
+        if (rootReference.IsUnknown)
+        {
+            if (treeRoot == default) rootReference = PbtGroupReference.None;
+            else if (treeRoot == TreeRoot) rootReference = RootGroupReference;
+            else throw new InvalidOperationException("The tree root changed without a published root group.");
+        }
         if (rootReference.IsDirect) NodeGroupLog.SetRoot(treeRoot, rootReference);
-        PbtSnapshot snapshot = new(from, to, treeRoot, WriteBuffer, resourcePool, usage) { RootGroupReference = rootReference };
+        WriteBuffer.RootGroupReference = rootReference;
+        PbtSnapshot snapshot = new(from, to, treeRoot, WriteBuffer, resourcePool, usage);
         snapshot.TryLease();
         snapshots.Add(snapshot);
         _hintedAccounts.Clear();

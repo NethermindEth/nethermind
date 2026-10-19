@@ -125,10 +125,6 @@ public class PbtFormatInteropTests
         UInt256[] words = new UInt256[16];
         for (int i = 0; i < words.Length; i++) words[i] = (UInt256)(i + 1);
         content.Storages[new(storageKey)] = SlotRun.Create(ushort.MaxValue, words);
-        PbtNodePath root = new([], 0);
-        content.AccountNodeGroups[root] = default;
-        content.CodeNodeGroups[new([Eip8297KeyDerivation.CodeZone, 0], 9)] = default;
-        content.StorageNodeGroups[new([0xE0], 3)] = default;
         using PbtSnapshot source = PersistedSource(content);
         using PbtPersistedSnapshot persisted = store.Build(source);
         using (Assert.EnterMultipleScope())
@@ -141,8 +137,6 @@ public class PbtFormatInteropTests
             Assert.That(decodedCodeless, Is.EqualTo(codeless));
             Assert.That(persisted.TryGetAccount(TestItem.KeccakC.ValueHash256, out _), Is.False);
             Assert.That(persisted.TryGetStorageClear(address), Is.True);
-            Assert.That(persisted.TryGetNodeGroup(root, out RefCountingMemory? group), Is.True);
-            Assert.That(group, Is.Null);
         }
         Assert.That(persisted.TryGetSlotRun(headerKey, out PackedSlotRun? empty), Is.True);
         Assert.That(empty, Is.SameAs(SlotRun.Empty));
@@ -161,7 +155,7 @@ public class PbtFormatInteropTests
     }
 
     [Test]
-    public void Persisted_canonical_groups_own_decoded_memory([ValueSource(nameof(PersistedGroupPaths))] PbtStorageNodePath groupKey, [Values] bool tombstone)
+    public void Persisted_canonical_groups_own_decoded_memory([ValueSource(nameof(PersistedGroupPaths))] PbtStorageNodePath groupKey, [Values] bool absent)
     {
         using PbtPersistedTestStore store = new();
         int depth = groupKey.BitDepth;
@@ -177,14 +171,14 @@ public class PbtFormatInteropTests
             writer.Write(cursor, depth == 0 ? PbtThreeLevelGroupGeometry.RootPosition : 0, node);
             using RefCountingMemory memory = writer.Detach(default, 0)!;
             expected = memory.GetSpan().ToArray();
-            content.SetNodeGroup(groupKey, tombstone ? null : memory);
+            content.SetTree((groupKey, absent ? null : expected));
         }
         PbtSnapshot source = PersistedSource(content);
         PbtPersistedSnapshot persisted = store.Build(source);
         source.Dispose();
-        Assert.That(persisted.TryGetNodeGroup(groupKey, out RefCountingMemory? decoded), Is.True);
+        Assert.That(persisted.TryGetNodeGroup(groupKey, out RefCountingMemory? decoded), Is.EqualTo(!absent), "an absent group leaves no entry");
         persisted.Dispose();
-        using (decoded) Assert.That(decoded?.GetSpan().ToArray(), Is.EqualTo(tombstone ? null : expected));
+        using (decoded) Assert.That(decoded?.GetSpan().ToArray(), Is.EqualTo(absent ? null : expected));
         Assert.That(TrackingMemoryProvider.CountUnreleased(store.Memory.Rented), Is.Zero);
     }
 

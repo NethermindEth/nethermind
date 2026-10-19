@@ -163,11 +163,13 @@ public class PbtMetricsTests
                 content.SetSlot(headerStorageKey, deleted ? default : slot);
                 content.SetSlot(storageKey, deleted ? default : slot);
             }
-            content.SetNodeGroup(groupKey, deleted ? null : payload);
+            content.SetTree((groupKey.ToPath<PbtStorageNodePath>(), deleted ? null : payload.GetSpan().ToArray()));
             if (!deleted) content.Codes[codeHash] = code;
         }
         IPbtResourcePool pool = Substitute.For<IPbtResourcePool>();
-        using PbtSnapshotContent emptyContent = new();
+        // An unchanged block inherits its parent's tree.
+        using PbtSnapshotContent emptyContent = new(content.NodeGroupLog);
+        emptyContent.RootGroupReference = content.RootGroupReference;
         using PbtReadOnlySnapshotBundle bundle = new(PbtSnapshotBundleTestExtensions.Chain(pool, content, emptyContent), reader, detailedMetrics, new PbtPersistedSnapshotList(0), slotFilterBitsPerKey: 0);
 
         Account? actualAccount = bundle.GetAccount(TestItem.AddressA)?.ToAccount();

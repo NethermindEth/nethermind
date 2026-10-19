@@ -17,13 +17,14 @@ public static class PbtPersistedSnapshotValidation
     {
         if (source.From != persisted.From || source.To != persisted.To || source.TreeRoot != persisted.TreeRoot) throw Mismatch();
         PbtSnapshotContent content = source.Content;
+        using PbtGroupLog.OperationLease operation = content.NodeGroupLog.BeginOperation();
+        PbtGroupRecord[] groups = [.. content.EnumerateNodeGroups(operation)];
         long count = 0;
         using (PbtPersistedScanner scanner = persisted.Scan())
             while (scanner.MoveNext())
                 if (PbtPersistedKey.IsEntity(scanner.Key)) count++;
         if (count != (long)content.Accounts.Count + content.HeaderStorages.Count + content.Storages.Count
-            + content.Codes.Count + content.SelfDestructedStorageAddresses.Count + content.AccountNodeGroups.Count
-            + content.CodeNodeGroups.Count + content.StorageNodeGroups.Count) throw Mismatch();
+            + content.Codes.Count + content.SelfDestructedStorageAddresses.Count + groups.Length) throw Mismatch();
         foreach ((ValueHash256 address, PbtAccount? account) in content.Accounts)
             if (!persisted.TryGetAccount(address, out PbtAccount? actual) || actual != account) throw Mismatch();
         foreach ((ValueHash256 address, _) in content.SelfDestructedStorageAddresses)
@@ -32,10 +33,7 @@ public static class PbtPersistedSnapshotValidation
             if (!persisted.TryGetCode(hash, out Evm.CodeAnalysis.CodeInfo? actual) || !actual!.CodeSpan.SequenceEqual(code.CodeSpan)) throw Mismatch();
         foreach ((HashedKey<PbtPath> key, PackedSlotRun run) in content.HeaderStorages) ValidateRun(persisted, key.Key, run);
         foreach ((HashedKey<PbtStoragePath> key, PackedSlotRun run) in content.Storages) ValidateRun(persisted, key.Key, run);
-        using PbtGroupLog.OperationLease operation = content.NodeGroupLog.BeginOperation();
-        foreach ((PbtNodePath key, PbtGroupReference group) in content.AccountNodeGroups) ValidateGroup(persisted, key, content.GetNodeGroupPayload(operation, group));
-        foreach ((PbtNodePath key, PbtGroupReference group) in content.CodeNodeGroups) ValidateGroup(persisted, key, content.GetNodeGroupPayload(operation, group));
-        foreach ((PbtStorageNodePath key, PbtGroupReference group) in content.StorageNodeGroups) ValidateGroup(persisted, key, content.GetNodeGroupPayload(operation, group));
+        foreach (PbtGroupRecord group in groups) ValidateGroup(persisted, group.Path, group.Payload);
     }
 
     private static void ValidateRun<TKey>(PbtPersistedSnapshot persisted, TKey key, PackedSlotRun expected) where TKey : struct, IPbtKey<TKey>
@@ -49,11 +47,11 @@ public static class PbtPersistedSnapshotValidation
         finally { SlotRun.Return(actual!); }
     }
 
-    private static void ValidateGroup<TPath>(PbtPersistedSnapshot persisted, TPath key, ReadOnlyMemory<byte>? expected) where TPath : struct, IPbtNodePath<TPath>
+    private static void ValidateGroup(PbtPersistedSnapshot persisted, PbtStorageNodePath key, ReadOnlyMemory<byte> expected)
     {
         if (!persisted.TryGetNodeGroup(key, out RefCountingMemory? actual)) throw Mismatch();
         using (actual)
-            if (expected is null ? actual is not null : actual is null || !expected.Value.Span.SequenceEqual(actual.GetSpan())) throw Mismatch();
+            if (actual is null || !expected.Span.SequenceEqual(actual.GetSpan())) throw Mismatch();
     }
 
     private static InvalidDataException Mismatch() => new("Converted persisted PBT snapshot differs from its source.");

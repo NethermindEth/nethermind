@@ -42,10 +42,9 @@ public class PbtSnapshotCompactorTests
     private static readonly PbtConfig Config = new() { CompactSize = 16 };
 
     [Test]
-    public void Compact_PreservesNewestCanonicalLeafAndGroupAfterSourcesAreDisposed([Values] bool tombstone)
+    public void Compact_PreservesNewestCanonicalLeafAndTreeAfterSourcesAreDisposed([Values] bool emptied)
     {
         PbtNodePath groupKey = new([], 0);
-        PbtStorageNodePath alternateGroupKey = new([], 0);
         PbtVariableTreeKey key = PbtTestLeaves.SlotKey(TestItem.AddressA, 64);
         TrackingMemoryProvider memoryProvider = new();
         PbtSnapshotContent older = _pool.GetSnapshotContent(PbtResourcePool.Usage.MainBlockProcessing);
@@ -56,24 +55,21 @@ public class PbtSnapshotCompactorTests
         using (RefCountingMemory olderPayload = CreateStorageLeafGroup())
         using (RefCountingMemory newerPayload = CreateStorageLeafGroup())
         {
-            older.SetNodeGroup(groupKey, olderPayload);
-            newer.SetNodeGroup(alternateGroupKey, tombstone ? null : newerPayload);
+            older.SetTree((default, olderPayload.GetSpan().ToArray()));
+            newer.SetTree((default, emptied ? null : newerPayload.GetSpan().ToArray()));
             expected = newerPayload.GetSpan().ToArray();
         }
         using (PbtSnapshot compacted = Compact(older, newer))
         {
-            bool found = compacted.Content.TryGetNodeGroup(groupKey, out RefCountingMemory? payload);
+            bool found = compacted.Content.TryFindNodeGroup(compacted.RootGroupReference, default, out RefCountingMemory? payload);
             using RefCountingMemory? payloadLease = payload;
-            bool alternateFound = compacted.Content.TryGetNodeGroup(alternateGroupKey, out RefCountingMemory? alternatePayload);
-            using RefCountingMemory? alternatePayloadLease = alternatePayload;
+            using PbtGroupLog.OperationLease operation = compacted.Content.NodeGroupLog.BeginOperation();
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(compacted.Content.GetSlot(key), Is.EqualTo(new UInt256(TestItem.KeccakB.Bytes, isBigEndian: true)));
-                Assert.That(compacted.Content.NodeGroupCount(), Is.EqualTo(1));
+                Assert.That(compacted.Content.EnumerateNodeGroups(operation).Count(), Is.EqualTo(emptied ? 0 : 1), "only the newest tree's groups remain");
                 Assert.That(found, Is.True);
-                Assert.That(alternateFound, Is.True);
-                Assert.That(alternatePayload?.GetSpan().ToArray(), Is.EqualTo(payload?.GetSpan().ToArray()));
-                Assert.That(payload?.Memory.ToArray(), Is.EqualTo(tombstone ? null : expected));
+                Assert.That(payload?.Memory.ToArray(), Is.EqualTo(emptied ? null : expected));
             }
         }
         Assert.That(TrackingMemoryProvider.CountUnreleased(memoryProvider.Rented), Is.Zero);
@@ -114,11 +110,12 @@ public class PbtSnapshotCompactorTests
             {
                 PbtGroupLinks links = PbtGroupLinks.Unknown;
                 if (group.Key.BitDepth == 0) links[0] = original[childPath];
-                PbtGroupReference reference = log.Append(operation, group.Key, group.Payload.Span, links);
-                older.SetNodeGroupReference(group.Key, reference);
-                original[group.Key] = reference;
+                original[group.Key] = log.Append(operation, group.Key, group.Payload.Span, links);
             }
         }
+        older.RootGroupReference = original[default];
+        // An unchanged block inherits its parent's root.
+        newer.RootGroupReference = original[default];
         using PbtSnapshot compacted = Compact(pool, older, newer);
         using PbtGroupLog.OperationLease read = log.BeginOperation();
         Assert.That(log.TryGetRecord(read, compacted.RootGroupReference, out PbtGroupRecord root), Is.True);
@@ -131,11 +128,8 @@ public class PbtSnapshotCompactorTests
             Assert.That(log.TryGetRecord(read, childReference, out PbtGroupRecord child), Is.True);
             Assert.That(child.Path, Is.EqualTo(childPath));
         }
-        foreach (PbtPhysicalPayload expected in payloads)
-        {
-            Assert.That(compacted.Content.TryGetNodeGroup(expected.Key, out RefCountingMemory? actual), Is.True);
-            using (actual) Assert.That(actual!.GetSpan().ToArray(), Is.EqualTo(expected.Payload.ToArray()));
-        }
+        Assert.That(compacted.Content.EnumerateNodeGroups(read).Select(static record => record.Reference), Is.EquivalentTo(new[] { original[default], original[childPath] }),
+            "the compacted snapshot persists its newest tree's groups by their original references");
     }
 
     [Test]
@@ -331,7 +325,7 @@ public class PbtSnapshotCompactorTests
 
     [Test]
     public void Persisted_merge_preserves_groups_and_bloom_membership(
-        [ValueSource(nameof(MergeGroupPaths))] PbtStorageNodePath group, [Values] bool tombstone)
+        [ValueSource(nameof(MergeGroupPaths))] PbtStorageNodePath group, [Values] bool dropped)
     {
         using PbtPersistedTestStore store = new();
         PbtVariableTreeKey leaf = PbtTestLeaves.SlotKey(TestItem.AddressA, 64);
@@ -347,8 +341,8 @@ public class PbtSnapshotCompactorTests
             writer.Write(path, group.BitDepth == 0 ? PbtThreeLevelGroupGeometry.RootPosition : 0, node);
             using RefCountingMemory payload = writer.Detach(default, 0)!;
             expected = payload.GetSpan().ToArray();
-            older.SetNodeGroup(group, payload);
-            newer.SetNodeGroup(group, tombstone ? null : payload);
+            older.SetTree((group, expected));
+            newer.SetTree((group, dropped ? null : expected));
         }
         ValueHash256 address = Eip8297KeyDerivation.AddressHash(TestItem.AddressA.ToHash().Bytes);
         newer.Accounts[address] = null;
@@ -360,7 +354,8 @@ public class PbtSnapshotCompactorTests
             using PbtPersistedSnapshot merged = MergePersisted(store, sources, out _);
             DisposeSources(sources);
             Assert.That(merged.TryGetNodeGroup(group, out RefCountingMemory? payload), Is.True);
-            using (payload) Assert.That(payload is null ? null : payload.GetSpan().ToArray(), Is.EqualTo(tombstone ? null : expected));
+            // Nothing records a dropped group, so the older snapshot's copy survives the merge.
+            using (payload) Assert.That(payload?.GetSpan().ToArray(), Is.EqualTo(expected));
             using PbtPersistedScanner scanner = merged.Scan();
             while (scanner.MoveNext())
             {
@@ -846,7 +841,6 @@ public class PbtSnapshotCompactorTests
                             content.SetSlot(PbtTestLeaves.SlotKey(TestItem.AddressA, 7), (UInt256)1);
                             content.SetSlot(PbtTestLeaves.SlotKey(TestItem.AddressA, 1024), (UInt256)2);
                             content.Accounts[address] = null;
-                            foreach (PbtStorageNodePath group in MergeGroupPaths) content.SetNodeGroup(group, null);
                         }
                         if (block == 2) content.ClearStorage(address);
                         content.Codes[TestItem.KeccakC.ValueHash256] = new(new byte[65537]);

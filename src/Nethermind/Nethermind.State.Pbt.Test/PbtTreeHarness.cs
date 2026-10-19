@@ -19,7 +19,6 @@ using Nethermind.Db.Rocks.Config;
 using Nethermind.Logging;
 using Nethermind.Pbt;
 using Nethermind.State.Pbt.Persistence;
-using Nethermind.State.Pbt.Snapshot;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -179,9 +178,6 @@ internal static class PbtStoreTestExtensions
         writer.ValidateEntry(path, position, encoding);
         encoding.CopyTo(writer.Append(position, encoding.Length));
     }
-
-    internal static int NodeGroupCount(this PbtSnapshotContent content) =>
-        content.AccountNodeGroups.Count + content.CodeNodeGroups.Count + content.StorageNodeGroups.Count;
 
     internal static RefCountingMemory? GetNodeGroup<TPath>(this IPbtStore store, TPath groupKey)
         where TPath : struct, IPbtNodePath<TPath>
