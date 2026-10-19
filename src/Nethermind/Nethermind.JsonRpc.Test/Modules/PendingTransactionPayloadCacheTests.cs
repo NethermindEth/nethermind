@@ -3,6 +3,8 @@
 
 using System.Text;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.JsonRpc.Modules.Subscribe;
@@ -64,6 +66,22 @@ public class PendingTransactionPayloadCacheTests
         payloads.RemoveSubscriber();
         payloads.AddSubscriber();
         Assert.That(payloads.Get(transaction).Utf8Json, Is.Not.SameAs(first.Utf8Json), "the last subscriber leaving cleared the table");
+    }
+
+    [Test]
+    public void RemoveSubscriber_ForTheLastSubscriber_DropsAStoreThatReadTheTableBefore()
+    {
+        PendingTransactionPayloadCache payloads = new(MainnetSpecProvider.Instance);
+        Transaction transaction = Build.A.Transaction.SignedAndResolved().TestObject;
+        payloads.AddSubscriber();
+        AssociativeCache<ValueHash256, byte[]> readBeforeUnsubscribe = payloads.Generation;
+        byte[] late = payloads.Get(transaction).Utf8Json;
+        payloads.RemoveSubscriber();
+
+        readBeforeUnsubscribe.Set(transaction.Hash!.ValueHash256, late);
+        payloads.AddSubscriber();
+
+        Assert.That(payloads.Get(transaction).Utf8Json, Is.Not.SameAs(late), "a send loop storing after the last subscriber left must not refill the table");
     }
 
     [Test]
