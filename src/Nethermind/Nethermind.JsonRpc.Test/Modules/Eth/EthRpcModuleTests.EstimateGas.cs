@@ -136,7 +136,15 @@ public partial class EthRpcModuleTests
 
         string response = await ctx.Test.TestEthRpc("eth_fillTransaction", request);
 
-        Assert.That(JToken.Parse(response)["error"], Is.Null, response);
+        JToken parsed = JToken.Parse(response);
+        Assert.That(parsed["error"], Is.Null, response);
+        JToken frame = parsed["result"]!["tx"]!["frames"]![2]!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Convert.ToByte(frame["mode"]!.Value<string>(), 16), Is.EqualTo((byte)FrameMode.DepVerify));
+            Assert.That(Convert.ToUInt64(frame["executionGas"]!.Value<string>(), 16), Is.EqualTo(Eip8288Constants.LeanSphincsVerificationGas));
+            Assert.That(Bytes.FromHexString(frame["data"]!.Value<string>()!), Is.EqualTo(dependency));
+        }
     }
 
     [Test]

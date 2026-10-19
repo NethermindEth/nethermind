@@ -61,25 +61,21 @@ public static class FrameTxValidation
     /// list, its signature entries and the fields the frame envelope adds.
     /// </summary>
     /// <remarks>
-    /// The decision is a pure function of <paramref name="transaction"/> and <paramref name="postTxEnabled"/>: it
-    /// reads no state and no release spec, so both consensus (<c>BlockValidator</c>) and the pool can reach it, and
+    /// The decision is a pure function of <paramref name="transaction"/> and the fork flags of <paramref name="spec"/>:
+    /// it reads no state, so both consensus (<c>BlockValidator</c>) and the pool can reach it, and
     /// the same transaction always yields the same verdict at a given fork. Structural RLP shape is already enforced
-    /// at decode time and is not rechecked. Checks needing the release spec — the EIP-7594 blob limits and the
-    /// EIP-7825 gas cap among them — are left to the validators in <c>TxValidator</c>'s frame composite, which is
+    /// at decode time and is not rechecked. Checks needing the rest of the release spec, the EIP-7594 blob limits and the
+    /// EIP-7825 gas cap among them, are left to the validators in <c>TxValidator</c>'s frame composite, which is
     /// also the only place several of this type's own message constants are raised, so passing this is necessary
     /// but not sufficient for validity.
     /// </remarks>
     /// <param name="transaction">The frame transaction to check. Must carry <see cref="Transaction.Frames"/> and a
     /// resolved <see cref="Transaction.SenderAddress"/>; both are reported as failures rather than thrown on.</param>
-    /// <param name="postTxEnabled">Whether EIP-7906 is active, which decides only whether
-    /// <see cref="FrameMode.PostTx"/> frames are admitted at all.</param>
+    /// <param name="spec">The fork: EIP-7906 admits <see cref="FrameMode.PostTx"/> frames, and EIP-8141 with EIP-8288
+    /// admits dependency verification frames.</param>
     /// <param name="error">On failure, the first violated constraint, always one of this type's message constants;
     /// <see langword="null"/> on success.</param>
     /// <returns><see langword="true"/> if every stateless constraint holds.</returns>
-    public static bool IsWellFormed(Transaction transaction, bool postTxEnabled, out string? error) =>
-        IsWellFormed(transaction, postTxEnabled, dependencyEnabled: false, out error);
-
-    /// <summary>Checks frame constraints at the supplied fork.</summary>
     public static bool IsWellFormed(Transaction transaction, IReleaseSpec spec, out string? error) =>
         IsWellFormed(transaction, spec.IsEip7906Enabled, spec.IsEip8141Enabled && spec.IsEip8288Enabled, out error);
 
