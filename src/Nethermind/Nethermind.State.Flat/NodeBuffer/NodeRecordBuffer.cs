@@ -56,7 +56,6 @@ public sealed class NodeRecordBuffer : INodeRecordBuffer
 
     private readonly Lock _lock = new();
     private readonly Generation?[] _generations = new Generation?[MaxGenerations];
-    private readonly int[] _pinCounts = new int[MaxGenerations];
     private readonly int _generationBytes;
     private Generation _active;
     private ulong _oldestLive = 1;
@@ -74,13 +73,9 @@ public sealed class NodeRecordBuffer : INodeRecordBuffer
     private const int StateRootSlots = 1024;
     private const int MemoryPerStorageRootSlot = 4096;
 
-    private const int RootKeyAddressOffset = 8;
-    private const int RootKeyRootOffset = 40;
-    private const int RootKeyPointerOffset = 72;
-    private const int RootKeyPreviousOffset = 80;
-
-    private readonly ulong[] _stateRoots = new ulong[StateRootSlots];
-    private readonly ulong[] _storageRoots;
+    // The newest root key record of each slot; older ones of the slot are chained through their previous pointers.
+    private readonly ulong[] _stateRootIndex = new ulong[StateRootSlots];
+    private readonly ulong[] _storageRootIndex;
 
     private int _pinCount;
     private bool _disposed;
@@ -93,7 +88,7 @@ public sealed class NodeRecordBuffer : INodeRecordBuffer
     {
         _generationBytes = generationBytes;
         _compressedMaxMemory = compressedMaxMemory;
-        _storageRoots = new ulong[BitOperations.RoundUpToPowerOf2(Math.Max(compressedMaxMemory / MemoryPerStorageRootSlot, StateRootSlots))];
+        _storageRootIndex = new ulong[BitOperations.RoundUpToPowerOf2(Math.Max(compressedMaxMemory / MemoryPerStorageRootSlot, StateRootSlots))];
         _active = StartGeneration(1, generationBytes);
         UpdateMetrics();
     }
@@ -108,7 +103,7 @@ public sealed class NodeRecordBuffer : INodeRecordBuffer
             long used = Math.Min(Volatile.Read(ref _active.Used), _active.Data!.Length);
             NodeRecordBufferPin pin = new(this, generation, generation << OffsetBits | (uint)used);
             _pinCount++;
-            _pinCounts[generation & GenerationSlotMask]++;
+            _active.PinCount++;
             return pin;
         }
     }
@@ -122,7 +117,7 @@ public sealed class NodeRecordBuffer : INodeRecordBuffer
         lock (_lock)
         {
             ThrowIfUnavailable();
-            for (ulong generation = _oldestCompressed; generation <= _active.Id; generation++) _pinCounts[generation & GenerationSlotMask]++;
+            for (ulong generation = _oldestCompressed; generation <= _active.Id; generation++) _generations[generation & GenerationSlotMask]!.PinCount++;
             _pinCount++;
             return new AllGenerationsPin(this, _oldestCompressed, _active.Id);
         }
@@ -135,7 +130,7 @@ public sealed class NodeRecordBuffer : INodeRecordBuffer
             ThrowIfUnavailable();
             if (generation < _oldestLive || generation > _active.Id) throw new ObjectDisposedException(nameof(NodeRecordBufferPin));
             _pinCount++;
-            _pinCounts[generation & GenerationSlotMask]++;
+            _generations[generation & GenerationSlotMask]!.PinCount++;
         }
     }
 
@@ -147,8 +142,8 @@ public sealed class NodeRecordBuffer : INodeRecordBuffer
         {
             for (ulong generation = oldest; generation <= newest; generation++)
             {
-                Debug.Assert(_pinCounts[generation & GenerationSlotMask] > 0, "Only a pinned generation can be released.");
-                _pinCounts[generation & GenerationSlotMask]--;
+                Debug.Assert(_generations[generation & GenerationSlotMask]!.PinCount > 0, "Only a pinned generation can be released.");
+                _generations[generation & GenerationSlotMask]!.PinCount--;
             }
             _pinCount--;
             if (_disposed) TryCompleteDispose();
@@ -263,7 +258,7 @@ public sealed class NodeRecordBuffer : INodeRecordBuffer
 
     private void DropOldGenerations()
     {
-        while (_oldestLive + LiveGenerations <= _active.Id && _pinCounts[_oldestLive & GenerationSlotMask] == 0)
+        while (_oldestLive + LiveGenerations <= _active.Id && _generations[_oldestLive & GenerationSlotMask]!.PinCount == 0)
         {
             _oldestLive++;
         }
@@ -295,7 +290,7 @@ public sealed class NodeRecordBuffer : INodeRecordBuffer
         return generation?.Id == id ? Volatile.Read(ref generation.Bloom) : null;
     }
 
-    private bool IsCompactable => _oldestAllocated < _oldestLive && _pinCounts[_oldestAllocated & GenerationSlotMask] == 0;
+    private bool IsCompactable => _oldestAllocated < _oldestLive && _generations[_oldestAllocated & GenerationSlotMask]!.PinCount == 0;
 
     private void Reclaim()
     {
@@ -335,7 +330,7 @@ public sealed class NodeRecordBuffer : INodeRecordBuffer
                     lock (_lock)
                     {
                         // A reader pinned it while it was being compressed; compaction resumes once the reader releases it.
-                        if (_disposed || _pinCounts[generation.Id & GenerationSlotMask] != 0) return;
+                        if (_disposed || generation.PinCount != 0) return;
                         if (compressed is not null)
                         {
                             _compressedMemory += (ulong)compressed.Memory;
@@ -423,7 +418,7 @@ public sealed class NodeRecordBuffer : INodeRecordBuffer
     {
         while (_oldestCompressed < _oldestAllocated)
         {
-            if (_pinCounts[_oldestCompressed & GenerationSlotMask] != 0) return;
+            if (_generations[_oldestCompressed & GenerationSlotMask]!.PinCount != 0) return;
             Generation generation = _generations[_oldestCompressed & GenerationSlotMask]!;
             CompressedGeneration? compressed = generation.Compressed;
             if (compressed is not null && _compressedMemory <= _compressedMaxMemory && _oldestCompressed >= before) return;
@@ -444,17 +439,16 @@ public sealed class NodeRecordBuffer : INodeRecordBuffer
         while (TryLocate(pointer, out NodeRecord rootKey))
         {
             ReadOnlySpan<byte> record = rootKey.Span;
-            if (MemoryMarshal.Read<ValueHash256>(record[RootKeyAddressOffset..]) == addressHash
-                && MemoryMarshal.Read<ValueHash256>(record[RootKeyRootOffset..]) == root)
+            if (RootKeyRecordCodec.Matches(record, addressHash, root))
             {
-                ulong rootPointer = BinaryPrimitives.ReadUInt64LittleEndian(record[RootKeyPointerOffset..]);
+                ulong rootPointer = RootKeyRecordCodec.RootPointer(record);
                 if (!TryLocate(rootPointer, out _)) break;
 
                 Metrics.IncrementNodeRecordBufferRootHits();
                 return rootPointer;
             }
 
-            pointer = BinaryPrimitives.ReadUInt64LittleEndian(record[RootKeyPreviousOffset..]);
+            pointer = RootKeyRecordCodec.Previous(record);
         }
 
         Metrics.IncrementNodeRecordBufferRootMisses();
@@ -470,12 +464,7 @@ public sealed class NodeRecordBuffer : INodeRecordBuffer
         while (true)
         {
             ulong rootKey = Reserve(NodeRecordCodec.RootKeyLength, out NativeNodeBuffer buffer, out int offset);
-            Span<byte> record = buffer.AsSpan(offset, NodeRecordCodec.RootKeyLength);
-            record[0] = (byte)NodeRecordKind.RootKey;
-            address?.Bytes.CopyTo(record[RootKeyAddressOffset..]);
-            root.Bytes.CopyTo(record[RootKeyRootOffset..]);
-            BinaryPrimitives.WriteUInt64LittleEndian(record[RootKeyPointerOffset..], rootPointer);
-            BinaryPrimitives.WriteUInt64LittleEndian(record[RootKeyPreviousOffset..], previous);
+            RootKeyRecordCodec.Write(buffer.AsSpan(offset, NodeRecordCodec.RootKeyLength), address, root, rootPointer, previous);
 
             // A lost race appends a fresh record instead of relinking this one: the winner may sit in a newer generation.
             ulong current = Interlocked.CompareExchange(ref slot, rootKey, previous);
@@ -491,7 +480,7 @@ public sealed class NodeRecordBuffer : INodeRecordBuffer
 
     private ref ulong RootSlot(Hash256? address, in ValueHash256 root)
     {
-        ulong[] slots = address is null ? _stateRoots : _storageRoots;
+        ulong[] slots = address is null ? _stateRootIndex : _storageRootIndex;
         ulong addressWord = address is null ? 0 : MemoryMarshal.Read<ulong>(address.Bytes);
         return ref slots[(MemoryMarshal.Read<ulong>(root.Bytes) ^ addressWord) & (ulong)(slots.Length - 1)];
     }
@@ -606,5 +595,6 @@ public sealed class NodeRecordBuffer : INodeRecordBuffer
         public NativeNodeBuffer? Data;
         public CompressedGeneration? Compressed;
         public long Used;
+        public int PinCount;
     }
 }
