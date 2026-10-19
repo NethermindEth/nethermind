@@ -9,7 +9,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Logging;
-using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
@@ -214,8 +213,8 @@ public class ReadOnlySnapshotBundlePersistedTests
 
             StrongBox<byte[]?> spanRlp = new();
             bool found = storage
-                ? bundle.TryLoadStorageRlp(address, path, ReadFlags.None, static (rlp, box) => box.Value = rlp.ToArray(), spanRlp)
-                : bundle.TryLoadStateRlp(path, ReadFlags.None, static (rlp, box) => box.Value = rlp.ToArray(), spanRlp);
+                ? bundle.TryLoadPersistedStorageRlp(address, path, ReadFlags.None, static (rlp, box) => box.Value = rlp.ToArray(), spanRlp)
+                : bundle.TryLoadPersistedStateRlp(path, ReadFlags.None, static (rlp, box) => box.Value = rlp.ToArray(), spanRlp);
 
             Assert.That(arrayRlp, Is.EqualTo(expected), path.ToString());
             Assert.That(found, Is.EqualTo(expected is not null), path.ToString());
@@ -246,8 +245,8 @@ public class ReadOnlySnapshotBundlePersistedTests
                 else
                 {
                     bool found = storage
-                        ? bundle.TryLoadStorageRlp(address, persistedPath, ReadFlags.None, CheckRlp, persistedRlp.AsSpan())
-                        : bundle.TryLoadStateRlp(persistedPath, ReadFlags.None, CheckRlp, persistedRlp.AsSpan());
+                        ? bundle.TryLoadPersistedStorageRlp(address, persistedPath, ReadFlags.None, CheckRlp, persistedRlp.AsSpan())
+                        : bundle.TryLoadPersistedStateRlp(persistedPath, ReadFlags.None, CheckRlp, persistedRlp.AsSpan());
                     if (!found) throw new InvalidOperationException("Missing persisted RLP");
                 }
             }

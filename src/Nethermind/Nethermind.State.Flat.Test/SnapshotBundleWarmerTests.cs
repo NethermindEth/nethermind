@@ -110,7 +110,6 @@ public class SnapshotBundleWarmerTests
 
         bundle.WarmUp(address, committedRoot, ValueKeccak.Zero);
         bundle.WarmUp(address, persistedRoot, ValueKeccak.Zero);
-        bool committedLoadable = bundle.TryLoadTrieNodeRecord(address, TreePath.Empty, committedRoot.Hash, out _);
 
         (Snapshot? snapshot, TransientResource? retired) = bundle.CollectAndApplySnapshot(new StateId(1, TestItem.KeccakA), new StateId(2, TestItem.KeccakA), null);
         try
@@ -119,7 +118,6 @@ public class SnapshotBundleWarmerTests
             {
                 Assert.That(retired!.WarmedNodeLog.TryGet(address, TreePath.Empty, persistedRoot.Hash, out _, out _), Is.True, "persisted node warmed");
                 Assert.That(retired.WarmedNodeLog.TryGet(address, TreePath.Empty, committedRoot.Hash, out _, out _), Is.False, "committed node warmed");
-                Assert.That(committedLoadable, Is.False, "the source must skip committed snapshot nodes");
                 Assert.That(_buffer.GetRecord(committedRoot.Pointer).Rlp.ToArray(), Is.EqualTo(committedRlp), "committed node remains in the retained buffer");
             }
         }
@@ -304,22 +302,13 @@ public class SnapshotBundleWarmerTests
         }
     }
 
-    private static readonly (string PersistedRlpHex, bool RequestPersistedHash)[] MismatchingOrInvalidNodes =
-    [
-        (FlatTestHelpers.LeafRlpA, false),
-        ("c28001", true),
-        ("f8", true),
-    ];
-
-    // The persistence read is path-keyed, so it can return another node or invalid bytes; neither may be warmed.
+    // Persisted RLP is trusted to be the requested node, but bytes that are not a trie node are never warmed.
     [Test]
-    public void Warm_up_does_not_warm_a_mismatching_or_invalid_node(
-        [Values] bool storage,
-        [ValueSource(nameof(MismatchingOrInvalidNodes))] (string PersistedRlpHex, bool RequestPersistedHash) persisted)
+    public void Warm_up_does_not_warm_an_invalid_node([Values] bool storage, [Values("c28001", "f8")] string persistedRlpHex)
     {
         Hash256? address = storage ? TestItem.KeccakC : null;
-        byte[] persistedRlp = Bytes.FromHexString(persisted.PersistedRlpHex);
-        TrieRoot root = new(persisted.RequestPersistedHash ? ValueKeccak.Compute(persistedRlp) : TestItem.KeccakB.ValueHash256, 0);
+        byte[] persistedRlp = Bytes.FromHexString(persistedRlpHex);
+        TrieRoot root = new(ValueKeccak.Compute(persistedRlp), 0);
         NodeReader reader = new(new Dictionary<TreePath, byte[]> { [TreePath.Empty] = persistedRlp });
         using SnapshotBundle bundle = NewBundle(reader);
 

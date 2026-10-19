@@ -9,8 +9,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.State.Flat;
-using Nethermind.Trie;
-using Nethermind.Trie.NodeBuffer;
 using FlatSnapshot = Nethermind.State.Flat.Snapshot;
 
 namespace Nethermind.Benchmarks.State;

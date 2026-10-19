@@ -13,7 +13,6 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.State.Flat.NodeBuffer;
-using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.Trie;
 using Nethermind.Trie.NodeBuffer;
@@ -428,69 +427,6 @@ public class SnapshotTests
             Assert.That(snapshot.StateNodes.Count(), Is.EqualTo(kind == PublishedRootKind.Resolved ? 1 : 0));
             AssertIteratorEntries(snapshot.GetStateNodeIterator(), snapshot.StateNodes.ToArray(), snapshot);
         }
-    }
-
-    public enum ReaderTier { ReadOnly, Local, Current }
-
-    [Test]
-    public void RequestedHashSkipsUnrelatedNewerNodes([Values] bool storage, [Values] ReaderTier tier, [Values] bool newerHasPath)
-    {
-        using INodeRecordBuffer buffer = FlatTestHelpers.NewTestBuffer();
-        Hash256 address = TestItem.KeccakA;
-        TreePath targetPath = TreePath.FromHexString("1");
-        TreePath newerPath = newerHasPath ? targetPath : TreePath.FromHexString("2");
-        byte[] expectedRlp = FlatTestHelpers.LeafRlp(1);
-        Hash256 expectedHash = new(ValueKeccak.Compute(expectedRlp));
-        ReadOnlySnapshotBundle readOnly = new(
-            FlatTestHelpers.SnapshotList(NodeSnapshot(expectedRlp, targetPath), NodeSnapshot(FlatTestHelpers.LeafRlp(2), newerPath)),
-            Substitute.For<IPersistence.IPersistenceReader>(), false, PersistedSnapshotStack.Empty(), bufferPin: null);
-        using SnapshotBundle bundle = new(readOnly, buffer, _pool, ResourcePool.Usage.MainBlockProcessing,
-            tier == ReaderTier.ReadOnly ? null : FlatTestHelpers.SnapshotList(NodeSnapshot(FlatTestHelpers.LeafRlp(3), newerPath)));
-        if (tier == ReaderTier.Current)
-        {
-            using Snapshot currentSnapshot = NodeSnapshot(FlatTestHelpers.LeafRlp(4), newerPath);
-            ulong pointer = storage ? currentSnapshot.Content.StorageRoots[address] : currentSnapshot.StateRootPointer;
-            TrieRoot current = new(buffer.GetRecord(pointer).Hash, pointer);
-            if (storage) bundle.PublishBufferedStorageRoot(address, current);
-            else bundle.PublishBufferedStateRoot(current);
-        }
-
-        if (tier == ReaderTier.ReadOnly)
-        {
-            bool found = storage
-                ? readOnly.TryFindStorageNodes(address, targetPath, expectedHash, out TrieNode? matching)
-                : readOnly.TryFindStateNodes(targetPath, expectedHash, out matching);
-            bool wrongFound = storage
-                ? readOnly.TryFindStorageNodes(address, targetPath, Keccak.Zero, out _)
-                : readOnly.TryFindStateNodes(targetPath, Keccak.Zero, out _);
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(found, Is.True);
-                Assert.That(matching!.FullRlp.ToArray(), Is.EqualTo(expectedRlp));
-                Assert.That(wrongFound, Is.False);
-            }
-        }
-        else
-        {
-            TrieNode matching = Find(expectedHash);
-            TrieNode missing = Find(Keccak.Zero);
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(matching.FullRlp.ToArray(), Is.EqualTo(expectedRlp));
-                Assert.That(missing.NodeType, Is.EqualTo(NodeType.Unknown));
-                Assert.That(missing.Keccak, Is.EqualTo(Keccak.Zero));
-            }
-        }
-
-        Snapshot NodeSnapshot(byte[] rlp, TreePath path) => FlatTestHelpers.MakeSnapshot(_pool, buffer, content =>
-        {
-            if (storage) content.SetStorageNodeRlp(buffer, address, path, rlp);
-            else content.SetStateNodeRlp(buffer, path, rlp);
-        });
-
-        TrieNode Find(Hash256 hash) => storage
-            ? bundle.FindStorageNodeOrUnknown(address, targetPath, hash)
-            : bundle.FindStateNodeOrUnknown(targetPath, hash);
     }
 
     [Test]

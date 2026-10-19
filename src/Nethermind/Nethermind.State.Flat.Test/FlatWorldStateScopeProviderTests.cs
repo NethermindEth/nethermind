@@ -1426,7 +1426,7 @@ public class FlatWorldStateScopeProviderTests
     }
 
     [Test]
-    public void TryLoadTrieNodeRecord_reads_warmed_then_verified_persisted_and_skips_in_memory_snapshot_nodes([Values] bool storage)
+    public void TryLoadTrieNodeRecord_reads_warmed_then_persisted_and_skips_in_memory_snapshot_nodes([Values] bool storage)
     {
         ResourcePool pool = new(new FlatDbConfig());
         using INodeRecordBuffer buffer = FlatTestHelpers.NewTestBuffer();
@@ -1460,7 +1460,6 @@ public class FlatWorldStateScopeProviderTests
             Assert.That(Load(persistedPath, persistedRlp), Is.EqualTo(persistedRlp), "persisted");
             Assert.That(Load(persistedPath, persistedRlp), Is.EqualTo(persistedRlp), "warmed");
             Assert.That(reader.Loads, Is.EqualTo(1), "warmed node read again from persistence");
-            Assert.That(Load(persistedPath, ownSnapshotRlp), Is.Null, "persisted RLP of another hash");
             Assert.That(Load(readOnlySnapshotPath, readOnlySnapshotRlp), Is.Null, "read-only bundle snapshot must be read through the buffer");
             Assert.That(Load(ownSnapshotPath, ownSnapshotRlp), Is.Null, "own snapshot must be read through the buffer");
             Assert.That(Load(ownSnapshotPath, readOnlySnapshotRlp), Is.Null, "snapshot node of another hash");

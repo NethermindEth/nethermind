@@ -195,8 +195,7 @@ public sealed class SnapshotBundle : IDisposable
         GuardDispose();
 
         if (_currentPooledContent.HasStateRoot
-            && _nodeRecordBuffer!.TryGetNode(_currentPooledContent.StateRootPointer, path, out TrieNode? node)
-            && node.Keccak == hash)
+            && _nodeRecordBuffer!.TryGetNode(_currentPooledContent.StateRootPointer, path, out TrieNode? node))
         {
             Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
         }
@@ -247,14 +246,14 @@ public sealed class SnapshotBundle : IDisposable
         HashedKey<TreePath> key = new(path);
         for (int i = _snapshots.Count - 1; i >= 0; i--)
         {
-            if (_snapshots[i].TryGetStateNode(key, out node) && node.Keccak == hash)
+            if (_snapshots[i].TryGetStateNode(key, out node))
             {
                 Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
                 return true;
             }
         }
 
-        return _readOnlySnapshotBundle.TryFindStateNodes(path, hash, out node);
+        return _readOnlySnapshotBundle.TryFindStateNodes(key, out node);
     }
 
     public TrieNode FindStorageNodeOrUnknown(Hash256 address, in TreePath path, Hash256 hash)
@@ -262,8 +261,7 @@ public sealed class SnapshotBundle : IDisposable
         GuardDispose();
 
         if (_changedStorageRoots.TryGetValue(address, out ulong root) && root != 0
-            && _nodeRecordBuffer!.TryGetNode(root, path, out TrieNode? node)
-            && node.Keccak == hash)
+            && _nodeRecordBuffer!.TryGetNode(root, path, out TrieNode? node))
         {
             Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
         }
@@ -287,14 +285,14 @@ public sealed class SnapshotBundle : IDisposable
         HashedKey<(Hash256, TreePath)> key = new((address, path));
         for (int i = _snapshots.Count - 1; i >= 0; i--)
         {
-            if (_snapshots[i].TryGetStorageNode(key, out node) && node.Keccak == hash)
+            if (_snapshots[i].TryGetStorageNode(key, out node))
             {
                 Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
                 return true;
             }
         }
 
-        return _readOnlySnapshotBundle.TryFindStorageNodes(address, path, hash, out node);
+        return _readOnlySnapshotBundle.TryFindStorageNodes(key, out node);
     }
 
     public byte[]? TryLoadStateRlp(in TreePath path, Hash256 hash, ReadFlags flags)
@@ -383,8 +381,8 @@ public sealed class SnapshotBundle : IDisposable
         record = default;
         bool inserted = false;
         PersistedNodeInsert insert = new(warmed, address, in path, in hash, ref record, ref inserted);
-        if (address is null) readOnly.TryLoadStateRlp(path, ReadFlags.None, PersistedNodeInsert.Insert, insert);
-        else readOnly.TryLoadStorageRlp(address, path, ReadFlags.None, PersistedNodeInsert.Insert, insert);
+        if (address is null) readOnly.TryLoadPersistedStateRlp(path, ReadFlags.None, PersistedNodeInsert.Insert, insert);
+        else readOnly.TryLoadPersistedStorageRlp(address, path, ReadFlags.None, PersistedNodeInsert.Insert, insert);
         return inserted;
     }
 
@@ -458,12 +456,16 @@ public sealed class SnapshotBundle : IDisposable
         }
     }
 
-    /// <summary>Supplies borrowed RLP for a warm-up without publishing unlinked ancestor records during descent.</summary>
-    /// <summary>Inserts the persisted RLP handed to it into the warmed nodes, if it is the requested node.</summary>
+    /// <summary>Inserts the persisted RLP handed to it into the warmed nodes as the requested node.</summary>
+    /// <remarks>The RLP is trusted to be the node of the requested hash, as warm-up trusts it.</remarks>
     private readonly ref struct PersistedNodeInsert
     {
-        public static readonly ReadOnlySpanAction<byte, PersistedNodeInsert> Insert =
-            static (rlp, insert) => insert._inserted = insert._warmed.TryAppend(insert._address, insert._path, insert._hash, rlp, out insert._record, out _);
+        public static readonly ReadOnlySpanAction<byte, PersistedNodeInsert> Insert = static (rlp, insert) =>
+        {
+            if (!NodeRecordCodec.TryMeasure(rlp, out NodeRecordKind kind, out ushort hashMask)) return;
+            insert._warmed.AppendVerified(insert._address, insert._path, insert._hash, rlp, kind, hashMask, [], out insert._record, out _);
+            insert._inserted = true;
+        };
 
         private readonly WarmedNodeLog _warmed;
         private readonly Hash256? _address;

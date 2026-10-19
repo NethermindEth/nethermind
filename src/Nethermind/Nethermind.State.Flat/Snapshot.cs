@@ -103,7 +103,11 @@ public class Snapshot : RefCountingDisposable
     public NodeIterator<(Hash256, TreePath)> GetStorageNodeIterator() => new(BufferPin?.Buffer, EnumerateStorageNodes().GetEnumerator());
 
     /// <summary>Reads snapshot node keys and their RLP, borrowed from the buffer records the snapshot pins.</summary>
-    /// <remarks>RLP spans must not be used after the snapshot is released.</remarks>
+    /// <remarks>
+    /// Nodes come in ascending <see cref="TreePath.CompareTo(in TreePath)"/> order, and storage nodes by ascending address hash first:
+    /// the walk visits each node before its subtree and children by ascending nibble, so a persisted snapshot is built from them without sorting.
+    /// RLP spans must not be used after the snapshot is released.
+    /// </remarks>
     public sealed class NodeIterator<TKey> : IDisposable where TKey : IEquatable<TKey>
     {
         private readonly INodeRecordBuffer? _buffer;

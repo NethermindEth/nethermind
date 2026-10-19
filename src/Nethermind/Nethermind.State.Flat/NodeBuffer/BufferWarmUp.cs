@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Buffers;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -176,8 +175,8 @@ internal static class BufferWarmUp
     private static bool TryLoadRlp<TArg>(ReadOnlySnapshotBundle reader, Hash256? address, in TreePath path, ReadOnlySpanAction<byte, TArg> action, TArg arg)
         where TArg : allows ref struct =>
         address is null
-            ? reader.TryLoadStateRlp(path, ReadFlags.None, action, arg)
-            : reader.TryLoadStorageRlp(address, path, ReadFlags.None, action, arg);
+            ? reader.TryLoadPersistedStateRlp(path, ReadFlags.None, action, arg)
+            : reader.TryLoadPersistedStorageRlp(address, path, ReadFlags.None, action, arg);
 
     /// <summary>Copies the key nibbles of the leaf or extension <paramref name="rlp"/> to <paramref name="key"/>.</summary>
     /// <returns>The number of nibbles copied.</returns>

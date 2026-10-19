@@ -1,10 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Buffers;
-using System.Collections.Generic;
-using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -17,7 +14,7 @@ namespace Nethermind.State.Flat.NodeBuffer;
 
 /// <summary>A node source over path-keyed node RLP, for tests and benchmarks: a fetched node is verified and inserted into <paramref name="warmed"/>, which serves it after.</summary>
 /// <param name="address">The storage trie's address hash, or null for the state trie.</param>
-internal sealed class DictionaryNodeSource(IReadOnlyDictionary<TreePath, byte[]> nodes, WarmedNodeLog warmed, Hash256? address)
+public sealed class DictionaryNodeSource(IReadOnlyDictionary<TreePath, byte[]> nodes, WarmedNodeLog warmed, Hash256? address)
 {
     private int _fetchCount;
 
@@ -36,7 +33,7 @@ internal sealed class DictionaryNodeSource(IReadOnlyDictionary<TreePath, byte[]>
     }
 
     /// <param name="buffer">The buffer holding the trie, which the warmed nodes are combined with.</param>
-    public void WarmUp(INodeRecordBuffer buffer, TrieRoot root, in ValueHash256 key, bool forDelete = false)
+    internal void WarmUp(INodeRecordBuffer buffer, TrieRoot root, in ValueHash256 key, bool forDelete = false)
     {
         using ReadOnlySnapshotBundle reader = new(new SnapshotPooledList(0), new Persistence(this), false, PersistedSnapshotStack.Empty(), bufferPin: null);
         BufferWarmUp.WarmUp(new WarmedNodeRecordBuffer(buffer, warmed), warmed, reader, address, root, key, forDelete);

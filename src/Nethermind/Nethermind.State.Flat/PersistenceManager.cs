@@ -23,7 +23,6 @@ using Nethermind.Trie;
 [assembly: InternalsVisibleTo("Nethermind.State.Flat.History.Test")]
 [assembly: InternalsVisibleTo("Nethermind.Synchronization.Test")]
 [assembly: InternalsVisibleTo("Nethermind.State.Test")]
-[assembly: InternalsVisibleTo("Nethermind.Benchmark")]
 
 namespace Nethermind.State.Flat;
 

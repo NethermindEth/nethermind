@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using Autofac;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Api;
-using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;

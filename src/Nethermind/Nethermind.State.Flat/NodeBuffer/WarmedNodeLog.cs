@@ -18,7 +18,7 @@ namespace Nethermind.State.Flat.NodeBuffer;
 /// so a pointer from before a <see cref="Reset"/> is unreachable after it.
 /// Every record stays readable until the next <see cref="Reset"/>.
 /// </remarks>
-internal sealed class WarmedNodeLog : IDisposable
+public sealed class WarmedNodeLog : IDisposable
 {
     private const int GenerationBytes = 1024 * 1024;
 
@@ -76,7 +76,7 @@ internal sealed class WarmedNodeLog : IDisposable
 
     /// <summary>Appends the record of verified RLP with the known child pointers, unless the position already holds it.</summary>
     /// <param name="childPointers">Pointers by child slot, or empty to leave every pointer zero.</param>
-    public void AppendVerified(Hash256? address, in TreePath path, in ValueHash256 hash, ReadOnlySpan<byte> rlp,
+    internal void AppendVerified(Hash256? address, in TreePath path, in ValueHash256 hash, ReadOnlySpan<byte> rlp,
         NodeRecordKind kind, ushort hashMask, ReadOnlySpan<ulong> childPointers, out NodeRecord record, out ulong pointer)
     {
         if (TryGet(address, path, hash, out record, out pointer)) return;

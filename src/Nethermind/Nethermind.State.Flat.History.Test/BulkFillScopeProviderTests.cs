@@ -9,7 +9,6 @@ using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Logging;
 using Nethermind.State.Flat.History.Changesets;
-using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.State.Flat.History.Test;
