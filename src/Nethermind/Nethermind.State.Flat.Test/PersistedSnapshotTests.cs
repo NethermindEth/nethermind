@@ -233,72 +233,6 @@ public class PersistedSnapshotTests
     }
 
     [Test]
-    public void Serialization_keeps_buffered_pointers_alive_after_retain_release_until_write_completion([Values] bool failWrite)
-    {
-        using Snapshot snapshot = _resourcePool.CreateSnapshot(StateId.PreGenesis, new(1, Keccak.Zero), ResourcePool.Usage.MainBlockProcessing, _buffer);
-        byte[] stateRlp = FlatTestHelpers.LeafRlp(1);
-        byte[] storageRlp = FlatTestHelpers.LeafRlp(2);
-        ulong statePointer = _buffer.AppendRecordFromRlp(null, TreePath.Empty, ValueKeccak.Compute(stateRlp), stateRlp);
-        ulong storagePointer = _buffer.AppendRecordFromRlp(TestItem.KeccakA, TreePath.Empty, ValueKeccak.Compute(storageRlp), storageRlp);
-        FlatTestHelpers.StartNewGeneration(_buffer);
-        snapshot.Content.HasStateRoot = true;
-        snapshot.Content.StateRootPointer = statePointer;
-        snapshot.Content.StorageRoots[TestItem.KeccakA] = storagePointer;
-        using PooledByteBufferWriter pooled = new(4096);
-        using BlobArenaWriter blobs = _blobs.CreateWriter(4096);
-        using BloomFilter bloom = BloomFilter.AlwaysTrue();
-        bool called = false;
-        CallbackWriter writer = new(pooled, () =>
-        {
-            called = true;
-            snapshot.BufferPin!.Dispose();
-            for (int i = 0; i < 10; i++) FlatTestHelpers.StartNewGeneration(_buffer);
-            Assert.That(() => _buffer.FindBloom(statePointer) is null, Is.True.After(5_000, 10));
-            Assert.That(_buffer.TryLocate(statePointer, out _), Is.True, "buffered pointers still resolve after extraction enumerators finish");
-            Assert.That(_buffer.TryLocate(storagePointer, out _), Is.True);
-            if (failWrite) throw new IOException("Injected table write failure.");
-        });
-
-        if (failWrite)
-            Assert.That(() => PersistedSnapshotBuilder.Build(snapshot, ref writer, blobs, bloom), Throws.TypeOf<IOException>());
-        else
-        {
-            PersistedSnapshotBuilder.Build(snapshot, ref writer, blobs, bloom);
-            blobs.Complete();
-            using PersistedSnapshot persisted = CreatePersistedSnapshot(snapshot.From, snapshot.To, pooled.WrittenSpan.ToArray());
-            Assert.That(persisted.TryLoadStateNodeRlp(TreePath.Empty, out byte[]? state), Is.True);
-            Assert.That(state, Is.EqualTo(stateRlp));
-            Assert.That(persisted.TryLoadStorageNodeRlp(TestItem.KeccakA.ValueHash256, TreePath.Empty, out byte[]? storage), Is.True);
-            Assert.That(storage, Is.EqualTo(storageRlp));
-        }
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(called, Is.True);
-            Assert.That(_buffer.TryLocate(statePointer, out _), Is.False, "completion or failure releases the outer reader");
-            Assert.That(_buffer.TryLocate(storagePointer, out _), Is.False);
-        }
-    }
-
-    [Test]
-    public void Preparation_failure_releases_the_outer_buffer_reader()
-    {
-        byte[] rlp = FlatTestHelpers.LeafRlp(1);
-        ulong inherited = _buffer.AppendRecordFromRlp(null, TreePath.Empty, ValueKeccak.Compute(rlp), rlp);
-        FlatTestHelpers.StartNewGeneration(_buffer);
-        using Snapshot snapshot = _resourcePool.CreateSnapshot(StateId.PreGenesis, StateId.PreGenesis, ResourcePool.Usage.MainBlockProcessing, _buffer);
-        snapshot.Content.HasStateRoot = true;
-        snapshot.Content.StateRootPointer = inherited;
-        // A corrupt offset makes one extraction job fail after the outer reader has entered.
-        ulong active = _buffer.Reserve(0, out _, out _) & ~(ulong)uint.MaxValue;
-        snapshot.Content.StorageRoots[TestItem.KeccakA] = active | uint.MaxValue;
-
-        Assert.That(() => new PersistedSnapshotBuilder.PreparedSnapshot(snapshot), Throws.TypeOf<IndexOutOfRangeException>());
-        for (int i = 0; i < 10; i++) FlatTestHelpers.StartNewGeneration(_buffer);
-        Assert.That(() => _buffer.FindBloom(inherited) is null, Is.True.After(5_000, 10));
-        Assert.That(_buffer.TryLocate(inherited, out _), Is.False, "a failed preparation must not retain retired records");
-    }
-
-    [Test]
     public void Loader_roundtrips_compacted_final_roots_and_clear_boundaries([Values] bool recreate)
     {
         using FlatTestContainer tier = new(arenaFileSizeBytes: 4096);
@@ -340,24 +274,6 @@ public class PersistedSnapshotTests
             Assert.That(persisted.TryGetSlot(TestItem.AddressA, 1, out _), Is.False, "pre-clear flat slots are omitted");
             Assert.DoesNotThrow(() => PersistedSnapshotUtils.ValidatePersistedSnapshot(compacted, persisted, dumpWhenFailed: false));
         }
-    }
-
-    private struct CallbackWriter(PooledByteBufferWriter output, Action beforeWrite) : IByteBufferWriter
-    {
-        private Action? _beforeWrite = beforeWrite;
-        public Span<byte> GetSpan(int sizeHint) => output.GetWriter().GetSpan(sizeHint);
-        public void Advance(int count) => output.GetWriter().Advance(count);
-        public long Written
-        {
-            get
-            {
-                Action? callback = _beforeWrite;
-                _beforeWrite = null;
-                callback?.Invoke();
-                return output.GetWriter().Written;
-            }
-        }
-        public readonly long FirstOffset => output.GetWriter().FirstOffset;
     }
 
     private static IEnumerable<TestCaseData> RoundTripTestCases()

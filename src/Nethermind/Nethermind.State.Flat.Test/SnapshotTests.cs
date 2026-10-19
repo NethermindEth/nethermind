@@ -308,46 +308,6 @@ public class SnapshotTests
     }
 
     [Test]
-    public void EnumerationProtectsRecordsAfterSnapshotRetainIsReleased([Values] bool storage)
-    {
-        using NodeRecordBuffer buffer = new(0, 64 * 1024);
-        using Snapshot snapshot = _pool.CreateSnapshot(StateId.PreGenesis, new(1, Keccak.Zero), ResourcePool.Usage.MainBlockProcessing, buffer);
-        byte[] rlp = FlatTestHelpers.LeafRlp(1);
-        ulong inherited = buffer.AppendRecordFromRlp(storage ? TestItem.KeccakA : null, TreePath.Empty, ValueKeccak.Compute(rlp), rlp);
-        byte[] secondRlp = FlatTestHelpers.LeafRlp(2);
-        ulong second = buffer.AppendRecordFromRlp(TestItem.KeccakB, TreePath.Empty, ValueKeccak.Compute(secondRlp), secondRlp);
-        FlatTestHelpers.StartNewGeneration(buffer);
-        if (storage)
-        {
-            snapshot.Content.StorageRoots[TestItem.KeccakA] = inherited;
-            snapshot.Content.StorageRoots[TestItem.KeccakB] = second;
-        }
-        else
-        {
-            snapshot.Content.StateRootPointer = inherited;
-            snapshot.Content.HasStateRoot = true;
-        }
-        if (storage) AssertLifetime(snapshot.GetStorageNodeIterator());
-        else AssertLifetime(snapshot.GetStateNodeIterator());
-
-        void AssertLifetime<TKey>(Snapshot.NodeIterator<TKey> nodes) where TKey : IEquatable<TKey>
-        {
-            using (nodes)
-            {
-                Assert.That(nodes.MoveNext(), Is.True);
-                ReadOnlySpan<byte> firstRlp = nodes.ReadRlp();
-                byte[] expectedRlp = firstRlp.ToArray();
-                snapshot.BufferPin!.Dispose();
-                for (int i = 0; i < 10; i++) FlatTestHelpers.StartNewGeneration(buffer);
-                Assert.That(() => buffer.FindBloom(inherited) is null, Is.True.After(5_000, 10));
-                if (storage) Assert.That(nodes.MoveNext(), Is.True, "moving to another address must not release the outer read lease");
-                Assert.That(firstRlp.ToArray(), Is.EqualTo(expectedRlp));
-            }
-        }
-        Assert.That(buffer.TryLocate(inherited, out _), Is.False);
-    }
-
-    [Test]
     public void NodeIteratorStopsOnCompletionOrEarlyDispose([Values] bool storage, [Values] bool finish)
     {
         using ForwardingNodeRecordBuffer buffer = new(FlatTestHelpers.NewTestBuffer());

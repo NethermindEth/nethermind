@@ -287,6 +287,7 @@ public class FlatWorldStateScopeProviderTests
             _containerBuilder.RegisterType<ReadOnlySnapshotBundle>()
                 .WithParameter(new NamedParameter("recordDetailedMetrics", false))
                 .WithParameter(new NamedParameter("isHistorical", historical))
+                .WithParameter(new NamedParameter("bufferPin", null))
                 .WithParameter(TypedParameter.From(ReadOnlySnapshots))
                 .WithParameter(TypedParameter.From(PersistedSnapshotStack.Empty()))
                 .ExternallyOwned();

@@ -591,7 +591,7 @@ public class PersistenceManager(
                 batch.SetStorage(addr, slot, kv.Value);
             }
 
-            // Traversal includes inherited buffer-resident nodes; persisting them again is harmless.
+            // Traversal skips nodes written before the snapshot's pin, so only this snapshot's nodes are persisted.
             long stateNodesSize = 0;
             using (Snapshot.NodeIterator<TreePath> nodes = snapshot.GetStateNodeIterator())
             while (nodes.MoveNext())

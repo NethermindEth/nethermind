@@ -149,6 +149,8 @@ public class NodeRecordBufferVisitorTests
     {
         using INodeRecordBuffer buffer = NewBuffer();
         TrieRoot root = Build(buffer, null, true);
+        // The caller pins the records the walk borrows; the buffer is disposed under it below.
+        using IDisposable pin = buffer.PinAll();
         using ManualResetEventSlim started = new();
         using ManualResetEventSlim failed = new();
         using ManualResetEventSlim release = new();
