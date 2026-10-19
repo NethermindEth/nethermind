@@ -82,8 +82,10 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
 
         private BlockFeeHistorySearchInfo? GetHistorySearchInfo(BlockParameter blockParameter)
         {
-            if (blockParameter.Type == BlockParameterType.BlockHash
-                && _feeHistoryCache.TryGetValue(blockParameter.BlockHash!, out BlockFeeHistorySearchInfo i))
+            Hash256? hash = blockParameter.Type == BlockParameterType.BlockHash
+                ? blockParameter.BlockHash
+                : _blockTree.FindHeader(blockParameter)?.Hash;
+            if (hash is not null && _feeHistoryCache.TryGetValue(hash, out BlockFeeHistorySearchInfo i))
             {
                 return i;
             }
@@ -217,7 +219,8 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
                         rewards[effectiveBlockCount] = rewardsInBlock;
                     }
                 }
-                historyInfo = info.ParentHash is null ? null : GetHistorySearchInfo(info.ParentHash, info.BlockNumber - 1);
+                // The oldest requested block needs no parent.
+                historyInfo = effectiveBlockCount == 0 || info.ParentHash is null ? null : GetHistorySearchInfo(info.ParentHash, info.BlockNumber - 1);
             }
 
             // An unavailable ancestor ends the walk early; the leading slots were never filled,

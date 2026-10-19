@@ -12,6 +12,7 @@ using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Flat.Persistence;
+using Nethermind.State.Flat.Persistence.TrieNodeLog;
 using Nethermind.State.Flat.Sync.Snap;
 using Nethermind.State.Snap;
 using Nethermind.Synchronization.SnapSync;
@@ -87,7 +88,7 @@ public class FlatSnapTrieFactoryTests
     [Test]
     public void EnsureInitialize_WarnsOnlyWhenDiscardingState_AndLogsWipeDuration([Values] bool hasState)
     {
-        RocksDbPersistence persistence = new(new SnapshotableMemColumnsDb<FlatDbColumns>(), LimboLogs.Instance);
+        RocksDbPersistence persistence = new(new SnapshotableMemColumnsDb<FlatDbColumns>(), LimboLogs.Instance, NullTrieNodeLog.Instance);
         if (hasState)
         {
             using IPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL);

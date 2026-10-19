@@ -22,6 +22,7 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.Forks;
 using Nethermind.State.Flat.Persistence;
+using Nethermind.State.Flat.Persistence.TrieNodeLog;
 using Nethermind.State.Flat.Sync;
 using Nethermind.State.Flat.Sync.Snap;
 using Nethermind.State.Healing;
@@ -326,7 +327,7 @@ public class BalApplierDifferentialTests(bool flatScope)
     private static (Hash256? Root, MemDb CodeDb) ApplyThroughHealing(AccountSpec[] pre, ReadOnlyBlockAccessList[] bals, Hash256[] targetRoots, bool blockByBlock)
     {
         using SnapshotableMemColumnsDb<FlatDbColumns> columns = new();
-        RocksDbPersistence persistence = new(columns, LimboLogs.Instance);
+        RocksDbPersistence persistence = new(columns, LimboLogs.Instance, NullTrieNodeLog.Instance);
         Hash256 preRoot = CommitState(persistence, pre);
 
         IBlockTree blockTree = Substitute.For<IBlockTree>();
@@ -361,7 +362,7 @@ public class BalApplierDifferentialTests(bool flatScope)
     private static Hash256 CommitToNewPersistence(AccountSpec[] accounts)
     {
         using SnapshotableMemColumnsDb<FlatDbColumns> columns = new();
-        return CommitState(new RocksDbPersistence(columns, LimboLogs.Instance), accounts);
+        return CommitState(new RocksDbPersistence(columns, LimboLogs.Instance, NullTrieNodeLog.Instance), accounts);
     }
 
     /// <summary>Writes a consistent flat state (leaves and trie nodes) without code bytes, and returns its root.</summary>
