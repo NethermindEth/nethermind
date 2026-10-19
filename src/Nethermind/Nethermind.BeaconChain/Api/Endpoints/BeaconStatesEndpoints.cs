@@ -257,6 +257,10 @@ internal static class BeaconStatesEndpoints
 
     private static Task Root(HttpContext c, string stateId, BeaconApiContext ctx)
     {
+        if (ctx.GetCheckpointState(stateId) is { } checkpoint && StateIdResolver.TryResolveHeld(ctx, stateId, out ResolvedState held))
+        {
+            return WriteStateEnvelope(c, ctx, held, new RootDto(checkpoint.StateRoot.ToString()));
+        }
         // The state root is the block's own commitment to it; reading that field avoids decoding
         // the (often multi-hundred-MB) state just to re-hash it.
         if (!StateIdResolver.TryResolveBlock(ctx, stateId, out ResolvedBlock resolved, out int errorStatus, out string? errorMessage))

@@ -83,7 +83,7 @@ public class OptimismCLP2P : IDisposable
         _serviceProvider = new ServiceCollection()
             .AddSingleton<PeerStore>()
             .AddSingleton(new PayloadByNumberProtocol(chainId, PayloadDecoder.Instance, logManager))
-            .AddLibp2p(builder => builder.WithPubsub().AddProtocol<PayloadByNumberProtocol>())
+            .AddLibp2p(builder => ConfigureGossipStack(builder).AddProtocol<PayloadByNumberProtocol>())
             .AddSingleton(new IdentifyProtocolSettings
             {
                 ProtocolVersion = "",
@@ -91,6 +91,25 @@ public class OptimismCLP2P : IDisposable
             })
             .AddSingleton(CreatePubsubSettings(_blocksV2TopicId))
             .BuildServiceProvider();
+    }
+
+    internal static Libp2pStackBuilder ConfigureGossipStack(Libp2pStackBuilder builder)
+    {
+        GossipStreamBudget budget = new();
+        Add<GossipsubProtocolV13>();
+        Add<GossipsubProtocolV12>();
+        Add<GossipsubProtocolV11>();
+        Add<GossipsubProtocol>();
+        Add<FloodsubProtocol>();
+        return builder;
+
+        // Listeners precede the library protocols; those remain available for its outbound dials by concrete type.
+        void Add<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] T>() where T : class, ISessionProtocol
+        {
+            T protocol = ActivatorUtilities.GetServiceOrCreateInstance<T>(builder.ServiceProvider);
+            builder.AddProtocol(new BoundedGossipProtocol(protocol, budget));
+            builder.AddProtocol(protocol);
+        }
     }
 
     /// <summary>The gossipsub parameters of the OP Stack block gossip on <paramref name="blocksTopicId"/>, unscored.</summary>

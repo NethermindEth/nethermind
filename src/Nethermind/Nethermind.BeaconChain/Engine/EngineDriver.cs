@@ -38,7 +38,7 @@ public sealed class EngineDriver(ExternalClDetector detector, ILogManager logMan
     private Task? _pendingForkchoice;
     private bool _hasSentForkchoice;
 
-    /// <summary>Whether the consensus head being sent is more than a slot behind the wall clock; unset, no head is taken as catching up.</summary>
+    /// <summary>Whether the consensus head being sent is more than an epoch behind the wall clock; unset, no head is taken as catching up.</summary>
     internal Func<bool>? IsCatchingUp { get; set; }
 
     /// <summary>Whether the most recent engine call returned a verdict.</summary>

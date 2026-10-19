@@ -4,6 +4,7 @@
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
 using Nethermind.BeaconChain.StateTransition;
+using Nethermind.BeaconChain.ForkChoice;
 
 namespace Nethermind.BeaconChain.Sync;
 
@@ -17,12 +18,25 @@ public sealed record HeadSnapshot(StatusMessageV2 Status, Hash256? FullHeadRoot,
     /// <summary>The head's post-state for the Beacon API, or <c>null</c> when it was not captured.</summary>
     internal ForkedBeaconState? State { get; init; }
 
-    /// <summary>The post-state of the justified checkpoint block for the Beacon API, or <c>null</c> when it was not captured.</summary>
-    internal ForkedBeaconState? JustifiedState { get; init; }
+    internal CheckpointStateSnapshot? JustifiedState { get; init; }
+    internal CheckpointStateSnapshot? FinalizedState { get; init; }
 
-    /// <summary>The captured post-state of <paramref name="blockRoot"/> when it is the head or the justified checkpoint block, otherwise <c>null</c>.</summary>
+    /// <summary>The captured post-state of <paramref name="blockRoot"/> when it is the head, otherwise <c>null</c>.</summary>
     internal ForkedBeaconState? GetState(Hash256 blockRoot) =>
-        (blockRoot == Status.HeadRoot ? State : null) ?? (blockRoot == JustifiedRoot ? JustifiedState : null);
+        blockRoot == Status.HeadRoot ? State : null;
+}
+
+/// <summary>A checkpoint's epoch-start state, shared unchanged across head publications.</summary>
+internal sealed record CheckpointStateSnapshot(CheckpointRef Checkpoint, ForkedBeaconState State)
+{
+    private readonly Lazy<Hash256> _root = new(() => State switch
+    {
+        ForkedBeaconState.OfFulu fulu => SszRoots.HashTreeRoot(fulu.State),
+        ForkedBeaconState.OfGloas gloas => SszRoots.HashTreeRoot(gloas.State),
+        _ => throw new NotSupportedException(),
+    });
+
+    internal Hash256 StateRoot => _root.Value;
 }
 
 /// <summary>Publishes one completed get_head view to other threads (fork-choice.md).</summary>

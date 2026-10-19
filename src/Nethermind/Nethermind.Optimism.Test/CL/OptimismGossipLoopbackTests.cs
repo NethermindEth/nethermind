@@ -541,7 +541,7 @@ public class OptimismGossipLoopbackTests
             PubsubSettings settings = OptimismCLP2P.CreatePubsubSettings(BlocksTopic);
             configure?.Invoke(settings);
             IServiceCollection collection = new ServiceCollection()
-                .AddLibp2p(static builder => builder.WithPubsub())
+                .AddLibp2p(OptimismCLP2P.ConfigureGossipStack)
                 .AddSingleton(settings);
             if (dnsLookup is not null)
             {

@@ -1,7 +1,11 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Linq;
+using System.Threading.Tasks;
+using Microsoft.Extensions.DependencyInjection;
+using Multiformats.Address;
 using Google.Protobuf;
 using Nethermind.Core;
 using Nethermind.Core.Test;
@@ -11,6 +15,7 @@ using Nethermind.Optimism.CL;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Libp2p.Core;
+using Nethermind.Libp2p.Protocols;
 using Nethermind.Network.Libp2p;
 using Nethermind.Libp2p.Protocols.Pubsub;
 using Nethermind.Libp2p.Protocols.Pubsub.Dto;
@@ -23,6 +28,92 @@ namespace Nethermind.Optimism.Test.CL;
 public class OptimismGossipSettingsTests
 {
     private const string BlocksTopic = "/optimism/10/2/blocks";
+
+    [Test]
+    public void Every_gossip_version_selects_a_bounded_listener_before_the_library_dialer()
+    {
+        using ServiceProvider services = new ServiceCollection()
+            .AddLibp2p(OptimismCLP2P.ConfigureGossipStack)
+            .AddSingleton(OptimismCLP2P.CreatePubsubSettings(BlocksTopic))
+            .BuildServiceProvider();
+        _ = services.GetRequiredService<IPeerFactory>();
+        ProtocolRef[] protocols = services.GetRequiredService<IProtocolStackSettings>().Protocols!.Values
+            .Single(protocols => protocols.Any(protocol => protocol.Protocol is BoundedGossipProtocol));
+        IGrouping<string, ProtocolRef>[] gossip = protocols.Where(protocol => protocol.Protocol is BoundedGossipProtocol or PubsubProtocol)
+            .GroupBy(protocol => protocol.Id).ToArray();
+
+        Assert.That(gossip, Has.Length.EqualTo(5));
+        foreach (IGrouping<string, ProtocolRef> version in gossip)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(version.First().Protocol, Is.TypeOf<BoundedGossipProtocol>());
+                Assert.That(version.Last().Protocol, Is.InstanceOf<PubsubProtocol>());
+            }
+        }
+    }
+
+    [Test]
+    public async Task Gossip_streams_share_a_global_and_per_peer_allowance_before_any_rpc_read()
+    {
+        GossipStreamBudget budget = new();
+        ISessionProtocol inner = Substitute.For<ISessionProtocol>();
+        TaskCompletionSource done = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        inner.ListenAsync(Arg.Any<IChannel>(), Arg.Any<ISessionContext>()).Returns(done.Task);
+        BoundedGossipProtocol first = new(inner, budget);
+        BoundedGossipProtocol otherVersion = new(inner, budget);
+        ISessionContext[] peers = Enumerable.Range(0, GossipStreamBudget.MaxStreams + 1).Select(_ => Session()).ToArray();
+        Task[] listening = new Task[GossipStreamBudget.MaxStreams];
+        Array.Fill(listening, Task.CompletedTask);
+        listening[0] = first.ListenAsync(Substitute.For<IChannel>(), peers[0]);
+        try
+        {
+            IChannel duplicate = Substitute.For<IChannel>();
+            await otherVersion.ListenAsync(duplicate, peers[0]);
+            await duplicate.Received(1).CloseAsync();
+            _ = inner.Received(1).ListenAsync(Arg.Any<IChannel>(), Arg.Any<ISessionContext>());
+
+            Parallel.For(1, listening.Length, i => listening[i] = first.ListenAsync(Substitute.For<IChannel>(), peers[i]));
+            IChannel excess = Substitute.For<IChannel>();
+            await otherVersion.ListenAsync(excess, peers[^1]);
+
+            await excess.Received(1).CloseAsync();
+            _ = inner.Received(GossipStreamBudget.MaxStreams).ListenAsync(Arg.Any<IChannel>(), Arg.Any<ISessionContext>());
+        }
+        finally
+        {
+            done.SetResult();
+            await Task.WhenAll(listening);
+        }
+    }
+
+    [Test]
+    public async Task Gossip_allowance_is_released_when_a_listener_ends([Values(null, typeof(InvalidOperationException), typeof(OperationCanceledException))] Type? error)
+    {
+        GossipStreamBudget budget = new();
+        ISessionProtocol inner = Substitute.For<ISessionProtocol>();
+        Exception? failure = error is null ? null : (Exception)Activator.CreateInstance(error)!;
+        inner.ListenAsync(Arg.Any<IChannel>(), Arg.Any<ISessionContext>()).Returns(failure is null ? Task.CompletedTask : Task.FromException(failure));
+        BoundedGossipProtocol protocol = new(inner, budget);
+        ISessionContext peer = Session();
+        IChannel channel = Substitute.For<IChannel>();
+
+        if (failure is null) await protocol.ListenAsync(channel, peer);
+        else await Assert.ThrowsAsync(error!, () => protocol.ListenAsync(channel, peer));
+
+        inner.ListenAsync(Arg.Any<IChannel>(), Arg.Any<ISessionContext>()).Returns(Task.CompletedTask);
+        await protocol.ListenAsync(channel, peer);
+        await inner.Received(2).ListenAsync(channel, peer);
+        await channel.DidNotReceive().CloseAsync();
+    }
+
+    private static ISessionContext Session()
+    {
+        Identity identity = new();
+        ISessionContext context = Substitute.For<ISessionContext>();
+        context.State.Returns(new Nethermind.Libp2p.Core.State { RemoteAddress = Multiaddress.Decode($"/ip4/127.0.0.1/tcp/9222/p2p/{identity.PeerId}") });
+        return context;
+    }
 
     [TestCase("/ip4/10.0.0.1/tcp/9222/p2p/16Uiu2HAmRvz3gCpQuMeRxEz1F8B8EXHE9q9V1VE6pMVQuRWUt2iW", true, TestName = "An IPv4 address")]
     [TestCase("/dns4/sequencer.example/tcp/9222/p2p/16Uiu2HAmRvz3gCpQuMeRxEz1F8B8EXHE9q9V1VE6pMVQuRWUt2iW", true, TestName = "A DNS name")]

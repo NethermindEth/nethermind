@@ -202,6 +202,7 @@ public sealed class BeaconSyncOrchestrator(
 
     /// <summary>Reads the post-state of a head or justified root for the Beacon API; tests script it, otherwise the <see cref="BlockImporter"/> reads its held state.</summary>
     internal Func<Hash256, ForkedBeaconState?>? ApiStateReader { get; set; }
+    internal Func<CheckpointRef, ForkedBeaconState?>? ApiCheckpointStateReader { get; set; }
 
     private volatile Tip _syncTip = new(Hash256.Zero, 0);
 
@@ -471,6 +472,7 @@ public sealed class BeaconSyncOrchestrator(
     internal void Initialize(IBlockImporter importer, ForkedSignedBeaconBlock anchorBlock, Hash256 anchorRoot)
     {
         _importer = importer;
+        rangeSync.VerifyAnchorMismatch = block => _importThread.RunAsync(() => (importer as BlockImporter)?.VerifyCachedProposerSignature(block));
         _anchorSlot = anchorBlock.Slot;
         _anchorRoot = anchorRoot;
         _anchorExecutionHash = anchorBlock switch
@@ -504,7 +506,14 @@ public sealed class BeaconSyncOrchestrator(
             HeadSlot = _anchorSlot,
         };
         statusHolder.CurrentStatus = anchorStatus;
-        if (headSnapshots is not null) headSnapshots.Current = new HeadSnapshot(anchorStatus, null, Hash256.Zero, false);
+        if (headSnapshots is not null)
+        {
+            headSnapshots.Current = new HeadSnapshot(anchorStatus, null, Hash256.Zero, false)
+            {
+                State = headSnapshots.CaptureState ? ReadApiState(importer, anchorRoot, null) : null,
+                FinalizedState = headSnapshots.CaptureState ? ReadApiCheckpointState(importer, new CheckpointRef(_anchorCheckpointEpoch, anchorRoot), null) : null,
+            };
+        }
     }
 
     /// <summary>The epoch a status advertises for <paramref name="finalized"/>.</summary>
@@ -2758,7 +2767,8 @@ public sealed class BeaconSyncOrchestrator(
             headSnapshots.Current = new HeadSnapshot(headStatus, fullHeadRoot, head.Justified.Root, _elInSync)
             {
                 State = capture ? ReadApiState(importer, head.HeadRoot, previousSnapshot) : null,
-                JustifiedState = capture ? ReadApiState(importer, head.Justified.Root, previousSnapshot) : null,
+                JustifiedState = capture ? ReadApiCheckpointState(importer, head.Justified, previousSnapshot) : null,
+                FinalizedState = capture ? ReadApiCheckpointState(importer, new CheckpointRef(finalizedEpoch, head.Finalized.Root), previousSnapshot) : null,
             };
         }
 
@@ -2779,6 +2789,14 @@ public sealed class BeaconSyncOrchestrator(
     /// <summary>The post-state of <paramref name="root"/> for the Beacon API: the one <paramref name="previous"/> captured for it, otherwise the one the importer holds.</summary>
     private ForkedBeaconState? ReadApiState(IBlockImporter importer, Hash256 root, HeadSnapshot? previous) =>
         previous?.GetState(root) ?? (ApiStateReader is { } reader ? reader(root) : (importer as BlockImporter)?.GetStateForApi(root));
+
+    private CheckpointStateSnapshot? ReadApiCheckpointState(IBlockImporter importer, CheckpointRef checkpoint, HeadSnapshot? previous)
+    {
+        if (previous?.JustifiedState is { } justified && justified.Checkpoint == checkpoint) return justified;
+        if (previous?.FinalizedState is { } finalized && finalized.Checkpoint == checkpoint) return finalized;
+        ForkedBeaconState? state = ApiCheckpointStateReader is { } reader ? reader(checkpoint) : (importer as BlockImporter)?.GetCheckpointStateForApi(checkpoint);
+        return state is null ? null : new CheckpointStateSnapshot(checkpoint, state);
+    }
 
     /// <summary>Applies the execution layer's forkchoice verdict for <paramref name="headRoot"/> to fork choice, dropping one that contradicts an earlier verdict.</summary>
     private void ApplyForkchoiceVerdict(IBlockImporter importer, Hash256 headRoot, Hash256 headExecutionHash, PayloadStatusV1 status)

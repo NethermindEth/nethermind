@@ -180,6 +180,8 @@ public sealed class BlockImporter : IBlockImporter
         ? _states.GetHeldGloasBlockState(root) is { } gloas ? new ForkedBeaconState.OfGloas(gloas) : null
         : _states.GetHeldBlockState(root, readStore: false) is { } fulu ? new ForkedBeaconState.OfFulu(fulu) : null;
 
+    internal ForkedBeaconState GetCheckpointStateForApi(CheckpointRef checkpoint) => _runner.GetCheckpointState(checkpoint);
+
     /// <inheritdoc/>
     public bool IsKnown(Hash256 blockRoot) => _runner.ContainsBlock(blockRoot);
 
@@ -712,6 +714,15 @@ public sealed class BlockImporter : IBlockImporter
         _gloasLineageCache = cache;
         return BlockImportResult.Imported;
     }
+
+    /// <summary>Checks a range anchor mismatch against the cached proposer key without reading mutable fork-choice state.</summary>
+    /// <returns>Null when the domain or that key is not known, so the signature cannot be judged.</returns>
+    internal bool? VerifyCachedProposerSignature(ForkedSignedBeaconBlock block) => block switch
+    {
+        ForkedSignedBeaconBlock.OfFulu fulu => VerifyCachedProposerSignature(block.ComputeMessageRoot(), block.ProposerIndex, fulu.Block.Signature, _fuluProposerDomain),
+        ForkedSignedBeaconBlock.OfGloas gloas => VerifyCachedProposerSignature(block.ComputeMessageRoot(), block.ProposerIndex, gloas.Block.Signature, _gloasProposerDomain),
+        _ => null,
+    };
 
     /// <summary>Runs phase0/beacon-chain.md verify_block_signature with the cached key of <paramref name="proposerIndex"/>, which no later state changes.</summary>
     /// <returns>Null when the domain or that key is not known, so the signature cannot be judged.</returns>

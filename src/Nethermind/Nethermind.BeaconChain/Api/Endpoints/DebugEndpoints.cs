@@ -97,7 +97,11 @@ internal static class DebugEndpoints
         }
 
         ulong slot;
-        if (ctx.Store.TryGetForkedBlock(resolved.Root, out ForkedSignedBeaconBlock? block))
+        if (ctx.GetCheckpointState(stateId) is { } checkpoint)
+        {
+            slot = checkpoint.State.Slot;
+        }
+        else if (ctx.Store.TryGetForkedBlock(resolved.Root, out ForkedSignedBeaconBlock? block))
         {
             slot = block.Slot;
         }

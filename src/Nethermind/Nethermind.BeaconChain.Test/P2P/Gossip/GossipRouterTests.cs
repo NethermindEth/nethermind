@@ -584,6 +584,29 @@ public partial class GossipRouterTests
     }
 
     [Test]
+    public void Unseen_envelopes_without_a_consumer_do_not_hold_the_budget_or_seen_claims()
+    {
+        EnvelopeFixture fixture = new(withStore: true, subscribe: false);
+        SignedExecutionPayloadEnvelope envelope = fixture.Envelope(Keccak.Compute("unseen block"));
+        MessageValidity Send() => fixture.Router.Handle(GossipTopics.ExecutionPayload, gloasTopic: true,
+            Snappy.CompressToArray(SignedExecutionPayloadEnvelope.Encode(envelope)), new GossipVerdict(static _ => true, null));
+        for (int i = 0; i <= GossipRouter.UnseenBlockEnvelopeCount; i++)
+        {
+            envelope.Message!.BeaconBlockRoot = Keccak.Compute($"unseen block {i}");
+            Assert.That(Send(), Is.EqualTo(MessageValidity.Ignored));
+        }
+
+        int received = 0;
+        fixture.Router.ExecutionPayloadEnvelopeReceived += (_, verdict) =>
+        {
+            received++;
+            verdict.Complete(MessageValidity.Ignored);
+        };
+        Send();
+        Assert.That(received, Is.EqualTo(1), "the same envelope can be consumed once gossip starts");
+    }
+
+    [Test]
     public void Byte_budget_charge_released_twice_gives_its_bytes_back_once()
     {
         ByteBudget budget = new(maxBytes: 10, maxCharges: 1);
@@ -657,7 +680,7 @@ public partial class GossipRouterTests
 
         private readonly MemColumnsDb<BeaconChainDbColumns> _db = new();
 
-        public EnvelopeFixture(bool withStore, ulong? finalizedEpoch = null)
+        public EnvelopeFixture(bool withStore, ulong? finalizedEpoch = null, bool subscribe = true)
         {
             Store = new BeaconChainStore(_db, Sepolia);
             Timestamper = new ManualTimestamper(SepoliaSlotStart(WallSlot).AddSeconds(6));
@@ -672,7 +695,7 @@ public partial class GossipRouterTests
             FuluRoot = SszRoots.HashTreeRoot(fulu.Message!);
             Store.PutBlock(FuluRoot, fulu);
             Router = new GossipRouter(Sepolia, new SlotClock(Sepolia, Timestamper), LimboLogs.Instance, withStore ? Store : null, status, FailedBlocks);
-            Router.ExecutionPayloadEnvelopeReceived += (_, _) => Raised++;
+            if (subscribe) Router.ExecutionPayloadEnvelopeReceived += (_, _) => Raised++;
         }
 
         public GossipRouter Router { get; }

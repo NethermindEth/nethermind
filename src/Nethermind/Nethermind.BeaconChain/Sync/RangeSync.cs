@@ -54,6 +54,9 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
     /// <summary>The wall slot of a peer's first block that missed an anchor, kept across rounds; see <see cref="CountAnchorMismatches"/>.</summary>
     private AnchorMiss? _firstAnchorMiss;
 
+    /// <summary>Verifies an off-anchor block against cached proposer keys; a missing verifier or key cannot establish an anchor mismatch.</summary>
+    internal Func<ForkedSignedBeaconBlock, Task<bool?>>? VerifyAnchorMismatch { get; set; }
+
     private sealed record AnchorMiss(Hash256 Anchor, string PeerId, ulong Since);
 
     /// <summary>The anchor a run restarts from when its first block does not link to the unverified anchor it was given; <paramref name="Rejected"/> runs when that happens.</summary>
@@ -88,8 +91,8 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
         int consecutiveFailures = 0;
         // Peers whose empty answer the next batch contradicted, left out for the rest of the round.
         HashSet<string> behindTheirWord = [];
-        // The peer whose empty answer skipped slots after the last verified block, until a batch links past them.
-        IBeaconSyncPeer? skippedOnWordOf = null;
+        // Peers whose empty answers skipped slots after the last verified block, until a batch links past them.
+        HashSet<string>? skippedOnWordOf = null;
         // Peers whose first block after the slots they vouched for missed the unverified anchor, by id.
         HashSet<string>? anchorMisses = null;
         // The peers whose misses abandoned the anchor, each charged if it later serves the chain from the fallback through that anchor.
@@ -131,11 +134,23 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
             ulong from = Math.Max(nextSlot, peer.EarliestAvailableSlot);
             ulong count = Math.Min(batchSize, target - from + 1);
             (IReadOnlyList<ForkedSignedBeaconBlock> Blocks, Hash256[] Roots, bool Linked)? batch = await FetchAndVerifyBatchAsync(peer, from, count, lastRoot, fallback is not null || skippedOnWordOf is not null || from != lastSlot + 1 || lastSupplier != peer.Id, token, superseded);
-            // Another peer's empty answer is contradicted before an unverified anchor is doubted; the answering peer's own may mean the anchor is off its chain.
-            if (batch is { Linked: false } && skippedOnWordOf is { } behind && (fallback is null || behind.Id != peer.Id))
+            if (batch is { Linked: false } && fallback is not null)
             {
-                if (_logger.IsDebug) _logger.Debug($"Blocks from slot {lastSlot + 1} exist although {behind.Id} answered them empty; asking another peer");
-                behindTheirWord.Add(behind.Id);
+                bool? signed = VerifyAnchorMismatch is { } verify ? await verify(batch.Value.Blocks[0]) : null;
+                superseded.ThrowIfCancellationRequested();
+                token.ThrowIfCancellationRequested();
+                if (signed != true)
+                {
+                    if (signed == false)
+                        peer.ReportFailure(PeerFailureReason.ProtocolViolation, "The block offered against the range anchor has an invalid proposer signature");
+                    batch = null;
+                }
+            }
+            // Another peer's empty answer is contradicted before an unverified anchor is doubted; the answering peer's own may mean the anchor is off its chain.
+            if (batch is { Linked: false } && skippedOnWordOf is { } behind && (fallback is null || behind.Count > 1 || !behind.Contains(peer.Id)))
+            {
+                if (_logger.IsDebug) _logger.Debug($"Blocks from slot {lastSlot + 1} exist although peers answered them empty; asking another peer");
+                behindTheirWord.UnionWith(behind);
                 skippedOnWordOf = null;
                 nextSlot = lastSlot + 1;
                 continue;
@@ -188,7 +203,7 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
             else
             {
                 // Linkage of the next reply must corroborate skipped slots, regardless of the advertised head.
-                skippedOnWordOf ??= peer;
+                (skippedOnWordOf ??= []).Add(peer.Id);
             }
 
             await FetchColumnsForBatchAsync(batch.Value.Blocks, batch.Value.Roots, token);

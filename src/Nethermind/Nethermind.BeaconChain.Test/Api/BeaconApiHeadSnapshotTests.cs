@@ -11,6 +11,7 @@ using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Sync;
 using Nethermind.BeaconChain.Test.Sync;
+using Nethermind.BeaconChain.Test.ForkChoice;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -25,6 +26,50 @@ public class BeaconApiHeadSnapshotTests
     private const ulong Slot = 412_500 * 32 + 7;
 
     private static readonly Hash256 Head = BeaconApiTestHost.TestRoot(0x71);
+
+    [Test]
+    public async Task Checkpoint_routes_serve_the_epoch_start_state_across_a_missed_fork_slot([Values("justified", "finalized")] string alias)
+    {
+        ForkCrossingChain chain = ForkCrossingChain.Instance;
+        CheckpointRef checkpoint = new(1, chain.AnchorRoot);
+        ForkedBeaconState state = chain.CreateRunner().GetCheckpointState(checkpoint);
+        BeaconStateGloas expected = chain.UpgradedAnchor();
+        Hash256 stateRoot = SszRoots.HashTreeRoot(expected);
+        HeadSnapshotHolder snapshots = new()
+        {
+            Current = new HeadSnapshot(new StatusMessageV2 { HeadRoot = chain.AnchorRoot, HeadSlot = chain.AnchorState.Slot, FinalizedRoot = chain.AnchorRoot, FinalizedEpoch = 1 }, null, chain.AnchorRoot, true)
+            {
+                State = new ForkedBeaconState.OfFulu(chain.AnchorState),
+                JustifiedState = new CheckpointStateSnapshot(checkpoint, state),
+                FinalizedState = new CheckpointStateSnapshot(checkpoint, state),
+            },
+        };
+        await using BeaconApiTestHost host = await BeaconApiTestHost.StartAsync(chain.Spec, headSnapshots: snapshots);
+        host.Store.PutBlock(chain.AnchorRoot, new SignedBeaconBlock { Message = chain.AnchorBlock });
+        host.Store.PutState(chain.AnchorRoot, BeaconStateFulu.Encode(chain.AnchorState));
+        host.Store.SetCanonicalRoot(chain.AnchorState.Slot, chain.AnchorRoot);
+
+        using JsonDocument root = await GetAsync(host, $"/eth/v1/beacon/states/{alias}/root");
+        using JsonDocument headFork = await GetAsync(host, "/eth/v1/beacon/states/head/fork");
+        using JsonDocument checkpointFork = await GetAsync(host, $"/eth/v1/beacon/states/{alias}/fork");
+        using HttpResponseMessage raw = await host.GetAsync($"/eth/v2/debug/beacon/states/{alias}", "application/octet-stream");
+        using HttpResponseMessage byRoot = await host.GetAsync($"/eth/v2/debug/beacon/states/{stateRoot}", "application/octet-stream");
+        byte[] rawBytes = await raw.Content.ReadAsByteArrayAsync();
+        byte[] byRootBytes = await byRoot.Content.ReadAsByteArrayAsync();
+        using JsonDocument lookahead = await GetAsync(host, $"/eth/v1/beacon/states/{alias}/proposer_lookahead");
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(root.RootElement.GetProperty("data").GetProperty("root").GetString(), Is.EqualTo(stateRoot.ToString()));
+        Assert.That(raw.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+        Assert.That(raw.Headers.GetValues("Eth-Consensus-Version"), Is.EqualTo(new[] { "gloas" }));
+        Assert.That(rawBytes, Is.EqualTo(BeaconStateGloas.Encode(expected)));
+        Assert.That(byRoot.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+        Assert.That(byRootBytes, Is.EqualTo(rawBytes));
+        Assert.That(headFork.RootElement.GetProperty("data").GetProperty("current_version").GetString(), Is.EqualTo(chain.AnchorState.Fork!.CurrentVersion!.ToHexString(true)));
+        Assert.That(checkpointFork.RootElement.GetProperty("data").GetProperty("current_version").GetString(), Is.EqualTo(expected.Fork!.CurrentVersion!.ToHexString(true)));
+        Assert.That(root.RootElement.GetProperty("finalized").GetBoolean(), Is.True);
+        Assert.That(lookahead.RootElement.GetProperty("data").EnumerateArray().Select(v => ulong.Parse(v.GetString()!)), Is.EqualTo(expected.ProposerLookahead));
+    }
 
     [Test]
     public async Task Fixed_state_fields_do_not_read_later_state_chunks(

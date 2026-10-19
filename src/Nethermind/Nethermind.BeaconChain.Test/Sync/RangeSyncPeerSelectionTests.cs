@@ -369,6 +369,7 @@ public class RangeSyncPeerSelectionTests
         StubPeer behind = new("behind", AnchorSlot, (start, count) => [.. chainBlocks.Where(b => b.Slot >= start && b.Slot < start + count)]);
         RangeSync sync = new(new OfferingPool(behind), LimboLogs.Instance, new DataColumnSidecarPool(), BeaconChainSpec.Mainnet, ClockAtGenesis(BeaconChainSpec.Mainnet));
         bool rejected = false;
+        sync.VerifyAnchorMismatch = _ => Task.FromResult<bool?>(true);
         RangeSync.AnchorFallback fallback = new(anchorRoot, AnchorSlot, () => rejected = true);
 
         List<ForkedSignedBeaconBlock> yielded = await RangeSyncTests.CollectAsync(sync.Run(Keccak.Compute("a held block off the chain"), heldSlot, () => blockAfterGap, token, fallback));
@@ -379,11 +380,11 @@ public class RangeSyncPeerSelectionTests
         Assert.That(behind.Failures, Is.Zero);
     }
 
-    [TestCase(1, false)]
-    [TestCase(2, true)]
+    [Test]
     [CancelAfter(30_000)]
-    public async Task A_tip_needing_two_peers_word_is_abandoned_for_finalized_only_on_it_and_charged_only_to_the_one_serving_a_chain_through_it(int liars, bool fellBack, CancellationToken token)
+    public async Task A_tip_needs_two_signed_mismatches_to_be_abandoned([Values(1, 2)] int liars, [Values(true, false, null)] bool? signatureValid, CancellationToken token)
     {
+        bool fellBack = liars == 2 && signatureValid == true;
         const ulong tipSlot = AnchorSlot + 4;
         const ulong targetSlot = AnchorSlot + 6;
         ulong[] slots = [.. Enumerable.Range((int)AnchorSlot + 1, (int)(targetSlot - AnchorSlot)).Select(static s => (ulong)s)];
@@ -402,6 +403,7 @@ public class RangeSyncPeerSelectionTests
         })];
         RangeSync sync = new(new OfferingPool(peers), LimboLogs.Instance, new DataColumnSidecarPool(), BeaconChainSpec.Mainnet, ClockAtGenesis(BeaconChainSpec.Mainnet));
         bool rejected = false;
+        sync.VerifyAnchorMismatch = _ => Task.FromResult(signatureValid);
         RangeSync.AnchorFallback fallback = new(finalizedRoot, AnchorSlot, () => rejected = true, RequiredMismatches: 2);
 
         List<ForkedSignedBeaconBlock> yielded = await RangeSyncTests.CollectAsync(sync.Run(chainBlocks[tipSlot - AnchorSlot - 1].ComputeMessageRoot(), tipSlot, () => targetSlot, token, fallback));
@@ -409,7 +411,32 @@ public class RangeSyncPeerSelectionTests
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(rejected, Is.EqualTo(fellBack));
         Assert.That(yielded, Is.EqualTo(fellBack ? chainBlocks : chainBlocks.Where(static b => b.Slot > tipSlot)), "a re-download from finalized happens only on two peers' word");
-        Assert.That(peers.Select(static p => p.Reports.Count), Is.EqualTo(fellBack ? new[] { 1, 0 } : new[] { 0 }), "the first liar served the chain through the tip it denied, the second never contradicted itself");
+        Assert.That(peers.Select(static p => p.Reports.Count), Is.EqualTo(fellBack ? new[] { 1, 0 } : Enumerable.Repeat(signatureValid == false ? 1 : 0, liars)), "invalid signatures are charged; unknown keys cannot abandon a tip or blame a peer");
+    }
+
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task Empty_ranges_from_two_peers_do_not_make_the_first_peer_responsible_for_both(CancellationToken token)
+    {
+        const ulong tipSlot = AnchorSlot + 4;
+        ulong hiddenSlot = tipSlot + RangeSync.DefaultBatchSize + 1;
+        ulong targetSlot = tipSlot + 2 * RangeSync.DefaultBatchSize + 1;
+        (SignedBeaconBlock _, Hash256 finalizedRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(AnchorSlot, tipSlot, hiddenSlot, targetSlot);
+        ForkedSignedBeaconBlock[] blocks = [.. chain.Select(static b => new ForkedSignedBeaconBlock.OfFulu(b))];
+        StubPeer honest = new("honest", targetSlot, (start, count) => [.. blocks.Where(b => b.Slot >= start && b.Slot < start + count)]);
+        StubPeer liar = new("liar", targetSlot, (_, _) => []);
+        RangeSync sync = new(new OfferingPool(honest, liar), LimboLogs.Instance, new DataColumnSidecarPool(), BeaconChainSpec.Mainnet, ClockAtGenesis(BeaconChainSpec.Mainnet))
+        {
+            VerifyAnchorMismatch = _ => Task.FromResult<bool?>(true),
+        };
+        bool rejected = false;
+        RangeSync.AnchorFallback fallback = new(finalizedRoot, AnchorSlot, () => rejected = true);
+
+        await RangeSyncTests.CollectAsync(sync.Run(blocks[0].ComputeMessageRoot(), tipSlot, () => targetSlot, token, fallback));
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(rejected, Is.False);
+        Assert.That(honest.Reports, Is.Empty);
     }
 
     // phase0/p2p-interface.md BeaconBlocksByRange: an empty reply does not prove its slots are empty, so a later peer's unlinked block contradicts it, not the anchor.
@@ -427,6 +454,7 @@ public class RangeSyncPeerSelectionTests
         StubPeer honest = new("honest", targetSlot, Serve);
         RangeSync sync = new(new OfferingPool(liar, honest), LimboLogs.Instance, new DataColumnSidecarPool(), BeaconChainSpec.Mainnet, ClockAtGenesis(BeaconChainSpec.Mainnet));
         bool rejected = false;
+        sync.VerifyAnchorMismatch = _ => Task.FromResult<bool?>(true);
         RangeSync.AnchorFallback fallback = new(finalizedRoot, AnchorSlot, () => rejected = true, requiredMismatches);
 
         List<ForkedSignedBeaconBlock> yielded = await RangeSyncTests.CollectAsync(sync.Run(chainBlocks[tipSlot - AnchorSlot - 1].ComputeMessageRoot(), tipSlot, () => targetSlot, token, fallback));
@@ -450,6 +478,7 @@ public class RangeSyncPeerSelectionTests
         StubPeer pruned = new("pruned", targetSlot, (start, count) => [.. chainBlocks.Where(b => b.Slot >= start && b.Slot < start + count)], earliestAvailableSlot: tipSlot + 2);
         RangeSync sync = new(new OfferingPool(pruned), LimboLogs.Instance, new DataColumnSidecarPool(), BeaconChainSpec.Mainnet, ClockAtGenesis(BeaconChainSpec.Mainnet));
         bool rejected = false;
+        sync.VerifyAnchorMismatch = _ => Task.FromResult<bool?>(true);
         RangeSync.AnchorFallback fallback = new(finalizedRoot, AnchorSlot, () => rejected = true);
         using CancellationTokenSource bound = CancellationTokenSource.CreateLinkedTokenSource(token);
         bound.CancelAfter(TimeSpan.FromSeconds(2));

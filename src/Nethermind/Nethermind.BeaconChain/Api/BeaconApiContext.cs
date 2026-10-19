@@ -3,6 +3,7 @@
 
 using System.Threading.RateLimiting;
 using Nethermind.BeaconChain.Api.Endpoints;
+using Nethermind.BeaconChain.Api.Common;
 using Nethermind.BeaconChain.Engine;
 using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.P2P;
@@ -43,8 +44,10 @@ internal sealed record BeaconApiContext(
 {
     /// <summary>Captures one get_head view for all reads in a request (fork-choice.md).</summary>
     public BeaconApiContext ForRequest() => this with { StatusSource = CaptureHead(), ForkChoiceSnapshot = ForkChoiceSnapshots?.Current };
-    /// <summary>The post-state of <paramref name="blockRoot"/> published with the head when it is the head or the justified checkpoint block, otherwise <c>null</c>.</summary>
-    internal ForkedBeaconState? GetHeldState(Hash256 blockRoot) => (StatusSource as FrozenHead)?.GetState(blockRoot);
+    /// <summary>The captured state of a checkpoint alias or the head's block post-state.</summary>
+    internal ForkedBeaconState? GetHeldState(Hash256 blockRoot, string stateId) =>
+        GetCheckpointState(stateId)?.State ?? (StatusSource as FrozenHead)?.GetState(blockRoot);
+    internal CheckpointStateSnapshot? GetCheckpointState(string stateId) => (StatusSource as FrozenHead)?.GetCheckpointState(stateId);
     public ForkChoiceSnapshot? ForkChoiceSnapshot { get; private init; }
     /// <summary>Bounds the blob rebuilds of this host's getBlobs requests that run at once; a request past it is refused, never queued.</summary>
     public EventsEndpoint.EventCache Events { get; } = new();
@@ -65,6 +68,14 @@ internal sealed record BeaconApiContext(
     private sealed class FrozenHead(HeadSnapshot snapshot) : IBeaconChainStatusSource
     {
         internal ForkedBeaconState? GetState(Hash256 blockRoot) => snapshot.GetState(blockRoot);
+        internal CheckpointStateSnapshot? GetCheckpointState(string stateId)
+        {
+            if (stateId == "justified") return snapshot.JustifiedState;
+            if (stateId == "finalized") return snapshot.FinalizedState;
+            if (!HexConvert.TryParseHash(stateId, out Hash256? root)) return null;
+            if (snapshot.JustifiedState is { } justified && justified.StateRoot == root) return justified;
+            return snapshot.FinalizedState is { } finalized && finalized.StateRoot == root ? finalized : null;
+        }
         public StatusMessageV2 CurrentStatus => snapshot.Status;
         public Hash256 JustifiedRoot => snapshot.JustifiedRoot;
         public bool ExecutionInSync => snapshot.ExecutionInSync;

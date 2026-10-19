@@ -24,6 +24,13 @@ internal static class StateIdResolver
 
     private static bool TryResolveRoot(BeaconApiContext ctx, string stateId, out Hash256? root, out int errorStatus, out string? errorMessage)
     {
+        if (ctx.GetCheckpointState(stateId) is { } checkpoint)
+        {
+            root = checkpoint.Checkpoint.Root;
+            errorStatus = 0;
+            errorMessage = null;
+            return true;
+        }
         // params/index.yaml StateId: a hexadecimal identifier names a state commitment, not a block.
         if (!HexConvert.TryParseHash(stateId, out Hash256? stateRoot))
             return IdResolver.TryResolveRoot(ctx, stateId, out root, out errorStatus, out errorMessage);
@@ -48,7 +55,7 @@ internal static class StateIdResolver
             return false;
         }
 
-        byte[]? ssz = ctx.GetHeldState(root!) switch
+        byte[]? ssz = ctx.GetHeldState(root!, stateId) switch
         {
             ForkedBeaconState.OfFulu fulu => BeaconStateFulu.Encode(fulu.State),
             ForkedBeaconState.OfGloas gloas => BeaconStateGloas.Encode(gloas.State),
@@ -70,7 +77,7 @@ internal static class StateIdResolver
     {
         resolved = default;
         return TryResolveRoot(ctx, stateId, out Hash256? root, out _, out _)
-            && ctx.GetHeldState(root!) is not null
+            && ctx.GetHeldState(root!, stateId) is not null
             && TryResolve(ctx, stateId, out resolved, out _, out _);
     }
 
@@ -78,7 +85,7 @@ internal static class StateIdResolver
     {
         resolved = default;
         if (!TryResolveRoot(ctx, stateId, out Hash256? root, out errorStatus, out errorMessage)) return false;
-        if (ctx.GetHeldState(root!) is not null)
+        if (ctx.GetHeldState(root!, stateId) is not null)
             return TryResolve(ctx, stateId, out resolved, out errorStatus, out errorMessage);
 
         const int forkOffset = 48;
@@ -125,7 +132,7 @@ internal static class StateIdResolver
     {
         resolved = default;
         if (!TryResolveRoot(ctx, stateId, out Hash256? root, out errorStatus, out errorMessage)) return false;
-        if (ctx.GetHeldState(root!) is { } held)
+        if (ctx.GetHeldState(root!, stateId) is { } held)
         {
             ApiState current = held switch
             {

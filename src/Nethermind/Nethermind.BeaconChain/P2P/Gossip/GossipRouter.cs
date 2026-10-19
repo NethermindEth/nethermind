@@ -586,7 +586,13 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
         Handle(GossipTopics.ExecutionPayload, message, verdict,
             static payload => { SignedExecutionPayloadEnvelope.Decode(payload, out SignedExecutionPayloadEnvelope envelope); return envelope; },
             ValidateEnvelope,
-            (envelope, pending) => ExecutionPayloadEnvelopeReceived?.Invoke(envelope, pending));
+            (envelope, pending) =>
+            {
+                if (ExecutionPayloadEnvelopeReceived is { } consumer)
+                    consumer(envelope, pending);
+                else
+                    pending.Complete(MessageValidity.Throttled);
+            });
 
     /// <summary>
     /// Runs every <c>payload_attestation_message</c> rule except the signature (and PTC membership until <see cref="RequiresPtc"/> is set):

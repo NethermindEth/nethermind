@@ -21,7 +21,7 @@ public interface IBeaconApiConfig : IConfig
     [ConfigItem(Description = "The port the Beacon API listens on.", DefaultValue = "5052")]
     int Port { get; set; }
 
-    [ConfigItem(Description = "The maximum concurrent Beacon API state requests in each of two independent pools: downloads (/eth/v2/debug/beacon/states and the registry-sized /eth/v1/beacon/states routes validators, validator_balances, validator_identities, committees and sync_committees) and other /eth/v1/beacon/states queries, which exclude root and fork. Each pool refuses excess requests with 503 without queuing; per-client limits return 429.", DefaultValue = "2")]
+    [ConfigItem(Description = "The maximum concurrent Beacon API state requests in each of two independent pools: downloads (/eth/v2/debug/beacon/states and the registry-sized /eth/v1/beacon/states routes validators, validator_balances, validator_identities, committees and sync_committees, plus non-head validators/{validator_id}, pending_deposits, pending_partial_withdrawals, pending_consolidations and proposer_lookahead) and other /eth/v1/beacon/states queries, which exclude root and fork. Each pool refuses excess requests with 503 without queuing; per-client limits return 429.", DefaultValue = "2")]
     int MaxConcurrentStateRequests { get; set; }
 
     [ConfigItem(Description = "The maximum number of downloads (as counted by `MaxConcurrentStateRequests`) per minute from one client address (an IPv6 client is counted by its /64 prefix). Requests beyond it are refused with 429. `0` disables the limit.", DefaultValue = "30")]

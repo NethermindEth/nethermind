@@ -111,7 +111,7 @@ public class BeaconChainStoreTests
 
     [Test]
     public void A_database_from_another_schema_version_is_refused_and_left_unstamped(
-        [Values(0u, 1u, 2u, 3u, 4u, 5u, BeaconChainStore.CurrentSchemaVersion + 1)] uint unsupported)
+        [Values(0u, 1u, 2u, 3u, 4u, 5u, 6u, BeaconChainStore.CurrentSchemaVersion + 1)] uint unsupported)
     {
         using MemColumnsDb<BeaconChainDbColumns> db = new();
         BeaconChainStore store = new(db);

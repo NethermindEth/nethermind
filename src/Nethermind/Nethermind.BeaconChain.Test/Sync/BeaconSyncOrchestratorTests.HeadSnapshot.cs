@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.BeaconChain.StateTransition;
+using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.Sync;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
@@ -13,10 +14,12 @@ namespace Nethermind.BeaconChain.Test.Sync;
 public partial class BeaconSyncOrchestratorTests
 {
     [Test]
-    public void Initialization_publishes_the_anchor_as_head_and_finalized()
+    public void Initialization_publishes_the_anchor_as_head_and_finalized([Values] bool captureState)
     {
-        HeadSnapshotHolder snapshots = new();
-        Harness harness = CreateHarness(headSnapshots: snapshots);
+        HeadSnapshotHolder snapshots = new() { CaptureState = captureState };
+        ForkedBeaconState state = new ForkedBeaconState.OfFulu(new BeaconStateFulu());
+        int reads = 0;
+        Harness harness = CreateHarness(headSnapshots: snapshots, apiStateReader: _ => { reads++; return state; });
 
         HeadSnapshot? published = snapshots.Current;
 
@@ -27,6 +30,8 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(published.JustifiedRoot, Is.EqualTo(Hash256.Zero), "no head step has named a justified checkpoint yet");
         Assert.That(published.ExecutionInSync, Is.False);
         Assert.That(published.FullHeadRoot, Is.Null);
+        Assert.That(published.State, Is.SameAs(captureState ? state : null));
+        Assert.That(reads, Is.EqualTo(captureState ? 1 : 0));
     }
 
     [Test]
@@ -59,7 +64,7 @@ public partial class BeaconSyncOrchestratorTests
     }
 
     [Test]
-    public async Task A_head_step_publishes_the_held_head_and_justified_states_and_reads_each_once_per_root()
+    public async Task A_head_step_caches_head_states_by_root_and_checkpoint_states_by_root_and_epoch()
     {
         HeadSnapshotHolder snapshots = new() { CaptureState = true };
         Harness harness = CreateHarness(headSnapshots: snapshots);
@@ -70,21 +75,29 @@ public partial class BeaconSyncOrchestratorTests
             reads.Add((root, state));
             return state;
         };
+        List<CheckpointRef> checkpointReads = [];
+        harness.Orchestrator.ApiCheckpointStateReader = checkpoint =>
+        {
+            checkpointReads.Add(checkpoint);
+            return new ForkedBeaconState.OfFulu(new BeaconStateFulu { Slot = checkpoint.Epoch * Spec.SlotsPerEpoch });
+        };
         Hash256[] heads = [TestItem.KeccakA, TestItem.KeccakA, TestItem.KeccakB];
         ForkedBeaconState?[] published = new ForkedBeaconState?[heads.Length];
         for (int i = 0; i < heads.Length; i++)
         {
-            harness.Importer.Head = CreateHead(heads[i], AnchorSlot + 1 + (ulong)i, finalizedEpoch: 3);
+            harness.Importer.Head = CreateHead(heads[i], AnchorSlot + 1 + (ulong)i, finalizedEpoch: i == 2 ? 4UL : 3UL);
             await harness.Orchestrator.RunHeadStepAsync(CancellationToken.None);
             published[i] = snapshots.Current!.State;
         }
 
         using System.IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(reads.Select(r => r.Root), Is.EqualTo(new[] { TestItem.KeccakA, TestItem.KeccakC, TestItem.KeccakB }), "a step that keeps a root keeps its state");
+        Assert.That(reads.Select(r => r.Root), Is.EqualTo(new[] { TestItem.KeccakA, TestItem.KeccakB }), "a step that keeps a root keeps its state");
         Assert.That(published[0], Is.Not.Null.And.SameAs(reads[0].State), "the state is published with the head, never taken later on the import thread");
         Assert.That(published[1], Is.SameAs(published[0]));
-        Assert.That(published[2], Is.SameAs(reads[2].State));
-        Assert.That(snapshots.Current!.JustifiedState, Is.SameAs(reads[1].State), "the justified checkpoint block's state is published next to the head's");
+        Assert.That(published[2], Is.SameAs(reads[1].State));
+        Assert.That(checkpointReads, Is.EqualTo(new[] { new CheckpointRef(4, TestItem.KeccakC), new CheckpointRef(3, TestItem.KeccakD), new CheckpointRef(5, TestItem.KeccakC), new CheckpointRef(4, TestItem.KeccakD) }));
+        Assert.That(snapshots.Current!.JustifiedState!.State.Slot, Is.EqualTo(5 * Spec.SlotsPerEpoch));
+        Assert.That(snapshots.Current.FinalizedState!.State.Slot, Is.EqualTo(4 * Spec.SlotsPerEpoch));
     }
 
     [Test]

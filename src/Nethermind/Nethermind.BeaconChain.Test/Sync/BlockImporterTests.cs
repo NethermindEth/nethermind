@@ -45,6 +45,35 @@ public class BlockImporterTests
     private static NodeColumnCustody BaseCustody() => new(NodeId, Eip7594DasConstants.CustodyRequirement);
 
     [Test]
+    public void Range_anchor_mismatch_requires_a_signature_from_a_cached_proposer([Values] bool gloas)
+    {
+        ImportableBlobBlock chain = ImportableBlobBlock.CreateWithoutBlobs();
+        BlockImporter importer = CreateImporter(chain, custody: null, new DataColumnSidecarPool());
+        ForkedSignedBeaconBlock block;
+        if (gloas)
+        {
+            SignedBeaconBlockGloas signed = Types.SignedBeaconBlockBuilders.CreateMinimalGloasBlock(chain.Block.Message!.Slot, UnknownBlockRoot);
+            signed.Message!.ProposerIndex = chain.Block.Message.ProposerIndex;
+            signed.Signature = ImportableBlobBlock.SignAs(signed.Message.ProposerIndex, SszRoots.HashTreeRoot(signed.Message),
+                Domains.ComputeDomain(DomainType.BeaconProposer, chain.Spec.GloasForkVersion, chain.AnchorState.GenesisValidatorsRoot!));
+            block = new ForkedSignedBeaconBlock.OfGloas(signed);
+        }
+        else
+        {
+            block = new ForkedSignedBeaconBlock.OfFulu(chain.Block);
+        }
+
+        Assert.That(importer.VerifyCachedProposerSignature(block), Is.True);
+        if (block is ForkedSignedBeaconBlock.OfGloas g) g.Block.Signature = default;
+        else ((ForkedSignedBeaconBlock.OfFulu)block).Block.Signature = default;
+        Assert.That(importer.VerifyCachedProposerSignature(block), Is.False);
+
+        if (block is ForkedSignedBeaconBlock.OfGloas unknown) unknown.Block.Message!.ProposerIndex = ulong.MaxValue;
+        else ((ForkedSignedBeaconBlock.OfFulu)block).Block.Message!.ProposerIndex = ulong.MaxValue;
+        Assert.That(importer.VerifyCachedProposerSignature(block), Is.Null);
+    }
+
+    [Test]
     public void Import_preserves_state_time_and_data_availability([Values] bool verifySignatures, [Values] bool available)
     {
         ImportableBlobBlock chain = ImportableBlobBlock.CreateWithoutBlobs();

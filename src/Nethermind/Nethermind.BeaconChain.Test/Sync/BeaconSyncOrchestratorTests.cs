@@ -1474,7 +1474,8 @@ public partial class BeaconSyncOrchestratorTests
         BeaconP2P? p2p = null,
         PeerManager? peerManager = null,
         bool filterPoolByHead = false,
-        HeadSnapshotHolder? headSnapshots = null)
+        HeadSnapshotHolder? headSnapshots = null,
+        Func<Hash256, ForkedBeaconState?>? apiStateReader = null)
     {
         DateTime now = DateTime.UnixEpoch.AddSeconds(Spec.GenesisTime + wallSlot * Spec.SecondsPerSlot).AddSeconds(6);
         ManualTimestamper timestamper = new(now);
@@ -1487,6 +1488,7 @@ public partial class BeaconSyncOrchestratorTests
         router ??= new GossipRouter(Spec, slotClock, LimboLogs.Instance);
         BeaconChainStatusHolder statusHolder = new(Spec, timestamper);
         ExecutionPayloadEnvelopePool envelopePool = new();
+        RangeSync rangeSync = new(pool, LimboLogs.Instance, sidecarPool, Spec, RangeSyncTests.ClockAtGenesis(Spec), discovery);
         BeaconSyncOrchestrator orchestrator = new(
             new BeaconChainConfig(),
             Spec,
@@ -1494,7 +1496,7 @@ public partial class BeaconSyncOrchestratorTests
             new ScriptedFactory(importer),
             engine,
             pool,
-            new RangeSync(pool, LimboLogs.Instance, sidecarPool, Spec, RangeSyncTests.ClockAtGenesis(Spec), discovery),
+            rangeSync,
             slotClock,
             router,
             statusHolder,
@@ -1508,7 +1510,9 @@ public partial class BeaconSyncOrchestratorTests
 
         (SignedBeaconBlock anchorBlock, Hash256 anchorRoot, SignedBeaconBlock[] _) = TestChain.BuildLinkedChain(anchorSlot);
         orchestrator.PtcReader = (_, slot) => importer.Ptc(slot);
+        orchestrator.ApiStateReader = apiStateReader;
         orchestrator.Initialize(importer, new ForkedSignedBeaconBlock.OfFulu(anchorBlock), anchorRoot);
+        rangeSync.VerifyAnchorMismatch = _ => Task.FromResult<bool?>(true);
         return new Harness(orchestrator, importer, engine, pool, router, statusHolder, timestamper, envelopePool);
     }
 
