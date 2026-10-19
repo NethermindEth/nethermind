@@ -17,6 +17,8 @@ jobs:
   build:
     name: Build Nethermind packages
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     outputs:
       version: ${{ steps.version.outputs.version }}
       package-prefix: ${{ steps.version.outputs.package-prefix }}
@@ -44,12 +46,24 @@ jobs:
         env:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
+          # Release tags may only be cut from protected branches, never dispatched from a tag or feature branch
+          if [[ "$GITHUB_REF" != "refs/heads/master" && "$GITHUB_REF" != refs/heads/release/* ]]; then
+            echo "::error::Releases must be dispatched from master or a release/* branch, not $GITHUB_REF"
+            exit 1
+          fi
+
           # The signers are read from master, so a branch cannot vouch for its own release
           git fetch --no-tags --depth=1 origin \
             "+refs/heads/master:refs/remotes/origin/master" "+refs/tags/$VERSION:refs/tags/$VERSION"
 
           if [[ "$(git cat-file -t "refs/tags/$VERSION")" != "tag" ]]; then
             echo "::error::Tag $VERSION must be an annotated, signed tag"
+            exit 1
+          fi
+
+          # A signed tag object made for another name must not be reusable under this one
+          if [[ "$(git cat-file tag "refs/tags/$VERSION" | awk '/^$/ { exit } $1 == "tag" { print $2 }')" != "$VERSION" ]]; then
+            echo "::error::Tag object for $VERSION was signed under a different name"
             exit 1
           fi
 
@@ -63,7 +77,8 @@ jobs:
           GNUPGHOME=$(mktemp -d)
           export GNUPGHOME
           gpg --batch --quiet --import "$signers"/*.asc
-          git -c gpg.ssh.allowedSignersFile="$signers/allowed_signers" verify-tag "$VERSION"
+          git -c gpg.ssh.allowedSignersFile="$signers/allowed_signers" -c gpg.x509.program=false \
+            verify-tag "refs/tags/$VERSION"
 
       - name: Build Nethermind.Runner
         id: build
@@ -230,7 +245,12 @@ jobs:
 
           The packages and `SHA256SUMS` are signed with the following OpenPGP key: `AD12 7976 5093 C675 9CD8 A400 24A7 7461 6F1E 617E`
 
-          Every package also has a build provenance attestation: `gh attestation verify <package> -R NethermindEth/nethermind`
+          Every package also has a build provenance attestation. Verify it against the release workflow, not just the repository:
+
+          ```
+          gh attestation verify <package> -R NethermindEth/nethermind --deny-self-hosted-runners \
+            --cert-identity-regex '^https://github\.com/NethermindEth/nethermind/\.github/workflows/release\.yml@refs/heads/(master|release/.+)$'
+          ```
           EOF
           )
             gh release create "$GIT_TAG" --verify-tag -t "v$GIT_TAG" -d ${prerelease:+-p} -F <(printf '%s' "$relnotes")
@@ -239,6 +259,23 @@ jobs:
           cd $PACKAGE_DIR
           echo "Uploading assets"
           gh release upload "$GIT_TAG" *.zip *.asc SHA256SUMS --clobber
+
+          # The tag must still point to the commit that was built and signed
+          tag_commit=$(git ls-remote origin "refs/tags/$GIT_TAG^{}" | cut -f1)
+          if [[ "$tag_commit" != "$GITHUB_SHA" ]]; then
+            echo "::error::Tag $GIT_TAG now points to ${tag_commit:-nothing}, not $GITHUB_SHA"
+            exit 1
+          fi
+
+          # Draft assets are editable, so the release must hold exactly the signed files, byte for byte
+          expected=$(sha256sum -- *.zip *.asc SHA256SUMS | awk '{ print "sha256:" $1 " " $2 }' | LC_ALL=C sort)
+          actual=$(gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
+            --jq ".[] | select(.tag_name == \"$GIT_TAG\") | .assets[] | \"\(.digest) \(.name)\"" | LC_ALL=C sort)
+          if [[ "$expected" != "$actual" ]]; then
+            echo "::error::Release assets differ from the signed packages"
+            diff <(printf '%s\n' "$expected") <(printf '%s\n' "$actual") || true
+            exit 1
+          fi
 
           if (( publish )); then
             echo "Publishing release $GIT_TAG"
@@ -273,11 +310,13 @@ jobs:
           app-id: ${{ vars.APP_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
-
+      # Both Dockerfiles cross-compile on the build platform, so no QEMU is needed. BuildKit is pinned
+      # because image digests are only reproducible with the same version.
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+        with:
+          version: v0.38.0
+          driver-opts: image=moby/buildkit:v0.33.1@sha256:cec9f139f45e93c5c69c60f8b07cfad9f43f4ef6b6a6cd917527fea5ff2e3dea
 
       - name: Log in to Docker Hub
         uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
