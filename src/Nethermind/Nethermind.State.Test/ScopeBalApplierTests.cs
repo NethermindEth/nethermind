@@ -162,12 +162,45 @@ public class ScopeBalApplierTests
                 .WithCodeChanges(new CodeChange(1, [0x00]))
                 .WithStorageChanges(1, new StorageChange(1, 2)).TestObject).TestObject;
 
-        Exception? failure = Assert.Catch(() => ScopeBalApplier.Apply(scope, bal, LimboLogs.Instance));
+        (ILogManager logManager, InterfaceLogger logger) = CreateLogManager();
+
+        Exception? failure = Assert.Catch(() => ScopeBalApplier.Apply(scope, bal, logManager));
         // Without an earlier failure, the parent's disposal is itself the original and must not be swallowed.
         Assert.That(failure, Is.SameAs(writeFails ? writeFailure : parentDisposeFailure));
         child.Received(1).Dispose();
         parent.Received(1).Dispose();
         Assert.That(codeSetter.Disposed, Is.EqualTo(1));
+        // Each swallowed disposal failure is logged, through one logger resolved for both.
+        int swallowed = (writeFails ? 1 : 0) + (codeSetterDisposalFails ? 1 : 0);
+        logger.Received(swallowed).Warn(Arg.Is<string>(m => m.StartsWith("Swallowed disposal failure")));
+        logManager.Received(1).GetLogger(Arg.Any<string>());
+    }
+
+    [Test]
+    public void ApplyBal_DoesNotResolveLoggerWhenNothingIsReported()
+    {
+        IWorldStateScopeProvider.IScope scope = Substitute.For<IWorldStateScopeProvider.IScope>();
+        scope.StartWriteBatch(Arg.Any<int>()).Returns(Substitute.For<IWorldStateScopeProvider.IWorldStateWriteBatch>());
+        scope.Get(Arg.Any<Address>()).Returns(new Account(nonce: 1, balance: 1));
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList.WithAccountChanges(
+            Build.An.AccountChanges.WithAddress(TestItem.AddressA)
+                .WithNonceChanges(new NonceChange(1, 2))
+                .WithStorageChanges(1, new StorageChange(1, 2)).TestObject).TestObject;
+        (ILogManager logManager, _) = CreateLogManager();
+
+        ScopeBalApplier.Apply(scope, bal, logManager);
+
+        logManager.DidNotReceive().GetLogger(Arg.Any<string>());
+    }
+
+    private static (ILogManager LogManager, InterfaceLogger Logger) CreateLogManager()
+    {
+        InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+        logger.IsWarn.Returns(true);
+        ILogger wrapped = new(logger);
+        ILogManager logManager = Substitute.For<ILogManager>();
+        logManager.GetLogger(Arg.Any<string>()).Returns(wrapped);
+        return (logManager, logger);
     }
 
     private sealed class CodeSetter(Exception? disposeFailure) : IWorldStateScopeProvider.ICodeSetter

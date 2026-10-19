@@ -1285,7 +1285,8 @@ public partial class BlockProcessorTests
         using SnapshotableMemColumnsDb<FlatHistoryColumns> columns = new();
         TransactionChangesetIndex index = new(columns, new FlatDbConfig { HistoryTransactionIndexEnabled = true });
         ChangesetPrefixStateSeedSource seeds = new(index);
-        using BasicTestBlockchain chain = await CreatePrefixReplayChain(spec, seeds);
+        // A calculator that does not rule rewards out, so the reward pass runs and its boundary is checked.
+        using BasicTestBlockchain chain = await CreatePrefixReplayChain(spec, seeds, builder => builder.AddSingleton<IRewardCalculatorSource>(new UnhintedNoRewards()));
         BlockHeader parent = chain.BlockTree.Head!.Header;
         Block block = await AddThreeTransferBlock(chain);
         IndexThroughTheCapture(chain, index, block, parent, spec);
@@ -1338,6 +1339,13 @@ public partial class BlockProcessorTests
         IBlockTracer<TTrace> tracer = tracerFor(scope.Resolve<IWorldState>());
         processor.Process(block, TraceProcessingOptions.ReadOnlyReplay, tracer, CancellationToken.None);
         return tracer.BuildResult();
+    }
+
+    private sealed class UnhintedNoRewards : IRewardCalculatorSource, IRewardCalculator
+    {
+        public IRewardCalculator Get(ITransactionProcessor processor) => this;
+
+        public BlockReward[] CalculateRewards(Block block) => [];
     }
 
     private sealed class ZeroRewardToTheBeneficiary : IRewardCalculatorSource, IRewardCalculator
@@ -1831,7 +1839,7 @@ public partial class BlockProcessorTests
     }
 
     [Test]
-    public void Parallel_validation_parent_reader_scope_is_per_worker_and_disposed_on_return()
+    public void Parallel_validation_parent_reader_scope_is_per_worker_and_released_when_the_block_finishes([Values] bool finishBlock)
     {
         IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
         Hash256 parentStateRoot;
@@ -1887,7 +1895,155 @@ public partial class BlockProcessorTests
         balManager.ReturnTxProcessor(1);
         balManager.ReturnTxProcessor(2);
 
-        Assert.That(parentReaderFactory.DisposedScopes, Is.EqualTo(2));
+        // The pool keeps one processor per core and disposes the rest, together with their parent readers.
+        int pooled = Math.Min(2, Environment.ProcessorCount);
+        Assert.That(parentReaderFactory.DisposedScopes, Is.EqualTo(2 - pooled), "a pooled processor keeps its parent reader for the block");
+
+        if (finishBlock)
+        {
+            balManager.SetBlockAccessList(block);
+            Assert.That(parentReaderFactory.DisposedScopes, Is.EqualTo(parentReaderFactory.BuiltHeaders.Count), "merging the post-execution slice releases every kept parent reader");
+            return;
+        }
+
+        Block nextBlock = Build.A.Block
+            .WithNumber(7)
+            .WithParentHash(parentHash)
+            .WithTransactions(Build.A.Transaction.WithNonce(0).TestObject)
+            .WithBlockAccessList(new ReadOnlyBlockAccessList())
+            .TestObject;
+        PrepareSetup(balManager, nextBlock, Amsterdam.Instance);
+
+        Assert.That(parentReaderFactory.DisposedScopes, Is.EqualTo(2), "for a block that failed before its post-execution slice, the next block's setup releases the kept parent readers");
+    }
+
+    /// <summary>A block that does not run in parallel releases the parent readers an earlier parallel block kept.</summary>
+    [Test]
+    public void Sequential_block_releases_parent_reader_scopes_kept_by_an_earlier_parallel_block()
+    {
+        int poolSize = RuntimeInformation.ProcessorCount;
+        using BlockAccessListManager balManager = CreateParallelParentReaderManager(
+            out IWorldState stateProvider, out BlockHeader parentHeader, out TrackingReadOnlyTxProcessingEnvFactory parentReaderFactory);
+        using IDisposable parentScope = stateProvider.BeginScope(parentHeader);
+
+        Block block = BuildParallelBlock(parentHeader.Hash!, 2 * poolSize);
+        PrepareSetup(balManager, block, Amsterdam.Instance);
+        for (uint i = 1; i <= 2 * poolSize; i++)
+        {
+            _ = balManager.GetTxProcessor(i);
+            balManager.ReturnTxProcessor(i);
+        }
+
+        Assert.That(parentReaderFactory.DisposedScopes, Is.EqualTo(0), "precondition: the parallel block kept its scopes");
+
+        PrepareSetup(balManager, BuildParallelBlock(parentHeader.Hash!, 1), Amsterdam.Instance, ProcessingOptions.ForceSequentialBlockAccessList);
+
+        Assert.That(parentReaderFactory.DisposedScopes, Is.EqualTo(poolSize), "the sequential block released every kept scope");
+    }
+
+    /// <summary>
+    /// A processor opens its parent-state scope on its first transaction of a block and reuses it for its later
+    /// transactions of that block, so a block opens at most one scope per processor.
+    /// </summary>
+    [Test]
+    public void Parallel_validation_opens_one_parent_reader_scope_per_processor_per_block()
+    {
+        int poolSize = RuntimeInformation.ProcessorCount;
+        int txCount = 3 * poolSize;
+        using BlockAccessListManager balManager = CreateParallelParentReaderManager(
+            out IWorldState stateProvider, out BlockHeader parentHeader, out TrackingReadOnlyTxProcessingEnvFactory parentReaderFactory);
+        using IDisposable parentScope = stateProvider.BeginScope(parentHeader);
+
+        Block block = BuildParallelBlock(parentHeader.Hash!, txCount);
+        PrepareSetup(balManager, block, Amsterdam.Instance);
+
+        for (uint i = 1; i <= txCount; i++)
+        {
+            _ = balManager.GetTxProcessor(i);
+            balManager.ReturnTxProcessor(i);
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(parentReaderFactory.BuiltHeaders.Count, Is.EqualTo(poolSize), "each pooled processor opens one scope for the block");
+            Assert.That(parentReaderFactory.CreatedSources, Is.EqualTo(poolSize));
+            Assert.That(parentReaderFactory.BuiltHeaders, Is.All.SameAs(block.Header));
+            Assert.That(parentReaderFactory.DisposedScopes, Is.EqualTo(0));
+        }
+
+        Block nextBlock = BuildParallelBlock(parentHeader.Hash!, txCount);
+        PrepareSetup(balManager, nextBlock, Amsterdam.Instance);
+        _ = balManager.GetTxProcessor(1);
+        balManager.ReturnTxProcessor(1);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(parentReaderFactory.DisposedScopes, Is.EqualTo(poolSize), "the next block releases every scope of the previous one");
+            Assert.That(parentReaderFactory.BuiltHeaders.Count, Is.EqualTo(poolSize + 1), "the next block opens a fresh scope");
+            Assert.That(parentReaderFactory.BuiltHeaders[^1], Is.SameAs(nextBlock.Header));
+        }
+    }
+
+    /// <summary>A parent reader a processor keeps for the block is released with the processor: when the pool drops it, and when the manager is disposed.</summary>
+    [Test]
+    public void Parallel_validation_releases_kept_parent_reader_scopes_with_their_processors()
+    {
+        int processors = RuntimeInformation.ProcessorCount + 1; // one more than the pool holds
+        BlockAccessListManager balManager = CreateParallelParentReaderManager(
+            out IWorldState stateProvider, out BlockHeader parentHeader, out TrackingReadOnlyTxProcessingEnvFactory parentReaderFactory);
+        using IDisposable parentScope = stateProvider.BeginScope(parentHeader);
+
+        Block block = BuildParallelBlock(parentHeader.Hash!, processors);
+        PrepareSetup(balManager, block, Amsterdam.Instance);
+
+        for (uint i = 1; i <= processors; i++) _ = balManager.GetTxProcessor(i);
+        for (uint i = 1; i <= processors; i++) balManager.ReturnTxProcessor(i);
+
+        Assert.That(parentReaderFactory.DisposedScopes, Is.EqualTo(1), "only the processor the full pool dropped released its scope");
+
+        balManager.Dispose();
+
+        Assert.That(parentReaderFactory.DisposedScopes, Is.EqualTo(processors), "disposing the manager releases every kept scope");
+    }
+
+    private static BlockAccessListManager CreateParallelParentReaderManager(
+        out IWorldState stateProvider, out BlockHeader parentHeader, out TrackingReadOnlyTxProcessingEnvFactory parentReaderFactory)
+    {
+        stateProvider = TestWorldStateFactory.CreateForTest();
+        Hash256 parentStateRoot;
+        using (stateProvider.BeginScope(IWorldState.PreGenesis))
+        {
+            stateProvider.Commit(Amsterdam.Instance, isGenesis: true);
+            stateProvider.CommitTree(0);
+            parentStateRoot = stateProvider.StateRoot;
+        }
+
+        parentHeader = Build.A.BlockHeader
+            .WithNumber(6)
+            .WithHash(TestItem.KeccakA)
+            .WithStateRoot(parentStateRoot)
+            .TestObject;
+
+        parentReaderFactory = new(parentStateRoot);
+        return new BlockAccessListManager(
+            stateProvider,
+            LimboLogs.Instance,
+            new BlocksConfig { ParallelExecution = true },
+            new WithdrawalProcessorFactory(LimboLogs.Instance),
+            new BalTxProcessorFactory(Substitute.For<IBlockhashProvider>(), new TestSingleReleaseSpecProvider(Amsterdam.Instance), LimboLogs.Instance),
+            readOnlyTxProcessingEnvFactory: parentReaderFactory);
+    }
+
+    private static Block BuildParallelBlock(Hash256 parentHash, int txCount)
+    {
+        Transaction[] transactions = new Transaction[txCount];
+        for (int i = 0; i < txCount; i++) transactions[i] = Build.A.Transaction.WithNonce((ulong)i).TestObject;
+        return Build.A.Block
+            .WithNumber(7)
+            .WithParentHash(parentHash)
+            .WithTransactions(transactions)
+            .WithBlockAccessList(new ReadOnlyBlockAccessList())
+            .TestObject;
     }
 
     private static void ApplyBalInParentScope(
