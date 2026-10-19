@@ -125,7 +125,8 @@ public partial class DebugRpcModuleTests
     [Test]
     public async Task Debug_traceBlock_setup_failure_precedes_timeout_policy(
         [Values("debug_traceBlockByNumber", "debug_traceBlockByHash", "debug_traceBlock")] string method,
-        [Values("0s", "-1s", "121s")] string timeout)
+        [Values("0s", "-1s", "121s", "5s")] string timeout,
+        [Values("error", "null", "primitive")] string failure)
     {
         using Context context = await Context.Create();
         Block block = await context.Blockchain.AddBlock(CreateTraceBlockTransactions(context.Blockchain));
@@ -135,8 +136,9 @@ public partial class DebugRpcModuleTests
             "debug_traceBlockByHash" => block.Hash!,
             _ => Rlp.Encode(block).ToString()
         };
+        string thrown = failure switch { "null" => "null", "primitive" => "42", _ => "Error('setup-before-timeout')" };
         string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, method, selector,
-            new { tracer = "{fault:function(){},setup:function(){throw Error('setup-before-timeout');},result:function(){return {};}}", timeout });
+            new { tracer = "{fault:function(){},setup:function(){throw " + thrown + ";},result:function(){return {};}}", timeout });
         JToken json = JToken.Parse(response);
         Assert.That(json["error"], Is.Null, response);
         JArray traces = (JArray)json["result"]!;
@@ -146,7 +148,9 @@ public partial class DebugRpcModuleTests
             using (Assert.EnterMultipleScope())
             {
                 Assert.That((string?)traces[i]["txHash"], Is.EqualTo(block.Transactions[i].Hash!.ToString()), response);
-                Assert.That((string?)traces[i]["error"], Does.Contain("setup-before-timeout"), response);
+                Assert.That((string?)traces[i]["error"], Is.Not.Null.And.Not.Empty, response);
+                if (failure != "null")
+                    Assert.That((string?)traces[i]["error"], Does.Contain(failure == "primitive" ? "42" : "setup-before-timeout"), response);
                 Assert.That(traces[i]["result"], Is.Null, response);
             }
         }
@@ -1379,12 +1383,61 @@ public partial class DebugRpcModuleTests
             if (callback == "step") tracer.SetOperationStack(default);
             return tracer.BuildResult();
         }
-        if (capture || callback == "return")
+        if (capture && callback == "setup")
+        {
+            JavaScriptTraceFailure failure = Assert.Throws<JavaScriptTraceFailure>(() => { using GethLikeTxTrace result = Trace(); })!;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(failure.InnerException, Is.InstanceOf<ScriptEngineException>());
+                Assert.That(JavaScriptTraceFailure.IsRecoverable(failure), Is.True);
+            }
+        }
+        else if (capture || callback == "return")
         {
             using GethLikeTxTrace result = Trace();
             Assert.That(result.TraceError is null, Is.EqualTo(callback == "return"));
         }
         else Assert.Throws<ScriptEngineException>(() => Trace());
+    }
+
+    [Test]
+    public async Task Capture_setup_keeps_input_diagnostics_and_unrecoverable_boundaries(
+        [Values("input", "host", "fatal", "cancellation", "interrupt", "input-interrupt")] string kind)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
+        using Engine engine = new(Prague.Instance);
+        Action fail = kind switch
+        {
+            "input" => () => engine.AbortInput("setup input marker"),
+            "host" => () => throw new InvalidOperationException("setup host failure"),
+            "fatal" => () => throw CreateException(true, true, null),
+            "cancellation" => () => throw new OperationCanceledException(),
+            "interrupt" => engine.Interrupt,
+            _ => () => { engine.AbortInput("setup input marker"); engine.Interrupt(); }
+        };
+        using (ScriptObject installer = (ScriptObject)engine.CreateTracer("{install:function(action){globalThis.failSetup=action;}}"))
+            installer.InvokeMethod("install", fail);
+        Exception exception = Assert.Catch(() =>
+        {
+            using GethLikeJavaScriptTxTracer tracer = new(engine, new JavaScriptDb(chain.MainWorldState), new JavaScriptContext(),
+                new GethTraceOptions
+                {
+                    CaptureJavaScriptErrors = true,
+                    Timeout = TimeSpan.Zero,
+                    Tracer = "{fault:function(){},setup:function(){failSetup();throw null;},result:function(){return {};}}"
+                });
+        })!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(JavaScriptTraceFailure.IsRecoverable(exception), Is.EqualTo(kind == "input"), exception.ToString());
+            if (kind == "input")
+            {
+                Assert.That(exception, Is.TypeOf<JavaScriptTraceFailure>());
+                Assert.That(exception.Message, Is.EqualTo("setup input marker"));
+                Assert.That(exception.InnerException, Is.Not.Null);
+            }
+            else Assert.That(exception, Is.Not.TypeOf<JavaScriptTraceFailure>());
+        }
     }
 
     [Test]
