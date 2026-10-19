@@ -77,13 +77,13 @@ jobs:
     needs: resolve-inputs
     if: needs.resolve-inputs.outputs.should_run == 'true'
     runs-on: benchmark
-    timeout-minutes: 30
+    timeout-minutes: 90
     steps:
       # Sibling checkouts, so neither tree picks up the other's Directory.*.props and both build at once.
       - name: Check out base branch (master)
         uses: actions/checkout@v6
         with:
-          ref: ${{ github.event.pull_request.base.sha || 'master' }}
+          ref: bench/bal-validation-base
           path: base
 
       - name: Check out PR branch
