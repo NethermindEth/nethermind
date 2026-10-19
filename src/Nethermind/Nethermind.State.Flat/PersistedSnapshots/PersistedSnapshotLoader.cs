@@ -203,30 +203,20 @@ public sealed class PersistedSnapshotLoader(
         // correct — the bloom is only a skip filter, so a saturated tiny one just forgoes the skip.
         BloomFilter bloom = BloomEnabled ? new BloomFilter(1, _bloomBitsPerKey) : BloomFilter.AlwaysTrue();
 
-        BlobArenaWriter pendingBlobWriter;
+        long estimatedSize = PersistedSnapshotBuilder.EstimateSize(snapshot);
+
         SnapshotLocation location;
         ArenaReservation reservation;
-        using (PersistedSnapshotBuilder.PreparedSnapshot prepared = new(snapshot))
+        using BlobArenaWriter blobWriter = blobs.CreateWriter(estimatedSize);
+        // Base snapshots are always sub-CompactSize (single-block window) and read-cold after
+        // compaction — pack their metadata into the separate small-arena pool.
+        using (ArenaWriter arenaWriter = arena.CreateWriter(estimatedSize, small: true))
         {
-            long estimatedSize = prepared.EstimatedSize;
-            pendingBlobWriter = blobs.CreateWriter(estimatedSize);
-            try
-            {
-                // Base snapshots are always sub-CompactSize (single-block window) and read-cold after
-                // compaction — pack their metadata into the separate small-arena pool.
-                using ArenaWriter arenaWriter = arena.CreateWriter(estimatedSize, small: true);
-                PersistedSnapshotBuilder.Build(snapshot, prepared, ref arenaWriter.GetWriter(), pendingBlobWriter, bloom);
-                Metrics.PersistedSnapshotSize.Observe(arenaWriter.GetWriter().Written);
-                (location, reservation) = arenaWriter.Complete();
-            }
-            catch
-            {
-                pendingBlobWriter.Dispose();
-                throw;
-            }
+            PersistedSnapshotBuilder.Build<ArenaBufferWriter>(
+                snapshot, ref arenaWriter.GetWriter(), blobWriter, bloom);
+            Metrics.PersistedSnapshotSize.Observe(arenaWriter.GetWriter().Written);
+            (location, reservation) = arenaWriter.Complete();
         }
-
-        using BlobArenaWriter blobWriter = pendingBlobWriter;
         blobWriter.Complete();
 
         // Durability barrier — fsync both the metadata arena and the blob arena before the
