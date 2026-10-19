@@ -786,8 +786,8 @@
   },
   {
     "pname": "Nethermind.MclBindings",
-    "version": "4.20.0.114",
-    "hash": "sha256-YrJzxpq2hXJLLfixNjvny+N/gt9B4/IkLxUSfZ9j9Aw="
+    "version": "4.30.0.119",
+    "hash": "sha256-X/NGefftZllJBt7DOhVJcTc3bq+kiJBpF3annajayhQ="
   },
   {
     "pname": "Nethermind.Multiformats.Address",
