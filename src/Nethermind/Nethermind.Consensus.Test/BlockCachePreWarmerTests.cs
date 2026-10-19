@@ -322,7 +322,7 @@ public class BlockCachePreWarmerTests
             new(TestItem.AddressA, 7), new(TestItem.AddressB, 2), new(TestItem.AddressA, 3)
         ];
 
-        Span<StorageCell> unique = BlockCachePreWarmer.SortUnique(slots.AsSpan(), default(BlockCachePreWarmer.StorageCellComparer));
+        Span<StorageCell> unique = BlockCachePreWarmer.SortUnique(slots.AsSpan(), default(StorageCellComparer));
 
         Address first = TestItem.AddressA.CompareTo(TestItem.AddressB) < 0 ? TestItem.AddressA : TestItem.AddressB;
         Address second = first == TestItem.AddressA ? TestItem.AddressB : TestItem.AddressA;
@@ -340,7 +340,7 @@ public class BlockCachePreWarmerTests
         Address[] accounts = new Address[3 * (repeats + 1)];
         for (int i = 0; i < accounts.Length; i++) accounts[i] = (i % 3) switch { 0 => TestItem.AddressC, 1 => TestItem.AddressA, _ => TestItem.AddressB };
 
-        Span<Address> unique = BlockCachePreWarmer.SortUnique(accounts.AsSpan(), default(BlockCachePreWarmer.AddressComparer));
+        Span<Address> unique = BlockCachePreWarmer.SortUnique(accounts.AsSpan(), default(AddressComparer));
 
         Address[] expected = [TestItem.AddressA, TestItem.AddressB, TestItem.AddressC];
         Array.Sort(expected);

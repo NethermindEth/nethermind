@@ -1668,21 +1668,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         return items[..unique];
     }
 
-    internal readonly struct AddressComparer : IComparer<Address>
-    {
-        public int Compare(Address? x, Address? y) => x!.CompareTo(y);
-    }
-
-    /// <summary>Orders by account, then slot, so the slots of one account are adjacent.</summary>
-    internal readonly struct StorageCellComparer : IComparer<StorageCell>
-    {
-        public int Compare(StorageCell x, StorageCell y)
-        {
-            int byAddress = x.Address.CompareTo(y.Address);
-            return byAddress != 0 ? byAddress : x.Index.CompareTo(y.Index);
-        }
-    }
-
     /// <summary>The distinct addresses the block's large calldata names as ABI words, in calldata order; the caller disposes the list.</summary>
     /// <remarks>
     /// Words are deduplicated as they are: an ABI address word is the address left-padded to 32 bytes, the
