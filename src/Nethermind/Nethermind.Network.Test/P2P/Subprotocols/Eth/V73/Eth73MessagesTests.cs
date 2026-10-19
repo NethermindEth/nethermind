@@ -22,7 +22,7 @@ public class Eth73MessagesTests
         public override string ToString() => $"mode {Mode}, {Size} bytes";
     }
 
-    // ethereum/EIPs#12423 at d7afb954, assets/eip-8437/announcement-vectors.json: wrapper[i] = i % 251.
+    // ethereum/EIPs#12423 at 18a4d088, assets/eip-8437/announcement-vectors.json: wrapper[i] = i % 251.
     private static IEnumerable<AnnouncementVector> AnnouncementVectors() =>
     [
         new(0, 1, "bc36789e7a1e281436464229828f817d6612f7b477d66591ff96a9e064bcc98a",
@@ -123,8 +123,9 @@ public class Eth73MessagesTests
             Assert.That(Eth73Protocol.MessageIdSpaceSize, Is.EqualTo(0x19));
             Assert.That(Eth73MessageCode.IsWrapperMessage(0x19), Is.False, "envelopes travel in GetPooledTransactions");
             Assert.That(Eth73Protocol.MaxWrapperBytes, Is.LessThanOrEqualTo(Eth73Protocol.SoftResponseLimit));
-            // Responses have no normative ceiling; the local cap admits one maximum wrapper with its framing.
-            Assert.That(ProofWrapperTransport.ResponseLength(long.MaxValue, Eth73Protocol.MaxWrapperBytes), Is.LessThanOrEqualTo(Eth73Protocol.LocalMaxResponseBytes));
+            // The largest valid response reaches just under the soft limit, then adds one maximum wrapper.
+            Assert.That(ProofWrapperTransport.ResponseLength(-1, Eth73Protocol.SoftResponseLimit - 1 + Eth73Protocol.MaxWrapperBytes),
+                Is.LessThanOrEqualTo(Eth73Protocol.LocalMaxResponseBytes));
             Assert.That(Eth73Protocol.ExceedsMessageLimit(Eth73MessageCode.ProofWrappers, Eth73Protocol.LocalMaxResponseBytes), Is.False);
             Assert.That(Eth73Protocol.ExceedsMessageLimit(Eth73MessageCode.ProofWrappers, Eth73Protocol.LocalMaxResponseBytes + 1), Is.True);
             Assert.That(Eth73Protocol.ExceedsMessageLimit(Eth73MessageCode.GetProofWrappers, Eth73Protocol.MaxGetProofWrappersBytes + 1), Is.True);

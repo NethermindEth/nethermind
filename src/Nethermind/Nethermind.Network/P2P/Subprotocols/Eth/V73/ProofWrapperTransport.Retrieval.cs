@@ -124,7 +124,7 @@ public sealed partial class ProofWrapperTransport
             batch.Add(fetch);
             bytes += length;
         }
-        // A response stops before the soft limit after its first wrapper, so the local response cap bounds the reservation.
+        // Requests are batched within the soft limit, so a response carries at most the requested bytes.
         long reserved = Math.Min(bytes, Eth73Protocol.LocalMaxResponseBytes);
         if (batch.Count == 0 || peer.LastIssued == long.MaxValue) return false;
         if (!TryCharge(peer, reserved))
@@ -549,9 +549,9 @@ public sealed partial class ProofWrapperTransport
             lock (_gate)
             {
                 if (source.Closed || _disposed) return null;
-                if (source.CanRequest && source.LastIssued != long.MaxValue && TryCharge(source, Eth73Protocol.LocalMaxResponseBytes))
+                if (source.CanRequest && source.LastIssued != long.MaxValue && TryCharge(source, Eth73Protocol.EnvelopeResponseReservation))
                 {
-                    request = new(++source.LastIssued, _clock.GetTimestamp(), Eth73Protocol.LocalMaxResponseBytes, hashes);
+                    request = new(++source.LastIssued, _clock.GetTimestamp(), Eth73Protocol.EnvelopeResponseReservation, hashes);
                     source.Requests.Add(request.Id, request);
                     ArrayPoolList<ValueHash256> wire = new(hashes.Length);
                     wire.AddRange(hashes);

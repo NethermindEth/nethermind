@@ -31,10 +31,14 @@ public static class Eth73Protocol
     /// <summary>EIP-8288 <c>MAX_WRAPPER_BYTES</c>, at most <see cref="SoftResponseLimit"/>.</summary>
     public const int MaxWrapperBytes = Eip8288Constants.MaxWrapperBytes;
 
-    /// <summary>This client's own cap on ProofWrappers message data, checked before decompression.</summary>
-    /// <remarks>EIP-8437 sets no hard response ceiling: a responder stops before the soft limit but always includes the first
-    /// wrapper, so a response holds one wrapper of up to <see cref="MaxWrapperBytes"/> plus its RLP framing.</remarks>
-    public const int LocalMaxResponseBytes = SoftResponseLimit + 1024;
+    /// <summary>The largest valid ProofWrappers message data, checked before decompression.</summary>
+    /// <remarks>EIP-8437: a responder stops adding wrappers once the response reaches the soft limit, so the last wrapper may
+    /// take it above the limit by at most one <see cref="MaxWrapperBytes"/> wrapper; the rest is RLP framing. Exceeding the
+    /// soft limit alone is not a violation.</remarks>
+    public const int LocalMaxResponseBytes = SoftResponseLimit + MaxWrapperBytes + 64;
+
+    /// <summary>Bytes reserved for one envelope-recovery PooledTransactions response, which keeps its <c>eth</c> soft limit.</summary>
+    public const int EnvelopeResponseReservation = SoftResponseLimit + 1024;
 
     /// <summary>The largest valid NewProofWrapperHashes, 64 <c>[mode, length, hash]</c> entries at their widest, bounding
     /// message data before decompression (EIP-8437 check_vectors.py).</summary>

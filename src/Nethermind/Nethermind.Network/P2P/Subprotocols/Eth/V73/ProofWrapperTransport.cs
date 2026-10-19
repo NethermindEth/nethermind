@@ -320,6 +320,7 @@ public sealed partial class ProofWrapperTransport : IDisposable
         foreach (WrapperStore.Entry entry in held)
             if (entry.Verifier == verifier || _wrappers.Revalidates(entry.Wrapper, in verifier)) revalidated.Add(entry);
         int dropped = 0;
+        Outbox outbox = new();
         lock (_gate)
         {
             if (_disposed || _verifier != verifier) return;
@@ -332,7 +333,19 @@ public sealed partial class ProofWrapperTransport : IDisposable
                     dropped++;
                 }
             }
+            // EIP-8437: announcement and coverage records made under the previous rules no longer suppress anything, and a
+            // revalidated wrapper is announced again.
+            foreach (WrapperPeer peer in _peers)
+            {
+                peer.Known.Clear();
+                peer.Exchanged.Clear();
+                peer.ToAnnounce.Clear();
+                foreach (WrapperStore.Entry entry in _store.Recent())
+                    if (entry.Verifier == verifier) peer.ToAnnounce.Add(entry.Announcement);
+                FlushAnnouncements(peer, outbox);
+            }
         }
+        outbox.Flush();
         WrapperMetrics.Record(WrapperEvent.UpgradeDropped, dropped);
         if (_logger.IsInfo) _logger.Info($"eth/73 target fork verifier is now {verifier}: dropped {dropped} wrappers, kept {revalidated.Count}");
     }
@@ -461,7 +474,8 @@ public sealed partial class ProofWrapperTransport : IDisposable
 
     // ---- Responder ---------------------------------------------------------------------------------------------------
 
-    /// <summary>Returns the requested wrappers this node offers, in request order, stopping before the soft response limit.</summary>
+    /// <summary>Returns the requested wrappers this node offers, in request order, adding none once the response reaches the
+    /// soft response limit; the last one added may take it past the limit (EIP-8437).</summary>
     internal void OnGetProofWrappers(WrapperPeer peer, GetProofWrappersMessage request)
     {
         Outbox outbox = new();
@@ -475,7 +489,7 @@ public sealed partial class ProofWrapperTransport : IDisposable
             {
                 // Requests name wrappers the recipient announced; others are answered as unavailable.
                 if (!peer.Known.Contains(wrapperHash, now) || !TryGetOffered(wrapperHash, out WrapperStore.Entry entry)) continue;
-                if (served.Count > 0 && ResponseLength(request.RequestId, content + entry.Wrapper.Length) > Eth73Protocol.SoftResponseLimit) break;
+                if (ResponseLength(request.RequestId, content) >= Eth73Protocol.SoftResponseLimit) break;
                 served.Add(entry);
                 content += entry.Wrapper.Length;
             }

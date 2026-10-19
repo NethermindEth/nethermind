@@ -63,6 +63,12 @@ internal sealed class WrapperBoundedSet(int capacity)
     {
         if (_items.Remove(key, out LinkedListNode<(ValueHash256, long)>? node)) _order.Remove(node);
     }
+
+    public void Clear()
+    {
+        _items.Clear();
+        _order.Clear();
+    }
 }
 
 /// <summary>A refilling allowance, such as a serving or announcement rate limit.</summary>
