@@ -74,7 +74,7 @@ public sealed class WarmedNodeLog : IDisposable
         if (TryGet(address, path, out record, out pointer)) return;
 
         Debug.Assert(ValueKeccak.Compute(rlp) == hash, "A traversal only appends the node its parent references.");
-        if (!NodeRecordCodec.TryMeasure(rlp, out NodeRecordKind kind, out ushort hashMask)) ThrowInvalidRlp();
+        if (!NodeRecordCodec.TryDecode(rlp, out NodeRecordKind kind, out ushort hashMask)) ThrowInvalidRlp();
 
         int length = NodeRecordCodec.Length(BitOperations.PopCount(hashMask), rlp.Length);
         ulong localPointer;

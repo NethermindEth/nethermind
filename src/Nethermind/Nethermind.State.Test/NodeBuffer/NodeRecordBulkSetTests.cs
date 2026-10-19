@@ -753,7 +753,7 @@ internal class NodeRecordBulkSetTests
         foreach ((TreePath path, ulong pointer, NodeRecord record) in buffer.EnumerateNodes(root.Pointer))
         {
             byte[] rlp = record.Rlp.ToArray();
-            bool parses = NodeRecordCodec.TryMeasure(rlp, out NodeRecordKind kind, out ushort hashMask);
+            bool parses = NodeRecordCodec.TryDecode(rlp, out NodeRecordKind kind, out ushort hashMask);
             bool transientPointer = NodeRecordCodec.IsTransient(pointer);
             for (int i = 0; i < BitOperations.PopCount(hashMask); i++)
             {

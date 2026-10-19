@@ -109,6 +109,7 @@ internal static class BufferWarmUp
         if (found)
         {
             if (NodeRecordCodec.IsTransient(pointer)) Metrics.IncrementWarmedNodeCacheHits();
+            else Metrics.IncrementNodeRecordBufferHits();
         }
         else
         {
@@ -130,7 +131,7 @@ internal static class BufferWarmUp
         if (!TryLoadRlp(reader, address, path, CopyRlp, scratch)) return false;
         frame.RlpLength = scratch.Count - frame.RlpOffset;
         ReadOnlySpan<byte> rlp = frame.Rlp(scratch);
-        return NodeRecordCodec.TryMeasure(rlp, out frame.Kind, out frame.HashMask);
+        return NodeRecordCodec.TryDecode(rlp, out frame.Kind, out frame.HashMask);
     }
 
     /// <summary>Loads the only other child of <paramref name="branch"/>, which it collapses into when the matching leaf is deleted.</summary>

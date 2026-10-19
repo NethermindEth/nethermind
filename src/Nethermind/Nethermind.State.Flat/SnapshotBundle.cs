@@ -430,7 +430,14 @@ public sealed class SnapshotBundle : IDisposable
             }
         }
 
-        public bool TryLocate(ulong pointer, out NodeRecord record) => _buffer.TryLocate(pointer, out record);
+        public bool TryLocate(ulong pointer, out NodeRecord record)
+        {
+            if (!_buffer.TryLocate(pointer, out record)) return false;
+
+            if (NodeRecordCodec.IsTransient(pointer)) Metrics.IncrementIdleWarmedNodeCacheHits();
+            else Metrics.IncrementIdleNodeRecordBufferHits();
+            return true;
+        }
 
         public INodeRecordWriteBatch StartWriteBatch(int alignedTotalLength) => _buffer.StartWriteBatch(alignedTotalLength);
 

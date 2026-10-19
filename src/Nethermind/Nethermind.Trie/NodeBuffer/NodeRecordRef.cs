@@ -11,7 +11,7 @@ using Nethermind.Core.Crypto;
 namespace Nethermind.Trie.NodeBuffer;
 
 /// <summary>Reads a node record in place; see <see cref="NodeRecordCodec"/> for the layout.</summary>
-/// <remarks>The record's RLP is trusted to be well formed, as <see cref="NodeRecordCodec.TryMeasure"/> or the encoder left it.</remarks>
+/// <remarks>The record's RLP is trusted to be well formed, as <see cref="NodeRecordCodec.TryDecode"/> or the encoder left it.</remarks>
 internal readonly ref struct NodeRecordRef(ReadOnlySpan<byte> record)
 {
     private readonly ReadOnlySpan<byte> _record = record;

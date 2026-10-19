@@ -44,7 +44,7 @@ internal class NodeRecordCodecTests
     public void Record_round_trips_rlp(string rlpHex, NodeRecordKind expectedKind, ushort expectedMask)
     {
         byte[] rlp = Bytes.FromHexString(rlpHex);
-        Assert.That(NodeRecordCodec.TryMeasure(rlp, out NodeRecordKind kind, out ushort hashMask), Is.True);
+        Assert.That(NodeRecordCodec.TryDecode(rlp, out NodeRecordKind kind, out ushort hashMask), Is.True);
 
         byte[] buffer = new byte[NodeRecordCodec.Length(BitOperations.PopCount(hashMask), rlp.Length)];
         NodeRecordCodec.WriteFromRlp(rlp, kind, hashMask, ValueKeccak.Compute(rlp), nodeKeyHash: 0, buffer);
@@ -76,7 +76,7 @@ internal class NodeRecordCodecTests
         + "8080808080808080808080808080" + "01", TestName = "branch value")]
     [TestCase("e215a0" + "22222222222222222222222222222222222222222222222222222222222222", TestName = "truncated")]
     public void Rejects_invalid_rlp(string rlpHex) =>
-        Assert.That(NodeRecordCodec.TryMeasure(Bytes.FromHexString(rlpHex), out _, out _), Is.False);
+        Assert.That(NodeRecordCodec.TryDecode(Bytes.FromHexString(rlpHex), out _, out _), Is.False);
 
     [Test]
     public void ChildRef_is_48_bytes() => Assert.That(Unsafe.SizeOf<ChildRef>(), Is.EqualTo(48));

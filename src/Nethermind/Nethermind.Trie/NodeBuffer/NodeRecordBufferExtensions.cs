@@ -30,7 +30,7 @@ public static class NodeRecordBufferExtensions
     /// <exception cref="TrieException">The RLP is not a valid trie node.</exception>
     public static ulong AppendRecordFromRlp(this INodeRecordBuffer buffer, Hash256? address, in TreePath path, in ValueHash256 hash, ReadOnlySpan<byte> rlp, ReadOnlySpan<ulong> childPointers)
     {
-        if (!NodeRecordCodec.TryMeasure(rlp, out NodeRecordKind kind, out ushort hashMask)) ThrowInvalidRlp();
+        if (!NodeRecordCodec.TryDecode(rlp, out NodeRecordKind kind, out ushort hashMask)) ThrowInvalidRlp();
 
         int length = NodeRecordCodec.Length(BitOperations.PopCount(hashMask), rlp.Length);
         using INodeRecordWriteBatch batch = buffer.StartWriteBatch(NodeRecordCodec.AlignedLength(length));

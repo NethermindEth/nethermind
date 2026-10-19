@@ -94,15 +94,15 @@ internal static class NodeRecordCodec
         return key ^ key >> 33;
     }
 
-    /// <summary>Classifies a node's RLP for <see cref="WriteFromRlp"/>.</summary>
+    /// <summary>Decodes the record kind and hash mask of a node's RLP for <see cref="WriteFromRlp"/>.</summary>
     /// <returns>False when the RLP is malformed, embeds a child that is not a leaf, or gives a branch a value.</returns>
-    public static bool TryMeasure(ReadOnlySpan<byte> rlp, out NodeRecordKind kind, out ushort hashMask)
+    public static bool TryDecode(ReadOnlySpan<byte> rlp, out NodeRecordKind kind, out ushort hashMask)
     {
         kind = default;
         hashMask = 0;
         if (!NodeRlp.NextItem(rlp, out NodeRlp.Item node, out ReadOnlySpan<byte> rest) || !node.IsList || !rest.IsEmpty) return false;
         if (!NodeRlp.NextItem(node.Payload, out NodeRlp.Item first, out rest) || !NodeRlp.NextItem(rest, out NodeRlp.Item second, out rest)) return false;
-        if (!rest.IsEmpty) return TryMeasureBranch(node.Payload, out kind, out hashMask);
+        if (!rest.IsEmpty) return TryDecodeBranch(node.Payload, out kind, out hashMask);
         if (!IsHexPrefix(first)) return false;
 
         int keyLength = NodeRlp.HexPrefixNibbleCount(first.Payload);
@@ -113,15 +113,15 @@ internal static class NodeRecordCodec
         }
 
         kind = NodeRecordKind.Extension;
-        if (keyLength == 0 || !TryMeasureChild(second, out ChildRefKind child) || child == ChildRefKind.Empty) return false;
+        if (keyLength == 0 || !TryDecodeChild(second, out ChildRefKind child) || child == ChildRefKind.Empty) return false;
 
         hashMask = (ushort)(child == ChildRefKind.Hash ? 1 : 0);
         return true;
     }
 
     /// <summary>Writes the record of <paramref name="rlp"/>, with every child pointer 0.</summary>
-    /// <param name="kind">From <see cref="TryMeasure"/>.</param>
-    /// <param name="hashMask">From <see cref="TryMeasure"/>.</param>
+    /// <param name="kind">From <see cref="TryDecode"/>.</param>
+    /// <param name="hashMask">From <see cref="TryDecode"/>.</param>
     /// <param name="destination">At least <see cref="Length(int, int)"/> bytes.</param>
     public static void WriteFromRlp(ReadOnlySpan<byte> rlp, NodeRecordKind kind, ushort hashMask, in ValueHash256 hash, ulong nodeKeyHash, Span<byte> destination)
     {
@@ -136,13 +136,13 @@ internal static class NodeRecordCodec
         rlp.CopyTo(destination[(HeaderLength + pointersLength)..]);
     }
 
-    private static bool TryMeasureBranch(ReadOnlySpan<byte> payload, out NodeRecordKind kind, out ushort hashMask)
+    private static bool TryDecodeBranch(ReadOnlySpan<byte> payload, out NodeRecordKind kind, out ushort hashMask)
     {
         kind = NodeRecordKind.HashedBranch;
         hashMask = 0;
         for (int i = 0; i < BranchChildCount; i++)
         {
-            if (!NodeRlp.NextItem(payload, out NodeRlp.Item item, out payload) || !TryMeasureChild(item, out ChildRefKind child)) return false;
+            if (!NodeRlp.NextItem(payload, out NodeRlp.Item item, out payload) || !TryDecodeChild(item, out ChildRefKind child)) return false;
 
             if (child == ChildRefKind.Hash) hashMask |= (ushort)(1 << i);
             else if (child == ChildRefKind.Inline) kind = NodeRecordKind.InlineBranch;
@@ -154,7 +154,7 @@ internal static class NodeRecordCodec
     }
 
     /// <returns>False for a child that is malformed or embeds anything but a leaf.</returns>
-    private static bool TryMeasureChild(in NodeRlp.Item item, out ChildRefKind kind)
+    private static bool TryDecodeChild(in NodeRlp.Item item, out ChildRefKind kind)
     {
         kind = item switch
         {

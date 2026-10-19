@@ -129,7 +129,14 @@ internal sealed class BufferedTrie(SnapshotBundle bundle, Hash256? addressHash, 
         return nodeKey[..NodeRlp.HexPrefixNibbleCount(hexPrefix.Payload)].SequenceEqual(keyNibbles) ? value.Payload.ToArray() : null;
     }
 
-    public bool TryLocate(ulong pointer, out NodeRecord record) => bundle.TrieNodeBuffer!.TryLocate(pointer, out record);
+    public bool TryLocate(ulong pointer, out NodeRecord record)
+    {
+        if (!bundle.TrieNodeBuffer!.TryLocate(pointer, out record)) return false;
+
+        if (NodeRecordCodec.IsTransient(pointer)) Metrics.IncrementWarmedNodeCacheHits();
+        else Metrics.IncrementNodeRecordBufferHits();
+        return true;
+    }
 
     public INodeRecordWriteBatch StartWriteBatch(int alignedTotalLength) => bundle.TrieNodeBuffer!.StartWriteBatch(alignedTotalLength);
 
