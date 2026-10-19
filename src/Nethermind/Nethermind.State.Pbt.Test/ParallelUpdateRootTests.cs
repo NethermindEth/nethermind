@@ -489,7 +489,7 @@ public class ParallelUpdateRootTests
     public void Log_reference_fold_failure_does_not_publish_partial_records(bool splitEveryFrame, bool failAfterWrite)
     {
         TrackingMemoryProvider memory = new();
-        using PbtGroupLog log = new(memory, generationBytes: 256, retainedGenerations: 0);
+        using PbtGroupLog log = new(memory, compressedMemoryBudget: 0, generationBytes: 256, retainedGenerations: 0);
         using LoggedGroupStore store = new(PooledRefCountingMemoryProvider.Instance, log);
         using PbtTreeHarness expected = new();
         (byte[] Key, byte[]? Value)[] entries = ZoneEntries(3, compressed: false);
@@ -521,7 +521,7 @@ public class ParallelUpdateRootTests
     {
         using NativeBucketedMemoryPool nativePool = PbtNodeGroupMemory.CreateNativePool();
         TrackingMemoryProvider memory = new(native ? nativePool : PooledRefCountingMemoryProvider.Instance);
-        using PbtGroupLog log = new(memory, generationBytes: 256, retainedGenerations: 0);
+        using PbtGroupLog log = new(memory, compressedMemoryBudget: 0, generationBytes: 256, retainedGenerations: 0);
         using LoggedGroupStore first = new(memory, log);
         using LoggedGroupStore second = new(memory, log);
         using PbtTreeHarness firstExpected = new();
@@ -607,7 +607,7 @@ public class ParallelUpdateRootTests
         {
             _memory = memory;
             _ownsLog = log is null;
-            Log = log ?? new PbtGroupLog(memory, generationBytes: 4096, retainedGenerations: 0);
+            Log = log ?? new PbtGroupLog(memory, compressedMemoryBudget: 0, generationBytes: 4096, retainedGenerations: 0);
             _content = new PbtSnapshotContent(Log, memory);
         }
 

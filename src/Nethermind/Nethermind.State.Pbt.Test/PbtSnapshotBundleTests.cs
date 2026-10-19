@@ -207,7 +207,7 @@ public class PbtSnapshotBundleTests
     public async Task Persisted_only_base_resolves_its_root_through_the_log_root_index()
     {
         // Production retains the newest unpinned generation, which keeps the persisted root record resident.
-        using PbtGroupLog log = new(PooledRefCountingMemoryProvider.Instance, retainedGenerations: 1);
+        using PbtGroupLog log = new(PooledRefCountingMemoryProvider.Instance, compressedMemoryBudget: 0, retainedGenerations: 1);
         await using PbtTestContext context = new(nodeGroupLog: log);
         Hash256 rootHash;
         using (PbtWorldStateScope initial = context.BeginScope(null))
@@ -242,8 +242,8 @@ public class PbtSnapshotBundleTests
     [Test]
     public void Changed_roots_without_a_published_root_and_foreign_logs_are_rejected([Values] bool foreignLog)
     {
-        using PbtGroupLog sourceLog = new(PooledRefCountingMemoryProvider.Instance, retainedGenerations: 0);
-        using PbtGroupLog otherLog = new(PooledRefCountingMemoryProvider.Instance, retainedGenerations: 0);
+        using PbtGroupLog sourceLog = new(PooledRefCountingMemoryProvider.Instance, compressedMemoryBudget: 0, retainedGenerations: 0);
+        using PbtGroupLog otherLog = new(PooledRefCountingMemoryProvider.Instance, compressedMemoryBudget: 0, retainedGenerations: 0);
         PbtResourcePool sourcePool = new(new PbtConfig(), sourceLog);
         PbtResourcePool targetPool = foreignLog ? new PbtResourcePool(new PbtConfig(), otherLog) : sourcePool;
         PbtSnapshotContent content = sourcePool.GetSnapshotContent(PbtResourcePool.Usage.MainBlockProcessing);
@@ -263,7 +263,7 @@ public class PbtSnapshotBundleTests
     {
         using NativeBucketedMemoryPool nativePool = PbtNodeGroupMemory.CreateNativePool();
         TrackingMemoryProvider memory = new(native ? nativePool : PooledRefCountingMemoryProvider.Instance);
-        using PbtGroupLog log = new(memory, generationBytes: 256, retainedGenerations: 0);
+        using PbtGroupLog log = new(memory, compressedMemoryBudget: 0, generationBytes: 256, retainedGenerations: 0);
         PbtResourcePool pool = new(new PbtConfig(), log, memory);
         using PbtSnapshotRepository repository = new(new MetricsConfig(), NullSnapshotCatalog.Instance, new PbtPersistedPublicationGate());
         PbtStorageNodePath path = default;
@@ -338,7 +338,7 @@ public class PbtSnapshotBundleTests
     public void SnapshotContent_ReplacedTreesAndResetPreserveReadLeases([Values(1, 8)] int groupCount, [Values] bool removed)
     {
         TrackingMemoryProvider memoryProvider = new();
-        using PbtGroupLog log = new(memoryProvider, generationBytes: 256, retainedGenerations: 0);
+        using PbtGroupLog log = new(memoryProvider, compressedMemoryBudget: 0, generationBytes: 256, retainedGenerations: 0);
         using PbtSnapshotContent content = new(log, memoryProvider);
         for (int round = 0; round < 2; round++)
         {

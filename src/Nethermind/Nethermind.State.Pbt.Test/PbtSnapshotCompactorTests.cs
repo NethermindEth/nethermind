@@ -88,7 +88,7 @@ public class PbtSnapshotCompactorTests
     {
         using NativeBucketedMemoryPool nativePool = PbtNodeGroupMemory.CreateNativePool();
         IRefCountingMemoryProvider memory = native ? nativePool : PooledRefCountingMemoryProvider.Instance;
-        using PbtGroupLog log = new(memory, generationBytes: 256, retainedGenerations: 0);
+        using PbtGroupLog log = new(memory, compressedMemoryBudget: 0, generationBytes: 256, retainedGenerations: 0);
         PbtResourcePool pool = new(new PbtConfig(), log, memory);
         using PbtTreeHarness tree = new();
         tree.ApplyBatch(Enumerable.Range(0, 16).Select(index =>

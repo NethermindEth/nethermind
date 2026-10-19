@@ -25,7 +25,7 @@ public class PbtResourcePool : IPbtResourcePool
     public PbtResourcePool(IPbtConfig config, PbtGroupLog? nodeGroupLog = null, IRefCountingMemoryProvider? nodeGroupMemory = null)
     {
         nodeGroupMemory ??= PooledRefCountingMemoryProvider.Instance;
-        nodeGroupLog ??= new PbtGroupLog(nodeGroupMemory, retainedGenerations: 0);
+        nodeGroupLog ??= new PbtGroupLog(nodeGroupMemory, compressedMemoryBudget: 0, retainedGenerations: 0);
         _categories = new()
         {
             // A persisted segment returns its whole chain at once, so the pool must absorb that burst:

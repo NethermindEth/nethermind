@@ -51,6 +51,7 @@ public class PbtConfig : IPbtConfig
 
     public bool CarryForwardCache { get; set; } = true;
     public bool NativeNodeGroupMemory { get; set; } = true;
+    public long NodeGroupLogCompressedMemoryBudget { get; set; } = 500.MiB;
     public bool TrieNodeLogEnabled { get; set; } = false;
     public long TrieNodeLogAccountBytes { get; set; } = 500.MiB;
     public long TrieNodeLogStorageBytes { get; set; } = 500.MiB;

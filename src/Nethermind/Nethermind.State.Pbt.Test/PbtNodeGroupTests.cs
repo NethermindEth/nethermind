@@ -1151,6 +1151,94 @@ public class PbtNodeGroupTests
     }
 
     [Test]
+    public void Group_log_drops_unlink_and_free_only_after_earlier_operations_end([Values] bool native)
+    {
+        using GroupLogContext context = new(native);
+        PbtGroupLog.GenerationPin pin = context.Log.PinActiveGeneration();
+        byte[] payload = RootGroup(LeafEncoding(0x20));
+        PbtGroupLog.OperationLease writing = context.Log.BeginOperation();
+        PbtGroupReference reference = context.Log.Append(writing, default, payload, default);
+        Assert.That(context.Log.TryGetRecord(writing, reference, out PbtGroupRecord borrowed), Is.True);
+        pin.Dispose();
+        PbtGroupLog.OperationLease reading = context.Log.BeginOperation();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(context.Log.TryGetRecord(reading, reference, out _), Is.True, "an operation that began before the drop may still write the generation");
+            Assert.That(borrowed.Payload.ToArray(), Is.EqualTo(payload));
+        }
+        writing.Dispose();
+        Assert.That(context.Log.TryGetRecord(reading, reference, out _), Is.False, "the drop completes once earlier operations end");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(borrowed.Payload.ToArray(), Is.EqualTo(payload), "unlinked storage stays valid for operations that began before the unlink");
+            Assert.That(TrackingMemoryProvider.CountUnreleased(context.Memory.Rented), Is.EqualTo(1));
+        }
+        reading.Dispose();
+        Assert.That(TrackingMemoryProvider.CountUnreleased(context.Memory.Rented), Is.Zero);
+    }
+
+    [Test]
+    public void Group_log_compaction_keeps_unsuperseded_records_by_reference_within_its_budget([Values] bool withinBudget)
+    {
+        using GroupLogContext context = new(native: false, compressedMemoryBudget: withinBudget ? 1 << 20 : 1);
+        PbtStorageNodePath rewritten = new([0x20], 3);
+        PbtStorageNodePath kept = new([0x40], 3);
+        PbtGroupLog.GenerationPin pin = context.Log.PinActiveGeneration();
+        PbtGroupLog.GenerationPin newest;
+        PbtGroupReference superseded;
+        PbtGroupReference survivor;
+        PbtGroupReference replacement;
+        using (PbtGroupLog.OperationLease operation = context.Log.BeginOperation())
+        {
+            // Each record fills a 256-byte generation of its own.
+            superseded = context.Log.Append(operation, rewritten, FillingPayload(1), default);
+            survivor = context.Log.Append(operation, kept, FillingPayload(2), default);
+            replacement = context.Log.Append(operation, rewritten, FillingPayload(3), default);
+            newest = context.Log.PinActiveGeneration();
+            Assert.That(context.Log.GenerationCount, Is.GreaterThanOrEqualTo(3));
+        }
+        pin.Dispose();
+        Assert.That(() => context.Log.ResidentBytes, Is.EqualTo(context.Log.PinnedBytes).After(5000, 10), "dropped generations are compacted in the background");
+        using (PbtGroupLog.OperationLease operation = context.Log.BeginOperation())
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(context.Log.TryGetRecord(operation, superseded, out _), Is.False, "a path a later generation rewrote is not kept");
+            Assert.That(context.Log.TryGetRecord(operation, survivor, out PbtGroupRecord record), Is.EqualTo(withinBudget));
+            if (withinBudget)
+            {
+                Assert.That(record.Path, Is.EqualTo(kept));
+                Assert.That(record.Payload.ToArray(), Is.EqualTo(FillingPayload(2)));
+            }
+            Assert.That(context.Log.TryGetRecord(operation, replacement, out _), Is.True);
+            Assert.That(context.Log.CompressedGenerationCount, Is.EqualTo(withinBudget ? 1 : 0));
+            Assert.That(context.Log.CompressedBytes, withinBudget ? Is.GreaterThan(0) : Is.Zero);
+        }
+        newest.Dispose();
+        context.Log.Dispose();
+        Assert.That(() => TrackingMemoryProvider.CountUnreleased(context.Memory.Rented), Is.Zero.After(5000, 10));
+    }
+
+    [Test]
+    public void Group_log_disposal_during_compaction_releases_everything()
+    {
+        using GroupLogContext context = new(native: false, compressedMemoryBudget: 1 << 20);
+        PbtGroupLog.GenerationPin pin = context.Log.PinActiveGeneration();
+        using (PbtGroupLog.OperationLease operation = context.Log.BeginOperation())
+            for (int index = 0; index < 64; index++)
+            {
+                context.Log.Append(operation, new PbtStorageNodePath([(byte)(index << 2)], 6), FillingPayload((byte)index), default);
+            }
+        pin.Dispose();
+        context.Log.Dispose();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(() => TrackingMemoryProvider.CountUnreleased(context.Memory.Rented), Is.Zero.After(5000, 10));
+            Assert.That(context.Log.GenerationCount, Is.Zero);
+            Assert.Throws<ObjectDisposedException>(() => context.Log.BeginOperation());
+        }
+    }
+
+    [Test]
     public void Group_log_operation_protects_borrowed_views_after_generation_pin_and_log_disposal([Values] bool native, [Values(0, 32)] int rotations)
     {
         using GroupLogContext context = new(native);
@@ -1252,6 +1340,9 @@ public class PbtNodeGroupTests
         Assert.That(TrackingMemoryProvider.CountUnreleased(context.Memory.Rented), Is.Zero);
     }
 
+    /// <summary>An opaque payload whose record fills a 256-byte generation on its own.</summary>
+    private static byte[] FillingPayload(byte marker) => Enumerable.Repeat(marker, 80).ToArray();
+
     private static byte[] GroupLogPayload(PbtStorageNodePath path)
     {
         PbtStorageNodePath node = PbtTestPaths.Prefix<PbtStorageNodePath>(new byte[PbtVariableTreeKey.MaxLength], path.BitDepth == 0 ? 0 : path.BitDepth + 1);
@@ -1262,10 +1353,10 @@ public class PbtNodeGroupTests
     {
         private readonly NativeBucketedMemoryPool _nativePool = PbtNodeGroupMemory.CreateNativePool();
 
-        public GroupLogContext(bool native, int retainedGenerations = 0)
+        public GroupLogContext(bool native, int retainedGenerations = 0, long compressedMemoryBudget = 0)
         {
             Memory = new TrackingMemoryProvider(native ? _nativePool : PooledRefCountingMemoryProvider.Instance) { FillByte = 0xFF };
-            Log = new PbtGroupLog(Memory, generationBytes: 256, retainedGenerations);
+            Log = new PbtGroupLog(Memory, compressedMemoryBudget, generationBytes: 256, retainedGenerations);
         }
 
         public TrackingMemoryProvider Memory { get; }

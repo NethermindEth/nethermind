@@ -4,15 +4,17 @@
 using System.Collections.Concurrent;
 using System.Runtime.InteropServices;
 using System.Threading;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Memory;
 
 namespace Nethermind.Pbt.NodeLog;
 
 /// <summary>An append-only in-memory log of canonical PBT groups and direct descendant references.</summary>
 /// <remarks>
-/// One operation lease protects all borrowed records and concurrent writers in a fold. Generations are reclaimed only
-/// between operations. Snapshot pins keep their generation and every later generation readable in place. Reads and
-/// reservations do not take the lifetime lock; only rotation and pin changes do. The memory provider is borrowed, not owned.
+/// One operation lease protects all borrowed records and concurrent writers in a fold. Snapshot pins keep their generation and
+/// every later generation readable in place; other generations are dropped, compacted and reclaimed once no operation that
+/// began before them remains. Reads and reservations do not take the lifetime lock; only rotation, pin and operation changes
+/// do. The memory provider is borrowed, not owned.
 /// </remarks>
 public sealed partial class PbtGroupLog : IDisposable
 {
@@ -29,23 +31,25 @@ public sealed partial class PbtGroupLog : IDisposable
     private Generation? _active;
     private uint _lastGeneration;
     private long _residentBytes;
-    private int _operations;
     private bool _disposed;
 
     /// <summary>Creates a log using the selected native or managed memory provider.</summary>
     /// <param name="memoryProvider">Allocates generation buffers and remains owned by the caller.</param>
+    /// <param name="compressedMemoryBudget">Bytes compacted generations may keep; zero reclaims dropped generations without compacting them.</param>
     /// <param name="generationBytes">Requested generation capacity in bytes; a larger record gets a generation large enough for it.</param>
     /// <param name="retainedGenerations">Number of newest generations to keep opportunistically, in addition to snapshot pins.</param>
-    public PbtGroupLog(IRefCountingMemoryProvider memoryProvider, int generationBytes = DefaultGenerationBytes, int retainedGenerations = 1)
+    public PbtGroupLog(IRefCountingMemoryProvider memoryProvider, long compressedMemoryBudget, int generationBytes = DefaultGenerationBytes, int retainedGenerations = 1)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(generationBytes, PbtGroupRecordHeader.Size + 1);
         ArgumentOutOfRangeException.ThrowIfNegative(retainedGenerations);
+        ArgumentOutOfRangeException.ThrowIfNegative(compressedMemoryBudget);
         _memoryProvider = memoryProvider;
+        _compressedMemoryBudget = compressedMemoryBudget;
         _generationBytes = generationBytes;
         _retainedGenerations = retainedGenerations;
     }
 
-    /// <summary>Capacity in bytes of currently allocated generations, including metadata and unused space.</summary>
+    /// <summary>Capacity in bytes of generations held in place, including metadata and unused space.</summary>
     public long ResidentBytes => Interlocked.Read(ref _residentBytes);
 
     /// <summary>Capacity in bytes kept by snapshot pins beyond the opportunistic generation window.</summary>
@@ -58,13 +62,13 @@ public sealed partial class PbtGroupLog : IDisposable
                 long bytes = 0;
                 uint oldestPinned = OldestPinnedGeneration;
                 foreach ((uint id, Generation generation) in _generations)
-                    if (id >= oldestPinned && !KeepOpportunistically(generation)) bytes += generation.Buffer.Capacity;
+                    if (id >= oldestPinned && !KeepOpportunistically(generation)) bytes += generation.Buffer?.Capacity ?? 0;
                 return bytes;
             }
         }
     }
 
-    /// <summary>Reserved bytes in resident generations, including record metadata and alignment.</summary>
+    /// <summary>Reserved bytes in generations held in place, including record metadata and alignment.</summary>
     public long UsedBytes
     {
         get
@@ -72,13 +76,14 @@ public sealed partial class PbtGroupLog : IDisposable
             lock (_lock)
             {
                 long bytes = 0;
-                foreach ((_, Generation generation) in _generations) bytes += Volatile.Read(ref generation.Used);
+                foreach ((_, Generation generation) in _generations)
+                    if (generation.Buffer is not null) bytes += Volatile.Read(ref generation.Used);
                 return bytes;
             }
         }
     }
 
-    /// <summary>The number of resident generations, for retention diagnostics.</summary>
+    /// <summary>The number of resident generations, in place or compacted, for retention diagnostics.</summary>
     public int GenerationCount => _generations.Count;
 
     /// <summary>Reserves aligned, contiguous log space for a group record and exposes its borrowed writable payload.</summary>
@@ -90,7 +95,7 @@ public sealed partial class PbtGroupLog : IDisposable
     public PbtGroupReference Reserve(OperationLease operation, PbtStorageNodePath path, int payloadLength, in PbtGroupLinks links, out Span<byte> payload)
     {
         operation.EnsureActive(this);
-        ThrowIfDisposed();
+        ThrowIfUnavailable();
         if (!PbtThreeLevelGroupGeometry.IsGroupDepth(path.BitDepth)) throw new ArgumentException("The path is not a PBT group boundary.", nameof(path));
         ArgumentOutOfRangeException.ThrowIfLessThan(payloadLength, 1);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(payloadLength, PbtNodeGroupCodec.MaxPayloadLength);
@@ -108,6 +113,7 @@ public sealed partial class PbtGroupLog : IDisposable
                     Memory<byte> record = generation.Memory.Slice(offset, recordLength);
                     PbtGroupRecordHeader header = new() { PayloadLength = payloadLength, Path = path, Links = links };
                     MemoryMarshal.Write(record.Span, in header);
+                    generation.Bloom?.Add(PathKey(path));
                     payload = record.Span[PbtGroupRecordHeader.Size..];
                     return new PbtGroupReference(generation.Id, offset);
                 }
@@ -139,6 +145,8 @@ public sealed partial class PbtGroupLog : IDisposable
     {
         record = default;
         if (!reference.IsDirect || !_generations.TryGetValue(reference.Generation, out Generation? generation)) return false;
+        // A compacted generation publishes its copy before it unlinks its buffer.
+        if (Volatile.Read(ref generation.Buffer) is null) return Volatile.Read(ref generation.Compressed)?.TryFind(reference, out record) == true;
         int offset = reference.Offset;
         if ((uint)offset > (uint)(generation.Memory.Length - PbtGroupRecordHeader.Size)) return false;
         ReadOnlySpan<byte> remaining = generation.Memory.Span[offset..];
@@ -151,11 +159,11 @@ public sealed partial class PbtGroupLog : IDisposable
     {
         lock (_lock)
         {
-            ThrowIfDisposed();
+            ThrowIfUnavailable();
             if (!ReferenceEquals(_active, expected)) return;
             if (_lastGeneration == uint.MaxValue) throw new InvalidOperationException("The PBT group log exhausted its generation ids.");
             RefCountingMemory buffer = _memoryProvider.Rent(Math.Max(_generationBytes, recordLength));
-            Generation generation = new(++_lastGeneration, buffer);
+            Generation generation = new(++_lastGeneration, buffer, CreateBloom(buffer.Capacity));
             _generations[generation.Id] = generation;
             Interlocked.Add(ref _residentBytes, buffer.Capacity);
             Volatile.Write(ref _active, generation);
@@ -164,11 +172,17 @@ public sealed partial class PbtGroupLog : IDisposable
 
     private void ThrowIfDisposed() => ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed), this);
 
-    private sealed class Generation(uint id, RefCountingMemory buffer)
+    private sealed class Generation(uint id, RefCountingMemory buffer, BloomFilter? bloom)
     {
         public uint Id { get; } = id;
-        public RefCountingMemory Buffer { get; } = buffer;
         public Memory<byte> Memory { get; } = buffer.Memory;
         public int Used;
+        // Null once compacted, when Compressed holds what compaction kept.
+        public RefCountingMemory? Buffer = buffer;
+        // The paths reserved here, which later compactions of older generations consult; null when the log does not compact.
+        public BloomFilter? Bloom = bloom;
+        public CompressedGeneration? Compressed;
+        // The epoch the generation was dropped in, or zero while a pin or the retention window keeps it.
+        public ulong DroppedAt;
     }
 }

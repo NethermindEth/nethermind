@@ -41,7 +41,7 @@ public sealed class PbtSnapshotContent : IDisposable, IResettable
     public PbtSnapshotContent(PbtGroupLog? nodeGroupLog = null, IRefCountingMemoryProvider? nodeGroupMemory = null)
     {
         _nodeGroupMemory = nodeGroupMemory ?? PooledRefCountingMemoryProvider.Instance;
-        NodeGroupLog = nodeGroupLog ?? new PbtGroupLog(_nodeGroupMemory, retainedGenerations: 0);
+        NodeGroupLog = nodeGroupLog ?? new PbtGroupLog(_nodeGroupMemory, compressedMemoryBudget: 0, retainedGenerations: 0);
         BeginNodeGroupWrites();
     }
 
