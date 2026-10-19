@@ -281,14 +281,16 @@ public class GethGenesisLoaderTests
     }
 
     [TestCase("", null)]
-    [TestCase("\"daoForkBlock\": 1234", null)]
+    [TestCase("\"daoForkBlock\": null", null)]
+    [TestCase("\"daoForkBlock\": 0", 0UL)]
+    [TestCase("\"daoForkBlock\": 1234", 1234UL)]
     [TestCase("\"daoForkSupport\": null", null)]
-    [TestCase("\"daoForkBlock\": 1234, \"daoForkSupport\": null", null)]
+    [TestCase("\"daoForkBlock\": 1234, \"daoForkSupport\": null", 1234UL)]
     [TestCase("\"daoForkSupport\": false", null)]
-    [TestCase("\"daoForkBlock\": 1234, \"daoForkSupport\": false", null)]
+    [TestCase("\"daoForkBlock\": 1234, \"daoForkSupport\": false", 1234UL)]
     [TestCase("\"daoForkSupport\": true", null)]
     [TestCase("\"daoForkBlock\": 1234, \"daoForkSupport\": true", 1234UL)]
-    public void Dao_fork_requires_explicit_support(string configExtra, ulong? expectedBlock)
+    public void Dao_fork_is_enabled_by_block(string configExtra, ulong? expectedBlock)
     {
         ChainSpec chainSpec = LoadStandardGethGenesis(configExtra: configExtra);
         EthashChainSpecEngineParameters ethashParameters = chainSpec.EngineChainSpecParametersProvider

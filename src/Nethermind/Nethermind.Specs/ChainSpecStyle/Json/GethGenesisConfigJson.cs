@@ -35,7 +35,6 @@ public class GethGenesisConfigJson : IHasNamedForks
 
     public ulong? HomesteadBlock { get => GetBlock(); set => SetBlock(value); }
     public ulong? DaoForkBlock { get => GetBlock(nameof(Dao)); set => SetBlock(value, nameof(Dao)); }
-    public bool? DaoForkSupport { get; set; }
 
     // EIP-level overrides — not fork labels, kept as plain typed properties.
     public ulong? Eip150Block { get; set; }

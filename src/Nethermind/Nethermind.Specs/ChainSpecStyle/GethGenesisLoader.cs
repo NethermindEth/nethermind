@@ -369,7 +369,7 @@ internal sealed class GethGenesisEngineParametersProvider(GethGenesisConfigJson 
         public string SealEngineType => Core.SealEngineType.Ethash;
 
         public ulong HomesteadTransition { get; } = config.HomesteadBlock ?? 0;
-        public ulong? DaoHardforkTransition { get; } = config.DaoForkSupport == true ? config.DaoForkBlock : null;
+        public ulong? DaoHardforkTransition { get; } = config.DaoForkBlock;
         public Address? DaoHardforkBeneficiary { get; }
         public Address[] DaoHardforkAccounts { get; } = [];
         public ulong? Eip100bTransition { get; } = config.ByzantiumBlock;
