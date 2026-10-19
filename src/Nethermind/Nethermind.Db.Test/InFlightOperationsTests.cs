@@ -73,14 +73,21 @@ public class InFlightOperationsTests
         int startedAfterWait = 0;
         bool waited = false;
         Task[] workers = new Task[4];
+        using CountdownEvent started = new(workers.Length);
         for (int w = 0; w < workers.Length; w++)
         {
             workers[w] = Task.Run(() =>
             {
+                bool signalled = false;
                 while (operations.TryBegin())
                 {
                     if (Volatile.Read(ref waited)) Interlocked.Increment(ref startedAfterWait);
                     Interlocked.Increment(ref running);
+                    if (!signalled)
+                    {
+                        signalled = true;
+                        started.Signal();
+                    }
                     Thread.SpinWait(50);
                     Interlocked.Decrement(ref running);
                     operations.End();
@@ -88,7 +95,8 @@ public class InFlightOperationsTests
             });
         }
 
-        Thread.Sleep(20);
+        // Every worker has an operation running, so the close below races real starts and ends.
+        bool allWorkersStarted = started.Wait(Long);
         operations.Close();
         bool drained = operations.WaitForAll(Long);
         int runningAfterWait = Volatile.Read(ref running);
@@ -96,6 +104,7 @@ public class InFlightOperationsTests
 
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(allWorkersStarted, Is.True);
             Assert.That(drained, Is.True);
             Assert.That(runningAfterWait, Is.Zero);
             Assert.That(Task.WaitAll(workers, Long), Is.True);
