@@ -99,7 +99,9 @@ public class BalCatchUpBenchmark
     private const int SlotsPerWrite = 10;
     private const int HashesPerCompute = 1_500;
     private const string FixtureShape = "Fixture";
-    private const int WarmupRuns = 3;
+    private const int WarmupCount = 2;
+    // BenchmarkDotNet's jitting run and the job's warm-ups.
+    private const int WarmupRuns = 1 + WarmupCount;
 
     private static readonly string? DbRoot = Environment.GetEnvironmentVariable("NETHERMIND_BALCATCHUP_DB");
     private static readonly string? FixtureDir = Environment.GetEnvironmentVariable("NETHERMIND_BALCATCHUP_FIXTURE");
@@ -116,7 +118,7 @@ public class BalCatchUpBenchmark
                 .WithToolchain(InProcessNoEmitToolchain.Instance)
                 .WithInvocationCount(1)
                 .WithUnrollFactor(1)
-                .WithWarmupCount(2)
+                .WithWarmupCount(WarmupCount)
                 .WithIterationCount(10)
                 .WithGcForce(true));
             AddColumn(StatisticColumn.Min, StatisticColumn.Median, StatisticColumn.P95);
@@ -203,8 +205,9 @@ public class BalCatchUpBenchmark
         // Warm iterations replay on one database, which only works while flat finality-driven persistence leaves its
         // base at the parent; past the reorg window it moves the base on, so longer segments start each run afresh.
         int warmLimit = (int)_container.Resolve<IFlatDbConfig>().MinReorgDepth;
-        if (OnDisk && !Cold && _segment.Length > warmLimit)
-            throw new InvalidOperationException($"A warm run on disk replays at most {warmLimit} blocks; set NETHERMIND_BALCATCHUP_COLD=1 or NETHERMIND_BALCATCHUP_BLOCKS.");
+        if ((FlatDb || IsFixture) && !Cold && _segment.Length > warmLimit)
+            throw new InvalidOperationException($"A warm run on flat state replays at most {warmLimit} blocks; set " +
+                (OnDisk ? "NETHERMIND_BALCATCHUP_COLD=1 or " : "") + "NETHERMIND_BALCATCHUP_BLOCKS.");
 
         _beacon.Finalized = _segment[^1].Hash;
         _syncConfig.ReconstructFinalizedStateFromBlockAccessLists = BalCatchUp;
@@ -257,7 +260,6 @@ public class BalCatchUpBenchmark
     [GlobalCleanup]
     public void GlobalCleanup()
     {
-        // The first three calls are BenchmarkDotNet's jitting run and the job's two warm-ups.
         (long Total, long Process)[] samples = [.. _samples.Skip(_samples.Count > WarmupRuns ? WarmupRuns : 0).OrderBy(static s => s.Total)];
         if (samples.Length > 0)
         {
