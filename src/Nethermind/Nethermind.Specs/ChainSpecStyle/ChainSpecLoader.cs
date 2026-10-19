@@ -320,7 +320,7 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
             throw new InvalidOperationException("Both 'Eip2200Transition' and 'Eip1706Transition' are provided. Please provide either 'Eip2200Transition' or pair of 'Eip1283ReenableTransition' and 'Eip1706Transition' as they have same meaning.");
         }
 
-        if (parameters.Eip8198SlotDurationMs is { } eip8198SlotDurationMs) SlotSchedule.ValidateSlotDurationMs(eip8198SlotDurationMs);
+        parameters.ValidateEip8198SlotDuration();
     }
 
     private static void LoadTransitions(ChainSpecJson chainSpecJson, ChainSpec chainSpec)

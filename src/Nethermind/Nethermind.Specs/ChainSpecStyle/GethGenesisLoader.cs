@@ -171,7 +171,7 @@ public class GethGenesisLoader(IJsonSerializer serializer) : IChainSpecLoader
         // table — same source of truth as the Parity loader, driven by Forks/*.cs.
         HardforkLabels.ExpandAll(chainSpec.Parameters, config);
 
-        if (config.Eip8198SlotDurationMs is { } eip8198SlotDurationMs) SlotSchedule.ValidateSlotDurationMs(eip8198SlotDurationMs);
+        chainSpec.Parameters.ValidateEip8198SlotDuration();
     }
 
     private readonly record struct BlobScheduleFork(int Order);

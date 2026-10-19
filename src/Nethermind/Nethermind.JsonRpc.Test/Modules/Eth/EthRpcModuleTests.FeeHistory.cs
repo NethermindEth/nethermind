@@ -87,7 +87,10 @@ public partial class EthRpcModuleTests
 
         ISpecProvider specProvider = new CustomSpecProvider(
             ((ForkActivation)0, London.Instance),
-            (new ForkActivation(0, forkTimestamp), new OverridableReleaseSpec(London.Instance) { IsEip8198Enabled = true }));
+            (new ForkActivation(0, forkTimestamp), new OverridableReleaseSpec(London.Instance) { IsEip8198Enabled = true }))
+        {
+            Eip8198SlotDurationMs = 10_000
+        };
         FeeHistoryOracle oracle = new(blockFinder, Substitute.For<IReceiptStorage>(), specProvider);
 
         using ResultWrapper<FeeHistoryResults> result = oracle.GetFeeHistory(1, new BlockParameter(0UL), []);

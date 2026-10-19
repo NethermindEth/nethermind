@@ -119,7 +119,8 @@ public class SimulateBridgeHelperTests
             ((ForkActivation)0, Amsterdam.Instance),
             (new ForkActivation(0, fork), new OverridableReleaseSpec(Amsterdam.Instance) { IsEip8198Enabled = true }))
         {
-            BeaconChainGenesisTimestamp = MainnetBeaconGenesis
+            BeaconChainGenesisTimestamp = MainnetBeaconGenesis,
+            Eip8198SlotDurationMs = 10_000
         };
         BlockHeader parent = Build.A.BlockHeader.WithNumber(10).WithTimestamp(parentTime).TestObject;
 

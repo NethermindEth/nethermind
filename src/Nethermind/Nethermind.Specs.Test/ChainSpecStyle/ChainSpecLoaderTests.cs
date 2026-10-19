@@ -256,22 +256,39 @@ public class ChainSpecLoaderTests
         return new ChainSpecLoader(new EthereumJsonSerializer(), LimboLogs.Instance).Load(stream);
     }
 
-    [TestCase(", \"eip8198TransitionTimestamp\": \"0x64\", \"eip8198SlotDurationMs\": \"0x1770\"", 6_000UL, 6_000UL)]
-    [TestCase(", \"eip8198TransitionTimestamp\": \"0x64\", \"eip8198SlotDurationMs\": \"0x2ee0\"", 12_000UL, 12_000UL)]
-    [TestCase(", \"eip8198TransitionTimestamp\": \"0x64\"", null, Eip8198Constants.DefaultSlotDurationMs)]
-    [TestCase("", null, Eip8198Constants.DefaultSlotDurationMs)]
-    public void Loads_eip8198_slot_duration(string extraParams, ulong? expectedParameter, ulong expectedDurationMs)
+    [TestCase(", \"eip8198TransitionTimestamp\": \"0x64\", \"eip8198SlotDurationMs\": \"0x1770\"", 6_000UL)]
+    [TestCase(", \"eip8198TransitionTimestamp\": \"0x64\", \"eip8198SlotDurationMs\": \"0x2ee0\"", 12_000UL)]
+    [TestCase(", \"eip8198SlotDurationMs\": \"0x2710\"", 10_000UL)]
+    [TestCase("", null)]
+    public void Loads_eip8198_slot_duration(string extraParams, ulong? expected)
     {
         ChainSpec chainSpec = LoadChainSpecWithParams(extraParams);
-        ChainSpecBasedSpecProvider provider = new(chainSpec);
+        ISpecProvider provider = new ChainSpecBasedSpecProvider(chainSpec);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(chainSpec.Parameters.Eip8198SlotDurationMs, Is.EqualTo(expectedParameter));
-            Assert.That(provider.Eip8198SlotDurationMs, Is.EqualTo(expectedDurationMs));
-            Assert.That(((ISpecProvider)provider).Eip8198SlotDurationMs, Is.EqualTo(expectedDurationMs));
+            Assert.That(chainSpec.Parameters.Eip8198SlotDurationMs, Is.EqualTo(expected));
+            Assert.That(provider.Eip8198SlotDurationMs, Is.EqualTo(expected));
         }
     }
+
+    [Test]
+    public void Unscheduled_eip8198_needs_no_slot_duration()
+    {
+        ISpecProvider provider = new ChainSpecBasedSpecProvider(LoadChainSpecWithParams(""));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(provider.Eip8198SlotDurationMs, Is.Null);
+            Assert.That(provider.GetSlotSchedule(12).GetSecondsPerSlot(ulong.MaxValue), Is.EqualTo(12UL));
+        }
+    }
+
+    [Test]
+    public void Rejects_scheduled_eip8198_without_slot_duration() =>
+        Assert.That(
+            () => LoadChainSpecWithParams(", \"eip8198TransitionTimestamp\": \"0x64\""),
+            Throws.TypeOf<InvalidDataException>().With.Message.Contains("eip8198SlotDurationMs is not set"));
 
     [TestCase("0x0")]
     [TestCase("0x1f4")]

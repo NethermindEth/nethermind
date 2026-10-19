@@ -10,6 +10,7 @@ using System.Text;
 using Nethermind.Consensus.Ethash;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -715,17 +716,45 @@ public class GethGenesisLoaderTests
         Assert.That(chainSpec.Parameters.BeaconChainGenesisTimestamp, Is.EqualTo(expected));
     }
 
-    [TestCase("\"eip8198SlotDurationMs\": 6000", 6_000UL, 6_000UL)]
-    [TestCase("\"eip8198SlotDurationMs\": 12000", 12_000UL, 12_000UL)]
-    [TestCase("", null, Eip8198Constants.DefaultSlotDurationMs)]
-    public void Loads_eip8198_slot_duration(string configExtra, ulong? expectedParameter, ulong expectedDurationMs)
+    [TestCase("\"eip8198SlotDurationMs\": 6000", 6_000UL)]
+    [TestCase("\"eip8198SlotDurationMs\": 12000", 12_000UL)]
+    [TestCase("", null)]
+    public void Loads_eip8198_slot_duration(string configExtra, ulong? expected)
     {
         ChainSpec chainSpec = LoadStandardGethGenesis(configExtra: configExtra);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(chainSpec.Parameters.Eip8198SlotDurationMs, Is.EqualTo(expectedParameter));
-            Assert.That(new ChainSpecBasedSpecProvider(chainSpec).Eip8198SlotDurationMs, Is.EqualTo(expectedDurationMs));
+            Assert.That(chainSpec.Parameters.Eip8198SlotDurationMs, Is.EqualTo(expected));
+            Assert.That(new ChainSpecBasedSpecProvider(chainSpec).Eip8198SlotDurationMs, Is.EqualTo(expected));
+        }
+    }
+
+    /// <remarks>No Geth-genesis fork label schedules EIP-8198, so an unset duration always loads.</remarks>
+    [Test]
+    public void Unscheduled_eip8198_needs_no_slot_duration()
+    {
+        ChainSpec chainSpec = LoadStandardGethGenesis(configExtra: "\"amsterdamTime\": 0, \"bogotaTime\": 1000");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chainSpec.Parameters.Eip8198TransitionTimestamp, Is.Null);
+            Assert.That(chainSpec.Parameters.Eip8198SlotDurationMs, Is.Null);
+        }
+    }
+
+    /// <summary>The check both loaders run once fork labels are expanded, so it covers any label that comes to schedule EIP-8198.</summary>
+    [Test]
+    public void Scheduled_eip8198_without_slot_duration_fails_the_load_check()
+    {
+        ChainParameters scheduled = new() { Eip8198TransitionTimestamp = 1_000 };
+        ChainParameters configured = new() { Eip8198TransitionTimestamp = 1_000, Eip8198SlotDurationMs = 6_000 };
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(scheduled.ValidateEip8198SlotDuration,
+                Throws.TypeOf<InvalidConfigurationException>().With.Message.Contains("eip8198SlotDurationMs is not set"));
+            Assert.That(configured.ValidateEip8198SlotDuration, Throws.Nothing);
         }
     }
 

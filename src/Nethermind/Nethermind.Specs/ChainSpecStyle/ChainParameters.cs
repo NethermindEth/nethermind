@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Exceptions;
 using Nethermind.Int256;
 using Nethermind.Specs.ChainSpecStyle.Json;
 
@@ -209,9 +211,27 @@ public class ChainParameters
     public ulong? Eip8198TransitionTimestamp { get; set; }
 
     /// <summary>
-    /// Slot length from the EIP-8198 fork, in milliseconds; <c>null</c> means <see cref="Eip8198Constants.DefaultSlotDurationMs"/>.
+    /// Slot length from the EIP-8198 fork, in milliseconds; required whenever <see cref="Eip8198TransitionTimestamp"/> is set.
     /// </summary>
     public ulong? Eip8198SlotDurationMs { get; set; }
+
+    /// <summary>
+    /// Requires <see cref="Eip8198SlotDurationMs"/> when EIP-8198 is scheduled, and checks it is a positive whole number of seconds.
+    /// </summary>
+    internal void ValidateEip8198SlotDuration()
+    {
+        if (Eip8198SlotDurationMs is { } slotDurationMs)
+        {
+            SlotSchedule.ValidateSlotDurationMs(slotDurationMs);
+        }
+        else if (Eip8198TransitionTimestamp is { } transition)
+        {
+            throw new InvalidConfigurationException(
+                $"EIP-8198 is scheduled at timestamp {transition} but eip8198SlotDurationMs is not set. Set it to the consensus-layer SLOT_DURATION_MS_EIP8198 of the network.",
+                ExitCodes.MissingChainspecEipConfiguration);
+        }
+    }
+
     public ulong? Eip3298TransitionTimestamp { get; set; }
     public ulong? Eip8131TransitionTimestamp { get; set; }
     public ulong? Eip8279TransitionTimestamp { get; set; }

@@ -162,7 +162,7 @@ new object[] {"multicall-transaction-too-low-nonce-38010", true, "{\"blockStateC
         Assert.That((simulated.Timestamp - parent.Timestamp), Is.EqualTo((UInt256)secondsPerSlot));
     }
 
-    /// <summary>Without a time override each simulated block, fillers included, lands one slot on; EIP-8198 slots default to 10 seconds.</summary>
+    /// <summary>Without a time override each simulated block, fillers included, lands one slot on; here EIP-8198 slots are 10 seconds.</summary>
     [Test]
     public async Task TestSimulate_DefaultTimestampsFollowTheEip8198SlotLength()
     {
@@ -172,7 +172,10 @@ new object[] {"multicall-transaction-too-low-nonce-38010", true, "{\"blockStateC
             .Build((builder) => builder
                 .AddSingleton<ISpecProvider>(new CustomSpecProvider(
                     ((ForkActivation)0, London.Instance),
-                    (new ForkActivation(0, fork), new OverridableReleaseSpec(London.Instance) { IsEip8198Enabled = true }))));
+                    (new ForkActivation(0, fork), new OverridableReleaseSpec(London.Instance) { IsEip8198Enabled = true }))
+                {
+                    Eip8198SlotDurationMs = 10_000
+                }));
 
         ulong head = chain.BlockFinder.Head!.Number;
         string data = $$"""

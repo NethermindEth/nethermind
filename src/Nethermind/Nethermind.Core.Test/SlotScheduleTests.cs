@@ -15,9 +15,11 @@ public class SlotScheduleTests
     private const ulong Genesis = 100;
     private const ulong Fork = Genesis + 5 * 12; // slot 5
 
-    private static readonly SlotSchedule Scheduled = new(12, Genesis, Fork);
+    private const ulong SlotDurationMs = 10_000;
+
+    private static readonly SlotSchedule Scheduled = new(12, Genesis, Fork, SlotDurationMs);
     private static readonly SlotSchedule Unscheduled = new(12, Genesis);
-    private static readonly SlotSchedule NoGenesis = new(12, eip8198Timestamp: Fork);
+    private static readonly SlotSchedule NoGenesis = new(12, null, Fork, SlotDurationMs);
 
     [TestCase(100UL, 0UL)]
     [TestCase(159UL, 4UL)]
@@ -58,21 +60,21 @@ public class SlotScheduleTests
     [Test]
     public void Fork_off_the_grid_starts_at_the_next_boundary()
     {
-        SlotSchedule schedule = new(12, Genesis, Fork + 5);
+        SlotSchedule schedule = new(12, Genesis, Fork + 5, SlotDurationMs);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(schedule.TryGetSlot(171, out ulong before) && before == 5, Is.True);
             Assert.That(schedule.TryGetSlot(172, out ulong first) && first == 6, Is.True);
             Assert.That(schedule.TryGetSlot(182, out ulong second) && second == 7, Is.True);
             Assert.That(schedule.GetSecondsPerSlot(171), Is.EqualTo(12UL));
-            Assert.That(schedule.GetSecondsPerSlot(172), Is.EqualTo(Eip8198Constants.DefaultSlotDurationMs / 1_000));
+            Assert.That(schedule.GetSecondsPerSlot(172), Is.EqualTo(10UL));
         }
     }
 
     [Test]
     public void Fork_before_genesis_applies_from_genesis()
     {
-        SlotSchedule schedule = new(12, Genesis, Genesis - 50);
+        SlotSchedule schedule = new(12, Genesis, Genesis - 50, SlotDurationMs);
         Assert.That(schedule.TryGetSlot(Genesis + 25, out ulong slot) && slot == 2, Is.True);
     }
 
@@ -138,7 +140,10 @@ public class SlotScheduleTests
         CustomSpecProvider scheduled = new(
             ((ForkActivation)0, London.Instance),
             (new ForkActivation(0, 1_000), Bogota.Instance),
-            (new ForkActivation(0, 2_000), enabled));
+            (new ForkActivation(0, 2_000), enabled))
+        {
+            Eip8198SlotDurationMs = SlotDurationMs
+        };
         CustomSpecProvider unscheduled = new(((ForkActivation)0, London.Instance), (new ForkActivation(0, 1_000), Bogota.Instance));
         CustomSpecProvider atGenesis = new(((ForkActivation)0, enabled));
 
@@ -147,7 +152,7 @@ public class SlotScheduleTests
             Assert.That(scheduled.GetEip8198Timestamp(), Is.EqualTo(2_000UL));
             Assert.That(unscheduled.GetEip8198Timestamp(), Is.Null);
             Assert.That(atGenesis.GetEip8198Timestamp(), Is.EqualTo(0UL));
-            Assert.That(scheduled.GetSlotSchedule(12).GetSecondsPerSlot(2_000), Is.EqualTo(Eip8198Constants.DefaultSlotDurationMs / 1_000));
+            Assert.That(scheduled.GetSlotSchedule(12).GetSecondsPerSlot(2_000), Is.EqualTo(10UL));
             Assert.That(unscheduled.GetSlotSchedule(12).GetSecondsPerSlot(2_000), Is.EqualTo(12UL));
         }
     }
@@ -177,7 +182,7 @@ public class SlotScheduleTests
         ulong slotDurationMs, ulong timestamp, ulong slot, ulong slotStart, ulong next, ulong twoSlotsOn, ulong untilTarget)
     {
         SlotSchedule schedule = new(12, Genesis, Fork, slotDurationMs);
-        SlotSchedule noGenesis = new(12, eip8198Timestamp: Fork, eip8198SlotDurationMs: slotDurationMs);
+        SlotSchedule noGenesis = new(12, null, Fork, slotDurationMs);
         ulong seconds = slotDurationMs / 1_000;
 
         using (Assert.EnterMultipleScope())
@@ -202,14 +207,27 @@ public class SlotScheduleTests
         Assert.That(() => new SlotSchedule(12, Genesis, Fork, slotDurationMs), Throws.TypeOf<System.ArgumentOutOfRangeException>());
 
     [Test]
-    public void Inactive_fork_ignores_the_slot_duration()
+    public void Spec_provider_without_eip8198_needs_no_slot_duration()
     {
-        SlotSchedule schedule = new(12, Genesis, eip8198SlotDurationMs: 6_000);
+        CustomSpecProvider provider = new(((ForkActivation)0, London.Instance)) { BeaconChainGenesisTimestamp = Genesis };
+        SlotSchedule schedule = provider.GetSlotSchedule(12);
+
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(provider.Eip8198SlotDurationMs, Is.Null);
             Assert.That(schedule.GetSecondsPerSlot(ulong.MaxValue), Is.EqualTo(12UL));
             Assert.That(schedule.AddSlots(148, 3), Is.EqualTo(184UL));
             Assert.That(schedule.GetSlotTimestamp(6), Is.EqualTo(172UL));
         }
+    }
+
+    [Test]
+    public void Spec_provider_scheduling_eip8198_without_slot_duration_throws()
+    {
+        IReleaseSpec enabled = new OverridableReleaseSpec(Bogota.Instance) { IsEip8198Enabled = true };
+        CustomSpecProvider provider = new(((ForkActivation)0, London.Instance), (new ForkActivation(0, 2_000), enabled));
+
+        Assert.That(() => provider.GetSlotSchedule(12),
+            Throws.InvalidOperationException.With.Message.Contains("eip8198SlotDurationMs"));
     }
 }

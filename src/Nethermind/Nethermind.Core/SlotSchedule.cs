@@ -16,40 +16,36 @@ namespace Nethermind.Core;
 /// starts at its activation timestamp and slot numbers are unavailable. Without EIP-8198 every slot has the
 /// configured length.
 /// </remarks>
-public sealed class SlotSchedule
+/// <param name="secondsPerSlot">Slot length before EIP-8198, or throughout without it; zero is treated as one second.</param>
+/// <param name="genesisTimestamp">Beacon chain genesis timestamp, when known.</param>
+public sealed class SlotSchedule(ulong secondsPerSlot, ulong? genesisTimestamp = null)
 {
-    private readonly ulong _secondsPerSlot;
+    private readonly ulong _secondsPerSlot = Math.Max(1UL, secondsPerSlot);
+    private readonly ulong? _genesisTimestamp = genesisTimestamp;
     private readonly ulong _eip8198SecondsPerSlot;
-    private readonly ulong? _genesisTimestamp;
     private readonly bool _hasFork;
     private readonly ulong _forkTimestamp;
     private readonly ulong _forkSlot;
 
+    /// <summary>A grid that switches slot length at the EIP-8198 fork.</summary>
     /// <param name="secondsPerSlot">Slot length before EIP-8198; zero is treated as one second.</param>
     /// <param name="genesisTimestamp">Beacon chain genesis timestamp, when known.</param>
-    /// <param name="eip8198Timestamp">EIP-8198 activation timestamp, when scheduled.</param>
+    /// <param name="eip8198Timestamp">EIP-8198 activation timestamp.</param>
     /// <param name="eip8198SlotDurationMs">Slot length from EIP-8198, in milliseconds; see <see cref="ValidateSlotDurationMs"/>.</param>
-    public SlotSchedule(
-        ulong secondsPerSlot,
-        ulong? genesisTimestamp = null,
-        ulong? eip8198Timestamp = null,
-        ulong eip8198SlotDurationMs = Eip8198Constants.DefaultSlotDurationMs)
+    public SlotSchedule(ulong secondsPerSlot, ulong? genesisTimestamp, ulong eip8198Timestamp, ulong eip8198SlotDurationMs)
+        : this(secondsPerSlot, genesisTimestamp)
     {
         ValidateSlotDurationMs(eip8198SlotDurationMs);
-        _secondsPerSlot = Math.Max(1UL, secondsPerSlot);
         _eip8198SecondsPerSlot = eip8198SlotDurationMs / MillisecondsPerSecond;
-        _genesisTimestamp = genesisTimestamp;
-        if (eip8198Timestamp is not { } fork) return;
-
         _hasFork = true;
-        if (genesisTimestamp is { } genesis)
+        if (_genesisTimestamp is { } genesis)
         {
-            _forkSlot = fork <= genesis ? 0 : CeilDiv(fork - genesis, _secondsPerSlot);
+            _forkSlot = eip8198Timestamp <= genesis ? 0 : CeilDiv(eip8198Timestamp - genesis, _secondsPerSlot);
             _forkTimestamp = genesis + _forkSlot * _secondsPerSlot;
         }
         else
         {
-            _forkTimestamp = fork;
+            _forkTimestamp = eip8198Timestamp;
         }
     }
 

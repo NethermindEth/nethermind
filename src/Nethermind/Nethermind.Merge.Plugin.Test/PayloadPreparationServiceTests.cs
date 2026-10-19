@@ -283,7 +283,7 @@ public class PayloadPreparationServiceTests
         service.GetPayload(payloadId).AsTask().GetAwaiter().GetResult();
 
     [TestCase(999UL, 10_000UL, 12, TestName = "GetTimePerSlot_BeforeEip8198_IsTheConfiguredLength")]
-    [TestCase(1_000UL, 10_000UL, 10, TestName = "GetTimePerSlot_FromEip8198_IsTheDefaultEip8198Length")]
+    [TestCase(1_000UL, 10_000UL, 10, TestName = "GetTimePerSlot_FromEip8198_IsTheEip8198Length")]
     [TestCase(1_000UL, 6_000UL, 6, TestName = "GetTimePerSlot_FromEip8198_IsTheConfiguredEip8198Length")]
     public void GetTimePerSlot_FollowsThePayloadSlot(ulong payloadTimestamp, ulong eip8198SlotDurationMs, int expectedSeconds)
     {
@@ -294,7 +294,7 @@ public class PayloadPreparationServiceTests
             Substitute.For<ITimerFactory>(),
             LimboLogs.Instance,
             TimeSpan.FromSeconds(12),
-            slots: new SlotSchedule(12, eip8198Timestamp: 1_000, eip8198SlotDurationMs: eip8198SlotDurationMs));
+            slots: new SlotSchedule(12, null, 1_000, eip8198SlotDurationMs));
 
         Assert.That(sut.GetTimePerSlot(payloadTimestamp), Is.EqualTo(TimeSpan.FromSeconds(expectedSeconds)));
     }

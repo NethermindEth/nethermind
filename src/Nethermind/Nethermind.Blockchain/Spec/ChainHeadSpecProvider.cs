@@ -33,7 +33,7 @@ namespace Nethermind.Blockchain.Spec
 
         public ulong? BeaconChainGenesisTimestamp => _specProvider.BeaconChainGenesisTimestamp;
 
-        public ulong Eip8198SlotDurationMs => _specProvider.Eip8198SlotDurationMs;
+        public ulong? Eip8198SlotDurationMs => _specProvider.Eip8198SlotDurationMs;
 
         public ulong NetworkId => _specProvider.NetworkId;
 

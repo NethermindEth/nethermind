@@ -193,7 +193,7 @@ internal class EraWriterTests
         (ForkActivation, IReleaseSpec)[] transitions = eip8198Scheduled
             ? [((ForkActivation)0, London.Instance), (new ForkActivation(0, fork), new OverridableReleaseSpec(London.Instance) { IsEip8198Enabled = true })]
             : [((ForkActivation)0, London.Instance)];
-        CustomSpecProvider specProvider = new(transitions) { BeaconChainGenesisTimestamp = genesis };
+        CustomSpecProvider specProvider = new(transitions) { BeaconChainGenesisTimestamp = genesis, Eip8198SlotDurationMs = 10_000 };
         IBeaconRootsProvider beaconRoots = Substitute.For<IBeaconRootsProvider>();
         using EraWriter sut = new(new MemoryStream(), specProvider, beaconRoots);
 

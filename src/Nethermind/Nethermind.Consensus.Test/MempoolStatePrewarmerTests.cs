@@ -55,7 +55,7 @@ public class MempoolStatePrewarmerTests
     [TestCase(124UL, 137UL, 134UL)]
     [TestCase(124UL, 138UL, 144UL)]
     public void PredictNextTimestamp_FollowsTheEip8198SlotLength(ulong parent, ulong now, ulong expected) =>
-        Assert.That(MempoolStatePrewarmer.PredictNextTimestamp(parent, now, new SlotSchedule(SecondsPerSlot, eip8198Timestamp: 124)), Is.EqualTo(expected));
+        Assert.That(MempoolStatePrewarmer.PredictNextTimestamp(parent, now, new SlotSchedule(SecondsPerSlot, null, 124, 10_000)), Is.EqualTo(expected));
 
     [Test]
     public void SelectDelta_WhenEmpty_ReturnsEmpty([Values] bool missingSender)

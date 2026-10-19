@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core.Specs;
 
 namespace Nethermind.Core.Extensions
@@ -49,12 +50,15 @@ namespace Nethermind.Core.Extensions
         /// <see cref="ISpecProvider.Eip8198SlotDurationMs"/> from the fork.
         /// </summary>
         /// <remarks>The EIP-8198 slot duration is only read when the fork is scheduled.</remarks>
+        /// <exception cref="InvalidOperationException">EIP-8198 is scheduled but the chain sets no slot duration.</exception>
         public static SlotSchedule GetSlotSchedule(this ISpecProvider specProvider, ulong secondsPerSlot)
         {
-            ulong? eip8198Timestamp = specProvider.GetEip8198Timestamp();
-            return eip8198Timestamp is null
-                ? new(secondsPerSlot, specProvider.BeaconChainGenesisTimestamp)
-                : new(secondsPerSlot, specProvider.BeaconChainGenesisTimestamp, eip8198Timestamp, specProvider.Eip8198SlotDurationMs);
+            if (specProvider.GetEip8198Timestamp() is not { } eip8198Timestamp)
+                return new(secondsPerSlot, specProvider.BeaconChainGenesisTimestamp);
+
+            ulong slotDurationMs = specProvider.Eip8198SlotDurationMs ?? throw new InvalidOperationException(
+                $"EIP-8198 is scheduled at timestamp {eip8198Timestamp}, but the chain sets no EIP-8198 slot duration (eip8198SlotDurationMs).");
+            return new(secondsPerSlot, specProvider.BeaconChainGenesisTimestamp, eip8198Timestamp, slotDurationMs);
         }
 
         public static ulong GetFinalMaxBlobGasPerBlock(this ISpecProvider specProvider) => Eip4844Constants.GasPerBlob * specProvider.GetFinalSpec().MaxBlobCount;

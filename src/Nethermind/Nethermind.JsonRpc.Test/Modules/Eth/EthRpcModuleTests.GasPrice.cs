@@ -106,7 +106,10 @@ public partial class EthRpcModuleTests
         const ulong forkTimestamp = 1_000;
         ISpecProvider specProvider = new CustomSpecProvider(
             ((ForkActivation)0, London.Instance),
-            (new ForkActivation(0, forkTimestamp), new OverridableReleaseSpec(London.Instance) { IsEip8198Enabled = true }));
+            (new ForkActivation(0, forkTimestamp), new OverridableReleaseSpec(London.Instance) { IsEip8198Enabled = true }))
+        {
+            Eip8198SlotDurationMs = 10_000
+        };
         using Context ctx = await Context.Create(specProvider);
         Block head = Build.A.Block.WithNumber(0).WithTimestamp(forkTimestamp - secondsBeforeFork).WithBaseFeePerGas(1_000_000_000)
             .WithGasLimit(30_000_000).WithGasUsed(gasUsed).TestObject;
