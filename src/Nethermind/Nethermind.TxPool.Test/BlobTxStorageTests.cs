@@ -407,10 +407,13 @@ public class BlobTxStorageTests
             }
         }
 
-        for (int i = 0; i < results.Length; i++)
+        using (Assert.EnterMultipleScope())
         {
-            Assert.That(results[i], Is.EqualTo(expected[i])
-                .UsingTransactionComparer(nameof(Transaction.GasBottleneck), nameof(Transaction.PoolIndex)));
+            for (int i = 0; i < results.Length; i++)
+            {
+                Assert.That(results[i], Is.EqualTo(expected[i])
+                    .UsingTransactionComparer(nameof(Transaction.GasBottleneck), nameof(Transaction.PoolIndex)));
+            }
         }
     }
 
