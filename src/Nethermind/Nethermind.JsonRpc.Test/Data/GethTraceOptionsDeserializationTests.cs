@@ -51,6 +51,8 @@ public class GethTraceOptionsDeserializationTests
 
     [TestCase("bad", null)]
     [TestCase("5s", 5)]
+    [TestCase("00:00:05", 5)]
+    [TestCase("\\u0035s", 5)]
     public void ByNumber_options_defer_duration_parsing(string timeout, int? seconds)
     {
         JsonSerializerOptions serializerOptions = CreateByNumberSerializerOptions();
@@ -75,6 +77,8 @@ public class GethTraceOptionsDeserializationTests
             TimeSpan expected = TimeSpan.FromSeconds(seconds.Value);
             using (Assert.EnterMultipleScope())
             {
+                Assert.That(options.ParsedTimeout.RawText, Is.Null);
+                Assert.That(options.ParsedTimeout.Error, Is.Null);
                 Assert.That(options.Timeout, Is.EqualTo(expected));
                 Assert.That(options.ResolveTimeout(), Is.EqualTo(expected));
                 Assert.That(copy.Timeout, Is.EqualTo(expected));
@@ -87,7 +91,7 @@ public class GethTraceOptionsDeserializationTests
     public void Deferred_duration_bound_does_not_echo_oversized_input()
     {
         string timeout = new('x', 10_000);
-        GethTraceOptions options = new() { TimeoutText = timeout };
+        GethTraceOptions options = new() { ParsedTimeout = CustomTimeDurationConverter.Parse(timeout) };
 
         TraceDurationFormatException exception = Assert.Throws<TraceDurationFormatException>(() => options.ResolveTimeout())!;
 
@@ -158,6 +162,40 @@ public class GethTraceOptionsDeserializationTests
         using JsonDocument document = JsonDocument.Parse(json);
 
         Assert.That(document.RootElement.GetProperty("timeout").GetString(), Is.EqualTo("bad"));
+    }
+
+    [TestCase("{}", null)]
+    [TestCase("""{"timeout":null}""", null)]
+    [TestCase("""{"timeout":"bad","timeout":null}""", null)]
+    [TestCase("""{"timeout":"bad","timeout":"5s"}""", 5)]
+    [TestCase("""{"timeout":null,"timeout":"5s"}""", 5)]
+    public void ByNumber_options_use_the_last_timeout_and_allow_explicit_overrides(string json, int? seconds)
+    {
+        GethTraceOptions options = JsonSerializer.Deserialize<GethTraceOptions>(json, CreateByNumberSerializerOptions())!;
+        GethTraceOptions overridden = options with { Timeout = TimeSpan.FromSeconds(7) };
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(options.ResolveTimeout(), Is.EqualTo(seconds is { } value ? TimeSpan.FromSeconds(value) : (TimeSpan?)null));
+            Assert.That(overridden.ResolveTimeout(), Is.EqualTo(TimeSpan.FromSeconds(7)));
+            Assert.That(overridden.ParsedTimeout.Error, Is.Null);
+            Assert.That(overridden.ParsedTimeout.RawText, Is.Null);
+        }
+    }
+
+    [TestCase("""{"timeout":"5s","timeout":"bad"}""")]
+    [TestCase("""{"timeout":null,"timeout":"bad"}""")]
+    public void ByNumber_options_clear_malformed_timeout_on_explicit_override(string json)
+    {
+        GethTraceOptions options = JsonSerializer.Deserialize<GethTraceOptions>(json, CreateByNumberSerializerOptions())!;
+        Assert.That(options.ParsedTimeout.Error, Does.Contain("Cannot parse 'bad'"));
+
+        GethTraceOptions overridden = options with { Timeout = null };
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(overridden.ResolveTimeout(), Is.Null);
+            Assert.That(overridden.ParsedTimeout.RawText, Is.Null);
+        }
     }
 
     private static JsonSerializerOptions CreateByNumberSerializerOptions(IJsonTypeInfoResolver? resolver = null)

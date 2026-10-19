@@ -34,7 +34,7 @@ public class GethLikeNativeTracerFactoryTests
     [TestCase("5s", false)]
     public void CreateTracer_DisposesOnlyWhenTimeoutValidationFails(string timeout, bool invalid)
     {
-        GethTraceOptions options = new() { Tracer = _disposeTrackingTracerName, TimeoutText = timeout };
+        GethTraceOptions options = new() { Tracer = _disposeTrackingTracerName, ParsedTimeout = CustomTimeDurationConverter.Parse(timeout) };
         _createdTracer = null!;
 
         if (invalid)
