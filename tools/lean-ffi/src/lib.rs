@@ -618,7 +618,6 @@ pub fn prove_aggregate(hash: &[u8; 32], input: &[u8]) -> Result<Vec<u8>, ()> {
 }
 
 // Crypto ABI calls bound buffers and contain upstream panics; free requires its exact owned allocation.
-// Calls return 1 for accepted, 0 for rejected input and -1 for a contained panic, so callers never read a fault as a verdict.
 unsafe fn bytes<'a>(ptr: *const u8, len: usize) -> Result<&'a [u8], ()> {
     unsafe { bytes_with_limit(ptr, len, MAX_BYTES) }
 }
@@ -632,6 +631,9 @@ unsafe fn bytes_with_limit<'a>(ptr: *const u8, len: usize, limit: usize) -> Resu
         Ok(unsafe { std::slice::from_raw_parts(ptr, len) })
     }
 }
+/// Runs one ABI call: returns 1 for accepted, 0 for rejected input and -1 for a contained panic,
+/// so callers never read a fault as a verdict. Every `checked` export shares this contract, including
+/// `nlean_aggregated_vk` and `nlean_prove_recursive`, where the C# side accepts only `== 1` as success.
 fn checked(f: impl FnOnce() -> Result<bool, ()>) -> i32 {
     static HOOK: OnceLock<()> = OnceLock::new();
     struct CallGuard(bool);
