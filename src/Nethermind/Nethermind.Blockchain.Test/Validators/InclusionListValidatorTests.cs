@@ -53,10 +53,10 @@ public class InclusionListValidatorTests
             yield return Case("Same-nonce replacement advances nonce", [_validTx], true, blockTxs: [BuildTx(value: UInt256.One, to: TestItem.AddressC)], senderNonce: 1);
             // EIP-1559 fee check uses MaxFeePerGas (cap), not the tip: cap above baseFee → appendable.
             yield return Case("EIP-1559 low tip but sufficient fee cap", [Build1559Tx()], false, baseFee: 5.GWei);
-            // The blob carve-out applies to building an IL, not to judging one.
-            yield return Case("Blob tx", [BuildBlobTx()], false);
-            // Blob gas is paid up front, so a blob fee beyond the balance makes the tx unappendable.
+            yield return Case("Blob tx is ignored", [BuildBlobTx()], true);
             yield return Case("Blob tx cannot afford blob fee", [BuildBlobTx(maxFeePerBlobGas: 100_000.GWei)], true);
+            yield return Case("Blob entry does not hide an omitted ordinary tx", [BuildBlobTx(), _validTx], false);
+            yield return Case("Blob entry is ignored after an included ordinary tx", [_validTx, BuildBlobTx()], true, blockTxs: [_validTx]);
             // A tx normal execution rejects must not be reported appendable.
             yield return Case("Malformed 1559 tx (tip > fee cap)", [BuildMalformed1559Tx()], true);
             // A tx whose GasLimit is below the intrinsic cost cannot execute.
@@ -90,7 +90,7 @@ public class InclusionListValidatorTests
     }
 
     [Test]
-    public void Blob_appendability_requires_capacity_and_base_fee(
+    public void Blob_entries_are_ignored_regardless_of_capacity_and_base_fee(
         [Values(0UL, Eip4844Constants.GasPerBlob - 1, Eip4844Constants.GasPerBlob)] ulong remainingBlobGas,
         [Values] bool underpriced,
         [Values] bool included)
@@ -106,8 +106,7 @@ public class InclusionListValidatorTests
         Transaction tx = BuildBlobTx(maxFeePerBlobGas: underpriced ? blobBaseFee - UInt256.One : blobBaseFee);
         if (included) block = new Block(block.Header, [tx], block.Uncles);
 
-        bool expected = included || underpriced || remainingBlobGas < Eip4844Constants.GasPerBlob;
-        Assert.That(InclusionListValidator.IsSatisfied(block, [tx], StateWith(TestItem.AddressA, 10.Ether, 0), spec, _txValidator), Is.EqualTo(expected));
+        Assert.That(InclusionListValidator.IsSatisfied(block, [tx], StateWith(TestItem.AddressA, 10.Ether, 0), spec, _txValidator), Is.True);
     }
 
     // Withdrawals land after the block's transactions, so judging against the raw post-block balance
