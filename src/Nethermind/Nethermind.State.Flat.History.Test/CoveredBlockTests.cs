@@ -35,8 +35,16 @@ public class CoveredBlockTests
         _eight = Build.A.Block.WithNumber(8).WithDifficulty(0).WithBeneficiary(TestItem.AddressD).WithParentHash(_seven.Hash!).WithTransactions(Tx(3), Tx(4)).TestObject;
 
         Capture(_seven,
-            t => t.ReportBalanceChange(TestItem.AddressA, 100, 10),
-            t => t.ReportNonceChange(TestItem.AddressB, 5, 6),
+            t =>
+            {
+                t.ReportBalanceChange(TestItem.AddressA, 100, 10);
+                t.ReportStorageChange(new StorageCell(TestItem.AddressA, 1), [0x01], [0x02]);
+            },
+            t =>
+            {
+                t.ReportNonceChange(TestItem.AddressB, 5, 6);
+                t.ReportStorageChange(new StorageCell(TestItem.AddressB, 1), [0x05], [0x06]);
+            },
             t => t.ReportBalanceChange(TestItem.AddressA, 10, 30));
         Capture(_eight,
             t => t.ReportStorageChange(new StorageCell(TestItem.AddressC, 1), [0x01], [0x09]),
@@ -132,23 +140,20 @@ public class CoveredBlockTests
         StateReadOverlaySlot slot = new();
         Assert.That(block.CreateWorkerSeeds().TrySeed(_eight, 1, slot), Is.True);
         IStateReadOverlay prefix = slot.Current!;
-        IStateReadOverlay earlier = slot.ParentState!;
+        IStorageReadOverlay earlier = slot.ParentState!;
 
-        bool aKnown = earlier.TryGetAccount(TestItem.AddressA, Parent, out Account? a);
-        bool bKnown = earlier.TryGetAccount(TestItem.AddressB, Parent, out Account? b);
+        bool aKnown = earlier.TryGetStorage(TestItem.AddressA, 1, out UInt256 a);
+        bool bKnown = earlier.TryGetStorage(TestItem.AddressB, 1, out UInt256 b);
         bool slotKnown = prefix.TryGetStorage(TestItem.AddressC, 1, out UInt256 slotOne);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(aKnown && a!.Balance == 30, Is.True, "block 7's last write, which block 8's prefix has not changed yet");
-            Assert.That(bKnown && b!.Nonce == 6, Is.True, "a key only the earlier block wrote is still answered from memory");
+            Assert.That(aKnown && a == 2, Is.True, "block 7's write, which block 8's prefix has not changed");
+            Assert.That(bKnown && b == 6, Is.True, "a slot only the earlier block wrote is still answered from memory");
+            Assert.That(earlier.HasStorage(TestItem.AddressB), Is.True);
             Assert.That(slotKnown && slotOne == 9, Is.True, "the block's own prefix");
             Assert.That(prefix.HasStorage(TestItem.AddressC), Is.True);
         }
-
-        Assert.That(block.CreateWorkerSeeds().TrySeed(_eight, 2, slot), Is.True);
-        slot.Current!.TryGetAccount(TestItem.AddressA, a, out Account? aAfter);
-        Assert.That(aAfter!.Balance, Is.EqualTo((UInt256)40), "the block's own write wins over the earlier block's");
     }
 
     [Test]
@@ -168,8 +173,8 @@ public class CoveredBlockTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(slot.ParentState!.TryGetAccount(TestItem.AddressA, Parent, out _), Is.False, "a withdrawal recipient: the withdrawal credited it after the transactions, so the parent state must answer");
-            Assert.That(slot.ParentState.TryGetAccount(TestItem.AddressB, Parent, out _), Is.False, "the beneficiary: the reward reached it after the transactions");
+            Assert.That(slot.ParentState!.TryGetStorage(TestItem.AddressA, 1, out _), Is.False, "a withdrawal recipient: the withdrawal credited it after the transactions, so the parent state must answer");
+            Assert.That(slot.ParentState.TryGetStorage(TestItem.AddressB, 1, out _), Is.False, "the beneficiary: the reward reached it after the transactions");
         }
     }
 
@@ -204,8 +209,8 @@ public class CoveredBlockTests
         StateReadOverlaySlot slot = new();
         Assert.That(block.CreateWorkerSeeds().TrySeed(_eight, 1, slot), Is.True);
 
-        Assert.That(slot.ParentState!.TryGetAccount(TestItem.AddressB, Parent, out Account? b), Is.True, "zero difficulty is what says proof of stake for a block read back from the store");
-        Assert.That(b!.Nonce, Is.EqualTo(6UL));
+        Assert.That(slot.ParentState!.TryGetStorage(TestItem.AddressB, 1, out UInt256 b), Is.True, "zero difficulty is what says proof of stake for a block read back from the store");
+        Assert.That(b, Is.EqualTo((UInt256)6));
     }
 
     [Test]

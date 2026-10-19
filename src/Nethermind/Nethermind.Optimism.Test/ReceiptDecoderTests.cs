@@ -107,7 +107,7 @@ public class ReceiptDecoderTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(logEntry.Address.Bytes.Length, Is.Zero);
-            Assert.That(logEntry.Data.Length, Is.Zero);
+            Assert.That(logEntry.DataLength, Is.Zero);
             Assert.That(logEntry.TopicsRlp.Length, Is.Zero);
         }
     }
@@ -198,7 +198,7 @@ public class ReceiptDecoderTests
     }
 
     [Test]
-    public void Compact_storage_decoding_computes_bloom()
+    public void Compact_storage_decoding_defers_bloom()
     {
         OptimismTxReceipt receipt = new()
         {
@@ -209,7 +209,7 @@ public class ReceiptDecoderTests
         OptimismCompactReceiptStorageDecoder decoder = new();
         RlpReader reader = new(decoder.Encode(receipt, RlpBehaviors.Eip658Receipts).Bytes);
 
-        CompactReceiptDecoderTests.AssertBloomSetOnDecode(decoder.DecodeGuardNotNull(ref reader, RlpBehaviors.Eip658Receipts), new Bloom(receipt.Logs));
+        CompactReceiptDecoderTests.AssertDecodedBloom(decoder.DecodeGuardNotNull(ref reader, RlpBehaviors.Eip658Receipts), null, new Bloom(receipt.Logs));
     }
 
     [Test]

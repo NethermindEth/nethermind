@@ -61,15 +61,16 @@ public class LogFilterTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void specific_topics_filter_matches_bloom()
+    public void specific_topics_filter_matches_bloom([Values] bool useStructRef)
     {
         LogFilter filter = FilterBuilder.New(ref _filterCounter)
             .WithTopicExpressions(TestTopicExpressions.Specific(TestItem.KeccakA))
             .Build();
 
         Core.Bloom bloom = GetBloom(GetLogEntry(TestItem.AddressB, TestItem.KeccakA, TestItem.KeccakB));
+        BloomStructRef bloomRef = bloom.ToStructRef();
 
-        Assert.That(filter.Matches(bloom), Is.True);
+        Assert.That(useStructRef ? filter.Matches(ref bloomRef) : filter.Matches(bloom), Is.True);
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -146,15 +147,16 @@ public class LogFilterTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void specific_topics_filter_does_not_match_bloom()
+    public void specific_topics_filter_does_not_match_bloom([Values] bool useStructRef)
     {
         LogFilter filter = FilterBuilder.New(ref _filterCounter)
             .WithTopicExpressions(TestTopicExpressions.Specific(TestItem.KeccakA), TestTopicExpressions.Specific(TestItem.KeccakC))
             .Build();
 
         Core.Bloom bloom = GetBloom(GetLogEntry(TestItem.AddressB, TestItem.KeccakA, TestItem.KeccakB));
+        BloomStructRef bloomRef = bloom.ToStructRef();
 
-        Assert.That(filter.Matches(bloom), Is.False);
+        Assert.That(useStructRef ? filter.Matches(ref bloomRef) : filter.Matches(bloom), Is.False);
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]

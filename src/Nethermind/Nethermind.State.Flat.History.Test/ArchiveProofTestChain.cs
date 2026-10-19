@@ -9,6 +9,7 @@ using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Proofs;
+using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State.Flat.History.Test;
@@ -25,9 +26,13 @@ internal sealed class ArchiveProofTestChain(IColumnsDb<FlatHistoryColumns> histo
     private readonly Dictionary<Address, Account> _accounts = [];
     private readonly Dictionary<Address, Dictionary<ValueHash256, byte[]>> _storage = [];
     private readonly Dictionary<ulong, ValueHash256> _rootsByBlock = [];
+    private readonly Dictionary<ulong, List<(TreePath Path, byte[] Rlp)>> _committedStateNodes = [];
+    private CommitRecordingTrieStore? _stateStore;
     private StateTree? _stateTree;
 
-    private StateTree StateTree => _stateTree ??= new StateTree(new RawScopedTrieStore(_trieNodes), LimboLogs.Instance);
+    private CommitRecordingTrieStore StateStore => _stateStore ??= new CommitRecordingTrieStore(new RawScopedTrieStore(_trieNodes));
+
+    private StateTree StateTree => _stateTree ??= new StateTree(StateStore, LimboLogs.Instance);
 
     public ulong Head { get; private set; }
 
@@ -42,12 +47,17 @@ internal sealed class ArchiveProofTestChain(IColumnsDb<FlatHistoryColumns> histo
         build(builder);
         builder.Seal();
 
+        List<(TreePath Path, byte[] Rlp)> committed = [];
+        StateStore.Committed = committed;
         StateTree.Commit();
+        _committedStateNodes[block] = committed;
         ValueHash256 root = new(StateTree.RootHash.Bytes);
         _rootsByBlock[block] = root;
         HistoryColumnsWriter.MarkBlock(_historyColumns, block, root);
         Head = block;
     }
+
+    public IReadOnlyList<(TreePath Path, byte[] Rlp)> CommittedStateNodes(ulong block) => _committedStateNodes[block];
 
     public void PublishWatermark() => HistoryColumnsWriter.SetWatermark(_historyColumns, Head);
 
@@ -137,5 +147,33 @@ internal sealed class ArchiveProofTestChain(IColumnsDb<FlatHistoryColumns> histo
 
         private Account Current(Address address) =>
             chain._accounts.TryGetValue(address, out Account? account) ? account : new Account(0, 0);
+    }
+
+    private sealed class CommitRecordingTrieStore(IScopedTrieStore inner) : IScopedTrieStore
+    {
+        public List<(TreePath Path, byte[] Rlp)> Committed { get; set; } = [];
+
+        public INodeStorage.KeyScheme Scheme => inner.Scheme;
+
+        public TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash) => inner.FindCachedOrUnknown(path, hash);
+
+        public byte[]? LoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => inner.LoadRlp(path, hash, flags);
+
+        public byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => inner.TryLoadRlp(path, hash, flags);
+
+        public ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address) => inner.GetStorageTrieNodeResolver(address);
+
+        public ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) => new RecordingCommitter(inner.BeginCommit(root, writeFlags), Committed);
+    }
+
+    private sealed class RecordingCommitter(ICommitter inner, List<(TreePath Path, byte[] Rlp)> committed) : ICommitter
+    {
+        public TrieNode CommitNode(ref TreePath path, TrieNode node)
+        {
+            committed.Add((path, node.FullRlp.ToArray()!));
+            return inner.CommitNode(ref path, node);
+        }
+
+        public void Dispose() => inner.Dispose();
     }
 }

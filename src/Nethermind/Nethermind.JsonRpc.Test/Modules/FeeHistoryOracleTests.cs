@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
@@ -10,12 +11,15 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
+using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
 using Nethermind.Evm;
+using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using NSubstitute;
 using NUnit.Framework;
 using static Nethermind.JsonRpc.Test.Modules.GasPriceOracleTests;
@@ -365,6 +369,32 @@ namespace Nethermind.JsonRpc.Test.Modules
             Assert.That(resultWrapper.Data.Reward![0], Is.EqualTo(expectedUInt256));
         }
 
+        [Test]
+        public async Task GetFeeHistory_RewardPercentilesWeighEachReceiptByItsOwnGas([Values] bool eip8116Enabled, [Values] ReceiptSource receiptSource)
+        {
+            using BasicTestBlockchain chain = await BasicTestBlockchain.Create();
+            Block headBlock = Build.A.Block.WithParent(chain.BlockTree.Head!).WithBaseFeePerGas(3).WithGasUsed(100).WithTransactions(GetTestTransactions()).TestObject;
+            // Skip processing: the chain's processor would reject this hand-built block and drop it from the tree.
+            chain.BlockTree.SuggestBlock(headBlock, BlockTreeSuggestOptions.None);
+            chain.BlockTree.TryUpdateMainChain(headBlock.Header, true, preloadedBlocks: headBlock);
+            BlockParameter newestBlockParameter = new(headBlock.Number);
+            IReceiptStorage receiptStorage = receiptSource switch
+            {
+                ReceiptSource.InMemory => new InMemoryReceiptStorage(),
+                ReceiptSource.InMemoryWithoutIterator => new InMemoryReceiptStorage(allowReceiptIterator: false),
+                _ => chain.ReceiptStorage,
+            };
+            receiptStorage.Insert(headBlock, BuildReceiptsWithGasUsed([10, 20, 30, 40], eip8116Enabled), ensureCanonical: false);
+            // Read the receipts back from the database rather than the insert-populated cache.
+            if (receiptSource == ReceiptSource.Database) ((PersistentReceiptStorage)receiptStorage).ClearCache();
+            TestSpecProvider specProvider = new(new OverridableReleaseSpec(Bogota.Instance) { IsEip8116Enabled = eip8116Enabled });
+            using FeeHistoryOracle feeHistoryOracle = GetSubstitutedFeeHistoryOracle(blockTree: chain.BlockTree, receiptStorage: receiptStorage, specProvider: specProvider);
+
+            using ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(1, newestBlockParameter, [20, 40, 60, 80.5]);
+
+            Assert.That(resultWrapper.Data.Reward![0], Is.EqualTo(new UInt256[] { 4, 10, 10, 22 }));
+        }
+
         // Rewards are weighted by receipt gas, or by tx GasLimit when receipts are unavailable; the
         // percentile threshold must use that same total rather than the header GasUsed, which is
         // pre-refund under EIP-7778 and never matched the GasLimit weights.
@@ -442,18 +472,28 @@ namespace Nethermind.JsonRpc.Test.Modules
 
         private static IReceiptStorage GetTestReceiptStorageForBlockWithGasUsed(Block block, ulong[] gasUsedArray)
         {
-            IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
+            InMemoryReceiptStorage receiptStorage = new();
+            receiptStorage.Insert(block, BuildReceiptsWithGasUsed(gasUsedArray, eip8116Receipts: false), ensureCanonical: false);
+            return receiptStorage;
+        }
 
+        public enum ReceiptSource
+        {
+            InMemory,
+            InMemoryWithoutIterator,
+            Database,
+        }
+
+        private static TxReceipt[] BuildReceiptsWithGasUsed(ulong[] gasUsedArray, bool eip8116Receipts)
+        {
             TxReceipt[] txReceiptsArray = new TxReceipt[gasUsedArray.Length];
             ulong gasUsedTotal = 0;
             for (int i = 0; i < gasUsedArray.Length; i++)
             {
                 gasUsedTotal += gasUsedArray[i];
-                txReceiptsArray[i] = new TxReceipt() { GasUsedTotal = gasUsedTotal };
+                txReceiptsArray[i] = new TxReceipt() { GasUsedTotal = eip8116Receipts ? gasUsedArray[i] : gasUsedTotal, Logs = [Build.A.LogEntry.TestObject] };
             }
-            receiptStorage.Get(block).Returns(txReceiptsArray);
-            receiptStorage.Get(block, false).Returns(txReceiptsArray);
-            return receiptStorage;
+            return txReceiptsArray;
         }
 
         private static Transaction[] GetTestTransactions()
@@ -526,11 +566,9 @@ namespace Nethermind.JsonRpc.Test.Modules
                 blockTree.FindParent(secondBlock, BlockTreeLookupOptions.RequireCanonical).Returns(firstBlock);
                 blockTree.FindBlock(firstBlock.Hash!, options, firstBlock.Number).Returns(firstBlock);
 
-                IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
-                receiptStorage.Get(firstBlock).Returns(new TxReceipt[] { new() { GasUsed = 3 } });
-                receiptStorage.Get(firstBlock, false).Returns(new TxReceipt[] { new() { GasUsed = 3 } });
-                receiptStorage.Get(secondBlock).Returns(new TxReceipt[] { new() { GasUsed = 2 } });
-                receiptStorage.Get(secondBlock, false).Returns(new TxReceipt[] { new() { GasUsed = 2 } });
+                InMemoryReceiptStorage receiptStorage = new();
+                receiptStorage.Insert(firstBlock, [new() { GasUsed = 3 }], ensureCanonical: false);
+                receiptStorage.Insert(secondBlock, [new() { GasUsed = 2 }], ensureCanonical: false);
                 FeeHistoryOracle feeHistoryOracle1 =
                     GetSubstitutedFeeHistoryOracle(blockTree: blockTree, receiptStorage: receiptStorage, spec: spec);
                 return feeHistoryOracle1;
@@ -566,7 +604,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);
             specProvider.GetSpec(Arg.Any<ForkActivation>()).BaseFeeCalculator.Returns(new DefaultBaseFeeCalculator());
 
-            FeeHistoryOracle oracle = new(blockTree, Substitute.For<IReceiptStorage>(), specProvider);
+            FeeHistoryOracle oracle = new(blockTree, NullReceiptStorage.Instance, specProvider);
             using ResultWrapper<FeeHistoryResults> result = oracle.GetFeeHistory(1, new BlockParameter(0UL), []);
 
             ArrayPoolList<UInt256> fees = result.Data.BaseFeePerBlobGas;
@@ -605,7 +643,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             return new(
                 blockTree ?? Substitute.For<IBlockTree>(),
-                receiptStorage ?? Substitute.For<IReceiptStorage>(),
+                receiptStorage ?? NullReceiptStorage.Instance,
                 provider,
                 maxDistFromHead);
         }

@@ -5,6 +5,7 @@ using System;
 using System.Threading.Tasks;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -34,12 +35,10 @@ public class ProcessingStatsTests
         });
 
     [Test]
+    [ReleaseOnly("ProcessingStats emits every report when debug logging is enabled.")]
     public async Task UpdateStats_aggregates_multiple_updates_until_report_window() =>
         await WithRestoredBlockchainMetrics(async () =>
         {
-#if DEBUG
-            Assert.Ignore("ProcessingStats emits every report when debug logging is enabled.");
-#endif
             TestProcessingStats processingStats = CreateTestProcessingStats(out TaskCompletionSource<BlockStatistics> completion);
             processingStats.Start();
 
