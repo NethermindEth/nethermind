@@ -29,7 +29,7 @@ public class LmdbDbTests
     public void Setup()
     {
         if (Directory.Exists(DbPath)) Directory.Delete(DbPath, true);
-        _db = new LmdbDb("test", DbPath, TestMapSize, TestMaxReaders, TestMaxOperationsPerWave, LimboLogs.Instance);
+        _db = new LmdbDb("test", DbPath, TestMapSize, TestMaxReaders, TestMaxOperationsPerWave, partitionCount: 1, LimboLogs.Instance);
     }
 
     [TearDown]
@@ -166,7 +166,7 @@ public class LmdbDbTests
         _db.Set(TestItem.KeccakA.Bytes, TestItem.KeccakA.BytesToArray());
         _db.Dispose();
 
-        _db = new LmdbDb("test", DbPath, TestMapSize, TestMaxReaders, TestMaxOperationsPerWave, LimboLogs.Instance);
+        _db = new LmdbDb("test", DbPath, TestMapSize, TestMaxReaders, TestMaxOperationsPerWave, partitionCount: 1, LimboLogs.Instance);
         Assert.That(_db.Get(TestItem.KeccakA.Bytes), Is.EqualTo(TestItem.KeccakA.BytesToArray()));
     }
 
@@ -287,8 +287,8 @@ public class LmdbDbTests
     {
         // Regression: LMDB allows only one write transaction per environment at a time, and the verification
         // spike confirmed BeginTransaction() blocks the caller rather than throwing a busy error - see
-        // PLAN-LMDB.md "Spike findings" #1. Set() must use that blocking acquire (via SubmitWrite/DrainIfLeader),
-        // so none of these concurrent writers should ever throw.
+        // PLAN-LMDB.md "Spike findings" #1. Set() must use that blocking acquire (via SubmitWrite, drained by the
+        // dedicated writer thread - see WriterThreadLoop), so none of these concurrent writers should ever throw.
         const int writerCount = 32;
         Parallel.For(0, writerCount, i => _db.Set(BitConverter.GetBytes(i), BitConverter.GetBytes(i)));
 
@@ -317,10 +317,10 @@ public class LmdbDbTests
     [Test]
     public void Stress_many_concurrent_mixed_writers_are_all_committed_and_visible()
     {
-        // Heavier, mixed-shape stress for the group-commit coordinator (SubmitWrite/DrainIfLeader): many
-        // concurrent point writes and multi-key write-batches racing for leadership, repeated across several
-        // rounds to increase the chance of exercising the leader-handoff retry window documented on
-        // DrainIfLeader. A lost write here would mean the coordinator stranded a caller's PendingWrite.
+        // Heavier, mixed-shape stress for the dedicated writer thread (SubmitWrite/WriterThreadLoop): many
+        // concurrent point writes and multi-key write-batches enqueuing at once, repeated across several rounds
+        // to increase the chance of exercising the reset-before-drain race documented on WriterThreadLoop. A lost
+        // write here would mean the writer thread stranded a caller's PendingWrite.
         const int rounds = 5;
         const int writersPerRound = 200;
 
@@ -361,12 +361,108 @@ public class LmdbDbTests
     }
 
     [Test]
+    public void A_single_dedicated_writer_thread_is_started_on_construction_and_joined_cleanly_on_dispose()
+    {
+        // The defining property of the dedicated-writer-thread redesign (see LmdbDb.WriterThreadLoop's remarks) -
+        // a real, named, alive background thread exists per instance (not a race among arbitrary caller threads),
+        // and Dispose() must join it cleanly rather than leaving it running or hanging the caller.
+        Assert.That(_db.IsWriterThreadAlive, Is.True);
+        Assert.That(_db.WriterThreadName, Is.EqualTo("Lmdb.Writer.test"));
+
+        // A write submitted and committed before Dispose() proves the thread actually drains the queue, not just
+        // that it exists.
+        byte[] value = TestItem.KeccakA.BytesToArray();
+        _db.Set(TestItem.KeccakA.Bytes, value);
+        Assert.That(_db.Get(TestItem.KeccakA.Bytes), Is.EqualTo(value));
+
+        _db.Dispose();
+        Assert.That(_db.IsWriterThreadAlive, Is.False, "Dispose should Join the writer thread, not merely signal it to stop.");
+    }
+
+    [Test]
     public void GatherMetric_reports_a_positive_size_after_writes()
     {
         _db.Set(TestItem.KeccakA.Bytes, new byte[1024]);
         _db.Flush();
 
         Assert.That(_db.GatherMetric().Size, Is.GreaterThan(0));
+    }
+
+    [Test]
+    public void GetEnvironmentStats_reports_real_entries_and_a_sane_default_page_size_for_a_single_database()
+    {
+        // _db is partitionCount: 1 (single unnamed database) - mdb_env_stat's root database IS the actual data
+        // in this case (see LmdbDb.GetEnvironmentStats's remarks), so Entries should match real writes exactly.
+        for (int i = 0; i < 10; i++) _db.Set(BitConverter.GetBytes(i), BitConverter.GetBytes(i));
+
+        LightningDB.Stats stats = _db.GetEnvironmentStats();
+        Assert.That(stats.Entries, Is.EqualTo(10));
+        Assert.That(stats.PageSize, Is.AnyOf(512, 1024, 2048, 4096, 8192, 16384, 32768, 65536), "page size should be a power of 2 in LMDB's valid range even at the OS default.");
+        Assert.That(stats.LeafPages, Is.GreaterThan(0));
+    }
+
+    [Test]
+    public void GetPerPartitionStats_matches_GetEnvironmentStats_in_the_single_database_case()
+    {
+        for (int i = 0; i < 10; i++) _db.Set(BitConverter.GetBytes(i), BitConverter.GetBytes(i));
+
+        LightningDB.Stats envStats = _db.GetEnvironmentStats();
+        LightningDB.Stats perPartitionStats = _db.GetPerPartitionStats();
+        Assert.That(perPartitionStats.Entries, Is.EqualTo(envStats.Entries));
+        Assert.That(perPartitionStats.PageSize, Is.EqualTo(envStats.PageSize));
+        Assert.That(perPartitionStats.LeafPages, Is.EqualTo(envStats.LeafPages));
+    }
+
+    [Test]
+    public void GetPerPartitionStats_sees_real_partitioned_data_that_GetEnvironmentStats_cannot()
+    {
+        // The entire reason GetPerPartitionStats exists: mdb_env_stat reports the environment's ROOT database,
+        // which for a partitioned (named-database) environment is just the tiny catalog mapping partition names
+        // to their own separate sub-databases - not the actual data. mdb_stat per named database (what
+        // GetPerPartitionStats uses) sees the real thing. This is the scenario LmdbColumnsDbAdapter's periodic
+        // logger must get right for a partitioned Account column - see its own FormatStats remarks.
+        string path = Path.Combine("testdb-lmdb-partition-stats", TestContext.CurrentContext.Test.ID);
+        if (Directory.Exists(path)) Directory.Delete(path, true);
+        using LmdbDb db = NewPartitionedDb(path, partitionCount: 4);
+        try
+        {
+            for (int i = 0; i < 1000; i++)
+            {
+                byte[] key = [(byte)(i % 4 * 64), 0, 0, (byte)i, (byte)(i >> 8)];
+                db.Set(key, key);
+            }
+
+            LightningDB.Stats envStats = db.GetEnvironmentStats();
+            LightningDB.Stats perPartitionStats = db.GetPerPartitionStats();
+
+            Assert.That(envStats.Entries, Is.LessThan(perPartitionStats.Entries),
+                "mdb_env_stat should see only the small partition-name catalog (4 entries), not the real data.");
+            Assert.That(envStats.Entries, Is.EqualTo(4), "the catalog has exactly one entry per named partition database.");
+            Assert.That(perPartitionStats.Entries, Is.EqualTo(1000), "mdb_stat per partition, summed, must see every real entry.");
+        }
+        finally
+        {
+            db.Dispose();
+            if (Directory.Exists(path)) Directory.Delete(path, true);
+        }
+    }
+
+    [Test]
+    public void PageSizeBytes_override_is_honored_for_a_brand_new_environment()
+    {
+        string path = Path.Combine("testdb-lmdb-pagesize", TestContext.CurrentContext.Test.ID);
+        if (Directory.Exists(path)) Directory.Delete(path, true);
+        using LmdbDb db = new("pagesize-test", path, TestMapSize, TestMaxReaders, TestMaxOperationsPerWave, partitionCount: 1, LimboLogs.Instance, pageSizeBytes: 8192);
+        try
+        {
+            db.Set(TestItem.KeccakA.Bytes, TestItem.KeccakA.BytesToArray());
+            Assert.That(db.GetEnvironmentStats().PageSize, Is.EqualTo(8192));
+        }
+        finally
+        {
+            db.Dispose();
+            if (Directory.Exists(path)) Directory.Delete(path, true);
+        }
     }
 
     [Test]
@@ -524,7 +620,7 @@ public class LmdbDbTests
         const long tinyMapSize = 128 * 1024; // small enough that a few KB of writes will exceed it at least once
         string path = Path.Combine("testdb-lmdb-mapgrowth", TestContext.CurrentContext.Test.ID);
         if (Directory.Exists(path)) Directory.Delete(path, true);
-        using LmdbDb db = new("growth-test", path, tinyMapSize, TestMaxReaders, TestMaxOperationsPerWave, LimboLogs.Instance);
+        using LmdbDb db = new("growth-test", path, tinyMapSize, TestMaxReaders, TestMaxOperationsPerWave, partitionCount: 1, LimboLogs.Instance);
         try
         {
             const int count = 200;
@@ -569,7 +665,7 @@ public class LmdbDbTests
         int snapshotsToHoldConcurrently = Math.Max(4, (126 / Math.Max(poolSize, 1)) + 2); // would exceed LMDB's own default of 126
         string path = Path.Combine("testdb-lmdb-manysnapshots", TestContext.CurrentContext.Test.ID);
         if (Directory.Exists(path)) Directory.Delete(path, true);
-        using LmdbDb db = new("many-snapshots-test", path, TestMapSize, TestMaxReaders, TestMaxOperationsPerWave, LimboLogs.Instance);
+        using LmdbDb db = new("many-snapshots-test", path, TestMapSize, TestMaxReaders, TestMaxOperationsPerWave, partitionCount: 1, LimboLogs.Instance);
         try
         {
             db.Set([1], [1]);
@@ -620,7 +716,7 @@ public class LmdbDbTests
         // this is what makes the periodic logger's "last ~30s" numbers meaningful on a long-running node.
         // AliveSnapshotPoolReaders is a gauge, not a reset counter, but it's still 0 here since nothing is alive.
         LmdbDb.DiagnosticsSnapshot second = _db.TakeAndResetDiagnostics();
-        Assert.That(second, Is.EqualTo(new LmdbDb.DiagnosticsSnapshot(0, 0, 0, 0, 0, 0, 0, 0, 0)));
+        Assert.That(second, Is.EqualTo(new LmdbDb.DiagnosticsSnapshot(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)));
 
         _db.Get([1]);
         LmdbDb.DiagnosticsSnapshot third = _db.TakeAndResetDiagnostics();
@@ -661,7 +757,7 @@ public class LmdbDbTests
         const int tinyWaveCap = 4;
         string path = Path.Combine("testdb-lmdb-wavecap", TestContext.CurrentContext.Test.ID);
         if (Directory.Exists(path)) Directory.Delete(path, true);
-        using LmdbDb db = new("wave-cap-test", path, TestMapSize, TestMaxReaders, tinyWaveCap, LimboLogs.Instance);
+        using LmdbDb db = new("wave-cap-test", path, TestMapSize, TestMaxReaders, tinyWaveCap, partitionCount: 1, LimboLogs.Instance);
         try
         {
             const int writerCount = 20;
@@ -696,7 +792,7 @@ public class LmdbDbTests
         const int opsInOneBatch = 50;
         string path = Path.Combine("testdb-lmdb-wavecap-split", TestContext.CurrentContext.Test.ID);
         if (Directory.Exists(path)) Directory.Delete(path, true);
-        using LmdbDb db = new("wave-cap-split-test", path, TestMapSize, TestMaxReaders, tinyWaveCap, LimboLogs.Instance);
+        using LmdbDb db = new("wave-cap-split-test", path, TestMapSize, TestMaxReaders, tinyWaveCap, partitionCount: 1, LimboLogs.Instance);
         try
         {
             using (IWriteBatch batch = db.StartWriteBatch())
@@ -730,7 +826,7 @@ public class LmdbDbTests
         const int opsInOneBatch = 3;
         string path = Path.Combine("testdb-lmdb-wavecap-nosplit", TestContext.CurrentContext.Test.ID);
         if (Directory.Exists(path)) Directory.Delete(path, true);
-        using LmdbDb db = new("wave-cap-nosplit-test", path, TestMapSize, TestMaxReaders, tinyWaveCap, LimboLogs.Instance);
+        using LmdbDb db = new("wave-cap-nosplit-test", path, TestMapSize, TestMaxReaders, tinyWaveCap, partitionCount: 1, LimboLogs.Instance);
         try
         {
             using (IWriteBatch batch = db.StartWriteBatch())
@@ -757,6 +853,120 @@ public class LmdbDbTests
     }
 
     [Test]
+    public void CanUseAppendData_engages_for_an_ascending_batch_into_an_empty_database()
+    {
+        using (IWriteBatch batch = _db.StartWriteBatch())
+        {
+            for (int i = 0; i < 10; i++) batch.PutSpan([(byte)i], [(byte)i]);
+        }
+
+        for (int i = 0; i < 10; i++) Assert.That(_db.Get([(byte)i]), Is.EqualTo(new byte[] { (byte)i }));
+
+        LmdbDb.DiagnosticsSnapshot diagnostics = _db.TakeAndResetDiagnostics();
+        Assert.That(diagnostics.TotalPutCount, Is.EqualTo(10));
+        Assert.That(diagnostics.AppendedPutCount, Is.EqualTo(10));
+    }
+
+    [Test]
+    public void CanUseAppendData_falls_back_for_a_batch_that_is_not_ascending()
+    {
+        using (IWriteBatch batch = _db.StartWriteBatch())
+        {
+            for (int i = 9; i >= 0; i--) batch.PutSpan([(byte)i], [(byte)i]);
+        }
+
+        for (int i = 0; i < 10; i++) Assert.That(_db.Get([(byte)i]), Is.EqualTo(new byte[] { (byte)i }));
+
+        LmdbDb.DiagnosticsSnapshot diagnostics = _db.TakeAndResetDiagnostics();
+        Assert.That(diagnostics.TotalPutCount, Is.EqualTo(10));
+        Assert.That(diagnostics.AppendedPutCount, Is.EqualTo(0));
+    }
+
+    [Test]
+    public void CanUseAppendData_checks_the_databases_actual_current_max_key_not_just_batch_order()
+    {
+        // Regression for the exact mistake this feature almost shipped with: checking only that a batch is
+        // ascending among its own keys is not sufficient - LMDB's AppendData requires every appended key to
+        // exceed the database's actual current max key. A batch that is internally ascending but reaches
+        // backwards into already-written keyspace (e.g. snap sync's healing phase, or an out-of-order
+        // concurrent completion) must not use it, regardless of its own internal order.
+        using (IWriteBatch batch = _db.StartWriteBatch())
+        {
+            for (int i = 100; i < 110; i++) batch.PutSpan([(byte)i], [(byte)i]);
+        }
+        Assert.That(_db.TakeAndResetDiagnostics().AppendedPutCount, Is.EqualTo(10));
+
+        // Ascending among themselves, but every key is smaller than the database's current max (109) - must
+        // not append, or this would silently corrupt the database per LMDB's own documented semantics.
+        using (IWriteBatch batch = _db.StartWriteBatch())
+        {
+            for (int i = 0; i < 10; i++) batch.PutSpan([(byte)i], [(byte)i]);
+        }
+        LmdbDb.DiagnosticsSnapshot second = _db.TakeAndResetDiagnostics();
+        Assert.That(second.TotalPutCount, Is.EqualTo(10));
+        Assert.That(second.AppendedPutCount, Is.EqualTo(0));
+
+        // Genuinely beyond the database's current max again - append re-engages.
+        using (IWriteBatch batch = _db.StartWriteBatch())
+        {
+            for (int i = 200; i < 210; i++) batch.PutSpan([(byte)i], [(byte)i]);
+        }
+        Assert.That(_db.TakeAndResetDiagnostics().AppendedPutCount, Is.EqualTo(10));
+
+        for (int i = 0; i < 10; i++) Assert.That(_db.Get([(byte)i]), Is.EqualTo(new byte[] { (byte)i }));
+        for (int i = 100; i < 110; i++) Assert.That(_db.Get([(byte)i]), Is.EqualTo(new byte[] { (byte)i }));
+        for (int i = 200; i < 210; i++) Assert.That(_db.Get([(byte)i]), Is.EqualTo(new byte[] { (byte)i }));
+    }
+
+    [Test]
+    public void CanUseAppendData_ignores_deletes_when_checking_ascending_put_order()
+    {
+        using (IWriteBatch batch = _db.StartWriteBatch())
+        {
+            batch.PutSpan([1], [1]);
+            batch.Remove([200]); // a delete does not add a key, so it must not break the puts' ascending order
+            batch.PutSpan([2], [2]);
+            batch.PutSpan([3], [3]);
+        }
+
+        Assert.That(_db.Get([1]), Is.EqualTo(new byte[] { 1 }));
+        Assert.That(_db.Get([2]), Is.EqualTo(new byte[] { 2 }));
+        Assert.That(_db.Get([3]), Is.EqualTo(new byte[] { 3 }));
+
+        LmdbDb.DiagnosticsSnapshot diagnostics = _db.TakeAndResetDiagnostics();
+        Assert.That(diagnostics.TotalPutCount, Is.EqualTo(3));
+        Assert.That(diagnostics.AppendedPutCount, Is.EqualTo(3));
+    }
+
+    [Test]
+    public void Diagnostics_split_apply_time_by_appended_vs_non_appended_per_operation()
+    {
+        // Added specifically to get a true live A/B signal for AppendData's real effect without needing a
+        // toggle or a second sync run - see PLAN-LMDB.md "Known issues". A single wave can contain both an
+        // appended and a non-appended partition-group side by side (exactly what happens live whenever
+        // AppendData's self-verifying check accepts one group and declines another), so this must track them as
+        // two independent, correctly-attributed buckets rather than one blended apply-time average.
+        using (IWriteBatch batch = _db.StartWriteBatch())
+        {
+            for (int i = 0; i < 10; i++) batch.PutSpan([(byte)i], [(byte)i]);
+        }
+        LmdbDb.DiagnosticsSnapshot firstBatch = _db.TakeAndResetDiagnostics();
+        Assert.That(firstBatch.AppendedApplyOpsCount, Is.EqualTo(10), "An ascending batch into an empty DB must be fully attributed to the appended bucket.");
+        Assert.That(firstBatch.NonAppendedApplyOpsCount, Is.EqualTo(0));
+        Assert.That(firstBatch.AvgAppendedApplyMicrosPerOp, Is.GreaterThanOrEqualTo(0));
+
+        using (IWriteBatch batch = _db.StartWriteBatch())
+        {
+            // Every key here is below the DB's current max (9) - must fall entirely into the non-appended bucket.
+            for (int i = 0; i < 5; i++) batch.PutSpan([(byte)i], [(byte)(i + 100)]);
+        }
+        LmdbDb.DiagnosticsSnapshot secondBatch = _db.TakeAndResetDiagnostics();
+        Assert.That(secondBatch.AppendedApplyOpsCount, Is.EqualTo(0));
+        Assert.That(secondBatch.NonAppendedApplyOpsCount, Is.EqualTo(5), "A batch entirely below the DB's current max must be fully attributed to the non-appended bucket.");
+        Assert.That(secondBatch.AvgNonAppendedApplyMicrosPerOp, Is.GreaterThanOrEqualTo(0));
+    }
+
+    [Test]
     public void CommitLargeWriteInChunks_yields_to_other_queued_writes_between_chunks()
     {
         // Regression: without yielding between chunks, the single leader thread processed one oversized
@@ -772,7 +982,7 @@ public class LmdbDbTests
         const int smallWriterCount = 32;
         string path = Path.Combine("testdb-lmdb-wavecap-fairness", TestContext.CurrentContext.Test.ID);
         if (Directory.Exists(path)) Directory.Delete(path, true);
-        using LmdbDb db = new("wave-cap-fairness-test", path, TestMapSize, TestMaxReaders, tinyWaveCap, LimboLogs.Instance);
+        using LmdbDb db = new("wave-cap-fairness-test", path, TestMapSize, TestMaxReaders, tinyWaveCap, partitionCount: 1, LimboLogs.Instance);
         try
         {
             ConcurrentQueue<string> completionOrder = new();
@@ -825,6 +1035,279 @@ public class LmdbDbTests
             int largeIndex = order.IndexOf("large");
             Assert.That(largeIndex, Is.GreaterThan(0),
                 "No small write completed before the large write finished its entire chunk sequence - it monopolized the writer role instead of yielding between chunks.");
+        }
+        finally
+        {
+            if (Directory.Exists(path)) Directory.Delete(path, true);
+        }
+    }
+
+    // Partitioning (ILmdbConfig.EnableAccountPartitioning) - see PLAN-LMDB.md "Known issues". Keys below are
+    // constructed with an explicit 4-byte leading prefix so their partition is obvious from the test itself,
+    // mirroring how GetPartitionIndex only ever looks at a key's first 4 bytes (big-endian).
+
+    private static LmdbDb NewPartitionedDb(string path, int partitionCount) =>
+        new("partitioned-test", path, TestMapSize, TestMaxReaders, TestMaxOperationsPerWave, partitionCount, LimboLogs.Instance);
+
+    [Test]
+    public void Partitioning_keeps_every_key_retrievable_regardless_of_which_partition_it_lands_in()
+    {
+        string path = Path.Combine("testdb-lmdb-partition-roundtrip", TestContext.CurrentContext.Test.ID);
+        if (Directory.Exists(path)) Directory.Delete(path, true);
+        using LmdbDb db = NewPartitionedDb(path, partitionCount: 4);
+        try
+        {
+            // 4 partitions over a 32-bit leading prefix: boundaries at 0x00000000, 0x40000000, 0x80000000, 0xC0000000.
+            byte[][] keys =
+            [
+                [0x00, 0x00, 0x00, 0x01],
+                [0x3F, 0xFF, 0xFF, 0xFF],
+                [0x40, 0x00, 0x00, 0x00],
+                [0x7F, 0xFF, 0xFF, 0xFF],
+                [0x80, 0x00, 0x00, 0x00],
+                [0xBF, 0xFF, 0xFF, 0xFF],
+                [0xC0, 0x00, 0x00, 0x00],
+                [0xFF, 0xFF, 0xFF, 0xFF],
+            ];
+
+            using (IWriteBatch batch = db.StartWriteBatch())
+            {
+                foreach (byte[] key in keys) batch.PutSpan(key, key);
+            }
+
+            foreach (byte[] key in keys) Assert.That(db.Get(key), Is.EqualTo(key));
+            Assert.That(db.EstimatedCount, Is.EqualTo(keys.Length));
+        }
+        finally
+        {
+            db.Dispose();
+            if (Directory.Exists(path)) Directory.Delete(path, true);
+        }
+    }
+
+    [Test]
+    public void Partitioning_merges_GetAll_FirstKey_and_LastKey_in_ascending_order_across_partitions()
+    {
+        string path = Path.Combine("testdb-lmdb-partition-merge", TestContext.CurrentContext.Test.ID);
+        if (Directory.Exists(path)) Directory.Delete(path, true);
+        using LmdbDb db = NewPartitionedDb(path, partitionCount: 4);
+        try
+        {
+            // Inserted deliberately out of key order (and out of partition order) to prove the merge itself -
+            // not insertion order - is what produces the ascending result.
+            byte[][] insertionOrder =
+            [
+                [0xC0, 0, 0, 5],
+                [0x00, 0, 0, 1],
+                [0x80, 0, 0, 3],
+                [0x40, 0, 0, 2],
+                [0xC0, 0, 0, 9],
+                [0x80, 0, 0, 4],
+            ];
+            using (IWriteBatch batch = db.StartWriteBatch())
+            {
+                foreach (byte[] key in insertionOrder) batch.PutSpan(key, key);
+            }
+
+            byte[][] expectedAscending = [.. insertionOrder.OrderBy(k => k, Bytes.Comparer)];
+
+            Assert.That(db.FirstKey, Is.EqualTo(expectedAscending[0]));
+            Assert.That(db.LastKey, Is.EqualTo(expectedAscending[^1]));
+
+            byte[][] actualAscending = [.. db.GetAll(true).Select(kvp => kvp.Key)];
+            Assert.That(actualAscending, Is.EqualTo(expectedAscending));
+            Assert.That(db.GetAllKeys().ToArray(), Is.EqualTo(expectedAscending));
+        }
+        finally
+        {
+            db.Dispose();
+            if (Directory.Exists(path)) Directory.Delete(path, true);
+        }
+    }
+
+    [Test]
+    public void Partitioning_lets_a_lower_partition_still_append_after_a_higher_partition_already_has_larger_keys()
+    {
+        // This is the entire point of partitioning - see ILmdbConfig.EnableAccountPartitioning's remarks. Under
+        // a single flat keyspace, only the single highest-keyed partition's writes could ever qualify for
+        // AppendData once any higher partition had already advanced past them. With separate databases per
+        // partition, each one has its own independent "current max key", so a lower partition's own monotonic
+        // stream can still append even after a higher partition is already far ahead.
+        string path = Path.Combine("testdb-lmdb-partition-append", TestContext.CurrentContext.Test.ID);
+        if (Directory.Exists(path)) Directory.Delete(path, true);
+        using LmdbDb db = NewPartitionedDb(path, partitionCount: 2);
+        try
+        {
+            byte[] HighKey(byte i) => [0xFF, 0xFF, 0xFF, i];
+            byte[] LowKey(byte i) => [0x00, 0x00, 0x00, i];
+
+            using (IWriteBatch batch = db.StartWriteBatch())
+            {
+                for (byte i = 0; i < 5; i++) batch.PutSpan(HighKey(i), [i]);
+            }
+            Assert.That(db.TakeAndResetDiagnostics().AppendedPutCount, Is.EqualTo(5));
+
+            using (IWriteBatch batch = db.StartWriteBatch())
+            {
+                for (byte i = 0; i < 5; i++) batch.PutSpan(LowKey(i), [i]);
+            }
+            LmdbDb.DiagnosticsSnapshot diagnostics = db.TakeAndResetDiagnostics();
+            Assert.That(diagnostics.TotalPutCount, Is.EqualTo(5));
+            Assert.That(diagnostics.AppendedPutCount, Is.EqualTo(5));
+
+            for (byte i = 0; i < 5; i++)
+            {
+                Assert.That(db.Get(HighKey(i)), Is.EqualTo(new byte[] { i }));
+                Assert.That(db.Get(LowKey(i)), Is.EqualTo(new byte[] { i }));
+            }
+        }
+        finally
+        {
+            db.Dispose();
+            if (Directory.Exists(path)) Directory.Delete(path, true);
+        }
+    }
+
+    [Test]
+    public void Partitioning_GetViewBetween_iterates_in_order_across_partitions_and_respects_a_sub_range()
+    {
+        string path = Path.Combine("testdb-lmdb-partition-view", TestContext.CurrentContext.Test.ID);
+        if (Directory.Exists(path)) Directory.Delete(path, true);
+        using LmdbDb db = NewPartitionedDb(path, partitionCount: 4);
+        try
+        {
+            byte[][] keys =
+            [
+                [0x00, 0, 0, 1], [0x00, 0, 0, 2],
+                [0x40, 0, 0, 1], [0x40, 0, 0, 2],
+                [0x80, 0, 0, 1], [0x80, 0, 0, 2],
+                [0xC0, 0, 0, 1], [0xC0, 0, 0, 2],
+            ];
+            using (IWriteBatch batch = db.StartWriteBatch())
+            {
+                foreach (byte[] key in keys) batch.PutSpan(key, key);
+            }
+
+            using (ISortedView fullView = db.GetViewBetween([0, 0, 0, 0], [0xFF, 0xFF, 0xFF, 0xFF]))
+            {
+                List<byte[]> actual = [];
+                while (fullView.MoveNext()) actual.Add(fullView.CurrentKey.ToArray());
+                Assert.That(actual, Is.EqualTo(keys));
+            }
+
+            // A sub-range spanning only the middle two partitions (0x40.. and 0x80..) must exclude the outer two.
+            using (ISortedView subView = db.GetViewBetween([0x40, 0, 0, 0], [0xC0, 0, 0, 0]))
+            {
+                List<byte[]> actual = [];
+                while (subView.MoveNext()) actual.Add(subView.CurrentKey.ToArray());
+                Assert.That(actual, Is.EqualTo(keys[2..6]));
+            }
+        }
+        finally
+        {
+            db.Dispose();
+            if (Directory.Exists(path)) Directory.Delete(path, true);
+        }
+    }
+
+    [Test]
+    public void Partitioning_StartBefore_finds_a_floor_in_a_lower_partition_when_the_seek_values_own_partition_is_empty()
+    {
+        // No production call site exercises StartBefore against a partitioned column in practice (see
+        // PLAN-LMDB.md "Known issues"), but the merge still needs to behave correctly rather than being a known
+        // gap: the floor of a seek value can legitimately live in a lower partition than the value's own.
+        string path = Path.Combine("testdb-lmdb-partition-startbefore", TestContext.CurrentContext.Test.ID);
+        if (Directory.Exists(path)) Directory.Delete(path, true);
+        using LmdbDb db = NewPartitionedDb(path, partitionCount: 2);
+        try
+        {
+            byte[] onlyKey = [0x00, 0x00, 0x00, 0x05];
+            db.Set(onlyKey, onlyKey);
+
+            using ISortedView view = db.GetViewBetween([0x00, 0x00, 0x00, 0x00], [0xFF, 0xFF, 0xFF, 0xFF]);
+            // 0x90000000... falls in partition 1 (empty) - the floor must come from partition 0's only key.
+            Assert.That(view.StartBefore([0x90, 0x00, 0x00, 0x00]), Is.True);
+            Assert.That(view.CurrentKey.ToArray(), Is.EqualTo(onlyKey));
+            Assert.That(view.MoveNext(), Is.False);
+        }
+        finally
+        {
+            db.Dispose();
+            if (Directory.Exists(path)) Directory.Delete(path, true);
+        }
+    }
+
+    [Test]
+    public void Partitioning_snapshot_Get_and_GetViewBetween_merge_correctly_across_partitions()
+    {
+        string path = Path.Combine("testdb-lmdb-partition-snapshot", TestContext.CurrentContext.Test.ID);
+        if (Directory.Exists(path)) Directory.Delete(path, true);
+        using LmdbDb db = NewPartitionedDb(path, partitionCount: 4);
+        try
+        {
+            byte[][] keys = [[0x00, 0, 0, 1], [0x40, 0, 0, 1], [0x80, 0, 0, 1], [0xC0, 0, 0, 1]];
+            using (IWriteBatch batch = db.StartWriteBatch())
+            {
+                foreach (byte[] key in keys) batch.PutSpan(key, key);
+            }
+
+            using IKeyValueStoreSnapshot snapshot = ((IKeyValueStoreWithSnapshot)db).CreateSnapshot();
+            foreach (byte[] key in keys) Assert.That(snapshot.Get(key), Is.EqualTo(key));
+
+            ISortedKeyValueStore sortedSnapshot = (ISortedKeyValueStore)snapshot;
+            Assert.That(sortedSnapshot.FirstKey, Is.EqualTo(keys[0]));
+            Assert.That(sortedSnapshot.LastKey, Is.EqualTo(keys[^1]));
+
+            using ISortedView view = sortedSnapshot.GetViewBetween([0, 0, 0, 0], [0xFF, 0xFF, 0xFF, 0xFF]);
+            List<byte[]> actual = [];
+            while (view.MoveNext()) actual.Add(view.CurrentKey.ToArray());
+            Assert.That(actual, Is.EqualTo(keys));
+        }
+        finally
+        {
+            db.Dispose();
+            if (Directory.Exists(path)) Directory.Delete(path, true);
+        }
+    }
+
+    [Test]
+    public void Enabling_partitioning_over_an_existing_nonpartitioned_database_with_data_throws()
+    {
+        // See ILmdbConfig.EnableAccountPartitioning's remarks - partitioned mode reads/writes separate named
+        // databases that a non-partitioned sync never touched, so silently "losing" existing data would be far
+        // worse than refusing to start.
+        string path = Path.Combine("testdb-lmdb-partition-guard", TestContext.CurrentContext.Test.ID);
+        if (Directory.Exists(path)) Directory.Delete(path, true);
+        try
+        {
+            using (LmdbDb db = new("guard-test", path, TestMapSize, TestMaxReaders, TestMaxOperationsPerWave, partitionCount: 1, LimboLogs.Instance))
+            {
+                db.Set([1], [1]);
+            }
+
+            Assert.Throws<InvalidOperationException>(() =>
+                new LmdbDb("guard-test", path, TestMapSize, TestMaxReaders, TestMaxOperationsPerWave, partitionCount: 4, LimboLogs.Instance));
+        }
+        finally
+        {
+            if (Directory.Exists(path)) Directory.Delete(path, true);
+        }
+    }
+
+    [Test]
+    public void Enabling_partitioning_over_an_existing_empty_nonpartitioned_database_does_not_throw()
+    {
+        // The guard only fires when the default database actually has entries - a brand new directory, or one
+        // whose non-partitioned default database was never written to, is safe to switch into partitioned mode.
+        string path = Path.Combine("testdb-lmdb-partition-guard-empty", TestContext.CurrentContext.Test.ID);
+        if (Directory.Exists(path)) Directory.Delete(path, true);
+        try
+        {
+            new LmdbDb("guard-empty-test", path, TestMapSize, TestMaxReaders, TestMaxOperationsPerWave, partitionCount: 1, LimboLogs.Instance).Dispose();
+
+            using LmdbDb partitioned = new("guard-empty-test", path, TestMapSize, TestMaxReaders, TestMaxOperationsPerWave, partitionCount: 4, LimboLogs.Instance);
+            partitioned.Set([1], [1]);
+            Assert.That(partitioned.Get([1]), Is.EqualTo(new byte[] { 1 }));
         }
         finally
         {

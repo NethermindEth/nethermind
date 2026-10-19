@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Threading;
+using LightningDB;
 using Nethermind.Core;
 using Nethermind.Logging;
 using Nethermind.State.Flat;
@@ -18,9 +19,11 @@ namespace Nethermind.Db.Lmdb;
 public sealed class LmdbColumnsDbAdapter(IColumnsDb<FlatDbColumns> inner, LmdbDb account, LmdbDb storage, ILogManager logManager) : IColumnsDb<FlatDbColumns>
 {
     // Exposed so the nested write-batch class below can reach them - a primary constructor parameter is only
-    // captured for use within this class's own member bodies, not visible by name to a nested type.
-    private LmdbDb Account => account;
-    private LmdbDb Storage => storage;
+    // captured for use within this class's own member bodies, not visible by name to a nested type. Internal
+    // (not private) also lets tests verify per-column config (e.g. MaxOperationsPerWaveAccount/Storage) actually
+    // reaches the right underlying LmdbDb instance end-to-end through the decorator.
+    internal LmdbDb Account => account;
+    internal LmdbDb Storage => storage;
 
     /// <summary>
     /// Periodically logs Account/Storage key counts, on-disk size, and call-volume/latency diagnostics - see
@@ -55,14 +58,40 @@ public sealed class LmdbColumnsDbAdapter(IColumnsDb<FlatDbColumns> inner, LmdbDb
             $"Lmdb key counts - Account: {accountCount:N0} keys ({FormatBytes(accountSize)} on disk), " +
             $"Storage: {storageCount:N0} keys ({FormatBytes(storageSize)} on disk)");
         logger.Info($"Lmdb diagnostics (last ~30s) - Account: {FormatDiagnostics(account.TakeAndResetDiagnostics())}, Storage: {FormatDiagnostics(storage.TakeAndResetDiagnostics())}");
+        logger.Info($"Lmdb page stats (mdb_stat) - Account: {FormatStats(account.GetPerPartitionStats())}, Storage: {FormatStats(storage.GetPerPartitionStats())}");
     }
 
     private static string FormatDiagnostics(LmdbDb.DiagnosticsSnapshot d) =>
         $"Get x{d.GetCount:N0} (avg {d.AvgGetMicros:F1}us), " +
         $"CreateSnapshot x{d.CreateSnapshotCount:N0} (avg {d.AvgCreateSnapshotMicros:F1}us), " +
-        $"WriteWave x{d.WriteWaveCount:N0} (avg {d.AvgWriteWaveMicros:F1}us, avg {d.AvgWriteWaveOps:F0} ops/wave), " +
+        $"WriteWave x{d.WriteWaveCount:N0} (avg {d.AvgWriteWaveMicros:F1}us = " +
+        $"begin {d.AvgWriteBeginMicros:F1}us + apply {d.AvgWriteApplyMicros:F1}us + commit {d.AvgWriteCommitMicros:F1}us " +
+        $"[lock-wait {d.AvgWriteCommitLockWaitMicros:F1}us + call {d.AvgWriteCommitCallMicros:F1}us], " +
+        $"avg {d.AvgWriteWaveOps:F0} ops/wave), " +
         $"MapGrowths {d.MapGrowthCount:N0}, " +
-        $"AlivePooledReaders {d.AliveSnapshotPoolReaders:N0}";
+        $"AlivePooledReaders {d.AliveSnapshotPoolReaders:N0}, " +
+        $"AppendData {d.AppendedPutCount:N0}/{d.TotalPutCount:N0} puts " +
+        $"(apply: appended {d.AvgAppendedApplyMicrosPerOp:F3}us/op x{d.AppendedApplyOpsCount:N0}, " +
+        $"non-appended {d.AvgNonAppendedApplyMicrosPerOp:F3}us/op x{d.NonAppendedApplyOpsCount:N0})";
+
+    /// <summary>See <see cref="LmdbDb.GetPerPartitionStats"/> - logged specifically to observe real B+tree page
+    /// structure during a live sync and inform whether a non-default <see cref="ILmdbConfig.PageSizeBytes"/>
+    /// would help (e.g. a low entries-per-leaf-page figure relative to how many entries should fit in a page of
+    /// this size would suggest leaf pages are splitting before they're actually full). Uses the per-partition
+    /// <c>mdb_stat</c> rather than the environment-wide <c>mdb_env_stat</c> (<see cref="LmdbDb.GetEnvironmentStats"/>)
+    /// specifically so this stays correct for Account when <see cref="ILmdbConfig.EnableAccountPartitioning"/> is
+    /// on - <c>mdb_env_stat</c> would otherwise report Account's tiny partition-name catalog instead of the real
+    /// per-partition data (see <see cref="LmdbDb.GetEnvironmentStats"/>'s remarks); the two are identical in the
+    /// common single, unnamed-database case.</summary>
+    private static string FormatStats(global::LightningDB.Stats s)
+    {
+        long dataPages = s.BranchPages + s.LeafPages + s.OverflowPages;
+        double avgEntriesPerLeafPage = s.LeafPages == 0 ? 0 : (double)s.Entries / s.LeafPages;
+        return $"PageSize {s.PageSize}B, BTreeDepth {s.BTreeDepth}, " +
+            $"BranchPages {s.BranchPages:N0}, LeafPages {s.LeafPages:N0}, OverflowPages {s.OverflowPages:N0}, " +
+            $"Entries {s.Entries:N0}, avg {avgEntriesPerLeafPage:F1} entries/leaf-page, " +
+            $"~{FormatBytes(dataPages * s.PageSize)} from page count";
+    }
 
     private static string FormatBytes(long bytes) => $"{bytes / (1024.0 * 1024 * 1024):F2} GiB";
 

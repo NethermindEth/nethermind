@@ -737,6 +737,7 @@
         "dependencies": {
           "LightningDB": "[0.23.0, )",
           "Nethermind.Api": "[2.1.0-preview, )",
+          "Nethermind.Blockchain": "[2.1.0-preview, )",
           "Nethermind.Config": "[2.1.0-preview, )",
           "Nethermind.Core": "[2.1.0-preview, )",
           "Nethermind.Db": "[2.1.0-preview, )",
