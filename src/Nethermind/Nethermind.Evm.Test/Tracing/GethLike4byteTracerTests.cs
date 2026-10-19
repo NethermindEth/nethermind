@@ -1,8 +1,11 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Text;
+using System.Text.Json;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Precompiles;
@@ -10,6 +13,7 @@ using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.FourByte;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
+using Nethermind.Serialization.Json;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test.Tracing;
@@ -28,7 +32,7 @@ public class GethLike4byteTracerTests : VirtualMachineTestsBase
         tracer.ReportAction(100, UInt256.Zero, TestItem.AddressA, TestItem.AddressB, default, ExecutionType.TRANSACTION);
         tracer.ReportAction(50, UInt256.Zero, TestItem.AddressB, TestItem.AddressC,
             new byte[] { 1, 2, 3, 4 }, callType, precompile);
-        Dictionary<string, int> result = (Dictionary<string, int>)tracer.BuildResult().CustomTracerResult!.Value!;
+        Dictionary<string, int> result = ToDictionary(tracer.BuildResult());
 
         using (Assert.EnterMultipleScope())
         {
@@ -53,18 +57,28 @@ public class GethLike4byteTracerTests : VirtualMachineTestsBase
         tracer.ReportAction(100, UInt256.Zero, TestItem.AddressA, TestItem.AddressB, longInput, ExecutionType.TRANSACTION);
         tracer.ReportAction(50, UInt256.Zero, TestItem.AddressB, TestItem.AddressC, new byte[] { 0xde, 0xad, 0xbe, 0xef }, ExecutionType.CALL);
         tracer.ReportAction(25, UInt256.Zero, TestItem.AddressC, TestItem.AddressB, longInput, ExecutionType.CALL);
-        Dictionary<string, int> result = (Dictionary<string, int>)tracer.BuildResult().CustomTracerResult!.Value!;
+        tracer.ReportAction(10, UInt256.Zero, TestItem.AddressB, TestItem.AddressC, new byte[] { 0, 0, 0, 1, 0 }, ExecutionType.CALL);
 
-        Assert.That(result, Is.EqualTo(new Dictionary<string, int>
-        {
-            { "0xdeadbeef-1234", 2 },
-            { "0xdeadbeef-0", 1 }
-        }));
+        Assert.That(Serialize(tracer.BuildResult()), Is.EqualTo("""{"0xdeadbeef-1234":2,"0xdeadbeef-0":1,"0x00000001-1":1}"""));
+    }
+
+    [Test]
+    public void FourByteId_formats_the_longest_id_within_the_key_buffer()
+    {
+        Span<byte> key = stackalloc byte[FourByteId.MaxUtf8Length];
+        int length = new FourByteId(uint.MaxValue, int.MaxValue).FormatUtf8(key);
+
+        Assert.That(Encoding.UTF8.GetString(key[..length]), Is.EqualTo("0xffffffff-2147483647"));
     }
 
     [TestCaseSource(nameof(FourByteTracerTests))]
     public Dictionary<string, int>? four_byte_tracer_executes_correctly(byte[] code, byte[]? input) =>
-        (Dictionary<string, int>)ExecuteAndTrace(code, input).CustomTracerResult?.Value;
+        ToDictionary(ExecuteAndTrace(code, input));
+
+    private static string Serialize(GethLikeTxTrace trace) => new EthereumJsonSerializer().Serialize(trace.CustomTracerResult);
+
+    private static Dictionary<string, int> ToDictionary(GethLikeTxTrace trace) =>
+        JsonSerializer.Deserialize<Dictionary<string, int>>(Serialize(trace))!;
 
     private GethLikeTxTrace ExecuteAndTrace(
         byte[] code,

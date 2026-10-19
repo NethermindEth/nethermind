@@ -6,7 +6,6 @@ using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
-using Nethermind.Core.Extensions;
 using Nethermind.Evm;
 using Nethermind.Int256;
 
@@ -50,7 +49,7 @@ public sealed class Native4ByteTracer : GethLikeNativeTxTracer
         GethLikeTxTrace result = base.BuildResult();
 
         result.TxHash = _transaction.Hash;
-        result.CustomTracerResult = new GethLikeCustomTrace { Value = FormatIds() };
+        result.CustomTracerResult = new GethLikeCustomTrace { Value = new FourByteIdCounts(_4ByteIds) };
 
         return result;
     }
@@ -91,7 +90,7 @@ public sealed class Native4ByteTracer : GethLikeNativeTxTracer
     /*
      * Store4ByteIds counts the occurrences of 4byteId keys and stores them in a dictionary.
      * Each 4byteId key is composed of the function signature along with the size of the supplied call data.
-     * The key is formatted only once per distinct id, when the result is built.
+     * The key is written as UTF-8 only when the result is serialized.
      *
      * 4byteId format: SELECTOR-CALLDATASIZE
      * example 4byteId: 0x27dc297e-128
@@ -100,33 +99,5 @@ public sealed class Native4ByteTracer : GethLikeNativeTxTracer
     {
         FourByteId id = new(BinaryPrimitives.ReadUInt32BigEndian(input.Span), size);
         CollectionsMarshal.GetValueRefOrAddDefault(_4ByteIds, id, out _) += 1;
-    }
-
-    private Dictionary<string, int> FormatIds()
-    {
-        Dictionary<string, int> ids = new(_4ByteIds.Count);
-        foreach (KeyValuePair<FourByteId, int> entry in _4ByteIds)
-        {
-            ids.Add(entry.Key.ToString(), entry.Value);
-        }
-
-        return ids;
-    }
-
-    private readonly record struct FourByteId(uint Selector, int Size)
-    {
-        private const int SelectorChars = 2 + sizeof(uint) * 2;
-
-        public override string ToString() =>
-            string.Create(SelectorChars + 1 + GetDigitsBase10(Size), this, static (span, id) =>
-            {
-                Span<byte> selector = stackalloc byte[sizeof(uint)];
-                BinaryPrimitives.WriteUInt32BigEndian(selector, id.Selector);
-                Bytes.OutputBytesToCharHex(ref MemoryMarshal.GetReference(selector), sizeof(uint), ref MemoryMarshal.GetReference(span), true, 0);
-                span[SelectorChars] = '-';
-                id.Size.TryFormat(span[(SelectorChars + 1)..], out _);
-            });
-
-        private static int GetDigitsBase10(int n) => n == 0 ? 1 : (int)Math.Floor(Math.Log10(Math.Abs(n)) + 1);
     }
 }

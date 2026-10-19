@@ -1,8 +1,10 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Buffers;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Threading;
 using Nethermind.Core;
@@ -590,12 +592,12 @@ public class GethLikeTxMemoryTracerTests : GethLikeTracerTestsBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(call.ReturnData, Is.Null, "no return data before the call executes");
-            Assert.That(topLevelStop.ReturnData, Is.EqualTo($"0x{word}"), "return data visible after the inner call returns");
+            Assert.That(topLevelStop.ReturnData?.ToArray(), Is.EqualTo(Bytes.FromHexString(word)), "return data visible after the inner call returns");
         }
     }
 
     [Test]
-    public void Unchanged_returndata_shares_one_hex_string_across_opcodes()
+    public void Unchanged_returndata_shares_one_copy_across_opcodes()
     {
         const string word = "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff";
         const string otherWord = "ffeeddccbbaa99887766554433221100ffeeddccbbaa99887766554433221100";
@@ -615,15 +617,22 @@ public class GethLikeTxMemoryTracerTests : GethLikeTracerTestsBase
 
         GethLikeTxTrace trace = ExecuteAndTrace(GethTraceOptions.Default with { EnableReturnData = true }, code);
 
-        GethTxTraceEntry[] firstReturn = trace.Entries.Where(e => e.Depth == 1 && e.ReturnData == $"0x{word}").ToArray();
+        byte[] wordBytes = Bytes.FromHexString(word);
+        GethTxTraceEntry[] firstReturn = trace.Entries.Where(e => e.Depth == 1 && e.ReturnData is { } data && data.Span.SequenceEqual(wordBytes)).ToArray();
         GethTxTraceEntry topLevelStop = trace.Entries.Last(e => e.Opcode == "STOP" && e.Depth == 1);
+        string json = new EthereumJsonSerializer().Serialize(trace);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(firstReturn, Has.Length.GreaterThan(1));
-            Assert.That(firstReturn.All(e => ReferenceEquals(e.ReturnData, firstReturn[0].ReturnData)), Is.True);
-            Assert.That(topLevelStop.ReturnData, Is.EqualTo($"0x{otherWord}"));
+            Assert.That(firstReturn.All(e => ReturnDataArray(e) == ReturnDataArray(firstReturn[0])), Is.True);
+            Assert.That(topLevelStop.ReturnData?.ToArray(), Is.EqualTo(Bytes.FromHexString(otherWord)));
+            Assert.That(json, Does.Contain($"\"returnData\":\"0x{word}\""));
+            Assert.That(json, Does.Contain($"\"returnData\":\"0x{otherWord}\""));
         }
+
+        static byte[]? ReturnDataArray(GethTxTraceEntry entry) =>
+            MemoryMarshal.TryGetArray(entry.ReturnData!.Value, out ArraySegment<byte> segment) ? segment.Array : null;
     }
 
     [Test]

@@ -316,6 +316,28 @@ public class GethLikeTxFileTracerTests : GethLikeTracerTestsBase
         }
     }
 
+    [Test]
+    public void Dispose_detaches_the_reused_entry_from_the_pooled_buffers()
+    {
+        (Block block, Transaction transaction) = PrepareTx(Activation, 100000UL, GetBytecode());
+        IReleaseSpec spec = SpecProvider.GetSpec(block.Header);
+        GethTxFileTraceEntry? lastEntry = null;
+        GethLikeTxFileTracer tracer = new(e => lastEntry = e, GethTraceOptions.Default with { EnableMemory = true });
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, spec), tracer);
+        tracer.BuildResult();
+
+        bool hadSnapshots = lastEntry!.Stack is not null && lastEntry.Memory is not null;
+        tracer.Dispose();
+        tracer.Dispose();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(hadSnapshots, Is.True);
+            Assert.That(lastEntry.Stack, Is.Null);
+            Assert.That(lastEntry.Memory, Is.Null);
+        }
+    }
+
     /// <summary>
     /// Clones the specified trace entry as <see cref="GethLikeTxFileTracer"/>
     /// reuses the same instance for all entries.

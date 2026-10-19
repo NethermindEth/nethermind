@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -78,15 +79,14 @@ public class GethLikeTxFileTracer : GethLikeTxTracer<GethTxFileTraceEntry>
         if (_captureStopped) CurrentTraceEntry = null;
     }
 
-    // The entry is written to the sink before the next opcode starts, so the snapshots can live in buffers reused across opcodes.
+    // The entry is written to the sink before the next opcode starts, so the snapshots can live in pooled buffers reused
+    // across opcodes. The buffers go back to the pool on Dispose.
     public override void SetOperationStack(TraceStack stack)
     {
         if (CurrentTraceEntry is null) return;
 
         int length = stack.RawByteLength;
-        if (_stackBuffer.Length < length)
-            _stackBuffer = new byte[Math.Max(length, Math.Min(Math.Max(_stackBuffer.Length * 2, MinStackBufferSize), EvmStack.MaxStackSize * EvmStack.WordSize))];
-
+        EnsureCapacity(ref _stackBuffer, length, MinStackBufferSize);
         stack.CopyRawBytesTo(_stackBuffer);
         CurrentTraceEntry.Stack = _stackBuffer.AsMemory(0, length);
     }
@@ -96,11 +96,39 @@ public class GethLikeTxFileTracer : GethLikeTxTracer<GethTxFileTraceEntry>
         if (!IsTracingFullMemory || CurrentTraceEntry is null) return;
 
         int length = memoryTrace.RawWordByteLength;
-        if (_memoryBuffer.Length < length)
-            _memoryBuffer = new byte[Math.Max(length, Math.Max(_memoryBuffer.Length * 2, MinMemoryBufferSize))];
-
+        EnsureCapacity(ref _memoryBuffer, length, MinMemoryBufferSize);
         memoryTrace.CopyRawWordBytesTo(_memoryBuffer);
         CurrentTraceEntry.Memory = _memoryBuffer.AsMemory(0, length);
+    }
+
+    public override void Dispose()
+    {
+        if (_reusableEntry is not null)
+        {
+            _reusableEntry.Stack = default;
+            _reusableEntry.Memory = default;
+        }
+
+        ReturnBuffer(ref _stackBuffer);
+        ReturnBuffer(ref _memoryBuffer);
+        base.Dispose();
+    }
+
+    private static void EnsureCapacity(ref byte[] buffer, int length, int minLength)
+    {
+        if (buffer.Length >= length) return;
+
+        byte[] previous = buffer;
+        buffer = ArrayPool<byte>.Shared.Rent(Math.Max(length, minLength));
+        if (previous.Length != 0) ArrayPool<byte>.Shared.Return(previous);
+    }
+
+    private static void ReturnBuffer(ref byte[] buffer)
+    {
+        if (buffer.Length == 0) return;
+
+        ArrayPool<byte>.Shared.Return(buffer);
+        buffer = [];
     }
 
     public override void MarkAsSuccess(Address recipient, in GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
