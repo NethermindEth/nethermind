@@ -430,6 +430,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             Fuse<BinaryStep<SubtractOperation>, NotStep>(handlers, paired, Instruction.SUB, Instruction.NOT);
             Fuse<NotStep, BinaryStep<AndOperation>>(handlers, paired, Instruction.NOT, Instruction.AND);
             Fuse<NotStep, DupStep<EvmInstructions.Op2>>(handlers, paired, Instruction.NOT, Instruction.DUP2);
+            Fuse<DupStep<EvmInstructions.Op1>, DupStep<EvmInstructions.Op1>>(handlers, paired, Instruction.DUP1, Instruction.DUP1);
+            Fuse<DupStep<EvmInstructions.Op1>, DupStep<EvmInstructions.Op3>>(handlers, paired, Instruction.DUP1, Instruction.DUP3);
+            Fuse<DupStep<EvmInstructions.Op1>, SwapStep<EvmInstructions.Op2>>(handlers, paired, Instruction.DUP1, Instruction.SWAP2);
         }
 
         /// <summary>Installs <see cref="ExecutePair{TFirst, TSecond}"/> for <paramref name="first"/> followed by <paramref name="second"/>.</summary>
@@ -531,8 +534,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
         /// <summary>A stack step fused with an MSTORE after it, which stores the word below the step's result at it.</summary>
         /// <remarks>
-        /// With too little gas or stack for the step, it runs alone through its own handler. Once it has run, an MSTORE
-        /// that needs new backing or more gas than is left runs through the MSTORE handler, as it would unfused.
+        /// With too little stack or gas for both the step and the MSTORE, the step runs alone through its own handler. Once
+        /// it has run, an MSTORE that needs new backing or more gas than is left runs through the MSTORE handler, as it would
+        /// unfused.
         /// </remarks>
         [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.NoInlining)]
@@ -547,7 +551,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             ref byte sp)
             where TFirst : struct, IStackStep
         {
-            if (Fits<TFirst>(head, secondInputs: 2, secondGrowth: -2) && TryCharge(ref gas, TFirst.GasCost))
+            // The step and the MSTORE are charged in one test; an MSTORE that does not run here pays its share back.
+            if (Fits<TFirst>(head, secondInputs: 2, secondGrowth: -2) && TryCharge(ref gas, TFirst.GasCost + VeryLowGasCost.GasCost))
             {
                 ref ulong end = ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 0));
                 TFirst.Apply(ref end, ref ip);
@@ -555,28 +560,23 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 sp = ref Moved(ref sp, TFirst.Growth);
                 ip = ref Unsafe.Add(ref ip, TFirst.Length);
                 ref ulong offset = ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 1));
-                if ((Unsafe.Add(ref offset, 1) | Unsafe.Add(ref offset, 2) | Unsafe.Add(ref offset, 3) | (offset >> 32)) == 0 &&
-                    TryCharge(ref gas, VeryLowGasCost.GasCost))
+                if ((Unsafe.Add(ref offset, 1) | Unsafe.Add(ref offset, 2) | Unsafe.Add(ref offset, 3) | (offset >> 32)) == 0)
                 {
                     // Charged in the carried gas: a separate copy would take a callee-saved register.
                     ref byte destination = ref state.Memory.TryPrepareWordOverwrite(offset, ref gas);
                     if (!Unsafe.IsNullRef(ref destination))
                     {
                         // The value is the word below the offset; memory holds it big-endian.
-                        ZkEvmBitOperations.WriteUInt64BigEndian(ref destination, Unsafe.Add(ref offset, -1));
-                        ZkEvmBitOperations.WriteUInt64BigEndian(ref Unsafe.Add(ref destination, 8), Unsafe.Add(ref offset, -2));
-                        ZkEvmBitOperations.WriteUInt64BigEndian(ref Unsafe.Add(ref destination, 16), Unsafe.Add(ref offset, -3));
-                        ZkEvmBitOperations.WriteUInt64BigEndian(ref Unsafe.Add(ref destination, 24), Unsafe.Add(ref offset, -4));
+                        StoreBigEndian(ref destination, Unsafe.Add(ref offset, -1), Unsafe.Add(ref offset, -2), Unsafe.Add(ref offset, -3), Unsafe.Add(ref offset, -4));
                         head -= 2;
                         sp = ref Moved(ref sp, -2);
                         ip = ref Unsafe.Add(ref ip, 1);
                         nint next = handlers[PairAt(ref ip)];
                         return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
                     }
-
-                    gas += VeryLowGasCost.GasCost;
                 }
 
+                gas += VeryLowGasCost.GasCost;
                 nint store = Entry(&ExecuteMStoreInsideBacking);
                 return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, store);
             }
@@ -587,8 +587,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
         /// <summary>A stack step fused with an MLOAD after it, which replaces the step's result with the word at it.</summary>
         /// <remarks>
-        /// With too little gas or stack for the step, it runs alone through its own handler. Once it has run, an MLOAD
-        /// outside the active, initialized memory or with too little gas left runs through the MLOAD handler.
+        /// With too little stack or gas for both the step and the MLOAD, the step runs alone through its own handler. Once it
+        /// has run, an MLOAD outside the active, initialized memory runs through the MLOAD handler.
         /// </remarks>
         [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.NoInlining)]
@@ -603,7 +603,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             ref byte sp)
             where TFirst : struct, IStackStep
         {
-            if (Fits<TFirst>(head, secondInputs: 1, secondGrowth: 0) && TryCharge(ref gas, TFirst.GasCost))
+            // The step and the MLOAD are charged in one test; an MLOAD that does not run here pays its share back.
+            if (Fits<TFirst>(head, secondInputs: 1, secondGrowth: 0) && TryCharge(ref gas, TFirst.GasCost + VeryLowGasCost.GasCost))
             {
                 ref ulong end = ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 0));
                 TFirst.Apply(ref end, ref ip);
@@ -611,8 +612,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 sp = ref Moved(ref sp, TFirst.Growth);
                 ip = ref Unsafe.Add(ref ip, TFirst.Length);
                 ref ulong slot = ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 1));
-                if ((Unsafe.Add(ref slot, 1) | Unsafe.Add(ref slot, 2) | Unsafe.Add(ref slot, 3) | (slot >> 32)) == 0 &&
-                    TryCharge(ref gas, VeryLowGasCost.GasCost))
+                if ((Unsafe.Add(ref slot, 1) | Unsafe.Add(ref slot, 2) | Unsafe.Add(ref slot, 3) | (slot >> 32)) == 0)
                 {
                     ref byte source = ref state.Memory.GetActiveInitializedWord(slot);
                     if (!Unsafe.IsNullRef(ref source))
@@ -622,10 +622,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         nint next = handlers[PairAt(ref ip)];
                         return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
                     }
-
-                    gas += VeryLowGasCost.GasCost;
                 }
 
+                gas += VeryLowGasCost.GasCost;
                 nint load = Entry(&ExecuteMLoadFromActiveMemory);
                 return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, load);
             }
@@ -691,10 +690,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 {
                     // Memory holds the word big-endian.
                     ref ulong value = ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 1));
-                    ZkEvmBitOperations.WriteUInt64BigEndian(ref destination, Unsafe.Add(ref value, 3));
-                    ZkEvmBitOperations.WriteUInt64BigEndian(ref Unsafe.Add(ref destination, 8), Unsafe.Add(ref value, 2));
-                    ZkEvmBitOperations.WriteUInt64BigEndian(ref Unsafe.Add(ref destination, 16), Unsafe.Add(ref value, 1));
-                    ZkEvmBitOperations.WriteUInt64BigEndian(ref Unsafe.Add(ref destination, 24), value);
+                    StoreBigEndian(ref destination, Unsafe.Add(ref value, 3), Unsafe.Add(ref value, 2), Unsafe.Add(ref value, 1), value);
                     head--;
                     sp = ref Moved(ref sp, -1);
                     ip = ref Unsafe.Add(ref ip, 3);

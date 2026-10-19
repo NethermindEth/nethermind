@@ -14,7 +14,7 @@ public class NoBlockImprovementContextFactory : IBlockImprovementContextFactory
     public static NoBlockImprovementContextFactory Instance { get; } = new();
 
     public IBlockImprovementContext StartBlockImprovementContext(
-        Block currentBestBlock,
+        Block? currentBestBlock,
         BlockHeader parentHeader,
         PayloadAttributes payloadAttributes,
         DateTimeOffset startDateTime,
