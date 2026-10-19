@@ -348,7 +348,7 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
                 bool isValid = !hasBreachedProtocol && IsValidAccessList(blockInfo, accessListRlp, out errorMessage);
                 if (isValid)
                 {
-                    // Share the pruner's lock so deletion cannot pass between the cutoff check and write.
+                    // Share the store's range-deletion lock so deletion cannot pass between the cutoff check and write.
                     lock (_blockAccessListStore)
                     {
                         if (blockInfo.BlockNumber < SkippedBelow)
@@ -359,8 +359,7 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
 
                         _blockAccessListStore.Insert(blockInfo.BlockNumber, blockInfo.BlockHash, accessListRlp);
                     }
-                    _syncStatusList.MarkInserted(blockInfo.BlockNumber);
-                    _unavailable.TryRemove(blockInfo.BlockNumber, out _);
+                    MarkInserted(blockInfo.BlockNumber);
                     validResponsesCount++;
                 }
                 else
@@ -386,7 +385,7 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
             {
                 if (hasAccessListResponse && IsUnavailableEverywhere(blockInfo.BlockNumber, batch.ResponseSourcePeer?.SyncPeer))
                 {
-                    _syncStatusList.MarkInserted(blockInfo.BlockNumber);
+                    MarkInserted(blockInfo.BlockNumber);
                     gaps++;
                     lowestGap = ulong.Min(lowestGap, blockInfo.BlockNumber);
                     highestGap = ulong.Max(highestGap, blockInfo.BlockNumber);
@@ -414,7 +413,7 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
 
         lock (_unavailable)
         {
-            if (blockNumber < ulong.Max(SkippedBelow, _unavailableCutoff)) return false;
+            if (blockNumber < ulong.Max(SkippedBelow, _unavailableCutoff) || _syncStatusList.IsInserted(blockNumber)) return false;
 
             HashSet<PublicKey> peers = _unavailable.GetOrAdd(blockNumber, static _ => []);
             peers.Add(nodeId);
@@ -458,9 +457,17 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
 
     private void MarkSkipped(ulong blockNumber)
     {
-        _syncStatusList.MarkInserted(blockNumber);
-        _unavailable.TryRemove(blockNumber, out _);
+        MarkInserted(blockNumber);
         _syncReport.FastBlockAccessLists.IncrementSkipped();
+    }
+
+    private void MarkInserted(ulong blockNumber)
+    {
+        lock (_unavailable)
+        {
+            _syncStatusList.MarkInserted(blockNumber);
+            _unavailable.TryRemove(blockNumber, out _);
+        }
     }
 
     private void LogPostProcessingBatchInfo(BlockAccessListsSyncBatch batch, int validResponsesCount)

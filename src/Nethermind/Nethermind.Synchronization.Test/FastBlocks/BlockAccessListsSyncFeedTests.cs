@@ -472,6 +472,34 @@ public class BlockAccessListsSyncFeedTests
         Assert.That(_feed.UnavailableHeightsCount, Is.Zero);
     }
 
+    [Test]
+    public async Task Does_not_track_unavailable_height_inserted_during_response_handling()
+    {
+        SetUpThreeBlockFeed();
+        _blockTree.Head.Returns(Build.A.Block.WithNumber(100).TestObject);
+        using BlockAccessListsSyncBatch requested = (await _feed.PrepareRequest())!;
+        BlockInfo blockInfo = requested.Infos.OfType<BlockInfo>().Single(static info => info.BlockNumber == 2);
+        BlockAccessListsSyncBatch available = new([blockInfo]) { Response = BuildBlockAccessLists(EmptyBlockAccessList) };
+        _historyPruner.GetRetentionBlocks(Arg.Any<ulong>()).Returns(_ =>
+        {
+            _feed.HandleResponse(available);
+            return 0UL;
+        });
+        BlockAccessListsSyncBatch unavailable = new([blockInfo])
+        {
+            Response = BuildBlockAccessLists((byte[]?)null),
+            ResponseSourcePeer = CreateSession(TestItem.PublicKeyA)
+        };
+
+        _feed.HandleResponse(unavailable);
+
+        using (Assert.EnterMultipleScope())
+        {
+            _blockAccessListStore.Received(1).Insert(2UL, blockInfo.BlockHash, EmptyBlockAccessList);
+            Assert.That(_feed.UnavailableHeightsCount, Is.Zero);
+        }
+    }
+
     [TestCase(1, false, ExpectedResult = false)]
     [TestCase(2, false, ExpectedResult = false)]
     [TestCase(BlockAccessListsSyncFeed.MaxUnavailableResponses, false, ExpectedResult = true)]

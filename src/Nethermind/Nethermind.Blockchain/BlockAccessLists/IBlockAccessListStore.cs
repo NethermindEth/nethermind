@@ -11,6 +11,12 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Blockchain.BlockAccessLists;
 
+/// <summary>Stores block access lists by block number and hash.</summary>
+/// <remarks>
+/// Registered as one shared instance. Sync holds this instance's monitor around its pruning-cutoff check and insert;
+/// implementations must hold the same monitor while deleting a range, releasing it before storage reclaim.
+/// Decorators must preserve this synchronization contract.
+/// </remarks>
 public interface IBlockAccessListStore
 {
     void InsertFromBlock(Block block)

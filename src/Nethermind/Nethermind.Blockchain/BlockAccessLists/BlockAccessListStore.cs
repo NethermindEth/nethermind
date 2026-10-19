@@ -137,13 +137,16 @@ public class BlockAccessListStore : IBlockAccessListStore
     /// deferred overlay for the range under its own lock so a queued write cannot resurrect one.</summary>
     public void DeleteRange(ulong fromInclusive, ulong toExclusive)
     {
-        if (_pending is not null)
+        lock (this)
         {
-            _pending.RemoveRange(fromInclusive, toExclusive, () => _balDb.DeleteBlockNumberRange(fromInclusive, toExclusive, "block access list"));
-        }
-        else
-        {
-            _balDb.DeleteBlockNumberRange(fromInclusive, toExclusive, "block access list");
+            if (_pending is not null)
+            {
+                _pending.RemoveRange(fromInclusive, toExclusive, () => _balDb.DeleteBlockNumberRange(fromInclusive, toExclusive, "block access list"));
+            }
+            else
+            {
+                _balDb.DeleteBlockNumberRange(fromInclusive, toExclusive, "block access list");
+            }
         }
 
         _balDb.ReclaimBlockNumberRange(fromInclusive, toExclusive);
