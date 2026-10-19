@@ -99,8 +99,8 @@ internal sealed class RollupXStreamingFinalizer
                 throw new EezSettlementException("Finalization has no exact claimed execution window.");
             BlockHeader parent = Rlp.Decode<BlockHeader>(authorization.ParentHeader.ToByteArray())
                 ?? throw new EezSettlementException("Authorized predecessor header is missing.");
-            ValidateRange(window, input, authorization, parent);
-            return _execution.Validate(window, input, parent, authorization.DescendantSeed, cancellation);
+            ValidateRange(window, input, parent);
+            return _execution.Validate(window, input, parent, authorization.DescendantSeed, authorization.RegistryRoot, cancellation);
         }
         catch (Exception exception) when (exception is EezSettlementException or EezStatelessException or WitnessValidationException or RlpException)
         {
@@ -108,7 +108,7 @@ internal sealed class RollupXStreamingFinalizer
         }
     }
 
-    private void ValidateRange(AdmittedWindow window, RollupXSettlementInput input, RollupXAuthorization authorization, BlockHeader parent)
+    private void ValidateRange(AdmittedWindow window, RollupXSettlementInput input, BlockHeader parent)
     {
         RollupXSchedule schedule = _rules.Schedule!;
         if (parent.Number == ulong.MaxValue || window.FromBlock != parent.Number + 1 || window.ToBlock < window.FromBlock ||
@@ -117,7 +117,5 @@ internal sealed class RollupXStreamingFinalizer
             throw new EezSettlementException("Settlement range is outside the authenticated Sync grid.");
         if (kind == RollupXAnchorKind.CatchUp && input.Stream.Messages.Length != 0)
             throw new EezSettlementException("Catch-up settlement carries cross-chain actions.");
-        if (authorization.RegistryRoot != parent.Hash)
-            throw new EezSettlementException("Registry root needs independently validated consumed-prefix evidence.");
     }
 }

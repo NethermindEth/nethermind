@@ -29,7 +29,7 @@ internal sealed class RollupXSettlementExecution(ISpecProvider specs, EezChainRu
     }
 
     internal ValueHash256 Validate(AdmittedWindow window, RollupXSettlementInput input, BlockHeader parent,
-        Hash256 descendantSeed, CancellationToken cancellation)
+        Hash256 descendantSeed, Hash256 registryRoot, CancellationToken cancellation)
     {
         cancellation.ThrowIfCancellationRequested();
         if (window.Blocks.Length == 0 || window.Claims.Length == 0 || parent.Number == ulong.MaxValue ||
@@ -77,6 +77,15 @@ internal sealed class RollupXSettlementExecution(ISpecProvider specs, EezChainRu
         RollupXObservationClaim[] claims = RollupXSettlementVerifier.Verify(input.Batch, input.Stream, executed, context.RollupId, cancellation);
         _observations.Verify(window.Blocks[^1], executed[^1], claims, cancellation);
         cancellation.ThrowIfCancellationRequested();
+        ValidateRegistryRoot(parent, executed[^1], registryRoot);
         return RollupXPostBatchProfile.PublicInputsHash(input.Batch, context.RollupId, context.VerificationKey, input.BlobHashes, input.Target);
+    }
+
+    private static void ValidateRegistryRoot(BlockHeader parent, EezStatelessBlockResult terminal, Hash256 registryRoot)
+    {
+        if (registryRoot == parent.Hash) return;
+        foreach (EezTransactionCheckpoint checkpoint in terminal.Checkpoints)
+            if (checkpoint.BlockHash == registryRoot) return;
+        throw new EezSettlementException("Registry root is not the authenticated parent or a validated terminal checkpoint.");
     }
 }

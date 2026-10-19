@@ -204,10 +204,10 @@ public partial class RollupXStreamingConformanceTests
             [(new Hash256(block.Hash.Span), new Hash256(block.ParentHash.Span))]);
         RollupXSettlementExecution execution = new(specs, rules, context, LimboLogs.Instance);
         Hash256 seed = parent.MixHash!;
-        Assert.That(execution.Validate(window, input, parent, seed, CancellationToken.None), Is.EqualTo(new ValueHash256(RecordedProof(document.RootElement).Proof.PublicInputsHash.Span)),
+        Assert.That(execution.Validate(window, input, parent, seed, parent.Hash!, CancellationToken.None), Is.EqualTo(new ValueHash256(RecordedProof(document.RootElement).Proof.PublicInputsHash.Span)),
             "precondition: the original seed reproduces the independent one-block digest");
         Assert.That(seed, Is.Not.EqualTo(TestItem.KeccakA), "precondition: the mutation changes the trusted descendant seed");
-        Assert.That(() => execution.Validate(window, input, parent, TestItem.KeccakA, CancellationToken.None), Throws.TypeOf<EezSettlementException>(),
+        Assert.That(() => execution.Validate(window, input, parent, TestItem.KeccakA, parent.Hash!, CancellationToken.None), Throws.TypeOf<EezSettlementException>(),
             "valid execution cannot be signed against a different trusted descendant seed");
     }
 

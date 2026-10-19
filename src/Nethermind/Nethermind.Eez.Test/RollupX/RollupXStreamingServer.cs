@@ -55,21 +55,21 @@ internal sealed class RollupXStreamingServer : IAsyncDisposable
     private Uri _plainAddress = null!;
     internal BackendAdmission Admission { get; private set; } = null!;
 
-    internal static async Task<RollupXStreamingServer> StartProduction(string directory, JsonElement scenario, bool reorgBeforeSigning = false)
+    internal static async Task<RollupXStreamingServer> StartProduction(string directory, JsonElement scenario, bool reorgBeforeSigning = false, Hash256? registryRoot = null)
     {
         RollupXStreamingServer server = new();
-        try { await server.StartCore(directory, scenario, reorgBeforeSigning, false); return server; }
+        try { await server.StartCore(directory, scenario, reorgBeforeSigning, false, registryRoot); return server; }
         catch { await server.DisposeAsync(); throw; }
     }
 
     internal static async Task<RollupXStreamingServer> StartFixture(string directory, JsonElement scenario)
     {
         RollupXStreamingServer server = new();
-        try { await server.StartCore(directory, scenario, false, true); return server; }
+        try { await server.StartCore(directory, scenario, false, true, null); return server; }
         catch { await server.DisposeAsync(); throw; }
     }
 
-    private async Task StartCore(string directory, JsonElement scenario, bool reorgBeforeSigning, bool syntheticAuthority)
+    private async Task StartCore(string directory, JsonElement scenario, bool reorgBeforeSigning, bool syntheticAuthority, Hash256? registryRoot)
     {
         await KzgPolynomialCommitments.InitializeAsync();
         string fixture = scenario.GetProperty("fixture").GetString()!;
@@ -89,7 +89,7 @@ internal sealed class RollupXStreamingServer : IAsyncDisposable
         EezSettlementContext context = new(identity.RootElement.GetProperty("rollup_id").GetUInt64(), specs.ChainId,
             new Address(identity.RootElement.GetProperty("proof_system").GetString()!),
             new ValueHash256(identity.RootElement.GetProperty("vkey").GetString()!), rules.Schedule!.BlockIntervalSeconds);
-        FixtureAuthority authority = new(transcript.RootElement, context, key.Address, rules.Schedule, reorgBeforeSigning);
+        FixtureAuthority authority = new(transcript.RootElement, context, key.Address, rules.Schedule, reorgBeforeSigning, registryRoot);
         WebApplicationBuilder rpc = WebApplication.CreateSlimBuilder();
         rpc.Logging.ClearProviders();
         rpc.WebHost.ConfigureKestrel(kestrel => kestrel.Listen(IPAddress.Loopback, 0));
@@ -206,7 +206,7 @@ internal sealed class RollupXStreamingServer : IAsyncDisposable
             ValueHash256 digest;
             try
             {
-                digest = await Task.Run(() => _execution.Validate(window, input, parent, parent.MixHash!, cancellation), CancellationToken.None);
+                digest = await Task.Run(() => _execution.Validate(window, input, parent, parent.MixHash!, parent.Hash!, cancellation), CancellationToken.None);
             }
             catch (Exception exception) when (exception is EezSettlementException or EezStatelessException or WitnessValidationException or RlpException)
             {
@@ -224,10 +224,11 @@ internal sealed class RollupXStreamingServer : IAsyncDisposable
         private readonly RollupXSchedule _schedule;
         private readonly L1PostingContext _target;
         private readonly bool _reorgBeforeSigning;
+        private readonly Hash256 _registryRoot;
         private int _targetReads;
         internal Hash256 Genesis { get; }
 
-        internal FixtureAuthority(JsonElement baseline, EezSettlementContext context, Address signer, RollupXSchedule schedule, bool reorgBeforeSigning)
+        internal FixtureAuthority(JsonElement baseline, EezSettlementContext context, Address signer, RollupXSchedule schedule, bool reorgBeforeSigning, Hash256? registryRoot)
         {
             _reorgBeforeSigning = reorgBeforeSigning;
             _context = context;
@@ -236,6 +237,7 @@ internal sealed class RollupXStreamingServer : IAsyncDisposable
             List<ClientFrame> requests = baseline.GetProperty("events").EnumerateArray().Where(static item => item.GetProperty("direction").GetString() == "client")
                 .Select(static item => ClientFrame.Parser.ParseFrom(Convert.FromHexString(item.GetProperty("protobuf_hex").GetString()!))).ToList();
             Genesis = new Hash256(requests.Single(static frame => frame.Begin is not null).Begin.AnchorHash.Span);
+            _registryRoot = registryRoot ?? Genesis;
             _target = requests.Single(static frame => frame.Finalize is not null).Finalize.Settlement.PostingContext;
             foreach (ClientFrame frame in requests)
             {
@@ -292,7 +294,7 @@ internal sealed class RollupXStreamingServer : IAsyncDisposable
             {
                 byte[] registration = new byte[96];
                 TestItem.AddressB.Bytes.CopyTo(registration.AsSpan(12));
-                Genesis.Bytes.CopyTo(registration.AsSpan(32));
+                _registryRoot.Bytes.CopyTo(registration.AsSpan(32));
                 return registration.ToHexString(true);
             }
             if (Selector(data, "verificationKey(address)") && to == TestItem.AddressB) return _context.VerificationKey.Bytes.ToHexString(true);
