@@ -379,7 +379,7 @@ public class EthereumRunnerTests
     [Test]
     public async Task Startup_pipeline_warmup_restores_live_metrics_after_warm_reports()
     {
-        // A processing live chain would also publish the gauges, from its own unordered thread-pool reports.
+        // A processing live chain would also publish the height gauges, from its own unordered thread-pool reports.
         IBlockTree live = Substitute.For<IBlockTree>();
         live.Head.Returns(Nethermind.Core.Test.Builders.Build.A.Block.WithNumber(4).TestObject);
         using ManualResetEventSlim reporting = new();
