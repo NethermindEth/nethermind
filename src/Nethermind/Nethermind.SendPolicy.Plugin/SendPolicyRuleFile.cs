@@ -99,7 +99,7 @@ public sealed class SendPolicyRuleFile
         {
             try
             {
-                using Stream stream = fileSystem.File.Open(path, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete);
+                using Stream stream = fileSystem.File.Open(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
                 using StreamReader reader = new(stream);
                 return new FileSnapshot(reader.ReadToEnd(), null);
             }

@@ -145,16 +145,17 @@ public class SendPolicyRuleFileTests
         }
     }
 
-    [Test, Platform("Win")]
-    public void Rule_file_open_for_deletion_remains_readable()
+    [TestCase(FileAccess.Read, FileOptions.DeleteOnClose, TestName = "Rule_file_open_for_deletion_remains_readable")]
+    [TestCase(FileAccess.Write, FileOptions.None, TestName = "Rule_file_open_for_writing_remains_readable")]
+    [Platform("Win")]
+    public void Rule_file_held_open_by_another_handle_remains_readable(FileAccess access, FileOptions options)
     {
         using TempPath directory = WriteRules();
         string path = RulesPath(directory);
         SendPolicyRuleFile file = Open(path);
         SendPolicyRules rules = file.Current;
 
-        using (new FileStream(path, FileMode.Open, FileAccess.Read,
-            FileShare.Read | FileShare.Delete, 4096, FileOptions.DeleteOnClose))
+        using (new FileStream(path, FileMode.Open, access, FileShare.Read | FileShare.Delete, 4096, options))
         {
             Assert.That(file.Current, Is.SameAs(rules));
         }
