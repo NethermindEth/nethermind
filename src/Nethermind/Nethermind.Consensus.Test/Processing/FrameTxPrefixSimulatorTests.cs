@@ -91,6 +91,24 @@ public class FrameTxPrefixSimulatorTests
         }
     }
 
+    // Admission reads this to defer before verifying signatures, so it must flip with the budget itself.
+    [Test]
+    public void IsHeadBudgetSpent_FollowsTheHeadBudget()
+    {
+        IReadOnlyTxProcessingEnvFactory envFactory = Substitute.For<IReadOnlyTxProcessingEnvFactory>();
+        using FrameTxPrefixSimulator simulator = Create(envFactory, out _, budgetPerHeadMs: 1);
+        bool spentBefore = simulator.IsHeadBudgetSpent;
+
+        // The first simulation overruns the 1 ms budget.
+        simulator.Simulate(FrameTx());
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(spentBefore, Is.False);
+            Assert.That(simulator.IsHeadBudgetSpent, Is.True);
+        }
+    }
+
     [Test]
     public void Simulate_LocalSubmission_IsExemptFromTheExhaustedHeadBudget()
     {

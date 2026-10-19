@@ -121,6 +121,26 @@ public sealed class CountingStreamPipeWriter : CountingWriter
     /// <remarks>Set when a write to the stream starts: a write that fails may already have written part of its data.</remarks>
     public bool MayHaveWrittenToStream { get; private set; }
 
+    internal bool IsCompleted => _isCompleted;
+
+    /// <summary>Discards unflushed data and restarts counting at <paramref name="writtenCount"/> so the writer can be reused.</summary>
+    internal void Reset(long writtenCount)
+    {
+        FlushInternal(writeToStream: false);
+        lock (_lockObject)
+        {
+            // A cancellation that raced the previous flush must not cancel the next one.
+            if (_internalTokenSource?.TryReset() == false)
+            {
+                _internalTokenSource.Dispose();
+                _internalTokenSource = null;
+            }
+        }
+
+        WrittenCount = writtenCount;
+        MayHaveWrittenToStream = false;
+    }
+
     /// <inheritdoc />
     public override void Advance(int bytes)
     {

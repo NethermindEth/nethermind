@@ -16,6 +16,7 @@ using Nethermind.Consensus.Stateless;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.SszRest;
+using Nethermind.Merge.Plugin.SszRest.Handlers;
 using NUnit.Framework;
 using System.Buffers.Binary;
 
@@ -353,6 +354,20 @@ public class SszCodecTests
         AssertCommonNewPayloadFields(
             decoded.ParentBeaconBlockRoot, TestItem.KeccakD,
             requests, executionRequest);
+    }
+
+    [Test]
+    public void DecodeNewPayload_v5_keeps_empty_block_access_list_present()
+    {
+        NewPayloadV5RequestWire wire = new()
+        {
+            ExecutionPayload = new SszExecutionPayloadV4(SszTestData.MakeV4Payload(blockAccessList: [], slotNumber: 0)),
+            ParentBeaconBlockRoot = TestItem.KeccakD,
+        };
+
+        NewPayloadV5RequestWire.Decode(NewPayloadV5RequestWire.Encode(wire), out NewPayloadV5RequestWire decoded);
+
+        Assert.That(decoded.ExecutionPayload.AsExecutionPayload().BlockAccessList, Is.Not.Null.And.Empty);
     }
 
     private static IEnumerable<TestCaseData> BufferConsistentEncodings()
@@ -912,6 +927,45 @@ public class SszCodecTests
         Assert.That(decodedStatusByte, Is.EqualTo(0x01), "INVALID encodes as status byte 0x01");
         Assert.That(witnessPresent, Is.False,
             "INVALID status must not carry a witness even when one was passed to the encoder");
+    }
+
+    public enum WitnessField { State, Codes, Headers }
+
+    private static IEnumerable<TestCaseData> WitnessBoundCases()
+    {
+        foreach (bool withinBound in new[] { true, false })
+        {
+            int excess = withinBound ? 0 : 1;
+            yield return new TestCaseData(WitnessField.State, 1, SszRestLimits.MaxBytesPerWitnessNode + excess, withinBound);
+            yield return new TestCaseData(WitnessField.Codes, 1, SszRestLimits.MaxBytesPerCode + excess, withinBound);
+            yield return new TestCaseData(WitnessField.Headers, 1, SszRestLimits.MaxBytesPerHeader + excess, withinBound);
+            yield return new TestCaseData(WitnessField.Headers, SszRestLimits.MaxWitnessHeaders + excess, 1, withinBound);
+        }
+    }
+
+    [TestCaseSource(nameof(WitnessBoundCases))]
+    public void EncodeNewPayloadWithWitnessResponse_enforces_witness_bounds(WitnessField field, int itemCount, int itemLength, bool withinBound)
+    {
+        ArrayPoolList<byte[]> items = new(itemCount);
+        for (int i = 0; i < itemCount; i++) items.Add(new byte[itemLength]);
+
+        using Witness witness = new()
+        {
+            State = field is WitnessField.State ? items : new ArrayPoolList<byte[]>(0),
+            Codes = field is WitnessField.Codes ? items : new ArrayPoolList<byte[]>(0),
+            Headers = field is WitnessField.Headers ? items : new ArrayPoolList<byte[]>(0),
+            Keys = new ArrayPoolList<byte[]>(0),
+        };
+        PayloadStatusV1 ps = new() { Status = PayloadStatus.Valid, LatestValidHash = TestItem.KeccakB };
+
+        void EncodeResponse() => Encode(
+            (ps, witness),
+            static (t, w) => SszCodec.EncodeNewPayloadWithWitnessResponse(t.Item1, t.Item2, w));
+
+        if (withinBound)
+            Assert.That(EncodeResponse, Throws.Nothing);
+        else
+            Assert.That(EncodeResponse, Throws.InstanceOf<InvalidOperationException>());
     }
 
     private static Witness MakeMinimalWitness() => new()

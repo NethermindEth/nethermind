@@ -27,6 +27,9 @@ public interface IFlatDbManager : IFlatCommitTarget
     /// <remarks>Read-only historical state cannot serve main block processing.</remarks>
     bool HasStateForBlock(in StateId stateId, ResourcePool.Usage usage) => HasStateForBlock(stateId);
 
+    /// <summary>Whether reads at <paramref name="stateId"/> come from flat history, which serves values but no state trie.</summary>
+    bool IsHistoricalState(in StateId stateId) => false;
+
     /// <summary>Drops every snapshot not on the ancestry of <paramref name="head"/> and releases the
     /// bundles cached over them.</summary>
     void DropStateNotReachableFrom(in StateId head);

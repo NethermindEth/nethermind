@@ -96,9 +96,8 @@ namespace Nethermind.State
         public bool TryGetAccount(Address address, out AccountStruct account)
         {
             // Note: This call is for compatibility with `IAccountStateProvider` and should not be called directly by VM. Because its slower.
-            account = _stateProvider.GetAccount(address)
-                .WithChangedStorageRoot(_persistentStorageProvider.GetStorageRoot(address))
-                .ToStruct();
+            Account stateAccount = _stateProvider.GetAccount(address);
+            account = new AccountStruct(stateAccount.Nonce, stateAccount.Balance, _persistentStorageProvider.GetStorageRoot(address), stateAccount.CodeHash);
 
             return !account.IsTotallyEmpty;
         }
@@ -395,13 +394,13 @@ namespace Nethermind.State
         }
 
         /// <inheritdoc/>
-        public void ApplyBal(ReadOnlyBlockAccessList bal)
+        public void ApplyBal(ReadOnlyBlockAccessList bal, CancellationToken cancellationToken = default)
         {
             GuardInScope();
             // The block's change record still feeds the cache write-back with what the BAL did not cover (AuRa's
             // contract rewrites and system accounts); only the BAL's own accounts leave it, now that the scope holds them.
             _stateProvider.ForgetBlockChanges(bal, _currentScope);
-            _currentScope.ApplyBal(bal);
+            _currentScope.ApplyBal(bal, cancellationToken);
             Reset(resetBlockChanges: false);
             _persistentStorageProvider.ForgetBlockChanges(bal);
         }
@@ -473,6 +472,7 @@ namespace Nethermind.State
             _localMetrics.Flush();
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public Snapshot TakeSnapshot(bool newTransactionStart = false)
         {
             DebugGuardInScope();

@@ -4,6 +4,7 @@
 using System;
 using System.Buffers;
 using System.Collections.Generic;
+using System.IO;
 using System.IO.Pipelines;
 using System.Linq;
 using System.Text.Json;
@@ -23,9 +24,12 @@ using Nethermind.Core.Resettables;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.IO;
 using Nethermind.Db;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Facade;
+using Nethermind.Facade.Proxy.Models.Simulate;
+using Nethermind.Facade.Simulate;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
@@ -37,6 +41,7 @@ using NSubstitute;
 using NSubstitute.ReturnsExtensions;
 using NUnit.Framework;
 using Newtonsoft.Json.Linq;
+using ResultType = Nethermind.Core.ResultType;
 
 namespace Nethermind.JsonRpc.Test.Modules;
 
@@ -116,13 +121,14 @@ public class DebugModuleTests
     }
 
     [Test]
-    public async Task DebugGetRawHeader_WhenBlockExists_ReturnsHeaderRlp()
+    public async Task DebugGetRawHeader_WhenHeaderExists_ReturnsHeaderRlpWithoutLoadingBlock()
     {
-        Block block = Build.A.Block.WithNumber(0).TestObject;
-        _debugBridge.GetBlock(new BlockParameter(0UL)).Returns(block);
+        BlockHeader header = Build.A.BlockHeader.WithNumber(0).TestObject;
+        _blockFinder.FindHeader(new BlockParameter(0UL)).Returns(header);
 
         using JsonRpcResponse response = await Request("debug_getRawHeader", "0x0");
-        Assert.That(RpcTest.AssertSuccess<ArrayPoolList<byte>>(response).AsSpan(), Is.SequenceEqualTo(new HeaderDecoder().Encode(block.Header).Bytes));
+        Assert.That(RpcTest.AssertSuccess<ArrayPoolList<byte>>(response).AsSpan(), Is.SequenceEqualTo(new HeaderDecoder().Encode(header).Bytes));
+        _debugBridge.DidNotReceiveWithAnyArgs().GetBlock(null!);
     }
 
     [TestCaseSource(nameof(RawBlockCases))]
@@ -156,24 +162,59 @@ public class DebugModuleTests
     }
 
     [Test]
-    public async Task DebugGetRawReceipts_WhenReceiptsExist_ReturnsHexArray()
+    public async Task DebugGetRawReceipts_WhenReceiptsExist_ReturnsHexArray([Values] bool byHash)
     {
         TxReceipt[] receipts = [Build.A.Receipt.TestObject, Build.A.Receipt.TestObject];
-        _debugBridge.GetReceiptsForBlock(new BlockParameter(1L)).Returns(receipts);
+        Block block = BlockAtNumberOne();
+        _debugBridge.GetReceiptsForBlock(block).Returns(receipts);
         RlpBehaviors behavior = (_specProvider.GetReceiptSpec(receipts[0].BlockNumber).IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None) | RlpBehaviors.SkipTypedWrapping;
         string expected = $"[\"{Rlp.Encode(receipts[0], behavior).Bytes.ToHexString(true)}\",\"{Rlp.Encode(receipts[1], behavior).Bytes.ToHexString(true)}\"]";
 
-        string serialized = await SerializedRequest("debug_getRawReceipts", "0x1");
+        // Only the plain hash lookup is stubbed, so honouring requireCanonical would find nothing; geth ignores it here.
+        object parameter = byHash ? new { blockHash = block.Hash, requireCanonical = true } : "0x1";
+        string serialized = await SerializedRequest("debug_getRawReceipts", parameter);
         Assert.That(serialized, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"result\":{expected},\"id\":67}}"));
     }
 
     [Test]
     public async Task DebugGetRawReceipts_WhenNoReceipts_ReturnsEmptyArray()
     {
-        _debugBridge.GetReceiptsForBlock(new BlockParameter(1L)).Returns([]);
+        _debugBridge.GetReceiptsForBlock(BlockAtNumberOne()).Returns([]);
 
         string serialized = await SerializedRequest("debug_getRawReceipts", "0x1");
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":[],\"id\":67}"));
+    }
+
+    // Matches geth: an unknown number has no block (null), while a hash is read directly and has no receipts ([]).
+    [TestCase(false, "null")]
+    [TestCase(true, "[]")]
+    public async Task DebugGetRawReceipts_WhenBlockUnknown_ReturnsGethResult(bool byHash, string expectedResult)
+    {
+        string serialized = await SerializedRequest("debug_getRawReceipts", byHash ? TestItem.KeccakA : "0x1");
+
+        Assert.That(serialized, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"result\":{expectedResult},\"id\":67}}"));
+        _debugBridge.DidNotReceiveWithAnyArgs().GetReceiptsForBlock(default!);
+    }
+
+    [Test]
+    public async Task DebugGetRawReceipts_WhenHistoryPruned_ReturnsPrunedHistoryError([Values] bool byHash)
+    {
+        _blockFinder.LowestServedBlock.Returns(2UL);
+        _blockFinder.Head.Returns(Build.A.Block.WithNumber(5).TestObject);
+        BlockHeader pruned = Build.A.BlockHeader.WithNumber(1).TestObject;
+        _blockFinder.FindHeader(new BlockParameter(pruned.Hash!)).Returns(pruned);
+
+        using JsonRpcResponse response = await Request("debug_getRawReceipts", byHash ? pruned.Hash! : "0x1");
+
+        Assert.That(RpcTest.AssertError(response).Code, Is.EqualTo(ErrorCodes.PrunedHistoryUnavailable));
+    }
+
+    private Block BlockAtNumberOne()
+    {
+        Block block = Build.A.Block.WithNumber(1).TestObject;
+        _blockFinder.FindBlock(new BlockParameter(1L)).Returns(block);
+        _blockFinder.FindBlock(block.Hash!, BlockTreeLookupOptions.None).Returns(block);
+        return block;
     }
 
     [TestCaseSource(nameof(RawMissingCases))]
@@ -494,6 +535,99 @@ public class DebugModuleTests
     }
 
     [Test]
+    public void DebugTraceCallMany_PinsValidatedHeader([Values] bool streaming, [Values] bool latest, [Values] bool withOverrides)
+    {
+        Block validated = Build.A.Block.WithNumber(1).TestObject;
+        Block replacement = Build.A.Block.WithNumber(1).WithExtraData([0x01]).TestObject;
+        BlockParameter selector = latest ? BlockParameter.Latest : new BlockParameter(1UL);
+        _jsonRpcConfig.EnableTracingStreamMode = streaming;
+        _blockFinder.Head.Returns(validated);
+        _blockFinder.FindHeader(Arg.Any<BlockParameter>()).Returns(validated.Header, replacement.Header);
+        _blockchainBridge.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(true);
+        _debugBridge.GetTransactionTrace(Arg.Any<Transaction>(), Arg.Any<BlockParameter>(),
+            Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>(), Arg.Any<Utf8JsonWriter?>(), Arg.Any<PipeWriter?>())
+            .Returns(new GethLikeTxTrace { ReturnValue = [] });
+        _debugBridge.GetBundleTraces(Arg.Any<TransactionBundle[]>(), Arg.Any<BlockParameter>(),
+            Arg.Any<ulong?>(), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>())
+            .Returns(Array.Empty<IEnumerable<GethLikeTxTrace>>());
+        _blockchainBridge.Simulate(Arg.Any<BlockHeader>(), Arg.Any<SimulatePayload<TransactionWithSourceDetails>>(),
+            Arg.Any<ISimulateBlockTracerFactory<GethLikeTxTrace>>(), Arg.Any<ulong>(), Arg.Any<CancellationToken>())
+            .Returns(new SimulateOutput<GethLikeTxTrace> { Items = [] });
+        TransactionBundle[] bundles = [new()
+        {
+            Transactions = [new LegacyTransactionForRpc { To = TestItem.AddressA }],
+            StateOverrides = withOverrides ? new() { [TestItem.AddressA] = new() { Nonce = 66 } } : null
+        }];
+
+        using ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> actual = CreateModule().debug_traceCallMany(bundles, selector);
+
+        Assert.That(actual.Result.ResultType, Is.EqualTo(ResultType.Success), actual.Result.Error);
+        if (actual.Data is GethLikeTxTraceStreamingBundleResult streamed)
+        {
+            using Utf8JsonWriter writer = new(new ArrayBufferWriter<byte>());
+            streamed.WriteAsJson(writer);
+        }
+        else
+        {
+            _ = actual.Data.ToArray();
+        }
+        if (withOverrides)
+        {
+            _blockchainBridge.Received(1).Simulate(Arg.Is<BlockHeader>(h => h.Hash == validated.Hash),
+                Arg.Any<SimulatePayload<TransactionWithSourceDetails>>(), Arg.Any<ISimulateBlockTracerFactory<GethLikeTxTrace>>(),
+                Arg.Any<ulong>(), Arg.Any<CancellationToken>());
+            _blockFinder.Received(1).FindHeader(Arg.Any<BlockParameter>());
+        }
+        else if (streaming)
+        {
+            _debugBridge.Received(1).GetTransactionTrace(Arg.Any<Transaction>(),
+                Arg.Is<BlockParameter>(p => p.BlockHash == validated.Hash), Arg.Any<CancellationToken>(),
+                Arg.Any<GethTraceOptions>(), Arg.Any<Utf8JsonWriter?>(), Arg.Any<PipeWriter?>());
+        }
+        else
+        {
+            _debugBridge.Received(1).GetBundleTraces(bundles, Arg.Is<BlockParameter>(p => p.BlockHash == validated.Hash),
+                Arg.Any<ulong?>(), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>());
+        }
+    }
+
+    [Test]
+    public void DebugTraceBlockByNumber_PinsValidatedHeaderHash([Values] bool streaming, [Values] bool latest)
+    {
+        Block parent = Build.A.Block.WithNumber(0).TestObject;
+        Block validated = Build.A.Block.WithNumber(1).WithParent(parent).TestObject;
+        Block replacement = Build.A.Block.WithNumber(1).WithParent(parent).WithExtraData([0x01]).TestObject;
+        BlockParameter selector = latest ? BlockParameter.Latest : new BlockParameter(1UL);
+        _jsonRpcConfig.EnableTracingStreamMode = streaming;
+        _blockFinder.Head.Returns(validated);
+        _blockFinder.FindHeader(selector).Returns(validated.Header);
+        _blockFinder.FindBlock(selector).Returns(replacement);
+        _blockFinder.FindBlock(validated.Hash!, validated.Number).Returns(validated);
+        _blockFinder.FindHeader(parent.Hash!, BlockTreeLookupOptions.None, parent.Number).Returns(parent.Header);
+        _blockchainBridge.HasStateForBlock(parent.Header).Returns(true);
+        _blockchainBridge.HasStateForBlock(validated.Header).Returns(true);
+        _debugBridge.GetBlockTrace(Arg.Any<BlockParameter>(), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>())
+            .Returns(Array.Empty<GethLikeTxTrace>());
+
+        using ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> actual = CreateModule().debug_traceBlockByNumber(selector);
+
+        Assert.That(actual.Result.ResultType, Is.EqualTo(ResultType.Success), actual.Result.Error);
+        if (streaming)
+        {
+            using Utf8JsonWriter writer = new(new ArrayBufferWriter<byte>());
+            ((GethLikeTxTraceStreamingBlockResult)actual.Data).WriteAsJson(writer);
+            _blockFinder.Received(1).FindBlock(validated.Hash!, validated.Number);
+            _debugBridge.Received(1).GetBlockTrace(validated, Arg.Any<CancellationToken>(),
+                Arg.Any<GethTraceOptions>(), writer);
+        }
+        else
+        {
+            _debugBridge.Received(1).GetBlockTrace(Arg.Is<BlockParameter>(p => p.BlockHash == validated.Hash),
+                Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>());
+        }
+    }
+
+    [Test]
     public void DebugGetBadBlocks_WhenBadBlockStored_ReturnsBadBlock()
     {
         BadBlockStore badBlocksStore = null!;
@@ -525,6 +659,263 @@ public class DebugModuleTests
         {
             Assert.That(blocks.Data.ElementAt(0).Hash, Is.EqualTo(block1.Hash));
             Assert.That(blocks.Data.ElementAt(0).Block.Difficulty, Is.EqualTo(new UInt256(2)));
+        }
+    }
+
+    [Test]
+    public async Task DebugGetBadBlocks_WhenFileOmittedOrNull_ReturnsList([Values] bool explicitNull, [Values(0, 1)] int count)
+    {
+        Block[] blocks = Enumerable.Range(1, count).Select(static n => Build.A.Block.WithNumber(n).TestObject).ToArray();
+        _debugBridge.GetBadBlocks().Returns(blocks);
+
+        string response = explicitNull
+            ? await SerializedRequest("debug_getBadBlocks", new object?[] { null })
+            : await SerializedRequest("debug_getBadBlocks");
+
+        JToken? result = JToken.Parse(response)["result"];
+        Assert.That(result?.Select(static b => (string?)b["hash"]), Is.EqualTo(blocks.Select(static b => b.Hash!.ToString())));
+    }
+
+    [Test]
+    public async Task DebugGetBadBlocks_WhenFileGiven_WritesListAndReturnsNull()
+    {
+        _debugBridge.GetBadBlocks().Returns([Build.A.Block.WithNumber(1).TestObject]);
+        using TempPath file = TempPath.GetTempFile();
+
+        JToken listResult = JToken.Parse(await SerializedRequest("debug_getBadBlocks"))["result"]!;
+        JToken fileResult = JToken.Parse(await SerializedRequest("debug_getBadBlocks", file.Path))["result"]!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fileResult.Type, Is.EqualTo(JTokenType.Null));
+            Assert.That(JToken.DeepEquals(JToken.Parse(await File.ReadAllTextAsync(file.Path)), listResult), Is.True);
+        }
+    }
+
+    [Test]
+    public async Task DebugGetBadBlocks_WhenFileExists_ReturnsErrorAndKeepsFile()
+    {
+        _debugBridge.GetBadBlocks().Returns([]);
+        using TempPath file = TempPath.GetTempFile();
+        await File.WriteAllTextAsync(file.Path, "existing");
+
+        using JsonRpcResponse response = await Request("debug_getBadBlocks", file.Path);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(RpcTest.AssertError(response).Message, Is.EqualTo("location would overwrite an existing file"));
+            Assert.That(await File.ReadAllTextAsync(file.Path), Is.EqualTo("existing"));
+        }
+    }
+
+    [Test]
+    public async Task DebugGetBadBlocks_WhenDirectoryMissing_ReturnsError()
+    {
+        _debugBridge.GetBadBlocks().Returns([]);
+        string path = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString(), "bad-blocks.json");
+
+        using JsonRpcResponse response = await Request("debug_getBadBlocks", path);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(RpcTest.AssertError(response).Code, Is.EqualTo(ErrorCodes.Default));
+            Assert.That(File.Exists(path), Is.False);
+        }
+    }
+
+    private static IEnumerable<TestCaseData> NonAbsoluteFileArguments()
+    {
+        yield return new TestCaseData(123, "123");
+        yield return new TestCaseData(true, "true");
+        yield return new TestCaseData(new Dictionary<string, string>(), "{}");
+        yield return new TestCaseData("bad-blocks.json", "bad-blocks.json");
+    }
+
+    [TestCaseSource(nameof(NonAbsoluteFileArguments))]
+    public async Task DebugGetBadBlocks_WhenFileNotAbsolute_ReturnsInvalidParamsAndWritesNothing(object argument, string fileName)
+    {
+        _debugBridge.GetBadBlocks().Returns([]);
+
+        using JsonRpcResponse response = await Request("debug_getBadBlocks", argument);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(RpcTest.AssertError(response).Code, Is.EqualTo(ErrorCodes.InvalidParams));
+            Assert.That(File.Exists(fileName), Is.False);
+        }
+    }
+
+    [Test]
+    public async Task DebugGetBadBlocks_WhenFileIsNetworkOrDevicePath_ReturnsInvalidParamsAndWritesNothing([Values("//", @"\\?\")] string prefix)
+    {
+        _debugBridge.GetBadBlocks().Returns([]);
+        using TempPath file = TempPath.GetTempFile();
+
+        // "//" + an absolute path is a UNC path on Windows and the same local file on Unix; "\\?\" is a Windows device path.
+        using JsonRpcResponse response = await Request("debug_getBadBlocks", prefix + file.Path);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(RpcTest.AssertError(response).Code, Is.EqualTo(ErrorCodes.InvalidParams));
+            Assert.That(File.Exists(file.Path), Is.False);
+        }
+    }
+
+    [Test]
+    public async Task DebugGetBadBlocks_WhenPathIsDirectory_ReturnsExistingFileError()
+    {
+        _debugBridge.GetBadBlocks().Returns([]);
+        using TempPath directory = TempPath.GetTempDirectory();
+        Directory.CreateDirectory(directory.Path);
+
+        using JsonRpcResponse response = await Request("debug_getBadBlocks", directory.Path);
+
+        Assert.That(RpcTest.AssertError(response).Message, Is.EqualTo("location would overwrite an existing file"));
+    }
+
+    [Test]
+    public async Task DebugGetBadBlocks_WhileWriting_TargetHoldsNoPartialFile()
+    {
+        using TempPath directory = TempPath.GetTempDirectory();
+        Directory.CreateDirectory(directory.Path);
+        string file = Path.Combine(directory.Path, "bad-blocks.json");
+        Block block = Build.A.Block.WithNumber(1).TestObject;
+        bool targetExistedDuringWrite = true;
+        _debugBridge.GetBadBlocks().Returns(CheckTargetWhileWriting());
+
+        using JsonRpcResponse response = await Request("debug_getBadBlocks", file);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(RpcTest.AssertSuccess<IEnumerable<BadBlock>>(response), Is.Null);
+            Assert.That(targetExistedDuringWrite, Is.False, "readers must not see a partial file at the target path");
+            Assert.That(Directory.GetFileSystemEntries(directory.Path), Is.EqualTo(new[] { file }));
+            Assert.That(JToken.Parse(await File.ReadAllTextAsync(file)).Select(static b => (string?)b["hash"]), Is.EqualTo(new[] { block.Hash!.ToString() }));
+        }
+
+        IEnumerable<Block> CheckTargetWhileWriting()
+        {
+            yield return block;
+            targetExistedDuringWrite = File.Exists(file);
+        }
+    }
+
+    [Test]
+    public async Task DebugGetBadBlocks_WhenWriteFails_LeavesNoFileSoRetrySucceeds()
+    {
+        using TempPath directory = TempPath.GetTempDirectory();
+        Directory.CreateDirectory(directory.Path);
+        string file = Path.Combine(directory.Path, "bad-blocks.json");
+        Block block = Build.A.Block.WithNumber(1).TestObject;
+        _debugBridge.GetBadBlocks().Returns(FailAfter(block), [block]);
+
+        using JsonRpcResponse failed = await Request("debug_getBadBlocks", file);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(RpcTest.AssertError(failed).Code, Is.EqualTo(ErrorCodes.Default));
+            Assert.That(Directory.GetFileSystemEntries(directory.Path), Is.Empty, "neither the target nor a temporary file is left behind");
+        }
+
+        using JsonRpcResponse retried = await Request("debug_getBadBlocks", file);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(RpcTest.AssertSuccess<IEnumerable<BadBlock>>(retried), Is.Null);
+            Assert.That(JToken.Parse(await File.ReadAllTextAsync(file)).Select(static b => (string?)b["hash"]), Is.EqualTo(new[] { block.Hash!.ToString() }));
+        }
+
+        static IEnumerable<Block> FailAfter(Block block)
+        {
+            yield return block;
+            throw new IOException("No space left on device");
+        }
+    }
+
+    [Test]
+    public async Task DebugGetBadBlocks_WhenFileCreatedByOthersDuringFailedWrite_KeepsIt()
+    {
+        using TempPath directory = TempPath.GetTempDirectory();
+        Directory.CreateDirectory(directory.Path);
+        string file = Path.Combine(directory.Path, "bad-blocks.json");
+        _debugBridge.GetBadBlocks().Returns(FailAfterOtherWriterCreatesFile());
+
+        using JsonRpcResponse response = await Request("debug_getBadBlocks", file);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(RpcTest.AssertError(response).Message, Is.EqualTo("original write error"));
+            Assert.That(File.Exists(file) ? await File.ReadAllTextAsync(file) : null, Is.EqualTo("other writer"), "a failed write must only remove what it created");
+        }
+
+        IEnumerable<Block> FailAfterOtherWriterCreatesFile()
+        {
+            yield return Build.A.Block.WithNumber(1).TestObject;
+            if (File.Exists(file)) File.Delete(file); // Unix allows unlinking a file that is still open for writing.
+            File.WriteAllText(file, "other writer");
+            throw new IOException("original write error");
+        }
+    }
+
+    [Test]
+    public async Task DebugGetBadBlocks_WhenFileCreatedByOthersDuringWrite_ReturnsExistingFileErrorAndKeepsIt()
+    {
+        using TempPath directory = TempPath.GetTempDirectory();
+        Directory.CreateDirectory(directory.Path);
+        string file = Path.Combine(directory.Path, "bad-blocks.json");
+        _debugBridge.GetBadBlocks().Returns(OtherWriterCreatesFile());
+
+        using JsonRpcResponse response = await Request("debug_getBadBlocks", file);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(RpcTest.AssertError(response).Message, Is.EqualTo("location would overwrite an existing file"));
+            Assert.That(Directory.GetFileSystemEntries(directory.Path), Is.EqualTo(new[] { file }), "the temporary file is removed");
+            Assert.That(await File.ReadAllTextAsync(file), Is.EqualTo("other writer"));
+        }
+
+        IEnumerable<Block> OtherWriterCreatesFile()
+        {
+            yield return Build.A.Block.WithNumber(1).TestObject;
+            File.WriteAllText(file, "other writer");
+        }
+    }
+
+    [Test]
+    public async Task DebugGetBadBlocks_WhenExtraParamGiven_ReturnsInvalidParams()
+    {
+        _debugBridge.GetBadBlocks().Returns([]);
+
+        using JsonRpcResponse response = await Request("debug_getBadBlocks", null, 1);
+
+        Assert.That(RpcTest.AssertError(response).Code, Is.EqualTo(ErrorCodes.InvalidParams));
+    }
+
+    [Test]
+    [Platform("Linux,MacOsX")]
+    public async Task DebugGetBadBlocks_WhenTemporaryFileCleanupFails_PreservesWriteError()
+    {
+        using TempPath directory = TempPath.GetTempDirectory();
+        Directory.CreateDirectory(directory.Path);
+        string file = Path.Combine(directory.Path, "bad-blocks.json");
+        _debugBridge.GetBadBlocks().Returns(FailAfterReplacingTemporaryFile());
+
+        using JsonRpcResponse response = await Request("debug_getBadBlocks", file);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(RpcTest.AssertError(response).Code, Is.EqualTo(ErrorCodes.Default));
+            Assert.That(RpcTest.AssertError(response).Message, Is.EqualTo("original write error"));
+        }
+
+        IEnumerable<Block> FailAfterReplacingTemporaryFile()
+        {
+            yield return Build.A.Block.WithNumber(1).TestObject;
+            // Unix allows unlinking the open output; a directory at that path makes cleanup fail.
+            string temporary = Directory.GetFiles(directory.Path).Single();
+            File.Delete(temporary);
+            Directory.CreateDirectory(temporary);
+            throw new IOException("original write error");
         }
     }
 
@@ -747,6 +1138,10 @@ public class DebugModuleTests
             (Action<IDebugBridge>)(b => b.GetBlock(new BlockParameter(Keccak.Zero)).ReturnsNull()),
             "debug_getRawBlock", (object)Keccak.Zero)
         { TestName = "RawBlock_ByHash" };
+        yield return new TestCaseData(
+            (Action<IDebugBridge>)(_ => { }),
+            "debug_getRawHeader", (object)"0x1")
+        { TestName = "RawHeader_ByNumber" };
     }
 
     private static IEnumerable<TestCaseData> RawBlockAccessListErrorCases()

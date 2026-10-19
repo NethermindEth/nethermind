@@ -12,6 +12,8 @@ namespace Nethermind.Evm.Precompiles;
 
 public partial class Bls12381G2MsmPrecompile
 {
+    public static Address Address => field ??= Address.FromNumber(0xe);
+
     private const int StackallocPairCountThreshold = 4;
 
     public partial Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec _)

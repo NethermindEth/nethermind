@@ -29,6 +29,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Threading.Tasks;
 
 namespace Ethereum.Test.Base
 {
@@ -56,9 +57,9 @@ namespace Ethereum.Test.Base
             _logger = _logManager.GetClassLogger<GeneralStateTestBase>();
         }
 
-        protected EthereumTestResult RunTest(GeneralStateTest test) => RunTest(test, NullTxTracer.Instance);
+        protected Task<EthereumTestResult> RunTest(GeneralStateTest test) => RunTest(test, NullTxTracer.Instance);
 
-        protected EthereumTestResult RunTest(GeneralStateTest test, ITxTracer txTracer)
+        protected async Task<EthereumTestResult> RunTest(GeneralStateTest test, ITxTracer txTracer)
         {
             _logger.Info($"Running {test.Name} at {DateTime.UtcNow:HH:mm:ss.ffffff}");
             Assert.That(test.LoadFailure, Is.Null, "test data loading failure");
@@ -84,7 +85,9 @@ namespace Ethereum.Test.Base
             // finality is irrelevant at EF-test chain lengths, so keep the on-disk tier off.
             flatDbConfig.EnableLongFinality = false;
             configProvider.GetConfig<IBlocksConfig>().PreWarming = PreWarmMode.None;
-            using IContainer container = new ContainerBuilder()
+            // Some registered services (e.g. the main processing context) are IAsyncDisposable only;
+            // disposing the container synchronously makes Autofac block on them and trace a warning per test.
+            await using IContainer container = new ContainerBuilder()
                 .AddModule(new TestNethermindModule(configProvider))
                 .AddSingleton<IBlockhashProvider>(new TestBlockhashProvider())
                 .AddSingleton(specProvider)
@@ -135,7 +138,7 @@ namespace Ethereum.Test.Base
                 IsPostMerge = test.CurrentRandom is not null,
                 MixHash = test.CurrentRandom,
                 WithdrawalsRoot = test.CurrentWithdrawalsRoot ?? (spec.WithdrawalsEnabled ? PatriciaTree.EmptyTreeHash : null),
-                ParentBeaconBlockRoot = test.CurrentBeaconRoot,
+                ParentBeaconBlockRoot = test.CurrentBeaconRoot ?? (spec.IsBeaconBlockRootAvailable ? Keccak.Zero : null),
                 ExcessBlobGas = spec.IsEip4844Enabled ? test.CurrentExcessBlobGas ?? 0ul : null,
                 SlotNumber = test.CurrentSlotNumber ?? (test.Fork.IsEip7843Enabled ? 0ul : null),
                 BlobGasUsed = spec.IsEip4844Enabled ? BlobGasCalculator.CalculateBlobGas(test.Transaction) : null,

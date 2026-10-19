@@ -555,7 +555,7 @@ namespace Nethermind.Trie
             ICappedArrayPool? bufferPool = null, bool canBeParallel = true)
         {
             bool isRoot = path.Length == 0;
-            CappedArray<byte> rlp = PrepareRlp(tree, ref path, bufferPool, canBeParallel, out PreviousRlp previous);
+            CappedArray<byte> rlp = PrepareRlp(tree, ref path, bufferPool, canBeParallel, hashedAtOnce: true, out PreviousRlp previous);
 
             // Descendant nodes with RLP shorter than a hash are embedded in their parent.
             if (rlp.Length >= 32 || isRoot)
@@ -569,12 +569,13 @@ namespace Nethermind.Trie
 
         internal CappedArray<byte> PrepareRlp(ITrieNodeResolver tree, ref TreePath path,
             ICappedArrayPool? bufferPool, bool canBeParallel) =>
-            PrepareRlp(tree, ref path, bufferPool, canBeParallel, out _);
+            PrepareRlp(tree, ref path, bufferPool, canBeParallel, hashedAtOnce: false, out _);
 
+        /// <param name="hashedAtOnce">Whether the caller hashes the returned RLP before encoding another node, and reads it no later.</param>
         /// <param name="previous">A re-encoded branch's RLP from before the re-encode, which <see cref="ComputeKeccak"/> may resume from.</param>
         [MethodImpl(PrepareRlpInlining)]
         private CappedArray<byte> PrepareRlp(ITrieNodeResolver tree, ref TreePath path,
-            ICappedArrayPool? bufferPool, bool canBeParallel, out PreviousRlp previous)
+            ICappedArrayPool? bufferPool, bool canBeParallel, bool hashedAtOnce, out PreviousRlp previous)
         {
             bool isRoot = path.Length == 0;
             previous = default;
@@ -588,6 +589,11 @@ namespace Nethermind.Trie
                     previous = ReadPreviousRlp();
                     fullRlp = TrieNodeDecoder.RlpEncodeBranch(this, tree, ref path, bufferPool,
                         canBeParallel: isRoot && canBeParallel);
+                    if (KeepsRlpOfHashedBranch)
+                    {
+                        if (hashedAtOnce && (isRoot || fullRlp.Length >= Hash256.Size)) return fullRlp;
+                        fullRlp = StorableBranchRlp(fullRlp, bufferPool);
+                    }
                 }
                 else
                 {
@@ -737,9 +743,10 @@ namespace Nethermind.Trie
         }
 
         /// <summary>The index of this branch's only non-null child, as <see cref="IsChildNull"/> tells them apart.</summary>
+        /// <param name="ignoredChild">A child left out of the count, as if it were already null; <c>-1</c> counts every child.</param>
         /// <returns>The index; <c>-1</c> when the branch has no child; <see cref="SeveralChildren"/> when it has more than one.</returns>
         /// <remarks>One walk over the RLP, where asking <see cref="IsChildNull"/> per child seeks each from the start.</remarks>
-        internal int FindOnlyChild()
+        internal int FindOnlyChild(int ignoredChild = -1)
         {
             if (!IsBranch)
             {
@@ -766,7 +773,7 @@ namespace Nethermind.Trie
                     isNull = data is null || ReferenceEquals(data, _nullNode);
                 }
 
-                if (isNull) continue;
+                if (isNull || i == ignoredChild) continue;
                 if (onlyChild != -1) return SeveralChildren;
                 onlyChild = i;
             }

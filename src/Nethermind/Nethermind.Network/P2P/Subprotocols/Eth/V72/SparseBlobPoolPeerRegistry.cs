@@ -967,6 +967,8 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
 
         if (transaction.NetworkWrapper is ShardBlobNetworkWrapper wrapper && wrapper.HasFullBlobs())
         {
+            // A copy rejected earlier for its sidecar must not shadow this one: the hash does not cover the sidecar.
+            _txPool.ForgetInvalidBlobProofs(hash);
             return SubmitTransaction(peer, transaction);
         }
 

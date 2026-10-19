@@ -218,7 +218,18 @@ public class KademliaAdapter(
         if (MsgSender is { } sender)
         {
             if (token.IsCancellationRequested) return;
-            Task ready = (isResponse ? _responseRateLimiter : _outboundRateLimiter).WaitAsync(token);
+            RateLimiter limiter = isResponse ? _responseRateLimiter : _outboundRateLimiter;
+            // A response sent after the requester's timeout is wasted, and queueing it would let an inbound flood
+            // push every later response further out. Drop it instead and let the backlog drain.
+            // The requester's timeout is unknown (geth waits 500 ms for any reply), so PingTimeout is a deliberately
+            // loose upper bound shared by all response types. The check is not atomic with WaitAsync, so concurrent
+            // senders can overshoot it slightly, and the second Neighbors batch of a FindNode reply may be dropped.
+            if (isResponse && limiter.Backlog > _pingTimeout)
+            {
+                if (Logger.IsTrace) Logger.Trace($"Dropping {msg.MsgType} response, outbound backlog {limiter.Backlog}");
+                return;
+            }
+            Task ready = limiter.WaitAsync(token);
             await ready.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
             if (token.IsCancellationRequested) return;
             await ready;
@@ -440,13 +451,13 @@ public class KademliaAdapter(
         }
     }
 
-    private async Task HandlePing(Node node, NodeSession session, PingMsg ping, CancellationToken token)
+    private async Task<bool> HandlePing(Node node, NodeSession session, PingMsg ping, CancellationToken token)
     {
         if (Logger.IsTrace) Logger.Trace($"Receive ping from {node}");
         if (ping.Mdc is not { } pingMdc)
         {
             if (Logger.IsTrace) TracePingWithoutHash(node);
-            return;
+            return false;
         }
 
         PongMsg msg = new(ping.FarAddress!, CalculateExpirationTime(), pingMdc, (await nodeRecordProvider.GetCurrentAsync(token)).EnrSequence);
@@ -459,13 +470,14 @@ public class KademliaAdapter(
             bondingPong = await TryBond(node, session, token);
             if (bondingPong is null)
             {
-                return;
+                return false;
             }
         }
 
         ulong? advertisedSequence = HighestSequence(ping.EnrSequence, bondingPong?.EnrSequence);
         await RefreshRemoteRecordIfNewer(node, advertisedSequence, token);
         PublishNode(node, session, ping, advertisedSequence);
+        return true;
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
@@ -604,8 +616,10 @@ public class KademliaAdapter(
                 case MsgType.Ping:
                     PingMsg ping = (PingMsg)msg;
                     if (!ValidatePingAddress(ping)) return;
-                    await HandlePing(node, session, ping, token);
-                    nodeHealthTracker.Value.OnIncomingMessageFrom(node);
+                    if (await HandlePing(node, session, ping, token))
+                    {
+                        nodeHealthTracker.Value.OnIncomingMessageFrom(node);
+                    }
                     break;
                 case MsgType.FindNode:
                     if (await HandleFindNode(node, session, (FindNodeMsg)msg, token))
