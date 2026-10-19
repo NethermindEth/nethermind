@@ -5,7 +5,6 @@ using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Evm.State;
 using Nethermind.Facade.Simulate;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
@@ -22,7 +21,7 @@ public class NullUnresolvedBlockhashPolicyTests
     {
         IBlockhashCache cache = Substitute.For<IBlockhashCache>();
         cache.GetHash(Arg.Any<BlockHeader>(), Arg.Any<ulong>()).Returns((Hash256?)null);
-        BlockhashProvider sut = new(cache, Substitute.For<IWorldState>(), LimboLogs.Instance, new NullUnresolvedBlockhashPolicy());
+        BlockhashProvider sut = new(cache, LimboLogs.Instance, new NullUnresolvedBlockhashPolicy());
         BlockHeader current = Build.A.BlockHeader.WithNumber(300).WithParentHash(TestItem.KeccakA).TestObject;
 
         Assert.That(sut.GetBlockhash(current, 100, Frontier.Instance), Is.Null);

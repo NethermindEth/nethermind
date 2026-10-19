@@ -79,6 +79,12 @@ namespace Nethermind.TxPool
         /// Allows a rejected sparse blob transaction to be retried with a different sidecar proof tuple.
         /// </summary>
         void ForgetRejectedBlobTransaction(Hash256 hash);
+        /// <summary>
+        /// Forgets <paramref name="hash"/> only if a copy of it was rejected in the current block with
+        /// <see cref="AcceptTxResult.InvalidBlobProofs"/>, so a copy carrying another sidecar can be judged.
+        /// </summary>
+        /// <returns><c>true</c> if the hash was forgotten.</returns>
+        bool ForgetInvalidBlobProofs(Hash256 hash);
         bool RemoveTransaction(Hash256? hash);
 
         /// <summary>

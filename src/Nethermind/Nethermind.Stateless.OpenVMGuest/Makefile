@@ -9,6 +9,9 @@ SRC_DIR := /nethermind/src
 
 GUEST_LIBC := openvm
 
+# MUL on the bigint extension without the frame a call from managed code takes.
+GUEST_OBJECTS := mul.o
+
 # BIN_DIR must be set before the include - BFLAT_REFS expands it.
 include $(MAKEFILE_DIR)/../Nethermind.Stateless.Guest/build.mk
 # Execution harness. OpenVM publishes no image and `cargo openvm run` only takes
@@ -16,7 +19,7 @@ include $(MAKEFILE_DIR)/../Nethermind.Stateless.Guest/build.mk
 # SDK's develop-v2.1.0 rv64 line into a harness that transpiles the ELF and runs
 # it. `main` is still rv32 and rejects a 64-bit ELF, so the line is not a version
 # preference. OPENVM_RUNNER overrides it with a host binary.
-OPENVM_IMAGE ?= nethermindeth/openvm-runner:v2.1.0-rv64@sha256:d8209a5db5d59df6d6f5899b2ce6866f81c30bdc3df952dc78243b8316706baa
+OPENVM_IMAGE ?= nethermindeth/openvm-runner:v2.1.0-rv64@sha256:dc2db86864d19c749929b0665e909122afdfbbaecdab25dbf83f3b68549ac945
 OPENVM_RUNNER ?=
 
 run:

@@ -291,6 +291,17 @@ namespace Nethermind.Synchronization.Blocks
             }
         }
 
+        // The estimate waits up to a second for a peer to allocate; with no free eth/71 peer that only delays the batch.
+        private bool HasFreeBlockAccessListsPeer()
+        {
+            foreach (PeerInfo peer in _syncPeerPool.InitializedPeers)
+            {
+                if (peer.CanBeAllocated(AllocationContexts.BlockAccessLists)) return true;
+            }
+
+            return false;
+        }
+
         private async Task<BlocksRequest?> AssembleRequest(IOwnedReadOnlyList<BlockHeader> headers, bool shouldProcess, bool shouldDownloadReceipt, CancellationToken cancellation)
         {
             BlocksRequestContentType? requestContentType = null;
@@ -305,7 +316,7 @@ namespace Nethermind.Synchronization.Blocks
                 ?? GethSyncLimits.MaxBodyFetch;
             int? blockAccessListsRequestSize = null;
             int receiptsRequestSize =
-                (await _syncPeerPool.EstimateRequestLimit(RequestType.Receipts, EstimatedAllocationStrategy, AllocationContexts.Blocks, cancellation))
+                (await _syncPeerPool.EstimateRequestLimit(RequestType.Receipts, BlocksSyncPeerAllocationStrategyFactory.ReceiptsAllocationStrategy, AllocationContexts.Blocks, cancellation))
                 ?? GethSyncLimits.MaxReceiptFetch;
 
             int headersCount = headers.Count;
@@ -345,7 +356,9 @@ namespace Nethermind.Synchronization.Blocks
                 if (ShouldDownloadAccessList(blockHeader, shouldProcess) && (requestContentType is null or BlocksRequestContentType.BlockAccessLists) && entry.NeedAccessListDownload)
                 {
                     blockAccessListsRequestSize ??=
-                        (await _syncPeerPool.EstimateRequestLimit(RequestType.BlockAccessLists, EstimatedAllocationStrategy, AllocationContexts.BlockAccessLists, cancellation))
+                        (HasFreeBlockAccessListsPeer()
+                            ? await _syncPeerPool.EstimateRequestLimit(RequestType.BlockAccessLists, BlocksSyncPeerAllocationStrategyFactory.BlockAccessListsAllocationStrategy, AllocationContexts.BlockAccessLists, cancellation)
+                            : null)
                         ?? GethSyncLimits.MaxBodyFetch;
 
                     if (blockAccessListsToDownload.Count < blockAccessListsRequestSize.Value)
@@ -447,34 +460,45 @@ namespace Nethermind.Synchronization.Blocks
             int blockAccessListsCount = 0;
             int receiptsCount = 0;
 
+            // Body replies are sparse: a peer omits the bodies it does not have, so the reply is consumed
+            // with a cursor and a body that does not fit its header is retried against the headers behind it.
+            int bodyIndex = 0;
+            Hash256? rejectedBodyTxRoot = null;
             for (int i = 0; i < response.BodiesRequests.Count; i++)
             {
                 BlockHeader header = response.BodiesRequests[i];
-                if (!_downloadRequests.TryGetValue(header.Hash, out BlockEntry entry))
+                _downloadRequests.TryGetValue(header.Hash, out BlockEntry? entry);
+
+                if ((bodies?.Length ?? 0) <= bodyIndex)
                 {
+                    entry?.RetryBlockRequest();
                     continue;
                 }
 
-                if ((bodies?.Length ?? 0) <= i)
-                {
-                    entry.RetryBlockRequest();
-                    continue;
-                }
-
-                BlockBody? body = bodies[i];
+                BlockBody? body = bodies![bodyIndex];
                 if (body is null)
                 {
-                    entry.RetryBlockRequest();
+                    bodyIndex++;
+                    rejectedBodyTxRoot = null;
+                    entry?.RetryBlockRequest();
                     continue;
                 }
 
-                if (!_blockValidator.ValidateBodyAgainstHeader(entry.Header, body, out string errorMessage))
+                string? bodyError = null;
+                bool bodyFitsHeader = (rejectedBodyTxRoot is null || rejectedBodyTxRoot == header.TxRoot)
+                                      && _blockValidator.ValidateBodyAgainstHeader(header, body, out bodyError);
+                if (!bodyFitsHeader)
                 {
-                    if (_logger.IsDebug) _logger.Debug($"Invalid downloaded block from {peer}, {errorMessage}");
+                    if (_logger.IsTrace) _logger.Trace($"Body {bodyIndex} from {peer} does not fit {header.ToString(BlockHeader.Format.Short)}: {bodyError ?? "tx root differs"}");
+                    rejectedBodyTxRoot ??= TxTrie.CalculateRoot(body.Transactions);
+                    entry?.RetryBlockRequest();
+                    continue;
+                }
 
-                    if (peer is not null) _syncPeerPool.ReportBreachOfProtocol(peer, DisconnectReason.ForwardSyncFailed, $"invalid block received: {errorMessage}. Block: {entry.Header.ToString(BlockHeader.Format.Short)}");
-                    result = SyncResponseHandlingResult.LesserQuality;
-                    entry.RetryBlockRequest();
+                bodyIndex++;
+                rejectedBodyTxRoot = null;
+                if (entry is null)
+                {
                     continue;
                 }
 
@@ -488,6 +512,14 @@ namespace Nethermind.Synchronization.Blocks
                 entry.PeerInfo = peer;
                 blocks.Add(block);
                 bodiesCount++;
+            }
+
+            if (bodyIndex < (bodies?.Length ?? 0))
+            {
+                if (_logger.IsDebug) _logger.Debug($"Invalid downloaded block from {peer}, a body matches none of the requested headers");
+
+                if (peer is not null) _syncPeerPool.ReportBreachOfProtocol(peer, DisconnectReason.ForwardSyncFailed, "invalid block received: body matches none of the requested headers");
+                result = SyncResponseHandlingResult.LesserQuality;
             }
 
             if (result == SyncResponseHandlingResult.OK)

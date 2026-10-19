@@ -11,7 +11,7 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Blockchain.Receipts
 {
-    public class ReceiptsRecovery(IEthereumEcdsa? ecdsa, ISpecProvider? specProvider, bool reinsertReceiptOnRecover = true) : IReceiptsRecovery
+    public partial class ReceiptsRecovery(IEthereumEcdsa? ecdsa, ISpecProvider? specProvider, bool reinsertReceiptOnRecover = true) : IReceiptsRecovery
     {
         private readonly IEthereumEcdsa _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
         private readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
@@ -52,6 +52,17 @@ namespace Nethermind.Blockchain.Receipts
             return new RecoveryContext(releaseSpec, block, forceRecoverSender, _ecdsa);
         }
 
+        /// <summary>Recovers one receipt of <paramref name="block"/> as <see cref="TryRecover"/> recovers it with the rest of the block's receipts.</summary>
+        /// <param name="gasUsedBefore">The cumulative gas used by the transactions preceding <paramref name="txIndex"/>.</param>
+        /// <remarks>Leaves <paramref name="block"/> undisposed: its memory stays owned by the caller.</remarks>
+        internal void RecoverReceiptData(ReceiptRecoveryBlock block, int txIndex, ulong gasUsedBefore, TxReceipt receipt)
+        {
+            for (int i = 0; i < txIndex; i++) block.SkipNextTransaction();
+
+            RecoveryContext context = new(_specProvider.GetSpec(block.Header), block, forceRecoverSender: true, _ecdsa, txIndex, gasUsedBefore);
+            context.RecoverReceiptData(receipt);
+        }
+
         public IReceiptsRecovery.IRecoveryContext CreateLogRecoveryContext(ReceiptRecoveryBlock block) => new LogRecoveryContext(block);
 
         public bool NeedRecover(TxReceipt[] receipts, bool forceRecoverSender = true, bool recoverSenderOnly = false)
@@ -76,7 +87,8 @@ namespace Nethermind.Blockchain.Receipts
             return false;
         }
 
-        private class RecoveryContext(IReleaseSpec releaseSpec, ReceiptRecoveryBlock block, bool forceRecoverSender, IEthereumEcdsa ecdsa) : IReceiptsRecovery.IRecoveryContext
+        private class RecoveryContext(IReleaseSpec releaseSpec, ReceiptRecoveryBlock block, bool forceRecoverSender, IEthereumEcdsa ecdsa,
+            int transactionIndex = 0, ulong gasUsedBefore = 0) : IReceiptsRecovery.IRecoveryContext
         {
             private readonly IReleaseSpec _releaseSpec = releaseSpec;
             private ReceiptRecoveryBlock _block = block;
@@ -84,8 +96,8 @@ namespace Nethermind.Blockchain.Receipts
             private readonly IEthereumEcdsa _ecdsa = ecdsa;
             private readonly bool _isEip8116Enabled = releaseSpec.IsEip8116Enabled;
 
-            private ulong _gasUsedBefore = 0;
-            private int _transactionIndex = 0;
+            private ulong _gasUsedBefore = gasUsedBefore;
+            private int _transactionIndex = transactionIndex;
 
             public void RecoverReceiptData(TxReceipt receipt)
             {

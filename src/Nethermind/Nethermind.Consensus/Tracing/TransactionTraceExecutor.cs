@@ -30,6 +30,9 @@ public sealed class TransactionTraceExecutor(
     public bool CanSeed => readOverlay is not null && !balManager.ForceConstructGeneratedBlockAccessList
         && state.TryApplyAccountOverlay(EmptyOverlay.Instance);
 
+    /// <summary>Whether processed transactions are reported with their receipts.</summary>
+    internal bool ReportsProcessedTransactions => transactionProcessed is not null;
+
     /// <inheritdoc />
     public void SetBlockExecutionContext(in BlockExecutionContext context) => inner.SetBlockExecutionContext(in context);
 
