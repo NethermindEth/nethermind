@@ -163,7 +163,7 @@ public class ReadOnlySnapshotBundleTests
     public void TryFindStateNodes_ReturnsTrueWhenPresentInSnapshot()
     {
         TreePath path = TreePath.FromHexString("12");
-        using NodeRecordBuffer buffer = FlatTestHelpers.NewTestBuffer();
+        using IRetainableNodeRecordBuffer buffer = FlatTestHelpers.NewTestBuffer();
 
         using ReadOnlySnapshotBundle bundle = Bundle(FlatTestHelpers.SnapshotList(
             FlatTestHelpers.MakeSnapshot(_pool, buffer, c => c.SetStateNodeRlp(buffer, path, FlatTestHelpers.LeafRlpA))),
@@ -188,7 +188,7 @@ public class ReadOnlySnapshotBundleTests
     {
         Hash256 address = TestItem.KeccakA;
         TreePath path = TreePath.FromHexString("ab");
-        using NodeRecordBuffer buffer = FlatTestHelpers.NewTestBuffer();
+        using IRetainableNodeRecordBuffer buffer = FlatTestHelpers.NewTestBuffer();
 
         using ReadOnlySnapshotBundle bundle = Bundle(FlatTestHelpers.SnapshotList(
             FlatTestHelpers.MakeSnapshot(_pool, buffer, c => c.SetStorageNodeRlp(buffer, address, path, FlatTestHelpers.LeafRlpB))),
@@ -261,7 +261,7 @@ public class ReadOnlySnapshotBundleFilterTests
     private IArenaManager Arena => _tier.Resolve<IArenaManager>();
     private BlobArenaManager _blobs = null!;
     private FlatTestContainer _tier = null!;
-    private NodeRecordBuffer _buffer = null!;
+    private IRetainableNodeRecordBuffer _buffer = null!;
 
     public enum FilterMode
     {

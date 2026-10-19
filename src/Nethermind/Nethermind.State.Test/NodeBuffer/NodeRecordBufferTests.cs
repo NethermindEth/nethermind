@@ -27,6 +27,33 @@ internal class NodeRecordBufferTests
     internal const int PollingMilliseconds = 10;
 
     [Test]
+    public void Contract_write_completion_registers_every_relative_record_offset()
+    {
+        using NodeRecordBuffer implementation = new(0, GenerationBytes);
+        INodeRecordBuffer buffer = implementation;
+        using NodeRecordBufferReadLease lease = buffer.BeginRead();
+        buffer.AppendRecordFromRlp(null, TreePath.Empty, ValueKeccak.Compute(Leaf(0, 8)), Leaf(0, 8));
+        byte[][] rlps = [Leaf(1, 8), Leaf(2, 8)];
+        int recordLength = NodeRecordCodec.AlignedLength(NodeRecordCodec.Length(0, rlps[0].Length));
+        ulong pointer = buffer.Reserve(recordLength * 2, out Span<byte> bytes);
+        ulong[] keys = [NodeRecordCodec.NodeKey(null, TreePath.FromHexString("1")), NodeRecordCodec.NodeKey(null, TreePath.FromHexString("2"))];
+        for (int i = 0; i < rlps.Length; i++)
+            NodeRecordCodec.WriteFromRlp(rlps[i], NodeRecordKind.Leaf, 0, ValueKeccak.Compute(rlps[i]), keys[i], bytes[(i * recordLength)..]);
+
+        buffer.CompleteWrite(pointer, bytes, stackalloc int[] { 0, recordLength });
+        BloomFilter bloom = implementation.FindBloom(pointer)!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(bytes.Length, Is.EqualTo(recordLength * 2));
+            for (int i = 0; i < rlps.Length; i++)
+            {
+                Assert.That(bloom.MightContain(keys[i]), Is.True);
+                Assert.That(buffer.GetRecord(pointer + (ulong)(i * recordLength)).Rlp.ToArray(), Is.EqualTo(rlps[i]));
+            }
+        }
+    }
+
+    [Test]
     public void Generation_ids_stop_before_the_transient_namespace()
     {
         ulong last = NodeRecordBuffer.NextGeneration(NodeRecordCodec.TransientGenerationMask - 2);
@@ -78,7 +105,7 @@ internal class NodeRecordBufferTests
     public void Generation_blooms_have_at_least_one_key_of_capacity([Values(0, 1, 127, 128, GenerationBytes)] int generationBytes)
     {
         using NodeRecordBuffer buffer = new(0, generationBytes);
-        using NodeRecordBuffer.ReadLease lease = buffer.BeginRead();
+        using NodeRecordBufferReadLease lease = buffer.BeginRead();
         ulong pointer = buffer.Reserve(0, out _, out _);
         BloomFilter bloom = buffer.FindBloom(pointer)!;
         using (Assert.EnterMultipleScope())
@@ -153,7 +180,7 @@ internal class NodeRecordBufferTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(retain.WriteBoundary, Is.EqualTo(retain.Generation << NodeRecordBuffer.OffsetBits | GenerationBytes));
+            Assert.That(retain.WriteBoundary, Is.EqualTo(retain.Generation << NodeRecordCodec.OffsetBits | GenerationBytes));
             Assert.That(pointer, Is.GreaterThan(retain.WriteBoundary));
         }
     }
@@ -260,8 +287,8 @@ internal class NodeRecordBufferTests
         AppendAt(buffer, TestItem.KeccakA, Leaf(3, 8));
         buffer.Reserve(GenerationBytes, out _, out _);
         Append(buffer, Leaf(2, 8));
-        NodeRecordBuffer.ReadLease first = buffer.BeginRead();
-        NodeRecordBuffer.ReadLease second = buffer.BeginRead();
+        NodeRecordBufferReadLease first = buffer.BeginRead();
+        NodeRecordBufferReadLease second = buffer.BeginRead();
         bool firstReleased = false;
         try
         {
@@ -336,7 +363,7 @@ internal class NodeRecordBufferTests
         BloomFilter bloom = buffer.FindBloom(pointer)!;
         ulong nodeKey = NodeRecordCodec.NodeKey(null, TreePath.Empty);
         buffer.Reserve(0, out NativeNodeBuffer storage, out _);
-        NodeRecordBuffer.ReadLease reader = buffer.BeginRead();
+        NodeRecordBufferReadLease reader = buffer.BeginRead();
         buffer.Dispose();
         buffer.Dispose();
         using (Assert.EnterMultipleScope())
@@ -401,7 +428,7 @@ internal class NodeRecordBufferTests
         {
             try
             {
-                using NodeRecordBuffer.ReadLease lease = buffer.BeginRead();
+                using NodeRecordBufferReadLease lease = buffer.BeginRead();
                 return false;
             }
             catch (TrieException exception) when (exception.Message == "Trie node buffer compaction failed.")
@@ -589,7 +616,7 @@ internal class NodeRecordBufferTests
                 int seed = thread * recordsPerThread + i;
                 ulong pointer = pointers[thread][i];
                 bool retained = !compacting || i >= recordsPerThread - recordsPerRetain;
-                using NodeRecordBuffer.ReadLease lease = buffer.BeginRead();
+                using NodeRecordBufferReadLease lease = buffer.BeginRead();
                 bool located = buffer.TryLocate(pointer, out NodeRecord record);
                 if (located ? !Matches(record, Leaf(seed, 8)) : retained) failures.Add($"record {seed}");
                 ulong root = buffer.FindRoot(ConcurrentAddress(thread), Root(seed));
@@ -632,13 +659,13 @@ internal class NodeRecordBufferTests
 
     internal static bool IsLocatable(NodeRecordBuffer buffer, ulong pointer)
     {
-        using NodeRecordBuffer.ReadLease lease = buffer.BeginRead();
+        using NodeRecordBufferReadLease lease = buffer.BeginRead();
         return buffer.TryLocate(pointer, out _);
     }
 
     private static bool Resolves(NodeRecordBuffer buffer, (ulong Pointer, byte[] Rlp) record)
     {
-        using NodeRecordBuffer.ReadLease lease = buffer.BeginRead();
+        using NodeRecordBufferReadLease lease = buffer.BeginRead();
         return buffer.TryLocate(record.Pointer, out NodeRecord located) && Matches(located, record.Rlp);
     }
 

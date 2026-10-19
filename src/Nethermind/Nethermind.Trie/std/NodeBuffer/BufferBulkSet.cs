@@ -36,10 +36,10 @@ internal static partial class BufferBulkSet
     /// <param name="canParallelize">Whether the children of a full branch level with enough entries may be updated in parallel.</param>
     /// <exception cref="MissingTrieNodeException">A node on a changed path is in neither the buffer nor the source.</exception>
     /// <exception cref="InvalidOperationException">Two entries have the same key.</exception>
-    public static TrieRoot BulkSet(NodeRecordBuffer buffer, INodeRecordSource source, Hash256? address, TrieRoot root,
+    public static TrieRoot BulkSet(INodeRecordBuffer buffer, INodeRecordSource source, Hash256? address, TrieRoot root,
         in ArrayPoolListRef<BulkSetEntry> entries, bool canParallelize)
     {
-        using NodeRecordBuffer.ReadLease lease = buffer.BeginRead();
+        using NodeRecordBufferReadLease lease = buffer.BeginRead();
         if (entries.Count == 0) return new TrieRoot(root.Hash, NodeRecordCodec.PersistentPointer(root.Pointer));
 
         using ParallelUnbalancedWork.WorkerScope? workers = canParallelize && !RuntimeInformation.IsSingleProcessor
@@ -83,15 +83,15 @@ internal static partial class BufferBulkSet
     }
 
     /// <summary>The root of <paramref name="rootHash"/>, with its record pointer when the buffer indexes it.</summary>
-    public static TrieRoot ResolveRoot(NodeRecordBuffer buffer, Hash256? address, in ValueHash256 rootHash) =>
+    public static TrieRoot ResolveRoot(INodeRecordBuffer buffer, Hash256? address, in ValueHash256 rootHash) =>
         new(rootHash, rootHash == ValueKeccak.EmptyTreeHash ? 0 : buffer.FindRoot(address, rootHash));
 
     /// <param name="root">Its pointer is used as given, as <see cref="ResolveRoot"/> returns it.</param>
     /// <returns>The value at <paramref name="key"/>, or null when the trie has none.</returns>
     /// <exception cref="MissingTrieNodeException">A node on the path is in neither the buffer nor the source.</exception>
-    public static byte[]? TryGet(NodeRecordBuffer buffer, INodeRecordSource source, Hash256? address, TrieRoot root, in ValueHash256 key)
+    public static byte[]? TryGet(INodeRecordBuffer buffer, INodeRecordSource source, Hash256? address, TrieRoot root, in ValueHash256 key)
     {
-        using NodeRecordBuffer.ReadLease lease = buffer.BeginRead();
+        using NodeRecordBufferReadLease lease = buffer.BeginRead();
         Source leaf = Walk(buffer, source, address, root, key, out int depth);
         if (leaf.Kind == SourceKind.None) return null;
 
@@ -103,7 +103,7 @@ internal static partial class BufferBulkSet
     }
 
     /// <returns>The leaf on the path to <paramref name="key"/>, at <paramref name="depth"/>, or none when the path ends before one.</returns>
-    private static Source Walk(NodeRecordBuffer buffer, INodeRecordSource source, Hash256? address, in TrieRoot root, in ValueHash256 key, out int depth)
+    private static Source Walk(INodeRecordBuffer buffer, INodeRecordSource source, Hash256? address, in TrieRoot root, in ValueHash256 key, out int depth)
     {
         TreePath path = TreePath.Empty;
         ChildRef child = root.Hash == ValueKeccak.EmptyTreeHash ? default : ChildRef.ForHash(root.Hash, root.Pointer);
@@ -164,10 +164,10 @@ internal static partial class BufferBulkSet
     /// <summary>What a bulk set on one arena shares: the buffer and source it reads, the trie it writes and the arrays its entries are in.</summary>
     /// <param name="entries">The array of the entries passed in.</param>
     /// <param name="sortBuffer">The array of the sort buffer, the same as <paramref name="entries"/> when there is none.</param>
-    private readonly partial struct Context(NodeRecordBuffer buffer, INodeRecordSource source, Hash256? address, BulkSetArena arena,
+    private readonly partial struct Context(INodeRecordBuffer buffer, INodeRecordSource source, Hash256? address, BulkSetArena arena,
         BulkSetEntry[] entries, BulkSetEntry[] sortBuffer, bool canParallelize)
     {
-        private readonly NodeRecordBuffer _buffer = buffer;
+        private readonly INodeRecordBuffer _buffer = buffer;
         private readonly INodeRecordSource _source = source;
         private readonly Hash256? _address = address;
         private readonly BulkSetArena _arena = arena;

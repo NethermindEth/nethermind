@@ -24,7 +24,7 @@ namespace Nethermind.State.Flat.Test;
 public class FlatWorldStateScopeHistoricalRootTests
 {
     private ResourcePool _pool = null!;
-    private NodeRecordBuffer _buffer = null!;
+    private IRetainableNodeRecordBuffer _buffer = null!;
 
     [SetUp]
     public void SetUp()

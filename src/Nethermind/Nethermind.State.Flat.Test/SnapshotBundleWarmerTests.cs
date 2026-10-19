@@ -32,17 +32,79 @@ public class SnapshotBundleWarmerTests
     private static readonly TimeSpan BailOutTimeout = TimeSpan.FromSeconds(30);
 
     private ResourcePool _pool = null!;
-    private NodeRecordBuffer _buffer = null!;
+    private IRetainableNodeRecordBuffer _buffer = null!;
 
     [SetUp]
     public void SetUp()
     {
         _pool = new ResourcePool(new FlatDbConfig());
-        _buffer = FlatTestHelpers.NewTestBuffer();
+        _buffer = new ForwardingNodeRecordBuffer(FlatTestHelpers.NewTestBuffer());
     }
 
     [TearDown]
     public void TearDown() => _buffer.Dispose();
+
+    [Test]
+    public void Buffer_contract_preserves_batch_offsets_hashes_and_root_lookup([Values] bool storage)
+    {
+        Hash256? address = storage ? TestItem.KeccakC : null;
+        using ForwardingNodeRecordBuffer buffer = new(FlatTestHelpers.NewTestBuffer());
+        using INodeRecordBufferRetain retain = buffer.RetainActive();
+        byte[] prefix = FlatTestHelpers.LeafRlp(0x80);
+        buffer.AppendRecordFromRlp(address, TreePath.Empty, ValueKeccak.Compute(prefix), prefix);
+        int completedBefore = buffer.CompletedRecords;
+        int batchesBefore = buffer.CompletedWrites;
+        ValueHash256[] keys = new ValueHash256[64];
+        byte[] value = new byte[40];
+        value.AsSpan().Fill(0x42);
+        DictionaryNodeSource source = new(new Dictionary<TreePath, byte[]>(), new WarmedNodes(1), address);
+        using ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries = new(keys.Length);
+        for (int i = 0; i < keys.Length; i++)
+        {
+            keys[i] = ValueKeccak.Compute([(byte)i]);
+            entries.Add(new PatriciaTree.BulkSetEntry(keys[i], value));
+        }
+
+        TrieRoot root = BufferBulkSet.BulkSet(buffer, source, address, TrieRoot.Empty, entries, canParallelize: false);
+        (TreePath Path, ulong Pointer, NodeRecord Record)[] nodes = buffer.EnumerateNodes(root.Pointer).ToArray();
+        BufferBulkSet.WarmUp(buffer, new WarmedNodes(1),
+            (in TreePath path, in ValueHash256 hash, ReadOnlySpanAction<byte, BufferBulkSet.WarmUpRead> action, BufferBulkSet.WarmUpRead read) =>
+                throw new InvalidOperationException("Unexpected persistence read"), address, root, keys[0]);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(BufferBulkSet.ResolveRoot(buffer, address, root.Hash), Is.EqualTo(root));
+            Assert.That(buffer.CompletedRecords - completedBefore, Is.EqualTo(nodes.Length));
+            Assert.That(buffer.CompletedWrites - batchesBefore, Is.LessThan(nodes.Length), "a batch contains multiple relative record offsets");
+            Assert.That(nodes.All(node => node.Record.Hash == ValueKeccak.Compute(node.Record.Rlp)), Is.True);
+            foreach (ValueHash256 key in keys)
+                Assert.That(BufferBulkSet.TryGet(buffer, source, address, root, key), Is.EqualTo(value));
+            Assert.That(buffer.OutstandingReads, Is.Zero);
+            Assert.That(retain.Buffer, Is.SameAs(buffer));
+        }
+    }
+
+    [Test]
+    public void Buffer_contract_stack_read_leases_do_not_allocate()
+    {
+        using ForwardingNodeRecordBuffer buffer = new(FlatTestHelpers.NewTestBuffer());
+        for (int i = 0; i < 100; i++)
+        {
+            using NodeRecordBufferReadLease lease = buffer.BeginRead();
+        }
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < 1_000; i++)
+        {
+            using NodeRecordBufferReadLease lease = buffer.BeginRead();
+        }
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(allocated, Is.Zero);
+            Assert.That(buffer.OutstandingReads, Is.Zero);
+        }
+    }
 
     private SnapshotBundle NewBundle(NodeReader reader) =>
         new(FlatTestHelpers.MakeBundle(_pool, reader), _buffer, _pool, ResourcePool.Usage.MainBlockProcessing);
@@ -61,7 +123,7 @@ public class SnapshotBundleWarmerTests
         TrieRoot committedRoot = new(ValueKeccak.Compute(committedRlp), 0);
         using SnapshotBundle bundle = NewBundle(new NodeReader(persisted));
 
-        NodeRecordBufferRetain retain = _buffer.RetainActive();
+        INodeRecordBufferRetain retain = _buffer.RetainActive();
         committedRoot = new TrieRoot(committedRoot.Hash, PublishNode(bundle, address, TreePath.Empty, committedRlp));
         bundle.CollectAndApplySnapshot(StateId.PreGenesis, new StateId(1, TestItem.KeccakA), retain, returnSnapshot: false);
 
@@ -449,8 +511,8 @@ public class SnapshotBundleWarmerTests
         for (int i = 0; i < keys.Length; i++) keys[i] = ValueKeccak.Compute([(byte)i]);
         byte[] newValue = Bytes.FromHexString("0xff");
 
-        using NodeRecordBuffer persistedBuffer = FlatTestHelpers.NewTestBuffer();
-        using NodeRecordBufferRetain persistedRetain = persistedBuffer.RetainActive();
+        using IRetainableNodeRecordBuffer persistedBuffer = FlatTestHelpers.NewTestBuffer();
+        using INodeRecordBufferRetain persistedRetain = persistedBuffer.RetainActive();
         TrieRoot root;
         using (ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries = new(keys.Length))
         {
@@ -463,7 +525,7 @@ public class SnapshotBundleWarmerTests
             .ToDictionary(node => node.Path, node => node.Record.Rlp.ToArray());
         NodeReader reader = new(persisted);
         using SnapshotBundle bundle = NewBundle(reader);
-        using NodeRecordBufferRetain retain = _buffer.RetainActive();
+        using INodeRecordBufferRetain retain = _buffer.RetainActive();
         TrieRoot preBlockRoot = BufferBulkSet.ResolveRoot(_buffer, address, root.Hash);
 
         int firstWarmUp = WarmUpAll();

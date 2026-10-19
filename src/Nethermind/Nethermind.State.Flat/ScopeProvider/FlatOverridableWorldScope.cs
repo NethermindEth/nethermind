@@ -26,14 +26,14 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
     private readonly IResourcePool _resourcePool;
     private readonly IFlatDbManager _flatDbManager;
     private readonly KnownHeadersScopeProvider _worldState;
-    private readonly NodeRecordBuffer _nodeRecordBuffer;
+    private readonly IRetainableNodeRecordBuffer _nodeRecordBuffer;
     private bool _isDisposed = false;
 
     public FlatOverridableWorldScope(
         [KeyFilter(DbNames.Code)] IDb codeDb,
         IFlatDbManager flatDbManager,
         IFlatDbConfig configuration,
-        NodeRecordBuffer nodeRecordBuffer,
+        IRetainableNodeRecordBuffer nodeRecordBuffer,
         IResourcePool resourcePool,
         IStateHeaderProvider stateHeaderProvider,
         ILogManager logManager)

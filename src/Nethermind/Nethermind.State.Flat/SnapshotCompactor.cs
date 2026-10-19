@@ -199,9 +199,9 @@ public class SnapshotCompactor(
         }
     }
 
-    private static NodeRecordBufferRetain? OldestBufferRetain(SnapshotPooledList snapshots)
+    private static INodeRecordBufferRetain? OldestBufferRetain(SnapshotPooledList snapshots)
     {
-        NodeRecordBufferRetain? oldest = null;
+        INodeRecordBufferRetain? oldest = null;
         for (int i = 0; i < snapshots.Count; i++)
         {
             if (snapshots[i].BufferRetain is { } retain && (oldest is null || retain.WriteBoundary < oldest.WriteBoundary)) oldest = retain;

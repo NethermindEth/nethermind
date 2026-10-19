@@ -29,11 +29,11 @@ public class PersistedSnapshotCompactorTests
     private ResourcePool _pool = null!;
     private ArenaManager _memArena = null!;
     private string _memArenaDir = null!;
-    private NodeRecordBuffer _buffer = null!;
+    private IRetainableNodeRecordBuffer _buffer = null!;
 
     // Holds the nodes of the static test case sources, which are built before any test runs.
-    private static readonly NodeRecordBuffer CaseBuffer = FlatTestHelpers.NewTestBuffer();
-    private static readonly NodeRecordBufferRetain CaseBufferRetain = CaseBuffer.RetainActive();
+    private static readonly IRetainableNodeRecordBuffer CaseBuffer = FlatTestHelpers.NewTestBuffer();
+    private static readonly INodeRecordBufferRetain CaseBufferRetain = CaseBuffer.RetainActive();
 
     [SetUp]
     public void SetUp()
@@ -170,7 +170,7 @@ public class PersistedSnapshotCompactorTests
         TreePath fallbackPath = FlatTestHelpers.CanonicalPath(Keccak.Compute("trie_fb"), 20);     // → StorageFallbackSubTag (33-byte key)
         UInt256 slotIndex = 7;
 
-        NodeRecordBufferRetain bufferRetain = _buffer.RetainActive();
+        INodeRecordBufferRetain bufferRetain = _buffer.RetainActive();
         SnapshotContent c0 = new();
         c0.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance(100).TestObject;
         c0.Storages[(TestItem.AddressA, slotIndex)] = (UInt256)(0x42) << 248;
@@ -238,7 +238,7 @@ public class PersistedSnapshotCompactorTests
         for (int i = 1; i <= 8; i++)
         {
             states[i] = new StateId((ulong)i, Keccak.Compute($"{i}"));
-            NodeRecordBufferRetain bufferRetain = _buffer.RetainActive();
+            INodeRecordBufferRetain bufferRetain = _buffer.RetainActive();
             SnapshotContent c = new();
             c.Accounts[TestItem.Addresses[i - 1]] = Build.An.Account.WithBalance((UInt256)(i * 100)).TestObject;
             c.SetStateNodeRlp(_buffer, FlatTestHelpers.CanonicalPath(Keccak.Compute($"path{i}"), 4), FlatTestHelpers.LeafRlp((byte)(0xC1), (byte)i));
@@ -551,7 +551,7 @@ public class PersistedSnapshotCompactorTests
         for (int i = 0; i < contents.Length; i++)
         {
             states[i + 1] = new StateId((ulong)(i + 1), Keccak.Compute($"{i + 1}"));
-            using NodeRecordBufferRetain bufferRetain = CaseBufferRetain.Copy();
+            using INodeRecordBufferRetain bufferRetain = CaseBufferRetain.Copy();
             tier.ConvertToPersistedBase(
                 new Snapshot(states[i], states[i + 1], contents[i], _pool, ResourcePool.Usage.MainBlockProcessing) { BufferRetain = bufferRetain }).Dispose();
         }
@@ -739,7 +739,7 @@ public class PersistedSnapshotCompactorTests
         for (int i = 1; i <= 8; i++)
         {
             StateId next = new((ulong)i, Keccak.Compute($"{i}"));
-            NodeRecordBufferRetain bufferRetain = _buffer.RetainActive();
+            INodeRecordBufferRetain bufferRetain = _buffer.RetainActive();
             SnapshotContent c = new();
             if (i == 1)
             {
@@ -981,7 +981,7 @@ public class PersistedSnapshotCompactorTests
         for (int i = 1; i <= 2; i++)
         {
             tip = new((ulong)i, Keccak.Compute($"sn{i}"));
-            NodeRecordBufferRetain bufferRetain = _buffer.RetainActive();
+            INodeRecordBufferRetain bufferRetain = _buffer.RetainActive();
             SnapshotContent c = new();
             TreePath path = FlatTestHelpers.CanonicalPath(Keccak.Compute($"node{i}"), 4);
             c.SetStateNodeRlp(_buffer, path, FlatTestHelpers.LeafRlp(0xC2, 0x80, (byte)i));

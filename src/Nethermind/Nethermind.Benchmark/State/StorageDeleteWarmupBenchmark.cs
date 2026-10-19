@@ -98,7 +98,7 @@ public class StorageDeleteWarmupBenchmark
 
     private FlatWorldStateScope _scope = null!;
     private CountingReader _reader = null!;
-    private NodeRecordBuffer _buffer = null!;
+    private IRetainableNodeRecordBuffer _buffer = null!;
     private long _measuredLoads;
     private long _measuredOps;
 
@@ -113,7 +113,7 @@ public class StorageDeleteWarmupBenchmark
         _address = DeriveAddress(7);
 
         // Build the trie in memory, then move all of it into persistence so every iteration starts cold.
-        using NodeRecordBuffer buffer = new(0, NodeRecordBuffer.DefaultGenerationBytes);
+        using IRetainableNodeRecordBuffer buffer = new NodeRecordBuffer(0, NodeRecordBuffer.DefaultGenerationBytes);
         SnapshotBundle bundle = new(
             new ReadOnlySnapshotBundle(new SnapshotPooledList(0), new NoopPersistenceReader(), recordDetailedMetrics: false, PersistedSnapshotStack.Empty()),
             buffer, _resourcePool, ResourcePool.Usage.MainBlockProcessing);
@@ -153,7 +153,7 @@ public class StorageDeleteWarmupBenchmark
     /// </summary>
     private void GrowNodeCache()
     {
-        using NodeRecordBuffer buffer = new(0, NodeRecordBuffer.DefaultGenerationBytes);
+        using IRetainableNodeRecordBuffer buffer = new NodeRecordBuffer(0, NodeRecordBuffer.DefaultGenerationBytes);
         SnapshotBundle bundle = new(
             new ReadOnlySnapshotBundle(new SnapshotPooledList(0), _persistence.CreateReader(), recordDetailedMetrics: false, PersistedSnapshotStack.Empty()),
             buffer, _resourcePool, ResourcePool.Usage.MainBlockProcessing);

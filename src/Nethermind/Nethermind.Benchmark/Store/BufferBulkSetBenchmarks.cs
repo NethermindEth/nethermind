@@ -38,9 +38,9 @@ public class BufferBulkSetBenchmarks
     private PatriciaTree.BulkSetEntry[] _preload;
     private ParallelCommitTrieStore _trieStore;
     private Hash256 _preloadedRootHash;
-    private NodeRecordBuffer _coldBuffer;
-    private NodeRecordBuffer _warmBuffer;
-    private NodeRecordBufferRetain _warmBufferRetain;
+    private IRetainableNodeRecordBuffer _coldBuffer;
+    private IRetainableNodeRecordBuffer _warmBuffer;
+    private INodeRecordBufferRetain _warmBufferRetain;
     private TrieRoot _warmRoot;
     private int _fetchCountBeforeWarmBuffer;
     private WarmedNodes _warmedNodes;
@@ -65,8 +65,8 @@ public class BufferBulkSetBenchmarks
             preloadTree.Commit();
             _preloadedRootHash = preloadTree.RootHash;
 
-            using NodeRecordBuffer preloadBuffer = new(0, NodeRecordBuffer.DefaultGenerationBytes);
-            using NodeRecordBufferRetain preloadRetain = preloadBuffer.RetainActive();
+            using IRetainableNodeRecordBuffer preloadBuffer = new NodeRecordBuffer(0, NodeRecordBuffer.DefaultGenerationBytes);
+            using INodeRecordBufferRetain preloadRetain = preloadBuffer.RetainActive();
             TrieRoot root = PreloadBuffer(preloadBuffer);
             foreach ((TreePath path, _, NodeRecord record) in preloadBuffer.EnumerateNodes(root.Pointer)) preloadedNodes[path] = record.Rlp.ToArray();
         }
@@ -122,7 +122,7 @@ public class BufferBulkSetBenchmarks
     [Benchmark]
     public void BufferBulkSetWarmBuffer() => DoBufferBulkSet(_warmBuffer, _warmRoot);
 
-    private TrieRoot PreloadBuffer(NodeRecordBuffer buffer)
+    private TrieRoot PreloadBuffer(IRetainableNodeRecordBuffer buffer)
     {
         if (_preload.Length == 0) return TrieRoot.Empty;
 
@@ -132,7 +132,7 @@ public class BufferBulkSetBenchmarks
         return root;
     }
 
-    private void DoBufferBulkSet(NodeRecordBuffer buffer, TrieRoot root)
+    private void DoBufferBulkSet(IRetainableNodeRecordBuffer buffer, TrieRoot root)
     {
         using ArrayPoolListRef<PatriciaTree.BulkSetEntry> batch = new(BatchSize);
         for (int start = 0; start < EntryCount; start += BatchSize)

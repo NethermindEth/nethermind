@@ -25,7 +25,7 @@ public class ReadOnlyScopeLifecycleBenchmark
 {
     private FlatDbConfig _config = null!;
     private ResourcePool _resourcePool = null!;
-    private NodeRecordBuffer _nodeRecordBuffer = null!;
+    private IRetainableNodeRecordBuffer _nodeRecordBuffer = null!;
     private NoopTrieWarmer _warmer = null!;
     private Address[] _addresses = null!;
 

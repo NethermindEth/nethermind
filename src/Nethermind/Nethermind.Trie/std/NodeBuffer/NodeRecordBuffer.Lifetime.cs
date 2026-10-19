@@ -18,28 +18,9 @@ public sealed partial class NodeRecordBuffer
     private bool _disposed;
     private Exception? _compactionFailure;
 
-    /// <summary>Protects borrowed records and lookup metadata retired during this operation until all overlapping readers finish.</summary>
-    internal ReadLease BeginRead()
-    {
-        EnterRead();
-        return new ReadLease(this);
-    }
+    void INodeRecordBuffer.EnterRead() => EnterRead();
 
-    /// <summary>Protects records across iterator yields and other operations that cannot hold a ref-struct lease.</summary>
-    internal IDisposable BeginReadScope() => new ReadScope(this);
-
-    private sealed class ReadScope : IDisposable
-    {
-        private NodeRecordBuffer? _buffer;
-
-        public ReadScope(NodeRecordBuffer buffer)
-        {
-            buffer.EnterRead();
-            _buffer = buffer;
-        }
-
-        public void Dispose() => Interlocked.Exchange(ref _buffer, null)?.EndRead();
-    }
+    void INodeRecordBuffer.ExitRead() => EndRead();
 
     private void EnterRead()
     {
@@ -159,10 +140,5 @@ public sealed partial class NodeRecordBuffer
         _inPlaceBytes = 0;
         _compressedMemory = 0;
         UpdateMetrics();
-    }
-
-    internal readonly ref struct ReadLease(NodeRecordBuffer buffer)
-    {
-        public void Dispose() => buffer.EndRead();
     }
 }

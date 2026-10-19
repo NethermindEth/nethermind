@@ -73,7 +73,7 @@ internal sealed class RecordTable(int slotCount)
     /// <summary>Resolves a pointer in this resource's current generation, independent of the position index.</summary>
     public bool TryGet(ulong pointer, in ValueHash256 hash, out NodeRecord record)
     {
-        if (pointer >> NodeRecordBuffer.OffsetBits == Volatile.Read(ref _generation))
+        if (pointer >> NodeRecordCodec.OffsetBits == Volatile.Read(ref _generation))
         {
             uint position = (uint)pointer;
             int chunk = (int)(position >> OffsetBits);
@@ -156,7 +156,7 @@ internal sealed class RecordTable(int slotCount)
         }
     }
 
-    private ulong PointerAt(uint position) => (ulong)_generation << NodeRecordBuffer.OffsetBits | position;
+    private ulong PointerAt(uint position) => (ulong)_generation << NodeRecordCodec.OffsetBits | position;
 
     private static int OffsetOf(uint position) => (int)(position & OffsetMask) << AlignmentBits;
 

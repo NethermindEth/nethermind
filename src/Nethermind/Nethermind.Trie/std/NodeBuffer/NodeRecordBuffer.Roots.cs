@@ -32,7 +32,7 @@ public sealed partial class NodeRecordBuffer
     /// <param name="address">The storage trie's address hash, or null for the state trie.</param>
     internal ulong FindRoot(Hash256? address, in ValueHash256 root)
     {
-        using ReadLease lease = BeginRead();
+        using NodeRecordBufferReadLease lease = this.BeginRead();
         ValueHash256 addressHash = address?.ValueHash256 ?? default;
         ulong pointer = Volatile.Read(ref RootSlot(address, root));
         while (TryLocate(pointer, out NodeRecord rootKey))
@@ -59,7 +59,7 @@ public sealed partial class NodeRecordBuffer
     /// <param name="address">The storage trie's address hash, or null for the state trie.</param>
     internal void SetRoot(Hash256? address, in ValueHash256 root, ulong rootPointer)
     {
-        using ReadLease lease = BeginRead();
+        using NodeRecordBufferReadLease lease = this.BeginRead();
         ref ulong slot = ref RootSlot(address, root);
         ulong previous = Volatile.Read(ref slot);
         while (true)
@@ -79,6 +79,10 @@ public sealed partial class NodeRecordBuffer
             previous = current;
         }
     }
+
+    ulong INodeRecordBuffer.FindRoot(Hash256? address, in ValueHash256 root) => FindRoot(address, root);
+
+    void INodeRecordBuffer.SetRoot(Hash256? address, in ValueHash256 root, ulong rootPointer) => SetRoot(address, root, rootPointer);
 
     private ref ulong RootSlot(Hash256? address, in ValueHash256 root)
     {

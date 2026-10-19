@@ -86,7 +86,7 @@ public class Snapshot : RefCountingDisposable
 
     /// <summary>The retain on the trie node buffer generation that was active when this snapshot's first block started writing; released with the snapshot.</summary>
     /// <remarks>Protects this generation and later writes. Traversals lease the buffer to protect any inherited older records they encounter.</remarks>
-    internal NodeRecordBufferRetain? BufferRetain { get; init; }
+    internal INodeRecordBufferRetain? BufferRetain { get; init; }
 
     public StateId From => _from;
     public StateId To => _to;

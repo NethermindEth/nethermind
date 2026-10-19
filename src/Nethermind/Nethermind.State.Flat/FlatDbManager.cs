@@ -25,7 +25,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
     private readonly IPersistenceManager _persistenceManager;
     private readonly ISnapshotCompactor _snapshotCompactor;
     private readonly ISnapshotRepository _snapshotRepository;
-    private readonly NodeRecordBuffer _nodeRecordBuffer;
+    private readonly IRetainableNodeRecordBuffer _nodeRecordBuffer;
     private readonly IResourcePool _resourcePool;
 
     // Cache for assembling `ReadOnlySnapshotBundle`. Its not actually slow, but its called 1.8k per sec so caching
@@ -58,7 +58,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
     public FlatDbManager(
         IResourcePool resourcePool,
         IProcessExitSource processExitSource,
-        NodeRecordBuffer nodeRecordBuffer,
+        IRetainableNodeRecordBuffer nodeRecordBuffer,
         ISnapshotCompactor snapshotCompactor,
         ISnapshotRepository snapshotRepository,
         IPersistenceManager persistenceManager,

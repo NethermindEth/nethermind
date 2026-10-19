@@ -348,7 +348,7 @@ internal class BufferBulkSetTests
             Assert.That(newRoot.Hash, Is.EqualTo(tree.RootHash.ValueHash256), "root");
         }
 
-        int WarmUp(NodeRecordBuffer walkedBuffer, TrieRoot walkedRoot, Hash256 key)
+        int WarmUp(INodeRecordBuffer walkedBuffer, TrieRoot walkedRoot, Hash256 key)
         {
             int before = source.FetchCount;
             source.WarmUp(walkedBuffer, walkedRoot, key.ValueHash256);
@@ -940,7 +940,7 @@ internal class BufferBulkSetTests
         {
             // The early leaf's value is pending when loading the later, rewritten leaf falls back to persistence.
             laterRetain.Dispose();
-            Assert.That(() => buffer.FindBloom(laterRetain.Generation << NodeRecordBuffer.OffsetBits) is null, Is.True.After(NodeRecordBufferTests.CompactionTimeoutMilliseconds, NodeRecordBufferTests.PollingMilliseconds));
+            Assert.That(() => buffer.FindBloom(laterRetain.Generation << NodeRecordCodec.OffsetBits) is null, Is.True.After(NodeRecordBufferTests.CompactionTimeoutMilliseconds, NodeRecordBufferTests.PollingMilliseconds));
             using (buffer.BeginRead())
             using (Assert.EnterMultipleScope())
             {
@@ -1009,7 +1009,7 @@ internal class BufferBulkSetTests
         return pointers.GetValueOrDefault(TreePath.Empty);
     }
 
-    private static TrieRoot BulkSet(NodeRecordBuffer buffer, INodeRecordSource source, Hash256 address, TrieRoot root, List<(Hash256 key, byte[] value)> items, bool canParallelize)
+    private static TrieRoot BulkSet(INodeRecordBuffer buffer, INodeRecordSource source, Hash256 address, TrieRoot root, List<(Hash256 key, byte[] value)> items, bool canParallelize)
     {
         using ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries = Entries(items);
         return BufferBulkSet.BulkSet(buffer, source, address, root, entries, canParallelize);
@@ -1031,10 +1031,10 @@ internal class BufferBulkSetTests
         return (tree.RootHash, store.TakeCommitted());
     }
 
-    private static Dictionary<TreePath, byte[]> Rlps(NodeRecordBuffer buffer, TrieRoot root) =>
+    private static Dictionary<TreePath, byte[]> Rlps(INodeRecordBuffer buffer, TrieRoot root) =>
         buffer.EnumerateNodes(root.Pointer).ToDictionary(node => node.Path, node => node.Record.Rlp.ToArray());
 
-    private static IEnumerable<string> InvalidRecords(NodeRecordBuffer buffer, TrieRoot root)
+    private static IEnumerable<string> InvalidRecords(INodeRecordBuffer buffer, TrieRoot root)
     {
         List<string> invalid = [];
         foreach ((TreePath path, ulong pointer, NodeRecord record) in buffer.EnumerateNodes(root.Pointer))

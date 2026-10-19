@@ -14,10 +14,10 @@ internal static partial class BufferBulkSet
     /// <summary>Reads a pre-block path, then publishes newly fetched records from the deepest node to the root.</summary>
     /// <remarks>Stops silently where the path ends or persistence misses, retaining its verified prefix. Descent stays inside each read callback so ancestors' borrowed RLP remains valid until their children are published.</remarks>
     /// <param name="forDelete">Also loads the sibling a two-child branch collapses into when its matching leaf is deleted.</param>
-    public static void WarmUp(NodeRecordBuffer buffer, WarmedNodes warmed, LoadNodeRlp loadRlp, Hash256? address,
+    public static void WarmUp(INodeRecordBuffer buffer, WarmedNodes warmed, LoadNodeRlp loadRlp, Hash256? address,
         TrieRoot root, in ValueHash256 key, bool forDelete = false)
     {
-        using NodeRecordBuffer.ReadLease lease = buffer.BeginRead();
+        using NodeRecordBufferReadLease lease = buffer.BeginRead();
         if (root.Hash == ValueKeccak.EmptyTreeHash) return;
         Span<byte> keyNibbles = stackalloc byte[MaxKeyNibbles];
         Nibbles.BytesToNibbleBytes(key.Bytes, keyNibbles);
@@ -35,7 +35,7 @@ internal static partial class BufferBulkSet
     internal readonly ref struct WarmUpRead
     {
         private static readonly ReadOnlySpanAction<byte, WarmUpRead> Read = static (rlp, read) => read.ReadRlp(rlp);
-        private readonly NodeRecordBuffer _buffer;
+        private readonly INodeRecordBuffer _buffer;
         private readonly WarmedNodes _warmed;
         private readonly LoadNodeRlp _loadRlp;
         private readonly Hash256? _address;
@@ -46,7 +46,7 @@ internal static partial class BufferBulkSet
         private readonly ref ulong _result;
         private readonly WarmUpSibling _sibling;
 
-        internal static void Start(NodeRecordBuffer buffer, WarmedNodes warmed, LoadNodeRlp loadRlp, Hash256? address,
+        internal static void Start(INodeRecordBuffer buffer, WarmedNodes warmed, LoadNodeRlp loadRlp, Hash256? address,
             TrieRoot root, ReadOnlySpan<byte> keyNibbles, bool forDelete)
         {
             ulong result = 0;
@@ -54,7 +54,7 @@ internal static partial class BufferBulkSet
             read.Load(ChildRef.ForHash(root.Hash, root.Pointer));
         }
 
-        private WarmUpRead(NodeRecordBuffer buffer, WarmedNodes warmed, LoadNodeRlp loadRlp, Hash256? address,
+        private WarmUpRead(INodeRecordBuffer buffer, WarmedNodes warmed, LoadNodeRlp loadRlp, Hash256? address,
             in TreePath path, in ValueHash256 hash, ReadOnlySpan<byte> keyNibbles, bool forDelete, ref ulong result, WarmUpSibling sibling = default)
         {
             _buffer = buffer;

@@ -119,25 +119,23 @@ internal static partial class BufferBulkSet
 
             if (hashedCount == 0) return;
 
-            ulong basePointer = _buffer.Reserve(totalLength, out NativeNodeBuffer buffer, out int baseOffset);
+            ulong basePointer = _buffer.Reserve(totalLength, out Span<byte> buffer);
             for (int i = 0; i < hashedCount; i++)
             {
                 ref PendingNode node = ref _arena.Nodes[hashed[i]];
-                recordStarts[i] += baseOffset;
-                int rlpOffset = WriteRecord(ref node, buffer.AsSpan(recordStarts[i]), messages[i].Length, NodeRecordCodec.NodeKey(_address, node.Path));
+                int rlpOffset = WriteRecord(ref node, buffer[recordStarts[i]..], messages[i].Length, NodeRecordCodec.NodeKey(_address, node.Path));
                 messages[i] = (recordStarts[i] + rlpOffset, messages[i].Length);
             }
 
             Span<ValueHash256> hashes = _arena.Hashes.AsSpan(0, hashedCount);
-            KeccakBatch.Hash(buffer.AsSpan(), messages.AsSpan(0, hashedCount), hashes);
-            BloomFilter? bloom = _buffer.FindBloom(basePointer);
+            KeccakBatch.Hash(buffer, messages.AsSpan(0, hashedCount), hashes);
             for (int i = 0; i < hashedCount; i++)
             {
-                hashes[i].Bytes.CopyTo(buffer.AsSpan(recordStarts[i] + NodeRecordCodec.HashOffset));
-                ulong pointer = basePointer + (ulong)(recordStarts[i] - baseOffset);
+                hashes[i].Bytes.CopyTo(buffer[(recordStarts[i] + NodeRecordCodec.HashOffset)..]);
+                ulong pointer = basePointer + (ulong)recordStarts[i];
                 Link(hashed[i], top, ChildRef.ForHash(hashes[i], pointer), ref topReference);
-                bloom?.Add(BinaryPrimitives.ReadUInt64LittleEndian(buffer.AsSpan(recordStarts[i] + NodeRecordCodec.NodeKeyOffset)));
             }
+            _buffer.CompleteWrite(basePointer, buffer, recordStarts.AsSpan(0, hashedCount));
         }
 
         private void Link(int index, int top, in ChildRef reference, ref ChildRef topReference)

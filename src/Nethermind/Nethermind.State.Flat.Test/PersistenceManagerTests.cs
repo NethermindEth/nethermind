@@ -1297,7 +1297,7 @@ public class PersistenceManagerTests
         // Arrange
         StateId from = Block0;
         StateId to = CreateStateId(16);
-        using NodeRecordBuffer buffer = FlatTestHelpers.NewTestBuffer();
+        using IRetainableNodeRecordBuffer buffer = FlatTestHelpers.NewTestBuffer();
         using Snapshot snapshot = _resourcePool.CreateSnapshot(from, to, ResourcePool.Usage.ReadOnlyProcessingEnv, buffer);
 
         // Add accounts

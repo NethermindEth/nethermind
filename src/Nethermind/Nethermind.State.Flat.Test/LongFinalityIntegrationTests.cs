@@ -34,7 +34,7 @@ public class LongFinalityIntegrationTests
     private IFlatDbConfig _config = null!;
     private ArenaManager _memArena = null!;
     private BlobArenaManager _helperBlobs = null!;
-    private NodeRecordBuffer _buffer = null!;
+    private IRetainableNodeRecordBuffer _buffer = null!;
 
     [SetUp]
     public void SetUp()

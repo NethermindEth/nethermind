@@ -25,7 +25,7 @@ public class FlatStateReaderTests
 {
     private static readonly BlockHeader _header = Build.A.BlockHeader.WithNumber(5).WithStateRoot(TestItem.KeccakA).TestObject;
 
-    private NodeRecordBuffer _buffer = null!;
+    private IRetainableNodeRecordBuffer _buffer = null!;
 
     [SetUp]
     public void SetUp() => _buffer = FlatTestHelpers.NewTestBuffer();
@@ -153,7 +153,7 @@ public class FlatStateReaderTests
     {
         CountingTrieReader trieReader = CountingTrieReader.WithSingleAccountAndSlot(TestItem.AddressA, 1, out Hash256 stateRoot);
         BlockHeader header = Build.A.BlockHeader.WithNumber(5).WithStateRoot(stateRoot).TestObject;
-        using NodeRecordBuffer sourceBuffer = FlatTestHelpers.NewTestBuffer();
+        using IRetainableNodeRecordBuffer sourceBuffer = FlatTestHelpers.NewTestBuffer();
         ResourcePool pool = new(new FlatDbConfig());
         using Snapshot snapshot = pool.CreateSnapshot(StateId.PreGenesis, new StateId(header), ResourcePool.Usage.MainBlockProcessing, sourceBuffer);
         trieReader.AddRootsTo(snapshot, sourceBuffer);
@@ -278,7 +278,7 @@ public class FlatStateReaderTests
             return new CountingTrieReader(addressHash, stateTree, storageTree);
         }
 
-        public void AddRootsTo(Snapshot snapshot, NodeRecordBuffer buffer, bool state = true, bool storage = true)
+        public void AddRootsTo(Snapshot snapshot, IRetainableNodeRecordBuffer buffer, bool state = true, bool storage = true)
         {
             if (state)
             {

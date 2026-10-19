@@ -79,7 +79,7 @@ public class FlatStorageTreeDeleteWarmupTests
         private readonly ResourcePool _resourcePool;
         private readonly RocksDbPersistence _persistence = new(new SnapshotableMemColumnsDb<FlatDbColumns>(), LimboLogs.Instance);
         private readonly StateId _baseState;
-        private readonly List<NodeRecordBuffer> _buffers = [];
+        private readonly List<IRetainableNodeRecordBuffer> _buffers = [];
         private readonly List<Snapshot> _snapshots = [];
 
         public Fixture()
@@ -183,9 +183,9 @@ public class FlatStorageTreeDeleteWarmupTests
             foreach (KeyValuePair<HashedKey<(Hash256, TreePath)>, ulong> kv in snapshot.StorageNodes) batch.SetStorageTrieNode(kv.Key.Key.Item1, kv.Key.Key.Item2, snapshot.GetRlp(kv.Value));
         }
 
-        private NodeRecordBuffer NewBuffer()
+        private IRetainableNodeRecordBuffer NewBuffer()
         {
-            NodeRecordBuffer buffer = FlatTestHelpers.NewTestBuffer();
+            IRetainableNodeRecordBuffer buffer = FlatTestHelpers.NewTestBuffer();
             _buffers.Add(buffer);
             return buffer;
         }
@@ -194,7 +194,7 @@ public class FlatStorageTreeDeleteWarmupTests
         {
             _persistence.Clear();
             foreach (Snapshot snapshot in _snapshots) snapshot.Dispose();
-            foreach (NodeRecordBuffer buffer in _buffers) buffer.Dispose();
+            foreach (IRetainableNodeRecordBuffer buffer in _buffers) buffer.Dispose();
         }
     }
 

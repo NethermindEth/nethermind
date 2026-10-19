@@ -31,7 +31,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     private readonly bool _isReadOnly;
     private readonly bool _trieless;
     // Taken before the block's first trie write and handed to its snapshot at commit, so every node the block writes stays readable.
-    private NodeRecordBufferRetain? _bufferRetain;
+    private INodeRecordBufferRetain? _bufferRetain;
 
     private readonly Hash256 _initialStateRoot;
     // The state root warm-ups walk from; default in a trie-less scope.
@@ -103,7 +103,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         _trieless = snapshotBundle.IsHistorical;
         if (!_trieless)
         {
-            NodeRecordBuffer buffer = snapshotBundle.NodeRecordBuffer!;
+            IRetainableNodeRecordBuffer buffer = snapshotBundle.NodeRecordBuffer!;
             _bufferRetain = buffer.RetainActive();
             _initialTrieRoot = BufferBulkSet.ResolveRoot(buffer, null, _initialStateRoot.ValueHash256);
             _stateTrie = new BufferedTrie(snapshotBundle, buffer, null, _initialTrieRoot);

@@ -24,7 +24,7 @@ public class SnapshotCompactorTests
     private FlatDbConfig _config = null!;
     private FlatTestContainer _tier = null!;
     private SnapshotRepository _snapshotRepository;
-    private NodeRecordBuffer _buffer = null!;
+    private IRetainableNodeRecordBuffer _buffer = null!;
 
     [SetUp]
     public void SetUp()
@@ -33,7 +33,7 @@ public class SnapshotCompactorTests
         _resourcePool = new ResourcePool(_config);
         _tier = new FlatTestContainer();
         _snapshotRepository = _tier.Repository;
-        _buffer = FlatTestHelpers.NewTestBuffer();
+        _buffer = new ForwardingNodeRecordBuffer(FlatTestHelpers.NewTestBuffer());
         _compactor = new SnapshotCompactor(_config, ScheduleHelper.CreateWithOffset(_config, 0), _resourcePool, _snapshotRepository, LimboLogs.Instance);
     }
 
@@ -215,8 +215,8 @@ public class SnapshotCompactorTests
         Assert.That(compacted.StoragesCount, Is.EqualTo(2));
         Assert.That(compacted.StateNodes.Count(), Is.EqualTo(3));
         Assert.That(compacted.StorageNodes.Count(), Is.EqualTo(2));
-        Assert.That(snapshot1.BufferRetain!.Generation, Is.GreaterThan(snapshot0.BufferRetain!.Generation));
-        Assert.That(compacted.BufferRetain!.Generation, Is.EqualTo(snapshot0.BufferRetain.Generation));
+        Assert.That((snapshot1.BufferRetain!.WriteBoundary >> NodeRecordCodec.OffsetBits), Is.GreaterThan((snapshot0.BufferRetain!.WriteBoundary >> NodeRecordCodec.OffsetBits)));
+        Assert.That((compacted.BufferRetain!.WriteBoundary >> NodeRecordCodec.OffsetBits), Is.EqualTo((snapshot0.BufferRetain.WriteBoundary >> NodeRecordCodec.OffsetBits)));
         Assert.That(compacted.TryGetStateNode(statePath1, out ulong stateNode1), Is.True);
         Assert.That(compacted.GetRlp(stateNode1).ToArray(), Is.EqualTo(Bytes.FromHexString(FlatTestHelpers.LeafRlpA)));
     }
@@ -368,7 +368,7 @@ public class SnapshotCompactorTests
     [Test]
     public void CompactSnapshotBundle_SelectsEarliestFullBoundaryNotFirstGenerationMatch()
     {
-        NodeRecordBufferRetain earliest = _buffer.RetainActive();
+        INodeRecordBufferRetain earliest = _buffer.RetainActive();
         SnapshotContent finalContent = new();
         finalContent.SetStateNodeRlp(_buffer, TreePath.FromHexString("1"), FlatTestHelpers.LeafRlpA);
         using Snapshot first = _resourcePool.CreateSnapshot(new(0, Keccak.EmptyTreeHash), new(1, TestItem.KeccakA), ResourcePool.Usage.ReadOnlyProcessingEnv, _buffer);
@@ -378,8 +378,8 @@ public class SnapshotCompactorTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(first.BufferRetain!.Generation, Is.EqualTo(earliest.Generation));
-            Assert.That(first.BufferRetain.WriteBoundary, Is.GreaterThan(earliest.WriteBoundary));
+            Assert.That((first.BufferRetain!.WriteBoundary >> NodeRecordCodec.OffsetBits), Is.EqualTo((earliest.WriteBoundary >> NodeRecordCodec.OffsetBits)));
+            Assert.That(first.BufferRetain!.WriteBoundary, Is.GreaterThan(earliest.WriteBoundary));
             Assert.That(result.BufferRetain!.WriteBoundary, Is.EqualTo(earliest.WriteBoundary));
             Assert.That(result.StateNodes.Count(), Is.EqualTo(2));
         }

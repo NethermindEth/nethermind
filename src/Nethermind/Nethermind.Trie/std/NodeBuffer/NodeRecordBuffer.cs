@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
@@ -20,7 +21,7 @@ namespace Nethermind.Trie.NodeBuffer;
 /// Appends are lock-free bump reservations into the active generation; rotation, retains and drops run under a lock.
 /// Readers borrow native records within an operation lease or generation retain; retired storage is freed after readers finish.
 /// </remarks>
-public sealed partial class NodeRecordBuffer : IDisposable
+public sealed partial class NodeRecordBuffer : IRetainableNodeRecordBuffer
 {
     /// <summary>The default size of a generation in bytes.</summary>
     public const int DefaultGenerationBytes = 64 * 1024 * 1024;
@@ -28,7 +29,7 @@ public sealed partial class NodeRecordBuffer : IDisposable
     private const int LiveGenerations = 8;
     private const int MaxGenerations = 4096;
     private const ulong GenerationSlotMask = MaxGenerations - 1;
-    internal const int OffsetBits = 32;
+    internal const int OffsetBits = NodeRecordCodec.OffsetBits;
 
     private readonly Lock _lock = new();
     private readonly Generation?[] _generations = new Generation?[MaxGenerations];
@@ -111,13 +112,30 @@ public sealed partial class NodeRecordBuffer : IDisposable
         return TryLocateRetired(pointer, out record);
     }
 
-    /// <summary>The record at <paramref name="pointer"/>.</summary>
-    /// <remarks>The caller must hold an operation lease or a <see cref="NodeRecordBufferRetain"/> on this generation or an older one for the entire use of the record, including its spans and references.</remarks>
-    /// <exception cref="TrieException">The pointer does not resolve to a record.</exception>
+    /// <inheritdoc/>
     public NodeRecord GetRecord(ulong pointer)
     {
         ThrowIfUnavailable();
         return TryLocate(pointer, out NodeRecord record) ? record : ThrowNotLocatable(pointer);
+    }
+
+    bool INodeRecordBuffer.TryLocate(ulong pointer, out NodeRecord record) => TryLocate(pointer, out record);
+
+    INodeRecordBufferRetain IRetainableNodeRecordBuffer.RetainActive() => RetainActive();
+
+    ulong INodeRecordBuffer.Reserve(int alignedTotalLength, out Span<byte> bytes)
+    {
+        ulong pointer = Reserve(alignedTotalLength, out NativeNodeBuffer buffer, out int offset);
+        bytes = buffer.AsSpan(offset, alignedTotalLength);
+        return pointer;
+    }
+
+    void INodeRecordBuffer.CompleteWrite(ulong basePointer, ReadOnlySpan<byte> bytes, ReadOnlySpan<int> recordOffsets)
+    {
+        BloomFilter? bloom = FindBloom(basePointer);
+        if (bloom is null) return;
+        foreach (int offset in recordOffsets)
+            bloom.Add(BinaryPrimitives.ReadUInt64LittleEndian(bytes[(offset + NodeRecordCodec.NodeKeyOffset)..]));
     }
 
     /// <summary>Reserves contiguous zero-filled bytes in the active generation.</summary>
@@ -141,21 +159,6 @@ public sealed partial class NodeRecordBuffer : IDisposable
 
             Rotate(generation.Id, alignedTotalLength);
         }
-    }
-
-    /// <summary>Appends the record of a node given by its RLP, with every child pointer 0.</summary>
-    /// <exception cref="TrieException">The RLP is not a valid trie node.</exception>
-    internal ulong AppendRecordFromRlp(Hash256? address, in TreePath path, in ValueHash256 hash, ReadOnlySpan<byte> rlp)
-    {
-        using ReadLease lease = BeginRead();
-        if (!NodeRecordCodec.TryMeasure(rlp, out NodeRecordKind kind, out ushort hashMask)) ThrowInvalidRlp();
-
-        int length = NodeRecordCodec.Length(BitOperations.PopCount(hashMask), rlp.Length);
-        ulong pointer = Reserve(NodeRecordCodec.AlignedLength(length), out NativeNodeBuffer buffer, out int offset);
-        ulong nodeKey = NodeRecordCodec.NodeKey(address, path);
-        NodeRecordCodec.WriteFromRlp(rlp, kind, hashMask, hash, nodeKey, buffer.AsSpan(offset, length));
-        FindBloom(pointer)?.Add(nodeKey);
-        return pointer;
     }
 
     private void Rotate(ulong fullGeneration, int length)
@@ -208,9 +211,6 @@ public sealed partial class NodeRecordBuffer : IDisposable
 
     [DoesNotReturn, StackTraceHidden]
     private static NodeRecord ThrowNotLocatable(ulong pointer) => throw new TrieException($"Trie node buffer pointer {pointer:x16} does not resolve to a record.");
-
-    [DoesNotReturn, StackTraceHidden]
-    private static void ThrowInvalidRlp() => throw new TrieException("Invalid trie node RLP.");
 
     [DoesNotReturn, StackTraceHidden]
     private static void ThrowTooManyRetained() => throw new TrieException("Too many retained trie node buffer generations.");

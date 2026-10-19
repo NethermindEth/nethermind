@@ -16,14 +16,14 @@ namespace Nethermind.Trie.NodeBuffer;
 internal sealed class NodeRecordBufferVisitor<TNodeContext> where TNodeContext : struct, INodeContext<TNodeContext>
 {
     private const long SubtreeSizeThreshold = 256 * 1024;
-    private readonly NodeRecordBuffer _buffer;
+    private readonly INodeRecordBuffer _buffer;
     private readonly ITreeVisitor<TNodeContext> _visitor;
     private readonly VisitingStats? _diagnostics;
     private readonly int _parallelism;
     private readonly ConcurrencyController _workers;
     private readonly ReadFlags _readFlags;
 
-    internal NodeRecordBufferVisitor(NodeRecordBuffer buffer, ITreeVisitor<TNodeContext> visitor, VisitingOptions? options = null, VisitingStats? diagnostics = null)
+    internal NodeRecordBufferVisitor(INodeRecordBuffer buffer, ITreeVisitor<TNodeContext> visitor, VisitingOptions? options = null, VisitingStats? diagnostics = null)
     {
         _buffer = buffer;
         _visitor = visitor;
@@ -35,7 +35,7 @@ internal sealed class NodeRecordBufferVisitor<TNodeContext> where TNodeContext :
 
     internal void Accept(Hash256 rootHash, ITrieNodeResolver persistence)
     {
-        using NodeRecordBuffer.ReadLease lease = _buffer.BeginRead();
+        using NodeRecordBufferReadLease lease = _buffer.BeginRead();
         if (!_visitor.IsFullDbScan) _visitor.VisitTree(default, rootHash);
         if (rootHash == Keccak.EmptyTreeHash)
         {

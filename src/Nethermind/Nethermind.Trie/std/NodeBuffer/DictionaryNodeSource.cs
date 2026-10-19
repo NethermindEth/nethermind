@@ -28,7 +28,7 @@ internal sealed class DictionaryNodeSource(IReadOnlyDictionary<TreePath, byte[]>
         return rlp is not null && warmed.TryInsert(address, path, hash, rlp, out record);
     }
 
-    public void WarmUp(NodeRecordBuffer buffer, TrieRoot root, in ValueHash256 key, bool forDelete = false) =>
+    public void WarmUp(INodeRecordBuffer buffer, TrieRoot root, in ValueHash256 key, bool forDelete = false) =>
         BufferBulkSet.WarmUp(buffer, warmed, LoadRlp, address, root, key, forDelete);
 
     private void LoadRlp(in TreePath path, in ValueHash256 hash, ReadOnlySpanAction<byte, BufferBulkSet.WarmUpRead> action, BufferBulkSet.WarmUpRead read)

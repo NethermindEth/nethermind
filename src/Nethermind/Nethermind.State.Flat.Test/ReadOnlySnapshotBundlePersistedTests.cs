@@ -23,7 +23,7 @@ namespace Nethermind.State.Flat.Test;
 public class ReadOnlySnapshotBundlePersistedTests
 {
     private ResourcePool _pool = null!;
-    private NodeRecordBuffer _buffer = null!;
+    private IRetainableNodeRecordBuffer _buffer = null!;
     private ArenaManager _memArena = null!;
     private string _memArenaDir = null!;
     private BlobArenaManager _blobs = null!;
@@ -59,7 +59,7 @@ public class ReadOnlySnapshotBundlePersistedTests
         TreePath path = FlatTestHelpers.CanonicalPath(Keccak.Compute("path"), 4);
         byte[] nodeRlp = FlatTestHelpers.LeafRlp(0xC2, 0x80, 0x80);
 
-        NodeRecordBufferRetain bufferRetain = _buffer.RetainActive();
+        INodeRecordBufferRetain bufferRetain = _buffer.RetainActive();
         SnapshotContent content = new();
         content.SetStateNodeRlp(_buffer, path, nodeRlp);
         using Snapshot snap = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing) { BufferRetain = bufferRetain };
@@ -92,7 +92,7 @@ public class ReadOnlySnapshotBundlePersistedTests
         TreePath path = FlatTestHelpers.CanonicalPath(Keccak.Compute("path"), 6);
         byte[] nodeRlp = FlatTestHelpers.LeafRlp(0xC1, 0x80);
 
-        NodeRecordBufferRetain bufferRetain = _buffer.RetainActive();
+        INodeRecordBufferRetain bufferRetain = _buffer.RetainActive();
         SnapshotContent content = new();
         content.SetStorageNodeRlp(_buffer, address, path, nodeRlp);
         using Snapshot snap = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing) { BufferRetain = bufferRetain };
@@ -126,7 +126,7 @@ public class ReadOnlySnapshotBundlePersistedTests
         byte[] nodeRlp = FlatTestHelpers.LeafRlp(0xC0);
         byte[] dbRlp = [0xC1, 0x80, 0x80];
 
-        NodeRecordBufferRetain bufferRetain = _buffer.RetainActive();
+        INodeRecordBufferRetain bufferRetain = _buffer.RetainActive();
         SnapshotContent content = new();
         content.SetStateNodeRlp(_buffer, storedPath, nodeRlp);
         using Snapshot snap = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing) { BufferRetain = bufferRetain };
@@ -192,7 +192,7 @@ public class ReadOnlySnapshotBundlePersistedTests
             else batch.SetStateTrieNode(dbPath, dbRlp);
         }
 
-        NodeRecordBufferRetain bufferRetain = _buffer.RetainActive();
+        INodeRecordBufferRetain bufferRetain = _buffer.RetainActive();
         SnapshotContent content = new();
         if (storage) content.SetStorageNodeRlp(_buffer, address, persistedPath, persistedRlp);
         else content.SetStateNodeRlp(_buffer, persistedPath, persistedRlp);
@@ -267,13 +267,13 @@ public class ReadOnlySnapshotBundlePersistedTests
         ValueHash256 hash = ValueKeccak.Compute(nodeRlp);
         StateId from = new(0, Keccak.EmptyTreeHash);
         StateId to = new(1, new Hash256(hash));
-        NodeRecordBufferRetain retain = _buffer.RetainActive();
+        INodeRecordBufferRetain retain = _buffer.RetainActive();
         SnapshotContent content = new();
         if (storage) content.SetStorageNodeRlp(_buffer, address, TreePath.Empty, nodeRlp);
         else content.SetStateNodeRlp(_buffer, TreePath.Empty, nodeRlp);
         using Snapshot snapshot = new(from, to, content, _pool, ResourcePool.Usage.MainBlockProcessing) { BufferRetain = retain };
         PersistedSnapshotList list = new(1) { CreatePersistedSnapshot(from, to, PersistedSnapshotBuilderTestExtensions.Build(snapshot, _blobs)) };
-        using NodeRecordBuffer warmedBuffer = FlatTestHelpers.NewTestBuffer();
+        using IRetainableNodeRecordBuffer warmedBuffer = FlatTestHelpers.NewTestBuffer();
         using SnapshotBundle bundle = new(
             new ReadOnlySnapshotBundle(new SnapshotPooledList(0), new NoopPersistenceReader(), false, AlwaysTrueStack(list)),
             warmedBuffer, _pool, ResourcePool.Usage.MainBlockProcessing);

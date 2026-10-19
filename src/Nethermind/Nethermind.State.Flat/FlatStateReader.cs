@@ -16,7 +16,7 @@ public class FlatStateReader(
     [KeyFilter(DbNames.Code)] IDb codeDb,
     IFlatDbManager flatDbManager,
     IHistoricalTrieVisitor historicalTrieVisitor,
-    NodeRecordBuffer buffer
+    INodeRecordBuffer buffer
 ) : IStateReader
 {
     public bool TryGetAccount(BlockHeader? baseBlock, Address address, out AccountStruct account)

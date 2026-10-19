@@ -38,7 +38,7 @@ internal sealed class CompressedGeneration : IDisposable
             foreach (int offset in keptOffsets)
             {
                 ReadOnlySpan<byte> record = generation.AsSpan(offset, NodeRecordCodec.Length(generation.AsSpan(offset)));
-                ulong pointer = generationId << NodeRecordBuffer.OffsetBits | (uint)offset;
+                ulong pointer = generationId << NodeRecordCodec.OffsetBits | (uint)offset;
                 ulong index = Index(pointer);
                 while (_table[index].Pointer != 0) index = (index + 1) & _tableMask;
 

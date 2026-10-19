@@ -31,7 +31,7 @@ public class WriteBatchBenchmark
 
     private FlatDbConfig _config = null!;
     private ResourcePool _resourcePool = null!;
-    private NodeRecordBuffer _nodeRecordBuffer = null!;
+    private IRetainableNodeRecordBuffer _nodeRecordBuffer = null!;
     private List<FlatSnapshot> _baseSnapshots = null!;
     private StateId _currentStateId;
     private Address[] _addresses = null!;

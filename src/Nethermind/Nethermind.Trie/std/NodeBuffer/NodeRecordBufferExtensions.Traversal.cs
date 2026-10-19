@@ -11,16 +11,16 @@ using Nethermind.Core.Collections;
 
 namespace Nethermind.Trie.NodeBuffer;
 
-public sealed partial class NodeRecordBuffer
+public static partial class NodeRecordBufferExtensions
 {
     private const int MaxPathNibbles = 64;
 
     /// <summary>Copies the buffer-resident node at the exact path from the given root, or misses at an unavailable child.</summary>
     /// <remarks>Inline children have no separate record and are not returned.</remarks>
-    internal bool TryGetNode(ulong rootPointer, in TreePath path, [NotNullWhen(true)] out TrieNode? node)
+    internal static bool TryGetNode(this INodeRecordBuffer buffer, ulong rootPointer, in TreePath path, [NotNullWhen(true)] out TrieNode? node)
     {
-        using ReadLease lease = BeginRead();
-        node = TryFindRecord(rootPointer, path, out _, out NodeRecord record) ? record.ToTrieNode() : null;
+        using NodeRecordBufferReadLease lease = buffer.BeginRead();
+        node = TryFindRecord(buffer, rootPointer, path, out _, out NodeRecord record) ? record.ToTrieNode() : null;
         return node is not null;
     }
 
@@ -29,10 +29,10 @@ public sealed partial class NodeRecordBuffer
     /// The returned pointer does not retain its record. A caller looking it up later must hold an operation lease
     /// spanning lookup and use, or a generation retain protecting it. Inline children have no separate pointer.
     /// </remarks>
-    internal bool TryGetNodePointer(ulong rootPointer, in TreePath path, out ulong pointer)
+    internal static bool TryGetNodePointer(this INodeRecordBuffer buffer, ulong rootPointer, in TreePath path, out ulong pointer)
     {
-        using ReadLease lease = BeginRead();
-        return TryFindRecord(rootPointer, path, out pointer, out _);
+        using NodeRecordBufferReadLease lease = buffer.BeginRead();
+        return TryFindRecord(buffer, rootPointer, path, out pointer, out _);
     }
 
     /// <summary>Enumerates reachable buffer records in depth-first path order, stopping at unavailable child pointers.</summary>
@@ -43,14 +43,14 @@ public sealed partial class NodeRecordBuffer
     /// Inline children are contained in their parent's RLP and are not emitted as separate records.
     /// Pointers below <paramref name="lowerBound"/> and their subtrees are skipped: immutable buffer parents are written after their children.
     /// </remarks>
-    internal IEnumerable<(TreePath Path, ulong Pointer, NodeRecord Record)> EnumerateNodes(ulong rootPointer, ulong lowerBound = 0) => new NodeEnumerable(this, rootPointer, lowerBound);
+    internal static IEnumerable<(TreePath Path, ulong Pointer, NodeRecord Record)> EnumerateNodes(this INodeRecordBuffer buffer, ulong rootPointer, ulong lowerBound = 0) => new NodeEnumerable(buffer, rootPointer, lowerBound);
 
-    private bool TryFindRecord(ulong rootPointer, in TreePath path, out ulong pointer, out NodeRecord record)
+    private static bool TryFindRecord(INodeRecordBuffer buffer, ulong rootPointer, in TreePath path, out ulong pointer, out NodeRecord record)
     {
         Span<byte> extensionKey = stackalloc byte[MaxPathNibbles];
         pointer = rootPointer;
         int depth = 0;
-        while (pointer != 0 && TryLocate(pointer, out record))
+        while (pointer != 0 && buffer.TryLocate(pointer, out record))
         {
             if (depth == path.Length) return true;
 
@@ -91,7 +91,7 @@ public sealed partial class NodeRecordBuffer
         return false;
     }
 
-    private sealed class NodeEnumerable(NodeRecordBuffer buffer, ulong rootPointer, ulong lowerBound) : IEnumerable<(TreePath Path, ulong Pointer, NodeRecord Record)>
+    private sealed class NodeEnumerable(INodeRecordBuffer buffer, ulong rootPointer, ulong lowerBound) : IEnumerable<(TreePath Path, ulong Pointer, NodeRecord Record)>
     {
         public IEnumerator<(TreePath Path, ulong Pointer, NodeRecord Record)> GetEnumerator() => new NodeEnumerator(buffer, rootPointer, lowerBound);
 
@@ -100,14 +100,14 @@ public sealed partial class NodeRecordBuffer
 
     private sealed class NodeEnumerator : IEnumerator<(TreePath Path, ulong Pointer, NodeRecord Record)>
     {
-        private readonly NodeRecordBuffer _buffer;
+        private readonly INodeRecordBuffer _buffer;
         private readonly ulong _rootPointer;
         private readonly ulong _lowerBound;
         private readonly ArrayPoolList<Frame> _stack;
         private bool _started;
         private bool _disposed;
 
-        public NodeEnumerator(NodeRecordBuffer buffer, ulong rootPointer, ulong lowerBound)
+        public NodeEnumerator(INodeRecordBuffer buffer, ulong rootPointer, ulong lowerBound)
         {
             _buffer = buffer;
             _rootPointer = rootPointer;
@@ -206,7 +206,7 @@ public sealed partial class NodeRecordBuffer
             _disposed = true;
             _stack.Dispose();
             Current = default;
-            _buffer.EndRead();
+            _buffer.ExitRead();
         }
 
         public void Reset() => throw new NotSupportedException();

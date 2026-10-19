@@ -44,7 +44,7 @@ public sealed class SnapshotBundle : IDisposable
     private WarmedNodes? _earlyWarmedNodes;
 
     internal SnapshotPooledList _snapshots;
-    private readonly NodeRecordBuffer? _nodeRecordBuffer;
+    private readonly IRetainableNodeRecordBuffer? _nodeRecordBuffer;
     private bool _isDisposed;
     private readonly IResourcePool _resourcePool;
 
@@ -58,7 +58,7 @@ public sealed class SnapshotBundle : IDisposable
     /// <see cref="ReadOnlySnapshotBundle.GetSlotFiltered"/>; for read-only execution only.</param>
     public SnapshotBundle(
         ReadOnlySnapshotBundle readOnlySnapshotBundle,
-        NodeRecordBuffer? nodeRecordBuffer,
+        IRetainableNodeRecordBuffer? nodeRecordBuffer,
         IResourcePool resourcePool,
         ResourcePool.Usage usage,
         SnapshotPooledList? snapshots = null,
@@ -81,7 +81,7 @@ public sealed class SnapshotBundle : IDisposable
     }
 
     /// <summary>The buffer the trie nodes written through this bundle are recorded in; <c>null</c> for a trie-less bundle.</summary>
-    internal NodeRecordBuffer? NodeRecordBuffer => _nodeRecordBuffer;
+    internal IRetainableNodeRecordBuffer? NodeRecordBuffer => _nodeRecordBuffer;
 
     private void ExpandCurrentPooledContent()
     {
@@ -397,10 +397,10 @@ public sealed class SnapshotBundle : IDisposable
         private readonly ReadOnlySnapshotBundle _readOnly;
         private readonly Hash256 _address;
         private readonly WarmedNodes _warmed;
-        private readonly NodeRecordBufferRetain _retain;
-        private readonly NodeRecordBufferRetain? _snapshotRetain;
+        private readonly INodeRecordBufferRetain _retain;
+        private readonly INodeRecordBufferRetain? _snapshotRetain;
 
-        internal BackgroundTrieSource(ReadOnlySnapshotBundle readOnly, NodeRecordBuffer buffer, SnapshotPooledList snapshots, WarmedNodes warmed, Hash256 address)
+        internal BackgroundTrieSource(ReadOnlySnapshotBundle readOnly, IRetainableNodeRecordBuffer buffer, SnapshotPooledList snapshots, WarmedNodes warmed, Hash256 address)
         {
             _warmed = warmed;
             _readOnly = readOnly;
@@ -598,7 +598,7 @@ public sealed class SnapshotBundle : IDisposable
 
     /// <summary>Turns the changes written since the previous snapshot into a new snapshot and starts collecting the next one.</summary>
     /// <param name="bufferRetain">The retain covering the trie nodes written since the previous snapshot; the snapshot takes ownership.</param>
-    public (Snapshot?, TransientResource?) CollectAndApplySnapshot(StateId from, StateId to, NodeRecordBufferRetain? bufferRetain, bool returnSnapshot = true)
+    public (Snapshot?, TransientResource?) CollectAndApplySnapshot(StateId from, StateId to, INodeRecordBufferRetain? bufferRetain, bool returnSnapshot = true)
     {
         // When assembling the snapshot, we straight up pass the _currentPooledContent into the new snapshot
         // This is because copying the values have a measurable impact on overall performance.

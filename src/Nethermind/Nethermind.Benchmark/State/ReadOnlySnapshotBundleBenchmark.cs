@@ -30,7 +30,7 @@ namespace Nethermind.Benchmarks.State;
 public class ReadOnlySnapshotBundleBenchmark
 {
     private ReadOnlySnapshotBundle _bundle = null!;
-    private NodeRecordBuffer _nodeRecordBuffer = null!;
+    private IRetainableNodeRecordBuffer _nodeRecordBuffer = null!;
 
     // Hit arrays — sampled from actually written data
     private Address[] _hitAccounts = null!;

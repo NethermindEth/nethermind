@@ -53,7 +53,7 @@ public sealed class FlatStorageTree(
     {
         public readonly SnapshotBundle.BackgroundTrieSource Source;
         public readonly ConcurrentQueue<(UInt256 Slot, UInt256 Value)> Writes = new();
-        public readonly NodeRecordBuffer Buffer;
+        public readonly INodeRecordBuffer Buffer;
         public readonly Dictionary<UInt256, UInt256> Applied = [];
         public TrieRoot Root;
 
@@ -85,7 +85,7 @@ public sealed class FlatStorageTree(
 
     private BufferedTrie CreateTrie()
     {
-        NodeRecordBuffer buffer = _bundle.NodeRecordBuffer!;
+        INodeRecordBuffer buffer = _bundle.NodeRecordBuffer!;
         return new BufferedTrie(_bundle, buffer, AddressHash, BufferBulkSet.ResolveRoot(buffer, AddressHash, _rootBeforeTrie.ValueHash256));
     }
 

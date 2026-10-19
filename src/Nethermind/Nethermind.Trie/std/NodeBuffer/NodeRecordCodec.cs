@@ -42,6 +42,7 @@ internal enum NodeRecordKind : byte
 /// </remarks>
 internal static class NodeRecordCodec
 {
+    internal const int OffsetBits = 32;
     public const int HeaderLength = 48;
     public const int PointerLength = 8;
     public const int RootKeyLength = 88;
@@ -53,7 +54,7 @@ internal static class NodeRecordCodec
     public const int NodeKeyOffset = 40;
 
     public const uint TransientGenerationMask = 1u << 31;
-    public const ulong TransientPointerMask = (ulong)TransientGenerationMask << NodeRecordBuffer.OffsetBits;
+    public const ulong TransientPointerMask = (ulong)TransientGenerationMask << OffsetBits;
 
     public static bool IsTransient(ulong pointer) => (pointer & TransientPointerMask) != 0;
 

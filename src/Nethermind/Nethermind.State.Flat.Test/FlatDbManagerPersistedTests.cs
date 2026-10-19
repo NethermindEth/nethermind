@@ -81,8 +81,8 @@ public class FlatDbManagerPersistedTests
 
         TreePath path = FlatTestHelpers.CanonicalPath(Keccak.Compute("path"), 4);
         byte[] nodeRlp = FlatTestHelpers.LeafRlp(0xC2, 0x80, 0x80);
-        using NodeRecordBuffer buffer = FlatTestHelpers.NewTestBuffer();
-        NodeRecordBufferRetain bufferRetain = buffer.RetainActive();
+        using IRetainableNodeRecordBuffer buffer = FlatTestHelpers.NewTestBuffer();
+        INodeRecordBufferRetain bufferRetain = buffer.RetainActive();
         SnapshotContent content = new();
         content.SetStateNodeRlp(buffer, path, nodeRlp);
         using Snapshot snap = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing) { BufferRetain = bufferRetain };
@@ -98,7 +98,7 @@ public class FlatDbManagerPersistedTests
         persistenceManager.LeaseReader().Returns(reader);
         persistenceManager.GetCurrentPersistedStateId().Returns(s0);
 
-        using NodeRecordBuffer managerBuffer = FlatTestHelpers.NewTestBuffer();
+        using IRetainableNodeRecordBuffer managerBuffer = FlatTestHelpers.NewTestBuffer();
         await using FlatDbManager manager = new(
             Substitute.For<IResourcePool>(),
             _processExitSource,
@@ -132,7 +132,7 @@ public class FlatDbManagerPersistedTests
         content.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance(1).TestObject;
         tier.ConvertToPersistedBase(new Snapshot(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
 
-        using NodeRecordBuffer managerBuffer = FlatTestHelpers.NewTestBuffer();
+        using IRetainableNodeRecordBuffer managerBuffer = FlatTestHelpers.NewTestBuffer();
         FlatDbManager manager = new(
             Substitute.For<IResourcePool>(),
             _processExitSource,
@@ -179,7 +179,7 @@ public class FlatDbManagerPersistedTests
             if (call.Arg<StateId>().BlockNumber == blockedBlock) lastCompactionStarted.TrySetResult();
             return false;
         });
-        using NodeRecordBuffer managerBuffer = FlatTestHelpers.NewTestBuffer();
+        using IRetainableNodeRecordBuffer managerBuffer = FlatTestHelpers.NewTestBuffer();
         FlatDbManager manager = new(tier.ResourcePool, _processExitSource,
             managerBuffer, compactor, tier.Repository, persistence,
             Substitute.For<IPersistedSnapshotLoader>(), _config, new BlocksConfig(), LimboLogs.Instance, false);
@@ -236,7 +236,7 @@ public class FlatDbManagerPersistedTests
         StateId next = new(2, Keccak.Compute("2"));
         ISnapshotCompactor compactor = Substitute.For<ISnapshotCompactor>();
         compactor.DoCompactSnapshot(failing).Returns(_ => throw new IOException("compaction failed"));
-        using NodeRecordBuffer managerBuffer = FlatTestHelpers.NewTestBuffer();
+        using IRetainableNodeRecordBuffer managerBuffer = FlatTestHelpers.NewTestBuffer();
         FlatDbManager manager = new(tier.ResourcePool, _processExitSource,
             managerBuffer, compactor, tier.Repository, persistence,
             Substitute.For<IPersistedSnapshotLoader>(), _config, new BlocksConfig(), LimboLogs.Instance, false);
@@ -278,7 +278,7 @@ public class FlatDbManagerPersistedTests
         await using FlatDbManager manager = new(
             tier.ResourcePool,
             _processExitSource,
-            tier.Resolve<NodeRecordBuffer>(),
+            tier.Resolve<IRetainableNodeRecordBuffer>(),
             tier.Resolve<ISnapshotCompactor>(),
             tier.Repository,
             persistenceManager,

@@ -24,7 +24,7 @@ public class NodeRecordBufferVisitorTests
     [Test]
     public void Callbacks_match_existing_walker([Values(1, 4)] int parallelism, [Values] bool persistenceOnly, [Values] bool fullScan)
     {
-        using NodeRecordBuffer sourceBuffer = new(0, 64 * 1024);
+        using INodeRecordBuffer sourceBuffer = new NodeRecordBuffer(0, 64 * 1024);
         TrieRoot root = Build(sourceBuffer, null, false);
         RecordingResolver persistence = new(sourceBuffer, root);
         RecordingVisitor expected = new() { IsFullDbScan = fullScan };
@@ -33,7 +33,7 @@ public class NodeRecordBufferVisitorTests
         tree.Accept(expected, root.ToHash256(), diagnostics: expectedStats);
         persistence.Loads.Clear();
         persistence.RejectFind = true;
-        using NodeRecordBuffer emptyBuffer = new(0, 64 * 1024);
+        using INodeRecordBuffer emptyBuffer = new NodeRecordBuffer(0, 64 * 1024);
         RecordingVisitor actual = new() { IsFullDbScan = fullScan };
         VisitingStats stats = new();
         new NodeRecordBufferVisitor<Context>(persistenceOnly ? emptyBuffer : sourceBuffer, actual,
@@ -55,10 +55,10 @@ public class NodeRecordBufferVisitorTests
     [Test]
     public void Unlinked_buffer_children_fall_back_to_persistence([Values] bool prune)
     {
-        using NodeRecordBuffer sourceBuffer = new(0, 64 * 1024);
+        using INodeRecordBuffer sourceBuffer = new NodeRecordBuffer(0, 64 * 1024);
         TrieRoot root = Build(sourceBuffer, null, false);
         RecordingResolver persistence = new(sourceBuffer, root) { RejectFind = true };
-        using NodeRecordBuffer buffer = new(0, 64 * 1024);
+        using INodeRecordBuffer buffer = new NodeRecordBuffer(0, 64 * 1024);
         Assert.That(sourceBuffer.TryLocate(root.Pointer, out NodeRecord rootRecord), Is.True);
         ulong pointer = buffer.AppendRecordFromRlp(null, TreePath.Empty, root.Hash, rootRecord.Rlp);
         buffer.SetRoot(null, root.Hash, pointer);
@@ -77,10 +77,10 @@ public class NodeRecordBufferVisitorTests
     [Test]
     public void Missing_descendants_are_reported_at_their_context()
     {
-        using NodeRecordBuffer sourceBuffer = new(0, 64 * 1024);
+        using INodeRecordBuffer sourceBuffer = new NodeRecordBuffer(0, 64 * 1024);
         TrieRoot root = Build(sourceBuffer, null, true);
         Assert.That(sourceBuffer.TryLocate(root.Pointer, out NodeRecord record), Is.True);
-        using NodeRecordBuffer buffer = new(0, 64 * 1024);
+        using INodeRecordBuffer buffer = new NodeRecordBuffer(0, 64 * 1024);
         ulong pointer = buffer.AppendRecordFromRlp(null, TreePath.Empty, root.Hash, record.Rlp);
         buffer.SetRoot(null, root.Hash, pointer);
         RecordingVisitor visitor = new();
@@ -91,7 +91,7 @@ public class NodeRecordBufferVisitorTests
     [Test]
     public void Visitor_exceptions_are_not_missing_nodes([Values] bool cancellation)
     {
-        using NodeRecordBuffer buffer = new(0, 64 * 1024);
+        using INodeRecordBuffer buffer = new NodeRecordBuffer(0, 64 * 1024);
         TrieRoot root = Build(buffer, null, true);
         Exception failure = cancellation ? new OperationCanceledException() : new TrieException("visitor failure");
         RecordingVisitor visitor = new() { OnLeaf = _ => throw failure };
@@ -103,7 +103,7 @@ public class NodeRecordBufferVisitorTests
     [Test]
     public void Missing_and_empty_root_order_matches_existing_walker([Values] bool fullScan, [Values] bool empty)
     {
-        using NodeRecordBuffer buffer = new(0, 64 * 1024);
+        using INodeRecordBuffer buffer = new NodeRecordBuffer(0, 64 * 1024);
         RecordingResolver persistence = new() { RejectFind = true };
         RecordingVisitor visitor = new() { IsFullDbScan = fullScan };
         Hash256 root = empty ? Keccak.EmptyTreeHash : Keccak.Zero;
@@ -115,7 +115,7 @@ public class NodeRecordBufferVisitorTests
     [Test]
     public void Read_flags_reach_persistence([Values] bool fullScan)
     {
-        using NodeRecordBuffer buffer = new(0, 64 * 1024);
+        using INodeRecordBuffer buffer = new NodeRecordBuffer(0, 64 * 1024);
         RecordingResolver persistence = new() { RejectFind = true };
         RecordingVisitor visitor = new() { IsFullDbScan = fullScan, ExtraReadFlag = ReadFlags.HintCacheMiss };
         new NodeRecordBufferVisitor<Context>(buffer, visitor).Accept(Keccak.Zero, persistence);
@@ -125,7 +125,7 @@ public class NodeRecordBufferVisitorTests
     [Test]
     public void Persisted_account_resolves_storage_root_from_buffer([Values] bool expectAccounts)
     {
-        using NodeRecordBuffer buffer = new(0, 64 * 1024);
+        using INodeRecordBuffer buffer = new NodeRecordBuffer(0, 64 * 1024);
         Hash256 address = Key(0);
         TrieRoot storage = Build(buffer, address, false);
         RecordingResolver persistence = new();
@@ -149,7 +149,7 @@ public class NodeRecordBufferVisitorTests
     [Test]
     public async Task Callback_failure_waits_for_other_workers_before_return()
     {
-        using NodeRecordBuffer buffer = new(0, 64 * 1024);
+        using INodeRecordBuffer buffer = new NodeRecordBuffer(0, 64 * 1024);
         TrieRoot root = Build(buffer, null, true);
         using ManualResetEventSlim started = new();
         using ManualResetEventSlim failed = new();
@@ -198,7 +198,7 @@ public class NodeRecordBufferVisitorTests
         return new Hash256(bytes);
     }
 
-    private static TrieRoot Build(NodeRecordBuffer buffer, Hash256? address, bool twoBranches)
+    private static TrieRoot Build(INodeRecordBuffer buffer, Hash256? address, bool twoBranches)
     {
         using ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries = new(4);
         byte[] largeValue = new byte[40];
@@ -228,7 +228,7 @@ public class NodeRecordBufferVisitorTests
         public bool RejectFind;
         public Hash256? StorageAddress;
         public RecordingResolver() { }
-        public RecordingResolver(NodeRecordBuffer buffer, TrieRoot root)
+        public RecordingResolver(INodeRecordBuffer buffer, TrieRoot root)
         {
             foreach ((TreePath _, ulong _, NodeRecord record) in buffer.EnumerateNodes(root.Pointer))
                 Nodes[new Hash256(record.Hash)] = record.Rlp.ToArray();
