@@ -11,15 +11,11 @@ GUEST_LIBC := zisk
 # The only target whose bindings library is not named after its libc.
 GUEST_EXTLIB := libziskos
 
-# The JUMPDEST bitmap precompile is a csrs/add pair the transpiler fuses only while
-# adjacent, which no compiler emits, so the guest links it as assembly.
-GUEST_OBJECTS := jump_dest.o
-
 # BIN_DIR must be set before the include - BFLAT_REFS expands it.
 include $(MAKEFILE_DIR)/../Nethermind.Stateless.Guest/build.mk
 
 # A larger inlining budget and inlinee size limits (values in hex): code size costs
-# a zkVM next to nothing. Measured flat on SP1 and OpenVM, so only this guest sets them.
+# a zkVM next to nothing. Measured flat on OpenVM, which does not set them.
 OPT_FLAGS += \
 	--codegenopt JitInlineBudget=100 \
 	--codegenopt JitExtDefaultPolicyMaxIL=400 \

@@ -1227,7 +1227,7 @@ namespace Nethermind.TxPool
                     {
                         continue;
                     }
-                    SubmitTx(tx, isEip155Enabled ? TxHandlingOptions.None : TxHandlingOptions.PreEip155Signing, ownsTransaction: false, out _, reAddedFromReorg: true);
+                    SubmitTx(tx, isEip155Enabled ? TxHandlingOptions.None : TxHandlingOptions.PreEip155Signing, ownsTransaction: false, out _, out _, reAddedFromReorg: true);
                 }
 
                 if (_blobReorgsSupportEnabled
@@ -1248,7 +1248,7 @@ namespace Nethermind.TxPool
 
                             blobTx.SenderAddress = senderAddress;
                         }
-                        SubmitTx(blobTx, isEip155Enabled ? TxHandlingOptions.None : TxHandlingOptions.PreEip155Signing, ownsTransaction: false, out _, reAddedFromReorg: true);
+                        SubmitTx(blobTx, isEip155Enabled ? TxHandlingOptions.None : TxHandlingOptions.PreEip155Signing, ownsTransaction: false, out _, out _, reAddedFromReorg: true);
                     }
                     if (_logger.IsTrace) _logger.Trace($"Readded txs from reorged block {previousBlock.Number} (hash {previousBlock.Hash}) to blob pool");
 
@@ -1941,17 +1941,18 @@ namespace Nethermind.TxPool
         }
 
         public AcceptTxResult SubmitTx(Transaction tx, TxHandlingOptions handlingOptions)
-            => SubmitTx(tx, handlingOptions, ownsTransaction: false, out _);
+            => SubmitTx(tx, handlingOptions, ownsTransaction: false, out _, out _);
 
-        AcceptTxResult IRecyclableTxPool.SubmitOwnedTx(Transaction tx, out bool canRecycle)
+        AcceptTxResult IRecyclableTxPool.SubmitOwnedTx(Transaction tx, out bool canRecycle, out bool frameValidationRan)
         {
             // A derived pool can reimplement ITxPool and retain transactions on rejection.
             if (GetType() != typeof(TxPool))
             {
                 canRecycle = false;
+                frameValidationRan = false;
                 return ((ITxPool)this).SubmitTx(tx, TxHandlingOptions.None);
             }
-            return SubmitTx(tx, TxHandlingOptions.None, ownsTransaction: true, out canRecycle);
+            return SubmitTx(tx, TxHandlingOptions.None, ownsTransaction: true, out canRecycle, out frameValidationRan);
         }
 
         bool IRecyclableTxPool.TrySubmitKnown(in ValueHash256 hash)
@@ -1973,8 +1974,9 @@ namespace Nethermind.TxPool
             return true;
         }
 
-        private AcceptTxResult SubmitTx(Transaction tx, TxHandlingOptions handlingOptions, bool ownsTransaction, out bool canRecycle, bool reAddedFromReorg = false)
+        private AcceptTxResult SubmitTx(Transaction tx, TxHandlingOptions handlingOptions, bool ownsTransaction, out bool canRecycle, out bool frameValidationRan, bool reAddedFromReorg = false)
         {
+            frameValidationRan = false;
             canRecycle = ownsTransaction && handlingOptions == TxHandlingOptions.None;
             if (!canRecycle)
                 PooledBlobBuffers.Disown(tx);
@@ -2077,6 +2079,8 @@ namespace Nethermind.TxPool
                 state.SenderAdmissionGate?.Exit();
                 _newHeadLock.ExitReadLock();
             }
+
+            frameValidationRan = state.FrameValidationRan;
 
             if (state.FrameValidationYielded && _retryCache.TryDefer(tx.Hash!))
             {

@@ -716,7 +716,7 @@ public sealed partial class KeccakHash
     /// a caller-chosen input often is not, and is absorbed lane by lane.
     /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static unsafe bool CanXorin(byte* data) => OpenVmXorinFlag.IsActive && ((nuint)data & 7) == 0;
+    private static unsafe bool CanXorin(byte* data) => OpenVmFlag.IsActive && ((nuint)data & 7) == 0;
 
     /// <summary>XORs <paramref name="length"/> bytes of <paramref name="data"/>, a multiple of 8 up to the rate, into the state.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

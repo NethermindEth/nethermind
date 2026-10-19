@@ -388,6 +388,80 @@ public class TracedAccessWorldStateTests(bool parallel)
         }
     }
 
+    private static void ReadSlot(TracedAccessWorldState tws, int slot) => tws.Get(new StorageCell(TestItem.AddressA, (UInt256)slot), out _);
+
+    private static void WriteSlot(TracedAccessWorldState tws, int slot, ulong value) => tws.Set(new StorageCell(TestItem.AddressA, (UInt256)slot), value);
+
+    private static IEnumerable<TestCaseData> StorageAccessOrderCases()
+    {
+        yield return new TestCaseData((Action<TracedAccessWorldState>)(ws => { ReadSlot(ws, 1); WriteSlot(ws, 1, 5); }), new[] { 1 }, Array.Empty<int>())
+            .SetName("ReadThenWrite_RecordsOnlyChange");
+        yield return new TestCaseData((Action<TracedAccessWorldState>)(ws => { WriteSlot(ws, 1, 5); ReadSlot(ws, 2); ReadSlot(ws, 1); ReadSlot(ws, 2); }), new[] { 1 }, new[] { 2 })
+            .SetName("WriteThenRead_RecordsOnlyChange");
+        yield return new TestCaseData((Action<TracedAccessWorldState>)(ws => { WriteSlot(ws, 1, 5); ReadSlot(ws, 1); WriteSlot(ws, 1, 0); ReadSlot(ws, 2); }), Array.Empty<int>(), new[] { 1, 2 })
+            .SetName("WriteBackToOriginal_RecordsRead");
+        yield return new TestCaseData((Action<TracedAccessWorldState>)(ws =>
+            {
+                WriteSlot(ws, 3, 7);
+                Snapshot snapshot = ws.TakeSnapshot();
+                WriteSlot(ws, 1, 5);
+                ReadSlot(ws, 1);
+                ReadSlot(ws, 2);
+                ws.Restore(snapshot);
+                ReadSlot(ws, 3);
+            }), new[] { 3 }, new[] { 1, 2 })
+            .SetName("RevertedWrite_KeepsReads");
+    }
+
+    [TestCaseSource(nameof(StorageAccessOrderCases))]
+    public void Storage_access_order_records_each_slot_once(Action<TracedAccessWorldState> access, int[] changedSlots, int[] readSlots)
+    {
+        (TracedAccessWorldState tws, IDisposable scope) = CreateTracingState(ws => ws.CreateAccount(TestItem.AddressA, 0));
+        using (scope)
+        {
+            access(tws);
+
+            AccountChangesAtIndex ac = tws.GetGeneratingBlockAccessList()!.GetAccountChanges(TestItem.AddressA)!;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(ac.StorageChanges.Keys, Is.EquivalentTo(changedSlots.Select(static s => (UInt256)s)));
+                Assert.That(ac.StorageReads, Is.EquivalentTo(readSlots.Select(static s => (UInt256)s)));
+            }
+        }
+    }
+
+    [Test]
+    public void Storage_reads_and_writes_merge_across_transactions()
+    {
+        (TracedAccessWorldState tws, IDisposable scope) = CreateTracingState(ws => ws.CreateAccount(TestItem.AddressA, 0));
+        using (scope)
+        {
+            GeneratedBlockAccessList block = new();
+
+            WriteSlot(tws, 1, 5);
+            ReadSlot(tws, 2);
+            ReadSlot(tws, 1);
+            block.Merge(tws.GetGeneratingBlockAccessList()!);
+            tws.Commit(Spec);
+            tws.Clear();
+            tws.IncrementIndex();
+
+            ReadSlot(tws, 1);
+            ReadSlot(tws, 3);
+            WriteSlot(tws, 3, 7);
+            ReadSlot(tws, 4);
+            block.Merge(tws.GetGeneratingBlockAccessList()!);
+
+            GeneratedAccountChanges account = block.GetAccountChanges(TestItem.AddressA)!;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(account.StorageChanges.Select(static s => (s.Key, s.Changes.Single())),
+                    Is.EquivalentTo(new[] { ((UInt256)1, new StorageChange(0, 5)), ((UInt256)3, new StorageChange(1, 7)) }));
+                Assert.That(account.StorageReads, Is.EquivalentTo(new UInt256[] { 2, 4 }));
+            }
+        }
+    }
+
     private static IEnumerable<TestCaseData> ReadRecordsAccountReadCases()
     {
         byte[] codeForCodeOp = [0x60, 0x01];
