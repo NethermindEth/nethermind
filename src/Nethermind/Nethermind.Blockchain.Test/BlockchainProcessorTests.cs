@@ -1096,20 +1096,17 @@ public class BlockchainProcessorTests
             enqueue = directEnqueue ? context.EnqueueDirectly(first) : context.SuggestAsync(first);
             Assert.That(processing.Wait(TimeSpan.FromSeconds(10)), Is.True, "the first block never started processing");
             Task removed = context.WaitUntilRemoved(first);
-            bool returnedWhileGated;
             if (directEnqueue)
             {
-                returnedWhileGated = enqueue.IsCompleted;
+                Assert.That(enqueue.IsCompleted, Is.False, "direct enqueue completed while processing was gated");
             }
             else
             {
                 await enqueue.WaitAsync(TimeSpan.FromSeconds(10));
-                returnedWhileGated = enqueue.IsCompleted;
             }
             context.AllowedToProcess(first);
             await enqueue.WaitAsync(TimeSpan.FromSeconds(10));
             await removed.WaitAsync(TimeSpan.FromSeconds(10));
-            Assert.That(returnedWhileGated, Is.EqualTo(!directEnqueue), "the enqueue path used unexpected processing scheduling");
         }
         finally
         {
