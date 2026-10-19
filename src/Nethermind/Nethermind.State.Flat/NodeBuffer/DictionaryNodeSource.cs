@@ -5,8 +5,10 @@ using System.Buffers;
 using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Core.Crypto;
+using Nethermind.Trie;
+using Nethermind.Trie.NodeBuffer;
 
-namespace Nethermind.Trie.NodeBuffer;
+namespace Nethermind.State.Flat.NodeBuffer;
 
 /// <summary>A node source over path-keyed node RLP, for tests and benchmarks: a fetched node is verified and inserted into <paramref name="warmed"/>, which serves it after.</summary>
 /// <param name="address">The storage trie's address hash, or null for the state trie.</param>

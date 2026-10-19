@@ -4,8 +4,10 @@
 using System;
 using System.Buffers;
 using Nethermind.Core.Crypto;
+using Nethermind.Trie;
+using Nethermind.Trie.NodeBuffer;
 
-namespace Nethermind.Trie.NodeBuffer;
+namespace Nethermind.State.Flat.NodeBuffer;
 
 /// <summary>Loads the nodes on a trie path into <see cref="WarmedNodes"/> ahead of a <see cref="BufferBulkSet"/> that changes it.</summary>
 internal static class BufferWarmUp
@@ -88,8 +90,8 @@ internal static class BufferWarmUp
             if (!found)
             {
                 found = _warmed.TryGet(pointer, child.Data, out record) || _warmed.TryGet(_address, _path, child.Data, out record, out pointer);
-                if (found) Metrics.IncrementWarmedNodeCacheHits();
-                else Metrics.IncrementWarmedNodeCacheMisses();
+                if (found) Nethermind.Trie.Metrics.IncrementWarmedNodeCacheHits();
+                else Nethermind.Trie.Metrics.IncrementWarmedNodeCacheMisses();
             }
 
             if (found) Walk(new WarmUpFrame(record.Rlp, record.Kind, record.View.HashMask, record, pointer));
@@ -176,12 +178,12 @@ internal static class BufferWarmUp
             bool found = _warmed.TryGet(pointer, child.Data, out NodeRecord record) || _warmed.TryGet(_address, _path, child.Data, out record, out pointer);
             if (found)
             {
-                Metrics.IncrementWarmedNodeCacheHits();
+                Nethermind.Trie.Metrics.IncrementWarmedNodeCacheHits();
                 _result = pointer;
             }
             else
             {
-                Metrics.IncrementWarmedNodeCacheMisses();
+                Nethermind.Trie.Metrics.IncrementWarmedNodeCacheMisses();
                 _loadRlp(_path, child.Data, static (rlp, read) =>
                 {
                     read._warmed.TryInsert(read._address, read._path, read._hash, rlp, out _, out read._result);
