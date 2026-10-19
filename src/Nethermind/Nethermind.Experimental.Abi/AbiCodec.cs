@@ -44,7 +44,7 @@ public static class AbiCodec
         {
             BinarySpanReader r = new(source);
 
-            ReadOnlySpan<byte> id = r.ReadBytes(AbiSignature.MethodIdLength);
+            ReadOnlySpan<byte> id = r.ReadBytes(signature.MethodId.Length);
             if (!Bytes.AreEqual(id, signature.MethodId)) throw new AbiException();
 
             T arg = signature.Abi.Read(ref r);
