@@ -215,6 +215,11 @@ public sealed class PbtPersistedSnapshot : SmallRefCountingDisposable
         if (length < 0) return null;
         if (chunks == 0) return value[1..];
         byte[] payload = GC.AllocateUninitializedArray<byte>(length);
+        if (PbtPersistedFormat.TryReadBlob(value, out NodeRef blob))
+        {
+            ReadChunk(blob, payload);
+            return payload;
+        }
         Span<byte> referenceBytes = stackalloc byte[NodeRef.Size];
         for (uint i = 0; i < chunks; i++)
         {

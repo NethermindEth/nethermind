@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Pbt;
+using Nethermind.Pbt.NodeLog;
 
 namespace Nethermind.State.Pbt.Persistence;
 
@@ -41,5 +42,72 @@ public static class PbtNodeGroupKey
         if (!PbtNodeCodec.IsCanonicalPath(path, depth, PbtStorageNodePath.MaxBitDepth))
             throw new InvalidDataException("Invalid persisted PBT node-group key padding.");
         return PbtStorageNodePath.Create(path, depth);
+    }
+
+    /// <summary>The groups of the tree under <paramref name="root"/> reserved at or after <paramref name="lowerBound"/>: the root group first, then the rest in key order.</summary>
+    /// <remarks>
+    /// The root group is keyed apart from the others. Below it, a linked group's subtree is one contiguous key range whose
+    /// prefix is the group's path, and the ranges of a group's links follow their slot order. A group sorts before its
+    /// subtree or inside one of its children's ranges, so it is carried down as pending until the walk passes it. Links below
+    /// <paramref name="lowerBound"/>, and unresolved or absent links, are not followed. A pin at or below
+    /// <paramref name="lowerBound"/> must outlive every use of the records.
+    /// </remarks>
+    /// <exception cref="InvalidOperationException">A record at or above <paramref name="lowerBound"/> is no longer resident.</exception>
+    public static List<PbtGroupRecord> InKeyOrder(PbtGroupLog log, PbtGroupReference root, PbtGroupReference lowerBound)
+    {
+        List<PbtGroupRecord> ordered = [];
+        if (!TryResolve(log, root, lowerBound, out PbtGroupRecord rootRecord)) return ordered;
+        ordered.Add(rootRecord);
+        MergeBelow(log, rootRecord, lowerBound, [], ordered);
+        return ordered;
+    }
+
+    /// <summary>Emits the groups below <paramref name="record"/> merged with <paramref name="pending"/>, the sorted groups above them whose keys fall in its range.</summary>
+    private static void MergeBelow(PbtGroupLog log, in PbtGroupRecord record, PbtGroupReference lowerBound,
+        List<(byte[] Key, PbtGroupRecord Record)> pending, List<PbtGroupRecord> ordered)
+    {
+        PbtGroupLinks links = record.Links;
+        Span<byte> key = stackalloc byte[MaxLength];
+        for (int slot = 0; slot < PbtThreeLevelGroupGeometry.BoundarySlots; slot++)
+        {
+            if (!TryResolve(log, links[slot], lowerBound, out PbtGroupRecord child)) continue;
+            int below = 0;
+            while (below < pending.Count && CompareToRange(pending[below].Key, child.Path) < 0) ordered.Add(pending[below++].Record);
+            int inside = below;
+            while (inside < pending.Count && CompareToRange(pending[inside].Key, child.Path) == 0) inside++;
+            List<(byte[] Key, PbtGroupRecord Record)> childPending = pending.GetRange(below, inside - below);
+            pending.RemoveRange(0, inside);
+            byte[] childKey = Encode(child.Path, key).ToArray();
+            int index = 0;
+            while (index < childPending.Count && childPending[index].Key.AsSpan().SequenceCompareTo(childKey) < 0) index++;
+            childPending.Insert(index, (childKey, child));
+            MergeBelow(log, child, lowerBound, childPending, ordered);
+        }
+        foreach ((_, PbtGroupRecord group) in pending) ordered.Add(group);
+    }
+
+    private static bool TryResolve(PbtGroupLog log, PbtGroupReference reference, PbtGroupReference lowerBound, out PbtGroupRecord record)
+    {
+        record = default;
+        if (!reference.IsDirect || reference.CompareTo(lowerBound) < 0) return false;
+        if (!log.TryGetRecord(reference, out record)) throw new InvalidOperationException("A group record written since the lower bound is no longer resident.");
+        return true;
+    }
+
+    /// <returns>Negative or positive when <paramref name="key"/> sorts before or after every key starting with the bits of <paramref name="prefix"/>, or zero when it starts with them.</returns>
+    private static int CompareToRange(ReadOnlySpan<byte> key, PbtStorageNodePath prefix)
+    {
+        Span<byte> bits = stackalloc byte[PbtVariableTreeKey.MaxLength];
+        bits.Clear();
+        PbtNodePathOperations.CopyTo(prefix, bits);
+        int fullBytes = prefix.BitDepth >> 3;
+        int order = key[..Math.Min(key.Length, fullBytes)].SequenceCompareTo(bits[..Math.Min(key.Length, fullBytes)]);
+        if (order != 0) return order;
+        if (key.Length < fullBytes) return -1;
+        int remainder = prefix.BitDepth & 7;
+        if (remainder == 0) return 0;
+        if (key.Length == fullBytes) return -1;
+        int mask = 0xFF << (8 - remainder) & 0xFF;
+        return (key[fullBytes] & mask) - (bits[fullBytes] & mask);
     }
 }

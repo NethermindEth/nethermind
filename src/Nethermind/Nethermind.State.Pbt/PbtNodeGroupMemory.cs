@@ -11,19 +11,17 @@ namespace Nethermind.State.Pbt;
 /// <remarks>
 /// Mainnet groups cluster between ~200 B (single account branches) and ~1.5 KB (dense trie heads), so
 /// the buckets run 32 B apart up to 1 KiB and 64 B apart to 2 KiB, bounding the rounding loss to a few
-/// percent across that whole band; the explicit top bucket holds the writer's largest possible payload
-/// so it never falls through to a dedicated allocation.
+/// percent across that whole band; the top bucket holds the largest payload a group may take, so no
+/// payload falls through to a dedicated allocation.
 /// </remarks>
 public static class PbtNodeGroupMemory
 {
     private const int Quantum = 32;
     private const int BucketsPerDoubling = 16;
-    private const int MaxGeneratedBucket = 64 * 1024;
-    private const int MaxPayloadBucket = (PbtNodeGroupCodec.MaxPayloadLength + Quantum - 1) / Quantum * Quantum;
     private const int MaxRetainedBytesPerBucket = 1024 * 1024;
 
     public static NativeBucketedMemoryPool CreateNativePool() =>
-        new([.. NativeBucketedMemoryPool.GenerateBucketSizes(Quantum, BucketsPerDoubling, MaxGeneratedBucket), MaxPayloadBucket], MaxRetainedBytesPerBucket);
+        new(NativeBucketedMemoryPool.GenerateBucketSizes(Quantum, BucketsPerDoubling, PbtNodeGroupCodec.MaxPayloadLength), MaxRetainedBytesPerBucket);
 
     /// <summary>The native pool, or the pooled one when <see cref="IPbtConfig.NativeNodeGroupMemory"/> is off.</summary>
     public static IRefCountingMemoryProvider CreateProvider(IPbtConfig config) =>

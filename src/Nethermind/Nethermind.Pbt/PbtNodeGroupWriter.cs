@@ -4,6 +4,7 @@
 using System.Buffers;
 using System.Buffers.Binary;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using Nethermind.Core.Buffers;
@@ -155,12 +156,17 @@ public sealed class PbtNodeGroupWriter<TPath> : IDisposable
     }
 
     /// <summary>The exact canonical payload length, or zero for an empty group.</summary>
+    /// <exception cref="InvalidDataException">The group exceeds <see cref="PbtNodeGroupCodec.MaxPayloadLength"/>.</exception>
     internal int GetPayloadLength(ReadOnlySpan<long> descendantBytes, ushort candidateSlots)
     {
         if (_availability == 0) return 0;
         ushort descendantMask = PbtNodeGroupCodec.DescendantMask(descendantBytes, candidateSlots);
-        return PbtNodeGroupCodec.HeaderLength + _written + PbtNodeGroupCodec.GetTrailerLength(_availability, descendantMask, descendantBytes);
+        int length = PbtNodeGroupCodec.HeaderLength + _written + PbtNodeGroupCodec.GetTrailerLength(_availability, descendantMask, descendantBytes);
+        return length <= MaxCapacity ? length : ThrowTooLarge();
     }
+
+    [DoesNotReturn, StackTraceHidden]
+    private static int ThrowTooLarge() => throw new InvalidDataException("A PBT node group exceeds the maximum payload length.");
 
     /// <summary>Finishes the canonical payload in an exactly sized destination and releases the scratch buffer.</summary>
     internal void DetachTo(Span<byte> payload, ReadOnlySpan<long> descendantBytes, ushort candidateSlots)
@@ -207,6 +213,7 @@ public sealed class PbtNodeGroupWriter<TPath> : IDisposable
     {
         int capacity = _scratch?.Length ?? 0;
         if (capacity >= required) return;
+        if (required > MaxCapacity) ThrowTooLarge();
         byte[] grown = ArrayPool<byte>.Shared.Rent(Math.Min(MaxCapacity, Math.Max(required, Math.Max(InitialCapacity, capacity * 2))));
         if (_scratch is { } previous)
         {

@@ -16,7 +16,9 @@ namespace Nethermind.State.Pbt.PersistedSnapshots;
 /// <remarks>
 /// A descriptor is <see cref="NullMarker"/> for a tombstone, <see cref="InlineMarker"/> followed by a payload of at most
 /// <see cref="InlineLimit"/> bytes, or <see cref="ChunkedMarker"/> followed by the payload length and chunk count, each u32 LE,
-/// for a payload stored in <see cref="ChunkSize"/> blob chunks under <see cref="PbtPersistedKey.Chunk"/> keys.
+/// for a payload stored in <see cref="ChunkSize"/> blob chunks under <see cref="PbtPersistedKey.Chunk"/> keys. A node group,
+/// whose key has no chunk keys, uses <see cref="BlobMarker"/> instead, followed by the payload length as u32 LE and the
+/// <see cref="NodeRef"/> of the single blob chunk holding it.
 /// </remarks>
 public static class PbtPersistedFormat
 {
@@ -25,7 +27,9 @@ public static class PbtPersistedFormat
     public const byte NullMarker = 0;
     public const byte InlineMarker = 1;
     private const byte ChunkedMarker = 2;
+    private const byte BlobMarker = 3;
     public const int ChunkedDescriptorLength = 1 + 2 * sizeof(uint);
+    public const int BlobDescriptorLength = 1 + sizeof(uint) + NodeRef.Size;
 
     private const byte FormatRecord = 1;
     private const byte FromRecord = 2;
@@ -33,7 +37,7 @@ public static class PbtPersistedFormat
     private const byte TreeRootRecord = 4;
     private const int StateLength = sizeof(ulong) + ValueHash256.MemorySize;
 
-    private static ReadOnlySpan<byte> Magic => "PBTDIFF\x02\x00"u8;
+    private static ReadOnlySpan<byte> Magic => "PBTDIFF\x03\x00"u8;
 
     public static void WriteMetadata<TWriter>(ref SortedTableBuilder<TWriter> table, in PbtPersistedMetadata metadata)
         where TWriter : IByteBufferWriter
@@ -54,6 +58,21 @@ public static class PbtPersistedFormat
         BinaryPrimitives.WriteUInt32LittleEndian(descriptor[5..], chunkCount);
     }
 
+    public static void WriteBlobDescriptor(Span<byte> descriptor, int length, in NodeRef reference)
+    {
+        descriptor[0] = BlobMarker;
+        BinaryPrimitives.WriteUInt32LittleEndian(descriptor[1..], checked((uint)length));
+        NodeRef.Write(descriptor[5..], reference);
+    }
+
+    /// <summary>The blob chunk of a <see cref="BlobMarker"/> descriptor that <see cref="PayloadLength"/> validated.</summary>
+    public static bool TryReadBlob(ReadOnlySpan<byte> value, out NodeRef reference)
+    {
+        bool blob = value[0] == BlobMarker;
+        reference = blob ? NodeRef.Read(value[5..]) : default;
+        return blob;
+    }
+
     public static uint ChunkCount(long length) => checked((uint)((length + ChunkSize - 1) / ChunkSize));
 
     /// <summary>Validates <paramref name="value"/> as the descriptor of entity <paramref name="key"/>.</summary>
@@ -62,8 +81,8 @@ public static class PbtPersistedFormat
     {
         chunks = 0;
         if (value.IsEmpty) throw new InvalidDataException("Empty persisted PBT descriptor.");
-        bool nullable = key[0] is PbtPersistedKey.AccountGroup or PbtPersistedKey.CodeGroup or PbtPersistedKey.StorageGroup
-            || key[0] == PbtPersistedKey.Address && key[33] == PbtPersistedKey.Account;
+        bool group = PbtPersistedKey.IsGroup(key);
+        bool nullable = group || key[0] == PbtPersistedKey.Address && key[33] == PbtPersistedKey.Account;
         switch (value[0])
         {
             case NullMarker when nullable && value.Length == 1: return -1;
@@ -73,7 +92,13 @@ public static class PbtPersistedFormat
                 if (key[0] == PbtPersistedKey.Address && key[33] == PbtPersistedKey.Clear && value[1] > 1)
                     throw new InvalidDataException("Invalid persisted PBT clear value.");
                 return inline;
-            case ChunkedMarker when value.Length == ChunkedDescriptorLength:
+            case BlobMarker when group && value.Length == BlobDescriptorLength:
+                int blob = (int)BinaryPrimitives.ReadUInt32LittleEndian(value[1..]);
+                if (blob is <= InlineLimit or > ChunkSize) throw new InvalidDataException("Invalid persisted PBT blob descriptor.");
+                ValidateLength(key, blob);
+                chunks = 1;
+                return blob;
+            case ChunkedMarker when !group && value.Length == ChunkedDescriptorLength:
                 uint length = BinaryPrimitives.ReadUInt32LittleEndian(value[1..]);
                 chunks = BinaryPrimitives.ReadUInt32LittleEndian(value[5..]);
                 if (length <= InlineLimit || length > int.MaxValue || chunks != ChunkCount(length))

@@ -5,6 +5,7 @@ using System.Buffers.Binary;
 using System.IO.Hashing;
 using Nethermind.Core.Crypto;
 using Nethermind.Pbt;
+using Nethermind.State.Pbt.Persistence;
 
 namespace Nethermind.State.Pbt.PersistedSnapshots;
 
@@ -13,9 +14,12 @@ public static class PbtPersistedKey
     public const byte Ownership = 0;
     public const byte Address = 0x10;
     public const byte Code = 0x20;
-    public const byte AccountGroup = 0x30;
-    public const byte CodeGroup = 0x31;
-    public const byte StorageGroup = 0x32;
+    // Group families mirror the database's node-group columns, in the order a tree walk's buckets are written.
+    public const byte RootGroup = 0x30;
+    public const byte TopGroup = 0x31;
+    public const byte AccountGroup = 0x32;
+    public const byte CodeGroup = 0x33;
+    public const byte StorageGroup = 0x34;
     public const byte Metadata = 0xFF;
     public const byte Clear = 0;
     public const byte Account = 1;
@@ -60,16 +64,22 @@ public static class PbtPersistedKey
         return key;
     }
 
+    /// <summary>The group's family byte, then its <see cref="PbtNodeGroupKey"/>; the root group's key is its family byte alone.</summary>
+    /// <remarks>Groups then sort as in the database, so a tree walk can emit them in key order. A group is never chunked.</remarks>
     public static byte[] Group<TPath>(in TPath path) where TPath : struct, IPbtNodePath<TPath>
     {
-        byte family = GroupFamily(path);
-        byte[] key = new byte[GroupKeyLength(path.BitDepth)];
-        key[0] = family;
-        BinaryPrimitives.WriteUInt16BigEndian(key.AsSpan(1), checked((ushort)path.BitDepth));
-        PbtNodePathOperations.CopyTo(path, key.AsSpan(3));
+        if (path.BitDepth == 0) return [RootGroup];
+        Span<byte> encoded = stackalloc byte[PbtNodeGroupKey.MaxLength];
+        ReadOnlySpan<byte> groupKey = PbtNodeGroupKey.Encode(path, encoded);
+        byte[] key = new byte[1 + groupKey.Length];
+        key[0] = GroupFamily(path);
+        groupKey.CopyTo(key.AsSpan(1));
         ValidateDescriptor(key);
         return key;
     }
+
+    /// <summary>Whether <paramref name="key"/> belongs to a node-group family.</summary>
+    public static bool IsGroup(ReadOnlySpan<byte> key) => key[0] is >= RootGroup and <= StorageGroup;
 
     public static byte[] Chunk(ReadOnlySpan<byte> descriptor, uint index)
     {
@@ -103,16 +113,18 @@ public static class PbtPersistedKey
                 _ => 0,
             },
             Code => 34,
-            AccountGroup or CodeGroup or StorageGroup when key.Length >= 3 => GroupKeyLength(BinaryPrimitives.ReadUInt16BigEndian(key[1..])),
             _ => 0,
         };
         return descriptorLength > 0 && key.Length == descriptorLength + sizeof(uint) && key[descriptorLength - 1] == ChunkFlag;
     }
 
-    private static int GroupKeyLength(int bitDepth) => 3 + PbtBitPrefix.ByteCount(bitDepth) + 1;
-
     public static void ValidateDescriptor(ReadOnlySpan<byte> key)
     {
+        if (!key.IsEmpty && IsGroup(key))
+        {
+            DecodeGroup(key);
+            return;
+        }
         if (key.Length < 2 || key[^1] != DescriptorFlag) throw new InvalidDataException("Invalid persisted PBT descriptor key.");
         switch (key[0])
         {
@@ -126,32 +138,28 @@ public static class PbtPersistedKey
                     default: throw new InvalidDataException("Invalid persisted PBT address subtag or run alignment.");
                 }
             case Code when key.Length == 34: return;
-            case AccountGroup or CodeGroup or StorageGroup:
-                PbtStorageNodePath path = DecodeGroup(key);
-                if (GroupFamily(path) != key[0]) throw new InvalidDataException("Persisted PBT group partition mismatch.");
-                return;
             default: throw new InvalidDataException("Unknown persisted PBT entity family.");
         }
     }
 
     private static byte GroupFamily<TPath>(in TPath path) where TPath : struct, IPbtNodePath<TPath> =>
-        PbtPartitions.PartitionOfPath(path) switch
+        PbtRocksDbPersistence.NodeGroupColumn(path) switch
         {
-            PbtPartition.Code => CodeGroup,
-            PbtPartition.Storage => StorageGroup,
+            PbtColumns.Metadata => RootGroup,
+            PbtColumns.TopNodeGroups => TopGroup,
+            PbtColumns.CodeNodeGroups => CodeGroup,
+            PbtColumns.StorageNodeGroups => StorageGroup,
             _ => AccountGroup,
         };
 
     public static PbtStorageNodePath DecodeGroup(ReadOnlySpan<byte> key)
     {
-        if (key.Length < 4) throw new InvalidDataException("Invalid persisted PBT group key.");
-        int depth = BinaryPrimitives.ReadUInt16BigEndian(key[1..]);
-        int maxDepth = key[0] == StorageGroup ? PbtStorageNodePath.MaxBitDepth : PbtNodePath.MaxBitDepth;
-        if (!PbtThreeLevelGroupGeometry.IsGroupDepth(depth) || depth > maxDepth || key.Length != GroupKeyLength(depth))
-            throw new InvalidDataException("Invalid persisted PBT group depth.");
-        ReadOnlySpan<byte> path = key.Slice(3, key.Length - 4);
-        if (!PbtNodeCodec.IsCanonicalPath(path, depth, maxDepth)) throw new InvalidDataException("Invalid persisted PBT group padding.");
-        return PbtStorageNodePath.Create(path, depth);
+        if (key is [RootGroup]) return default;
+        if (key.Length < 2 || key[0] == RootGroup) throw new InvalidDataException("Invalid persisted PBT group key.");
+        PbtStorageNodePath path = PbtNodeGroupKey.Decode(key[1..]);
+        if (key[0] != StorageGroup && path.BitDepth > PbtNodePath.MaxBitDepth) throw new InvalidDataException("Invalid persisted PBT group depth.");
+        if (GroupFamily(path) != key[0]) throw new InvalidDataException("Persisted PBT group partition mismatch.");
+        return path;
     }
 
     public static PbtPath DecodeHeaderRun(ReadOnlySpan<byte> key)

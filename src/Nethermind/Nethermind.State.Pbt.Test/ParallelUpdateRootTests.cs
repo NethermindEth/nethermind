@@ -13,6 +13,7 @@ using Nethermind.Core.Memory;
 using Nethermind.Core.Threading;
 using Nethermind.Pbt;
 using Nethermind.Pbt.NodeLog;
+using Nethermind.State.Pbt.Persistence;
 using Nethermind.State.Pbt.Snapshot;
 using NUnit.Framework;
 using static Nethermind.State.Pbt.Test.PbtStoreTestExtensions;
@@ -720,7 +721,7 @@ public class ParallelUpdateRootTests
 
         /// <summary>The groups reached by walking the log from <see cref="RootReference"/>, pruned below <paramref name="lowerBound"/>.</summary>
         public IReadOnlyList<PbtPhysicalPayload> TreePayloads(PbtGroupReference lowerBound = default) =>
-            Log.EnumerateGroups(RootReference, lowerBound).Select(static record => new PbtPhysicalPayload(record.Path, record.Payload.Span)).ToArray();
+            PbtNodeGroupKey.InKeyOrder(Log, RootReference, lowerBound).Select(static record => new PbtPhysicalPayload(record.Path, record.Payload.Span)).ToArray();
 
         /// <summary>The payload of the group at <paramref name="path"/> in the tree under <see cref="RootReference"/>, empty when the tree has none, or null when unresolved.</summary>
         public byte[]? FindGroup(PbtStorageNodePath path)

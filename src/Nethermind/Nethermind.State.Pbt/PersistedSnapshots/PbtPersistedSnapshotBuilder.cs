@@ -52,8 +52,16 @@ public static class PbtPersistedSnapshotBuilder
         foreach ((HashedKey<PbtStoragePath> key, PackedSlotRun value) in c.Storages) entries.Add(new(PbtPersistedKey.Run(key.Key), value));
         foreach ((ValueHash256 key, CodeInfo value) in c.Codes) entries.Add(new(PbtPersistedKey.CodeEntity(key), value));
         foreach ((ValueHash256 key, bool value) in c.SelfDestructedStorageAddresses) entries.Add(new(PbtPersistedKey.AddressEntity(key, PbtPersistedKey.Clear), value));
-        foreach (PbtGroupRecord group in c.EnumerateNodeGroups()) entries.Add(new(PbtPersistedKey.Group(group.Path), group.Payload.ToArray()));
         entries.Sort(static (a, b) => a.Key.AsSpan().SequenceCompareTo(b.Key));
+        // Group families sort after every other entity, and the tree walk emits each family in key order.
+        List<Entry>[] groupFamilies = new List<Entry>[PbtPersistedKey.StorageGroup - PbtPersistedKey.RootGroup + 1];
+        for (int family = 0; family < groupFamilies.Length; family++) groupFamilies[family] = [];
+        foreach (PbtGroupRecord group in c.EnumerateNodeGroups())
+        {
+            byte[] key = PbtPersistedKey.Group(group.Path);
+            groupFamilies[key[0] - PbtPersistedKey.RootGroup].Add(new(key, group.Payload.ToArray()));
+        }
+        foreach (List<Entry> family in groupFamilies) entries.AddRange(family);
         SortedTableBuilder<TWriter> table = new(ref writer);
         try
         {
@@ -106,6 +114,13 @@ public static class PbtPersistedSnapshotBuilder
             value[0] = PbtPersistedFormat.InlineMarker;
             payload.CopyTo(value[1..]);
             table.Add(key, value[..(payload.Length + 1)]);
+            return;
+        }
+        if (PbtPersistedKey.IsGroup(key))
+        {
+            Span<byte> blob = stackalloc byte[PbtPersistedFormat.BlobDescriptorLength];
+            PbtPersistedFormat.WriteBlobDescriptor(blob, payload.Length, blobs.WriteRlp(EncodeChunk(payload)));
+            table.Add(key, blob);
             return;
         }
         uint count = PbtPersistedFormat.ChunkCount(payload.LongLength);

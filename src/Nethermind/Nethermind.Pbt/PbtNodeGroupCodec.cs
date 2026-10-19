@@ -49,8 +49,8 @@ public static class PbtNodeGroupCodec
     /// <summary>The largest descendant size a 48-bit field can hold.</summary>
     public const long MaxDescendantBytes = (1L << (8 * MaxDescendantBytesLength)) - 1;
 
-    /// <summary>The largest payload a group can encode: header, a full entries section, and the widest trailer.</summary>
-    public const int MaxPayloadLength = HeaderLength + MaxEntriesLength + MaxTrailerLength;
+    /// <summary>The largest payload a group may take, so that a persisted group fits a single blob chunk.</summary>
+    public const int MaxPayloadLength = 32 * 1024;
     private const uint ReservedRootBit = 1u << PbtThreeLevelGroupGeometry.RootPosition;
     private const uint AllowedPositionBits = (1u << PbtThreeLevelGroupGeometry.PositionCount) - 1;
 

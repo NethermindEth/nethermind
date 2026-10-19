@@ -7,7 +7,7 @@ namespace Nethermind.Pbt.NodeLog;
 /// A tree is walked from its root record through boundary links. A link names the first physical group below its slot,
 /// possibly past compressed absent groups, so a linked record deeper than the wanted path, or off it, proves that the
 /// tree has no group there. A record is always reserved after the records it links to, so a tree's records written since
-/// a pin are exactly those at or above its write boundary, and the walk prunes every link below it.
+/// a pin are exactly those at or above its write boundary, and a walk of them prunes every link below it.
 /// </remarks>
 public sealed partial class PbtGroupLog
 {
@@ -39,26 +39,5 @@ public sealed partial class PbtGroupLog
         }
         record = default;
         return reference;
-    }
-
-    /// <summary>Enumerates the records of the tree under <paramref name="root"/> reserved at or after <paramref name="lowerBound"/>.</summary>
-    /// <remarks>
-    /// Links below <paramref name="lowerBound"/>, and unresolved or absent links, are not followed. A pin at or below
-    /// <paramref name="lowerBound"/> must outlive the enumeration and every use of the records it yields.
-    /// </remarks>
-    /// <exception cref="InvalidOperationException">A record at or above <paramref name="lowerBound"/> is no longer resident.</exception>
-    public IEnumerable<PbtGroupRecord> EnumerateGroups(PbtGroupReference root, PbtGroupReference lowerBound)
-    {
-        Stack<PbtGroupReference> pending = new();
-        pending.Push(root);
-        while (pending.TryPop(out PbtGroupReference reference))
-        {
-            if (!reference.IsDirect || reference.CompareTo(lowerBound) < 0) continue;
-            if (!TryGetRecord(reference, out PbtGroupRecord record))
-                throw new InvalidOperationException("A group record written since the lower bound is no longer resident.");
-            yield return record;
-            PbtGroupLinks links = record.Links;
-            for (int slot = PbtThreeLevelGroupGeometry.BoundarySlots - 1; slot >= 0; slot--) pending.Push(links[slot]);
-        }
     }
 }

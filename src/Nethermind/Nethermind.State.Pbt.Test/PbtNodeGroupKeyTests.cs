@@ -2,11 +2,15 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using Nethermind.Core.Extensions;
 using Nethermind.Pbt;
+using Nethermind.Pbt.NodeLog;
 using Nethermind.State.Pbt.Persistence;
 using Nethermind.State.Pbt.PersistedSnapshots;
+using Nethermind.State.Pbt.Snapshot;
 using NUnit.Framework;
 
 namespace Nethermind.State.Pbt.Test;
@@ -14,27 +18,52 @@ namespace Nethermind.State.Pbt.Test;
 public class PbtNodeGroupKeyTests
 {
     [TestCase("", 0, 0x30)]
-    [TestCase("00", 3, 0x30)]
+    [TestCase("00", 3, 0x31)]
     [TestCase("0100", 9, 0x31)]
-    [TestCase("e0", 3, 0x32)]
-    [TestCase("fc", 6, 0x32)]
-    [TestCase("ff00", 9, 0x32)]
-    [TestCase("ff0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000", 525, 0x32)]
-    public void Persisted_keys_preserve_root_depth_and_partition(string pathHex, int depth, byte family)
+    [TestCase("e0", 3, 0x31)]
+    [TestCase("00000000", 30, 0x32)]
+    [TestCase("01000000000000000000000000000000000000000000000000000000000000000000", 264, 0x33)]
+    [TestCase("ff0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000", 525, 0x34)]
+    public void Persisted_keys_follow_the_database_column_and_key(string pathHex, int depth, byte family)
     {
         PbtStorageNodePath path = new(Bytes.FromHexString(pathHex), depth);
         byte[] key = PbtPersistedKey.Group(path);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(key[0], Is.EqualTo(family));
+            Assert.That(key[1..], Is.EqualTo(depth == 0 ? Array.Empty<byte>() : path.ToStorageKey(PbtColumns.StorageNodeGroups)));
             Assert.That(PbtPersistedKey.DecodeGroup(key), Is.EqualTo(path));
             Assert.That(key.Length, Is.LessThanOrEqualTo(255));
         }
     }
 
     [Test]
-    public void Persisted_keys_reject_invalid_group_depth_partition_and_padding([Values("3000060100", "31000000", "3000050000", "300114000000000000000000000000000000000000000000000000000000000000000000000000", "3000000000")] string key) =>
+    public void Persisted_keys_reject_invalid_group_keys_partitions_and_padding([Values("3000", "31", "320003", "310008", "311f03")] string key) =>
         Assert.Throws<InvalidDataException>(() => PbtPersistedKey.ValidateDescriptor(Bytes.FromHexString(key)));
+
+    [Test]
+    public void Layer_groups_enumerate_root_first_then_in_database_key_order([Values(1, 2, 3)] int seed)
+    {
+        Random random = new(seed);
+        // Along a zero chain a partial group sorts after its zero-byte descendants, and a byte-aligned one before them.
+        List<PbtStorageNodePath> paths = [new(new byte[8], 60)];
+        for (int index = 0; index < 64; index++)
+        {
+            byte[] bytes = new byte[8];
+            random.NextBytes(bytes);
+            paths.Add(new PbtStorageNodePath(bytes, 63).Prefix(PbtThreeLevelGroupGeometry.LevelsPerGroup * random.Next(1, 22)));
+        }
+        using PbtSnapshotContent content = new();
+        content.SetTree([.. paths.Distinct().Select(static path => (path, (byte[]?)[1]))]);
+        PbtGroupRecord[] ordered = [.. content.EnumerateNodeGroups()];
+        byte[][] keys = [.. ordered.Skip(1).Select(static group => group.Path.ToStorageKey(PbtColumns.StorageNodeGroups))];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ordered[0].Path, Is.EqualTo(default(PbtStorageNodePath)));
+            Assert.That(ordered, Has.Length.EqualTo(content.NodeGroupCount));
+            Assert.That(keys, Is.EqualTo(keys.Order(Comparer<byte[]>.Create(static (a, b) => a.AsSpan().SequenceCompareTo(b))).ToArray()));
+        }
+    }
 
     [TestCase("e0", 3, "e003")]
     [TestCase("fc", 6, "fc06")]

@@ -924,21 +924,32 @@ public class PbtNodeGroupTests
     }
 
     [Test]
-    public void Streaming_writer_accepts_exact_uint16_entries_limit()
+    public void Streaming_writer_rejects_groups_above_the_maximum_payload_length()
     {
         TrackingMemoryProvider provider = new();
-        using PbtNodeGroupWriter<PbtNodePath> writer = PbtNodeGroupWriter<PbtNodePath>.Rent(0, provider);
-        for (int position = 0; position < 8; position++)
+        using (PbtNodeGroupWriter<PbtNodePath> writer = PbtNodeGroupWriter<PbtNodePath>.Rent(0, provider))
         {
-            int length = position == 7 ? 8191 : 8192;
+            for (int position = 0; position < 3; position++) AppendBranch(writer, position, 8192);
+            using RefCountingMemory payload = writer.Detach(default, 0)!;
+            Assert.That(PbtStoreTestExtensions.ReadGroup(new PbtNodePath([], 0), payload.GetSpan()).Nodes(), Has.Count.EqualTo(3));
+        }
+        using (PbtNodeGroupWriter<PbtNodePath> writer = PbtNodeGroupWriter<PbtNodePath>.Rent(0, provider))
+        {
+            for (int position = 0; position < 4; position++) AppendBranch(writer, position, 8191);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.Throws<InvalidDataException>(() => writer.Detach(default, 0), "the trailer pushes the group past the maximum");
+                Assert.Throws<InvalidDataException>(() => writer.Append(4, 8192));
+            }
+        }
+
+        static void AppendBranch(PbtNodeGroupWriter<PbtNodePath> writer, int position, int length)
+        {
             Span<byte> encoding = writer.Append(position, length);
             PbtNodeCodec.CreateBranchEncoding(encoding, (length - PbtNodeCodec.BranchLength(0, 0, 0)) * 8,
                 new ValueHash256(Value(1)), new ValueHash256(Value(2)));
             PbtNodeCodec.WriteBranchTrailer(encoding[^PbtNodeCodec.BranchTrailerHeaderLength..], [], []);
         }
-        Assert.That(writer.WrittenCount, Is.EqualTo(ushort.MaxValue));
-        using RefCountingMemory payload = writer.Detach(default, 0)!;
-        Assert.That(PbtStoreTestExtensions.ReadGroup(new PbtNodePath([], 0), payload.GetSpan()).Nodes(), Has.Count.EqualTo(8));
     }
 
     [Test]

@@ -364,6 +364,41 @@ public class PbtSnapshotCompactorTests
     }
 
     [Test]
+    public void Persisted_groups_round_trip_inline_and_as_blobs_through_build_and_merge()
+    {
+        using PbtPersistedTestStore store = new();
+        using PbtTreeHarness tree = new();
+        Random random = new(1);
+        (byte[] Key, byte[]? Value)[] entries = new (byte[], byte[]?)[512];
+        for (int index = 0; index < entries.Length; index++)
+        {
+            byte[] key = new byte[34];
+            random.NextBytes(key);
+            key[0] = Eip8297KeyDerivation.AccountZone;
+            entries[index] = (key, TestItem.KeccakA.Bytes.ToArray());
+        }
+        tree.ApplyBatch(entries);
+        PbtSnapshotContent content = new();
+        content.SetPhysicalTree(tree.PhysicalPayloads);
+        PbtPersistedSnapshot[] sources = BuildPersisted(store, [content, new PbtSnapshotContent()]);
+        try
+        {
+            using PbtPersistedSnapshot merged = MergePersisted(store, sources, out _);
+            Assert.That(tree.PhysicalPayloads.Max(static group => group.Payload.Length), Is.GreaterThan(PbtPersistedFormat.InlineLimit));
+            using (Assert.EnterMultipleScope())
+            {
+                foreach (PbtPhysicalPayload group in tree.PhysicalPayloads)
+                    foreach (PbtPersistedSnapshot snapshot in new[] { sources[0], merged })
+                    {
+                        Assert.That(snapshot.TryGetNodeGroup(group.Key, out RefCountingMemory? payload), Is.True);
+                        using (payload) Assert.That(payload?.GetSpan().ToArray(), Is.EqualTo(group.Payload.ToArray()));
+                    }
+            }
+        }
+        finally { DisposeSources(sources); }
+    }
+
+    [Test]
     public void Persisted_merge_preserves_full_or_explicit_empty_runs([Values(0u, 1024u)] uint firstSlot, [Values] bool empty)
     {
         using PbtPersistedTestStore store = new();

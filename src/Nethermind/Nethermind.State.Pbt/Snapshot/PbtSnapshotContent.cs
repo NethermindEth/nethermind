@@ -13,6 +13,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Pbt;
 using Nethermind.Pbt.NodeLog;
 using Nethermind.State.Pbt.Common;
+using Nethermind.State.Pbt.Persistence;
 using IResettable = Nethermind.Core.Resettables.IResettable;
 
 namespace Nethermind.State.Pbt.Snapshot;
@@ -66,13 +67,13 @@ public sealed class PbtSnapshotContent : IDisposable, IResettable
         _nodeGroupBytes += bytes;
     }
 
-    /// <summary>Enumerates the groups of this layer's tree that were written since its generation pin.</summary>
+    /// <summary>Enumerates the groups of this layer's tree that were written since its generation pin, in <see cref="PbtNodeGroupKey.InKeyOrder"/> order.</summary>
     /// <remarks>
     /// Groups the tree inherits from earlier layers, and groups replaced within this layer, are not enumerated. The layer's
     /// generation pin keeps the records valid while the layer is not reset.
     /// </remarks>
     public IEnumerable<PbtGroupRecord> EnumerateNodeGroups() =>
-        _nodeGroupPin is null ? [] : NodeGroupLog.EnumerateGroups(RootGroupReference, _nodeGroupPin.WriteBoundary);
+        _nodeGroupPin is null ? [] : PbtNodeGroupKey.InKeyOrder(NodeGroupLog, RootGroupReference, _nodeGroupPin.WriteBoundary);
 
     /// <summary>The runs of header slots for <see cref="PbtPath"/> run keys, or of the other slots for <see cref="PbtStoragePath"/> ones.</summary>
     private ConcurrentDictionary<HashedKey<TKey>, PackedSlotRun> Runs<TKey>() where TKey : struct, IPbtKey<TKey> =>

@@ -16,8 +16,7 @@ namespace Nethermind.State.Pbt.Persistence.TrieNodeLog;
 /// <see cref="Prev"/> is the offset + 1 of the previous record of the same key in the same generation file (0 when
 /// none), which lets a reader walk back to the version it needs; older versions in older generations are found
 /// through those generations' own indexes. A commit record has no key or value and stores <c>~version</c> in
-/// <see cref="Prev"/> so a torn (zero-filled) tail cannot pass as a commit. The value length is 32-bit because a
-/// group payload may exceed 64 KiB (<see cref="PbtNodeGroupCodec.MaxPayloadLength"/>).
+/// <see cref="Prev"/> so a torn (zero-filled) tail cannot pass as a commit. The value length is 32-bit.
 /// </remarks>
 public readonly record struct TrieNodeLogRecord(byte Type, int KeyLength, int ValueLength, ulong Version, ulong Prev)
 {
