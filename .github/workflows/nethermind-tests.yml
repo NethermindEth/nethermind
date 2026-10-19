@@ -325,13 +325,11 @@ jobs:
         env:
           TEST_CHUNK: ${{ matrix.chunk }}
         run: |
-          hang_timeout=8m
           if [ "$RUNNER_OS" = "Linux" ]; then
             # Run the prebuilt test host directly: dotnet test would restore and evaluate the project first.
             run_tests=(../artifacts/bin/${{ matrix.project }}/release/${{ matrix.project }} --results-directory TestResults)
           else
             dotnet build ${{ matrix.project }}.csproj -c release  # Windows/macOS: no artifact, build in-job
-            hang_timeout=4m  # the in-job build leaves less of the job budget for a hang to be dumped in
             run_tests=(dotnet test --project ${{ matrix.project }}.csproj -c release --no-build --no-restore)
           fi
           dotnet build-server shutdown || true  # macOS VB/C# server sometimes fails to shut down; harmless
@@ -341,7 +339,7 @@ jobs:
           # A host that dies mid-run leaves a dump, a crash report where the runtime writes one, and a
           # sequence log of the tests in flight; on its own, exit code 7 names neither test nor cause.
           test_args=(
-            --hangdump --hangdump-timeout "$hang_timeout" --hangdump-type Mini
+            --hangdump --hangdump-timeout 8m --hangdump-type Mini
             --crashdump --crashdump-type Mini --crash-report-if-supported)
 
           set +e
