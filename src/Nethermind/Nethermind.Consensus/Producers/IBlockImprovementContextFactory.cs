@@ -11,7 +11,7 @@ namespace Nethermind.Consensus.Producers;
 public interface IBlockImprovementContextFactory
 {
     IBlockImprovementContext StartBlockImprovementContext(
-        Block currentBestBlock,
+        Block? currentBestBlock,
         BlockHeader parentHeader,
         PayloadAttributes payloadAttributes,
         DateTimeOffset startDateTime,
