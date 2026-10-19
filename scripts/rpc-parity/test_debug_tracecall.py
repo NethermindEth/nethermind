@@ -62,12 +62,12 @@ class ParityRunnerTests(unittest.TestCase):
                 self.assertEqual(evidence['corpusReferenceCommit'], runner.CORPUS_REFERENCE)
 
     def test_failed_or_interrupted_runs_finish_evidence_and_close_clients(self):
-        for error in (
-            Exception('ordinary failure'), Exception(),
-            KeyboardInterrupt('interrupted'), KeyboardInterrupt(),
-            SystemExit('exit requested'), SystemExit(),
+        for error, expected_failure in (
+            (Exception('ordinary failure'), 'ordinary failure'), (Exception(), 'Exception'),
+            (KeyboardInterrupt('interrupted'), 'interrupted'), (KeyboardInterrupt(), 'KeyboardInterrupt'),
+            (SystemExit('exit requested'), 'exit requested'), (SystemExit(), 'SystemExit'),
         ):
-            with self.subTest(error=type(error).__name__), tempfile.TemporaryDirectory() as directory:
+            with self.subTest(error=repr(error)), tempfile.TemporaryDirectory() as directory:
                 output = Path(directory) / 'capture.json'
                 argv = ['runner', '--candidate-url', 'http://candidate', '--reference-url', 'http://reference',
                         '--candidate-version', 'candidate-revision', '--reference-commit', 'f' * 40,
@@ -79,7 +79,7 @@ class ParityRunnerTests(unittest.TestCase):
                 self.assertIs(raised.exception, error)
                 evidence = json.loads(output.read_text())
                 self.assertEqual(evidence['status'], 'failed')
-                self.assertEqual(evidence['failure'], str(error) or type(error).__name__)
+                self.assertEqual(evidence['failure'], expected_failure)
                 self.assertIn('finishedAt', evidence)
                 for client in clients:
                     client.close.assert_called_once()
