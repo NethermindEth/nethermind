@@ -9,6 +9,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Net;
+using System.Net.Sockets;
 using System.Reflection;
 using System.Runtime.Loader;
 using System.Text.Json.Nodes;
@@ -1037,7 +1038,7 @@ public class EthereumRunnerTests
             {
                 if (!rpcPorts.TryGetValue(configuredPort, out int freePort))
                 {
-                    using System.Net.Sockets.TcpListener listener = new(IPAddress.Loopback, 0);
+                    using TcpListener listener = new(IPAddress.Loopback, 0);
                     listener.Start();
                     rpcPorts[configuredPort] = freePort = ((IPEndPoint)listener.LocalEndpoint).Port;
                 }
