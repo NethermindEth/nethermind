@@ -80,7 +80,6 @@ if [[ "$profile" == rollup0 ]]; then
     [[ "$(docker image inspect --format '{{.Id}}' "$EEZ_PROOF_SIGNER_IMAGE")" == "$prover_image_id" ]] \
         || { echo "candidate prover image was replaced during the upstream run" >&2; exit 1; }
     python3 "$HERE/prepare.py" report --directory "$EEZ_CI_RESULT_DIR" --revision "$GITHUB_SHA" --image-id "$prover_image_id"
-    kurtosis enclave rm -f "$KURTOSIS_ENCLAVE"
     bash "$HERE/embedded.sh"
 else
     python3 "$HERE/prepare.py" follower-report --directory "$EEZ_CI_RESULT_DIR" --revision "$GITHUB_SHA" --image-id "$follower_image_id"
