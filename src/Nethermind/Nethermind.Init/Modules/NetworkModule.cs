@@ -3,9 +3,11 @@
 
 using System.Threading;
 using Autofac;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus;
+using Nethermind.Consensus.ProofAggregation;
 using Nethermind.Core;
 using Nethermind.Core.Container;
 using Nethermind.Core.Timers;
@@ -80,6 +82,11 @@ public class NetworkModule(IConfigProvider configProvider) : Module
             .AddSingleton<IProtocolsManager, ProtocolsManager>()
             .AddFirst<IP2PCapabilityResolver, DefaultP2PCapabilityResolver>()
             .AddLast<IP2PCapabilityResolver, SnapP2PCapabilityResolver>()
+            // Debug-only EIP-8288 / EIP-8437 event feed, disabled by default: only an enabled feed resolves the block tree and
+            // pool it observes. Registered here rather than with block processing, which builds without the network config.
+            .AddSingleton<ProofWrapperEventFeed>(static ctx => ctx.Resolve<INetworkConfig>().ProofWrapperEventBufferSize is > 0 and var size
+                ? new ProofWrapperEventFeed(size, ctx.Resolve<IBlockTree>(), ctx.Resolve<ITxPool>())
+                : ProofWrapperEventFeed.Disabled)
             .AddSingleton<V73.ProofWrapperTransport>()
             .AddSingleton<V73.ProofWrapperGossip>()
 
