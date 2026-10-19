@@ -300,6 +300,34 @@ public class LogFinderTests
         Assert.That(() => _logFinder.FindLogs(logFilter), Throws.TypeOf<ResourceNotFoundException>());
     }
 
+    [Test]
+    public void FindLogs_WhenFromAndToAreTheSameBlock_ChecksItsReceiptsOnce()
+    {
+        BlockHeader head = _blockTree.Head!.Header;
+        Assert.That(head.ReceiptsRoot, Is.Not.EqualTo(Keccak.EmptyTreeHash), "precondition: the block has receipts to look for");
+        IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
+        receiptStorage.HasBlock(Arg.Any<ulong>(), Arg.Any<Hash256>()).Returns(false);
+        LogFinder finder = CreateLogFinder(receiptStorage: receiptStorage);
+
+        Assert.That(() => finder.FindLogs(FilterBuilder.New().FromBlock(head.Number).ToBlock(head.Number).Build()),
+            Throws.TypeOf<ResourceNotFoundException>(), "a single block without receipts must still be reported missing");
+        receiptStorage.Received(1).HasBlock(head.Number, Arg.Any<Hash256>());
+    }
+
+    [Test]
+    public void FindLogs_WhenOnlyToBlockReceiptsAreMissing_ThrowsForTheToBlock()
+    {
+        BlockHeader to = _blockTree.Head!.Header;
+        Assert.That(to.ReceiptsRoot, Is.Not.EqualTo(Keccak.EmptyTreeHash), "precondition: the to block has receipts to look for");
+        IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
+        receiptStorage.HasBlock(Arg.Any<ulong>(), Arg.Any<Hash256>()).Returns(call => call.ArgAt<ulong>(0) != to.Number);
+        LogFinder finder = CreateLogFinder(receiptStorage: receiptStorage);
+
+        Assert.That(() => finder.FindLogs(FilterBuilder.New().FromBlock(1).ToBlock(to.Number).Build()),
+            Throws.TypeOf<ResourceNotFoundException>().With.Message.Contains($"To block {to.Number}"),
+            "a range whose to block lost its receipts must not return incomplete logs");
+    }
+
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void when_receipts_are_missing_and_header_has_no_receipt_root_do_not_throw_exception_()
     {
@@ -528,7 +556,7 @@ public class LogFinderTests
         byte[] data = new byte[64];
         data.AsSpan(zeroPrefix).Fill(0x42);
         LogEntry rejected = new(filterByTopic ? TestItem.AddressA : TestItem.AddressB, new byte[1024], [TestItem.KeccakB]);
-        LogEntry accepted = new(TestItem.AddressA, data, [TestItem.KeccakA]);
+        LogEntry accepted = new(TestItem.AddressA, data, [TestItem.KeccakA, new Hash256("0x0000000000000000000000000000000000000000000000000000000000000001"), Keccak.Zero]);
         TxReceipt receipt = Build.A.Receipt.WithAllFieldsFilled
             .WithBlockHash(block.Hash)
             .WithBlockNumber(block.Number)
@@ -925,7 +953,7 @@ public class LogFinderTests
             }
 
             public readonly void Add(long logIndex, ulong blockNumber, ulong blockTimestamp, Hash256 blockHash, in TxReceiptStructRef receipt,
-                Hash256? recoveredTransactionHash, ref Hash256? transactionHash, in LogEntryStructRef log, Hash256[] topics) =>
+                Hash256? recoveredTransactionHash, ref Hash256? transactionHash, in LogEntryStructRef log, ref ReceiptsIterator iterator) =>
                 _cancellation!.Cancel();
 
             public readonly IEnumerable<FilterLog> Complete() => [];

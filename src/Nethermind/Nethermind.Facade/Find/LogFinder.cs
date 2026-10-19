@@ -90,7 +90,9 @@ namespace Nethermind.Facade.Find
             {
                 bool fromMissing = fromBlock.Number != 0 && fromBlock.ReceiptsRoot != Keccak.EmptyTreeHash && !_receiptStorage.HasBlock(fromBlock.Number, fromBlock.Hash!);
                 cancellationToken.ThrowIfCancellationRequested();
-                bool toMissing = toBlock.Number != 0 && toBlock.ReceiptsRoot != Keccak.EmptyTreeHash && !_receiptStorage.HasBlock(toBlock.Number, toBlock.Hash!);
+                bool toMissing = ReferenceEquals(toBlock, fromBlock)
+                    ? fromMissing
+                    : toBlock.Number != 0 && toBlock.ReceiptsRoot != Keccak.EmptyTreeHash && !_receiptStorage.HasBlock(toBlock.Number, toBlock.Hash!);
 
                 if ((fromMissing || toMissing) && !RetainsLogsForFilter(filter, fromBlock.Number, toBlock.Number))
                 {
@@ -112,9 +114,12 @@ namespace Nethermind.Facade.Find
             && prunedLogsRetention.RetainsLogsFor(filter.AddressFilter.Addresses, fromBlock, toBlock);
 
         private protected IEnumerable<TLog> FilterLogsInBlocksParallel<TBlockLogs, TLog>(LogFilter filter, IEnumerable<ulong> blockNumbers, bool tryParallel = true, CancellationToken cancellationToken = default)
-            where TBlockLogs : struct, IBlockLogs<TBlockLogs, TLog> =>
-            RunParallel(blockNumbers,
-                number => FindLogsInBlock<TBlockLogs, TLog>(filter, FindHeaderOrLogError(number, cancellationToken), cancellationToken), tryParallel, cancellationToken);
+            where TBlockLogs : struct, IBlockLogs<TBlockLogs, TLog>
+        {
+            Func<ReadOnlySpan<byte>, bool> bloomMatches = BloomMatches(filter);
+            return RunParallel(blockNumbers,
+                number => FindLogsInBlockIfBloomMatches<TBlockLogs, TLog>(filter, number, bloomMatches, cancellationToken), tryParallel, cancellationToken);
+        }
 
         private IEnumerable<TLog> RunParallel<T, TLog>(IEnumerable<T> source, Func<T, IEnumerable<TLog>> worker, bool tryParallel, CancellationToken cancellationToken)
         {
@@ -249,26 +254,26 @@ namespace Nethermind.Facade.Find
 
             ulong rangeSize = toBlock.Number - fromBlock.Number + 1;
             bool tryParallel = ScansInParallel(rangeSize, _rpcConfigGetLogsThreads);
-            Func<ReadOnlySpan<byte>, bool> bloomMatches = bloom =>
-            {
-                if (bloom.IsEmpty) return true;
-                BloomStructRef bloomRef = new(bloom);
-                return filter.Matches(ref bloomRef);
-            };
+            Func<ReadOnlySpan<byte>, bool> bloomMatches = BloomMatches(filter);
 
             return RunParallel(BlockNumbers(fromBlock.Number, rangeSize),
-                number => FindHeaderIfBloomMatchesOrLogError(number, bloomMatches, cancellationToken) is { } header
-                    ? FindLogsInBlock<TBlockLogs, TLog>(filter, header.Hash, header.Number, header.Timestamp, cancellationToken)
-                    : [],
+                number => FindLogsInBlockIfBloomMatches<TBlockLogs, TLog>(filter, number, bloomMatches, cancellationToken),
                 tryParallel, cancellationToken);
         }
 
         internal static bool ScansInParallel(ulong rangeSize, int workers) => rangeSize >= (ulong)(workers * MinBlocksPerParallelWorker);
 
-        private IEnumerable<TLog> FindLogsInBlock<TBlockLogs, TLog>(LogFilter filter, BlockHeader? block, CancellationToken cancellationToken)
+        private static Func<ReadOnlySpan<byte>, bool> BloomMatches(LogFilter filter) => bloom =>
+        {
+            if (bloom.IsEmpty) return true;
+            BloomStructRef bloomRef = new(bloom);
+            return filter.Matches(ref bloomRef);
+        };
+
+        private IEnumerable<TLog> FindLogsInBlockIfBloomMatches<TBlockLogs, TLog>(LogFilter filter, ulong blockNumber, Func<ReadOnlySpan<byte>, bool> bloomMatches, CancellationToken cancellationToken)
             where TBlockLogs : struct, IBlockLogs<TBlockLogs, TLog> =>
-            block is not null && filter.Matches(block.Bloom!)
-                ? FindLogsInBlock<TBlockLogs, TLog>(filter, block.Hash, block.Number, block.Timestamp, cancellationToken)
+            FindHeaderIfBloomMatchesOrLogError(blockNumber, bloomMatches, cancellationToken) is { } header
+                ? FindLogsInBlock<TBlockLogs, TLog>(filter, header.Hash, header.Number, header.Timestamp, cancellationToken)
                 : [];
 
         private IEnumerable<TLog> FindLogsInBlock<TBlockLogs, TLog>(LogFilter filter, Hash256? blockHash, ulong blockNumber, ulong blockTimestamp, CancellationToken cancellationToken)
@@ -312,11 +317,7 @@ namespace Nethermind.Facade.Find
                                 // On CL workload, recovery happens about 70% of the time.
                                 iterator.RecoverLogFieldsIfNeeded(ref receipt, out Hash256? recoveredTransactionHash);
 
-                                Hash256[] topics = log.Topics;
-
-                                topics ??= iterator.DecodeTopics(new RlpReader(log.TopicsRlp));
-
-                                logs.Add(logIndexInBlock, blockNumber, blockTimestamp, blockHash, receipt, recoveredTransactionHash, ref txHash, log, topics);
+                                logs.Add(logIndexInBlock, blockNumber, blockTimestamp, blockHash, receipt, recoveredTransactionHash, ref txHash, log, ref iterator);
                             }
 
                             logIndexInBlock++;
@@ -442,7 +443,7 @@ namespace Nethermind.Facade.Find
         private protected interface IBlockLogs<TSelf, TLog> : IDisposable where TSelf : struct, IBlockLogs<TSelf, TLog>
         {
             void Add(long logIndex, ulong blockNumber, ulong blockTimestamp, Hash256 blockHash, in TxReceiptStructRef receipt,
-                Hash256? recoveredTransactionHash, ref Hash256? transactionHash, in LogEntryStructRef log, Hash256[] topics);
+                Hash256? recoveredTransactionHash, ref Hash256? transactionHash, in LogEntryStructRef log, ref ReceiptsIterator iterator);
 
             IEnumerable<TLog> Complete();
 
@@ -458,8 +459,9 @@ namespace Nethermind.Facade.Find
             private List<FilterLog>? _logs;
 
             public void Add(long logIndex, ulong blockNumber, ulong blockTimestamp, Hash256 blockHash, in TxReceiptStructRef receipt,
-                Hash256? recoveredTransactionHash, ref Hash256? transactionHash, in LogEntryStructRef log, Hash256[] topics)
+                Hash256? recoveredTransactionHash, ref Hash256? transactionHash, in LogEntryStructRef log, ref ReceiptsIterator iterator)
             {
+                Hash256[] topics = log.Topics ?? iterator.DecodeTopics(new RlpReader(log.TopicsRlp));
                 byte[] data = log.DataLength == 0 ? [] : new byte[log.DataLength];
                 log.CopyDataTo(data);
 
@@ -489,7 +491,7 @@ namespace Nethermind.Facade.Find
             private SerializedLogs? _logs;
 
             public void Add(long logIndex, ulong blockNumber, ulong blockTimestamp, Hash256 blockHash, in TxReceiptStructRef receipt,
-                Hash256? recoveredTransactionHash, ref Hash256? transactionHash, in LogEntryStructRef log, Hash256[] topics) =>
+                Hash256? recoveredTransactionHash, ref Hash256? transactionHash, in LogEntryStructRef log, ref ReceiptsIterator iterator) =>
                 (_logs ??= new SerializedLogs()).Add(
                     logIndex,
                     blockNumber,
@@ -497,8 +499,7 @@ namespace Nethermind.Facade.Find
                     blockHash,
                     receipt.Index,
                     recoveredTransactionHash is null ? receipt.TxHash.Bytes : recoveredTransactionHash.Bytes,
-                    log,
-                    topics);
+                    log);
 
             public readonly IEnumerable<SerializedLogs> Complete() => _logs is null ? [] : [_logs];
 

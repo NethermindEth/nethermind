@@ -5,10 +5,12 @@ using System;
 using System.Buffers;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 using System.Text.Json;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Json;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Facade.Filters;
 
@@ -62,8 +64,7 @@ public sealed class SerializedLogs : IBufferWriter<byte>, IDisposable
         Hash256 blockHash,
         long transactionIndex,
         ReadOnlySpan<byte> transactionHash,
-        scoped in LogEntryStructRef log,
-        Hash256[] topics)
+        scoped in LogEntryStructRef log)
     {
         if (transactionHash.Length != Hash256.Size)
         {
@@ -86,12 +87,7 @@ public sealed class SerializedLogs : IBufferWriter<byte>, IDisposable
         NumericConverterHelper.Write(writer, logIndex);
         writer.WriteBoolean("removed"u8, false);
         writer.WritePropertyName("topics"u8);
-        writer.WriteStartArray();
-        foreach (Hash256 topic in topics)
-        {
-            HexWriter.WriteFixed32HexRawValue(writer, topic.Bytes);
-        }
-        writer.WriteEndArray();
+        WriteTopics(writer, log);
         writer.WritePropertyName("transactionHash"u8);
         HexWriter.WriteFixed32HexRawValue(writer, transactionHash);
         writer.WritePropertyName("transactionIndex"u8);
@@ -101,8 +97,40 @@ public sealed class SerializedLogs : IBufferWriter<byte>, IDisposable
     }
 
     [DoesNotReturn, StackTraceHidden]
+    private static void ThrowEmptyTopic() => throw new RlpException("A stored log topic is empty.");
+
+    [DoesNotReturn, StackTraceHidden]
     private static void ThrowInvalidTransactionHash(int length) =>
         throw new ArgumentException($"Transaction hash must be {Hash256.Size} bytes and was {length} bytes", "transactionHash");
+
+    [SkipLocalsInit]
+    private static void WriteTopics(Utf8JsonWriter writer, scoped in LogEntryStructRef log)
+    {
+        writer.WriteStartArray();
+        if (log.Topics is { } topics)
+        {
+            foreach (Hash256 topic in topics)
+            {
+                HexWriter.WriteFixed32HexRawValue(writer, topic.Bytes);
+            }
+        }
+        else
+        {
+            Span<byte> word = stackalloc byte[Hash256.Size];
+            RlpReader reader = new(log.TopicsRlp);
+            int end = reader.ReadSequenceLength() + reader.Position;
+            while (reader.Position < end)
+            {
+                ReadOnlySpan<byte> topic = reader.DecodeByteArraySpan(RlpLimit.L32);
+                if (topic.IsEmpty) ThrowEmptyTopic();
+                word[..^topic.Length].Clear();
+                topic.CopyTo(word[^topic.Length..]);
+                HexWriter.WriteFixed32HexRawValue(writer, word);
+            }
+            reader.Check(end);
+        }
+        writer.WriteEndArray();
+    }
 
     private static void WriteData(Utf8JsonWriter writer, scoped in LogEntryStructRef log)
     {
