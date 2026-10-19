@@ -10,22 +10,18 @@ internal static class TimeoutTestHelper
 {
     private const int TimeoutCancellationTokenPoolSize = 64;
 
+    /// <summary>Creates the source the next timeout rent in the calling async flow will receive.</summary>
+    /// <remarks>Empties the shared pool first, so that a request returning the source finds room for it.</remarks>
     internal static TrackingCancellationTokenSource RentTrackingTimeoutSourceForNextRequest()
     {
         JsonRpcConfig config = new();
-        List<CancellationTokenSource> rentedTimeouts = new(TimeoutCancellationTokenPoolSize);
         for (int i = 0; i < TimeoutCancellationTokenPoolSize; i++)
         {
-            rentedTimeouts.Add(config.BuildTimeoutCancellationToken());
-        }
-
-        for (int i = 0; i < rentedTimeouts.Count; i++)
-        {
-            rentedTimeouts[i].Dispose();
+            config.BuildTimeoutCancellationToken().Dispose();
         }
 
         TrackingCancellationTokenSource timeout = new();
-        JsonRpcConfigExtension.ReturnTimeoutCancellationToken(timeout);
+        JsonRpcConfigExtension.UseForNextTimeoutInFlow(timeout);
         return timeout;
     }
 
@@ -53,10 +49,11 @@ internal static class TimeoutTestHelper
 
     internal static void DisposeIfNotAlreadyObserved(TrackingCancellationTokenSource timeout)
     {
-        if (timeout.DisposeCount == 0)
+        JsonRpcConfigExtension.UseForNextTimeoutInFlow(null);
+        // Only a source taken back from the pool is safe to dispose: one left there would fail the next rent anywhere
+        // in the process, and one another test rented is theirs to return.
+        if (timeout.DisposeCount == 0 && TryTakeFromPool(timeout))
         {
-            // A disposed source left in the pool would fail the next rent anywhere in the process.
-            TryTakeFromPool(timeout);
             timeout.Dispose();
         }
     }

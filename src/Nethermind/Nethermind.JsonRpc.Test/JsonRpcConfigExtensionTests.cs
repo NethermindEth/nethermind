@@ -22,15 +22,15 @@ public class JsonRpcConfigExtensionTests
                 if (cancelled) timeout.Cancel();
             }
 
-            CancellationTokenSource next = config.BuildTimeoutCancellationToken();
+            bool returned = TimeoutTestHelper.TryTakeFromPool(timeout);
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(timeout.DisposeCount, Is.EqualTo(cancelled ? 1 : 0));
-                Assert.That(next, cancelled ? Is.Not.SameAs(timeout) : Is.SameAs(timeout));
-                Assert.That(next.IsCancellationRequested, Is.False);
+                Assert.That(returned, Is.EqualTo(!cancelled));
+                Assert.That(timeout.IsCancellationRequested, Is.EqualTo(cancelled));
             }
 
-            next.Dispose();
+            if (returned) timeout.Dispose();
         }
         finally
         {

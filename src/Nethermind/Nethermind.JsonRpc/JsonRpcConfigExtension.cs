@@ -15,6 +15,18 @@ namespace Nethermind.JsonRpc
         private static readonly ConcurrentQueue<CancellationTokenSource> _ctsPool = new();
         private const int MaxPoolSize = 64;
         private static int _ctsPoolSize;
+        private static readonly AsyncLocal<StrongBox<CancellationTokenSource?>?> _nextTimeoutInFlow = new();
+
+        /// <summary>
+        /// Hands <paramref name="cts"/> to the next <see cref="BuildTimeoutCancellationToken"/> in the current async flow;
+        /// <see langword="null"/> withdraws a source that was not taken.
+        /// </summary>
+        /// <remarks>
+        /// Lets tests observe and cancel the source a request rents. Queueing it in the shared pool instead would let
+        /// a request of any concurrently running test take it.
+        /// </remarks>
+        internal static void UseForNextTimeoutInFlow(CancellationTokenSource? cts) =>
+            _nextTimeoutInFlow.Value = cts is null ? null : new StrongBox<CancellationTokenSource?>(cts);
 
         public static void EnableModules(this IJsonRpcConfig config, params string[] modules)
         {
@@ -33,6 +45,14 @@ namespace Nethermind.JsonRpc
         /// </summary>
         public static CancellationTokenSource BuildTimeoutCancellationToken(this IJsonRpcConfig config)
         {
+            // The box is shared by the flows forked after it was set, so clearing it hands the source out only once.
+            if (_nextTimeoutInFlow.Value is { Value: { } planted } next)
+            {
+                next.Value = null;
+                planted.CancelAfter(config.Timeout);
+                return planted;
+            }
+
             if (Debugger.IsAttached)
             {
                 return new CancellationTokenSource();
