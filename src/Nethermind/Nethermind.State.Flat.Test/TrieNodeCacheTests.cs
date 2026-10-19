@@ -82,9 +82,8 @@ public class TrieNodeCacheTests
         Assert.That(retrievedNode!.Keccak, Is.EqualTo(hash));
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public void TryGet_WithPrecomputedShardAndHash_FindsWhatThePathLookupFinds(bool storage)
+    [Test]
+    public void TryGet_WithPrecomputedShardAndHash_FindsWhatThePathLookupFinds([Values] bool storage)
     {
         Hash256? address = storage ? Keccak.Compute([0xaa, 0xbb]) : null;
         TreePath path = TreePath.FromHexString("1234");
