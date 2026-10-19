@@ -27,6 +27,7 @@ public class DirtyBuffer
             ("dave"u8.ToArray(), true, [1, 2, 3]));
         yield return Case(new AbiSignature("f").With(AbiType.UInt256, AbiType.Array(AbiType.UInt32), AbiType.BytesM(10), AbiType.Bytes),
             (0x123, [0x456, 0x789], "1234567890"u8.ToArray(), "Hello, world!"u8.ToArray()));
+        yield return Case(new AbiSignature("f").With(), default);
         yield return Case(new AbiSignature("f").With(AbiType.Bytes, AbiType.Bytes, AbiType.Bytes, AbiType.Bytes, AbiType.Bytes),
             ([0x11], [0x22, 0x22], [], "dave"u8.ToArray(), "Hello, world!"u8.ToArray()));
         yield return Case(new AbiSignature("f").With(AbiType.UInt64, AbiType.UInt64, AbiType.Bytes32, AbiType.Address, AbiType.Bytes, AbiType.UInt256),

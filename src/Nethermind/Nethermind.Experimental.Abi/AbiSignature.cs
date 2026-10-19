@@ -13,6 +13,8 @@ public sealed class AbiSignature(string name)
     public string Name { get; } = name;
 
     // TODO: Come up with a better name for this family of methods
+    public AbiSignature<ValueTuple> With() => new(Name, AbiType.Tuple());
+
     public AbiSignature<T> With<T>(Abi<T> abi) =>
         new(Name, AbiType.Tuple(abi));
 
