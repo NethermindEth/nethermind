@@ -875,7 +875,9 @@ namespace Nethermind.Blockchain.Receipts
                 _receiptsDb.PutSpan(blockNumPrefixed, rlp, writeFlags);
             }
 
-            _receiptsCache.Set(block.Hash, txReceipts);
+            // Sync and era import insert blocks decoded from the database, whose creations then get no contract address.
+            if (HasAllSenders(block)) _receiptsCache.Set(block.Hash, txReceipts);
+            else _receiptsCache.Delete(block.Hash);
 
             if (ensureCanonical)
             {
@@ -883,6 +885,16 @@ namespace Nethermind.Blockchain.Receipts
             }
 
             ReceiptsInserted?.Invoke(this, new(block.Header, txReceipts));
+        }
+
+        private static bool HasAllSenders(Block block)
+        {
+            foreach (Transaction tx in block.Transactions)
+            {
+                if (tx.SenderAddress is null) return false;
+            }
+
+            return true;
         }
 
         public ulong MigratedBlockNumber
