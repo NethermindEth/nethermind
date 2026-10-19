@@ -292,14 +292,16 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
     /// <summary>Capture runs before every flat persist, so a flat state persisted above the watermark means history was
     /// turned on after the node synced without it (for example by <c>Pruning.Mode=None</c> on an upgraded node). The
     /// blocks between are gone, and the first walk could only fail with a vaguer reason, so say why now.</summary>
-    /// <remarks>Not a gap: no persisted state yet, a wipe for a resync, a pivot image still being written, or a state
-    /// below a since-block floor, where the watermark follows the state without rows.</remarks>
+    /// <remarks>Not a gap: no persisted state yet, a state at genesis (seeded, or captured by the walk), a wipe for a
+    /// resync, a pivot image still being written, or a state below a since-block floor, where the watermark follows the
+    /// state without rows. A genesis state with no history is also what a crash leaves after it recorded a pivot image
+    /// and before the state pointer moved; the next sync begins a new image.</remarks>
     private void ReportFlatStateAboveHistory(IDb metadata)
     {
         if (_pivotImageWriter is { Holds: true } || BasePersistence.ReadWipedForSync(metadata)) return;
 
         StateId persisted = BasePersistence.ReadCurrentState(metadata);
-        if (persisted == StateId.PreGenesis || persisted.BlockNumber < _captureFromBlock) return;
+        if (persisted == StateId.PreGenesis || persisted.BlockNumber == 0 || persisted.BlockNumber < _captureFromBlock) return;
 
         bool hasWatermark = _availability.TryGetWatermark(out ulong watermark);
         if (hasWatermark && persisted.BlockNumber <= watermark) return;

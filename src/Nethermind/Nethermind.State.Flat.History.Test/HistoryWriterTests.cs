@@ -1359,6 +1359,7 @@ public class HistoryWriterTests
     [TestCase(false, 50UL, true, TestName = "Flat state above a missing history is reported at startup")]
     [TestCase(true, 50UL, true, TestName = "Flat state above the watermark is reported at startup")]
     [TestCase(true, 0UL, false, TestName = "Flat state at the watermark is not reported")]
+    [TestCase(false, 0UL, false, TestName = "Flat state at genesis without history is not reported")]
     public void A_flat_state_persisted_above_the_history_is_reported_at_startup(bool genesisHistory, ulong persistedBlock, bool expectReport)
     {
         if (genesisHistory) _writer.SeedGenesis([], StateAt(0).StateRoot);
@@ -1400,6 +1401,32 @@ public class HistoryWriterTests
             Assert.That(fixture.Writer.HoldsFlatPersist, Is.False);
             Assert.That(fixture.Image.Released.IsCompleted, Is.True);
             Assert.That(fixture.Availability.TryGetPendingPivotImage(out _), Is.False);
+        }
+    }
+
+    [Test]
+    public async Task A_pivot_image_dropped_at_a_genesis_restart_lets_the_next_sync_image_and_capture_go_on()
+    {
+        StateId pivot = StateAt(1000);
+        _availability.WritePendingPivotImage(new PendingPivotImage(pivot.BlockNumber, pivot.StateRoot, 512));
+
+        // The crash came after the image was recorded and before the state pointer left genesis.
+        BasePersistence.SetCurrentState(_db.GetColumnDb(FlatDbColumns.Metadata), StateAt(0));
+        ListStateSource source = new((AddrA, new Account(5, 500))) { PersistedState = StateAt(0) };
+        using PivotFixture fixture = CreatePivotFixture(source);
+
+        fixture.Writer.SeedPivot(pivot.BlockNumber, pivot.StateRoot);
+        source.PersistedState = pivot;
+        await fixture.Image.Released.WaitAsync(TimeSpan.FromSeconds(10));
+
+        CommitBlock(1000, 1001, accountChanges: [(AddrA, new Account(6, 600))]);
+        fixture.Writer.CaptureUpTo(StateAt(1001), _repository, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fixture.Writer.LastCapturedBlock, Is.EqualTo(1001UL), "capture goes on above the replacement image");
+            Assert.That(fixture.Writer.CaptureHealthy, Is.True, "a flat state at genesis is no gap, so capture must not be disabled at startup");
+            Assert.That(fixture.Reader.TryGetAccount(1001, AddrA, out AccountStruct a) && a.Balance == 600, Is.True);
         }
     }
 
