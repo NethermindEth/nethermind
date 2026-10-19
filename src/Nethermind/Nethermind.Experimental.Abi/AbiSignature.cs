@@ -37,13 +37,20 @@ public sealed class AbiSignature(string? name = null)
         new(Name, AbiType.Tuple(abi1, abi2, abi3, abi4, abi5, abi6, abi7));
 }
 
-public sealed class AbiSignature<T>(string? name, Abi<T> abi)
+public sealed class AbiSignature<T>
 {
-    private readonly byte[] _methodId = name is null ? [] :
-        Keccak.Compute(Encoding.ASCII.GetBytes($"{name}{abi}")).Bytes[..AbiSignature.MethodIdLength].ToArray();
+    private readonly byte[] _methodId;
 
-    public string? Name { get; } = name;
-    public Abi<T> Abi { get; } = abi;
+    internal AbiSignature(string? name, Abi<T> abi)
+    {
+        Name = name;
+        Abi = abi;
+        _methodId = name is null ? [] :
+            Keccak.Compute(Encoding.ASCII.GetBytes($"{name}{abi}")).Bytes[..AbiSignature.MethodIdLength].ToArray();
+    }
+
+    public string? Name { get; }
+    public Abi<T> Abi { get; }
 
     public ReadOnlySpan<byte> MethodId => _methodId;
 
