@@ -21,4 +21,5 @@ RUN ./build.sh $COMMIT_HASH
 
 VOLUME /output
 
-CMD ["cp", "-r", "output/.", "/output"]
+# Archive mode keeps the file times build.sh pinned for reproducible packages
+CMD ["cp", "-a", "output/.", "/output"]
