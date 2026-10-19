@@ -66,7 +66,7 @@ public class SnapshotBundleWarmerTests
             entries.Add(new PatriciaTree.BulkSetEntry(keys[i], value));
         }
 
-        TrieRoot root = BufferBulkSet.BulkSet(source.Over(buffer), address, TrieRoot.Empty, entries, canParallelize: false);
+        TrieRoot root = NodeRecordBulkSet.BulkSet(source.Over(buffer), address, TrieRoot.Empty, entries, canParallelize: false);
         (TreePath Path, ulong Pointer, NodeRecord Record)[] nodes = buffer.EnumerateNodes(root.Pointer).ToArray();
         BufferWarmUp.WarmUp(buffer, new WarmedNodes(1),
             (in TreePath path, in ValueHash256 hash, ReadOnlySpanAction<byte, BufferWarmUp.WarmUpRead> action, BufferWarmUp.WarmUpRead read) =>
@@ -498,7 +498,7 @@ public class SnapshotBundleWarmerTests
         using (ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries = new(keys.Length))
         {
             for (int i = 0; i < keys.Length; i++) entries.Add(new PatriciaTree.BulkSetEntry(keys[i], [(byte)(i + 1)]));
-            root = BufferBulkSet.BulkSet(new DictionaryNodeSource(new Dictionary<TreePath, byte[]>(), new WarmedNodes(1), address).Over(persistedBuffer),
+            root = NodeRecordBulkSet.BulkSet(new DictionaryNodeSource(new Dictionary<TreePath, byte[]>(), new WarmedNodes(1), address).Over(persistedBuffer),
                 address, TrieRoot.Empty, entries, canParallelize: false);
         }
 

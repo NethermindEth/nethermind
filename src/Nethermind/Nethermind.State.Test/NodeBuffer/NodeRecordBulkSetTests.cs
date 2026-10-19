@@ -22,7 +22,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Store.Test.NodeBuffer;
 
-internal class BufferBulkSetTests
+internal class NodeRecordBulkSetTests
 {
     private const int SmallGenerationBytes = 64 * 1024;
 
@@ -820,7 +820,7 @@ internal class BufferBulkSetTests
     private static TrieRoot BulkSet(INodeRecordBuffer buffer, DictionaryNodeSource source, Hash256 address, TrieRoot root, List<(Hash256 key, byte[] value)> items, bool canParallelize)
     {
         using ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries = Entries(items);
-        return BufferBulkSet.BulkSet(source.Over(buffer), address, root, entries, canParallelize);
+        return NodeRecordBulkSet.BulkSet(source.Over(buffer), address, root, entries, canParallelize);
     }
 
     private static ArrayPoolListRef<PatriciaTree.BulkSetEntry> Entries(List<(Hash256 key, byte[] value)> items)
