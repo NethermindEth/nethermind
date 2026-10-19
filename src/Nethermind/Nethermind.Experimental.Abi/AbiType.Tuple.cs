@@ -5,6 +5,14 @@ namespace Nethermind.Experimental.Abi;
 
 public static partial class AbiType
 {
+    public static Abi<ValueTuple> Tuple() => new()
+    {
+        Name = "()",
+        Read = (ref BinarySpanReader _) => default,
+        Write = (ref BinarySpanWriter _, ValueTuple _) => { },
+        HeadSize = 0,
+    };
+
     public static Abi<T> Tuple<T>(Abi<T> abi)
     {
         int headSize = abi.HeadSize;
