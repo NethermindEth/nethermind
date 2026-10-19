@@ -128,11 +128,10 @@ jobs:
         run: |
           printf '%s' "$GPG_SECRET_KEY" | base64 --decode | gpg --import --no-tty --batch --yes
 
-          for file_name in *.tar.gz *.zip SHA256SUMS; do
-            gpg --no-tty --batch --yes --pinentry-mode loopback \
-              --passphrase-file <(printf '%s' "$GPG_PASSPHRASE") \
-              -o "$file_name.asc" -ab "$file_name"
-          done
+          # One signature over the checksums covers every package
+          gpg --no-tty --batch --yes --pinentry-mode loopback \
+            --passphrase-file <(printf '%s' "$GPG_PASSPHRASE") \
+            -o SHA256SUMS.asc -ab SHA256SUMS
 
       - name: Upload Bootnode packages
         uses: actions/upload-artifact@v7
@@ -195,7 +194,7 @@ jobs:
 
           ## Build signatures
 
-          The packages are signed with the following OpenPGP key: \`AD12 7976 5093 C675 9CD8 A400 24A7 7461 6F1E 617E\`.
+          \`SHA256SUMS\` lists every package and is signed with the following OpenPGP key: \`AD12 7976 5093 C675 9CD8 A400 24A7 7461 6F1E 617E\`.
           EOF
           )
 
