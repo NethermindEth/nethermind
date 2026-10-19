@@ -265,7 +265,7 @@ public class TraceRpcModuleTests
         ulong blockNumber = parentMissing ? head.Number : head.Number + 1;
 
         string response = await RpcTest.TestSerializedRequest(module, "trace_replayBlockTransactions", $"0x{blockNumber:x}", new[] { "trace" });
-        int code = parentMissing ? ErrorCodes.ResourceNotFound : ErrorCodes.TraceBlockNotFound;
+        int code = parentMissing ? ErrorCodes.ResourceNotFound : ErrorCodes.StandardResourceNotFound;
         Assert.That(response, Is.EqualTo(
             $"{{\"jsonrpc\":\"2.0\",\"error\":{{\"code\":{code},\"message\":\"{BlockFinderExtensions.HeaderNotFound}\"}},\"id\":67}}"));
     }
@@ -296,7 +296,40 @@ public class TraceRpcModuleTests
             _ => await RpcTest.TestSerializedRequest(context.TraceRpcModule, method, block),
         };
 
-        Assert.That(JToken.Parse(response)["error"]?["code"]?.Value<int>(), Is.EqualTo(ErrorCodes.TraceBlockNotFound), response);
+        Assert.That(JToken.Parse(response)["error"]?["code"]?.Value<int>(), Is.EqualTo(ErrorCodes.StandardResourceNotFound), response);
+    }
+
+    // The block is unknown when looked up and imported right after, as one at the tip can be.
+    [Test]
+    public async Task Trace_methods_report_a_block_unknown_at_lookup_as_not_found([Values("trace_call", "trace_callMany")] string method)
+    {
+        Context context = new();
+        await context.Build();
+        using TestRpcBlockchain blockchain = context.Blockchain;
+        BlockHeader imported = Build.A.BlockHeader.WithParent(blockchain.BlockTree.Head!.Header).TestObject;
+        using ILifetimeScope scope = WithStateAvailability(blockchain, _ => true, new ImportedAfterLookupBlockTree(blockchain.BlockTree, imported));
+        ITraceRpcModule module = scope.Resolve<TraceModuleFactory>().Create();
+        object call = new { from = TestItem.AddressA, to = TestItem.AddressB, gas = "0x5208" };
+        string block = $"0x{imported.Number:x}";
+
+        string response = method == "trace_call"
+            ? await RpcTest.TestSerializedRequest(module, method, call, new[] { "trace" }, block)
+            : await RpcTest.TestSerializedRequest(module, method, new[] { new object[] { call, new[] { "trace" } } }, block);
+
+        Assert.That(JToken.Parse(response)["error"]?["code"]?.Value<int>(), Is.EqualTo(ErrorCodes.StandardResourceNotFound), response);
+    }
+
+    private sealed class ImportedAfterLookupBlockTree(IBlockTree inner, BlockHeader imported) : BlockTreeTestDouble(inner)
+    {
+        private bool _lookedUp;
+
+        public override BlockHeader? FindHeader(ulong blockNumber, BlockTreeLookupOptions options)
+        {
+            if (blockNumber != imported.Number) return base.FindHeader(blockNumber, options);
+            bool known = _lookedUp;
+            _lookedUp = true;
+            return known ? imported : null;
+        }
     }
 
     [Test]
@@ -309,7 +342,7 @@ public class TraceRpcModuleTests
 
         string response = await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_filter", filter);
 
-        Assert.That(JToken.Parse(response)["error"]?["code"]?.Value<int>(), Is.EqualTo(ErrorCodes.TraceBlockNotFound), response);
+        Assert.That(JToken.Parse(response)["error"]?["code"]?.Value<int>(), Is.EqualTo(ErrorCodes.StandardResourceNotFound), response);
     }
 
     [Test]
@@ -397,7 +430,7 @@ public class TraceRpcModuleTests
             Assert.That(error.GetProperty("code").GetInt32(), Is.EqualTo(isPruned ? ErrorCodes.PrunedHistoryUnavailable : ErrorCodes.ResourceNotFound), response);
             Assert.That(error.GetProperty("message").GetString(), isPruned
                 ? Does.StartWith(ErrorMessages.PrunedHistoryUnavailable)
-                : Is.EqualTo(BlockFinderExtensions.HeaderNotFound), response);
+                : Is.EqualTo(BlockFinderExtensions.BlockBodyNotFound), response);
         }
     }
 
@@ -1008,7 +1041,7 @@ public class TraceRpcModuleTests
         Assert.That(document.RootElement.TryGetProperty("error", out JsonElement error), Is.True, response);
         (int Code, IResolveConstraint Message) expected = unserved switch
         {
-            UnservedBlock.Unknown => (ErrorCodes.TraceBlockNotFound, Is.EqualTo(BlockFinderExtensions.HeaderNotFound)),
+            UnservedBlock.Unknown => (ErrorCodes.StandardResourceNotFound, Is.EqualTo(BlockFinderExtensions.HeaderNotFound)),
             UnservedBlock.SideChain => (ErrorCodes.InvalidInput, Is.EqualTo($"{hash} block is not canonical")),
             UnservedBlock.Unprocessed => (ErrorCodes.ResourceUnavailable, Is.EqualTo($"{hash} block is not processed")),
             UnservedBlock.MissingState => (ErrorCodes.ResourceUnavailable, Does.Contain($"No state available for block {block.Number} ")),

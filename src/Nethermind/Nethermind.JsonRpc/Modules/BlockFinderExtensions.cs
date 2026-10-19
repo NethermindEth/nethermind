@@ -43,7 +43,8 @@ namespace Nethermind.JsonRpc.Modules
             return requestedBlock < blockFinder.LowestServedBlock;
         }
 
-        public static SearchResult<BlockHeader> SearchForHeader(this IBlockFinder blockFinder, BlockParameter? blockParameter, bool allowNulls = false)
+        /// <param name="unknownBlockErrorCode">The code for a block that is not known, instead of <see cref="ErrorCodes.ResourceNotFound"/>.</param>
+        public static SearchResult<BlockHeader> SearchForHeader(this IBlockFinder blockFinder, BlockParameter? blockParameter, bool allowNulls = false, int? unknownBlockErrorCode = null)
         {
             if (blockFinder.Head is null)
             {
@@ -63,11 +64,16 @@ namespace Nethermind.JsonRpc.Modules
             }
 
             return header is null && !allowNulls
-                ? new SearchResult<BlockHeader>(HeaderNotFound, ErrorCodes.ResourceNotFound)
+                ? new SearchResult<BlockHeader>(HeaderNotFound, unknownBlockErrorCode ?? ErrorCodes.ResourceNotFound)
                 : new SearchResult<BlockHeader>(header);
         }
 
-        public static SearchResult<Block> SearchForBlock(this IBlockFinder blockFinder, BlockParameter? blockParameter, bool allowNulls = false)
+        /// <param name="unknownBlockErrorCode">
+        /// The code for a block that is not known, including an unresolvable safe or finalized tag, instead of
+        /// <see cref="ErrorCodes.ResourceNotFound"/> and <see cref="ErrorCodes.UnknownBlockError"/>. When set, a known header
+        /// whose body is missing is reported as <see cref="BlockBodyNotFound"/>, which without it reads as an unknown block.
+        /// </param>
+        public static SearchResult<Block> SearchForBlock(this IBlockFinder blockFinder, BlockParameter? blockParameter, bool allowNulls = false, int? unknownBlockErrorCode = null)
         {
             blockParameter ??= BlockParameter.Latest;
 
@@ -89,7 +95,7 @@ namespace Nethermind.JsonRpc.Modules
             {
                 if (blockParameter.Equals(BlockParameter.Finalized) || blockParameter.Equals(BlockParameter.Safe))
                 {
-                    return new SearchResult<Block>("Unknown block error", ErrorCodes.UnknownBlockError);
+                    return new SearchResult<Block>("Unknown block error", unknownBlockErrorCode ?? ErrorCodes.UnknownBlockError);
                 }
 
                 if (blockFinder.IsBlockPruned(blockParameter))
@@ -101,7 +107,9 @@ namespace Nethermind.JsonRpc.Modules
 
                 if (!allowNulls)
                 {
-                    return new SearchResult<Block>(isCanonicalBodyMissing ? BlockBodyNotFound : HeaderNotFound, ErrorCodes.ResourceNotFound);
+                    return isCanonicalBodyMissing || (unknownBlockErrorCode is not null && blockFinder.FindHeader(blockParameter) is not null)
+                        ? new SearchResult<Block>(BlockBodyNotFound, ErrorCodes.ResourceNotFound)
+                        : new SearchResult<Block>(HeaderNotFound, unknownBlockErrorCode ?? ErrorCodes.ResourceNotFound);
                 }
             }
 
@@ -111,7 +119,7 @@ namespace Nethermind.JsonRpc.Modules
         /// <summary>
         /// Same result as <see cref="SearchForBlock"/>, but returns the header and decodes no body when one is stored.
         /// </summary>
-        private static SearchResult<BlockHeader> SearchForHeaderWithBody(IBlockFinder blockFinder, BlockParameter blockParameter)
+        private static SearchResult<BlockHeader> SearchForHeaderWithBody(IBlockFinder blockFinder, BlockParameter blockParameter, int? unknownBlockErrorCode)
         {
             BlockHeader? header = blockFinder.FindHeader(blockParameter);
             if (header?.Hash is not null && blockFinder.HasBlock(header.Number, header.Hash))
@@ -119,7 +127,7 @@ namespace Nethermind.JsonRpc.Modules
                 return new SearchResult<BlockHeader>(header);
             }
 
-            SearchResult<Block> blockSearch = SearchForBlock(blockFinder, blockParameter);
+            SearchResult<Block> blockSearch = SearchForBlock(blockFinder, blockParameter, unknownBlockErrorCode: unknownBlockErrorCode);
             return blockSearch.IsError
                 ? new SearchResult<BlockHeader>(blockSearch.Error!, blockSearch.ErrorCode)
                 : new SearchResult<BlockHeader>(blockSearch.Object!.Header);
@@ -128,14 +136,15 @@ namespace Nethermind.JsonRpc.Modules
         /// <summary>
         /// Searches the canonical headers of a block range, failing as <see cref="SearchForBlock"/> would for a block whose body is unavailable.
         /// </summary>
-        public static IEnumerable<SearchResult<BlockHeader>> SearchForHeadersOnMainChain(this IBlockFinder blockFinder, BlockParameter fromBlock, BlockParameter toBlock)
+        /// <param name="unknownBlockErrorCode">The code for a block that is not known, as for <see cref="SearchForBlock"/>.</param>
+        public static IEnumerable<SearchResult<BlockHeader>> SearchForHeadersOnMainChain(this IBlockFinder blockFinder, BlockParameter fromBlock, BlockParameter toBlock, int? unknownBlockErrorCode = null)
         {
-            SearchResult<BlockHeader> startingBlock = SearchForHeaderWithBody(blockFinder, fromBlock);
+            SearchResult<BlockHeader> startingBlock = SearchForHeaderWithBody(blockFinder, fromBlock, unknownBlockErrorCode);
             if (startingBlock.IsError || startingBlock.Object is null)
                 yield return startingBlock;
             else
             {
-                SearchResult<BlockHeader> finalBlockHeader = SearchForHeader(blockFinder, toBlock);
+                SearchResult<BlockHeader> finalBlockHeader = SearchForHeader(blockFinder, toBlock, unknownBlockErrorCode: unknownBlockErrorCode);
                 if (finalBlockHeader.IsError || finalBlockHeader.Object is null)
                 {
                     yield return new SearchResult<BlockHeader>(finalBlockHeader.Error ?? string.Empty, finalBlockHeader.ErrorCode);
@@ -167,7 +176,7 @@ namespace Nethermind.JsonRpc.Modules
 
                     for (ulong i = startingBlock.Object.Number + 1; i <= finalBlockHeader.Object.Number; ++i)
                     {
-                        yield return SearchForHeaderWithBody(blockFinder, new BlockParameter(i));
+                        yield return SearchForHeaderWithBody(blockFinder, new BlockParameter(i), unknownBlockErrorCode);
                     }
                 }
 

@@ -670,16 +670,21 @@ public class TraceStoreRpcModuleTests
     }
 
     [Test]
-    public void block_lookups_report_an_unknown_block_as_not_found([Values] bool replay)
+    public void block_lookups_report_an_unknown_block_as_not_found([Values] bool replay, [Values("number", "hash", "safe")] string selector)
     {
         TestContext test = new();
-        BlockParameter unknown = new(test.BlockFinder.Head!.Number + 1);
+        BlockParameter unknown = selector switch
+        {
+            "number" => new(test.BlockFinder.Head!.Number + 1),
+            "hash" => new(TestItem.KeccakH),
+            _ => BlockParameter.Safe,
+        };
 
         int errorCode = replay
             ? test.Module.trace_replayBlockTransactions(unknown, ["trace"]).ErrorCode
             : test.Module.trace_block(unknown).ErrorCode;
 
-        Assert.That(errorCode, Is.EqualTo(ErrorCodes.TraceBlockNotFound));
+        Assert.That(errorCode, Is.EqualTo(ErrorCodes.StandardResourceNotFound));
     }
 
     [Test]
@@ -688,7 +693,7 @@ public class TraceStoreRpcModuleTests
     {
         string response = await FilterJson(new TestContext(), filter);
 
-        Assert.That((int?)JToken.Parse(response)["error"]?["code"], Is.EqualTo(ErrorCodes.TraceBlockNotFound), response);
+        Assert.That((int?)JToken.Parse(response)["error"]?["code"], Is.EqualTo(ErrorCodes.StandardResourceNotFound), response);
     }
 
     [Test]
@@ -711,7 +716,7 @@ public class TraceStoreRpcModuleTests
         JToken? error = JToken.Parse(response)["error"];
         using (Assert.EnterMultipleScope())
         {
-            Assert.That((int?)error?["code"], Is.EqualTo(sideChain ? ErrorCodes.InvalidInput : ErrorCodes.TraceBlockNotFound), response);
+            Assert.That((int?)error?["code"], Is.EqualTo(sideChain ? ErrorCodes.InvalidInput : ErrorCodes.StandardResourceNotFound), response);
             Assert.That((string?)error?["message"], Is.EqualTo(sideChain ? $"{hash} block is not canonical" : "header not found"), response);
         }
         test.InnerModule.DidNotReceive().trace_filter(Arg.Any<TraceFilterForRpc>());

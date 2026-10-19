@@ -107,27 +107,6 @@ namespace Nethermind.JsonRpc.Modules.Trace
         public static ResultWrapper<T> PendingNotSupported<T>() => ResultWrapper<T>.Fail("Pending block is not supported for tracing", ErrorCodes.InvalidParams);
 
         /// <summary>
-        /// Returns the failed search for the blocks a request selects, with <see cref="ErrorCodes.TraceBlockNotFound"/> when one of them is unknown.
-        /// </summary>
-        /// <remarks>
-        /// A block search reports an unknown block as <see cref="ErrorCodes.ResourceNotFound"/>, or an unresolvable safe or
-        /// finalized tag as <see cref="ErrorCodes.UnknownBlockError"/>; the execution-apis trace methods require -32001 for an
-        /// unknown block, whether it is selected by number, tag or hash. A known header whose body is missing is reported
-        /// with the same message, so the code changes only when a selected header is not found.
-        /// </remarks>
-        public static SearchResult<T> ReportUnknownBlock<T>(IBlockFinder blockFinder, SearchResult<T> search, params ReadOnlySpan<BlockParameter> selected) where T : class
-        {
-            if (search.Error != BlockFinderExtensions.HeaderNotFound && search.ErrorCode != ErrorCodes.UnknownBlockError) return search;
-
-            foreach (BlockParameter block in selected)
-            {
-                if (blockFinder.FindHeader(block) is null) return new SearchResult<T>(search.Error!, ErrorCodes.TraceBlockNotFound);
-            }
-
-            return search;
-        }
-
-        /// <summary>
         /// Traces one transaction. A call priced at zero runs with a zero base fee and pays no gas fee; a priced call is charged for gas.
         /// </summary>
         public ResultWrapper<ParityTxTraceFromReplay> trace_call(TransactionForRpc call, string[] traceTypes, BlockParameter? blockParameter = null, Dictionary<Address, AccountOverride>? stateOverride = null)
@@ -139,9 +118,9 @@ namespace Nethermind.JsonRpc.Modules.Trace
             if (IsPending(blockParameter))
                 return PendingNotSupported<ParityTxTraceFromReplay>();
 
-            SearchResult<BlockHeader> headerSearch = blockFinder.SearchForHeader(blockParameter);
+            SearchResult<BlockHeader> headerSearch = blockFinder.SearchForHeader(blockParameter, unknownBlockErrorCode: ErrorCodes.StandardResourceNotFound);
             if (headerSearch.IsError)
-                return ResultWrapper<ParityTxTraceFromReplay>.Fail(ReportUnknownBlock(blockFinder, headerSearch, blockParameter));
+                return ResultWrapper<ParityTxTraceFromReplay>.Fail(headerSearch);
 
             Result<Transaction> txResult = ToCallTransaction(call, headerSearch.Object!);
             return !txResult.Success(out Transaction? transaction, out string? error)
@@ -169,10 +148,10 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 return PendingNotSupported<IEnumerable<ParityTxTraceFromReplay>>();
             }
 
-            SearchResult<BlockHeader> headerSearch = blockFinder.SearchForHeader(blockParameter);
+            SearchResult<BlockHeader> headerSearch = blockFinder.SearchForHeader(blockParameter, unknownBlockErrorCode: ErrorCodes.StandardResourceNotFound);
             if (headerSearch.IsError)
             {
-                return ResultWrapper<IEnumerable<ParityTxTraceFromReplay>>.Fail(ReportUnknownBlock(blockFinder, headerSearch, blockParameter));
+                return ResultWrapper<IEnumerable<ParityTxTraceFromReplay>>.Fail(headerSearch);
             }
 
             BlockHeader header = headerSearch.Object!;
@@ -432,10 +411,10 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 return PendingNotSupported<IEnumerable<ParityTxTraceFromReplay>>();
             }
 
-            SearchResult<Block> blockSearch = blockFinder.SearchForBlock(blockParameter);
+            SearchResult<Block> blockSearch = blockFinder.SearchForBlock(blockParameter, unknownBlockErrorCode: ErrorCodes.StandardResourceNotFound);
             if (blockSearch.IsError)
             {
-                return ResultWrapper<IEnumerable<ParityTxTraceFromReplay>>.Fail(ReportUnknownBlock(blockFinder, blockSearch, blockParameter));
+                return ResultWrapper<IEnumerable<ParityTxTraceFromReplay>>.Fail(blockSearch);
             }
 
             Block block = blockSearch.Object!;
@@ -502,12 +481,12 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
                 // Collect the whole range first so search errors (e.g. from > to) take precedence over state checks.
                 List<(BlockHeader Header, BlockHeader? Parent)> blocks = [];
-                foreach (SearchResult<BlockHeader> blockSearch in blockFinder.SearchForHeadersOnMainChain(fromBlock, toBlock))
+                foreach (SearchResult<BlockHeader> blockSearch in blockFinder.SearchForHeadersOnMainChain(fromBlock, toBlock, ErrorCodes.StandardResourceNotFound))
                 {
                     cancellationToken.ThrowIfCancellationRequested();
                     if (blockSearch.IsError)
                     {
-                        return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Fail(ReportUnknownBlock(blockFinder, blockSearch, fromBlock, toBlock));
+                        return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Fail(blockSearch);
                     }
                     BlockHeader header = blockSearch.Object!;
                     if (!header.IsGenesis) blocks.Add((header, null));
@@ -610,10 +589,10 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 return PendingNotSupported<IEnumerable<ParityTxTraceFromStore>>();
             }
 
-            SearchResult<Block> blockSearch = blockFinder.SearchForBlock(blockParameter);
+            SearchResult<Block> blockSearch = blockFinder.SearchForBlock(blockParameter, unknownBlockErrorCode: ErrorCodes.StandardResourceNotFound);
             if (blockSearch.IsError)
             {
-                return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Fail(ReportUnknownBlock(blockFinder, blockSearch, blockParameter));
+                return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Fail(blockSearch);
             }
 
             Block block = blockSearch.Object!;
