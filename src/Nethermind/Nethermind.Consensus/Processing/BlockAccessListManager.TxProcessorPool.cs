@@ -113,7 +113,14 @@ public partial class BlockAccessListManager
             ReclaimAndResize(newLastBalIndex + 1, previousSize);
             _lastBalIndex = newLastBalIndex;
 
-            // A parent reader serves one block: it reads that block's parent state through caches that change between blocks.
+            // Normally released when the block's post-execution slice is merged; this covers a block that failed before it.
+            ReleaseKeptParentReaders();
+        }
+
+        /// <summary>A parent reader serves one block: it reads that block's parent state through caches that change
+        /// between blocks, and holds the snapshots under it until released.</summary>
+        public void ReleaseKeptParentReaders()
+        {
             foreach (TxProcessorWithWorldState processor in _processors)
             {
                 processor.ReleaseParentReader();
@@ -154,7 +161,8 @@ public partial class BlockAccessListManager
             }
             catch
             {
-                parentReader?.Dispose();
+                // A kept lease is released with the processor below; only a lease the processor does not hold yet is disposed here.
+                if (parentReader is not null && !processor.Keeps(parentReader)) parentReader.Dispose();
                 if (processor.WorldState.GetGeneratingBlockAccessList() is { } generatedBal)
                 {
                     StaticPool<BlockAccessListAtIndex>.Return(generatedBal);
@@ -198,6 +206,8 @@ public partial class BlockAccessListManager
             int idx = ClampBalIndex(balIndex);
 
             Return((uint)idx);
+            // The post-execution slice is the block's last use of the parent state.
+            if (idx == _lastBalIndex) ReleaseKeptParentReaders();
 
             BlockAccessListAtIndex? source = _perTxBal[idx];
             if (source is null) return;
@@ -453,6 +463,8 @@ public partial class BlockAccessListManager
             _balWorldState?.ClearParentReader();
             _parentReaderAttached = false;
         }
+
+        public bool Keeps(ParentReaderLease parentReader) => ReferenceEquals(_parentReader, parentReader);
 
         public void ReleaseParentReader()
         {

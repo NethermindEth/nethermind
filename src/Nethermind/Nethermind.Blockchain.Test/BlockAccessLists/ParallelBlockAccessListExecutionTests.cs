@@ -58,17 +58,15 @@ public class ParallelBlockAccessListExecutionTests
                 state.Set(new StorageCell(Counter, UInt256.One), ReadOnlyValue);
             }));
 
-        Transaction[] transactions =
-        [
-            Call(TestItem.PrivateKeyB, 0),
-            Call(TestItem.PrivateKeyC, 0),
-            Transfer(TestItem.PrivateKeyB, 1),
-            Call(TestItem.PrivateKeyC, 1),
-            Call(TestItem.PrivateKeyB, 2),
-            Transfer(TestItem.PrivateKeyC, 2),
-            Call(TestItem.PrivateKeyB, 3),
-            Call(TestItem.PrivateKeyC, 3),
-        ];
+        // More transactions than pooled processors, so processors take later transactions and reuse their readers.
+        int txCount = 2 * Environment.ProcessorCount + 2;
+        Transaction[] transactions = new Transaction[txCount];
+        for (int i = 0; i < txCount; i++)
+        {
+            PrivateKey sender = i % 2 == 0 ? TestItem.PrivateKeyB : TestItem.PrivateKeyC;
+            ulong nonce = (ulong)(i / 2);
+            transactions[i] = i % 3 == 2 ? Transfer(sender, nonce) : Call(sender, nonce);
+        }
         int calls = transactions.Count(static tx => tx.To == Counter);
 
         Block block = await chain.AddBlock(transactions);

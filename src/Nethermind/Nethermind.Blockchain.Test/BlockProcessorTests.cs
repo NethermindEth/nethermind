@@ -1898,6 +1898,30 @@ public partial class BlockProcessorTests
         Assert.That(parentReaderFactory.DisposedScopes, Is.EqualTo(2), "the next block's setup releases the kept parent readers");
     }
 
+    /// <summary>A block that does not run in parallel releases the parent readers an earlier parallel block kept.</summary>
+    [Test]
+    public void Sequential_block_releases_parent_reader_scopes_kept_by_an_earlier_parallel_block()
+    {
+        int poolSize = RuntimeInformation.ProcessorCount;
+        using BlockAccessListManager balManager = CreateParallelParentReaderManager(
+            out IWorldState stateProvider, out BlockHeader parentHeader, out TrackingReadOnlyTxProcessingEnvFactory parentReaderFactory);
+        using IDisposable parentScope = stateProvider.BeginScope(parentHeader);
+
+        Block block = BuildParallelBlock(parentHeader.Hash!, 2 * poolSize);
+        PrepareSetup(balManager, block, Amsterdam.Instance);
+        for (uint i = 1; i <= 2 * poolSize; i++)
+        {
+            _ = balManager.GetTxProcessor(i);
+            balManager.ReturnTxProcessor(i);
+        }
+
+        Assert.That(parentReaderFactory.DisposedScopes, Is.EqualTo(0), "precondition: the parallel block kept its scopes");
+
+        PrepareSetup(balManager, BuildParallelBlock(parentHeader.Hash!, 1), Amsterdam.Instance, ProcessingOptions.ForceSequentialBlockAccessList);
+
+        Assert.That(parentReaderFactory.DisposedScopes, Is.EqualTo(poolSize), "the sequential block released every kept scope");
+    }
+
     /// <summary>
     /// A processor opens its parent-state scope on its first transaction of a block and reuses it for its later
     /// transactions of that block, so a block opens at most one scope per processor.
