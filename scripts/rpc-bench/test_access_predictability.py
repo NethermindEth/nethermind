@@ -1,6 +1,8 @@
 import json
 import tempfile
+import threading
 import unittest
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
 import access_predictability as ap
@@ -89,9 +91,47 @@ class PredictorTests(unittest.TestCase):
         self.assertTrue(numbers(result))
 
 
+class TraceTests(unittest.TestCase):
+    def _serve(self, reply: dict) -> str:
+        class Handler(BaseHTTPRequestHandler):
+            def do_POST(self):
+                self.rfile.read(int(self.headers["Content-Length"]))
+                body = json.dumps(reply).encode()
+                self.send_response(200)
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, *args):
+                pass
+
+        server = HTTPServer(("127.0.0.1", 0), Handler)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        self.addCleanup(server.shutdown)
+        return f"http://127.0.0.1:{server.server_port}"
+
+    def test_a_node_without_the_debug_module_reports_the_rpc_error_code(self):
+        url = self._serve({"jsonrpc": "2.0", "id": 1, "error": {"code": -32601, "message": "not found"}})
+
+        self.assertEqual(ap._trace(url, [{}, "latest", {}]), (None, "rpc_error", -32601))
+
+    def test_a_prestate_object_is_returned(self):
+        url = self._serve({"jsonrpc": "2.0", "id": 1, "result": {TOKEN: {"balance": "0x1"}}})
+
+        self.assertEqual(ap._trace(url, [{}, "latest", {}])[0], {TOKEN: {"balance": "0x1"}})
+
+
 class StagingTests(unittest.TestCase):
     def test_the_report_passes_the_staging_validator(self):
         result = ap.report(ap.Totals(), ap.Model(), 0, 0.0, ap.HashCache())
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "access-predictability.json"
+            path.write_text(json.dumps(result))
+            corpus_results._validate_access_predictability(path)
+
+    def test_the_staging_validator_accepts_failure_counts(self):
+        result = ap.report(ap.Totals(), ap.Model(), 3, 0.0, ap.HashCache())
+        result["failures"] = {reason: 1 for reason in ap.FAILURE_REASONS}
         with tempfile.TemporaryDirectory() as folder:
             path = Path(folder) / "access-predictability.json"
             path.write_text(json.dumps(result))

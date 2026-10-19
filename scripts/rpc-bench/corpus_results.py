@@ -297,8 +297,9 @@ def _validate_resources(path: Path) -> None:
 
 ACCESS_PREDICTABILITY_FIELDS = {
     "schema", "records", "records_failed", "keys", "warm_records", "warm_record_share", "accounts", "slots",
-    "code_accounts", "warm", "patterns_learned", "reduced_search", "keccak_computed", "elapsed_seconds",
+    "code_accounts", "warm", "patterns_learned", "reduced_search", "keccak_computed", "elapsed_seconds", "failures",
 }
+ACCESS_PREDICTABILITY_FAILURE_FIELDS = {"transport", "http_status", "rpc_error", "not_an_object"}
 ACCESS_PREDICTABILITY_WARM_FIELDS = {
     "reads", "accounts", "slots", "recall_reads", "recall_accounts", "recall_accounts_trivial_only",
     "recall_slots_static", "recall_slots_static_and_derived", "recall_slots_majority", "recall_accounts_majority",
@@ -312,9 +313,13 @@ def _validate_access_predictability(path: Path) -> None:
     with path.open("r", encoding="utf-8") as source:
         data = json.load(source)
     if not isinstance(data, dict) or not set(data) <= ACCESS_PREDICTABILITY_FIELDS \
-            or not isinstance(data.get("warm"), dict) or not set(data["warm"]) <= ACCESS_PREDICTABILITY_WARM_FIELDS:
+            or not isinstance(data.get("warm"), dict) or not set(data["warm"]) <= ACCESS_PREDICTABILITY_WARM_FIELDS \
+            or not isinstance(data.get("failures", {}), dict) \
+            or not set(data.get("failures", {})) <= ACCESS_PREDICTABILITY_FAILURE_FIELDS:
         raise CorpusResultsError(f"{path.name} does not match the access predictability schema")
-    for value in [v for k, v in data.items() if k != "warm"] + list(data["warm"].values()):
+    nested = ("warm", "failures")
+    for value in [v for k, v in data.items() if k not in nested] + list(data["warm"].values()) \
+            + list(data.get("failures", {}).values()):
         if isinstance(value, bool) or not isinstance(value, (int, float)):
             raise CorpusResultsError(f"{path.name} holds a non-numeric value")
 

@@ -376,7 +376,11 @@ def report(totals: Totals, model: Model, failed: int, elapsed: float, keccak: Ha
 # ---------------------------------------------------------------- replay
 
 
-def _trace(url: str, params: list) -> dict | None:
+FAILURE_REASONS = ("transport", "http_status", "rpc_error", "not_an_object")
+
+
+def _trace(url: str, params: list) -> tuple[dict | None, str, int]:
+    """The prestate of one call, or None with the failure reason and its code (an HTTP status or RPC error code)."""
     parsed = urllib.parse.urlsplit(url)
     body = json.dumps({"jsonrpc": "2.0", "id": 1, "method": "debug_traceCall", "params": params},
                       separators=(",", ":")).encode()
@@ -387,11 +391,15 @@ def _trace(url: str, params: list) -> dict | None:
         raw = response.read()
         connection.close()
         if response.status != 200:
-            return None
-        result = json.loads(raw).get("result")
-        return result if isinstance(result, dict) else None
+            return None, "http_status", response.status
+        payload = json.loads(raw)
     except (http.client.HTTPException, OSError, ValueError):
-        return None
+        return None, "transport", 0
+    if isinstance(payload.get("error"), dict):
+        code = payload["error"].get("code")
+        return None, "rpc_error", code if isinstance(code, int) else 0
+    result = payload.get("result")
+    return (result, "", 0) if isinstance(result, dict) else (None, "not_an_object", 0)
 
 
 def run(corpus: str, rpc_url: str, out: str, concurrency: int, limit: int | None) -> dict:
@@ -402,22 +410,35 @@ def run(corpus: str, rpc_url: str, out: str, concurrency: int, limit: int | None
     records = corpus_parity.load_corpus(corpus)
     if limit:
         records = records[:limit]
+    # A node that does not serve debug_traceCall with this tracer fails every record the same way; stop at once.
+    probe, reason, code = _trace(rpc_url, records[0])
+    if probe is None and all(_trace(rpc_url, r)[0] is None for r in records[1:5]):
+        raise SystemExit(f"debug_traceCall with the prestateTracer fails on the first records ({reason} {code}); "
+                         "the node must serve the Debug module (node_config.jsonrpc_modules).")
     started = time.perf_counter()
     model, totals, keccak = Model(), Totals(), HashCache()
     failed = 0
+    failures = {f"{reason}": 0 for reason in FAILURE_REASONS}
+    failure_codes: dict[str, int] = defaultdict(int)
     batch = max(concurrency * 8, 64)
     with ThreadPoolExecutor(max_workers=concurrency) as pool:
         for start in range(0, len(records), batch):
             chunk = records[start:start + batch]
-            for params, prestate in zip(chunk, pool.map(lambda p: _trace(rpc_url, p), chunk)):
+            for params, (prestate, reason, code) in zip(chunk, pool.map(lambda p: _trace(rpc_url, p), chunk)):
                 if prestate is None:
                     failed += 1
+                    failures[reason] += 1
+                    failure_codes[f"{reason}_{code}"] += 1
                     continue
                 score(model, totals, params[0], prestate, keccak)
             done = start + len(chunk)
             if done % (batch * 10) < batch:
                 print(f"  access predictability: {done}/{len(records)} records", flush=True)
     result = report(totals, model, failed, time.perf_counter() - started, keccak)
+    result["failures"] = failures
+    # Codes only, the most frequent few: an HTTP status or a JSON-RPC error code carries no call data.
+    for name, count in sorted(failure_codes.items(), key=lambda item: -item[1])[:4]:
+        print(f"  access predictability: {count} failures with {name}", flush=True)
     Path(out).parent.mkdir(parents=True, exist_ok=True)
     Path(out).write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
     return result
