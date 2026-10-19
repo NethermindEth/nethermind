@@ -396,8 +396,8 @@ public static class IlEvmSettings
     private static bool _decidedEntry = Environment.GetEnvironmentVariable("NETHERMIND_ILEVM_DECIDED_ENTRY") != "0";
 
     /// <summary>
-    /// The temperature gate, off unless <c>NETHERMIND_ILEVM_TEMPERATURE</c> sets it, on the trace runner only
-    /// (<see cref="IlTemperature"/>). <c>1/n</c> sets this share: a trace's contract runs compiled only while it ran at
+    /// The temperature gate, on the trace runner only (<see cref="IlTemperature"/>): 1/<see cref="DefaultTemperatureShare"/>
+    /// unless <c>NETHERMIND_ILEVM_TEMPERATURE</c> sets it, 0 there turning it off. <c>1/n</c> sets this share: a trace's contract runs compiled only while it ran at
     /// least 1/n of the opcodes, or of the frame parts, the trace runner ran in the last one-second window. A plain number
     /// sets <see cref="TemperatureRate"/> instead. 0 while off or while the rate is set.
     /// </summary>
@@ -438,15 +438,23 @@ public static class IlEvmSettings
     /// <summary>Whether the temperature gate is set, in either form.</summary>
     public static bool TemperatureOn => _temperatureShare > 0 || _temperatureRate > 0;
 
-    /// <summary>Reads the switch: <c>1/n</c> is a share, a plain number a rate; anything else, 0 or nothing leaves the gate off.</summary>
+    /// <summary>The gate's share when <c>NETHERMIND_ILEVM_TEMPERATURE</c> does not set one.</summary>
+    public const int DefaultTemperatureShare = 256;
+
+    /// <summary>Reads the switch: <c>1/n</c> is a share, a plain number a rate, 0 turns the gate off; anything else or nothing is the default share.</summary>
     internal static (int Share, int Rate) ParseTemperature(string? value)
     {
         value = value?.Trim();
-        if (string.IsNullOrEmpty(value))
+        if (value == "0")
             return (0, 0);
-        if (value.StartsWith("1/", StringComparison.Ordinal))
-            return int.TryParse(value.AsSpan(2), System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out int share) && share > 0 ? (share, 0) : (0, 0);
-        return int.TryParse(value, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out int rate) && rate > 0 ? (0, rate) : (0, 0);
+        if (value is not null && value.StartsWith("1/", StringComparison.Ordinal))
+        {
+            if (int.TryParse(value.AsSpan(2), System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out int share) && share > 0)
+                return (share, 0);
+        }
+        else if (int.TryParse(value, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out int rate) && rate > 0)
+            return (0, rate);
+        return (DefaultTemperatureShare, 0);
     }
 
     private static readonly (int Share, int Rate) _temperatureFromEnvironment = ParseTemperature(Environment.GetEnvironmentVariable("NETHERMIND_ILEVM_TEMPERATURE"));
