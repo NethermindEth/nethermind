@@ -113,6 +113,9 @@ public class DebugRpcModule(
 
     public ResultWrapper<GethLikeTxTrace> debug_traceCall(TransactionForRpc call, BlockParameter? blockParameter = null, GethTraceOptions? options = null)
     {
+        if (options?.BlockOverrides?.Withdrawals is not null)
+            return ResultWrapper<GethLikeTxTrace>.Fail(BlockOverride.WithdrawalsNotSupported, ErrorCodes.InvalidParams);
+
         blockParameter ??= BlockParameter.Latest;
         if (blockParameter.Type == BlockParameterType.Pending)
         {
@@ -470,7 +473,7 @@ public class DebugRpcModule(
 
         if (CanStreamStructLogs(options))
         {
-            Block? resolvedBlock = blockFinder.FindBlock(blockNumber);
+            Block? resolvedBlock = blockFinder.FindBlock(header.Hash!, header.Number);
             if (resolvedBlock is null)
             {
                 return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail($"Block body not found for {blockNumber}", ErrorCodes.ResourceNotFound);
@@ -487,7 +490,7 @@ public class DebugRpcModule(
 
         try
         {
-            IReadOnlyCollection<GethLikeTxTrace>? blockTrace = debugBridge.GetBlockTrace(blockNumber, cancellationToken, WithBufferedLimit(options));
+            IReadOnlyCollection<GethLikeTxTrace>? blockTrace = debugBridge.GetBlockTrace(new BlockParameter(header.Hash!), cancellationToken, WithBufferedLimit(options));
 
             if (blockTrace is null)
                 return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail($"Trace is null for block {blockNumber}", ErrorCodes.ResourceNotFound);
@@ -820,6 +823,8 @@ public class DebugRpcModule(
         {
             if (bundles[i]?.Transactions is null)
                 return ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>>.Fail($"Bundle at index {i} has null transactions", ErrorCodes.InvalidParams);
+            if (bundles[i].BlockOverride?.Withdrawals is not null)
+                return ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>>.Fail(BlockOverride.WithdrawalsNotSupported, ErrorCodes.InvalidParams);
         }
 
         blockParameter ??= BlockParameter.Latest;

@@ -40,9 +40,9 @@ public class DiscoveryReceiveBenchmarks
         NetworkListenerState listenerState = new(
             new NetworkConfig(),
             new FixedIpResolver(new NetworkConfig { LocalIp = "0.0.0.0" }),
-            LimboLogs.Instance);
+            NullLogManager.Instance);
         _pool = new DiscoveryConnectionsPool(
-            LimboLogs.Instance.GetClassLogger<DiscoveryConnectionsPool>(),
+            NullLogManager.Instance.GetClassLogger<DiscoveryConnectionsPool>(),
             new DiscoveryConfig(),
             listenerState);
         IDatagramSocket socket = _pool.Bind(

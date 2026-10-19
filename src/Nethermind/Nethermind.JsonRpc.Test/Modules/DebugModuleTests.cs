@@ -497,6 +497,42 @@ public class DebugModuleTests
     }
 
     [Test]
+    public void DebugTraceBlockByNumber_PinsValidatedHeaderHash([Values] bool streaming, [Values] bool latest)
+    {
+        Block parent = Build.A.Block.WithNumber(0).TestObject;
+        Block validated = Build.A.Block.WithNumber(1).WithParent(parent).TestObject;
+        Block replacement = Build.A.Block.WithNumber(1).WithParent(parent).WithExtraData([0x01]).TestObject;
+        BlockParameter selector = latest ? BlockParameter.Latest : new BlockParameter(1UL);
+        _jsonRpcConfig.EnableTracingStreamMode = streaming;
+        _blockFinder.Head.Returns(validated);
+        _blockFinder.FindHeader(selector).Returns(validated.Header);
+        _blockFinder.FindBlock(selector).Returns(replacement);
+        _blockFinder.FindBlock(validated.Hash!, validated.Number).Returns(validated);
+        _blockFinder.FindHeader(parent.Hash!, BlockTreeLookupOptions.None, parent.Number).Returns(parent.Header);
+        _blockchainBridge.HasStateForBlock(parent.Header).Returns(true);
+        _blockchainBridge.HasStateForBlock(validated.Header).Returns(true);
+        _debugBridge.GetBlockTrace(Arg.Any<BlockParameter>(), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>())
+            .Returns(Array.Empty<GethLikeTxTrace>());
+
+        using ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> actual = CreateModule().debug_traceBlockByNumber(selector);
+
+        Assert.That(actual.Result.ResultType, Is.EqualTo(ResultType.Success), actual.Result.Error);
+        if (streaming)
+        {
+            using Utf8JsonWriter writer = new(new ArrayBufferWriter<byte>());
+            ((GethLikeTxTraceStreamingBlockResult)actual.Data).WriteAsJson(writer);
+            _blockFinder.Received(1).FindBlock(validated.Hash!, validated.Number);
+            _debugBridge.Received(1).GetBlockTrace(validated, Arg.Any<CancellationToken>(),
+                Arg.Any<GethTraceOptions>(), writer);
+        }
+        else
+        {
+            _debugBridge.Received(1).GetBlockTrace(Arg.Is<BlockParameter>(p => p.BlockHash == validated.Hash),
+                Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>());
+        }
+    }
+
+    [Test]
     public void DebugGetBadBlocks_WhenBadBlockStored_ReturnsBadBlock()
     {
         BadBlockStore badBlocksStore = null!;
