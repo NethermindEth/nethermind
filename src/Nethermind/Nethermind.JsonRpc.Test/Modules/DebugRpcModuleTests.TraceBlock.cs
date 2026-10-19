@@ -122,47 +122,56 @@ public partial class DebugRpcModuleTests
         Assert.That((string?)error["data"] ?? (string?)error["message"], Does.Contain("Cannot convert"), "native config errors remain top-level even with an expired timeout");
     }
 
-    [TestCase("result", 0)]
-    [TestCase("result", 1)]
-    [TestCase("result", 2)]
-    [TestCase("null", 0)]
-    [TestCase("undefined", 0)]
-    [TestCase("42", 0)]
-    [TestCase("step", 0)]
-    [TestCase("enter", 0)]
-    [TestCase("fault", 0)]
-    [TestCase("fault", 1)]
-    [TestCase("exit", 0)]
-    [TestCase("exit", 1)]
-    [TestCase("postStep", 0)]
-    [TestCase("postStep", 1)]
-    [TestCase("precedence", 0)]
-    [TestCase("precedence", 1)]
-    [TestCase("stack-input", 0)]
-    [TestCase("stack-input", 1)]
-    [TestCase("slice-input", 0)]
-    [TestCase("slice-input", 1)]
-    [TestCase("uint-input", 0)]
-    [TestCase("uint-input", 1)]
-    [TestCase("slice-padding", 0)]
-    [TestCase("slice-padding", 1)]
-    [TestCase("setup", -1)]
-    [TestCase("missing", -1)]
-    [TestCase("noncallable", -1)]
-    [TestCase("unknown", -1)]
-    [TestCase("syntax", -1)]
-    public Task Debug_traceBlockByNumber_recovers_js_errors_without_replaying_prefixes(string failure, int failAt) =>
-        AssertTraceBlockByNumberJavaScriptRecovery(failure, failAt, null);
+    private static IEnumerable<TestCaseData> BlockJavaScriptRecoveryCases()
+    {
+        (string Failure, int FailAt, int? SelectedAt)[] cases =
+        [
+            ("result", 0, null),
+            ("result", 1, null),
+            ("result", 2, null),
+            ("null", 0, null),
+            ("undefined", 0, null),
+            ("42", 0, null),
+            ("step", 0, null),
+            ("enter", 0, null),
+            ("fault", 0, null),
+            ("fault", 1, null),
+            ("exit", 0, null),
+            ("exit", 1, null),
+            ("postStep", 0, null),
+            ("postStep", 1, null),
+            ("precedence", 0, null),
+            ("precedence", 1, null),
+            ("stack-input", 0, null),
+            ("stack-input", 1, null),
+            ("slice-input", 0, null),
+            ("slice-input", 1, null),
+            ("uint-input", 0, null),
+            ("uint-input", 1, null),
+            ("slice-padding", 0, null),
+            ("slice-padding", 1, null),
+            ("setup", -1, null),
+            ("missing", -1, null),
+            ("noncallable", -1, null),
+            ("unknown", -1, null),
+            ("syntax", -1, null),
+            ("result", 1, 1),
+            ("step", 2, 2),
+            ("result", 0, 1),
+            ("unknown", -1, 2),
+            ("result", 0, -1)
+        ];
 
-    [TestCase("result", 1, 1, TestName = "Debug_traceBlockByNumber_txHash_recovers_middle_result_failure")]
-    [TestCase("step", 2, 2, TestName = "Debug_traceBlockByNumber_txHash_recovers_last_step_failure")]
-    [TestCase("result", 0, 1, TestName = "Debug_traceBlockByNumber_txHash_selected_success_keeps_canonical_index_and_state")]
-    [TestCase("unknown", -1, 2, TestName = "Debug_traceBlockByNumber_txHash_reports_constructor_failure_for_selected_transaction")]
-    [TestCase("result", 0, -1, TestName = "Debug_traceBlockByNumber_unknown_txHash_returns_no_trace")]
-    public Task Debug_traceBlockByNumber_recovers_js_errors_for_txHash(string failure, int failAt, int selectedAt) =>
-        AssertTraceBlockByNumberJavaScriptRecovery(failure, failAt, selectedAt);
+        foreach (string method in new[] { "debug_traceBlockByNumber", "debug_traceBlockByHash" })
+        {
+            foreach ((string failure, int failAt, int? selectedAt) in cases)
+                yield return new TestCaseData(method, failure, failAt, selectedAt);
+        }
+    }
 
-    private async Task AssertTraceBlockByNumberJavaScriptRecovery(string failure, int failAt, int? selectedAt)
+    [TestCaseSource(nameof(BlockJavaScriptRecoveryCases))]
+    public async Task Debug_traceBlock_recovers_js_errors_without_replaying_prefixes(
+        string method, string failure, int failAt, int? selectedAt)
     {
         JsRecoveryObservations observations = new();
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
@@ -224,7 +233,8 @@ public partial class DebugRpcModuleTests
         };
         Hash256 selectedHash = selectedAt >= 0 ? block.Transactions[selectedAt.Value].Hash! : TestItem.KeccakA;
         object traceOptions = selectedAt is null ? new { tracer } : new { tracer, txHash = selectedHash };
-        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceBlockByNumber", block.Number, traceOptions);
+        object blockSelector = method == "debug_traceBlockByHash" ? block.Hash! : block.Number;
+        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, method, blockSelector, traceOptions);
         JToken actual = JToken.Parse(response);
         Assert.That(actual["error"], Is.Null, response);
         JArray entries = (JArray)actual["result"]!;
@@ -267,8 +277,8 @@ public partial class DebugRpcModuleTests
         if (selectedAt is not null) return;
 
         observations.Enabled = false;
-        string legacy = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceBlockByHash", block.Hash!, new { tracer });
-        Assert.That(JToken.Parse(legacy)["error"], Is.Not.Null, "the recovery flag belongs only to debug_traceBlockByNumber");
+        string legacy = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceBlock", Rlp.Encode(block).Bytes, new { tracer });
+        Assert.That(JToken.Parse(legacy)["error"], Is.Not.Null, "raw block tracing retains its existing error behavior");
         string native = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceBlockByNumber", block.Number,
             new { tracer = "callTracer", tracerConfig = new { onlyTopCall = "not-a-boolean" } });
         Assert.That(JToken.Parse(native)["error"], Is.Not.Null, "native tracer failures remain top-level");
