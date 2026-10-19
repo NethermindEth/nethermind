@@ -538,6 +538,15 @@ namespace Nethermind.Core.Specs
         bool IsEip8360Enabled { get; }
 
         /// <summary>
+        /// EIP-8198: Quick Slots. Lowers the maximum per-block base fee change to 5/48, set through
+        /// <see cref="IEip1559Spec.BaseFeeMaxChangeNumerator"/> and <see cref="IEip1559Spec.BaseFeeMaxChangeDenominator"/>.
+        /// </summary>
+        /// <remarks>
+        /// The rest of the EIP is chainspec data: <c>slotDurationSchedule</c> (see <see cref="ISpecProvider.SlotDurationSchedule"/>) and <c>blobSchedule</c>.
+        /// </remarks>
+        bool IsEip8198Enabled { get; }
+
+        /// <summary>
         /// EIP-3298: Remove the SSTORE storage-clear refund and the EIP-3529 transaction refund cap.
         /// </summary>
         /// <remarks>

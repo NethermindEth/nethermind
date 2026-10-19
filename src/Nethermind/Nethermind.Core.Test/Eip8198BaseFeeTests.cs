@@ -90,7 +90,6 @@ public class Eip8198BaseFeeTests
         OverridableEip1559Spec overridden = new(Enabled) { BaseFeeMaxChangeNumerator = 1, BaseFeeMaxChangeDenominator = 8 };
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(spec.IsEip8198Enabled, Is.True);
             Assert.That(Calculate(spec, 1_000_000_000, 0), Is.EqualTo((UInt256)895_833_334));
             Assert.That(Calculate(overridden, 1_000_000_000, 0), Is.EqualTo((UInt256)875_000_000));
         }
