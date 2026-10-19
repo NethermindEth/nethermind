@@ -657,7 +657,8 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
     /// </summary>
     /// <remarks>
     /// No wall-clock limit: only the first request needs a short budget, and the later ones get a long one so a
-    /// stalled runner cannot answer them SYNCING before their verdicts land.
+    /// stalled runner cannot answer them SYNCING before their verdicts land. The budget is raised through
+    /// `_timeout`, which the handler reads once per request.
     /// </remarks>
     [Test]
     public async Task ValidateBlockAndProcess_waits_for_a_held_copy_with_another_inclusion_list_after_a_same_list_retry_has_finished()
