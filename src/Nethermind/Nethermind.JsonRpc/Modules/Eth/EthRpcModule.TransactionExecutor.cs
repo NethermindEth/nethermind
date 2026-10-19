@@ -9,6 +9,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm;
@@ -50,15 +51,20 @@ namespace Nethermind.JsonRpc.Modules.Eth
             /// </summary>
             protected virtual bool AcceptsZeroBlobFeeCap => true;
 
+            /// <summary>
+            /// Whether the call is rejected for a field the fork it runs in lacks; a transaction to build is estimated
+            /// as a call without this check.
+            /// </summary>
+            public bool ChecksFork { private get; init; } = true;
+
             protected override Result<Transaction> Prepare(TransactionForRpc call, BlockHeader header)
             {
                 if (AcceptsZeroBlobFeeCap)
                     call = BlobTransactionForRpc.WithZeroBlobFeeCapOmitted(call);
 
-                IReleaseSpec spec = GetSpec(header);
-                Result<Transaction> result = ValidatesFeeCapOrder
-                    ? call.ToValidatedTransaction(gasCap: _rpcConfig.GasCap, spec: spec)
-                    : call.ToTransaction(validateUserInput: true, gasCap: _rpcConfig.GasCap, spec: spec);
+                // The call converts against the fork it runs in, which a block override can change.
+                IReleaseSpec spec = GetSpec(_blockOverride?.ApplyTo(header) ?? header);
+                Result<Transaction> result = call.ToCallTransaction(spec, _rpcConfig.GasCap, validateFeeCapOrder: ValidatesFeeCapOrder, checksFork: ChecksFork);
                 if (result.IsError) return result;
 
                 Transaction tx = result.Data;
@@ -84,20 +90,11 @@ namespace Nethermind.JsonRpc.Modules.Eth
                     }
                 }
 
-                BlockHeader clonedHeader = header.Clone();
-
-                if (NoBaseFee)
-                {
-                    clonedHeader.BaseFeePerGas = 0;
-                }
-
-                clonedHeader.GasUsed = 0;
-
                 // The block override is applied later, inside the bridge, after the read-only state scope is opened
                 // on this (base) header — so the overridden block number does not leak into state selection.
-                if (!_requestToken.CanBeCanceled) return ExecuteTx(clonedHeader, tx, stateOverride, token);
+                if (!_requestToken.CanBeCanceled) return ExecuteTx(header, tx, stateOverride, token);
                 using CancellationTokenSource linked = CancellationTokenSource.CreateLinkedTokenSource(token, _requestToken);
-                return ExecuteTx(clonedHeader, tx, stateOverride, linked.Token);
+                return ExecuteTx(header, tx, stateOverride, linked.Token);
             }
 
             public override ResultWrapper<TResult> Execute(
@@ -115,6 +112,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
             public ResultWrapper<TResult> ExecuteTx(TransactionForRpc transactionCall, BlockParameter? blockParameter, Dictionary<Address, AccountOverride>? stateOverride = null,
                 BlockOverride? blockOverride = null, CancellationToken requestToken = default, SearchResult<BlockHeader>? searchResult = null)
             {
+                if (blockOverride?.Withdrawals is not null)
+                    return ResultWrapper<TResult>.Fail(BlockOverride.WithdrawalsNotSupported, ErrorCodes.InvalidParams);
                 ulong gasCap = _rpcConfig.GasCap.EffectiveGasCap();
                 if (blockOverride?.GasLimit > gasCap)
                     return ResultWrapper<TResult>.Fail($"GasLimit value is too large, max value {gasCap}", ErrorCodes.InvalidInput);
@@ -157,7 +156,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
             protected override ResultWrapper<HexBytes> ExecuteTx(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken token)
             {
-                CallOutput result = _blockchainBridge.Call(header, tx, stateOverride, BlobBaseFeeOverride, BlockOverrideForExecution, token);
+                CallOutput result = _blockchainBridge.Call(header, tx, stateOverride, BlobBaseFeeOverride, BlockOverrideForExecution, NoBaseFee, token);
 
                 if (!result.ExecutionReverted && result.Error is not null)
                 {
@@ -205,7 +204,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
             protected override ResultWrapper<UInt256?> ExecuteTx(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride> stateOverride, CancellationToken token)
             {
-                CallOutput result = _blockchainBridge.EstimateGas(header, tx, _errorMargin, stateOverride, BlobBaseFeeOverride, BlockOverrideForExecution, _rpcConfig.GasCap ?? 0, token);
+                CallOutput result = _blockchainBridge.EstimateGas(header, tx, _errorMargin, stateOverride, BlobBaseFeeOverride, BlockOverrideForExecution, _rpcConfig.GasCap ?? 0, NoBaseFee, token);
 
                 // A transaction rejected before execution reports, as GasSpent, the gas limit it was rejected at.
                 string? errorMessage = result.InputError
@@ -219,17 +218,15 @@ namespace Nethermind.JsonRpc.Modules.Eth
         private class CreateAccessListTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder blockFinder, IJsonRpcConfig rpcConfig, ISpecProvider specProvider, CreateAccessListTxExecutor.FeeDefaults feeDefaults, bool optimize)
             : TxExecutor<AccessListResultForRpc?>(blockchainBridge, blockFinder, rpcConfig, specProvider)
         {
-            private const string ZeroMaxFeePerGas = "maxFeePerGas must be non-zero";
-            private const string ZeroGasPriceAfterLondon = "gasPrice must be non-zero after london fork";
-            private const string FeeFieldsBeforeLondon = "maxFeePerGas and maxPriorityFeePerGas are not valid before London is active";
-
             protected override bool ValidatesFeeCapOrder => false;
 
             // The fee fields follow the defaults of a transaction about to be sent, as in Geth.
             protected override bool AcceptsZeroBlobFeeCap => false;
 
             protected override Result<Transaction> Prepare(TransactionForRpc call, BlockHeader header) =>
-                feeDefaults.Error is { } feeDefaultsError ? feeDefaultsError : base.Prepare(call, header);
+                feeDefaults.Error is { } feeDefaultsError ? feeDefaultsError
+                : GetSpec(header) is { IsEip2930Enabled: false } spec ? TxErrorMessages.InvalidTxType(spec.Name)
+                : base.Prepare(call, header);
 
             /// <summary>What filling a request's fee defaults found: the rule it broke, and a filled fee cap wider than 256 bits.</summary>
             public readonly record struct FeeDefaults(string? Error, BigInteger? FeeCapBeyond256Bits);
@@ -245,7 +242,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             /// </remarks>
             public static FeeDefaults FillFeeDefaults(TransactionForRpc call, BlockHeader header, bool isLondon, IGasPriceOracle gasPriceOracle)
             {
-                if (FeeDefaultsError(call, isLondon) is { } feeDefaultsError)
+                if (FeeDefaultRules.Error(call, isLondon) is { } feeDefaultsError)
                     return new FeeDefaults(feeDefaultsError, null);
 
                 // Before London the rules above leave no fee field to fill.
@@ -259,9 +256,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 UInt256 priorityFee = request.MaxPriorityFeePerGas ??= gasPriceOracle.GetMaxPriorityGasFeeEstimate();
                 if (request.MaxFeePerGas is { } feeCap)
                 {
-                    return feeCap < priorityFee
-                        ? new FeeDefaults($"maxFeePerGas ({feeCap.ToHexString(skipLeadingZeros: true)}) < maxPriorityFeePerGas ({priorityFee.ToHexString(skipLeadingZeros: true)})", null)
-                        : default;
+                    return new FeeDefaults(FeeDefaultRules.OrderError(feeCap, priorityFee), null);
                 }
 
                 // The fee cap is filled without a bound and applied as its low 256 bits, which then sit below the
@@ -271,30 +266,6 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 return filledFeeCap > (BigInteger)UInt256.MaxValue && call.GetType() == typeof(EIP1559TransactionForRpc)
                     ? new FeeDefaults(null, filledFeeCap)
                     : default;
-            }
-
-            private static string? FeeDefaultsError(TransactionForRpc call, bool isLondon)
-            {
-                if (call is BlobTransactionForRpc { MaxFeePerBlobGas: { IsZero: true } } || call is not LegacyTransactionForRpc legacy)
-                    return null;
-
-                UInt256? gasPrice = legacy.GasPrice;
-                UInt256? maxFeePerGas = (call as EIP1559TransactionForRpc)?.MaxFeePerGas;
-                UInt256? maxPriorityFeePerGas = (call as EIP1559TransactionForRpc)?.MaxPriorityFeePerGas;
-                if (gasPrice is not null && (maxFeePerGas is not null || maxPriorityFeePerGas is not null || call is SetCodeTransactionForRpc))
-                    return null;
-
-                if (gasPrice is null && maxFeePerGas is { } feeCap && maxPriorityFeePerGas is { } priorityFee)
-                {
-                    return feeCap.IsZero ? ZeroMaxFeePerGas
-                        : feeCap < priorityFee ? $"maxFeePerGas ({feeCap.ToHexString(skipLeadingZeros: true)}) < maxPriorityFeePerGas ({priorityFee.ToHexString(skipLeadingZeros: true)})"
-                        : null;
-                }
-
-                if (gasPrice is not null)
-                    return gasPrice.Value.IsZero && isLondon ? ZeroGasPriceAfterLondon : null;
-
-                return !isLondon && (maxFeePerGas is not null || maxPriorityFeePerGas is not null) ? FeeFieldsBeforeLondon : null;
             }
 
             /// <summary>The hash of an unsigned dynamic-fee <paramref name="tx"/> carrying <paramref name="feeCap"/>.</summary>
@@ -318,7 +289,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
             protected override ResultWrapper<AccessListResultForRpc?> ExecuteTx(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride> stateOverride, CancellationToken token)
             {
-                CallOutput result = _blockchainBridge.CreateAccessList(header, tx, stateOverride, optimize, BlobBaseFeeOverride, token);
+                CallOutput result = _blockchainBridge.CreateAccessList(header, tx, stateOverride, optimize, BlobBaseFeeOverride, NoBaseFee, token);
 
                 AccessListResultForRpc rpcAccessListResult = new(
                     accessList: AccessListForRpc.FromAccessList(result.AccessList ?? tx.AccessList),

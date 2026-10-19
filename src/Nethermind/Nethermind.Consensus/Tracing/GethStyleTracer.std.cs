@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.IO.Abstractions;
 using System.IO.Pipelines;
 using System.Linq;
@@ -14,6 +15,7 @@ using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -34,7 +36,6 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Consensus.Tracing;
 
-#pragma warning disable NETH003 // Build variant: excluded from the zkEVM build, which does no tracing
 public class GethStyleTracer(
     [KeyFilter(IReceiptFinder.RegenerableKey)] IReceiptFinder receiptFinder,
     IBlockTree blockTree,
@@ -64,12 +65,16 @@ public class GethStyleTracer(
 
     public GethLikeTxTrace? Trace(BlockParameter blockParameter, Transaction tx, GethTraceOptions options, CancellationToken cancellationToken, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null)
     {
-        Block block = blockTree.FindBlock(blockParameter) ?? throw new InvalidOperationException($"Cannot find block {blockParameter}");
         tx.Hash ??= tx.CalculateHash();
         if (options.TxIndex is { } index)
-            return TraceCallAtIndex(block, tx, index, options, cancellationToken, writer, pipeWriter);
+        {
+            Block parentBlock = blockTree.FindBlock(blockParameter) ?? throw new InvalidOperationException($"Cannot find block {blockParameter}");
+            return TraceCallAtIndex(parentBlock, tx, index, options, cancellationToken, writer, pipeWriter);
+        }
 
-        block = block.WithReplacedBodyCloned(BlockBody.WithOneTransactionOnly(tx));
+        // The call replaces the whole body, so only the header is read.
+        BlockHeader header = blockTree.FindHeader(blockParameter) ?? throw new InvalidOperationException($"Cannot find block {blockParameter}");
+        Block block = new(header.Clone(), BlockBody.WithOneTransactionOnly(tx));
         TransactionProcessorAdapterFactory previousAdapterFactory = transactionProcessorAdapter.CurrentAdapterFactory;
         transactionProcessorAdapter.CurrentAdapterFactory = static processor => new TraceTransactionProcessorAdapter(processor);
 
@@ -185,8 +190,11 @@ public class GethStyleTracer(
     public GethLikeTxTrace? Trace(Hash256 txHash, GethTraceOptions traceOptions, CancellationToken cancellationToken, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null)
     {
         Hash256? blockHash = receiptFinder.FindBlockHash(txHash);
-        if (blockHash is null) return null;
+        return blockHash is null ? null : Trace(blockHash, txHash, traceOptions, cancellationToken, writer, pipeWriter);
+    }
 
+    public GethLikeTxTrace? Trace(Hash256 blockHash, Hash256 txHash, GethTraceOptions traceOptions, CancellationToken cancellationToken, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null)
+    {
         Block? block = blockTree.FindBlock(blockHash, BlockTreeLookupOptions.RequireCanonical);
         if (block is null) return null;
 
@@ -318,7 +326,7 @@ public class GethStyleTracer(
             // Stored receipts describe only the unaltered canonical body; anything else numbers its logs from the
             // transactions it runs, which then have to be traced too.
             int txIndex = Array.FindIndex(block.Transactions, t => t.Hash == txHash);
-            int[]? firstLogIndexes = unaltered && txIndex >= 0 ? FirstLogIndexes(block) : null;
+            using ArrayPoolList<int>? firstLogIndexes = unaltered && txIndex >= 0 ? FirstLogIndexes(block) : null;
             tracePreceding = firstLogIndexes is null;
             logIndex = new BlockLogIndex(tracePreceding ? 0 : firstLogIndexes![txIndex]);
         }
@@ -348,6 +356,8 @@ public class GethStyleTracer(
         {
             { Tracer: var t } when GethLikeNativeTracerFactory.IsNativeTracer(t) => new GethLikeBlockNativeTracer(options.TxHash, (b, tx) => GethLikeNativeTracerFactory.CreateTracer(
                 logIndex is null ? options : options with { LogIndex = logIndex(b, tx) }, b, tx, worldState, specProvider.GetSpec(b.Header))),
+            { Tracer.Length: > 0, CaptureJavaScriptErrors: true } => new RecoveringJavaScriptBlockTracer(
+                () => new GethLikeBlockJavaScriptTracer(worldState, specProvider.GetSpec(block), options), options.TxHash),
             { Tracer.Length: > 0 } => new GethLikeBlockJavaScriptTracer(worldState, specProvider.GetSpec(block), options),
             _ => new GethLikeBlockMemoryTracer(options, (long)specProvider.GetSpec(block).GasCosts.DestroyRefund),
         };
@@ -384,13 +394,13 @@ public class GethStyleTracer(
             options = options with { TxHash = null };
         }
 
-        BlockLogIndex sharedLogIndex = new();
+        BlockLogIndex? sharedLogIndex = wantsLogIndex ? new() : null;
 
         using Scope<BlockProcessingComponents> scope = blockProcessingEnv.BuildAndOverrideAtTarget(block.Header, options.StateOverrides);
 
         long destroyRefund = (long)specProvider.GetSpec(block.Header).GasCosts.DestroyRefund;
         IBlockTracer<GethLikeTxTrace> tracer = writer is null
-            ? CreateOptionsTracer(block.Header, options, scope.Component.WorldState, specProvider, (_, _) => sharedLogIndex)
+            ? CreateOptionsTracer(block.Header, options, scope.Component.WorldState, specProvider, sharedLogIndex is null ? null : (_, _) => sharedLogIndex)
             : new GethLikeBlockEnvelopeStreamingTracer(options, writer, pipeWriter, cancellationToken, destroyRefund);
 
         try
@@ -411,7 +421,7 @@ public class GethStyleTracer(
 
     private static bool WantsLogIndex(GethTraceOptions options) =>
         options.Tracer == NativeCallTracer.CallTracer
-        && TypeInfoJsonSerializer.Deserialize<NativeCallTracerConfig>(options.TracerConfig, EthereumJsonSerializer.JsonOptions)?.WithLog == true;
+        && NativeCallTracerConfig.FromJson(options.TracerConfig, EthereumJsonSerializer.JsonOptions).WithLog;
 
     private static List<GethLikeTxTrace> KeepTrace(IReadOnlyCollection<GethLikeTxTrace> traces, Hash256 txHash)
     {
@@ -433,7 +443,7 @@ public class GethStyleTracer(
         logIndex = null;
         if (!wantsLogIndex) return true;
 
-        int[]? firstLogIndexes = FirstLogIndexes(block);
+        using ArrayPoolList<int>? firstLogIndexes = FirstLogIndexes(block);
         if (firstLogIndexes is null) return false;
 
         Dictionary<Hash256, int> firstLogIndexByTx = new(block.Transactions.Length);
@@ -449,11 +459,12 @@ public class GethStyleTracer(
 
     /// <summary>The block-wide index of each transaction's first log, from the block's receipts.</summary>
     /// <returns><c>null</c> when the receipts are neither stored nor reproducible, or do not match the body.</returns>
-    private int[]? FirstLogIndexes(Block block)
+    private ArrayPoolList<int>? FirstLogIndexes(Block block)
     {
         TxReceipt[] receipts;
         try
         {
+            if (TryCountStoredLogs(block, out ArrayPoolList<int>? counted)) return counted;
             receipts = receiptFinder.Get(block);
         }
         catch (ResourceNotFoundException)
@@ -464,7 +475,7 @@ public class GethStyleTracer(
 
         if (receipts.Length != block.Transactions.Length) return null;
 
-        int[] firstLogIndexes = new int[receipts.Length];
+        ArrayPoolList<int> firstLogIndexes = new(receipts.Length, receipts.Length);
         int next = 0;
         for (int i = 0; i < receipts.Length; i++)
         {
@@ -473,6 +484,52 @@ public class GethStyleTracer(
         }
 
         return firstLogIndexes;
+    }
+
+    /// <summary>Counts the logs of the stored receipts without decoding them, their topics or their data.</summary>
+    /// <returns><c>false</c> when the iterator does not hold one receipt per transaction; the full read then decides.</returns>
+    private bool TryCountStoredLogs(Block block, [NotNullWhen(true)] out ArrayPoolList<int>? firstLogIndexes)
+    {
+        firstLogIndexes = null;
+        if (block.Hash is not { } blockHash || !receiptFinder.TryGetReceiptsIterator(block.Number, blockHash, out ReceiptsIterator iterator)) return false;
+
+        int txCount = block.Transactions.Length;
+        ArrayPoolList<int> counted = new(txCount, txCount);
+        int next = 0;
+        int count = 0;
+        using (ReceiptsIterator receipts = iterator)
+        {
+            while (receipts.TryGetNext(out TxReceiptStructRef receipt))
+            {
+                if (count == txCount)
+                {
+                    counted.Dispose();
+                    return false;
+                }
+
+                counted[count++] = next;
+                next += CountLogs(in receipt);
+            }
+        }
+
+        if (count != txCount)
+        {
+            counted.Dispose();
+            return false;
+        }
+
+        firstLogIndexes = counted;
+        return true;
+    }
+
+    private static int CountLogs(in TxReceiptStructRef receipt)
+    {
+        if (receipt.Logs is not null) return receipt.Logs.Length;
+        if (receipt.LogsRlp.IsEmpty) return 0;
+
+        RlpReader logs = new(receipt.LogsRlp);
+        logs.SkipLength();
+        return logs.PeekNumberOfItemsRemaining();
     }
 
     /// <summary>A JavaScript tracer owns a script engine; one per worker at once is not a cost a block trace should pay.</summary>

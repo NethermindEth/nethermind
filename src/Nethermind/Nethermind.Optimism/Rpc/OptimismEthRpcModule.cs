@@ -97,41 +97,27 @@ public class OptimismEthRpcModule(
 
         L1BlockGasInfo l1BlockGasInfo = new(block, opSpecHelper);
 
-        int count = Math.Min(receipts.Length, transactions.Length);
-        ReceiptsForRpc<OptimismReceiptForRpc> result = new(count);
-        try
-        {
-            for (int i = 0; i < count; i++)
-            {
-                TxReceipt receipt = receipts[i];
-                Transaction tx = transactions[i];
-                result.Add(receipt is OptimismTxReceipt optimismTxReceipt
-                    ? new OptimismReceiptForRpc(
-                        tx.Hash!,
-                        optimismTxReceipt,
-                        block.Timestamp,
-                        tx.GetGasInfo(spec, block.Header),
-                        l1BlockGasInfo.GetTxGasInfo(tx),
-                        receipts.GetBlockLogFirstIndex(receipt.Index))
-                    : new OptimismReceiptForRpc(
-                        tx.Hash!,
-                        receipt,
-                        block.Timestamp,
-                        tx.GetGasInfo(spec, block.Header),
-                        receipts.GetBlockLogFirstIndex(receipt.Index)));
-            }
-        }
-        catch
-        {
-            result.Dispose();
-            throw;
-        }
+        // EIP-8116: logIndex counts within the receipt.
+        ReceiptsForRpc<OptimismReceiptForRpc> result = new(receipts, transactions, spec.IsEip8116Enabled, (target, receipt, tx, logIndexStart) =>
+            target.Populate(
+                tx.Hash!,
+                receipt,
+                block.Timestamp,
+                tx.GetGasInfo(spec, block.Header),
+                receipt is OptimismTxReceipt ? l1BlockGasInfo.GetTxGasInfo(tx) : null,
+                logIndexStart));
 
         return ResultWrapper<IEnumerable<ReceiptForRpc>?>.Success(result);
     }
 
-    public override async Task<ResultWrapper<Hash256>> eth_sendTransaction(SignableTransactionForRpc rpcTx)
+    public override async Task<ResultWrapper<Hash256>> eth_sendTransaction(SignableTransactionForRpc rpcTx) =>
+        ReportUnknownAccountFirst(rpcTx, await SignAndForwardTransaction(rpcTx));
+
+    private async Task<ResultWrapper<Hash256>> SignAndForwardTransaction(SignableTransactionForRpc rpcTx)
     {
+        if (CheckSendTransactionFees(rpcTx) is { } feeError)
+            return feeError;
+
         Result<Transaction> txResult = rpcTx.ToValidatedTransaction();
         if (!txResult.Success(out Transaction? tx, out string? error))
         {
@@ -257,9 +243,9 @@ public class OptimismEthRpcModule(
         }
 
         Transaction transaction = block.Transactions[(int)positionIndex];
-        RecoverTxSenderIfNeeded(transaction);
-
         TxReceipt? receipt = TryGetMatchingReceipt(_receiptFinder.Get(block), transaction, (int)positionIndex);
+        transaction.SenderAddress ??= receipt?.Sender;
+        RecoverTxSenderIfNeeded(transaction);
 
         TransactionForRpc transactionModel = TransactionForRpc.FromTransaction(
             transaction,

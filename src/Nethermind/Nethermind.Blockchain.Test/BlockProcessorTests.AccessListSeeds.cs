@@ -259,6 +259,43 @@ public partial class BlockProcessorTests
         }
     }
 
+    [Test]
+    public async Task AccessListSeed_ParallelBlockTrace_WhenTheBlockIsNeverRewarded_SkipsTheRewardPass([Values] bool stream)
+    {
+        using BasicTestBlockchain chain = await CreateAccessListSeedChain(builder => builder.AddSingleton<IRewardCalculatorSource>(NoBlockRewards.Instance));
+        BlockHeader parent = chain.BlockTree.Head!.Header;
+        Block block = Historical(await AddSharedStateBlock(chain));
+        IPrefixStateSeedSource seeds = chain.Container.Resolve<IPrefixStateSeedSource>();
+        ParityTraceTypes types = ParityTraceTypes.Trace | ParityTraceTypes.StateDiff | ParityTraceTypes.Rewards;
+        ExecutionCounter executions = new();
+        using ParallelTraceBudget budget = new(3);
+        using ParallelBlockTracer parallel = new(() => BuildParallelEnvironment(chain, executions: executions), seeds, Budgets(chain, budget), LimboLogs.Instance);
+
+        IReadOnlyCollection<ParityLikeTxTrace> sequential = TraceWholeBlockThroughTraceEnvironment(chain, parent, block, _ => new ParityLikeBlockTracer(types));
+        int rewardTracers = 0;
+        List<ParityLikeTxTrace> emitted = [];
+        IReadOnlyList<ParityLikeTxTrace>? traces = null;
+        bool traced = stream
+            ? parallel.TryStream(block, parent,
+                (_, txHash) => new ParityLikeBlockTracer(txHash, types & ~ParityTraceTypes.Rewards),
+                _ => { rewardTracers++; return new ParityLikeBlockTracer(types); }, batch => emitted.AddRange(batch), CancellationToken.None)
+            : parallel.TryTrace(block, parent,
+                (_, txHash) => new ParityLikeBlockTracer(txHash, types & ~ParityTraceTypes.Rewards),
+                _ => { rewardTracers++; return new ParityLikeBlockTracer(types); }, CancellationToken.None, out traces);
+        if (stream) traces = emitted;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(traced, Is.True, "a block with a valid access list is traced in parallel");
+            Assert.That(sequential.Count, Is.EqualTo(block.Transactions.Length), "precondition: the replay traces no reward");
+            Assert.That(chain.JsonSerializer.Serialize(ParityTxTraceFromStore.FromTxTrace(traces!)),
+                Is.EqualTo(chain.JsonSerializer.Serialize(ParityTxTraceFromStore.FromTxTrace(sequential))),
+                "skipping the reward pass leaves the traces equal to the replay");
+            Assert.That(rewardTracers, Is.Zero, "a block that is never rewarded is not replayed for its rewards");
+            Assert.That(executions.Calls, Is.EqualTo(block.Transactions.Length), "each transaction runs once");
+        }
+    }
+
     [TestCase(1, TestName = "AccessListSeed_WhenTheDelegationTheTargetRunsWasReplacedLaterInTheBlock_ServesItsCodeFromTheList")]
     [TestCase(3, TestName = "AccessListSeed_WhenTheTargetRunsTheLastDelegation_MatchesTheReplay")]
     public async Task AccessListSeed_WhenAnAccountChangesCodeTwiceInOneBlock_TracesEachDelegationLikeTheReplay(int targetIndex)
@@ -373,33 +410,66 @@ public partial class BlockProcessorTests
     }
 
     [Test]
-    public void ParallelBlockTracer_WhenBothBudgetsAreFullyHeld_StillRentsAnEnvironmentPerPermit()
+    public void ParallelBlockTracer_WhenTheSharedBudgetIsFullyHeld_StillRentsAnEnvironmentPerPermit()
     {
-        // Blocks with and without access lists draw on independent budgets, so traces of both kinds side by side hold
-        // every permit of both at once; each permit holder must still find an environment.
-        using ParallelTraceBudget changesets = new(2);
-        using ParallelTraceBudget accessLists = new(3);
+        using ParallelTraceBudget budget = new(3);
         ISpecProvider specProvider = new CustomSpecProvider(((ForkActivation)0, Prague.Instance), ((ForkActivation)10, Amsterdam.Instance));
-        ParallelTraceBudgets budgets = new(specProvider, changesets, accessLists);
+        ParallelTraceBudgets budgets = new(specProvider, budget, changesetSeeds: true);
         using ParallelBlockTracer parallel = new(() => new StubEnvironment(), NullPrefixStateSeedSource.Instance, budgets, LimboLogs.Instance);
         BlockHeader parent = Build.A.BlockHeader.TestObject;
-        for (int i = 0; i < changesets.Degree; i++) changesets.Wait(CancellationToken.None);
-        for (int i = 0; i < accessLists.Degree; i++) accessLists.Wait(CancellationToken.None);
+        for (int i = 0; i < budget.Degree; i++) budget.Wait(CancellationToken.None);
         List<IDisposable> rented = [];
 
         try
         {
-            Assert.That(() =>
+            using (Assert.EnterMultipleScope())
             {
-                for (int i = 0; i < changesets.Degree + accessLists.Degree; i++) rented.Add(parallel.RentEnvironment(parent));
-            }, Throws.Nothing, "the pool holds one environment for every permit of every budget");
-            Assert.That(budgets.TotalDegree, Is.EqualTo(changesets.Degree + accessLists.Degree), "the pool is sized by the sum, not the larger budget");
+                Assert.That(() =>
+                {
+                    for (int i = 0; i < budget.Degree; i++) rented.Add(parallel.RentEnvironment(parent));
+                }, Throws.Nothing, "the pool holds one environment for every permit of the budget");
+                Assert.That(budgets.Degree, Is.EqualTo(budget.Degree), "the pool is sized by the one budget both kinds of block draw on");
+            }
         }
         finally
         {
             foreach (IDisposable scope in rented) scope.Dispose();
-            for (int i = 0; i < changesets.Degree; i++) changesets.Release();
-            for (int i = 0; i < accessLists.Degree; i++) accessLists.Release();
+            for (int i = 0; i < budget.Degree; i++) budget.Release();
+        }
+    }
+
+    [TestCase(true, 1UL, true, TestName = "ParallelTraceBudgets_WithChangesetSeeds_TraceABlockBeforeAccessListsOnTheSharedBudget")]
+    [TestCase(true, 10UL, true, TestName = "ParallelTraceBudgets_WithChangesetSeeds_TraceAnAccessListBlockOnTheSharedBudget")]
+    [TestCase(false, 1UL, false, TestName = "ParallelTraceBudgets_WithoutChangesetSeeds_TraceABlockBeforeAccessListsSequentially")]
+    [TestCase(false, 10UL, true, TestName = "ParallelTraceBudgets_WithoutChangesetSeeds_TraceAnAccessListBlockOnTheSharedBudget")]
+    public void ParallelTraceBudgets_ForEachKindOfBlock_DrawOnTheOneBudget(bool changesetSeeds, ulong number, bool expected)
+    {
+        using ParallelTraceBudget budget = new(2);
+        ISpecProvider specProvider = new CustomSpecProvider(((ForkActivation)0, Prague.Instance), ((ForkActivation)10, Amsterdam.Instance));
+        ParallelTraceBudgets budgets = new(specProvider, budget, changesetSeeds);
+
+        bool parallel = budgets.TryGetParallel(Build.A.BlockHeader.WithNumber(number).TestObject, out ParallelTraceBudget? slots);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(parallel, Is.EqualTo(expected));
+            Assert.That(slots, expected ? Is.SameAs(budget) : Is.Null);
+            Assert.That(budgets.AllowsParallelTracing, Is.True, "the chain carries access list blocks, so a parallel tracer is always useful");
+        }
+    }
+
+    [Test]
+    public void ParallelTraceBudgets_WithASingleWorker_TraceEveryBlockSequentially()
+    {
+        using ParallelTraceBudget budget = new(1);
+        ISpecProvider specProvider = new CustomSpecProvider(((ForkActivation)0, Prague.Instance), ((ForkActivation)10, Amsterdam.Instance));
+        ParallelTraceBudgets budgets = new(specProvider, budget, changesetSeeds: true);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(budgets.TryGetParallel(Build.A.BlockHeader.WithNumber(1).TestObject, out _), Is.False);
+            Assert.That(budgets.TryGetParallel(Build.A.BlockHeader.WithNumber(10).TestObject, out _), Is.False);
+            Assert.That(budgets.AllowsParallelTracing, Is.False);
         }
     }
 

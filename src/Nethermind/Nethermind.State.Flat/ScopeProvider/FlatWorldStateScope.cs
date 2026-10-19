@@ -24,6 +24,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     private readonly IFlatCommitTarget _commitTarget;
     private readonly IFlatDbConfig _configuration;
     private readonly ITrieWarmer _warmer;
+    private readonly bool _warmsTries;
     private readonly Lazy<WarmReadPool>? _warmReadPool;
     private readonly ILogManager _logManager;
     private readonly bool _isReadOnly;
@@ -90,6 +91,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         _warmReadPool = warmReadPool;
         _logManager = logManager;
         _warmer = trieCacheWarmer;
+        _warmsTries = trieCacheWarmer.IsActive;
 
         _warmer.OnEnterScope();
         _isReadOnly = isReadOnly;
@@ -242,7 +244,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     public void HintGet(Address address, Account? account) => _snapshotBundle.PromoteAccount(address, account);
 
-    public void ApplyBal(ReadOnlyBlockAccessList bal) => ScopeBalApplier.Apply(this, bal);
+    public void ApplyBal(ReadOnlyBlockAccessList bal, CancellationToken cancellationToken = default) => ScopeBalApplier.Apply(this, bal, _logManager, cancellationToken);
 
     // Not reentrant: cancels and replaces the previous hint task unguarded; call only from the block-processing thread.
     public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null)
@@ -311,8 +313,10 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                         {
                             UInt256 key = slotChanges.Key;
                             if (!_snapshotBundle.ShouldQueuePrewarm(address, key)) continue;
+                            StorageChange[] changes = slotChanges.Changes;
+                            bool isDelete = changes.Length > 0 && changes[^1].Value.IsZero;
                             Interlocked.Increment(ref _outstandingWarmups);
-                            if (!_warmer.PushSlotJobMpmc(storageWarmer, key, snapshot)) CompleteWarmup();
+                            if (!_warmer.PushSlotJobMpmc(storageWarmer, key, snapshot, isDelete)) CompleteWarmup();
                         }
                     }
 
@@ -407,6 +411,10 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     public int HintSequenceId => _hintSequenceId; // Called by FlatStorageTree
 
+    // Without an active warmer a hint could only pin the bundle, mark the dedupe bloom and build a storage tree for a
+    // push that is rejected anyway; read-only scopes run on the no-op warmer.
+    internal bool WarmsTries => _warmsTries;
+
     private PatriciaTree CreateWarmupStateTree()
     {
         PatriciaTree tree = new(new StateTrieStoreWarmerAdapter(_snapshotBundle), _logManager)
@@ -450,20 +458,20 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     public void HintWarmAccount(Address address)
     {
-        if (IsDisposed || _pausePrewarmer) return;
+        if (!_warmsTries || IsDisposed || _pausePrewarmer) return;
         if (_snapshotBundle.ShouldQueuePrewarm(address))
             QueueStateTrieWarmup(address, _hintSequenceId);
     }
 
     public void HintWarmSlot(Address address, in UInt256 index)
     {
-        if (IsDisposed || _pausePrewarmer) return;
+        if (!_warmsTries || IsDisposed || _pausePrewarmer) return;
         if (!_snapshotBundle.ShouldQueuePrewarm(address, index)) return;
 
         FlatStorageTree? tree = GetOrCreateHintWarmStorageTree(address);
         if (tree is null) return;
         Interlocked.Increment(ref _outstandingWarmups);
-        if (!_warmer.PushSlotJobMpmc(tree, index, _hintSequenceId)) CompleteWarmup();
+        if (!_warmer.PushSlotJobMpmc(tree, index, _hintSequenceId, isDelete: false)) CompleteWarmup();
     }
 
     private FlatStorageTree? GetOrCreateHintWarmStorageTree(Address address) =>
@@ -606,14 +614,22 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     // Largely same logic as the the one for TrieStoreScopeProvider, but more confusing when deduplicated.
     // So I just leave it here.
-    private class WriteBatch(
-        FlatWorldStateScope scope,
-        int estimatedAccountCount,
-        ILogger logger
-    ) : IWorldStateScopeProvider.IWorldStateWriteBatch
+    private class WriteBatch : IWorldStateScopeProvider.IWorldStateWriteBatch
     {
-        private readonly Dictionary<AddressAsKey, Account?> _dirtyAccounts = new(estimatedAccountCount);
+        private readonly FlatWorldStateScope _scope;
+        private readonly ILogger _logger;
+        private readonly Dictionary<AddressAsKey, Account?> _dirtyAccounts;
         private readonly ConcurrentQueue<(AddressAsKey, Hash256)> _dirtyStorageTree = new();
+        // One delegate for every storage batch of the block.
+        private readonly Action<Address, Hash256> _markDirty;
+
+        public WriteBatch(FlatWorldStateScope scope, int estimatedAccountCount, ILogger logger)
+        {
+            _scope = scope;
+            _logger = logger;
+            _dirtyAccounts = new(estimatedAccountCount);
+            _markDirty = MarkDirty;
+        }
 
         public event EventHandler<IWorldStateScopeProvider.AccountUpdated>? OnAccountUpdated;
 
@@ -629,23 +645,23 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                 // the account, and with VerifyWithTrie that read is compared against the trie, which only applies
                 // this delete on Dispose. Reading after the delete throws for any account the trie still holds,
                 // e.g. the EIP-161 clearing of a pre-existing empty account.
-                FlatStorageTree storage = scope.CreateStorageTreeImpl(key);
-                scope._snapshotBundle.SetAccount(key, account);
+                FlatStorageTree storage = _scope.CreateStorageTreeImpl(key);
+                _scope._snapshotBundle.SetAccount(key, account);
                 storage.ClearStorage();
                 return;
             }
 
-            scope._snapshotBundle.SetAccount(key, account);
+            _scope._snapshotBundle.SetAccount(key, account);
         }
 
         public IWorldStateScopeProvider.IStorageWriteBatch CreateStorageWriteBatch(Address address, int estimatedEntries) =>
-            scope
+            _scope
                 .CreateStorageTreeImpl(address)
                 .CreateWriteBatch(
                     estimatedEntries: estimatedEntries,
-                    onRootUpdated: (address, newRoot) => MarkDirty(address, newRoot));
+                    onRootUpdated: _markDirty);
 
-        private void MarkDirty(AddressAsKey address, Hash256 storageTreeRootHash) =>
+        private void MarkDirty(Address address, Hash256 storageTreeRootHash) =>
             _dirtyStorageTree.Enqueue((address, storageTreeRootHash));
 
         public void Dispose()
@@ -655,7 +671,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                 while (_dirtyStorageTree.TryDequeue(out (AddressAsKey, Hash256) entry))
                 {
                     (AddressAsKey key, Hash256 storageRoot) = entry;
-                    if (!_dirtyAccounts.TryGetValue(key, out Account? account)) account = scope.Get(key);
+                    if (!_dirtyAccounts.TryGetValue(key, out Account? account)) account = _scope.Get(key);
                     if (account is null)
                     {
                         if (storageRoot == Keccak.EmptyTreeHash) continue;
@@ -666,26 +682,26 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                     account = account.WithChangedStorageRoot(storageRoot);
                     _dirtyAccounts[key] = account;
 
-                    scope._snapshotBundle.SetAccount(key, account);
+                    _scope._snapshotBundle.SetAccount(key, account);
 
                     Address address = key.Value;
                     OnAccountUpdated?.Invoke(address, new IWorldStateScopeProvider.AccountUpdated(address, account));
-                    if (logger.IsTrace) Trace(address, storageRoot, account);
+                    if (_logger.IsTrace) Trace(address, storageRoot, account);
                 }
 
                 OnAccountUpdated = null;
 
                 // The per-account flat writes above already carry intra-block state for subsequent txs; only a
                 // normal scope additionally bulk-applies the dirty accounts into the state trie.
-                if (!scope._trieless)
+                if (!_scope._trieless)
                 {
                     if (Avx2.IsSupported && _dirtyAccounts.Count >= KeyHashBatch.MinimumBatchSize)
                     {
-                        scope.StateTree.SetAccounts(_dirtyAccounts);
+                        _scope.StateTree.SetAccounts(_dirtyAccounts);
                     }
                     else
                     {
-                        using StateTree.StateTreeBulkSetter stateSetter = scope.StateTree.BeginSet(_dirtyAccounts.Count);
+                        using StateTree.StateTreeBulkSetter stateSetter = _scope.StateTree.BeginSet(_dirtyAccounts.Count);
                         foreach (KeyValuePair<AddressAsKey, Account?> kv in _dirtyAccounts)
                         {
                             stateSetter.Set(kv.Key, kv.Value);
@@ -697,12 +713,12 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             {
                 _dirtyAccounts.Clear();
 
-                Interlocked.Increment(ref scope._hintSequenceId);
+                Interlocked.Increment(ref _scope._hintSequenceId);
             }
 
             [MethodImpl(MethodImplOptions.NoInlining)]
             void Trace(Address address, Hash256 storageRoot, Account? account) =>
-                logger.Trace($"Update {address} S {account?.StorageRoot} -> {storageRoot}");
+                _logger.Trace($"Update {address} S {account?.StorageRoot} -> {storageRoot}");
         }
     }
 }

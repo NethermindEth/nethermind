@@ -126,6 +126,8 @@ public sealed class ReadOnlyBlockAccessList : IEquatable<ReadOnlyBlockAccessList
         {
             foreach (CodeChange change in account.CodeChanges)
             {
+                // EIP-8298: an adoption declares a hash, not bytecode.
+                if (change.IsAdopted) continue;
                 result ??= new(GenericEqualityComparer.GetOptimized<ValueHash256>());
                 if (!result.TryGetValue(change.CodeHash, out (uint Index, byte[] Code) existing) || change.Index < existing.Index)
                 {

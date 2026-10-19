@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
@@ -16,6 +18,107 @@ namespace Nethermind.State;
 
 internal sealed partial class PersistentStorageProvider
 {
+    private static readonly ArrayPool<KeyValuePair<StorageCell, UInt256>> PendingOriginalsPool =
+        ArrayPool<KeyValuePair<StorageCell, UInt256>>.Create(LargeMapPool<StorageCell, UInt256>.MaxRetainedCapacity, 1);
+    private ArrayPoolList<KeyValuePair<StorageCell, UInt256>>? _pendingOriginalValues;
+    private bool _originalsIndexed;
+    // The pool serves a rent from up to two sizes above the one asked for, so a list this large may never have grown.
+    internal const int RetainedPendingCapacity = PooledDictionaryCapacity * 4;
+
+    public void SetBackendScope(IWorldStateScopeProvider.IScope? scope)
+    {
+        _currentScope = scope;
+        // A list within RetainedPendingCapacity is kept: the pool shared by every provider serves only a few overlapping
+        // scopes, so handing it back makes concurrent ones, the prewarmer's, allocate their own.
+        if (scope is null && _pendingOriginalValues is { Capacity: > RetainedPendingCapacity })
+        {
+            _pendingOriginalValues.Dispose();
+            _pendingOriginalValues = null;
+        }
+    }
+
+    private partial bool HasCapturedOriginals => _originalValues.Count != 0 || _pendingOriginalValues is { Count: > 0 };
+
+    private partial void CaptureOriginalValue(in StorageCell cell, in UInt256 value)
+    {
+        _lastCapturedCell = cell;
+        if (!_originalsIndexed)
+        {
+            (_pendingOriginalValues ??= RentPendingOriginals()).Add(new KeyValuePair<StorageCell, UInt256>(cell, value));
+            _lastCapturedOriginal = value;
+            return;
+        }
+
+        _lastCapturedOriginal = CaptureIndexedOriginalValue(in cell, in value);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static ArrayPoolList<KeyValuePair<StorageCell, UInt256>> RentPendingOriginals()
+    {
+        ArrayPoolList<KeyValuePair<StorageCell, UInt256>> list = new(PendingOriginalsPool, PooledDictionaryCapacity);
+        // A kept list is dropped with its provider rather than disposed, which the debug build would report as a leak.
+        GC.SuppressFinalize(list);
+        return list;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private partial void EnsureOriginalsIndexed()
+    {
+        if (!_originalsIndexed) IndexPendingOriginals();
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void IndexPendingOriginals()
+    {
+        if (_pendingOriginalValues is { } pending)
+        {
+            foreach (KeyValuePair<StorageCell, UInt256> entry in pending)
+            {
+                CaptureIndexedOriginalValue(entry.Key, entry.Value);
+            }
+
+            ClearPendingOriginals();
+        }
+
+        _originalsIndexed = true;
+    }
+
+    private partial void EndPendingOriginalsRound()
+    {
+        ClearPendingOriginals();
+        _originalsIndexed = false;
+    }
+
+    private void ClearPendingOriginals()
+    {
+        if (_pendingOriginalValues is not { } pending) return;
+        if (pending.Capacity > Core.Collections.CollectionExtensions.DefaultTrimAboveCapacity)
+        {
+            pending.Dispose();
+            _pendingOriginalValues = null;
+        }
+        else
+        {
+            pending.Clear();
+        }
+    }
+
+    private UInt256 CaptureIndexedOriginalValue(in StorageCell cell, in UInt256 value)
+    {
+        OptimizedDictionary<StorageCell, UInt256> originals = _originalValues;
+        if (originals.Count == originals.Capacity && originals.Capacity > OriginalsGrowIntoLargeAbove && !originals.ContainsKey(cell))
+        {
+            GrowOriginalsIntoLarge();
+        }
+
+        ref UInt256 slot = ref _originalValues.GetValueRefOrAddDefault(cell, out bool exists);
+        if (!exists)
+        {
+            slot = value;
+        }
+        return slot;
+    }
+
     private partial void UpdateRootHashes(IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch)
     {
         if (_toUpdateRoots.Count >= 3)
@@ -110,6 +213,11 @@ internal sealed partial class PersistentStorageProvider
 
             writes += WriteDeletes(deferredDeletes.AsSpan(), storageWriteBatch);
             return (writes, skipped);
+        }
+
+        private static partial class Pool
+        {
+            private static readonly ConcurrentQueue<PerContractState> _pool = [];
         }
     }
 }

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core.Test.Builders;
 using Nethermind.TxPool;
@@ -21,7 +22,7 @@ public class BuildBlockOnEachPendingTxTests
         trigger.TriggerBlockProduction += (s, e) => triggered++;
         for (int i = 0; i < 2; i++)
         {
-            txPool.NewPending += Raise.EventWith(new TxEventArgs(Build.A.Transaction.TestObject));
+            txPool.NewPending += Raise.Event<EventHandler<TxEventArgs>>(txPool, new TxEventArgs(Build.A.Transaction.TestObject));
         }
 
         Assert.That(triggered, Is.EqualTo(2));

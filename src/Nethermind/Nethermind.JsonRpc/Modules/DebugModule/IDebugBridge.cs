@@ -20,6 +20,11 @@ public interface IDebugBridge
 {
     GethLikeTxTrace? GetTransactionTrace(Hash256 transactionHash, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null);
 
+    /// <summary>Traces a transaction whose canonical block the caller has already found, without looking it up again.</summary>
+    /// <remarks>The default looks the block up again, so out-of-tree implementations keep compiling.</remarks>
+    GethLikeTxTrace? GetTransactionTrace(Hash256 blockHash, Hash256 transactionHash, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null) =>
+        GetTransactionTrace(transactionHash, cancellationToken, gethTraceOptions, writer, pipeWriter);
+
     /// <remarks>Retained for out-of-tree plugins; nothing in the repository calls it.</remarks>
     [Obsolete("Use the Hash256 overload: a block number resolves only the canonical block at that height.")]
     GethLikeTxTrace? GetTransactionTrace(ulong blockNumber, int index, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null);
@@ -68,7 +73,8 @@ public interface IDebugBridge
     IEnumerable<string> TraceBlockToFile(Hash256 blockHash, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null);
     IEnumerable<string> TraceBadBlockToFile(Hash256 blockHash, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null);
     public IEnumerable<Block> GetBadBlocks();
-    TxReceipt[]? GetReceiptsForBlock(BlockParameter param);
+    TxReceipt[] GetReceiptsForBlock(Block block);
+    /// <summary>Returns the mined transaction with the given hash or, failing that, the pending one from the transaction pool.</summary>
     Transaction? GetTransactionFromHash(Hash256 hash);
     Hash256? GetTransactionBlockHash(Hash256 transactionHash);
     IEnumerable<IEnumerable<GethLikeTxTrace>> GetBundleTraces(TransactionBundle[] bundles, BlockParameter blockParameter, ulong? gasCap, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null);
