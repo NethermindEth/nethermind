@@ -38,7 +38,8 @@ python3 tools/ProofWrapperVisualiser/serve.py --kurtosis <enclave> --bind 0.0.0.
 ```
 
 `--token` without a value uses `$VISUALISER_TOKEN` or generates one, and prints the link `http://<name>:8437/?token=...`.
-Opening it exchanges the token for an HttpOnly, SameSite=Strict cookie; every other request needs that cookie. Over plain
+Opening it exchanges the token for an HttpOnly, SameSite=Strict cookie and reloads the page without the token; every other
+request needs that cookie. Over plain
 HTTP the token is not encrypted, so also restrict the port to known addresses with a firewall.
 
 Without `serve.py`, open `index.html` directly and paste node URLs, `kurtosis enclave inspect` output or

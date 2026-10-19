@@ -151,9 +151,12 @@ class TokenTests(unittest.TestCase):
             return error.code, error.headers, error.read()
 
     def test_exchanges_a_valid_query_token_for_a_strict_http_only_cookie(self):
-        status, headers, _ = self.request(f"/js/app.js?token={self.TOKEN}&x=1")
-        self.assertEqual(status, 303)
-        self.assertEqual(headers["Location"], "/js/app.js?x=1")
+        status, headers, body = self.request(f"/js/app.js?token={self.TOKEN}&x=1")
+        self.assertEqual(status, 200)
+        self.assertIn(b'content="0;url=/js/app.js?x=1"', body, "reloads the same path without the token")
+        self.assertNotIn(self.TOKEN.encode(), body)
+        self.assertEqual(headers["Referrer-Policy"], "no-referrer")
+        self.assertIn(b"url=/evil.example/", self.request(f"//evil.example/?token={self.TOKEN}")[2], "the reload stays on this server")
         cookie = headers["Set-Cookie"]
         self.assertTrue(cookie.startswith(f"pwv_token={self.TOKEN};"))
         self.assertIn("HttpOnly", cookie)

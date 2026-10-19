@@ -11,6 +11,7 @@ an HttpOnly, SameSite=Strict cookie that the page's own requests then carry. Bin
 """
 import argparse
 import hmac
+import html
 import http.cookies
 import json
 import mimetypes
@@ -115,8 +116,8 @@ def token_matches(given, token):
 def handler(nodes, port, allowed_hosts=frozenset(), token=None):
     class Handler(BaseHTTPRequestHandler):
         def unauthorised(self):
-            """With a token configured: exchanges a valid ?token= for a cookie (redirecting to the same path without it), and
-            rejects requests carrying neither a valid query token nor a valid cookie."""
+            """With a token configured: exchanges a valid ?token= for a cookie and reloads the same path without it, and rejects
+            requests carrying neither a valid query token nor a valid cookie."""
             if token is None:
                 return False
             path, _, query = self.path.partition("?")
@@ -126,12 +127,12 @@ def handler(nodes, port, allowed_hosts=frozenset(), token=None):
                     self.send(401, b'{"error":"invalid token"}')
                     return True
                 rest = urllib.parse.urlencode([(k, v) for k, values in params.items() if k != "token" for v in values])
-                self.send_response(303)
-                self.send_header("Location", path + (f"?{rest}" if rest else ""))
-                self.send_header("Set-Cookie", f"{TOKEN_COOKIE}={token}; HttpOnly; SameSite=Strict; Path=/")
-                self.send_header("Cache-Control", "no-store")
-                self.send_header("Content-Length", "0")
-                self.end_headers()
+                target = "/" + path.lstrip("/") + (f"?{rest}" if rest else "")
+                # A same-origin reload rather than a redirect: when the link is followed from another site, browsers withhold a
+                # SameSite=Strict cookie for the whole redirect chain, but not for a navigation the page itself starts.
+                body = f'<!doctype html><meta http-equiv="refresh" content="0;url={html.escape(target, quote=True)}">'.encode()
+                self.send(200, body, "text/html; charset=utf-8",
+                          {"Set-Cookie": f"{TOKEN_COOKIE}={token}; HttpOnly; SameSite=Strict; Path=/", "Referrer-Policy": "no-referrer"})
                 return True
             cookies = http.cookies.SimpleCookie()
             try:
@@ -158,8 +159,10 @@ def handler(nodes, port, allowed_hosts=frozenset(), token=None):
                 return True
             return False
 
-        def send(self, status, body, content_type="application/json"):
+        def send(self, status, body, content_type="application/json", headers=None):
             self.send_response(status)
+            for name, value in (headers or {}).items():
+                self.send_header(name, value)
             self.send_header("Content-Type", content_type)
             self.send_header("Content-Length", str(len(body)))
             self.send_header("Cache-Control", "no-store")
