@@ -168,6 +168,17 @@ namespace Nethermind.Core
         }
     }
 
+    /// <summary>Provides ceiling reads whose key and value come from one point-in-time view.</summary>
+    public interface ISnapshotSortedKeyValueStore : ISortedKeyValueStore
+    {
+        /// <summary>Finds the first key in the range using a fresh view, or the store's pinned snapshot.</summary>
+        /// <remarks>Reports the stored lengths. A buffer too short for its part remains unchanged.
+        /// Neither buffer changes on a miss. The lower bound is inclusive; the upper bound is exclusive.</remarks>
+        bool TryGetCeilingInSnapshot(
+            scoped ReadOnlySpan<byte> lowerBoundInclusive, scoped ReadOnlySpan<byte> upperBoundExclusive,
+            Span<byte> keyBuffer, out int keyLength, Span<byte> valueBuffer, out int valueLength);
+    }
+
     /// <summary>
     /// Provides the capability to create read-only snapshots of a key-value store.
     /// </summary>
@@ -230,6 +241,15 @@ namespace Nethermind.Core
         public bool SeekTo(ReadOnlySpan<byte> key);
     }
 
+    /// <summary>A sorted view whose bounds can change without replacing its snapshot.</summary>
+    public interface IRebindableSortedView : ISeekableSortedView
+    {
+        /// <summary>Attempts to set new bounds. On success, the next <see cref="ISortedView.MoveNext"/>
+        /// seeks to the new lower bound using the original snapshot. Returns false when the caller must create
+        /// a new view.</summary>
+        bool TryResetBounds(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive);
+    }
+
     [Flags]
     public enum ReadFlags
     {
@@ -252,6 +272,9 @@ namespace Nethermind.Core
 
         // Used for full pruning db to skip duplicate read
         SkipDuplicateRead = 16,
+
+        /// <summary>Requests a view that supports repeated bound changes when the store provides one.</summary>
+        HintRepeatedReads = 32,
     }
 
     [Flags]
