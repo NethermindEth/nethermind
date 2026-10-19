@@ -383,6 +383,7 @@ public class DebugModuleTests
         }
         else
         {
+            _blockFinder.HasBlock(header.Number, blockHash).Returns(true);
             _debugBridge
                 .TraceBlockToFile(Arg.Is(blockHash), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>())
                 .Returns(static c => GetFileNames(c.ArgAt<Hash256>(0)));
@@ -419,6 +420,7 @@ public class DebugModuleTests
         _blockFinder.FindHeader(parent.Hash!, BlockTreeLookupOptions.None, parent.Number).Returns(parent);
         _blockchainBridge.HasStateForBlock(parent).Returns(false);
         _blockchainBridge.HasStateForBlock(header).Returns(true);
+        _blockFinder.HasBlock(header.Number, blockHash).Returns(true);
         if (isBadBlock) _debugBridge.GetBadBlocks().Returns([new Block(header)]);
 
         ResultWrapper<IEnumerable<string>> actual = StandardTraceToFile(CreateModule(), isBadBlock, blockHash);
@@ -429,12 +431,14 @@ public class DebugModuleTests
     }
 
     [Test]
-    public void DebugIntermediateRoots_WhenStateAvailable_ReturnsRoots([Values] bool poststateAvailable)
+    public void DebugIntermediateRoots_WhenStateAvailable_ReturnsRoots([Values] bool poststateAvailable, [Values] bool bodyStored)
     {
         Hash256 blockHash = TestItem.KeccakA;
         BlockHeader parent = Build.A.BlockHeader.WithNumber(0).TestObject;
         BlockHeader header = Build.A.BlockHeader.WithParent(parent).TestObject;
         _blockFinder.FindHeader(blockHash).Returns(header);
+        _blockFinder.HasBlock(header.Number, blockHash).Returns(bodyStored);
+        if (!bodyStored) _blockFinder.FindBlock(blockHash, header.Number).Returns(new Block(header));
         _blockFinder.FindHeader(parent.Hash!, BlockTreeLookupOptions.None, parent.Number).Returns(parent);
         _blockchainBridge.HasStateForBlock(parent).Returns(true);
         _blockchainBridge.HasStateForBlock(header).Returns(poststateAvailable);
@@ -660,6 +664,7 @@ public class DebugModuleTests
         Assert.That(actual, Is.EqualTo(ResultType.Success));
         _blockchainBridge.Received(1).HasStateForBlock(parent);
         _blockchainBridge.DidNotReceive().HasStateForBlock(block.Header);
+        _debugBridge.Received(1).GetBadBlocks();
     }
 
     [Test]
@@ -669,6 +674,7 @@ public class DebugModuleTests
         BlockHeader parent = Build.A.BlockHeader.WithNumber(1).TestObject;
         BlockHeader header = Build.A.BlockHeader.WithParent(parent).WithNumber(2).TestObject;
         _blockFinder.FindHeader(header.Hash!).Returns(header);
+        _blockFinder.HasBlock(header.Number, header.Hash!).Returns(true);
         if (parentHeaderAvailable)
             _blockFinder.FindHeader(parent.Hash!, BlockTreeLookupOptions.None, parent.Number).Returns(parent);
         _blockchainBridge.HasStateForBlock(header).Returns(true);
@@ -688,6 +694,21 @@ public class DebugModuleTests
         _debugBridge.DidNotReceive().GetBlockIntermediateRoots(Arg.Any<Hash256>(), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>());
         _debugBridge.DidNotReceive().TraceBlockToFile(Arg.Any<Hash256>(), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>());
         _debugBridge.DidNotReceive().TraceBadBlockToFile(Arg.Any<Hash256>(), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>());
+    }
+
+    [Test]
+    public void DebugStandardTraceBlockToFile_WhenTreeBodyMissing_DoesNotUseBadStore()
+    {
+        Block block = Build.A.Block.WithNumber(1).TestObject;
+        _blockFinder.FindHeader(block.Hash!).Returns(block.Header);
+        _debugBridge.GetBadBlocks().Returns([block]);
+        _blockchainBridge.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(true);
+
+        using ResultWrapper<IEnumerable<string>> actual = CreateModule().debug_standardTraceBlockToFile(block.Hash!);
+
+        Assert.That(actual.ErrorCode, Is.EqualTo(ErrorCodes.ResourceNotFound));
+        _debugBridge.DidNotReceive().GetBadBlocks();
+        _debugBridge.DidNotReceive().TraceBlockToFile(Arg.Any<Hash256>(), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>());
     }
 
     [Test]
@@ -1262,6 +1283,7 @@ public class DebugModuleTests
             {
                 BlockHeader header = Build.A.BlockHeader.WithNumber(1).TestObject;
                 finder.FindHeader(blockHash).Returns(header);
+                finder.HasBlock(header.Number, blockHash).Returns(true);
                 bridge.HasStateForBlock(Arg.Is(header)).Returns(false);
             }),
             ErrorCodes.ResourceUnavailable,

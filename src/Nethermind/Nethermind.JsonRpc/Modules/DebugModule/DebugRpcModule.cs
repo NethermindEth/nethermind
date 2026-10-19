@@ -555,7 +555,7 @@ public class DebugRpcModule(
 
     public ResultWrapper<IReadOnlyCollection<Hash256>> debug_intermediateRoots(Hash256 blockHash, GethTraceOptions? options = null)
     {
-        BlockHeader? header = TryGetHeader<IReadOnlyCollection<Hash256>>(blockHash, out ResultWrapper<IReadOnlyCollection<Hash256>>? headerError, searchBadBlocks: true);
+        BlockHeader? header = TryGetHeader<IReadOnlyCollection<Hash256>>(blockHash, out ResultWrapper<IReadOnlyCollection<Hash256>>? headerError, searchBadBlocks: true, requireBody: true);
         headerError ??= CheckTraceBaseState<IReadOnlyCollection<Hash256>>(header!);
         if (headerError is not null)
         {
@@ -729,7 +729,7 @@ public class DebugRpcModule(
 
     public ResultWrapper<IEnumerable<string>> debug_standardTraceBlockToFile(Hash256 blockHash, GethTraceOptions options = null)
     {
-        BlockHeader? header = TryGetHeader<IEnumerable<string>>(blockHash, out ResultWrapper<IEnumerable<string>>? headerError);
+        BlockHeader? header = TryGetHeader<IEnumerable<string>>(blockHash, out ResultWrapper<IEnumerable<string>>? headerError, requireBody: true);
         headerError ??= CheckTraceBaseState<IEnumerable<string>>(header!);
         if (headerError is not null)
         {
@@ -1064,10 +1064,16 @@ public class DebugRpcModule(
     /// Lookup order must match the replay: intermediate roots use <paramref name="searchBadBlocks"/> to fall back
     /// to the bad-block store after the block tree. Bad-block file tracing uses <paramref name="badBlocksOnly"/>
     /// to bypass the block tree, taking precedence over <paramref name="searchBadBlocks"/>.
+    /// Whole-block replays use <paramref name="requireBody"/> to reject tree headers whose bodies are missing.
     /// </remarks>
-    private BlockHeader? TryGetHeader<TResult>(Hash256 blockHash, out ResultWrapper<TResult>? error, bool searchBadBlocks = false, bool badBlocksOnly = false)
+    private BlockHeader? TryGetHeader<TResult>(Hash256 blockHash, out ResultWrapper<TResult>? error, bool searchBadBlocks = false, bool badBlocksOnly = false, bool requireBody = false)
     {
         BlockHeader? header = badBlocksOnly ? null : blockFinder.FindHeader(blockHash);
+        if (requireBody && header is not null
+            && !blockFinder.HasBlock(header.Number, blockHash) && blockFinder.FindBlock(blockHash, header.Number) is null)
+        {
+            header = null;
+        }
         if (header is null && (searchBadBlocks || badBlocksOnly))
         {
             foreach (Block block in debugBridge.GetBadBlocks())
