@@ -539,7 +539,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
     }
 
     /// <summary>How long a clean shutdown may spend converting the in-memory tail.</summary>
-    internal static readonly TimeSpan ShutdownTailBudget = TimeSpan.FromSeconds(30);
+    internal static readonly TimeSpan ShutdownTailBudget = TimeSpan.FromSeconds(10);
 
     private void PersistInMemoryTail()
     {
