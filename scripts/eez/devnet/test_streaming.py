@@ -17,7 +17,7 @@ import upstream
 class StreamingSourceTests(unittest.TestCase):
     def invoke(self, directory, factory="EthBlockExecutorFactory", main_streaming=False, changed=False, merged=False, revision=""):
         head, core = "a" * 40, "b" * 40
-        selected = head if main_streaming else upstream.REVIEWED_STREAMING_REVISION
+        selected = revision or (head if main_streaming else upstream.REVIEWED_STREAMING_REVISION)
         client = b"StreamingProverClient .prove_stream(request)"
         execution = ("type BlockExecutorFactory = " + factory + "<Receipt>;").encode()
         sources = {"crates/eez-prover-client/src/lib.rs": client, "crates/eez-evm/src/lib.rs": execution}
@@ -67,11 +67,12 @@ class StreamingSourceTests(unittest.TestCase):
                 self.assertFalse((Path(directory) / "manifest.json").exists())
 
     def test_explicit_reviewed_revision_is_replayable_before_merge(self):
-        with tempfile.TemporaryDirectory() as directory:
-            manifest, calls = self.invoke(Path(directory), revision=upstream.REVIEWED_STREAMING_REVISION)
-            self.assertEqual(manifest["revision"], upstream.REVIEWED_STREAMING_REVISION)
-            self.assertEqual(manifest["streaming"]["source"], "reviewed-pr206-replay")
-            self.assertFalse(any(path.startswith("compare/") for path in calls))
+        for revision in ("32549bff918f5d9ac14ed8a78eace22e5c114d4c", "30e6a1fc319d1bf02a4251dbbee240cefcf9310c"):
+            with self.subTest(revision=revision), tempfile.TemporaryDirectory() as directory:
+                manifest, calls = self.invoke(Path(directory), revision=revision)
+                self.assertEqual(manifest["revision"], revision)
+                self.assertEqual(manifest["streaming"]["source"], "reviewed-pr206-replay")
+                self.assertFalse(any(path.startswith("compare/") for path in calls))
 
     def test_source_blob_digest_size_and_encoding_are_checked(self):
         data = b"source"

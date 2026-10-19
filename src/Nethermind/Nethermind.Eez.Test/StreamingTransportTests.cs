@@ -238,7 +238,7 @@ public class StreamingTransportTests
     }
 
     [Test]
-    public async Task Run_PipelinedBlocksAndFinalize_KeepOneQueuedFrameAndDrainInOrder()
+    public async Task Run_PipelinedBlocksAndFinalize_KeepOneQueuedFrameAndDrainInOrder([Values(2, 7)] int blockCount)
     {
         TaskCompletionSource<ExecutedStreamingBlock> second = new(TaskCreationOptions.RunContinuationsAsynchronously);
         TaskCompletionSource queued = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -247,9 +247,15 @@ public class StreamingTransportTests
         {
             _executions++;
             if (operation.Block!.Number == 11) return _worker.Task;
-            Assert.That(operation.PreStateRoot, Is.EqualTo(Hash(31)), "dependent work sees the committed predecessor state");
-            secondStarted.SetResult();
-            return second.Task;
+            ulong number = operation.Block.Number;
+            Assert.That(operation.PreStateRoot, Is.EqualTo(Hash((byte)(number + 19))), "dependent work sees the committed predecessor state");
+            if (number == 12)
+            {
+                secondStarted.SetResult();
+                return second.Task;
+            }
+            return Task.FromResult(new ExecutedStreamingBlock(number, Hash((byte)number), Hash((byte)(number - 1)),
+                Hash((byte)(number + 19)), Hash((byte)(number + 20))));
         }, finalize: (_, _) => Task.FromResult(TestProof()));
         _input.Add(BlockFrame);
         _input.Add(() =>
@@ -268,7 +274,29 @@ public class StreamingTransportTests
             });
             return frame;
         });
-        _input.Add(() => Bound(4, new Finalize { FromBlock = 11, ToBlock = 12, TerminalHash = Hash(12), Settlement = new SettlementInput { AbiCalldata = Hash(90) } }));
+        for (int index = 2; index < blockCount; index++)
+        {
+            ulong number = (ulong)(11 + index);
+            _input.Add(() => Bound(number - 9, new StreamBlock
+            {
+                Data = new BlockWitness
+                {
+                    Number = number,
+                    Hash = Hash((byte)number),
+                    ParentHash = Hash((byte)(number - 1)),
+                    Rlp = Hash((byte)number),
+                    Witness = new ExecutionWitness(),
+                }
+            }));
+        }
+        ulong terminal = (ulong)(10 + blockCount);
+        _input.Add(() => Bound((ulong)(blockCount + 2), new Finalize
+        {
+            FromBlock = 11,
+            ToBlock = terminal,
+            TerminalHash = Hash((byte)terminal),
+            Settlement = new SettlementInput { AbiCalldata = Hash(90) },
+        }));
         Task stream = Run();
         await queued.Task;
         Assert.That((_input.Reads, _executions, _output.Frames.Count), Is.EqualTo((3, 1, 1)), "one queued data frame stops further reads");
@@ -278,8 +306,11 @@ public class StreamingTransportTests
         second.SetResult(new ExecutedStreamingBlock(12, Hash(12), Hash(11), Hash(31), Hash(32)));
         await stream;
         await _admission.WaitUntilIdle();
-        Assert.That(_output.Frames.Select(static frame => frame.RequestId), Is.EqualTo(new ulong[] { 1, 2, 3, 4 }));
-        Assert.That((_output.Frames[2].Validated.Number, _output.Frames[3].Proof, _executions), Is.EqualTo((12UL, TestProof(), 2)),
+        Assert.That(_output.Frames.Select(static frame => frame.RequestId),
+            Is.EqualTo(Enumerable.Range(1, blockCount + 2).Select(static number => (ulong)number)), "every queued request receives one ordered response");
+        Assert.That(_output.Frames.Skip(1).Take(blockCount).Select(static frame => frame.Validated.Number),
+            Is.EqualTo(Enumerable.Range(11, blockCount).Select(static number => (ulong)number)), "each block validates after its predecessor");
+        Assert.That((_output.Frames[^1].Proof, _executions), Is.EqualTo((TestProof(), blockCount)),
             "pipelined validation and the terminal proof use one execution slot");
     }
 

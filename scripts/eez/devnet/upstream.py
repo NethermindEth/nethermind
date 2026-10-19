@@ -12,7 +12,8 @@ import zipfile
 
 REPOSITORY = "eez-association/eez-rollup0"
 PROFILES = {"rollup0": REPOSITORY, "rollupx": "eez-association/eez-rollupX"}
-REVIEWED_STREAMING_REVISION = "30e6a1fc319d1bf02a4251dbbee240cefcf9310c"
+REVIEWED_STREAMING_REVISION = "32549bff918f5d9ac14ed8a78eace22e5c114d4c"
+REVIEWED_STREAMING_REPLAYS = (REVIEWED_STREAMING_REVISION, "30e6a1fc319d1bf02a4251dbbee240cefcf9310c")
 BINARIES = ("eez-composer", "eez-follower", "eez-proof-signer", "eez-genesis-state-root", "eez-genesis-block-hash")
 
 
@@ -42,7 +43,7 @@ def resolve(args):
 
     head = sha(metadata("commits/main")["sha"])
     source = sha(args.revision) if args.revision else head
-    reviewed_replay = getattr(args, "streaming", False) and repository == REPOSITORY and source == REVIEWED_STREAMING_REVISION
+    reviewed_replay = getattr(args, "streaming", False) and repository == REPOSITORY and source in REVIEWED_STREAMING_REPLAYS
     if source != head and not reviewed_replay:
         comparison = metadata("compare/" + source + "..." + head)
         if comparison["merge_base_commit"]["sha"] != source:
