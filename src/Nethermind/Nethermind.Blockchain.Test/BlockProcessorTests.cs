@@ -1885,7 +1885,9 @@ public partial class BlockProcessorTests
         balManager.ReturnTxProcessor(1);
         balManager.ReturnTxProcessor(2);
 
-        Assert.That(parentReaderFactory.DisposedScopes, Is.EqualTo(0), "a returned processor keeps its parent reader for the block");
+        // The pool keeps one processor per core and disposes the rest, together with their parent readers.
+        int pooled = Math.Min(2, Environment.ProcessorCount);
+        Assert.That(parentReaderFactory.DisposedScopes, Is.EqualTo(2 - pooled), "a pooled processor keeps its parent reader for the block");
 
         Block nextBlock = Build.A.Block
             .WithNumber(7)
