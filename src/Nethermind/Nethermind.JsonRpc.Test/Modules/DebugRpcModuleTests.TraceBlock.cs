@@ -1465,7 +1465,7 @@ public partial class DebugRpcModuleTests
             installer.InvokeMethod("install", fail);
         Exception exception = Assert.Catch(() =>
         {
-            using GethLikeJavaScriptTxTracer tracer = new(engine, new JavaScriptDb(chain.MainWorldState), new JavaScriptContext(),
+            using GethLikeJavaScriptTxTracer _ = new(engine, new JavaScriptDb(chain.MainWorldState), new JavaScriptContext(),
                 new GethTraceOptions
                 {
                     CaptureJavaScriptErrors = true,
