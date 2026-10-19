@@ -269,7 +269,7 @@ public class BlockchainProcessorTests
         private const int ProcessingWait = 10_000;
         private const int MockRecheckInterval = 200;
 
-        public ProcessingTestContext(bool startProcessor, int blockProcessingTimeoutMs = 0, TimeProvider? timeProvider = null)
+        public ProcessingTestContext(bool startProcessor, int blockProcessingTimeoutMs = 0, TimeProvider? timeProvider = null, bool startProcessorOnThreadPool = false)
         {
             _logger = _logManager.GetClassLogger<ProcessingTestContext>();
             _stateReader = Substitute.For<IStateReader>();
@@ -297,7 +297,12 @@ public class BlockchainProcessorTests
             };
 
             if (startProcessor)
-                _processor.Start();
+            {
+                if (startProcessorOnThreadPool)
+                    Task.Run(_processor.Start).GetAwaiter().GetResult();
+                else
+                    _processor.Start();
+            }
         }
 
         public async ValueTask DisposeAsync()
@@ -463,6 +468,8 @@ public class BlockchainProcessorTests
             return this;
         }
 
+        public Task SuggestAsync(Block block) => Task.Run(() => _blockTree.SuggestBlock(block));
+
         public ProcessingTestContext SuggestedWithoutProcessingAndMoveToMain(Block block)
         {
             AddBlockResult result = _blockTree.SuggestBlock(block, BlockTreeSuggestOptions.None);
@@ -493,6 +500,12 @@ public class BlockchainProcessorTests
         public ProcessingTestContext Recovered(Block block)
         {
             _recoveryStep.Allow(block.Hash!);
+            return this;
+        }
+
+        public ProcessingTestContext AllowedToProcess(Block block)
+        {
+            _branchProcessor.Allow(block.Hash!);
             return this;
         }
 
@@ -559,6 +572,8 @@ public class BlockchainProcessorTests
             Assert.That(enqueue.Wait(ProcessingWait), Is.True, $"{copy.ToString(Block.Format.Short)} was not queued");
             return this;
         }
+
+        public Task EnqueueDirectly(Block block) => Task.Run(async () => await _processor.Enqueue(block, ProcessingOptions.None));
 
         public ProcessingTestContext RecoveryFails(Block block)
         {
@@ -1055,6 +1070,54 @@ public class BlockchainProcessorTests
         Task retry = Task.Run(() => context.EnqueuedAgain(block2));
         context.Processed(block2).BecomesNewHead();
         await retry;
+    }
+
+    [TestCase(false, TestName = "Event_driven_suggestion_does_not_block_on_processing")]
+    [TestCase(true, TestName = "Direct_enqueue_keeps_inline_processing_when_queue_is_empty")]
+    [MaxTime(Timeout.MaxTestTime)]
+    public async Task Enqueue_path_preserves_expected_processing_scheduling(bool directEnqueue)
+    {
+        Block first = _block0;
+        using ManualResetEventSlim processing = new(false);
+        await using ProcessingTestContext context = new ProcessingTestContext(true, startProcessorOnThreadPool: true)
+            .QueueIsEmpty(1)
+            .OnBlockProcessing(block =>
+            {
+                if (block.Hash == first.Hash) processing.Set();
+            });
+
+        if (directEnqueue)
+            context.Suggested(first, BlockTreeSuggestOptions.None);
+
+        Task? enqueue = null;
+        try
+        {
+            context.Recovered(first);
+            enqueue = directEnqueue ? context.EnqueueDirectly(first) : context.SuggestAsync(first);
+            Assert.That(processing.Wait(TimeSpan.FromSeconds(10)), Is.True, "the first block never started processing");
+            Task removed = context.WaitUntilRemoved(first);
+            bool returnedWhileGated;
+            if (directEnqueue)
+            {
+                returnedWhileGated = enqueue.IsCompleted;
+            }
+            else
+            {
+                await enqueue.WaitAsync(TimeSpan.FromSeconds(10));
+                returnedWhileGated = enqueue.IsCompleted;
+            }
+            context.AllowedToProcess(first);
+            await enqueue.WaitAsync(TimeSpan.FromSeconds(10));
+            await removed.WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.That(returnedWhileGated, Is.EqualTo(!directEnqueue), "the enqueue path used unexpected processing scheduling");
+        }
+        finally
+        {
+            context.Recovered(first);
+            context.AllowedToProcess(first);
+            if (enqueue is not null)
+                await Task.WhenAny(enqueue, Task.Delay(TimeSpan.FromSeconds(10)));
+        }
     }
 
     /// <summary>
