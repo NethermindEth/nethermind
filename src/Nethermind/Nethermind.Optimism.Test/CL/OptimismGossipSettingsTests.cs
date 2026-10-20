@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -272,9 +271,9 @@ public class OptimismGossipSettingsTests
             PeerScore score = new(settings);
             TopicScore topic = score.GetTopicScore(BlocksTopic);
             topic.MeshJoinTime = DateTime.UtcNow.AddMinutes(-1);
-            Assert.That(score.GetScore(new Dictionary<string, int>()), Is.Zero);
+            Assert.That(score.GetScore([]), Is.Zero);
             topic.RecordInvalidMessage();
-            Assert.That(score.GetScore(new Dictionary<string, int>()), Is.Negative);
+            Assert.That(score.GetScore([]), Is.Negative);
         }
     }
 }

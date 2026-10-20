@@ -83,9 +83,9 @@ public class ShutterGossipSettingsTests
                 PeerScore score = new(settings);
                 TopicScore topicScore = score.GetTopicScore(topic);
                 topicScore.MeshJoinTime = System.DateTime.UtcNow.AddMinutes(-1);
-                Assert.That(score.GetScore(new Dictionary<string, int>()), Is.Zero);
+                Assert.That(score.GetScore([]), Is.Zero);
                 topicScore.RecordInvalidMessage();
-                Assert.That(score.GetScore(new Dictionary<string, int>()), Is.Negative);
+                Assert.That(score.GetScore([]), Is.Negative);
             }
         }
     }
