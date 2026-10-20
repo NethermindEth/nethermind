@@ -804,7 +804,8 @@ public class GethGenesisLoaderTests
     [TestCase("\"minHistoryRetentionEpochs\": 14299", HistoryRetentionConstants.HistoryPruneEpochs)]
     [TestCase("\"minHistoryRetentionEpochs\": \"0x37db\"", HistoryRetentionConstants.HistoryPruneEpochs)]
     [TestCase("\"minHistoryRetentionEpochs\": 0", 0UL)]
-    [TestCase("\"minHistoryRetentionEpochs\": 18446744073709551615", ulong.MaxValue)]
+    [TestCase("\"minHistoryRetentionEpochs\": 4294967295", (ulong)uint.MaxValue)]
+    [TestCase("\"minHistoryRetentionEpochs\": \"0xffffffff\"", (ulong)uint.MaxValue)]
     public void Loads_minimum_history_retention(string configExtra, ulong expected)
     {
         ChainSpec chainSpec = LoadStandardGethGenesis(configExtra: configExtra);
@@ -818,7 +819,7 @@ public class GethGenesisLoaderTests
     }
 
     [Test]
-    public void Rejects_invalid_minimum_history_retention([Values("-1", "1.5", "true", "[]", "{}", "\"invalid\"")] string value) =>
+    public void Rejects_invalid_minimum_history_retention([Values("-1", "1.5", "true", "[]", "{}", "\"invalid\"", "4294967296", "\"0x100000000\"", "18446744073709551615")] string value) =>
         Assert.That(() => LoadStandardGethGenesis(configExtra: $"\"minHistoryRetentionEpochs\": {value}"), Throws.TypeOf<InvalidDataException>());
 
     /// <summary>

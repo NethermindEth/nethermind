@@ -44,6 +44,7 @@ public class GethGenesisLoader(IJsonSerializer serializer, ILogManager? logManag
         ArgumentNullException.ThrowIfNull(gethGenesisJson);
         GethGenesisConfigJson config = gethGenesisJson.Config
             ?? throw new ArgumentNullException(nameof(gethGenesisJson.Config));
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(config.MinHistoryRetentionEpochs ?? 0, (ulong)uint.MaxValue, nameof(config.MinHistoryRetentionEpochs));
 
         ChainSpec chainSpec = new()
         {
