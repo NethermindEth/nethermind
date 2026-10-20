@@ -3,6 +3,7 @@
 
 using System;
 using System.Diagnostics.CodeAnalysis;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
@@ -136,6 +137,17 @@ public interface IWorldStateScopeProvider
         /// <param name="sink">Optional sink that receives each account/slot value read during the pass.</param>
         /// <returns>A task that completes when the asynchronous warmup finishes.</returns>
         Task HintBal(ReadOnlyBlockAccessList bal, IAsyncBalReaderSink? sink = null);
+
+        /// <summary>
+        /// Writes the final balance, nonce, code and storage values of every account the Block Access List changed.
+        /// </summary>
+        /// <remarks>
+        /// Under EIP-158 an account left empty is removed along with its storage. The root hash is not updated;
+        /// call <see cref="UpdateRootHash"/> afterwards. See <see cref="ScopeBalApplier"/> for the generic implementation.
+        /// </remarks>
+        /// <param name="bal">The Block Access List whose last change per field is applied.</param>
+        /// <param name="cancellationToken">Once cancelled, the apply returns early, leaving the scope partially written and fit only to be discarded.</param>
+        void ApplyBal(ReadOnlyBlockAccessList bal, CancellationToken cancellationToken = default);
     }
 
     /// <summary>

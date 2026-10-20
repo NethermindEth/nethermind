@@ -3,12 +3,12 @@
 
 using System.Text.Json.Serialization;
 using Nethermind.Consensus.Decoders;
+using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.ExecutionRequest;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
-using Nethermind.Crypto;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Merge.Plugin.Data;
@@ -36,7 +36,7 @@ public class ExecutionPayloadV3 : ExecutionPayload, IExecutionPayloadFactory<Exe
         executionPayload.InclusionListTransactions = block.InclusionListTransactions is null ? [] : InclusionListDecoder.Encode(block.InclusionListTransactions);
         if (block.Header.RecursiveStark is { } recursiveStark)
         {
-            executionPayload.RecursiveStarkProof = recursiveStark.StarkProof;
+            executionPayload.RecursiveStarkProof = block.StarkProof ?? throw new System.InvalidOperationException("Missing block proof body");
             executionPayload.RecursiveStarkBlockDepsHash = recursiveStark.BlockDepsHash.Bytes.ToArray();
         }
 
@@ -47,17 +47,6 @@ public class ExecutionPayloadV3 : ExecutionPayload, IExecutionPayloadFactory<Exe
 
     public override Result<Block> TryGetBlock(UInt256? totalDifficulty = null)
     {
-        if (InclusionListRecursiveStark is { } inclusionProof
-            && (InclusionListTransactions is null || !inclusionProof.HasValidShape))
-        {
-            return Result<Block>.Fail("Invalid inclusion-list recursive STARK");
-        }
-
-        if (InclusionListProvenDependencies is { } dependencies
-            && (InclusionListRecursiveStark is null || InclusionListTransactions is null
-                || !Nethermind.Consensus.ProofAggregation.InclusionListProofValidator.HasValidMetadataLength(dependencies)))
-            return Result<Block>.Fail("Invalid inclusion-list proven dependencies");
-
         Result<Block> baseResult = base.TryGetBlock(totalDifficulty);
         if (baseResult.IsError)
         {
@@ -69,9 +58,18 @@ public class ExecutionPayloadV3 : ExecutionPayload, IExecutionPayloadFactory<Exe
         block.Header.BlobGasUsed = BlobGasUsed;
         block.Header.ExcessBlobGas = ExcessBlobGas;
         block.Header.RequestsHash = ExecutionRequests is not null ? ExecutionRequestExtensions.CalculateHashFromFlatEncodedRequests(ExecutionRequests) : null;
-        block.InclusionListTransactions = InclusionListTransactions is not null ? TxsDecoder.DecodeTxs(InclusionListTransactions, true).Transactions : null;
-        block.InclusionListRecursiveStark = InclusionListRecursiveStark;
-        block.InclusionListProvenDependencies = InclusionListProvenDependencies;
+        if (InclusionLists is not null)
+        {
+            // ValidateParams has already checked each list's shape. Each list is decoded on its own, so its commitment stays
+            // with exactly its transactions.
+            CommitteeInclusionList[] lists = InclusionListV1.Decode(InclusionLists);
+            block.InclusionLists = lists;
+            block.InclusionListTransactions = CommitteeInclusionList.Flatten(lists);
+        }
+        else
+        {
+            block.InclusionListTransactions = InclusionListTransactions is not null ? TxsDecoder.DecodeTxs(InclusionListTransactions, true).Transactions : null;
+        }
         if (RecursiveStarkProof is null && RecursiveStarkBlockDepsHash is not null)
         {
             return Result<Block>.Fail($"Missing {nameof(RecursiveStarkProof)}");
@@ -79,7 +77,7 @@ public class ExecutionPayloadV3 : ExecutionPayload, IExecutionPayloadFactory<Exe
 
         if (RecursiveStarkProof is not null)
         {
-            if (RecursiveStarkProof.Length > NativeLeanProofVerifier.MaxProofBytes)
+            if (RecursiveStarkProof.Length > Eip8288Constants.MaxAggregateProofBytes)
             {
                 return Result<Block>.Fail($"{nameof(RecursiveStarkProof)} exceeds the proof size limit");
             }
@@ -89,7 +87,8 @@ public class ExecutionPayloadV3 : ExecutionPayload, IExecutionPayloadFactory<Exe
                 return Result<Block>.Fail($"Invalid {nameof(RecursiveStarkBlockDepsHash)}: expected {Hash256.Size} bytes, got {RecursiveStarkBlockDepsHash?.Length.ToString() ?? "none"}");
             }
 
-            block.Header.RecursiveStark = new RecursiveStark(RecursiveStarkProof, new Hash256(RecursiveStarkBlockDepsHash));
+            block.StarkProof = RecursiveStarkProof;
+            block.Header.RecursiveStark = new RecursiveStarkCommitment(Keccak.Compute(RecursiveStarkProof), new Hash256(RecursiveStarkBlockDepsHash));
         }
 
         return baseResult;

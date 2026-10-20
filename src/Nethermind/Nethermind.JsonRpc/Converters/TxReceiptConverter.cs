@@ -15,7 +15,7 @@ namespace Nethermind.JsonRpc.Converters;
 
 public class TxReceiptConverter : JsonConverter<TxReceipt>
 {
-    public override TxReceipt? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) => JsonSerializer.Deserialize<ReceiptForRpc>(ref reader, options)?.ToReceipt();
+    public override TxReceipt? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) => TypeInfoJsonSerializer.Deserialize<ReceiptForRpc>(ref reader, options)?.ToReceipt();
 
     public override void Write(Utf8JsonWriter writer, TxReceipt value, JsonSerializerOptions options)
     {
@@ -28,26 +28,26 @@ public class TxReceiptConverter : JsonConverter<TxReceipt>
             if (receipt.Type != TxType.Legacy)
             {
                 writer.WritePropertyName("type");
-                JsonSerializer.Serialize(writer, receipt.Type, options);
+                TypeInfoJsonSerializer.Serialize(writer, receipt.Type, options);
             }
             // EIP-658: a receipt carries either a post-state root (pre-Byzantium) or a status code, never both.
             if (receipt.Root is not null)
             {
                 writer.WritePropertyName("root");
-                JsonSerializer.Serialize(writer, receipt.Root, options);
+                TypeInfoJsonSerializer.Serialize(writer, receipt.Root, options);
             }
             else
             {
                 writer.WritePropertyName("status");
-                JsonSerializer.Serialize(writer, receipt.Status, options);
+                TypeInfoJsonSerializer.Serialize(writer, receipt.Status, options);
             }
 
             writer.WritePropertyName("cumulativeGasUsed");
-            JsonSerializer.Serialize(writer, receipt.CumulativeGasUsed, options);
+            TypeInfoJsonSerializer.Serialize(writer, receipt.CumulativeGasUsed, options);
             writer.WritePropertyName("effectiveGasPrice");
-            JsonSerializer.Serialize(writer, receipt.EffectiveGasPrice, options);
+            TypeInfoJsonSerializer.Serialize(writer, receipt.EffectiveGasPrice, options);
             writer.WritePropertyName("logsBloom");
-            JsonSerializer.Serialize(writer, receipt.LogsBloom, options);
+            TypeInfoJsonSerializer.Serialize(writer, receipt.LogsBloom, options);
             writer.WritePropertyName("logs");
             if (receipt.Logs is ReceiptLogsForRpc { Count: > 0 } logs)
             {
@@ -61,35 +61,35 @@ public class TxReceiptConverter : JsonConverter<TxReceipt>
             if (receipt.Type == TxType.FrameTx)
             {
                 writer.WritePropertyName("payer");
-                JsonSerializer.Serialize(writer, receipt.Payer, options);
+                TypeInfoJsonSerializer.Serialize(writer, receipt.Payer, options);
                 writer.WritePropertyName("frameReceipts");
-                JsonSerializer.Serialize(writer, receipt.FrameReceipts, options);
+                TypeInfoJsonSerializer.Serialize(writer, receipt.FrameReceipts, options);
             }
             writer.WritePropertyName("transactionHash");
-            JsonSerializer.Serialize(writer, receipt.TransactionHash, options);
+            TypeInfoJsonSerializer.Serialize(writer, receipt.TransactionHash, options);
             writer.WritePropertyName("contractAddress");
-            JsonSerializer.Serialize(writer, receipt.ContractAddress, options);
+            TypeInfoJsonSerializer.Serialize(writer, receipt.ContractAddress, options);
             writer.WritePropertyName("gasUsed");
-            JsonSerializer.Serialize(writer, receipt.GasUsed, options);
+            TypeInfoJsonSerializer.Serialize(writer, receipt.GasUsed, options);
             // Diagnostic-only EIP-7778 gas breakdown.
             if (value.BlockGasUsed > 0)
             {
                 writer.WritePropertyName("blockGasUsed");
-                JsonSerializer.Serialize(writer, value.BlockGasUsed, options);
+                TypeInfoJsonSerializer.Serialize(writer, value.BlockGasUsed, options);
             }
             // Diagnostic-only EIP-8037 gas breakdown.
             if (value.StorageGasUsed > 0 || value.ExecutionGasUsed > 0)
             {
                 writer.WritePropertyName("executionGasUsed");
-                JsonSerializer.Serialize(writer, value.ExecutionGasUsed, options);
+                TypeInfoJsonSerializer.Serialize(writer, value.ExecutionGasUsed, options);
                 writer.WritePropertyName("storageGasUsed");
-                JsonSerializer.Serialize(writer, value.StorageGasUsed, options);
+                TypeInfoJsonSerializer.Serialize(writer, value.StorageGasUsed, options);
             }
             writer.WritePropertyName("blockHash");
-            JsonSerializer.Serialize(writer, receipt.BlockHash ?? Hash256.Zero, options);
+            TypeInfoJsonSerializer.Serialize(writer, receipt.BlockHash ?? Hash256.Zero, options);
 
             writer.WritePropertyName("transactionIndex");
-            JsonSerializer.Serialize(writer, UInt256.Parse(receipt.TransactionIndex.ToString(), NumberStyles.Integer), options);
+            TypeInfoJsonSerializer.Serialize(writer, UInt256.Parse(receipt.TransactionIndex.ToString(), NumberStyles.Integer), options);
 
             writer.WriteEndObject();
         }

@@ -12,7 +12,8 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.ProtocolHandlers;
-using Nethermind.Network.P2P.Subprotocols.Lean;
+using Nethermind.Network.P2P.Subprotocols.Eth.V73;
+using Nethermind.Network.P2P.Subprotocols.Eth.V73.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Stats.Model;
 using NSubstitute;
@@ -29,21 +30,13 @@ public sealed class TcpRlpxLoopback : IDisposable
     private readonly Socket _sender;
     private readonly Socket _receiver;
     private const int ReadChunkBytes = 64 * 1024;
-    private const int WrapperPacketType = 1;
-    private const int TotalBytesOffset = Hash256.Size;
-    private const int ChunkIndexOffset = TotalBytesOffset + sizeof(int);
-    private const int ChunkCountOffset = ChunkIndexOffset + sizeof(int);
-    private const int ChunkSizeOffset = ChunkCountOffset + sizeof(int);
-    private readonly LeanProofWrapperMessageSerializer _serializer = new();
-    private readonly LeanProofChunkMessageSerializer _chunks = new();
-    private readonly bool _useChunks;
+    private readonly ProofWrappersMessageSerializer _serializer = new();
     private TaskCompletionSource<byte[]>? _received;
     private CancellationTokenSource? _transferStop;
     private int _disposed;
 
-    public TcpRlpxLoopback(Action<ZeroPacket>? receive = null)
+    public TcpRlpxLoopback()
     {
-        _useChunks = receive is not null;
         byte[] aes = Enumerable.Range(0, 32).Select(i => (byte)i).ToArray();
         byte[] mac = Enumerable.Range(32, 32).Select(i => (byte)i).ToArray();
         KeccakHash initial = KeccakHash.Create();
@@ -66,28 +59,10 @@ public sealed class TcpRlpxLoopback : IDisposable
         session.When(s => s.ReceiveMessage(Arg.Any<ZeroPacket>())).Do(call =>
         {
             ZeroPacket packet = call.Arg<ZeroPacket>();
-            if (packet.PacketType != WrapperPacketType) throw new InvalidDataException("Unexpected proof packet type");
-            int readerIndex = packet.Content.ReaderIndex;
-            if (_useChunks)
-            {
-                if (packet.Content.ReadableBytes < LeanProofChunkMessage.HeaderSize)
-                    throw new InvalidDataException("Incomplete lean chunk header");
-                int total = packet.Content.GetInt(readerIndex + TotalBytesOffset);
-                int index = packet.Content.GetInt(readerIndex + ChunkIndexOffset);
-                int count = packet.Content.GetInt(readerIndex + ChunkCountOffset);
-                int size = packet.Content.GetInt(readerIndex + ChunkSizeOffset);
-                if (!LeanProofChunkMessage.IsValidGeometry(total, index, count, size,
-                        packet.Content.ReadableBytes - LeanProofChunkMessage.HeaderSize))
-                    throw new InvalidDataException("Invalid lean chunk geometry");
-                receive!(packet);
-                // The protocol queue owns reassembly and integrity checks; this result marks wire delivery.
-                if (index == count - 1) _received!.TrySetResult([]);
-                return;
-            }
-            byte[] wrapper = _serializer.Deserialize(packet.Content).Wrapper;
-            packet.Content.SetReaderIndex(readerIndex);
-            receive?.Invoke(packet);
-            _received!.TrySetResult(wrapper);
+            if (packet.PacketType != Eth73MessageCode.ProofWrappers) throw new InvalidDataException("Unexpected proof packet type");
+            byte[][] wrappers = _serializer.Deserialize(packet.Content).Wrappers;
+            if (wrappers.Length != 1) throw new InvalidDataException("Expected one wrapper per ProofWrappers message");
+            _received!.TrySetResult(wrappers[0]);
         });
         session.When(s => s.InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>())).Do(call =>
         {
@@ -119,44 +94,18 @@ public sealed class TcpRlpxLoopback : IDisposable
         List<IByteBuffer> frames = [];
         try
         {
-            if (_useChunks)
+            IByteBuffer? input = Unpooled.Buffer(wrapper.Length + 1);
+            try
             {
-                ValueHash256 hash = ValueKeccak.Compute(wrapper);
-                const int chunkSize = LeanProofChunkMessage.DefaultChunkSize;
-                int count = (wrapper.Length + chunkSize - 1) / chunkSize;
-                for (int index = 0; index < count; index++)
-                {
-                    int offset = index * chunkSize;
-                    ReadOnlyMemory<byte> data = wrapper.AsMemory(offset, Math.Min(chunkSize, wrapper.Length - offset));
-                    IByteBuffer? input = Unpooled.Buffer(data.Length + LeanProofChunkMessage.HeaderSize + 1);
-                    try
-                    {
-                        LeanProofChunkMessage message = new(hash, wrapper.Length, index, count, chunkSize, data);
-                        input.WriteByte(message.PacketType);
-                        _chunks.Serialize(input, message);
-                        IByteBuffer encoded = input;
-                        input = null;
-                        _outbound.WriteOutbound(encoded);
-                        frames.Add(_outbound.ReadOutbound<IByteBuffer>());
-                    }
-                    finally { input?.Release(); }
-                }
+                ProofWrappersMessage message = new(0, [wrapper]);
+                input.WriteByte(message.PacketType);
+                _serializer.Serialize(input, message);
+                IByteBuffer encoded = input;
+                input = null;
+                _outbound.WriteOutbound(encoded);
+                frames.Add(_outbound.ReadOutbound<IByteBuffer>());
             }
-            else
-            {
-                IByteBuffer? input = Unpooled.Buffer(wrapper.Length + 1);
-                try
-                {
-                    LeanProofWrapperMessage message = new(wrapper);
-                    input.WriteByte(message.PacketType);
-                    _serializer.Serialize(input, message);
-                    IByteBuffer encoded = input;
-                    input = null;
-                    _outbound.WriteOutbound(encoded);
-                    frames.Add(_outbound.ReadOutbound<IByteBuffer>());
-                }
-                finally { input?.Release(); }
-            }
+            finally { input?.Release(); }
             double encodeMs = Stopwatch.GetElapsedTime(started).TotalMilliseconds;
             int wireBytes = 0;
             long transferStarted = Stopwatch.GetTimestamp();

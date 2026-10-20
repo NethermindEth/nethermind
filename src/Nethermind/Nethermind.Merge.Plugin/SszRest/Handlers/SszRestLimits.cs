@@ -15,4 +15,11 @@ public static class SszRestLimits
 {
     public const int MaxBodiesRequest = 32;
     public const int MaxBlobsRequest = 128;
+
+    // ExecutionWitness bounds (execution-apis#885); the per-item ones come from the stateless spec.
+    public const int MaxWitnessItems = 1 << 20;
+    public const int MaxBytesPerWitnessNode = 1 << 10;
+    public const int MaxBytesPerCode = 1 << 16;
+    public const int MaxBytesPerHeader = 1 << 10;
+    public const int MaxWitnessHeaders = 1 << 8;
 }

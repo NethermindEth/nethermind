@@ -125,32 +125,24 @@ namespace Nethermind.Network
         public static long OversizedTransactionsSkipped;
 
         [CounterMetric]
-        [Description("EIP-8437 lean/1 proof object events by object kind, 0 for events without a kind.")]
-        [KeyIsLabel("kind", "event")]
-        public static NonBlocking.ConcurrentDictionary<P2P.Subprotocols.Lean.LeanObjectEventKey, long> LeanObjectEvents { get; } = new();
-
-        [CounterMetric]
-        [Description("Number of lean/1 chunks verified and retained.")]
-        public static long LeanChunksReceived;
-
-        [CounterMetric]
-        [Description("Number of lean/1 chunks written to peers.")]
-        public static long LeanChunksServed;
+        [Description("EIP-8437 eth/73 proof wrapper transport events.")]
+        [KeyIsLabel("event")]
+        public static NonBlocking.ConcurrentDictionary<string, long> ProofWrapperEvents { get; } = new();
 
         [GaugeMetric]
-        [Description("Number of peers with a negotiated lean/1 transport.")]
-        public static long LeanPeers { get; set; }
+        [Description("Number of eth/73 peers exchanging proof wrappers.")]
+        public static long ProofWrapperPeers { get; set; }
 
         [GaugeMetric]
-        [Description("Number of validated lean/1 objects held for serving.")]
-        public static long LeanStoredObjects { get; set; }
+        [Description("Number of validated proof wrappers offered to peers.")]
+        public static long ProofWrapperStoredObjects { get; set; }
 
         [GaugeMetric]
-        [Description("Number of lean/1 objects being reassembled or validated.")]
-        public static long LeanAssemblies { get; set; }
+        [Description("Number of announced proof wrappers being fetched or validated.")]
+        public static long ProofWrapperFetches { get; set; }
 
         [GaugeMetric]
-        [Description("Bytes charged to incomplete lean/1 assemblies.")]
-        public static long LeanIncompleteBytes { get; set; }
+        [Description("Bytes charged to proof wrapper responses, received wrappers and recovered envelopes.")]
+        public static long ProofWrapperChargedBytes { get; set; }
     }
 }

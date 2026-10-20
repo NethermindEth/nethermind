@@ -74,10 +74,10 @@ public partial class EngineModuleTests
             Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
             Assert.That(result.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
             Assert.That(result.Data.PayloadStatus.LatestValidHash, Is.EqualTo(head));
-            Assert.That(result.Data.PayloadId, Is.Null);
+            Assert.That(result.Data.PayloadId, Is.Not.Null, "the payload keeps improving without an initial block");
             Assert.That(chain.BlockTree.HeadHash, Is.EqualTo(head));
         }
-        factory.DidNotReceiveWithAnyArgs().StartBlockImprovementContext(default!, default!, default!, default, default, default!);
+        factory.ReceivedWithAnyArgs(1).StartBlockImprovementContext(default!, default!, default!, default, default, default!);
     }
 
     [Test]
@@ -590,7 +590,7 @@ public partial class EngineModuleTests
         Hash256 startingHead = chain.BlockTree.HeadHash!;
         chain.AddTransactions(tx1);
 
-        Task improvedBlockWait = chain.WaitForImprovedBlock();
+        Task improvedBlockWait = chain.WaitForImprovedBlock(minTransactions: 1);
         string? payloadId = rpc.engine_forkchoiceUpdatedV1(
                 new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead),
                 new PayloadAttributes { Timestamp = 100, PrevRandao = TestItem.KeccakA, SuggestedFeeRecipient = Address.Zero })
@@ -601,6 +601,10 @@ public partial class EngineModuleTests
         Task storedImprovementTask = payloadPreparation.WaitForStoredBlockAsync(payloadId, static block => block.Transactions.Length == 2, chain.CancellationToken);
         chain.AddTransactions(tx2);
         await storedImprovementTask;
+
+        // An improvement can finish before its context is published for getPayload.
+        ObservablePayloadPreparationService preparation = (ObservablePayloadPreparationService)chain.Container.Resolve<IPayloadPreparationService>();
+        await preparation.WaitForStoredBlockAsync(payloadId, static block => block.Transactions.Length == 2, chain.CancellationToken);
 
         StoringBlockImprovementContextFactory improvementContextFactory = (StoringBlockImprovementContextFactory)chain.Container.Resolve<IBlockImprovementContextFactory>();
         List<int?> transactionsLength = improvementContextFactory.SnapshotCreatedContexts()
@@ -1023,7 +1027,7 @@ public partial class EngineModuleTests
             return waiter.Completion.Task;
         }
 
-        protected override void ImproveBlock(string payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes, Block currentBestBlock, DateTimeOffset startDateTime, UInt256 currentBlockFees, SharedCancellationTokenSource cts)
+        protected override void ImproveBlock(string payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes, Block? currentBestBlock, DateTimeOffset startDateTime, UInt256 currentBlockFees, SharedCancellationTokenSource cts)
         {
             base.ImproveBlock(payloadId, parentHeader, payloadAttributes, currentBestBlock, startDateTime, currentBlockFees, cts);
 

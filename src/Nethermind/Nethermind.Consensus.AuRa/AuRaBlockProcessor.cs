@@ -17,6 +17,7 @@ using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
@@ -26,8 +27,6 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.TxPool;
-
-using Nethermind.Core.Crypto;
 
 namespace Nethermind.Consensus.AuRa
 {

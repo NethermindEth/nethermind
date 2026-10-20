@@ -11,6 +11,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -24,7 +25,7 @@ namespace Nethermind.Crypto.LeanFfi.Test;
 public class NativeBlockValidationTests
 {
     [OneTimeSetUp]
-    public void EnsureNativeLibraryLoads() => Assert.That(NativeLeanProofVerifier.AbiVersion, Is.EqualTo(5u));
+    public void EnsureNativeLibraryLoads() => Assert.That(NativeLeanProofVerifier.AbiVersion, Is.EqualTo(7u));
 
     [Test]
     public void BlockValidator_with_native_verifier_accepts_produced_recursive_stark()
@@ -47,20 +48,21 @@ public class NativeBlockValidationTests
     }
 
     [Test]
-    public void BlockValidator_with_native_verifier_requires_an_empty_proof_without_dependencies([Values] bool nativeEnvelope)
+    public void BlockValidator_with_native_verifier_requires_an_empty_proof_without_dependencies([Values] bool oldEnvelope)
     {
         BlockHeader parent = Build.A.BlockHeader.TestObject;
         Block block = Build.A.Block.WithParent(parent).TestObject;
-        ValueHash256 depsHash = Eip8288Dependencies.ComputeBlockDepsHash(block);
-        // The adapter's internal 12-byte envelope for the empty set is not the EIP-8288 empty stark_proof.
-        byte[] proof = nativeEnvelope
-            ? NativeLeanProofVerifier.Instance.ProveRecursiveStark(in depsHash, Eip8288Constants.AggregatedVk, new AggregationInput())
-            : [];
-        block.Header.RecursiveStark = new RecursiveStark(proof, new Hash256(depsHash));
+        ValueHash256 depsHash = Eip8288Dependencies.ComputeBlockDepsHash(block, FrameTxSigHash.ComputeValue);
+        // The native backend proves the empty set as the EIP-8288 empty stark_proof; the former 12-byte envelope is rejected.
+        byte[] proof = oldEnvelope
+            ? [(byte)'N', (byte)'L', (byte)'R', (byte)'3', 0, 0, 0, 0, 0, 0, 0, 0]
+            : NativeLeanProofVerifier.Instance.ProveRecursiveStark(in depsHash, Eip8288Constants.AggregatedVk, new AggregationInput());
+        block.StarkProof = proof;
+        block.Header.RecursiveStark = new RecursiveStarkCommitment(Keccak.Compute(proof), new Hash256(depsHash));
 
         bool result = CreateValidator().ValidateSuggestedBlock(block, parent, out string? error);
 
-        Assert.That(result, Is.EqualTo(!nativeEnvelope), error);
+        Assert.That(result, Is.EqualTo(!oldEnvelope), error);
     }
 
     private static (Block Block, BlockHeader Parent) BlockWithNativeProof(bool tamper)
@@ -80,10 +82,11 @@ public class NativeBlockValidationTests
         transaction.Hash = transaction.CalculateHash();
         Block block = Build.A.Block.WithParent(parent).WithTransactions(transaction).TestObject;
 
-        ValueHash256 depsHash = Eip8288Dependencies.ComputeBlockDepsHash(block);
+        ValueHash256 depsHash = Eip8288Dependencies.ComputeBlockDepsHash(block, FrameTxSigHash.ComputeValue);
         byte[] proof = NativeLeanProofVerifierTests.MixedProof();
         if (tamper) proof[^1] ^= 0xFF;
-        block.Header.RecursiveStark = new RecursiveStark(proof, new Hash256(depsHash));
+        block.StarkProof = proof;
+        block.Header.RecursiveStark = new RecursiveStarkCommitment(Keccak.Compute(proof), new Hash256(depsHash));
         return (block, parent);
     }
 
@@ -91,6 +94,7 @@ public class NativeBlockValidationTests
     {
         IReleaseSpec spec = Substitute.For<IReleaseSpec>();
         spec.IsEip8288Enabled.Returns(true);
+        spec.Eip8288AggregatedVk.Returns(Eip8288Verifier.PinnedAggregatedVk);
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);
 

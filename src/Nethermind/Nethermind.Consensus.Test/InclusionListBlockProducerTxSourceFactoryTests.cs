@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using System.Linq;
+using Nethermind.Consensus.ProofAggregation;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Test.ProofAggregation;
 using Nethermind.Consensus.Transactions;
@@ -41,7 +42,7 @@ public class InclusionListBlockProducerTxSourceFactoryTests
         dependency[31] = Eip8288Constants.LeanSphincsScheme;
         TxFrame[] frames = [FrameTxTestFrames.SelfVerify(FrameTxTestFrames.PrefixFrameGas),
             new(FrameMode.DepVerify, FrameFlags.None, null, Eip8288Constants.LeanSphincsVerificationGas, UInt256.Zero, dependency),
-            new(FrameMode.PostTx, FrameFlags.None, TestItem.AddressD, 10_000, UInt256.Zero, default)];
+            new(FrameMode.Assert, FrameFlags.None, TestItem.AddressD, 10_000, UInt256.Zero, default)];
         Transaction frame = new()
         {
             Type = TxType.FrameTx,
@@ -54,17 +55,25 @@ public class InclusionListBlockProducerTxSourceFactoryTests
             DecodedMaxFeePerGas = 1
         };
         FrameTxTestFrames.SignSecp256k1(frame, TestItem.PrivateKeyA, frame.SenderAddress);
-        List<FrameDependency> dependencies = Eip8288Dependencies.ForTransaction(frame);
-        byte[] proven = Eip8288Dependencies.Serialize(dependencies);
-        RecursiveStark proof = new([1], new Hash256(Eip8288Dependencies.ComputeDepsHash(dependencies)));
-        LeanProofStore store = new();
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
+        // The list commits to a mempool wrapper proof this builder holds.
+        List<FrameDependency> dependencies = Eip8288Dependencies.ForTransaction(frame, FrameTxSigHash.ComputeValue);
+        store.AddVerified(dependencies, null, [1]);
         FakeLeanProofVerifier verifier = new(true);
+        ProofVerdictCache.VerifyRecursive(verifier, Eip8288Verifier.Pinned, Eip8288Dependencies.ComputeDepsHash(dependencies), [1], dependencies);
         InclusionListTxSource source = new(new EthereumEcdsa(MainnetSpecProvider.Instance.ChainId),
-            new TestSingleReleaseSpecProvider(spec), LimboLogs.Instance, verifier, store);
-        byte[][] list = [TxDecoder.Instance.Encode(legacy, RlpBehaviors.SkipTypedWrapping).Bytes,
-            TxDecoder.Instance.Encode(frame, RlpBehaviors.SkipTypedWrapping).Bytes];
-        source.Set(list, spec, proof, proven);
-        PayloadAttributes attributes = new() { InclusionListTransactions = list, InclusionListRecursiveStark = proof, InclusionListProvenDependencies = proven };
+            new TestSingleReleaseSpecProvider(spec), LimboLogs.Instance,
+            new InclusionListProofService(new TestSingleReleaseSpecProvider(spec), verifier, store, Timestamper.Default));
+        PayloadAttributes attributes = new()
+        {
+            InclusionLists = [new InclusionListV1
+            {
+                Transactions = [TxDecoder.Instance.Encode(legacy, RlpBehaviors.SkipTypedWrapping).Bytes,
+                    TxDecoder.Instance.Encode(frame, RlpBehaviors.SkipTypedWrapping).Bytes],
+                RecursiveStark = new RecursiveStarkV1 { StarkProofHash = Keccak.Compute([1]), DepsHash = new Hash256(Eip8288Dependencies.ComputeDepsHash(dependencies)) }
+            }]
+        };
+        source.Set(attributes.CombinedInclusionListTransactions!, spec, attributes.InclusionLists);
         ITxSource mempoolSource = Substitute.For<ITxSource>();
         mempoolSource.GetTransactions(Arg.Any<BlockHeader>(), Arg.Any<BlockHeader>(), Arg.Any<ulong>(), Arg.Any<PayloadAttributes>(), Arg.Any<bool>())
             .Returns([mempool]);
@@ -79,7 +88,7 @@ public class InclusionListBlockProducerTxSourceFactoryTests
             Assert.That(selected.Select(tx => tx.SenderAddress), Is.EqualTo([
                 TestItem.PrivateKeyB.Address, TestItem.PrivateKeyA.Address, TestItem.PrivateKeyC.Address]));
             Assert.That(selected[1].NonceKeys, Is.EqualTo((UInt256[])[0]));
-            Assert.That(selected[1].Frames![^1].Mode, Is.EqualTo(FrameMode.PostTx));
+            Assert.That(selected[1].Frames![^1].Mode, Is.EqualTo(FrameMode.Assert));
             Assert.That(store.Covers(selected[1]), Is.True);
             Assert.That(verifier.VerificationCalls, Is.EqualTo(1));
         }
@@ -107,8 +116,7 @@ public class InclusionListBlockProducerTxSourceFactoryTests
         InclusionListTxSource il = new(
             new EthereumEcdsa(MainnetSpecProvider.Instance.ChainId),
             new CustomSpecProvider(((ForkActivation)0, Bogota.Instance)),
-            LimboLogs.Instance,
-            Substitute.For<Nethermind.Core.Crypto.ILeanProofVerifier>());
+            LimboLogs.Instance);
         byte[][] ilBytes = [TxDecoder.Instance.Encode(ilTx, RlpBehaviors.SkipTypedWrapping).Bytes];
         il.Set(ilBytes, Bogota.Instance);
         // IL is keyed by the build's PayloadAttributes array.
@@ -146,8 +154,7 @@ public class InclusionListBlockProducerTxSourceFactoryTests
         InclusionListTxSource il = new(
             new EthereumEcdsa(MainnetSpecProvider.Instance.ChainId),
             new CustomSpecProvider(((ForkActivation)0, Bogota.Instance)),
-            LimboLogs.Instance,
-            Substitute.For<Nethermind.Core.Crypto.ILeanProofVerifier>());
+            LimboLogs.Instance);
         // IL is empty
 
         ITxSource txSource = new InclusionListBlockProducerTxSourceFactory(baseFactory, il).Create();

@@ -142,6 +142,8 @@ public class BaseMergePluginModule : Module
             .AddSingleton<IPoSSwitcher, PoSSwitcher>()
 
             .AddSingleton<ProcessedTransactionsDbCleaner>()
+            .AddSingleton<FrameTxWidthFinalizer>()
+            .ResolveOnServiceActivation<FrameTxWidthFinalizer, ITxPool>()
 
             // AddLast (not AddFirst) so RecoverSignatures stays ahead of it, matching the pre-DI ordering.
             .AddLast<IBlockPreprocessorStep, MergeProcessingRecoveryStep>()
@@ -149,6 +151,8 @@ public class BaseMergePluginModule : Module
 
             .AddSingleton<IMainProcessingModule, IRpcCapabilitiesProvider>(static capabilitiesProvider =>
                 new WitnessCapturingMainProcessingModule(IsWitnessCaptureEnabled(capabilitiesProvider)))
+            .AddSingleton<IMainProcessingModule, FinalizedBlockAccessListModule>()
+            .AddSingleton<FinalizedBlockAccessListPolicy>()
             .AddSingleton<WitnessRendezvous>()
             .AddSingleton<WitnessCapturingBlockProcessingEnv>()
 
@@ -183,6 +187,7 @@ public class BaseMergePluginModule : Module
                 .Bind<IAsyncHandler<ExecutionPayload, PayloadStatusV1>, NewPayloadHandler>()
                 .Bind<IInclusionListComplianceEvaluator, NewPayloadHandler>()
                 .AddSingleton<IForkchoiceUpdatedHandler, ForkchoiceUpdatedHandler>()
+                .AddDecorator<IForkchoiceUpdatedHandler, ReprocessingForkchoiceUpdatedHandler>()
                 .AddSingleton<IHandler<IReadOnlyList<Hash256>, IReadOnlyList<ExecutionPayloadBodyV1Result?>>, GetPayloadBodiesByHashV1Handler>()
                 .AddSingleton<IGetPayloadBodiesByRangeV1Handler, GetPayloadBodiesByRangeV1Handler>()
                 .AddSingleton<IHandler<TransitionConfigurationV1, TransitionConfigurationV1>, ExchangeTransitionConfigurationV1Handler>()
@@ -202,6 +207,9 @@ public class BaseMergePluginModule : Module
                 .Bind<IInclusionListTxSource, InclusionListTxSource>()
                 .AddDecorator<IBlockProducerTxSourceFactory, InclusionListBlockProducerTxSourceFactory>()
                 .AddSingleton<IHandler<Hash256?, InclusionListBytes>, GetInclusionListTransactionsHandler>()
+                .AddSingleton<IHandler<VerifyInclusionListProofRequest, InclusionListProofStatusV1>, VerifyInclusionListProofHandler>()
+                .AddSingleton<IHandler<GetInclusionListProofRequest, InclusionListProofV1?>, GetInclusionListProofHandler>()
+                .AddSingleton<IHandler<SubmitInclusionListProofRequest, InclusionListProofStatusV1>, SubmitInclusionListProofHandler>()
 
                 .AddSingleton<NoSyncGcRegionStrategy>()
                 .AddSingleton<IGCStrategy>(ctx => ctx.Resolve<IInitConfig>().DisableGcOnNewPayload

@@ -15,6 +15,7 @@ using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.Persistence;
+using Nethermind.State.Flat.Persistence.TrieNodeLog;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using NSubstitute;
@@ -45,7 +46,7 @@ public class ImportFlatDbTests
 
         _nodeStorage = new NodeStorage(_trieDb);
         _columnsDb = new SnapshotableMemColumnsDb<FlatDbColumns>();
-        _persistence = new RocksDbPersistence(_columnsDb, LimboLogs.Instance);
+        _persistence = new RocksDbPersistence(_columnsDb, LimboLogs.Instance, NullTrieNodeLog.Instance);
         _importer = new Importer(_nodeStorage, _persistence, LimboLogs.Instance);
     }
 

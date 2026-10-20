@@ -5,6 +5,7 @@ using System;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Nethermind.Blockchain.Find;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.JsonRpc.Data;
 
@@ -19,12 +20,12 @@ internal sealed class BlockNumberOrTagConverter : JsonConverter<BlockParameter>
     public override BlockParameter Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
         // The registered converter, so the configured quantity strictness still applies.
-        BlockParameter blockParameter = ((JsonConverter<BlockParameter>)options.GetConverter(typeof(BlockParameter))).Read(ref reader, typeToConvert, options)!;
+        BlockParameter blockParameter = ((JsonConverter<BlockParameter>)TypeInfoJsonSerializer.GetTypeInfo<BlockParameter>(options).Converter).Read(ref reader, typeToConvert, options)!;
         return blockParameter.Type == BlockParameterType.BlockHash
             ? throw new BlockParameterParseException("block hash is not a block number or tag")
             : blockParameter;
     }
 
     public override void Write(Utf8JsonWriter writer, BlockParameter value, JsonSerializerOptions options) =>
-        JsonSerializer.Serialize(writer, value, options);
+        TypeInfoJsonSerializer.Serialize(writer, value, options);
 }

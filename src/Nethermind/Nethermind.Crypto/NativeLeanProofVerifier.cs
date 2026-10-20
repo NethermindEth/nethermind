@@ -11,12 +11,12 @@ using Nethermind.Core.Crypto;
 namespace Nethermind.Crypto;
 
 /// <summary>Checks signature claims and public program commitments with the pinned native backend;
-/// unavailable libraries fail verification closed, while proving reports an error.</summary>
+/// a native fault, ABI mismatch or missing library throws instead of returning a verdict.</summary>
 // Pinned spans remain valid for each call; Rust bounds all buffers and owns returned proof allocations.
 public sealed unsafe partial class NativeLeanProofVerifier : ILeanProofVerifier
 {
     private const string Library = "nethermind_lean";
-    private const uint ExpectedAbiVersion = 5;
+    private const uint ExpectedAbiVersion = 7;
     private const int MaxRecursiveInputs = 16;
     private static readonly Lazy<bool> BackendAvailable = new(CheckBackend);
     public const int MaxProofBytes = Eip8288Constants.MaxProofBytes;
@@ -73,9 +73,9 @@ public sealed unsafe partial class NativeLeanProofVerifier : ILeanProofVerifier
             fixed (byte* d = dataHash.Bytes)
             fixed (byte* v = verificationKey.Bytes)
             fixed (byte* w = witness)
-                return AbiVersion == ExpectedAbiVersion && nlean_verify_leansphincs(d, v, w, (nuint)witness.Length) == 1;
+                return Verdict(AbiVersion != ExpectedAbiVersion ? -1 : nlean_verify_leansphincs(d, v, w, (nuint)witness.Length));
         }
-        catch (Exception e) when (IsUnavailable(e)) { return false; }
+        catch (Exception e) when (IsUnavailable(e)) { throw new InvalidOperationException("Native Lean backend unavailable", e); }
     }
 
     /// <inheritdoc/>
@@ -87,23 +87,23 @@ public sealed unsafe partial class NativeLeanProofVerifier : ILeanProofVerifier
             fixed (byte* d = dataHash.Bytes)
             fixed (byte* v = verificationKey.Bytes)
             fixed (byte* w = witness)
-                return AbiVersion == ExpectedAbiVersion && nlean_verify_leanstark(d, v, w, (nuint)witness.Length) == 1;
+                return Verdict(AbiVersion != ExpectedAbiVersion ? -1 : nlean_verify_leanstark(d, v, w, (nuint)witness.Length));
         }
-        catch (Exception e) when (IsUnavailable(e)) { return false; }
+        catch (Exception e) when (IsUnavailable(e)) { throw new InvalidOperationException("Native Lean backend unavailable", e); }
     }
 
     /// <inheritdoc/>
     public bool VerifyRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, ReadOnlySpan<byte> proof)
     {
-        if (aggregatedVk.Length != 32 || proof.IsEmpty || proof.Length > MaxProofBytes) return false;
+        if (aggregatedVk.Length != 32 || proof.IsEmpty || proof.Length > Eip8288Constants.MaxAggregateProofBytes) return false;
         try
         {
             fixed (byte* h = depsHash.Bytes)
             fixed (byte* vk = aggregatedVk)
             fixed (byte* p = proof)
-                return AbiVersion == ExpectedAbiVersion && nlean_verify_recursive(h, vk, (nuint)aggregatedVk.Length, p, (nuint)proof.Length) == 1;
+                return Verdict(AbiVersion != ExpectedAbiVersion ? -1 : nlean_verify_recursive(h, vk, (nuint)aggregatedVk.Length, p, (nuint)proof.Length));
         }
-        catch (Exception e) when (IsUnavailable(e)) { return false; }
+        catch (Exception e) when (IsUnavailable(e)) { throw new InvalidOperationException("Native Lean backend unavailable", e); }
     }
 
     /// <inheritdoc/>
@@ -130,7 +130,7 @@ public sealed unsafe partial class NativeLeanProofVerifier : ILeanProofVerifier
             fixed (byte* w = witness)
                 if (nlean_prove_recursive(h, vk, (nuint)aggregatedVk.Length, w, (nuint)witness.Length, &proof, &length) != 1)
                     throw new InvalidOperationException("Lean aggregation failed");
-            if (proof == null || length > MaxProofBytes) throw new InvalidOperationException("Invalid native Lean proof buffer");
+            if (proof == null || length > Eip8288Constants.MaxAggregateProofBytes) throw new InvalidOperationException("Invalid native Lean proof buffer");
             return new ReadOnlySpan<byte>(proof, checked((int)length)).ToArray();
         }
         finally
@@ -154,7 +154,9 @@ public sealed unsafe partial class NativeLeanProofVerifier : ILeanProofVerifier
         writer.Write(input.RecursiveProofs.Count);
         foreach (RecursiveProofInput child in input.RecursiveProofs)
         {
-            if (child.InnerDeps is null || child.Proof.IsEmpty || child.InnerDeps.Count > Eip8288Constants.MaxProofDependencies)
+            // MAX_AGGREGATE_PROOF_BYTES binds private recursive inputs too, before the guest decodes them.
+            if (child.InnerDeps is null || child.Proof.IsEmpty || child.Proof.Length > Eip8288Constants.MaxAggregateProofBytes
+                || child.InnerDeps.Count > Eip8288Constants.MaxProofDependencies)
                 throw new ArgumentException("Invalid child dependencies", nameof(input));
             writer.Write(child.InnerDeps.Count);
             foreach (FrameDependency dep in child.InnerDeps) WriteDependency(writer, dep);
@@ -186,6 +188,14 @@ public sealed unsafe partial class NativeLeanProofVerifier : ILeanProofVerifier
         writer.Write(bytes.Length);
         writer.Write(bytes);
     }
+
+    // A fault is not a rejection: reporting it as false would mark a valid block INVALID and cache it as bad.
+    private static bool Verdict(int result) => result switch
+    {
+        1 => true,
+        0 => false,
+        _ => throw new InvalidOperationException("Native Lean verifier failed or has an incompatible ABI")
+    };
 
     private static bool IsUnavailable(Exception e) => e is DllNotFoundException or EntryPointNotFoundException or BadImageFormatException;
 

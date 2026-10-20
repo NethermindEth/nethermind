@@ -89,13 +89,13 @@ namespace Nethermind.JsonRpc.Modules.Eth
             Description = "Returns current block number",
             IsSharable = true,
             ExampleResponse = "0x885480")]
-        Task<ResultWrapper<ulong?>> eth_blockNumber();
+        ResultWrapper<ulong?> eth_blockNumber();
 
         [JsonRpcMethod(IsImplemented = true,
             Description = "Returns account balance",
             IsSharable = true,
             ExampleResponse = "0x6c8ae945bfe6e")]
-        Task<ResultWrapper<UInt256?>> eth_getBalance([JsonRpcParameter(ExampleValue = "[\"0x78467cada5f1883e79fcf0f3ebfa50abeec8c820\"]")] Address address, BlockParameter? blockParameter = null);
+        ResultWrapper<UInt256?> eth_getBalance([JsonRpcParameter(ExampleValue = "[\"0x78467cada5f1883e79fcf0f3ebfa50abeec8c820\"]")] Address address, BlockParameter? blockParameter = null);
 
         [JsonRpcMethod(IsImplemented = true,
             Description = "Returns storage data at address. storage_index",
@@ -113,7 +113,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             Description = "Returns account nonce (number of transactions from the account since genesis) at the given block number",
             IsSharable = true,
             ExampleResponse = "0x3e")]
-        Task<ResultWrapper<UInt256>> eth_getTransactionCount([JsonRpcParameter(ExampleValue = "[\"0xae3ed7a6ccdddf2914133d0669b5f02ff6fa8ad2\"]")] Address address, BlockParameter? blockParameter = null);
+        ResultWrapper<UInt256> eth_getTransactionCount([JsonRpcParameter(ExampleValue = "[\"0xae3ed7a6ccdddf2914133d0669b5f02ff6fa8ad2\"]")] Address address, BlockParameter? blockParameter = null);
 
         [JsonRpcMethod(IsImplemented = true,
             ResultCanBeNull = true,
@@ -170,10 +170,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         Task<ResultWrapper<Hash256>> eth_sendRawTransaction([JsonRpcParameter(ExampleValue = "[\"0xf86380843b9aca0082520894b943b13292086848d8180d75c73361107920bb1a80802ea0385656b91b8f1f5139e9ba3449b946a446c9cfe7adb91b180ddc22c33b17ac4da01fe821879d386b140fd8080dcaaa98b8c709c5025c8c4dea1334609ebac41b6c\"]")] byte[] transaction);
 
         [JsonRpcMethod(IsImplemented = true, Description = "Submit an EIP-8288 RLP proof wrapper and its transactions", IsSharable = true)]
-        Task<ResultWrapper<Hash256[]>> eth_sendProofWrapper(byte[] wrapper);
-
-        [JsonRpcMethod(IsImplemented = true, Description = "Submit an EIP-8288 proof-bearing inclusion list and its transactions", IsSharable = true)]
-        Task<ResultWrapper<Hash256[]>> eth_sendProofInclusionList(byte[] inclusionList);
+        Task<ResultWrapper<Hash256[]>> eth_sendProofWrapper(byte[] wrapper, byte[][]? transactionEnvelopes = null);
 
         [JsonRpcMethod(IsImplemented = true, Description = "Return an EIP-8288 recursive proof wrapper for pending dependency transactions", IsSharable = true)]
         ResultWrapper<byte[]> eth_getProofWrapper();

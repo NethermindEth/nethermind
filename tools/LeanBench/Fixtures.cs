@@ -21,7 +21,7 @@ public sealed class Fixtures
         {
             ValueHash256 message = new(Exact(signatures, 32));
             byte[] witness = Exact(signatures, Eip8288Constants.LeanSphincsWitnessBytes);
-            ValueHash256 publicKey = ValueKeccak.Compute(witness.AsSpan(0, 32));
+            ValueHash256 publicKey = new(witness.AsSpan(0, 32));
             Sphincs[i] = new(new(Eip8288Constants.LeanSphincsScheme, message, publicKey), witness, i);
         }
         using BinaryReader starks = new(File.OpenRead(Path.Combine(directory, "starks.bin")));

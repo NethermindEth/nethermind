@@ -59,7 +59,10 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
     private int _storageValueByteCount;
     private bool _hasStorage;
 
-    private readonly ArrayPoolList<(byte[] Buffer, int Length)> _pushItems = new(4);
+    // The words an operation pushes, packed into one buffer that is reused across operations.
+    private readonly ArrayPoolList<(int Offset, int Length)> _pushItems = new(4);
+    private byte[]? _pushBytes;
+    private int _pushBytesUsed;
 
     private readonly ArrayPoolList<VmFrame> _streamingFrames = new(InitialFrameStackCapacity);
     private readonly ArrayPoolList<VmFrame> _framePool = new(InitialFrameStackCapacity);
@@ -153,6 +156,7 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
         ReturnByteBuffer(ref _storageKeyBuffer);
         ReturnByteBuffer(ref _storageValueBuffer);
         ReleasePushBuffers();
+        ReturnByteBuffer(ref _pushBytes);
 
         while (_streamingFrames.Count > 0)
         {
@@ -341,15 +345,23 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
     {
         if (!_streamVmTrace) { base.ReportStackPush(stackItem); return; }
 
-        if (stackItem.IsEmpty)
+        int offset = _pushBytesUsed;
+        int used = offset + stackItem.Length;
+        if (_pushBytes is null || _pushBytes.Length < used)
         {
-            _pushItems.Add((Array.Empty<byte>(), 0));
-            return;
+            byte[] grown = ArrayPool<byte>.Shared.Rent(Math.Max(used, 2 * (_pushBytes?.Length ?? 0)));
+            if (_pushBytes is not null)
+            {
+                _pushBytes.AsSpan(0, offset).CopyTo(grown);
+                ArrayPool<byte>.Shared.Return(_pushBytes);
+            }
+
+            _pushBytes = grown;
         }
 
-        byte[] buffer = ArrayPool<byte>.Shared.Rent(stackItem.Length);
-        stackItem.CopyTo(buffer);
-        _pushItems.Add((buffer, stackItem.Length));
+        stackItem.CopyTo(_pushBytes.AsSpan(offset));
+        _pushBytesUsed = used;
+        _pushItems.Add((offset, stackItem.Length));
     }
 
     public override void ReportMemoryChange(long offset, in ReadOnlySpan<byte> data)
@@ -514,7 +526,7 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
         ParityLikeTxTrace result = base.BuildResult();
         if (_fillVmTraceSlot && IsTracingInstructions && !_streamVmTrace)
         {
-            JsonSerializer.Serialize(_writer, result.VmTrace, EthereumJsonSerializer.JsonOptions);
+            TypeInfoJsonSerializer.Serialize(_writer, result.VmTrace, EthereumJsonSerializer.JsonOptions);
         }
 
         if (action is not null && result.Action is null) ReturnActionTree(action);
@@ -594,8 +606,8 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
             _writer.WriteStartArray();
             for (int i = 0; i < _pushItems.Count; i++)
             {
-                (byte[] buf, int len) = _pushItems[i];
-                ByteArrayConverter.Convert(_writer, buf.AsSpan(0, len), skipLeadingZeros: true);
+                (int offset, int length) = _pushItems[i];
+                ByteArrayConverter.Convert(_writer, _pushBytes.AsSpan(offset, length), skipLeadingZeros: true);
             }
             _writer.WriteEndArray();
         }
@@ -668,13 +680,8 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
 
     private void ReleasePushBuffers()
     {
-        Span<(byte[] Buffer, int Length)> span = _pushItems.AsSpan();
-        for (int i = 0; i < span.Length; i++)
-        {
-            byte[] buffer = span[i].Buffer;
-            if (buffer.Length > 0) ArrayPool<byte>.Shared.Return(buffer);
-        }
         _pushItems.Clear();
+        _pushBytesUsed = 0;
     }
 
     private static void EnsureBuffer(ref byte[]? buffer, int requiredLength)

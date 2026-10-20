@@ -3,16 +3,17 @@
 
 using System;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using System.Threading;
 
 namespace Nethermind.Core.Crypto;
 
 /// <summary>Bounded, thread-safe storage of verified dependency witnesses for block production.</summary>
-public sealed class LeanProofStore
+public sealed class LeanProofStore(Func<Transaction, ValueHash256> computeSignatureHash)
 {
-    // Leave room for Snappy's worst-case expansion within the 16 MiB inbound frame cap.
-    public const int MaxWrapperBytes = 10 * 1024 * 1024;
-    public const int MaxWrapperTransactions = 4096;
+    /// <summary>Maximum retained wrapper size, bounded by the protocol ceiling.</summary>
+    public const int MaxWrapperBytes = Eip8288Constants.MaxWrapperBytes;
+    public const int MaxWrapperTransactions = Eip8288Constants.MaxTxsPerWrapper;
     /// <summary>Full witness bytes a sender may retain through pending transactions.</summary>
     public const long MaxSenderPinnedBytes = 12 * 1024 * 1024;
     /// <summary>Distinct witness records a sender may retain through pending transactions.</summary>
@@ -22,9 +23,12 @@ public sealed class LeanProofStore
     // guarantee witness coverage for every transaction in a full pool.
     private const int MaxStoredRecords = 2048 * 16;
     private const int MaxCachedRecursiveRecords = 1024;
+    private readonly Func<Transaction, ValueHash256> _computeSignatureHash = computeSignatureHash;
     private readonly object _lock = new();
     private readonly Dictionary<FrameDependency, ProofRecord> _coverage = [];
     private readonly LinkedList<ProofRecord> _records = [];
+    // Every stored record proving a dependency, in storage order, so losing coverage finds a fallback without a full scan.
+    private readonly Dictionary<FrameDependency, List<ProofRecord>> _holders = [];
     private readonly Dictionary<ValueHash256, ProofRecord> _identities = [];
     private readonly Dictionary<ValueHash256, ProofRecord> _recursiveByDeps = [];
     private readonly LinkedList<ProofRecord> _recursiveCache = [];
@@ -108,7 +112,8 @@ public sealed class LeanProofStore
             {
                 FrameDependency dependency = dependencies[i];
                 if (records.ContainsKey(dependency)) continue;
-                if (!_coverage.TryGetValue(dependency, out ProofRecord? record))
+                // A direct witness replaces recursive coverage: folding it is far cheaper than merging a recursive child.
+                if (!_coverage.TryGetValue(dependency, out ProofRecord? record) || witnesses is not null && record.Witnesses is null)
                 {
                     record = witnesses is null
                         ? recursive ??= CreateRecord(dependencies, null, recursiveProof)
@@ -162,7 +167,7 @@ public sealed class LeanProofStore
     /// <summary>Reserves pending witnesses before insertion; publication may be deferred to the insertion event.</summary>
     public bool PinPending(Transaction transaction, object? owner = null, bool publish = true)
     {
-        List<FrameDependency> dependencies = Eip8288Dependencies.ForTransaction(transaction);
+        List<FrameDependency> dependencies = Eip8288Dependencies.ForTransaction(transaction, _computeSignatureHash);
         if (dependencies.Count == 0) return true;
         if (transaction.Hash is null || transaction.SenderAddress is null) return false;
         lock (_lock)
@@ -282,7 +287,7 @@ public sealed class LeanProofStore
             if (!declared.Contains(dependency)) throw new ArgumentException("Admitted dependencies must be covered by the proof.");
         lock (_lock)
         {
-            if (HasCoverage(coverage)) return;
+            if (HasCoverage(coverage, witnesses is not null)) return;
             // Active admission already owns immutable snapshots and capacity. Publish only accepted entries.
             if (_admission.Value is { } scope)
             {
@@ -302,7 +307,8 @@ public sealed class LeanProofStore
             for (int i = 0; i < dependencies.Count; i++)
             {
                 FrameDependency dependency = dependencies[i];
-                if (!admitted.Contains(dependency) || _coverage.ContainsKey(dependency) || requested.ContainsKey(dependency)) continue;
+                if (!admitted.Contains(dependency) || requested.ContainsKey(dependency)
+                    || _coverage.TryGetValue(dependency, out ProofRecord? existing) && (witnesses is null || existing.Witnesses is not null)) continue;
                 ProofRecord record = witnesses is null
                     ? recursive ??= CreateRecord(dependencies, null, recursiveProof)
                     : CreateRecord([dependency], [witnesses[i]], null);
@@ -356,9 +362,16 @@ public sealed class LeanProofStore
 
     private void Publish(FrameDependency dependency, ProofRecord record)
     {
+        // A record the verifier upgrade rule removed never covers a dependency again.
+        if (record.Node is null) return;
         if (_coverage.TryGetValue(dependency, out ProofRecord? previous))
         {
-            if (previous.Pins != 0 || ReferenceEquals(previous, record)) return;
+            if (ReferenceEquals(previous, record)) return;
+            // Pinned recursive coverage may give way to a direct witness. Pinned transactions do not lose coverage: their pins
+            // keep the recursive record stored, and Remove falls back to it if the witness is evicted. Direct coverage is never
+            // replaced by a recursive proof.
+            bool upgrade = previous.Witnesses is null && record.Witnesses is not null;
+            if (!upgrade && (previous.Pins != 0 || previous.Witnesses is not null && record.Witnesses is null)) return;
             previous.CoveredDependencies--;
         }
         _coverage[dependency] = record;
@@ -370,6 +383,11 @@ public sealed class LeanProofStore
         record.Node = _records.AddLast(record);
         _identities.Add(record.Identity, record);
         _storedBytes += record.Size;
+        foreach (FrameDependency dependency in record.Dependencies)
+        {
+            ref List<ProofRecord>? holders = ref CollectionsMarshal.GetValueRefOrAddDefault(_holders, dependency, out _);
+            (holders ??= []).Add(record);
+        }
     }
 
     private bool MakeRoom(long size, int records = 1)
@@ -393,7 +411,33 @@ public sealed class LeanProofStore
         _identities.Remove(record.Identity);
         _storedBytes -= record.Size;
         foreach (FrameDependency dependency in record.Dependencies)
-            if (_coverage.TryGetValue(dependency, out ProofRecord? current) && ReferenceEquals(current, record)) _coverage.Remove(dependency);
+            if (_holders.TryGetValue(dependency, out List<ProofRecord>? holders) && holders.Remove(record) && holders.Count == 0)
+                _holders.Remove(dependency);
+        foreach (FrameDependency dependency in record.Dependencies)
+        {
+            if (!_coverage.TryGetValue(dependency, out ProofRecord? current) || !ReferenceEquals(current, record)) continue;
+            _coverage.Remove(dependency);
+            // A record this one displaced, such as pinned recursive coverage replaced by a direct witness, may still be
+            // stored; it covers the dependency again, so pinned transactions keep their coverage.
+            if (FindStoredCoverage(dependency) is { } fallback)
+            {
+                _coverage[dependency] = fallback;
+                fallback.CoveredDependencies++;
+            }
+        }
+    }
+
+    /// <summary>A stored record proving <paramref name="dependency"/>, preferring a direct witness.</summary>
+    private ProofRecord? FindStoredCoverage(in FrameDependency dependency)
+    {
+        if (!_holders.TryGetValue(dependency, out List<ProofRecord>? holders)) return null;
+        ProofRecord? recursive = null;
+        foreach (ProofRecord candidate in holders)
+        {
+            if (candidate.Witnesses is not null) return candidate;
+            recursive ??= candidate;
+        }
+        return recursive;
     }
 
     private static void ValidateShape(IReadOnlyList<FrameDependency> dependencies, IReadOnlyList<byte[]>? witnesses, byte[]? recursiveProof)
@@ -431,21 +475,53 @@ public sealed class LeanProofStore
         return new(deps, copies, recursive, size, ValueKeccak.Compute(identityBytes), dependencyHash, proofHash);
     }
 
-    private bool HasCoverage(IReadOnlyList<FrameDependency> dependencies)
+    private bool HasCoverage(IReadOnlyList<FrameDependency> dependencies, bool direct = false)
     {
         foreach (FrameDependency dependency in dependencies)
-            if (!_coverage.ContainsKey(dependency)) return false;
+            if (!_coverage.TryGetValue(dependency, out ProofRecord? record) || direct && record.Witnesses is null) return false;
         return true;
     }
 
     /// <summary>Checks whether every dependency of a candidate transaction has a verified witness.</summary>
     public bool Covers(Transaction transaction)
     {
-        List<FrameDependency> dependencies = Eip8288Dependencies.ForTransaction(transaction);
+        List<FrameDependency> dependencies = Eip8288Dependencies.ForTransaction(transaction, _computeSignatureHash);
         lock (_lock)
             foreach (FrameDependency dependency in dependencies)
                 if (!TryResolve(dependency, out _)) return false;
         return true;
+    }
+
+    /// <summary>
+    /// Applies the EIP-8288 verifier upgrade rule: drops every aggregate proof, whatever pins it, and every direct witness
+    /// <paramref name="revalidate"/> rejects under the new verifier.
+    /// </summary>
+    /// <remarks>Transactions covered only by dropped records are no longer proven; <see cref="Covers"/> then fails for them.</remarks>
+    /// <returns>The number of dropped records.</returns>
+    public int RetainDirect(Func<FrameDependency, byte[], bool> revalidate)
+    {
+        List<ProofRecord> direct = [];
+        lock (_lock)
+            foreach (ProofRecord record in _records)
+                if (record.Witnesses is not null) direct.Add(record);
+        HashSet<ProofRecord> failed = [];
+        foreach (ProofRecord record in direct)
+            for (int i = 0; i < record.Witnesses!.Length; i++)
+                if (!revalidate(record.Dependencies[i], record.Witnesses[i])) { failed.Add(record); break; }
+        lock (_lock)
+        {
+            int dropped = _recursiveCache.Count;
+            _recursiveCache.Clear();
+            _recursiveByDeps.Clear();
+            _cachedBytes = 0;
+            foreach (ProofRecord record in new List<ProofRecord>(_records))
+                if (record.RecursiveProof is not null || failed.Contains(record))
+                {
+                    Remove(record);
+                    dropped++;
+                }
+            return dropped;
+        }
     }
 
     /// <summary>Removes a generated cache entry only while it still matches the rejected proof.</summary>
@@ -487,6 +563,100 @@ public sealed class LeanProofStore
         return false;
     }
 
+    /// <summary>Retrieves a held recursive proof by its <c>(stark_proof_hash, deps_hash)</c> pair, with its <c>proof_deps</c>.</summary>
+    /// <remarks>EIP-8288 inclusion lists commit to such a pair, usually naming a mempool wrapper's proof whose dependencies are
+    /// a superset of the list's.</remarks>
+    public bool TryGetRecursiveProof(in ValueHash256 proofHash, in ValueHash256 depsHash, out byte[]? proof, out FrameDependency[]? dependencies)
+    {
+        lock (_lock)
+        {
+            ProofRecord? match = _recursiveByDeps.TryGetValue(depsHash, out ProofRecord? cached) && cached.RecursiveInput.ProofHash == proofHash
+                ? cached : FindRecursive(proofHash, depsHash);
+            proof = (byte[]?)match?.RecursiveProof!.Clone();
+            dependencies = match?.Dependencies;
+            return match is not null;
+        }
+    }
+
+    /// <summary>Retrieves a held recursive proof by <c>stark_proof_hash</c> alone, as <c>engine_getInclusionListProofV1</c> serves
+    /// an <c>il_proof</c>.</summary>
+    public bool TryGetRecursiveProof(in ValueHash256 proofHash, out byte[]? proof, out FrameDependency[]? dependencies)
+    {
+        lock (_lock)
+        {
+            ProofRecord? match = FindRecursive(proofHash, null);
+            proof = (byte[]?)match?.RecursiveProof!.Clone();
+            dependencies = match?.Dependencies;
+            return match is not null;
+        }
+    }
+
+    private ProofRecord? FindRecursive(in ValueHash256 proofHash, ValueHash256? depsHash)
+    {
+        foreach (ProofRecord record in _recursiveCache)
+            if (record.RecursiveInput.ProofHash == proofHash && (depsHash is null || record.DependencyHash == depsHash)) return record;
+        foreach (ProofRecord record in _identities.Values)
+            if (record.RecursiveProof is not null && record.RecursiveInput.ProofHash == proofHash
+                && (depsHash is null || record.DependencyHash == depsHash)) return record;
+        return null;
+    }
+
+    /// <summary>Lists verified recursive proofs sharing at least two dependencies with <paramref name="within"/>, most shared first.</summary>
+    /// <remarks>
+    /// A producer extends one of them, discarding the dependencies it no longer needs, instead of folding every witness again:
+    /// a statement can lose some of its transactions to a peer's block while it is being proven.
+    /// </remarks>
+    public List<RecursiveProofInput> ProvenOverlaps(IReadOnlySet<FrameDependency> within, int limit)
+    {
+        List<(int Shared, ProofRecord Record)> overlaps = [];
+        HashSet<ValueHash256> seen = [];
+        lock (_lock)
+        {
+            foreach (ProofRecord record in _recursiveCache) Consider(record);
+            foreach (ProofRecord record in _records)
+                if (record.RecursiveProof is not null) Consider(record);
+        }
+        // Fewer extra dependencies mean fewer discards for the same reuse.
+        overlaps.Sort(static (x, y) => x.Shared != y.Shared
+            ? y.Shared.CompareTo(x.Shared)
+            : x.Record.Dependencies.Length.CompareTo(y.Record.Dependencies.Length));
+        List<RecursiveProofInput> result = new(Math.Min(limit, overlaps.Count));
+        for (int i = 0; i < overlaps.Count && i < limit; i++) result.Add(overlaps[i].Record.RecursiveInput);
+        return result;
+
+        void Consider(ProofRecord record)
+        {
+            if (!seen.Add(record.DependencyHash)) return;
+            int shared = 0;
+            foreach (FrameDependency dependency in record.Dependencies)
+                if (within.Contains(dependency)) shared++;
+            if (shared >= 2) overlaps.Add((shared, record));
+        }
+    }
+
+    /// <summary>Lists the distinct dependency sets inside <paramref name="within"/> that have a verified recursive proof.</summary>
+    public List<FrameDependency[]> ProvenSubsets(IReadOnlySet<FrameDependency> within)
+    {
+        List<FrameDependency[]> subsets = [];
+        HashSet<ValueHash256> seen = [];
+        lock (_lock)
+        {
+            foreach (ProofRecord record in _recursiveCache) Consider(record);
+            foreach (ProofRecord record in _records)
+                if (record.RecursiveProof is not null) Consider(record);
+        }
+        return subsets;
+
+        void Consider(ProofRecord record)
+        {
+            if (record.Dependencies.Length > within.Count || seen.Contains(record.DependencyHash)) return;
+            foreach (FrameDependency dependency in record.Dependencies)
+                if (!within.Contains(dependency)) return;
+            seen.Add(record.DependencyHash);
+            subsets.Add([.. record.Dependencies]);
+        }
+    }
+
     /// <summary>Collects direct and recursive witnesses, discarding dependencies outside the requested set.</summary>
     public bool TryGetInput(IReadOnlyList<FrameDependency> dependencies, out AggregationInput input)
     {
@@ -496,7 +666,7 @@ public sealed class LeanProofStore
         List<ReadOnlyMemory<byte>> witnesses = [];
         List<RecursiveProofInput> recursive = [];
         HashSet<ProofRecord> selected = [];
-        HashSet<FrameDependency> discards = [];
+        HashSet<FrameDependency> covered = [];
         lock (_lock)
         {
             foreach (FrameDependency dep in required)
@@ -507,16 +677,22 @@ public sealed class LeanProofStore
                     int index = Array.IndexOf(record.Dependencies, dep);
                     directDeps.Add(dep);
                     witnesses.Add(record.Witnesses[index]);
+                    covered.Add(dep);
                 }
                 else if (selected.Add(record))
                 {
                     recursive.Add(record.RecursiveInput);
-                    foreach (FrameDependency nestedDep in record.Dependencies)
-                        if (!required.Contains(nestedDep)) discards.Add(nestedDep);
+                    covered.UnionWith(record.Dependencies);
                 }
             }
         }
-        input = new() { Deps = directDeps, Witnesses = witnesses, RecursiveProofs = recursive, Discards = [.. discards] };
+        input = new()
+        {
+            Deps = directDeps,
+            Witnesses = witnesses,
+            RecursiveProofs = recursive,
+            Discards = Eip8288Dependencies.DiscardDependencies(covered, required)
+        };
         return true;
     }
 }

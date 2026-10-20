@@ -8,6 +8,7 @@ using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Memory;
@@ -50,7 +51,10 @@ public partial class EngineRpcModule(
     GCKeeper gcKeeper,
     IBlockProcessingQueue processingQueue,
     ILogManager logManager,
-    IBlockTree blockTree) : IEngineRpcModule
+    IBlockTree blockTree,
+    IHandler<VerifyInclusionListProofRequest, InclusionListProofStatusV1>? verifyInclusionListProofHandler = null,
+    IHandler<GetInclusionListProofRequest, InclusionListProofV1?>? getInclusionListProofHandler = null,
+    IHandler<SubmitInclusionListProofRequest, InclusionListProofStatusV1>? submitInclusionListProofHandler = null) : IEngineRpcModule
 {
     /// <summary>Initializes the module with module-local blob custody tracking.</summary>
     /// <remarks>Use the overload accepting <see cref="IBlobCustodyTracker"/> when custody state must be shared with networking.</remarks>
@@ -83,7 +87,10 @@ public partial class EngineRpcModule(
         GCKeeper gcKeeper,
         IBlockProcessingQueue processingQueue,
         ILogManager logManager,
-        IBlockTree blockTree)
+        IBlockTree blockTree,
+        IHandler<VerifyInclusionListProofRequest, InclusionListProofStatusV1>? verifyInclusionListProofHandler = null,
+        IHandler<GetInclusionListProofRequest, InclusionListProofV1?>? getInclusionListProofHandler = null,
+        IHandler<SubmitInclusionListProofRequest, InclusionListProofStatusV1>? submitInclusionListProofHandler = null)
         : this(
             getPayloadHandlerV1,
             getPayloadHandlerV2,
@@ -114,7 +121,10 @@ public partial class EngineRpcModule(
             gcKeeper,
             processingQueue,
             logManager,
-            blockTree)
+            blockTree,
+            verifyInclusionListProofHandler,
+            getInclusionListProofHandler,
+            submitInclusionListProofHandler)
     {
     }
 
@@ -126,8 +136,9 @@ public partial class EngineRpcModule(
     public ResultWrapper<IReadOnlyList<string>> engine_exchangeCapabilities(IEnumerable<string> methods)
         => _capabilitiesHandler.Handle(methods as HashSet<string> ?? [.. methods]);
 
+    // identification.md: a single execution client answers with exactly one entry; only a multiplexer concatenates.
     public ResultWrapper<ClientVersionV1[]> engine_getClientVersionV1(ClientVersionV1 clientVersionV1) =>
-        ResultWrapper<ClientVersionV1[]>.Success(string.IsNullOrEmpty(clientVersionV1.Code) ? [new()] : [new(), clientVersionV1]);
+        ResultWrapper<ClientVersionV1[]>.Success([new()]);
 
     /// <summary>Validates a custody-column update carried by a forkchoice call, and applies it
     /// (execution-apis#793).</summary>

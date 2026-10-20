@@ -140,7 +140,7 @@ internal static class GetPayloadDirectResponseWriter
         if (block.Header.RecursiveStark is { } recursiveStark)
         {
             writer.Write(",\"recursiveStarkProof\":"u8);
-            WriteHexString(writer, recursiveStark.StarkProof, chunked: recursiveStark.StarkProof.Length > PayloadBodiesDirectResponseWriter.HexChunkThreshold);
+            WriteHexString(writer, block.StarkProof ?? throw new InvalidOperationException("Missing block proof body"), chunked: true);
             writer.Write(",\"recursiveStarkBlockDepsHash\":"u8);
             WriteHexString(writer, recursiveStark.BlockDepsHash.Bytes, chunked: false);
         }

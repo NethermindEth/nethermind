@@ -26,9 +26,7 @@ namespace Nethermind.Tools.LeanBench;
 
 public static partial class Program
 {
-    private const long MaxProtocolPreparedBytes = 512L * 1024 * 1024;
-    private const int MaxProtocolPreparedObjects = 4096;
-    private const string BackendCommit = "854997bd156f47f1b1ce2192c4499741f29bd0df";
+    private const string BackendCommit = "cf1e92f87a7aec052b680f73e56145e866218583";
     private static readonly List<BenchmarkRow> Rows = [];
     private static readonly List<BatchSample> Samples = [];
     private static readonly BenchCase[] Cases = [new("sphincs1", 1, 0), new("sphincs4", 4, 0),
@@ -39,11 +37,9 @@ public static partial class Program
     public static async Task Main(string[] args)
     {
         string Value(string name, string fallback) => args.FirstOrDefault(a => a.StartsWith("--" + name + "=", StringComparison.Ordinal))?.Split('=', 2)[1] ?? fallback;
-        if (Value("scheduling-checks", "false") == "true")
-        {
-            await SchedulingChecks.RunAsync(args);
-            return;
-        }
+        if (Value("scheduling-checks", "false") == "true" || Value("transport-checks", "false") == "true" || Value("mixed-traffic", "false") == "true"
+            || args.Any(a => a.StartsWith("--protocol-", StringComparison.Ordinal)))
+            throw new NotSupportedException("lean/1 benchmarks were retired with EIP-8437 eth/73; use the recorded source revision.");
         if (args.Any(argument => argument == "--duplicate-normalization"
             || argument.StartsWith("--duplicate-normalization=", StringComparison.Ordinal)))
             throw new ArgumentException("Duplicate-witness normalization is archived; use the capture's recorded source revision.");
@@ -62,29 +58,20 @@ public static partial class Program
             GenerateDevnetTransactions(args);
             return;
         }
-        if (Value("transport-checks", "false") == "true")
-        {
-            await TransportChecks.RunAsync();
-            return;
-        }
-        if (Value("mixed-traffic", "false") == "true")
-        {
-            await RunMixedTraffic(args);
-            return;
-        }
         string output = Path.GetFullPath(Value("out", "lean-bench-results"));
         string fixtureDirectory = Path.GetFullPath(Value("fixtures", "tools/lean-ffi/target/bench-vectors"));
         double seconds = double.Parse(Value("seconds", "10"), CultureInfo.InvariantCulture);
         int queueCapacity = int.Parse(Value("queue", "8"), CultureInfo.InvariantCulture);
         int warmups = int.Parse(Value("warmups", "3"), CultureInfo.InvariantCulture);
         int repetitions = int.Parse(Value("repetitions", "5"), CultureInfo.InvariantCulture);
-        double[] rates = Value("rates", "1,10,25,50,100").Split(',').Select(s => double.Parse(s, CultureInfo.InvariantCulture)).ToArray();
+        double[] rates = Value("rates", "").Split(',', StringSplitOptions.RemoveEmptyEntries).Select(s => double.Parse(s, CultureInfo.InvariantCulture)).ToArray();
         double[] objectRates = Value("object-rates", "1,10,25,50").Split(',').Select(s => double.Parse(s, CultureInfo.InvariantCulture)).ToArray();
-        double[] protocolRates = Value("protocol-rates", "25,100").Split(',').Select(s => double.Parse(s, CultureInfo.InvariantCulture)).ToArray();
-        int[] sizes = Value("object-sizes", "1024,1048576,10485760").Split(',').Select(s => int.Parse(s, CultureInfo.InvariantCulture)).ToArray();
+        int[] sizes = Value("object-sizes", "1024,65536,1048576").Split(',').Select(s => int.Parse(s, CultureInfo.InvariantCulture)).ToArray();
         int[] blockCounts = Value("block-counts", "64,128").Split(',', StringSplitOptions.RemoveEmptyEntries).Select(s => int.Parse(s, CultureInfo.InvariantCulture)).ToArray();
         HashSet<string> selected = Value("cases", string.Join(',', Cases.Select(c => c.Name))).Split(',').ToHashSet(StringComparer.Ordinal);
-        if (!double.IsFinite(seconds) || seconds <= 0 || queueCapacity < 1 || warmups < 0 || repetitions < 1 || blockCounts.Any(c => c < 1 || c > Eip8288Constants.MaxProofDependencies) || sizes.Any(s => s < 1 || s > LeanProofStore.MaxWrapperBytes) || rates.Any(r => !double.IsFinite(r) || r <= 0) || objectRates.Any(r => !double.IsFinite(r) || r <= 0) || protocolRates.Any(r => !double.IsFinite(r) || r <= 0)) throw new ArgumentException("Positive duration, queue and rates required");
+        // load still sends full-body wrappers; EIP-8437 wrappers carry only tx hashes, so envelopes must be delivered first.
+        if (rates.Length != 0) throw new NotSupportedException("load needs envelope delivery for hash-only EIP-8437 wrappers");
+        if (!double.IsFinite(seconds) || seconds <= 0 || queueCapacity < 1 || warmups < 0 || repetitions < 1 || blockCounts.Any(c => c < 1 || c > Eip8288Constants.MaxProofDependencies) || sizes.Any(s => s < 1 || Rlp.LengthOfSequence(Rlp.LengthOfByteString(s, 0)) > LeanProofStore.MaxWrapperBytes) || rates.Any(r => !double.IsFinite(r) || r <= 0) || objectRates.Any(r => !double.IsFinite(r) || r <= 0)) throw new ArgumentException("Positive duration, queue and rates required");
         Directory.CreateDirectory(output);
         Fixtures fixtures = new(fixtureDirectory);
         NativeLeanProofVerifier.Instance.EnsureAvailable();
@@ -102,12 +89,7 @@ public static partial class Program
             runtime = RuntimeInformation.FrameworkDescription,
             backendCommit = BackendCommit,
             sphincsWitnessBytes = Eip8288Constants.LeanSphincsWitnessBytes,
-            transport = "localhost TCP; production Snappy/AES/MAC RLPx codecs; preset session secrets; shared production wrapper admission; no WAN or capability-handshake timing",
-            protocolPreprovedTransport = "lean/1; 64KiB chunks; production reassembly and admission; codec/TCP transport excludes PacketSender",
-            protocolSchedulerBackend = typeof(Nethermind.Consensus.Scheduler.BackgroundTaskScheduler).FullName,
-            protocolScheduler = "Production BackgroundTaskScheduler from node DI; drain tracking preserves capacity, timeouts and block-processing cancellation; fixed idle chain",
-            protocolPreparationByteLimit = MaxProtocolPreparedBytes,
-            protocolPreparationObjectLimit = MaxProtocolPreparedObjects,
+            transport = "localhost TCP; one eth/73 ProofWrappers message per wrapper; production Snappy/AES/MAC RLPx codecs; preset session secrets; shared production wrapper admission; no WAN or capability-handshake timing",
             percentileMethod = "Nearest rank: sorted[ceil(p * count) - 1]",
             warmupBatches = warmups,
             cryptoRepetitions = repetitions,
@@ -141,13 +123,6 @@ public static partial class Program
             foreach (double rate in rates)
             {
                 await RunLoad(fixtures, scenario, seconds, rate, queueCapacity, warmups);
-                Save();
-            }
-        HashSet<string> protocolCases = Value("protocol-cases", "sphincs1,sphincs16,stark1").Split(',').ToHashSet(StringComparer.Ordinal);
-        foreach (BenchCase scenario in Cases.Where(c => protocolCases.Contains(c.Name)))
-            foreach (double rate in protocolRates)
-            {
-                await RunProtocol(fixtures, scenario, seconds, rate, warmups);
                 Save();
             }
         foreach (int size in sizes)
@@ -330,123 +305,12 @@ public static partial class Program
         return tx;
     }
 
-    private static async Task RunProtocol(Fixtures fixtures, BenchCase scenario, double seconds, double rate, int warmups)
-    {
-        MeasuredVerifier verifier = new();
-        using ProtocolReceiver receiver = await ProtocolReceiver.Create(verifier);
-        using TcpRlpxLoopback transport = new(receiver.Receive);
-        double requestedBatches = Math.Ceiling(seconds * rate / scenario.TransactionsPerBatch);
-        if (!double.IsFinite(requestedBatches) || requestedBatches > MaxProtocolPreparedObjects - warmups)
-            throw new ArgumentException("Protocol preparation exceeds the 4096-object bound; reduce duration, rate or warmups");
-        int count = (int)requestedBatches;
-        long preparedBytes = 0;
-        ConcurrentDictionary<Hash256, (BatchSample Sample, int Bytes, long Scheduled)> transactions = new();
-        Dictionary<ValueHash256, BatchSample> byCommitment = [];
-        List<(BatchSample Sample, byte[] Wrapper, Hash256[] Hashes)> prepared = [];
-        long preparationStarted = Stopwatch.GetTimestamp();
-        for (int index = 0; index < count + warmups; index++)
-        {
-            if (preparedBytes > MaxProtocolPreparedBytes - LeanProofStore.MaxWrapperBytes)
-                throw new ArgumentException("Protocol preparation exceeds 512 MiB; reduce duration or rate");
-            AggregationInput input = fixtures.Input(scenario, index);
-            ValueHash256 commitment = Eip8288Dependencies.ComputeDepsHash(input.Deps);
-            List<Transaction> txs = [];
-            for (int i = 0; i < scenario.TransactionsPerBatch; i++)
-            {
-                FrameDependency dep = input.Deps[scenario.SharedSignature ? 0 : i];
-                int identity = dep.Scheme == Eip8288Constants.LeanSphincsScheme ? index * scenario.SphincsCount + (scenario.SharedSignature ? 0 : i) : index;
-                txs.Add(Transaction(receiver.Chain, dep, identity, scenario.SharedSignature ? i : identity % 16, index * 16 + i));
-            }
-            byte[] proof = NativeLeanProofVerifier.Instance.ProveRecursiveStark(commitment, Eip8288Constants.AggregatedVk, input);
-            byte[] wrapper = MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper()
-            {
-                Mode = MempoolWrapper.ModeRecursive,
-                Deps = Eip8288Dependencies.Canonicalize(input.Deps),
-                RecursiveStark = new(proof, new Hash256(commitment)),
-                Transactions = txs.Select(t => new WrapperTransaction(t)).ToArray()
-            }).Bytes;
-            BatchSample sample = new()
-            {
-                Case = scenario.Name,
-                Sequence = index,
-                TransactionCount = txs.Count,
-                ProofBytes = proof.Length,
-                WrapperBytes = wrapper.Length
-            };
-            preparedBytes += wrapper.Length;
-            byCommitment.Add(commitment, sample);
-            foreach (Transaction tx in txs) transactions.TryAdd(tx.Hash!, (sample, Rlp.Encode(tx).Bytes.Length, 0));
-            prepared.Add((sample, wrapper, txs.Select(tx => tx.Hash!).ToArray()));
-        }
-        double preparationSeconds = Stopwatch.GetElapsedTime(preparationStarted).TotalSeconds;
-        using CancellationTokenSource stop = new(TimeSpan.FromSeconds(seconds + 180));
-        verifier.Verified = (commitment, wall, cpuMs) =>
-        {
-            BatchSample sample = byCommitment[commitment];
-            sample.ProofVerified = true;
-            sample.VerifyWallMs += wall;
-            sample.VerifyCpuMs += cpuMs;
-        };
-        receiver.Chain.TxPool.NewPending += (_, args) =>
-        {
-            if (transactions.TryRemove(args.Transaction.Hash!, out (BatchSample Sample, int Bytes, long Scheduled) pending))
-            {
-                pending.Sample.AcceptedUniqueTransactions++;
-                pending.Sample.GoodputBytes += pending.Bytes;
-                pending.Sample.LatencyMs = Stopwatch.GetElapsedTime(pending.Scheduled).TotalMilliseconds;
-                receiver.Chain.TxPool.RemoveTransaction(args.Transaction.Hash);
-            }
-        };
-        for (int index = 0; index < warmups; index++)
-        {
-            long scheduled = Stopwatch.GetTimestamp();
-            foreach (Hash256 hash in prepared[index].Hashes)
-                if (transactions.TryGetValue(hash, out (BatchSample Sample, int Bytes, long Scheduled) pending))
-                    transactions[hash] = (pending.Sample, pending.Bytes, scheduled);
-            await transport.TransferAsync(prepared[index].Wrapper, stop.Token);
-            await receiver.DrainAsync(stop.Token);
-            if (prepared[index].Sample.AcceptedUniqueTransactions != scenario.TransactionsPerBatch)
-                throw new InvalidOperationException("Protocol warmup was not fully admitted");
-        }
-        prepared = prepared.Skip(warmups).ToList();
-        long started = Stopwatch.GetTimestamp();
-        double cpu = MeasuredVerifier.CpuMilliseconds();
-        for (int index = 0; index < prepared.Count; index++)
-        {
-            long scheduled = started + (long)(index * scenario.TransactionsPerBatch / rate * Stopwatch.Frequency);
-            await WaitUntil(scheduled, stop.Token);
-            BatchSample sample = prepared[index].Sample;
-            foreach (Hash256 hash in prepared[index].Hashes)
-                if (transactions.TryGetValue(hash, out (BatchSample Sample, int Bytes, long Scheduled) pending))
-                    transactions[hash] = (sample, pending.Bytes, scheduled);
-            double networkCpu = MeasuredVerifier.CpuMilliseconds();
-            TransportSample delivered = await transport.TransferAsync(prepared[index].Wrapper, stop.Token);
-            sample.WireBytes = delivered.WireBytes;
-            sample.EncodeWallMs = delivered.EncodeMs;
-            sample.TransferWallMs = delivered.TransferMs;
-            sample.NetworkCpuMs = MeasuredVerifier.CpuMilliseconds() - networkCpu;
-        }
-        double actualSendDuration = Stopwatch.GetElapsedTime(started).TotalSeconds;
-        await WaitUntil(started + (long)(seconds * Stopwatch.Frequency), stop.Token);
-        await receiver.DrainAsync(stop.Token);
-        double duration = Stopwatch.GetElapsedTime(started).TotalSeconds;
-        if (receiver.DisconnectReason is not null) throw new InvalidOperationException(receiver.DisconnectReason);
-        List<BatchSample> samples = prepared.Select(p => p.Sample).ToList();
-        long replaced = samples.Count(s => !s.ProofVerified);
-        foreach (BatchSample sample in samples)
-            if (!sample.ProofVerified) sample.RejectionReason = "Local ingress, pending-wrapper or scheduler capacity/deadline drop";
-            else if (sample.AcceptedUniqueTransactions != sample.TransactionCount) sample.RejectionReason = "Local pool admission decline";
-        Rows.Add(Summarize("protocol-preproved", scenario, samples, rate, seconds, duration,
-            count * scenario.TransactionsPerBatch, count, replaced * scenario.TransactionsPerBatch, replaced,
-            MeasuredVerifier.CpuMilliseconds() - cpu, preparationSeconds, actualSendDuration));
-        Samples.AddRange(samples);
-        Console.WriteLine($"Protocol {scenario.Name} target {rate:F0}: accepted {Rows[^1].AcceptedTxPerSecond:F2}tx/s ingress drops {replaced} preparation {preparationSeconds:F2}s");
-    }
-
     private static async Task RunObjects(int size, double seconds, double rate, int capacity, int warmups)
     {
-        byte[] payload = new byte[size];
-        new Random(17342).NextBytes(payload);
+        byte[] content = new byte[size];
+        new Random(17342).NextBytes(content);
+        // eth/73 ProofWrappers carries only RLP-list wrappers.
+        byte[] payload = Rlp.Encode([Rlp.Encode(content)]).Bytes;
         using TcpRlpxLoopback transport = new();
         using CancellationTokenSource stop = new(TimeSpan.FromSeconds(seconds + 180));
         for (int i = 0; i < warmups; i++) await transport.TransferAsync(payload, stop.Token);
@@ -468,7 +332,7 @@ public static partial class Program
                     Sequence = sequence,
                     TransactionCount = 0,
                     ProofBytes = 0,
-                    WrapperBytes = size,
+                    WrapperBytes = payload.Length,
                     GoodputBytes = size,
                     WireBytes = delivered.WireBytes,
                     EncodeWallMs = delivered.EncodeMs,

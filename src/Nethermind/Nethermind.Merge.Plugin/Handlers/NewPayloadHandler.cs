@@ -13,6 +13,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.ProofAggregation;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
@@ -58,15 +59,22 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     private readonly IStateReader _stateReader;
     private readonly ISpecProvider _specProvider;
     private readonly ITxValidator _txValidator;
-    private readonly ILeanProofVerifier _proofVerifier;
-    private readonly IBlockProofSidecarSource? _proofSidecars;
+    private readonly InclusionListProofService? _inclusionListProofs;
     private readonly RecoverSignatures _senderRecovery;
     private readonly ILogger _logger;
     private readonly LruCache<Hash256AsKey, CachedPayloadResult>? _latestBlocks;
     private readonly ProcessingOptions _defaultProcessingOptions;
     private readonly TimeSpan _timeout;
+    private readonly TimeProvider _timeProvider;
 
     private readonly ConcurrentDictionary<Hash256, ValidationCompletion> _blockValidationTasks = new();
+
+    /// <summary>The copies this handler handed to the processing queue that have not left it yet.</summary>
+    /// <remarks>
+    /// Replaced whole and only by the request in progress: the engine API runs one newPayload at a time, so a
+    /// request finds here what the requests before it left behind and nothing changes it meanwhile.
+    /// </remarks>
+    private QueuedCopy[] _queuedCopies = [];
 
     private ulong _lastBlockNumber;
     private ulong _lastBlockGasLimit;
@@ -89,8 +97,11 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         RecoverSignatures senderRecovery,
         ISpecProvider specProvider,
         ITxValidator txValidator,
-        ILogManager logManager, ILeanProofVerifier proofVerifier, IBlockProofSidecarSource? proofSidecars = null)
+        ILogManager logManager,
+        InclusionListProofService? inclusionListProofs = null,
+        TimeProvider? timeProvider = null)
     {
+        _inclusionListProofs = inclusionListProofs;
         _payloadPreparationService = payloadPreparationService;
         _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
         _blockTree = blockTree;
@@ -104,12 +115,11 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         _stateReader = stateReader;
         _specProvider = specProvider;
         _txValidator = txValidator;
-        _proofVerifier = proofVerifier ?? throw new ArgumentNullException(nameof(proofVerifier));
-        _proofSidecars = proofSidecars;
         _senderRecovery = senderRecovery;
         _logger = logManager.GetClassLogger<NewPayloadHandler>();
         _defaultProcessingOptions = receiptConfig.StoreReceipts ? ProcessingOptions.EthereumMerge | ProcessingOptions.StoreReceipts : ProcessingOptions.EthereumMerge;
         _timeout = TimeSpan.FromMilliseconds(mergeConfig.NewPayloadBlockProcessingTimeout);
+        _timeProvider = timeProvider ?? TimeProvider.System;
         if (mergeConfig.NewPayloadCacheSize > 0)
             _latestBlocks = new(mergeConfig.NewPayloadCacheSize, 0, "LatestBlocks");
         _simulateBlockProduction = mergeConfig.SimulateBlockProduction;
@@ -133,14 +143,14 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     public async Task<ResultWrapper<PayloadStatusV1>> HandleAsync(ExecutionPayload request)
     {
         // Every wait this request takes comes out of one budget, taken here.
-        long deadline = Stopwatch.GetTimestamp() + (long)(_timeout.TotalSeconds * Stopwatch.Frequency);
+        long deadline = _timeProvider.GetTimestamp() + (long)(_timeout.TotalSeconds * _timeProvider.TimestampFrequency);
 
         using ExecutionPayloadPreparation preparation = new(request);
         Result<Block> decodingResult;
         using (preparation.Workers.Enter())
         {
-            StartSenderRecovery(request);
             decodingResult = preparation.TryGetBlock(_poSSwitcher.FinalTotalDifficulty);
+            if (!decodingResult.IsError) StartSenderRecovery(request);
         }
         if (decodingResult.IsError)
         {
@@ -148,6 +158,8 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             return NewPayloadV1Result.Invalid(null, $"Block {request} could not be parsed as a block: {decodingResult.Error}");
         }
         Block block = decodingResult.Data;
+        // A commitment this node holds no valid proof for is treated as null (EIPs#12475).
+        _inclusionListProofs?.ResolveObligations(block.InclusionLists, _specProvider.GetSpec(block.Header));
         ValueHash256 inclusionListDigest = ComputeInclusionListDigest(block);
         ParallelUnbalancedWork.WorkerGroup workers = preparation.Workers;
 
@@ -157,20 +169,6 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             _logger.Info($"Received {requestStr}      | limit {block.Header.GasLimit,13:N0} {GetGasChange(block.Number == _lastBlockNumber + 1 ? block.Header.GasLimit : _lastBlockGasLimit)} | {block.ParsedExtraData()}");
             _lastBlockNumber = block.Number;
             _lastBlockGasLimit = block.Header.GasLimit;
-        }
-
-        // EIP-8437 kind 2: a payload delivered without the recursive_stark its header commits to is completed from a
-        // proof sidecar keyed by the block hash; the hash check below then binds the recovered proof to the header.
-        if (block.Header.RecursiveStark is null && _proofSidecars is not null && _specProvider.GetSpec(block.Header).IsEip8288Enabled)
-        {
-            using CancellationTokenSource sidecarTimeout = new(RemainingBudget(deadline) / 2);
-            RecursiveStark? proof = await _proofSidecars.TryGetAsync(block, sidecarTimeout.Token);
-            if (proof is null)
-            {
-                if (_logger.IsInfo) _logger.Info($"Block proof sidecar of {block.ToString(Block.Format.Short)} is unavailable. Result of {requestStr}: SYNCING.");
-                return NewPayloadV1Result.Syncing;
-            }
-            block.Header.RecursiveStark = proof;
         }
 
         // This gate is the precondition for the later ValidateSuggestedBlock(validateHashes: false) calls: the roots
@@ -251,7 +249,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
                 // A re-executed block is already marked processed, so it can become head before its restored state
                 // commits; wait for that commit before reading the state again.
                 if (IsVerdictServiceable(block)
-                    || (await _processingQueue.WaitForExecutedCopyAsync(block.Hash!, RemainingBudget(deadline)) && IsVerdictServiceable(block)))
+                    || (await _processingQueue.WaitForExecutedCopyAsync(block.Hash!, RemainingBudget(deadline), _timeProvider) && IsVerdictServiceable(block)))
                 {
                     if (_logger.IsInfo) _logger.Info($"Valid... A new payload ignored. Block {block.ToString(Block.Format.Short)} found in main chain.");
                     return NewPayloadV1Result.Valid(block.Hash);
@@ -271,7 +269,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
 
                 // The re-execution restoring this state may still be committing, so wait for it before judging.
                 if (_stateReader.HasStateForBlock(block.Header)
-                    || (await _processingQueue.WaitForExecutedCopyAsync(block.Hash!, RemainingBudget(deadline)) && _stateReader.HasStateForBlock(block.Header)))
+                    || (await _processingQueue.WaitForExecutedCopyAsync(block.Hash!, RemainingBudget(deadline), _timeProvider) && _stateReader.HasStateForBlock(block.Header)))
                 {
                     if (EvaluateInclusionListFromState(block, inclusionListDigest) is { } fromState)
                     {
@@ -430,22 +428,24 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     // An absent IL digests to default, matching non-IL cache entries.
     internal static ValueHash256 ComputeInclusionListDigest(Block block)
     {
-        if (block.InclusionListTransactions is not { Length: > 0 } && block.InclusionListRecursiveStark is null && block.InclusionListProvenDependencies is null) return default;
+        if (block.InclusionListTransactions is not { Length: > 0 } && block.InclusionLists is null) return default;
         KeccakHash hash = KeccakHash.Create();
         hash.Update("EIP8288 inclusion list"u8);
         Span<byte> fields = stackalloc byte[sizeof(int) + 1];
         BinaryPrimitives.WriteInt32BigEndian(fields, block.InclusionListTransactions?.Length ?? 0);
-        fields[^1] = block.InclusionListRecursiveStark is null ? (byte)0 : (byte)1;
+        fields[^1] = block.InclusionLists is null ? (byte)0 : (byte)1;
         hash.Update(fields);
         foreach (Transaction tx in block.InclusionListTransactions ?? []) hash.Update((tx.Hash ?? Keccak.Zero).Bytes);
-        if (block.InclusionListRecursiveStark is { } proof)
+        // The verdict depends on how the transactions split into lists and on whether each list's commitment obligates.
+        foreach (CommitteeInclusionList list in block.InclusionLists ?? [])
         {
-            hash.Update((proof.BlockDepsHash ?? Keccak.Zero).Bytes);
-            hash.Update(ValueKeccak.Compute(proof.StarkProof ?? []).Bytes);
+            // The committee index is below IL_COMMITTEE_SIZE, so one byte holds it.
+            BinaryPrimitives.WriteInt32BigEndian(fields, list.Transactions.Length);
+            fields[^1] = (byte)list.CommitteeIndex;
+            hash.Update(fields);
+            fields[^1] = list.HoldsValidProof ? (byte)1 : (byte)0;
+            hash.Update(fields[^1..]);
         }
-        fields[^1] = block.InclusionListProvenDependencies is null ? (byte)0 : (byte)1;
-        hash.Update(fields[^1..]);
-        if (block.InclusionListProvenDependencies is { } dependencies) hash.Update(ValueKeccak.Compute(dependencies).Bytes);
         return hash.GenerateValueHash();
     }
 
@@ -478,24 +478,52 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     /// <inheritdoc/>
     /// <remarks>Without EIP-8037 gas dimensions, answers only when every possible assignment gives the same verdict.</remarks>
     public bool? TryEvaluate(Hash256 blockHash, byte[][] inclusionListTransactions)
-        => TryEvaluate(blockHash, inclusionListTransactions, null, null);
+        => TryEvaluate(blockHash, inclusionListTransactions, null);
 
-    public bool? TryEvaluate(Hash256 blockHash, byte[][] inclusionListTransactions, RecursiveStark? proof)
-        => TryEvaluate(blockHash, inclusionListTransactions, proof, null);
+    public bool? TryEvaluate(Hash256 blockHash, byte[][] inclusionListTransactions, IReadOnlyList<InclusionListV1>? lists)
+        => TryEvaluate(blockHash, inclusionListTransactions, lists, null);
 
-    public bool? TryEvaluate(Hash256 blockHash, byte[][] inclusionListTransactions, RecursiveStark? proof, byte[]? provenDependencies)
+    /// <inheritdoc/>
+    public bool[]? ResolveHeldProofs(IReadOnlyList<InclusionListV1> lists, ulong blockNumber, ulong timestamp)
+    {
+        if (_inclusionListProofs is null) return null;
+        try
+        {
+            CommitteeInclusionList[] decoded = InclusionListV1.Decode(lists);
+            _inclusionListProofs.ResolveObligations(decoded, _specProvider.GetSpec(new ForkActivation(blockNumber, timestamp)));
+            bool[] held = new bool[decoded.Length];
+            for (int i = 0; i < held.Length; i++) held[i] = decoded[i].HoldsValidProof;
+            return held;
+        }
+        catch (Exception exception) when (exception is RlpException or ArgumentException)
+        {
+            return null;
+        }
+    }
+
+    /// <inheritdoc/>
+    public bool? TryEvaluate(Hash256 blockHash, byte[][] inclusionListTransactions, IReadOnlyList<InclusionListV1>? lists, bool[]? heldProofs)
     {
         Block? block = _blockTree.FindBlock(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
         if (block is null || !_stateReader.HasStateForBlock(block.Header)) return null;
         // Gas bounds must not mutate the tree's shared header while another request reads it.
         block = block.WithReplacedBodyCloned(block.Body);
         block.Header.GasUsedPerDimension = RecordedGasDimensions(blockHash);
-        block.InclusionListRecursiveStark = proof;
-        block.InclusionListProvenDependencies = provenDependencies;
 
         // Undecodable entries are dropped rather than failing the answer: a censoring proposer must not be
         // able to escape the check by having one bad entry gossiped into the aggregate.
-        return IsInclusionListSatisfied(block, TxsDecoder.DecodeTxs(inclusionListTransactions, skipErrors: true).Transactions);
+        if (lists is null)
+        {
+            block.InclusionLists = null;
+            return IsInclusionListSatisfied(block, TxsDecoder.DecodeTxs(inclusionListTransactions, skipErrors: true).Transactions);
+        }
+        CommitteeInclusionList[] decoded = InclusionListV1.Decode(lists);
+        // Obligations resolved when the payload arrived stand: a proof released since then must not excuse an omission.
+        if (heldProofs is not null && heldProofs.Length == decoded.Length)
+            for (int i = 0; i < decoded.Length; i++) decoded[i].HoldsValidProof = heldProofs[i];
+        else _inclusionListProofs?.ResolveObligations(decoded, _specProvider.GetSpec(block.Header));
+        block.InclusionLists = decoded;
+        return IsInclusionListSatisfied(block, CommitteeInclusionList.Flatten(decoded));
     }
 
     private bool? IsInclusionListSatisfied(Block block, Transaction[] inclusionList)
@@ -503,12 +531,10 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         IReleaseSpec spec = _specProvider.GetSpec(block.Header);
         if (InclusionListValidator.IsBlockFull(block, spec)) return true;
         _senderRecovery.RecoverData(inclusionList, spec, skipErrors: true);
-        ILeanProofVerifier verifier = new InclusionListProofVerifier(_proofVerifier);
         bool omittedFrame = false;
         if (spec.IsEip8288Enabled)
         {
-            inclusionList = InclusionListProofValidator.SelectEligible(inclusionList, block.InclusionListRecursiveStark,
-                block.InclusionListProvenDependencies, verifier, spec, out _, out _);
+            inclusionList = InclusionListProofValidator.SelectEligible(inclusionList, block.InclusionLists, spec);
             HashSet<Hash256> included = [];
             foreach (Transaction tx in block.Transactions) if (tx.Hash is { } hash) included.Add(hash);
             foreach (Transaction tx in inclusionList)
@@ -517,29 +543,29 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
 
         SpecificBlockReadOnlyStateProvider state = new(_stateReader, block.Header);
         bool? ordinarySatisfied = spec.IsEip8037Enabled && block.Header.GasUsedPerDimension is null
-            ? EvaluateWithUnknownGasDimensions(block, inclusionList, state, spec, verifier)
+            ? EvaluateWithUnknownGasDimensions(block, inclusionList, state, spec)
             : InclusionListValidator.IsSatisfied(block, inclusionList, state, spec, _txValidator,
-                block.InclusionListRecursiveStark, verifier, frameCanInclude: static _ => false);
+                block.InclusionLists, frameCanInclude: static _ => false);
         // Ordinary omissions are decidable even if another valid frame needs prefix execution.
         return ordinarySatisfied == false ? false : omittedFrame ? null : ordinarySatisfied;
     }
 
     /// <summary>Answers only when every possible gas-dimension assignment gives the same verdict.</summary>
     /// <remarks>Account reads are shared across the gas bounds.</remarks>
-    private bool? EvaluateWithUnknownGasDimensions(Block block, Transaction[] inclusionList, IReadOnlyStateProvider state, IReleaseSpec spec, ILeanProofVerifier verifier)
+    private bool? EvaluateWithUnknownGasDimensions(Block block, Transaction[] inclusionList, IReadOnlyStateProvider state, IReleaseSpec spec)
     {
         state = new CachedAccountStateProvider(state);
         // EIP-8037 stores max(execution, state). Appendability decreases as either used dimension increases.
         try
         {
             block.Header.GasUsedPerDimension = (block.GasUsed, block.GasUsed);
-            if (!InclusionListValidator.IsSatisfied(block, inclusionList, state, spec, _txValidator, block.InclusionListRecursiveStark, verifier, frameCanInclude: static _ => false)) return false;
+            if (!InclusionListValidator.IsSatisfied(block, inclusionList, state, spec, _txValidator, block.InclusionLists, frameCanInclude: static _ => false)) return false;
 
             block.Header.GasUsedPerDimension = (block.GasUsed, 0);
-            if (!InclusionListValidator.IsSatisfied(block, inclusionList, state, spec, _txValidator, block.InclusionListRecursiveStark, verifier, frameCanInclude: static _ => false)) return null;
+            if (!InclusionListValidator.IsSatisfied(block, inclusionList, state, spec, _txValidator, block.InclusionLists, frameCanInclude: static _ => false)) return null;
 
             block.Header.GasUsedPerDimension = (0, block.GasUsed);
-            return InclusionListValidator.IsSatisfied(block, inclusionList, state, spec, _txValidator, block.InclusionListRecursiveStark, verifier, frameCanInclude: static _ => false) ? true : null;
+            return InclusionListValidator.IsSatisfied(block, inclusionList, state, spec, _txValidator, block.InclusionLists, frameCanInclude: static _ => false) ? true : null;
         }
         finally
         {
@@ -735,7 +761,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         Hash256 parentHash = parent.GetOrCalculateHash();
         if (_blockTree.GetInfo(parent.Number, parentHash).Info is not { WasProcessed: false }) return true;
 
-        bool inTime = await _processingQueue.WaitForExecutedCopyAsync(parentHash, RemainingBudget(deadline));
+        bool inTime = await _processingQueue.WaitForExecutedCopyAsync(parentHash, RemainingBudget(deadline), _timeProvider);
         if (!inTime && _logger.IsDebug) _logger.Debug($"Parent {parent.ToString(BlockHeader.Format.Short)} did not leave the processing queue within the request's budget. Assume Syncing.");
         return inTime;
     }
@@ -747,7 +773,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     /// </remarks>
     private TimeSpan RemainingBudget(long deadline)
     {
-        TimeSpan left = Stopwatch.GetElapsedTime(Stopwatch.GetTimestamp(), deadline);
+        TimeSpan left = _timeProvider.GetElapsedTime(_timeProvider.GetTimestamp(), deadline);
         return left > TimeSpan.Zero ? left : TimeSpan.Zero;
     }
 
@@ -796,19 +822,29 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         try
         {
             using CancellationTokenSource cts = new();
-            Task timeoutTask = Task.Delay(RemainingBudget(deadline), cts.Token);
+            Task timeoutTask = Task.Delay(RemainingBudget(deadline), _timeProvider, cts.Token);
 
-            AddBlockResult addResult = await _blockTree.SuggestBlockAsync(block, BlockTreeSuggestOptions.ForceDontSetAsMain).AsTask().TimeoutOn(timeoutTask);
+            Task<AddBlockResult> suggest = _blockTree.SuggestBlockAsync(block, BlockTreeSuggestOptions.ForceDontSetAsMain).AsTask();
+            AddBlockResult addResult;
+            try
+            {
+                addResult = await suggest.TimeoutOn(timeoutTask);
+            }
+            catch (TimeoutException)
+            {
+                // The suggest goes on without this request, and a block it adds would otherwise sit in the tree
+                // unqueued until the CL re-sends the payload.
+                TrackQueuedCopy(block.Hash!, inclusionListDigest: null, EnqueueOnceAddedAsync(suggest, block, processingOptions, blockProcessed, workers));
+                throw;
+            }
 
             // A payload sent again while its first copy is between verdict and removal is known, and marked processed
             // only part way through that window. Queued again before the copy is gone it would be skipped as not
             // better than head and answered INVALID, or answered by the copy's removal without its own inclusion
-            // list ever judged, so let the first copy finish first. Only a copy that has its verdict is worth waiting
-            // for; one that is merely queued is left to answer this request through the shared completion, as before,
-            // and a copy already gone costs nothing here.
+            // list ever judged, so let the first copy finish first. A copy already gone costs nothing here.
             if (addResult == AddBlockResult.AlreadyKnown)
             {
-                Task removed = _processingQueue.WaitUntilRemovedAsync(block.Hash!, executedOnly: true).AsTask();
+                Task removed = WaitForEarlierCopiesAsync(block.Hash!, ilDigest);
                 if (await Task.WhenAny(removed, timeoutTask) == timeoutTask) throw new TimeoutException();
                 // The first copy's own verdict and removal land on whatever completion is registered for the hash,
                 // so if they consumed this one it must not stand in for the answer to this request. A fault is that
@@ -858,7 +894,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
                 // Enqueue, on the caller's thread, and hands it back only once the block is committed - after the
                 // verdict this request only needs to see. The processing loop raises its own thread's priority, so
                 // nothing is lost by not inheriting this one's. A failure to enqueue fails the request (EnqueueAsync).
-                _ = Task.Run(() => EnqueueAsync(block, processingOptions, blockProcessed, workers));
+                TrackQueuedCopy(block.Hash!, ilDigest, Task.Run(() => EnqueueAsync(block, processingOptions, blockProcessed, workers)));
                 (result, validationMessage) = await blockProcessed.Task.TimeoutOn(timeoutTask, cts);
             }
             else
@@ -913,6 +949,53 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         _blockTree.FindHeader(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded) is { Number: ulong number }
         && _blockTree.WasProcessed(number, blockHash);
 
+    /// <summary>
+    /// Waits out the copies of the block whose verdict cannot answer a request carrying <paramref name="ilDigest"/>.
+    /// A copy this handler queued with the same list answers through the shared completion, so only one that already
+    /// has its verdict is waited for. A copy with another list is waited for from the moment its request handed it
+    /// over, which is before the queue has taken it. So is a copy still waiting on a suggest that outlived its request,
+    /// whatever its list. A copy queued by sync is untracked and counts as carrying no list.
+    /// </summary>
+    private Task WaitForEarlierCopiesAsync(Hash256 blockHash, in ValueHash256 ilDigest)
+    {
+        bool tracked = false;
+        List<Task>? anotherList = null;
+        foreach (QueuedCopy copy in _queuedCopies)
+        {
+            if (copy.BlockHash != blockHash || copy.Left.IsCompleted) continue;
+            tracked = true;
+            if (copy.InclusionListDigest != ilDigest) (anotherList ??= []).Add(copy.Left);
+        }
+
+        bool carriesSameList = anotherList is null && (tracked || ilDigest == default);
+        Task inQueue = _processingQueue.WaitUntilRemovedAsync(blockHash, executedOnly: carriesSameList).AsTask();
+        if (anotherList is null) return inQueue;
+        anotherList.Add(inQueue);
+        return Task.WhenAll(anotherList);
+    }
+
+    private void TrackQueuedCopy(Hash256 blockHash, ValueHash256? inclusionListDigest, Task left)
+    {
+        QueuedCopy[] stillQueued = Array.FindAll(_queuedCopies, static copy => !copy.Left.IsCompleted);
+        _queuedCopies = [.. stillQueued, new QueuedCopy(blockHash, inclusionListDigest, left)];
+    }
+
+    private async Task EnqueueOnceAddedAsync(Task<AddBlockResult> suggest, Block block, ProcessingOptions processingOptions, ValidationCompletion blockProcessed, ParallelUnbalancedWork.WorkerGroup workers)
+    {
+        try
+        {
+            if (await suggest is not AddBlockResult.Added) return;
+        }
+        catch (Exception e)
+        {
+            if (_logger.IsDebug) _logger.Debug($"Suggesting {block.ToString(Block.Format.FullHashAndNumber)} failed after its request timed out: {e}");
+            return;
+        }
+
+        // Off the thread that completed the suggest, for the reason the request's own enqueue gives.
+        await Task.Run(() => EnqueueAsync(block, processingOptions, blockProcessed, workers));
+    }
+
     private async Task EnqueueAsync(Block block, ProcessingOptions processingOptions, ValidationCompletion blockProcessed, ParallelUnbalancedWork.WorkerGroup workers)
     {
         try
@@ -920,6 +1003,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             ValueTask enqueue;
             using (workers.Enter()) enqueue = _processingQueue.Enqueue(block, processingOptions);
             await enqueue;
+            await _processingQueue.WaitUntilRemovedAsync(block.Hash!);
         }
         catch (Exception e)
         {
@@ -1090,6 +1174,14 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         /// <returns><c>true</c> when the answer is already cached, so the entry must be deleted.</returns>
         public bool MarkBlockUncommitted() => Interlocked.Exchange(ref _state, Uncommitted) == Cached;
     }
+
+    /// <summary>A copy this handler handed to the processing queue and the inclusion list it carries, so a resend knows whether that copy's verdict is its own.</summary>
+    /// <param name="InclusionListDigest">
+    /// Null for a copy handed over while its suggest was still pending: sync may add the block first and queue a copy
+    /// without the list, so no resend may take the verdict that follows for its own.
+    /// </param>
+    /// <param name="Left">Completes once the copy is out of the queue, or never got into it.</param>
+    private readonly record struct QueuedCopy(Hash256 BlockHash, ValueHash256? InclusionListDigest, Task Left);
 
     // The IL digest disambiguates a resubmission of the same block with a different, per-call IL.
     /// <param name="GasUsedPerDimension">What execution recorded for this block, so a re-validation under a

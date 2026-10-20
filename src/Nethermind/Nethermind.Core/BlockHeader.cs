@@ -97,9 +97,9 @@ public class BlockHeader
     public ulong? ExcessBlobGas { get; set; }
     public ulong? SlotNumber { get; set; }
 
-    /// <summary>EIP-8288 recursive STARK aggregating the block's transaction dependencies.</summary>
-    public RecursiveStark? RecursiveStark { get; set; }
-    public bool HasBody => (TxRoot is not null && TxRoot != Keccak.EmptyTreeHash)
+    /// <summary>EIP-8288 commitments to the body proof and the block's transaction dependencies.</summary>
+    public RecursiveStarkCommitment? RecursiveStark { get; set; }
+    public bool HasBody => RecursiveStark is not null || (TxRoot is not null && TxRoot != Keccak.EmptyTreeHash)
                            || (UnclesHash is not null && UnclesHash != Keccak.OfAnEmptySequenceRlp)
                            || (WithdrawalsRoot is not null && WithdrawalsRoot != Keccak.EmptyTreeHash)
                            || (BlockAccessListHash is not null && BlockAccessListHash != Keccak.OfAnEmptySequenceRlp);
@@ -157,7 +157,7 @@ public class BlockHeader
         if (RecursiveStark is not null)
         {
             builder.AppendLine($"{indent}BlockDepsHash: {RecursiveStark.BlockDepsHash}");
-            builder.AppendLine($"{indent}RecursiveStarkProofBytes: {RecursiveStark.StarkProof.Length}");
+            builder.AppendLine($"{indent}StarkProofHash: {RecursiveStark.StarkProofHash}");
         }
 
         return builder.ToString();
@@ -210,7 +210,8 @@ public class BlockHeader
     public BlockHeader Clone()
     {
         BlockHeader header = (BlockHeader)MemberwiseClone();
-        header.Bloom = Bloom?.Clone() ?? new Bloom();
+        // Header blooms are never mutated in place, so the clone shares the instance.
+        header.Bloom ??= new Bloom();
         return header;
     }
 

@@ -8,7 +8,12 @@
   <Import Project="../tests.props" />
 
   <ItemGroup>
+    <PackageReference Include="NSubstitute" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\Nethermind.Evm\Nethermind.Evm.csproj" />
+    <ProjectReference Include="..\Nethermind.Evm.Precompiles\Nethermind.Evm.Precompiles.csproj" />
   </ItemGroup>
 
   <Target Name="RequireZkEvm" BeforeTargets="PrepareForBuild" Condition="'$(EnableZkEvm)' != 'true'">
