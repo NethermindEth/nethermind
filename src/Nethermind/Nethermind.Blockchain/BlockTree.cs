@@ -533,7 +533,10 @@ namespace Nethermind.Blockchain
                 if (shouldProcess && (bestSuggestedImprovementSatisfied || header.IsGenesis || fillBeaconBlock))
                 {
                     BestSuggestedBody = block;
-                    NewBestSuggestedBlock?.Invoke(this, new BlockEventArgs(block));
+                    NewBestSuggestedBlock?.Invoke(this, new BlockEventArgs(block)
+                    {
+                        NonBlockingProcessing = options.ContainsFlag(BlockTreeSuggestOptions.NonBlockingProcessing)
+                    });
                 }
             }
 
