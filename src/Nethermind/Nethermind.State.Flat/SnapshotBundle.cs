@@ -380,6 +380,13 @@ public sealed class SnapshotBundle : IDisposable
     }
 
     /// <summary>A leased immutable source with private warmed storage, independent of transient-resource retirement.</summary>
+    /// <remarks>
+    /// Used by <see cref="ScopeProvider.FlatStorageTree"/> to apply storage writes early on the idle thread; the commit then
+    /// adopts the resulting root instead of bulk-setting those writes again. That apply runs off the owner thread and may
+    /// still run after the block's transient resource is retired or this bundle is recycled, so unlike the bundle's own
+    /// tries it cannot read the bundle or its per-block warmed nodes. It reads only the buffer, which its pins keep
+    /// readable, a private <see cref="WarmedNodeLog"/>, and persistence through its own lease of the read-only bundle.
+    /// </remarks>
     internal sealed class BackgroundTrieSource : INodeRecordStore, IDisposable
     {
         private const int WarmedNodeCapacity = 1024;

@@ -54,42 +54,72 @@ public static class PersistedSnapshotBuilder
     public static void Build<TWriter>(Snapshot snapshot, ref TWriter writer, BlobArenaWriter blobWriter, BloomFilter bloom) where TWriter : IByteBufferWriter
     {
         using ParallelUnbalancedWork.WorkerScope workers = ParallelUnbalancedWork.BeginWorkerScope(Environment.ProcessorCount);
-        // The node iterators emit in key order, so each top/compact/fallback bucket is sorted as it fills.
-        using NativeMemoryList<(TreePath Path, ulong Pointer)> stateTop = new(0), stateCompact = new(0), stateFallback = new(0);
-        using NativeMemoryList<(ValueHash256 AddrHash, TreePath Path, ulong Pointer)> storageTop = new(0), storageCompact = new(0), storageFallback = new(0);
-        using NativeMemoryList<((ValueAddress Addr, UInt256 Slot) Key, UInt256? Value)> storages = new(0);
-        using NativeMemoryList<ValueAddress> addresses = new(0);
+        // To stay off the LOH, we keep only the unmanaged sort keys in NativeMemoryList
+        // (off-heap) and read the node RLP from the buffer by its record pointer
+        // at write time. PooledSet is used for the small Address dedup map so its
+        // backing entry array is pool-rented rather than freshly allocated each block.
+        NativeMemoryList<(TreePath Path, ulong Pointer)> stateTopKeys = null!, stateCompactKeys = null!, stateFallbackKeys = null!;
+        NativeMemoryList<(ValueHash256 AddrHash, TreePath Path, ulong Pointer)> storTopKeys = null!, storCompactKeys = null!, storFallbackKeys = null!;
+        NativeMemoryList<((ValueAddress Addr, UInt256 Slot) Key, UInt256? Value)> sortedStorages = null!;
+        NativeMemoryList<ValueAddress> uniqueAddresses = null!;
 
+        // Parallel extraction + sort: three independent jobs over disjoint collections. The node
+        // iterators emit in key order, so each node sublist is sorted as it fills.
         Action[] jobs =
         [
             () =>
             {
+                NativeMemoryList<(TreePath Path, ulong Pointer)> top = new(0);
+                NativeMemoryList<(TreePath Path, ulong Pointer)> compact = new(0);
+                NativeMemoryList<(TreePath Path, ulong Pointer)> fallback = new(0);
                 foreach ((TreePath path, ulong pointer, _) in snapshot.StateNodes)
                 {
-                    (path.Length <= TopPathThreshold ? stateTop : path.Length <= CompactPathThreshold ? stateCompact : stateFallback).Add((path, pointer));
+                    if (path.Length <= TopPathThreshold) top.Add((path, pointer));
+                    else if (path.Length <= CompactPathThreshold) compact.Add((path, pointer));
+                    else fallback.Add((path, pointer));
                 }
+                stateTopKeys = top; stateCompactKeys = compact; stateFallbackKeys = fallback;
             },
             () =>
             {
-                foreach ((Hash256 address, TreePath path, ulong pointer, _) in snapshot.StorageNodes)
+                NativeMemoryList<(ValueHash256, TreePath, ulong)> top = new(0);
+                NativeMemoryList<(ValueHash256, TreePath, ulong)> compact = new(0);
+                NativeMemoryList<(ValueHash256, TreePath, ulong)> fallback = new(0);
+                foreach ((Hash256 addr, TreePath path, ulong pointer, _) in snapshot.StorageNodes)
                 {
-                    (path.Length <= TopPathThreshold ? storageTop : path.Length <= CompactPathThreshold ? storageCompact : storageFallback).Add((address.ValueHash256, path, pointer));
+                    ValueHash256 addrHash = addr.ValueHash256;
+                    if (path.Length <= TopPathThreshold) top.Add((addrHash, path, pointer));
+                    else if (path.Length <= CompactPathThreshold) compact.Add((addrHash, path, pointer));
+                    else fallback.Add((addrHash, path, pointer));
                 }
+                storTopKeys = top; storCompactKeys = compact; storFallbackKeys = fallback;
             },
             () =>
             {
                 using PooledSet<HashedKey<Address>> seen = new();
-                foreach (KeyValuePair<HashedKey<Address>, Account?> kv in snapshot.Accounts) seen.Add(kv.Key);
-                foreach (KeyValuePair<HashedKey<Address>, bool> kv in snapshot.SelfDestructedStorageAddresses) seen.Add(kv.Key);
+                foreach (KeyValuePair<HashedKey<Address>, Account?> kv in snapshot.Accounts)
+                    seen.Add(kv.Key);
+                foreach (KeyValuePair<HashedKey<Address>, bool> kv in snapshot.SelfDestructedStorageAddresses)
+                    seen.Add(kv.Key);
+
+                NativeMemoryList<((ValueAddress Addr, UInt256 Slot) Key, UInt256? Value)> storages =
+                    new(Math.Max(1, snapshot.StoragesCount));
                 foreach (KeyValuePair<HashedKey<(Address, UInt256)>, UInt256?> kv in snapshot.Storages)
                 {
-                    (Address address, UInt256 slot) = kv.Key.Key;
-                    storages.Add(((new ValueAddress(address.Bytes), slot), kv.Value));
-                    seen.Add(address);
+                    (Address addr, UInt256 slot) = kv.Key.Key;
+                    storages.Add(((new ValueAddress(addr.Bytes), slot), kv.Value));
+                    seen.Add(addr);
                 }
-                foreach (HashedKey<Address> address in seen) addresses.Add(new ValueAddress(address.Key.Bytes));
+
+                NativeMemoryList<ValueAddress> addresses = new(Math.Max(1, seen.Count));
+                foreach (HashedKey<Address> addr in seen)
+                    addresses.Add(new ValueAddress(addr.Key.Bytes));
                 addresses.Sort(ValueAddressComparer);
+
                 storages.Sort(StoragesByAddressComparer);
+
+                sortedStorages = storages;
+                uniqueAddresses = addresses;
             }
         ];
         ParallelUnbalancedWork.For(0, jobs.Length, jobs, static (i, actions) =>
@@ -107,11 +137,11 @@ public static class PersistedSnapshotBuilder
             // Metadata is last so its blob_range records the now-final blob-arena run; the ref-id is
             // first but only needs the (fixed) blob-arena id.
             WriteRefId(ref table, blobWriter);
-            WriteStorageNodes(ref table, snapshot, storageFallback, storageCompact, storageTop, blobWriter, bloom);
-            WriteStateNodes(ref table, snapshot, stateFallback, blobWriter, bloom);
-            WriteStateNodes(ref table, snapshot, stateCompact, blobWriter, bloom);
-            WriteStateNodes(ref table, snapshot, stateTop, blobWriter, bloom);
-            WritePerAddress(ref table, snapshot, storages, addresses, bloom);
+            WriteStorageNodes(ref table, snapshot, storFallbackKeys, storCompactKeys, storTopKeys, blobWriter, bloom);
+            WriteStateNodes(ref table, snapshot, stateFallbackKeys, blobWriter, bloom);
+            WriteStateNodes(ref table, snapshot, stateCompactKeys, blobWriter, bloom);
+            WriteStateNodes(ref table, snapshot, stateTopKeys, blobWriter, bloom);
+            WritePerAddress(ref table, snapshot, sortedStorages, uniqueAddresses, bloom);
             WriteMetadata(ref table, snapshot, blobWriter);
 
             table.Build();
@@ -119,6 +149,14 @@ public static class PersistedSnapshotBuilder
         finally
         {
             table.Dispose();
+            sortedStorages?.Dispose();
+            uniqueAddresses?.Dispose();
+            stateTopKeys?.Dispose();
+            stateCompactKeys?.Dispose();
+            stateFallbackKeys?.Dispose();
+            storTopKeys?.Dispose();
+            storCompactKeys?.Dispose();
+            storFallbackKeys?.Dispose();
         }
     }
 
