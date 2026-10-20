@@ -320,6 +320,11 @@ public class UserErrors
         yield return MalformedInput(new AbiSignature("f").With(AbiType.String),
             "0000000000000000000000000000000000000000000000000000000000000020" +
             "00000000000000000000000000000000000000000000000000000000000f4240").SetName("string length 10^6 beyond input");
+        yield return MalformedInput(new AbiSignature("f").With(AbiType.Array(AbiType.Bool, 10_000_000)),
+            "0000000000000000000000000000000000000000000000000000000000000000").SetName("bool[10^7] beyond input");
+        yield return MalformedInput(new AbiSignature("f").With(AbiType.Array(AbiType.String, 1_000_000)),
+            "0000000000000000000000000000000000000000000000000000000000000020" // Offset to the array, with no element offsets after it
+        ).SetName("string[10^6] beyond input");
 
         (string Length, string Description)[] lengths =
         [
