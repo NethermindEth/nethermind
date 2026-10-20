@@ -51,7 +51,7 @@ internal static class NodeRecordBulkSet
             && entries.Count >= PatriciaTree.MinEntriesToParallelizeThreshold
             ? ParallelUnbalancedWork.BeginWorkerScope(Math.Min(MaxWorkers, RuntimeInformation.ProcessorCount))
             : null;
-        BulkSetWorkingState workingState = BulkSetWorkingState.Rent();
+        BulkSetWorkingState workingState = new();
         try
         {
             Source rootNode;
@@ -82,7 +82,7 @@ internal static class NodeRecordBulkSet
         }
         finally
         {
-            BulkSetWorkingState.Return(workingState);
+            workingState.Dispose();
         }
     }
 
@@ -348,7 +348,7 @@ internal static class NodeRecordBulkSet
         /// <summary>Updates child <paramref name="nibble"/> of <paramref name="level"/> in a working state of its own, committing it when it changed.</summary>
         private void UpdateChild(ParallelChildren level, int nibble)
         {
-            BulkSetWorkingState workingState = BulkSetWorkingState.Rent();
+            BulkSetWorkingState workingState = new();
             try
             {
                 Context context = new(_store, _address, workingState, _entries, _sortBuffer, _canParallelize);
@@ -365,7 +365,7 @@ internal static class NodeRecordBulkSet
             }
             finally
             {
-                BulkSetWorkingState.Return(workingState);
+                workingState.Dispose();
             }
         }
 
@@ -473,7 +473,7 @@ internal static class NodeRecordBulkSet
             Nibbles.BytesToNibbleBytes(entry.Path.Bytes, entryKey);
             byte[]? value = entry.Value;
             bool isDelete = value is null || value.Length == 0;
-            SetOneFrame[] frames = _workingState.Frames;
+            Span<SetOneFrame> frames = _workingState.Frames;
             int frameCount = 0;
             Source current = node;
             Updated result;
@@ -623,8 +623,8 @@ internal static class NodeRecordBulkSet
             int count = CollectPending(top, path);
             Span<int> levelEnds = stackalloc int[MaxKeyNibbles + 2];
             Span<int> positions = stackalloc int[MaxKeyNibbles + 2];
-            int[] collected = _workingState.Collected;
-            int[] order = _workingState.Order;
+            Span<int> collected = _workingState.Collected;
+            Span<int> order = _workingState.Order;
             for (int i = 0; i < count; i++)
             {
                 levelEnds[_workingState.Nodes[collected[i]].Path.Length]++;
@@ -645,7 +645,7 @@ internal static class NodeRecordBulkSet
             ChildRef topReference = default;
             for (int depth = MaxKeyNibbles; depth >= 0; depth--)
             {
-                CommitLevel(order.AsSpan(levelEnds[depth + 1]..levelEnds[depth]), top, isRoot, ref topReference);
+                CommitLevel(order[levelEnds[depth + 1]..levelEnds[depth]], top, isRoot, ref topReference);
             }
 
             return topReference;
@@ -656,7 +656,7 @@ internal static class NodeRecordBulkSet
         private int CollectPending(int top, in TreePath path)
         {
             _workingState.EnsureCommitCapacity(_workingState.NodeCount);
-            int[] collected = _workingState.Collected;
+            Span<int> collected = _workingState.Collected;
             _workingState.Nodes[top].Path = path;
             collected[0] = top;
             int count = 1;
@@ -692,9 +692,9 @@ internal static class NodeRecordBulkSet
 
         private void CommitLevel(ReadOnlySpan<int> level, int top, bool isRoot, ref ChildRef topReference)
         {
-            int[] hashed = _workingState.Hashed;
-            int[] recordStarts = _workingState.RecordStarts;
-            (int Start, int Length)[] messages = _workingState.Messages;
+            Span<int> hashed = _workingState.Hashed;
+            Span<int> recordStarts = _workingState.RecordStarts;
+            Span<(int Start, int Length)> messages = _workingState.Messages;
             Span<byte> inlineRlp = stackalloc byte[ValueHash256.MemorySize];
             int hashedCount = 0;
             int totalLength = 0;
@@ -728,8 +728,8 @@ internal static class NodeRecordBulkSet
                 messages[i] = (recordStarts[i] + rlpOffset, messages[i].Length);
             }
 
-            Span<ValueHash256> hashes = _workingState.Hashes.AsSpan(0, hashedCount);
-            KeccakBatch.Hash(buffer, messages.AsSpan(0, hashedCount), hashes);
+            Span<ValueHash256> hashes = _workingState.Hashes[..hashedCount];
+            KeccakBatch.Hash(buffer, messages[..hashedCount], hashes);
             for (int i = 0; i < hashedCount; i++)
             {
                 hashes[i].Bytes.CopyTo(buffer[(recordStarts[i] + NodeRecordCodec.HashOffset)..]);
@@ -758,7 +758,7 @@ internal static class NodeRecordBulkSet
         {
             ReadOnlySpan<ChildRef> children = node.Kind switch
             {
-                PendingKind.Branch => _workingState.Children.AsSpan(node.ChildrenStart, BranchChildCount),
+                PendingKind.Branch => _workingState.Children.Slice(node.ChildrenStart, BranchChildCount),
                 PendingKind.Extension => new ReadOnlySpan<ChildRef>(ref node.ExtensionChild),
                 _ => [],
             };
@@ -793,14 +793,14 @@ internal static class NodeRecordBulkSet
         {
             PendingKind.Leaf => NodeRlp.LeafLength(node.KeyNibbles, node.Value.Span),
             PendingKind.Extension => NodeRlp.ExtensionLength(node.KeyNibbles, node.ExtensionChild),
-            _ => NodeRlp.BranchLength(_workingState.Children.AsSpan(node.ChildrenStart, BranchChildCount)),
+            _ => NodeRlp.BranchLength(_workingState.Children.Slice(node.ChildrenStart, BranchChildCount)),
         };
 
         private int Encode(ref PendingNode node, Span<byte> destination) => node.Kind switch
         {
             PendingKind.Leaf => NodeRlp.WriteLeaf(node.KeyNibbles, node.Value.Span, destination),
             PendingKind.Extension => NodeRlp.WriteExtension(node.KeyNibbles, node.ExtensionChild, destination),
-            _ => NodeRlp.WriteBranch(_workingState.Children.AsSpan(node.ChildrenStart, BranchChildCount), destination),
+            _ => NodeRlp.WriteBranch(_workingState.Children.Slice(node.ChildrenStart, BranchChildCount), destination),
         };
 
         private int HashChildCount(ref PendingNode node)
@@ -809,7 +809,7 @@ internal static class NodeRecordBulkSet
             if (node.Kind != PendingKind.Branch) return 0;
 
             int count = 0;
-            foreach (ChildRef child in _workingState.Children.AsSpan(node.ChildrenStart, BranchChildCount))
+            foreach (ChildRef child in _workingState.Children.Slice(node.ChildrenStart, BranchChildCount))
             {
                 if (child.Kind == ChildRefKind.Hash) count++;
             }
