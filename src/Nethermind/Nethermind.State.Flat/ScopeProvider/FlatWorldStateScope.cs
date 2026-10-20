@@ -5,7 +5,6 @@ using System.Buffers;
 using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using System.Runtime.Intrinsics.X86;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
@@ -772,21 +771,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
                 // The per-account flat writes above already carry intra-block state for subsequent txs; only a
                 // normal scope additionally bulk-applies the dirty accounts into the state trie.
-                if (!_scope._trieless)
-                {
-                    if (Avx2.IsSupported && _dirtyAccounts.Count >= KeyHashBatch.MinimumBatchSize)
-                    {
-                        _scope.StateTree.SetAccounts(_dirtyAccounts);
-                    }
-                    else
-                    {
-                        using StateTree.StateTreeBulkSetter stateSetter = _scope.StateTree.BeginSet(_dirtyAccounts.Count);
-                        foreach (KeyValuePair<AddressAsKey, Account?> kv in _dirtyAccounts)
-                        {
-                            stateSetter.Set(kv.Key, kv.Value);
-                        }
-                    }
-                }
+                if (!_scope._trieless) _scope.StateTree.WriteAccounts(_dirtyAccounts);
             }
             finally
             {

@@ -1045,7 +1045,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         return footprints?.Find(_mainThreadTxIndex, tx, header);
     }
 
-    public CacheType ClearCaches()
+    public void ClearCaches()
     {
         if (_logger.IsDebug) _logger.Debug("Clearing caches");
         Volatile.Write(ref _footprints, null);
@@ -1055,9 +1055,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         // keeps or clears them before the next use.
         _preBlockCaches?.ClearPrecompileCache();
         _blockCodeCache?.ClearBlock();
-        CacheType cachesCleared = _nodeStorageCache.ClearCaches() ? CacheType.Rlp : CacheType.None;
-        if (_logger.IsDebug) _logger.Debug($"Cleared caches: {cachesCleared}");
-        return cachesCleared;
+        _nodeStorageCache.ClearCaches();
     }
 
     public void Dispose()

@@ -136,7 +136,7 @@ public class BaseMergePluginModule : Module
                 .Bind<IInvalidChainTracker, InvalidChainTracker.InvalidChainTracker>()
             .OnActivate<IMainProcessingContext>(((context, ctx) =>
             {
-                ctx.Resolve<InvalidChainTracker.InvalidChainTracker>().SetupBlockchainProcessorInterceptor(context.BlockProcessingQueue);
+                ctx.Resolve<InvalidChainTracker.InvalidChainTracker>().SetupBlockchainProcessorInterceptor(context.BlockProcessingQueue, context.BranchProcessor);
             }))
 
             .AddSingleton<IPoSSwitcher, PoSSwitcher>()
