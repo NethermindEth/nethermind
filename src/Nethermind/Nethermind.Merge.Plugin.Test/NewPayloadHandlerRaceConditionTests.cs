@@ -107,7 +107,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
             progress = recovery.GetInFlight(transactions);
             bool singleProcessor = Nethermind.Core.Cpu.RuntimeInformation.IsSingleProcessor;
             ParallelUnbalancedWork.WorkerGroup? observed = singleProcessor
-                ? null : await entered.Task.WaitAsync(TimeSpan.FromSeconds(10));
+                ? null : await entered.Task.WaitAsync(AnswerWait);
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(decodingWorkers, Is.Not.Null);
