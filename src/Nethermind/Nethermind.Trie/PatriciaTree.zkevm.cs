@@ -1,8 +1,11 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.Trie;
 
@@ -52,6 +55,56 @@ public partial class PatriciaTree
     private static bool IsUnchangedPendingLevel(TrieNode parent, int childIndex, TrieNode? originalChild, TrieNode? child) =>
         // The parent's hash first: a node read from the witness has one, and it fails most levels on the first load.
         parent.Keccak is null && child is not null && ReferenceEquals(originalChild, child) && parent.IsPendingWith(childIndex, child);
+
+    /// <remarks>
+    /// Always, sparing the nibble expansion of the key: a branch takes its nibble from the key's bytes, and a leaf is
+    /// matched against the key's trailing bytes in its hex-prefix form (see <see cref="LeafData.KeyIsSuffixOf"/>). Without
+    /// the std form's exception enhancement, as the guest fails the block on any exception.
+    /// </remarks>
+    private partial bool TryGetByRawKey(ReadOnlySpan<byte> rawKey, Hash256? rootHash, out ReadOnlySpan<byte> value)
+    {
+        TrieNode? root = rootHash is null ? RootRef : TrieStore.FindCachedOrUnknown(TreePath.Empty, rootHash);
+        CappedArray<byte> result = GetByRawKey(rawKey, root);
+        value = result.IsNull ? ReadOnlySpan<byte>.Empty : result.AsSpan();
+        return true;
+    }
+
+    /// <summary>The value at <paramref name="key"/> below <paramref name="node"/>, as <see cref="GetNew"/> finds it from the key's nibbles.</summary>
+    private CappedArray<byte> GetByRawKey(ReadOnlySpan<byte> key, TrieNode? node)
+    {
+        TreePath path = TreePath.Empty;
+        int nibbleCount = 2 * key.Length;
+        int consumed = 0;
+        while (node is not null)
+        {
+            node.ResolveNode(TrieStore, path);
+            INodeData? data = node.NodeData;
+            if (data is BranchData)
+            {
+                // A value held by a branch is not supported, as in GetNew.
+                if (consumed == nibbleCount) return default;
+                node = node.GetChildWithChildPath(TrieStore, ref path, Nibbles.NibbleAt(key, consumed++));
+            }
+            else if (data is LeafData leaf)
+            {
+                return leaf.KeyIsSuffixOf(key, nibbleCount - consumed) ? leaf.Value : default;
+            }
+            else
+            {
+                byte[] extensionKey = node.Key!;
+                if (extensionKey.Length > nibbleCount - consumed) return default;
+                for (int i = 0; i < extensionKey.Length; i++)
+                {
+                    if (extensionKey[i] != Nibbles.NibbleAt(key, consumed + i)) return default;
+                }
+
+                consumed += extensionKey.Length;
+                node = node.GetChildWithChildPath(TrieStore, ref path, 0);
+            }
+        }
+
+        return default;
+    }
 
     partial void AdjustBulkSetFlags(ref Flags flags) => flags |= Flags.DoNotParallelize;
 

@@ -335,6 +335,14 @@ namespace Nethermind.Trie
             return true;
         }
 
+        /// <summary>Creates the data of a leaf decoded from this node's RLP, with the hex-prefix key <paramref name="compactKey"/>
+        /// ending at <paramref name="compactKeyEnd"/>.</summary>
+        /// <remarks>The key stays in the RLP until read: an RLP array is never written once a node holds it here, as the
+        /// guest's buffer pool hands out fresh arrays and takes none back.</remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private LeafData CreateLeafData(ReadOnlySpan<byte> compactKey, int compactKeyEnd, CappedArray<byte> value) =>
+            new(_rlpArray!, compactKeyEnd - compactKey.Length, compactKey.Length, value);
+
         /// <summary>Deepens <paramref name="path"/> by one level for a child of the node being encoded, leaving its nibbles alone.</summary>
         /// <remarks>
         /// An encoder reads the path only for its depth, which tells the root, hashed whatever its length, from a child

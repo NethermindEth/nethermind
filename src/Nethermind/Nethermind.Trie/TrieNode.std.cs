@@ -259,6 +259,11 @@ namespace Nethermind.Trie
             return false;
         }
 
+        /// <summary>Creates the data of a leaf decoded from RLP, with the hex-prefix key <paramref name="compactKey"/>.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static LeafData CreateLeafData(ReadOnlySpan<byte> compactKey, int compactKeyEnd, CappedArray<byte> value) =>
+            new(HexPrefix.FromBytes(compactKey).key, value);
+
         /// <summary>Descends <paramref name="path"/> into child <paramref name="index"/> of the node being encoded.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static void EnterChildPath(ref TreePath path, int index) => path.AppendMut(index);

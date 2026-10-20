@@ -108,6 +108,10 @@ namespace Nethermind.Trie
             return ((v >> 4) & mNibble) | ((v & mNibble) << 8);
         }
 
+        /// <summary>Nibble <paramref name="index"/> of <paramref name="bytes"/>, high nibble first.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal static int NibbleAt(ReadOnlySpan<byte> bytes, int index) => (bytes[index >> 1] >> ((~index & 1) << 2)) & 0xF;
+
         /// <summary>Length of the common prefix of two nibble keys.</summary>
         /// <remarks>Word-at-a-time: the BCL scalar fallback compares byte by byte, and no vector
         /// path is available on riscv64. The mismatch position falls out of the XOR's low set bit,

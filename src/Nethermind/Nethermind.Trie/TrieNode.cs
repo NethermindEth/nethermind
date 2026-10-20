@@ -523,18 +523,18 @@ namespace Nethermind.Trie
         private void DecodeLeafOrExtension(ReadOnlySpan<byte> data, int position, ICappedArrayPool? bufferPool)
         {
             LiteRlpReader reader = new(data);
-            reader.DecodeByteArraySpan(ref position, out ReadOnlySpan<byte> valueSpan);
-            (byte[] key, bool isLeaf) = HexPrefix.FromBytes(valueSpan);
-            if (isLeaf)
+            reader.DecodeByteArraySpan(ref position, out ReadOnlySpan<byte> keySpan);
+            int keyEnd = position;
+            if (keySpan[0] >= 0x20)
             {
-                reader.DecodeByteArraySpan(ref position, out valueSpan);
+                reader.DecodeByteArraySpan(ref position, out ReadOnlySpan<byte> valueSpan);
                 CappedArray<byte> buffer = bufferPool.SafeRent(valueSpan.Length);
                 Bytes.Copy(valueSpan, buffer.AsSpan());
-                Volatile.Write(ref _nodeData, new LeafData(key, buffer));
+                Volatile.Write(ref _nodeData, CreateLeafData(keySpan, keyEnd, buffer));
             }
             else
             {
-                Volatile.Write(ref _nodeData, new ExtensionData(key));
+                Volatile.Write(ref _nodeData, new ExtensionData(HexPrefix.FromBytes(keySpan).key));
             }
         }
 
