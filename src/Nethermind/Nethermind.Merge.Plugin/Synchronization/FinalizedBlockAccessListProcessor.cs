@@ -38,13 +38,13 @@ public sealed class FinalizedBlockAccessListProcessor(
 
     private readonly ILogger _logger = logManager.GetClassLogger<FinalizedBlockAccessListProcessor>();
     private readonly ulong _catchUpAgeSeconds = CatchUpAgeSlots * Math.Max(blocksConfig.SecondsPerSlot, 1);
-    private event Action? _transactionsExecuted;
+    private event Action<Block>? _transactionsExecuted;
 
     /// <summary>The processor that executes blocks this decorator does not reconstruct.</summary>
     public IBlockProcessor Inner => inner;
 
     /// <inheritdoc/>
-    public event Action? TransactionsExecuted
+    public event Action<Block>? TransactionsExecuted
     {
         add { inner.TransactionsExecuted += value; _transactionsExecuted += value; }
         remove { inner.TransactionsExecuted -= value; _transactionsExecuted -= value; }
@@ -80,6 +80,11 @@ public sealed class FinalizedBlockAccessListProcessor(
             return inner.ProcessOne(block, options, blockTracer, spec, token);
         }
 
+        // EIP-8037 dimensions are not recoverable from a BAL or the header's combined gas total.
+        bool needsGasDimensions = spec.IsEip8037Enabled && block.InclusionListTransactions is { Length: > 0 }
+            && block.GasUsed != 0 && block.Header.GasUsedPerDimension is null;
+        if (needsGasDimensions) return inner.ProcessOne(block, options, blockTracer, spec, token);
+
         // Queued processing attaches a stored list only when it matches the header's commitment.
         if (block.BlockAccessList is not { } list) return Execute(BalCatchUpFallbackReason.NoBlockAccessList);
 
@@ -97,7 +102,7 @@ public sealed class FinalizedBlockAccessListProcessor(
         }
 
         // No transactions run, so background work such as prewarming can stop before the writes are applied.
-        _transactionsExecuted?.Invoke();
+        _transactionsExecuted?.Invoke(block);
         token.ThrowIfCancellationRequested();
         state.Commit(spec);
         state.ApplyBal(list);

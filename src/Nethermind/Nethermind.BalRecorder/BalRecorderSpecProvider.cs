@@ -24,6 +24,7 @@ public class BalRecorderSpecProvider(ISpecProvider inner, BalRecorderSpecSwitch 
     public bool GenesisStateUnavailable => inner.GenesisStateUnavailable;
     public ulong? DaoBlockNumber => inner.DaoBlockNumber;
     public ulong? BeaconChainGenesisTimestamp => inner.BeaconChainGenesisTimestamp;
+    public ulong? Eip8198SlotDurationMs => inner.Eip8198SlotDurationMs;
     public ulong NetworkId => inner.NetworkId;
     public ulong ChainId => inner.ChainId;
     public string SealEngine => inner.SealEngine;

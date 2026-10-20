@@ -4,6 +4,7 @@
 #nullable enable annotations
 
 using System;
+using System.Text.Json;
 using Ethereum.Test.Base;
 using Nethermind.Serialization.Json;
 using NUnit.Framework;
@@ -52,4 +53,41 @@ public class EngineRpcErrorTests
     public void Unparsable_error_code_is_not_silently_ignored() =>
         Assert.That(() => JsonToEthereumTest.ParseErrorCode(_serializer.Deserialize<TestEngineNewPayloadsJson>("""{"errorCode": "not-a-code"}""")),
             Throws.TypeOf<FormatException>());
+
+    [TestCase("020000000000000021", "TransactionException.INVALID_CHAINID")]
+    [TestCase("020000000000000022", "TransactionException.INVALID_CHAINID")]
+    [TestCase("020000000000000024", "TransactionException.INVALID_SIGNATURE_VRS")]
+    [TestCase("020000000000000023", "TransactionException.INVALID_SIGNATURE_VRS")]
+    public void Legacy_v_overflow_maps_to_its_signature_or_chain_id_error(string v, string expected)
+    {
+        using JsonDocument payload = JsonDocument.Parse($$"""{"transactions":["0xd280808080808089{{v}}0101"]}""");
+        string[] mapped = BlockchainTestBase.MapValidationErrorsToEestExceptions(
+            "Transaction 0 is not valid: Unexpected length of integer value 9 at position 7", payload.RootElement);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(mapped, Does.Contain(expected));
+            Assert.That(mapped, Does.Not.Contain(expected == "TransactionException.INVALID_CHAINID"
+                ? "TransactionException.INVALID_SIGNATURE_VRS"
+                : "TransactionException.INVALID_CHAINID"));
+        }
+    }
+
+    [TestCase("0xd2808080808080890200000000000000240101", 0, 8)] // Different field position.
+    [TestCase("0xd2808080808080890200000000000000240101", 1, 7)] // Different transaction.
+    [TestCase("0x02d2808080808080890200000000000000240101", 0, 7)] // Typed transaction.
+    [TestCase("0xc9808080808080250101", 0, 7)] // Supported legacy v.
+    public void Other_integer_errors_do_not_map_to_legacy_signature_errors(string transaction, int index, int position)
+    {
+        using JsonDocument payload = JsonDocument.Parse($$"""{"transactions":["{{transaction}}"]}""");
+        string[] mapped = BlockchainTestBase.MapValidationErrorsToEestExceptions(
+            $"Transaction {index} is not valid: Unexpected length of integer value 9 at position {position}", payload.RootElement);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(mapped, Does.Not.Contain("TransactionException.INVALID_SIGNATURE_VRS"));
+            Assert.That(mapped, Does.Not.Contain("TransactionException.INVALID_CHAINID"));
+        }
+    }
+
 }

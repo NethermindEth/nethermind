@@ -105,6 +105,7 @@ namespace Nethermind.Mining.Test
             specProvider.GetSpec(Arg.Any<ForkActivation>()).BaseFeeCalculator.Returns(new DefaultBaseFeeCalculator());
 
             specProvider.GetSpec(Arg.Any<ForkActivation>()).ForkBaseFee.Returns(Eip1559Constants.DefaultForkBaseFee);
+            specProvider.GetSpec(Arg.Any<ForkActivation>()).BaseFeeMaxChangeNumerator.Returns(UInt256.One);
             specProvider.GetSpec(Arg.Any<ForkActivation>()).BaseFeeMaxChangeDenominator.Returns(Eip1559Constants.DefaultBaseFeeMaxChangeDenominator);
             specProvider.GetSpec(Arg.Any<ForkActivation>()).ElasticityMultiplier.Returns(Eip1559Constants.DefaultElasticityMultiplier);
 

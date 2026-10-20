@@ -28,6 +28,7 @@ namespace Nethermind.Specs
 
         public ulong? DaoBlockNumber => 0UL;
         public ulong? BeaconChainGenesisTimestamp => null;
+        public ulong? Eip8198SlotDurationMs => null;
 
         public ulong NetworkId => Core.BlockchainIds.Olympic;
         public ulong ChainId => NetworkId;

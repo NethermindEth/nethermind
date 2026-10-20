@@ -20,7 +20,7 @@ namespace Nethermind.Consensus.Processing
         public Block[] Process(BlockHeader? baseBlock, IReadOnlyList<Block> suggestedBlocks, ProcessingOptions processingOptions, IBlockTracer blockTracer, CancellationToken token) =>
             suggestedBlocks.ToArray();
 
-        public event Action? TransactionsExecuted
+        public event Action<Block>? TransactionsExecuted
         {
             add { }
             remove { }

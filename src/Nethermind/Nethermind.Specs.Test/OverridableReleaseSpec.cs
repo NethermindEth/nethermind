@@ -120,7 +120,21 @@ namespace Nethermind.Specs.Test
         public bool IsEip7823Enabled { get; set; } = spec.IsEip7823Enabled;
         public bool IsEip7825Enabled { get; set; } = spec.IsEip7825Enabled;
         public UInt256 ForkBaseFee { get; set; } = spec.ForkBaseFee;
-        public UInt256 BaseFeeMaxChangeDenominator { get; set; } = spec.BaseFeeMaxChangeDenominator;
+        // A wrapped spec with EIP-8198 on reports 48 and hides its configured denominator, so fall back to EIP-1559's 8;
+        // set BaseFeeMaxChangeDenominator to keep another configured value after turning EIP-8198 off.
+        private UInt256 _baseFeeMaxChangeDenominator =
+            spec.IsEip8198Enabled ? Eip1559Constants.DefaultBaseFeeMaxChangeDenominator : spec.BaseFeeMaxChangeDenominator;
+
+        public UInt256 BaseFeeMaxChangeNumerator => DerivedSpecValues.BaseFeeMaxChangeNumerator(IsEip8198Enabled);
+
+        /// <remarks>Sets the configured 1/denominator rule; EIP-8198 replaces it while enabled, as on <see cref="ReleaseSpec"/>.</remarks>
+        public UInt256 BaseFeeMaxChangeDenominator
+        {
+            get => DerivedSpecValues.BaseFeeMaxChangeDenominator(IsEip8198Enabled, _baseFeeMaxChangeDenominator);
+            set => _baseFeeMaxChangeDenominator = value;
+        }
+
+        public bool IsEip8198Enabled { get; set; } = spec.IsEip8198Enabled;
         public ulong ElasticityMultiplier { get; set; } = spec.ElasticityMultiplier;
         public IBaseFeeCalculator BaseFeeCalculator { get; set; } = spec.BaseFeeCalculator;
         public bool IsEip8024Enabled { get; set; } = spec.IsEip8024Enabled;

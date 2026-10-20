@@ -76,7 +76,8 @@ public abstract partial class BaseEngineModuleTests
         return await bc
             .BuildMergeTestBlockchain(configurer: (builder) =>
             {
-                builder.AddSingleton<ISpecProvider>(new TestSingleReleaseSpecProvider(releaseSpec ?? London.Instance));
+                // Preserve the fixture's 12-second slot cadence after Bogota.
+                builder.AddSingleton<ISpecProvider>(new TestSpecProvider(releaseSpec ?? London.Instance) { Eip8198SlotDurationMs = 12_000 });
 
                 if (mockedExecutionRequestsProcessor is not null) builder.AddScoped(mockedExecutionRequestsProcessor);
                 if (mockedPayloadService is not null) builder.AddSingleton(mockedPayloadService);

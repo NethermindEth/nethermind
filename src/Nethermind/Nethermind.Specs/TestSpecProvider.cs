@@ -37,6 +37,7 @@ namespace Nethermind.Specs
 
         public ulong? DaoBlockNumber { get; set; }
         public ulong? BeaconChainGenesisTimestamp { get; set; }
+        public ulong? Eip8198SlotDurationMs { get; set; }
         public ulong? _networkId;
         public ulong NetworkId { get { return _networkId ?? TestBlockchainIds.NetworkId; } set { _networkId = value; } }
 
