@@ -203,7 +203,10 @@ public class BranchProcessor(
 
                 if (notReadOnly)
                 {
-                    BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(processedBlock, receipts));
+                    BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(processedBlock, receipts)
+                    {
+                        WasValidated = !options.ContainsFlag(ProcessingOptions.NoValidation)
+                    });
                 }
 
                 // CommitBranch in parts if we have long running branch
