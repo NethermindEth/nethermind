@@ -1,0 +1,83 @@
+name: Test selection (shadow)
+
+# Evaluates history-based EEST test selection on real pull request runs. It reads the results of
+# nethermind-tests.yml and reports what the selector would have run and missed; it changes nothing
+# that CI runs. scripts/ci/select_tests.py holds the selector and the report.
+on:
+  schedule:
+    - cron: '17 * * * *'
+  workflow_dispatch:
+    inputs:
+      days:
+        description: Days of runs to collect when no journal exists yet
+        required: false
+        default: '7'
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: test-selection-shadow
+  cancel-in-progress: false
+
+jobs:
+  shadow:
+    name: Shadow report
+    runs-on: ubuntu-latest
+    # The first collect waits on the API rate limit while it reads a week of runs.
+    timeout-minutes: 300
+    env:
+      GH_TOKEN: ${{ github.token }}
+      STATE: ${{ github.workspace }}/state
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Restore the journal and the inventory
+        run: |
+          mkdir -p "$STATE"
+          previous=$(gh run list -R "$GITHUB_REPOSITORY" --workflow test-selection-shadow.yml --branch master \
+            --status success -L 1 --json databaseId -q '.[0].databaseId')
+          if [ -n "$previous" ]; then
+            gh run download "$previous" -R "$GITHUB_REPOSITORY" -n test-selection-state -D "$STATE" || true
+          fi
+
+      - name: Refresh the EEST inventory once a day
+        run: |
+          today=$(date -u +%F)
+          if [ "$(cat "$STATE/inventory-date" 2>/dev/null)" != "$today" ] || [ ! -s "$STATE/eest-inventory.json" ]; then
+            run=$(gh run list -R "$GITHUB_REPOSITORY" --workflow nethermind-tests.yml --branch master --event push \
+              --status success -L 1 --json databaseId -q '.[0].databaseId')
+            python scripts/ci/select_tests.py inventory --run "$run" --out "$STATE/eest-inventory.json"
+            echo "$today" > "$STATE/inventory-date"
+          fi
+
+      - name: Collect new runs
+        env:
+          DAYS: ${{ inputs.days || '7' }}
+        run: python scripts/ci/select_tests.py collect --journal "$STATE/journal.jsonl" --days "$DAYS"
+
+      - name: Report
+        run: |
+          python scripts/ci/select_tests.py shadow --journal "$STATE/journal.jsonl" \
+            --inventory "$STATE/eest-inventory.json" --report "$STATE/report.md"
+          cat "$STATE/report.md" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Save the journal and the inventory
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-selection-state
+          path: |
+            ${{ env.STATE }}/journal.jsonl
+            ${{ env.STATE }}/eest-inventory.json
+            ${{ env.STATE }}/inventory-date
+            ${{ env.STATE }}/report.md
+          if-no-files-found: warn
+          retention-days: 30
