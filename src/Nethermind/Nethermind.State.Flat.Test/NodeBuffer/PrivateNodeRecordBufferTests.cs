@@ -20,6 +20,7 @@ internal class PrivateNodeRecordBufferTests
     public void Keeps_every_record_until_cleared_and_frees_storage_after_the_last_pin()
     {
         PrivateNodeRecordBuffer buffer = new(GenerationBytes);
+        buffer.Clear();
         INodeRecordBufferPin pin = buffer.PinHead();
         List<(ulong Pointer, byte[] Rlp)> records = [.. Enumerable.Range(0, 100).Select(i => NodeRecordBufferTests.Leaf(i, 1000)).Select(rlp => (Append(buffer, rlp), rlp))];
         byte[] oversize = NodeRecordBufferTests.Leaf(-1, 2 * GenerationBytes);

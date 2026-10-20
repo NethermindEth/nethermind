@@ -14,26 +14,20 @@ namespace Nethermind.State.Flat.NodeBuffer;
 /// <remarks>
 /// Pointers are laid out as in <see cref="NodeRecordBuffer"/>, but no generation is ever dropped or compacted, so pins only defer
 /// the release of native storage past <see cref="Dispose"/>. It reports no metrics and keeps roots in a plain dictionary.
+/// The first generation is allocated on the first write and its storage is kept across <see cref="Clear"/>.
 /// </remarks>
-internal sealed class PrivateNodeRecordBuffer : INodeRecordBuffer
+/// <param name="generationBytes">The size of a generation in bytes; a larger record gets a generation of its own size.</param>
+internal sealed class PrivateNodeRecordBuffer(int generationBytes) : INodeRecordBuffer
 {
     private const int InitialGenerationSlots = 16;
 
     private readonly Lock _lock = new();
-    private readonly int _generationBytes;
     private readonly ConcurrentDictionary<(Hash256? Address, ValueHash256 Root), ulong> _roots = new();
     private Generation?[] _generations = new Generation?[InitialGenerationSlots];
     private ulong _firstGeneration = 1;
-    private Generation _active;
+    private Generation? _active;
     private int _pinCount;
     private bool _disposed;
-
-    /// <param name="generationBytes">The size of a generation in bytes; a larger record gets a generation of its own size.</param>
-    public PrivateNodeRecordBuffer(int generationBytes)
-    {
-        _generationBytes = generationBytes;
-        StartGeneration(_firstGeneration, NativeNodeBuffer.Allocate(generationBytes));
-    }
 
     /// <inheritdoc/>
     public INodeRecordBufferPin PinHead()
@@ -41,6 +35,8 @@ internal sealed class PrivateNodeRecordBuffer : INodeRecordBuffer
         lock (_lock)
         {
             AddPin();
+            if (_active is null) return new BufferPin(this, _firstGeneration << NodeRecordBuffer.OffsetBits);
+
             long used = Math.Min(Volatile.Read(ref _active.Used), _active.Data.Length);
             return new BufferPin(this, _active.Id << NodeRecordBuffer.OffsetBits | (uint)used);
         }
@@ -78,17 +74,23 @@ internal sealed class PrivateNodeRecordBuffer : INodeRecordBuffer
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed), this);
         while (true)
         {
-            Generation generation = Volatile.Read(ref _active);
-            long end = Interlocked.Add(ref generation.Used, alignedTotalLength);
-            if (end <= generation.Data.Length)
+            Generation? generation = Volatile.Read(ref _active);
+            if (generation is not null)
             {
-                int offset = (int)(end - alignedTotalLength);
-                return new WriteBatch(generation.Id << NodeRecordBuffer.OffsetBits | (uint)offset, generation.Data, offset, alignedTotalLength);
+                long end = Interlocked.Add(ref generation.Used, alignedTotalLength);
+                if (end <= generation.Data.Length)
+                {
+                    int offset = (int)(end - alignedTotalLength);
+                    return new WriteBatch(generation.Id << NodeRecordBuffer.OffsetBits | (uint)offset, generation.Data, offset, alignedTotalLength);
+                }
             }
 
             lock (_lock)
             {
-                if (_active == generation) StartGeneration(NodeRecordBuffer.NextGeneration(generation.Id), NativeNodeBuffer.Allocate(Math.Max(_generationBytes, alignedTotalLength)));
+                // The first generation keeps the base size even for a larger record, so Clear can always reuse it.
+                if (_active != generation) continue;
+                if (generation is null) StartGeneration(_firstGeneration, NativeNodeBuffer.Allocate(generationBytes));
+                else StartGeneration(NodeRecordBuffer.NextGeneration(generation.Id), NativeNodeBuffer.Allocate(Math.Max(generationBytes, alignedTotalLength)));
             }
         }
     }
@@ -106,13 +108,15 @@ internal sealed class PrivateNodeRecordBuffer : INodeRecordBuffer
         lock (_lock)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
+            _roots.Clear();
+            if (_active is null) return;
+
             ulong next = NodeRecordBuffer.NextGeneration(_active.Id);
             // The first generation always has the base size, so its storage is reused rather than reallocated.
             // It does not need to be zeroed: a record write covers every byte the record is read back by.
             NativeNodeBuffer reused = _generations[0]!.Data;
             _generations[0] = null;
             FreeGenerations();
-            _roots.Clear();
             _firstGeneration = next;
             StartGeneration(next, reused);
         }
@@ -129,7 +133,6 @@ internal sealed class PrivateNodeRecordBuffer : INodeRecordBuffer
         }
     }
 
-    [MemberNotNull(nameof(_active))]
     private void StartGeneration(ulong id, NativeNodeBuffer data)
     {
         Generation generation = new(id, data);
