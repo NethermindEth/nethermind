@@ -69,6 +69,7 @@ jobs:
           - Nethermind.Ethash.Test
           - Nethermind.EthStats.Test
           - Nethermind.Evm.Test
+          - Nethermind.Experimental.Abi.Test
           - Nethermind.Facade.Test
           - Nethermind.Flashbots.Test
           - Nethermind.HealthChecks.Test
