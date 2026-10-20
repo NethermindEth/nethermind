@@ -118,17 +118,23 @@ public class GethGenesisDevnetTests
             string timeKey = entry.Name + "Time";
             bool honoured = forksByKey.TryGetValue(timeKey, out string? fork) && GethGenesisParityTests.IsBlobScheduleKeyHonoured(forkClasses[fork]);
             Assert.That(honoured, $"blobSchedule.{entry.Name} is not a key Nethermind reads, so it is ignored");
-            if (config.TryGetProperty(timeKey, out JsonElement time)) times[entry.Name] = Math.Max(ReadUlong(time), genesisTimestamp);
+            if (honoured && config.TryGetProperty(timeKey, out JsonElement time)) times[entry.Name] = Math.Max(ReadUlong(time), genesisTimestamp);
         }
 
-        // With one entry at a timestamp there is no ambiguity about which fork's parameters win there.
-        foreach ((string key, ulong time) in times.Where(t => times.Values.Count(v => v == t.Value) == 1))
+        // Where several entries share a timestamp the newest fork's wins; skip ties between unrelated forks of equal depth.
+        foreach (IGrouping<ulong, string> atTime in times.GroupBy(static t => t.Value, static t => t.Key))
         {
+            IGrouping<int, string> newest = atTime
+                .GroupBy(k => GethGenesisParityTests.Ancestry(forkClasses[forksByKey[k + "Time"]]).Count())
+                .MaxBy(static g => g.Key)!;
+            if (newest.Count() > 1) continue;
+
+            string key = newest.Single();
             JsonElement entry = blobSchedule.GetProperty(key);
-            IReleaseSpec spec = provider.GetSpec(new ForkActivation(1, time));
+            IReleaseSpec spec = provider.GetSpec(new ForkActivation(1, atTime.Key));
             Assert.That((spec.TargetBlobCount, spec.MaxBlobCount, spec.BlobBaseFeeUpdateFraction),
                 Is.EqualTo((ReadUlong(entry.GetProperty("target")), ReadUlong(entry.GetProperty("max")), ReadUlong(entry.GetProperty("baseFeeUpdateFraction")))),
-                $"blobSchedule.{key} at {time}");
+                $"blobSchedule.{key} at {atTime.Key}");
         }
     }
 

@@ -20,6 +20,9 @@ jobs:
   check:
     name: Load latest devnet genesis files
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
     env:
       # Official ethpandaops devnet repos only; the newest devnets of each are checked.
       REPOS: heze-devnets glamsterdam-devnets
@@ -41,20 +44,40 @@ jobs:
           for repo in $REPOS; do
             sha=$(gh api "repos/ethpandaops/$repo/commits/HEAD" --jq .sha)
             # Names only become file names here, so anything but devnet-<n> is skipped.
-            gh api "repos/ethpandaops/$repo/contents/network-configs?ref=$sha" --jq '.[] | select(.type == "dir") | .name' \
-              | grep -E '^devnet-[0-9]+$' | sort -V | tail -n "$DEVNETS_PER_REPO" \
-              | while read -r devnet; do
-                  path="network-configs/$devnet/metadata/genesis.json"
-                  if gh api "repos/ethpandaops/$repo/contents/$path?ref=$sha" -H "Accept: application/vnd.github.raw" > "$dir/$repo-$devnet.json"; then
-                    echo "Fetched ethpandaops/$repo@$sha $path"
-                  else
-                    echo "::warning::ethpandaops/$repo@$sha has no $path"
-                    rm -f "$dir/$repo-$devnet.json"
-                  fi
-                done
+            devnets=$(gh api "repos/ethpandaops/$repo/contents/network-configs?ref=$sha" --jq '.[] | select(.type == "dir") | .name' \
+              | { grep -E '^devnet-[0-9]+$' || true; } | sort -V | tail -n "$DEVNETS_PER_REPO")
+            if [[ -z "$devnets" ]]; then
+              echo "::error::ethpandaops/$repo@$sha has no network-configs/devnet-<n> directories"
+              exit 1
+            fi
+            echo "$devnets" | while read -r devnet; do
+              path="network-configs/$devnet/metadata/genesis.json"
+              if gh api "repos/ethpandaops/$repo/contents/$path?ref=$sha" -H "Accept: application/vnd.github.raw" > "$dir/$repo-$devnet.json"; then
+                echo "Fetched ethpandaops/$repo@$sha $path"
+              else
+                echo "::warning::ethpandaops/$repo@$sha has no $path"
+                rm -f "$dir/$repo-$devnet.json"
+              fi
+            done
           done
           echo "NETHERMIND_GETH_GENESIS_DIR=$dir" >> "$GITHUB_ENV"
 
       - name: Run devnet genesis tests
         working-directory: src/Nethermind/Nethermind.Specs.Test
         run: dotnet test --project Nethermind.Specs.Test.csproj -- --filter "FullyQualifiedName~GethGenesisDevnetTests"
+
+      # Scheduled failures otherwise only reach whoever last edited the cron.
+      - name: Report failure
+        if: failure() && github.event_name == 'schedule'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          title="Devnet genesis check failing"
+          issue=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "in:title \"$title\"" --json number --jq '.[0].number // empty')
+          body="A devnet genesis file no longer loads as its forks require: $RUN_URL"
+          if [[ -n "$issue" ]]; then
+            gh issue comment "$issue" --repo "$GITHUB_REPOSITORY" --body "$body"
+          else
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --body "$body"
+          fi

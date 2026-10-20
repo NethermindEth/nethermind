@@ -143,7 +143,6 @@ public class GethGenesisParityTests
             {
                 Assert.That(DiffAgainstFork(beforeFork, fork.Parent!), Is.Empty, $"geth genesis just before {fork.Name} differs from the {fork.Parent!.GetType().Name} class");
             }
-            Assert.That(EngineApiVersionsOf(atFork), Is.EqualTo(EngineApiVersionsOf(fork)), $"engine API versions at {fork.Name}");
         }
     }
 
@@ -452,7 +451,8 @@ public class GethGenesisParityTests
             if (!equal) differences.Add($"{property.Name}: expected {e}, actual {a}");
         }
 
-        // Fork markers and other derived predicates (IsBogotaEnabled, ...) that engine API version selection keys off.
+        // Derived predicates, including the fork markers (IsPragueEnabled ... IsBogotaEnabled) the engine API validates
+        // payload versions against.
         foreach (MethodInfo predicate in DerivedPredicates)
         {
             object? e = predicate.Invoke(null, [expected]);
@@ -474,25 +474,6 @@ public class GethGenesisParityTests
         .. typeof(IReleaseSpecExtensions).GetMethods(BindingFlags.Public | BindingFlags.Static)
             .Where(static m => m.Name.StartsWith("get_", StringComparison.Ordinal) && m.ReturnType == typeof(bool)
                 && m.GetParameters() is [{ ParameterType: var p }] && p == typeof(IReleaseSpec))
-    ];
-
-    /// <summary>
-    /// The engine API method versions a node exposes for <paramref name="spec"/>: the newest each fork class whose EIPs
-    /// <paramref name="spec"/> fully enables would serve.
-    /// </summary>
-    private static (int?, int?, int?, int?, int?) EngineApiVersionsOf(IReleaseSpec spec)
-    {
-        NamedReleaseSpec[] served = [.. MainnetForks.Value.Where(f => EnabledEips(f).IsSubsetOf(EnabledEips(spec)))];
-        return (served.Max(static f => f.EngineApiNewPayloadVersion), served.Max(static f => f.EngineApiGetPayloadVersion),
-            served.Max(static f => f.EngineApiForkchoiceVersion), served.Max(static f => f.EngineApiPayloadBodiesByHashVersion),
-            served.Max(static f => f.EngineApiPayloadBodiesByRangeVersion));
-    }
-
-    private static HashSet<string> EnabledEips(IReleaseSpec spec) =>
-    [
-        .. SpecProperties
-            .Where(p => p.PropertyType == typeof(bool) && p.Name.StartsWith("IsEip", StringComparison.Ordinal) && (bool)p.GetValue(spec)!)
-            .Select(static p => p.Name)
     ];
 
     private static bool IsForkLabel(PropertyInfo property) =>
