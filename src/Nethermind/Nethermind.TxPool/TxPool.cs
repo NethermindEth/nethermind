@@ -1845,10 +1845,10 @@ namespace Nethermind.TxPool
                 // Observation and insertion share the head lock so an A -> B -> A transition cannot cross a validation publish unseen.
                 ObserveHeadSpec(headSpec);
                 state = new(tx, _accounts, headSpec) { ReAddedFromReorg = reAddedFromReorg };
-                long validationStarted = Stopwatch.GetTimestamp();
+                long validationStarted = shares is not null ? Stopwatch.GetTimestamp() : 0;
                 accepted = FilterTransactions(tx, handlingOptions, ref state, ref canRecycle);
                 // The filters are the validation; insertion and eviction after them are not the peer's to pay for.
-                long validationTicks = Stopwatch.GetTimestamp() - validationStarted;
+                long validationTicks = shares is not null ? Stopwatch.GetTimestamp() - validationStarted : 0;
                 if (accepted)
                 {
                     canRecycle = false;
