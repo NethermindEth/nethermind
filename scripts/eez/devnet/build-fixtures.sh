@@ -7,16 +7,6 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$EEZ_UPSTREAM"
 forge build --root contracts --threads 1
 forge build --root eez-core-protocol --threads 1
-if [[ "$EEZ_PROFILE" == rollup0 ]]; then
-    mkdir -p "$EEZ_CI_RESULT_DIR/embedded"
-    python3 "$HERE/embedded.py" prepare --upstream "$EEZ_UPSTREAM" \
-        --manifest "$EEZ_CI_RESULT_DIR/upstream.json" --output "$EEZ_CI_RESULT_DIR/embedded/inventory.json"
-    python3 "$HERE/controls.py" install
-    cargo test --locked --profile ci-e2e -p eez-node-e2e --no-run --message-format=json \
-        --test durability --test resumption --test resumption_append --test native_system --test nethermind_streaming_controls \
-        > "$EEZ_CI_RESULT_DIR/test-build.jsonl"
-    python3 "$HERE/bundle.py" tests --directory "$EEZ_CI_RESULT_DIR"
-fi
 node_image="eez-upstream:$GITHUB_RUN_ID-$EEZ_PROFILE"
 deploy_image="eez-deploy-base:$GITHUB_RUN_ID-$EEZ_PROFILE"
 if [[ "$EEZ_PROFILE" == rollup0 ]]; then

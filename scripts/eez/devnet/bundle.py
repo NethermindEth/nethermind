@@ -35,6 +35,8 @@ def tests(directory):
         name = item.get("target", {}).get("name")
         if item.get("reason") != "compiler-artifact" or name not in selected or not item.get("executable"):
             continue
+        if item["target"].get("kind") != ["test"] or item.get("profile", {}).get("test") is not True:
+            raise ValueError("compiled target is not an integration test executable")
         path = Path(item["executable"]).resolve()
         root = Path(os.environ["EEZ_UPSTREAM"]).resolve()
         relative = path.relative_to(root)

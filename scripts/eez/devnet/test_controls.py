@@ -91,9 +91,14 @@ class StreamingControlInputTests(unittest.TestCase):
 
     def test_producer_compiles_rust_targets_and_consumers_execute_precompiled_binaries(self):
         root = Path(__file__).resolve().parents[3]
-        producer = (root / 'scripts/eez/devnet/build-fixtures.sh').read_text()
-        self.assertIn('cargo test --locked --profile ci-e2e -p eez-node-e2e --no-run', producer)
-        self.assertLess(producer.index('cargo test'), producer.index('bundle.py" pack'))
+        producer = (root / 'scripts/eez/devnet/build-runtime.sh').read_text()
+        self.assertEqual(producer.count('cargo build --locked --profile ci-e2e'), 1)
+        for suite in ('durability', 'resumption', 'resumption_append', 'native_system', 'nethermind_streaming_controls'):
+            self.assertIn('--test ' + suite, producer)
+        self.assertLess(producer.index('controls.py" install'), producer.index('cargo build'))
+        self.assertLess(producer.index('cargo build'), producer.index('bundle.py" tests'))
+        fixtures = (root / 'scripts/eez/devnet/build-fixtures.sh').read_text()
+        self.assertNotIn('cargo ', fixtures)
         for name in ('run.sh', 'observe.sh', 'embedded.sh', 'test-partition.sh'):
             consumer = (root / 'scripts/eez/devnet' / name).read_text()
             self.assertNotIn('cargo test', consumer)
@@ -102,7 +107,7 @@ class StreamingControlInputTests(unittest.TestCase):
         preparation = (root / '.github/workflows/eez-devnet-prepare.yml').read_text()
         consumer = (root / '.github/workflows/eez-devnet-profile.yml').read_text()
         self.assertLess(preparation.index('Install upstream integration test toolchain'),
-                        preparation.index('Build matching runtime'))
+                        preparation.index('Build matching runtime and test executables'))
         for profile in ('rollup0', 'rollupx'):
             self.assertIn('needs: [candidate, prepare-' + profile + ']', workflow)
         self.assertIn('timeout-minutes: 15', consumer)

@@ -81,7 +81,7 @@ jobs:
           echo '/usr/lib/llvm-22/bin' >> "$GITHUB_PATH"
           rustup toolchain install stable --profile minimal
           rustup default stable
-      - name: Build matching runtime
+      - name: Build matching runtime and test executables
         if: steps.prepared.outputs.cache-hit != 'true'
         run: bash scripts/eez/devnet/build-runtime.sh
       - name: Install Foundry
@@ -89,7 +89,18 @@ jobs:
         uses: foundry-rs/foundry-toolchain@b00af27efadbc7b4ca8b82abbd903b17cc874d2a
         with:
           version: v1.7.1
-      - name: Build contracts, test executables and deploy image
+      - name: Reuse Solidity compiler outputs
+        if: steps.prepared.outputs.cache-hit != 'true'
+        uses: actions/cache@v4
+        with:
+          path: |
+            upstream/contracts/out
+            upstream/contracts/cache
+            upstream/eez-core-protocol/out
+            upstream/eez-core-protocol/cache
+          key: eez-solidity-v1-ubuntu24-${{ inputs.profile }}-foundry1.7.1-${{ steps.resolve.outputs.revision }}
+          restore-keys: eez-solidity-v1-ubuntu24-${{ inputs.profile }}-foundry1.7.1-
+      - name: Build contracts and deploy image
         if: steps.prepared.outputs.cache-hit != 'true'
         run: bash scripts/eez/devnet/build-fixtures.sh
       - uses: actions/upload-artifact@v4

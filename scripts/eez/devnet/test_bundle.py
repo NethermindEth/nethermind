@@ -13,7 +13,7 @@ from embedded import CASES
 class BundleTests(unittest.TestCase):
     def test_compiled_test_inventory_requires_all_executables(self):
         names = list(CASES) + ["nethermind_streaming_controls"]
-        for mutation in (None, "missing", "duplicate", "not-executable", "outside-root"):
+        for mutation in (None, "missing", "duplicate", "not-executable", "outside-root", "wrong-kind", "no-test-harness"):
             with self.subTest(mutation=mutation), tempfile.TemporaryDirectory() as directory:
                 root = Path(directory)
                 upstream = root / "upstream"
@@ -23,7 +23,10 @@ class BundleTests(unittest.TestCase):
                     binary.parent.mkdir(parents=True, exist_ok=True)
                     binary.write_text("executable fixture")
                     binary.chmod(0o755)
-                    records.append({"reason": "compiler-artifact", "target": {"name": name}, "executable": str(binary)})
+                    records.append({"reason": "compiler-artifact", "target": {"name": name, "kind": ["test"]},
+                                    "profile": {"test": True}, "executable": str(binary)})
+                if mutation == "wrong-kind": records[0]["target"]["kind"] = ["bin"]
+                if mutation == "no-test-harness": records[0]["profile"]["test"] = False
                 if mutation == "missing": records.pop()
                 if mutation == "duplicate": records.append(dict(records[0]))
                 if mutation == "not-executable": Path(records[0]["executable"]).chmod(0o644)

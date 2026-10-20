@@ -1,9 +1,23 @@
 #!/usr/bin/env bash
 set -euo pipefail
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ "$EEZ_PROFILE" == rollup0 ]]; then
+  cd "$EEZ_UPSTREAM"
+  mkdir -p "$EEZ_CI_RESULT_DIR/embedded"
+  python3 "$HERE/embedded.py" prepare --upstream "$EEZ_UPSTREAM" \
+    --manifest "$EEZ_CI_RESULT_DIR/upstream.json" --output "$EEZ_CI_RESULT_DIR/embedded/inventory.json"
+  python3 "$HERE/controls.py" install
+  runtime_targets=()
+  if test ! -x "$EEZ_RUNTIME_DIR/eez-composer"; then
+    runtime_targets=(-p eez-node -p eez-follower -p eez-prover-stateless --bins --examples)
+  fi
+  cargo build --locked --profile ci-e2e -p eez-node-e2e "${runtime_targets[@]}" --message-format=json \
+    --test durability --test resumption --test resumption_append --test native_system --test nethermind_streaming_controls \
+    > "$EEZ_CI_RESULT_DIR/test-build.jsonl"
+  python3 "$HERE/bundle.py" tests --directory "$EEZ_CI_RESULT_DIR"
+fi
 if test ! -x "$EEZ_RUNTIME_DIR/eez-composer"; then
   if [[ "$EEZ_PROFILE" == rollup0 ]]; then
-    cd "$EEZ_UPSTREAM"
-    cargo build --locked --profile ci-e2e -p eez-node -p eez-follower -p eez-prover-stateless --bins --examples
     cp target/ci-e2e/eez-composer target/ci-e2e/eez-follower target/ci-e2e/eez-proof-signer "$EEZ_RUNTIME_DIR/"
     cp target/ci-e2e/examples/genesis_state_root "$EEZ_RUNTIME_DIR/eez-genesis-state-root"
     cp target/ci-e2e/examples/genesis_block_hash "$EEZ_RUNTIME_DIR/eez-genesis-block-hash"
