@@ -140,21 +140,22 @@ public sealed partial class KeccakHash
         }
         else if (length >= HASH_DATA_AREA)
         {
-            // Bounded by the end rather than a remaining length, which the JIT spilled around every permutation.
-            byte* end = data + length;
+            // Bounded by the last whole block's start rather than a remaining length, which the JIT spilled around every
+            // permutation, or the end, which costs a subtraction and the rate's constant per block.
+            byte* lastBlock = data + (length - HASH_DATA_AREA);
             ZeroCapacity(ref lane);
             CopyFirstBlock(ref lane, data);
             Accelerators.KeccakF(ref lane);
             data += HASH_DATA_AREA;
 
-            while ((nuint)(end - data) >= HASH_DATA_AREA)
+            while (data <= lastBlock)
             {
                 AbsorbBlock(ref lane, data, intoZeroState: false);
                 Accelerators.KeccakF(ref lane);
                 data += HASH_DATA_AREA;
             }
 
-            AbsorbPaddedTail(ref lane, data, (nuint)(end - data));
+            AbsorbPaddedTail(ref lane, data, (nuint)(lastBlock - data) + HASH_DATA_AREA);
         }
         else if (length == 32)
         {
