@@ -43,7 +43,7 @@ public class NativeLeanProofVerifierTests
     public void EnsureNativeLibraryLoads()
     {
         NativeLeanProofVerifier.Instance.EnsureAvailable();
-        Assert.That(NativeLeanProofVerifier.AbiVersion, Is.EqualTo(6u));
+        Assert.That(NativeLeanProofVerifier.AbiVersion, Is.EqualTo(7u));
         Assert.That(NativeLeanProofVerifier.AggregatedVerificationKey, Is.EqualTo(Eip8288Constants.AggregatedVk.ToArray()));
     }
 

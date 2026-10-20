@@ -679,7 +679,7 @@ fn checked(f: impl FnOnce() -> Result<bool, ()>) -> i32 {
 }
 #[unsafe(no_mangle)]
 pub extern "C" fn nlean_abi_version() -> u32 {
-    6
+    7
 }
 /// # Safety
 /// Output must hold nine writable u32 values.
@@ -1212,7 +1212,7 @@ mod tests {
     }
     #[test]
     fn exported_limits_match_and_panics_fail_closed() {
-        assert_eq!(nlean_abi_version(), 6);
+        assert_eq!(nlean_abi_version(), 7);
         let mut key = [0u8; 32];
         assert_eq!(unsafe { nlean_aggregated_vk(key.as_mut_ptr()) }, 1);
         assert_eq!(

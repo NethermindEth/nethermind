@@ -101,6 +101,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
     public Eip8288Verifier? RefreshVerifier()
     {
         Eip8288Verifier current;
+        Eip8288Verifier? previous;
         lock (_verifierLock)
         {
             if (blockFinder.Head is not { } head) return null;
@@ -108,12 +109,22 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             if (!spec.IsEip8288Enabled) return null;
             current = Eip8288Verifier.For(spec);
             if (_verifier == current) return current;
-            bool changed = _verifier is not null;
+            previous = _verifier;
             _verifier = current;
-            if (!changed) return current;
+            if (previous is null) return current;
             _verifierChangedAt = (long)head.Number;
         }
-        ApplyUpgradeRule(current);
+        try
+        {
+            ApplyUpgradeRule(current);
+        }
+        catch
+        {
+            // A half-applied upgrade rule must run again on the next refresh rather than be skipped as already applied.
+            lock (_verifierLock)
+                if (_verifier == current) _verifier = previous;
+            throw;
+        }
         return current;
     }
 
@@ -374,6 +385,10 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
                 _verifiedClaims.Add(wrapperHash);
             }
             return new(ProofWrapperAcceptanceStatus.Accepted, Result<Hash256[]>.Success([]));
+        }
+        catch (InvalidOperationException exception)
+        {
+            return ProofWrapperAcceptance.LocalFailure(exception.Message);
         }
         finally { Volatile.Write(ref _admissionActive, 0); }
     }

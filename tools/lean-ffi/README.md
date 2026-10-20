@@ -42,12 +42,13 @@ The main solution compiles the test project without requiring Rust. Without the 
 the native suite is explicitly skipped. With it, the backend and fixtures are required and
 missing libraries fail the run.
 
-The C ABI is version 6, with Cdecl calls, 32-byte hashes/keys and `size_t` buffer lengths.
+The C ABI is version 7, with Cdecl calls, 32-byte hashes/keys and `size_t` buffer lengths.
 `nlean_limits` writes nine u32 values (proof bytes, dependencies, recursive children,
 SPHINCS witness bytes, generic STARK count, instructions, operand offset, aggregation input bytes,
 mixed guest proof bytes); startup
 checks these against the managed protocol bounds before accepting work.
-Verification/proving return 1 on success and 0 on failure. Callers initialize proof output
+Verification/proving return 1 on success, 0 on failure and -1 for a contained panic;
+ABI 7 introduced -1, so startup rejects an ABI 6 library that reports panics as 0. Callers initialize proof output
 pointers to null; successful proof allocations must be released once with `nlean_free`
 using the returned pointer and length. Verification contains upstream panics and never
 accepts malformed inputs. Panic diagnostics on ABI callers and the pinned parallel worker
@@ -126,7 +127,7 @@ format is a generic leanVM CPU proof whose `verification_key_hash` is Keccak-256
 
 This profile is incompatible with the earlier ABI 5 `NLR3` profile, its Keccak commitment and
 guest key, with older `NLR2` captures, and with the 64-byte-entry ABI 6 guest, whose key differs.
-Startup checks ABI 6, the new key and all nine bounds
+Startup checks ABI 7, the new key and all nine bounds
 together. New devnets require fresh chain and database namespaces.
 
 The latest companion specification has no block dependency quota: blocks are bounded by gas, and mode-1 wrappers by a scheme-independent 4,096-dependency ceiling. This prototype guest's 256-dependency and 16-generic-claim limits are local; this key cannot prove every set the draft permits, so this prototype is not full-capacity conformance. Wrappers above the local limits are refused locally, not judged invalid, and local inability to prove or retain a set is not an inclusion-list omission excuse. Full activation requires a verifier and proof format supporting every set the fork's gas rules permit, with the complete construction, including recursive merges and discards, benchmarked against the slot deadline.

@@ -189,7 +189,14 @@ public sealed partial class ProofWrapperTransport : IDisposable
         // Applies the EIP-8288 upgrade rule, through VerifierChanged, once the head reaches a fork with another verifier.
         // Idle while EIP-8288 is inactive: no peer registers then.
         if (!IsEnabled && PeerCount == 0) return;
-        Eip8288Verifier? refreshed = _wrappers.RefreshVerifier();
+        Eip8288Verifier? refreshed;
+        try { refreshed = _wrappers.RefreshVerifier(); }
+        catch (Exception exception)
+        {
+            // An exception escaping a timer callback ends the process; the upgrade rule is retried on the next tick.
+            if (_logger.IsError) _logger.Error("eth/73 could not apply the EIP-8288 upgrade rule", exception);
+            refreshed = _wrappers.CurrentVerifier;
+        }
         Outbox outbox = new();
         lock (_gate)
         {
