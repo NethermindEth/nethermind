@@ -71,6 +71,9 @@ jobs:
           DOCKER_API_VERSION="$(docker version --format '{{.Server.APIVersion}}')"
           export DOCKER_API_VERSION
           echo "DOCKER_API_VERSION=$DOCKER_API_VERSION" >> "$GITHUB_ENV"
+          kurtosis_config="$(kurtosis config path)"
+          mkdir -p "$(dirname "$kurtosis_config")"
+          cp scripts/eez/devnet/kurtosis-config.yml "$kurtosis_config"
           kurtosis engine start
       - name: Run upstream test partition
         run: bash scripts/eez/devnet/test-partition.sh

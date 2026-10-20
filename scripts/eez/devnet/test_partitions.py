@@ -2,6 +2,7 @@ import copy
 import json
 import os
 from pathlib import Path
+import subprocess
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -27,13 +28,7 @@ class PartitionTests(unittest.TestCase):
                 prepare.partition_observations(value, names)
 
     def test_driver_keeps_selected_script_and_removes_only_other_suite_calls(self):
-        names = ["verify-eezl2-deployment", "verify-cross-chain-waves", "run-protocol-e2e",
-                 "verify-ingress-admission", "verify-fault-recovery"]
-        driver = "write_result() { original_result; }\ntrap cleanup EXIT\n"
-        for name in names:
-            driver += 'bash "$HERE/scripts/' + name + '.sh"\nbash "$NETHERMIND_OBSERVE_SCRIPT" ' + name + '\n'
-        driver += 'bash "$NETHERMIND_OBSERVE_SCRIPT" recovery\nwrite_result pass 0\n'
-        driver += 'if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then\n echo misleading-full-pass\nfi\n'
+        driver = self.driver()
         with tempfile.TemporaryDirectory() as directory:
             changed, hooks = partitions.adapt_driver(driver, Path(directory), "rollup0", "ingress")
         self.assertEqual(["verify-eezl2-deployment", "verify-ingress-admission"], hooks)
@@ -45,6 +40,24 @@ class PartitionTests(unittest.TestCase):
             partitions.adapt_driver(driver + 'bash "$NETHERMIND_OBSERVE_SCRIPT" new-suite\n', Path("unused"), "rollup0", "ingress")
         with self.assertRaises(ValueError):
             partitions.adapt_driver(driver.replace('bash "$HERE/scripts/verify-ingress-admission.sh"', ""), Path("unused"), "rollup0", "ingress")
+
+    def test_driver_retains_cleanup_and_failure_status_but_leaves_teardown_to_outer_wrapper(self):
+        for status in (0, 7):
+            with self.subTest(status=status), tempfile.TemporaryDirectory() as directory:
+                changed, _ = partitions.adapt_driver(self.driver(), Path(directory), "rollup0", "ingress")
+                result = subprocess.run(["bash", "-c", changed], capture_output=True, text=True, timeout=10,
+                    env={**os.environ, "HERE": directory, "RESULT_DIR": directory,
+                         "NETHERMIND_OBSERVE_SCRIPT": "observe", "EEZ_PARTITION_SCRIPT": "scope",
+                         "EEZ_SUITE": "ingress", "SCENARIO_EXIT": str(status)})
+                self.assertEqual(result.returncode, status, result.stderr)
+                self.assertEqual(result.stdout.count("upstream-cleanup:" + str(status)), 1)
+                self.assertNotIn("unexpected-teardown", result.stdout)
+                self.assertEqual("upstream-result:pass" in result.stdout, status == 0)
+        teardown = '    bash "$HERE/stop.sh" || true\n'
+        for source in (self.driver().replace(teardown, ""), self.driver().replace(teardown, teardown * 2),
+                       self.driver().replace(teardown, teardown + "    changed_cleanup_step\n")):
+            with self.subTest(source=source), self.assertRaises(ValueError):
+                partitions.adapt_driver(source, Path("unused"), "rollup0", "ingress")
 
     def test_report_requires_original_result_candidate_and_every_observation(self):
         for mutation in (None, "missing-observation", "failed-observation", "failed-result", "wrong-source", "missing-candidate"):
@@ -214,3 +227,27 @@ run_check "state-chaining" bash "$HERE/verify-state-chaining.sh"
         for suite, waves in partitions.WAVE_GROUPS.items():
             result["suites"][suite]["waves"] = list(waves)
         return result
+
+    @staticmethod
+    def driver():
+        driver = '''set -euo pipefail
+bash() {
+    if [[ "$1" == */stop.sh ]]; then echo unexpected-teardown; return 0; fi
+    if [[ "$1" == */verify-ingress-admission.sh ]]; then return "${SCENARIO_EXIT:-0}"; fi
+}
+python3() { :; }
+write_result() { echo "upstream-result:$1"; }
+cleanup() {
+    local status=$?
+    trap - EXIT
+    echo "upstream-cleanup:$status"
+    bash "$HERE/stop.sh" || true
+    exit "$status"
+}
+trap cleanup EXIT
+'''
+        for name in ("verify-eezl2-deployment", "verify-cross-chain-waves", "run-protocol-e2e",
+                     "verify-ingress-admission", "verify-fault-recovery"):
+            driver += 'bash "$HERE/scripts/' + name + '.sh"\nbash "$NETHERMIND_OBSERVE_SCRIPT" ' + name + '\n'
+        driver += 'bash "$NETHERMIND_OBSERVE_SCRIPT" recovery\nwrite_result pass 0\n'
+        return driver + 'if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then\n echo misleading-full-pass\nfi\n'

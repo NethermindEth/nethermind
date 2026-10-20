@@ -110,6 +110,11 @@ def adapt_driver(commands, package, profile, suite):
             commands = defer_native_settlement(commands, selected)
     if suite != "recovery":
         commands = replace_once(commands, '\nbash "$NETHERMIND_OBSERVE_SCRIPT" recovery\n', "\n")
+    teardown = '    bash "$HERE/stop.sh" || true\n'
+    if commands.count(teardown) != 1:
+        raise ValueError("upstream teardown boundary changed")
+    commands = replace_once(commands, teardown + '    exit "$status"\n}',
+                            '    exit "$status"\n}')
     commands = replace_once(commands, "write_result() {", "write_upstream_result() {")
     wrapper = ('write_result() {\n'
                '    write_upstream_result "$@"\n'

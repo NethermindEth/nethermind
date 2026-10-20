@@ -1,0 +1,5 @@
+config-version: 9
+kurtosis-clusters:
+  docker:
+    type: docker
+    backend-log-collector: vector

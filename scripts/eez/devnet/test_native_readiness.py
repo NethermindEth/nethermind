@@ -46,7 +46,8 @@ class NativeReadinessTests(unittest.TestCase):
                                ("rollupx", "recovery"), ("rollup0", "protocol")):
             with self.subTest(profile=profile, suite=suite), tempfile.TemporaryDirectory() as directory:
                 inventory = names + (["verify-ingress-admission", "verify-fault-recovery"] if profile == "rollup0" else [])
-                commands = 'write_result() { :; }\ntrap cleanup EXIT\n' + readiness
+                commands = ('write_result() { :; }\ncleanup() {\n    local status=$?\n'
+                            '    bash "$HERE/stop.sh" || true\n    exit "$status"\n}\ntrap cleanup EXIT\n' + readiness)
                 commands += 'echo "==> running native cross-chain wave suite"\n'
                 for name in inventory:
                     commands += ('bash "$HERE/scripts/' + name + '.sh"\n'
