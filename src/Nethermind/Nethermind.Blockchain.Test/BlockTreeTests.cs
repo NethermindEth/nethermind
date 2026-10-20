@@ -168,6 +168,7 @@ public class BlockTreeTests
         Assert.That(lowerPromotionNotifications, Is.EqualTo(1));
     }
 
+    [Test]
     public void IsKnownBlock_requires_the_correct_canonical_head_number([Range(-1, 1)] int offset)
     {
         BlockTree tree = Build.A.BlockTree().OfChainLength(3).TestObject;
