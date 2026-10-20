@@ -267,12 +267,14 @@ public class DebugRpcModule(
     /// The body is looked up only so a missing one fails before the stream opens. The trace goes by hash, as the
     /// <see cref="Block"/> overload never takes the indexed parallel path.
     /// </remarks>
-    private ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> StreamBlockTrace(BlockHeader header, GethTraceOptions? options, bool validateStructLogTimeout = false)
+    private ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> StreamBlockTrace(BlockHeader header, GethTraceOptions? options, BlockParameter? selector = null, bool validateStructLogTimeout = false)
     {
         Block? resolvedBlock = blockFinder.FindBlock(header.Hash!, header.Number);
         if (resolvedBlock is null)
         {
-            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail($"Block body not found for {header.Hash}", ErrorCodes.ResourceNotFound);
+            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail(
+                selector?.Type == BlockParameterType.BlockNumber ? $"block #{selector.BlockNumber} not found" : $"Block body not found for {header.Hash}",
+                ErrorCodes.ResourceNotFound);
         }
 
         GethTraceOptions effective = options ?? GethTraceOptions.Default;
@@ -492,6 +494,10 @@ public class DebugRpcModule(
         BlockHeader? header = TryGetHeader(blockNumber, out ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>? headerError);
         if (headerError is not null)
         {
+            if (headerError.ErrorCode == ErrorCodes.ResourceNotFound
+                && headerError.Result.Error == BlockFinderExtensions.HeaderNotFound
+                && blockNumber.Type == BlockParameterType.BlockNumber)
+                return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail($"block #{blockNumber.BlockNumber} not found", ErrorCodes.ResourceNotFound, headerError.IsTemporary);
             return headerError;
         }
 
@@ -510,7 +516,10 @@ public class DebugRpcModule(
 
         // A malformed native duration must reach the real constructor before it can fail.
         if ((options?.ParsedTimeout.Error is null || string.IsNullOrEmpty(options.Tracer)) && CanStreamBlockByNumberTrace(options))
-            return StreamBlockTrace(header, options, validateStructLogTimeout: true);
+            return StreamBlockTrace(header, options, blockNumber, validateStructLogTimeout: true);
+
+        if (blockNumber.Type == BlockParameterType.BlockNumber && blockFinder.FindBlock(header.Hash!, header.Number) is null)
+            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail($"block #{blockNumber.BlockNumber} not found", ErrorCodes.ResourceNotFound);
 
         using RentedTimeout timeout = jsonRpcConfig.RentTimeout();
         CancellationToken cancellationToken = timeout.Token;
