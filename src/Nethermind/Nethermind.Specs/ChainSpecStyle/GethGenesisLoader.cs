@@ -187,6 +187,7 @@ public class GethGenesisLoader(IJsonSerializer serializer) : IChainSpecLoader
             [nameof(BPO3)] = new(6),
             [nameof(BPO4)] = new(7),
             [nameof(BPO5)] = new(8),
+            [nameof(Bogota)] = new(9),
         };
 
     private static void LoadGenesis(GethGenesisJson gethGenesisJson, GethGenesisConfigJson config, ChainSpec chainSpec)

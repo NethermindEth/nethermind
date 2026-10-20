@@ -1,0 +1,60 @@
+name: Check devnet genesis files
+
+# Loads the latest geth-style genesis files of the ethpandaops devnets, so a fork label or blob
+# schedule key the node doesn't read fails here before a devnet launches. The test suite runs the
+# same checks on vendored copies; this catches what changed upstream since.
+
+on:
+  schedule:
+    - cron: '23 5 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Load latest devnet genesis files
+    runs-on: ubuntu-latest
+    env:
+      # Official ethpandaops devnet repos only; the newest devnets of each are checked.
+      REPOS: heze-devnets glamsterdam-devnets
+      DEVNETS_PER_REPO: 2
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v5
+
+      - name: Fetch genesis files
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          dir="$RUNNER_TEMP/geth-genesis"
+          mkdir -p "$dir"
+          for repo in $REPOS; do
+            sha=$(gh api "repos/ethpandaops/$repo/commits/HEAD" --jq .sha)
+            # Names only become file names here, so anything but devnet-<n> is skipped.
+            gh api "repos/ethpandaops/$repo/contents/network-configs?ref=$sha" --jq '.[] | select(.type == "dir") | .name' \
+              | grep -E '^devnet-[0-9]+$' | sort -V | tail -n "$DEVNETS_PER_REPO" \
+              | while read -r devnet; do
+                  path="network-configs/$devnet/metadata/genesis.json"
+                  if gh api "repos/ethpandaops/$repo/contents/$path?ref=$sha" -H "Accept: application/vnd.github.raw" > "$dir/$repo-$devnet.json"; then
+                    echo "Fetched ethpandaops/$repo@$sha $path"
+                  else
+                    echo "::warning::ethpandaops/$repo@$sha has no $path"
+                    rm -f "$dir/$repo-$devnet.json"
+                  fi
+                done
+          done
+          echo "NETHERMIND_GETH_GENESIS_DIR=$dir" >> "$GITHUB_ENV"
+
+      - name: Run devnet genesis tests
+        working-directory: src/Nethermind/Nethermind.Specs.Test
+        run: dotnet test --project Nethermind.Specs.Test.csproj -- --filter "FullyQualifiedName~GethGenesisDevnetTests"
