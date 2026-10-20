@@ -666,7 +666,8 @@ namespace Nethermind.Synchronization.Blocks
                     result = SyncResponseHandlingResult.LesserQuality;
                     WarnUnservedAccessList(header, peer, mustServe);
                     // The peer that served this block's body or receipts has the block, so it is withholding the list.
-                    if (mustServe && peer is not null && ReferenceEquals(entry.PeerInfo, peer))
+                    // When processing can go ahead without the list, a peer still backfilling lists is not worth dropping.
+                    if (mustServe && !entry.CanExecuteMissingData && peer is not null && ReferenceEquals(entry.PeerInfo, peer))
                     {
                         _syncPeerPool.ReportBreachOfProtocol(peer, DisconnectReason.ForwardSyncFailed, $"withheld block access list. Block: {header.ToString(BlockHeader.Format.Short)}");
                     }

@@ -5,11 +5,17 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
+using Nethermind.Blockchain;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.History;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Stats;
@@ -18,6 +24,7 @@ using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Peers.AllocationStrategies;
+using Nethermind.Synchronization.Reporting;
 using NSubstitute;
 using NUnit.Framework;
 using IContainer = Autofac.IContainer;
@@ -34,15 +41,31 @@ public partial class BlockDownloaderTests
     // A peer ahead of our local head may have pruned the list while retaining the body.
     [TestCase(false, false, true, true)]
     [TestCase(true, false, true, true)]
-    public async Task Reports_peer_returning_unavailable_block_access_list(bool isStatic, bool isTrusted, bool peerServedBody, bool peerPastRetention)
+    // An advertised head past our best known header does not move the block out of the serving window.
+    [TestCase(false, false, true, true, false)]
+    // Processing can go ahead without the list, so the peer may still be backfilling it.
+    [TestCase(false, false, true, false, true, true)]
+    public async Task Reports_peer_returning_unavailable_block_access_list(bool isStatic, bool isTrusted, bool peerServedBody, bool peerPastRetention, bool peerHeadKnown = true, bool processing = false)
     {
         InterfaceLogger logger = Substitute.For<InterfaceLogger>();
         logger.IsWarn.Returns(true);
         IForwardHeaderProvider forwardHeaderProvider = Substitute.For<IForwardHeaderProvider>();
-        await using IContainer node = CreateNode(builder => builder
-            .AddSingleton<IForwardHeaderProvider>(forwardHeaderProvider)
-            .AddSingleton<ILogManager>(new OneLoggerLogManager(new ILogger(logger))));
+        IBlockTree farKnownBlockTree = Substitute.For<IBlockTree>();
+        farKnownBlockTree.BestKnownNumber.Returns(ulong.MaxValue);
+        await using IContainer node = CreateNode(builder =>
+        {
+            builder
+                .AddSingleton<IForwardHeaderProvider>(forwardHeaderProvider)
+                .AddSingleton<ILogManager>(new OneLoggerLogManager(new ILogger(logger)));
+            if (peerPastRetention && peerHeadKnown)
+            {
+                builder.AddSingleton<BlockAccessListServingWindow, IHistoryPruner, ISpecProvider>((historyPruner, specProvider) => new(farKnownBlockTree, historyPruner, specProvider));
+            }
+
+            if (processing) builder.AddSingleton<BlockDownloader, AccessListOnProcessingBlockDownloader>();
+        });
         Context ctx = node.Resolve<Context>();
+        DownloaderOptions options = processing ? DownloaderOptions.Process : DownloaderOptions.Insert;
         byte[] servedAccessList = [0xc0];
         ConfigureBlockAccessListRequest(ctx, forwardHeaderProvider, TestItem.KeccakA, Keccak.Compute(servedAccessList));
         ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
@@ -51,7 +74,7 @@ public partial class BlockDownloaderTests
         syncPeer.Node.Returns(new Node(TestItem.PublicKeyA, "127.0.0.1", 30303, isStatic) { IsTrusted = isTrusted });
         PeerInfo peerInfo = new(syncPeer);
 
-        using BlocksRequest bodyRequest = (await ctx.FullSyncFeedComponent.BlockDownloader.PrepareRequest(DownloaderOptions.Insert, 0, CancellationToken.None))!;
+        using BlocksRequest bodyRequest = (await ctx.FullSyncFeedComponent.BlockDownloader.PrepareRequest(options, 0, CancellationToken.None))!;
         if (peerServedBody)
         {
             bodyRequest.OwnedBodies = new OwnedBlockBodies([new BlockBody(), new BlockBody()]);
@@ -63,15 +86,16 @@ public partial class BlockDownloaderTests
         List<SyncResponseHandlingResult> results = [];
         foreach (byte[]?[] response in responses)
         {
-            using BlocksRequest request = (await ctx.FullSyncFeedComponent.BlockDownloader.PrepareRequest(DownloaderOptions.Insert, 0, CancellationToken.None))!;
+            using BlocksRequest request = (await ctx.FullSyncFeedComponent.BlockDownloader.PrepareRequest(options, 0, CancellationToken.None))!;
             request.BlockAccessLists = BuildBlockAccessLists(response);
             results.Add(ctx.FullSyncFeedComponent.BlockDownloader.HandleResponse(request, peerInfo));
         }
 
+        bool breach = peerServedBody && !(peerPastRetention && peerHeadKnown) && !processing;
         using (Assert.EnterMultipleScope())
         {
             Assert.That(results, Is.All.EqualTo(SyncResponseHandlingResult.LesserQuality));
-            ctx.PeerPool.Received(peerServedBody && !peerPastRetention ? responses.Length : 0).ReportBreachOfProtocol(
+            ctx.PeerPool.Received(breach ? responses.Length : 0).ReportBreachOfProtocol(
                 Arg.Any<PeerInfo>(),
                 Arg.Any<DisconnectReason>(),
                 Arg.Any<string>());
@@ -249,4 +273,25 @@ public partial class BlockDownloaderTests
     private static IOwnedReadOnlyList<byte[]?> BuildBlockAccessLists(params byte[]?[] blockAccessLists) =>
         new ArrayPoolList<byte[]?>(blockAccessLists);
 
+    /// <summary>Requests block access lists while processing, as the merge downloader does for reconstructable blocks.</summary>
+    private sealed class AccessListOnProcessingBlockDownloader(
+        IBlockTree blockTree,
+        IBlockValidator blockValidator,
+        ISyncReport syncReport,
+        IReceiptStorage receiptStorage,
+        ISpecProvider specProvider,
+        IBetterPeerStrategy betterPeerStrategy,
+        IFullStateFinder fullStateFinder,
+        IForwardHeaderProvider forwardHeaderProvider,
+        ISyncPeerPool syncPeerPool,
+        IReceiptsRecovery receiptsRecovery,
+        IBlockProcessingQueue processingQueue,
+        ISyncConfig syncConfig,
+        BlockAccessListServingWindow balServingWindow,
+        ILogManager logManager)
+        : BlockDownloader(blockTree, blockValidator, syncReport, receiptStorage, specProvider, betterPeerStrategy, fullStateFinder,
+            forwardHeaderProvider, syncPeerPool, receiptsRecovery, processingQueue, syncConfig, balServingWindow, logManager)
+    {
+        protected override bool ShouldDownloadAccessList(BlockHeader header, bool shouldProcess) => true;
+    }
 }
