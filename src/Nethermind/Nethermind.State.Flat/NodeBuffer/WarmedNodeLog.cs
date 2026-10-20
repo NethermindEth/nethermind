@@ -67,7 +67,8 @@ public sealed class WarmedNodeLog(int capacity) : IDisposable
         ulong localPointer = _buffer.AppendRecordFromRlp(address, path, hash, rlp, childPointers);
         pointer = localPointer | NodeRecordCodec.TransientPointerMask;
         _pointers[(address, path)] = pointer;
-        record = _buffer.GetRecord(localPointer);
+        bool located = _buffer.TryLocate(localPointer, out record);
+        Debug.Assert(located, "A record stays readable until the next reset.");
     }
 
     /// <summary>Empties the position index and releases the records appended so far.</summary>

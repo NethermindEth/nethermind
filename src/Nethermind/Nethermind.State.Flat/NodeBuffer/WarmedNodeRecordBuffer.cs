@@ -24,10 +24,6 @@ internal sealed class WarmedNodeRecordBuffer(INodeRecordBuffer global, WarmedNod
         NodeRecordCodec.IsTransient(pointer) ? warmed.TryLocate(pointer, out record) : global.TryLocate(pointer, out record);
 
     /// <inheritdoc/>
-    public NodeRecord GetRecord(ulong pointer) =>
-        NodeRecordCodec.IsTransient(pointer) && warmed.TryLocate(pointer, out NodeRecord record) ? record : global.GetRecord(pointer);
-
-    /// <inheritdoc/>
     public INodeRecordWriteBatch StartWriteBatch(int alignedTotalLength) => global.StartWriteBatch(alignedTotalLength);
 
     /// <inheritdoc/>

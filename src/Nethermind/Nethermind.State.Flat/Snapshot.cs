@@ -165,7 +165,9 @@ public class Snapshot : RefCountingDisposable
 
         /// <summary>Returns the current node's RLP without copying it.</summary>
         /// <exception cref="InvalidOperationException">The iterator is not positioned on a node.</exception>
-        public ReadOnlySpan<byte> ReadRlp() => _buffer!.GetRecord(Pointer).Rlp;
+        public ReadOnlySpan<byte> ReadRlp() => _buffer!.TryLocate(Pointer, out NodeRecord record)
+            ? record.Rlp
+            : throw new TrieException($"Trie node buffer pointer {Pointer:x16} does not resolve to a record.");
 
         /// <inheritdoc/>
         public void Dispose()
@@ -267,7 +269,9 @@ public class Snapshot : RefCountingDisposable
     }
 
     /// <summary>The record a node pointer refers to, borrowed for as long as the snapshot holds its pin.</summary>
-    internal NodeRecord GetNodeRecord(ulong pointer) => BufferPin!.Buffer.GetRecord(pointer);
+    internal NodeRecord GetNodeRecord(ulong pointer) => BufferPin!.Buffer.TryLocate(pointer, out NodeRecord record)
+        ? record
+        : throw new TrieException($"Trie node buffer pointer {pointer:x16} does not resolve to a record.");
 
     /// <summary>The RLP of a node pointer, borrowed for as long as the snapshot holds its pin.</summary>
     internal ReadOnlySpan<byte> GetRlp(ulong pointer) => GetNodeRecord(pointer).Rlp;

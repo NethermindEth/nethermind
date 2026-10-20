@@ -6,6 +6,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.Trie;
+using Nethermind.Trie.NodeBuffer;
 using NUnit.Framework;
 
 namespace Nethermind.State.Flat.Test;
@@ -35,8 +36,8 @@ public class OverlayNodeRecordBufferTests
             Assert.That(global.CompletedWrites, Is.EqualTo(globalWrites), "overlay writes stay out of the global buffer");
             Assert.That(written, Is.GreaterThan(afterPin), "overlay pointers follow the global pin");
             Assert.That(overlayPin.WriteBoundary, Is.GreaterThan(afterPin));
-            Assert.That(overlay.GetRecord(beforePin).Rlp.ToArray(), Is.EqualTo(BeforePinLeaf));
-            Assert.That(overlay.GetRecord(written).Rlp.ToArray(), Is.EqualTo(OverlayLeaf));
+            Assert.That(overlay.TryLocate(beforePin, out NodeRecord beforePinRecord) && beforePinRecord.Rlp.SequenceEqual(BeforePinLeaf), Is.True);
+            Assert.That(overlay.TryLocate(written, out NodeRecord writtenRecord) && writtenRecord.Rlp.SequenceEqual(OverlayLeaf), Is.True);
             Assert.That(overlay.TryLocate(afterPin, out _), Is.False, "global records written after the pin are not visible");
             Assert.That(overlay.FindRoot(null, ValueKeccak.Compute(BeforePinLeaf)), Is.EqualTo(beforePin));
             Assert.That(overlay.FindRoot(null, ValueKeccak.Compute(AfterPinLeaf)), Is.Zero);

@@ -141,7 +141,7 @@ public class SnapshotBundleWarmerTests
             {
                 Assert.That(retired!.WarmedNodeLog.TryGet(address, TreePath.Empty, out NodeRecord warmedRoot, out _), Is.True);
                 Assert.That(warmedRoot.Hash, Is.EqualTo(persistedRoot.Hash), "the persisted node is warmed, the committed one is not");
-                Assert.That(_buffer.GetRecord(committedRoot.Pointer).Rlp.ToArray(), Is.EqualTo(committedRlp), "committed node remains in the retained buffer");
+                Assert.That(_buffer.TryLocate(committedRoot.Pointer, out NodeRecord committedRecord) && committedRecord.Rlp.SequenceEqual(committedRlp), Is.True, "committed node remains in the retained buffer");
             }
         }
         finally
