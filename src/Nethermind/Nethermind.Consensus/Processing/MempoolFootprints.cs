@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Concurrent;
-using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Security.Cryptography;
 using System.Threading;
@@ -45,28 +44,6 @@ internal sealed class MempoolFootprints(BlockHeader head)
         Entry entry = new(footprint, header, spec);
         if (_entries.ContainsKey(hash)) _entries[hash] = entry;
         else if (Volatile.Read(ref _count) < MaxEntries && _entries.TryAdd(hash, entry)) Interlocked.Increment(ref _count);
-    }
-
-    /// <summary>Stores the footprints that hold in <paramref name="block"/> at their transactions' positions.</summary>
-    /// <returns>The hashes of the transactions stored, or <see langword="null"/> when none is.</returns>
-    public HashSet<Hash256>? Seed(Block block, IReleaseSpec spec, BlockFootprints footprints)
-    {
-        BlockHeader header = block.Header;
-        if (!HoldsFor(header, out Address? coinbase)) return null;
-
-        HashSet<Hash256>? seeded = null;
-        Transaction[] transactions = block.Transactions;
-        for (int i = 0; i < transactions.Length; i++)
-        {
-            Transaction tx = transactions[i];
-            // A recorded run's transaction was recordable, and the block's has its hash, so its content and sender.
-            if (tx.Hash is not { } hash || !_entries.TryGetValue(hash, out Entry entry)) continue;
-            if (ForBlock(in entry, tx, header, spec, coinbase) is not { } footprint) continue;
-            footprints.Store(i, footprint);
-            (seeded ??= []).Add(hash);
-        }
-
-        return seeded;
     }
 
     /// <summary>

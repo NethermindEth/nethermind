@@ -47,13 +47,10 @@ using NUnit.Framework;
 namespace Nethermind.Consensus.Test;
 
 [TestFixtureSource(nameof(Forks))]
-public class PrewarmerHandoffTests(IReleaseSpec spec, bool earlyStart) : PrewarmerHandoffTestBase(spec, earlyStart)
+public class PrewarmerHandoffTests(IReleaseSpec spec) : PrewarmerHandoffTestBase(spec)
 {
     // Shanghai still deletes a self-destructed account; Cancun only does for one created in the same transaction.
-    private static readonly TestFixtureData[] Forks =
-    [
-        new(Osaka.Instance, true), new(Osaka.Instance, false), new(Shanghai.Instance, true), new(Shanghai.Instance, false)
-    ];
+    private static readonly IReleaseSpec[] Forks = [Osaka.Instance, Shanghai.Instance];
 
     [Test]
     public void A_block_of_mixed_transactions_ends_in_the_state_and_receipts_of_executing_it()
@@ -294,9 +291,8 @@ public class PrewarmerHandoffTests(IReleaseSpec spec, bool earlyStart) : Prewarm
     }
 }
 
-[TestFixture(true)]
-[TestFixture(false)]
-public class PrewarmerHandoffMechanicsTests(bool earlyStart) : PrewarmerHandoffTestBase(Osaka.Instance, earlyStart)
+[TestFixture]
+public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.Instance)
 {
     [Test]
     public void Footprints_recorded_for_another_block_are_not_replayed([Values] bool sameTransactions)
@@ -338,8 +334,7 @@ public class PrewarmerHandoffMechanicsTests(bool earlyStart) : PrewarmerHandoffT
             ProcessingScope.Resolve<NodeStorageCache>(),
             caches,
             LimboLogs.Instance,
-            handoff: true,
-            earlyStart: EarlyStart);
+            handoff: true);
         PrewarmerTxAdapter adapter = new(
             new ExecuteTransactionProcessorAdapter(ProcessingScope.Resolve<ITransactionProcessor>()),
             preWarmer,
@@ -592,8 +587,7 @@ public class PrewarmerHandoffMechanicsTests(bool earlyStart) : PrewarmerHandoffT
             ProcessingScope.Resolve<NodeStorageCache>(),
             caches,
             LimboLogs.Instance,
-            handoff: true,
-            earlyStart: EarlyStart);
+            handoff: true);
 
         RunPreWarmCaches(preWarmer, BuildBlock(
             Call(TestItem.PrivateKeyA, 0, Counter),
@@ -1299,12 +1293,9 @@ public class PrewarmerHandoffMechanicsTests(bool earlyStart) : PrewarmerHandoffT
     }
 }
 
-public abstract class PrewarmerHandoffTestBase(IReleaseSpec spec, bool earlyStart)
+public abstract class PrewarmerHandoffTestBase(IReleaseSpec spec)
 {
     protected IReleaseSpec Spec { get; } = spec;
-
-    /// <summary>Whether the block's warm workers start without waiting for the mempool runs to be taken over.</summary>
-    protected bool EarlyStart { get; } = earlyStart;
 
     // PUSH0 SLOAD PUSH1 1 ADD PUSH0 SSTORE STOP
     private static readonly byte[] CounterCode = [0x5F, 0x54, 0x60, 0x01, 0x01, 0x5F, 0x55, 0x00];
@@ -1389,8 +1380,7 @@ public abstract class PrewarmerHandoffTestBase(IReleaseSpec spec, bool earlyStar
                 PreWarming = PreWarmMode.Block,
                 PreWarmStateConcurrency = 3,
                 ProcessingCores = ProcessingCores.All,
-                PreWarmHandoff = handoff,
-                PreWarmEarlyStart = EarlyStart
+                PreWarmHandoff = handoff
             }))
             .AddSingleton<ISpecProvider>(new TestSpecProvider(Spec))
             .AddSingleton<IStateHeaderProvider>(new Parents(_headers));
@@ -1657,9 +1647,8 @@ public abstract class PrewarmerHandoffTestBase(IReleaseSpec spec, bool earlyStar
 /// Runs the mempool pass records on the parent, before the block arrives, are taken over by the block like its own
 /// warm runs, but only where the block context they ran on is the block's.
 /// </summary>
-[TestFixture(true)]
-[TestFixture(false)]
-public class PrewarmerMempoolHandoffTests(bool earlyStart) : PrewarmerHandoffTestBase(Osaka.Instance, earlyStart)
+[TestFixture]
+public class PrewarmerMempoolHandoffTests() : PrewarmerHandoffTestBase(Osaka.Instance)
 {
     [Test]
     public void Runs_recorded_on_the_parent_are_taken_over_into_the_state_and_receipts_of_executing_the_block()
@@ -1774,7 +1763,7 @@ public class PrewarmerMempoolHandoffTests(bool earlyStart) : PrewarmerHandoffTes
     }
 
     [Test]
-    public void The_transaction_workers_warm_while_the_runs_are_taken_over_only_with_the_early_start()
+    public void The_transaction_workers_warm_while_the_runs_are_taken_over()
     {
         Block block = BuildBlock(Transfer(TestItem.PrivateKeyA, 0, TestItem.AddressC, 1.Wei),
             Transfer(TestItem.PrivateKeyB, 0, TestItem.AddressC, 1.Wei), Unrelated());
@@ -1783,18 +1772,16 @@ public class PrewarmerMempoolHandoffTests(bool earlyStart) : PrewarmerHandoffTes
         PreWarmer.RunSpeculativePreWarm(Parent, Spec, Predicted(BuildBlock(block.Transactions[0], block.Transactions[1]), null),
             () => PreWarmer.SpeculativeMarkerPublished);
 
-        // The taking over is held until a warm run stores a footprint; without the early start no worker may until it
-        // returns, so it is held a while instead.
+        // The taking over is held until a warm run stores a footprint.
         bool warmedWhileTakingOver = false;
-        PreWarmer.Seeded = () => warmedWhileTakingOver = SpinWait.SpinUntil(WarmRunStored,
-            EarlyStart ? TimeSpan.FromSeconds(10) : TimeSpan.FromMilliseconds(200));
+        PreWarmer.Seeded = () => warmedWhileTakingOver = SpinWait.SpinUntil(WarmRunStored, TimeSpan.FromSeconds(10));
         RunPreWarmCaches(PreWarmer, block);
         PreWarmer.Seeded = null;
         Run run = Process(block, ProductionAdapter);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(warmedWhileTakingOver, Is.EqualTo(EarlyStart));
+            Assert.That(warmedWhileTakingOver, Is.True);
             Assert.That(run.Results, Is.EqualTo(executed.Results));
             Assert.That(run.StateRoot, Is.EqualTo(executed.StateRoot));
             Assert.That(run.Tally.Replayed, Is.EqualTo(3));
@@ -1822,8 +1809,7 @@ public class PrewarmerMempoolHandoffTests(bool earlyStart) : PrewarmerHandoffTes
             caches,
             LimboLogs.Instance,
             senderRecovery: new LateSender(late, TestItem.AddressB),
-            handoff: true,
-            earlyStart: EarlyStart);
+            handoff: true);
         PrewarmerTxAdapter adapter = new(
             new ExecuteTransactionProcessorAdapter(ProcessingScope.Resolve<ITransactionProcessor>()),
             preWarmer,
@@ -1852,9 +1838,9 @@ public class PrewarmerMempoolHandoffTests(bool earlyStart) : PrewarmerHandoffTes
     }
 
     /// <summary>
-    /// The takeover belongs to the warm pass, so the pass does not end while the takeover still runs. With the early start
-    /// the takeover is held until the pass ends or the coordinator waits at the join, so a pass that ends without joining
-    /// it ends while it is held; without the early start the coordinator takes the runs over itself before its workers.
+    /// The takeover belongs to the warm pass, so the pass does not end while the takeover still runs. The takeover is held
+    /// until the pass ends or the coordinator waits at the join, so a pass that ends without joining it ends while it is
+    /// held.
     /// </summary>
     [Test]
     public void The_warm_pass_ends_only_once_the_runs_are_taken_over()
@@ -1865,14 +1851,14 @@ public class PrewarmerMempoolHandoffTests(bool earlyStart) : PrewarmerHandoffTes
 
         BlockFootprints? footprints = null;
         Thread? joining = null;
-        bool heldAtJoin = !EarlyStart;
+        bool heldAtJoin = false;
         bool? endedWhileTakingOver = null;
         PreWarmer.BeforeSeedingJoin = () => Volatile.Write(ref joining, Thread.CurrentThread);
         PreWarmer.Seeded = () =>
         {
             footprints = PreWarmer.Footprints;
             // The timeout only guards against a deadlock; what is asserted is the order.
-            if (EarlyStart) heldAtJoin = SpinWait.SpinUntil(() => footprints?.WarmPassEnded == true || WaitsAtJoin(), TimeSpan.FromSeconds(10));
+            heldAtJoin = SpinWait.SpinUntil(() => footprints?.WarmPassEnded == true || WaitsAtJoin(), TimeSpan.FromSeconds(10));
             endedWhileTakingOver = footprints?.WarmPassEnded;
         };
         RunPreWarmCaches(PreWarmer, block);
@@ -2120,14 +2106,14 @@ public class MempoolFootprintsTests
 
         recorded.Record(footprint, predicted, Osaka.Instance);
         BlockFootprints footprints = new(block);
-        HashSet<Hash256>? seeded = recorded.Seed(block, difference == Difference.Spec ? Prague.Instance : Osaka.Instance, footprints);
+        int seeded = recorded.SeedWhereEmpty(block, difference == Difference.Spec ? Prague.Instance : Osaka.Instance, footprints, CancellationToken.None);
 
         bool holds = difference is Difference.None or Difference.TimestampUnread or Difference.GasLimitUnread or Difference.RecordedAgainWhenFull;
         TransactionFootprint? stored = footprints.Get(0);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(stored is not null, Is.EqualTo(holds));
-            Assert.That(seeded?.Contains(tx.Hash!) == true, Is.EqualTo(holds));
+            Assert.That(seeded, Is.EqualTo(holds ? 1 : 0));
         }
 
         if (stored is null) return;
