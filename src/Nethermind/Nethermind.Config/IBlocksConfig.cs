@@ -79,6 +79,22 @@ public interface IBlocksConfig : IConfig
     [ConfigItem(Description = "Hand pre-warm runs over to block processing. Requires PreWarming. Not applied with a block access list (EIP-7928), from EIP-8037, nor on chains with their own transaction processor.", DefaultValue = "true", HiddenFromDocs = true)]
     bool PreWarmHandoff { get; set; }
 
+    /// <summary>
+    /// Whether the transaction block processing is executing gets a storage discovery of its own once it has read
+    /// <see cref="PreWarmInFlightReadAheadColdReads"/> values past the pre-block caches.
+    /// </summary>
+    /// <remarks>
+    /// The discovery reads, side by side and on the parent state, the slots block processing is about to read one after
+    /// another; it puts only parent-state values into the caches and records nothing block processing takes over. Off, or
+    /// in a block it does not apply to, storage discovery leaves every transaction block processing has started. Requires
+    /// <see cref="PreWarming"/>; not applied to blocks with a block access list, nor to blocks being produced.
+    /// </remarks>
+    [ConfigItem(Description = "Discover and read ahead the storage of the transaction block processing is executing once it has read PreWarmInFlightReadAheadColdReads values past the pre-block caches. Requires PreWarming.", DefaultValue = "true", HiddenFromDocs = true)]
+    bool PreWarmInFlightReadAhead { get; set; }
+
+    [ConfigItem(Description = "The reads past the pre-block caches within one transaction after which PreWarmInFlightReadAhead starts. `0` starts it at the first.", DefaultValue = "32", HiddenFromDocs = true)]
+    int PreWarmInFlightReadAheadColdReads { get; set; }
+
     [ConfigItem(Description = "The block production timeout, in milliseconds.", DefaultValue = "4000")]
     int BlockProductionTimeoutMs { get; set; }
 

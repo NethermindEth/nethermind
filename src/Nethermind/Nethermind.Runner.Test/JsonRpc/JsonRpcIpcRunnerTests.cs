@@ -5,7 +5,6 @@
 using System;
 using System.Diagnostics;
 using System.IO.Abstractions;
-using System.IO.Pipelines;
 using System.Linq;
 using System.Net.Sockets;
 using System.Text;
@@ -133,7 +132,7 @@ public class JsonRpcIpcRunnerTests
         IJsonRpcProcessor processor = Substitute.For<IJsonRpcProcessor>();
         processor
             .ProcessAsync(
-                Arg.Any<PipeReader>(),
+                Arg.Any<ReadOnlyMemory<byte>>(),
                 Arg.Any<JsonRpcContext>(),
                 Arg.Any<IJsonRpcResponseSink>(),
                 Arg.Any<JsonRpcProcessingOptions>(),
@@ -299,7 +298,7 @@ public class JsonRpcIpcRunnerTests
         public async Task SendAsync(byte[] message, CancellationToken token)
         {
             await _sendStream.WriteAsync(message, token);
-            await _sendStream.WriteEndOfMessageAsync();
+            await _sendStream.WriteEndOfMessageAsync(ReadOnlyMemory<byte>.Empty, CancellationToken.None);
         }
 
         public async ValueTask DisposeAsync()
