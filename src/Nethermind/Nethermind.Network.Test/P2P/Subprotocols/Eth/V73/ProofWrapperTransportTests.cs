@@ -348,7 +348,7 @@ public class ProofWrapperTransportTests
         ValueHash256 remaining = requested[omitFirst ? 0 : 1];
         Assert.That(retried, Is.EqualTo(new[] { remaining }));
         node.Transport.OnPooledEnvelopes(omitFirst ? peerB : peerA, retryId, [PooledItem(Of(remaining))]);
-        await WrapperTestNode.Until(() => node.Transport.IsStored(announcement.Hash));
+        await WrapperTestNode.Until(() => node.Transport.IsStored(announcement.Hash) && node.Transport.FetchCount == 0);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(a.Penalties, Is.Empty);
