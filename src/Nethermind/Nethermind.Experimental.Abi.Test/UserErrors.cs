@@ -55,6 +55,22 @@ public class UserErrors
         Assert.Throws<AbiException>(() => AbiCodec.Encode(signature, elements));
     }
 
+    private static IEnumerable<TestCaseData> HeadSizeOutOfRangeTestCases()
+    {
+        yield return ThrowsOnBuild<OverflowException>(() => AbiType.Array(AbiType.UInt256, int.MaxValue)).SetName("uint256[2^31 - 1]");
+        yield return ThrowsOnBuild<OverflowException>(() => AbiType.Array(AbiType.Array(AbiType.UInt256, 1 << 20), 1 << 6)).SetName("uint256[2^20][2^6]");
+        yield return ThrowsOnBuild<OverflowException>(() => AbiType.Array(AbiType.String, 1 << 26)).SetName("string[2^26]");
+        yield return ThrowsOnBuild<OverflowException>(() => AbiType.Tuple(AbiType.Array(AbiType.UInt256, 1 << 25), AbiType.Array(AbiType.UInt256, 1 << 25))).SetName("(uint256[2^25],uint256[2^25])");
+        yield return ThrowsOnBuild<ArgumentOutOfRangeException>(() => AbiType.Array(AbiType.UInt256, -1)).SetName("uint256[-1]");
+    }
+
+    private static TestCaseData ThrowsOnBuild<TException>(Action build) where TException : Exception =>
+        new(build, typeof(TException));
+
+    [TestCaseSource(nameof(HeadSizeOutOfRangeTestCases))]
+    public void Build_HeadSizeOutOfRange(Action build, Type exception) =>
+        Assert.That(build, Throws.TypeOf(exception));
+
     private static IEnumerable<TestCaseData> LoneSurrogateTestCases()
     {
         yield return new TestCaseData("\uD800").SetName("lone high surrogate");
