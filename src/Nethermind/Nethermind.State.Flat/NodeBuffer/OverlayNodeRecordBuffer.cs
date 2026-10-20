@@ -16,7 +16,7 @@ namespace Nethermind.State.Flat.NodeBuffer;
 /// </remarks>
 internal sealed class OverlayNodeRecordBuffer : INodeRecordBuffer
 {
-    private const int LocalGenerationBytes = 1024 * 1024;
+    private const int LocalGenerationBytes = 128 * 1024;
 
     private readonly INodeRecordBuffer _global;
     private readonly INodeRecordBufferPin _globalPin;
