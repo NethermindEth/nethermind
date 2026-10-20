@@ -18,8 +18,6 @@ namespace Nethermind.Evm.State;
 
 public class PreBlockCaches
 {
-    private readonly Func<CacheType>[] _clearCaches;
-
     private readonly SeqlockCache<StorageCell, UInt256> _storageCache;
     private readonly SeqlockCache<AddressAsKey, Account> _stateCache;
     private readonly PrecompileCaches _precompileCaches;
@@ -49,12 +47,6 @@ public class PreBlockCaches
         _stateCache = new SeqlockCache<AddressAsKey, Account>(config.StateCacheSetsBits);
         _storageBypass = new WipedContracts(config.MaxStorageWipesBeforeClear);
         _precompileCaches = precompileCaches;
-        _clearCaches =
-        [
-            () => { _storageCache.Clear(); return CacheType.None; },
-            () => { _stateCache.Clear(); return CacheType.None; },
-            () => { _precompileCaches.ClearBlockCache(); return CacheType.None; }
-        ];
         _writeBack = new WriteBackBatch(this);
     }
 
@@ -162,26 +154,22 @@ public class PreBlockCaches
         }
     }
 
-    public CacheType ClearCaches()
+    public void ClearCaches()
     {
         JoinPendingWriteBack();
         lock (_reconcileLock)
         {
-            return ClearCachesCore();
+            ClearCachesCore();
         }
     }
 
-    private CacheType ClearCachesCore()
+    private void ClearCachesCore()
     {
-        CacheType isDirty = CacheType.None;
-        foreach (Func<CacheType> clearCache in _clearCaches)
-        {
-            isDirty |= clearCache();
-        }
-
+        _storageCache.Clear();
+        _stateCache.Clear();
+        _precompileCaches.ClearBlockCache();
         _storageBypass.Clear();
         _validFor = null;
-        return isDirty;
     }
 
     // Epoch bumps only: safe while populators for another head are still writing, unlike the precompile dictionary's clear.
@@ -682,15 +670,4 @@ public sealed record PreBlockCachesConfig
     /// blocks; the cap turns what would be a clear per such block into one per this many wipes.
     /// </remarks>
     public int MaxStorageWipesBeforeClear { get; init; } = 4096;
-}
-
-[Flags]
-public enum CacheType
-{
-    None = 0,
-    Storage = 0b1,
-    State = 0b10,
-    /// <summary>RLP node-storage caching was enabled when cleared; this does not indicate whether it contained entries.</summary>
-    Rlp = 0b100,
-    Precompile = 0b1000
 }

@@ -2473,6 +2473,45 @@ public partial class BlockProcessorTests
     }
 
     [Test]
+    [NonParallelizable]
+    public void ProcessOne_OnOrOffTheMainProcessingThread_PublishesBlockGasPricesOnlyOnIt([Values] bool isBlockProcessingThread)
+    {
+        IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor = Substitute.For<IBlockProcessor.IBlockTransactionsExecutor>();
+        transactionsExecutor.ProcessTransactions(Arg.Any<Block>(), Arg.Any<ProcessingOptions>(), Arg.Any<BlockReceiptsTracer>(), Arg.Any<CancellationToken>())
+            .Returns(Array.Empty<TxReceipt>());
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule())
+            .AddSingleton<ISpecProvider>(HoodiSpecProvider.Instance)
+            .Build();
+        using ILifetimeScope lifetime = container.BeginLifetimeScope(builder => builder
+            .AddSingleton<IWorldStateScopeProvider>(container.Resolve<IWorldStateManager>().GlobalWorldState)
+            .AddSingleton(Substitute.For<ITransactionProcessor>())
+            .AddSingleton(transactionsExecutor)
+            .AddSingleton<IBlockAccessListManager>(new ParallelTestBlockAccessListManager(Substitute.For<ITransactionProcessorAdapter>())));
+        IWorldState stateProvider = lifetime.Resolve<IWorldState>();
+        IBlockProcessor processor = lifetime.Resolve<IBlockProcessor>();
+        ulong baseFeeGwei = isBlockProcessingThread ? 4_242UL : 4_243UL;
+        Block block = Build.A.Block.WithBaseFeePerGas(baseFeeGwei * 1_000_000_000UL).TestObject;
+
+        using IDisposable scope = stateProvider.BeginScope(null);
+        bool previousIsBlockProcessingThread = ProcessingThread.IsBlockProcessingThread;
+        ProcessingThread.IsBlockProcessingThread = isBlockProcessingThread;
+        try
+        {
+            processor.ProcessOne(block, ProcessingOptions.NoValidation, NullBlockTracer.Instance, HoodiSpecProvider.Instance.GetSpec(block.Header), CancellationToken.None);
+        }
+        finally
+        {
+            ProcessingThread.IsBlockProcessingThread = previousIsBlockProcessingThread;
+        }
+
+        if (isBlockProcessingThread)
+            Assert.That(Nethermind.Evm.Metrics.GasPriceMax, Is.EqualTo((float)baseFeeGwei), "the main processing thread publishes the block's gauges");
+        else
+            Assert.That(Nethermind.Evm.Metrics.GasPriceMax, Is.Not.EqualTo((float)baseFeeGwei), "a trace or simulate replay must not touch the import gauges");
+    }
+
+    [Test]
     [MaxTime(Timeout.MaxTestTime)]
     public void BranchProcessor_cancels_and_drains_prewarmer_before_clearing_caches(
         [Values(2, 3)] int transactionCount, [Values] bool startSession)
@@ -2756,11 +2795,10 @@ public partial class BlockProcessorTests
             public void Dispose() => owner.SessionDisposals++;
         }
 
-        public CacheType ClearCaches()
+        public void ClearCaches()
         {
             Clears++;
             ClearedBeforeDrain |= StartSession && SessionDisposals == 0;
-            return default;
         }
         public bool IsBalReadWarmingEnabled(IReleaseSpec spec) => false;
         public Task StartSpeculativePreWarm(BlockHeader head, IReleaseSpec spec, long generation, Func<CancellationToken, (Block Block, IReleaseSpec Spec)?> nextDelta, int idlePassDelayMs, CancellationToken cancellationToken) => Task.CompletedTask;

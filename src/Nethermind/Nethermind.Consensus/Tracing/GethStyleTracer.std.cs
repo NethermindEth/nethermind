@@ -144,7 +144,8 @@ public class GethStyleTracer(
         Transaction[] transactions = new Transaction[(int)index + 1];
         block.Transactions.AsSpan(0, (int)index).CopyTo(transactions);
         transactions[^1] = call;
-        return block.WithReplacedBodyCloned(block.Body.WithChangedTransactions(transactions));
+        // The canonical access list describes the full block, not this truncated one with a synthetic call.
+        return new Block(block.Header.Clone(), block.Body.WithChangedTransactions(transactions));
     }
 
     private void PrepareIndexedCall(Block tracedBlock, GethTraceOptions options, IWorldState state, IReleaseSpec callSpec)
@@ -215,7 +216,7 @@ public class GethStyleTracer(
         Block block = blockTree.FindBlock(blockNumber, BlockTreeLookupOptions.RequireCanonical) ?? throw new InvalidOperationException($"No historical block found for {blockNumber}");
         if (tx.Hash is null) throw new InvalidOperationException("Cannot trace transactions without tx hash set.");
 
-        block = block.WithReplacedBodyCloned(BlockBody.WithOneTransactionOnly(tx));
+        block = new Block(block.Header.Clone(), BlockBody.WithOneTransactionOnly(tx));
         using Scope<BlockProcessingComponents> scope = blockProcessingEnv.BuildAndOverride(block.Header, options.StateOverrides);
         IBlockTracer<GethLikeTxTrace> blockTracer = CreateOptionsTracer(block.Header, options with { TxHash = tx.Hash }, scope.Component.WorldState, specProvider);
         try
