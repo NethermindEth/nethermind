@@ -64,7 +64,8 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
     public async Task<Result<Hash256[]>> AcceptAsync(byte[] wrapper, CancellationToken cancellationToken = default)
         => (await AcceptDetailedAsync(wrapper, cancellationToken)).Result;
 
-    /// <summary>Raised with the encoded wrapper once it is fully validated, whether or not the pool admitted its transactions.</summary>
+    /// <summary>Raised with the encoded wrapper once the pool admits every transaction it carries, at least one carries a
+    /// dependency, and the verifier it was validated under is still current.</summary>
     /// <remarks>The second argument maps each of the wrapper's hash entries to the transaction that resolved it, so a relay
     /// can keep serving the envelopes it offers by hash, and the third is the verifier it was validated under. Subscribers must
     /// not mutate the arguments.</remarks>
