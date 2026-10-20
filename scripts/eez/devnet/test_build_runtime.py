@@ -38,6 +38,7 @@ class RuntimeBuildTests(unittest.TestCase):
                     cargo = builds[0]
                     self.assertEqual(cargo[1], "build")
                     self.assertIn("--locked", cargo)
+                    self.assertIn("--timings", cargo)
                     self.assertEqual(cargo[cargo.index("--profile") + 1], "ci-e2e")
                     self.assertEqual([cargo[i + 1] for i, value in enumerate(cargo) if value == "--test"], selected)
                     packages = [cargo[i + 1] for i, value in enumerate(cargo) if value == "-p"]
@@ -53,6 +54,7 @@ class RuntimeBuildTests(unittest.TestCase):
                         self.assertFalse((root / "github-path").exists())
                         if not prebuilt: self.assertEqual(list(runtime.iterdir()), [])
                     else:
+                        self.assertEqual((output / "cargo-timing.html").read_text(), "compiler timing fixture")
                         self.assertEqual(Path(calls[3][1]).name, "bundle.py")
                         self.assertEqual(calls[3][2], "tests")
                         self.assertEqual((root / "github-path").read_text().strip(), str(runtime))
@@ -76,6 +78,9 @@ with Path(os.environ["EEZ_BUILD_CALLS"]).open("a") as stream:
     stream.write(json.dumps([name, *sys.argv[1:]]) + "\\n")
 if name == "cargo":
     if os.environ["EEZ_BUILD_FAIL"] == "1": sys.exit(1)
+    timing = Path(os.environ["EEZ_UPSTREAM"]) / "target/cargo-timings/cargo-timing.html"
+    timing.parent.mkdir(parents=True, exist_ok=True)
+    timing.write_text("compiler timing fixture")
     if "--bins" in sys.argv:
         for relative in ("eez-composer", "eez-follower", "eez-proof-signer", "examples/genesis_state_root", "examples/genesis_block_hash"):
             path = Path(os.environ["EEZ_UPSTREAM"]) / "target/ci-e2e" / relative
