@@ -8,6 +8,7 @@ using Nethermind.Blockchain.Tracing;
 using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
@@ -28,16 +29,14 @@ public sealed class FinalizedBlockAccessListProcessor(
     IReceiptsRecovery receiptsRecovery,
     ITimestamper timestamper,
     IBlocksConfig blocksConfig,
+    ISpecProvider specProvider,
     ILogManager logManager) : IBlockProcessor
 {
-    /// <summary>
-    /// A block older than this many slots is being caught up rather than followed: the network finalizes a block
-    /// about two epochs after its slot, so a block this old would normally be finalized already.
-    /// </summary>
+    /// <summary>Catch-up age in slots, matching the usual two-epoch finalization delay.</summary>
     public const ulong CatchUpAgeSlots = 64;
 
     private readonly ILogger _logger = logManager.GetClassLogger<FinalizedBlockAccessListProcessor>();
-    private readonly ulong _catchUpAgeSeconds = CatchUpAgeSlots * Math.Max(blocksConfig.SecondsPerSlot, 1);
+    private readonly SlotSchedule _slots = specProvider.GetSlotSchedule(blocksConfig.SecondsPerSlot);
     private event Action<Block>? _transactionsExecuted;
 
     /// <summary>The processor that executes blocks this decorator does not reconstruct.</summary>
@@ -130,7 +129,7 @@ public sealed class FinalizedBlockAccessListProcessor(
     private static void CountFallback(BalCatchUpFallbackReason reason) =>
         Metrics.BalCatchUpFallbacks.AddOrUpdate(reason, 1, static (_, count) => count + 1);
 
-    private bool IsCatchingUp(BlockHeader header) => timestamper.UnixTime.Seconds > header.Timestamp + _catchUpAgeSeconds;
+    private bool IsCatchingUp(BlockHeader header) => timestamper.UnixTime.Seconds > _slots.AddSlots(header.Timestamp, CatchUpAgeSlots);
 
     private void CountCatchUpExecution(Block block, BalCatchUpFallbackReason reason)
     {

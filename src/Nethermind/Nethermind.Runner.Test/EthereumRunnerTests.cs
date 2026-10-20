@@ -35,6 +35,7 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Authentication;
 using Nethermind.Core.Container;
 using Nethermind.Core.Crypto;
@@ -166,7 +167,7 @@ public class EthereumRunnerTests
             IBlockProcessor wrapped = scenario == WarmupScenario.SupportedBehindCatchUp ? main.BlockProcessor : Substitute.For<IBlockProcessor>();
             api.MainProcessingContext!.BlockProcessor.Returns(new FinalizedBlockAccessListProcessor(wrapped,
                 container.Resolve<FinalizedBlockAccessListPolicy>(), main.WorldState, container.Resolve<IReceiptStorage>(), container.Resolve<IReceiptsRecovery>(),
-                container.Resolve<ITimestamper>(), container.Resolve<IBlocksConfig>(), NullLogManager.Instance));
+                container.Resolve<ITimestamper>(), container.Resolve<IBlocksConfig>(), container.Resolve<ISpecProvider>(), NullLogManager.Instance));
             api.MainProcessingContext.TransactionProcessor.Returns(main.TransactionProcessor);
         }
 

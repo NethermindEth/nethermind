@@ -31,6 +31,7 @@ using Nethermind.Init.Modules;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using Nethermind.Synchronization;
 using NSubstitute;
 using NUnit.Framework;
@@ -374,18 +375,19 @@ public class FinalizedBlockAccessListTests(bool useFlatDb)
         public FinalizedBlockAccessListPolicy Policy { get; }
         public Block Genesis { get; }
 
-        public TestEnvironment(bool useFlatDb, bool enabled = true, bool accessListChain = true, IReleaseSpec? releaseSpec = null)
+        public TestEnvironment(bool useFlatDb, bool enabled = true, bool accessListChain = true, IReleaseSpec? releaseSpec = null, ISpecProvider? specProvider = null)
         {
             _releaseSpec = releaseSpec ?? Amsterdam.Instance;
+            specProvider ??= new Nethermind.Specs.TestSpecProvider(_releaseSpec);
             SyncConfig sync = new() { ReconstructFinalizedStateFromBlockAccessLists = enabled };
             Beacon.MergeTransitionFinished.Returns(true);
             _container = new ContainerBuilder().AddModule(new TestNethermindModule(new FlatDbConfig { Enabled = useFlatDb }))
-                .AddSingleton<ISpecProvider>(new Nethermind.Specs.TestSpecProvider(_releaseSpec))
+                .AddSingleton(specProvider)
                 .AddSingleton<ISyncConfig>(sync)
                 .AddSingleton<IReceiptConfig>(ReceiptConfig)
                 .AddSingleton<IBeaconSyncStrategy>(Beacon)
                 .AddSingleton<FinalizedBlockAccessListPolicy>()
-                .AddSingleton<IMainProcessingModule>(new TestProcessingModule(sync, new Nethermind.Specs.TestSpecProvider(accessListChain ? _releaseSpec : Osaka.Instance)))
+                .AddSingleton<IMainProcessingModule>(new TestProcessingModule(sync, accessListChain ? specProvider : new Nethermind.Specs.TestSpecProvider(Osaka.Instance)))
                 .Build();
             MainProcessingContext main = _container.Resolve<MainProcessingContext>();
             State = main.WorldState;
@@ -406,7 +408,7 @@ public class FinalizedBlockAccessListTests(bool useFlatDb)
             Tree.SuggestBlock(Genesis, BlockTreeSuggestOptions.None);
         }
 
-        public Block CreateBlock(bool matchingRoot = true, bool matchingList = true, bool insert = true, bool withTransaction = false, Block? parent = null, UInt256? balance = null, Hash256? receiptsRoot = null, ulong? gasLimit = null, Transaction? transaction = null, ulong gasUsed = 0)
+        public Block CreateBlock(bool matchingRoot = true, bool matchingList = true, bool insert = true, bool withTransaction = false, Block? parent = null, UInt256? balance = null, Hash256? receiptsRoot = null, ulong? gasLimit = null, Transaction? transaction = null, ulong gasUsed = 0, ulong? timestamp = null)
         {
             parent ??= Genesis;
             UInt256 finalBalance = balance ?? 25;
@@ -423,6 +425,7 @@ public class FinalizedBlockAccessListTests(bool useFlatDb)
             byte[] encoded = Rlp.Encode(list).Bytes;
             BlockBuilder builder = Build.A.Block.WithParent(parent).WithDifficulty(0).WithGasUsed(gasUsed).WithStateRoot(matchingRoot ? root : TestItem.KeccakC)
                 .WithBlockAccessListHash(matchingList ? Keccak.Compute(encoded) : TestItem.KeccakD);
+            if (timestamp is not null) builder.WithTimestamp(timestamp.Value);
             if (withTransaction) builder.WithTransactions(Build.A.Transaction.WithSenderAddress(TestItem.AddressA).TestObject);
             if (transaction is not null) builder.WithTransactions(transaction);
             if (receiptsRoot is not null) builder.WithReceiptsRoot(receiptsRoot);
@@ -516,6 +519,41 @@ public class FinalizedBlockAccessListMetricTests
         {
             Assert.That(env.Recording.Calls, Is.EqualTo(1));
             Assert.That(FinalizedBlockAccessListTests.Fallbacks(BalCatchUpFallbackReason.NotFinalized) - notFinalizedBefore, Is.EqualTo(catchingUp ? 1 : 0));
+        }
+    }
+
+    [Test]
+    public void Catch_up_age_follows_slot_duration_changes(
+        [Values(1000UL, 1432UL, 2008UL, 2200UL)] ulong timestamp,
+        [Values(-1, 0, 1)] int offset,
+        [Values] bool engineApi)
+    {
+        CustomSpecProvider provider = new(((ForkActivation)0, Amsterdam.Instance), (new ForkActivation(0, 2200), Bogota.Instance))
+        {
+            BeaconChainGenesisTimestamp = 1000,
+            Eip8198SlotDurationMs = 6000
+        };
+        using FinalizedBlockAccessListTests.TestEnvironment env = new(useFlatDb: false, specProvider: provider);
+        Block block = env.CreateBlock(timestamp: timestamp);
+        env.Beacon.GetFinalizedHash().Returns(env.Genesis.Hash);
+        ulong threshold = timestamp switch
+        {
+            1000 => 1768,
+            1432 => 2200,
+            2008 => 2488, // Sixteen 12-second slots, then forty-eight 6-second slots.
+            _ => 2584
+        };
+        env.Timestamper.Set(DateTimeOffset.FromUnixTimeSeconds((long)threshold + offset).UtcDateTime);
+        long before = FinalizedBlockAccessListTests.Fallbacks(BalCatchUpFallbackReason.NotFinalized);
+        using IDisposable scope = env.State.BeginScope(env.Genesis.Header);
+        env.Processor.ProcessOne(block, engineApi ? ProcessingOptions.EthereumMerge : ProcessingOptions.None,
+            NullBlockTracer.Instance, provider.GetSpec(block.Header));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(env.Recording.Calls, Is.EqualTo(1));
+            Assert.That(FinalizedBlockAccessListTests.Fallbacks(BalCatchUpFallbackReason.NotFinalized) - before,
+                Is.EqualTo(offset > 0 ? 1 : 0));
         }
     }
 
