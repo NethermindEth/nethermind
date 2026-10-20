@@ -49,6 +49,7 @@ public class BlockAccessListsSyncFeedTests
     {
         _blockTree = Substitute.For<IBlockTree>();
         _blockAccessListStore = Substitute.For<IBlockAccessListStore>();
+        _blockAccessListStore.WriteLock.Returns(new Lock());
         _syncPeerPool = Substitute.For<ISyncPeerPool>();
         _metadataDb = new TestMemDb();
         _syncPointers = new MemorySyncPointers();
@@ -408,7 +409,7 @@ public class BlockAccessListsSyncFeedTests
         bool checkedUnderLock = false;
         _historyPruner.BalCutoffBlockNumber.Returns(_ =>
         {
-            if (validated.Task.IsCompleted) checkedUnderLock = Monitor.IsEntered(_blockAccessListStore);
+            if (validated.Task.IsCompleted) checkedUnderLock = _blockAccessListStore.WriteLock.IsHeldByCurrentThread;
             return Volatile.Read(ref cutoff);
         });
         _blockTree.FindHeader(blockInfo.BlockHash, blockNumber: 2).Returns(_ =>
@@ -421,7 +422,7 @@ public class BlockAccessListsSyncFeedTests
         using ManualResetEventSlim finishPruning = new();
         Task pruning = Task.Run(() =>
         {
-            lock (_blockAccessListStore)
+            lock (_blockAccessListStore.WriteLock)
             {
                 pruningStarted.SetResult();
                 if (!finishPruning.Wait(TimeSpan.FromSeconds(10))) throw new TimeoutException();

@@ -217,7 +217,7 @@ public class BlockAccessListStoreTests
         store.InsertFromBlockDeferred(oldBlock);
 
         bool deletedUnderLock = false;
-        db.Removing = () => deletedUnderLock = Monitor.IsEntered(store);
+        db.Removing = () => deletedUnderLock = store.WriteLock.IsHeldByCurrentThread;
         TaskCompletionSource reclaimStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
         using ManualResetEventSlim finishReclaim = new();
         db.Reclaiming = () =>
@@ -233,7 +233,7 @@ public class BlockAccessListStoreTests
             await reclaimStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
             insertion = Task.Run(() =>
             {
-                lock (store)
+                lock (store.WriteLock)
                 {
                     store.Insert(6, TestItem.KeccakB, new byte[] { 0xc0 });
                 }

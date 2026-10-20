@@ -349,7 +349,7 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
                 if (isValid)
                 {
                     // Share the store's range-deletion lock so deletion cannot pass between the cutoff check and write.
-                    lock (_blockAccessListStore)
+                    lock (_blockAccessListStore.WriteLock)
                     {
                         if (blockInfo.BlockNumber < SkippedBelow)
                         {

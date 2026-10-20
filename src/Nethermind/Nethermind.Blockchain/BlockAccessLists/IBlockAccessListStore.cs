@@ -5,6 +5,7 @@ using System;
 using System.Buffers;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
@@ -13,12 +14,14 @@ namespace Nethermind.Blockchain.BlockAccessLists;
 
 /// <summary>Stores block access lists by block number and hash.</summary>
 /// <remarks>
-/// Registered as one shared instance. Sync holds this instance's monitor around its pruning-cutoff check and insert;
-/// implementations must hold the same monitor while deleting a range, releasing it before storage reclaim.
-/// Decorators must preserve this synchronization contract.
+/// Sync holds <see cref="WriteLock"/> around its pruning-cutoff check and insert. Implementations hold the same lock
+/// while deleting a range, releasing it before storage reclaim. Decorators must forward the underlying store's lock.
 /// </remarks>
 public interface IBlockAccessListStore
 {
+    /// <summary>The shared lock serializing sync insertion with range deletion.</summary>
+    Lock WriteLock { get; }
+
     void InsertFromBlock(Block block)
     {
         Hash256 blockHash = block.Hash ?? ThrowMissingBlockHash(nameof(block));
