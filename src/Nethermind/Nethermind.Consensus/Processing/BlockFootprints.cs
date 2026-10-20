@@ -104,8 +104,8 @@ internal sealed class BlockFootprints(Block block)
         bool invalidated;
         lock (_lock)
         {
-            // A run that ends after block processing executed its transaction is not indexed, so it is not stored
-            // either: the footprint at a position is always the one indexed for it.
+            // A run that ends after block processing executed its transaction does not replace the writes it made, so
+            // it is not stored either: the footprint at a position is always the one indexed for it.
             if (_executed[index] || (onlyIfEmpty && _footprints[index] is not null)) return false;
             Volatile.Write(ref _footprints[index], footprint);
             invalidated = IndexLocked(index, footprint, seededAt);
@@ -307,10 +307,9 @@ internal sealed class BlockFootprints(Block block)
     }
 
     /// <returns>Whether a footprint was invalidated.</returns>
+    /// <remarks>Called under the lock, for a position block processing has not executed.</remarks>
     private bool IndexLocked(int position, TransactionFootprint footprint, int seededAt)
     {
-        // A run that ends after block processing executed its transaction does not replace the writes it made.
-        if (_executed[position]) return false;
         // With no write replaced since the refresh seeded the slots the footprint before it read, a refreshed run
         // that read one of them at another value than its seed changed it itself first (a creation clears the
         // storage), and running it again reads the same.
