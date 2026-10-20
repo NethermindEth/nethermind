@@ -1,0 +1,94 @@
+name: Test selection
+
+# Builds the model that run-nethtest.yml uses to run, on a pull request, only the EEST tests that the change
+# can affect (scripts/ci/select_tests.py). Every hour it reads the finished runs of nethermind-tests.yml
+# (changed files, test-level failures), grows the journal back to 60 days, rebuilds the model and replays
+# the selector over the journal into the job summary: the share of EEST cost it runs and the failures it
+# would have hidden.
+on:
+  schedule:
+    - cron: '17 * * * *'
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: test-selection
+  cancel-in-progress: false
+
+jobs:
+  model:
+    name: Build the selection model
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      GH_TOKEN: ${{ github.token }}
+      STATE: ${{ github.workspace }}/state
+    steps:
+      # Full history without file contents: pull request diffs come from local git, not the API.
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          filter: blob:none
+
+      - name: Fetch pull request heads
+        run: git fetch --no-tags --filter=blob:none origin '+refs/pull/*/head:refs/remotes/origin/pr/*' || true
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Restore the journal and the inventory
+        run: |
+          mkdir -p "$STATE"
+          previous=$(gh run list -R "$GITHUB_REPOSITORY" --workflow test-selection.yml --branch master \
+            --status success -L 1 --json databaseId -q '.[0].databaseId')
+          if [ -n "$previous" ]; then
+            gh run download "$previous" -R "$GITHUB_REPOSITORY" -n test-selection-state -D "$STATE" || true
+          fi
+
+      - name: Refresh the EEST inventory once a day
+        run: |
+          today=$(date -u +%F)
+          if [ "$(cat "$STATE/inventory-date" 2>/dev/null)" != "$today" ] || [ ! -s "$STATE/eest-inventory.json" ]; then
+            run=$(gh run list -R "$GITHUB_REPOSITORY" --workflow nethermind-tests.yml --branch master --event push \
+              --status success -L 1 --json databaseId -q '.[0].databaseId')
+            if [ -n "$run" ]; then
+              python scripts/ci/select_tests.py inventory --run "$run" --out "$STATE/eest-inventory.json"
+              echo "$today" > "$STATE/inventory-date"
+            fi
+          fi
+
+      - name: Collect runs
+        run: python scripts/ci/select_tests.py collect --journal "$STATE/journal.jsonl" --days 1
+
+      - name: Build the model
+        run: |
+          python scripts/ci/select_tests.py model --journal "$STATE/journal.jsonl" \
+            --inventory "$STATE/eest-inventory.json" --out "$STATE/model.json"
+
+      - name: Replay the selector over the journal
+        run: |
+          python scripts/ci/select_tests.py replay --journal "$STATE/journal.jsonl" \
+            --inventory "$STATE/eest-inventory.json" --report "$STATE/report.md"
+          if [ -s "$STATE/report.md" ]; then
+            cat "$STATE/report.md" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Save the state
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-selection-state
+          path: |
+            ${{ env.STATE }}/journal.jsonl
+            ${{ env.STATE }}/eest-inventory.json
+            ${{ env.STATE }}/inventory-date
+            ${{ env.STATE }}/model.json
+            ${{ env.STATE }}/report.md
+          if-no-files-found: warn
+          retention-days: 30

@@ -162,7 +162,8 @@ jobs:
     name: Prepare nethtest matrix
     runs-on: ubuntu-latest
     outputs:
-      matrix: ${{ steps.generate.outputs.matrix }}
+      matrix: ${{ steps.select.outputs.matrix || steps.generate.outputs.matrix }}
+      selected: ${{ steps.select.outputs.selected }}
       eest_version: ${{ steps.resolve.outputs.eest_version }}
       zkevm_version: ${{ steps.resolve.outputs.zkevm_version }}
       focil_version: ${{ steps.resolve.outputs.focil_version }}
@@ -363,6 +364,46 @@ jobs:
           jq -s '.' "$ENTRIES_FILE"
           echo "matrix=$MATRIX" >> "$GITHUB_OUTPUT"
 
+      # Pull requests run only the EEST tests that the change can affect (scripts/ci/select_tests.py, model
+      # built hourly by test-selection.yml); master runs everything. Off unless the repository variable
+      # TEST_SELECTION is 'on'; the ci-full label, a stale or young model, a build-wide or harness change,
+      # or any error here runs everything.
+      - name: Select EEST tests
+        id: select
+        if: >-
+          github.event_name == 'pull_request' && vars.TEST_SELECTION == 'on' && inputs.variant == '' &&
+          !contains(github.event.pull_request.labels.*.name, 'ci-full')
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MATRIX: ${{ steps.generate.outputs.matrix }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          work="$RUNNER_TEMP/selection"
+          mkdir -p "$work"
+          printf '%s' "$MATRIX" > "$work/matrix.json"
+          git fetch --no-tags --depth=1 origin "$BASE_SHA"
+          git diff --name-only "$BASE_SHA" HEAD > "$work/changed.txt"
+          model_run=$(gh run list -R "$GITHUB_REPOSITORY" --workflow test-selection.yml --branch master \
+            --status success -L 1 --json databaseId -q '.[0].databaseId')
+          gh run download "$model_run" -R "$GITHUB_REPOSITORY" -n test-selection-state -D "$work/state"
+          python3 scripts/ci/select_tests.py select --model "$work/state/model.json" \
+            --inventory "$work/state/eest-inventory.json" --changed-files "$work/changed.txt" --run "$GITHUB_RUN_ID" \
+            --matrix "$work/matrix.json" --out-matrix "$work/selected.json" --filters "$work/filters" \
+            | tee -a "$GITHUB_STEP_SUMMARY"
+          if [ -d "$work/filters" ]; then
+            echo "selected=true" >> "$GITHUB_OUTPUT"
+          fi
+          echo "matrix=$(jq -c . "$work/selected.json")" >> "$GITHUB_OUTPUT"
+
+      - name: Upload EEST test selection
+        if: steps.select.outputs.selected == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: eest-selection
+          path: ${{ runner.temp }}/selection/filters/
+          retention-days: 1
+
       - name: Resolve fixture releases
         id: resolve
         env:
@@ -444,6 +485,13 @@ jobs:
         with:
           name: nethtest-runner-${{ inputs.variant || 'default' }}
           path: src/Nethermind/artifacts/bin/Nethermind.Test.Runner/release/
+
+      - name: Download EEST test selection
+        if: needs.prepare-matrix.outputs.selected == 'true'
+        uses: actions/download-artifact@v8
+        with:
+          name: eest-selection
+          path: ${{ runner.temp }}/selection/
 
       - name: Select fixture release
         id: eest_release
@@ -668,6 +716,13 @@ jobs:
           fi
           if [ -n "$BATCHREAD" ]; then
             SETUP_ARGS="$SETUP_ARGS --batchRead $BATCHREAD"
+          fi
+          # Written by the Select EEST tests step for a pull request; absent when every test runs.
+          FILTER_FILE="$RUNNER_TEMP/selection/${TEST_TYPE}-${TEST_SETUP}.txt"
+          if [ -f "$FILTER_FILE" ]; then
+            SETUP_ARGS="$SETUP_ARGS --filterFile $FILTER_FILE"
+          else
+            FILTER_FILE=""
           fi
 
           RUNNER_TMP="${RUNNER_TEMP:-/tmp}"
@@ -947,7 +1002,7 @@ jobs:
               frameTest|frameBlockTest) MIN_CASES="$FRAME_MIN_CASES" ;;
               frameTxTest)              MIN_CASES="$FRAME_TX_MIN_CASES" ;;
             esac
-            if [ -n "$MIN_CASES" ] && [ "$CHUNK" = "1of1" ] && [ -z "$FILTER" ] && [ $rc -eq 0 ]; then
+            if [ -n "$MIN_CASES" ] && [ "$CHUNK" = "1of1" ] && [ -z "$FILTER" ] && [ -z "$FILTER_FILE" ] && [ $rc -eq 0 ]; then
               RAN=$(jq 'length' "$RESULTS_FILE" 2>/dev/null || echo 0)
               if [ "$RAN" -lt "$MIN_CASES" ]; then
                 echo "::error::$TEST_TYPE ran $RAN cases, fewer than the $MIN_CASES expected; the fixture scope or the release pin has moved"

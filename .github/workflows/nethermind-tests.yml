@@ -26,6 +26,8 @@ defaults:
     shell: bash
 
 permissions:
+  # actions: read lets run-nethtest.yml download the EEST test selection model from test-selection.yml.
+  actions: read
   contents: read
 
 jobs:

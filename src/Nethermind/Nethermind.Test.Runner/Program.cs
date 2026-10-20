@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.CommandLine;
 using System.IO;
+using System.Linq;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
@@ -74,6 +75,9 @@ internal class Program
         public static Option<int> Workers { get; } =
             new("--workers", "-p") { Description = "Number of parallel workers for processing fixture files.", DefaultValueFactory = _ => 1 };
 
+        public static Option<string> FilterFile { get; } =
+            new("--filterFile") { Description = "Run only tests matching one of the regular expressions in this file, one per line. Combines with --filter: a test must match both." };
+
         public static Option<string> Chunk { get; } =
             new("--chunk", "-c") { Description = "Run only the Nth of M interleaved chunks of the collected fixture files, e.g. '2of8'. Used to split a large fixture set across CI jobs." };
 
@@ -114,6 +118,7 @@ internal class Program
             Options.JsonOutput,
             Options.Workers,
             Options.Chunk,
+            Options.FilterFile,
             Options.TrieDb,
             Options.ParallelExecution,
             Options.BatchRead,
@@ -156,7 +161,7 @@ internal class Program
         ulong chainId = parseResult.GetValue(Options.GnosisTest) ? GnosisSpecProvider.Instance.ChainId : MainnetSpecProvider.Instance.ChainId;
         bool jsonOutput = parseResult.GetValue(Options.JsonOutput);
         int workers = Math.Max(1, parseResult.GetValue(Options.Workers));
-        string filter = parseResult.GetValue(Options.Filter);
+        string filter = WithFilterFile(parseResult.GetValue(Options.Filter), parseResult.GetValue(Options.FilterFile));
         string chunk = parseResult.GetValue(Options.Chunk);
         bool traceMemory = !parseResult.GetValue(Options.ExcludeMemory);
         bool excludeStack = parseResult.GetValue(Options.ExcludeStack);
@@ -227,6 +232,21 @@ internal class Program
         if (parseResult.GetValue(Options.Wait)) Console.ReadLine();
 
         return 0;
+    }
+
+    /// <summary>
+    /// Joins the patterns of <paramref name="filterFile"/> into one alternation and requires it alongside
+    /// <paramref name="filter"/>. The file can hold thousands of patterns, more than one command-line argument takes.
+    /// </summary>
+    private static string? WithFilterFile(string? filter, string? filterFile)
+    {
+        if (filterFile is null)
+            return filter;
+
+        string selection = string.Join('|', File.ReadLines(filterFile).Where(static line => line.Length > 0));
+        if (selection.Length == 0)
+            selection = "(?!)";
+        return filter is null ? $"(?:{selection})" : $"(?=(?:{selection}))(?:{filter})";
     }
 
     private static List<string> CollectFiles(string path, string? chunk = null)
