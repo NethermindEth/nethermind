@@ -1,9 +1,9 @@
 GENESIS_VALIDATORS = (
-    '.data | sort_by(.index | tonumber) | '
-    'if length > 0 and (map(.index | tonumber) == [range(0; length)]) '
-    'and all(.[]; .validator.pubkey | test("^0x[0-9a-fA-F]{96}$")) '
-    'and ((map(.validator.pubkey) | unique | length) == length) '
-    'then map(.validator.pubkey) | join(",") '
+    '.data | sort_by(.index | tonumber) | ' +
+    'if length > 0 and (map(.index | tonumber) == [range(0; length)]) ' +
+    'and all(.[]; .validator.pubkey | test("^0x[0-9a-fA-F]{96}$")) ' +
+    'and ((map(.validator.pubkey) | unique | length) == length) ' +
+    'then map(.validator.pubkey) | join(",") ' +
     'else error("invalid genesis validator registry") end'
 )
 

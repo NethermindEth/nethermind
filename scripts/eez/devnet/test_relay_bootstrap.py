@@ -1,8 +1,10 @@
 import copy
+import io
 import json
 from pathlib import Path
 import runpy
 import subprocess
+import tokenize
 from types import SimpleNamespace
 import unittest
 from unittest.mock import Mock
@@ -19,6 +21,14 @@ class RelayBootstrapTests(unittest.TestCase):
             "api", "--beacon-uris", "http://builder-beacon:4000,http://other-beacon:4000",
             "--db", "unchanged-database", "--secret-key", "unchanged-relay-key",
         ], ports={"http": 9062}, env_vars={"SEC_PER_SLOT": "12"})
+
+    def test_starlark_module_has_no_python_only_adjacent_string_literals(self):
+        source = Path(__file__).with_name("nethermind.star").read_text()
+        tokens = [token for token in tokenize.generate_tokens(io.StringIO(source).readline)
+                  if token.type not in (tokenize.NL, tokenize.COMMENT)]
+        for left, right in zip(tokens, tokens[1:]):
+            self.assertFalse(left.type == right.type == tokenize.STRING,
+                f"Starlark requires an explicit operator between strings at {right.start}")
 
     def test_relay_uses_actual_genesis_registry_and_preserves_original_service_config(self):
         command = self.config.cmd.copy()
