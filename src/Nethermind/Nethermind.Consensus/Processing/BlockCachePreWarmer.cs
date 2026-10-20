@@ -654,8 +654,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
             if (roundCells.Count > 0)
             {
                 allDiscoveredCells.UnionWith(roundCells);
-                if (!WarmDiscoveredStorage(block.Header, roundCells, cancellationToken, warmedFor)) return;
-                if (inFlight) Interlocked.Add(ref Blockchain.Metrics.PrewarmInFlightCells, roundCells.Count);
+                if (!WarmDiscoveredStorage(block.Header, roundCells, cancellationToken, out int readCells, warmedFor)) return;
+                if (inFlight) Interlocked.Add(ref Blockchain.Metrics.PrewarmInFlightCells, readCells);
                 // An exhausted shared budget ends discovery at the next round's budget check.
                 if (allDiscoveredCells.Count >= MaxDiscoveredCells) return;
             }
@@ -1048,12 +1048,15 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         }
     }
 
+    /// <param name="read">The cells actually read: fewer than discovered when the warm stops early.</param>
     /// <param name="txIndex">The transaction the cells are warmed for: the warm stops once block processing has finished it.</param>
     private bool WarmDiscoveredStorage(BlockHeader target, PooledSet<StorageCell> discoveredCells, CancellationToken cancellationToken,
-        int txIndex = int.MaxValue)
+        out int read, int txIndex = int.MaxValue)
     {
+        read = 0;
         int cellCount = discoveredCells.Count;
         if (cellCount == 0) return true;
+        int readCells = 0;
         StorageCell[] cells = ArrayPool<StorageCell>.Shared.Rent(cellCount);
         try
         {
@@ -1080,9 +1083,10 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
                     using IReadOnlyTxProcessingScope scope = env.BuildAtTarget(target);
                     IWorldState worldState = scope.WorldState;
                     int unreadable = 0;
-                    for (int i = start; i < end; i++)
+                    int i = start;
+                    for (; i < end; i++)
                     {
-                        if (((i - start) & 0x3F) == 0 && (cancellationToken.IsCancellationRequested || MainThreadTxIndex > txIndex)) return;
+                        if (((i - start) & 0x3F) == 0 && (cancellationToken.IsCancellationRequested || MainThreadTxIndex > txIndex)) break;
                         try
                         {
                             worldState.Get(in cells[i], out _);
@@ -1093,6 +1097,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
                         }
                     }
 
+                    Interlocked.Add(ref readCells, i - start - unreadable);
                     if (unreadable > 0 && _logger.IsTrace) _logger.Trace($"Skipped {unreadable} discovered cells with missing trie nodes");
                 }
                 finally
@@ -1100,6 +1105,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
                     _envPool.Return(env);
                 }
             });
+            read = readCells;
             return true;
         }
         catch (OperationCanceledException)
