@@ -189,17 +189,23 @@ public static partial class AbiType
         }
     };
 
-    public static Abi<byte[]> BytesM(int length) => new()
+    public static Abi<byte[]> BytesM(int length)
     {
-        Name = $"bytes{length}",
-        Read = (ref BinarySpanReader r) => r.ReadBytesPadded(length).ToArray(),
-        Write = (ref BinarySpanWriter w, byte[] bytes) =>
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(length);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(length, 32);
+
+        return new()
         {
-            if (bytes.Length != length) throw new AbiException();
-            w.WritePadded(bytes);
-        },
-        HeadSize = Math.PadTo32(length)
-    };
+            Name = $"bytes{length}",
+            Read = (ref BinarySpanReader r) => r.ReadBytesPadded(length).ToArray(),
+            Write = (ref BinarySpanWriter w, byte[] bytes) =>
+            {
+                if (bytes.Length != length) throw new AbiException();
+                w.WritePadded(bytes);
+            },
+            HeadSize = Math.PadTo32(length)
+        };
+    }
 
     public static readonly Abi<ValueHash256> Bytes32 = new()
     {
