@@ -666,28 +666,39 @@ public partial class DebugRpcModuleTests
             foreach (bool revert in nonceDelta == 0 ? new[] { false, true } : new[] { false })
                 foreach (bool selectTransaction in new[] { false, true })
                     foreach (bool overrideNonce in new[] { false, true })
-                        yield return new TestCaseData("debug_traceBlock", nonceDelta, revert, selectTransaction, overrideNonce, false);
+                        yield return new TestCaseData("debug_traceBlock", nonceDelta, revert, selectTransaction, overrideNonce, false, false);
 
         foreach (int nonceDelta in new[] { 0, 1 })
-            yield return new TestCaseData("debug_traceBlock", nonceDelta, false, false, false, true);
+            yield return new TestCaseData("debug_traceBlock", nonceDelta, false, false, false, true, false);
 
         foreach (string method in new[] { "debug_traceTransactionInBlockByHash", "debug_traceTransactionInBlockByIndex" })
             foreach (int nonceDelta in new[] { -1, 1 })
-                yield return new TestCaseData(method, nonceDelta, false, false, false, false);
+                foreach (bool stream in new[] { false, true })
+                    yield return new TestCaseData(method, nonceDelta, false, false, false, stream, false);
+
+        foreach (string method in new[] { "debug_traceBlock", "debug_traceTransactionInBlockByHash", "debug_traceTransactionInBlockByIndex" })
+            foreach (int nonceDelta in new[] { -1, 1 })
+                foreach (bool stream in new[] { false, true })
+                    foreach (bool selectTransaction in method == "debug_traceBlock" ? new[] { false, true } : new[] { false })
+                        yield return new TestCaseData(method, nonceDelta, false, selectTransaction, false, stream, true);
     }
 
     [TestCaseSource(nameof(SuppliedSignedNonceCases))]
     public async Task Debug_traceBlock_supplied_signed_nonce_is_validated(
-        string method, int nonceDelta, bool revert, bool selectTransaction, bool overrideNonce, bool stream)
+        string method, int nonceDelta, bool revert, bool selectTransaction, bool overrideNonce, bool stream, bool invalidPrefix)
     {
         using Context context = await Context.Create();
         Block parent = context.Blockchain.BlockTree.Head!;
         ulong stateNonce = context.Blockchain.WorldStateManager.GlobalStateReader.GetNonce(parent.Header, TestItem.AddressA);
         ulong effectiveNonce = overrideNonce ? stateNonce + 7 : stateNonce;
         byte[] code = revert ? Prepare.EvmCode.Revert(0, 0).Done : Prepare.EvmCode.STOP().Done;
-        Transaction transaction = Build.A.Transaction.WithNonce((ulong)((long)effectiveNonce + nonceDelta))
+        Transaction transaction = Build.A.Transaction.WithNonce(invalidPrefix ? effectiveNonce : (ulong)((long)effectiveNonce + nonceDelta))
             .WithCode(code).WithValue(1).WithGasLimit(100_000).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
-        (Block original, Block supplied) = await CreateSuppliedBlock(context, transaction);
+        Transaction[] transactions = invalidPrefix
+            ? [Build.A.Transaction.WithNonce((ulong)((long)effectiveNonce + nonceDelta)).WithTo(TestItem.AddressC)
+                .WithValue(1).WithGasLimit(100_000).SignedAndResolved(TestItem.PrivateKeyA).TestObject, transaction]
+            : [transaction];
+        (Block original, Block supplied) = await CreateSuppliedBlock(context, transactions);
         string rlp = Rlp.Encode(supplied).ToString();
         GethTraceOptions options = new()
         {
@@ -701,7 +712,7 @@ public partial class DebugRpcModuleTests
         object[] parameters = method switch
         {
             "debug_traceTransactionInBlockByHash" => [rlp, transaction.Hash!, options],
-            "debug_traceTransactionInBlockByIndex" => [rlp, 0, options],
+            "debug_traceTransactionInBlockByIndex" => [rlp, invalidPrefix ? 1 : 0, options],
             _ => [rlp, options]
         };
         string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, method, parameters);
@@ -709,7 +720,18 @@ public partial class DebugRpcModuleTests
         Assert.That(context.Blockchain.WorldStateManager.GlobalStateReader.GetNonce(original.Header, TestItem.AddressA), Is.EqualTo(stateNonce),
             "read-only tracing must not persist a sender nonce change");
 
-        if (stream)
+        if (stream && method != "debug_traceBlock")
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(json["error"], Is.Null, response);
+                Assert.That((bool?)json["result"]?["failed"], Is.True, response);
+                Assert.That((int?)json["result"]?["errorCode"], Is.EqualTo(ErrorCodes.InvalidInput), response);
+                Assert.That((string?)json["result"]?["error"] ?? string.Empty,
+                    Does.Contain(nonceDelta > 0 ? "nonce too high" : "nonce too low"), response);
+            }
+        }
+        else if (stream && !selectTransaction)
         {
             Assert.That(json["error"], Is.Null, response);
             if (nonceDelta != 0)
@@ -717,7 +739,8 @@ public partial class DebugRpcModuleTests
                 using (Assert.EnterMultipleScope())
                 {
                     Assert.That((int?)json["result"]?.Last?["errorCode"], Is.EqualTo(ErrorCodes.InvalidInput), response);
-                    Assert.That((string?)json["result"]?.Last?["error"] ?? string.Empty, Does.Contain("nonce too high"), response);
+                    Assert.That((string?)json["result"]?.Last?["error"] ?? string.Empty,
+                        Does.Contain(nonceDelta > 0 ? "nonce too high" : "nonce too low"), response);
                 }
             }
             else
@@ -773,18 +796,9 @@ public partial class DebugRpcModuleTests
         Assert.That(context.Blockchain.WorldStateManager.GlobalStateReader.GetNonce(original.Header, TestItem.AddressA), Is.EqualTo(nonce));
         using (Assert.EnterMultipleScope())
         {
-            if (method == "debug_traceTransactionInBlockByIndex" && !stream)
-            {
-                Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidInput), response);
-                Assert.That((string?)json["error"]?["message"] ?? string.Empty, Does.Contain("nonce too high"), response);
-                Assert.That(json["result"], Is.Null, response);
-            }
-            else
-            {
-                Assert.That(json["error"], Is.Null, response);
-                Assert.That((bool?)json["result"]?["failed"], Is.False, response);
-                Assert.That((long?)json["result"]?["gas"], Is.EqualTo(21_000), response);
-            }
+            Assert.That(json["error"], Is.Null, response);
+            Assert.That((bool?)json["result"]?["failed"], Is.False, response);
+            Assert.That((long?)json["result"]?["gas"], Is.EqualTo(21_000), response);
         }
     }
 
