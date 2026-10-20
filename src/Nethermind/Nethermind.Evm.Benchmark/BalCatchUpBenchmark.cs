@@ -52,43 +52,10 @@ using MergeMetrics = Nethermind.Merge.Plugin.Metrics;
 
 namespace Nethermind.Evm.Benchmark;
 
-/// <summary>
-/// Catches up a segment of finalized Amsterdam blocks from the same pre-state either by applying each block's
-/// EIP-7928 access list (<see cref="FinalizedBlockAccessListProcessor"/>) or by executing it, as a node that was
-/// offline does with <c>Sync.ReconstructFinalizedStateFromBlockAccessLists</c> on or off.
-/// </summary>
+/// <summary>Compares finalized BAL catch-up with execution from the same pre-state.</summary>
 /// <remarks>
-/// <para>Without environment variables the segment is synthetic and every database is in memory, so it runs anywhere.
-/// Each block is produced once in <see cref="GlobalSetup"/> and its header takes the produced roots and access-list
-/// hash, so the segment is a valid chain. <c>DevnetLike</c> approximates a glamsterdam-devnet-8 block (about 6 Mgas
-/// over 66 transactions); <c>StorageHeavy</c> maximises written items per gas, the access list's worst case;
-/// <c>ComputeHeavy</c> spends gas without touching state, its best case.</para>
-/// <para>Environment variables, following <c>CodeLoadBenchmarks</c>:</para>
-/// <list type="bullet">
-///   <item><c>NETHERMIND_BALCATCHUP_DB</c>: keep state, blocks, receipts and access lists in RocksDB. Synthetic segments
-///   are produced in memory and their genesis written under this directory; with a fixture it is the node's datadir
-///   holding the pre-state. Either way it is only read: each case runs on its own copy.</item>
-///   <item><c>NETHERMIND_BALCATCHUP_WORKDIR</c>: where those copies go (default: the database directory for synthetic
-///   segments, the temp directory for fixtures). It needs room for one copy of the pre-state.</item>
-///   <item><c>NETHERMIND_BALCATCHUP_FIXTURE</c>: a directory written by <c>scripts/bal-catchup-fixture.py</c>, whose
-///   <c>segment.jsonl</c> holds real blocks with their access lists and receipts. The segment starts right above the
-///   datadir's persisted state, which has to be a flat state database. Needs <c>NETHERMIND_BALCATCHUP_DB</c> and
-///   <c>NETHERMIND_BALCATCHUP_CHAINSPEC</c>.</item>
-///   <item><c>NETHERMIND_BALCATCHUP_BLOCKS</c>: how many blocks to catch up (default 64, or the whole fixture).</item>
-///   <item><c>NETHERMIND_BALCATCHUP_COLD=1</c>: start every iteration from a fresh copy of the pre-state with the
-///   databases reopened, so nothing is cached in process, as after a restart. On disk only, and needed there for
-///   segments longer than <c>FlatDb.MinReorgDepth</c>, past which persistence moves the database off the pre-state.</item>
-///   <item><c>NETHERMIND_BALCATCHUP_DROP_CACHES=1</c>: on Linux, as root, also write back and empty the page cache
-///   before every iteration.</item>
-/// </list>
-/// <para>Both arms process the whole segment through <see cref="IBranchProcessor"/> with
-/// <see cref="ProcessingOptions.StoreReceipts"/>; the off arm flips the runtime flag the policy reads, so execution
-/// takes the regular validator path (parallel when enabled) with the list attached. One operation is the whole segment,
-/// whose length setup prints. Cleanup prints the median run's blocks/s and gas/s, and splits each block into processing
-/// (execution, or the list's application) and the state commit after it, where the state root's remaining hashing and
-/// the trie writes happen. On disk it also times persisting the segment's state. Flat-state trie warming runs with
-/// production settings.</para>
-/// <para>Setup refuses to benchmark if the on arm falls back for any block or the off arm reconstructs any.</para>
+/// Runs synthetic segments or exported fixtures through the production branch processor.
+/// See scripts/bal-catchup-benchmark.md for inputs and measurement details.
 /// </remarks>
 [Config(typeof(Config))]
 [MemoryDiagnoser]
@@ -205,7 +172,7 @@ public class BalCatchUpBenchmark
         // Warm iterations replay on one database, which only works while flat finality-driven persistence leaves its
         // base at the parent; past the reorg window it moves the base on, so longer segments start each run afresh.
         int warmLimit = (int)_container.Resolve<IFlatDbConfig>().MinReorgDepth;
-        if ((FlatDb || IsFixture) && !Cold && _segment.Length > warmLimit)
+        if (FlatDb && !Cold && _segment.Length > warmLimit)
             throw new InvalidOperationException($"A warm run on flat state replays at most {warmLimit} blocks; set " +
                 (OnDisk ? "NETHERMIND_BALCATCHUP_COLD=1 or " : "") + "NETHERMIND_BALCATCHUP_BLOCKS.");
 
