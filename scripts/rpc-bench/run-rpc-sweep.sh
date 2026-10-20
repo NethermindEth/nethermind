@@ -514,10 +514,35 @@ for entry in "${schedule[@]}"; do
   fi
   LABELS+=("$label")
 
+  if [[ "$ctype" == "nethermind" && "$JB_BENCHMARK_CONFIG" =~ ^config/benchmark/log-data-(filtering|huge|receipts)\.yaml$ && "$arm_flags" == *"--LogIndex.Enabled=true"* ]]; then
+    if ! bash "$here/prepare-log-index.sh" "$cname" "$RPC" "$SNAPSHOT_BLOCK" 25390001 25406300 "$OUT_DIR/index-preparation/$label"; then
+      STATE_DIR="$cst" CONTAINER_NAME="$cname" OUT_DIR="$OUT_DIR" LOG_OUT="$cst/node.log" "$here/stop-node.sh" || true
+      echo "::error::${label}: verified log index preparation failed"
+      exit 1
+    fi
+  fi
+
   if [[ "$JB_ETH_CALL_CORPUS" == "true" ]]; then
     for corpus in "${CORPORA[@]}"; do run_corpus "$(corpus_label "$corpus")" "$label" "$corpus" "$ctype" "$cname"; done
     [[ -n "$BASELINE_LABEL" ]] || BASELINE_LABEL="$label"
   else
+    if [[ "$JB_BENCHMARK_CONFIG" =~ ^config/benchmark/log-data-(filtering|huge|receipts)\.yaml$ && "$WARMUP_SECONDS" -gt 0 ]]; then
+      warm_cell="$SCRATCH_ROOT/warmup-cell/logs/$label"
+      measured_seed="$JB_SEED"
+      JB_SEED=$((measured_seed + 1000))
+      if ! run_cell "$JB_BENCHMARK_CONFIG" "$CORPUS_WARMUP_RPS" "${WARMUP_SECONDS}s" "$warm_cell" "$ctype" "$label"; then
+        warm_diagnostics="$OUT_DIR/warmup-failures/$label"
+        mkdir -p "$warm_diagnostics"
+        for diagnostic in jsonbench.log summary.json jsonbench-summary.md; do
+          [[ ! -f "$warm_cell/$diagnostic" ]] || cp "$warm_cell/$diagnostic" "$warm_diagnostics/"
+        done
+        docker inspect "$cname" > "$warm_diagnostics/node-inspect.json" || true
+        STATE_DIR="$cst" CONTAINER_NAME="$cname" OUT_DIR="$OUT_DIR" LOG_OUT="$cst/node.log" "$here/stop-node.sh" || true
+        echo "::error::${label}: log warmup failed; diagnostics saved in ${warm_diagnostics}"
+        exit 1
+      fi
+      JB_SEED="$measured_seed"
+    fi
     for rps in $RPS_LIST; do
       for icfg in $ISO_CONFIGS; do
         scen="$(basename "$icfg" .yaml)"; cell="$OUT_DIR/iso/${label}/${rps}/${scen}"
@@ -527,7 +552,7 @@ for entry in "${schedule[@]}"; do
       done
       mcell="$OUT_DIR/mix/${label}/${rps}"
       echo "-- MIX ${label} @ rps=${rps} --"
-      run_cell "$JB_BENCHMARK_CONFIG" "$rps" "$JB_DURATION" "$mcell" "$ctype" "$label" || { echo "::warning::mix ${label}/${rps} failed"; cell_fail=$((cell_fail + 1)); }
+      run_cell "$JB_BENCHMARK_CONFIG" "$rps" "$JB_DURATION" "$mcell" "$ctype" "$label" "" "$cname" || { echo "::warning::mix ${label}/${rps} failed"; cell_fail=$((cell_fail + 1)); }
       [[ -f "$mcell/jsonbench-summary.md" ]] && SUMMARIES+=("mix|${label}|${rps}=$mcell/jsonbench-summary.md")
     done
   fi

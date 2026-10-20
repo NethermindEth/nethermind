@@ -1142,6 +1142,25 @@ jobs:
           NODE_MEMORY: ${{ needs.resolve.outputs.node_memory }}
         run: ./scripts/rpc-bench/start-node.sh
 
+      - name: Prepare covered log indexes
+        if: needs.resolve.outputs.benchmark_tool == 'jsonbench' && contains(needs.resolve.outputs.additional_flags, '--LogIndex.Enabled=true')
+        shell: bash
+        env:
+          COMPARISON: ${{ needs.resolve.outputs.comparison }}
+          TOOL_CONFIG: ${{ needs.resolve.outputs.tool_config }}
+          REF_FLAGS: ${{ needs.resolve.outputs.ref_additional_flags }}
+          SNAPSHOT_BLOCK: ${{ inputs.snapshot_block }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$TOOL_CONFIG" | jq -e '(.compare_config // "" | test("^config/compare/log-data-(filtering|huge|receipts)\\.yaml$")) or (.benchmark_config // "" | test("^config/benchmark/log-data-(filtering|huge|receipts)\\.yaml$"))' > /dev/null
+          bash scripts/rpc-bench/prepare-log-index.sh "$CONTAINER_NAME" http://localhost:8545 "$SNAPSHOT_BLOCK" \
+            25390001 25406300 "$OUT_DIR/index-preparation/primary"
+          if [[ "$COMPARISON" == "true" ]]; then
+            [[ "$REF_FLAGS" == *"--LogIndex.Enabled=true"* ]]
+            bash scripts/rpc-bench/prepare-log-index.sh "$REF_CONTAINER_NAME" "http://localhost:$REF_RPC_PORT" "$SNAPSHOT_BLOCK" \
+              25390001 25406300 "$OUT_DIR/index-preparation/reference"
+          fi
+
       - name: Run flood benchmark
         id: run-flood
         if: needs.resolve.outputs.benchmark_tool == 'flood'
