@@ -459,10 +459,11 @@ public class BlockAccessListsSyncFeedTests
         _blockTree.SyncPivot.Returns((3UL, TestItem.KeccakC));
         _blockTree.Head.Returns(Build.A.Block.WithNumber(100).TestObject);
         _feed.InitializeFeed();
-        _historyPruner.GetRetentionBlocks(Arg.Any<ulong>()).Returns(_ =>
+        Block head = _blockTree.Head!;
+        _blockTree.Head.Returns(_ =>
         {
             _historyPruner.BalCutoffBlockNumber.Returns(3UL);
-            return 0UL;
+            return head;
         });
         BlockAccessListsSyncBatch batch = new([new BlockInfo(TestItem.KeccakB, 0) { BlockNumber = 2 }])
         {
@@ -483,10 +484,11 @@ public class BlockAccessListsSyncFeedTests
         using BlockAccessListsSyncBatch requested = (await _feed.PrepareRequest())!;
         BlockInfo blockInfo = requested.Infos.OfType<BlockInfo>().Single(static info => info.BlockNumber == 2);
         BlockAccessListsSyncBatch available = new([blockInfo]) { Response = BuildBlockAccessLists(EmptyBlockAccessList) };
-        _historyPruner.GetRetentionBlocks(Arg.Any<ulong>()).Returns(_ =>
+        Block head = _blockTree.Head!;
+        _blockTree.Head.Returns(_ =>
         {
             _feed.HandleResponse(available);
-            return 0UL;
+            return head;
         });
         BlockAccessListsSyncBatch unavailable = new([blockInfo])
         {
