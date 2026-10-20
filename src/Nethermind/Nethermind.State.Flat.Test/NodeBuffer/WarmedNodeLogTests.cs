@@ -46,9 +46,9 @@ internal class WarmedNodeLogTests
         {
             Assert.That(record.Rlp.ToArray(), Is.EqualTo(rlp), "appended RLP");
             Assert.That(record.Hash, Is.EqualTo(hash), "appended hash");
-            Assert.That(repeatedPointer, Is.EqualTo(pointer), "duplicate reuses its pointer");
+            Assert.That(repeatedPointer, Is.Not.EqualTo(pointer), "a repeated append writes a new record");
             Assert.That(warmed.Count, Is.EqualTo(1), "one position");
-            Assert.That(warmed.TryGet(address, path, out _, out ulong indexedPointer) && indexedPointer == pointer, Is.True, "indexed pointer");
+            Assert.That(warmed.TryGet(address, path, out _, out ulong indexedPointer) && indexedPointer == repeatedPointer, Is.True, "the latest record is indexed");
             Assert.That(Get(warmed, otherAddress, path), Is.Null, "other address");
             Assert.That(Get(warmed, sameNodeKeyHashAddress, path), Is.Null, "a matching node key hash is not a matching address");
             Assert.That(Get(warmed, address, Path(1)), Is.Null, "other path");
@@ -73,8 +73,9 @@ internal class WarmedNodeLogTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(Get(warmed, address, path), Is.EqualTo(rlp), "a position keeps its first record");
-            Assert.That(repeatedPositionPointer, Is.EqualTo(pointer), "no new record");
+            Assert.That(Get(warmed, address, path), Is.EqualTo(otherRlp), "a later node replaces the position");
+            Assert.That(repeatedPositionPointer, Is.Not.EqualTo(repeatedPointer), "a new record");
+            Assert.That(combined.TryLocate(pointer, out NodeRecord displaced) && displaced.Rlp.SequenceEqual(rlp), Is.True, "a replaced record stays readable by pointer");
             Assert.That(largeRecords.Select(large => combined.TryLocate(large.Pointer, out NodeRecord found) && found.Rlp.SequenceEqual(large.Rlp)), Is.All.True, "pointers into every generation");
         }
 
