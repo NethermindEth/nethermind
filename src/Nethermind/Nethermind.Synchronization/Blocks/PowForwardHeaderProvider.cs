@@ -11,6 +11,7 @@ using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -132,23 +133,17 @@ public class PowForwardHeaderProvider(
             return false;
         }
 
-        if (HasConflictingAdvertisedHead(owner, cached))
+        ulong headNumber = owner.HeadNumber;
+        ReadOnlySpan<BlockHeader> cachedSpan = cached.AsSpan();
+        if (HasConflictingAdvertisedHead(cachedSpan, headNumber, owner.HeadHash))
         {
             LastResponseBatch = null;
             return false;
         }
 
         BlockHeader? bestSuggested = blockTree.BestSuggestedHeader;
-        ReadOnlySpan<BlockHeader> cachedSpan = cached.AsSpan();
-        BlockHeader? parent = null;
-        for (int i = 0; i < cachedSpan.Length; i++)
-        {
-            if (cachedSpan[i].Number == _currentNumber)
-            {
-                parent = cachedSpan[i];
-                break;
-            }
-        }
+        int startIndex = IndexOfCurrentNumber(cachedSpan);
+        BlockHeader? parent = startIndex < 0 ? null : cachedSpan[startIndex];
         if (parent is null || !blockTree.IsKnownBlock(parent.Number, parent.Hash!))
         {
             LastResponseBatch = null;
@@ -166,23 +161,35 @@ public class PowForwardHeaderProvider(
             return false;
         }
 
-        headers = AssembleResponseFromLastResponseBatch(owner.HeadNumber, skipLastN, maxHeaders);
+        headers = AssembleResponseFromLastResponseBatch(cachedSpan, startIndex, headNumber, skipLastN, maxHeaders);
         return headers is not null;
     }
 
-    private static bool HasConflictingAdvertisedHead(PeerInfo owner, IOwnedReadOnlyList<BlockHeader> cached)
+    private static bool HasConflictingAdvertisedHead(ReadOnlySpan<BlockHeader> cached, ulong headNumber, Hash256? headHash)
     {
-        ReadOnlySpan<BlockHeader> cachedSpan = cached.AsSpan();
-        for (int i = 0; i < cachedSpan.Length; i++)
+        for (int i = 0; i < cached.Length; i++)
         {
-            BlockHeader header = cachedSpan[i];
-            if (header.Number == owner.HeadNumber)
+            BlockHeader header = cached[i];
+            if (header.Number == headNumber)
             {
-                return header.Hash != owner.HeadHash;
+                return header.Hash != headHash;
             }
         }
 
         return false;
+    }
+
+    private int IndexOfCurrentNumber(ReadOnlySpan<BlockHeader> headers)
+    {
+        for (int i = 0; i < headers.Length; i++)
+        {
+            if (headers[i].Number == _currentNumber)
+            {
+                return i;
+            }
+        }
+
+        return -1;
     }
 
     private IOwnedReadOnlyList<BlockHeader>? AssembleResponseFromLastResponseBatch(ulong headNumber, ulong skipLastN, ulong maxHeaders)
@@ -190,23 +197,19 @@ public class PowForwardHeaderProvider(
         IOwnedReadOnlyList<BlockHeader>? lastResponseBatch = LastResponseBatch;
         if (lastResponseBatch is null) return null;
 
-        int startIndex = -1;
         ReadOnlySpan<BlockHeader> lastResponseBatchSpan = lastResponseBatch.AsSpan();
-        for (int i = 0; i < lastResponseBatchSpan.Length; i++)
-        {
-            if (lastResponseBatchSpan[i].Number == _currentNumber)
-            {
-                startIndex = i;
-                break;
-            }
-        }
-
+        int startIndex = IndexOfCurrentNumber(lastResponseBatchSpan);
         if (startIndex < 0)
         {
             LastResponseBatch = null;
             return null;
         }
 
+        return AssembleResponseFromLastResponseBatch(lastResponseBatchSpan, startIndex, headNumber, skipLastN, maxHeaders);
+    }
+
+    private IOwnedReadOnlyList<BlockHeader>? AssembleResponseFromLastResponseBatch(ReadOnlySpan<BlockHeader> lastResponseBatchSpan, int startIndex, ulong headNumber, ulong skipLastN, ulong maxHeaders)
+    {
         ulong upperDownloadBoundary = headNumber.SaturatingSub(skipLastN);
         if (_currentNumber > upperDownloadBoundary)
         {

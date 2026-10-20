@@ -234,12 +234,15 @@ public partial class BlockDownloaderTests
             Task firstProgress = await Task.WhenAny(allBodiesSuggested.Task, preferredHeaderRequestStarted.Task, followUpTask)
                 .WaitAsync(TimeSpan.FromSeconds(2));
 
-            Assert.That(firstProgress, Is.SameAs(allBodiesSuggested.Task),
-                "ready body dispatch must win before the different preferred peer's header request");
-            Assert.That(suggestedNumbers, Is.EqualTo(Enumerable.Range(1, 128).Select(static number => (ulong)number)),
-                "all 128 ready bodies must be suggested before the preferred peer's header response is released");
-            Assert.That(blockedHeaderResponse.Task.IsCompleted, Is.False,
-                "ready body dispatch must not depend on the different preferred peer's gated response");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(firstProgress, Is.SameAs(allBodiesSuggested.Task),
+                    "ready body dispatch must win before the different preferred peer's header request");
+                Assert.That(suggestedNumbers, Is.EqualTo(Enumerable.Range(1, 128).Select(static number => (ulong)number)),
+                    "all 128 ready bodies must be suggested before the preferred peer's header response is released");
+                Assert.That(blockedHeaderResponse.Task.IsCompleted, Is.False,
+                    "ready body dispatch must not depend on the different preferred peer's gated response");
+            }
         }
         finally
         {

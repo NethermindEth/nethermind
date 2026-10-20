@@ -397,10 +397,13 @@ public partial class ForwardHeaderProviderTests
         try
         {
             tail = await tailRequest.WaitAsync(TimeSpan.FromSeconds(2));
-            Assert.That(tail, Has.Count.EqualTo(2));
-            Assert.That(headerRequests, Is.EqualTo(1), "the cached tail must be served before starting another header request");
-            Assert.That(syncReport.FullSyncBlocksDownloaded.TargetValue, Is.EqualTo(42UL),
-                "cached header responses must track the owner's current advertised head");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(tail, Has.Count.EqualTo(2));
+                Assert.That(headerRequests, Is.EqualTo(1), "the cached tail must be served before starting another header request");
+                Assert.That(syncReport.FullSyncBlocksDownloaded.TargetValue, Is.EqualTo(42UL),
+                    "cached header responses must track the owner's current advertised head");
+            }
         }
         finally
         {
