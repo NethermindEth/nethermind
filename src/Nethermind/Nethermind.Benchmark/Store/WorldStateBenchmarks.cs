@@ -5,7 +5,6 @@ using System;
 using System.Linq;
 using Autofac;
 using BenchmarkDotNet.Attributes;
-using DotNetty.Common.Utilities;
 using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
@@ -64,7 +63,7 @@ public class WorldStateBenchmarks
         {
             rand.NextBytes(randomBuffer);
             Address account = new(randomBuffer.ToArray());
-            worldState.AddToBalanceAndCreateIfNotExists(account, (UInt256)rand.NextLong() + 1, _releaseSpec);
+            worldState.AddToBalanceAndCreateIfNotExists(account, (UInt256)rand.NextInt64() + 1, _releaseSpec);
             _accounts[i] = account;
         }
 
@@ -73,7 +72,7 @@ public class WorldStateBenchmarks
         {
             rand.NextBytes(randomBuffer);
             Address account = new(randomBuffer.ToArray());
-            worldState.AddToBalanceAndCreateIfNotExists(account, (UInt256)rand.NextLong() + 1, _releaseSpec);
+            worldState.AddToBalanceAndCreateIfNotExists(account, (UInt256)rand.NextInt64() + 1, _releaseSpec);
             _contracts[i] = account;
         }
 
@@ -81,7 +80,7 @@ public class WorldStateBenchmarks
         for (int i = 0; i < _slotsCount; i++)
         {
             Address account = _contracts[rand.Next(0, _contracts.Length)];
-            UInt256 slot = (UInt256)rand.NextLong();
+            UInt256 slot = (UInt256)rand.NextInt64();
             rand.NextBytes(randomBuffer);
             worldState.Set(new StorageCell(account, slot), new UInt256(randomBuffer, isBigEndian: true));
             _slots[i] = (account, slot);
@@ -93,7 +92,7 @@ public class WorldStateBenchmarks
         _bigContractSlots = new UInt256[_bigContractSlotsCount];
         for (int i = 0; i < _bigContractSlotsCount; i++)
         {
-            UInt256 slot = (UInt256)rand.NextLong();
+            UInt256 slot = (UInt256)rand.NextInt64();
             rand.NextBytes(randomBuffer);
             _bigContractSlots[i] = slot;
             worldState.Set(new StorageCell(_bigContract, slot), new UInt256(randomBuffer, isBigEndian: true));

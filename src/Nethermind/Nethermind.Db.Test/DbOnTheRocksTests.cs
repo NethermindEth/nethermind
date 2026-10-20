@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers;
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Abstractions;
@@ -45,6 +46,95 @@ namespace Nethermind.Db.Test
         {
             Directory.CreateDirectory(DbPath);
             _rocksdbConfigFactory = new RocksDbConfigFactory(_dbConfig, new PruningConfig(), new TestHardwareInfo(1.GiB), LimboLogs.Instance, validateConfig: false);
+        }
+
+        [Test]
+        public void GetMany_WithMissingEmptyAndDuplicateKeys_PreservesResultsAndDecoderState(
+            [Values("memory", "default", "column")] string backend, [Values(0, 1, 2, 3, 257)] int count)
+        {
+            using IDb owner = CreateBatchDatabase(backend);
+            IDb store = owner is ColumnsDb<ReceiptsColumns> columns ? columns.GetColumnDb(ReceiptsColumns.Blocks) : owner;
+            Span<byte> key = stackalloc byte[sizeof(int)];
+            for (int i = 0; i < 7; i++)
+            {
+                if (i == 1) continue;
+                BinaryPrimitives.WriteInt32BigEndian(key, i);
+                store.PutSpan(key, i == 0 ? [] : new byte[] { (byte)i, (byte)(i + 1), 99 });
+            }
+
+            byte[] keys = new byte[count * sizeof(int)];
+            long?[] expected = new long?[count + 1];
+            expected[^1] = -1;
+            int decoded = 0;
+            for (int i = 0; i < count; i++)
+            {
+                int number = i % 7;
+                BinaryPrimitives.WriteInt32BigEndian(keys.AsSpan(i * sizeof(int)), number);
+                if (number != 1) expected[i] = ++decoded * 1000 + (number == 0 ? 0 : 2 * number + 100);
+            }
+            long?[] output = Enumerable.Repeat<long?>(-1, count + 1).ToArray();
+
+            store.GetMany<long?, CountingValueDecoder>(keys, sizeof(int), output.AsSpan(0, count), default);
+
+            Assert.That(output, Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void GetMany_WithScalarFallback_ReplacesPreviousValueAfterDecoding([Values(1, 2, 3, 257)] int count)
+        {
+            using IDb store = new MemDb();
+            store.PutSpan([0], [1, 2, 3]);
+            byte[] previous = new byte[131072];
+            byte[]?[] output = Enumerable.Repeat<byte[]?>(previous, count).ToArray();
+            byte[] keys = Enumerable.Repeat((byte)1, count).ToArray();
+            keys[0] = 0;
+
+            store.GetMany<byte[]?, ReplacementValueDecoder>(keys, 1, output, new(output, previous));
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(output[0], Is.EqualTo(new byte[] { 1, 2, 3 }));
+                Assert.That(output.Skip(1), Is.All.Null);
+            }
+        }
+
+        [Test]
+        public void GetMany_WhenDecoderThrows_PreservesPrefixAndClearsTail(
+            [Values("memory", "default", "column")] string backend)
+        {
+            using IDb owner = CreateBatchDatabase(backend);
+            IDb store = owner is ColumnsDb<ReceiptsColumns> columns ? columns.GetColumnDb(ReceiptsColumns.Blocks) : owner;
+            store.PutSpan([1], [10]);
+            store.PutSpan([2], [20]);
+            store.PutSpan([3], [30]);
+            long?[] output = [-1, -1, -1, -1];
+
+            Assert.That(() => store.GetMany<long?, ThrowingValueDecoder>([1, 2, 3], 1, output.AsSpan(0, 3), default),
+                Throws.TypeOf<InvalidOperationException>());
+            Assert.That(output, Is.EqualTo(new long?[] { 1, null, null, -1 }));
+
+            store.GetMany<long?, CountingValueDecoder>([1, 2, 3], 1, output.AsSpan(0, 3), default);
+            Assert.That(output, Is.EqualTo(new long?[] { 1010, 2020, 3030, -1 }));
+        }
+
+        [Test]
+        public void GetMany_ThroughBatchCapability_WithInvalidBuffers_PreservesOutput(
+            [Values("default", "column")] string backend, [Values(1, 2, 3, 257)] int count)
+        {
+            using IDb owner = CreateBatchDatabase(backend);
+            IDb store = owner is ColumnsDb<ReceiptsColumns> columns ? columns.GetColumnDb(ReceiptsColumns.Blocks) : owner;
+            IBatchReadOnlyDb batch = (IBatchReadOnlyDb)store;
+            long?[] output = Enumerable.Repeat<long?>(-1, count).ToArray();
+
+            Assert.That(() => batch.GetMany<long?, CountingValueDecoder>(new byte[count], 0, output, default),
+                Throws.TypeOf<ArgumentOutOfRangeException>());
+            Assert.That(() => batch.GetMany<long?, CountingValueDecoder>(new byte[count - 1], 1, output, default),
+                Throws.TypeOf<ArgumentException>());
+            Assert.That(() => batch.GetMany<long?, CountingValueDecoder>(new byte[count + 1], 1, output, default),
+                Throws.TypeOf<ArgumentException>());
+            Assert.That(() => batch.GetMany<long?, IValueDecoder<long?>>(new byte[count], 1, output, null!),
+                Throws.TypeOf<ArgumentNullException>());
+            Assert.That(output, Is.All.EqualTo(-1));
         }
 
         [TearDown]
@@ -1337,6 +1427,44 @@ namespace Nethermind.Db.Test
 
             return db.CrossesPrefixBucket(first, last);
         }
+        private IDb CreateBatchDatabase(string backend) => backend switch
+        {
+            "memory" => new MemDb(),
+            "default" => CreateFreshDb("Blocks"),
+            _ => new ColumnsDb<ReceiptsColumns>(DbPath, GetRocksDbSettings(DbPath, "Blocks"), _dbConfig,
+                _rocksdbConfigFactory, LimboLogs.Instance, [ReceiptsColumns.Blocks, ReceiptsColumns.Transactions])
+        };
+
+        private readonly struct ReplacementValueDecoder(byte[]?[] output, byte[] previous) : IValueDecoder<byte[]?>
+        {
+            public byte[]? Decode(ReadOnlySpan<byte> buffer)
+            {
+                if (!ReferenceEquals(output[0], previous))
+                    throw new InvalidOperationException("The previous result must stay in place until decoding completes.");
+                return buffer.ToArray();
+            }
+        }
+
+        private struct CountingValueDecoder : IValueDecoder<long?>
+        {
+            private int _calls;
+
+            public long? Decode(ReadOnlySpan<byte> buffer)
+            {
+                long result = ++_calls * 1000;
+                foreach (byte value in buffer) result += value;
+                return result;
+            }
+        }
+
+        private struct ThrowingValueDecoder : IValueDecoder<long?>
+        {
+            private int _calls;
+
+            public long? Decode(ReadOnlySpan<byte> buffer) =>
+                ++_calls == 2 ? throw new InvalidOperationException("Decoder failure") : _calls;
+        }
+
     }
 
     [TestFixture(true)]
