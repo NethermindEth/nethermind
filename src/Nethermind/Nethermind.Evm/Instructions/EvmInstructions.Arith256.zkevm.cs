@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Zkvm.Abstractions;
@@ -70,8 +71,9 @@ public static unsafe partial class EvmInstructions
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static partial void Divide256(in UInt256 a, in UInt256 b, out UInt256 result)
+    internal static partial void Divide256(in UInt256 a, in UInt256 b, out UInt256 result)
     {
+        Debug.Assert(!b.IsZero);
         if (!ZiskFlag.IsActive)
         {
             UInt256.Divide(in a, in b, out result);
