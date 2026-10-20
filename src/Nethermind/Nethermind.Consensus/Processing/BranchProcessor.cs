@@ -162,8 +162,6 @@ public class BranchProcessor(
 
                 useBalForInclusionList = checkInclusionList && suggestedBlock.InclusionListTransactions is { Length: > 0 }
                     && spec.BlockLevelAccessListsEnabled && !suggestedBlock.IsGenesis;
-                using IWorldStateScopeProvider.IScope? inclusionListParentScope = useBalForInclusionList
-                    ? OpenInclusionListParentScope(preBlockBaseBlock) : null;
                 ProcessingOptions blockOptions = blockTracer == NullBlockTracer.Instance
                     ? options
                     : options | ProcessingOptions.ForceSequentialBlockAccessList;
@@ -202,12 +200,22 @@ public class BranchProcessor(
                 bool inclusionListSatisfied = true;
                 if (useBalForInclusionList)
                 {
-                    ScopeReadOnlyStateProvider parentState = new(inclusionListParentScope!);
-                    InclusionListCommittedState boundaryState = new(stateProvider, (uint)processedBlock.Transactions.Length + 1,
-                        () => processedBlock.BlockAccessList ?? (processedBlock.EncodedBlockAccessList is { } encoded
-                            ? BlockAccessListDecoder.Instance.Decode(encoded) : null), () => parentState);
-                    inclusionListSatisfied = inclusionListSatisfactionChecker.IsSatisfied(processedBlock, suggestedBlock, boundaryState);
-                    if (!boundaryState.Available) throw new InvalidOperationException("Inclusion-list transaction-boundary state is unavailable");
+                    IWorldStateScopeProvider.IScope? parentScope = null;
+                    try
+                    {
+                        InclusionListCommittedState boundaryState = new(stateProvider, (uint)processedBlock.Transactions.Length + 1,
+                            () => processedBlock.BlockAccessList ?? (processedBlock.EncodedBlockAccessList is { } encoded
+                                ? BlockAccessListDecoder.Instance.Decode(encoded)
+                                : processedBlock.GeneratedBlockAccessList is { } generated
+                                    ? BlockAccessListDecoder.Instance.Decode(BlockAccessListDecoder.EncodeToBytes(generated)) : null),
+                            () => new ScopeReadOnlyStateProvider(parentScope ??= OpenInclusionListParentScope(preBlockBaseBlock)));
+                        inclusionListSatisfied = inclusionListSatisfactionChecker.IsSatisfied(processedBlock, suggestedBlock, boundaryState);
+                        if (!boundaryState.Available) throw new InvalidOperationException("Inclusion-list transaction-boundary state is unavailable");
+                    }
+                    finally
+                    {
+                        parentScope?.Dispose();
+                    }
                 }
                 else if (checkInclusionList && suggestedBlock.InclusionListTransactions is { Length: > 0 })
                 {
@@ -238,7 +246,10 @@ public class BranchProcessor(
 
                 if (notReadOnly)
                 {
-                    BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(processedBlock, receipts));
+                    BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(processedBlock, receipts)
+                    {
+                        WasValidated = !options.ContainsFlag(ProcessingOptions.NoValidation)
+                    });
                 }
 
                 // CommitBranch in parts if we have long running branch
@@ -258,15 +269,6 @@ public class BranchProcessor(
                 prefetchBlockhash = null;
 
                 stateProvider.Reset();
-
-                // Calculate the transaction hashes in the background and release tx sequence memory
-                // Hashes will be required for PersistentReceiptStorage in ForkchoiceUpdatedHandler
-                // Though we still want to release the memory even if syncing rather than processing live
-                // Empty blocks have nothing to hash, so skip the ThreadPool dispatch entirely.
-                if (suggestedBlock.Transactions.Length > 0)
-                {
-                    TxHashCalculator.CalculateInBackground(suggestedBlock);
-                }
             }
 
             return processedBlocks;
@@ -317,29 +319,5 @@ public class BranchProcessor(
     {
         DisposableExtensions.DisposeAndNull(ref prewarming);
         preWarmer?.ClearCaches();
-    }
-
-    private class TxHashCalculator(Block suggestedBlock) : IThreadPoolWorkItem
-    {
-        public static void CalculateInBackground(Block suggestedBlock)
-        {
-            // Memory has been reserved on the transactions to delay calculate the hashes
-            // We calculate the hashes in the background to release that memory
-            TxHashCalculator work = new(suggestedBlock);
-            if (ParallelUnbalancedWork.GetCurrentGroup() is { } group) group.Queue(work);
-            else ThreadPool.UnsafeQueueUserWorkItem(work, preferLocal: false);
-        }
-
-        void IThreadPoolWorkItem.Execute()
-        {
-            // Hashes will be required for PersistentReceiptStorage in TryUpdateMainChain ForkchoiceUpdatedHandler
-            // Which occurs after the block has been processed; however the block is stored in cache and picked up
-            // from there so we can calculate the hashes now for that later use.
-            foreach (Transaction tx in suggestedBlock.Transactions)
-            {
-                // Calculate the hashes to release the memory from the transactionSequence
-                tx.CalculateHashInternal();
-            }
-        }
     }
 }

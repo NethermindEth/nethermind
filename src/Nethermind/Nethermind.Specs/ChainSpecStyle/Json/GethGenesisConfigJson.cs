@@ -35,7 +35,6 @@ public class GethGenesisConfigJson : IHasNamedForks
 
     public ulong? HomesteadBlock { get => GetBlock(); set => SetBlock(value); }
     public ulong? DaoForkBlock { get => GetBlock(nameof(Dao)); set => SetBlock(value, nameof(Dao)); }
-    public bool? DaoForkSupport { get; set; }
 
     // EIP-level overrides — not fork labels, kept as plain typed properties.
     public ulong? Eip150Block { get; set; }
@@ -99,6 +98,11 @@ public class GethGenesisConfigJson : IHasNamedForks
     /// <c>SLOT_DURATION_MS_EIP8198</c>.
     /// </remarks>
     public ulong? Eip8198SlotDurationMs { get; set; }
+
+    /// <summary>
+    /// Nethermind's minimum history retention, in epochs; <c>null</c> uses <see cref="HistoryRetentionConstants.MinEpochsForBlockRequests"/>.
+    /// </summary>
+    public ulong? MinHistoryRetentionEpochs { get; set; }
 
     public Dictionary<string, GethBlobScheduleEntry>? BlobSchedule { get; set; }
 
