@@ -15,6 +15,7 @@ using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -27,6 +28,11 @@ using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Repositories;
+using Nethermind.Synchronization;
+using Nethermind.Synchronization.FastBlocks;
+using Nethermind.Synchronization.ParallelSync;
+using Nethermind.Synchronization.Peers;
+using Nethermind.Synchronization.Reporting;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
@@ -143,6 +149,7 @@ public class HistoryPrunerTests
             Assert.That(historyPruner.OldestBlockHeader, Is.Not.Null, "OldestBlockHeader should not be null");
             Assert.That(historyPruner.OldestBlockHeader?.Number, Is.EqualTo(expectedBlocksPointer));
             Assert.That(historyPruner.BalsDeletePointer, Is.EqualTo(expectedBalsPointer));
+            Assert.That(historyPruner.BalCutoffBlockNumber, Is.GreaterThanOrEqualTo(expectedBalsPointer));
         }
     }
 
@@ -201,6 +208,81 @@ public class HistoryPrunerTests
 
         balStore.Received(1).DeleteRange(30_000, 42_400);
         balStore.DidNotReceive().DeleteRange(Arg.Is<ulong>(static from => from < 30_000), Arg.Any<ulong>());
+    }
+
+    [Test]
+    public void Bal_admission_floor_survives_rewind_before_pruning_pointer_is_saved()
+    {
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        IBlockAccessListStore balStore = Substitute.For<IBlockAccessListStore>();
+        using IContainer container = CreateBalOnlyContainer(blockTree, Substitute.For<IReceiptStorage>(), balStore);
+        HistoryPruner pruner = (HistoryPruner)container.Resolve<IHistoryPruner>();
+        balStore.When(static store => store.DeleteRange(1, 42_400)).Do(_ =>
+        {
+            blockTree.Head.Returns(Build.A.Block.WithNumber(BalOnlyHead - 1).TestObject);
+            Assert.That(pruner.BalCutoffBlockNumber, Is.EqualTo(42_400UL));
+        });
+
+        pruner.TryPruneHistory(CancellationToken.None);
+
+        Assert.That(pruner.BalCutoffBlockNumber, Is.EqualTo(42_400UL));
+    }
+
+    [Test]
+    public void Delayed_bal_response_after_pruning_and_head_rewind_is_skipped()
+    {
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        IBlockAccessListStore balStore = Substitute.For<IBlockAccessListStore>();
+        balStore.WriteLock.Returns(new Lock());
+        using IContainer container = CreateBalOnlyContainer(blockTree, Substitute.For<IReceiptStorage>(), balStore, balRetentionEpochs: 0);
+        blockTree.Head.Returns(Build.A.Block.WithNumber(32).TestObject);
+        blockTree.SyncPivot.Returns((3UL, TestItem.KeccakA));
+        HistoryPruner pruner = (HistoryPruner)container.Resolve<IHistoryPruner>();
+        byte[] encodedBal = [0xc0];
+        BlockHeader header = Build.A.BlockHeader.WithNumber(2).WithBlockAccessListHash(Keccak.Compute(encodedBal)).TestObject;
+        blockTree.FindHeader(header.Hash!, blockNumber: 2).Returns(header);
+        SyncConfig syncConfig = new() { FastSync = true, PivotNumber = 3 };
+        using ILifetimeScope scope = container.BeginLifetimeScope(builder => builder
+            .AddModule(new SynchronizerModule(syncConfig))
+            .AddSingleton<ISyncConfig>(syncConfig)
+            .AddSingleton(Substitute.For<ISyncPointers>())
+            .AddSingleton(Substitute.For<ISyncPeerPool>())
+            .AddSingleton<ISyncReport>(new NullSyncReport()));
+        BlockAccessListsSyncFeed feed = (BlockAccessListsSyncFeed)scope.Resolve<ISyncFeed<BlockAccessListsSyncBatch>>();
+        feed.InitializeFeed();
+        using BlockAccessListsSyncBatch batch = new([new BlockInfo(header.Hash!, 0) { BlockNumber = 2 }])
+        {
+            Response = new ArrayPoolList<byte[]>([encodedBal])
+        };
+
+        blockTree.Head.Returns(Build.A.Block.WithNumber(35).TestObject);
+        pruner.TryPruneHistory(CancellationToken.None);
+        blockTree.Head.Returns(Build.A.Block.WithNumber(34).TestObject);
+        feed.HandleResponse(batch);
+
+        using (Assert.EnterMultipleScope())
+        {
+            balStore.Received(1).DeleteRange(1, 3);
+            balStore.DidNotReceive().Insert(2UL, header.Hash!, Arg.Any<byte[]>());
+        }
+    }
+
+    [Test]
+    public void Persisted_bal_admission_floor_is_available_before_first_pruning_pass([Values] bool chainHasAccessLists)
+    {
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        IBlockAccessListStore balStore = Substitute.For<IBlockAccessListStore>();
+        using IContainer container = CreateBalOnlyContainer(blockTree, Substitute.For<IReceiptStorage>(), balStore, chainHasAccessLists: chainHasAccessLists);
+        container.Resolve<IDbProvider>().MetadataDb.Set(MetadataDbKeys.BlockAccessListPruningDeletePointer, Rlp.Encode(42_400UL).Bytes);
+        blockTree.Head.Returns(Build.A.Block.WithNumber(BalOnlyHead - 1).TestObject);
+
+        HistoryPruner pruner = (HistoryPruner)container.Resolve<IHistoryPruner>();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pruner.BalCutoffBlockNumber, Is.EqualTo(42_400UL));
+            balStore.DidNotReceive().DeleteRange(Arg.Any<ulong>(), Arg.Any<ulong>());
+        }
     }
 
     [Test]
