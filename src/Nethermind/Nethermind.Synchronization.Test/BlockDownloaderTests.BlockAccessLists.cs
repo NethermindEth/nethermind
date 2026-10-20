@@ -26,12 +26,15 @@ namespace Nethermind.Synchronization.Test;
 
 public partial class BlockDownloaderTests
 {
-    [TestCase(false, false, false)]
-    [TestCase(true, false, false)]
-    [TestCase(false, true, false)]
+    [TestCase(false, false, false, false)]
+    [TestCase(true, false, false, false)]
+    [TestCase(false, true, false, false)]
     // Having served the block's body, the peer has the block, so withholding its list is a breach.
-    [TestCase(false, false, true)]
-    public async Task Reports_peer_returning_unavailable_block_access_list(bool isStatic, bool isTrusted, bool peerServedBody)
+    [TestCase(false, false, true, false)]
+    // A peer ahead of our local head may have pruned the list while retaining the body.
+    [TestCase(false, false, true, true)]
+    [TestCase(true, false, true, true)]
+    public async Task Reports_peer_returning_unavailable_block_access_list(bool isStatic, bool isTrusted, bool peerServedBody, bool peerPastRetention)
     {
         InterfaceLogger logger = Substitute.For<InterfaceLogger>();
         logger.IsWarn.Returns(true);
@@ -44,6 +47,7 @@ public partial class BlockDownloaderTests
         ConfigureBlockAccessListRequest(ctx, forwardHeaderProvider, TestItem.KeccakA, Keccak.Compute(servedAccessList));
         ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
         syncPeer.ProtocolVersion.Returns(EthVersions.Eth71);
+        syncPeer.HeadNumber.Returns(peerPastRetention ? ulong.MaxValue : 2UL);
         syncPeer.Node.Returns(new Node(TestItem.PublicKeyA, "127.0.0.1", 30303, isStatic) { IsTrusted = isTrusted });
         PeerInfo peerInfo = new(syncPeer);
 
@@ -67,7 +71,7 @@ public partial class BlockDownloaderTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(results, Is.All.EqualTo(SyncResponseHandlingResult.LesserQuality));
-            ctx.PeerPool.Received(peerServedBody ? responses.Length : 0).ReportBreachOfProtocol(
+            ctx.PeerPool.Received(peerServedBody && !peerPastRetention ? responses.Length : 0).ReportBreachOfProtocol(
                 Arg.Any<PeerInfo>(),
                 Arg.Any<DisconnectReason>(),
                 Arg.Any<string>());

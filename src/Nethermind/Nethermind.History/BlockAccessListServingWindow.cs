@@ -16,10 +16,12 @@ public sealed class BlockAccessListServingWindow(IBlockTree blockTree, IHistoryP
 {
     private readonly ulong _windowBlocks = historyPruner.GetRetentionBlocks(specProvider.GenesisSpec.MinBalRetentionEpochs + 1);
 
-    /// <summary>Whether peers must still serve the block access list at this height.</summary>
-    public bool Contains(ulong blockNumber)
+    /// <summary>Whether the block is inside the retention window of the highest known head.</summary>
+    /// <param name="blockNumber">The requested block height.</param>
+    /// <param name="peerHeadNumber">The serving peer's head, which may be ahead during catch-up.</param>
+    public bool Contains(ulong blockNumber, ulong peerHeadNumber = 0)
     {
-        ulong head = ulong.Max(blockTree.Head?.Number ?? 0, blockTree.SyncPivot.BlockNumber);
+        ulong head = ulong.Max(peerHeadNumber, ulong.Max(blockTree.Head?.Number ?? 0, blockTree.SyncPivot.BlockNumber));
         return blockNumber >= head.SaturatingSub(_windowBlocks);
     }
 }

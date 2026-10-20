@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BlockAccessLists;
 using Nethermind.Blockchain.Synchronization;
@@ -17,6 +18,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Db;
 using Nethermind.History;
 using Nethermind.Int256;
@@ -36,6 +38,7 @@ namespace Nethermind.Synchronization.Test.FastBlocks;
 
 public class BlockAccessListsSyncFeedTests
 {
+    private readonly List<IContainer> _containers = [];
     private IBlockTree _blockTree = null!;
     private IBlockAccessListStore _blockAccessListStore = null!;
     private ISyncPeerPool _syncPeerPool = null!;
@@ -60,8 +63,17 @@ public class BlockAccessListsSyncFeedTests
         _feed.InitializeFeed();
     }
 
-    private BlockAccessListsSyncFeed CreateFeed(ISpecProvider specProvider, ILogManager? logManager = null, ISyncReport? syncReport = null) =>
-        new(
+    private BlockAccessListsSyncFeed CreateFeed(ISpecProvider specProvider, ILogManager? logManager = null, ISyncReport? syncReport = null)
+    {
+        ContainerBuilder builder = new();
+        builder.AddModule(new TestNethermindModule());
+        builder.RegisterInstance(specProvider).ExternallyOwned();
+        builder.RegisterInstance(_blockTree).ExternallyOwned();
+        builder.RegisterInstance(_historyPruner).ExternallyOwned();
+        IContainer container = builder.Build();
+        _containers.Add(container);
+
+        return new(
             specProvider,
             _blockTree,
             _blockAccessListStore,
@@ -70,9 +82,10 @@ public class BlockAccessListsSyncFeedTests
             new TestSyncConfig { FastSync = true, PivotNumber = 1 },
             syncReport ?? new NullSyncReport(),
             _historyPruner,
-            new BlockAccessListServingWindow(_blockTree, _historyPruner, specProvider),
+            container.Resolve<BlockAccessListServingWindow>(),
             _metadataDb,
             logManager ?? LimboLogs.Instance);
+    }
 
     private static TestSpecProvider SpecProviderWithBlockAccessLists() =>
         new(new ReleaseSpec())
@@ -85,6 +98,8 @@ public class BlockAccessListsSyncFeedTests
     public void TearDown()
     {
         _feed.Dispose();
+        foreach (IContainer container in _containers) container.Dispose();
+        _containers.Clear();
         _syncPeerPool.DisposeAsync();
         _metadataDb.Dispose();
     }
