@@ -33,9 +33,8 @@ internal static class BufferWarmUp
         TrieRoot root, in ValueHash256 key, bool forDelete)
     {
         if (root.Hash == ValueKeccak.EmptyTreeHash) return;
-        Span<byte> keyNibbles = stackalloc byte[MaxKeyNibbles];
+        TreePath keyPath = new(key, MaxKeyNibbles);
         Span<byte> nodeKey = stackalloc byte[MaxKeyNibbles];
-        Nibbles.BytesToNibbleBytes(key.Bytes, keyNibbles);
         using ArrayPoolList<Frame> frames = new(MaxKeyNibbles + 1);
         using ArrayPoolList<byte> scratch = new(1024);
         using ArrayPoolList<byte> records = new(SafeArrayPool<byte>.Shared, RecordsLength, RecordsLength, clearFirst: false);
@@ -51,7 +50,7 @@ internal static class BufferWarmUp
             {
                 // Only leaves are embedded in their parent.
                 int length = Key(child.InlineRlp, nodeKey);
-                reachedKey = nodeKey[..length].SequenceEqual(keyNibbles[path.Length..]);
+                reachedKey = path.Length + length == MaxKeyNibbles && path.Append(nodeKey[..length]) == keyPath;
                 break;
             }
 
@@ -62,16 +61,16 @@ internal static class BufferWarmUp
             if (frame.Record.Kind is NodeRecordKind.Leaf or NodeRecordKind.Extension)
             {
                 int length = Key(rlp, nodeKey);
-                if (frame.Record.Kind == NodeRecordKind.Leaf) reachedKey = nodeKey[..length].SequenceEqual(keyNibbles[path.Length..]);
-                else if (keyNibbles[path.Length..].StartsWith(nodeKey[..length]))
+                if (frame.Record.Kind == NodeRecordKind.Leaf) reachedKey = path.Length + length == MaxKeyNibbles && path.Append(nodeKey[..length]) == keyPath;
+                else if (length <= MaxKeyNibbles - path.Length)
                 {
-                    frame.ChildSlot = 0;
                     childPath.AppendMut(nodeKey[..length]);
+                    if (keyPath.StartsWith(childPath)) frame.ChildSlot = 0;
                 }
             }
             else if (path.Length < MaxKeyNibbles)
             {
-                frame.ChildSlot = keyNibbles[path.Length];
+                frame.ChildSlot = keyPath[path.Length];
                 childPath.AppendMut(frame.ChildSlot);
             }
 

@@ -77,20 +77,18 @@ internal sealed class BufferedTrie(SnapshotBundle bundle, Hash256? addressHash, 
     /// <exception cref="MissingTrieNodeException">A node on the path is in neither the buffer nor the bundle.</exception>
     public byte[]? TryGet(in ValueHash256 key)
     {
-        Span<byte> keyNibbles = stackalloc byte[BulkSetArena.MaxKeyNibbles];
+        TreePath keyPath = new(key, BulkSetArena.MaxKeyNibbles);
         Span<byte> nodeKey = stackalloc byte[BulkSetArena.MaxKeyNibbles];
-        Nibbles.BytesToNibbleBytes(key.Bytes, keyNibbles);
         TreePath path = TreePath.Empty;
         ChildRef child = Root.Hash == ValueKeccak.EmptyTreeHash ? default : ChildRef.ForHash(Root.Hash, Root.Pointer);
         while (true)
         {
-            int depth = path.Length;
             switch (child.Kind)
             {
                 case ChildRefKind.Empty:
                     return null;
                 case ChildRefKind.Inline:
-                    return TryGetInlineLeaf(child.InlineRlp, keyNibbles[depth..], nodeKey);
+                    return TryGetInlineLeaf(child.InlineRlp, path, keyPath, nodeKey);
             }
 
             if (!TryLocate(child.Pointer, out NodeRecord record) && !TryLoad(path, child.Data, out record))
@@ -102,32 +100,37 @@ internal sealed class BufferedTrie(SnapshotBundle bundle, Hash256? addressHash, 
             switch (view.Kind)
             {
                 case NodeRecordKind.Leaf:
+                    int leafKeyLength = view.KeyLength(0);
                     view.CopyKey(0, nodeKey);
-                    return nodeKey[..view.KeyLength(0)].SequenceEqual(keyNibbles[depth..]) ? record.LeafValue.Span.ToArray() : null;
+                    return path.Length + leafKeyLength == keyPath.Length && path.Append(nodeKey[..leafKeyLength]) == keyPath ? record.LeafValue.Span.ToArray() : null;
                 case NodeRecordKind.Extension:
                     int keyLength = view.KeyLength(0);
-                    view.CopyKey(0, nodeKey);
-                    if (!keyNibbles[depth..].StartsWith(nodeKey[..keyLength])) return null;
+                    if (keyLength > keyPath.Length - path.Length) return null;
 
+                    view.CopyKey(0, nodeKey);
                     path.AppendMut(nodeKey[..keyLength]);
+                    if (!keyPath.StartsWith(path)) return null;
+
                     child = view.Child(0);
                     break;
                 default:
-                    path.AppendMut(keyNibbles[depth]);
-                    child = view.Child(keyNibbles[depth]);
+                    int nibble = keyPath[path.Length];
+                    path.AppendMut(nibble);
+                    child = view.Child(nibble);
                     break;
             }
         }
     }
 
     /// <remarks>A node embedded in its parent is always a leaf here, as the bulk set only embeds leaves.</remarks>
-    private static byte[]? TryGetInlineLeaf(ReadOnlySpan<byte> rlp, ReadOnlySpan<byte> keyNibbles, Span<byte> nodeKey)
+    private static byte[]? TryGetInlineLeaf(ReadOnlySpan<byte> rlp, in TreePath path, in TreePath keyPath, Span<byte> nodeKey)
     {
         NodeRlp.NextItem(rlp, out NodeRlp.Item node, out _);
         NodeRlp.NextItem(node.Payload, out NodeRlp.Item hexPrefix, out ReadOnlySpan<byte> rest);
         NodeRlp.NextItem(rest, out NodeRlp.Item value, out _);
+        int keyLength = NodeRlp.HexPrefixNibbleCount(hexPrefix.Payload);
         NodeRlp.ReadHexPrefix(hexPrefix.Payload, 0, nodeKey);
-        return nodeKey[..NodeRlp.HexPrefixNibbleCount(hexPrefix.Payload)].SequenceEqual(keyNibbles) ? value.Payload.ToArray() : null;
+        return path.Length + keyLength == keyPath.Length && path.Append(nodeKey[..keyLength]) == keyPath ? value.Payload.ToArray() : null;
     }
 
     public bool TryLocate(ulong pointer, out NodeRecord record)
