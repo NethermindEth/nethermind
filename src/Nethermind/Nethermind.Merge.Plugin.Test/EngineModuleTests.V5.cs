@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.IO.Pipelines;
 using System.Linq;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
@@ -13,20 +14,133 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Evm;
+using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Test;
+using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using Nethermind.TxPool;
 using NUnit.Framework;
+using NSubstitute;
 
 namespace Nethermind.Merge.Plugin.Test;
 
 public partial class EngineModuleTests
 {
+    [TestCaseSource(nameof(GetPayloadForkCases))]
+    public async Task GetPayload_fork_windows_are_preserved(IReleaseSpec spec, int version, bool supported)
+    {
+        Block block = Build.A.Block.TestObject;
+        block.ExecutionRequests = [];
+        IPayloadPreparationService payloadService = Substitute.For<IPayloadPreparationService>();
+        payloadService.GetPayload(Arg.Any<string>()).Returns(new BlockProductionSnapshot(block, UInt256.Zero));
+        using MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: spec, mockedPayloadService: payloadService);
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+        byte[] id = new byte[8];
+
+        int errorCode = version switch
+        {
+            1 => (await rpc.engine_getPayloadV1(id)).ErrorCode,
+            2 => (await rpc.engine_getPayloadV2(id)).ErrorCode,
+            3 => (await rpc.engine_getPayloadV3(id)).ErrorCode,
+            4 => (await rpc.engine_getPayloadV4(id)).ErrorCode,
+            5 => (await rpc.engine_getPayloadV5(id)).ErrorCode,
+            _ => (await rpc.engine_getPayloadV6(id)).ErrorCode
+        };
+
+        Assert.That(errorCode, Is.EqualTo(supported ? 0 : MergeErrorCodes.UnsupportedFork));
+    }
+
+    private static IEnumerable<TestCaseData> GetPayloadForkCases()
+    {
+        (IReleaseSpec Spec, int[] Versions)[] forks =
+        [
+            (Shanghai.Instance, [1, 2]),
+            (Cancun.Instance, [3]),
+            (Prague.Instance, [4]),
+            (Osaka.Instance, [5]),
+            (Amsterdam.Instance, [6])
+        ];
+        foreach ((IReleaseSpec spec, int[] versions) in forks)
+        {
+            for (int version = 1; version <= 6; version++)
+            {
+                yield return new TestCaseData(spec, version, versions.Contains(version));
+            }
+        }
+    }
+
+    [Test]
+    public async Task GetPayload_should_reject_wrong_fork_before_building_cell_proofs([Values(5, 6)] int version)
+    {
+        CustomSpecProvider specProvider = new(
+            (new(0), Prague.Instance),
+            (new(0, 10_000), Osaka.Instance),
+            (new(0, 20_000), Amsterdam.Instance));
+        (IEngineRpcModule rpc, string? payloadId, _, MergeTestBlockchain chain) =
+            await BuildAndGetPayloadV3Result(Prague.Instance, transactionCount: 1, specProvider: specProvider);
+        using MergeTestBlockchain disposeChain = chain;
+
+        ResultWrapper<GetPayloadV4Result?> pragueResult = await rpc.engine_getPayloadV4(Bytes.FromHexString(payloadId!));
+        Assert.That(pragueResult.Result, Is.EqualTo(Result.Success));
+        Assert.That(pragueResult.Data, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pragueResult.Data.ExecutionPayload.Transactions, Has.Length.EqualTo(1));
+            Assert.That(pragueResult.Data.BlobsBundle.Proofs, Has.Length.EqualTo(1));
+        }
+
+        string json = await RpcTest.TestSerializedRequest(rpc, $"engine_getPayloadV{version}", payloadId);
+        using JsonDocument response = JsonDocument.Parse(json);
+        JsonElement error = response.RootElement.GetProperty("error");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(error.GetProperty("code").GetInt32(), Is.EqualTo(MergeErrorCodes.UnsupportedFork));
+            Assert.That(error.GetProperty("message").GetString(), Is.EqualTo(MergeErrorMessages.UnsupportedFork));
+            Assert.That(response.RootElement.TryGetProperty("result", out _), Is.False);
+        }
+    }
+
+    [Test]
+    public async Task GetPayload_should_fail_for_same_fork_blob_without_cell_proofs([Values(5, 6)] int version)
+    {
+        Transaction transaction = Build.A.Transaction.WithShardBlobTxTypeAndFields(1, isMempoolTx: false).TestObject;
+        Block block = Build.A.Block.WithTransactions(transaction).TestObject;
+        IPayloadPreparationService payloadService = Substitute.For<IPayloadPreparationService>();
+        payloadService.GetPayload(Arg.Any<string>()).Returns(new BlockProductionSnapshot(block, UInt256.Zero));
+        using MergeTestBlockchain chain = await CreateBlockchain(
+            releaseSpec: version == 5 ? Osaka.Instance : Amsterdam.Instance, mockedPayloadService: payloadService);
+
+        string json = await RpcTest.TestSerializedRequest(chain.EngineRpcModule, $"engine_getPayloadV{version}", "0x0000000000000000");
+        using JsonDocument response = JsonDocument.Parse(json);
+        JsonElement error = response.RootElement.GetProperty("error");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(error.GetProperty("code").GetInt32(), Is.EqualTo(ErrorCodes.InvalidParams));
+            Assert.That(error.GetProperty("message").GetString(), Does.Contain("Shard blob transaction should contain network wrapper data"));
+            Assert.That(response.RootElement.TryGetProperty("result", out _), Is.False);
+        }
+    }
+
+    [Test]
+    public async Task GetPayload_should_return_unknown_payload_before_checking_fork([Values(5, 6)] int version)
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Prague.Instance);
+        string json = await RpcTest.TestSerializedRequest(chain.EngineRpcModule, $"engine_getPayloadV{version}", "0x0000000000000000");
+        using JsonDocument response = JsonDocument.Parse(json);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.RootElement.GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(MergeErrorCodes.UnknownPayload));
+            Assert.That(response.RootElement.TryGetProperty("result", out _), Is.False);
+        }
+    }
+
     [Test]
     public async Task GetPayloadV5_should_return_unsupported_fork_at_amsterdam()
     {

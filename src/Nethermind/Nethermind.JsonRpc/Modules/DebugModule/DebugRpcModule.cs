@@ -254,14 +254,25 @@ public class DebugRpcModule(
     /// The body is looked up only so a missing one fails before the stream opens. The trace goes by hash, as the
     /// <see cref="Block"/> overload never takes the indexed parallel path.
     /// </remarks>
-    private ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> StreamBlockTrace(BlockHeader header, GethTraceOptions? options)
+    private ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> StreamBlockTrace(BlockHeader header, GethTraceOptions? options, bool validateStructLogTimeout = false)
     {
-        if (blockFinder.FindBlock(header.Hash!, header.Number) is null)
+        Block? resolvedBlock = blockFinder.FindBlock(header.Hash!, header.Number);
+        if (resolvedBlock is null)
         {
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail($"Block body not found for {header.Hash}", ErrorCodes.ResourceNotFound);
         }
 
         GethTraceOptions effective = options ?? GethTraceOptions.Default;
+        if (validateStructLogTimeout && string.IsNullOrEmpty(effective.Tracer))
+        {
+            bool hasTransactionToTrace = effective.TxHash is { } txHash
+                ? resolvedBlock.GetTransactionIndex(txHash.ValueHash256) >= 0
+                : resolvedBlock.Transactions.Length != 0;
+            if (hasTransactionToTrace && effective.ParsedTimeout.Error is { } durationError)
+            {
+                return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail(durationError, ErrorCodes.InvalidInput);
+            }
+        }
         BlockParameter blockParameter = new(header.Hash!);
         return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Success(BuildStreamingBlockResult(
             (writer, pipeWriter, token) => debugBridge.GetBlockTrace(blockParameter, token, effective, writer, pipeWriter)));
@@ -484,7 +495,9 @@ public class DebugRpcModule(
 
         if (options?.Tracer is { Length: > 0 }) options = options with { CaptureJavaScriptErrors = true };
 
-        if (CanStreamBlockTrace(options)) return StreamBlockTrace(header, options);
+        // A malformed native duration must reach the real constructor before it can fail.
+        if ((options?.ParsedTimeout.Error is null || string.IsNullOrEmpty(options.Tracer)) && CanStreamBlockTrace(options))
+            return StreamBlockTrace(header, options, validateStructLogTimeout: true);
 
         using RentedTimeout timeout = jsonRpcConfig.RentTimeout();
         CancellationToken cancellationToken = timeout.Token;
@@ -503,6 +516,10 @@ public class DebugRpcModule(
         catch (ArgumentNullException)
         {
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail($"Trace is null for block {blockNumber}", ErrorCodes.InvalidInput);
+        }
+        catch (TraceDurationFormatException exception)
+        {
+            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail(exception.Message, ErrorCodes.InvalidInput);
         }
     }
 

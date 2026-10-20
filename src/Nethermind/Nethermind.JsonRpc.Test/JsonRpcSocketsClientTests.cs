@@ -120,7 +120,7 @@ public class JsonRpcSocketsClientTests
         TaskCompletionSource failWrite = new(TaskCreationOptions.RunContinuationsAsynchronously);
         TaskCompletionSource failureObserved = new(TaskCreationOptions.RunContinuationsAsynchronously);
         TaskCompletionSource allowTeardown = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        processor.ProcessAsync(Arg.Any<PipeReader>(), Arg.Any<JsonRpcContext>(), Arg.Any<IJsonRpcResponseSink>(),
+        processor.ProcessAsync(Arg.Any<ReadOnlyMemory<byte>>(), Arg.Any<JsonRpcContext>(), Arg.Any<IJsonRpcResponseSink>(),
             Arg.Any<JsonRpcProcessingOptions>(), Arg.Any<CancellationToken>()).Returns(Respond);
         async ValueTask Respond(CallInfo call)
         {
@@ -400,7 +400,7 @@ public class JsonRpcSocketsClientTests
         TaskCompletionSource workerQueued = new(TaskCreationOptions.RunContinuationsAsynchronously);
         TaskCompletionSource<Exception> workerFailure = new(TaskCreationOptions.RunContinuationsAsynchronously);
         IJsonRpcProcessor processor = Substitute.For<IJsonRpcProcessor>();
-        processor.ProcessAsync(Arg.Any<PipeReader>(), Arg.Any<JsonRpcContext>(), Arg.Any<IJsonRpcResponseSink>(),
+        processor.ProcessAsync(Arg.Any<ReadOnlyMemory<byte>>(), Arg.Any<JsonRpcContext>(), Arg.Any<IJsonRpcResponseSink>(),
             Arg.Any<JsonRpcProcessingOptions>(), Arg.Any<CancellationToken>()).Returns(Respond);
         async ValueTask Respond(CallInfo call)
         {
@@ -798,7 +798,7 @@ public class JsonRpcSocketsClientTests
 
             jsonRpcProcessor
                 .ProcessAsync(
-                    Arg.Any<PipeReader>(),
+                    Arg.Any<ReadOnlyMemory<byte>>(),
                     Arg.Any<JsonRpcContext>(),
                     Arg.Any<IJsonRpcResponseSink>(),
                     Arg.Any<JsonRpcProcessingOptions>(),
@@ -830,10 +830,7 @@ public class JsonRpcSocketsClientTests
             IJsonRpcProcessor jsonRpcProcessor = Substitute.For<IJsonRpcProcessor>();
             async ValueTask ResponseFunc(CallInfo c)
             {
-                PipeReader reader = c.ArgAt<PipeReader>(0);
-                ReadResult read = await reader.ReadToEndAsync();
-                bool slow = read.Buffer.FirstSpan.SequenceEqual("slow"u8);
-                reader.AdvanceTo(read.Buffer.End);
+                bool slow = c.ArgAt<ReadOnlyMemory<byte>>(0).Span.SequenceEqual("slow"u8);
                 if (slow) await releaseSlow.Task;
 
                 IJsonRpcResponseSink sink = c.Arg<IJsonRpcResponseSink>();
@@ -843,7 +840,7 @@ public class JsonRpcSocketsClientTests
 
             jsonRpcProcessor
                 .ProcessAsync(
-                    Arg.Any<PipeReader>(),
+                    Arg.Any<ReadOnlyMemory<byte>>(),
                     Arg.Any<JsonRpcContext>(),
                     Arg.Any<IJsonRpcResponseSink>(),
                     Arg.Any<JsonRpcProcessingOptions>(),
@@ -1143,17 +1140,13 @@ public class JsonRpcSocketsClientTests
             IJsonRpcProcessor processor = Substitute.For<IJsonRpcProcessor>();
             async ValueTask ResponseFunc(CallInfo callInfo)
             {
-                PipeReader reader = callInfo.ArgAt<PipeReader>(0);
-                ReadResult readResult = await reader.ReadToEndAsync();
-                ReadOnlySequence<byte> buffer = readResult.Buffer;
-                onRequest(buffer);
-                reader.AdvanceTo(buffer.End);
+                onRequest(new ReadOnlySequence<byte>(callInfo.ArgAt<ReadOnlyMemory<byte>>(0)));
                 IJsonRpcResponseSink sink = callInfo.Arg<IJsonRpcResponseSink>();
                 await sink.WriteSingleAsync(new JsonRpcSuccessResponse(null), new RpcReport(), callInfo.Arg<CancellationToken>());
             }
             processor
                 .ProcessAsync(
-                    Arg.Any<PipeReader>(),
+                    Arg.Any<ReadOnlyMemory<byte>>(),
                     Arg.Any<JsonRpcContext>(),
                     Arg.Any<IJsonRpcResponseSink>(),
                     Arg.Any<JsonRpcProcessingOptions>(),
