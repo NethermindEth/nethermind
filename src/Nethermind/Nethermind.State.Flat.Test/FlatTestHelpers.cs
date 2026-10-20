@@ -30,7 +30,7 @@ public static class FlatTestHelpers
     {
         SnapshotContent content = pool.GetSnapshotContent(ResourcePool.Usage.MainBlockProcessing);
         populate?.Invoke(content);
-        return new Snapshot(StateId.PreGenesis, StateId.PreGenesis, content, pool, ResourcePool.Usage.MainBlockProcessing);
+        return new Snapshot(StateId.PreGenesis, StateId.PreGenesis, content, pool, ResourcePool.Usage.MainBlockProcessing, null);
     }
 
     /// <summary>A buffer with 64 KiB generations, so tests can rotate it cheaply.</summary>
@@ -45,7 +45,7 @@ public static class FlatTestHelpers
 
     /// <summary>Creates a snapshot owning a retain on the active generation of <paramref name="buffer"/>.</summary>
     public static Snapshot CreateSnapshot(this IResourcePool pool, in StateId from, in StateId to, ResourcePool.Usage usage, INodeRecordBuffer buffer) =>
-        new(from, to, pool.GetSnapshotContent(usage), pool, usage) { BufferPin = buffer.Pin() };
+        new(from, to, pool.GetSnapshotContent(usage), pool, usage, buffer.Pin());
 
     /// <summary>Appends records until <paramref name="buffer"/> starts a new generation.</summary>
     public static void StartNewGeneration(INodeRecordBuffer buffer)

@@ -168,7 +168,7 @@ public class SnapshotCompactor(
         }
 
         // The oldest pin covers every merged snapshot, whose pins may be released before the compacted snapshot.
-        return new Snapshot(from, to, content, _resourcePool, usage) { BufferPin = OldestBufferPin(snapshots)?.Copy() };
+        return new Snapshot(from, to, content, _resourcePool, usage, OldestBufferPin(snapshots)?.Copy());
     }
 
     private static void MergeRoots(SortedSnapshotContent content, SnapshotPooledList snapshots)

@@ -15,7 +15,7 @@ namespace Nethermind.State.Flat.ScopeProvider;
 /// <paramref name="addressHash"/> is null, otherwise that account's storage trie.
 /// </summary>
 /// <remarks>
-/// Written nodes go to the bundle's <see cref="SnapshotBundle.TrieNodeBuffer"/> at once, but reach the bundle only on <see cref="Publish"/>, so like the
+/// Written nodes go to the bundle's <see cref="SnapshotBundle.CacheableNodeRecordBuffer"/> at once, but reach the bundle only on <see cref="Publish"/>, so like the
 /// managed tries nothing is visible to the bundle's readers before the scope commits. Until then the bulk sets read them
 /// back from the buffer by pointer, which the scope's pin keeps readable.
 /// </remarks>
@@ -48,7 +48,7 @@ internal sealed class BufferedTrie(SnapshotBundle bundle, Hash256? addressHash, 
         long start = Stopwatch.GetTimestamp();
         // A published root always points at its record, so a root the buffer no longer holds is copied back in.
         if (Root.Pointer == 0 && Root.Hash != ValueKeccak.EmptyTreeHash) SetRoot(new TrieRoot(Root.Hash, CopyRootRecord()));
-        if (_rootDirty && Root.Pointer != 0) bundle.TrieNodeBuffer!.SetRoot(addressHash, Root.Hash, Root.Pointer);
+        if (_rootDirty && Root.Pointer != 0) bundle.CacheableNodeRecordBuffer!.SetRoot(addressHash, Root.Hash, Root.Pointer);
         if (addressHash is null) bundle.PublishBufferedStateRoot(Root);
         else bundle.PublishBufferedStorageRoot(addressHash, Root);
 
@@ -62,7 +62,7 @@ internal sealed class BufferedTrie(SnapshotBundle bundle, Hash256? addressHash, 
         if (!TryLoad(TreePath.Empty, Root.Hash, out NodeRecord record))
             throw NodeRecordBulkSet.MissingNode(addressHash, TreePath.Empty, Root.Hash);
 
-        return bundle.TrieNodeBuffer!.AppendRecordFromRlp(addressHash, TreePath.Empty, Root.Hash, record.Rlp, []);
+        return bundle.CacheableNodeRecordBuffer!.AppendRecordFromRlp(addressHash, TreePath.Empty, Root.Hash, record.Rlp, []);
     }
 
     /// <summary>Empties the trie and drops the unpublished nodes, as when the storage is cleared.</summary>
@@ -132,7 +132,7 @@ internal sealed class BufferedTrie(SnapshotBundle bundle, Hash256? addressHash, 
 
     public bool TryLocate(ulong pointer, out NodeRecord record)
     {
-        if (!bundle.TrieNodeBuffer!.TryLocate(pointer, out record)) return false;
+        if (!bundle.CacheableNodeRecordBuffer!.TryLocate(pointer, out record)) return false;
 
         if (!bundle.IsMainBlockProcessing) return true;
         if (NodeRecordCodec.IsTransient(pointer)) Metrics.IncrementWarmedNodeCacheHits();
@@ -140,7 +140,7 @@ internal sealed class BufferedTrie(SnapshotBundle bundle, Hash256? addressHash, 
         return true;
     }
 
-    public INodeRecordWriteBatch StartWriteBatch(int alignedTotalLength) => bundle.TrieNodeBuffer!.StartWriteBatch(alignedTotalLength);
+    public INodeRecordWriteBatch StartWriteBatch(int alignedTotalLength) => bundle.CacheableNodeRecordBuffer!.StartWriteBatch(alignedTotalLength);
 
     public bool TryLoad(in TreePath path, in ValueHash256 hash, out NodeRecord record) =>
         bundle.TryLoadTrieNodeRecord(addressHash, path, hash, out record);

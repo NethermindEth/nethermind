@@ -85,7 +85,7 @@ public class FlatDbManagerPersistedTests
         INodeRecordBufferPin bufferPin = buffer.Pin();
         SnapshotContent content = new();
         content.SetStateNodeRlp(buffer, path, nodeRlp);
-        using Snapshot snap = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing) { BufferPin = bufferPin };
+        using Snapshot snap = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing, bufferPin);
 
         using FlatTestContainer tier = new(arenaFileSizeBytes: 4096);
         SnapshotRepository repo = tier.Repository;
@@ -130,7 +130,7 @@ public class FlatDbManagerPersistedTests
         StateId s1 = new(1, Keccak.Compute("1"));
         SnapshotContent content = new();
         content.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance(1).TestObject;
-        tier.ConvertToPersistedBase(new Snapshot(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
+        tier.ConvertToPersistedBase(new Snapshot(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing, null)).Dispose();
 
         using INodeRecordBuffer managerBuffer = FlatTestHelpers.NewTestBuffer();
         FlatDbManager manager = new(

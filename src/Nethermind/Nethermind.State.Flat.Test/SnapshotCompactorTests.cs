@@ -372,7 +372,7 @@ public class SnapshotCompactorTests
         SnapshotContent finalContent = new();
         finalContent.SetStateNodeRlp(_buffer, TreePath.FromHexString("1"), FlatTestHelpers.LeafRlpA);
         using Snapshot first = _resourcePool.CreateSnapshot(new(0, Keccak.EmptyTreeHash), new(1, TestItem.KeccakA), ResourcePool.Usage.ReadOnlyProcessingEnv, _buffer);
-        using Snapshot final = new(first.To, new(2, TestItem.KeccakB), finalContent, _resourcePool, ResourcePool.Usage.ReadOnlyProcessingEnv) { BufferPin = earliest };
+        using Snapshot final = new(first.To, new(2, TestItem.KeccakB), finalContent, _resourcePool, ResourcePool.Usage.ReadOnlyProcessingEnv, earliest);
         using Snapshot compacted = _compactor.CompactSnapshotBundle(new(2) { first, final });
         using Snapshot result = _compactor.CompactSnapshotBundle(new(1) { compacted });
 

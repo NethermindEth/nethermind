@@ -89,7 +89,7 @@ public sealed class FlatStorageTree(
 
     private BufferedTrie CreateTrie()
     {
-        INodeRecordBuffer buffer = _bundle.NodeRecordBuffer!;
+        INodeRecordBuffer buffer = _bundle.CacheableNodeRecordBuffer!;
         return new BufferedTrie(_bundle, AddressHash, buffer.ResolveRoot(AddressHash, _rootBeforeTrie.ValueHash256));
     }
 
@@ -97,7 +97,7 @@ public sealed class FlatStorageTree(
 
     private StrongBox<TrieRoot> ResolvePreBlockRoot()
     {
-        StrongBox<TrieRoot> resolved = new(_bundle.NodeRecordBuffer!.ResolveRoot(AddressHash, _storageRoot.ValueHash256));
+        StrongBox<TrieRoot> resolved = new(_bundle.CacheableNodeRecordBuffer!.ResolveRoot(AddressHash, _storageRoot.ValueHash256));
         Volatile.Write(ref _preBlockRoot, resolved);
         return resolved;
     }
@@ -151,7 +151,7 @@ public sealed class FlatStorageTree(
         _earlySource = _bundle.CreateBackgroundTrieSource(AddressHash);
         try
         {
-            _earlyRoot = _bundle.NodeRecordBuffer!.ResolveRoot(AddressHash, _rootBeforeTrie.ValueHash256);
+            _earlyRoot = _bundle.CacheableNodeRecordBuffer!.ResolveRoot(AddressHash, _rootBeforeTrie.ValueHash256);
         }
         catch
         {

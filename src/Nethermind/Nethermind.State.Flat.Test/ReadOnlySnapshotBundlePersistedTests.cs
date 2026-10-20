@@ -64,7 +64,7 @@ public class ReadOnlySnapshotBundlePersistedTests
         INodeRecordBufferPin bufferPin = _buffer.Pin();
         SnapshotContent content = new();
         content.SetStateNodeRlp(_buffer, path, nodeRlp);
-        using Snapshot snap = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing) { BufferPin = bufferPin };
+        using Snapshot snap = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing, bufferPin);
         byte[] tableData = PersistedSnapshotBuilderTestExtensions.Build(snap, _blobs);
 
         PersistedSnapshot persisted = CreatePersistedSnapshot(s0, s1, tableData);
@@ -97,7 +97,7 @@ public class ReadOnlySnapshotBundlePersistedTests
         INodeRecordBufferPin bufferPin = _buffer.Pin();
         SnapshotContent content = new();
         content.SetStorageNodeRlp(_buffer, address, path, nodeRlp);
-        using Snapshot snap = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing) { BufferPin = bufferPin };
+        using Snapshot snap = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing, bufferPin);
         byte[] tableData = PersistedSnapshotBuilderTestExtensions.Build(snap, _blobs);
 
         PersistedSnapshot persisted = CreatePersistedSnapshot(s0, s1, tableData);
@@ -131,7 +131,7 @@ public class ReadOnlySnapshotBundlePersistedTests
         INodeRecordBufferPin bufferPin = _buffer.Pin();
         SnapshotContent content = new();
         content.SetStateNodeRlp(_buffer, storedPath, nodeRlp);
-        using Snapshot snap = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing) { BufferPin = bufferPin };
+        using Snapshot snap = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing, bufferPin);
         byte[] tableData = PersistedSnapshotBuilderTestExtensions.Build(snap, _blobs);
 
         PersistedSnapshot persisted = CreatePersistedSnapshot(s0, s1, tableData);
@@ -198,7 +198,7 @@ public class ReadOnlySnapshotBundlePersistedTests
         SnapshotContent content = new();
         if (storage) content.SetStorageNodeRlp(_buffer, address, persistedPath, persistedRlp);
         else content.SetStateNodeRlp(_buffer, persistedPath, persistedRlp);
-        using Snapshot snap = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing) { BufferPin = bufferPin };
+        using Snapshot snap = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing, bufferPin);
         PersistedSnapshotList list = new(1) { CreatePersistedSnapshot(s0, s1, PersistedSnapshotBuilderTestExtensions.Build(snap, _blobs)) };
 
         using ReadOnlySnapshotBundle bundle = new(
@@ -269,7 +269,7 @@ public class ReadOnlySnapshotBundlePersistedTests
         SnapshotContent content = new();
         if (storage) content.SetStorageNodeRlp(_buffer, address, TreePath.Empty, nodeRlp);
         else content.SetStateNodeRlp(_buffer, TreePath.Empty, nodeRlp);
-        using Snapshot snapshot = new(from, to, content, _pool, ResourcePool.Usage.MainBlockProcessing) { BufferPin = retain };
+        using Snapshot snapshot = new(from, to, content, _pool, ResourcePool.Usage.MainBlockProcessing, retain);
         PersistedSnapshotList list = new(1) { CreatePersistedSnapshot(from, to, PersistedSnapshotBuilderTestExtensions.Build(snapshot, _blobs)) };
         using INodeRecordBuffer warmedBuffer = FlatTestHelpers.NewTestBuffer();
         using SnapshotBundle bundle = new(

@@ -38,7 +38,8 @@ public class Snapshot : RefCountingDisposable
     // Boxed so publication is a single reference CAS.
     private StrongBox<SnapshotContentCounts>? _sealedCounts;
 
-    public Snapshot(in StateId from, in StateId to, SnapshotContent content, IResourcePool resourcePool, ResourcePool.Usage usage)
+    /// <param name="bufferPin">The pin protecting the trie node records this snapshot references; the snapshot takes ownership.</param>
+    public Snapshot(in StateId from, in StateId to, SnapshotContent content, IResourcePool resourcePool, ResourcePool.Usage usage, INodeRecordBufferPin? bufferPin)
     {
         _from = from;
         _to = to;
@@ -46,9 +47,11 @@ public class Snapshot : RefCountingDisposable
         _resourcePool = resourcePool;
         _usage = usage;
         _isSorted = false;
+        BufferPin = bufferPin;
     }
 
-    public Snapshot(in StateId from, in StateId to, SortedSnapshotContent content, IResourcePool resourcePool, ResourcePool.Usage usage)
+    /// <inheritdoc cref="Snapshot(in StateId, in StateId, SnapshotContent, IResourcePool, ResourcePool.Usage, INodeRecordBufferPin?)"/>
+    public Snapshot(in StateId from, in StateId to, SortedSnapshotContent content, IResourcePool resourcePool, ResourcePool.Usage usage, INodeRecordBufferPin? bufferPin)
     {
         _from = from;
         _to = to;
@@ -56,6 +59,7 @@ public class Snapshot : RefCountingDisposable
         _resourcePool = resourcePool;
         _usage = usage;
         _isSorted = true;
+        BufferPin = bufferPin;
     }
 
     public long EstimateMemory() => _isSorted ? _sorted!.EstimateMemory() : Counts.EstimateMemory();
@@ -87,7 +91,7 @@ public class Snapshot : RefCountingDisposable
 
     /// <summary>The pin on the trie node buffer generation that was active when this snapshot's first block started writing; released with the snapshot.</summary>
     /// <remarks>Protects this generation and later writes. Traversals into inherited older records rely on the reader's own pin.</remarks>
-    internal INodeRecordBufferPin? BufferPin { get; init; }
+    internal INodeRecordBufferPin? BufferPin { get; }
 
     public StateId From => _from;
     public StateId To => _to;
