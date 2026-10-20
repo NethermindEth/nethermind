@@ -231,6 +231,40 @@ public partial class DebugRpcModuleTests
         Assert.That((string?)error["data"] ?? (string?)error["message"], Does.Contain("Cannot convert"), "native config errors remain top-level even with an expired timeout");
     }
 
+    [Test]
+    public async Task Debug_traceBlock_setup_failure_precedes_timeout_policy(
+        [Values("debug_traceBlockByNumber", "debug_traceBlockByHash", "debug_traceBlock")] string method,
+        [Values("0s", "-1s", "121s", "5s")] string timeout,
+        [Values("error", "null", "primitive")] string failure)
+    {
+        using Context context = await Context.Create();
+        Block block = await context.Blockchain.AddBlock(CreateTraceBlockTransactions(context.Blockchain));
+        object selector = method switch
+        {
+            "debug_traceBlockByNumber" => block.Number,
+            "debug_traceBlockByHash" => block.Hash!,
+            _ => Rlp.Encode(block).ToString()
+        };
+        string thrown = failure switch { "null" => "null", "primitive" => "42", _ => "Error('setup-before-timeout')" };
+        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, method, selector,
+            new { tracer = "{fault:function(){},setup:function(){throw " + thrown + ";},result:function(){return {};}}", timeout });
+        JToken json = JToken.Parse(response);
+        Assert.That(json["error"], Is.Null, response);
+        JArray traces = (JArray)json["result"]!;
+        Assert.That(traces, Has.Count.EqualTo(block.Transactions.Length), response);
+        for (int i = 0; i < traces.Count; i++)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That((string?)traces[i]["txHash"], Is.EqualTo(block.Transactions[i].Hash!.ToString()), response);
+                Assert.That((string?)traces[i]["error"], Is.Not.Null.And.Not.Empty, response);
+                if (failure != "null")
+                    Assert.That((string?)traces[i]["error"], Does.Contain(failure == "primitive" ? "42" : "setup-before-timeout"), response);
+                Assert.That(traces[i]["result"], Is.Null, response);
+            }
+        }
+    }
+
     [TestCase(false, "\"bad\"", "lookup")]
     [TestCase(false, "\"5s\"", "lookup")]
     [TestCase(true, "\"bad\"", "constructor")]
@@ -361,47 +395,68 @@ public partial class DebugRpcModuleTests
         }
     }
 
-    [TestCase("result", 0)]
-    [TestCase("result", 1)]
-    [TestCase("result", 2)]
-    [TestCase("null", 0)]
-    [TestCase("undefined", 0)]
-    [TestCase("42", 0)]
-    [TestCase("step", 0)]
-    [TestCase("enter", 0)]
-    [TestCase("fault", 0)]
-    [TestCase("fault", 1)]
-    [TestCase("exit", 0)]
-    [TestCase("exit", 1)]
-    [TestCase("postStep", 0)]
-    [TestCase("postStep", 1)]
-    [TestCase("precedence", 0)]
-    [TestCase("precedence", 1)]
-    [TestCase("stack-input", 0)]
-    [TestCase("stack-input", 1)]
-    [TestCase("slice-input", 0)]
-    [TestCase("slice-input", 1)]
-    [TestCase("uint-input", 0)]
-    [TestCase("uint-input", 1)]
-    [TestCase("slice-padding", 0)]
-    [TestCase("slice-padding", 1)]
-    [TestCase("setup", -1)]
-    [TestCase("missing", -1)]
-    [TestCase("noncallable", -1)]
-    [TestCase("unknown", -1)]
-    [TestCase("syntax", -1)]
-    public Task Debug_traceBlockByNumber_recovers_js_errors_without_replaying_prefixes(string failure, int failAt) =>
-        AssertTraceBlockByNumberJavaScriptRecovery(failure, failAt, null);
+    private static IEnumerable<TestCaseData> BlockJavaScriptRecoveryCases()
+    {
+        (string Failure, int FailAt, int? SelectedAt)[] cases =
+        [
+            ("result", 0, null),
+            ("result", 1, null),
+            ("result", 2, null),
+            ("null", 0, null),
+            ("undefined", 0, null),
+            ("42", 0, null),
+            ("step", 0, null),
+            ("enter", 0, null),
+            ("fault", 0, null),
+            ("fault", 1, null),
+            ("exit", 0, null),
+            ("exit", 1, null),
+            ("postStep", 0, null),
+            ("postStep", 1, null),
+            ("precedence", 0, null),
+            ("precedence", 1, null),
+            ("stack-input", 0, null),
+            ("stack-input", 1, null),
+            ("slice-input", 0, null),
+            ("slice-input", 1, null),
+            ("uint-input", 0, null),
+            ("uint-input", 1, null),
+            ("slice-padding", 0, null),
+            ("slice-padding", 1, null),
+            ("setup", -1, null),
+            ("missing", -1, null),
+            ("noncallable", -1, null),
+            ("unknown", -1, null),
+            ("syntax", -1, null),
+            ("result", 1, 1),
+            ("step", 2, 2),
+            ("result", 0, 1),
+            ("unknown", -1, 2),
+            ("result", 0, -1)
+        ];
 
-    [TestCase("result", 1, 1, TestName = "Debug_traceBlockByNumber_txHash_recovers_middle_result_failure")]
-    [TestCase("step", 2, 2, TestName = "Debug_traceBlockByNumber_txHash_recovers_last_step_failure")]
-    [TestCase("result", 0, 1, TestName = "Debug_traceBlockByNumber_txHash_selected_success_keeps_canonical_index_and_state")]
-    [TestCase("unknown", -1, 2, TestName = "Debug_traceBlockByNumber_txHash_reports_constructor_failure_for_selected_transaction")]
-    [TestCase("result", 0, -1, TestName = "Debug_traceBlockByNumber_unknown_txHash_returns_no_trace")]
-    public Task Debug_traceBlockByNumber_recovers_js_errors_for_txHash(string failure, int failAt, int selectedAt) =>
-        AssertTraceBlockByNumberJavaScriptRecovery(failure, failAt, selectedAt);
+        foreach (string method in new[] { "debug_traceBlockByNumber", "debug_traceBlockByHash", "debug_traceBlock" })
+        {
+            foreach ((string failure, int failAt, int? selectedAt) in cases)
+            {
+                string? scenario = (failure, failAt, selectedAt) switch
+                {
+                    ("result", 1, 1) => "txHash_recovers_middle_result_failure",
+                    ("step", 2, 2) => "txHash_recovers_last_step_failure",
+                    ("result", 0, 1) => "txHash_selected_success_keeps_canonical_index_and_state",
+                    ("unknown", -1, 2) => "txHash_reports_constructor_failure_for_selected_transaction",
+                    ("result", 0, -1) => "unknown_txHash_returns_no_trace",
+                    _ => null
+                };
+                TestCaseData testCase = new(method, failure, failAt, selectedAt);
+                yield return scenario is null ? testCase : testCase.SetName($"{nameof(Debug_traceBlock_recovers_js_errors_without_replaying_prefixes)}_{method}_{scenario}");
+            }
+        }
+    }
 
-    private async Task AssertTraceBlockByNumberJavaScriptRecovery(string failure, int failAt, int? selectedAt)
+    [TestCaseSource(nameof(BlockJavaScriptRecoveryCases))]
+    public async Task Debug_traceBlock_recovers_js_errors_without_replaying_prefixes(
+        string method, string failure, int failAt, int? selectedAt)
     {
         JsRecoveryObservations observations = new();
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
@@ -463,7 +518,13 @@ public partial class DebugRpcModuleTests
         };
         Hash256 selectedHash = selectedAt >= 0 ? block.Transactions[selectedAt.Value].Hash! : TestItem.KeccakA;
         object traceOptions = selectedAt is null ? new { tracer } : new { tracer, txHash = selectedHash };
-        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceBlockByNumber", block.Number, traceOptions);
+        object blockSelector = method switch
+        {
+            "debug_traceBlockByHash" => block.Hash!,
+            "debug_traceBlock" => Rlp.Encode(block).Bytes,
+            _ => block.Number
+        };
+        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, method, blockSelector, traceOptions);
         JToken actual = JToken.Parse(response);
         Assert.That(actual["error"], Is.Null, response);
         JArray entries = (JArray)actual["result"]!;
@@ -506,9 +567,10 @@ public partial class DebugRpcModuleTests
         if (selectedAt is not null) return;
 
         observations.Enabled = false;
-        string legacy = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceBlockByHash", block.Hash!, new { tracer });
-        Assert.That(JToken.Parse(legacy)["error"], Is.Not.Null, "the recovery flag belongs only to debug_traceBlockByNumber");
-        string native = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceBlockByNumber", block.Number,
+        string legacy = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceTransaction",
+            block.Transactions[Math.Max(failAt, 0)].Hash!, new { tracer });
+        Assert.That(JToken.Parse(legacy)["error"], Is.Not.Null, "single-transaction tracing retains its existing error behavior");
+        string native = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, method, blockSelector,
             new { tracer = "callTracer", tracerConfig = new { onlyTopCall = "not-a-boolean" } });
         Assert.That(JToken.Parse(native)["error"], Is.Not.Null, "native tracer failures remain top-level");
     }
@@ -1875,12 +1937,61 @@ public partial class DebugRpcModuleTests
             if (callback == "step") tracer.SetOperationStack(default);
             return tracer.BuildResult();
         }
-        if (capture || callback == "return")
+        if (capture && callback == "setup")
+        {
+            JavaScriptTraceFailure failure = Assert.Throws<JavaScriptTraceFailure>(() => { using GethLikeTxTrace result = Trace(); })!;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(failure.InnerException, Is.InstanceOf<ScriptEngineException>());
+                Assert.That(JavaScriptTraceFailure.IsRecoverable(failure), Is.True);
+            }
+        }
+        else if (capture || callback == "return")
         {
             using GethLikeTxTrace result = Trace();
             Assert.That(result.TraceError is null, Is.EqualTo(callback == "return"));
         }
         else Assert.Throws<ScriptEngineException>(() => Trace());
+    }
+
+    [Test]
+    public async Task Capture_setup_keeps_input_diagnostics_and_unrecoverable_boundaries(
+        [Values("input", "host", "fatal", "cancellation", "interrupt", "input-interrupt")] string kind)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
+        using Engine engine = new(Prague.Instance);
+        Action fail = kind switch
+        {
+            "input" => () => engine.AbortInput("setup input marker"),
+            "host" => () => throw new InvalidOperationException("setup host failure"),
+            "fatal" => () => throw CreateException(true, true, null),
+            "cancellation" => () => throw new OperationCanceledException(),
+            "interrupt" => engine.Interrupt,
+            _ => () => { engine.AbortInput("setup input marker"); engine.Interrupt(); }
+        };
+        using (ScriptObject installer = (ScriptObject)engine.CreateTracer("{install:function(action){globalThis.failSetup=action;}}"))
+            installer.InvokeMethod("install", fail);
+        Exception exception = Assert.Catch(() =>
+        {
+            using GethLikeJavaScriptTxTracer _ = new(engine, new JavaScriptDb(chain.MainWorldState), new JavaScriptContext(),
+                new GethTraceOptions
+                {
+                    CaptureJavaScriptErrors = true,
+                    Timeout = TimeSpan.Zero,
+                    Tracer = "{fault:function(){},setup:function(){failSetup();throw null;},result:function(){return {};}}"
+                });
+        })!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(JavaScriptTraceFailure.IsRecoverable(exception), Is.EqualTo(kind == "input"), exception.ToString());
+            if (kind == "input")
+            {
+                Assert.That(exception, Is.TypeOf<JavaScriptTraceFailure>());
+                Assert.That(exception.Message, Is.EqualTo("setup input marker"));
+                Assert.That(exception.InnerException, Is.Not.Null);
+            }
+            else Assert.That(exception, Is.Not.TypeOf<JavaScriptTraceFailure>());
+        }
     }
 
     [Test]
