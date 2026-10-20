@@ -370,9 +370,7 @@ jobs:
       # or any error here runs everything.
       - name: Select EEST tests
         id: select
-        if: >-
-          github.event_name == 'pull_request' && vars.TEST_SELECTION == 'on' && inputs.variant == '' &&
-          !contains(github.event.pull_request.labels.*.name, 'ci-full')
+        if: github.event_name == 'workflow_dispatch' && inputs.variant == ''
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
@@ -382,14 +380,14 @@ jobs:
           work="$RUNNER_TEMP/selection"
           mkdir -p "$work"
           printf '%s' "$MATRIX" > "$work/matrix.json"
-          git fetch --no-tags --depth=1 origin "$BASE_SHA"
-          git diff --name-only "$BASE_SHA" HEAD > "$work/changed.txt"
-          model_run=$(gh run list -R "$GITHUB_REPOSITORY" --workflow test-selection.yml --branch master \
+          # Diagnostic: a pull request that changes one Evm file.
+          echo "src/Nethermind/Nethermind.Evm/VirtualMachine.cs" > "$work/changed.txt"
+          model_run=$(gh run list -R "$GITHUB_REPOSITORY" --workflow test-selection.yml --branch diag/eest-selection-e2e \
             --status success -L 1 --json databaseId -q '.[0].databaseId')
           gh run download "$model_run" -R "$GITHUB_REPOSITORY" -n test-selection-state -D "$work/state"
           python3 scripts/ci/select_tests.py select --model "$work/state/model.json" \
             --inventory "$work/state/eest-inventory.json" --changed-files "$work/changed.txt" --run "$GITHUB_RUN_ID" \
-            --matrix "$work/matrix.json" --out-matrix "$work/selected.json" --filters "$work/filters" \
+            --matrix "$work/matrix.json" --out-matrix "$work/selected.json" --filters "$work/filters" --min-history-days 0 \
             | tee -a "$GITHUB_STEP_SUMMARY"
           if [ -d "$work/filters" ]; then
             echo "selected=true" >> "$GITHUB_OUTPUT"
