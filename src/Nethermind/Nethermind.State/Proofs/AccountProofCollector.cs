@@ -13,6 +13,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
+using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
 
@@ -95,7 +96,7 @@ namespace Nethermind.State.Proofs
                 _hashedStorageKeys[j] = storageKey;
                 _accountProof.StorageProofs[j] = new StorageProof
                 {
-                    Key = storageKeys?[j].ToHexString(true, true),
+                    Key = storageKeys?[j].WithoutLeadingZeros().ToArray(),
                     Value = Bytes.ZeroByte
                 };
                 j++;
@@ -131,10 +132,11 @@ namespace Nethermind.State.Proofs
             _hashedAddress = ValueKeccak.Compute(_address.Bytes);
             _hashedStorageKeys = new ValueHash256[storageKeys.Count];
             _storageProofItems = new List<byte[]>[storageKeys.Count];
+            StorageKeys? requestedKeys = storageKeys as StorageKeys;
 
             if (Avx2.IsSupported && storageKeys.Count >= (Avx512F.IsSupported ? 2 : Avx2HashBatchSize))
             {
-                InitializeBatchedStorageProofs(storageKeys);
+                InitializeBatchedStorageProofs(storageKeys, requestedKeys);
                 return;
             }
 
@@ -144,16 +146,16 @@ namespace Nethermind.State.Proofs
             {
                 keys.Current.ToBigEndian(keyBuffer.BytesAsSpan);
                 _hashedStorageKeys[j] = ValueKeccak.Compute(keyBuffer.Bytes);
-                SetStorageProof(j, keyBuffer.Bytes);
+                SetStorageProof(j, keyBuffer.Bytes, requestedKeys?.IsFullWidth(j) is true);
             }
         }
 
-        private void SetStorageProof(int index, ReadOnlySpan<byte> key)
+        private void SetStorageProof(int index, ReadOnlySpan<byte> key, bool isFullWidth)
         {
             _storageProofItems[index] = [];
             _accountProof.StorageProofs[index] = new StorageProof
             {
-                Key = key.ToHexString(true, true),
+                Key = isFullWidth ? key.ToArray() : key.WithoutLeadingZeros().ToArray(),
                 Value = Bytes.ZeroByte
             };
         }
@@ -171,7 +173,7 @@ namespace Nethermind.State.Proofs
         }
 
         [SkipLocalsInit]
-        private void InitializeBatchedStorageProofs(IReadOnlyCollection<UInt256> storageKeys)
+        private void InitializeBatchedStorageProofs(IReadOnlyCollection<UInt256> storageKeys, StorageKeys? requestedKeys)
         {
             int rate = Avx512F.IsSupported ? Keccak.Size : KeccakRate;
             int batchSize = Avx512F.IsSupported ? MaxHashBatchSize : Avx2HashBatchSize;
@@ -192,7 +194,7 @@ namespace Nethermind.State.Proofs
             {
                 Span<byte> key = blocks.Slice(pending * rate, Keccak.Size);
                 keys.Current.ToBigEndian(key);
-                SetStorageProof(j, key);
+                SetStorageProof(j, key, requestedKeys?.IsFullWidth(j) is true);
                 if (++pending == batchSize)
                 {
                     SetStoragePaths(blocks, hashes, j + 1 - batchSize, batchSize);

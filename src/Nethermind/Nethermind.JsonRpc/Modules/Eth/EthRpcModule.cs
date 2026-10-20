@@ -1149,31 +1149,15 @@ public partial class EthRpcModule(
 
         if (!_blockchainBridge.HasStateForBlock(header!))
         {
-            return NoStateResult();
+            return _ethSyncingInfo.SyncMode.HaveNotSyncedStateYet()
+                ? GetStateFailureResult<AccountProof>(header)
+                : ResultWrapper<AccountProof>.Fail(ErrorMessages.PrunedHistoryUnavailable, ErrorCodes.PrunedHistoryUnavailable);
         }
 
         using RentedTimeout timeout = _rpcConfig.RentTimeout();
         AccountProofCollector accountProofCollector = new(accountAddress, storageKeys, timeout.Token);
-        try
-        {
-            _blockchainBridge.RunTreeVisitor(accountProofCollector, header!);
-        }
-        catch (Exception e) when (e is StateNotRetainedException or MissingTrieNodeException { InnerException: StateNotRetainedException })
-        {
-            return NoStateResult();
-        }
-
-        AccountProof proof = accountProofCollector.BuildResult();
-        for (int i = 0; i < proof.StorageProofs.Length; i++)
-        {
-            proof.StorageProofs[i].Key = storageKeys.FormatKey(i);
-        }
-
-        return ResultWrapper<AccountProof>.Success(proof);
-
-        ResultWrapper<AccountProof> NoStateResult() => _ethSyncingInfo.SyncMode.HaveNotSyncedStateYet()
-            ? GetStateFailureResult<AccountProof>(header)
-            : ResultWrapper<AccountProof>.Fail(ErrorMessages.PrunedHistoryUnavailable, ErrorCodes.PrunedHistoryUnavailable);
+        _blockchainBridge.RunTreeVisitor(accountProofCollector, header!);
+        return ResultWrapper<AccountProof>.Success(accountProofCollector.BuildResult());
     }
 
     public ResultWrapper<ulong> eth_chainId()

@@ -727,37 +727,6 @@ public partial class EthRpcModuleTests
         Assert.That(serialized, Does.Contain($"\"code\":{expectedCode}"), serialized);
     }
 
-    [TestCase(SyncMode.Full, true, false, ErrorCodes.PrunedHistoryUnavailable)]
-    [TestCase(SyncMode.Full, true, true, ErrorCodes.PrunedHistoryUnavailable)]
-    [TestCase(SyncMode.StateNodes, true, false, ErrorCodes.ResourceUnavailable)]
-    [TestCase(SyncMode.StateNodes, true, true, ErrorCodes.ResourceUnavailable)]
-    [TestCase(SyncMode.Full, false, true, ErrorCodes.ResourceNotFound)]
-    public async Task Eth_get_proof_state_not_retained_during_traversal_maps_by_sync_mode(SyncMode syncMode, bool stateNotRetained, bool wrapInMissingNode, int expectedCode)
-    {
-        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
-            .WithSyncMode(syncMode)
-            .WithConfig(new JsonRpcConfig { Timeout = -1 })
-            .Build(builder => builder.AddDecorator<IStateReader>((_, inner) => new NotRetainedProofStateReader(inner, stateNotRetained, wrapInMissingNode)));
-
-        string serialized = await chain.TestEthRpc("eth_getProof", TestItem.AddressA.Bytes.ToHexString(true), new[] { "0x1" }, "latest");
-        Assert.That(serialized, Does.Contain($"\"code\":{expectedCode}"), serialized);
-    }
-
-    private sealed class NotRetainedProofStateReader(IStateReader inner, bool stateNotRetained, bool wrapInMissingNode) : IStateReader
-    {
-        public bool TryGetAccount(BlockHeader? baseBlock, Address address, out AccountStruct account) => inner.TryGetAccount(baseBlock, address, out account);
-        public void GetStorage(BlockHeader? baseBlock, Address address, in UInt256 index, out UInt256 value) => inner.GetStorage(baseBlock, address, in index, out value);
-        public byte[]? GetCode(Hash256 codeHash) => inner.GetCode(codeHash);
-        public byte[]? GetCode(in ValueHash256 codeHash) => inner.GetCode(in codeHash);
-        public void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, BlockHeader? baseBlock, VisitingOptions? visitingOptions = null, VisitingStats? diagnostics = null) where TCtx : struct, INodeContext<TCtx>
-        {
-            StateNotRetainedException? notRetained = stateNotRetained ? new StateNotRetainedException($"No state available for block {baseBlock?.Number}") : null;
-            if (!wrapInMissingNode) throw notRetained!;
-            throw new MissingTrieNodeException($"State for block {baseBlock?.Number} is unavailable", null, TreePath.Empty, Keccak.EmptyTreeHash, notRetained);
-        }
-        public bool HasStateForBlock(BlockHeader? baseBlock) => inner.HasStateForBlock(baseBlock);
-    }
-
     [TestCase("earliest", TestName = "Eth_get_storage_values_WhenEarliestBlock_ReturnsStorageValue")]
     [TestCase("latest", TestName = "Eth_get_storage_values_WhenLatestBlock_ReturnsStorageValue")]
     [TestCase("pending", TestName = "Eth_get_storage_values_WhenPendingBlock_ReturnsStorageValue")]

@@ -6,7 +6,6 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 
 namespace Nethermind.Serialization.Json;
@@ -27,8 +26,9 @@ public sealed class StorageKeys : IReadOnlyCollection<UInt256>
         _isFullWidth.Add(isFullWidth);
     }
 
-    // execution-apis eth_getProof: a key sent with 63 or 64 hex digits is echoed as 32 bytes, any other as a quantity.
-    internal string FormatKey(int index) => _keys[index].ToHexString(skipLeadingZeros: !_isFullWidth[index]);
+    /// <summary>Whether the key at <paramref name="index"/> was sent with 63 or more hex digits.</summary>
+    /// <remarks>execution-apis <c>eth_getProof</c> echoes such a key as 32 bytes and any other as a quantity.</remarks>
+    public bool IsFullWidth(int index) => _isFullWidth[index];
 
     public List<UInt256>.Enumerator GetEnumerator() => _keys.GetEnumerator();
 

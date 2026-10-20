@@ -158,7 +158,7 @@ public class ProofRpcModuleMetaTests
         AccountProofWithMeta result = _proofRpcModule.proof_getProofWithMeta(
             TestItem.AddressB, storageKeys, BlockParameter.Earliest).Data;
 
-        Assert.That(result.Proof.StorageProofs.Select(static p => p.Key), Is.EqualTo(new[] { "0x2", "0x1", "0x1" }));
+        Assert.That(result.Proof.StorageProofs.Select(static p => p.Key), Is.EqualTo(new byte[][] { [2], [1], [1] }));
     }
 
     [Test]
