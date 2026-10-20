@@ -21,6 +21,7 @@ namespace Nethermind.Network.P2P.Analyzers
         private readonly ILogger _logger;
         private readonly StringBuilder _builder = new();
 
+        private readonly Lock _disconnectsLock = new();
         private readonly ConcurrentDictionary<DisconnectCategory, int> _disconnectsA = new();
         private readonly ConcurrentDictionary<DisconnectCategory, int> _disconnectsB = new();
 
@@ -56,8 +57,12 @@ namespace Nethermind.Network.P2P.Analyzers
 
         private void TimerOnElapsed(object sender, ElapsedEventArgs e)
         {
-            ConcurrentDictionary<DisconnectCategory, int> localCopy = _disconnects;
-            _disconnects = ReferenceEquals(_disconnects, _disconnectsA) ? _disconnectsB : _disconnectsA;
+            ConcurrentDictionary<DisconnectCategory, int> localCopy;
+            lock (_disconnectsLock)
+            {
+                localCopy = _disconnects;
+                _disconnects = ReferenceEquals(_disconnects, _disconnectsA) ? _disconnectsB : _disconnectsA;
+            }
 
             _builder.AppendLine("Disconnect reasons:");
             foreach ((DisconnectCategory key, int value) in localCopy)
@@ -79,7 +84,10 @@ namespace Nethermind.Network.P2P.Analyzers
         public void ReportDisconnect(DisconnectReason reason, DisconnectType type, string? details)
         {
             Interlocked.Increment(ref _disconnectCount);
-            _disconnects.AddOrUpdate(new DisconnectCategory(reason, type), static _ => 1, static (_, i) => i + 1);
+            lock (_disconnectsLock)
+            {
+                _disconnects.AddOrUpdate(new DisconnectCategory(reason, type), static _ => 1, static (_, i) => i + 1);
+            }
 
             if (type == DisconnectType.Local && details is not null)
             {

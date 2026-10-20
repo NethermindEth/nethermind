@@ -3,8 +3,10 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.Linq;
 using System.Text.RegularExpressions;
 using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Logging;
 using Nethermind.Network.P2P.Analyzers;
 using Nethermind.Stats.Model;
@@ -23,6 +25,8 @@ namespace Nethermind.Network.Test.P2P
             private readonly FlushCapturingLogger _logger = new();
 
             public DisconnectsAnalyzer DisconnectsAnalyzer { get; }
+
+            public int FlushCount => _logger.FlushCount;
 
             public Context()
             {
@@ -47,12 +51,24 @@ namespace Nethermind.Network.Test.P2P
             {
                 // The analyzer double-buffers its counters. A lost clear makes a stale
                 // category appear again in every other flush. Watch more flushes to detect that.
+                WaitForMoreFlushes();
+                Assert.That(_logger.CountMatches(pattern), Is.EqualTo(times),
+                    () => $"a cleared category resurfaced in a later flush; got: {_logger.Dump()}");
+            }
+
+            public void ShouldReportTotal(int expected)
+            {
+                WaitForMoreFlushes();
+                Assert.That(_logger.TotalDisconnects, Is.EqualTo(expected),
+                    () => $"disconnect reports were lost or counted more than once; got: {_logger.Dump()}");
+            }
+
+            private void WaitForMoreFlushes()
+            {
                 int flushesSeen = _logger.FlushCount;
                 Func<bool> flushed = () => _logger.FlushCount >= flushesSeen + 4;
                 Assert.That(SpinWait.SpinUntil(flushed, WaitLimit) || flushed(), Is.True,
                     "flush timer stopped ticking");
-                Assert.That(_logger.CountMatches(pattern), Is.EqualTo(times),
-                    () => $"a cleared category resurfaced in a later flush; got: {_logger.Dump()}");
             }
 
             public void Dispose() => DisconnectsAnalyzer.Dispose();
@@ -62,6 +78,9 @@ namespace Nethermind.Network.Test.P2P
                 private readonly ConcurrentQueue<string> _flushes = new();
 
                 public int FlushCount => _flushes.Count;
+
+                public int TotalDisconnects => _flushes.Sum(flush => Regex.Matches(flush,
+                    @"(?:Local|Remote)\s+TooManyPeers\s+(\d+)\b").Sum(match => int.Parse(match.Groups[1].Value)));
 
                 // Assertions match the report's column format: Type PadRight(8), Reason
                 // PadRight(24), count PadLeft(4). A format change in DisconnectsAnalyzer
@@ -127,6 +146,31 @@ namespace Nethermind.Network.Test.P2P
         }
 
         [Test]
+        public async Task Report_during_flush_is_preserved()
+        {
+            using Context ctx = new();
+            using CancellationTokenSource timeout = new(WaitLimit);
+            int targetFlushes = ctx.FlushCount + 20;
+            Task<int>[] reporters = Enumerable.Range(0, 4).Select(_ => Task.Factory.StartNew(() =>
+            {
+                int reports = 0;
+                while (ctx.FlushCount < targetFlushes)
+                {
+                    timeout.Token.ThrowIfCancellationRequested();
+                    ctx.DisconnectsAnalyzer.ReportDisconnect(DisconnectReason.TooManyPeers, DisconnectType.Local, null);
+                    reports++;
+                }
+
+                return reports;
+            }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default)).ToArray();
+            ctx.TriggerFlushes();
+
+            int[] reportCounts = await Task.WhenAll(reporters);
+
+            ctx.ShouldReportTotal(reportCounts.Sum());
+        }
+
+        [Test]
         public void Will_clear_after_report()
         {
             using Context ctx = new();
@@ -134,9 +178,6 @@ namespace Nethermind.Network.Test.P2P
             ctx.TriggerFlushes();
             ctx.ShouldEventuallyReport(@"Local\s+TooManyPeers\s+1\b");
 
-            // Do not send a second report: it can race the flush's enumerate-then-clear
-            // window. A lost clear is visible on its own, because the stale count appears
-            // again in later flushes. The category must appear exactly one time.
             ctx.ShouldStayAt(@"Local\s+TooManyPeers\s+1\b", times: 1);
         }
     }
