@@ -312,6 +312,12 @@ class InventoryTests(unittest.TestCase):
         evm_only = selection(projects={"Nethermind.Evm.Test"}, run=self.run)
         self.assertAlmostEqual(self.inventory.project_share(evm_only), 0.3)
 
+    def test_write_filters_refuses_a_lane_that_is_not_a_plain_name(self):
+        lanes = self.inventory.lanes(self.add_only)
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaises(ValueError):
+                st.write_filters(Path(directory), {"../../escape|x": lanes["blockTest|sequential"]})
+
     def test_inventory_round_trips_through_gzip(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "inventory.json.gz"

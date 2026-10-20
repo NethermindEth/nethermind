@@ -44,8 +44,10 @@ jobs:
       - name: Restore the state
         run: |
           mkdir -p "$STATE"
+          # A fork can name its branch master, but only the base repository can start scheduled or dispatched runs.
           previous=$(gh run list -R "$GITHUB_REPOSITORY" --workflow test-selection.yml --branch master \
-            --status success -L 1 --json databaseId -q '.[0].databaseId')
+            --status success -L 20 --json databaseId,event \
+            -q '[.[] | select(.event == "schedule" or .event == "workflow_dispatch")][0].databaseId // empty')
           if [ -n "$previous" ]; then
             gh run download "$previous" -R "$GITHUB_REPOSITORY" -n test-selection-state -D "$STATE" || true
           fi
@@ -94,10 +96,13 @@ jobs:
           retention-days: 7
 
       # Each run supersedes the previous one; keep the newest two of each artifact so a broken run can fall back.
+      # Only artifacts of master runs in this repository count, so a fork's artifact of the same name is left alone.
       - name: Delete superseded artifacts
         run: |
           for name in test-selection-state test-selection-model; do
-            gh api --paginate "repos/$GITHUB_REPOSITORY/actions/artifacts?name=$name&per_page=100" \
-              -q '.artifacts | sort_by(.created_at) | reverse | .[2:][] | .id' |
+            gh api --paginate "repos/$GITHUB_REPOSITORY/actions/artifacts?name=$name&per_page=100" -q '.artifacts[]' |
+              jq -s -r '[.[] | select(.workflow_run.head_branch == "master"
+                  and .workflow_run.head_repository_id == .workflow_run.repository_id)]
+                | sort_by(.created_at) | reverse | .[2:][] | .id' |
               xargs -r -I{} gh api -X DELETE "repos/$GITHUB_REPOSITORY/actions/artifacts/{}"
           done

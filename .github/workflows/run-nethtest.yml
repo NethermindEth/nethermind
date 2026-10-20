@@ -372,8 +372,10 @@ jobs:
           printf '%s' "$MATRIX" > "$work/matrix.json"
           git fetch --no-tags --depth=1 origin "$BASE_SHA"
           git diff --name-only "$BASE_SHA" HEAD > "$work/changed.txt"
+          # A fork can name its branch master, but only the base repository can start scheduled or dispatched runs.
           model_run=$(gh run list -R "$GITHUB_REPOSITORY" --workflow test-selection.yml --branch master \
-            --status success -L 1 --json databaseId -q '.[0].databaseId')
+            --status success -L 20 --json databaseId,event \
+            -q '[.[] | select(.event == "schedule" or .event == "workflow_dispatch")][0].databaseId // empty')
           gh run download "$model_run" -R "$GITHUB_REPOSITORY" -n test-selection-model -D "$work/model"
           python3 scripts/ci/select_tests.py select-eest --model "$work/model/model.json.gz" \
             --inventory "$work/model/inventory.json.gz" --changed-files "$work/changed.txt" --run "$GITHUB_RUN_ID" \

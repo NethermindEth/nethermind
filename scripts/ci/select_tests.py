@@ -810,9 +810,14 @@ def model_problem(path: Path, min_history_days: int, max_age_hours: int) -> str 
     return None
 
 
+LANE = re.compile(r"\w+\|\w+")
+
+
 def write_filters(directory: Path, lanes: dict[str, LaneSelection]) -> None:
     directory.mkdir(parents=True, exist_ok=True)
     for lane, selection in lanes.items():
+        if not LANE.fullmatch(lane):
+            raise ValueError(f"invalid lane {lane!r}")
         if selection.forks:
             (directory / f"{lane.replace('|', '-')}.txt").write_text("\n".join(selection.filter_lines()) + "\n")
 

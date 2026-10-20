@@ -29,6 +29,8 @@ runs:
         EVENT: ${{ contains(github.event.pull_request.labels.*.name, 'ci-full') && 'ci-full' || github.event_name }}
         BASE_SHA: ${{ github.event.pull_request.base.sha }}
         RUN_ID: ${{ github.run_id }}
+        # A fork can name its branch master, but only the base repository can start scheduled or dispatched runs.
+        TRUSTED_RUN: '[.[] | select(.event == "schedule" or .event == "workflow_dispatch")][0].databaseId // empty'
       run: |
         work="$RUNNER_TEMP/test-selection"
         mkdir -p "$work/model"
@@ -40,7 +42,7 @@ runs:
             git fetch --no-tags --depth=1 origin "$BASE_SHA" || return 1
             git diff --name-only "$BASE_SHA" HEAD > "$work/changed.txt" || return 1
             model_run=$(gh run list -R "$GITHUB_REPOSITORY" --workflow test-selection.yml --branch master \
-              --status success -L 1 --json databaseId -q '.[0].databaseId') || return 1
+              --status success -L 20 --json databaseId,event -q "$TRUSTED_RUN") || return 1
             gh run download "$model_run" -R "$GITHUB_REPOSITORY" -n test-selection-model -D "$work/model" || return 1
           fi
           python3 scripts/ci/select_tests.py select-projects --model "$work/model/model.json.gz" \
