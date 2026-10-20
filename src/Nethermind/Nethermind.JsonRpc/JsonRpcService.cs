@@ -124,13 +124,27 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         IResultWrapper? resultWrapper = null;
         try
         {
-            JsonRpcErrorResponse? value = PrepareParameters(
-                request,
-                methodName,
-                method,
-                out object?[]? parameters,
-                out int parameterCount,
-                out bool returnParametersToPool);
+            JsonRpcErrorResponse? value;
+            object?[]? parameters;
+            int parameterCount;
+            bool returnParametersToPool;
+            try
+            {
+                value = PrepareParameters(
+                    request,
+                    methodName,
+                    method,
+                    out parameters,
+                    out parameterCount,
+                    out returnParametersToPool);
+            }
+            catch (Exception ex)
+            {
+                // Binding failures are answered inside; anything escaping is a node fault, not an invocation error.
+                returnImmediately = true;
+                return ReturnErrorResponse(request, ex);
+            }
+
             if (value is not null)
             {
                 returnImmediately = true;

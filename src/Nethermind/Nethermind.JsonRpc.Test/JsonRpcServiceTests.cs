@@ -517,6 +517,31 @@ public class JsonRpcServiceTests
         }
     }
 
+    [Test]
+    public void Returns_module_to_pool_once_and_internal_error_when_preparing_params_throws([Values("eth_getLogs", "eth_newFilter")] string method)
+    {
+        InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+        logger.IsTrace.Returns(true);
+        logger.IsError.Returns(true);
+        logger.When(static l => l.Trace(Arg.Is<string>(static text => text.StartsWith("Executing JSON RPC call"))))
+            .Do(static _ => throw new ArgumentException("log failed"));
+        _logManager = new OneLoggerLogManager(new ILogger(logger));
+
+        IRpcModulePool<IEthRpcModule> pool = Substitute.For<IRpcModulePool<IEthRpcModule>>();
+        IEthRpcModule rpcModule = Substitute.For<IEthRpcModule>();
+        pool.GetModule(Arg.Any<bool>()).Returns(rpcModule);
+
+        JsonRpcErrorResponse response = AssertJsonRpcError(TestRequestWithPool(pool, method, "{}"), ErrorCodes.InternalError);
+        response.Dispose();
+
+        using (Assert.EnterMultipleScope())
+        {
+            pool.Received(1).ReturnModule(rpcModule);
+            Assert.That(rpcModule.ReceivedCalls(), Is.Empty);
+            logger.Received(1).Error(Arg.Any<string>(), Arg.Any<ArgumentException>());
+        }
+    }
+
     // A streamed trace executes while the response is written, on the module's own overridable env; the module must
     // therefore stay rented until the response is disposed, or the next rental races it on that env.
     [Test]
