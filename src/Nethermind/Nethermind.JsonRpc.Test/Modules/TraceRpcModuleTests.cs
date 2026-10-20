@@ -609,9 +609,7 @@ public class TraceRpcModuleTests
         }
     }
 
-    // A failing replay is injected directly: one forced through a zero timeout depends on whether the replay rents a
-    // fresh timeout source, which starts cancelled, or a pooled one, whose cancellation is a timer callback that can
-    // land after the replay has finished.
+    // Not forced via Timeout = 0: a pooled timeout source is cancelled by a timer callback that may fire after the replay finishes.
     [Test]
     public void Trace_get_disposes_materialized_stream_when_replay_fails()
     {
