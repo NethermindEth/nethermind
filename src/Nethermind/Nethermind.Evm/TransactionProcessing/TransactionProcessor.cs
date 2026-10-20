@@ -323,8 +323,6 @@ namespace Nethermind.Evm.TransactionProcessing
 
             UInt256 effectiveGasPrice = CalculateEffectiveGasPrice(tx, spec.IsEip1559Enabled, header.BaseFeePerGas, out UInt256 opcodeGasPrice);
 
-            UpdateMetrics(opts, effectiveGasPrice);
-
             bool deleteCallerAccount = RecoverSenderIfNeeded(tx, spec, opts, effectiveGasPrice);
 
             _deferSenderDebit = true;
@@ -972,16 +970,6 @@ namespace Nethermind.Evm.TransactionProcessing
             Logger.Debug($"Delegation {authorizationTuple} is invalid with error: {error}");
 
         protected virtual IReleaseSpec GetSpec(BlockHeader header) => VirtualMachine.BlockExecutionContext.Spec;
-
-        private static void UpdateMetrics(ExecutionOptions opts, UInt256 effectiveGasPrice)
-        {
-            // Block production (BuildUp) is excluded: payload builds run concurrently with block import
-            // on the same process-wide gas aggregates, and the gauges describe imported blocks, not candidates.
-            if (opts is ExecutionOptions.Commit or ExecutionOptions.None)
-            {
-                Metrics.UpdateBlockGasPrice(effectiveGasPrice);
-            }
-        }
 
         /// <summary>
         /// Validates the transaction, in a static manner (i.e. without accessing state/storage).
