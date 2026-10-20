@@ -1512,7 +1512,7 @@ public partial class BeaconSyncOrchestratorTests
         orchestrator.PtcReader = (_, slot) => importer.Ptc(slot);
         orchestrator.ApiStateReader = apiStateReader;
         orchestrator.Initialize(importer, new ForkedSignedBeaconBlock.OfFulu(anchorBlock), anchorRoot);
-        rangeSync.VerifyAnchorMismatch = _ => Task.FromResult<bool?>(true);
+        rangeSync.VerifyBlockSignature = _ => Task.FromResult<bool?>(true);
         return new Harness(orchestrator, importer, engine, pool, router, statusHolder, timestamper, envelopePool);
     }
 

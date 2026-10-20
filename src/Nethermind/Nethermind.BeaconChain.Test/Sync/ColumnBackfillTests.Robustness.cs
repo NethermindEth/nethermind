@@ -108,7 +108,7 @@ public partial class ColumnBackfillTests
         public Task Start(CancellationToken token, params IBeaconSyncPeer[] peers)
         {
             StubPool pool = new(peers);
-            RangeSync rangeSync = new(pool, LogManager, Pool, Spec, Clock, Discovery);
+            RangeSync rangeSync = new(pool, LogManager, Pool, Spec, Clock, Discovery) { VerifyBlockSignature = _ => Task.FromResult<bool?>(true) };
             Backfill = new ColumnBackfill(Store, Pool, rangeSync, pool, Clock, Spec, Status, new DiscoveryNodeCustodySource(Discovery), LogManager)
             {
                 RetryDelay = TimeSpan.FromMilliseconds(50),

@@ -1,8 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
-using CkzgLib;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -139,24 +139,14 @@ public static class DataColumnSidecarVerifier
     {
         int count = commitments.Length;
 
-        using ArrayPoolSpan<byte> flatCommitments = new(count * Ckzg.BytesPerCommitment);
-        using ArrayPoolSpan<byte> flatProofs = new(count * Ckzg.BytesPerProof);
-        using ArrayPoolSpan<byte> flatCells = new(count * Ckzg.BytesPerCell);
         using ArrayPoolSpan<ulong> cellIndices = new(count);
-
-        for (int i = 0; i < count; i++)
-        {
-            commitments[i].AsSpan().CopyTo(flatCommitments.Slice(i * Ckzg.BytesPerCommitment, Ckzg.BytesPerCommitment));
-            proofs[i].AsSpan().CopyTo(flatProofs.Slice(i * Ckzg.BytesPerProof, Ckzg.BytesPerProof));
-            cells[i].AsSpan().CopyTo(flatCells.Slice(i * Ckzg.BytesPerCell, Ckzg.BytesPerCell));
-            // The column index also represents the cell index for every row in this sidecar.
-            cellIndices[i] = columnIndex;
-        }
+        cellIndices.Slice(0, count).Fill(columnIndex);
 
         try
         {
             DasKzg.EnsureInitialized();
-            return KzgPolynomialCommitments.VerifyCellProofBatch(flatCommitments, cellIndices, flatCells, flatProofs, count);
+            return KzgPolynomialCommitments.VerifyCellProofBatch(MemoryMarshal.AsBytes(commitments.AsSpan()), cellIndices,
+                MemoryMarshal.AsBytes(cells.AsSpan()), MemoryMarshal.AsBytes(proofs.AsSpan()), count);
         }
         catch (Exception e) when (e is ArgumentException or ApplicationException or InsufficientMemoryException)
         {

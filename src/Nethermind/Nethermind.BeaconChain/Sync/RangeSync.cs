@@ -54,8 +54,8 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
     /// <summary>The wall slot of a peer's first block that missed an anchor, kept across rounds; see <see cref="CountAnchorMismatches"/>.</summary>
     private AnchorMiss? _firstAnchorMiss;
 
-    /// <summary>Verifies an off-anchor block against cached proposer keys; a missing verifier or key cannot establish an anchor mismatch.</summary>
-    internal Func<ForkedSignedBeaconBlock, Task<bool?>>? VerifyAnchorMismatch { get; set; }
+    /// <summary>Verifies a block against cached proposer keys; null means its signature cannot yet be judged.</summary>
+    internal Func<ForkedSignedBeaconBlock, Task<bool?>>? VerifyBlockSignature { get; set; }
 
     private sealed record AnchorMiss(Hash256 Anchor, string PeerId, ulong Since);
 
@@ -103,7 +103,16 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
             ulong target = targetHeadSlot();
             // BeaconBlocksByRange: linkage checks skipped slots before the earliest retained block.
             IReadOnlyList<IBeaconSyncPeer> offered = ServingFrom(peerPool.GetBestPeers(nextSlot), nextSlot, target, nearestFallback: true);
-            IReadOnlyList<IBeaconSyncPeer> peers = behindTheirWord.Count > 0 ? [.. offered.Where(peer => !behindTheirWord.Contains(peer.Id))] : offered;
+            IReadOnlyList<IBeaconSyncPeer> peers = offered;
+            if (behindTheirWord.Count > 0)
+            {
+                List<IBeaconSyncPeer> eligible = [];
+                foreach (IBeaconSyncPeer candidate in offered)
+                {
+                    if (!behindTheirWord.Contains(candidate.Id)) eligible.Add(candidate);
+                }
+                peers = eligible;
+            }
             if (peers.Count == 0)
             {
                 // Only contradicted peers remain, so the next round asks them again.
@@ -136,7 +145,7 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
             (IReadOnlyList<ForkedSignedBeaconBlock> Blocks, Hash256[] Roots, bool Linked)? batch = await FetchAndVerifyBatchAsync(peer, from, count, lastRoot, fallback is not null || skippedOnWordOf is not null || from != lastSlot + 1 || lastSupplier != peer.Id, token, superseded);
             if (batch is { Linked: false } && fallback is not null)
             {
-                bool? signed = VerifyAnchorMismatch is { } verify ? await verify(batch.Value.Blocks[0]) : null;
+                bool? signed = VerifyBlockSignature is { } verify ? await verify(batch.Value.Blocks[0]) : null;
                 superseded.ThrowIfCancellationRequested();
                 token.ThrowIfCancellationRequested();
                 if (signed != true)
@@ -445,25 +454,47 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
     private List<(IBeaconSyncPeer Peer, ulong[] Columns)> AssignBatchColumns(List<ulong> missing, ulong batchStartSlot, ulong startSlot, ulong lastSlot, HashSet<string>? excluded, bool boundPerPeer)
     {
         IReadOnlyList<IBeaconSyncPeer> reaching = peerPool.GetBestPeers(startSlot);
-        IBeaconSyncPeer[] custodians = [.. reaching.Where(peer => IsCandidate(peer, missing))];
-        IReadOnlyList<IBeaconSyncPeer> serving = custodians.Length > 0 ? ServingFrom(custodians, startSlot, lastSlot) : [];
+        List<IBeaconSyncPeer> custodians = [];
+        foreach (IBeaconSyncPeer peer in reaching)
+        {
+            if (IsCandidate(peer, missing)) custodians.Add(peer);
+        }
+        IReadOnlyList<IBeaconSyncPeer> serving = custodians.Count > 0 ? ServingFrom(custodians, startSlot, lastSlot) : [];
         List<(IBeaconSyncPeer Peer, ulong[] Columns)> requests = Assign(missing, serving, MaxColumnPeersPerBatch);
-        List<ulong> uncovered = [.. missing.Where(column => !serving.Any(peer => peer.Custody.Custodies(column)))];
+        List<ulong> uncovered = [];
+        foreach (ulong column in missing)
+        {
+            bool covered = false;
+            foreach (IBeaconSyncPeer peer in serving)
+            {
+                if (peer.Custody.Custodies(column))
+                {
+                    covered = true;
+                    break;
+                }
+            }
+            if (!covered) uncovered.Add(column);
+        }
         if (uncovered.Count > 0 && batchStartSlot < startSlot && requests.Count < MaxColumnPeersPerBatch)
         {
             IReadOnlyList<IBeaconSyncPeer> reachingBatchStart = peerPool.GetBestPeers(batchStartSlot);
-            HashSet<string> considered = [.. custodians.Select(static peer => peer.Id)];
-            IBeaconSyncPeer[] behind = [.. reachingBatchStart.Where(peer => !considered.Contains(peer.Id) && IsCandidate(peer, uncovered))];
-            if (behind.Length > 0)
+            HashSet<string> considered = [];
+            foreach (IBeaconSyncPeer peer in custodians) considered.Add(peer.Id);
+            List<IBeaconSyncPeer> behind = [];
+            foreach (IBeaconSyncPeer peer in reachingBatchStart)
+            {
+                if (!considered.Contains(peer.Id) && IsCandidate(peer, uncovered)) behind.Add(peer);
+            }
+            if (behind.Count > 0)
             {
                 requests.AddRange(Assign(uncovered, ServingFrom(behind, startSlot, lastSlot), MaxColumnPeersPerBatch - requests.Count));
             }
 
-            custodians = [.. custodians, .. behind];
+            custodians.AddRange(behind);
             reaching = reachingBatchStart;
         }
 
-        if (custodians.Length == 0)
+        if (custodians.Count == 0)
         {
             LogNoCustodian(missing, reaching.Count);
         }
@@ -491,10 +522,10 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
     /// <param name="nearestFallback">Keeps only the lowest earliest slot within the fallback bound.</param>
     private IReadOnlyList<IBeaconSyncPeer> ServingFrom(IReadOnlyList<IBeaconSyncPeer> peers, ulong startSlot, ulong endSlot, bool nearestFallback = false)
     {
-        IBeaconSyncPeer[] covering = [.. peers.Where(p => p.EarliestAvailableSlot <= startSlot)];
-        if (covering.Length > 0)
+        IReadOnlyList<IBeaconSyncPeer> covering = AvailableFrom(peers, startSlot);
+        if (covering.Count > 0)
         {
-            if (covering.Length < peers.Count && _logger.IsDebug) _logger.Debug($"Left out {peers.Count - covering.Length} of {peers.Count} sync peers whose earliest available slot is after {startSlot}");
+            if (covering.Count < peers.Count && _logger.IsDebug) _logger.Debug($"Left out {peers.Count - covering.Count} of {peers.Count} sync peers whose earliest available slot is after {startSlot}");
             return covering;
         }
 
@@ -506,9 +537,38 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
             }
         }
 
-        IBeaconSyncPeer[] overlapping = [.. peers.Where(p => p.EarliestAvailableSlot <= endSlot)];
-        if (_logger.IsDebug) _logger.Debug($"No sync peer serves from {startSlot}; {overlapping.Length} of {peers.Count} serve from at or before {endSlot}");
+        IReadOnlyList<IBeaconSyncPeer> overlapping = AvailableFrom(peers, endSlot);
+        if (_logger.IsDebug) _logger.Debug($"No sync peer serves from {startSlot}; {overlapping.Count} of {peers.Count} serve from at or before {endSlot}");
         return overlapping;
+    }
+
+    private static IReadOnlyList<IBeaconSyncPeer> AvailableFrom(IReadOnlyList<IBeaconSyncPeer> peers, ulong slot)
+    {
+        List<IBeaconSyncPeer>? available = null;
+        for (int i = 0; i < peers.Count; i++)
+        {
+            if (peers[i].EarliestAvailableSlot <= slot)
+            {
+                available?.Add(peers[i]);
+            }
+            else if (available is null)
+            {
+                available = new(peers.Count - 1);
+                for (int j = 0; j < i; j++) available.Add(peers[j]);
+            }
+        }
+        return available is null ? peers : available;
+    }
+
+    private static ulong[] CustodiedColumns(IReadOnlyList<ulong> missing, PeerColumnCustody custody)
+    {
+        List<ulong> columns = [];
+        for (int i = 0; i < missing.Count; i++)
+        {
+            ulong column = missing[i];
+            if (custody.Custodies(column)) columns.Add(column);
+        }
+        return [.. columns];
     }
 
     private void LogNoCustodian(List<ulong> missing, int connectedPeers)
@@ -692,7 +752,7 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
         for (int i = 0; i < asked.Count; i++)
         {
             PeerColumnCustody peerCustody = asked[i].Custody;
-            responses[i] = RequestColumnsByRootAsync(asked[i], blockRoot, [.. missing.Where(peerCustody.Custodies)], static (peer, ids, t) => peer.RequestDataColumnSidecarsByRootAsync(ids, t), token);
+            responses[i] = RequestColumnsByRootAsync(asked[i], blockRoot, CustodiedColumns(missing, peerCustody), static (peer, ids, t) => peer.RequestDataColumnSidecarsByRootAsync(ids, t), token);
         }
 
         await Task.WhenAll(responses);
@@ -773,14 +833,18 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
         }
 
         // A by-root request names the block, so a custodian whose last status head is behind it may still serve it (fulu/p2p-interface.md DataColumnSidecarsByRoot).
-        IBeaconSyncPeer[] custodians = [.. peerPool.GetBestPeers(0).Where(p => p.Custody.CountCustodied(missing) > 0)];
+        List<IBeaconSyncPeer> custodians = [];
+        foreach (IBeaconSyncPeer peer in peerPool.GetBestPeers(0))
+        {
+            if (peer.Custody.CountCustodied(missing) > 0) custodians.Add(peer);
+        }
         List<IBeaconSyncPeer> asked = rotation.Take(custodians, MaxByRootColumnPeers);
         ulong[][] requested = new ulong[asked.Count][];
         Task<IReadOnlyList<DataColumnSidecarGloas>?>[] responses = new Task<IReadOnlyList<DataColumnSidecarGloas>?>[asked.Count];
         for (int i = 0; i < asked.Count; i++)
         {
             PeerColumnCustody peerCustody = asked[i].Custody;
-            requested[i] = [.. missing.Where(peerCustody.Custodies)];
+            requested[i] = CustodiedColumns(missing, peerCustody);
             responses[i] = RequestColumnsByRootAsync(asked[i], blockRoot, requested[i], static (peer, ids, t) => peer.RequestGloasDataColumnSidecarsByRootAsync(ids, t), token);
         }
 

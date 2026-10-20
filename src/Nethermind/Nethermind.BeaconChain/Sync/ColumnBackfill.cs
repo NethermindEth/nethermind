@@ -364,6 +364,14 @@ public sealed class ColumnBackfill(
                 return false;
             }
 
+            if (!await HasValidSignatureAsync(block))
+            {
+                if (!await FetchByRootAsync(parent, token) || !store.TryGetForkedBlock(parent, out block))
+                {
+                    return false;
+                }
+            }
+
             if (block.Slot < lowest)
             {
                 break;
@@ -504,7 +512,7 @@ public sealed class ColumnBackfill(
             ulong lowestLinked = until;
             while (byRoot.Remove(parent, out ForkedSignedBeaconBlock? next))
             {
-                if (!TryStore(parent, next))
+                if (!await TryStoreAsync(parent, next))
                 {
                     return;
                 }
@@ -570,7 +578,8 @@ public sealed class ColumnBackfill(
 
             if (reply.Count == 1 && reply[0].ComputeMessageRoot() == root)
             {
-                return TryStore(root, reply[0]);
+                if (await TryStoreAsync(root, reply[0])) return true;
+                continue;
             }
 
             if (reply.Count > 0)
@@ -582,8 +591,14 @@ public sealed class ColumnBackfill(
         return false;
     }
 
-    private bool TryStore(Hash256 root, ForkedSignedBeaconBlock block)
+    private async Task<bool> HasValidSignatureAsync(ForkedSignedBeaconBlock block) =>
+        // The genesis block has no proposer signature; its message root is authenticated by the linked child.
+        block.Slot == 0 || rangeSync.VerifyBlockSignature is { } verify && await verify(block) == true;
+
+    private async Task<bool> TryStoreAsync(Hash256 root, ForkedSignedBeaconBlock block)
     {
+        if (!await HasValidSignatureAsync(block)) return false;
+
         try
         {
             store.PutForkedBlock(root, block);

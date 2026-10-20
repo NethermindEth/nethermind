@@ -301,6 +301,44 @@ public class IdentifyTests
         }
     }
 
+    [Test]
+    public async Task A_partial_identify_push_preserves_omitted_fields([Values] bool protocolsOnly)
+    {
+        Identity remote = new(privateKey: null, KeyType.Secp256K1);
+        PeerStore peerStore = new();
+        IdentifyProtocolSettings settings = new() { PeerRecordsVerificationPolicy = PeerRecordsVerificationPolicy.RequireCorrect };
+        IdentifyMessage original = AnswerOf(remote, remote, 1, "/stored");
+        BoundedIdentifyProtocol.Apply(original, SessionWith(remote), settings, peerStore);
+        IdentifyMessage update = new();
+        if (protocolsOnly) update.Protocols.Add("/pushed");
+        else update.AgentVersion = "updated-agent";
+        ISessionContext context = Substitute.For<ISessionContext>();
+        context.State.Returns(SessionWith(remote));
+        Channel channel = new();
+
+        Task listen = new BoundedIdentifyPushProtocol(peerStore, settings).ListenAsync(channel, context);
+        await channel.Reverse.WriteSizeAndProtobufAsync(update).AsTask().WaitAsync(TimeSpan.FromSeconds(10));
+        await listen.WaitAsync(TimeSpan.FromSeconds(10));
+
+        PeerStore.PeerInfo stored = peerStore.GetPeerInfo(remote.PeerId);
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(stored.SupportedProtocols, Is.EqualTo(new[] { protocolsOnly ? "/pushed" : "/stored" }));
+        Assert.That(stored.SignedPeerRecord, Is.EqualTo(original.SignedPeerRecord));
+        Assert.That(stored.Seq, Is.EqualTo(1UL));
+    }
+
+    [Test]
+    public void An_identify_push_still_rejects_a_supplied_foreign_key_or_invalid_record([Values] bool foreignKey)
+    {
+        Identity remote = new(privateKey: null, KeyType.Secp256K1);
+        IdentifyMessage update = new();
+        if (foreignKey) update.PublicKey = new Identity(privateKey: null, KeyType.Secp256K1).PublicKey.ToByteString();
+        else update.SignedPeerRecord = ByteString.Empty;
+        IdentifyProtocolSettings settings = new() { PeerRecordsVerificationPolicy = PeerRecordsVerificationPolicy.RequireCorrect };
+
+        Assert.Throws<PeerConnectionException>(() => BoundedIdentifyProtocol.Apply(update, SessionWith(remote), settings, new PeerStore(), partial: true));
+    }
+
     /// <summary>A read of declared length 0 takes everything pending, so an answer declaring none must be refused before any of the body is read.</summary>
     [TestCase(new byte[] { 0x00 })]
     // The longest zero encoding the library varint reader accepts: it reads at most five bytes for a length.

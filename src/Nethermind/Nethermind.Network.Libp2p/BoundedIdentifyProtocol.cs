@@ -51,35 +51,41 @@ public sealed class BoundedIdentifyProtocol(IProtocolStackSettings stack, PeerSt
 
     public Task ListenAsync(IChannel downChannel, ISessionContext context) => ((ISessionListenerProtocol)_identify).ListenAsync(downChannel, context);
 
-    internal static string? Apply(IdentifyMessage message, Nethermind.Libp2p.Core.State remote, IdentifyProtocolSettings settings, PeerStore peerStore)
+    internal static string? Apply(IdentifyMessage message, Nethermind.Libp2p.Core.State remote, IdentifyProtocolSettings settings, PeerStore peerStore, bool partial = false)
     {
         PublicKey remoteKey = remote.RemotePublicKey ?? throw new PeerConnectionException("Identify before the remote key is authenticated");
         PeerId remotePeerId = remote.RemotePeerId ?? throw new PeerConnectionException("Identify before the remote peer id is known");
-        if (remoteKey.ToByteString() != message.PublicKey)
+        if ((!partial || message.HasPublicKey) && remoteKey.ToByteString() != message.PublicKey)
         {
             throw new PeerConnectionException("Malformed peer identity: the remote public key corresponds to a different peer id");
         }
 
-        bool verified;
-        ulong seq;
-        try
+        bool verified = false;
+        ulong seq = 0;
+        if (!partial || message.HasSignedPeerRecord)
         {
-            verified = SigningHelper.VerifyPeerRecord(message.SignedPeerRecord, remoteKey, out seq);
-        }
-        catch (InvalidProtocolBufferException)
-        {
-            // A record that does not parse is an unverified one, as in the library's identify dial.
-            verified = false;
-            seq = 0;
-        }
+            try
+            {
+                verified = SigningHelper.VerifyPeerRecord(message.SignedPeerRecord, remoteKey, out seq);
+            }
+            catch (InvalidProtocolBufferException)
+            {
+                // A record that does not parse is an unverified one, as in the library's identify dial.
+                verified = false;
+                seq = 0;
+            }
 
-        if (!verified && settings.PeerRecordsVerificationPolicy == PeerRecordsVerificationPolicy.RequireCorrect)
-        {
-            throw new PeerConnectionException("Malformed peer identity: peer record signature is not valid");
+            if (!verified && settings.PeerRecordsVerificationPolicy == PeerRecordsVerificationPolicy.RequireCorrect)
+            {
+                throw new PeerConnectionException("Malformed peer identity: peer record signature is not valid");
+            }
         }
 
         PeerStore.PeerInfo peerInfo = peerStore.GetPeerInfo(remotePeerId);
-        peerInfo.SupportedProtocols = StoredProtocols(message.Protocols);
+        if (!partial || message.Protocols.Count > 0)
+        {
+            peerInfo.SupportedProtocols = StoredProtocols(message.Protocols);
+        }
         // Pubsub peer exchange hands out the stored record, so an unverified one is never stored.
         if (verified && !(peerInfo.Seq >= seq))
         {

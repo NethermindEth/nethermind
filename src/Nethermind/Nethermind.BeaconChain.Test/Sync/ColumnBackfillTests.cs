@@ -28,6 +28,75 @@ public partial class ColumnBackfillTests
     private const ulong AnchorSlot = 4;
     private const ulong HeadSlot = 5;
 
+    public enum ForgedHistorySource { Range, Root, Stored }
+
+    [Test]
+    public async Task Historical_blocks_wait_until_the_proposer_key_is_available(CancellationToken token)
+    {
+        await using Fixture fixture = Fixture.Create();
+        TaskCompletionSource checkedSignature = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        int known = 0;
+        fixture.VerifyBlockSignature = _ =>
+        {
+            bool? result = Volatile.Read(ref known) == 0 ? null : true;
+            checkedSignature.TrySetResult();
+            return Task.FromResult(result);
+        };
+        StubPeer peer = fixture.Peer("honest");
+
+        Task run = fixture.StartBackfill(token, peer);
+        await checkedSignature.Task.WaitAsync(token);
+        Assert.That(fixture.Store.HasBlock(fixture.Roots[3]), Is.False);
+        Assert.That(fixture.Backfill.CompleteFrom, Is.Not.EqualTo(0UL));
+        Volatile.Write(ref known, 1);
+        await fixture.UntilFloorAsync(0, token);
+        await run.WaitAsync(token);
+        Assert.That(peer.Failures, Is.Zero);
+    }
+
+    [Test]
+    public async Task A_forged_historical_signature_is_replaced_before_honest_columns_are_checked([Values] ForgedHistorySource source, CancellationToken token)
+    {
+        await using Fixture fixture = Fixture.Create();
+        StubPeer honest = fixture.Peer("honest");
+        IReadOnlyList<ForkedSignedBeaconBlock> chain = await honest.RequestBlocksByRangeAsync(0, AnchorSlot, token);
+        ForkedSignedBeaconBlock.OfFulu original = (ForkedSignedBeaconBlock.OfFulu)chain.Single(b => b.Slot == 1);
+        ForkedSignedBeaconBlock forged = new ForkedSignedBeaconBlock.OfFulu(new SignedBeaconBlock { Message = original.Block.Message, Signature = default });
+        Assert.That(forged.ComputeMessageRoot(), Is.EqualTo(fixture.Roots[1]));
+        Assert.That(original.Block.Signature, Is.Not.EqualTo(default(BlsSignature)));
+        if (source is ForgedHistorySource.Stored or ForgedHistorySource.Root)
+        {
+            foreach (ForkedSignedBeaconBlock block in chain)
+            {
+                if (source == ForgedHistorySource.Root && block.Slot == 1) continue;
+                fixture.Store.PutForkedBlock(block.ComputeMessageRoot(), block.Slot == 1 ? forged : block);
+            }
+        }
+        int forgedReplies = 0;
+        StubPeer malicious = new("malicious", HeadSlot,
+            (start, count) => source == ForgedHistorySource.Root ? [] : [.. chain.Where(b => b.Slot >= start && b.Slot < start + count).Select(b => b.Slot == 1 ? forged : b)],
+            blockRootHandler: roots =>
+            {
+                if (roots.Contains(fixture.Roots[1])) Interlocked.Increment(ref forgedReplies);
+                return [.. chain.Where(b => roots.Contains(b.ComputeMessageRoot())).Select(b => b.Slot == 1 ? forged : b)];
+            });
+        if (source == ForgedHistorySource.Root)
+        {
+            honest = fixture.Peer("honest-root", serveRanges: false);
+        }
+
+        Task run = source == ForgedHistorySource.Root ? fixture.StartBackfill(token, honest, malicious) : fixture.StartBackfill(token, malicious, honest);
+        await fixture.UntilFloorAsync(0, token);
+        await run.WaitAsync(token);
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(fixture.Store.TryGetForkedBlock(fixture.Roots[1], out ForkedSignedBeaconBlock? stored), Is.True);
+        Assert.That(((ForkedSignedBeaconBlock.OfFulu)stored!).Block.Signature, Is.EqualTo(original.Block.Signature));
+        Assert.That(fixture.Sampled.All(column => fixture.Store.HasDataColumnRecord(fixture.Roots[1], column)), Is.True);
+        Assert.That(honest.Failures, Is.Zero);
+        if (source == ForgedHistorySource.Root) Assert.That(forgedReplies, Is.GreaterThan(0));
+    }
+
     [Test]
     public async Task Blocks_and_sampled_columns_below_the_anchor_are_stored_and_the_floor_reaches_the_window_start(CancellationToken token)
     {
@@ -293,7 +362,8 @@ public partial class ColumnBackfillTests
             blockRootHandler: roots => [.. chain.Where(b => roots.Contains(b.ComputeMessageRoot()))]);
         StubPool peers = new(peer);
         BeaconChainStatusHolder status = new(spec, time) { CurrentStatus = new StatusMessageV2 { ForkDigest = new byte[4], FinalizedRoot = childRoot, HeadRoot = childRoot, HeadSlot = child.Message.Slot } };
-        ColumnBackfill backfill = new(store, pool, new RangeSync(peers, LimboLogs.Instance, pool, spec, clock, discovery), peers, clock, spec, status, new DiscoveryNodeCustodySource(discovery), LimboLogs.Instance)
+        RangeSync rangeSync = new(peers, LimboLogs.Instance, pool, spec, clock, discovery) { VerifyBlockSignature = _ => Task.FromResult<bool?>(true) };
+        ColumnBackfill backfill = new(store, pool, rangeSync, peers, clock, spec, status, new DiscoveryNodeCustodySource(discovery), LimboLogs.Instance)
         {
             RetryDelay = TimeSpan.FromMilliseconds(50),
             WindowPause = TimeSpan.FromMilliseconds(1),
@@ -403,6 +473,7 @@ public partial class ColumnBackfillTests
         public ConcurrentDictionary<Hash256, byte> WithheldRoots { get; } = [];
         public List<Hash256> RequestedRoots { get; } = [];
         public Action? OnColumnsRequested { get; set; }
+        public Func<ForkedSignedBeaconBlock, Task<bool?>>? VerifyBlockSignature { get; set; }
         public IReadOnlyList<StubPeer> Peers => _peers;
 
         public static Fixture Create(ILogManager? logManager = null, ColumnStoreWriter? storeWriter = null)
@@ -447,12 +518,12 @@ public partial class ColumnBackfillTests
             SetHead(Clock.CurrentSlot - 1);
         }
 
-        public StubPeer Peer(string id)
+        public StubPeer Peer(string id, bool serveRanges = true)
         {
             StubPeer peer = new(
                 id,
                 HeadSlot,
-                (start, count) => [.. Roots.Where(root => _blocksByRoot[root].Slot >= start && _blocksByRoot[root].Slot < start + count).Select(root => _blocksByRoot[root])],
+                (start, count) => serveRanges ? [.. Roots.Where(root => _blocksByRoot[root].Slot >= start && _blocksByRoot[root].Slot < start + count).Select(root => _blocksByRoot[root])] : [],
                 rootHandler: identifiers =>
                 {
                     OnColumnsRequested?.Invoke();
@@ -473,7 +544,12 @@ public partial class ColumnBackfillTests
         public Task StartBackfill(TimeSpan retryDelay, CancellationToken token, params StubPeer[] peers)
         {
             StubPool pool = new(peers);
-            RangeSync rangeSync = new(pool, LogManager, Pool, _chain.Spec, Clock, _discovery);
+            RangeSync rangeSync = new(pool, LogManager, Pool, _chain.Spec, Clock, _discovery)
+            {
+                VerifyBlockSignature = VerifyBlockSignature ?? (block => Task.FromResult<bool?>(
+                    block is ForkedSignedBeaconBlock.OfFulu fulu && _blocksByRoot.TryGetValue(block.ComputeMessageRoot(), out ForkedSignedBeaconBlock? expected)
+                    && fulu.Block.Signature == ((ForkedSignedBeaconBlock.OfFulu)expected).Block.Signature)),
+            };
             Backfill = new ColumnBackfill(Store, Pool, rangeSync, pool, Clock, _chain.Spec, Status, new DiscoveryNodeCustodySource(_discovery), LogManager)
             {
                 RetryDelay = retryDelay,

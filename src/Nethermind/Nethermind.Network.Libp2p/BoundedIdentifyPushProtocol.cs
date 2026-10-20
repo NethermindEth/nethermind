@@ -21,7 +21,7 @@ public sealed class BoundedIdentifyPushProtocol(PeerStore peerStore, IdentifyPro
         IdentifyMessage message = await BoundedIdentifyProtocol.ReadMessageAsync(downChannel);
         if (context.State.RemotePeerId is { } remotePeerId && peerStore.TryGetPeerInfo(remotePeerId, out _))
         {
-            BoundedIdentifyProtocol.Apply(message, context.State, settings ?? new IdentifyProtocolSettings(), peerStore);
+            BoundedIdentifyProtocol.Apply(message, context.State, settings ?? new IdentifyProtocolSettings(), peerStore, partial: true);
         }
     }
 }

@@ -22,6 +22,49 @@ public class CheckpointSyncRetryTests
 
     private static readonly TimeSpan RunBound = TimeSpan.FromSeconds(60);
 
+    [Test]
+    public async Task Failed_status_responses_dispose_their_content_before_retrying(
+        [Values(HttpStatusCode.TooManyRequests, HttpStatusCode.ServiceUnavailable, HttpStatusCode.NotFound)] HttpStatusCode status)
+    {
+        TrackingContent content = new();
+        using HttpClient client = new(new ResponseHandler(new HttpResponseMessage(status) { Content = content }));
+
+        HttpRequestException error = (await Assert.ThrowsAsync<HttpRequestException>(() =>
+            CheckpointSync.GetOctetStreamAsync(client, "http://checkpoint.test/state", CancellationToken.None)))!;
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(error.StatusCode, Is.EqualTo(status));
+        Assert.That(content.Disposed, Is.True);
+    }
+
+    [Test]
+    public async Task A_successful_response_transfers_content_ownership_to_the_caller()
+    {
+        TrackingContent content = new();
+        using HttpClient client = new(new ResponseHandler(new HttpResponseMessage(HttpStatusCode.OK) { Content = content }));
+
+        HttpResponseMessage response = await CheckpointSync.GetOctetStreamAsync(client, "http://checkpoint.test/state", CancellationToken.None);
+        Assert.That(content.Disposed, Is.False);
+        response.Dispose();
+        Assert.That(content.Disposed, Is.True);
+    }
+
+    private sealed class ResponseHandler(HttpResponseMessage response) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) => Task.FromResult(response);
+    }
+
+    private sealed class TrackingContent() : ByteArrayContent([])
+    {
+        public bool Disposed { get; private set; }
+
+        protected override void Dispose(bool disposing)
+        {
+            Disposed = true;
+            base.Dispose(disposing);
+        }
+    }
+
     public enum DownloadFailure
     {
         StateDrop,

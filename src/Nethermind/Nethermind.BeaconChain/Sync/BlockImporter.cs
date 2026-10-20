@@ -715,7 +715,7 @@ public sealed class BlockImporter : IBlockImporter
         return BlockImportResult.Imported;
     }
 
-    /// <summary>Checks a range anchor mismatch against the cached proposer key without reading mutable fork-choice state.</summary>
+    /// <summary>Checks a block signature against the cached proposer key without reading mutable fork-choice state.</summary>
     /// <returns>Null when the domain or that key is not known, so the signature cannot be judged.</returns>
     internal bool? VerifyCachedProposerSignature(ForkedSignedBeaconBlock block) => block switch
     {

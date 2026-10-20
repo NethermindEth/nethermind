@@ -369,7 +369,7 @@ public class RangeSyncPeerSelectionTests
         StubPeer behind = new("behind", AnchorSlot, (start, count) => [.. chainBlocks.Where(b => b.Slot >= start && b.Slot < start + count)]);
         RangeSync sync = new(new OfferingPool(behind), LimboLogs.Instance, new DataColumnSidecarPool(), BeaconChainSpec.Mainnet, ClockAtGenesis(BeaconChainSpec.Mainnet));
         bool rejected = false;
-        sync.VerifyAnchorMismatch = _ => Task.FromResult<bool?>(true);
+        sync.VerifyBlockSignature = _ => Task.FromResult<bool?>(true);
         RangeSync.AnchorFallback fallback = new(anchorRoot, AnchorSlot, () => rejected = true);
 
         List<ForkedSignedBeaconBlock> yielded = await RangeSyncTests.CollectAsync(sync.Run(Keccak.Compute("a held block off the chain"), heldSlot, () => blockAfterGap, token, fallback));
@@ -403,7 +403,7 @@ public class RangeSyncPeerSelectionTests
         })];
         RangeSync sync = new(new OfferingPool(peers), LimboLogs.Instance, new DataColumnSidecarPool(), BeaconChainSpec.Mainnet, ClockAtGenesis(BeaconChainSpec.Mainnet));
         bool rejected = false;
-        sync.VerifyAnchorMismatch = _ => Task.FromResult(signatureValid);
+        sync.VerifyBlockSignature = _ => Task.FromResult(signatureValid);
         RangeSync.AnchorFallback fallback = new(finalizedRoot, AnchorSlot, () => rejected = true, RequiredMismatches: 2);
 
         List<ForkedSignedBeaconBlock> yielded = await RangeSyncTests.CollectAsync(sync.Run(chainBlocks[tipSlot - AnchorSlot - 1].ComputeMessageRoot(), tipSlot, () => targetSlot, token, fallback));
@@ -427,7 +427,7 @@ public class RangeSyncPeerSelectionTests
         StubPeer liar = new("liar", targetSlot, (_, _) => []);
         RangeSync sync = new(new OfferingPool(honest, liar), LimboLogs.Instance, new DataColumnSidecarPool(), BeaconChainSpec.Mainnet, ClockAtGenesis(BeaconChainSpec.Mainnet))
         {
-            VerifyAnchorMismatch = _ => Task.FromResult<bool?>(true),
+            VerifyBlockSignature = _ => Task.FromResult<bool?>(true),
         };
         bool rejected = false;
         RangeSync.AnchorFallback fallback = new(finalizedRoot, AnchorSlot, () => rejected = true);
@@ -454,7 +454,7 @@ public class RangeSyncPeerSelectionTests
         StubPeer honest = new("honest", targetSlot, Serve);
         RangeSync sync = new(new OfferingPool(liar, honest), LimboLogs.Instance, new DataColumnSidecarPool(), BeaconChainSpec.Mainnet, ClockAtGenesis(BeaconChainSpec.Mainnet));
         bool rejected = false;
-        sync.VerifyAnchorMismatch = _ => Task.FromResult<bool?>(true);
+        sync.VerifyBlockSignature = _ => Task.FromResult<bool?>(true);
         RangeSync.AnchorFallback fallback = new(finalizedRoot, AnchorSlot, () => rejected = true, requiredMismatches);
 
         List<ForkedSignedBeaconBlock> yielded = await RangeSyncTests.CollectAsync(sync.Run(chainBlocks[tipSlot - AnchorSlot - 1].ComputeMessageRoot(), tipSlot, () => targetSlot, token, fallback));
@@ -478,7 +478,7 @@ public class RangeSyncPeerSelectionTests
         StubPeer pruned = new("pruned", targetSlot, (start, count) => [.. chainBlocks.Where(b => b.Slot >= start && b.Slot < start + count)], earliestAvailableSlot: tipSlot + 2);
         RangeSync sync = new(new OfferingPool(pruned), LimboLogs.Instance, new DataColumnSidecarPool(), BeaconChainSpec.Mainnet, ClockAtGenesis(BeaconChainSpec.Mainnet));
         bool rejected = false;
-        sync.VerifyAnchorMismatch = _ => Task.FromResult<bool?>(true);
+        sync.VerifyBlockSignature = _ => Task.FromResult<bool?>(true);
         RangeSync.AnchorFallback fallback = new(finalizedRoot, AnchorSlot, () => rejected = true);
         using CancellationTokenSource bound = CancellationTokenSource.CreateLinkedTokenSource(token);
         bound.CancelAfter(TimeSpan.FromSeconds(2));

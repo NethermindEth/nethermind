@@ -85,12 +85,15 @@ public static partial class BlockProcessing
             throw new BeaconStateException(invalidAttestation2);
 
         ulong currentEpoch = state.GetCurrentEpoch();
-        HashSet<ulong> indices2 = [.. attestation2.AttestingIndices!];
+        ReadOnlySpan<ulong> indices1 = attestation1.AttestingIndices;
+        ReadOnlySpan<ulong> indices2 = attestation2.AttestingIndices;
         bool slashedAny = false;
-        // attestation_1's indices are validated ascending, so the intersection is visited in sorted order.
-        foreach (ulong index in attestation1.AttestingIndices!)
+        int second = 0;
+        foreach (ulong index in indices1)
         {
-            if (indices2.Contains(index) && state.Validators![(int)index].IsSlashableValidator(currentEpoch))
+            while (second < indices2.Length && indices2[second] < index) second++;
+            if (second == indices2.Length) break;
+            if (indices2[second] == index && state.Validators![(int)index].IsSlashableValidator(currentEpoch))
             {
                 state.SlashValidator((int)index, cache);
                 slashedAny = true;

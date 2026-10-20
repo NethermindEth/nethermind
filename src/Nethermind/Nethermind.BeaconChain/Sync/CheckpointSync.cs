@@ -510,23 +510,34 @@ public class CheckpointSync(
         return block;
     }
 
-    private async Task<HttpResponseMessage> GetOctetStreamAsync(string path, CancellationToken cancellationToken)
+    private Task<HttpResponseMessage> GetOctetStreamAsync(string path, CancellationToken cancellationToken) =>
+        GetOctetStreamAsync(_httpClient, $"{EffectiveCheckpointSyncUrl.TrimEnd('/')}{path}", cancellationToken);
+
+    internal static async Task<HttpResponseMessage> GetOctetStreamAsync(HttpClient client, string url, CancellationToken cancellationToken)
     {
-        using HttpRequestMessage request = new(HttpMethod.Get, $"{EffectiveCheckpointSyncUrl.TrimEnd('/')}{path}");
+        using HttpRequestMessage request = new(HttpMethod.Get, url);
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue(OctetStreamMediaType));
         HttpResponseMessage response;
         try
         {
-            response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+            response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
         }
         catch (TaskCanceledException e) when (e.InnerException is TimeoutException && !cancellationToken.IsCancellationRequested)
         {
             // Without an inner exception: the logged cause is the innermost one, and here that is the aborted socket read.
-            throw new IOException($"No response headers arrived for {ResponseHeadersTimeout.TotalSeconds:F0} s");
+            throw new IOException($"No response headers arrived for {client.Timeout.TotalSeconds:F0} s");
         }
 
-        response.EnsureSuccessStatusCode();
-        return response;
+        try
+        {
+            response.EnsureSuccessStatusCode();
+            return response;
+        }
+        catch
+        {
+            response.Dispose();
+            throw;
+        }
     }
 
     private void Persist(CheckpointAnchor anchor, ReadOnlySpan<byte> stateSsz, Checkpoint? weakSubjectivityCheckpoint, ulong checkpointStateSlot)

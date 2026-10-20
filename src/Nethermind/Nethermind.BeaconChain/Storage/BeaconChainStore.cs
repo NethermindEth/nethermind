@@ -1633,6 +1633,11 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
 
     private static void DropNonCanonicalEntries(IWriteBatch columns, ReadOnlySpan<byte> slotKey, byte[] entries, Hash256? canonical, Span<byte> key)
     {
+        if (entries.Length == ColumnSlotEntryLength && canonical is not null && entries.AsSpan(0, Hash256.Size).SequenceEqual(canonical.Bytes))
+        {
+            return;
+        }
+
         byte[] kept = new byte[entries.Length];
         int keptLength = 0;
         for (int offset = 0; offset + ColumnSlotEntryLength <= entries.Length; offset += ColumnSlotEntryLength)

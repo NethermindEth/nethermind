@@ -472,7 +472,7 @@ public sealed class BeaconSyncOrchestrator(
     internal void Initialize(IBlockImporter importer, ForkedSignedBeaconBlock anchorBlock, Hash256 anchorRoot)
     {
         _importer = importer;
-        rangeSync.VerifyAnchorMismatch = block => _importThread.RunAsync(() => (importer as BlockImporter)?.VerifyCachedProposerSignature(block));
+        rangeSync.VerifyBlockSignature = block => _importThread.RunAsync(() => (importer as BlockImporter)?.VerifyCachedProposerSignature(block));
         _anchorSlot = anchorBlock.Slot;
         _anchorRoot = anchorRoot;
         _anchorExecutionHash = anchorBlock switch
