@@ -11,7 +11,7 @@ public interface IHistoryPruner
     /// <summary>Block number below which historical blocks may be pruned. <c>null</c> when pruning is disabled.</summary>
     public ulong? CutoffBlockNumber { get; }
 
-    /// <summary>Block number below which historical block-access-lists are pruned or eligible for pruning; <c>null</c> when neither applies.</summary>
+    /// <summary>Block number below which historical block-access-lists are pruned or eligible for pruning; <c>null</c> when pruning is disabled.</summary>
     /// <remarks>Never retreats below a range already scheduled for deletion, including the persisted pruning boundary.</remarks>
     public ulong? BalCutoffBlockNumber { get; }
 

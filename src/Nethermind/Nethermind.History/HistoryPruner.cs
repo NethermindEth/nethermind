@@ -214,8 +214,10 @@ public class HistoryPruner : IHistoryPruner
     {
         get
         {
+            if (!_enabled && !_balPruningOnly) return null;
+
             ulong floor = Volatile.Read(ref _balAdmissionFloor);
-            ulong? cutoff = _enabled || _balPruningOnly ? CalculateRollingCutoff(_balRetentionEpochs + 1) : null;
+            ulong? cutoff = CalculateRollingCutoff(_balRetentionEpochs + 1);
             return cutoff is { } current ? ulong.Max(current, floor) : floor == 0 ? null : floor;
         }
     }

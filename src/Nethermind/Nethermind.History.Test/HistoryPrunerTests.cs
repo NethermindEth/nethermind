@@ -268,7 +268,7 @@ public class HistoryPrunerTests
     }
 
     [Test]
-    public void Persisted_bal_admission_floor_is_available_before_first_pruning_pass([Values] bool chainHasAccessLists)
+    public void Persisted_bal_admission_floor_respects_chain_support_before_first_pruning_pass([Values] bool chainHasAccessLists)
     {
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         IBlockAccessListStore balStore = Substitute.For<IBlockAccessListStore>();
@@ -280,7 +280,7 @@ public class HistoryPrunerTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(pruner.BalCutoffBlockNumber, Is.EqualTo(42_400UL));
+            Assert.That(pruner.BalCutoffBlockNumber, Is.EqualTo(chainHasAccessLists ? 42_400UL : (ulong?)null));
             balStore.DidNotReceive().DeleteRange(Arg.Any<ulong>(), Arg.Any<ulong>());
         }
     }
