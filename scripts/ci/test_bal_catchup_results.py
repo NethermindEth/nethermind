@@ -26,6 +26,9 @@ class BalCatchUpResultsTests(unittest.TestCase):
             ([{"Statistics": {"Mean": 1}}], "System.IO.IOException: disk full", False),
             ([{"Statistics": {"Mean": 1}}], " ---> System.InvalidOperationException: setup failed", False),
             ([{"Statistics": {"Mean": 1}}], "Unhandled exception. System.NullReferenceException: failed", False),
+            ([{"Statistics": {"Mean": 1}}], "   System.IO.IOException: disk full", False),
+            ([{"Statistics": {"Mean": 1}}], " ---> (Inner Exception #0) System.IO.IOException: disk full", False),
+            ([{"Statistics": {"Mean": 1}}], "Exception: failed", False),
         ]
         for measurements, log, valid in cases:
             with self.subTest(measurements=measurements, log=log), tempfile.TemporaryDirectory() as temp:
