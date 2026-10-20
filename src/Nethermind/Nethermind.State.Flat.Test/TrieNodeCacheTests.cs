@@ -83,6 +83,29 @@ public class TrieNodeCacheTests
     }
 
     [Test]
+    public void TryGet_WithPrecomputedShardAndHash_FindsWhatThePathLookupFinds([Values] bool storage)
+    {
+        Hash256? address = storage ? Keccak.Compute([0xaa, 0xbb]) : null;
+        TreePath path = TreePath.FromHexString("1234");
+        Hash256 hash = Keccak.Compute([3, 4, 5]);
+        TrieNode trieNode = new(NodeType.Branch, hash);
+        TransientResource transientResource = _resourcePool.GetCachedResource(ResourcePool.Usage.MainBlockProcessing);
+        transientResource.Nodes.Set(address, in path, trieNode);
+        _cache.Add(transientResource);
+
+        (int shardIdx, int hashCode) = TrieNodeCache.GetShardAndHashCode(address, in path);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(transientResource.TryGetNode(shardIdx, hashCode, hash, out TrieNode? fromTransient), Is.True);
+            Assert.That(fromTransient, Is.SameAs(trieNode));
+            Assert.That(_cache.TryGet(address, in path, shardIdx, hashCode, hash, out TrieNode? fromCache), Is.True);
+            Assert.That(fromCache, Is.SameAs(trieNode));
+            Assert.That(_cache.TryGet(address, in path, shardIdx, hashCode, Keccak.Compute([9]), out _), Is.False, "a different hash at the same slot is a miss");
+        }
+    }
+
+    [Test]
     public void Add_WithStorageAddress_ThenTryGet_ReturnsNode()
     {
         Hash256 address = Keccak.Compute([0xaa, 0xbb]);

@@ -24,15 +24,18 @@ namespace Nethermind.Blockchain.Tracing;
 /// and for the traces and receipts the trace store and trace dumps write.
 /// </summary>
 [JsonSourceGenerationOptions(GenerationMode = JsonSourceGenerationMode.Metadata)]
+[JsonSerializable(typeof(GethTraceOptionsConverter.WireOptions))]
 [JsonSerializable(typeof(GethLikeCustomTrace))]
 [JsonSerializable(typeof(GethLikeCustomTrace.EmptyValue))]
 [JsonSerializable(typeof(FourByteIdCounts))]
 [JsonSerializable(typeof(GethLikeTxTraceCollection))]
 [JsonSerializable(typeof(NativeCallTracerCallFrame))]
 [JsonSerializable(typeof(NativeCallTracerConfig))]
+[JsonSerializable(typeof(NativeCallTracerConfig.JsonConfig), TypeInfoPropertyName = "NativeCallTracerJsonConfig")]
 [JsonSerializable(typeof(NativeCallTracerLogEntry))]
 [JsonSerializable(typeof(NativePrestateTracerAccount))]
 [JsonSerializable(typeof(NativePrestateTracerConfig))]
+[JsonSerializable(typeof(NativePrestateTracerConfig.JsonConfig), TypeInfoPropertyName = "NativePrestateTracerJsonConfig")]
 [JsonSerializable(typeof(NativePrestateTracerDiffMode))]
 [JsonSerializable(typeof(Dictionary<AddressAsKey, NativePrestateTracerAccount>))]
 [JsonSerializable(typeof(StateGasTrace))]

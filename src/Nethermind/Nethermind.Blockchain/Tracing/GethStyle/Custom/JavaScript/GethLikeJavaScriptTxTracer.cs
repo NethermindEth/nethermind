@@ -53,6 +53,10 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
         IsTracingActions = true;
         IsTracingMemory = true;
         IsTracingStack = true;
+        // The script sees storage through db and has no return data on log, so the per-operation hooks would only
+        // build values for empty callbacks.
+        IsTracingOpLevelStorage = false;
+        IsTracingReturnData = false;
 
         _engine = engine;
         _db = db;
@@ -84,7 +88,15 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
                 Invoke(TracerFunctions.setup, options.TracerConfig?.ToString() ?? "{}");
             }
 
-            TimeSpan timeout = options.Timeout ?? DefaultTimeout;
+            TimeSpan timeout;
+            try
+            {
+                timeout = options.ResolveTimeout() ?? DefaultTimeout;
+            }
+            catch (TraceDurationFormatException exception) when (_captureErrors)
+            {
+                throw new JavaScriptTraceFailure(exception);
+            }
             if (timeout <= TimeSpan.Zero || timeout > MaxTimeout)
                 throw new ArgumentOutOfRangeException(nameof(options), timeout, $"Tracer timeout must be between 1ns and {MaxTimeout.TotalMinutes}m.");
             _cts = new CancellationTokenSource(timeout);

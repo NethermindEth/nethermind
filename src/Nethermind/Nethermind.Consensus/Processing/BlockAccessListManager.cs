@@ -157,7 +157,7 @@ public partial class BlockAccessListManager(
             {
                 BlockAccessListValidationIndex.AddressIndex addressIndex = new();
                 ReadOnlyBlockAccessList suggested = suggestedBlock.BlockAccessList;
-                _suggestedValidationIndex = BlockAccessListValidationIndex.Build(suggested, suggestedBlock.Transactions.Length, addressIndex);
+                _suggestedValidationIndex = BlockAccessListValidationIndex.Build(suggested, suggestedBlock.Header, suggestedBlock.Transactions.Length, addressIndex);
                 _generatedValidationIndex = new(suggestedBlock.Transactions.Length, addressIndex, _suggestedValidationIndex, suggested.TotalStorageReads, suggested.TotalStorageChangeEvents, trackStorageReads: VerifyOnly && _readPlan is null);
                 ulong suggestedReads = 0;
                 foreach (ReadOnlyAccountChanges ac in suggested.AccountChanges)
@@ -216,6 +216,12 @@ public partial class BlockAccessListManager(
 
     public void Setup(Block block)
     {
+        // A block that does not run in parallel releases what an earlier parallel block that failed still kept.
+        if (!ParallelExecutionEnabled && _parallelTxProcessorWithWorldStateManager is { IsValueCreated: true } parallel)
+        {
+            parallel.Value.ReleaseKeptParentReaders();
+        }
+
         if (Enabled)
         {
             _txProcessorWithWorldStateManager = !ZkEvmFlag.IsActive && ParallelExecutionEnabled
