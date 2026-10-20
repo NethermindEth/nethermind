@@ -32,7 +32,7 @@ public static partial class Program
             || modes.Distinct().Count() != modes.Length || modes.Any(m => m is not ("direct" or "recursive")))
             throw new ArgumentException("Invalid devnet case or wrapper bounds");
         BenchCase[] scenarios = cases.Select(ParseCase).ToArray();
-        if (scenarios.Any(c => c.SharedSignature || c.SphincsCount > Eip8288Constants.MaxLeanSigDepsPerWrapper || c.StarkCount > Eip8288Constants.MaxLeanStarkDepsPerWrapper)
+        if (scenarios.Any(c => c.SharedSignature || c.SphincsCount > Eip8288Constants.MaxLeanSigDepsPerDirectWrapper || c.StarkCount > Eip8288Constants.MaxLeanStarkDepsPerDirectWrapper)
             || checked(rounds * scenarios.Length * modes.Length) > 128)
             throw new ArgumentException("Devnet requests exceed mempool wrapper limits");
         if (sharedDependency && scenarios.Any(c => c.SphincsCount != 1 || c.StarkCount != 0))
@@ -104,7 +104,7 @@ public static partial class Program
                     {
                         AggregationInput input = new() { Deps = deps, Witnesses = selected.Select(f => (ReadOnlyMemory<byte>)f.Witness).ToArray() };
                         ValueHash256 commitment = Eip8288Dependencies.ComputeDepsHash(deps);
-                        byte[] proof = RecursiveStarkAggregator.Prove(input, verifier, commitment);
+                        byte[] proof = RecursiveStarkAggregator.Prove(input, verifier, Eip8288Verifier.Pinned, commitment);
                         if (!verifier.VerifyRecursiveStark(commitment, Eip8288Constants.AggregatedVk, proof))
                             throw new InvalidDataException("Devnet recursive proof did not verify");
                         recursive = new(proof, new Hash256(commitment));
@@ -117,7 +117,7 @@ public static partial class Program
                         Proofs = direct,
                         RecursiveStark = recursive
                     };
-                    if (!MempoolWrapperValidator.Validate(wrapper, verifier, out string? validationError))
+                    if (!MempoolWrapperValidator.Validate(wrapper, verifier, Eip8288Verifier.Pinned, out string? validationError))
                         throw new InvalidDataException(validationError);
                     byte[] bytes = MempoolWrapperDecoder.Instance.Encode(wrapper).Bytes;
                     string name = $"{round:D2}-{scenario.Name}-{mode}-nonce{nonce}";
@@ -140,7 +140,7 @@ public static partial class Program
                         Proofs = tamperedDirect,
                         RecursiveStark = tamperedRecursive
                     };
-                    if (MempoolWrapperValidator.Validate(invalid, verifier, out _))
+                    if (MempoolWrapperValidator.Validate(invalid, verifier, Eip8288Verifier.Pinned, out _))
                         throw new InvalidDataException("Tampered devnet witness unexpectedly verified");
                     byte[] tampered = MempoolWrapperDecoder.Instance.Encode(invalid).Bytes;
                     string negativeFile = name + "-invalid-proof.json";
@@ -214,7 +214,7 @@ public static partial class Program
             string prefix = mixed ? "mixed" : "sphincs";
             if (!value.StartsWith(prefix, StringComparison.Ordinal)
                 || !int.TryParse(value.AsSpan(prefix.Length), NumberStyles.None, CultureInfo.InvariantCulture, out int signatures)
-                || signatures < 1 || signatures > Eip8288Constants.MaxLeanSigDepsPerWrapper)
+                || signatures < 1 || signatures > Eip8288Constants.MaxLeanSigDepsPerDirectWrapper)
                 throw new ArgumentException("Devnet cases must be sphincs1..16, stark1, or mixed1..16");
             return new(value, signatures, mixed ? 1 : 0);
         }
