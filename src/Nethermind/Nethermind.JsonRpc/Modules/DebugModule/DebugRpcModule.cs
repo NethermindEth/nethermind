@@ -851,7 +851,8 @@ public class DebugRpcModule(
     public ResultWrapper<OwnedByteMemory> debug_getRawBlockAccessList(BlockParameter blockParameter)
     {
         SearchResult<BlockHeader> searchResult = blockFinder.SearchForHeaderWithBody(blockParameter);
-        if (searchResult.IsError && searchResult.Error != BlockFinderExtensions.HeaderNotFound)
+        // Unknown blocks, including an unknown safe or finalized one, are -32001 per execution-apis.
+        if (searchResult.IsError && searchResult.Error != BlockFinderExtensions.HeaderNotFound && searchResult.ErrorCode != ErrorCodes.UnknownBlockError)
         {
             return ResultWrapper<OwnedByteMemory>.Fail(searchResult);
         }

@@ -1545,6 +1545,11 @@ public class DebugModuleTests
         { TestName = "missing_block" };
 
         yield return new TestCaseData(
+            (Action<IBlockFinder, IBlockchainBridge>)((_, _) => { }),
+            (object)"finalized", ErrorCodes.BlockAccessListResourceNotFound)
+        { TestName = "unknown_finalized_block" };
+
+        yield return new TestCaseData(
             (Action<IBlockFinder, IBlockchainBridge>)((finder, _) =>
                 finder.FindBlock(BlockParameter.Latest).Returns(Build.A.Block.WithNumber(1).TestObject)),
             (object)"latest", ErrorCodes.BlockAccessListResourceNotFound)
