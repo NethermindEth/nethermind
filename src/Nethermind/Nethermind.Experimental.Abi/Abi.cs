@@ -12,7 +12,15 @@ public class Abi<T>
     public required string Name { get; init; }
     public required AbiReadFunc<T> Read { get; init; }
     public required AbiWriteAction<T> Write { get; init; }
-    public int HeadSize { get => IsDynamic ? 32 : field; init; } = 32;
+    public int HeadSize
+    {
+        get => IsDynamic ? 32 : field;
+        init
+        {
+            ArgumentOutOfRangeException.ThrowIfNegative(value);
+            field = value;
+        }
+    } = 32;
     public AbiSizeFunc<T>? TailSize { get; init; }
 
     public bool IsDynamic => TailSize is not null;

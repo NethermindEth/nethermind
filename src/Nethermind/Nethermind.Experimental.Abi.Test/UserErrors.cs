@@ -71,11 +71,23 @@ public class UserErrors
         yield return ThrowsOnBuild<ArgumentOutOfRangeException>(() => AbiType.Array(AbiType.BytesM(-32), 1 << 26)).SetName("bytes-32[2^26]");
     }
 
+    private static IEnumerable<TestCaseData> CustomTypeTestCases()
+    {
+        yield return ThrowsOnBuild<ArgumentOutOfRangeException>(() => new Abi<byte>
+        {
+            Name = "custom",
+            Read = AbiType.UInt8.Read,
+            Write = AbiType.UInt8.Write,
+            HeadSize = -32
+        }).SetName("custom with head size -32");
+    }
+
     private static TestCaseData ThrowsOnBuild<TException>(Action build) where TException : Exception =>
         new(build, typeof(TException));
 
     [TestCaseSource(nameof(HeadSizeOutOfRangeTestCases))]
     [TestCaseSource(nameof(BytesMOutOfRangeTestCases))]
+    [TestCaseSource(nameof(CustomTypeTestCases))]
     public void Build_InvalidType(Action build, Type exception) =>
         Assert.That(build, Throws.TypeOf(exception));
 
