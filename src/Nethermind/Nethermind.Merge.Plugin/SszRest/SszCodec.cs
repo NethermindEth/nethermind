@@ -184,14 +184,23 @@ public static class SszCodec
         }, writer);
 
     public static int EncodeGetPayloadV6Response(GetPayloadV6Result? r, IBufferWriter<byte> writer)
-        => EncodeToWriter(new GetPayloadResponseV6Wire
+        => EncodeToWriter(BuildGetPayloadResponseV6Wire(r!), writer);
+
+    public static int EncodeGetPayloadWithWitnessV6Response(GetPayloadV6Result r, Witness witness, IBufferWriter<byte> writer)
+        => EncodeToWriter(new BuiltPayloadWithWitnessV6Wire
         {
-            ExecutionPayload = new SszExecutionPayloadV4(r!.ExecutionPayload),
-            BlockValue = r.BlockValue,
-            BlobsBundle = r.BlobsBundle.ToWire(),
-            ExecutionRequests = r.ExecutionRequests.ToExecutionRequestsWire(),
-            ShouldOverrideBuilder = r.ShouldOverrideBuilder
+            BuiltPayload = BuildGetPayloadResponseV6Wire(r),
+            Witness = BuildExecutionWitnessV1Wire(witness)
         }, writer);
+
+    private static GetPayloadResponseV6Wire BuildGetPayloadResponseV6Wire(GetPayloadV6Result r) => new()
+    {
+        ExecutionPayload = new SszExecutionPayloadV4(r.ExecutionPayload),
+        BlockValue = r.BlockValue,
+        BlobsBundle = r.BlobsBundle.ToWire(),
+        ExecutionRequests = r.ExecutionRequests.ToExecutionRequestsWire(),
+        ShouldOverrideBuilder = r.ShouldOverrideBuilder
+    };
 
     public static byte[][] DecodeGetBlobsRequest(ReadOnlySequence<byte> buf)
     {
