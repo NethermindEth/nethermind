@@ -658,7 +658,7 @@ namespace Nethermind.Synchronization.Blocks
             {
                 entry.RecordMissingAccessList();
                 entry.RetryAccessListRequest();
-                bool mustServe = _balServingWindow.Contains(header.Number, peer?.HeadNumber ?? 0);
+                bool mustServe = _balServingWindow.MustServe(header, peer?.HeadNumber ?? 0);
                 // Outside the serving window (e.g. full sync resuming far behind after downtime) a required list may be
                 // pruned on every peer, so the answer is not proof of withholding.
                 if (mustServe || !entry.CanExecuteMissingData)

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -8,6 +9,7 @@ using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
@@ -45,21 +47,27 @@ public partial class BlockDownloaderTests
     [TestCase(false, false, true, true, false)]
     // Processing can go ahead without the list, so the peer may still be backfilling it.
     [TestCase(false, false, true, false, true, true)]
-    public async Task Reports_peer_returning_unavailable_block_access_list(bool isStatic, bool isTrusted, bool peerServedBody, bool peerPastRetention, bool peerHeadKnown = true, bool processing = false)
+    // Missed slots leave the block inside the height window yet older than the retention period.
+    [TestCase(false, false, true, false, true, false, true)]
+    public async Task Reports_peer_returning_unavailable_block_access_list(bool isStatic, bool isTrusted, bool peerServedBody, bool peerPastRetention, bool peerHeadKnown = true, bool processing = false, bool pastRetentionPeriod = false)
     {
         InterfaceLogger logger = Substitute.For<InterfaceLogger>();
         logger.IsWarn.Returns(true);
         IForwardHeaderProvider forwardHeaderProvider = Substitute.For<IForwardHeaderProvider>();
         IBlockTree farKnownBlockTree = Substitute.For<IBlockTree>();
         farKnownBlockTree.BestKnownNumber.Returns(ulong.MaxValue);
+        ulong retentionSeconds = HistoryRetentionConstants.HistoryPruneEpochs * 32 * new BlocksConfig().SecondsPerSlot;
+        ulong now = HeaderTimestamp + (pastRetentionPeriod ? retentionSeconds + 1 : retentionSeconds);
         await using IContainer node = CreateNode(builder =>
         {
             builder
                 .AddSingleton<IForwardHeaderProvider>(forwardHeaderProvider)
-                .AddSingleton<ILogManager>(new OneLoggerLogManager(new ILogger(logger)));
+                .AddSingleton<ILogManager>(new OneLoggerLogManager(new ILogger(logger)))
+                .AddSingleton<ITimestamper>(new ManualTimestamper(DateTime.UnixEpoch.AddSeconds(now)));
             if (peerPastRetention && peerHeadKnown)
             {
-                builder.AddSingleton<BlockAccessListServingWindow, IHistoryPruner, ISpecProvider>((historyPruner, specProvider) => new(farKnownBlockTree, historyPruner, specProvider));
+                builder.AddSingleton<BlockAccessListServingWindow, IHistoryPruner, ISpecProvider, ITimestamper, IBlocksConfig>(
+                    (historyPruner, specProvider, timestamper, blocksConfig) => new(farKnownBlockTree, historyPruner, specProvider, timestamper, blocksConfig));
             }
 
             if (processing) builder.AddSingleton<BlockDownloader, AccessListOnProcessingBlockDownloader>();
@@ -91,7 +99,7 @@ public partial class BlockDownloaderTests
             results.Add(ctx.FullSyncFeedComponent.BlockDownloader.HandleResponse(request, peerInfo));
         }
 
-        bool breach = peerServedBody && !(peerPastRetention && peerHeadKnown) && !processing;
+        bool breach = peerServedBody && !(peerPastRetention && peerHeadKnown) && !processing && !pastRetentionPeriod;
         using (Assert.EnterMultipleScope())
         {
             Assert.That(results, Is.All.EqualTo(SyncResponseHandlingResult.LesserQuality));
@@ -243,6 +251,8 @@ public partial class BlockDownloaderTests
             Arg.Any<string>());
     }
 
+    private const ulong HeaderTimestamp = 1_000_000;
+
     private static void ConfigureBlockAccessListRequest(Context ctx, IForwardHeaderProvider forwardHeaderProvider, params Hash256[] accessListHashes)
     {
         if (accessListHashes.Length == 0) accessListHashes = [TestItem.KeccakA];
@@ -253,6 +263,7 @@ public partial class BlockDownloaderTests
         {
             chain[i + 1] = Build.A.BlockHeader
                 .WithParent(chain[i])
+                .WithTimestamp(HeaderTimestamp)
                 .WithBlockAccessListHash(accessListHashes[i])
                 .TestObject;
         }
