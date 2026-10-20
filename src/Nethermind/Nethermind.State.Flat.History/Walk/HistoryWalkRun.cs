@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers.Binary;
+using System.Collections.Concurrent;
 using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -49,6 +50,10 @@ internal sealed class HistoryWalkRun
     private readonly StorageSubtreeReplayer _storages;
     private readonly SubtreeCombiner _combiner;
     private WalkScheduler _scheduler = null!;
+    // The walk emits per partition, per storage group and per combined contract; a disposed emitter comes back here
+    // reset, the bag hands each worker the one it returned last, and the run releases them all when it ends.
+    private readonly ConcurrentBag<CommitmentEmitter> _spareEmitters = [];
+    private readonly Action<CommitmentEmitter> _releaseEmitter;
 
     public HistoryWalkRun(
         IColumnsDb<FlatHistoryColumns> history,
@@ -82,6 +87,7 @@ internal sealed class HistoryWalkRun
         _availableBlocks = history.GetColumnDb(FlatHistoryColumns.AvailableBlocks);
         _headers = headers;
         _emitterSource = emitterSource;
+        _releaseEmitter = _spareEmitters.Add;
         _maxRowsPerPartition = maxRowsPerPartition;
         _from = from;
         _to = to;
@@ -97,6 +103,23 @@ internal sealed class HistoryWalkRun
     }
 
     public HistoryWalkVerdict Execute(int workers)
+    {
+        try
+        {
+            return ExecuteWalk(workers);
+        }
+        finally
+        {
+            while (_spareEmitters.TryTake(out CommitmentEmitter? spare)) spare.Retire();
+        }
+    }
+
+    private CommitmentEmitter? CreateEmitter() =>
+        _emitterSource is null ? null
+        : _spareEmitters.TryTake(out CommitmentEmitter? spare) ? spare.Reuse()
+        : _emitterSource.CreateEmitter(_releaseEmitter);
+
+    private HistoryWalkVerdict ExecuteWalk(int workers)
     {
         bool buildCommitments = _emitterSource is not null;
         bool resuming = _metadata.TryGetWalkInProgress(out ulong from, out ulong to) && from == _from && to == _to
@@ -227,7 +250,7 @@ internal sealed class HistoryWalkRun
             {
                 MismatchSink found = new(merge.RemainingCapacity);
                 using RootHeaderCheck root = new(_headers, _availableBlocks, found, chunks[chunk].To, _logger, _token, () => merge.StoppedBefore(chunk));
-                using (CommitmentEmitter? emitter = _emitterSource?.CreateEmitter())
+                using (CommitmentEmitter? emitter = CreateEmitter())
                 using (SeriesWriter series = new(_history))
                 {
                     _combiner.CombineRoot(RootGrandchildKey, chunks[chunk].Anchor, anchorFolded: chunk > 0, chunks[chunk].To, emitter, series, root, _progress, _token);
@@ -295,7 +318,7 @@ internal sealed class HistoryWalkRun
 
             MismatchSink replayed = new(MismatchSink.MaxRecordedPerItem);
             Action<ulong>? checkpoint = prefix.Length == AccountPartitionDepth ? block => Checkpoint(item, block, found, replayed) : null;
-            using (CommitmentEmitter? emitter = _emitterSource?.CreateEmitter())
+            using (CommitmentEmitter? emitter = CreateEmitter())
             using (SeriesWriter series = new(_history))
             {
                 _accounts.Replay(prefix, rows, Context(emitter, series, item), AccountSeriesKey(prefix), new StorageRootMoveCheck(probe, replayed), resumeFrom, _checkpointBlocks, checkpoint);
@@ -311,7 +334,7 @@ internal sealed class HistoryWalkRun
     private void CombineAccount(in TreePath parent)
     {
         TreePath path = parent;
-        using CommitmentEmitter? emitter = _emitterSource?.CreateEmitter();
+        using CommitmentEmitter? emitter = CreateEmitter();
         using SeriesWriter series = new(_history);
         _combiner.Combine(SeriesScope.Accounts, parent, nibble => AccountSeriesKey(path.Append(nibble)), AccountSeriesKey(parent), _from, _to, emitter, series, observer: null, _token);
         emitter?.FlushOpenWindows();
@@ -470,7 +493,7 @@ internal sealed class HistoryWalkRun
 
     private void ReplayStorageGroup(in TreePath slotPrefix, StoragePartitionRows rows, List<ClearRecord> clears, int item, MismatchSink found)
     {
-        using CommitmentEmitter? emitter = _emitterSource?.CreateEmitter();
+        using CommitmentEmitter? emitter = CreateEmitter();
         using SeriesWriter series = new(_history);
         _storages.Replay(slotPrefix, rows, clears, Context(emitter, series, item), slotPrefix.Length > 0, found);
         emitter?.FlushOpenWindows();
@@ -488,7 +511,7 @@ internal sealed class HistoryWalkRun
         }
 
         using ContractRootCheck? release = check;
-        using CommitmentEmitter? emitter = _emitterSource?.CreateEmitter();
+        using CommitmentEmitter? emitter = CreateEmitter();
         using SeriesWriter series = new(_history);
         _combiner.Combine(scope, slotPrefix, nibble => scope.Key(parent.Append(nibble), scratch: true), slotPrefix.Length == 0 ? null : scope.Key(slotPrefix, scratch: true), _from, _to, emitter, series, check, _token);
         emitter?.FlushOpenWindows();

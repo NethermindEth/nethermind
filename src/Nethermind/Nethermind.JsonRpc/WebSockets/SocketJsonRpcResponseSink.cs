@@ -25,6 +25,7 @@ internal sealed class SocketJsonRpcResponseSink<TStream>(
     private long _batchStartTimestamp;
     private bool _isFirstBatchItem = true;
     private bool _holdsSendLock;
+    private CountingStreamPipeWriter? _batchWriter;
 
     public long BytesWritten { get; private set; }
     public bool StopRequested { get; private set; }
@@ -67,14 +68,14 @@ internal sealed class SocketJsonRpcResponseSink<TStream>(
         _isFirstBatchItem = true;
         StopRequested = false;
 
-        await JsonRpcResponseWriter.WriteBatchStartAsync(stream, cancellationToken);
+        _batchWriter = SocketJsonRpcResponseWriter.BeginBatch(stream, sendLock);
     }
 
     public async ValueTask WriteBatchItemAsync(JsonRpcResponse response, RpcReport report, CancellationToken cancellationToken)
     {
         if (!_isFirstBatchItem)
         {
-            await JsonRpcResponseWriter.WriteBatchSeparatorAsync(stream, cancellationToken);
+            JsonRpcResponseWriter.WriteBatchSeparator(_batchWriter);
             _topLevelResponseBytes++;
         }
 
@@ -82,13 +83,12 @@ internal sealed class SocketJsonRpcResponseSink<TStream>(
 
         try
         {
-            _topLevelResponseBytes += await SocketJsonRpcResponseWriter.WriteAsync(
-                stream, sendLock, response, isBatch: true, _topLevelResponseBytes, cancellationToken);
+            _topLevelResponseBytes += await SocketJsonRpcResponseWriter.WriteBatchItemAsync(_batchWriter, response, cancellationToken);
             report = JsonRpcResponseWriteOutcome.Of(response).ApplyTo(report);
         }
         catch (Exception ex)
         {
-            // The batch opening is already on the stream, so any item failure leaves an incomplete message.
+            // Earlier batch bytes may already be on the stream, so any item failure leaves an incomplete message.
             sendLock.Fault(ex);
             if (_reportCalls) jsonRpcLocalStats.ReportCall(report with { Success = false });
             throw;
@@ -108,10 +108,10 @@ internal sealed class SocketJsonRpcResponseSink<TStream>(
     {
         try
         {
-            await JsonRpcResponseWriter.WriteBatchEndAsync(stream, cancellationToken);
+            JsonRpcResponseWriter.WriteBatchEnd(_batchWriter);
             _topLevelResponseBytes++;
 
-            _topLevelResponseBytes += await stream.WriteEndOfMessageAsync();
+            _topLevelResponseBytes += await SocketJsonRpcResponseWriter.EndMessageAsync(stream, _batchWriter, cancellationToken);
             BytesWritten += _topLevelResponseBytes;
 
             if (_reportCalls)
@@ -161,10 +161,11 @@ internal static class SocketJsonRpcResponseWriter
     public static async ValueTask<long> WriteMessageAsync<TStream>(TStream stream, SocketSendLock sendLock, JsonRpcResponse response, CancellationToken cancellationToken)
         where TStream : Stream, IMessageBorderPreservingStream
     {
-        long responseBytes = await WriteAsync(stream, sendLock, response, isBatch: false, initialWrittenCount: 0, cancellationToken);
+        CountingStreamPipeWriter writer = await WriteAsync(stream, sendLock, response, cancellationToken);
+        long responseBytes = writer.WrittenCount;
         try
         {
-            return responseBytes + await stream.WriteEndOfMessageAsync();
+            return responseBytes + await EndMessageAsync(stream, writer, cancellationToken);
         }
         catch (Exception ex)
         {
@@ -178,26 +179,48 @@ internal static class SocketJsonRpcResponseWriter
     /// The caller must hold <paramref name="sendLock"/>, which is faulted when the failure follows the start of a stream
     /// write. A failed write counts: a cancelled socket send can leave part of the message on an open connection.
     /// </remarks>
-    public static async ValueTask<long> WriteAsync(
-        Stream stream, SocketSendLock sendLock, JsonRpcResponse response, bool isBatch, long initialWrittenCount, CancellationToken cancellationToken)
+    private static async ValueTask<CountingStreamPipeWriter> WriteAsync(Stream stream, SocketSendLock sendLock, JsonRpcResponse response, CancellationToken cancellationToken)
     {
-        CountingStreamPipeWriter writer = new(stream, ResponsePipeWriterOptions, initialWrittenCount);
-        Exception? failure = null;
+        CountingStreamPipeWriter writer = sendLock.GetWriter(stream, ResponsePipeWriterOptions, 0);
         try
         {
-            await JsonRpcResponseWriter.WriteAsync(writer, response, EthereumJsonSerializer.JsonOptions, isBatch, cancellationToken);
-            await writer.FlushAsync(cancellationToken);
-            return writer.WrittenCount - initialWrittenCount;
+            await JsonRpcResponseWriter.WriteAsync(writer, response, EthereumJsonSerializer.JsonOptions, cancellationToken);
+            return writer;
         }
         catch (Exception ex)
         {
-            failure = ex;
             if (writer.MayHaveWrittenToStream) sendLock.Fault(ex);
+            writer.Reset(0);
             throw;
         }
-        finally
-        {
-            await writer.CompleteAsync(failure);
-        }
+    }
+
+    /// <summary>Ends the message with what <paramref name="writer"/> still buffers, passing its last segment to the stream without a copy.</summary>
+    /// <returns>The number of bytes the stream added to end the message.</returns>
+    public static async ValueTask<int> EndMessageAsync<TStream>(TStream stream, CountingStreamPipeWriter writer, CancellationToken cancellationToken)
+        where TStream : Stream, IMessageBorderPreservingStream
+    {
+        ReadOnlyMemory<byte> last = await writer.FlushAllButLastSegmentAsync(cancellationToken);
+        int written = await stream.WriteEndOfMessageAsync(last, cancellationToken);
+        writer.Reset(0);
+        return written;
+    }
+
+    /// <summary>Returns the connection's response writer holding the opening of a batch response. The caller must hold <paramref name="sendLock"/>.</summary>
+    public static CountingStreamPipeWriter BeginBatch(Stream stream, SocketSendLock sendLock)
+    {
+        CountingStreamPipeWriter writer = sendLock.GetWriter(stream, ResponsePipeWriterOptions, 0);
+        JsonRpcResponseWriter.WriteBatchStart(writer);
+        return writer;
+    }
+
+    /// <summary>Writes a batch item into <paramref name="writer"/>, first flushing what precedes it once that fills the buffer.</summary>
+    /// <returns>The number of bytes the item added.</returns>
+    public static async ValueTask<long> WriteBatchItemAsync(CountingStreamPipeWriter writer, JsonRpcResponse response, CancellationToken cancellationToken)
+    {
+        if (writer.UnflushedBytes >= ResponsePipeWriterOptions.MinimumBufferSize) await writer.FlushAsync(cancellationToken);
+        long start = writer.WrittenCount;
+        await JsonRpcResponseWriter.WriteAsync(writer, response, EthereumJsonSerializer.JsonOptions, isBatch: true, cancellationToken);
+        return writer.WrittenCount - start;
     }
 }

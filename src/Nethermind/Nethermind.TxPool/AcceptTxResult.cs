@@ -190,14 +190,24 @@ namespace Nethermind.TxPool
         public static readonly AcceptTxResult FrameTxCodeDependencyLimitReached = new(TxPoolErrorMessages.FrameTxCodeDependencyLimitReached);
 
         /// <summary>
-        /// The node declined to simulate an EIP-8141 validation prefix because its own admission bounds were
-        /// spent, so the transaction was never judged.
+        /// The node declined to simulate an EIP-8141 validation prefix because its own admission bounds were spent,
+        /// or stopped simulating it or verifying its signatures to yield to its own block work, so the transaction was
+        /// never judged.
         /// </summary>
         /// <remarks>
         /// Distinct from <see cref="FrameSimulationFailed"/> so peer scoring can tell load shedding apart from
         /// a peer sending transactions this node rejects.
         /// </remarks>
         public static readonly AcceptTxResult FrameSimulationDeferred = new(TxPoolErrorMessages.FrameSimulationDeferred);
+
+        /// <summary>
+        /// An EIP-8141 frame transaction dropped unvalidated because the peer that sent it had spent its validation
+        /// gas budget on transactions that failed validation.
+        /// </summary>
+        /// <remarks>
+        /// Unlike <see cref="FrameSimulationDeferred"/>, the peer caused this, so it counts towards flood disconnects.
+        /// </remarks>
+        public static readonly AcceptTxResult FramePeerValidationBudgetSpent = new(TxPoolErrorMessages.FramePeerValidationBudgetSpent);
 
         /// <summary>
         /// An EIP-8250 keyed-nonce frame transaction beyond its sender's free pending baseline, submitted while

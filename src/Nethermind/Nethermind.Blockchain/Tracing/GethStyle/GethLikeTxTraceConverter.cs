@@ -158,7 +158,7 @@ public class GethLikeTxTraceConverter : JsonConverter<GethLikeTxTrace>
     /// <remarks>Fixed fields fit within 256 bytes. Opcode and error strings allow six bytes per escaped UTF-16 code unit;
     /// return data is unescaped hex.</remarks>
     internal static long EstimateEntrySize(GethTxTraceEntry entry, int? storageCount) =>
-        256L + 6L * ((long)(entry.Opcode?.Length ?? 0) + (entry.Error?.Length ?? 0)) + (entry.ReturnData?.Length ?? 0)
+        256L + 6L * ((long)(entry.Opcode?.Length ?? 0) + (entry.Error?.Length ?? 0)) + (entry.ReturnData is { } returnData ? 2L + 2L * returnData.Length : 0)
         + 69L * ((entry.Stack?.Length ?? 0) / EvmStack.WordSize + (long)(entry.Memory?.Length ?? 0) / EvmPooledMemory.WordSize)
         + 140L * (storageCount ?? entry.Storage?.Count ?? 0);
 
@@ -205,7 +205,11 @@ public class GethLikeTxTraceConverter : JsonConverter<GethLikeTxTrace>
             writer.WriteEndObject();
         }
 
-        if (entry.ReturnData is not null) writer.WriteString("returnData"u8, entry.ReturnData);
+        if (entry.ReturnData is { } returnData)
+        {
+            writer.WritePropertyName("returnData"u8);
+            ByteArrayConverter.Convert(writer, returnData.Span, skipLeadingZeros: false);
+        }
         writer.WriteEndObject();
     }
 }

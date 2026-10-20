@@ -253,6 +253,39 @@ public class InitDatabaseSnapshotTests
         }
     }
 
+    [Test]
+    public async Task Execute_RelativeDatabasePath_ExtractsSnapshot()
+    {
+        // The default BaseDbPath is relative to the working directory, which is how most nodes run.
+        _api.Config<IInitConfig>().Returns(new InitConfig { BaseDbPath = Path.GetRelativePath(Environment.CurrentDirectory, _dbPath) });
+        WriteSnapshotTar();
+        AdvanceCheckpoint(SnapshotStage.Verified);
+        InitDatabaseSnapshot step = new(_api, DrivesWithFreeSpace(long.MaxValue));
+
+        await step.Execute(CancellationToken.None);
+
+        Assert.That(File.Exists(Path.Combine(_dbPath, "state.bin")), Is.True);
+    }
+
+    [TestCase(false, TestName = "Execute_EntryEscapingAbsoluteDatabasePath_ThrowsIOException")]
+    [TestCase(true, TestName = "Execute_EntryEscapingRelativeDatabasePath_ThrowsIOException")]
+    public async Task Execute_EntryEscapingDatabasePath_ThrowsIOException(bool relativeDbPath)
+    {
+        if (relativeDbPath)
+            _api.Config<IInitConfig>().Returns(new InitConfig { BaseDbPath = Path.GetRelativePath(Environment.CurrentDirectory, _dbPath) });
+        File.WriteAllBytes(_snapshotPath, TestArchive.BuildTarEscapingDestination());
+        AdvanceCheckpoint(SnapshotStage.Verified);
+        InitDatabaseSnapshot step = new(_api, DrivesWithFreeSpace(long.MaxValue));
+
+        IOException exception = (await Assert.ThrowsAsync<IOException>(() => step.Execute(CancellationToken.None)))!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exception.Message, Does.Contain("outside the destination directory"));
+            Assert.That(File.Exists(Path.Combine(_tempDir.Path, "escaped.bin")), Is.False);
+        }
+    }
+
     [TestCase(1_000, 0, 2_500, TestName = "FreshDownload")]
     [TestCase(1_000, 400, 2_100, TestName = "ResumedDownload")]
     public void GetRequiredSpaceForDownload_ForGivenSizes_AddsRemainingBytesToExtractionEstimate(

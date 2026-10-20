@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Text;
 using Nethermind.Core.Collections;
+using Nethermind.Int256;
 
 namespace Nethermind.Core.BlockAccessLists;
 
@@ -52,6 +53,32 @@ public class GeneratedBlockAccessList
             }
             return count;
         }
+    }
+
+    /// <summary>
+    /// Number of items <see cref="Merge"/> would add to <see cref="ItemCount"/> for <paramref name="other"/>,
+    /// without merging it.
+    /// </summary>
+    /// <remarks>Walks only <paramref name="other"/>, so the cost is independent of the size of this list.</remarks>
+    public int CountNewItems(BlockAccessListAtIndex other)
+    {
+        int count = 0;
+        foreach (AccountChangesAtIndex sourceAccount in other.AccountChanges)
+        {
+            _accountChanges.TryGetValue(sourceAccount.Address, out GeneratedAccountChanges? target);
+            if (target is null) count++;
+
+            foreach (UInt256 key in sourceAccount.StorageChanges.Keys)
+            {
+                if (target is null || !target.HasStorageKey(key)) count++;
+            }
+
+            foreach (UInt256 key in sourceAccount.StorageReads)
+            {
+                if (!sourceAccount.HasStorageChange(key) && (target is null || !target.HasStorageKey(key))) count++;
+            }
+        }
+        return count;
     }
 
     /// <summary>

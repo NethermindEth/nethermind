@@ -17,7 +17,6 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
-using Nethermind.Logging;
 
 namespace Nethermind.Serialization.Rlp
 {
@@ -42,18 +41,6 @@ namespace Nethermind.Serialization.Rlp
 
         internal const int LengthOfNull = 1;
 
-        public static readonly Rlp OfEmptyByteArray = new(EmptyByteArrayByte);
-
-        public static readonly Rlp OfZero = OfEmptyByteArray;
-
-        public static readonly Rlp OfEmptyList = new(EmptyListByte);
-
-        internal static readonly Rlp OfEmptyTreeHash = Encode(Keccak.EmptyTreeHash.Bytes); // use bytes to avoid stack overflow
-
-        internal static readonly Rlp OfEmptyStringHash = Encode(Keccak.OfAnEmptyString.Bytes); // use bytes to avoid stack overflow
-
-        internal static readonly Rlp EmptyBloom = Encode(Bloom.Empty.Bytes);
-
         /// <summary>
         /// This is not encoding - just a creation of an RLP object, e.g. passing 192 would mean an RLP of an empty sequence.
         /// </summary>
@@ -69,9 +56,6 @@ namespace Nethermind.Serialization.Rlp
         public byte this[int index] => Bytes[index];
 
         public int Length => Bytes.Length;
-
-        private static readonly Dictionary<RlpDecoderKey, IRlpDecoder> _decoderBuilder = [];
-        private static readonly Lock _decoderLock = new();
 
         public static void ResetDecoders()
         {
@@ -873,13 +857,6 @@ namespace Nethermind.Serialization.Rlp
         {
             public string Key { get; } = key;
         }
-
-        private static ILogger _logger = Static.LogManager.GetClassLogger<Rlp>();
-
-        // A field initializer rather than a static constructor keeps the type beforefieldinit, so static methods
-        // that read no static field (e.g. LengthOf) need no type initialization check on every call. Declared after
-        // every other initialized static field: registration constructs decoders, which may read them.
-        private static readonly bool _defaultDecodersRegistered = RegisterDefaultDecoders();
 
         [StackTraceHidden]
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

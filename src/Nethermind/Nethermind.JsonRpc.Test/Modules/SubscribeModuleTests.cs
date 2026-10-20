@@ -6,6 +6,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net.WebSockets;
+using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -174,7 +175,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 manualResetEvent.Set();
             }));
 
-            _txPool.NewPending += Raise.EventWith(new object(), txEventArgs);
+            _txPool.NewPending += Raise.Event<EventHandler<TxEventArgs>>(new object(), txEventArgs);
             manualResetEvent.WaitOne(TimeSpan.FromMilliseconds(100));
 
             subscriptionId = newPendingTransactionsSubscription.Id;
@@ -193,7 +194,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 manualResetEvent.Set();
             }));
 
-            _txPool.EvictedPending += Raise.EventWith(new object(), txEventArgs);
+            _txPool.EvictedPending += Raise.Event<EventHandler<TxEventArgs>>(new object(), txEventArgs);
             manualResetEvent.WaitOne(TimeSpan.FromMilliseconds(1000));
 
             subscriptionId = droppedPendingTransactionsSubscription.Id;
@@ -1099,7 +1100,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             for (int i = 0; i < messages; i++)
             {
                 Transaction tx = new();
-                txPool.NewPending += Raise.EventWith(new TxEventArgs(tx));
+                txPool.NewPending += Raise.Event<EventHandler<TxEventArgs>>(txPool, new TxEventArgs(tx));
             }
 
             // Wait until all messages are sent
@@ -1138,7 +1139,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 for (int i = 0; i < messages; i++)
                 {
                     Transaction tx = new();
-                    txPool.NewPending += Raise.EventWith(new TxEventArgs(tx));
+                    txPool.NewPending += Raise.Event<EventHandler<TxEventArgs>>(txPool, new TxEventArgs(tx));
                 }
             });
             Task subB = Task.Run(() =>
@@ -1229,6 +1230,33 @@ namespace Nethermind.JsonRpc.Test.Modules
             string serialized = RpcTest.SerializeResponse(jsonRpcResult.Response);
             string expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"eth_subscription\",\"params\":{\"subscription\":\"", subscriptionId, "\"}}");
             Assert.That(expectedResult, Is.EqualTo(serialized));
+        }
+
+        [Test]
+        public void Hash_only_transaction_subscriptions_do_not_retain_queued_transactions([Values] bool dropped)
+        {
+            IJsonRpcDuplexClient client = Substitute.For<IJsonRpcDuplexClient>();
+            client.SendJsonRpcResult(Arg.Any<JsonRpcResult>()).Returns(new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously).Task);
+            using Subscription subscription = dropped
+                ? new DroppedPendingTransactionsSubscription(client, _txPool, _logManager)
+                : new NewPendingTransactionsSubscription(client, _txPool, _specProvider, _logManager);
+
+            WeakReference transaction = RaiseTransactionEvent(dropped);
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+
+            Assert.That(transaction.IsAlive, Is.False);
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private WeakReference RaiseTransactionEvent(bool dropped)
+        {
+            Transaction transaction = Build.A.Transaction.WithHash(TestItem.KeccakA).TestObject;
+            if (dropped) _txPool.EvictedPending += Raise.Event<EventHandler<TxEventArgs>>(_txPool, new TxEventArgs(transaction));
+            else _txPool.NewPending += Raise.Event<EventHandler<TxEventArgs>>(_txPool, new TxEventArgs(transaction));
+            // The substitute records the raise, event arguments included.
+            _txPool.ClearReceivedCalls();
+            return new WeakReference(transaction);
         }
 
         [Test]

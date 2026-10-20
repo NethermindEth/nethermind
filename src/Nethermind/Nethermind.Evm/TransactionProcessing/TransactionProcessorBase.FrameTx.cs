@@ -23,14 +23,14 @@ namespace Nethermind.Evm.TransactionProcessing;
 /// EVM call, applying APPROVE effects, enforcing the payer gate and producing per-frame receipts.</summary>
 public abstract partial class TransactionProcessorBase<TGasPolicy>
 {
-    /// <summary>EIP-7906: starts the slice the assertion opcodes read, for a POST_TX transaction on a
+    /// <summary>EIP-7906: starts the slice the assertion opcodes read, for a transaction with ASSERT frames on a
     /// path that is not already recording one. Returns the recorder so the caller can stop it.</summary>
     /// <remarks>Recording starts before the transaction touches state, so the prestate is its own baseline.
     /// The EIP-7928 condition mirrors block processing in both directions: without it, simulation could
     /// succeed on a chain whose blocks halt.</remarks>
-    private IBlockAccessListSource? BeginPostTxDiffRecording(Transaction tx, ExecutionOptions opts, IReleaseSpec spec)
+    private IBlockAccessListSource? BeginAssertFrameDiffRecording(Transaction tx, ExecutionOptions opts, IReleaseSpec spec)
     {
-        // The in-pool prefix simulation stops before the body, so no POST_TX frame ever runs under it.
+        // The in-pool prefix simulation stops before the body, so no ASSERT frame ever runs under it.
         if (!spec.IsEip7906Enabled
             || !spec.BlockLevelAccessListsEnabled
             || opts.HasFlag(ExecutionOptions.FrameValidationPrefixOnly)
@@ -42,7 +42,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 
         foreach (TxFrame frame in frames)
         {
-            if (frame.Mode == FrameMode.PostTx)
+            if (frame.Mode == FrameMode.Assert)
             {
                 recorder.SetGeneratingBlockAccessList(new BlockAccessListAtIndex());
                 return recorder;
@@ -255,7 +255,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         FrameCheckpoint prefixEnd = new(
             txSnapshot, Index: -1, Refund: 0, StateGas: 0, Journal: 0,
             Destroys: accessTracker.DestroyList.TakeSnapshot());
-        bool postTxReverted = false;
+        bool assertReverted = false;
         // EIP-161: once any frame touches RIPEMD-160, the touch outlives every later rollback that
         // leaves the transaction valid, so it is tracked for the whole transaction rather than per frame.
         bool shouldRestoreRipemdTouch = false;
@@ -286,7 +286,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 
             Address resolvedTarget = frame.Target ?? sender;
             Address caller = isSender ? sender : Eip8141Constants.EntryPointAddress;
-            bool isStatic = frame.Mode is FrameMode.Verify or FrameMode.PostTx;
+            bool isStatic = frame.Mode is FrameMode.Verify or FrameMode.Assert;
 
             // ORIGIN returns the frame's caller throughout all call depths.
             VirtualMachine.SetTxExecutionContext(new TxExecutionContext(
@@ -338,7 +338,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                 return TransactionResult.ErrorType.MalformedTransaction.WithDetail("VERIFY frame reverted");
             }
 
-            if (frame.Mode == FrameMode.PostTx && !frameSucceeded)
+            if (frame.Mode == FrameMode.Assert && !frameSucceeded)
             {
                 // A failed assertion discards the body down to the validation prefix, overriding any
                 // batch unroll, but unlike a VERIFY revert it leaves the transaction valid.
@@ -361,7 +361,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                     frameContext.MarkFrameSkipped(s);
                 }
 
-                postTxReverted = true;
+                assertReverted = true;
                 break;
             }
 
@@ -369,7 +369,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             {
                 if (!payerWasSet && frameContext.Payer is not null)
                 {
-                    // End of the validation prefix: EIP-7906 keeps everything up to here when POST_TX reverts.
+                    // End of the validation prefix: EIP-7906 keeps everything up to here when ASSERT reverts.
                     prefixEnd = new FrameCheckpoint(
                         WorldState.TakeSnapshot(), Index: i, Refund: refundCounter, StateGas: totalFrameStateGasUsed,
                         Journal: frameContext.FrameJournalCheckpoint, Destroys: accessTracker.DestroyList.TakeSnapshot());
@@ -447,7 +447,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             premiumPerGas: in premiumPerGas,
             blobFee: in blobFee,
             maxCost: in maxCost,
-            postTxReverted: postTxReverted);
+            assertReverted: assertReverted);
     }
 
     /// <summary>Settles a frame transaction once every frame has run: nets the EIP-3529 refund, computes the
@@ -461,7 +461,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
     /// <param name="totalFrameStateGasUsed">The state-gas dimension of that total, before correction.</param>
     /// <param name="refundCounter">The EIP-3529 refund accumulated by committed frames.</param>
     /// <param name="maxCost">The escrow charged to the payer at approval, per TXPARAM 0x06.</param>
-    /// <param name="postTxReverted">Whether a POST_TX frame discarded the body, which the receipt reports as a failure.</param>
+    /// <param name="assertReverted">Whether an ASSERT frame discarded the body, which the receipt reports as a failure.</param>
     /// <typeparam name="TTracing">As in <see cref="ExecuteFrameTx{TTracing}"/>.</typeparam>
     private TransactionResult SettleFrameTx<TTracing>(
         Transaction tx,
@@ -483,7 +483,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         in UInt256 premiumPerGas,
         in UInt256 blobFee,
         in UInt256 maxCost,
-        bool postTxReverted)
+        bool assertReverted)
         where TTracing : struct, IFlag
     {
         if (frameContext.Payer is null)
@@ -525,11 +525,12 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             ? Eip8037BlockGasInclusionCheck.CalculateBlockExecutionGas(grossGas, blockStateGas, floorGas)
             : payerRegularGas;
         ulong spentGas = payerRegularGas + blockStateGas;
-        // Set explicitly like the regular path: the BlockGasUsed getter otherwise falls back to tx.GasLimit,
-        // which for a frame tx is the frame-gas sum rather than the gas spent that block validation sums.
+        // Set explicitly like the regular path: the BlockGasUsed and SpentGas getters otherwise fall back to tx.GasLimit,
+        // which for a frame tx is the frame-gas sum rather than the gas spent.
         if (!opts.HasFlag(ExecutionOptions.Warmup)) // only the main thread updates the transaction
         {
             tx.BlockGasUsed = blockRegularGas;
+            tx.SpentGas = spentGas;
         }
         Address payer = frameContext.Payer;
 
@@ -600,10 +601,10 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             frameReceiptTracer?.ReportFrameTxReceipt(payer, frameReceipts);
 
             GasConsumed gasConsumed = new(spentGas, spentGas, blockRegularGas, blockStateGas, blockRegularGas + blockStateGas, gasRefund);
-            if (postTxReverted)
+            if (assertReverted)
             {
                 // The failed receipt rebuilds the log set from the frame receipts reported above.
-                tracer.MarkAsFailed(Eip8141Constants.EntryPointAddress, in gasConsumed, [], "POST_TX frame reverted");
+                tracer.MarkAsFailed(Eip8141Constants.EntryPointAddress, in gasConsumed, [], "ASSERT frame reverted");
             }
             else
             {

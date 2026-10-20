@@ -192,7 +192,7 @@ internal sealed class TracingProducedBlockProcessor(
     /// <see cref="BlockReceiptsTracer.StartNewTxTrace"/> hands out the tracer it wraps rather than itself, so nested
     /// under the block processor's own receipts tracer it would never see a transaction's result.
     /// </remarks>
-    private sealed class ReceiptsCollector(BlockReceiptsTracer receiptsTracer) : IBlockTracer
+    private sealed class ReceiptsCollector(BlockReceiptsTracer receiptsTracer) : IBlockTracer, ITxDiscardAwareTracer
     {
         public bool IsTracingRewards => receiptsTracer.IsTracingRewards;
 
@@ -207,6 +207,8 @@ internal sealed class TracingProducedBlockProcessor(
         }
 
         public void EndTxTrace() => receiptsTracer.EndTxTrace();
+
+        public void DiscardLastTx() => receiptsTracer.DiscardLastTx();
 
         public void EndBlockTrace() => receiptsTracer.EndBlockTrace(accumulateBlockBloom: false);
     }

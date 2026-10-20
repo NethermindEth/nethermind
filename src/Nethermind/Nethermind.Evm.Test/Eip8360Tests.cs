@@ -465,6 +465,33 @@ public class Eip8360Tests : VirtualMachineTestsBase
         }
     }
 
+    [TestCase(true, TestName = "PAY draining a TCREATE account refills state gas")]
+    [TestCase(false, TestName = "PAY crediting a TCREATE account charges state gas")]
+    public void Pay_follows_the_eip_tables(bool fromTransientCreate)
+    {
+        IReleaseSpec spec = new OverridableReleaseSpec(EnabledSpec) { IsEip5920Enabled = true };
+        byte[] init = fromTransientCreate ? Eip5920Tests.Pay(Prepare.EvmCode, Sink, 5).STOP().Done : EmptyInit;
+        Address tcreated = TCreateAddress(Factory, init);
+        Prepare factory = Prepare.EvmCode.TCreate(init, Salt, (UInt256)(fromTransientCreate ? 5 : 0)).Op(Instruction.POP);
+        if (!fromTransientCreate)
+        {
+            Eip5920Tests.Pay(factory, tcreated, 4).Op(Instruction.POP);
+        }
+
+        InstallCode(Factory, factory.STOP().Done, 100);
+
+        TestAllTracerWithOutput tracer = Run(spec);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.EqualTo(fromTransientCreate ? 0UL : (ulong)GasCostOf.NewAccountState), "state gas");
+            Assert.That(tracer.Refund, Is.EqualTo(fromTransientCreate ? (long)Eip8038Constants.AccountWrite : 0L), "ACCOUNT_WRITE refund");
+            Assert.That(TestState.GetBalance(Sink), Is.EqualTo((UInt256)(fromTransientCreate ? 6 : 1)));
+            AssertFinalized(tcreated, (UInt256)(fromTransientCreate ? 0 : 4));
+        }
+    }
+
     [Test]
     public void Balance_tables_apply_without_instruction_tracing([Values] bool traced)
     {
@@ -564,6 +591,34 @@ public class Eip8360Tests : VirtualMachineTestsBase
         }
     }
 
+    [Test(Description = "A frame that cannot pay its balance-change charges on entry halts, so the callTracer reports all its gas as used")]
+    public void Call_tracer_reports_a_frame_halted_on_entry_as_using_all_its_gas()
+    {
+        byte[] init = Prepare.EvmCode.ForInitOf(ReturnWord(Prepare.EvmCode.PushData(42))).Done;
+        Address tcreated = TCreateAddress(Factory, init);
+        // The value call passes only the stipend, short of the ACCOUNT_WRITE the TCREATE account's first balance change costs.
+        InstallCode(Factory, Prepare.EvmCode
+            .TCreate(init, Salt, 0).Op(Instruction.POP)
+            .CallWithValue(tcreated, 0, 4).Op(Instruction.POP)
+            .STOP()
+            .Done, 100);
+        (Block block, Transaction tx) = BuildFactoryCall();
+        using NativeCallTracer tracer = new(tx, EnabledSpec, GethTraceOptions.Default with { Tracer = NativeCallTracer.CallTracer });
+
+        ExecuteFactoryCall(block, tx, tracer);
+
+        using GethLikeTxTrace trace = tracer.BuildResult();
+        NativeCallTracerCallFrame call = ((NativeCallTracerCallFrame)trace.CustomTracerResult!.Value!).Calls[1];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(call.Type, Is.EqualTo(Instruction.CALL), "type");
+            Assert.That(call.To, Is.EqualTo(tcreated), "to");
+            Assert.That(call.Gas, Is.EqualTo(GasCostOf.CallStipend), "gas");
+            Assert.That(call.GasUsed, Is.EqualTo(call.Gas), "gasUsed");
+            Assert.That(call.Error, Is.EqualTo("out of gas"), "error");
+        }
+    }
+
     [Test]
     public void Prestate_tracer_shows_the_wipe_and_no_transient_storage([Values(0, 5)] int endowment, [Values] bool diffMode)
     {
@@ -585,13 +640,20 @@ public class Eip8360Tests : VirtualMachineTestsBase
             {
                 NativePrestateTracerDiffMode diff = (NativePrestateTracerDiffMode)trace.CustomTracerResult!.Value;
                 Assert.That(diff.pre.ContainsKey(tcreated), Is.False, "the account was created by the transaction");
-                Assert.That(diff.post.TryGetValue(tcreated, out NativePrestateTracerAccount? post), Is.EqualTo(endowment != 0));
-                if (endowment != 0)
+                Assert.That(TestState.AccountExists(tcreated), Is.EqualTo(endowment != 0), "empty accounts are removed after the wipe");
+                Assert.That(diff.post.TryGetValue(tcreated, out NativePrestateTracerAccount? post), Is.True);
+                if (endowment == 0)
+                {
+                    Assert.That(JsonSerializer.Serialize(post, EthereumJsonSerializer.JsonOptions),
+                        Is.EqualTo($"{{\"codeHash\":\"{Hash256.Zero}\"}}"));
+                }
+                else
                 {
                     Assert.That(post!.Balance, Is.EqualTo((UInt256?)(UInt256)endowment));
                     Assert.That(post.Nonce, Is.Null, "the nonce is reset");
                     Assert.That(post.Code.IsEmpty, Is.True, "the code is removed");
                     Assert.That(post.Storage, Is.Null);
+                    Assert.That(post.CodeHash, Is.Null, "the empty-code hash is unchanged");
                 }
             }
             else

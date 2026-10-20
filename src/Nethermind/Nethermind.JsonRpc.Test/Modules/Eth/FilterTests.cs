@@ -25,7 +25,7 @@ public class FilterTests
             yield return new TestCaseData("{}",
                 new Filter
                 {
-                    FromBlock = BlockParameter.Earliest,
+                    FromBlock = BlockParameter.Latest,
                     ToBlock = BlockParameter.Latest,
                 });
 
@@ -46,7 +46,7 @@ public class FilterTests
                     }),
                 new Filter
                 {
-                    FromBlock = BlockParameter.Earliest,
+                    FromBlock = BlockParameter.Latest,
                     ToBlock = BlockParameter.Latest,
                     Topics =
                     [
@@ -112,7 +112,7 @@ public class FilterTests
                         new Address("0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358"),
                         new Address("0x02d77d118326c33bbe36ebeabf4f7ed6bc2dda5c")
                     ],
-                    FromBlock = BlockParameter.Earliest,
+                    FromBlock = BlockParameter.Latest,
                     ToBlock = BlockParameter.Latest,
                     Topics =
                     [
@@ -158,6 +158,7 @@ public class FilterTests
     [TestCase("""{"topics":["0xe194ef610f9150a2db4110b3db5116fd623175dca3528d7ae7046a1042f84fz7"]}""", typeof(FormatException))]
     [TestCase("""{"topics":[["0xe194ef610f9150a2db4110b3db5116fd623175dca3528d7ae7046a1042f84fe7aa"]]}""", typeof(ArgumentException))]
     [TestCase("""{"topics":[[true]]}""", typeof(FormatException))]
+    [TestCase("""{"topics":[null,null,null,null,null]}""", typeof(JsonException))]
     public void ReadJson_rejects_invalid_address_or_topic(string json, Type expectedException)
     {
         Filter filter = new();

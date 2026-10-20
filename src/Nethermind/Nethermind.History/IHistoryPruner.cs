@@ -11,7 +11,7 @@ public interface IHistoryPruner
     /// <summary>Block number below which historical blocks may be pruned. <c>null</c> when pruning is disabled.</summary>
     public ulong? CutoffBlockNumber { get; }
 
-    /// <summary>Block number below which historical block-access-lists may be pruned. <c>null</c> when pruning is disabled.</summary>
+    /// <summary>Block number below which historical block-access-lists may be pruned. <c>null</c> when they are not pruned; <c>0</c> when the retention covers the whole chain.</summary>
     public ulong? BalCutoffBlockNumber { get; }
 
     public BlockHeader? OldestBlockHeader { get; }
@@ -21,6 +21,9 @@ public interface IHistoryPruner
     public ulong OldestUnreclaimedBlockNumber { get; }
 
     event EventHandler<OnNewOldestBlockArgs> NewOldestBlock;
+
+    /// <summary>Epochs of history the <c>Rolling</c> mode keeps: the configured retention, or the chain's floor when unset.</summary>
+    ulong RetentionEpochs { get; }
 
     void SchedulePruneHistory();
 

@@ -185,6 +185,74 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             _handler.NotifyOfNewBlock(block, (SendBlockMode)99);
         }
 
+        [TestCase(513UL, 0UL, SendBlockMode.FullBlock, false)]
+        [TestCase(513UL, 0UL, SendBlockMode.HashOnly, false)]
+        [TestCase(1000UL, 488UL, SendBlockMode.FullBlock, true)]
+        [TestCase(1000UL, 488UL, SendBlockMode.HashOnly, true)]
+        [TestCase(1000UL, 1000UL, SendBlockMode.FullBlock, true)]
+        [TestCase(1000UL, 1000UL, SendBlockMode.HashOnly, true)]
+        [TestCase(0UL, 500UL, SendBlockMode.FullBlock, true)]
+        [TestCase(0UL, 500UL, SendBlockMode.HashOnly, true)]
+        [TestCase(ulong.MaxValue, ulong.MaxValue, SendBlockMode.FullBlock, true)]
+        [TestCase(ulong.MaxValue, ulong.MaxValue, SendBlockMode.HashOnly, true)]
+        public void Notify_of_new_block_filters_only_blocks_older_than_peer_reorg_window(
+            ulong peerHeadNumber,
+            ulong blockNumber,
+            SendBlockMode mode,
+            bool shouldDeliver)
+        {
+            _handler.HeadNumber = peerHeadNumber;
+            _session.ClearReceivedCalls();
+            Block block = Build.A.Block.WithNumber(blockNumber).WithTotalDifficulty(1UL).TestObject;
+
+            _handler.NotifyOfNewBlock(block, mode);
+
+            if (shouldDeliver)
+            {
+                Type expectedMessageType = mode == SendBlockMode.FullBlock
+                    ? typeof(NewBlockMessage)
+                    : typeof(NewBlockHashesMessage);
+                _session.Received(1).DeliverMessage(Arg.Is<P2PMessage>(message => message.GetType() == expectedMessageType));
+            }
+            else
+            {
+                _session.DidNotReceive().DeliverMessage(Arg.Any<P2PMessage>());
+            }
+        }
+
+        [Test]
+        public void Notify_of_new_block_uses_the_latest_peer_head_number(
+            [Values(SendBlockMode.FullBlock, SendBlockMode.HashOnly)] SendBlockMode mode)
+        {
+            Block block = Build.A.Block.WithNumber(100UL).WithTotalDifficulty(1UL).TestObject;
+            _handler.HeadNumber = 1000UL;
+            _session.ClearReceivedCalls();
+
+            _handler.NotifyOfNewBlock(block, mode);
+            _session.DidNotReceive().DeliverMessage(Arg.Any<P2PMessage>());
+
+            _handler.HeadNumber = 100UL;
+            _session.ClearReceivedCalls();
+            _handler.NotifyOfNewBlock(block, mode);
+
+            Type expectedMessageType = mode == SendBlockMode.FullBlock
+                ? typeof(NewBlockMessage)
+                : typeof(NewBlockHashesMessage);
+            _session.Received(1).DeliverMessage(Arg.Is<P2PMessage>(message => message.GetType() == expectedMessageType));
+
+            _handler.HeadNumber = 1000UL;
+            Block newlyObservedHistoricalBlock = Build.A.Block
+                .WithNumber(100UL)
+                .WithNonce(1UL)
+                .WithTotalDifficulty(1UL)
+                .TestObject;
+            Assert.That(newlyObservedHistoricalBlock.Hash, Is.Not.EqualTo(block.Hash));
+            _session.ClearReceivedCalls();
+            _handler.NotifyOfNewBlock(newlyObservedHistoricalBlock, mode);
+
+            _session.DidNotReceive().DeliverMessage(Arg.Any<P2PMessage>());
+        }
+
         [Test]
         public void Get_headers_from_genesis()
         {
@@ -784,6 +852,28 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
                 Assert.That(tx.Nonce, Is.EqualTo(17));
                 Assert.That(tx.Signature, Is.Not.Null);
             }
+        }
+
+        [Test]
+        public void Blob_transaction_forgets_an_invalid_blob_proofs_verdict_before_its_only_submission()
+        {
+            Transaction tx = Build.A.Transaction.WithShardBlobTxTypeAndFields().SignedAndResolved().TestObject;
+            Hash256 hash = tx.Hash!;
+            _transactionPool.ForgetInvalidBlobProofs(hash).Returns(true);
+            _transactionPool.SubmitTx(Arg.Any<Transaction>(), TxHandlingOptions.None).Returns(AcceptTxResult.Accepted);
+            using TestEth62ProtocolHandler handler = new(
+                _session, _svc, new NodeStatsManager(Substitute.For<ITimerFactory>(), LimboLogs.Instance),
+                _syncManager, RunImmediatelyScheduler.Instance, _transactionPool, _gossipPolicy,
+                LimboLogs.Instance, _txGossipPolicy);
+
+            handler.HandleSlowPublic(new ArrayPoolList<Transaction>(1) { tx }, CancellationToken.None);
+
+            Received.InOrder(() =>
+            {
+                _transactionPool.ForgetInvalidBlobProofs(hash);
+                _transactionPool.SubmitTx(tx, TxHandlingOptions.None);
+            });
+            _transactionPool.Received(1).SubmitTx(Arg.Any<Transaction>(), TxHandlingOptions.None);
         }
 
         private sealed class TestEth62ProtocolHandler(

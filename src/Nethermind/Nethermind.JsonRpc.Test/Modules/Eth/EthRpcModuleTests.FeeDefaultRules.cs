@@ -12,12 +12,17 @@ using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.IO;
 using Nethermind.Crypto;
+using Nethermind.Int256;
+using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.KeyStore;
 using Nethermind.KeyStore.Config;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
+using Nethermind.Specs;
+using Nethermind.Specs.Forks;
 using Nethermind.Wallet;
 using Newtonsoft.Json.Linq;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Modules.Eth;
@@ -42,6 +47,7 @@ public partial class EthRpcModuleTests
     [TestCase("eth_sendTransaction", """{"gasPrice":"0x0"}""", "gasPrice must be non-zero after london fork", TestName = "Send, zero gas price")]
     [TestCase("eth_signTransaction", """{"gasPrice":"0x0"}""", "gasPrice must be non-zero after london fork", TestName = "Sign, zero gas price")]
     [TestCase("eth_fillTransaction", """{"gasPrice":"0x0"}""", "gasPrice must be non-zero after london fork", TestName = "Fill, zero gas price")]
+    [TestCase("eth_sendTransaction", """{"gasPrice":"0x1","authorizationList":AUTH}""", "both gasPrice and authorizationList specified", TestName = "Send, gas price with an authorization list")]
     [TestCase("eth_signTransaction", """{"type":"0x4","gasPrice":"0x1","authorizationList":AUTH}""", "both gasPrice and authorizationList specified", TestName = "Sign, gas price with an authorization list")]
     [TestCase("eth_fillTransaction", """{"type":"0x4","gasPrice":"0x1","authorizationList":AUTH}""", "both gasPrice and authorizationList specified", TestName = "Fill, gas price with an authorization list")]
     [TestCase("eth_createAccessList", """{"type":"0x4","gasPrice":"0x1","authorizationList":AUTH}""", "both gasPrice and authorizationList specified", TestName = "Create access list, gas price with an authorization list")]
@@ -138,6 +144,27 @@ public partial class EthRpcModuleTests
 
         Assert.That(JToken.Parse(serialized)["error"]?["message"]?.Value<string>(), Is.EqualTo("unknown account"),
             "a key file named after another account must not make this one held");
+    }
+
+    [TestCase("""{"accessList":[]}""", true, false, TestName = "Access list without a gas price")]
+    [TestCase("""{"gasPrice":"0x3b9aca00"}""", false, false, TestName = "Legacy with a gas price")]
+    [TestCase("""{}""", false, true, TestName = "Dynamic fee without fees")]
+    [TestCase("""{"maxFeePerGas":"0x77359400"}""", false, true, TestName = "Dynamic fee with only a fee cap")]
+    [TestCase("""{"maxFeePerGas":"0x77359400","maxPriorityFeePerGas":"0x1"}""", false, false, TestName = "Dynamic fee with both fees")]
+    [TestCase("""{"accessList":[],"gasPrice":"0x3b9aca00"}""", false, false, TestName = "Access list with a gas price")]
+    [TestCase("""{"type":"0x2","gasPrice":"0x3b9aca00"}""", false, false, TestName = "Dynamic fee priced with a gas price")]
+    public async Task Fill_estimates_only_the_fee_defaults_it_uses(string feeFields, bool estimatesGasPrice, bool estimatesPriorityFee)
+    {
+        IGasPriceOracle oracle = Substitute.For<IGasPriceOracle>();
+        oracle.GetGasPriceEstimate().Returns(new ValueTask<UInt256>(1_000_000_000));
+        oracle.GetMaxPriorityGasFeeEstimate().Returns((UInt256)1_000_000_000);
+        using TestRpcBlockchain test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithGasPriceOracle(oracle).Build(new TestSpecProvider(London.Instance));
+
+        string serialized = await test.TestEthRpc("eth_fillTransaction", FeeDefaultsRequest(feeFields, HeldAccount));
+
+        Assert.That(JToken.Parse(serialized)["error"], Is.Null, serialized);
+        _ = oracle.Received(estimatesGasPrice ? 1 : 0).GetGasPriceEstimate();
+        oracle.Received(estimatesPriorityFee ? 1 : 0).GetMaxPriorityGasFeeEstimate();
     }
 
     private async Task<string?> FeeDefaultsError(string method, string feeFields, bool london)

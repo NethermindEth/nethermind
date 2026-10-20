@@ -6,6 +6,7 @@ using System.Threading;
 using DotNetty.Buffers;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.SyncLimits;
 using Nethermind.TxPool;
@@ -31,14 +32,38 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
         // Cached once per instance to avoid allocating a new delegate on every Deserialize call.
         private readonly DecodeRlpValue<TransactionsMessage> _deserializeTransactionsMessage;
 
+        [ThreadStatic]
+        private static IKnownTransactionFilter? t_knownTransactionFilter;
+
         public TransactionsMessageSerializer(ITxPoolConfig? txPoolConfig = null)
         {
             _maxTxSize = Math.Max(txPoolConfig?.MaxTxSize ?? long.MaxValue, ShortFormMaxItemMeasure);
             _deserializeTransactionsMessage = (ref RlpReader ctx) =>
             {
-                IOwnedReadOnlyList<Transaction> transactions = DeserializeTxs(ref ctx, _maxTxSize, out int skippedCount);
+                IOwnedReadOnlyList<Transaction> transactions = DeserializeTxs(ref ctx, _maxTxSize, t_knownTransactionFilter, out int skippedCount);
                 return new TransactionsMessage(transactions) { SkippedCount = skippedCount };
             };
+        }
+
+        /// <summary>
+        /// Lets <paramref name="filter"/> settle already-known transactions by hash, so they are skipped undecoded,
+        /// for the <see cref="TransactionsMessage"/> deserialized on this thread until the scope is disposed.
+        /// </summary>
+        /// <remarks>
+        /// A thread-local scope rather than a parameter because the message is deserialized through
+        /// <see cref="IMessageSerializationService"/>, which carries no per-call state. Only the legacy, access-list,
+        /// EIP-1559 and set-code types are checked: their hash is the Keccak of the wire item, unlike a blob
+        /// transaction's network form.
+        /// </remarks>
+        internal static KnownTransactionScope SkipKnown(IKnownTransactionFilter? filter)
+        {
+            t_knownTransactionFilter = filter;
+            return default;
+        }
+
+        internal readonly ref struct KnownTransactionScope
+        {
+            public void Dispose() => t_knownTransactionFilter = null;
         }
 
         public void Serialize(IByteBuffer byteBuffer, TransactionsMessage message)
@@ -69,7 +94,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
         }
 
         public static IOwnedReadOnlyList<Transaction> DeserializeTxs(ref RlpReader ctx) =>
-            DeserializeTxs(ref ctx, long.MaxValue, out _);
+            DeserializeTxs(ref ctx, long.MaxValue, knownFilter: null, out _);
 
         internal static int ReadTransactionCount(ref RlpReader ctx, out int checkPosition)
         {
@@ -82,8 +107,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
         /// <summary>Decodes the wire-form transaction list, skipping any item whose pre-decode size exceeds <paramref name="maxTxSize"/>.</summary>
         /// <remarks>Avoids the RLP-decode cost of an attacker-sized item - see <see cref="IsOverSizeLimit"/> for the measure.</remarks>
         /// <param name="maxTxSize">The size cap, or <see cref="long.MaxValue"/> to decode every item without measuring it.</param>
+        /// <param name="knownFilter">Settles already-known items, which are then skipped; <see langword="null"/> decodes every item.</param>
         /// <param name="skippedCount">The number of items skipped for exceeding the cap.</param>
-        private static IOwnedReadOnlyList<Transaction> DeserializeTxs(ref RlpReader ctx, long maxTxSize, out int skippedCount)
+        private static IOwnedReadOnlyList<Transaction> DeserializeTxs(ref RlpReader ctx, long maxTxSize, IKnownTransactionFilter? knownFilter, out int skippedCount)
         {
             int length = ReadTransactionCount(ref ctx, out int checkPosition);
 
@@ -99,6 +125,20 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
                         ctx.SkipItem();
                         skipped++;
                         Interlocked.Increment(ref Metrics.OversizedTransactionsSkipped);
+                        continue;
+                    }
+
+                    if (knownFilter is not null && TryHashWireItem(ref ctx, out ValueHash256 hash, out TxType type, out int size))
+                    {
+                        if (knownFilter.TrySettleKnown(in hash, type, size))
+                        {
+                            ctx.SkipItem();
+                            continue;
+                        }
+
+                        Transaction tx = TxDecoder.DecodeGuardNotNull(ref ctx, RlpBehaviors.InMempoolForm | RlpBehaviors.PoolBlobBuffers | RlpBehaviors.ExcludeHashes);
+                        tx.Hash = new Hash256(in hash);
+                        result.Add(tx);
                         continue;
                     }
 
@@ -118,6 +158,35 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
                 result.Dispose();
                 throw;
             }
+        }
+
+        /// <summary>Hashes the transaction at the reader's current position without decoding it, for the types whose hash is the Keccak of the wire item.</summary>
+        /// <param name="size">The length of the hashed bytes, which is the transaction's network encoding size.</param>
+        private static bool TryHashWireItem(ref RlpReader ctx, out ValueHash256 hash, out TxType type, out int size)
+        {
+            if (ctx.IsSequenceNext())
+            {
+                ReadOnlySpan<byte> item = ctx.PeekNextItem();
+                hash = ValueKeccak.Compute(item);
+                type = TxType.Legacy;
+                size = item.Length;
+                return true;
+            }
+
+            (int prefixLength, int contentLength) = ctx.PeekPrefixAndContentLength();
+            if (contentLength > 0 && ctx.Peek(prefixLength, 1)[0] is (byte)TxType.AccessList or (byte)TxType.EIP1559 or (byte)TxType.SetCode)
+            {
+                ReadOnlySpan<byte> content = ctx.Peek(prefixLength, contentLength);
+                hash = ValueKeccak.Compute(content);
+                type = (TxType)content[0];
+                size = contentLength;
+                return true;
+            }
+
+            hash = default;
+            type = default;
+            size = 0;
+            return false;
         }
 
         /// <summary>Whether the item at the reader's current position exceeds the configured size cap.</summary>

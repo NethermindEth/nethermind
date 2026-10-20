@@ -55,6 +55,20 @@ public class BlockAccessListRecoveryStepTests
         Assert.That(block.BlockAccessList?.WireHash, expectAttached ? Is.EqualTo(StoredHash) : Is.Null);
     }
 
+    [TestCase(0, true, TestName = "List at the item limit is attached")]
+    [TestCase(1, false, TestName = "List over the item limit is left off")]
+    public void Stored_list_is_attached_only_within_the_item_limit(int itemsOverLimit, bool expectAttached)
+    {
+        TestMemDb db = new();
+        ulong gasLimit = (ulong)(StoredBal.ItemCount - itemsOverLimit) * Eip7928Constants.ItemCost;
+        Block block = Build.A.Block.WithNumber(BlockNumber).WithGasLimit(gasLimit).WithBlockAccessListHash(StoredHash).TestObject;
+        new BlockAccessListStore(db).Insert(BlockNumber, block.Hash!, StoredRlp);
+
+        CreateStep(db).RecoverDataForQueuedProcessing(block);
+
+        Assert.That(block.BlockAccessList?.WireHash, expectAttached ? Is.EqualTo(StoredHash) : Is.Null);
+    }
+
     [TestCase(false, false, false, TestName = "No consumer: nothing is looked up")]
     [TestCase(false, true, true, TestName = "Read warming alone still uses the list")]
     [TestCase(true, false, true, TestName = "Parallel execution alone still uses the list")]

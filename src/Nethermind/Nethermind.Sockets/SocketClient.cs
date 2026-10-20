@@ -40,7 +40,7 @@ public class SocketClient<TStream>(
             string.IsNullOrWhiteSpace(message.Client))
         {
             await _jsonSerializer.SerializeAsync(_stream, new SocketsMessage(message.Type, ClientName, message.Data), CancellationToken.None, indented: false, leaveOpen: true);
-            await _stream.WriteEndOfMessageAsync();
+            await _stream.WriteEndOfMessageAsync(ReadOnlyMemory<byte>.Empty, CancellationToken.None);
         }
     }
 

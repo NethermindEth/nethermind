@@ -136,4 +136,9 @@ public class XdcHeaderValidator(
     protected override bool ValidateBlobGasFields(BlockHeader header, IReleaseSpec spec, ref string? error) => true;
 
     protected override bool ValidateExcessBlobGas(BlockHeader header, BlockHeader parent, IReleaseSpec spec, ref string? error) => true;
+
+    // XDC headers omit withdrawals and beacon roots even when the spec enables EIP-4895/4788.
+    protected override bool ValidateWithdrawalsRoot(BlockHeader header, IReleaseSpec spec, ref string? error) => true;
+
+    protected override bool ValidateParentBeaconBlockRoot(BlockHeader header, IReleaseSpec spec, ref string? error) => true;
 }

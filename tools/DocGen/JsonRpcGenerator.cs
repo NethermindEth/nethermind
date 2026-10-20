@@ -11,6 +11,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Facade.Eth;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Int256;
+using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Evm;
 using Nethermind.JsonRpc.Modules.Rpc;
@@ -68,6 +69,7 @@ internal static class JsonRpcGenerator
         [typeof(Signature)] = "_string_ (hex data)",
         [typeof(string)] = "_string_",
         [typeof(TimeSpan)] = "_string_ (duration)",
+        [typeof(TraceCallManyRequest)] = "array of [_object_ (transaction, same as `call` in `trace_call`), array of _string_ (trace type)] pairs",
         [typeof(TxType)] = "_string_ (transaction type)",
         [typeof(uint)] = "_integer_",
         [typeof(ulong)] = "_string_ (hex integer)",

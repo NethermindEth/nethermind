@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Collections.Generic;
 using System.Linq;
 using DotNetty.Buffers;
 using Nethermind.Core;
@@ -153,12 +155,25 @@ public class ReceiptsMessageSerializerTests
         Assert.That(exception?.Message, Is.EqualTo("Unexpected null array element at index 0"));
     }
 
-    [Test]
-    public void Deserialize_empty()
+    private static IEnumerable<TestCaseData> EmptyResponses()
+    {
+        yield return new TestCaseData(Array.Empty<byte>()).SetArgDisplayNames("no bytes");
+        yield return new TestCaseData(Rlp.OfEmptyList.Bytes).SetArgDisplayNames("empty list");
+    }
+
+    [TestCaseSource(nameof(EmptyResponses))]
+    public void Deserialize_empty_is_usable_after_an_earlier_one_is_disposed(byte[] bytes)
     {
         ReceiptsMessageSerializer serializer = new(MainnetSpecProvider.Instance);
-        using ReceiptsMessage receiptsMessage = serializer.Deserialize([]);
-        Assert.That(receiptsMessage.TxReceipts, Has.Count.EqualTo(0));
+        ReceiptsMessage first = serializer.Deserialize(bytes);
+        first.Dispose();
+
+        using ReceiptsMessage second = serializer.Deserialize(bytes);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(second, Is.Not.SameAs(first));
+            Assert.That(second.TxReceipts.ToArray(), Is.Empty);
+        }
     }
 
     [Test]
@@ -205,14 +220,28 @@ public class ReceiptsMessageSerializerTests
     [Test]
     public void Deserialize_Throws_On_TooMany_Receipts_In_A_Block()
     {
-        TxReceipt receipt = Build.A.Receipt.WithAllFieldsFilled.TestObject;
-        TxReceipt[][] txReceipts = [Enumerable.Repeat(receipt, NethermindSyncLimits.MaxHashesFetch + 1).ToArray()];
-        using ReceiptsMessage message = new(txReceipts.ToPooledList());
+        byte[] serialized = SerializeSingleBlock(BlockBodyDecoder.TransactionsCountLimit.Limit + 1);
         ReceiptsMessageSerializer serializer = new(MainnetSpecProvider.Instance);
 
-        byte[] serialized = serializer.Serialize(message);
-
         Assert.Throws<RlpLimitException>(() => serializer.Deserialize(serialized));
+    }
+
+    [Test]
+    public void Deserialize_Allows_More_Receipts_In_A_Block_Than_Hashes_Per_Request()
+    {
+        const int receiptCount = NethermindSyncLimits.MaxHashesFetch + 1;
+        byte[] serialized = SerializeSingleBlock(receiptCount);
+        ReceiptsMessageSerializer serializer = new(MainnetSpecProvider.Instance);
+
+        using ReceiptsMessage deserialized = serializer.Deserialize(serialized);
+        Assert.That(deserialized.TxReceipts[0].Length, Is.EqualTo(receiptCount));
+    }
+
+    private static byte[] SerializeSingleBlock(int receiptCount)
+    {
+        TxReceipt receipt = new() { StatusCode = 1, GasUsedTotal = 21_000, Bloom = Bloom.Empty, Logs = [] };
+        using ReceiptsMessage message = new(new TxReceipt[][] { Enumerable.Repeat(receipt, receiptCount).ToArray() }.ToPooledList());
+        return new ReceiptsMessageSerializer(MainnetSpecProvider.Instance).Serialize(message);
     }
 
     [Test]

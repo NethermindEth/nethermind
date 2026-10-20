@@ -61,7 +61,7 @@ namespace Nethermind.Benchmarks.Store
             _preloadedRootHash = Keccak.EmptyTreeHash;
             if (PreloadedCount > 0)
             {
-                PatriciaTree preloadTree = new(baseStore, LimboLogs.Instance);
+                PatriciaTree preloadTree = new(baseStore, NullLogManager.Instance);
                 using ArrayPoolListRef<PatriciaTree.BulkSetEntry> preloadSet = new(PreloadedCount);
                 for (int i = 0; i < PreloadedCount; i++)
                 {
@@ -80,7 +80,7 @@ namespace Nethermind.Benchmarks.Store
             List<(TreePath Path, Hash256 Hash)> nodeList = [];
             if (PreloadedCount > 0)
             {
-                PatriciaTree walker = new(baseStore, _preloadedRootHash, false, LimboLogs.Instance);
+                PatriciaTree walker = new(baseStore, _preloadedRootHash, false, NullLogManager.Instance);
                 walker.RootRef!.ResolveNode(baseStore, TreePath.Empty);
                 BlockCacheTrieStore.CollectNodes(baseStore, walker.RootRef!, TreePath.Empty, nodeList);
                 nodeList.Sort((a, b) => a.Path.CompareTo(b.Path));
@@ -102,7 +102,7 @@ namespace Nethermind.Benchmarks.Store
                 if (i % BatchSize == 0)
                 {
                     _blockCacheStore.ResetBlockCache();
-                    tree = new(_blockCacheStore, _preloadedRootHash, true, LimboLogs.Instance);
+                    tree = new(_blockCacheStore, _preloadedRootHash, true, NullLogManager.Instance);
                 }
 
                 tree.Set(_entries[i].Path.BytesAsSpan, _entries[i].Value);
@@ -131,7 +131,7 @@ namespace Nethermind.Benchmarks.Store
                         bulkSet.Clear();
                     }
                     _blockCacheStore.ResetBlockCache();
-                    tree = new(_blockCacheStore, _preloadedRootHash, true, LimboLogs.Instance);
+                    tree = new(_blockCacheStore, _preloadedRootHash, true, NullLogManager.Instance);
                 }
 
                 bulkSet.Add(_entries[i]);

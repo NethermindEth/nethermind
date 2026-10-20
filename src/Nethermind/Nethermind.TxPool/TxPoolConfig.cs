@@ -25,6 +25,7 @@ public class TxPoolConfig : ITxPoolConfig
     public int FrameTxMaxPendingPerDelegatingCode { get; set; } = 16;
     public int FrameTxSimulationTimeoutMs { get; set; } = 250;
     public int FrameTxSimulationBudgetPerHeadMs { get; set; } = 1000;
+    public bool FrameTxPeerSimulationFairShare { get; set; } = false;
     public int FrameTxEvictionRetryBudget { get; set; } = 1;
     public int FrameTxRevalidationDeferralBudget { get; set; } = 2;
     public int MaxPendingBlobTxsPerSender { get; set; } = 16;
