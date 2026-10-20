@@ -259,17 +259,24 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
     private bool TryGetStorage(Address address, [NotNullWhen(true)] out PerContractState? storage)
     {
-        if (_lastStorageAddress == address && _lastStorage is not null)
-        {
-            storage = _lastStorage;
-            return true;
-        }
-
+        if (TryGetRememberedStorage(address, out storage)) return true;
         if (!_storages.TryGetValue(address, out storage)) return false;
 
+        RememberStorage(address, storage);
+        return true;
+    }
+
+    /// <summary>The one-entry memo that <see cref="GetOrCreateStorage"/> and <see cref="TryGetStorage"/> share.</summary>
+    private bool TryGetRememberedStorage(Address address, [NotNullWhen(true)] out PerContractState? storage)
+    {
+        storage = _lastStorageAddress == address ? _lastStorage : null;
+        return storage is not null;
+    }
+
+    private void RememberStorage(Address address, PerContractState storage)
+    {
         _lastStorageAddress = address;
         _lastStorage = storage;
-        return true;
     }
 
     public Hash256 GetStorageRoot(Address address) => GetOrCreateStorage(address).StorageRoot;
@@ -677,16 +684,12 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
     private PerContractState GetOrCreateStorage(Address address)
     {
-        if (_lastStorageAddress == address && _lastStorage is not null)
-        {
-            return _lastStorage;
-        }
+        if (TryGetRememberedStorage(address, out PerContractState? remembered)) return remembered;
 
         ref PerContractState? value = ref _storages.GetValueRefOrAddDefault(address, out bool exists);
         if (!exists) value = PerContractState.Rent(address, this);
         PerContractState storage = value ?? ThrowNoStorageState(address);
-        _lastStorageAddress = address;
-        _lastStorage = storage;
+        RememberStorage(address, storage);
         return storage;
     }
 
