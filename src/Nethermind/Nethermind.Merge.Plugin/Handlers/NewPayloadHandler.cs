@@ -184,6 +184,14 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         _invalidChainTracker.SetChildParent(block.Hash!, block.ParentHash!);
         if (_invalidChainTracker.IsOnKnownInvalidChain(block.Hash!, out Hash256? lastValidHash))
         {
+            // A queued ancestor can still fail execution and move latestValidHash backwards.
+            if (lastValidHash is not null && !_processingQueue.WaitUntilRemovedAsync(lastValidHash).IsCompleted)
+            {
+                return NewPayloadV1Result.Syncing;
+            }
+
+            // Queue removal publishes invalidation before completing, so refresh the earlier snapshot.
+            _invalidChainTracker.IsOnKnownInvalidChain(block.Hash!, out lastValidHash);
             if (_logger.IsWarn) _logger.Warn(InvalidBlockHelper.GetMessage(block, $"block is a part of an invalid chain") + $". The last valid is {lastValidHash}");
             return NewPayloadV1Result.Invalid(lastValidHash, $"Block {request} is known to be a part of an invalid chain.");
         }
@@ -1015,17 +1023,15 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         return isValid;
     }
 
-    // The tracker alone names the last valid hash: it knows whether the parent was validated, this request does not.
-    private PayloadStatusV1 BuildInvalidPayloadStatusV1(ExecutionPayload request, string? validationMessage)
-    {
-        _invalidChainTracker.IsOnKnownInvalidChain(request.BlockHash!, out Hash256? lastValidHash);
-        return new()
+    private PayloadStatusV1 BuildInvalidPayloadStatusV1(ExecutionPayload request, string? validationMessage) =>
+        new()
         {
             Status = PayloadStatus.Invalid,
             ValidationError = validationMessage,
-            LatestValidHash = lastValidHash
+            LatestValidHash = _invalidChainTracker.IsOnKnownInvalidChain(request.BlockHash!, out Hash256? lastValidHash)
+                ? lastValidHash
+                : request.ParentHash
         };
-    }
 
     /// Pop blocks from cache up to ancestor on the beacon chain. Which is then inserted into the block tree
     /// which I assume will switch the canonical chain.

@@ -3,9 +3,8 @@
 
 using System;
 using System.Collections.Generic;
-using Nethermind.Blockchain;
+using Nethermind.Blockchain.Find;
 using Nethermind.Consensus;
-using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -25,15 +24,10 @@ public class InvalidChainTrackerTest
     [SetUp]
     public void Setup()
     {
-        // Every hash resolves to an executed post-merge header, so a parent qualifies as the last valid hash.
-        IBlockTree blockTree = Substitute.For<IBlockTree>();
-        blockTree.FindHeader(Arg.Any<Hash256>(), Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>())
-            .Returns(static call => Build.A.BlockHeader.WithHash(call.Arg<Hash256>()).TestObject);
-        blockTree.GetInfo(Arg.Any<ulong>(), Arg.Any<Hash256>())
-            .Returns(static call => (new BlockInfo(call.Arg<Hash256>(), 0) { WasProcessed = true }, null));
+        IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
         BlockCacheService blockCacheService = new();
 
-        _tracker = new(AlwaysPoS.Instance, blockTree, blockCacheService, new TestLogManager());
+        _tracker = new(NoPoS.Instance, blockFinder, blockCacheService, new TestLogManager());
     }
 
     private List<Hash256> MakeChain(int n, bool connectInReverse = false)
@@ -175,7 +169,7 @@ public class InvalidChainTrackerTest
     [Test]
     public void givenAnInvalidBlock_ifParentIsNotPostMerge_thenLastValidHashShouldBeZero()
     {
-        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
         IBlockCacheService blockCacheService = new BlockCacheService();
 
         Hash256 invalidBlock = Keccak.Compute("A");
@@ -186,7 +180,7 @@ public class InvalidChainTrackerTest
         IPoSSwitcher poSSwitcher = Substitute.For<IPoSSwitcher>();
         poSSwitcher.IsPostMerge(parentBlockHeader).Returns(false);
 
-        _tracker = new(poSSwitcher, blockTree, blockCacheService, new TestLogManager()); // Small max section size, to make sure things propagate correctly
+        _tracker = new(poSSwitcher, blockFinder, blockCacheService, new TestLogManager()); // Small max section size, to make sure things propagate correctly
         _tracker.OnInvalidBlock(invalidBlock, parentBlockHeader.Hash);
 
         AssertInvalid(invalidBlock, Keccak.Zero);
@@ -195,7 +189,7 @@ public class InvalidChainTrackerTest
     [Test]
     public void givenAnInvalidBlock_WithUnknownParent_thenGetParentFromCache()
     {
-        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
         IBlockCacheService blockCacheService = new BlockCacheService();
 
         BlockHeader parentBlockHeader = new BlockHeaderBuilder()
@@ -205,177 +199,36 @@ public class InvalidChainTrackerTest
 
         blockCacheService.TryAddBlock(new Block(blockHeader));
         blockCacheService.TryAddBlock(new Block(parentBlockHeader));
-        blockTree.GetInfo(parentBlockHeader.Number, parentBlockHeader.Hash!)
-            .Returns((new BlockInfo(parentBlockHeader.Hash!, 0) { WasProcessed = true }, null));
 
         IPoSSwitcher alwaysPos = Substitute.For<IPoSSwitcher>();
         alwaysPos.IsPostMerge(Arg.Any<BlockHeader>()).Returns(true);
 
-        _tracker = new(alwaysPos, blockTree, blockCacheService, new TestLogManager()); // Small max section size, to make sure things propagate correctly
+        _tracker = new(alwaysPos, blockFinder, blockCacheService, new TestLogManager()); // Small max section size, to make sure things propagate correctly
         _tracker.OnInvalidBlock(blockHeader.GetOrCalculateHash(), null);
 
         AssertInvalid(blockHeader.GetOrCalculateHash(), parentBlockHeader.Hash);
     }
 
-    // paris.md: the last valid hash names an ancestor that is fully validated, or is null when none can be determined.
     [Test]
-    public void givenAnInvalidBlock_whenParentWasNotExecuted_thenLastValidHashIsUnknown([Values] bool parentKnown)
+    public void givenAnInvalidBlock_whenParentIsAlreadyInvalid_thenLastValidHashIsTheParents(
+        [Values] bool alreadyLinked, [Values] bool zeroLastValidHash)
     {
-        IBlockTree blockTree = Substitute.For<IBlockTree>();
-        BlockHeader parentBlockHeader = new BlockHeaderBuilder().TestObject;
-        if (parentKnown)
-        {
-            blockTree.FindHeader(parentBlockHeader.Hash!, Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>())
-                .Returns(parentBlockHeader);
-            blockTree.GetInfo(parentBlockHeader.Number, parentBlockHeader.Hash!)
-                .Returns((new BlockInfo(parentBlockHeader.Hash!, 0), null));
-        }
-
-        _tracker = new(AlwaysPoS.Instance, blockTree, new BlockCacheService(), new TestLogManager());
-        Hash256 invalidBlock = Keccak.Compute("A");
-        Hash256 child = Keccak.Compute("B");
-        _tracker.OnInvalidBlock(invalidBlock, parentBlockHeader.Hash);
-        _tracker.SetChildParent(child, invalidBlock);
-
-        AssertInvalidWithUnknownLastValidHash(invalidBlock);
-        AssertInvalidWithUnknownLastValidHash(child);
-    }
-
-    [Test]
-    public void givenAnInvalidBlock_whenParentIsAlreadyInvalid_thenLastValidHashIsTheParents()
-    {
-        Hash256 lastValid = Keccak.Compute("A");
+        Hash256 lastValid = zeroLastValidHash ? Keccak.Zero : Keccak.Compute("A");
         Hash256 parent = Keccak.Compute("B");
         Hash256 invalidBlock = Keccak.Compute("C");
+        Hash256 descendant = Keccak.Compute("D");
 
         _tracker.OnInvalidBlock(parent, lastValid);
+        if (alreadyLinked) _tracker.SetChildParent(invalidBlock, parent);
+        _tracker.SetChildParent(descendant, invalidBlock);
+
         _tracker.OnInvalidBlock(invalidBlock, parent);
 
-        AssertInvalid(invalidBlock, lastValid);
-    }
-
-    [Test]
-    public void processed_parent_is_only_known_when_validated_before_disposal(
-        [Values] bool wasValidated, [Values] bool disposed, [Values] bool invalidBeforeProcessing)
-    {
-        IBranchProcessor branchProcessor = SetupProcessingInterceptor();
-        if (disposed) _tracker.Dispose();
-        Block parent = Build.A.Block.TestObject;
-
-        if (invalidBeforeProcessing)
-        {
-            RecordInvalidChain();
-            AssertInvalidWithUnknownLastValidHash(TestItem.KeccakA);
-            AssertInvalidWithUnknownLastValidHash(TestItem.KeccakB);
-        }
-        branchProcessor.BlockProcessed += Raise.EventWith(new BlockProcessedEventArgs(parent, []) { WasValidated = wasValidated });
-        if (!invalidBeforeProcessing) RecordInvalidChain();
-
-        bool invalid = _tracker.IsOnKnownInvalidChain(TestItem.KeccakA, out Hash256? lastValidHash);
-        bool descendantInvalid = _tracker.IsOnKnownInvalidChain(TestItem.KeccakB, out Hash256? descendantHash);
-        bool siblingInvalid = _tracker.IsOnKnownInvalidChain(TestItem.KeccakC, out _);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(invalid, Is.True);
-            Assert.That(lastValidHash, Is.EqualTo(wasValidated && !disposed ? parent.Hash : null));
-            Assert.That(descendantInvalid, Is.True);
-            Assert.That(descendantHash, Is.EqualTo(lastValidHash));
-            Assert.That(siblingInvalid, Is.False);
+            AssertInvalid(invalidBlock, lastValid);
+            AssertInvalid(descendant, lastValid);
         }
-
-        void RecordInvalidChain()
-        {
-            _tracker.OnInvalidBlock(TestItem.KeccakA, parent.Hash);
-            _tracker.SetChildParent(TestItem.KeccakB, TestItem.KeccakA);
-            _tracker.SetChildParent(TestItem.KeccakC, parent.Hash!);
-        }
-    }
-
-    [Test]
-    public void validated_pow_parent_is_reported_as_zero_without_a_stored_header([Values] bool invalidBeforeProcessing)
-    {
-        IBranchProcessor branchProcessor = SetupProcessingInterceptor(NoPoS.Instance);
-        Block parent = Build.A.Block.TestObject;
-
-        if (invalidBeforeProcessing) _tracker.OnInvalidBlock(TestItem.KeccakA, parent.Hash);
-        branchProcessor.BlockProcessed += Raise.EventWith(new BlockProcessedEventArgs(parent, []) { WasValidated = true });
-        if (!invalidBeforeProcessing) _tracker.OnInvalidBlock(TestItem.KeccakA, parent.Hash);
-
-        AssertInvalid(TestItem.KeccakA, Keccak.Zero);
-    }
-
-    [Test]
-    public void invalid_parent_processing_event_does_not_refresh_unknown_descendants()
-    {
-        IBranchProcessor branchProcessor = SetupProcessingInterceptor();
-        Block parent = Build.A.Block.TestObject;
-        _tracker.OnInvalidBlock(parent.Hash!, TestItem.KeccakA);
-        _tracker.OnInvalidBlock(TestItem.KeccakB, parent.Hash);
-
-        branchProcessor.BlockProcessed += Raise.EventWith(new BlockProcessedEventArgs(parent, []) { WasValidated = true });
-
-        AssertInvalidWithUnknownLastValidHash(TestItem.KeccakB);
-    }
-
-    [Test]
-    public void parent_validated_during_invalid_verdict_resolution_refreshes_the_verdict()
-    {
-        IBlockTree blockTree = Substitute.For<IBlockTree>();
-        IBranchProcessor branchProcessor = SetupProcessingInterceptor(blockTree: blockTree);
-        Block parent = Build.A.Block.TestObject;
-        blockTree.FindHeader(parent.Hash!, Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>()).Returns(parent.Header);
-        blockTree.GetInfo(parent.Number, parent.Hash!).Returns(_ =>
-        {
-            branchProcessor.BlockProcessed += Raise.EventWith(new BlockProcessedEventArgs(parent, []) { WasValidated = true });
-            return (new BlockInfo(parent.Hash!, 0), null);
-        });
-
-        _tracker.OnInvalidBlock(TestItem.KeccakA, parent.Hash);
-
-        AssertInvalid(TestItem.KeccakA, parent.Hash);
-    }
-
-    [Test]
-    public void tracked_invalid_parent_takes_precedence_over_its_processing_event()
-    {
-        IBranchProcessor branchProcessor = SetupProcessingInterceptor();
-        Block ancestor = Build.A.Block.TestObject;
-        Block parent = Build.A.Block.WithParent(ancestor).TestObject;
-        branchProcessor.BlockProcessed += Raise.EventWith(new BlockProcessedEventArgs(ancestor, []) { WasValidated = true });
-        branchProcessor.BlockProcessed += Raise.EventWith(new BlockProcessedEventArgs(parent, []) { WasValidated = true });
-
-        _tracker.OnInvalidBlock(parent.Hash!, ancestor.Hash);
-        _tracker.OnInvalidBlock(TestItem.KeccakA, parent.Hash);
-
-        AssertInvalid(TestItem.KeccakA, ancestor.Hash);
-    }
-
-    [Test]
-    public void processing_evidence_is_bounded()
-    {
-        IBranchProcessor branchProcessor = SetupProcessingInterceptor();
-        Block parent = Build.A.Block.WithNumber(0).TestObject;
-        Hash256 firstHash = parent.Hash!;
-        branchProcessor.BlockProcessed += Raise.EventWith(new BlockProcessedEventArgs(parent, []) { WasValidated = true });
-        for (int i = 1; i <= 1024; i++)
-        {
-            parent = Build.A.Block.WithNumber(i).TestObject;
-            branchProcessor.BlockProcessed += Raise.EventWith(new BlockProcessedEventArgs(parent, []) { WasValidated = true });
-        }
-
-        _tracker.OnInvalidBlock(TestItem.KeccakA, firstHash);
-        _tracker.OnInvalidBlock(TestItem.KeccakB, parent.Hash);
-
-        AssertInvalidWithUnknownLastValidHash(TestItem.KeccakA);
-        AssertInvalid(TestItem.KeccakB, parent.Hash);
-    }
-
-    private IBranchProcessor SetupProcessingInterceptor(IPoSSwitcher? poSSwitcher = null, IBlockTree? blockTree = null)
-    {
-        IBranchProcessor branchProcessor = Substitute.For<IBranchProcessor>();
-        _tracker = new(poSSwitcher ?? AlwaysPoS.Instance, blockTree ?? Substitute.For<IBlockTree>(), new BlockCacheService(), new TestLogManager());
-        _tracker.SetupBlockchainProcessorInterceptor(Substitute.For<IBlockProcessingQueue>(), branchProcessor);
-        return branchProcessor;
     }
 
     [Test]
@@ -402,16 +255,6 @@ public class InvalidChainTrackerTest
         if (expectedLsatValidHash is not null)
         {
             Assert.That(lastValidHash, Is.EqualTo(expectedLsatValidHash));
-        }
-    }
-
-    private void AssertInvalidWithUnknownLastValidHash(Hash256 hash)
-    {
-        bool isInvalid = _tracker.IsOnKnownInvalidChain(hash, out Hash256? lastValidHash);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(isInvalid, Is.True);
-            Assert.That(lastValidHash, Is.Null);
         }
     }
 }
