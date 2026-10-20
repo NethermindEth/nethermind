@@ -3,6 +3,7 @@
 
 using System.Collections.Concurrent;
 using System.Net;
+using Nethermind.BeaconChain.Crypto;
 using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.P2P.Discovery;
@@ -29,6 +30,105 @@ public partial class ColumnBackfillTests
     private const ulong HeadSlot = 5;
 
     public enum ForgedHistorySource { Range, Root, Stored }
+
+    [Test]
+    public async Task Successful_signature_checks_are_reused_without_authenticating_a_replacement_signature([Values] bool replaceSignature, CancellationToken token)
+    {
+        await using Fixture fixture = Fixture.Create();
+        StubPeer peer = fixture.Peer("honest");
+        ForkedSignedBeaconBlock.OfFulu original = (ForkedSignedBeaconBlock.OfFulu)(await peer.RequestBlocksByRangeAsync(3, 1, token)).Single();
+        int validChecks = 0;
+        int invalidChecks = 0;
+        fixture.VerifyBlockSignature = block =>
+        {
+            if (block.ComputeMessageRoot() != fixture.Roots[3]) return Task.FromResult<bool?>(true);
+            bool valid = ((ForkedSignedBeaconBlock.OfFulu)block).Block.Signature == original.Block.Signature;
+            if (valid) Interlocked.Increment(ref validChecks);
+            else
+            {
+                Interlocked.Increment(ref invalidChecks);
+                fixture.WithheldRoots.Clear();
+                fixture.AdvanceSlots(1);
+            }
+            return Task.FromResult<bool?>(valid);
+        };
+        if (replaceSignature)
+        {
+            fixture.WithheldRoots.TryAdd(fixture.Roots[3], 0);
+            int replaced = 0;
+            fixture.OnColumnsRequested = () =>
+            {
+                if (Interlocked.Exchange(ref replaced, 1) == 0)
+                {
+                    fixture.Store.PutForkedBlock(fixture.Roots[3], new ForkedSignedBeaconBlock.OfFulu(
+                        new SignedBeaconBlock { Message = original.Block.Message, Signature = default }));
+                }
+            };
+        }
+
+        await fixture.StartBackfill(token, peer).WaitAsync(token);
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(fixture.Backfill.CompleteFrom, Is.Zero);
+        Assert.That(validChecks, Is.EqualTo(1), "fetch, traversal and retries share only successful checks for the exact signature");
+        Assert.That(invalidChecks, Is.EqualTo(replaceSignature ? 1 : 0));
+        Assert.That(fixture.Store.TryGetForkedBlock(fixture.Roots[3], out ForkedSignedBeaconBlock? stored), Is.True);
+        Assert.That(((ForkedSignedBeaconBlock.OfFulu)stored!).Block.Signature, Is.EqualTo(original.Block.Signature));
+    }
+
+    [Test]
+    public async Task Gloas_checkpoint_backfill_verifies_retained_Fulu_history([Values] bool stored, CancellationToken token)
+    {
+        SignedGloasChain chain = new();
+        SignedGloasChain.FuluBlock fulu = chain.NextFulu(31);
+        SignedGloasChain.Block gloas = chain.NextOnFulu(fulu, 32, full: false, 0xE1);
+        BeaconChainSpec spec = chain.Spec;
+        BeaconChainStore store = chain.CreateStore();
+        store.SetAnchor(gloas.Root, 32);
+        store.PutForkedBlock(gloas.Root, gloas.Forked);
+        store.ApplyCanonicalIndexChanges([(32UL, gloas.Root)], 32);
+        ForkedSignedBeaconBlock[] history = [new ForkedSignedBeaconBlock.OfFulu(chain.AnchorBlock), fulu.Forked];
+        if (stored)
+        {
+            foreach (ForkedSignedBeaconBlock block in history) store.PutForkedBlock(block.ComputeMessageRoot(), block);
+        }
+        ManualTimestamper time = new(DateTimeOffset.FromUnixTimeSeconds((long)(spec.GenesisTime + 33 * spec.SecondsPerSlot)).UtcDateTime);
+        SlotClock clock = new(spec, time);
+        DataColumnSidecarPool pool = new(store: store, clock: clock);
+        await pool.SeedCompletelyServableFloor(32);
+        PubkeyCache pubkeys = new();
+        pubkeys.Build(gloas.PostState.Validators!);
+        BlockImporterFactory factory = new(spec, store, pubkeys, new SignedGloasChain.EnvelopeEngine(),
+            new BeaconChainConfig(), LimboLogs.Instance, pool, clock);
+        BlockImporter importer = (BlockImporter)factory.Create(new ForkedBeaconState.OfGloas(gloas.PostState), gloas.Forked, gloas.Root);
+        Assert.That(importer.VerifyCachedProposerSignature(fulu.Forked), Is.True);
+        Assert.That(importer.VerifyCachedProposerSignature(new ForkedSignedBeaconBlock.OfFulu(
+            new SignedBeaconBlock { Message = fulu.Signed.Message, Signature = default })), Is.False);
+
+        await using BeaconDiscovery discovery = new(new BeaconChainConfig { Discv5Port = 0 }, spec, store,
+            new FixedIPResolver(IPAddress.Loopback), time, LimboLogs.Instance);
+        discovery.CreateDiscv5Services(IPAddress.Loopback);
+        StubPeer peer = new("honest", 32,
+            (start, count) => [.. history.Where(b => b.Slot >= start && b.Slot - start < count)],
+            blockRootHandler: roots => [.. history.Where(b => roots.Contains(b.ComputeMessageRoot()))]);
+        StubPool peers = new(peer);
+        RangeSync rangeSync = new(peers, LimboLogs.Instance, pool, spec, clock, discovery)
+        {
+            VerifyBlockSignature = block => Task.FromResult(importer.VerifyCachedProposerSignature(block)),
+        };
+        BeaconChainStatusHolder status = new(spec, time)
+        {
+            CurrentStatus = new StatusMessageV2 { ForkDigest = new byte[4], FinalizedRoot = gloas.Root, HeadRoot = gloas.Root, HeadSlot = 32 },
+        };
+        ColumnBackfill backfill = new(store, pool, rangeSync, peers, clock, spec, status,
+            new DiscoveryNodeCustodySource(discovery), LimboLogs.Instance) { WindowPause = TimeSpan.Zero };
+        await backfill.RunAsync(token);
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(backfill.CompleteFrom, Is.Zero);
+        Assert.That(store.HasBlock(fulu.Root), Is.True);
+        Assert.That(peer.Failures, Is.Zero);
+    }
 
     [Test]
     public async Task Historical_blocks_wait_until_the_proposer_key_is_available(CancellationToken token)

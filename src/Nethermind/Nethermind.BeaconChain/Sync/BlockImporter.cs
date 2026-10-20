@@ -156,6 +156,7 @@ public sealed class BlockImporter : IBlockImporter
                 _states = new PostStateCache(store, spec, null, null, IsGloasBlock, GetJustifiedRoot, logManager, IsAboveFinalized, pubkeys, AncestorRoots);
                 _states.PinGloas(anchorRoot, gloasState);
                 _runner = new ForkChoiceRunner(spec, gloasState, gloasBlock.Message!, _states, pubkeys, _states, logManager);
+                _fuluProposerDomain = Domains.ComputeDomain(DomainType.BeaconProposer, spec.VersionForEpoch(spec.FuluForkEpoch), gloasState.GenesisValidatorsRoot!);
                 _gloasProposerDomain = Domains.ComputeDomain(DomainType.BeaconProposer, gloasState.Fork!.CurrentVersion!, gloasState.GenesisValidatorsRoot!);
                 break;
             default:

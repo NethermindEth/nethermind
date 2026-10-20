@@ -8,6 +8,7 @@ using Nethermind.BeaconChain.P2P.ReqResp.Protocols;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Storage;
+using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using ILogger = Nethermind.Logging.ILogger;
@@ -38,6 +39,7 @@ public sealed class ColumnBackfill(
 
     private readonly ILogger _logger = logManager.GetClassLogger<ColumnBackfill>();
     private readonly Dictionary<Hash256, RangeSync.ColumnFetchRotation> _rotations = [];
+    private readonly Dictionary<Hash256, BlsSignature> _verifiedSignatures = [];
     private long _completeFrom = long.MaxValue;
     private int _peerCursor;
     private ulong _blockedSlot;
@@ -95,6 +97,8 @@ public sealed class ColumnBackfill(
                 floor = newFloor;
                 Publish(floor, previousFloor - 1, failureVersion);
             }
+
+            if (outcome == WindowOutcome.Complete) _verifiedSignatures.Clear();
 
             if (outcome != WindowOutcome.HeadBehind)
             {
@@ -364,7 +368,7 @@ public sealed class ColumnBackfill(
                 return false;
             }
 
-            if (!await HasValidSignatureAsync(block))
+            if (!await HasValidSignatureAsync(parent, block))
             {
                 if (!await FetchByRootAsync(parent, token) || !store.TryGetForkedBlock(parent, out block))
                 {
@@ -591,13 +595,26 @@ public sealed class ColumnBackfill(
         return false;
     }
 
-    private async Task<bool> HasValidSignatureAsync(ForkedSignedBeaconBlock block) =>
+    private async Task<bool> HasValidSignatureAsync(Hash256 root, ForkedSignedBeaconBlock block)
+    {
         // The genesis block has no proposer signature; its message root is authenticated by the linked child.
-        block.Slot == 0 || rangeSync.VerifyBlockSignature is { } verify && await verify(block) == true;
+        if (block.Slot == 0) return true;
+        BlsSignature signature = block switch
+        {
+            ForkedSignedBeaconBlock.OfFulu fulu => fulu.Block.Signature,
+            ForkedSignedBeaconBlock.OfGloas gloas => gloas.Block.Signature,
+            _ => throw new ArgumentOutOfRangeException(nameof(block)),
+        };
+        if (_verifiedSignatures.TryGetValue(root, out BlsSignature verified) && verified == signature) return true;
+        if (rangeSync.VerifyBlockSignature is not { } verify || await verify(block) != true) return false;
+        // A window can also visit its predecessor across skipped slots; retries retain only this bounded set.
+        if (_verifiedSignatures.Count < (int)WindowSlots + 1) _verifiedSignatures[root] = signature;
+        return true;
+    }
 
     private async Task<bool> TryStoreAsync(Hash256 root, ForkedSignedBeaconBlock block)
     {
-        if (!await HasValidSignatureAsync(block)) return false;
+        if (!await HasValidSignatureAsync(root, block)) return false;
 
         try
         {
