@@ -138,6 +138,10 @@ namespace Nethermind.Trie
         /// <returns>Whether it did; when not, the caller walks the key's nibbles.</returns>
         private partial bool TryGetByRawKey(ReadOnlySpan<byte> rawKey, Hash256? rootHash, out ReadOnlySpan<byte> value);
 
+        /// <summary>Writes <paramref name="value"/> at <paramref name="rawKey"/> straight from its bytes, where this build does.</summary>
+        /// <returns>Whether it did; when not, the caller walks the key's nibbles.</returns>
+        private partial bool TrySetByRawKey(ReadOnlySpan<byte> rawKey, CappedArray<byte> value);
+
         public void Commit(bool skipRoot = false, WriteFlags writeFlags = WriteFlags.None)
         {
             if (!_allowCommits)
@@ -537,6 +541,8 @@ namespace Nethermind.Trie
             byte[]? array = null;
             try
             {
+                if (TrySetByRawKey(rawKey, value)) return;
+
                 int nibblesCount = 2 * rawKey.Length;
                 Span<byte> nibbles = (nibblesCount <= MaxKeyStackAlloc
                         ? stackalloc byte[MaxKeyStackAlloc] // Fixed size stack allocation
@@ -705,6 +711,15 @@ namespace Nethermind.Trie
                 consumed++;
             }
 
+            return ClimbToRoot(traverseStack, node, ref path, originalPathLength, originalNode);
+        }
+
+        /// <summary>Applies <paramref name="node"/>, what a write walk left at its deepest level, to each level on
+        /// <paramref name="traverseStack"/> up to the walk's start.</summary>
+        /// <returns>The node at the walk's start, or <paramref name="originalNode"/> where nothing above changes.</returns>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private TrieNode? ClimbToRoot(TraverseStack traverseStack, TrieNode? node, ref TreePath path, int originalPathLength, TrieNode? originalNode)
+        {
             while (traverseStack.TryPop(out TraverseStackFrame cStack))
             {
                 TrieNode? child = node;

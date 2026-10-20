@@ -38,6 +38,30 @@ public sealed partial class LeafData
         _value = value;
     }
 
+    /// <summary>A leaf keyed by the nibbles of <paramref name="bytes"/> from nibble <paramref name="start"/> on, kept in hex-prefix form.</summary>
+    internal static LeafData WithKeyFrom(ReadOnlySpan<byte> bytes, int start, CappedArray<byte> value)
+    {
+        ReadOnlySpan<byte> tail = bytes[((start + 1) >> 1)..];
+        byte[] compactKey = new byte[1 + tail.Length];
+        compactKey[0] = (byte)((start & 1) == 0 ? 0x20 : 0x30 | (bytes[start >> 1] & 0xF));
+        tail.CopyTo(compactKey.AsSpan(1));
+        return new LeafData(compactKey, 0, compactKey.Length, value);
+    }
+
+    /// <summary>This leaf's hex-prefix key, where the leaf has one: decoded from RLP or built in that form, and not replaced since.</summary>
+    internal bool TryGetCompactKey(out ReadOnlySpan<byte> compactKey)
+    {
+        byte[]? source = _compactKeySource;
+        if (source is null)
+        {
+            compactKey = default;
+            return false;
+        }
+
+        compactKey = source.AsSpan(_compactKeyStart, _compactKeyLength);
+        return true;
+    }
+
     /// <remarks>Keeps the key in hex-prefix form if it has not been read.</remarks>
     public LeafData CloneWithNewValue(CappedArray<byte> value) =>
         _key is null && _compactKeySource is not null

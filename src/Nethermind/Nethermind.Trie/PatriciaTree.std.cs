@@ -3,6 +3,7 @@
 
 using System;
 using System.Runtime.CompilerServices;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Trie;
@@ -39,4 +40,7 @@ public partial class PatriciaTree
         value = default;
         return false;
     }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private partial bool TrySetByRawKey(ReadOnlySpan<byte> rawKey, CappedArray<byte> value) => false;
 }
