@@ -247,7 +247,15 @@ namespace Nethermind.TxPool
             ArrayPoolListRef<Transaction?> rows = new(rowKeys.Count, rowKeys.Count);
             if (rowKeys.Count > 0)
             {
-                _processedBlobTxStorage!.TryGetProcessedTransactions(rowKeys.AsSpan(), rows.AsSpan());
+                try
+                {
+                    _processedBlobTxStorage!.TryGetProcessedTransactions(rowKeys.AsSpan(), rows.AsSpan());
+                }
+                catch
+                {
+                    rows.Dispose();
+                    throw;
+                }
             }
 
             return rows;

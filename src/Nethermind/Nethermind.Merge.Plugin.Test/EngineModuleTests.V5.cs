@@ -232,10 +232,10 @@ public partial class EngineModuleTests
         ResultWrapper<IReadOnlyList<BlobAndProofV2?>?> result = await rpcModule.engine_getBlobsV2(blobVersionedHashes);
 
         ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)blobTx.NetworkWrapper!;
+        Assert.That(result.Data, Is.Not.Null);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(chain.BlockTree.Head!.Hash, Is.EqualTo(executionPayload.BlockHash));
-            Assert.That(result.Data, Is.Not.Null);
             Assert.That(result.Data!.Select(static b => b!.Blob), Is.EqualTo(wrapper.Blobs));
             Assert.That(result.Data!.Select(static b => b!.Proofs), Is.EqualTo(wrapper.Proofs.Chunk(Ckzg.CellsPerExtBlob)));
         }

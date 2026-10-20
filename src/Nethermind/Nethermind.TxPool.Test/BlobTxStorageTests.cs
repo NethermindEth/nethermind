@@ -231,8 +231,13 @@ public class BlobTxStorageTests
         BlobTxStorage storage = new();
         SaveProcessed(storage, 358, CreateV1BlobTransactions(1));
 
-        Assert.That(((IProcessedBlobTxStorage)storage).TryGetProcessedTransaction(blockNumber, 0, out Transaction transaction), Is.False);
-        Assert.That(transaction, Is.Null);
+        bool hit = ((IProcessedBlobTxStorage)storage).TryGetProcessedTransaction(blockNumber, 0, out Transaction transaction);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(hit, Is.False);
+            Assert.That(transaction, Is.Null);
+        }
     }
 
     [Test]
