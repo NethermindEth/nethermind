@@ -1286,6 +1286,7 @@ public class JsonRpcProcessorTests
         /// <summary>A WS message split into one-byte segments, which keeps all of it on the incremental parser.</summary>
         WsSegmentedPipe,
 
+        /// <summary>A WS message handed to the processor as bytes, as <c>JsonRpcSocketsClient</c> does, with no pipe in between.</summary>
         WsMemory
     }
 
