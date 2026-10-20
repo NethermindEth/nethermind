@@ -18,6 +18,8 @@ public class NoSyncGcRegionStrategy : IGCStrategy
         _syncModeSelector = syncModeSelector;
         _canStartNoGCRegion = mergeConfig.PrioritizeBlockLatency;
         CollectionsPerDecommit = mergeConfig.CollectionsPerDecommit;
+        DecommitMemoryLoadPercent = mergeConfig.DecommitMemoryLoadPercent;
+        CollectionsPerUnconditionalDecommit = mergeConfig.CollectionsPerUnconditionalDecommit;
         GcLevel gcLevel = (GcLevel)Math.Min((int)GcLevel.Gen2, (int)mergeConfig.SweepMemory);
         GcCompaction gcCompaction = (GcCompaction)Math.Min((int)GcCompaction.Full, (int)mergeConfig.CompactMemory);
         _gcParams = (gcLevel, gcCompaction);
@@ -25,6 +27,8 @@ public class NoSyncGcRegionStrategy : IGCStrategy
     }
 
     public int CollectionsPerDecommit { get; }
+    public int DecommitMemoryLoadPercent { get; }
+    public int CollectionsPerUnconditionalDecommit { get; }
     public int PostBlockDelayMs { get; }
 
     public bool CanStartNoGCRegion() => _canStartNoGCRegion && _syncModeSelector.Current == SyncMode.WaitingForBlock;
