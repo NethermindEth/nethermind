@@ -472,6 +472,25 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
 
         [Test]
+        public void GetFeeHistory_WithoutRewardPercentiles_DoesNotReadReceipts()
+        {
+            Block headBlock = Build.A.Block.Genesis.WithBaseFeePerGas(3).WithGasUsed(100).WithTransactions(GetTestTransactions()).TestObject;
+            IBlockTree blockTree = Substitute.For<IBlockTree>();
+            BlockParameter newestBlockParameter = new(0UL);
+            blockTree.FindBlock(newestBlockParameter).Returns(headBlock);
+            blockTree.FindBlock(headBlock.Hash!, Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>()).Returns(headBlock);
+            InMemoryReceiptStorage receiptStorage = new();
+            FeeHistoryOracle feeHistoryOracle = GetSubstitutedFeeHistoryOracle(blockTree: blockTree, receiptStorage: receiptStorage);
+
+            feeHistoryOracle.GetFeeHistory(1, newestBlockParameter, []).Dispose();
+            // Rewards built by the call above would have fallen back to the gas limits: 4, 10, 13, 22.
+            receiptStorage.Insert(headBlock, BuildReceiptsWithGasUsed([10, 20, 30, 40], eip8116Receipts: false), ensureCanonical: false);
+            using ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(1, newestBlockParameter, [20, 40, 60, 80.5]);
+
+            Assert.That(resultWrapper.Data.Reward![0], Is.EqualTo((UInt256[])[4, 10, 10, 22]), "the cached block reads its receipts once percentiles are requested");
+        }
+
+        [Test]
         public async Task GetFeeHistory_RewardPercentilesWeighEachReceiptByItsOwnGas([Values] bool eip8116Enabled, [Values] ReceiptSource receiptSource)
         {
             using BasicTestBlockchain chain = await BasicTestBlockchain.Create();
