@@ -40,9 +40,12 @@ public partial class EthRpcModuleTests
 
             try
             {
-                Assert.That(observedToken.CanBeCanceled, Is.True);
-                Assert.That(response.Data, Is.TypeOf<LogsStreamableResult>());
-                Assert.That(IsSourceDisposed(observedToken), Is.False);
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(observedToken.CanBeCanceled, Is.True);
+                    Assert.That(response.Data, Is.TypeOf<LogsStreamableResult>());
+                    Assert.That(IsSourceDisposed(observedToken), Is.False);
+                }
             }
             finally
             {
@@ -118,8 +121,11 @@ public partial class EthRpcModuleTests
                 response.Dispose();
             }
 
-            Assert.That(serialized, Is.EqualTo(ExpectedFilterLogStreamResponse("failed")));
-            Assert.That(IsSourceDisposed(observedToken), Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(serialized, Is.EqualTo(ExpectedFilterLogStreamResponse("failed")));
+                Assert.That(IsSourceDisposed(observedToken), Is.True);
+            }
 
             static IEnumerable<FilterLog> GetLogs()
             {
