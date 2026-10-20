@@ -220,14 +220,28 @@ public class ReceiptsMessageSerializerTests
     [Test]
     public void Deserialize_Throws_On_TooMany_Receipts_In_A_Block()
     {
-        TxReceipt receipt = Build.A.Receipt.WithAllFieldsFilled.TestObject;
-        TxReceipt[][] txReceipts = [Enumerable.Repeat(receipt, NethermindSyncLimits.MaxHashesFetch + 1).ToArray()];
-        using ReceiptsMessage message = new(txReceipts.ToPooledList());
+        byte[] serialized = SerializeSingleBlock(BlockBodyDecoder.TransactionsCountLimit.Limit + 1);
         ReceiptsMessageSerializer serializer = new(MainnetSpecProvider.Instance);
 
-        byte[] serialized = serializer.Serialize(message);
-
         Assert.Throws<RlpLimitException>(() => serializer.Deserialize(serialized));
+    }
+
+    [Test]
+    public void Deserialize_Allows_More_Receipts_In_A_Block_Than_Hashes_Per_Request()
+    {
+        const int receiptCount = NethermindSyncLimits.MaxHashesFetch + 1;
+        byte[] serialized = SerializeSingleBlock(receiptCount);
+        ReceiptsMessageSerializer serializer = new(MainnetSpecProvider.Instance);
+
+        using ReceiptsMessage deserialized = serializer.Deserialize(serialized);
+        Assert.That(deserialized.TxReceipts[0].Length, Is.EqualTo(receiptCount));
+    }
+
+    private static byte[] SerializeSingleBlock(int receiptCount)
+    {
+        TxReceipt receipt = new() { StatusCode = 1, GasUsedTotal = 21_000, Bloom = Bloom.Empty, Logs = [] };
+        using ReceiptsMessage message = new(new TxReceipt[][] { Enumerable.Repeat(receipt, receiptCount).ToArray() }.ToPooledList());
+        return new ReceiptsMessageSerializer(MainnetSpecProvider.Instance).Serialize(message);
     }
 
     [Test]

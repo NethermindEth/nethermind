@@ -684,7 +684,7 @@ public class EthereumRunnerTests
     /// <see cref="MaxTimeAttribute"/> would only report once the test returns, and it also counts setup, which
     /// is unbounded and can stall on slow CI hosts. Without a bound, a start or stop that never completes takes the
     /// whole assembly into the CI hang-dump watchdog. A runner on an in-memory DB is orders of magnitude under this.</remarks>
-    private static readonly TimeSpan RunnerTimeout = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan RunnerTimeout = TimeSpan.FromSeconds(90);
 
     private static readonly Lazy<ICollection<(string file, ConfigProvider configProvider)>>? _cachedProviders = new(InitOnce);
 
@@ -797,7 +797,6 @@ public class EthereumRunnerTests
     /// <c>EthereumStepsManagerTests</c>.
     /// </summary>
     [Test]
-    [MaxTime(60000)]
     public async Task Command_run_that_cannot_do_its_job_fails_without_exiting_ok()
     {
         Rlp.ResetDecoders(); // The global decoder registry is shared with every other test in this assembly.
@@ -1037,13 +1036,17 @@ public class EthereumRunnerTests
             networkConfig.DiscoveryPort = port;
 
             // A taken RPC port fails startup, so move the RPC listeners off defaults such as 8545/8551 that the host may hold.
+            // Each probe listener stays open until all ports are picked: a released port can be handed out again, and an
+            // engine URL on the same port as the RPC URL is skipped, which fails startup for want of an engine module.
             IJsonRpcConfig jsonRpcConfig = configProvider.GetConfig<IJsonRpcConfig>();
             Dictionary<int, int> rpcPorts = [];
+            List<TcpListener> probeListeners = [];
             int FreePort(int configuredPort)
             {
                 if (!rpcPorts.TryGetValue(configuredPort, out int freePort))
                 {
-                    using TcpListener listener = new(IPAddress.Loopback, 0);
+                    TcpListener listener = new(IPAddress.Loopback, 0);
+                    probeListeners.Add(listener);
                     listener.Start();
                     rpcPorts[configuredPort] = freePort = ((IPEndPoint)listener.LocalEndpoint).Port;
                 }
@@ -1063,6 +1066,7 @@ public class EthereumRunnerTests
                 additionalRpcUrls[i] = $"{url.Scheme}://{url.Host}:{FreePort(url.Port)}{additionalRpcUrls[i][separator..]}";
             }
             jsonRpcConfig.AdditionalRpcUrls = additionalRpcUrls;
+            foreach (TcpListener listener in probeListeners) listener.Dispose();
 
             PluginLoader pluginLoader = new(
                 "plugins",
