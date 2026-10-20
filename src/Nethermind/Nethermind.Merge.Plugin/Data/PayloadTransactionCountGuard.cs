@@ -20,7 +20,7 @@ public sealed class PayloadTransactionCountGuard(IBlockFinder? blockFinder)
 {
     /// <summary>Gas used by the cheapest transaction on any fork: the base cost halved by the pre-EIP-3529 refund cap.</summary>
     /// <remarks>EIP-2780's lower base cost still sits above it.</remarks>
-    private const ulong MinTransactionGas = GasCostOf.Transaction / 2;
+    internal const ulong MinTransactionGas = GasCostOf.Transaction / 2;
 
     public static readonly PayloadTransactionCountGuard Disabled = new(null);
 

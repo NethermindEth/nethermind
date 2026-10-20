@@ -3,6 +3,7 @@
 
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
+using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Specs.Forks;
@@ -37,6 +38,11 @@ public class PayloadTransactionCountGuardTests
             Assert.That(error, expected ? Is.Null : Does.StartWith("Transaction count"));
         }
     }
+
+    [Test]
+    public void Min_transaction_gas_stays_below_every_base_cost([Values(GasCostOf.TransactionEip2780, (ulong)Eip8141Constants.IntrinsicGasCost)] ulong baseCost) =>
+        Assert.That(baseCost, Is.GreaterThanOrEqualTo(PayloadTransactionCountGuard.MinTransactionGas),
+            "A base cost below the guard's floor makes it reject blocks that could be valid.");
 
     [Test]
     public void Allows_any_count_when_disabled_or_parent_unknown([Values] bool disabled)
