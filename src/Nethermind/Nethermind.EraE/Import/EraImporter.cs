@@ -204,13 +204,14 @@ public sealed class EraImporter(
 
     private async Task SuggestAndProcessBlock(Block block)
     {
+        // The block tree recomputes TD from the local parent instead of trusting archive metadata.
         block.Header.TotalDifficulty = null;
 
         const string unknownParentError = "Unknown parent for block in EraE archive.";
 
         // Processing recomputes only the execution results, so the parent-relative header rules and the body
         // roots are checked here, as they are for every other block handed to the processor.
-        BlockHeader parent = blockTree.FindParentHeader(block.Header, BlockTreeLookupOptions.TotalDifficultyNotNeeded)
+        BlockHeader parent = blockTree.FindParentHeader(block.Header, BlockTreeLookupOptions.None)
             ?? throw new EraImportException(unknownParentError);
 
         if (!blockValidator.ValidateSuggestedBlock(block, parent, out string? error))

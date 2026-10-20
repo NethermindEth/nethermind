@@ -226,17 +226,14 @@ public class EraImporter(
 
     private async Task SuggestAndProcessBlock(Block block)
     {
-        // Confusingly it will get the header with `BlockTreeLookupOptions.TotalDifficultyNotNeeded` then
-        // proceed to validate the total difficulty if its not null with the code
-        // `parent.TotalDifficulty + header.Difficulty != header.TotalDifficulty`
-        // when clearly, the `parent.TotalDifficulty` is going to be null or 0.
+        // The block tree recomputes TD from the local parent instead of trusting archive metadata.
         block.Header.TotalDifficulty = null;
 
         const string unknownParentError = "Unknown parent for block in Era1 archive";
 
         // Processing recomputes only the execution results, so the parent-relative header rules and the body
         // roots are checked here, as they are for every other block handed to the processor.
-        BlockHeader parent = blockTree.FindParentHeader(block.Header, BlockTreeLookupOptions.TotalDifficultyNotNeeded)
+        BlockHeader parent = blockTree.FindParentHeader(block.Header, BlockTreeLookupOptions.None)
             ?? throw new EraImportException(unknownParentError);
 
         if (!blockValidator.ValidateSuggestedBlock(block, parent, out string? error))
