@@ -146,10 +146,6 @@ dotnet_diagnostic.IDE0130.severity = none
 [src/Nethermind/Nethermind.Trie/Utils/ConcurrentNodeWriteBatcher.cs]
 dotnet_diagnostic.IDE0130.severity = none
 
-# IDE0130: Trie/std only marks what the zkEVM guest build leaves out; namespaces skip the std segment.
-[src/Nethermind/Nethermind.Trie/std/**/*.cs]
-dotnet_diagnostic.IDE0130.severity = none
-
 # IDE0130: Evm/Instructions is purely organizational; all files use the flat Nethermind.Evm namespace.
 [src/Nethermind/Nethermind.Evm/Instructions/*.cs]
 dotnet_diagnostic.IDE0130.severity = none

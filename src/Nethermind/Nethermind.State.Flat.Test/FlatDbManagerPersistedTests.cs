@@ -86,7 +86,7 @@ public class FlatDbManagerPersistedTests
         NativeTrieNodeLogPin logRetain = log.PinActiveGeneration();
         SnapshotContent content = new();
         content.SetStateNodeRlp(log, path, nodeRlp);
-        using Snapshot snap = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing) { LogPin = logRetain };
+        using Snapshot snap = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing, logRetain);
 
         using FlatTestContainer tier = new(arenaFileSizeBytes: 4096);
         SnapshotRepository repo = tier.Repository;
@@ -131,7 +131,7 @@ public class FlatDbManagerPersistedTests
         StateId s1 = new(1, Keccak.Compute("1"));
         SnapshotContent content = new();
         content.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance(1).TestObject;
-        tier.ConvertToPersistedBase(new Snapshot(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing)).Dispose();
+        tier.ConvertToPersistedBase(new Snapshot(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing, null)).Dispose();
 
         using NativeTrieNodeLog managerLog = FlatTestHelpers.NewTestLog();
         FlatDbManager manager = new(

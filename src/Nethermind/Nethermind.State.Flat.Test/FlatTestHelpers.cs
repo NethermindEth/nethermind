@@ -7,10 +7,11 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
-using Nethermind.Core.Buffers;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
+using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.Trie;
@@ -26,7 +27,7 @@ public static class FlatTestHelpers
     {
         SnapshotContent content = pool.GetSnapshotContent(ResourcePool.Usage.MainBlockProcessing);
         populate?.Invoke(content);
-        return new Snapshot(StateId.PreGenesis, StateId.PreGenesis, content, pool, ResourcePool.Usage.MainBlockProcessing);
+        return new Snapshot(StateId.PreGenesis, StateId.PreGenesis, content, pool, ResourcePool.Usage.MainBlockProcessing, null);
     }
 
     /// <summary>A log with 64 KiB generations, so tests can rotate it cheaply.</summary>
@@ -41,7 +42,7 @@ public static class FlatTestHelpers
 
     /// <summary>Creates a snapshot owning a retain on the active generation of <paramref name="log"/>.</summary>
     public static Snapshot CreateSnapshot(this IResourcePool pool, in StateId from, in StateId to, ResourcePool.Usage usage, NativeTrieNodeLog log) =>
-        new(from, to, pool.GetSnapshotContent(usage), pool, usage) { LogPin = log.PinActiveGeneration() };
+        new(from, to, pool.GetSnapshotContent(usage), pool, usage, log.PinActiveGeneration());
 
     /// <summary>Appends records until <paramref name="log"/> starts a new generation.</summary>
     public static void StartNewGeneration(NativeTrieNodeLog log)
@@ -91,10 +92,9 @@ public static class FlatTestHelpers
     public static ulong SetStateNodeRlp(this SnapshotContent content, NativeTrieNodeLog log, in TreePath path, byte[] rlp)
     {
         FixtureTrie trie = _fixtureNodes.GetValue(content, static _ => new FixtureNodes()).State;
-        if (!content.HasStateRoot || content.StateRootPointer != trie.RootPointer) trie.Nodes.Clear();
+        if (content.StateRootPointer != trie.RootPointer) trie.Nodes.Clear();
         ulong pointer = trie.Set(log, null, path, rlp);
         content.StateRootPointer = trie.RootPointer;
-        content.HasStateRoot = true;
         return pointer;
     }
 
@@ -154,16 +154,16 @@ public static class FlatTestHelpers
                 }
                 else
                 {
-                    TrieNode branch = new(NodeType.Branch);
+                    List<(int Index, ValueHash256 Hash)> children = [];
                     for (int i = 0; i < references.Length; i++)
                     {
                         TreePath childPath = path.Append(i);
                         KeyValuePair<TreePath, byte[]>[] descendants = nodes.Where(n => n.Key.Length >= childPath.Length && n.Key.StartsWith(childPath)).ToArray();
                         if (descendants.Length == 0) continue;
                         references[i] = Build(log, address, childPath, descendants);
-                        branch.SetChild(i, new TrieNode(NodeType.Unknown, references[i].ToHash256()));
+                        children.Add((i, references[i].Hash));
                     }
-                    rlp = EncodeNode(branch);
+                    rlp = BranchRlp([.. children]);
                 }
             }
 
@@ -194,26 +194,16 @@ public static class FlatTestHelpers
     }
 
     /// <summary>The RLP of a leaf with an empty key holding <paramref name="value"/>, a distinct valid trie node per value.</summary>
-    public static byte[] LeafRlp(params byte[] value) => EncodeNode(new TrieNode(NodeType.Leaf) { Key = [], Value = new CappedArray<byte>(value) });
+    public static byte[] LeafRlp(params byte[] value) => Rlp.Encode(Rlp.Encode(HexPrefix.ToBytes([], isLeaf: true)), Rlp.Encode(value)).Bytes;
 
-    internal static byte[] ExtensionRlp(byte[] key, in ValueHash256 childHash)
-    {
-        TrieNode extension = new(NodeType.Extension) { Key = key };
-        extension.SetChild(0, new TrieNode(NodeType.Unknown, new Hash256(childHash)));
-        return EncodeNode(extension);
-    }
+    internal static byte[] ExtensionRlp(byte[] key, in ValueHash256 childHash) =>
+        Rlp.Encode(Rlp.Encode(HexPrefix.ToBytes(key, isLeaf: false)), Rlp.Encode(new Hash256(childHash))).Bytes;
 
     internal static byte[] BranchRlp(params (int Index, ValueHash256 Hash)[] children)
     {
-        TrieNode branch = new(NodeType.Branch);
-        foreach ((int index, ValueHash256 hash) in children) branch.SetChild(index, new TrieNode(NodeType.Unknown, new Hash256(hash)));
-        return EncodeNode(branch);
-    }
-
-    private static byte[] EncodeNode(TrieNode node)
-    {
-        TreePath path = TreePath.Empty;
-        return node.RlpEncode(NullTrieNodeResolver.Instance, ref path).AsSpan().ToArray();
+        Rlp[] items = [.. Enumerable.Repeat(Rlp.OfEmptyByteArray, 17)];
+        foreach ((int index, ValueHash256 hash) in children) items[index] = Rlp.Encode(new Hash256(hash));
+        return Rlp.Encode(items).Bytes;
     }
 
     private static ulong AppendNode(NativeTrieNodeLog log, Hash256? address, in TreePath path, byte[] rlp) =>
@@ -223,6 +213,32 @@ public static class FlatTestHelpers
     {
         if (ValueKeccak.Compute(rlp) != hash) throw new ArgumentException("Fixture node hash does not match its RLP.", nameof(hash));
         return log.AppendRlp(address, path, rlp, indexRoot: path.Length == 0);
+    }
+
+    /// <summary>The pointer of the state node at <paramref name="key"/> written within the snapshot's range.</summary>
+    internal static bool TryGetStateNode(this Snapshot snapshot, HashedKey<TreePath> key, out ulong pointer) =>
+        snapshot.TryGetNodePointer(snapshot.StateRootPointer, key.Key, out pointer);
+
+    /// <summary>The pointer of the storage node at <paramref name="key"/> written within the snapshot's range.</summary>
+    internal static bool TryGetStorageNode(this Snapshot snapshot, HashedKey<(Hash256, TreePath)> key, out ulong pointer)
+    {
+        pointer = 0;
+        return snapshot.TryGetStorageRoot(key.Key.Item1, out ulong root) && snapshot.TryGetNodePointer(root, key.Key.Item2, out pointer);
+    }
+
+    private static bool TryGetNodePointer(this Snapshot snapshot, ulong root, in TreePath path, out ulong pointer)
+    {
+        pointer = 0;
+        if (snapshot.LogPin is not { } pin) return false;
+        foreach ((TreePath nodePath, ulong candidate) in pin.Log.EnumerateNodes(root, pin.WriteBoundary))
+        {
+            if (nodePath == path)
+            {
+                pointer = candidate;
+                return true;
+            }
+        }
+        return false;
     }
 
     internal static bool TryGetNodePointer(this NativeTrieNodeLog log, ulong root, in TreePath path, out ulong pointer)

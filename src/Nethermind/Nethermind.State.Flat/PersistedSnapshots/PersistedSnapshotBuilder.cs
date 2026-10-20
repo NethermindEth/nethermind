@@ -39,22 +39,6 @@ public static class PersistedSnapshotBuilder
     private const int CompactPathThreshold = 15;
     private const int NodeTableEntryUpperBound = 160;
 
-    private static readonly Comparison<(TreePath Path, ulong Pointer)> StateNodeComparer = (a, b) =>
-    {
-        int cmp = a.Path.Path.Bytes.SequenceCompareTo(b.Path.Path.Bytes);
-        return cmp != 0 ? cmp : a.Path.Length.CompareTo(b.Path.Length);
-    };
-
-    // Sorts storage-trie node keys by 20-byte address-hash prefix (matching the column outer key)
-    // and then by encoded path so per-addressHash slices are contiguous and emitted in sorted order.
-    private static readonly Comparison<(ValueHash256 AddrHash, TreePath Path, ulong Pointer)> StorageNodeComparer = (a, b) =>
-    {
-        int cmp = a.AddrHash.Bytes[..PersistedSnapshotTags.AddressHashPrefixLength].SequenceCompareTo(b.AddrHash.Bytes[..PersistedSnapshotTags.AddressHashPrefixLength]);
-        if (cmp != 0) return cmp;
-        cmp = a.Path.Path.Bytes.SequenceCompareTo(b.Path.Path.Bytes);
-        return cmp != 0 ? cmp : a.Path.Length.CompareTo(b.Path.Length);
-    };
-
     // Sorts slot entries by raw Address bytes then by slot value, so per-address slices are
     // contiguous and slot keys within a slice are in sorted big-endian order.
     private static readonly Comparison<((ValueAddress Addr, UInt256 Slot) Key, UInt256? Value)> StoragesByAddressComparer = (a, b) =>
@@ -67,103 +51,85 @@ public static class PersistedSnapshotBuilder
     private static readonly Comparison<ValueAddress> ValueAddressComparer = (a, b) =>
         a.AsSpan.SequenceCompareTo(b.AsSpan);
 
-    /// <summary>Temporary serialization input protecting buffered log pointers through their final RLP copy.</summary>
-    internal sealed class PreparedSnapshot : IDisposable
-    {
-        private readonly IDisposable? _readScope;
-        internal readonly NativeMemoryList<(TreePath Path, ulong Pointer)> StateTop = new(0), StateCompact = new(0), StateFallback = new(0);
-        internal readonly NativeMemoryList<(ValueHash256 AddrHash, TreePath Path, ulong Pointer)> StorageTop = new(0), StorageCompact = new(0), StorageFallback = new(0);
-        internal readonly NativeMemoryList<((ValueAddress Addr, UInt256 Slot) Key, UInt256? Value)> Storages = new(0);
-        internal readonly NativeMemoryList<ValueAddress> Addresses = new(0);
-
-        internal PreparedSnapshot(Snapshot snapshot)
-        {
-            _readScope = snapshot.BeginNodeReadScope();
-            try
-            {
-                using ParallelUnbalancedWork.WorkerScope workers = ParallelUnbalancedWork.BeginWorkerScope(Environment.ProcessorCount);
-                Action[] jobs =
-                [
-                    () =>
-                    {
-                        foreach ((HashedKey<TreePath> key, ulong pointer) in snapshot.StateNodes)
-                        {
-                            TreePath path = key;
-                            (path.Length <= TopPathThreshold ? StateTop : path.Length <= CompactPathThreshold ? StateCompact : StateFallback).Add((path, pointer));
-                        }
-                        ParallelUnbalancedWork.For(0, 3, i =>
-                            (i switch { 0 => StateTop, 1 => StateCompact, _ => StateFallback }).Sort(StateNodeComparer));
-                    },
-                    () =>
-                    {
-                        foreach ((HashedKey<(Hash256, TreePath)> key, ulong pointer) in snapshot.StorageNodes)
-                        {
-                            (Hash256 address, TreePath path) = key.Key;
-                            (path.Length <= TopPathThreshold ? StorageTop : path.Length <= CompactPathThreshold ? StorageCompact : StorageFallback).Add((address.ValueHash256, path, pointer));
-                        }
-                        ParallelUnbalancedWork.For(0, 3, i =>
-                            (i switch { 0 => StorageTop, 1 => StorageCompact, _ => StorageFallback }).Sort(StorageNodeComparer));
-                    },
-                    () =>
-                    {
-                        using PooledSet<HashedKey<Address>> seen = new();
-                        foreach (KeyValuePair<HashedKey<Address>, Account?> kv in snapshot.Accounts) seen.Add(kv.Key);
-                        foreach (KeyValuePair<HashedKey<Address>, bool> kv in snapshot.SelfDestructedStorageAddresses) seen.Add(kv.Key);
-                        foreach (KeyValuePair<HashedKey<(Address, UInt256)>, UInt256?> kv in snapshot.Storages)
-                        {
-                            (Address address, UInt256 slot) = kv.Key.Key;
-                            Storages.Add(((new ValueAddress(address.Bytes), slot), kv.Value));
-                            seen.Add(address);
-                        }
-                        foreach (HashedKey<Address> address in seen) Addresses.Add(new ValueAddress(address.Key.Bytes));
-                        Addresses.Sort(ValueAddressComparer);
-                        Storages.Sort(StoragesByAddressComparer);
-                    }
-                ];
-                ParallelUnbalancedWork.For(0, jobs.Length, jobs, static (i, actions) =>
-                {
-                    actions[i]();
-                    return actions;
-                });
-
-                // A node contributes only its key and NodeRef to the table. This also allows for
-                // restart/index entries and page padding; RLP bytes live in the separate blob arena.
-                long nodeCount = (long)StateTop.Count + StateCompact.Count + StateFallback.Count
-                    + StorageTop.Count + StorageCompact.Count + StorageFallback.Count;
-                EstimatedSize = checked((snapshot.IsSorted ? snapshot.EstimateMemory() : snapshot.Content.EstimateMemory())
-                    + nodeCount * NodeTableEntryUpperBound + 4.KiB);
-            }
-            catch
-            {
-                Dispose();
-                throw;
-            }
-        }
-
-        internal long EstimatedSize { get; }
-
-        public void Dispose()
-        {
-            StateTop.Dispose();
-            StateCompact.Dispose();
-            StateFallback.Dispose();
-            StorageTop.Dispose();
-            StorageCompact.Dispose();
-            StorageFallback.Dispose();
-            Storages.Dispose();
-            Addresses.Dispose();
-            _readScope?.Dispose();
-        }
-    }
-
     public static void Build<TWriter>(Snapshot snapshot, ref TWriter writer, BlobArenaWriter blobWriter, BloomFilter bloom) where TWriter : IByteBufferWriter
     {
-        using PreparedSnapshot prepared = new(snapshot);
-        Build(snapshot, prepared, ref writer, blobWriter, bloom);
-    }
+        // Protects the buffered log pointers through their final RLP copy, even if the snapshot's own retain is released mid-write.
+        using IDisposable? readScope = snapshot.BeginNodeReadScope();
+        using ParallelUnbalancedWork.WorkerScope workers = ParallelUnbalancedWork.BeginWorkerScope(Environment.ProcessorCount);
+        // To stay off the LOH, we keep only the unmanaged sort keys in NativeMemoryList
+        // (off-heap) and read the node RLP from the buffer by its record pointer
+        // at write time. PooledSet is used for the small Address dedup map so its
+        // backing entry array is pool-rented rather than freshly allocated each block.
+        NativeMemoryList<(TreePath Path, ulong Pointer)> stateTopKeys = null!, stateCompactKeys = null!, stateFallbackKeys = null!;
+        NativeMemoryList<(ValueHash256 AddrHash, TreePath Path, ulong Pointer)> storTopKeys = null!, storCompactKeys = null!, storFallbackKeys = null!;
+        NativeMemoryList<((ValueAddress Addr, UInt256 Slot) Key, UInt256? Value)> sortedStorages = null!;
+        NativeMemoryList<ValueAddress> uniqueAddresses = null!;
 
-    internal static void Build<TWriter>(Snapshot snapshot, PreparedSnapshot prepared, ref TWriter writer, BlobArenaWriter blobWriter, BloomFilter bloom) where TWriter : IByteBufferWriter
-    {
+        // Parallel extraction + sort: three independent jobs over disjoint collections. The node
+        // iterators emit in key order, so each node sublist is sorted as it fills.
+        Action[] jobs =
+        [
+            () =>
+            {
+                NativeMemoryList<(TreePath Path, ulong Pointer)> top = new(0);
+                NativeMemoryList<(TreePath Path, ulong Pointer)> compact = new(0);
+                NativeMemoryList<(TreePath Path, ulong Pointer)> fallback = new(0);
+                foreach ((TreePath path, ulong pointer) in snapshot.StateNodes)
+                {
+                    if (path.Length <= TopPathThreshold) top.Add((path, pointer));
+                    else if (path.Length <= CompactPathThreshold) compact.Add((path, pointer));
+                    else fallback.Add((path, pointer));
+                }
+                stateTopKeys = top; stateCompactKeys = compact; stateFallbackKeys = fallback;
+            },
+            () =>
+            {
+                NativeMemoryList<(ValueHash256, TreePath, ulong)> top = new(0);
+                NativeMemoryList<(ValueHash256, TreePath, ulong)> compact = new(0);
+                NativeMemoryList<(ValueHash256, TreePath, ulong)> fallback = new(0);
+                foreach ((Hash256 addr, TreePath path, ulong pointer) in snapshot.StorageNodes)
+                {
+                    ValueHash256 addrHash = addr.ValueHash256;
+                    if (path.Length <= TopPathThreshold) top.Add((addrHash, path, pointer));
+                    else if (path.Length <= CompactPathThreshold) compact.Add((addrHash, path, pointer));
+                    else fallback.Add((addrHash, path, pointer));
+                }
+                storTopKeys = top; storCompactKeys = compact; storFallbackKeys = fallback;
+            },
+            () =>
+            {
+                using PooledSet<HashedKey<Address>> seen = new();
+                foreach (KeyValuePair<HashedKey<Address>, Account?> kv in snapshot.Accounts)
+                    seen.Add(kv.Key);
+                foreach (KeyValuePair<HashedKey<Address>, bool> kv in snapshot.SelfDestructedStorageAddresses)
+                    seen.Add(kv.Key);
+
+                NativeMemoryList<((ValueAddress Addr, UInt256 Slot) Key, UInt256? Value)> storages =
+                    new(Math.Max(1, snapshot.StoragesCount));
+                foreach (KeyValuePair<HashedKey<(Address, UInt256)>, UInt256?> kv in snapshot.Storages)
+                {
+                    (Address addr, UInt256 slot) = kv.Key.Key;
+                    storages.Add(((new ValueAddress(addr.Bytes), slot), kv.Value));
+                    seen.Add(addr);
+                }
+
+                NativeMemoryList<ValueAddress> addresses = new(Math.Max(1, seen.Count));
+                foreach (HashedKey<Address> addr in seen)
+                    addresses.Add(new ValueAddress(addr.Key.Bytes));
+                addresses.Sort(ValueAddressComparer);
+
+                storages.Sort(StoragesByAddressComparer);
+
+                sortedStorages = storages;
+                uniqueAddresses = addresses;
+            }
+        ];
+        ParallelUnbalancedWork.For(0, jobs.Length, jobs, static (i, actions) =>
+        {
+            actions[i]();
+            return actions;
+        });
+
         SortedTableBuilder<TWriter> table = new(ref writer);
         try
         {
@@ -173,11 +139,11 @@ public static class PersistedSnapshotBuilder
             // Metadata is last so its blob_range records the now-final blob-arena run; the ref-id is
             // first but only needs the (fixed) blob-arena id.
             WriteRefId(ref table, blobWriter);
-            WriteStorageNodes(ref table, snapshot, prepared.StorageFallback, prepared.StorageCompact, prepared.StorageTop, blobWriter, bloom);
-            WriteStateNodes(ref table, snapshot, prepared.StateFallback, blobWriter, bloom);
-            WriteStateNodes(ref table, snapshot, prepared.StateCompact, blobWriter, bloom);
-            WriteStateNodes(ref table, snapshot, prepared.StateTop, blobWriter, bloom);
-            WritePerAddress(ref table, snapshot, prepared.Storages, prepared.Addresses, bloom);
+            WriteStorageNodes(ref table, snapshot, storFallbackKeys, storCompactKeys, storTopKeys, blobWriter, bloom);
+            WriteStateNodes(ref table, snapshot, stateFallbackKeys, blobWriter, bloom);
+            WriteStateNodes(ref table, snapshot, stateCompactKeys, blobWriter, bloom);
+            WriteStateNodes(ref table, snapshot, stateTopKeys, blobWriter, bloom);
+            WritePerAddress(ref table, snapshot, sortedStorages, uniqueAddresses, bloom);
             WriteMetadata(ref table, snapshot, blobWriter);
 
             table.Build();
@@ -185,8 +151,32 @@ public static class PersistedSnapshotBuilder
         finally
         {
             table.Dispose();
+            sortedStorages?.Dispose();
+            uniqueAddresses?.Dispose();
+            stateTopKeys?.Dispose();
+            stateCompactKeys?.Dispose();
+            stateFallbackKeys?.Dispose();
+            storTopKeys?.Dispose();
+            storCompactKeys?.Dispose();
+            storFallbackKeys?.Dispose();
         }
     }
+
+    /// <summary>
+    /// Upper bound on the serialized snapshot size, used to pre-size the destination arena. The
+    /// in-memory snapshot size bounds the flat entries, and each reachable trie node adds at most
+    /// <see cref="NodeTableEntryUpperBound"/> bytes for its key, 6-byte <see cref="NodeRef"/>,
+    /// restart/index entries and page padding (the trie-node RLP it references lives in the blob arena).
+    /// There is no artificial 2 GiB ceiling — the streaming
+    /// <see cref="Sorted.SortedTableBuilder{TWriter}"/> builds tables past 2 GiB and the arena is
+    /// long-addressed.
+    /// </summary>
+    public static long EstimateSize(Snapshot snapshot) =>
+        // The arena writer throws if the write overruns the extent sized from this estimate, so a mutable
+        // snapshot must be measured live at persist time: Snapshot.EstimateMemory serves counts sealed at
+        // first observation (for repository-ledger consistency), which may predate late content writes.
+        checked((snapshot.IsSorted ? snapshot.EstimateMemory() : snapshot.Content.EstimateMemory())
+            + (snapshot.StateNodes.LongCount() + snapshot.StorageNodes.LongCount()) * NodeTableEntryUpperBound + 4.KiB);
 
     private static void WritePerAddress<TWriter>(
         ref SortedTableBuilder<TWriter> table, Snapshot snapshot,

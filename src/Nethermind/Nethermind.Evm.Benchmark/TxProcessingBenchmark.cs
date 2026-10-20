@@ -110,7 +110,7 @@ public class TxProcessingBenchmark
     [GlobalSetup]
     public void GlobalSetup()
     {
-        _stateProvider = TestWorldStateFactory.CreateForTest();
+        _stateProvider = TestWorldStateFactory.CreateForTest(logManager: NullLogManager.Instance);
         _stateScope = _stateProvider.BeginScope(IWorldState.PreGenesis);
 
         // Fund sender; deploy target contract
@@ -131,14 +131,14 @@ public class TxProcessingBenchmark
         EthereumVirtualMachine vm = new(
             new TestBlockhashProvider(),
             SpecProvider,
-            LimboLogs.Instance);
+            NullLogManager.Instance);
         _processor = new EthereumTransactionProcessor(
             BlobBaseFeeCalculator.Instance,
             SpecProvider,
             _stateProvider,
             vm,
             codeInfo,
-            LimboLogs.Instance);
+            NullLogManager.Instance);
 
         // ── build transactions ─────────────────────────────────────────────
         _simpleTx = Build.A.Transaction

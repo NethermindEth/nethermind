@@ -3,6 +3,7 @@
 
 #nullable enable
 
+using System.Buffers;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -17,6 +18,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.Persistence;
+using Nethermind.State.Flat.Persistence.TrieNodeLog;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.Trie;
@@ -131,7 +133,7 @@ public class StorageDeleteWarmupBenchmark
         _baseStateId = new StateId(BaseBlockNumber, scope.RootHash);
 
         FlatSnapshot snapshot = commitTarget.LastSnapshot ?? throw new InvalidOperationException("The base commit produced no snapshot");
-        _persistence = new RocksDbPersistence(new SnapshotableMemColumnsDb<FlatDbColumns>(), NullLogManager.Instance);
+        _persistence = new RocksDbPersistence(new SnapshotableMemColumnsDb<FlatDbColumns>(), NullLogManager.Instance, NullTrieNodeLog.Instance);
         Persist(_persistence, snapshot);
         snapshot.Dispose();
         _resourcePool.ReturnCachedResource(ResourcePool.Usage.MainBlockProcessing, commitTarget.LastResource);
@@ -218,14 +220,14 @@ public class StorageDeleteWarmupBenchmark
         using IPersistence.IWriteBatch batch = persistence.CreateWriteBatch(snapshot.From, snapshot.To, WriteFlags.None);
         foreach (KeyValuePair<HashedKey<Address>, Account?> kv in snapshot.Accounts) batch.SetAccount(kv.Key.Key, kv.Value);
         foreach (KeyValuePair<HashedKey<(Address, UInt256)>, UInt256?> kv in snapshot.Storages) batch.SetStorage(kv.Key.Key.Item1, kv.Key.Key.Item2, kv.Value);
-        foreach (KeyValuePair<HashedKey<TreePath>, ulong> kv in snapshot.StateNodes)
+        foreach ((TreePath path, ulong pointer) in snapshot.StateNodes)
         {
-            batch.SetStateTrieNode(kv.Key.Key, snapshot.GetRlp(kv.Value));
+            batch.SetStateTrieNode(path, snapshot.GetRlp(pointer));
         }
 
-        foreach (KeyValuePair<HashedKey<(Hash256, TreePath)>, ulong> kv in snapshot.StorageNodes)
+        foreach ((Hash256 address, TreePath path, ulong pointer) in snapshot.StorageNodes)
         {
-            batch.SetStorageTrieNode(kv.Key.Key.Item1, kv.Key.Key.Item2, snapshot.GetRlp(kv.Value));
+            batch.SetStorageTrieNode(address, path, snapshot.GetRlp(pointer));
         }
     }
 
@@ -278,6 +280,18 @@ public class StorageDeleteWarmupBenchmark
         {
             Read();
             return inner.TryLoadStorageRlp(address, path, flags);
+        }
+
+        public bool TryLoadStateRlp<TArg>(in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
+        {
+            Read();
+            return inner.TryLoadStateRlp(path, flags, action, arg);
+        }
+
+        public bool TryLoadStorageRlp<TArg>(Hash256 address, in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
+        {
+            Read();
+            return inner.TryLoadStorageRlp(address, path, flags, action, arg);
         }
 
         public Account? GetAccount(Address address) => inner.GetAccount(address);

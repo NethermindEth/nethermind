@@ -5,7 +5,9 @@ using System;
 using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
+using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Core;
@@ -2481,7 +2483,7 @@ public partial class StorageProviderTests(bool useFlat)
         ReadCollectingStorageTracer tracer = new();
         provider.Commit(Frontier.Instance, tracer);
 
-        Assert.That(tracer.Reads, Is.EquivalentTo(readCells));
+        Assert.That(tracer.Reads.OrderBy(cell => cell.Index), Is.EqualTo(readCells));
 
         // The round's read capture must be cleared by the read-only commit:
         // a subsequent commit without new reads reports nothing.
@@ -2910,8 +2912,8 @@ public partial class StorageProviderTests(bool useFlat)
             public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink sink = null)
                 => baseScope.HintBal(bal, sink);
 
-            public void ApplyBal(ReadOnlyBlockAccessList bal)
-                => baseScope.ApplyBal(bal);
+            public void ApplyBal(ReadOnlyBlockAccessList bal, CancellationToken cancellationToken)
+                => baseScope.ApplyBal(bal, cancellationToken);
 
             public IWorldStateScopeProvider.ICodeDb CodeDb => baseScope.CodeDb;
 

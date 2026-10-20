@@ -37,7 +37,8 @@ public class Snapshot : RefCountingDisposable
     // Boxed so publication is a single reference CAS.
     private StrongBox<SnapshotContentCounts>? _sealedCounts;
 
-    public Snapshot(in StateId from, in StateId to, SnapshotContent content, IResourcePool resourcePool, ResourcePool.Usage usage)
+    /// <param name="logPin">The pin protecting the trie node log records this snapshot references; the snapshot takes ownership.</param>
+    public Snapshot(in StateId from, in StateId to, SnapshotContent content, IResourcePool resourcePool, ResourcePool.Usage usage, NativeTrieNodeLogPin? logPin)
     {
         _from = from;
         _to = to;
@@ -45,9 +46,11 @@ public class Snapshot : RefCountingDisposable
         _resourcePool = resourcePool;
         _usage = usage;
         _isSorted = false;
+        LogPin = logPin;
     }
 
-    public Snapshot(in StateId from, in StateId to, SortedSnapshotContent content, IResourcePool resourcePool, ResourcePool.Usage usage)
+    /// <inheritdoc cref="Snapshot(in StateId, in StateId, SnapshotContent, IResourcePool, ResourcePool.Usage, NativeTrieNodeLogPin?)"/>
+    public Snapshot(in StateId from, in StateId to, SortedSnapshotContent content, IResourcePool resourcePool, ResourcePool.Usage usage, NativeTrieNodeLogPin? logPin)
     {
         _from = from;
         _to = to;
@@ -55,6 +58,7 @@ public class Snapshot : RefCountingDisposable
         _resourcePool = resourcePool;
         _usage = usage;
         _isSorted = true;
+        LogPin = logPin;
     }
 
     public long EstimateMemory() => _isSorted ? _sorted!.EstimateMemory() : Counts.EstimateMemory();
@@ -92,21 +96,28 @@ public class Snapshot : RefCountingDisposable
     /// the in-memory snapshots, see <c>NativeTrieNodeStore</c>, and the nodes this snapshot holds as log pointers are
     /// read through it.
     /// </remarks>
-    internal NativeTrieNodeLogPin? LogPin { get; init; }
+    internal NativeTrieNodeLogPin? LogPin { get; }
 
     public StateId From => _from;
     public StateId To => _to;
     public IEnumerable<KeyValuePair<HashedKey<Address>, Account?>> Accounts => _isSorted ? _sorted!.Accounts : _mutable!.Accounts;
     public IEnumerable<KeyValuePair<HashedKey<Address>, bool>> SelfDestructedStorageAddresses => _isSorted ? _sorted!.SelfDestructedStorageAddresses : _mutable!.SelfDestructedStorageAddresses;
     public IEnumerable<KeyValuePair<HashedKey<(Address, UInt256)>, UInt256?>> Storages => _isSorted ? _sorted!.Storages : _mutable!.Storages;
-    /// <summary>Reachable storage nodes written within this snapshot's range, with pointers protected until their enumerator is disposed.</summary>
-    public IEnumerable<KeyValuePair<HashedKey<(Hash256, TreePath)>, ulong>> StorageNodes => EnumerateStorageNodes();
-    /// <summary>Reachable state nodes written within this snapshot's range, with pointers protected until their enumerator is disposed.</summary>
-    public IEnumerable<KeyValuePair<HashedKey<TreePath>, ulong>> StateNodes => EnumerateStateNodes();
+
+    /// <summary>Reachable state nodes written within this snapshot's range, as log pointers readable through <see cref="GetRlp"/>.</summary>
+    /// <remarks>
+    /// Nodes come in ascending <see cref="TreePath.CompareTo(in TreePath)"/> order: the walk visits each node before its subtree and children by ascending nibble,
+    /// so a persisted snapshot is built from them without sorting. Pointers must not be read after the snapshot is released.
+    /// </remarks>
+    public IEnumerable<(TreePath Path, ulong Pointer)> StateNodes => EnumerateStateNodes();
+
+    /// <summary>Reachable storage nodes written within this snapshot's range, by ascending address hash and then as in <see cref="StateNodes"/>.</summary>
+    /// <remarks>Pointers must not be read after the snapshot is released.</remarks>
+    public IEnumerable<(Hash256 Address, TreePath Path, ulong Pointer)> StorageNodes => EnumerateStorageNodes();
+
     public int AccountsCount => _isSorted ? _sorted!.AccountsCount : Counts.Accounts;
     public int StoragesCount => _isSorted ? _sorted!.StoragesCount : Counts.Storages;
 
-    internal bool HasStateRoot => _isSorted ? _sorted!.HasStateRoot : _mutable!.HasStateRoot;
     internal ulong StateRootPointer => _isSorted ? _sorted!.StateRootPointer : _mutable!.StateRootPointer;
     internal IEnumerable<KeyValuePair<Hash256, ulong>> StorageRoots => _isSorted ? _sorted!.StorageRoots : _mutable!.StorageRoots;
 
@@ -114,20 +125,18 @@ public class Snapshot : RefCountingDisposable
         ? _sorted!.StorageRoots.TryGetValue(address, out pointer)
         : _mutable!.StorageRoots.TryGetValue(address, out pointer);
 
-    private IEnumerable<KeyValuePair<HashedKey<TreePath>, ulong>> EnumerateStateNodes()
-    {
-        if (!HasStateRoot || From.StateRoot == To.StateRoot) yield break;
-        foreach ((TreePath path, ulong pointer) in EnumerateNodes(StateRootPointer))
-            yield return new(path, pointer);
-    }
+    private IEnumerable<(TreePath Path, ulong Pointer)> EnumerateStateNodes() =>
+        From.StateRoot == To.StateRoot ? [] : EnumerateNodes(StateRootPointer);
 
-    private IEnumerable<KeyValuePair<HashedKey<(Hash256, TreePath)>, ulong>> EnumerateStorageNodes()
+    private IEnumerable<(Hash256 Address, TreePath Path, ulong Pointer)> EnumerateStorageNodes()
     {
         using IDisposable? lease = BeginNodeReadScope();
-        foreach ((Hash256 address, ulong root) in StorageRoots)
+        using ArrayPoolList<KeyValuePair<Hash256, ulong>> roots = new(0, StorageRoots);
+        roots.Sort(static (a, b) => a.Key.CompareTo(b.Key));
+        foreach ((Hash256 address, ulong root) in roots)
         {
             foreach ((TreePath path, ulong pointer) in EnumerateNodes(root))
-                yield return new((address, path), pointer);
+                yield return (address, path, pointer);
         }
     }
 
@@ -186,19 +195,8 @@ public class Snapshot : RefCountingDisposable
         }
     }
 
-    /// <summary>The retained write pointer at <paramref name="key"/>; native inherited nodes are available through the copied-node overload.</summary>
-    internal bool TryGetStateNode(HashedKey<TreePath> key, out ulong pointer) =>
-        TryGetNodePointer(HasStateRoot ? StateRootPointer : 0, key.Key, out pointer);
-
     public bool TryGetStateNode(HashedKey<TreePath> key, [NotNullWhen(true)] out TrieNode? node) =>
-        TryGetNode(HasStateRoot ? StateRootPointer : 0, key.Key, out node);
-
-    /// <summary>The retained write pointer at <paramref name="key"/>; native inherited nodes are available through the copied-node overload.</summary>
-    internal bool TryGetStorageNode(HashedKey<(Hash256, TreePath)> key, out ulong pointer)
-    {
-        pointer = 0;
-        return TryGetStorageRoot(key.Key.Item1, out ulong root) && TryGetNodePointer(root, key.Key.Item2, out pointer);
-    }
+        TryGetNode(StateRootPointer, key.Key, out node);
 
     public bool TryGetStorageNode(HashedKey<(Hash256, TreePath)> key, [NotNullWhen(true)] out TrieNode? node)
     {
@@ -210,20 +208,6 @@ public class Snapshot : RefCountingDisposable
     {
         node = null;
         return LogPin is { } pin && pin.Log.TryGetNode(root, path, out node);
-    }
-
-    private bool TryGetNodePointer(ulong root, in TreePath path, out ulong pointer)
-    {
-        pointer = 0;
-        foreach ((TreePath nodePath, ulong nodePointer) in EnumerateNodes(root))
-        {
-            if (nodePath == path)
-            {
-                pointer = nodePointer;
-                return true;
-            }
-        }
-        return false;
     }
 
     /// <summary>The RLP of a retained write pointer, borrowed until the snapshot's read scope is released.</summary>
@@ -254,10 +238,8 @@ public sealed class SnapshotContent : IDisposable, IResettable
     public readonly ConcurrentDictionary<HashedKey<(Address, UInt256)>, UInt256?> Storages = new();
     public readonly ConcurrentDictionary<HashedKey<Address>, bool> SelfDestructedStorageAddresses = new();
 
-    /// <summary>The final published state-root pointer, zero for an empty or unavailable root.</summary>
+    /// <summary>The final published state-root pointer, zero for an empty root or one the trie node log does not hold.</summary>
     public ulong StateRootPointer;
-    /// <summary>Whether this content has published a state root, including the empty root.</summary>
-    public bool HasStateRoot;
     /// <summary>Final roots of changed storage tries. Missing addresses are unchanged; zero marks an empty trie.</summary>
     public readonly ConcurrentDictionary<Hash256, ulong> StorageRoots = new();
 
@@ -278,7 +260,6 @@ public sealed class SnapshotContent : IDisposable, IResettable
         Storages.NoLockClear();
         SelfDestructedStorageAddresses.NoLockClear();
         StateRootPointer = 0;
-        HasStateRoot = false;
         StorageRoots.NoLockClear();
     }
 
@@ -291,7 +272,7 @@ public sealed class SnapshotContent : IDisposable, IResettable
         Accounts.Count,
         Storages.Count,
         SelfDestructedStorageAddresses.Count,
-        HasStateRoot ? 1 : 0,
+        StateRootPointer != 0 ? 1 : 0,
         StorageRoots.Count);
 
     public long EstimateMemory() => CaptureCounts().EstimateMemory();

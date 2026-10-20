@@ -3,6 +3,7 @@
 
 using System;
 using System.IO;
+using System.IO.Abstractions;
 using Autofac;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
@@ -23,6 +24,7 @@ using Nethermind.Monitoring.Config;
 using Nethermind.Api;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.Persistence;
+using Nethermind.State.Flat.Persistence.TrieNodeLog;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
@@ -68,7 +70,7 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                     throw new InvalidConfigurationException("FlatDb.VerifyWithTrie is not supported by the native Flat DB trie backend.", -1);
                 if (!NativePatriciaBulkSet.IsAvailable)
                     throw new InvalidConfigurationException("Flat DB requires libnethermind_patricia, but the native library could not be loaded.", -1);
-                return new NativeTrieNodeLog(config.CompressedTrieNodeLogMemoryBudget);
+                return new NativeTrieNodeLog(config.CompressedNodeRecordBufferMemoryBudget);
             })
             .AddSingleton<ICompactionSchedule, CompactionSchedule>()
             .AddSingleton<ISnapshotCompactor, SnapshotCompactor>()
@@ -113,6 +115,17 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                     Path.Combine("persistedSnapshot", "catalog"))))
             .AddSingleton<SnapshotCatalog>()
             .AddSingleton<ISnapshotCatalog>(ctx => ctx.Resolve<SnapshotCatalog>())
+            .AddSingleton<ITrieNodeLog, IFlatDbConfig, IInitConfig, IColumnsDb<FlatDbColumns>, IFileSystem, ILogManager>((cfg, initConfig, db, fileSystem, logManager) =>
+            {
+                string basePath = fileSystem.Path.Combine(initConfig.BaseDbPath, "flatTrieNodeLog");
+                // The log is recovered across restarts, keeping its deduplication window, unless it is now disabled or
+                // its shard layout changed; then whatever the previous run left is merged into RocksDB first.
+                if (!cfg.TrieNodeLogEnabled || !TrieNodeLog.MatchesOnDiskLayout(basePath, fileSystem, cfg))
+                    TrieNodeLog.MergeAllOnDisk(basePath, fileSystem, db, logManager);
+                return cfg.TrieNodeLogEnabled
+                    ? new TrieNodeLog(basePath, fileSystem, db, cfg, logManager)
+                    : NullTrieNodeLog.Instance;
+            })
             .AddSingleton<RocksDbPersistence>()
             .AddSingleton<FlatInTriePersistence>()
             .Add<CarryForwardCachingPersistence>()
@@ -125,7 +138,7 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                     FlatLayout.Flat => ctx.Resolve<RocksDbPersistence>(),
                     FlatLayout.FlatInTrie => ctx.Resolve<FlatInTriePersistence>(),
                     FlatLayout.PreimageFlatV1 or FlatLayout.PreimageFlat =>
-                        new PreimageRocksdbPersistence(ctx.Resolve<IColumnsDb<FlatDbColumns>>(), logManager, flatDbConfig.Layout),
+                        new PreimageRocksdbPersistence(ctx.Resolve<IColumnsDb<FlatDbColumns>>(), logManager, flatDbConfig.Layout, ctx.Resolve<ITrieNodeLog>()),
                     _ => throw new NotSupportedException($"Unsupported layout {flatDbConfig.Layout}")
                 };
 

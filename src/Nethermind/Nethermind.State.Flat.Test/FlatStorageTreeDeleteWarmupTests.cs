@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -16,6 +17,7 @@ using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Flat.Persistence;
+using Nethermind.State.Flat.Persistence.TrieNodeLog;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.Trie;
@@ -36,8 +38,9 @@ public class FlatStorageTreeDeleteWarmupTests
     private const int DeletedSlots = 64;
 
     // The per-block node cache is direct-mapped, so a few warmed nodes are evicted by others whatever is written;
-    // a delete must not add the nodes its collapse needs on top of that.
-    private const int CollisionAllowance = 4;
+    // a delete must not add the nodes its collapse needs on top of that. Slots are hashed with a per-process seed,
+    // so the collisions vary run to run: a flagged delete has read up to 5 more nodes, an unflagged one always 25 more.
+    private const int CollisionAllowance = 12;
 
     private static readonly Address Contract = TestItem.AddressA;
 
@@ -78,7 +81,7 @@ public class FlatStorageTreeDeleteWarmupTests
     {
         private readonly FlatDbConfig _config = new() { ApplyStorageWritesOnIdleThread = false };
         private readonly ResourcePool _resourcePool;
-        private readonly RocksDbPersistence _persistence = new(new SnapshotableMemColumnsDb<FlatDbColumns>(), LimboLogs.Instance);
+        private readonly RocksDbPersistence _persistence = new(new SnapshotableMemColumnsDb<FlatDbColumns>(), LimboLogs.Instance, NullTrieNodeLog.Instance);
         private readonly StateId _baseState;
         private readonly List<NativeTrieNodeLog> _logs = [];
         private readonly List<Snapshot> _snapshots = [];
@@ -180,8 +183,8 @@ public class FlatStorageTreeDeleteWarmupTests
             using IPersistence.IWriteBatch batch = _persistence.CreateWriteBatch(snapshot.From, snapshot.To, WriteFlags.None);
             foreach (KeyValuePair<HashedKey<Address>, Account?> kv in snapshot.Accounts) batch.SetAccount(kv.Key.Key, kv.Value);
             foreach (KeyValuePair<HashedKey<(Address, UInt256)>, UInt256?> kv in snapshot.Storages) batch.SetStorage(kv.Key.Key.Item1, kv.Key.Key.Item2, kv.Value);
-            foreach (KeyValuePair<HashedKey<TreePath>, ulong> kv in snapshot.StateNodes) batch.SetStateTrieNode(kv.Key.Key, snapshot.GetRlp(kv.Value));
-            foreach (KeyValuePair<HashedKey<(Hash256, TreePath)>, ulong> kv in snapshot.StorageNodes) batch.SetStorageTrieNode(kv.Key.Key.Item1, kv.Key.Key.Item2, snapshot.GetRlp(kv.Value));
+            foreach ((TreePath path, ulong pointer) in snapshot.StateNodes) batch.SetStateTrieNode(path, snapshot.GetRlp(pointer));
+            foreach ((Hash256 address, TreePath path, ulong pointer) in snapshot.StorageNodes) batch.SetStorageTrieNode(address, path, snapshot.GetRlp(pointer));
         }
 
         private NativeTrieNodeLog NewLog()
@@ -238,6 +241,18 @@ public class FlatStorageTreeDeleteWarmupTests
         {
             Interlocked.Increment(ref _loads);
             return inner.TryLoadStorageRlp(address, path, flags);
+        }
+
+        public bool TryLoadStateRlp<TArg>(in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
+        {
+            Interlocked.Increment(ref _loads);
+            return inner.TryLoadStateRlp(path, flags, action, arg);
+        }
+
+        public bool TryLoadStorageRlp<TArg>(Hash256 address, in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
+        {
+            Interlocked.Increment(ref _loads);
+            return inner.TryLoadStorageRlp(address, path, flags, action, arg);
         }
 
         public Account? GetAccount(Address address) => inner.GetAccount(address);

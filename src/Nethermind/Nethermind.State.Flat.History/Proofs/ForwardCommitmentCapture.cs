@@ -70,15 +70,14 @@ public sealed class ForwardCommitmentCapture : IDisposable
         try
         {
             CapturedBlock captured = Take();
-            foreach (KeyValuePair<HashedKey<TreePath>, ulong> entry in snapshot.StateNodes)
+            foreach ((TreePath path, ulong pointer) in snapshot.StateNodes)
             {
-                AddAccount(captured, entry.Key.Key, snapshot.GetRlp(entry.Value));
+                AddAccount(captured, path, snapshot.GetRlp(pointer));
             }
 
-            foreach (KeyValuePair<HashedKey<(Hash256, TreePath)>, ulong> entry in snapshot.StorageNodes)
+            foreach ((Hash256 accountPath, TreePath path, ulong pointer) in snapshot.StorageNodes)
             {
-                (Hash256 accountPath, TreePath path) = entry.Key.Key;
-                AddStorage(captured, new ValueHash256(accountPath.Bytes), path, snapshot.GetRlp(entry.Value));
+                AddStorage(captured, new ValueHash256(accountPath.Bytes), path, snapshot.GetRlp(pointer));
             }
 
             Buffer(block, captured);
@@ -112,6 +111,15 @@ public sealed class ForwardCommitmentCapture : IDisposable
         {
             Stop(e);
         }
+    }
+
+    /// <summary>Drops everything captured so far, rows and series included, for a history restarting at a snap pivot.</summary>
+    public void DiscardForPivot()
+    {
+        _emitter?.Dispose();
+        _emitter = null;
+        Discard();
+        _metadata.DiscardForPivot();
     }
 
     public void Discard()

@@ -169,6 +169,11 @@ public sealed partial class KeccakHash
     /// See <c>KeccakHash.std.cs</c> and <c>.zkevm.cs</c>.</remarks>
     internal static partial void NoteWitnessNodeLoaded(nint tag);
 
+    /// <summary>Hands over <paramref name="consumed"/>, decoded input no longer read, to hold the sponge states that
+    /// <see cref="ComputeHash256OfWitnessNodes"/> keeps.</summary>
+    /// <remarks>A no-op on the host. See <c>KeccakHash.std.cs</c> and <c>.zkevm.cs</c>.</remarks>
+    internal static partial void DonateConsumedInput(ReadOnlySpan<byte> consumed);
+
     /// <summary>Writes the Keccak-256 digest of <paramref name="input"/> to <paramref name="output"/> through
     /// <see cref="ComputeHash256"/>, where that is the target's faster path.</summary>
     /// <returns>Whether the digest was written.</returns>

@@ -956,6 +956,42 @@ public partial class EthRpcModuleTests
         Assert.That(getFilterLogsSerialized, Is.EqualTo(getLogsSerialized));
     }
 
+    [Test]
+    public async Task Eth_get_logs_writes_each_log_as_its_filter_log([Values] bool enableLogsStreamMode)
+    {
+        byte[] data = new byte[64];
+        data[^1] = 0x42;
+        byte[] logCreateCode = Prepare.EvmCode
+            .Log(0, 0)
+            .StoreDataInMemory(0, data)
+            .Log(64, 0, [TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC, TestItem.KeccakD])
+            .Log(1, 63, [TestItem.KeccakA])
+            .Done;
+
+        TestRpcBlockchain test = await CreateLogsTestBlockchainBuilder(enableLogsStreamMode).Build(initialValues: 2.Ether);
+        ulong nonce = 3;
+        for (int block = 0; block < 2; block++)
+        {
+            await test.AddBlock(CreateLogTx(nonce++), CreateLogTx(nonce++));
+        }
+
+        string serialized = await test.TestEthRpc("eth_getLogs", """{"fromBlock":"earliest","toBlock":"latest"}""");
+
+        FilterLog[] logs = test.Bridge.GetLogs(BlockParameter.Earliest, BlockParameter.Latest).ToArray();
+        EthereumJsonSerializer serializer = new();
+        string expected = $"[{string.Join(",", logs.Select(log => serializer.Serialize(log)))}]";
+        using JsonDocument response = JsonDocument.Parse(serialized);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(logs, Has.Length.EqualTo(12));
+            Assert.That(response.RootElement.GetProperty("result").GetRawText(), Is.EqualTo(expected));
+        }
+
+        Transaction CreateLogTx(ulong txNonce) => Build.A.Transaction
+            .WithCode(logCreateCode).WithNonce(txNonce).WithGasLimit(210200).WithGasPrice(20.GWei)
+            .WithChainId(TestBlockchainIds.ChainId).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+    }
+
     private static IEnumerable<TestCaseData> EthGetLogsCases()
     {
         foreach ((string name, string parameter, string expected) in EthGetLogsCaseParameters())
@@ -1051,8 +1087,7 @@ public partial class EthRpcModuleTests
             yield return ($"range {range} exceeds limit {tooLow} -> rejected", tooLow, wholeChain, true);
             yield return ($"range {range} within limit {range} -> allowed", range, wholeChain, false);
             yield return ("limit disabled -> allowed", 0, wholeChain, false);
-            yield return ($"fromBlock omitted -> Earliest, range {range} exceeds limit {tooLow} -> rejected", tooLow, fromOmitted, true);
-            yield return ($"fromBlock omitted -> Earliest, range {range} within limit {range} -> allowed", range, fromOmitted, false);
+            yield return ("fromBlock omitted -> Latest, range 1 within limit 1 -> allowed", 1, fromOmitted, false);
             yield return ($"toBlock omitted -> Latest, range {range} exceeds limit {tooLow} -> rejected", tooLow, toOmitted, true);
             yield return ($"toBlock omitted -> Latest, range {range} within limit {range} -> allowed", range, toOmitted, false);
         }
@@ -2429,6 +2464,30 @@ public partial class EthRpcModuleTests
 
         ulong gasUsed = Convert.ToUInt64(JToken.Parse(serialized).SelectToken("result.gasUsed")!.Value<string>(), 16);
         Assert.That(gasUsed, Is.LessThanOrEqualTo(gasCap));
+    }
+
+    [Test]
+    public async Task Eth_createAccessList_is_rejected_before_berlin([Values] bool berlin)
+    {
+        IReleaseSpec spec = berlin ? Berlin.Instance : Istanbul.Instance;
+        using Context ctx = await Context.Create(new TestSpecProvider(spec));
+        using JsonDocument call = JsonDocument.Parse($"{{\"from\":\"{TestItem.AddressA}\",\"to\":\"{TestItem.AddressB}\"}}");
+
+        string response = await ctx.Test.TestEthRpc("eth_createAccessList", call.RootElement, "latest");
+
+        JToken parsed = JToken.Parse(response);
+        if (berlin)
+        {
+            Assert.That(parsed["error"], Is.Null, response);
+        }
+        else
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(parsed["error"]?["code"]?.Value<int>(), Is.EqualTo(ErrorCodes.InvalidInput), response);
+                Assert.That(parsed["error"]?["message"]?.Value<string>(), Does.Contain(TxErrorMessages.InvalidTxType(spec.Name)), response);
+            }
+        }
     }
 
     [Test]

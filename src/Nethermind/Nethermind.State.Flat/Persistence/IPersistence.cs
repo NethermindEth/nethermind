@@ -45,13 +45,11 @@ public interface IPersistence
 
         /// <summary>Passes the RLP of the state trie node at <paramref name="path"/> to <paramref name="action"/>, which must not keep it.</summary>
         /// <returns>Whether the node was found.</returns>
-        bool TryLoadStateRlp<TArg>(in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct =>
-            Pass(TryLoadStateRlp(path, flags), action, arg);
+        bool TryLoadStateRlp<TArg>(in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct;
 
         /// <summary>Passes the RLP of the storage trie node at <paramref name="path"/> to <paramref name="action"/>, which must not keep it.</summary>
         /// <returns>Whether the node was found.</returns>
-        bool TryLoadStorageRlp<TArg>(Hash256 address, in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct =>
-            Pass(TryLoadStorageRlp(address, path, flags), action, arg);
+        bool TryLoadStorageRlp<TArg>(Hash256 address, in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct;
 
         // Raw operations are used in importer
         byte[]? GetAccountRaw(in ValueHash256 addrHash);
@@ -60,13 +58,6 @@ public interface IPersistence
         IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey);
         IFlatIterator CreateStorageIterator(in ValueHash256 accountKey, in ValueHash256 startSlotKey, in ValueHash256 endSlotKey);
         bool IsPreimageMode { get; }
-
-        private static bool Pass<TArg>(byte[]? rlp, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
-        {
-            if (rlp is null) return false;
-            action(rlp, arg);
-            return true;
-        }
     }
 
     public interface IWriteBatch : IDisposable

@@ -10,7 +10,6 @@ using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Flat.Collections;
-using Nethermind.Trie;
 using Nethermind.Trie.Native;
 
 namespace Nethermind.State.Flat;
@@ -168,23 +167,21 @@ public class SnapshotCompactor(
             throw;
         }
 
-        // The oldest retain covers every merged snapshot, whose retains may be released before the compacted snapshot.
-        return new Snapshot(from, to, content, _resourcePool, usage) { LogPin = OldestLogPin(snapshots)?.Copy() };
+        // The oldest pin covers every merged snapshot, whose pins may be released before the compacted snapshot.
+        return new Snapshot(from, to, content, _resourcePool, usage, OldestLogPin(snapshots)?.Copy());
     }
 
     private static void MergeRoots(SortedSnapshotContent content, SnapshotPooledList snapshots)
     {
         Snapshot final = snapshots[^1];
-        content.HasStateRoot = final.HasStateRoot;
         content.StateRootPointer = final.StateRootPointer;
         if (content.StateRootPointer == 0 && final.To.StateRoot != ValueKeccak.EmptyTreeHash)
         {
             for (int i = snapshots.Count - 2; i >= 0; i--)
             {
                 Snapshot source = snapshots[i];
-                if (source.HasStateRoot && source.To.StateRoot == final.To.StateRoot && source.StateRootPointer != 0)
+                if (source.To.StateRoot == final.To.StateRoot && source.StateRootPointer != 0)
                 {
-                    content.HasStateRoot = true;
                     content.StateRootPointer = source.StateRootPointer;
                     break;
                 }

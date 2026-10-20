@@ -372,7 +372,7 @@ public class SnapshotCompactorTests
         SnapshotContent finalContent = new();
         finalContent.SetStateNodeRlp(_log, TreePath.FromHexString("1"), FlatTestHelpers.LeafRlpA);
         using Snapshot first = _resourcePool.CreateSnapshot(new(0, Keccak.EmptyTreeHash), new(1, TestItem.KeccakA), ResourcePool.Usage.ReadOnlyProcessingEnv, _log);
-        using Snapshot final = new(first.To, new(2, TestItem.KeccakB), finalContent, _resourcePool, ResourcePool.Usage.ReadOnlyProcessingEnv) { LogPin = earliest };
+        using Snapshot final = new(first.To, new(2, TestItem.KeccakB), finalContent, _resourcePool, ResourcePool.Usage.ReadOnlyProcessingEnv, earliest);
         using Snapshot compacted = _compactor.CompactSnapshotBundle(new(2) { first, final });
         using Snapshot result = _compactor.CompactSnapshotBundle(new(1) { compacted });
 
@@ -392,10 +392,9 @@ public class SnapshotCompactorTests
         NativeTrieNodeLogPin earliest = log.PinActiveGeneration();
         Hash256 root = FlatTestHelpers.WriteNative(log, null, Keccak.EmptyTreeHash, new PatriciaTree.BulkSetEntry(TestItem.KeccakA.ValueHash256, [1]));
         using Snapshot first = new(new(0, Keccak.EmptyTreeHash), new(1, root), new SnapshotContent(), _resourcePool,
-            ResourcePool.Usage.ReadOnlyProcessingEnv) { LogPin = log.PinActiveGeneration() };
+            ResourcePool.Usage.ReadOnlyProcessingEnv, log.PinActiveGeneration());
         using Snapshot final = new(first.To, new(2, root), new SnapshotContent(), _resourcePool,
-            ResourcePool.Usage.ReadOnlyProcessingEnv) { LogPin = earliest };
-        final.Content.HasStateRoot = true;
+            ResourcePool.Usage.ReadOnlyProcessingEnv, earliest);
         final.Content.StateRootPointer = log.ResolveRoot(null, root.ValueHash256);
         using Snapshot compacted = _compactor.CompactSnapshotBundle(new(2) { first, final });
         using Snapshot result = _compactor.CompactSnapshotBundle(new(1) { compacted });
@@ -425,7 +424,7 @@ public class SnapshotCompactorTests
             Assert.That(compacted.TryGetStateNode(oldPath, out ulong _), Is.False);
             Assert.That(compacted.TryGetStateNode(finalPath, out ulong pointer), Is.True);
             Assert.That(compacted.GetRlp(pointer).ToArray(), Is.EqualTo(Bytes.FromHexString(FlatTestHelpers.LeafRlpB)));
-            Assert.That(compacted.StateNodes.Select(kv => kv.Value), Is.EqualTo(final.StateNodes.Select(kv => kv.Value)));
+            Assert.That(compacted.StateNodes.Select(kv => kv.Pointer), Is.EqualTo(final.StateNodes.Select(kv => kv.Pointer)));
         }
     }
 
@@ -450,7 +449,6 @@ public class SnapshotCompactorTests
         using Snapshot older = _resourcePool.CreateSnapshot(new(0, Keccak.EmptyTreeHash), new(1, Keccak.Zero), ResourcePool.Usage.ReadOnlyProcessingEnv, _log);
         older.Content.SetStateNodeRlp(_log, TreePath.Empty, FlatTestHelpers.LeafRlpA);
         using Snapshot final = _resourcePool.CreateSnapshot(older.To, new(2, Keccak.EmptyTreeHash), ResourcePool.Usage.ReadOnlyProcessingEnv, _log);
-        final.Content.HasStateRoot = true;
 
         using Snapshot compacted = _compactor.CompactSnapshotBundle(new(2) { older, final });
 

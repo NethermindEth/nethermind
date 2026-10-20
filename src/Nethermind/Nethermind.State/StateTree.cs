@@ -90,7 +90,7 @@ namespace Nethermind.State
             BulkSet(entries);
         }
 
-        /// <summary>The bulk set entries of <paramref name="accounts"/>, keyed by address hash; a null account deletes.</summary>
+        /// <summary>The bulk-set entries writing <paramref name="accounts"/>, a null account deleting its key.</summary>
         [SkipLocalsInit]
         internal static ArrayPoolListRef<BulkSetEntry> CreateAccountEntries(Dictionary<AddressAsKey, Account?> accounts)
         {

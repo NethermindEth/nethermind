@@ -187,9 +187,7 @@ public sealed class SnapshotBundle : IDisposable
     {
         GuardDispose();
 
-        if (_currentPooledContent.HasStateRoot
-            && TryGetNode(_currentPooledContent.StateRootPointer, path, out TrieNode? node)
-            && node.Keccak == hash)
+        if (TryGetNode(_currentPooledContent.StateRootPointer, path, out TrieNode? node))
         {
             Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
         }
@@ -233,9 +231,7 @@ public sealed class SnapshotBundle : IDisposable
     private sealed class NativeWarmUpSource(ReadOnlySnapshotBundle readOnly, Hash256? address) : INativeNodeStore
     {
         public bool Fetch(in TreePath path, in ValueHash256 hash, NativeNodeReceiver receiver) =>
-            address is null
-                ? readOnly.TryLoadStateRlp(path, ReadFlags.None, static (rlp, receiver) => receiver.Receive(rlp), receiver)
-                : readOnly.TryLoadStorageRlp(address, path, ReadFlags.None, static (rlp, receiver) => receiver.Receive(rlp), receiver);
+            readOnly.TryLoadPersistedRlp(address, path, ReadFlags.None, static (rlp, receiver) => receiver.Receive(rlp), receiver);
     }
 
     // Returns a leased transient, or null once the bundle is being torn down. A stale read can acquire a
@@ -277,14 +273,14 @@ public sealed class SnapshotBundle : IDisposable
         HashedKey<TreePath> key = new(path);
         for (int i = _snapshots.Count - 1; i >= 0; i--)
         {
-            if (_snapshots[i].TryGetStateNode(key, out node) && node.Keccak == hash)
+            if (_snapshots[i].TryGetStateNode(key, out node))
             {
                 Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
                 return true;
             }
         }
 
-        return _readOnlySnapshotBundle.TryFindStateNodes(path, hash, out node);
+        return _readOnlySnapshotBundle.TryFindStateNodes(key, out node);
     }
 
     public TrieNode FindStorageNodeOrUnknown(Hash256 address, in TreePath path, Hash256 hash)
@@ -292,8 +288,7 @@ public sealed class SnapshotBundle : IDisposable
         GuardDispose();
 
         if (_changedStorageRoots.TryGetValue(address, out ulong root) && root != 0
-            && TryGetNode(root, path, out TrieNode? node)
-            && node.Keccak == hash)
+            && TryGetNode(root, path, out TrieNode? node))
         {
             Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
         }
@@ -317,14 +312,14 @@ public sealed class SnapshotBundle : IDisposable
         HashedKey<(Hash256, TreePath)> key = new((address, path));
         for (int i = _snapshots.Count - 1; i >= 0; i--)
         {
-            if (_snapshots[i].TryGetStorageNode(key, out node) && node.Keccak == hash)
+            if (_snapshots[i].TryGetStorageNode(key, out node))
             {
                 Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
                 return true;
             }
         }
 
-        return _readOnlySnapshotBundle.TryFindStorageNodes(address, path, hash, out node);
+        return _readOnlySnapshotBundle.TryFindStorageNodes(key, out node);
     }
 
     public byte[]? TryLoadStateRlp(in TreePath path, Hash256 hash, ReadFlags flags)
@@ -341,26 +336,18 @@ public sealed class SnapshotBundle : IDisposable
         return _readOnlySnapshotBundle.TryLoadStorageRlp(address, path, hash, flags);
     }
 
-    /// <inheritdoc cref="ReadOnlySnapshotBundle.TryLoadStateRlp{TArg}"/>
-    public bool TryLoadStateRlp<TArg>(in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
+    /// <inheritdoc cref="ReadOnlySnapshotBundle.TryLoadPersistedRlp{TArg}"/>
+    public bool TryLoadPersistedRlp<TArg>(Hash256? address, in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
     {
         GuardDispose();
-        return _readOnlySnapshotBundle.TryLoadStateRlp(path, flags, action, arg);
-    }
-
-    /// <inheritdoc cref="ReadOnlySnapshotBundle.TryLoadStorageRlp{TArg}"/>
-    public bool TryLoadStorageRlp<TArg>(Hash256 address, in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
-    {
-        GuardDispose();
-        return _readOnlySnapshotBundle.TryLoadStorageRlp(address, path, flags, action, arg);
+        return _readOnlySnapshotBundle.TryLoadPersistedRlp(address, path, flags, action, arg);
     }
 
     /// <summary>Publishes the native endpoint root, including an unchanged or empty trie.</summary>
-    internal void PublishNativeStateRoot(ulong pointer, in ValueHash256 hash)
+    internal void PublishNativeStateRoot(ulong pointer)
     {
         GuardDispose();
         _currentPooledContent.StateRootPointer = pointer;
-        _currentPooledContent.HasStateRoot = pointer != 0 || hash == ValueKeccak.EmptyTreeHash;
     }
 
     /// <summary>Publishes the final root of a changed native storage trie.</summary>
@@ -413,7 +400,7 @@ public sealed class SnapshotBundle : IDisposable
         }
 
         public bool Fetch(in TreePath path, in ValueHash256 hash, NativeNodeReceiver receiver) =>
-            _readOnly.TryLoadStorageRlp(_address, path, ReadFlags.None, static (rlp, receiver) => receiver.Receive(rlp), receiver);
+            _readOnly.TryLoadPersistedRlp(_address, path, ReadFlags.None, static (rlp, receiver) => receiver.Receive(rlp), receiver);
 
         public void Dispose()
         {
@@ -440,6 +427,16 @@ public sealed class SnapshotBundle : IDisposable
 
     public void SetChangedSlot(Address address, in UInt256 index, in UInt256 value)
     {
+        SetChangedSlotValue(address, index, value);
+        RegisterAddressWithChangedSlots(address);
+    }
+
+    /// <summary>Like <see cref="SetChangedSlot"/>, but leaves registering the address to the caller.</summary>
+    /// <remarks>The caller must also call <see cref="RegisterAddressWithChangedSlots"/> for <paramref name="address"/>,
+    /// once after each <see cref="ClearStorage"/> of it or <see cref="CollectAndApplySnapshot"/>, or a later clear leaves
+    /// the slot behind.</remarks>
+    internal void SetChangedSlotValue(Address address, in UInt256 index, in UInt256 value)
+    {
         // So right now, if the value is zero, then it is a deletion. This is not the case with verkle where you
         // can set a value to be zero. Because of this distinction, the zerobytes logic is handled here instead of
         // lower down.
@@ -452,7 +449,10 @@ public sealed class SnapshotBundle : IDisposable
         {
             _changedSlots[key] = value;
         }
+    }
 
+    internal void RegisterAddressWithChangedSlots(Address address)
+    {
         ConcurrentDictionary<HashedKey<Address>, byte> addressesWithChangedSlots =
             Volatile.Read(ref _addressesWithChangedSlots) ?? CreateAddressesWithChangedSlots();
         if (!addressesWithChangedSlots.ContainsKey(address))
@@ -538,7 +538,7 @@ public sealed class SnapshotBundle : IDisposable
 
     /// <summary>Turns the changes written since the previous snapshot into a new snapshot and starts collecting the next one.</summary>
     /// <param name="logPin">The pin covering the trie nodes written since the previous snapshot; the snapshot takes ownership.</param>
-    public (Snapshot?, TransientResource?) CollectAndApplySnapshot(StateId from, StateId to, bool returnSnapshot = true, NativeTrieNodeLogPin? logPin = null)
+    public (Snapshot?, TransientResource?) CollectAndApplySnapshot(StateId from, StateId to, NativeTrieNodeLogPin? logPin, bool returnSnapshot = true)
     {
         // When assembling the snapshot, we straight up pass the _currentPooledContent into the new snapshot
         // This is because copying the values have a measurable impact on overall performance.
@@ -547,10 +547,8 @@ public sealed class SnapshotBundle : IDisposable
             to: to,
             content: _currentPooledContent,
             resourcePool: _resourcePool,
-            usage: _usage)
-        {
-            LogPin = logPin
-        };
+            usage: _usage,
+            logPin: logPin);
 
         snapshot.AcquireLease(); // For this SnapshotBundle.
         _snapshots.Add(snapshot); // Now later reads are correct

@@ -8,7 +8,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
-using Nethermind.Trie;
 using NUnit.Framework;
 
 namespace Nethermind.State.Flat.Test;
@@ -59,7 +58,6 @@ public class ResourcePoolTests
 
         content1.Accounts[new Address("0x1234567890123456789012345678901234567890")] = new Account(1, 2);
         content1.StateRootPointer = 1;
-        content1.HasStateRoot = true;
         content1.StorageRoots[TestItem.KeccakA] = 2;
         using (Assert.EnterMultipleScope())
         {
@@ -78,7 +76,6 @@ public class ResourcePoolTests
         {
             Assert.That(content2.Accounts, Is.Empty);
             Assert.That(content2.StateRootPointer, Is.Zero);
-            Assert.That(content2.HasStateRoot, Is.False);
             Assert.That(content2.StorageRoots, Is.Empty);
         }
     }
@@ -89,7 +86,6 @@ public class ResourcePoolTests
         ResourcePool.Usage usage = ResourcePool.Usage.Compact2;
         SortedSnapshotContent content = _resourcePool.GetSortedSnapshotContent(usage);
         content.StateRootPointer = 1;
-        content.HasStateRoot = true;
         content.StorageRoots[TestItem.KeccakA] = 2;
 
         _resourcePool.ReturnSortedSnapshotContent(usage, content);
@@ -99,8 +95,65 @@ public class ResourcePoolTests
         {
             Assert.That(recycled, Is.SameAs(content));
             Assert.That(recycled.StateRootPointer, Is.Zero);
-            Assert.That(recycled.HasStateRoot, Is.False);
             Assert.That(recycled.StorageRoots, Is.Empty);
+        }
+    }
+
+    /// <summary>Resources created before detailed metrics are enabled must still be counted once a warm pool only rents and returns.</summary>
+    [Test]
+    [NonParallelizable]
+    public void Test_CreatedPooledResource_IsPublished_WhenDetailedMetricsEnabledAfterCreation()
+    {
+        ResourcePool.Usage usage = ResourcePool.Usage.MainBlockProcessing;
+        ResourcePool.PooledResourceLabel label = new(usage.ToString(), "SnapshotContent");
+        bool wasEnabled = Metrics.DetailedMetricsEnabled;
+        Metrics.CreatedPooledResource.TryRemove(label, out _);
+        try
+        {
+            Metrics.DetailedMetricsEnabled = false;
+            _resourcePool.ReturnSnapshotContent(usage, _resourcePool.GetSnapshotContent(usage));
+
+            Metrics.DetailedMetricsEnabled = true;
+            _resourcePool.ReturnSnapshotContent(usage, _resourcePool.GetSnapshotContent(usage));
+
+            Assert.That(Metrics.CreatedPooledResource.TryGetValue(label, out long created) ? created : (long?)null, Is.EqualTo(1));
+        }
+        finally
+        {
+            Metrics.DetailedMetricsEnabled = wasEnabled;
+        }
+    }
+
+    [Test]
+    public void Test_ReturnSnapshotContent_ReusedContentStartsEmpty_WhetherOrNotStorageRootsWereWritten()
+    {
+        ResourcePool.Usage usage = ResourcePool.Usage.ReadOnlyProcessingEnv;
+        Address address = new("0x1234567890123456789012345678901234567890");
+        SnapshotContent? first = null;
+
+        for (int round = 0; round < 3; round++)
+        {
+            SnapshotContent content = _resourcePool.GetSnapshotContent(usage);
+            first ??= content;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(content, Is.SameAs(first));
+                Assert.That(content.Accounts, Is.Empty);
+                Assert.That(content.ReadAccounts, Is.Empty);
+                Assert.That(content.Storages, Is.Empty);
+                Assert.That(content.SelfDestructedStorageAddresses, Is.Empty);
+                Assert.That(content.StateRootPointer, Is.Zero);
+                Assert.That(content.StorageRoots, Is.Empty);
+            }
+
+            content.Accounts[address] = new Account(1, 2);
+            content.ReadAccounts[address] = new Account(3, 4);
+            content.Storages[(address, UInt256.One)] = UInt256.One;
+            content.SelfDestructedStorageAddresses[address] = true;
+            content.StateRootPointer = 1;
+            if (round != 1) content.StorageRoots[TestItem.KeccakA] = 2;
+
+            _resourcePool.ReturnSnapshotContent(usage, content);
         }
     }
 

@@ -12,6 +12,7 @@ using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.State;
+using Nethermind.State.Proofs;
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
@@ -29,7 +30,13 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
         | ProcessingOptions.IgnoreParentNotOnMainChain
         | ProcessingOptions.StoreReceipts;
 
-    private void PrepareState(
+    /// <remarks>
+    /// Only the state overrides are written, with EIP-158 off so an override that leaves an account empty keeps it.
+    /// Senders and call targets are not created up front: like eth_call, an account the calls have not created yet must
+    /// still be missing for the EIP-7702 authority check and EIP-8037 NEW_ACCOUNT charging, and the transaction
+    /// processor creates a missing sender itself.
+    /// </remarks>
+    private static void PrepareState(
         BlockStateCall<TransactionWithSourceDetails> blockStateCall,
         IWorldState stateProvider,
         IOverridableCodeInfoRepository codeInfoRepository,
@@ -38,47 +45,8 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
     {
         releaseSpec = releaseSpec.WithoutEip158();
         stateProvider.ApplyStateOverridesNoCommit(codeInfoRepository, blockStateCall.StateOverrides, releaseSpec);
-
-        TransactionWithSourceDetails[]? calls = blockStateCall.Calls;
-        if (calls is not null)
-        {
-            if (calls.Length == 1)
-            {
-                Transaction transaction = calls[0].Transaction;
-                Address? sender = transaction.SenderAddress;
-                if (sender is not null)
-                {
-                    stateProvider.CreateAccountIfNotExists(sender, 0, 0);
-                }
-
-                Address? to = transaction.To;
-                if (to is not null && !Equals(sender, to))
-                {
-                    stateProvider.CreateAccountIfNotExists(to, 0, 0);
-                }
-            }
-            else
-            {
-                HashSet<Address> seenAddresses = new(calls.Length * 2, Address.EqualityComparer);
-                for (int i = 0; i < calls.Length; i++)
-                {
-                    Transaction transaction = calls[i].Transaction;
-                    CreateAccountIfNotExists(transaction.SenderAddress, stateProvider, seenAddresses);
-                    CreateAccountIfNotExists(transaction.To, stateProvider, seenAddresses);
-                }
-            }
-        }
-
         stateProvider.Commit(releaseSpec, commitRoots: true);
         stateProvider.CommitTree(blockNumber);
-    }
-
-    private static void CreateAccountIfNotExists(Address? address, IWorldState stateProvider, HashSet<Address> seenAddresses)
-    {
-        if (address is not null && seenAddresses.Add(address))
-        {
-            stateProvider.CreateAccountIfNotExists(address, 0, 0);
-        }
     }
 
     public SimulateOutput<TTrace> TrySimulate<TTrace>(
@@ -157,7 +125,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
 
                 PrepareState(blockCall, env.WorldState, env.CodeInfoRepository, callHeader.Number, spec);
 
-                BlockBody body = AssembleBody(calls, stateProvider, nonceCache, spec);
+                BlockBody body = AssembleBody(calls, blockCall.BlockOverrides?.Withdrawals, stateProvider, nonceCache, spec);
                 Block callBlock = new(callHeader, body);
 
                 ProcessingOptions processingFlags = payload.Validation
@@ -196,6 +164,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
 
     private BlockBody AssembleBody(
         TransactionWithSourceDetails[] calls,
+        Withdrawal[]? withdrawalOverrides,
         IWorldState stateProvider,
         Dictionary<Address, ulong> nonceCache,
         IReleaseSpec spec)
@@ -206,11 +175,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
             transactions[i] = CreateTransaction(calls[i], stateProvider, nonceCache);
         }
 
-        Withdrawal[]? withdrawals = null;
-        if (spec.WithdrawalsEnabled)
-        {
-            withdrawals = [];
-        }
+        Withdrawal[]? withdrawals = spec.WithdrawalsEnabled ? withdrawalOverrides ?? [] : null;
 
         BlockBody body = new(transactions, null, withdrawals);
         return body;
@@ -302,7 +267,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
 
         IReleaseSpec spec = specProvider.GetSpec(GetSimulatedActivation(block.BlockOverrides, result));
 
-        if (spec.WithdrawalsEnabled) result.WithdrawalsRoot = Keccak.EmptyTreeHash;
+        if (spec.WithdrawalsEnabled) result.WithdrawalsRoot = GetWithdrawalsRoot(block.BlockOverrides?.Withdrawals);
         if (spec.IsBeaconBlockRootAvailable) result.ParentBeaconBlockRoot = Hash256.Zero;
         result.SlotNumber = GetSlotNumber(spec, specProvider, parent, result.SlotNumber, block.BlockOverrides?.Time ?? result.Timestamp);
 
@@ -379,6 +344,9 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
         ulong slot = (timestamp - genesis) / secondsPerSlot;
         return slot <= previousSlot ? previousSlot + 1 : slot;
     }
+
+    private static Hash256 GetWithdrawalsRoot(Withdrawal[]? withdrawals) =>
+        withdrawals is null || withdrawals.Length == 0 ? Keccak.EmptyTreeHash : new WithdrawalTrie(withdrawals).RootHash;
 
     private static ForkActivation GetSimulatedActivation(BlockOverride? overrides, BlockHeader header) =>
         new(overrides?.Number ?? (ulong)header.Number, overrides?.Time ?? header.Timestamp);

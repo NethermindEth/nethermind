@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -8,7 +9,6 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
-using Autofac.Core;
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
@@ -972,7 +972,7 @@ public class FlatWorldStateScopeProviderTests
         AssertStorageRoot(ctx, [0, 123]);
         Assert.That(ctx.LastCommittedSnapshot!.TryGetStorageNode((address.ToAccountPath.ToHash256(), TreePath.Empty), out ulong _), Is.True,
             "adoption must publish the private root even when the final batch hashes nothing");
-        Assert.That(ctx.LastCommittedSnapshot.StorageNodes, Is.Not.Empty, "the boundary precedes adopted idle-thread writes");
+        Assert.That(ctx.LastCommittedSnapshot!.StorageNodes, Is.Not.Empty, "the boundary precedes adopted idle-thread writes");
     }
 
     [Test]
@@ -1137,7 +1137,7 @@ public class FlatWorldStateScopeProviderTests
         {
             Assert.That(ctx.Scope.Get(address)!.StorageRoot, Is.EqualTo(Keccak.EmptyTreeHash));
             Assert.That(ctx.LastCommittedSnapshot!.TryGetStorageNode((address.ToAccountPath.ToHash256(), TreePath.Empty), out ulong _), Is.False);
-            Assert.That(ctx.LastCommittedSnapshot.StorageNodes, Is.Empty, "unreachable speculative writes are not snapshot changes");
+            Assert.That(ctx.LastCommittedSnapshot!.StorageNodes, Is.Empty, "unreachable speculative writes are not snapshot changes");
         }
         ctx.Scope.Dispose();
         ctx.PersistenceReader.Received(1).Dispose();
@@ -1298,9 +1298,9 @@ public class FlatWorldStateScopeProviderTests
         scope.Commit(1);
 
         HashSet<string> nodes = [];
-        foreach (KeyValuePair<HashedKey<(Hash256, TreePath)>, ulong> node in ctx.LastCommittedSnapshot!.StorageNodes)
+        foreach ((Hash256 address, TreePath path, ulong pointer) in ctx.LastCommittedSnapshot!.StorageNodes)
         {
-            nodes.Add($"{node.Key.Key.Item1}/{node.Key.Key.Item2}/{ctx.LastCommittedSnapshot.GetRlp(node.Value).ToHexString()}");
+            nodes.Add($"{address}/{path}/{ctx.LastCommittedSnapshot.GetRlp(pointer).ToHexString()}");
         }
 
         Hash256[] roots = new Hash256[addresses.Length];
@@ -1665,6 +1665,55 @@ public class FlatWorldStateScopeProviderTests
     }
 
     [Test]
+    public void StorageClear_RemovesSlotsWrittenAfterAnEarlierClearInTheSameBlock([Values] bool setInTheClearingBatch)
+    {
+        using TestContext ctx = new();
+        FlatWorldStateScope scope = ctx.Scope;
+
+        Address testAddress = TestItem.AddressA;
+        UInt256 slot1 = 1;
+        UInt256 slot2 = 2;
+        UInt256 value = 0xAA;
+        ctx.PersistenceReader.GetAccount(testAddress).Returns(TestItem.GenerateRandomAccount());
+
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+        using (IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(testAddress, 1))
+        {
+            storageBatch.Set(slot1, value);
+        }
+
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+        using (IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(testAddress, 1))
+        {
+            storageBatch.Clear();
+            if (setInTheClearingBatch) storageBatch.Set(slot2, value);
+        }
+
+        if (!setInTheClearingBatch)
+        {
+            using IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1);
+            using IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(testAddress, 1);
+            storageBatch.Set(slot2, value);
+        }
+
+        // The slot written after the first clear must still be found by the second one.
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+        using (IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(testAddress, 0))
+        {
+            storageBatch.Clear();
+        }
+
+        IWorldStateScopeProvider.IStorageTree storageTree = scope.CreateStorageTree(testAddress);
+        storageTree.Get(slot1, out UInt256 slot1Value);
+        storageTree.Get(slot2, out UInt256 slot2Value);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(slot1Value, Is.EqualTo(UInt256.Zero));
+            Assert.That(slot2Value, Is.EqualTo(UInt256.Zero));
+        }
+    }
+
+    [Test]
     public void TestEmptyStorageRootWhenNoSlots()
     {
         using TestContext ctx = new(config: new FlatDbConfig());
@@ -1713,7 +1762,7 @@ public class FlatWorldStateScopeProviderTests
             batch.Set(TestItem.AddressC, new Account(3, 300));
         pausedScope.Commit(1);
         Snapshot resumedSnapshot = ctx.LastCommittedSnapshot!;
-        ulong[] resumed = resumedSnapshot.StateNodes.Select(node => node.Value).ToArray();
+        ulong[] resumed = resumedSnapshot.StateNodes.Select(node => node.Pointer).ToArray();
 
         using (Assert.EnterMultipleScope())
         {
@@ -2562,6 +2611,17 @@ public class FlatWorldStateScopeProviderTests
 
         public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath nodePath, ReadFlags flags) => TryLoadStateRlp(nodePath, flags);
 
+        public bool TryLoadStateRlp<TArg>(in TreePath nodePath, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
+        {
+            Loads++;
+            if (nodePath != path) return false;
+            action(rlp, arg);
+            return true;
+        }
+
+        public bool TryLoadStorageRlp<TArg>(Hash256 address, in TreePath nodePath, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct =>
+            TryLoadStateRlp(nodePath, flags, action, arg);
+
         public Account? GetAccount(Address address) => null;
         public bool TryGetSlot(Address address, in UInt256 slot, ref UInt256 outValue) => false;
         public StateId CurrentState => new(0, Keccak.EmptyTreeHash);
@@ -2611,6 +2671,14 @@ public class FlatWorldStateScopeProviderTests
         public bool TryGetSlot(Address address, in UInt256 slot, ref UInt256 outValue) => false;
         public StateId CurrentState => new(0, Keccak.EmptyTreeHash);
         public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags) => null;
+
+        public bool TryLoadStateRlp<TArg>(in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
+        {
+            TryLoadStateRlp(path, flags);
+            return false;
+        }
+
+        public bool TryLoadStorageRlp<TArg>(Hash256 address, in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct => false;
         public byte[]? GetAccountRaw(in ValueHash256 addrHash) => null;
         public bool TryGetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, ref UInt256 value) => false;
         public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey) => throw new NotSupportedException();

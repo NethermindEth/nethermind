@@ -79,9 +79,7 @@ internal sealed class NativeTrieNodeStore(SnapshotBundle bundle, Hash256? addres
     /// <inheritdoc/>
     /// <remarks>Retained in-memory nodes are reached through the native log; the source only fetches persisted nodes.</remarks>
     public bool Fetch(in TreePath path, in ValueHash256 hash, NativeNodeReceiver receiver) =>
-        addressHash is null
-            ? bundle.TryLoadStateRlp(path, ReadFlags.None, static (rlp, receiver) => receiver.Receive(rlp), receiver)
-            : bundle.TryLoadStorageRlp(addressHash, path, ReadFlags.None, static (rlp, receiver) => receiver.Receive(rlp), receiver);
+        bundle.TryLoadPersistedRlp(addressHash, path, ReadFlags.None, static (rlp, receiver) => receiver.Receive(rlp), receiver);
 
     /// <summary>Publishes the endpoint state root or a changed storage root.</summary>
     public void Publish(Hash256 root)
@@ -90,7 +88,7 @@ internal sealed class NativeTrieNodeStore(SnapshotBundle bundle, Hash256? addres
 
         long start = Stopwatch.GetTimestamp();
         ulong pointer = log.ResolveRoot(addressHash, root.ValueHash256);
-        if (addressHash is null) bundle.PublishNativeStateRoot(pointer, root.ValueHash256);
+        if (addressHash is null) bundle.PublishNativeStateRoot(pointer);
         else bundle.PublishNativeStorageRoot(addressHash, pointer, root.ValueHash256);
         Dispose();
         _rootDirty = false;

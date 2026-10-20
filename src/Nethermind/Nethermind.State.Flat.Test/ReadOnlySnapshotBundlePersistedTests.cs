@@ -10,6 +10,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State.Flat.Persistence;
+using Nethermind.State.Flat.Persistence.TrieNodeLog;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using Nethermind.Trie;
@@ -63,7 +64,7 @@ public class ReadOnlySnapshotBundlePersistedTests
         NativeTrieNodeLogPin logRetain = _log.PinActiveGeneration();
         SnapshotContent content = new();
         content.SetStateNodeRlp(_log, path, nodeRlp);
-        using Snapshot snap = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing) { LogPin = logRetain };
+        using Snapshot snap = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing, logRetain);
         byte[] tableData = PersistedSnapshotBuilderTestExtensions.Build(snap, _blobs);
 
         PersistedSnapshot persisted = CreatePersistedSnapshot(s0, s1, tableData);
@@ -96,7 +97,7 @@ public class ReadOnlySnapshotBundlePersistedTests
         NativeTrieNodeLogPin logRetain = _log.PinActiveGeneration();
         SnapshotContent content = new();
         content.SetStorageNodeRlp(_log, address, path, nodeRlp);
-        using Snapshot snap = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing) { LogPin = logRetain };
+        using Snapshot snap = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing, logRetain);
         byte[] tableData = PersistedSnapshotBuilderTestExtensions.Build(snap, _blobs);
 
         PersistedSnapshot persisted = CreatePersistedSnapshot(s0, s1, tableData);
@@ -130,7 +131,7 @@ public class ReadOnlySnapshotBundlePersistedTests
         NativeTrieNodeLogPin logRetain = _log.PinActiveGeneration();
         SnapshotContent content = new();
         content.SetStateNodeRlp(_log, storedPath, nodeRlp);
-        using Snapshot snap = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing) { LogPin = logRetain };
+        using Snapshot snap = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing, logRetain);
         byte[] tableData = PersistedSnapshotBuilderTestExtensions.Build(snap, _blobs);
 
         PersistedSnapshot persisted = CreatePersistedSnapshot(s0, s1, tableData);
@@ -186,7 +187,7 @@ public class ReadOnlySnapshotBundlePersistedTests
         byte[] persistedRlp = Bytes.FromHexString(FlatTestHelpers.LeafRlpB);
 
         using SnapshotableMemColumnsDb<FlatDbColumns> db = new();
-        RocksDbPersistence persistence = new(db, LimboLogs.Instance);
+        RocksDbPersistence persistence = new(db, LimboLogs.Instance, NullTrieNodeLog.Instance);
         using (IPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL))
         {
             if (storage) batch.SetStorageTrieNode(address, dbPath, dbRlp);
@@ -197,7 +198,7 @@ public class ReadOnlySnapshotBundlePersistedTests
         SnapshotContent content = new();
         if (storage) content.SetStorageNodeRlp(_log, address, persistedPath, persistedRlp);
         else content.SetStateNodeRlp(_log, persistedPath, persistedRlp);
-        using Snapshot snap = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing) { LogPin = logRetain };
+        using Snapshot snap = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing, logRetain);
         PersistedSnapshotList list = new(1) { CreatePersistedSnapshot(s0, s1, PersistedSnapshotBuilderTestExtensions.Build(snap, _blobs)) };
 
         using ReadOnlySnapshotBundle bundle = new(
@@ -213,9 +214,7 @@ public class ReadOnlySnapshotBundlePersistedTests
                 : bundle.TryLoadStateRlp(path, Keccak.Compute("hash"), ReadFlags.None);
 
             StrongBox<byte[]?> spanRlp = new();
-            bool found = storage
-                ? bundle.TryLoadStorageRlp(address, path, ReadFlags.None, static (rlp, box) => box.Value = rlp.ToArray(), spanRlp)
-                : bundle.TryLoadStateRlp(path, ReadFlags.None, static (rlp, box) => box.Value = rlp.ToArray(), spanRlp);
+            bool found = bundle.TryLoadPersistedRlp(storage ? address : null, path, ReadFlags.None, static (rlp, box) => box.Value = rlp.ToArray(), spanRlp);
 
             Assert.That(arrayRlp, Is.EqualTo(expected), path.ToString());
             Assert.That(found, Is.EqualTo(expected is not null), path.ToString());

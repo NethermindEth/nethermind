@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -12,7 +13,6 @@ using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Io;
 using Nethermind.State.Flat.Persistence;
-using Nethermind.State.Flat.Persistence.BloomFilter;
 using Nethermind.State.Flat.PersistedSnapshots.Sorted;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using Nethermind.Trie;
@@ -274,27 +274,31 @@ public sealed class PersistedSnapshot : SmallRefCountingDisposable
 
     public bool TryLoadStateNodeRlp(scoped in TreePath path, out byte[]? nodeRlp)
     {
+        nodeRlp = null;
+        return TryLoadStateNodeRlp(path, static (rlp, result) => result[0] = rlp.ToArray(), new Span<byte[]?>(ref nodeRlp));
+    }
+
+    internal bool TryLoadStateNodeRlp<TArg>(in TreePath path, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
+    {
         ArenaByteReader reader = CreateReader();
         if (!PersistedSnapshotReader.TryLoadStateNodeRlp<ArenaByteReader, NoOpPin>(
-                in reader, new Bound(0, reader.Length), in path, out Bound bound))
-        {
-            nodeRlp = null;
-            return false;
-        }
-        nodeRlp = ResolveTrieRlp(bound);
+                in reader, new Bound(0, reader.Length), in path, out Bound bound)) return false;
+        ResolveTrieRlp(bound, action, arg);
         return true;
     }
 
     public bool TryLoadStorageNodeRlp(in ValueHash256 addressHash, in TreePath path, out byte[]? nodeRlp)
     {
+        nodeRlp = null;
+        return TryLoadStorageNodeRlp(addressHash, path, static (rlp, result) => result[0] = rlp.ToArray(), new Span<byte[]?>(ref nodeRlp));
+    }
+
+    internal bool TryLoadStorageNodeRlp<TArg>(in ValueHash256 addressHash, in TreePath path, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
+    {
         ArenaByteReader reader = CreateReader();
         if (!PersistedSnapshotReader.TryLoadStorageNodeRlp<ArenaByteReader, NoOpPin>(
-                in reader, new Bound(0, reader.Length), in addressHash, in path, out Bound bound))
-        {
-            nodeRlp = null;
-            return false;
-        }
-        nodeRlp = ResolveTrieRlp(bound);
+                in reader, new Bound(0, reader.Length), in addressHash, in path, out Bound bound)) return false;
+        ResolveTrieRlp(bound, action, arg);
         return true;
     }
 
@@ -303,7 +307,7 @@ public sealed class PersistedSnapshot : SmallRefCountingDisposable
     // covers any branch node in one pread.
     private const int MaxTrieNodeRlpBytes = 568;
 
-    private byte[] ReadBlobArenaRlp(ushort blobArenaId, int offset)
+    private void ReadBlobArenaRlp<TArg>(ushort blobArenaId, int offset, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
     {
         BlobArenaFile file = _blobManager.GetFile(blobArenaId);
         Span<byte> buf = stackalloc byte[MaxTrieNodeRlpBytes];
@@ -314,9 +318,7 @@ public sealed class PersistedSnapshot : SmallRefCountingDisposable
             throw new InvalidDataException(
                 $"Trie-node RLP at blob arena {blobArenaId}+{offset} declares {totalLength} bytes " +
                 $"but only {bytesRead} were read (MaxTrieNodeRlpBytes = {MaxTrieNodeRlpBytes}).");
-        byte[] result = new byte[totalLength];
-        buf[..totalLength].CopyTo(result);
-        return result;
+        action(buf[..totalLength], arg);
     }
 
     /// <summary>
@@ -325,11 +327,18 @@ public sealed class PersistedSnapshot : SmallRefCountingDisposable
     /// </summary>
     internal byte[] ResolveTrieRlp(Bound localBound)
     {
+        byte[]? result = null;
+        ResolveTrieRlp(localBound, static (rlp, target) => target[0] = rlp.ToArray(), new Span<byte[]?>(ref result));
+        return result!;
+    }
+
+    private void ResolveTrieRlp<TArg>(Bound localBound, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
+    {
         NodeRef nodeRef = default;
         Span<byte> nr = MemoryMarshal.AsBytes(new Span<NodeRef>(ref nodeRef))[..checked((int)localBound.Length)];
         ArenaByteReader reader = _reservation.CreateReader();
         reader.TryRead(localBound.Offset, nr);
-        return ReadBlobArenaRlp(nodeRef.BlobArenaId, nodeRef.RlpDataOffset);
+        ReadBlobArenaRlp(nodeRef.BlobArenaId, nodeRef.RlpDataOffset, action, arg);
     }
 
     internal void AdviseDontNeed() => _reservation.AdviseDontNeed();

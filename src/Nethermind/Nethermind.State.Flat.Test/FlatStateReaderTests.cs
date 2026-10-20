@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers;
 using System;
 using System.Threading;
 using Nethermind.Core;
@@ -195,6 +196,22 @@ public class FlatStateReaderTests
         {
             StorageRlpLoads++;
             return path.Length == 0 ? storageRootRlp : null;
+        }
+
+        public bool TryLoadStateRlp<TArg>(in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
+        {
+            byte[]? rlp = TryLoadStateRlp(path, flags);
+            if (rlp is null) return false;
+            action(rlp, arg);
+            return true;
+        }
+
+        public bool TryLoadStorageRlp<TArg>(Hash256 address, in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
+        {
+            byte[]? rlp = TryLoadStorageRlp(address, path, flags);
+            if (rlp is null) return false;
+            action(rlp, arg);
+            return true;
         }
 
         public Account? GetAccount(Address address) => null;

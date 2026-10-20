@@ -22,7 +22,6 @@ public sealed class SortedSnapshotContent : IDisposable, IResettable
     internal SortedMergeDictionary<HashedKey<Address>, bool> SortedSelfDestructs => _selfDestructedStorageAddresses;
 
     internal ulong StateRootPointer;
-    internal bool HasStateRoot;
     internal readonly Dictionary<Hash256, ulong> StorageRoots = [];
 
     public IEnumerable<KeyValuePair<HashedKey<Address>, Account?>> Accounts => _accounts;
@@ -45,7 +44,7 @@ public sealed class SortedSnapshotContent : IDisposable, IResettable
         _accounts.Count,
         _storages.Count,
         _selfDestructedStorageAddresses.Count,
-        HasStateRoot ? 1 : 0,
+        StateRootPointer != 0 ? 1 : 0,
         StorageRoots.Count);
 
     public void Reset()
@@ -54,7 +53,6 @@ public sealed class SortedSnapshotContent : IDisposable, IResettable
         _storages.NoResizeClear();
         _selfDestructedStorageAddresses.NoResizeClear();
         StateRootPointer = 0;
-        HasStateRoot = false;
         StorageRoots.Clear();
     }
 

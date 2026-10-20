@@ -10,7 +10,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.State.Flat.Persistence.BloomFilter;
+using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using Nethermind.Trie;
@@ -49,7 +49,7 @@ public class PersistedSnapshotRepositoryTests
         SnapshotContent content = new();
         if (account is not null)
             content.Accounts[account] = Build.An.Account.WithBalance(balance == 0 ? 1000 : balance).TestObject;
-        return new Snapshot(from, to, content, _pool, ResourcePool.Usage.MainBlockProcessing);
+        return new Snapshot(from, to, content, _pool, ResourcePool.Usage.MainBlockProcessing, null);
     }
 
     [Test]
@@ -173,12 +173,12 @@ public class PersistedSnapshotRepositoryTests
         NativeTrieNodeLogPin logRetain1 = _log.PinActiveGeneration();
         SnapshotContent content1 = new();
         content1.SetStateNodeRlp(_log, path, rlp1);
-        using Snapshot snap1 = new(s0, s1, content1, _pool, ResourcePool.Usage.MainBlockProcessing) { LogPin = logRetain1 };
+        using Snapshot snap1 = new(s0, s1, content1, _pool, ResourcePool.Usage.MainBlockProcessing, logRetain1);
 
         NativeTrieNodeLogPin logRetain2 = _log.PinActiveGeneration();
         SnapshotContent content2 = new();
         content2.SetStateNodeRlp(_log, path, rlp2);
-        using Snapshot snap2 = new(s1, s2, content2, _pool, ResourcePool.Usage.MainBlockProcessing) { LogPin = logRetain2 };
+        using Snapshot snap2 = new(s1, s2, content2, _pool, ResourcePool.Usage.MainBlockProcessing, logRetain2);
 
         tier.ConvertToPersistedBase(snap1).Dispose();
         tier.ConvertToPersistedBase(snap2).Dispose();
@@ -243,7 +243,7 @@ public class PersistedSnapshotRepositoryTests
         content.SelfDestructedStorageAddresses[selfDestructAddr] = false;
         content.SetStateNodeRlp(_log, statePath, stateRlp);
         content.SetStorageNodeRlp(_log, storageTrieAddr, storagePath, storageRlp);
-        using Snapshot snap = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing) { LogPin = logRetain };
+        using Snapshot snap = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing, logRetain);
 
         tier.ConvertToPersistedBase(snap).Dispose();
 
@@ -332,7 +332,7 @@ public class PersistedSnapshotRepositoryTests
         if (withTrieNode)
             content.SetStateNodeRlp(_log, FlatTestHelpers.CanonicalPath(Keccak.Compute("p"), 4), FlatTestHelpers.LeafRlp(0xC2, 0x80, 0x80));
 
-        using Snapshot snapshot = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing) { LogPin = logRetain };
+        using Snapshot snapshot = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing, logRetain);
         using PersistedSnapshot persisted = tier.ConvertToPersistedBase(snapshot);
 
         if (withTrieNode)
@@ -365,7 +365,7 @@ public class PersistedSnapshotRepositoryTests
             content.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance(1000).TestObject;
             if (withTrieNode)
                 content.SetStateNodeRlp(_log, FlatTestHelpers.CanonicalPath(Keccak.Compute("p"), 4), FlatTestHelpers.LeafRlp(0xC2, 0x80, 0x80));
-            using Snapshot snapshot = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing) { LogPin = logRetain };
+            using Snapshot snapshot = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing, logRetain);
             tier1.ConvertToPersistedBase(snapshot).Dispose();
         }
 
@@ -632,7 +632,7 @@ public class PersistedSnapshotRepositoryTests
         SnapshotContent content = new();
         Nethermind.Trie.TreePath path = FlatTestHelpers.CanonicalPath(Keccak.Compute("bp"), 4);
         content.SetStateNodeRlp(_log, path, FlatTestHelpers.LeafRlp(0xC2, 0x80, 0x80));
-        using Snapshot snapshot = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing) { LogPin = logRetain };
+        using Snapshot snapshot = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing, logRetain);
         using PersistedSnapshot p = tier.ConvertToPersistedBase(snapshot);
 
         Assert.DoesNotThrow(() => p.AdviseWillNeedBlobRange());
@@ -655,7 +655,7 @@ public class PersistedSnapshotRepositoryTests
         byte[] slot = new byte[32]; slot[31] = 0x55;
         content.Storages[(TestItem.AddressA, (UInt256)1)] = new UInt256(slot, isBigEndian: true);
         PersistedSnapshot persisted = tier.ConvertToPersistedBase(
-            new Snapshot(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing));
+            new Snapshot(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing, null));
 
         PersistedSnapshotList list = new(1) { persisted };
         using PersistedSnapshotStack stack = new(list, recordDetailedMetrics: false);

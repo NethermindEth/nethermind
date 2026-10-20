@@ -128,7 +128,7 @@ public class SnapshotBundleWarmerTests
         WarmUp(bundle, address, root, ValueKeccak.Zero);
         Assert.That(reader.Reads, Is.EqualTo(1));
 
-        (Snapshot? snapshot, TransientResource? retired) = bundle.CollectAndApplySnapshot(StateId.PreGenesis, new StateId(1, TestItem.KeccakA));
+        (Snapshot? snapshot, TransientResource? retired) = bundle.CollectAndApplySnapshot(StateId.PreGenesis, new StateId(1, TestItem.KeccakA), null);
         snapshot?.Dispose();
         retired!.ReleaseLease();
         WarmUp(bundle, address, root, ValueKeccak.Zero);
@@ -148,7 +148,7 @@ public class SnapshotBundleWarmerTests
         Task warmUp = Task.Run(() => WarmUp(bundle, null, root, ValueKeccak.Zero));
         Assert.That(readEntered.Wait(BailOutTimeout), Is.True, "the warm-up did not reach persistence");
 
-        (Snapshot? snapshot, TransientResource? retired) = bundle.CollectAndApplySnapshot(StateId.PreGenesis, new StateId(1, TestItem.KeccakA));
+        (Snapshot? snapshot, TransientResource? retired) = bundle.CollectAndApplySnapshot(StateId.PreGenesis, new StateId(1, TestItem.KeccakA), null);
         TransientResource? probe = null;
         TransientResource? recycled = null;
         bool ownerReleased = false;
@@ -325,7 +325,7 @@ public class SnapshotBundleWarmerTests
         {
             StateId from = new(blockNumber, TestItem.KeccakA);
             StateId to = new(++blockNumber, TestItem.KeccakA);
-            (Snapshot? snapshot, TransientResource? retired) = current.Bundle.CollectAndApplySnapshot(from, to);
+            (Snapshot? snapshot, TransientResource? retired) = current.Bundle.CollectAndApplySnapshot(from, to, null);
             snapshot!.Dispose();
             retired!.ReleaseLease();
             retirements++;
@@ -397,7 +397,7 @@ public class SnapshotBundleWarmerTests
             StateId.PreGenesis, new StateId(1, updatedRoot), logPin: pin.Copy());
         try
         {
-            ulong[] published = storage ? snapshot!.StorageNodes.Select(node => node.Value).ToArray() : snapshot!.StateNodes.Select(node => node.Value).ToArray();
+            ulong[] published = storage ? snapshot!.StorageNodes.Select(node => node.Pointer).ToArray() : snapshot!.StateNodes.Select(node => node.Pointer).ToArray();
             Assert.That(published, Does.Contain(_log.ResolveRoot(address, updatedRoot.ValueHash256)));
             retired!.ReleaseLease();
             retired = null;
@@ -430,7 +430,7 @@ public class SnapshotBundleWarmerTests
     {
         ValueHash256 hash = ValueKeccak.Compute(rlp);
         ulong pointer = _log.AppendRecordFromRlp(address, path, hash, rlp);
-        if (address is null) bundle.PublishNativeStateRoot(pointer, hash);
+        if (address is null) bundle.PublishNativeStateRoot(pointer);
         else bundle.PublishNativeStorageRoot(address, pointer, hash);
         return pointer;
     }

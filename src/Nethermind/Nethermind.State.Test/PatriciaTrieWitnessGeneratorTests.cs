@@ -32,7 +32,7 @@ public class PatriciaTrieWitnessGeneratorTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(sink.Nodes.Keys, Is.EquivalentTo(expected));
+            Assert.That(sink.Nodes.Keys.Order(), Is.EqualTo(expected.Order()));
             Assert.That(ParallelUnbalancedWork.WorkerScope.Current, Is.SameAs(outer));
         }
     }
@@ -48,8 +48,8 @@ public class PatriciaTrieWitnessGeneratorTests
 
         HashSet<Hash256AsKey> oracle = CaptureDuringMutation(db, root, scenario, out _);
 
-        Assert.That(RunGenerator(db, root, scenario, parallelize: false), Is.EquivalentTo(oracle));
-        Assert.That(RunGenerator(db, root, scenario, parallelize: true), Is.EquivalentTo(oracle));
+        Assert.That(RunGenerator(db, root, scenario, parallelize: false).Order(), Is.EqualTo(oracle.Order()));
+        Assert.That(RunGenerator(db, root, scenario, parallelize: true).Order(), Is.EqualTo(oracle.Order()));
     }
 
     /// <summary>

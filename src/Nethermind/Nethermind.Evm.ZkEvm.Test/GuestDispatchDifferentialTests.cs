@@ -274,6 +274,14 @@ public class GuestDispatchDifferentialTests
             "60016002101561000B57005B1900",
             "600260011061000A57005B1900",
             "60026001101561000B57005B1900",
+            "6001600210600957005B1900",
+            "6002600110600957005B1900",
+            "6002600110600357005B1900",
+            "600456005B1900",
+            "600356005B1900",
+            "6000600657005B1900",
+            "6001600657005B1900",
+            "6001600457005B1900",
             "61000556005B1900",
             "600061000757005B1900",
             "600161000757005B1900",
@@ -597,6 +605,7 @@ public class GuestDispatchDifferentialTests
     {
         List<byte> code = [];
         List<int> destinationImmediates = [];
+        List<int> shortDestinationImmediates = [];
         if (random.Next(6) == 0)
         {
             // Pushes the destinations far enough out for a look-back to decide them.
@@ -666,13 +675,13 @@ public class GuestDispatchDifferentialTests
                             _ => (byte)Instruction.ISZERO
                         });
                         if (random.Next(2) == 0) code.Add((byte)Instruction.ISZERO);
-                        destinationImmediates.Add(code.Count + 1);
-                        code.AddRange([(byte)Instruction.PUSH2, 0, 0, (byte)Instruction.JUMPI]);
+                        AddDestinationPush(random, code, destinationImmediates, shortDestinationImmediates);
+                        code.Add((byte)Instruction.JUMPI);
                         break;
                     }
                 case < 92:
-                    destinationImmediates.Add(code.Count + 1);
-                    code.AddRange([(byte)Instruction.PUSH2, 0, 0, random.Next(2) == 0 ? (byte)Instruction.JUMP : (byte)Instruction.JUMPI]);
+                    AddDestinationPush(random, code, destinationImmediates, shortDestinationImmediates);
+                    code.Add(random.Next(2) == 0 ? (byte)Instruction.JUMP : (byte)Instruction.JUMPI);
                     break;
                 case < 94: code.AddRange([(byte)Instruction.PUSH2, (byte)random.Next(0, 5), (byte)random.Next(256), (byte)Instruction.MSTORE]); break;
                 case < 96: code.AddRange([(byte)Instruction.PUSH2, (byte)random.Next(0, 5), (byte)random.Next(256), (byte)Instruction.MLOAD]); break;
@@ -710,9 +719,32 @@ public class GuestDispatchDifferentialTests
             code[immediate + 1] = (byte)destination;
         }
 
+        List<int> shortJumpDestinations = jumpDestinations.FindAll(static destination => destination <= byte.MaxValue);
+        foreach (int immediate in shortDestinationImmediates)
+        {
+            code[immediate] = (byte)(shortJumpDestinations.Count > 0 && random.Next(5) != 0
+                ? shortJumpDestinations[random.Next(shortJumpDestinations.Count)]
+                : random.Next(0, code.Count + 3));
+        }
+
         // Sometimes cut the last opcode's immediates short.
         if (code.Count > 1 && random.Next(3) == 0) code.RemoveAt(code.Count - 1);
         return code.Count == 0 ? [(byte)Instruction.STOP] : code.ToArray();
+    }
+
+    /// <summary>A PUSH2 of a jump destination, or a PUSH1 of one as code shorter than 256 bytes has it, filled in once the code is complete.</summary>
+    private static void AddDestinationPush(Random random, List<byte> code, List<int> destinationImmediates, List<int> shortDestinationImmediates)
+    {
+        if (random.Next(3) == 0)
+        {
+            shortDestinationImmediates.Add(code.Count + 1);
+            code.AddRange([(byte)Instruction.PUSH1, 0]);
+        }
+        else
+        {
+            destinationImmediates.Add(code.Count + 1);
+            code.AddRange([(byte)Instruction.PUSH2, 0, 0]);
+        }
     }
 
     /// <summary>The opcode pairs the guest fuses, read off the paired untraced table.</summary>
