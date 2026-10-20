@@ -421,22 +421,6 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
-    public async Task Eth_get_filter_changes_missing()
-    {
-        using Context ctx = await Context.Create();
-        string serialized2 = await ctx.Test.TestEthRpc("eth_getFilterChanges", "0");
-        Assert.That(serialized2, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"Filter not found\"},\"id\":67}"));
-    }
-
-    [Test]
-    public async Task Eth_get_filter_changes_too_big()
-    {
-        using Context ctx = await Context.Create();
-        string serialized2 = await ctx.Test.TestEthRpc("eth_getFilterChanges", ((UInt256)uint.MaxValue + 1).ToHexString(true));
-        Assert.That(serialized2, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"Filter not found\"},\"id\":67}"));
-    }
-
-    [Test]
     public async Task Eth_uninstall_filter()
     {
         using Context ctx = await Context.Create();
@@ -893,31 +877,14 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
-    public async Task Eth_get_filter_logs_filter_not_found()
+    public async Task Unknown_filter_id_returns_filter_not_found([Values("eth_getFilterLogs", "eth_getFilterChanges")] string method, [Values] bool overflowingId)
     {
         using Context ctx = await Context.Create();
-        IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
-        bridge.TryGetLogs(5, out Arg.Any<IEnumerable<FilterLog>>(), Arg.Any<CancellationToken>())
-                .Returns(static x => { x[1] = null; return false; });
+        string filterId = overflowingId ? (int.MaxValue + (UInt256)10).ToHexString(true) : "0x5";
 
-        ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockchainBridge(bridge).Build();
-        string serialized = await ctx.Test.TestEthRpc("eth_getFilterLogs", "0x5");
+        string serialized = await ctx.Test.TestEthRpc(method, filterId);
 
-        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32603,\"message\":\"Filter with id: 5 does not exist.\"},\"id\":67}"));
-    }
-
-    [Test]
-    public async Task Eth_get_filter_logs_filterId_overflow()
-    {
-        using Context ctx = await Context.Create();
-
-        UInt256 filterId = int.MaxValue + (UInt256)10;
-
-        ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
-        string filterIdHex = filterId.ToString("X").TrimStart('0');
-        string serialized = await ctx.Test.TestEthRpc("eth_getFilterLogs", $"0x{filterIdHex}");
-
-        Assert.That(serialized, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"error\":{{\"code\":-32603,\"message\":\"Filter with id: {filterId} does not exist.\"}},\"id\":67}}"));
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"filter not found\"},\"id\":67}"));
     }
 
     [Test]
