@@ -961,7 +961,17 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         }
         catch (OperationCanceledException) when (round.ReadsAhead && !round.CancellationToken.IsCancellationRequested)
         {
-            // Only the read-ahead's tracer stops a run with the block's token still live.
+            // Only the read-ahead's tracer stops a run with the block's token still live. What the run found is dropped, so
+            // its cells go back to the budget, as the cells that do not extend the round do below.
+            int dropped = capture.Cells.Count;
+            if (dropped > 0)
+            {
+                using (round.CellsLock.EnterScope())
+                {
+                    if (round.Cells.Count < round.CellBudget) Interlocked.Add(ref round.RemainingCaptureCells.Value, dropped);
+                }
+            }
+
             return CaptureEnd.Overtaken;
         }
 

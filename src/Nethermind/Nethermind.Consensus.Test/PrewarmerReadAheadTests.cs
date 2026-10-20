@@ -7,6 +7,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
@@ -179,6 +180,39 @@ public class PrewarmerReadAheadTests
 
             Assert.That(discovery.Wait(TimeSpan.FromSeconds(5)), Is.True, "the run stops once block processing has finished the transaction");
             Assert.That(_caches.StorageCache.TryGetValue(LongLoopFinished, out _), Is.False);
+        }
+        finally
+        {
+            cancellation.Cancel();
+            discovery.Wait(Timeout);
+        }
+    }
+
+    /// <summary>
+    /// A run block processing overtakes drops what it found, and gives the cells it charged to the block's shared capture
+    /// budget back, so overtaken read-aheads do not drain it for the discoveries that follow.
+    /// </summary>
+    [Test]
+    public void An_overtaken_run_gives_the_cells_it_charged_back_to_the_budget()
+    {
+        const int Budget = 64;
+        using BlockCachePreWarmer preWarmer = CreatePreWarmer(readAhead: true);
+        Transaction loop = Build.A.Transaction.WithGasLimit(LoopGas).WithTo(LongLoop).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        Block block = BuildBlock(LoopGas, loop, Transfer(TestItem.PrivateKeyB, 0));
+        StrongBox<int> cells = new(Budget);
+        using CancellationTokenSource cancellation = new();
+
+        Task discovery = Task.Run(() => preWarmer.DiscoverAndWarmStorage([(0, loop)], block, Spec, null, cancellation.Token, sharedCells: cells,
+            readAhead: true));
+        try
+        {
+            Assert.That(SpinWait.SpinUntil(() => Volatile.Read(ref cells.Value) == Budget - 1, Timeout), Is.True,
+                "precondition: the run has charged the slot it read before the loop");
+            preWarmer.OnBeforeTxExecution();
+            preWarmer.OnBeforeTxExecution();
+
+            Assert.That(discovery.Wait(Timeout), Is.True, "precondition: the run stops once block processing has finished the transaction");
+            Assert.That(Volatile.Read(ref cells.Value), Is.EqualTo(Budget));
         }
         finally
         {
