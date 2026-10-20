@@ -312,7 +312,7 @@ namespace Nethermind.Trie
         /// nibbles back into its hex prefix is most of what encoding it costs. <see cref="OnKeyChanged"/> drops the RLP
         /// of a leaf whose key changes, so any RLP still present carries the current key.
         /// </remarks>
-        /// <returns>Whether the leaf had an RLP to reuse; when not, <paramref name="rlp"/> is not set.</returns>
+        /// <returns>Whether the leaf had an RLP, or else a hex-prefix key, to reuse; when not, <paramref name="rlp"/> is not set.</returns>
         private static bool TryEncodeLeafWithStoredKey(TrieNode node, ICappedArrayPool? pool, out CappedArray<byte> rlp)
         {
             CappedArray<byte> previous = node.ReadRlp();
