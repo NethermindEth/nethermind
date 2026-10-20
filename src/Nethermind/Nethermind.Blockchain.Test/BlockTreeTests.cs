@@ -525,6 +525,35 @@ public class BlockTreeTests
         AssertSuggestNotifications(result, hasNotified, hasNotifiedNewSuggested);
     }
 
+    [TestCase(false)]
+    [TestCase(true)]
+    public void New_best_suggested_block_propagates_non_blocking_processing_option(bool nonBlockingProcessing)
+    {
+        BlockTree blockTree = BuildBlockTree();
+        Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
+        Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
+        blockTree.SuggestBlock(block0);
+
+        BlockEventArgs? notification = null;
+        blockTree.NewBestSuggestedBlock += (_, args) => notification = args;
+
+        BlockTreeSuggestOptions options = BlockTreeSuggestOptions.ShouldProcess;
+        if (nonBlockingProcessing)
+        {
+            options |= BlockTreeSuggestOptions.NonBlockingProcessing;
+        }
+
+        AddBlockResult result = blockTree.SuggestBlock(block1, options);
+
+        Assert.That(notification, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(AddBlockResult.Added));
+            Assert.That(notification!.Block.Hash, Is.EqualTo(block1.Hash));
+            Assert.That(notification.NonBlockingProcessing, Is.EqualTo(nonBlockingProcessing));
+        }
+    }
+
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Shall_not_notify_but_add_on_lower_difficulty()
     {

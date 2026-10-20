@@ -468,7 +468,8 @@ public class BlockchainProcessorTests
             return this;
         }
 
-        public Task SuggestAsync(Block block) => Task.Run(() => _blockTree.SuggestBlock(block));
+        public Task SuggestAsync(Block block, BlockTreeSuggestOptions options = BlockTreeSuggestOptions.ShouldProcess) =>
+            Task.Run(() => _blockTree.SuggestBlock(block, options));
 
         public ProcessingTestContext SuggestedWithoutProcessingAndMoveToMain(Block block)
         {
@@ -1072,10 +1073,11 @@ public class BlockchainProcessorTests
         await retry;
     }
 
-    [TestCase(false, TestName = "Event_driven_suggestion_does_not_block_on_processing")]
-    [TestCase(true, TestName = "Direct_enqueue_keeps_inline_processing_when_queue_is_empty")]
+    [TestCase(false, false, TestName = "Default_event_driven_suggestion_keeps_inline_processing_when_queue_is_empty")]
+    [TestCase(false, true, TestName = "Opted_in_event_driven_suggestion_does_not_block_on_processing")]
+    [TestCase(true, false, TestName = "Direct_enqueue_keeps_inline_processing_when_queue_is_empty")]
     [MaxTime(Timeout.MaxTestTime)]
-    public async Task Enqueue_path_preserves_expected_processing_scheduling(bool directEnqueue)
+    public async Task Enqueue_path_preserves_expected_processing_scheduling(bool directEnqueue, bool nonBlockingProcessing)
     {
         Block first = _block0;
         using ManualResetEventSlim processing = new(false);
@@ -1093,12 +1095,16 @@ public class BlockchainProcessorTests
         try
         {
             context.Recovered(first);
-            enqueue = directEnqueue ? context.EnqueueDirectly(first) : context.SuggestAsync(first);
+            enqueue = directEnqueue
+                ? context.EnqueueDirectly(first)
+                : context.SuggestAsync(first, nonBlockingProcessing
+                    ? BlockTreeSuggestOptions.ShouldProcess | BlockTreeSuggestOptions.NonBlockingProcessing
+                    : BlockTreeSuggestOptions.ShouldProcess);
             Assert.That(processing.Wait(TimeSpan.FromSeconds(10)), Is.True, "the first block never started processing");
             Task removed = context.WaitUntilRemoved(first);
-            if (directEnqueue)
+            if (directEnqueue || !nonBlockingProcessing)
             {
-                Assert.That(enqueue.IsCompleted, Is.False, "direct enqueue completed while processing was gated");
+                Assert.That(enqueue.IsCompleted, Is.False, "synchronous processing completed while processing was gated");
             }
             else
             {
@@ -1113,7 +1119,7 @@ public class BlockchainProcessorTests
             context.Recovered(first);
             context.AllowedToProcess(first);
             if (enqueue is not null)
-                await Task.WhenAny(enqueue, Task.Delay(TimeSpan.FromSeconds(10)));
+                await enqueue.WaitAsync(TimeSpan.FromSeconds(10));
         }
     }
 

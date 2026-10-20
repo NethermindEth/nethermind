@@ -132,6 +132,34 @@ public partial class BlockDownloaderTests
     }
 
     [Test]
+    public async Task BlockDownloader_uses_non_blocking_suggestions_only_for_processing()
+    {
+        await using IContainer node = CreateNode(configProvider: new ConfigProvider(new SyncConfig
+        {
+            FastSync = true,
+            SnapSync = true,
+            StateMinDistanceFromHead = 2
+        }));
+        Context ctx = node.Resolve<Context>();
+        SuggestedStateRoots suggestedStateRoots = node.Resolve<SuggestedStateRoots>();
+        SyncPeerMock syncPeer = new(8, true, Response.AllCorrect | Response.WithTransactions);
+        PeerInfo peerInfo = new(syncPeer);
+        ctx.ConfigureBestPeer(peerInfo);
+
+        await ctx.FastSyncUntilNoRequest(peerInfo);
+        await ctx.FullSyncUntilNoRequest(peerInfo);
+
+        Assert.That(suggestedStateRoots.SuggestedOptions.Any(options => options == BlockTreeSuggestOptions.None), Is.True,
+            "fast-sync suggestions must not opt into asynchronous processing");
+        BlockTreeSuggestOptions[] processingOptions = suggestedStateRoots.SuggestedOptions
+            .Where(options => options.ContainsFlag(BlockTreeSuggestOptions.ShouldProcess))
+            .ToArray();
+        Assert.That(processingOptions, Is.Not.Empty, "the test must observe at least one processing suggestion");
+        Assert.That(processingOptions.All(options => options.ContainsFlag(BlockTreeSuggestOptions.NonBlockingProcessing)), Is.True,
+            "processing suggestions must opt into asynchronous processing");
+    }
+
+    [Test]
     public async Task Invoke_TryUpdateMainChain_Once()
     {
         ulong headNumber = 100;
@@ -1264,11 +1292,18 @@ public partial class BlockDownloaderTests
     private sealed class SuggestedStateRoots
     {
         private readonly ConcurrentDictionary<Hash256, bool> _roots = new();
+        private readonly System.Collections.Concurrent.ConcurrentQueue<BlockTreeSuggestOptions> _suggestedOptions = new();
+
+        public IReadOnlyCollection<BlockTreeSuggestOptions> SuggestedOptions => _suggestedOptions;
 
         public bool Contains(Hash256 stateRoot) => _roots.ContainsKey(stateRoot);
 
-        public AddBlockResult Record(Block block, AddBlockResult result)
+        public AddBlockResult Record(Block block, BlockTreeSuggestOptions options, AddBlockResult result)
         {
+            if (block.Number != 0)
+            {
+                _suggestedOptions.Enqueue(options);
+            }
             if (result is AddBlockResult.Added or AddBlockResult.AlreadyKnown)
             {
                 _roots.TryAdd(block.StateRoot!, true);
@@ -1281,10 +1316,10 @@ public partial class BlockDownloaderTests
     private sealed class StateTrackingBlockTree(IBlockTree blockTree, SuggestedStateRoots stateRoots) : BlockTreeTestDouble(blockTree)
     {
         public override AddBlockResult SuggestBlock(Block block, BlockTreeSuggestOptions options = BlockTreeSuggestOptions.ShouldProcess) =>
-            stateRoots.Record(block, base.SuggestBlock(block, options));
+            stateRoots.Record(block, options, base.SuggestBlock(block, options));
 
         public override async ValueTask<AddBlockResult> SuggestBlockAsync(Block block, BlockTreeSuggestOptions options = BlockTreeSuggestOptions.ShouldProcess) =>
-            stateRoots.Record(block, await base.SuggestBlockAsync(block, options));
+            stateRoots.Record(block, options, await base.SuggestBlockAsync(block, options));
     }
 
     private sealed class SuggestedFullStateFinder(IBlockTree blockTree, SuggestedStateRoots stateRoots) : IFullStateFinder
