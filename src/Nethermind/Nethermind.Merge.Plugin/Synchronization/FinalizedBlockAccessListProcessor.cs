@@ -17,16 +17,8 @@ namespace Nethermind.Merge.Plugin.Synchronization;
 
 /// <summary>Reconstructs finalized catch-up state, falling back to execution when commitments cannot be reproduced.</summary>
 /// <remarks>
-/// Only blocks the consensus client has already reported as finalized are reconstructed, so the gain depends on the
-/// consensus client being ahead of the execution client: a checkpoint-synced or still-running consensus client
-/// beacon-syncs the execution client, whose downloader fetches the lists and receipts of the finalized range.
-/// Blocks delivered one by one through <c>engine_newPayload</c> always execute: the engine API has to validate them,
-/// receipts are not fetched for them, and a consensus client range-syncing them (Lighthouse after an execution
-/// client outage, for example) only finalizes each block about two epochs after handing it over. Such catch-up
-/// blocks are counted in <see cref="Metrics.BalCatchUpFallbacks"/> under
-/// <see cref="BalCatchUpFallbackReason.EngineApi"/> or <see cref="BalCatchUpFallbackReason.NotFinalized"/>.
-/// Lists can only be fetched from peers that still serve them, so an outage longer than the peers' access list
-/// retention executes the older blocks.
+/// The consensus client must report finality ahead of the downloaded blocks. Engine API payloads always execute;
+/// old executed blocks are counted in <see cref="Metrics.BalCatchUpFallbacks"/>. Missing retained lists also force execution.
 /// </remarks>
 public sealed class FinalizedBlockAccessListProcessor(
     IBlockProcessor inner,

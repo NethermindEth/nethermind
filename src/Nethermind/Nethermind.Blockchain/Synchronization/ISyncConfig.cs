@@ -24,7 +24,7 @@ public interface ISyncConfig : IConfig
         DefaultValue = "false")]
     bool FastSync { get; set; }
 
-    [ConfigItem(Description = "Whether to catch up consensus-finalized blocks by applying their EIP-7928 block access lists instead of executing them. State and receipts roots are verified; unfinalized blocks, and blocks whose data is unavailable or mismatched, execute normally. Takes effect when the consensus client is ahead of the node, which then downloads the finalized range; blocks handed over through `engine_newPayload` always execute. The `nethermind_bal_catch_up_fallbacks` metric counts catch-up blocks that executed, by reason.", DefaultValue = "true")]
+    [ConfigItem(Description = "Whether to reconstruct downloaded consensus-finalized blocks from their EIP-7928 block access lists. Blocks received through the engine API execute normally.", DefaultValue = "true")]
     bool ReconstructFinalizedStateFromBlockAccessLists { get; set; }
 
     [Obsolete]
