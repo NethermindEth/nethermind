@@ -339,13 +339,16 @@ public sealed class SnapshotBundle : IDisposable
         WarmedNodeLog warmed = _transientResource.WarmedNodeLog;
         if (warmed.TryGet(address, path, out record, out _))
         {
-            Metrics.IncrementWarmedNodeCacheHits();
+            if (IsMainBlockProcessing) Metrics.IncrementWarmedNodeCacheHits();
             return true;
         }
 
-        Metrics.IncrementWarmedNodeCacheMisses();
+        if (IsMainBlockProcessing) Metrics.IncrementWarmedNodeCacheMisses();
         return TryInsertPersistedRecord(_readOnlySnapshotBundle, warmed, address, path, hash, out record);
     }
+
+    /// <summary>Whether this bundle processes a main-chain block, the only bulk-set reads the trie read metrics count.</summary>
+    internal bool IsMainBlockProcessing => _usage == ResourcePool.Usage.MainBlockProcessing;
 
     /// <summary>Warms the nodes on the path to <paramref name="key"/> that the trie node buffer does not hold, for this block's bulk sets.</summary>
     /// <remarks>

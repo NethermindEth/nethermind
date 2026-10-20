@@ -59,19 +59,19 @@ public static class Metrics
     internal static void IncrementNodeRecordBufferRootMisses() => _nodeRecordBufferRootMisses.Increment();
 
     [CounterMetric]
-    [Description("Number of trie node reads a bulk set served from the trie node buffer through a record pointer.")]
+    [Description("Number of trie node reads a main-block bulk set served from the trie node buffer through a record pointer.")]
     public static long NodeRecordBufferHits => _nodeRecordBufferHits.Sum;
     private static readonly StripedLong _nodeRecordBufferHits = new();
     internal static void IncrementNodeRecordBufferHits() => _nodeRecordBufferHits.Increment();
 
     [CounterMetric]
-    [Description("Number of trie node reads a bulk set served from the normal per-block warmed-node log through a pointer or by position.")]
+    [Description("Number of trie node reads a main-block bulk set served from the normal per-block warmed-node log through a pointer or by position.")]
     public static long WarmedNodeCacheHits => _warmedNodeCacheHits.Sum;
     private static readonly StripedLong _warmedNodeCacheHits = new();
     internal static void IncrementWarmedNodeCacheHits() => _warmedNodeCacheHits.Increment();
 
     [CounterMetric]
-    [Description("Number of trie node reads of a bulk set that neither the trie node buffer nor the normal per-block warmed-node log held, so read from persistence.")]
+    [Description("Number of trie node reads of a main-block bulk set that neither the trie node buffer nor the normal per-block warmed-node log held, so read from persistence.")]
     public static long WarmedNodeCacheMisses => _warmedNodeCacheMisses.Sum;
     private static readonly StripedLong _warmedNodeCacheMisses = new();
     internal static void IncrementWarmedNodeCacheMisses() => _warmedNodeCacheMisses.Increment();

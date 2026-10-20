@@ -134,6 +134,7 @@ internal sealed class BufferedTrie(SnapshotBundle bundle, Hash256? addressHash, 
     {
         if (!bundle.TrieNodeBuffer!.TryLocate(pointer, out record)) return false;
 
+        if (!bundle.IsMainBlockProcessing) return true;
         if (NodeRecordCodec.IsTransient(pointer)) Metrics.IncrementWarmedNodeCacheHits();
         else Metrics.IncrementNodeRecordBufferHits();
         return true;

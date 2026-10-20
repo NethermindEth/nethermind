@@ -152,12 +152,13 @@ public class SnapshotBundleWarmerTests
     }
 
     [Test, NonParallelizable]
-    public void Normal_warmed_cache_metrics_count_each_lookup_once([Values] bool storage, [Values] bool warmUp)
+    public void Normal_warmed_cache_metrics_count_each_lookup_once([Values] bool storage, [Values] bool warmUp,
+        [Values(ResourcePool.Usage.MainBlockProcessing, ResourcePool.Usage.ReadOnlyProcessingEnv)] ResourcePool.Usage usage)
     {
         Hash256? address = storage ? TestItem.KeccakC : null;
         (TrieRoot root, Dictionary<TreePath, byte[]> persisted) = LeafTrie(FlatTestHelpers.LeafRlp(0x80));
         NodeReader reader = new(persisted);
-        using SnapshotBundle bundle = NewBundle(reader);
+        using SnapshotBundle bundle = new(FlatTestHelpers.MakeBundle(_pool, reader), _buffer, _pool, usage);
         long[] before = ReadCounts();
 
         if (warmUp)
@@ -173,7 +174,8 @@ public class SnapshotBundleWarmerTests
 
         Assert.That(reader.Reads, Is.EqualTo(1));
         if (warmUp) AssertReadCounts(before, warmUpHits: 1, warmUpMisses: 1);
-        else AssertReadCounts(before, hits: 1, misses: 1);
+        else if (usage == ResourcePool.Usage.MainBlockProcessing) AssertReadCounts(before, hits: 1, misses: 1);
+        else AssertReadCounts(before);
     }
 
     [Test, NonParallelizable]
