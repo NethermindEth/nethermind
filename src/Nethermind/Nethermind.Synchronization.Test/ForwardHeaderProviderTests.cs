@@ -342,7 +342,6 @@ public partial class ForwardHeaderProviderTests
             Assert.That(strategy.Allocate(null, [equalTdPeer, betterTdPeer], stats, blockTree), Is.SameAs(betterTdPeer));
             Assert.That(strategy.Allocate(null, [betterTdPeer], stats, blockTree), Is.SameAs(betterTdPeer));
         }
-
     }
 
     [Test]
@@ -432,11 +431,8 @@ public partial class ForwardHeaderProviderTests
     {
         await using IContainer node = CreateNode();
         Context ctx = node.Resolve<Context>();
-        PeerInfo peerInfo = BuildInitializedPeer(TestItem.PublicKeyA, UInt256.MaxValue);
-        ISyncPeer syncPeer = peerInfo.SyncPeer;
-        syncPeer.HeadHash.Returns(TestItem.KeccakA);
-        syncPeer.HeadNumber.Returns(1000UL);
-        ctx.ConfigureBestPeer(peerInfo);
+        using CachedPinSetup setup = await CreateCachedPinSetup(ctx);
+        ISyncPeer syncPeer = setup.PeerInfo.SyncPeer;
 
         PeerInfo replacementPeer = BuildInitializedPeer(TestItem.PublicKeyB, UInt256.MaxValue);
         ISyncPeer replacementSyncPeer = replacementPeer.SyncPeer;
@@ -444,20 +440,11 @@ public partial class ForwardHeaderProviderTests
         replacementSyncPeer.HeadNumber.Returns(1000UL);
         ctx.PeerPool.GetPeer(replacementSyncPeer.Node).Returns(replacementPeer);
 
-        int headerRequests = 0;
-        syncPeer.GetBlockHeaders(Arg.Any<ulong>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
-            .Returns(callInfo =>
-            {
-                headerRequests++;
-                return ctx.ResponseBuilder.BuildHeaderResponse(
-                    callInfo.ArgAt<ulong>(0),
-                    callInfo.ArgAt<int>(1),
-                    Response.AllCorrect);
-            });
+        int replacementRequests = 0;
         replacementSyncPeer.GetBlockHeaders(Arg.Any<ulong>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
             .Returns(callInfo =>
             {
-                headerRequests++;
+                replacementRequests++;
                 return ctx.ResponseBuilder.BuildHeaderResponse(callInfo.ArgAt<ulong>(0), 4, Response.AllCorrect);
             });
 
@@ -465,26 +452,19 @@ public partial class ForwardHeaderProviderTests
         ctx.PeerPool.Allocate(Arg.Any<IPeerAllocationStrategy>(), Arg.Any<AllocationContexts>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
             .Returns(_ =>
             {
-                PeerInfo selected = Interlocked.Increment(ref allocations) == 1 ? peerInfo : replacementPeer;
+                Interlocked.Increment(ref allocations);
                 SyncPeerAllocation allocation = new(AllocationContexts.ForwardHeader, null);
-                allocation.AllocatePeer(selected);
+                allocation.AllocatePeer(replacementPeer);
                 return Task.FromResult(allocation);
             });
-
-        IForwardHeaderProvider forwardHeader = ctx.ForwardHeaderProvider;
-        using IOwnedReadOnlyList<BlockHeader?> initial = await forwardHeader.GetBlockHeaders(0, 4, CancellationToken.None)
-            ?? throw new AssertionException("The initial header response was not prepared.");
-        BlockHeader parent = initial[1]!;
-        SuggestParent(ctx, parent);
-        forwardHeader.OnSuggestBlock(BlockTreeSuggestOptions.ShouldProcess, new Block(parent), AddBlockResult.Added);
 
         switch (safety)
         {
             case PinSafety.OwnerRemoved:
-                ctx.PeerPool.GetPeer(peerInfo.SyncPeer.Node).Returns((PeerInfo?)null);
+                ctx.PeerPool.GetPeer(setup.PeerInfo.SyncPeer.Node).Returns((PeerInfo?)null);
                 break;
             case PinSafety.OwnerSleeping:
-                peerInfo.PutToSleep(AllocationContexts.ForwardHeader, DateTime.UtcNow);
+                setup.PeerInfo.PutToSleep(AllocationContexts.ForwardHeader, DateTime.UtcNow);
                 break;
             case PinSafety.OwnerUninitialized:
                 syncPeer.IsInitialized.Returns(false);
@@ -494,13 +474,13 @@ public partial class ForwardHeaderProviderTests
                 break;
         }
 
-        using IOwnedReadOnlyList<BlockHeader?>? response = await forwardHeader.GetBlockHeaders(0, 4, CancellationToken.None);
+        using IOwnedReadOnlyList<BlockHeader?>? response = await setup.ForwardHeader.GetBlockHeaders(0, 4, CancellationToken.None);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(response, Is.Not.Null);
             Assert.That(response, Has.Count.EqualTo(4));
-            Assert.That(headerRequests, Is.EqualTo(2), "an ineligible owner must force a fresh header response");
-            Assert.That(allocations, Is.EqualTo(2), "a fresh header response must use the replacement peer");
+            Assert.That(setup.HeaderRequests + replacementRequests, Is.EqualTo(2), "an ineligible owner must force a fresh header response");
+            Assert.That(allocations, Is.EqualTo(1), "the ineligible owner must trigger one replacement allocation");
         }
     }
 
