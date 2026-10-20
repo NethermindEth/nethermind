@@ -348,6 +348,10 @@ public sealed class SnapshotBundle : IDisposable
     }
 
     /// <summary>Whether this bundle processes a main-chain block, the only bulk-set reads the trie read metrics count.</summary>
+    /// <remarks>
+    /// The usage turns <see cref="ResourcePool.Usage.PostMainBlockProcessing"/> once the first block commits, so a scope processing several
+    /// blocks, as in sync or a deep reorg, counts only its first block. That leaves the metrics inaccurate only off the usual one block per scope.
+    /// </remarks>
     internal bool IsMainBlockProcessing => _usage == ResourcePool.Usage.MainBlockProcessing;
 
     /// <summary>Warms the nodes on the path to <paramref name="key"/> that the trie node buffer does not hold, for this block's bulk sets.</summary>
