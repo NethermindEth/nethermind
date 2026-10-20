@@ -138,7 +138,7 @@ public class SnapshotTests
         INodeRecordBufferPin updateRetain = buffer.Pin();
         TrieRoot unrelated = Write(TrieRoot.Empty, firstKey, 3);
         TrieRoot updated = Write(original, lastKey, 2);
-        using Snapshot snapshot = new(new(1, original.Hash), new(2, updated.Hash), new SnapshotContent(), _pool, ResourcePool.Usage.MainBlockProcessing) { BufferPin = updateRetain };
+        using Snapshot snapshot = new(new(1, original.Hash), new(2, updated.Hash), new SnapshotContent(), _pool, ResourcePool.Usage.MainBlockProcessing, updateRetain);
         if (storage) snapshot.Content.StorageRoots[address!] = updated.Pointer;
         else
         {

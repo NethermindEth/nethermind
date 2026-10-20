@@ -69,10 +69,10 @@ public static class NodeRecordBufferExtensions
     {
         Span<byte> extensionKey = stackalloc byte[MaxPathNibbles];
         ulong pointer = rootPointer;
-        TreePath current = TreePath.Empty;
+        TreePath reached = TreePath.Empty;
         while (pointer != 0 && buffer.TryLocate(pointer, out record))
         {
-            if (current.Length == path.Length) return true;
+            if (reached.Length == path.Length) return true;
 
             NodeRecordRef view = record.View;
             ChildRef child;
@@ -80,17 +80,16 @@ public static class NodeRecordBufferExtensions
             {
                 case NodeRecordKind.Extension:
                     int length = view.KeyLength(0);
-                    if (length > path.Length - current.Length) return Miss(out record);
+                    if (length > path.Length - reached.Length) return Miss(out record);
                     view.CopyKey(0, extensionKey);
-                    current.AppendMut(extensionKey[..length]);
-                    // Not StartsWith, which compares the bytes past the length of a path that is not truncated.
-                    if (path.CompareToTruncated(current, current.Length) != 0) return Miss(out record);
+                    reached.AppendMut(extensionKey[..length]);
+                    if (path.CompareToTruncated(reached, reached.Length) != 0) return Miss(out record);
                     child = view.Child(0);
                     break;
                 case NodeRecordKind.HashedBranch:
                 case NodeRecordKind.InlineBranch:
-                    int nibble = path[current.Length];
-                    current.AppendMut(nibble);
+                    int nibble = path[reached.Length];
+                    reached.AppendMut(nibble);
                     child = view.Child(nibble);
                     break;
                 default:

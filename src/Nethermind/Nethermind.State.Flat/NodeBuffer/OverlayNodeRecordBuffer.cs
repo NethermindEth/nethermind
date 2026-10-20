@@ -10,7 +10,7 @@ namespace Nethermind.State.Flat.NodeBuffer;
 /// <summary>A node-record buffer that reads a pinned global buffer and keeps its own writes in a private buffer.</summary>
 /// <remarks>
 /// Pointers below the boundary of the global pin taken at construction resolve in the global buffer, and the rest in a private
-/// <see cref="NodeRecordBuffer"/> that takes every write. Private generations are exposed numbered after the pinned global one,
+/// <see cref="PrivateNodeRecordBuffer"/> that takes every write. Private generations are exposed numbered after the pinned global one,
 /// so the two pointer ranges never overlap and the private records are freed with this buffer instead of growing the global one.
 /// Every pin of this buffer also holds the global pin, so the global records it reads outlive <see cref="Dispose"/> until its last pin is released.
 /// </remarks>
@@ -20,7 +20,7 @@ internal sealed class OverlayNodeRecordBuffer : INodeRecordBuffer
 
     private readonly INodeRecordBuffer _global;
     private readonly INodeRecordBufferPin _globalPin;
-    private readonly INodeRecordBuffer _local = new NodeRecordBuffer(0, LocalGenerationBytes);
+    private readonly INodeRecordBuffer _local = new PrivateNodeRecordBuffer(LocalGenerationBytes);
     private readonly ulong _globalBoundary;
     private readonly ulong _localOffset;
 

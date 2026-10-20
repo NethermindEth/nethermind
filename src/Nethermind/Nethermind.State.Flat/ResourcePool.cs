@@ -88,7 +88,8 @@ public class ResourcePool : IResourcePool
             to,
             content: GetSnapshotContent(usage),
             resourcePool: this,
-            usage: usage);
+            usage: usage,
+            bufferPin: null);
 
     public enum Usage
     {

@@ -90,7 +90,7 @@ public class SnapshotBundleWarmerTests
         (TrieRoot root, Dictionary<TreePath, byte[]> nodes) = LeafTrie(rlp);
         using SnapshotBundle bundle = NewBundle(new NodeReader(nodes));
         using INodeRecordBufferPin retain = _buffer.Pin();
-        new BufferedTrie(bundle, null, root).Publish();
+        new NodeRecordTrie(bundle, null, root).Publish();
 
         (Snapshot? snapshot, TransientResource? retired) = bundle.CollectAndApplySnapshot(StateId.PreGenesis, new StateId(1, root.Hash), retain.Copy());
         try
@@ -523,7 +523,7 @@ public class SnapshotBundleWarmerTests
         int firstWarmUp = WarmUpAll();
         int secondWarmUp = WarmUpAll();
         int readsBeforeBulkSet = reader.Reads;
-        BufferedTrie trie = new(bundle, address, preBlockRoot);
+        NodeRecordTrie trie = new(bundle, address, preBlockRoot);
         using (ArrayPoolListRef<PatriciaTree.BulkSetEntry> change = new(1))
         {
             change.Add(new PatriciaTree.BulkSetEntry(keys[0], newValue));

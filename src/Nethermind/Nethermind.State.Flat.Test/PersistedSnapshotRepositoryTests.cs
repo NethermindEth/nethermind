@@ -48,7 +48,7 @@ public class PersistedSnapshotRepositoryTests
         SnapshotContent content = new();
         if (account is not null)
             content.Accounts[account] = Build.An.Account.WithBalance(balance == 0 ? 1000 : balance).TestObject;
-        return new Snapshot(from, to, content, _pool, ResourcePool.Usage.MainBlockProcessing);
+        return new Snapshot(from, to, content, _pool, ResourcePool.Usage.MainBlockProcessing, null);
     }
 
     [Test]
@@ -172,12 +172,12 @@ public class PersistedSnapshotRepositoryTests
         INodeRecordBufferPin bufferRetain1 = _buffer.Pin();
         SnapshotContent content1 = new();
         content1.SetStateNodeRlp(_buffer, path, rlp1);
-        using Snapshot snap1 = new(s0, s1, content1, _pool, ResourcePool.Usage.MainBlockProcessing) { BufferPin = bufferRetain1 };
+        using Snapshot snap1 = new(s0, s1, content1, _pool, ResourcePool.Usage.MainBlockProcessing, bufferRetain1);
 
         INodeRecordBufferPin bufferRetain2 = _buffer.Pin();
         SnapshotContent content2 = new();
         content2.SetStateNodeRlp(_buffer, path, rlp2);
-        using Snapshot snap2 = new(s1, s2, content2, _pool, ResourcePool.Usage.MainBlockProcessing) { BufferPin = bufferRetain2 };
+        using Snapshot snap2 = new(s1, s2, content2, _pool, ResourcePool.Usage.MainBlockProcessing, bufferRetain2);
 
         tier.ConvertToPersistedBase(snap1).Dispose();
         tier.ConvertToPersistedBase(snap2).Dispose();
@@ -242,7 +242,7 @@ public class PersistedSnapshotRepositoryTests
         content.SelfDestructedStorageAddresses[selfDestructAddr] = false;
         content.SetStateNodeRlp(_buffer, statePath, stateRlp);
         content.SetStorageNodeRlp(_buffer, storageTrieAddr, storagePath, storageRlp);
-        using Snapshot snap = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing) { BufferPin = bufferPin };
+        using Snapshot snap = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing, bufferPin);
 
         tier.ConvertToPersistedBase(snap).Dispose();
 
@@ -331,7 +331,7 @@ public class PersistedSnapshotRepositoryTests
         if (withTrieNode)
             content.SetStateNodeRlp(_buffer, FlatTestHelpers.CanonicalPath(Keccak.Compute("p"), 4), FlatTestHelpers.LeafRlp(0xC2, 0x80, 0x80));
 
-        using Snapshot snapshot = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing) { BufferPin = bufferPin };
+        using Snapshot snapshot = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing, bufferPin);
         using PersistedSnapshot persisted = tier.ConvertToPersistedBase(snapshot);
 
         if (withTrieNode)
@@ -364,7 +364,7 @@ public class PersistedSnapshotRepositoryTests
             content.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance(1000).TestObject;
             if (withTrieNode)
                 content.SetStateNodeRlp(_buffer, FlatTestHelpers.CanonicalPath(Keccak.Compute("p"), 4), FlatTestHelpers.LeafRlp(0xC2, 0x80, 0x80));
-            using Snapshot snapshot = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing) { BufferPin = bufferPin };
+            using Snapshot snapshot = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing, bufferPin);
             tier1.ConvertToPersistedBase(snapshot).Dispose();
         }
 
@@ -631,7 +631,7 @@ public class PersistedSnapshotRepositoryTests
         SnapshotContent content = new();
         Nethermind.Trie.TreePath path = FlatTestHelpers.CanonicalPath(Keccak.Compute("bp"), 4);
         content.SetStateNodeRlp(_buffer, path, FlatTestHelpers.LeafRlp(0xC2, 0x80, 0x80));
-        using Snapshot snapshot = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing) { BufferPin = bufferPin };
+        using Snapshot snapshot = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing, bufferPin);
         using PersistedSnapshot p = tier.ConvertToPersistedBase(snapshot);
 
         Assert.DoesNotThrow(() => p.AdviseWillNeedBlobRange());
@@ -654,7 +654,7 @@ public class PersistedSnapshotRepositoryTests
         byte[] slot = new byte[32]; slot[31] = 0x55;
         content.Storages[(TestItem.AddressA, (UInt256)1)] = new UInt256(slot, isBigEndian: true);
         PersistedSnapshot persisted = tier.ConvertToPersistedBase(
-            new Snapshot(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing));
+            new Snapshot(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing, null));
 
         PersistedSnapshotList list = new(1) { persisted };
         using PersistedSnapshotStack stack = new(list, recordDetailedMetrics: false);

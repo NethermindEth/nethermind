@@ -35,7 +35,7 @@ public class FlatStateReaderTests
     public void TearDown() => _buffer.Dispose();
 
     private FlatStateReader CreateReader(IFlatDbManager manager) =>
-        new(new MemDb(), manager, NullHistoricalTrieVisitor.Instance, _buffer);
+        new(new MemDb(), manager, NullHistoricalTrieVisitor.Instance, LimboLogs.Instance);
 
     public static readonly TestCaseData[] UnavailableStateReads =
     [
@@ -88,7 +88,7 @@ public class FlatStateReaderTests
     }
 
     [Test]
-    public void RunTreeVisitor_ReadsBufferRootsWithoutPersistence([Values] bool fullScan, [Values] bool includeSnapshot)
+    public void RunTreeVisitor_ReadsBufferRootsWithoutPersistence([Values] bool fullScan)
     {
         CountingTrieReader trieReader = CountingTrieReader.WithSingleAccountAndSlot(TestItem.AddressA, 1, out Hash256 stateRoot);
         BlockHeader header = Build.A.BlockHeader.WithNumber(5).WithStateRoot(stateRoot).TestObject;
@@ -97,7 +97,7 @@ public class FlatStateReaderTests
         trieReader.AddRootsTo(snapshot, _buffer);
         trieReader.StateAvailable = false;
         trieReader.StorageAvailable = false;
-        FlatStateReader reader = CreateReader(new CurrentBundleFlatDbManager(trieReader, includeSnapshot ? snapshot : null));
+        FlatStateReader reader = CreateReader(new CurrentBundleFlatDbManager(trieReader, snapshot));
 
         AssertVisit(reader, header, stateRoot, fullScan);
 
@@ -105,47 +105,6 @@ public class FlatStateReaderTests
         {
             Assert.That(trieReader.StateRlpLoads, Is.Zero);
             Assert.That(trieReader.StorageRlpLoads, Is.Zero);
-        }
-    }
-
-    [Test]
-    public void RunTreeVisitor_ReadsStateAndStorageFromDifferentTiers([Values] bool storageFromBuffer, [Values] bool fullScan)
-    {
-        CountingTrieReader trieReader = CountingTrieReader.WithSingleAccountAndSlot(TestItem.AddressA, 1, out Hash256 stateRoot);
-        BlockHeader header = Build.A.BlockHeader.WithNumber(5).WithStateRoot(stateRoot).TestObject;
-        ResourcePool pool = new(new FlatDbConfig());
-        using Snapshot snapshot = pool.CreateSnapshot(StateId.PreGenesis, new StateId(header), ResourcePool.Usage.MainBlockProcessing, _buffer);
-        trieReader.AddRootsTo(snapshot, _buffer, state: !storageFromBuffer, storage: storageFromBuffer);
-        trieReader.StateAvailable = storageFromBuffer;
-        trieReader.StorageAvailable = !storageFromBuffer;
-        FlatStateReader reader = CreateReader(new CurrentBundleFlatDbManager(trieReader));
-
-        AssertVisit(reader, header, stateRoot, fullScan);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(trieReader.StateRlpLoads, Is.EqualTo(storageFromBuffer ? 1 : 0));
-            Assert.That(trieReader.StorageRlpLoads, Is.EqualTo(storageFromBuffer ? 0 : 1));
-        }
-    }
-
-    [Test]
-    public void RunTreeVisitor_LoadsUnlinkedStorageChildFromPersistence([Values] bool fullScan)
-    {
-        CountingTrieReader trieReader = CountingTrieReader.WithSingleAccountAndSlot(TestItem.AddressA, 1, out Hash256 stateRoot, inlineStorage: true);
-        BlockHeader header = Build.A.BlockHeader.WithNumber(5).WithStateRoot(stateRoot).TestObject;
-        ResourcePool pool = new(new FlatDbConfig());
-        using Snapshot snapshot = pool.CreateSnapshot(StateId.PreGenesis, new StateId(header), ResourcePool.Usage.MainBlockProcessing, _buffer);
-        trieReader.AddRootsTo(snapshot, _buffer);
-        trieReader.StateAvailable = false;
-        FlatStateReader reader = CreateReader(new CurrentBundleFlatDbManager(trieReader));
-
-        AssertVisit(reader, header, stateRoot, fullScan, inlineStorage: true);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(trieReader.StateRlpLoads, Is.Zero);
-            Assert.That(trieReader.StorageRlpLoads, Is.EqualTo(1), "Only the hashed branch below the logged extension needs persistence; its leaves are inline.");
         }
     }
 
@@ -177,7 +136,7 @@ public class FlatStateReaderTests
         }
     }
 
-    private static void AssertVisit(FlatStateReader reader, BlockHeader header, Hash256 stateRoot, bool fullScan, bool inlineStorage = false)
+    private static void AssertVisit(FlatStateReader reader, BlockHeader header, Hash256 stateRoot, bool fullScan)
     {
         if (fullScan)
         {
@@ -197,7 +156,7 @@ public class FlatStateReaderTests
             AccountProof proof = collector.BuildResult();
             Assert.That(proof.Proof, Has.Length.EqualTo(1));
             Assert.That(proof.StorageProofs, Has.Length.EqualTo(1));
-            Assert.That(proof.StorageProofs[0].Proof, Has.Length.EqualTo(inlineStorage ? 2 : 1));
+            Assert.That(proof.StorageProofs[0].Proof, Has.Length.EqualTo(1));
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(proof.Address, Is.EqualTo(TestItem.AddressA));
@@ -251,24 +210,12 @@ public class FlatStateReaderTests
         public bool StateAvailable { get; set; } = true;
         public bool StorageAvailable { get; set; } = true;
 
-        public static CountingTrieReader WithSingleAccountAndSlot(Address address, UInt256 slot, out Hash256 stateRoot, bool inlineStorage = false)
+        public static CountingTrieReader WithSingleAccountAndSlot(Address address, UInt256 slot, out Hash256 stateRoot)
         {
             MemDb trieDb = new();
             Hash256 addressHash = Keccak.Compute(address.Bytes);
             StorageTree storageTree = new(new RawScopedTrieStore(trieDb, addressHash), LimboLogs.Instance);
             storageTree.Set(slot, [0x01]);
-            if (inlineStorage)
-            {
-                byte[] key = new byte[32];
-                slot.ToBigEndian(key);
-                byte[] siblingKey = Keccak.Compute(key).Bytes.ToArray();
-                byte last = siblingKey[^1];
-                for (int i = 1; i < 16; i++)
-                {
-                    siblingKey[^1] = (byte)(last ^ i);
-                    storageTree.Set(siblingKey.AsSpan(), new byte[] { 2 });
-                }
-            }
             storageTree.Commit();
 
             StateTree stateTree = new(new RawScopedTrieStore(trieDb), LimboLogs.Instance);
@@ -279,18 +226,10 @@ public class FlatStateReaderTests
             return new CountingTrieReader(addressHash, stateTree, storageTree);
         }
 
-        public void AddRootsTo(Snapshot snapshot, INodeRecordBuffer buffer, bool state = true, bool storage = true)
+        public void AddRootsTo(Snapshot snapshot, INodeRecordBuffer buffer)
         {
-            if (state)
-            {
-                ulong pointer = snapshot.Content.SetStateNodeRlp(buffer, TreePath.Empty, stateTree.GetNodeByPath([])!);
-                buffer.SetRoot(null, stateTree.RootHash, pointer);
-            }
-            if (storage)
-            {
-                ulong pointer = snapshot.Content.SetStorageNodeRlp(buffer, addressHash, TreePath.Empty, storageTree.GetNodeByPath([])!);
-                buffer.SetRoot(addressHash, storageTree.RootHash, pointer);
-            }
+            snapshot.Content.SetStateNodeRlp(buffer, TreePath.Empty, stateTree.GetNodeByPath([])!);
+            snapshot.Content.SetStorageNodeRlp(buffer, addressHash, TreePath.Empty, storageTree.GetNodeByPath([])!);
         }
 
         public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags)

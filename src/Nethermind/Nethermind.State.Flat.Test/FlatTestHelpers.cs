@@ -30,11 +30,11 @@ public static class FlatTestHelpers
     {
         SnapshotContent content = pool.GetSnapshotContent(ResourcePool.Usage.MainBlockProcessing);
         populate?.Invoke(content);
-        return new Snapshot(StateId.PreGenesis, StateId.PreGenesis, content, pool, ResourcePool.Usage.MainBlockProcessing);
+        return new Snapshot(StateId.PreGenesis, StateId.PreGenesis, content, pool, ResourcePool.Usage.MainBlockProcessing, null);
     }
 
     /// <summary>A buffer with 64 KiB generations, so tests can rotate it cheaply.</summary>
-    public static INodeRecordBuffer NewTestBuffer() => new NodeRecordBuffer(0, 64 * 1024);
+    public static INodeRecordBuffer NewTestBuffer() => new NodeRecordBuffer(0, 64 * 1024, NodeRecordBuffer.DefaultLiveGenerations);
 
     /// <summary>A trie-node path with all nibbles after its length cleared.</summary>
     public static TreePath CanonicalPath(in ValueHash256 hash, int length) => new TreePath(hash, 64).Truncate(length);
@@ -45,7 +45,7 @@ public static class FlatTestHelpers
 
     /// <summary>Creates a snapshot owning a retain on the active generation of <paramref name="buffer"/>.</summary>
     public static Snapshot CreateSnapshot(this IResourcePool pool, in StateId from, in StateId to, ResourcePool.Usage usage, INodeRecordBuffer buffer) =>
-        new(from, to, pool.GetSnapshotContent(usage), pool, usage) { BufferPin = buffer.Pin() };
+        new(from, to, pool.GetSnapshotContent(usage), pool, usage, buffer.Pin());
 
     /// <summary>Appends records until <paramref name="buffer"/> starts a new generation.</summary>
     public static void StartNewGeneration(INodeRecordBuffer buffer)
@@ -190,7 +190,7 @@ public static class FlatTestHelpers
     public static TrieRoot BulkSet(ResourcePool pool, INodeRecordBuffer buffer, Hash256? address, TrieRoot root, in ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries, bool canParallelize)
     {
         using SnapshotBundle bundle = new(MakeBundle(pool), buffer, pool, ResourcePool.Usage.MainBlockProcessing);
-        BufferedTrie trie = new(bundle, address, root);
+        NodeRecordTrie trie = new(bundle, address, root);
         trie.BulkSet(entries, canParallelize);
         return trie.Root;
     }
