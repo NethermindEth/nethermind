@@ -118,8 +118,13 @@ public partial class EthRpcModuleTests
         Assert.That(JToken.Parse(estimated)["result"]!.Value<string>(), Is.EqualTo(JToken.Parse(explicitEstimate)["result"]!.Value<string>()), estimated);
     }
 
-    [Test]
-    public async Task FrameGas_FillTransaction_AcceptsDependencyFrame()
+    [TestCase(Eip8288Constants.LeanSphincsVerificationGas, 0UL, null)]
+    [TestCase(null, 0UL, null)]
+    [TestCase(Eip8288Constants.LeanSphincsVerificationGas, null, null)]
+    [TestCase(null, null, null)]
+    [TestCase(Eip8288Constants.LeanSphincsVerificationGas + 1, null, FrameTxValidation.DependencyFrameGasMismatch)]
+    [TestCase(null, 1UL, FrameTxValidation.DependencyFrameGasMismatch)]
+    public async Task FrameGas_FillTransaction_ResolvesOmittedDependencyFrameGas(ulong? executionGas, ulong? stateGas, string? expectedError)
     {
         using Context ctx = await Context.Create(new TestSpecProvider(Eip8288Prototype.Instance));
         FrameTransactionForRpc request = FrameGasRequest();
@@ -129,20 +134,27 @@ public partial class EthRpcModuleTests
         request.Frames = [.. request.Frames!, new FrameForRpc
         {
             Mode = (byte)FrameMode.DepVerify,
-            ExecutionGas = Eip8288Constants.LeanSphincsVerificationGas,
-            StateGas = 0,
+            ExecutionGas = executionGas,
+            StateGas = stateGas,
             Data = dependency,
         }];
 
         string response = await ctx.Test.TestEthRpc("eth_fillTransaction", request);
 
         JToken parsed = JToken.Parse(response);
+        if (expectedError is not null)
+        {
+            Assert.That(parsed["error"]!["message"]!.Value<string>(), Does.Contain(expectedError), response);
+            return;
+        }
+
         Assert.That(parsed["error"], Is.Null, response);
         JToken frame = parsed["result"]!["tx"]!["frames"]![2]!;
         using (Assert.EnterMultipleScope())
         {
             Assert.That(Convert.ToByte(frame["mode"]!.Value<string>(), 16), Is.EqualTo((byte)FrameMode.DepVerify));
             Assert.That(Convert.ToUInt64(frame["executionGas"]!.Value<string>(), 16), Is.EqualTo(Eip8288Constants.LeanSphincsVerificationGas));
+            Assert.That(Convert.ToUInt64(frame["stateGas"]!.Value<string>(), 16), Is.Zero);
             Assert.That(Bytes.FromHexString(frame["data"]!.Value<string>()!), Is.EqualTo(dependency));
         }
     }
