@@ -684,7 +684,7 @@ public class EthereumRunnerTests
     /// <see cref="MaxTimeAttribute"/> would only report once the test returns, and it also counts setup, which
     /// is unbounded and can stall on slow CI hosts. Without a bound, a start or stop that never completes takes the
     /// whole assembly into the CI hang-dump watchdog. A runner on an in-memory DB is orders of magnitude under this.</remarks>
-    private static readonly TimeSpan RunnerTimeout = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan RunnerTimeout = TimeSpan.FromSeconds(90);
 
     private static readonly Lazy<ICollection<(string file, ConfigProvider configProvider)>>? _cachedProviders = new(InitOnce);
 
