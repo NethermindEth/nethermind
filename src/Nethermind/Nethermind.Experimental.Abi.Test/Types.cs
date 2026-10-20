@@ -40,6 +40,12 @@ public class Types
             "0000000000000000000000000000000000000000000000000000000000000020" + // Offset to the bytes
             "0000000000000000000000000000000000000000000000000000000000000011" + // Length of the bytes, `17`
             "0102030405060708090a0b0c0d0e0f1011000000000000000000000000000000"); // Contents of the bytes, right-padded
+
+        yield return Case(new AbiSignature("abc").With(AbiType.String), "é€😀", label: "non-ASCII", encoding:
+            "5b84a1ed" + // `MethodId`
+            "0000000000000000000000000000000000000000000000000000000000000020" + // Offset to the string
+            "0000000000000000000000000000000000000000000000000000000000000009" + // Length of the string in UTF-8 bytes, `9`
+            "c3a9e282acf09f98800000000000000000000000000000000000000000000000"); // UTF-8 encoding of `é€😀`, right-padded
     }
 
     private static IEnumerable<TestCaseData> ArrayTestCases()
