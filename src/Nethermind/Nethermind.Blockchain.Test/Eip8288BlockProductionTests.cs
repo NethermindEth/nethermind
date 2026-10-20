@@ -103,6 +103,27 @@ public class Eip8288BlockProductionTests
     }
 
     [Test]
+    public void First_dependency_bearing_candidate_needs_room_for_the_largest_stark_proof([Values] bool dependencyBearing)
+    {
+        BlockProcessor.BlockProductionTransactionPicker picker = new(new TestSingleReleaseSpecProvider(Eip8288Prototype.Instance), BlocksConfig.DefaultMaxTxKilobytes);
+        BlockToProduce block = new(Build.A.BlockHeader.WithGasLimit(ulong.MaxValue / 2).TestObject)
+        {
+            TxByteLength = BlocksConfig.DefaultMaxTxKilobytes.KiB - Eip8288Constants.MaxAggregateProofBytes
+        };
+        Transaction candidate = Build.A.Transaction.WithGasLimit(5_000_000).WithSenderAddress(TestItem.AddressA).TestObject;
+        if (dependencyBearing)
+        {
+            candidate.Type = TxType.FrameTx;
+            candidate.Frames = [new(FrameMode.DepVerify, FrameFlags.None, null, Eip8288Constants.LeanSphincsVerificationGas, UInt256.Zero,
+                Eip8288Dependencies.Serialize([new(Eip8288Constants.LeanSphincsScheme, TestItem.KeccakA.ValueHash256, default)]))];
+        }
+
+        BlockProcessor.AddingTxEventArgs args = picker.CanAddTransaction(block, candidate, new HashSet<Transaction>(), Substitute.For<IReadOnlyStateProvider>(), 0, 0);
+
+        Assert.That(args.Reason == "Too large for CL", Is.EqualTo(dependencyBearing));
+    }
+
+    [Test]
     public async Task Background_aggregate_is_reused_by_fresh_production_scopes([Values] bool mixed)
     {
         CountingVerifier verifier = new();
