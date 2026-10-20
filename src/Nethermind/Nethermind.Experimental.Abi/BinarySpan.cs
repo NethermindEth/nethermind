@@ -174,7 +174,6 @@ public ref struct BinarySpanWriter
 
 public static class Math
 {
-    // TODO: Use `UInt256` when dealing with lengths
     // Equivalent to:
     // int rem = length % 32;
     // return rem == 0 ? length : length + (32 - rem);

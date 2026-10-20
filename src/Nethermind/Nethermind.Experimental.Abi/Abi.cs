@@ -5,7 +5,7 @@ namespace Nethermind.Experimental.Abi;
 
 public delegate T AbiReadFunc<out T>(ref BinarySpanReader r);
 public delegate void AbiWriteAction<in T>(ref BinarySpanWriter w, T value);
-public delegate int AbiSizeFunc<in T>(T value); // TODO: Use `UInt256` when dealing with sizes according to the ABI spec
+public delegate int AbiSizeFunc<in T>(T value);
 
 public class Abi<T>
 {
