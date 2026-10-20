@@ -54,9 +54,9 @@ public class CappedArrayTests
             Assert.That(array.IsNull, Is.False);
             Assert.That(array.IsNotNull, Is.True);
             Assert.That(array.Length, Is.EqualTo(5));
-            Assert.That(array.ToArray(), Is.EqualTo(baseArray[..5]));
+            Assert.That(array.ToArray(), Is.SequenceEqualTo(baseArray[..5]));
             Assert.That(array.AsSpan().Length, Is.EqualTo(5));
-            Assert.That(array.AsSpan().ToArray(), Is.EqualTo(baseArray[..5]));
+            Assert.That(array.AsSpan(), Is.SequenceEqualTo(baseArray[..5]));
         }
     }
 }

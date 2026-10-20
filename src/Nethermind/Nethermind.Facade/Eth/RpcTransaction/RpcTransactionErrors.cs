@@ -8,15 +8,24 @@ namespace Nethermind.Facade.Eth.RpcTransaction;
 public static class RpcTransactionErrors
 {
     public const string ContractCreationWithoutData = "contract creation without any data provided";
+    public const string DataAndInputDiffer = "both \"data\" and \"input\" are set and not equal. Please use \"input\" to pass transaction call data";
     public const string GasPriceInEip1559 = "both gasPrice and (maxFeePerGas or maxPriorityFeePerGas) specified";
     public const string AtLeastOneBlobInBlobTransaction = "need at least 1 blob for a blob transaction";
     public const string InvalidBlobVersionedHashSize = "blob versioned hash must be 32 bytes";
     public const string InvalidBlobVersionedHashVersion = "blob versioned hash version must be 0x01";
     public const string MissingToInBlobTx = "missing \"to\" in blob transaction";
     public const string ZeroMaxFeePerBlobGas = "maxFeePerBlobGas, if specified, must be non-zero";
+    public const string BlobFeeCapWithoutBlobHashes = "maxFeePerBlobGas specified without blobVersionedHashes";
 
     public static string MaxFeePerGasSmallerThanMaxPriorityFeePerGas(UInt256? maxFeePerGas, UInt256? maxPriorityFeePerGas)
         => $"maxFeePerGas ({maxFeePerGas}) < maxPriorityFeePerGas ({maxPriorityFeePerGas})";
+
+    /// <summary>Reports a call or transaction request whose <c>chainId</c> names another chain.</summary>
+    public static string InvalidChainId(ulong chainId, ulong requestedChainId)
+        => $"invalid chain id (have={chainId}, want={requestedChainId})";
+
+    /// <summary>Reports a protected legacy <c>v</c> whose EIP-155 value does not fit a ulong for the chain id.</summary>
+    public static string NoEip155V(ulong chainId) => $"no EIP-155 v exists for chain id {chainId}";
 
     public static string NullEntryIn(string field) => $"{field} must not contain a null entry";
 

@@ -18,6 +18,11 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using System;
 using Nethermind.State;
+using Nethermind.Core.BlockAccessLists;
+using Nethermind.Logging;
+using Nethermind.Specs.Forks;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 
 namespace Nethermind.Evm.Test;
 
@@ -30,6 +35,7 @@ public class CodeInfoRepositoryTests
     {
         _releaseSpec = ReleaseSpecSubstitute.Create();
         _releaseSpec.Precompiles.Returns(FrozenSet<AddressAsKey>.Empty);
+        _releaseSpec.IsEip7702Enabled.Returns(true);
     }
 
     /// <summary>Precompile numbers a chain might register, including ones the index array cannot hold.</summary>
@@ -90,12 +96,12 @@ public class CodeInfoRepositoryTests
         stateProvider.InsertCode(TestItem.AddressA, first, _releaseSpec);
 
         // Resolve twice so the second answer is the one the memo serves.
-        Assert.That(repository.GetCachedCodeInfo(TestItem.AddressA, false, _releaseSpec, out _).CodeSpan.ToArray(), Is.EqualTo(first));
-        Assert.That(repository.GetCachedCodeInfo(TestItem.AddressA, false, _releaseSpec, out _).CodeSpan.ToArray(), Is.EqualTo(first));
+        Assert.That(repository.GetCachedCodeInfo(TestItem.AddressA, false, _releaseSpec, out _).CodeSpan, Is.SequenceEqualTo(first));
+        Assert.That(repository.GetCachedCodeInfo(TestItem.AddressA, false, _releaseSpec, out _).CodeSpan, Is.SequenceEqualTo(first));
 
         stateProvider.InsertCode(TestItem.AddressA, second, _releaseSpec);
 
-        Assert.That(repository.GetCachedCodeInfo(TestItem.AddressA, false, _releaseSpec, out _).CodeSpan.ToArray(), Is.EqualTo(second));
+        Assert.That(repository.GetCachedCodeInfo(TestItem.AddressA, false, _releaseSpec, out _).CodeSpan, Is.SequenceEqualTo(second));
     }
 
     /// <summary>Two accounts sharing a code hash share its body; a different one must not be confused.</summary>
@@ -120,13 +126,13 @@ public class CodeInfoRepositoryTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(repository.GetCachedCodeInfo(TestItem.AddressA, false, _releaseSpec, out _).CodeSpan.ToArray(), Is.EqualTo(shared));
-            Assert.That(repository.GetCachedCodeInfo(TestItem.AddressC, false, _releaseSpec, out _).CodeSpan.ToArray(), Is.EqualTo(other));
-            Assert.That(repository.GetCachedCodeInfo(TestItem.AddressB, false, _releaseSpec, out _).CodeSpan.ToArray(), Is.EqualTo(shared));
-            Assert.That(repository.GetCachedCodeInfo(TestItem.AddressC, false, _releaseSpec, out _).CodeSpan.ToArray(), Is.EqualTo(other));
+            Assert.That(repository.GetCachedCodeInfo(TestItem.AddressA, false, _releaseSpec, out _).CodeSpan, Is.SequenceEqualTo(shared));
+            Assert.That(repository.GetCachedCodeInfo(TestItem.AddressC, false, _releaseSpec, out _).CodeSpan, Is.SequenceEqualTo(other));
+            Assert.That(repository.GetCachedCodeInfo(TestItem.AddressB, false, _releaseSpec, out _).CodeSpan, Is.SequenceEqualTo(shared));
+            Assert.That(repository.GetCachedCodeInfo(TestItem.AddressC, false, _releaseSpec, out _).CodeSpan, Is.SequenceEqualTo(other));
             // Alternating never produces a memo hit; repeating the last address is what pins that a hit
             // answers for the right address rather than only that a miss is not confused.
-            Assert.That(repository.GetCachedCodeInfo(TestItem.AddressC, false, _releaseSpec, out _).CodeSpan.ToArray(), Is.EqualTo(other));
+            Assert.That(repository.GetCachedCodeInfo(TestItem.AddressC, false, _releaseSpec, out _).CodeSpan, Is.SequenceEqualTo(other));
         }
     }
 
@@ -203,16 +209,11 @@ public class CodeInfoRepositoryTests
             stateProvider.CreateAccount(TestItem.AddressA, 0);
         }
 
-        bool codeInfoLoaderCalled = false;
-        CodeInfoRepository sut = new(stateProvider, new EthereumPrecompileProvider(), (_, _, _) =>
-        {
-            codeInfoLoaderCalled = true;
-            return CodeInfo.Empty;
-        });
+        LoadTrackingCodeInfoRepository sut = new(stateProvider);
 
         Assert.That(sut.TryGetDelegation(TestItem.AddressA, _releaseSpec, out _), Is.False);
 
-        Assert.That(codeInfoLoaderCalled, Is.False);
+        Assert.That(sut.LoadCalled, Is.False);
     }
 
     public static IEnumerable<TestCaseData> DelegationCodeCases()
@@ -251,21 +252,34 @@ public class CodeInfoRepositoryTests
         Assert.That(result, Is.EqualTo(new Address(code.Slice(3, Address.Size))));
     }
 
-    [TestCaseSource(nameof(DelegationCodeCases))]
-    public void GetCachedCodeInfo_CodeTryGetDelegation_ReturnsCodeOfDelegation(byte[] code)
+    public static IEnumerable<TestCaseData> DelegationCodeBeforeAndAfterPragueCases()
+    {
+        foreach (TestCaseData testCase in DelegationCodeCases())
+        {
+            yield return new TestCaseData(testCase.Arguments[0], Prague.Instance, true).SetName($"{testCase.TestName}, Prague");
+            yield return new TestCaseData(testCase.Arguments[0], Cancun.Instance, false).SetName($"{testCase.TestName}, Cancun");
+        }
+    }
+
+    [TestCaseSource(nameof(DelegationCodeBeforeAndAfterPragueCases))]
+    public void GetCachedCodeInfo_DelegatedCode_FollowsDelegationOnlyWhenEip7702Enabled(byte[] code, IReleaseSpec spec, bool followed)
     {
         IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
         using IDisposable _ = stateProvider.BeginScope(IWorldState.PreGenesis);
         stateProvider.CreateAccount(TestItem.AddressA, 0);
-        stateProvider.InsertCode(TestItem.AddressA, code, _releaseSpec);
+        stateProvider.InsertCode(TestItem.AddressA, code, spec);
         Address delegationAddress = new(code.Slice(3, Address.Size));
         stateProvider.CreateAccount(delegationAddress, 0);
         byte[] delegationCode = new byte[32];
-        stateProvider.InsertCode(delegationAddress, delegationCode, _releaseSpec);
+        stateProvider.InsertCode(delegationAddress, delegationCode, spec);
         EthereumCodeInfoRepository sut = new(stateProvider);
 
-        CodeInfo result = sut.GetCachedCodeInfo(TestItem.AddressA, _releaseSpec);
-        Assert.That(result.CodeSpan.ToArray(), Is.EqualTo(delegationCode));
+        CodeInfo result = sut.GetCachedCodeInfo(TestItem.AddressA, true, spec, out Address? delegated);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.CodeSpan, Is.SequenceEqualTo(followed ? delegationCode : code));
+            Assert.That(delegated, Is.EqualTo(followed ? delegationAddress : null));
+        }
     }
 
     [Test]
@@ -299,7 +313,7 @@ public class CodeInfoRepositoryTests
             Assert.That(firstTryAddress, Is.SameAs(firstAddress));
             Assert.That(repeatedTryAddress, Is.SameAs(firstAddress));
             Assert.That(firstAddress, Is.EqualTo(firstTarget));
-            Assert.That(first.CodeSpan.ToArray(), Is.EqualTo(firstDelegation));
+            Assert.That(first.CodeSpan, Is.SequenceEqualTo(firstDelegation));
         }
 
         Snapshot snapshot = stateProvider.TakeSnapshot();
@@ -322,7 +336,7 @@ public class CodeInfoRepositoryTests
             Assert.That(ordinaryTryHasDelegation, Is.False);
             Assert.That(ordinaryTryAddress, Is.Null);
             Assert.That(noAddress, Is.Null);
-            Assert.That(ordinary.CodeSpan.ToArray(), Is.EqualTo(ordinaryCode));
+            Assert.That(ordinary.CodeSpan, Is.SequenceEqualTo(ordinaryCode));
         }
 
         stateProvider.Restore(snapshot);
@@ -366,11 +380,55 @@ public class CodeInfoRepositoryTests
     {
         public int CodeReads { get; private set; }
 
-        public override byte[]? GetCode(in ValueHash256 codeHash)
+        public override ReadOnlyMemory<byte> GetCode(in ValueHash256 codeHash)
         {
             CodeReads++;
             return base.GetCode(in codeHash);
         }
+    }
+
+    [Test]
+    public void Code_miss_in_parallel_execution_runs_from_the_buffer_read_out_of_the_store()
+    {
+        // A cache-busting block misses on every call: the one copy out of the store must be the buffer execution
+        // runs from, through the traced block-access-list state, and the account read must still be recorded.
+        NativeTestMemDb codeDb = new();
+        byte[] code = [0x60, 0x01, 0x00];
+        IWorldState parent = TestWorldStateFactory.CreateForTest(codeDb: codeDb);
+        Hash256 stateRoot;
+        using (parent.BeginScope(IWorldState.PreGenesis))
+        {
+            parent.CreateAccount(TestItem.AddressA, 0);
+            parent.InsertCode(TestItem.AddressA, code, Amsterdam.Instance);
+            parent.Commit(Amsterdam.Instance, isGenesis: true);
+            parent.CommitTree(0);
+            stateRoot = parent.StateRoot;
+        }
+
+        BlockHeader baseBlock = Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(0).TestObject;
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges.WithAddress(TestItem.AddressA).TestObject)
+            .TestObject;
+        BlockAccessListBasedWorldState blockState = new(parent, LimboLogs.Instance);
+        blockState.SetBlockAccessIndex(1);
+        blockState.Setup(Build.A.Block.WithHeader(baseBlock).WithBlockAccessList(bal).TestObject);
+        using IDisposable scope = parent.BeginScope(baseBlock);
+        blockState.SetParentReader(parent);
+        TracedAccessWorldState traced = new(blockState, parallel: true);
+        BlockAccessListAtIndex generated = new() { Index = 1 };
+        traced.SetGeneratingBlockAccessList(generated);
+
+        CodeInfo codeInfo = new CodeInfoRepository(traced, NoPrecompiles())
+            .GetCachedCodeInfo(TestItem.AddressA, followDelegation: false, Amsterdam.Instance, out _);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(codeInfo.CodeSpan, Is.SequenceEqualTo(code));
+            Assert.That(Unsafe.AreSame(ref MemoryMarshal.GetReference(codeInfo.CodeSpan), ref MemoryMarshal.GetReference(codeInfo.ExecutionCodeSpan)), Is.True,
+                "execution must run from the buffer read out of the store, not a second copy");
+            Assert.That(generated.HasAccount(TestItem.AddressA), Is.True);
+        }
+        codeDb.KeyWasReadWithFlags(ValueKeccak.Compute(code).ToByteArray(), ReadFlags.HintCacheMiss);
     }
 
     [TestCaseSource(nameof(NotDelegationCodeCases))]
@@ -384,5 +442,16 @@ public class CodeInfoRepositoryTests
         EthereumCodeInfoRepository sut = new(stateProvider);
 
         Assert.That(sut.GetCachedCodeInfo(TestItem.AddressA, _releaseSpec), Is.EqualTo(new CodeInfo(code)));
+    }
+
+    private sealed class LoadTrackingCodeInfoRepository(IWorldState worldState) : CodeInfoRepository(worldState, new EthereumPrecompileProvider())
+    {
+        public bool LoadCalled { get; private set; }
+
+        protected override CodeInfo LoadCodeInfo(Address address, in ValueHash256 codeHash)
+        {
+            LoadCalled = true;
+            return CodeInfo.Empty;
+        }
     }
 }

@@ -68,7 +68,7 @@ public class BalRecorderE2ETests
                 ReadOnlyBlockAccessList? reread = store.Get(number);
                 Assert.That(reread, Is.Not.Null);
                 using ArrayPoolSpan<byte> reencoded = BalDecoder.EncodeToArrayPoolSpan(reread!);
-                Assert.That(((ReadOnlySpan<byte>)reencoded).ToArray(), Is.EqualTo(expected));
+                Assert.That((ReadOnlySpan<byte>)reencoded, Is.SequenceEqualTo(expected));
             }
         }
         finally

@@ -3,15 +3,13 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Threading;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State.Flat.ScopeProvider;
 
 internal sealed class StateTrieStoreAdapter(
-    SnapshotBundle bundle,
-    ConcurrencyController concurrencyQuota
+    SnapshotBundle bundle
 ) : AbstractMinimalTrieStore
 {
     public override TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash)
@@ -24,15 +22,15 @@ internal sealed class StateTrieStoreAdapter(
         bundle.TryLoadStateRlp(path, hash, flags);
 
     public override ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) =>
-        new Committer(bundle, concurrencyQuota);
+        new Committer(bundle);
 
     public override ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address)
     {
         if (address is null) return this;
-        return new StorageTrieStoreAdapter(bundle, concurrencyQuota, address);
+        return new StorageTrieStoreAdapter(bundle, address);
     }
 
-    private class Committer(SnapshotBundle bundle, ConcurrencyController concurrencyQuota) : AbstractMinimalCommitter(concurrencyQuota)
+    private class Committer(SnapshotBundle bundle) : AbstractMinimalCommitter
     {
         protected override void WriteNode(in TreePath path, TrieNode node) => bundle.SetStateNode(path, node);
 
@@ -75,7 +73,6 @@ internal sealed class StateTrieStoreWarmerAdapter(
 
 internal sealed class StorageTrieStoreAdapter(
     SnapshotBundle bundle,
-    ConcurrencyController concurrencyQuota,
     Hash256AsKey addressHash
 ) : AbstractMinimalTrieStore
 {
@@ -89,12 +86,11 @@ internal sealed class StorageTrieStoreAdapter(
         bundle.TryLoadStorageRlp(addressHash, in path, hash, flags);
 
     public override ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) =>
-        new Committer(bundle, addressHash, concurrencyQuota);
+        new Committer(bundle, addressHash);
 
     private class Committer(
         SnapshotBundle bundle,
-        Hash256AsKey addressHash,
-        ConcurrencyController concurrencyQuota) : AbstractMinimalCommitter(concurrencyQuota)
+        Hash256AsKey addressHash) : AbstractMinimalCommitter
     {
         private readonly AddressStorageNodeDictionary.AddressNodes _nodes = bundle.GetStorageNodeDestination(addressHash);
 

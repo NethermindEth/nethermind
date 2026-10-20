@@ -4,6 +4,8 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.Core;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Specs;
@@ -116,6 +118,52 @@ public class CallDataLoadTests(bool tracing) : VirtualMachineTestsBase
     [TestCaseSource(nameof(CallDataLoadCases))]
     public void CallDataLoad_returns_expected_word(byte[] calldata, UInt256 offset, byte[] expected)
         => RunAndAssert(calldata, offset, expected);
+
+    [Test]
+    public void Calldata_reads_see_each_frame_own_input_across_nested_calls()
+    {
+        // 1. The top frame, called with ThirtyTwoSequential, passes a different word from its memory to the child.
+        // 2. The child stores its input, calls a grandchild, then reads its input again after resuming.
+        // 3. The top frame reads its own input again after the child returns.
+        Address child = TestItem.AddressC;
+        Address grandchild = TestItem.AddressD;
+        byte[] childInput = BuildSequential(32);
+        Array.Reverse(childInput);
+
+        TestState.CreateAccount(grandchild, UInt256.Zero);
+        TestState.InsertCode(grandchild, Prepare.EvmCode.STOP().Done, SpecProvider.GenesisSpec);
+        TestState.CreateAccount(child, UInt256.Zero);
+        TestState.InsertCode(child, StoreCallDataAroundCall(grandchild, 0, Prepare.EvmCode).Done, SpecProvider.GenesisSpec);
+
+        byte[] code = StoreCallDataAroundCall(child, childInput.Length, Prepare.EvmCode.MSTORE(0, childInput)).Done;
+        (Block block, Transaction tx) = PrepareTx(Activation, 1_000_000, code, ThirtyTwoSequential, value: 0);
+        TestAllTracerWithOutput tracer = CreateTracer();
+        _processor.Execute(tx, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(Activation)), tracer);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success), "the transaction must succeed");
+            for (int slot = 0; slot < 3; slot++)
+            {
+                Assert.That(ReadStorage(Recipient, slot), Is.EqualTo(ThirtyTwoSequential), $"top frame slot {slot}");
+                Assert.That(ReadStorage(child, slot), Is.EqualTo(childInput), $"child frame slot {slot}");
+            }
+        }
+    }
+
+    /// <summary>Stores CALLDATALOAD(0) in slot 0, calls <paramref name="callee"/>, then stores CALLDATALOAD(0) and a CALLDATACOPY of it in slots 1 and 2.</summary>
+    private static Prepare StoreCallDataAroundCall(Address callee, int calleeInputLength, Prepare prepare) => prepare
+        .PushData(0).Op(Instruction.CALLDATALOAD).PushData(0).Op(Instruction.SSTORE)
+        .CALL(200_000, callee, 0, 0, (UInt256)calleeInputLength, 0, 0).Op(Instruction.POP)
+        .PushData(0).Op(Instruction.CALLDATALOAD).PushData(1).Op(Instruction.SSTORE)
+        .CALLDATACOPY(64, 0, 32).PushData(64).Op(Instruction.MLOAD).PushData(2).Op(Instruction.SSTORE)
+        .STOP();
+
+    private byte[] ReadStorage(Address address, int slot)
+    {
+        TestState.Get(new StorageCell(address, (UInt256)slot), out UInt256 value);
+        return value.ToBigEndian();
+    }
 
     [Test]
     public void CallDataLoad_empty_stack_underflows()

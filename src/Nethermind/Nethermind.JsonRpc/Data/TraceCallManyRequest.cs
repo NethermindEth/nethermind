@@ -4,6 +4,7 @@
 using System;
 using System.Text.Json;
 using Nethermind.Core.Collections;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.JsonRpc.Data;
 
@@ -47,7 +48,7 @@ public class TraceCallManyRequest(ArrayPoolList<TransactionForRpcWithTraceTypes>
             {
                 foreach (JsonElement element in jsonValue.EnumerateArray())
                 {
-                    TransactionForRpcWithTraceTypes? call = element.Deserialize<TransactionForRpcWithTraceTypes>(options);
+                    TransactionForRpcWithTraceTypes? call = TypeInfoJsonSerializer.Deserialize<TransactionForRpcWithTraceTypes>(element, options);
                     if (call is not null)
                     {
                         calls.Add(call);

@@ -55,6 +55,50 @@ namespace Nethermind.Db.Test.LogIndex
         private IDbFactory _dbFactory = null!;
         private readonly List<ILogIndexStorage> _createdStorages = [];
 
+        [Test]
+        public async Task Compressor_waits_for_pending_work_and_supports_cancelled_waits([Values] bool enqueueAsync)
+        {
+            LogIndexStorage storage = (LogIndexStorage)CreateLogIndexStorage();
+            using Compressor compressor = new(storage, compressionDistance: 1, parallelism: 2);
+            byte[] key = new byte[24];
+            if (enqueueAsync) await compressor.EnqueueAsync(null, key);
+            else Assert.That(compressor.TryEnqueue(null, key, new byte[8]), Is.True);
+
+            try
+            {
+                using CancellationTokenSource cancellation = new();
+                Task cancelledWait = compressor.WaitUntilEmptyAsync(TimeSpan.FromSeconds(30), cancellation.Token);
+                Task completedWait = compressor.WaitUntilEmptyAsync(TimeSpan.FromSeconds(30), CancellationToken.None);
+                Assert.That(completedWait.IsCompleted, Is.False);
+                cancellation.Cancel();
+                Assert.That(async () => await cancelledWait, Throws.InstanceOf<OperationCanceledException>());
+
+                await compressor.WaitUntilEmptyAsync(TimeSpan.Zero, CancellationToken.None);
+                Assert.That(completedWait.IsCompleted, Is.False, "a timeout or cancellation must not signal queue completion");
+                compressor.Start();
+                await completedWait.WaitAsync(TimeSpan.FromSeconds(5));
+
+                await Task.WhenAll(Enumerable.Range(0, 4).Select(async _ =>
+                {
+                    for (int i = 0; i < 20; i++)
+                    {
+                        await compressor.EnqueueAsync(null, key);
+                        await compressor.WaitUntilEmptyAsync(Timeout.InfiniteTimeSpan, CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(5));
+                    }
+                }));
+            }
+            finally
+            {
+                compressor.Start();
+                await compressor.StopAsync();
+            }
+
+            if (enqueueAsync) await compressor.EnqueueAsync(null, key);
+            else Assert.That(compressor.TryEnqueue(null, key, new byte[8]), Is.False);
+            await compressor.WaitUntilEmptyAsync(Timeout.InfiniteTimeSpan, CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.That(storage.HasBackgroundError, Is.False);
+        }
+
         private ILogIndexStorage CreateLogIndexStorage(
             int compactionDistance = 262_144, int compressionParallelism = 16, ulong maxReorgDepth = 64, IDbFactory? dbFactory = null,
             string? compressionAlgo = null, int? failOnBlock = null, int? failOnCallN = null, bool failOnMerge = false
@@ -576,7 +620,7 @@ namespace Nethermind.Db.Test.LogIndex
 
             await using ILogIndexStorage failLogIndexStorage = CreateLogIndexStorage(failOnBlock: midBlock, failOnCallN: failOnCallN);
 
-            Exception exception = Assert.ThrowsAsync<Exception>(() => AddReceiptsAsync(failLogIndexStorage, batches, isBackwardsSync));
+            Exception exception = await Assert.ThrowsAsync<Exception>(() => AddReceiptsAsync(failLogIndexStorage, batches, isBackwardsSync));
             Assert.That(exception, Has.Message.EqualTo(SaveFailingLogIndexStorage.FailMessage));
 
             VerifyReceipts(
@@ -596,7 +640,7 @@ namespace Nethermind.Db.Test.LogIndex
 
             await using (ILogIndexStorage failLogIndexStorage = CreateLogIndexStorage(failOnBlock: midBlock, failOnCallN: failOnCallN))
             {
-                Exception exception = Assert.ThrowsAsync<Exception>(() => AddReceiptsAsync(failLogIndexStorage, batches, isBackwardsSync));
+                Exception exception = await Assert.ThrowsAsync<Exception>(() => AddReceiptsAsync(failLogIndexStorage, batches, isBackwardsSync));
                 Assert.That(exception, Has.Message.EqualTo(SaveFailingLogIndexStorage.FailMessage));
             }
 
@@ -647,8 +691,8 @@ namespace Nethermind.Db.Test.LogIndex
                 Throws.InstanceOf<LogIndexStateException>().And.Message.Contain("merge")
             );
 
-            Assert.DoesNotThrowAsync(() => storage.StopAsync());
-            Assert.DoesNotThrowAsync(() => storage.StopAsync());
+            await Assert.DoesNotThrowAsync(() => storage.StopAsync());
+            await Assert.DoesNotThrowAsync(() => storage.StopAsync());
         }
 
         [Combinatorial]

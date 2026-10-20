@@ -354,40 +354,20 @@ void ConfigureLogger(ParseResult parseResult)
 
     logger = logManager.GetClassLogger<Program>();
 
-    string? logLevel = parseResult.GetValue(BasicOptions.LogLevel);
-
-    // TODO: dynamically switch log levels from CLI
-    if (logLevel is not null)
-        NLogConfigurator.ConfigureLogLevels(logLevel);
-
-    string loggingFormat = parseResult.GetValue(BasicOptions.LoggingFormat)!;
-
-    try
-    {
-        NLogConfigurator.ConfigureConsoleFormat(loggingFormat);
-    }
-    catch (ArgumentException ex)
-    {
-        logger.Error(ex.Message);
-    }
+    NLogConfigurator.ConfigureCommandLineOverrides(
+        parseResult.GetValue(BasicOptions.LogLevel),
+        parseResult.GetValue(BasicOptions.LoggingFormat)!,
+        logger);
 }
 
 void ConfigureSeqLogger(IConfigProvider configProvider)
 {
     ISeqConfig seqConfig = configProvider.GetConfig<ISeqConfig>();
 
-    if (!seqConfig.MinLevel.Equals("Off", StringComparison.Ordinal))
-    {
-        if (logger.IsInfo)
-            logger.Info($"Seq logging is enabled on {seqConfig.ServerUrl} with level of {seqConfig.MinLevel}");
+    if (!seqConfig.MinLevel.Equals("Off", StringComparison.Ordinal) && logger.IsInfo)
+        logger.Info($"Seq logging is enabled on {seqConfig.ServerUrl} with level of {seqConfig.MinLevel}");
 
-        NLogConfigurator.ConfigureSeqBufferTarget(seqConfig.ServerUrl, seqConfig.ApiKey, seqConfig.MinLevel);
-    }
-    else
-    {
-        // Clear it up; otherwise, internally it will keep requesting localhost as `all` target includes this.
-        NLogConfigurator.ClearSeqTarget();
-    }
+    NLogConfigurator.ConfigureSeq(seqConfig, logger);
 }
 
 IConfigProvider CreateConfigProvider(ParseResult parseResult)

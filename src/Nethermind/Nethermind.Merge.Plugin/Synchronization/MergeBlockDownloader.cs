@@ -9,6 +9,7 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
+using Nethermind.History;
 using Nethermind.Logging;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.Blocks;
@@ -32,7 +33,9 @@ namespace Nethermind.Merge.Plugin.Synchronization
         IReceiptsRecovery receiptsRecovery,
         IBlockProcessingQueue blockProcessingQueue,
         ISyncConfig syncConfig,
-        ILogManager logManager)
+        BlockAccessListServingWindow balServingWindow,
+        ILogManager logManager,
+        FinalizedBlockAccessListPolicy? finalizedBalPolicy = null)
         : BlockDownloader(
             blockTree,
             blockValidator,
@@ -46,15 +49,22 @@ namespace Nethermind.Merge.Plugin.Synchronization
             receiptsRecovery,
             blockProcessingQueue,
             syncConfig,
+            balServingWindow,
             logManager)
     {
         private readonly IBlockTree _blockTree = blockTree;
         private readonly ILogger _logger = logManager.GetClassLogger<MergeBlockDownloader>();
 
+        protected override bool ShouldDownloadAccessList(BlockHeader header, bool shouldProcess) =>
+            base.ShouldDownloadAccessList(header, shouldProcess) || finalizedBalPolicy?.CanReconstruct(header) == true;
+
+        protected override bool ShouldDownloadReceipts(BlockHeader header, bool shouldProcess, bool requested) =>
+            base.ShouldDownloadReceipts(header, shouldProcess, requested)
+            || (shouldProcess && header.HasTransactions && finalizedBalPolicy?.CanReconstruct(header) == true);
+
         protected override BlockTreeSuggestOptions GetSuggestOption(bool shouldProcess, Block currentBlock)
         {
-            BlockTreeSuggestOptions suggestOptions =
-                shouldProcess ? BlockTreeSuggestOptions.ShouldProcess : BlockTreeSuggestOptions.None;
+            BlockTreeSuggestOptions suggestOptions = base.GetSuggestOption(shouldProcess, currentBlock);
 
             bool isKnownBeaconBlock = _blockTree.IsKnownBeaconBlock(currentBlock.Number, currentBlock.GetOrCalculateHash());
             if (_logger.IsTrace) _logger.Trace($"Current block {currentBlock}, BeaconPivot: {beaconPivot.PivotNumber}, IsKnownBeaconBlock: {isKnownBeaconBlock}");

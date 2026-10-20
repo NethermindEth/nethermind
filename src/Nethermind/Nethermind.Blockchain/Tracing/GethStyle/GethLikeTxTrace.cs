@@ -12,9 +12,7 @@ namespace Nethermind.Blockchain.Tracing.GethStyle;
 [JsonConverter(typeof(GethLikeTxTraceConverter))]
 public class GethLikeTxTrace : IDisposable
 {
-    private readonly IDisposable? _disposable;
-
-    public GethLikeTxTrace(IDisposable? disposable = null) => _disposable = disposable;
+    public GethLikeTxTrace(IDisposable? disposable = null) => Disposable = disposable;
 
     public GethLikeTxTrace() { }
 
@@ -26,9 +24,13 @@ public class GethLikeTxTrace : IDisposable
 
     public Hash256? TxHash { get; set; }
 
+    internal string? TraceError { get; set; }
+
     public List<GethTxTraceEntry> Entries { get; set; } = [];
 
     public GethLikeCustomTrace? CustomTracerResult { get; set; }
 
-    public void Dispose() => _disposable?.Dispose();
+    internal IDisposable? Disposable { get; set; }
+
+    public void Dispose() => Disposable?.Dispose();
 }

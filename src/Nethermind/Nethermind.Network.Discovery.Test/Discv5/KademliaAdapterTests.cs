@@ -493,7 +493,7 @@ public class KademliaAdapterTests
         return new(
             new Lazy<IKademlia<PublicKey, Node>>(_kademlia),
             _routingTable,
-            new NettyDiscoveryV5Handler(LimboLogs.Instance),
+            new DiscoveryV5Transport(LimboLogs.Instance),
             _packetCodec,
             nodeRecordProvider,
             new DiscoveryConfig(),

@@ -12,6 +12,7 @@ using Nethermind.Core.Authentication;
 using Nethermind.Logging;
 using Nethermind.Core.Specs;
 using Nethermind.Merge.Plugin.Data;
+using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.SszRest.Handlers;
 
 namespace Nethermind.Merge.Plugin.SszRest;
@@ -27,11 +28,6 @@ namespace Nethermind.Merge.Plugin.SszRest;
 /// </remarks>
 public sealed class SszMiddlewareConfigurer(IComponentContext ctx) : IJsonRpcServiceConfigurer
 {
-    private static readonly Type[] SingletonHandlers =
-    [
-        typeof(ClientVersionSszHandler),
-        typeof(CapabilitiesSszHandler),
-    ];
 
     public void Configure(IServiceCollection services)
     {
@@ -44,6 +40,7 @@ public sealed class SszMiddlewareConfigurer(IComponentContext ctx) : IJsonRpcSer
         services.Bridge<ISpecProvider>(ctx);
         services.Bridge<IProcessExitSource>(ctx);
         services.Bridge<Nethermind.Blockchain.Find.IBlockFinder>(ctx);
+        services.Bridge<BlockWitnessGenerator>(ctx);
 
         services.AddSingleton<ISszEndpointHandler, NewPayloadSszHandler<NewPayloadDescriptorV1, NewPayloadV1RequestWire>>();
         services.AddSingleton<ISszEndpointHandler, NewPayloadSszHandler<NewPayloadDescriptorV2, NewPayloadV2RequestWire>>();
@@ -83,11 +80,12 @@ public sealed class SszMiddlewareConfigurer(IComponentContext ctx) : IJsonRpcSer
         services.AddSingleton<ISszEndpointHandler,
             GetPayloadBodiesByRangeSszHandler<PayloadBodiesByRangeDescriptorV2, ExecutionPayloadBodyV2Result>>();
 
-        foreach (Type handler in SingletonHandlers)
-            services.AddSingleton(typeof(ISszEndpointHandler), handler);
+        services.AddSingleton<ISszEndpointHandler, ClientVersionSszHandler>();
+        services.AddSingleton<ISszEndpointHandler, CapabilitiesSszHandler>();
 
         services.AddSingleton<ISszEndpointHandler, NewPayloadWithWitnessSszHandler<NewPayloadWithWitnessDescriptorV5, NewPayloadV5RequestWire>>();
         services.AddSingleton<ISszEndpointHandler, NewPayloadWithWitnessSszHandler<NewPayloadWithWitnessDescriptorV6, NewPayloadV6RequestWire>>();
+        services.AddSingleton<ISszEndpointHandler, GetPayloadWithWitnessSszHandler>();
     }
 }
 

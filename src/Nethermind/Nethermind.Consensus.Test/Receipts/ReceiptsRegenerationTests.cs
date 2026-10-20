@@ -4,6 +4,7 @@
 using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain;
@@ -332,14 +333,14 @@ public class ReceiptsRegenerationTests
         // memory and would pass even with regeneration bypassed - which is exactly the bug this pins.
         ((PersistentReceiptStorage)chain.Container.Resolve<IReceiptStorage>()).ClearCache();
 
-        ResultWrapper<ReceiptForRpc[]> receipts = chain.Container.Resolve<EthModuleFactory>().Create()
+        using ResultWrapper<IEnumerable<ReceiptForRpc>> receipts = chain.Container.Resolve<EthModuleFactory>().Create()
             .eth_getBlockReceipts(new BlockParameter(block.Number));
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(receipts.Result.ResultType, Is.EqualTo(ResultType.Success));
-            Assert.That(receipts.Data, Has.Length.EqualTo(1), "eth_getBlockReceipts must not report a derived block as receipt-less");
-            Assert.That(receipts.Data[0].TransactionHash, Is.EqualTo(transfer.Hash));
+            Assert.That(receipts.Data, Has.Exactly(1).Items, "eth_getBlockReceipts must not report a derived block as receipt-less");
+            Assert.That(receipts.Data.First().TransactionHash, Is.EqualTo(transfer.Hash));
         }
     }
 

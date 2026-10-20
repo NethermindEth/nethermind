@@ -103,13 +103,8 @@ internal static class RpcHelpers
             XdcBlockHeader parentHeader = parentHeaderBase as XdcBlockHeader
                 ?? throw new InvalidOperationException($"Parent header is not XdcBlockHeader");
 
-            if (parentHeader.ExtraConsensusData == null || nextHeader.ExtraConsensusData == null)
-            {
-                throw new InvalidOperationException("ExtraConsensusData is null");
-            }
-
-            ulong parentRound = parentHeader.ExtraConsensusData.BlockRound;
-            ulong currRound = nextHeader.ExtraConsensusData.BlockRound;
+            ulong parentRound = GetRoundNumber(parentHeader, spec);
+            ulong currRound = GetRoundNumber(nextHeader, spec);
 
             // This indicates that an increment in the round number is missing during the block production process.
             if (parentRound + 1 != currRound)
@@ -145,6 +140,15 @@ internal static class RpcHelpers
 
         return missedRoundsMetadata;
     }
+
+    /// <remarks>
+    /// Mirrors <c>XDPoS_v2.GetRoundNumber</c>: blocks up to and including the V2 switch block count as round 0,
+    /// since they carry no V2 extra data - e.g. the genesis of a subnet, which is V2 from its first block.
+    /// </remarks>
+    private static ulong GetRoundNumber(XdcBlockHeader header, IXdcReleaseSpec spec) =>
+        header.Number <= spec.SwitchBlock
+            ? 0
+            : header.ExtraConsensusData?.BlockRound ?? throw new InvalidOperationException("ExtraConsensusData is null");
 
     private static bool TryReadSignerEpochReward(
         Dictionary<string, XdcRewardLog> signers,

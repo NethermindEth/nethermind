@@ -16,9 +16,21 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
     // process-wide cache.
     private static readonly ConditionalWeakTable<IReleaseSpec, OpcodeTable> _opcodeTablesBySpec = [];
 
+    private OpcodeTable? _cachedOpcodeTable;
+
+    /// <remarks>
+    /// Remembers the current spec's table so a run of transactions on one fork skips the weak-table lookup.
+    /// <see cref="ResetSpecCaches"/> drops it when the spec changes, so it never outlives the block context that chose it.
+    /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private OpcodeTable GetOpcodeTable() =>
-        _opcodeTablesBySpec.GetValue(Spec, static _ => new OpcodeTable());
+        _cachedOpcodeTable ??= _opcodeTablesBySpec.GetValue(Spec, static _ => new OpcodeTable());
+
+    partial void ResetSpecCaches()
+    {
+        _cachedOpcodeTable = null;
+        _frameCodeBodies = null;
+    }
 
     private const long OpcodeRefreshInterval = 10_000;
     private const long OpcodeRefreshLimit = 500_000;
@@ -39,5 +51,15 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
         return true;
     }
 
+    /// <summary>The largest nested RETURN/REVERT output the VM keeps a scratch buffer for between transactions.</summary>
+    private const int MaxRetainedReturnDataLength = 32 * 1024;
+
+    /// <inheritdoc/>
+    /// <remarks>Every create output gets its own array.</remarks>
+    private partial bool IsUndeployableCreateOutput(int length, bool isRevert) => false;
+
     public object? ReturnData { get; set; }
+
+    private static partial delegate*<VirtualMachine<TGasPolicy>, VmState<TGasPolicy>, bool> SelectInitializeFrame(IReleaseSpec spec) =>
+        SelectInitializeFrameCore(spec);
 }

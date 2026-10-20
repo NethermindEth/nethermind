@@ -1,23 +1,29 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Linq;
+using System.Collections.Generic;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm;
 using Nethermind.Int256;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.JsonRpc.Data
 {
+    [GenerateJsonWriter]
     public class ReceiptForRpc
     {
         public ReceiptForRpc()
         {
         }
 
-        public ReceiptForRpc(Hash256 txHash, TxReceipt receipt, ulong blockTimestamp, TxGasInfo gasInfo, int logIndexStart = 0)
+        public ReceiptForRpc(Hash256 txHash, TxReceipt receipt, ulong blockTimestamp, TxGasInfo gasInfo, int logIndexStart = 0) =>
+            Populate(txHash, receipt, blockTimestamp, gasInfo, logIndexStart);
+
+        /// <summary>Sets the fields the constructor sets, so a writer can refill one instance per receipt.</summary>
+        protected internal void Populate(Hash256 txHash, TxReceipt receipt, ulong blockTimestamp, TxGasInfo gasInfo, int logIndexStart)
         {
             TransactionHash = txHash;
             TransactionIndex = receipt.Index;
@@ -31,20 +37,26 @@ namespace Nethermind.JsonRpc.Data
             From = receipt.Sender;
             To = receipt.Recipient;
             ContractAddress = receipt.ContractAddress;
-            Logs = (receipt.Logs ?? []).Select((l, idx) => new LogEntryForRpc(receipt, l, blockTimestamp, idx + logIndexStart)).ToArray();
+            if (Logs is ReceiptLogsForRpc logs) logs.Reset(receipt, blockTimestamp, logIndexStart);
+            else Logs = logs = new(receipt, blockTimestamp, logIndexStart);
             LogsBloom = receipt.Bloom;
             Root = receipt.PostTransactionState;
             Status = receipt.PostTransactionState is null ? receipt.StatusCode : null;
             Type = receipt.TxType;
+            Payer = null;
+            FrameReceipts = null;
 
             if (receipt.TxType == TxType.FrameTx)
             {
                 Payer = receipt.Payer;
                 TxFrameReceipt[] frameReceipts = receipt.FrameReceipts ?? [];
                 FrameReceiptForRpc[] frameReceiptsForRpc = new FrameReceiptForRpc[frameReceipts.Length];
+                int frameLogStart = 0;
                 for (int i = 0; i < frameReceipts.Length; i++)
                 {
-                    frameReceiptsForRpc[i] = new FrameReceiptForRpc(frameReceipts[i]);
+                    int frameLogCount = frameReceipts[i].Logs.Length;
+                    frameReceiptsForRpc[i] = new FrameReceiptForRpc(frameReceipts[i], logs.Slice(frameLogStart, frameLogCount));
+                    frameLogStart += frameLogCount;
                 }
 
                 FrameReceipts = frameReceiptsForRpc;
@@ -92,8 +104,12 @@ namespace Nethermind.JsonRpc.Data
         public Address? ContractAddress { get; set; }
 
         /// <summary>The transaction's log entries.</summary>
-        /// <remarks>Nullable because a caller can send <c>"logs": null</c>, which the deserializer honours.</remarks>
-        public LogEntryForRpc[]? Logs { get; set; }
+        /// <remarks>
+        /// Nullable because a caller can send <c>"logs": null</c>, which the deserializer honours.
+        /// Built from a <see cref="TxReceipt"/>, every access returns a new entry, so a change to an entry is not kept.
+        /// </remarks>
+        [JsonConverter(typeof(LogsForRpcConverter))]
+        public IReadOnlyList<LogEntryForRpc>? Logs { get; set; }
         public Bloom? LogsBloom { get; set; }
         public Hash256? Root { get; set; }
         public long? Status { get; set; }
@@ -155,13 +171,13 @@ namespace Nethermind.JsonRpc.Data
         /// <exception cref="JsonException">An entry is null.</exception>
         private LogEntry[] ToLogEntries()
         {
-            if (Logs is not { Length: > 0 } logs)
+            if (Logs is not { Count: > 0 } logs)
             {
                 return [];
             }
 
-            LogEntry[] logEntries = new LogEntry[logs.Length];
-            for (int i = 0; i < logs.Length; i++)
+            LogEntry[] logEntries = new LogEntry[logs.Count];
+            for (int i = 0; i < logEntries.Length; i++)
             {
                 logEntries[i] = logs[i] is { } log
                     ? log.ToLogEntry()

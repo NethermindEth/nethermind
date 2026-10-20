@@ -43,6 +43,40 @@ namespace Nethermind.Blockchain.Test;
 [FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
 public class BlockTreeTests
 {
+    [Test]
+    public void IsKnownBlock_requires_the_correct_canonical_head_number([Range(-1, 1)] int offset)
+    {
+        BlockTree tree = Build.A.BlockTree().OfChainLength(3).TestObject;
+        Block head = tree.Head!;
+        ulong requestedNumber = (ulong)((long)head.Number + offset);
+        Assert.That(tree.IsKnownBlock(requestedNumber, head.Hash!), Is.EqualTo(offset == 0));
+    }
+
+    [Test]
+    public void IsKnownBlock_does_not_accept_an_unknown_hash_above_the_progress_bound()
+    {
+        BlockTree tree = Build.A.BlockTree().OfChainLength(3).TestObject;
+        Assert.That(tree.IsKnownBlock(tree.BestKnownNumber + 1, TestItem.KeccakA), Is.False);
+    }
+
+    [Test]
+    public void IsKnownBlock_does_not_accept_header_only_beacon_metadata([Values] bool aboveProgressBound)
+    {
+        BlockTree tree = Build.A.BlockTree().OfChainLength(3).TestObject;
+        Block head = tree.Head!;
+        ulong number = head.Number + (aboveProgressBound ? 1UL : 0UL);
+        BlockHeader beacon = Build.A.BlockHeader.WithNumber(number)
+            .WithParentHash(aboveProgressBound ? head.Hash! : head.ParentHash!)
+            .WithExtraData([1])
+            .TestObject;
+        Assert.That(tree.Insert(beacon, BlockTreeInsertHeaderOptions.BeaconHeaderInsert | BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded), Is.EqualTo(AddBlockResult.Added));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tree.IsKnownBeaconBlock(number, beacon.Hash!), Is.True);
+            Assert.That(tree.IsKnownBlock(number, beacon.Hash!), Is.False);
+        }
+    }
+
     [Test, MaxTime(Timeout.MaxTestTime)]
     public async Task Maintenance_waits_for_transient_ordinary_mutation([Values] bool releaseBeforeTimeout)
     {
@@ -184,7 +218,7 @@ public class BlockTreeTests
 
         using MemoryManager<byte>? persistedBal = blockAccessListStore.GetRlp(block.Number, block.Hash!);
         Assert.That(persistedBal, Is.Not.Null);
-        Assert.That(persistedBal!.Memory.ToArray(), Is.EqualTo(encodedBal));
+        Assert.That(persistedBal!.Memory, Is.SequenceEqualTo(encodedBal));
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -428,6 +462,65 @@ public class BlockTreeTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
+    public void BlockTreeOverlay_ResetMainChain_far_below_best_known_rewrites_levels_above_head_only_when_clearing_stale_markers([Values] bool clearStaleMarkers)
+    {
+        const int levelsAboveHead = 1_024;
+        using TestMemDb baseBlocksDb = new();
+        using TestMemDb overlayBlocksDb = new();
+        using TestMemDb headersDb = new();
+        using TestMemDb blocksInfosDb = new();
+
+        BlockTreeBuilder BuildTree(TestMemDb blocksDb) => Build.A.BlockTree()
+            .WithBlocksDb(blocksDb)
+            .WithHeadersDb(headersDb)
+            .WithBlockInfoDb(blocksInfosDb)
+            .WithoutSettingHead;
+
+        BlockTree baseTree = BuildTree(baseBlocksDb).TestObject;
+        Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
+        AddToMain(baseTree, block0);
+        Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
+        AddToMain(baseTree, block1);
+
+        // Contiguous canonical levels above the head, as beacon sync leaves them while the head is far behind.
+        ChainLevelInfoRepository levels = new(blocksInfosDb);
+        for (ulong number = block1.Number + 1; number <= block1.Number + levelsAboveHead; number++)
+        {
+            levels.PersistLevel(number, new ChainLevelInfo(true, new BlockInfo(TestItem.KeccakA, UInt256.One)));
+        }
+
+        BlockTreeBuilder overlayBuilder = BuildTree(overlayBlocksDb);
+        BlockTree overlayTree = new(overlayBuilder.BlockStore, overlayBuilder.HeaderStore, blocksInfosDb, overlayBuilder.MetadataDb,
+            overlayBuilder.BadBlockStore, overlayBuilder.BlockAccessListStore, overlayBuilder.ChainLevelInfoRepository, MainnetSpecProvider.Instance,
+            overlayBuilder.SyncConfig, overlayBuilder.StateBoundary, LimboLogs.Instance, new BlockTreeMutationLock())
+        {
+            ClearStaleMarkersOnForcedHeadUpdate = clearStaleMarkers
+        };
+        Assert.That(overlayTree.BestKnownNumber, Is.EqualTo(block1.Number + levelsAboveHead), "precondition: the head is far below best known");
+        BlockTreeOverlay blockTreeOverlay = new(new ReadOnlyBlockTree(baseTree), overlayTree);
+
+        long writesBefore = blocksInfosDb.WritesCount;
+        blockTreeOverlay.ResetMainChain();
+        long writes = blocksInfosDb.WritesCount - writesBefore;
+
+        ChainLevelInfo? levelAboveHead = new ChainLevelInfoRepository(blocksInfosDb).LoadLevel(block1.Number + 1);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(overlayTree.Head!.Hash, Is.EqualTo(block1.Hash));
+            if (clearStaleMarkers)
+            {
+                Assert.That(writes, Is.GreaterThanOrEqualTo(levelsAboveHead), "a regular tree clears every stale marker above the new head");
+                Assert.That(levelAboveHead!.HasBlockOnMainChain, Is.False);
+            }
+            else
+            {
+                Assert.That(writes, Is.LessThan(8), "the overlay must not rewrite the levels above the base head");
+                Assert.That(levelAboveHead!.HasBlockOnMainChain, Is.True);
+            }
+        }
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void TryUpdateMainChain_returns_false_without_mutating_when_a_predecessor_is_missing()
     {
         BlockTree blockTree = BuildBlockTree();
@@ -464,6 +557,35 @@ public class BlockTreeTests
         AddBlockResult result = blockTree.SuggestBlock(block1);
 
         AssertSuggestNotifications(result, hasNotified, hasNotifiedNewSuggested);
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public void New_best_suggested_block_propagates_non_blocking_processing_option(bool nonBlockingProcessing)
+    {
+        BlockTree blockTree = BuildBlockTree();
+        Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
+        Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
+        blockTree.SuggestBlock(block0);
+
+        BlockEventArgs? notification = null;
+        blockTree.NewBestSuggestedBlock += (_, args) => notification = args;
+
+        BlockTreeSuggestOptions options = BlockTreeSuggestOptions.ShouldProcess;
+        if (nonBlockingProcessing)
+        {
+            options |= BlockTreeSuggestOptions.NonBlockingProcessing;
+        }
+
+        AddBlockResult result = blockTree.SuggestBlock(block1, options);
+
+        Assert.That(notification, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(AddBlockResult.Added));
+            Assert.That(notification!.Block.Hash, Is.EqualTo(block1.Hash));
+            Assert.That(notification.NonBlockingProcessing, Is.EqualTo(nonBlockingProcessing));
+        }
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -548,7 +670,7 @@ public class BlockTreeTests
             Assert.That(result, Is.EqualTo(AddBlockResult.AlreadyKnown));
             Assert.That(blockTree.FindBlock(block1.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded, blockNumber: block1.Number),
                 Is.Not.Null, "a known header must not make the block's body be discarded");
-            Assert.That(persistedBal?.Memory.ToArray(), Is.EqualTo(encodedBal));
+            Assert.That(persistedBal?.Memory, Is.SequenceEqualTo(encodedBal));
         }
     }
 
@@ -576,7 +698,7 @@ public class BlockTreeTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result, Is.EqualTo(AddBlockResult.AlreadyKnown));
-            Assert.That(persistedBal?.Memory.ToArray(), Is.EqualTo(encodedBal),
+            Assert.That(persistedBal?.Memory, Is.SequenceEqualTo(encodedBal),
                 "a stored body must not make the block's access list be discarded");
         }
     }
@@ -735,8 +857,13 @@ public class BlockTreeTests
         BlockTree blockTree = BuildBlockTree();
         Block block = Build.A.Block.TestObject;
         blockTree.SuggestBlock(block);
+        Assert.That(blockTree.FindHeader(block.Hash!, BlockTreeLookupOptions.None), Is.Not.Null);
         Block? found = blockTree.FindBlock(block.Hash, BlockTreeLookupOptions.RequireCanonical);
-        Assert.That(found, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found, Is.Null);
+            Assert.That(blockTree.FindHeader(block.Hash!, BlockTreeLookupOptions.RequireCanonical), Is.Null);
+        }
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -780,6 +907,45 @@ public class BlockTreeTests
         Assert.That(blockTree.BestKnownBeaconNumber, Is.GreaterThan(blockTree.BestKnownNumber),
             "test setup must take the path where the level-creation guard skips creating the missing level");
         Assert.That(blockTree.FindBlock(blockWithoutLevel.Hash!, BlockTreeLookupOptions.RequireCanonical), Is.Null);
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void FindCanonicalHeaderIfBloomMatches_finds_what_find_header_finds([Values] bool bloomMatches)
+    {
+        BlockTreeBuilder builder = Build.A.BlockTree().OfChainLength(BlockStore.CacheSize + 8);
+        BlockTree blockTree = builder.TestObject;
+        Block branch = Build.A.Block.WithParent(blockTree.Head!).TestObject;
+        blockTree.SuggestBlock(branch, BlockTreeSuggestOptions.None);
+
+        for (ulong number = 0; number <= branch.Number + 1; number++)
+        {
+            BlockHeader? expected = blockTree.FindHeader(number, BlockTreeLookupOptions.RequireCanonical);
+            BlockHeader? actual = blockTree.FindCanonicalHeaderIfBloomMatches(number, _ => bloomMatches, out bool found);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(found, Is.EqualTo(expected is not null), $"found {number}");
+                Assert.That(actual?.Hash, Is.EqualTo(bloomMatches ? expected?.Hash : null), $"hash {number}");
+                Assert.That(actual?.TotalDifficulty, Is.EqualTo(bloomMatches ? expected?.TotalDifficulty : null), $"total difficulty {number}");
+            }
+        }
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void FindCanonicalHeaderIfBloomMatches_does_not_cache_a_historical_level()
+    {
+        BlockTreeBuilder builder = Build.A.BlockTree().OfChainLength(BlockStore.CacheSize + 8);
+        BlockTree blockTree = builder.TestObject;
+        ((IClearableCache)builder.ChainLevelInfoRepository).ClearCache();
+        MemDb blockInfoDb = (MemDb)builder.BlockInfoDb;
+
+        long readsBefore = blockInfoDb.ReadsCount;
+        for (int i = 0; i < 2; i++)
+        {
+            Assert.That(blockTree.FindCanonicalHeaderIfBloomMatches(1, static _ => true, out _), Is.Not.Null);
+        }
+
+        Assert.That(blockInfoDb.ReadsCount - readsBefore, Is.EqualTo(2));
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -1211,6 +1377,372 @@ public class BlockTreeTests
         }
     }
 
+    private static IEnumerable<TestCaseData> ForkChoicePairs()
+    {
+        yield return new TestCaseData(TestItem.KeccakA, TestItem.KeccakB).SetArgDisplayNames("finalized", "safe");
+        yield return new TestCaseData(null, null).SetArgDisplayNames("null", "null");
+        yield return new TestCaseData(Keccak.Zero, Keccak.Zero).SetArgDisplayNames("zero", "zero");
+        yield return new TestCaseData(null, TestItem.KeccakB).SetArgDisplayNames("null", "safe");
+        yield return new TestCaseData(TestItem.KeccakA, null).SetArgDisplayNames("finalized", "null");
+    }
+
+    [TestCaseSource(nameof(ForkChoicePairs))]
+    public void ForkChoiceUpdated_persists_pair_once_and_notifies_on_every_call(Hash256? finalizedHash, Hash256? safeHash)
+    {
+        (BlockTreeBuilder builder, ForkChoiceMetadataSpyDb metadataDb) = BuildWithForkChoiceSpy();
+        BlockTree blockTree = builder.TestObject;
+        int notifications = 0;
+        blockTree.OnForkChoiceUpdated += (_, _) => notifications++;
+
+        for (int call = 1; call <= 2; call++)
+        {
+            blockTree.ForkChoiceUpdated(finalizedHash, safeHash);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(metadataDb.DirectForkChoiceWrites, Is.Zero);
+                Assert.That(metadataDb.ForkChoiceCommits, Is.EqualTo(new[] { ForkChoiceMetadataSpyDb.BothKeys }));
+                Assert.That(notifications, Is.EqualTo(call));
+                AssertPersistedForkChoice(builder, finalizedHash, safeHash);
+            }
+        }
+    }
+
+    // Subscribers may read the metadata db, so the pair must be committed before either event fires.
+    [Test]
+    public void ForkChoiceUpdated_commits_before_notifying([Values] bool observeInBlocksFinalized)
+    {
+        (BlockTreeBuilder builder, ForkChoiceMetadataSpyDb metadataDb) = BuildWithForkChoiceSpy(chainLength: 3);
+        BlockTree blockTree = builder.TestObject;
+        Hash256 finalizedHash = blockTree.FindHeader(1, BlockTreeLookupOptions.None)!.Hash!;
+
+        int? commitsSeen = null;
+        if (observeInBlocksFinalized)
+            blockTree.BlocksFinalized += (_, _) => commitsSeen = metadataDb.ForkChoiceCommits.Count;
+        else
+            blockTree.OnForkChoiceUpdated += (_, _) => commitsSeen = metadataDb.ForkChoiceCommits.Count;
+
+        blockTree.ForkChoiceUpdated(finalizedHash, finalizedHash);
+
+        Assert.That(commitsSeen, Is.EqualTo(1));
+    }
+
+    [Test]
+    public void ForkChoiceUpdated_propagates_commit_failure(
+        [Values(ForkChoiceCommitFault.ThrowBeforeApply, ForkChoiceCommitFault.ThrowAfterApply)] ForkChoiceCommitFault fault)
+    {
+        (BlockTreeBuilder builder, ForkChoiceMetadataSpyDb metadataDb) = BuildWithForkChoiceSpy(chainLength: 3);
+        BlockTree blockTree = builder.TestObject;
+        Hash256 finalizedHash = blockTree.FindHeader(1, BlockTreeLookupOptions.None)!.Hash!;
+        int finalizedEvents = 0;
+        int forkChoiceEvents = 0;
+        blockTree.BlocksFinalized += (_, _) => finalizedEvents++;
+        blockTree.OnForkChoiceUpdated += (_, _) => forkChoiceEvents++;
+
+        metadataDb.NextCommitFault = fault;
+        Assert.That(() => blockTree.ForkChoiceUpdated(finalizedHash, finalizedHash), Throws.TypeOf<System.IO.IOException>());
+        int commitsAfterFailure = metadataDb.ForkChoiceCommits.Count;
+        (int Finalized, int ForkChoice) eventsAfterFailure = (finalizedEvents, forkChoiceEvents);
+        Hash256? publishedAfterFailure = blockTree.FinalizedHash;
+
+        blockTree.ForkChoiceUpdated(finalizedHash, finalizedHash);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(eventsAfterFailure, Is.EqualTo((0, 0)));
+            Assert.That(publishedAfterFailure, Is.Not.EqualTo(finalizedHash));
+            Assert.That(metadataDb.ForkChoiceCommits.Count, Is.EqualTo(commitsAfterFailure + 1));
+            Assert.That(finalizedEvents, Is.EqualTo(1), "the retry must still report the newly finalized block");
+            Assert.That(blockTree.FinalizedHash, Is.EqualTo(finalizedHash));
+        }
+    }
+
+    // A failed commit may or may not have reached disk, so the next call must write whichever pair it gets.
+    [Test]
+    public void ForkChoiceUpdated_rewrites_after_failed_commit(
+        [Values(ForkChoiceCommitFault.ThrowBeforeApply, ForkChoiceCommitFault.ThrowAfterApply)] ForkChoiceCommitFault fault,
+        [Values] bool retryFailedPair)
+    {
+        (BlockTreeBuilder builder, ForkChoiceMetadataSpyDb metadataDb) = BuildWithForkChoiceSpy();
+        BlockTree blockTree = builder.TestObject;
+        Hash256 retried = retryFailedPair ? TestItem.KeccakB : TestItem.KeccakA;
+
+        blockTree.ForkChoiceUpdated(TestItem.KeccakA, TestItem.KeccakA);
+        metadataDb.NextCommitFault = fault;
+        Assert.That(() => blockTree.ForkChoiceUpdated(TestItem.KeccakB, TestItem.KeccakB), Throws.TypeOf<System.IO.IOException>());
+        int commitsBeforeRetry = metadataDb.ForkChoiceCommits.Count;
+
+        blockTree.ForkChoiceUpdated(retried, retried);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(metadataDb.ForkChoiceCommits, Has.Count.EqualTo(commitsBeforeRetry + 1));
+            AssertPersistedForkChoice(builder, retried, retried);
+        }
+    }
+
+    [Test]
+    public void ForkChoiceUpdated_keeps_pair_when_subscriber_throws()
+    {
+        (BlockTreeBuilder builder, ForkChoiceMetadataSpyDb metadataDb) = BuildWithForkChoiceSpy();
+        BlockTree blockTree = builder.TestObject;
+        bool throwFromSubscriber = true;
+        blockTree.OnForkChoiceUpdated += (_, _) =>
+        {
+            if (throwFromSubscriber) throw new InvalidOperationException("subscriber failure");
+        };
+
+        Assert.That(() => blockTree.ForkChoiceUpdated(TestItem.KeccakA, TestItem.KeccakB), Throws.InvalidOperationException);
+        throwFromSubscriber = false;
+        blockTree.ForkChoiceUpdated(TestItem.KeccakA, TestItem.KeccakB);
+
+        Assert.That(metadataDb.ForkChoiceCommits, Has.Count.EqualTo(1));
+    }
+
+    // Persisted state can advance while the forkchoice pair stays the same; the pivot must still follow it.
+    [Test]
+    public void ForkChoiceUpdated_advances_pivot_for_repeated_pair()
+    {
+        (BlockTreeBuilder builder, ForkChoiceMetadataSpyDb metadataDb) = BuildWithForkChoiceSpy(chainLength: 10);
+        BlockTree blockTree = builder.TestObject;
+        Hash256 finalizedHash = blockTree.FindHeader(8, BlockTreeLookupOptions.None)!.Hash!;
+
+        builder.StateBoundary.BestPersistedState = 5ul;
+        blockTree.ForkChoiceUpdated(finalizedHash, finalizedHash);
+        ulong pivotBefore = blockTree.SyncPivot.BlockNumber;
+
+        builder.StateBoundary.BestPersistedState = 7ul;
+        blockTree.ForkChoiceUpdated(finalizedHash, finalizedHash);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pivotBefore, Is.EqualTo(5ul));
+            Assert.That(blockTree.SyncPivot.BlockNumber, Is.EqualTo(7ul));
+            Assert.That(metadataDb.ForkChoiceCommits, Has.Count.EqualTo(1));
+        }
+    }
+
+    // Callers on different threads (AuRa finalization, era import, XDC) must not interleave compare and commit.
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void ForkChoiceUpdated_serializes_pair_persistence()
+    {
+        (BlockTreeBuilder builder, ForkChoiceMetadataSpyDb metadataDb) = BuildWithForkChoiceSpy();
+        BlockTree blockTree = builder.TestObject;
+        bool secondFinishedWhileFirstHeld = true;
+        WithBlockedForkChoiceCommit(blockTree, metadataDb, TestItem.KeccakA, TestItem.KeccakA, updates =>
+        {
+            Task second = StartForkChoiceUpdate(blockTree, TestItem.KeccakB, TestItem.KeccakB);
+            updates.Add(second);
+            secondFinishedWhileFirstHeld = second.Wait(TimeSpan.FromMilliseconds(300));
+        });
+        blockTree.ForkChoiceUpdated(TestItem.KeccakB, TestItem.KeccakB);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(secondFinishedWhileFirstHeld, Is.False);
+            Assert.That(metadataDb.OverlappingCommits, Is.Zero);
+            Assert.That(metadataDb.ForkChoiceCommits, Has.Count.EqualTo(2));
+            AssertPersistedForkChoice(builder, TestItem.KeccakB, TestItem.KeccakB);
+        }
+    }
+
+    // Readers must never see a pair that is not yet on disk, nor one that a concurrent call has not decided on.
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void ForkChoiceUpdated_publishes_hashes_only_after_commit()
+    {
+        (BlockTreeBuilder builder, ForkChoiceMetadataSpyDb metadataDb) = BuildWithForkChoiceSpy();
+        BlockTree blockTree = builder.TestObject;
+        Hash256? initialFinalized = blockTree.FinalizedHash;
+        Hash256? finalizedDuringCommit = null;
+        Hash256? safeDuringCommit = null;
+        WithBlockedForkChoiceCommit(blockTree, metadataDb, TestItem.KeccakA, TestItem.KeccakB, _ =>
+        {
+            finalizedDuringCommit = blockTree.FinalizedHash;
+            safeDuringCommit = blockTree.SafeHash;
+        });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(finalizedDuringCommit, Is.EqualTo(initialFinalized));
+            Assert.That(safeDuringCommit, Is.Not.EqualTo(TestItem.KeccakB));
+            Assert.That(blockTree.FinalizedHash, Is.EqualTo(TestItem.KeccakA));
+            Assert.That(blockTree.SafeHash, Is.EqualTo(TestItem.KeccakB));
+        }
+    }
+
+    // A later call can publish before an earlier call raises its events; each event must still describe its own call.
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void ForkChoiceUpdated_event_reports_its_own_finalized_block()
+    {
+        (BlockTreeBuilder builder, _) = BuildWithForkChoiceSpy(chainLength: 3);
+        BlockTree blockTree = builder.TestObject;
+        Hash256 first = blockTree.FindHeader(1, BlockTreeLookupOptions.None)!.Hash!;
+        Hash256 second = blockTree.FindHeader(2, BlockTreeLookupOptions.None)!.Hash!;
+
+        int finalizedEvents = 0;
+        blockTree.BlocksFinalized += (_, _) =>
+        {
+            // Runs on the first call's thread after it released the lock: let the second call finish meanwhile.
+            if (Interlocked.Increment(ref finalizedEvents) == 1)
+            {
+                Task secondCall = StartForkChoiceUpdate(blockTree, second, second);
+                Assert.That(secondCall.Wait(TimeSpan.FromSeconds(10)), Is.True, "second update did not finish");
+            }
+        };
+        List<ulong> reportedFinalized = [];
+        blockTree.OnForkChoiceUpdated += (_, args) =>
+        {
+            lock (reportedFinalized) reportedFinalized.Add(args.Finalized);
+        };
+
+        blockTree.ForkChoiceUpdated(first, first);
+
+        Assert.That(reportedFinalized, Is.EqualTo(new ulong[] { 2, 1 }));
+    }
+
+    private static void AssertPersistedForkChoice(BlockTreeBuilder builder, Hash256? finalizedHash, Hash256? safeHash)
+    {
+        BlockTree reloaded = Build.A.BlockTree().WithDatabaseFrom(builder).TestObject;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reloaded.FinalizedHash, Is.EqualTo(finalizedHash));
+            Assert.That(reloaded.SafeHash, Is.EqualTo(safeHash));
+        }
+    }
+
+    private static Task StartForkChoiceUpdate(BlockTree blockTree, Hash256 finalizedHash, Hash256 safeHash) =>
+        Task.Factory.StartNew(() => blockTree.ForkChoiceUpdated(finalizedHash, safeHash), TaskCreationOptions.LongRunning);
+
+    private static void WithBlockedForkChoiceCommit(BlockTree blockTree, ForkChoiceMetadataSpyDb metadataDb,
+        Hash256 finalizedHash, Hash256 safeHash, Action<List<Task>> whileBlocked)
+    {
+        using ManualResetEventSlim release = new(false);
+        using ManualResetEventSlim entered = new(false);
+        metadataDb.BeforeNextCommit = () =>
+        {
+            entered.Set();
+            Assert.That(release.Wait(TimeSpan.FromSeconds(10)), Is.True, "commit was not released");
+        };
+        List<Task> updates = [StartForkChoiceUpdate(blockTree, finalizedHash, safeHash)];
+        try
+        {
+            Assert.That(entered.Wait(TimeSpan.FromSeconds(10)), Is.True, "commit did not start");
+            whileBlocked(updates);
+        }
+        finally
+        {
+            release.Set();
+            Assert.That(Task.WaitAll(updates.ToArray(), TimeSpan.FromSeconds(10)), Is.True, "updates did not finish");
+        }
+    }
+
+    public enum ForkChoiceCommitFault { None, ThrowBeforeApply, ThrowAfterApply }
+
+    private static (BlockTreeBuilder Builder, ForkChoiceMetadataSpyDb MetadataDb) BuildWithForkChoiceSpy(int chainLength = 1)
+    {
+        ForkChoiceMetadataSpyDb metadataDb = new();
+        BlockTreeBuilder builder = Build.A.BlockTree().WithMetadataDb(metadataDb).OfChainLength(chainLength);
+        _ = builder.TestObject;
+        metadataDb.ResetCommits();
+        return (builder, metadataDb);
+    }
+
+    /// <summary>
+    /// Metadata db that tells direct writes of the finalized/safe keys apart from batched ones, which
+    /// <see cref="TestMemDb"/> cannot, and can fail the next batch commit.
+    /// </summary>
+    private sealed class ForkChoiceMetadataSpyDb : TestMemDb
+    {
+        public static readonly byte[] BothKeys = [MetadataDbKeys.FinalizedBlockHash, MetadataDbKeys.SafeBlockHash];
+
+        private readonly Lock _lock = new();
+        private readonly List<byte[]> _forkChoiceCommits = [];
+        private int _directForkChoiceWrites;
+        private int _commitsInProgress;
+        private int _overlappingCommits;
+        public Action? BeforeNextCommit;
+
+        public ForkChoiceCommitFault NextCommitFault { get; set; }
+
+        public int OverlappingCommits => Volatile.Read(ref _overlappingCommits);
+
+        public int DirectForkChoiceWrites => Volatile.Read(ref _directForkChoiceWrites);
+
+        /// <summary>The finalized/safe keys contained in each commit that contained any of them.</summary>
+        public IReadOnlyList<byte[]> ForkChoiceCommits
+        {
+            get
+            {
+                lock (_lock) return [.. _forkChoiceCommits];
+            }
+        }
+
+        public void ResetCommits()
+        {
+            lock (_lock) _forkChoiceCommits.Clear();
+            Volatile.Write(ref _directForkChoiceWrites, 0);
+        }
+
+        public override void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
+        {
+            if (IsForkChoiceKey(key)) Interlocked.Increment(ref _directForkChoiceWrites);
+            base.Set(key, value, flags);
+        }
+
+        public override IWriteBatch StartWriteBatch() => new SpyBatch(this);
+
+        private static bool IsForkChoiceKey(ReadOnlySpan<byte> key) =>
+            key.Length == 1 && key[0] is MetadataDbKeys.FinalizedBlockHash or MetadataDbKeys.SafeBlockHash;
+
+        private void Commit(List<(byte[] Key, byte[]? Value, WriteFlags Flags)> writes)
+        {
+            ForkChoiceCommitFault fault;
+            lock (_lock)
+            {
+                fault = NextCommitFault;
+                NextCommitFault = ForkChoiceCommitFault.None;
+            }
+
+            if (fault == ForkChoiceCommitFault.ThrowBeforeApply) throw new System.IO.IOException("Injected failure before commit");
+
+            if (Interlocked.Increment(ref _commitsInProgress) > 1) Interlocked.Increment(ref _overlappingCommits);
+            try
+            {
+                Interlocked.Exchange(ref BeforeNextCommit, null)?.Invoke();
+
+                byte[] keys = [.. writes.Where(w => IsForkChoiceKey(w.Key)).Select(static w => w.Key[0]).Order()];
+                foreach ((byte[] key, byte[]? value, WriteFlags flags) in writes)
+                {
+                    base.Set(key, value, flags);
+                }
+
+                if (keys.Length > 0)
+                {
+                    lock (_lock) _forkChoiceCommits.Add(keys);
+                }
+            }
+            finally
+            {
+                Interlocked.Decrement(ref _commitsInProgress);
+            }
+
+            if (fault == ForkChoiceCommitFault.ThrowAfterApply) throw new System.IO.IOException("Injected failure after commit");
+        }
+
+        private sealed class SpyBatch(ForkChoiceMetadataSpyDb db) : IWriteBatch
+        {
+            private readonly List<(byte[] Key, byte[]? Value, WriteFlags Flags)> _writes = [];
+
+            public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None) => _writes.Add((key.ToArray(), value, flags));
+
+            public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None) => throw new NotSupportedException();
+
+            public void Clear() => _writes.Clear();
+
+            public void Dispose() => db.Commit(_writes);
+        }
+    }
+
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Stores_multiple_blocks_per_level()
     {
@@ -1419,28 +1951,36 @@ public class BlockTreeTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void When_deleting_invalid_block_deletes_its_descendants()
+    public async Task When_deleting_invalid_block_deletes_its_descendants([Values] bool deferBalWrites)
     {
         BlockStore blockStore = new(new MemDb());
         MemDb blockInfosDb = new();
-        BlockTree tree = Build.A.BlockTree()
+        await using DeferredBlockDataWriter deferredWriter = deferBalWrites
+            ? DeferredWriteTestHelpers.ManualWriter()
+            : DeferredWriteTestHelpers.DisabledWriter();
+        BlockTreeBuilder builder = Build.A.BlockTree()
             .WithoutSettingHead
             .WithBlockInfoDb(blockInfosDb)
-            .WithBlockStore(blockStore)
-            .TestObject;
+            .WithBlockStore(blockStore);
+        IBlockAccessListStore balStore = builder.BlockAccessListStore = new BlockAccessListStore(builder.BlockAccessListsDb, deferredWriter: deferredWriter);
+        BlockTree tree = builder.TestObject;
         Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
         Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
         Block block2 = Build.A.Block.WithNumber(2).WithDifficulty(3).WithParent(block1).TestObject;
         Block block3 = Build.A.Block.WithNumber(3).WithDifficulty(4).WithParent(block2).TestObject;
 
         tree.SuggestBlock(block0);
-        tree.SuggestBlock(block1);
-        tree.SuggestBlock(block2);
-        tree.SuggestBlock(block3);
+        foreach (Block block in new[] { block1, block2, block3 })
+        {
+            block.EncodedBlockAccessList = Rlp.Encode(new ReadOnlyBlockAccessList()).Bytes;
+            tree.SuggestBlock(block);
+        }
 
         tree.TryUpdateMainChain(block0.Header, true, preloadedBlocks: new[] { block0 });
         tree.TryUpdateMainChain(block1.Header, true, preloadedBlocks: new[] { block1 });
         tree.DeleteInvalidBlock(block2);
+        // Deferred writes still queued at deletion run afterwards and must not bring the access lists back.
+        deferredWriter.Pump();
 
         using (Assert.EnterMultipleScope())
         {
@@ -1451,6 +1991,10 @@ public class BlockTreeTests
             Assert.That(blockStore.Get(block1.Number, block1.Hash!), Is.Not.Null, "block 1");
             Assert.That(blockStore.Get(block2.Number, block2.Hash!), Is.Null, "block 2");
             Assert.That(blockStore.Get(block3.Number, block3.Hash!), Is.Null, "block 3");
+
+            Assert.That(balStore.Exists(block1.Number, block1.Hash!), Is.True, "bal 1");
+            Assert.That(balStore.Exists(block2.Number, block2.Hash!), Is.False, "bal 2");
+            Assert.That(balStore.Exists(block3.Number, block3.Hash!), Is.False, "bal 3");
 
             Assert.That(blockInfosDb.Get(1), Is.Not.Null, "level 1");
             Assert.That(blockInfosDb.Get(2), Is.Null, "level 2");
@@ -2335,6 +2879,39 @@ public class BlockTreeTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Delete_during_lookup_does_not_leave_deleted_block_cached([Values] bool headerLookup, [Values] bool invalidBlockDeletion)
+    {
+        BlockTreeBuilder builder = Build.A.BlockTree().OfChainLength(5);
+        BlockTree blockTree = builder.TestObject;
+        BlockHeader deleted = blockTree.FindHeader(4, BlockTreeLookupOptions.None)!;
+        Block invalidBlock = blockTree.FindBlock(3, BlockTreeLookupOptions.None)!;
+        ((IClearableCache)builder.BlockStore).ClearCache();
+        ((IClearableCache)builder.HeaderStore).ClearCache();
+        TestMemDb db = (TestMemDb)(headerLookup ? builder.HeadersDb : builder.BlocksDb);
+        // The lookup reads its value from the database, then the deletion runs before the lookup caches it.
+        db.ReadFunc = key =>
+        {
+            db.ReadFunc = null;
+            byte[]? value = db.Get(key);
+            if (invalidBlockDeletion) blockTree.DeleteInvalidBlock(invalidBlock);
+            else Assert.That(blockTree.DeleteChainSlice(3), Is.EqualTo(2));
+            return value!;
+        };
+
+        object? found = headerLookup
+            ? blockTree.FindHeader(deleted.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded, deleted.Number)
+            : blockTree.FindBlock(deleted.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded, deleted.Number);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found, Is.Not.Null);
+            Assert.That(db.ReadFunc, Is.Null, "the deletion must overlap the lookup");
+            Assert.That(blockTree.FindBlock(deleted.Hash!, BlockTreeLookupOptions.None), Is.Null);
+            Assert.That(blockTree.FindHeader(deleted.Hash!, BlockTreeLookupOptions.None), Is.Null);
+        }
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Can_delete_two_blocks()
     {
         BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
@@ -2467,10 +3044,10 @@ public class BlockTreeTests
     public async Task Visitor_can_block_adding_blocks()
     {
         BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
-        ManualResetEvent manualResetEvent = new(false);
+        TaskCompletionSource manualResetEvent = new(TaskCreationOptions.RunContinuationsAsynchronously);
         Task acceptTask = blockTree.Accept(new TestBlockTreeVisitor(manualResetEvent), CancellationToken.None);
         Assert.That(blockTree.CanAcceptNewBlocks, Is.False);
-        manualResetEvent.Set();
+        manualResetEvent.SetResult();
         await acceptTask;
     }
 
@@ -2708,9 +3285,9 @@ public class BlockTreeTests
         }
     }
 
-    private class TestBlockTreeVisitor(ManualResetEvent manualResetEvent) : IBlockTreeVisitor
+    private class TestBlockTreeVisitor(TaskCompletionSource manualResetEvent) : IBlockTreeVisitor
     {
-        private readonly ManualResetEvent _manualResetEvent = manualResetEvent;
+        private readonly TaskCompletionSource _manualResetEvent = manualResetEvent;
         private bool _wait = true;
 
         public bool PreventsAcceptingNewBlocks => true;
@@ -2720,7 +3297,7 @@ public class BlockTreeTests
         {
             if (_wait)
             {
-                await _manualResetEvent.WaitOneAsync(cancellationToken);
+                await _manualResetEvent.Task.WaitAsync(cancellationToken);
                 _wait = false;
             }
 
@@ -2931,6 +3508,8 @@ public class BlockTreeTests
 
         Block blockC = Build.A.Block.WithNumber(1).WithParent(genesis).WithExtraData(new byte[] { 3 }).TestObject;
         blockTree.SuggestBlock(blockC);
+        Assert.That(blockTree.FindHeader(blockA.Hash!, BlockTreeLookupOptions.None), Is.Not.Null);
+        Assert.That(blockTree.FindHeader(blockB.Hash!, BlockTreeLookupOptions.None), Is.Not.Null);
         blockTree.TryUpdateMainChain(blockC.Header, true, preloadedBlocks: new[] { blockC });
 
         using (Assert.EnterMultipleScope())
@@ -2943,6 +3522,9 @@ public class BlockTreeTests
             // A and B must not be canonical
             Assert.That(blockTree.FindBlock(blockA.Hash!, BlockTreeLookupOptions.RequireCanonical), Is.Null, "A must not be canonical after C was set");
             Assert.That(blockTree.FindBlock(blockB.Hash!, BlockTreeLookupOptions.RequireCanonical), Is.Null, "B must not be canonical after C was set");
+            Assert.That(blockTree.FindHeader(blockA.Hash!, BlockTreeLookupOptions.RequireCanonical), Is.Null);
+            Assert.That(blockTree.FindHeader(blockB.Hash!, BlockTreeLookupOptions.RequireCanonical), Is.Null);
+            Assert.That(blockTree.FindHeader(blockC.Hash!, BlockTreeLookupOptions.RequireCanonical)?.Hash, Is.EqualTo(blockC.Hash));
 
             // All three are still findable by hash (non-canonical lookup)
             Assert.That(blockTree.FindBlock(blockA.Hash!, BlockTreeLookupOptions.None), Is.Not.Null, "A findable by hash");
@@ -3103,6 +3685,27 @@ public class BlockTreeTests
         blockTree.TryUpdateMainChain(chain[0].Header, wereProcessed: true, forceUpdateHeadBlock: true);
 
         Assert.That(events, Is.EqualTo(new[] { (chain[3].Hash, false), (chain[2].Hash, false), (chain[1].Hash, false), (chain[0].Hash, true) }));
+    }
+
+    /// <summary>A head moved back to its parent is reported once, by its removal; the sibling that later takes its
+    /// level replaces nothing, so subscribers must not rely on <see cref="BlockReplacementEventArgs.PreviousBlock"/> alone.</summary>
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void TryUpdateMainChain_WhenHeadMovesBackToParentThenSiblingAdded_ReportsOldHeadOnlyAsRemoved()
+    {
+        (BlockTree blockTree, Block genesis) = BuildBlockTreeWithGenesis();
+        Block[] chain = BuildAndSuggestChain(blockTree, genesis, 2);
+        blockTree.TryUpdateMainChain(chain[1].Header, wereProcessed: true, forceUpdateHeadBlock: true);
+        Block sibling = Build.A.Block.WithParent(chain[0]).WithExtraData([1]).TestObject;
+        blockTree.SuggestBlock(sibling);
+
+        List<(Hash256?, Hash256? Previous, bool Added)> events = [];
+        blockTree.BlockRemovedFromMain += (_, e) => events.Add((e.Header.Hash, null, false));
+        blockTree.BlockAddedToMain += (_, e) => events.Add((e.Block.Hash, e.PreviousBlock?.Hash, true));
+
+        blockTree.TryUpdateMainChain(chain[0].Header, wereProcessed: true, forceUpdateHeadBlock: true);
+        blockTree.TryUpdateMainChain(sibling.Header, wereProcessed: true, forceUpdateHeadBlock: true);
+
+        Assert.That(events, Is.EqualTo(new[] { (chain[1].Hash, (Hash256?)null, false), (chain[0].Hash, null, true), (sibling.Hash, null, true) }));
     }
 
     [TestCase(1, TestName = "SingleStaleLevel")]

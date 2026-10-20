@@ -32,7 +32,41 @@ public class BlockHeaderTests
         BlockHeader clone = src.CloneForProcessing();
 
         BlockHeaderMembers.AssertCarriesAllMembers(src, clone,
-            nameof(BlockHeader.StateRoot), nameof(BlockHeader.GasUsed), nameof(BlockHeader.Bloom));
+            nameof(BlockHeader.StateRoot), nameof(BlockHeader.GasUsed), nameof(BlockHeader.GasUsedPerDimension), nameof(BlockHeader.Bloom));
+    }
+
+    /// <summary>A header cloned and re-costed for a call must not keep dimensions that contradict its gas.</summary>
+    [Test]
+    public void Assigning_gas_used_drops_the_per_dimension_totals()
+    {
+        BlockHeader header = new(
+            Keccak.Compute("parent"), Keccak.Compute("uncles"), Address.Zero, 1, 2, 3, 4, [5])
+        {
+            GasUsed = 513_317,
+            GasUsedPerDimension = (513_317, 97_920)
+        };
+
+        BlockHeader clone = header.Clone();
+        clone.GasUsed = 0;
+
+        Assert.That(clone.GasUsedPerDimension, Is.Null);
+    }
+
+    [Test]
+    public void Clone_shares_the_bloom_and_fills_a_missing_one([Values] bool hasBloom)
+    {
+        BlockHeader header = new(
+            Keccak.Compute("parent"), Keccak.Compute("uncles"), Address.Zero, 1, 2, 3, 4, [5])
+        {
+            Bloom = hasBloom ? new Bloom([Build.A.LogEntry.WithAddress(TestItem.AddressA).TestObject]) : null
+        };
+
+        BlockHeader clone = header.Clone();
+
+        if (hasBloom)
+            Assert.That(clone.Bloom, Is.SameAs(header.Bloom));
+        else
+            Assert.That(clone.Bloom, Is.EqualTo(Bloom.Empty).And.Not.SameAs(Bloom.Empty));
     }
 
     [Test]

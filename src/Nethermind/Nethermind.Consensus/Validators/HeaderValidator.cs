@@ -97,14 +97,63 @@ namespace Nethermind.Consensus.Validators
                    && (orphaned || ValidateTimestamp(header, parent, ref error))
                    && (orphaned || ValidateBlockNumber(header, parent, ref error))
                    && (orphaned || Validate1559(header, parent, spec, ref error))
-                   && (orphaned || ValidateBlobGasFields(header, parent, spec, ref error))
+                   && ValidateWithdrawalsRoot(header, spec, ref error)
+                   && ValidateBlobGasFields(header, spec, ref error)
+                   && (orphaned || ValidateExcessBlobGas(header, parent, spec, ref error))
+                   && ValidateParentBeaconBlockRoot(header, spec, ref error)
                    && ValidateRequestsHash(header, spec, ref error)
                    && ValidateBlockAccessListHash(header, spec, ref error)
-                   && ValidateSlotNumber(header, spec, ref error);
+                   && ValidateSlotNumber(header, spec, ref error)
+                   && ValidateBloom(header, spec, ref error);
         }
 
         public bool ValidateOrphaned(BlockHeader header, [NotNullWhen(false)] out string? error) =>
             Validate<OnFlag>(header, null, false, out error, validateHash: true);
+
+        /// <summary>Checks that the EIP-4895 withdrawals root is present exactly when the fork enables it.</summary>
+        /// <remarks>Parent-independent, so it also runs for orphaned headers and header-only validation.</remarks>
+        protected virtual bool ValidateWithdrawalsRoot(BlockHeader header, IReleaseSpec spec, ref string? error)
+        {
+            if (spec.WithdrawalsEnabled)
+            {
+                if (header.WithdrawalsRoot is null)
+                {
+                    if (_logger.IsWarn) _logger.Warn("WithdrawalsRoot field is not set.");
+                    error = BlockErrorMessages.MissingWithdrawalsRoot;
+                    return false;
+                }
+            }
+            else
+            {
+                if (header.WithdrawalsRoot is not null)
+                {
+                    if (_logger.IsWarn) _logger.Warn("WithdrawalsRoot field should not have value.");
+                    error = BlockErrorMessages.WithdrawalsRootNotEnabled;
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        protected virtual bool ValidateParentBeaconBlockRoot(BlockHeader header, IReleaseSpec spec, ref string? error)
+        {
+            if (spec.IsBeaconBlockRootAvailable)
+            {
+                if (header.ParentBeaconBlockRoot is null)
+                {
+                    if (_logger.IsWarn) _logger.Warn("ParentBeaconBlockRoot field is not set.");
+                    error = BlockErrorMessages.MissingParentBeaconBlockRoot;
+                    return false;
+                }
+            }
+            else if (header.ParentBeaconBlockRoot is not null)
+            {
+                if (_logger.IsWarn) _logger.Warn("ParentBeaconBlockRoot field should not have value.");
+                error = BlockErrorMessages.ParentBeaconBlockRootNotEnabled;
+                return false;
+            }
+            return true;
+        }
 
         protected virtual bool ValidateRequestsHash(BlockHeader header, IReleaseSpec spec, ref string? error)
         {
@@ -337,7 +386,11 @@ namespace Nethermind.Consensus.Validators
             header.Bloom is not null &&
             header.ExtraData.Length <= _specProvider.GenesisSpec.MaximumExtraDataSize;
 
-        protected virtual bool ValidateBlobGasFields(BlockHeader header, BlockHeader parent, IReleaseSpec spec, ref string? error)
+        /// <summary>
+        /// Checks that the EIP-4844 blob-gas fields are present exactly when the fork enables them.
+        /// </summary>
+        /// <remarks>Parent-independent, so it also runs for orphaned headers.</remarks>
+        protected virtual bool ValidateBlobGasFields(BlockHeader header, IReleaseSpec spec, ref string? error)
         {
             if (spec.IsEip4844Enabled)
             {
@@ -352,14 +405,6 @@ namespace Nethermind.Consensus.Validators
                 {
                     if (_logger.IsWarn) _logger.Warn("ExcessBlobGas field is not set.");
                     error = BlockErrorMessages.MissingExcessBlobGas;
-                    return false;
-                }
-
-                ulong? expectedExcessBlobGas = CalculateExcessBlobGas(parent, spec);
-                if (header.ExcessBlobGas != expectedExcessBlobGas)
-                {
-                    if (_logger.IsWarn) _logger.Warn($"ExcessBlobGas field is incorrect: {header.ExcessBlobGas}, should be {expectedExcessBlobGas}.");
-                    error = BlockErrorMessages.IncorrectExcessBlobGas(expectedExcessBlobGas, header.ExcessBlobGas);
                     return false;
                 }
             }
@@ -378,6 +423,28 @@ namespace Nethermind.Consensus.Validators
                     error = BlockErrorMessages.NotAllowedExcessBlobGas;
                     return false;
                 }
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// Checks that <see cref="BlockHeader.ExcessBlobGas"/> matches the value derived from <paramref name="parent"/>.
+        /// </summary>
+        /// <remarks>Assumes <see cref="ValidateBlobGasFields"/> has passed.</remarks>
+        protected virtual bool ValidateExcessBlobGas(BlockHeader header, BlockHeader parent, IReleaseSpec spec, ref string? error)
+        {
+            if (!spec.IsEip4844Enabled)
+            {
+                return true;
+            }
+
+            ulong? expectedExcessBlobGas = CalculateExcessBlobGas(parent, spec);
+            if (header.ExcessBlobGas != expectedExcessBlobGas)
+            {
+                if (_logger.IsWarn) _logger.Warn($"ExcessBlobGas field is incorrect: {header.ExcessBlobGas}, should be {expectedExcessBlobGas}.");
+                error = BlockErrorMessages.IncorrectExcessBlobGas(expectedExcessBlobGas, header.ExcessBlobGas);
+                return false;
             }
 
             return true;
@@ -431,6 +498,19 @@ namespace Nethermind.Consensus.Validators
             }
 
             return true;
+        }
+
+        /// <summary>Checks the logs bloom is zero-length exactly when EIP-7668 is active.</summary>
+        protected bool ValidateBloom(BlockHeader header, IReleaseSpec spec, ref string? error)
+        {
+            if (spec.IsEip7668Enabled == (header.Bloom?.IsZeroLength ?? false))
+            {
+                return true;
+            }
+
+            if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - logs bloom length does not match EIP-7668 activation.");
+            error = BlockErrorMessages.InvalidLogsBloomLength(spec.IsEip7668Enabled);
+            return false;
         }
 
     }

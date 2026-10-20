@@ -373,6 +373,59 @@ public class SszGeneratorDiagnosticTest
         }
     }
 
+    [Test]
+    public void Converter_backed_type_named_byte_outside_system_merkleizes_through_its_converter()
+    {
+        const string source = """
+            using System;
+            using Nethermind.Serialization.Ssz;
+            using Nethermind.Serialization.Ssz.Merkleization;
+
+            [SszContainer]
+            public partial struct CustomByteContainer
+            {
+                [SszList(4)]
+                public Custom.Byte[]? Items { get; set; }
+            }
+
+            namespace Custom
+            {
+                public readonly struct Byte
+                {
+                }
+
+                [SszBasicTypeConverter<Byte>]
+                public static class ByteConverter
+                {
+                    public const int Length = 1;
+
+                    public static Byte FromSpan(ReadOnlySpan<byte> span) => default;
+
+                    public static void FromSpan(ReadOnlySpan<byte> span, Span<Byte> values)
+                    {
+                    }
+
+                    public static void ToSpan(Span<byte> span, Byte value)
+                    {
+                    }
+
+                    public static void ToSpan(Span<byte> span, ReadOnlySpan<Byte> values)
+                    {
+                    }
+
+                    public static void Feed(ref Merkleizer merkleizer, Byte value)
+                    {
+                    }
+                }
+            }
+            """;
+
+        CSharpParseOptions parseOptions = CSharpParseOptions.Default.WithLanguageVersion(LanguageVersion.Preview);
+        string generated = GetGeneratedSource(source, parseOptions, nameof(Converter_backed_type_named_byte_outside_system_merkleizes_through_its_converter), "Serialization.SszCodec.CustomByteContainer.cs");
+
+        Assert.That(generated, Does.Contain("MerkleizeBasicListWithConverter<Byte>(container.Items"));
+    }
+
     private static Diagnostic GetSsz003Diagnostic(string source, CSharpParseOptions parseOptions, string assemblyName)
     {
         GeneratorDriverRunResult result = RunGenerator(source, parseOptions, assemblyName);

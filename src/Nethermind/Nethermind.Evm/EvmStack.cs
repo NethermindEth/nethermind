@@ -24,6 +24,8 @@ public ref partial struct EvmStack
 {
     public const int RegisterLength = 1;
     public const int MaxStackSize = 1025;
+    /// <summary>EIP-7979: the most return addresses a frame's return stack may hold.</summary>
+    public const int ReturnStackLimit = 1024;
     public const int WordSize = 32;
     public const int AddressSize = 20;
 
@@ -70,11 +72,57 @@ public ref partial struct EvmStack
     /// with a program counter.
     /// </remarks>
     internal readonly nint CodeLength;
+    /// <summary>The first byte of the frame's input data, set by <see cref="HoistInputData"/>.</summary>
+    /// <remarks>Empty until hoisted: a stack built for execution must call <see cref="HoistInputData"/>, or calldata reads return zeros.</remarks>
+    internal ref readonly byte InputData;
+    /// <summary>The length of <see cref="InputData"/>; native width for the same reason as <see cref="CodeLength"/>.</summary>
+    internal nint InputDataLength;
     private readonly CodeInfo? _codeInfo;
+
+    /// <summary>The first byte of the stack's slots; slot <c>i</c> from the bottom is at byte <c>i * WordSize</c>, in the <see cref="UInt256"/> limb layout.</summary>
+    /// <remarks>For frame code runners, which read and write stack words in place below <see cref="Head"/>.</remarks>
+    [Experimental("NMEVM0001")]
+    public readonly ref byte StackBase => ref _stack;
+
+    /// <summary>The first byte of the frame's input data, valid for the <see cref="InputDataSize"/> bytes after it.</summary>
+    /// <remarks>For frame code runners; set once the stack is ready to execute.</remarks>
+    [Experimental("NMEVM0001")]
+    public readonly ref readonly byte InputDataStart => ref InputData;
+
+    /// <summary>The length of the frame's input data in bytes.</summary>
+    [Experimental("NMEVM0001")]
+    public readonly nint InputDataSize => InputDataLength;
     private long[]? _jumpDestinations;
+
+    /// <summary>Records the frame's input data so CALLDATALOAD and CALLDATACOPY skip resolving it on every opcode.</summary>
+    /// <remarks>
+    /// The input is the transaction data or a view over the caller's memory. The caller does not run while this
+    /// frame does, so that range is neither written nor freed; pinning the view may spill the caller's inline
+    /// tier to an identical copy, leaving this reference valid. The stack is rebuilt, and the input hoisted
+    /// again, whenever the frame resumes.
+    /// </remarks>
+    internal void HoistInputData(ReadOnlySpan<byte> inputData)
+    {
+        InputData = ref MemoryMarshal.GetReference(inputData);
+        InputDataLength = inputData.Length;
+    }
 
     /// <summary>Resolves the jump-destination bitmap when the stack is built, where the build flavour wants it.</summary>
     partial void InitializeJumpDestinations();
+
+    /// <summary>Validates jumps against the EIP-7979 bitmap, where a <c>CALLDEST</c> is also a jump destination.</summary>
+    /// <remarks>Chosen once per frame, so JUMP and JUMPI keep their single bit test.</remarks>
+    internal void UseCallDestinations()
+    {
+        if (CodeLength != 0 && _codeInfo is not null)
+        {
+            _jumpDestinations = _codeInfo.JumpAndCallDestinationBitmap;
+            OnJumpDestinationsReplaced();
+        }
+    }
+
+    /// <summary>Lets the build flavour follow a bitmap <see cref="UseCallDestinations"/> swapped in.</summary>
+    partial void OnJumpDestinationsReplaced();
 
     /// <summary>
     /// Reserves the next stack slot and returns a ref to it. On overflow returns <see cref="Unsafe.NullRef{T}"/>;
@@ -99,7 +147,7 @@ public ref partial struct EvmStack
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static EvmWord CreateAcceleratedWordFromUInt64(ulong value)
-        => Vector256.Create(value, 0UL, 0UL, 0UL).AsByte();
+        => Vector256.CreateScalar(value).AsByte();
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void WriteScalarWordFromUInt64(ref EvmWord word, ulong value)
@@ -501,25 +549,6 @@ public ref partial struct EvmStack
         ref ulong limbs = ref Unsafe.As<byte, ulong>(ref slot);
         ulong unreachable = Unsafe.Add(ref limbs, 1) | Unsafe.Add(ref limbs, 2) | Unsafe.Add(ref limbs, 3);
         position = new UInt256(limbs, 0, 0, unreachable);
-    }
-
-    /// <summary>Pops a memory position.</summary>
-    /// <remarks>See <see cref="ReadMemoryPositionFromSlot"/> for what the popped value preserves.</remarks>
-    /// <param name="position">The popped position.</param>
-    /// <returns><see langword="false"/> on stack underflow.</returns>
-    [SkipLocalsInit]
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public bool PopMemoryPosition(out UInt256 position)
-    {
-        Unsafe.SkipInit(out position);
-        nint head = Head - 1;
-        if (head < 0)
-        {
-            return false;
-        }
-        Head = head;
-        ReadMemoryPositionFromSlot(ref Unsafe.Add(ref _stack, head * WordSize), out position);
-        return true;
     }
 
     /// <summary>
@@ -1604,10 +1633,6 @@ public ref partial struct EvmStack
         return EvmExceptionType.None;
     }
 
-    public EvmExceptionType PushSignedInt256<TTracingInst>(in Int256.Int256 value)
-        where TTracingInst : struct, IFlag
-        => PushUInt256<TTracingInst>(in Unsafe.As<Int256.Int256, UInt256>(ref Unsafe.AsRef(in value)));
-
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool PopLimbo()
     {
@@ -2050,27 +2075,6 @@ public ref partial struct EvmStack
         return -1;
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public bool TryPopSmallIndex(out uint value)
-    {
-        nint head = Head;
-        if (head == 0)
-        {
-            value = 0;
-            return false;
-        }
-        Head = head - 1;
-        ref ulong limbs = ref Unsafe.As<byte, ulong>(ref Unsafe.Add(ref _stack, (head - 1) << 5));
-        if ((Unsafe.Add(ref limbs, 1) | Unsafe.Add(ref limbs, 2) | Unsafe.Add(ref limbs, 3)) != 0)
-        {
-            value = uint.MaxValue; // Signals a >= 32
-            return true;
-        }
-        ulong low = limbs;
-        value = low <= uint.MaxValue ? (uint)low : uint.MaxValue;
-        return true;
-    }
-
     /// <remarks>When <typeparamref name="TCheckDepth"/> is inactive, the caller must verify <paramref name="depth"/> items and room for one more.</remarks>
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -2131,14 +2135,16 @@ public ref partial struct EvmStack
         ref byte bottom = ref Unsafe.Add(ref bytes, headOffset - depthBytes);
         ref byte top = ref Unsafe.Add(ref bytes, headOffset - WordSize);
 
-        EvmWord buffer = Unsafe.ReadUnaligned<EvmWord>(ref bottom);
-        Unsafe.WriteUnaligned(ref bottom, Unsafe.ReadUnaligned<EvmWord>(ref top));
-        Unsafe.WriteUnaligned(ref top, buffer);
+        SwapWords(ref bottom, ref top);
 
         if (TTracingInst.IsActive) Trace(depth);
 
         return EvmExceptionType.None;
     }
+
+    /// <summary>Exchanges the two 32-byte stack words at <paramref name="bottom"/> and <paramref name="top"/>.</summary>
+    /// <remarks>Split per target; see <c>EvmStack.Swap.std.cs</c> and <c>.zkevm.cs</c>.</remarks>
+    private static partial void SwapWords(ref byte bottom, ref byte top);
 
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

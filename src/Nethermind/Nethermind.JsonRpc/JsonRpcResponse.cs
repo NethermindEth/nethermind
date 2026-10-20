@@ -33,6 +33,8 @@ namespace Nethermind.JsonRpc
 
         internal ref readonly JsonRpcId IdRef => ref _id;
 
+        internal JsonRpcService.StreamingContext? Streaming { get; set; }
+
         internal virtual bool IsResourceUnavailableError => false;
 
         internal virtual JsonRpcResponse WithResponseContext(in JsonRpcId id, Action? disposableAction)
@@ -40,6 +42,12 @@ namespace Nethermind.JsonRpc
             _id = id;
             if (disposableAction is not null) AddDisposable(disposableAction);
             return this;
+        }
+
+        private protected void ClearResponseContext()
+        {
+            action = null;
+            Streaming = null;
         }
 
         internal virtual bool TryGetError(out Error? error)
@@ -64,6 +72,7 @@ namespace Nethermind.JsonRpc
         {
             action?.Invoke();
             action = null;
+            Streaming = null;
         }
     }
 

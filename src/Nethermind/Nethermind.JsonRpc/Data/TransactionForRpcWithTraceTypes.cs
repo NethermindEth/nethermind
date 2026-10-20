@@ -5,6 +5,7 @@ using System;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Nethermind.Facade.Eth.RpcTransaction;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.JsonRpc.Data;
 
@@ -14,7 +15,7 @@ public class TransactionForRpcWithTraceTypes
     public TransactionForRpc Transaction { get; set; }
     public string[] TraceTypes { get; set; }
 
-    private class TransactionForRpcWithTraceTypesConverter : JsonConverter<TransactionForRpcWithTraceTypes>
+    internal class TransactionForRpcWithTraceTypesConverter : JsonConverter<TransactionForRpcWithTraceTypes>
     {
         public override TransactionForRpcWithTraceTypes? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
@@ -27,9 +28,9 @@ public class TransactionForRpcWithTraceTypes
 
             reader.Read();
 
-            value.Transaction = JsonSerializer.Deserialize<TransactionForRpc>(ref reader, options);
+            value.Transaction = TypeInfoJsonSerializer.Deserialize<TransactionForRpc>(ref reader, options);
             reader.Read();
-            value.TraceTypes = JsonSerializer.Deserialize<string[]>(ref reader, options);
+            value.TraceTypes = TypeInfoJsonSerializer.Deserialize<string[]>(ref reader, options);
 
             reader.Read();
 

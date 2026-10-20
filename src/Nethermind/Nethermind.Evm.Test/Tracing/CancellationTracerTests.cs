@@ -17,6 +17,22 @@ namespace Nethermind.Evm.Test.Tracing
     public class CancellationTracerTests
     {
         [Test]
+        public void Forwards_frame_receipts_and_failures([Values] bool wrapped)
+        {
+            ITxTracer inner = Substitute.For<ITxTracer, IFrameTxReceiptTracer>();
+            using CancellationTxTracer tracer = new(wrapped ? new CancellationTxTracer(inner) : inner);
+            TxFrameReceipt[] receipts = [new(TxFrameReceipt.StatusSuccess, 100, 0, [])];
+
+            tracer.ReportFrameEnd(1, EvmExceptionType.OutOfGas);
+            tracer.ReportFramesRolledBack(0, 1);
+            tracer.ReportFrameTxReceipt(TestItem.AddressA, receipts);
+
+            ((IFrameTxReceiptTracer)inner).Received().ReportFrameEnd(1, EvmExceptionType.OutOfGas);
+            ((IFrameTxReceiptTracer)inner).Received().ReportFramesRolledBack(0, 1);
+            ((IFrameTxReceiptTracer)inner).Received().ReportFrameTxReceipt(TestItem.AddressA, receipts);
+        }
+
+        [Test]
         public void Throws_operation_canceled_when_token_is_cancelled()
         {
             using CancellationTokenSource cancellationTokenSource = new();
@@ -25,6 +41,7 @@ namespace Nethermind.Evm.Test.Tracing
 
             Assert.Throws<OperationCanceledException>(() => tracer.ReportActionError(EvmExceptionType.None));
             Assert.Throws<OperationCanceledException>(() => tracer.ReportActionRemainingGas(1));
+            Assert.Throws<OperationCanceledException>(() => tracer.ReportFrameEnd(0, null));
         }
 
         [Test]
@@ -109,6 +126,39 @@ namespace Nethermind.Evm.Test.Tracing
             CancellationBlockTracer blockTracer = new(Substitute.For<IBlockTracer>());
             Transaction transaction = Build.A.Transaction.TestObject;
             Assert.That(blockTracer.StartNewTxTrace(transaction), Is.TypeOf<CancellationTxTracer>());
+        }
+
+        [Test]
+        public void Reuses_tx_cancellation_tracer_rewrapped_around_each_transactions_tracer()
+        {
+            ITxTracer first = Substitute.For<ITxTracer, IFrameTxReceiptTracer>();
+            ITxTracer second = Substitute.For<ITxTracer, IFrameTxReceiptTracer>();
+            second.IsTracingActions.Returns(true);
+            IBlockTracer inner = Substitute.For<IBlockTracer>();
+            inner.StartNewTxTrace(Arg.Any<Transaction?>()).Returns(first, second);
+            using CancellationTokenSource cancellationTokenSource = new();
+            CancellationBlockTracer blockTracer = new(inner, cancellationTokenSource.Token);
+            Transaction transaction = Build.A.Transaction.TestObject;
+
+            ITxTracer firstTracer = blockTracer.StartNewTxTrace(transaction);
+            blockTracer.EndTxTrace();
+            ITxTracer secondTracer = blockTracer.StartNewTxTrace(transaction);
+            secondTracer.ReportActionRemainingGas(1);
+            ((IFrameTxReceiptTracer)secondTracer).ReportFrameEnd(0, null);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(secondTracer, Is.SameAs(firstTracer));
+                Assert.That(((CancellationTxTracer)secondTracer).InnerTracer, Is.SameAs(second));
+                Assert.That(secondTracer.IsTracingActions, Is.True);
+            }
+            second.Received(1).ReportActionRemainingGas(1);
+            first.DidNotReceive().ReportActionRemainingGas(Arg.Any<ulong>());
+            ((IFrameTxReceiptTracer)second).Received(1).ReportFrameEnd(0, null);
+            ((IFrameTxReceiptTracer)first).DidNotReceive().ReportFrameEnd(Arg.Any<int>(), Arg.Any<EvmExceptionType?>());
+
+            cancellationTokenSource.Cancel();
+            Assert.Throws<OperationCanceledException>(() => secondTracer.ReportActionRemainingGas(1));
         }
     }
 }

@@ -841,7 +841,7 @@ public class SyncServerTests
         Assert.That(stateDb.KeyExists(nodeKey), Is.False);
         using IByteArrayList nodeData = ctx.SyncServer.GetNodeData(new[] { nodeKey }, CancellationToken.None, NodeDataType.All);
         Assert.That(nodeData.Count, Is.EqualTo(1));
-        Assert.That(nodeData[0].ToArray(), Is.EqualTo(TestItem.KeccakB.BytesToArray()));
+        Assert.That(nodeData[0], Is.SequenceEqualTo(TestItem.KeccakB.BytesToArray()));
     }
 
     [Test]
@@ -911,7 +911,7 @@ public class SyncServerTests
         }
         else
         {
-            Assert.That(actualRlp!.Memory.ToArray(), Is.EqualTo(expectedRlp));
+            Assert.That(actualRlp!.Memory, Is.SequenceEqualTo(expectedRlp));
         }
 
         if (shouldReadStore)
@@ -1020,6 +1020,7 @@ public class SyncServerTests
         public ulong? BalCutoffBlockNumber => null;
         public BlockHeader? OldestBlockHeader { get; set; }
         public ulong OldestUnreclaimedBlockNumber => 0;
+        public ulong RetentionEpochs => 0;
         public event EventHandler<OnNewOldestBlockArgs>? NewOldestBlock;
         public void SchedulePruneHistory() { }
         public ulong GetRetentionBlocks(ulong retentionEpochs) => 0;
