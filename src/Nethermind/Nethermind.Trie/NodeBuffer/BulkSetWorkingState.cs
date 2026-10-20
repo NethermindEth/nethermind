@@ -105,21 +105,21 @@ internal sealed class BulkSetWorkingState : IDisposable
 
     public int AddPendingLeaf(ReadOnlySpan<byte> key, ReadOnlyMemory<byte> value)
     {
-        int index = Add(PendingKind.Leaf, key);
+        int index = AddPending(PendingKind.Leaf, key);
         Nodes[index].Value = value;
         return index;
     }
 
-    public int AddExtension(ReadOnlySpan<byte> key, in ChildRef child)
+    public int AddPendingExtension(ReadOnlySpan<byte> key, in ChildRef child)
     {
-        int index = Add(PendingKind.Extension, key);
+        int index = AddPending(PendingKind.Extension, key);
         Nodes[index].ExtensionChild = child;
         return index;
     }
 
-    public int AddBranch(int childrenStart)
+    public int AddPendingBranch(int childrenStart)
     {
-        int index = Add(PendingKind.Branch, []);
+        int index = AddPending(PendingKind.Branch, []);
         Nodes[index].ChildrenStart = childrenStart;
         return index;
     }
@@ -157,7 +157,7 @@ internal sealed class BulkSetWorkingState : IDisposable
         list = new NativeMemoryList<T>(count, count);
     }
 
-    private int Add(PendingKind kind, ReadOnlySpan<byte> key)
+    private int AddPending(PendingKind kind, ReadOnlySpan<byte> key)
     {
         int index = _nodes.Count;
         _nodes.Add(new PendingNode { Kind = kind, KeyLength = (byte)key.Length });

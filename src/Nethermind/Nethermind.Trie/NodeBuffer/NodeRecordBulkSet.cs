@@ -229,7 +229,8 @@ internal static class NodeRecordBulkSet
             bool isNew = !node.IsBranch;
             int remainderNibble = -1;
             Source remainder = default;
-            // A branch record's children are copied out only once one changes.
+            // The child refs of the branch being built: sixteen empty ones under an empty node, those a split leaf or extension
+            // leaves, or, for a branch record, a copy made only once a child changes; until then they are read from the record.
             int childrenStart = node.Kind == SourceKind.None ? _workingState.ReserveChildSpace()
                 : isNew ? MakeFakeBranch(node, out remainderNibble, out remainder)
                 : -1;
@@ -278,6 +279,7 @@ internal static class NodeRecordBulkSet
                 }
                 else
                 {
+                    // Nibbles go in ascending order and each writes only its own slot, so a copied slot still holds the record's ref.
                     Source child = isRemainder ? remainder
                         : Load(path, childrenStart >= 0 ? _workingState.Children[childrenStart + nibble] : node.Record.View.Child(nibble));
                     Updated updated = Update(entries[start..end], sortBuffer[start..end], flipped, ref path, child);
@@ -306,7 +308,7 @@ internal static class NodeRecordBulkSet
 
             int pendingIndex = (hasRemove || isNew) && nonEmptyCount < 2
                 ? MaybeCombine(childrenStart, ref path)
-                : _workingState.AddBranch(childrenStart);
+                : _workingState.AddPendingBranch(childrenStart);
             return Updated.To(pendingIndex);
         }
 
@@ -370,7 +372,7 @@ internal static class NodeRecordBulkSet
             for (int i = 0; i < BranchChildCount; i++)
             {
                 if (_workingState.Children[childrenStart + i].Kind == ChildRefKind.Empty) continue;
-                if (onlyChild >= 0) return _workingState.AddBranch(childrenStart);
+                if (onlyChild >= 0) return _workingState.AddPendingBranch(childrenStart);
 
                 onlyChild = i;
             }
@@ -385,7 +387,7 @@ internal static class NodeRecordBulkSet
             Source source = Load(path, child);
             path.TruncateOne();
             // A branch keeps its path, so its reference with the buffer pointer moves under the extension; anything else is re-encoded shorter.
-            return source.IsBranch ? _workingState.AddExtension(prefix, child) : Prepend(prefix, IntoNode(source));
+            return source.IsBranch ? _workingState.AddPendingExtension(prefix, child) : Prepend(prefix, IntoNode(source));
         }
 
         /// <summary>Splits a leaf or an extension into the children of a new branch: its child when its key is a single nibble, otherwise what remains of it below its first nibble.</summary>
@@ -416,7 +418,7 @@ internal static class NodeRecordBulkSet
             Span<byte> key = stackalloc byte[MaxKeyNibbles];
             int keyLength = source.CopyKey(key);
             return source.NodeKind == NodeRecordKind.Extension
-                ? _workingState.AddExtension(key[..keyLength], source.Record.View.Child(0))
+                ? _workingState.AddPendingExtension(key[..keyLength], source.Record.View.Child(0))
                 : _workingState.AddPendingLeaf(key[..keyLength], source.LeafValue());
         }
 
@@ -562,7 +564,7 @@ internal static class NodeRecordBulkSet
         private int DivergeExtension(ReadOnlySpan<byte> entryKey, int depth, int matched, ReadOnlySpan<byte> key, in ChildRef child, byte[] value)
         {
             ReadOnlySpan<byte> rest = key[(matched + 1)..];
-            ChildRef existing = rest.IsEmpty ? child : ChildRef.ForPending(_workingState.AddExtension(rest, child));
+            ChildRef existing = rest.IsEmpty ? child : ChildRef.ForPending(_workingState.AddPendingExtension(rest, child));
             return DivergingBranch(entryKey, depth, matched, key[matched], existing, value);
         }
 
@@ -574,15 +576,15 @@ internal static class NodeRecordBulkSet
             int childrenStart = _workingState.ReserveChildSpace();
             _workingState.Children[childrenStart + existingNibble] = existing;
             _workingState.Children[childrenStart + entryKey[branchDepth]] = ChildRef.ForPending(leaf);
-            int branch = _workingState.AddBranch(childrenStart);
-            return matched == 0 ? branch : _workingState.AddExtension(entryKey.Slice(depth, matched), ChildRef.ForPending(branch));
+            int branch = _workingState.AddPendingBranch(childrenStart);
+            return matched == 0 ? branch : _workingState.AddPendingExtension(entryKey.Slice(depth, matched), ChildRef.ForPending(branch));
         }
 
         /// <summary>Puts <paramref name="prefix"/> in front of the pending node at <paramref name="index"/>, merging into its key unless it is a branch.</summary>
         private int Prepend(ReadOnlySpan<byte> prefix, int index)
         {
             ref PendingNode node = ref _workingState.Nodes[index];
-            if (node.Kind == PendingKind.Branch) return _workingState.AddExtension(prefix, ChildRef.ForPending(index));
+            if (node.Kind == PendingKind.Branch) return _workingState.AddPendingExtension(prefix, ChildRef.ForPending(index));
 
             Span<byte> key = node.Key;
             key[..node.KeyLength].CopyTo(key[prefix.Length..]);
@@ -597,7 +599,7 @@ internal static class NodeRecordBulkSet
             if (index >= 0)
             {
                 _workingState.Children[childrenStart + nibble] = ChildRef.ForPending(index);
-                return _workingState.AddBranch(childrenStart);
+                return _workingState.AddPendingBranch(childrenStart);
             }
 
             _workingState.Children[childrenStart + nibble] = default;
