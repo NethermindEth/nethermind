@@ -6,7 +6,6 @@ using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
-using System.Runtime.CompilerServices;
 using System.Threading;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Cpu;
@@ -181,12 +180,6 @@ internal static class NodeRecordBulkSet
         public ChildRef Reference => PendingIndex < 0 ? default : ChildRef.ForPending(PendingIndex);
     }
 
-    [InlineArray(BranchChildCount)]
-    private struct BranchArray<T>
-    {
-        private T _element0;
-    }
-
     /// <summary>A branch level whose sixteen children are updated in parallel, each by a task that commits the child's subtree in a working state of its own, so only committed references cross threads.</summary>
     private sealed class ParallelChildren
     {
@@ -196,10 +189,10 @@ internal static class NodeRecordBulkSet
         public Source Remainder;
 
         /// <summary>Each child's entries in the entries' array, or in the sort buffer's array when <see cref="Flipped"/>.</summary>
-        public BranchArray<(int Start, int Count)> Ranges;
+        public FixedArray16<(int Start, int Count)> Ranges;
 
         /// <summary>The references to the children before the join, and the committed references of those in <see cref="ChangedMask"/> after it.</summary>
-        public BranchArray<ChildRef> Children;
+        public FixedArray16<ChildRef> Children;
 
         public int ChangedMask;
     }
