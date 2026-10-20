@@ -107,7 +107,7 @@ jobs:
           if all_scopes or any(any('Test' in part or 'Benchmark' in part for part in path.parts[:-1]) for path in csharp):
               rules.setdefault('di-patterns', []).append('Test setup pattern (preferred: direct DI)')
               rules['test-infrastructure'] = ['DI anti-pattern — never manually new up infrastructure',
-                                               'Running tests (.NET 10 / Microsoft.Testing.Platform)']
+                                               'Running tests (Microsoft.Testing.Platform)']
           if all_scopes or any(path.suffix in {'.csproj', '.props', '.targets', '.sln', '.slnx'} for path in paths):
               rules['package-management'] = None
           if all_scopes or any(path.parts[0] == '.github' and path.suffix in {'.yml', '.yaml'} for path in paths if path.parts):
