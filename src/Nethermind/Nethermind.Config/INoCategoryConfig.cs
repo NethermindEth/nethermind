@@ -9,6 +9,6 @@ public interface INoCategoryConfig : IConfig
     [ConfigItem(Description = "Path to the configuration file.")]
     public string? Config { get; set; }
 
-    [ConfigItem(Description = "Defines host value for CLI function \"switchLocal\".", DefaultValue = "http://localhost", EnvironmentVariable = "NETHERMIND_CLI_SWITCH_LOCAL")]
+    [ConfigItem(Description = "Defines host value for CLI function \"switchLocal\".", DefaultValue = "null", EnvironmentVariable = "NETHERMIND_CLI_SWITCH_LOCAL")]
     public string? CliSwitchLocal { get; set; }
 }

@@ -106,7 +106,7 @@ public static class RpcTest
         string serialized = Encoding.UTF8.GetString(writer.WrittenSpan);
         await TestContext.Out.WriteLineAsync(serialized);
 
-        Assert.That(writer.WrittenCount, Is.EqualTo(serialized.Length));
+        Assert.That(writer.WrittenCount, Is.EqualTo(Encoding.UTF8.GetByteCount(serialized)));
 
         return serialized;
     }

@@ -37,6 +37,11 @@ public abstract class WorldStateDecorator(IWorldState state) : IWorldState
     public Task HintBal(ReadOnlyBlockAccessList bal)
         => State.HintBal(bal);
 
+    public bool SupportsPrefetch => State.SupportsPrefetch;
+
+    public void Prefetch(Span<Address> accounts, Span<StorageCell> slots, CancellationToken cancellationToken)
+        => State.Prefetch(accounts, slots, cancellationToken);
+
     public void ApplyBal(ReadOnlyBlockAccessList bal, CancellationToken cancellationToken = default)
         => State.ApplyBal(bal, cancellationToken);
 
