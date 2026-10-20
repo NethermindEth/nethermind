@@ -81,6 +81,10 @@ public sealed class WebSocketMessageStream(WebSocket socket, ILogManager logMana
 
     public async ValueTask<int> WriteEndOfMessageAsync(ReadOnlyMemory<byte> data, CancellationToken cancellationToken)
     {
+        ThrowIfDisposed();
+
+        if (_socket.State != WebSocketState.Open) { ThrowSocketNotOpen(); }
+
         await _socket.SendAsync(data, WebSocketMessageType.Text, true, cancellationToken);
         return 0;
     }
