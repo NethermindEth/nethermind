@@ -209,6 +209,30 @@ public class RecoverSignaturesTest
         }
     }
 
+    /// <summary>
+    /// Block warming looks a block's transactions up by hash on its own threads, the mempool runs' takeover among them;
+    /// background recovery hashes each transaction it recovers as it goes, so none of them is hashed there.
+    /// </summary>
+    [Test]
+    public void StartRecovery_LeavesEveryTransactionItRecoveredHashed([Values(2, 6)] int count)
+    {
+        // Decoded as a payload is: hashed on the first read.
+        Transaction[] txs = TxsDecoder.DecodeTxs(
+            [.. SignedTransactions(count).Select(static tx => Rlp.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes)], skipErrors: false).Transactions;
+        Assert.That(txs.Select(static tx => tx.IsHashCalculated), Is.All.False, "precondition: decoding leaves the hashes to the first read");
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        RecoverSignatures sut = new(_ecdsa, specProvider, Substitute.For<ILogManager>());
+
+        sut.StartRecovery(TestItem.KeccakA, txs, ReleaseSpecSubstitute.Create());
+
+        Assert.That(() => sut.IsRecoveryInFlight(txs), Is.False.After(DrainTimeoutMs, PollMs));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(txs.Select(static tx => tx.SenderAddress), Is.All.EqualTo(TestItem.AddressA));
+            Assert.That(txs.Select(static tx => tx.IsHashCalculated), Is.All.True);
+        }
+    }
+
     [Test]
     public void StartRecovery_WhileRunning_PipelineStepLeavesTheBlockAlone()
     {
