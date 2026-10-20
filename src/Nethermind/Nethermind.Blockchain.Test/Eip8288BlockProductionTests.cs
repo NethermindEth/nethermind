@@ -7,6 +7,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Tracing;
+using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Autofac;
 using Nethermind.Consensus;
@@ -27,6 +28,7 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.TxPool;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test;
@@ -60,6 +62,65 @@ public class Eip8288BlockProductionTests
             Assert.That(Eip8288Dependencies.ParseFrame(transaction.Frames![1]).Single(), Is.EqualTo(raw));
             Assert.That(TxDecoder.Instance.Encode(transaction).Bytes, Is.EqualTo(encoded));
         }
+    }
+
+    // EIP-7934 counts the body's stark_proof, which production attaches only after packing: a body that will carry a proof
+    // keeps room for the largest admissible one, so packing to the transaction byte budget still yields a block within the cap.
+    [Test]
+    public void Packing_to_the_byte_budget_leaves_room_for_the_largest_stark_proof([Values] bool carriesProof)
+    {
+        IReleaseSpec spec = Eip8288Prototype.Instance;
+        BlockProcessor.BlockProductionTransactionPicker picker = new(new TestSingleReleaseSpecProvider(spec), BlocksConfig.DefaultMaxTxKilobytes);
+        IReadOnlyStateProvider state = Substitute.For<IReadOnlyStateProvider>();
+        state.GetBalance(Arg.Any<Address>()).Returns(UInt256.MaxValue / 2);
+        BlockToProduce block = new(Build.A.BlockHeader.WithGasLimit(ulong.MaxValue / 2).TestObject);
+        if (carriesProof)
+            block.LeanProofInputs.Add(new AggregationInput { Deps = [new(Eip8288Constants.LeanSphincsScheme, TestItem.KeccakA.ValueHash256, default)], Witnesses = [new byte[1]] });
+
+        List<Transaction> included = [];
+        BlockProcessor.AddingTxEventArgs args;
+        while (true)
+        {
+            byte[] data = new byte[100_000];
+            data[0] = (byte)included.Count;
+            Transaction filler = Build.A.Transaction.WithData(data).WithGasLimit(5_000_000).WithGasPrice(1)
+                .WithSenderAddress(TestItem.AddressA).TestObject;
+            args = picker.CanAddTransaction(block, filler, included.ToHashSet(), state, 0, 0);
+            if (args.Action != BlockProcessor.TxAction.Add) break;
+            included.Add(filler);
+            block.TxByteLength += filler.GetLength(false);
+        }
+        Block produced = new(block.Header, new BlockBody([.. included], [], null, carriesProof ? new byte[Eip8288Constants.MaxAggregateProofBytes] : []));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(spec.IsEip7934Enabled, Is.True);
+            Assert.That(args.Reason, Is.EqualTo("Too large for CL"));
+            Assert.That(new BlockDecoder().GetLength(produced, RlpBehaviors.None), Is.LessThanOrEqualTo(spec.Eip7934MaxRlpBlockSize));
+            if (!carriesProof)
+                Assert.That(block.TxByteLength + Eip8288Constants.MaxAggregateProofBytes, Is.GreaterThan(BlocksConfig.DefaultMaxTxKilobytes.KiB), "no reserve without a proof");
+        }
+    }
+
+    [Test]
+    public void First_dependency_bearing_candidate_needs_room_for_the_largest_stark_proof([Values] bool dependencyBearing)
+    {
+        BlockProcessor.BlockProductionTransactionPicker picker = new(new TestSingleReleaseSpecProvider(Eip8288Prototype.Instance), BlocksConfig.DefaultMaxTxKilobytes);
+        BlockToProduce block = new(Build.A.BlockHeader.WithGasLimit(ulong.MaxValue / 2).TestObject)
+        {
+            TxByteLength = BlocksConfig.DefaultMaxTxKilobytes.KiB - Eip8288Constants.MaxAggregateProofBytes
+        };
+        Transaction candidate = Build.A.Transaction.WithGasLimit(5_000_000).WithSenderAddress(TestItem.AddressA).TestObject;
+        if (dependencyBearing)
+        {
+            candidate.Type = TxType.FrameTx;
+            candidate.Frames = [new(FrameMode.DepVerify, FrameFlags.None, null, Eip8288Constants.LeanSphincsVerificationGas, UInt256.Zero,
+                Eip8288Dependencies.Serialize([new(Eip8288Constants.LeanSphincsScheme, TestItem.KeccakA.ValueHash256, default)]))];
+        }
+
+        BlockProcessor.AddingTxEventArgs args = picker.CanAddTransaction(block, candidate, new HashSet<Transaction>(), Substitute.For<IReadOnlyStateProvider>(), 0, 0);
+
+        Assert.That(args.Reason == "Too large for CL", Is.EqualTo(dependencyBearing));
     }
 
     [Test]

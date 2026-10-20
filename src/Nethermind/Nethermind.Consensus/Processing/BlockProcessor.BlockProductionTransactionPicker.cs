@@ -57,7 +57,10 @@ namespace Nethermind.Consensus.Processing
                     return args.Set(TxAction.Stop, "Block full");
                 }
 
-                if (block is BlockToProduce blockToProduce && blockToProduce.TxByteLength + currentTx.GetLength(false) > _maxTxLengthBytes)
+                IReleaseSpec spec = _specProvider.GetSpec(block.Header);
+
+                if (block is BlockToProduce blockToProduce
+                    && blockToProduce.TxByteLength + currentTx.GetLength(false) + StarkProofReserve(blockToProduce, currentTx, spec) > _maxTxLengthBytes)
                 {
                     return args.Set(
                         // If smallest tx is too large, stop picking
@@ -69,8 +72,6 @@ namespace Nethermind.Consensus.Processing
                 {
                     return args.Set(TxAction.Skip, "Null sender");
                 }
-
-                IReleaseSpec spec = _specProvider.GetSpec(block.Header);
 
                 if (transactionsInBlock.Contains(currentTx))
                 {
@@ -157,6 +158,16 @@ namespace Nethermind.Consensus.Processing
                 OnAddingTransaction(args);
                 return args;
             }
+
+            private static readonly int MaxStarkProofLength = Rlp.LengthOfByteString(Eip8288Constants.MaxAggregateProofBytes, 0);
+
+            /// <summary>The body bytes kept for the EIP-8288 <c>stark_proof</c> once the block carries dependencies.</summary>
+            /// <remarks>The proof counts toward the EIP-7934 RLP block size and the CL payload but is attached only after packing,
+            /// so the largest admissible proof, <c>MAX_AGGREGATE_PROOF_BYTES</c>, is reserved out of the transaction byte budget.</remarks>
+            private static int StarkProofReserve(BlockToProduce block, Transaction candidate, IReleaseSpec spec) =>
+                spec.IsEip8288Enabled && (block.LeanProofInputs.Count != 0 || Eip8288Dependencies.IsDependencyBearing(candidate))
+                    ? MaxStarkProofLength
+                    : 0;
 
             /// <summary>Explains a keyed-nonce skip by naming the first key whose sequence disagrees with the candidate's.</summary>
             /// <remarks>Cold path only, reached once the candidate is already being skipped. Any single key of the set can be
