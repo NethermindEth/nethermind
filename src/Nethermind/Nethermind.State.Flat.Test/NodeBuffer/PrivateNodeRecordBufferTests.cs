@@ -20,6 +20,7 @@ internal class PrivateNodeRecordBufferTests
     public void Keeps_every_record_until_cleared_and_frees_storage_after_the_last_pin()
     {
         PrivateNodeRecordBuffer buffer = new(GenerationBytes);
+        buffer.Clear();
         INodeRecordBufferPin pin = buffer.PinHead();
         List<(ulong Pointer, byte[] Rlp)> records = [.. Enumerable.Range(0, 100).Select(i => NodeRecordBufferTests.Leaf(i, 1000)).Select(rlp => (Append(buffer, rlp), rlp))];
         byte[] oversize = NodeRecordBufferTests.Leaf(-1, 2 * GenerationBytes);
@@ -33,6 +34,7 @@ internal class PrivateNodeRecordBufferTests
             Assert.That(records[0].Pointer, Is.GreaterThanOrEqualTo(pin.WriteBoundary), "writes follow the pin boundary");
         }
 
+        buffer.TryLocate(records[0].Pointer, out NodeRecord firstBeforeClear);
         pin.Dispose();
         buffer.Clear();
         ulong afterClear = Append(buffer, records[0].Rlp);
@@ -41,6 +43,7 @@ internal class PrivateNodeRecordBufferTests
             Assert.That(records.Select(record => buffer.TryLocate(record.Pointer, out _)), Is.All.False, "cleared records miss");
             Assert.That(buffer.FindRoot(null, ValueKeccak.Compute(records[1].Rlp)), Is.Zero, "cleared roots miss");
             Assert.That(afterClear, Is.GreaterThan(lastPointer), "pointers continue past the cleared records");
+            Assert.That(firstBeforeClear.Rlp.ToArray(), Is.EqualTo(records[0].Rlp), "the first generation's storage is reused");
         }
 
         INodeRecordBufferPin reader = buffer.PinHead();

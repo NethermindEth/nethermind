@@ -113,11 +113,11 @@ internal class NodeRecordBulkSetTests
         using NodeRecordBufferPin existingRetain = existingBuffer.PinHead();
         WarmedNodeLog warmed = NewWarmedNodeLog(existingNodes.Count);
         DictionaryNodeSource source = new(existingNodes, warmed, null);
-        TrieRoot existingRoot = BulkSet(existingBuffer, source, null, TrieRoot.Empty, existingItems, canParallelize);
+        (ValueHash256 Hash, ulong Pointer) existingRoot = BulkSet(existingBuffer, source, null, (ValueKeccak.EmptyTreeHash, 0), existingItems, canParallelize);
         // From the source, the existing trie stands for one persisted before this buffer was created.
         using NodeRecordBuffer buffer = fromSource ? new(0, generationBytes, NodeRecordBuffer.DefaultLiveGenerations) : existingBuffer;
         using NodeRecordBufferPin retain = buffer.PinHead();
-        TrieRoot root = BulkSet(buffer, source, null, fromSource ? new TrieRoot(expectedExistingRoot.ValueHash256, 0) : existingRoot, items, canParallelize);
+        (ValueHash256 Hash, ulong Pointer) root = BulkSet(buffer, source, null, fromSource ? (expectedExistingRoot.ValueHash256, 0) : existingRoot, items, canParallelize);
         int fetchCount = source.FetchCount;
 
         Dictionary<Hash256, byte[]> expectedValues = [];
@@ -160,7 +160,7 @@ internal class NodeRecordBulkSetTests
         using NodeRecordBufferPin retain = buffer.PinHead();
         DictionaryNodeSource source = new(new Dictionary<TreePath, byte[]>(), NewWarmedNodeLog(), null);
         Dictionary<Hash256, byte[]> values = [];
-        TrieRoot root = TrieRoot.Empty;
+        (ValueHash256 Hash, ulong Pointer) root = (ValueKeccak.EmptyTreeHash, 0);
         foreach (List<(Hash256 key, byte[] value)> batch in batches)
         {
             root = BulkSet(buffer, source, null, root, batch, canParallelize);
@@ -197,10 +197,10 @@ internal class NodeRecordBulkSetTests
         using NodeRecordBuffer buffer = new(0, SmallGenerationBytes, NodeRecordBuffer.DefaultLiveGenerations);
         using NodeRecordBufferPin retain = buffer.PinHead();
         DictionaryNodeSource source = new(new Dictionary<TreePath, byte[]>(), NewWarmedNodeLog(), null);
-        TrieRoot root = BulkSet(buffer, source, null, TrieRoot.Empty, existingKeys.Select(key => (new Hash256(key), ExistingValue)).ToList(), canParallelize: false);
+        (ValueHash256 Hash, ulong Pointer) root = BulkSet(buffer, source, null, (ValueKeccak.EmptyTreeHash, 0), existingKeys.Select(key => (new Hash256(key), ExistingValue)).ToList(), canParallelize: false);
 
         ulong before = Frontier(buffer);
-        TrieRoot after = BulkSet(buffer, source, null, root, keys.Select(key => (new Hash256(key), existingKeys.Contains(key) ? ExistingValue : null)).ToList(), canParallelize: false);
+        (ValueHash256 Hash, ulong Pointer) after = BulkSet(buffer, source, null, root, keys.Select(key => (new Hash256(key), existingKeys.Contains(key) ? ExistingValue : null)).ToList(), canParallelize: false);
 
         using (Assert.EnterMultipleScope())
         {
@@ -220,15 +220,15 @@ internal class NodeRecordBulkSetTests
         using NodeRecordBufferPin retain = buffer.PinHead();
         WarmedNodeLog warmed = NewWarmedNodeLog(1);
         DictionaryNodeSource source = new(new Dictionary<TreePath, byte[]>(), warmed, null);
-        TrieRoot root = BulkSet(original, source, null, TrieRoot.Empty, [(key, ExistingValue)], false);
+        (ValueHash256 Hash, ulong Pointer) root = BulkSet(original, source, null, (ValueKeccak.EmptyTreeHash, 0), [(key, ExistingValue)], false);
         Assert.That(original.TryLocate(root.Pointer, out NodeRecord rootRecord), Is.True);
         byte[] rlp = rootRecord.Rlp.ToArray();
         // Indexed off the root's position, so only the supplied pointer finds it.
         warmed.Append(null, TreePath.FromHexString("1"), root.Hash, rlp, [], out _, out ulong pointer);
-        TrieRoot temporaryRoot = new(root.Hash, pointer);
+        (ValueHash256 Hash, ulong Pointer) temporaryRoot = (root.Hash, pointer);
 
         ulong before = Frontier(buffer);
-        TrieRoot after = BulkSet(buffer, source, null, temporaryRoot, emptyBatch ? [] : [(key, ExistingValue)], false);
+        (ValueHash256 Hash, ulong Pointer) after = BulkSet(buffer, source, null, temporaryRoot, emptyBatch ? [] : [(key, ExistingValue)], false);
 
         using (Assert.EnterMultipleScope())
         {
@@ -246,11 +246,11 @@ internal class NodeRecordBulkSetTests
         List<(Hash256 key, byte[] value)> items = PatriciaTreeBulkSetterTests.GenRandomOfLength(1000, seed: 4);
         using NodeRecordBuffer buffer = new(0, SmallGenerationBytes, NodeRecordBuffer.DefaultLiveGenerations);
         using NodeRecordBufferPin retain = buffer.PinHead();
-        TrieRoot root = BulkSet(buffer, new DictionaryNodeSource(new Dictionary<TreePath, byte[]>(), NewWarmedNodeLog(), address), address, TrieRoot.Empty, items, canParallelize: false);
+        (ValueHash256 Hash, ulong Pointer) root = BulkSet(buffer, new DictionaryNodeSource(new Dictionary<TreePath, byte[]>(), NewWarmedNodeLog(), address), address, (ValueKeccak.EmptyTreeHash, 0), items, canParallelize: false);
 
         // A buffer without the trie stands for one written before the trie was persisted.
         using NodeRecordBuffer persistedBuffer = new(0, SmallGenerationBytes, NodeRecordBuffer.DefaultLiveGenerations);
-        TrieRoot persistedRoot = new(root.Hash, 0);
+        (ValueHash256 Hash, ulong Pointer) persistedRoot = (root.Hash, 0);
         Dictionary<TreePath, byte[]> persisted = Rlps(buffer, root);
         WarmedNodeLog warmed = NewWarmedNodeLog(persisted.Count);
         DictionaryNodeSource source = new(persisted, warmed, address);
@@ -259,7 +259,7 @@ internal class NodeRecordBulkSetTests
         int again = WarmUp(persistedBuffer, persistedRoot, items[0].key);
         foreach ((Hash256 key, _) in items) WarmUp(persistedBuffer, persistedRoot, key);
         int fetchesBeforeBulkSet = source.FetchCount;
-        TrieRoot newRoot = BulkSet(persistedBuffer, source, address, persistedRoot, [(items[0].key, NewValue)], canParallelize: false);
+        (ValueHash256 Hash, ulong Pointer) newRoot = BulkSet(persistedBuffer, source, address, persistedRoot, [(items[0].key, NewValue)], canParallelize: false);
 
         PatriciaTree tree = new(new RawScopedTrieStore(new MemDb()), LimboLogs.Instance);
         foreach ((Hash256 key, byte[] value) in items) tree.Set(key.Bytes, value);
@@ -275,7 +275,7 @@ internal class NodeRecordBulkSetTests
             Assert.That(newRoot.Hash, Is.EqualTo(tree.RootHash.ValueHash256), "root");
         }
 
-        int WarmUp(INodeRecordBuffer walkedBuffer, TrieRoot walkedRoot, Hash256 key)
+        int WarmUp(INodeRecordBuffer walkedBuffer, (ValueHash256 Hash, ulong Pointer) walkedRoot, Hash256 key)
         {
             int before = source.FetchCount;
             source.WarmUp(walkedBuffer, walkedRoot, key.ValueHash256);
@@ -291,8 +291,8 @@ internal class NodeRecordBulkSetTests
         Hash256 keyC = new("2000000000000000000000000000000000000000000000000000000000000000");
         using NodeRecordBuffer original = new(0, SmallGenerationBytes, NodeRecordBuffer.DefaultLiveGenerations);
         using NodeRecordBufferPin retain = original.PinHead();
-        TrieRoot root = BulkSet(original, new DictionaryNodeSource(new Dictionary<TreePath, byte[]>(), NewWarmedNodeLog(), null),
-            null, TrieRoot.Empty, [(keyA, ExistingValue), (keyB, ExistingValue), (keyC, ExistingValue)], false);
+        (ValueHash256 Hash, ulong Pointer) root = BulkSet(original, new DictionaryNodeSource(new Dictionary<TreePath, byte[]>(), NewWarmedNodeLog(), null),
+            null, (ValueKeccak.EmptyTreeHash, 0), [(keyA, ExistingValue), (keyB, ExistingValue), (keyC, ExistingValue)], false);
         Dictionary<TreePath, byte[]> nodes = Rlps(original, root);
         TreePath leafPath = TreePath.FromPath(keyA.Bytes);
         if (missingLeaf) nodes.Remove(leafPath);
@@ -300,7 +300,7 @@ internal class NodeRecordBulkSetTests
         DictionaryNodeSource source = new(nodes, warmed, null);
         using NodeRecordBuffer buffer = new(0, SmallGenerationBytes, NodeRecordBuffer.DefaultLiveGenerations);
 
-        source.WarmUp(buffer, new TrieRoot(root.Hash, 0), keyA.ValueHash256);
+        source.WarmUp(buffer, (root.Hash, 0), keyA.ValueHash256);
 
         using (Assert.EnterMultipleScope())
         {
@@ -351,13 +351,13 @@ internal class NodeRecordBulkSetTests
         }
         using NodeRecordBuffer original = new(0, SmallGenerationBytes, NodeRecordBuffer.DefaultLiveGenerations);
         using NodeRecordBufferPin retain = original.PinHead();
-        TrieRoot root = BulkSet(original, new DictionaryNodeSource(new Dictionary<TreePath, byte[]>(), NewWarmedNodeLog(), null),
-            null, TrieRoot.Empty, items, false);
+        (ValueHash256 Hash, ulong Pointer) root = BulkSet(original, new DictionaryNodeSource(new Dictionary<TreePath, byte[]>(), NewWarmedNodeLog(), null),
+            null, (ValueKeccak.EmptyTreeHash, 0), items, false);
         Dictionary<TreePath, byte[]> nodes = Rlps(original, root);
         WarmedNodeLog warmed = NewWarmedNodeLog(1024);
         using NodeRecordBuffer buffer = new(0, SmallGenerationBytes, NodeRecordBuffer.DefaultLiveGenerations);
 
-        new DictionaryNodeSource(nodes, warmed, null).WarmUp(buffer, new TrieRoot(root.Hash, 0), ValueKeccak.Zero);
+        new DictionaryNodeSource(nodes, warmed, null).WarmUp(buffer, (root.Hash, 0), ValueKeccak.Zero);
 
         TreePath path = TreePath.Empty;
         Assert.That(warmed.TryGet(null, path, out NodeRecord record, out _), Is.True);
@@ -382,13 +382,13 @@ internal class NodeRecordBulkSetTests
         if (threeChildren) items.Add((keyD, ExistingValue));
         using NodeRecordBuffer original = new(0, SmallGenerationBytes, NodeRecordBuffer.DefaultLiveGenerations);
         using NodeRecordBufferPin retain = original.PinHead();
-        TrieRoot root = BulkSet(original, new DictionaryNodeSource(new Dictionary<TreePath, byte[]>(), NewWarmedNodeLog(), null), null, TrieRoot.Empty, items, false);
+        (ValueHash256 Hash, ulong Pointer) root = BulkSet(original, new DictionaryNodeSource(new Dictionary<TreePath, byte[]>(), NewWarmedNodeLog(), null), null, (ValueKeccak.EmptyTreeHash, 0), items, false);
         Dictionary<TreePath, byte[]> persisted = Rlps(original, root);
         WarmedNodeLog warmed = NewWarmedNodeLog(1024);
         DictionaryNodeSource source = new(persisted, warmed, null);
         using NodeRecordBuffer buffer = new(0, SmallGenerationBytes, NodeRecordBuffer.DefaultLiveGenerations);
         using NodeRecordBufferPin newRetain = buffer.PinHead();
-        TrieRoot persistedRoot = new(root.Hash, 0);
+        (ValueHash256 Hash, ulong Pointer) persistedRoot = (root.Hash, 0);
 
         source.WarmUp(buffer, persistedRoot, keyA.ValueHash256, forDelete);
         TreePath branchPath = TreePath.FromPath(keyA.Bytes);
@@ -398,7 +398,7 @@ internal class NodeRecordBulkSetTests
         Assert.That(warmedSibling.Pointer, forDelete && !threeChildren ? Is.Not.Zero : Is.Zero, "only a required collapse sibling is linked");
         if (warmedSibling.Pointer != 0) Assert.That(warmed.TryLocate(warmedSibling.Pointer, out NodeRecord sibling) && sibling.Hash == warmedSibling.Data, Is.True);
         int before = source.FetchCount;
-        TrieRoot updated = BulkSet(buffer, source, null, persistedRoot, [(keyA, null)], false);
+        (ValueHash256 Hash, ulong Pointer) updated = BulkSet(buffer, source, null, persistedRoot, [(keyA, null)], false);
         PatriciaTree expected = new(new RawScopedTrieStore(new MemDb()), LimboLogs.Instance);
         foreach ((Hash256 key, byte[] value) in items.Where(item => item.key != keyA)) expected.Set(key.Bytes, value);
         expected.UpdateRootHash();
@@ -420,13 +420,13 @@ internal class NodeRecordBulkSetTests
             : "0x3000000000000000000000000000000000000000000000000000000000000004");
         using NodeRecordBuffer original = new(0, SmallGenerationBytes, NodeRecordBuffer.DefaultLiveGenerations);
         using NodeRecordBufferPin retain = original.PinHead();
-        TrieRoot root = BulkSet(original, new DictionaryNodeSource(new Dictionary<TreePath, byte[]>(), NewWarmedNodeLog(), null), null, TrieRoot.Empty,
+        (ValueHash256 Hash, ulong Pointer) root = BulkSet(original, new DictionaryNodeSource(new Dictionary<TreePath, byte[]>(), NewWarmedNodeLog(), null), null, (ValueKeccak.EmptyTreeHash, 0),
             [(keyA, ExistingValue), (keyB, ExistingValue)], false);
         Dictionary<TreePath, byte[]> nodes = Rlps(original, root);
         DictionaryNodeSource pathSource = new(nodes, NewWarmedNodeLog(1024), null);
         DictionaryNodeSource deleteSource = new(nodes, NewWarmedNodeLog(1024), null);
         using NodeRecordBuffer buffer = new(0, SmallGenerationBytes, NodeRecordBuffer.DefaultLiveGenerations);
-        TrieRoot persistedRoot = new(root.Hash, 0);
+        (ValueHash256 Hash, ulong Pointer) persistedRoot = (root.Hash, 0);
 
         pathSource.WarmUp(buffer, persistedRoot, missing.ValueHash256);
         deleteSource.WarmUp(buffer, persistedRoot, missing.ValueHash256, forDelete: true);
@@ -442,13 +442,13 @@ internal class NodeRecordBulkSetTests
         using NodeRecordBuffer buffer = new(compressedBudget, SmallGenerationBytes, NodeRecordBuffer.DefaultLiveGenerations);
         DictionaryNodeSource source = new(new Dictionary<TreePath, byte[]>(), NewWarmedNodeLog(), null);
         List<(Hash256 key, byte[] value)> items = PatriciaTreeBulkSetterTests.GenRandomOfLength(100, seed: 5);
-        TrieRoot fillerRoot = TrieRoot.Empty;
+        (ValueHash256 Hash, ulong Pointer) fillerRoot = (ValueKeccak.EmptyTreeHash, 0);
         int fillerSeed = 0;
-        TrieRoot root = BulkSet(buffer, source, null, TrieRoot.Empty, items, canParallelize: false);
+        (ValueHash256 Hash, ulong Pointer) root = BulkSet(buffer, source, null, (ValueKeccak.EmptyTreeHash, 0), items, canParallelize: false);
         (TreePath Path, ulong Pointer)[] nodes = buffer.EnumerateNodes(root.Pointer).Select(node => (node.Path, node.Pointer)).ToArray();
         ulong newestTrieGeneration = nodes.Max(node => NodeRecordBufferTests.GenerationOf(node.Pointer));
         FillUntil(newestTrieGeneration + 1);
-        TrieRoot newRoot = BulkSet(buffer, source, null, root, [(items[0].key, NewValue)], canParallelize: false);
+        (ValueHash256 Hash, ulong Pointer) newRoot = BulkSet(buffer, source, null, root, [(items[0].key, NewValue)], canParallelize: false);
         HashSet<(TreePath, ulong)> newNodes = [.. buffer.EnumerateNodes(newRoot.Pointer).Select(node => (node.Path, node.Pointer))];
         HashSet<TreePath> rewrittenPaths = [.. nodes.Where(node => !newNodes.Contains(node)).Select(node => node.Path)];
         // Few large filler leaves per generation keep false positives out of the blooms the dropped trie is compacted against.
@@ -469,7 +469,7 @@ internal class NodeRecordBulkSetTests
             while (fillerRoot.Pointer == 0 || NodeRecordBufferTests.GenerationOf(fillerRoot.Pointer) < generation)
             {
                 List<(Hash256 key, byte[] value)> filler = [.. Enumerable.Range(fillerSeed, fillerBatch).Select(seed => (Keccak.Compute(BitConverter.GetBytes(seed)), FillerValue))];
-                fillerRoot = BulkSet(buffer, source, TestItem.KeccakA, TrieRoot.Empty, filler, canParallelize: false);
+                fillerRoot = BulkSet(buffer, source, TestItem.KeccakA, (ValueKeccak.EmptyTreeHash, 0), filler, canParallelize: false);
                 fillerSeed += fillerBatch;
             }
         }
@@ -482,7 +482,7 @@ internal class NodeRecordBulkSetTests
         using NodeRecordBufferPin retain = buffer.PinHead();
         DictionaryNodeSource source = new(new Dictionary<TreePath, byte[]>(), NewWarmedNodeLog(), null);
         byte[] value = inlineLeaves ? [1] : ExistingValue;
-        TrieRoot root = BulkSet(buffer, source, null, TrieRoot.Empty,
+        (ValueHash256 Hash, ulong Pointer) root = BulkSet(buffer, source, null, (ValueKeccak.EmptyTreeHash, 0),
         [
             (new Hash256("1000000000000000000000000000000000000000000000000000000000000001"), value),
             (new Hash256("1000000000000000000000000000000000000000000000000000000000000002"), ExistingValue),
@@ -518,7 +518,7 @@ internal class NodeRecordBulkSetTests
         using NodeRecordBufferPin retain = buffer.PinHead();
         DictionaryNodeSource source = new(new Dictionary<TreePath, byte[]>(), NewWarmedNodeLog(), null);
         string prefix = new('0', 63);
-        TrieRoot root = BulkSet(buffer, source, null, TrieRoot.Empty,
+        (ValueHash256 Hash, ulong Pointer) root = BulkSet(buffer, source, null, (ValueKeccak.EmptyTreeHash, 0),
         [
             (new Hash256(prefix + "1"), new byte[] { 1 }),
             (new Hash256(prefix + "5"), ExistingValue),
@@ -564,10 +564,10 @@ internal class NodeRecordBulkSetTests
         DictionaryNodeSource source = new(new Dictionary<TreePath, byte[]>(), NewWarmedNodeLog(), null);
         Hash256 inheritedKey = new("1000000000000000000000000000000000000000000000000000000000000000");
         Hash256 updatedKey = new("f000000000000000000000000000000000000000000000000000000000000000");
-        TrieRoot original = BulkSet(buffer, source, null, TrieRoot.Empty, [(inheritedKey, ExistingValue), (updatedKey, ExistingValue)], canParallelize);
+        (ValueHash256 Hash, ulong Pointer) original = BulkSet(buffer, source, null, (ValueKeccak.EmptyTreeHash, 0), [(inheritedKey, ExistingValue), (updatedKey, ExistingValue)], canParallelize);
         ulong inherited = NodePointer(buffer, original.Pointer, TreePath.Empty.Append(1));
         using NodeRecordBufferPin updateRetain = buffer.PinHead();
-        TrieRoot updated = BulkSet(buffer, source, null, original, [(updatedKey, NewValue)], canParallelize);
+        (ValueHash256 Hash, ulong Pointer) updated = BulkSet(buffer, source, null, original, [(updatedKey, NewValue)], canParallelize);
         (TreePath Path, ulong Pointer)[] delta = buffer.EnumerateNodes(updated.Pointer, updateRetain.WriteBoundary).Select(node => (node.Path, node.Pointer)).ToArray();
 
         using (Assert.EnterMultipleScope())
@@ -589,7 +589,7 @@ internal class NodeRecordBulkSetTests
         using NodeRecordBuffer buffer = new(0, SmallGenerationBytes, NodeRecordBuffer.DefaultLiveGenerations);
         using NodeRecordBufferPin retain = buffer.PinHead();
         DictionaryNodeSource source = new(new Dictionary<TreePath, byte[]>(), NewWarmedNodeLog(), null);
-        TrieRoot root = BulkSet(buffer, source, null, TrieRoot.Empty,
+        (ValueHash256 Hash, ulong Pointer) root = BulkSet(buffer, source, null, (ValueKeccak.EmptyTreeHash, 0),
         [
             (new Hash256("1000000000000000000000000000000000000000000000000000000000000000"), ExistingValue),
             (new Hash256("2000000000000000000000000000000000000000000000000000000000000000"), ExistingValue),
@@ -615,11 +615,11 @@ internal class NodeRecordBulkSetTests
         DictionaryNodeSource source = new(new Dictionary<TreePath, byte[]>(), NewWarmedNodeLog(), null);
         Hash256 first = new("1000000000000000000000000000000000000000000000000000000000000000");
         Hash256 second = new("2000000000000000000000000000000000000000000000000000000000000000");
-        TrieRoot root;
-        using (buffer.PinHead()) root = BulkSet(buffer, source, null, TrieRoot.Empty, [(first, ExistingValue), (second, ExistingValue)], false);
+        (ValueHash256 Hash, ulong Pointer) root;
+        using (buffer.PinHead()) root = BulkSet(buffer, source, null, (ValueKeccak.EmptyTreeHash, 0), [(first, ExistingValue), (second, ExistingValue)], false);
         FlatTestHelpers.StartNewGeneration(buffer);
         using NodeRecordBufferPin retain = buffer.PinHead();
-        TrieRoot updated = BulkSet(buffer, source, null, root, [(first, NewValue)], false);
+        (ValueHash256 Hash, ulong Pointer) updated = BulkSet(buffer, source, null, root, [(first, NewValue)], false);
         while (NodeRecordBufferTests.GenerationOf(Frontier(buffer)) < NodeRecordBufferTests.LiveGenerations + 1) FlatTestHelpers.StartNewGeneration(buffer);
         Assert.That(() => NodeRecordBufferTests.IsLocatable(buffer, root.Pointer), Is.False.After(NodeRecordBufferTests.CompactionTimeoutMilliseconds, NodeRecordBufferTests.PollingMilliseconds));
         using (Assert.EnterMultipleScope())
@@ -647,7 +647,7 @@ internal class NodeRecordBulkSetTests
             key[depth / 2] = (byte)((depth & 1) == 0 ? 0x10 : 0x01);
             items.Add((new Hash256(key), ExistingValue));
         }
-        TrieRoot root = BulkSet(buffer, source, null, TrieRoot.Empty, items, false);
+        (ValueHash256 Hash, ulong Pointer) root = BulkSet(buffer, source, null, (ValueKeccak.EmptyTreeHash, 0), items, false);
         byte[] expectedLeafRlp = new byte[NodeRlp.LeafLength([], ExistingValue)];
         NodeRlp.WriteLeaf([], ExistingValue, expectedLeafRlp);
         using (Assert.EnterMultipleScope())
@@ -666,8 +666,8 @@ internal class NodeRecordBulkSetTests
     {
         using NodeRecordBuffer buffer = new(0, SmallGenerationBytes, NodeRecordBuffer.DefaultLiveGenerations);
         DictionaryNodeSource source = new(new Dictionary<TreePath, byte[]>(), NewWarmedNodeLog(), null);
-        TrieRoot root;
-        using (buffer.PinHead()) root = BulkSet(buffer, source, null, TrieRoot.Empty, [(TestItem.KeccakA, ExistingValue)], false);
+        (ValueHash256 Hash, ulong Pointer) root;
+        using (buffer.PinHead()) root = BulkSet(buffer, source, null, (ValueKeccak.EmptyTreeHash, 0), [(TestItem.KeccakA, ExistingValue)], false);
         Assert.That(TryGetNode(buffer, root.Pointer, TreePath.Empty, out TrieNode node), Is.True);
         byte[] expected = node.FullRlp.ToArray();
         buffer.Dispose();
@@ -679,8 +679,8 @@ internal class NodeRecordBulkSetTests
     {
         using NodeRecordBuffer buffer = new(0, SmallGenerationBytes, NodeRecordBuffer.DefaultLiveGenerations);
         DictionaryNodeSource source = new(new Dictionary<TreePath, byte[]>(), NewWarmedNodeLog(), null);
-        TrieRoot root;
-        using (buffer.PinHead()) root = BulkSet(buffer, source, null, TrieRoot.Empty, [(TestItem.KeccakA, ExistingValue)], false);
+        (ValueHash256 Hash, ulong Pointer) root;
+        using (buffer.PinHead()) root = BulkSet(buffer, source, null, (ValueKeccak.EmptyTreeHash, 0), [(TestItem.KeccakA, ExistingValue)], false);
         NodeRecord borrowed;
         byte[] expected;
         using (buffer.PinAll())
@@ -709,7 +709,7 @@ internal class NodeRecordBulkSetTests
         return pin.WriteBoundary;
     }
 
-    private static TrieRoot BulkSet(INodeRecordBuffer buffer, DictionaryNodeSource source, Hash256 address, TrieRoot root, List<(Hash256 key, byte[] value)> items, bool canParallelize)
+    private static (ValueHash256 Hash, ulong Pointer) BulkSet(INodeRecordBuffer buffer, DictionaryNodeSource source, Hash256 address, (ValueHash256 Hash, ulong Pointer) root, List<(Hash256 key, byte[] value)> items, bool canParallelize)
     {
         using ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries = Entries(items);
         return NodeRecordBulkSet.BulkSet(source.Over(buffer), address, root, entries, canParallelize);
@@ -731,16 +731,16 @@ internal class NodeRecordBulkSetTests
         return (tree.RootHash, store.TakeCommitted());
     }
 
-    private static Dictionary<TreePath, byte[]> Rlps(INodeRecordBuffer buffer, TrieRoot root) =>
+    private static Dictionary<TreePath, byte[]> Rlps(INodeRecordBuffer buffer, (ValueHash256 Hash, ulong Pointer) root) =>
         buffer.EnumerateNodes(root.Pointer).ToDictionary(node => node.Path, node => node.Record.Rlp.ToArray());
 
     private static ulong NodePointer(INodeRecordBuffer buffer, ulong rootPointer, TreePath path) =>
         buffer.EnumerateNodes(rootPointer).First(node => node.Path == path).Pointer;
 
     /// <summary>The values at <paramref name="keys"/>, read by a <see cref="PatriciaTree"/> from the records linked from <paramref name="root"/>, falling back to <paramref name="source"/>.</summary>
-    private static byte[][] ReadValues(INodeRecordBuffer buffer, DictionaryNodeSource source, TrieRoot root, IEnumerable<Hash256> keys)
+    private static byte[][] ReadValues(INodeRecordBuffer buffer, DictionaryNodeSource source, (ValueHash256 Hash, ulong Pointer) root, IEnumerable<Hash256> keys)
     {
-        PatriciaTree tree = new(new LinkedRecordResolver(Rlps(buffer, root), source), LimboLogs.Instance) { RootHash = root.ToHash256() };
+        PatriciaTree tree = new(new LinkedRecordResolver(Rlps(buffer, root), source), LimboLogs.Instance) { RootHash = new(root.Hash) };
         return keys.Select(key => tree.Get(key.Bytes) is { IsEmpty: false } value ? value.ToArray() : null).ToArray();
     }
 
@@ -757,7 +757,7 @@ internal class NodeRecordBulkSetTests
         public ICommitter BeginCommit(TrieNode root, WriteFlags flags = WriteFlags.None) => throw new NotSupportedException();
     }
 
-    private static IEnumerable<string> InvalidRecords(INodeRecordBuffer buffer, TrieRoot root)
+    private static IEnumerable<string> InvalidRecords(INodeRecordBuffer buffer, (ValueHash256 Hash, ulong Pointer) root)
     {
         List<string> invalid = [];
         foreach ((TreePath path, ulong pointer, NodeRecord record) in buffer.EnumerateNodes(root.Pointer))

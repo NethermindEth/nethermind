@@ -30,7 +30,7 @@ internal static class BufferWarmUp
     /// <param name="reader">Reads the nodes neither <paramref name="buffer"/> nor <paramref name="warmed"/> holds.</param>
     /// <param name="forDelete">Also loads the sibling a two-child branch collapses into when its matching leaf is deleted.</param>
     public static void WarmUp(INodeRecordBuffer buffer, WarmedNodeLog warmed, ReadOnlySnapshotBundle reader, Hash256? address,
-        TrieRoot root, in ValueHash256 key, bool forDelete)
+        (ValueHash256 Hash, ulong Pointer) root, in ValueHash256 key, bool forDelete)
     {
         if (root.Hash == ValueKeccak.EmptyTreeHash) return;
         TreePath keyPath = new(key, MaxKeyNibbles);
