@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
@@ -32,9 +33,11 @@ public sealed class PayloadTransactionCountGuard(IBlockFinder? blockFinder)
         BlockHeader? parent = blockFinder.FindHeader(payload.ParentHash, BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
         if (parent is null) return true;
 
-        // Split so the parent's gas limit plus its allowed rise cannot overflow; the +1 absorbs the rounding.
-        ulong maxTransactions = parent.GasLimit / MinTransactionGas + parent.GasLimit / spec.GasLimitBoundDivisor / MinTransactionGas + 1;
-        if ((ulong)payload.Transactions.Length <= maxTransactions) return true;
+        // The fork-block elasticity jump mirrors Eip1559GasLimitAdjuster; UInt128 because hive sets parent gas limits up to ulong.MaxValue.
+        UInt128 gasLimit = parent.GasLimit;
+        if (spec.Eip1559TransitionBlock == payload.BlockNumber) gasLimit *= spec.ElasticityMultiplier;
+        UInt128 maxTransactions = (gasLimit + gasLimit / spec.GasLimitBoundDivisor) / MinTransactionGas;
+        if ((UInt128)payload.Transactions.Length <= maxTransactions) return true;
 
         error = $"Transaction count {payload.Transactions.Length} exceeds {maxTransactions}, the most the parent gas limit allows";
         return false;

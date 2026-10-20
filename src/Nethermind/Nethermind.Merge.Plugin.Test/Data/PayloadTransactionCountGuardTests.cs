@@ -16,16 +16,20 @@ public class PayloadTransactionCountGuardTests
 {
     private const ulong ParentGasLimit = 30_000_000;
 
-    // 30M / 10,500 plus the 30M / 1024 allowed rise / 10,500, plus one for rounding.
-    [TestCase(2_860, true)]
-    [TestCase(2_861, false)]
-    public void Bounds_count_by_parent_gas_limit(int count, bool expected)
+    private const ulong Eip1559TransitionBlock = 12_965_000;
+
+    // (30M + 30M / 1024) / 10,500; doubled by the elasticity multiplier at the EIP-1559 fork block.
+    [TestCase(Eip1559TransitionBlock + 1, 2_859, true)]
+    [TestCase(Eip1559TransitionBlock + 1, 2_860, false)]
+    [TestCase(Eip1559TransitionBlock, 5_719, true)]
+    [TestCase(Eip1559TransitionBlock, 5_720, false)]
+    public void Bounds_count_by_parent_gas_limit(ulong blockNumber, int count, bool expected)
     {
         IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
         blockFinder.FindHeader(TestItem.KeccakA, BlockTreeLookupOptions.DoNotCreateLevelIfMissing)
             .Returns(Build.A.BlockHeader.WithGasLimit(ParentGasLimit).TestObject);
 
-        bool result = new PayloadTransactionCountGuard(blockFinder).IsWithinParentGasLimit(Payload(count), Osaka.Instance, out string? error);
+        bool result = new PayloadTransactionCountGuard(blockFinder).IsWithinParentGasLimit(Payload(count, blockNumber), London.Instance, out string? error);
 
         using (Assert.EnterMultipleScope())
         {
@@ -44,5 +48,6 @@ public class PayloadTransactionCountGuardTests
         Assert.That(guard.IsWithinParentGasLimit(Payload(100_000), Osaka.Instance, out _), Is.True);
     }
 
-    private static ExecutionPayload Payload(int count) => new() { ParentHash = TestItem.KeccakA, Transactions = new byte[count][] };
+    private static ExecutionPayload Payload(int count, ulong blockNumber = 0) =>
+        new() { ParentHash = TestItem.KeccakA, BlockNumber = blockNumber, Transactions = new byte[count][] };
 }
