@@ -726,20 +726,27 @@ public class TraceRpcModuleTests
         config.EnableTracingStreamMode = true;
         // A zero timeout cancels the replay as soon as it starts.
         if (replayFails) config.Timeout = 0;
-        using CancellationTokenSource timeout = TimeoutTestHelper.RentTrackingTimeoutSourceForNextRequest();
+        TimeoutTestHelper.TrackingCancellationTokenSource timeout = TimeoutTestHelper.RentTrackingTimeoutSourceForNextRequest();
         Hash256 txHash = blockchain.BlockTree.Head!.Transactions[0].Hash!;
 
-        if (replayFails)
+        try
         {
-            Assert.That(() => context.TraceRpcModule.trace_get(txHash, []), Throws.InstanceOf<OperationCanceledException>());
-        }
-        else
-        {
-            using ResultWrapper<ParityTxTraceFromStore?> result = context.TraceRpcModule.trace_get(txHash, []);
-            Assert.That(result.Data!.TransactionHash, Is.EqualTo(txHash));
-        }
+            if (replayFails)
+            {
+                Assert.That(() => context.TraceRpcModule.trace_get(txHash, []), Throws.InstanceOf<OperationCanceledException>());
+            }
+            else
+            {
+                using ResultWrapper<ParityTxTraceFromStore?> result = context.TraceRpcModule.trace_get(txHash, []);
+                Assert.That(result.Data!.TransactionHash, Is.EqualTo(txHash));
+            }
 
-        Assert.Throws<ObjectDisposedException>(() => _ = timeout.Token);
+            Assert.Throws<ObjectDisposedException>(() => _ = timeout.Token);
+        }
+        finally
+        {
+            TimeoutTestHelper.DisposeIfNotAlreadyObserved(timeout);
+        }
     }
 
     [Test]

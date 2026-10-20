@@ -453,8 +453,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             }
 
             bool canRecycle = false;
+            // This handler is the peer the pool charges for frame validation that ends in a rejection.
             AcceptTxResult accepted = _txPool is IRecyclableTxPool recyclablePool
-                ? recyclablePool.SubmitOwnedTx(tx, out canRecycle)
+                ? recyclablePool.SubmitOwnedTx(tx, this, out canRecycle)
                 : _txPool.SubmitTx(tx, TxHandlingOptions.None);
             _floodController.Report(accepted);
             if (isTrace) Log(tx, accepted);

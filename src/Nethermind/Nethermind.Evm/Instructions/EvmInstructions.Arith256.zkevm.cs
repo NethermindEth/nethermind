@@ -35,9 +35,10 @@ public static unsafe partial class EvmInstructions
     {
         if (!ZiskFlag.IsActive)
         {
-            if (Sp1Uint256MulModFlag.IsActive)
+            // Only SP1's runtime exports zkvm_uint256_mulmod, and only OpenVM's the division hint and its check.
+            if (Sp1Flag.IsActive)
                 Sp1MulMod256(in a, in b, in m, out result);
-            else if (!OpenVmMulModHintFlag.IsActive || a >= m || b >= m || !TryMulModHint(in a, in b, in m, out result))
+            else if (!OpenVmFlag.IsActive || a >= m || b >= m || !TryMulModHint(in a, in b, in m, out result))
                 UInt256.MultiplyMod(in a, in b, in m, out result);
             return;
         }

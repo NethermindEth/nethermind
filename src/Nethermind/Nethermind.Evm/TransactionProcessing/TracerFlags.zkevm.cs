@@ -15,6 +15,7 @@ internal readonly struct TracerFlags(ITxTracer tracer)
     public readonly bool IsTracingReceipt = tracer.IsTracingReceipt;
     public readonly bool IsCollectingLogs = tracer.IsCollectingLogs;
     public readonly bool IsTracingMemory = tracer.IsTracingMemory;
+    public readonly bool IsTracingOutput = tracer is not ITxOutputTracingFilter { IsTracingOutput: false };
     public bool IsTracingLogs { [MethodImpl(MethodImplOptions.AggressiveInlining)] get => DispatchFlags.ConstTracing; }
     public bool IsTracingInstructions { [MethodImpl(MethodImplOptions.AggressiveInlining)] get => DispatchFlags.ConstTracing; }
     public bool IsTracingAccess { [MethodImpl(MethodImplOptions.AggressiveInlining)] get => DispatchFlags.ConstTracing; }

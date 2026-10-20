@@ -695,6 +695,29 @@ public class Eth72ProtocolHandlerTests
         _transactionPool.Received(transactions.Length).SubmitTx(Arg.Is<Transaction>(tx => tx.Type == TxType.FrameTx), Arg.Any<TxHandlingOptions>());
     }
 
+    // The pool charges a peer's share of the per-head validation time to whoever submits, so the handler must
+    // identify itself; a share the pool reports spent counts towards this peer's flood limits.
+    [Test]
+    public void Frame_txs_are_submitted_as_this_peer_for_its_validation_share()
+    {
+        IReleaseSpec spec = Substitute.For<IReleaseSpec>();
+        spec.IsEip8141Enabled.Returns(true);
+        _specProvider.GetCurrentHeadSpec().Returns(spec);
+        ITxPool pool = Substitute.For<ITxPool, IRecyclableTxPool>();
+        ((IRecyclableTxPool)pool).SubmitOwnedTx(Arg.Any<Transaction>(), Arg.Any<object?>(), out Arg.Any<bool>())
+            .Returns(AcceptTxResult.FramePeerValidationBudgetSpent);
+        _transactionPool = pool;
+        RecreateHandler();
+
+        Transaction[] transactions = [FrameTx(TestItem.PrivateKeyA), FrameTx(TestItem.PrivateKeyB)];
+        using TransactionsMessage message = new(transactions.ToPooledList());
+
+        HandleIncomingStatusMessage();
+        HandleZeroMessage(message, Eth62MessageCode.Transactions);
+
+        ((IRecyclableTxPool)pool).Received(transactions.Length).SubmitOwnedTx(Arg.Any<Transaction>(), _handler, out Arg.Any<bool>());
+    }
+
     // This handler has its own submission loop, so it needs the same stop once an invalid transaction closes the session.
     [Test]
     public void should_stop_submitting_the_rest_of_a_packet_after_an_invalid_transaction_requests_a_disconnect()
@@ -5589,6 +5612,13 @@ public class Eth72ProtocolHandlerTests
         .WithGasLimit(100_000)
         .WithTo(TestItem.AddressB)
         .SignedAndResolved(signer).TestObject;
+
+    private static Transaction FrameTx(PrivateKey signer, ulong validationGas)
+    {
+        Transaction tx = FrameTx(signer);
+        tx.Frames = [new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, validationGas, value: default, Array.Empty<byte>())];
+        return tx;
+    }
 
     private static void AssertCustodyRequest(
         (Hash256 Hash, BlobCellMask CellMask) request,

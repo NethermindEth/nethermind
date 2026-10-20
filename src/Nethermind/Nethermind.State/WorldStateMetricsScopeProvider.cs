@@ -4,6 +4,7 @@
 using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
@@ -53,6 +54,10 @@ public class WorldStateMetricsScopeProvider(IWorldStateScopeProvider baseProvide
 
         public void HintWarmSlot(Address address, in UInt256 index) => baseScope.HintWarmSlot(address, in index);
 
+        public void Prefetch(Span<Address> accounts, Span<StorageCell> slots, CancellationToken cancellationToken) => baseScope.Prefetch(accounts, slots, cancellationToken);
+
+        public bool SupportsPrefetch => baseScope.SupportsPrefetch;
+
         public void Dispose()
         {
             baseScope.Dispose();
@@ -87,7 +92,7 @@ public class WorldStateMetricsScopeProvider(IWorldStateScopeProvider baseProvide
         public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null)
             => baseScope.HintBal(bal, sink);
 
-        public void ApplyBal(ReadOnlyBlockAccessList bal)
-            => baseScope.ApplyBal(bal);
+        public void ApplyBal(ReadOnlyBlockAccessList bal, CancellationToken cancellationToken)
+            => baseScope.ApplyBal(bal, cancellationToken);
     }
 }
