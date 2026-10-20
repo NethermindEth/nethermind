@@ -182,19 +182,12 @@ public class ExecutionPayloadTests
     public void Payload_decoding_uses_registered_decoder([Values(1, 64)] int count)
     {
         byte[][] encoded = EncodeTxs(count);
-        using Lock.Scope _ = DecoderSwapLock.EnterScope();
-        IRlpDecoder<Transaction> original = Rlp.GetDecoder<Transaction>()!;
-        Rlp.RegisterDecoder(typeof(Transaction), new InputScopedDecoder(encoded, new PayloadTestDecoder(), original));
-        try
-        {
-            Result<Transaction[]> result = new ExecutionPayload { Transactions = encoded }.TryGetTransactions();
-            Assert.That(result.Error, Is.Null);
-            Assert.That(result.Data!.Select(tx => tx.Nonce), Is.EqualTo(Enumerable.Range(1000, count).Select(i => (ulong)i)));
-        }
-        finally
-        {
-            Rlp.RegisterDecoder(typeof(Transaction), original);
-        }
+        using DecoderSwap _ = new(encoded, new PayloadTestDecoder());
+
+        Result<Transaction[]> result = new ExecutionPayload { Transactions = encoded }.TryGetTransactions();
+
+        Assert.That(result.Error, Is.Null);
+        Assert.That(result.Data!.Select(tx => tx.Nonce), Is.EqualTo(Enumerable.Range(1000, count).Select(i => (ulong)i)));
     }
 
     private sealed class PayloadTestDecoder : TxDecoder<Transaction>
