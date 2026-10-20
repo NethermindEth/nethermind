@@ -147,7 +147,8 @@ public class GetBlobsHandlerV4Tests
     public void Public_api_should_preserve_legacy_constructors()
     {
         ConstructorInfo custodyConstructor = typeof(EngineRpcModule).GetConstructors()
-            .Single(static constructor => constructor.GetParameters().Any(static parameter => parameter.ParameterType == typeof(IBlobCustodyTracker)));
+            .Single(static constructor => constructor.GetParameters().Any(static parameter => parameter.ParameterType == typeof(IBlobCustodyTracker))
+                && constructor.GetParameters().All(static parameter => parameter.ParameterType != typeof(PayloadTransactionCountGuard)));
         Type[] legacyEngineParameters = custodyConstructor.GetParameters()
             .Where(static parameter => parameter.ParameterType != typeof(IBlobCustodyTracker))
             .Select(static parameter => parameter.ParameterType)
