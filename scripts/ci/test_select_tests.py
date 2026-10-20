@@ -155,7 +155,7 @@ class SelectorTests(unittest.TestCase):
 
     def test_a_change_runs_tests_that_failed_with_its_project(self):
         selector = self.selector()
-        selector.observe(AT - timedelta(days=30), {EVM}, {"test_add"})
+        selector.observe(AT - timedelta(days=30), {EVM}, {("test_add", "Cancun")})
         keep = selector.decide(1, AT, {EVM}, [f"{EVM}/A.cs"])
         self.assertTrue(keep("test_add", "Cancun"))
         unrelated = selector.decide(1, AT, {JSON_RPC}, [f"{JSON_RPC}/A.cs"])
@@ -163,21 +163,37 @@ class SelectorTests(unittest.TestCase):
 
     def test_mass_failures_teach_no_links(self):
         selector = self.selector()
-        names = {f"test_{i}" for i in range(st.Selector.MASS_FAILURES + 1)}
-        selector.observe(AT - timedelta(days=1), {EVM}, names)
+        failures = {(f"test_{i}", "Cancun") for i in range(st.Selector.MASS_FAILURES + 1)}
+        selector.observe(AT - timedelta(days=1), {EVM}, failures)
         self.assertEqual(selector.learned[EVM], set())
         self.assertEqual(dict(selector.failures), {})
+        self.assertEqual(dict(selector.fork_links), {})
 
     def test_tests_that_failed_twice_recently_run_for_any_change(self):
         selector = self.selector()
-        selector.observe(AT - timedelta(days=3), {EVM}, {"test_flaky"})
-        selector.observe(AT - timedelta(days=2), {EVM}, {"test_flaky"})
+        selector.observe(AT - timedelta(days=3), {EVM}, {("test_flaky", "Cancun")})
+        selector.observe(AT - timedelta(days=2), {EVM}, {("test_flaky", "Cancun")})
         self.assertTrue(selector.decide(1, AT, {JSON_RPC}, [])("test_flaky", "Cancun"))
         later = AT + st.Selector.UNSTABLE_WINDOW
         self.assertEqual(
             selector.decide(1, later, {JSON_RPC}, [])("test_flaky", "Cancun"),
             st.sampled(1, "test_flaky", "Cancun", st.Selector.SAMPLE_RATE),
         )
+
+    def test_a_project_that_recently_broke_several_tests_of_a_fork_runs_the_whole_fork(self):
+        def selector_with(count, days_ago):
+            selector = self.selector()
+            failures = {(f"test_{i}", "Prague") for i in range(count)}
+            selector.observe(AT - timedelta(days=days_ago), {EVM}, failures)
+            return selector.decide("x", AT, {EVM}, [f"{EVM}/A.cs"])
+
+        unseen = "test_never_failed"
+        sample = st.sampled("x", unseen, "Prague", st.Selector.SAMPLE_RATE)
+        self.assertFalse(sample)
+        self.assertTrue(selector_with(st.Selector.FORK_LINK_MIN_TESTS, 1)(unseen, "Prague"))
+        self.assertFalse(selector_with(st.Selector.FORK_LINK_MIN_TESTS - 1, 1)(unseen, "Prague"))
+        self.assertFalse(selector_with(st.Selector.FORK_LINK_MIN_TESTS, 20)(unseen, "Prague"))
+        self.assertEqual(selector_with(st.Selector.FORK_LINK_MIN_TESTS, 1)(unseen, "Cancun"), st.sampled("x", unseen, "Cancun", st.Selector.SAMPLE_RATE))
 
     def test_a_fork_named_in_the_changed_files_runs_its_tests(self):
         keep = self.selector().decide(1, AT, {EVM}, [f"{EVM}/Specs/OsakaSpec.cs"])
@@ -264,6 +280,7 @@ class SelectTests(unittest.TestCase):
                 model=str(work / "model.json"), inventory=str(work / "inventory.json"),
                 changed_files=str(work / "changed.txt"), run=run, matrix=str(work / "matrix.json"),
                 out_matrix=str(work / "out.json"), filters=str(work / "filters"),
+                min_history_days=st.MIN_HISTORY_DAYS, max_model_age_hours=st.MAX_MODEL_AGE_HOURS,
             )
             st.select(args)
             filters = {f.name: f.read_text() for f in (work / "filters").glob("*.txt")} if (work / "filters").exists() else {}
@@ -299,10 +316,11 @@ class SelectTests(unittest.TestCase):
 
     def test_the_model_round_trips(self):
         selector = st.Selector(["Cancun"])
-        selector.observe(AT, {EVM}, {"test_add"})
+        selector.observe(AT, {EVM}, {("test_add", "Cancun")})
         restored = st.Selector.from_json(json.loads(json.dumps(selector.to_json())))
         self.assertEqual(restored.learned[EVM], {"test_add"})
         self.assertEqual(restored.failures["test_add"], [AT])
+        self.assertEqual(restored.fork_links[(EVM, "Cancun")], [(AT, "test_add")])
 
 
 if __name__ == "__main__":

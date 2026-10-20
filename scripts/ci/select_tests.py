@@ -369,19 +369,25 @@ def closure(references, start):
 
 class Selector:
     """Runs a test when it failed recently, failed before together with a changed project, or belongs to a
-    fork named in the changed files; plus a deterministic random sample. Runs everything on harness and
-    build-wide changes. Runs that break more than MASS_FAILURES tests teach no links: they would tie the
-    changed projects to every test, and the sample already catches changes that break that many."""
+    fork named in the changed files; plus a deterministic random sample. A changed project that recently
+    broke several tests of one fork runs every test of that fork: a fork under active development breaks in
+    new places. Runs everything on harness and build-wide changes. Runs that break more than MASS_FAILURES
+    tests teach no links: they would tie the changed projects to every test, and the sample already catches
+    changes that break that many."""
 
     MASS_FAILURES = 500
     UNSTABLE_WINDOW = timedelta(days=14)
     UNSTABLE_MIN_FAILURES = 2
+    FORK_LINK_WINDOW = timedelta(days=14)
+    FORK_LINK_MIN_TESTS = 5
     SAMPLE_RATE = 0.02
 
     def __init__(self, forks):
         self.forks = [fork for fork in forks if len(fork) > 3]
         self.learned = defaultdict(set)
         self.failures = defaultdict(list)
+        # (project, fork) -> [(time, test)] for the tests of a fork that broke together with a project.
+        self.fork_links = defaultdict(list)
 
     def decide(self, run, at, changed, files):
         """A predicate over (test function, fork), or None when every test runs."""
@@ -394,21 +400,33 @@ class Selector:
         for project in changed:
             names |= self.learned[project]
         forks = {fork for fork in self.forks for name in files if fork.lower() in name.lower()}
+        for (project, fork), events in self.fork_links.items():
+            if project in changed and len({name for t, name in events if at - t <= self.FORK_LINK_WINDOW}) >= self.FORK_LINK_MIN_TESTS:
+                forks.add(fork)
         return lambda name, fork: name in names or fork in forks or sampled(run, name, fork, self.SAMPLE_RATE)
 
-    def observe(self, at, changed, failed_names):
-        if not failed_names or len(failed_names) > self.MASS_FAILURES:
+    def observe(self, at, changed, failures):
+        """failures: the (test function, fork) pairs that failed in one run."""
+        names = {name for name, _ in failures}
+        if not names or len(names) > self.MASS_FAILURES:
             return
-        for name in failed_names:
+        for name in names:
             self.failures[name].append(at)
             for project in changed - {ALL}:
                 self.learned[project].add(name)
+        for project in changed - {ALL}:
+            for name, fork in failures:
+                self.fork_links[(project, fork)].append((at, name))
 
     def to_json(self):
         return {
             "forks": self.forks,
             "learned": {project: sorted(names) for project, names in self.learned.items()},
             "failures": {name: [t.isoformat() for t in times] for name, times in self.failures.items()},
+            "fork_links": [
+                [project, fork, [[t.isoformat(), name] for t, name in events]]
+                for (project, fork), events in self.fork_links.items()
+            ],
         }
 
     @classmethod
@@ -418,6 +436,8 @@ class Selector:
             selector.learned[project] = set(names)
         for name, times in data["failures"].items():
             selector.failures[name] = [datetime.fromisoformat(t) for t in times]
+        for project, fork, events in data.get("fork_links", []):
+            selector.fork_links[(project, fork)] = [(datetime.fromisoformat(t), name) for t, name in events]
         return selector
 
 
@@ -433,9 +453,9 @@ def eest_failures(entry):
 
 
 # Below this much history the selector knows too few links, so a pull request runs every EEST test.
-MIN_HISTORY = timedelta(days=28)
+MIN_HISTORY_DAYS = 28
 # An older model misses the failures of the last day, so a pull request runs every EEST test.
-MAX_MODEL_AGE = timedelta(hours=24)
+MAX_MODEL_AGE_HOURS = 24
 
 
 def model(args):
@@ -447,7 +467,7 @@ def model(args):
         selector.observe(
             datetime.fromisoformat(entry["at"]),
             changed_projects(entry["files"], projects),
-            {name for name, _ in eest_failures(entry)},
+            eest_failures(entry),
         )
     data = {
         "built_at": datetime.now(timezone.utc).isoformat(),
@@ -472,9 +492,9 @@ def select(args):
     data = json.loads(Path(args.model).read_text()) if Path(args.model).is_file() else None
     if data is None or not Path(args.inventory).is_file():
         reason = "no selection model"
-    elif now - datetime.fromisoformat(data["built_at"]) > MAX_MODEL_AGE:
+    elif now - datetime.fromisoformat(data["built_at"]) > timedelta(hours=args.max_model_age_hours):
         reason = f"the model was built at {data['built_at']}"
-    elif data["history_from"] is None or now - datetime.fromisoformat(data["history_from"]) < MIN_HISTORY:
+    elif data["history_from"] is None or now - datetime.fromisoformat(data["history_from"]) < timedelta(days=args.min_history_days):
         reason = f"the model holds history from {data['history_from']} only"
 
     keep = None
@@ -563,7 +583,7 @@ def replay(args):
                 failing.append(entry)
                 if keep is not None and not any(keep(name, fork) for name, fork in failures):
                     missed.append((entry, changed, failures))
-        selector.observe(at, changed, {name for name, _ in failures})
+        selector.observe(at, changed, failures)
 
     share = 100 * selected / measured if measured else 0.0
     lines = [
@@ -621,6 +641,8 @@ def main():
     select_parser.add_argument("--matrix", required=True, help="the nethtest matrix, {include: [...]}")
     select_parser.add_argument("--out-matrix", required=True)
     select_parser.add_argument("--filters", required=True, help="directory for one --filterFile per lane")
+    select_parser.add_argument("--min-history-days", type=int, default=MIN_HISTORY_DAYS)
+    select_parser.add_argument("--max-model-age-hours", type=int, default=MAX_MODEL_AGE_HOURS)
     replay_parser = commands.add_parser("replay")
     replay_parser.add_argument("--journal", required=True)
     replay_parser.add_argument("--inventory", required=True)
