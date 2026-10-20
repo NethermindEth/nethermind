@@ -273,6 +273,22 @@ public class RecoverSignaturesTest
     }
 
     [Test]
+    public void StartRecovery_Cancelled_LeavesTheRemainingSendersToThePipeline([Values] bool parallel)
+    {
+        using ManualResetEventSlim gate = new();
+        using CancellationTokenSource cts = new();
+        // More transactions than workers, so a cancelled parallel run cannot have claimed them all.
+        Transaction[] txs = SignedTransactions(parallel ? Environment.ProcessorCount + 4 : 2);
+        RecoverSignatures sut = CreateSut(gate, txs);
+
+        sut.StartRecovery(TestItem.KeccakA, txs, ReleaseSpecSubstitute.Create(), cancellationToken: cts.Token);
+        cts.Cancel();
+        ReleaseAndDrain(gate, sut, txs);
+
+        Assert.That(txs.Select(static tx => tx.SenderAddress), Has.Some.Null);
+    }
+
+    [Test]
     public void StartRecovery_ResentPayload_DoesNotStartASecondRecovery()
     {
         using ManualResetEventSlim gate = new();

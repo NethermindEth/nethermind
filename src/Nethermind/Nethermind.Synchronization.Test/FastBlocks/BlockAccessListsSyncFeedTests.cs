@@ -10,6 +10,7 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BlockAccessLists;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -70,6 +71,7 @@ public class BlockAccessListsSyncFeedTests
             new TestSyncConfig { FastSync = true, PivotNumber = 1 },
             syncReport ?? new NullSyncReport(),
             _historyPruner,
+            new BlockAccessListServingWindow(_blockTree, _historyPruner, specProvider, new ManualTimestamper(), new BlocksConfig()),
             _metadataDb,
             logManager ?? LimboLogs.Instance);
 

@@ -66,11 +66,11 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         {
             // Optimize for single reader concurrency
             SingleReader = true,
-            // If queues are empty we want the block processing to continue on NewPayload thread and inherit its priority
+            // Default and direct enqueue keep inline processing on the producer; NonBlockingProcessing yields first.
             AllowSynchronousContinuations = true,
         });
 
-    private readonly record struct ProcessingWork(BlockRef Reference, ParallelUnbalancedWork.WorkerGroup? Workers);
+    private readonly record struct ProcessingWork(BlockRef Reference, ParallelUnbalancedWork.WorkerGroup? Workers, bool AllowSynchronousProcessing = true);
 
     private bool _recoveryComplete = false;
     private int _queueCount;
@@ -362,11 +362,14 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
         if (blockEventArgs.Block is not null)
         {
-            _ = Enqueue(blockEventArgs.Block, options);
+            _ = Enqueue(blockEventArgs.Block, options, allowSynchronousProcessing: !blockEventArgs.NonBlockingProcessing);
         }
     }
 
-    public async ValueTask Enqueue(Block block, ProcessingOptions processingOptions)
+    public ValueTask Enqueue(Block block, ProcessingOptions processingOptions)
+        => Enqueue(block, processingOptions, allowSynchronousProcessing: true);
+
+    private async ValueTask Enqueue(Block block, ProcessingOptions processingOptions, bool allowSynchronousProcessing)
     {
         if (_logger.IsTrace) _logger.Trace($"Enqueuing a new block {block.ToString(Block.Format.Short)} for processing.");
 
@@ -376,7 +379,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         BlockRef blockRef = _currentRecoveryQueueSize >= SoftMaxRecoveryQueueSizeInTx && block.InclusionListTransactions is null
             ? new BlockRef(blockHash, processingOptions)
             : new BlockRef(block, processingOptions);
-        ProcessingWork work = new(blockRef, ParallelUnbalancedWork.GetCurrentGroup());
+        ProcessingWork work = new(blockRef, ParallelUnbalancedWork.GetCurrentGroup(), allowSynchronousProcessing);
 
         if (!_recoveryComplete)
         {
@@ -617,6 +620,12 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         GCScheduler.Instance.SwitchOnBackgroundGC(0);
         while (await _blockQueue.Reader.WaitToReadAsync(CancellationToken))
         {
+            if (_blockQueue.Reader.TryPeek(out ProcessingWork firstWork) && !firstWork.AllowSynchronousProcessing)
+            {
+                // Let event-driven suggestions return before execution starts on their producer thread.
+                await Task.CompletedTask.ConfigureAwait(ConfigureAwaitOptions.ForceYielding);
+            }
+
             await _pauseGate.WaitWhilePausedAsync(CancellationToken);
 
             using ThreadExtensions.Disposable handle = Thread.CurrentThread.SetHighestPriority();

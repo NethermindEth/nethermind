@@ -27,6 +27,10 @@ namespace Nethermind.JsonRpc.Test.Modules.Subscribe
         private IBlockTree _blockTree = null!;
         private ILogManager _logManager = null!;
 
+        // Sends run on the subscription's background loop, and the first one can take over a second on a cold CI runner.
+        private static readonly TimeSpan DeliveryTimeout = TimeSpan.FromSeconds(10);
+        private static readonly TimeSpan NoDeliveryWait = TimeSpan.FromSeconds(1);
+
         [SetUp]
         public void Setup()
         {
@@ -66,7 +70,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Subscribe
             }));
 
             _receiptCanonicalityMonitor.ReceiptsInserted += Raise.EventWith(new object(), receiptsEventArgs);
-            Assert.That(manualResetEvent.WaitOne(TimeSpan.FromMilliseconds(1000)), Is.EqualTo(shouldReceiveResult));
+            Assert.That(manualResetEvent.WaitOne(shouldReceiveResult ? DeliveryTimeout : NoDeliveryWait), Is.EqualTo(shouldReceiveResult));
 
             subscriptionId = subscription.Id;
             return serialized;
@@ -98,7 +102,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Subscribe
 
             if (expectedCount > 0)
             {
-                received.Wait(TimeSpan.FromSeconds(1));
+                received.Wait(DeliveryTimeout);
             }
             else
             {
