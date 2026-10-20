@@ -55,7 +55,7 @@
     <Project Path="Nethermind.TxPool/Nethermind.TxPool.csproj" />
     <Project Path="Nethermind.Wallet/Nethermind.Wallet.csproj" />
   </Folder>
-  <Project Path="Nethermind.Abi.Benchmarks/Nethermind.Abi.Benchmarks.csproj" />
+  <Project Path="Nethermind.Abi.Benchmark/Nethermind.Abi.Benchmark.csproj" />
   <Project Path="Nethermind.Benchmark.Runner/Nethermind.Benchmark.Runner.csproj" />
   <Project Path="Nethermind.Benchmark/Nethermind.Benchmark.csproj" />
   <Project Path="Nethermind.EthereumTests.Benchmark/Nethermind.EthereumTests.Benchmark.csproj" />

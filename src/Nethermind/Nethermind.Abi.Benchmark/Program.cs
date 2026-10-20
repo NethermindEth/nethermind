@@ -1,6 +1,6 @@
 using BenchmarkDotNet.Running;
 
-namespace Nethermind.Abi.Benchmarks;
+namespace Nethermind.Abi.Benchmark;
 
 public class Program
 {

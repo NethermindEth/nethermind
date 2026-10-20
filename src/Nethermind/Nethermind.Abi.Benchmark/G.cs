@@ -6,31 +6,26 @@ using BenchmarkDotNet.Configs;
 using Nethermind.Int256;
 using Exp = Nethermind.Experimental.Abi;
 
-namespace Nethermind.Abi.Benchmarks;
+namespace Nethermind.Abi.Benchmark;
 
-/// <summary>The <c>f</c> example from the Solidity ABI specification's "Use of Dynamic Types" section.</summary>
+/// <summary>The <c>g</c> example from the Solidity ABI specification's "Use of Dynamic Types" section.</summary>
 [MemoryDiagnoser]
 [GroupBenchmarksBy(BenchmarkLogicalGroupRule.ByCategory)]
 [CategoriesColumn]
-public class F
+public class G
 {
-    private static readonly AbiSignature CurrentSignature = new("f",
-        AbiType.UInt256,
-        new AbiArray(AbiType.UInt32),
-        new AbiBytes(10),
-        AbiType.DynamicBytes);
+    private static readonly AbiSignature CurrentSignature = new("g",
+        new AbiArray(new AbiArray(AbiType.UInt256)),
+        new AbiArray(AbiString.Instance));
 
-    private static readonly Exp.AbiSignature<(UInt256, uint[], byte[], byte[])> ExperimentalSignature = new Exp.AbiSignature("f")
+    private static readonly Exp.AbiSignature<(UInt256[][], string[])> ExperimentalSignature = new Exp.AbiSignature("g")
         .With(
-            Exp.AbiType.UInt256,
-            Exp.AbiType.Array(Exp.AbiType.UInt32),
-            Exp.AbiType.BytesM(10),
-            Exp.AbiType.Bytes);
+            Exp.AbiType.Array(Exp.AbiType.Array(Exp.AbiType.UInt256)),
+            Exp.AbiType.Array(Exp.AbiType.String));
 
-    private static readonly (UInt256, uint[], byte[], byte[]) Arguments =
-        (0x123, [0x456, 0x789], "1234567890"u8.ToArray(), "Hello, world!"u8.ToArray());
+    private static readonly (UInt256[][], string[]) Arguments = ([[1, 2], [3]], ["one", "two", "three"]);
 
-    private static readonly object[] BoxedArguments = [Arguments.Item1, Arguments.Item2, Arguments.Item3, Arguments.Item4];
+    private static readonly object[] BoxedArguments = [Arguments.Item1, Arguments.Item2];
 
     private static readonly byte[] Encoded = Exp.AbiCodec.Encode(ExperimentalSignature, Arguments);
 
@@ -58,6 +53,6 @@ public class F
 
     [Benchmark]
     [BenchmarkCategory("Decode")]
-    public (UInt256, uint[], byte[], byte[]) ExperimentalDecode() =>
+    public (UInt256[][], string[]) ExperimentalDecode() =>
         Exp.AbiCodec.Decode(ExperimentalSignature, Encoded);
 }
