@@ -268,6 +268,39 @@ public partial class BlockDownloaderTests
     }
 
     [Test]
+    public async Task Full_sync_keeps_processing_when_head_is_genesis_without_persisted_state()
+    {
+        SettableFullStateFinder stateFinder = new();
+        await using IContainer node = CreateNode(builder => builder.AddSingleton<IFullStateFinder>(stateFinder));
+        Context ctx = node.Resolve<Context>();
+        SuggestedStateRoots suggestedStateRoots = node.Resolve<SuggestedStateRoots>();
+        SyncPeerMock syncPeer = new(131, withReceipts: false, Response.AllCorrect);
+        PeerInfo peerInfo = new(syncPeer);
+        ctx.ConfigureBestPeer(peerInfo);
+
+        await ctx.HandleOneRequest(peerInfo);
+        await ctx.HandleOneRequest(peerInfo);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.BlockTree.Head!.Number, Is.Zero);
+            Assert.That(ctx.BlockTree.BestSuggestedHeader!.Number, Is.GreaterThan(1));
+            Assert.That(stateFinder.FindBestFullState(), Is.Zero);
+        }
+
+        using BlocksRequest? finalRequest = await ctx.FullSyncFeedComponent.Feed.PrepareRequest();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(finalRequest, Is.Null);
+            Assert.That(ctx.ReceiptStorage.Count, Is.Zero);
+
+            BlockTreeSuggestOptions processingOptions = BlockTreeSuggestOptions.ShouldProcess | BlockTreeSuggestOptions.NonBlockingProcessing;
+            Assert.That(suggestedStateRoots.SuggestedOptions, Is.Not.Empty);
+            Assert.That(suggestedStateRoots.SuggestedOptions, Has.All.EqualTo(processingOptions));
+        }
+    }
+
+    [Test]
     public async Task ForwardHeaderProvider_ReturnedSameHeaders_EvenAfterSuggestion()
     {
         ulong headNumber = 200;
