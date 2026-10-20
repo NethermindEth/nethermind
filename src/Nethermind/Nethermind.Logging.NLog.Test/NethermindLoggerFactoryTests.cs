@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using Nethermind.Logging;
 using Nethermind.Logging.Microsoft;
 using NUnit.Framework;
 using MsLogLevel = Microsoft.Extensions.Logging.LogLevel;
