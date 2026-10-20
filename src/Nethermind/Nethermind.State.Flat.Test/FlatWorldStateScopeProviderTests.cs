@@ -1455,7 +1455,7 @@ public class FlatWorldStateScopeProviderTests
         const int keyCount = 48;
         const int versionCount = 3;
         ResourcePool pool = new(new FlatDbConfig());
-        using NodeRecordBuffer buffer = new(1024 * 1024, 64 * 1024);
+        using NodeRecordBuffer buffer = new(1024 * 1024, 64 * 1024, NodeRecordBuffer.DefaultLiveGenerations);
         Hash256? address = storage ? TestItem.KeccakA : null;
         byte[] oldRlp = FlatTestHelpers.LeafRlp(0x01);
         ulong oldPointer = buffer.AppendRecordFromRlp(address, TreePath.FromHexString("f"), ValueKeccak.Compute(oldRlp), oldRlp, []);

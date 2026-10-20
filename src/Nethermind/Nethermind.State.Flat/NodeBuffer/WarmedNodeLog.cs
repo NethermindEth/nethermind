@@ -21,7 +21,7 @@ public sealed class WarmedNodeLog : IDisposable
 {
     private const int GenerationBytes = 1024 * 1024;
 
-    private readonly NodeRecordBuffer _buffer = new(0, GenerationBytes);
+    private readonly NodeRecordBuffer _buffer = new(0, GenerationBytes, NodeRecordBuffer.DefaultLiveGenerations);
     private readonly ConcurrentDictionary<(Hash256? Address, TreePath Path), ulong> _pointers;
     private IDisposable _pin;
 

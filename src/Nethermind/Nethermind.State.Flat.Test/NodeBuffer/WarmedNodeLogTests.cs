@@ -24,7 +24,7 @@ internal class WarmedNodeLogTests
     public void Append_indexes_by_position_and_resolves_through_the_combined_buffer([Values] bool storage)
     {
         using WarmedNodeLog warmed = new(1024);
-        using NodeRecordBuffer global = new(0, GenerationBytes);
+        using NodeRecordBuffer global = new(0, GenerationBytes, NodeRecordBuffer.DefaultLiveGenerations);
         WarmedNodeRecordBuffer combined = new(global, warmed);
         Hash256? address = storage ? TestItem.KeccakA : null;
         Hash256? otherAddress = storage ? null : TestItem.KeccakA;

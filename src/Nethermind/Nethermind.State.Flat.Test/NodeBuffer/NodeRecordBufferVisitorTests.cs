@@ -192,7 +192,7 @@ public class NodeRecordBufferVisitorTests
         }
     }
 
-    private static INodeRecordBuffer NewBuffer() => new NodeRecordBuffer(0, 64 * 1024);
+    private static INodeRecordBuffer NewBuffer() => new NodeRecordBuffer(0, 64 * 1024, NodeRecordBuffer.DefaultLiveGenerations);
 
     /// <summary>A buffer holding only <paramref name="root"/>'s record, copied from <paramref name="source"/> with its children unlinked.</summary>
     private static INodeRecordBuffer RootOnlyBuffer(INodeRecordBuffer source, TrieRoot root)

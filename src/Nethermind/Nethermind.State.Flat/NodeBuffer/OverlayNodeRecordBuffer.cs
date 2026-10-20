@@ -20,7 +20,7 @@ internal sealed class OverlayNodeRecordBuffer : INodeRecordBuffer
 
     private readonly INodeRecordBuffer _global;
     private readonly INodeRecordBufferPin _globalPin;
-    private readonly INodeRecordBuffer _local = new NodeRecordBuffer(0, LocalGenerationBytes);
+    private readonly INodeRecordBuffer _local = new NodeRecordBuffer(0, LocalGenerationBytes, NodeRecordBuffer.DefaultLiveGenerations);
     private readonly ulong _globalBoundary;
     private readonly ulong _localOffset;
 
