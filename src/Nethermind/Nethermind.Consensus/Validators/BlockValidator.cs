@@ -368,13 +368,12 @@ public class BlockValidator(
             }
 
             if (isEip7778Enabled) minimumBlockGas = minimumBlockGas.SaturatingAdd(MinimumBlockGas(transaction, spec));
-        }
-
-        if (minimumBlockGas > block.Header.GasLimit)
-        {
-            errorMessage = BlockErrorMessages.MinimumBlockGasAboveGasLimit(minimumBlockGas, block.Header.GasLimit);
-            if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} {errorMessage}");
-            return false;
+            if (minimumBlockGas > block.Header.GasLimit)
+            {
+                errorMessage = BlockErrorMessages.MinimumBlockGasAboveGasLimit(minimumBlockGas, block.Header.GasLimit);
+                if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} {errorMessage}");
+                return false;
+            }
         }
 
         return true;

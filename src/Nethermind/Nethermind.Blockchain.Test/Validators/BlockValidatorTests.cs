@@ -368,7 +368,7 @@ public class BlockValidatorTests
     }
 
     [Test]
-    public void ValidateSuggestedBlock_rejects_transactions_whose_minimum_gas_exceeds_gas_limit([Values] bool fits, [Values] bool senderKnown)
+    public void ValidateSuggestedBlock_rejects_transactions_whose_minimum_gas_exceeds_gas_limit([Values(0, 1, 500)] int excessTransactions, [Values] bool senderKnown)
     {
         const int txCount = 1000;
         BlockHeader parent = Build.A.BlockHeader.TestObject;
@@ -381,20 +381,29 @@ public class BlockValidatorTests
 
         // An unrecovered sender could still turn out to be the recipient, so it is held to the self-transfer price.
         Transaction priced = Build.A.Transaction.To(TestItem.AddressB).WithValue(1).WithSenderAddress(senderKnown ? TestItem.AddressA : TestItem.AddressB).TestObject;
-        ulong minimumBlockGas = (ulong)txCount * IntrinsicGasCalculator.Calculate(priced, Amsterdam.Instance).MinimalGas;
+        ulong minimumTransactionGas = IntrinsicGasCalculator.Calculate(priced, Amsterdam.Instance).MinimalGas;
+        ulong gasLimit = (ulong)txCount * minimumTransactionGas;
+        if (excessTransactions > 0) gasLimit -= (ulong)(excessTransactions - 1) * minimumTransactionGas + 1;
         Block suggestedBlock = Build.A.Block
             .WithParent(parent)
-            .WithGasLimit(fits ? minimumBlockGas : minimumBlockGas - 1)
+            .WithGasLimit(gasLimit)
             .WithTransactions(transactions)
             .WithBlobGasUsed(0)
             .WithWithdrawals([])
             .WithBal(new ReadOnlyBlockAccessList())
             .TestObject;
-        BlockValidator sut = AmsterdamSut(Always.Valid);
+        ITxValidator txValidator = Substitute.For<ITxValidator>();
+        txValidator.IsWellFormed(Arg.Any<Transaction>(), Arg.Any<IReleaseSpec>(), Arg.Any<ulong>()).Returns(ValidationResult.Success);
+        BlockValidator sut = AmsterdamSut(txValidator);
 
         bool isValid = sut.ValidateSuggestedBlock(suggestedBlock, parent, out string? error);
 
-        AssertValidation(fits, isValid, error, "Block gas limit exceeded");
+        using (Assert.EnterMultipleScope())
+        {
+            AssertValidation(excessTransactions == 0, isValid, error, "Block gas limit exceeded");
+            int expectedValidated = excessTransactions == 0 ? txCount : txCount - excessTransactions + 1;
+            txValidator.Received(expectedValidated).IsWellFormed(Arg.Any<Transaction>(), Arg.Any<IReleaseSpec>(), gasLimit);
+        }
     }
 
     [Test]
