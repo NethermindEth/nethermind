@@ -29,10 +29,11 @@ import sys
 import tempfile
 import threading
 import time
+from bisect import bisect_left, bisect_right
 from collections import defaultdict
 from collections.abc import Callable, Iterable
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -47,8 +48,19 @@ ALL = "*"
 
 # Changes to these projects can alter any EEST result.
 HARNESS = frozenset({f"{SRC}/Ethereum.Test.Base", f"{SRC}/Nethermind.Test.Runner"})
-# Paths outside every project that cannot change a test result. Any other such path touches everything.
-INERT = re.compile(r"(\.md$|^docs/|^LICENSE|^\.github/(ISSUE_TEMPLATE|CODEOWNERS)|^tools/)")
+# Legacy fixture suites that EEST covers: in 90 days of pull requests each failed only on branches where EEST
+# failed too. A pull request runs them when it runs everything or changes them; master runs them always.
+COVERED_BY_EEST = frozenset({"Ethereum.Legacy.Blockchain.Test"})
+# A test that also fails on master, or on two other branches, within this window failed for its environment.
+ENVIRONMENT_WINDOW = timedelta(hours=24)
+# Paths outside every project that change how every test builds or runs. Any other such path, such as another
+# workflow, a Dockerfile or a script, cannot change a test result.
+EVERY_TEST = re.compile(
+    r"^(Directory\.[\w.]+|global\.json|nuget\.config|\.gitmodules|src/Nethermind/[^/]+\.(props|targets|json)"
+    r"|\.github/workflows/(nethermind-tests[\w-]*|run-nethtest|build-test-artifacts)\.yml)$"
+    # The submodules under src/ hold the fixtures that tests read at run time.
+    r"|^(scripts/ci|\.github/actions/(download-test-artifacts|fetch-submodules|select-tests)|src/(?!Nethermind/))"
+)
 
 ANSI_ESCAPE = re.compile(r"\x1b\[[0-9;]*m")
 NETHTEST_CASE = re.compile(r"(test_\w+)\[fork_(\w+?)[-\]]")
@@ -348,30 +360,38 @@ def read_group(group: list[dict], read_log: Callable[[dict], str]) -> dict[int, 
 # -------------------------------------------------------------------------------------------------- Projects
 
 class Projects:
-    """The source projects of the repository and their references, for mapping changed files to projects and
-    projects to the test projects that use them."""
+    """The source projects of the repository and the paths they build from, for mapping changed files to projects
+    and projects to the test projects that use them."""
 
-    def __init__(self, references: dict[str, set[str]]):
+    def __init__(self, references: dict[str, set[str]], includes: dict[str, set[str]] | None = None):
         self.references = references
-        # Longest first, so a file maps to the most specific project directory.
-        self.directories = sorted(references, key=len, reverse=True)
+        # Each project owns its directory; a project that includes files from another path, such as the chain
+        # specs or the ethereum/tests submodule, also owns that path.
+        self.owners = {directory: {directory} for directory in references}
+        for path, projects in (includes or {}).items():
+            self.owners.setdefault(path, set()).update(projects)
 
     @classmethod
     def of_repository(cls) -> Projects:
-        return cls({
-            csproj.parent.relative_to(ROOT).as_posix(): project_references(csproj)
-            for csproj in (ROOT / SRC).glob("*/*.csproj")
-        })
+        csprojs = list((ROOT / SRC).glob("*/*.csproj"))
+        includes = defaultdict(set)
+        for csproj in csprojs:
+            for path in included_paths(csproj):
+                includes[path].add(csproj.parent.relative_to(ROOT).as_posix())
+        return cls({relative(csproj.parent): project_references(csproj) for csproj in csprojs}, includes)
 
     def changed(self, files: Iterable[str]) -> set[str]:
         """Projects that the files belong to, or {ALL} when a file can affect every project."""
         changed = set()
         for name in files:
-            owner = next((d for d in self.directories if name.startswith(d + "/")), None)
-            if owner:
-                changed.add(owner)
-            elif name == ALL or not INERT.search(name):
+            owners = self._owners_of(name)
+            if owners:
+                changed |= owners
+            elif name == ALL or EVERY_TEST.search(name):
                 return {ALL}
+            elif name.startswith(SRC + "/") and name.count("/") > 2:
+                # A project that is new in the change; whatever uses it changes its references too.
+                changed.add("/".join(name.split("/")[:3]))
         return changed
 
     def direct_tests(self, changed: set[str]) -> set[str]:
@@ -381,12 +401,38 @@ class Projects:
             if directory.endswith(".Test") and (directory in changed or references & changed)
         }
 
+    def _owners_of(self, name: str) -> set[str]:
+        owners = set()
+        path = name
+        while path:
+            owners |= self.owners.get(path, set())
+            path = path.rpartition("/")[0]
+        return owners
+
 
 def project_references(csproj: Path) -> set[str]:
     return {
-        (csproj.parent / include.replace("\\", "/")).resolve().parent.relative_to(ROOT.resolve()).as_posix()
+        relative((csproj.parent / include.replace("\\", "/")).parent)
         for include in re.findall(r'ProjectReference\s+Include="([^"]+)"', csproj.read_text())
     }
+
+
+def included_paths(csproj: Path) -> set[str]:
+    """Paths outside the project that it builds from: each included file, or the directory above a wildcard."""
+    paths = set()
+    for include in re.findall(r'<(?:Compile|Content|None|EmbeddedResource)\s+Include="([^"]+)"', csproj.read_text()):
+        static = include.replace("\\", "/").split("*")[0].rstrip("/")
+        path = relative(csproj.parent / static)
+        if static.startswith("..") and path and not path.startswith(".."):
+            paths.add(path)
+    return paths
+
+
+def relative(path: Path) -> str:
+    try:
+        return path.resolve().relative_to(ROOT.resolve()).as_posix()
+    except ValueError:
+        return ""
 
 
 # -------------------------------------------------------------------------------------------------- Selector
@@ -444,11 +490,12 @@ class Selector:
         """What the run executes, or None when it runs everything."""
         if ALL in changed or changed & HARNESS or sampled(f"holdout|{run}", self.HOLDOUT_RATE):
             return None
+        covered = {project for project in COVERED_BY_EEST if f"{SRC}/{project}" not in changed}
         return Selection(
             run=str(run),
             tests=frozenset(self._linked(self.test_links, changed)),
             forks=frozenset(self._linked_forks(at, changed)),
-            projects=frozenset(direct_tests | self._linked(self.project_links, changed)),
+            projects=frozenset((direct_tests | self._linked(self.project_links, changed)) - covered),
         )
 
     def observe(self, at: datetime, changed: set[str], tests: set[tuple[str, str]], projects: set[str]) -> None:
@@ -495,12 +542,34 @@ class Selector:
         return selector
 
     @classmethod
-    def trained(cls, entries: Iterable[Entry], projects: Projects) -> Selector:
+    def trained(cls, journal: list[Entry], projects: Projects) -> Selector:
         selector = cls()
-        for entry in entries:
+        for entry in without_environment(journal):
             selector.observe(entry.at, projects.changed(entry.files), entry.eest_failures(), entry.failed_projects())
         return selector
 
+
+def without_environment(journal: list[Entry]) -> list[Entry]:
+    """The journal with only the failures that the changes caused. A test that also fails on master, or on two
+    other branches, near the same time failed for its environment: a flaky test, an outage or a broken base."""
+    seen = defaultdict(list)
+    for entry in journal:
+        for test in entry.failed.tests if entry.failed else ():
+            seen[test].append((entry.at, entry.branch))
+    times = {test: sorted(events) for test, events in seen.items()}
+    instants = {test: [at for at, _ in events] for test, events in times.items()}
+
+    def caused(test: str, entry: Entry) -> bool:
+        first = bisect_left(instants[test], entry.at - ENVIRONMENT_WINDOW)
+        last = bisect_right(instants[test], entry.at + ENVIRONMENT_WINDOW)
+        others = {branch for _, branch in times[test][first:last] if branch != entry.branch}
+        return "master" not in others and len(others) < 2
+
+    return [
+        replace(entry, failed=replace(entry.failed, tests=[test for test in entry.failed.tests if caused(test, entry)]))
+        if entry.failed else entry
+        for entry in journal
+    ]
 
 
 # ------------------------------------------------------------------------------------------------- Inventory
@@ -900,7 +969,7 @@ class Replay:
     def run(self, journal: list[Entry], measure_from: datetime) -> ReplayReport:
         report = ReplayReport()
         selector = Selector()
-        for entry in journal:
+        for entry in without_environment(journal):
             changed = self.projects.changed(entry.files)
             tests, failed_projects = entry.eest_failures(), entry.failed_projects()
             if entry.event == "pull_request" and not entry.selected and entry.at >= measure_from:

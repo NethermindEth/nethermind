@@ -3,6 +3,7 @@
 # SPDX-License-Identifier: LGPL-3.0-only
 
 from argparse import Namespace
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import json
@@ -136,7 +137,11 @@ class GitHubTests(unittest.TestCase):
 
 EVM_TEST = f"{st.SRC}/Nethermind.Evm.Test"
 JSON_RPC_TEST = f"{st.SRC}/Nethermind.JsonRpc.Test"
-PROJECTS = st.Projects({EVM: set(), JSON_RPC: {EVM}, EVM_TEST: {EVM}, JSON_RPC_TEST: {JSON_RPC}})
+CONFIG = f"{st.SRC}/Nethermind.Config"
+PROJECTS = st.Projects(
+    {EVM: set(), JSON_RPC: {EVM}, EVM_TEST: {EVM}, JSON_RPC_TEST: {JSON_RPC}, CONFIG: set()},
+    {f"{st.SRC}/Chains": {CONFIG}},
+)
 
 
 class ProjectsTests(unittest.TestCase):
@@ -146,8 +151,27 @@ class ProjectsTests(unittest.TestCase):
         files = [f"{EVM}/VirtualMachine.cs", f"{EVM_TEST}/OpcodeTests.cs"]
         self.assertEqual(self.projects.changed(files), {EVM, EVM_TEST})
 
-    def test_changed_with_inert_files_changes_nothing(self):
-        self.assertEqual(self.projects.changed(["README.md", "docs/a.md", "tools/DocGen/x.cs"]), set())
+    def test_changed_with_files_that_no_test_builds_or_runs_from_changes_nothing(self):
+        files = ["README.md", "tools/DocGen/x.cs", ".github/workflows/rpc-bench.yml", "Dockerfile", "cspell.json",
+                 ".github/actions/gcp-runner/action.yml", "nix/nuget-deps.json", "scripts/rpc-bench/run.py",
+                 f"{st.SRC}/Nethermind.slnx"]
+        self.assertEqual(self.projects.changed(files), set())
+
+    def test_changed_maps_a_path_that_a_project_includes_to_that_project(self):
+        self.assertEqual(self.projects.changed([f"{st.SRC}/Chains/foundation.json"]), {CONFIG})
+
+    def test_changed_maps_a_new_project_to_itself(self):
+        self.assertEqual(self.projects.changed([f"{st.SRC}/Nethermind.New/A.cs"]), {f"{st.SRC}/Nethermind.New"})
+
+    def test_included_paths_are_the_paths_outside_the_project_it_builds_from(self):
+        with tempfile.TemporaryDirectory(dir=st.ROOT / st.SRC) as directory:
+            csproj = Path(directory) / "P.csproj"
+            csproj.write_text(
+                '<Project><ItemGroup><EmbeddedResource Include="..\\Chains\\**\\*.*" />'
+                '<Content Include="..\\..\\tests\\a.json" /><Compile Include="Local.cs" />'
+                '<ProjectReference Include="..\\Nethermind.Core\\Nethermind.Core.csproj" /></ItemGroup></Project>'
+            )
+            self.assertEqual(st.included_paths(csproj), {f"{st.SRC}/Chains", "src/tests/a.json"})
 
     def test_direct_tests_are_changed_test_projects_and_those_referencing_a_changed_project(self):
         self.assertEqual(self.projects.direct_tests({EVM}), {"Nethermind.Evm.Test"},
@@ -155,7 +179,10 @@ class ProjectsTests(unittest.TestCase):
         self.assertEqual(self.projects.direct_tests({JSON_RPC_TEST}), {"Nethermind.JsonRpc.Test"})
 
     def test_changed_with_build_wide_files_touches_everything(self):
-        for name in [f"{st.SRC}/Directory.Build.props", ".github/workflows/run-nethtest.yml", st.ALL]:
+        for name in [f"{st.SRC}/Directory.Build.props", "Directory.Packages.props", "global.json", st.ALL,
+                     ".github/workflows/run-nethtest.yml", ".github/workflows/nethermind-tests-trie.yml",
+                     ".github/actions/select-tests/action.yml", "scripts/ci/test-matrices.json",
+                     "src/tests/BlockchainTests/a.json"]:
             with self.subTest(name=name):
                 self.assertEqual(self.projects.changed([name]), {st.ALL})
 
@@ -167,6 +194,16 @@ class SelectorTests(unittest.TestCase):
 
     def decide(self, changed: set[str], at: datetime = NOW, selector: st.Selector | None = None) -> st.Selection | None:
         return (selector or self.selector).decide(self.run, at, changed, PROJECTS.direct_tests(changed))
+
+    def test_decide_leaves_the_legacy_suites_that_eest_covers_to_full_runs(self):
+        legacy = f"{st.SRC}/Ethereum.Legacy.Blockchain.Test"
+        selector = st.Selector()
+        selector.project_links[EVM] = {"Ethereum.Legacy.Blockchain.Test", "Nethermind.JsonRpc.Test"}
+        selector.project_links[legacy] = {"Ethereum.Legacy.Blockchain.Test"}
+        self.assertEqual(self.decide({EVM}, selector=selector).projects,
+                         {"Nethermind.Evm.Test", "Nethermind.JsonRpc.Test"})
+        self.assertIn("Ethereum.Legacy.Blockchain.Test", self.decide({legacy}, selector=selector).projects,
+                      "a change to the suite itself still runs it")
 
     def test_decide_on_harness_or_build_wide_change_runs_everything(self):
         for changed in ({f"{st.SRC}/Ethereum.Test.Base"}, {st.ALL}):
@@ -463,6 +500,44 @@ class ReplayTests(unittest.TestCase):
 
 def job(job_id: int, name: str) -> dict:
     return {"id": job_id, "name": name}
+
+
+class EnvironmentTests(unittest.TestCase):
+    def failing(self, run: int, hours: int, branch: str) -> st.Entry:
+        return st.Entry(run=run, at=NOW + timedelta(hours=hours), event="pull_request", branch=branch, files=[],
+                        failed=st.Failures(tests=["Nethermind.Evm.Test|Flaky"]))
+
+    def kept(self, *others: st.Entry) -> bool:
+        return bool(st.without_environment([self.failing(1, 0, "mine"), *others])[0].failed.tests)
+
+    def test_a_failure_of_the_change_alone_is_kept(self):
+        self.assertTrue(self.kept())
+        self.assertTrue(self.kept(self.failing(2, 1, "other")), "one other branch can share the same regression")
+        self.assertTrue(self.kept(self.failing(2, 30, "master"), self.failing(3, -30, "a")), "outside the window")
+
+    def test_a_failure_that_master_or_two_other_branches_share_is_the_environment(self):
+        self.assertFalse(self.kept(self.failing(2, 5, "master")))
+        self.assertFalse(self.kept(self.failing(2, -5, "a"), self.failing(3, 20, "b")))
+        self.assertFalse(self.kept(self.failing(2, 1, "mine"), self.failing(3, 1, "a"), self.failing(4, 2, "b")))
+
+    def test_the_model_learns_nothing_from_the_environment(self):
+        changed = st.Entry(run=1, at=NOW, event="pull_request", branch="mine", files=[f"{EVM}/A.cs"],
+                           failed=st.Failures(tests=["Nethermind.JsonRpc.Test|Flaky"]))
+        on_master = replace(changed, run=2, branch="master", files=[])
+        self.assertEqual(dict(st.Selector.trained([changed, on_master], PROJECTS).project_links), {})
+        self.assertEqual(st.Selector.trained([changed], PROJECTS).project_links[EVM], {"Nethermind.JsonRpc.Test"})
+
+    def test_the_replay_reports_no_environment_failure_as_hidden(self):
+        run = run_without_holdout(start=3)
+        self.assertTrue(unsampled(run, "test_mul", "Cancun"), "precondition: the sample skips test_mul")
+        journal = [entry(run, 9, "pull_request", [f"{JSON_RPC}/Eth.cs"], ["test_mul"]),
+                   replace(entry(run + 1, 9, "push", [], ["test_mul"]), branch="master")]
+        report = st.Replay(InventoryTests.inventory, PROJECTS).run(journal, NOW)
+        self.assertEqual(report.eest.hidden, [], "test_mul failed on master at the same time")
+
+    def test_infra_failures_stay(self):
+        entry = replace(self.failing(1, 0, "mine"), failed=st.Failures(tests=[], infra=["Hive"]))
+        self.assertEqual(st.without_environment([entry])[0].failed.infra, ["Hive"])
 
 
 def entry(
