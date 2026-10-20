@@ -100,6 +100,14 @@ def adapt_driver(commands, package, profile, suite):
             retained.append(name)
     if selected == "verify-cross-chain-waves":
         adapt_waves(package / "scripts/verify-cross-chain-waves.sh", WAVE_GROUPS[suite])
+    if profile == "rollupx":
+        if suite == "protocol":
+            readiness = '# Canonical replay proves readiness; an observer receipt alone does not.\n'
+            inbound = ('timed_phase settlement-inbound env EEZ_WAVE_MODE=inbound EEZ_WAVE_COUNT=1 '
+                       'EEZ_INCLUDE_REVERTS=1 bash "$HERE/scripts/cross-chain-wave.sh"\n\n')
+            commands = replace_once(commands, readiness, inbound + readiness)
+        elif suite != "recovery":
+            commands = defer_native_settlement(commands, selected)
     if suite != "recovery":
         commands = replace_once(commands, '\nbash "$NETHERMIND_OBSERVE_SCRIPT" recovery\n', "\n")
     commands = replace_once(commands, "write_result() {", "write_upstream_result() {")
@@ -113,6 +121,26 @@ def adapt_driver(commands, package, profile, suite):
         raise ValueError("upstream full-suite summary boundary changed")
     commands = commands[:commands.index(summary)] + '\necho "upstream partition $EEZ_SUITE passed"\n'
     return commands, retained
+
+
+def defer_native_settlement(commands, selected):
+    start = '# Canonical replay proves readiness; an observer receipt alone does not.\n'
+    end = '\necho "==> running native cross-chain wave suite"'
+    if commands.count(start) != 1 or commands.count(end) != 1:
+        raise ValueError("upstream native settlement readiness boundary changed")
+    begin, finish = commands.index(start), commands.index(end)
+    if finish <= begin:
+        raise ValueError("upstream native settlement readiness order changed")
+    readiness = commands[begin:finish]
+    commands = replace_once(commands, readiness, "")
+    invocation = re.compile(r'(?m)^(?:timed_phase [a-z-]+ )?bash "\$HERE/scripts/' + re.escape(selected) + r'\.sh"$')
+    matches = list(invocation.finditer(commands))
+    if len(matches) != 1:
+        raise ValueError("upstream native settlement scenario boundary changed")
+    call = matches[0].group(0)
+    readiness = ('readiness_started=$SECONDS\n'
+                 'deadline=$((SECONDS + ${EEZ_CI_READY_TIMEOUT_SECS:-900}))\n' + readiness)
+    return replace_once(commands, call, call + "\n" + readiness)
 
 
 def adapt_waves(path, selected):
