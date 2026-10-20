@@ -552,3 +552,10 @@ public partial struct PayloadStatusWithWitnessWire
     public PayloadStatusWire PayloadStatus { get; set; }
     [SszList(1)] public ExecutionWitnessV1Wire[]? Witness { get; set; }
 }
+
+[SszContainer]
+public partial struct BuiltPayloadWithWitnessV6Wire
+{
+    public GetPayloadResponseV6Wire BuiltPayload { get; set; }
+    public ExecutionWitnessV1Wire Witness { get; set; }
+}

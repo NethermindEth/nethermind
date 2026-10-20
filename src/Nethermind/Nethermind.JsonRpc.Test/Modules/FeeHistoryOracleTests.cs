@@ -165,6 +165,54 @@ namespace Nethermind.JsonRpc.Test.Modules
 
         }
 
+        [Test]
+        public async Task GetFeeHistory_DoesNotLoadTheParentOfTheOldestBlock()
+        {
+            await using IContainer container = new ContainerBuilder()
+                .AddModule(new TestNethermindModule())
+                .AddDecorator<IBlockTree, BodyLoadRecordingBlockTree>()
+                .Build();
+            BodyLoadRecordingBlockTree blockTree = (BodyLoadRecordingBlockTree)container.Resolve<IBlockTree>();
+            Block genesis = Build.A.Block.Genesis.TestObject;
+            Block parent = Build.A.Block.WithParent(genesis).TestObject;
+            Block oldest = Build.A.Block.WithParent(parent).WithGasLimit(100).WithGasUsed(50).TestObject;
+            foreach (Block block in (Block[])[genesis, parent, oldest])
+            {
+                blockTree.SuggestBlock(block);
+                blockTree.TryUpdateMainChain(block.Header, wereProcessed: true, forceUpdateHeadBlock: true, block);
+            }
+
+            IFeeHistoryOracle feeHistoryOracle = container.Resolve<IFeeHistoryOracle>();
+            blockTree.LoadedBodies.Clear();
+
+            using ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(1, new BlockParameter(oldest.Number), []);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(resultWrapper.Data.OldestBlock, Is.EqualTo(oldest.Number));
+                Assert.That(blockTree.LoadedBodies, Does.Contain(oldest.Hash), "the requested block is loaded");
+                Assert.That(blockTree.LoadedBodies, Does.Not.Contain(parent.Hash), "the parent of the oldest block is not loaded");
+            }
+        }
+
+        private sealed class BodyLoadRecordingBlockTree(IBlockTree inner) : BlockTreeTestDouble(inner)
+        {
+            public List<Hash256> LoadedBodies { get; } = [];
+
+            public override Block? FindBlock(Hash256 blockHash, BlockTreeLookupOptions options, ulong? blockNumber = null)
+            {
+                LoadedBodies.Add(blockHash);
+                return base.FindBlock(blockHash, options, blockNumber);
+            }
+
+            public override Block? FindBlock(ulong blockNumber, BlockTreeLookupOptions options)
+            {
+                Block? block = base.FindBlock(blockNumber, options);
+                if (block is not null) LoadedBodies.Add(block.Hash!);
+                return block;
+            }
+        }
+
         [TestCase(3UL, 3UL, 1)]
         [TestCase(100UL, 95UL, 0.95)]
         [TestCase(12UL, 3UL, 0.25)]

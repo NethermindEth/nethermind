@@ -71,11 +71,14 @@ public sealed class AddressStorageNodeDictionary : IReadOnlyCollection<KeyValueP
         return nodes;
     }
 
-    public bool TryGetValue(HashedKey<(Hash256, TreePath)> key, out TrieNode node)
+    public bool TryGetValue(HashedKey<(Hash256, TreePath)> key, out TrieNode node) => TryGetValue(key.Key.Item1, key.Key.Item2, out node);
+
+    /// <summary>Looks a node up without the combined key, whose hash this dictionary does not use.</summary>
+    public bool TryGetValue(Hash256 address, in TreePath path, out TrieNode node)
     {
-        if (_byAddress.TryGetValue(key.Key.Item1, out AddressNodes? nodes))
+        if (_byAddress.TryGetValue(address, out AddressNodes? nodes))
         {
-            return nodes.Nodes.TryGetValue(key.Key.Item2, out node!);
+            return nodes.Nodes.TryGetValue(path, out node!);
         }
 
         node = null!;
