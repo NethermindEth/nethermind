@@ -1278,9 +1278,11 @@ public partial class EngineModuleTests
     }
 
     private async Task<(IEngineRpcModule, string?, Transaction[], MergeTestBlockchain chain)> BuildAndGetPayloadV3Result(
-        IReleaseSpec spec, int transactionCount = 0, bool oneBlobPerTx = true)
+        IReleaseSpec spec, int transactionCount = 0, bool oneBlobPerTx = true, ISpecProvider? specProvider = null)
     {
-        MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: spec);
+        MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: spec, configurer: specProvider is null
+            ? null
+            : builder => builder.AddSingleton<ISpecProvider>(specProvider));
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
         Transaction[] txs = [];
 

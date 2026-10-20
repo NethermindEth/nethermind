@@ -25,7 +25,7 @@ public class RocksDbReader(DbOnTheRocks mainDb,
     ReadOptions hintCacheMissOptions,
     Func<ReadOptions> readOptionsFactory,
     DisposableLazy<DbOnTheRocks.IteratorManager>? iteratorManager = null,
-    IColumnFamilyHandle? columnFamily = null) : ISortedKeyValueStore, IDisposable
+    IColumnFamilyHandle? columnFamily = null) : ISortedKeyValueStore, IReadPrefetcher, IDisposable
 {
     private readonly DbOnTheRocks _mainDb = mainDb;
     private readonly Func<ReadOptions> _readOptionsFactory = readOptionsFactory;
@@ -88,6 +88,10 @@ public class RocksDbReader(DbOnTheRocks mainDb,
     }
 
     public void DangerousReleaseMemory(in ReadOnlySpan<byte> span) => _mainDb.DangerousReleaseMemory(span);
+
+    public void Prefetch(ReadOnlySpan<byte> keys, int keyLength) => _mainDb.Prefetch(keys, keyLength, _columnFamily, _options);
+
+    public bool IsCached(ReadOnlySpan<byte> key) => _mainDb.IsCached(key, _columnFamily);
 
     public bool KeyExists(ReadOnlySpan<byte> key) => _mainDb.KeyExistsWithColumn(key, _columnFamily);
 
