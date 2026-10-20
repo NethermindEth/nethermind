@@ -368,7 +368,7 @@ public class BlockValidatorTests
     }
 
     [Test]
-    public void ValidateSuggestedBlock_rejects_transactions_whose_minimum_gas_exceeds_gas_limit([Values(0, 1, 500)] int excessTransactions, [Values] bool senderKnown, [Values] bool calldataHeavy)
+    public void ValidateSuggestedBlock_rejects_transactions_whose_minimum_gas_exceeds_gas_limit([Values(0, 1, 500)] int excessTransactions, [Values] bool senderKnown, [Values] bool calldataHeavy, [Values] TxKind kind)
     {
         const int txCount = 1000;
         byte[] data = calldataHeavy ? Enumerable.Repeat((byte)0xFF, 1024).ToArray() : [];
@@ -376,14 +376,14 @@ public class BlockValidatorTests
         Transaction[] transactions = new Transaction[txCount];
         for (int i = 0; i < txCount; i++)
         {
-            transactions[i] = Build.A.Transaction.To(TestItem.AddressB).WithValue(1).WithData(data).WithGasLimit(1_000_000).TestObject;
+            transactions[i] = TransactionOf(kind).WithValue(1).WithData(data).WithGasLimit(1_000_000).TestObject;
             transactions[i].SenderAddress = senderKnown ? TestItem.AddressA : null;
             // Memoizes intrinsic gas as the real IsWellFormed does, which the minimum-gas check then reuses.
             IntrinsicGasCalculator.Calculate(transactions[i], Amsterdam.Instance);
         }
 
         // An unrecovered sender could still turn out to be the recipient, so it is held to the self-transfer price.
-        Transaction priced = Build.A.Transaction.To(TestItem.AddressB).WithValue(1).WithData(data).WithSenderAddress(senderKnown ? TestItem.AddressA : TestItem.AddressB).TestObject;
+        Transaction priced = TransactionOf(kind).WithValue(1).WithData(data).WithSenderAddress(senderKnown ? TestItem.AddressA : TestItem.AddressB).TestObject;
         EthereumIntrinsicGas pricedGas = IntrinsicGasCalculator.Calculate(priced, Amsterdam.Instance);
         Assert.That(pricedGas.FloorGas > pricedGas.Standard, Is.EqualTo(calldataHeavy));
         ulong minimumTransactionGas = pricedGas.MinimalGas;
@@ -410,6 +410,19 @@ public class BlockValidatorTests
             txValidator.Received(expectedValidated).IsWellFormed(Arg.Any<Transaction>(), Arg.Any<IReleaseSpec>(), gasLimit);
         }
     }
+
+    public enum TxKind { Transfer, ContractCreation, SetCode, Blob }
+
+    private static TransactionBuilder<Transaction> TransactionOf(TxKind kind) => kind switch
+    {
+        TxKind.Transfer => Build.A.Transaction.To(TestItem.AddressB),
+        TxKind.ContractCreation => Build.A.Transaction.WithTo(null),
+        TxKind.SetCode => Build.A.Transaction.To(TestItem.AddressB).WithType(TxType.SetCode)
+            .WithAuthorizationCode([new AuthorizationTuple(0, TestItem.AddressC, 0, new Signature(new byte[64], 0)), new AuthorizationTuple(0, TestItem.AddressD, 1, new Signature(new byte[64], 0))]),
+        // Blob gas is a separate dimension, so blobs add no intrinsic gas; carrying none keeps the blob limit out of the test.
+        TxKind.Blob => Build.A.Transaction.To(TestItem.AddressB).WithType(TxType.Blob).WithMaxFeePerBlobGas(1).WithBlobVersionedHashes(0),
+        _ => throw new ArgumentOutOfRangeException(nameof(kind))
+    };
 
     [Test]
     public void ValidateSuggestedBlock_rejects_bal_item_when_gas_limit_allows_no_items()
