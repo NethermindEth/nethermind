@@ -539,10 +539,15 @@ public partial class EthRpcModule(
             ? feePerBlobGas
             : null;
 
+        // Only the defaults FillDefaults will read are estimated: an estimate can scan recent blocks or call L1.
         TxFillContext fillContext = new()
         {
-            GasPrice = await _gasPriceOracle.GetGasPriceEstimate(),
-            MaxPriorityFeePerGas = _gasPriceOracle.GetMaxPriorityGasFeeEstimate(),
+            GasPrice = rpcTx is not EIP1559TransactionForRpc && legacyTx.GasPrice is null
+                ? await _gasPriceOracle.GetGasPriceEstimate()
+                : default,
+            MaxPriorityFeePerGas = rpcTx is EIP1559TransactionForRpc { GasPrice: null, MaxPriorityFeePerGas: null }
+                ? _gasPriceOracle.GetMaxPriorityGasFeeEstimate()
+                : default,
             BaseFee = BaseFeeCalculator.Calculate(head, _specProvider.GetSpecFor1559(head.Number + 1)),
             BlobBaseFee = blobBaseFee,
             Spec = spec,

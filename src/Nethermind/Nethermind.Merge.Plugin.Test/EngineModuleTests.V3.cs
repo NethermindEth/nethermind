@@ -282,6 +282,45 @@ public partial class EngineModuleTests
     }
 
     [Test]
+    public async Task NewPayloadV3_rejects_more_transactions_than_parent_gas_limit_allows_before_decoding(
+        [Values(null, "withdrawals", "blobGasUsed", "excessBlobGas", "blobVersionedHashes", "parentBeaconBlockRoot")] string? missingField)
+    {
+        (IEngineRpcModule rpcModule, string? payloadId, _, MergeTestBlockchain chain) = await BuildAndGetPayloadV3Result(Cancun.Instance, 0);
+        using MergeTestBlockchain disposeChain = chain;
+        ExecutionPayloadV3 payload = (await rpcModule.engine_getPayloadV3(Bytes.FromHexString(payloadId!))).Data!.ExecutionPayload;
+        ulong parentGasLimit = chain.BlockTree.FindHeader(payload.ParentHash)!.GasLimit;
+
+        // Undecodable entries: had they been decoded, the error would name transaction 0.
+        payload.Transactions = Enumerable.Repeat(new byte[] { 0xC0 }, (int)(parentGasLimit / 5_000)).ToArray();
+        payload.GasLimit = ulong.MaxValue;
+
+        switch (missingField)
+        {
+            case "withdrawals": payload.Withdrawals = null; break;
+            case "blobGasUsed": payload.BlobGasUsed = null; break;
+            case "excessBlobGas": payload.ExcessBlobGas = null; break;
+        }
+
+        ResultWrapper<PayloadStatusV1> result = await rpcModule.engine_newPayloadV3(payload,
+            missingField == "blobVersionedHashes" ? null! : [],
+            missingField == "parentBeaconBlockRoot" ? null : payload.ParentBeaconBlockRoot);
+
+        if (missingField is null)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                AssertInvalidNewPayload(result, expectedValidationErrorPrefix: "Transaction count");
+                // The parent is the terminal PoW block.
+                Assert.That(result.Data.LatestValidHash, Is.EqualTo(Keccak.Zero));
+            }
+        }
+        else
+        {
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
+        }
+    }
+
+    [Test]
     public async Task NewPayloadV3_should_decline_null_blobversionedhashes()
     {
         (JsonRpcService jsonRpcService, JsonRpcContext context, EthereumJsonSerializer serializer, ExecutionPayloadV3 executionPayload, MergeTestBlockchain chain)
