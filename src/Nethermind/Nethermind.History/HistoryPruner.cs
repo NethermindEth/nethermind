@@ -24,6 +24,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
+using Nethermind.State;
 using Nethermind.State.Repositories;
 
 [assembly: InternalsVisibleTo("Nethermind.History.Test")]
@@ -67,6 +68,7 @@ public class HistoryPruner : IHistoryPruner
     private readonly ulong _ancientBarrier;
     private readonly ulong _ancientReceiptsBarrier;
     private readonly bool _fastSync;
+    private readonly IStateBoundary _stateBoundary;
     private readonly ISyncConfig _syncConfig;
     private static readonly TimeSpan AncientHoldRelogInterval = TimeSpan.FromMinutes(10);
     private const int AncientHoldStaticRelogsBeforeWarn = 3;
@@ -115,6 +117,7 @@ public class HistoryPruner : IHistoryPruner
         IDbProvider dbProvider,
         IHistoryConfig historyConfig,
         IPruningConfig pruningConfig,
+        IStateBoundary stateBoundary,
         IBlocksConfig blocksConfig,
         ISyncConfig syncConfig,
         IProcessExitSource processExitSource,
@@ -140,6 +143,7 @@ public class HistoryPruner : IHistoryPruner
         _balPruningOnly = !_enabled
             && (historyConfig.BalRetentionEpochs is not null || pruningConfig.Mode != PruningMode.None)
             && specProvider.GetFinalSpec().BlockLevelAccessListsEnabled;
+        _stateBoundary = stateBoundary;
         _pruningInterval = historyConfig.PruningInterval * SlotsPerEpoch;
         _minHistoryRetentionEpochs = specProvider.GenesisSpec.MinHistoryRetentionEpochs;
         _minBalRetentionEpochs = specProvider.GenesisSpec.MinBalRetentionEpochs;
@@ -221,7 +225,16 @@ public class HistoryPruner : IHistoryPruner
 
     internal ulong BalsDeletePointer => _balsDeletePointer;
 
-    private ulong PruningUpperBound => _fastSync ? _blockTree.SyncPivot.BlockNumber : _blockTree.Head?.Number ?? 0;
+    private ulong PruningUpperBound
+    {
+        get
+        {
+            if (_fastSync) return _blockTree.SyncPivot.BlockNumber;
+
+            ulong head = _blockTree.Head?.Number ?? 0;
+            return ulong.Min(head, _stateBoundary.BestPersistedState ?? 0);
+        }
+    }
 
     public BlockHeader? OldestBlockHeader
     {
@@ -556,7 +569,7 @@ public class HistoryPruner : IHistoryPruner
     /// </remarks>
     private void TryPruneBlockAccessListsOnly(CancellationToken cancellationToken)
     {
-        if (_blockTree.Head is null || _blockTree.SyncPivot.BlockNumber == 0) return;
+        if (_blockTree.Head is null || PruningUpperBound == 0) return;
 
         bool lockTaken = false;
         Monitor.TryEnter(_pruneLock, LockWaitTimeoutMs, ref lockTaken);
@@ -565,6 +578,11 @@ public class HistoryPruner : IHistoryPruner
         try
         {
             if (Interlocked.Exchange(ref _initialPruningPassPending, 0) == 0 && !PruningIntervalHasElapsed()) return;
+
+            if (!_fastSync)
+            {
+                _lastFullSyncPruningHead = _blockTree.Head.Number;
+            }
 
             LoadBalsDeletePointer();
             ulong? balCutoff = BalCutoffBlockNumber;
