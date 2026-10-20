@@ -2592,6 +2592,13 @@ public partial class EthRpcModuleTests
         return (result, gasUsed);
     }
 
+    private static void AssertSingleAccessListEntry(JToken result, string address)
+    {
+        JArray accessList = (JArray)result["accessList"]!;
+        Assert.That(accessList, Has.Count.EqualTo(1));
+        Assert.That(accessList[0]["address"]!.Value<string>(), Is.EqualTo(address));
+    }
+
     [Test]
     public async Task Eth_createAccessList_returns_out_of_gas_when_al_intrinsic_cost_exceeds_gas_limit()
     {
@@ -2703,11 +2710,10 @@ public partial class EthRpcModuleTests
         // reports the accessed account (execution-apis#946), and the gas is the run with that list:
         // 18005 without it, plus 1280 for a 20-byte address at 4 tokens x 16 gas (EIP-7981 + EIP-7976).
         (JToken optimized, long optimizedGas) = await CallCreateAccessList(ctx, transaction, stateOverride, optimize: true);
-        Address[] addresses = optimized["accessList"]!.Select(static e => new Address(e["address"]!.Value<string>()!)).ToArray();
         using (Assert.EnterMultipleScope())
         {
             Assert.That(optimized["error"], Is.Null);
-            Assert.That(addresses, Is.EqualTo(new[] { new Address(accessedAccount) }));
+            AssertSingleAccessListEntry(optimized, accessedAccount);
             Assert.That(optimizedGas, Is.EqualTo(18005 + 1280));
         }
     }
@@ -2727,11 +2733,10 @@ public partial class EthRpcModuleTests
         // The entry adds 20 bytes to the binding floor, so the run without it is cheaper. The list still reports it,
         // and the gas is the floor with those 20 bytes.
         (JToken optimized, long optimizedGas) = await CallCreateAccessList(ctx, transaction, stateOverride, optimize: true);
-        Address[] addresses = optimized["accessList"]!.Select(static e => new Address(e["address"]!.Value<string>()!)).ToArray();
         using (Assert.EnterMultipleScope())
         {
             Assert.That(optimized["error"], Is.Null);
-            Assert.That(addresses, Is.EqualTo(new[] { new Address(accessedAccount) }));
+            AssertSingleAccessListEntry(optimized, accessedAccount);
             Assert.That(optimizedGas, Is.EqualTo((long)(GasCostOf.TransactionEip2780 + Eip8038Constants.ColdAccountAccess + (calldataBytes + Address.Size) * Eip8131Constants.FloorGasPerByte)));
         }
     }
@@ -2746,11 +2751,10 @@ public partial class EthRpcModuleTests
         string transaction = $$"""{"from":"{{CreateAccessListSender}}","to":"{{contractAddr}}","accessList":[{"address":"{{accessedAccount}}","storageKeys":[]}]}""";
 
         (JToken optimized, _) = await CallCreateAccessList(ctx, transaction, stateOverride, optimize: true);
-        Address[] addresses = optimized["accessList"]!.Select(static e => new Address(e["address"]!.Value<string>()!)).ToArray();
         using (Assert.EnterMultipleScope())
         {
             Assert.That(optimized["error"], Is.Null);
-            Assert.That(addresses, Is.EqualTo(new[] { new Address(accessedAccount) }));
+            AssertSingleAccessListEntry(optimized, accessedAccount);
         }
     }
 
