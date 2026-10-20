@@ -259,6 +259,11 @@ namespace Nethermind.Trie
             return false;
         }
 
+        /// <summary>Resolves child <paramref name="i"/> from an RLP other than a full branch's: through <see cref="ResolveChildFromAnyRlp"/>.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private object? ResolveChildFromSparseRlp(ITrieNodeResolver tree, ref TreePath childPath, ref object? data, int i, CappedArray<byte> rlp) =>
+            ResolveChildFromAnyRlp(tree, ref childPath, ref data, i, rlp);
+
         /// <summary>Creates the data of a leaf decoded from RLP, with the hex-prefix key <paramref name="compactKey"/>.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static LeafData CreateLeafData(ReadOnlySpan<byte> compactKey, int compactKeyEnd, CappedArray<byte> value) =>

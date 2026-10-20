@@ -1325,7 +1325,7 @@ namespace Nethermind.Trie
             int position = 3 + i * Rlp.LengthOfKeccakRlp;
             return span.Length == FullBranchRlpLength && IsBranch && span[position] == 160
                 ? ResolveHashedChild(tree, ref childPath, ref data, span.Slice(position + 1, Hash256.Size))
-                : ResolveChildFromAnyRlp(tree, ref childPath, ref data, i, rlp);
+                : ResolveChildFromSparseRlp(tree, ref childPath, ref data, i, rlp);
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
