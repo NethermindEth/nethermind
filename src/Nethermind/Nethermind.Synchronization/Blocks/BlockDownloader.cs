@@ -160,7 +160,6 @@ namespace Nethermind.Synchronization.Blocks
             bool originalShouldProcess = (options & DownloaderOptions.Process) == DownloaderOptions.Process;
 
             int blocksSynced = 0;
-            ulong bestProcessedBlock = 0;
             ulong? previousStartingHeaderNumber = null;
 
             while (true)
@@ -206,7 +205,7 @@ namespace Nethermind.Synchronization.Blocks
 
                     previousStartingHeaderNumber = headersSpan[0].Number;
 
-                    (shouldProcess, downloadReceipts) = ReceiptEdgeCase(bestProcessedBlock, headersSpan[1].Number, originalShouldProcess, originalDownloadReceiptOpts);
+                    (shouldProcess, downloadReceipts) = ReceiptEdgeCase(headersSpan[1].Number, originalShouldProcess, originalDownloadReceiptOpts);
                 }
 
                 using ArrayPoolList<BlockEntry> satisfiedEntry = AssembleSatisfiedEntries(headers!, shouldProcess, downloadReceipts);
@@ -248,11 +247,6 @@ namespace Nethermind.Synchronization.Blocks
 
                     if (SuggestBlock(entry.PeerInfo, entry.Block, blockIndex == 0, shouldProcess, ShouldDownloadReceipts(entry.Header, shouldProcess, downloadReceipts), entry.Receipts))
                     {
-                        if (shouldProcess)
-                        {
-                            bestProcessedBlock = currentBlock.Number;
-                        }
-
                         blocksSynced++;
                     }
                 }
@@ -729,7 +723,10 @@ namespace Nethermind.Synchronization.Blocks
         /// <summary>Whether this header requires receipts before suggestion.</summary>
         protected virtual bool ShouldDownloadReceipts(BlockHeader header, bool shouldProcess, bool requested) => requested;
 
-        protected virtual BlockTreeSuggestOptions GetSuggestOption(bool shouldProcess, Block currentBlock) => shouldProcess ? BlockTreeSuggestOptions.ShouldProcess : BlockTreeSuggestOptions.None;
+        protected virtual BlockTreeSuggestOptions GetSuggestOption(bool shouldProcess, Block currentBlock) =>
+            shouldProcess
+                ? BlockTreeSuggestOptions.ShouldProcess | BlockTreeSuggestOptions.NonBlockingProcessing
+                : BlockTreeSuggestOptions.None;
 
         private bool SuggestBlock(
             PeerInfo bestPeer,
@@ -774,24 +771,21 @@ namespace Nethermind.Synchronization.Blocks
         }
 
         private (bool shouldProcess, bool shouldDownloadReceipt) ReceiptEdgeCase(
-            ulong bestProcessedBlock,
             ulong firstBlockNumber,
             bool shouldProcess,
             bool shouldDownloadReceipt)
         {
             if (shouldProcess && !shouldDownloadReceipt)
             {
-                // Persisted state can sit ahead of the head: a fast-sync to full-sync transition, or a
-                // crash that left it ahead. Blocks at or below it already have their post-state; processing
-                // them finds no parent state, throws, and deletes the branch. Download receipts instead.
+                // Persisted state can sit ahead of the head after a fast-sync transition or a crash. Blocks at
+                // or below it already have their post-state; processing them finds no parent state, throws, and
+                // deletes the branch. Download receipts instead.
                 ulong headNumber = _blockTree.Head?.Number ?? 0;
-                bool headIsGenesis = _blockTree.Head?.IsGenesis ?? false;
-                bool isFastSyncTransition = headIsGenesis && firstBlockNumber > (bestProcessedBlock + 1);
                 ulong bestFullState = _fullStateFinder.FindBestFullState();
                 bool persistedStateAheadOfHead = bestFullState > headNumber;
-                if (isFastSyncTransition || persistedStateAheadOfHead)
+                if (persistedStateAheadOfHead)
                 {
-                    shouldProcess = firstBlockNumber > bestFullState && bestFullState != 0;
+                    shouldProcess = firstBlockNumber > bestFullState;
                     if (!shouldProcess)
                     {
                         if (_logger.IsInfo) _logger.Info($"Turning on receipt download in full sync, currentBlock: {firstBlockNumber}, bestFullState: {bestFullState}, trying to load receipts");
