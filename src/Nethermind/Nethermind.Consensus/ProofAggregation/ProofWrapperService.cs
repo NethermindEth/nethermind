@@ -64,7 +64,8 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
     public async Task<Result<Hash256[]>> AcceptAsync(byte[] wrapper, CancellationToken cancellationToken = default)
         => (await AcceptDetailedAsync(wrapper, cancellationToken)).Result;
 
-    /// <summary>Raised with the encoded wrapper once it is fully validated, whether or not the pool admitted its transactions.</summary>
+    /// <summary>Raised with the encoded wrapper once the pool admits every transaction it carries, at least one carries a
+    /// dependency, and the verifier it was validated under is still current.</summary>
     /// <remarks>The second argument maps each of the wrapper's hash entries to the transaction that resolved it, so a relay
     /// can keep serving the envelopes it offers by hash, and the third is the verifier it was validated under. Subscribers must
     /// not mutate the arguments.</remarks>
@@ -277,7 +278,6 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
                     leanProofStore.AddCachedRecursive(decoded.Deps, recursive.StarkProof);
                 }
             }
-            WrapperValidated?.Invoke(wrapper, resolved, verifier);
             cancellationToken.ThrowIfCancellationRequested();
             List<FrameDependency> admittedDependencies = [];
             Result<Hash256[]> admission;
@@ -301,6 +301,10 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             }
             // A verifier change during pool insertion purged before this admission committed; purge its leftovers.
             if (RefreshVerifier() is { } current && current != verifier) Purge(current);
+            // EIPs#12473: relay only once usable for admission, i.e. every transaction it carries is pending and at least one
+            // carries a dependency. Already-pending entries also fill admittedDependencies, so a partly rejected wrapper must not relay.
+            if (admission.IsSuccess && admittedDependencies.Count != 0 && RefreshVerifier() == verifier)
+                WrapperValidated?.Invoke(wrapper, resolved, verifier);
             return new(admission.IsSuccess ? ProofWrapperAcceptanceStatus.Accepted : ProofWrapperAcceptanceStatus.PoolRejected, admission);
         }
         catch (RlpException)

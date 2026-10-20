@@ -24,7 +24,7 @@ public sealed partial class ProofWrapperTransport
     /// <summary>The outcome of validating a received wrapper.</summary>
     /// <remarks><see cref="Refused"/> and <see cref="LocalFailure"/> are local inabilities to finish validation and
     /// <see cref="Unresolved"/> a failed envelope recovery; none establishes invalidity or penalizes a peer.</remarks>
-    private enum Verdict { Valid, Invalid, LocalFailure, Refused, Unresolved }
+    private enum Verdict { Valid, PoolRejected, Invalid, LocalFailure, Refused, Unresolved }
 
     // ---- Announcements and wrapper requests ---------------------------------------------------------------------------
 
@@ -420,6 +420,14 @@ public sealed partial class ProofWrapperTransport
                 WrapperMetrics.Record(WrapperEvent.Validated);
                 if (_logger.IsDebug) _logger.Debug($"eth/73 validated {fetch.Announcement}");
                 break;
+            // Pool policy is not a protocol matter: a valid proof stands even if its transactions were refused. The wrapper is
+            // neither stored nor relayed, so a soft tombstone keeps re-announcements from fetching it again.
+            case Verdict.PoolRejected:
+                WrapperMetrics.Record(WrapperEvent.Validated);
+                lock (_gate) _tombstones.Add(fetch.Announcement.Hash, _clock.GetTimestamp()
+                    + (long)(WrapperTransportLimits.SoftTombstone.TotalSeconds * _clock.TimestampFrequency));
+                if (_logger.IsDebug) _logger.Debug($"eth/73 validated {fetch.Announcement}, but the pool rejected its transactions: {error}");
+                break;
             // Around a fork that changes the verifier, peers' target-fork estimates can differ by a slot: a proof failure is a
             // local refusal for the configured grace window (EIP-8437).
             case Verdict.Invalid when _wrappers.IsInVerifierTransition(_forkGraceBlocks):
@@ -470,8 +478,8 @@ public sealed partial class ProofWrapperTransport
                 ProofWrapperAcceptance result = await accept(cancellation).ConfigureAwait(false);
                 switch (result.Status)
                 {
-                    // Pool policy is not a protocol matter: a valid proof stands even if its transactions were refused.
-                    case ProofWrapperAcceptanceStatus.Accepted or ProofWrapperAcceptanceStatus.PoolRejected: return (Verdict.Valid, null);
+                    case ProofWrapperAcceptanceStatus.Accepted: return (Verdict.Valid, null);
+                    case ProofWrapperAcceptanceStatus.PoolRejected: return (Verdict.PoolRejected, result.Result.Error);
                     case ProofWrapperAcceptanceStatus.Invalid: return (Verdict.Invalid, result.Result.Error);
                     case ProofWrapperAcceptanceStatus.Refused: return (Verdict.Refused, result.Result.Error);
                     case ProofWrapperAcceptanceStatus.Busy when attempt < MaxBusyRetries:

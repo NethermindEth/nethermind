@@ -12,6 +12,7 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V73;
 using Nethermind.Network.P2P.Subprotocols.Eth.V73.Messages;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
+using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
 using static Nethermind.Network.Test.P2P.Subprotocols.Eth.V73.WrapperTestObjects;
@@ -445,6 +446,31 @@ public class ProofWrapperTransportTests
             Assert.That(link.Penalties, Has.Length.EqualTo(1));
             Assert.That(node.Pending, Is.Empty, "no transaction is admitted under an invalid proof");
             Assert.That(node.Transport.IsTombstoned(Describe(wrapper).Hash), Is.True);
+        }
+    }
+
+    [Test]
+    public async Task Pool_rejected_wrapper_is_soft_tombstoned_without_penalty_and_not_refetched()
+    {
+        Transaction transaction = FrameTransaction(1);
+        byte[] wrapper = Wrapper(64, transaction);
+        using WrapperTestNode node = new();
+        node.Pool.SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>()).Returns(AcceptTxResult.FeeTooLow);
+        FakeWrapperLink link = new();
+        WrapperPeer peer = node.Connect(link);
+        node.Transport.OnAnnounce(peer, new([Describe(wrapper)]));
+        Answer(node, peer, link, wrapper);
+        await WrapperTestNode.Until(() => link.Sent<GetPooledTransactionsMessage66>().Length == 1);
+        node.Transport.OnPooledEnvelopes(peer, EnvelopeRequest(link).RequestId, [PooledItem(transaction)]);
+        await WrapperTestNode.Until(() => node.Transport.FetchCount == 0);
+
+        node.Transport.OnAnnounce(peer, new([Describe(wrapper)]));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(link.Penalties, Is.Empty);
+            Assert.That(node.Transport.IsStored(Describe(wrapper).Hash), Is.False);
+            Assert.That(link.Sent<GetProofWrappersMessage>(), Has.Length.EqualTo(1), "the re-announcement is not fetched again");
         }
     }
 
