@@ -606,7 +606,12 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
             StrongBox<int> remainingCaptureCells = sharedCells ?? new StrongBox<int>(cellBudget);
             if (seeds is not null)
             {
-                foreach ((int index, Transaction _) in admitted) seeds.TryAdd(index, new CellSeeds());
+                foreach ((int index, Transaction _) in admitted)
+                {
+                    // Created only in the first round the candidate is admitted to.
+                    ref CellSeeds? candidateSeeds = ref CollectionsMarshal.GetValueRefOrAddDefault(seeds, index, out _);
+                    candidateSeeds ??= new CellSeeds();
+                }
             }
 
             DiscoveryRound roundState = new(block, spec, cellBudget, remainingCaptureCells, roundCells, roundCellsLock, nextRoundCandidates, cancellationToken)
