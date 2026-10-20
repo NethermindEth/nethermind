@@ -1037,13 +1037,17 @@ public class EthereumRunnerTests
             networkConfig.DiscoveryPort = port;
 
             // A taken RPC port fails startup, so move the RPC listeners off defaults such as 8545/8551 that the host may hold.
+            // Each probe listener stays open until all ports are picked: a released port can be handed out again, and an
+            // engine URL on the same port as the RPC URL is skipped, which fails startup for want of an engine module.
             IJsonRpcConfig jsonRpcConfig = configProvider.GetConfig<IJsonRpcConfig>();
             Dictionary<int, int> rpcPorts = [];
+            List<TcpListener> probeListeners = [];
             int FreePort(int configuredPort)
             {
                 if (!rpcPorts.TryGetValue(configuredPort, out int freePort))
                 {
-                    using TcpListener listener = new(IPAddress.Loopback, 0);
+                    TcpListener listener = new(IPAddress.Loopback, 0);
+                    probeListeners.Add(listener);
                     listener.Start();
                     rpcPorts[configuredPort] = freePort = ((IPEndPoint)listener.LocalEndpoint).Port;
                 }
@@ -1063,6 +1067,7 @@ public class EthereumRunnerTests
                 additionalRpcUrls[i] = $"{url.Scheme}://{url.Host}:{FreePort(url.Port)}{additionalRpcUrls[i][separator..]}";
             }
             jsonRpcConfig.AdditionalRpcUrls = additionalRpcUrls;
+            foreach (TcpListener listener in probeListeners) listener.Dispose();
 
             PluginLoader pluginLoader = new(
                 "plugins",
