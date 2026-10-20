@@ -100,7 +100,7 @@ public class DebugModuleTests
             .Returns(_ => throw failure);
 
         FormatException actual = Assert.Throws<FormatException>(() => CreateModule().debug_traceBlockByNumber(
-            new BlockParameter(1UL), new GethTraceOptions { Tracer = "noopTracer" }))!;
+            new BlockParameter(1UL), new GethTraceOptions { Tracer = "noopTracer", StreamMode = false }))!;
 
         Assert.That(actual, Is.SameAs(failure));
     }
