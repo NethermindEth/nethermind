@@ -1340,12 +1340,12 @@ public partial class EthRpcModule(
     {
         ForkActivationsSummary forks = forkInfo.GetForkActivationsSummary(_blockFinder.Head?.Header);
 
-        return ResultWrapper<JsonNode>.Success(JsonNode.Parse(TypeInfoJsonSerializer.Serialize((new ForkConfigSummary
+        return ResultWrapper<JsonNode>.Success(JsonSerializer.SerializeToNode(new ForkConfigSummary
         {
             Current = GetForkConfig(forks.Current, _specProvider)!,
             Next = GetForkConfig(forks.Next, _specProvider),
             Last = GetForkConfig(forks.Last, _specProvider)
-        }), UnchangedDictionaryKeyOptions)));
+        }, TypeInfoJsonSerializer.GetTypeInfo<ForkConfigSummary>(UnchangedDictionaryKeyOptions))!);
 
         static ForkConfig? GetForkConfig(Fork? fork, ISpecProvider specProvider)
         {
@@ -1382,7 +1382,7 @@ public partial class EthRpcModule(
             return ResultWrapper<AccountAccessForRpc[]?>.Success(null);
         }
 
-        SearchResult<Block> searchResult = _blockFinder.SearchForBlock(blockParameter);
+        SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeaderWithBody(blockParameter);
         if (searchResult.IsError)
         {
             // Unknown blocks yield null per execution-apis; pruned/non-canonical failures keep their error.
@@ -1391,14 +1391,14 @@ public partial class EthRpcModule(
                 : ResultWrapper<AccountAccessForRpc[]?>.Fail(searchResult);
         }
 
-        Block block = searchResult.Object!;
-        if (block.BlockAccessListHash is null)
+        BlockHeader header = searchResult.Object!;
+        if (header.BlockAccessListHash is null)
         {
             // Pre-EIP-7928 block: the resource does not exist.
             return ResultWrapper<AccountAccessForRpc[]?>.Fail("Resource not found", ErrorCodes.BlockAccessListResourceNotFound);
         }
 
-        ReadOnlyBlockAccessList? bal = blockchainBridge.GetBlockAccessList(block.Number, block.Hash!);
+        ReadOnlyBlockAccessList? bal = blockchainBridge.GetBlockAccessList(header.Number, header.Hash!);
 
         return bal is null ?
             ResultWrapper<AccountAccessForRpc[]?>.Fail(ErrorMessages.PrunedHistoryUnavailable, ErrorCodes.PrunedHistoryUnavailable)

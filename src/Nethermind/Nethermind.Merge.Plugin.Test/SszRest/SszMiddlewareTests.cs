@@ -23,6 +23,7 @@ using Nethermind.Core.Authentication;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
@@ -32,6 +33,7 @@ using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.SszRest;
 using Nethermind.Merge.Plugin.SszRest.Handlers;
 using Nethermind.Serialization.Rlp;
+using Nethermind.State;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.ChainSpecStyle.Json;
 using Nethermind.Specs.Forks;
@@ -47,11 +49,15 @@ public class SszMiddlewareTests
     private IEngineRpcModule _engineModule = null!;
     private ISpecProvider _specProvider = null!;
     private Nethermind.Blockchain.Find.IBlockFinder _blockFinder = null!;
+    private IStateReader _stateReader = null!;
+    private IWitnessGeneratingBlockProcessingEnvFactory _witnessEnvFactory = null!;
 
     private IJsonRpcUrlCollection _urlCollection = null!;
     private IRpcAuthentication _auth = null!;
     private IProcessExitSource _processExitSource = null!;
     private SszMiddleware _middleware = null!;
+    private IContainer? _container;
+    private ServiceProvider? _services;
 
     private const int AuthenticatedPort = 8551;
     private const string OctetStream = "application/octet-stream";
@@ -66,6 +72,8 @@ public class SszMiddlewareTests
         _engineModule = Substitute.For<IEngineRpcModule>();
         _specProvider = Substitute.For<ISpecProvider>();
         _blockFinder = Substitute.For<Nethermind.Blockchain.Find.IBlockFinder>();
+        _stateReader = Substitute.For<IStateReader>();
+        _witnessEnvFactory = Substitute.For<IWitnessGeneratingBlockProcessingEnvFactory>();
 
         _urlCollection = Substitute.For<IJsonRpcUrlCollection>();
         _auth = Substitute.For<IRpcAuthentication>();
@@ -80,60 +88,39 @@ public class SszMiddlewareTests
         _middleware = BuildMiddleware();
     }
 
-    private SszMiddleware BuildMiddleware(RequestDelegate? next = null)
-    {
-        RequestDelegate passthrough = next ?? (_ => Task.CompletedTask);
+    [TearDown]
+    public void TearDown() => DisposeServices();
 
-        return new SszMiddleware(
-            passthrough,
-            _urlCollection,
-            _auth,
-            BuildHandlers(),
-            _processExitSource,
-            LimboLogs.Instance);
+    private void DisposeServices()
+    {
+        _services?.Dispose();
+        _container?.Dispose();
     }
 
-    private ISszEndpointHandler[] BuildHandlers() =>
-        [
-            new NewPayloadSszHandler<NewPayloadDescriptorV1, NewPayloadV1RequestWire>(_engineModule),
-            new NewPayloadSszHandler<NewPayloadDescriptorV2, NewPayloadV2RequestWire>(_engineModule),
-            new NewPayloadSszHandler<NewPayloadDescriptorV3, NewPayloadV3RequestWire>(_engineModule),
-            new NewPayloadSszHandler<NewPayloadDescriptorV4, NewPayloadV4RequestWire>(_engineModule),
-            new NewPayloadSszHandler<NewPayloadDescriptorV5, NewPayloadV5RequestWire>(_engineModule),
-            new NewPayloadV6SszHandler(_engineModule),
+    private SszMiddleware BuildMiddleware(RequestDelegate? next = null)
+    {
+        DisposeServices();
+        _container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule())
+            .AddModule(new BaseMergePluginModule())
+            .AddSingleton(_engineModule)
+            .AddSingleton(_specProvider)
+            .AddSingleton(_blockFinder)
+            .AddSingleton(_stateReader)
+            .AddSingleton(_witnessEnvFactory)
+            .AddSingleton(_auth)
+            .AddSingleton(_processExitSource)
+            .Build();
 
-            new ForkchoiceUpdatedSszHandler<ForkchoiceUpdatedDescriptorV1, ForkchoiceUpdatedV1RequestWire>(_engineModule, _specProvider),
-            new ForkchoiceUpdatedSszHandler<ForkchoiceUpdatedDescriptorV2, ForkchoiceUpdatedV2RequestWire>(_engineModule, _specProvider),
-            new ForkchoiceUpdatedSszHandler<ForkchoiceUpdatedDescriptorV3, ForkchoiceUpdatedV3RequestWire>(_engineModule, _specProvider),
-            new ForkchoiceUpdatedSszHandler<ForkchoiceUpdatedDescriptorV4, ForkchoiceUpdatedRequestWire>(_engineModule, _specProvider),
-            new ForkchoiceUpdatedV5SszHandler(_engineModule, _specProvider),
+        ServiceCollection services = [];
+        new SszMiddlewareConfigurer(_container).Configure(services);
+        services.AddSingleton(_urlCollection);
+        _services = services.BuildServiceProvider();
 
-            new GetPayloadSszHandler<GetPayloadDescriptorV1, GetPayloadV2Result>(_engineModule),
-            new GetPayloadSszHandler<GetPayloadDescriptorV2, GetPayloadV2Result>(_engineModule),
-            new GetPayloadSszHandler<GetPayloadDescriptorV3, GetPayloadV3Result>(_engineModule),
-            new GetPayloadSszHandler<GetPayloadDescriptorV4, GetPayloadV4Result>(_engineModule),
-            new GetPayloadSszHandler<GetPayloadDescriptorV5, GetPayloadV5Result>(_engineModule),
-            new GetPayloadSszHandler<GetPayloadDescriptorV6, GetPayloadV6Result>(_engineModule),
+        return ActivatorUtilities.CreateInstance<SszMiddleware>(_services, next ?? (_ => Task.CompletedTask));
+    }
 
-            new GetInclusionListSszHandler(_engineModule),
-
-            new GetBlobsV1SszHandler(_engineModule),
-            new GetBlobsV2SszHandler<GetBlobsDescriptorV2>(_engineModule),
-            new GetBlobsV2SszHandler<GetBlobsDescriptorV3>(_engineModule),
-            new GetBlobsV4SszHandler(_engineModule),
-
-            new GetPayloadBodiesByHashSszHandler<PayloadBodiesByHashDescriptorV1, ExecutionPayloadBodyV1Result>(_engineModule, _blockFinder, _specProvider),
-            new GetPayloadBodiesByHashSszHandler<PayloadBodiesByHashDescriptorV2, ExecutionPayloadBodyV2Result>(_engineModule, _blockFinder, _specProvider),
-
-            new GetPayloadBodiesByRangeSszHandler<PayloadBodiesByRangeDescriptorV1, ExecutionPayloadBodyV1Result>(_engineModule, _blockFinder, _specProvider),
-            new GetPayloadBodiesByRangeSszHandler<PayloadBodiesByRangeDescriptorV2, ExecutionPayloadBodyV2Result>(_engineModule, _blockFinder, _specProvider),
-
-            new ClientVersionSszHandler(_engineModule, LimboLogs.Instance),
-            new CapabilitiesSszHandler(),
-
-            new NewPayloadWithWitnessSszHandler<NewPayloadWithWitnessDescriptorV5, NewPayloadV5RequestWire>(_engineModule),
-            new NewPayloadWithWitnessSszHandler<NewPayloadWithWitnessDescriptorV6, NewPayloadV6RequestWire>(_engineModule),
-        ];
+    private ISszEndpointHandler[] BuildHandlers() => _services!.GetServices<ISszEndpointHandler>().ToArray();
 
     private static ChainSpecBasedSpecProvider CreateChainSpecProvider() => new(new ChainSpec
     {
@@ -228,18 +215,6 @@ public class SszMiddlewareTests
         }
 
         Assert.That(missing, Is.Empty);
-    }
-
-    // The coverage above only means something if this hand-built set matches what production registers.
-    [Test]
-    public void Configurer_registers_the_handler_set_this_fixture_builds()
-    {
-        ServiceCollection services = [];
-        new SszMiddlewareConfigurer(Substitute.For<IComponentContext>()).Configure(services);
-
-        Assert.That(
-            services.Where(d => d.ServiceType == typeof(ISszEndpointHandler)).Select(d => d.ImplementationType),
-            Is.EquivalentTo(BuildHandlers().Select(h => h.GetType())));
     }
 
     private static DefaultHttpContext MakeBaseContext(string method, string path, int port)
@@ -728,7 +703,7 @@ public class SszMiddlewareTests
         using System.Text.Json.JsonDocument response = System.Text.Json.JsonDocument.Parse(ResponseBytes(ctx));
         string[] endpoints = response.RootElement.GetProperty("fork_scoped_endpoints").EnumerateArray()
             .Select(static endpoint => endpoint.GetString()!).ToArray();
-        Assert.That(endpoints, Is.EquivalentTo(new[] { "payloads", "forkchoice", "bodies", "payloads/witness", "inclusion_list" }));
+        Assert.That(endpoints, Is.EquivalentTo(new[] { "payloads", "forkchoice", "bodies", "payloads/witness", "payloads/{payloadId}/witness", "inclusion_list" }));
     }
 
     [Test]
@@ -1443,19 +1418,28 @@ public class SszMiddlewareTests
         Assert.That(body, Does.Contain("request-too-large"));
     }
 
+    /// <remarks>
+    /// The query string accepts <c>from=0</c>; the engine handler then rejects <c>start &lt; 1</c> with -32602,
+    /// which the spec's error table maps to 422 invalid-body.
+    /// </remarks>
     [Test]
-    public async Task GetPayloadBodiesByRange_from_zero_is_valid()
+    public async Task GetPayloadBodiesByRange_from_zero_is_rejected_by_the_engine_as_invalid_body()
     {
+        GetPayloadBodiesByRangeV1Handler handler = new(Substitute.For<Blockchain.IBlockTree>(), Substitute.For<Blockchain.Blocks.IBlockStore>(), LimboLogs.Instance);
         _engineModule.engine_getPayloadBodiesByRangeV1(Arg.Any<ulong>(), Arg.Any<ulong>())
-            .Returns(ResultWrapper<IReadOnlyList<ExecutionPayloadBodyV1Result?>>.Success([]));
+            .Returns(call => handler.Handle(call.ArgAt<ulong>(0), call.ArgAt<ulong>(1)));
 
         DefaultHttpContext ctx = MakeGetContext("/engine/v1/bodies", fork: "shanghai");
         ctx.Request.QueryString = new QueryString("?from=0&count=1");
 
         await _middleware.InvokeAsync(ctx);
 
-        Assert.That(ctx.Response.StatusCode, Is.Not.EqualTo(StatusCodes.Status400BadRequest),
-            "from=0 (genesis block) must be accepted");
+        using (Assert.EnterMultipleScope())
+        {
+            await _engineModule.Received(1).engine_getPayloadBodiesByRangeV1(0, 1);
+            Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status422UnprocessableEntity));
+            Assert.That(System.Text.Encoding.UTF8.GetString(ResponseBytes(ctx)), Does.Contain("invalid-body"));
+        }
     }
 
     [Test]
@@ -1645,6 +1629,8 @@ public class SszMiddlewareTests
             .SetName("NewPayloadWithWitness_unsupported_fork_maps_to_400"),
         new TestCaseData(ErrorCodes.InternalError, "Something exploded", StatusCodes.Status500InternalServerError, "/engine-api/errors/internal")
             .SetName("NewPayloadWithWitness_internal_error_maps_to_500"),
+        new TestCaseData(ErrorCodes.InvalidParams, "Invalid requests", StatusCodes.Status422UnprocessableEntity, "/engine-api/errors/invalid-body")
+            .SetName("NewPayloadWithWitness_invalid_params_maps_to_422"),
     ];
 
     [TestCaseSource(nameof(WitnessEngineErrorCases))]
@@ -1666,12 +1652,148 @@ public class SszMiddlewareTests
         Assert.That(responseBody, Does.Contain(expectedTypeUri));
     }
 
+    private const string BuiltPayloadWitnessPath = "/engine/v1/payloads/0x0102030405060708/witness";
+
+    private IExistingBlockWitnessCollector SetUpBuiltPayload(bool payloadKnown, bool hasParentState, Witness witness, Action? onGenerate = null)
+    {
+        Block block = (Block)SszTestData.MakeV4Payload(blockAccessList: [0xc0], slotNumber: 42UL).TryGetBlock();
+        BlockHeader parent = Build.A.BlockHeader.TestObject;
+
+        _engineModule.engine_getPayloadV6(Arg.Any<byte[]>()).Returns(_ => payloadKnown
+            ? ResultWrapper<GetPayloadV6Result?>.Success(new GetPayloadV6Result(block, UInt256.One, new BlobsBundleV2(block), [], shouldOverrideBuilder: false))
+            : ResultWrapper<GetPayloadV6Result?>.Fail("unknown payload", MergeErrorCodes.UnknownPayload));
+        _blockFinder.FindHeader(block.ParentHash!).Returns(parent);
+        _stateReader.HasStateForBlock(parent).Returns(hasParentState);
+        IExistingBlockWitnessCollector collector = _witnessEnvFactory.CreateScope().Env.CreateExistingBlockWitnessCollector();
+        collector.GetWitnessForExistingBlock(parent, block, Arg.Any<CancellationToken>()).Returns(call =>
+        {
+            onGenerate?.Invoke();
+            call.Arg<CancellationToken>().ThrowIfCancellationRequested();
+            return witness;
+        });
+        return collector;
+    }
+
+    [Test]
+    public async Task GetPayloadWithWitness_returns_the_built_payload_and_its_witness([Values(1, 3)] int requests)
+    {
+        byte[] stateNode = [0xde, 0xad];
+        byte[] header = [0xbe, 0xef];
+        IExistingBlockWitnessCollector collector = SetUpBuiltPayload(payloadKnown: true, hasParentState: true, new Witness
+        {
+            State = new ArrayPoolList<byte[]>(1) { stateNode },
+            Codes = new ArrayPoolList<byte[]>(0),
+            Keys = new ArrayPoolList<byte[]>(0),
+            Headers = new ArrayPoolList<byte[]>(1) { header },
+        });
+
+        for (int i = 0; i < requests; i++)
+        {
+            DefaultHttpContext ctx = MakeGetContext(BuiltPayloadWitnessPath, fork: "amsterdam");
+            await _middleware.InvokeAsync(ctx);
+
+            Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
+            BuiltPayloadWithWitnessV6Wire.Decode(ResponseBytes(ctx), out BuiltPayloadWithWitnessV6Wire wire);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(ctx.Response.Headers.CacheControl.ToString(), Is.EqualTo("no-store"));
+                Assert.That(wire.BuiltPayload.BlockValue, Is.EqualTo(UInt256.One));
+                Assert.That(wire.Witness.State!.Select(static n => n.Bytes), Is.EqualTo(new[] { stateNode }));
+                Assert.That(wire.Witness.Codes, Is.Empty);
+                Assert.That(wire.Witness.Headers!.Select(static h => h.Bytes), Is.EqualTo(new[] { header }));
+            }
+        }
+        await _engineModule.Received(requests).engine_getPayloadV6(
+            Arg.Is<byte[]>(static id => Convert.ToHexString(id) == "0102030405060708"));
+        collector.Received(1).GetWitnessForExistingBlock(Arg.Any<BlockHeader>(), Arg.Any<Block>(), Arg.Any<CancellationToken>());
+    }
+
+    [Test]
+    public async Task GetPayloadWithWitness_aborted_request_cancels_witness_generation()
+    {
+        AbortableLifetimeFeature lifetime = new();
+        IExistingBlockWitnessCollector collector = SetUpBuiltPayload(payloadKnown: true, hasParentState: true, new Witness
+        {
+            State = new ArrayPoolList<byte[]>(0),
+            Codes = new ArrayPoolList<byte[]>(0),
+            Keys = new ArrayPoolList<byte[]>(0),
+            Headers = new ArrayPoolList<byte[]>(0),
+        }, onGenerate: lifetime.Abort);
+
+        DefaultHttpContext ctx = MakeGetContext(BuiltPayloadWitnessPath, fork: "amsterdam");
+        ctx.Features.Set<IHttpRequestLifetimeFeature>(lifetime);
+        await _middleware.InvokeAsync(ctx);
+
+        collector.Received(1).GetWitnessForExistingBlock(
+            Arg.Any<BlockHeader>(), Arg.Any<Block>(), Arg.Is<CancellationToken>(static t => t.IsCancellationRequested));
+        Assert.That(ResponseBytes(ctx), Is.Empty, "an aborted request must not be answered");
+    }
+
+    private static readonly TestCaseData[] GetPayloadWithWitnessErrorCases =
+    [
+        new TestCaseData("osaka", BuiltPayloadWitnessPath, true, true, StatusCodes.Status400BadRequest, "/engine-api/errors/unsupported-fork")
+            .SetName("GetPayloadWithWitness_before_Amsterdam_is_unsupported_fork"),
+        new TestCaseData("amsterdam", "/engine/v1/payloads/0xZZZZZZZZZZZZZZZZ/witness", true, true, StatusCodes.Status400BadRequest, "/engine-api/errors/invalid-request")
+            .SetName("GetPayloadWithWitness_malformed_payload_id_is_invalid_request"),
+        new TestCaseData("amsterdam", BuiltPayloadWitnessPath, false, true, StatusCodes.Status404NotFound, "/engine-api/errors/unknown-payload")
+            .SetName("GetPayloadWithWitness_unknown_payload_is_not_found"),
+        new TestCaseData("amsterdam", BuiltPayloadWitnessPath, true, false, StatusCodes.Status500InternalServerError, "/engine-api/errors/internal")
+            .SetName("GetPayloadWithWitness_without_a_witness_is_internal_error"),
+    ];
+
+    [TestCaseSource(nameof(GetPayloadWithWitnessErrorCases))]
+    public async Task GetPayloadWithWitness_error_maps_to_http_status(
+        string fork, string path, bool payloadKnown, bool hasParentState, int expectedStatus, string expectedTypeUri)
+    {
+        SetUpBuiltPayload(payloadKnown, hasParentState, null!);
+
+        DefaultHttpContext ctx = MakeGetContext(path, fork: fork);
+        await _middleware.InvokeAsync(ctx);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.Response.StatusCode, Is.EqualTo(expectedStatus));
+            Assert.That(System.Text.Encoding.UTF8.GetString(ResponseBytes(ctx)), Does.Contain(expectedTypeUri));
+        }
+    }
+
     private static byte[] BuildMinimalWitnessRequestBody() =>
         NewPayloadV5RequestWire.Encode(new NewPayloadV5RequestWire
         {
             ExecutionPayload = new SszExecutionPayloadV4(SszTestData.MakeV4Payload(blockAccessList: [0xc0], slotNumber: 0)),
             ParentBeaconBlockRoot = TestItem.KeccakA,
         });
+
+    [Test]
+    public async Task NewPayloadV5_empty_block_access_list_returns_invalid_status()
+    {
+        _engineModule.engine_newPayloadV5(Arg.Any<ExecutionPayloadV4>(), Arg.Any<Hash256?[]>(), Arg.Any<Hash256?>(), Arg.Any<byte[][]?>())
+            .Returns(static call =>
+            {
+                ExecutionPayloadParams<ExecutionPayloadV4> payloadParams = new(
+                    call.ArgAt<ExecutionPayloadV4>(0), call.ArgAt<Hash256?[]>(1), call.ArgAt<Hash256?>(2), call.ArgAt<byte[][]?>(3));
+                bool invalid = payloadParams.ValidateParams(Amsterdam.Instance, EngineApiVersions.NewPayload.V5, out string? error) is Nethermind.Merge.Plugin.Data.ValidationResult.Invalid;
+                return ResultWrapper<PayloadStatusV1>.Success(invalid
+                    ? new PayloadStatusV1 { Status = PayloadStatus.Invalid, ValidationError = error }
+                    : new PayloadStatusV1 { Status = PayloadStatus.Valid, LatestValidHash = TestItem.KeccakA });
+            });
+
+        byte[] body = NewPayloadV5RequestWire.Encode(new NewPayloadV5RequestWire
+        {
+            ExecutionPayload = new SszExecutionPayloadV4(SszTestData.MakeV4Payload(blockAccessList: [], slotNumber: 0)),
+            ParentBeaconBlockRoot = TestItem.KeccakA,
+        });
+        DefaultHttpContext ctx = MakePostContext("/engine/v1/payloads", body, fork: "amsterdam");
+
+        await _middleware.InvokeAsync(ctx);
+
+        PayloadStatusWire.Decode(new ReadOnlySequence<byte>(ResponseBytes(ctx)), out PayloadStatusWire status);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
+            Assert.That(status.Status, Is.EqualTo((byte)1), "an empty block_access_list is present and must be INVALID, as over JSON-RPC");
+        }
+    }
 
     // The three Bogota methods must resolve to a handler once advertised over SSZ.
     [Test]

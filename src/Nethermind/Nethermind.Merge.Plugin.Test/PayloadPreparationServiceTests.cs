@@ -369,6 +369,52 @@ public class PayloadPreparationServiceTests
         }
     }
 
+    [Test]
+    [CancelAfter(30000)]
+    public async Task GetPayload_keeps_a_block_finished_after_the_missing_block_wait_times_out()
+    {
+        using TestPayloadPreparationService service = CreateService(new RecordingBlockImprovementContextFactory());
+        TaskCompletionSource<Block?> improvement = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        Block partial = Build.A.Block.WithTransactions(Build.A.Transaction.TestObject).TestObject;
+        BlockProductionSnapshot best = new(null, UInt256.Zero);
+        bool disposed = false;
+        IBlockImprovementContext context = Substitute.For<IBlockImprovementContext>();
+        context.Best.Returns(_ => best);
+        context.ImprovementTask.Returns(improvement.Task);
+        context.When(c => c.Dispose()).Do(_ => Volatile.Write(ref disposed, true));
+        context.When(c => c.DisposeAndCancelOngoingImprovements()).Do(_ => Volatile.Write(ref disposed, true));
+        // The build only finishes once cancelled, and like TrySetBest it is rejected once the context is disposed.
+        context.When(c => c.CancelOngoingImprovements()).Do(_ => Task.Run(() =>
+        {
+            if (!Volatile.Read(ref disposed)) best = new(partial, UInt256.One);
+            improvement.TrySetResult(partial);
+        }));
+        service.Store("payload", context);
+
+        IBlockProductionContext? payload = await service.GetPayload("payload");
+
+        Assert.That(payload?.CurrentBestBlock, Is.SameAs(partial));
+    }
+
+    [Test]
+    [CancelAfter(30000)]
+    public void CancelBlockProduction_does_not_wait_for_a_missing_block()
+    {
+        using TestPayloadPreparationService service = CreateService(new RecordingBlockImprovementContextFactory());
+        TaskCompletionSource<Block?> improvement = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        bool disposed = false;
+        IBlockImprovementContext context = Substitute.For<IBlockImprovementContext>();
+        context.Best.Returns(new BlockProductionSnapshot(null, UInt256.Zero));
+        context.ImprovementTask.Returns(improvement.Task);
+        context.When(c => c.Dispose()).Do(_ => disposed = true);
+        context.When(c => c.DisposeAndCancelOngoingImprovements()).Do(_ => disposed = true);
+        service.Store("payload", context);
+
+        service.CancelBlockProduction("payload");
+
+        Assert.That(disposed, Is.True);
+    }
+
     private sealed class TestPayloadPreparationService(
         IBlockProducer blockProducer,
         ITxPool txPool,
