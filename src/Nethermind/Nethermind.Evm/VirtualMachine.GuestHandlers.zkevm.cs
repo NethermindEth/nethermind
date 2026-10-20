@@ -13,7 +13,6 @@ using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Int256;
-using Nethermind.Zkvm.Abstractions;
 using static Nethermind.Evm.GuestWord;
 
 namespace Nethermind.Evm;
@@ -2179,7 +2178,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
         /// <summary>DIV of a dividend below 2^64 by a nonzero divisor below 2^64, or by a power of two, which it shifts out.</summary>
         /// <remarks>
-        /// Either takes one instruction or a shift, where the shared handler calls out to the zkVM's 256-bit division.
+        /// Either takes one instruction or a shift, where the shared handler runs a full 256-bit division.
         /// Every other division goes to <see cref="ExecuteDivOfWideOperands"/>; a short stack or gas runs the shared DIV handler.
         /// </remarks>
         [SkipLocalsInit]
@@ -2227,7 +2226,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, shared);
         }
 
-        /// <summary>The rest of <see cref="ExecuteDiv"/>, for wider operands whose divisor is not a power of two.</summary>
+        /// <summary>The rest of <see cref="ExecuteDiv"/>, for a zero divisor, or wider operands whose divisor is not a power of two.</summary>
         /// <remarks>
         /// Entered only from there, with the stack checked and the gas charged. A zero divisor leaves the zero its slot
         /// holds. In the ZisK guest a dividend below the divisor gives a zero quotient without
