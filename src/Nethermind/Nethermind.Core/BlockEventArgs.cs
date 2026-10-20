@@ -8,5 +8,8 @@ namespace Nethermind.Core
     public class BlockEventArgs(Block block) : EventArgs
     {
         public Block Block { get; } = block;
+
+        /// <summary>Indicates that block processing should not run inline on the suggestion caller.</summary>
+        public bool NonBlockingProcessing { get; init; }
     }
 }
