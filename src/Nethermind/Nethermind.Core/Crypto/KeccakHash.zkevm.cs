@@ -419,23 +419,29 @@ public sealed partial class KeccakHash
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static unsafe bool TryAbsorbEdited(ref ulong lane, byte* data, byte* original, nuint index, nuint length)
     {
-        nuint retainedLength = Math.Min(length / HASH_DATA_AREA, RetainedBlocks) * HASH_DATA_AREA;
-        nuint offset = 0;
-        // One state past the one the matching blocks leave.
-        nuint next = (FirstTouchMemoryFlag.IsActive ? WitnessNodes.Slots[index] : index) * RetainedLanes;
-        while (offset < retainedLength && BlockEquals(data + offset, original + offset))
-        {
-            offset += HASH_DATA_AREA;
-            next += STATE_LANES;
-        }
-
-        if (offset == 0)
+        // Spelled out over the at most three retained blocks rather than looped: a loop's compare call spilled and
+        // reloaded every value it carries on each iteration.
+        Debug.Assert(RetainedBlocks == 3 && length >= 2 * HASH_DATA_AREA, "A resumable node has two to three retained blocks");
+        if (!BlockEquals(data, original))
         {
             return false;
         }
 
+        nuint offset = HASH_DATA_AREA;
+        nuint last = 0;
+        if (BlockEquals(data + HASH_DATA_AREA, original + HASH_DATA_AREA))
+        {
+            offset = 2 * HASH_DATA_AREA;
+            last = STATE_LANES;
+            if (length >= RetainedBlocks * HASH_DATA_AREA && BlockEquals(data + 2 * HASH_DATA_AREA, original + 2 * HASH_DATA_AREA))
+            {
+                offset = RetainedBlocks * HASH_DATA_AREA;
+                last = 2 * STATE_LANES;
+            }
+        }
+
         ulong* states = StrictAlignmentFlag.IsActive ? AlignedDown(WitnessNodes.States) : WitnessNodes.States;
-        ref ulong retained = ref states[next - STATE_LANES];
+        ref ulong retained = ref states[(FirstTouchMemoryFlag.IsActive ? WitnessNodes.Slots[index] : index) * RetainedLanes + last];
         if (length != Hash532InputLength)
         {
             AbsorbRestFrom(ref lane, ref retained, data + offset, length - offset);
