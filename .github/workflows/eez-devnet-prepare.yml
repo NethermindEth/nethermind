@@ -81,6 +81,14 @@ jobs:
           echo '/usr/lib/llvm-22/bin' >> "$GITHUB_PATH"
           rustup toolchain install stable --profile minimal
           rustup default stable
+      - name: Reuse compiled Rust dependencies
+        if: inputs.profile == 'rollup0' && steps.prepared.outputs.cache-hit != 'true'
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0
+        with:
+          workspaces: upstream -> target
+          shared-key: eez-rollup0-ubuntu24-ci-e2e
+          env-vars: LLVM_SYS
+          cache-bin: false
       - name: Build matching runtime and test executables
         if: steps.prepared.outputs.cache-hit != 'true'
         run: bash scripts/eez/devnet/build-runtime.sh
