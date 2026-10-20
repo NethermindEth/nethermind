@@ -57,4 +57,13 @@ internal static class Fixtures
 
         await Task.CompletedTask;
     }
+
+    /// <summary>A model artifact of a master run whose head repository is <paramref name="headRepository"/>; this repository is 1.</summary>
+    public static JsonObject Artifact(long id, string at, long headRepository) => new()
+    {
+        ["id"] = id,
+        ["created_at"] = at,
+        ["expired"] = false,
+        ["workflow_run"] = new JsonObject { ["id"] = id * 10, ["head_branch"] = "master", ["head_repository_id"] = headRepository, ["repository_id"] = 1L },
+    };
 }

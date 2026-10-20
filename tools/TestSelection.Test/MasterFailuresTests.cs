@@ -177,8 +177,16 @@ public class MasterFailuresTests
         await api.Received(1).SendAsync(HttpMethod.Post, "repos/o/r/issues", Arg.Is<JsonNode>(body => body["assignees"] == null), Arg.Any<CancellationToken>());
     }
 
+    [Test]
+    public void Regressions_ATestThatAForkNamedMasterAndAnotherBranchFailed_IsFlaky()
+    {
+        JournalEntry[] journal = [Failing("a", -3), Failing(JournalEntry.Master, -2) with { Event = JournalEntry.PullRequest }];
+        Assert.That(Attribution.Regressions(new Failures([EvmFailure], []), journal, GreenAt), Is.Empty, "a pull request from a branch named master is another branch");
+    }
+
     private static JournalEntry Failing(string branch, double hours) =>
-        new(Random.Shared.NextInt64(), GreenAt.AddHours(hours), JournalEntry.PullRequest, branch, [], new Failures([EvmFailure], []));
+        new(Random.Shared.NextInt64(), GreenAt.AddHours(hours), branch == JournalEntry.Master ? JournalEntry.Push : JournalEntry.PullRequest, branch, [],
+            new Failures([EvmFailure], []));
 
     private static Merge Merge(int number, params string[] files) => new(new string('0', 40 - number.ToString().Length) + number, number, $"author{number}", files);
 

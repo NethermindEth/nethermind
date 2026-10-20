@@ -20,8 +20,9 @@ outputs:
 runs:
   using: composite
   steps:
-    # A failed setup shows as a failed selection below, which runs every test.
+    # Only a pull request runs the tool. A failed setup shows as a failed selection below, which runs every test.
     - name: Set up .NET
+      if: github.event_name == 'pull_request'
       continue-on-error: true
       uses: actions/setup-dotnet@v5
 
@@ -47,12 +48,17 @@ runs:
             labels=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/labels" -q '.[].name') || return 1
             if grep -qx ci-full <<< "$labels"; then EVENT=ci-full; fi
           fi
-          if [ "$EVENT" = "pull_request" ]; then
-            git fetch --no-tags --depth=1 origin "$BASE_SHA" || return 1
-            git diff --no-renames --name-only "$BASE_SHA" HEAD > "$work/changed.txt" || return 1
-            # Without a model artifact the selector reports that it has no model and keeps every test.
-            scripts/ci/test-selection.sh download --out "$work/model" || return 1
+          if [ "$EVENT" != "pull_request" ]; then
+            # Every other event runs every test, so it needs no model and no tool.
+            echo "running every test project: $EVENT"
+            matrices=$(jq -c --arg workflow "$WORKFLOW" '.[$workflow]' scripts/ci/test-matrices.json) || return 1
+            printf 'matrices=%s\nany=true\nselected=false\n' "$matrices" > "$work/output"
+            return 0
           fi
+          git fetch --no-tags --depth=1 origin "$BASE_SHA" || return 1
+          git diff --no-renames --name-only "$BASE_SHA" HEAD > "$work/changed.txt" || return 1
+          # Without a model artifact the selector reports that it has no model and keeps every test.
+          scripts/ci/test-selection.sh download --out "$work/model" || return 1
           scripts/ci/test-selection.sh select-projects --model "$work/model/model.json.gz" \
             --changed-files "$work/changed.txt" --run "$RUN_ID" --matrices scripts/ci/test-matrices.json \
             --workflow "$WORKFLOW" --event "$EVENT" --output "$work/output" || return 1

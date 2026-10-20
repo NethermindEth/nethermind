@@ -49,12 +49,18 @@ public sealed class ActionsApi(IGitHubApi api)
         api.GetTextAsync($"repos/{Repository}/actions/jobs/{job}/logs", cancellation);
 
     public async Task<IReadOnlySet<string>> ArtifactNamesAsync(long run, CancellationToken cancellation) =>
-        (await ListAsync($"repos/{Repository}/actions/runs/{run}/artifacts?per_page=100", "artifacts", cancellation))
+        (await RunArtifactsAsync(run, cancellation))
         .Select(static artifact => artifact["name"]!.GetValue<string>())
         .ToHashSet();
 
     public Task<List<JsonNode>> ArtifactsNamedAsync(string name, CancellationToken cancellation) =>
         ListAsync($"repos/{Repository}/actions/artifacts?name={Uri.EscapeDataString(name)}&per_page=100", "artifacts", cancellation);
+
+    public Task DeleteArtifactAsync(long artifact, CancellationToken cancellation) =>
+        api.SendAsync(HttpMethod.Delete, $"repos/{Repository}/actions/artifacts/{artifact}", null, cancellation);
+
+    public Task<List<JsonNode>> RunArtifactsAsync(long run, CancellationToken cancellation) =>
+        ListAsync($"repos/{Repository}/actions/runs/{run}/artifacts?per_page=100", "artifacts", cancellation);
 
     public async Task ExtractArtifactAsync(long artifact, string directory, CancellationToken cancellation)
     {

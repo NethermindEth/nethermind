@@ -81,20 +81,18 @@ public class CollectionTests
     }
 
     [Test]
+    public void WithSharedOverhead_GivesEachPackProjectAnEqualShareOfTheJobSetup() =>
+        Assert.That(InventoryBuilder.WithSharedOverhead(new Dictionary<string, double> { ["A"] = 60, ["B"] = 20 }, 120),
+            Is.EquivalentTo(new Dictionary<string, double> { ["A"] = 80, ["B"] = 40 }), "40 s of setup, 20 s each, as in jobs of their own");
+
+    [Test]
     public async Task ModelArtifact_DownloadsTheNewestTrustedArtifact_ByTimeNotId()
     {
         IGitHubApi api = Substitute.For<IGitHubApi>();
         api.Repository.Returns("o/r");
-        static JsonObject Artifact(long id, string at, long head) => new()
-        {
-            ["id"] = id,
-            ["created_at"] = at,
-            ["expired"] = false,
-            ["workflow_run"] = new JsonObject { ["id"] = id * 10, ["head_branch"] = "master", ["head_repository_id"] = head, ["repository_id"] = 1L },
-        };
         api.GetPagesAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(_ => Fixtures.Pages(new JsonObject
         {
-            ["artifacts"] = new JsonArray(Artifact(9, "2026-10-01T00:00:00Z", 1), Artifact(5, "2026-10-02T00:00:00Z", 1), Artifact(7, "2026-10-03T00:00:00Z", 2)),
+            ["artifacts"] = new JsonArray(Fixtures.Artifact(9, "2026-10-01T00:00:00Z", 1), Fixtures.Artifact(5, "2026-10-02T00:00:00Z", 1), Fixtures.Artifact(7, "2026-10-03T00:00:00Z", 2)),
         }));
         api.DownloadAsync(Arg.Any<string>(), Arg.Any<Stream>(), Arg.Any<CancellationToken>()).Returns(call => WriteEmptyZip(call.Arg<Stream>()));
         using TempDirectory directory = new();

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Text.RegularExpressions;
+using Nethermind.TestSelection.Files;
 
 namespace Nethermind.TestSelection.Selection;
 
@@ -28,12 +29,7 @@ internal static partial class RepositoryProjects
             references[project] = ProjectReferences(root, directory, text);
             foreach (string path in IncludedPaths(root, directory, text))
             {
-                if (!includes.TryGetValue(path, out HashSet<string>? owners))
-                {
-                    includes[path] = owners = [];
-                }
-
-                owners.Add(project);
+                includes.GetOrAdd(path).Add(project);
             }
         }
 
@@ -53,7 +49,7 @@ internal static partial class RepositoryProjects
     }
 
     /// <summary>Paths outside the project that it builds from: each included file, or the directory above a wildcard.</summary>
-    internal static HashSet<string> IncludedPaths(string root, string directory, string csproj)
+    private static HashSet<string> IncludedPaths(string root, string directory, string csproj)
     {
         HashSet<string> paths = [];
         foreach (Match match in ItemInclude().Matches(csproj))

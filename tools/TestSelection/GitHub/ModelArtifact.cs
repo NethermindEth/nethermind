@@ -29,6 +29,21 @@ public sealed class ModelArtifact(ActionsApi actions)
         return newest["workflow_run"]!["id"]!.GetValue<long>();
     }
 
+    /// <summary>Deletes all but the newest <paramref name="keep"/> trusted artifacts; artifacts of forks are left alone.</summary>
+    public async Task<int> PruneAsync(int keep, CancellationToken cancellation)
+    {
+        JsonNode[] superseded = [.. (await actions.ArtifactsNamedAsync(Name, cancellation))
+            .Where(IsTrusted)
+            .OrderByDescending(static artifact => DateTimeOffset.Parse(artifact["created_at"]!.GetValue<string>()))
+            .Skip(keep)];
+        foreach (JsonNode artifact in superseded)
+        {
+            await actions.DeleteArtifactAsync(artifact["id"]!.GetValue<long>(), cancellation);
+        }
+
+        return superseded.Length;
+    }
+
     public static bool IsTrusted(JsonNode artifact)
     {
         JsonNode? run = artifact["workflow_run"];

@@ -76,6 +76,28 @@ public class JobLogsTests
     }
 
     [Test]
+    public async Task Classify_WhenManyUnitJobsFailAtCheckout_StillReadsTheEestFailures()
+    {
+        FailedJob[] units = [.. Enumerable.Range(1, FailureClassifier.InfraSample * 3 + 1).Select(static i => new FailedJob(i, $"Run Nethermind.P{i}.Test (ubuntu-latest)"))];
+        FailedJob eest = new(100, "EEST nethtest / nethtest blockTest sequential 1of4");
+
+        Failures failures = await FailureClassifier.ClassifyAsync([.. units, eest],
+            job => Task.FromResult(job.Id == 100 ? "Z FAIL test_add[fork_Prague]" : "runner lost"));
+
+        Assert.That(failures.Tests, Is.EqualTo(new[] { "EEST|blockTest|sequential|test_add|Prague" }), "a runner outage of the unit jobs hides no EEST failure");
+    }
+
+    [Test]
+    public async Task Classify_WhenTheSampleShowsTestFailures_ReadsEveryJobOfTheGroup()
+    {
+        FailedJob[] jobs = [.. Enumerable.Range(1, FailureClassifier.InfraSample * 3 + 1).Select(static i => new FailedJob(i, $"Run Nethermind.P{i}.Test (ubuntu-latest)"))];
+
+        Failures failures = await FailureClassifier.ClassifyAsync(jobs, static job => Task.FromResult($"Z  failed T{job.Id}"));
+
+        Assert.That((failures.Tests.Count, failures.Infra.Count), Is.EqualTo((jobs.Length, 0)), "a real breakage reads every log");
+    }
+
+    [Test]
     public async Task Classify_WhenTheSampleOfAManyJobGroupShowsNoTestFailure_ReadsNoMoreLogs()
     {
         FailedJob[] jobs = [.. Enumerable.Range(1, FailureClassifier.InfraSample * 3 + 1).Select(static i => new FailedJob(i, $"Run Nethermind.P{i}.Test (ubuntu-latest)"))];

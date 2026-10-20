@@ -21,7 +21,7 @@ public static class HistoryCommands
         command.SetAction(async (result, cancellation) =>
         {
             string root = RepositoryRoot.Find();
-            using GitHubClient github = GitHubClient.FromEnvironment(result.GetValue(RepositoryOption.Instance)!);
+            using GitHubClient github = GitHubClient.FromEnvironment(result.GetValue(RepositoryOption.Instance)!, GitHubClient.BulkReserveShare);
             ActionsApi actions = new(github);
             RunCollector collector = new(actions, new ChangedFiles(new GitRepository(root), github), new RunFailures(actions), TestWorkflows.Read(root));
             Console.WriteLine($"collected {await collector.CollectAsync(result.GetValue(journal)!, DateTimeOffset.UtcNow, cancellation)} runs");
@@ -36,7 +36,7 @@ public static class HistoryCommands
         Command command = new("inventory", "Write the cost of every EEST unit and NUnit test project from one full run") { run, output };
         command.SetAction(async (result, cancellation) =>
         {
-            using GitHubClient github = GitHubClient.FromEnvironment(result.GetValue(RepositoryOption.Instance)!);
+            using GitHubClient github = GitHubClient.FromEnvironment(result.GetValue(RepositoryOption.Instance)!, GitHubClient.BulkReserveShare);
             string work = Directory.CreateTempSubdirectory("test-selection-").FullName;
             try
             {

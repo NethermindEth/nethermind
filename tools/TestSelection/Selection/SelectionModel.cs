@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Text.Json.Nodes;
+using Nethermind.TestSelection.Files;
 using Nethermind.TestSelection.Journal;
 
 namespace Nethermind.TestSelection.Selection;

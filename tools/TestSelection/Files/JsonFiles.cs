@@ -5,7 +5,7 @@ using System.IO.Compression;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
-namespace Nethermind.TestSelection.Journal;
+namespace Nethermind.TestSelection.Files;
 
 /// <summary>
 /// JSON and JSON-lines files, gzipped when the name ends in <c>.gz</c>. A write goes to a temporary file first, so a

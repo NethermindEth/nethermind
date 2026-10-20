@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.TestSelection.Files;
 using Nethermind.TestSelection.Journal;
 using Nethermind.TestSelection.Selection;
 
@@ -38,19 +39,14 @@ public static class Attribution
         Dictionary<string, HashSet<string>> branches = [];
         foreach (JournalEntry entry in journal)
         {
-            if (entry.Branch == JournalEntry.Master || entry.At < flakyFrom || entry.At > since)
+            if (entry.IsMasterPush || entry.At < flakyFrom || entry.At > since)
             {
                 continue;
             }
 
             foreach (string test in entry.Failed.Tests)
             {
-                if (!branches.TryGetValue(test, out HashSet<string>? failedOn))
-                {
-                    branches[test] = failedOn = [];
-                }
-
-                failedOn.Add(entry.Branch);
+                branches.GetOrAdd(test).Add(entry.Branch);
             }
         }
 
@@ -62,7 +58,8 @@ public static class Attribution
     /// <summary>The merges with the strongest link to the failures. A single merge is the suspect on its own.</summary>
     public static IReadOnlyList<Suspect> Suspects(IReadOnlyList<Merge> merges, IReadOnlyList<string> tests, Projects projects, SelectorLinks links)
     {
-        FailingTests failing = FailingTests.Of(tests);
+        Failures failures = new(tests, []);
+        FailingTests failing = new(failures.Projects(), failures.EestTests().Select(static test => test.Name).ToHashSet());
         List<(int Rank, Merge Merge)> ranked = [];
         foreach (Merge merge in merges)
         {
@@ -105,10 +102,5 @@ public static class Attribution
     }
 
     /// <summary>The failing NUnit test projects and EEST test functions.</summary>
-    private sealed record FailingTests(IReadOnlySet<string> Projects, IReadOnlySet<string> Eest)
-    {
-        public static FailingTests Of(IReadOnlyList<string> tests) => new(
-            tests.Where(static test => !test.StartsWith("EEST|", StringComparison.Ordinal)).Select(static test => test[..test.IndexOf('|')]).ToHashSet(),
-            tests.Where(static test => test.StartsWith("EEST|", StringComparison.Ordinal)).Select(static test => test.Split('|')[3]).ToHashSet());
-    }
+    private sealed record FailingTests(IReadOnlySet<string> Projects, IReadOnlySet<string> Eest);
 }

@@ -39,7 +39,11 @@ public sealed class GitRepository(string root)
         await _fetchGate.WaitAsync(cancellation);
         try
         {
-            await RunAsync(["fetch", "--quiet", "--no-tags", "--filter=blob:none", "origin", commit], cancellation);
+            // Another worker may have fetched the same head while this one waited.
+            if (!await SucceedsAsync(["cat-file", "-e", $"{commit}^{{commit}}"], cancellation))
+            {
+                await RunAsync(["fetch", "--quiet", "--no-tags", "--filter=blob:none", "origin", commit], cancellation);
+            }
         }
         finally
         {

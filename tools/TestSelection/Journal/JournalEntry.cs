@@ -22,6 +22,9 @@ public sealed record JournalEntry(
 
     public bool IsPullRequest => Event == PullRequest;
 
+    /// <summary>A push to master. A fork can name its branch master, but its runs are pull requests.</summary>
+    public bool IsMasterPush => Event == Push && Branch == Master;
+
     public IReadOnlySet<EestTest> EestFailures() => Failed.EestTests();
 
     public IReadOnlySet<string> FailedProjects() => Failed.Projects();

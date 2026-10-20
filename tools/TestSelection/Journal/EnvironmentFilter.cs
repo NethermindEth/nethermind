@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.TestSelection.Files;
+
 namespace Nethermind.TestSelection.Journal;
 
 /// <summary>
@@ -28,6 +30,11 @@ public static class EnvironmentFilter
         return filtered;
     }
 
+    // Only a push to master is master; a pull request from a branch named master is just another branch.
+    private const string MasterPush = "push:master";
+
+    private static string BranchOf(JournalEntry entry) => entry.IsMasterPush ? MasterPush : entry.Branch;
+
     private static Dictionary<string, FailureTimeline> Timelines(IReadOnlyList<JournalEntry> journal)
     {
         Dictionary<string, List<(DateTimeOffset At, string Branch)>> failures = [];
@@ -35,12 +42,7 @@ public static class EnvironmentFilter
         {
             foreach (string test in entry.Failed.Tests)
             {
-                if (!failures.TryGetValue(test, out List<(DateTimeOffset At, string Branch)>? events))
-                {
-                    failures[test] = events = [];
-                }
-
-                events.Add((entry.At, entry.Branch));
+                failures.GetOrAdd(test).Add((entry.At, BranchOf(entry)));
             }
         }
 
@@ -67,13 +69,13 @@ public static class EnvironmentFilter
             HashSet<string> others = [];
             for (int i = first; i < end; i++)
             {
-                if (_branches[i] != entry.Branch)
+                if (_branches[i] != BranchOf(entry))
                 {
                     others.Add(_branches[i]);
                 }
             }
 
-            return !others.Contains(JournalEntry.Master) && others.Count < OtherBranches;
+            return !others.Contains(MasterPush) && others.Count < OtherBranches;
         }
 
         private int LowerBound(DateTimeOffset value)

@@ -4,6 +4,7 @@
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using Nethermind.TestSelection.Collection;
+using Nethermind.TestSelection.Files;
 using Nethermind.TestSelection.GitHub;
 using Nethermind.TestSelection.Journal;
 
@@ -21,7 +22,7 @@ public sealed partial class InventoryBuilder(ActionsApi actions)
     public async Task<CostInventory> BuildAsync(long run, string workDirectory, CancellationToken cancellation)
     {
         List<JsonNode> jobs = await actions.JobsAsync(run, cancellation);
-        foreach (JsonNode artifact in await actions.ListAsync($"repos/{actions.Repository}/actions/runs/{run}/artifacts?per_page=100", "artifacts", cancellation))
+        foreach (JsonNode artifact in await actions.RunArtifactsAsync(run, cancellation))
         {
             string name = artifact["name"]!.GetValue<string>();
             if (name.StartsWith(ResultsPrefix, StringComparison.Ordinal))
@@ -47,7 +48,7 @@ public sealed partial class InventoryBuilder(ActionsApi actions)
             foreach (JsonNode? result in JsonFiles.ReadNode(results).AsArray())
             {
                 (string name, string fork) = CaseKey(result!);
-                Dictionary<string, int> forks = GetOrAdd(GetOrAdd(cases, lane), name);
+                Dictionary<string, int> forks = cases.GetOrAdd(lane).GetOrAdd(name);
                 forks[fork] = forks.GetValueOrDefault(fork) + 1;
             }
         }
@@ -110,7 +111,7 @@ public sealed partial class InventoryBuilder(ActionsApi actions)
 
             IReadOnlyDictionary<string, double> projects = JobLogs.IsProject(unit)
                 ? new Dictionary<string, double> { [unit] = Duration(job) }
-                : JobLogs.GroupSeconds(await actions.JobLogAsync(job["id"]!.GetValue<long>(), cancellation));
+                : WithSharedOverhead(JobLogs.GroupSeconds(await actions.JobLogAsync(job["id"]!.GetValue<long>(), cancellation)), Duration(job));
             foreach ((string project, double projectSeconds) in projects)
             {
                 seconds[project] = seconds.GetValueOrDefault(project) + projectSeconds;
@@ -120,18 +121,18 @@ public sealed partial class InventoryBuilder(ActionsApi actions)
         return seconds;
     }
 
+    /// <summary>
+    /// A pack's projects with the job's setup shared out evenly, so a pack project costs what it would in a job of its
+    /// own and the two kinds of job weigh alike.
+    /// </summary>
+    public static Dictionary<string, double> WithSharedOverhead(IReadOnlyDictionary<string, double> groups, double jobSeconds)
+    {
+        double overhead = groups.Count > 0 ? Math.Max(0, jobSeconds - groups.Values.Sum()) / groups.Count : 0;
+        return groups.ToDictionary(static pair => pair.Key, pair => pair.Value + overhead);
+    }
+
     private static double Duration(JsonNode span) =>
         (DateTimeOffset.Parse(span["completed_at"]!.GetValue<string>()) - DateTimeOffset.Parse(span["started_at"]!.GetValue<string>())).TotalSeconds;
-
-    private static TValue GetOrAdd<TValue>(Dictionary<string, TValue> dictionary, string key) where TValue : new()
-    {
-        if (!dictionary.TryGetValue(key, out TValue? value))
-        {
-            dictionary[key] = value = new TValue();
-        }
-
-        return value;
-    }
 
     [GeneratedRegex(@"^(test_\w+)\[fork_(\w+?)[-\]]")]
     private static partial Regex NethtestCase();

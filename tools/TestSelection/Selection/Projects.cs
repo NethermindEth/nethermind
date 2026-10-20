@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Text.RegularExpressions;
+using Nethermind.TestSelection.Files;
 
 namespace Nethermind.TestSelection.Selection;
 
@@ -14,6 +15,8 @@ public sealed partial class Projects
 {
     public const string SourceRoot = "src/Nethermind";
     private const string TestSuffix = ".Test";
+
+    private static readonly IReadOnlySet<string> EmptySet = new HashSet<string>();
 
     private readonly IReadOnlyDictionary<string, IReadOnlySet<string>> _references;
     private readonly Dictionary<string, HashSet<string>> _owners;
@@ -28,12 +31,7 @@ public sealed partial class Projects
         _owners = references.Keys.ToDictionary(static project => project, static project => new HashSet<string> { project });
         foreach ((string path, IReadOnlySet<string> projects) in includes)
         {
-            if (!_owners.TryGetValue(path, out HashSet<string>? owners))
-            {
-                _owners[path] = owners = [];
-            }
-
-            owners.UnionWith(projects);
+            _owners.GetOrAdd(path).UnionWith(projects);
         }
     }
 
@@ -100,8 +98,6 @@ public sealed partial class Projects
     public static string NameOf(string project) => project[(project.LastIndexOf('/') + 1)..];
 
     public static string DirectoryOf(string name) => $"{SourceRoot}/{name}";
-
-    private static readonly IReadOnlySet<string> EmptySet = new HashSet<string>();
 
     private HashSet<string> OwnersOf(string file)
     {

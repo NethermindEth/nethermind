@@ -38,6 +38,15 @@ public class EnvironmentFilterTests
         return EnvironmentFilter.WithoutEnvironment(journal).Single(static entry => entry.Run == 1).Failed.Tests.Count > 0;
     }
 
+    [Test]
+    public void Failure_SharedWithAPullRequestFromABranchNamedMaster_IsKept()
+    {
+        JournalEntry mine = Failing(1, 0, "mine");
+        JournalEntry fork = Failing(2, 1, JournalEntry.Master) with { Event = JournalEntry.PullRequest };
+        Assert.That(EnvironmentFilter.WithoutEnvironment([mine, fork])[0].Failed.Tests, Is.Not.Empty, "a fork can name its branch master");
+    }
+
+    // A run on master is a push; every other branch runs pull requests.
     private static JournalEntry Failing(long run, double hours, string branch) =>
-        new(run, Fixtures.Now.AddHours(hours), JournalEntry.PullRequest, branch, [], new Failures([Flaky], []));
+        new(run, Fixtures.Now.AddHours(hours), branch == JournalEntry.Master ? JournalEntry.Push : JournalEntry.PullRequest, branch, [], new Failures([Flaky], []));
 }

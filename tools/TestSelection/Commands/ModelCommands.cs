@@ -26,6 +26,18 @@ public static class ModelCommands
         return command;
     }
 
+    public static Command Prune()
+    {
+        Option<int> keep = new("--keep") { Description = "How many of the newest trusted artifacts to keep", DefaultValueFactory = static _ => 2 };
+        Command command = new("prune", "Delete the superseded model artifacts of master runs") { keep };
+        command.SetAction(async (result, cancellation) =>
+        {
+            using GitHubClient github = GitHubClient.FromEnvironment(result.GetValue(RepositoryOption.Instance)!);
+            Console.WriteLine($"deleted {await new ModelArtifact(new ActionsApi(github)).PruneAsync(result.GetValue(keep), cancellation)} artifacts");
+        });
+        return command;
+    }
+
     public static Command ReportMasterFailure()
     {
         Option<long> run = new("--run") { Required = true, Description = "A completed master run of a test workflow" };

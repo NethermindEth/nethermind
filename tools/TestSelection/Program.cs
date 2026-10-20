@@ -13,6 +13,7 @@ RootCommand root = new("History-based test selection for pull requests: EEST tes
     HistoryCommands.Model(),
     HistoryCommands.Replay(),
     ModelCommands.Download(),
+    ModelCommands.Prune(),
     ModelCommands.ReportMasterFailure(),
     SelectProjectsCommand.Create(),
     SelectEestCommand.Create(),

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.TestSelection.Files;
 using Nethermind.TestSelection.Journal;
 
 namespace Nethermind.TestSelection.Selection;
@@ -46,15 +47,7 @@ public sealed class SelectorLinks
 
     public void LinkTest(string project, string test) => Add(_tests, project, test);
 
-    public void LinkFork(string project, string fork, DateTimeOffset at, string test)
-    {
-        if (!_forks.TryGetValue((project, fork), out List<(DateTimeOffset At, string Test)>? events))
-        {
-            _forks[(project, fork)] = events = [];
-        }
-
-        events.Add((at, test));
-    }
+    public void LinkFork(string project, string fork, DateTimeOffset at, string test) => _forks.GetOrAdd((project, fork)).Add((at, test));
 
     public IReadOnlySet<string> LinkedTests(IEnumerable<string> changed) => Union(_tests, changed);
 
@@ -75,15 +68,7 @@ public sealed class SelectorLinks
         return forks;
     }
 
-    private static void Add(Dictionary<string, HashSet<string>> links, string project, string linked)
-    {
-        if (!links.TryGetValue(project, out HashSet<string>? set))
-        {
-            links[project] = set = [];
-        }
-
-        set.Add(linked);
-    }
+    private static void Add(Dictionary<string, HashSet<string>> links, string project, string linked) => links.GetOrAdd(project).Add(linked);
 
     private static HashSet<string> Union(Dictionary<string, HashSet<string>> links, IEnumerable<string> changed)
     {

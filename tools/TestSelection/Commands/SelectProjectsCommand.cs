@@ -3,6 +3,7 @@
 
 using System.CommandLine;
 using System.Text.Json.Nodes;
+using Nethermind.TestSelection.Files;
 using Nethermind.TestSelection.Journal;
 using Nethermind.TestSelection.Matrices;
 
@@ -17,22 +18,21 @@ public static class SelectProjectsCommand
 {
     public static Command Create()
     {
-        Option<string> model = new("--model") { Required = true };
-        Option<string> changedFiles = new("--changed-files") { Required = true, Description = "One changed path per line" };
-        Option<string> run = new("--run") { Required = true, Description = "The workflow run id; seeds the sample and the holdout" };
+        SelectionOptions selection = new();
         Option<string> matrices = new("--matrices") { Required = true, Description = "scripts/ci/test-matrices.json" };
         Option<string> workflow = new("--workflow") { Required = true, Description = "The workflow whose matrices to write" };
         Option<string> eventName = new("--event") { Required = true, Description = "github.event_name; only pull requests are selected" };
         Option<string> output = new("--output") { Required = true, Description = "The step output file, $GITHUB_OUTPUT" };
         Command command = new("select-projects", "Write the NUnit matrices of a workflow with only the selected projects")
         {
-            model, changedFiles, run, matrices, workflow, eventName, output,
+            matrices, workflow, eventName, output,
         };
+        selection.AddTo(command);
         command.SetAction(result =>
         {
             JsonObject workflowMatrices = JsonFiles.ReadNode(result.GetValue(matrices)!)[result.GetValue(workflow)!]!.AsObject();
             PullRequestDecision decision = result.GetValue(eventName) == JournalEntry.PullRequest
-                ? PullRequestSelection.Decide(RepositoryRoot.Find(), result.GetValue(model)!, result.GetValue(changedFiles)!, result.GetValue(run)!, DateTimeOffset.UtcNow)
+                ? selection.Decide(result)
                 : new PullRequestDecision(null, "not a pull request");
             File.AppendAllText(result.GetValue(output)!, Outputs(workflowMatrices, decision));
         });

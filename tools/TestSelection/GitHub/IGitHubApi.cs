@@ -19,5 +19,6 @@ public interface IGitHubApi
 
     Task DownloadAsync(string path, Stream destination, CancellationToken cancellation);
 
-    Task<JsonNode?> SendAsync(HttpMethod method, string path, JsonNode body, CancellationToken cancellation);
+    /// <summary>A write: POST, PATCH or DELETE, with an optional JSON body.</summary>
+    Task<JsonNode?> SendAsync(HttpMethod method, string path, JsonNode? body, CancellationToken cancellation);
 }
