@@ -22,11 +22,7 @@ namespace Nethermind.Consensus.Processing;
 /// run again on the values the earlier footprints leave. Block processing reports the writes of the transactions it
 /// executes, which take the place of what their footprints predicted.
 /// </remarks>
-/// <param name="seedsAlongsideWarms">
-/// Whether footprints are seeded while warm runs store theirs: every store then writes its footprint under the lock it
-/// indexes it under, so the footprint at a position is always the one indexed for it.
-/// </param>
-internal sealed class BlockFootprints(Block block, bool seedsAlongsideWarms = false)
+internal sealed class BlockFootprints(Block block)
 {
     /// <summary>
     /// Footprints indexed for one slot's writes, and for its reads. Past it, a slot's writes are no longer tracked and the
@@ -89,18 +85,12 @@ internal sealed class BlockFootprints(Block block, bool seedsAlongsideWarms = fa
 
     public TransactionFootprint? Get(int index) => Volatile.Read(ref _footprints[index]);
 
+    /// <remarks>
+    /// Footprints are seeded while warm runs store theirs, so every store writes its footprint under the lock it indexes
+    /// it under: the footprint at a position is always the one indexed for it.
+    /// </remarks>
     /// <param name="seededAt">For a refreshed footprint, the <see cref="WritesVersion"/> its run was seeded at.</param>
-    public void Store(int index, TransactionFootprint footprint, int seededAt = -1)
-    {
-        if (seedsAlongsideWarms)
-        {
-            StoreLocked(index, footprint, seededAt, onlyIfEmpty: false);
-            return;
-        }
-
-        Volatile.Write(ref _footprints[index], footprint);
-        Index(index, footprint, seededAt);
-    }
+    public void Store(int index, TransactionFootprint footprint, int seededAt = -1) => StoreLocked(index, footprint, seededAt, onlyIfEmpty: false);
 
     /// <summary>
     /// Stores <paramref name="footprint"/> unless a footprint is already stored at <paramref name="index"/>, or block
@@ -311,17 +301,6 @@ internal sealed class BlockFootprints(Block block, bool seedsAlongsideWarms = fa
             // The transaction is done: its reads no longer invalidate it, and its writes are the ones it made.
             _executed[position] = true;
             invalidated = Replace(position, new Indexed(null, writes));
-        }
-
-        if (invalidated) _changed.Release();
-    }
-
-    private void Index(int position, TransactionFootprint footprint, int seededAt)
-    {
-        bool invalidated;
-        lock (_lock)
-        {
-            invalidated = IndexLocked(position, footprint, seededAt);
         }
 
         if (invalidated) _changed.Release();

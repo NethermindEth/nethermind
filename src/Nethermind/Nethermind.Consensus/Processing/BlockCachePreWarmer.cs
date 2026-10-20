@@ -219,9 +219,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         try
         {
             CancellationToken token = session.Token;
-            BlockFootprints? footprints = _handoff && BlockFootprints.AppliesTo(suggestedBlock, spec)
-                ? new BlockFootprints(suggestedBlock, seedsAlongsideWarms: _earlyStart)
-                : null;
+            BlockFootprints? footprints = _handoff && BlockFootprints.AppliesTo(suggestedBlock, spec) ? new BlockFootprints(suggestedBlock) : null;
             // Transactions the mempool pass warmed run again unless a footprint it recorded holds in the block; those are
             // stored on the session before any warm starts, or with the early start alongside the warms. Where the caches
             // did not carry over they run again to refill them, and a footprint they record replaces the seeded one.

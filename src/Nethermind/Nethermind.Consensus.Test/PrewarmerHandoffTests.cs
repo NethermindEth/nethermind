@@ -931,14 +931,11 @@ public class PrewarmerHandoffMechanicsTests(bool earlyStart) : PrewarmerHandoffT
         }
     }
 
-    // As the fixture's warm passes keep them.
-    private (BlockFootprints Footprints, Transaction[] Transactions) Footprints(int count) => Footprints(count, seedsAlongsideWarms: EarlyStart);
-
-    internal static (BlockFootprints Footprints, Transaction[] Transactions) Footprints(int count, bool seedsAlongsideWarms)
+    internal static (BlockFootprints Footprints, Transaction[] Transactions) Footprints(int count)
     {
         Transaction[] txs = new Transaction[count];
         for (int i = 0; i < count; i++) txs[i] = Build.A.Transaction.WithNonce((ulong)i).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
-        return (new BlockFootprints(Build.A.Block.WithTransactions(txs).TestObject, seedsAlongsideWarms), txs);
+        return (new BlockFootprints(Build.A.Block.WithTransactions(txs).TestObject), txs);
     }
 
     private static UInt256? ReadOf(TransactionFootprint footprint, in StorageCell cell)
@@ -2180,7 +2177,7 @@ public class MempoolFootprintsTests
 
         Block block = Build.A.Block.WithParentHash(head.Hash!).WithNumber(11).WithBeneficiary(TestItem.AddressF).WithTimestamp(112)
             .WithGasLimit(30_000_000).WithBaseFeePerGas(7).WithExcessBlobGas(0).WithTransactions(txs).TestObject;
-        BlockFootprints footprints = new(block, seedsAlongsideWarms: true);
+        BlockFootprints footprints = new(block);
         TransactionFootprint warmed = new(txs[1], [], [], [], default, default, default);
         footprints.Store(1, warmed);
 
@@ -2217,7 +2214,7 @@ public class MempoolFootprintsTests
             [.. signed.Select(static tx => Rlp.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes)], skipErrors: false).Transactions;
         Block block = Build.A.Block.WithParentHash(head.Hash!).WithNumber(11).WithBeneficiary(TestItem.AddressF).WithTimestamp(112)
             .WithGasLimit(30_000_000).WithBaseFeePerGas(7).WithExcessBlobGas(0).WithTransactions(txs).TestObject;
-        BlockFootprints footprints = new(block, seedsAlongsideWarms: true);
+        BlockFootprints footprints = new(block);
         using CancellationTokenSource cancellation = new();
         Task<int> takingOver;
         bool firstTaken;
@@ -2251,9 +2248,9 @@ public class MempoolFootprintsTests
 public class BlockFootprintsSeedingTests
 {
     [Test]
-    public void A_seed_is_stored_only_where_no_footprint_is_and_a_stored_footprint_replaces_a_seed([Values] bool seedsAlongsideWarms)
+    public void A_seed_is_stored_only_where_no_footprint_is_and_a_stored_footprint_replaces_a_seed()
     {
-        (BlockFootprints footprints, Transaction[] txs) = PrewarmerHandoffMechanicsTests.Footprints(3, seedsAlongsideWarms);
+        (BlockFootprints footprints, Transaction[] txs) = PrewarmerHandoffMechanicsTests.Footprints(3);
         StorageCell cell = new(TestItem.AddressC, 0x4e4d);
         TransactionFootprint warm = PrewarmerHandoffMechanicsTests.Footprint(txs[0], writes: [(cell, 1)]);
         TransactionFootprint seed = PrewarmerHandoffMechanicsTests.Footprint(txs[1], writes: [(cell, 2)]);
@@ -2294,7 +2291,7 @@ public class BlockFootprintsSeedingTests
         int missed = 0;
         for (int round = 0; round < rounds; round++)
         {
-            (BlockFootprints footprints, Transaction[] txs) = PrewarmerHandoffMechanicsTests.Footprints(count, seedsAlongsideWarms: true);
+            (BlockFootprints footprints, Transaction[] txs) = PrewarmerHandoffMechanicsTests.Footprints(count);
             Random random = new(round);
             TransactionFootprint[] seeds = Runs(txs, cells, random);
             TransactionFootprint[] warms = Runs(txs, cells, random);
@@ -2380,7 +2377,7 @@ public class BlockFootprintsSeedingTests
     [Test]
     public void Nothing_is_stored_at_a_position_block_processing_has_executed([Values] bool seed)
     {
-        (BlockFootprints footprints, Transaction[] txs) = PrewarmerHandoffMechanicsTests.Footprints(2, seedsAlongsideWarms: true);
+        (BlockFootprints footprints, Transaction[] txs) = PrewarmerHandoffMechanicsTests.Footprints(2);
         StorageCell cell = new(TestItem.AddressC, 0x4e4d);
         footprints.QueueExecuted(0, new[] { (cell, (UInt256)7) });
         footprints.ApplyExecuted();
@@ -2406,7 +2403,7 @@ public class BlockFootprintsSeedingTests
     [Test]
     public void A_refreshed_run_is_checked_again_after_a_seed_is_stored_but_not_after_one_is_refused([Values] bool seedStored)
     {
-        (BlockFootprints footprints, Transaction[] txs) = PrewarmerHandoffMechanicsTests.Footprints(3, seedsAlongsideWarms: true);
+        (BlockFootprints footprints, Transaction[] txs) = PrewarmerHandoffMechanicsTests.Footprints(3);
         StorageCell cell = new(TestItem.AddressC, 0x4e4d);
         footprints.Store(0, PrewarmerHandoffMechanicsTests.Footprint(txs[0], writes: [(cell, 0x4e4d)]));
         footprints.Store(1, PrewarmerHandoffMechanicsTests.Footprint(txs[1], reads: [(cell, UInt256.Zero)]));
