@@ -17,47 +17,39 @@ using NUnit.Framework;
 namespace Nethermind.Specs.Test.ChainSpecStyle;
 
 /// <summary>
-/// Loads real devnet genesis files as the node does and checks that every fork they schedule activates at its time.
+/// Loads devnet genesis files as the node does and checks that every fork they schedule activates at its time.
 /// </summary>
 /// <remarks>
-/// Vendored copies from the ethpandaops devnet repos, config and header fields verbatim, alloc trimmed to the predeploys
-/// and two funded accounts:
-/// <list type="bullet">
-///   <item><c>heze-devnet-1.json</c>: ethpandaops/heze-devnets@a970f39d48c12598b716eecc4567f6bf2beef7c7, network-configs/devnet-1/metadata/genesis.json</item>
-///   <item><c>glamsterdam-devnet-12.json</c>: ethpandaops/glamsterdam-devnets@668df8608fb9bc51b2236fac67193de31c369452, network-configs/devnet-12/metadata/genesis.json</item>
-/// </list>
-/// The scheduled <c>check-devnet-genesis.yml</c> workflow runs the same checks on the latest upstream files through
-/// <see cref="ExtraGenesisDirectoryVariable"/>.
+/// Reads the genesis files in the directory named by <see cref="GenesisDirectoryVariable"/> and is ignored when it is unset.
+/// The <c>check-devnet-genesis.yml</c> workflow fetches the latest ethpandaops devnet genesis files and sets it.
 /// </remarks>
 [Parallelizable(ParallelScope.All)]
 public class GethGenesisDevnetTests
 {
-    /// <summary>Environment variable naming a directory of further genesis files to check.</summary>
-    public const string ExtraGenesisDirectoryVariable = "NETHERMIND_GETH_GENESIS_DIR";
+    /// <summary>Environment variable naming a directory of genesis files to check.</summary>
+    public const string GenesisDirectoryVariable = "NETHERMIND_GETH_GENESIS_DIR";
 
     private static readonly HashSet<string> GethConfigFields = new(
         typeof(GethGenesisConfigJson).GetProperties().Select(static p => p.Name), StringComparer.OrdinalIgnoreCase);
 
     public static IEnumerable<TestCaseData> GenesisFiles()
     {
-        foreach (string path in Directory.GetFiles(Path.Combine(AppContext.BaseDirectory, "Specs", "GethGenesis"), "*.json").Order(StringComparer.Ordinal))
+        if (Environment.GetEnvironmentVariable(GenesisDirectoryVariable) is not { Length: > 0 } directory)
         {
-            yield return new TestCaseData(path).SetArgDisplayNames(Path.GetFileName(path));
+            yield return new TestCaseData("").SetArgDisplayNames("<unset>").Ignore($"{GenesisDirectoryVariable} is not set");
+            yield break;
         }
 
-        if (Environment.GetEnvironmentVariable(ExtraGenesisDirectoryVariable) is { Length: > 0 } extra)
+        string[] files = Directory.Exists(directory) ? Directory.GetFiles(directory, "*.json") : [];
+        if (files.Length == 0)
         {
-            string[] files = Directory.Exists(extra) ? Directory.GetFiles(extra, "*.json") : [];
-            if (files.Length == 0)
-            {
-                // Surfaces a broken fetch instead of passing on nothing.
-                yield return new TestCaseData(Path.Combine(extra, "<no genesis files>")).SetArgDisplayNames("upstream/<none>");
-            }
+            // Surfaces a broken fetch instead of passing on nothing.
+            yield return new TestCaseData(Path.Combine(directory, "<no genesis files>")).SetArgDisplayNames("<none>");
+        }
 
-            foreach (string path in files.Order(StringComparer.Ordinal))
-            {
-                yield return new TestCaseData(path).SetArgDisplayNames($"upstream/{Path.GetFileName(path)}");
-            }
+        foreach (string path in files.Order(StringComparer.Ordinal))
+        {
+            yield return new TestCaseData(path).SetArgDisplayNames(Path.GetFileName(path));
         }
     }
 

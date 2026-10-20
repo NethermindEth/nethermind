@@ -1,8 +1,7 @@
 name: Check devnet genesis files
 
 # Loads the latest geth-style genesis files of the ethpandaops devnets, so a fork label or blob
-# schedule key the node doesn't read fails here before a devnet launches. The test suite runs the
-# same checks on vendored copies; this catches what changed upstream since.
+# schedule key the node doesn't read fails here before a devnet launches.
 
 on:
   schedule:
@@ -20,9 +19,6 @@ jobs:
   check:
     name: Load latest devnet genesis files
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      issues: write
     env:
       # Official ethpandaops devnet repos only; the newest devnets of each are checked.
       REPOS: heze-devnets glamsterdam-devnets
@@ -44,19 +40,3 @@ jobs:
       - name: Run devnet genesis tests
         working-directory: src/Nethermind/Nethermind.Specs.Test
         run: dotnet test --project Nethermind.Specs.Test.csproj -- --filter "FullyQualifiedName~GethGenesisDevnetTests"
-
-      # Scheduled failures otherwise only reach whoever last edited the cron.
-      - name: Report failure
-        if: failure() && github.event_name == 'schedule'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        run: |
-          title="Devnet genesis check failing"
-          issue=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "in:title \"$title\"" --json number --jq '.[0].number // empty')
-          body="Devnet genesis check failed: $RUN_URL"
-          if [[ -n "$issue" ]]; then
-            gh issue comment "$issue" --repo "$GITHUB_REPOSITORY" --body "$body"
-          else
-            gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --body "$body"
-          fi
