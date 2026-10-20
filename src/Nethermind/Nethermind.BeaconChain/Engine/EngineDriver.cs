@@ -67,7 +67,7 @@ public sealed class EngineDriver(ExternalClDetector detector, ILogManager logMan
         byte[][] requests = PayloadConverter.ToExecutionRequestsList(body.ExecutionRequests);
         return await CallEngineAsync("newPayloadV4", _logger.IsInfo ? $"{payload.BlockNumber} ({payload.BlockHash?.ToShortString()})" : null, async () =>
         {
-            detector.ThrowIfStoodDown("newPayloadV4");
+            using IDisposable call = detector.EnterEmbeddedCall("newPayloadV4");
             long started = Stopwatch.GetTimestamp();
             ResultWrapper<PayloadStatusV1> result = await detector.InnerEngine.engine_newPayloadV4(payload, versionedHashes, message.ParentRoot, requests);
             TimeSpan elapsed = Stopwatch.GetElapsedTime(started);
@@ -117,7 +117,12 @@ public sealed class EngineDriver(ExternalClDetector detector, ILogManager logMan
             Interlocked.Increment(ref Metrics.ForkchoiceUpdatedCallsCount);
             ForkchoiceStateV1 state = new(headExecHash, finalizedExecHash, safeExecHash);
             // execution-apis paris.md engine_forkchoiceUpdatedV1 "timeout: 8s"; Task.Run keeps synchronous EL work inside the deadline.
-            Task<(PayloadStatusV1 Status, TimeSpan Elapsed)> pending = Task.Run(() => SendForkchoiceUpdatedAsync(state));
+            IDisposable call = detector.EnterEmbeddedCall("forkchoiceUpdated");
+            Task<(PayloadStatusV1 Status, TimeSpan Elapsed)> pending = Task.Run(async () =>
+            {
+                using (call)
+                    return await SendForkchoiceUpdatedAsync(state);
+            });
             _pendingForkchoice = pending;
             _ = pending.ContinueWith(static task => _ = task.Exception, CancellationToken.None,
                 TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
@@ -136,7 +141,6 @@ public sealed class EngineDriver(ExternalClDetector detector, ILogManager logMan
         // V3 stays valid after Amsterdam only without payload attributes: execution-apis amsterdam.md "Osaka API" bounds only the payload timestamp.
         if (clock.CurrentEpoch < spec.GloasForkEpoch)
         {
-            detector.ThrowIfStoodDown("forkchoiceUpdatedV3");
             long startedV3 = Stopwatch.GetTimestamp();
             ResultWrapper<ForkchoiceUpdatedV1Result> v3 = await detector.InnerEngine.engine_forkchoiceUpdatedV3(state);
             TimeSpan elapsedV3 = Stopwatch.GetElapsedTime(startedV3);
@@ -145,7 +149,6 @@ public sealed class EngineDriver(ExternalClDetector detector, ILogManager logMan
 
         // specs/gloas/fork-choice.md notify_forkchoice_updated: custody_columns is the node's custody set.
         BitArray? columns = ToCustodyColumnBits(custody.Current);
-        detector.ThrowIfStoodDown("forkchoiceUpdatedV4");
         long startedV4 = Stopwatch.GetTimestamp();
         ResultWrapper<ForkchoiceUpdatedV1Result> v4 = await detector.InnerEngine.engine_forkchoiceUpdatedV4(state, null, columns);
         TimeSpan elapsedV4 = Stopwatch.GetElapsedTime(startedV4);
@@ -200,7 +203,7 @@ public sealed class EngineDriver(ExternalClDetector detector, ILogManager logMan
         byte[][] requests = PayloadConverter.ToExecutionRequestsList(executionRequests);
         return await CallEngineAsync("newPayloadV5", _logger.IsInfo ? $"{converted.BlockNumber} ({converted.BlockHash?.ToShortString()})" : null, async () =>
         {
-            detector.ThrowIfStoodDown("newPayloadV5");
+            using IDisposable call = detector.EnterEmbeddedCall("newPayloadV5");
             long started = Stopwatch.GetTimestamp();
             ResultWrapper<PayloadStatusV1> result = await detector.InnerEngine.engine_newPayloadV5(converted, versionedHashes, parentBeaconBlockRoot, requests);
             TimeSpan elapsed = Stopwatch.GetElapsedTime(started);

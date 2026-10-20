@@ -41,6 +41,12 @@ public class BeaconChainPlugin(IBeaconChainConfig config) : INethermindPlugin
 
 public class BeaconChainModule : Module
 {
+    internal static void ValidatePreset(BeaconChainSpec spec)
+    {
+        if (spec.SlotsPerEpoch != Presets.SlotsPerEpoch || spec.SecondsPerSlot != Presets.SecondsPerSlot)
+            throw new InvalidConfigurationException("The beacon chain slot timing does not match the selected consensus preset.", ExitCodes.ConflictingConfigurations);
+    }
+
     internal static void ValidateGloasSchedule(BeaconChainSpec spec, ISpecProvider execution)
     {
         if (spec.GloasForkEpoch == ulong.MaxValue)
@@ -68,6 +74,7 @@ public class BeaconChainModule : Module
             {
                 BeaconPresetSelection.Initialize(specProvider.ChainId);
                 BeaconChainSpec spec = BeaconChainSpec.ForChainId(specProvider.ChainId).WithGloasForkOverride(chainConfig.GloasForkEpoch, chainConfig.GloasForkVersion);
+                ValidatePreset(spec);
                 ValidateGloasSchedule(spec, specProvider);
                 return spec;
             })

@@ -121,7 +121,8 @@ public partial class ColumnBackfillTests
             CurrentStatus = new StatusMessageV2 { ForkDigest = new byte[4], FinalizedRoot = gloas.Root, HeadRoot = gloas.Root, HeadSlot = 32 },
         };
         ColumnBackfill backfill = new(store, pool, rangeSync, peers, clock, spec, status,
-            new DiscoveryNodeCustodySource(discovery), LimboLogs.Instance) { WindowPause = TimeSpan.Zero };
+            new DiscoveryNodeCustodySource(discovery), LimboLogs.Instance)
+        { WindowPause = TimeSpan.Zero };
         await backfill.RunAsync(token);
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();

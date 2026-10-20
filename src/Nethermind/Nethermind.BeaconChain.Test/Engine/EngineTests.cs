@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers.Binary;
+using System.Reflection;
 using System.Security.Cryptography;
 using Autofac;
 using Nethermind.BeaconChain.Engine;
@@ -12,6 +13,8 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Blockchain;
+using Nethermind.Core.Test.Modules;
+using Nethermind.Core.Specs;
 using Nethermind.BeaconChain.Sync;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
@@ -19,6 +22,8 @@ using Nethermind.Logging;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.SszRest;
+using Nethermind.Specs;
+using Nethermind.Specs.Forks;
 using NSubstitute;
 using NSubstitute.Extensions;
 using BeaconExecutionPayload = Nethermind.BeaconChain.Types.ExecutionPayload;
@@ -30,6 +35,29 @@ namespace Nethermind.BeaconChain.Test.Engine;
 public class EngineTests
 {
     private static readonly Hash256 TestHash = new("0x1111111111111111111111111111111111111111111111111111111111111111");
+
+    [Test]
+    public async Task The_embedded_driver_receives_invalid_from_the_real_engine_for_a_mismatched_payload_hash()
+    {
+        using BasicTestBlockchain chain = await BasicTestBlockchain.Create(builder => builder
+            .AddModule(new TestMergeModule())
+            .AddSingleton<ISpecProvider>(new TestSingleReleaseSpecProvider(Prague.Instance)));
+        IEngineRpcModule engine = chain.Container.Resolve<IEngineRpcModule>();
+        EngineDriver driver = TestEngineDriver.Create(CreateDetector(engine, out _));
+        SignedBeaconBlock block = CreateBlock();
+        BeaconExecutionPayload payload = block.Message!.Body!.ExecutionPayload!;
+        payload.ParentHash = chain.BlockTree.Head!.Hash!;
+        payload.BlockNumber = chain.BlockTree.Head.Number + 1;
+        payload.Timestamp = chain.BlockTree.Head.Timestamp + 12;
+        payload.GasLimit = (ulong)chain.BlockTree.Head.GasLimit;
+
+        PayloadStatusV1 status = await driver.NewPayload(block);
+
+        using IDisposable scope = Assert.EnterMultipleScope();
+        Assert.That(status.Status, Is.EqualTo(PayloadStatus.Invalid));
+        Assert.That(status.ValidationError, Does.Contain("hash").IgnoreCase);
+        Assert.That(chain.BlockTree.Head.Number, Is.Zero);
+    }
 
     [Test]
     public async Task Canonical_heads_from_the_anchor_up_do_not_rewind_an_execution_head_ahead_of_them([Values(0, 2)] int importedPastAnchor)
@@ -223,6 +251,56 @@ public class EngineTests
         Assert.That(forwardedWhileInFlight, Is.Zero);
         Assert.That(detector.HasStoodDown, Is.EqualTo(accepted));
         Assert.That(() => detector.ThrowIfStoodDown("forkchoiceUpdatedV3"), accepted ? Throws.InstanceOf<OperationCanceledException>() : Throws.Nothing);
+    }
+
+    [Test]
+    public async Task An_external_engine_call_waits_for_an_embedded_call_already_in_flight([Values] bool embeddedFails)
+    {
+        IEngineRpcModule inner = Substitute.For<IEngineRpcModule>();
+        TaskCompletionSource entered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<ResultWrapper<ForkchoiceUpdatedV1Result>> completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        int calls = 0;
+        inner.engine_forkchoiceUpdatedV3(default!, default).ReturnsForAnyArgs(_ =>
+        {
+            if (Interlocked.Increment(ref calls) != 1) return Task.FromResult(ForkchoiceUpdatedV1Result.Syncing);
+            entered.TrySetResult();
+            return completion.Task;
+        });
+        ExternalClDetector detector = CreateDetector(inner, out ExternalClInterceptingEngineRpcModule decorator);
+        Task<PayloadStatusV1> embedded = TestEngineDriver.Create(detector).ForkchoiceUpdated(TestHash, TestHash, TestHash);
+        await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Task<ResultWrapper<ForkchoiceUpdatedV1Result>> external = decorator.engine_forkchoiceUpdatedV3(new ForkchoiceStateV1(TestHash, TestHash, TestHash));
+        Assert.That(calls, Is.EqualTo(1), "the external call must wait for the embedded update");
+        Assert.That(external.IsCompleted, Is.False);
+        if (embeddedFails) completion.SetException(new InvalidOperationException("engine failure"));
+        else completion.SetResult(ForkchoiceUpdatedV1Result.Syncing);
+        if (embeddedFails) await Assert.ThrowsAsync<EngineUnavailableException>(async () => await embedded);
+        else await embedded;
+        await external.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.That(calls, Is.EqualTo(2));
+        Assert.That(detector.HasStoodDown, Is.True);
+    }
+
+    private static IEnumerable<MethodInfo> ProgressionMethods() => typeof(IEngineRpcModule).GetMethods()
+        .Where(static method => method.Name.StartsWith("engine_newPayloadV", StringComparison.Ordinal)
+            || method.Name.StartsWith("engine_forkchoiceUpdatedV", StringComparison.Ordinal));
+
+    [TestCaseSource(nameof(ProgressionMethods))]
+    public async Task Every_engine_progression_version_detects_an_external_client(MethodInfo method)
+    {
+        IEngineRpcModule inner = Substitute.For<IEngineRpcModule>();
+        ExternalClDetector detector = CreateDetector(inner, out ExternalClInterceptingEngineRpcModule decorator);
+        object?[] arguments = method.GetParameters().Select(static parameter =>
+            parameter.ParameterType.IsValueType ? Activator.CreateInstance(parameter.ParameterType) : null).ToArray();
+        Type wrapperType = method.ReturnType.GetGenericArguments()[0];
+        object data = Activator.CreateInstance(wrapperType.GetGenericArguments()[0])!;
+        object result = wrapperType.GetMethod(nameof(ResultWrapper<object>.Success))!.Invoke(null, [data])!;
+        object task = typeof(Task).GetMethod(nameof(Task.FromResult))!.MakeGenericMethod(wrapperType).Invoke(null, [result])!;
+        method.Invoke(inner, arguments).Returns(task);
+
+        await ((Task)method.Invoke(decorator, arguments)!).WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.That(detector.HasStoodDown, Is.True, method.Name);
     }
 
     [Test]
@@ -496,7 +574,8 @@ public class EngineTests
             returned.TrySetResult();
             return answer.Task;
         });
-        EngineDriver driver = TestEngineDriver.Create(CreateDetector(engine, out _), forkchoiceTimeout: TimeSpan.FromMilliseconds(50));
+        ExternalClDetector detector = CreateDetector(engine, out _);
+        EngineDriver driver = TestEngineDriver.Create(detector, forkchoiceTimeout: TimeSpan.FromMilliseconds(50));
         Task<PayloadStatusV1> call = driver.ForkchoiceUpdated(TestHash, TestHash, TestHash);
         try
         {
@@ -506,6 +585,7 @@ public class EngineTests
             {
                 Assert.That(timeout!.InnerException, Is.InstanceOf<TimeoutException>());
                 Assert.That(driver.IsAvailable, Is.False);
+                Assert.That(detector.WaitForEmbeddedCallsAsync().IsCompleted, Is.False, "shutdown and external handover must still wait for the timed-out engine call");
             }
 
             await Assert.ThrowsAsync<EngineUnavailableException>(() => driver.ForkchoiceUpdated(TestHash, TestHash, TestHash).WaitAsync(TimeSpan.FromSeconds(2)));
@@ -517,6 +597,7 @@ public class EngineTests
             answer.TrySetResult(PayloadStatusV1.Syncing);
             release.Set();
             if (entered.Task.IsCompleted) await returned.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            await detector.WaitForEmbeddedCallsAsync().WaitAsync(TimeSpan.FromSeconds(5));
         }
     }
 

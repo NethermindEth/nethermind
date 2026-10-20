@@ -393,6 +393,7 @@ public class DeferredBlockColumnFetchTests
         await using Fixture fixture = Fixture.Create();
         ForkedSignedBeaconBlock deferred = new ForkedSignedBeaconBlock.OfFulu(fixture.Chain.Block);
         ForkedSignedBeaconBlock[] canonical = [deferred, .. Fixture.ChainAbove(fixture.Chain.BlockRoot, slots: [2, 3, 4]).Select(static b => new ForkedSignedBeaconBlock.OfFulu(b))];
+        fixture.Sign(((ForkedSignedBeaconBlock.OfFulu)canonical[^1]).Block);
         ForkedSignedBeaconBlock[] forked = [deferred, new ForkedSignedBeaconBlock.OfFulu(Test.P2P.TestChain.CreateBlock(3, fixture.Chain.BlockRoot))];
         List<ulong> honestStarts = [];
         StubPeer forkPeer = fixture.RangePeer("fork", headSlot: 1000, blocks: forked);
@@ -464,6 +465,7 @@ public class DeferredBlockColumnFetchTests
         await using Fixture fixture = Fixture.Create();
         HeldChain held = await HoldChainAsync(fixture, slots: [2, 3, 4], token);
         ForkedSignedBeaconBlock reorg = new ForkedSignedBeaconBlock.OfFulu(Test.P2P.TestChain.CreateBlock(5, held.Blocks[2].ComputeMessageRoot()));
+        fixture.Sign(((ForkedSignedBeaconBlock.OfFulu)reorg).Block);
         List<ulong> starts = [];
         StubPeer peer = fixture.RangePeer("reorg", headSlot: 1000, starts, [.. held.Blocks[..3], reorg]);
         fixture.Peers.Clear();
@@ -1480,6 +1482,15 @@ public class DeferredBlockColumnFetchTests
 
         public void AdvanceSlots(ulong slots) => _time.Add(TimeSpan.FromSeconds(slots * Chain.Spec.SecondsPerSlot));
         public void GiveColumn(ulong column) => SidecarPool.Add(Chain.BlockRoot, Chain.Block.Message!.Slot, Chain.Columns[(int)column]);
+
+        public void Sign(SignedBeaconBlock block)
+        {
+            block.Message!.ProposerIndex = 0;
+            ForkedSignedBeaconBlock signed = new ForkedSignedBeaconBlock.OfFulu(block);
+            block.Signature = ImportableBlobBlock.SignAs(0, signed.ComputeMessageRoot(),
+                Chain.AnchorState.GetDomain(DomainType.BeaconProposer, block.Message.Slot / Chain.Spec.SlotsPerEpoch));
+            Assert.That(((BlockImporter)Importer).VerifyCachedProposerSignature(signed), Is.True, "fixture: the off-anchor block has a known proposer and valid signature");
+        }
 
         public StubPeer Peer(string id, ulong[] custodied)
         {

@@ -18,6 +18,38 @@ public class ForkChoiceRunnerVoteRoutingTests
 
     private const ulong CommitteeSize = 64;
 
+    [Test]
+    public void The_first_same_slot_vote_wins_even_when_gossip_votes_are_queued([Values] bool firstFull, [Values] bool queued)
+    {
+        ForkCrossingChain chain = ForkCrossingChain.Instance;
+        ForkChoiceRunner runner = chain.CreateRunner();
+        ulong slot = BoundarySlot + 1;
+        runner.OnTick(runner.GenesisTime + (slot + (queued ? 0UL : 1UL)) * Presets.SecondsPerSlot);
+        runner.OnBlock(chain.First.Block, chain.First.PostState);
+        runner.OnExecutionPayloadVerified(chain.First.Root);
+        foreach (bool full in new[] { firstFull, !firstFull })
+        {
+            AttestationData data = new()
+            {
+                Slot = slot,
+                Index = full ? 1UL : 0UL,
+                BeaconBlockRoot = chain.First.Root,
+                Source = new Checkpoint { Epoch = 0, Root = chain.AnchorRoot },
+                Target = new Checkpoint { Epoch = slot / Presets.SlotsPerEpoch, Root = chain.First.Root },
+            };
+            runner.OnAttestation(CommitteeAttestation(chain.First.PostState, data,
+                new EpochCache().GetCommitteeCache(chain.First.PostState, data.Target.Epoch), 0, sign: false),
+                isFromBlock: !queued, verifySignature: false);
+        }
+        runner.OnTick(runner.GenesisTime + (slot + 1) * Presets.SecondsPerSlot);
+        runner.GetHead();
+
+        ProtoNode node = runner.EnumerateAncestors(chain.First.Root).First();
+        using IDisposable scope = Assert.EnterMultipleScope();
+        Assert.That(node.FullWeight, Is.EqualTo(firstFull ? CommitteeSize * EffectiveBalance : 0));
+        Assert.That(node.EmptyWeight, Is.EqualTo(firstFull ? 0 : CommitteeSize * EffectiveBalance));
+    }
+
     private static IEnumerable<TestCaseData> Votes()
     {
         foreach (bool queued in new[] { false, true })

@@ -12,6 +12,20 @@ namespace Nethermind.BeaconChain.Test.Spec;
 
 public class GloasScheduleTests
 {
+    [Test]
+    public void Consensus_slot_timing_must_match_the_compiled_preset([Values(-1, 0, 1)] int slotsOffset, [Values(-1, 0, 1)] int secondsOffset)
+    {
+        BeaconChainSpec spec = BeaconChainSpec.Mainnet with
+        {
+            SlotsPerEpoch = (ulong)((long)Presets.SlotsPerEpoch + slotsOffset),
+            SecondsPerSlot = (ulong)((long)Presets.SecondsPerSlot + secondsOffset),
+        };
+        if (slotsOffset == 0 && secondsOffset == 0)
+            Assert.That(() => BeaconChainModule.ValidatePreset(spec), Throws.Nothing);
+        else
+            AssertConflictingConfiguration(() => BeaconChainModule.ValidatePreset(spec));
+    }
+
     private static readonly ISpecProvider[] ExecutionNetworks =
         [MainnetSpecProvider.Instance, HoodiSpecProvider.Instance, SepoliaSpecProvider.Instance, GnosisSpecProvider.Instance, ChiadoSpecProvider.Instance];
 

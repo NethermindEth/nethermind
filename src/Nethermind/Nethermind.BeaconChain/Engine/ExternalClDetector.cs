@@ -24,6 +24,9 @@ public sealed class ExternalClDetector(
     private IEngineRpcModule? _inner;
     private int _detected;
     private int _externalCallsInFlight;
+    private readonly Lock _engineCallLock = new();
+    private int _embeddedCallsInFlight;
+    private TaskCompletionSource? _embeddedCallsDrained;
 
     /// <summary>Raised on the first external engine call when <see cref="IBeaconChainConfig.DisableOnExternalCl"/> is set; the driver lifecycle stops itself in response.</summary>
     public event Action? ExternalClDetected;
@@ -67,8 +70,50 @@ public sealed class ExternalClDetector(
 
     public void SetInner(IEngineRpcModule inner) => Volatile.Write(ref _inner, inner);
 
-    /// <summary>Called by the decorator before it forwards an external <c>newPayload</c>/<c>forkchoiceUpdated</c>.</summary>
-    internal void OnExternalEngineCallStarted() => Interlocked.Increment(ref _externalCallsInFlight);
+    internal IDisposable EnterEmbeddedCall(string method)
+    {
+        lock (_engineCallLock)
+        {
+            ThrowIfStoodDown(method);
+            _embeddedCallsInFlight++;
+            return new EmbeddedCall(this);
+        }
+    }
+
+    private sealed class EmbeddedCall(ExternalClDetector detector) : IDisposable
+    {
+        public void Dispose()
+        {
+            lock (detector._engineCallLock)
+            {
+                if (--detector._embeddedCallsInFlight == 0)
+                {
+                    detector._embeddedCallsDrained?.TrySetResult();
+                    detector._embeddedCallsDrained = null;
+                }
+            }
+        }
+    }
+
+    /// <summary>Prevents new embedded calls and waits for existing ones before forwarding an external call.</summary>
+    internal Task OnExternalEngineCallStarted()
+    {
+        lock (_engineCallLock)
+        {
+            Interlocked.Increment(ref _externalCallsInFlight);
+            return !config.DisableOnExternalCl ? Task.CompletedTask : WaitForEmbeddedCallsAsync();
+        }
+    }
+
+    internal Task WaitForEmbeddedCallsAsync()
+    {
+        lock (_engineCallLock)
+        {
+            return _embeddedCallsInFlight == 0
+                ? Task.CompletedTask
+                : (_embeddedCallsDrained ??= new(TaskCreationOptions.RunContinuationsAsynchronously)).Task;
+        }
+    }
 
     /// <summary>Called by the decorator when a call reported by <see cref="OnExternalEngineCallStarted"/> ends.</summary>
     /// <remarks>Only an accepted call detects the external client, so a rejected one leaves the driver running.</remarks>

@@ -47,7 +47,7 @@ public sealed class ExternalClInterceptingEngineRpcModule : IEngineRpcModule
             return await call();
         }
 
-        _detector.OnExternalEngineCallStarted();
+        await _detector.OnExternalEngineCallStarted();
         bool accepted = false;
         try
         {

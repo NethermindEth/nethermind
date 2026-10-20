@@ -334,7 +334,7 @@ public class BeaconChainServiceStartupTests
     }
 
     [Test]
-    public async Task StopAsync_completes_only_after_a_run_blocked_in_the_pubkey_cache_build_is_released()
+    public async Task StopAsync_completes_only_after_a_run_blocked_in_the_pubkey_cache_build_is_released([Values] bool pastWarning)
     {
         PubkeyCache pubkeyCache = new();
         TaskCompletionSource<PayloadStatusV1> answer = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -353,8 +353,15 @@ public class BeaconChainServiceStartupTests
 
         Task stopping = service.StopAsync();
 
-        Assert.That(stopping.IsCompleted, Is.False, "the run is still inside the cache build");
-        gate.Release();
+        try
+        {
+            if (pastWarning) await Task.Delay(service.ShutdownTimeout + TimeSpan.FromMilliseconds(100));
+            Assert.That(stopping.IsCompleted, Is.False, "the run is still inside the cache build");
+        }
+        finally
+        {
+            gate.Release();
+        }
         await stopping.WaitAsync(TimeSpan.FromSeconds(30));
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(run.IsCompletedSuccessfully, Is.True, "the run had unwound when the stop completed");

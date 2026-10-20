@@ -2235,15 +2235,20 @@ public sealed class ForkChoiceRunner
 
     private void DequeueAttestations()
     {
-        for (int i = _queuedAttestations.Count - 1; i >= 0; i--)
+        int retained = 0;
+        for (int i = 0; i < _queuedAttestations.Count; i++)
         {
             QueuedAttestation queued = _queuedAttestations[i];
             if (queued.Slot < _store.CurrentSlot)
             {
                 ApplyVotes(queued.AttestingIndices, queued.BlockRoot, queued.Slot, queued.TargetEpoch, queued.PayloadPresent);
-                _queuedAttestations.RemoveAt(i);
+            }
+            else
+            {
+                _queuedAttestations[retained++] = queued;
             }
         }
+        _queuedAttestations.RemoveRange(retained, _queuedAttestations.Count - retained);
     }
 
     private void ApplyVotes(ulong[] attestingIndices, Hash256 blockRoot, ulong slot, ulong targetEpoch, bool? payloadPresent)

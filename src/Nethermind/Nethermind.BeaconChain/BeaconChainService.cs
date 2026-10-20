@@ -49,7 +49,7 @@ public sealed class BeaconChainService(
     private Task? _runTask;
     private Task _columnFloorCheck = Task.CompletedTask;
 
-    /// <summary>How long <see cref="StopAsync"/> waits for the run loop before it returns anyway.</summary>
+    /// <summary>How long <see cref="StopAsync"/> waits before warning that shutdown is still in progress.</summary>
     internal TimeSpan ShutdownTimeout { get; init; } = TimeSpan.FromSeconds(8);
     /// <summary>Wait before checkpoint sync starts over after a network failure that outlasted its own retries.</summary>
     internal TimeSpan StartRetryDelay { get; init; } = DefaultStartRetryDelay;
@@ -242,7 +242,7 @@ public sealed class BeaconChainService(
         }
     }
 
-    /// <summary>Stops the driver and waits up to the shutdown deadline for its run loop.</summary>
+    /// <summary>Stops the driver and waits for its run loop to finish before dependencies can be disposed.</summary>
     public async Task StopAsync()
     {
         Stop();
@@ -254,11 +254,13 @@ public sealed class BeaconChainService(
             }
             catch (TimeoutException)
             {
-                if (_logger.IsWarn) _logger.Warn("Embedded beacon chain driver did not stop before the shutdown deadline");
+                if (_logger.IsWarn) _logger.Warn("Embedded beacon chain driver is still stopping; waiting before disposing its dependencies");
+                await _runTask;
             }
         }
 
         await _columnFloorCheck;
+        await externalClDetector.WaitForEmbeddedCallsAsync();
     }
 
     /// <remarks>Idempotent: the service is disposed both via the plugin dispose stack and as a container-owned singleton.</remarks>
