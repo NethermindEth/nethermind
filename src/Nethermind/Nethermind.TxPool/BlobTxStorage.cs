@@ -480,26 +480,20 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database, ILogManager? log
     }
 
     /// <inheritdoc/>
+    /// <remarks>Reads row by row: the multi-get indexer needs exact-size arrays and copies every payload.</remarks>
+    [SkipLocalsInit]
     int IProcessedBlobTxStorage.TryGetProcessedTransactions(scoped ReadOnlySpan<ProcessedBlobTxKey> keys, scoped Span<Transaction?> results)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(results.Length, keys.Length);
-        results[..keys.Length].Clear();
-        if (keys.IsEmpty) return 0;
 
-        // The IDb indexer needs an exact-size array of exact-length keys.
-        byte[][] dbKeys = new byte[keys.Length][];
-        for (int i = 0; i < keys.Length; i++)
-        {
-            dbKeys[i] = new byte[ProcessedTransactionKeyLength];
-            WriteProcessedTransactionKey(dbKeys[i], keys[i].BlockNumber, keys[i].Position);
-        }
-
-        KeyValuePair<byte[], byte[]?>[] dbResults = _processedBlobTxsDb[dbKeys];
+        Span<byte> key = stackalloc byte[ProcessedTransactionKeyLength];
         int found = 0;
         for (int i = 0; i < keys.Length; i++)
         {
-            byte[]? payload = dbResults[i].Value;
-            if (payload is not null && TryDecodeProcessedTransaction(payload, out results[i]))
+            results[i] = null;
+            WriteProcessedTransactionKey(key, keys[i].BlockNumber, keys[i].Position);
+            using MemoryManager<byte>? payload = _processedBlobTxsDb.GetOwnedMemory(key);
+            if (payload is not null && TryDecodeProcessedTransaction(payload.GetSpan(), out results[i]))
             {
                 found++;
             }

@@ -6,6 +6,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 
@@ -137,7 +138,12 @@ internal sealed class IncludedBlobLocations(ulong maxBlockDistance)
 
     private static Batch? CreateBatch(ulong blockNumber, Hash256? blockHash, ReadOnlySpan<Transaction> savedBlobTxs)
     {
-        List<(ValueHash256, IncludedBlobLocation)>? entries = null;
+        if (savedBlobTxs.IsEmpty)
+        {
+            return null;
+        }
+
+        using ArrayPoolListRef<(ValueHash256, IncludedBlobLocation)> entries = new(savedBlobTxs.Length);
         for (int position = 0; position < savedBlobTxs.Length; position++)
         {
             if (savedBlobTxs[position].BlobVersionedHashes is not { } hashes)
@@ -149,13 +155,12 @@ internal sealed class IncludedBlobLocations(ulong maxBlockDistance)
             {
                 if (hashes[blobIndex] is { Length: ValueHash256.MemorySize } hash)
                 {
-                    entries ??= [];
                     entries.Add((new ValueHash256(hash), new IncludedBlobLocation(blockNumber, position, blobIndex)));
                 }
             }
         }
 
-        return entries is null ? null : new Batch(blockNumber, blockHash, entries.ToArray());
+        return entries.Count == 0 ? null : new Batch(blockNumber, blockHash, entries.ToArray());
     }
 
     private void RemoveBatchesBelow(ulong lowestRetainedBlockNumber)

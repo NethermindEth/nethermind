@@ -58,7 +58,7 @@ internal interface IProcessedBlobTxStorage
     /// <returns><see langword="true"/> if the row exists and decodes; <see langword="false"/> on a miss.</returns>
     bool TryGetProcessedTransaction(ulong blockNumber, int position, [NotNullWhen(true)] out Transaction? transaction);
 
-    /// <summary>Reads several processed blob transaction rows in one batched database read.</summary>
+    /// <summary>Reads several processed blob transaction rows.</summary>
     /// <param name="keys">The rows to read.</param>
     /// <param name="results">Receives the decoded transaction for each key, or <see langword="null"/> on a miss. Must be at least as long as <paramref name="keys"/>.</param>
     /// <returns>The number of rows found.</returns>
