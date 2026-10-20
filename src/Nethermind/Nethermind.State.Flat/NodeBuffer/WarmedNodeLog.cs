@@ -10,27 +10,20 @@ using Nethermind.Trie.NodeBuffer;
 
 namespace Nethermind.State.Flat.NodeBuffer;
 
-/// <summary>The trie nodes fetched from persistence for one block, as records in a private node-record buffer, also indexed by node position.</summary>
+/// <summary>The trie nodes fetched from persistence for one block, as records in a <see cref="PrivateNodeRecordBuffer"/>, also indexed by node position.</summary>
 /// <remarks>
 /// Pointers carry <see cref="NodeRecordCodec.TransientPointerMask"/>, so <see cref="WarmedNodeRecordBuffer"/> can tell them from the global buffer's.
 /// Transient pointers live only in this log's records and position index: records committed to the global buffer drop them,
 /// so a pointer from before a <see cref="Reset"/> is unreachable after it.
 /// Every record stays readable until the next <see cref="Reset"/>.
 /// </remarks>
-public sealed class WarmedNodeLog : IDisposable
+/// <param name="capacity">The expected number of nodes, which sizes the position index.</param>
+public sealed class WarmedNodeLog(int capacity) : IDisposable
 {
     private const int GenerationBytes = 1024 * 1024;
 
-    private readonly NodeRecordBuffer _buffer = new(0, GenerationBytes, NodeRecordBuffer.DefaultLiveGenerations);
-    private readonly ConcurrentDictionary<(Hash256? Address, TreePath Path), ulong> _pointers;
-    private IDisposable _pin;
-
-    /// <param name="capacity">The expected number of nodes, which sizes the position index.</param>
-    public WarmedNodeLog(int capacity)
-    {
-        _pointers = new(Environment.ProcessorCount, Math.Max(capacity, 1));
-        _pin = _buffer.Pin();
-    }
+    private readonly PrivateNodeRecordBuffer _buffer = new(GenerationBytes);
+    private readonly ConcurrentDictionary<(Hash256? Address, TreePath Path), ulong> _pointers = new(Environment.ProcessorCount, Math.Max(capacity, 1));
 
     /// <summary>Number of indexed node positions.</summary>
     /// <remarks>Takes every lock of the position index.</remarks>
@@ -82,13 +75,8 @@ public sealed class WarmedNodeLog : IDisposable
     public void Reset()
     {
         _pointers.NoResizeClear();
-        _pin.Dispose();
-        _pin = _buffer.Pin();
+        _buffer.Clear();
     }
 
-    public void Dispose()
-    {
-        _pin.Dispose();
-        _buffer.Dispose();
-    }
+    public void Dispose() => _buffer.Dispose();
 }
