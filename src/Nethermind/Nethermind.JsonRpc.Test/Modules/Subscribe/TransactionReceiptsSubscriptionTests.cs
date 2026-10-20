@@ -216,6 +216,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Subscribe
             string? serialized = GetTransactionReceiptsSubscriptionResult(filter, eventArgs, out _, shouldReceiveResult: false);
 
             Assert.That(serialized, Is.Null);
+            _blockTree.DidNotReceive().FindBlock(Arg.Any<Hash256>(), Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>());
         }
 
         [Test]
