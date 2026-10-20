@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
 using System.Threading;
 using NUnit.Framework;
 
@@ -39,6 +40,7 @@ public class JsonRpcConfigExtensionTests
     [Test]
     public void Pooled_timeout_is_armed_with_the_configured_timeout()
     {
+        Assume.That(Debugger.IsAttached, Is.False, "a debugger gets an unarmed timeout source");
         JsonRpcConfigExtension.ReturnTimeoutCancellationToken(new CancellationTokenSource());
         using CancellationTokenSource rented = new JsonRpcConfig { Timeout = 0 }.BuildTimeoutCancellationToken();
         Assert.That(rented.Token.WaitHandle.WaitOne(TimeSpan.FromSeconds(5)), Is.True);
