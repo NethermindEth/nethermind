@@ -94,7 +94,13 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         block.Header.IsPostMerge = true;
         TrackingExecutionPayload payload = TrackingExecutionPayload.Create(block);
         ParallelUnbalancedWork.WorkerGroup? decodingWorkers = null;
-        payload.OnDecoding = workers => decodingWorkers = workers;
+        bool singleProcessor = Nethermind.Core.Cpu.RuntimeInformation.IsSingleProcessor;
+        payload.OnDecoding = workers =>
+        {
+            decodingWorkers = workers;
+            // An invalid hash cancels recovery right after decoding, which could otherwise stop it before its first sender.
+            if (invalidHash && !singleProcessor) Assert.That(entered.Task.Wait(TimeSpan.FromSeconds(10)), Is.True, "Recovery did not start before decoding finished");
+        };
         Transaction[] transactions = payload.TryGetTransactions().Data!;
         if (invalidHash) payload.BlockHash = TestItem.KeccakB;
         using NewPayloadHandler handler = CreateHandler(block, AddBlockResult.AlreadyKnown,
@@ -105,7 +111,6 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         {
             ResultWrapper<PayloadStatusV1> result = await handler.HandleAsync(payload);
             progress = recovery.GetInFlight(transactions);
-            bool singleProcessor = Nethermind.Core.Cpu.RuntimeInformation.IsSingleProcessor;
             ParallelUnbalancedWork.WorkerGroup? observed = singleProcessor
                 ? null : await entered.Task.WaitAsync(TimeSpan.FromSeconds(10));
             using (Assert.EnterMultipleScope())
