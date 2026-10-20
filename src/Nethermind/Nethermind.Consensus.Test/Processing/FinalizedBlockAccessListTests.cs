@@ -30,6 +30,7 @@ using Nethermind.Init.Modules;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.Forks;
+using Nethermind.State;
 using Nethermind.Synchronization;
 using NSubstitute;
 using NUnit.Framework;
@@ -156,6 +157,24 @@ public class FinalizedBlockAccessListTests(bool useFlatDb)
             Assert.That(env.Recording.Calls, Is.EqualTo(executions));
             Assert.That(env.Recording.LastOptions.HasFlag(ProcessingOptions.ForceSequentialBlockAccessList), Is.False);
         }
+    }
+
+    [Test]
+    public void Inclusion_list_uses_generated_bal_without_reading_unchanged_parent()
+    {
+        IWorldStateManager parentReader = Substitute.For<IWorldStateManager>();
+        using TestEnvironment env = new(useFlatDb, releaseSpec: Bogota.Instance, parentReader: parentReader);
+        Block block = env.CreateBlock();
+        block.BlockAccessList = null;
+        block.EncodedBlockAccessList = null;
+        block.GeneratedBlockAccessList = new GeneratedBlockAccessList();
+        block.InclusionListTransactions = [Build.A.Transaction.WithNonce(0).WithGasPrice(0).WithGasLimit(100_000)
+            .WithValue(50).WithTo(TestItem.AddressB).SignedAndResolved(TestItem.PrivateKeyA).TestObject];
+
+        Block[] processed = env.Branch.Process(env.Genesis.Header, [block], ProcessingOptions.None, NullBlockTracer.Instance);
+
+        Assert.That(processed[0].IsInclusionListSatisfied, Is.False);
+        parentReader.DidNotReceive().CreateResettableWorldState();
     }
 
     [Test]
@@ -346,7 +365,7 @@ public class FinalizedBlockAccessListTests(bool useFlatDb)
         public FinalizedBlockAccessListPolicy Policy { get; }
         public Block Genesis { get; }
 
-        public TestEnvironment(bool useFlatDb, bool enabled = true, bool accessListChain = true, IReleaseSpec? releaseSpec = null)
+        public TestEnvironment(bool useFlatDb, bool enabled = true, bool accessListChain = true, IReleaseSpec? releaseSpec = null, IWorldStateManager? parentReader = null)
         {
             _releaseSpec = releaseSpec ?? Amsterdam.Instance;
             SyncConfig sync = new() { ReconstructFinalizedStateFromBlockAccessLists = enabled };
@@ -357,7 +376,7 @@ public class FinalizedBlockAccessListTests(bool useFlatDb)
                 .AddSingleton<IReceiptConfig>(ReceiptConfig)
                 .AddSingleton<IBeaconSyncStrategy>(Beacon)
                 .AddSingleton<FinalizedBlockAccessListPolicy>()
-                .AddSingleton<IMainProcessingModule>(new TestProcessingModule(sync, new Nethermind.Specs.TestSpecProvider(accessListChain ? _releaseSpec : Osaka.Instance)))
+                .AddSingleton<IMainProcessingModule>(new TestProcessingModule(sync, new Nethermind.Specs.TestSpecProvider(accessListChain ? _releaseSpec : Osaka.Instance), parentReader))
                 .Build();
             MainProcessingContext main = _container.Resolve<MainProcessingContext>();
             State = main.WorldState;
@@ -416,11 +435,14 @@ public class FinalizedBlockAccessListTests(bool useFlatDb)
         public void Dispose() => _container.Dispose();
     }
 
-    private sealed class TestProcessingModule(ISyncConfig config, ISpecProvider specProvider) : Module, IMainProcessingModule
+    private sealed class TestProcessingModule(ISyncConfig config, ISpecProvider specProvider, IWorldStateManager? parentReader) : Module, IMainProcessingModule
     {
-        protected override void Load(ContainerBuilder builder) => builder
-            .AddScoped<RecordingProcessor>().Bind<IBlockProcessor, RecordingProcessor>()
-            .AddModule(new FinalizedBlockAccessListModule(config, specProvider));
+        protected override void Load(ContainerBuilder builder)
+        {
+            builder.AddScoped<RecordingProcessor>().Bind<IBlockProcessor, RecordingProcessor>()
+                .AddModule(new FinalizedBlockAccessListModule(config, specProvider));
+            if (parentReader is not null) builder.AddSingleton(parentReader);
+        }
     }
 
     public sealed class RecordingProcessor(IWorldState state) : IBlockProcessor

@@ -162,8 +162,6 @@ public class BranchProcessor(
 
                 useBalForInclusionList = checkInclusionList && suggestedBlock.InclusionListTransactions is { Length: > 0 }
                     && spec.BlockLevelAccessListsEnabled && !suggestedBlock.IsGenesis;
-                using IWorldStateScopeProvider.IScope? inclusionListParentScope = useBalForInclusionList
-                    ? OpenInclusionListParentScope(preBlockBaseBlock) : null;
                 ProcessingOptions blockOptions = blockTracer == NullBlockTracer.Instance
                     ? options
                     : options | ProcessingOptions.ForceSequentialBlockAccessList;
@@ -202,12 +200,22 @@ public class BranchProcessor(
                 bool inclusionListSatisfied = true;
                 if (useBalForInclusionList)
                 {
-                    ScopeReadOnlyStateProvider parentState = new(inclusionListParentScope!);
-                    InclusionListCommittedState boundaryState = new(stateProvider, (uint)processedBlock.Transactions.Length + 1,
-                        () => processedBlock.BlockAccessList ?? (processedBlock.EncodedBlockAccessList is { } encoded
-                            ? BlockAccessListDecoder.Instance.Decode(encoded) : null), () => parentState);
-                    inclusionListSatisfied = inclusionListSatisfactionChecker.IsSatisfied(processedBlock, suggestedBlock, boundaryState);
-                    if (!boundaryState.Available) throw new InvalidOperationException("Inclusion-list transaction-boundary state is unavailable");
+                    IWorldStateScopeProvider.IScope? parentScope = null;
+                    try
+                    {
+                        InclusionListCommittedState boundaryState = new(stateProvider, (uint)processedBlock.Transactions.Length + 1,
+                            () => processedBlock.BlockAccessList ?? (processedBlock.EncodedBlockAccessList is { } encoded
+                                ? BlockAccessListDecoder.Instance.Decode(encoded)
+                                : processedBlock.GeneratedBlockAccessList is { } generated
+                                    ? BlockAccessListDecoder.Instance.Decode(BlockAccessListDecoder.EncodeToBytes(generated)) : null),
+                            () => new ScopeReadOnlyStateProvider(parentScope ??= OpenInclusionListParentScope(preBlockBaseBlock)));
+                        inclusionListSatisfied = inclusionListSatisfactionChecker.IsSatisfied(processedBlock, suggestedBlock, boundaryState);
+                        if (!boundaryState.Available) throw new InvalidOperationException("Inclusion-list transaction-boundary state is unavailable");
+                    }
+                    finally
+                    {
+                        parentScope?.Dispose();
+                    }
                 }
                 else if (checkInclusionList && suggestedBlock.InclusionListTransactions is { Length: > 0 })
                 {

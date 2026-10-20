@@ -5,6 +5,7 @@
 """Apply the blob-entry carve-out to the superseded FOCIL v0.3 fixtures."""
 
 import argparse
+import errno
 import json
 import os
 import shutil
@@ -68,10 +69,19 @@ def normalize(document):
     return changed
 
 
+def link_or_copy(source, destination):
+    try:
+        return os.link(source, destination)
+    except OSError as error:
+        if error.errno != errno.EXDEV:
+            raise
+        return shutil.copy2(source, destination)
+
+
 def prepare(release, source, destination):
     if release != LEGACY_RELEASE:
         raise ValueError(f"Compatibility adjustment only supports {LEGACY_RELEASE}")
-    shutil.copytree(source, destination, copy_function=os.link)
+    shutil.copytree(source, destination, copy_function=link_or_copy)
     changed = 0
     for path in destination.rglob("*.json"):
         document = json.loads(path.read_text())

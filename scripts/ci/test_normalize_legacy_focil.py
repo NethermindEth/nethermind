@@ -3,12 +3,14 @@
 # SPDX-License-Identifier: LGPL-3.0-only
 
 import copy
+import errno
 import json
 import tempfile
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
-from normalize_legacy_focil import LEGACY_RELEASE, is_blob_transaction, normalize, prepare
+from normalize_legacy_focil import LEGACY_RELEASE, is_blob_transaction, link_or_copy, normalize, prepare
 
 
 BLOB = "0x03ce" + "80" * 8 + "c080c0808080"
@@ -66,6 +68,21 @@ class LegacyFocilTests(unittest.TestCase):
             self.assertEqual(blob_file.read_text(), original)
             self.assertEqual((target / "ordinary.json").read_text(), ordinary)
             self.assertTrue(json.loads((target / "blob.json").read_text())["fixture"]["engineNewPayloads"][0]["inclusionListSatisfied"])
+
+    def test_copies_when_hard_links_cross_filesystems(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "source"
+            destination = Path(directory) / "destination"
+            source.write_text("unchanged")
+            with patch("normalize_legacy_focil.os.link", side_effect=OSError(errno.EXDEV, "Cross-device link")):
+                link_or_copy(source, destination)
+            self.assertEqual(destination.read_text(), source.read_text())
+            self.assertNotEqual(destination.stat().st_ino, source.stat().st_ino)
+
+    def test_other_hard_link_errors_are_not_hidden(self):
+        with patch("normalize_legacy_focil.os.link", side_effect=OSError(errno.EACCES, "Denied")):
+            with self.assertRaises(PermissionError):
+                link_or_copy("source", "destination")
 
     def test_rejects_other_releases_without_creating_output(self):
         with tempfile.TemporaryDirectory() as directory:
