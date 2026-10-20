@@ -472,6 +472,19 @@ public class CompositeTxTracer : ITxTracer, IInstructionTracingFilter
         }
     }
 
+    /// <inheritdoc/>
+    public void ReportActionErrorDetails(string error)
+    {
+        for (int index = 0; index < _txTracers.Length; index++)
+        {
+            ITxTracer innerTracer = _txTracers[index];
+            if (innerTracer.IsTracingActions)
+            {
+                innerTracer.ReportActionErrorDetails(error);
+            }
+        }
+    }
+
     public void ReportActionRemainingGas(ulong gas)
     {
         for (int index = 0; index < _txTracers.Length; index++)

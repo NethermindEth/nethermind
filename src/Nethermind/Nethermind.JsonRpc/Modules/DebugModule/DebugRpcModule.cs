@@ -22,6 +22,7 @@ using Nethermind.Consensus.Tracing;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
+using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Synchronization.Reporting;
 using System.Collections.Generic;
@@ -112,6 +113,17 @@ public class DebugRpcModule(
         return ResultWrapper<GethLikeTxTrace>.Success(transactionTrace);
     }
 
+    private Result<Transaction> ToTraceCallTransaction(TransactionForRpc call, IReleaseSpec spec)
+    {
+        if (call is not BlobTransactionForRpc { MaxFeePerBlobGas.IsZero: true })
+            return call.ToCallTransaction(spec, jsonRpcConfig.GasCap);
+
+        // Geth permits a zero blob fee cap for simulated calls; retain all other RPC validation.
+        Result<Transaction> result = BlobTransactionForRpc.WithZeroBlobFeeCapOmitted(call).ToCallTransaction(spec, jsonRpcConfig.GasCap);
+        if (result) result.Data.MaxFeePerBlobGas = UInt256.Zero;
+        return result;
+    }
+
     public ResultWrapper<GethLikeTxTrace> debug_traceCall(TransactionForRpc call, BlockParameter? blockParameter = null, GethTraceOptions? options = null)
     {
         if (options?.BlockOverrides?.Withdrawals is not null)
@@ -131,6 +143,9 @@ public class DebugRpcModule(
 
         blockParameter = new BlockParameter(header!.Hash!);
 
+        if (options?.BlockOverrides?.BeaconRoot is not null)
+            return ResultWrapper<GethLikeTxTrace>.Fail("block override \"beaconRoot\" is not supported for this RPC method", ErrorCodes.InvalidInput);
+
         if (options?.StateOverrides is { } stateOverrides)
         {
             foreach ((Address address, AccountOverride accountOverride) in stateOverrides)
@@ -140,9 +155,12 @@ public class DebugRpcModule(
             }
         }
 
+        if (call is LegacyTransactionForRpc { ChainId: { } requestedChainId } && requestedChainId != specProvider.ChainId)
+            return ResultWrapper<GethLikeTxTrace>.Fail($"chainId does not match node's (have={requestedChainId}, want={specProvider.ChainId})", ErrorCodes.InvalidInput);
+
         // The call converts against the fork it runs in, which a block override can change.
         IReleaseSpec spec = specProvider.GetSpec(options?.BlockOverrides?.ApplyTo(header) ?? header);
-        Result<Transaction> txResult = call.ToCallTransaction(spec, jsonRpcConfig.GasCap);
+        Result<Transaction> txResult = ToTraceCallTransaction(call, spec);
         if (!txResult.Success(out Transaction? tx, out string? error))
         {
             return ResultWrapper<GethLikeTxTrace>.Fail(error, ErrorCodes.InvalidInput);
@@ -171,6 +189,14 @@ public class DebugRpcModule(
         catch (InsufficientBalanceException ex)
         {
             return ResultWrapper<GethLikeTxTrace>.Fail(ErrorWrapper.DebugTrace(ex.Message), ErrorCodes.InvalidInput);
+        }
+        catch (InvalidDataException ex) when (effective.Tracer == "muxTracer")
+        {
+            return ResultWrapper<GethLikeTxTrace>.Fail(ex.Message, ErrorCodes.InvalidInput);
+        }
+        catch (ArgumentException ex) when (effective.Tracer == "prestateTracer" && ex.Message == "cannot use diffMode with includeEmpty")
+        {
+            return ResultWrapper<GethLikeTxTrace>.Fail(ex.Message, ErrorCodes.InvalidInput);
         }
 
         if (transactionTrace is null)
@@ -223,6 +249,19 @@ public class DebugRpcModule(
 
         GethLikeNativeTracerFactory.ValidateTracerConfig(options);
         return true;
+    }
+
+    /// <remarks>Malformed configs must reach the real constructor so empty and filtered blocks retain their behavior.</remarks>
+    private bool CanStreamBlockByNumberTrace(GethTraceOptions? options)
+    {
+        try
+        {
+            return CanStreamBlockTrace(options);
+        }
+        catch (NativeTracerConfigException)
+        {
+            return false;
+        }
     }
 
     /// <summary>
@@ -445,6 +484,8 @@ public class DebugRpcModule(
             return blockError;
         }
 
+        if (options?.Tracer is { Length: > 0 }) options = options with { CaptureJavaScriptErrors = true };
+
         if (CanStreamBlockTrace(options))
         {
             GethTraceOptions effective = options ?? GethTraceOptions.Default;
@@ -502,7 +543,7 @@ public class DebugRpcModule(
         if (options?.Tracer is { Length: > 0 }) options = options with { CaptureJavaScriptErrors = true };
 
         // A malformed native duration must reach the real constructor before it can fail.
-        if ((options?.ParsedTimeout.Error is null || string.IsNullOrEmpty(options.Tracer)) && CanStreamBlockTrace(options))
+        if ((options?.ParsedTimeout.Error is null || string.IsNullOrEmpty(options.Tracer)) && CanStreamBlockByNumberTrace(options))
             return StreamBlockTrace(header, options, blockNumber, validateStructLogTimeout: true);
 
         if (blockNumber.Type == BlockParameterType.BlockNumber && blockFinder.FindBlock(header.Hash!, header.Number) is null)
@@ -521,6 +562,10 @@ public class DebugRpcModule(
             if (_logger.IsTrace) _logger.Trace($"{nameof(debug_traceBlockByNumber)} request {blockNumber}, result: {blockTrace}");
 
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Success(new GethLikeTxTraceStreamingResult(blockTrace));
+        }
+        catch (NativeTracerConfigException exception)
+        {
+            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail(exception.Message, ErrorCodes.InvalidInput);
         }
         catch (ArgumentNullException)
         {
@@ -544,6 +589,8 @@ public class DebugRpcModule(
         {
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail("genesis is not traceable", ErrorCodes.InvalidInput);
         }
+
+        if (options?.Tracer is { Length: > 0 }) options = options with { CaptureJavaScriptErrors = true };
 
         ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>? stateError = CheckTraceBaseState<IReadOnlyCollection<GethLikeTxTrace>>(header);
         if (stateError is not null)
