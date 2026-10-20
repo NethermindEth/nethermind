@@ -32,7 +32,7 @@ public sealed class PayloadTransactionCountGuard(IBlockFinder? blockFinder)
         error = null;
         if (blockFinder is null || spec.GasLimitBoundDivisor == 0) return true;
 
-        BlockHeader? parent = blockFinder.FindHeader(payload.ParentHash, BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
+        BlockHeader? parent = blockFinder.FindHeader(payload.ParentHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
         if (parent is null) return true;
 
         // The fork-block elasticity jump mirrors Eip1559GasLimitAdjuster; UInt128 because hive sets parent gas limits up to ulong.MaxValue.

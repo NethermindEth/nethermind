@@ -563,7 +563,7 @@ public class ExecutionPayloadTests
     public void Bounds_count_by_parent_gas_limit(ulong blockNumber, int count, bool expected)
     {
         IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
-        blockFinder.FindHeader(TestItem.KeccakA, BlockTreeLookupOptions.DoNotCreateLevelIfMissing)
+        blockFinder.FindHeader(TestItem.KeccakA, BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.DoNotCreateLevelIfMissing)
             .Returns(Build.A.BlockHeader.WithGasLimit(ParentGasLimit).TestObject);
 
         bool result = new PayloadTransactionCountGuard(blockFinder).IsWithinParentGasLimit(Payload(count, blockNumber), London.Instance, out string? error);
