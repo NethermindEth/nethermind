@@ -67,10 +67,10 @@ public static class GethLikeNativeTracerFactory
         switch (options.Tracer)
         {
             case NativeCallTracer.CallTracer:
-                TypeInfoJsonSerializer.Deserialize<NativeCallTracerConfig>(options.TracerConfig, EthereumJsonSerializer.JsonOptions);
+                NativeCallTracerConfig.FromJson(options.TracerConfig, EthereumJsonSerializer.JsonOptions);
                 break;
             case NativePrestateTracer.PrestateTracer:
-                TypeInfoJsonSerializer.Deserialize<NativePrestateTracerConfig>(options.TracerConfig, EthereumJsonSerializer.JsonOptions);
+                NativePrestateTracerConfig.FromJson(options.TracerConfig, EthereumJsonSerializer.JsonOptions);
                 break;
         }
     }

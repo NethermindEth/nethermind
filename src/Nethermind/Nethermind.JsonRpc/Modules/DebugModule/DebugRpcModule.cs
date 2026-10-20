@@ -225,6 +225,19 @@ public class DebugRpcModule(
         return true;
     }
 
+    /// <remarks>Malformed configs must reach the real constructor so empty and filtered blocks retain their behavior.</remarks>
+    private bool CanStreamBlockByNumberTrace(GethTraceOptions? options)
+    {
+        try
+        {
+            return CanStreamBlockTrace(options);
+        }
+        catch (NativeTracerConfigException)
+        {
+            return false;
+        }
+    }
+
     /// <summary>
     /// Lowers the opcode log byte budget of a trace held in memory to <see cref="IJsonRpcConfig.MaxBufferedTraceLogSize"/>.
     /// </summary>
@@ -482,7 +495,7 @@ public class DebugRpcModule(
 
         if (options?.Tracer is { Length: > 0 }) options = options with { CaptureJavaScriptErrors = true };
 
-        if (CanStreamBlockTrace(options)) return StreamBlockTrace(header, options);
+        if (CanStreamBlockByNumberTrace(options)) return StreamBlockTrace(header, options);
 
         using RentedTimeout timeout = jsonRpcConfig.RentTimeout();
         CancellationToken cancellationToken = timeout.Token;
