@@ -157,6 +157,14 @@ namespace Nethermind.Trie
                 }
             }
 
+            if (i < length && length >= sizeof(ulong))
+            {
+                // The tail as the last word, overlapping bytes already found equal, which XOR to zero.
+                nint last = length - sizeof(ulong);
+                ulong diff = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref l, last)) ^ Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref r, last));
+                return diff == 0 ? (int)length : (int)last + (BitOperations.TrailingZeroCount(diff) >> 3);
+            }
+
             for (; i < length; i++)
             {
                 if (Unsafe.Add(ref l, i) != Unsafe.Add(ref r, i)) break;
