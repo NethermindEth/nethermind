@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using System.Text.Json;
+using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Call;
@@ -16,12 +17,12 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Encoding;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Crypto;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
-using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
@@ -520,12 +521,15 @@ public class Eip4758Tests : VirtualMachineTestsBase
             .Done, VictimBalance);
         IReleaseSpec spec = enabled ? EnabledSpec : DisabledSpec;
 
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule())
+            .AddSingleton<ISpecProvider>(new TestSpecProvider(spec))
+            .Build();
         TracedAccessWorldState tracedState = new(TestState, parallel: false);
+        using ILifetimeScope scope = container.BeginLifetimeScope(builder => builder
+            .AddSingleton<IWorldState>(tracedState));
         tracedState.SetGeneratingBlockAccessList(new BlockAccessListAtIndex());
-        TestSpecProvider specProvider = new(spec);
-        EthereumTransactionProcessor processor = new(BlobBaseFeeCalculator.Instance, specProvider, tracedState,
-            new EthereumVirtualMachine(new TestBlockhashProvider(specProvider), specProvider, LimboLogs.Instance),
-            new EthereumCodeInfoRepository(tracedState), LimboLogs.Instance);
+        ITransactionProcessor processor = scope.Resolve<ITransactionProcessor>();
         TestAllTracerWithOutput tracer = CreateTracer();
         Execute(BuildTx(Factory), spec, tracer, processor);
 
@@ -596,29 +600,43 @@ public class Eip4758Tests : VirtualMachineTestsBase
     }
 
     [Test]
-    public void Prestate_diff_keeps_the_swept_account_and_its_beneficiary()
+    public void Prestate_diff_keeps_a_same_transaction_swept_account(
+        [Values(Instruction.CREATE, Instruction.CREATE2)] Instruction createOpcode,
+        [Values] bool enabled)
     {
-        byte[] victimCode = Prepare.EvmCode.SELFDESTRUCT(Existing).Done;
-        InstallCode(Entry, victimCode, VictimBalance);
-        Transaction tx = BuildTx(Entry);
+        byte[] victimCode = SstoreCanaryThenSendAll(Existing);
+        byte[] init = InitOf(victimCode);
+        Address victim = CreatedAddress(Factory, createOpcode, init);
+        InstallCode(Factory, Prepare.EvmCode
+            .Data(CreateAndStore(createOpcode, init, VictimBalance, slot: 0))
+            .Data(CallAndStore(victim, slot: 1))
+            .STOP()
+            .Done, VictimBalance);
+        // EIP-8246's surviving-account fallback would hide an erroneous tracer deletion marker.
+        IReleaseSpec spec = new OverridableReleaseSpec(Bogota.Instance) { IsEip4758Enabled = enabled, IsEip8246Enabled = false };
+        Transaction tx = BuildTx(Factory);
         Block block = BuildBlock(tx);
         GethTraceOptions options = GethTraceOptions.Default with
         {
             Tracer = NativePrestateTracer.PrestateTracer,
             TracerConfig = JsonSerializer.Deserialize<JsonElement>("""{"diffMode":true}""")
         };
-        using NativePrestateTracer tracer = new(TestState, options, tx.Hash, Sender, Entry, block.Beneficiary, tx, EnabledSpec);
+        using NativePrestateTracer tracer = new(TestState, options, tx.Hash, Sender, Factory, block.Beneficiary, tx, spec);
 
-        Execute(tx, EnabledSpec, tracer);
+        Execute(tx, spec, tracer);
 
         using GethLikeTxTrace trace = tracer.BuildResult();
         NativePrestateTracerDiffMode diff = (NativePrestateTracerDiffMode)trace.CustomTracerResult!.Value;
+        Assert.That(diff.post.TryGetValue(victim, out NativePrestateTracerAccount? victimPost), Is.EqualTo(enabled));
+        Assert.That(diff.post.TryGetValue(Existing, out NativePrestateTracerAccount? beneficiaryPost), Is.True);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(diff.pre[Entry].Balance, Is.EqualTo((UInt256?)VictimBalance));
-            Assert.That(diff.post.TryGetValue(Entry, out NativePrestateTracerAccount? victimPost), Is.True, "the swept account is not deleted");
-            Assert.That(victimPost!.Balance, Is.EqualTo((UInt256?)UInt256.Zero));
-            Assert.That(diff.post.TryGetValue(Existing, out NativePrestateTracerAccount? beneficiaryPost), Is.True, "the beneficiary is not deleted");
+            if (enabled)
+            {
+                Assert.That(victimPost!.Nonce, Is.EqualTo((UInt256?)UInt256.One));
+                Assert.That(victimPost.Code.ToArray(), Is.EqualTo(victimCode));
+                Assert.That(victimPost.Storage![UInt256.Zero], Is.EqualTo(Canary));
+            }
             Assert.That(beneficiaryPost!.Balance, Is.EqualTo((UInt256?)(1 + VictimBalance)));
         }
     }

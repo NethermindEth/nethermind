@@ -565,7 +565,7 @@ namespace Nethermind.Core.Specs
         /// SELFDESTRUCT only moves the executing account's whole balance to the beneficiary and halts. It never
         /// destroys the account, removing the same-transaction deletion EIP-6780 kept and the EIP-8246 tombstone.
         /// </remarks>
-        public bool IsEip4758Enabled { get; }
+        public bool IsEip4758Enabled => false;
 
         /// <summary>
         /// Precomputed gas cost and refund constants derived from this spec.

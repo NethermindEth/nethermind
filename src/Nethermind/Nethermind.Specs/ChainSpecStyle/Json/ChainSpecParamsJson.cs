@@ -221,6 +221,7 @@ public class ChainSpecParamsJson : IHasNamedForks
 
     public ulong? Eip8298TransitionTimestamp { get; set; }
 
+    /// <summary>Activation time for EIP-4758 SENDALL, in Unix timestamp seconds; <c>null</c> leaves it unscheduled.</summary>
     public ulong? Eip4758TransitionTimestamp { get; set; }
 
     /// <summary>
