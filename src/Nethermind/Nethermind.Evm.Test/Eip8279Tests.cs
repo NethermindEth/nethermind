@@ -76,6 +76,11 @@ public class Eip8279Tests : VirtualMachineTestsBase
         yield return Case("Empty EXTCODECOPY", Prepare.EvmCode.PushData(0).PushData(0).PushData(0).PushData(ColdAccount).Op(Instruction.EXTCODECOPY), 20);
         yield return Case("Cold SLOAD", Prepare.EvmCode.PushData(1).Op(Instruction.SLOAD), 32);
         yield return Case("Repeated SLOAD meters once", Prepare.EvmCode.PushData(1).Op(Instruction.SLOAD).PushData(1).Op(Instruction.SLOAD), 32);
+        // Adjacent SLOADs run fused: each chained cell meters its key (1 -> 5 -> 0), and the self-referential tail at slot 0 adds none.
+        yield return Case("Fused chained SLOAD run meters each new cell",
+            Prepare.EvmCode.PushData(1).Op(Instruction.SLOAD).Op(Instruction.SLOAD).Op(Instruction.SLOAD).Op(Instruction.SLOAD), 3 * 32);
+        yield return Case("Fused self-referential SLOAD run meters the cell once",
+            Prepare.EvmCode.PushData(0).Op(Instruction.SLOAD).Op(Instruction.SLOAD).Op(Instruction.SLOAD), 32);
         yield return Case("Cold SSTORE zero to non-zero", SStore(2, 1), 64);
         yield return Case("SSTORE of the original value", SStore(1, 5), 32);
         yield return Case("Net-zero SSTORE round trip gives nothing back", SStore(1, 7).PushData(5).PushData(1).Op(Instruction.SSTORE), 64);
