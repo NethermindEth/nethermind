@@ -768,6 +768,81 @@ public class GethGenesisLoaderTests
         }
     }
 
+    /// <summary>
+    /// The Heze devnet genesis (ethpandaops heze-devnets devnet-1 config with the devnet-2 Bogota time and blob parameters):
+    /// <c>bogotaTime</c> alone turns on EIP-7805 and EIP-8198, with nothing else required.
+    /// </summary>
+    [Test]
+    public void Heze_devnet_genesis_activates_focil_and_eip8198_at_bogota_time()
+    {
+        const ulong bogotaTime = 1_792_416_379;
+        ChainSpec chainSpec = LoadFromString($$"""
+            {
+              "config": {
+                "chainId": 7084864608,
+                "homesteadBlock": 0,
+                "eip150Block": 0,
+                "eip155Block": 0,
+                "eip158Block": 0,
+                "byzantiumBlock": 0,
+                "constantinopleBlock": 0,
+                "petersburgBlock": 0,
+                "istanbulBlock": 0,
+                "berlinBlock": 0,
+                "londonBlock": 0,
+                "mergeNetsplitBlock": 0,
+                "terminalTotalDifficulty": 0,
+                "terminalTotalDifficultyPassed": true,
+                "shanghaiTime": 0,
+                "cancunTime": 0,
+                "blobSchedule": {
+                  "cancun": { "target": 3, "max": 6, "baseFeeUpdateFraction": 3338477 },
+                  "prague": { "target": 6, "max": 9, "baseFeeUpdateFraction": 5007716 },
+                  "bpo1": { "target": 10, "max": 15, "baseFeeUpdateFraction": 8346193 },
+                  "bpo2": { "target": 14, "max": 21, "baseFeeUpdateFraction": 11684671 },
+                  "bogota": { "target": 12, "max": 18, "baseFeeUpdateFraction": 12018519 }
+                },
+                "depositContractAddress": "0x00000000219ab540356cBB839Cbe05303d7705Fa",
+                "pragueTime": 0,
+                "osakaTime": 0,
+                "bpo1Time": 0,
+                "bpo2Time": 0,
+                "amsterdamTime": 0,
+                "bogotaTime": {{bogotaTime}}
+              },
+              "alloc": {},
+              "coinbase": "0x0000000000000000000000000000000000000000",
+              "difficulty": "0x0",
+              "extraData": "",
+              "gasLimit": "0xbebc200",
+              "nonce": "0x1234",
+              "mixhash": "0x0000000000000000000000000000000000000000000000000000000000000000",
+              "parentHash": "0x0000000000000000000000000000000000000000000000000000000000000000",
+              "timestamp": "1791290722"
+            }
+            """);
+        ChainSpecBasedSpecProvider provider = new(chainSpec);
+        IReleaseSpec before = provider.GetSpec(ForkActivation.TimestampOnly(bogotaTime - 1));
+        IReleaseSpec after = provider.GetSpec(ForkActivation.TimestampOnly(bogotaTime));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(before.IsEip7805Enabled, Is.False);
+            Assert.That(before.IsEip8198Enabled, Is.False);
+            Assert.That(before.BaseFeeMaxChangeNumerator, Is.EqualTo(UInt256.One));
+            Assert.That(before.BaseFeeMaxChangeDenominator, Is.EqualTo((UInt256)8));
+            Assert.That(before.MaxBlobCount, Is.EqualTo(21));
+            Assert.That(after.IsEip7805Enabled, Is.True);
+            Assert.That(after.IsEip8198Enabled, Is.True);
+            Assert.That(after.BaseFeeMaxChangeNumerator, Is.EqualTo((UInt256)5));
+            Assert.That(after.BaseFeeMaxChangeDenominator, Is.EqualTo((UInt256)48));
+            Assert.That(after.TargetBlobCount, Is.EqualTo(12));
+            Assert.That(after.MaxBlobCount, Is.EqualTo(18));
+            Assert.That(after.BlobBaseFeeUpdateFraction, Is.EqualTo(12018519));
+            Assert.That(provider.Eip8198SlotDurationMs, Is.Null);
+        }
+    }
+
     [Test]
     public void Bogota_time_alone_loads() =>
         Assert.That(() => LoadStandardGethGenesis(configExtra: "\"bogotaTime\": 1792416379"), Throws.Nothing);
