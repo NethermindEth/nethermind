@@ -233,12 +233,28 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void LoadCapturedOriginal(in StorageCell storageCell)
     {
-        EnsureOriginalsIndexed();
-        if (!_originalValues.TryGetValue(storageCell, out UInt256 value))
-            throw new InvalidOperationException("Get original should only be called after get within the same caching round");
+        if (!TryGetRoundOriginal(in storageCell, out UInt256 value))
+        {
+            EnsureOriginalsIndexed();
+            if (!_originalValues.TryGetValue(storageCell, out value))
+                throw new InvalidOperationException("Get original should only be called after get within the same caching round");
+        }
 
         _lastCapturedCell = storageCell;
         _lastCapturedOriginal = value;
+    }
+
+    /// <summary>The one-entry memo that <see cref="GetOrCreateStorage"/> and <see cref="TryGetStorage"/> share.</summary>
+    private bool TryGetRememberedStorage(Address address, [NotNullWhen(true)] out PerContractState? storage)
+    {
+        storage = _lastStorageAddress == address ? _lastStorage : null;
+        return storage is not null;
+    }
+
+    private void RememberStorage(Address address, PerContractState storage)
+    {
+        _lastStorageAddress = address;
+        _lastStorage = storage;
     }
 
     public Hash256 GetStorageRoot(Address address) => GetOrCreateStorage(address).StorageRoot;
@@ -368,8 +384,8 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     {
         Debug.Assert(TStorageTracing.IsActive == (trace is not null));
         Debug.Assert(HasDestroyedAccounts.IsActive == (_destroyedThisRound.Count != 0));
-        EnsureOriginalsIndexed();
         bool hasStorageClears = _storageClearJournal.Count != 0;
+        if (hasStorageClears) EnsureOriginalsIndexed();
 
         // Heads come mostly grouped by contract, so the root set is probed once per run of one.
         Address? lastRootUpdate = null;
@@ -398,21 +414,11 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
                 TraceUpdate(change);
             }
 
-            if (_originalValues.TryGetValue(change.StorageCell, out UInt256 initialValue) &&
-                initialValue == change.Value && (!hasStorageClears || !WasCleared(change.StorageCell.Address)))
+            if (SaveChangeUnlessRoundOriginal(in change, hasStorageClears)
+                && !ReferenceEquals(change.StorageCell.Address, lastRootUpdate))
             {
-                // no need to update the tree if the value is the same
-            }
-            else
-            {
-                if (!ReferenceEquals(change.StorageCell.Address, lastRootUpdate))
-                {
-                    lastRootUpdate = change.StorageCell.Address;
-                    toUpdateRoots.Add(lastRootUpdate);
-                }
-
-                GetOrCreateStorage(change.StorageCell.Address)
-                    .SaveChange(change.StorageCell, change.Value);
+                lastRootUpdate = change.StorageCell.Address;
+                toUpdateRoots.Add(lastRootUpdate);
             }
 
             if (TStorageTracing.IsActive)
@@ -638,16 +644,12 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
     private PerContractState GetOrCreateStorage(Address address)
     {
-        if (_lastStorageAddress == address && _lastStorage is not null)
-        {
-            return _lastStorage;
-        }
+        if (TryGetRememberedStorage(address, out PerContractState? remembered)) return remembered;
 
         ref PerContractState? value = ref _storages.GetValueRefOrAddDefault(address, out bool exists);
         if (!exists) value = PerContractState.Rent(address, this);
         PerContractState storage = value ?? ThrowNoStorageState(address);
-        _lastStorageAddress = address;
-        _lastStorage = storage;
+        RememberStorage(address, storage);
         return storage;
     }
 
@@ -721,6 +723,14 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     private partial void CaptureOriginalValue(in StorageCell cell, in UInt256 value);
 
     private partial void EnsureOriginalsIndexed();
+
+    /// <summary>The original of a slot read in this round, taken from the slot's block change instead of the originals map.</summary>
+    /// <returns><c>false</c> when the block change cannot answer, and the caller reads the originals map.</returns>
+    private partial bool TryGetRoundOriginal(in StorageCell storageCell, out UInt256 value);
+
+    /// <summary>Saves a committed change unless it writes back the slot's original.</summary>
+    /// <returns><c>true</c> when the change was saved, so its storage root needs an update.</returns>
+    private partial bool SaveChangeUnlessRoundOriginal(in Change change, bool hasStorageClears);
 
     private partial void EndPendingOriginalsRound();
 
@@ -1396,11 +1406,38 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         // The shift count is taken mod 64, so this keys on the low six bits of the slot.
         private static ulong SlotFilterBit(in UInt256 index) => 1UL << (int)index.u0;
 
+        public bool TryGetRoundOriginal(in UInt256 index, ulong round, out UInt256 original)
+        {
+            ref StorageChangeTrace entry = ref BlockChange.GetValueRefOrNullRef(in index);
+            if (Unsafe.IsNullRef(ref entry) || entry.CapturedRound != round)
+            {
+                original = default;
+                return false;
+            }
+
+            original = entry.After;
+            return true;
+        }
+
         public void SaveChange(in StorageCell storageCell, in UInt256 value)
+        {
+            ref StorageChangeTrace valueChanges = ref BlockChange.GetValueRefOrAddDefault(storageCell.Index, out bool exists);
+            Save(in storageCell, in value, ref valueChanges, exists);
+        }
+
+        public bool SaveChangeUnlessRoundOriginal(in StorageCell storageCell, in UInt256 value, ulong round)
+        {
+            ref StorageChangeTrace valueChanges = ref BlockChange.GetValueRefOrAddDefault(storageCell.Index, out bool exists);
+            if (exists && valueChanges.CapturedRound == round && valueChanges.After == value) return false;
+
+            Save(in storageCell, in value, ref valueChanges, exists);
+            return true;
+        }
+
+        private void Save(in StorageCell storageCell, in UInt256 value, ref StorageChangeTrace valueChanges, bool exists)
         {
             ForgetLastRead();
             _wasWritten = true;
-            ref StorageChangeTrace valueChanges = ref BlockChange.GetValueRefOrAddDefault(storageCell.Index, out bool exists);
             if (!exists || valueChanges.IsInitialValue)
             {
                 valueChanges.Set(UInt256.Zero, value, isInitialValue: true);
@@ -1435,7 +1472,9 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             ref StorageChangeTrace valueChange = ref BlockChange.GetValueRefOrAddDefault(storageCell.Index, out bool exists);
             if (!exists)
             {
+                bool hadTree = _backend is not null;
                 LoadFromTreeStorage(in storageCell, out value);
+                if (!hadTree) valueChange = ref BlockChange.GetValueRefOrAddDefault(storageCell.Index, out _);
 
                 valueChange.Set(value, value, isInitialValue: false);
             }

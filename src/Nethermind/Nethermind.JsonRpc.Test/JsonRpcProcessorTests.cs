@@ -1098,11 +1098,14 @@ public class JsonRpcProcessorTests
 
         (string Outcome, bool AllParamsRaw) fromMemory = await DescribeMultipleDocumentProcessingAsync(bytes, RequestTransport.WsPipe);
         (string Outcome, bool AllParamsRaw) incremental = await DescribeMultipleDocumentProcessingAsync(bytes, RequestTransport.WsSegmentedPipe);
+        (string Outcome, bool AllParamsRaw) socket = await DescribeMultipleDocumentProcessingAsync(bytes, RequestTransport.WsMemory);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(fromMemory.Outcome, Is.EqualTo(incremental.Outcome));
             Assert.That(fromMemory.AllParamsRaw, Is.True, "a complete message must not be parsed into a document");
+            Assert.That(socket.Outcome, Is.EqualTo(incremental.Outcome), "the socket entry point must answer as the incremental parser does");
+            Assert.That(socket.AllParamsRaw, Is.True, "a socket message is complete, so it must not be parsed into a document");
         }
     }
 
@@ -1122,10 +1125,13 @@ public class JsonRpcProcessorTests
 
         (string fromMemory, int memoryTimeoutReturns) = await ProcessExpiringAtFirstDispatchAsync(RequestTransport.WsPipe);
         (string incremental, int incrementalTimeoutReturns) = await ProcessExpiringAtFirstDispatchAsync(RequestTransport.WsSegmentedPipe);
+        (string socket, int socketTimeoutReturns) = await ProcessExpiringAtFirstDispatchAsync(RequestTransport.WsMemory);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(fromMemory, Is.EqualTo(incremental));
+            Assert.That(socket, Is.EqualTo(incremental), "the socket entry point must answer every request of the message");
+            Assert.That(socketTimeoutReturns, Is.Zero, "a complete socket message must not rent a read timeout");
             Assert.That(fromMemory, Does.Contain("dispatched: eth_blockNumber #1 | eth_chainId #2 | net_version #3; thrown: nothing"));
             // An expired source cannot be reset, so returning it disposes it: that proves the request used the planted one.
             Assert.That(memoryTimeoutReturns, Is.EqualTo(isAuthenticated ? 0 : 1));
@@ -1278,7 +1284,10 @@ public class JsonRpcProcessorTests
         WsPipe,
 
         /// <summary>A WS message split into one-byte segments, which keeps all of it on the incremental parser.</summary>
-        WsSegmentedPipe
+        WsSegmentedPipe,
+
+        /// <summary>A WS message handed to the processor as bytes, as <c>JsonRpcSocketsClient</c> does, with no pipe in between.</summary>
+        WsMemory
     }
 
     private static readonly byte[] _methodPrefixUtf8 = Encoding.UTF8.GetBytes("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"eth_");
@@ -1467,7 +1476,7 @@ public class JsonRpcProcessorTests
     }
 
     private static bool IsMultipleDocuments(RequestTransport transport) =>
-        transport is RequestTransport.WsPipe or RequestTransport.WsSegmentedPipe;
+        transport is RequestTransport.WsPipe or RequestTransport.WsSegmentedPipe or RequestTransport.WsMemory;
 
     private static PipeReader CreateReader(byte[] request, RequestTransport transport) =>
         PipeReader.Create(transport == RequestTransport.WsSegmentedPipe
@@ -1505,7 +1514,7 @@ public class JsonRpcProcessorTests
             ? JsonRpcInputMode.MultipleDocuments
             : JsonRpcInputMode.SingleDocument);
 
-        if (transport == RequestTransport.HttpMemory)
+        if (transport is RequestTransport.HttpMemory or RequestTransport.WsMemory)
         {
             await processor.ProcessAsync(request.AsMemory(), context, sink, options);
         }
@@ -1626,7 +1635,7 @@ public class JsonRpcProcessorTests
 
         Exception? thrown = await Assert.CatchAsync(async () =>
         {
-            if (transport == RequestTransport.HttpMemory)
+            if (transport is RequestTransport.HttpMemory or RequestTransport.WsMemory)
                 await processor.ProcessAsync(body.AsMemory(), context, sink, options);
             else
                 await processor.ProcessAsync(CreateReader(body, transport), context, sink, options);

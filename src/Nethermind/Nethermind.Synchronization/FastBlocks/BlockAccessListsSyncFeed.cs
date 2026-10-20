@@ -13,7 +13,6 @@ using Nethermind.Blockchain.BlockAccessLists;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.History;
@@ -63,6 +62,7 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
     private readonly ISyncPeerPool _syncPeerPool;
     private readonly IHistoryPruner _historyPruner;
     private readonly BlockAccessListDownloadStrategy _blockAccessListDownloadStrategy;
+    private readonly BlockAccessListServingWindow _servingWindow;
     private readonly bool _blockAccessListsEverEnabled;
 
     private SyncStatusList _syncStatusList;
@@ -87,6 +87,7 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
         ISyncConfig syncConfig,
         ISyncReport syncReport,
         IHistoryPruner historyPruner,
+        BlockAccessListServingWindow servingWindow,
         [KeyFilter(DbNames.Metadata)] IDb metadataDb,
         ILogManager logManager)
         : base(metadataDb, specProvider, logManager?.GetClassLogger<BlockAccessListsSyncFeed>() ?? default)
@@ -99,6 +100,7 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
         _blockTree = blockTree;
         _historyPruner = historyPruner;
         _blockAccessListDownloadStrategy = new(blockTree, syncReport, historyPruner);
+        _servingWindow = servingWindow;
         _blockAccessListsEverEnabled = specProvider.GetFinalSpec().BlockLevelAccessListsEnabled;
 
         if (!_syncConfig.FastSync)
@@ -390,7 +392,7 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
     /// <remarks>Keyed on the node ID, not the session, so a node that reconnects counts once.</remarks>
     private bool IsUnavailableEverywhere(ulong blockNumber, ISyncPeer? peer)
     {
-        if (peer?.Node?.Id is not { } nodeId || IsInsideServingWindow(blockNumber)) return false;
+        if (peer?.Node?.Id is not { } nodeId || _servingWindow.Contains(blockNumber)) return false;
 
         HashSet<PublicKey> peers = _unavailable.GetOrAdd(blockNumber, static _ => []);
         lock (peers)
@@ -401,18 +403,6 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
 
         _unavailable.TryRemove(blockNumber, out _);
         return true;
-    }
-
-    /// <summary>Whether peers must still serve the height: within the chain's minimum BAL retention of the head.</summary>
-    /// <remarks>
-    /// One extra epoch, as in the pruner's cutoff, covers the CL window's epoch-aligned start. The pivot stands in for
-    /// the head during fast sync, when the head is still near genesis.
-    /// </remarks>
-    private bool IsInsideServingWindow(ulong blockNumber)
-    {
-        ulong head = ulong.Max(_blockTree.Head?.Number ?? 0, _blockTree.SyncPivot.BlockNumber);
-        ulong windowBlocks = _historyPruner.GetRetentionBlocks(_specProvider.GenesisSpec.MinBalRetentionEpochs + 1);
-        return blockNumber >= head.SaturatingSub(windowBlocks);
     }
 
     /// <summary>Drops tracking for heights the feed no longer requests because the pruning cutoff has passed them.</summary>

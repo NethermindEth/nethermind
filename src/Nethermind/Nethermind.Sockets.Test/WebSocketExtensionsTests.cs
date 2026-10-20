@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.IO.Abstractions;
-using System.IO.Pipelines;
 using System.Linq;
 using System.Net;
 using System.Net.WebSockets;
@@ -135,7 +134,7 @@ public class WebSocketExtensionsTests
 
         processor
             .ProcessAsync(
-                Arg.Any<PipeReader>(),
+                Arg.Any<ReadOnlyMemory<byte>>(),
                 Arg.Any<JsonRpcContext>(),
                 Arg.Any<IJsonRpcResponseSink>(),
                 Arg.Any<JsonRpcProcessingOptions>(),
