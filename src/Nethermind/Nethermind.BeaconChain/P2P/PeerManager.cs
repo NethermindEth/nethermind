@@ -144,7 +144,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
     // A status request can arrive before this node reserves the session; only a hint, taken up by a reservation made within StatusHintLifetime.
     private readonly LruCache<string, (PeerId PeerId, long Ticks)> _statusPassedUnreserved = new(256, "beacon status passed before reservation");
     // The session's identify answer, which its reservation waits for, is bounded by the same time.
-    private static readonly TimeSpan StatusHintLifetime = IdentifyAgentVersionProbe.ReadTimeout;
+    private static readonly TimeSpan StatusHintLifetime = BeaconP2P.IdentifyTimeout;
 
     /// <summary>Admission identity for directory entries and peer-id deduplication; ENR is known only for discovery dials.</summary>
     private readonly record struct Reservation(string PeerId, PeerDirection Direction, string? Enr);
@@ -1370,7 +1370,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
             catch (InvalidOperationException e)
             {
                 if (_logger.IsDebug) _logger.Debug($"Session with beacon chain peer {address} closed before identify completed: {DescribeFailure(e)}");
-                return new DialOutcome(false, BeaconP2P.RemotePeerIdOf(session)?.ToString());
+                return new DialOutcome(false, session.RemotePeerId?.ToString());
             }
 
             bool admitted = await AdmitSessionAsync(address, peerId, session, info, enr, token, dial);
@@ -1446,8 +1446,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
             Metrics.BeaconChainPeerCount = _peers.Count;
         }
 
-        // The peer store never removes an entry, and any key can open a session or be discovered, so only static peers are recorded there.
-        if (info.Identify is { } identify && IsStaticPeer(peerId))
+        if (info.Identify is { } identify)
         {
             _p2p.RecordIdentify(session, identify);
         }
@@ -1485,12 +1484,12 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
     /// </remarks>
     private async Task KeepGossipChannelAsync(ManagedPeer peer)
     {
-        if (BeaconP2P.RemotePeerIdOf(peer.Session) is not { } remotePeerId)
+        if (peer.Session.RemotePeerId is not { } remotePeerId)
         {
             return;
         }
 
-        CancellationToken closed = _p2p.SessionClosedToken(peer.Session);
+        CancellationToken closed = peer.Session.Closed;
         TimeSpan redialDelay = GossipChannelCheckInterval;
         CancellationTokenSource? attempt = null;
         Task dialing = Task.CompletedTask;
@@ -1582,7 +1581,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         // A session this manager is dialing itself is admitted by that dial once it returns; only a
         // session nobody here asked for (the remote connected to us) is admitted from the event.
         string address = session.RemoteAddress.ToString();
-        string peerId = BeaconP2P.RemotePeerIdOf(session)?.ToString() ?? ExtractPeerId(address);
+        string peerId = session.RemotePeerId?.ToString() ?? ExtractPeerId(address);
         // The libp2p layer holds one session per peer id, so a record of another session is one it dropped before the close callback ran.
         if (TryFindConnected(peerId, out ManagedPeer? recorded) && recorded!.IsSessionClosed)
         {
@@ -1977,7 +1976,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
     {
         _closedPeers.TryRemove(peer.PeerId, out _);
         // Runs the removal at once when the session closed before this call; the registration ends with the session's token.
-        _p2p.SessionClosedToken(peer.Session).Register(static state =>
+        peer.Session.Closed.Register(static state =>
         {
             (PeerManager manager, ManagedPeer closed) = ((PeerManager, ManagedPeer))state!;
             manager.RemoveClosedSession(closed);
@@ -2235,12 +2234,12 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         /// <summary>The outbound dial that admitted this peer; <c>null</c> for a session the remote opened.</summary>
         public DialRecord? Dial { get; init; }
         /// <summary>The peer id the session's handshake established, read while the session is open so its removal finds the same key.</summary>
-        public PeerId? RemotePeerId { get; } = BeaconP2P.RemotePeerIdOf(session);
+        public PeerId? RemotePeerId { get; } = session.RemotePeerId;
         /// <summary>The session's verified identify answer, which a session the remote opened keeps only here.</summary>
-        public IdentifyAgentVersionProbe.Answer? Identify { get; init; }
+        public IdentifyResult? Identify { get; init; }
         public StatusMessageV2? Status => _status;
         /// <summary>Whether the libp2p layer has dropped <see cref="Session"/>; every further request to it fails.</summary>
-        public bool IsSessionClosed => p2p.SessionClosedToken(Session).IsCancellationRequested;
+        public bool IsSessionClosed => Session.Closed.IsCancellationRequested;
         /// <summary>UTC ticks at which the current <see cref="Status"/> was received.</summary>
         public long StatusReceivedTicks => Interlocked.Read(ref _statusReceivedTicks);
 
@@ -2311,7 +2310,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         {
             get
             {
-                if (_heldOutOfSelection || ViolatedProtocolSinceLastHealthyCheck || p2p.SessionClosedToken(Session).IsCancellationRequested)
+                if (_heldOutOfSelection || ViolatedProtocolSinceLastHealthyCheck || Session.Closed.IsCancellationRequested)
                 {
                     return false;
                 }
@@ -2500,10 +2499,10 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
             Interlocked.Increment(ref _requestsInFlight);
             try
             {
-                using CancellationTokenSource waiting = CancellationTokenSource.CreateLinkedTokenSource(token, p2p.SessionClosedToken(Session));
+                using CancellationTokenSource waiting = CancellationTokenSource.CreateLinkedTokenSource(token, Session.Closed);
                 await slots.WaitAsync(waiting.Token);
                 // A slot freed as the session closes can be granted before the close is seen; the request still never left.
-                if (p2p.SessionClosedToken(Session).IsCancellationRequested)
+                if (Session.Closed.IsCancellationRequested)
                 {
                     slots.Release();
                     throw new OperationCanceledException(waiting.Token);
@@ -2512,7 +2511,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
             catch (Exception e)
             {
                 Interlocked.Decrement(ref _requestsInFlight);
-                bool disconnected = e is OperationCanceledException && !token.IsCancellationRequested && p2p.SessionClosedToken(Session).IsCancellationRequested;
+                bool disconnected = e is OperationCanceledException && !token.IsCancellationRequested && Session.Closed.IsCancellationRequested;
                 string waitOutcome = disconnected
                     ? $"peer disconnected after {ReqRespProtocolBase.Seconds(Stopwatch.GetElapsedTime(queuedAt))} waiting for a request slot: its libp2p session closed"
                     : e is OperationCanceledException && token.IsCancellationRequested ? "cancelled by this node" : DescribeFailure(e);

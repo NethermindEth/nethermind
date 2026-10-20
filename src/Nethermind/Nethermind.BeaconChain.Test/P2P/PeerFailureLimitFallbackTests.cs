@@ -103,7 +103,10 @@ public class PeerFailureLimitFallbackTests
         IBeaconSyncPeer offered = AddPeer(manager, "Offered", PeerFailureReason.RequestFailed, Limit + 3);
         if (reason == Unoffered.SessionClosed)
         {
-            AddPeer(manager, "Closed", PeerFailureReason.RequestFailed, Limit, session: new LocalPeer.Session(node.P2P.LocalPeerForTest!));
+            LocalPeer.Session session = new(node.P2P.LocalPeerForTest!);
+            session.State.RemoteAddress = Multiformats.Address.Multiaddress.Decode($"/ip4/127.0.0.1/tcp/1/p2p/{new Identity().PeerId}");
+            await session.DisconnectAsync();
+            AddPeer(manager, "Closed", PeerFailureReason.RequestFailed, Limit, session: session);
         }
         else
         {

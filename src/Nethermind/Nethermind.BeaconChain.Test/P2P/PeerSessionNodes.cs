@@ -172,7 +172,7 @@ internal sealed class PlainPeer(ServiceProvider services, LocalPeer peer) : IAsy
         bool pingOnDial = false, Identity? identity = null)
     {
         ServiceCollection collection = new();
-        collection.AddSingleton(BeaconP2P.CreateLibp2pLoggerFactory(LimboLogs.Instance));
+        collection.AddSingleton<Microsoft.Extensions.Logging.ILoggerFactory>(new Logging.Microsoft.NethermindLoggerFactory(LimboLogs.Instance));
         collection.AddSingleton(sp => identify(sp.GetRequiredService<IProtocolStackSettings>()));
         if (statusSource is not null)
         {
@@ -196,7 +196,7 @@ internal sealed class PlainPeer(ServiceProvider services, LocalPeer peer) : IAsy
     }
 
     private sealed class NonIdentifyingPeer(PeerStore peerStore, IProtocolStackSettings settings, bool pingOnDial, Identity? identity)
-        : LocalPeer(identity ?? new Identity(privateKey: null, KeyType.Secp256K1), peerStore, settings, loggerFactory: BeaconP2P.CreateLibp2pLoggerFactory(LimboLogs.Instance))
+        : LocalPeer(identity ?? new Identity(privateKey: null, KeyType.Secp256K1), peerStore, settings, loggerFactory: new Logging.Microsoft.NethermindLoggerFactory(LimboLogs.Instance))
     {
         protected override Task ConnectedTo(ISession session, bool isDialer) => pingOnDial && isDialer
             ? session.DialAsync<PingProtocol>()

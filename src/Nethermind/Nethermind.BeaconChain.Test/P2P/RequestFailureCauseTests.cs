@@ -29,7 +29,7 @@ public class RequestFailureCauseTests
     private const string PeerAddress = "/ip4/10.0.0.1/tcp/9000/p2p/16Uiu2HAmPeer";
     private const string UsablePeerAddress = "/ip4/10.0.0.2/tcp/9000/p2p/16Uiu2HAmUsable";
 
-    public enum ChannelRequestEnd { Budget, Disconnect, Reset, AlreadyDropped, CallerCancellation }
+    public enum ChannelRequestEnd { Budget, Disconnect, AlreadyDropped, CallerCancellation }
 
     [Test]
     [CancelAfter(30_000)]
@@ -43,16 +43,12 @@ public class RequestFailureCauseTests
         if (end == ChannelRequestEnd.AlreadyDropped) await session.DisconnectAsync();
         if (end == ChannelRequestEnd.CallerCancellation) stopping.CancelAfter(TimeSpan.FromMilliseconds(200));
         long startedAt = Stopwatch.GetTimestamp();
-        Task? request = end is ChannelRequestEnd.Disconnect or ChannelRequestEnd.Reset
+        Task? request = end is ChannelRequestEnd.Disconnect
             ? node.RequestDataColumnSidecarsByRootAsync(session, [new DataColumnsByRootIdentifier { BlockRoot = Hash256.Zero, Columns = [1] }], token, timing) : null;
-        if (end is ChannelRequestEnd.Disconnect or ChannelRequestEnd.Reset)
+        if (end is ChannelRequestEnd.Disconnect)
         {
             startedAt = Stopwatch.GetTimestamp();
-            if (end == ChannelRequestEnd.Reset)
-            {
-                lock (node.LocalPeerForTest!.Sessions) node.LocalPeerForTest.Sessions.Clear();
-            }
-            else await session.DisconnectAsync();
+            await session.DisconnectAsync();
         }
         Exception? failure = request is not null ? await Assert.CatchAsync(async () => await request)
             : await Assert.CatchAsync(() => end == ChannelRequestEnd.AlreadyDropped
@@ -79,6 +75,26 @@ public class RequestFailureCauseTests
                 Assert.That(PeerFailureClassifier.Classify(failure), Is.EqualTo(PeerFailureReason.SessionClosed));
             }
         }
+    }
+
+    [Test]
+    public async Task A_session_lifetime_token_cancels_a_pending_request()
+    {
+        using CancellationTokenSource closed = new();
+        ISession session = Substitute.For<ISession>();
+        session.Closed.Returns(closed.Token);
+        session.DialAsync<BeaconBlocksByRootProtocolV2, Hash256[], IReadOnlyList<ForkedSignedBeaconBlock>>(default!, default).ReturnsForAnyArgs(
+            async call =>
+            {
+                await Task.Delay(Timeout.InfiniteTimeSpan, call.Arg<CancellationToken>());
+                return (IReadOnlyList<ForkedSignedBeaconBlock>)Array.Empty<ForkedSignedBeaconBlock>();
+            });
+        await using BeaconP2P node = CreateHost(TimeSpan.FromSeconds(20));
+        Task<IReadOnlyList<ForkedSignedBeaconBlock>> request = node.RequestBlocksByRootAsync(session, [Hash256.Zero], default);
+
+        await closed.CancelAsync();
+
+        await Assert.ThrowsAsync<PeerSessionClosedException>(async () => await request.WaitAsync(TimeSpan.FromSeconds(5)));
     }
 
     [Test]
@@ -203,7 +219,7 @@ public class RequestFailureCauseTests
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(lost!.Message, Does.Contain("peer disconnected"));
-                Assert.That(node.SessionClosedToken(session).IsCancellationRequested, Is.False);
+                Assert.That(session.Closed.IsCancellationRequested, Is.True);
                 Assert.That(session.ConnectionToken.IsCancellationRequested, Is.True);
             }
         }
@@ -789,6 +805,7 @@ public class RequestFailureCauseTests
     {
         LocalPeer localPeer = node.LocalPeerForTest!;
         LocalPeer.Session session = new(localPeer);
+        session.State.RemoteAddress = Multiformats.Address.Multiaddress.Decode($"/ip4/127.0.0.1/tcp/1/p2p/{new Identity().PeerId}");
         lock (localPeer.Sessions)
         {
             localPeer.Sessions.Add(session);

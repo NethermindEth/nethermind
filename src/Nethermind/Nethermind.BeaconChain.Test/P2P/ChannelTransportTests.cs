@@ -125,7 +125,7 @@ public class ChannelTransportTests
         await writing.WaitAsync(token);
         using ChannelStreamAdapter stream = new(channel.Reverse);
 
-        Assert.That(async () => await stream.ReadAsync(new byte[1], token), Throws.TypeOf<IOException>().With.Message.EqualTo("Channel read failed: Aborted"));
+        Assert.That(async () => await stream.ReadAsync(new byte[1], token), Throws.TypeOf<IOException>().With.Message.EqualTo("Channel read failed: Aborted."));
     }
 
     private static async Task AssertChannelAsync(int[][] chunks, CancellationToken token)

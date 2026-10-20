@@ -142,7 +142,7 @@ public class PeerAdmissionRaceTests
 
         Stopwatch dialing = Stopwatch.StartNew();
         bool[] dialed = await Task.WhenAll(DialAtBarrier(firstManager, second.P2P), DialAtBarrier(secondManager, first.P2P));
-        if (dialing.Elapsed >= IdentifyAgentVersionProbe.ReadTimeout)
+        if (dialing.Elapsed >= BeaconP2P.IdentifyTimeout)
         {
             throw new TimeoutException($"the dials took {dialing.Elapsed}");
         }
@@ -161,7 +161,7 @@ public class PeerAdmissionRaceTests
         Node local = Create(privateKey: lowerKey);
         Node remote = Create(privateKey: higherKey);
         await using ServiceProvider services = new ServiceCollection()
-            .AddSingleton(BeaconP2P.CreateLibp2pLoggerFactory(LimboLogs.Instance))
+            .AddSingleton<Microsoft.Extensions.Logging.ILoggerFactory>(new Logging.Microsoft.NethermindLoggerFactory(LimboLogs.Instance))
             .AddLibp2p(static builder => builder)
             .BuildServiceProvider();
         await using ILocalPeer oldSession = services.GetRequiredService<IPeerFactory>().Create(BeaconP2P.IdentityFromStoredKey(lowerKey));

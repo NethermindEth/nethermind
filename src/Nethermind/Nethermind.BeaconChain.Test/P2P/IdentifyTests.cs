@@ -26,6 +26,7 @@ public class IdentifyTests
     private const string IdentifyProtocolId = "/ipfs/id/1.0.0";
     private const string IdentifyPushProtocolId = "/ipfs/id/push/1.0.0";
     private const string ServerAgent = "test-server/identify-1.0.0";
+    private const int MaxIdentifyMessageSize = 8 * 1024;
 
     public enum Answer
     {
@@ -39,7 +40,7 @@ public class IdentifyTests
 
     public enum IdentifyReader
     {
-        BeaconProbe,
+        BeaconDial,
         SharedDial,
         SharedPushListener,
     }
@@ -55,11 +56,11 @@ public class IdentifyTests
 
         ISession session = await PeerSessionNodes.DialAsync(client, server, token);
         BeaconP2P.SessionInfo info = await client.GetSessionInfoAsync(session, token);
-        string[] advertised = info.Identify?.Protocols ?? [];
+        string[] advertised = info.Identify?.Protocols.ToArray() ?? [];
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(advertised.Count(static id => id == IdentifyProtocolId), Is.EqualTo(1), "identify is listed once even though the agent probe shares its id");
-        Assert.That(advertised.Count(static id => id == IdentifyPushProtocolId), Is.EqualTo(1), "identify push is listed once even though the bounded listener shares its id");
+        Assert.That(advertised.Count(static id => id == IdentifyProtocolId), Is.EqualTo(1), "identify is advertised once");
+        Assert.That(advertised.Count(static id => id == IdentifyPushProtocolId), Is.EqualTo(1), "identify push is advertised once");
         Assert.That(advertised, Does.Contain("/eth2/beacon_chain/req/status/2/ssz_snappy"), "the rest of the stack is still advertised");
         Assert.That(info.AgentVersion, Is.EqualTo(BeaconP2P.ClientAgentVersion), "the agent string a peer reads is the one the API reports");
     }
@@ -148,7 +149,7 @@ public class IdentifyTests
         Assert.That(info.AgentVersion, Is.EqualTo(ServerAgent));
         Assert.That(answers.Reads - oneAnswer, Is.EqualTo(oneAnswer), "the session asked for identify once");
         Assert.That(info.Identify?.Protocols, Does.Contain(IdentifyProtocolId), "the answer is kept in the session information");
-        Assert.That(client.IsInPeerStoreForTest(server.Peer.Identity.PeerId), Is.False, "the peer store never forgets an entry, so a session is recorded there only once admitted");
+        Assert.That(client.HasRecordedPeerInfoForTest(server.Peer.Identity.PeerId), Is.False, "identify metadata is recorded only after admission");
     }
 
     [TestCase(Answer.Valid, PeerRecordsVerificationPolicy.RequireCorrect, true)]
@@ -161,7 +162,7 @@ public class IdentifyTests
     [TestCase(Answer.NoAgentVersion, PeerRecordsVerificationPolicy.RequireCorrect, true)]
     [TestCase(Answer.MalformedRecord, PeerRecordsVerificationPolicy.RequireCorrect, false)]
     [TestCase(Answer.MalformedRecord, PeerRecordsVerificationPolicy.RequireWithWarning, true)]
-    public void An_identify_answer_is_accepted_only_for_the_authenticated_peer(Answer answer, PeerRecordsVerificationPolicy policy, bool accepted)
+    public async Task An_identify_answer_is_accepted_only_for_the_authenticated_peer(Answer answer, PeerRecordsVerificationPolicy policy, bool accepted)
     {
         Identity remote = new(privateKey: null, KeyType.Secp256K1);
         Identity other = new(privateKey: null, KeyType.Secp256K1);
@@ -183,12 +184,12 @@ public class IdentifyTests
 
         if (!accepted)
         {
-            Assert.Throws<PeerConnectionException>(() => VerifyAndRecord(message, session, settings, peerStore));
+            await Assert.ThrowsAsync<PeerConnectionException>(async () => await VerifyAndRecord(message, session, settings, peerStore));
             return;
         }
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(VerifyAndRecord(message, session, settings, peerStore),
+        Assert.That(await VerifyAndRecord(message, session, settings, peerStore),
             answer == Answer.NoAgentVersion ? Is.Null : Is.EqualTo(ServerAgent), "the agent string is unknown only when the answer carries none");
         Assert.That(peerStore.GetPeerInfo(remote.PeerId).SupportedProtocols, Is.EqualTo(new[] { IdentifyProtocolId }));
         bool verified = answer is Answer.Valid or Answer.NoAgentVersion;
@@ -201,7 +202,7 @@ public class IdentifyTests
     [TestCase(5UL, false, false)]
     [TestCase(6UL, false, true)]
     [TestCase(6UL, true, false)]
-    public void A_later_identify_answer_replaces_the_stored_record_only_when_it_verifies_and_its_sequence_is_newer(ulong seq, bool signedByAnother, bool replaces)
+    public async Task A_later_identify_answer_replaces_the_stored_record_only_when_it_verifies_and_its_sequence_is_newer(ulong seq, bool signedByAnother, bool replaces)
     {
         Identity remote = new(privateKey: null, KeyType.Secp256K1);
         Libp2p.Core.State session = SessionWith(remote);
@@ -209,9 +210,9 @@ public class IdentifyTests
         IdentifyProtocolSettings settings = new() { PeerRecordsVerificationPolicy = PeerRecordsVerificationPolicy.RequireWithWarning };
         IdentifyMessage first = AnswerOf(remote, remote, 5, "/stored");
         IdentifyMessage later = AnswerOf(remote, signedByAnother ? new Identity(privateKey: null, KeyType.Secp256K1) : remote, seq, "/later");
-        VerifyAndRecord(first, session, settings, peerStore);
+        await VerifyAndRecord(first, session, settings, peerStore);
 
-        VerifyAndRecord(later, session, settings, peerStore);
+        await VerifyAndRecord(later, session, settings, peerStore);
 
         PeerStore.PeerInfo stored = peerStore.GetPeerInfo(remote.PeerId);
         using IDisposable assertionScope = Assert.EnterMultipleScope();
@@ -221,51 +222,49 @@ public class IdentifyTests
     }
 
     [Test]
-    public void A_bounded_protocol_list_is_kept_however_many_ids_an_answer_lists([Values] bool beaconProbe)
+    public async Task A_bounded_protocol_list_is_kept_however_many_ids_an_answer_lists([Values] bool beaconDial)
     {
         Identity remote = new(privateKey: null, KeyType.Secp256K1);
-        // About what an 8 KiB answer of one-character ids holds, after one id over the length bound.
-        IdentifyMessage message = AnswerOf(remote, remote, 1, new string('p', BoundedIdentifyProtocol.MaxStoredProtocolIdBytes + 1));
-        message.Protocols.AddRange(Enumerable.Range(0, 2_700).Select(static i => ((char)('a' + i % 26)).ToString()));
+        IdentifyMessage message = AnswerOf(remote, remote, 1, new string('p', 129));
+        message.Protocols.AddRange(Enumerable.Range(0, 200).Select(static i => $"/protocol/{i}"));
         PeerStore peerStore = new();
 
-        string[] stored;
-        if (beaconProbe)
+        if (beaconDial)
         {
-            stored = IdentifyAgentVersionProbe.Verify(message, SessionWith(remote), new IdentifyProtocolSettings()).Protocols;
+            await VerifyAndRecord(message, SessionWith(remote), new IdentifyProtocolSettings(), peerStore);
         }
         else
         {
-            BoundedIdentifyProtocol.Apply(message, SessionWith(remote), new IdentifyProtocolSettings(), peerStore);
-            stored = peerStore.GetPeerInfo(remote.PeerId).SupportedProtocols ?? [];
+            await ReadIdentify(message, SessionWith(remote), new IdentifyProtocolSettings(), peerStore);
         }
+        string[] stored = peerStore.GetPeerInfo(remote.PeerId).SupportedProtocols ?? [];
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(stored, Has.Length.EqualTo(BoundedIdentifyProtocol.MaxStoredProtocols), "an answer is kept for as long as its peer, so one answer stays small");
-        Assert.That(stored[0], Is.EqualTo("a"), "an id over the length bound is dropped, not truncated into another id");
+        Assert.That(stored, Has.Length.EqualTo(64));
+        Assert.That(stored[0], Is.EqualTo("/protocol/0"), "an id over the length bound is dropped, not truncated into another id");
     }
 
     [Test]
     public async Task An_identify_answer_is_refused_from_a_declared_length_past_the_bound(
-        [Values(IdentifyAgentVersionProbe.MaxMessageSize, IdentifyAgentVersionProbe.MaxMessageSize + 1, 256 * 1024 * 1024)] int declared,
+        [Values(MaxIdentifyMessageSize, MaxIdentifyMessageSize + 1, 256 * 1024 * 1024)] int declared,
         [Values] IdentifyReader reader)
     {
         TimeSpan bound = TimeSpan.FromSeconds(10);
         Channel channel = new();
-        IdentifyAgentVersionProbe probe = new(null!, new IdentifyProtocolSettings());
+        ISessionContext context = ContextFor(SessionWith(new Identity(privateKey: null, KeyType.Secp256K1)));
 
         Task read = (reader switch
         {
-            IdentifyReader.SharedDial => new BoundedIdentifyProtocol(null!, new PeerStore()).DialAsync(channel, null!),
-            IdentifyReader.SharedPushListener => new BoundedIdentifyPushProtocol(new PeerStore()).ListenAsync(channel, null!),
-            _ => probe.DialAsync(channel, null!, null),
+            IdentifyReader.SharedDial => new IdentifyProtocol(new ProtocolStackSettings(), peerStore: new PeerStore()).DialAsync(channel, context),
+            IdentifyReader.SharedPushListener => new IdentifyPushProtocol(new ProtocolStackSettings(), peerStore: new PeerStore()).ListenAsync(channel, context),
+            _ => new IdentifyProtocol(new ProtocolStackSettings()).DialAsync(channel, context),
         }).WaitAsync(bound);
         await channel.Reverse.WriteVarintAsync(declared).AsTask().WaitAsync(bound);
         await channel.Reverse.WriteEofAsync().AsTask().WaitAsync(bound);
 
-        if (declared > IdentifyAgentVersionProbe.MaxMessageSize)
+        if (declared > MaxIdentifyMessageSize)
         {
-            await Assert.ThrowsAsync<PeerConnectionException>(() => read);
+            await Assert.ThrowsAsync<System.IO.InvalidDataException>(() => read);
         }
         else
         {
@@ -274,30 +273,27 @@ public class IdentifyTests
     }
 
     [Test]
-    public async Task An_identify_push_updates_only_a_peer_already_in_the_peer_store([Values] bool known)
+    public async Task An_identify_push_updates_only_admitted_peer_metadata([Values] bool admitted)
     {
         TimeSpan bound = TimeSpan.FromSeconds(10);
         Identity remote = new(privateKey: null, KeyType.Secp256K1);
         PeerStore peerStore = new();
-        if (known)
-        {
-            peerStore.GetPeerInfo(remote.PeerId).SupportedProtocols = ["/stored"];
-        }
+        peerStore.GetPeerInfo(remote.PeerId).SupportedProtocols = ["/stored"];
+        int announcements = 0;
+        peerStore.OnNewPeer += _ => announcements++;
 
         ISessionContext context = Substitute.For<ISessionContext>();
         context.State.Returns(SessionWith(remote));
         Channel channel = new();
-        Task listen = new BoundedIdentifyPushProtocol(peerStore).ListenAsync(channel, context).WaitAsync(bound);
-        await channel.Reverse.WriteSizeAndProtobufAsync(AnswerOf(remote, remote, 1, "/pushed")).AsTask().WaitAsync(bound);
+        Task listen = new BeaconP2P.AdmittedIdentifyPushProtocol(new ProtocolStackSettings(), new IdentifyProtocolSettings(), peerStore,
+            peerId => admitted && peerId == remote.PeerId).ListenAsync(channel, context).WaitAsync(bound);
+        if (admitted) await channel.Reverse.WriteSizeAndProtobufAsync(AnswerOf(remote, remote, 1, "/pushed")).AsTask().WaitAsync(bound);
         await listen;
 
-        if (known)
+        using (Assert.EnterMultipleScope())
         {
-            Assert.That(peerStore.GetPeerInfo(remote.PeerId).SupportedProtocols, Is.EqualTo(new[] { "/pushed" }));
-        }
-        else
-        {
-            Assert.That(peerStore.TryGetPeerInfo(remote.PeerId, out _), Is.False, "the peer store never forgets an entry, so a push must not add one");
+            Assert.That(peerStore.GetPeerInfo(remote.PeerId).SupportedProtocols, Is.EqualTo(new[] { admitted ? "/pushed" : "/stored" }));
+            Assert.That(announcements, Is.EqualTo(admitted ? 1 : 0));
         }
     }
 
@@ -308,7 +304,7 @@ public class IdentifyTests
         PeerStore peerStore = new();
         IdentifyProtocolSettings settings = new() { PeerRecordsVerificationPolicy = PeerRecordsVerificationPolicy.RequireCorrect };
         IdentifyMessage original = AnswerOf(remote, remote, 1, "/stored");
-        BoundedIdentifyProtocol.Apply(original, SessionWith(remote), settings, peerStore);
+        await ReadIdentify(original, SessionWith(remote), settings, peerStore);
         IdentifyMessage update = new();
         if (protocolsOnly) update.Protocols.Add("/pushed");
         else update.AgentVersion = "updated-agent";
@@ -316,7 +312,7 @@ public class IdentifyTests
         context.State.Returns(SessionWith(remote));
         Channel channel = new();
 
-        Task listen = new BoundedIdentifyPushProtocol(peerStore, settings).ListenAsync(channel, context);
+        Task listen = new IdentifyPushProtocol(new ProtocolStackSettings(), settings, peerStore).ListenAsync(channel, context);
         await channel.Reverse.WriteSizeAndProtobufAsync(update).AsTask().WaitAsync(TimeSpan.FromSeconds(10));
         await listen.WaitAsync(TimeSpan.FromSeconds(10));
 
@@ -328,7 +324,7 @@ public class IdentifyTests
     }
 
     [Test]
-    public void An_identify_push_still_rejects_a_supplied_foreign_key_or_invalid_record([Values] bool foreignKey)
+    public async Task An_identify_push_still_rejects_a_supplied_foreign_key_or_invalid_record([Values] bool foreignKey)
     {
         Identity remote = new(privateKey: null, KeyType.Secp256K1);
         IdentifyMessage update = new();
@@ -336,7 +332,10 @@ public class IdentifyTests
         else update.SignedPeerRecord = ByteString.Empty;
         IdentifyProtocolSettings settings = new() { PeerRecordsVerificationPolicy = PeerRecordsVerificationPolicy.RequireCorrect };
 
-        Assert.Throws<PeerConnectionException>(() => BoundedIdentifyProtocol.Apply(update, SessionWith(remote), settings, new PeerStore(), partial: true));
+        Channel channel = new();
+        Task listen = new IdentifyPushProtocol(new ProtocolStackSettings(), settings, new PeerStore()).ListenAsync(channel, ContextFor(SessionWith(remote)));
+        await channel.Reverse.WriteSizeAndProtobufAsync(update);
+        await Assert.ThrowsAsync<PeerConnectionException>(async () => await listen.WaitAsync(TimeSpan.FromSeconds(10)));
     }
 
     /// <summary>A read of declared length 0 takes everything pending, so an answer declaring none must be refused before any of the body is read.</summary>
@@ -348,9 +347,9 @@ public class IdentifyTests
         TimeSpan bound = TimeSpan.FromSeconds(10);
         byte[] body = new byte[256 * 1024];
         Channel channel = new();
-        IdentifyAgentVersionProbe probe = new(null!, new IdentifyProtocolSettings());
+        IdentifyProtocol probe = new(new ProtocolStackSettings());
 
-        Task read = probe.DialAsync(channel, null!, null).WaitAsync(bound);
+        Task read = probe.DialAsync(channel, ContextFor(SessionWith(new Identity(privateKey: null, KeyType.Secp256K1)))).WaitAsync(bound);
         await channel.Reverse.WriteAsync(new ReadOnlySequence<byte>(declared)).AsTask().WaitAsync(bound);
         Task<IOResult> sent = channel.Reverse.WriteAsync(new ReadOnlySequence<byte>(body)).AsTask();
         await Assert.ThrowsAsync<PeerConnectionException>(() => read);
@@ -363,7 +362,7 @@ public class IdentifyTests
     [CancelAfter(60_000)]
     public async Task A_session_whose_identify_answer_names_another_peers_key_is_closed_and_never_established([Values] bool nodeDials, CancellationToken token)
     {
-        TimeSpan within = IdentifyAgentVersionProbe.ReadTimeout + TimeSpan.FromSeconds(3);
+        TimeSpan within = BeaconP2P.IdentifyTimeout + TimeSpan.FromSeconds(3);
         await using BeaconP2P node = PeerSessionNodes.Create().P2P;
         await node.StartAsync(token);
         int established = 0;
@@ -425,11 +424,26 @@ public class IdentifyTests
         }
     }
 
-    private static string? VerifyAndRecord(IdentifyMessage message, Libp2p.Core.State session, IdentifyProtocolSettings settings, PeerStore peerStore)
+    private static async Task<string?> VerifyAndRecord(IdentifyMessage message, Libp2p.Core.State session, IdentifyProtocolSettings settings, PeerStore peerStore)
     {
-        IdentifyAgentVersionProbe.Answer answer = IdentifyAgentVersionProbe.Verify(message, session, settings);
-        IdentifyAgentVersionProbe.Record(peerStore, session.RemotePeerId!, answer);
+        IdentifyResult answer = await ReadIdentify(message, session, settings);
+        BeaconP2P.RecordIdentify(peerStore, session.RemotePeerId!, answer);
         return answer.AgentVersion;
+    }
+
+    private static async Task<IdentifyResult> ReadIdentify(IdentifyMessage message, Libp2p.Core.State state, IdentifyProtocolSettings settings, PeerStore? store = null)
+    {
+        Channel channel = new();
+        Task<IdentifyResult> read = new IdentifyProtocol(new ProtocolStackSettings(), settings, store).DialAsync(channel, ContextFor(state));
+        await channel.Reverse.WriteSizeAndProtobufAsync(message);
+        return await read.WaitAsync(TimeSpan.FromSeconds(10));
+    }
+
+    private static ISessionContext ContextFor(Libp2p.Core.State state)
+    {
+        ISessionContext context = Substitute.For<ISessionContext>();
+        context.State.Returns(state);
+        return context;
     }
 
     private static Multiaddress AddressOf(Identity peer) => Multiaddress.Decode($"/ip4/127.0.0.1/tcp/9000/p2p/{peer.PeerId}");

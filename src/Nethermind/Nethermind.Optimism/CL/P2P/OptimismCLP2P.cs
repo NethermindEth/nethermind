@@ -89,7 +89,7 @@ public class OptimismCLP2P : IDisposable
                 ProtocolVersion = "",
                 AgentVersion = "optimism"
             })
-            .AddSingleton(CreatePubsubSettings(_blocksV2TopicId))
+            .AddSingleton(CreatePubsubSettings())
             .BuildServiceProvider();
     }
 
@@ -112,10 +112,10 @@ public class OptimismCLP2P : IDisposable
         }
     }
 
-    /// <summary>The gossipsub parameters of the OP Stack block gossip on <paramref name="blocksTopicId"/>, unscored.</summary>
+    /// <summary>The gossipsub parameters of OP Stack block gossip.</summary>
     /// <remarks>OP Stack rollup-node-p2p.md "Message ID computation" takes the L1 message id; op-node p2p/gossip.go BuildMsgIdFn
     /// hashes it in its Altair form, topic included, which is the id the network's IHAVE lists carry.</remarks>
-    internal static PubsubSettings CreatePubsubSettings(string blocksTopicId) => UnscoredGossip.Configure(new PubsubSettings
+    internal static PubsubSettings CreatePubsubSettings() => new()
     {
         ReconnectionAttempts = int.MaxValue,
         Degree = 3,
@@ -127,7 +127,7 @@ public class OptimismCLP2P : IDisposable
         // rollup-node-p2p.md "Message compression and limits": gossip carries up to 10 MiB, beyond the library's 1 MiB RPC and 512 KiB IWANT bounds.
         MaxRpcBytes = Eth2MessageId.MaxMessageSize,
         MaxIwantResponseBytes = Eth2MessageId.MaxMessageSize,
-    }, [blocksTopicId]);
+    };
 
     private void OnMessage(byte[] msg, CancellationToken token)
     {

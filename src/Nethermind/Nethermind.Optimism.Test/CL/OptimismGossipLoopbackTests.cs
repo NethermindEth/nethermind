@@ -146,13 +146,13 @@ public class OptimismGossipLoopbackTests
     public async Task Concurrent_outbound_dials_and_the_static_peer_check_share_one_session(CancellationToken token)
     {
         await using Host sequencer = await Host.StartAsync(token, static settings => settings.ReconnectionPeriod = Timeout.Infinite);
-        TaskCompletionSource bothResolving = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource resolving = new(TaskCreationOptions.RunContinuationsAsynchronously);
         TaskCompletionSource<IEnumerable<IPAddress>> resolved = new(TaskCreationOptions.RunContinuationsAsynchronously);
         int queries = 0;
         IDnsLookup dns = Substitute.For<IDnsLookup>();
-        dns.QueryAAsync(Arg.Any<string>()).Returns(_ =>
+        dns.QueryAAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(_ =>
         {
-            if (Interlocked.Increment(ref queries) == 2) bothResolving.TrySetResult();
+            if (Interlocked.Increment(ref queries) == 1) resolving.TrySetResult();
             return resolved.Task;
         });
         await using Host node = await Host.StartAsync(token, static settings => settings.ReconnectionPeriod = Timeout.Infinite, dns);
@@ -170,7 +170,7 @@ public class OptimismGossipLoopbackTests
 
         Task<ISession> routerDial = node.Peer.DialAsync(address, token);
         Task check = keeper.CheckAsync(token);
-        await bothResolving.Task.WaitAsync(token);
+        await resolving.Task.WaitAsync(token);
         resolved.SetResult([IPAddress.Loopback]);
         ISession connected = await routerDial;
         await check;
@@ -179,6 +179,7 @@ public class OptimismGossipLoopbackTests
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(kept, Is.SameAs(connected));
         Assert.That(reused, Is.SameAs(connected));
+        Assert.That(queries, Is.EqualTo(1), "concurrent dials share the pending resolution");
         Assert.That(((LocalPeer)node.Peer).Sessions, Has.Count.EqualTo(1));
     }
 
@@ -241,12 +242,12 @@ public class OptimismGossipLoopbackTests
         Assert.That(levels, Is.EqualTo(new[] { "Warn", "Debug", "Warn", "Warn" }));
     }
 
-    [TestCase("/dns4/sequencer.invalid/tcp/{port}/p2p/{id}", TestName = "A name whose first lookup fails")]
-    [TestCase("/dnsaddr/sequencer.invalid/p2p/{id}", TestName = "A dnsaddr name")]
-    [TestCase("/ip4/127.0.0.1/tcp/{port}/dnsaddr/sequencer.invalid/p2p/{id}", TestName = "A dnsaddr name after an address")]
-    [TestCase("/ip4/127.0.0.1/tcp/{port}/p2p/{id}|/ip4/127.0.0.1/tcp/{port}/p2p/{other}", TestName = "Addresses of two peer ids")]
+    [TestCase("/dns4/sequencer.invalid/tcp/{port}/p2p/{id}", false, TestName = "A name whose first lookup fails")]
+    [TestCase("/dnsaddr/sequencer.invalid/p2p/{id}", false, TestName = "A dnsaddr name")]
+    [TestCase("/ip4/127.0.0.1/tcp/{port}/dnsaddr/sequencer.invalid/p2p/{id}", false, TestName = "A dnsaddr name after an address")]
+    [TestCase("/ip4/127.0.0.1/tcp/{port}/p2p/{id}|/ip4/127.0.0.1/tcp/{port}/p2p/{other}", true, TestName = "A valid candidate survives an address for another peer")]
     [CancelAfter(60_000)]
-    public async Task A_dial_that_cannot_start_does_not_lose_the_peer(string announced, CancellationToken token)
+    public async Task An_unusable_dial_candidate_does_not_prevent_a_static_connection(string announced, bool usableAddress, CancellationToken token)
     {
         await using Host sequencer = await Host.StartAsync(token, static settings => settings.ReconnectionPeriod = Timeout.Infinite);
         await using Host node = await Host.StartAsync(token, static settings => settings.ReconnectionPeriod = Timeout.Infinite, new LoopbackDns(txt: ""));
@@ -255,7 +256,10 @@ public class OptimismGossipLoopbackTests
         Multiaddress[] poison = [.. announced.Split('|').Select(address => Multiaddress.Decode(address
             .Replace("{port}", port).Replace("{id}", sequencerId.ToString()).Replace("{other}", new Nethermind.Libp2p.Core.Identity().PeerId.ToString())))];
 
-        Assert.That(async () => await node.Peer.DialAsync(poison, token), Throws.Exception, "fixture: the dial fails");
+        if (usableAddress)
+            Assert.That((await node.Peer.DialAsync(poison, token)).RemotePeerId, Is.EqualTo(sequencerId));
+        else
+            Assert.That(async () => await node.Peer.DialAsync(poison, token), Throws.Exception, "fixture: the dial fails");
 
         Multiaddress named = Multiaddress.Decode($"/dns4/sequencer.invalid/tcp/{port}/p2p/{sequencerId}");
         using StaticPeerKeeper keeper = new(node.Peer, node.Router, [named], LimboLogs.Instance.GetClassLogger<OptimismGossipLoopbackTests>());
@@ -281,14 +285,13 @@ public class OptimismGossipLoopbackTests
 
     [Test]
     [CancelAfter(60_000)]
-    public async Task A_static_peer_whose_name_fails_to_resolve_is_logged_with_the_cause([Values] bool addressQueriesFail, CancellationToken token)
+    public async Task A_static_peer_whose_name_fails_to_resolve_is_logged_as_unresolved([Values] bool addressQueriesFail, CancellationToken token)
     {
         IDnsLookup dns = Substitute.For<IDnsLookup>();
-        dns.QueryTxtAsync(Arg.Any<string>()).Returns(Task.FromException<IEnumerable<string>>(new InvalidOperationException("TXT query refused")));
+        dns.QueryTxtAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(Task.FromException<IEnumerable<string>>(new InvalidOperationException("TXT query refused")));
         SocketException noHost = new((int)SocketError.HostNotFound);
-        dns.QueryAAsync(Arg.Any<string>()).Returns(Task.FromException<IEnumerable<IPAddress>>(noHost));
-        dns.QueryAaaaAsync(Arg.Any<string>()).Returns(Task.FromException<IEnumerable<IPAddress>>(noHost));
-        // No logger factory, as in the production Shutter and Optimism hosts, so the dial failure is the only place the cause can surface.
+        dns.QueryAAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(Task.FromException<IEnumerable<IPAddress>>(noHost));
+        dns.QueryAaaaAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(Task.FromException<IEnumerable<IPAddress>>(noHost));
         await using Host node = await Host.StartAsync(token, dnsLookup: dns);
         PeerId sequencerId = new Nethermind.Libp2p.Core.Identity().PeerId;
         Multiaddress named = Multiaddress.Decode(addressQueriesFail ? $"/dns/sequencer.test/tcp/9000/p2p/{sequencerId}" : $"/dnsaddr/sequencer.test/p2p/{sequencerId}");
@@ -302,7 +305,7 @@ public class OptimismGossipLoopbackTests
 
         await keeper.CheckAsync(token);
 
-        Assert.That(lines, Has.One.Contains(named.ToString()).And.Contains(addressQueriesFail ? noHost.Message : "TXT query refused"));
+        Assert.That(lines, Has.One.Contains(named.ToString()).And.Contains("No usable address was resolved"));
     }
 
     [Test]
@@ -550,7 +553,7 @@ public class OptimismGossipLoopbackTests
 
         public static async Task<Host> StartAsync(CancellationToken token, Action<PubsubSettings>? configure = null, IDnsLookup? dnsLookup = null)
         {
-            PubsubSettings settings = OptimismCLP2P.CreatePubsubSettings(BlocksTopic);
+            PubsubSettings settings = OptimismCLP2P.CreatePubsubSettings();
             configure?.Invoke(settings);
             IServiceCollection collection = new ServiceCollection()
                 .AddLibp2p(OptimismCLP2P.ConfigureGossipStack)

@@ -61,7 +61,7 @@ public class ShutterP2P : IShutterP2P
         DisconnectionLogInterval = TimeSpan.FromMilliseconds(_cfg.DisconnectionLogInterval);
 
         PubsubPeerDiscoverySettings discoverySettings = new() { Interval = 300 };
-        PubsubSettings pubsubSettings = CreatePubsubSettings(discoverySettings);
+        PubsubSettings pubsubSettings = CreatePubsubSettings();
         configureGossip?.Invoke(pubsubSettings);
         IServiceCollection serviceCollection = new ServiceCollection()
             .AddLibp2p(builder => builder.WithPubsub())
@@ -102,15 +102,15 @@ public class ShutterP2P : IShutterP2P
         };
     }
 
-    /// <summary>The gossipsub parameters of the key topic and the peer discovery topics of <paramref name="discovery"/>, unscored.</summary>
-    internal static PubsubSettings CreatePubsubSettings(PubsubPeerDiscoverySettings discovery) => UnscoredGossip.Configure(new PubsubSettings
+    /// <summary>The gossipsub parameters of the key and peer discovery topics.</summary>
+    internal static PubsubSettings CreatePubsubSettings() => new()
     {
         ReconnectionAttempts = int.MaxValue,
         Degree = 3,
         LowestDegree = 2,
         HighestDegree = 6,
         LazyDegree = 3,
-    }, [DecryptionKeysTopic, .. discovery.Topics]);
+    };
 
     public async Task Start(IEnumerable<Multiaddress> bootnodeP2PAddresses, Func<Dto.DecryptionKeys, Task> onKeysReceived, CancellationToken cancellationToken)
     {

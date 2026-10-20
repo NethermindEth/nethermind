@@ -70,19 +70,23 @@ public class ShutterGossipSettingsTests
         }
     }
 
-    // A delivery score would prune peers on quiet topics as under-delivering.
     [Test]
-    public void Key_and_discovery_gossip_is_unscored()
+    public void Quiet_key_and_discovery_topics_do_not_penalize_peers_but_invalid_messages_do()
     {
         PubsubPeerDiscoverySettings discovery = new();
-        PubsubSettings settings = ShutterP2P.CreatePubsubSettings(discovery);
+        PubsubSettings settings = ShutterP2P.CreatePubsubSettings();
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(settings.TopicScoreParams["decryptionKeys"].TopicWeight, Is.Zero);
-            Assert.That(discovery.Topics, Has.All.Matches<string>(topic => topic is not null && settings.TopicScoreParams[topic].TopicWeight == 0));
-            Assert.That(settings.BehaviorPenaltyWeight, Is.Zero);
-            Assert.That(settings.IPColocationFactorWeight, Is.Zero);
+            foreach (string topic in discovery.Topics.Prepend("decryptionKeys"))
+            {
+                PeerScore score = new(settings);
+                TopicScore topicScore = score.GetTopicScore(topic);
+                topicScore.MeshJoinTime = System.DateTime.UtcNow.AddMinutes(-1);
+                Assert.That(score.GetScore(new Dictionary<string, int>()), Is.Zero);
+                topicScore.RecordInvalidMessage();
+                Assert.That(score.GetScore(new Dictionary<string, int>()), Is.Negative);
+            }
         }
     }
 }

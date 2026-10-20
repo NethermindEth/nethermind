@@ -123,7 +123,7 @@ public class PeerSessionCloseTests
         IBeaconSyncPeer old = manager.AddPeerForTest(session, sameAddress ? address : $"/ip4/127.0.0.1/tcp/1/p2p/{remote.P2P.LocalPeerId}", Status, removeWhenSessionCloses: false);
         await session.DisconnectAsync();
 
-        Assert.That(local.P2P.SessionClosedToken(session).IsCancellationRequested, Is.True);
+        Assert.That(session.Closed.IsCancellationRequested, Is.True);
         Assert.That(manager.PeerCount, Is.EqualTo(1), "fixture: the closed session has not been removed");
         Assert.That(await manager.TryAddPeerAsync(address, token), Is.True);
         Assert.That(manager.GetBestPeers(0).Single(), Is.Not.SameAs(old), "success means a newly admitted session, not the stale entry");
@@ -305,7 +305,7 @@ public class PeerSessionCloseTests
             if (local.P2P.TryGetEstablishedSession(remote.P2P.LocalPeerId!, out ISession? session))
             {
                 session.DisconnectAsync().Wait(TimeSpan.FromSeconds(5));
-                SpinWait.SpinUntil(() => local.P2P.SessionClosedToken(session).IsCancellationRequested, TimeSpan.FromSeconds(5));
+                SpinWait.SpinUntil(() => session.Closed.IsCancellationRequested, TimeSpan.FromSeconds(5));
             }
 
             return Status;

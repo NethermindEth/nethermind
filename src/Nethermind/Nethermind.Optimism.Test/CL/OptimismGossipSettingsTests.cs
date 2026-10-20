@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -37,7 +38,7 @@ public class OptimismGossipSettingsTests
     {
         using ServiceProvider services = new ServiceCollection()
             .AddLibp2p(OptimismCLP2P.ConfigureGossipStack)
-            .AddSingleton(OptimismCLP2P.CreatePubsubSettings(BlocksTopic))
+            .AddSingleton(OptimismCLP2P.CreatePubsubSettings())
             .BuildServiceProvider();
         _ = services.GetRequiredService<IPeerFactory>();
         ProtocolRef[] protocols = services.GetRequiredService<IProtocolStackSettings>().Protocols!.Values
@@ -252,7 +253,7 @@ public class OptimismGossipSettingsTests
     [TestCase("0xffffffff", "0xd8920a2d23d659830adbab71431e706fbba03ab8", TestName = "Invalid snappy hashes the raw data")]
     public void Message_id_is_the_op_stack_gossip_id(string data, string expected)
     {
-        PubsubSettings settings = OptimismCLP2P.CreatePubsubSettings(BlocksTopic);
+        PubsubSettings settings = OptimismCLP2P.CreatePubsubSettings();
 
         MessageId id = settings.GetMessageId(new Message { Topic = BlocksTopic, Data = ByteString.CopyFrom(Bytes.FromHexString(data)) });
 
@@ -260,17 +261,20 @@ public class OptimismGossipSettingsTests
     }
 
     [Test]
-    public void Block_gossip_uses_op_stack_limits_and_is_unscored()
+    public void Block_gossip_uses_op_stack_limits_and_penalizes_invalid_messages_without_quiet_mesh_penalties()
     {
-        PubsubSettings settings = OptimismCLP2P.CreatePubsubSettings(BlocksTopic);
+        PubsubSettings settings = OptimismCLP2P.CreatePubsubSettings();
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(settings.MaxRpcBytes, Is.EqualTo(Eth2MessageId.MaxMessageSize).And.GreaterThan(10 * 1024 * 1024));
             Assert.That(settings.MaxIwantResponseBytes, Is.EqualTo(Eth2MessageId.MaxMessageSize));
-            Assert.That(settings.TopicScoreParams[BlocksTopic].TopicWeight, Is.Zero);
-            Assert.That(settings.BehaviorPenaltyWeight, Is.Zero);
-            Assert.That(settings.IPColocationFactorWeight, Is.Zero);
+            PeerScore score = new(settings);
+            TopicScore topic = score.GetTopicScore(BlocksTopic);
+            topic.MeshJoinTime = DateTime.UtcNow.AddMinutes(-1);
+            Assert.That(score.GetScore(new Dictionary<string, int>()), Is.Zero);
+            topic.RecordInvalidMessage();
+            Assert.That(score.GetScore(new Dictionary<string, int>()), Is.Negative);
         }
     }
 }

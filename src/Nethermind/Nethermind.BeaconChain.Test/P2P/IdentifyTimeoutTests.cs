@@ -11,7 +11,7 @@ namespace Nethermind.BeaconChain.Test.P2P;
 [CancelAfter(60_000)]
 public class IdentifyTimeoutTests
 {
-    private static readonly TimeSpan Within = IdentifyAgentVersionProbe.ReadTimeout + TimeSpan.FromSeconds(3);
+    private static readonly TimeSpan Within = BeaconP2P.IdentifyTimeout + TimeSpan.FromSeconds(3);
 
     public enum Stall
     {
@@ -35,7 +35,7 @@ public class IdentifyTimeoutTests
         {
             lock (node.LocalPeerForTest!.Sessions)
             {
-                ((IAsyncResult)dial).AsyncWaitHandle.WaitOne(IdentifyAgentVersionProbe.ReadTimeout + TimeSpan.FromSeconds(1));
+                ((IAsyncResult)dial).AsyncWaitHandle.WaitOne(BeaconP2P.IdentifyTimeout + TimeSpan.FromSeconds(1));
             }
         }, token);
         Assert.That(await Task.WhenAny(dial, Task.Delay(Within, token)), Is.SameAs(dial), "the dial ended within the identify bound");
@@ -93,7 +93,7 @@ public class IdentifyTimeoutTests
         Assert.That(PeerManager.DescribeFailure(failure), Is.Not.EqualTo("request timed out").And.Not.EqualTo(new AggregateException().Message), description);
         Assert.That(PeerFailureClassifier.Classify(failure), Is.EqualTo(PeerFailureReason.RequestFailed), description);
         await WaitUntilAsync(() => node.SessionCountForTest == 0, "fixture: the closed session stayed listed", token, Within);
-        await Task.Delay(IdentifyAgentVersionProbe.ReadTimeout, token);
+        await Task.Delay(BeaconP2P.IdentifyTimeout, token);
         Assert.That(node.IdentifyTimeoutsForTest, Is.Zero, "a closed session is not counted as an identify timeout");
     }
 

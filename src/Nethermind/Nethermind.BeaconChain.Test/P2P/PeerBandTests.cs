@@ -69,7 +69,7 @@ public class PeerBandTests
         const string hostname = "beacon.invalid";
         int queries = 0;
         IDnsLookup lookup = Substitute.For<IDnsLookup>();
-        lookup.QueryAAsync(hostname).Returns(_ => Interlocked.Increment(ref queries) == 1
+        lookup.QueryAAsync(hostname, Arg.Any<CancellationToken>()).Returns(_ => Interlocked.Increment(ref queries) == 1
             ? Task.FromException<IEnumerable<IPAddress>>(new InvalidOperationException("injected name resolution failure"))
             : Task.FromResult<IEnumerable<IPAddress>>([IPAddress.Loopback]));
         FieldInfo resolver = typeof(LocalPeer).GetField("_multiaddrResolver", BindingFlags.Instance | BindingFlags.NonPublic)!;
@@ -356,8 +356,8 @@ public class PeerBandTests
                             Assert.That(sessions.Opened, Is.EqualTo(1), "the knocking session reached this node");
                             Assert.That(manager.GetPeerDiagnostics().Any(d => d.PeerId == knockingId), Is.False,
                                 "never-admitted ids must not evict real peers' disconnect history");
-                            Assert.That(local.P2P.IsInPeerStoreForTest(knocking.P2P.LocalPeerId!), Is.False,
-                                "the peer store never forgets an entry, so a refused session must not add one");
+                            Assert.That(local.P2P.HasRecordedPeerInfoForTest(knocking.P2P.LocalPeerId!), Is.False,
+                                "a refused session must not publish peer metadata");
                         }
                     }
                 }
@@ -369,7 +369,7 @@ public class PeerBandTests
 
     [Test]
     [CancelAfter(120_000)]
-    public async Task Admitted_sessions_with_fresh_keys_add_no_peer_store_entry_unless_static([Values] bool weDial, [Values] bool staticPeers, CancellationToken token)
+    public async Task Admitted_sessions_record_metadata_without_carrying_admission_across_reconnects([Values] bool weDial, [Values] bool staticPeers, CancellationToken token)
     {
         Node[] remotes = [.. Enumerable.Range(0, 4).Select(_ => CreateNode())];
         Node local = CreateNode();
@@ -404,8 +404,8 @@ public class PeerBandTests
                 Assert.That(admittedOnReconnect, Is.False, "a status from the closed session gives the next one nothing");
             }
 
-            Assert.That(local.P2P.IsInPeerStoreForTest(remoteId), Is.EqualTo(staticPeers),
-                "the peer store never forgets an entry, so only a bounded set of peers, never any key that completes a handshake, may add one");
+            Assert.That(local.P2P.HasRecordedPeerInfoForTest(remoteId), Is.True,
+                "the bounded peer store retains metadata for admitted static and discovered peers");
         }
     }
 
@@ -490,7 +490,7 @@ public class PeerBandTests
 
         if (pass != StatusPass.AfterReservation) manager.OnInboundStatus(remote, sent);
         // A session waits at most this long for its identify answer, and so for its reservation.
-        if (pass == StatusPass.StaleBeforeReservation) time.Add(IdentifyAgentVersionProbe.ReadTimeout + TimeSpan.FromSeconds(1));
+        if (pass == StatusPass.StaleBeforeReservation) time.Add(BeaconP2P.IdentifyTimeout + TimeSpan.FromSeconds(1));
         bool beforeReservation = manager.IsAdmitted(remote);
         manager.ReserveDialingForTest(address);
         if (pass == StatusPass.AfterReservation) manager.OnInboundStatus(remote, sent);
@@ -755,7 +755,7 @@ public class PeerBandTests
 
         await WaitUntilAsync(() => local.P2P.SessionCountForTest == 0, token, "the session whose status exchange failed was left open and uncounted");
         Assert.That(peerManager.PeerCount, Is.EqualTo(0));
-        Assert.That(local.P2P.IsInPeerStoreForTest(remote.P2P.LocalPeerId!), Is.False, "the peer store never forgets an entry, so a peer refused at admission must not add one");
+        Assert.That(local.P2P.HasRecordedPeerInfoForTest(remote.P2P.LocalPeerId!), Is.False, "a peer refused at admission must not publish peer metadata");
         if (!outbound)
         {
             return;
