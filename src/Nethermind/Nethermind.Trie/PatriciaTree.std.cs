@@ -30,10 +30,6 @@ public partial class PatriciaTree
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static bool IsUnchangedPendingLevel(TrieNode parent, int childIndex, TrieNode? originalChild, TrieNode? child) => false;
 
-    /// <summary>Whether <paramref name="node"/> is known, without reading its key, to be a leaf at <paramref name="key"/>: never.</summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static bool IsLeafWithKey(TrieNode node, ReadOnlySpan<byte> key) => false;
-
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private partial bool TryGetByRawKey(ReadOnlySpan<byte> rawKey, Hash256? rootHash, out ReadOnlySpan<byte> value)
     {

@@ -3,7 +3,6 @@
 
 using System;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using Nethermind.Core.Buffers;
 
 namespace Nethermind.Trie;
@@ -91,33 +90,6 @@ public sealed partial class LeafData
         if (isOdd && ((flags ^ key[key.Length - compact.Length]) & 0xF) != 0) return false;
         return compact[1..].SequenceEqual(key[(key.Length - tailLength)..]);
     }
-
-    /// <summary>Whether this leaf's key is <paramref name="nibbles"/>, matched in hex-prefix form while the key has not been read.</summary>
-    [SkipLocalsInit]
-    internal bool KeyEquals(ReadOnlySpan<byte> nibbles)
-    {
-        byte[]? source = _compactKeySource;
-        if (_key is not null || source is null) return KeyNibblesEqual(nibbles);
-
-        ReadOnlySpan<byte> compact = source.AsSpan(_compactKeyStart, _compactKeyLength);
-        int flags = compact[0];
-        int oddNibble = (flags >> 4) & 1;
-        if (2 * compact.Length - 2 + oddNibble != nibbles.Length) return false;
-        if (oddNibble != 0 && (flags & 0xF) != nibbles[0]) return false;
-
-        int tailLength = compact.Length - 1;
-        if (tailLength > MaxPackedLength) return KeyNibblesEqual(nibbles);
-
-        Span<byte> packed = stackalloc byte[MaxPackedLength];
-        ReadOnlySpan<byte> tail = nibbles[oddNibble..];
-        Nibbles.PackNibbles(ref MemoryMarshal.GetReference(tail), ref MemoryMarshal.GetReference(packed), tailLength);
-        return compact[1..].SequenceEqual(packed[..tailLength]);
-    }
-
-    private const int MaxPackedLength = 32;
-
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    private bool KeyNibblesEqual(ReadOnlySpan<byte> nibbles) => Key.AsSpan().SequenceEqual(nibbles);
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private bool NibbleKeyIsSuffixOf(ReadOnlySpan<byte> key, int nibbleCount)

@@ -53,22 +53,13 @@ public class GuestLeafKeyTests
     }
 
     [Test]
-    public void Key_equals_its_nibbles_only([Values(0, 1, 2, 31, 63, 64)] int keyLength, [Values(-1, 0, 1)] int changedNibble, [Values] bool valueChanged)
+    public void Key_stays_in_hex_prefix_form_across_a_value_change([Values(0, 1, 2, 31, 63, 64)] int keyLength)
     {
         byte[] key = NibblePath(keyLength);
-        byte[] other = (byte[])key.Clone();
-        if (changedNibble >= 0 && changedNibble < keyLength) other[changedNibble] ^= 0x8;
-        else if (changedNibble >= 0) other = [.. key, 1];
-        TrieNode leaf = DecodedLeaf(key);
-        if (valueChanged)
-        {
-            leaf = leaf.Unseal();
-            leaf.Value = new CappedArray<byte>([2]);
-        }
+        TrieNode leaf = DecodedLeaf(key).Unseal();
+        leaf.Value = new CappedArray<byte>([2]);
 
-        LeafData data = (LeafData)leaf.NodeData!;
-        Assert.That(data.KeyEquals(key), Is.True);
-        Assert.That(data.KeyEquals(other), Is.EqualTo(changedNibble < 0));
+        Assert.That(((LeafData)leaf.NodeData!).TryGetCompactKey(out _), Is.True);
         Assert.That(leaf.Key, Is.EqualTo(key));
     }
 

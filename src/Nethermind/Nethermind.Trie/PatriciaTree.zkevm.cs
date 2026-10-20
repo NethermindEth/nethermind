@@ -223,12 +223,6 @@ public partial class PatriciaTree
         return HexPrefix.GetArray(nibbles);
     }
 
-    /// <summary>Whether <paramref name="node"/> is a leaf at <paramref name="key"/>, a nibble path, told without
-    /// expanding a key the leaf has kept in hex-prefix form.</summary>
-    /// <remarks>Spares the expansion for a leaf a write only changes the value of, re-encoded from its stored key item.</remarks>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static bool IsLeafWithKey(TrieNode node, ReadOnlySpan<byte> key) => node.NodeData is LeafData leaf && leaf.KeyEquals(key);
-
     /// <summary>The value at <paramref name="key"/> below <paramref name="node"/>, as <see cref="GetNew"/> finds it from the key's nibbles.</summary>
     private CappedArray<byte> GetByRawKey(ReadOnlySpan<byte> key, TrieNode? node)
     {
