@@ -52,6 +52,7 @@ verify() {
 }
 if [[ "$phase" == genesis ]]; then
     verify nethermind-l2 initial-genesis 0 1
+    if [[ "${EEZ_PROFILE:?}" == rollup0 ]]; then bash "$HERE/relay.sh"; fi
 elif [[ "$phase" == recovery ]]; then
     verify nethermind-l2 before-restart 1 1
     height="$(jq -r '.height' "$EEZ_CI_RESULT_DIR/before-restart.json")"

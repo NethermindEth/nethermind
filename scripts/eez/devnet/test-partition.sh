@@ -8,7 +8,7 @@ case "${EEZ_SUITE:?}" in
         timeout 10m forge test --root contracts --json > "$EEZ_CI_RESULT_DIR/contracts.json"
         ;;
     *)
-        if [[ "$EEZ_SUITE" == protocol-* ]]; then
+        if [[ "$EEZ_SUITE" == protocol ]]; then
             EEZ_PROTOCOL_SCENARIOS="$(jq -er --arg suite "$EEZ_SUITE" '.suites[$suite].targets | select(length > 0) | join(" ")' "$EEZ_CI_RESULT_DIR/partitions.json")"
             export EEZ_PROTOCOL_SCENARIOS
         fi

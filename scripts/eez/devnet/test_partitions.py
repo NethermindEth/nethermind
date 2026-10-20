@@ -51,8 +51,9 @@ class PartitionTests(unittest.TestCase):
             with self.subTest(mutation=mutation), tempfile.TemporaryDirectory() as directory:
                 root = Path(directory)
                 manifest = {"profile": "rollup0", "revision": "a" * 40, "core_revision": "b" * 40}
-                plan = {"upstream": manifest, "protocol_cases": [], "suites": {name: {} for name in partitions.suites("rollup0")}}
-                result = {"profile": "rollup0", "suite": "wave-inbound", "result": "pass", "exit_code": 0,
+                plan = self.coverage_plan("rollup0")
+                plan["upstream"] = manifest
+                result = {"profile": "rollup0", "suite": "wave-mixed", "result": "pass", "exit_code": 0,
                           "commits": {"root": manifest["revision"], "protocol": manifest["core_revision"]}}
                 if mutation == "failed-result": result["result"] = "fail"
                 if mutation == "wrong-source": result["commits"]["root"] = "c" * 40
@@ -64,7 +65,7 @@ class PartitionTests(unittest.TestCase):
                 if mutation == "missing-observation": del files["verify-cross-chain-waves.json"]
                 if mutation == "missing-candidate": del files["candidate-prover.json"]
                 for name, value in files.items(): (root / name).write_text(json.dumps(value))
-                with patch.dict(os.environ, {"EEZ_PROFILE": "rollup0", "EEZ_SUITE": "wave-inbound", "GITHUB_SHA": "d" * 40}):
+                with patch.dict(os.environ, {"EEZ_PROFILE": "rollup0", "EEZ_SUITE": "wave-mixed", "GITHUB_SHA": "d" * 40}):
                     if mutation is None:
                         partitions.report(root)
                         self.assertEqual("pass", json.loads((root / "partition.json").read_text())["result"])
@@ -80,19 +81,21 @@ class PartitionTests(unittest.TestCase):
             driver.parent.mkdir(parents=True)
             driver.write_text("SUPPORTED_TARGETS=(\n one_way # comment\n multi_tx\n new_target\n)\n")
             result = partitions.plan(root, {"profile": "rollup0"})
-            targets = [target for name, item in result["suites"].items() if name.startswith("protocol-") for target in item["targets"]]
+            targets = result["suites"]["protocol"]["targets"]
             self.assertCountEqual(["one_way", "multi_tx", "new_target"], targets)
             self.assertEqual(len(targets), len(set(targets)))
 
     def test_native_plan_keeps_upstream_exclusions_and_new_scenarios(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            for index in range(6):
-                path = root / "eez-core-protocol/script/e2e/scenarios/group" / ("case" + str(index)) / "E2E.s.sol"
+            names = ["bridge", "bridgeL2", "case2", "case3", "case4", "excluded"]
+            for name in names:
+                path = root / "eez-core-protocol/script/e2e/scenarios/group" / name / "E2E.s.sol"
                 path.parent.mkdir(parents=True)
-                path.write_text("// E2E_EXCLUDE_FROM_ALL: local only\n" if index == 5 else "original assertion")
+                path.write_text("// E2E_EXCLUDE_FROM_ALL: local only\n" if name == "excluded" else "original assertion")
             result = partitions.plan(root, {"profile": "rollupx"})
-            self.assertCountEqual(["case" + str(index) for index in range(5)], result["protocol_cases"])
+            self.assertCountEqual(names[:-1], result["protocol_cases"])
+            self.assertEqual(result["protocol_cases"], result["suites"]["protocol"]["targets"])
 
     def test_scope_cannot_claim_unexecuted_full_suite(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -100,7 +103,7 @@ class PartitionTests(unittest.TestCase):
             value = {"result": "pass", "exit_code": 0, "commits": {}, "images": {}, "proof_flow": {},
                      "state_chaining": "pass", "modes": ["inbound", "outbound"], "safe_head_convergence": "pass"}
             (root / "result.json").write_text(json.dumps(value))
-            with patch.dict(os.environ, {"EEZ_PROFILE": "rollupx", "EEZ_SUITE": "wave-inbound", "GITHUB_SHA": "a" * 40}):
+            with patch.dict(os.environ, {"EEZ_PROFILE": "rollupx", "EEZ_SUITE": "wave-mixed", "GITHUB_SHA": "a" * 40}):
                 partitions.scope(root)
             result = json.loads((root / "result.json").read_text())
             self.assertFalse(result["suite_complete"])
@@ -117,34 +120,34 @@ run_check "cross-chain-wave-mixed-pure" env EEZ_WAVE_MODE=mixed-pure EEZ_WAVE_CO
 
 run_check "state-chaining" bash "$HERE/verify-state-chaining.sh"
 '''
-        for selected in partitions.WAVES:
+        for suite, selected in partitions.WAVE_GROUPS.items():
             with self.subTest(selected=selected), tempfile.TemporaryDirectory() as directory:
                 path = Path(directory) / "waves.sh"
                 path.write_text(original)
                 partitions.adapt_waves(path, selected)
                 adapted = path.read_text()
-                if selected in ("inbound", "outbound", "mixed"):
-                    self.assertIn("EEZ_INCLUDE_REVERTS=1", adapted)
-                    self.assertIn("EEZ_WAVE_COUNT=1", adapted)
-                    self.assertIn("for mode in " + selected + "; do", adapted)
-                elif selected == "mixed-pure":
+                self.assertIn("EEZ_INCLUDE_REVERTS=1", adapted)
+                self.assertIn("EEZ_WAVE_COUNT=1", adapted)
+                modes = "inbound outbound" if suite == "recovery" else "inbound mixed" if suite == "wave-mixed" else "inbound"
+                self.assertIn("for mode in " + modes + "; do", adapted)
+                if suite == "wave-mixed-pure":
                     self.assertIn("${EEZ_MIXED_PURE_WAVE_COUNT:-3}", adapted)
-                else:
+                    self.assertLess(adapted.index("for mode in inbound; do"), adapted.index('run_check "cross-chain-wave-mixed-pure"'))
+                elif suite == "wave-state-chaining":
                     self.assertIn('bash "$HERE/verify-state-chaining.sh"', adapted)
+                    self.assertLess(adapted.index("for mode in inbound; do"), adapted.index('run_check "state-chaining"'))
 
     def test_aggregate_rejects_missing_duplicate_failed_or_changed_partitions(self):
         revision = "a" * 40
-        for failure in (None, "missing", "duplicate", "failed", "candidate", "source", "plan", "missing-target", "duplicate-target"):
+        for failure in (None, "missing", "duplicate", "failed", "candidate", "source", "plan", "missing-target", "duplicate-target", "missing-inbound"):
             with self.subTest(failure=failure), tempfile.TemporaryDirectory() as directory:
                 root = Path(directory)
                 records = []
-                for profile in partitions.PROTOCOL_PARTS:
-                    plan = {"upstream": {"profile": profile}, "protocol_cases": ["case" + str(i) for i in range(partitions.PROTOCOL_PARTS[profile])],
-                            "suites": {suite: {} for suite in partitions.suites(profile)}}
-                    for i in range(partitions.PROTOCOL_PARTS[profile]):
-                        plan["suites"]["protocol-" + str(i + 1)]["targets"] = ["case" + str(i)]
-                    if failure == "missing-target": plan["suites"]["protocol-1"]["targets"] = []
-                    if failure == "duplicate-target": plan["suites"]["protocol-1"]["targets"] = ["case1"]
+                for profile in partitions.PROFILES:
+                    plan = self.coverage_plan(profile)
+                    if failure == "missing-target": plan["suites"]["protocol"]["targets"] = ["bridge"]
+                    if failure == "duplicate-target": plan["suites"]["protocol"]["targets"] = ["bridge", "bridge"]
+                    if failure == "missing-inbound": plan["suites"]["wave-mixed"]["waves"] = ["mixed"]
                     for suite in partitions.suites(profile):
                         records.append({"result": "pass", "profile": profile, "suite": suite,
                                         "candidate_revision": revision, "upstream": plan["upstream"], "plan": copy.deepcopy(plan)})
@@ -166,3 +169,48 @@ run_check "state-chaining" bash "$HERE/verify-state-chaining.sh"
                         with self.assertRaises((ValueError, AssertionError)):
                             partitions.aggregate(root)
                         self.assertFalse((root / "summary.json").exists())
+
+    def test_full_native_protocol_cannot_pass_with_missing_or_incomplete_evidence(self):
+        for failure in (None, "targets", "passed", "duplicate", "suite", "causal"):
+            with self.subTest(failure=failure), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                manifest = {"profile": "rollupx", "revision": "a" * 40, "core_revision": "b" * 40}
+                plan = self.coverage_plan("rollupx")
+                plan["upstream"] = manifest
+                protocol = {"protocol_commit": manifest["core_revision"], "targets": ["bridge", "bridgeL2"],
+                    "passed": ["bridge", "bridgeL2"], "failed": [], "suite": {"complete": True},
+                    "evidence_complete": True, "accounting": {"valid": True},
+                    "causal_coverage": {"complete": True}, "semantic_blob_coverage": {"complete": True}}
+                if failure == "targets": protocol["targets"] = ["bridge"]
+                if failure == "passed": protocol["passed"] = ["bridge"]
+                if failure == "duplicate": protocol["passed"].append("bridge")
+                if failure == "suite": protocol["suite"]["complete"] = False
+                if failure == "causal": protocol["causal_coverage"]["complete"] = False
+                files = {"upstream.json": manifest, "partitions.json": plan,
+                    "result.json": {"result": "pass", "exit_code": 0, "profile": "rollupx", "suite": "protocol",
+                        "commits": {"root": manifest["revision"], "protocol": manifest["core_revision"]}},
+                    "scenario-hooks.json": ["verify-eezl2-deployment", "run-protocol-e2e"],
+                    "verify-eezl2-deployment.json": {"result": "pass"},
+                    "run-protocol-e2e.json": {"result": "pass"}, "candidate-follower.json": {"result": "pass"},
+                    "protocol-e2e/summary.json": protocol}
+                for name, value in files.items():
+                    target = root / name
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    target.write_text(json.dumps(value))
+                with patch.dict(os.environ, {"EEZ_PROFILE": "rollupx", "EEZ_SUITE": "protocol", "GITHUB_SHA": "d" * 40}):
+                    if failure is None:
+                        partitions.report(root)
+                        self.assertEqual("pass", json.loads((root / "partition.json").read_text())["result"])
+                    else:
+                        with self.assertRaises((ValueError, AssertionError)):
+                            partitions.report(root)
+                        self.assertFalse((root / "partition.json").exists())
+
+    @staticmethod
+    def coverage_plan(profile):
+        result = {"upstream": {"profile": profile}, "protocol_cases": ["bridge", "bridgeL2"],
+                  "suites": {suite: {} for suite in partitions.suites(profile)}}
+        result["suites"]["protocol"]["targets"] = ["bridge", "bridgeL2"]
+        for suite, waves in partitions.WAVE_GROUPS.items():
+            result["suites"][suite]["waves"] = list(waves)
+        return result

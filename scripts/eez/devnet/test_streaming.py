@@ -108,7 +108,7 @@ class StreamingEvidenceTests(unittest.TestCase):
                     if mutation == "missing-prefix": del observation["verified_blocks"]
                     (root / (phase + ".json")).write_text(json.dumps(observation))
                 args = SimpleNamespace(directory=root, revision="e" * 40, image_id="sha256:" + "f" * 64)
-                with patch.dict(os.environ, {"EEZ_SUITE": "wave-inbound" if mutation in ("partition", "genesis-only", "missing-prefix") else ""}):
+                with patch.dict(os.environ, {"EEZ_SUITE": "wave-mixed" if mutation in ("partition", "genesis-only", "missing-prefix") else ""}):
                     if mutation and mutation != "partition":
                         with self.assertRaises(ValueError): prepare.report(args)
                         self.assertFalse((root / "candidate-prover.json").exists())

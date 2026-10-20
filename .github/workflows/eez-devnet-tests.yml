@@ -127,7 +127,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: artifacts/eez-inputs-${{ matrix.profile }}
-          key: eez-inputs-v1-ubuntu24-${{ matrix.profile }}-${{ hashFiles('artifacts/eez-inputs-*/upstream.json', 'scripts/eez/devnet/embedded.*', 'scripts/eez/devnet/controls.*', 'scripts/eez/devnet/build-*.sh', 'scripts/eez/devnet/bundle.py', 'scripts/eez/devnet/partitions.py') }}
+          key: eez-inputs-v1-ubuntu24-${{ matrix.profile }}-${{ hashFiles('artifacts/eez-inputs-*/upstream.json', 'scripts/eez/devnet/embedded.*', 'scripts/eez/devnet/controls.*', 'scripts/eez/devnet/build-*.sh', 'scripts/eez/devnet/Dockerfile.fixtures', 'scripts/eez/devnet/bundle.py') }}
       - name: Fetch matching trusted runtime
         if: steps.prepared.outputs.cache-hit != 'true'
         env:
@@ -171,19 +171,13 @@ jobs:
       matrix:
         include:
           - profile: rollup0
-            suite: wave-inbound
-          - profile: rollup0
-            suite: wave-outbound
-          - profile: rollup0
             suite: wave-mixed
           - profile: rollup0
             suite: wave-mixed-pure
           - profile: rollup0
             suite: wave-state-chaining
           - profile: rollup0
-            suite: protocol-1
-          - profile: rollup0
-            suite: protocol-2
+            suite: protocol
           - profile: rollup0
             suite: ingress
           - profile: rollup0
@@ -201,23 +195,13 @@ jobs:
           - profile: rollup0
             suite: contracts
           - profile: rollupx
-            suite: wave-inbound
-          - profile: rollupx
-            suite: wave-outbound
-          - profile: rollupx
             suite: wave-mixed
           - profile: rollupx
             suite: wave-mixed-pure
           - profile: rollupx
             suite: wave-state-chaining
           - profile: rollupx
-            suite: protocol-1
-          - profile: rollupx
-            suite: protocol-2
-          - profile: rollupx
-            suite: protocol-3
-          - profile: rollupx
-            suite: protocol-4
+            suite: protocol
           - profile: rollupx
             suite: recovery
     runs-on: ubuntu-24.04
@@ -230,6 +214,7 @@ jobs:
       EEZ_RUNTIME_DIR: ${{ github.workspace }}/artifacts/eez-live-${{ matrix.profile }}-${{ matrix.suite }}/runtime
       EEZ_NETHERMIND_BASE_IMAGE: nethermind:eez-${{ github.run_id }}
       EEZ_NETHERMIND_PROVER_BASE_IMAGE: nethermind-eez-attester:eez-${{ github.run_id }}
+      EEZ_PROTOCOL_MAX_PARALLEL: '8'
     steps:
       - uses: actions/checkout@v6
         with:
@@ -248,6 +233,8 @@ jobs:
           mkdir -p "$EEZ_UPSTREAM"
           tar -I zstd -xf "$EEZ_CI_RESULT_DIR/sources.tar.zst" -C "$EEZ_UPSTREAM"
           tar -I zstd -xf "$EEZ_CI_RESULT_DIR/runtime.tar.zst" -C "$EEZ_CI_RESULT_DIR"
+          python3 scripts/eez/devnet/partitions.py plan --upstream "$EEZ_UPSTREAM" \
+            --manifest "$EEZ_CI_RESULT_DIR/upstream.json" --output "$EEZ_CI_RESULT_DIR/partitions.json"
           if [[ "$EEZ_SUITE" != contracts ]]; then
             zstd -dc artifacts/eez-candidate/images.tar.zst | docker load
             zstd -dc "$EEZ_CI_RESULT_DIR/upstream-images.tar.zst" | docker load

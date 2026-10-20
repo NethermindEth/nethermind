@@ -1,0 +1,4 @@
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+RUN forge build --root /repo/contracts --force --threads 1 \
+    && forge build --root /repo/eez-core-protocol --force --threads 1

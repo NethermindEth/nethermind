@@ -7,8 +7,6 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$EEZ_UPSTREAM"
 forge build --root contracts --threads 1
 forge build --root eez-core-protocol --threads 1
-python3 "$HERE/partitions.py" plan --upstream "$EEZ_UPSTREAM" \
-    --manifest "$EEZ_CI_RESULT_DIR/upstream.json" --output "$EEZ_CI_RESULT_DIR/partitions.json"
 if [[ "$EEZ_PROFILE" == rollup0 ]]; then
     mkdir -p "$EEZ_CI_RESULT_DIR/embedded"
     python3 "$HERE/embedded.py" prepare --upstream "$EEZ_UPSTREAM" \
@@ -26,7 +24,8 @@ if [[ "$EEZ_PROFILE" == rollup0 ]]; then
 else
     docker build -f "$HERE/Dockerfile.upstream" -t "$node_image" "$EEZ_RUNTIME_DIR"
 fi
-docker build --build-arg "EEZ_NODE_IMAGE=$node_image" -f testing/kurtosis/Dockerfile.deploy -t "$deploy_image" .
+docker build --build-arg "EEZ_NODE_IMAGE=$node_image" -f testing/kurtosis/Dockerfile.deploy -t "$deploy_image-base" .
+docker build --build-arg "BASE_IMAGE=$deploy_image-base" -f "$HERE/Dockerfile.fixtures" -t "$deploy_image" .
 jq -n --arg node "$(docker image inspect --format '{{.Id}}' "$node_image")" \
     --arg deploy "$(docker image inspect --format '{{.Id}}' "$deploy_image")" \
     '{node: $node, deploy: $deploy}' > "$EEZ_CI_RESULT_DIR/prepared-images.json"

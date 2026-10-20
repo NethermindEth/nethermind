@@ -9,14 +9,19 @@ from embedded import CASES
 from verify import equal
 
 
-WAVES = ("inbound", "outbound", "mixed", "mixed-pure", "state-chaining")
-PROTOCOL_PARTS = {"rollup0": 2, "rollupx": 4}
+PROFILES = ("rollup0", "rollupx")
+WAVE_GROUPS = {
+    "wave-mixed": ("inbound", "mixed"),
+    "wave-mixed-pure": ("inbound", "mixed-pure"),
+    "wave-state-chaining": ("inbound", "state-chaining"),
+    "recovery": ("inbound", "outbound"),
+}
 
 
 def suites(profile):
-    result = ["wave-" + wave for wave in WAVES]
-    result += ["protocol-" + str(i + 1) for i in range(PROTOCOL_PARTS[profile])]
-    result += ["recovery"]
+    if profile not in PROFILES:
+        raise ValueError("unexpected profile")
+    result = [*WAVE_GROUPS, "protocol"]
     if profile == "rollup0":
         result += ["ingress", "faults", "contracts"]
         result += ["embedded-" + suite for suite in CASES]
@@ -37,7 +42,7 @@ def protocol_cases(upstream, profile):
         names = [path.parent.name for path in paths if len(path.relative_to(root / "script/e2e/scenarios").parts) >= 3
                  and "shared" not in path.relative_to(root).parts
                  and not re.search(r"(?m)^// E2E_EXCLUDE_FROM_ALL:", path.read_text())]
-    if len(names) < PROTOCOL_PARTS[profile] or len(set(names)) != len(names):
+    if not names or len(set(names)) != len(names):
         raise ValueError("missing or duplicate upstream protocol cases")
     if any(not re.fullmatch(r"[a-zA-Z0-9_-]+", name) for name in names):
         raise ValueError("invalid upstream protocol scenario name")
@@ -48,8 +53,9 @@ def plan(upstream, manifest):
     profile = manifest["profile"]
     cases = protocol_cases(upstream, profile)
     result = {"upstream": manifest, "protocol_cases": cases, "suites": {suite: {} for suite in suites(profile)}}
-    for index in range(PROTOCOL_PARTS[profile]):
-        result["suites"]["protocol-" + str(index + 1)]["targets"] = cases[index::PROTOCOL_PARTS[profile]]
+    result["suites"]["protocol"]["targets"] = cases
+    for suite, waves in WAVE_GROUPS.items():
+        result["suites"][suite]["waves"] = list(waves)
     return result
 
 
@@ -57,6 +63,16 @@ def replace_once(source, old, new):
     if source.count(old) != 1:
         raise ValueError("upstream partition boundary changed: " + old[:100])
     return source.replace(old, new)
+
+
+def check_plan(value, profile):
+    equal(set(value["suites"]), set(suites(profile)), "prepared suite inventory")
+    for suite, group in value["suites"].items():
+        equal(group.get("waves", []), list(WAVE_GROUPS.get(suite, ())), "required wave prerequisites")
+    targets = value["suites"]["protocol"]["targets"]
+    if not targets or len(targets) != len(set(targets)):
+        raise ValueError("missing or duplicate upstream protocol cases")
+    equal(targets, value["protocol_cases"], "complete upstream protocol inventory")
 
 
 def adapt_driver(commands, package, profile, suite):
@@ -83,7 +99,7 @@ def adapt_driver(commands, package, profile, suite):
         else:
             retained.append(name)
     if selected == "verify-cross-chain-waves":
-        adapt_waves(package / "scripts/verify-cross-chain-waves.sh", "inbound" if suite == "recovery" else suite[5:])
+        adapt_waves(package / "scripts/verify-cross-chain-waves.sh", WAVE_GROUPS[suite])
     if suite != "recovery":
         commands = replace_once(commands, '\nbash "$NETHERMIND_OBSERVE_SCRIPT" recovery\n', "\n")
     commands = replace_once(commands, "write_result() {", "write_upstream_result() {")
@@ -106,15 +122,14 @@ def adapt_waves(path, selected):
     basic, rest = blocks.split('\nrun_check "cross-chain-wave-mixed-pure"', 1)
     pure, state = ('run_check "cross-chain-wave-mixed-pure"' + rest).split('\nrun_check "state-chaining"', 1)
     state = 'run_check "state-chaining"' + state
-    # Partition only the original invocations. Their scripts and assertions stay intact.
-    if selected in ("inbound", "outbound", "mixed"):
-        chosen = basic.replace("for mode in inbound outbound mixed; do", "for mode in " + selected + "; do")
-    elif selected == "mixed-pure":
-        chosen = pure
-    elif selected == "state-chaining":
-        chosen = state
-    else:
+    if selected not in WAVE_GROUPS.values():
         raise ValueError("unexpected wave partition")
+    modes = " ".join(mode for mode in selected if mode in ("inbound", "outbound", "mixed"))
+    chosen = basic.replace("for mode in inbound outbound mixed; do", "for mode in " + modes + "; do")
+    if "mixed-pure" in selected:
+        chosen += "\n" + pure
+    if "state-chaining" in selected:
+        chosen += "\n" + state
     if blocks.count('bash "$HERE/cross-chain-wave.sh"') != 2 or blocks.count('bash "$HERE/verify-state-chaining.sh"') != 1:
         raise ValueError("upstream wave invocation inventory changed")
     path.write_text(source[:start] + chosen + "\n")
@@ -139,7 +154,7 @@ def report(directory):
     manifest = json.loads((directory / "upstream.json").read_text())
     partition_plan = json.loads((directory / "partitions.json").read_text())
     equal(partition_plan["upstream"], manifest, "prepared upstream source")
-    equal(set(partition_plan["suites"]), set(suites(profile)), "prepared suite inventory")
+    check_plan(partition_plan, profile)
     protocol = None
     if suite.startswith("embedded-"):
         coverage = json.loads((directory / "embedded/candidate-coverage.json").read_text())
@@ -162,13 +177,14 @@ def report(directory):
         equal(json.loads((directory / candidate).read_text())["result"], "pass", "candidate proof/follower path")
         if suite == "recovery" and profile == "rollup0":
             equal(json.loads((directory / "streaming-controls.json").read_text())["result"], "pass", "live streaming controls")
-        if suite.startswith("protocol-"):
+        if suite == "protocol":
             protocol = json.loads((directory / "protocol-e2e/summary.json").read_text())
             equal(protocol["targets"], partition_plan["suites"][suite]["targets"], "executed protocol targets")
             equal(protocol["protocol_commit"], manifest["core_revision"], "protocol scenario source")
             if protocol["failed"] or not protocol["passed"]:
                 raise ValueError("upstream protocol partition failed or executed no cases")
             if profile == "rollupx":
+                equal(protocol["suite"]["complete"], True, "complete native protocol suite")
                 equal(sorted(protocol["passed"]), sorted(protocol["targets"]), "native protocol evidence coverage")
                 for field in ("evidence_complete",):
                     equal(protocol[field], True, "native protocol evidence")
@@ -183,13 +199,13 @@ def report(directory):
 
 def aggregate(directory):
     reports = [json.loads(path.read_text()) for path in directory.glob("*/partition.json")]
-    expected = {(profile, suite) for profile in PROTOCOL_PARTS for suite in suites(profile)}
+    expected = {(profile, suite) for profile in PROFILES for suite in suites(profile)}
     actual = [(item["profile"], item["suite"]) for item in reports]
     if len(actual) != len(set(actual)) or set(actual) != expected:
         raise ValueError("missing or duplicate upstream test partitions")
     for item in reports:
         equal((item["result"], item["candidate_revision"]), ("pass", os.environ["GITHUB_SHA"]), "partition provenance")
-    for profile in PROTOCOL_PARTS:
+    for profile in PROFILES:
         selected = [item for item in reports if item["profile"] == profile]
         sources = [item["upstream"] for item in selected]
         if any(source != sources[0] for source in sources):
@@ -197,11 +213,7 @@ def aggregate(directory):
         plans = [item["plan"] for item in selected]
         if any(value != plans[0] for value in plans):
             raise ValueError("partitions used different coverage plans")
-        equal(set(plans[0]["suites"]), set(suites(profile)), "aggregate suite inventory")
-        targets = [target for name, value in plans[0]["suites"].items() if name.startswith("protocol-") for target in value["targets"]]
-        if len(targets) != len(set(targets)):
-            raise ValueError("upstream protocol cases are assigned more than once")
-        equal(sorted(targets), sorted(plans[0]["protocol_cases"]), "complete upstream protocol inventory")
+        check_plan(plans[0], profile)
     (directory / "summary.json").write_text(json.dumps({"result": "pass", "partitions": reports}, indent=2) + "\n")
 
 
