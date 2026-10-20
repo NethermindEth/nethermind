@@ -560,7 +560,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         }
         catch (Exception e)
         {
-            // The conversion is an optimisation: what is left is re-executed on the next start.
+            // Best-effort conversion must not interrupt database disposal; the missing tail is replayed.
             if (_logger.IsWarn) _logger.Warn($"Could not keep the in-memory state for the next start; it will be re-executed. {e}");
         }
     }

@@ -81,8 +81,13 @@ public class PersistInMemoryTailForShutdownTests
         using (Snapshot? second = session.Lease(State(2))) session.Loader.ConvertAndRegister(second!);
         session.Repository.SetLastCommittedStateId(State(4));
 
-        Assert.That(session.Manager.PersistInMemoryTailForShutdown(CancellationToken.None), Is.EqualTo(2));
-        Assert.That(session.Repository.HasBasePersistedSnapshot(State(4)), Is.True);
+        int converted = session.Manager.PersistInMemoryTailForShutdown(CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(converted, Is.EqualTo(2));
+            Assert.That(session.Repository.HasBasePersistedSnapshot(State(4)), Is.True);
+        }
     }
 
     [Test]
