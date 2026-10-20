@@ -34,9 +34,12 @@ public sealed class PbtSnapshotStore(PbtSnapshotBundle bundle) : IPbtStore, IDis
     public PbtGroupReference RootGroupReference => bundle.RootGroupReference;
 
     /// <inheritdoc/>
-    public bool TryGetNodeGroupRecord(PbtGroupReference reference, scoped in PbtTraversalPath groupKey, out PbtGroupRecord record) =>
-        bundle.NodeGroupLog.TryGetRecord(reference, out record)
-        && PbtNodePathOperations.Equal(record.Path, groupKey.ToPath<PbtStorageNodePath>());
+    public bool TryGetNodeGroupRecord(PbtGroupReference reference, scoped in PbtTraversalPath groupKey, out PbtGroupRecord record)
+    {
+        if (!bundle.NodeGroupLog.TryGetRecord(reference, out record) || !PbtNodePathOperations.Equal(record.Path, groupKey.ToPath<PbtStorageNodePath>())) return false;
+        Metrics.IncrementPbtGroupLogReadHits();
+        return true;
+    }
 
     /// <inheritdoc/>
     public void CompleteFold() => _complete = true;

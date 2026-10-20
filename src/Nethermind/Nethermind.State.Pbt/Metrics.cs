@@ -196,6 +196,14 @@ public static class Metrics
     [Description("Pbt node group log root index lookups that found no resident root group, so the fold resolved the root from persistence")]
     public static long PbtGroupLogRootMisses { get; set; }
 
+    private static long _pbtGroupLogReadHits;
+
+    [CounterMetric]
+    [Description("Pbt node group reads served by the node group log, through a fold's descendant link or a walk of a branch's tree")]
+    public static long PbtGroupLogReadHits => Volatile.Read(ref _pbtGroupLogReadHits);
+
+    public static void IncrementPbtGroupLogReadHits() => Interlocked.Increment(ref _pbtGroupLogReadHits);
+
     /// <summary>Refreshes the node group log metrics from <paramref name="log"/>.</summary>
     public static void ObserveGroupLog(PbtGroupLog log)
     {
