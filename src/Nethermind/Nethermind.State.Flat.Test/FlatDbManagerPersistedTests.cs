@@ -82,7 +82,7 @@ public class FlatDbManagerPersistedTests
         TreePath path = FlatTestHelpers.CanonicalPath(Keccak.Compute("path"), 4);
         byte[] nodeRlp = FlatTestHelpers.LeafRlp(0xC2, 0x80, 0x80);
         using INodeRecordBuffer buffer = FlatTestHelpers.NewTestBuffer();
-        INodeRecordBufferPin bufferPin = buffer.Pin();
+        INodeRecordBufferPin bufferPin = buffer.PinHead();
         SnapshotContent content = new();
         content.SetStateNodeRlp(buffer, path, nodeRlp);
         using Snapshot snap = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing, bufferPin);

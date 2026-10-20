@@ -14,7 +14,7 @@ namespace Nethermind.State.Flat.NodeBuffer;
 internal sealed class WarmedNodeRecordBuffer(INodeRecordBuffer global, WarmedNodeLog warmed) : INodeRecordBuffer
 {
     /// <inheritdoc/>
-    public INodeRecordBufferPin Pin() => global.Pin();
+    public INodeRecordBufferPin PinHead() => global.PinHead();
 
     /// <inheritdoc/>
     public IDisposable PinAll() => global.PinAll();

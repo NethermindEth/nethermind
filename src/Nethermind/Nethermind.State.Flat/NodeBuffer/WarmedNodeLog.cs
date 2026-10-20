@@ -23,6 +23,8 @@ public sealed class WarmedNodeLog(int capacity) : IDisposable
     private const int GenerationBytes = 1024 * 1024;
 
     private readonly PrivateNodeRecordBuffer _buffer = new(GenerationBytes);
+    // The path to pointer index is only for the warmer. The main buffer is not connected to this log: its records never point
+    // into it, as committed records drop transient pointers, so a warmed node below a main-buffer record is found by its position.
     private readonly ConcurrentDictionary<(Hash256? Address, TreePath Path), ulong> _pointers = new(Environment.ProcessorCount, Math.Max(capacity, 1));
 
     /// <summary>Number of indexed node positions.</summary>
@@ -49,20 +51,18 @@ public sealed class WarmedNodeLog(int capacity) : IDisposable
         return false;
     }
 
-    /// <summary>Appends the record of the node <paramref name="rlp"/> with the known child pointers, unless the position already holds a record.</summary>
+    /// <summary>Appends the record of the node <paramref name="rlp"/> with the known child pointers, and indexes it at its position in place of any earlier one.</summary>
     /// <remarks>
     /// The node is trusted to be the one of <paramref name="hash"/>, which only debug builds check. Nodes are appended along a traversal
     /// from a known root, each read for the hash its parent references, so a correct traversal appends correct nodes and links a correct
     /// graph. For the same reason, a record read back from the log is not verified either: it is always reached through that traversal.
     /// </remarks>
     /// <param name="childPointers">Pointers by child slot, or empty to leave every pointer zero.</param>
-    /// <param name="record">The appended record, or the one already held for the same position.</param>
+    /// <param name="record">The appended record.</param>
     /// <exception cref="TrieException">The RLP is not a valid trie node.</exception>
     public void Append(Hash256? address, in TreePath path, in ValueHash256 hash, ReadOnlySpan<byte> rlp, ReadOnlySpan<ulong> childPointers,
         out NodeRecord record, out ulong pointer)
     {
-        if (TryGet(address, path, out record, out pointer)) return;
-
         Debug.Assert(ValueKeccak.Compute(rlp) == hash, "A traversal only appends the node its parent references.");
         ulong localPointer = _buffer.AppendRecordFromRlp(address, path, hash, rlp, childPointers);
         pointer = localPointer | NodeRecordCodec.TransientPointerMask;

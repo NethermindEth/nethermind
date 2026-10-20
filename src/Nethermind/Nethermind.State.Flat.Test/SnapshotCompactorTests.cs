@@ -368,7 +368,7 @@ public class SnapshotCompactorTests
     [Test]
     public void CompactSnapshotBundle_SelectsEarliestFullBoundaryNotFirstGenerationMatch()
     {
-        INodeRecordBufferPin earliest = _buffer.Pin();
+        INodeRecordBufferPin earliest = _buffer.PinHead();
         SnapshotContent finalContent = new();
         finalContent.SetStateNodeRlp(_buffer, TreePath.FromHexString("1"), FlatTestHelpers.LeafRlpA);
         using Snapshot first = _resourcePool.CreateSnapshot(new(0, Keccak.EmptyTreeHash), new(1, TestItem.KeccakA), ResourcePool.Usage.ReadOnlyProcessingEnv, _buffer);

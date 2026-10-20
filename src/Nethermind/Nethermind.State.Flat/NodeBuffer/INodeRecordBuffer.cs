@@ -9,7 +9,7 @@ namespace Nethermind.State.Flat.NodeBuffer;
 /// <summary>Stores encoded trie-node records and indexes trie roots by hash.</summary>
 /// <remarks>
 /// Pointers are buffer-local byte addresses; zero means absent. Implementations must not reuse a pointer for a different record
-/// while a caller can still hold it. Records and reserved spans are borrowed: a writer holds a <see cref="Pin"/> no newer than
+/// while a caller can still hold it. Records and reserved spans are borrowed: a writer holds a <see cref="PinHead"/> no newer than
 /// what it writes, and a reader holds a <see cref="PinAll"/> taken before it looks up the records it reads.
 /// Allocation pointers are ordered across reservations, so writes following a pin's boundary have pointers at or above it.
 /// </remarks>
@@ -17,7 +17,7 @@ public interface INodeRecordBuffer : IDisposable
 {
     /// <summary>Keeps the current allocation frontier and every later write readable until the pin is disposed.</summary>
     /// <exception cref="ObjectDisposedException">The buffer is disposed.</exception>
-    INodeRecordBufferPin Pin();
+    INodeRecordBufferPin PinHead();
 
     /// <summary>Keeps every record borrowed while the returned pin lives valid until it is disposed.</summary>
     /// <remarks>

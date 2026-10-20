@@ -98,7 +98,7 @@ public class ReadOnlySnapshotBundleSlotFilterBenchmark
             }
 
             FlatSnapshot snapshot = new(new StateId((ulong)layer, Keccak.Compute($"{layer}")), new StateId((ulong)layer + 1, Keccak.Compute($"{layer + 1}")),
-                content, resourcePool, ResourcePool.Usage.MainBlockProcessing);
+                content, resourcePool, ResourcePool.Usage.MainBlockProcessing, null);
             if (layer == Layers - 1)
             {
                 // The newest layer of a head bundle is usually a base snapshot, still in its mutable form.

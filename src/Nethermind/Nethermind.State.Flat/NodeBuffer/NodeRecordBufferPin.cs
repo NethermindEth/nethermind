@@ -4,7 +4,7 @@
 namespace Nethermind.State.Flat.NodeBuffer;
 
 /// <summary>Keeps a generation of a <see cref="NodeRecordBuffer"/>, and every later one, readable in place until disposed.</summary>
-/// <remarks>Obtained from <see cref="NodeRecordBuffer.Pin"/> or <see cref="Copy"/>, which have already pinned <see cref="Generation"/>.</remarks>
+/// <remarks>Obtained from <see cref="NodeRecordBuffer.PinHead"/> or <see cref="Copy"/>, which have already pinned <see cref="Generation"/>.</remarks>
 public sealed class NodeRecordBufferPin(NodeRecordBuffer buffer, ulong generation, ulong writeBoundary) : INodeRecordBufferPin
 {
     private readonly NodeRecordBuffer _buffer = buffer;

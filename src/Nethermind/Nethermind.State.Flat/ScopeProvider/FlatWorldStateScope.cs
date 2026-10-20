@@ -105,7 +105,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         if (!_trieless)
         {
             INodeRecordBuffer buffer = snapshotBundle.CacheableNodeRecordBuffer!;
-            _bufferPin = buffer.Pin();
+            _bufferPin = buffer.PinHead();
             _initialTrieRoot = buffer.ResolveRoot(null, _initialStateRoot.ValueHash256);
             _stateTrie = new NodeRecordTrie(snapshotBundle, null, _initialTrieRoot);
         }
@@ -542,7 +542,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         StateId newStateId = new(blockNumber, RootHash);
         bool shouldAddSnapshot = !_isReadOnly && _currentStateId != newStateId;
         (Snapshot? newSnapshot, TransientResource? cachedResource) = _snapshotBundle.CollectAndApplySnapshot(_currentStateId, newStateId, _bufferPin, shouldAddSnapshot);
-        _bufferPin = _trieless ? null : _snapshotBundle.CacheableNodeRecordBuffer!.Pin();
+        _bufferPin = _trieless ? null : _snapshotBundle.CacheableNodeRecordBuffer!.PinHead();
 
         if (shouldAddSnapshot)
         {

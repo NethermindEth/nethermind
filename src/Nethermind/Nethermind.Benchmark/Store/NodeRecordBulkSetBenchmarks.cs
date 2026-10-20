@@ -67,8 +67,8 @@ public class NodeRecordBulkSetBenchmarks
             preloadTree.Commit();
             _preloadedRootHash = preloadTree.RootHash;
 
-            using INodeRecordBuffer preloadBuffer = new NodeRecordBuffer(0, NodeRecordBuffer.DefaultGenerationBytes);
-            using INodeRecordBufferPin preloadRetain = preloadBuffer.Pin();
+            using INodeRecordBuffer preloadBuffer = new NodeRecordBuffer(0, NodeRecordBuffer.DefaultGenerationBytes, NodeRecordBuffer.DefaultLiveGenerations);
+            using INodeRecordBufferPin preloadRetain = preloadBuffer.PinHead();
             TrieRoot root = PreloadBuffer(preloadBuffer);
             foreach ((TreePath path, _, NodeRecord record) in preloadBuffer.EnumerateNodes(root.Pointer)) preloadedNodes[path] = record.Rlp.ToArray();
         }
@@ -94,7 +94,7 @@ public class NodeRecordBulkSetBenchmarks
     }
 
     [IterationSetup(Target = nameof(NodeRecordBulkSetColdBuffer))]
-    public void CreateColdBuffer() => _coldBuffer = new NodeRecordBuffer(0, ColdGenerationBytes);
+    public void CreateColdBuffer() => _coldBuffer = new NodeRecordBuffer(0, ColdGenerationBytes, NodeRecordBuffer.DefaultLiveGenerations);
 
     [IterationCleanup(Target = nameof(NodeRecordBulkSetColdBuffer))]
     public void ReleaseColdBuffer() => _coldBuffer.Dispose();
@@ -106,8 +106,8 @@ public class NodeRecordBulkSetBenchmarks
     [IterationSetup(Target = nameof(NodeRecordBulkSetWarmBuffer))]
     public void CreateWarmBuffer()
     {
-        _warmBuffer = new NodeRecordBuffer(WarmCompressedMaxMemory, NodeRecordBuffer.DefaultGenerationBytes);
-        _warmBufferRetain = _warmBuffer.Pin();
+        _warmBuffer = new NodeRecordBuffer(WarmCompressedMaxMemory, NodeRecordBuffer.DefaultGenerationBytes, NodeRecordBuffer.DefaultLiveGenerations);
+        _warmBufferRetain = _warmBuffer.PinHead();
         _warmRoot = PreloadBuffer(_warmBuffer);
         _fetchCountBeforeWarmBuffer = _nodeSource.FetchCount;
     }

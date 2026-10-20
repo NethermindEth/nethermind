@@ -61,7 +61,7 @@ public class ReadOnlySnapshotBundlePersistedTests
         TreePath path = FlatTestHelpers.CanonicalPath(Keccak.Compute("path"), 4);
         byte[] nodeRlp = FlatTestHelpers.LeafRlp(0xC2, 0x80, 0x80);
 
-        INodeRecordBufferPin bufferPin = _buffer.Pin();
+        INodeRecordBufferPin bufferPin = _buffer.PinHead();
         SnapshotContent content = new();
         content.SetStateNodeRlp(_buffer, path, nodeRlp);
         using Snapshot snap = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing, bufferPin);
@@ -94,7 +94,7 @@ public class ReadOnlySnapshotBundlePersistedTests
         TreePath path = FlatTestHelpers.CanonicalPath(Keccak.Compute("path"), 6);
         byte[] nodeRlp = FlatTestHelpers.LeafRlp(0xC1, 0x80);
 
-        INodeRecordBufferPin bufferPin = _buffer.Pin();
+        INodeRecordBufferPin bufferPin = _buffer.PinHead();
         SnapshotContent content = new();
         content.SetStorageNodeRlp(_buffer, address, path, nodeRlp);
         using Snapshot snap = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing, bufferPin);
@@ -128,7 +128,7 @@ public class ReadOnlySnapshotBundlePersistedTests
         byte[] nodeRlp = FlatTestHelpers.LeafRlp(0xC0);
         byte[] dbRlp = [0xC1, 0x80, 0x80];
 
-        INodeRecordBufferPin bufferPin = _buffer.Pin();
+        INodeRecordBufferPin bufferPin = _buffer.PinHead();
         SnapshotContent content = new();
         content.SetStateNodeRlp(_buffer, storedPath, nodeRlp);
         using Snapshot snap = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing, bufferPin);
@@ -194,7 +194,7 @@ public class ReadOnlySnapshotBundlePersistedTests
             else batch.SetStateTrieNode(dbPath, dbRlp);
         }
 
-        INodeRecordBufferPin bufferPin = _buffer.Pin();
+        INodeRecordBufferPin bufferPin = _buffer.PinHead();
         SnapshotContent content = new();
         if (storage) content.SetStorageNodeRlp(_buffer, address, persistedPath, persistedRlp);
         else content.SetStateNodeRlp(_buffer, persistedPath, persistedRlp);
@@ -265,7 +265,7 @@ public class ReadOnlySnapshotBundlePersistedTests
         ValueHash256 hash = ValueKeccak.Compute(nodeRlp);
         StateId from = new(0, Keccak.EmptyTreeHash);
         StateId to = new(1, new Hash256(hash));
-        INodeRecordBufferPin retain = _buffer.Pin();
+        INodeRecordBufferPin retain = _buffer.PinHead();
         SnapshotContent content = new();
         if (storage) content.SetStorageNodeRlp(_buffer, address, TreePath.Empty, nodeRlp);
         else content.SetStateNodeRlp(_buffer, TreePath.Empty, nodeRlp);

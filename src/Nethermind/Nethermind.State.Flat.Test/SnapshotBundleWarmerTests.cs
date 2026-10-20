@@ -50,7 +50,7 @@ public class SnapshotBundleWarmerTests
     {
         Hash256? address = storage ? TestItem.KeccakC : null;
         using ForwardingNodeRecordBuffer buffer = new(FlatTestHelpers.NewTestBuffer());
-        using INodeRecordBufferPin retain = buffer.Pin();
+        using INodeRecordBufferPin retain = buffer.PinHead();
         byte[] prefix = FlatTestHelpers.LeafRlp(0x80);
         buffer.AppendRecordFromRlp(address, TreePath.Empty, ValueKeccak.Compute(prefix), prefix, []);
         int completedBefore = buffer.CompletedRecords;
@@ -89,7 +89,7 @@ public class SnapshotBundleWarmerTests
         byte[] rlp = FlatTestHelpers.LeafRlp(new byte[40]);
         (TrieRoot root, Dictionary<TreePath, byte[]> nodes) = LeafTrie(rlp);
         using SnapshotBundle bundle = NewBundle(new NodeReader(nodes));
-        using INodeRecordBufferPin retain = _buffer.Pin();
+        using INodeRecordBufferPin retain = _buffer.PinHead();
         new NodeRecordTrie(bundle, null, root).Publish();
 
         (Snapshot? snapshot, TransientResource? retired) = bundle.CollectAndApplySnapshot(StateId.PreGenesis, new StateId(1, root.Hash), retain.Copy());
@@ -127,7 +127,7 @@ public class SnapshotBundleWarmerTests
         TrieRoot committedRoot = new(ValueKeccak.Compute(committedRlp), 0);
         using SnapshotBundle bundle = NewBundle(new NodeReader(persisted));
 
-        INodeRecordBufferPin retain = _buffer.Pin();
+        INodeRecordBufferPin retain = _buffer.PinHead();
         committedRoot = new TrieRoot(committedRoot.Hash, PublishNode(bundle, address, TreePath.Empty, committedRlp));
         bundle.CollectAndApplySnapshot(StateId.PreGenesis, new StateId(1, TestItem.KeccakA), retain, returnSnapshot: false);
 
@@ -505,7 +505,7 @@ public class SnapshotBundleWarmerTests
         byte[] newValue = Bytes.FromHexString("0xff");
 
         using INodeRecordBuffer persistedBuffer = FlatTestHelpers.NewTestBuffer();
-        using INodeRecordBufferPin persistedRetain = persistedBuffer.Pin();
+        using INodeRecordBufferPin persistedRetain = persistedBuffer.PinHead();
         TrieRoot root;
         using (ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries = new(keys.Length))
         {
@@ -517,7 +517,7 @@ public class SnapshotBundleWarmerTests
             .ToDictionary(node => node.Path, node => node.Record.Rlp.ToArray());
         NodeReader reader = new(persisted);
         using SnapshotBundle bundle = NewBundle(reader);
-        using INodeRecordBufferPin retain = _buffer.Pin();
+        using INodeRecordBufferPin retain = _buffer.PinHead();
         TrieRoot preBlockRoot = new(root.Hash, _buffer.FindRoot(address, root.Hash));
 
         int firstWarmUp = WarmUpAll();
