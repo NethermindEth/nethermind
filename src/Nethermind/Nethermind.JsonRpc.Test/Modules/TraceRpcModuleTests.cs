@@ -597,8 +597,11 @@ public class TraceRpcModuleTests
         try
         {
             using ResultWrapper<ParityTxTraceFromStore?> result = context.TraceRpcModule.trace_get(txHash, []);
-            Assert.That(result.Data!.TransactionHash, Is.EqualTo(txHash));
-            Assert.Throws<ObjectDisposedException>(() => _ = timeout.Token);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result.Data!.TransactionHash, Is.EqualTo(txHash));
+                Assert.Throws<ObjectDisposedException>(() => _ = timeout.Token);
+            }
         }
         finally
         {
@@ -618,9 +621,12 @@ public class TraceRpcModuleTests
             MaterializeForInProcess = static () => throw new OperationCanceledException()
         };
 
-        Assert.That(() => TraceRpcModule.SelectTraceAddress(ResultWrapper<IEnumerable<ParityTxTraceFromStore>?>.Success(stream), []),
-            Throws.InstanceOf<OperationCanceledException>());
-        Assert.That(timeout.DisposeCount, Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(() => TraceRpcModule.SelectTraceAddress(ResultWrapper<IEnumerable<ParityTxTraceFromStore>?>.Success(stream), []),
+                Throws.InstanceOf<OperationCanceledException>());
+            Assert.That(timeout.DisposeCount, Is.EqualTo(1));
+        }
     }
 
     [Test]
