@@ -192,7 +192,7 @@ public class RecoverSignaturesTest
         using ParallelUnbalancedWork.WorkerScope? outer = budget == 0 ? null : ParallelUnbalancedWork.BeginWorkerScope(budget);
         if (background)
         {
-            recovery.StartRecovery(TestItem.KeccakA, txs, spec);
+            recovery.StartRecovery(TestItem.KeccakA, txs, spec, CancellationToken.None);
             Assert.That(() => recovery.IsRecoveryInFlight(txs), Is.False.After(DrainTimeoutMs, PollMs));
             if (group?.Concurrency == 1) recovery.RecoverData(txs, spec);
         }
@@ -222,7 +222,7 @@ public class RecoverSignaturesTest
         Block block = new(Build.A.BlockHeader.TestObject, txs, []);
         RecoverSignatures sut = CreateSut(gate, txs[0], txs[1]);
 
-        sut.StartRecovery(block.Hash!, txs, ReleaseSpecSubstitute.Create());
+        sut.StartRecovery(block.Hash!, txs, ReleaseSpecSubstitute.Create(), CancellationToken.None);
 
         // On a regression the step recovers inline and parks on the gate, so it must not run on the test thread.
         Task step = Task.Run(() => sut.RecoverDataForQueuedProcessing(block));
@@ -258,7 +258,7 @@ public class RecoverSignaturesTest
 
         try
         {
-            sut.StartRecovery(TestItem.KeccakA, inFlight, ReleaseSpecSubstitute.Create());
+            sut.StartRecovery(TestItem.KeccakA, inFlight, ReleaseSpecSubstitute.Create(), CancellationToken.None);
 
             Assert.That(sut.IsRecoveryInFlight(block.Transactions), Is.True, "the collision this guards against");
 
@@ -298,8 +298,8 @@ public class RecoverSignaturesTest
 
         try
         {
-            sut.StartRecovery(TestItem.KeccakA, first, ReleaseSpecSubstitute.Create());
-            sut.StartRecovery(TestItem.KeccakA, resent, ReleaseSpecSubstitute.Create());
+            sut.StartRecovery(TestItem.KeccakA, first, ReleaseSpecSubstitute.Create(), CancellationToken.None);
+            sut.StartRecovery(TestItem.KeccakA, resent, ReleaseSpecSubstitute.Create(), CancellationToken.None);
 
             Assert.That(sut.IsRecoveryInFlight(first), Is.True);
             Assert.That(sut.IsRecoveryInFlight(resent), Is.False, "the resent payload's own transactions stay with the pipeline");

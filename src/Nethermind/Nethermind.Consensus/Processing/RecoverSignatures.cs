@@ -103,10 +103,12 @@ namespace Nethermind.Consensus.Processing
         /// displaced block's pipeline step then recovers that array itself, concurrently with the work item
         /// still writing it. That is safe because both writers derive each sender from the same signature and
         /// store equal values through <c>??=</c>, so whichever store lands last is the same address.
+        /// Recovery starts before the payload is validated, so a misbehaving consensus client can displace an
+        /// accepted block this way with a payload that is then rejected.
         /// </para>
         /// </remarks>
         /// <param name="cancellationToken">Stops recovering the remaining transactions, for a block rejected before processing.</param>
-        public void StartRecovery(Hash256 blockHash, Transaction[] txs, IReleaseSpec releaseSpec, CancellationToken cancellationToken = default)
+        public void StartRecovery(Hash256 blockHash, Transaction[] txs, IReleaseSpec releaseSpec, CancellationToken cancellationToken)
         {
             ParallelUnbalancedWork.WorkerGroup? group = ParallelUnbalancedWork.GetCurrentGroup();
             if (group?.Concurrency == 1) return;

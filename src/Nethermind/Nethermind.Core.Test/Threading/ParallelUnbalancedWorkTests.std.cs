@@ -699,7 +699,7 @@ public partial class ParallelUnbalancedWorkTests
                 .WithBaseFeePerGas(1.GWei).WithTransactions(txs).TestObject;
             block.Header.IsPostMerge = true;
             RecoverSignatures recovery = container.Resolve<RecoverSignatures>();
-            using (group.Enter()) recovery.StartRecovery(block.Hash!, block.Transactions, London.Instance);
+            using (group.Enter()) recovery.StartRecovery(block.Hash!, block.Transactions, London.Instance, CancellationToken.None);
             context.BranchProcessor.BlockProcessing += (_, _) =>
             {
                 Assert.That(warmed.Wait(TimeSpan.FromSeconds(10)), Is.True, "prewarming must start with recovery sharing the bounded pool");
