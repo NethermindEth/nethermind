@@ -1091,6 +1091,8 @@ public class DebugModuleTests
     public void DebugTraceTransactionInBlockByIndex_WithCustomTracer_TracesOnlyTheTarget()
     {
         _blockchainBridge.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(true);
+        _blockFinder.FindHeader(Arg.Any<Hash256>(), BlockTreeLookupOptions.None, 0)
+            .Returns(Build.A.Block.WithNumber(0).TestObject.Header);
         GethLikeTxTrace trace = new();
         Block? tracedBlock = null;
         Hash256? tracedHash = null;
@@ -1115,6 +1117,8 @@ public class DebugModuleTests
     public void DebugTraceTransactionInBlockByIndex_WithCustomTracer_WhenIndexOutOfRange_FailsWithoutTracing([Values(-1, 5)] int txIndex)
     {
         _blockchainBridge.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(true);
+        _blockFinder.FindHeader(Arg.Any<Hash256>(), BlockTreeLookupOptions.None, 0)
+            .Returns(Build.A.Block.WithNumber(0).TestObject.Header);
         GethTraceOptions options = new() { Tracer = "callTracer" };
 
         using ResultWrapper<GethLikeTxTrace> result = CreateModule().debug_traceTransactionInBlockByIndex(BlockRlpFixture(2), txIndex, options);
