@@ -6,6 +6,7 @@ concurrency:
 
 on:
   pull_request:
+  merge_group:
   push:
     branches: [master]
   workflow_dispatch:
@@ -475,9 +476,10 @@ jobs:
           done
           exit $missing
 
+  # Hive gates only the merge queue: a pull request still merges with Hive red, as before.
   tests-summary:
     name: Tests summary
-    needs: [tests, tests-native, tests-spec, tests-chunked, tests-chunked-native, nethtest, matrix-guard]
+    needs: [tests, tests-native, tests-spec, tests-chunked, tests-chunked-native, nethtest, matrix-guard, hive-tests]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -490,7 +492,8 @@ jobs:
             "${{ needs.tests-chunked.result }}" == "success" && \
             "${{ needs.tests-chunked-native.result }}" == "success" && \
             "${{ needs.nethtest.result }}" == "success" && \
-            "${{ needs.matrix-guard.result }}" == "success" \
+            "${{ needs.matrix-guard.result }}" == "success" && \
+            ( "${{ github.event_name }}" != "merge_group" || "${{ needs.hive-tests.result }}" == "success" ) \
           ]]
 
   codecov-upload:
@@ -532,5 +535,5 @@ jobs:
 
   hive-tests:
     name: Hive tests
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
     uses: ./.github/workflows/hive-tests.yml
