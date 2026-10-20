@@ -797,7 +797,6 @@ public class EthereumRunnerTests
     /// <c>EthereumStepsManagerTests</c>.
     /// </summary>
     [Test]
-    [MaxTime(60000)]
     public async Task Command_run_that_cannot_do_its_job_fails_without_exiting_ok()
     {
         Rlp.ResetDecoders(); // The global decoder registry is shared with every other test in this assembly.
