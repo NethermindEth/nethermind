@@ -251,12 +251,16 @@ def main():
     for name in ("scope", "report", "aggregate"):
         command = commands.add_parser(name)
         command.add_argument("--directory", type=Path, required=True)
+    inventory = commands.add_parser("suites")
+    inventory.add_argument("--profile", choices=PROFILES, required=True)
     build = commands.add_parser("plan")
     build.add_argument("--upstream", type=Path, required=True)
     build.add_argument("--manifest", type=Path, required=True)
     build.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
-    if args.mode == "plan":
+    if args.mode == "suites":
+        print(json.dumps(suites(args.profile)))
+    elif args.mode == "plan":
         result = plan(args.upstream, json.loads(args.manifest.read_text()))
         args.output.write_text(json.dumps(result, indent=2) + "\n")
     else:

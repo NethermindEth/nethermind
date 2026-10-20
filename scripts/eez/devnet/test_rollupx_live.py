@@ -173,9 +173,10 @@ class NativeFollowerEvidenceTests(unittest.TestCase):
             args = SimpleNamespace(manifest=root / "manifest", output=root / "runtime")
             manifest = {"repository": upstream.PROFILES["rollupx"], "profile": "rollupx", "revision": "a" * 40, "core_revision": "b" * 40}
             args.manifest.write_text(json.dumps(manifest))
-            with patch.object(upstream, "api") as api:
+            with patch.object(upstream, "api", return_value={"workflow_runs": []}) as api:
                 upstream.runtime(args)
-            api.assert_not_called()
+            api.assert_called_once()
+            self.assertEqual(api.call_args.args[1], upstream.PROFILES["rollupx"])
             selected = json.loads(args.manifest.read_text())
             self.assertEqual(selected["revision"], manifest["revision"])
             self.assertEqual(selected["core_revision"], manifest["core_revision"])

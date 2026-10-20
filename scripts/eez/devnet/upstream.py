@@ -7,6 +7,8 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
+import tempfile
 import subprocess
 import zipfile
 
@@ -118,8 +120,9 @@ def runtime(args):
     revision = sha(manifest["revision"])
     if manifest["repository"] == PROFILES["rollupx"] and manifest.get("profile") == "rollupx":
         args.output.mkdir(parents=True, exist_ok=True)
-        manifest["runtime"] = {"source": "build-required"}
-        args.manifest.write_text(json.dumps(manifest, indent=2) + "\n")
+        if not native_runtime(args, manifest):
+            manifest["runtime"] = {"source": "build-required"}
+            args.manifest.write_text(json.dumps(manifest, indent=2) + "\n")
         return
     if manifest["repository"] != REPOSITORY:
         raise ValueError("unexpected upstream repository")
@@ -178,6 +181,54 @@ def runtime(args):
     archive.unlink()
     manifest["runtime"] = {"source": "artifact", "artifact_id": artifact["id"], "run_id": artifact["workflow_run"]["id"], "digest": digest, "binaries": hashes}
     args.manifest.write_text(json.dumps(manifest, indent=2) + "\n")
+
+
+def native_runtime(args, manifest):
+    repository, revision = manifest["repository"], sha(manifest["revision"])
+    runs = api("actions/runs?event=push&branch=main&head_sha=" + revision + "&status=success&per_page=100", repository)["workflow_runs"]
+    image_repository = "ghcr.io/" + repository.lower() + "-ci-runtime"
+    for run in runs:
+        if (run["head_sha"], run["event"], run["head_branch"], run["conclusion"], run["repository"]["full_name"]) != (revision, "push", "main", "success", repository):
+            raise ValueError("invalid upstream runtime provenance")
+        if run["path"] != ".github/workflows/ci.yml":
+            continue
+        attempt = int(run["run_attempt"])
+        if attempt <= 0 or not isinstance(run["id"], int) or run["id"] <= 0:
+            raise ValueError("invalid upstream runtime run identity")
+        tag = image_repository + ":sha-" + revision + "-" + str(run["id"]) + "-" + str(attempt)
+        pull = subprocess.run(["docker", "pull", "--platform", "linux/amd64", tag], capture_output=True, text=True, timeout=600, check=False)
+        if pull.returncode:
+            print("Upstream runtime payload unavailable; build the selected source")
+            continue
+        digests = json.loads(subprocess.check_output(["docker", "image", "inspect", "--format", "{{json .RepoDigests}}", tag], text=True, timeout=30))
+        references = set(value for value in digests if re.fullmatch(re.escape(image_repository) + r"@sha256:[0-9a-f]{64}", value))
+        if len(references) != 1:
+            raise ValueError("missing or ambiguous immutable upstream runtime")
+        reference = references.pop()
+        with tempfile.TemporaryDirectory(prefix="native-runtime-", dir=args.output.parent) as directory:
+            temporary = Path(directory)
+            payload = temporary / "payload"
+            environment = {**os.environ, "GITHUB_SHA": revision, "GITHUB_REPOSITORY": repository,
+                "GITHUB_ENV": str(temporary / "environment"), "GITHUB_PATH": str(temporary / "path"),
+                "EEZ_EXPECT_PUBLISHED": "true", "RUNNER_TEMP": str(temporary)}
+            subprocess.run(["bash", str(args.checkout / "scripts/ci/ci-payload.sh"), "fetch", "runtime", reference, str(payload)],
+                env=environment, check=True, timeout=600)
+            subprocess.run(["bash", str(args.checkout / "scripts/ci/prepare-runtime-artifacts.sh"), str(payload)],
+                env=environment, check=True, timeout=600)
+            paths = (temporary / "path").read_text().splitlines()
+            if len(paths) != 1:
+                raise ValueError("upstream runtime export path changed")
+            binaries = Path(paths[0])
+            for name in BINARIES + ("e2e-causal-verify", "verify_blob_evidence"):
+                shutil.copy2(binaries / name, args.output / name)
+            for name in ("rustc-version.txt", "cargo-version.txt"):
+                shutil.copy2(binaries.parent / name, args.output / name)
+            record_build(args)
+            recorded = json.loads(args.manifest.read_text())
+            recorded["runtime"].update(source="upstream-payload", run_id=run["id"], reference=reference)
+            args.manifest.write_text(json.dumps(recorded, indent=2) + "\n")
+        return True
+    return False
 
 
 def record_build(args):
@@ -374,6 +425,7 @@ def main():
     downloader = modes.add_parser("runtime")
     downloader.add_argument("--manifest", type=Path, required=True)
     downloader.add_argument("--output", type=Path, required=True)
+    downloader.add_argument("--checkout", type=Path)
     builder = modes.add_parser("record-build")
     builder.add_argument("--manifest", type=Path, required=True)
     builder.add_argument("--output", type=Path, required=True)

@@ -99,10 +99,14 @@ class StreamingControlInputTests(unittest.TestCase):
             self.assertNotIn('cargo test', consumer)
             self.assertNotIn('cargo build', consumer)
         workflow = (root / '.github/workflows/eez-devnet-tests.yml').read_text()
-        self.assertLess(workflow.index('Install upstream integration test toolchain'),
-                        workflow.index('Build matching runtime'))
-        self.assertIn('needs: [candidate, prepare]', workflow)
-        self.assertIn('timeout-minutes: 15', workflow)
+        preparation = (root / '.github/workflows/eez-devnet-prepare.yml').read_text()
+        consumer = (root / '.github/workflows/eez-devnet-profile.yml').read_text()
+        self.assertLess(preparation.index('Install upstream integration test toolchain'),
+                        preparation.index('Build matching runtime'))
+        for profile in ('rollup0', 'rollupx'):
+            self.assertIn('needs: [candidate, prepare-' + profile + ']', workflow)
+        self.assertIn('timeout-minutes: 15', consumer)
+        self.assertIn('fromJSON(inputs.suites)', consumer)
 
     def invoke(self, directory, mode, context, failure):
         directory = Path(directory)
