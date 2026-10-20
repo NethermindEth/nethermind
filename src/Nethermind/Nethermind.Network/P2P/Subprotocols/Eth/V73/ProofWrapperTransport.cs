@@ -309,7 +309,14 @@ public sealed partial class ProofWrapperTransport : IDisposable
         });
 
     /// <summary>Stores and announces a locally aggregated wrapper, produced under the current target fork's verifier.</summary>
-    public bool PublishWrapper(byte[] wrapper) => _wrappers.RefreshVerifier() is { } verifier && Publish(wrapper, verifier);
+    public bool PublishWrapper(byte[] wrapper)
+    {
+        Eip8288Verifier? verifier;
+        // A pending upgrade rule publishes nothing; the gossip loop offers the wrapper again on its next cycle.
+        try { verifier = _wrappers.RefreshVerifier(); }
+        catch (InvalidOperationException) { return false; }
+        return verifier is { } current && Publish(wrapper, current);
+    }
 
     /// <summary>EIP-8288 upgrade rule for offered wrappers: drops every mode-1 wrapper and keeps a mode-0 wrapper only if its
     /// direct witnesses re-validate under <paramref name="verifier"/>.</summary>

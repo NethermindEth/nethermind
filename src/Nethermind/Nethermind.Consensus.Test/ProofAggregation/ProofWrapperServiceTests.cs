@@ -952,7 +952,7 @@ public class ProofWrapperServiceTests
     }
 
     [Test]
-    public void Verifier_fault_during_the_upgrade_rule_is_retried_on_the_next_refresh()
+    public async Task Verifier_fault_during_the_upgrade_rule_is_a_local_failure_and_retried_on_the_next_refresh()
     {
         FrameDependency direct = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("direct"), default);
         FrameDependency aggregated = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("aggregated"), default);
@@ -978,6 +978,13 @@ public class ProofWrapperServiceTests
 
         Assert.That(() => service.RefreshVerifier(), Throws.InvalidOperationException);
         Assert.That(service.CurrentVerifier, Is.EqualTo(Eip8288Verifier.Pinned), "a half-applied upgrade is not committed");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((await service.VerifyClaimedProofsAsync([0xc0])).Status, Is.EqualTo(ProofWrapperAcceptanceStatus.LocalFailure));
+            Assert.That((await service.AcceptDetailedAsync([0xc0], null)).Status, Is.EqualTo(ProofWrapperAcceptanceStatus.LocalFailure));
+            Assert.That(service.GetLatestWrapper().IsSuccess, Is.False);
+            Assert.That(service.BuildWrapper().IsSuccess, Is.False);
+        }
         verifier.OnVerification = null;
 
         using (Assert.EnterMultipleScope())

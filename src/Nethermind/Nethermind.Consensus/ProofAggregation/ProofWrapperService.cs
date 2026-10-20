@@ -207,7 +207,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
         IReadOnlyDictionary<ValueHash256, Transaction>? recovered, bool copyInput, CancellationToken cancellationToken)
     {
         IReleaseSpec? admissionSpec = TargetSpec;
-        if (admissionSpec?.IsEip8288Enabled != true || RefreshVerifier() is not { } verifier)
+        if (admissionSpec?.IsEip8288Enabled != true)
             return ProofWrapperAcceptance.LocalFailure("EIP-8288 proof wrappers are unavailable.");
         // A wrapper within MAX_WRAPPER_BYTES but above the local limit is refused, not invalid.
         if (wrapper.Length > LeanProofStore.MaxWrapperBytes)
@@ -218,6 +218,8 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             return new(ProofWrapperAcceptanceStatus.Busy, Result<Hash256[]>.Fail("Proof admission is busy; retry later."));
         try
         {
+            // Inside the try, so an upgrade-rule fault is a local failure rather than an exception escaping to the caller.
+            if (RefreshVerifier() is not { } verifier) return ProofWrapperAcceptance.LocalFailure("EIP-8288 proof wrappers are unavailable.");
             cancellationToken.ThrowIfCancellationRequested();
             if (copyInput) wrapper = (byte[])wrapper.Clone();
             MempoolWrapper decoded;
@@ -349,12 +351,13 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
 
     private async Task<ProofWrapperAcceptance> VerifyClaimedProofsCoreAsync(byte[] wrapper, bool copyInput, CancellationToken cancellationToken)
     {
-        if (RefreshVerifier() is not { } verifier) return ProofWrapperAcceptance.LocalFailure("EIP-8288 proof wrappers are unavailable.");
         if (wrapper.Length > LeanProofStore.MaxWrapperBytes) return ProofWrapperAcceptance.LocalFailure("Proof wrapper exceeds the local size limit.");
         if (Interlocked.CompareExchange(ref _admissionActive, 1, 0) != 0)
             return new(ProofWrapperAcceptanceStatus.Busy, Result<Hash256[]>.Fail("Proof admission is busy; retry later."));
         try
         {
+            // Inside the try, so an upgrade-rule fault is a local failure rather than an exception escaping to the caller.
+            if (RefreshVerifier() is not { } verifier) return ProofWrapperAcceptance.LocalFailure("EIP-8288 proof wrappers are unavailable.");
             cancellationToken.ThrowIfCancellationRequested();
             if (copyInput) wrapper = (byte[])wrapper.Clone();
             MempoolWrapper decoded;
@@ -471,6 +474,10 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             using IDisposable request = ProductionProofCache.Background(cancellationToken);
             return BuildWrapperCore(returnEncoded, cancellationToken);
         }
+        catch (InvalidOperationException exception)
+        {
+            return Result<byte[]>.Fail(exception.Message);
+        }
         finally { Monitor.Exit(_aggregationLock); }
     }
 
@@ -483,7 +490,11 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
         hash = default;
         if (!IsEnabled) return Result<byte[]>.Fail("EIP-8288 proof wrappers are unavailable.");
         WrapperSnapshot? wrapper = Volatile.Read(ref _cachedWrapper);
-        if (wrapper is null || wrapper.Verifier != RefreshVerifier() || !ArePending(wrapper.Transactions))
+        Eip8288Verifier? verifier;
+        // A pending upgrade rule leaves the cached wrapper unpublishable until it applies.
+        try { verifier = RefreshVerifier(); }
+        catch (InvalidOperationException) { verifier = null; }
+        if (wrapper is null || wrapper.Verifier != verifier || !ArePending(wrapper.Transactions))
             return Result<byte[]>.Fail("Proof wrapper is not ready; retry after the next background cycle.");
         hash = wrapper.Hash;
         return Result<byte[]>.Success(knownHash == hash ? [] : (byte[])wrapper.Encoded.Clone());
