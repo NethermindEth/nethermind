@@ -13,10 +13,12 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
   # Superseded pull request runs are waste, but every master push must reach its save step: a merge
   # burst that cancels its predecessors leaves those commits without a baseline, and the pull requests
-  # based on them fall back to whichever older master cache `restore-keys` happens to match.
+  # based on them fall back to whichever older master cache `restore-keys` happens to match. Turning off
+  # cancel-in-progress is not enough for that, because a group holds one pending run and cancels it
+  # when the next one queues, so each push gets a group of its own.
+  group: ${{ github.workflow }}-${{ github.event_name == 'push' && github.sha || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
@@ -45,6 +47,24 @@ jobs:
           fetch-depth: 2
           filter: blob:none
 
+      - name: Resolve base commit
+        id: base
+        if: github.event_name == 'pull_request'
+        # The merge commit is rebuilt on the base branch's tip at every push, but
+        # `pull_request.base.sha` does not follow later pushes to the base branch, so it can lag the
+        # measured tree by any number of master commits. The merge commit's first parent is the base
+        # this run measures on top of.
+        env:
+          RECORDED_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          if git rev-parse -q --verify 'HEAD^2^{commit}' > /dev/null; then
+            echo "sha=$(git rev-parse 'HEAD^1')" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::HEAD is not a merge commit; comparing against the pull request's recorded base."
+            echo "sha=$RECORDED_BASE_SHA" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Set up .NET
         uses: actions/setup-dotnet@v6
         with:
@@ -64,7 +84,7 @@ jobs:
       - name: Select measurement definitions
         id: definitions
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          BASE_SHA: ${{ steps.base.outputs.sha }}
         run: |
           set -euo pipefail
           validate_inputs() {
@@ -193,7 +213,7 @@ jobs:
         uses: actions/cache/restore@v5
         with:
           path: ${{ runner.temp }}/zisk-bench-baseline
-          key: zisk-bench-${{ env.CACHE_VERSION }}-${{ steps.sdk.outputs.version }}-${{ github.event.pull_request.base.sha }}
+          key: zisk-bench-${{ env.CACHE_VERSION }}-${{ steps.sdk.outputs.version }}-${{ steps.base.outputs.sha }}
           restore-keys: |
             zisk-bench-${{ env.CACHE_VERSION }}-${{ steps.sdk.outputs.version }}-
 
@@ -211,7 +231,7 @@ jobs:
             ${baseline:+--baseline "$baseline"} \
             --commit "${{ github.sha }}" \
             --commit-kind "${{ github.event_name == 'pull_request' && 'merge commit' || 'commit' }}" \
-            --base-commit "${{ github.event.pull_request.base.sha }}" \
+            --base-commit "${{ steps.base.outputs.sha }}" \
             --summary "$GITHUB_STEP_SUMMARY" \
             --github-output "$GITHUB_OUTPUT"
 

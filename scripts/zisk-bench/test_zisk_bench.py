@@ -634,6 +634,68 @@ new AsyncFunction('github', 'context', 'process', script)(github, context, {env:
         self.assertIn("filter: blob:none", self.WORKFLOW)
         self.assertIn('git fetch --depth=1 --filter=blob:none origin "$BASE_SHA"', self.WORKFLOW)
 
+    @unittest.skipUnless(sys.platform == "linux", "workflow shell runs on Linux")
+    def test_base_is_the_merge_commits_first_parent(self):
+        """The merge ref moves with master while `pull_request.base.sha` stays where it was recorded."""
+        match = re.search(r"      - name: Resolve base commit\n.*?        run: \|\n(.*?)(?=\n      - name:)",
+                          self.WORKFLOW, re.DOTALL)
+        script = textwrap.dedent(match.group(1))
+        with tempfile.TemporaryDirectory() as directory:
+            work = Path(directory)
+            source = work / "source"
+            source.mkdir()
+
+            def git(*args, cwd=source):
+                return subprocess.check_output(["git", "-c", "user.name=Test", "-c", "user.email=test@example.com", *args],
+                                               cwd=cwd, text=True, stderr=subprocess.DEVNULL).strip()
+
+            git("init", "-b", "master")
+            git("commit", "--allow-empty", "-m", "recorded base")
+            recorded = git("rev-parse", "HEAD")
+            git("checkout", "-b", "feature")
+            git("commit", "--allow-empty", "-m", "pull request head")
+            head = git("rev-parse", "HEAD")
+            git("checkout", "master")
+            git("commit", "--allow-empty", "-m", "master moved on")
+            moved = git("rev-parse", "HEAD")
+            git("merge", "--no-ff", "-m", "Merge head into moved", "feature")
+            remote = work / "remote.git"
+            git("clone", "--bare", ".", str(remote))
+            # The same shallow, blobless fetch actions/checkout makes of the merge ref.
+            checkout = work / "checkout"
+            subprocess.run(["git", "clone", "--depth=2", "--filter=blob:none", f"file://{remote}", str(checkout)],
+                           check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+            for detach, expected, warned in ((None, moved, False), (head, recorded, True)):
+                with self.subTest(merge=detach is None):
+                    if detach:
+                        git("checkout", "--detach", detach, cwd=checkout)
+                    outputs = work / "outputs"
+                    outputs.unlink(missing_ok=True)
+                    env = dict(os.environ, RECORDED_BASE_SHA=recorded, GITHUB_OUTPUT=str(outputs))
+                    result = subprocess.run(["bash", "-c", script], cwd=checkout, env=env,
+                                            capture_output=True, text=True, check=True)
+                    self.assertEqual(outputs.read_text(), f"sha={expected}\n")
+                    self.assertEqual("::warning::HEAD is not a merge commit" in result.stdout, warned)
+
+    def test_the_comparison_uses_the_resolved_base(self):
+        recorded = "${{ github.event.pull_request.base.sha }}"
+        resolved = "${{ steps.base.outputs.sha }}"
+        self.assertEqual(self.WORKFLOW.count(recorded), 1, "only the fallback may read the recorded base")
+        self.assertIn(f"RECORDED_BASE_SHA: {recorded}", self.WORKFLOW)
+        self.assertIn(f"BASE_SHA: {resolved}", self.WORKFLOW)
+        self.assertIn(f"key: zisk-bench-${{{{ env.CACHE_VERSION }}}}-${{{{ steps.sdk.outputs.version }}}}-{resolved}",
+                      self.WORKFLOW)
+        self.assertIn(f'--base-commit "{resolved}"', self.WORKFLOW)
+
+    def test_every_master_push_gets_its_own_concurrency_group(self):
+        # One group per ref keeps at most one pending run and cancels it when the next push queues,
+        # which leaves the commits of a merge burst without a baseline.
+        concurrency = self.WORKFLOW.split("\nconcurrency:\n", 1)[1].split("\n\n", 1)[0]
+        self.assertIn("group: ${{ github.workflow }}-${{ github.event_name == 'push' && github.sha || github.ref }}",
+                      concurrency)
+        self.assertIn("cancel-in-progress: ${{ github.event_name == 'pull_request' }}", concurrency)
+
     @unittest.skipUnless(sys.platform == "linux" and shutil.which("jq"), "workflow shell and jq required")
     def test_sdk_is_resolved_before_roll_forward_is_disabled(self):
         match = re.search(r"      - name: Pin resolved SDK\n.*?        run: \|\n(.*?)(?=\n      - name:)",
