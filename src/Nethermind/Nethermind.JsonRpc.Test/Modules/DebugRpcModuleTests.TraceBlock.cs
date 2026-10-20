@@ -731,7 +731,7 @@ public partial class DebugRpcModuleTests
                     Does.Contain(nonceDelta > 0 ? "nonce too high" : "nonce too low"), response);
             }
         }
-        else if (stream && !selectTransaction)
+        else if (stream)
         {
             Assert.That(json["error"], Is.Null, response);
             if (nonceDelta != 0)
