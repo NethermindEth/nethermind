@@ -23,4 +23,5 @@ internal readonly struct TracerFlags(ITxTracer tracer)
     public readonly bool IsTracingAccess = tracer.IsTracingAccess;
     public readonly bool IsTracingRefunds = tracer.IsTracingRefunds;
     public readonly bool IsTracingActions = tracer.IsTracingActions;
+    public readonly bool IsTracingOutput = tracer is not ITxOutputTracingFilter { IsTracingOutput: false };
 }

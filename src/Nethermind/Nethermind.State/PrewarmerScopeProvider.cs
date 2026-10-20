@@ -4,6 +4,7 @@
 using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
@@ -315,6 +316,32 @@ public class PrewarmerScopeProvider(
 
         public void HintGet(Address address, Account? account) => baseScope.HintGet(address, account);
 
+        public bool SupportsPrefetch => baseScope.SupportsPrefetch;
+
+        /// <summary>Forwards only keys the pre-block caches do not hold: a cached key is never read from persistence.</summary>
+        /// <remarks>
+        /// Unlike the warm hints below, a capturing scope forwards a prefetch too: its keys are named by the block's own
+        /// transactions, never derived from placeholder values.
+        /// </remarks>
+        public void Prefetch(Span<Address> accounts, Span<StorageCell> slots, CancellationToken cancellationToken)
+        {
+            // Compacted in place: cached keys are dropped without copying the others.
+            int keptAccounts = 0;
+            foreach (Address address in accounts)
+            {
+                AddressAsKey key = address;
+                if (!preBlockCache.TryGetValue(in key, out _)) accounts[keptAccounts++] = address;
+            }
+
+            int keptSlots = 0;
+            foreach (StorageCell cell in slots)
+            {
+                if (!storageCache.TryGetValue(in cell, out _)) slots[keptSlots++] = cell;
+            }
+
+            if (keptAccounts != 0 || keptSlots != 0) baseScope.Prefetch(accounts[..keptAccounts], slots[..keptSlots], cancellationToken);
+        }
+
         // Populator hints target the block's consumer scope (whose commit walks the hinted paths);
         // consumer hints go straight to the backend. Capturing (discovery) scopes execute on placeholder
         // values, so their hinted addresses and slots can be fictitious — never forward them.
@@ -345,13 +372,14 @@ public class PrewarmerScopeProvider(
             return baseScope.HintBal(bal, sink);
         }
 
-        public void ApplyBal(ReadOnlyBlockAccessList bal)
+        public void ApplyBal(ReadOnlyBlockAccessList bal, CancellationToken cancellationToken)
         {
             ArrayPoolList<AppliedAccount> accounts = new(bal.AccountChanges.Count);
             try
             {
                 foreach (ReadOnlyAccountChanges accountChanges in bal.AccountChanges)
                 {
+                    if (cancellationToken.IsCancellationRequested) break;
                     if (!accountChanges.HasStateChanges) continue;
 
                     // The caches still hold the pre-block state the apply reads, so they spare it the backend reads. An
@@ -360,13 +388,17 @@ public class PrewarmerScopeProvider(
                     bool cached = preBlockCache.TryGetValue(in key, out Account? preBlockAccount);
                     if (cached) baseScope.HintGet(accountChanges.Address, preBlockAccount);
 
-                    // Only an account change can remove an account; whether it took storage along is known only when cached.
-                    bool changesAccount = accountChanges.BalanceChanges.Length > 0 || accountChanges.NonceChanges.Length > 0 || accountChanges.CodeChanges.Length > 0;
-                    bool mayRemoveStorage = changesAccount && (!cached || preBlockAccount is { HasStorage: true } || !baseScope.StorageRootsAreAuthoritative);
-                    accounts.Add(new AppliedAccount(accountChanges, mayRemoveStorage));
+                    // Whether a removal took storage along is known only when cached.
+                    bool mayRemoveStorage = !cached || preBlockAccount is { HasStorage: true } || !baseScope.StorageRootsAreAuthoritative;
+                    // A revived account keeps only the slots written after its removal; the scope's own read keeps this exact.
+                    BalAccountDelta? revival = BalAccountDelta.CanEmpty(accountChanges)
+                        && BalAccountDelta.Compute(baseScope.Get(accountChanges.Address), accountChanges) is { WipesStorage: true, Account: not null } delta
+                        ? delta
+                        : null;
+                    accounts.Add(new AppliedAccount(accountChanges, mayRemoveStorage, revival));
                 }
 
-                baseScope.ApplyBal(bal);
+                baseScope.ApplyBal(bal, cancellationToken);
 
                 // Read here, alongside the transactions, rather than on the commit path.
                 foreach (ref AppliedAccount appliedAccount in accounts.AsSpan())
@@ -424,10 +456,12 @@ public class PrewarmerScopeProvider(
     }
 
     /// <summary>An account a BAL changed, with its final value once applied.</summary>
-    private struct AppliedAccount(ReadOnlyAccountChanges changes, bool mayRemoveStorage)
+    private struct AppliedAccount(ReadOnlyAccountChanges changes, bool mayRemoveStorage, BalAccountDelta? revival)
     {
         public readonly ReadOnlyAccountChanges Changes = changes;
         public readonly bool MayRemoveStorage = mayRemoveStorage;
+        /// <summary>Set when the BAL removed the account and then recreated it, wiping its earlier storage.</summary>
+        public readonly BalAccountDelta? Revival = revival;
         public Account? Account;
     }
 
@@ -451,6 +485,17 @@ public class PrewarmerScopeProvider(
 
                     using IWorldStateScopeProvider.IStorageWriteBatch clearBatch = writeBatch.CreateStorageWriteBatch(changes.Address, 0);
                     clearBatch.Clear();
+                    continue;
+                }
+
+                if (appliedAccount.Revival is { } revival)
+                {
+                    using IWorldStateScopeProvider.IStorageWriteBatch revivedBatch = writeBatch.CreateStorageWriteBatch(changes.Address, changes.StorageChanges.Length);
+                    revivedBatch.Clear();
+                    foreach (ReadOnlySlotChanges slotChanges in changes.StorageChanges)
+                    {
+                        if (revival.TryGetFinalValue(slotChanges, out UInt256 value)) revivedBatch.Set(slotChanges.Key, value);
+                    }
                     continue;
                 }
 

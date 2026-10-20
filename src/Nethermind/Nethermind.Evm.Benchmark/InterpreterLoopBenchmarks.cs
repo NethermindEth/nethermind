@@ -16,7 +16,6 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
-using Nethermind.Specs.Forks;
 
 namespace Nethermind.Evm.Benchmark
 {
@@ -50,7 +49,7 @@ namespace Nethermind.Evm.Benchmark
         [GlobalSetup]
         public void GlobalSetup()
         {
-            _stateProvider = TestWorldStateFactory.CreateForTest();
+            _stateProvider = TestWorldStateFactory.CreateForTest(logManager: NullLogManager.Instance);
             _stateScope = _stateProvider.BeginScope(IWorldState.PreGenesis);
             _stateProvider.CreateAccount(Address.Zero, 1000.Ether);
             _stateProvider.CreateAccount(_calleeAddress, 1.Ether);

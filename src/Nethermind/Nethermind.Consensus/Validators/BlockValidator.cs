@@ -184,7 +184,7 @@ public class BlockValidator(
         if (suggestedBlock.BlockAccessList is null
             && processedBlock.GeneratedBlockAccessList is not null
             && _specProvider.GetSpec(suggestedBlock.Header).BlockLevelAccessListsEnabled
-            && !ValidateBlockLevelAccessListSize(processedBlock, ref balSizeError))
+            && !ValidateBlockLevelAccessListSize(processedBlock, processedBlock.GeneratedBlockAccessList.ItemCount, ref balSizeError))
         {
             error = balSizeError;
             return false;
@@ -192,6 +192,17 @@ public class BlockValidator(
 
         if (processedBlock.Header.Hash == suggestedBlock.Header.Hash)
         {
+            // A list reattached from the store for queued processing (sync, restart replay, reorg) skipped the
+            // pre-execution check, and parallel execution only verified against it, so check it here. Only on a
+            // matching block, so a divergent one still reports the mismatch.
+            if (suggestedBlock.BlockAccessList is not null
+                && _specProvider.GetSpec(suggestedBlock.Header).BlockLevelAccessListsEnabled
+                && !ValidateBlockLevelAccessListSize(processedBlock, suggestedBlock.BlockAccessList.ItemCount, ref balSizeError))
+            {
+                error = balSizeError;
+                return false;
+            }
+
             error = null;
             return true;
         }
@@ -471,7 +482,7 @@ public class BlockValidator(
                 return false;
             }
 
-            if (!ValidateBlockLevelAccessListSize(block, ref error))
+            if (!ValidateBlockLevelAccessListSize(block, block.BlockAccessList.ItemCount, ref error))
             {
                 return false;
             }
@@ -488,16 +499,12 @@ public class BlockValidator(
 
     }
 
-    private bool ValidateBlockLevelAccessListSize(Block block, ref string? error)
+    private bool ValidateBlockLevelAccessListSize(Block block, int itemCount, ref string? error)
     {
-        // Suggested/engine blocks carry the wire BAL in BlockAccessList. RLP/P2P
-        // validation reaches this helper after execution with only GeneratedBlockAccessList.
-        ulong itemCount = (ulong)(block.BlockAccessList?.ItemCount ?? block.GeneratedBlockAccessList?.ItemCount ?? 0);
-        ulong maxBalItems = block.Header.GasLimit / Eip7928Constants.ItemCost;
-
-        if (itemCount > 0 && itemCount > maxBalItems)
+        if (Eip7928Constants.ExceedsItemLimit(itemCount, block.Header.GasLimit))
         {
-            error = BlockErrorMessages.BlockAccessListGasLimitExceeded(itemCount, maxBalItems);
+            ulong maxBalItems = block.Header.GasLimit / Eip7928Constants.ItemCost;
+            error = BlockErrorMessages.BlockAccessListGasLimitExceeded((ulong)itemCount, maxBalItems);
             if (_logger.IsWarn) _logger.Warn($"{Invalid(block)} {error}");
             return false;
         }

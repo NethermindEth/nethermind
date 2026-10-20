@@ -142,6 +142,17 @@ public sealed class CommitmentMetadata(IColumnsDb<FlatHistoryColumns> history, C
         }
     }
 
+    /// <summary>Deletes every commitment row and record, for a history restarting at a snap pivot; the layout stamp
+    /// is rewritten on the next build.</summary>
+    public void DiscardForPivot()
+    {
+        lock (_lock)
+        {
+            DiscardAll();
+            _layoutEnsured = false;
+        }
+    }
+
     private void DiscardAll()
     {
         ReadOnlySpan<byte> first = [0x00];

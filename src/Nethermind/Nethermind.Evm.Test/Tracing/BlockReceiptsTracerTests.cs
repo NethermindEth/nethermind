@@ -4,8 +4,11 @@
 using System;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Tracing;
+using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Int256;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -64,6 +67,102 @@ namespace Nethermind.Evm.Test.Tracing
                     Assert.That(tracer.TxReceipts[0].FrameReceipts, Is.SameAs(frames));
                 }
             }
+        }
+
+        [Test]
+        public void Reads_the_transaction_output_only_for_another_tracer([Values] bool wrapsTracer)
+        {
+            Transaction tx = Build.A.Transaction.TestObject;
+            BlockReceiptsTracer tracer = new();
+            if (wrapsTracer)
+            {
+                IBlockTracer blockTracer = Substitute.For<IBlockTracer>();
+                blockTracer.StartNewTxTrace(tx).Returns(Substitute.For<ITxTracer>());
+                tracer.SetOtherTracer(blockTracer);
+            }
+            tracer.StartNewBlockTrace(Build.A.Block.WithTransactions(tx).TestObject);
+
+            tracer.StartNewTxTrace(tx);
+
+            Assert.That(tracer.IsTracingOutput, Is.EqualTo(wrapsTracer));
+        }
+
+        [Test]
+        public void Reads_the_transaction_output_for_a_composite_of_block_tracers()
+        {
+            Transaction tx = Build.A.Transaction.TestObject;
+            CompositeBlockTracer composite = new();
+            for (int i = 0; i < 2; i++)
+            {
+                IBlockTracer blockTracer = Substitute.For<IBlockTracer>();
+                blockTracer.StartNewTxTrace(tx).Returns(Substitute.For<ITxTracer>());
+                composite.Add(blockTracer);
+            }
+
+            BlockReceiptsTracer tracer = new();
+            tracer.SetOtherTracer(composite.GetTracer());
+            tracer.StartNewBlockTrace(Build.A.Block.WithTransactions(tx).TestObject);
+
+            tracer.StartNewTxTrace(tx);
+
+            Assert.That(tracer.IsTracingOutput, Is.True, "plugin tracers and produced-block dumps run through a composite");
+        }
+
+        [Test]
+        public void Without_receipts_keeps_block_gas_and_forwards_the_outcome([Values] bool failedFrame)
+        {
+            Transaction frameTx = Build.A.Transaction.WithType(TxType.FrameTx).TestObject;
+            Transaction failedTx = Build.A.Transaction.TestObject;
+            Block block = Build.A.Block.WithTransactions(frameTx, failedTx).TestObject;
+            ITxTracer txTracer = Substitute.For<ITxTracer>();
+            txTracer.IsTracingReceipt.Returns(true);
+            IBlockTracer blockTracer = Substitute.For<IBlockTracer>();
+            blockTracer.StartNewTxTrace(Arg.Any<Transaction>()).Returns(txTracer);
+            BlockReceiptsTracer tracer = new() { BuildsReceipts = false };
+            tracer.SetOtherTracer(blockTracer);
+            tracer.StartNewBlockTrace(block);
+            TxFrameReceipt[] frames = [new(failedFrame ? StatusCode.Failure : StatusCode.Success, 10, 0, [])];
+
+            tracer.StartNewTxTrace(frameTx);
+            tracer.ReportFrameTxReceipt(TestItem.AddressA, frames);
+            tracer.MarkAsSuccess(TestItem.AddressB, 100, [], []);
+            tracer.EndTxTrace();
+            tracer.StartNewTxTrace(failedTx);
+            tracer.MarkAsFailed(TestItem.AddressB, 200, [], "error");
+            tracer.EndTxTrace();
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(tracer.TxReceipts.Length, Is.EqualTo(0));
+                Assert.That(tracer.CumulativeExecutionGasUsed, Is.EqualTo(300ul));
+                Assert.That(block.Header.GasUsed, Is.EqualTo(300ul));
+            }
+            txTracer.Received(failedFrame ? 0 : 1).MarkAsSuccess(TestItem.AddressB, Arg.Any<GasConsumed>(), Arg.Any<byte[]>(), Arg.Any<LogEntry[]>(), Arg.Any<Hash256?>());
+            txTracer.Received(failedFrame ? 2 : 1).MarkAsFailed(TestItem.AddressB, Arg.Any<GasConsumed>(), Arg.Any<byte[]>(), Arg.Any<string?>(), Arg.Any<Hash256?>());
+        }
+
+        [Test]
+        public void Collects_logs_only_for_receipts_or_a_tracer_that_reads_them(
+            [Values] bool buildsReceipts, [Values] bool tracerCollectsLogs, [Values] bool nestedReceiptsTracer)
+        {
+            Transaction tx = Build.A.Transaction.TestObject;
+            ITxTracer txTracer = Substitute.For<ITxTracer>();
+            txTracer.IsCollectingLogs.Returns(tracerCollectsLogs);
+            IBlockTracer blockTracer = Substitute.For<IBlockTracer>();
+            blockTracer.StartNewTxTrace(tx).Returns(txTracer);
+            if (nestedReceiptsTracer)
+            {
+                BlockReceiptsTracer nested = new();
+                nested.SetOtherTracer(blockTracer);
+                blockTracer = nested;
+            }
+            BlockReceiptsTracer tracer = new() { BuildsReceipts = buildsReceipts };
+            tracer.SetOtherTracer(blockTracer);
+            tracer.StartNewBlockTrace(Build.A.Block.WithTransactions(tx).TestObject);
+
+            tracer.StartNewTxTrace(tx);
+
+            Assert.That(tracer.IsCollectingLogs, Is.EqualTo(buildsReceipts || tracerCollectsLogs || nestedReceiptsTracer));
         }
 
         [Test]
@@ -218,6 +317,43 @@ namespace Nethermind.Evm.Test.Tracing
 
             Assert.That(allocated, Is.LessThan(1024),
                 "a parallel tracer must reserve receipt capacity for its single transaction, not for the block");
+        }
+
+        /// <summary>A producer that leaves an executed transaction out must not keep its receipt, block gas or fees.</summary>
+        [Test]
+        public void DiscardLastTx_drops_the_receipt_gas_and_fees_of_the_last_transaction()
+        {
+            Transaction first = Build.A.Transaction.WithNonce(0).TestObject;
+            Transaction discarded = Build.A.Transaction.WithNonce(1).TestObject;
+            Transaction last = Build.A.Transaction.WithNonce(2).TestObject;
+            Block block = Build.A.Block.WithTransactions(first, discarded, last).TestObject;
+            FeesTracer fees = new();
+            BlockReceiptsTracer tracer = new();
+            tracer.SetOtherTracer(fees);
+            tracer.StartNewBlockTrace(block);
+
+            Trace(first, 100, 10);
+            Trace(discarded, 200, 20);
+            tracer.DiscardLastTx();
+            Trace(last, 300, 30);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(tracer.TxReceipts.Length, Is.EqualTo(2));
+                Assert.That(tracer.TxReceipts[1].Index, Is.EqualTo(1));
+                Assert.That(tracer.TxReceipts[1].GasUsedTotal, Is.EqualTo(400ul));
+                Assert.That(tracer.CumulativeExecutionGasUsed, Is.EqualTo(400ul));
+                Assert.That(block.Header.GasUsed, Is.EqualTo(400ul));
+                Assert.That(fees.Fees, Is.EqualTo((UInt256)40));
+            }
+
+            void Trace(Transaction tx, ulong gas, ulong fee)
+            {
+                tracer.StartNewTxTrace(tx);
+                tracer.ReportFees(fee, 0);
+                tracer.MarkAsSuccess(TestItem.AddressA, gas, [], []);
+                tracer.EndTxTrace();
+            }
         }
     }
 }

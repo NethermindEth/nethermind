@@ -22,13 +22,17 @@ internal sealed partial class PersistentStorageProvider
         ArrayPool<KeyValuePair<StorageCell, UInt256>>.Create(LargeMapPool<StorageCell, UInt256>.MaxRetainedCapacity, 1);
     private ArrayPoolList<KeyValuePair<StorageCell, UInt256>>? _pendingOriginalValues;
     private bool _originalsIndexed;
+    // The pool serves a rent from up to two sizes above the one asked for, so a list this large may never have grown.
+    internal const int RetainedPendingCapacity = PooledDictionaryCapacity * 4;
 
     public void SetBackendScope(IWorldStateScopeProvider.IScope? scope)
     {
         _currentScope = scope;
-        if (scope is null)
+        // A list within RetainedPendingCapacity is kept: the pool shared by every provider serves only a few overlapping
+        // scopes, so handing it back makes concurrent ones, the prewarmer's, allocate their own.
+        if (scope is null && _pendingOriginalValues is { Capacity: > RetainedPendingCapacity })
         {
-            _pendingOriginalValues?.Dispose();
+            _pendingOriginalValues.Dispose();
             _pendingOriginalValues = null;
         }
     }
@@ -40,13 +44,21 @@ internal sealed partial class PersistentStorageProvider
         _lastCapturedCell = cell;
         if (!_originalsIndexed)
         {
-            (_pendingOriginalValues ??= new(PendingOriginalsPool, PooledDictionaryCapacity))
-                .Add(new KeyValuePair<StorageCell, UInt256>(cell, value));
+            (_pendingOriginalValues ??= RentPendingOriginals()).Add(new KeyValuePair<StorageCell, UInt256>(cell, value));
             _lastCapturedOriginal = value;
             return;
         }
 
         _lastCapturedOriginal = CaptureIndexedOriginalValue(in cell, in value);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static ArrayPoolList<KeyValuePair<StorageCell, UInt256>> RentPendingOriginals()
+    {
+        ArrayPoolList<KeyValuePair<StorageCell, UInt256>> list = new(PendingOriginalsPool, PooledDictionaryCapacity);
+        // A kept list is dropped with its provider rather than disposed, which the debug build would report as a leak.
+        GC.SuppressFinalize(list);
+        return list;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -147,23 +159,12 @@ internal sealed partial class PersistentStorageProvider
             0,
             storages.Count,
             RuntimeInformation.ParallelOptionsLogicalCores,
-            (storages, toUpdateRoots: _toUpdateRoots, writes: 0, skips: 0),
+            (storages, writes: 0, skips: 0),
             static (i, state) =>
             {
                 ref (AddressAsKey Key, PerContractState ContractState, IWorldStateScopeProvider.IStorageWriteBatch WriteBatch) kvp = ref state.storages.GetRef(i);
                 (int writes, int skipped) = kvp.ContractState.ProcessStorageChanges(kvp.WriteBatch);
-
-                if (writes == 0)
-                {
-                    // Mark as no changes; we set as false rather than removing so
-                    // as not to modify the non-concurrent collection without synchronization
-                    state.toUpdateRoots[kvp.Key] = false;
-                }
-                else
-                {
-                    state.writes += writes;
-                }
-
+                state.writes += writes;
                 state.skips += skipped;
 
                 return state;

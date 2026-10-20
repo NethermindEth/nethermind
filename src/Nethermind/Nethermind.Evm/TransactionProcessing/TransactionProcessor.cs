@@ -63,7 +63,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 totalBlobBaseFee = UInt256.Zero;
                 return false;
             }
-            return BlobGasCalculator.TryCalculateBlobBaseFee(header, transaction, blobGasPriceUpdateFraction, out totalBlobBaseFee);
+            return !UInt256.MultiplyOverflow(BlobGasCalculator.CalculateBlobGas(transaction), feePerBlobGas, out totalBlobBaseFee);
         }
     }
 
@@ -86,7 +86,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
         /// <summary>Whether LOG may skip materialising its entry: a prewarming run nobody observes.</summary>
         /// <remarks>Deliberately narrower than the tracer-requirement test the non-frame path uses: a frame
-        /// transaction reads its own logs from a POST_TX frame (EIP-7906), which no tracer flag describes.
+        /// transaction reads its own logs from an ASSERT frame (EIP-7906), which no tracer flag describes.
         /// A cancellation wrapper that traces nothing of its own is looked through.</remarks>
         private protected static bool ShouldSuppressLogs(ExecutionOptions opts, ITxTracer tracer) =>
             opts.HasFlag(ExecutionOptions.Warmup)
@@ -168,6 +168,8 @@ namespace Nethermind.Evm.TransactionProcessing
         private ulong _blockCumulativeExecutionGas;
         private ulong _blockCumulativeStateGas;
         private TracerFlags _tracerFlags;
+        private bool _deferSenderDebit;
+        private UInt256 _deferredSenderDebit;
 
         protected TransactionProcessorBase(
             ITransactionProcessor.IBlobBaseFeeCalculator? blobBaseFeeCalculator,
@@ -269,7 +271,7 @@ namespace Nethermind.Evm.TransactionProcessing
             IReleaseSpec spec = GetSpec(header);
             if (tx.Type == TxType.FrameTx)
             {
-                IBlockAccessListSource? diffRecorder = BeginPostTxDiffRecording(tx, opts, spec);
+                IBlockAccessListSource? diffRecorder = BeginAssertFrameDiffRecording(tx, opts, spec);
                 try
                 {
                     return tracer.IsTracing
@@ -283,7 +285,7 @@ namespace Nethermind.Evm.TransactionProcessing
                     // view's diff and log payload would stay rooted while the processor sits idle.
                     if (VirtualMachine.TxExecutionContext.FrameTxContext is { } frameContext)
                     {
-                        frameContext.PostTxDiffView = null;
+                        frameContext.AssertFrameDiffView = null;
                     }
                 }
             }
@@ -321,20 +323,23 @@ namespace Nethermind.Evm.TransactionProcessing
 
             UInt256 effectiveGasPrice = CalculateEffectiveGasPrice(tx, spec.IsEip1559Enabled, header.BaseFeePerGas, out UInt256 opcodeGasPrice);
 
-            UpdateMetrics(opts, effectiveGasPrice);
-
             bool deleteCallerAccount = RecoverSenderIfNeeded(tx, spec, opts, effectiveGasPrice);
 
+            _deferSenderDebit = true;
+            _deferredSenderDebit = default;
             if (!(result = ValidateSender(tx, header, spec, tracer, opts)) ||
                 !(result = BuyGas(tx, spec, tracer, opts, effectiveGasPrice, out UInt256 premiumPerGas, out UInt256 senderReservedGasPayment, out UInt256 blobBaseFee)) ||
                 !(result = IncrementNonce(tx, header, spec, tracer, opts)))
             {
+                ApplyDeferredSenderDebit(tx, spec);
                 if (restore)
                 {
                     WorldState.Reset(resetBlockChanges: false);
                 }
                 return result;
             }
+
+            ApplyDeferredSenderDebit(tx, spec);
 
             Address? simpleTransferRecipient = PrepareSimpleTransferFastPath(tx, spec, out CodeInfo? preloadedCodeInfo, out Address? preloadedDelegationAddress);
 
@@ -777,7 +782,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
                 if (statusCode == StatusCode.Failure)
                 {
-                    byte[] output = substate.ShouldRevert ? substate.Output.AsReadOnlyArray() : [];
+                    byte[] output = substate.ShouldRevert && _tracerFlags.IsTracingOutput ? substate.Output.AsReadOnlyArray() : [];
                     string? error = substate.Error;
                     if (error is null && substate.EvmExceptionType is not EvmExceptionType.None)
                     {
@@ -788,7 +793,8 @@ namespace Nethermind.Evm.TransactionProcessing
                 else
                 {
                     LogEntry[] logs = substate.Logs is { Count: > 0 } ? substate.LogsToArray() : [];
-                    tracer.MarkAsSuccess(executingAccount, spentGas, substate.Output.AsReadOnlyArray(), logs, stateRoot);
+                    byte[] output = _tracerFlags.IsTracingOutput ? substate.Output.AsReadOnlyArray() : [];
+                    tracer.MarkAsSuccess(executingAccount, spentGas, output, logs, stateRoot);
                 }
             }
 
@@ -964,16 +970,6 @@ namespace Nethermind.Evm.TransactionProcessing
             Logger.Debug($"Delegation {authorizationTuple} is invalid with error: {error}");
 
         protected virtual IReleaseSpec GetSpec(BlockHeader header) => VirtualMachine.BlockExecutionContext.Spec;
-
-        private static void UpdateMetrics(ExecutionOptions opts, UInt256 effectiveGasPrice)
-        {
-            // Block production (BuildUp) is excluded: payload builds run concurrently with block import
-            // on the same process-wide gas aggregates, and the gauges describe imported blocks, not candidates.
-            if (opts is ExecutionOptions.Commit or ExecutionOptions.None)
-            {
-                Metrics.UpdateBlockGasPrice(effectiveGasPrice);
-            }
-        }
 
         /// <summary>
         /// Validates the transaction, in a static manner (i.e. without accessing state/storage).
@@ -1189,6 +1185,9 @@ namespace Nethermind.Evm.TransactionProcessing
         protected static bool ShouldValidateGas(Transaction tx, ExecutionOptions opts)
             => !opts.HasFlag(ExecutionOptions.SkipValidation) || tx.MaxFeePerGas != 0UL || tx.MaxPriorityFeePerGas != 0UL;
 
+        /// <remarks>
+        /// Within <c>Execute</c>, the sender debit is deferred until the base <see cref="IncrementNonce"/> runs, so the sender account is written once.
+        /// </remarks>
         protected virtual TransactionResult BuyGas(Transaction tx, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts,
                 in UInt256 effectiveGasPrice, out UInt256 premiumPerGas, out UInt256 senderReservedGasPayment, out UInt256 blobBaseFee)
         {
@@ -1280,7 +1279,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 if (opts.HasFlag(ExecutionOptions.Warmup) && !opts.HasFlag(ExecutionOptions.StrictWarmup))
                 {
                     UInt256 warmCharge = UInt256.Min(senderReservedGasPayment, balance);
-                    if (!warmCharge.IsZero) WorldState.SubtractFromBalance(sender, warmCharge, spec);
+                    if (!warmCharge.IsZero) DebitSender(sender, in warmCharge, spec);
                     return TransactionResult.Ok;
                 }
 
@@ -1288,9 +1287,24 @@ namespace Nethermind.Evm.TransactionProcessing
                 return InsufficientFundsForGas(tx, balance, balanceCheck);
             }
 
-            if (!senderReservedGasPayment.IsZero) WorldState.SubtractFromBalance(sender, senderReservedGasPayment, spec);
+            if (!senderReservedGasPayment.IsZero) DebitSender(sender, in senderReservedGasPayment, spec);
 
             return TransactionResult.Ok;
+        }
+
+        private void DebitSender(Address sender, in UInt256 amount, IReleaseSpec spec)
+        {
+            if (_deferSenderDebit) _deferredSenderDebit = amount;
+            else WorldState.SubtractFromBalance(sender, in amount, spec);
+        }
+
+        private void ApplyDeferredSenderDebit(Transaction tx, IReleaseSpec spec)
+        {
+            _deferSenderDebit = false;
+            if (_deferredSenderDebit.IsZero) return;
+
+            WorldState.SubtractFromBalance(tx.SenderAddress!, in _deferredSenderDebit, spec);
+            _deferredSenderDebit = default;
         }
 
         private static TransactionResult RequiredBalanceExceeds256Bits(Transaction tx) =>
@@ -1301,6 +1315,10 @@ namespace Nethermind.Evm.TransactionProcessing
             TransactionResult.ErrorType.InsufficientMaxFeePerGasForSenderBalance.WithDetail(
                 $"{TxErrorMessages.InsufficientFundsForGas}: address {tx.SenderAddress?.ToString(withEip55Checksum: true)} have {senderBalance} want {want}");
 
+        /// <remarks>
+        /// Within <c>Execute</c>, the base implementation also applies the gas debit deferred by the base <see cref="BuyGas"/>;
+        /// until it runs, the sender balance does not reflect that debit.
+        /// </remarks>
         protected virtual TransactionResult IncrementNonce(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts)
         {
             Address? senderAddress = tx.SenderAddress;
@@ -1326,7 +1344,15 @@ namespace Nethermind.Evm.TransactionProcessing
             }
 
             ulong newNonce = validate || nonce < ulong.MaxValue ? nonce + 1 : 0;
-            WorldState.SetNonce(senderAddress, newNonce);
+            if (_deferredSenderDebit.IsZero)
+            {
+                WorldState.SetNonce(senderAddress, newNonce);
+            }
+            else
+            {
+                WorldState.SubtractFromBalanceAndSetNonce(senderAddress, in _deferredSenderDebit, newNonce, spec);
+                _deferredSenderDebit = default;
+            }
 
             return TransactionResult.Ok;
         }

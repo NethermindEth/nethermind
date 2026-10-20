@@ -1,7 +1,9 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+#if !ZK_EVM
 using System;
+#endif
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Threading;
@@ -374,4 +376,10 @@ public partial class Metrics
     [Description("Total number of background tasks executed.")]
     public static long TotalBackgroundTasksExecuted => _totalBackgroundTasksExecuted.Value;
     public static void IncrementTotalBackgroundTasksExecuted() => Interlocked.Increment(ref _totalBackgroundTasksExecuted.Value);
+
+    private static long _balAdoptedCodeMissing;
+    [CounterMetric]
+    [Description("EIP-8298 code adoptions applied from a block access list whose bytecode was neither in the code database nor deposited in the block.")]
+    public static long BalAdoptedCodeMissing => Volatile.Read(ref _balAdoptedCodeMissing);
+    internal static void IncrementBalAdoptedCodeMissing() => Interlocked.Increment(ref _balAdoptedCodeMissing);
 }

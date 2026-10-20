@@ -16,6 +16,7 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.ChainSpecStyle.Json;
+using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
 namespace Nethermind.Specs.Test.ChainSpecStyle;
@@ -39,10 +40,10 @@ public class ChainSpecLoaderTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(chainSpec.Parameters.Eip1559BaseFeeInitialValue, Is.EqualTo(1.GWei), $"fork base fee");
+            Assert.That(new ChainSpecBasedSpecProvider(chainSpec).GenesisSpec.ForkBaseFee, Is.EqualTo(1.GWei), $"fork base fee");
+            Assert.That(chainSpec.Parameters.MinHistoryRetentionEpochs, Is.EqualTo(HistoryRetentionConstants.MinEpochsForBlockRequests));
             Assert.That(chainSpec.NetworkId, Is.EqualTo(1), $"{nameof(chainSpec.NetworkId)}");
-            Assert.That(chainSpec.Name, Is.EqualTo("Ethereum"), $"{nameof(chainSpec.Name)}");
-            Assert.That(chainSpec.DataDir, Is.EqualTo("ethereum"), $"{nameof(chainSpec.Name)}");
+            Assert.That(chainSpec.Name, Is.EqualTo("Ethereum"), nameof(chainSpec.Name));
             Assert.That(chainSpec.SealEngineType, Is.EqualTo(SealEngineType.Ethash), "engine");
 
             Assert.That(chainSpec.HomesteadBlockNumber, Is.EqualTo(MainnetSpecProvider.HomesteadBlockNumber));
@@ -50,7 +51,7 @@ public class ChainSpecLoaderTests
             Assert.That(chainSpec.TangerineWhistleBlockNumber, Is.EqualTo(MainnetSpecProvider.TangerineWhistleBlockNumber));
             Assert.That(chainSpec.SpuriousDragonBlockNumber, Is.EqualTo(MainnetSpecProvider.SpuriousDragonBlockNumber));
             Assert.That(chainSpec.ByzantiumBlockNumber, Is.EqualTo(MainnetSpecProvider.ByzantiumBlockNumber));
-            Assert.That(chainSpec.ConstantinopleBlockNumber, Is.EqualTo(null));
+            Assert.That(chainSpec.ConstantinopleBlockNumber, Is.EqualTo(MainnetSpecProvider.ConstantinopleFixBlockNumber));
             Assert.That(chainSpec.ConstantinopleFixBlockNumber, Is.EqualTo(MainnetSpecProvider.ConstantinopleFixBlockNumber));
             Assert.That(chainSpec.IstanbulBlockNumber, Is.EqualTo(MainnetSpecProvider.IstanbulBlockNumber));
             Assert.That(chainSpec.MuirGlacierNumber, Is.EqualTo(MainnetSpecProvider.MuirGlacierBlockNumber));
@@ -101,13 +102,13 @@ public class ChainSpecLoaderTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(chainSpec.NetworkId, Is.EqualTo(11155111), $"{nameof(chainSpec.NetworkId)}");
-            Assert.That(chainSpec.Name, Is.EqualTo("Sepolia Testnet"), $"{nameof(chainSpec.Name)}");
-            Assert.That(chainSpec.DataDir, Is.EqualTo("sepolia"), $"{nameof(chainSpec.Name)}");
+            Assert.That(chainSpec.Name, Is.EqualTo("Sepolia Testnet"), nameof(chainSpec.Name));
             Assert.That(chainSpec.SealEngineType, Is.EqualTo(SealEngineType.Ethash), "engine");
             Assert.That(chainSpec.Bootnodes, Has.Length.EqualTo(5), nameof(chainSpec.Bootnodes));
 
             Assert.That(chainSpec.LondonBlockNumber, Is.EqualTo(0L));
             Assert.That(chainSpec.ShanghaiTimestamp, Is.EqualTo(1677557088));
+            Assert.That(chainSpec.Parameters.MinHistoryRetentionEpochs, Is.EqualTo(HistoryRetentionConstants.HistoryPruneEpochs), "Glamsterdam is live");
         }
     }
 
@@ -199,6 +200,20 @@ public class ChainSpecLoaderTests
         ChainSpec chainSpec = new ChainSpecLoader(new EthereumJsonSerializer(), LimboLogs.Instance).Load(stream);
 
         Assert.That(chainSpec.Parameters.BlobSchedule, Is.Empty);
+    }
+
+    [Test]
+    public void Bal_retention_floor_defaults_to_history_prune_epochs()
+    {
+        string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../", "Chains/spaceneth.json");
+        using MemoryStream gethGenesis = new(Encoding.UTF8.GetBytes("""{ "config": { "chainId": 1 }, "difficulty": "0x1", "gasLimit": "0x8000000", "alloc": {} }"""));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(LoadChainSpec(path).Parameters.MinBalRetentionEpochs, Is.EqualTo(HistoryRetentionConstants.HistoryPruneEpochs), "chainspec");
+            Assert.That(new GethGenesisLoader(new EthereumJsonSerializer()).Load(gethGenesis).Parameters.MinBalRetentionEpochs, Is.EqualTo(HistoryRetentionConstants.HistoryPruneEpochs), "geth genesis");
+            Assert.That(Olympic.Instance.MinBalRetentionEpochs, Is.EqualTo(HistoryRetentionConstants.HistoryPruneEpochs), "built-in forks");
+        }
     }
 
     /// <summary>Loads a chain spec whose genesis, at timestamp 0, follows <paramref name="transitionParam"/> set to <paramref name="transitionTimestamp"/>.</summary>

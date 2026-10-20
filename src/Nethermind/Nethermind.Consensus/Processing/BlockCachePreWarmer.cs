@@ -1045,7 +1045,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         return footprints?.Find(_mainThreadTxIndex, tx, header);
     }
 
-    public CacheType ClearCaches()
+    public void ClearCaches()
     {
         if (_logger.IsDebug) _logger.Debug("Clearing caches");
         Volatile.Write(ref _footprints, null);
@@ -1055,9 +1055,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         // keeps or clears them before the next use.
         _preBlockCaches?.ClearPrecompileCache();
         _blockCodeCache?.ClearBlock();
-        CacheType cachesCleared = _nodeStorageCache.ClearCaches() ? CacheType.Rlp : CacheType.None;
-        if (_logger.IsDebug) _logger.Debug($"Cleared caches: {cachesCleared}");
-        return cachesCleared;
+        _nodeStorageCache.ClearCaches();
     }
 
     public void Dispose()
@@ -1449,7 +1447,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            // The pass ended mid-transaction; the caller disposes the scope without running anything else on it.
+            // The pass ended mid-transaction; the worker disposes the scope at park without running anything else on it.
         }
         catch (Exception ex)
         {
@@ -1653,6 +1651,21 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
     internal const int MinCalldataWordsForAddressWarm = 8;
     internal const int MaxCalldataAddressesPerBlock = 4096;
 
+    /// <summary>Sorts <paramref name="items"/> and moves each distinct item to the front once.</summary>
+    /// <returns>The distinct items, a prefix of <paramref name="items"/>.</returns>
+    internal static Span<T> SortUnique<T, TComparer>(Span<T> items, TComparer comparer) where TComparer : IComparer<T>
+    {
+        if (items.Length < 2) return items;
+        items.Sort(comparer);
+        int unique = 1;
+        for (int i = 1; i < items.Length; i++)
+        {
+            if (comparer.Compare(items[i], items[unique - 1]) != 0) items[unique++] = items[i];
+        }
+
+        return items[..unique];
+    }
+
     /// <summary>The distinct addresses the block's large calldata names as ABI words, in calldata order; the caller disposes the list.</summary>
     /// <remarks>
     /// Words are deduplicated as they are: an ABI address word is the address left-padded to 32 bytes, the
@@ -1769,6 +1782,13 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
                     {
                         using IReadOnlyTxProcessingScope scope = env.BuildAtTarget(block.Header);
 
+                        // First, on this worker and scope: the backend decides from a few cached probes, so a cached
+                        // block costs only those, and a cold one has its reads in flight before the warm passes.
+                        // It reuses this guard's scope rather than opening its own: every block after the merge
+                        // names a fee recipient, so the guard holds. With a block access list, HintBal prefetches
+                        // the whole read set instead.
+                        if (Bal is null && scope.WorldState.SupportsPrefetch) PrefetchKnownState(block, scope.WorldState, parallelOptions.CancellationToken);
+
                         WarmupSender(beneficiary, null, scope.WorldState);
 
                         if (WarmWithdrawals)
@@ -1840,6 +1860,73 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
             catch (OperationCanceledException)
             {
                 // Ignore, block completed cancel
+            }
+        }
+
+        /// <summary>
+        /// Starts one asynchronous batched read of every account and slot known before execution: senders,
+        /// recipients, declared access lists, the beneficiary and withdrawal recipients. The warm passes that follow
+        /// read the same keys one at a time; with their disk reads already overlapped they find the blocks cached.
+        /// </summary>
+        private void PrefetchKnownState(Block block, IWorldState worldState, CancellationToken token)
+        {
+            int count = block.Transactions.Length + (block.InclusionListTransactions?.Length ?? 0);
+            int accountCapacity = 2 * count + 1 + (WarmWithdrawals ? block.Withdrawals!.Length : 0);
+            int slotCapacity = 0;
+            for (int i = 0; i < count; i++)
+            {
+                if (TransactionAt(block, i).AccessList is { IsEmpty: false } accessList)
+                {
+                    (int addresses, int storageKeys) = accessList.Count;
+                    accountCapacity += addresses;
+                    slotCapacity += storageKeys;
+                }
+            }
+
+            // Filled once at the exact bound, then sorted and deduplicated in place: no set, no second copy.
+            Address[] accounts = ArrayPool<Address>.Shared.Rent(accountCapacity);
+            StorageCell[] slots = ArrayPool<StorageCell>.Shared.Rent(slotCapacity);
+            try
+            {
+                int accountCount = 0;
+                int slotCount = 0;
+                for (int i = 0; i < count; i++)
+                {
+                    if ((i & 0x3F) == 0 && token.IsCancellationRequested) return;
+                    Transaction tx = TransactionAt(block, i);
+                    if (tx.SenderAddress is { } sender) accounts[accountCount++] = sender;
+                    if (tx.To is { } recipient) accounts[accountCount++] = recipient;
+                    if (tx.AccessList is { IsEmpty: false } accessList)
+                    {
+                        foreach ((Address address, AccessList.StorageKeysEnumerable storages) in accessList)
+                        {
+                            accounts[accountCount++] = address;
+                            foreach (UInt256 storage in storages) slots[slotCount++] = new StorageCell(address, in storage);
+                        }
+                    }
+                }
+
+                if (Beneficiary is { } beneficiary) accounts[accountCount++] = beneficiary;
+                if (WarmWithdrawals)
+                {
+                    foreach (Withdrawal withdrawal in block.Withdrawals!) accounts[accountCount++] = withdrawal.Address;
+                }
+
+                Span<Address> uniqueAccounts = SortUnique(accounts.AsSpan(0, accountCount), default(AddressComparer));
+                // Sorting by account also keeps each account's slots adjacent, so its hash is computed once.
+                Span<StorageCell> uniqueSlots = SortUnique(slots.AsSpan(0, slotCount), default(StorageCellComparer));
+                if (uniqueAccounts.IsEmpty && uniqueSlots.IsEmpty) return;
+                worldState.Prefetch(uniqueAccounts, uniqueSlots, token);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                // A prefetch only warms caches; the warm passes that follow read and report on their own.
+                PreWarmer._logger.DebugError("Error prefetching transaction state", ex);
+            }
+            finally
+            {
+                ArrayPool<Address>.Shared.Return(accounts, clearArray: true);
+                ArrayPool<StorageCell>.Shared.Return(slots, clearArray: true);
             }
         }
 
@@ -2244,7 +2331,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         /// A claim is never released, so plain reads are enough on this scan: a stale zero costs one failed exchange,
         /// and the exchange is what decides who owns the transaction. <see cref="WaitForArrival"/> reads the table
         /// volatile instead, because there the read is what ends a spin. The main thread's index is read once: it
-        /// only ever grows, and <see cref="TxWarmupWorker.Warm"/> re-reads it before building a scope.
+        /// only ever grows, and <see cref="TxWarmupWorker.Warm"/> re-reads it before opening a scope.
         /// </remarks>
         public bool TryClaimLate(ArrayPoolList<(int Index, Transaction Tx)> run, out int readyElsewhere)
         {
@@ -2523,9 +2610,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
 
     /// <summary>
     /// A transaction-warming worker, kept by its queue across blocks with the run list it claims into; it holds an
-    /// env only from rent to park. The fan-out's own workers run <see cref="Drain"/> and are parked by its loop
-    /// finalizer; a helper recruited for a wave of late senders is submitted as joinable background work and runs
-    /// <see cref="Execute"/>.
+    /// env, and the block's scope on it once it has warmed a job, only from rent to park. The fan-out's own workers
+    /// run <see cref="Drain"/> and are parked by its loop finalizer; a helper recruited for a wave of late senders is
+    /// submitted as joinable background work and runs <see cref="Execute"/>.
     /// </summary>
     private sealed class TxWarmupWorker(WarmupQueue queue) : IThreadPoolWorkItem, IDisposable
     {
@@ -2533,6 +2620,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         // Reused for every late run this worker claims, so claiming allocates nothing per job.
         private readonly ArrayPoolList<(int Index, Transaction Tx)> _run = new(4);
         private IPrewarmerEnv? _env;
+        private IReadOnlyTxProcessingScope? _scope;
 
         /// <summary>Link of the queue's parked list; owned by the queue.</summary>
         public TxWarmupWorker? NextParked;
@@ -2545,7 +2633,16 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
             IPrewarmerEnv? env = _env;
             if (env is null) return;
             _env = null;
-            _queue.PreWarmer._envPool.Return(env);
+            IReadOnlyTxProcessingScope? scope = _scope;
+            _scope = null;
+            try
+            {
+                scope?.Dispose();
+            }
+            finally
+            {
+                _queue.PreWarmer._envPool.Return(env);
+            }
         }
 
         public void Park() => _queue.Park(this);
@@ -2656,22 +2753,37 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         {
             BlockState blockState = _queue.BlockState;
             // Indices are ascending, so if the main thread has started the job's last tx it has started them all;
-            // the per-tx guard would discard each one, so skip before building a scope.
+            // the per-tx guard would discard each one, so skip before opening or resetting the scope.
             if (blockState.PreWarmer.MainThreadTxIndex >= lastIndex) return;
 
             CancellationToken token = _queue.Token;
-            // Each job builds and disposes its own scope, so no speculative state crosses jobs.
-            using IReadOnlyTxProcessingScope scope = _env!.BuildAtTarget(blockState.Block.Header);
-            BlockExecutionContext context = new(blockState.Block.Header, blockState.Spec);
-            scope.TransactionProcessor.SetBlockExecutionContext(context);
+            IReadOnlyTxProcessingScope scope = OpenScope(blockState);
             CancellationTxTracer tracer = _queue.Tracer;
-            FootprintRecorder? recorder = _env.Recorder;
+            FootprintRecorder? recorder = _env!.Recorder;
 
             foreach ((int txIndex, Transaction tx) in transactions)
             {
                 if (token.IsCancellationRequested) return;
                 WarmupSingleTransaction(scope, tx, txIndex, blockState, recorder, tracer, token);
             }
+        }
+
+        /// <summary>The block's scope on the env, opened by the worker's first job and reset for each one after it.</summary>
+        /// <remarks>
+        /// A warm run never commits to the scope's backend, so the reset leaves the state a new scope would: no
+        /// speculative state crosses jobs, and the worker opens one scope per block instead of one per job.
+        /// </remarks>
+        private IReadOnlyTxProcessingScope OpenScope(BlockState blockState)
+        {
+            if (_scope is { } scope)
+            {
+                scope.WorldState.Reset();
+                return scope;
+            }
+
+            scope = _scope = _env!.BuildAtTarget(blockState.Block.Header);
+            scope.TransactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(blockState.Block.Header, blockState.Spec));
+            return scope;
         }
 
         public void Dispose() => _run.Dispose();
