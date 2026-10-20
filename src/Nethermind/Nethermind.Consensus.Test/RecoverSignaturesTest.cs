@@ -331,14 +331,17 @@ public class RecoverSignaturesTest
 
     /// <summary>Signed payloads are hashed out of the given encodings, and encodings of other transactions are ignored.</summary>
     [Test]
-    public void Recovery_HashesSignedPayloadsOutOfAlignedEncodings([Values] bool background, [Values] Encodings kind)
+    public void Recovery_HashesSignedPayloadsOutOfAlignedEncodings(
+        [Values] bool background, [Values] Encodings kind, [Values(TxType.Legacy, TxType.EIP1559)] TxType type)
     {
-        // Legacy senders bypass the sender cache. An encoding carrying the transaction's own signature over another
-        // payload makes its use show in the recovered addresses.
-        Transaction[] txs = [Signed(TestItem.PrivateKeyA, nonce: 0), Signed(TestItem.PrivateKeyB, nonce: 1)];
+        // Legacy senders bypass the sender cache, and a random nonce gives typed transactions hashes it has not seen.
+        // An encoding carrying the transaction's own signature over another payload makes its use show in the
+        // recovered addresses.
+        ulong nonce = TestContext.CurrentContext.Random.NextULong(ulong.MaxValue / 2);
+        Transaction[] txs = [Signed(TestItem.PrivateKeyA, nonce, type), Signed(TestItem.PrivateKeyB, nonce + 1, type)];
         byte[][] encodings = kind switch
         {
-            Encodings.SignedTampered => [EncodeWithNonce(txs[0], 7), EncodeWithNonce(txs[1], 7)],
+            Encodings.SignedTampered => [EncodeTampered(txs[0]), EncodeTampered(txs[1])],
             Encodings.Swapped => [Encode(txs[1]), Encode(txs[0])],
             _ => [Encode(txs[0])],
         };
@@ -367,11 +370,11 @@ public class RecoverSignaturesTest
 
     private static byte[] Encode(Transaction tx) => TxDecoder.Instance.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes;
 
-    private static byte[] EncodeWithNonce(Transaction tx, ulong nonce) =>
-        Encode(Build.A.Transaction.WithNonce(nonce).WithSignature(tx.Signature!).TestObject);
+    private static byte[] EncodeTampered(Transaction tx) =>
+        Encode(Build.A.Transaction.WithType(tx.Type).WithChainId(tx.ChainId).WithNonce(tx.Nonce + 2).WithSignature(tx.Signature!).TestObject);
 
-    private static Transaction Signed(PrivateKey signer, ulong nonce) =>
-        Build.A.Transaction.WithNonce(nonce).SignedAndResolved(signer).WithSenderAddress(null).TestObject;
+    private static Transaction Signed(PrivateKey signer, ulong nonce, TxType type = TxType.Legacy) =>
+        Build.A.Transaction.WithType(type).WithNonce(nonce).SignedAndResolved(signer).WithSenderAddress(null).TestObject;
 
     private static Transaction[] SignedTransactions(int count) =>
         Enumerable.Range(0, count).Select(static nonce => Signed(TestItem.PrivateKeyA, (ulong)nonce)).ToArray();
