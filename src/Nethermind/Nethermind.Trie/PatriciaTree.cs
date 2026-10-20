@@ -538,11 +538,29 @@ namespace Nethermind.Trie
 
             _writeBeforeCommit++;
 
+            try
+            {
+                if (!TrySetByRawKey(rawKey, value)) SetByNibbles(rawKey, value);
+            }
+            finally
+            {
+                Volatile.Write(ref _isWriteInProgress, 0);
+            }
+
+            void Trace(in ReadOnlySpan<byte> rawKey, CappedArray<byte> value) => _logger.Trace($"{(value.Length == 0 ? $"Deleting {rawKey.ToHexString(withZeroX: true)}" : $"Setting {rawKey.ToHexString(withZeroX: true)} = {value.AsSpan().ToHexString(withZeroX: true)}")}");
+
+            [DoesNotReturn, StackTraceHidden]
+            static void ThrowNonConcurrentWrites() => throw new InvalidOperationException("Only reads can be done in parallel on the Patricia tree");
+        }
+
+        /// <remarks>Apart from <see cref="Set(ReadOnlySpan{byte}, CappedArray{byte})"/>, so a write by raw key skips this
+        /// frame's nibble buffer.</remarks>
+        [SkipLocalsInit]
+        private void SetByNibbles(ReadOnlySpan<byte> rawKey, CappedArray<byte> value)
+        {
             byte[]? array = null;
             try
             {
-                if (TrySetByRawKey(rawKey, value)) return;
-
                 int nibblesCount = 2 * rawKey.Length;
                 Span<byte> nibbles = (nibblesCount <= MaxKeyStackAlloc
                         ? stackalloc byte[MaxKeyStackAlloc] // Fixed size stack allocation
@@ -560,14 +578,8 @@ namespace Nethermind.Trie
             }
             finally
             {
-                Volatile.Write(ref _isWriteInProgress, 0);
                 if (array is not null) ArrayPool<byte>.Shared.Return(array);
             }
-
-            void Trace(in ReadOnlySpan<byte> rawKey, CappedArray<byte> value) => _logger.Trace($"{(value.Length == 0 ? $"Deleting {rawKey.ToHexString(withZeroX: true)}" : $"Setting {rawKey.ToHexString(withZeroX: true)} = {value.AsSpan().ToHexString(withZeroX: true)}")}");
-
-            [DoesNotReturn, StackTraceHidden]
-            static void ThrowNonConcurrentWrites() => throw new InvalidOperationException("Only reads can be done in parallel on the Patricia tree");
         }
 
         [DebuggerStepThrough]
