@@ -192,7 +192,8 @@ class Git:
         head = run["head_sha"]
         try:
             base = self._parent(head) if run["event"] == "push" else self._merge_base(head)
-            return self._git("diff", "--name-only", base, head).split()
+            # Without rename detection a moved file lists both paths, so the project it left counts as changed.
+            return self._git("diff", "--no-renames", "--name-only", base, head).split()
         except subprocess.CalledProcessError:
             return self._changed_files_from_api(run)
 
@@ -218,13 +219,18 @@ class Git:
         else:
             owner = run["head_repository"]["owner"]["login"]
             compare = self.github.object(f"repos/{repo}/compare/master...{owner}:{head}")
-        files = [entry["filename"] for entry in compare.get("files", [])]
+        files = changed_paths(compare.get("files", []))
         # The compare API lists at most 300 files; a longer diff is treated as touching everything.
         return [ALL] if len(files) >= 300 else files
 
     @staticmethod
     def _git(*arguments: str) -> str:
         return subprocess.run(["git", *arguments], cwd=ROOT, capture_output=True, text=True, check=True).stdout
+
+
+def changed_paths(files: list[dict]) -> list[str]:
+    """Paths of the files that the GitHub API lists for a diff, with the old path of each renamed file."""
+    return [path for entry in files for path in (entry["filename"], entry.get("previous_filename")) if path]
 
 
 # ------------------------------------------------------------------------------------------------- Journal
@@ -679,7 +685,8 @@ def filter_test_matrix(matrix: dict, keeps_project: Callable[[str], bool]) -> di
         key: [value for value in values if key not in PROJECT_KEYS or keeps(project_of(value), keeps_project)]
         for key, values in matrix.items()
     }
-    if all(values for key, values in filtered.items() if key not in ("include", "exclude")):
+    product = [key for key in filtered if key not in ("include", "exclude")]
+    if product and all(filtered[key] for key in product):
         return filtered
     # Without the product, an include entry that names no project would start a job of its own.
     include = [entry for entry in filtered.get("include", []) if project_of(entry)]

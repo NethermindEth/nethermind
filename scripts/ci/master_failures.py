@@ -206,7 +206,7 @@ def merged_between(github: st.GitHub, repo: str, base: str, head: str) -> list[M
     for commit in commits:
         sha = commit["sha"]
         pulls = github.object(f"repos/{repo}/commits/{sha}/pulls")
-        files = [f["filename"] for page in github.pages(f"repos/{repo}/commits/{sha}") for f in page["files"]]
+        files = st.changed_paths([f for page in github.pages(f"repos/{repo}/commits/{sha}") for f in page["files"]])
         pull = pulls[0] if pulls else None
         merges.append(Merge(
             sha=sha, number=pull["number"] if pull else None, author=pull["user"]["login"] if pull else None,

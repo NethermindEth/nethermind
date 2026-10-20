@@ -40,7 +40,7 @@ runs:
           : > "$work/changed.txt"
           if [ "$EVENT" = "pull_request" ]; then
             git fetch --no-tags --depth=1 origin "$BASE_SHA" || return 1
-            git diff --name-only "$BASE_SHA" HEAD > "$work/changed.txt" || return 1
+            git diff --no-renames --name-only "$BASE_SHA" HEAD > "$work/changed.txt" || return 1
             model_run=$(gh run list -R "$GITHUB_REPOSITORY" --workflow test-selection.yml --branch master \
               --status success -L 20 --json databaseId,event -q "$TRUSTED_RUN") || return 1
             # Without a model run the selector reports that it has no model and keeps every test.

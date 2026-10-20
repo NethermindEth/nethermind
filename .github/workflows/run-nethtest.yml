@@ -371,7 +371,7 @@ jobs:
           mkdir -p "$work"
           printf '%s' "$MATRIX" > "$work/matrix.json"
           git fetch --no-tags --depth=1 origin "$BASE_SHA"
-          git diff --name-only "$BASE_SHA" HEAD > "$work/changed.txt"
+          git diff --no-renames --name-only "$BASE_SHA" HEAD > "$work/changed.txt"
           # A fork can name its branch master, but only the base repository can start scheduled or dispatched runs.
           model_run=$(gh run list -R "$GITHUB_REPOSITORY" --workflow test-selection.yml --branch master \
             --status success -L 20 --json databaseId,event \

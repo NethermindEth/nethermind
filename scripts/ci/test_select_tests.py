@@ -388,6 +388,15 @@ class TestMatrixTests(unittest.TestCase):
         self.assertEqual(st.filter_test_matrix(only_include, lambda project: True),
                          {"include": self.matrix["include"][:1]}, "an entry without a project cannot run alone")
 
+    def test_filter_of_an_include_only_matrix_with_nothing_kept_skips_the_job(self):
+        matrix = {"include": [{"project": "Nethermind.Evm.Test", "runner": "a"}]}
+        self.assertIsNone(st.filter_test_matrix(matrix, lambda project: False), "GitHub rejects an empty matrix")
+        self.assertEqual(st.filter_test_matrix(matrix, lambda project: True), matrix)
+
+    def test_changed_paths_lists_both_paths_of_a_renamed_file(self):
+        files = [{"filename": "b/x.cs", "previous_filename": "a/x.cs"}, {"filename": "c/y.cs"}]
+        self.assertEqual(st.changed_paths(files), ["b/x.cs", "a/x.cs", "c/y.cs"])
+
     def test_filter_with_test_objects_keeps_the_selected_ones(self):
         matrix = {"runner": ["ubuntu-latest"],
                   "test": [{"project": "Ethereum.Legacy.Blockchain.Test", "chunk": "1of8"}]}
