@@ -321,6 +321,17 @@ public sealed class SnapshotBundle : IDisposable
         _changedStorageRoots[address] = root.Pointer;
     }
 
+    /// <summary>Finds a record by pointer in the trie node buffer or among the nodes warmed for the current block.</summary>
+    internal bool TryLocate(ulong pointer, out NodeRecord record)
+    {
+        if (!_cacheableNodeRecordBuffer!.TryLocate(pointer, out record)) return false;
+
+        if (!IsMainBlockProcessing) return true;
+        if (NodeRecordCodec.IsTransient(pointer)) Metrics.IncrementWarmedNodeCacheHits();
+        else Metrics.IncrementNodeRecordBufferHits();
+        return true;
+    }
+
     /// <summary>Loads the record of a trie node the trie node buffer does not hold, for a bulk set or point read.</summary>
     /// <remarks>
     /// Tries the nodes warmed for this block by position, then persistence, whose node is trusted to be the one of

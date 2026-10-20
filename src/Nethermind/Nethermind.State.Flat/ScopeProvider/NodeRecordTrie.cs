@@ -72,6 +72,21 @@ internal sealed class NodeRecordTrie(SnapshotBundle bundle, Hash256? addressHash
         _rootDirty = true;
     }
 
+    public bool TryLocate(ulong pointer, out NodeRecord record) => bundle.TryLocate(pointer, out record);
+
+    public INodeRecordWriteBatch StartWriteBatch(int alignedTotalLength) => bundle.CacheableNodeRecordBuffer!.StartWriteBatch(alignedTotalLength);
+
+    public bool TryLoad(in TreePath path, in ValueHash256 hash, out NodeRecord record) =>
+        bundle.TryLoadTrieNodeRecord(addressHash, path, hash, out record);
+
+    private void SetRoot(in (ValueHash256 Hash, ulong Pointer) updated)
+    {
+        bool hashChanged = updated.Hash != Root.Hash;
+        _rootDirty |= hashChanged || updated.Pointer != Root.Pointer;
+        if (hashChanged) _rootHash = new(updated.Hash);
+        Root = updated;
+    }
+
     /// <remarks>Only for <see cref="Nethermind.Db.IFlatDbConfig.VerifyWithTrie"/>, which checks flat reads against the trie; normal reads never walk the trie.</remarks>
     /// <returns>The value at <paramref name="key"/>, or null when the trie has none.</returns>
     /// <exception cref="MissingTrieNodeException">A node on the path is in neither the buffer nor the bundle.</exception>
@@ -88,7 +103,13 @@ internal sealed class NodeRecordTrie(SnapshotBundle bundle, Hash256? addressHash
                 case ChildRefKind.Empty:
                     return null;
                 case ChildRefKind.Inline:
-                    return TryGetInlineLeaf(child.InlineRlp, path, keyPath, nodeKey);
+                    // A node embedded in its parent is always a leaf here, as the bulk set only embeds leaves.
+                    NodeRlp.NextItem(child.InlineRlp, out NodeRlp.Item node, out _);
+                    NodeRlp.NextItem(node.Payload, out NodeRlp.Item hexPrefix, out ReadOnlySpan<byte> rest);
+                    NodeRlp.NextItem(rest, out NodeRlp.Item value, out _);
+                    int inlineKeyLength = NodeRlp.HexPrefixNibbleCount(hexPrefix.Payload);
+                    NodeRlp.ReadHexPrefix(hexPrefix.Payload, 0, nodeKey);
+                    return path.Length + inlineKeyLength == keyPath.Length && path.Append(nodeKey[..inlineKeyLength]) == keyPath ? value.Payload.ToArray() : null;
             }
 
             if (!TryLocate(child.Pointer, out NodeRecord record) && !TryLoad(path, child.Data, out record))
@@ -120,39 +141,5 @@ internal sealed class NodeRecordTrie(SnapshotBundle bundle, Hash256? addressHash
                     break;
             }
         }
-    }
-
-    /// <remarks>A node embedded in its parent is always a leaf here, as the bulk set only embeds leaves.</remarks>
-    private static byte[]? TryGetInlineLeaf(ReadOnlySpan<byte> rlp, in TreePath path, in TreePath keyPath, Span<byte> nodeKey)
-    {
-        NodeRlp.NextItem(rlp, out NodeRlp.Item node, out _);
-        NodeRlp.NextItem(node.Payload, out NodeRlp.Item hexPrefix, out ReadOnlySpan<byte> rest);
-        NodeRlp.NextItem(rest, out NodeRlp.Item value, out _);
-        int keyLength = NodeRlp.HexPrefixNibbleCount(hexPrefix.Payload);
-        NodeRlp.ReadHexPrefix(hexPrefix.Payload, 0, nodeKey);
-        return path.Length + keyLength == keyPath.Length && path.Append(nodeKey[..keyLength]) == keyPath ? value.Payload.ToArray() : null;
-    }
-
-    public bool TryLocate(ulong pointer, out NodeRecord record)
-    {
-        if (!bundle.CacheableNodeRecordBuffer!.TryLocate(pointer, out record)) return false;
-
-        if (!bundle.IsMainBlockProcessing) return true;
-        if (NodeRecordCodec.IsTransient(pointer)) Metrics.IncrementWarmedNodeCacheHits();
-        else Metrics.IncrementNodeRecordBufferHits();
-        return true;
-    }
-
-    public INodeRecordWriteBatch StartWriteBatch(int alignedTotalLength) => bundle.CacheableNodeRecordBuffer!.StartWriteBatch(alignedTotalLength);
-
-    public bool TryLoad(in TreePath path, in ValueHash256 hash, out NodeRecord record) =>
-        bundle.TryLoadTrieNodeRecord(addressHash, path, hash, out record);
-
-    private void SetRoot(in (ValueHash256 Hash, ulong Pointer) updated)
-    {
-        bool hashChanged = updated.Hash != Root.Hash;
-        _rootDirty |= hashChanged || updated.Pointer != Root.Pointer;
-        if (hashChanged) _rootHash = new(updated.Hash);
-        Root = updated;
     }
 }
