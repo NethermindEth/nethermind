@@ -1434,8 +1434,11 @@ public class JsonRpcServiceTests
             expectedCode,
             expectedMessage);
 
-        Assert.That(response.Error!.SuppressWarning, Is.True);
-        Assert.That(response.Error.Data, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Error!.SuppressWarning, Is.True);
+            Assert.That(response.Error.Data, Is.Null);
+        }
         logger.DidNotReceive().Error(Arg.Any<string>(), Arg.Any<Exception?>());
     }
 
