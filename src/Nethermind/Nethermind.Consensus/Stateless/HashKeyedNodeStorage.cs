@@ -75,6 +75,7 @@ internal sealed class HashKeyedNodeStorage : INodeStorage, INodeStorage.IWriteBa
         // bounds checks would load each array's 32-bit length, a narrow access, per node.
         Debug.Assert(heads.Length == bucketMask + 1 && next.Length == count && keys.Length == count,
             "The unchecked bucketing loop relies on these sizes");
+        Debug.Assert(MaxBucketLength < LengthMask, "A full bucket's length must stay below the bits Overflowed sets");
         ref NodeKey firstKey = ref MemoryMarshal.GetArrayDataReference(keys);
         ref nint firstHead = ref MemoryMarshal.GetArrayDataReference(heads);
         ref nint firstNext = ref MemoryMarshal.GetArrayDataReference(next);
