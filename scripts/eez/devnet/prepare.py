@@ -50,6 +50,11 @@ def prepare(args):
     beacon = ", l1_cl.beacon_http_url" if native else ""
     if native and "l1_cl = participants[0].cl_context" not in original:
         raise ValueError("upstream beacon endpoint boundary changed")
+    original, launches = re.subn(
+        r"ethereum_package\.run\((plan|resources\.relay_startup_plan\(plan\)), eth_args\)",
+        r"ethereum_package.run(nethermind.relay_plan(\1), eth_args)", original)
+    if launches != 1:
+        raise ValueError("upstream relay startup boundary changed")
     if native:
         prepare_native_evidence(package)
     main.write_text('nethermind = import_module("./nethermind.star")\n' + original +

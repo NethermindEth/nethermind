@@ -118,6 +118,7 @@ class ProverDeploymentSeamTests(unittest.TestCase):
         self.package = self.root / "testing/kurtosis"
         self.package.mkdir(parents=True)
         self.original = ('def run(plan, args):\n'
+            '    eth = ethereum_package.run(plan, eth_args)\n'
             '    l1_el = participants[0].el_context\n'
             '    deploy = plan.run_sh(name="eez-deployments")\n'
             '    signer_cmd = "exec eez-proof-signer"\n'
@@ -143,7 +144,9 @@ class ProverDeploymentSeamTests(unittest.TestCase):
 
     def test_supported_signer_preserves_upstream_proof_assertion_and_command(self):
         self.prepare()
-        self.assertIn(self.original, (self.package / "main.star").read_text())
+        expected = self.original.replace("ethereum_package.run(plan, eth_args)",
+            "ethereum_package.run(nethermind.relay_plan(plan), eth_args)")
+        self.assertIn(expected, (self.package / "main.star").read_text())
         self.assertIn('test "$signed_window_count" -gt 0', (self.package / "run-ci.sh").read_text())
         self.assertIn("proof_signer_image: eez-proof-signer:test", self.args.output.read_text())
 
@@ -162,6 +165,13 @@ class ProverDeploymentSeamTests(unittest.TestCase):
         self.assertIn('kurtosis service logs --all "$KURTOSIS_ENCLAVE" "$service"', commands)
         self.assertIn('kurtosis service logs --all "$KURTOSIS_ENCLAVE" eez-node', commands)
         self.assertIn('test "$signed_window_count" -gt 0', commands)
+
+    def test_changed_relay_startup_boundary_rejects_before_overlay(self):
+        changed = self.original.replace("ethereum_package.run(plan, eth_args)", "changed")
+        (self.package / "main.star").write_text(changed)
+        with self.assertRaisesRegex(ValueError, "relay startup boundary"):
+            self.prepare()
+        self.assertEqual((self.package / "main.star").read_text(), changed)
 
     def test_missing_skip_switch_rejects_an_otherwise_valid_deployment(self):
         (self.package / "start.sh").write_text("")

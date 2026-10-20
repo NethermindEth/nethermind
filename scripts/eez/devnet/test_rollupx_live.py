@@ -23,6 +23,7 @@ class NativePreparationTests(unittest.TestCase):
             node_image="eez-composer:test", signer_image="eez-proof-signer:test", deploy_image="eez-deploy:test", follower_image="eez-nethermind:test")
         self.args.manifest.write_text(json.dumps(self.manifest))
         (self.package / "main.star").write_text('def run(plan, args):\n'
+            '    eth = ethereum_package.run(resources.relay_startup_plan(plan), eth_args)\n'
             '    l1_el = participants[0].el_context\n    l1_cl = participants[0].cl_context\n'
             '    deploy = plan.run_sh(name="eez-deployments")\n'
             '    signer_cmd = "exec eez-proof-signer --l1-chain-config=/genesis/genesis.json"\n'
@@ -51,6 +52,7 @@ class NativePreparationTests(unittest.TestCase):
     def test_native_overlay_preserves_upstream_prover_and_assertions_and_adds_observations(self):
         self.prepare()
         main = (self.package / "main.star").read_text()
+        self.assertIn('ethereum_package.run(nethermind.relay_plan(resources.relay_startup_plan(plan)), eth_args)', main)
         self.assertIn('exec eez-proof-signer --l1-chain-config=/genesis/genesis.json', main)
         self.assertIn('deploy.files_artifacts[0], l1_cl.beacon_http_url)', main)
         commands = (self.package / "run-ci.sh").read_text()
