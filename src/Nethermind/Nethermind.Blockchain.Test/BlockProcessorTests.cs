@@ -2756,11 +2756,10 @@ public partial class BlockProcessorTests
             public void Dispose() => owner.SessionDisposals++;
         }
 
-        public CacheType ClearCaches()
+        public void ClearCaches()
         {
             Clears++;
             ClearedBeforeDrain |= StartSession && SessionDisposals == 0;
-            return default;
         }
         public bool IsBalReadWarmingEnabled(IReleaseSpec spec) => false;
         public Task StartSpeculativePreWarm(BlockHeader head, IReleaseSpec spec, long generation, Func<CancellationToken, (Block Block, IReleaseSpec Spec)?> nextDelta, int idlePassDelayMs, CancellationToken cancellationToken) => Task.CompletedTask;
