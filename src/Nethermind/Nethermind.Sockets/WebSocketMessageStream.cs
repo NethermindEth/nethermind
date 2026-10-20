@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
@@ -18,8 +17,6 @@ public sealed class WebSocketMessageStream(WebSocket socket, ILogManager logMana
 {
     private readonly WebSocket _socket = socket;
     private readonly ILogger _logger = logManager.GetClassLogger<WebSocketMessageStream>();
-    private byte[]? _pending;
-    private int _pendingLength;
 
     public override bool CanRead => true;
     public override bool CanSeek => false;
@@ -64,27 +61,7 @@ public sealed class WebSocketMessageStream(WebSocket socket, ILogManager logMana
 
         if (_socket.State != WebSocketState.Open) { ThrowSocketNotOpen(); }
 
-        if (buffer.IsEmpty) return;
-
-        // The last write is held back so that WriteEndOfMessageAsync can send it as the final frame.
-        await SendPendingAsync(endOfMessage: false, cancellationToken);
-        if (_pending is null || _pending.Length < buffer.Length)
-        {
-            if (_pending is not null) ArrayPool<byte>.Shared.Return(_pending);
-            _pending = ArrayPool<byte>.Shared.Rent(buffer.Length);
-        }
-
-        buffer.CopyTo(_pending);
-        _pendingLength = buffer.Length;
-    }
-
-    private ValueTask SendPendingAsync(bool endOfMessage, CancellationToken cancellationToken)
-    {
-        int length = _pendingLength;
-        _pendingLength = 0;
-        return length == 0 && !endOfMessage
-            ? ValueTask.CompletedTask
-            : _socket.SendAsync(_pending.AsMemory(0, length), WebSocketMessageType.Text, endOfMessage, cancellationToken);
+        await _socket.SendAsync(buffer, WebSocketMessageType.Text, endOfMessage: false, cancellationToken);
     }
 
     [DoesNotReturn, StackTraceHidden]
@@ -102,15 +79,9 @@ public sealed class WebSocketMessageStream(WebSocket socket, ILogManager logMana
 
     public override void Write(byte[] buffer, int offset, int count) => WriteAsync(buffer, offset, count).GetAwaiter().GetResult();
 
-    public async ValueTask<int> WriteEndOfMessageAsync()
+    public async ValueTask<int> WriteEndOfMessageAsync(ReadOnlyMemory<byte> data, CancellationToken cancellationToken)
     {
-        await SendPendingAsync(endOfMessage: true, CancellationToken.None);
-        if (_pending is not null)
-        {
-            ArrayPool<byte>.Shared.Return(_pending);
-            _pending = null;
-        }
-
+        await _socket.SendAsync(data, WebSocketMessageType.Text, true, cancellationToken);
         return 0;
     }
 
