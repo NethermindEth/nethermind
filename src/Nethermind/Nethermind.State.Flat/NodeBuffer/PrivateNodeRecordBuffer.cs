@@ -32,7 +32,7 @@ internal sealed class PrivateNodeRecordBuffer : INodeRecordBuffer
     public PrivateNodeRecordBuffer(int generationBytes)
     {
         _generationBytes = generationBytes;
-        StartGeneration(_firstGeneration, generationBytes);
+        StartGeneration(_firstGeneration, NativeNodeBuffer.Allocate(generationBytes));
     }
 
     /// <inheritdoc/>
@@ -88,7 +88,7 @@ internal sealed class PrivateNodeRecordBuffer : INodeRecordBuffer
 
             lock (_lock)
             {
-                if (_active == generation) StartGeneration(NodeRecordBuffer.NextGeneration(generation.Id), Math.Max(_generationBytes, alignedTotalLength));
+                if (_active == generation) StartGeneration(NodeRecordBuffer.NextGeneration(generation.Id), NativeNodeBuffer.Allocate(Math.Max(_generationBytes, alignedTotalLength)));
             }
         }
     }
@@ -107,10 +107,14 @@ internal sealed class PrivateNodeRecordBuffer : INodeRecordBuffer
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
             ulong next = NodeRecordBuffer.NextGeneration(_active.Id);
+            // The first generation always has the base size, so its storage is reused rather than reallocated.
+            // It does not need to be zeroed: a record write covers every byte the record is read back by.
+            NativeNodeBuffer reused = _generations[0]!.Data;
+            _generations[0] = null;
             FreeGenerations();
             _roots.Clear();
             _firstGeneration = next;
-            StartGeneration(next, _generationBytes);
+            StartGeneration(next, reused);
         }
     }
 
@@ -126,9 +130,9 @@ internal sealed class PrivateNodeRecordBuffer : INodeRecordBuffer
     }
 
     [MemberNotNull(nameof(_active))]
-    private void StartGeneration(ulong id, int length)
+    private void StartGeneration(ulong id, NativeNodeBuffer data)
     {
-        Generation generation = new(id, length);
+        Generation generation = new(id, data);
         ulong index = id - _firstGeneration;
         Generation?[] generations = _generations;
         if (index < (ulong)generations.Length)
@@ -169,10 +173,10 @@ internal sealed class PrivateNodeRecordBuffer : INodeRecordBuffer
     [DoesNotReturn, StackTraceHidden]
     private static NodeRecord ThrowNotLocatable(ulong pointer) => throw new TrieException($"Trie node buffer pointer {pointer:x16} does not resolve to a record.");
 
-    private sealed class Generation(ulong id, int length)
+    private sealed class Generation(ulong id, NativeNodeBuffer data)
     {
         public readonly ulong Id = id;
-        public readonly NativeNodeBuffer Data = NativeNodeBuffer.Allocate(length);
+        public readonly NativeNodeBuffer Data = data;
         public long Used;
     }
 

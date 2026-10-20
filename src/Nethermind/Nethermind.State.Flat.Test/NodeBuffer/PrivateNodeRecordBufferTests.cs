@@ -33,6 +33,7 @@ internal class PrivateNodeRecordBufferTests
             Assert.That(records[0].Pointer, Is.GreaterThanOrEqualTo(pin.WriteBoundary), "writes follow the pin boundary");
         }
 
+        NodeRecord firstBeforeClear = buffer.GetRecord(records[0].Pointer);
         pin.Dispose();
         buffer.Clear();
         ulong afterClear = Append(buffer, records[0].Rlp);
@@ -41,6 +42,7 @@ internal class PrivateNodeRecordBufferTests
             Assert.That(records.Select(record => buffer.TryLocate(record.Pointer, out _)), Is.All.False, "cleared records miss");
             Assert.That(buffer.FindRoot(null, ValueKeccak.Compute(records[1].Rlp)), Is.Zero, "cleared roots miss");
             Assert.That(afterClear, Is.GreaterThan(lastPointer), "pointers continue past the cleared records");
+            Assert.That(firstBeforeClear.Rlp.ToArray(), Is.EqualTo(records[0].Rlp), "the first generation's storage is reused");
         }
 
         INodeRecordBufferPin reader = buffer.PinHead();
