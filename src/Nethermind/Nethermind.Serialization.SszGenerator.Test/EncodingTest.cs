@@ -153,7 +153,7 @@ public class EncodingTest
                 if (spanBuilt) SpanBuiltByteListItself.Decode(encoded, out SpanBuiltByteListItself[] _);
                 else ByteListItself.Decode(encoded, out ByteListItself[] _);
             },
-            Throws.InstanceOf<InvalidDataException>());
+            Throws.InstanceOf<InvalidDataException>().With.Message.EndsWith("expected at most 3 elements but found 4."));
     }
 
     [TestCase(new byte[] { 8, 0, 0, 0, 4, 0, 0, 0 }, "offsets are out of order (4 < 8).")]

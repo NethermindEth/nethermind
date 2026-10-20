@@ -4,15 +4,18 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
@@ -162,6 +165,54 @@ namespace Nethermind.JsonRpc.Test.Modules
 
         }
 
+        [Test]
+        public async Task GetFeeHistory_DoesNotLoadTheParentOfTheOldestBlock()
+        {
+            await using IContainer container = new ContainerBuilder()
+                .AddModule(new TestNethermindModule())
+                .AddDecorator<IBlockTree, BodyLoadRecordingBlockTree>()
+                .Build();
+            BodyLoadRecordingBlockTree blockTree = (BodyLoadRecordingBlockTree)container.Resolve<IBlockTree>();
+            Block genesis = Build.A.Block.Genesis.TestObject;
+            Block parent = Build.A.Block.WithParent(genesis).TestObject;
+            Block oldest = Build.A.Block.WithParent(parent).WithGasLimit(100).WithGasUsed(50).TestObject;
+            foreach (Block block in (Block[])[genesis, parent, oldest])
+            {
+                blockTree.SuggestBlock(block);
+                blockTree.TryUpdateMainChain(block.Header, wereProcessed: true, forceUpdateHeadBlock: true, block);
+            }
+
+            IFeeHistoryOracle feeHistoryOracle = container.Resolve<IFeeHistoryOracle>();
+            blockTree.LoadedBodies.Clear();
+
+            using ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(1, new BlockParameter(oldest.Number), []);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(resultWrapper.Data.OldestBlock, Is.EqualTo(oldest.Number));
+                Assert.That(blockTree.LoadedBodies, Does.Contain(oldest.Hash), "the requested block is loaded");
+                Assert.That(blockTree.LoadedBodies, Does.Not.Contain(parent.Hash), "the parent of the oldest block is not loaded");
+            }
+        }
+
+        private sealed class BodyLoadRecordingBlockTree(IBlockTree inner) : BlockTreeTestDouble(inner)
+        {
+            public List<Hash256> LoadedBodies { get; } = [];
+
+            public override Block? FindBlock(Hash256 blockHash, BlockTreeLookupOptions options, ulong? blockNumber = null)
+            {
+                LoadedBodies.Add(blockHash);
+                return base.FindBlock(blockHash, options, blockNumber);
+            }
+
+            public override Block? FindBlock(ulong blockNumber, BlockTreeLookupOptions options)
+            {
+                Block? block = base.FindBlock(blockNumber, options);
+                if (block is not null) LoadedBodies.Add(block.Hash!);
+                return block;
+            }
+        }
+
         [TestCase(3UL, 3UL, 1)]
         [TestCase(100UL, 95UL, 0.95)]
         [TestCase(12UL, 3UL, 0.25)]
@@ -305,6 +356,86 @@ namespace Nethermind.JsonRpc.Test.Modules
             }
         }
 
+        [Test]
+        public void GetFeeHistory_IfCachedAncestorBodyGoesMissingBeforeRewards_TruncatesAtOldestAvailableBlock()
+        {
+            IBlockTree blockTree = Substitute.For<IBlockTree>();
+            Block block3 = Build.A.Block.WithNumber(3UL).WithParentHash(TestItem.KeccakH).WithBaseFeePerGas(3).WithTransactions(GetTestTransactions()).TestObject;
+            Block block4 = Build.A.Block.WithParent(block3).WithBaseFeePerGas(4).WithTransactions(GetTestTransactions()).TestObject;
+            Block block5 = Build.A.Block.WithParent(block4).WithBaseFeePerGas(5).WithTransactions(GetTestTransactions()).TestObject;
+            foreach (Block block in (Block[])[block3, block4, block5])
+            {
+                blockTree.FindBlock(block.Hash!, Arg.Any<BlockTreeLookupOptions>(), block.Number).Returns(block);
+            }
+            blockTree.Head.Returns(block5);
+            blockTree.FindBlock(new BlockParameter(5UL)).Returns(block5);
+            FeeHistoryOracle feeHistoryOracle = GetSubstitutedFeeHistoryOracle(blockTree: blockTree);
+
+            feeHistoryOracle.GetFeeHistory(3UL, new BlockParameter(5UL), []).Dispose();
+            blockTree.FindBlock(block3.Hash!, Arg.Any<BlockTreeLookupOptions>(), block3.Number).Returns((Block?)null);
+            using ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(3UL, new BlockParameter(5UL), [50]);
+
+            FeeHistoryResults result = resultWrapper.Data;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result.OldestBlock, Is.EqualTo(4UL));
+                Assert.That(result.GasUsedRatio.Count, Is.EqualTo(2));
+                Assert.That(result.BaseFeePerGas.Take(2), Is.EqualTo((UInt256[])[4, 5]));
+                Assert.That(result.Reward, Has.Count.EqualTo(2).And.None.Null);
+            }
+        }
+
+        [Test]
+        public async Task GetFeeHistory_IfNewestBlockIsCached_DoesNotLoadItsBody()
+        {
+            await using IContainer container = new ContainerBuilder()
+                .AddModule(new TestNethermindModule())
+                .AddDecorator<IBlockTree, BodyLoadCountingBlockTree>()
+                .Build();
+            BodyLoadCountingBlockTree blockTree = (BodyLoadCountingBlockTree)container.Resolve<IBlockTree>();
+            Block genesis = Build.A.Block.Genesis.TestObject;
+            Block block = Build.A.Block.WithParent(genesis).WithGasLimit(100).WithGasUsed(50).TestObject;
+            AddToMainChain(blockTree, genesis);
+            AddToMainChain(blockTree, block);
+            IFeeHistoryOracle feeHistoryOracle = container.Resolve<IFeeHistoryOracle>();
+            BlockParameter newestBlock = new(block.Number);
+
+            feeHistoryOracle.GetFeeHistory(1, newestBlock, []).Dispose();
+            int bodyLoadsBefore = blockTree.BodyLoads;
+            using ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(1, newestBlock, []);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(bodyLoadsBefore, Is.GreaterThan(0), "the first call loads the body");
+                Assert.That(resultWrapper.Data.OldestBlock, Is.EqualTo(block.Number));
+                Assert.That(resultWrapper.Data.GasUsedRatio, Is.EqualTo((double[])[0.5]));
+                Assert.That(blockTree.BodyLoads, Is.EqualTo(bodyLoadsBefore), "a cached newest block is not loaded again");
+            }
+        }
+
+        private static void AddToMainChain(IBlockTree blockTree, Block block)
+        {
+            blockTree.SuggestBlock(block);
+            blockTree.TryUpdateMainChain(block.Header, wereProcessed: true, forceUpdateHeadBlock: true, block);
+        }
+
+        private sealed class BodyLoadCountingBlockTree(IBlockTree inner) : BlockTreeTestDouble(inner)
+        {
+            public int BodyLoads { get; private set; }
+
+            public override Block? FindBlock(Hash256 blockHash, BlockTreeLookupOptions options, ulong? blockNumber = null)
+            {
+                BodyLoads++;
+                return base.FindBlock(blockHash, options, blockNumber);
+            }
+
+            public override Block? FindBlock(ulong blockNumber, BlockTreeLookupOptions options)
+            {
+                BodyLoads++;
+                return base.FindBlock(blockNumber, options);
+            }
+        }
+
         [TestCase(2UL, 2UL)]
         [TestCase(7UL, 7UL)]
         [TestCase(32UL, 32UL)]
@@ -370,7 +501,26 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
 
         [Test]
-        public async Task GetFeeHistory_RewardPercentilesWeighEachReceiptByItsOwnGas([Values] bool eip8116Enabled)
+        public void GetFeeHistory_WithoutRewardPercentiles_DoesNotReadReceipts()
+        {
+            Block headBlock = Build.A.Block.Genesis.WithBaseFeePerGas(3).WithGasUsed(100).WithTransactions(GetTestTransactions()).TestObject;
+            IBlockTree blockTree = Substitute.For<IBlockTree>();
+            BlockParameter newestBlockParameter = new(0UL);
+            blockTree.FindBlock(newestBlockParameter).Returns(headBlock);
+            blockTree.FindBlock(headBlock.Hash!, Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>()).Returns(headBlock);
+            InMemoryReceiptStorage receiptStorage = new();
+            FeeHistoryOracle feeHistoryOracle = GetSubstitutedFeeHistoryOracle(blockTree: blockTree, receiptStorage: receiptStorage);
+
+            feeHistoryOracle.GetFeeHistory(1, newestBlockParameter, []).Dispose();
+            // Rewards built by the call above would have fallen back to the gas limits: 4, 10, 13, 22.
+            receiptStorage.Insert(headBlock, BuildReceiptsWithGasUsed([10, 20, 30, 40], eip8116Receipts: false), ensureCanonical: false);
+            using ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(1, newestBlockParameter, [20, 40, 60, 80.5]);
+
+            Assert.That(resultWrapper.Data.Reward![0], Is.EqualTo((UInt256[])[4, 10, 10, 22]), "the cached block reads its receipts once percentiles are requested");
+        }
+
+        [Test]
+        public async Task GetFeeHistory_RewardPercentilesWeighEachReceiptByItsOwnGas([Values] bool eip8116Enabled, [Values] ReceiptSource receiptSource)
         {
             using BasicTestBlockchain chain = await BasicTestBlockchain.Create();
             Block headBlock = Build.A.Block.WithParent(chain.BlockTree.Head!).WithBaseFeePerGas(3).WithGasUsed(100).WithTransactions(GetTestTransactions()).TestObject;
@@ -378,7 +528,15 @@ namespace Nethermind.JsonRpc.Test.Modules
             chain.BlockTree.SuggestBlock(headBlock, BlockTreeSuggestOptions.None);
             chain.BlockTree.TryUpdateMainChain(headBlock.Header, true, preloadedBlocks: headBlock);
             BlockParameter newestBlockParameter = new(headBlock.Number);
-            IReceiptStorage receiptStorage = GetTestReceiptStorageForBlockWithGasUsed(headBlock, [10, 20, 30, 40], eip8116Enabled);
+            IReceiptStorage receiptStorage = receiptSource switch
+            {
+                ReceiptSource.InMemory => new InMemoryReceiptStorage(),
+                ReceiptSource.InMemoryWithoutIterator => new InMemoryReceiptStorage(allowReceiptIterator: false),
+                _ => chain.ReceiptStorage,
+            };
+            receiptStorage.Insert(headBlock, BuildReceiptsWithGasUsed([10, 20, 30, 40], eip8116Enabled), ensureCanonical: false);
+            // Read the receipts back from the database rather than the insert-populated cache.
+            if (receiptSource == ReceiptSource.Database) ((PersistentReceiptStorage)receiptStorage).ClearCache();
             TestSpecProvider specProvider = new(new OverridableReleaseSpec(Bogota.Instance) { IsEip8116Enabled = eip8116Enabled });
             using FeeHistoryOracle feeHistoryOracle = GetSubstitutedFeeHistoryOracle(blockTree: chain.BlockTree, receiptStorage: receiptStorage, specProvider: specProvider);
 
@@ -462,21 +620,30 @@ namespace Nethermind.JsonRpc.Test.Modules
             }
         }
 
-        private static IReceiptStorage GetTestReceiptStorageForBlockWithGasUsed(Block block, ulong[] gasUsedArray, bool eip8116Receipts = false)
+        private static IReceiptStorage GetTestReceiptStorageForBlockWithGasUsed(Block block, ulong[] gasUsedArray)
         {
-            IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
+            InMemoryReceiptStorage receiptStorage = new();
+            receiptStorage.Insert(block, BuildReceiptsWithGasUsed(gasUsedArray, eip8116Receipts: false), ensureCanonical: false);
+            return receiptStorage;
+        }
 
+        public enum ReceiptSource
+        {
+            InMemory,
+            InMemoryWithoutIterator,
+            Database,
+        }
+
+        private static TxReceipt[] BuildReceiptsWithGasUsed(ulong[] gasUsedArray, bool eip8116Receipts)
+        {
             TxReceipt[] txReceiptsArray = new TxReceipt[gasUsedArray.Length];
             ulong gasUsedTotal = 0;
             for (int i = 0; i < gasUsedArray.Length; i++)
             {
                 gasUsedTotal += gasUsedArray[i];
-                txReceiptsArray[i] = new TxReceipt() { GasUsedTotal = eip8116Receipts ? gasUsedArray[i] : gasUsedTotal };
+                txReceiptsArray[i] = new TxReceipt() { GasUsedTotal = eip8116Receipts ? gasUsedArray[i] : gasUsedTotal, Logs = [Build.A.LogEntry.TestObject] };
             }
-            // Match by hash: a block read back from a real block tree is a different instance.
-            receiptStorage.Get(Arg.Is<Block>(b => b.Hash == block.Hash)).Returns(txReceiptsArray);
-            receiptStorage.Get(Arg.Is<Block>(b => b.Hash == block.Hash), false).Returns(txReceiptsArray);
-            return receiptStorage;
+            return txReceiptsArray;
         }
 
         private static Transaction[] GetTestTransactions()
@@ -549,11 +716,9 @@ namespace Nethermind.JsonRpc.Test.Modules
                 blockTree.FindParent(secondBlock, BlockTreeLookupOptions.RequireCanonical).Returns(firstBlock);
                 blockTree.FindBlock(firstBlock.Hash!, options, firstBlock.Number).Returns(firstBlock);
 
-                IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
-                receiptStorage.Get(firstBlock).Returns(new TxReceipt[] { new() { GasUsed = 3 } });
-                receiptStorage.Get(firstBlock, false).Returns(new TxReceipt[] { new() { GasUsed = 3 } });
-                receiptStorage.Get(secondBlock).Returns(new TxReceipt[] { new() { GasUsed = 2 } });
-                receiptStorage.Get(secondBlock, false).Returns(new TxReceipt[] { new() { GasUsed = 2 } });
+                InMemoryReceiptStorage receiptStorage = new();
+                receiptStorage.Insert(firstBlock, [new() { GasUsed = 3 }], ensureCanonical: false);
+                receiptStorage.Insert(secondBlock, [new() { GasUsed = 2 }], ensureCanonical: false);
                 FeeHistoryOracle feeHistoryOracle1 =
                     GetSubstitutedFeeHistoryOracle(blockTree: blockTree, receiptStorage: receiptStorage, spec: spec);
                 return feeHistoryOracle1;
@@ -589,7 +754,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);
             specProvider.GetSpec(Arg.Any<ForkActivation>()).BaseFeeCalculator.Returns(new DefaultBaseFeeCalculator());
 
-            FeeHistoryOracle oracle = new(blockTree, Substitute.For<IReceiptStorage>(), specProvider);
+            FeeHistoryOracle oracle = new(blockTree, NullReceiptStorage.Instance, specProvider);
             using ResultWrapper<FeeHistoryResults> result = oracle.GetFeeHistory(1, new BlockParameter(0UL), []);
 
             ArrayPoolList<UInt256> fees = result.Data.BaseFeePerBlobGas;
@@ -628,7 +793,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             return new(
                 blockTree ?? Substitute.For<IBlockTree>(),
-                receiptStorage ?? Substitute.For<IReceiptStorage>(),
+                receiptStorage ?? NullReceiptStorage.Instance,
                 provider,
                 maxDistFromHead);
         }

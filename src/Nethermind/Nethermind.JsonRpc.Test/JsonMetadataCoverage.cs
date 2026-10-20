@@ -9,6 +9,7 @@ using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.JsonRpc.Client;
 using Nethermind.JsonRpc.Modules.Admin;
 using Nethermind.JsonRpc.Test;
+using Nethermind.TxPool;
 using NUnit.Framework;
 
 /// <inheritdoc cref="JsonMetadataCoverageBase"/>
@@ -28,6 +29,8 @@ internal class JsonMetadataCoverage() : JsonMetadataCoverageBase(JsonRpcTestJson
         [typeof(Dictionary<Address, string>)] = "converter round trip",
         [typeof(Dictionary<AddressAsKey, string>)] = "converter round trip",
         [typeof(Dictionary<AddressAsKey, Dictionary<string, string>>)] = "converter round trip",
+        [typeof(Dictionary<AddressAsKey, Dictionary<TxPoolTxKey, string>>)] = "converter round trip",
+        [typeof(Dictionary<TxPoolTxKey, string>)] = "converter round trip",
         [typeof(decimal)] = "converter round trip",
         [typeof(Dictionary<string, string>)] = "test comparison value",
     };

@@ -4,7 +4,6 @@
 using System;
 using System.Buffers;
 using System.IO;
-using System.IO.Pipelines;
 using System.Net;
 using System.Runtime.ExceptionServices;
 using System.Threading;
@@ -88,7 +87,6 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
         {
             _sendFailure.Dispose();
         }
-        _jsonRpcContext.Dispose();
         Closed?.Invoke(this, EventArgs.Empty);
     }
 
@@ -158,7 +156,6 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
 
     private async Task HandleRequest(Memory<byte> data, CancellationToken cancellationToken = default)
     {
-        PipeReader request = PipeReader.Create(new ReadOnlySequence<byte>(data));
         using SocketJsonRpcResponseSink<TStream> sink = new(
             _stream,
             _jsonRpcLocalStats,
@@ -167,7 +164,7 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
             _jsonRpcContext);
 
         await _jsonRpcProcessor.ProcessAsync(
-            request,
+            data,
             _jsonRpcContext,
             sink,
             new JsonRpcProcessingOptions(JsonRpcInputMode.MultipleDocuments),

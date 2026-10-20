@@ -109,6 +109,19 @@ namespace Nethermind.Blockchain.Receipts
             return false;
         }
 
+        /// <summary>Returns how many receipts are left to iterate, reading only their RLP length prefixes.</summary>
+        public readonly int CountRemaining() =>
+            _receipts is null ? _reader.PeekNumberOfItemsRemaining(_length) : _length - _receiptIndex;
+
+        /// <summary>Advances past the next <paramref name="count"/> receipts without decoding them.</summary>
+        /// <remarks>Must not be called once recovery is configured: skipped receipts would not reach the recovery context.</remarks>
+        public void Skip(int count)
+        {
+            if (_recoveryContext is not null) throw new InvalidOperationException("Cannot skip receipts while recovering them.");
+            if (_receipts is null) _reader.SkipItems(count);
+            _receiptIndex += count;
+        }
+
         public void RecoverIfNeeded(ref TxReceiptStructRef current) => RecoverIfNeeded(ref current, _recoveryContextFactory);
 
         /// <summary>

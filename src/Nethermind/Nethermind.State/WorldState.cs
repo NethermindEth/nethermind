@@ -96,9 +96,8 @@ namespace Nethermind.State
         public bool TryGetAccount(Address address, out AccountStruct account)
         {
             // Note: This call is for compatibility with `IAccountStateProvider` and should not be called directly by VM. Because its slower.
-            account = _stateProvider.GetAccount(address)
-                .WithChangedStorageRoot(_persistentStorageProvider.GetStorageRoot(address))
-                .ToStruct();
+            Account stateAccount = _stateProvider.GetAccount(address);
+            account = new AccountStruct(stateAccount.Nonce, stateAccount.Balance, _persistentStorageProvider.GetStorageRoot(address), stateAccount.CodeHash);
 
             return !account.IsTotallyEmpty;
         }
@@ -201,6 +200,11 @@ namespace Nethermind.State
         }
 
         public void WarmUp(Address address) => _stateProvider.WarmUp(address);
+
+        public void Prefetch(Span<Address> accounts, Span<StorageCell> slots, CancellationToken cancellationToken) =>
+            _currentScope?.Prefetch(accounts, slots, cancellationToken);
+
+        public bool SupportsPrefetch => _currentScope?.SupportsPrefetch ?? false;
         public void ClearStorage(Address address)
         {
             DebugGuardInScope();
@@ -395,13 +399,13 @@ namespace Nethermind.State
         }
 
         /// <inheritdoc/>
-        public void ApplyBal(ReadOnlyBlockAccessList bal)
+        public void ApplyBal(ReadOnlyBlockAccessList bal, CancellationToken cancellationToken = default)
         {
             GuardInScope();
             // The block's change record still feeds the cache write-back with what the BAL did not cover (AuRa's
             // contract rewrites and system accounts); only the BAL's own accounts leave it, now that the scope holds them.
             _stateProvider.ForgetBlockChanges(bal, _currentScope);
-            _currentScope.ApplyBal(bal);
+            _currentScope.ApplyBal(bal, cancellationToken);
             Reset(resetBlockChanges: false);
             _persistentStorageProvider.ForgetBlockChanges(bal);
         }
@@ -502,6 +506,12 @@ namespace Nethermind.State
         {
             DebugGuardInScope();
             _stateProvider.SetNonce(address, nonce);
+        }
+
+        public void SubtractFromBalanceAndSetNonce(Address address, in UInt256 balanceChange, ulong nonce, IReleaseSpec spec)
+        {
+            DebugGuardInScope();
+            _stateProvider.SubtractFromBalanceAndSetNonce(address, in balanceChange, nonce);
         }
 
         public void CreateAccountIfNotExists(Address address, in UInt256 balance, in ulong nonce = default)
