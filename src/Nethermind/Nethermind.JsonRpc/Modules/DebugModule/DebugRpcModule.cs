@@ -251,6 +251,19 @@ public class DebugRpcModule(
         return true;
     }
 
+    /// <remarks>Malformed configs must reach the real constructor so empty and filtered blocks retain their behavior.</remarks>
+    private bool CanStreamBlockByNumberTrace(GethTraceOptions? options)
+    {
+        try
+        {
+            return CanStreamBlockTrace(options);
+        }
+        catch (NativeTracerConfigException)
+        {
+            return false;
+        }
+    }
+
     /// <summary>
     /// Lowers the opcode log byte budget of a trace held in memory to <see cref="IJsonRpcConfig.MaxBufferedTraceLogSize"/>.
     /// </summary>
@@ -530,7 +543,7 @@ public class DebugRpcModule(
         if (options?.Tracer is { Length: > 0 }) options = options with { CaptureJavaScriptErrors = true };
 
         // A malformed native duration must reach the real constructor before it can fail.
-        if ((options?.ParsedTimeout.Error is null || string.IsNullOrEmpty(options.Tracer)) && CanStreamBlockTrace(options))
+        if ((options?.ParsedTimeout.Error is null || string.IsNullOrEmpty(options.Tracer)) && CanStreamBlockByNumberTrace(options))
             return StreamBlockTrace(header, options, blockNumber, validateStructLogTimeout: true);
 
         if (blockNumber.Type == BlockParameterType.BlockNumber && blockFinder.FindBlock(header.Hash!, header.Number) is null)
@@ -549,6 +562,10 @@ public class DebugRpcModule(
             if (_logger.IsTrace) _logger.Trace($"{nameof(debug_traceBlockByNumber)} request {blockNumber}, result: {blockTrace}");
 
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Success(new GethLikeTxTraceStreamingResult(blockTrace));
+        }
+        catch (NativeTracerConfigException exception)
+        {
+            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail(exception.Message, ErrorCodes.InvalidInput);
         }
         catch (ArgumentNullException)
         {

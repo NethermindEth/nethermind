@@ -429,7 +429,7 @@ public class GethStyleTracer(
         }
 
         bool streamsNative = writer is not null && options.TxHash is null && GethLikeNativeTracerFactory.IsNativeTracer(options.Tracer);
-        bool wantsLogIndex = WantsLogIndex(options);
+        bool wantsLogIndex = block.Transactions.Length != 0 && WantsLogIndex(options);
         if (allowIndexed && (writer is null || streamsNative) && options.TxHash is null && options.StateOverrides is null && parallelTracer is not null && !IsJavaScriptTracer(options)
             && TryGetParallelLogIndex(block, wantsLogIndex, out Func<Block, Transaction, BlockLogIndex>? parallelLogIndex))
         {
