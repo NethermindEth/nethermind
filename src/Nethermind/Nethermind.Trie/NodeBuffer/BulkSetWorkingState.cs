@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using System.Runtime.CompilerServices;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Trie.NodeBuffer;
@@ -58,58 +58,48 @@ internal readonly struct SetOneFrame(NodeRecord record, byte skip, byte childNib
 
 /// <summary>The working memory of one bulk set on one thread: new nodes, their children and commit scratch.</summary>
 /// <remarks>
-/// Nodes and children are addressed by index, as their arrays grow by reallocation, so a reference into them does not survive
-/// an add. Working states are pooled, unless grown past <see cref="MaxPooledNodeCapacity"/> nodes; a returned one drops its references
-/// to entry values and records.
+/// Nodes and children are addressed by index, as their lists grow by reallocation, so a reference into them does not survive
+/// an add. All memory is pooled and returned on <see cref="Dispose"/>, dropping the references to entry values and records.
 /// </remarks>
-internal sealed class BulkSetWorkingState
+internal sealed class BulkSetWorkingState : IDisposable
 {
     public const int BranchChildCount = 16;
     public const int MaxKeyNibbles = 64;
 
-    private const int MaxPooled = 64;
     private const int InitialNodeCapacity = 64;
-    private const int MaxPooledNodeCapacity = 4096;
 
-    private static readonly ConcurrentQueue<BulkSetWorkingState> Pool = new();
+    private static readonly ChildRef[] EmptyChildren = new ChildRef[BranchChildCount];
 
-    public PendingNode[] Nodes = new PendingNode[InitialNodeCapacity];
-    public int NodeCount;
-    public ChildRef[] Children = new ChildRef[InitialNodeCapacity * BranchChildCount];
-    public int ChildCount;
+    private readonly ArrayPoolList<PendingNode> _nodes = new(InitialNodeCapacity);
+    private readonly NativeMemoryList<ChildRef> _children = new(InitialNodeCapacity * BranchChildCount);
+    private readonly ArrayPoolList<SetOneFrame> _frames = new(MaxKeyNibbles, MaxKeyNibbles);
+
+    private NativeMemoryList<int> _collected = NativeMemoryList<int>.Empty();
+    private NativeMemoryList<int> _order = NativeMemoryList<int>.Empty();
+    private NativeMemoryList<int> _hashed = NativeMemoryList<int>.Empty();
+    private NativeMemoryList<int> _recordStarts = NativeMemoryList<int>.Empty();
+    private NativeMemoryList<(int Start, int Length)> _messages = NativeMemoryList<(int Start, int Length)>.Empty();
+    private NativeMemoryList<ValueHash256> _hashes = NativeMemoryList<ValueHash256>.Empty();
+
+    public Span<PendingNode> Nodes => _nodes.AsSpan();
+    public int NodeCount => _nodes.Count;
+    public Span<ChildRef> Children => _children.AsSpan();
 
     /// <summary>The traverse stack of a single-entry set, which never nests in another on the same working state.</summary>
-    public readonly SetOneFrame[] Frames = new SetOneFrame[MaxKeyNibbles];
+    public Span<SetOneFrame> Frames => _frames.AsSpan();
 
-    public int[] Collected = [];
-    public int[] Order = [];
-    public int[] Hashed = [];
-    public int[] RecordStarts = [];
-    public (int Start, int Length)[] Messages = [];
-    public ValueHash256[] Hashes = [];
-
-    public static BulkSetWorkingState Rent() => Pool.TryDequeue(out BulkSetWorkingState? workingState) ? workingState : new BulkSetWorkingState();
-
-    public static void Return(BulkSetWorkingState workingState)
-    {
-        Array.Clear(workingState.Nodes, 0, workingState.NodeCount);
-        Array.Clear(workingState.Frames);
-        workingState.NodeCount = 0;
-        workingState.ChildCount = 0;
-        if (Pool.Count < MaxPooled && workingState.Nodes.Length <= MaxPooledNodeCapacity && workingState.Children.Length <= MaxPooledNodeCapacity * BranchChildCount)
-        {
-            Pool.Enqueue(workingState);
-        }
-    }
+    public Span<int> Collected => _collected.AsSpan();
+    public Span<int> Order => _order.AsSpan();
+    public Span<int> Hashed => _hashed.AsSpan();
+    public Span<int> RecordStarts => _recordStarts.AsSpan();
+    public Span<(int Start, int Length)> Messages => _messages.AsSpan();
+    public Span<ValueHash256> Hashes => _hashes.AsSpan();
 
     /// <returns>The index of sixteen empty children.</returns>
     public int ReserveChildSpace()
     {
-        if (ChildCount + BranchChildCount > Children.Length) Array.Resize(ref Children, Children.Length * 2);
-
-        int start = ChildCount;
-        Children.AsSpan(start, BranchChildCount).Clear();
-        ChildCount += BranchChildCount;
+        int start = _children.Count;
+        _children.AddRange(EmptyChildren);
         return start;
     }
 
@@ -137,25 +127,41 @@ internal sealed class BulkSetWorkingState
     /// <summary>Sizes the commit scratch for <paramref name="count"/> nodes.</summary>
     public void EnsureCommitCapacity(int count)
     {
-        if (Collected.Length >= count) return;
+        if (_collected.Count >= count) return;
 
         int capacity = (int)BitOperations.RoundUpToPowerOf2((uint)count);
-        Collected = new int[capacity];
-        Order = new int[capacity];
-        Hashed = new int[capacity];
-        RecordStarts = new int[capacity];
-        Messages = new (int Start, int Length)[capacity];
-        Hashes = new ValueHash256[capacity];
+        Reallocate(ref _collected, capacity);
+        Reallocate(ref _order, capacity);
+        Reallocate(ref _hashed, capacity);
+        Reallocate(ref _recordStarts, capacity);
+        Reallocate(ref _messages, capacity);
+        Reallocate(ref _hashes, capacity);
+    }
+
+    public void Dispose()
+    {
+        _nodes.Dispose();
+        _children.Dispose();
+        _frames.Dispose();
+        _collected.Dispose();
+        _order.Dispose();
+        _hashed.Dispose();
+        _recordStarts.Dispose();
+        _messages.Dispose();
+        _hashes.Dispose();
+    }
+
+    private static void Reallocate<T>(ref NativeMemoryList<T> list, int count) where T : unmanaged
+    {
+        list.Dispose();
+        list = new NativeMemoryList<T>(count, count);
     }
 
     private int Add(PendingKind kind, ReadOnlySpan<byte> key)
     {
-        if (NodeCount == Nodes.Length) Array.Resize(ref Nodes, Nodes.Length * 2);
-
-        int index = NodeCount++;
-        ref PendingNode node = ref Nodes[index];
-        node = new PendingNode { Kind = kind, KeyLength = (byte)key.Length };
-        key.CopyTo(node.Key);
+        int index = _nodes.Count;
+        _nodes.Add(new PendingNode { Kind = kind, KeyLength = (byte)key.Length });
+        key.CopyTo(Nodes[index].Key);
         return index;
     }
 }
