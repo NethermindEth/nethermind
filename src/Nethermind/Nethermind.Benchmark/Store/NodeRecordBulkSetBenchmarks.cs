@@ -43,7 +43,7 @@ public class NodeRecordBulkSetBenchmarks
     private INodeRecordBuffer _coldBuffer;
     private INodeRecordBuffer _warmBuffer;
     private INodeRecordBufferPin _warmBufferRetain;
-    private TrieRoot _warmRoot;
+    private (ValueHash256 Hash, ulong Pointer) _warmRoot;
     private int _fetchCountBeforeWarmBuffer;
     private WarmedNodeLog _warmedNodes;
     private DictionaryNodeSource _nodeSource;
@@ -69,7 +69,7 @@ public class NodeRecordBulkSetBenchmarks
 
             using INodeRecordBuffer preloadBuffer = new NodeRecordBuffer(0, NodeRecordBuffer.DefaultGenerationBytes, NodeRecordBuffer.DefaultLiveGenerations);
             using INodeRecordBufferPin preloadRetain = preloadBuffer.PinHead();
-            TrieRoot root = PreloadBuffer(preloadBuffer);
+            (ValueHash256 Hash, ulong Pointer) root = PreloadBuffer(preloadBuffer);
             foreach ((TreePath path, _, NodeRecord record) in preloadBuffer.EnumerateNodes(root.Pointer)) preloadedNodes[path] = record.Rlp.ToArray();
         }
     }
@@ -101,7 +101,7 @@ public class NodeRecordBulkSetBenchmarks
 
     /// <summary>Every batch reads the preloaded trie from the node source and writes to a buffer created for the iteration.</summary>
     [Benchmark]
-    public void NodeRecordBulkSetColdBuffer() => DoNodeRecordBulkSet(_coldBuffer, new TrieRoot(_preloadedRootHash.ValueHash256, 0));
+    public void NodeRecordBulkSetColdBuffer() => DoNodeRecordBulkSet(_coldBuffer, (_preloadedRootHash.ValueHash256, 0));
 
     [IterationSetup(Target = nameof(NodeRecordBulkSetWarmBuffer))]
     public void CreateWarmBuffer()
@@ -127,17 +127,17 @@ public class NodeRecordBulkSetBenchmarks
     [Benchmark]
     public void NodeRecordBulkSetWarmBuffer() => DoNodeRecordBulkSet(_warmBuffer, _warmRoot);
 
-    private TrieRoot PreloadBuffer(INodeRecordBuffer buffer)
+    private (ValueHash256 Hash, ulong Pointer) PreloadBuffer(INodeRecordBuffer buffer)
     {
-        if (_preload.Length == 0) return TrieRoot.Empty;
+        if (_preload.Length == 0) return (ValueKeccak.EmptyTreeHash, 0);
 
         using ArrayPoolListRef<PatriciaTree.BulkSetEntry> preloadSet = new(_preload);
-        TrieRoot root = NodeRecordBulkSet.BulkSet(_nodeSource.Over(buffer), null, TrieRoot.Empty, preloadSet, canParallelize: true);
+        (ValueHash256 Hash, ulong Pointer) root = NodeRecordBulkSet.BulkSet(_nodeSource.Over(buffer), null, (ValueKeccak.EmptyTreeHash, 0), preloadSet, canParallelize: true);
         if (root.Hash != _preloadedRootHash.ValueHash256) throw new InvalidOperationException($"Buffer root {root.Hash} differs from {_preloadedRootHash}");
         return root;
     }
 
-    private void DoNodeRecordBulkSet(INodeRecordBuffer buffer, TrieRoot root)
+    private void DoNodeRecordBulkSet(INodeRecordBuffer buffer, (ValueHash256 Hash, ulong Pointer) root)
     {
         using ArrayPoolListRef<PatriciaTree.BulkSetEntry> batch = new(BatchSize);
         for (int start = 0; start < EntryCount; start += BatchSize)

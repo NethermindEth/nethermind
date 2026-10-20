@@ -65,7 +65,7 @@ public class SnapshotBundleWarmerTests
             entries.Add(new PatriciaTree.BulkSetEntry(keys[i], value));
         }
 
-        TrieRoot root = FlatTestHelpers.BulkSet(_pool, buffer, address, TrieRoot.Empty, entries, canParallelize: false);
+        (ValueHash256 Hash, ulong Pointer) root = FlatTestHelpers.BulkSet(_pool, buffer, address, (ValueKeccak.EmptyTreeHash, 0), entries, canParallelize: false);
         (TreePath Path, ulong Pointer, NodeRecord Record)[] nodes = buffer.EnumerateNodes(root.Pointer).ToArray();
         PatriciaTree expected = new(new RawScopedTrieStore(new MemDb()), LimboLogs.Instance);
         foreach (ValueHash256 key in keys) expected.Set(key.Bytes, value);
@@ -87,7 +87,7 @@ public class SnapshotBundleWarmerTests
     public void Publishing_a_root_the_buffer_does_not_hold_copies_its_record_in()
     {
         byte[] rlp = FlatTestHelpers.LeafRlp(new byte[40]);
-        (TrieRoot root, Dictionary<TreePath, byte[]> nodes) = LeafTrie(rlp);
+        ((ValueHash256 Hash, ulong Pointer) root, Dictionary<TreePath, byte[]> nodes) = LeafTrie(rlp);
         using SnapshotBundle bundle = NewBundle(new NodeReader(nodes));
         using INodeRecordBufferPin retain = _buffer.PinHead();
         new NodeRecordTrie(bundle, null, root).Publish();
@@ -114,8 +114,8 @@ public class SnapshotBundleWarmerTests
         new(FlatTestHelpers.MakeBundle(_pool, reader), _buffer, _pool, ResourcePool.Usage.MainBlockProcessing);
 
     /// <summary>A trie whose root is the leaf <paramref name="rootRlp"/>, as its root and the persisted nodes serving it.</summary>
-    private static (TrieRoot Root, Dictionary<TreePath, byte[]> Nodes) LeafTrie(byte[] rootRlp) =>
-        (new TrieRoot(ValueKeccak.Compute(rootRlp), 0), new Dictionary<TreePath, byte[]> { [TreePath.Empty] = rootRlp });
+    private static ((ValueHash256 Hash, ulong Pointer) Root, Dictionary<TreePath, byte[]> Nodes) LeafTrie(byte[] rootRlp) =>
+        ((ValueKeccak.Compute(rootRlp), 0), new Dictionary<TreePath, byte[]> { [TreePath.Empty] = rootRlp });
 
     // Committed snapshot nodes stay in the retained buffer; only persisted nodes enter the warmed source.
     [Test]
@@ -123,12 +123,12 @@ public class SnapshotBundleWarmerTests
     {
         Hash256? address = storage ? TestItem.KeccakC : null;
         byte[] committedRlp = FlatTestHelpers.LeafRlp(0x82);
-        (TrieRoot persistedRoot, Dictionary<TreePath, byte[]> persisted) = LeafTrie(FlatTestHelpers.LeafRlp(0x80));
-        TrieRoot committedRoot = new(ValueKeccak.Compute(committedRlp), 0);
+        ((ValueHash256 Hash, ulong Pointer) persistedRoot, Dictionary<TreePath, byte[]> persisted) = LeafTrie(FlatTestHelpers.LeafRlp(0x80));
+        (ValueHash256 Hash, ulong Pointer) committedRoot = (ValueKeccak.Compute(committedRlp), 0);
         using SnapshotBundle bundle = NewBundle(new NodeReader(persisted));
 
         INodeRecordBufferPin retain = _buffer.PinHead();
-        committedRoot = new TrieRoot(committedRoot.Hash, PublishNode(bundle, address, TreePath.Empty, committedRlp));
+        committedRoot = (committedRoot.Hash, PublishNode(bundle, address, TreePath.Empty, committedRlp));
         bundle.CollectAndApplySnapshot(StateId.PreGenesis, new StateId(1, TestItem.KeccakA), retain, returnSnapshot: false);
 
         bundle.WarmUp(address, committedRoot, ValueKeccak.Zero, forDelete: false);
@@ -156,7 +156,7 @@ public class SnapshotBundleWarmerTests
         [Values(ResourcePool.Usage.MainBlockProcessing, ResourcePool.Usage.ReadOnlyProcessingEnv)] ResourcePool.Usage usage)
     {
         Hash256? address = storage ? TestItem.KeccakC : null;
-        (TrieRoot root, Dictionary<TreePath, byte[]> persisted) = LeafTrie(FlatTestHelpers.LeafRlp(0x80));
+        ((ValueHash256 Hash, ulong Pointer) root, Dictionary<TreePath, byte[]> persisted) = LeafTrie(FlatTestHelpers.LeafRlp(0x80));
         NodeReader reader = new(persisted);
         using SnapshotBundle bundle = new(FlatTestHelpers.MakeBundle(_pool, reader), _buffer, _pool, usage);
         long[] before = ReadCounts();
@@ -183,7 +183,7 @@ public class SnapshotBundleWarmerTests
     {
         Hash256 address = TestItem.KeccakC;
         byte[] rlp = FlatTestHelpers.LeafRlp(0x80);
-        (TrieRoot root, Dictionary<TreePath, byte[]> persisted) = LeafTrie(rlp);
+        ((ValueHash256 Hash, ulong Pointer) root, Dictionary<TreePath, byte[]> persisted) = LeafTrie(rlp);
         NodeReader reader = new(persisted);
         using ReadOnlySnapshotBundle readOnly = FlatTestHelpers.MakeBundle(_pool, reader);
         using SnapshotPooledList snapshots = new(1);
@@ -210,7 +210,7 @@ public class SnapshotBundleWarmerTests
         long[] before = ReadCounts();
 
         DictionaryNodeSource source = new(new Dictionary<TreePath, byte[]>(), warmed, null);
-        source.WarmUp(_buffer, new TrieRoot(hash, pointer), ValueKeccak.Zero);
+        source.WarmUp(_buffer, (hash, pointer), ValueKeccak.Zero);
 
         Assert.That(source.FetchCount, Is.Zero, "the node is read from the buffer or the warmed nodes");
         if (inBuffer) AssertReadCounts(before, warmUpBufferHits: 1);
@@ -267,7 +267,7 @@ public class SnapshotBundleWarmerTests
     public void Warmed_only_nodes_are_read_again_after_retirement([Values] bool storage)
     {
         Hash256? address = storage ? TestItem.KeccakC : null;
-        (TrieRoot root, Dictionary<TreePath, byte[]> persisted) = LeafTrie(FlatTestHelpers.LeafRlp(0x80));
+        ((ValueHash256 Hash, ulong Pointer) root, Dictionary<TreePath, byte[]> persisted) = LeafTrie(FlatTestHelpers.LeafRlp(0x80));
         NodeReader reader = new(persisted);
         using SnapshotBundle bundle = NewBundle(reader);
         bundle.WarmUp(address, root, ValueKeccak.Zero, forDelete: false);
@@ -289,7 +289,7 @@ public class SnapshotBundleWarmerTests
     [Test]
     public void Retirement_releases_the_owner_but_recycling_waits_for_an_in_flight_warm_up()
     {
-        (TrieRoot root, Dictionary<TreePath, byte[]> persisted) = LeafTrie(FlatTestHelpers.LeafRlp(0x80));
+        ((ValueHash256 Hash, ulong Pointer) root, Dictionary<TreePath, byte[]> persisted) = LeafTrie(FlatTestHelpers.LeafRlp(0x80));
         using ManualResetEventSlim readEntered = new(false);
         using ManualResetEventSlim releaseRead = new(false);
         using SnapshotBundle bundle = NewBundle(new NodeReader(persisted, readEntered, releaseRead));
@@ -332,7 +332,7 @@ public class SnapshotBundleWarmerTests
     {
         Hash256? address = storage ? TestItem.KeccakC : null;
         byte[] persistedRlp = Bytes.FromHexString(persistedRlpHex);
-        TrieRoot root = new(ValueKeccak.Compute(persistedRlp), 0);
+        (ValueHash256 Hash, ulong Pointer) root = (ValueKeccak.Compute(persistedRlp), 0);
         NodeReader reader = new(new Dictionary<TreePath, byte[]> { [TreePath.Empty] = persistedRlp });
         using SnapshotBundle bundle = NewBundle(reader);
 
@@ -360,7 +360,7 @@ public class SnapshotBundleWarmerTests
     [Test]
     public void Warm_up_on_a_disposed_bundle_is_a_no_op()
     {
-        (TrieRoot root, Dictionary<TreePath, byte[]> persisted) = LeafTrie(FlatTestHelpers.LeafRlp(0x80));
+        ((ValueHash256 Hash, ulong Pointer) root, Dictionary<TreePath, byte[]> persisted) = LeafTrie(FlatTestHelpers.LeafRlp(0x80));
         NodeReader reader = new(persisted);
         SnapshotBundle bundle = NewBundle(reader);
 
@@ -388,7 +388,7 @@ public class SnapshotBundleWarmerTests
         }
     }
 
-    private sealed record ChurnEpoch(SnapshotBundle Bundle, TrieRoot Root);
+    private sealed record ChurnEpoch(SnapshotBundle Bundle, (ValueHash256 Hash, ulong Pointer) Root);
 
     // Regression for the warmer recycle-under-reader race. Warm-ups hold only a ReadOnlySnapshotBundle lease (as the real
     // warmer job does) while the owner drives both recycle paths: CollectAndApplySnapshot, which swaps the transient in place
@@ -402,7 +402,7 @@ public class SnapshotBundleWarmerTests
         int epochs = 0;
         ChurnEpoch NewEpoch()
         {
-            (TrieRoot root, Dictionary<TreePath, byte[]> persisted) = LeafTrie(FlatTestHelpers.LeafRlp(BitConverter.GetBytes(++epochs)));
+            ((ValueHash256 Hash, ulong Pointer) root, Dictionary<TreePath, byte[]> persisted) = LeafTrie(FlatTestHelpers.LeafRlp(BitConverter.GetBytes(++epochs)));
             return new ChurnEpoch(NewBundle(new NodeReader(persisted)), root);
         }
 
@@ -506,11 +506,11 @@ public class SnapshotBundleWarmerTests
 
         using INodeRecordBuffer persistedBuffer = FlatTestHelpers.NewTestBuffer();
         using INodeRecordBufferPin persistedRetain = persistedBuffer.PinHead();
-        TrieRoot root;
+        (ValueHash256 Hash, ulong Pointer) root;
         using (ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries = new(keys.Length))
         {
             for (int i = 0; i < keys.Length; i++) entries.Add(new PatriciaTree.BulkSetEntry(keys[i], [(byte)(i + 1)]));
-            root = FlatTestHelpers.BulkSet(_pool, persistedBuffer, address, TrieRoot.Empty, entries, canParallelize: false);
+            root = FlatTestHelpers.BulkSet(_pool, persistedBuffer, address, (ValueKeccak.EmptyTreeHash, 0), entries, canParallelize: false);
         }
 
         Dictionary<TreePath, byte[]> persisted = persistedBuffer.EnumerateNodes(root.Pointer)
@@ -518,7 +518,7 @@ public class SnapshotBundleWarmerTests
         NodeReader reader = new(persisted);
         using SnapshotBundle bundle = NewBundle(reader);
         using INodeRecordBufferPin retain = _buffer.PinHead();
-        TrieRoot preBlockRoot = new(root.Hash, _buffer.FindRoot(address, root.Hash));
+        (ValueHash256 Hash, ulong Pointer) preBlockRoot = (root.Hash, _buffer.FindRoot(address, root.Hash));
 
         int firstWarmUp = WarmUpAll();
         int secondWarmUp = WarmUpAll();
@@ -582,7 +582,7 @@ public class SnapshotBundleWarmerTests
     {
         ValueHash256 hash = ValueKeccak.Compute(rlp);
         ulong pointer = _buffer.AppendRecordFromRlp(address, path, hash, rlp, []);
-        TrieRoot root = new(hash, pointer);
+        (ValueHash256 Hash, ulong Pointer) root = (hash, pointer);
         if (address is null) bundle.PublishBufferedStateRoot(root);
         else bundle.PublishBufferedStorageRoot(address, root);
         return pointer;

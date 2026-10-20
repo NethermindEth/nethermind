@@ -20,12 +20,12 @@ namespace Nethermind.State.Flat.ScopeProvider;
 /// back from the buffer by pointer, which the scope's pin keeps readable.
 /// </remarks>
 /// <param name="root">The trie's root, as <see cref="NodeRecordBufferExtensions.ResolveRoot"/> returns it.</param>
-internal sealed class NodeRecordTrie(SnapshotBundle bundle, Hash256? addressHash, TrieRoot root) : INodeRecordStore
+internal sealed class NodeRecordTrie(SnapshotBundle bundle, Hash256? addressHash, (ValueHash256 Hash, ulong Pointer) root) : INodeRecordStore
 {
-    private Hash256 _rootHash = root.ToHash256();
+    private Hash256 _rootHash = new(root.Hash);
     private bool _rootDirty;
 
-    public TrieRoot Root { get; private set; } = root;
+    public (ValueHash256 Hash, ulong Pointer) Root { get; private set; } = root;
 
     public Hash256 RootHash => _rootHash;
 
@@ -37,7 +37,7 @@ internal sealed class NodeRecordTrie(SnapshotBundle bundle, Hash256? addressHash
         SetRoot(NodeRecordBulkSet.BulkSet(this, addressHash, Root, entries, canParallelize));
 
     /// <summary>Adopts the root of a completed private update.</summary>
-    internal void Adopt(in TrieRoot root) => SetRoot(root);
+    internal void Adopt(in (ValueHash256 Hash, ulong Pointer) root) => SetRoot(root);
 
     /// <summary>Makes the final root readable from the bundle.</summary>
     public void Publish()
@@ -47,7 +47,7 @@ internal sealed class NodeRecordTrie(SnapshotBundle bundle, Hash256? addressHash
 
         long start = Stopwatch.GetTimestamp();
         // A published root always points at its record, so a root the buffer no longer holds is copied back in.
-        if (Root.Pointer == 0 && Root.Hash != ValueKeccak.EmptyTreeHash) SetRoot(new TrieRoot(Root.Hash, CopyRootRecord()));
+        if (Root.Pointer == 0 && Root.Hash != ValueKeccak.EmptyTreeHash) SetRoot((Root.Hash, CopyRootRecord()));
         if (_rootDirty && Root.Pointer != 0) bundle.CacheableNodeRecordBuffer!.SetRoot(addressHash, Root.Hash, Root.Pointer);
         if (addressHash is null) bundle.PublishBufferedStateRoot(Root);
         else bundle.PublishBufferedStorageRoot(addressHash, Root);
@@ -68,7 +68,7 @@ internal sealed class NodeRecordTrie(SnapshotBundle bundle, Hash256? addressHash
     /// <summary>Empties the trie and drops the unpublished nodes, as when the storage is cleared.</summary>
     public void Clear()
     {
-        SetRoot(TrieRoot.Empty);
+        SetRoot((ValueKeccak.EmptyTreeHash, 0));
         _rootDirty = true;
     }
 
@@ -148,11 +148,11 @@ internal sealed class NodeRecordTrie(SnapshotBundle bundle, Hash256? addressHash
     public bool TryLoad(in TreePath path, in ValueHash256 hash, out NodeRecord record) =>
         bundle.TryLoadTrieNodeRecord(addressHash, path, hash, out record);
 
-    private void SetRoot(in TrieRoot updated)
+    private void SetRoot(in (ValueHash256 Hash, ulong Pointer) updated)
     {
         bool hashChanged = updated.Hash != Root.Hash;
         _rootDirty |= hashChanged || updated.Pointer != Root.Pointer;
-        if (hashChanged) _rootHash = updated.ToHash256();
+        if (hashChanged) _rootHash = new(updated.Hash);
         Root = updated;
     }
 }

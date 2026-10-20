@@ -276,7 +276,7 @@ public class ReadOnlySnapshotBundlePersistedTests
             new ReadOnlySnapshotBundle(new SnapshotPooledList(0), new NoopPersistenceReader(), false, AlwaysTrueStack(list), bufferPin: null),
             warmedBuffer, _pool, ResourcePool.Usage.MainBlockProcessing);
 
-        bundle.WarmUp(storage ? address : null, new TrieRoot(hash, 0), ValueKeccak.Zero, forDelete: false);
+        bundle.WarmUp(storage ? address : null, (hash, 0), ValueKeccak.Zero, forDelete: false);
 
         Assert.That(bundle.TryLoadTrieNodeRecord(storage ? address : null, TreePath.Empty, hash, out NodeRecord record), Is.True);
         Assert.That(record.Rlp.ToArray(), Is.EqualTo(nodeRlp));
