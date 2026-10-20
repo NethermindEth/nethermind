@@ -602,8 +602,8 @@ namespace Nethermind.Trie
                 if (!node.IsBranch)
                 {
                     Span<byte> remainingKey = key[(int)consumed..];
-                    int commonPrefixLength = Nibbles.CommonPrefixLength(remainingKey, node.Key);
-                    if (commonPrefixLength == node.Key!.Length)
+                    int commonPrefixLength = 0;
+                    if (IsLeafWithKey(node, remainingKey) || (commonPrefixLength = Nibbles.CommonPrefixLength(remainingKey, node.Key)) == node.Key!.Length)
                     {
                         if (node.IsExtension)
                         {
@@ -619,7 +619,7 @@ namespace Nethermind.Trie
                             });
 
                             // Continue loop with the child as current node
-                            consumed += node!.Key.Length;
+                            consumed += node!.Key!.Length;
                             node = extensionChild;
 
                             continue;

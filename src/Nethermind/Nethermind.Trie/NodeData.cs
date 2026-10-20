@@ -152,5 +152,4 @@ public sealed partial class LeafData : INodeWithKey
 
     INodeData INodeData.Clone() => new LeafData(Key, _value);
 
-    public LeafData CloneWithNewValue(CappedArray<byte> value) => new(Key, value, StorageRoot);
 }
