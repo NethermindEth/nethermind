@@ -25,6 +25,7 @@ using Nethermind.Core.Test.Db;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Evm.State;
+using Nethermind.Evm.GasPolicy;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
@@ -70,6 +71,9 @@ public abstract class VirtualMachineTestsBase
 
     protected virtual ILogManager GetLogManager() => LimboLogs.Instance;
 
+    /// <summary>The frame code runner this fixture's machine is constructed with; none by default.</summary>
+    protected virtual FrameCodeRunner<EthereumGasPolicy>? CreateFrameCodeRunner() => null;
+
     [SetUp]
     public virtual void Setup()
     {
@@ -82,7 +86,7 @@ public abstract class VirtualMachineTestsBase
         _ethereumEcdsa = new EthereumEcdsa(SpecProvider.ChainId);
         IBlockhashProvider blockhashProvider = new TestBlockhashProvider(SpecProvider);
         CodeInfoRepository = new EthereumCodeInfoRepository(TestState);
-        Machine = new EthereumVirtualMachine(blockhashProvider, SpecProvider, logManager);
+        Machine = new EthereumVirtualMachine(blockhashProvider, SpecProvider, logManager, CreateFrameCodeRunner());
         _processor = new EthereumTransactionProcessor(BlobBaseFeeCalculator.Instance, SpecProvider, TestState, Machine, CodeInfoRepository, logManager);
     }
 

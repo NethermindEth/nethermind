@@ -30,12 +30,19 @@ namespace Nethermind.Evm;
 
 using Int256;
 
+[method: Experimental("NMEVM0001")]
 public sealed class EthereumVirtualMachine(
     IBlockhashProvider? blockHashProvider,
     ISpecProvider? specProvider,
-    ILogManager? logManager
-) : VirtualMachine<EthereumGasPolicy>(blockHashProvider, specProvider, logManager), IVirtualMachine
+    ILogManager? logManager,
+    FrameCodeRunner<EthereumGasPolicy>? frameCodeRunner
+) : VirtualMachine<EthereumGasPolicy>(blockHashProvider, specProvider, logManager, frameCodeRunner), IVirtualMachine
 {
+    /// <summary>A machine without a frame code runner.</summary>
+    public EthereumVirtualMachine(IBlockhashProvider? blockHashProvider, ISpecProvider? specProvider, ILogManager? logManager)
+        : this(blockHashProvider, specProvider, logManager, null)
+    {
+    }
 }
 
 /// <summary>
@@ -160,12 +167,23 @@ internal struct ReturnDataScratch
     internal int GetLength(byte[] output) => ReferenceEquals(output, _staged) ? _stagedLength : output.Length;
 }
 
+[method: Experimental("NMEVM0001")]
 public partial class VirtualMachine<TGasPolicy>(
     IBlockhashProvider? blockHashProvider,
     ISpecProvider? specProvider,
-    ILogManager? logManager) : IVirtualMachine<TGasPolicy>, IDisposable
+    ILogManager? logManager,
+    FrameCodeRunner<TGasPolicy>? frameCodeRunner) : IVirtualMachine<TGasPolicy>, IDisposable
     where TGasPolicy : struct, IGasPolicy<TGasPolicy>
 {
+    /// <summary>A machine without a frame code runner.</summary>
+    public VirtualMachine(IBlockhashProvider? blockHashProvider, ISpecProvider? specProvider, ILogManager? logManager)
+        : this(blockHashProvider, specProvider, logManager, null)
+    {
+    }
+
+    /// <summary>Offered every frame the machine runs without an instruction tracer, when set; see <see cref="FrameCodeRunner{TGasPolicy}"/>.</summary>
+    private readonly FrameCodeRunner<TGasPolicy>? _frameCodeRunner = frameCodeRunner;
+
     private readonly UInt256 _chainId = (specProvider ?? throw new ArgumentNullException(nameof(specProvider))).ChainId;
 
     private readonly IBlockhashProvider _blockHashProvider = blockHashProvider ?? throw new ArgumentNullException(nameof(blockHashProvider));
@@ -302,6 +320,11 @@ public partial class VirtualMachine<TGasPolicy>(
 
     public VmState<TGasPolicy> VmState { get => _currentState; protected set => _currentState = value; }
     public int OpCodeCount { get; set; }
+
+    /// <summary>Adds <paramref name="count"/> opcodes to <see cref="OpCodeCount"/>, for a frame code runner reporting the opcodes it ran.</summary>
+    [Experimental("NMEVM0001")]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void AddOpCodes(int count) => OpCodeCount += count;
     internal ExecutionMetricsCounters MetricsCounters;
 
     public void FlushMetricsCounters() => MetricsCounters.Flush();
@@ -926,6 +949,8 @@ public partial class VirtualMachine<TGasPolicy>(
 
             if (IsTracingActions)
             {
+                // The deposit failure consumed the gas the frame returned, so it ends with none left.
+                _txTracer.ReportActionRemainingGas(0);
                 _txTracer.ReportActionError(invalidCode ? EvmExceptionType.InvalidCode : EvmExceptionType.OutOfGas);
             }
         }
@@ -1047,6 +1072,13 @@ public partial class VirtualMachine<TGasPolicy>(
             };
         }
 
+        UnwindHaltedChild(ref previousCallOutputLength);
+        shouldExit = false;
+        return default;
+    }
+
+    private void UnwindHaltedChild(scoped ref nuint previousCallOutputLength)
+    {
         _previousCallResult = (null, false);
         bool failedCreate = _currentState.ExecutionType.IsAnyCreate();
         // Captured before the pop: the parent refunds NEW_ACCOUNT for the failed *CALL's uncreated recipient.
@@ -1069,9 +1101,6 @@ public partial class VirtualMachine<TGasPolicy>(
         {
             CreditStateGasRefund(ref _currentState.Gas, TGasPolicy.GetNewAccountStateCost());
         }
-
-        shouldExit = false;
-        return default;
     }
 
     /// <summary>
@@ -1213,9 +1242,11 @@ public partial class VirtualMachine<TGasPolicy>(
         // Cache the tracer to minimize repeated field accesses.
         ITxTracer txTracer = _txTracer;
 
-        // Report the error for action-level tracing if enabled.
+        // Report the error for action-level tracing if enabled. An exceptional halt consumes all the
+        // frame's gas, as in HandleFailure, so none is left whatever the frame held when it halted.
         if (IsTracingActions)
         {
+            txTracer.ReportActionRemainingGas(0);
             txTracer.ReportActionError(callResult.ExceptionType);
         }
 
@@ -1241,28 +1272,7 @@ public partial class VirtualMachine<TGasPolicy>(
             };
         }
 
-        _previousCallResult = (null, false);
-        bool failedCreate = _currentState.ExecutionType.IsAnyCreate();
-        // Captured before the pop: the parent refunds NEW_ACCOUNT for the halted *CALL's uncreated recipient.
-        bool childNewAccountCharged = _currentState.NewAccountCharged;
-        bool childCreateStateGasCharged = _currentState.IsCreateStateGasCharged;
-
-        // Nothing is copied back, but the output window is still reported to instruction tracers.
-        SetPreviousCallOutputWindow(_currentState);
-        ReturnDataBuffer = default;
-        previousCallOutputLength = 0;
-
-        PopAndRestoreParentState();
-        if (failedCreate && childCreateStateGasCharged)
-        {
-            CreditStateGasRefund(ref _currentState.Gas, TGasPolicy.GetCreateStateCost());
-        }
-        else if (childNewAccountCharged)
-        {
-            CreditStateGasRefund(ref _currentState.Gas, TGasPolicy.GetNewAccountStateCost());
-        }
-
-        // Return null to indicate that the failure was handled and execution should continue in the parent frame.
+        UnwindHaltedChild(ref previousCallOutputLength);
         shouldExit = false;
         return default;
     }
@@ -1502,9 +1512,11 @@ public partial class VirtualMachine<TGasPolicy>(
             // If available gas is insufficient to cover the code deposit cost...
             if (!hasEnoughGasForCodeDeposit)
             {
-                // When the spec mandates charging for top-level creation, report an out-of-gas error.
+                // When the spec mandates charging for top-level creation, report an out-of-gas error,
+                // which consumes all the frame's gas.
                 if (spec.ChargeForTopLevelCreate)
                 {
+                    _txTracer.ReportActionRemainingGas(0);
                     _txTracer.ReportActionError(EvmExceptionType.OutOfGas);
                 }
                 // Otherwise, report a successful action end with the remaining gas.
@@ -1516,6 +1528,7 @@ public partial class VirtualMachine<TGasPolicy>(
             // If the generated code is invalid (e.g., violates EIP-3541 by starting with 0xEF), report an invalid code error.
             else if (CodeDepositHandler.CodeIsInvalid(spec, outputBytes))
             {
+                _txTracer.ReportActionRemainingGas(0);
                 _txTracer.ReportActionError(EvmExceptionType.InvalidCode);
             }
             // In the successful contract creation case, deduct the code deposit gas cost and report a normal action end.
@@ -1635,7 +1648,7 @@ public partial class VirtualMachine<TGasPolicy>(
     }
 
     private bool CanReturnIdentityOutputInScratch(VmState<TGasPolicy> state) =>
-        !state.IsTopLevel && !IsTracingActions && !_txTracer.IsTracingInstructions;
+        !state.IsTopLevel && !IsTracingActions && !_tracerFlags.IsTracingInstructions;
 
     /// <remarks>By name, not type or address: the result cache wraps ecRecover, a state override can move it, and this
     /// assembly cannot reference its type. The constant is interned, so a match is a reference comparison.</remarks>
@@ -1851,7 +1864,7 @@ public partial class VirtualMachine<TGasPolicy>(
         // May not be zero when resuming after a call.
         nint programCounter = VmState.ProgramCounter;
         EvmExceptionType exceptionType =
-            RunDispatchLoop<TTracingInst, TCancelable>(ref stack, ref gas, ref programCounter);
+            RunFrameCode<TTracingInst, TCancelable>(ref stack, ref gas, ref programCounter);
 
         if (TTracingInst.IsActive
             && exceptionType == EvmExceptionType.None
@@ -1920,7 +1933,6 @@ public partial class VirtualMachine<TGasPolicy>(
     private CallResult GetFailureReturn(ulong gasAvailable, EvmExceptionType exceptionType)
     {
         if (_tracerFlags.IsTracingInstructions) EndInstructionTrace(gasAvailable, exceptionType);
-        if (IsTracingActions) _txTracer.ReportActionRemainingGas(gasAvailable);
 
         return exceptionType switch
         {
@@ -2053,7 +2065,16 @@ public partial class VirtualMachine<TGasPolicy>(
 /// <summary>
 /// Non-generic VirtualMachine for backward compatibility with EthereumGasPolicy.
 /// </summary>
+[method: Experimental("NMEVM0001")]
 public sealed class VirtualMachine(
     IBlockhashProvider? blockHashProvider,
     ISpecProvider? specProvider,
-    ILogManager? logManager) : VirtualMachine<EthereumGasPolicy>(blockHashProvider, specProvider, logManager), IVirtualMachine;
+    ILogManager? logManager,
+    FrameCodeRunner<EthereumGasPolicy>? frameCodeRunner) : VirtualMachine<EthereumGasPolicy>(blockHashProvider, specProvider, logManager, frameCodeRunner), IVirtualMachine
+{
+    /// <summary>A machine without a frame code runner.</summary>
+    public VirtualMachine(IBlockhashProvider? blockHashProvider, ISpecProvider? specProvider, ILogManager? logManager)
+        : this(blockHashProvider, specProvider, logManager, null)
+    {
+    }
+}
