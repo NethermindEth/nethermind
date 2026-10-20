@@ -21,7 +21,7 @@ public class FrameTxValidationTests
     {
         Transaction tx = CreateValidFrameTx(mutate);
 
-        bool wellFormed = FrameTxValidation.IsWellFormed(tx, assertEnabled: true, out string? error);
+        bool wellFormed = FrameTxValidation.IsWellFormed(tx, ReleaseSpecSubstitute.CreateFrame(), out string? error);
 
         Assert.That(wellFormed, Is.EqualTo(expectedError is null));
         Assert.That(error, Is.EqualTo(expectedError));
@@ -34,7 +34,7 @@ public class FrameTxValidationTests
         Transaction tx = CreateValidFrameTx(static tx =>
             tx.Frames = [SelfVerifyFrame(), Frame(mode: FrameMode.Assert)]);
 
-        bool wellFormed = FrameTxValidation.IsWellFormed(tx, assertEnabled, out string? error);
+        bool wellFormed = FrameTxValidation.IsWellFormed(tx, ReleaseSpecSubstitute.CreateFrame(assertEnabled), out string? error);
 
         Assert.That(wellFormed, Is.EqualTo(expectedError is null));
         Assert.That(error, Is.EqualTo(expectedError));
@@ -305,7 +305,7 @@ public class FrameTxValidationTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(FrameTxValidation.IsWellFormed(tx, assertEnabled: true, out string? error), Is.True, error);
+            Assert.That(FrameTxValidation.IsWellFormed(tx, ReleaseSpecSubstitute.CreateFrame(), out string? error), Is.True, error);
             Assert.That(FrameTxValidation.HasVerifyFrameAfterPrefix(probed), Is.EqualTo(boundaryFound));
             Assert.That(FrameTxValidation.GetPrefixPaymaster(tx), Is.EqualTo(paymaster));
             Assert.That(FrameTxValidation.ValidationWorkGas(tx), Is.EqualTo(workGas));
@@ -714,11 +714,7 @@ public class FrameTxValidationTests
     public void IsWellFormed_Eip8288DependencyFrames_ReturnsExpectedError(Action<Transaction> mutate, string? expectedError)
     {
         Transaction tx = CreateValidFrameTx(mutate);
-        IReleaseSpec spec = ReleaseSpecSubstitute.Create();
-        spec.IsEip8141Enabled.Returns(true);
-        spec.IsEip8288Enabled.Returns(true);
-
-        bool wellFormed = FrameTxValidation.IsWellFormed(tx, spec, out string? error);
+        bool wellFormed = FrameTxValidation.IsWellFormed(tx, ReleaseSpecSubstitute.CreateFrame(assertEnabled: false, dependencyEnabled: true), out string? error);
 
         Assert.That(wellFormed, Is.EqualTo(expectedError is null));
         Assert.That(error, Is.EqualTo(expectedError));
