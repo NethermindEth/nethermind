@@ -35,12 +35,14 @@ public class SystemConfigDeriver(
         scalar[0] = 1;
         BinaryPrimitives.WriteUInt32BigEndian(scalar.AsSpan(24), l1BlockInfo.BlobBaseFeeScalar);
         BinaryPrimitives.WriteUInt32BigEndian(scalar.AsSpan(28), l1BlockInfo.BaseFeeScalar);
+        (byte[] eip1559Params, ulong? minBaseFee) = EIP1559ParametersExtensions.SplitHeaderExtraData(extraData);
         return new SystemConfig()
         {
             BatcherAddress = l1BlockInfo.BatcherAddress,
             GasLimit = gasLimit,
             Scalar = scalar,
-            EIP1559Params = extraData.ToArray()[1..]
+            EIP1559Params = eip1559Params,
+            MinBaseFee = minBaseFee
         };
     }
 

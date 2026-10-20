@@ -13,7 +13,7 @@ namespace Nethermind.Evm.Tracing;
 
 /// <summary>Checks cancellation in tracer callbacks, never between an instruction's start and its completion.</summary>
 /// <remarks>Wrap the complete tracer graph so cancellation cannot interrupt delivery to sibling observers.</remarks>
-public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token = default) : ITxTracer, ITxTracerWrapper, IInstructionTracingFilter
+public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token = default) : ITxTracer, ITxTracerWrapper, IInstructionTracingFilter, IFrameTxReceiptTracer
 {
     private readonly bool _isTracingReceipt;
     private readonly bool _isTracingActions;
@@ -31,6 +31,31 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
     private readonly bool _isTracingBlockAccess;
     private readonly bool _isTracingFees;
     private readonly bool _isTracingOpLevelLogs;
+
+    // Resolved through the wrapper chain: a tracer that finds the frame hooks on this one stops looking deeper.
+    private IFrameTxReceiptTracer? _frameTxTracer = IFrameTxReceiptTracer.FindIn(innerTracer);
+
+    /// <inheritdoc/>
+    public void ReportFrameTxReceipt(Address payer, TxFrameReceipt[] frameReceipts) =>
+        _frameTxTracer?.ReportFrameTxReceipt(payer, frameReceipts);
+
+    /// <inheritdoc/>
+    public void ReportFrameEnd(int frameIndex, EvmExceptionType? error)
+    {
+        token.ThrowIfCancellationRequested();
+        _frameTxTracer?.ReportFrameEnd(frameIndex, error);
+    }
+
+    /// <inheritdoc/>
+    public void ReportFramesRolledBack(int fromFrameIndex, int toFrameIndex) =>
+        _frameTxTracer?.ReportFramesRolledBack(fromFrameIndex, toFrameIndex);
+
+    /// <summary>Rewraps this tracer around <paramref name="tracer"/> so a block tracer can reuse it for its next transaction.</summary>
+    internal void Reset(ITxTracer tracer)
+    {
+        innerTracer = tracer;
+        _frameTxTracer = IFrameTxReceiptTracer.FindIn(tracer);
+    }
 
     public ITxTracer InnerTracer => innerTracer;
 
@@ -85,6 +110,8 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
         get => _isTracingReturnData || innerTracer.IsTracingReturnData;
         init => _isTracingReturnData = value;
     }
+
+    public bool IsTracingCallOutputMemory => innerTracer.IsTracingCallOutputMemory;
 
     public bool IsTracingCode
     {
@@ -144,7 +171,7 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
         }
     }
 
-    public void ReportCodeChange(Address address, byte[]? before, byte[]? after)
+    public void ReportCodeChange(Address address, ReadOnlyMemory<byte> before, ReadOnlyMemory<byte> after)
     {
         ThrowIfCancellationRequestedUnlessTracingInstructions();
         if (innerTracer.IsTracingState)
@@ -408,12 +435,41 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
         }
     }
 
+    /// <inheritdoc/>
+    public void ReportActionErrorDetails(string error)
+    {
+        token.ThrowIfCancellationRequested();
+        if (innerTracer.IsTracingActions)
+        {
+            innerTracer.ReportActionErrorDetails(error);
+        }
+    }
+
     public void ReportActionRemainingGas(ulong gas)
     {
         ThrowIfCancellationRequestedUnlessTracingInstructions();
         if (innerTracer.IsTracingActions)
         {
             innerTracer.ReportActionRemainingGas(gas);
+        }
+    }
+
+    public void ReportPrecompileAccountRead(Address address)
+    {
+        ThrowIfCancellationRequestedUnlessTracingInstructions();
+        if (innerTracer.IsTracingActions)
+        {
+            innerTracer.ReportPrecompileAccountRead(address);
+        }
+    }
+
+    public void ReportRejectedAction(ulong gas, ulong gasLeft, UInt256 value, Address from, Address? to, ReadOnlyMemory<byte> input,
+        ExecutionType callType, EvmExceptionType error, bool isPrecompileCall = false)
+    {
+        ThrowIfCancellationRequestedUnlessTracingInstructions();
+        if (innerTracer.IsTracingActions)
+        {
+            innerTracer.ReportRejectedAction(gas, gasLeft, value, from, to, input, callType, error, isPrecompileCall);
         }
     }
 

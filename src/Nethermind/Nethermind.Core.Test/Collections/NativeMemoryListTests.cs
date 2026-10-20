@@ -181,13 +181,13 @@ public class NativeMemoryListTests
             r.AddRange(stackalloc int[] { 1, 2, 3 });
             Assert.That(r.Count, Is.EqualTo(3));
             Assert.That(r[1], Is.EqualTo(2));
-            Assert.That(r.AsSpan().ToArray(), Is.EqualTo(new[] { 1, 2, 3 }));
+            Assert.That(r.AsSpan(), Is.SequenceEqualTo(new[] { 1, 2, 3 }));
             r.Add(4);
             Assert.That(r.AsSpan()[3], Is.EqualTo(4));
             r.Insert(0, 0);
-            Assert.That(r.AsSpan().ToArray(), Is.EqualTo(new[] { 0, 1, 2, 3, 4 }));
+            Assert.That(r.AsSpan(), Is.SequenceEqualTo(new[] { 0, 1, 2, 3, 4 }));
             r.RemoveAt(0);
-            Assert.That(r.AsSpan().ToArray(), Is.EqualTo(new[] { 1, 2, 3, 4 }));
+            Assert.That(r.AsSpan(), Is.SequenceEqualTo(new[] { 1, 2, 3, 4 }));
             r.Clear();
             Assert.That(r.Count, Is.EqualTo(0));
         }
@@ -297,7 +297,7 @@ public class NativeMemoryListTests
         }
 
         list.RemoveAt(0);
-        Assert.That(list.AsSpan().ToArray(), Is.EqualTo(Bytes.FromHexString("deadbeef")));
+        Assert.That(list.AsSpan(), Is.SequenceEqualTo(Bytes.FromHexString("deadbeef")));
 
         list.Reverse();
         Assert.That(list[0], Is.EqualTo(0xef));
@@ -318,7 +318,7 @@ public class NativeMemoryListTests
         {
             Assert.That(list.Count, Is.EqualTo(payload.Length));
             Assert.That(list.Capacity, Is.GreaterThanOrEqualTo(payload.Length));
-            Assert.That(list.AsSpan().ToArray(), Is.EqualTo(payload));
+            Assert.That(list.AsSpan(), Is.SequenceEqualTo(payload));
         }
     }
 

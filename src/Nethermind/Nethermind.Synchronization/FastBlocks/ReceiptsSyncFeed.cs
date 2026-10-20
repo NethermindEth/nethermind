@@ -12,7 +12,6 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -137,7 +136,7 @@ namespace Nethermind.Synchronization.FastBlocks
 
         private void PostFinishCleanUp()
         {
-            _syncReport.FastBlocksReceipts.Update(_pivotNumber);
+            _syncReport.FastBlocksReceipts.Update(_pivotNumber - _barrier);
             _syncReport.FastBlocksReceipts.MarkEnd();
         }
 
@@ -225,9 +224,10 @@ namespace Nethermind.Synchronization.FastBlocks
                 }
                 else
                 {
-                    NormalizeZeroBlooms(receipts);
-                    // BlockInfo has no timestamp
-                    IReceiptSpec releaseSpec = _specProvider.GetReceiptSpec(blockInfo.BlockNumber);
+                    // The header carries the timestamp that timestamp-activated receipt rules (EIP-7668) need.
+                    IReceiptSpec releaseSpec = _specProvider.GetSpec(header);
+                    // EIP-7668 roots ignore receipt blooms, so there is nothing to normalize.
+                    if (!releaseSpec.IsEip7668Enabled) NormalizeZeroBlooms(receipts);
                     // TODO: Optimism use op root calculator
                     preparedReceipts = ReceiptsRootCalculator.Instance.GetReceiptsRoot(receipts, releaseSpec, header.ReceiptsRoot) != header.ReceiptsRoot
                         ? null
@@ -243,7 +243,7 @@ namespace Nethermind.Synchronization.FastBlocks
         /// receipt that has logs. A non-zero but wrong bloom is left alone and caught later by the
         /// receipts-root comparison.
         /// </summary>
-        internal static void NormalizeZeroBlooms(TxReceipt[] receipts)
+        public static void NormalizeZeroBlooms(TxReceipt[] receipts)
         {
             for (int i = 0; i < receipts.Length; i++)
             {

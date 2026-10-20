@@ -88,6 +88,8 @@ public readonly struct EIP1559Parameters(byte version, UInt32 denominator, UInt3
 
 public static class EIP1559ParametersExtensions
 {
+    private const int AttributesEIP1559ParamsLength = 8;
+
     public static bool TryDecodeEIP1559Parameters(this BlockHeader header, out EIP1559Parameters parameters, [NotNullWhen(false)] out string? error)
     {
         parameters = default;
@@ -132,29 +134,37 @@ public static class EIP1559ParametersExtensions
         parameters = default;
 
         ReadOnlySpan<byte> data = attributes.EIP1559Params;
-        int dataLength = data.Length;
-        if (dataLength == 0)
+        if (data.Length != AttributesEIP1559ParamsLength)
         {
-            error = $"{nameof(attributes.EIP1559Params)} must not be empty";
-            return false;
-        }
-
-        int version = Array.IndexOf(EIP1559Parameters.ByteLengthByVersion, (byte)(dataLength + 1));
-        if (version < 0)
-        {
-            error = $"{nameof(attributes.EIP1559Params)} has invalid length";
+            error = $"{nameof(attributes.EIP1559Params)} must be {AttributesEIP1559ParamsLength} bytes long";
             return false;
         }
 
         UInt32 denominator = BinaryPrimitives.ReadUInt32BigEndian(data.TakeAndMove(sizeof(UInt32)));
         UInt32 elasticity = BinaryPrimitives.ReadUInt32BigEndian(data.TakeAndMove(sizeof(UInt32)));
 
-        if (version == 0)
+        if (attributes.MinBaseFee is not { } minBaseFee)
         {
             return EIP1559Parameters.TryCreateV0(denominator, elasticity, out parameters, out error);
         }
 
-        UInt64 minBaseFee = BinaryPrimitives.ReadUInt64BigEndian(data.TakeAndMove(sizeof(UInt64)));
+        // Zero denominator and elasticity request the chain defaults; the minimum base fee is set independently.
+        if (denominator == 0 && elasticity == 0)
+        {
+            parameters = new EIP1559Parameters(1, denominator, elasticity, minBaseFee);
+            error = null;
+            return true;
+        }
+
         return EIP1559Parameters.TryCreateV1(denominator, elasticity, minBaseFee, out parameters, out error);
+    }
+
+    /// <summary>Splits Holocene or Jovian header extraData into payload attributes' <c>eip1559Params</c> and <c>minBaseFee</c>.</summary>
+    internal static (byte[] EIP1559Params, ulong? MinBaseFee) SplitHeaderExtraData(ReadOnlySpan<byte> extraData)
+    {
+        ReadOnlySpan<byte> parameters = extraData[1..];
+        return parameters.Length > AttributesEIP1559ParamsLength
+            ? (parameters[..AttributesEIP1559ParamsLength].ToArray(), BinaryPrimitives.ReadUInt64BigEndian(parameters[AttributesEIP1559ParamsLength..]))
+            : (parameters.ToArray(), null);
     }
 }

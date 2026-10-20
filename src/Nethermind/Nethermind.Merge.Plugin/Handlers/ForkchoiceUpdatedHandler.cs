@@ -22,6 +22,7 @@ using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
+using Nethermind.State;
 using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Merge.Plugin.Handlers;
@@ -49,7 +50,8 @@ public class ForkchoiceUpdatedHandler(
     IMergeConfig mergeConfig,
     ILogManager logManager,
     IBlockProcessingPauseControl pauseControl,
-    BlockTreeMutationLock mutationLock) : IForkchoiceUpdatedHandler
+    BlockTreeMutationLock mutationLock,
+    IStateReader stateReader) : IForkchoiceUpdatedHandler
 {
     /// <summary>How long a forkchoice update gives the head block's commit after its verdict before answering SYNCING.</summary>
     /// <remarks>
@@ -133,6 +135,14 @@ public class ForkchoiceUpdatedHandler(
 
         if (invalidChainTracker.IsOnKnownInvalidChain(forkchoiceState.HeadBlockHash, out Hash256? lastValidHash))
         {
+            // A queued ancestor can still fail execution and move latestValidHash backwards.
+            if (lastValidHash is not null && !processingQueue.WaitUntilRemovedAsync(lastValidHash).IsCompleted)
+            {
+                return ForkchoiceUpdatedV1Result.Syncing;
+            }
+
+            // Queue removal publishes invalidation before completing, so refresh the earlier snapshot.
+            invalidChainTracker.IsOnKnownInvalidChain(forkchoiceState.HeadBlockHash, out lastValidHash);
             if (_logger.IsWarn) _logger.Warn($"Received Invalid {forkchoiceState} {payloadAttributes} - {forkchoiceState.HeadBlockHash} is known to be a part of an invalid chain.");
             return ForkchoiceUpdatedV1Result.Invalid(lastValidHash);
         }
@@ -152,7 +162,7 @@ public class ForkchoiceUpdatedHandler(
             if (headBlockHeader is null)
             {
                 if (_logger.IsDebug) _logger.Debug($"Attempting to fetch header from peer: {simpleRequestStr}.");
-                headBlockHeader = await syncPeerPool.FetchHeaderFromPeer(forkchoiceState.HeadBlockHash);
+                headBlockHeader = await syncPeerPool.FetchHeaderFromPeer(forkchoiceState.HeadBlockHash, logger: _logger);
             }
 
             if (headBlockHeader is not null)
@@ -293,6 +303,13 @@ public class ForkchoiceUpdatedHandler(
 
         bool newHeadTheSameAsCurrentHead = _blockTree.Head!.Hash == newHeadHeader.Hash;
         bool shouldUpdateHead = !newHeadTheSameAsCurrentHead;
+        // A processed block whose state was pruned cannot be built on; a re-execution restoring it was waited for above.
+        if (shouldUpdateHead && !stateReader.HasStateForBlock(newHeadHeader))
+        {
+            if (_logger.IsInfo) _logger.Info($"Syncing... State of new head {newHeadHeader.ToString(BlockHeader.Format.Short)} is unavailable (pruned), head not moved. Request: {requestStr}.");
+            return ForkchoiceUpdatedV1Result.Syncing;
+        }
+
         // TryUpdateMainChain walks back to the current main chain itself, loading blocks one at a time, and
         // returns false (without mutating) if a predecessor is missing - the same gate the old TryGetBranch gave.
         if (shouldUpdateHead && !_blockTree.TryUpdateMainChain(newHeadHeader, wereProcessed: true, forceUpdateHeadBlock: true))
@@ -350,7 +367,6 @@ public class ForkchoiceUpdatedHandler(
             payloadId = payloadPreparationService.StartPreparingPayload(newHeadHeader, payloadAttributes);
         }
 
-        _blockTree.ForkChoiceUpdated(forkchoiceState.FinalizedBlockHash, forkchoiceState.SafeBlockHash);
         return ForkchoiceUpdatedV1Result.Valid(isPayloadSimulated ? null : payloadId, forkchoiceState.HeadBlockHash);
     }
 
@@ -412,10 +428,15 @@ public class ForkchoiceUpdatedHandler(
     /// once and it gets the SYNCING it always got; blocks queued behind a committing head, another copy of it included,
     /// do not delay its commit, so the wait is for that copy alone.
     /// </summary>
+    /// <remarks>
+    /// A block re-executed because its state was pruned keeps the processed flag from its first run, so for a processed
+    /// head the missing state, not the flag, says a commit may still be due.
+    /// </remarks>
     private async Task WaitForHeadCommitAsync(BlockHeader newHeadHeader)
     {
         Hash256 hash = newHeadHeader.GetOrCalculateHash();
-        if (_blockTree.GetInfo(newHeadHeader.Number, hash).Info is not { WasProcessed: false }) return;
+        if (_blockTree.GetInfo(newHeadHeader.Number, hash).Info is not { } info
+            || (info.WasProcessed && stateReader.HasStateForBlock(newHeadHeader))) return;
 
         await processingQueue.WaitForExecutedCopyAsync(hash, _commitWait);
     }

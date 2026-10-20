@@ -434,7 +434,7 @@ public class ProofRpcModuleCallTests
 
         Assert.That(statelessWorld.TryGetAccount(contractAddress, out AccountStruct account), Is.True,
             "the contract account must be reachable through witness-only state");
-        byte[] reconstructedCode = statelessWorld.GetCode(contractAddress)!;
+        byte[] reconstructedCode = statelessWorld.GetCode(contractAddress).ToArray();
         Assert.That(reconstructedCode, Is.EqualTo(runtimeCode),
             "the contract bytecode must be reconstructible from witness.Codes");
 
@@ -570,6 +570,35 @@ public class ProofRpcModuleCallTests
 
         Assert.That(statelessWorld.TryGetAccount(target, out _), Is.True,
             "BALANCE on a target must capture the target's account leaf in the witness");
+    }
+
+    /// <remarks>
+    /// EXTCODESIZE reads the target's code, so its bytecode belongs in the witness even when the
+    /// interpreter answers a following ISZERO, GT or EQ from the code hash alone.
+    /// </remarks>
+    [Test]
+    public async Task Proof_call_witness_captures_extcodesize_target_code([Values(Instruction.ISZERO, Instruction.GT, Instruction.EQ, Instruction.POP)] Instruction next)
+    {
+        using TestRpcBlockchain blockchain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
+
+        byte[] targetCode = Prepare.EvmCode.PushData(0x77).Op(Instruction.POP).Op(Instruction.STOP).Done;
+        Address target = await DeployContract(blockchain, targetCode);
+        byte[] callerCode = Prepare.EvmCode
+            .PushData(0)
+            .PushData(target)
+            .Op(Instruction.EXTCODESIZE)
+            .Op(next)
+            .Op(Instruction.STOP)
+            .Done;
+        Address caller = await DeployContract(blockchain, callerCode);
+
+        using ResultWrapper<CallResultWithProof> wrapper = blockchain.ProofRpcModule.proof_call(
+            new Facade.Eth.RpcTransaction.LegacyTransactionForRpc { To = caller, Gas = 200_000 },
+            new BlockParameter(blockchain.BlockTree.Head!.Number));
+        CallResultWithProof result = wrapper.Data!;
+
+        Assert.That(result.Error, Is.Null);
+        Assert.That(result.Witness.Codes.Any(code => code.AsSpan().SequenceEqual(targetCode)), Is.True);
     }
 
 

@@ -12,7 +12,6 @@ using Nethermind.Core.Exceptions;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
-using Metrics = Nethermind.Evm.Metrics;
 
 namespace Nethermind.Consensus.Processing;
 
@@ -37,13 +36,13 @@ public partial class BlockProcessor
 
         public TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, CancellationToken token)
         {
-            Metrics.ResetBlockStats();
             SetupTxTimingMetrics(block);
 
             bool shouldValidate = !processingOptions.ContainsFlag(ProcessingOptions.NoValidation);
 
             for (int i = 0; i < block.Transactions.Length; i++)
             {
+                token.ThrowIfCancellationRequested();
                 Transaction currentTx = block.Transactions[i];
 
                 ProcessTransaction(block, currentTx, i, receiptsTracer, processingOptions);
@@ -53,9 +52,6 @@ public partial class BlockProcessor
                     ThrowInvalidBlockForGasLimit(block);
                 }
             }
-
-            Metrics.SeedBlockGasPriceIfEmpty(block.Header.BaseFeePerGas);
-            Metrics.PublishBlockGasPriceGauges();
 
             return [.. receiptsTracer.TxReceipts];
 
@@ -78,7 +74,8 @@ public partial class BlockProcessor
                 StopTxTimer(index, txStart);
             }
             if (!result) ThrowInvalidTransactionException(result, block.Header, currentTx, index);
-            _transactionProcessedEventHandler?.OnTransactionProcessed(new TxProcessedEventArgs(index, currentTx, block.Header, receiptsTracer.TxReceipts[index]));
+            if (_transactionProcessedEventHandler is { HasSubscribers: true } handler)
+                handler.OnTransactionProcessed(new TxProcessedEventArgs(index, currentTx, block.Header, receiptsTracer.TxReceipts[index]));
         }
 
         public void SetupTxTimingMetrics(Block block)
@@ -119,6 +116,9 @@ public partial class BlockProcessor
         public interface ITransactionProcessedEventHandler
         {
             void OnTransactionProcessed(TxProcessedEventArgs txProcessedEventArgs);
+
+            /// <summary>Whether anything observes processed transactions; when not, callers skip building the event.</summary>
+            bool HasSubscribers => true;
         }
     }
 }

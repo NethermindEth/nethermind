@@ -30,6 +30,9 @@ public class ExecutionPayloadV4 : ExecutionPayloadV3, IExecutionPayloadFactory<E
 
     public new static ExecutionPayloadV4 Create(Block block) => Create<ExecutionPayloadV4>(block);
 
+    /// <inheritdoc/>
+    private protected override PayloadFields RequiredFields => PayloadFields.V4;
+
     public override Result<Block> TryGetBlock(UInt256? totalDifficulty = null)
     {
         Result<Block> baseResult = base.TryGetBlock(totalDifficulty);
@@ -136,8 +139,8 @@ public class ExecutionPayloadV4 : ExecutionPayloadV3, IExecutionPayloadFactory<E
         IReleaseSpec spec = specProvider.GetSpec(BlockNumber, Timestamp);
         // V5 and V6 share this payload type and differ only by the inclusion list beside it, so the
         // fork decides which version is valid.
-        return spec.BlockLevelAccessListsEnabled
-            && spec.IsEip7805Enabled == (newPayloadVersion >= EngineApiVersions.NewPayload.V6);
+        return spec.IsAmsterdamEnabled
+            && spec.IsBogotaEnabled == (newPayloadVersion >= EngineApiVersions.NewPayload.V6);
     }
 
 
@@ -145,15 +148,13 @@ public class ExecutionPayloadV4 : ExecutionPayloadV3, IExecutionPayloadFactory<E
     /// Gets or sets <see cref="Block.BlockAccessList"/> as defined in
     /// <see href="https://eips.ethereum.org/EIPS/eip-7928">EIP-7928</see>.
     /// </summary>
-    [JsonRequired]
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
-    public sealed override byte[]? BlockAccessList { get; set; }
+    public sealed override byte[]? BlockAccessList { get; set => field = Bind(value, PayloadFields.BlockAccessList); }
 
     /// <summary>
     /// Gets or sets <see cref="Block.SlotNumber"/> as defined in
     /// <see href="https://eips.ethereum.org/EIPS/eip-7843">EIP-7843</see>.
     /// </summary>
-    [JsonRequired]
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
-    public sealed override ulong? SlotNumber { get; set; }
+    public sealed override ulong? SlotNumber { get; set => field = Bind(value, PayloadFields.SlotNumber); }
 }

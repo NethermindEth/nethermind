@@ -122,8 +122,8 @@ jobs:
                  provisioning_model: (
                    if $model == "Spot" then "SPOT"
                    elif $model == "Standard" then "STANDARD"
-                   elif $config.spot then "SPOT"
-                   else "STANDARD"
+                   elif $config.spot == false then "STANDARD"
+                   else "SPOT"
                    end
                  ),
                  max_run_duration: ((($config.timeout + 60) | tostring) + "m")
@@ -137,6 +137,8 @@ jobs:
             echo "network_filter '$NETWORK_FILTER' matched no networks"
             exit 1
           fi
+
+          matrix=$(echo "$matrix" | nethermind/scripts/sync/check-runner-shapes.sh)
 
           echo "matrix=$(echo "$matrix" | jq -c .)" >> "$GITHUB_OUTPUT"
 

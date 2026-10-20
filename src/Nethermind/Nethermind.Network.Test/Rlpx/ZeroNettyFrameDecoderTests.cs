@@ -8,6 +8,7 @@ using DotNetty.Codecs;
 using DotNetty.Common.Utilities;
 using DotNetty.Transport.Channels.Embedded;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Test.Rlpx.TestWrappers;
@@ -94,12 +95,12 @@ public class ZeroNettyFrameDecoderTests
                 channel.WriteInbound(allocator.Buffer(wire.Length - firstLength).WriteBytes(wire, firstLength, wire.Length - firstLength));
             }
             using DisposableByteBuffer decoded = channel.ReadInbound<IByteBuffer>().AsDisposable();
-            Assert.That(decoded.AsSpan().ToArray(), Is.EqualTo(expected));
+            Assert.That(decoded.AsSpan(), Is.SequenceEqualTo(expected));
             Assert.That(decoded.ReferenceCount, Is.EqualTo(1), "the merger requires independently owned frames");
             if (split == 0)
                 Assert.That(ReferenceEquals(decoded.Array, backing) && decoded.ArrayOffset == arrayOffset + Frame.MacSize, Is.EqualTo(pooled && !shared && !wrapped));
             if (shared)
-                Assert.That(backing.AsSpan(arrayOffset, firstLength).ToArray(), Is.EqualTo(wire.AsSpan(0, firstLength).ToArray()), "shared ciphertext must not be modified");
+                Assert.That(backing.AsSpan(arrayOffset, firstLength), Is.SequenceEqualTo(wire.AsSpan(0, firstLength)), "shared ciphertext must not be modified");
         }
         finally
         {
@@ -123,7 +124,7 @@ public class ZeroNettyFrameDecoderTests
         {
             Assert.That(() => channel.WriteInbound(input), Throws.InstanceOf<DecoderException>());
             Assert.That(channel.ReadInbound<IByteBuffer>(), Is.Null);
-            Assert.That(backing.AsSpan(offset, wire.Length).ToArray(), Is.EqualTo(wire));
+            Assert.That(backing.AsSpan(offset, wire.Length), Is.SequenceEqualTo(wire));
         }
         finally
         {

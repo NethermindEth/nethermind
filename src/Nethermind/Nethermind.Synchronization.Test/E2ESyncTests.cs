@@ -26,6 +26,7 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Events;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
@@ -39,6 +40,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.BlockProduction;
+using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Core.Container;
@@ -52,6 +54,7 @@ using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
+using Nethermind.State.Flat.History;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.TxPool;
@@ -93,6 +96,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
     private static readonly TimeSpan SetupTimeout = TimeSpan.FromSeconds(60);
     private static readonly TimeSpan TestTimeout = TimeSpan.FromSeconds(60);
     private static readonly TimeSpan SnapSyncTestTimeout = TimeSpan.FromMinutes(2);
+    private static readonly TimeSpan PivotHistoryTestTimeout = TimeSpan.FromMinutes(4);
 
     /// <summary>Runs a test body under a timeout.</summary>
     /// <remarks>NUnit re-runs assertion failures but not errors, so the timeout has to fail rather than
@@ -115,7 +119,9 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
     private static readonly TimeSpan BalSyncTestTimeout = TimeSpan.FromMinutes(6);
     private const int BalSyncChainLength = 5_000;
     private const int PartialBalSyncChainLength = 1_000;
+    private const int BalCatchUpChainLength = 600;
     private const int PartialBalActivationBlock = 400;
+    private const int UnprocessedParentChainLength = 20;
     private const ulong PartialBalSyncHeadPivotDistance = 500;
     private const int BalSyncBuildProgressInterval = 1_000;
     private const int BalSyncVerificationProgressInterval = 3_000;
@@ -455,7 +461,8 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
         IContainer server,
         int chainLength,
         CancellationToken cancellationToken,
-        string progressLabel)
+        string progressLabel,
+        bool accessListEdgeCases = false)
     {
         SyncTestContext serverCtx = server.Resolve<SyncTestContext>();
         string stage = $"{progressLabel}: starting block processing";
@@ -468,7 +475,9 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             TestContext.Progress.WriteLine($"{progressLabel}: building {chainLength} storage blocks.");
             for (int i = 0; i < chainLength; i++)
             {
-                await serverCtx.BuildBlockWithStorage(i, cancellationToken);
+                await (accessListEdgeCases
+                    ? serverCtx.BuildBlockWithAccessListEdgeCases(i, cancellationToken)
+                    : serverCtx.BuildBlockWithStorage(i, cancellationToken));
 
                 if ((i + 1) % BalSyncBuildProgressInterval == 0 || i == chainLength - 1)
                 {
@@ -521,6 +530,79 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             await client.Resolve<SyncTestContext>().SyncFromServer(_server, cancellationToken);
         });
 
+    /// <summary>
+    /// A newPayload child of a block whose processing failed without a verdict is inserted for beacon sync, which
+    /// processes the failed block and the child once a forkchoice update names the child as head.
+    /// </summary>
+    [Test]
+    [Category("Flaky"), Retry(2)]
+    public async Task ForkchoiceUpdated_head_on_top_of_a_block_left_unprocessed_is_processed_by_sync()
+    {
+        if (!isPostMerge || dbMode != DbMode.Default)
+        {
+            Assert.Ignore("Engine API recovery is covered on the default post-merge fixture.");
+        }
+
+        await RunWithTimeout(TestTimeout, async cancellationToken =>
+        {
+            PrivateKey serverKey = TestItem.PrivateKeyE;
+            await using IContainer server = await CreateNode(serverKey, (cfg, spec) =>
+            {
+                ConfigureLocalNetwork(cfg, AllocatePort());
+                return Task.CompletedTask;
+            }, serverKey);
+            await StartServerAndBuildStorageChain(server, UnprocessedParentChainLength, cancellationToken, "Unprocessed parent server");
+
+            await using IContainer client = await CreateNode(TestItem.PrivateKeyF, (cfg, spec) =>
+            {
+                ConfigureLocalNetwork(cfg, AllocatePort());
+                return Task.CompletedTask;
+            }, serverKey);
+            await client.Resolve<SyncTestContext>().SyncFromServer(server, cancellationToken);
+
+            IBlockTree serverBlockTree = server.Resolve<IBlockTree>();
+            Hash256 processedHash = serverBlockTree.HeadHash;
+            SyncTestContext serverContext = server.Resolve<SyncTestContext>();
+            await serverContext.BuildBlockWithStorage(UnprocessedParentChainLength, cancellationToken);
+            await serverContext.BuildBlockWithStorage(UnprocessedParentChainLength + 1, cancellationToken);
+            Block head = serverBlockTree.Head!;
+            Block dropped = serverBlockTree.FindBlock(head.ParentHash!, BlockTreeLookupOptions.None)!;
+
+            IBlockTree blockTree = client.Resolve<IBlockTree>();
+            IAsyncHandler<ExecutionPayload, PayloadStatusV1> newPayload = client.Resolve<IAsyncHandler<ExecutionPayload, PayloadStatusV1>>();
+            IForkchoiceUpdatedHandler forkchoiceUpdated = client.Resolve<IForkchoiceUpdatedHandler>();
+            bool failed = false;
+            client.Resolve<IMainProcessingContext>().BranchProcessor.BlockProcessing += (_, e) =>
+            {
+                if (failed || e.Block.Hash != dropped.Hash) return;
+                failed = true;
+                throw new InvalidOperationException("Injected processing failure");
+            };
+
+            await Assert.ThrowsAsync<BlockchainException>(() => newPayload.HandleAsync(CreatePayload(dropped)));
+            Assert.That((await newPayload.HandleAsync(CreatePayload(head))).Data.Status, Is.EqualTo(PayloadStatus.Syncing));
+
+            ForkchoiceStateV1 forkchoiceState = new(head.Hash!, processedHash, processedHash);
+            Assert.That((await forkchoiceUpdated.Handle(forkchoiceState, null, 3)).Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Syncing));
+
+            while (!blockTree.WasProcessed(head.Number, head.Hash!))
+            {
+                await Task.Delay(50, cancellationToken);
+            }
+
+            Assert.That(blockTree.WasProcessed(dropped.Number, dropped.Hash!), Is.True);
+            Assert.That((await forkchoiceUpdated.Handle(forkchoiceState, null, 3)).Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
+            Assert.That(blockTree.HeadHash, Is.EqualTo(head.Hash));
+        });
+    }
+
+    private static ExecutionPayload CreatePayload(Block block)
+    {
+        ExecutionPayloadV4 payload = ExecutionPayloadV4.Create(block);
+        payload.ExecutionRequests = block.RequestsHash is null ? null : block.ExecutionRequests ?? [];
+        return payload;
+    }
+
     [Test]
     [Category("Flaky"), Retry(2)]
     public async Task FastSync()
@@ -571,6 +653,68 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
         await RunWithTimeout(SnapSyncTestTimeout, RunSnapSyncOnce);
     }
 
+    // Unwindowed history after a snap sync has no fallback to the live state, so the pivot's whole state is written as
+    // rows in the background. The every-block walk then rebuilds the state root of every block from those rows and
+    // compares it with the header, which only passes when the image holds exactly the pivot's state.
+    [Test]
+    [Category("Flaky"), Retry(2)]
+    public async Task SnapSync_with_unwindowed_history_writes_the_pivot_state_as_rows_that_rebuild_the_headers()
+    {
+        if (!isPostMerge || dbMode != DbMode.Flat) Assert.Ignore("Unwindowed history at a snap pivot is a flat post-merge feature.");
+
+        await RunWithTimeout(PivotHistoryTestTimeout, async cancellationToken =>
+        {
+            await using IContainer client = await CreateNode(TestItem.PrivateKeyD, async (cfg, spec) =>
+            {
+                SyncConfig syncConfig = (SyncConfig)cfg.GetConfig<ISyncConfig>();
+                syncConfig.FastSync = true;
+                syncConfig.SnapSync = true;
+                await SetPivot(syncConfig, cancellationToken);
+
+                IFlatDbConfig flatDbConfig = cfg.GetConfig<IFlatDbConfig>();
+                flatDbConfig.HistoryEnabled = true;
+                flatDbConfig.HistoryVerifyEveryBlock = true;
+                flatDbConfig.ArchiveProofBuildEnabled = true;
+
+                ConfigureLocalNetwork(cfg, AllocatePort());
+            });
+
+            // What the startup steps do; this harness runs none.
+            PivotHistoryImageWriter image = client.Resolve<PivotHistoryImageWriter>();
+            image.Start();
+
+            await client.Resolve<SyncTestContext>().SyncFromServer(_server, cancellationToken);
+            await image.Released.WaitAsync(cancellationToken);
+
+            // The sync moves its pivot up from the configured one to a recent block, and history starts there.
+            HistoryAvailability availability = client.Resolve<HistoryAvailability>();
+            ulong configuredPivot = client.Resolve<ISyncConfig>().PivotNumber;
+            bool hasFloor = availability.TryGetGlobalFloor(out ulong floor);
+            bool hasWatermark = availability.TryGetWatermark(out ulong watermark);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(hasFloor, Is.True, "history starts at the pivot");
+                Assert.That(floor, Is.GreaterThanOrEqualTo(configuredPivot));
+                Assert.That(hasWatermark, Is.True);
+                Assert.That(watermark, Is.GreaterThanOrEqualTo(floor));
+                Assert.That(availability.TryGetPivotImageBlock(out ulong imageBlock) && imageBlock <= floor, Is.True);
+                Assert.That(availability.TryGetPendingPivotImage(out _), Is.False, "a complete image leaves no pending record");
+            }
+
+            HistoryWalkVerificationCoordinator walk = client.Resolve<HistoryWalkVerificationCoordinator>();
+            walk.Start();
+            while (walk.LastVerdict is null) await Task.Delay(100, cancellationToken);
+
+            HistoryWalkVerdict verdict = walk.LastVerdict;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(verdict.Mismatches, Is.Empty);
+                Assert.That(verdict.Verified, Is.True);
+                Assert.That(verdict.BlocksCompared, Is.GreaterThan(0UL));
+            }
+        });
+    }
+
     // Stress reproducer for SnapSync Windows flake — run manually; see PR #11443 for context.
     [Test, Explicit("Stress reproducer for SnapSync Windows flake — run manually")]
     [TestCaseSource(nameof(StressIterations))]
@@ -603,7 +747,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
     private static IEnumerable<int> StressIterations() => Enumerable.Range(0, StressIterationCount);
 
     [Test]
-    public void Cancellation_diagnostic_survives_cleanup([Values] bool serverSetup, [Values] bool failDisposal)
+    public async Task Cancellation_diagnostic_survives_cleanup([Values] bool serverSetup, [Values] bool failDisposal)
     {
         if (!isPostMerge || dbMode != DbMode.Default)
             Assert.Ignore("Timeout diagnostics are exercised on the default post-merge fixture.");
@@ -613,7 +757,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
         try
         {
             Console.SetError(output);
-            Assert.ThrowsAsync(failDisposal ? typeof(InvalidOperationException) : typeof(OperationCanceledException), async () =>
+            await Assert.ThrowsAsync(failDisposal ? typeof(InvalidOperationException) : typeof(OperationCanceledException), async () =>
             {
                 await using (new TimeoutTestCleanup(failDisposal))
                 {
@@ -707,6 +851,61 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
 
     [Test]
     [Category("Flaky"), Retry(2)]
+    public async Task FullSync_catches_up_finalized_blocks_from_block_access_lists()
+    {
+        if (!isPostMerge || dbMode is not (DbMode.Default or DbMode.Flat))
+        {
+            Assert.Ignore("Finalized BAL catch-up is covered on the post-merge trie and flat fixtures.");
+        }
+
+        await RunWithTimeout(BalSyncTestTimeout, async cancellationToken =>
+        {
+            PrivateKey serverKey = TestItem.PrivateKeyE;
+            await using IContainer server = await CreateNode(serverKey, (cfg, spec) =>
+            {
+                EnableBlockAccessListsFromGenesis(spec);
+                ConfigureLocalNetwork(cfg, AllocatePort());
+                return Task.CompletedTask;
+            }, serverKey);
+            await StartServerAndBuildStorageChain(server, BalCatchUpChainLength, cancellationToken, "BAL catch-up server", accessListEdgeCases: true);
+
+            long reconstructedBefore = Merge.Plugin.Metrics.BalCatchUpBlocks;
+            await using IContainer client = await CreateNode(TestItem.PrivateKeyF, (cfg, spec) =>
+            {
+                EnableBlockAccessListsFromGenesis(spec);
+                cfg.GetConfig<ISyncConfig>().ReconstructFinalizedStateFromBlockAccessLists = true;
+                ConfigureLocalNetwork(cfg, AllocatePort());
+                return Task.CompletedTask;
+            }, serverKey);
+            List<ulong> incompleteReceipts = [];
+            client.Resolve<IMainProcessingContext>().BranchProcessor.BlockProcessed += (_, args) =>
+            {
+                if (args.TxReceipts.Length != args.Block.Transactions.Length) lock (incompleteReceipts) incompleteReceipts.Add(args.Block.Number);
+            };
+            Dictionary<ulong, int> canonicalNotifications = [];
+            client.Resolve<IReceiptMonitor>().ReceiptsInserted += (_, args) =>
+            {
+                if (args.WasRemoved || args.TxReceipts.Length == 0) return;
+                lock (canonicalNotifications) canonicalNotifications[args.BlockHeader.Number] = canonicalNotifications.GetValueOrDefault(args.BlockHeader.Number) + 1;
+            };
+
+            // Blocks up to the finalized one are applied from their access lists and the rest execute, so matching
+            // the executing server on blocks, receipts, transaction lookups, access lists and state shows nothing is lost.
+            // A wrong application only falls back to execution, so every finalized block must also be reconstructed.
+            ulong finalized = await client.Resolve<SyncTestContext>().SyncFromServerAndVerifyEverything(server, cancellationToken);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(Merge.Plugin.Metrics.BalCatchUpBlocks - reconstructedBefore, Is.EqualTo((long)finalized),
+                    "Finalized blocks that fell back to execution.");
+                Assert.That(incompleteReceipts, Is.Empty, "Blocks published to processing subscribers without their receipts.");
+                Assert.That(Enumerable.Range(1, (int)finalized).Where(n => canonicalNotifications.GetValueOrDefault((ulong)n) != 1), Is.Empty,
+                    "Finalized blocks whose receipts were not announced as canonical exactly once.");
+            }
+        });
+    }
+
+    [Test]
+    [Category("Flaky"), Retry(2)]
     public async Task SnapSync_HalfPathServer_HashClient()
     {
         if (dbMode != DbMode.Default) Assert.Ignore("This test only runs on the Default (HalfPath) server fixture");
@@ -790,7 +989,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             TestContext.Progress.WriteLine($"Partial BAL sync test: head {PartialBalSyncChainLength}, pivot {syncPivotNumber}, activation {PartialBalActivationBlock}.");
 
             await client.Resolve<SyncTestContext>().SyncFromServerAndVerifyAccessLists(server, syncPivotNumber, cancellationToken);
-            Assert.That(client.Resolve<ISyncPointers>().LowestInsertedBlockAccessListBlockNumber, Is.LessThanOrEqualTo(1));
+            Assert.That(client.Resolve<ISyncPointers>().LowestInsertedBlockAccessListBlockNumber, Is.InRange(PartialBalActivationBlock - 2, PartialBalActivationBlock - 1));
         });
     }
 
@@ -951,6 +1150,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
         private const bool CheckBlocksAndReceiptsContent = false;
         private const bool VerifyTrieOnFinished = false;
         private const int DeployEveryNBlocks = 10;
+        private const ulong DefaultFinalizedDistanceFromHead = 250;
 
         private readonly BlockDecoder _blockDecoder = new();
         private readonly ReceiptsMessageSerializer _receiptsMessageSerializer = new(specProvider);
@@ -1055,6 +1255,60 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             await testEnv.BuildBlockWithTxs([tx], cancellation);
         }
 
+        private readonly List<Address> _clearers = [];
+        private PrivateKey? _delegatedAuthority;
+
+        // Init: slot 0 = 1. Runtime: slot 0 = 0.
+        private byte[]? _clearerInitCode;
+        private byte[] ClearerInitCode => _clearerInitCode ??= Prepare.EvmCode
+            .PushData(1).PushData(0).Op(Instruction.SSTORE)
+            .ForInitOf(Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done)
+            .Done;
+
+        private static readonly byte[] SelfDestructInitCode = Prepare.EvmCode.Op(Instruction.CALLER).Op(Instruction.SELFDESTRUCT).Done;
+
+        /// <summary>Builds a block whose access list covers state transitions a naive post-state writer gets wrong.</summary>
+        /// <remarks>
+        /// Account creation by transfer, a touch of a missing account, a contract created and destroyed in one
+        /// transaction, a slot cleared to zero, an EIP-7702 delegation set and later cleared, and a reverted call.
+        /// </remarks>
+        public async Task BuildBlockWithAccessListEdgeCases(int blockNumber, CancellationToken cancellation)
+        {
+            IReleaseSpec spec = specProvider.GetSpec((blockTree.Head?.Number ?? 0UL) + 1UL, null);
+            _nonces.TryGetValue(nodeKey.Address, out ulong nonce);
+            Address freshAddress(string salt) => new(Keccak.Compute($"{salt}-{blockNumber}").Bytes[..Address.Size]);
+            Transaction Sign(TransactionBuilder<Transaction> builder) =>
+                builder.WithNonce(nonce++).WithChainId(specProvider.ChainId).SignedAndResolved(ecdsa, nodeKey, spec.IsEip155Enabled).TestObject;
+            TransactionBuilder<Transaction> Legacy(ulong gasLimit) => Build.A.Transaction.WithGasLimit(gasLimit).WithGasPrice(10.GWei);
+
+            List<Transaction> txs =
+            [
+                Sign(Legacy(21_000).WithTo(freshAddress("funded")).WithValue(1)),
+                Sign(Legacy(21_000).WithTo(freshAddress("touched")).WithValue(0)),
+                Sign(Legacy(100_000).WithCode(SelfDestructInitCode).WithValue(1)),
+                Sign(Legacy(200_000).WithCode(ClearerInitCode)),
+            ];
+            _clearers.Add(ContractAddress.From(nodeKey.Address, nonce - 1));
+
+            if (_clearers.Count > 1)
+            {
+                Address previousClearer = _clearers[^2];
+                txs.Add(Sign(Legacy(100_000).WithTo(previousClearer)));
+                txs.Add(Sign(Legacy(21_100).WithTo(previousClearer)));
+
+                PrivateKey authority = new(Keccak.Compute($"authority-{blockNumber}").Bytes.ToArray());
+                List<AuthorizationTuple> authorizations = [ecdsa.Sign(authority, specProvider.ChainId, previousClearer, 0)];
+                if (_delegatedAuthority is not null) authorizations.Add(ecdsa.Sign(_delegatedAuthority, specProvider.ChainId, Address.Zero, 1));
+                _delegatedAuthority = authority;
+                txs.Add(Sign(Build.A.Transaction.WithType(TxType.SetCode).WithTo(freshAddress("setcode"))
+                    .WithGasLimit(200_000).WithMaxFeePerGas(10.GWei).WithMaxPriorityFeePerGas(1.GWei)
+                    .WithAuthorizationCode([.. authorizations])));
+            }
+
+            _nonces[nodeKey.Address] = nonce;
+            await testEnv.BuildBlockWithTxs([.. txs], cancellation);
+        }
+
         private async Task VerifyHeadWith(IContainer server, CancellationToken cancellationToken)
         {
             await blockProcessingQueue.WaitForBlockProcessing(cancellationToken);
@@ -1072,7 +1326,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
 #pragma warning restore CS0162 // Unreachable code detected
         }
 
-        private ValueTask VerifyAllBlocksAndReceipts(IContainer server, CancellationToken cancellationToken)
+        private ValueTask VerifyAllBlocksAndReceipts(IContainer server, CancellationToken cancellationToken, bool checkContent = CheckBlocksAndReceiptsContent)
         {
             IBlockTree otherBlockTree = server.Resolve<IBlockTree>();
             IReceiptStorage otherReceiptStorage = server.Resolve<IReceiptStorage>();
@@ -1086,15 +1340,17 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
                 Assert.That(clientBlock, Is.Not.Null);
                 Assert.That(clientReceipts, Is.Not.Null);
 
-                if (CheckBlocksAndReceiptsContent)
-#pragma warning disable CS0162 // Unreachable code detected
+                if (checkContent)
                 {
                     Block serverBlock = otherBlockTree.FindBlock(i)!;
                     AssertBlockEqual(clientBlock, serverBlock);
                     TxReceipt[] serverReceipts = otherReceiptStorage.Get(serverBlock);
                     AssertReceiptsEqual(clientReceipts, serverReceipts);
+                    foreach (Transaction tx in clientBlock.Transactions)
+                    {
+                        Assert.That(receiptStorage.FindBlockHash(tx.Hash!), Is.EqualTo(clientBlock.Hash), $"Transaction lookup at block {i}.");
+                    }
                 }
-#pragma warning restore CS0162 // Unreachable code detected
             }
 
             return ValueTask.CompletedTask;
@@ -1105,7 +1361,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             using ArrayPoolSpan<byte> stream1 = _blockDecoder.EncodeToArrayPoolSpan(block1);
             using ArrayPoolSpan<byte> stream2 = _blockDecoder.EncodeToArrayPoolSpan(block2);
 
-            Assert.That(((ReadOnlySpan<byte>)stream1).ToArray(), Is.EqualTo(((ReadOnlySpan<byte>)stream2).ToArray()));
+            Assert.That((ReadOnlySpan<byte>)stream1, Is.SequenceEqualTo((ReadOnlySpan<byte>)stream2));
         }
 
         private void AssertReceiptsEqual(TxReceipt[] receipts1, TxReceipt[] receipts2) =>
@@ -1136,6 +1392,19 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
                 await VerifyAllBlocksAndReceipts(sourceServer, token);
             }, cancellationToken);
 
+        /// <summary>Syncs from the server and compares every block, receipt, transaction lookup and access list.</summary>
+        /// <returns>The finalized block number the sync ran against.</returns>
+        public async Task<ulong> SyncFromServerAndVerifyEverything(IContainer server, CancellationToken cancellationToken)
+        {
+            await ExecuteSyncFromServer(server, async (sourceServer, token) =>
+            {
+                await VerifyHeadWith(sourceServer, token);
+                await VerifyAllBlocksAndReceipts(sourceServer, token, checkContent: true);
+                await VerifyBlockAccessListsWith(sourceServer, 0, token);
+            }, cancellationToken, DefaultFinalizedDistanceFromHead);
+            return server.Resolve<IBlockTree>().Head!.Number - DefaultFinalizedDistanceFromHead;
+        }
+
         public async Task SyncFromServerAndVerifyAccessLists(IContainer server, ulong syncPivotNumber, CancellationToken cancellationToken) =>
             await ExecuteSyncFromServer(server, async (sourceServer, token) =>
             {
@@ -1147,7 +1416,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             IContainer server,
             Func<IContainer, CancellationToken, Task> verification,
             CancellationToken cancellationToken,
-            ulong finalizedDistanceFromHead = 250)
+            ulong finalizedDistanceFromHead = DefaultFinalizedDistanceFromHead)
         {
             string stage = "starting client network";
             try

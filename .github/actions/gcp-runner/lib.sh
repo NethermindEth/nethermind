@@ -27,6 +27,8 @@ resolve_zone() {
 # global-scope one (CPUS_ALL_REGIONS) is worded without it and stays fatal, so it fails fast.
 RETRYABLE_CREATE_ERR='ZONE_RESOURCE_POOL_EXHAUSTED|RESOURCE_POOL_EXHAUSTED|does not have enough resources|resource availability|currently unavailable|No available zone'
 QUOTA_CREATE_ERR='Quota .* exceeded.* in region '
+# Not every zone offers every machine type (C3D -lssd shapes are missing from some regions).
+NOT_OFFERED_CREATE_ERR='Machine type with name .* does not exist in zone'
 FATAL_CREATE_ERR='PERMISSION_DENIED|Required .* permission|QUOTA_EXCEEDED|Quota .* exceeded'
 
 # Rotates a comma-separated zone list by a hash of the seed, keeping each region's zones

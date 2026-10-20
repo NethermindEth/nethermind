@@ -3,6 +3,7 @@
 
 using System;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
@@ -136,7 +137,7 @@ namespace Nethermind.Core.Crypto
     public sealed class Hash256 : IEquatable<Hash256>, IComparable<Hash256>
     {
         public const int Size = 32;
-        public static readonly Hash256 Zero = new("0x0000000000000000000000000000000000000000000000000000000000000000");
+        public static readonly Hash256 Zero = new(default(ValueHash256));
 
         public const int MemorySize =
             MemorySizes.ObjectHeaderMethodTable +
@@ -161,7 +162,7 @@ namespace Nethermind.Core.Crypto
         {
             if (bytes.Length != Size)
             {
-                throw new ArgumentException($"{nameof(Hash256)} must be {Size} bytes and was {bytes.Length} bytes", nameof(bytes));
+                ThrowInvalidLength(bytes.Length, nameof(bytes));
             }
 
             _hash256 = new ValueHash256(bytes);
@@ -171,11 +172,15 @@ namespace Nethermind.Core.Crypto
         {
             if (bytes.Length != Size)
             {
-                throw new ArgumentException($"{nameof(Hash256)} must be {Size} bytes and was {bytes.Length} bytes", nameof(bytes));
+                ThrowInvalidLength(bytes.Length, nameof(bytes));
             }
 
             _hash256 = new ValueHash256(bytes);
         }
+
+        [DoesNotReturn, StackTraceHidden]
+        private static void ThrowInvalidLength(int length, string paramName) =>
+            throw new ArgumentException($"{nameof(Hash256)} must be {Size} bytes and was {length} bytes", paramName);
 
         public static Hash256 FromBytesWithPadding(ReadOnlySpan<byte> bytes)
         {

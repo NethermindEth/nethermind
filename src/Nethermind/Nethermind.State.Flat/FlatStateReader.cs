@@ -15,6 +15,7 @@ namespace Nethermind.State.Flat;
 public class FlatStateReader(
     [KeyFilter(DbNames.Code)] IDb codeDb,
     IFlatDbManager flatDbManager,
+    ITrieNodeCache trieNodeCache,
     IHistoricalTrieVisitor historicalTrieVisitor,
     ILogManager logManager
 ) : IStateReader
@@ -39,38 +40,49 @@ public class FlatStateReader(
         value = slot.GetValueOrDefault();
     }
 
-    public byte[]? GetCode(Hash256 codeHash) => codeHash == Keccak.OfAnEmptyString ? [] : codeDb[codeHash.Bytes];
+    public byte[]? GetCode(Hash256 codeHash) => codeHash == Keccak.OfAnEmptyString ? [] : codeDb.Get(codeHash.Bytes, ReadFlags.HintCacheMiss);
 
-    public byte[]? GetCode(in ValueHash256 codeHash) => codeHash == Keccak.OfAnEmptyString.ValueHash256 ? [] : codeDb[codeHash.Bytes];
+    public byte[]? GetCode(in ValueHash256 codeHash) => codeHash == Keccak.OfAnEmptyString.ValueHash256 ? [] : codeDb.Get(codeHash.Bytes, ReadFlags.HintCacheMiss);
 
     public void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, BlockHeader? baseBlock, VisitingOptions? visitingOptions = null, VisitingStats? diagnostics = null) where TCtx : struct, INodeContext<TCtx>
     {
         StateId stateId = new(baseBlock);
 
-        ReadOnlySnapshotBundle reader = GatherForRead(baseBlock);
-        bool historical = reader.IsHistorical;
-        if (historical) reader.Dispose();
-
-        if (historical)
+        if (flatDbManager.IsHistoricalState(stateId))
         {
-            try
-            {
-                if (historicalTrieVisitor.TryRunTreeVisitor(treeVisitor, stateId, visitingOptions, diagnostics)) return;
-            }
-            catch (StateUnavailableException e)
-            {
-                throw StateUnavailable(baseBlock, $"State proof at historical block {stateId.BlockNumber} is unavailable", e);
-            }
+            RunHistoricalTreeVisitor(treeVisitor, baseBlock, stateId, visitingOptions, diagnostics);
+            return;
+        }
 
-            throw StateUnavailable(baseBlock, $"State proofs at historical block {stateId.BlockNumber} are not supported");
+        ReadOnlySnapshotBundle reader = GatherForRead(baseBlock);
+        if (reader.IsHistorical)
+        {
+            // Persistence moved past the block between the routing check and the gather.
+            reader.Dispose();
+            RunHistoricalTreeVisitor(treeVisitor, baseBlock, stateId, visitingOptions, diagnostics);
+            return;
         }
 
         using (reader)
         {
-            ReadOnlyStateTrieStoreAdapter trieStoreAdapter = new(reader);
+            ReadOnlyStateTrieStoreAdapter trieStoreAdapter = new(reader, treeVisitor.IsFullDbScan ? null : trieNodeCache);
             PatriciaTree patriciaTree = new(trieStoreAdapter, logManager);
             patriciaTree.Accept(treeVisitor, stateId.StateRoot.ToCommitment(), visitingOptions, diagnostics: diagnostics);
         }
+    }
+
+    private void RunHistoricalTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, BlockHeader? baseBlock, in StateId stateId, VisitingOptions? visitingOptions, VisitingStats? diagnostics) where TCtx : struct, INodeContext<TCtx>
+    {
+        try
+        {
+            if (historicalTrieVisitor.TryRunTreeVisitor(treeVisitor, stateId, visitingOptions, diagnostics)) return;
+        }
+        catch (StateUnavailableException e)
+        {
+            throw StateUnavailable(baseBlock, $"State proof at historical block {stateId.BlockNumber} is unavailable", e);
+        }
+
+        throw StateUnavailable(baseBlock, $"State proofs at historical block {stateId.BlockNumber} are not supported");
     }
 
     public bool HasStateForBlock(BlockHeader? baseBlock) => flatDbManager.HasStateForBlock(new StateId(baseBlock));

@@ -117,16 +117,16 @@ public class ReadOnlyAccountChanges : IEquatable<ReadOnlyAccountChanges>
     /// <summary>Whether the BAL declares <paramref name="slot"/> for this account at all.</summary>
     /// <param name="slotChanges">The slot's changes, or <c>null</c> when it is declared only as a read.</param>
     /// <returns><c>true</c> when the slot is declared, whether written or only read.</returns>
-    public bool TryGetDeclaredSlotChanges(UInt256 slot, out ReadOnlySlotChanges? slotChanges)
+    public bool TryGetDeclaredSlotChanges(in UInt256 slot, out ReadOnlySlotChanges? slotChanges)
         => _declaredSlots is not null
             ? _declaredSlots.TryGetValue(slot, out slotChanges)
-            : ScanDeclaredReads(slot, out slotChanges);
+            : ScanDeclaredReads(in slot, out slotChanges);
 
     /// <summary>Scans the declared reads for <paramref name="slot"/> when the account has no slot map.</summary>
     /// <remarks>Out of line so the two-instruction map probe above stays inlineable at the SLOAD
     /// call sites; a body with a loop is not.</remarks>
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private bool ScanDeclaredReads(UInt256 slot, out ReadOnlySlotChanges? slotChanges)
+    private bool ScanDeclaredReads(in UInt256 slot, out ReadOnlySlotChanges? slotChanges)
     {
         slotChanges = null;
         ReadOnlySpan<UInt256> reads = StorageReads;
@@ -138,8 +138,9 @@ public class ReadOnlyAccountChanges : IEquatable<ReadOnlyAccountChanges>
         return false;
     }
 
-    private bool TryGetSlotChanges(UInt256 key, [NotNullWhen(true)] out ReadOnlySlotChanges? slotChanges)
-        => TryGetDeclaredSlotChanges(key, out slotChanges) && slotChanges is not null;
+    /// <summary>The slot's changes; false when the slot is undeclared or declared only as a read.</summary>
+    internal bool TryGetSlotChanges(in UInt256 key, [NotNullWhen(true)] out ReadOnlySlotChanges? slotChanges)
+        => TryGetDeclaredSlotChanges(in key, out slotChanges) && slotChanges is not null;
 
     public BalanceChange? BalanceChangeAtIndex(uint index) => GetExact(BalanceChanges, index);
 

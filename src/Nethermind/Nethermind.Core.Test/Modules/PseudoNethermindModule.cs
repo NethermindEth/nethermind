@@ -17,7 +17,6 @@ using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State.Flat;
-using Nethermind.TxPool;
 using Nethermind.Wallet;
 using Module = Autofac.Module;
 
@@ -53,7 +52,6 @@ public class PseudoNethermindModule(ChainSpec spec, IConfigProvider configProvid
             .AddSingleton<ISignerStore>(NullSigner.Instance)
             .AddSingleton<IKeyStore>(NullKeyStore.Instance)
             .AddSingleton<IWallet, DevWallet>()
-            .AddSingleton<ITxSender>(NullTxSender.Instance)
 
             // FlatDb uses SnapshotableMemColumnsDb for fast O(1) MVCC snapshots instead of slow O(n) full copies
             .AddSingleton<IColumnsDb<FlatDbColumns>>((_) => new SnapshotableMemColumnsDb<FlatDbColumns>(neverPrune: true))
@@ -63,6 +61,9 @@ public class PseudoNethermindModule(ChainSpec spec, IConfigProvider configProvid
                 // Dont want to make it very slow
                 flatDbConfig.TrieWarmerWorkerCount = 0;
                 flatDbConfig.WarmReadConcurrency = 2;
+                // The default budget allocates a production-sized trie node cache on the large object heap
+                // per container.
+                flatDbConfig.TrieCacheMemoryBudget = MemorySizes.MiB;
                 // Matches the inert persisted tier wired above: a replacement IFlatDbConfig defaulting to long finality
                 // would convert in-memory snapshots into the no-op loader and lose that state.
                 flatDbConfig.EnableLongFinality = false;

@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Text.RegularExpressions;
 using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Core.Extensions;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Logging;
@@ -220,8 +221,8 @@ public partial class DbMetricsUpdater<T>(string dbName, Options<T> dbOptions, Ro
         Timer? timer = Interlocked.Exchange(ref _timer, null);
         if (timer is null) return;
 
-        using ManualResetEvent waitHandle = new(false);
-        if (timer.Dispose(waitHandle) && !waitHandle.WaitOne(TimeSpan.FromSeconds(1)))
+        Task callbacksCompleted = timer.DisposeAsync().AsTask();
+        if (!callbacksCompleted.Wait(TimeSpan.FromSeconds(1)))
         {
             if (logger.IsWarn) logger.Warn($"DbMetricsUpdater for {dbName} did not complete within the timeout during disposal.");
         }

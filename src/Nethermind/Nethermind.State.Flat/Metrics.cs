@@ -5,6 +5,7 @@ using System.ComponentModel;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Metric;
 using Nethermind.Core.Threading;
+using Nethermind.State.Flat.Persistence.TrieNodeLog;
 using NonBlocking;
 
 
@@ -80,6 +81,9 @@ public static class Metrics
     [Description("Total estimated snapshot memory in bytes")]
     public static long TotalSnapshotMemory { get; set; }
 
+    [DetailedMetricOnFlag]
+    public static bool DetailedMetricsEnabled { get; set; }
+
     [DetailedMetric]
     [Description("Active pooled resources by category and type")]
     [KeyIsLabel("category", "resource_type")]
@@ -142,10 +146,10 @@ public static class Metrics
     internal static void IncrementCarryForwardAccountWipes() => Interlocked.Increment(ref _carryForwardAccountWipes.Value);
 
     [CounterMetric]
-    [Description("Times the carry-forward slot cache was cleared wholesale because its entry cap was reached")]
-    public static long CarryForwardSlotWipes => Volatile.Read(ref _carryForwardSlotWipes.Value);
-    private static CacheLinePaddedLong _carryForwardSlotWipes;
-    internal static void IncrementCarryForwardSlotWipes() => Interlocked.Increment(ref _carryForwardSlotWipes.Value);
+    [Description("Carry-forward slot cache entries replaced to make room in a full set")]
+    public static long CarryForwardSlotEvictions => Volatile.Read(ref _carryForwardSlotEvictions.Value);
+    private static CacheLinePaddedLong _carryForwardSlotEvictions;
+    internal static void IncrementCarryForwardSlotEvictions() => Interlocked.Increment(ref _carryForwardSlotEvictions.Value);
 
     [GaugeMetric]
     [Description("Accounts currently held by the carry-forward cache")]
@@ -195,6 +199,54 @@ public static class Metrics
         get => Volatile.Read(ref _persistedSnapshotBloomMemory);
         set => Volatile.Write(ref _persistedSnapshotBloomMemory, value);
     }
+
+    // --- Negative filter over the in-memory snapshots' slots (ReadOnlySnapshotBundle) ---
+
+    private static long _inMemorySlotFilterMemory;
+
+    [GaugeMetric]
+    [Description("Memory held by the negative filters over the in-memory snapshots' slots in bytes; one filter per read-only snapshot bundle that served a read-only execution slot read")]
+    public static long InMemorySlotFilterMemory
+    {
+        get => Volatile.Read(ref _inMemorySlotFilterMemory);
+        set => Volatile.Write(ref _inMemorySlotFilterMemory, value);
+    }
+
+    private static long _inMemorySlotFilterBuilds;
+
+    [CounterMetric]
+    [Description("Negative filters built over the in-memory snapshots' slots")]
+    public static long InMemorySlotFilterBuilds
+    {
+        get => Volatile.Read(ref _inMemorySlotFilterBuilds);
+        set => Volatile.Write(ref _inMemorySlotFilterBuilds, value);
+    }
+
+    private static long _inMemorySlotFilterBuildFailures;
+
+    [CounterMetric]
+    [Description("Negative filters over the in-memory snapshots' slots that failed to build; their bundles read slots without a filter")]
+    public static long InMemorySlotFilterBuildFailures
+    {
+        get => Volatile.Read(ref _inMemorySlotFilterBuildFailures);
+        set => Volatile.Write(ref _inMemorySlotFilterBuildFailures, value);
+    }
+
+    [DetailedMetric]
+    [Description("Time to build the negative filter over the in-memory snapshots' slots (Stopwatch ticks)")]
+    [ExponentialPowerHistogramMetric(Start = 1, Factor = 1.5, Count = 40)]
+    public static IMetricObserver InMemorySlotFilterBuildTime { get; set; } = new NoopMetricObserver();
+
+    internal static void RecordInMemorySlotFilterBuilt(long bytes, long elapsedTicks)
+    {
+        Interlocked.Add(ref _inMemorySlotFilterMemory, bytes);
+        Interlocked.Increment(ref _inMemorySlotFilterBuilds);
+        InMemorySlotFilterBuildTime.Observe(elapsedTicks);
+    }
+
+    internal static void RecordInMemorySlotFilterBuildFailed() => Interlocked.Increment(ref _inMemorySlotFilterBuildFailures);
+
+    internal static void RecordInMemorySlotFilterReleased(long bytes) => Interlocked.Add(ref _inMemorySlotFilterMemory, -bytes);
 
     // Backed by a field so callers can update via Interlocked.Increment/Decrement(ref ...).
     internal static long _persistedSnapshotBloomCount;
@@ -414,4 +466,86 @@ public static class Metrics
     [CounterMetric]
     [Description("Number of history window pruner passes that left work for the next pass - the wall-clock budget expired mid-sweep, a floor drain did not finish inside it, or a completed cycle found the floor had advanced under it and queued the next cycle")]
     public static long FlatHistoryPrunePassesYielded { get; set; }
+
+    [CounterMetric]
+    [Description("Key and value bytes merged from the trie node log into RocksDB (the latest record per key of each generation), by column (state, storage)")]
+    [KeyIsLabel("column")]
+    public static ConcurrentDictionary<TrieNodeLogLabel, long> TrieNodeLogFlushedBytes { get; } = new();
+
+    [CounterMetric]
+    [Description("Trie node reads answered by the trie node log: hit (served from the log), chain (served after walking to an older version), miss (fell through to the second-level log if enabled, else RocksDB), and the same outcomes of the second-level log prefixed second_level_")]
+    [KeyIsLabel("outcome")]
+    public static ConcurrentDictionary<TrieNodeLogLabel, long> TrieNodeLogReads { get; } = new();
+
+    private static long _trieNodeLogIndexFalseMatches;
+
+    [CounterMetric]
+    [Description("Trie node log index probes whose slot tag matched but whose record held another key, so the record was read for nothing")]
+    public static long TrieNodeLogIndexFalseMatches => Volatile.Read(ref _trieNodeLogIndexFalseMatches);
+
+    public static void IncrementTrieNodeLogIndexFalseMatches() => Interlocked.Increment(ref _trieNodeLogIndexFalseMatches);
+
+    [CounterMetric]
+    [Description("Bytes written to first-level trie node log files (records with their headers), by column (state, storage)")]
+    [KeyIsLabel("column")]
+    public static ConcurrentDictionary<TrieNodeLogLabel, long> TrieNodeLogStoredBytes { get; } = new();
+
+    [CounterMetric]
+    [Description("Bytes copied from merged first-level generations into second-level trie node log files (records with their headers), by column (state, storage)")]
+    [KeyIsLabel("column")]
+    public static ConcurrentDictionary<TrieNodeLogLabel, long> TrieNodeLogSecondLevelStoredBytes { get; } = new();
+
+    [DetailedMetric]
+    [Description("Time to merge one trie node log generation into RocksDB")]
+    [ExponentialPowerHistogramMetric(Start = 1, Factor = 1.5, Count = 30)]
+    public static IMetricObserver TrieNodeLogMergeTime { get; set; } = new NoopMetricObserver();
+
+    [DetailedMetric]
+    [Description("Time a trie node log shard waited for a merge before starting a new generation because its backlog of unmerged generations was full; persistence stalls for this long")]
+    [ExponentialPowerHistogramMetric(Start = 1, Factor = 1.5, Count = 30)]
+    public static IMetricObserver TrieNodeLogBackpressureTime { get; set; } = new NoopMetricObserver();
+
+    [DetailedMetric]
+    [Description("Time to commit one batch to the trie node log: buffer flush, fsync and index publish")]
+    [ExponentialPowerHistogramMetric(Start = 1, Factor = 1.5, Count = 30)]
+    public static IMetricObserver TrieNodeLogCommitTime { get; set; } = new NoopMetricObserver();
+
+    [GaugeMetric]
+    [Description("Trie node log generations by state: active (being appended to), sealed (waiting for or being merged), merged_pinned (merged into RocksDB but still held open by a reader)")]
+    [KeyIsLabel("state")]
+    public static ConcurrentDictionary<TrieNodeLogLabel, long> TrieNodeLogGenerationCount { get; } = new();
+
+    private static long _trieNodeLogBytes;
+
+    [GaugeMetric]
+    [Description("Bytes of trie node log generation files not yet merged into RocksDB")]
+    public static long TrieNodeLogBytes
+    {
+        get => Volatile.Read(ref _trieNodeLogBytes);
+        set => Interlocked.Exchange(ref _trieNodeLogBytes, value);
+    }
+
+    public static void AddTrieNodeLogBytes(long delta) => Interlocked.Add(ref _trieNodeLogBytes, delta);
+
+    private static long _trieNodeLogUndeletedFiles;
+
+    [GaugeMetric]
+    [Description("Merged trie node log files whose deletion failed; deletion is retried on later merges and at startup")]
+    public static long TrieNodeLogUndeletedFiles => Volatile.Read(ref _trieNodeLogUndeletedFiles);
+
+    public static void AddTrieNodeLogUndeletedFiles(long delta) => Interlocked.Add(ref _trieNodeLogUndeletedFiles, delta);
+
+    [GaugeMetric]
+    [Description("Native memory held by trie node log generation indexes, including merged generations still pinned by readers")]
+    public static long TrieNodeLogIndexBytes { get; set; }
+
+    [GaugeMetric]
+    [Description("Version of the last batch committed to the trie node log, by shard")]
+    [KeyIsLabel("shard")]
+    public static ConcurrentDictionary<TrieNodeLogLabel, long> TrieNodeLogVersion { get; } = new();
+
+    [GaugeMetric]
+    [Description("Newest trie node log generation merged into RocksDB, by shard")]
+    [KeyIsLabel("shard")]
+    public static ConcurrentDictionary<TrieNodeLogLabel, long> TrieNodeLogFlushedGeneration { get; } = new();
 }

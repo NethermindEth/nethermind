@@ -14,6 +14,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Admin;
@@ -25,6 +26,7 @@ using Nethermind.Network.Enr;
 using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.Rlpx;
 using Nethermind.Serialization.Json;
+using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Stats.Model;
 using Nethermind.TxPool;
@@ -67,7 +69,7 @@ public class AdminModuleTests
         _receiptStorage = Substitute.For<IReceiptStorage>();
         _jsonRpcDuplexClient = Substitute.For<IJsonRpcDuplexClient>();
         _blockTree = Build.A.BlockTree().OfChainLength(5).TestObject;
-        _receiptCanonicalityMonitor = new ReceiptCanonicalityMonitor(_receiptStorage, _blockTree, _logManager);
+        _receiptCanonicalityMonitor = new ReceiptCanonicalityMonitor(_receiptStorage, _blockTree, _logManager, MainnetSpecProvider.Instance);
         _stateReader = Substitute.For<IStateReader>();
         _networkConfig = new NetworkConfig();
 
@@ -620,7 +622,7 @@ public class AdminModuleTests
 
         Assert.That(peerInfo.Id, Is.Not.Null, "a hashed-id PeerInfo JSON must still produce a non-null id");
         Assert.That(peerInfo.Id.Bytes.Length, Is.EqualTo(64), "the public key payload retains its 64-byte length even when the JSON only carried the 32-byte hash");
-        Assert.That(peerInfo.Id.Bytes.AsSpan(32, 32).ToArray(), Is.EqualTo(expectedHashBytes), "the hash bytes from the JSON must occupy the last 32 bytes of the public key payload");
+        Assert.That(peerInfo.Id.Bytes.AsSpan(32, 32), Is.SequenceEqualTo(expectedHashBytes), "the hash bytes from the JSON must occupy the last 32 bytes of the public key payload");
     }
 
     [TestCase(true, TestName = "pause delegates to Pause")]

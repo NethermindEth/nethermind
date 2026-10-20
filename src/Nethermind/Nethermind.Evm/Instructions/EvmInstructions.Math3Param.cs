@@ -53,11 +53,11 @@ public static partial class EvmInstructions
 
     public struct OpAddMod : IOpMath3Param
     {
-        public static void Operation(in UInt256 a, in UInt256 b, in UInt256 c, out UInt256 result) => UInt256.AddMod(in a, in b, in c, out result);
+        public static void Operation(in UInt256 a, in UInt256 b, in UInt256 c, out UInt256 result) => AddMod256(in a, in b, in c, out result);
     }
 
     public struct OpMulMod : IOpMath3Param
     {
-        public static void Operation(in UInt256 a, in UInt256 b, in UInt256 c, out UInt256 result) => UInt256.MultiplyMod(in a, in b, in c, out result);
+        public static void Operation(in UInt256 a, in UInt256 b, in UInt256 c, out UInt256 result) => MulMod256(in a, in b, in c, out result);
     }
 }

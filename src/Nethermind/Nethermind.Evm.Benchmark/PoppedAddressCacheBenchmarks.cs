@@ -9,7 +9,7 @@ namespace Nethermind.Evm.Benchmark;
 
 /// <summary>
 /// Measures <see cref="PoppedAddressCache"/> over cyclic address working sets: 1 = hit path,
-/// 2/4 = alternating sets that thrash a single-entry cache, 8 = over capacity.
+/// 2/4/8 = sets that miss the most recent entry on every pop.
 /// </summary>
 [MemoryDiagnoser]
 public class PoppedAddressCacheBenchmarks

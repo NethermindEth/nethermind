@@ -17,7 +17,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
         private const ulong NoBlockSeenYet = ulong.MaxValue;
 
         private static readonly RlpLimit ReceiptsRlpLimit = RlpLimit.For<ReceiptsMessage>(NethermindSyncLimits.MaxHashesFetch, nameof(ReceiptsMessage.TxReceipts));
-        private static readonly RlpLimit BlockReceiptsRlpLimit = RlpLimit.For<TxReceipt[]>(NethermindSyncLimits.MaxHashesFetch, nameof(ReceiptsMessage.TxReceipts));
+        // A block has one receipt per transaction, so it is bounded like its transaction list rather than by request size.
+        private static RlpLimit BlockReceiptsRlpLimit => RlpLimit.For<TxReceipt[]>(BlockBodyDecoder.TransactionsCountLimit.Limit, nameof(ReceiptsMessage.TxReceipts));
         private readonly ISpecProvider _specProvider;
         private readonly IRlpDecoder<TxReceipt> _decoder;
         private readonly DecodeRlpValue<TxReceipt[]> _decodeArrayFunc;
@@ -28,7 +29,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
         {
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _decoder = decoder;
-            _decodeArrayFunc = (ref RlpReader ctx) => ctx.DecodeNonNullArray((ref RlpReader nestedContext) => _decoder.Decode(ref nestedContext), limit: BlockReceiptsRlpLimit);
+            // The message does not say which blocks the receipts belong to, so a zero-length bloom (EIP-7668) is
+            // accepted whenever the chain ever schedules the EIP; the receipts root rejects one before the fork.
+            RlpBehaviors decodeBehaviors = specProvider.GetFinalSpec().IsEip7668Enabled ? RlpBehaviors.Eip7668Receipts : RlpBehaviors.None;
+            _decodeArrayFunc = (ref RlpReader ctx) => ctx.DecodeNonNullArray((ref RlpReader nestedContext) => _decoder.Decode(ref nestedContext, decodeBehaviors), limit: BlockReceiptsRlpLimit);
         }
 
         public void Serialize(IByteBuffer byteBuffer, ReceiptsMessage message)
@@ -71,13 +75,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
         {
             if (byteBuffer.ReadableBytes == 0)
             {
-                return ReceiptsMessage.Empty;
+                return new ReceiptsMessage(null);
             }
 
             if (byteBuffer.GetByte(byteBuffer.ReaderIndex) == Rlp.OfEmptyList[0])
             {
                 byteBuffer.ReadByte();
-                return ReceiptsMessage.Empty;
+                return new ReceiptsMessage(null);
             }
 
             return byteBuffer.DeserializeRlp(Deserialize);

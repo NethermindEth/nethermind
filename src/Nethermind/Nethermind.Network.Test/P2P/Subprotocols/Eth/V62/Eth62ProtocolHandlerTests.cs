@@ -185,6 +185,74 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             _handler.NotifyOfNewBlock(block, (SendBlockMode)99);
         }
 
+        [TestCase(513UL, 0UL, SendBlockMode.FullBlock, false)]
+        [TestCase(513UL, 0UL, SendBlockMode.HashOnly, false)]
+        [TestCase(1000UL, 488UL, SendBlockMode.FullBlock, true)]
+        [TestCase(1000UL, 488UL, SendBlockMode.HashOnly, true)]
+        [TestCase(1000UL, 1000UL, SendBlockMode.FullBlock, true)]
+        [TestCase(1000UL, 1000UL, SendBlockMode.HashOnly, true)]
+        [TestCase(0UL, 500UL, SendBlockMode.FullBlock, true)]
+        [TestCase(0UL, 500UL, SendBlockMode.HashOnly, true)]
+        [TestCase(ulong.MaxValue, ulong.MaxValue, SendBlockMode.FullBlock, true)]
+        [TestCase(ulong.MaxValue, ulong.MaxValue, SendBlockMode.HashOnly, true)]
+        public void Notify_of_new_block_filters_only_blocks_older_than_peer_reorg_window(
+            ulong peerHeadNumber,
+            ulong blockNumber,
+            SendBlockMode mode,
+            bool shouldDeliver)
+        {
+            _handler.HeadNumber = peerHeadNumber;
+            _session.ClearReceivedCalls();
+            Block block = Build.A.Block.WithNumber(blockNumber).WithTotalDifficulty(1UL).TestObject;
+
+            _handler.NotifyOfNewBlock(block, mode);
+
+            if (shouldDeliver)
+            {
+                Type expectedMessageType = mode == SendBlockMode.FullBlock
+                    ? typeof(NewBlockMessage)
+                    : typeof(NewBlockHashesMessage);
+                _session.Received(1).DeliverMessage(Arg.Is<P2PMessage>(message => message.GetType() == expectedMessageType));
+            }
+            else
+            {
+                _session.DidNotReceive().DeliverMessage(Arg.Any<P2PMessage>());
+            }
+        }
+
+        [Test]
+        public void Notify_of_new_block_uses_the_latest_peer_head_number(
+            [Values(SendBlockMode.FullBlock, SendBlockMode.HashOnly)] SendBlockMode mode)
+        {
+            Block block = Build.A.Block.WithNumber(100UL).WithTotalDifficulty(1UL).TestObject;
+            _handler.HeadNumber = 1000UL;
+            _session.ClearReceivedCalls();
+
+            _handler.NotifyOfNewBlock(block, mode);
+            _session.DidNotReceive().DeliverMessage(Arg.Any<P2PMessage>());
+
+            _handler.HeadNumber = 100UL;
+            _session.ClearReceivedCalls();
+            _handler.NotifyOfNewBlock(block, mode);
+
+            Type expectedMessageType = mode == SendBlockMode.FullBlock
+                ? typeof(NewBlockMessage)
+                : typeof(NewBlockHashesMessage);
+            _session.Received(1).DeliverMessage(Arg.Is<P2PMessage>(message => message.GetType() == expectedMessageType));
+
+            _handler.HeadNumber = 1000UL;
+            Block newlyObservedHistoricalBlock = Build.A.Block
+                .WithNumber(100UL)
+                .WithNonce(1UL)
+                .WithTotalDifficulty(1UL)
+                .TestObject;
+            Assert.That(newlyObservedHistoricalBlock.Hash, Is.Not.EqualTo(block.Hash));
+            _session.ClearReceivedCalls();
+            _handler.NotifyOfNewBlock(newlyObservedHistoricalBlock, mode);
+
+            _session.DidNotReceive().DeliverMessage(Arg.Any<P2PMessage>());
+        }
+
         [Test]
         public void Get_headers_from_genesis()
         {
@@ -453,6 +521,27 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             _transactionPool.Received(canGossipTransactions ? 3 : 0).SubmitTx(Arg.Any<Transaction>(), TxHandlingOptions.None);
         }
 
+        // The flood controller requests the disconnect on the first invalid transaction; a real session is closing from
+        // then on, so the rest of the message must not reach the pool's (possibly expensive) validation.
+        [Test]
+        public void Stops_submitting_the_rest_of_a_message_after_an_invalid_transaction_requests_a_disconnect()
+        {
+            _session.When(static s => s.InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>()))
+                .Do(_ => _session.IsClosing.Returns(true));
+            _transactionPool.SubmitTx(Arg.Any<Transaction>(), TxHandlingOptions.None)
+                .Returns(AcceptTxResult.Invalid, AcceptTxResult.Accepted, AcceptTxResult.Accepted);
+            using TransactionsMessage msg = new(Build.A.Transaction.SignedAndResolved().TestObjectNTimes(3).ToPooledList());
+
+            HandleIncomingStatusMessage();
+            HandleZeroMessage(msg, Eth62MessageCode.Transactions);
+
+            using (Assert.EnterMultipleScope())
+            {
+                _session.Received(1).InitiateDisconnect(DisconnectReason.InvalidTxReceived, "invalid tx");
+                _transactionPool.Received(1).SubmitTx(Arg.Any<Transaction>(), TxHandlingOptions.None);
+            }
+        }
+
         // TxFloodController's legacy-downgrade threshold is _notAcceptedSinceLastCheck > 600 (60s check interval,
         // downgrade once unaccepted-per-second exceeds 10) - one report per skip, so this pair pins the boundary
         // exactly rather than just "eventually downgrades", which a double-report bug would still satisfy.
@@ -587,11 +676,39 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             return false;
         }
 
+        /// <summary>Decodes transaction messages as usual, attaching a witness to every transaction it decodes.</summary>
+        private sealed class WitnessingTransactionsMessageSerializer : IZeroInnerMessageSerializer<TransactionsMessage>
+        {
+            private readonly TransactionsMessageSerializer _serializer = new();
+
+            public List<RecycledTransactionWitness> Witnesses { get; } = [];
+
+            public void Serialize(IByteBuffer byteBuffer, TransactionsMessage message) => _serializer.Serialize(byteBuffer, message);
+
+            public int GetLength(TransactionsMessage message, out int contentLength) => _serializer.GetLength(message, out contentLength);
+
+            public TransactionsMessage Deserialize(IByteBuffer byteBuffer)
+            {
+                TransactionsMessage message = _serializer.Deserialize(byteBuffer);
+                IOwnedReadOnlyList<Transaction> transactions = message.Transactions;
+                for (int i = 0; i < transactions.Count; i++)
+                {
+                    // Releases the decoder's pre-hash buffer, which the witness then replaces.
+                    transactions[i].ClearPreHash();
+                    Witnesses.Add(new RecycledTransactionWitness(transactions[i], (byte)(i + 1)));
+                }
+
+                return message;
+            }
+        }
+
         [Test, NonParallelizable]
         public void Dropped_transaction_batch_is_returned_without_rescheduling([Values] bool reject)
         {
             _txGossipPolicy.ShouldListenToGossipedTransactions.Returns(true);
             using TransactionsMessage msg = new(Build.A.Transaction.SignedAndResolved().TestObjectNTimes(3).ToPooledList());
+            WitnessingTransactionsMessageSerializer serializer = new();
+            _svc = Build.A.SerializationService().WithEth().With(serializer).TestObject;
 
             AlwaysTimeoutBackgroundTaskScheduler taskScheduler = new(reject);
             _handler = new Eth62ProtocolHandler(
@@ -607,15 +724,13 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             _handler.Init();
 
             HandleIncomingStatusMessage();
-            Transaction reusable = TxDecoder.TxObjectPool.Get();
-            TxDecoder.TxObjectPool.Return(reusable);
             HandleZeroMessage(msg, Eth62MessageCode.Transactions);
 
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(taskScheduler.ScheduledTasks, Is.EqualTo(1));
-                Assert.That(reusable.Signature, Is.Null);
-                Assert.That(reusable.GasLimit, Is.Zero);
+                Assert.That(serializer.Witnesses, Has.Count.EqualTo(3));
+                Assert.That(serializer.Witnesses, Has.All.Property(nameof(RecycledTransactionWitness.WasRecycled)).True);
             }
             _transactionPool.DidNotReceive().SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>());
         }
@@ -627,8 +742,10 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             for (int i = 0; i < txs.Length; i++)
             {
                 txs[i] = Build.A.Transaction.SignedAndResolved().TestObject;
-                txs[i].SetPreHashNoLock([(byte)(i + 1)]);
             }
+
+            txs[0].SetPreHashNoLock([1]);
+            RecycledTransactionWitness tailWitness = new(txs[1], 2);
 
             ArrayPoolList<Transaction> list = new(txs.Length, txs);
 
@@ -649,8 +766,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
                 triedToReschedule = true;
                 if (rescheduleSucceeds)
                 {
-                    // The new task now owns the remaining txs: process tx[1] and release the list.
-                    list[1].ClearPreHash();
+                    // The new task now owns the remaining txs and releases the list.
                     list.Dispose();
                 }
                 return rescheduleSucceeds;
@@ -675,8 +791,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
                 Assert.That(triedToReschedule, Is.True);
                 Assert.That(txs[0].Hash, Is.Not.Null);
                 Assert.That(txs[0].Signature, Is.Not.Null);
-                Assert.That(txs[1].Hash, Is.Null);
-                Assert.That(txs[1].Signature is not null, Is.EqualTo(rescheduleSucceeds));
+                Assert.That(tailWitness.WasRecycled, Is.EqualTo(!rescheduleSucceeds));
                 Assert.Throws<ObjectDisposedException>(() => _ = list[0]);
             }
         }
@@ -687,6 +802,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             Transaction first = Build.A.Transaction.WithNonce(17).SignedAndResolved().TestObject;
             Transaction second = Build.A.Transaction.WithNonce(18).SignedAndResolved().TestObject;
             Hash256 firstHash = first.Hash!;
+            RecycledTransactionWitness tailWitness = new(second, 2);
             ArrayPoolList<Transaction> list = new(2) { first, second };
             Transaction? published = null;
             _transactionPool.SubmitTx(Arg.Any<Transaction>(), TxHandlingOptions.None).Returns(call =>
@@ -707,8 +823,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
                 Assert.That(first.Hash, Is.EqualTo(firstHash));
                 Assert.That(first.Nonce, Is.EqualTo(17));
                 Assert.That(first.Signature, Is.Not.Null);
-                Assert.That(second.Signature, Is.Null);
-                Assert.That(second.Nonce, Is.Zero);
+                Assert.That(tailWitness.WasRecycled, Is.True);
                 Assert.Throws<ObjectDisposedException>(() => _ = list[0]);
             }
             _transactionPool.Received(1).SubmitTx(Arg.Any<Transaction>(), TxHandlingOptions.None);
@@ -737,6 +852,28 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
                 Assert.That(tx.Nonce, Is.EqualTo(17));
                 Assert.That(tx.Signature, Is.Not.Null);
             }
+        }
+
+        [Test]
+        public void Blob_transaction_forgets_an_invalid_blob_proofs_verdict_before_its_only_submission()
+        {
+            Transaction tx = Build.A.Transaction.WithShardBlobTxTypeAndFields().SignedAndResolved().TestObject;
+            Hash256 hash = tx.Hash!;
+            _transactionPool.ForgetInvalidBlobProofs(hash).Returns(true);
+            _transactionPool.SubmitTx(Arg.Any<Transaction>(), TxHandlingOptions.None).Returns(AcceptTxResult.Accepted);
+            using TestEth62ProtocolHandler handler = new(
+                _session, _svc, new NodeStatsManager(Substitute.For<ITimerFactory>(), LimboLogs.Instance),
+                _syncManager, RunImmediatelyScheduler.Instance, _transactionPool, _gossipPolicy,
+                LimboLogs.Instance, _txGossipPolicy);
+
+            handler.HandleSlowPublic(new ArrayPoolList<Transaction>(1) { tx }, CancellationToken.None);
+
+            Received.InOrder(() =>
+            {
+                _transactionPool.ForgetInvalidBlobProofs(hash);
+                _transactionPool.SubmitTx(tx, TxHandlingOptions.None);
+            });
+            _transactionPool.Received(1).SubmitTx(Arg.Any<Transaction>(), TxHandlingOptions.None);
         }
 
         private sealed class TestEth62ProtocolHandler(
@@ -856,7 +993,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         }
 
         [Test]
-        public void Queued_headers_request_is_cancelled_on_dispose()
+        public async Task Queued_headers_request_is_cancelled_on_dispose()
         {
             HandleIncomingStatusMessage();
 
@@ -866,8 +1003,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
 
             _handler.Dispose();
 
-            Assert.ThrowsAsync<TaskCanceledException>(async () => await request1);
-            Assert.ThrowsAsync<TaskCanceledException>(async () => await request2);
+            await Assert.ThrowsAsync<TaskCanceledException>(async () => await request1);
+            await Assert.ThrowsAsync<TaskCanceledException>(async () => await request2);
         }
 
         [Test]

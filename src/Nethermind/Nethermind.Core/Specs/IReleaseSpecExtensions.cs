@@ -47,16 +47,44 @@ public static partial class IReleaseSpecExtensions
         public bool SelfdestructOnlyOnSameTransaction => spec.IsEip6780Enabled;
         public bool RemoveSelfdestructBurn => spec.IsEip8246Enabled;
         public bool IsBeaconBlockRootAvailable => spec.IsEip4788Enabled;
-        public bool IsBlockHashInStateAvailable => spec.IsEip7709Enabled;
         public bool MCopyIncluded => spec.IsEip5656Enabled;
         public bool BlobBaseFeeEnabled => spec.IsEip4844Enabled;
         public bool IsAuthorizationListEnabled => spec.IsEip7702Enabled;
+
+        /// <summary>Whether a transaction of <paramref name="type"/> is valid under this spec; types without a fork flag, such as
+        /// chain-specific ones, are left to their own validation.</summary>
+        public bool IsTxTypeEnabled(TxType type) => type switch
+        {
+            TxType.AccessList => spec.IsEip2930Enabled,
+            TxType.EIP1559 => spec.IsEip1559Enabled,
+            TxType.Blob => spec.IsEip4844Enabled,
+            TxType.SetCode => spec.IsEip7702Enabled,
+            // Without this arm a pooled frame transaction is the one type that survives a head not enabling EIP-8141.
+            TxType.FrameTx => spec.IsEip8141Enabled,
+            _ => true,
+        };
+
         public bool RequestsEnabled => spec.ConsolidationRequestsEnabled || spec.WithdrawalRequestsEnabled || spec.DepositsEnabled || spec.BuilderRequestsEnabled;
         public bool InclusionListsEnabled => spec.IsEip7805Enabled;
 
         public ProofVersion BlobProofVersion => spec.IsEip7594Enabled ? ProofVersion.V1 : ProofVersion.V0;
         public bool CLZEnabled => spec.IsEip7939Enabled;
         public bool BlockLevelAccessListsEnabled => spec.IsEip7928Enabled;
+
+        // Each fork is detected by one marker EIP it introduces, so a chain enabling EIPs selectively
+        // counts as being at the fork once that marker is on.
+        /// <summary>Whether Shanghai is active, marked by EIP-4895 withdrawals.</summary>
+        public bool IsShanghaiEnabled => spec.WithdrawalsEnabled;
+        /// <summary>Whether Cancun is active, marked by EIP-4844 blob transactions.</summary>
+        public bool IsCancunEnabled => spec.IsEip4844Enabled;
+        /// <summary>Whether Prague is active, marked by the EIP-7685 execution requests.</summary>
+        public bool IsPragueEnabled => spec.RequestsEnabled;
+        /// <summary>Whether Osaka is active, marked by EIP-7594 PeerDAS.</summary>
+        public bool IsOsakaEnabled => spec.IsEip7594Enabled;
+        /// <summary>Whether Amsterdam is active, marked by EIP-7928 block-level access lists.</summary>
+        public bool IsAmsterdamEnabled => spec.BlockLevelAccessListsEnabled;
+        /// <summary>Whether Bogota is active, marked by EIP-7805 inclusion lists.</summary>
+        public bool IsBogotaEnabled => spec.InclusionListsEnabled;
 
         /// <summary>The per-transaction gas limit cap.</summary>
         /// <remarks>

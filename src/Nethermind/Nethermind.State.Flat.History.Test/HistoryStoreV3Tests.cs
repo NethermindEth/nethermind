@@ -2,7 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Core;
+using Nethermind.Core.Test;
+using Nethermind.Core.Test.IO;
 using Nethermind.Db;
+using Nethermind.Db.Rocks;
 using NUnit.Framework;
 
 namespace Nethermind.State.Flat.History.Test;
@@ -46,7 +50,7 @@ public class HistoryStoreV3Tests
         }
 
         Assert.That(written, Is.GreaterThan(0));
-        Assert.That(buffer[..written].ToArray(), Is.EqualTo(Convert.FromHexString(expectedHex)));
+        Assert.That(buffer[..written], Is.SequenceEqualTo(Convert.FromHexString(expectedHex)));
         Assert.That(nextChangeBlock, Is.EqualTo(expectedNextChangeBlock));
     }
 
@@ -103,7 +107,7 @@ public class HistoryStoreV3Tests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(nextChangeBlock, Is.EqualTo(20UL));
-            Assert.That(buffer[..written].ToArray(), Is.EqualTo(new byte[] { 0xBB, 0xCC }));
+            Assert.That(buffer[..written], Is.SequenceEqualTo(new byte[] { 0xBB, 0xCC }));
         }
     }
 
@@ -117,6 +121,85 @@ public class HistoryStoreV3Tests
             Span<byte> buffer = stackalloc byte[64];
             _store.TryGetValueBeforeNextChange(5, KeyA, buffer, out _);
         }, Throws.InstanceOf<InvalidOperationException>());
+    }
+
+    [Test]
+    public void SnapshotRead_WithNativeHistory_HandlesMissingEmptyAndOversizedRows(
+        [Values(5ul, 20ul, 30ul, ulong.MaxValue)] ulong block,
+        [Values(0, 1, 64)] int bufferLength, [Values] bool empty)
+    {
+        using TempPath directory = TempPath.GetTempDirectory();
+        using DbOnTheRocks db = RocksHistoryTestDb.CreateDb(directory.Path);
+        using SnapshotCeilingDb observed = new(db);
+        HistoryStoreV3 store = new(observed);
+        using (IWriteBatch batch = db.StartWriteBatch())
+        {
+            store.RecordPreValue(20, KeyA, empty ? [] : [0xAA], batch);
+            store.RecordPreValue(30, KeyA, [0xBB, 0xCC], batch);
+            store.RecordPreValue(25, KeyB, [0xDD], batch);
+        }
+
+        int expectedLength = block < 20 ? empty ? 0 : 1 : block < 30 ? 2 : -1;
+        if (expectedLength > bufferLength)
+        {
+            Assert.That(() => store.TryGetValueBeforeNextChange(block, KeyA, new byte[bufferLength], out _),
+                Throws.TypeOf<StateUnavailableException>());
+            Assert.That(observed.CeilingReads, Is.EqualTo(1), "the capability handles the first lookup even when its row is corrupt");
+            return;
+        }
+        byte[] output = new byte[bufferLength];
+        int written = store.TryGetValueBeforeNextChange(block, KeyA, output, out ulong next);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(written, Is.EqualTo(expectedLength));
+            Assert.That(observed.CeilingReads, Is.EqualTo(block == ulong.MaxValue ? 0 : 1), "the unscoped lookup uses the snapshot capability");
+            Assert.That(next, Is.EqualTo(block < 20 ? 20UL : block < 30 ? 30UL : 0UL));
+            if (written > 0) Assert.That(output.AsSpan(0, written), Is.SequenceEqualTo(block < 20 ? new byte[] { 0xAA } : new byte[] { 0xBB, 0xCC }));
+        }
+    }
+
+    [Test]
+    public void ReadScope_WhenCaptureGenerationChanges_RefreshesTheSnapshot([Values] bool flush)
+    {
+        using TempPath directory = TempPath.GetTempDirectory();
+        using DbOnTheRocks db = RocksHistoryTestDb.CreateDb(directory.Path);
+        HistoryStoreV3 store = new(db);
+        using (IWriteBatch batch = db.StartWriteBatch()) store.RecordPreValue(20, KeyA, [0xAA], batch);
+        if (flush) db.Flush();
+        using HistoryStoreV3.ReadScope scope = new();
+        Span<byte> output = stackalloc byte[64];
+        Assert.That(store.TryGetValueBeforeNextChange(5, KeyA, output, out _, scope, generation: 0), Is.EqualTo(1));
+        Assert.That(output[0], Is.EqualTo(0xAA));
+        Assert.That(store.TryGetValueBeforeNextChange(5, KeyB, output, out _, scope, generation: 0), Is.EqualTo(-1));
+
+        using (IWriteBatch batch = db.StartWriteBatch()) store.RecordPreValue(25, KeyB, [0xBB], batch);
+        if (flush) db.Flush();
+        Assert.That(store.TryGetValueBeforeNextChange(5, KeyB, output, out _, scope, generation: 0), Is.EqualTo(-1));
+        Assert.That(store.TryGetValueBeforeNextChange(5, KeyB, output, out ulong next, scope, generation: 1), Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(output[0], Is.EqualTo(0xBB));
+            Assert.That(next, Is.EqualTo(25UL));
+        }
+        scope.Dispose();
+        Assert.That(() => store.TryGetValueBeforeNextChange(5, KeyA, new byte[64], out _, scope, generation: 1), Throws.TypeOf<ObjectDisposedException>());
+    }
+
+    private sealed class SnapshotCeilingDb(ISnapshotSortedKeyValueStore inner) : MemDb, ISnapshotSortedKeyValueStore
+    {
+        internal int CeilingReads { get; private set; }
+        public byte[]? FirstKey => throw new NotSupportedException();
+        public byte[]? LastKey => throw new NotSupportedException();
+        public ISortedView GetViewBetween(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive, ReadFlags flags = ReadFlags.None) =>
+            throw new InvalidOperationException("An unscoped read must use the snapshot capability.");
+
+        public bool TryGetCeilingInSnapshot(
+            scoped ReadOnlySpan<byte> lowerBoundInclusive, scoped ReadOnlySpan<byte> upperBoundExclusive,
+            Span<byte> keyBuffer, out int keyLength, Span<byte> valueBuffer, out int valueLength)
+        {
+            CeilingReads++;
+            return inner.TryGetCeilingInSnapshot(lowerBoundInclusive, upperBoundExclusive, keyBuffer, out keyLength, valueBuffer, out valueLength);
+        }
     }
 
     private void Record(ulong block, ReadOnlySpan<byte> flatKey, ReadOnlySpan<byte> valueBeforeChange)

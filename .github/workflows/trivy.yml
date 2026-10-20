@@ -50,8 +50,6 @@ jobs:
           template: '@/contrib/sarif.tpl'
           output: trivy-results.sarif
           severity: CRITICAL,HIGH
-        env:
-          TRIVY_DB_REPOSITORY: public.ecr.aws/aquasecurity/trivy-db
 
       - name: Upload scan results
         uses: github/codeql-action/upload-sarif@0c0c5dc2f136b98cb0537075ccfa21f94cd9a63e #v2.24.3

@@ -50,7 +50,7 @@ Detailed rules live in [`.agents/rules/`](./.agents/rules/). Read the files rele
 - [performance.md](./.agents/rules/performance.md) — Load when working on hot paths in the codebase. Covers ref structs, Span, SIMD, function pointers, and zero-allocation patterns.
 - [package-management.md](./.agents/rules/package-management.md) — Load when working with NuGet dependencies. Covers Central Package Management (CPM) rules.
 - [github-workflows.md](./.agents/rules/github-workflows.md) — Load when working with GitHub Actions, CODEOWNERS, or PR templates. Covers workflow conventions and automation patterns.
-- [git.md](./.agents/rules/git.md) — Load when interacting with git version control. Covers merging, rebasing, pushing, and more.
+- [git.md](./.agents/rules/git.md) — Load when interacting with git version control. Covers commit messages, PR titles, merging, rebasing, pushing, and more.
 - [agent-skills.md](./.agents/rules/agent-skills.md) — Load when working with agentic skills. Covers the symlink convention.
 
 ## Pull request guidelines
@@ -71,6 +71,10 @@ Before creating a pull request:
 ## Agent declaration
 
 - When creating a PR or commenting on GitHub under a human account, state that you are an AI agent acting on behalf of the user and name the harness and model, e.g. `🤖 AI agent (Claude Code / Opus 5) on behalf of @user` — this makes it easy to trace which configuration produced which behavior. Put it in the `Remarks` section of the PR body, or at the end of a comment. This does not apply to commit messages, nor to comments posted under a bot account, whose identity already discloses the agent.
+
+## Agent reviews
+
+- When submitting a GitHub review, use `APPROVE` or `COMMENT`, never `REQUEST_CHANGES`. Post blocking findings in a `COMMENT` review.
 
 ## Benchmark workflows
 

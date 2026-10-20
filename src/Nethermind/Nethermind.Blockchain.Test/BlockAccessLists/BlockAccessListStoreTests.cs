@@ -32,7 +32,7 @@ public class BlockAccessListStoreTests
 
         Assert.That(store.Exists(blockNumber, blockHash), Is.True);
         using MemoryManager<byte>? rlp = store.GetRlp(blockNumber, blockHash);
-        Assert.That(rlp!.Memory.ToArray(), Is.EqualTo(encoded));
+        Assert.That(rlp!.Memory, Is.SequenceEqualTo(encoded));
     }
 
     [Test]
@@ -51,7 +51,7 @@ public class BlockAccessListStoreTests
         Assert.That(retrieved, Is.Not.Null);
 
         using MemoryManager<byte>? rlp = store.GetRlp(blockNumber, blockHash);
-        Assert.That(rlp!.Memory.ToArray(), Is.EqualTo(Rlp.Encode(bal).Bytes));
+        Assert.That(rlp!.Memory, Is.SequenceEqualTo(Rlp.Encode(bal).Bytes));
     }
 
     [Test]
@@ -88,8 +88,8 @@ public class BlockAccessListStoreTests
         using MemoryManager<byte>? rlpLow = store.GetRlp(1, blockHash);
         using MemoryManager<byte>? rlpHigh = store.GetRlp(2, blockHash);
 
-        Assert.That(rlpLow!.Memory.ToArray(), Is.EqualTo(balLow));
-        Assert.That(rlpHigh!.Memory.ToArray(), Is.EqualTo(balHigh));
+        Assert.That(rlpLow!.Memory, Is.SequenceEqualTo(balLow));
+        Assert.That(rlpHigh!.Memory, Is.SequenceEqualTo(balHigh));
 
         store.Delete(1, blockHash);
         Assert.That(store.Exists(1, blockHash), Is.False);
@@ -128,7 +128,7 @@ public class BlockAccessListStoreTests
         Assert.That(store.Exists(block.Number, block.Hash!), Is.True, "served from the overlay before flush");
         using (MemoryManager<byte>? pending = store.GetRlp(block.Number, block.Hash!))
         {
-            Assert.That(pending!.Memory.ToArray(), Is.EqualTo(bal));
+            Assert.That(pending!.Memory, Is.SequenceEqualTo(bal));
         }
 
         Assert.That(new BlockAccessListStore(db).Exists(block.Number, block.Hash!), Is.False, "not durable until flush");

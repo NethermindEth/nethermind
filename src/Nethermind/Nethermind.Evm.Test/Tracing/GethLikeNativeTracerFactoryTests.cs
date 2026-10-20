@@ -3,25 +3,69 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Evm.Tracing;
+using Nethermind.Int256;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.FourByte;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Noop;
+using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Preimage;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.StateGas;
 using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test.Tracing;
 
+[NonParallelizable]
 public class GethLikeNativeTracerFactoryTests
 {
     private readonly Block _block = Build.A.Block.TestObject;
     private readonly Transaction _tx = Build.A.Transaction.TestObject;
+    private readonly string _disposeTrackingTracerName = $"{nameof(GethLikeNativeTracerFactoryTests)}-{Guid.NewGuid():N}";
+    private DisposeTrackingTracer _createdTracer = null!;
+
+    [OneTimeSetUp]
+    public void RegisterDisposeTrackingTracer() => GethLikeNativeTracerFactory.RegisterTracer(
+        _disposeTrackingTracerName, (options, _, _, _) => _createdTracer = new DisposeTrackingTracer(options));
+
+    [TestCase("bad", true)]
+    [TestCase("5s", false)]
+    public void CreateTracer_DisposesOnlyWhenTimeoutValidationFails(string timeout, bool invalid)
+    {
+        GethTraceOptions options = new() { Tracer = _disposeTrackingTracerName, ParsedTimeout = CustomTimeDurationConverter.Parse(timeout) };
+        _createdTracer = null!;
+
+        if (invalid)
+        {
+            Assert.Throws<TraceDurationFormatException>(() => GethLikeNativeTracerFactory.CreateTracer(
+                options, _block, _tx, null!, Substitute.For<IReleaseSpec>()));
+            Assert.That(_createdTracer, Is.Not.Null, "tracer construction must precede timeout validation");
+        }
+        else
+        {
+            using GethLikeNativeTxTracer tracer = GethLikeNativeTracerFactory.CreateTracer(
+                options, _block, _tx, null!, Substitute.For<IReleaseSpec>());
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(tracer, Is.SameAs(_createdTracer));
+                Assert.That(_createdTracer.DisposeCalls, Is.Zero);
+            }
+        }
+
+        Assert.That(_createdTracer.DisposeCalls, Is.EqualTo(1));
+    }
+
+    private sealed class DisposeTrackingTracer(GethTraceOptions options) : GethLikeNativeTxTracer(options)
+    {
+        public int DisposeCalls { get; private set; }
+        public override void Dispose() => DisposeCalls++;
+    }
 
     [TestCase(Native4ByteTracer.FourByteTracer, typeof(Native4ByteTracer))]
     [TestCase(NativeNoopTracer.NoopTracer, typeof(NativeNoopTracer))]
+    [TestCase(NativeKeccakPreimageTracer.KeccakPreimageTracer, typeof(NativeKeccakPreimageTracer))]
     [TestCase(NativeStateGasTracer.StateGasTracer, typeof(NativeStateGasTracer))]
     public void CreateTracer_NativeTracerExists(string tracerName, Type expectedTracer)
     {
@@ -30,6 +74,17 @@ public class GethLikeNativeTracerFactoryTests
         GethLikeNativeTxTracer nativeTracer = GethLikeNativeTracerFactory.CreateTracer(options, _block, _tx, null!, Substitute.For<IReleaseSpec>());
 
         Assert.That(nativeTracer, Is.InstanceOf(expectedTracer));
+    }
+
+    [Test]
+    public void Preimage_tracer_filters_only_keccak_and_preserves_transaction_hash()
+    {
+        using NativeKeccakPreimageTracer tracer = new(_tx, new GethTraceOptions());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(((IInstructionTracingFilter)tracer).InstructionMask, Is.EqualTo(UInt256.One << (int)Instruction.KECCAK256));
+            Assert.That(tracer.BuildResult().TxHash, Is.EqualTo(_tx.Hash));
+        }
     }
 
     [Test]
