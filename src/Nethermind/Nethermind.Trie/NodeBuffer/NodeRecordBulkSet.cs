@@ -382,13 +382,13 @@ internal static class NodeRecordBulkSet
 
             ReadOnlySpan<byte> prefix = [(byte)onlyChild];
             ChildRef child = _workingState.Children[childrenStart + onlyChild];
-            if (child.Kind == ChildRefKind.Pending) return Prepend(prefix, child.PendingIndex);
+            if (child.Kind == ChildRefKind.Pending) return PrependKeyPrefix(prefix, child.PendingIndex);
 
             path.AppendMut(onlyChild);
             Source source = Load(path, child);
             path.TruncateOne();
             // A branch keeps its path, so its reference with the buffer pointer moves under the extension; anything else is re-encoded shorter.
-            return source.IsBranch ? _workingState.AddPendingExtension(prefix, child) : Prepend(prefix, IntoNode(source));
+            return source.IsBranch ? _workingState.AddPendingExtension(prefix, child) : PrependKeyPrefix(prefix, IntoNode(source));
         }
 
         /// <summary>Splits a leaf or an extension into the children of a new branch: its child when its key is a single nibble, otherwise what remains of it below its first nibble.</summary>
@@ -525,7 +525,7 @@ internal static class NodeRecordBulkSet
                     path.TruncateMut(path.Length - keyLength);
                     result = !result.Changed ? Updated.Unchanged(source)
                         : result.PendingIndex < 0 ? result
-                        : Updated.To(Prepend(key[..keyLength], result.PendingIndex));
+                        : Updated.To(PrependKeyPrefix(key[..keyLength], result.PendingIndex));
                 }
                 else
                 {
@@ -582,7 +582,7 @@ internal static class NodeRecordBulkSet
         }
 
         /// <summary>Puts <paramref name="prefix"/> in front of the pending node at <paramref name="index"/>, merging into its key unless it is a branch.</summary>
-        private int Prepend(ReadOnlySpan<byte> prefix, int index)
+        private int PrependKeyPrefix(ReadOnlySpan<byte> prefix, int index)
         {
             ref PendingNode node = ref _workingState.Nodes[index];
             if (node.Kind == PendingKind.Branch) return _workingState.AddPendingExtension(prefix, ChildRef.ForPending(index));
