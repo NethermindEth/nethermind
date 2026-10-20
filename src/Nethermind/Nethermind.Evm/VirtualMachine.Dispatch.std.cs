@@ -89,6 +89,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
     /// <summary>Runs the current frame's bytecode until it halts, faults, or yields a child frame.</summary>
     /// <param name="programCounter">On entry the offset to resume from; on exit the offset reached.</param>
+    /// <param name="opCodesSincePoll">
+    /// In a cancelable run, the opcodes of the frame already run since its last poll, by a frame code runner that handed
+    /// the frame back; the loop polls at its first taken jump from <see cref="CancellationPollInterval"/> minus these.
+    /// </param>
     /// <returns>
     /// The halting reason; <c>None</c>, <c>Stop</c> and <c>Revert</c> are normal halts, while <c>Suspend</c>
     /// indicates a yielded child frame.
@@ -97,7 +101,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     private EvmExceptionType RunDispatchLoop<TTracingInst, TCancelable>(
         scoped ref EvmStack stack,
         scoped ref TGasPolicy gas,
-        ref nint programCounter)
+        ref nint programCounter,
+        nint opCodesSincePoll = 0)
         where TTracingInst : struct, IFlag
         where TCancelable : struct, IFlag
     {
@@ -145,12 +150,13 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 Gas = ref Unsafe.AsRef(in gas),
                 OpcodeHandlers = opcodeHandlers,
                 Vm = this,
-                CancellationPollAt = CancellationPollInterval,
+                // At or below zero once a runner ran a whole interval: the first taken jump then polls.
+                CancellationPollAt = CancellationPollInterval - opCodesSincePoll,
             };
 
-            if (_txTracer.IsCancelled)
-                ThrowOperationCanceledException();
-
+            // The caller polled before entering the loop (RunFrameCode), and a runner that handed the frame back
+            // carried its opcodes since then into the poll budget, so a frame polls the same number of times, at the
+            // same opcodes, whether a runner ran part of it or not.
             nint pc = programCounter;
             nint opCodeCount = 0;
             EvmExceptionType exceptionType;

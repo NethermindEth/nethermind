@@ -78,6 +78,20 @@ public ref partial struct EvmStack
     /// <summary>The length of <see cref="InputData"/>; native width for the same reason as <see cref="CodeLength"/>.</summary>
     internal nint InputDataLength;
     private readonly CodeInfo? _codeInfo;
+
+    /// <summary>The first byte of the stack's slots; slot <c>i</c> from the bottom is at byte <c>i * WordSize</c>, in the <see cref="UInt256"/> limb layout.</summary>
+    /// <remarks>For frame code runners, which read and write stack words in place below <see cref="Head"/>.</remarks>
+    [Experimental("NMEVM0001")]
+    public readonly ref byte StackBase => ref _stack;
+
+    /// <summary>The first byte of the frame's input data, valid for the <see cref="InputDataSize"/> bytes after it.</summary>
+    /// <remarks>For frame code runners; set once the stack is ready to execute.</remarks>
+    [Experimental("NMEVM0001")]
+    public readonly ref readonly byte InputDataStart => ref InputData;
+
+    /// <summary>The length of the frame's input data in bytes.</summary>
+    [Experimental("NMEVM0001")]
+    public readonly nint InputDataSize => InputDataLength;
     private long[]? _jumpDestinations;
 
     /// <summary>Records the frame's input data so CALLDATALOAD and CALLDATACOPY skip resolving it on every opcode.</summary>
