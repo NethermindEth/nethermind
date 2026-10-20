@@ -1595,32 +1595,22 @@ public class GethLikeJavaScriptSStoreTracerTests : VirtualMachineTestsBase
             yield return new TestCaseData(fork, "55", 1, 0, 21000UL, "step:0:0:stack underflow (0 <=> 2)::1:0", 1).SetName($"SStore_stack_underflow_empty_fork_{fork}");
             yield return new TestCaseData(fork, "600055", 1, 2, 21003UL, "step:0:0:stack underflow (1 <=> 2):0:1:0", 1).SetName($"SStore_stack_underflow_one_fork_{fork}");
         }
-        yield return new TestCaseData(0UL, "600060005500", 0, 4, 51006UL, "step:5000:0::0,0:0:0", 0).SetName("SStore_Frontier_noop_zero");
-        yield return new TestCaseData(0UL, "600160005500", 1, 4, 51006UL, "step:5000:0::0,1:1:0", 1).SetName("SStore_Frontier_noop_one");
-        yield return new TestCaseData(0UL, "600160005500", 0, 4, 51006UL, "step:20000:0::0,1:0:0", 1).SetName("SStore_Frontier_set");
-        yield return new TestCaseData(0UL, "600260005500", 1, 4, 51006UL, "step:5000:0::0,2:1:0", 2).SetName("SStore_Frontier_reset");
-        yield return new TestCaseData(0UL, "600060005500", 1, 4, 51006UL, "step:5000:15000::0,0:1:0", 0).SetName("SStore_Frontier_clear");
-        yield return new TestCaseData(0UL, "600160005500", 0, 4, 26005UL, "step:20000:0:out of gas:0,1:0:0", 0).SetName("SStore_Frontier_set_initial_charge_oog");
-        yield return new TestCaseData(0UL, "600060005500", 1, 4, 26005UL, "step:5000:15000:out of gas:0,0:1:0", 1).SetName("SStore_Frontier_clear_initial_charge_oog");
-        yield return new TestCaseData(0UL, "600160005500", 0, 4, 41005UL, "step:20000:0:out of gas:0,1:0:0", 0).SetName("SStore_Frontier_set_extra_charge_oog");
-        yield return new TestCaseData(0UL, "600160005500", 0, 4, 41006UL, "step:20000:0::0,1:0:0", 1).SetName("SStore_Frontier_set_exact");
-        yield return new TestCaseData(0UL, "600060005500", 1, 4, 26006UL, "step:5000:15000::0,0:1:0", 0).SetName("SStore_Frontier_clear_exact");
-        yield return new TestCaseData(0UL, "6001600055600060005500", 0, 9, 71012UL, "step:5000:15000::0,0:1:0", 0).SetName("SStore_Frontier_set_then_clear");
-        yield return new TestCaseData(0UL, "6000600055600160005500", 1, 9, 56012UL, "step:20000:15000::0,1:0:0", 1).SetName("SStore_Frontier_clear_restore");
-        yield return new TestCaseData(0UL, "60006000556001600055600060005500", 1, 14, 76018UL, "step:5000:30000::0,0:1:0", 0).SetName("SStore_Frontier_clear_restore_clear");
-        yield return new TestCaseData(2UL, "600060005500", 0, 4, 51006UL, "step:5000:0::0,0:0:0", 0).SetName("SStore_ConstantinopleFix_noop_zero");
-        yield return new TestCaseData(2UL, "600160005500", 1, 4, 51006UL, "step:5000:0::0,1:1:0", 1).SetName("SStore_ConstantinopleFix_noop_one");
-        yield return new TestCaseData(2UL, "600160005500", 0, 4, 51006UL, "step:20000:0::0,1:0:0", 1).SetName("SStore_ConstantinopleFix_set");
-        yield return new TestCaseData(2UL, "600260005500", 1, 4, 51006UL, "step:5000:0::0,2:1:0", 2).SetName("SStore_ConstantinopleFix_reset");
-        yield return new TestCaseData(2UL, "600060005500", 1, 4, 51006UL, "step:5000:15000::0,0:1:0", 0).SetName("SStore_ConstantinopleFix_clear");
-        yield return new TestCaseData(2UL, "600160005500", 0, 4, 26005UL, "step:20000:0:out of gas:0,1:0:0", 0).SetName("SStore_ConstantinopleFix_set_initial_charge_oog");
-        yield return new TestCaseData(2UL, "600060005500", 1, 4, 26005UL, "step:5000:15000:out of gas:0,0:1:0", 1).SetName("SStore_ConstantinopleFix_clear_initial_charge_oog");
-        yield return new TestCaseData(2UL, "600160005500", 0, 4, 41005UL, "step:20000:0:out of gas:0,1:0:0", 0).SetName("SStore_ConstantinopleFix_set_extra_charge_oog");
-        yield return new TestCaseData(2UL, "600160005500", 0, 4, 41006UL, "step:20000:0::0,1:0:0", 1).SetName("SStore_ConstantinopleFix_set_exact");
-        yield return new TestCaseData(2UL, "600060005500", 1, 4, 26006UL, "step:5000:15000::0,0:1:0", 0).SetName("SStore_ConstantinopleFix_clear_exact");
-        yield return new TestCaseData(2UL, "6001600055600060005500", 0, 9, 71012UL, "step:5000:15000::0,0:1:0", 0).SetName("SStore_ConstantinopleFix_set_then_clear");
-        yield return new TestCaseData(2UL, "6000600055600160005500", 1, 9, 56012UL, "step:20000:15000::0,1:0:0", 1).SetName("SStore_ConstantinopleFix_clear_restore");
-        yield return new TestCaseData(2UL, "60006000556001600055600060005500", 1, 14, 76018UL, "step:5000:30000::0,0:1:0", 0).SetName("SStore_ConstantinopleFix_clear_restore_clear");
+        foreach ((ulong fork, string name) in new[] { (0UL, "Frontier"), (2UL, "ConstantinopleFix") })
+        {
+            yield return new TestCaseData(fork, "600060005500", 0, 4, 51006UL, "step:5000:0::0,0:0:0", 0).SetName($"SStore_{name}_noop_zero");
+            yield return new TestCaseData(fork, "600160005500", 1, 4, 51006UL, "step:5000:0::0,1:1:0", 1).SetName($"SStore_{name}_noop_one");
+            yield return new TestCaseData(fork, "600160005500", 0, 4, 51006UL, "step:20000:0::0,1:0:0", 1).SetName($"SStore_{name}_set");
+            yield return new TestCaseData(fork, "600260005500", 1, 4, 51006UL, "step:5000:0::0,2:1:0", 2).SetName($"SStore_{name}_reset");
+            yield return new TestCaseData(fork, "600060005500", 1, 4, 51006UL, "step:5000:15000::0,0:1:0", 0).SetName($"SStore_{name}_clear");
+            yield return new TestCaseData(fork, "600160005500", 0, 4, 26005UL, "step:20000:0:out of gas:0,1:0:0", 0).SetName($"SStore_{name}_set_initial_charge_oog");
+            yield return new TestCaseData(fork, "600060005500", 1, 4, 26005UL, "step:5000:15000:out of gas:0,0:1:0", 1).SetName($"SStore_{name}_clear_initial_charge_oog");
+            yield return new TestCaseData(fork, "600160005500", 0, 4, 41005UL, "step:20000:0:out of gas:0,1:0:0", 0).SetName($"SStore_{name}_set_extra_charge_oog");
+            yield return new TestCaseData(fork, "600160005500", 0, 4, 41006UL, "step:20000:0::0,1:0:0", 1).SetName($"SStore_{name}_set_exact");
+            yield return new TestCaseData(fork, "600060005500", 1, 4, 26006UL, "step:5000:15000::0,0:1:0", 0).SetName($"SStore_{name}_clear_exact");
+            yield return new TestCaseData(fork, "6001600055600060005500", 0, 9, 71012UL, "step:5000:15000::0,0:1:0", 0).SetName($"SStore_{name}_set_then_clear");
+            yield return new TestCaseData(fork, "6000600055600160005500", 1, 9, 56012UL, "step:20000:15000::0,1:0:0", 1).SetName($"SStore_{name}_clear_restore");
+            yield return new TestCaseData(fork, "60006000556001600055600060005500", 1, 14, 76018UL, "step:5000:30000::0,0:1:0", 0).SetName($"SStore_{name}_clear_restore_clear");
+        }
         yield return new TestCaseData(1UL, "600160005500", 1, 4, 51006UL, "step:200:0::0,1:1:0", 1).SetName("SStore_Constantinople_noop");
         yield return new TestCaseData(1UL, "600160005500", 0, 4, 51006UL, "step:20000:0::0,1:0:0", 1).SetName("SStore_Constantinople_set");
         yield return new TestCaseData(1UL, "600260005500", 1, 4, 51006UL, "step:5000:0::0,2:1:0", 2).SetName("SStore_Constantinople_reset");
