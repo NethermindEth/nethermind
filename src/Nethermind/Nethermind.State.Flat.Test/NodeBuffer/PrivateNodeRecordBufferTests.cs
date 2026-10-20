@@ -28,7 +28,7 @@ internal class PrivateNodeRecordBufferTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(records.Select(record => record.Pointer >> 32).Distinct().Count(), Is.GreaterThan(20), "records span many generations");
-            Assert.That(records.Select(record => buffer.GetRecord(record.Pointer).Rlp.ToArray()), Is.EqualTo(records.Select(record => record.Rlp)), "no generation is dropped");
+            Assert.That(records.Select(record => buffer.TryLocate(record.Pointer, out NodeRecord located) && located.Rlp.SequenceEqual(record.Rlp)), Is.All.True, "no generation is dropped");
             Assert.That(records.Select(record => buffer.FindRoot(null, ValueKeccak.Compute(record.Rlp))), Is.EqualTo(records.Select(record => record.Pointer)), "roots");
             Assert.That(records[0].Pointer, Is.GreaterThanOrEqualTo(pin.WriteBoundary), "writes follow the pin boundary");
         }
@@ -45,14 +45,13 @@ internal class PrivateNodeRecordBufferTests
 
         INodeRecordBufferPin reader = buffer.Pin();
         INodeRecordBufferPin readerCopy = reader.Copy();
-        NodeRecord record = buffer.GetRecord(afterClear);
+        Assert.That(buffer.TryLocate(afterClear, out NodeRecord record), Is.True);
         buffer.Dispose();
         reader.Dispose();
         using (Assert.EnterMultipleScope())
         {
             Assert.That(record.Rlp.ToArray(), Is.EqualTo(records[0].Rlp), "a pin keeps storage past dispose");
             Assert.That(() => buffer.Pin(), Throws.InstanceOf<ObjectDisposedException>());
-            Assert.That(() => buffer.GetRecord(afterClear), Throws.InstanceOf<ObjectDisposedException>());
         }
 
         readerCopy.Dispose();

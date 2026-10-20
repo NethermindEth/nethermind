@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core.Crypto;
-using Nethermind.Trie;
 using Nethermind.Trie.NodeBuffer;
 
 namespace Nethermind.State.Flat.NodeBuffer;
@@ -30,11 +29,6 @@ public interface INodeRecordBuffer : IDisposable
 
     /// <inheritdoc cref="INodeRecordStore.TryLocate"/>
     bool TryLocate(ulong pointer, out NodeRecord record);
-
-    /// <summary>Returns the borrowed record at a pointer.</summary>
-    /// <remarks>The caller must protect the record and its spans with a pin.</remarks>
-    /// <exception cref="TrieException">The pointer no longer resolves to a record.</exception>
-    NodeRecord GetRecord(ulong pointer);
 
     /// <inheritdoc cref="INodeRecordStore.StartWriteBatch"/>
     INodeRecordWriteBatch StartWriteBatch(int alignedTotalLength);

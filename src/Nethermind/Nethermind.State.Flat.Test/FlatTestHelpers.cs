@@ -164,7 +164,7 @@ public static class FlatTestHelpers
             if (descendants.Length == 0) return 0;
 
             ulong pointer = Build(buffer, address, childPath, descendants, target, ref targetPointer).Pointer;
-            return buffer.GetRecord(pointer).Hash == referencedHash.ValueHash256 ? pointer : 0;
+            return buffer.TryLocate(pointer, out NodeRecord record) && record.Hash == referencedHash.ValueHash256 ? pointer : 0;
         }
 
         private static KeyValuePair<TreePath, byte[]>[] Descendants(KeyValuePair<TreePath, byte[]>[] nodes, TreePath path) =>
@@ -316,7 +316,6 @@ internal sealed class ForwardingNodeRecordBuffer(INodeRecordBuffer inner) : INod
     public int OutstandingPins;
 
     public bool TryLocate(ulong pointer, out NodeRecord record) => inner.TryLocate(pointer, out record);
-    public NodeRecord GetRecord(ulong pointer) => inner.GetRecord(pointer);
     public INodeRecordWriteBatch StartWriteBatch(int alignedTotalLength) => new ForwardedWriteBatch(this, inner.StartWriteBatch(alignedTotalLength));
 
     public ulong FindRoot(Hash256? address, in ValueHash256 root) => inner.FindRoot(address, root);

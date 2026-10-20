@@ -221,7 +221,8 @@ internal class NodeRecordBulkSetTests
         WarmedNodeLog warmed = NewWarmedNodeLog(1);
         DictionaryNodeSource source = new(new Dictionary<TreePath, byte[]>(), warmed, null);
         TrieRoot root = BulkSet(original, source, null, TrieRoot.Empty, [(key, ExistingValue)], false);
-        byte[] rlp = original.GetRecord(root.Pointer).Rlp.ToArray();
+        Assert.That(original.TryLocate(root.Pointer, out NodeRecord rootRecord), Is.True);
+        byte[] rlp = rootRecord.Rlp.ToArray();
         // Indexed off the root's position, so only the supplied pointer finds it.
         warmed.Append(null, TreePath.FromHexString("1"), root.Hash, rlp, [], out _, out ulong pointer);
         TrieRoot temporaryRoot = new(root.Hash, pointer);
@@ -498,7 +499,7 @@ internal class NodeRecordBulkSetTests
             foreach ((TreePath path, ulong pointer) in actual)
             {
                 Assert.That(TryGetNode(buffer, root.Pointer, path, out TrieNode node), Is.True, path.ToString());
-                Assert.That(node?.FullRlp.ToArray(), Is.EqualTo(buffer.GetRecord(pointer).Rlp.ToArray()), path.ToString());
+                Assert.That(node?.FullRlp.ToArray(), Is.EqualTo(buffer.TryLocate(pointer, out NodeRecord record) ? record.Rlp.ToArray() : null), path.ToString());
             }
             foreach (string path in new[] { "3", "10", "11", "20" })
             {
@@ -524,9 +525,9 @@ internal class NodeRecordBulkSetTests
             (new Hash256(prefix + "9"), ExistingValue),
             (new Hash256(prefix + "f"), ExistingValue),
         ], false);
-        NodeRecord extension = buffer.GetRecord(root.Pointer);
+        Assert.That(buffer.TryLocate(root.Pointer, out NodeRecord extension), Is.True);
         ulong branchPointer = extension.View.Child(0).Pointer;
-        NodeRecord branch = buffer.GetRecord(branchPointer);
+        Assert.That(buffer.TryLocate(branchPointer, out NodeRecord branch), Is.True);
         ulong firstChild = branch.View.Child(5).Pointer;
         ulong lastChild = branch.View.Child(15).Pointer;
         ulong unlinkedBranch = CopyWithPointer(branch, 1, 0);
@@ -577,7 +578,7 @@ internal class NodeRecordBulkSetTests
             Assert.That(buffer.EnumerateNodes(original.Pointer, updateRetain.WriteBoundary), Is.Empty);
             ulong found = NodePointer(buffer, updated.Pointer, TreePath.Empty.Append(1));
             Assert.That(found, Is.EqualTo(inherited), "point reads still follow inherited records");
-            Assert.That(buffer.GetRecord(found).Rlp.ToArray(), Is.Not.Empty);
+            Assert.That(buffer.TryLocate(found, out NodeRecord foundRecord) && !foundRecord.Rlp.IsEmpty, Is.True);
             Assert.That(source.FetchCount, Is.Zero);
         }
     }
@@ -593,7 +594,7 @@ internal class NodeRecordBulkSetTests
             (new Hash256("1000000000000000000000000000000000000000000000000000000000000000"), ExistingValue),
             (new Hash256("2000000000000000000000000000000000000000000000000000000000000000"), ExistingValue),
         ], false);
-        NodeRecord rootRecord = buffer.GetRecord(root.Pointer);
+        Assert.That(buffer.TryLocate(root.Pointer, out NodeRecord rootRecord), Is.True);
         ulong unlinked = buffer.AppendRecordFromRlp(null, TreePath.Empty, rootRecord.Hash, rootRecord.Rlp, []);
         using (Assert.EnterMultipleScope())
         {

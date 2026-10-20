@@ -194,7 +194,8 @@ public sealed class NodeRecordBuffer : INodeRecordBuffer
         else DropOldGenerations();
     }
 
-    internal bool TryLocate(ulong pointer, out NodeRecord record)
+    /// <inheritdoc/>
+    public bool TryLocate(ulong pointer, out NodeRecord record)
     {
         if (pointer == 0 || NodeRecordCodec.IsTransient(pointer))
         {
@@ -218,15 +219,6 @@ public sealed class NodeRecordBuffer : INodeRecordBuffer
         record = default;
         return false;
     }
-
-    /// <inheritdoc/>
-    public NodeRecord GetRecord(ulong pointer)
-    {
-        ThrowIfUnavailable();
-        return TryLocate(pointer, out NodeRecord record) ? record : ThrowNotLocatable(pointer);
-    }
-
-    bool INodeRecordBuffer.TryLocate(ulong pointer, out NodeRecord record) => TryLocate(pointer, out record);
 
     /// <inheritdoc/>
     public INodeRecordWriteBatch StartWriteBatch(int alignedTotalLength) => WriteBatch.Start(this, alignedTotalLength);
@@ -321,9 +313,6 @@ public sealed class NodeRecordBuffer : INodeRecordBuffer
         Metrics.NodeRecordBufferCompressedMemory = (long)_compressedMemory;
         Metrics.NodeRecordBufferCompressedGenerations = (long)(_oldestAllocated - _oldestCompressed);
     }
-
-    [DoesNotReturn, StackTraceHidden]
-    private static NodeRecord ThrowNotLocatable(ulong pointer) => throw new TrieException($"Trie node buffer pointer {pointer:x16} does not resolve to a record.");
 
     [DoesNotReturn, StackTraceHidden]
     private static void ThrowTooManyPinned() => throw new TrieException("Too many pinned trie node buffer generations.");

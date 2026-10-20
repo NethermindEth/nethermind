@@ -55,10 +55,6 @@ internal sealed class OverlayNodeRecordBuffer : INodeRecordBuffer
         IsLocal(pointer) ? _local.TryLocate(pointer - _localOffset, out record) : _global.TryLocate(pointer, out record);
 
     /// <inheritdoc/>
-    public NodeRecord GetRecord(ulong pointer) =>
-        IsLocal(pointer) ? _local.GetRecord(pointer - _localOffset) : _global.GetRecord(pointer);
-
-    /// <inheritdoc/>
     public INodeRecordWriteBatch StartWriteBatch(int alignedTotalLength) => new LocalWriteBatch(_local.StartWriteBatch(alignedTotalLength), _localOffset);
 
     /// <inheritdoc/>

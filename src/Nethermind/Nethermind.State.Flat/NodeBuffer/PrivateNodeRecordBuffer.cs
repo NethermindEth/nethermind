@@ -2,10 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Concurrent;
-using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core.Crypto;
-using Nethermind.Trie;
 using Nethermind.Trie.NodeBuffer;
 
 namespace Nethermind.State.Flat.NodeBuffer;
@@ -63,13 +61,6 @@ internal sealed class PrivateNodeRecordBuffer : INodeRecordBuffer
 
         record = default;
         return false;
-    }
-
-    /// <inheritdoc/>
-    public NodeRecord GetRecord(ulong pointer)
-    {
-        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed), this);
-        return TryLocate(pointer, out NodeRecord record) ? record : ThrowNotLocatable(pointer);
     }
 
     /// <inheritdoc/>
@@ -165,9 +156,6 @@ internal sealed class PrivateNodeRecordBuffer : INodeRecordBuffer
             if (--_pinCount == 0 && _disposed) FreeGenerations();
         }
     }
-
-    [DoesNotReturn, StackTraceHidden]
-    private static NodeRecord ThrowNotLocatable(ulong pointer) => throw new TrieException($"Trie node buffer pointer {pointer:x16} does not resolve to a record.");
 
     private sealed class Generation(ulong id, int length)
     {

@@ -37,7 +37,7 @@ public class NodeRecordBufferTests
         buffer.AppendRecordFromRlp(null, TreePath.Empty, ValueKeccak.Compute(Leaf(0, 8)), Leaf(0, 8), []);
         byte[][] rlps = [Leaf(1, 8), Leaf(2, 8)];
         using NodeRecordBuffer scratch = new(0, GenerationBytes, LiveGenerations);
-        byte[][] records = [.. rlps.Select(rlp => scratch.GetRecord(scratch.AppendRecordFromRlp(null, TreePath.Empty, ValueKeccak.Compute(rlp), rlp, [])).Span.ToArray())];
+        byte[][] records = [.. rlps.Select(rlp => scratch.TryLocate(scratch.AppendRecordFromRlp(null, TreePath.Empty, ValueKeccak.Compute(rlp), rlp, []), out NodeRecord record) ? record.Span.ToArray() : [])];
         int recordLength = (records[0].Length + RecordAlignment - 1) & -RecordAlignment;
         ulong pointer;
         int length;
@@ -52,7 +52,7 @@ public class NodeRecordBufferTests
         {
             Assert.That(length, Is.EqualTo(recordLength * 2));
             for (int i = 0; i < rlps.Length; i++)
-                Assert.That(buffer.GetRecord(pointer + (ulong)(i * recordLength)).Rlp.ToArray(), Is.EqualTo(rlps[i]));
+                Assert.That(buffer.TryLocate(pointer + (ulong)(i * recordLength), out NodeRecord record) && record.Rlp.SequenceEqual(rlps[i]), Is.True);
         }
     }
 
@@ -295,7 +295,7 @@ public class NodeRecordBufferTests
             Assert.That(GenerationOf(replacement), Is.EqualTo(GenerationOf(pointer) + 4096));
             Assert.That((uint)replacement, Is.EqualTo((uint)pointer));
             Assert.That(IsLocatable(buffer, pointer), Is.False, "the older full generation id of the same slot and offset misses");
-            Assert.That(buffer.GetRecord(replacement).Rlp.ToArray(), Is.EqualTo(current));
+            Assert.That(buffer.TryLocate(replacement, out NodeRecord record) && record.Rlp.SequenceEqual(current), Is.True);
             Assert.That(buffer.TryLocate(pointer + (8192UL << 32), out _), Is.False, "same slot and offset do not match another full generation id");
         }
 
@@ -311,7 +311,7 @@ public class NodeRecordBufferTests
         using NodeRecordBuffer buffer = new(0, GenerationBytes, LiveGenerations);
         using NodeRecordBufferPin retain = buffer.Pin();
         ulong pointer = Append(buffer, Leaf(1, 8));
-        NodeRecord record = buffer.GetRecord(pointer);
+        Assert.That(buffer.TryLocate(pointer, out NodeRecord record), Is.True);
         BloomFilter bloom = buffer.FindBloom(pointer)!;
         buffer.Reserve(0, out NativeNodeBuffer storage, out _);
         IDisposable reader = buffer.PinAll();
@@ -324,7 +324,6 @@ public class NodeRecordBufferTests
             Assert.That(Matches(record, Leaf(1, 8)), Is.True);
             Assert.That(() => buffer.Pin(), Throws.InstanceOf<ObjectDisposedException>());
             Assert.That(() => retain.Copy(), Throws.InstanceOf<ObjectDisposedException>());
-            Assert.That(() => buffer.GetRecord(pointer), Throws.InstanceOf<ObjectDisposedException>());
             Assert.That(() => buffer.Reserve(8, out _, out _), Throws.InstanceOf<ObjectDisposedException>());
             Assert.That(() => buffer.PinAll(), Throws.InstanceOf<ObjectDisposedException>());
         }
@@ -416,7 +415,6 @@ public class NodeRecordBufferTests
         middle.Dispose();
         first.Dispose();
         AssertResolvesFrom(buffer, records, middleCopy!.Generation, "a copy keeps its generation and every later one after the original is disposed");
-        Assert.That(() => buffer.GetRecord(records[0].Pointer), Throws.InstanceOf<TrieException>());
 
         middleCopy.Dispose();
         AssertResolvesFrom(buffer, records, activeGeneration - (ulong)liveGenerations + 1, "only the live generations resolve after the last release");
