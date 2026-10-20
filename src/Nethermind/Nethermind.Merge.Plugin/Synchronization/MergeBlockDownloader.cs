@@ -9,6 +9,7 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
+using Nethermind.History;
 using Nethermind.Logging;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.Blocks;
@@ -32,6 +33,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
         IReceiptsRecovery receiptsRecovery,
         IBlockProcessingQueue blockProcessingQueue,
         ISyncConfig syncConfig,
+        BlockAccessListServingWindow balServingWindow,
         ILogManager logManager,
         FinalizedBlockAccessListPolicy? finalizedBalPolicy = null)
         : BlockDownloader(
@@ -47,6 +49,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
             receiptsRecovery,
             blockProcessingQueue,
             syncConfig,
+            balServingWindow,
             logManager)
     {
         private readonly IBlockTree _blockTree = blockTree;
