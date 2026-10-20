@@ -65,6 +65,13 @@ public interface IJsonRpcConfig : IConfig
     [ConfigItem(Description = "Whether to set the IPC socket UNIX file permissions to owner-only (600).", DefaultValue = "true")]
     bool RestrictIpcSocketPermissions { get; set; }
 
+    /// <summary>
+    /// Gets or sets the JSON-RPC namespaces enabled over IPC. Defaults to <see langword="null"/>;
+    /// a null or empty array uses <see cref="EnabledModules"/>.
+    /// </summary>
+    [ConfigItem(Description = "An array of JSON-RPC namespaces to enable over the IPC socket, for instance `[engine,eth]`. If not set or empty, the IPC socket uses `JsonRpc.EnabledModules`.")]
+    string[]? IpcEnabledModules { get; set; }
+
     [ConfigItem(
         Description = """
             An array of JSON-RPC namespaces to enable. For instance, `[debug,eth]`.
@@ -116,7 +123,7 @@ public interface IJsonRpcConfig : IConfig
         DefaultValue = "Data/jsonrpc.filter")]
     string CallsFilterFilePath { get; set; }
 
-    [ConfigItem(Description = "The max length of HTTP request body, in bytes.", DefaultValue = "30000000")]
+    [ConfigItem(Description = "The max length of an HTTP request body or a WebSocket message, in bytes.", DefaultValue = "30000000")]
     long? MaxRequestBodySize { get; set; }
 
     [ConfigItem(
@@ -140,6 +147,11 @@ public interface IJsonRpcConfig : IConfig
     public long? MaxLogsResponseBodySize { get; set; }
 
     [ConfigItem(
+        Description = "The max opcode log size, in bytes, per transaction of a `debug_trace*` or `debug_simulateV1` trace held in memory rather than streamed. Larger or unlimited `limit` trace options are lowered to it. `0` or negative to lift the limit.",
+        DefaultValue = "268435456")]
+    public long MaxBufferedTraceLogSize { get; set; }
+
+    [ConfigItem(
         Description = "The number of concurrent instances of the Debug RPC module (`debug_trace*`, `debug_getRawBlock`, etc.). Calls beyond this cap return `LimitExceeded`. Defaults to the number of logical processors capped at 16.")]
     public int? DebugModuleConcurrentInstances { get; set; }
 
@@ -148,7 +160,7 @@ public interface IJsonRpcConfig : IConfig
     public int? TraceModuleConcurrentInstances { get; set; }
 
     [ConfigItem(
-        Description = "The maximum number of workers tracing the transactions of one block at once in `debug_traceBlock*` and `trace_block`, for blocks that carry an access list: each transaction is traced alone on the state the list records before it. Debug and trace share this budget. `0` or `1` traces such blocks sequentially; larger values are capped at the number of logical processors and at 16.",
+        Description = "The maximum number of workers tracing block transactions at once across the whole node in `debug_traceBlock*` and `trace_block`, for blocks whose transactions can each be traced alone on the state before it: blocks that carry an access list, and, with `FlatDb.HistoryTransactionIndexEnabled`, blocks covered by the transaction index. Debug and trace, and both kinds of block, share this one budget. `0` or `1` traces such blocks sequentially; larger values are capped at the number of logical processors and at 16. Once a block has been traced in parallel, the node keeps up to this many processing environments and twice this many background threads for debug, and as many again for trace. The deprecated `FlatDb.HistoryTransactionIndexTraceParallelism`, when set to anything but `0`, sizes this budget instead.",
         DefaultValue = "4")]
     public int TraceBlockParallelism { get; set; }
 
@@ -222,11 +234,14 @@ public interface IJsonRpcConfig : IConfig
     [ConfigItem(Description = "The JSON-RPC server CORS origins.", DefaultValue = "*")]
     string[] CorsOrigins { get; set; }
 
-    [ConfigItem(Description = "Concurrency level of websocket connection.", DefaultValue = "1")]
+    [ConfigItem(Description = "The number of requests one public WebSocket connection processes at a time. Requests pipelined on one connection are processed and answered in any order; each response carries its request id, and a batch is still processed and answered in order as one message. Connections that are authenticated or enable the Engine module always process their requests one by one. Set to 1 if a client relies on the order, for example when it pipelines dependent transactions such as blob transactions with consecutive nonces.", DefaultValue = "16")]
     int WebSocketsProcessingConcurrency { get; set; }
 
-    [ConfigItem(Description = "Concurrency level of IPC connection.", DefaultValue = "1")]
+    [ConfigItem(Description = "The number of requests one IPC connection processes at a time. Requests pipelined on one connection are processed and answered in any order; each response carries its request id, and a batch is still processed and answered in order as one message. When `JsonRpc.EnabledModules` includes the Engine module, IPC always processes its requests one by one. Set to 1 if a client relies on the order, for example when it pipelines dependent transactions such as blob transactions with consecutive nonces.", DefaultValue = "16")]
     int IpcProcessingConcurrency { get; set; }
+
+    [ConfigItem(Description = "The number of consecutive `eth_call`, `eth_estimateGas` and `eth_createAccessList` requests of one batch that execute at a time, capped at `JsonRpc.EthModuleConcurrentInstances`. Responses keep the request order, and any other request in the batch waits for the ones before it and executes alone. Set to 1 to execute batch requests one by one.", DefaultValue = "4")]
+    int BatchProcessingConcurrency { get; set; }
 
     [ConfigItem(Description = "Enable per-method call metric", DefaultValue = "true")]
     bool EnablePerMethodMetrics { get; set; }

@@ -97,8 +97,10 @@ namespace Nethermind.Consensus.Validators
                    && (orphaned || ValidateTimestamp(header, parent, ref error))
                    && (orphaned || ValidateBlockNumber(header, parent, ref error))
                    && (orphaned || Validate1559(header, parent, spec, ref error))
+                   && ValidateWithdrawalsRoot(header, spec, ref error)
                    && ValidateBlobGasFields(header, spec, ref error)
                    && (orphaned || ValidateExcessBlobGas(header, parent, spec, ref error))
+                   && ValidateParentBeaconBlockRoot(header, spec, ref error)
                    && ValidateRequestsHash(header, spec, ref error)
                    && ValidateBlockAccessListHash(header, spec, ref error)
                    && ValidateSlotNumber(header, spec, ref error)
@@ -107,6 +109,51 @@ namespace Nethermind.Consensus.Validators
 
         public bool ValidateOrphaned(BlockHeader header, [NotNullWhen(false)] out string? error) =>
             Validate<OnFlag>(header, null, false, out error, validateHash: true);
+
+        /// <summary>Checks that the EIP-4895 withdrawals root is present exactly when the fork enables it.</summary>
+        /// <remarks>Parent-independent, so it also runs for orphaned headers and header-only validation.</remarks>
+        protected virtual bool ValidateWithdrawalsRoot(BlockHeader header, IReleaseSpec spec, ref string? error)
+        {
+            if (spec.WithdrawalsEnabled)
+            {
+                if (header.WithdrawalsRoot is null)
+                {
+                    if (_logger.IsWarn) _logger.Warn("WithdrawalsRoot field is not set.");
+                    error = BlockErrorMessages.MissingWithdrawalsRoot;
+                    return false;
+                }
+            }
+            else
+            {
+                if (header.WithdrawalsRoot is not null)
+                {
+                    if (_logger.IsWarn) _logger.Warn("WithdrawalsRoot field should not have value.");
+                    error = BlockErrorMessages.WithdrawalsRootNotEnabled;
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        protected virtual bool ValidateParentBeaconBlockRoot(BlockHeader header, IReleaseSpec spec, ref string? error)
+        {
+            if (spec.IsBeaconBlockRootAvailable)
+            {
+                if (header.ParentBeaconBlockRoot is null)
+                {
+                    if (_logger.IsWarn) _logger.Warn("ParentBeaconBlockRoot field is not set.");
+                    error = BlockErrorMessages.MissingParentBeaconBlockRoot;
+                    return false;
+                }
+            }
+            else if (header.ParentBeaconBlockRoot is not null)
+            {
+                if (_logger.IsWarn) _logger.Warn("ParentBeaconBlockRoot field should not have value.");
+                error = BlockErrorMessages.ParentBeaconBlockRootNotEnabled;
+                return false;
+            }
+            return true;
+        }
 
         protected virtual bool ValidateRequestsHash(BlockHeader header, IReleaseSpec spec, ref string? error)
         {
@@ -454,10 +501,9 @@ namespace Nethermind.Consensus.Validators
         }
 
         /// <summary>Checks the logs bloom is zero-length exactly when EIP-7668 is active.</summary>
-        /// <remarks>Genesis is exempt: it keeps the bloom it was declared with.</remarks>
         protected bool ValidateBloom(BlockHeader header, IReleaseSpec spec, ref string? error)
         {
-            if (header.IsGenesis || spec.IsEip7668Enabled == (header.Bloom?.IsZeroLength ?? false))
+            if (spec.IsEip7668Enabled == (header.Bloom?.IsZeroLength ?? false))
             {
                 return true;
             }

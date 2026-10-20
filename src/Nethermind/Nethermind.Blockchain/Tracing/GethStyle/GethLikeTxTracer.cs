@@ -114,6 +114,7 @@ public abstract class GethLikeTxTracer<TEntry>(GethTraceOptions options, long? d
     protected TEntry? CurrentTraceEntry { get; set; }
 
     private bool _gasCostAlreadySetForCurrentOp;
+    private byte[]? _lastReturnData;
 
     public override void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env)
     {
@@ -160,6 +161,23 @@ public abstract class GethLikeTxTracer<TEntry>(GethTraceOptions options, long? d
     {
         if (IsTracingFullMemory && CurrentTraceEntry is not null)
             CurrentTraceEntry.Memory = memoryTrace.ToRawWordBytes();
+    }
+
+    /// <inheritdoc/>
+    public override void SetOperationReturnData(ReadOnlySpan<byte> returnData)
+    {
+        if (CurrentTraceEntry is not null && !returnData.IsEmpty)
+            CurrentTraceEntry.ReturnData = GetReturnData(returnData);
+    }
+
+    // Return data only changes when a call returns, so consecutive opcodes share one copy. A change allocates a new
+    // array instead of overwriting the old one, because earlier entries still point to it.
+    private byte[] GetReturnData(ReadOnlySpan<byte> returnData)
+    {
+        if (_lastReturnData is null || !returnData.SequenceEqual(_lastReturnData))
+            _lastReturnData = returnData.ToArray();
+
+        return _lastReturnData;
     }
 
     public override GethLikeTxTrace BuildResult()

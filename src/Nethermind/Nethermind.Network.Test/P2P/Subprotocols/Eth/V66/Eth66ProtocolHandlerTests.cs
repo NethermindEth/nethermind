@@ -8,6 +8,7 @@ using System.Net;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
+using DotNetty.Buffers;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
@@ -25,6 +26,8 @@ using Nethermind.Network.Contract.Messages;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.Subprotocols;
+using Nethermind.Network.P2P.Subprotocols.Eth;
+using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages;
@@ -32,6 +35,7 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V66;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Test.Builders;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
@@ -252,14 +256,430 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         }
 
         [Test]
-        public void Can_handle_pooled_transactions()
+        public void Can_handle_pooled_transactions_once()
         {
             Transaction tx = Build.A.Transaction.Signed(new EthereumEcdsa(1), TestItem.PrivateKeyA).TestObject;
             using PooledTransactionsMessage msg65 = new(new ArrayPoolList<Transaction>(1) { tx });
-            using Network.P2P.Subprotocols.Eth.V66.Messages.PooledTransactionsMessage msg66 = new(1111, msg65);
-
             HandleIncomingStatusMessage();
+            long requestId = RequestTransaction(tx);
+            using Network.P2P.Subprotocols.Eth.V66.Messages.PooledTransactionsMessage msg66 = new(requestId, msg65);
+
             HandleZeroMessage(msg66, Eth66MessageCode.PooledTransactions);
+            HandleZeroMessage(msg66, Eth66MessageCode.PooledTransactions);
+
+            _transactionPool.Received(1).SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>());
+        }
+
+        private long RequestTransaction(Transaction tx)
+        {
+            _handler.HandleMessage(PooledTransactionRequestMessage.New(tx.Hash!));
+            return _session.ReceivedCalls().SelectMany(call => call.GetArguments().OfType<GetPooledTransactionsMessage66>()).Last().RequestId;
+        }
+
+        [Test]
+        public void Unsolicited_pooled_response_is_not_decoded()
+        {
+            using Network.P2P.Subprotocols.Eth.V66.Messages.PooledTransactionsMessage response = new(
+                1111, new PooledTransactionsMessage(IOwnedReadOnlyList<Transaction>.Empty));
+            using DisposableByteBuffer packet = _svc.ZeroSerialize(response).AsDisposable();
+            packet.EnsureWritable(1);
+            packet.WriteByte(0);
+            packet.ReadByte();
+            HandleIncomingStatusMessage();
+
+            Assert.That(() => _handler.HandleMessage(new ZeroPacket(packet) { PacketType = Eth66MessageCode.PooledTransactions }), Throws.Nothing);
+            _transactionPool.DidNotReceive().SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>());
+        }
+
+        public enum BudgetMessageKind { Broadcast, CorrelatedPooled, UncorrelatedPooled }
+
+        [Test]
+        public void Transaction_count_budget_rejects_before_decoding([Values] bool pooledResponse, [Values] bool malformed)
+        {
+            RecordingBackgroundTaskScheduler scheduler = new() { Defer = true };
+            _handler.Dispose();
+            _handler = CreateHandler(scheduler);
+            HandleIncomingStatusMessage();
+            using CompositeDisposable reservations = [];
+            ReserveAllButOneMessage(scheduler, reservations);
+            const int count = 16;
+            byte[] transaction = malformed ? [0xc0] : [0xc9, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x1b, 0x01, 0x01];
+            int contentLength = count * transaction.Length;
+            using DisposableByteBuffer packet = Unpooled.Buffer(256).AsDisposable();
+            ByteBufferRlpWriter writer = new(packet);
+            if (pooledResponse)
+            {
+                long requestId = RequestTransaction(Build.A.Transaction.SignedAndResolved().TestObject);
+                writer.StartSequence(Rlp.LengthOf(requestId) + Rlp.LengthOfSequence(contentLength));
+                writer.Encode(requestId);
+            }
+            writer.StartSequence(contentLength);
+            for (int i = 0; i < count; i++) packet.WriteBytes(transaction);
+
+            Assert.That(() => _handler.HandleMessage(new ZeroPacket(packet)
+            {
+                PacketType = (byte)(pooledResponse ? Eth66MessageCode.PooledTransactions : Eth62MessageCode.Transactions)
+            }), Throws.Nothing);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(scheduler.ScheduledFulfillFuncs, Is.Empty);
+                _transactionPool.DidNotReceive().SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>());
+            }
+            using InboundTransactionBudget.Reservation? available = new InboundTransactionBudget(scheduler).TryReserve(1);
+            Assert.That(available, Is.Not.Null);
+        }
+
+        [Test]
+        public void Transaction_budget_charges_larger_of_wire_bytes_and_count([Values(0, 1, 16, 16384)] int count, [Values(1, 65536)] int bytes)
+        {
+            InboundTransactionBudget budget = new(new RecordingBackgroundTaskScheduler());
+            int charge = Math.Max(InboundTransactionBudget.MinimumCharge, Math.Max(bytes, count * InboundTransactionBudget.TransactionCharge));
+            using InboundTransactionBudget.Reservation? reservation = budget.TryReserve(bytes, count);
+            Assert.That(reservation, Is.Not.Null);
+            using InboundTransactionBudget.Reservation? remaining = budget.TryReserve(InboundTransactionBudget.PeerLimit - charge);
+            Assert.That(remaining, Is.Not.Null);
+            using InboundTransactionBudget.Reservation? excess = budget.TryReserve(1);
+            Assert.That(excess, Is.Null);
+        }
+
+        [Test]
+        public void Transaction_count_charge_cannot_overflow()
+        {
+            InboundTransactionBudget budget = new(new RecordingBackgroundTaskScheduler());
+            Assert.That(budget.TryReserve(1, int.MaxValue), Is.Null);
+            using InboundTransactionBudget.Reservation? available = budget.TryReserve(InboundTransactionBudget.PeerLimit);
+            Assert.That(available, Is.Not.Null);
+        }
+
+        [Test]
+        public async Task Budget_rejection_excludes_correlated_responses_from_flood_sampling(
+            [Values] bool peerLimit, [Values] BudgetMessageKind messageKind, [Values] bool malformed)
+        {
+            bool pooledResponse = messageKind != BudgetMessageKind.Broadcast;
+            RecordingBackgroundTaskScheduler scheduler = new() { Defer = true };
+            _handler.Dispose();
+            _handler = CreateHandler(scheduler);
+            HandleIncomingStatusMessage();
+            Transaction tx = Build.A.Transaction.SignedAndResolved().TestObject;
+            long requestId = RequestTransaction(tx);
+            using CompositeDisposable reservations = [];
+            try
+            {
+                if (peerLimit)
+                {
+                    using TransactionsMessage emptyBroadcast = new(IOwnedReadOnlyList<Transaction>.Empty);
+                    for (int i = 0; i < InboundTransactionBudget.PeerLimit / InboundTransactionBudget.MinimumCharge; i++)
+                        HandleZeroMessage(emptyBroadcast, emptyBroadcast.PacketType);
+                }
+                else
+                {
+                    for (int i = 0; i < InboundTransactionBudget.GlobalLimit / InboundTransactionBudget.PeerLimit; i++)
+                        new InboundTransactionBudget(scheduler).TryReserve(InboundTransactionBudget.PeerLimit)!.AddTo(reservations);
+                }
+                Assert.That(_handler.RequestedPooledTransactionHashes, Is.EqualTo(1));
+                int scheduled = scheduler.ScheduledFulfillFuncs.Count;
+                using P2PMessage response = pooledResponse
+                    ? new Network.P2P.Subprotocols.Eth.V66.Messages.PooledTransactionsMessage(
+                        messageKind == BudgetMessageKind.UncorrelatedPooled ? requestId ^ 1 : requestId,
+                        new PooledTransactionsMessage(new ArrayPoolList<Transaction>(1) { tx }))
+                    : new TransactionsMessage(IOwnedReadOnlyList<Transaction>.Empty);
+                using DisposableByteBuffer packet = (pooledResponse
+                    ? _svc.ZeroSerialize((Network.P2P.Subprotocols.Eth.V66.Messages.PooledTransactionsMessage)response)
+                    : _svc.ZeroSerialize((TransactionsMessage)response)).AsDisposable();
+                if (malformed)
+                {
+                    packet.EnsureWritable(1);
+                    packet.WriteByte(0);
+                }
+                packet.ReadByte();
+
+                Assert.That(() => _handler.HandleMessage(new ZeroPacket(packet) { PacketType = (byte)response.PacketType }), Throws.Nothing);
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(_handler.RequestedPooledTransactionHashes, Is.EqualTo(messageKind == BudgetMessageKind.CorrelatedPooled ? 0 : 1));
+                    Assert.That(scheduler.ScheduledFulfillFuncs, Has.Count.EqualTo(scheduled));
+                    _session.DidNotReceive().InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
+                }
+            }
+            finally
+            {
+                await scheduler.Drain(new CancellationToken(true));
+            }
+        }
+
+        [Test]
+        public async Task Queued_transaction_holds_budget_until_submission_finishes([Values] bool cancelled)
+        {
+            RecordingBackgroundTaskScheduler scheduler = new() { Defer = true };
+            _handler.Dispose();
+            _handler = CreateHandler(scheduler);
+            HandleIncomingStatusMessage();
+            using CompositeDisposable reservations = [];
+            ReserveAllButOneMessage(scheduler, reservations);
+            Transaction tx = Build.A.Transaction.SignedAndResolved().TestObject;
+            using Network.P2P.Subprotocols.Eth.V66.Messages.PooledTransactionsMessage response = new(
+                RequestTransaction(tx), new PooledTransactionsMessage(new[] { tx }.ToPooledList()));
+
+            HandleZeroMessage(response, Eth66MessageCode.PooledTransactions);
+            Assert.That(new InboundTransactionBudget(scheduler).TryReserve(1), Is.Null);
+            await scheduler.Drain(new CancellationToken(cancelled));
+            using InboundTransactionBudget.Reservation available = new InboundTransactionBudget(scheduler).TryReserve(1)!;
+            Assert.That(available, Is.Not.Null);
+            _transactionPool.Received(cancelled ? 0 : 1).SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>());
+        }
+
+        [Test]
+        public async Task Rescheduling_keeps_transaction_budget_reserved()
+        {
+            RecordingBackgroundTaskScheduler scheduler = new() { Defer = true };
+            _handler.Dispose();
+            _handler = CreateHandler(scheduler);
+            HandleIncomingStatusMessage();
+            using CompositeDisposable reservations = [];
+            ReserveAllButOneMessage(scheduler, reservations);
+            Transaction first = Build.A.Transaction.WithNonce(0).SignedAndResolved().TestObject;
+            Transaction second = Build.A.Transaction.WithNonce(1).SignedAndResolved().TestObject;
+            using CancellationTokenSource cancellation = new();
+            _transactionPool.SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>()).Returns(_ =>
+            {
+                cancellation.Cancel();
+                return AcceptTxResult.Accepted;
+            });
+            using Network.P2P.Subprotocols.Eth.V66.Messages.PooledTransactionsMessage response = new(
+                RequestTransaction(first), new PooledTransactionsMessage(new[] { first, second }.ToPooledList()));
+            HandleZeroMessage(response, Eth66MessageCode.PooledTransactions);
+
+            await scheduler.RunNext(cancellation.Token);
+            Assert.That(new InboundTransactionBudget(scheduler).TryReserve(1), Is.Null);
+            _transactionPool.Received(1).SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>());
+            await scheduler.Drain(CancellationToken.None);
+            using InboundTransactionBudget.Reservation available = new InboundTransactionBudget(scheduler).TryReserve(1)!;
+            Assert.That(available, Is.Not.Null);
+            _transactionPool.Received(2).SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>());
+        }
+
+        private static void ReserveAllButOneMessage(IBackgroundTaskScheduler scheduler, CompositeDisposable reservations)
+        {
+            for (int i = 0; i < InboundTransactionBudget.GlobalLimit / InboundTransactionBudget.PeerLimit - 1; i++)
+                new InboundTransactionBudget(scheduler).TryReserve(InboundTransactionBudget.PeerLimit)!.AddTo(reservations);
+            new InboundTransactionBudget(scheduler).TryReserve(InboundTransactionBudget.PeerLimit - InboundTransactionBudget.MinimumCharge)!.AddTo(reservations);
+        }
+
+        [Test]
+        public void Rejected_or_malformed_response_releases_budget([Values] bool malformed)
+        {
+            RecordingBackgroundTaskScheduler scheduler = new() { Reject = true };
+            _handler.Dispose();
+            _handler = CreateHandler(scheduler);
+            HandleIncomingStatusMessage();
+            Transaction tx = Build.A.Transaction.SignedAndResolved().TestObject;
+            using Network.P2P.Subprotocols.Eth.V66.Messages.PooledTransactionsMessage response = new(
+                RequestTransaction(tx), new PooledTransactionsMessage(IOwnedReadOnlyList<Transaction>.Empty));
+            using DisposableByteBuffer packet = _svc.ZeroSerialize(response).AsDisposable();
+            if (malformed)
+            {
+                packet.EnsureWritable(1);
+                packet.WriteByte(0);
+            }
+            packet.ReadByte();
+            Action receive = () => _handler.HandleMessage(new ZeroPacket(packet) { PacketType = Eth66MessageCode.PooledTransactions });
+            if (malformed)
+                Assert.That(receive, Throws.Exception);
+            else
+                Assert.That(receive, Throws.Nothing);
+
+            using CompositeDisposable reservations = [];
+            for (int i = 0; i < InboundTransactionBudget.GlobalLimit / InboundTransactionBudget.PeerLimit; i++)
+            {
+                InboundTransactionBudget.Reservation? reservation = new InboundTransactionBudget(scheduler).TryReserve(InboundTransactionBudget.PeerLimit);
+                Assert.That(reservation, Is.Not.Null);
+                reservation!.AddTo(reservations);
+            }
+        }
+
+        [Test]
+        public void Transaction_budget_is_shared_and_released_with_owned_list([Values] bool sharedBudgetFull)
+        {
+            RecordingBackgroundTaskScheduler scheduler = new();
+            InboundTransactionBudget budget = new(scheduler);
+            using InboundTransactionBudget.Reservation reservation = budget.TryReserve(InboundTransactionBudget.PeerLimit)!;
+            IOwnedReadOnlyList<Transaction> transactions = Substitute.For<IOwnedReadOnlyList<Transaction>>();
+            reservation.Attach(transactions);
+            using CompositeDisposable otherPeers = [];
+            if (sharedBudgetFull)
+            {
+                for (int i = 1; i < InboundTransactionBudget.GlobalLimit / InboundTransactionBudget.PeerLimit; i++)
+                    new InboundTransactionBudget(scheduler).TryReserve(InboundTransactionBudget.PeerLimit)!.AddTo(otherPeers);
+            }
+            using InboundTransactionBudget.Reservation? excess = budget.TryReserve(1);
+            using InboundTransactionBudget.Reservation? anotherPeer = new InboundTransactionBudget(scheduler).TryReserve(1);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(excess, Is.Null);
+                Assert.That(anotherPeer is null, Is.EqualTo(sharedBudgetFull));
+            }
+            reservation.Dispose();
+            reservation.Dispose();
+            using InboundTransactionBudget.Reservation replacement = budget.TryReserve(InboundTransactionBudget.PeerLimit)!;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(replacement, Is.Not.Null);
+                transactions.Received(1).Dispose();
+            }
+        }
+
+        [Test]
+        public void Transaction_budget_limits_all_peers_but_not_other_schedulers()
+        {
+            RecordingBackgroundTaskScheduler scheduler = new();
+            using CompositeDisposable reservations = [];
+            for (int i = 0; i < InboundTransactionBudget.GlobalLimit / InboundTransactionBudget.PeerLimit; i++)
+                new InboundTransactionBudget(scheduler).TryReserve(InboundTransactionBudget.PeerLimit)!.AddTo(reservations);
+            using InboundTransactionBudget.Reservation independent = new InboundTransactionBudget(new RecordingBackgroundTaskScheduler()).TryReserve(1)!;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(new InboundTransactionBudget(scheduler).TryReserve(1), Is.Null);
+                Assert.That(independent, Is.Not.Null);
+            }
+        }
+
+        [Test]
+        public void Concurrent_transaction_reservations_respect_both_limits([Values(1, 2, 8)] int peers)
+        {
+            RecordingBackgroundTaskScheduler scheduler = new();
+            InboundTransactionBudget[] budgets = new InboundTransactionBudget[peers];
+            for (int i = 0; i < peers; i++) budgets[i] = new(scheduler);
+            const int charge = InboundTransactionBudget.PeerLimit / 4;
+
+            for (int round = 0; round < 32; round++)
+            {
+                InboundTransactionBudget.Reservation?[] reservations = new InboundTransactionBudget.Reservation?[128];
+                try
+                {
+                    Parallel.For(0, reservations.Length, i => reservations[i] = budgets[i % peers].TryReserve(charge));
+                    int[] admitted = new int[peers];
+                    for (int i = 0; i < reservations.Length; i++)
+                        if (reservations[i] is not null) admitted[i % peers] += charge;
+                    Assert.That(admitted, Is.All.LessThanOrEqualTo(InboundTransactionBudget.PeerLimit));
+                    Assert.That(admitted.Sum(), Is.EqualTo(Math.Min(peers * InboundTransactionBudget.PeerLimit, InboundTransactionBudget.GlobalLimit)));
+                }
+                finally
+                {
+                    Parallel.ForEach(reservations, reservation => reservation?.Dispose());
+                }
+            }
+        }
+
+        [Test]
+        public async Task Concurrent_reserve_release_and_rollback_preserve_capacity()
+        {
+            const int workers = 8;
+            const int peers = 4;
+            RecordingBackgroundTaskScheduler scheduler = new();
+            using CompositeDisposable held = [];
+            for (int i = 0; i < 3; i++)
+                new InboundTransactionBudget(scheduler).TryReserve(InboundTransactionBudget.PeerLimit)!.AddTo(held);
+            using InboundTransactionBudget.Reservation blockedSlot = new InboundTransactionBudget(scheduler).TryReserve(InboundTransactionBudget.PeerLimit)!;
+            using Barrier start = new(workers, _ => blockedSlot.Dispose());
+            InboundTransactionBudget[] budgets = new InboundTransactionBudget[peers];
+            for (int i = 0; i < peers; i++) budgets[i] = new(scheduler);
+            int[] peerBytes = new int[peers];
+            int sharedBytes = 0;
+
+            await Task.WhenAll(Enumerable.Range(0, workers).Select(worker => Task.Factory.StartNew(() =>
+            {
+                int peer = worker % peers;
+                InboundTransactionBudget budget = budgets[peer];
+                using InboundTransactionBudget.Reservation? rejected = budget.TryReserve(InboundTransactionBudget.MinimumCharge);
+                Assert.That(start.SignalAndWait(TimeSpan.FromSeconds(30)), Is.True);
+                Assert.That(rejected, Is.Null);
+
+                for (int i = 0; i < 2000; i++)
+                {
+                    int charge = InboundTransactionBudget.PeerLimit / (2 + (i + worker) % 3);
+                    using InboundTransactionBudget.Reservation? reservation = budget.TryReserve(charge);
+                    if (reservation is null) continue;
+                    int peerTotal = Interlocked.Add(ref peerBytes[peer], charge);
+                    int sharedTotal = Interlocked.Add(ref sharedBytes, charge);
+                    try
+                    {
+                        Assert.That(peerTotal, Is.LessThanOrEqualTo(InboundTransactionBudget.PeerLimit));
+                        Assert.That(sharedTotal, Is.LessThanOrEqualTo(InboundTransactionBudget.PeerLimit));
+                        Thread.Yield();
+                    }
+                    finally
+                    {
+                        Interlocked.Add(ref sharedBytes, -charge);
+                        Interlocked.Add(ref peerBytes[peer], -charge);
+                    }
+                }
+            }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default)));
+
+            held.Dispose();
+            foreach (InboundTransactionBudget budget in budgets)
+            {
+                using InboundTransactionBudget.Reservation? reservation = budget.TryReserve(InboundTransactionBudget.PeerLimit);
+                Assert.That(reservation, Is.Not.Null);
+                using InboundTransactionBudget.Reservation? peerExcess = budget.TryReserve(1);
+                Assert.That(peerExcess, Is.Null);
+            }
+            using CompositeDisposable recovered = [];
+            foreach (InboundTransactionBudget budget in budgets)
+            {
+                InboundTransactionBudget.Reservation? reservation = budget.TryReserve(InboundTransactionBudget.PeerLimit);
+                Assert.That(reservation, Is.Not.Null);
+                reservation!.AddTo(recovered);
+            }
+            using InboundTransactionBudget.Reservation? excess = new InboundTransactionBudget(scheduler).TryReserve(1);
+            Assert.That(excess, Is.Null);
+        }
+
+        [Test]
+        public void Shared_budget_rejection_rolls_back_peer_charge()
+        {
+            RecordingBackgroundTaskScheduler scheduler = new();
+            InboundTransactionBudget rejectedPeer = new(scheduler);
+            using (CompositeDisposable reservations = [])
+            {
+                for (int i = 0; i < InboundTransactionBudget.GlobalLimit / InboundTransactionBudget.PeerLimit; i++)
+                    new InboundTransactionBudget(scheduler).TryReserve(InboundTransactionBudget.PeerLimit)!.AddTo(reservations);
+                for (int i = 0; i < 100; i++)
+                {
+                    Assert.That(rejectedPeer.TryReserve(InboundTransactionBudget.PeerLimit), Is.Null);
+                }
+            }
+            using InboundTransactionBudget.Reservation? available = rejectedPeer.TryReserve(InboundTransactionBudget.PeerLimit);
+            Assert.That(available, Is.Not.Null);
+        }
+
+        [Test]
+        public void Transaction_budget_rejects_charge_larger_than_remaining_capacity([Values] bool sharedLimit)
+        {
+            RecordingBackgroundTaskScheduler scheduler = new();
+            InboundTransactionBudget budget = new(scheduler);
+            using CompositeDisposable reservations = [];
+            if (sharedLimit)
+            {
+                for (int i = 0; i < InboundTransactionBudget.GlobalLimit / InboundTransactionBudget.PeerLimit - 1; i++)
+                    new InboundTransactionBudget(scheduler).TryReserve(InboundTransactionBudget.PeerLimit)!.AddTo(reservations);
+            }
+            InboundTransactionBudget lastPeer = sharedLimit ? new(scheduler) : budget;
+            using InboundTransactionBudget.Reservation? held = lastPeer.TryReserve(InboundTransactionBudget.PeerLimit - 1);
+            Assert.That(held, Is.Not.Null);
+            using InboundTransactionBudget.Reservation? excess = budget.TryReserve(InboundTransactionBudget.MinimumCharge);
+            Assert.That(excess, Is.Null);
+        }
+
+        [Test]
+        public void Concurrent_disposal_releases_transaction_budget_once()
+        {
+            InboundTransactionBudget budget = new(new RecordingBackgroundTaskScheduler());
+            InboundTransactionBudget.Reservation reservation = budget.TryReserve(InboundTransactionBudget.PeerLimit)!;
+            Parallel.For(0, 32, _ => reservation.Dispose());
+            using InboundTransactionBudget.Reservation? replacement = budget.TryReserve(InboundTransactionBudget.PeerLimit);
+            Assert.That(replacement, Is.Not.Null);
+            using InboundTransactionBudget.Reservation? excess = budget.TryReserve(1);
+            Assert.That(excess, Is.Null);
         }
 
         [Test]
@@ -434,17 +854,33 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             _handler.HandleMessage(new ZeroPacket(statusPacket) { PacketType = 0 });
         }
 
-        private sealed class RecordingBackgroundTaskScheduler : IBackgroundTaskScheduler
+        internal sealed class RecordingBackgroundTaskScheduler : IBackgroundTaskScheduler
         {
+            public bool Defer { get; init; }
+            public bool Reject { get; init; }
+            private readonly Queue<Func<CancellationToken, Task>> _pending = new();
+
+            public Task RunNext(CancellationToken cancellationToken) => _pending.Dequeue()(cancellationToken);
+
+            public async Task Drain(CancellationToken cancellationToken)
+            {
+                while (_pending.TryDequeue(out Func<CancellationToken, Task>? pending))
+                    await pending(cancellationToken);
+            }
+
             public List<Delegate> ScheduledFulfillFuncs { get; } = [];
             public List<bool> ScheduledRequestsHaveDelegateFields { get; } = [];
 
             public bool TryScheduleTask<TReq>(TReq request, Func<TReq, CancellationToken, Task> fulfillFunc, TimeSpan? timeout = null)
                 where TReq : notnull, IBackgroundTaskRequest<TReq>
             {
+                if (Reject) return false;
                 ScheduledRequestsHaveDelegateFields.Add(HasDelegateField<TReq>());
                 ScheduledFulfillFuncs.Add(fulfillFunc);
-                fulfillFunc(request, CancellationToken.None).GetAwaiter().GetResult();
+                if (Defer)
+                    _pending.Enqueue(token => fulfillFunc(request, token));
+                else
+                    fulfillFunc(request, CancellationToken.None).GetAwaiter().GetResult();
                 return true;
             }
 

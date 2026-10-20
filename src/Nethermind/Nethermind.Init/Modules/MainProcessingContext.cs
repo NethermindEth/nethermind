@@ -27,6 +27,7 @@ public class MainProcessingContext : IMainProcessingContext, BlockProcessor.Bloc
         IMainProcessingModule[] mainProcessingModules,
         IWorldStateManager worldStateManager,
         IProcessExitSource processExitSource,
+        InvalidBlockDiagnostics invalidBlockDiagnostics,
         ILogManager logManager)
     {
 
@@ -51,8 +52,8 @@ public class MainProcessingContext : IMainProcessingContext, BlockProcessor.Bloc
                 .AddScoped<BlockchainProcessor.Options, IReceiptConfig, IBlocksConfig>((receiptConfig, blocksConfig) => new()
                 {
                     StoreReceiptsByDefault = receiptConfig.StoreReceipts,
-                    DumpOptions = initConfig.AutoDump,
-                    ProcessingCores = blocksConfig.ProcessingCores
+                    ProcessingCores = blocksConfig.ProcessingCores,
+                    BlockProcessingTimeoutMs = blocksConfig.BlockProcessingTimeoutMs
                 })
                 .AddScoped<BlockchainProcessor>()
                 .Bind<IBlockchainProcessor, BlockchainProcessor>()
@@ -63,6 +64,7 @@ public class MainProcessingContext : IMainProcessingContext, BlockProcessor.Bloc
         });
 
         _components = innerScope.Resolve<Components>();
+        _components.BlockProcessingQueue.InvalidBlock += invalidBlockDiagnostics.OnInvalidBlock;
 
         if (initConfig.ExitOnInvalidBlock)
         {
@@ -90,6 +92,7 @@ public class MainProcessingContext : IMainProcessingContext, BlockProcessor.Bloc
     public IGenesisLoader GenesisLoader => _components.GenesisLoader;
     public event EventHandler<TxProcessedEventArgs>? TransactionProcessed;
     public void OnTransactionProcessed(TxProcessedEventArgs txProcessedEventArgs) => TransactionProcessed?.Invoke(this, txProcessedEventArgs);
+    public bool HasSubscribers => TransactionProcessed is not null;
 
     private record Components(
         ITransactionProcessor TransactionProcessor,

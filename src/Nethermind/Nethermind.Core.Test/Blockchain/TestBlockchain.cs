@@ -416,6 +416,11 @@ public class TestBlockchain : IDisposable
                 genesisBlockBuilder.WithSlotNumber(0);
             }
 
+            if (specProvider.GenesisSpec.IsEip7668Enabled)
+            {
+                genesisBlockBuilder.WithBloom(Bloom.ZeroLength);
+            }
+
             Block genesisBlock = genesisBlockBuilder.TestObject;
 
             foreach (IGenesisPostProcessor genesisPostProcessor in postProcessors)
@@ -538,7 +543,6 @@ public class TestBlockchain : IDisposable
     {
         ulong nonce = StateReader.GetNonce(BlockTree.Head!.Header, TestItem.AddressA);
         Transaction tx = Builders.Build.A.Transaction
-            .SignedAndResolved(TestItem.PrivateKeyA)
             .To(address)
             .WithNonce(nonce + index)
             .WithMaxFeePerGas(20.GWei)
@@ -546,6 +550,7 @@ public class TestBlockchain : IDisposable
             .WithType(TxType.EIP1559)
             .WithValue(ether)
             .WithChainId(MainnetSpecProvider.Instance.ChainId)
+            .SignedAndResolved(TestItem.PrivateKeyA)
             .TestObject;
         return tx;
     }

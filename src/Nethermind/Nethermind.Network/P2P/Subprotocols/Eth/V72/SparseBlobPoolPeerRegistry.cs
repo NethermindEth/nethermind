@@ -475,7 +475,22 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
             return false;
         }
 
-        TrackedSparseBlobTx state = GetOrAdd(hash, out bool added);
+        bool added = false;
+        if (!_transactions.TryGetValue(hash.ValueHash256, out TrackedSparseBlobTx? state))
+        {
+            lock (_accountingLock)
+            {
+                if (_peerUsage.TryGetValue(peer.Id, out PeerUsage? usage)
+                    && usage.Announcements >= MaxAnnouncementsPerPeer
+                    && !_transactions.TryGetValue(hash.ValueHash256, out state))
+                {
+                    return false;
+                }
+            }
+
+            state ??= GetOrAdd(hash, out added);
+        }
+
         bool accepted = false;
         lock (state.Lock)
         {
@@ -952,6 +967,8 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
 
         if (transaction.NetworkWrapper is ShardBlobNetworkWrapper wrapper && wrapper.HasFullBlobs())
         {
+            // A copy rejected earlier for its sidecar must not shadow this one: the hash does not cover the sidecar.
+            _txPool.ForgetInvalidBlobProofs(hash);
             return SubmitTransaction(peer, transaction);
         }
 

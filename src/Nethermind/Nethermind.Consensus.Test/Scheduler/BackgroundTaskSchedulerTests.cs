@@ -65,7 +65,7 @@ public class BackgroundTaskSchedulerTests
     {
         BackgroundTaskScheduler scheduler = new(_branchProcessor, _chainHeadInfo, 1, 65536, LimboLogs.Instance);
 
-        Assert.DoesNotThrowAsync(
+        await Assert.DoesNotThrowAsync(
             async () => await scheduler.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5)),
             "DisposeAsync did not complete within timeout - possible deadlock in background task scheduler");
     }
@@ -506,10 +506,10 @@ public class BackgroundTaskSchedulerTests
     /// </summary>
     private static async Task BlockTheOnlyWorker(BackgroundTaskScheduler scheduler, SemaphoreSlim release)
     {
-        DotNetty.Common.Concurrency.TaskCompletionSource running = new();
+        TaskCompletionSource running = new(TaskCreationOptions.RunContinuationsAsynchronously);
         Assert.That(Schedule(scheduler, async (_, token) =>
         {
-            running.TrySetResult(0);
+            running.TrySetResult();
             // Observes the token so disposing the scheduler cannot deadlock on an unreleased semaphore
             await release.WaitAsync(token);
         }), Is.True);

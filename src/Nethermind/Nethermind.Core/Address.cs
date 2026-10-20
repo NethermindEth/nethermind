@@ -30,10 +30,11 @@ namespace Nethermind.Core
         private const int PrefixedHexCharsCount = 2 + HexCharsCount; // 0x5a4eab120fb44eb6684e5e32785702ff45ea344d
 
         public static Address Zero { get; } = new(default(ValueAddress));
-        public static Address MaxValue { get; } = new("0xffffffffffffffffffffffffffffffffffffffff");
+        // Byte literals rather than hex parsing: keeps the class preinitializable by ILC (no class-constructor check per use).
+        public static Address MaxValue { get; } = new((ReadOnlySpan<byte>)[0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff]);
 
         public const string SystemUserHex = "0xfffffffffffffffffffffffffffffffffffffffe";
-        public static Address SystemUser { get; } = new(SystemUserHex);
+        public static Address SystemUser { get; } = new((ReadOnlySpan<byte>)[0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xfe]);
 
         private readonly ValueAddress _bytes;
 
@@ -335,6 +336,16 @@ namespace Nethermind.Core
             uint tail = Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref b, 16));
             return (int)System.Buffers.Binary.BinaryPrimitives.ReverseEndianness(tail);
         }
+    }
+
+    /// <summary>Orders addresses by their bytes, as <see cref="Address.CompareTo"/> does.</summary>
+    /// <remarks>
+    /// A struct comparer lets generic sorts specialize and inline the comparison, which the shared code behind
+    /// <see cref="Comparer{T}.Default"/> for a reference type cannot.
+    /// </remarks>
+    public readonly struct AddressComparer : IComparer<Address>
+    {
+        public int Compare(Address? x, Address? y) => x is null ? (y is null ? 0 : -1) : x.CompareTo(y);
     }
 
     public readonly struct AddressByEip55ChecksumOrdinalComparer : IComparer<Address>

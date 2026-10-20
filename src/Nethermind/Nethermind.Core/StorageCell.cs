@@ -2,22 +2,19 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using System.Text.Json.Serialization;
 using Nethermind.Core.Collections;
 using Nethermind.Int256;
 
 namespace Nethermind.Core
 {
     [DebuggerDisplay("{Address}->{Index}")]
-    public readonly struct StorageCell(Address address, in UInt256 index) : IEquatable<StorageCell>, IHash64bit<StorageCell>
+    public readonly partial struct StorageCell : IEquatable<StorageCell>, IHash64bit<StorageCell>
     {
         public static GenericEqualityComparer<StorageCell> EqualityComparer { get; } = new();
-        private readonly AddressAsKey _address = address;
-        [JsonInclude]
-        public readonly UInt256 Index = index;
 
         public Address Address => _address.Value;
 
@@ -42,18 +39,6 @@ namespace Nethermind.Core
 
         public bool Equals(StorageCell other) => Equals(in other);
 
-#if ZK_EVM
-        // Guest only: one storage access probes several maps with the same cell, so it is hashed once, when made.
-        // The guest seeds its hashes before it makes any cell.
-        private readonly long _hashCode64 = address.GetHashCode64(in index);
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public long GetHashCode64() => _hashCode64;
-#else
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public long GetHashCode64() => _address.Value.GetHashCode64(in Index);
-#endif
-
         public override bool Equals(object? obj)
         {
             if (obj is null)
@@ -72,5 +57,15 @@ namespace Nethermind.Core
         }
 
         public override string ToString() => $"{_address.Value}.{Index}";
+    }
+
+    /// <summary>Orders storage cells by address, then index, so the cells of one account are adjacent.</summary>
+    public readonly struct StorageCellComparer : IComparer<StorageCell>
+    {
+        public int Compare(StorageCell x, StorageCell y)
+        {
+            int byAddress = x.Address.CompareTo(y.Address);
+            return byAddress != 0 ? byAddress : x.Index.CompareTo(y.Index);
+        }
     }
 }

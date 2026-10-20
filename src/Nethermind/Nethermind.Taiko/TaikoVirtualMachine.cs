@@ -5,6 +5,7 @@ using System;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.Precompiles;
@@ -70,7 +71,7 @@ public class TaikoVirtualMachine(
                 Environment.Exit(ExitCodes.MissingPrecompile);
                 throw; // Unreachable
             }
-            catch (Exception exception)
+            catch (Exception exception) when (exception is not (KzgSetupUnavailableException or OutOfMemoryException or { InnerException: OutOfMemoryException }))
             {
                 if (_logger.IsError) LogExecutionException(precompile, exception);
                 return new(default, precompileSuccess: false, shouldRevert: true);
@@ -95,7 +96,7 @@ public class TaikoVirtualMachine(
                     exceptionType: EvmExceptionType.PrecompileFailure
                 )
                 {
-                    SubstateError = GetErrorString(precompile, output.Error)
+                    SubstateError = GetErrorString(output.Error)
                 };
             }
 
