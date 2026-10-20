@@ -29,7 +29,6 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
     private TraceMemory _memoryTrace;
     private Instruction _op;
     private Address? _executingAccount;
-    private EvmExceptionType? _error;
     private readonly Dictionary<AddressAsKey, NativePrestateTracerAccount> _prestate = [];
     private readonly Dictionary<AddressAsKey, NativePrestateTracerAccount> _poststate;
     private readonly HashSet<AddressAsKey> _createdAccounts;
@@ -41,6 +40,10 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
     // Before EIP-5920, 0xfc is an undefined opcode and its operand is no account.
     private readonly bool _isEip5920Enabled;
     private readonly bool _isEip8298Enabled;
+    // EIP-6780: SELFDESTRUCT deletes only an account created in the same transaction.
+    private readonly bool _isEip6780Enabled;
+    // EIP-8246: a self-destructed account that ends the transaction with a balance survives.
+    private readonly bool _isEip8246Enabled;
     private readonly bool _disableCode;
     private readonly bool _disableStorage;
 
@@ -65,12 +68,14 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
         _txHash = txHash;
         _isEip5920Enabled = releaseSpec?.IsEip5920Enabled == true;
         _isEip8298Enabled = releaseSpec?.IsEip8298Enabled == true;
+        _isEip6780Enabled = releaseSpec?.IsEip6780Enabled == true;
+        _isEip8246Enabled = releaseSpec?.IsEip8246Enabled == true;
         UInt256 instructionMask = CaptureMask;
         if (_isEip5920Enabled) instructionMask |= UInt256.One << (int)Instruction.PAY;
         if (_isEip8298Enabled) instructionMask |= UInt256.One << (int)Instruction.SETCODEFROM;
         InstructionMask = instructionMask;
 
-        NativePrestateTracerConfig config = TypeInfoJsonSerializer.Deserialize<NativePrestateTracerConfig>(options.TracerConfig, EthereumJsonSerializer.JsonOptions) ?? new NativePrestateTracerConfig();
+        NativePrestateTracerConfig config = NativePrestateTracerConfig.FromJson(options.TracerConfig, EthereumJsonSerializer.JsonOptions);
         _diffMode = config.DiffMode;
         _disableCode = config.DisableCode;
         _disableStorage = config.DisableStorage;
@@ -83,7 +88,13 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
 
         LookupAccount(from!);
         if (transaction?.Frames is null)
-            LookupAccount(to ?? ContractAddress.From(from, _prestate[from].Nonce ?? 0));
+        {
+            Address recipient = to ?? ContractAddress.From(from, _prestate[from].Nonce ?? 0);
+            LookupAccount(recipient);
+            // As in geth, a contract-creation transaction creates its recipient.
+            if (_diffMode && to is null)
+                _createdAccounts.Add(recipient);
+        }
         else
             LookupFrameTxState(from, transaction);
         LookupAccount(beneficiary ?? Address.Zero);
@@ -163,16 +174,6 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
     {
         base.StartOperation(pc, opcode, gas, env);
 
-        // Everything after an operation error is ignored, so stop pulling stack and memory for the
-        // frames that keep running; leaving the flags set would also freeze _op and _executingAccount
-        // at the failing operation.
-        if (_error is not null)
-        {
-            IsTracingMemory = false;
-            IsTracingStack = false;
-            return;
-        }
-
         _op = opcode;
         _executingAccount = env.ExecutingAccount;
 
@@ -187,7 +188,7 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
     public override void ReportPrecompileAccountRead(Address address)
     {
         base.ReportPrecompileAccountRead(address);
-        if (_error is null) LookupAccount(address);
+        LookupAccount(address);
     }
 
     public override void SetOperationMemory(TraceMemory memoryTrace)
@@ -199,9 +200,6 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
     public override void SetOperationStack(TraceStack stack)
     {
         base.SetOperationStack(stack);
-
-        // A wrapping tracer may keep asking for the stack after the flags were cleared above.
-        if (_error is not null) return;
 
         int stackLen = stack.Count;
         Address address;
@@ -226,8 +224,11 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
                 {
                     address = stack.PeekAddress(0);
                     LookupAccount(address);
-                    if (_diffMode && _op == Instruction.SELFDESTRUCT)
-                        _deletedAccounts.Add(address);
+                    // As in geth, the executing account is deleted when the opcode runs, but after EIP-6780 only if
+                    // it was created in this transaction.
+                    if (_diffMode && _op == Instruction.SELFDESTRUCT
+                        && (!_isEip6780Enabled || _createdAccounts.Contains(_executingAccount!)))
+                        _deletedAccounts.Add(_executingAccount!);
                 }
                 break;
             // EIP-8298: SETCODEFROM reads the source account's code.
@@ -269,8 +270,9 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
                     catch
                     {
                         /*
-                         * This operation error will be recorded in ReportOperationError and all
-                         * subsequent operations will be ignored from the prestate trace
+                         * The init code cannot be read: an offset or length that does not fit, or a slice
+                         * past the traced memory's 1 MiB padding limit (as in geth). The account is then not
+                         * looked up; StartOperation resets the state for the next operation
                          */
                     }
                 }
@@ -283,12 +285,6 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
                     _createdAccounts.Add(address);
                 break;
         }
-    }
-
-    public override void ReportOperationError(EvmExceptionType error)
-    {
-        base.ReportOperationError(error);
-        _error = error;
     }
 
     protected void LookupAccount(Address addr)
@@ -338,8 +334,10 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
     {
         foreach ((AddressAsKey addr, NativePrestateTracerAccount prestateAccount) in _prestate)
         {
-            // If an account was deleted then don't show it in the postState trace
-            if (_deletedAccounts.Contains(addr))
+            // If an account was deleted then don't show it in the postState trace. Unlike geth, under EIP-8246 one
+            // that still exists kept its balance as a balance-only account, so it is a normal diff; EIP-161 removed
+            // it if the balance was zero.
+            if (_deletedAccounts.Contains(addr) && !(_isEip8246Enabled && _worldState!.AccountExists(addr)))
                 continue;
 
             _worldState!.TryGetAccount(addr, out AccountStruct poststateAccountStruct);
