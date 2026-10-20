@@ -349,6 +349,18 @@ public static class BaseFlatPersistence
                 StoragePrefixLength(fullAddressStorageKey) + StorageSlotKeySize, StorageAddressSuffix(accountPath, fullAddressStorageKey));
         }
 
+        [SkipLocalsInit]
+        public void SelfDestructRange(in ValueHash256 fromPath, in ValueHash256 toPath)
+        {
+            int prefixLength = StoragePrefixLength(fullAddressStorageKey);
+            Span<byte> lastKey = stackalloc byte[StorageKeyLength + 1];
+            toPath.Bytes[..prefixLength].CopyTo(lastKey);
+            lastKey[prefixLength..].Fill(0xff);
+            BasePersistence.DeleteKeysOfAccountRange(storageSnap, storage, fromPath.Bytes[..prefixLength], lastKey,
+                StorageKeyLength, prefixOffset: 0, prefixLength, suffixOffset: prefixLength + StorageSlotKeySize,
+                fromPath.Bytes[..AccountKeyLength], toPath.Bytes[..AccountKeyLength]);
+        }
+
         public void RemoveAccount(in ValueHash256 addrHash)
         {
             ReadOnlySpan<byte> key = addrHash.Bytes[..AccountKeyLength];

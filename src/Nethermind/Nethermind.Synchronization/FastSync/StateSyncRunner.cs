@@ -20,6 +20,7 @@ namespace Nethermind.Synchronization.FastSync;
 
 public class StateSyncRunner(
     ISnapSyncRunner snapSyncRunner,
+    ISnapTrieFactory snapTrieFactory,
     IBalHealing balHealing,
     StateHealingStrategy healingStrategy,
     BalFetcher balFetcher,
@@ -56,7 +57,7 @@ public class StateSyncRunner(
             {
                 if (syncConfig.SnapSync)
                 {
-                    BlockHeader firstPivot = await WaitForStateSyncPivot(token);
+                    BlockHeader firstPivot = GetResumedAnchor() ?? await WaitForStateSyncPivot(token);
                     healingStrategy.SetPivot(firstPivot);
 
                     if (healingStrategy.CanBalHeal)
@@ -93,6 +94,26 @@ public class StateSyncRunner(
         }
 
         return pivot;
+    }
+
+    /// <summary>Returns the pivot the downloaded state of a resumed snap sync starts from, or <c>null</c> when there is none to resume.</summary>
+    /// <remarks>
+    /// Healing with block access lists replays from the first pivot, and a resumed sync keeps ranges downloaded at the
+    /// pivots of the earlier run, so it has to replay from where those started. A checkpoint whose anchor is no longer
+    /// canonical, or is not a pivot the sync pivot allows any more, is deleted so that the snap sync starts over.
+    /// </remarks>
+    internal BlockHeader? GetResumedAnchor()
+    {
+        if (!syncConfig.SnapResume || snapTrieFactory.LoadCheckpoint() is not { } checkpoint) return null;
+
+        BlockHeader? anchor = blockTree.FindHeader(checkpoint.AnchorHash, BlockTreeLookupOptions.None, checkpoint.AnchorNumber);
+        ulong syncPivot = blockTree.SyncPivot.BlockNumber;
+        bool allowedBySyncPivot = syncConfig.StaticSnapPivot ? anchor?.Number == syncPivot : anchor?.Number > syncPivot;
+        if (anchor is not null && allowedBySyncPivot && blockTree.IsMainChain(anchor)) return anchor;
+
+        if (_logger.IsWarn) _logger.Warn($"Not resuming the snap sync: its checkpoint starts from block {checkpoint.AnchorNumber} ({checkpoint.AnchorHash}), which is no longer a usable pivot.");
+        snapTrieFactory.SaveCheckpoint(null);
+        return null;
     }
 
     private async Task RunSnapSync(CancellationToken token)

@@ -1,6 +1,9 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
@@ -136,12 +139,13 @@ public class ProgressTrackerTests
         request.Dispose();
     }
 
+    // Healing is not checkpointed, so once it may start a restart must find no checkpoint to resume.
     [Test]
-    public void Will_mark_range_phase_finished_when_ranges_drain()
+    public void Will_mark_range_phase_finished_when_ranges_drain([Values] bool snapResume)
     {
         ISnapTrieFactory snapTrieFactory = Substitute.For<ISnapTrieFactory>();
         TestLogger logger = new();
-        using ProgressTracker progressTracker = CreateProgressTracker(snapTrieFactory: snapTrieFactory, logManager: new OneLoggerLogManager(new ILogger(logger)));
+        using ProgressTracker progressTracker = CreateProgressTracker(snapTrieFactory: snapTrieFactory, logManager: new OneLoggerLogManager(new ILogger(logger)), snapResume: snapResume);
 
         progressTracker.IsFinished(out SnapSyncBatch? request);
         Assert.That(request!.AccountRangeRequest, Is.Not.Null);
@@ -152,11 +156,78 @@ public class ProgressTrackerTests
         Assert.That(finished, Is.True);
 
         snapTrieFactory.Received(1).MarkRangePhaseFinished();
+        snapTrieFactory.Received(snapResume ? 1 : 0).SaveCheckpoint(null);
+        if (!snapResume) snapTrieFactory.DidNotReceiveWithAnyArgs().SaveCheckpoint(default);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(logger.LogList, Has.Some.StartsWith("Snap         State Ranges (Phase 1 of 2): ("));
             Assert.That(logger.LogList, Has.Some.EqualTo("Snap - State Ranges (Phase 1 of 2) finished."));
         }
+    }
+
+    // Regression: a restart during the state ranges phase used to start the account ranges over from the beginning.
+    [Test]
+    public void A_restarted_run_resumes_from_the_checkpoint_taken_while_no_request_was_in_flight()
+    {
+        int checkpointsSaved = 0;
+        SnapCheckpoint? saved = null;
+        ISnapTrieFactory snapTrieFactory = Substitute.For<ISnapTrieFactory>();
+        snapTrieFactory.When(static f => f.SaveCheckpoint(Arg.Any<SnapCheckpoint?>())).Do(call =>
+        {
+            checkpointsSaved++;
+            saved = call.Arg<SnapCheckpoint?>();
+        });
+        // Read back through the encoding, as a restarted node reads it from disk.
+        snapTrieFactory.LoadCheckpoint().Returns(_ => saved is null ? null : SnapCheckpoint.Decode(saved.Encode()));
+
+        ValueHash256 nextAccount = new("0x4000000000000000000000000000000000000000000000000000000000000000");
+        PathWithAccount withStorage = new(TestItem.ValueKeccaks[1], Build.An.Account.WithBalance(1).WithStorageRoot(TestItem.KeccakA).TestObject);
+        PathWithAccount toRefresh = new(TestItem.ValueKeccaks[2], Build.An.Account.WithBalance(2).TestObject);
+        ValueHash256 refreshFrom = new("0x8000000000000000000000000000000000000000000000000000000000000000");
+        IStateSyncPivot pivot = Substitute.For<IStateSyncPivot>();
+        pivot.GetPivotHeader().Returns(Build.A.BlockHeader.WithNumber(1).WithStateRoot(Keccak.EmptyTreeHash).TestObject);
+        pivot.UpdatedStorages.Returns([]);
+
+        using (ProgressTracker interrupted = CreateProgressTracker(accountRangePartition: 2, snapTrieFactory: snapTrieFactory, snapResume: true, pivot: pivot))
+        {
+            interrupted.IsFinished(out SnapSyncBatch? accountRange);
+            Assert.That(interrupted.IsFinished(out SnapSyncBatch? blocked), Is.False);
+            Assert.That(blocked, Is.Null, "no request may go out while a checkpoint waits for the one in flight");
+            Assert.That(checkpointsSaved, Is.EqualTo(1));
+
+            ValueHash256 limit = accountRange!.AccountRangeRequest!.LimitHash!.Value;
+            interrupted.UpdateAccountRangePartitionProgress(limit, nextAccount, moreChildrenToRight: true);
+            interrupted.EnqueueAccountStorage(withStorage);
+            interrupted.EnqueueAccountRefresh(toRefresh, refreshFrom, null);
+            interrupted.EnqueueCodeHash(TestItem.ValueKeccaks[3]);
+            interrupted.ReportAccountRangePartitionFinished(limit);
+            accountRange.Dispose();
+
+            interrupted.IsFinished(out SnapSyncBatch? afterCheckpoint);
+            afterCheckpoint!.Dispose();
+            Assert.That(checkpointsSaved, Is.EqualTo(2));
+        }
+
+        // No checkpoint is due in this run, so its requests can all be in flight at once.
+        using ProgressTracker resumed = CreateProgressTracker(accountRangePartition: 2, snapTrieFactory: snapTrieFactory, snapResume: true, pivot: pivot, checkpointInterval: TimeSpan.MaxValue);
+        resumed.Reset();
+        Assert.That(pivot.UpdatedStorages, Is.Empty);
+        resumed.LoadProgress();
+
+        List<SnapSyncBatch> batches = [];
+        while (batches.Count < 5 && !resumed.IsFinished(out SnapSyncBatch? batch)) batches.Add(batch!);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(batches.Where(static b => b.AccountRangeRequest is not null).Select(static b => b.AccountRangeRequest!.StartingHash),
+                Is.EquivalentTo(new[] { nextAccount, new ValueHash256("0x8000000000000000000000000000000000000000000000000000000000000000") }));
+            Assert.That(batches.Single(static b => b.AccountsToRefreshRequest is not null).AccountsToRefreshRequest!.Paths[0].StorageStartingHash, Is.EqualTo(refreshFrom));
+            Assert.That(batches.Single(static b => b.StorageRangeRequest is not null).StorageRangeRequest!.Accounts[0].Account!.StorageRoot, Is.EqualTo(TestItem.KeccakA));
+            Assert.That(batches.Single(static b => b.CodesRequest is not null).CodesRequest, Is.EqualTo(new[] { TestItem.ValueKeccaks[3] }));
+            Assert.That(pivot.UpdatedStorages, Is.EquivalentTo(new[] { toRefresh.Path.ToCommitment() }), "the account to heal survives the restart");
+        }
+
+        foreach (SnapSyncBatch batch in batches) batch.Dispose();
     }
 
     [Test]
@@ -348,10 +419,11 @@ public class ProgressTrackerTests
         }
     }
 
-    private ProgressTracker CreateProgressTracker(int accountRangePartition = 1, bool enableStorageSplits = false, ISnapTrieFactory? snapTrieFactory = null, ILogManager? logManager = null)
+    /// <param name="snapResume">Turns checkpoints on, by default taken whenever no request is in flight.</param>
+    private ProgressTracker CreateProgressTracker(int accountRangePartition = 1, bool enableStorageSplits = false, ISnapTrieFactory? snapTrieFactory = null, ILogManager? logManager = null, bool snapResume = false, IStateSyncPivot? pivot = null, TimeSpan? checkpointInterval = null)
     {
         BlockTree blockTree = Build.A.BlockTree().WithStateRoot(Keccak.EmptyTreeHash).OfChainLength(2).TestObject;
-        SyncConfig syncConfig = new TestSyncConfig() { SnapSyncAccountRangePartitionCount = accountRangePartition, EnableSnapSyncStorageRangeSplit = enableStorageSplits };
-        return new(snapTrieFactory ?? Substitute.For<ISnapTrieFactory>(), syncConfig, new StateSyncPivot(blockTree, syncConfig, LimboLogs.Instance), logManager ?? LimboLogs.Instance);
+        SyncConfig syncConfig = new TestSyncConfig() { SnapSyncAccountRangePartitionCount = accountRangePartition, EnableSnapSyncStorageRangeSplit = enableStorageSplits, SnapResume = snapResume };
+        return new(snapTrieFactory ?? Substitute.For<ISnapTrieFactory>(), syncConfig, pivot ?? new StateSyncPivot(blockTree, syncConfig, LimboLogs.Instance), logManager ?? LimboLogs.Instance, checkpointInterval ?? TimeSpan.Zero);
     }
 }

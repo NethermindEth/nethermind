@@ -5,6 +5,7 @@ using System;
 using System.Buffers.Binary;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using Nethermind.Blockchain.Synchronization;
@@ -80,12 +81,23 @@ namespace Nethermind.Synchronization.SnapSync
         private readonly bool _enableStorageRangeSplit;
         private readonly ulong _stateMinDistanceFromHead;
 
-        public ProgressTracker(ISnapTrieFactory snapTrieFactory, ISyncConfig syncConfig, FastSync.IStateSyncPivot pivot, ILogManager? logManager)
+        private static readonly TimeSpan DefaultCheckpointInterval = TimeSpan.FromMinutes(5);
+
+        /// <summary>How often the progress is saved for <see cref="ISyncConfig.SnapResume"/>, or <c>null</c> when it is off.</summary>
+        private readonly TimeSpan? _checkpointInterval;
+        private long _lastCheckpointTimestamp = Stopwatch.GetTimestamp();
+
+        /// <summary>The lowest pivot a request was issued at, see <see cref="SnapCheckpoint.AnchorNumber"/>.</summary>
+        private (ulong Number, Hash256 Hash)? _anchor;
+
+        /// <param name="checkpointInterval">Overrides the interval between checkpoints, so tests do not have to wait it out.</param>
+        public ProgressTracker(ISnapTrieFactory snapTrieFactory, ISyncConfig syncConfig, FastSync.IStateSyncPivot pivot, ILogManager? logManager, TimeSpan? checkpointInterval = null)
         {
             _logger = logManager?.GetClassLogger<ProgressTracker>() ?? throw new ArgumentNullException(nameof(logManager));
             _snapTrieFactory = snapTrieFactory ?? throw new ArgumentNullException(nameof(snapTrieFactory));
 
             _pivot = pivot;
+            _checkpointInterval = syncConfig.SnapResume ? checkpointInterval ?? DefaultCheckpointInterval : null;
 
             int accountRangePartitionCount = syncConfig.SnapSyncAccountRangePartitionCount;
             if (accountRangePartitionCount < 1)
@@ -196,6 +208,23 @@ namespace Nethermind.Synchronization.SnapSync
             Hash256 rootHash = pivotHeader!.StateRoot!;
             ulong blockNumber = pivotHeader.Number;
 
+            if (_anchor is not { } anchor || blockNumber < anchor.Number) _anchor = (blockNumber, pivotHeader.Hash!);
+
+            if (_checkpointInterval is { } interval
+                && Stopwatch.GetElapsedTime(_lastCheckpointTimestamp) >= interval
+                && !IsSnapGetRangesFinished())
+            {
+                // A checkpoint taken with a request in flight would lose its range, so no request goes out until the
+                // last one is answered.
+                if (!IsIdle())
+                {
+                    nextBatch = null;
+                    return false;
+                }
+
+                SaveCheckpoint();
+            }
+
             if (!AccountsToRefresh.IsEmpty && Volatile.Read(ref _consecutiveAccountRefreshes) < MAX_CONSECUTIVE_ACCOUNT_REFRESHES)
             {
                 nextBatch = DequeAccountToRefresh(rootHash);
@@ -237,6 +266,8 @@ namespace Nethermind.Synchronization.SnapSync
                 {
                     _logger.Info("Snap - State Ranges (Phase 1 of 2) finished.");
                     _snapTrieFactory.MarkRangePhaseFinished();
+                    // Healing writes are not checkpointed, so a restart from here on has to start the sync over.
+                    if (_checkpointInterval is not null) _snapTrieFactory.SaveCheckpoint(null);
                 }
 
                 LogRequest(NO_REQUEST);
@@ -513,10 +544,18 @@ namespace Nethermind.Synchronization.SnapSync
             _largeStorageProgress.Clear();
             _estimatedStorageRemaining = null;
             _shouldStartLoggingLargeStorage = false;
+            _anchor = null;
         }
 
         public void LoadProgress()
         {
+            _lastCheckpointTimestamp = Stopwatch.GetTimestamp();
+            if (_checkpointInterval is not null && _snapTrieFactory.LoadCheckpoint() is { } checkpoint)
+            {
+                Restore(checkpoint);
+                return;
+            }
+
             if (!_snapTrieFactory.IsRangePhaseFinished()) return;
 
             _logger.Info($"Snap - State Ranges (Phase 1 of 2) is finished.");
@@ -525,6 +564,91 @@ namespace Nethermind.Synchronization.SnapSync
                 partition.Value.MoreAccountsToRight = false;
             }
             AccountRangeReadyForRequest.Clear();
+        }
+
+        private bool IsIdle() => _activeAccountRequests == 0
+                   && _activeStorageRequests == 0
+                   && _activeCodeRequests == 0
+                   && _activeAccRefreshRequests == 0;
+
+        private void SaveCheckpoint()
+        {
+            long startTime = Stopwatch.GetTimestamp();
+            SnapCheckpoint checkpoint = CreateCheckpoint();
+            _snapTrieFactory.SaveCheckpoint(checkpoint);
+            _lastCheckpointTimestamp = Stopwatch.GetTimestamp();
+
+            if (_logger.IsInfo) _logger.Info($"Snap - saved a resume checkpoint in {Stopwatch.GetElapsedTime(startTime, _lastCheckpointTimestamp).TotalSeconds:N1}s ({checkpoint.StoragesToRetrieve.Length + checkpoint.StorageRanges.Length} storage requests queued).");
+        }
+
+        private SnapCheckpoint CreateCheckpoint()
+        {
+            AccountRangeProgress[] partitions = new AccountRangeProgress[AccountRangePartitions.Count];
+            int index = 0;
+            foreach (AccountRangePartition partition in AccountRangePartitions.Values)
+            {
+                partitions[index++] = new AccountRangeProgress(partition.NextAccountPath, partition.AccountPathLimit, partition.MoreAccountsToRight);
+            }
+
+            StorageRange[] slotRanges = NextSlotRange.ToArray();
+            StorageRangeProgress[] storageRanges = new StorageRangeProgress[slotRanges.Length];
+            for (int i = 0; i < slotRanges.Length; i++)
+            {
+                StorageRange range = slotRanges[i];
+                storageRanges[i] = new StorageRangeProgress(range.Accounts.AsSpan().ToArray(), range.StartingHash, range.LimitHash);
+            }
+
+            (ulong anchorNumber, Hash256 anchorHash) = _anchor!.Value;
+            return new SnapCheckpoint
+            {
+                AnchorNumber = anchorNumber,
+                AnchorHash = anchorHash,
+                Partitions = partitions,
+                StoragesToRetrieve = StoragesToRetrieve.ToArray(),
+                StorageRanges = storageRanges,
+                AccountsToRefresh = AccountsToRefresh.ToArray(),
+                CodesToRetrieve = CodesToRetrieve.ToArray(),
+                UpdatedStorages = [.. _pivot.UpdatedStorages],
+            };
+        }
+
+        private void Restore(SnapCheckpoint checkpoint)
+        {
+            if (checkpoint.Partitions.Length != AccountRangePartitions.Count)
+                throw new InvalidOperationException($"The snap checkpoint has {checkpoint.Partitions.Length} account range partitions, but this run has {AccountRangePartitions.Count}.");
+
+            AccountRangeReadyForRequest.Clear();
+            int accountsLeft = 0;
+            foreach (AccountRangeProgress progress in checkpoint.Partitions)
+            {
+                AccountRangePartition partition = AccountRangePartitions[progress.AccountPathLimit];
+                partition.NextAccountPath = progress.NextAccountPath;
+                partition.MoreAccountsToRight = progress.MoreAccountsToRight;
+                if (partition.MoreAccountsToRight)
+                {
+                    AccountRangeReadyForRequest.Enqueue(partition);
+                    accountsLeft++;
+                }
+            }
+
+            foreach (PathWithAccount account in checkpoint.StoragesToRetrieve) StoragesToRetrieve.Enqueue(account);
+
+            foreach (StorageRangeProgress range in checkpoint.StorageRanges)
+            {
+                NextSlotRange.Enqueue(new StorageRange
+                {
+                    Accounts = new ArrayPoolList<PathWithAccount>(range.Accounts.Length, range.Accounts),
+                    StartingHash = range.StartingHash,
+                    LimitHash = range.LimitHash,
+                });
+            }
+
+            foreach (AccountWithStorageStartingHash refresh in checkpoint.AccountsToRefresh) AccountsToRefresh.Enqueue(refresh);
+            foreach (ValueHash256 code in checkpoint.CodesToRetrieve) CodesToRetrieve.Enqueue(code);
+            foreach (Hash256 address in checkpoint.UpdatedStorages) _pivot.UpdatedStorages.Add(address);
+            _anchor = (checkpoint.AnchorNumber, checkpoint.AnchorHash);
+
+            if (_logger.IsInfo) _logger.Info($"Snap - resuming the state ranges from a checkpoint: {accountsLeft} of {checkpoint.Partitions.Length} account partitions and {checkpoint.StoragesToRetrieve.Length + checkpoint.StorageRanges.Length} storage requests left.");
         }
 
         public void TrackAccountToHeal(ValueHash256 path)

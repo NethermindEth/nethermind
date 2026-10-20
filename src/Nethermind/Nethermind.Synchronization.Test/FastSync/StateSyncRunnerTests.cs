@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BlockAccessLists;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -23,6 +24,7 @@ public class StateSyncRunnerTests : StateSyncFeedTestsBase
 {
     private IBalHealing _healing = null!;
     private ISnapSyncRunner _snapSyncRunner = null!;
+    private ISnapTrieFactory _snapTrieFactory = null!;
     private IStateSyncPivot _pivot = null!;
 
     [Test]
@@ -174,11 +176,39 @@ public class StateSyncRunnerTests : StateSyncFeedTestsBase
         _healing.Received(1).FinalizeSync(canonical);
     }
 
+    // Healing with block access lists replays from the first pivot, so a resumed sync has to keep the one its downloaded
+    // ranges started from - unless that block left the canonical chain, which leaves nothing to resume.
+    [TestCase(true, TestName = "Resumes_from_the_checkpoint_anchor")]
+    [TestCase(false, TestName = "Starts_over_when_the_checkpoint_anchor_is_not_canonical")]
+    public void Takes_the_first_pivot_from_the_checkpoint_anchor(bool canonical)
+    {
+        using IContainer container = BuildRunnerContainer();
+        StateSyncRunner runner = (StateSyncRunner)container.Resolve<IStateSyncRunner>();
+        BlockHeader anchor = canonical
+            ? container.Resolve<IBlockTree>().FindHeader(10)!
+            : Build.A.BlockHeader.WithNumber(10).TestObject;
+        _snapTrieFactory.LoadCheckpoint().Returns(new SnapCheckpoint
+        {
+            AnchorNumber = anchor.Number,
+            AnchorHash = anchor.Hash!,
+            Partitions = [],
+            StoragesToRetrieve = [],
+            StorageRanges = [],
+            AccountsToRefresh = [],
+            CodesToRetrieve = [],
+            UpdatedStorages = [],
+        });
+
+        Assert.That(runner.GetResumedAnchor()?.Hash, Is.EqualTo(canonical ? anchor.Hash : null));
+        _snapTrieFactory.Received(canonical ? 0 : 1).SaveCheckpoint(null);
+    }
+
     private IContainer BuildRunnerContainer()
     {
         _healing = Substitute.For<IBalHealing>();
         _healing.TryRecoverMissingCode(Arg.Any<CancellationToken>()).Returns(true);
         _snapSyncRunner = Substitute.For<ISnapSyncRunner>();
+        _snapTrieFactory = Substitute.For<ISnapTrieFactory>();
 
         _pivot = Substitute.For<IStateSyncPivot>();
         _pivot.UpdatedStorages.Returns([]);
@@ -188,7 +218,13 @@ public class StateSyncRunnerTests : StateSyncFeedTestsBase
         return PrepareDownloader(new RemoteDbContext(_logManager), syncDispatcherAllocateTimeoutMs: 0, configureBuilder: builder => builder
             .AddSingleton<IBalHealing>(_healing)
             .AddSingleton<ISnapSyncRunner>(_snapSyncRunner)
-            .AddSingleton<IStateSyncPivot>(_pivot));
+            .AddSingleton<ISnapTrieFactory>(_snapTrieFactory)
+            .AddSingleton<IStateSyncPivot>(_pivot)
+            .AddDecorator<ISyncConfig>((_, syncConfig) =>
+            {
+                syncConfig.SnapResume = true;
+                return syncConfig;
+            }));
     }
 
     private static void SeedBals(IContainer container, params BlockHeader[] headers)

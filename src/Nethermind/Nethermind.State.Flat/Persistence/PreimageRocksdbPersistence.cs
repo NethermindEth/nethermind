@@ -247,6 +247,9 @@ public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db, ILogManage
 
         public void DeleteStorageRange(in ValueHash256 addressHash, in ValueHash256 fromPath, in ValueHash256 toPath) =>
             throw new NotSupportedException("Snap sync not supported in preimage mode");
+
+        public void SelfDestructRange(in ValueHash256 fromPath, in ValueHash256 toPath) =>
+            throw new NotSupportedException("Snap sync not supported in preimage mode");
     }
 
     public struct FakeHashFlatReader<TFlatReader>(

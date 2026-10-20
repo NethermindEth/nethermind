@@ -167,6 +167,34 @@ public static class BaseTriePersistence
                 1 + StoragePrefixPortion + FullPathLength + PathLengthLength, addressSuffix);
         }
 
+        [SkipLocalsInit]
+        public void SelfDestructRange(in ValueHash256 fromPath, in ValueHash256 toPath)
+        {
+            ReadOnlySpan<byte> fromAccount = fromPath.Bytes[..StorageHashPrefixLength];
+            ReadOnlySpan<byte> toAccount = toPath.Bytes[..StorageHashPrefixLength];
+
+            Span<byte> firstKey = stackalloc byte[1 + StoragePrefixPortion];
+            Span<byte> lastKey = stackalloc byte[FullStorageNodesKeyLength + 1];
+
+            // StorageNodes
+            lastKey.Fill(0xff);
+            toPath.Bytes[..StoragePrefixPortion].CopyTo(lastKey);
+            BasePersistence.DeleteKeysOfAccountRange(storageNodesSnap, storageNodes,
+                fromPath.Bytes[..StoragePrefixPortion], lastKey[..(ShortenedStorageNodesKeyLength + 1)],
+                ShortenedStorageNodesKeyLength, prefixOffset: 0, StoragePrefixPortion,
+                suffixOffset: StoragePrefixPortion + ShortenedPathLength, fromAccount, toAccount);
+
+            // FallbackNodes (prefix 0x01)
+            firstKey[0] = 1;
+            fromPath.Bytes[..StoragePrefixPortion].CopyTo(firstKey[1..]);
+            lastKey.Fill(0xff);
+            lastKey[0] = 1;
+            toPath.Bytes[..StoragePrefixPortion].CopyTo(lastKey[1..]);
+            BasePersistence.DeleteKeysOfAccountRange(fallbackNodesSnap, fallbackNodes, firstKey, lastKey,
+                FullStorageNodesKeyLength, prefixOffset: 1, StoragePrefixPortion,
+                suffixOffset: 1 + StoragePrefixPortion + FullPathLength + PathLengthLength, fromAccount, toAccount);
+        }
+
         public void SetStateTrieNode(in TreePath path, scoped ReadOnlySpan<byte> rlp)
         {
             switch (path.Length)
