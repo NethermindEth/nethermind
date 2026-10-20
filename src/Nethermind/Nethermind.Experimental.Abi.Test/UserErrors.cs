@@ -91,6 +91,39 @@ public class UserErrors
     public void Build_InvalidType(Action build, Type exception) =>
         Assert.That(build, Throws.TypeOf(exception));
 
+    private static IEnumerable<TestCaseData> SizeOverflowTestCases()
+    {
+        Abi<UInt256[][]> uint256Arrays = AbiType.Array(AbiType.Array(AbiType.UInt256, 1 << 20));
+        UInt256[][] nearMaxSize = new UInt256[63][];
+
+        yield return SizeOverflow(uint256Arrays, new UInt256[1 << 6][]).SetName("uint256[2^20][] of 2^6 elements");
+        yield return SizeOverflow(AbiType.Array(uint256Arrays), [nearMaxSize, nearMaxSize]).SetName("uint256[2^20][][] of two 63-element arrays");
+        yield return SizeOverflow(AbiType.Array(uint256Arrays, 2), [nearMaxSize, nearMaxSize]).SetName("uint256[2^20][][2] of 63-element arrays");
+        yield return SizeOverflow(AbiType.Tuple(uint256Arrays, uint256Arrays), (nearMaxSize, nearMaxSize)).SetName("(uint256[2^20][],uint256[2^20][]) of 63-element arrays");
+        yield return SizeOverflow(AbiType.Tuple(AbiType.Array(AbiType.Array(AbiType.UInt256, (1 << 25) - 1))), new UInt256[2][]).SetName("(uint256[2^25 - 1][]) of 2 elements");
+    }
+
+    private static TestCaseData SizeOverflow<T>(Abi<T> abi, T value) => new(abi, value);
+
+    [TestCaseSource(nameof(SizeOverflowTestCases))]
+    public void Size_Overflow<T>(Abi<T> abi, T value) =>
+        Assert.That(() => abi.Size(value), Throws.TypeOf<OverflowException>());
+
+    [Test]
+    public void Encode_SizeOverflow_KeepsInnerException()
+    {
+        AbiSignature<UInt256[][]> signature = new AbiSignature("f").With(AbiType.Array(AbiType.Array(AbiType.UInt256, 1 << 20)));
+        UInt256[][] value = new UInt256[1 << 7][]; // 2^7 * 2^25 = 2^32 wraps to zero in unchecked arithmetic
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(() => AbiCodec.Encode(signature, value),
+                Throws.TypeOf<AbiException>().With.InnerException.TypeOf<OverflowException>());
+            Assert.That(() => AbiCodec.Encode(signature, value, new byte[1024]),
+                Throws.TypeOf<AbiException>().With.InnerException.TypeOf<OverflowException>());
+        }
+    }
+
     private static IEnumerable<TestCaseData> LoneSurrogateTestCases()
     {
         yield return new TestCaseData("\uD800").SetName("lone high surrogate");

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using NUnit.Framework;
 
@@ -35,4 +36,8 @@ public class MathTests
     [TestCaseSource(nameof(PadTo32TestCases))]
     public void PadTo32(int value, int expected) =>
         Assert.That(Math.PadTo32(value), Is.EqualTo(expected));
+
+    [Test]
+    public void PadTo32_Overflow() =>
+        Assert.That(() => Math.PadTo32(int.MaxValue - 30), Throws.TypeOf<OverflowException>());
 }
