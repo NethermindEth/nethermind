@@ -29,7 +29,7 @@ public class MinGasPriceTxFilter(IBlocksConfig blocksConfig) : IMinGasPriceTxFil
         UInt256 baseFeePerGas = UInt256.Zero;
         if (spec.IsEip1559Enabled)
         {
-            baseFeePerGas = BaseFeeCalculator.Calculate(parentHeader, spec);
+            baseFeePerGas = BaseFeeCalculator.CalculateForReferenceSlot(parentHeader, spec);
             tx.TryCalculatePremiumPerGas(baseFeePerGas, out premiumPerGas);
         }
 

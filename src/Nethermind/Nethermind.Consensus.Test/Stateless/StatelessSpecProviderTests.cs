@@ -73,7 +73,7 @@ public class StatelessSpecProviderTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(Eip1559GasLimitAdjuster.AdjustGasLimit(spec, parent.GasLimit, MainnetSpecProvider.LondonBlockNumber), Is.EqualTo(parent.GasLimit));
-            Assert.That(BaseFeeCalculator.Calculate(parent, spec), Is.EqualTo(parent.BaseFeePerGas));
+            Assert.That(BaseFeeCalculator.CalculateForReferenceSlot(parent, spec), Is.EqualTo(parent.BaseFeePerGas));
         }
     }
 

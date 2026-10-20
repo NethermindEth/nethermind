@@ -54,7 +54,7 @@ namespace Nethermind.Consensus.Producers
             bool filterSource = false)
         {
             IReleaseSpec spec = _specProvider.GetSpec(targetBlock);
-            UInt256 baseFee = BaseFeeCalculator.Calculate(parent, spec);
+            UInt256 baseFee = BaseFeeCalculator.Calculate(parent, targetBlock, spec);
             PendingTransactionsView pending = _transactionPool.GetPendingForProduction(targetBlock, filterSource, baseFee);
             bool isRevalidatedForTarget = pending.IsRevalidated;
             IReadOnlyDictionary<AddressAsKey, Transaction[]> pendingTransactions = pending.Transactions;

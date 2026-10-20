@@ -20,7 +20,7 @@ namespace Nethermind.Consensus.Transactions
                 return AcceptTxResult.Accepted;
             }
 
-            UInt256 baseFee = BaseFeeCalculator.Calculate(parentHeader, spec);
+            UInt256 baseFee = BaseFeeCalculator.CalculateForReferenceSlot(parentHeader, spec);
             bool allowed = tx.MaxFeePerGas >= baseFee;
             return allowed
                 ? AcceptTxResult.Accepted

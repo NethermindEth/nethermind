@@ -17,7 +17,7 @@ public sealed class OptimismBaseFeeCalculator(
     IBaseFeeCalculator baseFeeCalculator
 ) : IBaseFeeCalculator
 {
-    public UInt256 Calculate(BlockHeader parent, IEip1559Spec specFor1559)
+    public UInt256 Calculate(BlockHeader parent, ulong timestamp, ulong? slotNumber, IEip1559Spec specFor1559)
     {
         IEip1559Spec spec = specFor1559;
         EIP1559Parameters eip1559Params = default;
@@ -46,8 +46,8 @@ public sealed class OptimismBaseFeeCalculator(
 
             // Override gas used for calculation if the DA footprint is larger
             UInt256 baseFee = daFootprint > parent.GasUsed
-                ? CalculateWithGasUsedOverride(parent, spec, daFootprint)
-                : baseFeeCalculator.Calculate(parent, spec);
+                ? CalculateWithGasUsedOverride(parent, timestamp, slotNumber, spec, daFootprint)
+                : baseFeeCalculator.Calculate(parent, timestamp, slotNumber, spec);
 
             if (eip1559Params.MinBaseFee > 0)
                 baseFee = UInt256.Max(baseFee, eip1559Params.MinBaseFee);
@@ -55,15 +55,15 @@ public sealed class OptimismBaseFeeCalculator(
             return baseFee;
         }
 
-        return baseFeeCalculator.Calculate(parent, spec);
+        return baseFeeCalculator.Calculate(parent, timestamp, slotNumber, spec);
     }
 
     // The parent is the shared cached header, read concurrently by RPC, validation and block production,
     // so the override is applied to a copy rather than written into it.
-    private UInt256 CalculateWithGasUsedOverride(BlockHeader parent, IEip1559Spec spec, ulong gasOverride)
+    private UInt256 CalculateWithGasUsedOverride(BlockHeader parent, ulong timestamp, ulong? slotNumber, IEip1559Spec spec, ulong gasOverride)
     {
         BlockHeader overridden = parent.Clone();
         overridden.GasUsed = gasOverride;
-        return baseFeeCalculator.Calculate(overridden, spec);
+        return baseFeeCalculator.Calculate(overridden, timestamp, slotNumber, spec);
     }
 }

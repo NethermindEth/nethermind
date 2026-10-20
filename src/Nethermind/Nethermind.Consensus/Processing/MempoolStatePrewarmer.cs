@@ -189,7 +189,7 @@ public sealed class MempoolStatePrewarmer : IDisposable
         ulong timestamp = PredictNextTimestamp(parent.Timestamp, _timestamper.UnixTime.Seconds, _slots);
         IReleaseSpec spec = _specProvider.GetSpec(new ForkActivation(number, timestamp));
 
-        return new NextBlockContext(BuildNextBlockHeader(parent, timestamp, spec), spec);
+        return new NextBlockContext(BuildNextBlockHeader(parent, timestamp, spec, _slots), spec);
     }
 
     /// <summary>
@@ -212,13 +212,17 @@ public sealed class MempoolStatePrewarmer : IDisposable
     /// <summary>
     /// Builds the synthetic "next block" header for warming.
     /// </summary>
-    private static BlockHeader BuildNextBlockHeader(BlockHeader parent, ulong timestamp, IReleaseSpec spec)
+    /// <remarks>
+    /// The header takes the slot after the parent's whatever its timestamp, so the base fee is priced for that slot: under
+    /// EIP-8198 it depends on the average slot length since the parent, which a missed slot leaves unchanged.
+    /// </remarks>
+    private static BlockHeader BuildNextBlockHeader(BlockHeader parent, ulong timestamp, IReleaseSpec spec, SlotSchedule slots)
     {
         BlockHeader header = parent.CreateSimulatedChild(timestamp);
         // Resolve the actual coinbase: on Clique, Beneficiary is a vote target, not the sealer.
         header.Beneficiary = parent.GasBeneficiary ?? Address.Zero;
         header.MixHash = parent.MixHash;
-        header.BaseFeePerGas = BaseFeeCalculator.Calculate(parent, spec);
+        header.BaseFeePerGas = BaseFeeCalculator.CalculateForNextSlot(parent, slots.GetNextSlotTimestamp(parent.Timestamp), spec);
         header.ExcessBlobGas = BlobGasCalculator.CalculateExcessBlobGas(parent, spec);
         header.ParentBeaconBlockRoot = parent.ParentBeaconBlockRoot;
 

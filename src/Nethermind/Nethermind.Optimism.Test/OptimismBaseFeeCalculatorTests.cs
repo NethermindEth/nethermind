@@ -45,7 +45,7 @@ public class OptimismBaseFeeCalculatorTests
             .WithExtraData(extraData)
             .TestObject;
 
-        UInt256 actualBaseFee = BaseFeeCalculator.Calculate(blockHeader, releaseSpec);
+        UInt256 actualBaseFee = BaseFeeCalculator.CalculateForReferenceSlot(blockHeader, releaseSpec);
 
         Assert.That(actualBaseFee, Is.EqualTo((UInt256)expectedBaseFee));
     }
@@ -101,7 +101,7 @@ public class OptimismBaseFeeCalculatorTests
             .WithExtraData(extraData)
             .TestObject;
 
-        UInt256 actualBaseFee = BaseFeeCalculator.Calculate(blockHeader, releaseSpec);
+        UInt256 actualBaseFee = BaseFeeCalculator.CalculateForReferenceSlot(blockHeader, releaseSpec);
 
         Assert.That(actualBaseFee, Is.EqualTo((UInt256)expectedBaseFee));
     }
@@ -125,14 +125,14 @@ public class OptimismBaseFeeCalculatorTests
         // Another caller sharing the cached parent header must never observe the DA-footprint override, not even mid-calculation.
         ulong? parentGasUsedDuringCalculation = null;
         IBaseFeeCalculator inner = Substitute.For<IBaseFeeCalculator>();
-        inner.Calculate(Arg.Any<BlockHeader>(), Arg.Any<IEip1559Spec>()).Returns(_ =>
+        inner.Calculate(Arg.Any<BlockHeader>(), Arg.Any<ulong>(), Arg.Any<ulong?>(), Arg.Any<IEip1559Spec>()).Returns(_ =>
         {
             parentGasUsedDuringCalculation = parent.GasUsed;
             return UInt256.One;
         });
         OptimismBaseFeeCalculator calculator = new(Spec.HoloceneTimeStamp, Spec.JovianTimeStamp, inner);
 
-        calculator.Calculate(parent, new OptimismReleaseSpec { IsEip1559Enabled = true });
+        calculator.Calculate(parent, parent.Timestamp + 2, null, new OptimismReleaseSpec { IsEip1559Enabled = true });
 
         using (Assert.EnterMultipleScope())
         {

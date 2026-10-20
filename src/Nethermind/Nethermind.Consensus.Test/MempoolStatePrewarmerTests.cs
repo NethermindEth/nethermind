@@ -205,7 +205,7 @@ public class MempoolStatePrewarmerTests
                 "the predicted header must sit on the next slot boundary: the EIP-4788 cells warmed for it are indexed by its timestamp");
             Assert.That(deltaHeader.MixHash, Is.EqualTo(parentHeader.MixHash), "MixHash is propagated from the parent");
             Assert.That(deltaHeader.ParentBeaconBlockRoot, Is.EqualTo(parentHeader.ParentBeaconBlockRoot), "ParentBeaconBlockRoot is propagated from the parent");
-            Assert.That(deltaHeader.BaseFeePerGas, Is.EqualTo(BaseFeeCalculator.Calculate(parentHeader, London.Instance)), "BaseFeePerGas is recalculated for the child");
+            Assert.That(deltaHeader.BaseFeePerGas, Is.EqualTo(BaseFeeCalculator.CalculateForReferenceSlot(parentHeader, London.Instance)), "BaseFeePerGas is recalculated for the child");
             Assert.That(deltaHeader.GasBeneficiary, Is.EqualTo(parentHeader.GasBeneficiary), "Beneficiary resolves to the parent's actual coinbase (Author), not a diverging governance vote target");
             txSource.Received(1).GetTransactions(parentHeader, deltaHeader, deltaHeader.GasLimit);
         }

@@ -96,6 +96,7 @@ namespace Nethermind.Consensus.Validators
                    && (orphaned || ValidateGasLimitRange(header, parent, spec, ref error))
                    && (orphaned || ValidateTimestamp(header, parent, ref error))
                    && (orphaned || ValidateBlockNumber(header, parent, ref error))
+                   && (orphaned || ValidateSlotNumberAfterParent(header, parent, spec, ref error))
                    && (orphaned || Validate1559(header, parent, spec, ref error))
                    && ValidateWithdrawalsRoot(header, spec, ref error)
                    && ValidateBlobGasFields(header, spec, ref error)
@@ -182,7 +183,7 @@ namespace Nethermind.Consensus.Validators
         {
             if (spec.IsEip1559Enabled)
             {
-                UInt256? expectedBaseFee = BaseFeeCalculator.Calculate(parent, spec);
+                UInt256? expectedBaseFee = BaseFeeCalculator.Calculate(parent, header, spec);
 
                 if (expectedBaseFee != header.BaseFeePerGas)
                 {
@@ -473,6 +474,26 @@ namespace Nethermind.Consensus.Validators
                     return false;
                 }
             }
+            return true;
+        }
+
+        /// <summary>
+        /// EIP-8198: the slot number must increase, since the base fee divides by the slots elapsed since the parent.
+        /// </summary>
+        /// <remarks>
+        /// Checked before the base fee, as in execution-specs. A missing slot number is left to <see cref="ValidateSlotNumber"/>;
+        /// a parent without one (EIP-7843 not yet active) has nothing to compare against.
+        /// </remarks>
+        protected bool ValidateSlotNumberAfterParent(BlockHeader header, BlockHeader parent, IReleaseSpec spec, ref string? error)
+        {
+            if (spec.IsEip8198Enabled && header.SlotNumber is { } slotNumber && parent.SlotNumber is { } parentSlotNumber
+                && slotNumber <= parentSlotNumber)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.ToString(BlockHeader.Format.Short)}) - slot number {slotNumber} is not after the parent's {parentSlotNumber}");
+                error = BlockErrorMessages.SlotNumberNotAfterParent(slotNumber, parentSlotNumber);
+                return false;
+            }
+
             return true;
         }
 

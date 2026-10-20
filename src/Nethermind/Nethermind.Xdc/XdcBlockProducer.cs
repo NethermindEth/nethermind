@@ -74,7 +74,7 @@ internal class XdcBlockProducer(
 
         xdcBlockHeader.TotalDifficulty = xdcParent.TotalDifficulty + 1;
 
-        xdcBlockHeader.BaseFeePerGas = BaseFeeCalculator.Calculate(parent, spec);
+        xdcBlockHeader.BaseFeePerGas = BaseFeeCalculator.Calculate(parent, xdcBlockHeader, spec);
 
         xdcBlockHeader.MixHash = Hash256.Zero;
 

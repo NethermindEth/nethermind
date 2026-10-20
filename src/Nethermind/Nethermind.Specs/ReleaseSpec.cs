@@ -73,16 +73,7 @@ public class ReleaseSpec : IReleaseSpec
     public Address? FeeCollector { get; set; }
     public UInt256? Eip1559BaseFeeMinValue { get; set; }
     public UInt256 ForkBaseFee { get; set; } = Eip1559Constants.DefaultForkBaseFee;
-    public UInt256 BaseFeeMaxChangeNumerator => DerivedSpecValues.BaseFeeMaxChangeNumerator(IsEip8198Enabled);
-
-    /// <remarks>Sets the configured 1/denominator rule; EIP-8198 replaces it while enabled.</remarks>
-    public UInt256 BaseFeeMaxChangeDenominator
-    {
-        get => DerivedSpecValues.BaseFeeMaxChangeDenominator(IsEip8198Enabled, _baseFeeMaxChangeDenominator);
-        set => _baseFeeMaxChangeDenominator = value;
-    }
-
-    private UInt256 _baseFeeMaxChangeDenominator = Eip1559Constants.DefaultBaseFeeMaxChangeDenominator;
+    public UInt256 BaseFeeMaxChangeDenominator { get; set; } = Eip1559Constants.DefaultBaseFeeMaxChangeDenominator;
     public ulong ElasticityMultiplier { get; set; } = Eip1559Constants.DefaultElasticityMultiplier;
     public IBaseFeeCalculator BaseFeeCalculator { get; set; } = new DefaultBaseFeeCalculator();
     public bool IsEip8198Enabled { get; set; }
