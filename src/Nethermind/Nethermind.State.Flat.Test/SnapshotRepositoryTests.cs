@@ -7,6 +7,8 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
+using Nethermind.State.Flat.NodeBuffer;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.State.Flat.Test;
@@ -161,6 +163,19 @@ public class SnapshotRepositoryTests
 
         bool leasedAfter = _repository.TryLeaseInMemoryState(to, SnapshotTier.InMemoryBase, out _);
         Assert.That(leasedAfter, Is.False);
+    }
+
+    [Test]
+    public void Dispose_ReleasesTheBufferPinsOfInMemorySnapshots([Values] bool compacted)
+    {
+        INodeRecordBufferPin pin = Substitute.For<INodeRecordBufferPin>();
+        Snapshot snapshot = new(CreateStateId(0), CreateStateId(1), _resourcePool.GetSnapshotContent(ResourcePool.Usage.ReadOnlyProcessingEnv),
+            _resourcePool, ResourcePool.Usage.ReadOnlyProcessingEnv, pin);
+        _repository.TryAdd(snapshot, compacted ? SnapshotTier.InMemoryCompacted : SnapshotTier.InMemoryBase);
+
+        _repository.Dispose();
+
+        pin.Received(1).Dispose();
     }
 
     #endregion

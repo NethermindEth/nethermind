@@ -13,6 +13,7 @@ internal sealed unsafe class NativeNodeBuffer : MemoryManager<byte>
     private const int MadvHugePage = 14;
 
     private nint _address;
+    private readonly void* _allocation;
     private readonly nuint _allocatedBytes;
 
     [DllImport("libc", EntryPoint = "madvise")]
@@ -24,22 +25,25 @@ internal sealed unsafe class NativeNodeBuffer : MemoryManager<byte>
         Length = length;
         bool useHugePages = OperatingSystem.IsLinux() && (nuint)length >= HugePageBytes;
         nuint alignment = useHugePages ? HugePageBytes : 64;
-        _allocatedBytes = ((nuint)Math.Max(length, 1) + alignment - 1) & ~(alignment - 1);
-        void* data = NativeMemory.AlignedAlloc(_allocatedBytes, alignment);
-        if (data == null) throw new OutOfMemoryException();
+        nuint alignedLength = ((nuint)Math.Max(length, 1) + alignment - 1) & ~(alignment - 1);
+        _allocatedBytes = alignedLength + alignment;
+        // The allocator zeroes a large allocation by mapping fresh pages, which become resident only once written, so a
+        // generation costs only what is appended to it. Clearing it here would commit every page up front.
+        _allocation = NativeMemory.AllocZeroed(_allocatedBytes);
+        if (_allocation == null) throw new OutOfMemoryException();
 
+        void* data = (void*)(((nuint)_allocation + alignment - 1) & ~(alignment - 1));
         bool pressureAdded = false;
         try
         {
             GC.AddMemoryPressure((long)_allocatedBytes);
             pressureAdded = true;
-            if (useHugePages) Madvise(data, _allocatedBytes, MadvHugePage);
-            new Span<byte>(data, length).Clear();
+            if (useHugePages) Madvise(data, alignedLength, MadvHugePage);
             _address = (nint)data;
         }
         catch
         {
-            NativeMemory.AlignedFree(data);
+            NativeMemory.Free(_allocation);
             if (pressureAdded) GC.RemoveMemoryPressure((long)_allocatedBytes);
             throw;
         }
@@ -75,7 +79,7 @@ internal sealed unsafe class NativeNodeBuffer : MemoryManager<byte>
         nint address = Interlocked.Exchange(ref _address, 0);
         if (address == 0) return;
 
-        NativeMemory.AlignedFree((void*)address);
+        NativeMemory.Free(_allocation);
         GC.RemoveMemoryPressure((long)_allocatedBytes);
     }
 }
