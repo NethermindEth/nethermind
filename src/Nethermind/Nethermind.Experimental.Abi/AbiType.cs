@@ -106,36 +106,38 @@ public static partial class AbiType
         },
     };
 
-    public static Abi<T[]> Array<T>(Abi<T> abi) => new()
+    public static Abi<T[]> Array<T>(Abi<T> abi)
     {
-        Name = $"{abi.Name}[]",
-        Read = (ref BinarySpanReader r) =>
-        {
-            UInt256 length = UInt256.Read(ref r);
-            // Empty element heads (`T[0]`) are bounded as a word so that allocations stay proportional to the input
-            if (length > (UInt256)(r.Remaining / int.Max(abi.HeadSize, 32))) throw new AbiException();
+        ArgumentOutOfRangeException.ThrowIfZero(abi.HeadSize);
 
-            return r.ReadArray(abi, (int)length);
-        },
-        Write = (ref BinarySpanWriter w, T[] array) =>
+        return new()
         {
-            UInt256.Write(ref w, (UInt256)array.Length);
-            w.WriteArray(abi, array);
-        },
-        TailSize = array =>
-        {
-            const int lengthSize = 32;
-            if (!abi.IsDynamic) return checked(lengthSize + array.Length * abi.HeadSize);
-
-            int size = lengthSize;
-            foreach (T e in array)
+            Name = $"{abi.Name}[]",
+            Read = (ref BinarySpanReader r) =>
             {
-                size = checked(size + 32 + abi.Size(e));
-            }
+                UInt256 length = UInt256.Read(ref r);
+                return r.ReadArray(abi, (int)length);
+            },
+            Write = (ref BinarySpanWriter w, T[] array) =>
+            {
+                UInt256.Write(ref w, (UInt256)array.Length);
+                w.WriteArray(abi, array);
+            },
+            TailSize = array =>
+            {
+                const int lengthSize = 32;
+                if (!abi.IsDynamic) return checked(lengthSize + array.Length * abi.HeadSize);
 
-            return size;
-        }
-    };
+                int size = lengthSize;
+                foreach (T e in array)
+                {
+                    size = checked(size + 32 + abi.Size(e));
+                }
+
+                return size;
+            }
+        };
+    }
 
     public static Abi<T[]> Array<T>(Abi<T> abi, int length)
     {
