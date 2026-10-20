@@ -1394,7 +1394,7 @@ public abstract class PrewarmerHandoffTestBase(IReleaseSpec spec)
         ProcessingScope = _container.BeginLifetimeScope(b =>
         {
             b.RegisterInstance(scopeProvider).As<IWorldStateScopeProvider>().ExternallyOwned();
-            b.RegisterInstance(worldStateManager).As<IWorldStateManager>().ExternallyOwned();
+            b.RegisterInstance(WrapWorldStateManager(worldStateManager)).As<IWorldStateManager>().ExternallyOwned();
             b.AddModule(mainModules);
         });
 
@@ -1466,6 +1466,9 @@ public abstract class PrewarmerHandoffTestBase(IReleaseSpec spec)
 
     /// <summary>Decorates the scope provider block processing reads through, under the pre-block caches.</summary>
     protected virtual IWorldStateScopeProvider WrapMainScopeProvider(IWorldStateScopeProvider provider) => provider;
+
+    /// <summary>Decorates the world state manager of block processing's scope, which the prewarmer's envs create their world states from.</summary>
+    protected virtual IWorldStateManager WrapWorldStateManager(IWorldStateManager manager) => manager;
 
     /// <summary>The state reader of the fixture's container, which reads past every cache.</summary>
     protected IStateReader StateReader => _container.Resolve<IWorldStateManager>().GlobalStateReader;

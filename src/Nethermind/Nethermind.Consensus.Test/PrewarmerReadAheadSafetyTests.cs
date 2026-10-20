@@ -21,6 +21,9 @@ using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.State;
+using Nethermind.State.SnapServer;
+using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 
 namespace Nethermind.Consensus.Test;
@@ -60,28 +63,19 @@ public class PrewarmerReadAheadSafetyTests(IReleaseSpec spec) : PrewarmerReadAhe
         block.Header.StateRoot = executed.StateRoot;
         block.Header.Hash = block.Header.CalculateHash();
 
-        // A warm pass that gets ahead of every read block processing makes, as one may on a loaded machine while the test
-        // thread waits for a core, leaves block processing no read past the caches, and so no read-ahead: run it again.
-        const int maxAttempts = 5;
-        int attempt = 0;
-        int started;
-        do
-        {
-            attempt++;
-            List<string> wrong = [];
-            int before = PreWarmer.ReadAheadsStarted;
+        List<string> wrong = [];
+        int before = PreWarmer.ReadAheadsStarted;
 
-            Run run = ProcessWithSession(block, afterSession: () => wrong.AddRange(EntriesNotAtTheParent()));
+        // A warm pass that got ahead of every read block processing makes would leave it no read past the caches, and so
+        // no read-ahead: the prewarmer's reads are held until block processing has started one.
+        Run run = ProcessWithSessionAfterReadAhead(block, afterSession: () => wrong.AddRange(EntriesNotAtTheParent()));
 
-            AssertSameRun(run, executed);
-            Assert.That(wrong, Is.Empty, $"every account and slot the caches hold before the write-back is the parent's (attempt {attempt})");
-            started = PreWarmer.ReadAheadsStarted - before;
-        }
-        while (started == 0 && attempt < maxAttempts);
-
+        AssertSameRun(run, executed);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(started, Is.GreaterThan(0), $"precondition: block processing started read-aheads in one of {maxAttempts} attempts");
+            Assert.That(PreWarmer.ReadAheadsStarted - before, Is.GreaterThan(0), "precondition: block processing started a read-ahead");
+            Assert.That(WarmingHoldTimeouts, Is.Zero, "precondition: the prewarmer's reads were let go by a read-ahead");
+            Assert.That(wrong, Is.Empty, "every account and slot the caches hold before the write-back is the parent's");
             Assert.That(PaceTimeouts, Is.Zero);
         }
     }
@@ -267,11 +261,16 @@ public abstract class PrewarmerReadAheadTestBase(IReleaseSpec spec) : PrewarmerH
     private Random _pacing = new();
     private BlockCachePreWarmer? _paced;
     private int _paceTimeouts;
+    private Func<bool>? _warmingHeldUntil;
+    private int _warmingHoldTimeouts;
 
     /// <summary>Whether block processing's reads are paced at random rather than held until the read-ahead is done.</summary>
     protected bool RandomPacing { get; set; }
 
     protected int PaceTimeouts => Volatile.Read(ref _paceTimeouts);
+
+    /// <summary>How many times the prewarmer's held reads were let go because no read-ahead started in time.</summary>
+    protected int WarmingHoldTimeouts => Volatile.Read(ref _warmingHoldTimeouts);
 
     /// <summary>Seeds the random pacing, so a failure replays its pacing decisions from the seed.</summary>
     protected void SeedPacing(int seed)
@@ -291,6 +290,43 @@ public abstract class PrewarmerReadAheadTestBase(IReleaseSpec spec) : PrewarmerH
 
     protected override IWorldStateScopeProvider WrapMainScopeProvider(IWorldStateScopeProvider provider) => new PacedScopeProvider(provider, Pace);
 
+    protected override IWorldStateManager WrapWorldStateManager(IWorldStateManager manager) =>
+        new WarmingStateManager(manager, provider => new PacedScopeProvider(provider, HoldWarming));
+
+    /// <summary>
+    /// Processes the block with its prewarming session open, holding the prewarmer's reads past the caches until block
+    /// processing has started a read-ahead, so ordinary warming cannot fill the caches with every read it would start on.
+    /// </summary>
+    /// <remarks>
+    /// Held reads are let go after <see cref="PaceTimeout"/> at the latest, counted in <see cref="WarmingHoldTimeouts"/>:
+    /// a block whose read-ahead never starts fails its test rather than hanging it.
+    /// </remarks>
+    protected Run ProcessWithSessionAfterReadAhead(Block block, Action? afterSession = null)
+    {
+        BlockCachePreWarmer preWarmer = PreWarmer;
+        int before = preWarmer.ReadAheadsStarted;
+        Volatile.Write(ref _warmingHeldUntil, () => preWarmer.ReadAheadsStarted != before);
+        try
+        {
+            return ProcessWithSession(block, afterSession);
+        }
+        finally
+        {
+            Volatile.Write(ref _warmingHeldUntil, null);
+        }
+    }
+
+    private void HoldWarming()
+    {
+        if (Volatile.Read(ref _warmingHeldUntil) is not { } released) return;
+        bool letGo = SpinWait.SpinUntil(() => released() || Volatile.Read(ref _warmingHeldUntil) != released, PaceTimeout);
+        // Every read goes on from here; only the read that ends the hold counts a timeout.
+        if (Interlocked.CompareExchange(ref _warmingHeldUntil, null, released) == released && !letGo)
+        {
+            Interlocked.Increment(ref _warmingHoldTimeouts);
+        }
+    }
+
     private void Pace()
     {
         if (ProcessingScope is null) return;
@@ -309,7 +345,23 @@ public abstract class PrewarmerReadAheadTestBase(IReleaseSpec spec) : PrewarmerH
         }
     }
 
-    /// <summary>Holds block processing's reads under the pre-block caches, the ones that go to the backing store.</summary>
+    /// <summary>A world state manager whose resettable world states, the ones the prewarmer's envs read, are wrapped.</summary>
+    private sealed class WarmingStateManager(IWorldStateManager inner, Func<IWorldStateScopeProvider, IWorldStateScopeProvider> wrap) : IWorldStateManager
+    {
+        public IWorldStateScopeProvider GlobalWorldState => inner.GlobalWorldState;
+        public IStateReader GlobalStateReader => inner.GlobalStateReader;
+        public ISnapStateServer SnapStateServer => inner.SnapStateServer;
+        public IReadOnlyKeyValueStore? HashServer => inner.HashServer;
+        public IWorldStateScopeProvider CreateResettableWorldState() => wrap(inner.CreateResettableWorldState());
+        public IWorldStateScopeProvider CreateReadOnlyQueryWorldState() => inner.CreateReadOnlyQueryWorldState();
+        public IOverridableWorldScope CreateOverridableWorldScope() => inner.CreateOverridableWorldScope();
+        public IReadOnlyTrieStore CreateReadOnlyTrieStore() => inner.CreateReadOnlyTrieStore();
+        public bool VerifyTrie(BlockHeader stateAtBlock, CancellationToken cancellationToken) => inner.VerifyTrie(stateAtBlock, cancellationToken);
+        public void FlushCache(CancellationToken cancellationToken) => inner.FlushCache(cancellationToken);
+        public void DropStateNotReachableFrom(BlockHeader head) => inner.DropStateNotReachableFrom(head);
+    }
+
+    /// <summary>Holds the reads of a scope under the pre-block caches, the ones that go to the backing store, at its pace.</summary>
     private sealed class PacedScopeProvider(IWorldStateScopeProvider inner, Action pace) : IWorldStateScopeProvider
     {
         public bool HasRoot(BlockHeader? baseBlock) => inner.HasRoot(baseBlock);
