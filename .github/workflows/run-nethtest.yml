@@ -352,7 +352,7 @@ jobs:
           jq -s '.' "$ENTRIES_FILE"
           echo "matrix=$MATRIX" >> "$GITHUB_OUTPUT"
 
-      # Pull requests run only the EEST tests that the change can affect (scripts/ci/select_tests.py, model
+      # Pull requests run only the EEST tests that the change can affect (tools/TestSelection, model
       # built hourly by test-selection.yml); master runs everything. The ci-full label, the checked and
       # no-intrinsics variants, a stale or young model, a build-wide or harness change, or any error here
       # runs everything.
@@ -379,8 +379,8 @@ jobs:
           git fetch --no-tags --depth=1 origin "$BASE_SHA"
           git diff --no-renames --name-only "$BASE_SHA" HEAD > "$work/changed.txt"
           # Without a model artifact the selector reports that it has no model and keeps every test.
-          python3 scripts/ci/select_tests.py download --out "$work/model"
-          python3 scripts/ci/select_tests.py select-eest --model "$work/model/model.json.gz" \
+          scripts/ci/test-selection.sh download --out "$work/model"
+          scripts/ci/test-selection.sh select-eest --model "$work/model/model.json.gz" \
             --inventory "$work/model/inventory.json.gz" --changed-files "$work/changed.txt" --run "$GITHUB_RUN_ID" \
             --matrix "$work/matrix.json" --out-matrix "$work/selected.json" --filters "$work/filters" \
             | tee -a "$GITHUB_STEP_SUMMARY"

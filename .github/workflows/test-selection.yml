@@ -1,7 +1,7 @@
 name: Test selection
 
 # Builds the model that pull requests use to run only the tests their change can affect
-# (scripts/ci/select_tests.py, .github/actions/select-tests, the Select EEST tests step of run-nethtest.yml).
+# (tools/TestSelection, .github/actions/select-tests, the Select EEST tests step of run-nethtest.yml).
 # Every hour it adds the finished test runs to the journal, growing it back to 60 days, and rebuilds the model.
 # Once a day it refreshes the test costs and replays the selector over the journal into the job summary: the
 # share of cost it runs and the failures it would have hidden.
@@ -42,17 +42,15 @@ jobs:
           fetch-depth: 0
           filter: blob:none
 
-      - name: Set up Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: '3.12'
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v5
 
       - name: Restore the state
         env:
           SEED: ${{ inputs.seed }}
         run: |
           # A failed download fails the run, so a short outage never publishes a model from an empty journal.
-          python scripts/ci/select_tests.py download --out "$STATE"
+          scripts/ci/test-selection.sh download --out "$STATE"
           if [ -n "$SEED" ] && [ ! -f "$STATE/journal.jsonl.gz" ]; then
             [[ "$SEED" =~ ^[A-Za-z0-9._/-]+$ ]] || { echo "::error::invalid seed branch"; exit 1; }
             git fetch --no-tags --depth=1 origin "refs/heads/$SEED"
@@ -67,19 +65,19 @@ jobs:
         run: |
           run=$(gh run list -R "$GITHUB_REPOSITORY" --workflow nethermind-tests.yml --branch master --event push \
             --status success -L 1 --json databaseId -q '.[0].databaseId')
-          python scripts/ci/select_tests.py inventory --run "$run" --out "$STATE/inventory.json.gz"
+          scripts/ci/test-selection.sh inventory --run "$run" --out "$STATE/inventory.json.gz"
           date -u +%F > "$STATE/inventory-date"
 
       - name: Collect runs
-        run: python scripts/ci/select_tests.py collect --journal "$STATE/journal.jsonl.gz"
+        run: scripts/ci/test-selection.sh collect --journal "$STATE/journal.jsonl.gz"
 
       - name: Build the model
-        run: python scripts/ci/select_tests.py model --journal "$STATE/journal.jsonl.gz" --out "$STATE/model.json.gz"
+        run: scripts/ci/test-selection.sh model --journal "$STATE/journal.jsonl.gz" --out "$STATE/model.json.gz"
 
       - name: Replay the selector over the journal
         if: env.DAILY == 'true'
         run: |
-          python scripts/ci/select_tests.py replay --journal "$STATE/journal.jsonl.gz" \
+          scripts/ci/test-selection.sh replay --journal "$STATE/journal.jsonl.gz" \
             --inventory "$STATE/inventory.json.gz" --report "$STATE/report.md"
           cat "$STATE/report.md" >> "$GITHUB_STEP_SUMMARY"
 
@@ -97,7 +95,7 @@ jobs:
           retention-days: 7
 
       # Each run supersedes the previous one; keep the newest two so a broken run can fall back. Only artifacts of
-      # master runs in this repository count (as in select_tests.py download), so a fork's artifact is left alone.
+      # master runs in this repository count (as in the download command), so a fork's artifact is left alone.
       - name: Delete superseded artifacts
         run: |
           gh api --paginate "repos/$GITHUB_REPOSITORY/actions/artifacts?name=test-selection-model&per_page=100" \

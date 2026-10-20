@@ -1,7 +1,7 @@
 name: Select test projects
 description: >-
   Writes the NUnit matrices of a workflow from scripts/ci/test-matrices.json. A pull request keeps only the test
-  projects that its change can affect (scripts/ci/select_tests.py, model built hourly by test-selection.yml);
+  projects that its change can affect (tools/TestSelection, model built hourly by test-selection.yml);
   every other event, the ci-full label, and any problem with the selection keep every matrix whole.
 
 inputs:
@@ -20,6 +20,11 @@ outputs:
 runs:
   using: composite
   steps:
+    # A failed setup shows as a failed selection below, which runs every test.
+    - name: Set up .NET
+      continue-on-error: true
+      uses: actions/setup-dotnet@v5
+
     - name: Select test projects
       id: select
       shell: bash
@@ -46,9 +51,9 @@ runs:
             git fetch --no-tags --depth=1 origin "$BASE_SHA" || return 1
             git diff --no-renames --name-only "$BASE_SHA" HEAD > "$work/changed.txt" || return 1
             # Without a model artifact the selector reports that it has no model and keeps every test.
-            python3 scripts/ci/select_tests.py download --out "$work/model" || return 1
+            scripts/ci/test-selection.sh download --out "$work/model" || return 1
           fi
-          python3 scripts/ci/select_tests.py select-projects --model "$work/model/model.json.gz" \
+          scripts/ci/test-selection.sh select-projects --model "$work/model/model.json.gz" \
             --changed-files "$work/changed.txt" --run "$RUN_ID" --matrices scripts/ci/test-matrices.json \
             --workflow "$WORKFLOW" --event "$EVENT" --output "$work/output" || return 1
         }

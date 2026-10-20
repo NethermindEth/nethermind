@@ -2,7 +2,7 @@ name: Master test failures
 
 # Pull requests run only the tests their change can affect (test-selection.yml), so a regression can reach
 # master. When a test workflow fails on master, this opens one issue for it, assigned to the author of the pull
-# request that most likely caused it (scripts/ci/master_failures.py). The issue closes when the workflow is
+# request that most likely caused it (tools/TestSelection report-master-failure). The issue closes when the workflow is
 # green on master again.
 on:
   workflow_run:
@@ -40,16 +40,14 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v6
 
-      - name: Set up Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: '3.12'
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v5
 
       # The journal tells failures that the environment explains from regressions; the model links projects
       # to the failing tests. Without them every failure counts and only the dependency graph names a cause.
       - name: Download the selection state
         if: github.event.workflow_run.conclusion == 'failure'
-        run: python scripts/ci/select_tests.py download --out "$STATE" || echo "::warning::no selection state"
+        run: scripts/ci/test-selection.sh download --out "$STATE" || echo "::warning::no selection state"
 
       - name: Report
         # bash runs with pipefail, so tee cannot hide a failed report.
@@ -57,5 +55,5 @@ jobs:
         env:
           RUN_ID: ${{ github.event.workflow_run.id }}
         run: |
-          python scripts/ci/master_failures.py --run "$RUN_ID" \
+          scripts/ci/test-selection.sh report-master-failure --run "$RUN_ID" \
             --journal "$STATE/journal.jsonl.gz" --model "$STATE/model.json.gz" | tee -a "$GITHUB_STEP_SUMMARY"

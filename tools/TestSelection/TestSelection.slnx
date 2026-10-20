@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="TestSelection.csproj" />
+  <Project Path="../TestSelection.Test/Nethermind.TestSelection.Test.csproj" />
+</Solution>

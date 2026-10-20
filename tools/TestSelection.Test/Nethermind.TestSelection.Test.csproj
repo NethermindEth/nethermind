@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <Import Project="../../src/Nethermind/tests.props" />
+
+  <PropertyGroup>
+    <Nullable>enable</Nullable>
+    <RootNamespace>Nethermind.TestSelection.Test</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="NSubstitute" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../TestSelection/TestSelection.csproj" />
+  </ItemGroup>
+
+</Project>
