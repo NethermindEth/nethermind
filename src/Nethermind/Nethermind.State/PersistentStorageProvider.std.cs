@@ -6,6 +6,7 @@ using System.Buffers;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -38,6 +39,48 @@ internal sealed partial class PersistentStorageProvider
     }
 
     private partial bool HasCapturedOriginals => _originalValues.Count != 0 || _pendingOriginalValues is { Count: > 0 };
+
+    // The pending originals are indexed lazily, so a slot's round original is read from its block change while the
+    // round has no storage clear; the originals map stays the fallback.
+    private partial bool TryGetRoundOriginal(in StorageCell storageCell, out UInt256 value)
+    {
+        Address address = storageCell.Address;
+        if (_storageClearJournal.Count != 0 || (_destroyedThisRound.Count != 0 && _destroyedThisRound.Contains(address))
+            || !TryGetStorage(address, out PerContractState? storage))
+        {
+            value = default;
+            return false;
+        }
+
+        return storage.TryGetRoundOriginal(in storageCell.Index, _originalsRound, out value);
+    }
+
+    private bool TryGetStorage(Address address, [NotNullWhen(true)] out PerContractState? storage)
+    {
+        if (TryGetRememberedStorage(address, out storage)) return true;
+        if (!_storages.TryGetValue(address, out storage)) return false;
+
+        RememberStorage(address, storage);
+        return true;
+    }
+
+    private partial bool SaveChangeUnlessRoundOriginal(in Change change, bool hasStorageClears)
+    {
+        if (!hasStorageClears)
+        {
+            return GetOrCreateStorage(change.StorageCell.Address)
+                .SaveChangeUnlessRoundOriginal(in change.StorageCell, in change.Value, _originalsRound);
+        }
+
+        if (_originalValues.TryGetValue(change.StorageCell, out UInt256 initialValue)
+            && initialValue == change.Value && !WasCleared(change.StorageCell.Address))
+        {
+            return false;
+        }
+
+        GetOrCreateStorage(change.StorageCell.Address).SaveChange(change.StorageCell, change.Value);
+        return true;
+    }
 
     private partial void CaptureOriginalValue(in StorageCell cell, in UInt256 value)
     {

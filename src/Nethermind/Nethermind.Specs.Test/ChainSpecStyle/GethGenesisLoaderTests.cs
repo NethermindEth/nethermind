@@ -928,6 +928,43 @@ public class GethGenesisLoaderTests
         }
     }
 
+    private static string ChainFile(string name) => Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../", "Chains", name);
+
+    [TestCase("foundation.json")]
+    [TestCase("sepolia.json")]
+    public void Mainnet_and_sepolia_genesis_leave_eip8198_off(string file)
+    {
+        ChainSpec chainSpec = LoadChainSpec(ChainFile(file));
+        ChainSpecBasedSpecProvider provider = new(chainSpec);
+        IReleaseSpec final = provider.GetFinalSpec();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chainSpec.Parameters.Eip8198TransitionTimestamp, Is.Null);
+            Assert.That(final.IsEip8198Enabled, Is.False);
+            Assert.That(final.BaseFeeMaxChangeNumerator, Is.EqualTo(UInt256.One));
+            Assert.That(final.BaseFeeMaxChangeDenominator, Is.EqualTo((UInt256)8));
+            Assert.That(provider.Eip8198SlotDurationMs, Is.Null);
+            Assert.That(provider.GetSlotSchedule(12).GetSecondsPerSlot(Nethermind.Core.Specs.SpecProviderExtensions.LastScheduledForkTimestamp), Is.EqualTo(12UL));
+        }
+    }
+
+    [TestCase("foundation.json")]
+    [TestCase("sepolia.json")]
+    public void Mainnet_and_sepolia_genesis_load_an_eip8198_slot_duration(string file)
+    {
+        System.Text.Json.Nodes.JsonNode genesis = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(ChainFile(file)))!;
+        genesis["config"]!["eip8198SlotDurationMs"] = 10_000;
+        ChainSpecBasedSpecProvider provider = new(LoadAutoDetecting(genesis.ToJsonString()));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(provider.Eip8198SlotDurationMs, Is.EqualTo(10_000UL));
+            // EIP-8198 is not scheduled, so the slot length stays Blocks.SecondsPerSlot.
+            Assert.That(provider.GetSlotSchedule(12).GetSecondsPerSlot(Nethermind.Core.Specs.SpecProviderExtensions.LastScheduledForkTimestamp), Is.EqualTo(12UL));
+        }
+    }
+
     [Test]
     public void Bogota_time_alone_loads() =>
         Assert.That(() => LoadStandardGethGenesis(configExtra: "\"bogotaTime\": 1792416379"), Throws.Nothing);

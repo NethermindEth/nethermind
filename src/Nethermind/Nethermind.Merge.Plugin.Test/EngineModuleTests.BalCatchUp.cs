@@ -5,6 +5,7 @@ using System;
 using System.Linq;
 using System.Threading.Tasks;
 using Autofac;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Test;
@@ -20,10 +21,11 @@ public partial class EngineModuleTests
 {
     // The counters are static and other tests run alongside, so this checks the chain's own log of the decision.
     [Test]
-    public async Task NewPayloadV5_executes_catch_up_blocks_and_counts_them_when_unfinalized([Values] bool catchingUp)
+    public async Task NewPayloadV5_executes_catch_up_blocks_and_counts_them_when_unfinalized([Values] bool catchingUp, [Values] bool enableCatchUp)
     {
         TestLogger catchUpLog = new();
         using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.Instance, configurer: builder => builder
+            .AddSingleton<ISyncConfig>(new SyncConfig { ReconstructFinalizedStateFromBlockAccessLists = enableCatchUp })
             // The processor reads the clock through ITimestamper, which the test chain otherwise leaves on the system clock.
             .AddSingleton<ITimestamper>(static ctx => ctx.Resolve<ManualTimestamper>())
             .AddDecorator<ILogManager>((_, inner) => new CatchUpLogManager(inner, catchUpLog)));
@@ -40,7 +42,7 @@ public partial class EngineModuleTests
         {
             Assert.That(chain.BlockTree.Head!.Hash, Is.EqualTo(payload.BlockHash), "the payload was validated and became the head");
             Assert.That(catchUpLog.LogList, Has.None.StartsWith("Reconstructed"), "engine payloads always execute");
-            Assert.That(executed, catchingUp ? Has.Exactly(1).Contains($"{payload.BlockNumber}").And.Contains(nameof(BalCatchUpFallbackReason.NotFinalized)) : Is.Empty,
+            Assert.That(executed, catchingUp && enableCatchUp ? Has.Exactly(1).Contains($"{payload.BlockNumber}").And.Contains(nameof(BalCatchUpFallbackReason.NotFinalized)) : Is.Empty,
                 "the payload is above the finalized block the forkchoice reported");
         }
     }

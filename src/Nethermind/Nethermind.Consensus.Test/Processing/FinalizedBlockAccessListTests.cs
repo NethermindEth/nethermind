@@ -265,9 +265,10 @@ public class FinalizedBlockAccessListTests(bool useFlatDb)
         block.DisposeAccountChanges();
     }
 
+    [TestCase(null, true)]
     [TestCase(false, true)]
     [TestCase(true, false)]
-    public void Disabled_configuration_or_chain_without_access_lists_keeps_normal_execution(bool enabled, bool accessListChain)
+    public void Disabled_configuration_or_chain_without_access_lists_keeps_normal_execution(bool? enabled, bool accessListChain)
     {
         using TestEnvironment env = new(useFlatDb, enabled, accessListChain);
         Assert.That(env.Processor, Is.Not.InstanceOf<FinalizedBlockAccessListProcessor>());
@@ -394,11 +395,12 @@ public class FinalizedBlockAccessListTests(bool useFlatDb)
         public FinalizedBlockAccessListPolicy Policy { get; }
         public Block Genesis { get; }
 
-        public TestEnvironment(bool useFlatDb, bool enabled = true, bool accessListChain = true, IReleaseSpec? releaseSpec = null, ISpecProvider? specProvider = null, IWorldStateManager? parentReader = null)
+        public TestEnvironment(bool useFlatDb, bool? enabled = true, bool accessListChain = true, IReleaseSpec? releaseSpec = null, ISpecProvider? specProvider = null, IWorldStateManager? parentReader = null)
         {
             _releaseSpec = releaseSpec ?? Amsterdam.Instance;
             specProvider ??= new Nethermind.Specs.TestSpecProvider(_releaseSpec);
-            SyncConfig sync = new() { ReconstructFinalizedStateFromBlockAccessLists = enabled };
+            SyncConfig sync = new();
+            if (enabled is { } enableCatchUp) sync.ReconstructFinalizedStateFromBlockAccessLists = enableCatchUp;
             Beacon.MergeTransitionFinished.Returns(true);
             _container = new ContainerBuilder().AddModule(new TestNethermindModule(new FlatDbConfig { Enabled = useFlatDb }))
                 .AddSingleton(specProvider)

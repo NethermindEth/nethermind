@@ -24,7 +24,7 @@ public interface ISyncConfig : IConfig
         DefaultValue = "false")]
     bool FastSync { get; set; }
 
-    [ConfigItem(Description = "Whether to reconstruct downloaded consensus-finalized blocks from their EIP-7928 block access lists. Blocks received through the engine API execute normally.", DefaultValue = "true")]
+    [ConfigItem(Description = "Whether to reconstruct downloaded consensus-finalized blocks from their EIP-7928 block access lists. Blocks received through the engine API execute normally.", DefaultValue = "false")]
     bool ReconstructFinalizedStateFromBlockAccessLists { get; set; }
 
     [Obsolete]

@@ -27,9 +27,10 @@ namespace Nethermind.Consensus.Processing;
 ///     the validator can merge them in canonical order. Each processor keeps a pooled
 ///     <see cref="ParentReaderLease"/> for the whole block — a snapshot of the parent-state
 ///     world from which the BAL-backed world state reads any value the suggested BAL doesn't
-///     carry at the current index. The lease is attached per tx and released when the block's
-///     post-execution slice is merged, by the next block's <c>Setup</c> if the block failed before
-///     that, or when the processor is disposed.
+///     carry at the current index. The lease is attached per tx. Once the last tx slot is rented,
+///     each worker releases the lease of the processor it returns, and the first one also releases
+///     the leases of idle processors. The post-execution merge releases any left, normally none, the
+///     next block's <c>Setup</c> covers a block that failed, and disposing a processor releases its lease.
 ///   * <see cref="SequentialTxProcessorWithWorldStateManager"/> reuses a single processor
 ///     for the whole block.
 /// <see cref="TxProcessorWithWorldState"/> bundles the tx processor with its world states
@@ -84,6 +85,13 @@ public partial class BlockAccessListManager
         private readonly ObjectPool<IReadOnlyTxProcessorSource>? _parentReaderEnvPool;
         private int _processorCount;
 
+        // Transaction slots of the block not rented yet. Once it is zero, every processor returned from a transaction has
+        // served its last one in the block, so its worker releases its parent reader instead of the block thread.
+        private int _txRentsLeft;
+
+        // Elects the one worker that releases the readers still kept by idle processors after the last rent.
+        private int _keptReadersReleased;
+
         public ParallelTxProcessorWithWorldStateManager(
             IWorldState stateProvider,
             ILogManager logManager,
@@ -114,13 +122,17 @@ public partial class BlockAccessListManager
             ReclaimAndResize(newLastBalIndex + 1, previousSize);
             _lastBalIndex = newLastBalIndex;
 
-            // Normally released when the block's post-execution slice is merged; this covers a block that failed before it.
+            // Normally released by the workers once the last transaction is rented; this covers a block that failed before it.
             ReleaseKeptParentReaders();
+            _txRentsLeft = block.Transactions.Length;
+            _keptReadersReleased = 0;
         }
 
         /// <summary>A parent reader serves one block: it reads that block's parent state through caches that change
         /// between blocks, and holds the snapshots under it until released.</summary>
-        /// <remarks>Runs while no worker rents a processor. It rotates the queue instead of enumerating it, because
+        /// <remarks>Runs while no worker rents a processor, though other workers may still return theirs. It may miss a
+        /// processor returned meanwhile, which the release at the post-execution merge then covers, and a processor
+        /// visited twice releases nothing the second time. It rotates the queue instead of enumerating it, because
         /// enumerating a <see cref="ConcurrentQueue{T}"/> freezes its segments and makes the next enqueues allocate new ones.</remarks>
         public void ReleaseKeptParentReaders()
         {
@@ -162,6 +174,7 @@ public partial class BlockAccessListManager
                 processor.WorldState.SetGeneratingBlockAccessList(StaticPool<BlockAccessListAtIndex>.Rent());
                 processor.Setup(_currentBlock, _currentCtx, (uint)idx, parentReader, _readPlan);
                 _inUse[idx] = processor;
+                if (IsTransactionSlot(idx)) Interlocked.Decrement(ref _txRentsLeft);
                 return processor;
             }
             catch
@@ -197,8 +210,16 @@ public partial class BlockAccessListManager
             processor.WorldState.SetGeneratingBlockAccessList(null);
             processor.DetachParentReader();
             _inUse[idx] = null;
+
+            // No later transaction of the block rents a processor, so this is its last use in the block: release the
+            // reader here, on the worker, in parallel with the other workers.
+            bool lastUse = idx == _lastBalIndex || (IsTransactionSlot(idx) && Volatile.Read(ref _txRentsLeft) <= 0);
+            if (lastUse) processor.ReleaseParentReader();
             ReturnProcessor(processor);
+            if (lastUse && IsTransactionSlot(idx) && Interlocked.Exchange(ref _keptReadersReleased, 1) == 0) ReleaseKeptParentReaders();
         }
+
+        private bool IsTransactionSlot(int idx) => idx > 0 && idx < _lastBalIndex;
 
         /// <summary>
         /// Merges the per-tx BAL into <paramref name="target"/> in caller-controlled order, then
@@ -211,7 +232,8 @@ public partial class BlockAccessListManager
             int idx = ClampBalIndex(balIndex);
 
             Return((uint)idx);
-            // The post-execution slice is the block's last use of the parent state.
+            // Normally a no-op: the workers released the readers after the last rent. This covers a transaction slot that
+            // was never rented, and a processor returned to the pool after the worker that released the idle ones checked it.
             if (idx == _lastBalIndex) ReleaseKeptParentReaders();
 
             BlockAccessListAtIndex? source = _perTxBal[idx];
