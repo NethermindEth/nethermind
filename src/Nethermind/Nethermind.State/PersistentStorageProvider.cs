@@ -244,28 +244,6 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         _lastCapturedOriginal = value;
     }
 
-    private bool TryGetRoundOriginal(in StorageCell storageCell, out UInt256 value)
-    {
-        Address address = storageCell.Address;
-        if (_storageClearJournal.Count != 0 || (_destroyedThisRound.Count != 0 && _destroyedThisRound.Contains(address))
-            || !TryGetStorage(address, out PerContractState? storage))
-        {
-            value = default;
-            return false;
-        }
-
-        return storage.TryGetRoundOriginal(in storageCell.Index, _originalsRound, out value);
-    }
-
-    private bool TryGetStorage(Address address, [NotNullWhen(true)] out PerContractState? storage)
-    {
-        if (TryGetRememberedStorage(address, out storage)) return true;
-        if (!_storages.TryGetValue(address, out storage)) return false;
-
-        RememberStorage(address, storage);
-        return true;
-    }
-
     /// <summary>The one-entry memo that <see cref="GetOrCreateStorage"/> and <see cref="TryGetStorage"/> share.</summary>
     private bool TryGetRememberedStorage(Address address, [NotNullWhen(true)] out PerContractState? storage)
     {
@@ -448,24 +426,6 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
                 RequireTrace(trace)[change.StorageCell] = new StorageChangeTrace(change.Value);
             }
         }
-    }
-
-    private bool SaveChangeUnlessRoundOriginal(in Change change, bool hasStorageClears)
-    {
-        PerContractState storage = GetOrCreateStorage(change.StorageCell.Address);
-        if (!hasStorageClears)
-        {
-            return storage.SaveChangeUnlessRoundOriginal(in change.StorageCell, in change.Value, _originalsRound);
-        }
-
-        if (_originalValues.TryGetValue(change.StorageCell, out UInt256 initialValue)
-            && initialValue == change.Value && !WasCleared(change.StorageCell.Address))
-        {
-            return false;
-        }
-
-        storage.SaveChange(change.StorageCell, change.Value);
-        return true;
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
@@ -763,6 +723,14 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     private partial void CaptureOriginalValue(in StorageCell cell, in UInt256 value);
 
     private partial void EnsureOriginalsIndexed();
+
+    /// <summary>The original of a slot read in this round, taken from the slot's block change instead of the originals map.</summary>
+    /// <returns><c>false</c> when the block change cannot answer, and the caller reads the originals map.</returns>
+    private partial bool TryGetRoundOriginal(in StorageCell storageCell, out UInt256 value);
+
+    /// <summary>Saves a committed change unless it writes back the slot's original.</summary>
+    /// <returns><c>true</c> when the change was saved, so its storage root needs an update.</returns>
+    private partial bool SaveChangeUnlessRoundOriginal(in Change change, bool hasStorageClears);
 
     private partial void EndPendingOriginalsRound();
 
