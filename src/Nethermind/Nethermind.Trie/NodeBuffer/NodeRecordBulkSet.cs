@@ -13,6 +13,7 @@ using Nethermind.Core.Cpu;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Threading;
+using Nethermind.Serialization.Rlp;
 
 using BulkSetEntry = Nethermind.Trie.PatriciaTree.BulkSetEntry;
 
@@ -159,11 +160,11 @@ internal static class NodeRecordBulkSet
 
         private ReadOnlySpan<byte> ReadInlineLeaf(out ReadOnlySpan<byte> value)
         {
-            NodeRlp.NextItem(Inline.Bytes[..InlineLength], out NodeRlp.Item node, out _);
-            NodeRlp.NextItem(node.Payload, out NodeRlp.Item key, out ReadOnlySpan<byte> rest);
-            NodeRlp.NextItem(rest, out NodeRlp.Item item, out _);
-            value = item.Payload;
-            return key.Payload;
+            RlpReader reader = new(Inline.Bytes[..InlineLength]);
+            reader.ReadSequenceLength();
+            ReadOnlySpan<byte> hexPrefix = reader.DecodeByteArraySpan();
+            value = reader.DecodeByteArraySpan();
+            return hexPrefix;
         }
     }
 

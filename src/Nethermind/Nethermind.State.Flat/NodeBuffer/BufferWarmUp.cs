@@ -6,6 +6,7 @@ using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
 using Nethermind.Trie.NodeBuffer;
 
@@ -166,10 +167,11 @@ internal static class BufferWarmUp
     /// <returns>The number of nibbles copied.</returns>
     private static int Key(ReadOnlySpan<byte> rlp, Span<byte> key)
     {
-        NodeRlp.NextItem(rlp, out NodeRlp.Item node, out _);
-        NodeRlp.NextItem(node.Payload, out NodeRlp.Item prefix, out _);
-        NodeRlp.ReadHexPrefix(prefix.Payload, 0, key);
-        return NodeRlp.HexPrefixNibbleCount(prefix.Payload);
+        RlpReader reader = new(rlp);
+        reader.ReadSequenceLength();
+        ReadOnlySpan<byte> prefix = reader.DecodeByteArraySpan();
+        NodeRlp.ReadHexPrefix(prefix, 0, key);
+        return NodeRlp.HexPrefixNibbleCount(prefix);
     }
 
     /// <summary>A node on the warmed path: a record read in place, or one written to the scratch records, to be published.</summary>
