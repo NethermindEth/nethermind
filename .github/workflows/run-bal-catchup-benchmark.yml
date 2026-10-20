@@ -9,7 +9,7 @@ on:
         options: [synthetic-memory, synthetic-disk, fixture]
         default: synthetic-memory
       blocks:
-        description: Blocks per segment (empty uses 64 synthetic blocks or the whole fixture)
+        description: Blocks per segment (empty uses 64 or the whole fixture; synthetic-memory supports at most 128)
         default: ''
       fixture:
         description: Runner directory containing segment.jsonl (fixture mode)

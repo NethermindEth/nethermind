@@ -12,7 +12,8 @@ import sys
 
 def check(directory, expected_cases):
     directory = pathlib.Path(directory)
-    if re.search(r"Exception|Invalid Blocks?", (directory / "run.log").read_text()):
+    if re.search(r"(?:^|---> |Unhandled exception\. )[\w.]+Exception:|Invalid Blocks?",
+                 (directory / "run.log").read_text(), re.MULTILINE):
         raise ValueError("Benchmark log contains an exception or invalid block")
     reports = list(directory.glob("results/*-report-full-compressed.json"))
     if not reports:

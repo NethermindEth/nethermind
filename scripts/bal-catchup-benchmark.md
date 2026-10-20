@@ -3,8 +3,11 @@
 Run **Run BAL Catch-up Benchmark** from GitHub Actions, select a branch, and choose
 `synthetic-memory`, `synthetic-disk`, or `fixture`. The workflow uses the amd64
 `reproducible-benchmarks` runner and publishes BenchmarkDotNet reports and logs.
+GitHub enables manual dispatch after this workflow first lands on the default branch.
 Both BAL-on and BAL-off arms run in the same job. Disk runs reopen a fresh working
 copy before every iteration; they do not clear the OS page cache.
+In-memory runs support up to 128 blocks, the default flat-state reorg window;
+use `synthetic-disk` for longer segments.
 
 ```sh
 gh workflow run run-bal-catchup-benchmark.yml --ref <branch> -f mode=synthetic-disk -f blocks=64
