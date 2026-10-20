@@ -466,7 +466,7 @@ public class GethGenesisParityTests
     private static bool HasValueEquality(Type type) =>
         type.IsValueType || type.GetMethod(nameof(Equals), [typeof(object)])!.DeclaringType != typeof(object);
 
-    private static readonly PropertyInfo[] SpecProperties =
+    internal static readonly PropertyInfo[] SpecProperties =
         [.. typeof(IReleaseSpec).GetInterfaces().Prepend(typeof(IReleaseSpec)).SelectMany(static i => i.GetProperties())];
 
     private static readonly MethodInfo[] DerivedPredicates =

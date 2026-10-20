@@ -39,30 +39,7 @@ jobs:
       - name: Fetch genesis files
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          dir="$RUNNER_TEMP/geth-genesis"
-          mkdir -p "$dir"
-          for repo in $REPOS; do
-            sha=$(gh api "repos/ethpandaops/$repo/commits/HEAD" --jq .sha)
-            # Names only become file names here, so anything but devnet-<n> is skipped.
-            devnets=$(gh api "repos/ethpandaops/$repo/contents/network-configs?ref=$sha" --jq '.[] | select(.type == "dir") | .name' \
-              | { grep -E '^devnet-[0-9]+$' || true; } | sort -V | tail -n "$DEVNETS_PER_REPO")
-            if [[ -z "$devnets" ]]; then
-              echo "::error::ethpandaops/$repo@$sha has no network-configs/devnet-<n> directories"
-              exit 1
-            fi
-            echo "$devnets" | while read -r devnet; do
-              path="network-configs/$devnet/metadata/genesis.json"
-              if gh api "repos/ethpandaops/$repo/contents/$path?ref=$sha" -H "Accept: application/vnd.github.raw" > "$dir/$repo-$devnet.json"; then
-                echo "Fetched ethpandaops/$repo@$sha $path"
-              else
-                echo "::warning::ethpandaops/$repo@$sha has no $path"
-                rm -f "$dir/$repo-$devnet.json"
-              fi
-            done
-          done
-          echo "NETHERMIND_GETH_GENESIS_DIR=$dir" >> "$GITHUB_ENV"
+        run: bash scripts/ci/fetch-devnet-genesis.sh
 
       - name: Run devnet genesis tests
         working-directory: src/Nethermind/Nethermind.Specs.Test

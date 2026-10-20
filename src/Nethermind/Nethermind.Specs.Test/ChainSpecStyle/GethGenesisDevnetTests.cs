@@ -133,10 +133,21 @@ public class GethGenesisDevnetTests
         }
     }
 
+    [Test]
+    public void Missing_eips_includes_inherited_flags(
+        [Values(nameof(IReceiptSpec.IsEip7778Enabled), nameof(IEip1559Spec.IsEip1559Enabled))] string property,
+        [Values] bool enabled)
+    {
+        OverridableReleaseSpec spec = new(Amsterdam.Instance);
+        typeof(OverridableReleaseSpec).GetProperty(property)!.SetValue(spec, enabled);
+
+        Assert.That(MissingEips(Amsterdam.Instance, spec).Contains(property), Is.EqualTo(!enabled));
+    }
+
     /// <summary>EIP flags <paramref name="fork"/> enables that <paramref name="spec"/> does not.</summary>
     private static List<string> MissingEips(NamedReleaseSpec fork, IReleaseSpec spec) =>
     [
-        .. typeof(IReleaseSpec).GetProperties()
+        .. GethGenesisParityTests.SpecProperties
             .Where(static p => p.PropertyType == typeof(bool) && p.Name.StartsWith("IsEip", StringComparison.Ordinal))
             .Where(p => (bool)p.GetValue(fork)! && !(bool)p.GetValue(spec)!)
             .Select(static p => p.Name)
