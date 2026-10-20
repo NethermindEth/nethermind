@@ -83,6 +83,9 @@ namespace Nethermind.Synchronization.SnapSync
 
         private static readonly TimeSpan DefaultCheckpointInterval = TimeSpan.FromMinutes(5);
 
+        /// <summary>How long a due checkpoint holds back new requests while waiting for the ones in flight, before it is skipped.</summary>
+        private static readonly TimeSpan MaxCheckpointWait = TimeSpan.FromMinutes(2);
+
         /// <summary>
         /// How often the progress is saved for <see cref="ISyncConfig.SnapResume"/>, or <c>null</c> when it is off or the
         /// backend cannot resume.
@@ -222,14 +225,21 @@ namespace Nethermind.Synchronization.SnapSync
                 && !IsSnapGetRangesFinished())
             {
                 // A checkpoint taken with a request in flight would lose its range, so no request goes out until the
-                // last one is answered.
-                if (!IsIdle())
+                // last one is answered - though never for long enough to stall the sync over a checkpoint.
+                if (IsIdle())
+                {
+                    SaveCheckpoint();
+                }
+                else if (Stopwatch.GetElapsedTime(_lastCheckpointTimestamp) < interval + MaxCheckpointWait)
                 {
                     nextBatch = null;
                     return false;
                 }
-
-                SaveCheckpoint();
+                else
+                {
+                    if (_logger.IsWarn) _logger.Warn($"Snap - skipped a resume checkpoint, requests were still in flight after {MaxCheckpointWait.TotalMinutes:N0} min (account: {_activeAccountRequests}, storage: {_activeStorageRequests}, code: {_activeCodeRequests}, refresh: {_activeAccRefreshRequests}).");
+                    _lastCheckpointTimestamp = Stopwatch.GetTimestamp();
+                }
             }
 
             if (!AccountsToRefresh.IsEmpty && Volatile.Read(ref _consecutiveAccountRefreshes) < MAX_CONSECUTIVE_ACCOUNT_REFRESHES)
@@ -680,7 +690,9 @@ namespace Nethermind.Synchronization.SnapSync
 
             foreach (StorageRangeProgress range in checkpoint.StorageRanges)
             {
-                NextSlotRange.Enqueue(new StorageRange
+                // A batch of accounts dropped in flight at a shutdown goes back to the batching queue: the slot range
+                // queue counts one request per range, but a released request returns one per account.
+                RequeueStorageRange(new StorageRange
                 {
                     Accounts = new ArrayPoolList<PathWithAccount>(range.Accounts.Length, range.Accounts),
                     StartingHash = range.StartingHash,

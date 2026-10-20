@@ -207,6 +207,47 @@ public class ProgressTrackerTests
         foreach (SnapSyncBatch batch in batches) batch.Dispose();
     }
 
+    // Regression: a batch of accounts dropped in flight at a shutdown came back as one slot range, which counts one
+    // request in flight but releases one per account, so the tracker never saw itself idle again and the next checkpoint
+    // held every request back for good.
+    [Test]
+    public void A_storage_batch_dropped_at_shutdown_does_not_stall_the_resumed_run()
+    {
+        SnapCheckpoint? saved = null;
+        ISnapTrieFactory snapTrieFactory = Substitute.For<ISnapTrieFactory>();
+        snapTrieFactory.SupportsCheckpoints.Returns(true);
+        snapTrieFactory.When(static f => f.SaveCheckpoint(Arg.Any<SnapCheckpoint?>())).Do(call => saved = call.Arg<SnapCheckpoint?>());
+        snapTrieFactory.LoadCheckpoint().Returns(_ => saved is null ? null : SnapCheckpoint.Decode(saved.Encode()));
+
+        using (ProgressTracker interrupted = CreateProgressTracker(snapTrieFactory: snapTrieFactory, snapResume: true, checkpointInterval: TimeSpan.MaxValue))
+        {
+            interrupted.IsFinished(out SnapSyncBatch? accountRange);
+            ValueHash256 limit = accountRange!.AccountRangeRequest!.LimitHash!.Value;
+            interrupted.UpdateAccountRangePartitionProgress(limit, Keccak.MaxValue, moreChildrenToRight: false);
+            interrupted.ReportAccountRangePartitionFinished(limit);
+            interrupted.ReportRequestReleased(accountRange);
+            accountRange.Dispose();
+
+            interrupted.EnqueueAccountStorage(new PathWithAccount(TestItem.ValueKeccaks[1], Build.An.Account.WithStorageRoot(TestItem.KeccakA).TestObject));
+            interrupted.EnqueueAccountStorage(new PathWithAccount(TestItem.ValueKeccaks[2], Build.An.Account.WithStorageRoot(TestItem.KeccakB).TestObject));
+            interrupted.IsFinished(out SnapSyncBatch? droppedInFlight);
+            Assert.That(droppedInFlight!.StorageRangeRequest!.Accounts, Has.Count.EqualTo(2));
+            interrupted.SaveCheckpointAtShutdown();
+            droppedInFlight.Dispose();
+        }
+
+        using ProgressTracker resumed = CreateProgressTracker(snapTrieFactory: snapTrieFactory, snapResume: true);
+        resumed.Reset();
+        resumed.LoadProgress();
+        resumed.IsFinished(out SnapSyncBatch? storage);
+        resumed.ReportStorageRequestFinished(storage!.StorageRangeRequest!.Accounts.Count);
+        resumed.ReportRequestReleased(storage);
+        storage.Dispose();
+
+        Assert.That(resumed.IsFinished(out SnapSyncBatch? next), Is.True, "the answered storage was the last request, so the phase is done");
+        Assert.That(next, Is.Null);
+    }
+
     // Regression: a restart during the state ranges phase used to start the account ranges over from the beginning.
     [Test]
     public void A_restarted_run_resumes_from_the_checkpoint_taken_while_no_request_was_in_flight()
