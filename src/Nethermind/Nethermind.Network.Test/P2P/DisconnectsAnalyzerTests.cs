@@ -28,6 +28,9 @@ namespace Nethermind.Network.Test.P2P
 
             public int FlushCount => _logger.FlushCount;
 
+            /// <summary>Runs inside each flush, after the counters were taken and before the timer re-arms.</summary>
+            public Action? OnFlush { set => _logger.OnFlush = value; }
+
             public Context()
             {
                 ILogManager logManager = Substitute.For<ILogManager>();
@@ -49,8 +52,7 @@ namespace Nethermind.Network.Test.P2P
 
             public void ShouldStayAt(string pattern, int times)
             {
-                // The analyzer double-buffers its counters. A lost clear makes a stale
-                // category appear again in every other flush. Watch more flushes to detect that.
+                // A lost clear makes a stale category appear again in later flushes. Watch more flushes to detect that.
                 WaitForMoreFlushes();
                 Assert.That(_logger.CountMatches(pattern), Is.EqualTo(times),
                     () => $"a cleared category resurfaced in a later flush; got: {_logger.Dump()}");
@@ -98,7 +100,13 @@ namespace Nethermind.Network.Test.P2P
 
                 public string Dump() => string.Join(" | ", _flushes);
 
-                public void Info(string text) => _flushes.Enqueue(text);
+                public Action? OnFlush { get; set; }
+
+                public void Info(string text)
+                {
+                    _flushes.Enqueue(text);
+                    OnFlush?.Invoke();
+                }
                 public void Warn(string text) { }
                 public void Debug(string text) { }
                 public void Trace(string text) { }
@@ -146,23 +154,46 @@ namespace Nethermind.Network.Test.P2P
         }
 
         [Test]
-        public async Task Report_during_flush_is_preserved()
+        public void Report_during_flush_goes_to_next_flush()
         {
             using Context ctx = new();
+            int reportedDuringFlush = 0;
+            ctx.OnFlush = () =>
+            {
+                if (Interlocked.Exchange(ref reportedDuringFlush, 1) == 0)
+                {
+                    ctx.DisconnectsAnalyzer.ReportDisconnect(DisconnectReason.TooManyPeers, DisconnectType.Local, null);
+                }
+            };
+            ctx.DisconnectsAnalyzer.ReportDisconnect(DisconnectReason.TooManyPeers, DisconnectType.Local, null);
+            ctx.TriggerFlushes();
+
+            ctx.ShouldStayAt(@"Local\s+TooManyPeers\s+1\b", times: 2);
+        }
+
+        [Test]
+        public async Task Concurrent_reports_are_counted_once()
+        {
+            const int reporterCount = 4;
+            using Context ctx = new();
             using CancellationTokenSource timeout = new(WaitLimit);
+            using CountdownEvent started = new(reporterCount);
             int targetFlushes = ctx.FlushCount + 20;
-            Task<int>[] reporters = Enumerable.Range(0, 4).Select(_ => Task.Factory.StartNew(() =>
+            Task<int>[] reporters = Enumerable.Range(0, reporterCount).Select(_ => Task.Factory.StartNew(() =>
             {
                 int reports = 0;
-                while (ctx.FlushCount < targetFlushes)
+                do
                 {
                     timeout.Token.ThrowIfCancellationRequested();
                     ctx.DisconnectsAnalyzer.ReportDisconnect(DisconnectReason.TooManyPeers, DisconnectType.Local, null);
-                    reports++;
-                }
+                    if (reports++ == 0) started.Signal();
+                } while (ctx.FlushCount < targetFlushes);
 
                 return reports;
             }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default)).ToArray();
+
+            // Flushes start only once every reporter is running, so they overlap the reports.
+            Assert.That(started.Wait(WaitLimit), Is.True, "reporters did not start");
             ctx.TriggerFlushes();
 
             int[] reportCounts = await Task.WhenAll(reporters);
