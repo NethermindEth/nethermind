@@ -91,7 +91,7 @@ internal readonly ref struct AbiReader(ReadOnlySpan<byte> data)
     public int ReadCount(int position, int minElementSize)
     {
         int count = ReadLength(position);
-        EnsureAvailable(position + Word, count * minElementSize);
+        EnsureAvailable(position + Word, (long)count * minElementSize);
         return count;
     }
 
@@ -114,11 +114,11 @@ internal readonly ref struct AbiReader(ReadOnlySpan<byte> data)
         return _data.Slice(position, Word);
     }
 
-    private void EnsureAvailable(int position, int length)
+    private void EnsureAvailable(int position, long length)
     {
         if (position < 0 || length < 0 || (long)position + length > _data.Length)
         {
-            throw new EezAbiException($"ABI data ends before {position + (long)length}.");
+            throw new EezAbiException($"ABI data ends before {position + length}.");
         }
     }
 

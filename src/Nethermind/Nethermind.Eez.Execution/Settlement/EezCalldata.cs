@@ -21,6 +21,8 @@ public static class EezCalldata
     private const int SelectorSize = sizeof(uint);
     private const int TableHead = 2 * Word;
 
+    /// <summary>Reads a complete canonical batch call, including its function selector.</summary>
+    /// <exception cref="EezAbiException">The selector, values, offsets, padding or length are not canonical.</exception>
     public static PostBatch DecodePostAndVerifyBatch(ReadOnlySpan<byte> calldata)
     {
         AbiReader reader = new(Parameters(calldata, PostAndVerifyBatchSelector));
@@ -31,6 +33,7 @@ public static class EezCalldata
         return batch;
     }
 
+    /// <summary>Encodes a batch call with its selector and canonical ABI field order.</summary>
     public static byte[] EncodePostAndVerifyBatch(PostBatch batch)
     {
         byte[] calldata = new byte[SelectorSize + Word + EezAbi.Size(batch)];
@@ -41,6 +44,8 @@ public static class EezCalldata
         return calldata;
     }
 
+    /// <summary>Reads a complete canonical incoming-call delivery, including its function selector.</summary>
+    /// <exception cref="EezAbiException">The selector, values, offsets, padding or length are not canonical.</exception>
     public static IncomingCrossChainCall DecodeExecuteIncomingCrossChainCall(ReadOnlySpan<byte> calldata)
     {
         (L2ExecutionEntry[] entries, L2StaticExecutionEntry[] staticEntries) = DecodeTable(calldata, ExecuteIncomingCrossChainCallSelector);
@@ -49,9 +54,12 @@ public static class EezCalldata
         return call;
     }
 
+    /// <summary>Encodes an incoming-call delivery with its selector and canonical ABI field order.</summary>
     public static byte[] EncodeExecuteIncomingCrossChainCall(IncomingCrossChainCall call) =>
         EncodeTable(ExecuteIncomingCrossChainCallSelector, call.Entries, call.StaticEntries);
 
+    /// <summary>Reads a complete canonical execution-table call, including its function selector.</summary>
+    /// <exception cref="EezAbiException">The selector, values, offsets, padding or length are not canonical.</exception>
     public static ExecutionTable DecodeLoadExecutionTable(ReadOnlySpan<byte> calldata)
     {
         (L2ExecutionEntry[] entries, L2StaticExecutionEntry[] staticEntries) = DecodeTable(calldata, LoadExecutionTableSelector);
@@ -60,6 +68,7 @@ public static class EezCalldata
         return table;
     }
 
+    /// <summary>Encodes an execution table with its selector and canonical ABI field order.</summary>
     public static byte[] EncodeLoadExecutionTable(ExecutionTable table) => EncodeTable(LoadExecutionTableSelector, table.Entries, table.StaticEntries);
 
     /// <summary>The <c>(ExecutionEntry[], StaticExecutionEntryL2[])</c> arguments both L2 system calls take.</summary>

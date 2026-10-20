@@ -117,7 +117,7 @@ public class StreamingEndpointTests(string fixture, int from, int to)
         using AsyncDuplexStreamingCall<ClientFrame, ServerFrame> call = new ProverV2.ProverClient(channel).ProveStream(Options());
         Task<bool> response = call.ResponseStream.MoveNext();
         try { await call.RequestStream.WriteAsync(new ClientFrame { Begin = _server.Anchor }); }
-        catch (Exception exception) when (exception is HttpIOException or RpcException) { }
+        catch (Exception exception) when (exception is IOException or RpcException) { }
         RpcException failure = (await Assert.ThrowsAsync<RpcException>(async () => await response))!;
         Assert.That(failure.StatusCode, Is.AnyOf(StatusCode.Unavailable, StatusCode.Unauthenticated), "TLS requires a pinned certificate and its private key");
         Assert.That(_server.L1.Requests, Is.EqualTo(0), "an untrusted connection never acquires settlement evidence");

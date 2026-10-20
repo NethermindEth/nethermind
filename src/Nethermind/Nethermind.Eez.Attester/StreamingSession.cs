@@ -286,10 +286,10 @@ internal sealed class StreamingSession
         lock (_lock)
         {
             CheckOperation(operation);
-            Finalize finalization = operation.Finalize ?? throw new InvalidOperationException("not a finalization operation");
+            (ulong from, _) = operation.FinalizationRange;
             if (proof.PublicInputsHash.Length != 32 || proof.Proof_.IsEmpty)
                 throw Error(StatusCode.Internal, "invalid proof backend result");
-            int first = FindBlock(finalization.FromBlock);
+            int first = FindBlock(from);
             ServerFrame response = new() { SessionId = Id, RequestId = operation.RequestId, Epoch = operation.Binding.Epoch, Proof = proof.Clone() };
             AdvanceEpoch();
             _anchor = operation.Predecessor!;

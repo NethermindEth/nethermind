@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -62,9 +61,16 @@ public sealed class OptimisticLedger
     {
         lock (_lock)
         {
-            foreach (ulong height in _batches.Keys.TakeWhile(h => h <= cursor).ToArray())
+            List<ulong>? confirmed = null;
+            foreach (ulong height in _batches.Keys)
             {
-                _batches.Remove(height);
+                if (height > cursor) break;
+                (confirmed ??= []).Add(height);
+            }
+
+            if (confirmed is not null)
+            {
+                foreach (ulong height in confirmed) _batches.Remove(height);
             }
         }
     }
@@ -94,7 +100,12 @@ public sealed class OptimisticLedger
     {
         lock (_lock)
         {
-            return _batches.Count > 0 && _batches.Keys.Last() > cursor;
+            foreach (ulong height in _batches.Keys)
+            {
+                if (height > cursor) return true;
+            }
+
+            return false;
         }
     }
 
@@ -124,9 +135,18 @@ public sealed class OptimisticLedger
     {
         lock (_lock)
         {
-            foreach (ulong height in _batches.Where(b => b.Key > cursor && b.Value.Verdict == Verdict.Settled).Select(static b => b.Key).ToArray())
+            List<ulong>? settled = null;
+            foreach ((ulong height, Entry entry) in _batches)
             {
-                _batches.Remove(height);
+                if (height > cursor && entry.Verdict == Verdict.Settled)
+                {
+                    (settled ??= []).Add(height);
+                }
+            }
+
+            if (settled is not null)
+            {
+                foreach (ulong height in settled) _batches.Remove(height);
             }
         }
     }

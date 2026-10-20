@@ -298,7 +298,7 @@ internal sealed class StreamingTransport
     }
 
     private async Task<StreamingResult> Execute(SessionOperation operation, CancellationToken cancellation) =>
-        operation.Finalize is null
+        !operation.IsFinalization
             ? new StreamingResult(await _execute(operation, cancellation).ConfigureAwait(false), null)
             : new StreamingResult(null, await _finalize!(operation, cancellation).ConfigureAwait(false));
 
@@ -335,12 +335,12 @@ internal sealed class StreamingTransport
     private ServerFrame CompleteProof(StreamingConnection connection, SessionOperation operation, Proof proof)
     {
         ServerFrame response = connection.CompleteProof(operation, proof);
-        Finalize finalization = operation.Finalize!;
+        (ulong from, ulong to) = operation.FinalizationRange;
         _logger.LogInformation(
             "{{\"event_name\":\"eez.proof_signer.window_signed\",\"fields\":{{" +
             "\"wire\":\"prove.v2\",\"validated_from_block\":{From},\"validated_to_block\":{To}," +
             "\"recomputed_public_inputs_hash\":\"0x{Hash}\"}}}}",
-            finalization.FromBlock, finalization.ToBlock, Convert.ToHexStringLower(proof.PublicInputsHash.Span));
+            from, to, Convert.ToHexStringLower(proof.PublicInputsHash.Span));
         return response;
     }
 

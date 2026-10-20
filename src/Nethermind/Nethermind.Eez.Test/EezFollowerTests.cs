@@ -46,6 +46,8 @@ public class EezFollowerTests
     [SetUp]
     public void SetUp()
     {
+        _l1Chain.Clear();
+        _cursors.Clear();
         _chain = Build.A.BlockTree().OfChainLength(6).TestObject;
         _engine = new ChainEngine(_chain);
         _config = new EezConfig { L1ChainId = L1ChainId, RegistryAddress = Registry.ToString(), RegistryDeployBlock = 1, RollupId = RollupId, L1LogScanBlocks = 100 };
@@ -64,8 +66,7 @@ public class EezFollowerTests
         SettleTo(2);
 
         _unsafeHead = Substitute.For<IUnsafeHeadSource>();
-        ResumePointFinder resumePoints = new(_l1, _chain, Registry, RollupId, _config.RegistryDeployBlock, _config.L1LogScanBlocks);
-        _follower = new EezFollower(_l1, _scanner, _reconciler, resumePoints, _unsafeHead, new Rollup0HeaderRules(MainnetSpecProvider.Instance, DerivedChain.Context), EezChainRules.Rollup0, _chain, _engine, _config, LimboLogs.Instance);
+        _follower = Follower(_engine);
     }
 
     [Test]
@@ -88,6 +89,42 @@ public class EezFollowerTests
         await _follower.Poll(CancellationToken.None);
 
         Assert.That(_follower.Heads.Finalized.Number, Is.EqualTo(2), "a settlement in a finalized L1 block finalizes its L2 block");
+    }
+
+    [Test]
+    public async Task Poll_FinalizationEngineBusyOnce_RetriesWithoutAnotherSettlement()
+    {
+        _l1.GetFinalizedBlock(Arg.Any<CancellationToken>()).Returns(L1Block(SettlingL1Block));
+        IEezL2Engine engine = Substitute.For<IEezL2Engine>();
+        int attempts = 0;
+        engine.UpdateForkchoice(Arg.Any<Hash256>(), Arg.Any<Hash256>(), Arg.Any<Hash256>()).Returns(call =>
+        {
+            if (call.ArgAt<Hash256>(2) == L2(2).Hash && ++attempts == 1)
+            {
+                return Task.FromException(new EezEngineUnavailableException("busy"));
+            }
+
+            return _engine.UpdateForkchoice(call.ArgAt<Hash256>(0), call.ArgAt<Hash256>(1), call.ArgAt<Hash256>(2));
+        });
+        _follower = Follower(engine);
+        await _follower.Boot(CancellationToken.None);
+
+        FollowerProgress first = await _follower.Poll(CancellationToken.None);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first, Is.EqualTo(FollowerProgress.Retry));
+            Assert.That(_follower.Heads.Safe.Number, Is.EqualTo(2));
+            Assert.That(_follower.Heads.Finalized.Number, Is.Zero);
+        }
+
+        FollowerProgress second = await _follower.Poll(CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(second, Is.EqualTo(FollowerProgress.CaughtUp));
+            Assert.That(_follower.Heads.Finalized.Number, Is.EqualTo(2));
+            Assert.That(attempts, Is.EqualTo(2));
+        }
     }
 
     [Test]
@@ -138,10 +175,10 @@ public class EezFollowerTests
             .Returns(call => Settled(call, 1), call => Busy(call), call => Settled(call, 1), call => Settled(call, 2));
         await _follower.Boot(CancellationToken.None);
 
-        bool behind = await _follower.Poll(CancellationToken.None);
+        FollowerProgress progress = await _follower.Poll(CancellationToken.None);
         await _follower.Poll(CancellationToken.None);
 
-        Assert.That(behind, Is.False, "a failed poll waits before the next one");
+        Assert.That(progress, Is.EqualTo(FollowerProgress.Retry), "a failed poll waits before the next one");
         Assert.That(_cursors.Select(static c => c.Number), Is.EqualTo(new ulong[] { 0, 1, 0, 1 }), "the retried block starts over from the cursor before it");
         Assert.That(_follower.Heads.Safe.Number, Is.EqualTo(2), "the retry settles the block");
     }
@@ -190,9 +227,9 @@ public class EezFollowerTests
         _config.L1LogScanBlocks = 2;
         await _follower.Boot(CancellationToken.None);
 
-        bool behind = await _follower.Poll(CancellationToken.None);
+        FollowerProgress progress = await _follower.Poll(CancellationToken.None);
 
-        Assert.That(behind, Is.True, "a follower catching up polls again without waiting");
+        Assert.That(progress, Is.EqualTo(FollowerProgress.Behind), "a follower catching up polls again without waiting");
     }
 
     [Test]
@@ -227,16 +264,54 @@ public class EezFollowerTests
     }
 
     [Test]
+    public async Task Step_FailedScan_HoldsSequencerThroughBackoffUntilScanSucceeds()
+    {
+        ManualTimestamper clock = new(DateTime.UnixEpoch.AddSeconds(1_000));
+        _config.L1PollingIntervalMs = 2_000;
+        IEezSequencer sequencer = Substitute.For<IEezSequencer>();
+        await using EezDriver driver = Driver(sequencer, clock: clock);
+        await _follower.Boot(CancellationToken.None);
+        await driver.Step(default, CancellationToken.None);
+        sequencer.ClearReceivedCalls();
+        GrowL1(to: 6, fork: "a");
+        _scanner.FindSettlingBlocks(Arg.Any<ulong>(), Arg.Any<ulong>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromException<L1SettlingBlock[]>(new HttpRequestException("unavailable")));
+
+        (DateTimeOffset nextPoll, DateTimeOffset wake) = await driver.Step(default, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_follower.LatestL1!.Value.Number, Is.EqualTo(6));
+            Assert.That((nextPoll, wake), Is.EqualTo((clock.UtcNowOffset.AddSeconds(2), clock.UtcNowOffset.AddSeconds(2))));
+            Assert.That(sequencer.ReceivedCalls(), Is.Empty);
+        }
+
+        await driver.Step(nextPoll, CancellationToken.None);
+        Assert.That(sequencer.ReceivedCalls(), Is.Empty, "sequencing remains disabled between polls after a failed scan");
+        _scanner.FindSettlingBlocks(Arg.Any<ulong>(), Arg.Any<ulong>(), Arg.Any<CancellationToken>()).Returns([]);
+        clock.Add(TimeSpan.FromSeconds(2));
+
+        await driver.Step(nextPoll, CancellationToken.None);
+
+        await sequencer.Received(1).Advance(_follower.Heads, Arg.Is<EezL1Block?>(static b => b!.Value.Number == 6), Arg.Any<CancellationToken>());
+    }
+
+    [Test]
     public async Task Step_FollowerBehindL1_HoldsTheSequencer()
     {
         IEezSequencer sequencer = Substitute.For<IEezSequencer>();
         _config.L1LogScanBlocks = 2;
-        await using EezDriver driver = Driver(sequencer);
+        ManualTimestamper clock = new(DateTime.UnixEpoch.AddSeconds(1_000));
+        await using EezDriver driver = Driver(sequencer, clock: clock);
         await _follower.Boot(CancellationToken.None);
 
-        await driver.Step(default, CancellationToken.None);
+        (DateTimeOffset nextPoll, DateTimeOffset wake) = await driver.Step(default, CancellationToken.None);
 
-        Assert.That(sequencer.ReceivedCalls(), Is.Empty, "a batch posted from a cursor L1 already moved past would revert");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(sequencer.ReceivedCalls(), Is.Empty, "a batch posted from a cursor L1 already moved past would revert");
+            Assert.That((nextPoll, wake), Is.EqualTo((clock.UtcNowOffset, clock.UtcNowOffset)));
+        }
     }
 
     [TestCase(300, 300, TestName = "SequencerDueFirst")]
@@ -261,13 +336,17 @@ public class EezFollowerTests
     public async Task Step_BeforeTheNextPoll_LeavesL1Alone()
     {
         ManualTimestamper clock = new(DateTime.UnixEpoch.AddSeconds(1_000));
-        await using EezDriver driver = Driver(Substitute.For<IEezSequencer>(), clock: clock);
+        IEezSequencer sequencer = Substitute.For<IEezSequencer>();
+        await using EezDriver driver = Driver(sequencer, clock: clock);
         await _follower.Boot(CancellationToken.None);
+        (DateTimeOffset nextPoll, _) = await driver.Step(default, CancellationToken.None);
         _l1.ClearReceivedCalls();
+        sequencer.ClearReceivedCalls();
 
-        await driver.Step(clock.UtcNowOffset + TimeSpan.FromSeconds(1), CancellationToken.None);
+        await driver.Step(nextPoll, CancellationToken.None);
 
         await _l1.DidNotReceiveWithAnyArgs().GetLatestBlock(default);
+        await sequencer.Received(1).Advance(_follower.Heads, Arg.Any<EezL1Block?>(), Arg.Any<CancellationToken>());
     }
 
     [Test]
@@ -301,6 +380,12 @@ public class EezFollowerTests
         await driver.DisposeAsync();
 
         await Assert.DoesNotThrowAsync(async () => await driver.DisposeAsync(), "the stopper and the container may both release the driver");
+    }
+
+    private EezFollower Follower(IEezL2Engine engine)
+    {
+        ResumePointFinder resumePoints = new(_l1, _chain, Registry, RollupId, _config.RegistryDeployBlock, _config.L1LogScanBlocks);
+        return new EezFollower(_l1, _scanner, _reconciler, resumePoints, _unsafeHead, new Rollup0HeaderRules(MainnetSpecProvider.Instance, DerivedChain.Context), EezChainRules.Rollup0, _chain, engine, _config, LimboLogs.Instance);
     }
 
     private EezDriver Driver(IEezSequencer? sequencer, IProcessExitSource? processExit = null, ITimestamper? clock = null) =>

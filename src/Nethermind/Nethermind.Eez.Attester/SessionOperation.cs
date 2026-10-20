@@ -28,6 +28,10 @@ internal sealed class SessionOperation : IDisposable
     internal bool IsDisposed { get; private set; }
     internal BlockWitness? Block => _block?.Clone();
     internal Finalize? Finalize => _finalize?.Clone();
+    internal bool IsFinalization => _finalize is not null;
+    internal (ulong From, ulong To) FinalizationRange => _finalize is { } finalize
+        ? (finalize.FromBlock, finalize.ToBlock)
+        : throw new InvalidOperationException("not a finalization operation");
     internal Begin? Predecessor => _predecessor?.Clone();
 
     internal SessionOperation(StreamingSession session, SessionBinding binding, ulong requestId, BlockWitness block,

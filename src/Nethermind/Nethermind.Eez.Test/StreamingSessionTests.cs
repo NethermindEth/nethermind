@@ -196,6 +196,10 @@ public class StreamingSessionTests
             Is.EqualTo((1, Hash(12), 11UL, Hash(31), 13UL)));
         Finalize finalizeCopy = operation.Finalize!;
         finalizeCopy.Settlement.AbiCalldata = ByteString.Empty;
+        finalizeCopy.FromBlock = 99;
+        finalizeCopy.ToBlock = 100;
+        Assert.That(operation.IsFinalization, Is.True);
+        Assert.That(operation.FinalizationRange, Is.EqualTo((12UL, 12UL)));
         Begin predecessorCopy = operation.Predecessor!;
         predecessorCopy.AnchorHash = Hash(98);
         Assert.That(operation.Finalize!.Settlement.AbiCalldata, Is.EqualTo(Hash(70)));

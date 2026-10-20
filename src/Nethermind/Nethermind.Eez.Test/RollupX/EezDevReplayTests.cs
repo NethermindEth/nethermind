@@ -106,7 +106,7 @@ public class EezDevReplayTests
         Assert.That(_chain.Genesis!.Hash, Is.EqualTo(_expected[0]), "precondition: the genesis is the testnet's");
 
         await _follower.Boot(CancellationToken.None);
-        while (await _follower.Poll(CancellationToken.None))
+        while (await _follower.Poll(CancellationToken.None) == FollowerProgress.Behind)
         {
         }
 

@@ -18,6 +18,13 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Eez.Follower;
 
+internal enum FollowerProgress
+{
+    Retry,
+    Behind,
+    CaughtUp,
+}
+
 /// <summary>
 /// Follows the rollup from L1: scans L1 for the batches that settled it, derives every block they settle and moves
 /// the safe head to what L1 stores, and the finalized head to what a finalized L1 block stores. An L1 reorganization
@@ -96,13 +103,14 @@ public sealed class EezFollower(
     }
 
     /// <summary>One poll: what L1 settled since the last one, then the sequencer's head.</summary>
-    /// <returns>Whether L1 has more blocks to scan right away.</returns>
-    internal async Task<bool> Poll(CancellationToken token)
+    /// <returns>Whether L1 is caught up, has more blocks to scan, or needs a delayed retry.</returns>
+    internal async Task<FollowerProgress> Poll(CancellationToken token)
     {
         engine.EnsureSoleDriver();
-        bool behind = await Attempt(FollowL1, token) && _followedLatest is null;
+        bool completed = await Attempt(FollowL1, token);
         await AdvanceUnsafeHead(token);
-        return behind;
+        return !completed ? FollowerProgress.Retry
+            : _followedLatest is null ? FollowerProgress.Behind : FollowerProgress.CaughtUp;
     }
 
     /// <returns>Whether <paramref name="step"/> completed; a transient failure is logged and left to the next poll.</returns>
@@ -233,14 +241,26 @@ public sealed class EezFollower(
         }
 
         SettledRecord? last = null;
-        while (_settled.TryPeek(out SettledRecord? record) && record.L1Number <= finalized.Number)
+        int eligible = 0;
+        foreach (SettledRecord record in _settled)
         {
-            last = _settled.Dequeue();
+            if (record.L1Number > finalized.Number)
+            {
+                break;
+            }
+
+            last = record;
+            eligible++;
         }
 
         if (last is not null && last.L2End.Number > _heads.Finalized.Number && last.L2End.Number <= _heads.Safe.Number)
         {
             await _heads.AdvanceFinalized(last.L2End);
+        }
+
+        for (int i = 0; i < eligible; i++)
+        {
+            _settled.Dequeue();
         }
     }
 

@@ -54,7 +54,7 @@ public sealed class QuorumRegistrationReader(IEezL1Api l1, Address registry, ulo
             Task<byte[]> threshold = Word(manager, ThresholdSelector, timeout.Token);
             Task<ValueHash256[]> registered = Task.WhenAll(keys);
             await Task.WhenAll(threshold, registered);
-            return new QuorumRegistration(Threshold(threshold.Result), registered.Result);
+            return new QuorumRegistration(Threshold(await threshold), await registered);
         }
         catch (OperationCanceledException) when (!token.IsCancellationRequested)
         {

@@ -19,7 +19,19 @@ namespace Nethermind.Eez.Proving;
 /// <param name="VerificationKeys">By attester, the key its proof system is registered with; zero when it is not asked.</param>
 public sealed record QuorumRegistration(int Threshold, ValueHash256[] VerificationKeys)
 {
-    public int Registered => VerificationKeys.Count(static k => k != default);
+    public int Registered
+    {
+        get
+        {
+            int registered = 0;
+            foreach (ValueHash256 key in VerificationKeys)
+            {
+                if (key != default) registered++;
+            }
+
+            return registered;
+        }
+    }
 }
 
 /// <summary>
@@ -111,7 +123,7 @@ public sealed class AttestationQuorum(IReadOnlyList<IAttester> attesters, ProveR
     }
 
     /// <summary>Cancels the attesters still proving and waits for them, so none outlives the batch.</summary>
-    private static async Task Abandon(List<Task<Attestation>> pending, CancellationTokenSource cancel)
+    private async Task Abandon(List<Task<Attestation>> pending, CancellationTokenSource cancel)
     {
         await cancel.CancelAsync();
         foreach (Task<Attestation> task in pending)
@@ -122,6 +134,10 @@ public sealed class AttestationQuorum(IReadOnlyList<IAttester> attesters, ProveR
             }
             catch (Exception e) when (e is ProveException or OperationCanceledException)
             {
+                if (e is ProveException && _logger.IsWarn)
+                {
+                    _logger.Warn($"An abandoned attester failed: {e.Message}");
+                }
             }
         }
     }
@@ -203,9 +219,17 @@ public sealed class AttestationQuorum(IReadOnlyList<IAttester> attesters, ProveR
                 return null;
             }
 
-            string summary = string.Join("; ", Failures.Select(static f => f.Message));
+            string[] messages = new string[Failures.Count];
+            bool retryable = true;
+            for (int i = 0; i < Failures.Count; i++)
+            {
+                messages[i] = Failures[i].Message;
+                retryable &= Failures[i].Kind == ProveFailureKind.Retryable;
+            }
+
+            string summary = string.Join("; ", messages);
             string message = $"{Attestations.Count} of {registered} attesters proved the window, {threshold} required: {summary}";
-            return Failures.All(static f => f.Kind == ProveFailureKind.Retryable)
+            return retryable
                 ? new ProveException(ProveFailureKind.Retryable, message)
                 : new ProveException(ProveFailureKind.Backend, message);
         }
@@ -221,7 +245,11 @@ public sealed class AttestationQuorum(IReadOnlyList<IAttester> attesters, ProveR
                     continue;
                 }
 
-                int refusals = Failures.Count(f => f.Refused == effect);
+                int refusals = 0;
+                foreach (ProveException other in Failures)
+                {
+                    if (other.Refused == effect) refusals++;
+                }
                 if (refusals > mostRefusals)
                 {
                     (most, mostRefusals) = (effect, refusals);

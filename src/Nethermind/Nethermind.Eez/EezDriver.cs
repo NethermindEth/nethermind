@@ -32,6 +32,7 @@ public sealed class EezDriver(
     private readonly CancellationTokenSource _cancellation = new();
     private Task? _running;
     private int _stopped;
+    private bool _caughtUp;
 
     public string Description => "EEZ driver";
 
@@ -82,14 +83,14 @@ public sealed class EezDriver(
     internal async Task<(DateTimeOffset NextPoll, DateTimeOffset Wake)> Step(DateTimeOffset nextPoll, CancellationToken token)
     {
         DateTimeOffset now = clock.UtcNowOffset;
-        bool caughtUp = true;
         if (now >= nextPoll)
         {
-            caughtUp = !await follower.Poll(token);
-            nextPoll = caughtUp ? now + TimeSpan.FromMilliseconds(config.L1PollingIntervalMs) : now;
+            FollowerProgress progress = await follower.Poll(token);
+            _caughtUp = progress == FollowerProgress.CaughtUp;
+            nextPoll = progress == FollowerProgress.Behind ? now : now + TimeSpan.FromMilliseconds(config.L1PollingIntervalMs);
         }
 
-        if (sequencer is null || !caughtUp)
+        if (sequencer is null || !_caughtUp)
         {
             return (nextPoll, nextPoll);
         }

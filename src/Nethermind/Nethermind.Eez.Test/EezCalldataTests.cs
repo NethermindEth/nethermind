@@ -46,14 +46,26 @@ public class EezCalldataTests
 
         ValueHash256[] hashes = PublicInputs.Compute([EezCalldata.EntryHash(batch.Entries[0])], [], [], batch.CallData, assignments, 1, Address.Zero);
 
-        Assert.That(batch.ProofSystems, Is.EqualTo(new[] { new Address(oracle.GetProperty("proof_system").GetString()!) }),
-            "precondition: the batch is verified by the recorded proof system");
-        Assert.That(batch.Entries, Has.Length.EqualTo(1), "precondition: the recorded window settles one anchor entry");
-        Assert.That(hashes[0], Is.EqualTo(new ValueHash256(oracle.GetProperty("public_inputs_hash").GetString()!)),
-            "decoding, entry hashing and public-input hashing reproduce the hash the signer signed on the devnet");
-        Assert.That(batch.Entries[0].RollingHash,
-            Is.EqualTo(RollingHash.SeedL1([new StateCommitment(1, batch.Entries[0].RollupUpdates[0].CurrentRoot)], default)),
-            "an anchor entry's rolling hash is the L1 seed of its state update with no proxy entry");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(batch.ProofSystems, Is.EqualTo(new[] { new Address(oracle.GetProperty("proof_system").GetString()!) }),
+                "precondition: the batch is verified by the recorded proof system");
+            Assert.That(batch.Entries, Has.Length.EqualTo(1), "precondition: the recorded window settles one anchor entry");
+            Assert.That(hashes[0], Is.EqualTo(new ValueHash256(oracle.GetProperty("public_inputs_hash").GetString()!)),
+                "decoding, entry hashing and public-input hashing reproduce the hash the signer signed on the devnet");
+            Assert.That(batch.Entries[0].RollingHash,
+                Is.EqualTo(RollingHash.SeedL1([new StateCommitment(1, batch.Entries[0].RollupUpdates[0].CurrentRoot)], default)),
+                "an anchor entry's rolling hash is the L1 seed of its state update with no proxy entry");
+        }
+    }
+
+    [Test]
+    public void ReadCount_OverflowingElementBytes_IsRejected()
+    {
+        byte[] data = new byte[1 << 25];
+        BinaryPrimitives.WriteUInt32BigEndian(data.AsSpan(28, 4), (uint)data.Length);
+
+        Assert.That(() => new AbiReader(data).ReadCount(0, 128), Throws.TypeOf<EezAbiException>());
     }
 
     [TestCaseSource(nameof(NonCanonicalBatches))]
