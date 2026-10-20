@@ -6,6 +6,7 @@
     <AssemblyName>Nethermind.Stateless.Executor</AssemblyName>
     <RootNamespace>Nethermind.Stateless.Execution</RootNamespace>
     <IsAotCompatible>true</IsAotCompatible>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
   <ItemGroup>
@@ -19,7 +20,7 @@
     <Compile Include="..\Nethermind.Merge.Plugin\Data\ExecutionPayloadV3.cs" Link="IO\EngineApiDto\ExecutionPayloadV3.cs" />
     <Compile Include="..\Nethermind.Merge.Plugin\Data\ExecutionPayloadV4.cs" Link="IO\EngineApiDto\ExecutionPayloadV4.cs" />
     <Compile Include="..\Nethermind.Merge.Plugin\Data\IExecutionPayloadParams.cs" Link="IO\EngineApiDto\IExecutionPayloadParams.cs" />
-    <Compile Include="..\Nethermind.Merge.Plugin\Handlers\IForkValidator.cs" Link="IO\EngineApiDto\IForkValidator.cs" />
+    <Compile Include="..\Nethermind.Merge.Plugin\Data\PayloadTransactionCountGuard.cs" Link="IO\EngineApiDto\PayloadTransactionCountGuard.cs" />
   </ItemGroup>
 
 </Project>

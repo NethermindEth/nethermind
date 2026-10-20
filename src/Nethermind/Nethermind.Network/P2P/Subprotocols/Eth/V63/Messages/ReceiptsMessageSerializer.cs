@@ -17,7 +17,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
         private const ulong NoBlockSeenYet = ulong.MaxValue;
 
         private static readonly RlpLimit ReceiptsRlpLimit = RlpLimit.For<ReceiptsMessage>(NethermindSyncLimits.MaxHashesFetch, nameof(ReceiptsMessage.TxReceipts));
-        private static readonly RlpLimit BlockReceiptsRlpLimit = RlpLimit.For<TxReceipt[]>(NethermindSyncLimits.MaxHashesFetch, nameof(ReceiptsMessage.TxReceipts));
+        // A block has one receipt per transaction, so it is bounded like its transaction list rather than by request size.
+        private static RlpLimit BlockReceiptsRlpLimit => RlpLimit.For<TxReceipt[]>(BlockBodyDecoder.TransactionsCountLimit.Limit, nameof(ReceiptsMessage.TxReceipts));
         private readonly ISpecProvider _specProvider;
         private readonly IRlpDecoder<TxReceipt> _decoder;
         private readonly DecodeRlpValue<TxReceipt[]> _decodeArrayFunc;
@@ -74,13 +75,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
         {
             if (byteBuffer.ReadableBytes == 0)
             {
-                return ReceiptsMessage.Empty;
+                return new ReceiptsMessage(null);
             }
 
             if (byteBuffer.GetByte(byteBuffer.ReaderIndex) == Rlp.OfEmptyList[0])
             {
                 byteBuffer.ReadByte();
-                return ReceiptsMessage.Empty;
+                return new ReceiptsMessage(null);
             }
 
             return byteBuffer.DeserializeRlp(Deserialize);

@@ -30,7 +30,7 @@ namespace Nethermind.Blockchain.Tracing.GethStyle;
 /// a large memory or storage dump, so a slow reader holds execution back instead of letting the response
 /// buffer grow with the size of each entry.
 /// </remarks>
-public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
+public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer, ITraceOperationGasCost
 {
     internal const int DefaultFlushThresholdBytes = 1024 * 1024;
     private const int EvmWordSize = EvmPooledMemory.WordSize;
@@ -55,8 +55,8 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
     private bool _gasCostAlreadySet;
     private bool _pendingStorageTouched;
 
-    private byte[]? _stackBuffer;
-    private int _stackByteCount;
+    private UInt256[]? _stackBuffer;
+    private int _stackCount;
 
     private byte[]? _memoryBuffer;
     private int _memoryByteCount;
@@ -113,15 +113,17 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
         _gasCostAlreadySet = false;
         _pendingStorageTouched = false;
         ResetRefund();
-        _stackByteCount = 0;
+        _stackCount = 0;
         _memoryByteCount = 0;
         _returnDataByteCount = 0;
+        // PooledDictionary.Clear makes the next insert rent new arrays without returning the old ones;
+        // Dispose returns them to the pool and leaves the map reusable.
         foreach (PooledDictionary<UInt256, UInt256> map in _storageByAddress.Values)
         {
-            map.Clear();
+            map.Dispose();
             _storageMapPool.Push(map);
         }
-        _storageByAddress.Clear();
+        _storageByAddress.Dispose();
         _pendingStorageMap = null;
         _resultSize = 0;
         ResetTrace();
@@ -149,7 +151,7 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
         _gasCostAlreadySet = false;
         _pendingStorageTouched = false;
         _pendingStorageMap = null;
-        _stackByteCount = 0;
+        _stackCount = 0;
         _memoryByteCount = 0;
         _returnDataByteCount = 0;
     }
@@ -162,10 +164,41 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
         _gasCostAlreadySet = true;
     }
 
+    /// <inheritdoc/>
+    public void ReportOperationGasCost(ulong gasCost)
+    {
+        if (_hasPendingOpcode)
+        {
+            _pendingGasCost = gasCost;
+            _gasCostAlreadySet = true;
+        }
+    }
+
+    /// <inheritdoc/>
+    public override void ReportActionErrorDetails(string error)
+    {
+        if (_hasPendingOpcode)
+            _pendingError = error;
+    }
+
     public override void ReportOperationError(EvmExceptionType error)
     {
         if (!_hasPendingOpcode) return;
-        _pendingError = GetErrorDescription(error);
+        if (_pendingOpcode == Instruction.INVALID)
+        {
+            _pendingGasCost = 0;
+            return;
+        }
+        if (error == EvmExceptionType.BadInstruction) _pendingGasCost = 0;
+        if (error == EvmExceptionType.StaticCallViolation && _pendingOpcode == Instruction.SSTORE)
+            _pendingError = "out of gas: write protection";
+        if (!IsExecutionFault(error)) _pendingError ??= GetErrorDescription(error);
+    }
+
+    /// <inheritdoc/>
+    public override void ReportStorageRefund(long refund)
+    {
+        if (_hasPendingOpcode) _pendingRefund = CurrentRefund + refund;
     }
 
     public override void SetOperationMemorySize(ulong newSize)
@@ -176,15 +209,15 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
     public override void SetOperationStack(TraceStack stack)
     {
         if (!IsTracingStack || !_hasPendingOpcode) return;
-        int needed = stack.Count * EvmWordSize;
-        if (needed == 0) { _stackByteCount = 0; return; }
+        int count = stack.Count;
+        _stackCount = count;
+        if (count == 0) return;
 
-        EnsureBuffer(ref _stackBuffer, needed);
-        for (int i = 0; i < stack.Count; i++)
+        EnsureBuffer(ref _stackBuffer, count);
+        for (int i = 0; i < count; i++)
         {
-            stack[i].Span.CopyTo(_stackBuffer.AsSpan(i * EvmWordSize, EvmWordSize));
+            _stackBuffer[i] = stack.PeekUInt256(count - 1 - i);
         }
-        _stackByteCount = needed;
     }
 
     public override void SetOperationMemory(TraceMemory memoryTrace)
@@ -257,16 +290,16 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
         _disposed = true;
     }
 
-    private void EnsureBuffer(ref byte[]? buffer, int requiredLength)
+    private static void EnsureBuffer<T>(ref T[]? buffer, int requiredLength)
     {
         if (buffer is not null && buffer.Length >= requiredLength) return;
-        if (buffer is not null) ArrayPool<byte>.Shared.Return(buffer);
-        buffer = ArrayPool<byte>.Shared.Rent(requiredLength);
+        if (buffer is not null) ArrayPool<T>.Shared.Return(buffer);
+        buffer = ArrayPool<T>.Shared.Rent(requiredLength);
     }
 
     private void ReturnPooledBuffers()
     {
-        if (_stackBuffer is not null) { ArrayPool<byte>.Shared.Return(_stackBuffer); _stackBuffer = null; }
+        if (_stackBuffer is not null) { ArrayPool<UInt256>.Shared.Return(_stackBuffer); _stackBuffer = null; }
         if (_memoryBuffer is not null) { ArrayPool<byte>.Shared.Return(_memoryBuffer); _memoryBuffer = null; }
         if (_returnDataBuffer is not null) { ArrayPool<byte>.Shared.Return(_returnDataBuffer); _returnDataBuffer = null; }
         foreach (PooledDictionary<UInt256, UInt256> map in _storageByAddress.Values) map.Dispose();
@@ -333,10 +366,9 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
     private void WriteStackArrayIfPresent()
     {
         _writer.WriteStartArray("stack"u8);
-        for (int offset = 0; offset < _stackByteCount; offset += EvmWordSize)
+        foreach (UInt256 word in _stackBuffer.AsSpan(0, _stackCount))
         {
-            ReadOnlySpan<byte> word = _stackBuffer!.AsSpan(offset, EvmWordSize);
-            HexWriter.WriteUInt256HexRawValue(_writer, new UInt256(word, isBigEndian: true));
+            HexWriter.WriteUInt256HexRawValue(_writer, word);
         }
         _writer.WriteEndArray();
     }

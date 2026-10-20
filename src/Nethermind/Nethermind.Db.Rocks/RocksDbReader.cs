@@ -25,7 +25,7 @@ public class RocksDbReader(DbOnTheRocks mainDb,
     ReadOptions hintCacheMissOptions,
     Func<ReadOptions> readOptionsFactory,
     DisposableLazy<DbOnTheRocks.IteratorManager>? iteratorManager = null,
-    IColumnFamilyHandle? columnFamily = null) : ISortedKeyValueStore, IDisposable
+    IColumnFamilyHandle? columnFamily = null) : ISortedKeyValueStore, IReadPrefetcher, IDisposable
 {
     private readonly DbOnTheRocks _mainDb = mainDb;
     private readonly Func<ReadOptions> _readOptionsFactory = readOptionsFactory;
@@ -89,6 +89,10 @@ public class RocksDbReader(DbOnTheRocks mainDb,
 
     public void DangerousReleaseMemory(in ReadOnlySpan<byte> span) => _mainDb.DangerousReleaseMemory(span);
 
+    public void Prefetch(ReadOnlySpan<byte> keys, int keyLength) => _mainDb.Prefetch(keys, keyLength, _columnFamily, _options);
+
+    public bool IsCached(ReadOnlySpan<byte> key) => _mainDb.IsCached(key, _columnFamily);
+
     public bool KeyExists(ReadOnlySpan<byte> key) => _mainDb.KeyExistsWithColumn(key, _columnFamily);
 
 
@@ -112,15 +116,44 @@ public class RocksDbReader(DbOnTheRocks mainDb,
         }
     }
 
+    internal bool TryGetCeilingInSnapshot(
+        scoped ReadOnlySpan<byte> lowerBoundInclusive, scoped ReadOnlySpan<byte> upperBoundExclusive,
+        Span<byte> keyBuffer, out int keyLength, Span<byte> valueBuffer, out int valueLength)
+    {
+        _mainDb.ThrowIfDisposing();
+        keyLength = valueLength = 0;
+        using ReadOptions readOptions = _readOptionsFactory();
+        if (_mainDb.CrossesPrefixBucket(lowerBoundInclusive, upperBoundExclusive)) readOptions.SetTotalOrderSeek(true);
+        readOptions.SetIterateBounds(lowerBoundInclusive, upperBoundExclusive);
+        using Iterator iterator = _mainDb.CreateIterator(readOptions, _columnFamily);
+        iterator.SeekToFirst();
+        if (!iterator.Valid())
+        {
+            iterator.ThrowIfError();
+            return false;
+        }
+
+        ReadOnlySpan<byte> key = iterator.GetKeySpan();
+        ReadOnlySpan<byte> value = iterator.GetValueSpan();
+        keyLength = key.Length;
+        valueLength = value.Length;
+        key.TryCopyTo(keyBuffer);
+        value.TryCopyTo(valueBuffer);
+        return true;
+    }
+
     public ISortedView GetViewBetween(ReadOnlySpan<byte> firstKey, ReadOnlySpan<byte> lastKey, ReadFlags flags = ReadFlags.None)
     {
         ReadOptions readOptions = _readOptionsFactory();
         if ((flags & ReadFlags.HintCacheMiss) != 0) readOptions.SetFillCache(false);
         if ((flags & ReadFlags.HintReadAhead) != 0) readOptions.SetReadaheadSize(_mainDb.ReadAheadSize);
-        if (_mainDb.CrossesPrefixBucket(firstKey, lastKey)) readOptions.SetTotalOrderSeek(true);
+        bool totalOrder = _mainDb.CrossesPrefixBucket(firstKey, lastKey);
+        if (totalOrder) readOptions.SetTotalOrderSeek(true);
         readOptions.SetIterateBounds(firstKey, lastKey);
 
         Iterator iterator = _mainDb.CreateIterator(readOptions, _columnFamily);
-        return new RocksdbSortedView(iterator, readOptions);
+        return (flags & ReadFlags.HintRepeatedReads) != 0
+            ? new RebindableRocksdbSortedView(iterator, readOptions, _mainDb, firstKey.Length, lastKey.Length, totalOrder)
+            : new RocksdbSortedView(iterator, readOptions);
     }
 }

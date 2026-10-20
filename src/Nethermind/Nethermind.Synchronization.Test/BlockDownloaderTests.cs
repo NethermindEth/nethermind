@@ -132,6 +132,34 @@ public partial class BlockDownloaderTests
     }
 
     [Test]
+    public async Task BlockDownloader_uses_non_blocking_suggestions_only_for_processing()
+    {
+        await using IContainer node = CreateNode(configProvider: new ConfigProvider(new SyncConfig
+        {
+            FastSync = true,
+            SnapSync = true,
+            StateMinDistanceFromHead = 2
+        }));
+        Context ctx = node.Resolve<Context>();
+        SuggestedStateRoots suggestedStateRoots = node.Resolve<SuggestedStateRoots>();
+        SyncPeerMock syncPeer = new(8, true, Response.AllCorrect | Response.WithTransactions);
+        PeerInfo peerInfo = new(syncPeer);
+        ctx.ConfigureBestPeer(peerInfo);
+
+        await ctx.FastSyncUntilNoRequest(peerInfo);
+        await ctx.FullSyncUntilNoRequest(peerInfo);
+
+        Assert.That(suggestedStateRoots.SuggestedOptions.Any(options => options == BlockTreeSuggestOptions.None), Is.True,
+            "fast-sync suggestions must not opt into asynchronous processing");
+        BlockTreeSuggestOptions[] processingOptions = suggestedStateRoots.SuggestedOptions
+            .Where(options => options.ContainsFlag(BlockTreeSuggestOptions.ShouldProcess))
+            .ToArray();
+        Assert.That(processingOptions, Is.Not.Empty, "the test must observe at least one processing suggestion");
+        Assert.That(processingOptions.All(options => options.ContainsFlag(BlockTreeSuggestOptions.NonBlockingProcessing)), Is.True,
+            "processing suggestions must opt into asynchronous processing");
+    }
+
+    [Test]
     public async Task Invoke_TryUpdateMainChain_Once()
     {
         ulong headNumber = 100;
@@ -237,6 +265,39 @@ public partial class BlockDownloaderTests
         Assert.That(ctx.BlockTree.IsMainChain(gapBlockHash), Is.True);
         Assert.That(ctx.BlockTree.BestSuggestedHeader!.Number, Is.EqualTo(peerInfo.HeadNumber));
         Assert.That(ctx.ReceiptStorage.Count, Is.GreaterThan(0));
+    }
+
+    [Test]
+    public async Task Full_sync_keeps_processing_when_head_is_genesis_without_persisted_state()
+    {
+        SettableFullStateFinder stateFinder = new();
+        await using IContainer node = CreateNode(builder => builder.AddSingleton<IFullStateFinder>(stateFinder));
+        Context ctx = node.Resolve<Context>();
+        SuggestedStateRoots suggestedStateRoots = node.Resolve<SuggestedStateRoots>();
+        SyncPeerMock syncPeer = new(131, withReceipts: false, Response.AllCorrect);
+        PeerInfo peerInfo = new(syncPeer);
+        ctx.ConfigureBestPeer(peerInfo);
+
+        await ctx.HandleOneRequest(peerInfo);
+        await ctx.HandleOneRequest(peerInfo);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.BlockTree.Head!.Number, Is.Zero);
+            Assert.That(ctx.BlockTree.BestSuggestedHeader!.Number, Is.GreaterThan(1));
+            Assert.That(stateFinder.FindBestFullState(), Is.Zero);
+        }
+
+        using BlocksRequest? finalRequest = await ctx.FullSyncFeedComponent.Feed.PrepareRequest();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(finalRequest, Is.Null);
+            Assert.That(ctx.ReceiptStorage.Count, Is.Zero);
+
+            BlockTreeSuggestOptions processingOptions = BlockTreeSuggestOptions.ShouldProcess | BlockTreeSuggestOptions.NonBlockingProcessing;
+            Assert.That(suggestedStateRoots.SuggestedOptions, Is.Not.Empty);
+            Assert.That(suggestedStateRoots.SuggestedOptions, Has.All.EqualTo(processingOptions));
+        }
     }
 
     [Test]
@@ -861,6 +922,44 @@ public partial class BlockDownloaderTests
     }
 
     [Test]
+    public async Task Sparse_bodies_response_is_matched_by_content_and_not_reported()
+    {
+        // Check bodies against their headers for real, so a body paired with the wrong header is caught.
+        IBlockValidator blockValidator = Substitute.For<IBlockValidator>();
+        blockValidator.ValidateSuggestedBlock(default!, default!, out _).ReturnsForAnyArgs(true);
+        blockValidator
+            .ValidateBodyAgainstHeader(Arg.Any<BlockHeader>(), Arg.Any<BlockBody>(), out Arg.Any<string?>())
+            .Returns(ci => BlockValidator.ValidateTxRootMatchesTxs(ci.ArgAt<BlockHeader>(0), ci.ArgAt<BlockBody>(1), out _));
+        await using IContainer node = CreateNode(builder => builder.AddSingleton<IBlockValidator>(blockValidator));
+        Context ctx = node.Resolve<Context>();
+
+        ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
+        syncPeer.TotalDifficulty.Returns(UInt256.MaxValue);
+        syncPeer.GetBlockHeaders(Arg.Any<ulong>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(ci => ctx.ResponseBuilder.BuildHeaderResponse(ci.ArgAt<ulong>(0), ci.ArgAt<int>(1), Response.AllCorrect | Response.WithTransactions));
+
+        // The peer omits the first requested body, as the protocol allows for a body it does not have.
+        syncPeer.GetBlockBodies(Arg.Any<IReadOnlyList<Hash256>>(), Arg.Any<CancellationToken>())
+            .Returns(async ci =>
+            {
+                OwnedBlockBodies full = await ctx.ResponseBuilder.BuildBlocksResponse(ci.ArgAt<IList<Hash256>>(0), Response.AllCorrect | Response.WithTransactions);
+                return new OwnedBlockBodies(full.Bodies.Skip(1).ToArray());
+            });
+
+        PeerInfo peerInfo = new(syncPeer);
+        syncPeer.HeadNumber.Returns(8UL);
+        ctx.ConfigureBestPeer(peerInfo);
+
+        Assert.That(await ctx.HandleOneRequest(peerInfo), Is.EqualTo(SyncResponseHandlingResult.OK));
+        ctx.PeerPool.DidNotReceiveWithAnyArgs().ReportBreachOfProtocol(default!, default, default!);
+
+        // The bodies that were sent were matched to their headers, so only the omitted body is asked for again.
+        using BlocksRequest? followUp = await ctx.FullSyncFeedComponent.Feed.PrepareRequest();
+        Assert.That(followUp, Is.Not.Null);
+        Assert.That(followUp!.BodiesRequests.Select(static b => b.Number), Is.EqualTo(new[] { 1UL }));
+    }
+
+    [Test]
     public async Task Throws_on_receipt_task_exception_when_downloading_receipts()
     {
         await using IContainer node = CreateFastSyncNode(fastSyncLag: 1);
@@ -1226,11 +1325,18 @@ public partial class BlockDownloaderTests
     private sealed class SuggestedStateRoots
     {
         private readonly ConcurrentDictionary<Hash256, bool> _roots = new();
+        private readonly System.Collections.Concurrent.ConcurrentQueue<BlockTreeSuggestOptions> _suggestedOptions = new();
+
+        public IReadOnlyCollection<BlockTreeSuggestOptions> SuggestedOptions => _suggestedOptions;
 
         public bool Contains(Hash256 stateRoot) => _roots.ContainsKey(stateRoot);
 
-        public AddBlockResult Record(Block block, AddBlockResult result)
+        public AddBlockResult Record(Block block, BlockTreeSuggestOptions options, AddBlockResult result)
         {
+            if (block.Number != 0)
+            {
+                _suggestedOptions.Enqueue(options);
+            }
             if (result is AddBlockResult.Added or AddBlockResult.AlreadyKnown)
             {
                 _roots.TryAdd(block.StateRoot!, true);
@@ -1243,10 +1349,10 @@ public partial class BlockDownloaderTests
     private sealed class StateTrackingBlockTree(IBlockTree blockTree, SuggestedStateRoots stateRoots) : BlockTreeTestDouble(blockTree)
     {
         public override AddBlockResult SuggestBlock(Block block, BlockTreeSuggestOptions options = BlockTreeSuggestOptions.ShouldProcess) =>
-            stateRoots.Record(block, base.SuggestBlock(block, options));
+            stateRoots.Record(block, options, base.SuggestBlock(block, options));
 
         public override async ValueTask<AddBlockResult> SuggestBlockAsync(Block block, BlockTreeSuggestOptions options = BlockTreeSuggestOptions.ShouldProcess) =>
-            stateRoots.Record(block, await base.SuggestBlockAsync(block, options));
+            stateRoots.Record(block, options, await base.SuggestBlockAsync(block, options));
     }
 
     private sealed class SuggestedFullStateFinder(IBlockTree blockTree, SuggestedStateRoots stateRoots) : IFullStateFinder
@@ -1407,7 +1513,7 @@ public partial class BlockDownloaderTests
         public void NotifyOfNewBlock(Block block, SendBlockMode mode) =>
             throw new NotImplementedException();
 
-        public void SendNewTransactions(IEnumerable<Transaction> txs, bool sendFullTx) =>
+        public void SendNewTransactions(ReadOnlySpan<Transaction> txs, bool sendFullTx) =>
             throw new NotImplementedException();
 
         public Task<IByteArrayList> GetNodeData(IReadOnlyList<Hash256> hashes, CancellationToken token) =>

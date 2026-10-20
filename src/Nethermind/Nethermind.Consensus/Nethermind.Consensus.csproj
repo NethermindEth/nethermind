@@ -4,6 +4,9 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <Nullable>annotations</Nullable>
     <IsAotCompatible>true</IsAotCompatible>
+    <!-- Loads the experimental read-only query modules (NMEVM0001) into the query environments, and hands a scope's
+         frame code runner to the machines of block-level access list execution. -->
+    <NoWarn>$(NoWarn);NMEVM0001</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>

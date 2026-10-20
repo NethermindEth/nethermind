@@ -4,12 +4,12 @@
 using System;
 using System.Numerics;
 using System.Runtime.CompilerServices;
+using Nethermind.Blockchain.Contracts;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Specs;
-using Nethermind.Evm;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Merge.AuRa.Contracts;
@@ -56,7 +56,8 @@ public class AuraWithdrawalProcessor : IWithdrawalProcessor
         {
             _contract.ExecuteWithdrawals(block.Header, _failedWithdrawalsMaxCount, amounts, addresses);
         }
-        catch (Exception ex) when (ex is ArgumentNullException || ex is EvmException)
+        // Any other exception (e.g. a wrapped state read failure) is a node-local fault and must not invalidate the block.
+        catch (ContractCallFailedException ex)
         {
             throw new InvalidBlockException(block, "failed to execute withdrawals contract", ex);
         }

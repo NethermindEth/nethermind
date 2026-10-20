@@ -6,7 +6,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Evm.Tracing;
 
-public class FeesTracer : TxTracer, IBlockTracer
+public class FeesTracer : TxTracer, IBlockTracer, ITxDiscardAwareTracer
 {
     public override bool IsTracingFees => true;
 
@@ -27,9 +27,25 @@ public class FeesTracer : TxTracer, IBlockTracer
     {
         Fees = UInt256.Zero;
         BurntFees = UInt256.Zero;
+        _feesBeforeTx = UInt256.Zero;
+        _burntFeesBeforeTx = UInt256.Zero;
     }
 
-    public ITxTracer StartNewTxTrace(Transaction? tx) => this;
+    private UInt256 _feesBeforeTx;
+    private UInt256 _burntFeesBeforeTx;
+
+    public ITxTracer StartNewTxTrace(Transaction? tx)
+    {
+        _feesBeforeTx = Fees;
+        _burntFeesBeforeTx = BurntFees;
+        return this;
+    }
+
+    public void DiscardLastTx()
+    {
+        Fees = _feesBeforeTx;
+        BurntFees = _burntFeesBeforeTx;
+    }
 
     public void EndTxTrace() { }
 

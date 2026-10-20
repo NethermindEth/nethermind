@@ -40,16 +40,16 @@ public static class FrameExceptionFragments
         FrameTxValidation.MissingFrames,
         FrameTxValidation.MissingSender,
         FrameTxValidation.InvalidMode,
-        FrameTxValidation.PostTxNotTrailing,
-        FrameTxValidation.PostTxNotEnabled,
+        FrameTxValidation.AssertFrameNotTrailing,
+        FrameTxValidation.AssertFrameNotEnabled,
         FrameTxValidation.InvalidFlags,
         FrameTxValidation.ValueOutsideSenderMode,
         FrameTxValidation.ExecutionApprovalWrongTarget,
         FrameTxValidation.AtomicBatchOnLastFrame,
         FrameTxValidation.AtomicBatchOnVerifyFrame,
-        FrameTxValidation.AtomicBatchOnPostTxFrame,
+        FrameTxValidation.AtomicBatchOnAssertFrame,
         FrameTxValidation.AtomicBatchFollowedByVerifyFrame,
-        FrameTxValidation.AtomicBatchFollowedByPostTxFrame,
+        FrameTxValidation.AtomicBatchFollowedByAssertFrame,
         FrameTxValidation.ApprovalScopeInAtomicBatch,
         FrameTxValidation.FrameGasOverflow,
         FrameTxValidation.InvalidExpiryFrame,
@@ -125,6 +125,5 @@ public static class FrameExceptionFragments
         // from it: a static initialiser reading a field declared below it silently reads null.
         "Collection count",
         "An RLP limit exceeded",
-        "Exceeded Transaction.NonceKeys",
     ];
 }

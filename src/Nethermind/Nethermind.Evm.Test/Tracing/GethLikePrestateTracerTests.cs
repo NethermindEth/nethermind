@@ -6,13 +6,18 @@ using System.Text.Json;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
+using Nethermind.Crypto;
+using Nethermind.Specs.Forks;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Blockchain.Tracing.GethStyle;
+using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Prestate;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using NUnit.Framework;
 
@@ -21,6 +26,49 @@ namespace Nethermind.Evm.Test.Tracing;
 [TestFixture]
 public class GethLikePrestateTracerTests : VirtualMachineTestsBase
 {
+    private static IEnumerable<TestCaseData> AuthoritySignatureCases()
+    {
+        yield return new TestCaseData(UInt256.One, UInt256.One, 0, true, true);
+        yield return new TestCaseData(UInt256.One, SecP256k1Curve.HalfN, 1, true, true);
+        yield return new TestCaseData(UInt256.Zero, UInt256.One, 0, true, false);
+        yield return new TestCaseData(SecP256k1Curve.N, UInt256.One, 0, true, false);
+        yield return new TestCaseData(UInt256.One, UInt256.Zero, 0, true, false);
+        yield return new TestCaseData(UInt256.One, SecP256k1Curve.HalfNPlusOne, 0, true, false);
+        yield return new TestCaseData(UInt256.One, UInt256.One, 2, true, false);
+        yield return new TestCaseData(UInt256.One, UInt256.One, 0, false, false);
+    }
+
+    [TestCaseSource(nameof(AuthoritySignatureCases))]
+    public void Prestate_captures_only_signature_valid_recovered_authorities(UInt256 r, UInt256 s, int parity, bool recovered, bool captured)
+    {
+        TestState.CreateAccount(TestItem.AddressD, UInt256.One);
+        AuthorizationTuple authorization = new(9999, TestItem.AddressE, ulong.MaxValue, (byte)parity, r, s,
+            recovered ? TestItem.AddressD : null);
+        Transaction transaction = Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithTo(TestItem.AddressB)
+            .WithAuthorizationCode(authorization).TestObject;
+        Block block = Build.A.Block.WithBeneficiary(TestItem.AddressC).TestObject;
+        using GethLikeNativeTxTracer tracer = GethLikeNativeTracerFactory.CreateTracer(
+            GetGethTraceOptions(), block, transaction, TestState, Prague.Instance);
+        Dictionary<AddressAsKey, NativePrestateTracerAccount> accounts =
+            (Dictionary<AddressAsKey, NativePrestateTracerAccount>)tracer.BuildResult().CustomTracerResult!.Value!;
+        Assert.That(accounts.ContainsKey(TestItem.AddressD), Is.EqualTo(captured));
+    }
+
+    [Test]
+    public void Prestate_filters_empty_authorities_using_configuration([Values] bool includeEmpty, [Values] bool disableCode)
+    {
+        TestState.CreateAccount(TestItem.AddressD, UInt256.Zero);
+        AuthorizationTuple authorization = new(0, TestItem.AddressE, 0, 0, UInt256.One, UInt256.One, TestItem.AddressD);
+        Transaction transaction = Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithTo(TestItem.AddressB)
+            .WithAuthorizationCode(authorization).TestObject;
+        Block block = Build.A.Block.WithBeneficiary(TestItem.AddressC).TestObject;
+        using GethLikeNativeTxTracer tracer = GethLikeNativeTracerFactory.CreateTracer(
+            GetGethTraceOptions(JsonSerializer.Serialize(new { includeEmpty, disableCode })), block, transaction, TestState, Prague.Instance);
+        Dictionary<AddressAsKey, NativePrestateTracerAccount> accounts =
+            (Dictionary<AddressAsKey, NativePrestateTracerAccount>)tracer.BuildResult().CustomTracerResult!.Value!;
+        Assert.That(accounts.ContainsKey(TestItem.AddressD), Is.EqualTo(includeEmpty));
+    }
+
     [Test]
     public void Execute_WhenPrestateIsFiltered_ObservesOnlyRequiredOpcodes([Values] bool fullTrace)
     {
@@ -59,6 +107,76 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
             Assert.That(tracer.Error, Is.EqualTo(EvmExceptionType.StackUnderflow));
         }
     }
+
+    [Test]
+    public void BuildResult_FiltersInitiallyEmptyAccounts([Values] bool includeEmpty, [Values] bool disableCode)
+    {
+        TestState.CreateAccount(TestItem.AddressD, UInt256.Zero);
+        TestState.InsertCode(TestItem.AddressD, new byte[] { 0x00 }, Spec);
+        string config = $$"""{"includeEmpty":{{includeEmpty.ToString().ToLowerInvariant()}},"disableCode":{{disableCode.ToString().ToLowerInvariant()}}}""";
+        using NativePrestateTracer tracer = new(TestState, GetGethTraceOptions(config), Hash256.Zero,
+            TestItem.AddressC, TestItem.AddressD, TestItem.AddressE);
+
+        GethLikeTxTrace result = tracer.BuildResult();
+        Dictionary<AddressAsKey, NativePrestateTracerAccount> accounts =
+            (Dictionary<AddressAsKey, NativePrestateTracerAccount>)result.CustomTracerResult!.Value!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(accounts.ContainsKey(TestItem.AddressC), Is.EqualTo(includeEmpty));
+            Assert.That(accounts.ContainsKey(TestItem.AddressE), Is.EqualTo(includeEmpty));
+            Assert.That(accounts.ContainsKey(TestItem.AddressD), Is.True, "Code-only accounts must remain even with disableCode");
+        }
+    }
+
+    [Test]
+    public void Prestate_filters_initially_empty_creation_with_storage([Values] bool includeEmpty, [Values] bool disableStorage)
+    {
+        (Block block, Transaction transaction) = PrepareTx(MainnetSpecProvider.CancunActivation, 500000, value: 0);
+        transaction.To = null;
+        transaction.Data = Bytes.FromHexString("600160005500");
+        Address created = ContractAddress.From(transaction.SenderAddress!, transaction.Nonce);
+        Assert.That(TestState.AccountExists(created), Is.False);
+        IReleaseSpec spec = SpecProvider.GetSpec(block.Header);
+        using GethLikeNativeTxTracer tracer = GethLikeNativeTracerFactory.CreateTracer(
+            GetGethTraceOptions(JsonSerializer.Serialize(new { includeEmpty, disableStorage })), block, transaction, TestState, spec);
+
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, spec), tracer);
+        Dictionary<AddressAsKey, NativePrestateTracerAccount> accounts =
+            (Dictionary<AddressAsKey, NativePrestateTracerAccount>)tracer.BuildResult().CustomTracerResult!.Value!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            TestState.Get(new StorageCell(created, 0), out UInt256 stored);
+            Assert.That(stored, Is.EqualTo(UInt256.One), "initcode must execute SSTORE");
+            Assert.That(accounts.ContainsKey(created), Is.EqualTo(includeEmpty));
+        }
+        if (includeEmpty)
+            Assert.That(accounts[created].Storage?.Count ?? 0, Is.EqualTo(disableStorage ? 0 : 1));
+    }
+
+    [Test]
+    public void DiffMode_OmitsInitiallyEmptySenderFromPrestate()
+    {
+        using NativePrestateTracer tracer = new(TestState, GetGethTraceOptions(DiffMode), Hash256.Zero,
+            TestItem.AddressD, TestItem.AddressE);
+        TestState.CreateAccount(TestItem.AddressD, UInt256.Zero);
+        TestState.IncrementNonce(TestItem.AddressD);
+        tracer.MarkAsSuccess(TestItem.AddressE, default, [], []);
+
+        NativePrestateTracerDiffMode result = (NativePrestateTracerDiffMode)tracer.BuildResult().CustomTracerResult!.Value!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.pre.ContainsKey(TestItem.AddressD), Is.False);
+            Assert.That(result.post[TestItem.AddressD].Nonce, Is.EqualTo((UInt256)1));
+        }
+    }
+
+    [Test]
+    public void Constructor_RejectsDiffModeWithIncludeEmpty() =>
+        Assert.That(() => new NativePrestateTracer(TestState,
+            GetGethTraceOptions("""{"diffMode":true,"includeEmpty":true}"""), Hash256.Zero, TestItem.AddressA),
+            Throws.ArgumentException.With.Message.EqualTo("cannot use diffMode with includeEmpty"));
 
     private static readonly JsonSerializerOptions SerializerOptions = EthereumJsonSerializer.JsonOptionsIndented;
     private const string DiffMode = """{"diffMode":true}""";
@@ -105,10 +223,12 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
         }
     }
 
+    /// <summary>As in geth, an operation error ends only the failing operation: the caller that survives it is
+    /// still captured, opcode by opcode, without the failing operation's capture flags leaking into it.</summary>
     [Test]
-    public void SetOperationStack_WhenAnOperationHasErrored_CapturesNothingMore([Values] bool errored)
+    public void SetOperationStack_AfterAnOperationHasErrored_KeepsCapturing([Values] bool errored)
     {
-        using NativePrestateTracer tracer = new(TestState, GetGethTraceOptions(),
+        using NativePrestateTracer tracer = new(TestState, GetGethTraceOptions("""{"includeEmpty":true}"""),
             Hash256.Zero, TestItem.AddressA, TestItem.AddressB);
         using ExecutionEnvironment environment = ExecutionEnvironment.Rent(
             null!, TestItem.AddressB, TestItem.AddressA, null, 0, UInt256.Zero, default);
@@ -117,10 +237,15 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
         if (errored)
         {
             tracer.ReportOperationError(EvmExceptionType.OutOfGas);
-            // The frame that halted unwinds, but its caller keeps executing unrelated opcodes
-            tracer.StartOperation(1, Instruction.ADD, 100, environment);
         }
 
+        // The frame that halted unwinds, but its caller keeps executing: an unrelated opcode captures nothing
+        tracer.StartOperation(1, Instruction.ADD, 100, environment);
+        bool tracingStackOnAdd = tracer.IsTracingStack;
+
+        // while a later SLOAD of the caller is still captured
+        tracer.StartOperation(2, Instruction.SLOAD, 100, environment);
+        bool tracingStackOnSLoad = tracer.IsTracingStack;
         tracer.SetOperationStack(new TraceStack(new byte[EvmStack.WordSize]));
 
         NativePrestateTracerAccount account =
@@ -128,8 +253,114 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(tracer.IsTracingStack, Is.EqualTo(!errored));
-            Assert.That(account.Storage?.Count ?? 0, Is.EqualTo(errored ? 0 : 1));
+            Assert.That(tracingStackOnAdd, Is.False);
+            Assert.That(tracingStackOnSLoad, Is.True);
+            Assert.That(account.Storage?.Count ?? 0, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public void Prestate_captures_parent_accesses_after_child_exit([Values("00", "fe", "60006000fd")] string childCode)
+    {
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
+        TestState.InsertCode(TestItem.AddressC, Bytes.FromHexString(childCode), Spec);
+        TestState.CreateAccount(TestItem.AddressD, 1.Ether);
+        TestState.Set(new StorageCell(TestItem.AddressB, 0), (UInt256)42);
+        byte[] code = Prepare.EvmCode
+            .Call(TestItem.AddressC, 50000)
+            .Op(Instruction.POP)
+            .PushData(TestItem.AddressD)
+            .Op(Instruction.BALANCE)
+            .Op(Instruction.POP)
+            .PushData(0)
+            .Op(Instruction.SLOAD)
+            .Op(Instruction.STOP)
+            .Done;
+        using NativePrestateTracer tracer = new(TestState, GetGethTraceOptions("""{"includeEmpty":true}"""),
+            Hash256.Zero, TestItem.AddressA, TestItem.AddressB);
+
+        Execute(tracer, code, MainnetSpecProvider.CancunActivation);
+        Dictionary<AddressAsKey, NativePrestateTracerAccount> accounts =
+            (Dictionary<AddressAsKey, NativePrestateTracerAccount>)tracer.BuildResult().CustomTracerResult!.Value!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(accounts.ContainsKey(TestItem.AddressD), Is.True);
+            Assert.That(accounts[TestItem.AddressB].Storage![UInt256.Zero], Is.EqualTo((UInt256)42));
+        }
+    }
+
+    [Test]
+    public void Prestate_serializes_nonempty_code_hash(
+        [Values(null, "", "00", "ef01000000000000000000000000000000000000001234")] string? code,
+        [Values] bool disableCode)
+    {
+        if (code is not null)
+        {
+            TestState.CreateAccount(TestItem.AddressB, 1);
+            TestState.InsertCode(TestItem.AddressB, Bytes.FromHexString(code), Spec);
+        }
+        using NativePrestateTracer tracer = new(TestState, GetGethTraceOptions(JsonSerializer.Serialize(new { disableCode, includeEmpty = true })),
+            Hash256.Zero, TestItem.AddressA, TestItem.AddressB);
+
+        JsonElement result = JsonSerializer.SerializeToElement(tracer.BuildResult().CustomTracerResult!.Value, SerializerOptions);
+        JsonElement account = result.GetProperty(TestItem.AddressB.ToString());
+        bool hasCode = !string.IsNullOrEmpty(code);
+        bool hasHash = account.TryGetProperty("codeHash", out JsonElement codeHash);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(account.TryGetProperty("code", out _), Is.EqualTo(hasCode && !disableCode));
+            Assert.That(hasHash, Is.EqualTo(hasCode));
+            if (hasCode && hasHash)
+                Assert.That(codeHash.GetString(), Is.EqualTo(Keccak.Compute(Bytes.FromHexString(code!)).ToString()));
+        }
+    }
+
+    private static IEnumerable<TestCaseData> CodeChangeCases()
+    {
+        (string Before, string? After)[] cases =
+        [
+            ("00", "00"), ("00", "6000"), ("", "00"), ("00", ""), ("", ""),
+            ("00", null), ("", null), ("ef01000000000000000000000000000000000000001234", "")
+        ];
+        foreach ((string before, string? after) in cases)
+            foreach (bool disableCode in new[] { false, true })
+                yield return new TestCaseData(before, after, disableCode);
+    }
+
+    [TestCaseSource(nameof(CodeChangeCases))]
+    public void Diff_serializes_changed_code_and_hash(string before, string? after, bool disableCode)
+    {
+        byte[] beforeCode = Bytes.FromHexString(before);
+        TestState.CreateAccount(TestItem.AddressB, 1);
+        TestState.InsertCode(TestItem.AddressB, beforeCode, Spec);
+        using NativePrestateTracer tracer = new(TestState, GetGethTraceOptions(JsonSerializer.Serialize(new { diffMode = true, disableCode })),
+            Hash256.Zero, TestItem.AddressA, TestItem.AddressB);
+        if (after is null)
+            TestState.DeleteAccount(TestItem.AddressB);
+        else
+        {
+            TestState.InsertCode(TestItem.AddressB, Bytes.FromHexString(after), Spec);
+            TestState.SubtractFromBalance(TestItem.AddressB, 1, Spec, out _);
+        }
+        tracer.MarkAsSuccess(TestItem.AddressB, default, [], []);
+
+        JsonElement result = JsonSerializer.SerializeToElement(tracer.BuildResult().CustomTracerResult!.Value, SerializerOptions);
+        JsonElement pre = result.GetProperty("pre").GetProperty(TestItem.AddressB.ToString());
+        JsonElement post = result.GetProperty("post").GetProperty(TestItem.AddressB.ToString());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pre.TryGetProperty("code", out _), Is.EqualTo(before.Length > 0 && !disableCode));
+            Assert.That(pre.TryGetProperty("codeHash", out JsonElement preHash), Is.EqualTo(before.Length > 0));
+            if (before.Length > 0)
+                Assert.That(preHash.GetString(), Is.EqualTo(Keccak.Compute(beforeCode).ToString()));
+            Assert.That(post.TryGetProperty("codeHash", out JsonElement postHash), Is.EqualTo(before != after));
+            if (before != after)
+                Assert.That(postHash.GetString(), Is.EqualTo((after is null ? Hash256.Zero : Keccak.Compute(Bytes.FromHexString(after))).ToString()));
+            bool codeChanged = !disableCode && before != (after ?? "");
+            Assert.That(post.TryGetProperty("code", out JsonElement postCode), Is.EqualTo(codeChanged));
+            if (codeChanged)
+                Assert.That(postCode.GetString(), Is.EqualTo("0x" + after));
         }
     }
 
@@ -164,9 +395,6 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
     private const string ExpectedSStoreDiffModeTrace = """
         {
           "pre": {
-            "0xb7705ae4c6f81b66cdb323c65f4e8133690fc099": {
-              "balance": "0x0"
-            },
             "0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358": {
               "balance": "0x0",
               "storage": {
@@ -182,6 +410,7 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
             "0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358": {
               "balance": "0x56bc75e2d63100001",
               "code": "0x7f0000000000000000000000000000000000000000000000000000000000a012346000557f0000000000000000000000000000000000000000000000000000000000b1567860205500",
+              "codeHash": "0x3e7b60198c46be6d3baf6996b6b0699d2750bb35ce4e9f495eefe94dd40c1525",
               "storage": {
                 "0x0000000000000000000000000000000000000000000000000000000000000000": "0x0000000000000000000000000000000000000000000000000000000000a01234",
                 "0x0000000000000000000000000000000000000000000000000000000000000020": "0x0000000000000000000000000000000000000000000000000000000000b15678"
@@ -191,11 +420,11 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
         }
         """;
 
-    [TestCase(NoConfig, ExpectedSStorePrestateTrace, false)]
-    [TestCase(PrestateMode, ExpectedSStorePrestateTrace, false)]
+    [TestCase("""{"includeEmpty":true}""", ExpectedSStorePrestateTrace, false)]
+    [TestCase("""{"diffMode":false,"includeEmpty":true}""", ExpectedSStorePrestateTrace, false)]
     [TestCase(DiffMode, ExpectedSStoreDiffModeTrace, false)]
-    [TestCase(NoConfig, ExpectedSStorePrestateTrace, true)]
-    [TestCase(PrestateMode, ExpectedSStorePrestateTrace, true)]
+    [TestCase("""{"includeEmpty":true}""", ExpectedSStorePrestateTrace, true)]
+    [TestCase("""{"diffMode":false,"includeEmpty":true}""", ExpectedSStorePrestateTrace, true)]
     [TestCase(DiffMode, ExpectedSStoreDiffModeTrace, true)]
     public void Test_PrestateTrace_SStore(string? config, string expectedTrace, bool wrapped)
     {
@@ -211,35 +440,20 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
 
     private const string ExpectedNestedCallsPrestateTrace = """
         {
-          "0xb7705ae4c6f81b66cdb323c65f4e8133690fc099": {
-            "balance": "0x0"
-          },
-          "0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358": {
-            "balance": "0x0"
-          },
           "0x0000000000000000000000000000000000000000": {
             "balance": "0x56bc75e2d63100000"
           },
           "0x76e68a8696537e4141926f3e528733af9e237d69": {
             "balance": "0xde0b6b3a7640000",
-            "code": "0x7f7f000000000000000000000000000000000000000000000000000000000000006000527f0060005260036000f30000000000000000000000000000000000000000000000602052602960006000f000"
-          },
-          "0x89aa9b2ce05aaef815f25b237238c0b4ffff6ae3": {
-            "balance": "0x0"
+            "code": "0x7f7f000000000000000000000000000000000000000000000000000000000000006000527f0060005260036000f30000000000000000000000000000000000000000000000602052602960006000f000",
+            "codeHash": "0xed25a1b0948283ea4844073b1cdb8e1bc6624420c646ad850059b2b8086faaa9"
           }
         }
         """;
 
     private const string ExpectedNestedCallsDiffModeTrace = """
         {
-          "pre": {
-            "0xb7705ae4c6f81b66cdb323c65f4e8133690fc099": {
-              "balance": "0x0"
-            },
-            "0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358": {
-              "balance": "0x0"
-            }
-          },
+          "pre": {},
           "post": {
             "0xb7705ae4c6f81b66cdb323c65f4e8133690fc099": {
               "balance": "0x56bc75e2d630f242e",
@@ -248,11 +462,13 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
             "0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358": {
               "balance": "0x56bc75e2d63100001",
               "nonce": 1,
-              "code": "0x60006000600060007376e68a8696537e4141926f3e528733af9e237d6961c350f400"
+              "code": "0x60006000600060007376e68a8696537e4141926f3e528733af9e237d6961c350f400",
+              "codeHash": "0xf0a0df4051fb30bcef4898ac511f8cf40e2f6fb5279ef80ce84d13051ab2138e"
             },
             "0x89aa9b2ce05aaef815f25b237238c0b4ffff6ae3": {
               "nonce": 1,
-              "code": "0x000000"
+              "code": "0x000000",
+              "codeHash": "0x99ff0d9125e1fc9531a11262e15aeb2c60509a078c4cc4c64cefdfb06ff68647"
             }
           }
         }
@@ -292,21 +508,13 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
 
     private const string ExpectedCreate2PrestateTrace = """
         {
-          "0xb7705ae4c6f81b66cdb323c65f4e8133690fc099": {
-            "balance": "0x0"
-          },
-          "0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358": {
-            "balance": "0x0"
-          },
           "0x0000000000000000000000000000000000000000": {
             "balance": "0x56bc75e2d63100000"
           },
           "0x76e68a8696537e4141926f3e528733af9e237d69": {
             "balance": "0xde0b6b3a7640000",
-            "code": "0x7f7f010203000000000000000000000000000000000000000000000000000000006000527f0060005260036000f3000000000000000000000000000000000000000000000060205262040506602960006000f5"
-          },
-          "0x02caaf71b895896a4d9159943eae74efb6a58238": {
-            "balance": "0x0"
+            "code": "0x7f7f010203000000000000000000000000000000000000000000000000000000006000527f0060005260036000f3000000000000000000000000000000000000000000000060205262040506602960006000f5",
+            "codeHash": "0xb2139a4067bf64811bda94f4d73a4a9fdb7d5015e57a92274e9e009e48354dc5"
           }
         }
         """;
@@ -314,15 +522,10 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
     private const string ExpectedCreate2DiffModeTrace = """
         {
           "pre": {
-            "0xb7705ae4c6f81b66cdb323c65f4e8133690fc099": {
-              "balance": "0x0"
-            },
-            "0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358": {
-              "balance": "0x0"
-            },
             "0x76e68a8696537e4141926f3e528733af9e237d69": {
               "balance": "0xde0b6b3a7640000",
-              "code": "0x7f7f010203000000000000000000000000000000000000000000000000000000006000527f0060005260036000f3000000000000000000000000000000000000000000000060205262040506602960006000f5"
+              "code": "0x7f7f010203000000000000000000000000000000000000000000000000000000006000527f0060005260036000f3000000000000000000000000000000000000000000000060205262040506602960006000f5",
+              "codeHash": "0xb2139a4067bf64811bda94f4d73a4a9fdb7d5015e57a92274e9e009e48354dc5"
             }
           },
           "post": {
@@ -332,14 +535,16 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
             },
             "0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358": {
               "balance": "0x56bc75e2d63100001",
-              "code": "0x600060006000600060007376e68a8696537e4141926f3e528733af9e237d6961c350f1"
+              "code": "0x600060006000600060007376e68a8696537e4141926f3e528733af9e237d6961c350f1",
+              "codeHash": "0x446a918ac490932cbcc6ed9f50fedcaef0b253ba7b36185cfffcdb291e642b2b"
             },
             "0x76e68a8696537e4141926f3e528733af9e237d69": {
               "nonce": 1
             },
             "0x02caaf71b895896a4d9159943eae74efb6a58238": {
               "nonce": 1,
-              "code": "0x010203"
+              "code": "0x010203",
+              "codeHash": "0xf1885eda54b7a053318cd41e2093220dab15d65381b1157a3633a83bfd5c9239"
             }
           }
         }
@@ -418,14 +623,126 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
         }
     }
 
+    [Test]
+    public void Test_PrestateTrace_CreateCollisionAfterValueTransfer_PreservesCodeBearingPrestate(
+        [Values(Instruction.CREATE, Instruction.CREATE2)] Instruction opcode, [Values] bool disableCode)
+    {
+        byte[] salt = { 4, 5, 6 };
+        byte[] initCode = Prepare.EvmCode.ForInitOf([1, 2, 3]).Done;
+        Address created = opcode == Instruction.CREATE
+            ? ContractAddress.From(TestItem.AddressC, 0)
+            : ContractAddress.From(TestItem.AddressC, salt.PadLeft(32), initCode);
+        Prepare creator = Prepare.EvmCode
+            .PushData(0).PushData(0).PushData(0).PushData(0)
+            .PushData(1).PushData(created).PushData(50_000)
+            .Op(Instruction.CALL).Op(Instruction.POP);
+        byte[] creatorCode = opcode == Instruction.CREATE
+            ? creator.Create(initCode, 0).Done
+            : creator.Create2(initCode, salt, 0).Done;
+        byte[] existingCode = [(byte)Instruction.STOP];
+
+        TestState.CreateAccount(Address.Zero, 100.Ether);
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
+        TestState.InsertCode(TestItem.AddressC, creatorCode, Spec);
+        TestState.CreateAccount(created, UInt256.Zero);
+        TestState.InsertCode(created, existingCode, Spec);
+
+        string config = JsonSerializer.Serialize(new { diffMode = true, disableCode });
+        NativePrestateTracer tracer = new(TestState, GetGethTraceOptions(config), Hash256.Zero,
+            TestItem.AddressA, TestItem.AddressB, Address.Zero);
+        GethLikeTxTrace trace = ExecutePrestate(tracer, Prepare.EvmCode.Call(TestItem.AddressC, 50000).Done, wrapped: false);
+
+        using JsonDocument document = JsonDocument.Parse(JsonSerializer.Serialize(trace.CustomTracerResult?.Value, SerializerOptions));
+        JsonElement prestate = document.RootElement.GetProperty("pre").GetProperty(created.ToString());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(prestate.GetProperty("balance").GetString(), Is.EqualTo("0x0"));
+            Assert.That(prestate.GetProperty("codeHash").GetString(), Is.EqualTo(Keccak.Compute(existingCode).ToString()));
+            Assert.That(prestate.TryGetProperty("code", out JsonElement code), Is.EqualTo(!disableCode));
+            if (!disableCode) Assert.That(code.GetString(), Is.EqualTo("0x00"));
+            Assert.That(document.RootElement.GetProperty("post").GetProperty(created.ToString()).GetProperty("balance").GetString(),
+                Is.EqualTo("0x1"));
+        }
+    }
+
+    public enum ChildOutcome
+    {
+        Reverted,
+        OutOfGas,
+        InvalidOpcode,
+        StackUnderflow,
+        NotEnoughBalance
+    }
+
+    private static readonly Address ProbedAccount = new("0xbabababababababababababababababababababa");
+    private static readonly UInt256 CallerBalance = 10;
+    private static readonly UInt256 PayeeBalance = 1;
+    private static readonly UInt256 ProbedBalance = 3;
+
+    /// <summary>As in geth, whose prestate tracer skips only the opcode that fails, a child frame that halts
+    /// exceptionally (or a CALL that fails its balance pre-check) leaves the rest of the caller traced: the accounts
+    /// and slots it touches afterwards show in pre and, when they change, in post.</summary>
+    [Test]
+    public void Test_PrestateTrace_AfterAbortedChild_TracesTheCallerToTheEnd([Values] ChildOutcome outcome, [Values] bool diffMode, [Values] bool wrapped)
+    {
+        Address child = TestItem.AddressF;
+        Address payee = TestItem.AddressE;
+        Address caller = TestItem.AddressC;
+        byte[] childCode = outcome switch
+        {
+            ChildOutcome.Reverted => Prepare.EvmCode.Revert(0, 0).Done,
+            ChildOutcome.OutOfGas => Prepare.EvmCode.Op(Instruction.JUMPDEST).PushData(0).Op(Instruction.JUMP).Done,
+            ChildOutcome.InvalidOpcode => Prepare.EvmCode.Op(Instruction.INVALID).Done,
+            ChildOutcome.StackUnderflow => Prepare.EvmCode.Op(Instruction.ADD).Done,
+            _ => Prepare.EvmCode.Op(Instruction.STOP).Done,
+        };
+        Prepare callerCode = outcome == ChildOutcome.NotEnoughBalance
+            ? Prepare.EvmCode.CallWithValue(child, 10_000, CallerBalance + 1)
+            : Prepare.EvmCode.Call(child, 10_000);
+        callerCode = callerCode.Op(Instruction.POP)
+            .CallWithValue(payee, 0, 1).Op(Instruction.POP)
+            .PushData(ProbedAccount).Op(Instruction.BALANCE).Op(Instruction.POP)
+            .PersistData("0x01", "0x07")
+            .Op(Instruction.STOP);
+
+        TestState.CreateAccount(Address.Zero, 100.Ether);
+        TestState.CreateAccount(caller, CallerBalance);
+        TestState.InsertCode(caller, callerCode.Done, Spec);
+        TestState.Set(new StorageCell(caller, 1), 5);
+        TestState.CreateAccount(child, UInt256.Zero);
+        TestState.InsertCode(child, childCode, Spec);
+        TestState.CreateAccount(payee, PayeeBalance);
+        TestState.CreateAccount(ProbedAccount, ProbedBalance);
+
+        NativePrestateTracer tracer = new(TestState, GetGethTraceOptions(diffMode ? DiffMode : PrestateMode), Hash256.Zero,
+            TestItem.AddressA, TestItem.AddressB, Address.Zero);
+        object result = ExecutePrestate(tracer, Prepare.EvmCode.Call(caller, 80_000).Done, wrapped).CustomTracerResult!.Value;
+
+        using (Assert.EnterMultipleScope())
+        {
+            if (diffMode)
+            {
+                NativePrestateTracerDiffMode diff = (NativePrestateTracerDiffMode)result;
+                Assert.That(diff.pre[payee].Balance, Is.EqualTo((UInt256?)PayeeBalance));
+                Assert.That(diff.post[payee].Balance, Is.EqualTo((UInt256?)(PayeeBalance + 1)));
+                Assert.That(diff.pre[caller].Balance, Is.EqualTo((UInt256?)CallerBalance));
+                Assert.That(diff.pre[caller].Storage![1], Is.EqualTo((UInt256)5));
+                Assert.That(diff.post[caller].Balance, Is.EqualTo((UInt256?)(CallerBalance - 1)));
+                Assert.That(diff.post[caller].Storage![1], Is.EqualTo((UInt256)7));
+            }
+            else
+            {
+                Dictionary<AddressAsKey, NativePrestateTracerAccount> pre = (Dictionary<AddressAsKey, NativePrestateTracerAccount>)result;
+                Assert.That(pre.ContainsKey(child), Is.True);
+                Assert.That(pre[payee].Balance, Is.EqualTo((UInt256?)PayeeBalance));
+                Assert.That(pre[ProbedAccount].Balance, Is.EqualTo((UInt256?)ProbedBalance));
+                Assert.That(pre[caller].Storage![1], Is.EqualTo((UInt256)5));
+            }
+        }
+    }
+
     private const string ExpectedExistingAccountPrestateTrace = """
         {
-          "0xb7705ae4c6f81b66cdb323c65f4e8133690fc099": {
-            "balance": "0x0"
-          },
-          "0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358": {
-            "balance": "0x0"
-          },
           "0x0000000000000000000000000000000000000000": {
             "balance": "0x56bc75e2d63100000"
           },
@@ -438,14 +755,7 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
 
     private const string ExpectedExistingAccountDiffModeTrace = """
         {
-          "pre": {
-            "0xb7705ae4c6f81b66cdb323c65f4e8133690fc099": {
-              "balance": "0x0"
-            },
-            "0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358": {
-              "balance": "0x0"
-            }
-          },
+          "pre": {},
           "post": {
             "0xb7705ae4c6f81b66cdb323c65f4e8133690fc099": {
               "balance": "0x56bc75e2d630fa3cc",
@@ -453,7 +763,8 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
             },
             "0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358": {
               "balance": "0x56bc75e2d63100001",
-              "code": "0x7f00000000000000000000000076e68a8696537e4141926f3e528733af9e237d693100"
+              "code": "0x7f00000000000000000000000076e68a8696537e4141926f3e528733af9e237d693100",
+              "codeHash": "0xbe804ee80a769a2c28b7749b62bac22da8bfa2ec1a64f5bc091233d588838a78"
             }
           }
         }
@@ -480,32 +791,25 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
 
     private const string ExpectedEmptyToPrestateTrace = """
         {
-          "0xb7705ae4c6f81b66cdb323c65f4e8133690fc099": {
-            "balance": "0x0"
-          },
-          "0x24cd2edba056b7c654a50e8201b619d4f624fdda": {
-            "balance": "0x0"
-          },
           "0x0000000000000000000000000000000000000000": {
             "balance": "0x56bc75e2d63100000"
-          },
-          "0x76e68a8696537e4141926f3e528733af9e237d69": {
-            "balance": "0x0"
           }
         }
         """;
 
     private const string ExpectedEmptyToDiffModeTrace = """
         {
-          "pre": {
-            "0xb7705ae4c6f81b66cdb323c65f4e8133690fc099": {
-              "balance": "0x0"
-            }
-          },
+          "pre": {},
           "post": {
             "0xb7705ae4c6f81b66cdb323c65f4e8133690fc099": {
               "balance": "0x56bc75e2d630fa3cc",
               "nonce": 1
+            },
+            "0x24cd2edba056b7c654a50e8201b619d4f624fdda": {
+              "codeHash": "0x0000000000000000000000000000000000000000000000000000000000000000"
+            },
+            "0x76e68a8696537e4141926f3e528733af9e237d69": {
+              "codeHash": "0x0000000000000000000000000000000000000000000000000000000000000000"
             }
           }
         }
@@ -547,24 +851,24 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
 
     private const string ExpectedSelfDestructDiffModeTrace = """
         {
-          "pre": {
-            "0xb7705ae4c6f81b66cdb323c65f4e8133690fc099": {
-              "balance": "0x0"
-            },
-            "0x76e68a8696537e4141926f3e528733af9e237d69": {
-              "balance": "0x0"
-            }
-          },
+          "pre": {},
           "post": {
             "0xb7705ae4c6f81b66cdb323c65f4e8133690fc099": {
               "balance": "0x56bc75e2d630f2e9c",
               "nonce": 1
+            },
+            "0x24cd2edba056b7c654a50e8201b619d4f624fdda": {
+              "codeHash": "0x0000000000000000000000000000000000000000000000000000000000000000"
+            },
+            "0x76e68a8696537e4141926f3e528733af9e237d69": {
+              "balance": "0x56bc75e2d63100001"
             }
           }
         }
         """;
 
-    [TestCase(NoConfig, ExpectedSelfDestructPrestateTrace)]
+    [TestCase(NoConfig, ExpectedEmptyToPrestateTrace)]
+    [TestCase("""{"includeEmpty":true}""", ExpectedSelfDestructPrestateTrace)]
     [TestCase(PrestateMode, ExpectedEmptyToPrestateTrace)]
     [TestCase(DiffMode, ExpectedSelfDestructDiffModeTrace)]
     public void Test_PrestateTrace_SelfDestruct(string? config, string expectedTrace)
@@ -579,6 +883,334 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
             .BuildResult();
 
         AssertTrace(trace, expectedTrace);
+    }
+
+    private static readonly UInt256 VictimBalance = 7;
+    private static readonly UInt256 HeirBalance = 1;
+
+    /// <summary>As in geth, the account executing SELFDESTRUCT is marked deleted when the opcode runs, even if the
+    /// transaction reverts: it stays whole in pre and is left out of post. After EIP-6780 a pre-existing account
+    /// survives, so it is a regular diff.</summary>
+    [Test]
+    public void Test_PrestateTrace_SelfDestruct_OfExistingAccount_DeletesItOnlyBeforeCancun([Values] bool cancun, [Values] bool toItself, [Values] bool revert)
+    {
+        bool deleted = !cancun;
+        bool changed = !toItself && !revert;
+        byte[] victimCode = toItself
+            ? Prepare.EvmCode.Op(Instruction.ADDRESS).Op(Instruction.SELFDESTRUCT).Done
+            : Prepare.EvmCode.SELFDESTRUCT(TestItem.AddressE).Done;
+        NativePrestateTracerDiffMode diff = TraceSelfDestruct(cancun, victimCode, revert);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(diff.pre.TryGetValue(TestItem.AddressC, out NativePrestateTracerAccount? pre), Is.EqualTo(deleted || changed));
+            Assert.That(pre?.Balance, Is.EqualTo(deleted || changed ? (UInt256?)VictimBalance : null));
+            Assert.That(diff.post.TryGetValue(TestItem.AddressC, out NativePrestateTracerAccount? post), Is.EqualTo(!deleted && changed));
+            Assert.That(post?.Balance, Is.EqualTo(!deleted && changed ? (UInt256?)UInt256.Zero : null));
+        }
+    }
+
+    /// <summary>Port of geth's <c>prestate_tracer_with_diff_mode/suicide_cancun.json</c>: a pre-existing contract
+    /// that writes storage and self-destructs under Cancun stays in post with a zero balance.</summary>
+    [Test]
+    public void Test_PrestateTrace_SelfDestruct_SuicideCancun()
+    {
+        Address victim = new("0x2222222222222222222222222222222222222222");
+        Address heir = new("0x1111111111111111111111111111111111111111");
+        byte[] victimCode = Bytes.FromHexString("0x6099600155731111111111111111111111111111111111111111ff");
+        TestState.CreateAccount(Address.Zero, 100.Ether);
+        TestState.CreateAccount(heir, 0);
+        TestState.CreateAccount(victim, 1.Ether, 1);
+        TestState.InsertCode(victim, victimCode, Spec);
+        TestState.Set(new StorageCell(victim, 1), (UInt256)0xabcd);
+        TestState.Set(new StorageCell(victim, 2), (UInt256)0x1234);
+
+        IReleaseSpec spec = SpecProvider.GetSpec(MainnetSpecProvider.CancunActivation);
+        NativePrestateTracer tracer = new(TestState, GetGethTraceOptions(DiffMode), Hash256.Zero, TestItem.AddressA, TestItem.AddressB, Address.Zero, releaseSpec: spec);
+        Execute(tracer, Prepare.EvmCode.Call(victim, 50_000).Done, MainnetSpecProvider.CancunActivation);
+        NativePrestateTracerDiffMode diff = (NativePrestateTracerDiffMode)tracer.BuildResult().CustomTracerResult!.Value;
+
+        using (Assert.EnterMultipleScope())
+        {
+            NativePrestateTracerAccount pre = diff.pre[victim];
+            Assert.That(pre.Balance, Is.EqualTo((UInt256?)1.Ether));
+            Assert.That(pre.Nonce, Is.EqualTo((UInt256?)1));
+            Assert.That(pre.Code.ToArray(), Is.EqualTo(victimCode));
+            Assert.That(pre.Storage, Is.EquivalentTo(new Dictionary<UInt256, UInt256> { [1] = 0xabcd }));
+
+            NativePrestateTracerAccount post = diff.post[victim];
+            Assert.That(post.Balance, Is.EqualTo((UInt256?)UInt256.Zero));
+            Assert.That(post.Nonce, Is.Null);
+            Assert.That(post.Code.IsEmpty, Is.True);
+            Assert.That(post.Storage, Is.EquivalentTo(new Dictionary<UInt256, UInt256> { [1] = 0x99 }));
+            Assert.That(diff.post[heir].Balance, Is.EqualTo((UInt256?)1.Ether));
+        }
+    }
+
+    [Test]
+    public void Test_PrestateTrace_SelfDestruct_BeneficiaryIsABalanceChange([Values] bool cancun)
+    {
+        NativePrestateTracerDiffMode diff = TraceSelfDestruct(cancun, Prepare.EvmCode.SELFDESTRUCT(TestItem.AddressE).Done);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(diff.pre[TestItem.AddressE].Balance, Is.EqualTo((UInt256?)HeirBalance));
+            Assert.That(diff.post[TestItem.AddressE].Balance, Is.EqualTo((UInt256?)(HeirBalance + VictimBalance)));
+        }
+    }
+
+    /// <summary>An account created and self-destructed in one transaction is deleted under every fork; it shows in
+    /// pre only when it held a balance before the transaction.</summary>
+    [Test]
+    public void Test_PrestateTrace_SelfDestruct_OfSameTxCreation_DeletesIt([Values] bool cancun, [Values] bool prefunded)
+    {
+        const int endowment = 3;
+        UInt256 prefund = prefunded ? 2u : 0u;
+        byte[] initCode = Prepare.EvmCode.SELFDESTRUCT(TestItem.AddressE).Done;
+        Address created = ContractAddress.From(TestItem.AddressC, 0);
+        if (prefunded) TestState.CreateAccount(created, prefund);
+
+        NativePrestateTracerDiffMode diff = TraceSelfDestruct(cancun, Prepare.EvmCode.Create(initCode, endowment).Done);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(diff.pre.TryGetValue(created, out NativePrestateTracerAccount? pre), Is.EqualTo(prefunded));
+            if (prefunded) Assert.That(pre!.Balance, Is.EqualTo((UInt256?)prefund));
+            Assert.That(diff.post.ContainsKey(created), Is.False);
+            Assert.That(diff.post[TestItem.AddressE].Balance, Is.EqualTo((UInt256?)(HeirBalance + endowment + prefund)));
+        }
+    }
+
+    /// <summary>As in geth, the contract of a contract-creation transaction counts as created in it, so initcode
+    /// that self-destructs deletes it under every fork.</summary>
+    [Test]
+    public void Test_PrestateTrace_SelfDestruct_InCreationTx_DeletesTheCreatedContract([Values] bool cancun)
+    {
+        const int prefund = 2;
+        ForkActivation fork = cancun ? MainnetSpecProvider.CancunActivation : MainnetSpecProvider.ShanghaiActivation;
+        TestState.CreateAccount(TestItem.AddressE, HeirBalance);
+        (Block block, Transaction transaction) = PrepareInitTx(fork, 100_000, Prepare.EvmCode.SELFDESTRUCT(TestItem.AddressE).Done);
+        Address created = ContractAddress.From(transaction.SenderAddress!, transaction.Nonce);
+        TestState.CreateAccount(created, prefund);
+        TestState.Commit(SpecProvider.GenesisSpec);
+
+        IReleaseSpec spec = SpecProvider.GetSpec(block.Header);
+        NativePrestateTracer tracer = new(TestState, GetGethTraceOptions(DiffMode), transaction.Hash, transaction.SenderAddress, null, block.Beneficiary, transaction, spec);
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, spec), tracer);
+        NativePrestateTracerDiffMode diff = (NativePrestateTracerDiffMode)tracer.BuildResult().CustomTracerResult!.Value;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(diff.pre[created].Balance, Is.EqualTo((UInt256?)(UInt256)prefund));
+            Assert.That(diff.post.ContainsKey(created), Is.False);
+            Assert.That(diff.post[TestItem.AddressE].Balance, Is.EqualTo((UInt256?)(HeirBalance + prefund + transaction.Value)));
+        }
+    }
+
+    /// <summary>EIP-8246: a same-transaction creation that self-destructs keeps the balance it ends the transaction
+    /// with, whether kept by a SELFDESTRUCT to itself or received afterwards, so it shows in post as a balance-only
+    /// account; with no balance EIP-161 removes it and it shows nowhere.</summary>
+    [Test]
+    public void Test_PrestateTrace_SelfDestruct_UnderEip8246_KeepsTheBalance([Values] bool toItself, [Values] bool funded)
+    {
+        const int balance = 3;
+        Address created = ContractAddress.From(TestItem.AddressC, 0);
+        byte[] initCode = toItself
+            ? Prepare.EvmCode.Op(Instruction.ADDRESS).Op(Instruction.SELFDESTRUCT).Done
+            : Prepare.EvmCode.SELFDESTRUCT(TestItem.AddressE).Done;
+        Prepare victimCode = Prepare.EvmCode.Create(initCode, toItself && funded ? balance : 0u);
+        if (!toItself && funded) victimCode = victimCode.CallWithValue(created, 50_000, balance);
+
+        NativePrestateTracerDiffMode diff = TraceSelfDestruct(MainnetSpecProvider.AmsterdamActivation, victimCode.Done);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(diff.post[TestItem.AddressC].Nonce, Is.EqualTo((UInt256?)1), "CREATE must succeed");
+            Assert.That(diff.pre.ContainsKey(created), Is.False);
+            Assert.That(diff.post.TryGetValue(created, out NativePrestateTracerAccount? post), Is.EqualTo(funded));
+            if (funded)
+            {
+                Assert.That(post!.Balance, Is.EqualTo((UInt256?)(UInt256)balance));
+                Assert.That(post.Nonce, Is.Null);
+                Assert.That(post.Code.IsEmpty, Is.True);
+                Assert.That(post.Storage, Is.Null);
+            }
+        }
+    }
+
+    /// <summary>EIP-8246: the contract of a contract-creation transaction whose initcode self-destructs to itself keeps
+    /// its balance.</summary>
+    [Test]
+    public void Test_PrestateTrace_SelfDestruct_InCreationTxUnderEip8246_KeepsTheBalance()
+    {
+        const int prefund = 2;
+        ForkActivation fork = MainnetSpecProvider.AmsterdamActivation;
+        // EIP-8037 state gas makes an Amsterdam creation tx cost far more than 100k.
+        (Block block, Transaction transaction) = PrepareInitTx(fork, 1_000_000, Prepare.EvmCode.Op(Instruction.ADDRESS).Op(Instruction.SELFDESTRUCT).Done);
+        Address created = ContractAddress.From(transaction.SenderAddress!, transaction.Nonce);
+        TestState.CreateAccount(created, prefund);
+        TestState.Commit(SpecProvider.GenesisSpec);
+
+        IReleaseSpec spec = SpecProvider.GetSpec(block.Header);
+        NativePrestateTracer tracer = new(TestState, GetGethTraceOptions(DiffMode), transaction.Hash, transaction.SenderAddress, null, block.Beneficiary, transaction, spec);
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, spec), tracer);
+        NativePrestateTracerDiffMode diff = (NativePrestateTracerDiffMode)tracer.BuildResult().CustomTracerResult!.Value;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(diff.pre[created].Balance, Is.EqualTo((UInt256?)(UInt256)prefund));
+            Assert.That(diff.post.TryGetValue(created, out NativePrestateTracerAccount? post), Is.True);
+            Assert.That(post?.Balance, Is.EqualTo((UInt256?)(prefund + transaction.Value)));
+        }
+    }
+
+    /// <summary>Calls <see cref="TestItem.AddressC"/>, which runs <paramref name="victimCode"/>, with
+    /// <see cref="TestItem.AddressE"/> as an existing beneficiary.</summary>
+    private NativePrestateTracerDiffMode TraceSelfDestruct(bool cancun, byte[] victimCode, bool revert = false) =>
+        TraceSelfDestruct(cancun ? MainnetSpecProvider.CancunActivation : MainnetSpecProvider.ShanghaiActivation, victimCode, revert);
+
+    private NativePrestateTracerDiffMode TraceSelfDestruct(ForkActivation fork, byte[] victimCode, bool revert = false)
+    {
+        TestState.CreateAccount(Address.Zero, 100.Ether);
+        TestState.CreateAccount(TestItem.AddressE, HeirBalance);
+        TestState.CreateAccount(TestItem.AddressC, VictimBalance);
+        TestState.InsertCode(TestItem.AddressC, victimCode, Spec);
+
+        // EIP-8037 state gas makes an Amsterdam CREATE cost far more than 50k.
+        Prepare code = Prepare.EvmCode.Call(TestItem.AddressC, 500_000);
+        if (revert) code = code.Revert(0, 0);
+
+        (Block block, Transaction transaction) = PrepareTx(fork, 1_000_000, code.Done);
+        IReleaseSpec spec = SpecProvider.GetSpec(block.Header);
+        NativePrestateTracer tracer = new(TestState, GetGethTraceOptions(DiffMode), Hash256.Zero, TestItem.AddressA, TestItem.AddressB, Address.Zero,
+            releaseSpec: spec);
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, spec), tracer);
+        return (NativePrestateTracerDiffMode)tracer.BuildResult().CustomTracerResult!.Value;
+    }
+
+    [Test]
+    public void Prestate_captures_delegation_targets_only_for_prague_execution(
+        [Values(null, Instruction.CALL, Instruction.BALANCE)] Instruction? access,
+        [Values] bool prague,
+        [Values] bool disableCode)
+    {
+        Address target = new("0x0000000000000000000000000000000000001003");
+        byte[] delegation = Bytes.FromHexString("ef0100" + target.ToString(false, false));
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
+        TestState.InsertCode(TestItem.AddressC, delegation, Spec);
+        TestState.CreateAccount(target, 1.Ether);
+        TestState.InsertCode(target, new byte[] { 0x00 }, Spec);
+        byte[] code = access switch
+        {
+            Instruction.CALL => Prepare.EvmCode.Call(TestItem.AddressC, 50000).Done,
+            Instruction.BALANCE => Prepare.EvmCode.PushData(TestItem.AddressC).Op(Instruction.BALANCE).Done,
+            _ => delegation
+        };
+        (Block block, Transaction transaction) = PrepareTx(
+            prague ? MainnetSpecProvider.PragueActivation : MainnetSpecProvider.CancunActivation, 500000, code);
+        IReleaseSpec spec = SpecProvider.GetSpec(block.Header);
+        using GethLikeNativeTxTracer tracer = GethLikeNativeTracerFactory.CreateTracer(
+            GetGethTraceOptions(JsonSerializer.Serialize(new { disableCode })), block, transaction, TestState, spec);
+
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, spec), tracer);
+        Dictionary<AddressAsKey, NativePrestateTracerAccount> accounts =
+            (Dictionary<AddressAsKey, NativePrestateTracerAccount>)tracer.BuildResult().CustomTracerResult!.Value!;
+
+        bool capturesTarget = prague && access != Instruction.BALANCE;
+        Assert.That(accounts.ContainsKey(target), Is.EqualTo(capturesTarget));
+        if (capturesTarget)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(accounts[target].Code.IsEmpty, Is.EqualTo(disableCode));
+                Assert.That(accounts[target].CodeHash, Is.Not.Null);
+            }
+        }
+    }
+
+    [Test]
+    public void Diff_selfdestruct_tracks_the_source_under_the_active_fork([Values] bool cancun, [Values] bool revert)
+    {
+        Address target = new("0x0000000000000000000000000000000000001003");
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
+        TestState.InsertCode(TestItem.AddressC, Prepare.EvmCode.PushData(target).Op(Instruction.SELFDESTRUCT).Done, Spec);
+        TestState.CreateAccount(target, 1.Ether);
+        Prepare parent = Prepare.EvmCode.Call(TestItem.AddressC, 50000).Op(Instruction.POP);
+        byte[] code = (revert ? parent.PushData(0).PushData(0).Op(Instruction.REVERT) : parent.Op(Instruction.STOP)).Done;
+
+        NativePrestateTracerDiffMode diff = ExecuteDiff(code,
+            cancun ? MainnetSpecProvider.CancunActivation : MainnetSpecProvider.ShanghaiActivation);
+
+        using (Assert.EnterMultipleScope())
+        {
+            // Geth's opcode deletion marker survives a reverted parent frame.
+            Assert.That(diff.pre.ContainsKey(TestItem.AddressC), Is.EqualTo(!cancun || !revert));
+            Assert.That(diff.post.ContainsKey(TestItem.AddressC), Is.EqualTo(cancun && !revert));
+            Assert.That(diff.pre.ContainsKey(target), Is.EqualTo(!revert));
+            Assert.That(diff.post.ContainsKey(target), Is.EqualTo(!revert));
+            if (!revert)
+                Assert.That(diff.post[target].Balance, Is.EqualTo(2.Ether));
+        }
+    }
+
+    [TestCase(true, false)]
+    [TestCase(false, false)]
+    [TestCase(false, true)]
+    public void Diff_selfdestruct_omits_accounts_created_in_the_transaction(bool rootCreation, bool revert)
+    {
+        Address target = new("0x0000000000000000000000000000000000001003");
+        TestState.CreateAccount(target, 1.Ether);
+        byte[] initCode = Prepare.EvmCode.PushData(target).Op(Instruction.SELFDESTRUCT).Done;
+        Prepare parent = Prepare.EvmCode.Create(initCode, 1).Op(Instruction.POP);
+        byte[] code = rootCreation ? initCode
+            : (revert ? parent.PushData(0).PushData(0).Op(Instruction.REVERT) : parent.Op(Instruction.STOP)).Done;
+        Address created = ContractAddress.From(rootCreation ? TestItem.AddressA : TestItem.AddressB, 0);
+
+        NativePrestateTracerDiffMode diff = ExecuteDiff(code, MainnetSpecProvider.CancunActivation, rootCreation);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(diff.pre.ContainsKey(created), Is.False);
+            Assert.That(diff.post.ContainsKey(created), Is.False);
+            Assert.That(diff.post.ContainsKey(target), Is.EqualTo(!revert));
+            if (!revert)
+                Assert.That(diff.post[target].Balance, Is.EqualTo(1.Ether + 1));
+        }
+    }
+
+    [Test]
+    public void Diff_create_preserves_a_prefunded_accounts_prestate([Values] bool create2)
+    {
+        byte[] initCode = [0x00];
+        byte[] salt = new byte[32];
+        Address created = create2 ? ContractAddress.From(TestItem.AddressB, salt, initCode)
+            : ContractAddress.From(TestItem.AddressB, 0);
+        TestState.CreateAccount(created, 100);
+        byte[] code = (create2 ? Prepare.EvmCode.Create2(initCode, salt, 1) : Prepare.EvmCode.Create(initCode, 1)).Done;
+
+        NativePrestateTracerDiffMode diff = ExecuteDiff(code, MainnetSpecProvider.CancunActivation);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(diff.pre[created].Balance, Is.EqualTo((UInt256)100));
+            Assert.That(diff.post[created].Balance, Is.EqualTo((UInt256)101));
+            Assert.That(diff.post[created].Nonce, Is.EqualTo((UInt256)1));
+        }
+    }
+
+    private NativePrestateTracerDiffMode ExecuteDiff(byte[] code, ForkActivation activation, bool creation = false)
+    {
+        (Block block, Transaction transaction) = PrepareTx(activation, 500000, creation ? null : code);
+        if (creation)
+        {
+            transaction.To = null;
+            transaction.Data = code;
+        }
+        IReleaseSpec spec = SpecProvider.GetSpec(block.Header);
+        using GethLikeNativeTxTracer tracer = GethLikeNativeTracerFactory.CreateTracer(
+            GetGethTraceOptions(DiffMode), block, transaction, TestState, spec);
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, spec), tracer);
+        return (NativePrestateTracerDiffMode)tracer.BuildResult().CustomTracerResult!.Value!;
     }
 
     private GethLikeTxTrace ExecutePrestate(NativePrestateTracer tracer, byte[] code, bool wrapped)

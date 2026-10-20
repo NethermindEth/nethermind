@@ -97,7 +97,7 @@ public sealed partial class JwtAuthentication : IRpcAuthentication
             try
             {
                 Directory.CreateDirectory(fileInfo.DirectoryName!);
-                using StreamWriter writer = new(filePath);
+                using StreamWriter writer = new(new FileStream(filePath, OwnerOnlyFile.CreateWriteOptions()));
                 writer.Write(secret.ToHexString());
             }
             catch (SystemException ex)

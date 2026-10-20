@@ -14,6 +14,7 @@ using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.Peers;
+using Nethermind.Synchronization.Peers.AllocationStrategies;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -62,27 +63,68 @@ namespace Nethermind.Synchronization.Test
             return peerInfo.CanBeAllocated(AllocationContexts.BlockAccessLists);
         }
 
-        [Test]
-        public void Blocks_request_allocation_filters_current_peer_that_cannot_serve_block_access_lists()
+        [TestCase(EthVersions.Eth70, 256UL)]
+        // A peer behind the highest requested block cannot have every list.
+        [TestCase(EthVersions.Eth71, 199UL)]
+        public void Blocks_request_allocation_filters_current_peer_that_cannot_serve_block_access_lists(byte currentProtocolVersion, ulong currentHeadNumber)
         {
             using BlocksRequest request = new();
             request.BlockAccessListsRequests.Dispose();
-            request.BlockAccessListsRequests = BuildHeaders(1, 1);
+            request.BlockAccessListsRequests = BuildHeaders(100, 200);
 
-            PeerInfo currentPreEth71Peer = SetupPeerInfo("Nethermind/current-eth70", 128, EthVersions.Eth70, 30303);
+            PeerInfo currentPeer = SetupPeerInfo("Nethermind/current", currentHeadNumber, currentProtocolVersion, 30303);
             PeerInfo highPreEth71Peer = SetupPeerInfo("Nethermind/high-eth70", 256, EthVersions.Eth70, 30304);
-            PeerInfo highEth71Peer = SetupPeerInfo("Nethermind/high-eth71", 256, EthVersions.Eth71, 30305);
+            PeerInfo highEth71Peer = SetupPeerInfo("Nethermind/high-eth71", 200, EthVersions.Eth71, 30305);
             INodeStatsManager nodeStatsManager = SetupNodeStatsManager();
 
             PeerInfo? allocated = new BlocksSyncPeerAllocationStrategyFactory()
                 .Create(request)
                 .Allocate(
-                    currentPreEth71Peer,
-                    [currentPreEth71Peer, highPreEth71Peer, highEth71Peer],
+                    currentPeer,
+                    [currentPeer, highPreEth71Peer, highEth71Peer],
                     nodeStatsManager,
                     Substitute.For<IBlockTree>());
 
             Assert.That(allocated, Is.SameAs(highEth71Peer));
+        }
+
+        [TestCase(TransferSpeedType.Receipts)]
+        [TestCase(TransferSpeedType.BlockAccessLists)]
+        public void Blocks_request_allocation_ranks_peers_by_the_speed_of_the_requested_data(TransferSpeedType speedType)
+        {
+            PeerInfo fastBodies = SetupPeerInfo("Nethermind/fast-bodies", 256, EthVersions.Eth71, 30306);
+            PeerInfo fastData = SetupPeerInfo("Nethermind/fast-data", 256, EthVersions.Eth71, 30307);
+            INodeStats fastBodiesStats = Substitute.For<INodeStats>();
+            fastBodiesStats.GetAverageTransferSpeed(TransferSpeedType.Bodies).Returns(10_000L);
+            fastBodiesStats.GetAverageTransferSpeed(speedType).Returns(1L);
+            INodeStats fastDataStats = Substitute.For<INodeStats>();
+            fastDataStats.GetAverageTransferSpeed(TransferSpeedType.Bodies).Returns(100L);
+            fastDataStats.GetAverageTransferSpeed(speedType).Returns(10_000L);
+            INodeStatsManager nodeStatsManager = Substitute.For<INodeStatsManager>();
+            nodeStatsManager.GetOrAdd(fastBodies.SyncPeer.Node).Returns(fastBodiesStats);
+            nodeStatsManager.GetOrAdd(fastData.SyncPeer.Node).Returns(fastDataStats);
+
+            using BlocksRequest request = new();
+            if (speedType == TransferSpeedType.Receipts)
+            {
+                request.ReceiptsRequests.Dispose();
+                request.ReceiptsRequests = BuildHeaders(1, 1);
+            }
+            else
+            {
+                request.BlockAccessListsRequests.Dispose();
+                request.BlockAccessListsRequests = BuildHeaders(1, 1);
+            }
+
+            // Allocation occasionally samples another peer to refresh its speed, so count the choices.
+            IPeerAllocationStrategy strategy = new BlocksSyncPeerAllocationStrategyFactory().Create(request);
+            int fastDataChosen = 0;
+            for (int i = 0; i < 200; i++)
+            {
+                if (strategy.Allocate(null, [fastBodies, fastData], nodeStatsManager, Substitute.For<IBlockTree>()) == fastData) fastDataChosen++;
+            }
+
+            Assert.That(fastDataChosen, Is.GreaterThan(180));
         }
 
         public static IEnumerable OpenEthereumVersionTests

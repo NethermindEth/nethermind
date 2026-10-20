@@ -38,6 +38,12 @@ public static class BlockErrorMessages
     public const string WithdrawalsNotEnabled =
         "WithdrawalsNotEnabled: Block body cannot have withdrawals.";
 
+    public const string MissingWithdrawalsRoot =
+        "MissingWithdrawalsRoot: Must be set in header.";
+
+    public const string WithdrawalsRootNotEnabled =
+        "WithdrawalsRootNotEnabled: Block header cannot have withdrawals root.";
+
     public static string InvalidReceiptsRoot(Hash256 expected, Hash256 actual) =>
         $"InvalidReceiptsRoot: Receipts root in header does not match. Expected {expected}, got {actual}";
 
@@ -128,6 +134,12 @@ public static class BlockErrorMessages
     public const string RequestsNotEnabled =
         "RequestsNotEnabled: Requests must be null in block when EIP-6110 and EIP-7002 are not activated.";
 
+    public const string MissingParentBeaconBlockRoot =
+        "MissingParentBeaconBlockRoot: Parent beacon block root cannot be null in header when EIP-4788 is activated.";
+
+    public const string ParentBeaconBlockRootNotEnabled =
+        "ParentBeaconBlockRootNotEnabled: Parent beacon block root must be null in header when EIP-4788 is not activated.";
+
     public static string InvalidRequestsHash(Hash256? expected, Hash256? actual) =>
         $"InvalidRequestsHash: Requests hash mismatch in block: expected {expected}, got {actual}";
 
@@ -182,6 +194,10 @@ public static class BlockErrorMessages
 
     public static string BlockAccessListGasLimitExceeded(ulong balItems, ulong maxBalItems) =>
         $"BlockAccessListGasLimitExceeded: BAL has {balItems} items, exceeds limit of {maxBalItems} (block_gas_limit / {Eip7928Constants.ItemCost}).";
+
+    /// <summary>Describes a block whose transactions' minimum gas charge exceeds its gas limit.</summary>
+    public static string MinimumBlockGasAboveGasLimit(ulong minimumBlockGas, ulong gasLimit) =>
+        $"Block gas limit exceeded: transactions charge at least {minimumBlockGas} gas, above block gas limit {gasLimit}.";
 
     public static string BlockLevelAccessListIndexOutOfRange(uint index, uint maxAllowed) =>
         $"InvalidBlockLevelAccessList: BlockAccessIndex {index} exceeds allowed range [0, {maxAllowed}] (txCount + 1).";

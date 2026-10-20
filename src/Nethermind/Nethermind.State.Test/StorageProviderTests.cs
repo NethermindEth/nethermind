@@ -6,6 +6,7 @@ using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Reflection;
+using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Core;
@@ -146,6 +147,24 @@ public partial class StorageProviderTests(bool useFlat)
         provider.Commit(Frontier.Instance, next);
 
         Assert.That(next.Clears, Is.Empty);
+    }
+
+    [Test]
+    public void Cancelled_storage_reporting_does_not_leak_changes_into_the_next_commit()
+    {
+        using Context ctx = new(useFlat);
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell cancelledCell = new(ctx.Address1, 1);
+        StorageCell nextCell = new(ctx.Address1, 2);
+        provider.Set(cancelledCell, 17);
+        ReadCollectingStorageTracer cancelled = new() { CancelOnChange = true };
+
+        Assert.Throws<OperationCanceledException>(() => provider.Commit(Frontier.Instance, cancelled));
+        provider.Set(nextCell, 19);
+        ReadCollectingStorageTracer next = new();
+        provider.Commit(Frontier.Instance, next);
+
+        Assert.That(next.Changes.ConvertAll(static change => change.Cell), Is.EqualTo(new[] { nextCell }));
     }
 
     [Test]
@@ -402,7 +421,7 @@ public partial class StorageProviderTests(bool useFlat)
                 provider.GetOriginal(in probe, out UInt256 original);
                 Assert.That(original, Is.EqualTo((UInt256)7));
 
-                provider.Commit(Frontier.Instance);
+                provider.Commit(Frontier.Instance, new ReadCollectingStorageTracer());
                 capacities[round] = GetCollectionCapacity(GetPrivateField(provider._persistentStorageProvider, "_originalValues"));
             }
 
@@ -1336,6 +1355,75 @@ public partial class StorageProviderTests(bool useFlat)
             for (int i = 0; i < iterations; i++)
             {
                 provider.SetTransientState(in cell, (i & 1) == 0 ? (UInt256)7 : (UInt256)9);
+            }
+        }
+    }
+
+    /// <summary>
+    /// World states whose scopes overlap, as the prewarmer's do, must not each allocate the list that captures the
+    /// originals of the slots they load: it is kept with the world state rather than handed back at every scope end.
+    /// </summary>
+    /// <remarks>
+    /// More scopes than the shared pool can serve at once, which tries two larger sizes before allocating. Reports the
+    /// cheapest of several rounds, as <see cref="Transient_write_does_not_allocate"/> does.
+    /// </remarks>
+    [Test]
+    [NonParallelizable]
+    public void Overlapping_scopes_reuse_their_original_value_lists()
+    {
+        const int Scopes = 4;
+        const int Rounds = 5;
+
+        StorageCell cell = new(TestItem.AddressA, 1);
+        Context[] contexts = new Context[Scopes];
+        BlockHeader[] bases = new BlockHeader[Scopes];
+        IDisposable[] scopes = new IDisposable[Scopes];
+        try
+        {
+            for (int i = 0; i < Scopes; i++)
+            {
+                contexts[i] = new Context(useFlat, setInitialState: false);
+                bases[i] = WriteSlot(contexts[i].StateProvider, in cell);
+            }
+
+            ReadOverlapping();
+            long allocated = long.MaxValue;
+            for (int round = 0; round < Rounds; round++)
+            {
+                allocated = Math.Min(allocated, ReadOverlapping());
+            }
+
+            Assert.That(allocated, Is.LessThan(PersistentStorageProvider.PooledDictionaryCapacity * 16));
+        }
+        finally
+        {
+            foreach (Context context in contexts) context?.Dispose();
+        }
+
+        long ReadOverlapping()
+        {
+            for (int i = 0; i < Scopes; i++) scopes[i] = contexts[i].StateProvider.BeginScope(bases[i]);
+            try
+            {
+                long start = GC.GetAllocatedBytesForCurrentThread();
+                for (int i = 0; i < Scopes; i++) contexts[i].StateProvider.Get(in cell, out _);
+                return GC.GetAllocatedBytesForCurrentThread() - start;
+            }
+            finally
+            {
+                for (int i = 0; i < Scopes; i++) scopes[i].Dispose();
+            }
+        }
+
+        static BlockHeader WriteSlot(WorldState provider, in StorageCell cell)
+        {
+            using (provider.BeginScope(IWorldState.PreGenesis))
+            {
+                provider.CreateAccount(cell.Address, 1);
+                provider.Set(in cell, (UInt256)7);
+                provider.Commit(Frontier.Instance);
+                provider.CommitTree(0);
+                return Build.A.BlockHeader.WithStateRoot(provider.StateRoot).TestObject;
             }
         }
     }
@@ -2472,6 +2560,64 @@ public partial class StorageProviderTests(bool useFlat)
         }
     }
 
+    [Test]
+    public void Commit_WhenEmptyStorageSlotIsWrittenBackToItsOriginal_LeavesTheStorageRootAlone()
+    {
+        using Context ctx = new(useFlat, setInitialState: false);
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell cell = new(ctx.Address1, 1);
+
+        BlockHeader baseBlock;
+        using (provider.BeginScope(IWorldState.PreGenesis))
+        {
+            provider.CreateAccount(ctx.Address1, 1);
+            provider.Commit(Frontier.Instance);
+            provider.CommitTree(0);
+            baseBlock = Build.A.BlockHeader.WithStateRoot(provider.StateRoot).TestObject;
+        }
+
+        using (provider.BeginScope(baseBlock))
+        {
+            provider.Get(cell, out UInt256 original);
+            provider.Set(cell, (UInt256)1);
+            provider.Set(cell, UInt256.Zero);
+            provider.Commit(Frontier.Instance, NullStateTracer.Instance, commitRoots: false);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(original, Is.EqualTo(UInt256.Zero), "precondition: the contract's storage starts empty");
+                Assert.That(((ICollection)GetPrivateField(provider._persistentStorageProvider, "_toUpdateRoots")).Count, Is.Zero,
+                    "the first read of an empty-storage contract keeps its round stamp, so a slot written back to its original is not saved");
+            }
+        }
+    }
+
+    [TestCase(false, TestName = "Clear")]
+    [TestCase(true, TestName = "Destroy")]
+    public void GetOriginal_RereadUnderClearAfterMemoMoved_ReturnsPreClearValue(bool destroy)
+    {
+        using Context ctx = new(useFlat, preBlockCaches: null);
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell first = new(ctx.Address1, 1);
+        StorageCell other = new(ctx.Address1, 2);
+        provider.Set(first, (UInt256)17);
+        provider.Commit(Frontier.Instance);
+
+        provider.Get(first, out _);
+        if (destroy) provider.MarkStorageDestroyed(ctx.Address1);
+        else provider.ClearStorage(ctx.Address1);
+
+        provider.Get(first, out UInt256 cleared);
+        provider.Get(other, out _);
+        provider.GetOriginal(first, out UInt256 original);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cleared, Is.EqualTo(UInt256.Zero), "the clear zeroes the slot for the rest of the round");
+            Assert.That(original, Is.EqualTo((UInt256)17), "the original is the value before the clear, even after another read moved the memo");
+        }
+    }
+
     [TestCase(RoundBoundary.None)]
     [TestCase(RoundBoundary.ResetKeepingBlockChanges)]
     [TestCase(RoundBoundary.ReadOnlyCommit)]
@@ -2823,8 +2969,8 @@ public partial class StorageProviderTests(bool useFlat)
             public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink sink = null)
                 => baseScope.HintBal(bal, sink);
 
-            public void ApplyBal(ReadOnlyBlockAccessList bal)
-                => baseScope.ApplyBal(bal);
+            public void ApplyBal(ReadOnlyBlockAccessList bal, CancellationToken cancellationToken)
+                => baseScope.ApplyBal(bal, cancellationToken);
 
             public IWorldStateScopeProvider.ICodeDb CodeDb => baseScope.CodeDb;
 
@@ -2897,6 +3043,7 @@ public partial class StorageProviderTests(bool useFlat)
         public List<Address> Clears { get; } = [];
         public bool CancelOnClear { get; init; }
         public bool CancelOnRead { get; init; }
+        public bool CancelOnChange { get; init; }
         public List<(StorageCell Cell, byte[] Value)> Restores { get; } = [];
 
         public bool IsTracingState => false;
@@ -2906,7 +3053,11 @@ public partial class StorageProviderTests(bool useFlat)
         public void ReportCodeChange(Address address, ReadOnlyMemory<byte> before, ReadOnlyMemory<byte> after) { }
         public void ReportNonceChange(Address address, UInt256? before, UInt256? after) { }
         public void ReportAccountRead(Address address) { }
-        public void ReportStorageChange(in StorageCell storageCell, byte[] before, byte[] after) => Changes.Add((storageCell, before, after));
+        public void ReportStorageChange(in StorageCell storageCell, byte[] before, byte[] after)
+        {
+            if (CancelOnChange) throw new OperationCanceledException();
+            Changes.Add((storageCell, before, after));
+        }
         public void ReportStorageRead(in StorageCell storageCell)
         {
             if (CancelOnRead) throw new OperationCanceledException();

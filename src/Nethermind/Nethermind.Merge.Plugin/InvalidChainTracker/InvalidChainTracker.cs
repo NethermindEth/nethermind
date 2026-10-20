@@ -119,17 +119,24 @@ public class InvalidChainTracker(
         }
 
         Hash256 effectiveParent = parent;
-        BlockHeader? parentHeader = TryGetBlockHeaderIncludingInvalid(parent);
-        if (parentHeader is not null)
+        if (IsOnKnownInvalidChain(parent, out Hash256? lastValidHash))
         {
-            if (!_poSSwitcher.IsPostMerge(parentHeader))
-            {
-                effectiveParent = Keccak.Zero;
-            }
+            effectiveParent = lastValidHash!;
         }
         else
         {
-            if (_logger.IsTrace) _logger.Trace($"Unable to resolve parent to determine if it is post merge. Assuming post merge. Block {parent}");
+            BlockHeader? parentHeader = TryGetBlockHeaderIncludingInvalid(parent);
+            if (parentHeader is not null)
+            {
+                if (!_poSSwitcher.IsPostMerge(parentHeader))
+                {
+                    effectiveParent = Keccak.Zero;
+                }
+            }
+            else
+            {
+                if (_logger.IsTrace) _logger.Trace($"Unable to resolve parent to determine if it is post merge. Assuming post merge. Block {parent}");
+            }
         }
 
         Node failedBlockNode = GetNode(failedBlock);
