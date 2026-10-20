@@ -66,10 +66,10 @@ internal sealed partial class PersistentStorageProvider
 
     private partial bool SaveChangeUnlessRoundOriginal(in Change change, bool hasStorageClears)
     {
-        PerContractState storage = GetOrCreateStorage(change.StorageCell.Address);
         if (!hasStorageClears)
         {
-            return storage.SaveChangeUnlessRoundOriginal(in change.StorageCell, in change.Value, _originalsRound);
+            return GetOrCreateStorage(change.StorageCell.Address)
+                .SaveChangeUnlessRoundOriginal(in change.StorageCell, in change.Value, _originalsRound);
         }
 
         if (_originalValues.TryGetValue(change.StorageCell, out UInt256 initialValue)
@@ -78,7 +78,7 @@ internal sealed partial class PersistentStorageProvider
             return false;
         }
 
-        storage.SaveChange(change.StorageCell, change.Value);
+        GetOrCreateStorage(change.StorageCell.Address).SaveChange(change.StorageCell, change.Value);
         return true;
     }
 
