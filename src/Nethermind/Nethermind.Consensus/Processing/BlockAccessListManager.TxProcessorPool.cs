@@ -29,9 +29,8 @@ namespace Nethermind.Consensus.Processing;
 ///     world from which the BAL-backed world state reads any value the suggested BAL doesn't
 ///     carry at the current index. The lease is attached per tx. Once the last tx slot is rented,
 ///     each worker releases the lease of the processor it returns, and the first one also releases
-///     the leases of idle processors. The post-execution merge releases any left when a tx slot was
-///     never rented, the next block's <c>Setup</c> covers a block that failed, and disposing a
-///     processor releases its lease.
+///     the leases of idle processors. The post-execution merge releases any left, normally none, the
+///     next block's <c>Setup</c> covers a block that failed, and disposing a processor releases its lease.
 ///   * <see cref="SequentialTxProcessorWithWorldStateManager"/> reuses a single processor
 ///     for the whole block.
 /// <see cref="TxProcessorWithWorldState"/> bundles the tx processor with its world states
@@ -90,7 +89,7 @@ public partial class BlockAccessListManager
         // served its last one in the block, so its worker releases its parent reader instead of the block thread.
         private int _txRentsLeft;
 
-        // Set by the first worker that releases the readers still kept by idle processors after the last rent.
+        // Elects the one worker that releases the readers still kept by idle processors after the last rent.
         private int _keptReadersReleased;
 
         public ParallelTxProcessorWithWorldStateManager(
@@ -131,10 +130,10 @@ public partial class BlockAccessListManager
 
         /// <summary>A parent reader serves one block: it reads that block's parent state through caches that change
         /// between blocks, and holds the snapshots under it until released.</summary>
-        /// <remarks>Runs while no worker rents a processor, though other workers may still return theirs: a processor
-        /// returned meanwhile releases its own reader, and one visited twice releases nothing the second time. It rotates
-        /// the queue instead of enumerating it, because enumerating a <see cref="ConcurrentQueue{T}"/> freezes its
-        /// segments and makes the next enqueues allocate new ones.</remarks>
+        /// <remarks>Runs while no worker rents a processor, though other workers may still return theirs. It may miss a
+        /// processor returned meanwhile, which the release at the post-execution merge then covers, and a processor
+        /// visited twice releases nothing the second time. It rotates the queue instead of enumerating it, because
+        /// enumerating a <see cref="ConcurrentQueue{T}"/> freezes its segments and makes the next enqueues allocate new ones.</remarks>
         public void ReleaseKeptParentReaders()
         {
             int pooled = Volatile.Read(ref _processorCount);
@@ -233,8 +232,9 @@ public partial class BlockAccessListManager
             int idx = ClampBalIndex(balIndex);
 
             Return((uint)idx);
-            // The workers released the kept readers unless a transaction slot was never rented, as in a rejected block.
-            if (idx == _lastBalIndex && Volatile.Read(ref _keptReadersReleased) == 0) ReleaseKeptParentReaders();
+            // Normally a no-op: the workers released the readers after the last rent. This covers a transaction slot that
+            // was never rented, and a processor returned to the pool after the worker that released the idle ones checked it.
+            if (idx == _lastBalIndex) ReleaseKeptParentReaders();
 
             BlockAccessListAtIndex? source = _perTxBal[idx];
             if (source is null) return;
