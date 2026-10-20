@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Generic;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 
@@ -33,7 +32,7 @@ public class OverridableSpecProvider(ISpecProvider inner) : ISpecProvider
     public IReleaseSpec GenesisSpec => inner.GenesisSpec;
     public ulong? DaoBlockNumber => inner.DaoBlockNumber;
     public ulong? BeaconChainGenesisTimestamp => inner.BeaconChainGenesisTimestamp;
-    public IReadOnlyList<SlotDurationScheduleEntry> SlotDurationSchedule => inner.SlotDurationSchedule;
+    public ulong? Eip8198SlotDurationMs => inner.Eip8198SlotDurationMs;
     public ulong NetworkId => inner.NetworkId;
     public ulong ChainId => inner.ChainId;
     public string SealEngine => inner.SealEngine;

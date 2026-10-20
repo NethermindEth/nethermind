@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Generic;
 using Nethermind.Int256;
 
 namespace Nethermind.Core.Specs
@@ -55,14 +54,14 @@ namespace Nethermind.Core.Specs
         ulong? BeaconChainGenesisTimestamp { get; }
 
         /// <summary>
-        /// Slot duration changes in timestamp order, mirroring the consensus-layer <c>SLOT_DURATION_SCHEDULE</c> (EIP-8198);
-        /// empty when the slot length never changes.
+        /// The chain's slot length from the EIP-8198 fork, in milliseconds, when its consensus layer
+        /// (<c>SLOT_DURATION_MS_EIP8198</c>) differs from EIP-8198's 10 s; <c>null</c> keeps 10 s.
         /// </summary>
         /// <remarks>
-        /// Chain-level timing, not a release-spec rule: the execution layer only uses it to place slots, never to validate blocks.
-        /// Chainspec loading requires an entry at the EIP-8198 activation whenever EIP-8198 is scheduled.
+        /// Chain-level timing: the execution layer only uses it to place slots, never to validate blocks, so the EIP-8198 base fee
+        /// fraction stays 5/48 whatever it is. See <see cref="DerivedSpecValues.SlotDurationMs"/>.
         /// </remarks>
-        IReadOnlyList<SlotDurationScheduleEntry> SlotDurationSchedule { get; }
+        ulong? Eip8198SlotDurationMs { get; }
 
         /// <summary>
         /// Unique identifier of the chain that allows to sign messages for the specified chain only.

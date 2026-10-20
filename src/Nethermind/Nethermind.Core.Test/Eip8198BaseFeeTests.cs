@@ -20,6 +20,7 @@ public class Eip8198BaseFeeTests
     private const ulong GasTarget = BlockGasLimit / 2;
 
     private static readonly IReleaseSpec Enabled = Bogota.Instance;
+    private static readonly IReleaseSpec Disabled = new OverridableReleaseSpec(Bogota.Instance) { IsEip8198Enabled = false };
 
     private static readonly ulong[] BaseFees = [7, 9, 10, 19, 20, 1_000_000_000, 1_000_000_007];
 
@@ -46,6 +47,7 @@ public class Eip8198BaseFeeTests
         UInt256 expected = Reference(parentBaseFee, parentGasUsed, 1, 8);
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(Calculate(Disabled, parentBaseFee, parentGasUsed), Is.EqualTo(expected));
             Assert.That(Calculate(Amsterdam.Instance, parentBaseFee, parentGasUsed), Is.EqualTo(expected));
             Assert.That(Calculate(London.Instance, parentBaseFee, parentGasUsed), Is.EqualTo(expected));
         }
@@ -63,12 +65,24 @@ public class Eip8198BaseFeeTests
         }
     }
 
+    [Test]
+    public void Flag_alone_gives_five_forty_eighths_on_an_earlier_fork()
+    {
+        IReleaseSpec flagOnly = new OverridableReleaseSpec(London.Instance) { IsEip8198Enabled = true };
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(flagOnly.BaseFeeMaxChangeNumerator, Is.EqualTo((UInt256)5));
+            Assert.That(flagOnly.BaseFeeMaxChangeDenominator, Is.EqualTo((UInt256)48));
+            Assert.That(Calculate(flagOnly, 1_000_000_000, BlockGasLimit), Is.EqualTo((UInt256)1_104_166_666));
+        }
+    }
+
     [TestCase(1UL, 50UL)]
     [TestCase(5UL, 50UL)]
     [TestCase(1UL, 250UL)]
     public void Calculator_applies_the_spec_fraction(ulong numerator, ulong denominator)
     {
-        IReleaseSpec spec = new OverridableReleaseSpec(London.Instance)
+        IEip1559Spec spec = new OverridableEip1559Spec(London.Instance)
         {
             BaseFeeMaxChangeNumerator = numerator,
             BaseFeeMaxChangeDenominator = denominator
@@ -81,6 +95,13 @@ public class Eip8198BaseFeeTests
                 Assert.That(Calculate(spec, 1_000_000_007, gasUsed), Is.EqualTo(Reference(1_000_000_007, gasUsed, (int)numerator, (int)denominator)));
             }
         }
+    }
+
+    [Test]
+    public void Enabled_ignores_configured_denominator()
+    {
+        IReleaseSpec spec = new OverridableReleaseSpec(Bogota.Instance) { IsEip8198Enabled = true, BaseFeeMaxChangeDenominator = 50 };
+        Assert.That(Calculate(spec, 1_000_000_000, BlockGasLimit), Is.EqualTo((UInt256)1_104_166_666));
     }
 
     [Test]

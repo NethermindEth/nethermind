@@ -105,8 +105,11 @@ public abstract class BlockchainTestBase
         if (test.NetworkAfterTransition is not null)
             transitions.Add((test.TransitionForkActivation!.Value, test.NetworkAfterTransition));
 
-        return new CustomSpecProvider(test.ChainId, test.ChainId, transitions.ToArray());
+        // Fixtures omit slot duration; the Heze release uses twelve-second slots.
+        return new CustomSpecProvider(test.ChainId, test.ChainId, transitions.ToArray()) { Eip8198SlotDurationMs = FixtureEip8198SlotDurationMs };
     }
+
+    private const ulong FixtureEip8198SlotDurationMs = 12_000;
 
     protected async Task<EthereumTestResult> RunTest(
         BlockchainTest test,

@@ -174,7 +174,7 @@ new object[] {"multicall-transaction-too-low-nonce-38010", true, "{\"blockStateC
                     ((ForkActivation)0, London.Instance),
                     (new ForkActivation(0, fork), new OverridableReleaseSpec(London.Instance) { IsEip8198Enabled = true }))
                 {
-                    SlotDurationSchedule = [new(fork, 10_000)]
+                    Eip8198SlotDurationMs = 10_000
                 }));
 
         ulong head = chain.BlockFinder.Head!.Number;

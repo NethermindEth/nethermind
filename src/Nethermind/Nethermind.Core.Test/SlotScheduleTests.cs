@@ -17,13 +17,13 @@ public class SlotScheduleTests
     private const ulong Genesis = 100;
     private const ulong Fork = Genesis + 5 * 12; // slot 5
 
-    private static readonly SlotSchedule Scheduled = new(12, Genesis, [new(Fork, 10_000)]);
+    private static readonly SlotSchedule Scheduled = new(12, Genesis, [(Fork, 10_000)]);
     private static readonly SlotSchedule Unscheduled = new(12, Genesis);
-    private static readonly SlotSchedule NoGenesis = new(12, null, [new(Fork, 10_000)]);
+    private static readonly SlotSchedule NoGenesis = new(12, null, [(Fork, 10_000)]);
 
     // 12 s from genesis, then 10 s from slot 5 (160), 6 s from slot 9 (200), and 8 s from 225, which is off the 6 s grid
     // and so starts at slot 14 (230).
-    private static readonly SlotDurationScheduleEntry[] ThreeChanges = [new(160, 10_000), new(200, 6_000), new(225, 8_000)];
+    private static readonly (ulong, ulong)[] ThreeChanges = [(160, 10_000), (200, 6_000), (225, 8_000)];
     private static readonly SlotSchedule ThreeChangesGrid = new(12, Genesis, ThreeChanges);
     private static readonly SlotSchedule ThreeChangesNoGenesis = new(12, null, ThreeChanges);
 
@@ -66,7 +66,7 @@ public class SlotScheduleTests
     [Test]
     public void Fork_off_the_grid_starts_at_the_next_boundary()
     {
-        SlotSchedule schedule = new(12, Genesis, [new(Fork + 5, 10_000)]);
+        SlotSchedule schedule = new(12, Genesis, [(Fork + 5, 10_000)]);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(schedule.TryGetSlot(171, out ulong before) && before == 5, Is.True);
@@ -80,7 +80,7 @@ public class SlotScheduleTests
     [Test]
     public void Fork_before_genesis_applies_from_genesis()
     {
-        SlotSchedule schedule = new(12, Genesis, [new(Genesis - 50, 10_000)]);
+        SlotSchedule schedule = new(12, Genesis, [(Genesis - 50, 10_000)]);
         Assert.That(schedule.TryGetSlot(Genesis + 25, out ulong slot) && slot == 2, Is.True);
     }
 
@@ -227,7 +227,7 @@ public class SlotScheduleTests
     [Test]
     public void Later_entry_at_or_before_genesis_replaces_the_genesis_length()
     {
-        SlotSchedule schedule = new(12, Genesis, [new(0, 6_000), new(Genesis, 8_000), new(Genesis + 10, 10_000)]);
+        SlotSchedule schedule = new(12, Genesis, [(0, 6_000), (Genesis, 8_000), (Genesis + 10, 10_000)]);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(schedule.GetSecondsPerSlot(Genesis), Is.EqualTo(8UL));
@@ -242,37 +242,66 @@ public class SlotScheduleTests
     [TestCase(new ulong[] { 160 }, new ulong[] { 10_500 }, TestName = "Not whole seconds")]
     public void Invalid_schedule_is_rejected(ulong[] timestamps, ulong[] durations)
     {
-        SlotDurationScheduleEntry[] schedule = [.. timestamps.Select((t, i) => new SlotDurationScheduleEntry(t, durations[i]))];
+        (ulong, ulong)[] schedule = [.. timestamps.Select((t, i) => (t, durations[i]))];
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(() => SlotSchedule.ValidateSchedule(schedule), Throws.ArgumentException);
-            Assert.That(() => new SlotSchedule(12, Genesis, schedule), Throws.ArgumentException);
+            Assert.That(() => SlotSchedule.ValidateSchedule(schedule), Throws.InstanceOf<System.ArgumentException>());
+            Assert.That(() => new SlotSchedule(12, Genesis, schedule), Throws.InstanceOf<System.ArgumentException>());
         }
     }
 
     [Test]
-    public void Spec_provider_schedule_reaches_the_slot_schedule()
+    public void Slot_length_comes_from_the_fork()
     {
-        CustomSpecProvider provider = new(((ForkActivation)0, London.Instance), (new ForkActivation(0, 160), Bogota.Instance))
+        CustomSpecProvider bogota = new(((ForkActivation)0, London.Instance), (new ForkActivation(0, Fork), Bogota.Instance))
+        {
+            BeaconChainGenesisTimestamp = Genesis
+        };
+        CustomSpecProvider flagOnly = new(
+            ((ForkActivation)0, London.Instance),
+            (new ForkActivation(0, Fork), new OverridableReleaseSpec(London.Instance) { IsEip8198Enabled = true }))
+        {
+            BeaconChainGenesisTimestamp = Genesis
+        };
+
+        using (Assert.EnterMultipleScope())
+        {
+            foreach (SlotSchedule schedule in new[] { bogota.GetSlotSchedule(12), flagOnly.GetSlotSchedule(12) })
+            {
+                Assert.That(schedule.GetSecondsPerSlot(Fork - 1), Is.EqualTo(12UL));
+                Assert.That(schedule.GetSecondsPerSlot(Fork), Is.EqualTo(10UL));
+                Assert.That(schedule.GetSlotTimestamp(6), Is.EqualTo(Fork + 10));
+            }
+        }
+    }
+
+    [Test]
+    public void Chain_slot_duration_overrides_the_eip8198_length()
+    {
+        CustomSpecProvider provider = new(((ForkActivation)0, London.Instance), (new ForkActivation(0, Fork), Bogota.Instance))
         {
             BeaconChainGenesisTimestamp = Genesis,
-            SlotDurationSchedule = ThreeChanges
+            Eip8198SlotDurationMs = 6_000
         };
         SlotSchedule schedule = provider.GetSlotSchedule(12);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(schedule.GetSecondsPerSlot(159), Is.EqualTo(12UL));
-            Assert.That(schedule.GetSecondsPerSlot(160), Is.EqualTo(10UL));
-            Assert.That(schedule.GetSecondsPerSlot(230), Is.EqualTo(8UL));
-            Assert.That(schedule.GetSlotTimestamp(14), Is.EqualTo(230UL));
+            Assert.That(schedule.GetSecondsPerSlot(Fork - 1), Is.EqualTo(12UL));
+            Assert.That(schedule.GetSecondsPerSlot(Fork), Is.EqualTo(6UL));
         }
     }
 
     [Test]
-    public void Spec_provider_without_schedule_keeps_the_configured_length_even_with_eip8198()
+    public void Each_fork_that_changes_the_slot_length_starts_a_segment()
     {
-        CustomSpecProvider provider = new(((ForkActivation)0, London.Instance), (new ForkActivation(0, 160), Bogota.Instance))
+        // A later fork that drops EIP-8198 stands in for one that sets another slot length.
+        CustomSpecProvider provider = new(
+            ((ForkActivation)0, London.Instance),
+            (new ForkActivation(0, 130), Amsterdam.Instance),
+            (new ForkActivation(0, Fork), Bogota.Instance),
+            (new ForkActivation(0, 190), new OverridableReleaseSpec(Bogota.Instance) { IsEip7805Enabled = false }),
+            (new ForkActivation(0, 200), Amsterdam.Instance))
         {
             BeaconChainGenesisTimestamp = Genesis
         };
@@ -280,7 +309,25 @@ public class SlotScheduleTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(provider.SlotDurationSchedule, Is.Empty);
+            Assert.That(schedule.GetSecondsPerSlot(159), Is.EqualTo(12UL));
+            Assert.That(schedule.GetSecondsPerSlot(160), Is.EqualTo(10UL));
+            Assert.That(schedule.GetSecondsPerSlot(199), Is.EqualTo(10UL));
+            Assert.That(schedule.GetSecondsPerSlot(200), Is.EqualTo(12UL));
+            Assert.That(schedule.TryGetSlot(212, out ulong slot) && slot == 10, Is.True);
+        }
+    }
+
+    [Test]
+    public void Spec_provider_without_eip8198_keeps_the_configured_length()
+    {
+        CustomSpecProvider provider = new(((ForkActivation)0, London.Instance), (new ForkActivation(0, Fork), Amsterdam.Instance))
+        {
+            BeaconChainGenesisTimestamp = Genesis
+        };
+        SlotSchedule schedule = provider.GetSlotSchedule(12);
+
+        using (Assert.EnterMultipleScope())
+        {
             Assert.That(schedule.GetSecondsPerSlot(ulong.MaxValue), Is.EqualTo(12UL));
             Assert.That(schedule.AddSlots(148, 3), Is.EqualTo(184UL));
             Assert.That(schedule.GetSlotTimestamp(6), Is.EqualTo(172UL));
@@ -288,14 +335,6 @@ public class SlotScheduleTests
     }
 
     [Test]
-    public void Mainnet_keeps_the_configured_slot_duration()
-    {
-        ISpecProvider provider = MainnetSpecProvider.Instance;
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(provider.SlotDurationSchedule, Is.Empty);
-            Assert.That(provider.GetSlotSchedule(12).GetSecondsPerSlot(1_792_416_379), Is.EqualTo(12UL));
-        }
-    }
+    public void Mainnet_unscheduled_bogota_keeps_the_configured_slot_duration() =>
+        Assert.That(MainnetSpecProvider.Instance.GetSlotSchedule(12).GetSecondsPerSlot(1_792_416_379), Is.EqualTo(12UL));
 }

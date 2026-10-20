@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 
@@ -39,7 +38,7 @@ namespace Nethermind.Specs.Test
 
         public ulong? DaoBlockNumber => SpecProvider.DaoBlockNumber;
         public ulong? BeaconChainGenesisTimestamp => SpecProvider.BeaconChainGenesisTimestamp;
-        public IReadOnlyList<SlotDurationScheduleEntry> SlotDurationSchedule => SpecProvider.SlotDurationSchedule;
+        public ulong? Eip8198SlotDurationMs => SpecProvider.Eip8198SlotDurationMs;
         public ulong NetworkId => SpecProvider.NetworkId;
         public ulong ChainId => SpecProvider.ChainId;
         public string SealEngine => SpecProvider.SealEngine;

@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
@@ -34,7 +33,7 @@ namespace Nethermind.Blockchain.Spec
 
         public ulong? BeaconChainGenesisTimestamp => _specProvider.BeaconChainGenesisTimestamp;
 
-        public IReadOnlyList<SlotDurationScheduleEntry> SlotDurationSchedule => _specProvider.SlotDurationSchedule;
+        public ulong? Eip8198SlotDurationMs => _specProvider.Eip8198SlotDurationMs;
 
         public ulong NetworkId => _specProvider.NetworkId;
 

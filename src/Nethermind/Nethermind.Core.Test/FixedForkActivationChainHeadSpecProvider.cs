@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Generic;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 
@@ -27,7 +26,7 @@ namespace Nethermind.Core.Test
 
         public ulong? BeaconChainGenesisTimestamp => specProvider.BeaconChainGenesisTimestamp;
 
-        public IReadOnlyList<SlotDurationScheduleEntry> SlotDurationSchedule => specProvider.SlotDurationSchedule;
+        public ulong? Eip8198SlotDurationMs => specProvider.Eip8198SlotDurationMs;
 
         public ulong NetworkId => specProvider.NetworkId;
         public ulong ChainId => specProvider.ChainId;

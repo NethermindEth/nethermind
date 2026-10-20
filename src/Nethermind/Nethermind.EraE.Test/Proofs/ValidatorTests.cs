@@ -91,7 +91,7 @@ public class ValidatorTests
         (ForkActivation, IReleaseSpec)[] transitions = eip8198Scheduled
             ? [((ForkActivation)0, Shanghai.Instance), (new ForkActivation(0, fork), new OverridableReleaseSpec(Shanghai.Instance) { IsEip8198Enabled = true })]
             : [((ForkActivation)0, Shanghai.Instance)];
-        CustomSpecProvider specProvider = new(transitions) { BeaconChainGenesisTimestamp = genesis, SlotDurationSchedule = eip8198Scheduled ? [new(fork, 10_000)] : [] };
+        CustomSpecProvider specProvider = new(transitions) { BeaconChainGenesisTimestamp = genesis, Eip8198SlotDurationMs = 10_000 };
 
         using BlocksRootContext context = new(1, timestamp, specProvider);
         context.ProcessBlock(Build.A.Block.WithNumber(1).TestObject, default, default);

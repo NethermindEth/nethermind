@@ -7,11 +7,11 @@ namespace Nethermind.Core;
 public static class Eip8198Constants
 {
     /// <summary>
-    /// The slot length EIP-8198's maximum base fee change is designed for, giving 5/48 through
-    /// <see cref="BaseFeeMaxChange.ScaledToSlot"/>.
+    /// The slot length EIP-8198 sets, and the one its maximum base fee change is designed for: 5/48 through
+    /// <see cref="BaseFeeMaxChange.ScaledToSlot"/>. Both are derived in <see cref="Specs.DerivedSpecValues"/>.
     /// </summary>
     /// <remarks>
-    /// A fork constant: it fixes the consensus base fee rule whatever the chain's slot duration schedule says.
+    /// A fork constant. The slot length only places slots, while the base fee fraction is consensus.
     /// </remarks>
     public const ulong DesignSlotDurationMs = 10_000;
 }

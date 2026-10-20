@@ -538,11 +538,12 @@ namespace Nethermind.Core.Specs
         bool IsEip8360Enabled { get; }
 
         /// <summary>
-        /// EIP-8198: Quick Slots. Lowers the maximum per-block base fee change to 5/48, set through
-        /// <see cref="IEip1559Spec.BaseFeeMaxChangeNumerator"/> and <see cref="IEip1559Spec.BaseFeeMaxChangeDenominator"/>.
+        /// EIP-8198: Quick Slots. Lowers the maximum per-block base fee change to 5/48 and the slot length to 10 s; both are
+        /// derived from this flag in <see cref="DerivedSpecValues"/>.
         /// </summary>
         /// <remarks>
-        /// The rest of the EIP is chainspec data: <c>slotDurationSchedule</c> (see <see cref="ISpecProvider.SlotDurationSchedule"/>) and <c>blobSchedule</c>.
+        /// A chain may override the slot length with <see cref="ISpecProvider.Eip8198SlotDurationMs"/>; the blob parameters
+        /// are chainspec <c>blobSchedule</c> data.
         /// </remarks>
         bool IsEip8198Enabled { get; }
 

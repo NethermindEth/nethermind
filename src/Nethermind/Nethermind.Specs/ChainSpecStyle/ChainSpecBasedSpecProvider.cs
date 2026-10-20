@@ -394,13 +394,6 @@ namespace Nethermind.Specs.ChainSpecStyle
                 item.ApplyToReleaseSpec(releaseSpec, block, releaseStartTimestamp);
             }
 
-            // EIP-8198 fixes the fraction, overriding a configured eip1559BaseFeeMaxChangeDenominator while it is active.
-            if (releaseSpec.IsEip8198Enabled)
-            {
-                (releaseSpec.BaseFeeMaxChangeNumerator, releaseSpec.BaseFeeMaxChangeDenominator) =
-                    BaseFeeMaxChange.ScaledToSlot(Eip8198Constants.DesignSlotDurationMs);
-            }
-
             SetBlobScheduleParameters();
 
             return releaseSpec;
@@ -454,7 +447,7 @@ namespace Nethermind.Specs.ChainSpecStyle
 
         public ulong? DaoBlockNumber => _chainSpec.DaoForkBlockNumber;
         public ulong? BeaconChainGenesisTimestamp => _chainSpec.Parameters.BeaconChainGenesisTimestamp;
-        public IReadOnlyList<SlotDurationScheduleEntry> SlotDurationSchedule => _chainSpec.Parameters.SlotDurationSchedule;
+        public ulong? Eip8198SlotDurationMs => _chainSpec.Parameters.Eip8198SlotDurationMs;
 
         public ulong NetworkId => _chainSpec.NetworkId;
         public ulong ChainId => _chainSpec.ChainId;

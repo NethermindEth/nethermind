@@ -39,7 +39,7 @@ internal sealed partial class StatelessSpecProvider(
 
     public ulong? BeaconChainGenesisTimestamp => baseProvider.BeaconChainGenesisTimestamp;
 
-    public IReadOnlyList<SlotDurationScheduleEntry> SlotDurationSchedule => baseProvider.SlotDurationSchedule;
+    public ulong? Eip8198SlotDurationMs => baseProvider.Eip8198SlotDurationMs;
 
     public ulong NetworkId => chainId;
 

@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Generic;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
@@ -30,7 +29,7 @@ namespace Nethermind.Specs
 
         public ulong? DaoBlockNumber { get; } = null;
         public ulong? BeaconChainGenesisTimestamp => null;
-        public IReadOnlyList<SlotDurationScheduleEntry> SlotDurationSchedule => [];
+        public ulong? Eip8198SlotDurationMs => null;
 
         public ulong NetworkId => Core.BlockchainIds.Mainnet;
         public ulong ChainId => NetworkId;

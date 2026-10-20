@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
-using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Specs.Forks;
 
@@ -92,12 +91,14 @@ public class GethGenesisConfigJson : IHasNamedForks
     /// </remarks>
     public ulong? BeaconChainGenesisTimestamp { get; set; }
 
-    /// <summary>Slot duration changes; required at the EIP-8198 activation when Bogota or EIP-8198 is scheduled.</summary>
+    /// <summary>
+    /// Slot length from the EIP-8198 fork, in milliseconds; <c>null</c> keeps EIP-8198's 10 s.
+    /// </summary>
     /// <remarks>
-    /// Not part of EIP-7949; mirrors <c>params.slotDurationSchedule</c> of Parity-style chainspecs and the consensus-layer
-    /// <c>SLOT_DURATION_SCHEDULE</c>, keyed by timestamp.
+    /// Not part of EIP-7949; mirrors <c>params.eip8198SlotDurationMs</c> of Parity-style chainspecs and the consensus-layer
+    /// <c>SLOT_DURATION_MS_EIP8198</c>.
     /// </remarks>
-    public List<SlotDurationScheduleEntry>? SlotDurationSchedule { get; set; }
+    public ulong? Eip8198SlotDurationMs { get; set; }
 
     public Dictionary<string, GethBlobScheduleEntry>? BlobSchedule { get; set; }
 

@@ -153,7 +153,7 @@ public class GethGenesisLoader(IJsonSerializer serializer) : IChainSpecLoader
             MergeForkIdTransition = config.MergeNetsplitBlock,
             TerminalTotalDifficulty = config.TerminalTotalDifficulty,
             BeaconChainGenesisTimestamp = config.BeaconChainGenesisTimestamp,
-            SlotDurationSchedule = [.. config.SlotDurationSchedule ?? []],
+            Eip8198SlotDurationMs = config.Eip8198SlotDurationMs,
 
             // Post-merge per-EIP timestamp fan-out is driven off `HardforkLabels.All` below; only
             // the side-effects that don't fit the bulk-label pattern stay here as conditional gates.
@@ -171,7 +171,7 @@ public class GethGenesisLoader(IJsonSerializer serializer) : IChainSpecLoader
         // table — same source of truth as the Parity loader, driven by Forks/*.cs.
         HardforkLabels.ExpandAll(chainSpec.Parameters, config);
 
-        chainSpec.Parameters.ValidateSlotDurationSchedule();
+        chainSpec.Parameters.ValidateEip8198SlotDuration();
     }
 
     private readonly record struct BlobScheduleFork(int Order);

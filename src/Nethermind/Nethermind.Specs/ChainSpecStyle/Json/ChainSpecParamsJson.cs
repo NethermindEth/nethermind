@@ -8,7 +8,6 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 
@@ -187,9 +186,6 @@ public class ChainSpecParamsJson : IHasNamedForks
     public int? Eip7934MaxRlpBlockSize { get; set; }
 
     public List<BlobScheduleSettings>? BlobSchedule { get; set; } = [];
-
-    /// <summary>Slot duration changes, mirroring the consensus-layer <c>SLOT_DURATION_SCHEDULE</c> keyed by timestamp.</summary>
-    public List<SlotDurationScheduleEntry>? SlotDurationSchedule { get; set; }
     public ulong? Eip7594TransitionTimestamp { get; set; }
     public ulong? Eip7939TransitionTimestamp { get; set; }
     public ulong? Eip8037TransitionTimestamp { get; set; }
@@ -218,6 +214,12 @@ public class ChainSpecParamsJson : IHasNamedForks
     public ulong? Eip8116TransitionTimestamp { get; set; }
     public ulong? Eip8360TransitionTimestamp { get; set; }
     public ulong? Eip8198TransitionTimestamp { get; set; }
+
+    /// <summary>
+    /// Slot length from the EIP-8198 fork, in milliseconds, mirroring the consensus-layer <c>SLOT_DURATION_MS_EIP8198</c>;
+    /// <c>null</c> keeps EIP-8198's 10 s.
+    /// </summary>
+    public ulong? Eip8198SlotDurationMs { get; set; }
     public ulong? Eip3298TransitionTimestamp { get; set; }
     public ulong? Eip8131TransitionTimestamp { get; set; }
     public ulong? Eip8279TransitionTimestamp { get; set; }

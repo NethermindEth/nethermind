@@ -17,7 +17,6 @@ public class Bogota() : NamedReleaseSpec<Bogota>(Amsterdam.Instance)
         spec.Name = "Bogota";
         spec.IsEip7805Enabled = true;
         spec.IsEip8198Enabled = true;
-        (spec.BaseFeeMaxChangeNumerator, spec.BaseFeeMaxChangeDenominator) = BaseFeeMaxChange.ScaledToSlot(Eip8198Constants.DesignSlotDurationMs);
         spec.TargetBlobCount = 12;
         spec.MaxBlobCount = 18;
         spec.BlobBaseFeeUpdateFraction = 12018519;

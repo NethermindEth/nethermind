@@ -3,20 +3,19 @@
 
 using System;
 using System.Collections.Generic;
-using Nethermind.Core.Specs;
 
 namespace Nethermind.Core;
 
 /// <summary>
 /// The beacon slot grid as the execution layer sees it: slots of the configured length from the beacon genesis, then
-/// slots of each <see cref="SlotDurationScheduleEntry"/> from its timestamp.
+/// slots of each slot length change from its timestamp.
 /// </summary>
 /// <remarks>
 /// Mirrors the consensus layer's <c>compute_slot_at_time_ms</c> and <c>compute_time_at_slot_ms</c> over
-/// <c>SLOT_DURATION_SCHEDULE</c> (consensus-specs EIP-8198): each entry starts at the first slot boundary at or after its
-/// timestamp, which is the timestamp itself on a correctly scheduled chain, and an entry at or before the beacon genesis
-/// applies from genesis. Without a beacon genesis only durations and steps are known, so each entry starts at its
-/// timestamp and slot numbers are unavailable. Without entries every slot has the configured length.
+/// <c>SLOT_DURATION_SCHEDULE</c> (consensus-specs EIP-8198): each change starts at the first slot boundary at or after its
+/// timestamp, which is the timestamp itself on a correctly scheduled chain, and a change at or before the beacon genesis
+/// applies from genesis. Without a beacon genesis only durations and steps are known, so each change starts at its
+/// timestamp and slot numbers are unavailable. Without changes every slot has the configured length.
 /// </remarks>
 public sealed class SlotSchedule
 {
@@ -30,17 +29,17 @@ public sealed class SlotSchedule
     /// <param name="genesisTimestamp">Beacon chain genesis timestamp, when known.</param>
     public SlotSchedule(ulong secondsPerSlot, ulong? genesisTimestamp = null) : this(secondsPerSlot, genesisTimestamp, []) { }
 
-    /// <summary>A grid that changes slot length at each schedule entry.</summary>
-    /// <param name="secondsPerSlot">Slot length before the first entry; zero is treated as one second.</param>
+    /// <summary>A grid that changes slot length at each of <paramref name="schedule"/>.</summary>
+    /// <param name="secondsPerSlot">Slot length before the first change; zero is treated as one second.</param>
     /// <param name="genesisTimestamp">Beacon chain genesis timestamp, when known.</param>
-    /// <param name="schedule">Slot duration changes; see <see cref="ValidateSchedule"/>.</param>
-    public SlotSchedule(ulong secondsPerSlot, ulong? genesisTimestamp, IReadOnlyList<SlotDurationScheduleEntry> schedule)
+    /// <param name="schedule">Slot length changes; see <see cref="ValidateSchedule"/>.</param>
+    public SlotSchedule(ulong secondsPerSlot, ulong? genesisTimestamp, IReadOnlyList<(ulong Timestamp, ulong SlotDurationMs)> schedule)
     {
         ValidateSchedule(schedule);
         _genesisTimestamp = genesisTimestamp;
 
         List<Segment> segments = [new(genesisTimestamp ?? 0, 0, Math.Max(1UL, secondsPerSlot))];
-        foreach (SlotDurationScheduleEntry entry in schedule)
+        foreach ((ulong Timestamp, ulong SlotDurationMs) entry in schedule)
         {
             Segment last = segments[^1];
             ulong seconds = entry.SlotDurationMs / MillisecondsPerSecond;
@@ -133,28 +132,39 @@ public sealed class SlotSchedule
     public bool IsSlotStart(ulong timestamp) => TryGetSlot(timestamp, out ulong slot) && GetSlotTimestamp(slot) == timestamp;
 
     /// <summary>
-    /// Throws unless the entries are strictly increasing by timestamp and each duration is a positive whole number of
-    /// seconds, since execution-layer timestamps are in seconds.
+    /// Throws unless the changes are strictly increasing by timestamp and each duration passes
+    /// <see cref="ValidateSlotDurationMs"/>.
     /// </summary>
     /// <exception cref="ArgumentException">The schedule is invalid.</exception>
-    public static void ValidateSchedule(IReadOnlyList<SlotDurationScheduleEntry> schedule)
+    public static void ValidateSchedule(IReadOnlyList<(ulong Timestamp, ulong SlotDurationMs)> schedule)
     {
         for (int i = 0; i < schedule.Count; i++)
         {
-            SlotDurationScheduleEntry entry = schedule[i];
+            (ulong Timestamp, ulong SlotDurationMs) entry = schedule[i];
             if (i > 0 && entry.Timestamp <= schedule[i - 1].Timestamp)
             {
                 throw new ArgumentException(
-                    $"Slot duration schedule entries must be strictly increasing by timestamp, but {entry.Timestamp} follows {schedule[i - 1].Timestamp}.",
+                    $"Slot length changes must be strictly increasing by timestamp, but {entry.Timestamp} follows {schedule[i - 1].Timestamp}.",
                     nameof(schedule));
             }
 
-            if (entry.SlotDurationMs == 0 || entry.SlotDurationMs % MillisecondsPerSecond != 0)
-            {
-                throw new ArgumentException(
-                    $"Slot duration {entry.SlotDurationMs} ms at timestamp {entry.Timestamp} must be a positive multiple of {MillisecondsPerSecond} ms, since execution-layer timestamps are whole seconds.",
-                    nameof(schedule));
-            }
+            ValidateSlotDurationMs(entry.SlotDurationMs);
+        }
+    }
+
+    /// <summary>
+    /// Throws unless <paramref name="slotDurationMs"/> is a positive whole number of seconds, since execution-layer timestamps are
+    /// in seconds.
+    /// </summary>
+    /// <exception cref="ArgumentOutOfRangeException">The duration is zero or not whole seconds.</exception>
+    public static void ValidateSlotDurationMs(ulong slotDurationMs)
+    {
+        if (slotDurationMs == 0 || slotDurationMs % MillisecondsPerSecond != 0)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(slotDurationMs),
+                slotDurationMs,
+                $"Slot duration must be a positive multiple of {MillisecondsPerSecond} ms, since execution-layer timestamps are whole seconds.");
         }
     }
 

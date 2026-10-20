@@ -310,7 +310,7 @@ public class GethGenesisLoaderTests
     [TestCase("eip8141PrototypeTime", false, true)]
     public void Genesis_fork_label_picks_one_of_the_two_amsterdam_successors(string label, bool eip7805, bool eip8141)
     {
-        ChainSpec chainSpec = LoadStandardGethGenesis(configExtra: $"\"{label}\": 15, \"slotDurationSchedule\": [{{ \"timestamp\": 15, \"slotDurationMs\": 6000 }}]");
+        ChainSpec chainSpec = LoadStandardGethGenesis(configExtra: $"\"{label}\": 15, \"eip8198SlotDurationMs\": 6000");
 
         using (Assert.EnterMultipleScope())
         {
@@ -492,7 +492,7 @@ public class GethGenesisLoaderTests
             "cancunTime": 0,
             "amsterdamTime": 0,
             "bogotaTime": {{bogotaTimestamp}},
-            "slotDurationSchedule": [{ "timestamp": {{bogotaTimestamp}}, "slotDurationMs": 12000 }],
+            "eip8198SlotDurationMs": 12000,
             "blobSchedule": {
                 "amsterdam": { "target": 14, "max": 21, "baseFeeUpdateFraction": 11684671 },
                 "bogota": { "target": 12, "max": 18, "baseFeeUpdateFraction": 12018519 }
@@ -742,18 +742,17 @@ public class GethGenesisLoaderTests
         Assert.That(chainSpec.Parameters.BeaconChainGenesisTimestamp, Is.EqualTo(expected));
     }
 
-    [TestCase("\"slotDurationSchedule\": [{ \"timestamp\": 100, \"slotDurationMs\": 10000 }, { \"timestamp\": 200, \"slotDurationMs\": 6000 }]", new ulong[] { 100, 200 }, new ulong[] { 10_000, 6_000 })]
-    [TestCase("\"slotDurationSchedule\": []", new ulong[0], new ulong[0])]
-    [TestCase("", new ulong[0], new ulong[0])]
-    public void Loads_slot_duration_schedule(string configExtra, ulong[] timestamps, ulong[] durations)
+    [TestCase("\"eip8198SlotDurationMs\": 6000", 6_000UL)]
+    [TestCase("\"eip8198SlotDurationMs\": 12000", 12_000UL)]
+    [TestCase("", null)]
+    public void Loads_eip8198_slot_duration(string configExtra, ulong? expected)
     {
         ChainSpec chainSpec = LoadStandardGethGenesis(configExtra: configExtra);
-        SlotDurationScheduleEntry[] expected = [.. timestamps.Select((t, i) => new SlotDurationScheduleEntry(t, durations[i]))];
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(chainSpec.Parameters.SlotDurationSchedule, Is.EqualTo(expected));
-            Assert.That(new ChainSpecBasedSpecProvider(chainSpec).SlotDurationSchedule, Is.EqualTo(expected));
+            Assert.That(chainSpec.Parameters.Eip8198SlotDurationMs, Is.EqualTo(expected));
+            Assert.That(new ChainSpecBasedSpecProvider(chainSpec).Eip8198SlotDurationMs, Is.EqualTo(expected));
         }
     }
 
@@ -765,27 +764,27 @@ public class GethGenesisLoaderTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(chainSpec.Parameters.Eip8198TransitionTimestamp, Is.Null);
-            Assert.That(chainSpec.Parameters.SlotDurationSchedule, Is.Empty);
+            Assert.That(chainSpec.Parameters.Eip8198SlotDurationMs, Is.Null);
         }
     }
 
-    [TestCase("", TestName = "Bogota without a schedule")]
-    [TestCase(", \"slotDurationSchedule\": [{ \"timestamp\": 1792416380, \"slotDurationMs\": 6000 }]", TestName = "Bogota with an entry at another timestamp")]
-    public void Scheduled_eip8198_without_a_matching_entry_fails_to_load(string schedule) =>
-        Assert.That(
-            () => LoadStandardGethGenesis(configExtra: $"\"bogotaTime\": 1792416379{schedule}"),
-            Throws.TypeOf<InvalidDataException>().With.Message.Contains("slotDurationSchedule has no entry at that timestamp"));
-
     [Test]
-    public void Bogota_activates_eip8198_base_fee_at_the_configured_timestamp([Values(6_000UL, 12_000UL)] ulong slotDurationMs)
+    public void Bogota_time_alone_loads() =>
+        Assert.That(() => LoadStandardGethGenesis(configExtra: "\"bogotaTime\": 1792416379"), Throws.Nothing);
+
+    // The base fee fraction is EIP-8198's 5/48 whatever slot length the chain overrides it with.
+    [TestCase(null, 10UL, TestName = "Bogota_without_a_slot_duration_has_ten_second_slots_and_five_forty_eighths")]
+    [TestCase(6_000UL, 6UL, TestName = "Bogota_with_a_6s_slot_duration_keeps_five_forty_eighths")]
+    [TestCase(12_000UL, 12UL, TestName = "Bogota_with_a_12s_slot_duration_keeps_five_forty_eighths")]
+    public void Bogota_activates_eip8198_at_the_configured_timestamp(ulong? slotDurationMs, ulong expectedSecondsPerSlot)
     {
         const ulong bogotaTimestamp = 1_792_416_379;
+        string slotDuration = slotDurationMs is null ? "" : $",\n\"eip8198SlotDurationMs\": {slotDurationMs}";
         ChainSpec chainSpec = LoadStandardGethGenesis(configExtra: $$"""
             "londonBlock": 0,
             "amsterdamTime": 0,
             "bogotaTime": {{bogotaTimestamp}},
-            "beaconChainGenesisTimestamp": {{bogotaTimestamp - 120}},
-            "slotDurationSchedule": [{ "timestamp": {{bogotaTimestamp}}, "slotDurationMs": {{slotDurationMs}} }]
+            "beaconChainGenesisTimestamp": {{bogotaTimestamp - 120}}{{slotDuration}}
             """);
         ChainSpecBasedSpecProvider provider = new(chainSpec);
         BlockHeader parent = new(Keccak.Zero, Keccak.OfAnEmptySequenceRlp, Address.Zero, 0, 10, 30_000_000, bogotaTimestamp - 1, [])
@@ -800,8 +799,9 @@ public class GethGenesisLoaderTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(chainSpec.Parameters.Eip8198TransitionTimestamp, Is.EqualTo(bogotaTimestamp));
+            Assert.That(provider.Eip8198SlotDurationMs, Is.EqualTo(slotDurationMs));
             Assert.That(slots.GetSecondsPerSlot(bogotaTimestamp - 1), Is.EqualTo(12UL));
-            Assert.That(slots.GetSecondsPerSlot(bogotaTimestamp), Is.EqualTo(slotDurationMs / 1_000));
+            Assert.That(slots.GetSecondsPerSlot(bogotaTimestamp), Is.EqualTo(expectedSecondsPerSlot));
             Assert.That(before.IsEip8198Enabled, Is.False);
             Assert.That(after.IsEip8198Enabled, Is.True);
             Assert.That(BaseFeeCalculator.Calculate(parent, before), Is.EqualTo((UInt256)1_125_000_000));
@@ -809,14 +809,13 @@ public class GethGenesisLoaderTests
         }
     }
 
-    [TestCase("[{ \"timestamp\": 200, \"slotDurationMs\": 10000 }, { \"timestamp\": 100, \"slotDurationMs\": 6000 }]", "strictly increasing", TestName = "Unsorted")]
-    [TestCase("[{ \"timestamp\": 100, \"slotDurationMs\": 10000 }, { \"timestamp\": 100, \"slotDurationMs\": 6000 }]", "strictly increasing", TestName = "Duplicate timestamp")]
-    [TestCase("[{ \"timestamp\": 100, \"slotDurationMs\": 0 }]", "positive multiple of 1000 ms", TestName = "Zero duration")]
-    [TestCase("[{ \"timestamp\": 100, \"slotDurationMs\": 10500 }]", "positive multiple of 1000 ms", TestName = "Not whole seconds")]
-    public void Rejects_invalid_slot_duration_schedule(string schedule, string message) =>
+    [TestCase(0UL)]
+    [TestCase(500UL)]
+    [TestCase(10_500UL)]
+    public void Rejects_eip8198_slot_duration_that_is_not_whole_seconds(ulong slotDurationMs) =>
         Assert.That(
-            () => LoadStandardGethGenesis(configExtra: $"\"slotDurationSchedule\": {schedule}"),
-            Throws.TypeOf<InvalidDataException>().With.Message.Contains(message));
+            () => LoadStandardGethGenesis(configExtra: $"\"eip8198SlotDurationMs\": {slotDurationMs}"),
+            Throws.TypeOf<InvalidDataException>().With.Message.Contains("positive multiple of 1000 ms"));
 
     /// <summary>
     /// Returns EIP numbers newly enabled by <paramref name="fork"/> compared to its <paramref name="parent"/>.
@@ -971,13 +970,12 @@ public class GethGenesisLoaderTests
         // Build genesis with distinct activation values — bypass LoadStandardGethGenesis
         // to avoid hardcoded eip150Block/eip155Block/eip158Block that would shadow fork-named properties
         string configEntries = string.Join(", ", forks.Select(f => $"\"{f.GethConfigName}\": {f.ActivationValue}"));
-        long eip8198Activation = forks.Single(f => f.Fork.IsEip8198Enabled && !f.Parent.IsEip8198Enabled).ActivationValue;
         ChainSpec chainSpec = LoadFromString($$"""
             {
               "config": {
                 "chainId": 1,
                 {{configEntries}},
-                "slotDurationSchedule": [{ "timestamp": {{eip8198Activation}}, "slotDurationMs": 6000 }],
+                "eip8198SlotDurationMs": 6000,
                 "terminalTotalDifficulty": "0x0"
               },
               "difficulty": "0x1",

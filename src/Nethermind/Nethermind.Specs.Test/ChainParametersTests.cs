@@ -45,8 +45,6 @@ public class ChainParametersTests
         {
             ChainSpecJson test = new() { Params = new ChainSpecParamsJson() };
             jsonParamsProp.SetValue(test.Params, testValue);
-            // EIP-8198 needs a slot duration schedule entry at its activation.
-            if (jsonParamsProp.Name == nameof(ChainSpecParamsJson.Eip8198TransitionTimestamp)) test.Params.SlotDurationSchedule = [new(testValue, 12_000)];
             (ChainSpecBasedSpecProvider? prov, ChainSpec? spec) = TestSpecHelper.LoadChainSpec(test);
 
             PropertyInfo? paramsProp = typeof(ChainParameters).GetProperty(jsonParamsProp.Name);

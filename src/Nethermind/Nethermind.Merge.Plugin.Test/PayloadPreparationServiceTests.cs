@@ -295,7 +295,7 @@ public class PayloadPreparationServiceTests
             Substitute.For<ITimerFactory>(),
             LimboLogs.Instance,
             TimeSpan.FromSeconds(12),
-            slots: new SlotSchedule(12, null, [new(1_000, 10_000), new(2_000, 6_000)]));
+            slots: new SlotSchedule(12, null, [(1_000, 10_000), (2_000, 6_000)]));
 
         Assert.That(sut.GetTimePerSlot(payloadTimestamp), Is.EqualTo(TimeSpan.FromSeconds(expectedSeconds)));
     }
