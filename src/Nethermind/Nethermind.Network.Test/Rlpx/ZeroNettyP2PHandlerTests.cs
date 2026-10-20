@@ -4,11 +4,13 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net.Sockets;
 using System.Threading.Tasks;
 using DotNetty.Buffers;
 using DotNetty.Codecs;
 using DotNetty.Handlers.Timeout;
 using DotNetty.Transport.Channels;
+using DotNetty.Transport.Channels.Embedded;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
@@ -48,6 +50,7 @@ public class ZeroNettyP2PHandlerTests
     {
         yield return new TestCaseData(new Exception(), DisconnectReason.Exception).SetName("Generic_exception_uses_generic_reason");
         yield return new TestCaseData(new CorruptedFrameException("malformed frame"), DisconnectReason.Exception).SetName("Corrupted_frame_uses_generic_reason");
+        yield return new TestCaseData(new SocketException((int)SocketError.ConnectionReset), DisconnectReason.ConnectionReset).SetName("Connection_reset_uses_connection_reset_reason");
     }
 
     [TestCaseSource(nameof(ExpectedCommunicationExceptions))]
@@ -86,6 +89,71 @@ public class ZeroNettyP2PHandlerTests
 
         session.DidNotReceive().InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
         channelHandlerContext.Received().FireExceptionCaught(exception);
+    }
+
+    [Test]
+    public void When_unknown_socket_exception_is_received_from_privileged_peer_then_forward_exception([Values] bool isStatic)
+    {
+        Node node = new(TestItem.PublicKeyA, "127.0.0.1", 30303)
+        {
+            IsStatic = isStatic,
+            IsTrusted = !isStatic
+        };
+        ISession session = Substitute.For<ISession>();
+        session.Node.Returns(node);
+        IChannelHandlerContext channelHandlerContext = Substitute.For<IChannelHandlerContext>();
+        ZeroNettyP2PHandler handler = new(session, LimboLogs.Instance);
+        SocketException exception = new((int)SocketError.ConnectionAborted);
+
+        handler.ExceptionCaught(channelHandlerContext, exception);
+
+        using (Assert.EnterMultipleScope())
+        {
+            session.DidNotReceive().InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
+            channelHandlerContext.Received().FireExceptionCaught(exception);
+            channelHandlerContext.DidNotReceive().CloseAsync();
+        }
+    }
+
+    [Test]
+    public async Task When_connection_is_reset_from_privileged_peer_then_close_transport([Values] bool isStatic)
+    {
+        Node node = new(TestItem.PublicKeyA, "127.0.0.1", 30303)
+        {
+            IsStatic = isStatic,
+            IsTrusted = !isStatic
+        };
+        ISession session = Substitute.For<ISession>();
+        session.Node.Returns(node);
+        ZeroNettyP2PHandler handler = new(session, LimboLogs.Instance);
+        EmbeddedChannel channel = new(handler);
+        Exception? finishException = null;
+
+        try
+        {
+            channel.Pipeline.FireExceptionCaught(new SocketException((int)SocketError.ConnectionReset));
+
+            await channel.CloseCompletion.WaitAsync(TimeSpan.FromSeconds(1));
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(channel.Open, Is.False);
+                session.DidNotReceive().InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
+            }
+        }
+        finally
+        {
+            try
+            {
+                channel.Finish();
+            }
+            catch (Exception exception)
+            {
+                finishException = exception;
+            }
+        }
+
+        Assert.That(finishException, Is.Null, "the transport reset must not escape as an unhandled pipeline exception");
     }
 
     [Test]

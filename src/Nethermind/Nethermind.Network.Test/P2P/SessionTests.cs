@@ -364,6 +364,8 @@ public class SessionTests
     [TestCase(true, DisconnectReason.TooManyPeers, false)]
     [TestCase(false, DisconnectReason.UselessPeer, false)]
     [TestCase(true, DisconnectReason.UselessPeer, false)]
+    [TestCase(false, DisconnectReason.ConnectionReset, false)]
+    [TestCase(true, DisconnectReason.ConnectionReset, false)]
     [TestCase(false, DisconnectReason.InvalidNetworkId, true)]
     [TestCase(true, DisconnectReason.InvalidNetworkId, true)]
     [TestCase(false, DisconnectReason.InvalidForkId, true)]
