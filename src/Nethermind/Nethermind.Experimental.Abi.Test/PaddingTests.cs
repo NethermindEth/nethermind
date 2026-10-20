@@ -8,9 +8,9 @@ using NUnit.Framework;
 namespace Nethermind.Experimental.Abi.Test;
 
 [Parallelizable(ParallelScope.All)]
-public class MathTests
+public class PaddingTests
 {
-    private static IEnumerable<TestCaseData> PadTo32TestCases()
+    private static IEnumerable<TestCaseData> To32TestCases()
     {
         yield return new TestCaseData(0, 0);
         yield return new TestCaseData(1, 32);
@@ -33,11 +33,11 @@ public class MathTests
         yield return new TestCaseData(int.MaxValue - 31, int.MaxValue - 31);
     }
 
-    [TestCaseSource(nameof(PadTo32TestCases))]
-    public void PadTo32(int value, int expected) =>
-        Assert.That(Math.PadTo32(value), Is.EqualTo(expected));
+    [TestCaseSource(nameof(To32TestCases))]
+    public void To32(int value, int expected) =>
+        Assert.That(Padding.To32(value), Is.EqualTo(expected));
 
     [Test]
-    public void PadTo32_Overflow() =>
-        Assert.That(() => Math.PadTo32(int.MaxValue - 30), Throws.TypeOf<OverflowException>());
+    public void To32_Overflow() =>
+        Assert.That(() => Padding.To32(int.MaxValue - 30), Throws.TypeOf<OverflowException>());
 }

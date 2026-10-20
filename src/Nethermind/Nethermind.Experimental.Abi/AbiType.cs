@@ -185,7 +185,7 @@ public static partial class AbiType
         TailSize = bytes =>
         {
             const int lengthSize = 32;
-            int bytesSize = Math.PadTo32(bytes.Length);
+            int bytesSize = Padding.To32(bytes.Length);
 
             return checked(lengthSize + bytesSize);
         }
@@ -205,7 +205,6 @@ public static partial class AbiType
                 if (bytes.Length != length) throw new AbiException();
                 w.WritePadded(bytes);
             },
-            HeadSize = Math.PadTo32(length)
         };
     }
 
@@ -230,7 +229,7 @@ public static partial class AbiType
         Write = (ref BinarySpanWriter w, String v) =>
         {
             int byteCount = StrictUtf8.GetByteCount(v);
-            int byteSize = Math.PadTo32(byteCount);
+            int byteSize = Padding.To32(byteCount);
 
             UInt256.Write(ref w, (UInt256)byteCount);
 
@@ -242,7 +241,7 @@ public static partial class AbiType
         {
             const int lengthSize = 32;
             int byteCount = StrictUtf8.GetByteCount(v);
-            int byteSize = Math.PadTo32(byteCount);
+            int byteSize = Padding.To32(byteCount);
 
             return checked(lengthSize + byteSize);
         }
