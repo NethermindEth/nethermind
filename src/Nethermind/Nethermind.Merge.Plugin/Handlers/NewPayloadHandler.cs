@@ -141,14 +141,17 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         long deadline = _timeProvider.GetTimestamp() + (long)(_timeout.TotalSeconds * _timeProvider.TimestampFrequency);
 
         using ExecutionPayloadPreparation preparation = new(request);
+        using CancellationTokenSource senderRecoveryCancellation = new();
         Result<Block> decodingResult;
         using (preparation.Workers.Enter())
         {
+            // Started before TryGetBlock so recovery overlaps the background transactions-root job it waits for.
+            StartSenderRecovery(request, senderRecoveryCancellation.Token);
             decodingResult = preparation.TryGetBlock(_poSSwitcher.FinalTotalDifficulty);
-            if (!decodingResult.IsError) StartSenderRecovery(request);
         }
         if (decodingResult.IsError)
         {
+            senderRecoveryCancellation.Cancel();
             if (_logger.IsTrace) _logger.Trace($"New Block Request Invalid: {decodingResult.Error} ; {request}.");
             return NewPayloadV1Result.Invalid(null, $"Block {request} could not be parsed as a block: {decodingResult.Error}");
         }
@@ -169,6 +172,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         // IBlockValidator.ValidateSuggestedBlock for payload types that take those roots off the wire instead.
         if (!HeaderValidator.ValidateHash(block!.Header, out Hash256 actualHash))
         {
+            senderRecoveryCancellation.Cancel();
             if (_logger.IsWarn) _logger.Warn(InvalidBlockHelper.GetMessage(block, "invalid block hash"));
             Nethermind.Blockchain.Metrics.BadBlocks++;
             if (block.IsByNethermindNode()) Nethermind.Blockchain.Metrics.BadBlocksByNethermindNodes++;
@@ -659,7 +663,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     /// few-blocks-to-process window in <see cref="ShouldProcessBlock"/>.</summary>
     private const ulong NearHeadRecoveryDistance = 8;
 
-    private void StartSenderRecovery(ExecutionPayload request)
+    private void StartSenderRecovery(ExecutionPayload request, CancellationToken cancellationToken)
     {
         // Far-from-tip payloads (beacon/forward sync) take Syncing/insert paths that never use
         // the senders; they recover in the processing queue as before.
@@ -674,7 +678,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         IReleaseSpec spec = _specProvider.GetSpec(new ForkActivation(request.BlockNumber, request.Timestamp));
         try
         {
-            _senderRecovery.StartRecovery(request.BlockHash, transactions.Data, spec);
+            _senderRecovery.StartRecovery(request.BlockHash, transactions.Data, spec, cancellationToken);
         }
         catch (Exception e)
         {

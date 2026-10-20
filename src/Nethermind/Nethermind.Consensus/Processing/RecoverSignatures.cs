@@ -105,7 +105,8 @@ namespace Nethermind.Consensus.Processing
         /// store equal values through <c>??=</c>, so whichever store lands last is the same address.
         /// </para>
         /// </remarks>
-        public void StartRecovery(Hash256 blockHash, Transaction[] txs, IReleaseSpec releaseSpec)
+        /// <param name="cancellationToken">Stops recovering the remaining transactions, for a block rejected before processing.</param>
+        public void StartRecovery(Hash256 blockHash, Transaction[] txs, IReleaseSpec releaseSpec, CancellationToken cancellationToken = default)
         {
             ParallelUnbalancedWork.WorkerGroup? group = ParallelUnbalancedWork.GetCurrentGroup();
             if (group?.Concurrency == 1) return;
@@ -117,7 +118,7 @@ namespace Nethermind.Consensus.Processing
             if (current is not null && !current.IsCompleted && current.BlockHash == blockHash)
                 return;
 
-            Recovery recovery = new(this, blockHash, txs, releaseSpec, group?.Concurrency ?? Math.Max(1, Environment.ProcessorCount / 2));
+            Recovery recovery = new(this, blockHash, txs, releaseSpec, group?.Concurrency ?? Math.Max(1, Environment.ProcessorCount / 2), cancellationToken);
             Volatile.Write(ref _current, recovery);
             try
             {
@@ -261,7 +262,7 @@ namespace Nethermind.Consensus.Processing
         /// touched a few times per worker rather than once per transaction; completion is pulsed under the gate the
         /// waiters wait on.
         /// </summary>
-        private sealed class Recovery(RecoverSignatures owner, Hash256 blockHash, Transaction[] txs, IReleaseSpec releaseSpec, int concurrency) : IThreadPoolWorkItem, ISenderRecoveryProgress
+        private sealed class Recovery(RecoverSignatures owner, Hash256 blockHash, Transaction[] txs, IReleaseSpec releaseSpec, int concurrency, CancellationToken cancellationToken) : IThreadPoolWorkItem, ISenderRecoveryProgress
         {
             private readonly object _gate = new();
             private readonly int _progressBatch = Math.Max(1, txs.Length / (concurrency * ProgressPublicationsPerWorker));
@@ -294,12 +295,13 @@ namespace Nethermind.Consensus.Processing
                     }
                     else
                     {
-                        foreach (Transaction tx in txs)
+                        int recovered = 0;
+                        for (; recovered < txs.Length && !cancellationToken.IsCancellationRequested; recovered++)
                         {
-                            owner.TryRecover(tx, releaseSpec);
+                            owner.TryRecover(txs[recovered], releaseSpec);
                         }
 
-                        Interlocked.Add(ref _recovered, txs.Length);
+                        Interlocked.Add(ref _recovered, recovered);
                     }
                 }
                 catch (Exception e)
@@ -323,11 +325,15 @@ namespace Nethermind.Consensus.Processing
 
             private Worker StartWorker() => new(this);
 
+            private bool IsCancellationRequested => cancellationToken.IsCancellationRequested;
+
             private void Recover(int i) => owner.TryRecover(txs[i], releaseSpec);
 
             private static Worker RecoverOne(int i, Worker worker)
             {
                 Recovery recovery = worker.Recovery;
+                // Cancellation skips the remaining indices instead of passing the token to For, which throws.
+                if (recovery.IsCancellationRequested) return worker;
                 recovery.Recover(i);
                 if (++worker.Pending == recovery._progressBatch)
                 {
