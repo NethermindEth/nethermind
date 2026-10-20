@@ -98,7 +98,22 @@ public static unsafe partial class Bytes
         {
             // Whole words, then a byte tail: the widest access the target has without SIMD.
             // Correct at any base; the win needs a word-aligned start, which Bloom's byte[256] has.
+            // Four words a pass halves the loop overhead per word.
             int i = 0;
+            for (; i <= thisSpan.Length - 4 * sizeof(ulong); i += 4 * sizeof(ulong))
+            {
+                ref byte destination = ref Unsafe.Add(ref thisRef, i);
+                ref byte value = ref Unsafe.Add(ref valueRef, i);
+                Unsafe.WriteUnaligned(ref destination,
+                    Unsafe.ReadUnaligned<ulong>(ref destination) | Unsafe.ReadUnaligned<ulong>(ref value));
+                Unsafe.WriteUnaligned(ref Unsafe.Add(ref destination, 8),
+                    Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref destination, 8)) | Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 8)));
+                Unsafe.WriteUnaligned(ref Unsafe.Add(ref destination, 16),
+                    Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref destination, 16)) | Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 16)));
+                Unsafe.WriteUnaligned(ref Unsafe.Add(ref destination, 24),
+                    Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref destination, 24)) | Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref value, 24)));
+            }
+
             for (; i <= thisSpan.Length - sizeof(ulong); i += sizeof(ulong))
             {
                 ref byte destination = ref Unsafe.Add(ref thisRef, i);
