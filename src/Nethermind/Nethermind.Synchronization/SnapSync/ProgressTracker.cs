@@ -83,7 +83,10 @@ namespace Nethermind.Synchronization.SnapSync
 
         private static readonly TimeSpan DefaultCheckpointInterval = TimeSpan.FromMinutes(5);
 
-        /// <summary>How often the progress is saved for <see cref="ISyncConfig.SnapResume"/>, or <c>null</c> when it is off.</summary>
+        /// <summary>
+        /// How often the progress is saved for <see cref="ISyncConfig.SnapResume"/>, or <c>null</c> when it is off or the
+        /// backend cannot resume.
+        /// </summary>
         private readonly TimeSpan? _checkpointInterval;
         private long _lastCheckpointTimestamp = Stopwatch.GetTimestamp();
 
@@ -97,7 +100,7 @@ namespace Nethermind.Synchronization.SnapSync
             _snapTrieFactory = snapTrieFactory ?? throw new ArgumentNullException(nameof(snapTrieFactory));
 
             _pivot = pivot;
-            _checkpointInterval = syncConfig.SnapResume ? checkpointInterval ?? DefaultCheckpointInterval : null;
+            _checkpointInterval = syncConfig.SnapResume && snapTrieFactory.SupportsCheckpoints ? checkpointInterval ?? DefaultCheckpointInterval : null;
 
             int accountRangePartitionCount = syncConfig.SnapSyncAccountRangePartitionCount;
             if (accountRangePartitionCount < 1)

@@ -8,7 +8,6 @@ using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BlockAccessLists;
-using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -219,12 +218,7 @@ public class StateSyncRunnerTests : StateSyncFeedTestsBase
             .AddSingleton<IBalHealing>(_healing)
             .AddSingleton<ISnapSyncRunner>(_snapSyncRunner)
             .AddSingleton<ISnapTrieFactory>(_snapTrieFactory)
-            .AddSingleton<IStateSyncPivot>(_pivot)
-            .AddDecorator<ISyncConfig>((_, syncConfig) =>
-            {
-                syncConfig.SnapResume = true;
-                return syncConfig;
-            }));
+            .AddSingleton<IStateSyncPivot>(_pivot));
     }
 
     private static void SeedBals(IContainer container, params BlockHeader[] headers)

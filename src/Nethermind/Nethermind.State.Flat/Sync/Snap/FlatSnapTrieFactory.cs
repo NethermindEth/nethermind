@@ -73,6 +73,8 @@ public class FlatSnapTrieFactory(
 
     public void FinalizeSync() => persistence.Flush();
 
+    public bool SupportsCheckpoints => true;
+
     public SnapCheckpoint? LoadCheckpoint()
     {
         byte[]? record = BasePersistence.ReadSnapCheckpoint(flatDb.GetColumnDb(FlatDbColumns.Metadata));

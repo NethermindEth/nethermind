@@ -21,6 +21,9 @@ public interface ISnapTrieFactory
     bool IsRangePhaseFinished() => false;
     void MarkRangePhaseFinished() { }
 
+    /// <summary>Whether this backend saves checkpoints, so that a restarted range phase can resume.</summary>
+    bool SupportsCheckpoints => false;
+
     /// <summary>Returns the checkpoint the range phase resumes from, or <c>null</c> to start it over.</summary>
     /// <remarks>
     /// Read after <see cref="EnsureInitialize"/>, which keeps the data a saved checkpoint covers and discards what

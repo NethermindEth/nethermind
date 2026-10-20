@@ -139,11 +139,14 @@ public class ProgressTrackerTests
         request.Dispose();
     }
 
-    // Healing is not checkpointed, so once it may start a restart must find no checkpoint to resume.
+    // Healing is not checkpointed, so once it may start a restart must find no checkpoint to resume. A backend that
+    // cannot resume is never checkpointed at all.
     [Test]
-    public void Will_mark_range_phase_finished_when_ranges_drain([Values] bool snapResume)
+    public void Will_mark_range_phase_finished_when_ranges_drain([Values] bool snapResume, [Values] bool supportsCheckpoints)
     {
         ISnapTrieFactory snapTrieFactory = Substitute.For<ISnapTrieFactory>();
+        snapTrieFactory.SupportsCheckpoints.Returns(supportsCheckpoints);
+        bool checkpointed = snapResume && supportsCheckpoints;
         TestLogger logger = new();
         using ProgressTracker progressTracker = CreateProgressTracker(snapTrieFactory: snapTrieFactory, logManager: new OneLoggerLogManager(new ILogger(logger)), snapResume: snapResume);
 
@@ -156,8 +159,8 @@ public class ProgressTrackerTests
         Assert.That(finished, Is.True);
 
         snapTrieFactory.Received(1).MarkRangePhaseFinished();
-        snapTrieFactory.Received(snapResume ? 1 : 0).SaveCheckpoint(null);
-        if (!snapResume) snapTrieFactory.DidNotReceiveWithAnyArgs().SaveCheckpoint(default);
+        snapTrieFactory.Received(checkpointed ? 1 : 0).SaveCheckpoint(null);
+        if (!checkpointed) snapTrieFactory.DidNotReceiveWithAnyArgs().SaveCheckpoint(default);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(logger.LogList, Has.Some.StartsWith("Snap         State Ranges (Phase 1 of 2): ("));
@@ -172,6 +175,7 @@ public class ProgressTrackerTests
         int checkpointsSaved = 0;
         SnapCheckpoint? saved = null;
         ISnapTrieFactory snapTrieFactory = Substitute.For<ISnapTrieFactory>();
+        snapTrieFactory.SupportsCheckpoints.Returns(true);
         snapTrieFactory.When(static f => f.SaveCheckpoint(Arg.Any<SnapCheckpoint?>())).Do(call =>
         {
             checkpointsSaved++;
