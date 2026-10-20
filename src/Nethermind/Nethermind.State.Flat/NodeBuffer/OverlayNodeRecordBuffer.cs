@@ -27,13 +27,13 @@ internal sealed class OverlayNodeRecordBuffer : INodeRecordBuffer
     public OverlayNodeRecordBuffer(INodeRecordBuffer global)
     {
         _global = global;
-        _globalPin = global.Pin();
+        _globalPin = global.PinHead();
         _globalBoundary = _globalPin.WriteBoundary;
         _localOffset = _globalBoundary >> NodeRecordBuffer.OffsetBits << NodeRecordBuffer.OffsetBits;
     }
 
     /// <inheritdoc/>
-    public INodeRecordBufferPin Pin() => CombinePin(_local.Pin(), _globalPin);
+    public INodeRecordBufferPin PinHead() => CombinePin(_local.PinHead(), _globalPin);
 
     /// <inheritdoc/>
     public IDisposable PinAll()

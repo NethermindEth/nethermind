@@ -130,12 +130,12 @@ public class SnapshotTests
     public void EnumerationIncludesOnlyReachableWritesSinceRetain([Values] bool storage)
     {
         using INodeRecordBuffer buffer = FlatTestHelpers.NewTestBuffer();
-        using INodeRecordBufferPin originalRetain = buffer.Pin();
+        using INodeRecordBufferPin originalRetain = buffer.PinHead();
         Hash256? address = storage ? TestItem.KeccakA : null;
         Hash256 firstKey = new("1000000000000000000000000000000000000000000000000000000000000000");
         Hash256 lastKey = new("f000000000000000000000000000000000000000000000000000000000000000");
         TrieRoot original = Write(TrieRoot.Empty, firstKey, 1, lastKey);
-        INodeRecordBufferPin updateRetain = buffer.Pin();
+        INodeRecordBufferPin updateRetain = buffer.PinHead();
         TrieRoot unrelated = Write(TrieRoot.Empty, firstKey, 3);
         TrieRoot updated = Write(original, lastKey, 2);
         using Snapshot snapshot = new(new(1, original.Hash), new(2, updated.Hash), new SnapshotContent(), _pool, ResourcePool.Usage.MainBlockProcessing, updateRetain);
@@ -397,7 +397,7 @@ public class SnapshotTests
     {
         using INodeRecordBuffer buffer = FlatTestHelpers.NewTestBuffer();
         using SnapshotBundle bundle = new(FlatTestHelpers.MakeBundle(_pool), buffer, _pool, ResourcePool.Usage.MainBlockProcessing);
-        INodeRecordBufferPin retain = buffer.Pin();
+        INodeRecordBufferPin retain = buffer.PinHead();
         byte[] rlp = FlatTestHelpers.LeafRlp(1);
         ValueHash256 hash = ValueKeccak.Compute(rlp);
         TrieRoot root = empty ? TrieRoot.Empty : new(hash, buffer.AppendRecordFromRlp(null, TreePath.Empty, hash, rlp, []));

@@ -409,7 +409,7 @@ public sealed class SnapshotBundle : IDisposable
             readOnly.AcquireLease();
             try
             {
-                _pin = buffer.Pin();
+                _pin = buffer.PinHead();
                 // The read-only lease protects its snapshots; the oldest local pin protects later local roots too.
                 foreach (Snapshot snapshot in snapshots)
                 {

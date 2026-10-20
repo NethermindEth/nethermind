@@ -115,7 +115,7 @@ public class StorageDeleteWarmupBenchmark
         _address = DeriveAddress(7);
 
         // Build the trie in memory, then move all of it into persistence so every iteration starts cold.
-        using INodeRecordBuffer buffer = new NodeRecordBuffer(0, NodeRecordBuffer.DefaultGenerationBytes);
+        using INodeRecordBuffer buffer = new NodeRecordBuffer(0, NodeRecordBuffer.DefaultGenerationBytes, NodeRecordBuffer.DefaultLiveGenerations);
         SnapshotBundle bundle = new(
             new ReadOnlySnapshotBundle(new SnapshotPooledList(0), new NoopPersistenceReader(), recordDetailedMetrics: false, PersistedSnapshotStack.Empty(), buffer.PinAll()),
             buffer, _resourcePool, ResourcePool.Usage.MainBlockProcessing);
@@ -155,7 +155,7 @@ public class StorageDeleteWarmupBenchmark
     /// </summary>
     private void GrowNodeCache()
     {
-        using INodeRecordBuffer buffer = new NodeRecordBuffer(0, NodeRecordBuffer.DefaultGenerationBytes);
+        using INodeRecordBuffer buffer = new NodeRecordBuffer(0, NodeRecordBuffer.DefaultGenerationBytes, NodeRecordBuffer.DefaultLiveGenerations);
         SnapshotBundle bundle = new(
             new ReadOnlySnapshotBundle(new SnapshotPooledList(0), _persistence.CreateReader(), recordDetailedMetrics: false, PersistedSnapshotStack.Empty(), buffer.PinAll()),
             buffer, _resourcePool, ResourcePool.Usage.MainBlockProcessing);
@@ -168,7 +168,7 @@ public class StorageDeleteWarmupBenchmark
     public void IterationSetup()
     {
         _reader = new CountingReader(_persistence.CreateReader(), ReadMicros);
-        _buffer = new NodeRecordBuffer(0, NodeRecordBuffer.DefaultGenerationBytes);
+        _buffer = new NodeRecordBuffer(0, NodeRecordBuffer.DefaultGenerationBytes, NodeRecordBuffer.DefaultLiveGenerations);
         SnapshotBundle bundle = new(
             new ReadOnlySnapshotBundle(new SnapshotPooledList(0), _reader, recordDetailedMetrics: false, PersistedSnapshotStack.Empty(), _buffer.PinAll()),
             _buffer, _resourcePool, ResourcePool.Usage.MainBlockProcessing);

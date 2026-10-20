@@ -102,7 +102,7 @@ public sealed class NodeRecordBuffer : INodeRecordBuffer
     }
 
     /// <summary>Keeps the active generation, and every later one, readable in place until the returned pin is disposed.</summary>
-    public NodeRecordBufferPin Pin()
+    public NodeRecordBufferPin PinHead()
     {
         lock (_lock)
         {
@@ -117,7 +117,7 @@ public sealed class NodeRecordBuffer : INodeRecordBuffer
         }
     }
 
-    INodeRecordBufferPin INodeRecordBuffer.Pin() => Pin();
+    INodeRecordBufferPin INodeRecordBuffer.PinHead() => PinHead();
 
     /// <inheritdoc/>
     /// <remarks>

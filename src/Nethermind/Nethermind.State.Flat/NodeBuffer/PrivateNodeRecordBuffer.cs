@@ -36,7 +36,7 @@ internal sealed class PrivateNodeRecordBuffer : INodeRecordBuffer
     }
 
     /// <inheritdoc/>
-    public INodeRecordBufferPin Pin()
+    public INodeRecordBufferPin PinHead()
     {
         lock (_lock)
         {
@@ -48,7 +48,7 @@ internal sealed class PrivateNodeRecordBuffer : INodeRecordBuffer
 
     /// <inheritdoc/>
     /// <remarks>Unused: readers only take <see cref="INodeRecordBuffer.PinAll"/> on the global buffer.</remarks>
-    public IDisposable PinAll() => Pin();
+    public IDisposable PinAll() => PinHead();
 
     /// <inheritdoc/>
     public bool TryLocate(ulong pointer, out NodeRecord record)

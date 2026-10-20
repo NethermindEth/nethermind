@@ -45,7 +45,7 @@ public static class FlatTestHelpers
 
     /// <summary>Creates a snapshot owning a retain on the active generation of <paramref name="buffer"/>.</summary>
     public static Snapshot CreateSnapshot(this IResourcePool pool, in StateId from, in StateId to, ResourcePool.Usage usage, INodeRecordBuffer buffer) =>
-        new(from, to, pool.GetSnapshotContent(usage), pool, usage, buffer.Pin());
+        new(from, to, pool.GetSnapshotContent(usage), pool, usage, buffer.PinHead());
 
     /// <summary>Appends records until <paramref name="buffer"/> starts a new generation.</summary>
     public static void StartNewGeneration(INodeRecordBuffer buffer)
@@ -321,7 +321,7 @@ internal sealed class ForwardingNodeRecordBuffer(INodeRecordBuffer inner) : INod
 
     public ulong FindRoot(Hash256? address, in ValueHash256 root) => inner.FindRoot(address, root);
     public void SetRoot(Hash256? address, in ValueHash256 root, ulong rootPointer) => inner.SetRoot(address, root, rootPointer);
-    public INodeRecordBufferPin Pin() => Wrap(inner.Pin());
+    public INodeRecordBufferPin PinHead() => Wrap(inner.PinHead());
     public IDisposable PinAll() => inner.PinAll();
     public void Dispose() => inner.Dispose();
 

@@ -145,14 +145,14 @@ public class NodeRecordBufferTests
     public void Retains_capture_exact_allocation_boundaries_and_copies_preserve_them()
     {
         using NodeRecordBuffer buffer = new(0, GenerationBytes, LiveGenerations);
-        using NodeRecordBufferPin first = buffer.Pin();
+        using NodeRecordBufferPin first = buffer.PinHead();
         ulong firstPointer = buffer.Reserve(RecordAlignment, out _, out _);
-        using NodeRecordBufferPin second = buffer.Pin();
+        using NodeRecordBufferPin second = buffer.PinHead();
         ulong secondPointer = buffer.Reserve(RecordAlignment, out _, out _);
         using NodeRecordBufferPin copy = first.Copy();
         buffer.Reserve(GenerationBytes, out _, out _);
         buffer.Reserve(RecordAlignment, out _, out _);
-        using NodeRecordBufferPin rotated = buffer.Pin();
+        using NodeRecordBufferPin rotated = buffer.PinHead();
         ulong rotatedPointer = buffer.Reserve(RecordAlignment, out _, out _);
 
         using (Assert.EnterMultipleScope())
@@ -172,7 +172,7 @@ public class NodeRecordBufferTests
         using NodeRecordBuffer buffer = new(0, GenerationBytes, LiveGenerations);
         object active = typeof(NodeRecordBuffer).GetField("_active", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(buffer)!;
         active.GetType().GetField("Used")!.SetValue(active, used);
-        using NodeRecordBufferPin retain = buffer.Pin();
+        using NodeRecordBufferPin retain = buffer.PinHead();
         ulong pointer = buffer.Reserve(RecordAlignment, out _, out _);
 
         using (Assert.EnterMultipleScope())
@@ -190,7 +190,7 @@ public class NodeRecordBufferTests
         {
             for (int i = 0; i < 1024; i++)
             {
-                using NodeRecordBufferPin retain = buffer.Pin();
+                using NodeRecordBufferPin retain = buffer.PinHead();
                 ulong pointer = buffer.Reserve(RecordAlignment, out _, out _);
                 Assert.That(pointer, Is.GreaterThanOrEqualTo(retain.WriteBoundary));
             }
@@ -309,7 +309,7 @@ public class NodeRecordBufferTests
     public void Shutdown_defers_free_until_every_pin_is_released([Values] bool readerFinishesFirst)
     {
         using NodeRecordBuffer buffer = new(0, GenerationBytes, LiveGenerations);
-        using NodeRecordBufferPin retain = buffer.Pin();
+        using NodeRecordBufferPin retain = buffer.PinHead();
         ulong pointer = Append(buffer, Leaf(1, 8));
         NodeRecord record = buffer.GetRecord(pointer);
         BloomFilter bloom = buffer.FindBloom(pointer)!;
@@ -322,7 +322,7 @@ public class NodeRecordBufferTests
             Assert.That(IsDisposed(storage), Is.False);
             Assert.That(() => bloom.MightContain(0), Throws.Nothing);
             Assert.That(Matches(record, Leaf(1, 8)), Is.True);
-            Assert.That(() => buffer.Pin(), Throws.InstanceOf<ObjectDisposedException>());
+            Assert.That(() => buffer.PinHead(), Throws.InstanceOf<ObjectDisposedException>());
             Assert.That(() => retain.Copy(), Throws.InstanceOf<ObjectDisposedException>());
             Assert.That(() => buffer.GetRecord(pointer), Throws.InstanceOf<ObjectDisposedException>());
             Assert.That(() => buffer.Reserve(8, out _, out _), Throws.InstanceOf<ObjectDisposedException>());
@@ -393,7 +393,7 @@ public class NodeRecordBufferTests
     public void Records_resolve_in_place_until_their_generation_drops([Values(1, LiveGenerations)] int liveGenerations)
     {
         using NodeRecordBuffer buffer = new(0, GenerationBytes, liveGenerations);
-        using NodeRecordBufferPin first = buffer.Pin();
+        using NodeRecordBufferPin first = buffer.PinHead();
         NodeRecordBufferPin? middle = null;
         NodeRecordBufferPin? middleCopy = null;
         List<(ulong Pointer, byte[] Rlp)> records = [];
@@ -401,7 +401,7 @@ public class NodeRecordBufferTests
         {
             if (middle is null && records.Count > 0 && GenerationOf(records[^1].Pointer) == 6)
             {
-                middle = buffer.Pin();
+                middle = buffer.PinHead();
                 middleCopy = middle.Copy();
             }
 
@@ -421,7 +421,7 @@ public class NodeRecordBufferTests
         middleCopy.Dispose();
         AssertResolvesFrom(buffer, records, activeGeneration - (ulong)liveGenerations + 1, "only the live generations resolve after the last release");
 
-        using NodeRecordBufferPin oversizeRetain = buffer.Pin();
+        using NodeRecordBufferPin oversizeRetain = buffer.PinHead();
         byte[] oversize = Leaf(-1, GenerationBytes + 1);
         ulong oversizePointer = Append(buffer, oversize);
         ulong nextPointer = Append(buffer, Leaf(-2, 1000));
@@ -439,7 +439,7 @@ public class NodeRecordBufferTests
     public void Retain_copy_cannot_resurrect_a_generation_dropped_by_a_concurrent_release()
     {
         using NodeRecordBuffer buffer = new(0, GenerationBytes, LiveGenerations);
-        using NodeRecordBufferPin retain = buffer.Pin();
+        using NodeRecordBufferPin retain = buffer.PinHead();
         while (GenerationOf(buffer.Reserve(GenerationBytes, out _, out _)) < LiveGenerations + 1) { }
         retain.Dispose();
 
@@ -452,7 +452,7 @@ public class NodeRecordBufferTests
     {
         using NodeRecordBuffer buffer = new(0, GenerationBytes, LiveGenerations);
         Hash256? address = storage ? TestItem.KeccakA : null;
-        NodeRecordBufferPin retain = buffer.Pin();
+        NodeRecordBufferPin retain = buffer.PinHead();
         ulong droppedPointer = Append(buffer, Leaf(-1, 8));
 
         ValueHash256[] roots = new ValueHash256[1500];
@@ -538,7 +538,7 @@ public class NodeRecordBufferTests
         const int recordsPerThread = 10_000;
         const int recordsPerRetain = 1_000;
         using NodeRecordBuffer buffer = new(1 << 20, GenerationBytes, LiveGenerations);
-        using NodeRecordBufferPin? retain = compacting ? null : buffer.Pin();
+        using NodeRecordBufferPin? retain = compacting ? null : buffer.PinHead();
         ulong[][] pointers = new ulong[threadCount][];
         NodeRecordBufferPin?[] threadRetains = new NodeRecordBufferPin?[threadCount];
 
@@ -551,7 +551,7 @@ public class NodeRecordBufferTests
                 if (i % recordsPerRetain == 0)
                 {
                     threadRetains[thread]?.Dispose();
-                    threadRetains[thread] = buffer.Pin();
+                    threadRetains[thread] = buffer.PinHead();
                 }
 
                 int seed = thread * recordsPerThread + i;

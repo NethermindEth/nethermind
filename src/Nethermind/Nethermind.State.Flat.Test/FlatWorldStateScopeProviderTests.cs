@@ -1474,7 +1474,7 @@ public class FlatWorldStateScopeProviderTests
             TrieRoot root = TrieRoot.Empty;
             for (int version = 0; version < versionCount; version++)
             {
-                INodeRecordBufferPin retain = buffer.Pin();
+                INodeRecordBufferPin retain = buffer.PinHead();
                 NodeRecordTrie trie = new(writer, address, root);
                 using ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries = new(keyCount);
                 values[version] = version == 0 ? new byte[keyCount][] : (byte[][])values[version - 1].Clone();
@@ -1504,7 +1504,7 @@ public class FlatWorldStateScopeProviderTests
         for (int i = 0; i < 12; i++) FlatTestHelpers.StartNewGeneration(buffer);
         Assert.That(() => buffer.FindBloom(oldPointer) is null, Is.True.After(10_000, 10), "the unretained generation is compacted while snapshots retain later generations");
 
-        using INodeRecordBufferPin writeRetain = buffer.Pin();
+        using INodeRecordBufferPin writeRetain = buffer.PinHead();
         for (int version = 0; version < versionCount; version++)
         {
             Assert.That(buffer.FindRoot(address, roots[version].Hash), Is.EqualTo(roots[version].Pointer), $"indexed root {version}");

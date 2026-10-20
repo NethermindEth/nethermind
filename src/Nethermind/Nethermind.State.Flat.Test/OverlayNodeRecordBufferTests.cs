@@ -27,7 +27,7 @@ public class OverlayNodeRecordBufferTests
         ulong afterPin = Append(global, AfterPinLeaf);
         int globalWrites = global.CompletedWrites;
 
-        INodeRecordBufferPin overlayPin = overlay.Pin();
+        INodeRecordBufferPin overlayPin = overlay.PinHead();
         ulong written = Append(overlay, OverlayLeaf);
 
         using (Assert.EnterMultipleScope())

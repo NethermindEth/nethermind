@@ -20,7 +20,7 @@ internal class PrivateNodeRecordBufferTests
     public void Keeps_every_record_until_cleared_and_frees_storage_after_the_last_pin()
     {
         PrivateNodeRecordBuffer buffer = new(GenerationBytes);
-        INodeRecordBufferPin pin = buffer.Pin();
+        INodeRecordBufferPin pin = buffer.PinHead();
         List<(ulong Pointer, byte[] Rlp)> records = [.. Enumerable.Range(0, 100).Select(i => NodeRecordBufferTests.Leaf(i, 1000)).Select(rlp => (Append(buffer, rlp), rlp))];
         byte[] oversize = NodeRecordBufferTests.Leaf(-1, 2 * GenerationBytes);
         records.Add((Append(buffer, oversize), oversize));
@@ -43,7 +43,7 @@ internal class PrivateNodeRecordBufferTests
             Assert.That(afterClear, Is.GreaterThan(lastPointer), "pointers continue past the cleared records");
         }
 
-        INodeRecordBufferPin reader = buffer.Pin();
+        INodeRecordBufferPin reader = buffer.PinHead();
         INodeRecordBufferPin readerCopy = reader.Copy();
         NodeRecord record = buffer.GetRecord(afterClear);
         buffer.Dispose();
@@ -51,7 +51,7 @@ internal class PrivateNodeRecordBufferTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(record.Rlp.ToArray(), Is.EqualTo(records[0].Rlp), "a pin keeps storage past dispose");
-            Assert.That(() => buffer.Pin(), Throws.InstanceOf<ObjectDisposedException>());
+            Assert.That(() => buffer.PinHead(), Throws.InstanceOf<ObjectDisposedException>());
             Assert.That(() => buffer.GetRecord(afterClear), Throws.InstanceOf<ObjectDisposedException>());
         }
 
