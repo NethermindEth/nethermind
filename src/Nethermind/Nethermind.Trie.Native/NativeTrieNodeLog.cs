@@ -27,6 +27,9 @@ public sealed unsafe partial class NativeTrieNodeLog : SafeHandle
     // Mirrors the size of the native generation table.
     private const int MaxGenerations = 4096;
 
+    // The overlay's dangerous reference on its parent, which it reads until freed.
+    private readonly NativeTrieNodeLog? _parent;
+
     /// <param name="compressedMaxMemory">The memory budget in bytes for compacted generations; it also sizes the storage root index.</param>
     /// <param name="liveGenerations">How many of the newest generations stay readable in place.</param>
     public NativeTrieNodeLog(ulong compressedMaxMemory, int liveGenerations) : base(IntPtr.Zero, ownsHandle: true)
@@ -36,6 +39,25 @@ public sealed unsafe partial class NativeTrieNodeLog : SafeHandle
         SetHandle(nm_patricia_log_new(compressedMaxMemory, (ulong)liveGenerations));
         nm_patricia_log_set_memory_pressure(this, &ReportMemoryPressure);
     }
+
+    private NativeTrieNodeLog(NativeTrieNodeLog parent) : base(IntPtr.Zero, ownsHandle: true)
+    {
+        bool referenced = false;
+        parent.DangerousAddRef(ref referenced);
+        _parent = parent;
+        SetHandle(nm_patricia_log_overlay_new(parent));
+        nm_patricia_log_set_memory_pressure(this, &ReportMemoryPressure);
+    }
+
+    /// <summary>
+    /// Creates a log that reads the nodes this log holds now and keeps the nodes written to it privately, so they never
+    /// grow this log.
+    /// </summary>
+    /// <remarks>
+    /// The overlay pins the generation active now until it is freed, resolves only the roots indexed before now, and
+    /// keeps every node written to it until freed.
+    /// </remarks>
+    public NativeTrieNodeLog CreateOverlay() => new(this);
 
     // The static entry point outlives native compaction and pins without rooting the SafeHandle against finalization.
     [UnmanagedCallersOnly]
@@ -58,6 +80,7 @@ public sealed unsafe partial class NativeTrieNodeLog : SafeHandle
     protected override bool ReleaseHandle()
     {
         nm_patricia_log_free(handle);
+        _parent?.DangerousRelease();
         return true;
     }
 
@@ -107,6 +130,9 @@ public sealed unsafe partial class NativeTrieNodeLog : SafeHandle
 
     [LibraryImport(NativePatriciaBulkSet.LibraryName)]
     private static partial nint nm_patricia_log_new(ulong compressedMaxMemory, ulong liveGenerations);
+
+    [LibraryImport(NativePatriciaBulkSet.LibraryName)]
+    private static partial nint nm_patricia_log_overlay_new(NativeTrieNodeLog parent);
 
     [LibraryImport(NativePatriciaBulkSet.LibraryName)]
     private static partial void nm_patricia_log_set_memory_pressure(NativeTrieNodeLog log, delegate* unmanaged<long, void> report);

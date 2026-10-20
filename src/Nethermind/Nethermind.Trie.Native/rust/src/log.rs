@@ -122,6 +122,31 @@ pub struct TrieNodeLog {
     memory_pressure: MemoryPressure,
     state_roots: RootTable,
     storage_roots: RootTable,
+    /// The log an overlay reads the records written before it started from.
+    parent: Option<Parent>,
+}
+
+/// The log an overlay reads, retained from the generation active when the overlay started until it is dropped.
+struct Parent {
+    log: *const TrieNodeLog,
+    generation: u64,
+    /// The first position not yet reserved when the overlay started, so the first one it does not read.
+    boundary: LogPointer,
+}
+
+// The parent log is shared as immutably as the overlay itself, and outlives it.
+unsafe impl Send for Parent {}
+unsafe impl Sync for Parent {}
+
+impl Parent {
+    /// Whether `pointer` is of the parent, so of a generation not newer than the retained one.
+    fn holds(&self, pointer: LogPointer) -> bool {
+        pointer >> OFFSET_BITS <= self.generation
+    }
+
+    fn log<'a>(&self) -> &'a TrieNodeLog {
+        unsafe { &*self.log }
+    }
 }
 
 #[derive(Default)]
@@ -225,7 +250,50 @@ impl TrieNodeLog {
         )
     }
 
+    /// Creates a log that reads the records `parent` holds now and keeps its own, in generations numbered after the
+    /// parent's active one, until it is dropped, so they never grow the parent. Retains the parent's active generation,
+    /// and resolves only the parent's roots indexed before now.
+    ///
+    /// # Safety
+    /// `parent` must outlive the returned log.
+    pub unsafe fn overlay(parent: &TrieNodeLog) -> Box<TrieNodeLog> {
+        let (generation, boundary) = parent.retain_active_boundary();
+        TrieNodeLog::create_over(
+            Some(Parent {
+                log: parent,
+                generation,
+                boundary,
+            }),
+            MIN_GENERATION_BYTES,
+            DEFAULT_LIVE_GENERATIONS,
+            0,
+            false,
+            RootTable::new(STATE_ROOT_SLOTS),
+            RootTable::new(STATE_ROOT_SLOTS),
+        )
+    }
+
     fn create(
+        generation_bytes: usize,
+        live_generations: u64,
+        compressed_max_memory: u64,
+        temporary: bool,
+        state_roots: RootTable,
+        storage_roots: RootTable,
+    ) -> Box<TrieNodeLog> {
+        TrieNodeLog::create_over(
+            None,
+            generation_bytes,
+            live_generations,
+            compressed_max_memory,
+            temporary,
+            state_roots,
+            storage_roots,
+        )
+    }
+
+    fn create_over(
+        parent: Option<Parent>,
         generation_bytes: usize,
         live_generations: u64,
         compressed_max_memory: u64,
@@ -237,16 +305,17 @@ impl TrieNodeLog {
             (1..MAX_GENERATIONS as u64).contains(&live_generations),
             "live generations out of range"
         );
+        let first = parent.as_ref().map_or(1, |parent| parent.generation + 1);
         let log = Box::new(TrieNodeLog {
             generations: (0..MAX_GENERATIONS)
                 .map(|_| Generation::default())
                 .collect(),
-            active: AtomicU64::new(1),
+            active: AtomicU64::new(first),
             state: Mutex::new(State {
-                oldest_compressed: 1,
-                oldest_kept_compressed: 1,
-                oldest_allocated: 1,
-                oldest_live: 1,
+                oldest_compressed: first,
+                oldest_kept_compressed: first,
+                oldest_allocated: first,
+                oldest_live: first,
                 pins: vec![0; MAX_GENERATIONS].into_boxed_slice(),
                 compressed_pins: vec![0; MAX_GENERATIONS].into_boxed_slice(),
                 retains: vec![0; MAX_GENERATIONS].into_boxed_slice(),
@@ -261,8 +330,10 @@ impl TrieNodeLog {
             memory_pressure: MemoryPressure::default(),
             state_roots,
             storage_roots,
+            parent,
         });
-        log.generation(1).start(generation_bytes, temporary, log.memory_pressure);
+        log.generation(first)
+            .start(generation_bytes, temporary, log.memory_pressure);
         log
     }
 
@@ -302,7 +373,12 @@ impl TrieNodeLog {
     }
 
     /// Pins every live generation, and every compacted one not due to be freed, until the returned session is dropped.
+    /// An overlay also pins its parent's, through a session of the parent.
     pub fn pin(&self) -> LogSession<'_> {
+        let parent = self
+            .parent
+            .as_ref()
+            .map(|parent| Box::new(parent.log().pin()));
         let mut state = self.state.lock().unwrap();
         let floor = state.oldest_live;
         let compressed_floor = state.oldest_kept_compressed;
@@ -312,6 +388,7 @@ impl TrieNodeLog {
             log: self,
             floor,
             compressed_floor,
+            parent,
         }
     }
 
@@ -351,6 +428,9 @@ impl TrieNodeLog {
 
     /// The node record at `pointer`, whose generation must be retained, as an in-memory snapshot's pin does.
     pub fn node(&self, pointer: LogPointer) -> LoggedNode<'_> {
+        if let Some(parent) = self.parent.as_ref().filter(|parent| parent.holds(pointer)) {
+            return parent.log().node(pointer);
+        }
         let length = record_length_of(self.bytes(pointer, RECORD_HEADER_LENGTH));
         LoggedNode::new(self.bytes(pointer, length))
     }
@@ -379,7 +459,9 @@ impl TrieNodeLog {
         }
 
         self.reclaim(&mut state);
-        let under_pressure = self.temporary || state.oldest_allocated + self.live_generations <= full;
+        let under_pressure = self.temporary
+            || self.parent.is_some()
+            || state.oldest_allocated + self.live_generations <= full;
         let generation_length = match under_pressure {
             true => (self.generation(full).length.load(Ordering::Relaxed) * 2).clamp(
                 self.generation_bytes,
@@ -405,8 +487,12 @@ impl TrieNodeLog {
         self.reclaim(&mut state);
     }
 
-    /// Drops generations, oldest first, until its live generations are live or the oldest live one is retained.
+    /// Drops generations, oldest first, until its live generations are live or the oldest live one is retained. An
+    /// overlay keeps every generation instead.
     fn drop_old_generations(&self, state: &mut State) {
+        if self.parent.is_some() {
+            return;
+        }
         let active = self.active.load(Ordering::Acquire);
         let oldest_to_keep = active + 1 - self.live_generations.min(active);
         while state.oldest_live < oldest_to_keep && state.retains[slot(state.oldest_live)] == 0 {
@@ -576,6 +662,9 @@ impl Drop for TrieNodeLog {
             generation.free_compressed(self.memory_pressure);
         }
         self.memory_pressure.report(-(self.fixed_memory() as i64));
+        if let Some(parent) = &self.parent {
+            parent.log().release(parent.generation);
+        }
     }
 }
 
@@ -802,6 +891,8 @@ pub struct LogSession<'a> {
     log: &'a TrieNodeLog,
     floor: u64,
     compressed_floor: u64,
+    /// The session of an overlay's parent, through which it reads the parent's records.
+    parent: Option<Box<LogSession<'a>>>,
 }
 
 impl LogSession<'_> {
@@ -816,9 +907,23 @@ impl LogSession<'_> {
     }
 
     /// Where the record at `pointer` starts, if this session can read it, in its generation while not older than the
-    /// floor, and otherwise in what compaction kept of it.
+    /// floor, and otherwise in what compaction kept of it. An overlay reads its parent's records written before it
+    /// started through its parent's session.
     fn locate(&self, pointer: LogPointer) -> Option<*const u8> {
-        if pointer & crate::node::TRANSIENT_POINTER != 0 { return None; }
+        if pointer & crate::node::TRANSIENT_POINTER != 0 {
+            return None;
+        }
+        if let Some(parent) = self
+            .log
+            .parent
+            .as_ref()
+            .filter(|parent| parent.holds(pointer))
+        {
+            return match pointer < parent.boundary {
+                true => self.parent.as_ref()?.locate(pointer),
+                false => None,
+            };
+        }
         let id = pointer >> OFFSET_BITS;
         if id >= self.floor {
             return Some(self.log.bytes(pointer, 0).as_ptr());
@@ -922,10 +1027,26 @@ impl LogSession<'_> {
         pointer
     }
 
+    /// Finds the root in this log, and otherwise, for an overlay, among the roots its parent indexed before it started.
+    pub(crate) fn find_root(&self, address: Option<&[u8; 32]>, root: &[u8; 32]) -> LogPointer {
+        let pointer = self.find_own_root(address, root);
+        match (pointer, &self.parent, &self.log.parent) {
+            (0, Some(session), Some(parent)) => {
+                let pointer = session.find_root(address, root);
+                if pointer < parent.boundary {
+                    pointer
+                } else {
+                    0
+                }
+            }
+            _ => pointer,
+        }
+    }
+
     /// Walks the root key records of the slot, newest first, up to the first this session cannot read. A chain never
     /// links a record to one of a newer generation, and compaction keeps every root key record, so the records left are
     /// all freed, or dropped and not compacted yet.
-    pub(crate) fn find_root(&self, address: Option<&[u8; 32]>, root: &[u8; 32]) -> LogPointer {
+    fn find_own_root(&self, address: Option<&[u8; 32]>, root: &[u8; 32]) -> LogPointer {
         let Some(slot) = self.log.roots(address).slot(address, root) else {
             return 0;
         };
@@ -1530,5 +1651,59 @@ mod tests {
                 !within_budget
             );
         }
+    }
+
+    #[test]
+    fn overlay_reads_parent_records_from_before_it_started_and_keeps_its_own() {
+        let parent = TrieNodeLog::minimal();
+        let writer = parent.pin();
+        let before = writer.append_keyed(&leaf(vec![0x11; 40]), 1);
+        writer.set_root(None, &[0x11; 32], before);
+        let overlay = unsafe { TrieNodeLog::overlay(&parent) };
+        let after = writer.append_keyed(&leaf(vec![0x22; 40]), 2);
+        writer.set_root(None, &[0x22; 32], after);
+        let parent_active = parent.active.load(Ordering::Relaxed);
+        let parent_used = parent
+            .generation(parent_active)
+            .used
+            .load(Ordering::Relaxed);
+
+        let session = overlay.pin();
+        let own = session.append_keyed(&leaf(vec![0x33; 40]), 3);
+        session.set_root(None, &[0x33; 32], own);
+        while overlay.active.load(Ordering::Relaxed) <= parent_active + DEFAULT_LIVE_GENERATIONS + 1
+        {
+            session.append_keyed(&leaf(vec![0xcc; 1000]), 4);
+        }
+        drop(session);
+        let reader = overlay.pin();
+        assert_eq!(read(&reader, before), rlp(&leaf(vec![0x11; 40])));
+        assert_eq!(overlay.node(before).rlp(), rlp(&leaf(vec![0x11; 40])));
+        assert!(
+            reader.record(after).is_none(),
+            "written after the overlay started"
+        );
+        assert_eq!(
+            read(&reader, own),
+            rlp(&leaf(vec![0x33; 40])),
+            "an overlay drops no generation"
+        );
+        assert_eq!(reader.root(None, &[0x11; 32]), before);
+        assert_eq!(reader.root(None, &[0x22; 32]), 0);
+        assert_eq!(reader.root(None, &[0x33; 32]), own);
+        assert_eq!(parent.active.load(Ordering::Relaxed), parent_active);
+        assert_eq!(
+            parent
+                .generation(parent_active)
+                .used
+                .load(Ordering::Relaxed),
+            parent_used,
+            "the overlay's writes do not grow its parent"
+        );
+
+        drop(reader);
+        assert_eq!(parent.state.lock().unwrap().retains[slot(parent_active)], 1);
+        drop(overlay);
+        assert_eq!(parent.state.lock().unwrap().retains[slot(parent_active)], 0);
     }
 }

@@ -27,6 +27,7 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
     private readonly IFlatDbManager _flatDbManager;
     private readonly KnownHeadersScopeProvider _worldState;
     private readonly NativeTrieNodeLog _nativeTrieNodeLog;
+    private NativeTrieNodeLog? _overlayLog;
     private bool _isDisposed = false;
 
     public FlatOverridableWorldScope(
@@ -46,7 +47,6 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
         _worldState = new KnownHeadersScopeProvider(stateHeaderProvider, headerProvider => new OverridableFlatScopeProvider(
             this,
             configuration,
-            _nativeTrieNodeLog,
             new NoopTrieWarmer(),
             new TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb(_codeDbOverlay),
             headerProvider,
@@ -55,6 +55,9 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
 
     public IWorldStateScopeProvider WorldState => _worldState;
     public IStateReader GlobalStateReader { get; }
+
+    /// <remarks>Created on first use after a reset and disposed by the next reset, so the global log stays retained only that long.</remarks>
+    private NativeTrieNodeLog OverlayLog => _overlayLog ??= _nativeTrieNodeLog.CreateOverlay();
 
     public void ResetOverrides()
     {
@@ -66,6 +69,13 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
         }
 
         _snapshots.Clear();
+        DisposeOverlay();
+    }
+
+    private void DisposeOverlay()
+    {
+        _overlayLog?.Dispose();
+        _overlayLog = null;
     }
 
     private bool HasStateForBlock(BlockHeader? baseBlock)
@@ -113,7 +123,7 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
         // snapshots' negative filter.
         return new SnapshotBundle(
             readOnlySnapshotBundle,
-            _nativeTrieNodeLog,
+            OverlayLog,
             _resourcePool,
             ResourcePool.Usage.ReadOnlyProcessingEnv,
             snapshots,
@@ -129,12 +139,12 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
             kvp.Value.Dispose();
         }
         _snapshots.Clear();
+        DisposeOverlay();
     }
 
     private class OverridableFlatScopeProvider(
         FlatOverridableWorldScope flatOverrideScope,
         IFlatDbConfig configuration,
-        NativeTrieNodeLog nativeTrieNodeLog,
         ITrieWarmer trieWarmer,
         IWorldStateScopeProvider.ICodeDb codeDb,
         IStateHeaderProvider stateHeaderProvider,
@@ -170,7 +180,7 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
                 codeDb,
                 flatOverrideScope,
                 configuration,
-                nativeTrieNodeLog,
+                snapshotBundle.NativeTrieNodeLog,
                 trieWarmer,
                 logManager);
             return true;

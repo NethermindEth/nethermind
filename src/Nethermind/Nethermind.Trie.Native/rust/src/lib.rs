@@ -405,6 +405,17 @@ pub extern "C" fn nm_patricia_log_fixture_new(
     ))
 }
 
+/// Creates an overlay of `parent`, see [`TrieNodeLog::overlay`], to free with [`nm_patricia_log_free`].
+///
+/// # Safety
+/// `parent` must come from [`nm_patricia_log_new`] and outlive the returned log.
+#[no_mangle]
+pub unsafe extern "C" fn nm_patricia_log_overlay_new(
+    parent: *const TrieNodeLog,
+) -> *mut TrieNodeLog {
+    Box::into_raw(TrieNodeLog::overlay(&*parent))
+}
+
 /// Reports the log's initial allocation and all subsequent allocation/reclamation deltas, including on compactor threads.
 ///
 /// # Safety
