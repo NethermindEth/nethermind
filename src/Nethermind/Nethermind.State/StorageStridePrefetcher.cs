@@ -151,7 +151,13 @@ internal sealed class StorageStridePrefetcher(
             return;
         }
 
-        switch (_tryReserveEngagement())
+        EngagementResult diagResult = _tryReserveEngagement();
+        long diagAttempts = Interlocked.Increment(ref Nethermind.Evm.DiagCounters.StrideAttempts);
+        long diagGranted = diagResult == EngagementResult.Granted
+            ? Interlocked.Increment(ref Nethermind.Evm.DiagCounters.StrideGranted)
+            : Volatile.Read(ref Nethermind.Evm.DiagCounters.StrideGranted);
+        Nethermind.Evm.DiagCounters.Report($"stride attempt={diagAttempts} granted={diagGranted} result={diagResult} address={_address} stride={_stride} index={index}");
+        switch (diagResult)
         {
             case EngagementResult.Exhausted:
                 _broken = true;

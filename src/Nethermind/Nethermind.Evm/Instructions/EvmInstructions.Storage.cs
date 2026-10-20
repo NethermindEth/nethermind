@@ -965,6 +965,11 @@ public static partial class EvmInstructions
                 vm.MetricsCounters.AddSLoad(extraOps);
             }
 
+            long diagEvents = System.Threading.Interlocked.Increment(ref DiagCounters.SLoadFuseEvents);
+            long diagOps = System.Threading.Interlocked.Add(ref DiagCounters.SLoadFusedOps, extraOps);
+            if (System.Numerics.BitOperations.IsPow2((ulong)diagEvents))
+                DiagCounters.Report($"sload-fuse events={diagEvents} fusedOps={diagOps} address={executingAccount}");
+
             if (fusedOutOfGas) goto OutOfGas;
         }
 
