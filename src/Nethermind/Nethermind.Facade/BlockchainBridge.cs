@@ -509,22 +509,6 @@ namespace Nethermind.Facade
                 previousAccessList = accessTracer.AccessList;
             } while (!stop);
 
-            // EIP-7981 and the EIP-8131 content floor bill access-list bytes at the floor rate, so a pre-warmed
-            // entry can cost more than the cold access it saves and the gas-minimal list is empty. Return it
-            // only when it reaches the same outcome with strictly less gas, so removing entries that
-            // alter execution (e.g. gasleft branching) can't swap in a failing or costlier run.
-            if (optimize && (spec.IsEip7981Enabled || spec.IsEip8131Enabled) && result.TransactionExecuted && accessTracer.AccessList is { IsEmpty: false })
-            {
-                CallOutputTracer emptyOutputTracer = new();
-                CancellationTxTracer emptyTracer = emptyOutputTracer.WithCancellation(cancellationToken);
-                tx.AccessList = null;
-                TransactionResult emptyResult = TryCallAndRestore(nonceSource, txProcessor, header, tx, blobBaseFeeOverride, emptyTracer, rejectsTipAboveFeeCap: true);
-                if (emptyResult.TransactionExecuted
-                    && emptyOutputTracer.StatusCode == outputTracer.StatusCode
-                    && emptyOutputTracer.GasSpent < outputTracer.GasSpent)
-                    return BuildCallOutput(emptyResult, emptyOutputTracer, AccessList.Empty);
-            }
-
             return BuildCallOutput(result, outputTracer, accessTracer.AccessList);
         }
 
