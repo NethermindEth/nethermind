@@ -47,6 +47,7 @@ internal sealed class PrivateNodeRecordBuffer : INodeRecordBuffer
     }
 
     /// <inheritdoc/>
+    /// <remarks>Unused: readers only take <see cref="INodeRecordBuffer.PinAll"/> on the global buffer.</remarks>
     public IDisposable PinAll() => Pin();
 
     /// <inheritdoc/>
