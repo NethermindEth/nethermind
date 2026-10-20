@@ -16,10 +16,8 @@ public class Bogota() : NamedReleaseSpec<Bogota>(Amsterdam.Instance)
     {
         spec.Name = "Bogota";
         spec.IsEip7805Enabled = true;
+        // EIP-8198 changes no blob parameter: a slot duration change brings its own EIP-7892 blobSchedule entry.
         spec.IsEip8198Enabled = true;
-        spec.TargetBlobCount = 12;
-        spec.MaxBlobCount = 18;
-        spec.BlobBaseFeeUpdateFraction = 12018519;
         spec.EngineApiNewPayloadVersion = EngineApiVersions.NewPayload.V6;
         spec.EngineApiForkchoiceVersion = EngineApiVersions.Fcu.V5;
     }
