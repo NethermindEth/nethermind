@@ -47,15 +47,11 @@ public partial class BlockDownloaderTests
         syncPeer.Node.Returns(new Node(TestItem.PublicKeyA, "127.0.0.1", 30303, isStatic) { IsTrusted = isTrusted });
         PeerInfo peerInfo = new(syncPeer);
 
-        BlocksRequest bodyRequest = (await ctx.FullSyncFeedComponent.BlockDownloader.PrepareRequest(DownloaderOptions.Insert, 0, CancellationToken.None))!;
+        using BlocksRequest bodyRequest = (await ctx.FullSyncFeedComponent.BlockDownloader.PrepareRequest(DownloaderOptions.Insert, 0, CancellationToken.None))!;
         if (peerServedBody)
         {
             bodyRequest.OwnedBodies = new OwnedBlockBodies([new BlockBody(), new BlockBody()]);
             ctx.FullSyncFeedComponent.BlockDownloader.HandleResponse(bodyRequest, peerInfo);
-        }
-        else
-        {
-            bodyRequest.Dispose();
         }
 
         // Serving one list does not offset withholding another, and a repeated answer does not repeat the warning.
@@ -63,7 +59,7 @@ public partial class BlockDownloaderTests
         List<SyncResponseHandlingResult> results = [];
         foreach (byte[]?[] response in responses)
         {
-            BlocksRequest request = (await ctx.FullSyncFeedComponent.BlockDownloader.PrepareRequest(DownloaderOptions.Insert, 0, CancellationToken.None))!;
+            using BlocksRequest request = (await ctx.FullSyncFeedComponent.BlockDownloader.PrepareRequest(DownloaderOptions.Insert, 0, CancellationToken.None))!;
             request.BlockAccessLists = BuildBlockAccessLists(response);
             results.Add(ctx.FullSyncFeedComponent.BlockDownloader.HandleResponse(request, peerInfo));
         }
