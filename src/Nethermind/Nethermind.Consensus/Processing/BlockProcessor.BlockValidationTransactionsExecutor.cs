@@ -12,7 +12,6 @@ using Nethermind.Core.Exceptions;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
-using Metrics = Nethermind.Evm.Metrics;
 
 namespace Nethermind.Consensus.Processing;
 
@@ -37,7 +36,6 @@ public partial class BlockProcessor
 
         public TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, CancellationToken token)
         {
-            Metrics.ResetBlockStats();
             SetupTxTimingMetrics(block);
 
             bool shouldValidate = !processingOptions.ContainsFlag(ProcessingOptions.NoValidation);
@@ -54,9 +52,6 @@ public partial class BlockProcessor
                     ThrowInvalidBlockForGasLimit(block);
                 }
             }
-
-            Metrics.SeedBlockGasPriceIfEmpty(block.Header.BaseFeePerGas);
-            Metrics.PublishBlockGasPriceGauges();
 
             return [.. receiptsTracer.TxReceipts];
 

@@ -85,6 +85,27 @@ public class DebugModuleTests
             : rpcModule.debug_standardTraceBlockToFile(blockHash);
 
     [Test]
+    public void DebugTraceBlockByNumber_DoesNotMapHostFormatFailureToInvalidInput()
+    {
+        BlockHeader parent = Build.A.BlockHeader.WithNumber(0).TestObject;
+        BlockHeader header = Build.A.BlockHeader.WithParent(parent).TestObject;
+        _blockFinder.Head.Returns(Build.A.Block.WithHeader(header).TestObject);
+        _blockFinder.FindHeader(Arg.Any<BlockParameter>()).Returns(header);
+        _blockFinder.FindHeader(header.ParentHash!, BlockTreeLookupOptions.None, parent.Number).Returns(parent);
+        _blockFinder.FindBlock(header.Hash!, header.Number).Returns(new Block(header));
+        _blockchainBridge.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(true);
+        FormatException failure = new("host state format failure");
+        _debugBridge.GetBlockTrace(Arg.Any<BlockParameter>(), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>(),
+                Arg.Any<Utf8JsonWriter?>(), Arg.Any<PipeWriter?>())
+            .Returns(_ => throw failure);
+
+        FormatException actual = Assert.Throws<FormatException>(() => CreateModule().debug_traceBlockByNumber(
+            new BlockParameter(1UL), new GethTraceOptions { Tracer = "noopTracer", StreamMode = false }))!;
+
+        Assert.That(actual, Is.SameAs(failure));
+    }
+
+    [Test]
     public async Task DebugGetFromDb_WhenValueExists_ReturnsValue()
     {
         byte[] key = [1, 2, 3];
@@ -776,6 +797,41 @@ public class DebugModuleTests
             _debugBridge.Received(1).GetBlockTrace(Arg.Is<BlockParameter>(p => p.BlockHash == validated.Hash),
                 Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>());
         }
+    }
+
+    [Test]
+    public void DebugTraceBlockByNumber_NativeStreamTimeout_preserves_hash_and_prerequisites(
+        [Values("available", "body", "parent", "state")] string availability)
+    {
+        Block parent = Build.A.Block.WithNumber(0).TestObject;
+        Block validated = Build.A.Block.WithNumber(1).WithParent(parent).TestObject;
+        _blockFinder.Head.Returns(validated);
+        _blockFinder.FindHeader(BlockParameter.Latest).Returns(validated.Header);
+        _blockFinder.FindHeader(parent.Hash!, BlockTreeLookupOptions.None, parent.Number)
+            .Returns(availability == "parent" ? null : parent.Header);
+        _blockFinder.FindBlock(validated.Hash!, validated.Number).Returns(availability == "body" ? null : validated);
+        _blockchainBridge.HasStateForBlock(validated.Header).Returns(true);
+        _blockchainBridge.HasStateForBlock(parent.Header).Returns(availability != "state");
+        GethTraceOptions options = new() { Tracer = "callTracer", StreamMode = true, Timeout = TimeSpan.FromSeconds(5) };
+
+        using ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> actual = CreateModule().debug_traceBlockByNumber(BlockParameter.Latest, options);
+
+        if (availability != "available")
+        {
+            Assert.That(actual.Result.ResultType, Is.EqualTo(ResultType.Failure));
+            Assert.That(actual.ErrorCode, Is.EqualTo(availability == "body" ? ErrorCodes.ResourceNotFound : ErrorCodes.ResourceUnavailable));
+            Assert.That(_debugBridge.ReceivedCalls(), Is.Empty);
+            return;
+        }
+
+        Assert.That(actual.Result.ResultType, Is.EqualTo(ResultType.Success));
+        Assert.That(actual.Data, Is.InstanceOf<GethLikeTxTraceStreamingBlockResult>());
+        using Utf8JsonWriter writer = new(new ArrayBufferWriter<byte>());
+        ((GethLikeTxTraceStreamingBlockResult)actual.Data).WriteAsJson(writer);
+        _debugBridge.Received(1).GetBlockTrace(Arg.Is<BlockParameter>(p => p.BlockHash == validated.Hash),
+            Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>(), writer, Arg.Any<PipeWriter?>());
+        _debugBridge.DidNotReceive().GetBlockTrace(Arg.Any<Block>(), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>(),
+            Arg.Any<Utf8JsonWriter?>(), Arg.Any<PipeWriter?>());
     }
 
     [Test]

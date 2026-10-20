@@ -246,6 +246,8 @@ internal static class StartupPipelineWarmer
                 TerminalTotalDifficulty = "0",
                 PrioritizeBlockLatency = mergeConfig.PrioritizeBlockLatency,
                 CollectionsPerDecommit = mergeConfig.CollectionsPerDecommit,
+                DecommitMemoryLoadPercent = mergeConfig.DecommitMemoryLoadPercent,
+                CollectionsPerUnconditionalDecommit = mergeConfig.CollectionsPerUnconditionalDecommit,
                 SweepMemory = mergeConfig.SweepMemory,
                 CompactMemory = mergeConfig.CompactMemory,
                 PostBlockGcDelayMs = mergeConfig.PostBlockGcDelayMs ?? (int)(mergeConfig.SecondsPerSlot * 1000 / 8)
