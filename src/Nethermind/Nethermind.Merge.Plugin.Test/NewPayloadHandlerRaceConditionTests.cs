@@ -99,7 +99,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         {
             decodingWorkers = workers;
             // An invalid hash cancels recovery right after decoding, which could otherwise stop it before its first sender.
-            if (invalidHash && !singleProcessor) entered.Task.Wait(TimeSpan.FromSeconds(10));
+            if (invalidHash && !singleProcessor) Assert.That(entered.Task.Wait(TimeSpan.FromSeconds(10)), Is.True, "Recovery did not start before decoding finished");
         };
         Transaction[] transactions = payload.TryGetTransactions().Data!;
         if (invalidHash) payload.BlockHash = TestItem.KeccakB;
