@@ -40,6 +40,11 @@ def result(row) -> Any:
     return row["result"]
 
 
+def same_json(left, right):
+    # Python equality treats True == 1 and False == 0; serialized JSON keeps them distinct.
+    return json.dumps(left, sort_keys=True) == json.dumps(right, sort_keys=True)
+
+
 def classify(case, candidate, reference):
     for row in (candidate, reference):
         require(set(row) == {"jsonrpc", "id", case["expectedKind"]}, "Unexpected response kind or fields")
@@ -50,7 +55,7 @@ def classify(case, candidate, reference):
     if allowance is not None:
         require(all(set(row["error"]) == {"code", "message"} and row["error"]["code"] == -32000 for row in (candidate, reference)), "Diagnostic allowance requires exact -32000 error envelopes")
         require(candidate["error"]["message"] == allowance["candidateMessage"], "Candidate diagnostic cause/callback changed")
-    if candidate == reference:
+    if same_json(candidate, reference):
         return "exact"
     if allowance is None:
         raise ValueError("Unapproved response mismatch")
@@ -200,7 +205,7 @@ def common_block(clients, metadata_before, explicit):
             name: client.call([request(i + 1, "eth_getTransactionReceipt", [tx["hash"]]) for i, tx in enumerate(txs[:2])])
             for name, client in clients.items()
         }
-        require(index(receipts["nethermind"], (1, 2)) == index(receipts["geth"], (1, 2)), "Prefix receipts differ between clients")
+        require(same_json(index(receipts["nethermind"], (1, 2)), index(receipts["geth"], (1, 2))), "Prefix receipts differ between clients")
         require(
             all(result(row) is not None and result(row)["blockHash"] == block["hash"]
                 for rows in receipts.values() for row in rows),
@@ -233,7 +238,9 @@ def run(args, evidence):
             header_query = [request(1, "eth_getBlockByNumber", [block["number"], False])]
             for phase in ("Before", "After"):
                 if phase == "After":
-                    item["responses"] = {name: client.call(item["requests"]) for name, client in clients.items()}
+                    item["responses"] = {}
+                    for name, client in clients.items():
+                        item["responses"][name] = client.call(item["requests"])
                 item["headers" + phase] = {name: client.call(header_query)[0] for name, client in clients.items()}
                 require(all((result(row)["hash"], result(row)["stateRoot"]) == (block["hash"], block["stateRoot"]) for row in item["headers" + phase].values()), "Block/state-root changed during capture")
             for name in clients:

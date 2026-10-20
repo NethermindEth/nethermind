@@ -145,8 +145,25 @@ class ParityRunnerTests(unittest.TestCase):
         ok = {'id': 1, 'jsonrpc': '2.0', 'result': {'value': 42}}
         case['expectedKind'] = 'result'
         self.assertEqual(runner.classify(case, ok, ok), 'exact')
-        with self.assertRaises(ValueError):
-            runner.classify(case, ok, {**ok, 'result': {'value': 43}})
+        for value, other in ((42, 43), (True, 1), (False, 0), ([True], [1])):
+            with self.subTest(value=value, other=other), self.assertRaises(ValueError):
+                runner.classify(case, {**ok, 'result': {'value': value}}, {**ok, 'result': {'value': other}})
+
+    def test_reference_failure_preserves_candidate_responses(self):
+        block = {'number': '0x2', 'hash': 'block', 'stateRoot': 'state'}
+        header = {'jsonrpc': '2.0', 'id': 1, 'result': block}
+        dataset = {'name': 'dataset', 'requests': [runner.request(1, 'debug_traceCall', [])], 'cases': [{'id': 1, 'expectedKind': 'result'}]}
+        candidate_rows = [{'jsonrpc': '2.0', 'id': 1, 'result': {'value': 1}}]
+        clients = [Mock(), Mock()]
+        clients[0].call.side_effect = [[header], candidate_rows]
+        clients[1].call.side_effect = [[header], Exception('reference transport failure')]
+        args = Mock(candidate_version='candidate-revision', reference_commit='f' * 40)
+        evidence: dict[str, Any] = {}
+        with patch.object(runner, 'Client', side_effect=clients), patch.object(runner, 'metadata'), \
+                patch.object(runner, 'common_block', return_value=(block, {}, {})), patch.object(runner, 'materialize', return_value=[dataset]):
+            with self.assertRaisesRegex(Exception, 'reference transport failure'):
+                runner.run(args, evidence)
+        self.assertEqual(evidence['datasets'][0]['responses'], {'nethermind': candidate_rows})
 
     def test_diagnostic_allowances_change_only_source_coordinates(self):
         corpus = load_corpus()
