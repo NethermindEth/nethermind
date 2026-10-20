@@ -207,13 +207,16 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         private static ref byte Moved(ref byte sp, nint words) => ref Unsafe.Add(ref sp, words * EvmStack.WordSize);
 
         /// <summary><paramref name="slot"/>, rounded down to the word boundary it is already on where <see cref="StrictAlignmentFlag"/> is on.</summary>
-        /// <remarks>The rounding is a no-op the JIT sees through (dotnet-riscv perf-67), so it proves every slot access word aligned and drops its alignment test.</remarks>
+        /// <remarks>
+        /// The rounding is a no-op the JIT sees through (dotnet-riscv perf-67), so it proves every slot access word aligned and drops its alignment test.
+        /// It masks the byte offset from null rather than a pointer: casting the byref to one would copy the head, which stays live, to another register first.
+        /// </remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static unsafe ref byte AlignedSlot(ref byte slot)
         {
             Debug.Assert(((nuint)Unsafe.AsPointer(ref slot) & (EvmStack.WordSize - 1)) == 0);
             return ref StrictAlignmentFlag.IsActive
-                ? ref Unsafe.AsRef<byte>((void*)((nuint)Unsafe.AsPointer(ref slot) & ~(nuint)(EvmStack.WordSize - 1)))
+                ? ref Unsafe.AddByteOffset(ref Unsafe.NullRef<byte>(), Unsafe.ByteOffset(ref Unsafe.NullRef<byte>(), ref slot) & ~(nint)(EvmStack.WordSize - 1))
                 : ref slot;
         }
 
@@ -227,7 +230,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         }
 
         /// <summary><paramref name="stack"/>, rounded down to the word boundary it is already on where <see cref="StrictAlignmentFlag"/> is on.</summary>
-        /// <remarks>As <see cref="AlignedSlot"/>: one <c>andi</c> lets the JIT prove the loads of the stack's fields aligned and drop their tests.</remarks>
+        /// <remarks>
+        /// As in <see cref="AlignedSlot"/>, one <c>andi</c> lets the JIT prove the loads of the stack's fields aligned and drop their tests.
+        /// It masks the pointer directly: the byref is rarely live after the rounding, so the cast costs no register copy.
+        /// </remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static unsafe ref EvmStack AlignedStack(ref EvmStack stack)
         {

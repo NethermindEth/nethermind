@@ -159,23 +159,12 @@ internal sealed partial class PersistentStorageProvider
             0,
             storages.Count,
             RuntimeInformation.ParallelOptionsLogicalCores,
-            (storages, toUpdateRoots: _toUpdateRoots, writes: 0, skips: 0),
+            (storages, writes: 0, skips: 0),
             static (i, state) =>
             {
                 ref (AddressAsKey Key, PerContractState ContractState, IWorldStateScopeProvider.IStorageWriteBatch WriteBatch) kvp = ref state.storages.GetRef(i);
                 (int writes, int skipped) = kvp.ContractState.ProcessStorageChanges(kvp.WriteBatch);
-
-                if (writes == 0)
-                {
-                    // Mark as no changes; we set as false rather than removing so
-                    // as not to modify the non-concurrent collection without synchronization
-                    state.toUpdateRoots[kvp.Key] = false;
-                }
-                else
-                {
-                    state.writes += writes;
-                }
-
+                state.writes += writes;
                 state.skips += skipped;
 
                 return state;
