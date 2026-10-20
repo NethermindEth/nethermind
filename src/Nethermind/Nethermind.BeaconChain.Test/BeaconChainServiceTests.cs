@@ -80,7 +80,7 @@ public class BeaconChainServiceTests
     }
 
     [Test]
-    public async Task Engine_stall_does_not_hold_shutdown_or_dispose_the_run_token()
+    public async Task Shutdown_waits_for_the_run_and_dispose_preserves_its_token_until_it_completes()
     {
         using IContainer container = BuildContainer();
         using BeaconChainService service = new(container.Resolve<IBeaconChainConfig>(), container.Resolve<BeaconChainSpec>(),
@@ -93,12 +93,14 @@ public class BeaconChainServiceTests
         typeof(BeaconChainService).GetField("_runTask", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(service, run.Task);
         CancellationTokenSource source = (CancellationTokenSource)typeof(BeaconChainService)
             .GetField("_cancellationTokenSource", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(service)!;
+        Task stopping = service.StopAsync();
         try
         {
-            await service.StopAsync().WaitAsync(TimeSpan.FromSeconds(2));
+            await Task.Delay(service.ShutdownTimeout + TimeSpan.FromMilliseconds(100));
             service.Dispose();
             using (Assert.EnterMultipleScope())
             {
+                Assert.That(stopping.IsCompleted, Is.False);
                 Assert.That(source.Token.IsCancellationRequested, Is.True);
                 Assert.That(run.Task.IsCompleted, Is.False);
             }
@@ -107,6 +109,7 @@ public class BeaconChainServiceTests
         {
             run.TrySetResult();
         }
+        await stopping.WaitAsync(TimeSpan.FromSeconds(2));
         Assert.That(() => source.Token, Throws.TypeOf<ObjectDisposedException>().After(2000, 10));
     }
 
