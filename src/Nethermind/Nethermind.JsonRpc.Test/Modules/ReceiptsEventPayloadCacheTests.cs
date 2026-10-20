@@ -19,6 +19,7 @@ using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Subscribe;
 using Nethermind.Logging;
+using Nethermind.Specs;
 using NSubstitute;
 using NUnit.Framework;
 using LogsFilter = Nethermind.JsonRpc.Modules.Eth.Filter;
@@ -347,7 +348,7 @@ public class ReceiptsEventPayloadCacheTests
         {
             CollectingClient client = new(expectedMessages);
             TransactionHashesFilter? filter = hashes is null ? null : new() { TransactionHashes = [.. hashes.Select(static h => h.ValueHash256)] };
-            return Track(client, new TransactionReceiptsSubscription(client, Monitor, _blockTree, NullLogManager.Instance, ReceiptPayloads, filter));
+            return Track(client, new TransactionReceiptsSubscription(client, Monitor, _blockTree, MainnetSpecProvider.Instance, NullLogManager.Instance, ReceiptPayloads, filter));
         }
 
         private (CollectingClient, Subscription) Track(CollectingClient client, Subscription subscription)

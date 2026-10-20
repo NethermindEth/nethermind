@@ -18,6 +18,7 @@ using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.Subscribe;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
+using Nethermind.Specs;
 using NSubstitute;
 
 namespace Nethermind.JsonRpc.Benchmark;
@@ -88,7 +89,7 @@ public class ReceiptsSubscriptionFanOutBenchmarks
         SubscriptionFactory factory = new();
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         factory.RegisterLogsSubscription(_monitor, _filterStore, blockTree, NullLogManager.Instance);
-        factory.RegisterTransactionReceiptsSubscription(_monitor, blockTree, NullLogManager.Instance);
+        factory.RegisterTransactionReceiptsSubscription(_monitor, blockTree, MainnetSpecProvider.Instance, NullLogManager.Instance);
 
         bool isLogs = Kind == SubscriptionType.EthSubscription.Logs;
         bool same = Filters == FilterMode.Same;
