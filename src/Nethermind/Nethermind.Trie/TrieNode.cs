@@ -1317,7 +1317,7 @@ namespace Nethermind.Trie
         /// a full branch, the most common case, is resolved here; every other shape goes to
         /// <see cref="ResolveChildFromAnyRlp"/>, whose item scan would otherwise make this frame save every register.
         /// </remarks>
-        [MethodImpl(MethodImplOptions.NoInlining)]
+        [MethodImpl(ResolveChildFromRlpInlining)]
         private object? ResolveChildFromRlp(ITrieNodeResolver tree, ref TreePath childPath, ref object? data, int i)
         {
             CappedArray<byte> rlp = ReadRlp();

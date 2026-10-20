@@ -240,6 +240,9 @@ namespace Nethermind.Trie
         /// <summary>How <see cref="GetChildWithChildPath"/> is inlined: left to the JIT.</summary>
         private const MethodImplOptions GetChildWithChildPathInlining = default;
 
+        /// <summary>How <see cref="ResolveChildFromRlp"/> is inlined: never.</summary>
+        private const MethodImplOptions ResolveChildFromRlpInlining = MethodImplOptions.NoInlining;
+
         /// <summary>How <see cref="SetChild"/> is inlined: left to the JIT.</summary>
         private const MethodImplOptions SetChildInlining = default;
 

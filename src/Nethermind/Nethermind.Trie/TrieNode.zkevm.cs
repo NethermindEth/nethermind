@@ -281,6 +281,10 @@ namespace Nethermind.Trie
         /// would otherwise call it out of line per level, a frame and five saved registers for a slot load and a type test.</remarks>
         private const MethodImplOptions GetChildWithChildPathInlining = MethodImplOptions.AggressiveInlining;
 
+        /// <summary>How <see cref="ResolveChildFromRlp"/> is inlined: always.</summary>
+        /// <remarks>Nearly every witness node is a child resolved once, and the call spilled the walk's live registers around it.</remarks>
+        private const MethodImplOptions ResolveChildFromRlpInlining = MethodImplOptions.AggressiveInlining;
+
         /// <summary>How <see cref="SetChild"/> is inlined: always.</summary>
         /// <remarks>Called per level as a trie write climbs back to the root, where an out-of-line call costs more than the
         /// sealed check and slot store it makes.</remarks>
