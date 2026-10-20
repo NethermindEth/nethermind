@@ -20,7 +20,6 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
-using Nethermind.Specs.Test;
 using Nethermind.Wallet;
 using Newtonsoft.Json.Linq;
 using NSubstitute;
@@ -153,6 +152,7 @@ public partial class EthRpcModuleTests
     [TestCase("""{"maxFeePerGas":"0x77359400"}""", false, true, TestName = "Dynamic fee with only a fee cap")]
     [TestCase("""{"maxFeePerGas":"0x77359400","maxPriorityFeePerGas":"0x1"}""", false, false, TestName = "Dynamic fee with both fees")]
     [TestCase("""{"accessList":[],"gasPrice":"0x3b9aca00"}""", false, false, TestName = "Access list with a gas price")]
+    [TestCase("""{"type":"0x2","gasPrice":"0x3b9aca00"}""", false, false, TestName = "Dynamic fee priced with a gas price")]
     public async Task Fill_estimates_only_the_fee_defaults_it_uses(string feeFields, bool estimatesGasPrice, bool estimatesPriorityFee)
     {
         IGasPriceOracle oracle = Substitute.For<IGasPriceOracle>();
