@@ -78,7 +78,28 @@ public static class EthereumEcdsaExtensions
         Signature signature = tx.Signature
             ?? throw new InvalidDataException("Cannot recover sender address from a transaction without a signature.");
 
-        return RecoverAddress(ecdsa, tx, signature, useSignatureChainId);
+        return RecoverAddress(ecdsa, tx, signature, default, useSignatureChainId);
+    }
+
+    /// <summary>
+    /// Recovers the address that signed the transaction, reading the signed payload out of the
+    /// transaction's own encoding rather than encoding it again.
+    /// </summary>
+    /// <param name="ecdsa">The ECDSA implementation used for recovery.</param>
+    /// <param name="tx">The transaction the encoding belongs to.</param>
+    /// <param name="encoded">
+    /// The transaction's canonical encoding with typed transactions left unwrapped, as
+    /// <see cref="RlpBehaviors.SkipTypedWrapping"/> produces and an execution payload carries.
+    /// </param>
+    /// <param name="useSignatureChainId">Whether to use the chain id encoded in a legacy EIP-155 signature.</param>
+    /// <returns>The recovered address, or <see langword="null"/> when recovery fails.</returns>
+    /// <remarks>Shares the sender cache with <see cref="RecoverAddress(IEthereumEcdsa, Transaction, bool)"/>.</remarks>
+    public static Address? RecoverAddress(this IEthereumEcdsa ecdsa, Transaction tx, ReadOnlySpan<byte> encoded, bool useSignatureChainId = false)
+    {
+        Signature signature = tx.Signature
+            ?? throw new InvalidDataException("Cannot recover sender address from a transaction without a signature.");
+
+        return RecoverAddress(ecdsa, tx, signature, encoded, useSignatureChainId);
     }
 
     /// <summary>
@@ -97,11 +118,11 @@ public static class EthereumEcdsaExtensions
             return false;
         }
 
-        address = RecoverAddress(ecdsa, tx, signature, useSignatureChainId);
+        address = RecoverAddress(ecdsa, tx, signature, default, useSignatureChainId);
         return address is not null;
     }
 
-    private static Address? RecoverAddress(IEthereumEcdsa ecdsa, Transaction tx, Signature signature, bool useSignatureChainId)
+    private static Address? RecoverAddress(IEthereumEcdsa ecdsa, Transaction tx, Signature signature, ReadOnlySpan<byte> encoded, bool useSignatureChainId)
     {
         Hash256? txHash = tx.Type == TxType.Legacy ? null : tx.Hash;
         if (txHash is not null && _senderCache.TryGet(txHash.ValueHash256, out Address? cached))
@@ -109,7 +130,7 @@ public static class EthereumEcdsaExtensions
             return cached;
         }
 
-        ValueHash256 hash = CalculateSignatureHash(ecdsa, tx, signature, useSignatureChainId);
+        ValueHash256 hash = SignatureHash(ecdsa, tx, signature, encoded, useSignatureChainId);
         Address? recovered = ecdsa.RecoverAddress(signature, in hash);
 
         if (txHash is not null && recovered is not null)
@@ -191,13 +212,17 @@ public static class EthereumEcdsaExtensions
     {
         if (tx.Signature is not { } signature) return false;
 
-        // A type whose signed bytes are not a prefix of its encoding falls back to encoding the transaction.
-        ValueHash256 hash = TxDecoder.TryGetSignedPayload(encoded, tx.Type, out ReadOnlySpan<byte> signedPayload)
-            ? SignedPayloadHash(ecdsa, tx, signature, signedPayload, useSignatureChainId)
-            : CalculateSignatureHash(ecdsa, tx, signature, useSignatureChainId);
+        ValueHash256 hash = SignatureHash(ecdsa, tx, signature, encoded, useSignatureChainId);
 
         return EthereumEcdsa.RecoverPublicKeyRaw(signature.Bytes, signature.RecoveryId, hash.Bytes, publicKey);
     }
+
+    // A type whose signed bytes are not a prefix of its encoding, or no encoding at all, falls back to encoding the transaction.
+    private static ValueHash256 SignatureHash(
+        IEthereumEcdsa ecdsa, Transaction tx, Signature signature, ReadOnlySpan<byte> encoded, bool useSignatureChainId) =>
+        TxDecoder.TryGetSignedPayload(encoded, tx.Type, out ReadOnlySpan<byte> signedPayload)
+            ? SignedPayloadHash(ecdsa, tx, signature, signedPayload, useSignatureChainId)
+            : CalculateSignatureHash(ecdsa, tx, signature, useSignatureChainId);
 
     /// <summary>Hashes a signed payload that is already encoded, behind the sequence header the signer used.</summary>
     /// <remarks>The message is assembled in one buffer and hashed in one pass, which is cheaper than feeding an

@@ -311,6 +311,38 @@ public class RecoverSignaturesTest
             Has.Some.SameAs(container.Resolve<RecoverSignatures>()));
     }
 
+    /// <summary>Signed payloads are hashed out of the given encodings, and encodings misaligned with the transactions are ignored.</summary>
+    [Test]
+    public void Recovery_HashesSignedPayloadsOutOfAlignedEncodings([Values] bool background, [Values] bool aligned)
+    {
+        // Legacy senders bypass the sender cache, and swapped encodings make their use show in the recovered addresses.
+        Transaction[] txs = [Signed(TestItem.PrivateKeyA, nonce: 0), Signed(TestItem.PrivateKeyB, nonce: 1)];
+        byte[][] swapped = [Encode(txs[1]), Encode(txs[0])];
+        byte[][] encodings = aligned ? swapped : swapped[..1];
+        IReleaseSpec spec = ReleaseSpecSubstitute.Create();
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);
+        RecoverSignatures sut = new(_ecdsa, specProvider, Substitute.For<ILogManager>());
+
+        if (background)
+        {
+            sut.StartRecovery(TestItem.KeccakA, txs, spec, encodings);
+            Assert.That(() => sut.IsRecoveryInFlight(txs), Is.False.After(DrainTimeoutMs, PollMs));
+        }
+        else
+        {
+            sut.RecoverData(new Block(Build.A.BlockHeader.TestObject, txs, []) { EncodedTransactions = encodings });
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(txs[0].SenderAddress, aligned ? Is.Not.EqualTo(TestItem.PrivateKeyA.Address) : Is.EqualTo(TestItem.PrivateKeyA.Address));
+            Assert.That(txs[1].SenderAddress, aligned ? Is.Not.EqualTo(TestItem.PrivateKeyB.Address) : Is.EqualTo(TestItem.PrivateKeyB.Address));
+        }
+    }
+
+    private static byte[] Encode(Transaction tx) => TxDecoder.Instance.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes;
+
     private static Transaction Signed(PrivateKey signer, ulong nonce) =>
         Build.A.Transaction.WithNonce(nonce).SignedAndResolved(signer).WithSenderAddress(null).TestObject;
 
