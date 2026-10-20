@@ -4,11 +4,15 @@
 using CkzgLib;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Int256;
 using Nethermind.TxPool.Collections;
 using System;
+using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 using System.Runtime.ExceptionServices;
 using System.Threading;
 
@@ -16,6 +20,149 @@ namespace Nethermind.TxPool
 {
     public partial class TxPool
     {
+        public IDictionary<AddressAsKey, Transaction[]> GetPendingLightBlobTransactionsBySender() =>
+            _blobTransactions.GetBucketSnapshot();
+
+        public IDictionary<AddressAsKey, Transaction[]> GetPendingLightBlobTransactionsBySender(bool filterToReadyTx, UInt256 baseFee = default) =>
+            DropUnreadySenders(_blobTransactions.GetBucketSnapshot(), filterToReadyTx, baseFee);
+
+        public Transaction[] GetPendingLightBlobTransactionsBySender(Address address) =>
+            _blobTransactions.GetBucketSnapshot(address);
+
+        public int GetPendingBlobTransactionsCount() => _blobTransactions.Count;
+
+        public bool TryGetBlobAndProofV0(byte[] blobVersionedHash,
+            [NotNullWhen(true)] out byte[]? blob,
+            [NotNullWhen(true)] out byte[]? proof)
+        {
+            if (_blobTransactions.TryGetBlobAndProofV0(blobVersionedHash, out blob, out proof))
+            {
+                return true;
+            }
+
+            if (!TryGetIncludedBlob(blobVersionedHash, ProofVersion.V0, out ShardBlobNetworkWrapper? wrapper, out int blobIndex))
+            {
+                return false;
+            }
+
+            blob = wrapper.Blobs[blobIndex];
+            proof = wrapper.Proofs[blobIndex];
+            return true;
+        }
+
+        public bool TryGetBlobAndProofV1(byte[] blobVersionedHash,
+            [NotNullWhen(true)] out byte[]? blob,
+            [NotNullWhen(true)] out byte[][]? cellProofs)
+            => _blobTransactions.TryGetBlobAndProofV1(blobVersionedHash, out blob, out cellProofs);
+
+        public int TryGetBlobsAndProofsV1(byte[][] requestedBlobVersionedHashes,
+            Span<byte[]?> blobs, Span<ReadOnlyMemory<byte[]>> proofs)
+        {
+            int found = _blobTransactions.TryGetBlobsAndProofsV1(requestedBlobVersionedHashes, blobs, proofs);
+            return found == requestedBlobVersionedHashes.Length || _includedBlobLocations is null
+                ? found
+                : found + FillIncludedBlobsAndProofsV1(requestedBlobVersionedHashes, blobs, proofs);
+        }
+
+        public bool TryGetPendingBlobCellMask(in ValueHash256 hash, out BlobCellMask availableMask)
+            => _blobTransactions.TryGetAvailableCellMask(hash, out availableMask);
+
+        public bool TryGetPendingBlobCellMetadata(
+            Hash256 hash,
+            out BlobCellMask availableMask,
+            out int blobCount,
+            out int materializationWork) =>
+            _blobTransactions.TryGetAvailableCellMetadata(
+                hash,
+                out availableMask,
+                out blobCount,
+                out materializationWork);
+
+        public bool TryGetBlobCells(Hash256 hash, BlobCellMask requestedMask, out BlobCellMask availableMask, [NotNullWhen(true)] out byte[][]? cells)
+            => _blobTransactions.TryGetCells(hash, requestedMask, out availableMask, out cells);
+
+        public bool TryGetBlobCellsAndProofsV1(byte[] blobVersionedHash, BlobCellMask requestedMask, out BlobCellMask availableMask, [NotNullWhen(true)] out byte[][]? cells, [NotNullWhen(true)] out byte[][]? proofs)
+            => _blobTransactions.TryGetBlobCellsAndProofsV1(blobVersionedHash, requestedMask, out availableMask, out cells, out proofs)
+               || TryGetIncludedBlobCellsAndProofs(blobVersionedHash, requestedMask, out availableMask, out cells, out proofs);
+
+        /// <inheritdoc/>
+        /// <remarks>Blobs left unserved by the blob pool are grouped by processed row, so a row holding several requested blobs is read and decoded once.</remarks>
+        public int TryGetBlobCellsAndProofsV1(byte[][] requestedBlobVersionedHashes, BlobCellMask requestedMask,
+            BlobCellMask[] availableMasks, byte[][]?[] cells, byte[][]?[] proofs)
+        {
+            int found = 0;
+            for (int i = 0; i < requestedBlobVersionedHashes.Length; i++)
+            {
+                if (_blobTransactions.TryGetBlobCellsAndProofsV1(requestedBlobVersionedHashes[i], requestedMask, out availableMasks[i], out cells[i], out proofs[i]))
+                {
+                    found++;
+                }
+            }
+
+            return found == requestedBlobVersionedHashes.Length || _includedBlobLocations is null
+                ? found
+                : found + FillIncludedBlobCellsAndProofsV1(requestedBlobVersionedHashes, requestedMask, availableMasks, cells, proofs);
+        }
+
+        public bool TryMergeBlobCells(Hash256 hash, BlobCellMask cellMask, byte[][] cells) =>
+            MergeBlobCells(hash, cellMask, cells) == BlobCellMergeResult.Accepted;
+
+        public BlobCellMergeResult MergeBlobCells(Hash256 hash, BlobCellMask cellMask, byte[][] cells)
+        {
+            BlobCellMergeResult result = _blobTransactions.MergeCells(hash, cellMask, cells);
+            if (result != BlobCellMergeResult.Accepted)
+            {
+                return result;
+            }
+
+            if (_blobTransactions.TryGetValue(hash, out Transaction? transaction))
+            {
+                _broadcaster.Broadcast(transaction, isPersistent: false);
+            }
+
+            return BlobCellMergeResult.Accepted;
+        }
+
+        public bool TryGetPendingBlobTransaction(Hash256 hash, [NotNullWhen(true)] out Transaction? blobTransaction) =>
+            _blobTransactions.TryGetValue(hash, out blobTransaction);
+
+        public AcceptTxResult ValidateTxForBlobSampling(Transaction tx)
+        {
+            if (!tx.SupportsBlobs)
+            {
+                return AcceptTxResult.Invalid;
+            }
+
+            TxFilteringState state = default;
+            _newHeadLock.EnterReadLock();
+            try
+            {
+                state = new(tx, _accounts, _specProvider.GetCurrentHeadSpec());
+                bool canRecycle = false;
+                return FilterTransactions(tx, TxHandlingOptions.None, ref state, ref canRecycle, skipSamplingDeferredFilters: true);
+            }
+            finally
+            {
+                state.SenderAdmissionGate?.Exit();
+                _newHeadLock.ExitReadLock();
+            }
+        }
+
+        // only for tests - to test sorting
+        internal void TryGetBlobTxSortingEquivalent(Hash256 hash, out Transaction? transaction)
+            => _blobTransactions.TryGetBlobTxSortingEquivalent(hash, out transaction);
+
+        public void ForgetRejectedBlobTransaction(Hash256 hash) => _hashCache.DeleteFromCurrentBlock(hash);
+
+        public bool ForgetInvalidBlobProofs(Hash256 hash) => _hashCache.TryDeleteInvalidBlobProofs(hash);
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private void RecordUnrecoverableReorgedBlobTx(Transaction blobTx, Block previousBlock)
+        {
+            Metrics.PendingTransactionsUnresolvableSender++;
+            if (_logger.IsDebug) _logger.Debug($"Skipped readding tx {blobTx.Hash} from reorged block {previousBlock.Number} (hash {previousBlock.Hash}) to blob pool: sender address is not recoverable");
+        }
+
         /// <summary>
         /// How many blocks an included blob stays servable. It is above the normal finality lag, so finality is the usual
         /// bound and this only limits growth of the index when finality stalls.
