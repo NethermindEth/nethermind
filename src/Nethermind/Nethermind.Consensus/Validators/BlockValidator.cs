@@ -339,6 +339,7 @@ public class BlockValidator(
     {
         Transaction[] transactions = block.Transactions;
         bool isEip2780Enabled = spec.IsEip2780Enabled;
+        bool isEip7778Enabled = spec.IsEip7778Enabled;
         ulong minimumBlockGas = 0;
 
         for (int txIndex = 0; txIndex < transactions.Length; txIndex++)
@@ -366,7 +367,7 @@ public class BlockValidator(
                 return false;
             }
 
-            if (spec.IsEip7778Enabled) minimumBlockGas = minimumBlockGas.SaturatingAdd(MinimumBlockGas(transaction, spec));
+            if (isEip7778Enabled) minimumBlockGas = minimumBlockGas.SaturatingAdd(MinimumBlockGas(transaction, spec));
         }
 
         if (minimumBlockGas > block.Header.GasLimit)
