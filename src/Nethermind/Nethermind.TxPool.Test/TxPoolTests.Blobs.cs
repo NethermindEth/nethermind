@@ -1720,10 +1720,11 @@ namespace Nethermind.TxPool.Test
             IBlobTxStorage txStorage,
             PrivateKey[] senders,
             int blobCount = 1,
-            IStateHeaderProvider stateHeaderProvider = null)
+            IStateHeaderProvider stateHeaderProvider = null,
+            int blobCacheSize = 256)
         {
             _txPool = CreatePool(
-                new TxPoolConfig { Size = 128, BlobsSupport = blobsSupport },
+                new TxPoolConfig { Size = 128, BlobsSupport = blobsSupport, BlobCacheSize = blobCacheSize },
                 new TestSpecProvider(spec),
                 txStorage: txStorage,
                 stateHeaderProvider: stateHeaderProvider);
@@ -1909,14 +1910,34 @@ namespace Nethermind.TxPool.Test
             BlobTxStorage storage = new();
             Transaction tx = SubmitBlobTxsToNewPool(BlobsSupportMode.StorageWithReorgs, IncludedBlobSpec(lookup), storage, [TestItem.PrivateKeyA], blobCount: 2)[0];
             Block inclusionBlock = IncludedBlobBlock(IncludedBlobInclusionBlock, tx);
-            await RaiseBlockAddedToMainAndWaitForNewHead(inclusionBlock);
-            await RaiseBlockAddedToMainAndWaitForNewHead(IncludedBlobBlock(IncludedBlobInclusionBlock + 1));
+            Block child = IncludedBlobBlock(IncludedBlobInclusionBlock + 1);
+            await RaiseCanonicalHeadAndWait(inclusionBlock);
+            await RaiseCanonicalHeadAndWait(child);
             Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.Zero, "precondition: the tx left the blob pool");
 
-            // The same block is added to the main chain again with its txs gone from the pool.
-            await RaiseBlockAddedToMainAndWaitForNewHead(inclusionBlock);
+            _blockTree.RaiseBlockRemovedFromMain(child);
+            await RaiseCanonicalHeadAndWait(inclusionBlock);
 
             Assert.That(LookUpBlobs(tx, lookup), Is.EqualTo(2));
+        }
+
+        [Test]
+        public async Task should_keep_serving_a_blob_that_both_same_height_siblings_include([Values] BlobLookup lookup)
+        {
+            Transaction tx = SubmitBlobTxsToNewPool(BlobsSupportMode.StorageWithReorgs, IncludedBlobSpec(lookup), new BlobTxStorage(), [TestItem.PrivateKeyA], blobCount: 2)[0];
+            Block blockA = Build.A.Block.WithNumber(IncludedBlobInclusionBlock).WithExtraData([0xA]).WithTransactions(tx).TestObject;
+            Block blockB = Build.A.Block.WithNumber(IncludedBlobInclusionBlock).WithExtraData([0xB]).WithTransactions(tx).TestObject;
+            await RaiseBlockAddedToMainAndWaitForNewHead(blockA);
+            // Both siblings' states include the tx, so its re-add on the reorg is rejected by nonce.
+            _stateProvider.IncrementNonce(TestItem.AddressA);
+
+            await RaiseBlockAddedToMainAndWaitForNewHead(blockB, blockA);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.Zero, "precondition: the re-add was rejected");
+                Assert.That(LookUpBlobs(tx, lookup), Is.EqualTo(2));
+            }
         }
 
         [TestCase(BlobsSupportMode.InMemory, 0)]
@@ -2213,6 +2234,21 @@ namespace Nethermind.TxPool.Test
 
             Assert.That(() => _txPool.GetPendingBlobTransactionsCount(), Is.Zero.After(Timeout, 10), "the included tx left the pool");
             Assert.That(_txPool.IncludedBlobLocations!.Count, Is.Zero);
+        }
+
+        [Test]
+        public void should_remove_included_txs_when_reading_them_from_the_pool_for_the_processed_rows_fails()
+        {
+            ThrowingBlobTxStorage storage = new();
+            // A one-entry cache evicts the first tx, so the head update reads it back from the storage.
+            Transaction[] txs = SubmitBlobTxsToNewPool(BlobsSupportMode.StorageWithReorgs, Osaka.Instance, storage,
+                [TestItem.PrivateKeyA, TestItem.PrivateKeyB], blobCacheSize: 1);
+
+            storage.ThrowOnGet = true;
+            // The head update stops at the failed save, so TxPoolHeadChanged is not raised.
+            _blockTree.RaiseBlockAddedToMain(new BlockReplacementEventArgs(IncludedBlobBlock(IncludedBlobInclusionBlock, txs[0])));
+
+            Assert.That(() => _txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(1).After(Timeout, 10), "the included tx left the pool");
         }
 
         [Test]
@@ -6736,6 +6772,8 @@ namespace Nethermind.TxPool.Test
 
             public bool ThrowOnAdd { get; set; }
 
+            public bool ThrowOnGet { get; set; }
+
             public void Add(Transaction transaction)
             {
                 if (ThrowOnAdd) throw new InvalidOperationException("blob tx storage write failed");
@@ -6744,7 +6782,7 @@ namespace Nethermind.TxPool.Test
             }
 
             public bool TryGet(in ValueHash256 hash, Address sender, in UInt256 timestamp, out Transaction transaction) =>
-                _inner.TryGet(hash, sender, timestamp, out transaction);
+                ThrowOnGet ? throw new InvalidOperationException("blob tx storage read failed") : _inner.TryGet(hash, sender, timestamp, out transaction);
 
             public int TryGetMany(TxLookupKey[] keys, int count, Transaction[] results) =>
                 _inner.TryGetMany(keys, count, results);

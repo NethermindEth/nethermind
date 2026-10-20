@@ -82,6 +82,8 @@ namespace Nethermind.TxPool
         private readonly bool _blobReorgsSupportEnabled;
         private readonly IProcessedBlobTxStorage? _processedBlobTxStorage;
         private readonly IncludedBlobLocations? _includedBlobLocations;
+        // Head loop only: the new head's blob txs, mapped to the copy a reorg re-add read back from the processed rows.
+        private readonly Dictionary<ValueHash256, Transaction?> _reorganisedBlobTxs = [];
         private readonly IStateHeaderProvider? _stateHeaderProvider;
         private bool _specChangeMarkerUnpublished;
         private readonly DelegationCache _pendingDelegations;
@@ -698,6 +700,7 @@ namespace Nethermind.TxPool
                 && blobIndex < rowWrapper.Blobs.Length
                 && rowWrapper.Proofs.Length / proofsPerBlob > blobIndex)
             {
+                Interlocked.Increment(ref Metrics.IncludedBlobsServed);
                 wrapper = rowWrapper;
                 return true;
             }
@@ -1165,9 +1168,11 @@ namespace Nethermind.TxPool
                             _lastBlockNumber = args.Block.Number;
                             _lastBlockHash = args.Block.Hash;
 
+                            CollectReorganisedBlobTxs(args.Block, reorganised);
                             ReAddReorganisedTransactions(args.PreviousBlock);
                             ReAddRewoundTransactions(rewound);
                             RemoveProcessedTransactions(args.Block);
+                            _reorganisedBlobTxs.Clear();
                             RemoveExpiredFrameTransactions(args.Block);
                             EvictUnreferenceableRecentRootTransactions(unreferenceable);
                             RevalidateFrameTransactions(args.Block);
@@ -1307,6 +1312,10 @@ namespace Nethermind.TxPool
                     {
                         if (_logger.IsTrace) _logger.Trace($"Readded tx {blobTx.Hash} from reorged block {previousBlock.Number} (hash {previousBlock.Hash}) to blob pool");
                         _hashCache.Delete(blobTx.Hash!);
+                        if (_reorganisedBlobTxs.ContainsKey(blobTx.Hash!.ValueHash256))
+                        {
+                            _reorganisedBlobTxs[blobTx.Hash!.ValueHash256] = blobTx;
+                        }
                         if (blobTx.SenderAddress is null)
                         {
                             if (!_ecdsa.TryRecoverAddress(blobTx, out Address? senderAddress))
@@ -1369,6 +1378,25 @@ namespace Nethermind.TxPool
             {
                 if (_logger.IsWarn) _logger.Warn($"Couldn't load removed block {header.ToString(BlockHeader.Format.FullHashAndNumber)}, its transactions are not re-added. {e}");
                 return null;
+            }
+        }
+
+        /// <summary>Marks the blob txs of a reorganising <paramref name="head"/>, so that the copies the re-adds read back from
+        /// the processed rows are kept for <see cref="SaveProcessedBlobTransactions"/>.</summary>
+        /// <remarks>When the new head includes a blob tx the replaced block also included, the re-add is rejected by nonce and
+        /// the replaced block's rows are deleted, so the tx is in neither the pool nor the rows; without the kept copy, the new
+        /// head's rows would miss it. Only the new head's blob txs are kept, so a deep rewind does not hold every rewound one.</remarks>
+        private void CollectReorganisedBlobTxs(Block head, bool reorganised)
+        {
+            _reorganisedBlobTxs.Clear();
+            if (!reorganised || !_blobReorgsSupportEnabled) return;
+
+            foreach (Transaction tx in head.Transactions)
+            {
+                if (tx.CarriesBlobs)
+                {
+                    _reorganisedBlobTxs[tx.Hash!.ValueHash256] = null;
+                }
             }
         }
 
@@ -1491,24 +1519,25 @@ namespace Nethermind.TxPool
 
             Transaction[] blockTransactions = block.Transactions;
             using ArrayPoolListRef<Transaction> blobTxsToSave = new((int)_specProvider.GetSpec(block.Header).MaxBlobCount);
-            for (int i = 0; i < blockTransactions.Length; i++)
-            {
-                Transaction blockTx = blockTransactions[i];
-                if (!blockTx.CarriesBlobs)
-                {
-                    continue;
-                }
-
-                if (_blobTransactions.TryGetValue(blockTx.Hash, out Transaction? fullBlobTx))
-                {
-                    if (_logger.IsTrace) _logger.Trace($"Saved processed blob tx {blockTx.Hash} from block {block.Number} to ProcessedTxs db");
-                    blobTxsToSave.Add(fullBlobTx);
-                }
-                else if (_logger.IsTrace) _logger.Trace($"Skipped adding processed blob tx {blockTx.Hash} from block {block.Number} to ProcessedTxs db - not found in blob pool");
-            }
-
             try
             {
+                for (int i = 0; i < blockTransactions.Length; i++)
+                {
+                    Transaction blockTx = blockTransactions[i];
+                    if (!blockTx.CarriesBlobs)
+                    {
+                        continue;
+                    }
+
+                    if (_blobTransactions.TryGetValue(blockTx.Hash, out Transaction? fullBlobTx)
+                        || (_reorganisedBlobTxs.TryGetValue(blockTx.Hash!.ValueHash256, out fullBlobTx) && fullBlobTx is not null))
+                    {
+                        if (_logger.IsTrace) _logger.Trace($"Saved processed blob tx {blockTx.Hash} from block {block.Number} to ProcessedTxs db");
+                        blobTxsToSave.Add(fullBlobTx);
+                    }
+                    else if (_logger.IsTrace) _logger.Trace($"Skipped adding processed blob tx {blockTx.Hash} from block {block.Number} to ProcessedTxs db - not found in blob pool");
+                }
+
                 if (blobTxsToSave.Count > 0)
                 {
                     _blobTxStorage.AddBlobTransactionsFromBlock(block.Number, blobTxsToSave);
