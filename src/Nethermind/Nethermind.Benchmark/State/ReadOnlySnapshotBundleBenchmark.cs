@@ -17,6 +17,7 @@ using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.Trie;
+using Nethermind.Trie.NodeBuffer;
 using FlatSnapshot = Nethermind.State.Flat.Snapshot;
 using static Nethermind.Benchmarks.State.FlatWorldStateBenchmarkHarness;
 
@@ -218,14 +219,13 @@ public class ReadOnlySnapshotBundleBenchmark
         {
             if (shortPaths.Count < ArraySize || longPaths.Count < ArraySize)
             {
-                using FlatSnapshot.NodeIterator<TreePath> nodes = snapshot.GetStateNodeIterator();
-                while (nodes.MoveNext())
+                foreach ((TreePath path, _, NodeRecord record) in snapshot.StateNodes)
                 {
-                    Hash256 nodeHash = Keccak.Compute(nodes.ReadRlp());
-                    if (shortPaths.Count < ArraySize && nodes.Key.Key.Length <= 15)
-                        shortPaths.Add((nodes.Key.Key, nodeHash));
-                    if (longPaths.Count < ArraySize && nodes.Key.Key.Length > 15)
-                        longPaths.Add((nodes.Key.Key, nodeHash));
+                    Hash256 nodeHash = Keccak.Compute(record.Rlp);
+                    if (shortPaths.Count < ArraySize && path.Length <= 15)
+                        shortPaths.Add((path, nodeHash));
+                    if (longPaths.Count < ArraySize && path.Length > 15)
+                        longPaths.Add((path, nodeHash));
                     if (shortPaths.Count >= ArraySize && longPaths.Count >= ArraySize)
                         break;
                 }
@@ -233,11 +233,10 @@ public class ReadOnlySnapshotBundleBenchmark
 
             if (storageNodesList.Count < ArraySize)
             {
-                using FlatSnapshot.NodeIterator<(Hash256, TreePath)> nodes = snapshot.GetStorageNodeIterator();
-                while (nodes.MoveNext())
+                foreach ((Hash256 address, TreePath path, _, NodeRecord record) in snapshot.StorageNodes)
                 {
-                    Hash256 nodeHash = Keccak.Compute(nodes.ReadRlp());
-                    storageNodesList.Add((nodes.Key.Key.Item1, nodes.Key.Key.Item2, nodeHash));
+                    Hash256 nodeHash = Keccak.Compute(record.Rlp);
+                    storageNodesList.Add((address, path, nodeHash));
                     if (storageNodesList.Count >= ArraySize)
                         break;
                 }
@@ -258,13 +257,12 @@ public class ReadOnlySnapshotBundleBenchmark
         List<(Hash256 AddressHash, TreePath Path, Hash256 Hash)> sameAccountNodesList = new(ArraySize);
         foreach (FlatSnapshot snapshot in allSnapshots)
         {
-            using (FlatSnapshot.NodeIterator<(Hash256, TreePath)> nodes = snapshot.GetStorageNodeIterator())
-            while (nodes.MoveNext())
+            foreach ((Hash256 address, TreePath path, _, NodeRecord record) in snapshot.StorageNodes)
             {
-                if (nodes.Key.Key.Item1 == sameAddrHash)
+                if (address == sameAddrHash)
                 {
-                    Hash256 nodeHash = Keccak.Compute(nodes.ReadRlp());
-                    sameAccountNodesList.Add((nodes.Key.Key.Item1, nodes.Key.Key.Item2, nodeHash));
+                    Hash256 nodeHash = Keccak.Compute(record.Rlp);
+                    sameAccountNodesList.Add((address, path, nodeHash));
                     if (sameAccountNodesList.Count >= ArraySize)
                         break;
                 }

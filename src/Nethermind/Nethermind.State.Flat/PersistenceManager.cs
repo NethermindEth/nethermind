@@ -17,6 +17,7 @@ using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using Nethermind.Trie;
+using Nethermind.Trie.NodeBuffer;
 
 [assembly: InternalsVisibleTo("Nethermind.State.Flat.Test")]
 [assembly: InternalsVisibleTo("Nethermind.State.Flat.History")]
@@ -629,22 +630,18 @@ public class PersistenceManager(
 
             // Traversal skips nodes written before the snapshot's pin, so only this snapshot's nodes are persisted.
             long stateNodesSize = 0;
-            using (Snapshot.NodeIterator<TreePath> nodes = snapshot.GetStateNodeIterator())
-            while (nodes.MoveNext())
+            foreach ((TreePath path, _, NodeRecord record) in snapshot.StateNodes)
             {
-                TreePath path = nodes.Key;
-                ReadOnlySpan<byte> rlp = nodes.ReadRlp();
+                ReadOnlySpan<byte> rlp = record.Rlp;
 
                 stateNodesSize += rlp.Length;
                 batch.SetStateTrieNode(path, rlp);
             }
 
             long storageNodesSize = 0;
-            using (Snapshot.NodeIterator<(Hash256, TreePath)> nodes = snapshot.GetStorageNodeIterator())
-            while (nodes.MoveNext())
+            foreach ((Hash256 address, TreePath path, _, NodeRecord record) in snapshot.StorageNodes)
             {
-                (Hash256 address, TreePath path) = nodes.Key.Key;
-                ReadOnlySpan<byte> rlp = nodes.ReadRlp();
+                ReadOnlySpan<byte> rlp = record.Rlp;
 
                 storageNodesSize += rlp.Length;
                 batch.SetStorageTrieNode(address, path, rlp);

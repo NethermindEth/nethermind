@@ -1296,9 +1296,9 @@ public class FlatWorldStateScopeProviderTests
         scope.Commit(1);
 
         HashSet<string> nodes = [];
-        foreach (KeyValuePair<HashedKey<(Hash256, TreePath)>, ulong> node in ctx.LastCommittedSnapshot!.StorageNodes)
+        foreach ((Hash256 address, TreePath path, _, NodeRecord record) in ctx.LastCommittedSnapshot!.StorageNodes)
         {
-            nodes.Add($"{node.Key.Key.Item1}/{node.Key.Key.Item2}/{ctx.LastCommittedSnapshot.GetRlp(node.Value).ToHexString()}");
+            nodes.Add($"{address}/{path}/{record.Rlp.ToHexString()}");
         }
 
         Hash256[] roots = new Hash256[addresses.Length];
@@ -1771,7 +1771,7 @@ public class FlatWorldStateScopeProviderTests
             batch.Set(TestItem.AddressC, new Account(3, 300));
         pausedScope.Commit(1);
         Snapshot resumedSnapshot = ctx.LastCommittedSnapshot!;
-        ulong[] resumed = resumedSnapshot.StateNodes.Select(node => node.Value).ToArray();
+        ulong[] resumed = resumedSnapshot.StateNodes.Select(node => node.Pointer).ToArray();
 
         using (Assert.EnterMultipleScope())
         {

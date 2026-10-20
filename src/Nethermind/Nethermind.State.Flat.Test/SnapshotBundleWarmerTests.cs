@@ -549,7 +549,7 @@ public class SnapshotBundleWarmerTests
         (Snapshot? snapshot, TransientResource? retired) = bundle.CollectAndApplySnapshot(StateId.PreGenesis, new StateId(1, TestItem.KeccakA), retain.Copy());
         try
         {
-            ulong[] published = storage ? snapshot!.StorageNodes.Select(node => node.Value).ToArray() : snapshot!.StateNodes.Select(node => node.Value).ToArray();
+            ulong[] published = storage ? snapshot!.StorageNodes.Select(node => node.Pointer).ToArray() : snapshot!.StateNodes.Select(node => node.Pointer).ToArray();
             Assert.That(published, Does.Contain(trie.Root.Pointer), "the root is published into the snapshot");
             Assert.That(published.All(pointer => _buffer.TryLocate(pointer, out _)), Is.True, "snapshot pointers are real-buffer records");
             // A published record linking a warmed child would end the walk through the real buffer early.

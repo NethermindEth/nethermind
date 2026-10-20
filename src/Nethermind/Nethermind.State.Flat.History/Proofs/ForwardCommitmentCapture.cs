@@ -7,6 +7,7 @@ using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State.Flat.History.Walk;
 using Nethermind.Trie;
+using Nethermind.Trie.NodeBuffer;
 
 namespace Nethermind.State.Flat.History.Proofs;
 
@@ -70,17 +71,14 @@ public sealed class ForwardCommitmentCapture : IDisposable
         try
         {
             CapturedBlock captured = Take();
-            using (Snapshot.NodeIterator<TreePath> nodes = snapshot.GetStateNodeIterator())
-            while (nodes.MoveNext())
+            foreach ((TreePath path, _, NodeRecord record) in snapshot.StateNodes)
             {
-                AddAccount(captured, nodes.Key, nodes.ReadRlp());
+                AddAccount(captured, path, record.Rlp);
             }
 
-            using (Snapshot.NodeIterator<(Hash256, TreePath)> nodes = snapshot.GetStorageNodeIterator())
-            while (nodes.MoveNext())
+            foreach ((Hash256 accountPath, TreePath path, _, NodeRecord record) in snapshot.StorageNodes)
             {
-                (Hash256 accountPath, TreePath path) = nodes.Key.Key;
-                AddStorage(captured, new ValueHash256(accountPath.Bytes), path, nodes.ReadRlp());
+                AddStorage(captured, new ValueHash256(accountPath.Bytes), path, record.Rlp);
             }
 
             Buffer(block, captured);

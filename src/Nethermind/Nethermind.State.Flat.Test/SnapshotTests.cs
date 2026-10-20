@@ -16,7 +16,6 @@ using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.Trie;
 using Nethermind.Trie.NodeBuffer;
-using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.State.Flat.Test;
@@ -144,9 +143,7 @@ public class SnapshotTests
         {
             snapshot.Content.StateRootPointer = updated.Pointer;
         }
-        ulong[] pointers = (storage ? snapshot.StorageNodes.Select(kv => kv.Value) : snapshot.StateNodes.Select(kv => kv.Value)).ToArray();
-        if (storage) AssertIteratorEntries(snapshot.GetStorageNodeIterator(), snapshot.StorageNodes.ToArray(), snapshot);
-        else AssertIteratorEntries(snapshot.GetStateNodeIterator(), snapshot.StateNodes.ToArray(), snapshot);
+        ulong[] pointers = (storage ? snapshot.StorageNodes.Select(node => node.Pointer) : snapshot.StateNodes.Select(node => node.Pointer)).ToArray();
         bool found = storage
             ? snapshot.TryGetStorageNode((address!, TreePath.Empty.Append(1)), out TrieNode? inherited)
             : snapshot.TryGetStateNode(TreePath.Empty.Append(1), out inherited);
@@ -248,7 +245,7 @@ public class SnapshotTests
         {
             Assert.That(storage ? snapshot.TryGetStorageNode((TestItem.KeccakA, oldPath), out _) : snapshot.TryGetStateNode(oldPath, out _), Is.False);
             Assert.That(storage ? snapshot.StorageNodes.Count() : snapshot.StateNodes.Count(), Is.EqualTo(1));
-            Assert.That(storage ? snapshot.StorageNodes.Single().Value : snapshot.StateNodes.Single().Value, Is.EqualTo(root));
+            Assert.That(storage ? snapshot.StorageNodes.Single().Pointer : snapshot.StateNodes.Single().Pointer, Is.EqualTo(root));
         }
     }
 
@@ -315,8 +312,8 @@ public class SnapshotTests
         });
 
         string[] keys = storage
-            ? snapshot.StorageNodes.Select(kv => SortKey(kv.Key.Key.Item1, kv.Key.Key.Item2)).ToArray()
-            : snapshot.StateNodes.Select(kv => SortKey(null, kv.Key.Key)).ToArray();
+            ? snapshot.StorageNodes.Select(node => SortKey(node.Address, node.Path)).ToArray()
+            : snapshot.StateNodes.Select(node => SortKey(null, node.Path)).ToArray();
 
         using (Assert.EnterMultipleScope())
         {
@@ -325,71 +322,6 @@ public class SnapshotTests
         }
 
         static string SortKey(Hash256? address, in TreePath path) => $"{address}:{path.Path}:{path.Length:D2}";
-    }
-
-    [Test]
-    public void NodeIteratorStopsOnCompletionOrEarlyDispose([Values] bool storage, [Values] bool finish)
-    {
-        using ForwardingNodeRecordBuffer buffer = new(FlatTestHelpers.NewTestBuffer());
-        using Snapshot snapshot = FlatTestHelpers.MakeSnapshot(_pool, buffer, content =>
-        {
-            if (storage) content.SetStorageNodeRlp(buffer, TestItem.KeccakA, TreePath.Empty, FlatTestHelpers.LeafRlpA);
-            else content.SetStateNodeRlp(buffer, TreePath.Empty, FlatTestHelpers.LeafRlpA);
-        });
-        if (storage) AssertReads(snapshot.GetStorageNodeIterator());
-        else AssertReads(snapshot.GetStateNodeIterator());
-
-        void AssertReads<TKey>(Snapshot.NodeIterator<TKey> nodes) where TKey : IEquatable<TKey>
-        {
-            Assert.That(nodes.MoveNext(), Is.True);
-            Assert.That(nodes.ReadRlp().ToArray(), Is.EqualTo(Bytes.FromHexString(FlatTestHelpers.LeafRlpA)));
-            long before = GC.GetAllocatedBytesForCurrentThread();
-            for (int i = 0; i < 1000; i++) _ = nodes.ReadRlp().Length;
-            Assert.That(GC.GetAllocatedBytesForCurrentThread() - before, Is.Zero, "reading RLP must not materialize an array");
-            if (finish) Assert.That(nodes.MoveNext(), Is.False);
-            else nodes.Dispose();
-            nodes.Dispose();
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(nodes.MoveNext(), Is.False);
-                Assert.That(() => nodes.ReadRlp().Length, Throws.InvalidOperationException);
-                Assert.That(() => nodes.Key, Throws.InvalidOperationException);
-            }
-        }
-    }
-
-    [Test]
-    public void NodeIteratorDisposesItsSourceWhenMoveNextThrows()
-    {
-        IEnumerator<KeyValuePair<HashedKey<TreePath>, ulong>> source = Substitute.For<IEnumerator<KeyValuePair<HashedKey<TreePath>, ulong>>>();
-        source.MoveNext().Returns(_ => throw new InvalidOperationException("Injected iterator failure."));
-        using Snapshot.NodeIterator<TreePath> nodes = new(null, source);
-
-        Assert.That(() => nodes.MoveNext(), Throws.InvalidOperationException);
-        nodes.Dispose();
-        source.Received(1).Dispose();
-        Assert.That(nodes.MoveNext(), Is.False);
-    }
-
-    private static void AssertIteratorEntries<TKey>(Snapshot.NodeIterator<TKey> nodes,
-        KeyValuePair<HashedKey<TKey>, ulong>[] expected, Snapshot snapshot) where TKey : IEquatable<TKey>
-    {
-        using (nodes)
-        {
-            Assert.That(() => nodes.ReadRlp().Length, Throws.InvalidOperationException);
-            Assert.That(() => nodes.Key, Throws.InvalidOperationException);
-            foreach (KeyValuePair<HashedKey<TKey>, ulong> entry in expected)
-            {
-                Assert.That(nodes.MoveNext(), Is.True);
-                using (Assert.EnterMultipleScope())
-                {
-                    Assert.That(nodes.Key, Is.EqualTo(entry.Key));
-                    Assert.That(nodes.ReadRlp().ToArray(), Is.EqualTo(snapshot.GetRlp(entry.Value).ToArray()));
-                }
-            }
-            Assert.That(nodes.MoveNext(), Is.False);
-            Assert.That(() => nodes.ReadRlp().Length, Throws.InvalidOperationException);
-        }
     }
 
     [Test]
@@ -411,7 +343,6 @@ public class SnapshotTests
         {
             Assert.That(snapshot.StateRootPointer, Is.EqualTo(root.Pointer));
             Assert.That(snapshot.StateNodes.Count(), Is.EqualTo(empty ? 0 : 1));
-            AssertIteratorEntries(snapshot.GetStateNodeIterator(), snapshot.StateNodes.ToArray(), snapshot);
         }
     }
 

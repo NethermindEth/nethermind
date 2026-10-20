@@ -23,6 +23,7 @@ using Nethermind.State.Flat.Persistence.TrieNodeLog;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.Trie;
+using Nethermind.Trie.NodeBuffer;
 using FlatSnapshot = Nethermind.State.Flat.Snapshot;
 using static Nethermind.Benchmarks.State.FlatWorldStateBenchmarkHarness;
 
@@ -220,16 +221,14 @@ public class StorageDeleteWarmupBenchmark
         using IPersistence.IWriteBatch batch = persistence.CreateWriteBatch(snapshot.From, snapshot.To, WriteFlags.None);
         foreach (KeyValuePair<HashedKey<Address>, Account?> kv in snapshot.Accounts) batch.SetAccount(kv.Key.Key, kv.Value);
         foreach (KeyValuePair<HashedKey<(Address, UInt256)>, UInt256?> kv in snapshot.Storages) batch.SetStorage(kv.Key.Key.Item1, kv.Key.Key.Item2, kv.Value);
-        using (FlatSnapshot.NodeIterator<TreePath> nodes = snapshot.GetStateNodeIterator())
-        while (nodes.MoveNext())
+        foreach ((TreePath path, _, NodeRecord record) in snapshot.StateNodes)
         {
-            batch.SetStateTrieNode(nodes.Key, nodes.ReadRlp());
+            batch.SetStateTrieNode(path, record.Rlp);
         }
 
-        using (FlatSnapshot.NodeIterator<(Hash256, TreePath)> nodes = snapshot.GetStorageNodeIterator())
-        while (nodes.MoveNext())
+        foreach ((Hash256 address, TreePath path, _, NodeRecord record) in snapshot.StorageNodes)
         {
-            batch.SetStorageTrieNode(nodes.Key.Key.Item1, nodes.Key.Key.Item2, nodes.ReadRlp());
+            batch.SetStorageTrieNode(address, path, record.Rlp);
         }
     }
 

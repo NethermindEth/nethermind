@@ -402,7 +402,7 @@ public class SnapshotCompactorTests
             Assert.That(compacted.TryGetStateNode(oldPath, out _), Is.False);
             Assert.That(compacted.TryGetStateNode(finalPath, out TrieNode? node), Is.True);
             Assert.That(node!.FullRlp.ToArray(), Is.EqualTo(Bytes.FromHexString(FlatTestHelpers.LeafRlpB)));
-            Assert.That(compacted.StateNodes.Select(kv => kv.Value), Is.EqualTo(final.StateNodes.Select(kv => kv.Value)));
+            Assert.That(compacted.StateNodes.Select(node => node.Pointer), Is.EqualTo(final.StateNodes.Select(node => node.Pointer)));
         }
     }
 

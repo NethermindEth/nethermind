@@ -98,91 +98,18 @@ public class Snapshot : RefCountingDisposable
     public IEnumerable<KeyValuePair<HashedKey<Address>, Account?>> Accounts => _isSorted ? _sorted!.Accounts : _mutable!.Accounts;
     public IEnumerable<KeyValuePair<HashedKey<Address>, bool>> SelfDestructedStorageAddresses => _isSorted ? _sorted!.SelfDestructedStorageAddresses : _mutable!.SelfDestructedStorageAddresses;
     public IEnumerable<KeyValuePair<HashedKey<(Address, UInt256)>, UInt256?>> Storages => _isSorted ? _sorted!.Storages : _mutable!.Storages;
-    internal IEnumerable<KeyValuePair<HashedKey<(Hash256, TreePath)>, ulong>> StorageNodes => EnumerateStorageNodes();
-    internal IEnumerable<KeyValuePair<HashedKey<TreePath>, ulong>> StateNodes => EnumerateStateNodes();
 
-    /// <summary>Iterates reachable state nodes written within this snapshot's range, in depth-first path order.</summary>
-    public NodeIterator<TreePath> GetStateNodeIterator() => new(BufferPin?.Buffer, EnumerateStateNodes().GetEnumerator());
-
-    /// <summary>Iterates reachable storage nodes written within this snapshot's range, by address hash and then in depth-first path order.</summary>
-    public NodeIterator<(Hash256, TreePath)> GetStorageNodeIterator() => new(BufferPin?.Buffer, EnumerateStorageNodes().GetEnumerator());
-
-    /// <summary>Reads snapshot node keys and their RLP, borrowed from the buffer records the snapshot pins.</summary>
+    /// <summary>Reachable state nodes written within this snapshot's range, borrowed from the buffer records the snapshot pins.</summary>
     /// <remarks>
-    /// Nodes come in ascending <see cref="TreePath.CompareTo(in TreePath)"/> order, and storage nodes by ascending address hash first:
-    /// the walk visits each node before its subtree and children by ascending nibble, so a persisted snapshot is built from them without sorting.
-    /// RLP spans must not be used after the snapshot is released.
+    /// Nodes come in ascending <see cref="TreePath.CompareTo(in TreePath)"/> order: the walk visits each node before its subtree and children by ascending nibble,
+    /// so a persisted snapshot is built from them without sorting. Records must not be used after the snapshot is released.
     /// </remarks>
-    public sealed class NodeIterator<TKey> : IDisposable where TKey : IEquatable<TKey>
-    {
-        private readonly INodeRecordBuffer? _buffer;
-        private readonly IEnumerator<KeyValuePair<HashedKey<TKey>, ulong>> _inner;
-        private bool _positioned;
-        private bool _disposed;
+    public IEnumerable<(TreePath Path, ulong Pointer, NodeRecord Record)> StateNodes => EnumerateStateNodes();
 
-        internal NodeIterator(INodeRecordBuffer? buffer, IEnumerator<KeyValuePair<HashedKey<TKey>, ulong>> inner)
-        {
-            _buffer = buffer;
-            _inner = inner;
-        }
+    /// <summary>Reachable storage nodes written within this snapshot's range, by ascending address hash and then as in <see cref="StateNodes"/>.</summary>
+    /// <remarks>Records must not be used after the snapshot is released.</remarks>
+    public IEnumerable<(Hash256 Address, TreePath Path, ulong Pointer, NodeRecord Record)> StorageNodes => EnumerateStorageNodes();
 
-        /// <summary>The current node's key.</summary>
-        /// <exception cref="InvalidOperationException">The iterator is not positioned on a node.</exception>
-        public HashedKey<TKey> Key
-        {
-            get
-            {
-                GuardPosition();
-                return _inner.Current.Key;
-            }
-        }
-
-        internal ulong Pointer
-        {
-            get
-            {
-                GuardPosition();
-                return _inner.Current.Value;
-            }
-        }
-
-        /// <summary>Advances to the next node, releasing the enumeration when exhausted.</summary>
-        public bool MoveNext()
-        {
-            if (_disposed) return false;
-            try
-            {
-                _positioned = _inner.MoveNext();
-                if (!_positioned) Dispose();
-                return _positioned;
-            }
-            catch
-            {
-                Dispose();
-                throw;
-            }
-        }
-
-        /// <summary>Returns the current node's RLP without copying it.</summary>
-        /// <exception cref="InvalidOperationException">The iterator is not positioned on a node.</exception>
-        public ReadOnlySpan<byte> ReadRlp() => _buffer!.TryLocate(Pointer, out NodeRecord record)
-            ? record.Rlp
-            : throw new TrieException($"Trie node buffer pointer {Pointer:x16} does not resolve to a record.");
-
-        /// <inheritdoc/>
-        public void Dispose()
-        {
-            if (_disposed) return;
-            _disposed = true;
-            _positioned = false;
-            _inner.Dispose();
-        }
-
-        private void GuardPosition()
-        {
-            if (!_positioned) throw new InvalidOperationException("The iterator is not positioned on a snapshot node.");
-        }
-    }
     public int AccountsCount => _isSorted ? _sorted!.AccountsCount : Counts.Accounts;
     public int StoragesCount => _isSorted ? _sorted!.StoragesCount : Counts.Storages;
 
@@ -193,22 +120,22 @@ public class Snapshot : RefCountingDisposable
         ? _sorted!.StorageRoots.TryGetValue(address, out pointer)
         : _mutable!.StorageRoots.TryGetValue(address, out pointer);
 
-    private IEnumerable<KeyValuePair<HashedKey<TreePath>, ulong>> EnumerateStateNodes()
+    private IEnumerable<(TreePath Path, ulong Pointer, NodeRecord Record)> EnumerateStateNodes()
     {
         if (BufferPin is null || From.StateRoot == To.StateRoot) yield break;
-        foreach ((TreePath path, ulong pointer, _) in BufferPin.Buffer.EnumerateNodes(StateRootPointer, BufferPin.WriteBoundary))
-            yield return new(path, pointer);
+        foreach ((TreePath Path, ulong Pointer, NodeRecord Record) node in BufferPin.Buffer.EnumerateNodes(StateRootPointer, BufferPin.WriteBoundary))
+            yield return node;
     }
 
-    private IEnumerable<KeyValuePair<HashedKey<(Hash256, TreePath)>, ulong>> EnumerateStorageNodes()
+    private IEnumerable<(Hash256 Address, TreePath Path, ulong Pointer, NodeRecord Record)> EnumerateStorageNodes()
     {
         if (BufferPin is null) yield break;
         using ArrayPoolList<KeyValuePair<Hash256, ulong>> roots = new(0, StorageRoots);
         roots.Sort(static (a, b) => a.Key.CompareTo(b.Key));
         foreach ((Hash256 address, ulong root) in roots)
         {
-            foreach ((TreePath path, ulong pointer, _) in BufferPin.Buffer.EnumerateNodes(root, BufferPin.WriteBoundary))
-                yield return new((address, path), pointer);
+            foreach ((TreePath path, ulong pointer, NodeRecord record) in BufferPin.Buffer.EnumerateNodes(root, BufferPin.WriteBoundary))
+                yield return (address, path, pointer, record);
         }
     }
 
