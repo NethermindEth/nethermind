@@ -43,12 +43,15 @@ public partial class BlockProcessor
         public void ProcessWithdrawals(Block block, IReleaseSpec spec)
             => withdrawalProcessor.ProcessWithdrawals(block, spec);
 
+        /// <inheritdoc />
         public void CommitIndexTableRoots(Block block, TxReceipt[] receipts, IReleaseSpec spec, ITxTracer tracer)
             => indexTableHandler.CommitIndexTableRoots(block, receipts, spec, tracer);
 
+        /// <inheritdoc />
         public void RollbackBlock(Block block)
             => indexTableHandler.RollbackBlock(block);
 
+        /// <inheritdoc />
         public void UpdateFinalBlockHash(Block block)
             => indexTableHandler.UpdateFinalBlockHash(block);
     }

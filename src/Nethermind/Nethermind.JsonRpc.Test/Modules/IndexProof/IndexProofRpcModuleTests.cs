@@ -1,12 +1,15 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
+using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.IndexTables;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
 using Nethermind.JsonRpc.Modules.IndexProof;
 using NUnit.Framework;
 
@@ -19,8 +22,8 @@ public class IndexProofRpcModuleTests
     [Test]
     public void GetTransactionProof_table_not_found_returns_resource_not_found()
     {
-        IndexTableStore store = new();
-        IIndexProofRpcModule module = CreateModule(store);
+        using Context context = new();
+        IIndexProofRpcModule module = context.Module;
 
         ResultWrapper<IndexProofResult?> result = module.indexProof_getTransactionProof(TestItem.KeccakA, 100);
 
@@ -34,11 +37,11 @@ public class IndexProofRpcModuleTests
     [Test]
     public void GetTransactionProof_tx_not_found_returns_resource_not_found()
     {
-        IndexTableStore store = new();
+        using Context context = new();
         IndexEntry entry = IndexEntry.CreateBlock(TestItem.KeccakA, 100);
-        store.Store(0, 100, [entry]);
+        context.Store(0, 100, [entry]);
 
-        IIndexProofRpcModule module = CreateModule(store);
+        IIndexProofRpcModule module = context.Module;
         ResultWrapper<IndexProofResult?> result = module.indexProof_getTransactionProof(TestItem.KeccakB, 100);
 
         using (Assert.EnterMultipleScope())
@@ -51,16 +54,16 @@ public class IndexProofRpcModuleTests
     [Test]
     public void GetTransactionProof_success_returns_valid_proof()
     {
-        IndexTableStore store = new();
+        using Context context = new();
         Hash256 txHash = TestItem.KeccakA;
         IndexEntry txEntry = IndexEntry.CreateTransaction(txHash, 100, 0, 0);
         IndexEntry blockEntry = IndexEntry.CreateBlock(TestItem.KeccakB, 100);
         List<IndexEntry> entries = [blockEntry, txEntry];
         entries.Sort();
 
-        store.Store(0, 100, entries);
+        context.Store(0, 100, entries);
 
-        IIndexProofRpcModule module = CreateModule(store);
+        IIndexProofRpcModule module = context.Module;
         ResultWrapper<IndexProofResult?> result = module.indexProof_getTransactionProof(txHash, 100);
 
         Assert.That(result.Data, Is.Not.Null);
@@ -80,8 +83,8 @@ public class IndexProofRpcModuleTests
     [Test]
     public void GetLogAddressProofs_table_not_found_returns_resource_not_found()
     {
-        IndexTableStore store = new();
-        IIndexProofRpcModule module = CreateModule(store);
+        using Context context = new();
+        IIndexProofRpcModule module = context.Module;
 
         ResultWrapper<IndexProofResult[]?> result = module.indexProof_getLogAddressProofs(TestItem.AddressA, 100);
 
@@ -95,11 +98,11 @@ public class IndexProofRpcModuleTests
     [Test]
     public void GetLogAddressProofs_no_matching_address_returns_empty_array()
     {
-        IndexTableStore store = new();
+        using Context context = new();
         IndexEntry entry = IndexEntry.CreateLogAddress(TestItem.AddressA, 100, 0, 0);
-        store.Store(0, 100, [entry]);
+        context.Store(0, 100, [entry]);
 
-        IIndexProofRpcModule module = CreateModule(store);
+        IIndexProofRpcModule module = context.Module;
         ResultWrapper<IndexProofResult[]?> result = module.indexProof_getLogAddressProofs(TestItem.AddressB, 100);
 
         Assert.That(result.Data, Is.Not.Null);
@@ -113,7 +116,7 @@ public class IndexProofRpcModuleTests
     [Test]
     public void GetLogAddressProofs_multiple_matching_logs_returns_all_proofs()
     {
-        IndexTableStore store = new();
+        using Context context = new();
         Address targetAddress = TestItem.AddressA;
         IndexEntry log1 = IndexEntry.CreateLogAddress(targetAddress, 100, 0, 0);
         IndexEntry log2 = IndexEntry.CreateLogAddress(targetAddress, 100, 1, 0);
@@ -121,9 +124,9 @@ public class IndexProofRpcModuleTests
         List<IndexEntry> entries = [log1, otherLog, log2];
         entries.Sort();
 
-        store.Store(0, 100, entries);
+        context.Store(0, 100, entries);
 
-        IIndexProofRpcModule module = CreateModule(store);
+        IIndexProofRpcModule module = context.Module;
         ResultWrapper<IndexProofResult[]?> result = module.indexProof_getLogAddressProofs(targetAddress, 100);
 
         Assert.That(result.Data, Is.Not.Null);
@@ -137,8 +140,8 @@ public class IndexProofRpcModuleTests
     [Test]
     public void GetStorageSlot_invalid_level_fails()
     {
-        IndexTableStore store = new();
-        IIndexProofRpcModule module = CreateModule(store);
+        using Context context = new();
+        IIndexProofRpcModule module = context.Module;
 
         ResultWrapper<StorageSlotInfo> result = module.indexProof_getStorageSlot(10, 0);
 
@@ -154,8 +157,8 @@ public class IndexProofRpcModuleTests
     [TestCase(2, 0, ExpectedResult = "0x4000")]  // 16*1024 + 0 = 16384 = 0x4000
     public string GetStorageSlot_valid_params_returns_correct_slot(int level, long firstBlock)
     {
-        IndexTableStore store = new();
-        IIndexProofRpcModule module = CreateModule(store);
+        using Context context = new();
+        IIndexProofRpcModule module = context.Module;
 
         ResultWrapper<StorageSlotInfo> result = module.indexProof_getStorageSlot(level, firstBlock);
 
@@ -166,7 +169,7 @@ public class IndexProofRpcModuleTests
     [Test]
     public void GetTransactionProof_with_higher_level_table_aligns_first_block_and_returns_proof()
     {
-        IndexTableStore store = new();
+        using Context context = new();
         Hash256 txHash = TestItem.KeccakA;
         IndexEntry txEntry = IndexEntry.CreateTransaction(txHash, 6, 0, 0);
         IndexEntry blockEntry = IndexEntry.CreateBlock(TestItem.KeccakB, 5);
@@ -174,9 +177,9 @@ public class IndexProofRpcModuleTests
         entries.Sort();
 
         // Store at level 1 (table size 4), firstBlock = 4 (covers blocks 4..7)
-        store.Store(1, 4, entries);
+        context.Store(1, 4, entries);
 
-        IIndexProofRpcModule module = CreateModule(store);
+        IIndexProofRpcModule module = context.Module;
         // Query with blockNumber = 6 within the table range [4..7]
         ResultWrapper<IndexProofResult?> result = module.indexProof_getTransactionProof(txHash, blockNumber: 6, level: 1);
 
@@ -195,8 +198,8 @@ public class IndexProofRpcModuleTests
     [Test]
     public void GetTransactionProof_negative_block_or_invalid_level_fails()
     {
-        IndexTableStore store = new();
-        IIndexProofRpcModule module = CreateModule(store);
+        using Context context = new();
+        IIndexProofRpcModule module = context.Module;
 
         ResultWrapper<IndexProofResult?> negativeBlock = module.indexProof_getTransactionProof(TestItem.KeccakA, -1, 0);
         ResultWrapper<IndexProofResult?> invalidLevel = module.indexProof_getTransactionProof(TestItem.KeccakA, 10, 5);
@@ -211,8 +214,8 @@ public class IndexProofRpcModuleTests
     [Test]
     public void GetStorageSlot_negative_block_fails()
     {
-        IndexTableStore store = new();
-        IIndexProofRpcModule module = CreateModule(store);
+        using Context context = new();
+        IIndexProofRpcModule module = context.Module;
 
         ResultWrapper<StorageSlotInfo> result = module.indexProof_getStorageSlot(0, -1);
 
@@ -222,10 +225,8 @@ public class IndexProofRpcModuleTests
     [Test]
     public void ProofEndpoints_resolve_against_canonical_branch_when_side_branch_was_cached_afterwards()
     {
-        IndexTableStore store = new();
-        IBlockTree blockTree = Build.A.BlockTree().OfChainLength(101).TestObject;
-
-        Hash256 canonicalHash = blockTree.FindHeader(100, BlockTreeLookupOptions.RequireCanonical)!.Hash!;
+        using Context context = new();
+        Hash256 canonicalHash = context.BlockTree.FindHeader(100, BlockTreeLookupOptions.RequireCanonical)!.Hash!;
         Hash256 sideBranchHash = TestItem.KeccakB;
 
         Hash256 canonicalTxHash = TestItem.KeccakC;
@@ -234,10 +235,10 @@ public class IndexProofRpcModuleTests
         IndexEntry canonicalTx = IndexEntry.CreateTransaction(canonicalTxHash, 100, 0, 0);
         IndexEntry sideBranchTx = IndexEntry.CreateTransaction(sideBranchTxHash, 100, 0, 0);
 
-        store.Store(0, 100, [canonicalTx], canonicalHash);
-        store.Store(0, 100, [sideBranchTx], sideBranchHash);
+        context.Store(0, 100, [canonicalTx], canonicalHash);
+        context.Store(0, 100, [sideBranchTx], sideBranchHash);
 
-        IIndexProofRpcModule module = CreateModule(store, blockTree);
+        IIndexProofRpcModule module = context.Module;
 
         ResultWrapper<IndexProofResult?> canonicalResult = module.indexProof_getTransactionProof(canonicalTxHash, 100);
         ResultWrapper<IndexProofResult?> sideBranchResult = module.indexProof_getTransactionProof(sideBranchTxHash, 100);
@@ -254,11 +255,11 @@ public class IndexProofRpcModuleTests
     [Test]
     public void ProofEndpoints_return_not_found_when_the_publication_block_is_not_canonical()
     {
-        IndexTableStore store = new();
+        using Context context = new();
         Hash256 txHash = TestItem.KeccakC;
-        store.Store(0, 100, [IndexEntry.CreateTransaction(txHash, 100, 0, 0)], TestItem.KeccakB);
+        context.Store(0, 100, [IndexEntry.CreateTransaction(txHash, 100, 0, 0)], TestItem.KeccakB);
 
-        IIndexProofRpcModule module = CreateModule(store, Build.A.BlockTree().OfChainLength(101).TestObject);
+        IIndexProofRpcModule module = context.Module;
 
         ResultWrapper<IndexProofResult?> result = module.indexProof_getTransactionProof(txHash, 100);
 
@@ -269,6 +270,25 @@ public class IndexProofRpcModuleTests
         }
     }
 
-    private static IIndexProofRpcModule CreateModule(IIndexTableStore store, IBlockTree? blockTree = null) =>
-        new IndexProofRpcModule(store, blockTree);
+    private sealed class Context : IDisposable
+    {
+        private readonly IContainer _container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule())
+            .AddSingleton<IBlockTree>(Build.A.BlockTree().OfChainLength(101).TestObject)
+            .Build();
+
+        public IIndexProofRpcModule Module => _container.Resolve<IIndexProofRpcModule>();
+
+        public IBlockTree BlockTree => _container.Resolve<IBlockTree>();
+
+        /// <summary>Stores a table under <paramref name="blockHash"/>, by default the canonical hash of its publication block.</summary>
+        public void Store(int level, long firstBlock, IReadOnlyList<IndexEntry> sortedEntries, Hash256? blockHash = null)
+        {
+            long publicationBlock = level == 0 ? firstBlock : IndexTableMergeScheduler.PublicationBlock(level, firstBlock);
+            blockHash ??= BlockTree.FindHeader((ulong)publicationBlock, BlockTreeLookupOptions.RequireCanonical)!.Hash!;
+            _container.Resolve<IndexTableStore>().Store(level, firstBlock, sortedEntries, blockHash);
+        }
+
+        public void Dispose() => _container.Dispose();
+    }
 }

@@ -4,18 +4,16 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
-using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Init.Steps;
-using Nethermind.Logging;
 using Nethermind.Specs.ChainSpecStyle;
-using Nethermind.State;
-using NSubstitute;
 using NUnit.Framework;
 using CoreBuild = Nethermind.Core.Test.Builders.Build;
 
@@ -45,36 +43,39 @@ public class ReviewBlockTreeEip8304Tests
         }
 
         ulong activationTimestamp = tree.FindHeader((ulong)activationBlock, BlockTreeLookupOptions.None)!.Timestamp;
-        await Assert.ThatAsync(() => CreateStep(tree, activationTimestamp, new SyncConfig(), storedReceipts).Execute(CancellationToken.None),
+        await Assert.ThatAsync(() => ExecuteStep(tree, activationTimestamp, new SyncConfig(), storedReceipts),
             throws ? Throws.InstanceOf<InvalidOperationException>() : Throws.Nothing);
     }
 
     [TestCase(true, true, false)]
-    [TestCase(false, true, true)]
+    [TestCase(false, false, true)]
     [TestCase(true, false, true)]
     public async Task Startup_rejects_fast_sync_that_skips_index_history(bool downloadBodies, bool downloadReceipts, bool throws)
     {
         SyncConfig syncConfig = new()
         {
             FastSync = true,
+            SnapSync = true,
             PivotNumber = 1000,
             DownloadBodiesInFastSync = downloadBodies,
             DownloadReceiptsInFastSync = downloadReceipts
         };
         BlockTree tree = CoreBuild.A.BlockTree().OfChainLength(1).TestObject;
 
-        await Assert.ThatAsync(() => CreateStep(tree, activationTimestamp: 0, syncConfig, new InMemoryReceiptStorage()).Execute(CancellationToken.None),
+        await Assert.ThatAsync(() => ExecuteStep(tree, activationTimestamp: 0, syncConfig, new InMemoryReceiptStorage()),
             throws ? Throws.InstanceOf<InvalidConfigurationException>() : Throws.Nothing);
     }
 
-    private static ReviewBlockTree CreateStep(BlockTree tree, ulong activationTimestamp, ISyncConfig syncConfig, IReceiptStorage receiptStorage) => new(
-        Substitute.For<IWorldStateManager>(),
-        Substitute.For<IInitConfig>(),
-        syncConfig,
-        Substitute.For<IBlockProcessingQueue>(),
-        tree,
-        Substitute.For<IBlockTreeHealer>(),
-        LimboLogs.Instance,
-        new ChainSpec { Parameters = new ChainParameters { Eip8304TransitionTimestamp = activationTimestamp } },
-        receiptStorage);
+    private static async Task ExecuteStep(BlockTree tree, ulong activationTimestamp, ISyncConfig syncConfig, IReceiptStorage receiptStorage)
+    {
+        await using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(syncConfig, new InitConfig { ProcessingEnabled = false }))
+            .AddSingleton(new ChainSpec { Parameters = new ChainParameters { Eip8304TransitionTimestamp = activationTimestamp } })
+            .AddSingleton<IBlockTree>(tree)
+            .AddSingleton(receiptStorage)
+            .AddSingleton<ReviewBlockTree>()
+            .Build();
+
+        await container.Resolve<ReviewBlockTree>().Execute(CancellationToken.None);
+    }
 }

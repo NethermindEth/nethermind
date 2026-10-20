@@ -14,7 +14,7 @@ namespace Nethermind.JsonRpc.Modules.IndexProof;
 /// <summary>
 /// Serves EIP-8304 index proofs from the in-memory table store.
 /// </summary>
-public class IndexProofRpcModule(IIndexTableStore store, IBlockTree? blockTree = null) : IIndexProofRpcModule
+public class IndexProofRpcModule(IIndexTableStore store, IBlockTree blockTree) : IIndexProofRpcModule
 {
     /// <summary>Maximum number of log proofs returned in a single query to protect against DoS.</summary>
     public const int MaxLogProofs = 1024;
@@ -94,9 +94,6 @@ public class IndexProofRpcModule(IIndexTableStore store, IBlockTree? blockTree =
 
     private IReadOnlyList<IndexEntry>? GetCanonicalTableEntries(int level, long firstBlock)
     {
-        if (blockTree is null)
-            return store.Get(level, firstBlock);
-
         long lookupBlockNumber = level == 0
             ? firstBlock
             : IndexTableMergeScheduler.PublicationBlock(level, firstBlock);

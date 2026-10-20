@@ -1,14 +1,14 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Autofac;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Evm.State;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
-using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Consensus.Test.IndexTables;
@@ -31,7 +31,8 @@ public class IndexTableItemReserveTests
             blockAccessList.Merge(atIndex);
         }
 
-        long reserve = BlockAccessListItemReserve.Calculate(Build.A.Block.TestObject, spec, Substitute.For<IWorldState>(), blockAccessList);
+        using IContainer container = new ContainerBuilder().AddModule(new TestNethermindModule(spec)).Build();
+        long reserve = BlockAccessListItemReserve.Calculate(Build.A.Block.TestObject, spec, container.Resolve<IMainProcessingContext>().WorldState, blockAccessList);
 
         Assert.That(reserve, Is.EqualTo(Eip8304Constants.TableSizes.Length + (contractAlreadyInList ? 0 : 1)));
     }
