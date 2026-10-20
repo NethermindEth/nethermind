@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 use nethermind_lean::{
-    MAX_BYTES, MAX_INPUT_BYTES, aggregated_vk, keccak, nlean_verify_recursive, prove_aggregate,
-    prove_stark,
+    MAX_BYTES, MAX_INPUT_BYTES, aggregated_vk, commitment, keccak, nlean_verify_recursive,
+    prove_aggregate, prove_stark,
 };
 use rec_aggregation::eip8288_mixed;
 use std::io::Read;
@@ -111,7 +111,7 @@ fn mixed_prepare(directory: &Path) {
     let (sk, pk) = sphincs::key_gen_from_seed([117; 32]);
     let message = keccak(b"LeanBench mixed resource S1");
     let signature = sphincs::sign(&sk, &message);
-    let sph_dep = dependency(0x10, message, keccak(&pk.flatten()));
+    let sph_dep = dependency(0x10, message, eip8288_mixed::sphincs_verification_key(&pk));
     let sph_witness = [pk.flatten().as_slice(), signature.to_bytes().as_slice()].concat();
     let mut data = [0; 32];
     data[0] = 7;
@@ -124,7 +124,7 @@ fn mixed_prepare(directory: &Path) {
     let parents: Vec<_> = [(sph_dep, sph_witness), (generic_dep, generic_witness)]
         .iter()
         .map(|(dep, witness)| {
-            let hash = keccak(dep);
+            let hash = commitment(&[*dep]);
             let proof = prove_aggregate(&hash, &raw_input(dep, witness)).unwrap();
             verify(&hash, &key, &proof);
             proof
@@ -134,7 +134,7 @@ fn mixed_prepare(directory: &Path) {
     let mut deps = [sph_dep, generic_dep];
     deps.sort();
     let dep_bytes: Vec<_> = deps.iter().flatten().copied().collect();
-    let hash = keccak(&dep_bytes);
+    let hash = commitment(&deps);
     let input = child_input(&[sph_dep, generic_dep], &parents);
     std::fs::create_dir_all(directory).unwrap();
     for (name, bytes) in [
@@ -174,7 +174,7 @@ fn mixed_merge(directory: &Path) {
     assert!(deps.iter().all(|dep| dep[..31] == [0; 31]));
     assert_eq!(deps.iter().filter(|dep| dep[31] == 0x10).count(), 1);
     assert_eq!(deps.iter().filter(|dep| dep[31] == 0x11).count(), 1);
-    let hash = keccak(&dep_bytes);
+    let hash = commitment(&deps);
     assert_eq!(
         bounded_read(&directory.join("dependency-hash.bin"), 32),
         hash
@@ -249,7 +249,7 @@ fn main() {
         seed[0] = i as u8;
         let (sk, pk) = sphincs::key_gen_from_seed(seed);
         let message = keccak(&(i as u64).to_le_bytes());
-        let dep = dependency(0x10, message, keccak(&pk.flatten()));
+        let dep = dependency(0x10, message, eip8288_mixed::sphincs_verification_key(&pk));
         deps.push(dep);
         let signature = sphincs::sign(&sk, &message);
         witnesses.push([pk.flatten().as_slice(), signature.to_bytes().as_slice()].concat());
@@ -260,7 +260,7 @@ fn main() {
     let mut prepared = Vec::new();
     if children {
         for (dep, witness) in deps.iter().zip(&witnesses) {
-            prepared.push(prove_aggregate(&keccak(dep), &raw_input(dep, witness)).unwrap());
+            prepared.push(prove_aggregate(&commitment(&[*dep]), &raw_input(dep, witness)).unwrap());
         }
     }
     let child_preparation = preparation_started.elapsed();
@@ -278,17 +278,12 @@ fn main() {
         input
     };
     deps.sort();
-    let hash = keccak(&deps.iter().flatten().copied().collect::<Vec<_>>());
+    let hash = commitment(&deps);
     let started = Instant::now();
     let proof = if direct {
-        let proof = eip8288_mixed::aggregate_mixed(&[], &signatures, &[], &deps, 1).unwrap();
-        let mut envelope = b"NLR3".to_vec();
-        number(&mut envelope, deps.len());
-        for dep in &deps {
-            envelope.extend_from_slice(dep);
-        }
-        blob(&mut envelope, &proof.to_bytes_without_deps());
-        envelope
+        eip8288_mixed::aggregate_mixed(&[], &signatures, &[], &deps, 1)
+            .unwrap()
+            .to_bytes_without_deps()
     } else {
         prove_aggregate(&hash, &input).unwrap()
     };
