@@ -2,17 +2,38 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
+using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
+using Nethermind.Api;
+using Nethermind.Blockchain;
+using Nethermind.Blockchain.Tracing;
+using Nethermind.Blockchain.Visitors;
 using Nethermind.Config;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.IO;
+using Nethermind.Core.Test.Modules;
+using Nethermind.Crypto;
 using Nethermind.Db;
+using Nethermind.Db.Rocks;
+using Nethermind.Evm.State;
+using Nethermind.Init.Modules;
+using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Serialization.Json;
+using Nethermind.Specs;
+using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.Specs.Forks;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
+using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -142,6 +163,162 @@ public class PersistInMemoryTailForShutdownTests
         using FlatTestContainer restarted = new(config, baseDbPath: dir.Path, catalogDb: catalog);
         Assert.That(restarted.Repository.HasState(head), Is.EqualTo(longFinality),
             "with long finality the in-memory tail is kept; without it there is no persisted-snapshot tier to keep it in");
+    }
+
+    [Test]
+    public async Task Rocksdb_restart_resumes_the_durable_prefix_and_can_reorg([Values] bool interruptConversion)
+    {
+        using TempPath directory = TempPath.GetTempDirectory();
+        CatalogFault fault = new();
+        Block[] blocks = new Block[4];
+        await using (IContainer node = OpenDiskNode(directory.Path, fault))
+        {
+            Assert.That(node.ResolveKeyed<IDb>(DbNames.PersistedSnapshotCatalog), Is.InstanceOf<DbOnTheRocks>());
+            MainProcessingContext processing = node.Resolve<MainProcessingContext>();
+            IWorldState state = processing.WorldState;
+            using (state.BeginScope(IWorldState.PreGenesis))
+            {
+                state.CreateAccount(TestItem.AddressA, 1_000_000);
+                state.Commit(Berlin.Instance);
+                state.RecalculateStateRoot();
+                blocks[0] = Build.A.Block.Genesis.WithStateRoot(state.StateRoot).TestObject;
+                state.CommitTree(0);
+            }
+            IBlockTree tree = node.Resolve<IBlockTree>();
+            tree.SuggestBlock(blocks[0]);
+            Assert.That(tree.TryUpdateMainChain(blocks[0].Header, true, preloadedBlocks: [blocks[0]]), Is.True);
+            node.Resolve<IWorldStateManager>().FlushCache(CancellationToken.None);
+
+            for (int i = 1; i < blocks.Length; i++)
+                blocks[i] = ExecuteTransfer(node, blocks[i - 1], TestItem.AddressB, 10);
+
+            Assert.That(node.Resolve<IPersistenceManager>().GetCurrentPersistedStateId().BlockNumber, Is.Zero);
+            fault.Enabled = interruptConversion;
+        }
+
+        Assert.That(fault.Triggered, Is.EqualTo(interruptConversion));
+        if (interruptConversion) Assert.That(fault.Attempts, Is.EqualTo(2));
+        Block reorgParent;
+        Block reorgHead;
+        await using (IContainer restarted = OpenDiskNode(directory.Path))
+        {
+            IBlockTree tree = restarted.Resolve<IBlockTree>();
+            IStateReader reader = restarted.Resolve<IStateReader>();
+            ulong kept = interruptConversion ? 1UL : 3UL;
+            Assert.That(tree.Head!.Number, Is.Zero, "RocksDB's base must not move to the unfinalized head");
+            Assert.That(KeptStateResumer.Resume(tree, reader, LimboLogs.Instance), Is.EqualTo(kept));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(tree.Head!.Hash, Is.EqualTo(blocks[kept].Hash));
+                Assert.That(reader.GetBalance(blocks[kept].Header, TestItem.AddressB), Is.EqualTo((UInt256)(kept * 10)));
+                Assert.That(reader.HasStateForBlock(blocks[2].Header), Is.EqualTo(!interruptConversion));
+                Assert.That(reader.HasStateForBlock(blocks[3].Header), Is.EqualTo(!interruptConversion));
+                Assert.That(restarted.Resolve<IPersistenceManager>().GetCurrentPersistedStateId().BlockNumber, Is.Zero);
+            }
+
+            for (int i = 2; i < blocks.Length; i++)
+            {
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(tree.FindBlock(blocks[i].Hash!, BlockTreeLookupOptions.None)?.Hash, Is.EqualTo(blocks[i].Hash));
+                    Assert.That(tree.WasProcessed(blocks[i].Number, blocks[i].Hash!), Is.True);
+                }
+            }
+
+            for (ulong i = kept + 1; i < (ulong)blocks.Length; i++)
+            {
+                Block original = tree.FindBlock(blocks[i].Hash!, BlockTreeLookupOptions.None)!;
+                Block replayed = Execute(restarted, blocks[i - 1], original);
+                Assert.That(replayed.Hash, Is.EqualTo(blocks[i].Hash), "replay must reproduce the original state and block");
+            }
+
+            reorgParent = ExecuteTransfer(restarted, blocks[1], TestItem.AddressC, 20);
+            reorgHead = ExecuteTransfer(restarted, reorgParent, TestItem.AddressC, 20);
+            AssertRecoveredFork(restarted, blocks[1], reorgParent, reorgHead);
+        }
+
+        await using IContainer reopened = OpenDiskNode(directory.Path);
+        Assert.That(KeptStateResumer.Resume(reopened.Resolve<IBlockTree>(), reopened.Resolve<IStateReader>(), LimboLogs.Instance), Is.EqualTo(3));
+        AssertRecoveredFork(reopened, blocks[1], reorgParent, reorgHead);
+    }
+
+    private static IContainer OpenDiskNode(string path, CatalogFault? fault = null)
+    {
+        FlatDbConfig flat = Config();
+        flat.Enabled = true;
+        flat.TrieWarmerWorkerCount = 0;
+        flat.ArenaFileSizeBytes = 1024 * 1024;
+        flat.PersistedSnapshotArenaPageCacheBytes = 0;
+        ConfigProvider config = new(flat, new InitConfig { BaseDbPath = path });
+        ContainerBuilder builder = new ContainerBuilder()
+            .AddModule(new NethermindModule(new ChainSpec { Parameters = new ChainParameters(), Allocations = [] }, config, LimboLogs.Instance))
+            .AddModule(new TestEnvironmentModule(TestItem.PrivateKeyA, null))
+            .AddModule(new TestBlockProcessingModule())
+            .AddSingleton<IDbFactory, RocksDbFactory>()
+            .AddSingleton<IProcessExitSource>(new ProcessExitSource(default))
+            .AddSingleton<IJsonSerializer, EthereumJsonSerializer>()
+            .AddSingleton<ISpecProvider>(new TestSpecProvider(Berlin.Instance));
+        if (fault is not null)
+            builder.AddDecorator<ISnapshotCatalog>((_, catalog) => new InterruptingCatalog(catalog, fault));
+        return builder.Build();
+    }
+
+    private static Block ExecuteTransfer(IContainer node, Block parent, Address recipient, ulong value)
+    {
+        Transaction transaction = Build.A.Transaction.WithNonce(parent.Number).WithTo(recipient)
+            .WithValue(value).WithGasPrice(1).WithGasLimit(21_000).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        Block suggested = Build.A.Block.WithParent(parent).WithTimestamp(parent.Timestamp + 12)
+            .WithTransactions(transaction).TestObject;
+        return Execute(node, parent, suggested);
+    }
+
+    private static Block Execute(IContainer node, Block parent, Block suggested)
+    {
+        Block processed = node.Resolve<MainProcessingContext>().BranchProcessor.Process(
+            parent.Header, [suggested], ProcessingOptions.NoValidation, NullBlockTracer.Instance)[0];
+        processed.Header.Hash = processed.Header.CalculateHash();
+        IBlockTree tree = node.Resolve<IBlockTree>();
+        tree.SuggestBlock(processed);
+        Assert.That(tree.TryUpdateMainChain(processed.Header, true, forceUpdateHeadBlock: true, preloadedBlocks: [processed]), Is.True);
+        return processed;
+    }
+
+    private static void AssertRecoveredFork(IContainer node, Block forkParent, Block fork, Block head)
+    {
+        IStateReader reader = node.Resolve<IStateReader>();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(node.Resolve<IBlockTree>().Head!.Hash, Is.EqualTo(head.Hash));
+            Assert.That(node.Resolve<IBlockTree>().FindHeader(fork.Number, BlockTreeLookupOptions.RequireCanonical)!.Hash, Is.EqualTo(fork.Hash));
+            Assert.That(reader.GetBalance(head.Header, TestItem.AddressB), Is.EqualTo((UInt256)10));
+            Assert.That(reader.GetBalance(head.Header, TestItem.AddressC), Is.EqualTo((UInt256)40));
+            Assert.That(reader.GetBalance(forkParent.Header, TestItem.AddressB), Is.EqualTo((UInt256)10));
+            Assert.That(node.Resolve<IPersistenceManager>().GetCurrentPersistedStateId().BlockNumber, Is.Zero);
+        }
+    }
+
+    private sealed class CatalogFault
+    {
+        public bool Enabled { get; set; }
+        public bool Triggered { get; set; }
+        public int Attempts { get; set; }
+    }
+
+    private sealed class InterruptingCatalog(ISnapshotCatalog inner, CatalogFault fault) : ISnapshotCatalog
+    {
+        public void Add(CatalogEntry entry)
+        {
+            // Fail after the second snapshot's files are fsynced, before publishing its catalog row.
+            if (fault.Enabled && ++fault.Attempts == 2)
+            {
+                fault.Triggered = true;
+                throw new IOException("Injected catalog publication failure");
+            }
+            inner.Add(entry);
+        }
+
+        public bool Remove(in StateId to, long depth) => inner.Remove(to, depth);
+        public IEnumerable<CatalogEntry> Load() => inner.Load();
     }
 
     /// <summary>A persistence manager over a real persisted tier whose RocksDB state is at <see cref="Block0"/>.</summary>
