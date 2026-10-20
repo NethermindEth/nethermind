@@ -26,6 +26,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
@@ -571,6 +572,72 @@ public partial class EngineModuleTests
             Assert.That(resent.Data.LatestValidHash, Is.EqualTo(expectedLastValidHash));
             Assert.That(forkchoice.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Invalid));
             Assert.That(forkchoice.Data.PayloadStatus.LatestValidHash, Is.EqualTo(expectedLastValidHash));
+        }
+    }
+
+    [Test]
+    public async Task suggestion_time_rejection_keeps_null_until_queued_parent_is_validated()
+    {
+        using MergeTestBlockchain chain = await Task.Run(() => CreateBlockchain());
+        ExecutionPayload[] payloads = await CreateBlockRequestBranch(chain,
+            ExecutionPayload.Create(chain.BlockTree.Head!), Address.Zero, 3);
+        Block parent = payloads[0].TryGetBlock().Data!;
+        ExecutionPayload invalidPayload = payloads[1];
+        invalidPayload.Timestamp = parent.Timestamp;
+        Block invalid = invalidPayload.TryGetBlock().Data!;
+        invalidPayload.BlockHash = invalid.Header.Hash = invalid.Header.CalculateHash();
+        ExecutionPayload descendant = payloads[2];
+        descendant.ParentHash = invalidPayload.BlockHash;
+        descendant.BlockHash = descendant.TryGetBlock().Data!.Header.CalculateHash();
+        ExecutionPayload[] invalidPayloads = [invalidPayload, descendant];
+
+        IBlockProcessingPauseControl processing = chain.Container.Resolve<IBlockProcessingPauseControl>();
+        processing.Pause();
+        try
+        {
+            Assert.That(await chain.BlockTree.SuggestBlockAsync(parent), Is.EqualTo(AddBlockResult.Added));
+            Assert.That(chain.BlockProcessingQueue.WaitUntilRemovedAsync(parent.Hash!).IsCompleted, Is.False);
+            Assert.That(chain.BlockTree.GetInfo(parent.Number, parent.Hash!).Info!.WasProcessed, Is.False);
+
+            // Forward sync validates each suggested block before its queued parent necessarily executes.
+            IBlockValidator validator = chain.Container.Resolve<IBlockValidator>();
+            Assert.That(validator.ValidateSuggestedBlock(invalid, parent.Header, out string? error), Is.False);
+            Assert.That(error, Is.EqualTo(BlockErrorMessages.InvalidTimestamp));
+
+            foreach (ExecutionPayload payload in invalidPayloads)
+            {
+                ResultWrapper<PayloadStatusV1> resent = await chain.EngineRpcModule.engine_newPayloadV1(payload);
+                ResultWrapper<ForkchoiceUpdatedV1Result> forkchoice = await chain.EngineRpcModule.engine_forkchoiceUpdatedV1(
+                    new ForkchoiceStateV1(payload.BlockHash, Keccak.Zero, Keccak.Zero));
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(resent.Data.Status, Is.EqualTo(PayloadStatus.Invalid));
+                    Assert.That(resent.Data.LatestValidHash, Is.Null);
+                    Assert.That(forkchoice.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Invalid));
+                    Assert.That(forkchoice.Data.PayloadStatus.LatestValidHash, Is.Null);
+                }
+            }
+        }
+        finally
+        {
+            processing.Resume();
+        }
+
+        await chain.BlockProcessingQueue.WaitUntilRemovedAsync(parent.Hash!).AsTask().WaitAsync(GateTimeout);
+        Assert.That(chain.BlockTree.GetInfo(parent.Number, parent.Hash!).Info!.WasProcessed, Is.True);
+        foreach (ExecutionPayload payload in invalidPayloads)
+        {
+            // Query forkchoice first, so a newPayload retry cannot repair a missing validation-event refresh.
+            ResultWrapper<ForkchoiceUpdatedV1Result> forkchoice = await chain.EngineRpcModule.engine_forkchoiceUpdatedV1(
+                new ForkchoiceStateV1(payload.BlockHash, Keccak.Zero, Keccak.Zero));
+            ResultWrapper<PayloadStatusV1> resent = await chain.EngineRpcModule.engine_newPayloadV1(payload);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(forkchoice.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Invalid));
+                Assert.That(forkchoice.Data.PayloadStatus.LatestValidHash, Is.EqualTo(parent.Hash));
+                Assert.That(resent.Data.Status, Is.EqualTo(PayloadStatus.Invalid));
+                Assert.That(resent.Data.LatestValidHash, Is.EqualTo(parent.Hash));
+            }
         }
     }
 
