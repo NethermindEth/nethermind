@@ -476,6 +476,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
 
     private bool? IsInclusionListSatisfied(Block block, Transaction[] inclusionList)
     {
+        if (inclusionList.Length == 0) return true;
         if (GetPostTransactionsState(block) is not { } state) return null;
 
         IReleaseSpec spec = _specProvider.GetSpec(block.Header);

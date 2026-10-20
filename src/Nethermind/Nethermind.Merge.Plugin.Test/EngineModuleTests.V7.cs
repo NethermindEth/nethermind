@@ -949,6 +949,28 @@ public partial class EngineModuleTests
     }
 
     [Test]
+    public async Task ForkchoiceUpdatedV5_reports_an_empty_inclusion_list_satisfied_without_the_parent_state()
+    {
+        HeadStateInterceptor headState = new();
+        using MergeTestBlockchain chain = await CreateBlockchainWithHeadState(headState,
+            new MergeConfig { TerminalTotalDifficulty = "0", NewPayloadCacheSize = 0 });
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+        Hash256 parentHash = chain.BlockTree.HeadHash;
+
+        ExecutionPayloadV4 payload = await BuildAndInsertEmptyBlock(rpc, parentHash, slot: 2);
+        await RetainInclusionListByPrunedResend(rpc, headState, payload, []);
+        headState.PrunedBlock = parentHash;
+
+        ResultWrapper<ForkchoiceUpdatedV2Result> fcu = await rpc.engine_forkchoiceUpdatedV5(
+            new ForkchoiceStateV1(payload.BlockHash, payload.BlockHash, payload.BlockHash), payloadAttributes: null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fcu.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
+            Assert.That(fcu.Data.PayloadStatus.InclusionListSatisfied, Is.True);
+        }
+    }
+
+    [Test]
     public async Task ForkchoiceUpdatedV5_retains_an_unresolved_branch_tip_across_unrelated_payloads()
     {
         HeadStateInterceptor headState = new();
