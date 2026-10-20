@@ -12,6 +12,7 @@ using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.Specs.ChainSpecStyle;
@@ -51,7 +52,9 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
         private ITxFilter CreateBaseAuRaTxFilter(
             IDictionaryContractDataStore<TxPriorityContract.Destination>? minGasPricesContractDataStore)
         {
-            IMinGasPriceTxFilter minGasPriceTxFilter = TxFilterBuilders.CreateStandardMinGasPriceTxFilter(blocksConfig);
+            // Only the producer's filter is built here, so it prices the next block on the slot schedule.
+            IMinGasPriceTxFilter minGasPriceTxFilter = TxFilterBuilders.CreateStandardMinGasPriceTxFilter(
+                blocksConfig, specProvider.GetSlotSchedule(blocksConfig.SecondsPerSlot));
             ITxFilter gasPriceTxFilter = minGasPriceTxFilter;
             if (minGasPricesContractDataStore is not null)
             {

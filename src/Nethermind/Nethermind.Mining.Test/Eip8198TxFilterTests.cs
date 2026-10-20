@@ -42,10 +42,10 @@ public class Eip8198TxFilterTests
         Transaction tx = Tx(FeeBetweenTheRules);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(new BaseFeeTxFilter(new SlotSchedule(10)).IsAllowed(tx, Parent(), Spec).Equals(AcceptTxResult.Accepted), Is.True, "10 s slots");
-            Assert.That(new BaseFeeTxFilter(new SlotSchedule(12)).IsAllowed(tx, Parent(), Spec).Equals(AcceptTxResult.FeeTooLow), Is.True, "12 s slots");
-            Assert.That(new BaseFeeTxFilter().IsAllowed(tx, Parent(), Spec).Equals(AcceptTxResult.FeeTooLow), Is.True, "no schedule, 12 s reference");
-            Assert.That(new BaseFeeTxFilter(new SlotSchedule(10)).IsAllowed(tx, Parent(), Amsterdam.Instance).Equals(AcceptTxResult.FeeTooLow), Is.True, "before EIP-8198");
+            Assert.That(new BaseFeeTxFilter(new SlotSchedule(10)).IsAllowed(tx, Parent(), Spec), Is.EqualTo(AcceptTxResult.Accepted), "10 s slots");
+            Assert.That(new BaseFeeTxFilter(new SlotSchedule(12)).IsAllowed(tx, Parent(), Spec), Is.EqualTo(AcceptTxResult.FeeTooLow), "12 s slots");
+            Assert.That(new BaseFeeTxFilter().IsAllowed(tx, Parent(), Spec), Is.EqualTo(AcceptTxResult.FeeTooLow), "no schedule, 12 s reference");
+            Assert.That(new BaseFeeTxFilter(new SlotSchedule(10)).IsAllowed(tx, Parent(), Amsterdam.Instance), Is.EqualTo(AcceptTxResult.FeeTooLow), "before EIP-8198");
         }
     }
 
@@ -57,8 +57,8 @@ public class Eip8198TxFilterTests
         Transaction tx = Tx(1_104_166_667, 1);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(new MinGasPriceTxFilter(blocksConfig, new SlotSchedule(10)).IsAllowed(tx, Parent(), Spec).Equals(AcceptTxResult.Accepted), Is.True);
-            Assert.That(new MinGasPriceTxFilter(blocksConfig).IsAllowed(tx, Parent(), Spec).Equals(AcceptTxResult.FeeTooLow), Is.True);
+            Assert.That(new MinGasPriceTxFilter(blocksConfig, new SlotSchedule(10)).IsAllowed(tx, Parent(), Spec), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(new MinGasPriceTxFilter(blocksConfig).IsAllowed(tx, Parent(), Spec), Is.EqualTo(AcceptTxResult.FeeTooLow));
         }
     }
 }

@@ -15,6 +15,7 @@ using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.TxPool;
@@ -72,7 +73,7 @@ internal sealed class AuRaTxPoolTxSourceFactory(
                 txAuRaFilterBuilders.CreateAuRaTxFilterForProducer(minGasPricesContractDataStore);
             ITxFilterPipeline txFilterPipeline = new TxFilterPipelineBuilder(logManager)
                 .WithCustomTxFilter(auraTxFilter)
-                .WithBaseFeeFilter()
+                .WithBaseFeeFilter(specProvider.GetSlotSchedule(blocksConfig.SecondsPerSlot))
                 .WithNullTxFilter()
                 .Build;
 
@@ -92,7 +93,7 @@ internal sealed class AuRaTxPoolTxSourceFactory(
             ITxFilter txSourceFilter = txAuRaFilterBuilders.CreateAuRaTxFilterForProducer(null);
             ITxFilterPipeline txFilterPipeline = new TxFilterPipelineBuilder(logManager)
                 .WithCustomTxFilter(txSourceFilter)
-                .WithBaseFeeFilter()
+                .WithBaseFeeFilter(specProvider.GetSlotSchedule(blocksConfig.SecondsPerSlot))
                 .WithHeadTxFilter()
                 .Build;
 
