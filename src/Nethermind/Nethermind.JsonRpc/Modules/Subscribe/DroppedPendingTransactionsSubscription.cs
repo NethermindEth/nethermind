@@ -39,7 +39,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
 
         private async Task Send(object? hash)
         {
-            using JsonRpcResult result = CreateSubscriptionMessage((Hash256?)hash);
+            using JsonRpcResult result = CreateSubscriptionMessage((Hash256)hash!);
             await JsonRpcDuplexClient.SendJsonRpcResult(result);
             if (_logger.IsTrace)
                 _logger.Trace(
