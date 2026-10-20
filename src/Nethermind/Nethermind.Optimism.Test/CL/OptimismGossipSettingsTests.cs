@@ -173,6 +173,43 @@ public class OptimismGossipSettingsTests
         return channel;
     }
 
+    [Test]
+    [CancelAfter(5_000)]
+    public async Task Idle_gossip_peers_do_not_hold_the_global_rpc_allowance(CancellationToken token)
+    {
+        GossipStreamBudget budget = new();
+        ISessionProtocol inner = Substitute.For<ISessionProtocol>();
+        int processed = 0;
+        TaskCompletionSource allProcessed = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        inner.ListenAsync(Arg.Any<IChannel>(), Arg.Any<ISessionContext>()).Returns(async call =>
+        {
+            try
+            {
+                IChannel channel = call.Arg<IChannel>();
+                await channel.ReadPrefixedProtobufAsync(GossipRpc.Parser, 1024, token);
+                if (Interlocked.Increment(ref processed) == GossipStreamBudget.MaxStreams + 1) allProcessed.TrySetResult();
+                await channel.ReadVarintUlongAsync(token);
+            }
+            catch (ChannelClosedException) { }
+        });
+        BoundedGossipProtocol protocol = new(inner, budget);
+        Channel[] channels = Enumerable.Range(0, GossipStreamBudget.MaxStreams + 1).Select(_ => new Channel()).ToArray();
+        Task[] listeners = channels.Select(channel => protocol.ListenAsync(channel, Session())).ToArray();
+        GossipRpc rpc = new() { Subscriptions = { new GossipRpc.Types.SubOpts { Topicid = BlocksTopic, Subscribe = true } } };
+        try
+        {
+            foreach (Channel channel in channels)
+                await channel.Reverse.WriteSizeAndProtobufAsync(rpc).AsTask().WaitAsync(token);
+            await allProcessed.Task.WaitAsync(token);
+            Assert.That(processed, Is.EqualTo(channels.Length));
+        }
+        finally
+        {
+            foreach (Channel channel in channels) await channel.CloseAsync();
+            await Task.WhenAll(listeners);
+        }
+    }
+
     private static ISessionContext Session()
     {
         Identity identity = new();

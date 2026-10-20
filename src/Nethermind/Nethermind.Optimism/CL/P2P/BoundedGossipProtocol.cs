@@ -45,6 +45,8 @@ internal sealed class BoundedGossipProtocol(ISessionProtocol inner, GossipStream
 
         public async Task<ulong> ReadVarintUlongAsync(CancellationToken token)
         {
+            // The listener has finished processing the previous RPC before requesting its next prefix.
+            Release();
             ulong length = await channel.ReadVarintUlongAsync(token);
             // Duplicate outbound dials can leave an idle stream ahead of the stream selected to send RPCs.
             if (!_reserved && !(_reserved = budget.TryAcquire(peer)))
@@ -57,7 +59,11 @@ internal sealed class BoundedGossipProtocol(ISessionProtocol inner, GossipStream
 
         public void Release()
         {
-            if (_reserved) budget.Release(peer);
+            if (_reserved)
+            {
+                budget.Release(peer);
+                _reserved = false;
+            }
         }
 
         public ValueTask<ReadResult> ReadAsync(int length, ReadBlockingMode blockingMode = ReadBlockingMode.WaitAll, CancellationToken token = default) =>
