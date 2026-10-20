@@ -23,11 +23,39 @@ public class MonitoringServiceTests
     [Test]
     public async Task Disposing_container_stops_metrics_server()
     {
+        // The probed port is released before the server binds it and bind failures are not surfaced,
+        // so retry on a fresh port if another process takes it in between.
+        int port = 0;
+        IContainer container = null;
+        for (int attempt = 0; attempt < 3 && container is null; attempt++)
+        {
+            port = GetFreePort();
+            IContainer candidate = BuildMonitoringContainer(port);
+            await candidate.Resolve<IMonitoringService>().StartAsync();
+            if (await ServesMetrics(port))
+                container = candidate;
+            else
+                await candidate.DisposeAsync();
+        }
+
+        Assert.That(container, Is.Not.Null, "metrics server did not start");
+        await container.DisposeAsync();
+
+        using TcpListener reboundListener = new(IPAddress.Loopback, port);
+        Assert.DoesNotThrow(() => reboundListener.Start());
+    }
+
+    private static int GetFreePort()
+    {
         using TcpListener listener = new(IPAddress.Loopback, 0);
         listener.Start();
         int port = ((IPEndPoint)listener.LocalEndpoint).Port;
         listener.Stop();
+        return port;
+    }
 
+    private static IContainer BuildMonitoringContainer(int port)
+    {
         MetricsConfig config = new()
         {
             Enabled = true,
@@ -35,34 +63,34 @@ public class MonitoringServiceTests
             ExposePort = port,
             InitializeStaticLabels = false
         };
-        await using IContainer container = new ContainerBuilder()
+        return new ContainerBuilder()
             .AddModule(new MonitoringModule(config))
             .AddSingleton<IMetricsConfig>(config)
             .AddSingleton<ILogManager>(LimboLogs.Instance)
             .AddSingleton<IMetricsController, MetricsController>()
             .Build();
+    }
 
-        await container.Resolve<IMonitoringService>().StartAsync();
-        using (HttpClient client = new())
+    private static async Task<bool> ServesMetrics(int port)
+    {
+        using HttpClient client = new();
+        DateTime deadline = DateTime.UtcNow.AddSeconds(10);
+        while (DateTime.UtcNow < deadline)
         {
-            await Assert.ThatAsync(async () =>
+            try
             {
-                try
-                {
-                    using HttpResponseMessage response = await client.GetAsync($"http://127.0.0.1:{port}/metrics");
-                    return response.IsSuccessStatusCode;
-                }
-                catch (HttpRequestException)
-                {
-                    return false;
-                }
-            }, Is.True.After(10_000, 50));
+                using HttpResponseMessage response = await client.GetAsync($"http://127.0.0.1:{port}/metrics");
+                if (response.IsSuccessStatusCode)
+                    return true;
+            }
+            catch (HttpRequestException)
+            {
+            }
+
+            await Task.Delay(50);
         }
 
-        await container.DisposeAsync();
-
-        using TcpListener reboundListener = new(IPAddress.Loopback, port);
-        Assert.DoesNotThrow(() => reboundListener.Start());
+        return false;
     }
 
     [TestCase("user", "pass")]
