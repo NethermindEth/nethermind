@@ -45,6 +45,20 @@ public class MonitoringServiceTests
         Assert.DoesNotThrow(() => reboundListener.Start());
     }
 
+    [Test]
+    public async Task Disposing_container_does_not_throw_when_metrics_port_is_taken()
+    {
+        using TcpListener listener = new(IPAddress.Loopback, 0);
+        listener.Start();
+        IContainer container = BuildMonitoringContainer(((IPEndPoint)listener.LocalEndpoint).Port);
+
+        await container.Resolve<IMonitoringService>().StartAsync();
+        // Let the server attempt the bind before it is stopped
+        await Task.Delay(1000);
+
+        await Assert.ThatAsync(async () => await container.DisposeAsync(), Throws.Nothing);
+    }
+
     private static int GetFreePort()
     {
         using TcpListener listener = new(IPAddress.Loopback, 0);
@@ -73,7 +87,7 @@ public class MonitoringServiceTests
 
     private static async Task<bool> ServesMetrics(int port)
     {
-        using HttpClient client = new();
+        using HttpClient client = new() { Timeout = TimeSpan.FromSeconds(1) };
         DateTime deadline = DateTime.UtcNow.AddSeconds(10);
         while (DateTime.UtcNow < deadline)
         {
@@ -83,7 +97,7 @@ public class MonitoringServiceTests
                 if (response.IsSuccessStatusCode)
                     return true;
             }
-            catch (HttpRequestException)
+            catch (Exception e) when (e is HttpRequestException or TaskCanceledException)
             {
             }
 

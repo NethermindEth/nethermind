@@ -167,7 +167,18 @@ public class MonitoringService : IMonitoringService, IAsyncDisposable
         await _timerCancellationSource.CancelAsync();
         await _monitoringTimerTask;
         _timerCancellationSource.Dispose();
-        if (_metricServer is not null) await _metricServer.StopAsync();
+        if (_metricServer is not null)
+        {
+            try
+            {
+                await _metricServer.StopAsync();
+            }
+            // StopAsync rethrows a startup failure such as the port being taken
+            catch (Exception ex)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Metrics server on port {_exposePort} failed: {ex.Message}");
+            }
+        }
         if (_metricPusher is not null) await _metricPusher.StopAsync();
         _pusherHttpClient?.Dispose();
     }
