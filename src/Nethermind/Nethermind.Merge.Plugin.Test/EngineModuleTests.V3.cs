@@ -307,8 +307,12 @@ public partial class EngineModuleTests
 
         if (missingField is null)
         {
-            AssertInvalidNewPayload(result, expectedValidationErrorPrefix: "Transaction count");
-            Assert.That(result.Data.LatestValidHash, Is.EqualTo(payload.ParentHash));
+            using (Assert.EnterMultipleScope())
+            {
+                AssertInvalidNewPayload(result, expectedValidationErrorPrefix: "Transaction count");
+                // The parent is the terminal PoW block.
+                Assert.That(result.Data.LatestValidHash, Is.EqualTo(Keccak.Zero));
+            }
         }
         else
         {

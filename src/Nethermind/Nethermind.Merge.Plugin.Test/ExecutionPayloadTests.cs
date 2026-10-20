@@ -8,6 +8,7 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -573,11 +574,19 @@ public class ExecutionPayloadTests
         }
     }
 
-    [Test]
-    public void Reports_no_latest_valid_hash_when_parent_not_processed()
+    [TestCase(true, true, "parent")]
+    [TestCase(true, false, null)]
+    [TestCase(false, true, "zero")]
+    [TestCase(false, false, "zero")]
+    public void Reports_latest_valid_hash_by_parent_state(bool parentPostMerge, bool parentProcessed, string? expected)
     {
-        Assert.That(Guard(parentProcessed: false).IsWithinParentGasLimit(Payload(100_000), London.Instance, out _, out Hash256? latestValidHash), Is.False);
-        Assert.That(latestValidHash, Is.Null);
+        bool result = Guard(parentProcessed, parentPostMerge).IsWithinParentGasLimit(Payload(100_000), London.Instance, out _, out Hash256? latestValidHash);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.False);
+            Assert.That(latestValidHash, Is.EqualTo(expected switch { "parent" => TestItem.KeccakA, "zero" => Keccak.Zero, _ => null }));
+        }
     }
 
     private static readonly IReleaseSpec[] MinTransactionGasForks = [Frontier.Instance, London.Instance, Amsterdam.Instance, Eip8141Prototype.Instance];
@@ -598,18 +607,18 @@ public class ExecutionPayloadTests
     {
         PayloadTransactionCountGuard guard = disabled
             ? PayloadTransactionCountGuard.Disabled
-            : new PayloadTransactionCountGuard(Substitute.For<IBlockTree>());
+            : new PayloadTransactionCountGuard(Substitute.For<IBlockTree>(), AlwaysPoS.Instance);
 
         Assert.That(guard.IsWithinParentGasLimit(Payload(100_000), Osaka.Instance, out _, out _), Is.True);
     }
 
-    private static PayloadTransactionCountGuard Guard(bool parentProcessed)
+    private static PayloadTransactionCountGuard Guard(bool parentProcessed, bool parentPostMerge = true)
     {
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         BlockHeader parent = Build.A.BlockHeader.WithGasLimit(ParentGasLimit).TestObject;
         blockTree.FindHeader(TestItem.KeccakA, BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.DoNotCreateLevelIfMissing).Returns(parent);
         blockTree.WasProcessed(parent.Number, TestItem.KeccakA).Returns(parentProcessed);
-        return new PayloadTransactionCountGuard(blockTree);
+        return new PayloadTransactionCountGuard(blockTree, parentPostMerge ? AlwaysPoS.Instance : NoPoS.Instance);
     }
 
     private static ExecutionPayload Payload(int count, ulong blockNumber = 0) =>
