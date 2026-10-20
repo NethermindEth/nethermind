@@ -14,7 +14,8 @@ public readonly record struct PbtGroupReference : IComparable<PbtGroupReference>
 
     private PbtGroupReference(ulong value) => _value = value;
 
-    internal PbtGroupReference(uint generation, int offset) => _value = (ulong)generation << 32 | (uint)offset;
+    /// <summary>The direct reference of the record at <paramref name="offset"/> in log generation <paramref name="generation"/>.</summary>
+    public PbtGroupReference(uint generation, int offset) => _value = (ulong)generation << 32 | (uint)offset;
 
     /// <summary>No physical group is owned by this subtree. Also represents a snapshot group tombstone.</summary>
     public static PbtGroupReference None => default;
@@ -34,6 +35,9 @@ public readonly record struct PbtGroupReference : IComparable<PbtGroupReference>
     /// <inheritdoc/>
     public int CompareTo(PbtGroupReference other) => _value.CompareTo(other._value);
 
-    internal uint Generation => (uint)(_value >> 32);
-    internal int Offset => (int)(uint)_value;
+    /// <summary>The log generation of a direct reference.</summary>
+    public uint Generation => (uint)(_value >> 32);
+
+    /// <summary>The byte offset of a direct reference in its generation.</summary>
+    public int Offset => (int)(uint)_value;
 }

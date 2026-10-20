@@ -46,6 +46,7 @@ internal sealed class PbtTestContext : IAsyncDisposable
     public PbtSnapshotRepository Repository { get; } = new(new MetricsConfig(), NullSnapshotCatalog.Instance, new PbtPersistedPublicationGate());
     public IPbtResourcePool ResourcePool { get; }
     public IRefCountingMemoryProvider NodeGroupMemory { get; }
+    public PbtGroupLog NodeGroupLog { get; }
     public IPbtPersistence Persistence { get; }
     public PbtPersistenceManager PersistenceManager { get; }
     public PbtDbManager Manager { get; }
@@ -65,15 +66,15 @@ internal sealed class PbtTestContext : IAsyncDisposable
         _cachedReaderPersistence = new PbtCachedReaderPersistence(new PbtRocksDbPersistence(db, Config, NullTrieNodeLog.Instance), processExitSource);
         Persistence = Config.CarryForwardCache ? new PbtCarryForwardCachingPersistence(_cachedReaderPersistence, PbtCarryForwardCachingPersistence.DefaultMaxEntriesPerKind) : _cachedReaderPersistence;
         NodeGroupMemory = nodeGroupMemory ?? PooledRefCountingMemoryProvider.Instance;
-        nodeGroupLog ??= new PbtGroupLog(NodeGroupMemory, compressedMemoryBudget: 0, retainedGenerations: 0);
-        ResourcePool = new PbtResourcePool(Config, nodeGroupLog, NodeGroupMemory);
+        NodeGroupLog = nodeGroupLog ?? new PbtGroupLog(NodeGroupMemory, compressedMemoryBudget: 0, retainedGenerations: 0);
+        ResourcePool = new PbtResourcePool(Config, NodeGroupMemory);
         ICompactionSchedule schedule = PbtCoreRegistration.CreateCompactionSchedule(new MemDb(), Config, LimboLogs.Instance);
         PbtSnapshotCompactor compactor = new(ResourcePool, schedule, Repository, Config, LimboLogs.Instance);
         PersistenceManager = new PbtPersistenceManager(Config, FinalizedStateProvider, Persistence, Repository, schedule, NullStatePersistenceBarrier.Instance, LimboLogs.Instance,
             NullPbtPersistedSnapshotLoader.Instance, NullPbtPersistedSnapshotCompactor.Instance, CancellationToken.None);
-        Manager = new PbtDbManager(Repository, PersistenceManager, Persistence, ResourcePool, nodeGroupLog, compactor, processExitSource, LimboLogs.Instance, metricsConfig, NullPbtPersistedSnapshotLoader.Instance);
+        Manager = new PbtDbManager(Repository, PersistenceManager, Persistence, ResourcePool, NodeGroupLog, compactor, processExitSource, LimboLogs.Instance, metricsConfig, NullPbtPersistedSnapshotLoader.Instance);
         StateReader = new PbtStateReader(CodeDb, Manager);
-        WorldStateManager = new PbtWorldStateManager(Manager, _childHeaders, _stateHeaderProvider, NodeGroupMemory, StateReader, () => new PbtOverridableWorldScope(CodeDb, Manager, NodeGroupMemory, Config, _stateHeaderProvider, LimboLogs.Instance), CodeDb, Config, LimboLogs.Instance);
+        WorldStateManager = new PbtWorldStateManager(Manager, _childHeaders, _stateHeaderProvider, NodeGroupMemory, StateReader, () => new PbtOverridableWorldScope(CodeDb, Manager, NodeGroupMemory, NodeGroupLog, Config, _stateHeaderProvider, LimboLogs.Instance), CodeDb, Config, LimboLogs.Instance);
     }
 
     public PbtScopeProvider CreateScopeProvider(bool isReadOnly = false, ILogManager? logManager = null) =>

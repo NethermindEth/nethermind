@@ -19,6 +19,7 @@ using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Pbt;
+using Nethermind.Pbt.NodeLog;
 using Nethermind.State.Flat;
 using Nethermind.State.Pbt.Common;
 using Nethermind.State.Pbt.ScopeProvider;
@@ -60,6 +61,37 @@ public class PbtWorldStateScopeTests
             Assert.That(canonical.RootHash, Is.EqualTo(canonicalRoot));
             Assert.That(canonical.Get(TestItem.AddressA)!.Balance, Is.EqualTo((UInt256)1));
         }
+    }
+
+    [Test]
+    public async Task Override_folds_write_to_their_own_log_and_build_on_newer_global_state()
+    {
+        PbtConfig config = new() { Enabled = true };
+        await using IContainer container = PbtTestContext.BuildProductionContainer(config);
+        PbtWorldStateManager manager = container.Resolve<PbtWorldStateManager>();
+        PbtGroupLog log = container.Resolve<PbtGroupLog>();
+        BlockHeader first = CommitCanonical(manager, null, 1, 1);
+        using IOverridableWorldScope overrides = manager.CreateOverridableWorldScope();
+        long globalBytes = log.UsedBytes;
+        using (IWorldStateScopeProvider.IScope scope = overrides.WorldState.BeginScope(first, new LocalMetrics()))
+        {
+            Write(scope, 5);
+            scope.Commit(2);
+        }
+        Assert.That(log.UsedBytes, Is.EqualTo(globalBytes), "override folds write to the overlay log");
+        // The overlay pinned the global log before this block, so it cannot reach the block's root group.
+        BlockHeader second = CommitCanonical(manager, first, 2, 3);
+        Hash256 expected;
+        using (IWorldStateScopeProvider.IScope canonical = manager.GlobalWorldState.BeginScope(second, new LocalMetrics()))
+        {
+            Write(canonical, 7);
+            canonical.UpdateRootHash();
+            expected = canonical.RootHash;
+        }
+        using IWorldStateScopeProvider.IScope overridden = overrides.WorldState.BeginScope(second, new LocalMetrics());
+        Write(overridden, 7);
+        overridden.UpdateRootHash();
+        Assert.That(overridden.RootHash, Is.EqualTo(expected));
     }
 
     [Test]
@@ -460,6 +492,14 @@ public class PbtWorldStateScopeTests
                 Assert.That(storage.Get(1000), Is.EqualTo(generation is 0 or 2 ? UInt256.Zero : (UInt256)0xcd));
             }
         }
+    }
+
+    private static BlockHeader CommitCanonical(PbtWorldStateManager manager, BlockHeader? parent, ulong number, byte balance)
+    {
+        using IWorldStateScopeProvider.IScope scope = manager.GlobalWorldState.BeginScope(parent, new LocalMetrics());
+        Write(scope, balance);
+        scope.Commit(number);
+        return Build.A.BlockHeader.WithNumber(number).WithStateRoot(scope.RootHash).TestObject;
     }
 
     private static void Write(IWorldStateScopeProvider.IScope scope, byte balance)

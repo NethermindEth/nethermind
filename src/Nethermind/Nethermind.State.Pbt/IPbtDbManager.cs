@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Threading;
+using Nethermind.Pbt.NodeLog;
 using Nethermind.State.Flat;
 using Nethermind.State.Pbt.Snapshot;
 
@@ -26,14 +27,15 @@ public interface IPbtDbManager : IPbtCommitTarget
     /// rather than inferred: an override scope gathers a writable bundle that is still not main block
     /// processing, so there is nothing about the bundle itself to infer it from.
     /// </param>
-    PbtSnapshotBundle? TryGatherBundle(in StateId stateId, PbtResourcePool.Usage usage) => TryGatherBundle(stateId, new PbtSnapshotPooledList(1), usage, filterInMemorySlotReads: false);
+    PbtSnapshotBundle? TryGatherBundle(in StateId stateId, PbtResourcePool.Usage usage);
 
     /// <summary>Assembles a writable bundle able to serve reads at the newest of <paramref name="localSnapshots"/>, or null when <paramref name="baseStateId"/> is not available.</summary>
     /// <param name="baseStateId">The state the oldest of <paramref name="localSnapshots"/> builds on.</param>
     /// <param name="localSnapshots">Leased snapshots kept outside this manager, oldest first; taken over on every path.</param>
     /// <param name="usage">Pool category for the bundle's write buffer and the layers it seals.</param>
     /// <param name="filterInMemorySlotReads">Serve slot reads through the in-memory layers' negative filter; for read-only execution only.</param>
-    PbtSnapshotBundle? TryGatherBundle(in StateId baseStateId, PbtSnapshotPooledList localSnapshots, PbtResourcePool.Usage usage, bool filterInMemorySlotReads);
+    /// <param name="nodeGroupLog">The log the bundle writes its groups to and <paramref name="localSnapshots"/> wrote theirs to.</param>
+    PbtSnapshotBundle? TryGatherBundle(in StateId baseStateId, PbtSnapshotPooledList localSnapshots, PbtResourcePool.Usage usage, bool filterInMemorySlotReads, IPbtGroupLog nodeGroupLog);
 
     /// <inheritdoc cref="TryGatherBundle(in StateId, PbtResourcePool.Usage)"/>
     /// <exception cref="StateNotRetainedException">The state is not available.</exception>

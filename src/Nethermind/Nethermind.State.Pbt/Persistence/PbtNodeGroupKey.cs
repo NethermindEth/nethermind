@@ -53,7 +53,7 @@ public static class PbtNodeGroupKey
     /// <paramref name="lowerBound"/> must outlive every use of the records.
     /// </remarks>
     /// <exception cref="InvalidOperationException">A record at or above <paramref name="lowerBound"/> is no longer resident.</exception>
-    public static List<PbtGroupRecord> InKeyOrder(PbtGroupLog log, PbtGroupReference root, PbtGroupReference lowerBound)
+    public static List<PbtGroupRecord> InKeyOrder(IPbtGroupLog log, PbtGroupReference root, PbtGroupReference lowerBound)
     {
         List<PbtGroupRecord> ordered = [];
         if (!TryResolve(log, root, lowerBound, out PbtGroupRecord rootRecord)) return ordered;
@@ -63,7 +63,7 @@ public static class PbtNodeGroupKey
     }
 
     /// <summary>Emits the groups below <paramref name="record"/> merged with <paramref name="pending"/>, the sorted groups above them whose keys fall in its range.</summary>
-    private static void MergeBelow(PbtGroupLog log, in PbtGroupRecord record, PbtGroupReference lowerBound,
+    private static void MergeBelow(IPbtGroupLog log, in PbtGroupRecord record, PbtGroupReference lowerBound,
         List<(byte[] Key, PbtGroupRecord Record)> pending, List<PbtGroupRecord> ordered)
     {
         PbtGroupLinks links = record.Links;
@@ -86,7 +86,7 @@ public static class PbtNodeGroupKey
         foreach ((_, PbtGroupRecord group) in pending) ordered.Add(group);
     }
 
-    private static bool TryResolve(PbtGroupLog log, PbtGroupReference reference, PbtGroupReference lowerBound, out PbtGroupRecord record)
+    private static bool TryResolve(IPbtGroupLog log, PbtGroupReference reference, PbtGroupReference lowerBound, out PbtGroupRecord record)
     {
         record = default;
         if (!reference.IsDirect || reference.CompareTo(lowerBound) < 0) return false;

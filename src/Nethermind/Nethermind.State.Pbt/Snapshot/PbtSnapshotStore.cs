@@ -28,7 +28,7 @@ public sealed class PbtSnapshotStore(PbtSnapshotBundle bundle) : IPbtStore, IDis
     private readonly bool _recordReadTimes = Metrics.PbtTrieUpdaterNodeGroupReadTimes is not NoopMetricObserver;
     private readonly ArrayPoolList<ArrayPoolList<BufferedNodeGroup>> _handedOff = new(16);
     private bool _complete;
-    private PbtGroupLog Log => bundle.NodeGroupLog;
+    private IPbtGroupLog Log => bundle.NodeGroupLog;
 
     /// <inheritdoc/>
     public PbtGroupReference RootGroupReference => bundle.RootGroupReference;
@@ -42,14 +42,17 @@ public sealed class PbtSnapshotStore(PbtSnapshotBundle bundle) : IPbtStore, IDis
     public void CompleteFold() => _complete = true;
 
     /// <inheritdoc/>
-    /// <remarks>Snapshot pins keep in-memory changes in the log, so misses read only the captured persisted layers.</remarks>
+    /// <remarks>
+    /// A miss also searches the in-memory snapshot trees: an overlay log cannot reach a shared snapshot written after its
+    /// pin, so such a branch starts from an unresolved root.
+    /// </remarks>
     public RefCountingMemory? GetNodeGroup(scoped in PbtTraversalPath groupKey)
     {
         PbtStorageNodePath storagePath = groupKey.ToPath<PbtStorageNodePath>();
-        if (!_recordReadTimes) return bundle.GetPersistedNodeGroup(storagePath);
+        if (!_recordReadTimes) return bundle.GetNodeGroup(storagePath);
 
         long start = Stopwatch.GetTimestamp();
-        RefCountingMemory? payload = bundle.GetPersistedNodeGroup(storagePath);
+        RefCountingMemory? payload = bundle.GetNodeGroup(storagePath);
         Metrics.PbtTrieUpdaterNodeGroupReadTimes.Observe(
             Stopwatch.GetTimestamp() - start,
             (payload is null ? _nullLabels : _foundLabels)[ReadLabelIndex(storagePath)]);

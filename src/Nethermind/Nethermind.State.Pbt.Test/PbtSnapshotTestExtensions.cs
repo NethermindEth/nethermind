@@ -60,6 +60,9 @@ internal static class PbtSnapshotTestExtensions
         }
     }
 
+    /// <summary>The group log of test layers and bundles that bring none of their own.</summary>
+    internal static PbtGroupLog DefaultNodeGroupLog { get; } = new(PooledRefCountingMemoryProvider.Instance, compressedMemoryBudget: 0, retainedGenerations: 0);
+
     /// <summary>Publishes a tree holding <paramref name="groups"/> as the layer's own groups.</summary>
     /// <remarks>
     /// Every ancestor group level a listed group needs, the root included, gets a one-byte placeholder unless listed, so each group
@@ -68,8 +71,8 @@ internal static class PbtSnapshotTestExtensions
     /// </remarks>
     internal static void SetTree(this PbtSnapshotContent content, params (PbtStorageNodePath Path, byte[]? Payload)[] groups)
     {
-        content.BeginNodeGroupWrites();
-        (PbtGroupReference root, int count, long bytes) = BuildTree(content.NodeGroupLog, groups, fillAncestors: true);
+        content.BeginNodeGroupWrites(content.NodeGroupLog ?? DefaultNodeGroupLog);
+        (PbtGroupReference root, int count, long bytes) = BuildTree(content.NodeGroupLog!, groups, fillAncestors: true);
         content.RootGroupReference = root;
         content.AddNodeGroups(count, bytes);
     }
@@ -77,8 +80,8 @@ internal static class PbtSnapshotTestExtensions
     /// <summary>Publishes a complete physical tree as the layer's own groups, each linked from its nearest physical ancestor across compressed routes.</summary>
     internal static void SetPhysicalTree(this PbtSnapshotContent content, IEnumerable<PbtPhysicalPayload> groups)
     {
-        content.BeginNodeGroupWrites();
-        (PbtGroupReference root, int count, long bytes) = BuildTree(content.NodeGroupLog,
+        content.BeginNodeGroupWrites(content.NodeGroupLog ?? DefaultNodeGroupLog);
+        (PbtGroupReference root, int count, long bytes) = BuildTree(content.NodeGroupLog!,
             [.. groups.Select(static group => (group.Key, (byte[]?)group.Payload.ToArray()))], fillAncestors: false);
         content.RootGroupReference = root;
         content.AddNodeGroups(count, bytes);
@@ -91,7 +94,7 @@ internal static class PbtSnapshotTestExtensions
         bundle.PublishNodeGroups(root, count, bytes);
     }
 
-    private static (PbtGroupReference Root, int Count, long Bytes) BuildTree(PbtGroupLog log, (PbtStorageNodePath Path, byte[]? Payload)[] groups, bool fillAncestors)
+    private static (PbtGroupReference Root, int Count, long Bytes) BuildTree(IPbtGroupLog log, (PbtStorageNodePath Path, byte[]? Payload)[] groups, bool fillAncestors)
     {
         if (groups.Any(static group => group.Path.BitDepth == 0 && group.Payload is null)) return (PbtGroupReference.None, 0, 0);
         Dictionary<PbtStorageNodePath, byte[]?> tree = groups.ToDictionary(static group => group.Path, static group => group.Payload);

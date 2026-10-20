@@ -75,8 +75,7 @@ public class PbtMetricsTests
             using (IWorldStateScopeProvider.IWorldStateWriteBatch batch = scope.StartWriteBatch(1)) batch.Set(TestItem.AddressA, new Account(1, 100));
             scope.Commit(1);
         }
-        PbtSnapshotContent probe = context.ResourcePool.GetSnapshotContent(PbtResourcePool.Usage.MainBlockProcessing);
-        PbtGroupLog log = probe.NodeGroupLog;
+        PbtGroupLog log = context.NodeGroupLog;
         using (Assert.EnterMultipleScope())
         {
             Assert.That(Metrics.PbtGroupLogGenerations, Is.EqualTo(log.GenerationCount).And.GreaterThan(0));
@@ -86,7 +85,6 @@ public class PbtMetricsTests
             Assert.That(Metrics.PbtGroupLogRootHits, Is.EqualTo(log.RootHits));
             Assert.That(Metrics.PbtGroupLogRootMisses, Is.EqualTo(log.RootMisses));
         }
-        context.ResourcePool.ReturnSnapshotContent(PbtResourcePool.Usage.MainBlockProcessing, probe);
     }
 
     [Test]
@@ -194,7 +192,8 @@ public class PbtMetricsTests
         }
         IPbtResourcePool pool = Substitute.For<IPbtResourcePool>();
         // An unchanged block inherits its parent's tree.
-        using PbtSnapshotContent emptyContent = new(content.NodeGroupLog);
+        using PbtSnapshotContent emptyContent = new();
+        emptyContent.BeginNodeGroupWrites(content.NodeGroupLog ?? PbtSnapshotTestExtensions.DefaultNodeGroupLog);
         emptyContent.RootGroupReference = content.RootGroupReference;
         using PbtReadOnlySnapshotBundle bundle = new(PbtSnapshotBundleTestExtensions.Chain(pool, content, emptyContent), reader, detailedMetrics, new PbtPersistedSnapshotList(0), PbtSnapshotBundleTestExtensions.NoNodeGroupPin, slotFilterBitsPerKey: 0);
 

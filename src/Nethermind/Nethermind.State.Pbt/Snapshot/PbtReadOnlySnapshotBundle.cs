@@ -77,15 +77,10 @@ public sealed class PbtReadOnlySnapshotBundle(
     private PbtSnapshot? MemoryLayer(int index) => index >= persistedSnapshots.Count ? snapshots[index - persistedSnapshots.Count] : null;
     private PbtPersistedSnapshot? PersistedLayer(int index) => index < persistedSnapshots.Count ? persistedSnapshots[index] : null;
 
-    internal PbtGroupReference GetRootGroupReference(PbtGroupLog log)
+    internal PbtGroupReference GetRootGroupReference(IPbtGroupLog log)
     {
         ObjectDisposedException.ThrowIf(_isDisposed, this);
-        if (snapshots.Count > 0)
-        {
-            PbtSnapshot snapshot = snapshots[^1];
-            if (!ReferenceEquals(snapshot.Content.NodeGroupLog, log)) throw new InvalidOperationException("A branch must share the traversal log of its in-memory snapshots.");
-            return snapshot.RootGroupReference;
-        }
+        if (snapshots.Count > 0) return snapshots[^1].MapRootGroupReference(log);
         return TreeRoot == default ? PbtGroupReference.None : log.FindRoot(TreeRoot);
     }
 

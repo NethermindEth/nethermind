@@ -25,11 +25,12 @@ namespace Nethermind.State.Pbt.Snapshot;
 public sealed class PbtSnapshotBundle(
     PbtSnapshotPooledList snapshots,
     PbtReadOnlySnapshotBundle readOnlyBundle,
+    IPbtGroupLog nodeGroupLog,
     IPbtResourcePool resourcePool,
     PbtResourcePool.Usage usage,
     bool filterInMemorySlotReads) : IDisposable
 {
-    private PbtSnapshotContent? _writeBuffer = resourcePool.GetSnapshotContent(usage);
+    private PbtSnapshotContent? _writeBuffer = RentWriteBuffer(resourcePool, usage, nodeGroupLog);
     // Taken before the first root index lookup and after the write buffer's generation pin, so with it this covers an
     // indexed root written after the read-only base was pinned.
     private IDisposable? _rootLookupPin;
@@ -53,8 +54,8 @@ public sealed class PbtSnapshotBundle(
 
     public ValueHash256 TreeRoot => snapshots.Count > 0 ? snapshots[^1].TreeRoot : readOnlyBundle.TreeRoot;
 
-    /// <summary>The traversal log used by the current write buffer.</summary>
-    public PbtGroupLog NodeGroupLog => WriteBuffer.NodeGroupLog;
+    /// <summary>The traversal log of this branch's write buffers and local snapshots.</summary>
+    public IPbtGroupLog NodeGroupLog => nodeGroupLog;
 
     /// <summary>The last published root reference visible to this branch, an indexed persisted root, or an unresolved persisted root.</summary>
     public PbtGroupReference RootGroupReference
@@ -62,12 +63,7 @@ public sealed class PbtSnapshotBundle(
         get
         {
             if (!WriteBuffer.RootGroupReference.IsUnknown) return WriteBuffer.RootGroupReference;
-            if (snapshots.Count > 0)
-            {
-                PbtSnapshot snapshot = snapshots[^1];
-                if (!ReferenceEquals(snapshot.Content.NodeGroupLog, NodeGroupLog)) throw new InvalidOperationException("A branch must share the traversal log of its in-memory snapshots.");
-                return snapshot.RootGroupReference;
-            }
+            if (snapshots.Count > 0) return snapshots[^1].MapRootGroupReference(NodeGroupLog);
             if (Volatile.Read(ref _rootLookupPin) is null)
             {
                 IDisposable pin = NodeGroupLog.PinAll();
@@ -361,8 +357,8 @@ public sealed class PbtSnapshotBundle(
 
     /// <summary>Seals the write buffer into a snapshot and hands its initial lease to the caller.</summary>
     /// <remarks>
-    /// The snapshot's root group reference is None only for the empty tree: a root group the log no longer holds is copied
-    /// back in from the persisted layers.
+    /// The snapshot's root group reference is None only for the empty tree: a root group this branch's log cannot reach is
+    /// copied back in.
     /// </remarks>
     public PbtSnapshot CollectSnapshot(in StateId from, in StateId to, in ValueHash256 treeRoot)
     {
@@ -380,22 +376,29 @@ public sealed class PbtSnapshotBundle(
         PbtSnapshot snapshot = new(from, to, treeRoot, WriteBuffer, resourcePool, usage);
         snapshot.TryLease();
         snapshots.Add(snapshot);
-        Metrics.ObserveGroupLog(NodeGroupLog);
+        if (NodeGroupLog is PbtGroupLog log) Metrics.ObserveGroupLog(log);
         _hintedAccounts.Clear();
         ReleasePersistedNodeGroups();
         ReturnReplacedRuns();
-        _writeBuffer = resourcePool.GetSnapshotContent(usage);
+        _writeBuffer = RentWriteBuffer(resourcePool, usage, nodeGroupLog);
         return snapshot;
     }
 
-    /// <exception cref="InvalidDataException">The persisted layers hold no root group for the non-empty tree.</exception>
+    /// <exception cref="InvalidDataException">No layer holds a root group for the non-empty tree.</exception>
     private PbtGroupReference CopyRootGroup()
     {
-        using RefCountingMemory payload = GetPersistedNodeGroup(default) ?? throw new InvalidDataException("A referenced PBT node group is missing.");
+        using RefCountingMemory payload = GetNodeGroup(default) ?? throw new InvalidDataException("A referenced PBT node group is missing.");
         ReadOnlySpan<byte> bytes = payload.GetSpan();
         PbtGroupReference reference = NodeGroupLog.Append(default, bytes, PbtGroupLinks.Unknown);
         WriteBuffer.AddNodeGroups(1, bytes.Length);
         return reference;
+    }
+
+    private static PbtSnapshotContent RentWriteBuffer(IPbtResourcePool resourcePool, PbtResourcePool.Usage usage, IPbtGroupLog nodeGroupLog)
+    {
+        PbtSnapshotContent content = resourcePool.GetSnapshotContent(usage);
+        content.BeginNodeGroupWrites(nodeGroupLog);
+        return content;
     }
 
     private void ReturnReplacedRuns()

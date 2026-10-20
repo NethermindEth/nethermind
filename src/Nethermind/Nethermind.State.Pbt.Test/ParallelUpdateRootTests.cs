@@ -600,10 +600,17 @@ public class ParallelUpdateRootTests
             _memory = memory;
             _ownsLog = log is null;
             Log = log ?? new PbtGroupLog(memory, compressedMemoryBudget: 0, generationBytes: 4096, retainedGenerations: 0);
-            _content = new PbtSnapshotContent(Log, memory);
+            _content = NewContent();
         }
 
         public PbtGroupLog Log { get; }
+
+        private PbtSnapshotContent NewContent()
+        {
+            PbtSnapshotContent content = new(_memory);
+            content.BeginNodeGroupWrites(Log);
+            return content;
+        }
         public PbtGroupReference RootReference { get; private set; }
         public long LastDirectReads { get; private set; }
         public long LastFallbackReads { get; private set; }
@@ -694,7 +701,7 @@ public class ParallelUpdateRootTests
         public void DiscardUncommittedState()
         {
             _content.Dispose();
-            _content = new PbtSnapshotContent(Log, _memory);
+            _content = NewContent();
             _groups.Clear();
         }
 

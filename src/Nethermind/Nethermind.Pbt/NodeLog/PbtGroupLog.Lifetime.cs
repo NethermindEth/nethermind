@@ -31,11 +31,9 @@ public sealed partial class PbtGroupLog
         }
     }
 
-    /// <summary>Keeps every record borrowed while the returned pin lives valid until it is disposed.</summary>
-    /// <remarks>
-    /// A record may stop resolving while the pin lives, so readers fall back on a miss; records already borrowed stay valid.
-    /// This lets overlapping readers not hold old generations forever.
-    /// </remarks>
+    IPbtGroupLogPin IPbtGroupLog.Pin() => Pin();
+
+    /// <inheritdoc/>
     public IDisposable PinAll()
     {
         lock (_lock)
@@ -192,7 +190,7 @@ public sealed partial class PbtGroupLog
     }
 
     /// <summary>Keeps one generation and every later generation available to snapshot readers.</summary>
-    public sealed class GenerationPin : IDisposable
+    public sealed class GenerationPin : IPbtGroupLogPin
     {
         private readonly PbtGroupLog _log;
         private int _disposed;
@@ -207,12 +205,16 @@ public sealed partial class PbtGroupLog
         /// <summary>The first generation kept by this pin.</summary>
         public uint Generation { get; }
 
-        /// <summary>The inclusive allocation frontier captured when the pin was first acquired.</summary>
-        /// <remarks>Every record reserved after the pin compares greater than or equal to it.</remarks>
+        /// <inheritdoc/>
+        public IPbtGroupLog Log => _log;
+
+        /// <inheritdoc/>
         public PbtGroupReference WriteBoundary { get; }
 
         /// <summary>Keeps the same generation range independently of this pin.</summary>
         public GenerationPin Copy() => _log.PinGeneration(Generation, WriteBoundary);
+
+        IPbtGroupLogPin IPbtGroupLogPin.Copy() => Copy();
 
         public void Dispose()
         {

@@ -88,7 +88,7 @@ public class PbtSnapshotCompactorTests
         using NativeBucketedMemoryPool nativePool = PbtNodeGroupMemory.CreateNativePool();
         IRefCountingMemoryProvider memory = native ? nativePool : PooledRefCountingMemoryProvider.Instance;
         using PbtGroupLog log = new(memory, compressedMemoryBudget: 0, generationBytes: 256, retainedGenerations: 0);
-        PbtResourcePool pool = new(new PbtConfig(), log, memory);
+        PbtResourcePool pool = new(new PbtConfig(), memory);
         using PbtTreeHarness tree = new();
         tree.ApplyBatch(Enumerable.Range(0, 16).Select(index =>
         {
@@ -102,6 +102,8 @@ public class PbtSnapshotCompactorTests
         PbtStorageNodePath childPath = payloads.Last(static group => group.Key.BitDepth != 0).Key;
         PbtSnapshotContent older = pool.GetSnapshotContent(PbtResourcePool.Usage.MainBlockProcessing);
         PbtSnapshotContent newer = pool.GetSnapshotContent(PbtResourcePool.Usage.MainBlockProcessing);
+        older.BeginNodeGroupWrites(log);
+        newer.BeginNodeGroupWrites(log);
         Dictionary<PbtStorageNodePath, PbtGroupReference> original = [];
         foreach (PbtPhysicalPayload group in payloads)
         {

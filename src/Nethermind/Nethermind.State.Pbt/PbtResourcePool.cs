@@ -6,7 +6,6 @@ using System.Numerics;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Pbt;
-using Nethermind.Pbt.NodeLog;
 using Nethermind.Core.Memory;
 using Nethermind.State.Flat;
 using Nethermind.State.Pbt.Snapshot;
@@ -22,24 +21,23 @@ public class PbtResourcePool : IPbtResourcePool
 {
     private readonly Dictionary<Usage, ResourcePoolCategory> _categories;
 
-    public PbtResourcePool(IPbtConfig config, PbtGroupLog? nodeGroupLog = null, IRefCountingMemoryProvider? nodeGroupMemory = null)
+    public PbtResourcePool(IPbtConfig config, IRefCountingMemoryProvider? nodeGroupMemory = null)
     {
         nodeGroupMemory ??= PooledRefCountingMemoryProvider.Instance;
-        nodeGroupLog ??= new PbtGroupLog(nodeGroupMemory, compressedMemoryBudget: 0, retainedGenerations: 0);
         _categories = new()
         {
             // A persisted segment returns its whole chain at once, so the pool must absorb that burst:
             // PersistSegment prunes CompactSize canonical layers in one go (everything older went with
             // the previous segment), plus the fork siblings pruned alongside them. Catch-up drains and
             // the finality-stall backstop overflow this by design and refill over the next segment.
-            { Usage.MainBlockProcessing, new ResourcePoolCategory(Usage.MainBlockProcessing, config.CompactSize + 8, 2, nodeGroupLog, nodeGroupMemory) },
+            { Usage.MainBlockProcessing, new ResourcePoolCategory(Usage.MainBlockProcessing, config.CompactSize + 8, 2, nodeGroupMemory) },
 
             // Read-only means never committed to the repository; the scope may still commit locally.
-            { Usage.ReadOnlyProcessingEnv, new ResourcePoolCategory(Usage.ReadOnlyProcessingEnv, Environment.ProcessorCount * 4, Environment.ProcessorCount * 4, nodeGroupLog, nodeGroupMemory) },
+            { Usage.ReadOnlyProcessingEnv, new ResourcePoolCategory(Usage.ReadOnlyProcessingEnv, Environment.ProcessorCount * 4, Environment.ProcessorCount * 4, nodeGroupMemory) },
         };
 
         // one compaction runs at a time per width, and its content is dropped as soon as it is written
-        for (Usage usage = Usage.Compact2; usage <= Usage.Compact2048; usage++) _categories[usage] = new ResourcePoolCategory(usage, 2, 0, nodeGroupLog, nodeGroupMemory);
+        for (Usage usage = Usage.Compact2; usage <= Usage.Compact2048; usage++) _categories[usage] = new ResourcePoolCategory(usage, 2, 0, nodeGroupMemory);
     }
 
     public PbtSnapshotContent GetSnapshotContent(Usage usage) => _categories[usage].GetSnapshotContent();
@@ -95,7 +93,7 @@ public class PbtResourcePool : IPbtResourcePool
         Compact2048,
     }
 
-    private class ResourcePoolCategory(Usage usage, int snapshotContentPoolSize, int writableBundlePoolSize, PbtGroupLog nodeGroupLog, IRefCountingMemoryProvider nodeGroupMemory)
+    private class ResourcePoolCategory(Usage usage, int snapshotContentPoolSize, int writableBundlePoolSize, IRefCountingMemoryProvider nodeGroupMemory)
     {
         private readonly ResourcePool.ConcurrentStackPool<PbtSnapshotContent> _snapshotPool = new(snapshotContentPoolSize);
         // Each writable bundle holds three partition batches.
@@ -104,23 +102,10 @@ public class PbtResourcePool : IPbtResourcePool
         private readonly ResourcePool.PooledResourceLabel _writeBatchLabel = new(usage.ToString(), "PbtWriteBatchBuilder");
         private readonly ResourcePool.PooledResourceLabel _snapshotLabel = new(usage.ToString(), nameof(PbtSnapshotContent));
 
-        public PbtSnapshotContent GetSnapshotContent()
-        {
-            PbtSnapshotContent content = TryRent(_snapshotPool, _snapshotLabel, out PbtSnapshotContent? pooled)
-                ? pooled : new PbtSnapshotContent(nodeGroupLog, nodeGroupMemory);
-            content.BeginNodeGroupWrites();
-            return content;
-        }
+        public PbtSnapshotContent GetSnapshotContent() =>
+            TryRent(_snapshotPool, _snapshotLabel, out PbtSnapshotContent? content) ? content : new PbtSnapshotContent(nodeGroupMemory);
 
-        public void ReturnSnapshotContent(PbtSnapshotContent content)
-        {
-            if (ReferenceEquals(content.NodeGroupLog, nodeGroupLog)) Return(_snapshotPool, _snapshotLabel, content);
-            else
-            {
-                Metrics.PbtActivePooledResource.AddBy(_snapshotLabel, -1);
-                content.Dispose();
-            }
-        }
+        public void ReturnSnapshotContent(PbtSnapshotContent content) => Return(_snapshotPool, _snapshotLabel, content);
 
         public PbtWriteBatchBuilder<PbtPath> GetWriteBatch() =>
             TryRent(_writeBatchPool, _writeBatchLabel, out PbtWriteBatchBuilder<PbtPath>? batch) ? batch : new PbtWriteBatchBuilder<PbtPath>();

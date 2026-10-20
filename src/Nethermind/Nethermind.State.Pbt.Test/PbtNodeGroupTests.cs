@@ -16,6 +16,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Memory;
 using Nethermind.Pbt;
 using Nethermind.Pbt.NodeLog;
+using Nethermind.State.Pbt.Snapshot;
 using NUnit.Framework;
 using static Nethermind.State.Pbt.Test.PbtStoreTestExtensions;
 
@@ -1314,6 +1315,52 @@ public class PbtNodeGroupTests
             Assert.That(found, Is.True);
             Assert.That(allocated, Is.Zero);
         }
+    }
+
+    [Test]
+    public void Overlay_log_writes_privately_and_reaches_global_records_only_before_its_pin([Values] bool native)
+    {
+        using GroupLogContext context = new(native);
+        using PbtGroupLog foreign = new(context.Memory, compressedMemoryBudget: 0);
+        ValueHash256 globalRoot = new(Bytes.FromHexString("0100000000000000000000000000000000000000000000000000000000000000"));
+        ValueHash256 laterRoot = new(Bytes.FromHexString("0200000000000000000000000000000000000000000000000000000000000000"));
+        ValueHash256 localRoot = new(Bytes.FromHexString("0300000000000000000000000000000000000000000000000000000000000000"));
+        PbtGroupLog.GenerationPin writer = context.Log.Pin();
+        PbtGroupReference global = context.Log.Append(default, RootGroup(LeafEncoding(0x20)), default);
+        context.Log.SetRoot(globalRoot, global);
+        PbtOverlayGroupLog overlay = new(context.Log, context.Memory);
+        PbtGroupReference later = context.Log.Append(default, RootGroup(LeafEncoding(0x40)), default);
+        context.Log.SetRoot(laterRoot, later);
+        long globalUsed = context.Log.UsedBytes;
+        IPbtGroupLogPin pin = overlay.Pin();
+        PbtGroupLinks links = default;
+        links[0] = global;
+        byte[] payload = RootGroup(LeafEncoding(0x60));
+        PbtGroupReference local = overlay.Append(default, payload, links);
+        overlay.SetRoot(localRoot, local);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(context.Log.UsedBytes, Is.EqualTo(globalUsed), "the overlay writes to its private log");
+            Assert.That(local, Is.GreaterThanOrEqualTo(pin.WriteBoundary));
+            Assert.That(overlay.TryGetRecord(local, out PbtGroupRecord record), Is.True);
+            Assert.That(record.Reference, Is.EqualTo(local));
+            Assert.That(record.Payload.ToArray(), Is.EqualTo(payload));
+            Assert.That(record.GetLink(0), Is.EqualTo(global));
+            Assert.That(overlay.TryGetRecord(global, out _), Is.True);
+            Assert.That(overlay.MapReference(context.Log, global), Is.EqualTo(global));
+            Assert.That(overlay.MapReference(context.Log, later), Is.EqualTo(PbtGroupReference.Unknown), "a global record written after the pin is out of reach");
+            Assert.That(overlay.MapReference(overlay, local), Is.EqualTo(local));
+            Assert.That(overlay.FindRoot(globalRoot), Is.EqualTo(global));
+            Assert.That(overlay.FindRoot(laterRoot), Is.EqualTo(PbtGroupReference.Unknown));
+            Assert.That(overlay.FindRoot(localRoot), Is.EqualTo(local));
+            Assert.That(context.Log.FindRoot(localRoot), Is.EqualTo(PbtGroupReference.Unknown), "a private root stays out of the global index");
+            Assert.Throws<InvalidOperationException>(() => overlay.MapReference(foreign, global));
+        }
+        overlay.Dispose();
+        writer.Dispose();
+        Assert.That(TrackingMemoryProvider.CountUnreleased(context.Memory.Rented), Is.GreaterThan(0), "an overlay pin keeps the private and global records");
+        pin.Dispose();
+        Assert.That(TrackingMemoryProvider.CountUnreleased(context.Memory.Rented), Is.Zero, "the last overlay pin releases them");
     }
 
     [Test]

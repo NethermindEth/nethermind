@@ -26,6 +26,10 @@ public class PbtSnapshot(
     public PbtGroupReference RootGroupReference { get; } = content.RootGroupReference;
     public PbtSnapshotContent Content { get; } = content;
 
+    /// <summary>The root group reference as <paramref name="log"/> resolves it, or Unknown when it cannot.</summary>
+    public PbtGroupReference MapRootGroupReference(IPbtGroupLog log) =>
+        RootGroupReference.IsDirect ? log.MapReference(Content.NodeGroupLog!, RootGroupReference) : RootGroupReference;
+
     public PbtSnapshotPayloadSize PayloadSize => _payloadSize ??= Content.GetPayloadSize();
 
     public bool TryLease() => TryAcquireLease();

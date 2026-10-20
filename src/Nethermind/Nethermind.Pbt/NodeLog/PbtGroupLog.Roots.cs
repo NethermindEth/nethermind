@@ -25,8 +25,8 @@ public sealed partial class PbtGroupLog
     /// <summary>The number of <see cref="FindRoot"/> calls that found no resident root group.</summary>
     public long RootMisses => Interlocked.Read(ref _rootMisses);
 
-    /// <summary>Indexes <paramref name="reference"/> as the root group of <paramref name="root"/>, replacing the slot's previous entry.</summary>
-    /// <exception cref="ArgumentException"><paramref name="reference"/> is not a direct reference.</exception>
+    /// <inheritdoc/>
+    /// <remarks>The entry replaces its slot's previous one.</remarks>
     public void SetRoot(in ValueHash256 root, PbtGroupReference reference)
     {
         if (!reference.IsDirect) throw new ArgumentException("Only a published root group can be indexed.", nameof(reference));
@@ -37,7 +37,7 @@ public sealed partial class PbtGroupLog
         }
     }
 
-    /// <summary>The root group of <paramref name="root"/>, or Unknown when it is not indexed or its record is no longer resident.</summary>
+    /// <inheritdoc/>
     /// <remarks>A resident record may still be reclaimed after this call; a later miss resolves through the persisted view.</remarks>
     public PbtGroupReference FindRoot(in ValueHash256 root)
     {

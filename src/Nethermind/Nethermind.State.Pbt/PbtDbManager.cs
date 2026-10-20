@@ -156,7 +156,11 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
         }
     }
 
-    public PbtSnapshotBundle? TryGatherBundle(in StateId baseStateId, PbtSnapshotPooledList localSnapshots, PbtResourcePool.Usage usage, bool filterInMemorySlotReads)
+    public PbtSnapshotBundle? TryGatherBundle(in StateId stateId, PbtResourcePool.Usage usage) =>
+        TryGatherBundle(stateId, new PbtSnapshotPooledList(1), usage, filterInMemorySlotReads: false, _nodeGroupLog);
+
+    public PbtSnapshotBundle? TryGatherBundle(in StateId baseStateId, PbtSnapshotPooledList localSnapshots, PbtResourcePool.Usage usage, bool filterInMemorySlotReads,
+        IPbtGroupLog nodeGroupLog)
     {
         PbtReadOnlySnapshotBundle? readOnlyBundle = null;
         try
@@ -169,7 +173,7 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
             }
 
             // ownership of the shared bundle's lease passes to the writable one
-            return new PbtSnapshotBundle(localSnapshots, readOnlyBundle, _resourcePool, usage, filterInMemorySlotReads);
+            return new PbtSnapshotBundle(localSnapshots, readOnlyBundle, nodeGroupLog, _resourcePool, usage, filterInMemorySlotReads);
         }
         catch
         {

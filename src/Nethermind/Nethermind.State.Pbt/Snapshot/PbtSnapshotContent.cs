@@ -24,7 +24,8 @@ namespace Nethermind.State.Pbt.Snapshot;
 /// fold at a time, and reads concurrent with that are unsupported. Sealed content supports concurrent readers while its
 /// snapshot is leased. Reset requires exclusive ownership.
 /// </remarks>
-public sealed class PbtSnapshotContent : IDisposable, IResettable
+/// <param name="nodeGroupMemory">The group payload allocator; the pooled managed one when null.</param>
+public sealed class PbtSnapshotContent(IRefCountingMemoryProvider? nodeGroupMemory = null) : IDisposable, IResettable
 {
     public readonly ConcurrentDictionary<ValueHash256, PbtAccount?> Accounts = new();
     // Whole slot runs keyed by run key (see SlotRun.RunKey); this layer owns the runs. Header slots' runs are keyed
@@ -34,23 +35,19 @@ public sealed class PbtSnapshotContent : IDisposable, IResettable
     public readonly ConcurrentDictionary<HashedKey<PbtStoragePath>, PackedSlotRun> Storages = new();
     public readonly ConcurrentDictionary<ValueHash256, CodeInfo> Codes = new();
     public readonly ConcurrentDictionary<ValueHash256, bool> SelfDestructedStorageAddresses = new();
-    private readonly IRefCountingMemoryProvider _nodeGroupMemory;
-    private PbtGroupLog.GenerationPin? _nodeGroupPin;
+    private readonly IRefCountingMemoryProvider _nodeGroupMemory = nodeGroupMemory ?? PooledRefCountingMemoryProvider.Instance;
+    private IPbtGroupLogPin? _nodeGroupPin;
     private long _nodeGroupBytes;
 
-    /// <summary>Creates content backed by the pool's traversal log and selected payload allocator.</summary>
-    public PbtSnapshotContent(PbtGroupLog? nodeGroupLog = null, IRefCountingMemoryProvider? nodeGroupMemory = null)
+    /// <summary>The traversal log whose references this content owns, or null before <see cref="BeginNodeGroupWrites"/>.</summary>
+    public IPbtGroupLog? NodeGroupLog => _nodeGroupPin?.Log;
+
+    /// <summary>Pins the active generation of <paramref name="log"/>, unless already pinned, so later group writes stay readable.</summary>
+    public void BeginNodeGroupWrites(IPbtGroupLog log)
     {
-        _nodeGroupMemory = nodeGroupMemory ?? PooledRefCountingMemoryProvider.Instance;
-        NodeGroupLog = nodeGroupLog ?? new PbtGroupLog(_nodeGroupMemory, compressedMemoryBudget: 0, retainedGenerations: 0);
-        BeginNodeGroupWrites();
+        Debug.Assert(_nodeGroupPin is null || ReferenceEquals(_nodeGroupPin.Log, log), "A layer writes its groups to one log.");
+        _nodeGroupPin ??= log.Pin();
     }
-
-    /// <summary>The traversal log whose references this content owns.</summary>
-    public PbtGroupLog NodeGroupLog { get; }
-
-    /// <summary>Pins the log's active generation, unless already pinned, so later group writes stay readable.</summary>
-    public void BeginNodeGroupWrites() => _nodeGroupPin ??= NodeGroupLog.Pin();
 
     /// <summary>The root group of the tree this layer published, None for an empty tree, or Unknown when it published none.</summary>
     public PbtGroupReference RootGroupReference { get; set; } = PbtGroupReference.Unknown;
@@ -73,7 +70,7 @@ public sealed class PbtSnapshotContent : IDisposable, IResettable
     /// generation pin keeps the records valid while the layer is not reset.
     /// </remarks>
     public IEnumerable<PbtGroupRecord> EnumerateNodeGroups() =>
-        _nodeGroupPin is null ? [] : PbtNodeGroupKey.InKeyOrder(NodeGroupLog, RootGroupReference, _nodeGroupPin.WriteBoundary);
+        _nodeGroupPin is null ? [] : PbtNodeGroupKey.InKeyOrder(_nodeGroupPin.Log, RootGroupReference, _nodeGroupPin.WriteBoundary);
 
     /// <summary>The runs of header slots for <see cref="PbtPath"/> run keys, or of the other slots for <see cref="PbtStoragePath"/> ones.</summary>
     private ConcurrentDictionary<HashedKey<TKey>, PackedSlotRun> Runs<TKey>() where TKey : struct, IPbtKey<TKey> =>
@@ -149,7 +146,8 @@ public sealed class PbtSnapshotContent : IDisposable, IResettable
     public bool TryFindNodeGroup(PbtGroupReference root, PbtStorageNodePath groupKey, out RefCountingMemory? payload)
     {
         payload = null;
-        PbtGroupReference reference = NodeGroupLog.FindGroup(root, groupKey, out PbtGroupRecord record);
+        PbtGroupRecord record = default;
+        PbtGroupReference reference = root.IsDirect ? _nodeGroupPin!.Log.FindGroup(root, groupKey, out record) : root;
         if (reference.IsUnknown) return false;
         if (reference.IsDirect)
         {
@@ -162,10 +160,10 @@ public sealed class PbtSnapshotContent : IDisposable, IResettable
     /// <summary>Takes over the generation range of <paramref name="source"/>, whose groups a merged layer covers.</summary>
     internal void CopyNodeGroupsFrom(PbtSnapshotContent source)
     {
-        Debug.Assert(ReferenceEquals(NodeGroupLog, source.NodeGroupLog));
+        Debug.Assert(_nodeGroupPin is null || source._nodeGroupPin is null || ReferenceEquals(_nodeGroupPin.Log, source._nodeGroupPin.Log));
         if (source._nodeGroupPin is { } pin && (_nodeGroupPin is null || pin.WriteBoundary.CompareTo(_nodeGroupPin.WriteBoundary) < 0))
         {
-            PbtGroupLog.GenerationPin copy = pin.Copy();
+            IPbtGroupLogPin copy = pin.Copy();
             _nodeGroupPin?.Dispose();
             _nodeGroupPin = copy;
         }

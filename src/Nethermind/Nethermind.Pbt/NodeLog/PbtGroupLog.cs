@@ -16,7 +16,7 @@ namespace Nethermind.Pbt.NodeLog;
 /// are dropped, compacted and reclaimed once no pin covers them. Reads and reservations do not take the lifetime lock; only
 /// rotation and pin changes do. The memory provider is borrowed, not owned.
 /// </remarks>
-public sealed partial class PbtGroupLog : IDisposable
+public sealed partial class PbtGroupLog : IPbtGroupLog, IDisposable
 {
     /// <summary>The default generation capacity, in bytes.</summary>
     public const int DefaultGenerationBytes = 1024 * 1024;
@@ -86,12 +86,7 @@ public sealed partial class PbtGroupLog : IDisposable
     /// <summary>The number of resident generations, in place or compacted, for retention diagnostics.</summary>
     public int GenerationCount => _generations.Count;
 
-    /// <summary>Reserves aligned, contiguous log space for a group record and exposes its borrowed writable payload.</summary>
-    /// <returns>The record's generation and offset reference.</returns>
-    /// <remarks>
-    /// Only the header is initialized. The caller must fill <paramref name="payload"/> before handing the reference to a parent,
-    /// journal, or owner, and hold a <see cref="Pin"/> taken before the reservation while using the span.
-    /// </remarks>
+    /// <inheritdoc/>
     public PbtGroupReference Reserve(PbtStorageNodePath path, int payloadLength, in PbtGroupLinks links, out Span<byte> payload)
     {
         ThrowIfUnavailable();
@@ -121,16 +116,7 @@ public sealed partial class PbtGroupLog : IDisposable
         }
     }
 
-    /// <summary>Copies an existing canonical group into a new immutable record.</summary>
-    public PbtGroupReference Append(PbtStorageNodePath path, ReadOnlySpan<byte> payload, in PbtGroupLinks links)
-    {
-        PbtGroupReference reference = Reserve(path, payload.Length, links, out Span<byte> destination);
-        payload.CopyTo(destination);
-        return reference;
-    }
-
-    /// <summary>Resolves a direct reference without searching snapshot layers.</summary>
-    /// <remarks>A miss is resolved through the caller's persisted view. The caller's pin must outlive all uses of the returned view.</remarks>
+    /// <inheritdoc/>
     public bool TryGetRecord(PbtGroupReference reference, out PbtGroupRecord record)
     {
         record = default;
@@ -138,6 +124,11 @@ public sealed partial class PbtGroupLog : IDisposable
         record = new PbtGroupRecord(reference, memory);
         return true;
     }
+
+    /// <inheritdoc/>
+    /// <remarks>Snapshots of a branch share its log, so only this log's own references map.</remarks>
+    public PbtGroupReference MapReference(IPbtGroupLog source, PbtGroupReference reference) =>
+        ReferenceEquals(source, this) ? reference : throw new InvalidOperationException("A branch must share the traversal log of its in-memory snapshots.");
 
     private bool TryLocate(PbtGroupReference reference, out ReadOnlyMemory<byte> record)
     {

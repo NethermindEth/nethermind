@@ -1482,7 +1482,7 @@ public class PbtDbManagerTests
         public PersistenceManagerHarness(PbtConfig config)
         {
             Config = config;
-            Pool = new(config, NodeGroupLog, PooledRefCountingMemoryProvider.Instance);
+            Pool = new(config);
             Schedule = PbtCoreRegistration.CreateCompactionSchedule(Metadata, config, LimboLogs.Instance);
             IPbtPersistence.IReader reader = Substitute.For<IPbtPersistence.IReader>();
             reader.CurrentState.Returns(PersistenceState(0));
