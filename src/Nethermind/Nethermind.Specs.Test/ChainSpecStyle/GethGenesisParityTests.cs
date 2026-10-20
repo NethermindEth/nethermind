@@ -480,7 +480,7 @@ public class GethGenesisParityTests
         && (property.Name.EndsWith("Time", StringComparison.Ordinal) || property.Name.EndsWith("Block", StringComparison.Ordinal))
         && !GethOnlyConfigFields.ContainsKey(property.Name);
 
-    private static string StripTime(string key) => key[..^"Time".Length];
+    internal static string StripTime(string key) => key[..^"Time".Length];
 
     private static string ToCamelCase(string name) => char.ToLowerInvariant(name[0]) + name[1..];
 }

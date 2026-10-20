@@ -134,7 +134,7 @@ public class GethGenesisDevnetTests
         NamedReleaseSpec fork = GethGenesisParityTests.MainnetForks.Value.Single(f => f.GetType().Name == forkName);
         string path = Path.Combine(Path.GetTempPath(), $"{nameof(GethGenesisDevnetTests)}-{Guid.NewGuid():N}.json");
         // Own blobSchedule entry with values no fork class has, so ignoring the key fails the check.
-        string blobKey = GethGenesisParityTests.GethTimeKeysByFork.Value[forkName][..^"Time".Length];
+        string blobKey = GethGenesisParityTests.StripTime(GethGenesisParityTests.GethTimeKeysByFork.Value[forkName]);
         File.WriteAllText(path, GethGenesisParityTests.BuildGethGenesis(fork, (blobKey, 7, 11, 1234567)));
         try
         {
