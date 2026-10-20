@@ -70,7 +70,7 @@ public ref struct BinarySpanReader
         {
             (Abi<T> element, int length) = ctx;
 
-            int headSize = length * element.HeadSize;
+            int headSize = checked(length * element.HeadSize);
             if (headSize > r.Remaining) throw new AbiException();
 
             T[] values = new T[length];

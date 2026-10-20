@@ -82,12 +82,19 @@ public class UserErrors
         }).SetName("custom with head size -32");
     }
 
+    private static IEnumerable<TestCaseData> ZeroSizeElementTestCases()
+    {
+        yield return ThrowsOnBuild<ArgumentOutOfRangeException>(() => AbiType.Array(AbiType.Tuple())).SetName("()[]");
+        yield return ThrowsOnBuild<ArgumentOutOfRangeException>(() => AbiType.Array(AbiType.Array(AbiType.UInt256, 0))).SetName("uint256[0][]");
+    }
+
     private static TestCaseData ThrowsOnBuild<TException>(Action build) where TException : Exception =>
         new(build, typeof(TException));
 
     [TestCaseSource(nameof(HeadSizeOutOfRangeTestCases))]
     [TestCaseSource(nameof(BytesMOutOfRangeTestCases))]
     [TestCaseSource(nameof(CustomTypeTestCases))]
+    [TestCaseSource(nameof(ZeroSizeElementTestCases))]
     public void Build_InvalidType(Action build, Type exception) =>
         Assert.That(build, Throws.TypeOf(exception));
 
@@ -364,6 +371,9 @@ public class UserErrors
         yield return MalformedInput(new AbiSignature("f").With(AbiType.Array(AbiType.UInt256)),
             "0000000000000000000000000000000000000000000000000000000000000020" +
             "0000000000000000000000000000000000000000000000000000000000989680").SetName("uint256[] length beyond input");
+        yield return MalformedInput(new AbiSignature("f").With(AbiType.Array(AbiType.UInt256)),
+            "0000000000000000000000000000000000000000000000000000000000000020" +
+            "0000000000000000000000000000000000000000000000000000000008000000").SetName("uint256[] head size overflows int");
         yield return MalformedInput(new AbiSignature("f").With(AbiType.Array(AbiType.String)),
             "0000000000000000000000000000000000000000000000000000000000000020" +
             "0000000000000000000000000000000000000000000000000000000000989680").SetName("string[] length beyond input");
