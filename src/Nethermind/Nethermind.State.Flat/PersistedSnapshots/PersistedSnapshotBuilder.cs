@@ -64,20 +64,16 @@ public static class PersistedSnapshotBuilder
         [
             () =>
             {
-                using Snapshot.NodeIterator<TreePath> nodes = snapshot.GetStateNodeIterator();
-                while (nodes.MoveNext())
+                foreach ((TreePath path, ulong pointer, _) in snapshot.StateNodes)
                 {
-                    TreePath path = nodes.Key;
-                    (path.Length <= TopPathThreshold ? stateTop : path.Length <= CompactPathThreshold ? stateCompact : stateFallback).Add((path, nodes.Pointer));
+                    (path.Length <= TopPathThreshold ? stateTop : path.Length <= CompactPathThreshold ? stateCompact : stateFallback).Add((path, pointer));
                 }
             },
             () =>
             {
-                using Snapshot.NodeIterator<(Hash256, TreePath)> nodes = snapshot.GetStorageNodeIterator();
-                while (nodes.MoveNext())
+                foreach ((Hash256 address, TreePath path, ulong pointer, _) in snapshot.StorageNodes)
                 {
-                    (Hash256 address, TreePath path) = nodes.Key.Key;
-                    (path.Length <= TopPathThreshold ? storageTop : path.Length <= CompactPathThreshold ? storageCompact : storageFallback).Add((address.ValueHash256, path, nodes.Pointer));
+                    (path.Length <= TopPathThreshold ? storageTop : path.Length <= CompactPathThreshold ? storageCompact : storageFallback).Add((address.ValueHash256, path, pointer));
                 }
             },
             () =>
