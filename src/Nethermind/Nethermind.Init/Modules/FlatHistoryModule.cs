@@ -36,6 +36,9 @@ public class FlatHistoryModule : Module
             .AddSingleton<HistoryRowFormat>(ctx =>
                 HistoryRowFormat.Resolve(ctx.Resolve<HistoryAvailability>(), ctx.Resolve<IFlatDbConfig>()))
             .AddSingleton<HistoryReader>()
+            .AddSingleton<PivotHistoryImageWriter>()
+            .AddSingleton<IPivotStateSource, PersistedStateAccountSource>()
+            .AddStep(typeof(StartPivotHistoryImage))
             .AddSingleton<HistoryWriter>()
             .AddSingleton<HistoryScopeGate>()
             .AddSingleton<HistoryWindowPruner>()

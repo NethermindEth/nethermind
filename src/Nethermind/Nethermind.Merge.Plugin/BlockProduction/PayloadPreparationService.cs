@@ -430,12 +430,13 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
                         // cancelling turns an existing build into -38001, so let it finish instead.
                         if (!noBlock) blockContext.CancelOngoingImprovements();
 
-                        using CancellationTokenSource cts = new();
-                        Task timeout = Task.Delay(noBlock ? GetPayloadWaitForMissingBlockMillisecondsDelay : GetPayloadWaitForNonEmptyBlockMillisecondsDelay, cts.Token);
-                        Task completedTask = await Task.WhenAny(blockContext.ImprovementTask, timeout);
-                        if (completedTask != timeout)
+                        if (!await WaitForImprovement(blockContext, noBlock ? GetPayloadWaitForMissingBlockMillisecondsDelay : GetPayloadWaitForNonEmptyBlockMillisecondsDelay)
+                            && noBlock)
                         {
-                            await cts.CancelAsync();
+                            // Out of time: have the build finish with what it has, and keep it if it lands shortly,
+                            // as disposing first would reject it.
+                            blockContext.CancelOngoingImprovements();
+                            await WaitForImprovement(blockContext, GetPayloadWaitForNonEmptyBlockMillisecondsDelay);
                         }
                     }
                     else
@@ -457,6 +458,16 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
         }
 
         return null;
+    }
+
+    private static async Task<bool> WaitForImprovement(IBlockImprovementContext blockContext, TimeSpan delay)
+    {
+        using CancellationTokenSource cts = new();
+        Task timeout = Task.Delay(delay, cts.Token);
+        if (await Task.WhenAny(blockContext.ImprovementTask, timeout) == timeout) return false;
+
+        await cts.CancelAsync();
+        return true;
     }
 
     /// <summary>
@@ -498,7 +509,14 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
         }
     }
 
-    public void CancelBlockProduction(string payloadId) =>
-        // GetPayload cancels the request
-        _ = GetPayload(payloadId);
+    /// <inheritdoc/>
+    /// <remarks>Stops without <see cref="GetPayload"/>'s wait for a missing block, so a simulated build does not hold the producer while newPayload runs.</remarks>
+    public void CancelBlockProduction(string payloadId)
+    {
+        if (_payloadStorage.TryGetValue(payloadId, out IBlockImprovementContext? blockContext))
+        {
+            blockContext.DisposeAndCancelOngoingImprovements();
+            RetainRetrievedContext(payloadId, blockContext);
+        }
+    }
 }

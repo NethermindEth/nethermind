@@ -503,6 +503,12 @@ namespace Nethermind.State
             _stateProvider.SetNonce(address, nonce);
         }
 
+        public void SubtractFromBalanceAndSetNonce(Address address, in UInt256 balanceChange, ulong nonce, IReleaseSpec spec)
+        {
+            DebugGuardInScope();
+            _stateProvider.SubtractFromBalanceAndSetNonce(address, in balanceChange, nonce);
+        }
+
         public void CreateAccountIfNotExists(Address address, in UInt256 balance, in ulong nonce = default)
         {
             DebugGuardInScope();

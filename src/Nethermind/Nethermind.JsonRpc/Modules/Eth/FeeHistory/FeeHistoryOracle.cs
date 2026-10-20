@@ -219,7 +219,8 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
                         rewards[effectiveBlockCount] = rewardsInBlock;
                     }
                 }
-                historyInfo = info.ParentHash is null ? null : GetHistorySearchInfo(info.ParentHash, info.BlockNumber - 1);
+                // The oldest requested block needs no parent.
+                historyInfo = effectiveBlockCount == 0 || info.ParentHash is null ? null : GetHistorySearchInfo(info.ParentHash, info.BlockNumber - 1);
             }
 
             // An unavailable ancestor ends the walk early; the leading slots were never filled,
