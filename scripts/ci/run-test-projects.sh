@@ -2,8 +2,8 @@
 # Run test projects one after another and report every one that fails. Small projects share a job so the
 # runner setup is paid once, but never run side by side: timing-sensitive tests fail when two test hosts
 # share the runner's CPU. Each project runs exactly as it would in a job of its own.
-# Environment: PROJECTS lists the projects separated by spaces; COVERAGE=true collects coverage; TEST_CHUNK
-# passes through to the tests.
+# Environment: PROJECTS lists the projects separated by spaces; COVERAGE=true collects coverage;
+# CRASH_RETRY=false fails a crashed test host instead of running it again; TEST_CHUNK passes through to the tests.
 set -eo pipefail  # no -u: macOS runners may ship bash 3.2, where an empty array counts as unset
 
 read -ra projects <<< "${PROJECTS:?PROJECTS lists the test projects to run}"
@@ -47,6 +47,9 @@ run_project() {
     return 1
   elif compgen -G "TestResults/*_hang.*" > /dev/null; then
     echo "::error::$project: test host hung and was dumped; see the hang-dump artifact"
+    return 1
+  elif [ "${CRASH_RETRY:-true}" = "false" ]; then
+    echo "::error::$project: test process crashed (exit code $rc)"
     return 1
   fi
   echo "::warning::$project: test process crashed (exit code $rc), retrying..."
