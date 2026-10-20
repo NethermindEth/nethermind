@@ -58,7 +58,6 @@ public class Filter : IJsonRpcParam
             }
             else
             {
-                // As in geth, an omitted bound is the latest block, so {} reads only the head's logs.
                 FromBlock = hasFromBlock && fromBlockElement.ValueKind != JsonValueKind.Null
                     ? BlockParameterConverter.GetBlockParameter(fromBlockElement.ToString())
                     : BlockParameter.Latest;

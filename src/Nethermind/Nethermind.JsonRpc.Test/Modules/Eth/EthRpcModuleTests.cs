@@ -880,8 +880,7 @@ public partial class EthRpcModuleTests
     public async Task Unknown_filter_id_returns_filter_not_found([Values("eth_getFilterLogs", "eth_getFilterChanges")] string method, [Values] bool overflowingId)
     {
         using Context ctx = await Context.Create();
-        ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
-        string filterId = overflowingId ? $"0x{(int.MaxValue + (UInt256)10).ToString("X").TrimStart('0')}" : "0x5";
+        string filterId = overflowingId ? (int.MaxValue + (UInt256)10).ToHexString(true) : "0x5";
 
         string serialized = await ctx.Test.TestEthRpc(method, filterId);
 
