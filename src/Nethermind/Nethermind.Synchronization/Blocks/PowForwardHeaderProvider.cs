@@ -14,7 +14,6 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Peers.AllocationStrategies;
@@ -45,9 +44,7 @@ public class PowForwardHeaderProvider(
     // allocated and then rejected with no weakness report, and selection is sticky, so the
     // feed could spin on that peer indefinitely.
     private IPeerAllocationStrategy _bestPeerAllocationStrategy =
-        new TotalDiffStrategy(
-            new BySpeedStrategy(TransferSpeedType.Headers, priority: true, recalculateSpeedProbability: 0),
-            TotalDiffStrategy.TotalDiffSelectionType.Better);
+        new TotalDiffStrategy(new ByTotalDifficultyPeerAllocationStrategy(null), TotalDiffStrategy.TotalDiffSelectionType.Better);
 
     private PeerInfo? _currentBestPeer;
     private IOwnedReadOnlyList<BlockHeader>? _lastResponseBatch = null;
@@ -68,6 +65,7 @@ public class PowForwardHeaderProvider(
 
         if (TryGetPinnedCachedHeaders(skipLastN, maxHeaders, out IOwnedReadOnlyList<BlockHeader>? pinnedHeaders))
         {
+            syncReport.FullSyncBlocksDownloaded.TargetValue = _currentBestPeer!.HeadNumber;
             return pinnedHeaders;
         }
 

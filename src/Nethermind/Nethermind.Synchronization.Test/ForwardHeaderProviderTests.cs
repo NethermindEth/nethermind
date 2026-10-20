@@ -27,6 +27,7 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
 using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.Peers;
+using Nethermind.Synchronization.Reporting;
 using NSubstitute;
 using NUnit.Framework;
 using BlockTree = Nethermind.Blockchain.BlockTree;
@@ -342,22 +343,6 @@ public partial class ForwardHeaderProviderTests
             Assert.That(strategy.Allocate(null, [betterTdPeer], stats, blockTree), Is.SameAs(betterTdPeer));
         }
 
-        PeerInfo slowerHigherTdPeer = BuildInitializedPeer(TestItem.PublicKeyC, 12_000_000);
-        PeerInfo fasterHigherTdPeer = BuildInitializedPeer(TestItem.PublicKeyD, 11_000_000);
-        PeerInfo fasterEqualTdPeer = BuildInitializedPeer(TestItem.PublicKeyE, 10_000_000);
-        PeerInfo fasterLowerTdPeer = BuildInitializedPeer(TestItem.PublicKeyF, 9_000_000);
-        SetHeaderSpeed(stats, slowerHigherTdPeer, 100);
-        SetHeaderSpeed(stats, fasterHigherTdPeer, 200);
-        SetHeaderSpeed(stats, fasterEqualTdPeer, 300);
-        SetHeaderSpeed(stats, fasterLowerTdPeer, 400);
-
-        Assert.That(
-            strategy.Allocate(
-                null,
-                [slowerHigherTdPeer, fasterHigherTdPeer, fasterEqualTdPeer, fasterLowerTdPeer],
-                stats,
-                blockTree),
-            Is.SameAs(fasterHigherTdPeer));
     }
 
     [Test]
@@ -365,6 +350,7 @@ public partial class ForwardHeaderProviderTests
     {
         await using IContainer node = CreateNode();
         Context ctx = node.Resolve<Context>();
+        ISyncReport syncReport = node.Resolve<ISyncReport>();
         PeerInfo peerInfo = BuildInitializedPeer(TestItem.PublicKeyA, UInt256.MaxValue);
         ISyncPeer syncPeer = peerInfo.SyncPeer;
         syncPeer.HeadHash.Returns(TestItem.KeccakA);
@@ -404,6 +390,9 @@ public partial class ForwardHeaderProviderTests
             }
         }
 
+        syncPeer.HeadNumber.Returns(42UL);
+        syncPeer.HeadHash.Returns(TestItem.KeccakB);
+
         Task<IOwnedReadOnlyList<BlockHeader?>?> tailRequest = forwardHeader.GetBlockHeaders(0, 128, CancellationToken.None);
         IOwnedReadOnlyList<BlockHeader?>? tail = null;
         try
@@ -411,6 +400,8 @@ public partial class ForwardHeaderProviderTests
             tail = await tailRequest.WaitAsync(TimeSpan.FromSeconds(2));
             Assert.That(tail, Has.Count.EqualTo(2));
             Assert.That(headerRequests, Is.EqualTo(1), "the cached tail must be served before starting another header request");
+            Assert.That(syncReport.FullSyncBlocksDownloaded.TargetValue, Is.EqualTo(42UL),
+                "cached header responses must track the owner's current advertised head");
         }
         finally
         {
@@ -518,28 +509,9 @@ public partial class ForwardHeaderProviderTests
     {
         await using IContainer node = CreateNode();
         Context ctx = node.Resolve<Context>();
-        PeerInfo peerInfo = BuildInitializedPeer(TestItem.PublicKeyA, UInt256.MaxValue);
-        ISyncPeer syncPeer = peerInfo.SyncPeer;
-        syncPeer.HeadHash.Returns(TestItem.KeccakA);
-        syncPeer.HeadNumber.Returns(1000UL);
-        ctx.ConfigureBestPeer(peerInfo);
+        using CachedPinSetup setup = await CreateCachedPinSetup(ctx);
 
-        int headerRequests = 0;
-        syncPeer.GetBlockHeaders(Arg.Any<ulong>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
-            .Returns(callInfo =>
-            {
-                headerRequests++;
-                return ctx.ResponseBuilder.BuildHeaderResponse(callInfo.ArgAt<ulong>(0), 4, Response.AllCorrect);
-            });
-
-        IForwardHeaderProvider forwardHeader = ctx.ForwardHeaderProvider;
-        using IOwnedReadOnlyList<BlockHeader?> initial = await forwardHeader.GetBlockHeaders(0, 4, CancellationToken.None)
-            ?? throw new AssertionException("The initial header response was not prepared.");
-        BlockHeader parent = initial[1]!;
-        SuggestParent(ctx, parent);
-        forwardHeader.OnSuggestBlock(BlockTreeSuggestOptions.ShouldProcess, new Block(parent), AddBlockResult.Added);
-
-        using (IOwnedReadOnlyList<BlockHeader?>? bounded = await forwardHeader.GetBlockHeaders(0, (ulong)maxHeaders, CancellationToken.None))
+        using (IOwnedReadOnlyList<BlockHeader?>? bounded = await setup.ForwardHeader.GetBlockHeaders(0, (ulong)maxHeaders, CancellationToken.None))
         {
             if (maxHeaders == 1)
             {
@@ -555,8 +527,8 @@ public partial class ForwardHeaderProviderTests
         using CancellationTokenSource cancelled = new();
         cancelled.Cancel();
         await Assert.ThrowsAsync<OperationCanceledException>(async () =>
-            await forwardHeader.GetBlockHeaders(0, 4, cancelled.Token));
-        Assert.That(headerRequests, Is.EqualTo(1), "bounds and cancellation must not issue a network header request");
+            await setup.ForwardHeader.GetBlockHeaders(0, 4, cancelled.Token));
+        Assert.That(setup.HeaderRequests, Is.EqualTo(1), "bounds and cancellation must not issue a network header request");
     }
 
     [Test]
@@ -564,39 +536,20 @@ public partial class ForwardHeaderProviderTests
     {
         await using IContainer node = CreateNode();
         Context ctx = node.Resolve<Context>();
-        PeerInfo peerInfo = BuildInitializedPeer(TestItem.PublicKeyA, UInt256.MaxValue);
-        ISyncPeer syncPeer = peerInfo.SyncPeer;
-        syncPeer.HeadHash.Returns(TestItem.KeccakA);
-        syncPeer.HeadNumber.Returns(1000UL);
-        ctx.ConfigureBestPeer(peerInfo);
+        using CachedPinSetup setup = await CreateCachedPinSetup(ctx);
 
-        int headerRequests = 0;
-        syncPeer.GetBlockHeaders(Arg.Any<ulong>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
-            .Returns(callInfo =>
-            {
-                headerRequests++;
-                return ctx.ResponseBuilder.BuildHeaderResponse(callInfo.ArgAt<ulong>(0), 4, Response.AllCorrect);
-            });
-
-        IForwardHeaderProvider forwardHeader = ctx.ForwardHeaderProvider;
-        using IOwnedReadOnlyList<BlockHeader?> initial = await forwardHeader.GetBlockHeaders(0, 4, CancellationToken.None)
-            ?? throw new AssertionException("The initial header response was not prepared.");
-        BlockHeader parent = initial[1]!;
-        SuggestParent(ctx, parent);
-        forwardHeader.OnSuggestBlock(BlockTreeSuggestOptions.ShouldProcess, new Block(parent), AddBlockResult.Added);
-
-        using (IOwnedReadOnlyList<BlockHeader?>? bounded = await forwardHeader.GetBlockHeaders(998, 4, CancellationToken.None))
+        using (IOwnedReadOnlyList<BlockHeader?>? bounded = await setup.ForwardHeader.GetBlockHeaders(998, 4, CancellationToken.None))
         {
             Assert.That(bounded, Is.Not.Null);
             Assert.That(bounded, Has.Count.EqualTo(2));
-            Assert.That(bounded![0]!.Number, Is.EqualTo(parent.Number));
-            Assert.That(bounded[^1]!.Number, Is.EqualTo(parent.Number + 1));
+            Assert.That(bounded![0]!.Number, Is.EqualTo(setup.Initial[1]!.Number));
+            Assert.That(bounded[^1]!.Number, Is.EqualTo(setup.Initial[1]!.Number + 1));
         }
 
-        UInt256 conflictDifficultyWide = parent.TotalDifficulty.GetValueOrDefault() + UInt256.One;
+        UInt256 conflictDifficultyWide = setup.Initial[1]!.TotalDifficulty.GetValueOrDefault() + UInt256.One;
         Assert.That(conflictDifficultyWide, Is.LessThan(UInt256.MaxValue));
         BlockHeader differentHeight = Build.A.BlockHeader
-            .WithParent(parent)
+            .WithParent(setup.Initial[1]!)
             .WithHash(TestItem.KeccakB)
             .TestObject;
         differentHeight.TotalDifficulty = conflictDifficultyWide;
@@ -607,12 +560,12 @@ public partial class ForwardHeaderProviderTests
             Assert.That(ctx.BlockTree.BestSuggestedHeader.Hash, Is.EqualTo(differentHeight.Hash));
         }
 
-        using IOwnedReadOnlyList<BlockHeader?>? fallback = await forwardHeader.GetBlockHeaders(0, 4, CancellationToken.None);
+        using IOwnedReadOnlyList<BlockHeader?>? fallback = await setup.ForwardHeader.GetBlockHeaders(0, 4, CancellationToken.None);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(fallback, Is.Not.Null);
             Assert.That(fallback, Has.Count.EqualTo(3));
-            Assert.That(headerRequests, Is.EqualTo(1), "a different suggested height must use the original cache flow");
+            Assert.That(setup.HeaderRequests, Is.EqualTo(1), "a different suggested height must use the original cache flow");
         }
     }
 
@@ -621,6 +574,77 @@ public partial class ForwardHeaderProviderTests
     {
         await using IContainer node = CreateNode();
         Context ctx = node.Resolve<Context>();
+        using CachedPinSetup setup = await CreateCachedPinSetup(ctx);
+
+        using IOwnedReadOnlyList<BlockHeader?>? cached = await setup.ForwardHeader.GetBlockHeaders(0, 2, CancellationToken.None);
+        Assert.That(cached, Is.Not.Null);
+        Assert.That(cached, Has.Count.EqualTo(2));
+        Assert.That(ctx.BlockTree.SuggestBlock(new Block(setup.Initial[2]!), BlockTreeSuggestOptions.None), Is.Not.EqualTo(AddBlockResult.UnknownParent));
+        Assert.That(ctx.BlockTree.SuggestBlock(new Block(setup.Initial[3]!), BlockTreeSuggestOptions.None), Is.Not.EqualTo(AddBlockResult.UnknownParent));
+        setup.ForwardHeader.OnSuggestBlock(BlockTreeSuggestOptions.ShouldProcess, new Block(setup.Initial[2]!), AddBlockResult.Added);
+        setup.ForwardHeader.OnSuggestBlock(BlockTreeSuggestOptions.ShouldProcess, new Block(setup.Initial[3]!), AddBlockResult.Added);
+
+        using IOwnedReadOnlyList<BlockHeader?>? fresh = await setup.ForwardHeader.GetBlockHeaders(0, 2, CancellationToken.None);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fresh, Is.Not.Null);
+            Assert.That(fresh, Has.Count.EqualTo(2));
+            Assert.That(setup.HeaderRequests, Is.EqualTo(2), "an exhausted cached window must allocate a fresh header response");
+        }
+    }
+
+    [Test]
+    public async Task Cached_pin_invalidates_conflicting_anchor_or_advertised_head([Values(PinConflict.Anchor, PinConflict.AdvertisedHead)] PinConflict conflict)
+    {
+        await using IContainer node = CreateNode();
+        Context ctx = node.Resolve<Context>();
+        using CachedPinSetup setup = await CreateCachedPinSetup(ctx);
+        ISyncPeer syncPeer = setup.PeerInfo.SyncPeer;
+
+        bool expectNoResponse = conflict == PinConflict.AdvertisedHead;
+        if (conflict == PinConflict.Anchor)
+        {
+            UInt256 conflictDifficultyWide = setup.Initial[1]!.TotalDifficulty.GetValueOrDefault() + UInt256.One;
+            Assert.That(conflictDifficultyWide, Is.LessThan(UInt256.MaxValue));
+            BlockHeader conflicting = Build.A.BlockHeader
+                .WithParent(ctx.BlockTree.Genesis!)
+                .WithNumber(setup.Initial[1]!.Number)
+                .WithHash(TestItem.KeccakB)
+                .TestObject;
+            conflicting.TotalDifficulty = conflictDifficultyWide;
+            Assert.That(ctx.BlockTree.SuggestBlock(new Block(conflicting), BlockTreeSuggestOptions.None), Is.Not.EqualTo(AddBlockResult.UnknownParent));
+            Assert.That(ctx.BlockTree.BestSuggestedHeader!.Hash, Is.EqualTo(conflicting.Hash));
+        }
+        else
+        {
+            syncPeer.HeadNumber.Returns(setup.Initial[1]!.Number);
+            syncPeer.HeadHash.Returns(TestItem.KeccakB);
+        }
+
+        using IOwnedReadOnlyList<BlockHeader?>? response = await setup.ForwardHeader.GetBlockHeaders(0, 4, CancellationToken.None);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response is null, Is.EqualTo(expectNoResponse));
+            Assert.That(setup.HeaderRequests, Is.EqualTo(expectNoResponse ? 1 : 2));
+        }
+    }
+
+    public enum PinSafety
+    {
+        OwnerRemoved,
+        OwnerSleeping,
+        OwnerUninitialized,
+        OwnerNoLongerImproves,
+    }
+
+    public enum PinConflict
+    {
+        Anchor,
+        AdvertisedHead,
+    }
+
+    private static async Task<CachedPinSetup> CreateCachedPinSetup(Context ctx)
+    {
         PeerInfo peerInfo = BuildInitializedPeer(TestItem.PublicKeyA, UInt256.MaxValue);
         ISyncPeer syncPeer = peerInfo.SyncPeer;
         syncPeer.HeadHash.Returns(TestItem.KeccakA);
@@ -639,95 +663,31 @@ public partial class ForwardHeaderProviderTests
             });
 
         IForwardHeaderProvider forwardHeader = ctx.ForwardHeaderProvider;
-        using IOwnedReadOnlyList<BlockHeader?> initial = await forwardHeader.GetBlockHeaders(0, 4, CancellationToken.None)
+        IOwnedReadOnlyList<BlockHeader?> initial = await forwardHeader.GetBlockHeaders(0, 4, CancellationToken.None)
             ?? throw new AssertionException("The initial header response was not prepared.");
-        BlockHeader parent = initial[1]!;
-        SuggestParent(ctx, parent);
-        forwardHeader.OnSuggestBlock(BlockTreeSuggestOptions.ShouldProcess, new Block(parent), AddBlockResult.Added);
-
-        using IOwnedReadOnlyList<BlockHeader?>? cached = await forwardHeader.GetBlockHeaders(0, 2, CancellationToken.None);
-        Assert.That(cached, Is.Not.Null);
-        Assert.That(cached, Has.Count.EqualTo(2));
-        Assert.That(ctx.BlockTree.SuggestBlock(new Block(initial[2]!), BlockTreeSuggestOptions.None), Is.Not.EqualTo(AddBlockResult.UnknownParent));
-        Assert.That(ctx.BlockTree.SuggestBlock(new Block(initial[3]!), BlockTreeSuggestOptions.None), Is.Not.EqualTo(AddBlockResult.UnknownParent));
-        forwardHeader.OnSuggestBlock(BlockTreeSuggestOptions.ShouldProcess, new Block(initial[2]!), AddBlockResult.Added);
-        forwardHeader.OnSuggestBlock(BlockTreeSuggestOptions.ShouldProcess, new Block(initial[3]!), AddBlockResult.Added);
-
-        using IOwnedReadOnlyList<BlockHeader?>? fresh = await forwardHeader.GetBlockHeaders(0, 2, CancellationToken.None);
-        using (Assert.EnterMultipleScope())
+        try
         {
-            Assert.That(fresh, Is.Not.Null);
-            Assert.That(fresh, Has.Count.EqualTo(2));
-            Assert.That(headerRequests, Is.EqualTo(2), "an exhausted cached window must allocate a fresh header response");
+            BlockHeader parent = initial[1]!;
+            SuggestParent(ctx, parent);
+            forwardHeader.OnSuggestBlock(BlockTreeSuggestOptions.ShouldProcess, new Block(parent), AddBlockResult.Added);
+            return new CachedPinSetup(peerInfo, forwardHeader, initial, () => headerRequests);
+        }
+        catch
+        {
+            initial.Dispose();
+            throw;
         }
     }
 
-    [Test]
-    public async Task Cached_pin_invalidates_conflicting_anchor_or_advertised_head([Values(PinConflict.Anchor, PinConflict.AdvertisedHead)] PinConflict conflict)
+    private sealed record CachedPinSetup(
+        PeerInfo PeerInfo,
+        IForwardHeaderProvider ForwardHeader,
+        IOwnedReadOnlyList<BlockHeader?> Initial,
+        Func<int> HeaderRequestCount) : IDisposable
     {
-        await using IContainer node = CreateNode();
-        Context ctx = node.Resolve<Context>();
-        PeerInfo peerInfo = BuildInitializedPeer(TestItem.PublicKeyA, UInt256.MaxValue);
-        ISyncPeer syncPeer = peerInfo.SyncPeer;
-        syncPeer.HeadHash.Returns(TestItem.KeccakA);
-        syncPeer.HeadNumber.Returns(1000UL);
-        ctx.ConfigureBestPeer(peerInfo);
+        public int HeaderRequests => HeaderRequestCount();
 
-        int headerRequests = 0;
-        syncPeer.GetBlockHeaders(Arg.Any<ulong>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
-            .Returns(callInfo =>
-            {
-                headerRequests++;
-                return ctx.ResponseBuilder.BuildHeaderResponse(callInfo.ArgAt<ulong>(0), 4, Response.AllCorrect);
-            });
-
-        IForwardHeaderProvider forwardHeader = ctx.ForwardHeaderProvider;
-        using IOwnedReadOnlyList<BlockHeader?> initial = await forwardHeader.GetBlockHeaders(0, 4, CancellationToken.None)
-            ?? throw new AssertionException("The initial header response was not prepared.");
-        BlockHeader parent = initial[1]!;
-        SuggestParent(ctx, parent);
-        forwardHeader.OnSuggestBlock(BlockTreeSuggestOptions.ShouldProcess, new Block(parent), AddBlockResult.Added);
-
-        bool expectNoResponse = conflict == PinConflict.AdvertisedHead;
-        if (conflict == PinConflict.Anchor)
-        {
-            UInt256 conflictDifficultyWide = parent.TotalDifficulty.GetValueOrDefault() + UInt256.One;
-            Assert.That(conflictDifficultyWide, Is.LessThan(UInt256.MaxValue));
-            BlockHeader conflicting = Build.A.BlockHeader
-                .WithParent(ctx.BlockTree.Genesis!)
-                .WithNumber(parent.Number)
-                .WithHash(TestItem.KeccakB)
-                .TestObject;
-            conflicting.TotalDifficulty = conflictDifficultyWide;
-            Assert.That(ctx.BlockTree.SuggestBlock(new Block(conflicting), BlockTreeSuggestOptions.None), Is.Not.EqualTo(AddBlockResult.UnknownParent));
-            Assert.That(ctx.BlockTree.BestSuggestedHeader!.Hash, Is.EqualTo(conflicting.Hash));
-        }
-        else
-        {
-            syncPeer.HeadNumber.Returns(parent.Number);
-            syncPeer.HeadHash.Returns(TestItem.KeccakB);
-        }
-
-        using IOwnedReadOnlyList<BlockHeader?>? response = await forwardHeader.GetBlockHeaders(0, 4, CancellationToken.None);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(response is null, Is.EqualTo(expectNoResponse));
-            Assert.That(headerRequests, Is.EqualTo(expectNoResponse ? 1 : 2));
-        }
-    }
-
-    public enum PinSafety
-    {
-        OwnerRemoved,
-        OwnerSleeping,
-        OwnerUninitialized,
-        OwnerNoLongerImproves,
-    }
-
-    public enum PinConflict
-    {
-        Anchor,
-        AdvertisedHead,
+        public void Dispose() => Initial.Dispose();
     }
 
     private static void SuggestParent(Context ctx, BlockHeader parent)
@@ -744,14 +704,6 @@ public partial class ForwardHeaderProviderTests
         syncPeer.HeadNumber.Returns(10UL);
         syncPeer.Node.Returns(new Node(publicKey, "127.0.0.1", 30303));
         return new PeerInfo(syncPeer);
-    }
-
-    private static void SetHeaderSpeed(INodeStatsManager stats, PeerInfo peer, long speed)
-    {
-        INodeStats nodeStats = Substitute.For<INodeStats>();
-        nodeStats.GetAverageTransferSpeed(TransferSpeedType.Headers).Returns(speed);
-        Node peerNode = peer.SyncPeer.Node;
-        stats.GetOrAdd(Arg.Is<Node>(node => ReferenceEquals(node, peerNode))).Returns(nodeStats);
     }
 
     private class SlowSealValidator : ISealValidator
