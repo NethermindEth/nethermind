@@ -17,5 +17,10 @@ public static class ErrorMessages
     /// </summary>
     public const string SubscriptionNotFound = "subscription not found";
 
+    /// <summary>
+    /// Geth-compatible message for an unknown filter id, paired with <see cref="ErrorCodes.InvalidInput"/>
+    /// </summary>
+    internal const string FilterNotFound = "filter not found";
+
     public static string MethodNotFound(string methodName) => $"the method {methodName} does not exist/is not available";
 }
