@@ -168,7 +168,7 @@ public class PrewarmerReadAheadTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(envs.Warms, Is.GreaterThan(0), "precondition: the run found slots to warm");
-            for (int i = 0; i < 4; i++)
+            for (ulong i = 0; i < 4; i++)
             {
                 Assert.That(_caches.StorageCache.TryGetValue(new StorageCell(ColdTailContracts.Walker, 0x4e4d + i), out _), Is.EqualTo(!finished),
                     $"slot {i} of the walk");
@@ -428,7 +428,7 @@ public class PrewarmerReadAheadTests
         _caches.StorageCache.Clear();
 
         preWarmer.OnBeforeTxExecution();
-        for (int i = 0; i < 3; i++) worldState.Get(new StorageCell(ColdTailContracts.Walker, 0x6000 + i), out _);
+        for (ulong i = 0; i < 3; i++) worldState.Get(new StorageCell(ColdTailContracts.Walker, 0x6000 + i), out _);
         bool idle = SpinWait.SpinUntil(() => preWarmer.ReadAheadsRunning == 0, Timeout);
 
         using (Assert.EnterMultipleScope())
