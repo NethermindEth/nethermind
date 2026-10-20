@@ -20,7 +20,7 @@ namespace Nethermind.State.Flat.ScopeProvider;
 /// back from the buffer by pointer, which the scope's pin keeps readable.
 /// </remarks>
 /// <param name="root">The trie's root, as <see cref="NodeRecordBufferExtensions.ResolveRoot"/> returns it.</param>
-internal sealed class BufferedTrie(SnapshotBundle bundle, Hash256? addressHash, TrieRoot root) : INodeRecordStore
+internal sealed class NodeRecordTrie(SnapshotBundle bundle, Hash256? addressHash, TrieRoot root) : INodeRecordStore
 {
     private Hash256 _rootHash = root.ToHash256();
     private bool _rootDirty;

@@ -38,7 +38,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     // The state root warm-ups walk from; default in a trie-less scope.
     private readonly TrieRoot _initialTrieRoot;
     // Null in a trie-less scope.
-    private readonly BufferedTrie? _stateTrie;
+    private readonly NodeRecordTrie? _stateTrie;
     private readonly Dictionary<AddressAsKey, FlatStorageTree> _storages = [];
     private ConcurrentDictionary<AddressAsKey, FlatStorageTree?>? _hintWarmStorages;
     private bool _isDisposed = false;
@@ -107,7 +107,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             INodeRecordBuffer buffer = snapshotBundle.CacheableNodeRecordBuffer!;
             _bufferPin = buffer.Pin();
             _initialTrieRoot = buffer.ResolveRoot(null, _initialStateRoot.ValueHash256);
-            _stateTrie = new BufferedTrie(snapshotBundle, null, _initialTrieRoot);
+            _stateTrie = new NodeRecordTrie(snapshotBundle, null, _initialTrieRoot);
         }
 
         if (configuration.ApplyStorageWritesOnIdleThread && !isReadOnly && !_trieless && !configuration.VerifyWithTrie

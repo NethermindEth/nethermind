@@ -190,7 +190,7 @@ public static class FlatTestHelpers
     public static TrieRoot BulkSet(ResourcePool pool, INodeRecordBuffer buffer, Hash256? address, TrieRoot root, in ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries, bool canParallelize)
     {
         using SnapshotBundle bundle = new(MakeBundle(pool), buffer, pool, ResourcePool.Usage.MainBlockProcessing);
-        BufferedTrie trie = new(bundle, address, root);
+        NodeRecordTrie trie = new(bundle, address, root);
         trie.BulkSet(entries, canParallelize);
         return trie.Root;
     }

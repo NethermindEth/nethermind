@@ -1475,7 +1475,7 @@ public class FlatWorldStateScopeProviderTests
             for (int version = 0; version < versionCount; version++)
             {
                 INodeRecordBufferPin retain = buffer.Pin();
-                BufferedTrie trie = new(writer, address, root);
+                NodeRecordTrie trie = new(writer, address, root);
                 using ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries = new(keyCount);
                 values[version] = version == 0 ? new byte[keyCount][] : (byte[][])values[version - 1].Clone();
                 for (int i = 0; i < (version == 0 ? keyCount : 1); i++)
@@ -1508,7 +1508,7 @@ public class FlatWorldStateScopeProviderTests
         for (int version = 0; version < versionCount; version++)
         {
             Assert.That(buffer.FindRoot(address, roots[version].Hash), Is.EqualTo(roots[version].Pointer), $"indexed root {version}");
-            BufferedTrie trie = new(bundle, address, new TrieRoot(roots[version].Hash, buffer.FindRoot(address, roots[version].Hash)));
+            NodeRecordTrie trie = new(bundle, address, new TrieRoot(roots[version].Hash, buffer.FindRoot(address, roots[version].Hash)));
             using (Assert.EnterMultipleScope())
             {
                 for (int i = 0; i < keys.Length; i++) Assert.That(trie.TryGet(keys[i]), Is.EqualTo(values[version][i]), $"version {version}, key {i}");
