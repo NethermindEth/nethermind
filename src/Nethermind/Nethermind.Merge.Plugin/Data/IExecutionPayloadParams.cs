@@ -15,6 +15,17 @@ public interface IExecutionPayloadParams
     byte[][]? ExecutionRequests { get; set; }
     byte[][]? InclusionListTransactions { get; set; }
     ValidationResult ValidateParams(IReleaseSpec spec, int version, out string? error);
+
+    /// <summary>Validates request parameters and bounds the transaction count before decoding when supported.</summary>
+    /// <remarks>The default preserves validation behavior for existing plugin implementations.</remarks>
+    internal ValidationResult ValidateParams(IReleaseSpec spec, int version, PayloadTransactionCountGuard? transactionCountGuard, out string? error)
+    {
+        ValidationResult result = ValidateParams(spec, version, out error);
+        return result == ValidationResult.Success && transactionCountGuard is not null &&
+            !transactionCountGuard.IsWithinParentGasLimit(ExecutionPayload, spec, out error)
+            ? ValidationResult.Invalid
+            : result;
+    }
 }
 
 public enum ValidationResult : byte { Success, Fail, Invalid };
@@ -111,7 +122,11 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
 
     public Hash256? ParentBeaconBlockRoot => parentBeaconBlockRoot;
 
-    public ValidationResult ValidateParams(IReleaseSpec spec, int version, out string? error)
+    public ValidationResult ValidateParams(IReleaseSpec spec, int version, out string? error) =>
+        ((IExecutionPayloadParams)this).ValidateParams(spec, version, null, out error);
+
+    /// <inheritdoc/>
+    ValidationResult IExecutionPayloadParams.ValidateParams(IReleaseSpec spec, int version, PayloadTransactionCountGuard? transactionCountGuard, out string? error)
     {
         ValidationResult result = ValidateInitialParams(spec, out error);
         if (result != ValidationResult.Success)
@@ -123,6 +138,17 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
         if (result != ValidationResult.Success)
         {
             return result;
+        }
+
+        if (parentBeaconBlockRoot is null)
+        {
+            error = "Parent beacon block root must be set";
+            return ValidationResult.Fail;
+        }
+
+        if (transactionCountGuard is not null && !transactionCountGuard.IsWithinParentGasLimit(executionPayload, spec, out error))
+        {
+            return ValidationResult.Invalid;
         }
 
         bool isEmptyPreForkV4 = version == EngineApiVersions.NewPayload.V4 &&
@@ -161,12 +187,6 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
         {
             error = "Blob versioned hashes do not match";
             return ValidationResult.Invalid;
-        }
-
-        if (parentBeaconBlockRoot is null)
-        {
-            error = "Parent beacon block root must be set";
-            return ValidationResult.Fail;
         }
 
         executionPayload.ParentBeaconBlockRoot = parentBeaconBlockRoot;

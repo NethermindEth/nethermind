@@ -282,7 +282,8 @@ public partial class EngineModuleTests
     }
 
     [Test]
-    public async Task NewPayloadV3_rejects_more_transactions_than_parent_gas_limit_allows_before_decoding()
+    public async Task NewPayloadV3_rejects_more_transactions_than_parent_gas_limit_allows_before_decoding(
+        [Values(null, "withdrawals", "blobGasUsed", "excessBlobGas", "blobVersionedHashes", "parentBeaconBlockRoot")] string? missingField)
     {
         (IEngineRpcModule rpcModule, string? payloadId, _, MergeTestBlockchain chain) = await BuildAndGetPayloadV3Result(Cancun.Instance, 0);
         using MergeTestBlockchain disposeChain = chain;
@@ -293,9 +294,21 @@ public partial class EngineModuleTests
         payload.Transactions = Enumerable.Repeat(new byte[] { 0xC0 }, (int)(parentGasLimit / 5_000)).ToArray();
         payload.GasLimit = ulong.MaxValue;
 
-        ResultWrapper<PayloadStatusV1> result = await rpcModule.engine_newPayloadV3(payload, [], payload.ParentBeaconBlockRoot);
+        switch (missingField)
+        {
+            case "withdrawals": payload.Withdrawals = null; break;
+            case "blobGasUsed": payload.BlobGasUsed = null; break;
+            case "excessBlobGas": payload.ExcessBlobGas = null; break;
+        }
 
-        AssertInvalidNewPayload(result, expectedValidationErrorPrefix: "Transaction count");
+        ResultWrapper<PayloadStatusV1> result = await rpcModule.engine_newPayloadV3(payload,
+            missingField == "blobVersionedHashes" ? null! : [],
+            missingField == "parentBeaconBlockRoot" ? null : payload.ParentBeaconBlockRoot);
+
+        if (missingField is null)
+            AssertInvalidNewPayload(result, expectedValidationErrorPrefix: "Transaction count");
+        else
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
     }
 
     [Test]

@@ -22,8 +22,10 @@ public sealed class PayloadTransactionCountGuard(IBlockFinder? blockFinder)
     /// <remarks>EIP-2780's lower base cost still sits above it.</remarks>
     internal const ulong MinTransactionGas = GasCostOf.Transaction / 2;
 
+    /// <summary>A guard that permits any count for chains without a parent-relative gas limit bound.</summary>
     public static readonly PayloadTransactionCountGuard Disabled = new(null);
 
+    /// <summary>Checks whether the payload's transaction count can fit within its parent's gas limit bound.</summary>
     /// <returns><c>false</c> when the count cannot fit; <c>true</c> when it can, or when the parent is unknown.</returns>
     public bool IsWithinParentGasLimit(ExecutionPayload payload, IReleaseSpec spec, [NotNullWhen(false)] out string? error)
     {
