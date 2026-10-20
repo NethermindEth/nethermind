@@ -195,6 +195,25 @@ class SelectorTests(unittest.TestCase):
     def decide(self, changed: set[str], at: datetime = NOW, selector: st.Selector | None = None) -> st.Selection | None:
         return (selector or self.selector).decide(self.run, at, changed, PROJECTS.direct_tests(changed))
 
+    def test_observe_learns_from_up_to_the_mass_failure_limits_and_not_beyond(self):
+        for count, learns in ((st.Selector.MASS_TESTS, True), (st.Selector.MASS_TESTS + 1, False)):
+            with self.subTest(tests=count):
+                selector = st.Selector()
+                selector.observe(NOW, {EVM}, {(f"test_{i}", "Prague") for i in range(count)}, set())
+                self.assertEqual(bool(selector.test_links), learns)
+        for count, learns in ((st.Selector.MASS_PROJECTS, True), (st.Selector.MASS_PROJECTS + 1, False)):
+            with self.subTest(projects=count):
+                selector = st.Selector()
+                selector.observe(NOW, {EVM}, set(), {f"P{i}.Test" for i in range(count)})
+                self.assertEqual(bool(selector.project_links), learns)
+
+    def test_a_selection_samples_two_percent_of_the_other_projects(self):
+        selection = self.decide({EVM})
+        others = [f"Nethermind.Other{i}.Test" for i in range(2000)]
+        kept = [project for project in others if selection.keeps_project(project)]
+        self.assertTrue(0.01 < len(kept) / len(others) < 0.03, len(kept))
+        self.assertEqual(kept, [p for p in others if st.sampled(f"{selection.run}|{p}")], "the sample is reproducible")
+
     def test_decide_leaves_the_legacy_suites_that_eest_covers_to_full_runs(self):
         legacy = f"{st.SRC}/Ethereum.Legacy.Blockchain.Test"
         selector = st.Selector()
@@ -330,6 +349,12 @@ class InventoryTests(unittest.TestCase):
             with self.subTest(name=name):
                 self.assertEqual(bool(pattern.match(name)), expected)
 
+    def test_filter_lines_do_not_match_a_fork_that_starts_with_the_selected_one(self):
+        lines = st.LaneSelection(cost=1.0, picked=1.0, forks={"test_add": {"Prague"}}).filter_lines()
+        pattern = re.compile("^(?:" + "|".join(lines) + ")")
+        self.assertTrue(pattern.match("test_add[fork_Prague-blockchain_test]"))
+        self.assertFalse(pattern.match("test_add[fork_PragueToOsakaAtTime15k-blockchain_test]"))
+
     def test_shrink_nethtest_matrix_keeps_the_selected_share_of_chunks_and_drops_empty_lanes(self):
         reduced = st.shrink_nethtest_matrix(self.matrix, self.inventory.lanes(self.add_only))
         lanes = [(entry["test_type"], entry["chunk"]) for entry in reduced["include"]]
@@ -431,8 +456,7 @@ class SelectCommandTests(unittest.TestCase):
 
     def arguments(self, **extra) -> Namespace:
         return Namespace(
-            model=self.work / "model.json", changed_files=self.work / "changed.txt", run=str(self.run),
-            min_history_days=28, max_model_age_hours=24, **extra,
+            model=self.work / "model.json", changed_files=self.work / "changed.txt", run=str(self.run), **extra,
         )
 
     def select_eest(self) -> tuple[dict, set[str]]:
@@ -478,7 +502,8 @@ class SelectCommandTests(unittest.TestCase):
         now = datetime.now(timezone.utc)
         self.write_model(now, now - timedelta(days=40))
         (self.work / "changed.txt").write_text("README.md\n")
-        self.assertEqual(self.select_projects("pull_request"), {"matrices": '{"tests": null}', "any": "false"})
+        self.assertEqual(self.select_projects("pull_request"),
+                         {"matrices": '{"tests": null}', "any": "false", "selected": "true"})
 
     def test_select_projects_outside_pull_requests_keeps_every_matrix_whole(self):
         now = datetime.now(timezone.utc)
@@ -488,10 +513,13 @@ class SelectCommandTests(unittest.TestCase):
                 (self.work / "output").unlink(missing_ok=True)
                 outputs = self.select_projects(event)
                 self.assertEqual(json.loads(outputs["matrices"]), {"tests": TestMatrixTests.matrix})
-                self.assertEqual(outputs["any"], "true")
+                self.assertEqual((outputs["any"], outputs["selected"]), ("true", "false"))
 
 
 class ReplayTests(unittest.TestCase):
+    def test_markdown_cell_keeps_branch_names_from_breaking_the_table(self):
+        self.assertEqual(st.markdown_cell("a|b`c<script>"), "a\\|b'c&lt;script>")
+
     def test_replay_reports_hidden_failures_and_leaves_out_selected_runs(self):
         run = run_without_holdout(start=3)
         self.assertTrue(unsampled(run, "test_mul", "Cancun"), "precondition: the sample skips test_mul")
@@ -509,6 +537,81 @@ class ReplayTests(unittest.TestCase):
 
 def job(job_id: int, name: str) -> dict:
     return {"id": job_id, "name": name}
+
+
+class DownloadTests(unittest.TestCase):
+    @staticmethod
+    def artifact(run: int, at: str, branch: str = "master", head_repository: int = 1, expired: bool = False) -> dict:
+        return {"created_at": at, "expired": expired, "workflow_run": {
+            "id": run, "head_branch": branch, "head_repository_id": head_repository, "repository_id": 1}}
+
+    def download(self, artifacts: list[dict]) -> list[list[str]]:
+        with tempfile.TemporaryDirectory() as directory, \
+                mock.patch.object(st.GitHub, "pages", return_value=[{"artifacts": artifacts}]), \
+                mock.patch.object(st.subprocess, "run") as run:
+            st.download(Namespace(repo="o/r", out=Path(directory) / "model"))
+        return [call.args[0] for call in run.call_args_list]
+
+    def test_download_takes_the_newest_artifact_of_a_master_run_of_this_repository(self):
+        calls = self.download([
+            self.artifact(9, "2026-10-01T00:00:00Z"),
+            self.artifact(2, "2026-10-03T00:00:00Z", branch="feature"),
+            self.artifact(3, "2026-10-04T00:00:00Z", head_repository=2),
+            self.artifact(4, "2026-10-05T00:00:00Z", expired=True),
+            self.artifact(5, "2026-10-02T00:00:00Z"),
+        ])
+        self.assertEqual([call[3] for call in calls], ["5"], "a fork, a branch or an expired artifact never counts")
+
+    def test_download_without_a_trusted_artifact_extracts_nothing(self):
+        self.assertEqual(self.download([self.artifact(3, "2026-10-04T00:00:00Z", head_repository=2)]), [])
+
+
+class CollectTests(unittest.TestCase):
+    def test_collect_windows_backfill_an_empty_journal_and_extend_a_short_one(self):
+        github = mock.create_autospec(st.GitHub, instance=True)
+        github.runs.return_value = []
+        now = datetime.now(timezone.utc)
+        st.collect_windows(github, [])
+        (since, until), = [call.args for call in github.runs.call_args_list]
+        self.assertAlmostEqual((until - since).total_seconds(), st.BACKFILL_STEP.total_seconds(), delta=1)
+        github.runs.reset_mock()
+        journal = [st.Entry(run=1, at=now - timedelta(days=10), event="push", branch="master", files=[], failed=None),
+                   st.Entry(run=2, at=now - timedelta(hours=2), event="push", branch="master", files=[], failed=None)]
+        st.collect_windows(github, journal)
+        (new_since, _), (old_since, old_until) = [call.args for call in github.runs.call_args_list]
+        self.assertEqual(new_since, journal[-1].at - st.COLLECT_OVERLAP, "the overlap catches runs that ended late")
+        self.assertEqual((old_since, old_until), (journal[0].at - st.BACKFILL_STEP, journal[0].at))
+
+    def test_only_finished_pull_request_and_push_runs_are_collected(self):
+        for conclusion, event, expected in [("success", "push", True), ("failure", "pull_request", True),
+                                            ("cancelled", "push", False), ("success", "schedule", False)]:
+            with self.subTest(conclusion=conclusion, event=event):
+                self.assertEqual(st.is_collectable({"conclusion": conclusion, "event": event}), expected)
+
+
+class InventoryParsingTests(unittest.TestCase):
+    def test_nethtest_results_count_cases_per_lane_test_and_fork(self):
+        with tempfile.TemporaryDirectory() as directory:
+            lane = Path(directory) / "nethtest-results-blockTest-sequential-1of2"
+            lane.mkdir()
+            (lane / "nethtest-results.json").write_text(json.dumps([
+                {"name": "test_add[fork_Cancun-blockchain_test-a]"},
+                {"name": "test_add[fork_Cancun-blockchain_test-b]"},
+                {"name": "test_add[fork_Prague]"},
+                {"name": "legacy_case", "fork": "Berlin"},
+            ]))
+            cases = st.nethtest_cases(Path(directory))
+        counted = {lane: {name: dict(forks) for name, forks in tests.items()} for lane, tests in cases.items()}
+        self.assertEqual(counted, {"blockTest|sequential": {"test_add": {"Cancun": 2, "Prague": 1},
+                                                            "legacy_case": {"Berlin": 1}}})
+
+    def test_nethtest_seconds_sum_the_run_step_per_lane(self):
+        step = {"name": "Run nethtest and parse results", "started_at": "2026-10-01T00:00:00Z",
+                "completed_at": "2026-10-01T00:01:30Z"}
+        jobs = [{"name": "EEST nethtest / nethtest blockTest sequential 1of2", "steps": [step]},
+                {"name": "EEST nethtest / nethtest blockTest sequential 2of2", "steps": [step]},
+                {"name": "EEST nethtest / nethtest blockTest sequential 3of3", "steps": [dict(step, name="Other")]}]
+        self.assertEqual(dict(st.nethtest_seconds(jobs)), {"blockTest|sequential": 180.0})
 
 
 class EnvironmentTests(unittest.TestCase):

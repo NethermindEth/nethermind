@@ -51,8 +51,14 @@ HARNESS = frozenset({f"{SRC}/Ethereum.Test.Base", f"{SRC}/Nethermind.Test.Runner
 # Legacy fixture suites that EEST covers: in 90 days of pull requests each failed only on branches where EEST
 # failed too. A pull request runs them when it runs everything or changes them; master runs them always.
 COVERED_BY_EEST = frozenset({"Ethereum.Legacy.Blockchain.Test"})
-# A test that also fails on master, or on two other branches, within this window failed for its environment.
+# A test that also fails on master, or on this many other branches, within this window failed for its environment.
 ENVIRONMENT_WINDOW = timedelta(hours=24)
+ENVIRONMENT_BRANCHES = 2
+# The model is trusted only while it is fresh and holds enough history to have learned the links.
+MAX_MODEL_AGE = timedelta(hours=24)
+MIN_HISTORY = timedelta(days=28)
+# The one artifact that test-selection.yml publishes: the model, the test costs and the journal it learns from.
+MODEL_ARTIFACT = "test-selection-model"
 # Paths outside every project that change how every test builds or runs. Any other such path, such as another
 # workflow, a Dockerfile or a script, cannot change a test result.
 EVERY_TEST = re.compile(
@@ -524,6 +530,10 @@ class Selector:
             for project in changed:
                 self.project_links[project] |= projects
 
+    def linked(self, changed: set[str]) -> tuple[set[str], set[str]]:
+        """The test projects and the EEST tests that failed together with the changed projects."""
+        return self._linked(self.project_links, changed), self._linked(self.test_links, changed)
+
     @staticmethod
     def _linked(links: dict[str, set[str]], changed: set[str]) -> set[str]:
         return set().union(*(links.get(project, set()) for project in changed))
@@ -578,7 +588,7 @@ def without_environment(journal: list[Entry]) -> list[Entry]:
         first = bisect_left(instants[test], entry.at - ENVIRONMENT_WINDOW)
         last = bisect_right(instants[test], entry.at + ENVIRONMENT_WINDOW)
         others = {branch for _, branch in times[test][first:last] if branch != entry.branch}
-        return "master" not in others and len(others) < 2
+        return "master" not in others and len(others) < ENVIRONMENT_BRANCHES
 
     return [
         replace(entry, failed=replace(entry.failed, tests=[test for test in entry.failed.tests if caused(test, entry)]))
@@ -832,6 +842,29 @@ def model(args: argparse.Namespace) -> None:
     print(f"model from {len(journal)} runs")
 
 
+def download(args: argparse.Namespace) -> None:
+    """Extracts the newest model artifact into --out, or nothing when there is none: the selection then runs every
+    test. Only artifacts of master runs in this repository count; a fork can name its branch master, but its runs
+    have another head repository."""
+    github = GitHub(args.repo)
+    pages = github.pages(f"repos/{args.repo}/actions/artifacts?name={MODEL_ARTIFACT}&per_page=100")
+    trusted = [artifact for page in pages for artifact in page["artifacts"] if is_trusted(artifact)]
+    if not trusted:
+        print("no model artifact")
+        return
+    run = max(trusted, key=lambda artifact: artifact["created_at"])["workflow_run"]["id"]
+    args.out.mkdir(parents=True, exist_ok=True)
+    subprocess.run(["gh", "run", "download", str(run), "-R", args.repo, "-n", MODEL_ARTIFACT, "-D", str(args.out)],
+                   check=True)
+    print(f"model of run {run}")
+
+
+def is_trusted(artifact: dict) -> bool:
+    run = artifact["workflow_run"]
+    return (not artifact["expired"] and run["head_branch"] == "master"
+            and run["head_repository_id"] == run["repository_id"])
+
+
 def select_eest(args: argparse.Namespace) -> None:
     """Writes one nethtest --filterFile per EEST lane and the reduced nethtest matrix for one pull request."""
     matrix = read_json(args.matrix)
@@ -855,15 +888,18 @@ def select_projects(args: argparse.Namespace) -> None:
     matrices = read_json(args.matrices)[args.workflow]
     projects = all_projects(matrices)
     selection, reason = pull_request_selection(args) if args.event == "pull_request" else (None, "not a pull request")
+    selected = False
     if selection is not None:
         matrices = {job: filter_test_matrix(matrix, selection.keeps_project) for job, matrix in matrices.items()}
         kept = sorted(project for project in projects if selection.keeps_project(project))
         print(f"running {len(kept)} test projects: {', '.join(kept)}")
+        selected = True
     else:
         print(f"running every test project: {reason}")
     with open(args.output, "a") as output:
         output.write(f"matrices={json.dumps(matrices)}\n")
         output.write(f"any={str(any(matrix is not None for matrix in matrices.values())).lower()}\n")
+        output.write(f"selected={str(selected).lower()}\n")
 
 
 def all_projects(matrices: dict) -> set[str]:
@@ -874,7 +910,7 @@ def all_projects(matrices: dict) -> set[str]:
 
 
 def pull_request_selection(args: argparse.Namespace) -> tuple[Selection | None, str]:
-    problem = model_problem(args.model, args.min_history_days, args.max_model_age_hours)
+    problem = model_problem(args.model)
     if problem:
         return None, problem
     projects = Projects.of_repository()
@@ -884,16 +920,16 @@ def pull_request_selection(args: argparse.Namespace) -> tuple[Selection | None, 
     return selection, "the change touches the build or the test harness, or the run is a holdout"
 
 
-def model_problem(path: Path, min_history_days: int, max_age_hours: int) -> str | None:
+def model_problem(path: Path) -> str | None:
     """Why the model cannot be trusted, or None."""
     if not path.is_file():
         return "no selection model"
     data = read_json(path)
     now = datetime.now(timezone.utc)
-    if now - datetime.fromisoformat(data["built_at"]) > timedelta(hours=max_age_hours):
+    if now - datetime.fromisoformat(data["built_at"]) > MAX_MODEL_AGE:
         return f"the model was built at {data['built_at']}"
     history_from = data["history_from"]
-    if history_from is None or now - datetime.fromisoformat(history_from) < timedelta(days=min_history_days):
+    if history_from is None or now - datetime.fromisoformat(history_from) < MIN_HISTORY:
         return f"the model holds history from {history_from} only"
     return None
 
@@ -1019,6 +1055,10 @@ def main() -> None:
     parser.add_argument("--repo", default=os.environ.get("GITHUB_REPOSITORY", "NethermindEth/nethermind"))
     commands = parser.add_subparsers(dest="command", required=True)
 
+    command = commands.add_parser("download")
+    command.add_argument("--out", type=Path, required=True)
+    command.set_defaults(handler=download)
+
     command = commands.add_parser("collect")
     command.add_argument("--journal", type=Path, required=True)
     command.set_defaults(handler=collect)
@@ -1063,8 +1103,6 @@ def add_selection_arguments(command: argparse.ArgumentParser) -> None:
     command.add_argument("--model", type=Path, required=True)
     command.add_argument("--changed-files", type=Path, required=True, help="one changed path per line")
     command.add_argument("--run", required=True, help="the workflow run id; seeds the sample and the holdout")
-    command.add_argument("--min-history-days", type=int, default=28)
-    command.add_argument("--max-model-age-hours", type=int, default=24)
 
 
 if __name__ == "__main__":

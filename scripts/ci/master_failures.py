@@ -17,15 +17,12 @@ import json
 import os
 import subprocess
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 
 import select_tests as st
 
 LABEL = "master-broken"
-# A test that failed on this many other branches in the day before the merges is already flaky.
-FLAKY_BRANCHES = 2
-FLAKY_WINDOW = timedelta(hours=24)
 MAX_LISTED_TESTS = 30
 
 
@@ -34,7 +31,6 @@ class Merge:
     sha: str
     number: int | None
     author: str | None
-    title: str
     files: tuple[str, ...]
 
 
@@ -49,7 +45,7 @@ class Suspect:
 def regressions(failed: st.Failures, journal: list[st.Entry], since: datetime) -> list[str]:
     """Test failures of a master run that the flakiness before the merges does not explain. Failures on other
     branches after the merges are left in: a broken master breaks the pull requests based on it."""
-    flaky_from = since - FLAKY_WINDOW
+    flaky_from = since - st.ENVIRONMENT_WINDOW
     branches: dict[str, set[str]] = {}
     for entry in journal:
         if entry.failed and entry.branch != "master" and flaky_from <= entry.at <= since:
@@ -57,7 +53,7 @@ def regressions(failed: st.Failures, journal: list[st.Entry], since: datetime) -
                 branches.setdefault(test, set()).add(entry.branch)
     return sorted(
         test for test in failed.tests
-        if not test.startswith("Hive|") and len(branches.get(test, ())) < FLAKY_BRANCHES
+        if not test.startswith("Hive|") and len(branches.get(test, ())) < st.ENVIRONMENT_BRANCHES
     )
 
 
@@ -92,8 +88,8 @@ def rank(changed: set[str], failing_projects: set[str], failing_eest: set[str], 
         return 3
     if failing_projects & projects.direct_tests(changed) or failing_eest and changed & st.HARNESS:
         return 0
-    if any(failing_projects & selector.project_links.get(project, set())
-           or failing_eest & selector.test_links.get(project, set()) for project in changed):
+    linked_projects, linked_tests = selector.linked(changed)
+    if failing_projects & linked_projects or failing_eest & linked_tests:
         return 1
     depended = set().union(*(projects.dependencies(f"{st.SRC}/{project}") for project in failing_projects))
     # EEST runs the whole client, so any changed project can break it.
@@ -210,7 +206,7 @@ def merged_between(github: st.GitHub, repo: str, base: str, head: str) -> list[M
         pull = pulls[0] if pulls else None
         merges.append(Merge(
             sha=sha, number=pull["number"] if pull else None, author=pull["user"]["login"] if pull else None,
-            title=pull["title"] if pull else commit["commit"]["message"].split("\n", 1)[0], files=tuple(files),
+            files=tuple(files),
         ))
     return merges
 

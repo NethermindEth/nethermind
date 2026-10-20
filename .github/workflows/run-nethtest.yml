@@ -358,28 +358,28 @@ jobs:
       # runs everything.
       - name: Select EEST tests
         id: select
-        if: >-
-          github.event_name == 'pull_request' && inputs.variant == '' &&
-          !contains(github.event.pull_request.labels.*.name, 'ci-full')
+        if: github.event_name == 'pull_request' && inputs.variant == ''
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
           MATRIX: ${{ steps.generate.outputs.matrix }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
+          # The labels are read now rather than from the event, so adding ci-full and re-running takes effect.
+          # A failed read fails the step, and without outputs from this step the full matrix runs.
+          labels=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/labels" -q '.[].name')
+          if grep -qx ci-full <<< "$labels"; then
+            echo "running every EEST test: the ci-full label" | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
           work="$RUNNER_TEMP/selection"
           mkdir -p "$work"
           printf '%s' "$MATRIX" > "$work/matrix.json"
           git fetch --no-tags --depth=1 origin "$BASE_SHA"
           git diff --no-renames --name-only "$BASE_SHA" HEAD > "$work/changed.txt"
-          # A fork can name its branch master, but only the base repository can start scheduled or dispatched runs.
-          model_run=$(gh run list -R "$GITHUB_REPOSITORY" --workflow test-selection.yml --branch master \
-            --status success -L 20 --json databaseId,event \
-            -q '[.[] | select(.event == "schedule" or .event == "workflow_dispatch")][0].databaseId // empty')
-          # Without a model run the selector reports that it has no model and keeps every test.
-          if [ -n "$model_run" ]; then
-            gh run download "$model_run" -R "$GITHUB_REPOSITORY" -n test-selection-model -D "$work/model"
-          fi
+          # Without a model artifact the selector reports that it has no model and keeps every test.
+          python3 scripts/ci/select_tests.py download --out "$work/model"
           python3 scripts/ci/select_tests.py select-eest --model "$work/model/model.json.gz" \
             --inventory "$work/model/inventory.json.gz" --changed-files "$work/changed.txt" --run "$GITHUB_RUN_ID" \
             --matrix "$work/matrix.json" --out-matrix "$work/selected.json" --filters "$work/filters" \

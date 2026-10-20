@@ -51,14 +51,8 @@ jobs:
         env:
           SEED: ${{ inputs.seed }}
         run: |
-          mkdir -p "$STATE"
-          # A fork can name its branch master, but only the base repository can start scheduled or dispatched runs.
-          previous=$(gh run list -R "$GITHUB_REPOSITORY" --workflow test-selection.yml --branch master \
-            --status success -L 20 --json databaseId,event \
-            -q '[.[] | select(.event == "schedule" or .event == "workflow_dispatch")][0].databaseId // empty')
-          if [ -n "$previous" ]; then
-            gh run download "$previous" -R "$GITHUB_REPOSITORY" -n test-selection-state -D "$STATE" || true
-          fi
+          # A failed download fails the run, so a short outage never publishes a model from an empty journal.
+          python scripts/ci/select_tests.py download --out "$STATE"
           if [ -n "$SEED" ] && [ ! -f "$STATE/journal.jsonl.gz" ]; then
             [[ "$SEED" =~ ^[A-Za-z0-9._/-]+$ ]] || { echo "::error::invalid seed branch"; exit 1; }
             git fetch --no-tags --depth=1 origin "refs/heads/$SEED"
@@ -89,33 +83,26 @@ jobs:
             --inventory "$STATE/inventory.json.gz" --report "$STATE/report.md"
           cat "$STATE/report.md" >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Save the state
-        uses: actions/upload-artifact@v7
-        with:
-          name: test-selection-state
-          path: |
-            ${{ env.STATE }}/journal.jsonl.gz
-            ${{ env.STATE }}/inventory.json.gz
-            ${{ env.STATE }}/inventory-date
-          retention-days: 7
-
-      - name: Publish the model
+      # One artifact holds the model, the test costs and the journal, so the next run restores what this one
+      # learned from and pull requests read the model from the same place.
+      - name: Publish the model and its state
         uses: actions/upload-artifact@v7
         with:
           name: test-selection-model
           path: |
             ${{ env.STATE }}/model.json.gz
             ${{ env.STATE }}/inventory.json.gz
+            ${{ env.STATE }}/journal.jsonl.gz
+            ${{ env.STATE }}/inventory-date
           retention-days: 7
 
-      # Each run supersedes the previous one; keep the newest two of each artifact so a broken run can fall back.
-      # Only artifacts of master runs in this repository count, so a fork's artifact of the same name is left alone.
+      # Each run supersedes the previous one; keep the newest two so a broken run can fall back. Only artifacts of
+      # master runs in this repository count (as in select_tests.py download), so a fork's artifact is left alone.
       - name: Delete superseded artifacts
         run: |
-          for name in test-selection-state test-selection-model; do
-            gh api --paginate "repos/$GITHUB_REPOSITORY/actions/artifacts?name=$name&per_page=100" -q '.artifacts[]' |
-              jq -s -r '[.[] | select(.workflow_run.head_branch == "master"
-                  and .workflow_run.head_repository_id == .workflow_run.repository_id)]
-                | sort_by(.created_at) | reverse | .[2:][] | .id' |
-              xargs -r -I{} gh api -X DELETE "repos/$GITHUB_REPOSITORY/actions/artifacts/{}"
-          done
+          gh api --paginate "repos/$GITHUB_REPOSITORY/actions/artifacts?name=test-selection-model&per_page=100" \
+            -q '.artifacts[]' |
+            jq -s -r '[.[] | select(.workflow_run.head_branch == "master"
+                and .workflow_run.head_repository_id == .workflow_run.repository_id)]
+              | sort_by(.created_at) | reverse | .[2:][] | .id' |
+            xargs -r -I{} gh api -X DELETE "repos/$GITHUB_REPOSITORY/actions/artifacts/{}"

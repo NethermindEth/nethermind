@@ -49,16 +49,7 @@ jobs:
       # to the failing tests. Without them every failure counts and only the dependency graph names a cause.
       - name: Download the selection state
         if: github.event.workflow_run.conclusion == 'failure'
-        run: |
-          mkdir -p "$STATE"
-          # A fork can name its branch master, but only the base repository can start scheduled or dispatched runs.
-          run=$(gh run list -R "$GITHUB_REPOSITORY" --workflow test-selection.yml --branch master \
-            --status success -L 20 --json databaseId,event \
-            -q '[.[] | select(.event == "schedule" or .event == "workflow_dispatch")][0].databaseId // empty')
-          if [ -n "$run" ]; then
-            gh run download "$run" -R "$GITHUB_REPOSITORY" -n test-selection-state -D "$STATE" || true
-            gh run download "$run" -R "$GITHUB_REPOSITORY" -n test-selection-model -D "$STATE" || true
-          fi
+        run: python scripts/ci/select_tests.py download --out "$STATE" || echo "::warning::no selection state"
 
       - name: Report
         # bash runs with pipefail, so tee cannot hide a failed report.

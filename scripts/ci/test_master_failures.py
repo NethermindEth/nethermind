@@ -22,7 +22,7 @@ EVM_FAILURE = "Nethermind.Evm.Test|Add"
 
 
 def merge(number: int, *files: str) -> mf.Merge:
-    return mf.Merge(sha=f"{number:040x}", number=number, author=f"author{number}", title=f"PR {number}", files=files)
+    return mf.Merge(sha=f"{number:040x}", number=number, author=f"author{number}", files=files)
 
 
 def failing(branch: str, hours: float, *tests: str) -> st.Entry:
@@ -60,6 +60,13 @@ class SuspectTests(unittest.TestCase):
         selector.project_links[JSON_RPC] = {"Nethermind.Evm.Test"}
         merges = [merge(1, f"{CORE}/A.cs"), merge(2, f"{JSON_RPC}/B.cs")]
         self.assertEqual(self.suspects(merges, [EVM_FAILURE], selector), [(2, mf.REASONS[1])])
+
+    def test_the_history_links_a_merge_to_an_eest_failure(self):
+        selector = st.Selector()
+        selector.test_links[CORE] = {"test_add"}
+        merges = [merge(1, f"{JSON_RPC}/A.cs"), merge(2, f"{CORE}/B.cs")]
+        self.assertEqual(self.suspects(merges, ["EEST|blockTest|sequential|test_add|Prague"], selector),
+                         [(2, mf.REASONS[1])])
 
     def test_a_merge_that_changed_a_transitive_dependency_is_the_next_suspect(self):
         merges = [merge(1, f"{CORE}/A.cs"), merge(2, f"{JSON_RPC}/B.cs"), merge(3, "Directory.Packages.props")]
@@ -152,6 +159,19 @@ class ReportTests(unittest.TestCase):
         self.issues.close.reset_mock()
         self.report("success")
         self.issues.close.assert_not_called()
+
+
+class LastGreenTests(unittest.TestCase):
+    def test_last_green_is_the_newest_successful_master_push_before_the_failure(self):
+        github = mock.create_autospec(st.GitHub, instance=True)
+        github.object.return_value = {"workflow_runs": [
+            {"id": 3, "created_at": "2026-10-01T12:00:00Z"},
+            {"id": 2, "created_at": "2026-10-01T10:00:00Z"},
+            {"id": 1, "created_at": "2026-10-01T08:00:00Z"},
+        ]}
+        green = mf.last_green(github, "o/r", {"workflow_id": 7, "created_at": "2026-10-01T11:00:00Z"})
+        self.assertEqual(green["id"], 2, "a run created after the failure cannot be the base")
+        self.assertIn("branch=master&event=push&status=success", github.object.call_args.args[0])
 
 
 class IssuesTests(unittest.TestCase):

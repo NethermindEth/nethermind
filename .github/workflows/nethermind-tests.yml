@@ -67,7 +67,8 @@ jobs:
       DOTNET_GCConserveMemory: 9
     strategy:
       fail-fast: false
-      # These projects are chunked on slower runners (see include block) to stay within the 15-minute job budget.
+      # Slow projects are chunked on slower runners (the include entries in scripts/ci/test-matrices.json) to stay
+      # within the 15-minute job budget.
       matrix: ${{ fromJSON(needs.select.outputs.matrices).tests }}
     steps: &test-steps
       - name: Check out repository
@@ -148,7 +149,7 @@ jobs:
 
 
   # macOS/Windows build their test project in-job instead of using the Linux artifact,
-  # so they start right away instead of waiting for the build.
+  # so they start once the selection is known instead of waiting for the build.
   tests-native:
     name: Run ${{ matrix.project }}${{ matrix.chunk && format(' ({0})', matrix.chunk) || '' }} (${{ matrix.runner }})
     needs: select

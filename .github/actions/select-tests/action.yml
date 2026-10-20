@@ -26,11 +26,10 @@ runs:
       env:
         GH_TOKEN: ${{ github.token }}
         WORKFLOW: ${{ inputs.workflow }}
-        EVENT: ${{ contains(github.event.pull_request.labels.*.name, 'ci-full') && 'ci-full' || github.event_name }}
+        EVENT: ${{ github.event_name }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
         BASE_SHA: ${{ github.event.pull_request.base.sha }}
         RUN_ID: ${{ github.run_id }}
-        # A fork can name its branch master, but only the base repository can start scheduled or dispatched runs.
-        TRUSTED_RUN: '[.[] | select(.event == "schedule" or .event == "workflow_dispatch")][0].databaseId // empty'
       run: |
         work="$RUNNER_TEMP/test-selection"
         mkdir -p "$work/model"
@@ -39,14 +38,15 @@ runs:
         run_selection() {
           : > "$work/changed.txt"
           if [ "$EVENT" = "pull_request" ]; then
+            # The labels are read now rather than from the event, so adding ci-full and re-running takes effect.
+            labels=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/labels" -q '.[].name') || return 1
+            if grep -qx ci-full <<< "$labels"; then EVENT=ci-full; fi
+          fi
+          if [ "$EVENT" = "pull_request" ]; then
             git fetch --no-tags --depth=1 origin "$BASE_SHA" || return 1
             git diff --no-renames --name-only "$BASE_SHA" HEAD > "$work/changed.txt" || return 1
-            model_run=$(gh run list -R "$GITHUB_REPOSITORY" --workflow test-selection.yml --branch master \
-              --status success -L 20 --json databaseId,event -q "$TRUSTED_RUN") || return 1
-            # Without a model run the selector reports that it has no model and keeps every test.
-            if [ -n "$model_run" ]; then
-              gh run download "$model_run" -R "$GITHUB_REPOSITORY" -n test-selection-model -D "$work/model" || return 1
-            fi
+            # Without a model artifact the selector reports that it has no model and keeps every test.
+            python3 scripts/ci/select_tests.py download --out "$work/model" || return 1
           fi
           python3 scripts/ci/select_tests.py select-projects --model "$work/model/model.json.gz" \
             --changed-files "$work/changed.txt" --run "$RUN_ID" --matrices scripts/ci/test-matrices.json \
@@ -62,7 +62,6 @@ runs:
           echo "matrices=$(jq -c --arg workflow "$WORKFLOW" '.[$workflow]' scripts/ci/test-matrices.json)" >> "$GITHUB_OUTPUT"
           echo "any=true" >> "$GITHUB_OUTPUT"
         fi
-        grep -q "^running [0-9]* test projects" "$work/log" && echo "selected=true" >> "$GITHUB_OUTPUT" || true
 
     - name: Record that the run used the selection
       if: steps.select.outputs.selected == 'true'
