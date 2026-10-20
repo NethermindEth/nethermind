@@ -139,7 +139,7 @@ namespace Nethermind.Consensus.Processing
 
         /// <inheritdoc/>
         /// <remarks>
-        /// <see cref="Block"/>'s constructor copies the transaction array, so only the shared transaction objects
+        /// A <see cref="Block"/> may hold a copy of the transaction array, so only the shared transaction objects
         /// can identify the recovery. The test is a heuristic, not an identity: a payload-improvement build reuses
         /// pooled transaction objects, so a different array of the same length starting with the same transaction
         /// matches. A false positive costs <see cref="RecoverDataForQueuedProcessing"/> no more than the inline

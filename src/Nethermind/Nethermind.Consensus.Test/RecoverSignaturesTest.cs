@@ -218,7 +218,7 @@ public class RecoverSignaturesTest
             Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).WithSenderAddress(null).TestObject,
             Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).WithSenderAddress(null).TestObject,
         ];
-        // The block constructor copies the array, as the engine payload path does.
+        // The block constructor copies the array, so only the shared transaction objects identify the recovery.
         Block block = new(Build.A.BlockHeader.TestObject, txs, []);
         RecoverSignatures sut = CreateSut(gate, txs[0], txs[1]);
 
