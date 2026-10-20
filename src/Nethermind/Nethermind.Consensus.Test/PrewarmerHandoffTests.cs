@@ -1855,8 +1855,9 @@ public class PrewarmerMempoolHandoffTests(bool earlyStart) : PrewarmerHandoffTes
     }
 
     /// <summary>
-    /// The takeover belongs to the warm pass, so the pass does not end while the takeover still runs. The takeover is held
-    /// until the pass ends or a second passes.
+    /// The takeover belongs to the warm pass, so the pass does not end while the takeover still runs. With the early start
+    /// the takeover is held until the pass ends or the coordinator waits at the join, so a pass that ends without joining
+    /// it ends while it is held; without the early start the coordinator takes the runs over itself before its workers.
     /// </summary>
     [Test]
     public void The_warm_pass_ends_only_once_the_runs_are_taken_over()
@@ -1866,21 +1867,33 @@ public class PrewarmerMempoolHandoffTests(bool earlyStart) : PrewarmerHandoffTes
         PreWarmer.RunSpeculativePreWarm(Parent, Spec, Predicted(block, null), () => PreWarmer.SpeculativeMarkerPublished);
 
         BlockFootprints? footprints = null;
+        Thread? joining = null;
+        bool heldAtJoin = !EarlyStart;
         bool? endedWhileTakingOver = null;
+        PreWarmer.BeforeSeedingJoin = () => Volatile.Write(ref joining, Thread.CurrentThread);
         PreWarmer.Seeded = () =>
         {
             footprints = PreWarmer.Footprints;
-            endedWhileTakingOver = SpinWait.SpinUntil(() => footprints?.WarmPassEnded == true, TimeSpan.FromSeconds(1));
+            // The timeout only guards against a deadlock; what is asserted is the order.
+            if (EarlyStart) heldAtJoin = SpinWait.SpinUntil(() => footprints?.WarmPassEnded == true || WaitsAtJoin(), TimeSpan.FromSeconds(10));
+            endedWhileTakingOver = footprints?.WarmPassEnded;
         };
         RunPreWarmCaches(PreWarmer, block);
         PreWarmer.Seeded = null;
+        PreWarmer.BeforeSeedingJoin = null;
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(footprints, Is.Not.Null, "precondition: the takeover ran on the block's footprints");
+            Assert.That(heldAtJoin, Is.True, "precondition: the takeover was held until the pass ended or the coordinator waited at the join");
             Assert.That(endedWhileTakingOver, Is.False, "the warm pass ended while the takeover was still running");
             Assert.That(footprints?.WarmPassEnded, Is.True, "the warm pass ended once the takeover returned");
         }
+
+        // Past the join boundary the coordinator blocks nowhere but in the join before the pass ends; a takeover it runs
+        // on its own thread from there is inside the join.
+        bool WaitsAtJoin() => Volatile.Read(ref joining) is { } coordinator
+            && (coordinator == Thread.CurrentThread || (coordinator.ThreadState & ThreadState.WaitSleepJoin) != 0);
     }
 
     /// <summary>

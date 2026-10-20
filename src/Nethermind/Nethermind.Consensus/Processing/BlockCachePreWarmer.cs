@@ -272,6 +272,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
                     BeforeTransactionWorkers?.Invoke();
                     PreWarmCachesParallel(blockState, suggestedBlock, parallelOptions, addressWarmer,
                         suggestedBlock is BlockToProduce, suggestedBlock.Transactions.Length, token, addressWork);
+                    BeforeSeedingJoin?.Invoke();
                     // The seeding belongs to the warm pass: a refresh worker that ends with the pass must have seen every
                     // invalidation a seed causes.
                     seedWork?.WaitForCompletion();
@@ -342,6 +343,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
 
     /// <summary>For tests: runs on a block's warm pass before it groups the transactions and starts their workers.</summary>
     internal Action? BeforeTransactionWorkers { get; set; }
+
+    /// <summary>For tests: runs on a block's warm pass once its transaction workers have returned, before it joins the seeding.</summary>
+    internal Action? BeforeSeedingJoin { get; set; }
 
     private void DiscoverAndWarmStorageSafely(List<(int Index, Transaction Tx)> candidates, Block block, IReleaseSpec spec, ISenderRecoveryProgress? recovery,
         CancellationToken cancellationToken, StrongBox<int>? sharedCells = null)
