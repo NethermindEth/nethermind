@@ -216,9 +216,9 @@ public class PersistInMemoryTailForShutdownTests
                 Assert.That(restarted.Resolve<IPersistenceManager>().GetCurrentPersistedStateId().BlockNumber, Is.Zero);
             }
 
-            for (int i = 2; i < blocks.Length; i++)
+            using (Assert.EnterMultipleScope())
             {
-                using (Assert.EnterMultipleScope())
+                for (int i = 2; i < blocks.Length; i++)
                 {
                     Assert.That(tree.FindBlock(blocks[i].Hash!, BlockTreeLookupOptions.None)?.Hash, Is.EqualTo(blocks[i].Hash));
                     Assert.That(tree.WasProcessed(blocks[i].Number, blocks[i].Hash!), Is.True);
