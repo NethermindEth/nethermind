@@ -5,6 +5,7 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using System;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using static Nethermind.Serialization.Rlp.Rlp;
 
@@ -34,6 +35,11 @@ namespace Nethermind.Serialization.Rlp
             }
             else
             {
+                if (firstItem.Length != 0 && firstItem.Length != Hash256.Size)
+                {
+                    ThrowUnexpectedPostStateLength(firstItem.Length);
+                }
+
                 txReceipt.PostTransactionState = firstItem.Length == 0 ? null : new Hash256(firstItem);
             }
 
@@ -82,9 +88,17 @@ namespace Nethermind.Serialization.Rlp
                 decoderContext.Position = receiptEnd;
             }
 
-            txReceipt.Bloom = new Bloom(txReceipt.Logs);
+            // EIP-7668: the bloom would be discarded. Otherwise TxReceipt computes it from the logs on first read.
+            if ((rlpBehaviors & RlpBehaviors.Eip7668Receipts) != 0)
+            {
+                txReceipt.Bloom = Bloom.ZeroLength;
+            }
 
             return txReceipt;
+
+            [DoesNotReturn, StackTraceHidden]
+            static void ThrowUnexpectedPostStateLength(int length)
+                => throw new RlpException($"Unexpected post-transaction state length {length}; expected 0 or {Hash256.Size} bytes");
         }
 
         public void DecodeStructRef(scoped ref RlpReader decoderContext, RlpBehaviors rlpBehaviors,

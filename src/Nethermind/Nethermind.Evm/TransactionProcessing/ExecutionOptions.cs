@@ -54,8 +54,8 @@ public enum ExecutionOptions
     /// Only effective together with <see cref="Restore"/>.</summary>
     FrameGasEstimation = 128,
 
-    /// <summary>Judge a validation prefix at the supplied execution block rather than its next slot.</summary>
-    FramePrefixAtExecutionBlock = 256,
+    /// <summary>With <see cref="Warmup"/>: charge gas and value in full, so a sender that cannot pay fails the run.</summary>
+    StrictWarmup = 256,
 
     /// <summary>
     /// Skip potential fail checks and commit state after execution

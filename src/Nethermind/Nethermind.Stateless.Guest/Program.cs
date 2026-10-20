@@ -75,7 +75,7 @@ partial class Program
     }
 }
 
-/// <summary>The guest input format has no EIP-8288 proof profile.</summary>
+/// <summary>The guest input format does not support EIP-8288 proofs.</summary>
 internal sealed class UnsupportedLeanProofVerifier : ILeanProofVerifier
 {
     private static NotSupportedException Unsupported() => new("EIP-8288 proofs are unsupported in the stateless guest");

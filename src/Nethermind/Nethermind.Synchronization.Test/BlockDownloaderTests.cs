@@ -851,13 +851,51 @@ public partial class BlockDownloaderTests
         syncPeer.GetBlockBodies(Arg.Any<IReadOnlyList<Hash256>>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromException<OwnedBlockBodies>(new TimeoutException()));
 
-        syncPeer.GetReceipts(Arg.Any<IReadOnlyList<Hash256>>(), Arg.Any<CancellationToken>())
+        syncPeer.GetReceipts(Arg.Any<IReadOnlyList<Hash256>>(), Arg.Any<ReadOnlyMemory<int>>(), Arg.Any<CancellationToken>())
             .Returns(ci => ctx.ResponseBuilder.BuildReceiptsResponse(ci.ArgAt<IList<Hash256>>(0), Response.AllCorrect | Response.WithTransactions));
 
         PeerInfo peerInfo = new(syncPeer);
         syncPeer.HeadNumber.Returns(1UL);
         ctx.ConfigureBestPeer(peerInfo);
         Assert.That((await ctx.HandleOneRequest(peerInfo)), Is.EqualTo(SyncResponseHandlingResult.LesserQuality));
+    }
+
+    [Test]
+    public async Task Sparse_bodies_response_is_matched_by_content_and_not_reported()
+    {
+        // Check bodies against their headers for real, so a body paired with the wrong header is caught.
+        IBlockValidator blockValidator = Substitute.For<IBlockValidator>();
+        blockValidator.ValidateSuggestedBlock(default!, default!, out _).ReturnsForAnyArgs(true);
+        blockValidator
+            .ValidateBodyAgainstHeader(Arg.Any<BlockHeader>(), Arg.Any<BlockBody>(), out Arg.Any<string?>())
+            .Returns(ci => BlockValidator.ValidateTxRootMatchesTxs(ci.ArgAt<BlockHeader>(0), ci.ArgAt<BlockBody>(1), out _));
+        await using IContainer node = CreateNode(builder => builder.AddSingleton<IBlockValidator>(blockValidator));
+        Context ctx = node.Resolve<Context>();
+
+        ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
+        syncPeer.TotalDifficulty.Returns(UInt256.MaxValue);
+        syncPeer.GetBlockHeaders(Arg.Any<ulong>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(ci => ctx.ResponseBuilder.BuildHeaderResponse(ci.ArgAt<ulong>(0), ci.ArgAt<int>(1), Response.AllCorrect | Response.WithTransactions));
+
+        // The peer omits the first requested body, as the protocol allows for a body it does not have.
+        syncPeer.GetBlockBodies(Arg.Any<IReadOnlyList<Hash256>>(), Arg.Any<CancellationToken>())
+            .Returns(async ci =>
+            {
+                OwnedBlockBodies full = await ctx.ResponseBuilder.BuildBlocksResponse(ci.ArgAt<IList<Hash256>>(0), Response.AllCorrect | Response.WithTransactions);
+                return new OwnedBlockBodies(full.Bodies.Skip(1).ToArray());
+            });
+
+        PeerInfo peerInfo = new(syncPeer);
+        syncPeer.HeadNumber.Returns(8UL);
+        ctx.ConfigureBestPeer(peerInfo);
+
+        Assert.That(await ctx.HandleOneRequest(peerInfo), Is.EqualTo(SyncResponseHandlingResult.OK));
+        ctx.PeerPool.DidNotReceiveWithAnyArgs().ReportBreachOfProtocol(default!, default, default!);
+
+        // The bodies that were sent were matched to their headers, so only the omitted body is asked for again.
+        using BlocksRequest? followUp = await ctx.FullSyncFeedComponent.Feed.PrepareRequest();
+        Assert.That(followUp, Is.Not.Null);
+        Assert.That(followUp!.BodiesRequests.Select(static b => b.Number), Is.EqualTo(new[] { 1UL }));
     }
 
     [Test]
@@ -875,7 +913,7 @@ public partial class BlockDownloaderTests
         syncPeer.GetBlockBodies(Arg.Any<IReadOnlyList<Hash256>>(), Arg.Any<CancellationToken>())
             .Returns(ci => ctx.ResponseBuilder.BuildBlocksResponse(ci.ArgAt<IList<Hash256>>(0), Response.AllCorrect | Response.WithTransactions));
 
-        syncPeer.GetReceipts(Arg.Any<IReadOnlyList<Hash256>>(), Arg.Any<CancellationToken>())
+        syncPeer.GetReceipts(Arg.Any<IReadOnlyList<Hash256>>(), Arg.Any<ReadOnlyMemory<int>>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromException<IOwnedReadOnlyList<TxReceipt[]?>>(new TimeoutException()));
 
         PeerInfo peerInfo = new(syncPeer);
@@ -906,11 +944,11 @@ public partial class BlockDownloaderTests
         syncPeer.GetBlockBodies(Arg.Any<IReadOnlyList<Hash256>>(), Arg.Any<CancellationToken>())
             .Returns(ci => syncPeerInternal.GetBlockBodies(ci.ArgAt<IReadOnlyList<Hash256>>(0), ci.ArgAt<CancellationToken>(1)));
 
-        syncPeer.GetReceipts(Arg.Any<IReadOnlyList<Hash256>>(), Arg.Any<CancellationToken>())
+        syncPeer.GetReceipts(Arg.Any<IReadOnlyList<Hash256>>(), Arg.Any<ReadOnlyMemory<int>>(), Arg.Any<CancellationToken>())
             .Returns(async ci =>
             {
                 ArrayPoolList<TxReceipt[]?> receipts = (await syncPeerInternal
-                    .GetReceipts(ci.ArgAt<IReadOnlyList<Hash256>>(0), ci.ArgAt<CancellationToken>(1)))
+                    .GetReceipts(ci.ArgAt<IReadOnlyList<Hash256>>(0), ci.ArgAt<CancellationToken>(2)))
                     .ToPooledList();
                 receipts[^1] = null;
                 return (IOwnedReadOnlyList<TxReceipt[]?>)receipts;
@@ -942,7 +980,7 @@ public partial class BlockDownloaderTests
         syncPeer.GetBlockBodies(Arg.Any<IReadOnlyList<Hash256>>(), Arg.Any<CancellationToken>())
             .Returns(ci => ctx.ResponseBuilder.BuildBlocksResponse(ci.ArgAt<IList<Hash256>>(0), Response.AllCorrect | Response.WithTransactions));
 
-        syncPeer.GetReceipts(Arg.Any<IReadOnlyList<Hash256>>(), Arg.Any<CancellationToken>())
+        syncPeer.GetReceipts(Arg.Any<IReadOnlyList<Hash256>>(), Arg.Any<ReadOnlyMemory<int>>(), Arg.Any<CancellationToken>())
             .Returns(ci => ctx.ResponseBuilder.BuildReceiptsResponse(ci.ArgAt<IList<Hash256>>(0), Response.AllCorrect | Response.WithTransactions)
                 .Result.Select(r => r is null || r.Length == 0 ? r : r.Skip(1).ToArray()).ToPooledList(10));
 
@@ -968,7 +1006,7 @@ public partial class BlockDownloaderTests
         syncPeer.GetBlockBodies(Arg.Any<IReadOnlyList<Hash256>>(), Arg.Any<CancellationToken>())
             .Returns(ci => ctx.ResponseBuilder.BuildBlocksResponse(ci.ArgAt<IList<Hash256>>(0), Response.AllCorrect | Response.WithTransactions));
 
-        syncPeer.GetReceipts(Arg.Any<IReadOnlyList<Hash256>>(), Arg.Any<CancellationToken>())
+        syncPeer.GetReceipts(Arg.Any<IReadOnlyList<Hash256>>(), Arg.Any<ReadOnlyMemory<int>>(), Arg.Any<CancellationToken>())
             .Returns(ci => ctx.ResponseBuilder.BuildReceiptsResponse(ci.ArgAt<IList<Hash256>>(0), Response.AllCorrect | Response.WithTransactions | Response.IncorrectReceiptRoot).Result);
 
         PeerInfo peerInfo = new(syncPeer);
@@ -976,6 +1014,45 @@ public partial class BlockDownloaderTests
         ctx.ConfigureBestPeer(peerInfo);
         Assert.That((await ctx.HandleFastSyncOneRequest(peerInfo)), Is.EqualTo(SyncResponseHandlingResult.OK));
         Assert.That((await ctx.HandleFastSyncOneRequest(peerInfo)), Is.EqualTo(SyncResponseHandlingResult.LesserQuality));
+    }
+
+    [Test]
+    public async Task Requests_receipts_with_block_transaction_counts()
+    {
+        await using IContainer node = CreateFastSyncNode(fastSyncLag: 1);
+        Context ctx = node.Resolve<Context>();
+
+        ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
+        syncPeer.TotalDifficulty.Returns(UInt256.MaxValue);
+
+        syncPeer.GetBlockHeaders(Arg.Any<ulong>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(ci => ctx.ResponseBuilder.BuildHeaderResponse(ci.ArgAt<ulong>(0), ci.ArgAt<int>(1), Response.AllCorrect | Response.WithTransactions));
+
+        syncPeer.GetBlockBodies(Arg.Any<IReadOnlyList<Hash256>>(), Arg.Any<CancellationToken>())
+            .Returns(ci => ctx.ResponseBuilder.BuildBlocksResponse(ci.ArgAt<IList<Hash256>>(0), Response.AllCorrect | Response.WithTransactions));
+
+        List<int> expectedCounts = [];
+        List<int> receiptCounts = [];
+        syncPeer.GetReceipts(Arg.Any<IReadOnlyList<Hash256>>(), Arg.Any<ReadOnlyMemory<int>>(), Arg.Any<CancellationToken>())
+            .Returns(ci =>
+            {
+                IOwnedReadOnlyList<TxReceipt[]?> receipts = ctx.ResponseBuilder.BuildReceiptsResponse(ci.ArgAt<IList<Hash256>>(0), Response.AllCorrect | Response.WithTransactions).Result;
+                expectedCounts.AddRange(ci.ArgAt<ReadOnlyMemory<int>>(1).ToArray());
+                receiptCounts.AddRange(receipts.Select(static r => r?.Length ?? 0));
+                return receipts;
+            });
+
+        PeerInfo peerInfo = new(syncPeer);
+        syncPeer.HeadNumber.Returns(2UL);
+        ctx.ConfigureBestPeer(peerInfo);
+        Assert.That((await ctx.HandleFastSyncOneRequest(peerInfo)), Is.EqualTo(SyncResponseHandlingResult.OK));
+        await ctx.HandleFastSyncOneRequest(peerInfo);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receiptCounts, Is.Not.Empty);
+            Assert.That(expectedCounts, Is.EqualTo(receiptCounts));
+        }
     }
 
     [Flags]
@@ -1368,7 +1445,7 @@ public partial class BlockDownloaderTests
         public void NotifyOfNewBlock(Block block, SendBlockMode mode) =>
             throw new NotImplementedException();
 
-        public void SendNewTransactions(IEnumerable<Transaction> txs, bool sendFullTx) =>
+        public void SendNewTransactions(ReadOnlySpan<Transaction> txs, bool sendFullTx) =>
             throw new NotImplementedException();
 
         public Task<IByteArrayList> GetNodeData(IReadOnlyList<Hash256> hashes, CancellationToken token) =>

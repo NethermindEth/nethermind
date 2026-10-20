@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Precompiles;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
@@ -87,6 +88,8 @@ public class ReleaseSpec : IReleaseSpec
     public bool IsEip7623Enabled { get; set; }
     public bool IsEip7976Enabled { get; set; }
     public bool IsEip7981Enabled { get; set; }
+    public bool IsEip8131Enabled { get; set; }
+    public bool IsEip8279Enabled { get; set; }
     public bool IsEip7883Enabled { get; set; }
     public bool IsEip5656Enabled { get; set; }
     public bool IsEip6780Enabled { get; set; }
@@ -94,9 +97,12 @@ public class ReleaseSpec : IReleaseSpec
     public bool IsEip8282Enabled { get; set; }
     public bool IsEip8141Enabled { get; set; }
     public bool IsEip8288Enabled { get; set; }
+    public ValueHash256 Eip8288AggregatedVk { get; set; } = Eip8288Verifier.PinnedAggregatedVk;
     public bool IsEip8250Enabled { get; set; }
     public bool IsEip8272Enabled { get; set; }
     public bool IsEip7906Enabled { get; set; }
+    public bool IsEip8151Enabled { get; set; }
+    public bool IsEip7979Enabled { get; set; }
     public bool IsEip4788Enabled { get; set; }
     public bool IsEip7702Enabled { get; set; }
     public bool IsEip7823Enabled { get; set; }
@@ -223,14 +229,21 @@ public class ReleaseSpec : IReleaseSpec
     public bool IsEip7928Enabled { get; set; }
     public bool IsEip8037Enabled { get; set; }
     public bool IsEip7778Enabled { get; set; }
+    public bool IsEip8116Enabled { get; set; }
+    public bool IsEip7668Enabled { get; set; }
     public bool IsEip7843Enabled { get; set; }
 
     public bool IsEip7708Enabled { get; set; }
     public bool IsEip7954Enabled { get; set; }
     public bool IsEip8246Enabled { get; set; }
+    public bool IsEip8253Enabled { get; set; }
     public bool IsEip2780Enabled { get; set; }
+    public bool IsEip5920Enabled { get; set; }
+    public bool IsEip8360Enabled { get; set; }
+    public bool IsEip3298Enabled { get; set; }
 
     public bool IsEip7805Enabled { get; set; }
+    public bool IsEip8298Enabled { get; set; }
 
     private ReleaseSpec? _systemSpec;
 

@@ -59,5 +59,6 @@ namespace Nethermind.Network.Config
         public bool FilterPeersBySameSubnet { get; set; } = true;
         public bool FilterDiscoveryNodesByRecentIp { get; set; } = true;
         public bool FilterDiscoveryNodesBySameSubnet { get; set; } = true;
+        public long ProofWrapperForkGraceBlocks { get; set; } = 64;
     }
 }

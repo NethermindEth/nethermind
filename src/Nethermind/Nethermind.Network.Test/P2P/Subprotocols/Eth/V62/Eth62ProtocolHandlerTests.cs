@@ -201,26 +201,6 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         }
 
         [Test]
-        public void Proof_bearing_headers_preserve_requested_batch_size_for_bounded_server([Values] bool proofAtHead)
-        {
-            BlockHeader header = Build.A.BlockHeader.TestObject;
-            header.RecursiveStark = new RecursiveStark([1], TestItem.KeccakB);
-            if (proofAtHead) _syncManager.Head.Returns(header);
-            else _syncManager.FindHeader(TestItem.KeccakA).Returns(header);
-            using GetBlockHeadersMessage message = new()
-            {
-                StartBlockHash = TestItem.KeccakA,
-                MaxHeaders = 1024
-            };
-
-            HandleIncomingStatusMessage();
-            HandleZeroMessage(message, Eth62MessageCode.GetBlockHeaders);
-
-            _syncManager.Received().FindHeaders(TestItem.KeccakA, 1024, 0, false);
-            _syncManager.DidNotReceive().FindHeaders(TestItem.KeccakA, 1, 0, false);
-        }
-
-        [Test]
         public void Receiving_request_before_status_fails()
         {
             GetBlockHeadersMessage msg = new();
@@ -806,6 +786,28 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             }
         }
 
+        [Test]
+        public void Blob_transaction_forgets_an_invalid_blob_proofs_verdict_before_its_only_submission()
+        {
+            Transaction tx = Build.A.Transaction.WithShardBlobTxTypeAndFields().SignedAndResolved().TestObject;
+            Hash256 hash = tx.Hash!;
+            _transactionPool.ForgetInvalidBlobProofs(hash).Returns(true);
+            _transactionPool.SubmitTx(Arg.Any<Transaction>(), TxHandlingOptions.None).Returns(AcceptTxResult.Accepted);
+            using TestEth62ProtocolHandler handler = new(
+                _session, _svc, new NodeStatsManager(Substitute.For<ITimerFactory>(), LimboLogs.Instance),
+                _syncManager, RunImmediatelyScheduler.Instance, _transactionPool, _gossipPolicy,
+                LimboLogs.Instance, _txGossipPolicy);
+
+            handler.HandleSlowPublic(new ArrayPoolList<Transaction>(1) { tx }, CancellationToken.None);
+
+            Received.InOrder(() =>
+            {
+                _transactionPool.ForgetInvalidBlobProofs(hash);
+                _transactionPool.SubmitTx(tx, TxHandlingOptions.None);
+            });
+            _transactionPool.Received(1).SubmitTx(Arg.Any<Transaction>(), TxHandlingOptions.None);
+        }
+
         private sealed class TestEth62ProtocolHandler(
             ISession session,
             IMessageSerializationService serializer,
@@ -923,7 +925,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         }
 
         [Test]
-        public void Queued_headers_request_is_cancelled_on_dispose()
+        public async Task Queued_headers_request_is_cancelled_on_dispose()
         {
             HandleIncomingStatusMessage();
 
@@ -933,8 +935,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
 
             _handler.Dispose();
 
-            Assert.ThrowsAsync<TaskCanceledException>(async () => await request1);
-            Assert.ThrowsAsync<TaskCanceledException>(async () => await request2);
+            await Assert.ThrowsAsync<TaskCanceledException>(async () => await request1);
+            await Assert.ThrowsAsync<TaskCanceledException>(async () => await request2);
         }
 
         [Test]

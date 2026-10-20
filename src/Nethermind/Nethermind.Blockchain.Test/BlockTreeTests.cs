@@ -428,6 +428,65 @@ public class BlockTreeTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
+    public void BlockTreeOverlay_ResetMainChain_far_below_best_known_rewrites_levels_above_head_only_when_clearing_stale_markers([Values] bool clearStaleMarkers)
+    {
+        const int levelsAboveHead = 1_024;
+        using TestMemDb baseBlocksDb = new();
+        using TestMemDb overlayBlocksDb = new();
+        using TestMemDb headersDb = new();
+        using TestMemDb blocksInfosDb = new();
+
+        BlockTreeBuilder BuildTree(TestMemDb blocksDb) => Build.A.BlockTree()
+            .WithBlocksDb(blocksDb)
+            .WithHeadersDb(headersDb)
+            .WithBlockInfoDb(blocksInfosDb)
+            .WithoutSettingHead;
+
+        BlockTree baseTree = BuildTree(baseBlocksDb).TestObject;
+        Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
+        AddToMain(baseTree, block0);
+        Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
+        AddToMain(baseTree, block1);
+
+        // Contiguous canonical levels above the head, as beacon sync leaves them while the head is far behind.
+        ChainLevelInfoRepository levels = new(blocksInfosDb);
+        for (ulong number = block1.Number + 1; number <= block1.Number + levelsAboveHead; number++)
+        {
+            levels.PersistLevel(number, new ChainLevelInfo(true, new BlockInfo(TestItem.KeccakA, UInt256.One)));
+        }
+
+        BlockTreeBuilder overlayBuilder = BuildTree(overlayBlocksDb);
+        BlockTree overlayTree = new(overlayBuilder.BlockStore, overlayBuilder.HeaderStore, blocksInfosDb, overlayBuilder.MetadataDb,
+            overlayBuilder.BadBlockStore, overlayBuilder.BlockAccessListStore, overlayBuilder.ChainLevelInfoRepository, MainnetSpecProvider.Instance,
+            overlayBuilder.SyncConfig, overlayBuilder.StateBoundary, LimboLogs.Instance, new BlockTreeMutationLock())
+        {
+            ClearStaleMarkersOnForcedHeadUpdate = clearStaleMarkers
+        };
+        Assert.That(overlayTree.BestKnownNumber, Is.EqualTo(block1.Number + levelsAboveHead), "precondition: the head is far below best known");
+        BlockTreeOverlay blockTreeOverlay = new(new ReadOnlyBlockTree(baseTree), overlayTree);
+
+        long writesBefore = blocksInfosDb.WritesCount;
+        blockTreeOverlay.ResetMainChain();
+        long writes = blocksInfosDb.WritesCount - writesBefore;
+
+        ChainLevelInfo? levelAboveHead = new ChainLevelInfoRepository(blocksInfosDb).LoadLevel(block1.Number + 1);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(overlayTree.Head!.Hash, Is.EqualTo(block1.Hash));
+            if (clearStaleMarkers)
+            {
+                Assert.That(writes, Is.GreaterThanOrEqualTo(levelsAboveHead), "a regular tree clears every stale marker above the new head");
+                Assert.That(levelAboveHead!.HasBlockOnMainChain, Is.False);
+            }
+            else
+            {
+                Assert.That(writes, Is.LessThan(8), "the overlay must not rewrite the levels above the base head");
+                Assert.That(levelAboveHead!.HasBlockOnMainChain, Is.True);
+            }
+        }
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void TryUpdateMainChain_returns_false_without_mutating_when_a_predecessor_is_missing()
     {
         BlockTree blockTree = BuildBlockTree();
@@ -785,6 +844,45 @@ public class BlockTreeTests
         Assert.That(blockTree.BestKnownBeaconNumber, Is.GreaterThan(blockTree.BestKnownNumber),
             "test setup must take the path where the level-creation guard skips creating the missing level");
         Assert.That(blockTree.FindBlock(blockWithoutLevel.Hash!, BlockTreeLookupOptions.RequireCanonical), Is.Null);
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void FindCanonicalHeaderIfBloomMatches_finds_what_find_header_finds([Values] bool bloomMatches)
+    {
+        BlockTreeBuilder builder = Build.A.BlockTree().OfChainLength(BlockStore.CacheSize + 8);
+        BlockTree blockTree = builder.TestObject;
+        Block branch = Build.A.Block.WithParent(blockTree.Head!).TestObject;
+        blockTree.SuggestBlock(branch, BlockTreeSuggestOptions.None);
+
+        for (ulong number = 0; number <= branch.Number + 1; number++)
+        {
+            BlockHeader? expected = blockTree.FindHeader(number, BlockTreeLookupOptions.RequireCanonical);
+            BlockHeader? actual = blockTree.FindCanonicalHeaderIfBloomMatches(number, _ => bloomMatches, out bool found);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(found, Is.EqualTo(expected is not null), $"found {number}");
+                Assert.That(actual?.Hash, Is.EqualTo(bloomMatches ? expected?.Hash : null), $"hash {number}");
+                Assert.That(actual?.TotalDifficulty, Is.EqualTo(bloomMatches ? expected?.TotalDifficulty : null), $"total difficulty {number}");
+            }
+        }
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void FindCanonicalHeaderIfBloomMatches_does_not_cache_a_historical_level()
+    {
+        BlockTreeBuilder builder = Build.A.BlockTree().OfChainLength(BlockStore.CacheSize + 8);
+        BlockTree blockTree = builder.TestObject;
+        ((IClearableCache)builder.ChainLevelInfoRepository).ClearCache();
+        MemDb blockInfoDb = (MemDb)builder.BlockInfoDb;
+
+        long readsBefore = blockInfoDb.ReadsCount;
+        for (int i = 0; i < 2; i++)
+        {
+            Assert.That(blockTree.FindCanonicalHeaderIfBloomMatches(1, static _ => true, out _), Is.Not.Null);
+        }
+
+        Assert.That(blockInfoDb.ReadsCount - readsBefore, Is.EqualTo(2));
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -1790,28 +1888,36 @@ public class BlockTreeTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void When_deleting_invalid_block_deletes_its_descendants()
+    public async Task When_deleting_invalid_block_deletes_its_descendants([Values] bool deferBalWrites)
     {
         BlockStore blockStore = new(new MemDb());
         MemDb blockInfosDb = new();
-        BlockTree tree = Build.A.BlockTree()
+        await using DeferredBlockDataWriter deferredWriter = deferBalWrites
+            ? DeferredWriteTestHelpers.ManualWriter()
+            : DeferredWriteTestHelpers.DisabledWriter();
+        BlockTreeBuilder builder = Build.A.BlockTree()
             .WithoutSettingHead
             .WithBlockInfoDb(blockInfosDb)
-            .WithBlockStore(blockStore)
-            .TestObject;
+            .WithBlockStore(blockStore);
+        IBlockAccessListStore balStore = builder.BlockAccessListStore = new BlockAccessListStore(builder.BlockAccessListsDb, deferredWriter: deferredWriter);
+        BlockTree tree = builder.TestObject;
         Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
         Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
         Block block2 = Build.A.Block.WithNumber(2).WithDifficulty(3).WithParent(block1).TestObject;
         Block block3 = Build.A.Block.WithNumber(3).WithDifficulty(4).WithParent(block2).TestObject;
 
         tree.SuggestBlock(block0);
-        tree.SuggestBlock(block1);
-        tree.SuggestBlock(block2);
-        tree.SuggestBlock(block3);
+        foreach (Block block in new[] { block1, block2, block3 })
+        {
+            block.EncodedBlockAccessList = Rlp.Encode(new ReadOnlyBlockAccessList()).Bytes;
+            tree.SuggestBlock(block);
+        }
 
         tree.TryUpdateMainChain(block0.Header, true, preloadedBlocks: new[] { block0 });
         tree.TryUpdateMainChain(block1.Header, true, preloadedBlocks: new[] { block1 });
         tree.DeleteInvalidBlock(block2);
+        // Deferred writes still queued at deletion run afterwards and must not bring the access lists back.
+        deferredWriter.Pump();
 
         using (Assert.EnterMultipleScope())
         {
@@ -1822,6 +1928,10 @@ public class BlockTreeTests
             Assert.That(blockStore.Get(block1.Number, block1.Hash!), Is.Not.Null, "block 1");
             Assert.That(blockStore.Get(block2.Number, block2.Hash!), Is.Null, "block 2");
             Assert.That(blockStore.Get(block3.Number, block3.Hash!), Is.Null, "block 3");
+
+            Assert.That(balStore.Exists(block1.Number, block1.Hash!), Is.True, "bal 1");
+            Assert.That(balStore.Exists(block2.Number, block2.Hash!), Is.False, "bal 2");
+            Assert.That(balStore.Exists(block3.Number, block3.Hash!), Is.False, "bal 3");
 
             Assert.That(blockInfosDb.Get(1), Is.Not.Null, "level 1");
             Assert.That(blockInfosDb.Get(2), Is.Null, "level 2");
@@ -2706,6 +2816,39 @@ public class BlockTreeTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Delete_during_lookup_does_not_leave_deleted_block_cached([Values] bool headerLookup, [Values] bool invalidBlockDeletion)
+    {
+        BlockTreeBuilder builder = Build.A.BlockTree().OfChainLength(5);
+        BlockTree blockTree = builder.TestObject;
+        BlockHeader deleted = blockTree.FindHeader(4, BlockTreeLookupOptions.None)!;
+        Block invalidBlock = blockTree.FindBlock(3, BlockTreeLookupOptions.None)!;
+        ((IClearableCache)builder.BlockStore).ClearCache();
+        ((IClearableCache)builder.HeaderStore).ClearCache();
+        TestMemDb db = (TestMemDb)(headerLookup ? builder.HeadersDb : builder.BlocksDb);
+        // The lookup reads its value from the database, then the deletion runs before the lookup caches it.
+        db.ReadFunc = key =>
+        {
+            db.ReadFunc = null;
+            byte[]? value = db.Get(key);
+            if (invalidBlockDeletion) blockTree.DeleteInvalidBlock(invalidBlock);
+            else Assert.That(blockTree.DeleteChainSlice(3), Is.EqualTo(2));
+            return value!;
+        };
+
+        object? found = headerLookup
+            ? blockTree.FindHeader(deleted.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded, deleted.Number)
+            : blockTree.FindBlock(deleted.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded, deleted.Number);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found, Is.Not.Null);
+            Assert.That(db.ReadFunc, Is.Null, "the deletion must overlap the lookup");
+            Assert.That(blockTree.FindBlock(deleted.Hash!, BlockTreeLookupOptions.None), Is.Null);
+            Assert.That(blockTree.FindHeader(deleted.Hash!, BlockTreeLookupOptions.None), Is.Null);
+        }
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Can_delete_two_blocks()
     {
         BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
@@ -2956,19 +3099,23 @@ public class BlockTreeTests
     public void Large_invalid_proofs_are_byte_bounded_and_remain_private([Values] bool withInclusionProof)
     {
         BlockTree tree = Build.A.BlockTree().WithBadBlockStore(Substitute.For<IBadBlockStore>()).OfChainLength(3).TestObject;
-        byte[] proof = new byte[Eip8288Constants.MaxProofBytes];
+        byte[] proof = new byte[Eip8288Constants.MaxAggregateProofBytes];
         proof[0] = 7;
-        int bytesPerBlock = proof.Length * (withInclusionProof ? 2 : 1);
+        // Inclusion lists carry only commitments, so the body proof is the only charged buffer.
+        int bytesPerBlock = proof.Length;
         int capacity = Math.Min(BlockTree.MaxLargeInvalidBlocks, BlockTree.MaxInvalidProofCacheBytes / bytesPerBlock);
         Block[] invalid = new Block[capacity + 3];
         for (int i = 0; i < invalid.Length; i++)
         {
             invalid[i] = Build.A.Block.WithParent(tree.Head!).WithNumber((ulong)i + 4).TestObject;
-            invalid[i].Header.RecursiveStark = new RecursiveStark(proof, TestItem.KeccakA);
+            invalid[i].StarkProof = proof;
+            invalid[i].Header.RecursiveStark = new RecursiveStarkCommitment(Keccak.Compute(invalid[i].StarkProof), TestItem.KeccakA);
             if (withInclusionProof)
             {
-                invalid[i].InclusionListRecursiveStark = new RecursiveStark(proof, TestItem.KeccakB);
-                invalid[i].InclusionListTransactions = [Build.A.Transaction.TestObject];
+                Transaction[] listTransactions = [Build.A.Transaction.TestObject];
+                invalid[i].InclusionLists = [new CommitteeInclusionList(3, listTransactions,
+                    new InclusionListCommitment(ValueKeccak.Compute(proof), TestItem.KeccakB.ValueHash256))];
+                invalid[i].InclusionListTransactions = listTransactions;
             }
             if (i == capacity) Assert.That(tree.FindBlock(invalid[0].Hash, BlockTreeLookupOptions.AllowInvalid), Is.Not.Null);
             tree.ReportBadBlock(invalid[i]);
@@ -2979,18 +3126,17 @@ public class BlockTreeTests
         Assert.That(tree.FindHeader(invalid[1].Hash, BlockTreeLookupOptions.AllowInvalid), Is.Null);
         Assert.That(tree.SuggestBlock(invalid[1]), Is.EqualTo(AddBlockResult.InvalidBlock), "evicting proof bytes must not forget the invalid hash");
         Block returned = tree.FindBlock(invalid[0].Hash, BlockTreeLookupOptions.AllowInvalid)!;
-        Assert.That(returned.Header.RecursiveStark!.StarkProof[0], Is.EqualTo(7));
-        returned.Header.RecursiveStark.StarkProof[0] = 99;
+        Assert.That(returned.StarkProof![0], Is.EqualTo(7));
+        returned.StarkProof![0] = 99;
         if (withInclusionProof)
         {
             Assert.That(returned.InclusionListTransactions, Is.SameAs(invalid[0].InclusionListTransactions));
-            Assert.That(returned.InclusionListRecursiveStark!.StarkProof[0], Is.EqualTo(7));
-            returned.InclusionListRecursiveStark.StarkProof[0] = 99;
+            Assert.That(returned.InclusionLists![0].CommitteeIndex, Is.EqualTo(3));
+            Assert.That(returned.InclusionLists[0].Commitment!.Value.DepsHash, Is.EqualTo(TestItem.KeccakB.ValueHash256));
         }
         Block again = tree.FindBlock(invalid[0].Hash, BlockTreeLookupOptions.AllowInvalid)!;
-        Assert.That(again.Header.RecursiveStark!.StarkProof[0], Is.EqualTo(7));
-        Assert.That(tree.FindHeader(invalid[0].Hash, BlockTreeLookupOptions.AllowInvalid)!.RecursiveStark!.StarkProof[0], Is.EqualTo(7));
-        if (withInclusionProof) Assert.That(again.InclusionListRecursiveStark!.StarkProof[0], Is.EqualTo(7));
+        Assert.That(again.StarkProof![0], Is.EqualTo(7));
+        Assert.That(tree.FindHeader(invalid[0].Hash, BlockTreeLookupOptions.AllowInvalid)!.RecursiveStark!.StarkProofHash, Is.EqualTo(Keccak.Compute(again.StarkProof!)));
     }
 
     [Test]
@@ -2998,7 +3144,8 @@ public class BlockTreeTests
     {
         BlockTree tree = Build.A.BlockTree().WithBadBlockStore(Substitute.For<IBadBlockStore>()).OfChainLength(3).TestObject;
         Block invalid = Build.A.Block.WithParent(tree.Head!).WithNumber(4).TestObject;
-        invalid.Header.RecursiveStark = new RecursiveStark(new byte[Eip8288Constants.MaxProofBytes + 1], TestItem.KeccakA);
+        invalid.StarkProof = new byte[Eip8288Constants.MaxAggregateProofBytes + 1];
+        invalid.Header.RecursiveStark = new RecursiveStarkCommitment(Keccak.Compute(invalid.StarkProof), TestItem.KeccakA);
         tree.ReportBadBlock(invalid);
         Assert.That(tree.FindBlock(invalid.Hash, BlockTreeLookupOptions.AllowInvalid), Is.Null);
         Assert.That(tree.SuggestBlock(invalid), Is.EqualTo(AddBlockResult.InvalidBlock));
@@ -3531,6 +3678,27 @@ public class BlockTreeTests
         blockTree.TryUpdateMainChain(chain[0].Header, wereProcessed: true, forceUpdateHeadBlock: true);
 
         Assert.That(events, Is.EqualTo(new[] { (chain[3].Hash, false), (chain[2].Hash, false), (chain[1].Hash, false), (chain[0].Hash, true) }));
+    }
+
+    /// <summary>A head moved back to its parent is reported once, by its removal; the sibling that later takes its
+    /// level replaces nothing, so subscribers must not rely on <see cref="BlockReplacementEventArgs.PreviousBlock"/> alone.</summary>
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void TryUpdateMainChain_WhenHeadMovesBackToParentThenSiblingAdded_ReportsOldHeadOnlyAsRemoved()
+    {
+        (BlockTree blockTree, Block genesis) = BuildBlockTreeWithGenesis();
+        Block[] chain = BuildAndSuggestChain(blockTree, genesis, 2);
+        blockTree.TryUpdateMainChain(chain[1].Header, wereProcessed: true, forceUpdateHeadBlock: true);
+        Block sibling = Build.A.Block.WithParent(chain[0]).WithExtraData([1]).TestObject;
+        blockTree.SuggestBlock(sibling);
+
+        List<(Hash256?, Hash256? Previous, bool Added)> events = [];
+        blockTree.BlockRemovedFromMain += (_, e) => events.Add((e.Header.Hash, null, false));
+        blockTree.BlockAddedToMain += (_, e) => events.Add((e.Block.Hash, e.PreviousBlock?.Hash, true));
+
+        blockTree.TryUpdateMainChain(chain[0].Header, wereProcessed: true, forceUpdateHeadBlock: true);
+        blockTree.TryUpdateMainChain(sibling.Header, wereProcessed: true, forceUpdateHeadBlock: true);
+
+        Assert.That(events, Is.EqualTo(new[] { (chain[1].Hash, (Hash256?)null, false), (chain[0].Hash, null, true), (sibling.Hash, null, true) }));
     }
 
     [TestCase(1, TestName = "SingleStaleLevel")]

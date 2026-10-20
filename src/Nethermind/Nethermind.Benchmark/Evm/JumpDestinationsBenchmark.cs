@@ -165,6 +165,15 @@ public class JumpDestinationsBenchmark
     [Benchmark]
     public bool Analyzer() => new CodeInfo(_code).ValidateJump(_code.Length - 1);
 
+    /// <summary>A fresh analysis as an EIP-7979 frame pays it: the jump destinations, then the call destinations.</summary>
+    [Benchmark]
+    public long[] CallDestinations()
+    {
+        CodeInfo codeInfo = new(_code);
+        codeInfo.ValidateJump(_code.Length - 1);
+        return codeInfo.JumpAndCallDestinationBitmap;
+    }
+
     /// <summary>
     /// 64 KiB initcode shaped like the execution-specs JUMPDEST benchmarks: PUSH2 0xffff JUMP, 32 bytes that
     /// change per CREATE, the body, and 32 trailing JUMPDESTs.

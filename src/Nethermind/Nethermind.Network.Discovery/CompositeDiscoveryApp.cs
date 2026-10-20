@@ -5,16 +5,12 @@ using System.Diagnostics.CodeAnalysis;
 using System.Net;
 using System.Net.Sockets;
 using Nethermind.Core.Collections;
-using DotNetty.Transport.Bootstrapping;
-using DotNetty.Transport.Channels;
-using DotNetty.Transport.Channels.Sockets;
 using Nethermind.Core.ServiceStopper;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.Discovery.Discv4;
 using Nethermind.Network.Discovery.Discv5;
 using Nethermind.Network.Enr;
-using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.Discovery;
@@ -27,11 +23,10 @@ public sealed class CompositeDiscoveryApp : IDiscoveryApp
     private readonly INetworkConfig _networkConfig;
     private readonly DiscoveryConnectionsPool _connections;
     private readonly IChannelFactory? _channelFactory;
-    private readonly IDiscoveryApp[] _discoveryApps;
+    private readonly KademliaDiscoveryApp[] _discoveryApps;
     private readonly CompositeNodeSource _compositeNodeSource;
     private readonly ILogger _logger;
-    private readonly TimeSpan _eventLoopShutdownTimeout;
-    private IEventLoopGroup? _eventLoopGroup;
+    private Action<PooledUdpReceiveResult>? _receiver;
 
     public CompositeDiscoveryApp(
         INetworkConfig networkConfig,
@@ -57,24 +52,23 @@ public sealed class CompositeDiscoveryApp : IDiscoveryApp
         IDiscoveryConfig discoveryConfig,
         ILogManager logManager,
         NetworkListenerState listenerState,
-        IDiscoveryApp[] discoveryApps,
+        KademliaDiscoveryApp[] discoveryApps,
         IChannelFactory? channelFactory = null)
     {
         _networkConfig = networkConfig;
         _connections = new DiscoveryConnectionsPool(logManager.GetClassLogger<DiscoveryConnectionsPool>(), discoveryConfig, listenerState);
         _channelFactory = channelFactory;
         _logger = logManager.GetClassLogger<CompositeDiscoveryApp>();
-        _eventLoopShutdownTimeout = TimeSpan.FromMilliseconds(discoveryConfig.UdpChannelCloseTimeout);
         _discoveryApps = discoveryApps;
         _compositeNodeSource = new CompositeNodeSource(_discoveryApps);
     }
 
-    private static IDiscoveryApp[] CreateDiscoveryApps(
+    private static KademliaDiscoveryApp[] CreateDiscoveryApps(
         IDiscoveryConfig discoveryConfig,
         Func<DiscoveryApp> discoveryV4Factory,
         Func<DiscoveryV5App> discoveryV5Factory)
     {
-        List<IDiscoveryApp> discoveryApps = new(2);
+        List<KademliaDiscoveryApp> discoveryApps = new(2);
         if ((discoveryConfig.DiscoveryVersion & DiscoveryVersion.V4) != 0)
         {
             discoveryApps.Add(discoveryV4Factory());
@@ -88,31 +82,44 @@ public sealed class CompositeDiscoveryApp : IDiscoveryApp
         return [.. discoveryApps];
     }
 
-    public void InitializeChannel(IChannel channel)
+    /// <summary>
+    /// Attaches the protocols to <paramref name="socket"/>, each forwarding the datagrams it does not handle to the next.
+    /// </summary>
+    private void InitializeChannel(IDatagramSocket socket)
     {
-        channel.Pipeline.AddLast(new DiscoveryTrafficHandler());
-        ForEachDiscoveryApp(static (discoveryApp, state) => discoveryApp.InitializeChannel(state), channel);
+        Action<PooledUdpReceiveResult> next = static datagram => datagram.Dispose();
+        for (int i = _discoveryApps.Length - 1; i >= 0; i--)
+        {
+            KademliaDiscoveryApp discoveryApp = _discoveryApps[i];
+            discoveryApp.InitializeChannel(socket, next);
+            next = discoveryApp.Receive;
+        }
+
+        Volatile.Write(ref _receiver, next);
+    }
+
+    private void Receive(PooledUdpReceiveResult datagram)
+    {
+        Action<PooledUdpReceiveResult>? receiver = Volatile.Read(ref _receiver);
+        if (receiver is null)
+        {
+            datagram.Dispose();
+            return;
+        }
+
+        receiver(datagram);
     }
 
     public async Task StartAsync()
     {
         if (_discoveryApps.Length == 0) return;
 
-        IEventLoopGroup eventLoopGroup = new MultithreadEventLoopGroup(1);
-        _eventLoopGroup = eventLoopGroup;
         try
         {
-            IChannel channel = await _connections.BindAsync(
-                () => CreateBootstrap(eventLoopGroup),
-                CreateDatagramChannel,
-                _networkConfig.DiscoveryPort);
-            // A failed bind closes stateful discovery handlers, so attach them only to the successful channel.
-            // Datagrams can be discarded until this event-loop work completes, before the protocol apps start.
-            await channel.EventLoop.SubmitAsync(() =>
-            {
-                InitializeChannel(channel);
-                return true;
-            });
+            IDatagramSocket socket = _connections.Bind(CreateSocket, _networkConfig.DiscoveryPort, Receive);
+            // A failed bind leaves the protocols detached, so attach them only to the successful socket.
+            // Datagrams received until then are discarded, before the protocol apps start.
+            InitializeChannel(socket);
 
             await WhenAllDiscoveryApps(static discoveryApp => discoveryApp.StartAsync());
         }
@@ -131,22 +138,8 @@ public sealed class CompositeDiscoveryApp : IDiscoveryApp
         }
     }
 
-    internal bool HasEventLoopGroup => Volatile.Read(ref _eventLoopGroup) is not null;
-
-    private Bootstrap CreateBootstrap(IEventLoopGroup eventLoopGroup)
-    {
-        Bootstrap bootstrap = new Bootstrap()
-            .Group(eventLoopGroup)
-            .Option(ChannelOption.Allocator, NethermindBuffers.DiscoveryAllocator)
-            .Option(ChannelOption.RcvbufAllocator, new FixedRecvByteBufAllocator(2048 * 2))
-            ;
-        // Bootstrap validation requires an initializer even though the stateful handlers attach after binding.
-        bootstrap.Handler(new ActionChannelInitializer<IDatagramChannel>(static _ => { }));
-        return bootstrap;
-    }
-
-    private IChannel CreateDatagramChannel(IPAddress address)
-        => _channelFactory?.CreateDatagramChannel() ?? new SocketDatagramChannel(CreateDatagramSocket(address));
+    private IDatagramSocket CreateSocket(IPAddress address)
+        => _channelFactory?.CreateDatagramSocket() ?? new UdpDatagramSocket(CreateDatagramSocket(address));
 
     /// <summary>
     /// Creates the UDP socket whose address family and dual-mode behavior match a configured listener address.
@@ -206,38 +199,8 @@ public sealed class CompositeDiscoveryApp : IDiscoveryApp
         }
         finally
         {
-            try
-            {
-                await ShutdownEventLoopGroup();
-            }
-            finally
-            {
-                _compositeNodeSource.Dispose();
-                await DisposeDiscoveryApps();
-            }
-        }
-    }
-
-    /// <summary>Shuts the discovery event loop down without letting a stuck loop block node shutdown.</summary>
-    /// <remarks>
-    /// Channels and discovery tasks are stopped first, so the event loop needs no additional quiet period.
-    /// DotNetty queues a wake-up task while confirming shutdown and its own next confirmation reads that back as
-    /// pending work, so a task landing in the queue at that moment leaves the loop spinning instead of terminating.
-    /// The loop is abandoned once <see cref="IDiscoveryConfig.UdpChannelCloseTimeout"/> is spent, which already bounds
-    /// closing the channels the loop serves.
-    /// </remarks>
-    private async Task ShutdownEventLoopGroup()
-    {
-        IEventLoopGroup? eventLoopGroup = Interlocked.Exchange(ref _eventLoopGroup, null);
-        if (eventLoopGroup is null) return;
-
-        try
-        {
-            await eventLoopGroup.ShutdownGracefullyAsync(TimeSpan.Zero, TimeSpan.Zero).WaitAsync(_eventLoopShutdownTimeout);
-        }
-        catch (TimeoutException)
-        {
-            if (_logger.IsWarn) _logger.Warn($"Could not shut discovery event loop down in {_eventLoopShutdownTimeout.TotalMilliseconds} milliseconds.");
+            _compositeNodeSource.Dispose();
+            await DisposeDiscoveryApps();
         }
     }
 
@@ -298,14 +261,5 @@ public sealed class CompositeDiscoveryApp : IDiscoveryApp
     {
         add => _compositeNodeSource.NodeRemoved += value;
         remove => _compositeNodeSource.NodeRemoved -= value;
-    }
-}
-
-internal sealed class DiscoveryTrafficHandler : SimpleChannelInboundHandler<DatagramPacket>
-{
-    protected override void ChannelRead0(IChannelHandlerContext context, DatagramPacket packet)
-    {
-        Interlocked.Add(ref Metrics.DiscoveryBytesReceived, packet.Content.ReadableBytes);
-        context.FireChannelRead(packet.Retain());
     }
 }

@@ -7,8 +7,8 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Core.Specs;
 using Nethermind.Consensus.ProofAggregation;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
@@ -66,7 +66,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         public IReceiptConfig ReceiptConfig { get; private set; } = new ReceiptConfig();
 
         public IKeyStore KeyStore { get; } = new MemKeyStore(TestItem.PrivateKeys, Path.Combine("testKeyStoreDir", Path.GetRandomFileName()));
-        public IWallet TestWallet { get; } =
+        public IWallet TestWallet { get; private set; } =
             new DevKeyStoreWallet(new MemKeyStore(TestItem.PrivateKeys, Path.Combine("testKeyStoreDir", Path.GetRandomFileName())),
                 LimboLogs.Instance);
 
@@ -116,6 +116,12 @@ namespace Nethermind.JsonRpc.Test.Modules
             public Builder<T> WithTxSender(ITxSender txSender)
             {
                 _blockchain.TxSender = txSender;
+                return this;
+            }
+
+            public Builder<T> WithWallet(IWallet wallet)
+            {
+                _blockchain.TestWallet = wallet;
                 return this;
             }
 
@@ -188,7 +194,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             @this.Bridge,
             @this.BlockFinder,
             @this.BlockTree,
-            @this.ReceiptFinder,
+            @this.Container.ResolveKeyed<IReceiptFinder>(IReceiptFinder.RegenerableKey),
             @this.StateReader,
             @this.TxPool,
             @this.TxSender,
@@ -212,6 +218,8 @@ namespace Nethermind.JsonRpc.Test.Modules
                 Substitute.For<IHistoryConfig>(),
                 Substitute.For<IHistoryPruner>()),
             @this.Container.ResolveOptional<IBlockForRpcFactory>() ?? new BlockForRpcFactory(),
+            @this.Container.ResolveOptional<HashesOnlyBlockReader>(),
+            @this.ReceiptFinder,
             @this.Container.ResolveOptional<ProofWrapperService>());
 
         protected override async Task<TestBlockchain> Build(Action<ContainerBuilder>? configurer = null)
@@ -272,7 +280,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             // simulating restarts - we stopped the old blockchain processor and create the new one
             BlockchainProcessor newProcessor = new(BlockTree, BranchProcessor,
-                SpecProvider, BlockPreprocessorSteps, StateReader, LimboLogs.Instance, Nethermind.Consensus.Processing.BlockchainProcessor.Options.Default, Substitute.For<IProcessingStats>(), Container.Resolve<BlockTreeMutationLock>());
+                BlockPreprocessorSteps, StateReader, LimboLogs.Instance, Nethermind.Consensus.Processing.BlockchainProcessor.Options.Default, Substitute.For<IProcessingStats>(), Container.Resolve<BlockTreeMutationLock>());
             _currentBlockchainProcessor = newProcessor;
             newProcessor.Start();
         }

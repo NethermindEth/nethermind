@@ -101,9 +101,12 @@ public class GethGenesisLoader(IJsonSerializer serializer) : IChainSpecLoader
             MaximumExtraDataSize = 32,
             MinGasLimit = 5000,
             MinHistoryRetentionEpochs = HistoryRetentionConstants.MinEpochsForBlockRequests,
-            MinBalRetentionEpochs = HistoryRetentionConstants.WeakSubjectivityPeriodEpochs,
+            MinBalRetentionEpochs = HistoryRetentionConstants.HistoryPruneEpochs,
 
             Eip7Transition = config.HomesteadBlock ?? 0,
+
+            Eip8288AggregatedVkTransitionTimestamp = config.Eip8288AggregatedVkTimestamp,
+            Eip8288AggregatedVk = config.Eip8288AggregatedVk,
 
             // MaxCodeSize (EIP-170) is standard on all networks since Spurious Dragon
             MaxCodeSize = 0x6000,

@@ -11,6 +11,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http.Features;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Primitives;
 using Nethermind.Config;
@@ -31,6 +32,8 @@ using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.SszRest;
 using Nethermind.Merge.Plugin.SszRest.Handlers;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.Specs.ChainSpecStyle.Json;
 using Nethermind.Specs.Forks;
 using NSubstitute;
 using NSubstitute.Core;
@@ -126,11 +129,84 @@ public class SszMiddlewareTests
             new GetPayloadBodiesByRangeSszHandler<PayloadBodiesByRangeDescriptorV2, ExecutionPayloadBodyV2Result>(_engineModule, _blockFinder, _specProvider),
 
             new ClientVersionSszHandler(_engineModule, LimboLogs.Instance),
-            new CapabilitiesSszHandler(_specProvider),
+            new CapabilitiesSszHandler(),
 
             new NewPayloadWithWitnessSszHandler<NewPayloadWithWitnessDescriptorV5, NewPayloadV5RequestWire>(_engineModule),
             new NewPayloadWithWitnessSszHandler<NewPayloadWithWitnessDescriptorV6, NewPayloadV6RequestWire>(_engineModule),
         ];
+
+    private static ChainSpecBasedSpecProvider CreateChainSpecProvider() => new(new ChainSpec
+    {
+        ChainId = 12345,
+        Parameters = new ChainParameters
+        {
+            TerminalTotalDifficulty = UInt256.Zero,
+            Eip4895TransitionTimestamp = 1_000,
+            Eip4844TransitionTimestamp = 2_000,
+            Eip6110TransitionTimestamp = 3_000,
+            Eip7594TransitionTimestamp = 4_000,
+            Eip7928TransitionTimestamp = 6_000,
+            Eip7805TransitionTimestamp = 7_000,
+            BlobSchedule =
+            [
+                new BlobScheduleSettings { Timestamp = 4_500, Target = 9, Max = 15 },
+                new BlobScheduleSettings { Timestamp = 5_000, Target = 12, Max = 21 },
+            ],
+        }
+    });
+
+    private static readonly TestCaseData[] ChainSpecReleaseEngineApiForkCases =
+    [
+        new TestCaseData(999UL, "paris"),
+        new TestCaseData(1_000UL, "shanghai"),
+        new TestCaseData(1_999UL, "shanghai"),
+        new TestCaseData(2_000UL, "cancun"),
+        new TestCaseData(3_000UL, "prague"),
+        new TestCaseData(4_000UL, "osaka"),
+        new TestCaseData(4_500UL, "osaka"),
+        new TestCaseData(5_000UL, "osaka"),
+        new TestCaseData(6_000UL, "amsterdam"),
+        new TestCaseData(7_000UL, "bogota"),
+    ];
+
+    [TestCaseSource(nameof(ChainSpecReleaseEngineApiForkCases))]
+    public void Chain_spec_release_resolves_engine_api_fork(ulong timestamp, string expectedFork)
+    {
+        ChainSpecBasedSpecProvider provider = CreateChainSpecProvider();
+        IReleaseSpec spec = provider.GetSpec(ForkActivation.TimestampOnly(timestamp));
+
+        Assert.That(SszRestPaths.GetEngineApiForkName(spec), Is.EqualTo(expectedFork));
+    }
+
+    private static readonly TestCaseData[] NamedReleaseEngineApiForkCases =
+    [
+        new TestCaseData(London.Instance, "paris"),
+        new TestCaseData(Paris.Instance, "paris"),
+        new TestCaseData(Shanghai.Instance, "shanghai"),
+        new TestCaseData(Cancun.Instance, "cancun"),
+        new TestCaseData(Prague.Instance, "prague"),
+        new TestCaseData(Osaka.Instance, "osaka"),
+        new TestCaseData(BPO1.Instance, "osaka"),
+        new TestCaseData(BPO5.Instance, "osaka"),
+        new TestCaseData(Amsterdam.Instance, "amsterdam"),
+        new TestCaseData(Eip8141Prototype.Instance, "amsterdam"),
+        new TestCaseData(Bogota.Instance, "bogota"),
+    ];
+
+    [TestCaseSource(nameof(NamedReleaseEngineApiForkCases))]
+    public void Named_release_resolves_engine_api_fork(IReleaseSpec spec, string expectedFork) =>
+        Assert.That(SszRestPaths.GetEngineApiForkName(spec), Is.EqualTo(expectedFork));
+
+    [Test]
+    public void Chain_spec_release_covers_every_supported_engine_api_fork()
+    {
+        ChainSpecBasedSpecProvider provider = CreateChainSpecProvider();
+        HashSet<string> forks = [SszRestPaths.GetEngineApiForkName(provider.GenesisSpec)];
+        foreach (ForkActivation activation in provider.TransitionActivations)
+            forks.Add(SszRestPaths.GetEngineApiForkName(provider.GetSpec(activation)));
+
+        Assert.That(forks, Is.EquivalentTo(SszRestPaths.SupportedForksOrdered));
+    }
 
     // A resource mapped to a method version with no registered handler is advertised and recognised but
     // unservable, and nothing else catches that since the handler set is assembled by hand.
@@ -525,7 +601,7 @@ public class SszMiddlewareTests
     }
 
     [Test]
-    public async Task GetPayloadBodiesByHash_marks_out_of_fork_blocks_unavailable()
+    public async Task GetPayloadBodiesByHash_marks_out_of_fork_blocks_unavailable([Values] bool chainSpecBased)
     {
         Hash256 inFork = TestItem.KeccakA;
         Hash256 outOfFork = TestItem.KeccakB;
@@ -537,8 +613,16 @@ public class SszMiddlewareTests
         BlockHeader cancunHeader = Build.A.BlockHeader.WithNumber(20).WithTimestamp(2_000UL).TestObject;
         _blockFinder.FindHeader(inFork).Returns(shanghaiHeader);
         _blockFinder.FindHeader(outOfFork).Returns(cancunHeader);
-        _specProvider.GetSpec(Arg.Is<ForkActivation>(fa => fa.Timestamp == 1_000UL)).Returns(Shanghai.Instance);
-        _specProvider.GetSpec(Arg.Is<ForkActivation>(fa => fa.Timestamp == 2_000UL)).Returns(Cancun.Instance);
+        if (chainSpecBased)
+        {
+            _specProvider = CreateChainSpecProvider();
+            _middleware = BuildMiddleware();
+        }
+        else
+        {
+            _specProvider.GetSpec(Arg.Is<ForkActivation>(fa => fa.Timestamp == 1_000UL)).Returns(Shanghai.Instance);
+            _specProvider.GetSpec(Arg.Is<ForkActivation>(fa => fa.Timestamp == 2_000UL)).Returns(Cancun.Instance);
+        }
 
         byte[] body = BuildPayloadBodiesByHashRequest([inFork, outOfFork]);
         DefaultHttpContext ctx = MakePostContext("/engine/v1/bodies/hash", body, fork: "shanghai");
@@ -554,6 +638,33 @@ public class SszMiddlewareTests
             Assert.That(decoded.Entries, Has.Length.EqualTo(2));
             Assert.That(decoded.Entries![0].Available, Is.True, "Shanghai block at /shanghai/bodies must stay available");
             Assert.That(decoded.Entries[1].Available, Is.False, "Cancun block at /shanghai/bodies must surface as unavailable");
+        }
+    }
+
+    [Test]
+    public async Task GetPayloadBodiesByRange_marks_out_of_fork_chainspec_blocks_unavailable()
+    {
+        _specProvider = CreateChainSpecProvider();
+        _middleware = BuildMiddleware();
+        _engineModule.engine_getPayloadBodiesByRangeV1(10, 2)
+            .Returns(ResultWrapper<IReadOnlyList<ExecutionPayloadBodyV1Result?>>.Success(
+                [new ExecutionPayloadBodyV1Result([], null), new ExecutionPayloadBodyV1Result([], null)]));
+
+        _blockFinder.FindHeader(10UL).Returns(Build.A.BlockHeader.WithNumber(10).WithTimestamp(1_000UL).TestObject);
+        _blockFinder.FindHeader(11UL).Returns(Build.A.BlockHeader.WithNumber(11).WithTimestamp(2_000UL).TestObject);
+
+        DefaultHttpContext ctx = MakeGetContext("/engine/v1/bodies", fork: "shanghai");
+        ctx.Request.QueryString = new QueryString("?from=10&count=2");
+
+        await _middleware.InvokeAsync(ctx);
+
+        PayloadBodiesV1ResponseWire.Decode(new ReadOnlySequence<byte>(ResponseBytes(ctx)), out PayloadBodiesV1ResponseWire decoded);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
+            Assert.That(decoded.Entries, Has.Length.EqualTo(2));
+            Assert.That(decoded.Entries![0].Available, Is.True);
+            Assert.That(decoded.Entries[1].Available, Is.False);
         }
     }
 
@@ -595,50 +706,41 @@ public class SszMiddlewareTests
     }
 
     [Test]
-    public async Task Capabilities_returns_intersection_of_supported_methods()
+    public async Task Capabilities_advertises_all_supported_fork_schemas()
     {
-        _specProvider.TransitionActivations.Returns([]);
-
         DefaultHttpContext ctx = MakeGetContext("/engine/v1/capabilities");
-
         await _middleware.InvokeAsync(ctx);
 
         Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
-        Assert.That(ctx.Response.ContentType, Does.Contain("application/json"));
+        using System.Text.Json.JsonDocument response = System.Text.Json.JsonDocument.Parse(ResponseBytes(ctx));
+        string[] forks = response.RootElement.GetProperty("supported_forks").EnumerateArray()
+            .Select(static fork => fork.GetString()!).ToArray();
+        Assert.That(forks, Is.EqualTo(SszRestPaths.SupportedForksOrdered));
     }
 
     [Test]
-    public async Task Capabilities_supported_forks_are_gated_by_spec_provider()
+    public async Task Capabilities_advertises_every_fork_scoped_endpoint()
     {
-        // Two distinct spec objects for Shanghai and Cancun, identified purely by reference
-        // equality — no Name property is involved.
-        IReleaseSpec shanghaiSpec = Substitute.For<IReleaseSpec>();
-        IReleaseSpec cancunSpec = Substitute.For<IReleaseSpec>();
-
-        ForkActivation[] transitions =
-        [
-            ForkActivation.TimestampOnly(1_000UL),
-            ForkActivation.TimestampOnly(2_000UL),
-        ];
-        _specProvider.TransitionActivations.Returns(transitions);
-        _specProvider.GetSpec(Arg.Is<ForkActivation>(fa => fa.Timestamp == 1_000UL)).Returns(shanghaiSpec);
-        _specProvider.GetSpec(Arg.Is<ForkActivation>(fa => fa.Timestamp == 2_000UL)).Returns(cancunSpec);
-
-        // Rebuild middleware so it picks up the now-configured spec provider.
-        SszMiddleware mw = BuildMiddleware();
         DefaultHttpContext ctx = MakeGetContext("/engine/v1/capabilities");
-        await mw.InvokeAsync(ctx);
+        await _middleware.InvokeAsync(ctx);
 
         Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
-        string body = System.Text.Encoding.UTF8.GetString(ResponseBytes(ctx));
+        using System.Text.Json.JsonDocument response = System.Text.Json.JsonDocument.Parse(ResponseBytes(ctx));
+        string[] endpoints = response.RootElement.GetProperty("fork_scoped_endpoints").EnumerateArray()
+            .Select(static endpoint => endpoint.GetString()!).ToArray();
+        Assert.That(endpoints, Is.EquivalentTo(new[] { "payloads", "forkchoice", "bodies", "payloads/witness", "inclusion_list" }));
+    }
 
-        Assert.That(body, Does.Contain("\"paris\""));
-        Assert.That(body, Does.Contain("\"shanghai\""));
-        Assert.That(body, Does.Contain("\"cancun\""));
+    [Test]
+    public async Task Capabilities_advertises_exactly_the_registered_blob_versions()
+    {
+        DefaultHttpContext ctx = MakeGetContext("/engine/v1/capabilities");
+        await _middleware.InvokeAsync(ctx);
 
-        Assert.That(body, Does.Not.Contain("\"prague\""));
-        Assert.That(body, Does.Not.Contain("\"osaka\""));
-        Assert.That(body, Does.Not.Contain("\"amsterdam\""));
+        using System.Text.Json.JsonDocument response = System.Text.Json.JsonDocument.Parse(ResponseBytes(ctx));
+        string[] advertised = response.RootElement.GetProperty("independently_versioned").GetProperty(SszRestPaths.Blobs).EnumerateArray()
+            .Select(static version => version.GetString()!).ToArray();
+        Assert.That(advertised, Is.EquivalentTo(BuildHandlers().Where(static h => h.Resource == SszRestPaths.Blobs).Select(static h => $"v{h.Version}")));
     }
 
     [Test]
@@ -953,7 +1055,7 @@ public class SszMiddlewareTests
 
         string jsonHeader = System.Text.Json.JsonSerializer.Serialize(clVersion);
 
-        ClientVersionV1[] response = [new(), clVersion];
+        ClientVersionV1[] response = [new()];
         _engineModule.engine_getClientVersionV1(default)
             .ReturnsForAnyArgs(ResultWrapper<ClientVersionV1[]>.Success(response));
 
@@ -971,31 +1073,44 @@ public class SszMiddlewareTests
 
         Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
         Assert.That(ctx.Response.ContentType, Does.Contain("application/json"));
-
-        byte[] bytes = ResponseBytes(ctx);
-        string responseStr = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(bytes).ToString();
-        Assert.That(responseStr, Does.Contain("Nimbus"));
     }
 
     [Test]
-    public async Task Forkchoice_unsupported_fork_returns_400()
+    public async Task ClientVersion_header_omitting_fields_leaves_them_empty()
     {
-        IReleaseSpec shanghaiSpec = Substitute.For<IReleaseSpec>();
-        IReleaseSpec cancunSpec = Substitute.For<IReleaseSpec>();
+        // As the JSON-RPC engine API reads it: Nethermind's own identity must not stand in for fields the consensus client omits.
+        _engineModule.engine_getClientVersionV1(default)
+            .ReturnsForAnyArgs(ResultWrapper<ClientVersionV1[]>.Success([new()]));
 
-        const ulong shanghaiTs = 1_000UL;
-        const ulong cancunTs = 2_000UL;
+        DefaultHttpContext ctx = MakeGetContext("/engine/v1/identity");
+        ctx.Request.Headers["X-Engine-Client-Version"] = """{"name":"Lighthouse"}""";
+
+        await _middleware.InvokeAsync(ctx);
+
+        ClientVersionV1 arg = (ClientVersionV1)_engineModule.ReceivedCalls()
+            .Single(c => c.GetMethodInfo().Name == nameof(IEngineRpcModule.engine_getClientVersionV1))
+            .GetArguments()[0]!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(arg.Name, Is.EqualTo("Lighthouse"));
+            Assert.That(arg.Code, Is.Null);
+        }
+    }
+
+    [Test]
+    public async Task Forkchoice_unsupported_fork_returns_400([Values] bool chainSpecBased)
+    {
         const ulong payloadTs = 1_500UL;
-
-        ForkActivation[] transitions =
-        [
-            ForkActivation.TimestampOnly(shanghaiTs),
-            ForkActivation.TimestampOnly(cancunTs),
-        ];
-        _specProvider.TransitionActivations.Returns(transitions);
-        _specProvider.GetSpec(Arg.Is<ForkActivation>(fa => fa.Timestamp == shanghaiTs)).Returns(shanghaiSpec);
-        _specProvider.GetSpec(Arg.Is<ForkActivation>(fa => fa.Timestamp == cancunTs)).Returns(cancunSpec);
-        _specProvider.GetSpec(Arg.Is<ForkActivation>(fa => fa.Timestamp == payloadTs)).Returns(shanghaiSpec);
+        if (chainSpecBased)
+        {
+            _specProvider = CreateChainSpecProvider();
+            _middleware = BuildMiddleware();
+        }
+        else
+        {
+            _specProvider.GetSpec(Arg.Is<ForkActivation>(fa => fa.Timestamp == payloadTs))
+                .Returns(Shanghai.Instance);
+        }
 
         ForkchoiceUpdatedV3RequestWire request = new()
         {
@@ -1023,6 +1138,67 @@ public class SszMiddlewareTests
         Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status400BadRequest));
         string respBody = System.Text.Encoding.UTF8.GetString(ResponseBytes(ctx));
         Assert.That(respBody, Does.Contain("unsupported-fork"));
+    }
+
+    [TestCase(7_000UL, StatusCodes.Status200OK, TestName = "ForkchoiceV5_chain_spec_bogota_payload_accepted")]
+    [TestCase(6_000UL, StatusCodes.Status400BadRequest, TestName = "ForkchoiceV5_chain_spec_amsterdam_payload_rejected")]
+    public async Task ForkchoiceV5_validates_payload_fork_against_chain_spec(ulong payloadTs, int expectedStatus)
+    {
+        _specProvider = CreateChainSpecProvider();
+        _middleware = BuildMiddleware();
+
+        ForkchoiceUpdatedV2Result fcuResult = new()
+        {
+            PayloadStatus = new PayloadStatusV2 { Status = PayloadStatus.Valid, LatestValidHash = TestItem.KeccakA, InclusionListSatisfied = true }
+        };
+        _engineModule.engine_forkchoiceUpdatedV5(Arg.Any<ForkchoiceStateV1>(), Arg.Any<PayloadAttributes?>(), Arg.Any<BitArray?>())
+            .Returns(ResultWrapper<ForkchoiceUpdatedV2Result>.Success(fcuResult));
+
+        ForkchoiceUpdatedV5RequestWire request = new()
+        {
+            ForkchoiceState = new ForkchoiceStateWire
+            {
+                HeadBlockHash = TestItem.KeccakA,
+                SafeBlockHash = TestItem.KeccakB,
+                FinalizedBlockHash = Keccak.Zero,
+            },
+            PayloadAttributes =
+            [
+                new PayloadAttributesV5Wire
+                {
+                    Timestamp = payloadTs,
+                    SuggestedFeeRecipient = TestItem.AddressA,
+                    PrevRandao = Keccak.Zero,
+                    Withdrawals = [],
+                    ParentBeaconBlockRoot = Keccak.Zero,
+                    SlotNumber = 1,
+                    TargetGasLimit = 30_000_000,
+                    InclusionListTransactions = [],
+                }
+            ],
+            CustodyColumns = [],
+        };
+        byte[] body = ForkchoiceUpdatedV5RequestWire.Encode(request);
+
+        DefaultHttpContext ctx = MakePostContext("/engine/v1/forkchoice", body, fork: "bogota");
+
+        await _middleware.InvokeAsync(ctx);
+
+        Assert.That(ctx.Response.StatusCode, Is.EqualTo(expectedStatus));
+        if (expectedStatus == StatusCodes.Status200OK)
+        {
+            await _engineModule.Received(1).engine_forkchoiceUpdatedV5(
+                Arg.Any<ForkchoiceStateV1>(),
+                Arg.Is<PayloadAttributes?>(attributes => attributes != null && attributes.Timestamp == payloadTs),
+                Arg.Any<BitArray?>());
+        }
+        else
+        {
+            string respBody = System.Text.Encoding.UTF8.GetString(ResponseBytes(ctx));
+            Assert.That(respBody, Does.Contain("unsupported-fork"));
+            await _engineModule.DidNotReceive().engine_forkchoiceUpdatedV5(
+                Arg.Any<ForkchoiceStateV1>(), Arg.Any<PayloadAttributes?>(), Arg.Any<BitArray?>());
+        }
     }
 
     [Test]
@@ -1058,7 +1234,7 @@ public class SszMiddlewareTests
     }
 
     [Test]
-    public async Task Forkchoice_payload_in_BPO_fork_routes_to_parent_url()
+    public async Task Forkchoice_payload_in_BPO_fork_routes_to_parent_url([Values] bool chainSpecBased)
     {
         ForkchoiceUpdatedV1Result fcuResult = new()
         {
@@ -1067,9 +1243,17 @@ public class SszMiddlewareTests
         _engineModule.engine_forkchoiceUpdatedV3(Arg.Any<ForkchoiceStateV1>(), Arg.Any<PayloadAttributes?>())
             .Returns(ResultWrapper<ForkchoiceUpdatedV1Result>.Success(fcuResult));
 
-        const ulong payloadTs = 1_000UL;
-        _specProvider.GetSpec(Arg.Is<ForkActivation>(fa => fa.Timestamp == payloadTs))
-            .Returns(BPO1.Instance);
+        const ulong payloadTs = 5_000UL;
+        if (chainSpecBased)
+        {
+            _specProvider = CreateChainSpecProvider();
+            _middleware = BuildMiddleware();
+        }
+        else
+        {
+            _specProvider.GetSpec(Arg.Is<ForkActivation>(fa => fa.Timestamp == payloadTs))
+                .Returns(BPO1.Instance);
+        }
 
         ForkchoiceUpdatedV3RequestWire request = new()
         {
@@ -1259,19 +1443,28 @@ public class SszMiddlewareTests
         Assert.That(body, Does.Contain("request-too-large"));
     }
 
+    /// <remarks>
+    /// The query string accepts <c>from=0</c>; the engine handler then rejects <c>start &lt; 1</c> with -32602,
+    /// which the spec's error table maps to 422 invalid-body.
+    /// </remarks>
     [Test]
-    public async Task GetPayloadBodiesByRange_from_zero_is_valid()
+    public async Task GetPayloadBodiesByRange_from_zero_is_rejected_by_the_engine_as_invalid_body()
     {
+        GetPayloadBodiesByRangeV1Handler handler = new(Substitute.For<Blockchain.IBlockTree>(), Substitute.For<Blockchain.Blocks.IBlockStore>(), LimboLogs.Instance);
         _engineModule.engine_getPayloadBodiesByRangeV1(Arg.Any<ulong>(), Arg.Any<ulong>())
-            .Returns(ResultWrapper<IReadOnlyList<ExecutionPayloadBodyV1Result?>>.Success([]));
+            .Returns(call => handler.Handle(call.ArgAt<ulong>(0), call.ArgAt<ulong>(1)));
 
         DefaultHttpContext ctx = MakeGetContext("/engine/v1/bodies", fork: "shanghai");
         ctx.Request.QueryString = new QueryString("?from=0&count=1");
 
         await _middleware.InvokeAsync(ctx);
 
-        Assert.That(ctx.Response.StatusCode, Is.Not.EqualTo(StatusCodes.Status400BadRequest),
-            "from=0 (genesis block) must be accepted");
+        using (Assert.EnterMultipleScope())
+        {
+            await _engineModule.Received(1).engine_getPayloadBodiesByRangeV1(0, 1);
+            Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status422UnprocessableEntity));
+            Assert.That(System.Text.Encoding.UTF8.GetString(ResponseBytes(ctx)), Does.Contain("invalid-body"));
+        }
     }
 
     [Test]
@@ -1355,6 +1548,46 @@ public class SszMiddlewareTests
     }
 
     [Test]
+    public async Task NewPayloadWithWitness_over_bound_witness_returns_500_without_aborting()
+    {
+        Witness overBoundWitness = new()
+        {
+            State = new ArrayPoolList<byte[]>(1) { new byte[SszRestLimits.MaxBytesPerWitnessNode + 1] },
+            Codes = new ArrayPoolList<byte[]>(0),
+            Keys = new ArrayPoolList<byte[]>(0),
+            Headers = new ArrayPoolList<byte[]>(0),
+        };
+        _engineModule.engine_newPayloadWithWitnessV5(
+                Arg.Any<ExecutionPayloadV4>(), Arg.Any<Hash256?[]>(), Arg.Any<Hash256?>(), Arg.Any<byte[][]?>())
+            .Returns(ResultWrapper<NewPayloadWithWitnessV1Result>.Success(NewPayloadWithWitnessV1Result.FromPayloadStatus(
+                new PayloadStatusV1 { Status = PayloadStatus.Valid, LatestValidHash = TestItem.KeccakA },
+                overBoundWitness)));
+
+        DefaultHttpContext ctx = MakePostContext(WitnessPath, BuildMinimalWitnessRequestBody(), fork: WitnessFork);
+        AbortableLifetimeFeature lifetime = new();
+        ctx.Features.Set<IHttpRequestLifetimeFeature>(lifetime);
+
+        await _middleware.InvokeAsync(ctx);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status500InternalServerError),
+                "a witness over the SSZ bounds is a server-side failure, not a client decode error");
+            Assert.That(lifetime.RequestAborted.IsCancellationRequested, Is.False,
+                "nothing was written before the bound check, so the connection must stay open for the 500");
+        }
+    }
+
+    private sealed class AbortableLifetimeFeature : IHttpRequestLifetimeFeature
+    {
+        private readonly CancellationTokenSource _cts = new();
+
+        public CancellationToken RequestAborted { get => _cts.Token; set { } }
+
+        public void Abort() => _cts.Cancel();
+    }
+
+    [Test]
     public async Task NewPayloadWithWitness_wrong_content_type_post_returns_415()
     {
         DefaultHttpContext ctx = MakeBaseContext("POST", WitnessPath, AuthenticatedPort);
@@ -1421,6 +1654,8 @@ public class SszMiddlewareTests
             .SetName("NewPayloadWithWitness_unsupported_fork_maps_to_400"),
         new TestCaseData(ErrorCodes.InternalError, "Something exploded", StatusCodes.Status500InternalServerError, "/engine-api/errors/internal")
             .SetName("NewPayloadWithWitness_internal_error_maps_to_500"),
+        new TestCaseData(ErrorCodes.InvalidParams, "Invalid requests", StatusCodes.Status422UnprocessableEntity, "/engine-api/errors/invalid-body")
+            .SetName("NewPayloadWithWitness_invalid_params_maps_to_422"),
     ];
 
     [TestCaseSource(nameof(WitnessEngineErrorCases))]
@@ -1448,6 +1683,37 @@ public class SszMiddlewareTests
             ExecutionPayload = new SszExecutionPayloadV4(SszTestData.MakeV4Payload(blockAccessList: [0xc0], slotNumber: 0)),
             ParentBeaconBlockRoot = TestItem.KeccakA,
         });
+
+    [Test]
+    public async Task NewPayloadV5_empty_block_access_list_returns_invalid_status()
+    {
+        _engineModule.engine_newPayloadV5(Arg.Any<ExecutionPayloadV4>(), Arg.Any<Hash256?[]>(), Arg.Any<Hash256?>(), Arg.Any<byte[][]?>())
+            .Returns(static call =>
+            {
+                ExecutionPayloadParams<ExecutionPayloadV4> payloadParams = new(
+                    call.ArgAt<ExecutionPayloadV4>(0), call.ArgAt<Hash256?[]>(1), call.ArgAt<Hash256?>(2), call.ArgAt<byte[][]?>(3));
+                bool invalid = payloadParams.ValidateParams(Amsterdam.Instance, EngineApiVersions.NewPayload.V5, out string? error) is Nethermind.Merge.Plugin.Data.ValidationResult.Invalid;
+                return ResultWrapper<PayloadStatusV1>.Success(invalid
+                    ? new PayloadStatusV1 { Status = PayloadStatus.Invalid, ValidationError = error }
+                    : new PayloadStatusV1 { Status = PayloadStatus.Valid, LatestValidHash = TestItem.KeccakA });
+            });
+
+        byte[] body = NewPayloadV5RequestWire.Encode(new NewPayloadV5RequestWire
+        {
+            ExecutionPayload = new SszExecutionPayloadV4(SszTestData.MakeV4Payload(blockAccessList: [], slotNumber: 0)),
+            ParentBeaconBlockRoot = TestItem.KeccakA,
+        });
+        DefaultHttpContext ctx = MakePostContext("/engine/v1/payloads", body, fork: "amsterdam");
+
+        await _middleware.InvokeAsync(ctx);
+
+        PayloadStatusWire.Decode(new ReadOnlySequence<byte>(ResponseBytes(ctx)), out PayloadStatusWire status);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
+            Assert.That(status.Status, Is.EqualTo((byte)1), "an empty block_access_list is present and must be INVALID, as over JSON-RPC");
+        }
+    }
 
     // The three Bogota methods must resolve to a handler once advertised over SSZ.
     [Test]
@@ -1549,19 +1815,23 @@ public class SszMiddlewareTests
     }
 
     [TestCase(false, TestName = "GetPayload_block_proof_extension_returns_unsupported_fork")]
-    [TestCase(true, TestName = "GetPayload_does_not_echo_the_CL_inclusion_proof_in_SSZ")]
-    public async Task GetPayload_proof_extensions_preserve_the_SSZ_response_contract(bool inclusionProof)
+    [TestCase(true, TestName = "GetPayload_does_not_echo_the_CL_inclusion_list_commitment_in_SSZ")]
+    public async Task GetPayload_proof_extensions_preserve_the_SSZ_response_contract(bool inclusionCommitment)
     {
         Block block = MakeMinimalBlock();
-        if (inclusionProof) block.InclusionListRecursiveStark = new([1], Keccak.Zero);
-        else block.Header.RecursiveStark = new([1], Keccak.Zero);
+        if (inclusionCommitment) block.InclusionLists = [new CommitteeInclusionList(0, [], new InclusionListCommitment(default, default))];
+        else
+        {
+            block.StarkProof = [1];
+            block.Header.RecursiveStark = new(Keccak.Compute(block.StarkProof), Keccak.Zero);
+        }
         GetPayloadV6Result result = new(block, UInt256.Zero, new BlobsBundleV2(block), [], false);
         _engineModule.engine_getPayloadV6(Arg.Any<byte[]>()).Returns(ResultWrapper<GetPayloadV6Result?>.Success(result));
         DefaultHttpContext ctx = MakeGetContext("/engine/v1/payloads/0x0102030405060708", fork: "amsterdam");
 
         await _middleware.InvokeAsync(ctx);
 
-        if (inclusionProof)
+        if (inclusionCommitment)
         {
             Block baseline = MakeMinimalBlock();
             _engineModule.engine_getPayloadV6(Arg.Any<byte[]>()).Returns(ResultWrapper<GetPayloadV6Result?>.Success(
@@ -1572,7 +1842,7 @@ public class SszMiddlewareTests
             {
                 Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
                 Assert.That(ctx.Response.ContentType, Does.Contain(OctetStream));
-                Assert.That(ResponseBytes(ctx), Is.EqualTo(ResponseBytes(ordinary)), "the CL retains its own inclusion-list proof");
+                Assert.That(ResponseBytes(ctx), Is.EqualTo(ResponseBytes(ordinary)), "the CL retains its own inclusion-list commitments");
             }
         }
         else

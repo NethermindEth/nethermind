@@ -159,4 +159,7 @@ public interface INetworkConfig : IConfig
 
     [ConfigItem(DefaultValue = "true", Description = "When filtering discovery nodes by recent IP, bucket discovery node IPs by subnet (e.g., IPv4 /24, IPv6 /64) so multiple discovery node IPs in the same subnet share a single entry. If false, use exact IP addresses only.")]
     bool FilterDiscoveryNodesBySameSubnet { get; set; }
+
+    [ConfigItem(DefaultValue = "64", Description = "EIP-8437 fork grace window, in blocks: from when the local target fork switches to a fork that changes the EIP-8288 verifier until the head is this many blocks past it, a peer's proof failure is a local refusal rather than invalid peer data.")]
+    long ProofWrapperForkGraceBlocks { get; set; }
 }

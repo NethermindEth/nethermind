@@ -13,12 +13,12 @@ using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.InteropServices;
-using Nethermind.Xdc.RLP;
 
 namespace Nethermind.Xdc.RPC;
 
-internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, ISpecProvider specProvider, IEpochSwitchManager epochSwitchManager, IVotesManager voteManager, ITimeoutCertificateManager timeoutCertificateManager, IRewardsStore rewardsStore) : IXdcRpcModule
+internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, ISpecProvider specProvider, IEpochSwitchManager epochSwitchManager, IVotesManager voteManager, ITimeoutCertificateManager timeoutCertificateManager, IRewardsStore rewardsStore, IHeaderDecoder headerDecoder) : IXdcRpcModule
 {
     public ResultWrapper<EpochNumInfo> XDPoS_calculateBlockInfoByV1EpochNum(ulong targetEpochNum) =>
         ResultWrapper<EpochNumInfo>.Fail("V1 epoch is not supported");
@@ -173,30 +173,45 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
 
         return ResultWrapper<PoolStatus>.Success(info);
     }
+
+    /// <summary>
+    /// Resolves the latest block, the committed (finalized) block or a block number to its header, as the reference
+    /// client's <c>getHeaderFromApiBlockNum</c> does.
+    /// </summary>
+    /// <returns><see langword="false"/> when the parameter cannot be resolved; a <see langword="null"/> header otherwise means the block is unknown.</returns>
+    private bool TryFindHeader(BlockParameter? blockParameter, out BlockHeader? header, [NotNullWhen(false)] out string? error)
+    {
+        error = null;
+        header = null;
+
+        switch (blockParameter)
+        {
+            case null or { Type: BlockParameterType.Latest }:
+                header = tree.Head?.Header;
+                return true;
+            case { Type: BlockParameterType.Finalized }:
+                if (tree.FinalizedHash is null)
+                {
+                    error = "No finalized block found from consensus";
+                    return false;
+                }
+
+                header = tree.FindHeader(tree.FinalizedHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+                return true;
+            case { BlockNumber: ulong number }:
+                header = tree.FindHeader(number);
+                return true;
+            default:
+                error = "Block number is required.";
+                return false;
+        }
+    }
+
     public ResultWrapper<MasternodesStatus> XDPoS_getMasternodesByNumber(BlockParameter blockNumber)
     {
-        BlockHeader? header;
-
-        if (blockNumber is null || blockNumber.Type == BlockParameterType.Latest)
+        if (!TryFindHeader(blockNumber, out BlockHeader? header, out string? error))
         {
-            header = tree.Head?.Header;
-        }
-        else if (blockNumber.Type == BlockParameterType.Finalized)
-        {
-            if (tree.FinalizedHash is null)
-            {
-                return ResultWrapper<MasternodesStatus>.Fail("No finalized block found from consensus");
-            }
-
-            header = tree.FindHeader(tree.FinalizedHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-        }
-        else if (blockNumber.BlockNumber is null)
-        {
-            return ResultWrapper<MasternodesStatus>.Fail("Block number is required.");
-        }
-        else
-        {
-            header = tree.FindHeader(blockNumber.BlockNumber.Value);
+            return ResultWrapper<MasternodesStatus>.Fail(error);
         }
 
         if (header is null)
@@ -247,19 +262,9 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
 
     public ResultWrapper<PublicApiMissedRoundsMetadata> XDPoS_getMissedRoundsInEpochByBlockNum(BlockParameter blockNumber)
     {
-        BlockHeader? header;
-
-        if (blockNumber is null || blockNumber.Type == BlockParameterType.Latest)
+        if (!TryFindHeader(blockNumber, out BlockHeader? header, out string? error))
         {
-            header = tree.Head?.Header;
-        }
-        else if (blockNumber.BlockNumber is null)
-        {
-            return ResultWrapper<PublicApiMissedRoundsMetadata>.Fail("Block number is required.");
-        }
-        else
-        {
-            header = tree.FindHeader(blockNumber.BlockNumber.Value);
+            return ResultWrapper<PublicApiMissedRoundsMetadata>.Fail(error);
         }
 
         if (header is null)
@@ -571,7 +576,6 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
         }
 
         // Encode header to RLP
-        XdcHeaderDecoder headerDecoder = new();
         byte[] encodedBytes;
         try
         {
@@ -599,18 +603,9 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
 
     public ResultWrapper<V2BlockInfo> XDPoS_getV2BlockByNumber(BlockParameter blockNumber)
     {
-        BlockHeader header;
-        if (blockNumber is null || blockNumber.Type == BlockParameterType.Latest)
+        if (!TryFindHeader(blockNumber, out BlockHeader? header, out string? error))
         {
-            header = tree.Head?.Header;
-        }
-        else if (blockNumber.BlockNumber is null)
-        {
-            return ResultWrapper<V2BlockInfo>.Fail("Block number is required.");
-        }
-        else
-        {
-            header = tree.FindHeader(blockNumber.BlockNumber.Value);
+            return ResultWrapper<V2BlockInfo>.Fail(error);
         }
         return (header is null) ?
             ResultWrapper<V2BlockInfo>.Fail("Unknown block") :

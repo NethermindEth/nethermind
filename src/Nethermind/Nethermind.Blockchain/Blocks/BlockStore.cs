@@ -174,7 +174,7 @@ public class BlockStore : IBlockStore, IClearableCache
             ?? _blockDb.Get(blockHash, _blockDecoder,
                 cache: (AssociativeCache<ValueHash256, Block>?)null, rlpBehaviors: rlpBehaviors, shouldCache: false);
 
-        if (shouldCache && block is not null && (block.Header.RecursiveStark?.StarkProof.Length ?? 0) <= MaxCachedProofBytes)
+        if (shouldCache && block is not null && (block.StarkProof?.Length ?? 0) <= MaxCachedProofBytes)
         {
             _blockCache.Set(in cacheKey, block);
         }
@@ -231,8 +231,8 @@ public class BlockStore : IBlockStore, IClearableCache
 
     public void Cache(Block block)
     {
-        // Large proofs are served through the byte-bounded header cache, not this count-bounded body cache.
-        if ((block.Header.RecursiveStark?.StarkProof.Length ?? 0) > MaxCachedProofBytes) return;
+        // Blocks with large proofs stay out of this count-bounded cache, keeping its memory bounded.
+        if ((block.StarkProof?.Length ?? 0) > MaxCachedProofBytes) return;
 
         ValueHash256 cacheKey = block.Hash.ValueHash256;
         Block cachedBlock = _pending is not null && _pending.TryGet(block.Hash!, out Block? pendingBlock)

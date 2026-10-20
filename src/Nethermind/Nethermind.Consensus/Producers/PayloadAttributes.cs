@@ -29,11 +29,27 @@ public class PayloadAttributes
 
     public byte[][]? InclusionListTransactions { get; set; }
 
+    /// <summary><c>PayloadAttributesV6</c>: each counted inclusion list with its EIP-8288 commitment, in place of
+    /// <see cref="InclusionListTransactions"/>.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public RecursiveStark? InclusionListRecursiveStark { get; set; }
+    public InclusionListV1[]? InclusionLists
+    {
+        get;
+        set
+        {
+            field = value;
+            _combinedInclusionListTransactions = null;
+        }
+    }
 
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public byte[]? InclusionListProvenDependencies { get; set; }
+    private byte[][]? _combinedInclusionListTransactions;
+
+    /// <summary>The build's flattened inclusion list: <see cref="InclusionListTransactions"/>, or every list of
+    /// <see cref="InclusionLists"/> concatenated.</summary>
+    /// <remarks>The same array instance is returned on every call, so it identifies the build.</remarks>
+    [JsonIgnore]
+    public byte[][]? CombinedInclusionListTransactions => InclusionListTransactions
+        ?? (InclusionLists is { } lists ? _combinedInclusionListTransactions ??= InclusionListV1.Flatten(lists) : null);
 
     public ulong? SlotNumber { get; set; }
 
@@ -103,8 +119,7 @@ public class PayloadAttributes
         + (SlotNumber is null ? 0 : sizeof(ulong)) // slot number
         + (TargetGasLimit is null ? 0 : sizeof(ulong)) // target gas limit
         + (InclusionListTransactions is null ? 0 : Keccak.Size) // inclusion list digest
-        + (InclusionListRecursiveStark is null ? 0 : 2 * Keccak.Size)
-        + (InclusionListProvenDependencies is null ? 0 : Keccak.Size);
+        + (InclusionLists is null ? 0 : Keccak.Size); // per-list inclusion list digest
 
     protected static string ComputePayloadId(Span<byte> inputSpan)
     {
@@ -159,17 +174,9 @@ public class PayloadAttributes
             position += Keccak.Size;
         }
 
-        if (InclusionListRecursiveStark is { } proof)
+        if (InclusionLists is not null)
         {
-            (proof.BlockDepsHash ?? Keccak.Zero).Bytes.CopyTo(inputSpan.Slice(position, Keccak.Size));
-            position += Keccak.Size;
-            ValueKeccak.Compute(proof.StarkProof ?? []).BytesAsSpan.CopyTo(inputSpan.Slice(position, Keccak.Size));
-            position += Keccak.Size;
-        }
-
-        if (InclusionListProvenDependencies is { } dependencies)
-        {
-            ValueKeccak.Compute(dependencies).BytesAsSpan.CopyTo(inputSpan.Slice(position, Keccak.Size));
+            InclusionListV1.ComputeDigest(InclusionLists).BytesAsSpan.CopyTo(inputSpan.Slice(position, Keccak.Size));
             position += Keccak.Size;
         }
 
@@ -278,7 +285,6 @@ public class PayloadAttributes
         int fcuVersion,
         [NotNullWhen(false)] out string? error)
     {
-        IReleaseSpec spec = specProvider.GetSpec(ForkActivation.TimestampOnly(Timestamp));
         int actualVersion = this.GetVersion();
         int timestampVersion = specProvider.GetSpec(ForkActivation.TimestampOnly(Timestamp)).ExpectedPayloadAttributesVersion();
 
@@ -310,19 +316,12 @@ public class PayloadAttributes
                 : PayloadAttributesValidationResult.InvalidPayloadAttributes;
         }
 
-        if (result == PayloadAttributesValidationResult.Success && InclusionListRecursiveStark is { } proof
-            && (!spec.IsEip8288Enabled || !spec.InclusionListsEnabled || InclusionListTransactions is null
-                || !proof.HasValidShape))
+        if (result == PayloadAttributesValidationResult.Success && InclusionLists is not null
+            && (InclusionListTransactions is not null
+                ? $"{nameof(InclusionListTransactions)} must not be set with {nameof(InclusionLists)}"
+                : InclusionListV1.Validate(InclusionLists)) is { } listError)
         {
-            error = "Invalid inclusion-list recursive STARK";
-            return PayloadAttributesValidationResult.InvalidPayloadAttributes;
-        }
-
-        if (result == PayloadAttributesValidationResult.Success && InclusionListProvenDependencies is { } dependencies
-            && (!spec.IsEip8288Enabled || !spec.InclusionListsEnabled || InclusionListTransactions is null
-                || InclusionListRecursiveStark is null || !Nethermind.Consensus.ProofAggregation.InclusionListProofValidator.HasValidMetadataLength(dependencies)))
-        {
-            error = "Invalid inclusion-list proven dependencies";
+            error = listError;
             return PayloadAttributesValidationResult.InvalidPayloadAttributes;
         }
 
@@ -343,7 +342,9 @@ public class PayloadAttributes
             >= PayloadAttributesVersions.V4 when TargetGasLimit is null => $"{nameof(TargetGasLimit)} must be provided",
             // bogota.md PayloadAttributesV5 appends this field unconditionally; an empty array is valid,
             // an absent one is not.
-            >= PayloadAttributesVersions.V5 when InclusionListTransactions is null => $"{nameof(InclusionListTransactions)} must be provided",
+            PayloadAttributesVersions.V5 when InclusionListTransactions is null => $"{nameof(InclusionListTransactions)} must be provided",
+            // PayloadAttributesV6 replaces the flattened list with each counted list and its EIP-8288 commitment.
+            >= PayloadAttributesVersions.V6 when InclusionLists is null => $"{nameof(InclusionLists)} must be provided",
             _ => null
         };
     }
@@ -356,6 +357,7 @@ public static class PayloadAttributesExtensions
     public static int GetVersion(this PayloadAttributes executionPayload) =>
         executionPayload switch
         {
+            { InclusionLists: not null } => PayloadAttributesVersions.V6,
             { InclusionListTransactions: not null } => PayloadAttributesVersions.V5,
             { SlotNumber: not null } or { TargetGasLimit: not null } => PayloadAttributesVersions.V4,
             { ParentBeaconBlockRoot: not null } => PayloadAttributesVersions.V3,
@@ -366,6 +368,7 @@ public static class PayloadAttributesExtensions
     public static int ExpectedPayloadAttributesVersion(this IReleaseSpec spec) =>
         spec switch
         {
+            { IsEip7805Enabled: true, IsEip8288Enabled: true } => PayloadAttributesVersions.V6,
             { IsEip7805Enabled: true } => PayloadAttributesVersions.V5,
             { IsEip7843Enabled: true } => PayloadAttributesVersions.V4,
             { IsEip4844Enabled: true } => PayloadAttributesVersions.V3,
@@ -381,4 +384,5 @@ public static class PayloadAttributesVersions
     public const int V3 = 3; // Cancun/Prague/Osaka
     public const int V4 = 4; // Amsterdam
     public const int V5 = 5; // Bogota
+    public const int V6 = 6; // Bogota with EIP-8288 per-list inclusion lists
 }

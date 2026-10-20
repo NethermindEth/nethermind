@@ -18,13 +18,34 @@ use tiny_keccak::{Hasher, Keccak};
 pub const MAX_BYTES: usize = 8 * 1024 * 1024;
 pub const MAX_INPUT_BYTES: usize = 18 * 1024 * 1024;
 const MAX_DEPS: usize = eip8288_mixed::MAX_DEPENDENCIES;
-const MAX_MIXED_GUEST_BYTES: usize = MAX_BYTES - 12 - 96 * MAX_DEPS;
+const MAX_MIXED_GUEST_BYTES: usize = MAX_BYTES;
 const MAX_INSTRUCTIONS: usize = 1 << eip8288_mixed::MAX_GENERIC_BYTECODE_LOG;
 const MAX_OPERAND: u32 = 65535;
 const MAX_GENERIC_STARKS: usize = eip8288_mixed::MAX_GENERIC_DEPENDENCIES;
 const MAX_DECODE_BYTES: usize = 32 * 1024 * 1024;
-const MAGIC: &[u8; 4] = b"NLR3";
 static PROVER: Mutex<()> = Mutex::new(());
+
+/// Takes the prover for one proof. The proving arena allows one proof in flight per process; PROVER, behind the managed
+/// proving gate, serializes every proof.
+fn begin_proof() -> std::sync::MutexGuard<'static, ()> {
+    let guard = PROVER
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    lean_vm::init_prover();
+    guard
+}
+
+// leanVM's carry-less-multiply field arithmetic is about 68x slower without these features. An
+// environment RUSTFLAGS replaces .cargo/config.toml's target-cpu=native instead of adding to it, so
+// refuse to build a backend that silently lost them.
+#[cfg(any(
+    all(target_arch = "x86_64", not(target_feature = "pclmulqdq")),
+    all(target_arch = "aarch64", not(target_feature = "aes"))
+))]
+compile_error!(
+    "nethermind_lean needs carry-less multiply: build from tools/lean-ffi so .cargo/config.toml \
+     applies, or include -C target-cpu=native (or +pclmulqdq / +aes) in RUSTFLAGS"
+);
 static ACTIVE_ABI_CALLS: AtomicUsize = AtomicUsize::new(0);
 static ABI_WORKERS: OnceLock<Vec<ThreadId>> = OnceLock::new();
 thread_local! { static IN_ABI: Cell<bool> = const { Cell::new(false) }; }
@@ -169,21 +190,29 @@ fn put_blob(out: &mut Vec<u8>, b: &[u8]) {
     put_number(out, b.len());
     out.extend_from_slice(b);
 }
+#[cfg(test)]
 fn put_deps(out: &mut Vec<u8>, ds: &[Dep]) {
     put_number(out, ds.len());
     for d in ds {
         out.extend_from_slice(d);
     }
 }
-fn commitment(ds: &[Dep]) -> [u8; 32] {
-    keccak(&ds.iter().flatten().copied().collect::<Vec<_>>())
+/// EIP-8288 `get_deps_hash` of a canonical list, as the recursive guest commits to it.
+pub fn commitment(ds: &[Dep]) -> [u8; 32] {
+    eip8288_mixed::deps_hash(ds)
+}
+fn canonical(ds: Vec<Dep>) -> Vec<Dep> {
+    ds.into_iter()
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect()
 }
 #[cfg(test)]
 fn sphincs_dependency(pk: &SphincsPublicKey, message: &[u8; 32]) -> Dep {
     let mut dep = [0; 96];
     dep[31] = 0x10;
     dep[32..64].copy_from_slice(message);
-    dep[64..].copy_from_slice(&keccak(&pk.flatten()));
+    dep[64..].copy_from_slice(&eip8288_mixed::sphincs_verification_key(pk));
     dep
 }
 fn parse_sphincs(
@@ -195,7 +224,7 @@ fn parse_sphincs(
         return Err(());
     }
     let pk = SphincsPublicKey::from_bytes(witness[..32].try_into().map_err(|_| ())?);
-    if keccak(&pk.flatten()) != *vk {
+    if eip8288_mixed::sphincs_verification_key(&pk) != *vk {
         return Err(());
     }
     let sig = SphincsSignature::from_bytes(witness[32..].try_into().map_err(|_| ())?);
@@ -370,7 +399,7 @@ fn decode_stark(
     }
     let mut r = Reader { bytes: witness };
     let code = r.blob()?;
-    if keccak(code) != *vk {
+    if keccak(&[&eip8288_mixed::GENERIC_VK_DOMAIN[..], code].concat()) != *vk {
         return Err(());
     }
     let program = stark_program(code)?;
@@ -389,46 +418,28 @@ fn verify_stark(hash: &[u8; 32], vk: &[u8; 32], witness: &[u8]) -> bool {
     decode_stark(hash, vk, witness).is_ok()
 }
 
-struct Aggregate {
-    deps: Vec<Dep>,
-    proof: Option<MixedProof>,
+// EIP-8288 `stark_proof`: the guest proof alone, checked against `deps_hash` and the pinned key.
+fn preflight_proof(proof: &[u8]) -> Result<(), ()> {
+    if proof.is_empty() || proof.len() > MAX_MIXED_GUEST_BYTES {
+        return Err(());
+    }
+    let mut preflight = Preflight::new(proof);
+    preflight.mixed()?;
+    preflight.end()
 }
 
-fn decode_aggregate(bytes: &[u8]) -> Result<Aggregate, ()> {
-    decode_aggregate_with_hash(bytes, None)
+fn verify_aggregate(hash: &[u8; 32], proof: &[u8]) -> Result<(), ()> {
+    preflight_proof(proof)?;
+    eip8288_mixed::verify_mixed_deps(hash, proof).map_err(|_| ())
 }
 
-fn decode_aggregate_with_hash(bytes: &[u8], expected: Option<&[u8; 32]>) -> Result<Aggregate, ()> {
-    if bytes.len() > MAX_BYTES {
-        return Err(());
-    }
-    let mut r = Reader { bytes };
-    if r.take(4)? != MAGIC {
-        return Err(());
-    }
-    let deps = r.deps()?;
-    if !deps.windows(2).all(|w| w[0] < w[1])
-        || deps.iter().filter(|d| d[31] == 0x11).count() > MAX_GENERIC_STARKS
-        || expected.is_some_and(|hash| commitment(&deps) != *hash)
-    {
-        return Err(());
-    }
-    let payload = r.blob()?;
-    r.end()?;
-    if payload.len() > MAX_MIXED_GUEST_BYTES || payload.is_empty() != deps.is_empty() {
-        return Err(());
-    }
-    let proof = if deps.is_empty() {
-        None
-    } else {
-        let mut preflight = Preflight::new(payload);
-        preflight.mixed()?;
-        preflight.end()?;
-        let proof = MixedProof::from_bytes_without_deps(&deps, payload).map_err(|_| ())?;
-        proof.verify().map_err(|_| ())?;
-        Some(proof)
-    };
-    Ok(Aggregate { deps, proof })
+// A recursive child is proven against its declared dependencies, which the caller supplies;
+// the upstream decoder enforces their canonical order and profile bounds.
+fn decode_child(deps: &[Dep], proof: &[u8]) -> Result<MixedProof, ()> {
+    preflight_proof(proof)?;
+    let proof = MixedProof::from_bytes_without_deps(deps, proof).map_err(|_| ())?;
+    proof.verify().map_err(|_| ())?;
+    Ok(proof)
 }
 
 const RAW_SIGNATURES_PER_LEAF: usize = 4;
@@ -536,15 +547,12 @@ pub fn prove_aggregate(hash: &[u8; 32], input: &[u8]) -> Result<Vec<u8>, ()> {
     }
     if input == [0; 12] {
         return if *hash == commitment(&[]) {
-            Ok([MAGIC.as_slice(), &[0; 8]].concat())
+            Ok(vec![])
         } else {
             Err(())
         };
     }
-    let _guard = PROVER
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
-    lean_vm::init_prover_pool();
+    let _guard = begin_proof();
     let mut r = Reader { bytes: input };
     let mut all = Vec::new();
     let mut raw = Vec::new();
@@ -569,25 +577,24 @@ pub fn prove_aggregate(hash: &[u8; 32], input: &[u8]) -> Result<Vec<u8>, ()> {
     }
     let mut children = Vec::new();
     for _ in 0..child_count {
-        let declared = r.deps()?;
-        let child = decode_aggregate(r.blob()?)?;
-        if child.deps
-            != declared
-                .iter()
-                .copied()
-                .collect::<BTreeSet<_>>()
-                .into_iter()
-                .collect::<Vec<_>>()
-        {
-            return Err(());
+        let declared = canonical(r.deps()?);
+        let proof = r.blob()?;
+        if declared.is_empty() {
+            if !proof.is_empty() {
+                return Err(());
+            }
+            continue;
         }
+        children.push(decode_child(&declared, proof)?);
         all.extend(declared);
-        if let Some(proof) = child.proof {
-            children.push(proof);
-        }
     }
     let discards: HashSet<_> = r.deps()?.into_iter().collect();
     r.end()?;
+    // EIP-8288: every discard must occur in the input union, matched by its full triple.
+    let union: HashSet<_> = all.iter().copied().collect();
+    if !discards.is_subset(&union) {
+        return Err(());
+    }
     let deps: Vec<_> = all
         .into_iter()
         .filter(|dep| !discards.contains(dep))
@@ -600,21 +607,14 @@ pub fn prove_aggregate(hash: &[u8; 32], input: &[u8]) -> Result<Vec<u8>, ()> {
     {
         return Err(());
     }
-    let payload = if deps.is_empty() {
-        vec![]
-    } else {
-        aggregate_bounded(children, raw, generic, &deps)?.to_bytes_without_deps()
-    };
-    if payload.len() > MAX_MIXED_GUEST_BYTES {
+    if deps.is_empty() {
+        return Ok(vec![]);
+    }
+    let proof = aggregate_bounded(children, raw, generic, &deps)?.to_bytes_without_deps();
+    if proof.len() > MAX_MIXED_GUEST_BYTES {
         return Err(());
     }
-    let mut out = MAGIC.to_vec();
-    put_deps(&mut out, &deps);
-    put_blob(&mut out, &payload);
-    if out.len() > MAX_BYTES {
-        return Err(());
-    }
-    Ok(out)
+    Ok(proof)
 }
 
 // Crypto ABI calls bound buffers and contain upstream panics; free requires its exact owned allocation.
@@ -631,6 +631,9 @@ unsafe fn bytes_with_limit<'a>(ptr: *const u8, len: usize, limit: usize) -> Resu
         Ok(unsafe { std::slice::from_raw_parts(ptr, len) })
     }
 }
+/// Runs one ABI call: returns 1 for accepted, 0 for rejected input and -1 for a contained panic,
+/// so callers never read a fault as a verdict. Every `checked` export shares this contract, including
+/// `nlean_aggregated_vk` and `nlean_prove_recursive`, where the C# side accepts only `== 1` as success.
 fn checked(f: impl FnOnce() -> Result<bool, ()>) -> i32 {
     static HOOK: OnceLock<()> = OnceLock::new();
     struct CallGuard(bool);
@@ -672,13 +675,11 @@ fn checked(f: impl FnOnce() -> Result<bool, ()>) -> i32 {
         });
         f()
     }))
-    .ok()
-    .and_then(Result::ok)
-    .unwrap_or(false) as i32
+    .map_or(-1, |verdict| verdict.unwrap_or(false) as i32)
 }
 #[unsafe(no_mangle)]
 pub extern "C" fn nlean_abi_version() -> u32 {
-    5
+    7
 }
 /// # Safety
 /// Output must hold nine writable u32 values.
@@ -767,7 +768,7 @@ pub unsafe extern "C" fn nlean_verify_recursive(
             return Ok(false);
         }
         let expected = unsafe { bytes(hash, 32)? }.try_into().map_err(|_| ())?;
-        decode_aggregate_with_hash(unsafe { bytes(proof, len)? }, Some(expected))?;
+        verify_aggregate(expected, unsafe { bytes(proof, len)? })?;
         Ok(true)
     })
 }
@@ -813,10 +814,7 @@ pub unsafe extern "C" fn nlean_free(ptr: *mut u8, len: usize) {
 }
 
 pub fn prove_stark(source: &str, hash: &[u8; 32]) -> Result<(Vec<u8>, [u8; 32]), ()> {
-    let _guard = PROVER
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
-    lean_vm::init_prover_pool();
+    let _guard = begin_proof();
     let program = lean_compiler::compile(&lean_compiler::parse(source).map_err(|_| ())?);
     let key = eip8288_mixed::generic_verification_key(&program).map_err(|_| ())?;
     let code = encode_program(&program);
@@ -856,15 +854,67 @@ mod tests {
         worker.join().unwrap();
         let (proof, invalid) = result.expect("empty proof must not wait for the prover");
         let proof = proof.unwrap();
-        assert_eq!(proof, [MAGIC.as_slice(), &[0; 8]].concat());
-        assert!(decode_aggregate_with_hash(&proof, Some(&hash)).is_ok());
+        // EIP-8288: no dependencies, empty stark_proof; callers check that case without the guest.
+        assert!(proof.is_empty());
+        assert!(verify_aggregate(&hash, &proof).is_err());
         assert!(invalid.is_err());
-        let mut wrong_hash = hash;
-        wrong_hash[0] ^= 1;
-        assert!(decode_aggregate_with_hash(&proof, Some(&wrong_hash)).is_err());
         for malformed in [&[0; 11][..], &[0; 13][..]] {
             assert!(prove_aggregate(&hash, malformed).is_err());
         }
+    }
+
+    /// Expected digests computed in Python from the EIP-8288 `get_deps_hash` pseudocode.
+    #[test]
+    fn dependency_commitment_matches_eip_pseudocode_vectors() {
+        let dep = |scheme: u8, data: [u8; 32], key: [u8; 32]| {
+            let mut dep = [0; 96];
+            dep[31] = scheme;
+            dep[32..64].copy_from_slice(&data);
+            dep[64..].copy_from_slice(&key);
+            dep
+        };
+        let key = |start: u8| std::array::from_fn(|i| start + i as u8);
+        let (a, b, c) = (
+            dep(0x10, [7; 32], key(0)),
+            dep(0x10, [7; 32], key(1)),
+            dep(0x10, [1; 32], [0xff; 32]),
+        );
+        let (g1, g2) = (
+            dep(0x11, [7; 32], key(0)),
+            dep(0x11, [0xa5; 32], [0x5a; 32]),
+        );
+        for (deps, expected) in [
+            (
+                vec![],
+                "69217a3079908094e11121d042354a7c1f55b6482ca1a51e1b250dfd1ed0eef9",
+            ),
+            (
+                vec![a],
+                "aef5a1c0fbd299e930670837a1d8525a37ebfbb3139edfa972cb84788484afe6",
+            ),
+            (
+                vec![b, a, c, a],
+                "db319771cd52a8a6eadb4273e07df5fbf2a405592e956e3fe6f3121f9cb3b897",
+            ),
+            (
+                vec![g1],
+                "2eacc579313017124720641cf33287809cb02437e8f381c427e0f5aa8162db93",
+            ),
+            (
+                vec![g2, a, g1, c],
+                "2523de87398f08d0bb08e78b1ff651b0452a1c12fe8dbae806a4c8ffe7fbaf31",
+            ),
+        ] {
+            let digest = commitment(&canonical(deps));
+            assert_eq!(
+                digest
+                    .iter()
+                    .map(|b| format!("{b:02x}"))
+                    .collect::<String>(),
+                expected
+            );
+        }
+        assert_ne!(commitment(&[a]), commitment(&[g1]));
     }
 
     #[test]
@@ -898,16 +948,17 @@ mod tests {
             sphincs::sign(&sk, &message).to_bytes().as_slice(),
         ]
         .concat();
-        assert!(verify_sphincs(&message, &keccak(&pk.flatten()), &signature));
+        assert!(verify_sphincs(&message, &pk.flatten(), &signature));
+        assert!(!verify_sphincs(&[8; 32], &pk.flatten(), &signature));
+        assert!(!verify_sphincs(&message, &[0; 32], &signature));
         assert!(!verify_sphincs(
-            &[8; 32],
+            &message,
             &keccak(&pk.flatten()),
             &signature
         ));
-        assert!(!verify_sphincs(&message, &[0; 32], &signature));
         let mut bad = signature;
         bad[10] ^= 1;
-        assert!(!verify_sphincs(&message, &keccak(&pk.flatten()), &bad));
+        assert!(!verify_sphincs(&message, &pk.flatten(), &bad));
         let mut small = [0; 32];
         small[0] = 7;
         small[16] = 9;
@@ -922,6 +973,20 @@ mod tests {
             );
             let (proof, key) = prove_stark(&source, &input).unwrap();
             assert!(verify_stark(&input, &key, &proof));
+            let mut encoded = Reader { bytes: &proof };
+            let code = encoded.blob().unwrap();
+            // EIP-8288: vk_hash = keccak256(domain_tag || canonical_vk), domain_tag = "ethereum/8288/leanSTARK/vk/v1" || 0x00.
+            assert_eq!(
+                &eip8288_mixed::GENERIC_VK_DOMAIN[..],
+                b"ethereum/8288/leanSTARK/vk/v1\0"
+            );
+            assert_eq!(
+                key,
+                keccak(&[b"ethereum/8288/leanSTARK/vk/v1\0".as_slice(), code].concat())
+            );
+            let former_key =
+                keccak(&[b"eip8288/leanstark-vk/leanvm-cpu\0".as_slice(), code].concat());
+            assert!(!verify_stark(&input, &former_key, &proof));
             for index in [7, 15, 23, 31] {
                 let mut wrong = input;
                 wrong[index] ^= 1;
@@ -950,8 +1015,11 @@ mod tests {
         put_number(&mut input, 0);
         put_deps(&mut input, &[]);
         let leaf = prove_aggregate(&commitment(&[dep]), &input).unwrap();
-        let checked_leaf = decode_aggregate(&leaf).unwrap();
-        assert_eq!(checked_leaf.deps, vec![dep]);
+        verify_aggregate(&commitment(&[dep]), &leaf).unwrap();
+        assert!(
+            !leaf.windows(96).any(|bytes| bytes == dep),
+            "stark_proof carries no dependency"
+        );
         let mut parent = Vec::new();
         put_number(&mut parent, 0);
         put_number(&mut parent, 1);
@@ -959,12 +1027,13 @@ mod tests {
         put_blob(&mut parent, &leaf);
         put_deps(&mut parent, &[]);
         let root = prove_aggregate(&commitment(&[dep]), &parent).unwrap();
-        assert_eq!(decode_aggregate(&root).unwrap().deps, vec![dep]);
+        verify_aggregate(&commitment(&[dep]), &root).unwrap();
+        let mut other = dep;
+        other[40] ^= 1;
+        assert!(verify_aggregate(&commitment(&[other]), &root).is_err());
         let mut forged = root.clone();
-        forged[4 + 4 + 32] ^= 1;
-        assert!(decode_aggregate(&forged).is_err());
         *forged.last_mut().unwrap() ^= 1;
-        assert!(decode_aggregate(&forged).is_err());
+        assert!(verify_aggregate(&commitment(&[dep]), &forged).is_err());
         let mut discard = Vec::new();
         put_number(&mut discard, 0);
         put_number(&mut discard, 1);
@@ -972,8 +1041,49 @@ mod tests {
         put_blob(&mut discard, &leaf);
         put_deps(&mut discard, &[dep]);
         let empty = prove_aggregate(&commitment(&[]), &discard).unwrap();
-        assert!(decode_aggregate(&empty).unwrap().deps.is_empty());
+        assert!(empty.is_empty());
         assert!(prove_aggregate(&commitment(&[dep]), &discard).is_err());
+        // The scheme is bound: the same data and key under leanSTARK is another dependency.
+        let mut restated = dep;
+        restated[31] = 0x11;
+        for proof in [&leaf, &root] {
+            assert!(verify_aggregate(&commitment(&[restated]), proof).is_err());
+        }
+        let mut other_scheme = Vec::new();
+        put_number(&mut other_scheme, 0);
+        put_number(&mut other_scheme, 1);
+        put_deps(&mut other_scheme, &[dep]);
+        put_blob(&mut other_scheme, &leaf);
+        put_deps(&mut other_scheme, &[restated]);
+        // A discard outside the input union is rejected, even when it differs from an input only in its scheme.
+        assert!(prove_aggregate(&commitment(&[]), &other_scheme).is_err());
+        assert!(prove_aggregate(&commitment(&[dep]), &other_scheme).is_err());
+        // Unknown schemes fail in direct, recursive and discard lists alike.
+        for scheme in [0x00, 0x12] {
+            let mut unknown = dep;
+            unknown[31] = scheme;
+            let mut direct = Vec::new();
+            put_number(&mut direct, 1);
+            direct.extend_from_slice(&unknown);
+            put_blob(&mut direct, &signature);
+            put_number(&mut direct, 0);
+            put_deps(&mut direct, &[]);
+            let mut nested = Vec::new();
+            put_number(&mut nested, 0);
+            put_number(&mut nested, 1);
+            put_deps(&mut nested, &[dep, unknown]);
+            put_blob(&mut nested, &leaf);
+            put_deps(&mut nested, &[unknown]);
+            let mut discarded = Vec::new();
+            put_number(&mut discarded, 0);
+            put_number(&mut discarded, 1);
+            put_deps(&mut discarded, &[dep]);
+            put_blob(&mut discarded, &leaf);
+            put_deps(&mut discarded, &[unknown]);
+            for input in [direct, nested, discarded] {
+                assert!(prove_aggregate(&commitment(&[dep]), &input).is_err());
+            }
+        }
     }
     #[test]
     fn binary_recursion_preserves_overlapping_parents_and_partial_discards() {
@@ -997,7 +1107,7 @@ mod tests {
         put_number(&mut input, 0);
         put_deps(&mut input, &[]);
         let all = prove_aggregate(&commitment(&deps), &input).unwrap();
-        assert_eq!(decode_aggregate(&all).unwrap().deps, deps);
+        verify_aggregate(&commitment(&deps), &all).unwrap();
         let combine = |parents: &[(&[Dep], &[u8])], discards: &[Dep], expected: &[Dep]| {
             let mut input = Vec::new();
             put_number(&mut input, 0);
@@ -1017,9 +1127,9 @@ mod tests {
             &[deps[1]],
             &retained,
         );
-        assert_eq!(decode_aggregate(&root).unwrap().deps, retained);
+        verify_aggregate(&commitment(&retained), &root).unwrap();
         let repeated = combine(&[(&retained, &root)], &[], &retained);
-        assert_eq!(decode_aggregate(&repeated).unwrap().deps, retained);
+        verify_aggregate(&commitment(&retained), &repeated).unwrap();
         assert_eq!(root, repeated);
         let redundant = combine(
             &[(&retained, &root), (&deps[..2], &left)],
@@ -1027,7 +1137,7 @@ mod tests {
             &retained,
         );
         assert_eq!(root, redundant);
-        assert!(decode_aggregate_with_hash(&root, Some(&commitment(&deps))).is_err());
+        assert!(verify_aggregate(&commitment(&deps), &root).is_err());
     }
 
     #[test]
@@ -1044,31 +1154,17 @@ mod tests {
             },
             0
         );
-        assert!(decode_aggregate(b"NLR2\xff\xff\xff\xff").is_err());
-        for has_generic in [false, true] {
-            let mut deps = vec![];
-            if has_generic {
-                let mut dep = [0; 96];
-                dep[31] = 0x11;
-                deps.push(dep);
-            }
-            let mut envelope = MAGIC.to_vec();
-            put_deps(&mut envelope, &deps);
-            put_blob(&mut envelope, &[0]);
-            put_number(&mut envelope, 0);
-            assert!(decode_aggregate(&envelope).is_err());
-        }
-        // Reject malicious nested vector lengths before upstream claim reconstruction.
         let mut declared = [0; 96];
         declared[31] = 0x10;
+        let hash = commitment(&[declared]);
+        assert!(verify_aggregate(&hash, b"NLR2\xff\xff\xff\xff").is_err());
+        assert!(verify_aggregate(&hash, &[0]).is_err());
+        // Reject malicious nested vector lengths before upstream claim reconstruction.
         for preceding_vectors in 0..8 {
             let mut nested = vec![0; preceding_vectors * 8];
             nested.extend_from_slice(&u64::MAX.to_le_bytes());
-            let mut envelope = MAGIC.to_vec();
-            put_deps(&mut envelope, &[declared]);
-            put_blob(&mut envelope, &nested);
-            put_number(&mut envelope, 0);
-            assert!(decode_aggregate(&envelope).is_err());
+            assert!(verify_aggregate(&hash, &nested).is_err());
+            assert!(decode_child(&[declared], &nested).is_err());
         }
         let core = (
             vec![F192::ZERO; 33],
@@ -1078,10 +1174,7 @@ mod tests {
                 merkle: vec![],
             },
         );
-        let mut envelope = MAGIC.to_vec();
-        put_deps(&mut envelope, &[declared]);
-        put_blob(&mut envelope, &wire().serialize(&core).unwrap());
-        assert!(decode_aggregate(&envelope).is_err());
+        assert!(verify_aggregate(&hash, &wire().serialize(&core).unwrap()).is_err());
     }
     #[test]
     fn preflight_rejects_allocation_hints_and_excess_generic_claims() {
@@ -1100,9 +1193,14 @@ mod tests {
             dep[31] = 0x11;
             dep[63] = i as u8;
         }
-        let mut envelope = MAGIC.to_vec();
-        put_deps(&mut envelope, &deps);
-        assert!(decode_aggregate(&envelope).is_err());
+        let mut input = Vec::new();
+        put_number(&mut input, 0);
+        put_number(&mut input, 1);
+        put_deps(&mut input, &deps);
+        put_blob(&mut input, &[0]);
+        put_deps(&mut input, &[]);
+        assert!(decode_child(&deps, &[0]).is_err());
+        assert!(prove_aggregate(&commitment(&deps), &input).is_err());
     }
     #[test]
     fn bytecode_offsets_are_bounded_before_upstream_assembly() {
@@ -1114,14 +1212,14 @@ mod tests {
     }
     #[test]
     fn exported_limits_match_and_panics_fail_closed() {
-        assert_eq!(nlean_abi_version(), 5);
+        assert_eq!(nlean_abi_version(), 7);
         let mut key = [0u8; 32];
         assert_eq!(unsafe { nlean_aggregated_vk(key.as_mut_ptr()) }, 1);
         assert_eq!(
             key.iter()
                 .map(|byte| format!("{byte:02x}"))
                 .collect::<String>(),
-            "9370d760abb55fdf02acc7e8d40688c425815c3d25a2aea3c030b2ae1ab51ace"
+            "00f24bbdf44a31139c975223b77510cd93a905664da3c4a52b5eba4e9b07de9e"
         );
         let mut limits = [0u32; 9];
         assert_eq!(unsafe { nlean_limits(limits.as_mut_ptr(), 9) }, 1);
@@ -1141,7 +1239,8 @@ mod tests {
         );
         assert_eq!(unsafe { nlean_limits(std::ptr::null_mut(), 9) }, 0);
         assert_eq!(unsafe { nlean_limits(limits.as_mut_ptr(), 8) }, 0);
-        assert_eq!(checked(|| panic!("contained upstream failure")), 0);
+        assert_eq!(checked(|| panic!("contained upstream failure")), -1);
+        assert_eq!(checked(|| Err(())), 0);
     }
 
     #[test]
@@ -1176,12 +1275,9 @@ mod tests {
             put_number(&mut input, 0);
             put_deps(&mut input, &[]);
             let proof = prove_aggregate(&commitment(&deps), &input).unwrap();
-            assert_eq!(decode_aggregate(&proof).unwrap().deps, deps);
-            let mut noncanonical = proof;
-            for offset in 0..96 {
-                noncanonical.swap(8 + offset, 104 + offset);
-            }
-            assert!(decode_aggregate(&noncanonical).is_err());
+            verify_aggregate(&commitment(&deps), &proof).unwrap();
+            let noncanonical: Vec<_> = deps.iter().rev().copied().collect();
+            assert!(verify_aggregate(&commitment(&noncanonical), &proof).is_err());
         }
     }
 
@@ -1215,9 +1311,7 @@ mod tests {
         assert!(input.len() > 4 * 1024 * 1024 && input.len() <= MAX_INPUT_BYTES);
         let parent = prove_aggregate(&commitment(&deps), &input).unwrap();
         assert!(parent.len() < 1024 * 1024);
-        let verified = decode_aggregate(&parent).unwrap();
-        assert_eq!(verified.deps, deps);
-        assert!(verified.proof.is_some());
+        verify_aggregate(&commitment(&deps), &parent).unwrap();
 
         let reaggregate = |retained: &[Dep], discards: &[Dep]| {
             let mut input = Vec::new();
@@ -1228,9 +1322,7 @@ mod tests {
             put_deps(&mut input, discards);
             assert!(input.len() < 1024 * 1024);
             let proof = prove_aggregate(&commitment(retained), &input).unwrap();
-            let verified = decode_aggregate(&proof).unwrap();
-            assert_eq!(verified.deps, retained);
-            assert!(verified.proof.is_some());
+            verify_aggregate(&commitment(retained), &proof).unwrap();
             assert!(prove_aggregate(&[0; 32], &input).is_err());
             proof
         };
@@ -1258,9 +1350,8 @@ mod tests {
         put_blob(&mut mixed_input, &parent);
         put_deps(&mut mixed_input, &[]);
         let mixed = prove_aggregate(&commitment(&mixed_deps), &mixed_input).unwrap();
-        let verified = decode_aggregate(&mixed).unwrap();
-        assert_eq!(verified.deps, mixed_deps);
-        assert!(verified.proof.unwrap().to_bytes_without_deps().len() <= MAX_MIXED_GUEST_BYTES);
+        verify_aggregate(&commitment(&mixed_deps), &mixed).unwrap();
+        assert!(mixed.len() <= MAX_MIXED_GUEST_BYTES);
         let mut discard = Vec::new();
         put_number(&mut discard, 0);
         put_number(&mut discard, 1);
@@ -1268,9 +1359,7 @@ mod tests {
         put_blob(&mut discard, &mixed);
         put_deps(&mut discard, &[sphincs_dep]);
         let generic_only = prove_aggregate(&commitment(&deps), &discard).unwrap();
-        let verified = decode_aggregate(&generic_only).unwrap();
-        assert_eq!(verified.deps, deps);
-        assert!(verified.proof.is_some());
+        verify_aggregate(&commitment(&deps), &generic_only).unwrap();
         eprintln!(
             "generic16 parent={} retained16={} retained1={} mixed={}",
             parent.len(),
@@ -1284,11 +1373,12 @@ mod tests {
     fn oversized_root_and_old_carried_envelopes_fail_closed() {
         let mut dep = [0; 96];
         dep[31] = 0x11;
-        let mut envelope = MAGIC.to_vec();
+        let hash = commitment(&[dep]);
+        assert!(verify_aggregate(&hash, &vec![0; MAX_MIXED_GUEST_BYTES + 1]).is_err());
+        let mut envelope = b"NLR3".to_vec();
         put_deps(&mut envelope, &[dep]);
-        put_blob(&mut envelope, &vec![0; MAX_MIXED_GUEST_BYTES + 1]);
-        assert!(decode_aggregate(&envelope).is_err());
-        assert!(decode_aggregate(b"NLR2\0\0\0\0\0\0\0\0\0\0\0\0").is_err());
+        put_blob(&mut envelope, &[0]);
+        assert!(verify_aggregate(&hash, &envelope).is_err());
         assert!(!verify_stark(&[0; 32], &[0; 32], &vec![0; MAX_BYTES + 1]));
     }
 
@@ -1333,7 +1423,7 @@ mod tests {
         put_number(&mut duplicated, 0);
         put_deps(&mut duplicated, &[]);
         let result = prove_aggregate(&commitment(&[dep]), &duplicated).unwrap();
-        assert_eq!(decode_aggregate(&result).unwrap().deps, vec![dep]);
+        verify_aggregate(&commitment(&[dep]), &result).unwrap();
         assert!(result.len() < 1024 * 1024);
         let mut input = Vec::new();
         put_number(&mut input, 1);
@@ -1409,7 +1499,7 @@ mod tests {
                 });
                 panic!("contained calling thread");
             }),
-            0
+            -1
         );
         assert_eq!(diagnostics.load(Ordering::Relaxed), 1);
         assert!(std::panic::catch_unwind(|| panic!("caller outside ABI")).is_err());

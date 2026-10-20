@@ -4,8 +4,8 @@
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
-using Nethermind.Core.Specs;
 using Nethermind.Consensus.ProofAggregation;
+using Nethermind.Core.Specs;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
@@ -38,6 +38,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
         IForkInfo forkInfo,
         IEthCapabilitiesProvider capabilitiesProvider,
         IBlockForRpcFactory blockForRpcFactory,
+        HashesOnlyBlockReader hashesOnlyBlockReader,
+        IReceiptStorage receiptStorage,
         ProofWrapperService? proofWrapperService = null)
         : ModuleFactoryBase<IEthRpcModule>
     {
@@ -66,6 +68,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 _headBlockSignal,
                 capabilitiesProvider,
                 blockForRpcFactory,
+                hashesOnlyBlockReader,
+                receiptStorage,
                 proofWrapperService);
     }
 }

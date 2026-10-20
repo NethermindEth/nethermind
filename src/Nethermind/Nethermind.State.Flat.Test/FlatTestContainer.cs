@@ -3,6 +3,7 @@
 
 using System;
 using System.IO;
+using System.IO.Abstractions;
 using System.Threading;
 using Autofac;
 using Nethermind.Api;
@@ -17,6 +18,7 @@ using Nethermind.Monitoring.Config;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using NSubstitute;
+using Testably.Abstractions;
 
 namespace Nethermind.State.Flat.Test;
 
@@ -84,6 +86,7 @@ public sealed class FlatTestContainer : IDisposable
             .AddSingleton<IDbFactory, MemDbFactory>()
             .AddSingleton<IFlatDbConfig>(Config)
             .AddSingleton<ILogManager>(LimboLogs.Instance)
+            .AddSingleton<IFileSystem>(new RealFileSystem())
             .AddSingleton<IMetricsConfig>(new MetricsConfig())
             .AddSingleton<IBlocksConfig>(new BlocksConfig())
             .AddSingleton<IInitConfig>(new InitConfig { BaseDbPath = BaseDbPath })
@@ -117,6 +120,10 @@ public sealed class FlatTestContainer : IDisposable
     }
 
     public T Resolve<T>() where T : notnull => Container.Resolve<T>();
+
+    /// <summary>A child scope of the built graph with the registrations of <paramref name="configure"/> on top, to
+    /// resolve a production component over this graph with some of its dependencies replaced. The caller disposes it.</summary>
+    public ILifetimeScope BeginScope(Action<ContainerBuilder> configure) => Container.BeginLifetimeScope(configure);
 
     public SnapshotRepository Repository => Resolve<SnapshotRepository>();
     public IPersistedSnapshotLoader Loader => Resolve<PersistedSnapshotLoader>();

@@ -46,6 +46,23 @@ public class SimulateBridgeHelperTests
     }
 
     /// <summary>
+    /// A simulated child of a zero-difficulty (EIP-3675) block is post-merge even when the merge block number is unknown,
+    /// as on a node that synced past the merge of a chain whose chainspec does not pin it (Gnosis, Chiado).
+    /// </summary>
+    [TestCase(0UL, null, ExpectedResult = true, TestName = "post-merge parent without a known merge block")]
+    [TestCase(1_000UL, null, ExpectedResult = false, TestName = "pre-merge parent without a known merge block")]
+    [TestCase(1_000UL, 11UL, ExpectedResult = true, TestName = "terminal parent with a known merge block")]
+    [TestCase(1_000UL, 12UL, ExpectedResult = false, TestName = "pre-merge parent below a known merge block")]
+    public bool Simulated_header_is_post_merge_after_a_post_merge_parent(ulong parentDifficulty, ulong? mergeBlockNumber)
+    {
+        TestSpecProvider specProvider = new(London.Instance);
+        specProvider.UpdateMergeTransitionInfo(mergeBlockNumber);
+        BlockHeader parent = Build.A.BlockHeader.WithNumber(10).WithDifficulty(parentDifficulty).TestObject;
+
+        return GetCallHeader(specProvider, MainnetSlotLength, parent, overrideTime: null).IsPostMerge;
+    }
+
+    /// <summary>
     /// Where the spec carries a beacon genesis, the slot is the beacon chain's own for the block's timestamp, taken after
     /// <c>blockOverrides.time</c> and ahead of the parent's slot + 1. A slot length or genesis that does not fit the parent
     /// falls back rather than producing a plausible-looking wrong slot.

@@ -56,6 +56,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
     private readonly CancellationTokenSource _cancelTokenSource;
     private int _isDisposed = 0;
     private readonly bool _enableDetailedMetrics;
+    private readonly double _inMemorySlotFilterBitsPerKey;
 
     public FlatDbManager(
         IResourcePool resourcePool,
@@ -77,6 +78,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         _persistenceManager = persistenceManager;
         _logger = logManager.GetClassLogger<FlatDbManager>();
         _enableDetailedMetrics = enableDetailedMetrics;
+        _inMemorySlotFilterBitsPerKey = config.InMemorySnapshotBloomBitsPerKey;
 
         // Must run before any background worker or read can access the persisted tier.
         persistedSnapshotLoader.Load();
@@ -275,14 +277,18 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         await jobTask;
     }
 
-    public SnapshotBundle GatherSnapshotBundle(in StateId baseBlock, ResourcePool.Usage usage)
+    public SnapshotBundle GatherSnapshotBundle(in StateId baseBlock, ResourcePool.Usage usage) =>
+        GatherSnapshotBundle(baseBlock, usage, filterInMemorySlotReads: false);
+
+    public SnapshotBundle GatherSnapshotBundle(in StateId baseBlock, ResourcePool.Usage usage, bool filterInMemorySlotReads)
     {
         if (_logger.IsTrace) _logger.Trace($"Gathering {baseBlock}.");
         return new SnapshotBundle(
             GatherReadOnlySnapshotBundle(baseBlock),
             _trieNodeCache,
             _resourcePool,
-            usage: usage);
+            usage: usage,
+            filterInMemorySlotReads: filterInMemorySlotReads);
     }
 
     private static readonly StringLabel _depthInMemoryLabel = new("in_memory");
@@ -310,6 +316,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 
         long sw = 0;
         int attempt = 0;
+        bool persistedAtBase = false;
         while (true)
         {
             // Fastpath: Share a recently created ReadOnlySnapshotBundle
@@ -349,7 +356,12 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
                 assembled.Dispose();
                 persistenceReader.Dispose();
 
-                if (!HasStateForBlock(baseBlock))
+                // Persistence publishes its pointer only once the write is readable, so while the pointer stays at
+                // baseBlock, a reader leased after it got there reads baseBlock. One that doesn't means the pointer is
+                // stale against the database (e.g. after the snap-sync wipe), which no retry can fix either.
+                bool wasPersistedAtBase = persistedAtBase;
+                persistedAtBase = _persistenceManager.GetCurrentPersistedStateId() == baseBlock;
+                if (!HasStateForBlock(baseBlock) || (wasPersistedAtBase && persistedAtBase))
                 {
                     throw new StateNotRetainedException($"No state available for block {baseBlock.BlockNumber} with state root {baseBlock.StateRoot}");
                 }
@@ -362,8 +374,11 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 
             ReportBundleMetrics(assembled);
 
+            // Flagged bundles are one-off full scans (trie verification) that never read through the slot filter, so
+            // only shared bundles get bits per key. Nothing is built here: the first filtered read builds the filter.
             ReadOnlySnapshotBundle res = new(assembled.InMemory, persistenceReader, _enableDetailedMetrics,
-                new PersistedSnapshotStack(assembled.Persisted, _enableDetailedMetrics));
+                new PersistedSnapshotStack(assembled.Persisted, _enableDetailedMetrics),
+                slotFilterBitsPerKey: shareable ? _inMemorySlotFilterBitsPerKey : 0);
 
             if (!shareable) return res;
 

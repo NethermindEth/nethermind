@@ -50,7 +50,7 @@ public class GethGenesisLoaderTests
     ];
 
     // Fork classes that are not real Geth fork names and therefore have no genesis config property
-    private static readonly HashSet<string> ForkClassesWithoutConfigProp = [];
+    private static readonly HashSet<string> ForkClassesWithoutConfigProp = [nameof(FramesDevnet1)];
 
     private static readonly string[] AmsterdamEipNumbers = ["7708", "7778", "7843", "7928", "7954", "8024", "8037"];
 
@@ -329,13 +329,77 @@ public class GethGenesisLoaderTests
         }
     }
 
+    [TestCase("eip8250PrototypeTime", true, false, false)]
+    [TestCase("eip8272PrototypeTime", false, true, false)]
+    [TestCase("eip7906PrototypeTime", false, false, true)]
+    public void Genesis_frame_transaction_extension_label_schedules_only_its_own_eip(string label, bool eip8250, bool eip8272, bool eip7906)
+    {
+        ChainSpec chainSpec = LoadStandardGethGenesis(configExtra: $"\"{label}\": 15");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chainSpec.Parameters.Eip8141TransitionTimestamp, Is.Null);
+            Assert.That(chainSpec.Parameters.Eip7805TransitionTimestamp, Is.Null);
+            Assert.That(chainSpec.Parameters.Eip8250TransitionTimestamp, Is.EqualTo(eip8250 ? (ulong?)15 : null));
+            Assert.That(chainSpec.Parameters.Eip8272TransitionTimestamp, Is.EqualTo(eip8272 ? (ulong?)15 : null));
+            Assert.That(chainSpec.Parameters.Eip7906TransitionTimestamp, Is.EqualTo(eip7906 ? (ulong?)15 : null));
+        }
+
+        ChainSpecBasedSpecProvider provider = new(chainSpec);
+        IReleaseSpec before = provider.GetSpec(ForkActivation.TimestampOnly(14));
+        IReleaseSpec after = provider.GetSpec(ForkActivation.TimestampOnly(15));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(before.IsEip8250Enabled, Is.False);
+            Assert.That(before.IsEip8272Enabled, Is.False);
+            Assert.That(before.IsEip7906Enabled, Is.False);
+            Assert.That(after.IsEip8141Enabled, Is.False);
+            Assert.That(after.IsEip8250Enabled, Is.EqualTo(eip8250));
+            Assert.That(after.IsEip8272Enabled, Is.EqualTo(eip8272));
+            Assert.That(after.IsEip7906Enabled, Is.EqualTo(eip7906));
+        }
+    }
+
+    [Test]
+    public void Genesis_can_schedule_the_whole_frame_transaction_family_without_inclusion_lists()
+    {
+        ChainSpec chainSpec = LoadStandardGethGenesis(configExtra: """
+            "amsterdamTime": 0,
+            "eip8141PrototypeTime": 15,
+            "eip8250PrototypeTime": 15,
+            "eip8272PrototypeTime": 15,
+            "eip7906PrototypeTime": 15
+            """);
+
+        ChainSpecBasedSpecProvider provider = new(chainSpec);
+        IReleaseSpec before = provider.GetSpec(ForkActivation.TimestampOnly(14));
+        IReleaseSpec after = provider.GetSpec(ForkActivation.TimestampOnly(15));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(before.IsEip7928Enabled, Is.True);
+            Assert.That(before.IsEip8141Enabled, Is.False);
+            Assert.That(before.IsEip8250Enabled, Is.False);
+            Assert.That(before.IsEip8272Enabled, Is.False);
+            Assert.That(before.IsEip7906Enabled, Is.False);
+            Assert.That(after.IsEip8141Enabled, Is.True);
+            Assert.That(after.IsEip8250Enabled, Is.True);
+            Assert.That(after.IsEip8272Enabled, Is.True);
+            Assert.That(after.IsEip7906Enabled, Is.True);
+            Assert.That(after.IsEip7805Enabled, Is.False);
+        }
+    }
+
     [Test]
     public void Eip8288_prototype_genesis_schedules_frames_and_dependency_proofs()
     {
-        ChainSpec chainSpec = LoadStandardGethGenesis(configExtra: "\"eip8288PrototypeTime\": 15");
+        Hash256 upgradedVk = Keccak.Compute("next AGGREGATED_VK");
+        ChainSpec chainSpec = LoadStandardGethGenesis(configExtra:
+            $"\"eip8288PrototypeTime\": 15, \"eip8288AggregatedVkTimestamp\": 30, \"eip8288AggregatedVk\": \"{upgradedVk}\"");
         ChainSpecBasedSpecProvider provider = new(chainSpec);
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(29)).Eip8288AggregatedVk, Is.EqualTo(Eip8288Verifier.PinnedAggregatedVk));
+            Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(30)).Eip8288AggregatedVk, Is.EqualTo(upgradedVk.ValueHash256));
             Assert.That(chainSpec.Parameters.Eip8288TransitionTimestamp, Is.EqualTo(15UL));
             Assert.That(chainSpec.Parameters.Eip8141TransitionTimestamp, Is.EqualTo(15UL));
             Assert.That(chainSpec.Parameters.Eip8250TransitionTimestamp, Is.EqualTo(15UL));
@@ -826,9 +890,10 @@ public class GethGenesisLoaderTests
         Assert.That(forks, Is.Not.Empty);
         long framesActivation = forks.Single(f => f.Fork is Eip8141Prototype).ActivationValue;
         for (int i = 0; i < forks.Count; i++)
-            if (forks[i].Fork is Eip8288Prototype) forks[i] = forks[i] with { ActivationValue = framesActivation };
+            if (forks[i].Fork is Eip8288Prototype or Eip8250Prototype or Eip8272Prototype or Eip7906Prototype)
+                forks[i] = forks[i] with { ActivationValue = framesActivation };
 
-        // Overlapping prototype labels share EIP-8141 and must agree on its activation.
+        // Overlapping prototype labels must agree: EIP-8288's prototype also enables EIP-8141, EIP-8250, EIP-8272 and EIP-7906.
         // Bypass LoadStandardGethGenesis
         // to avoid hardcoded eip150Block/eip155Block/eip158Block that would shadow fork-named properties
         string configEntries = string.Join(", ", forks.Select(f => $"\"{f.GethConfigName}\": {f.ActivationValue}"));

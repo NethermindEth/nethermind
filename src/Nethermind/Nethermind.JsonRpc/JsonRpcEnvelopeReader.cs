@@ -51,6 +51,18 @@ internal ref struct JsonRpcEnvelopeReader
             return false;
         }
 
+        envelope = ReadObject(ref reader);
+        ObjectLength = (int)reader.BytesConsumed;
+        return true;
+    }
+
+    /// <summary>Reads the envelope of the object <paramref name="reader"/> is on, leaving the reader on the object's end.</summary>
+    /// <remarks>
+    /// <paramref name="reader"/> must read the body this instance was created over: token positions, and with them
+    /// <see cref="JsonRpcEnvelope.ParamsStart"/>, are offsets into it.
+    /// </remarks>
+    public readonly JsonRpcEnvelope ReadObject(ref Utf8JsonReader reader)
+    {
         string? jsonRpc = null;
         JsonRpcId id = JsonRpcId.Missing;
         string? method = null;
@@ -63,9 +75,7 @@ internal ref struct JsonRpcEnvelopeReader
         {
             if (reader.TokenType == JsonTokenType.EndObject)
             {
-                ObjectLength = (int)reader.BytesConsumed;
-                envelope = new JsonRpcEnvelope(jsonRpc, in id, method, hasParams, paramsKind, paramsStart, paramsLength);
-                return true;
+                return new JsonRpcEnvelope(jsonRpc, in id, method, hasParams, paramsKind, paramsStart, paramsLength);
             }
 
             if (reader.TokenType != JsonTokenType.PropertyName)
@@ -114,8 +124,7 @@ internal ref struct JsonRpcEnvelopeReader
         }
 
         ThrowIncompleteObject();
-        envelope = default;
-        return false;
+        return default;
 
         [DoesNotReturn, StackTraceHidden]
         static void ThrowExpectedPropertyName() =>

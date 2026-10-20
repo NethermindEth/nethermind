@@ -99,9 +99,11 @@ namespace Nethermind.Consensus.Validators
                    && (orphaned || Validate1559(header, parent, spec, ref error))
                    && ValidateBlobGasFields(header, spec, ref error)
                    && (orphaned || ValidateExcessBlobGas(header, parent, spec, ref error))
+                   && ValidateParentBeaconBlockRoot(header, spec, ref error)
                    && ValidateRequestsHash(header, spec, ref error)
                    && ValidateBlockAccessListHash(header, spec, ref error)
                    && ValidateSlotNumber(header, spec, ref error)
+                   && ValidateBloom(header, spec, ref error)
                    && ValidateRecursiveStarkFields(header, spec, ref error);
         }
 
@@ -110,7 +112,7 @@ namespace Nethermind.Consensus.Validators
 
         private static bool ValidateRecursiveStarkFields(BlockHeader header, IReleaseSpec spec, ref string? error)
         {
-            RecursiveStark? proof = header.RecursiveStark;
+            RecursiveStarkCommitment? proof = header.RecursiveStark;
             if (!spec.IsEip8288Enabled)
             {
                 if (proof is null) return true;
@@ -126,6 +128,26 @@ namespace Nethermind.Consensus.Validators
             if (!proof.HasValidShape)
             {
                 error = BlockErrorMessages.InvalidRecursiveStark;
+                return false;
+            }
+            return true;
+        }
+
+        protected virtual bool ValidateParentBeaconBlockRoot(BlockHeader header, IReleaseSpec spec, ref string? error)
+        {
+            if (spec.IsBeaconBlockRootAvailable)
+            {
+                if (header.ParentBeaconBlockRoot is null)
+                {
+                    if (_logger.IsWarn) _logger.Warn("ParentBeaconBlockRoot field is not set.");
+                    error = BlockErrorMessages.MissingParentBeaconBlockRoot;
+                    return false;
+                }
+            }
+            else if (header.ParentBeaconBlockRoot is not null)
+            {
+                if (_logger.IsWarn) _logger.Warn("ParentBeaconBlockRoot field should not have value.");
+                error = BlockErrorMessages.ParentBeaconBlockRootNotEnabled;
                 return false;
             }
             return true;
@@ -474,6 +496,19 @@ namespace Nethermind.Consensus.Validators
             }
 
             return true;
+        }
+
+        /// <summary>Checks the logs bloom is zero-length exactly when EIP-7668 is active.</summary>
+        protected bool ValidateBloom(BlockHeader header, IReleaseSpec spec, ref string? error)
+        {
+            if (spec.IsEip7668Enabled == (header.Bloom?.IsZeroLength ?? false))
+            {
+                return true;
+            }
+
+            if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - logs bloom length does not match EIP-7668 activation.");
+            error = BlockErrorMessages.InvalidLogsBloomLength(spec.IsEip7668Enabled);
+            return false;
         }
 
     }

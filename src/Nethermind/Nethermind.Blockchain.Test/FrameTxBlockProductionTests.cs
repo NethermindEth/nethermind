@@ -4,15 +4,17 @@
 using System;
 using System.Linq;
 using System.Threading;
+using Autofac;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
+using Nethermind.Core.Container;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
@@ -20,8 +22,8 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.State;
 using Nethermind.State.Proofs;
 using Nethermind.TxPool;
 using NUnit.Framework;
@@ -171,6 +173,57 @@ public class FrameTxBlockProductionTests
         }
     }
 
+    /// <summary>An EIP-8272 root written through <c>RECENT_ROOT_ADDRESS</c> verifies in a later slot's block through a
+    /// <c>recent_root_verify</c> frame, and a tuple naming another root makes the block invalid.</summary>
+    [Test]
+    public void A_recent_root_written_in_one_block_is_verified_by_a_verify_frame_in_the_next()
+    {
+        const ulong writeSlot = 7_000;
+        ValueHash256 salt = TestItem.KeccakC.ValueHash256;
+        ValueHash256 root = TestItem.KeccakD.ValueHash256;
+        byte[] writeData = [.. salt.Bytes, .. root.Bytes];
+        using Chain chain = new((Eip8272Constants.RecentRootAddress, Eip8272Constants.RecentRootCode.ToArray()));
+
+        Transaction write = FrameTx(SelfApprove(),
+            new TxFrame(FrameMode.Sender, 0, Eip8272Constants.RecentRootAddress, executionGasLimit: 200_000, stateGasLimit: 200_000, UInt256.Zero, writeData));
+        ProcessBlock(chain, writeSlot, write);
+
+        ValueHash256 sourceId = RecentRootStore.SourceId(Sender, salt);
+        Transaction verify = WithNonce(FrameTx(FrameTxTestFrames.RecentRootVerify(100_000, (sourceId, writeSlot, root)), SelfApprove()), 1);
+        Transaction mismatched = WithNonce(FrameTx(FrameTxTestFrames.RecentRootVerify(100_000, (sourceId, writeSlot, salt)), SelfApprove()), 2);
+
+        TxReceipt[] verified = ProcessBlock(chain, writeSlot + 1, verify);
+        InvalidTransactionException invalid = Assert.Throws<InvalidTransactionException>(() => ProcessBlock(chain, writeSlot + 1, mismatched))!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(verified[0].StatusCode, Is.EqualTo(TxFrameReceipt.StatusSuccess));
+            Assert.That(invalid.Message, Does.Contain("VERIFY frame reverted"));
+        }
+    }
+
+    private static TxReceipt[] ProcessBlock(Chain chain, ulong slot, params Transaction[] transactions)
+    {
+        IBlockProcessor.IBlockTransactionsExecutor executor = chain.ValidationExecutor;
+        Block block = Build.A.Block.WithNumber(1).WithSlotNumber(slot).WithBaseFeePerGas(0).WithGasLimit(30_000_000)
+            .WithTransactions(transactions).TestObject;
+
+        BlockReceiptsTracer receiptsTracer = new();
+        receiptsTracer.StartNewBlockTrace(block);
+        executor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, chain.Spec));
+        TxReceipt[] receipts = executor.ProcessTransactions(block, ProcessingOptions.None, receiptsTracer, CancellationToken.None);
+        receiptsTracer.EndBlockTrace();
+        chain.State.Commit(chain.Spec);
+        return receipts;
+    }
+
+    private static Transaction WithNonce(Transaction tx, ulong nonce)
+    {
+        tx.Nonce = nonce;
+        tx.Hash = tx.CalculateHash();
+        return tx;
+    }
+
     /// <summary>The state scenario a test's SENDER frame runs, which fixes both the state gas it moves
     /// and the execution refund it earns.</summary>
     public enum StateScenario { None, FreshSlot, RestoredSlot }
@@ -240,17 +293,20 @@ public class FrameTxBlockProductionTests
     /// contracts a test's SENDER frames target.</summary>
     private sealed class Chain : IDisposable
     {
+        private readonly IContainer _container;
+        private readonly ILifetimeScope _lifetime;
         private readonly IDisposable _scope;
 
         public Chain(params (Address Address, byte[] Code)[] contracts)
         {
-            SpecProvider = new TestSpecProvider(Eip8141Prototype.Instance);
-            State = TestWorldStateFactory.CreateForTest();
+            _container = new ContainerBuilder().AddModule(new TestNethermindModule(Eip8141Prototype.Instance)).Build();
+            _lifetime = _container.BeginLifetimeScope(builder => builder
+                .AddSingleton<IWorldStateScopeProvider>(_container.Resolve<IWorldStateManager>().GlobalWorldState)
+                .AddModule(_container.Resolve<IBlockValidationModule[]>()));
+            SpecProvider = _lifetime.Resolve<ISpecProvider>();
+            State = _lifetime.Resolve<IWorldState>();
             _scope = State.BeginScope(IWorldState.PreGenesis);
-            EthereumVirtualMachine virtualMachine = new(new TestBlockhashProvider(SpecProvider), SpecProvider, LimboLogs.Instance);
-            Processor = new EthereumTransactionProcessor(
-                BlobBaseFeeCalculator.Instance, SpecProvider, State, virtualMachine,
-                new EthereumCodeInfoRepository(State), LimboLogs.Instance);
+            Processor = _lifetime.Resolve<ITransactionProcessor>();
 
             Deploy(Sender, Prepare.EvmCode
                 .PushData((byte)FrameFlags.ApproveExecutionAndPayment).PushData(0).PushData(0).Op(Instruction.APPROVE).Done, 100.Ether);
@@ -264,6 +320,7 @@ public class FrameTxBlockProductionTests
         public IWorldState State { get; }
         public ITransactionProcessor Processor { get; }
         public IReleaseSpec Spec => SpecProvider.GenesisSpec;
+        public IBlockProcessor.IBlockTransactionsExecutor ValidationExecutor => _lifetime.Resolve<IBlockProcessor.IBlockTransactionsExecutor>();
 
         private void Deploy(Address address, byte[] code, UInt256 balance = default)
         {
@@ -271,7 +328,12 @@ public class FrameTxBlockProductionTests
             State.InsertCode(address, code, Spec);
         }
 
-        public void Dispose() => _scope.Dispose();
+        public void Dispose()
+        {
+            _scope.Dispose();
+            _lifetime.Dispose();
+            _container.Dispose();
+        }
     }
 
     private static TxFrame SelfApprove() =>

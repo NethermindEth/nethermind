@@ -17,6 +17,14 @@ namespace Nethermind.Evm;
 
 public static partial class EvmInstructions
 {
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool HasAtLeast(IWorldState state, Address account, in UInt256 value)
+    {
+        if (state.GetBalance(account) < value) return false;
+        state.NoteMinimumBalance(account, in value);
+        return true;
+    }
+
     /// <summary>
     /// Interface defining the execution type for a call-like opcode.
     /// </summary>
@@ -161,27 +169,31 @@ public static partial class EvmInstructions
         if (!TSpec.TryConsumeAccountAccessGas<TGasPolicy>(ref gas, vm.Spec, in vm.VmState.AccessTracker,
                 vm.IsTracingAccess, codeSource)) goto OutOfGas;
 
+        // EIP-8279: the account enters the block access list on the transaction's first touch.
+        if (TSpec.IsEip8279Enabled && !vm.TryMeterBalAddress(codeSource)) goto OutOfGas;
+
         CodeInfo codeInfo = vm.CodeInfoRepository.GetCachedCodeInfo(codeSource, followDelegation: false, vmSpec: spec, delegationAddress: out Address? delegated);
 
-        if (TSpec.UseHotAndColdStorage &&
-            delegated is not null &&
-            !TSpec.TryConsumeAccountAccessGas<TGasPolicy>(ref gas, vm.Spec, in vm.VmState.AccessTracker, vm.IsTracingAccess, delegated))
-            goto OutOfGas;
+        if (TSpec.UseHotAndColdStorage && delegated is not null)
+        {
+            if (!TSpec.TryConsumeAccountAccessGas<TGasPolicy>(ref gas, vm.Spec, in vm.VmState.AccessTracker, vm.IsTracingAccess, delegated))
+                goto OutOfGas;
 
-        // Charge additional gas if the target account is new or considered empty.
-        // EIP-8038 charges a value transfer to a dead recipient the NEW_ACCOUNT state cost, separate
-        // from the flat CALL_VALUE above; standalone EIP-2780 adds nothing extra here.
-        bool chargesNewAccount = TSpec.IsEip8038Enabled
-            ? hasValueTransfer && state.IsDeadAccount(target)
-            : !TSpec.IsEip2780Enabled && (TSpec.ClearEmptyAccountWhenTouched switch
-            {
-                false => !state.AccountExists(target),
-                true => hasValueTransfer && state.IsDeadAccount(target),
-            });
+            // EIP-8279: the delegation target enters the block access list on the transaction's first touch.
+            if (TSpec.IsEip8279Enabled && !vm.TryMeterBalAddress(delegated)) goto OutOfGas;
+        }
+
+        bool chargesNewAccount = ChargesNewAccount<TSpec>(state, target, hasValueTransfer);
 
         bool newAccountOutOfGas = chargesNewAccount && !TGasPolicy.TryConsumeNewAccountCreation<TEip8037>(ref gas);
 
         if (newAccountOutOfGas) goto OutOfGas;
+
+        // EIP-8279: a CALL moving value to another account puts the caller's and the recipient's post balances in the
+        // block access list, metered even if the call then fails on depth or balance.
+        if (TSpec.IsEip8279Enabled && TOpCall.ExecutionType == ExecutionType.CALL && hasValueTransfer && target != env.ExecutingAccount
+            && !vm.TryMeterBalData(2 * Eip8279Constants.BalanceBytes))
+            goto OutOfGas;
 
         // EIP-7702: load delegated code after cold-access charge above.
         if (delegated is not null)
@@ -205,7 +217,7 @@ public static partial class EvmInstructions
 
         // Check call depth and balance of the caller.
         if (env.CallDepth >= MaxCallDepth ||
-            (hasValueTransfer && state.GetBalance(env.ExecutingAccount) < callValue))
+            (hasValueTransfer && !HasAtLeast(state, env.ExecutingAccount, in callValue)))
         {
             EvmExceptionType precheckError = env.CallDepth >= MaxCallDepth ? EvmExceptionType.CallDepthExceeded : EvmExceptionType.NotEnoughBalance;
             if (vm.IsTracingActions)
@@ -234,8 +246,9 @@ public static partial class EvmInstructions
             return pushResult;
         }
 
-        // Fast-path for calls to externally owned accounts (non-contracts)
-        if (codeInfo.IsEmpty && !TTracingInst.IsActive && !vm.IsTracingActions)
+        // Fast-path for calls to externally owned accounts (non-contracts); EIP-8360 transfers need a frame to charge in.
+        if (codeInfo.IsEmpty && !TTracingInst.IsActive && !vm.IsTracingActions
+            && (!TSpec.IsEip8360Enabled || !hasValueTransfer || vm.VmState.AccessTracker.TransientCreates is null))
         {
             vm.ReturnDataBuffer = default;
             // Mutate balances only after the success byte is on the stack; this fast path has no snapshot to roll back a failed push.
@@ -267,11 +280,121 @@ public static partial class EvmInstructions
             return inlineResult;
         }
 
-        return CreateFullCallFrame<TGasPolicy, TOpCall, TTracingInst>(vm, ref stack, ref gas, in dataOffset, dataLength, outputOffset, outputLength, codeInfo, target, caller, codeSource, env, in callValue, gasLimitUl, chargesNewAccount);
+        return TSpec.IsEip8360Enabled
+            ? CreateFullCallFrame<TGasPolicy, TOpCall, TTracingInst, OnFlag>(vm, ref stack, ref gas, in dataOffset, dataLength, outputOffset, outputLength, codeInfo, target, caller, codeSource, env, in callValue, gasLimitUl, chargesNewAccount)
+            : CreateFullCallFrame<TGasPolicy, TOpCall, TTracingInst, OffFlag>(vm, ref stack, ref gas, in dataOffset, dataLength, outputOffset, outputLength, codeInfo, target, caller, codeSource, env, in callValue, gasLimitUl, chargesNewAccount);
 
         // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
+    OutOfGas:
+        return EvmExceptionType.OutOfGas;
+    }
+
+    /// <summary>Whether a transfer to <paramref name="target"/> pays the new-account charge under the given fork rules.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool ChargesNewAccount<TSpec>(IWorldState state, Address target, bool hasValueTransfer)
+        where TSpec : struct, ICallSpec =>
+        TSpec.IsEip8038Enabled
+            ? hasValueTransfer && state.IsDeadAccount(target)
+            : !TSpec.IsEip2780Enabled && (TSpec.ClearEmptyAccountWhenTouched switch
+            {
+                false => !state.AccountExists(target),
+                true => hasValueTransfer && state.IsDeadAccount(target),
+            });
+
+    /// <summary>EIP-5920 PAY: transfers value to an address without executing its code.</summary>
+    [SkipLocalsInit]
+    internal static EvmExceptionType InstructionPay<TGasPolicy, TTracingInst, TEip8037, TEip7708, TSpec>(
+        ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TTracingInst : struct, IFlag
+        where TEip8037 : struct, IFlag
+        where TEip7708 : struct, IFlag
+        where TSpec : struct, ICallSpec
+    {
+        VmState<TGasPolicy> vmState = vm.VmState;
+        if (vmState.IsStatic) return EvmExceptionType.StaticCallViolation;
+
+        if (!stack.PopUInt256(out UInt256 addressWord, out UInt256 value)) return EvmExceptionType.StackUnderflow;
+        // EIP-5920: halt, rather than truncate, on non-zero high address bytes.
+        if (addressWord.u3 != 0 || (addressWord.u2 >> 32) != 0) return EvmExceptionType.BadInstruction;
+
+        Address target = vm.AddressCache.GetOrCreate(in addressWord);
+        bool hasValueTransfer = !value.IsZero;
+        IReleaseSpec spec = vm.Spec;
+        IWorldState state = vm.WorldState;
+
+        if (hasValueTransfer && !TGasPolicy.UpdateGas(ref gas, TSpec.IsEip8038Enabled ? Eip8038Constants.AccountWrite : GasCostOf.CallValue))
+            goto OutOfGas;
+        if (!TSpec.TryConsumeAccountAccessGas<TGasPolicy>(ref gas, spec, in vmState.AccessTracker, vm.IsTracingAccess, target))
+            goto OutOfGas;
+
+        // EIP-8279: meter the target's block access list entry.
+        if (TSpec.IsEip8279Enabled && !vm.TryMeterBalAddress(target)) goto OutOfGas;
+
+        // EIP-7928: the target is read even for a zero value.
+        state.AddAccountRead(target);
+        bool chargesNewAccount = ChargesNewAccount<TSpec>(state, target, hasValueTransfer);
+        if (chargesNewAccount && !TGasPolicy.TryConsumeNewAccountCreation<TEip8037>(ref gas)) goto OutOfGas;
+
+        // EIP-8279: both post balances, as for a value CALL.
+        Address executingAccount = vmState.Env.ExecutingAccount;
+        if (TSpec.IsEip8279Enabled && hasValueTransfer && target != executingAccount
+            && !vm.TryMeterBalData(2 * Eip8279Constants.BalanceBytes))
+            goto OutOfGas;
+        if (hasValueTransfer && state.GetBalance(executingAccount) < value)
+        {
+            if (chargesNewAccount)
+                vm.CreditStateGasRefund<TEip8037>(ref gas, TGasPolicy.GetNewAccountStateCost());
+            if (vm.IsTracingActions)
+                vm.TxTracer.ReportRejectedAction(0, 0, value, executingAccount, target, default, ExecutionType.CALL, EvmExceptionType.NotEnoughBalance);
+            return stack.PushZero<TTracingInst, OnFlag>();
+        }
+
+        // EIP-8360: price the balance changes of TCREATE accounts on either side of the transfer, charged to the current frame as SELFDESTRUCT does.
+        if (TSpec.IsEip8360Enabled && hasValueTransfer && vmState.AccessTracker.TransientCreates is not null && target != executingAccount)
+        {
+            if (vmState.IsTransientCreateContext
+                && vmState.AccessTracker.IsTransientCreate(state, executingAccount, out UInt256 original))
+            {
+                UInt256 executingBalance = state.GetBalance(executingAccount);
+                if (!vm.TryChargeTransientCreateBalanceChange(vmState, ref gas, in original, in executingBalance, executingBalance - value))
+                    goto OutOfGas;
+            }
+
+            if (vmState.AccessTracker.IsTransientCreate(state, target, out original))
+            {
+                UInt256 targetBalance = state.GetBalance(target);
+                if (!vm.TryChargeTransientCreateBalanceChange(vmState, ref gas, in original, in targetBalance, targetBalance + value))
+                    goto OutOfGas;
+            }
+        }
+
+        // Traced as a zero-gas CALL that runs no code.
+        bool reportsAction = vm.IsTracingActions;
+        if (reportsAction)
+        {
+            if (TTracingInst.IsActive) vm.EndInstructionTrace(TGasPolicy.GetRemainingGas(in gas));
+            vm.TxTracer.ReportAction(0, value, executingAccount, target, default, ExecutionType.CALL);
+        }
+
+        // Like a self-CALL, a self-payment writes no balance.
+        if (hasValueTransfer && target != executingAccount)
+        {
+            state.SubtractFromBalance(executingAccount, in value, spec);
+            state.AddToBalanceAndCreateIfNotExists(target, in value, spec);
+            vm.AddTransferLog<TEip7708>(executingAccount, target, in value);
+        }
+
+        if (reportsAction) vm.TxTracer.ReportActionEnd(0, default);
+
+        // Two words were popped, so the push cannot overflow.
+        EvmExceptionType pushResult = stack.PushOne<TTracingInst>();
+        if (TTracingInst.IsActive && reportsAction)
+            vm.TxTracer.ReportGasUpdateForVmTrace(0, TGasPolicy.GetRemainingGas(in gas));
+        return pushResult;
+
     OutOfGas:
         return EvmExceptionType.OutOfGas;
     }
@@ -299,16 +422,9 @@ public static partial class EvmInstructions
         vm.TxTracer.ReportRejectedAction(gas, gas, callValue, env.ExecutingAccount, codeSource, input, TOpCall.ExecutionType, error, isPrecompile);
     }
 
-    // Mainline keeps this out-of-line for icache locality on the common path. The zkVM guest
-    // has no icache and counts instructions, so the NoInlining call and its wide argument
-    // marshalling are pure overhead on every CALL; inline it, pulling the hot precompile path in too.
-#if ZK_EVM
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-#else
-    [MethodImpl(MethodImplOptions.NoInlining)]
-#endif
+    [MethodImpl(FullCallFrameInlining)]
     [SkipLocalsInit]
-    private static EvmExceptionType CreateFullCallFrame<TGasPolicy, TOpCall, TTracingInst>(
+    private static EvmExceptionType CreateFullCallFrame<TGasPolicy, TOpCall, TTracingInst, Eip8360>(
         VirtualMachine<TGasPolicy> vm,
         ref EvmStack stack,
         ref TGasPolicy gas,
@@ -327,6 +443,7 @@ public static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpCall : struct, IOpCall
         where TTracingInst : struct, IFlag
+        where Eip8360 : struct, IFlag
     {
         IWorldState state = vm.WorldState;
         // Take a snapshot of the state for potential rollback.
@@ -356,23 +473,15 @@ public static partial class EvmInstructions
 
         TGasPolicy childGas = TGasPolicy.CreateChildFrameGas(ref gas, gasLimitUl);
 
-#if ZK_EVM
-        // Precompiles run no bytecode: handle them inline, skipping the child
+        // Precompiles run no bytecode: where the build supports it, handle them inline, skipping the child
         // frame's round trip through the ExecuteTransaction dispatch loop.
-        if (codeInfo.IsPrecompile)
+        // EIP-8360 transfers take the full frame so its entry prices the TCREATE balance change.
+        if (InlinesPrecompileFrames && codeInfo.IsPrecompile
+            && (!Eip8360.IsActive || callValue.IsZero || vm.VmState.AccessTracker.TransientCreates is null))
         {
-            return vm.InlinePrecompileCall<TTracingInst>(
-                callEnv,
-                childGas,
-                outputOffset.ToLong(),
-                outputLength.ToLong(),
-                TOpCall.ExecutionType,
-                TOpCall.ExecutionType == ExecutionType.STATICCALL || vm.VmState.IsStatic,
-                in snapshot,
-                ref stack,
-                newAccountCharged);
+            return InlinePrecompileFrame<TGasPolicy, TOpCall, TTracingInst>(
+                vm, callEnv, childGas, outputOffset.ToLong(), outputLength.ToLong(), in snapshot, ref stack, newAccountCharged);
         }
-#endif
 
         // Rent a new call frame for executing the call.
         vm.ReturnData = VmState<TGasPolicy>.RentFrame(
@@ -418,6 +527,24 @@ public static partial class EvmInstructions
         where TTracingInst : struct, IFlag;
 
     /// <summary>
+    /// Runs a CALL to a precompile within the calling frame, without renting a child frame for the
+    /// <c>ExecuteTransaction</c> dispatch loop.
+    /// </summary>
+    /// <remarks>Only builds where <c>InlinesPrecompileFrames</c> is set, the zkEVM guest's, call this.</remarks>
+    private static partial EvmExceptionType InlinePrecompileFrame<TGasPolicy, TOpCall, TTracingInst>(
+        VirtualMachine<TGasPolicy> vm,
+        ExecutionEnvironment callEnv,
+        TGasPolicy childGas,
+        long outputOffset,
+        long outputLength,
+        in Snapshot snapshot,
+        ref EvmStack stack,
+        bool newAccountCharged)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TOpCall : struct, IOpCall
+        where TTracingInst : struct, IFlag;
+
+    /// <summary>
     /// Executes the RETURN opcode.
     /// Pops a memory offset and a length from the stack, updates memory cost, and sets the return data.
     /// Returns an error if the opcode is executed in an invalid context.
@@ -446,7 +573,7 @@ public static partial class EvmInstructions
             goto OutOfGas;
         }
 
-        vm.StageReturnData(vm.VmState.Memory.LoadSpanAfterGas(in position, in length));
+        vm.StageReturnData(vm.VmState.Memory.LoadSpanAfterGas(in position, in length), isRevert: false);
 
         return EvmExceptionType.Stop;
         // Jump forward to be unpredicted by the branch predictor.

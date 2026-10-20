@@ -12,7 +12,7 @@ using Nethermind.State;
 namespace Nethermind.Consensus.Stateless;
 
 /// <summary>
-/// Stateless world state used inside the zkVM guest.
+/// Stateless world state the host uses to execute a block against its witness.
 /// </summary>
 /// <remarks>Not thread-safe: the remembered code is two fields, and the stateless environment executes sequentially.</remarks>
 public class StatelessExecutingWorldState(IWorldState state) : WorldStateDecorator(state)

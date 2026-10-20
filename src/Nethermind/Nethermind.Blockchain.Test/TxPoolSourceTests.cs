@@ -49,7 +49,7 @@ public class TxPoolSourceTests
         IComparer<Transaction> comparer = Comparer<Transaction>.Create((x, y) => y.GasPrice.CompareTo(x.GasPrice));
 
         Transaction[] selected = TxPoolTxSource.Order(buckets, comparer,
-            tx => !rejectByFilter || tx != a1, rejectByFilter ? 100_000UL : 21_000UL).ToArray();
+            tx => !rejectByFilter || tx != a1, rejectByFilter ? 100_000UL : 21_000UL, Prague.Instance).ToArray();
 
         Assert.That(selected, Is.EqualTo(new[] { b0, a0 }));
     }
@@ -66,7 +66,7 @@ public class TxPoolSourceTests
             [TestItem.AddressB] = [b0]
         };
         IComparer<Transaction> comparer = Comparer<Transaction>.Create((x, y) => y.GasPrice.CompareTo(x.GasPrice));
-        Assert.That(TxPoolTxSource.Order(buckets, comparer, _ => true, ulong.MaxValue), Is.EqualTo(new[] { b0, a0, a1 }));
+        Assert.That(TxPoolTxSource.Order(buckets, comparer, _ => true, ulong.MaxValue, Prague.Instance), Is.EqualTo(new[] { b0, a0, a1 }));
     }
 
     [Test]
@@ -110,7 +110,7 @@ public class TxPoolSourceTests
             expected.Add(next);
         }
         IComparer<Transaction> comparer = Comparer<Transaction>.Create((x, y) => y.GasPrice.CompareTo(x.GasPrice));
-        IEnumerable<Transaction> ordered = TxPoolTxSource.Order(buckets, comparer, Filter, resourceLimit);
+        IEnumerable<Transaction> ordered = TxPoolTxSource.Order(buckets, comparer, Filter, resourceLimit, Prague.Instance);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(ordered.Take(1), Is.EqualTo(expected.Take(1)));
@@ -128,7 +128,7 @@ public class TxPoolSourceTests
         IComparer<Transaction> comparer = Comparer<Transaction>.Create((_, _) => 0);
         Transaction[] expected = transactions.Take(1).Concat(transactions.Skip(1).Reverse()).ToArray();
 
-        Assert.That(TxPoolTxSource.Order(buckets, comparer, _ => true, ulong.MaxValue), Is.EqualTo(expected));
+        Assert.That(TxPoolTxSource.Order(buckets, comparer, _ => true, ulong.MaxValue, Prague.Instance), Is.EqualTo(expected));
     }
 
     [Test]
@@ -704,6 +704,39 @@ public class TxPoolSourceTests
 
         txPool.Received(1).GetPendingForProduction(targetBlock, Arg.Any<bool>(), Arg.Any<UInt256>());
         txFilterPipeline.DidNotReceive().Execute(blobTx, parent, Arg.Any<IReleaseSpec>());
+    }
+
+    [Test]
+    public void GetTransactions_should_limit_sender_by_execution_reservation_under_eip8037([Values] bool eip8037)
+    {
+        const ulong BlockGasLimit = 60_000_000;
+        IReleaseSpec spec = eip8037 ? Amsterdam.Instance : Amsterdam.NoEip8037Instance;
+        TestSingleReleaseSpecProvider specProvider = new(spec);
+        TransactionComparerProvider transactionComparerProvider = new(specProvider, Build.A.BlockTree().TestObject);
+        Transaction[] transactions = new ulong[] { 16_000_000, 16_000_000, 30_000_000, 100_000 }
+            .Select((gasLimit, nonce) => Build.A.Transaction
+                .WithNonce((ulong)nonce)
+                .WithGasLimit(gasLimit)
+                .WithGasPrice(2.GWei)
+                .SignedAndResolved(TestItem.PrivateKeyA)
+                .TestObject)
+            .ToArray();
+        ITxPool txPool = Substitute.For<ITxPool>();
+        SetPendingForProduction(txPool, new Dictionary<AddressAsKey, Transaction[]>
+        {
+            { new AddressAsKey(TestItem.AddressA), transactions }
+        }, isRevalidated: true);
+
+        ITxFilterPipeline txFilterPipeline = Substitute.For<ITxFilterPipeline>();
+        txFilterPipeline.Execute(Arg.Any<Transaction>(), Arg.Any<BlockHeader>(), Arg.Any<IReleaseSpec>()).Returns(true);
+        TxPoolTxSource txSource = new(txPool, specProvider, transactionComparerProvider, LimboLogs.Instance,
+            txFilterPipeline, new BlocksConfig(), CreateSpecChangeTxValidator(specProvider));
+
+        BlockHeader parent = Build.A.BlockHeader.WithNumber(0).WithGasLimit(BlockGasLimit).TestObject;
+        BlockHeader targetBlock = Build.A.BlockHeader.WithNumber(1).WithGasLimit(BlockGasLimit).TestObject;
+        Transaction[] result = txSource.GetTransactions(parent, targetBlock, BlockGasLimit).ToArray();
+
+        Assert.That(result, Is.EqualTo(eip8037 ? transactions : transactions[..2]));
     }
 
     [Test]

@@ -47,12 +47,29 @@ public static partial class IReleaseSpecExtensions
         public bool SelfdestructOnlyOnSameTransaction => spec.IsEip6780Enabled;
         public bool RemoveSelfdestructBurn => spec.IsEip8246Enabled;
         public bool IsBeaconBlockRootAvailable => spec.IsEip4788Enabled;
-        public bool IsBlockHashInStateAvailable => spec.IsEip7709Enabled;
         public bool MCopyIncluded => spec.IsEip5656Enabled;
         public bool BlobBaseFeeEnabled => spec.IsEip4844Enabled;
         public bool IsAuthorizationListEnabled => spec.IsEip7702Enabled;
+
+        /// <summary>Whether a transaction of <paramref name="type"/> is valid under this spec; types without a fork flag, such as
+        /// chain-specific ones, are left to their own validation.</summary>
+        public bool IsTxTypeEnabled(TxType type) => type switch
+        {
+            TxType.AccessList => spec.IsEip2930Enabled,
+            TxType.EIP1559 => spec.IsEip1559Enabled,
+            TxType.Blob => spec.IsEip4844Enabled,
+            TxType.SetCode => spec.IsEip7702Enabled,
+            // Without this arm a pooled frame transaction is the one type that survives a head not enabling EIP-8141.
+            TxType.FrameTx => spec.IsEip8141Enabled,
+            _ => true,
+        };
+
         public bool RequestsEnabled => spec.ConsolidationRequestsEnabled || spec.WithdrawalRequestsEnabled || spec.DepositsEnabled || spec.BuilderRequestsEnabled;
         public bool InclusionListsEnabled => spec.IsEip7805Enabled;
+        /// <summary>Whether the Engine API carries each counted inclusion list with its EIP-8288 dependency proof.</summary>
+        /// <remarks>EIP-8288 FOCIL inclusion enforcement is per list, so its activating fork defines new payload validation and
+        /// building versions; earlier versions keep their flattened encoding.</remarks>
+        public bool PerListInclusionListsEnabled => spec.IsEip7805Enabled && spec.IsEip8288Enabled;
 
         public ProofVersion BlobProofVersion => spec.IsEip7594Enabled ? ProofVersion.V1 : ProofVersion.V0;
         public bool CLZEnabled => spec.IsEip7939Enabled;

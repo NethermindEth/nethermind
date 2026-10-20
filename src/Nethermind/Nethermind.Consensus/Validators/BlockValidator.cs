@@ -106,26 +106,33 @@ public class BlockValidator(
     /// <summary>
     /// EIP-8288 block validity: the header <c>recursive_stark</c> must be present, its
     /// <c>block_deps_hash</c> must commit to the block's transaction dependencies, and the recursive
-    /// STARK must verify against the aggregated verification key, or be empty when there are none.
+    /// STARK must verify against the block fork's <c>AGGREGATED_VK</c>, or be empty when there are none.
     /// </summary>
     private bool ValidateRecursiveStark(Block block, IReleaseSpec spec, ref string? error)
     {
-        RecursiveStark? recursiveStark = block.Header.RecursiveStark;
+        RecursiveStarkCommitment? recursiveStark = block.Header.RecursiveStark;
         if (!spec.IsEip8288Enabled)
         {
-            if (recursiveStark is null) return true;
+            if (recursiveStark is null && block.StarkProof is null) return true;
             error = BlockErrorMessages.RecursiveStarkNotEnabled;
             return false;
         }
 
-        if (recursiveStark is null)
+        if (recursiveStark is null || block.StarkProof is null)
         {
             error = BlockErrorMessages.MissingRecursiveStark;
             if (_logger.IsWarn) _logger.Warn($"Missing recursive STARK in block {block.ToString(Block.Format.FullHashAndNumber)}");
             return false;
         }
 
-        List<FrameDependency> dependencies = Eip8288Dependencies.ForBlock(block);
+        if (block.StarkProof.Length > Eip8288Constants.MaxAggregateProofBytes
+            || !ValidateStarkProofMatchesCommitment(block.Header, block.Body))
+        {
+            error = BlockErrorMessages.InvalidRecursiveStark;
+            return false;
+        }
+
+        List<FrameDependency> dependencies = Eip8288Dependencies.ForBlock(block, FrameTxSigHash.ComputeValue);
         Hash256 computed = new(Eip8288Dependencies.ComputeDepsHash(dependencies));
         if (recursiveStark.BlockDepsHash != computed)
         {
@@ -134,7 +141,8 @@ public class BlockValidator(
             return false;
         }
 
-        if (!RecursiveStarkAggregator.VerifyStarkCheck(_leanProofVerifier, dependencies.Count, in computed.ValueHash256, recursiveStark.StarkProof))
+        if (!RecursiveStarkAggregator.VerifyStarkCheck(_leanProofVerifier, Eip8288Verifier.For(spec), dependencies.Count, in computed.ValueHash256,
+                block.StarkProof))
         {
             error = BlockErrorMessages.InvalidRecursiveStark;
             if (_logger.IsWarn) _logger.Warn($"Invalid recursive STARK in block {block.ToString(Block.Format.FullHashAndNumber)}");
@@ -230,7 +238,7 @@ public class BlockValidator(
         if (suggestedBlock.BlockAccessList is null
             && processedBlock.GeneratedBlockAccessList is not null
             && _specProvider.GetSpec(suggestedBlock.Header).BlockLevelAccessListsEnabled
-            && !ValidateBlockLevelAccessListSize(processedBlock, ref balSizeError))
+            && !ValidateBlockLevelAccessListSize(processedBlock, processedBlock.GeneratedBlockAccessList.ItemCount, ref balSizeError))
         {
             error = balSizeError;
             return false;
@@ -238,6 +246,17 @@ public class BlockValidator(
 
         if (processedBlock.Header.Hash == suggestedBlock.Header.Hash)
         {
+            // A list reattached from the store for queued processing (sync, restart replay, reorg) skipped the
+            // pre-execution check, and parallel execution only verified against it, so check it here. Only on a
+            // matching block, so a divergent one still reports the mismatch.
+            if (suggestedBlock.BlockAccessList is not null
+                && _specProvider.GetSpec(suggestedBlock.Header).BlockLevelAccessListsEnabled
+                && !ValidateBlockLevelAccessListSize(processedBlock, suggestedBlock.BlockAccessList.ItemCount, ref balSizeError))
+            {
+                error = balSizeError;
+                return false;
+            }
+
             error = null;
             return true;
         }
@@ -378,12 +397,20 @@ public class BlockValidator(
         {
             Transaction transaction = transactions[txIndex];
 
-            // Recover the sender if a preprocessor hasn't yet: the EIP-2780 self-transfer discount
-            // makes the intrinsic-gas validation below sender-dependent.
-            if (isEip2780Enabled && transaction.SenderAddress is null && transaction.Signature is not null)
-                transaction.SenderAddress = _ecdsa.RecoverAddress(transaction, !spec.ValidateChainId);
-
             ValidationResult isWellFormed = _txValidator.IsWellFormed(transaction, spec, block.Header.GasLimit);
+
+            // The EIP-2780 self-transfer discount makes intrinsic gas sender-dependent, but an unknown sender is
+            // priced as a transfer to someone else, the higher charge: a transaction that is well formed without
+            // its sender is well formed with it. Only one that fails needs the sender, so the request thread
+            // doesn't recover, one by one, the senders the background recovery has not reached yet.
+            // The retry doesn't ask whether the sender is still missing: the background recovery can publish it
+            // after the check above priced the transaction without it, and that rejection must still be re-checked.
+            if (!isWellFormed && isEip2780Enabled && transaction.Signature is not null)
+            {
+                transaction.SenderAddress ??= _ecdsa.RecoverAddress(transaction, !spec.ValidateChainId);
+                isWellFormed = _txValidator.IsWellFormed(transaction, spec, block.Header.GasLimit);
+            }
+
             if (!isWellFormed)
             {
                 if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} Invalid transaction: {isWellFormed}");
@@ -427,6 +454,9 @@ public class BlockValidator(
 
             if (transaction.MaxFeePerBlobGas < feePerBlobGas)
             {
+                // Senders may still be unrecovered here; the error message names the sender.
+                if (transaction.SenderAddress is null && transaction.Signature is not null)
+                    transaction.SenderAddress = _ecdsa.RecoverAddress(transaction, !spec.ValidateChainId);
                 error = BlockErrorMessages.InsufficientMaxFeePerBlobGas(transaction.SenderAddress, transaction.MaxFeePerBlobGas, feePerBlobGas);
                 if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} Transaction at index {txIndex} has insufficient {nameof(transaction.MaxFeePerBlobGas)} to cover current blob gas fee: {transaction.MaxFeePerBlobGas} < {feePerBlobGas}.");
                 return false;
@@ -477,9 +507,21 @@ public class BlockValidator(
             return false;
         }
 
+        if (!ValidateStarkProofMatchesCommitment(header, toBeValidated))
+        {
+            error = toBeValidated.StarkProof is null
+                ? BlockErrorMessages.MissingRecursiveStark : BlockErrorMessages.InvalidRecursiveStark;
+            return false;
+        }
+
         error = null;
         return true;
     }
+
+    private static bool ValidateStarkProofMatchesCommitment(BlockHeader header, BlockBody body) =>
+        header.RecursiveStark is { } commitment
+            ? body.StarkProof is { } proof && Keccak.Compute(proof) == commitment.StarkProofHash
+            : body.StarkProof is null;
 
     public bool ValidateBlockLevelAccessList(Block block, IReleaseSpec spec, ref string? error)
     {
@@ -506,7 +548,7 @@ public class BlockValidator(
                 return false;
             }
 
-            if (!ValidateBlockLevelAccessListSize(block, ref error))
+            if (!ValidateBlockLevelAccessListSize(block, block.BlockAccessList.ItemCount, ref error))
             {
                 return false;
             }
@@ -523,16 +565,12 @@ public class BlockValidator(
 
     }
 
-    private bool ValidateBlockLevelAccessListSize(Block block, ref string? error)
+    private bool ValidateBlockLevelAccessListSize(Block block, int itemCount, ref string? error)
     {
-        // Suggested/engine blocks carry the wire BAL in BlockAccessList. RLP/P2P
-        // validation reaches this helper after execution with only GeneratedBlockAccessList.
-        ulong itemCount = (ulong)(block.BlockAccessList?.ItemCount ?? block.GeneratedBlockAccessList?.ItemCount ?? 0);
-        ulong maxBalItems = block.Header.GasLimit / Eip7928Constants.ItemCost;
-
-        if (itemCount > 0 && itemCount > maxBalItems)
+        if (Eip7928Constants.ExceedsItemLimit(itemCount, block.Header.GasLimit))
         {
-            error = BlockErrorMessages.BlockAccessListGasLimitExceeded(itemCount, maxBalItems);
+            ulong maxBalItems = block.Header.GasLimit / Eip7928Constants.ItemCost;
+            error = BlockErrorMessages.BlockAccessListGasLimitExceeded((ulong)itemCount, maxBalItems);
             if (_logger.IsWarn) _logger.Warn($"{Invalid(block)} {error}");
             return false;
         }

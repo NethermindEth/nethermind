@@ -57,6 +57,58 @@ public static class Metrics
     [Description("Total number of failed block seals")]
     public static long FailedBlockSeals { get; set; }
 
+    [CounterMetric]
+    [Description("Transactions block processing took over from their pre-warm run")]
+    public static long PrewarmHandoffs { get; set; }
+
+    [CounterMetric]
+    [Description("Mempool pre-warm sessions a block stopped between passes, without waiting for them to end")]
+    public static long PrewarmSpeculativeStopsWithoutWaiting { get; set; }
+
+    [CounterMetric]
+    [Description("Transactions executed because state their pre-warm run read had changed")]
+    public static long PrewarmHandoffsRejected { get; set; }
+
+    [CounterMetric]
+    [Description("Transactions executed for lack of a usable pre-warm run")]
+    public static long PrewarmHandoffsMissing { get; set; }
+
+    [CounterMetric]
+    [Description("Transactions executed after their pre-warm run failed to apply")]
+    public static long PrewarmHandoffFailures { get; set; }
+
+    [CounterMetric]
+    [Description("Pre-warm runs taken to be refreshed because an earlier transaction leaves a slot they read at another value")]
+    public static long PrewarmRefreshes { get; set; }
+
+    [CounterMetric]
+    [Description("Refreshes not run: a slot the run read is not tracked, or none of them moved")]
+    public static long PrewarmRefreshesSkipped { get; set; }
+
+    [CounterMetric]
+    [Description("Refreshes stopped because block processing reached their transaction")]
+    public static long PrewarmRefreshesCancelled { get; set; }
+
+    [CounterMetric]
+    [Description("Refreshes whose run left no footprint")]
+    public static long PrewarmRefreshesFailed { get; set; }
+
+    [CounterMetric]
+    [Description("Refreshed pre-warm runs stored for block processing to take over")]
+    public static long PrewarmRefreshesStored { get; set; }
+
+    [CounterMetric]
+    [Description("Transactions block processing took over from a refreshed pre-warm run")]
+    public static long PrewarmRefreshesTakenOver { get; set; }
+
+    [CounterMetric]
+    [Description("Pre-warm runs of the mempool pass stored for block processing to take over")]
+    public static long PrewarmMempoolRunsStored { get; set; }
+
+    [CounterMetric]
+    [Description("Transactions block processing took over from a pre-warm run of the mempool pass")]
+    public static long PrewarmMempoolRunsTakenOver { get; set; }
+
     [GaugeMetric]
     [Description("Gas Used in processed blocks")]
     public static ulong GasUsed { get; set; }
@@ -101,6 +153,10 @@ public static class Metrics
     [Description("Number of invalid blocks with extra data set to 'Nethermind'.")]
     public static long BadBlocksByNethermindNodes;
 
+    [CounterMetric]
+    [Description("Number of blocks rejected for their block access list by parallel validation.")]
+    public static long ParallelBlockAccessListRejections;
+
     [GaugeMetric]
     [Description("State root calculation time")]
     public static double StateMerkleizationTime { get; set; }
@@ -114,4 +170,36 @@ public static class Metrics
     [ExponentialPowerHistogramMetric(Start = 100, Factor = 1.25, Count = 50)]
     [Description("Histogram of block processing time")]
     public static IMetricObserver BlockProcessingTimeMicros { get; set; } = new NoopMetricObserver();
+
+    [CounterMetric]
+    [Description("Number of EIP-8288 recursive proofs produced by the native prover.")]
+    public static long LeanNativeProofs;
+
+    [CounterMetric]
+    [Description("Total milliseconds spent in native EIP-8288 recursive proving.")]
+    public static long LeanNativeProveMilliseconds;
+
+    [GaugeMetric]
+    [Description("Duration of the latest native EIP-8288 recursive proof in milliseconds.")]
+    public static long LeanNativeProveLastMilliseconds;
+
+    [CounterMetric]
+    [Description("Number of EIP-8288 recursive proof requests served from the production proof cache.")]
+    public static long LeanProofCacheHits;
+
+    [CounterMetric]
+    [Description("Number of background EIP-8288 aggregation attempts skipped because block production needed the prover.")]
+    public static long LeanBackgroundProofsSkipped;
+
+    [CounterMetric]
+    [Description("Number of native EIP-8288 proofs that kept running after their block producer was canceled.")]
+    public static long LeanDetachedProofs;
+
+    [CounterMetric]
+    [Description("Number of EIP-8288 block bodies rebuilt from proven dependencies because their own proof was not ready.")]
+    public static long LeanProofFallbacks;
+
+    [CounterMetric]
+    [Description("Number of EIP-8288 recursive proof verifications answered from earlier successful verifications.")]
+    public static long LeanVerificationCacheHits;
 }

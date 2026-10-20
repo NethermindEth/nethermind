@@ -48,9 +48,8 @@ public partial class BlockTree
         {
             ValueHash256 hash = block.Hash!.ValueHash256;
             _knownInvalid.Set(hash);
-            if ((block.Header.RecursiveStark?.StarkProof.Length ?? 0) > Eip8288Constants.MaxProofBytes ||
-                (block.InclusionListRecursiveStark?.StarkProof.Length ?? 0) > Eip8288Constants.MaxProofBytes ||
-                (block.InclusionListProvenDependencies?.Length ?? 0) > Eip8288Constants.MaxInclusionListDependencyBytes)
+            if ((block.StarkProof?.Length ?? 0) > Eip8288Constants.MaxAggregateProofBytes ||
+                block.InclusionLists is { Count: > Eip7805Constants.InclusionListCommitteeSize })
             {
                 Delete(hash);
                 return;
@@ -76,24 +75,20 @@ public partial class BlockTree
             _proofBytes -= ProofBytes(node.Value);
         }
 
-        public static long ProofBytes(Block block) => (long)(block.Header.RecursiveStark?.StarkProof.Length ?? 0) +
-            (block.InclusionListRecursiveStark?.StarkProof.Length ?? 0) + (block.InclusionListProvenDependencies?.Length ?? 0);
-
-        private static RecursiveStark? Copy(RecursiveStark? proof) => proof is null ? null :
-            new RecursiveStark((byte[])proof.StarkProof.Clone(), proof.BlockDepsHash);
+        // Inclusion lists carry only their commitments, so the body proof is the only proof buffer.
+        public static long ProofBytes(Block block) => block.StarkProof?.Length ?? 0;
 
         private static Block Snapshot(Block block)
         {
             BlockHeader header = block.Header.Clone();
-            header.RecursiveStark = Copy(block.Header.RecursiveStark);
             // Keep full invalid-block metadata; only mutable proof buffers require private ownership.
-            return new Block(header, block.Body, block.BlockAccessList)
+            BlockBody body = new(block.Transactions, block.Uncles, block.Withdrawals, block.StarkProof is { } proof ? (byte[])proof.Clone() : null);
+            return new Block(header, body, block.BlockAccessList)
             {
                 GeneratedBlockAccessList = block.GeneratedBlockAccessList,
                 ExecutionRequests = block.ExecutionRequests,
                 InclusionListTransactions = block.InclusionListTransactions,
-                InclusionListRecursiveStark = Copy(block.InclusionListRecursiveStark),
-                InclusionListProvenDependencies = (byte[]?)block.InclusionListProvenDependencies?.Clone(),
+                InclusionLists = block.InclusionLists,
                 IsInclusionListSatisfied = block.IsInclusionListSatisfied,
                 AccountChanges = block.AccountChanges,
                 EncodedSize = block.EncodedSize,

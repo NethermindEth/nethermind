@@ -13,6 +13,7 @@ using Nethermind.Evm;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
+using Nethermind.Serialization.Rlp;
 using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.Validators;
@@ -21,8 +22,10 @@ public static class InclusionListValidator
 {
     private const int StackAllocEntries = 256;
 
+    /// <param name="lists">The counted lists with their EIP-8288 commitments, or <c>null</c> when only the flattened
+    /// <paramref name="il"/> was supplied, which then binds only its transactions without dependencies.</param>
     public static bool IsSatisfied(Block block, Transaction[]? il, IReadOnlyStateProvider state, IReleaseSpec spec, ITxValidator txValidator,
-        RecursiveStark? proof, ILeanProofVerifier verifier, Func<Transaction, bool>? frameCanInclude = null)
+        IReadOnlyList<CommitteeInclusionList>? lists, Func<Transaction, bool>? frameCanInclude = null)
     {
         if (!spec.InclusionListsEnabled) return true;
         // No IL attached = non-engine-API path (genesis, RLP import); IL doesn't apply.
@@ -32,8 +35,7 @@ public static class InclusionListValidator
 
         if (spec.IsEip8288Enabled)
         {
-            il = InclusionListProofValidator.SelectEligible(il, proof, block.InclusionListProvenDependencies,
-                verifier, spec, out _, out _);
+            il = InclusionListProofValidator.SelectEligible(il, lists, spec);
         }
 
         // A conforming aggregate runs to tens of thousands of entries, far past what the stack can hold.
@@ -74,18 +76,15 @@ public static class InclusionListValidator
                 included[idx] = true;
         }
 
-        HashSet<FrameDependency> dependencies = spec.IsEip8288Enabled ? [.. Eip8288Dependencies.ForBlock(block)] : [];
-        LeanProofCapacity.AppendBudget capacity = LeanProofCapacity.CreateAppendBudget(dependencies);
         Dictionary<AddressAsKey, AccountStruct>? senderCache = null;
         for (int i = 0; i < il.Length; i++)
         {
             if (included[i] || il[i].SupportsFrames && il[i].Hash is { } hash && ilByHash.TryGetValue(hash, out int first) && included[first]) continue;
             if (il[i].SupportsFrames)
             {
+                // EIP-8288 adds no omission grounds: no block dependency quota, local proving or wrapper limits.
                 if (!spec.IsEip8288Enabled || !CouldIncludeFrameTx(il[i], block, spec, txValidator)) continue;
-                List<FrameDependency> appended = Eip8288Dependencies.ForTransaction(il[i]);
-                if (capacity.CapacityError(appended) is null
-                    && (frameCanInclude ?? throw new InvalidOperationException("Frame inclusion lists require prefix simulation."))(il[i])) return false;
+                if ((frameCanInclude ?? throw new InvalidOperationException("Frame inclusion lists require prefix simulation."))(il[i])) return false;
                 continue;
             }
             if (CouldIncludeTx(il[i], block, state, spec, txValidator, ref senderCache)) return false;

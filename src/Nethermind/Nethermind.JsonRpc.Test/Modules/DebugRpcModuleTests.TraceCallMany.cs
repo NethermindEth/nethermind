@@ -96,6 +96,17 @@ public partial class DebugRpcModuleTests
     }
 
     [Test]
+    public async Task Debug_traceCallMany_ignores_traceCall_transaction_index([Values] bool streaming, [Values(0UL, ulong.MaxValue)] ulong index)
+    {
+        using Context ctx = await CreateContext();
+        ctx.Blockchain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = streaming;
+        TransactionBundle[] bundles = [CreateBundle(CreateTransaction())];
+        JArray expected = await RunTraceCallManyAsJson(ctx, bundles);
+        JArray actual = await RunTraceCallManyAsJson(ctx, bundles, new GethTraceOptions { TxIndex = index });
+        Assert.That(JToken.DeepEquals(actual, expected), Is.True, actual.ToString());
+    }
+
+    [Test]
     public async Task Debug_traceCallMany_with_multiple_bundles()
     {
         using Context ctx = await CreateContext();
@@ -172,7 +183,7 @@ public partial class DebugRpcModuleTests
         await using AsyncCompletingStream stream = new();
         PipeWriter writer = PipeWriter.Create(stream);
 
-        Assert.DoesNotThrowAsync(async () => await streaming.WriteToAsync(writer, CancellationToken.None));
+        await Assert.DoesNotThrowAsync(async () => await streaming.WriteToAsync(writer, CancellationToken.None));
 
         await writer.CompleteAsync();
     }
@@ -216,6 +227,41 @@ public partial class DebugRpcModuleTests
 
         Assert.That(result.Data.Select(r => r.Count()), Is.EqualTo([1]));
         Assert.That(result.Data.First().First(), Is.Not.Null);
+    }
+
+    // A bundle with overrides runs through the simulate executor, which must still reject a lone blob fee cap: only the
+    // simulate endpoints read one as absent.
+    [Test]
+    public async Task Debug_traceCallMany_rejects_a_lone_blob_fee_cap([Values] bool blockOverride)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Cancun.Instance));
+        object call = new { from = TestItem.AddressA.ToString(), to = TestItem.AddressB.ToString(), gas = "0x5208", maxFeePerBlobGas = "0x0" };
+        object bundle = blockOverride
+            ? new { transactions = new[] { call }, blockOverride = new { } }
+            : new { transactions = new[] { call } };
+
+        string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCallMany", new[] { bundle }, "latest");
+
+        Assert.That(response, Does.Contain(RpcTransactionErrors.BlobFeeCapWithoutBlobHashes));
+    }
+
+    [Test]
+    public async Task Debug_trace_calls_reject_a_withdrawals_block_override([Values] bool many)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Cancun.Instance));
+        object call = new { from = TestItem.AddressA.ToString(), to = TestItem.AddressB.ToString(), gas = "0x5208" };
+        object withdrawals = new { withdrawals = new[] { new { index = "0x0", validatorIndex = "0x0", address = TestItem.AddressC.ToString(), amount = "0x1" } } };
+
+        string response = many
+            ? await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCallMany", new[] { new { transactions = new[] { call }, blockOverride = withdrawals } }, "latest")
+            : await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall", call, "latest", new { blockOverrides = withdrawals });
+
+        JToken error = JToken.Parse(response)["error"]!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(error["code"]!.Value<int>(), Is.EqualTo(ErrorCodes.InvalidParams));
+            Assert.That(error["message"]!.Value<string>(), Is.EqualTo(BlockOverride.WithdrawalsNotSupported));
+        }
     }
 
     [Test]
@@ -337,6 +383,22 @@ public partial class DebugRpcModuleTests
         JArray result = await RunTraceCallManyAsJson(ctx, [bundle]);
 
         Assert.That((bool)result[0][0]!["failed"]!, Is.EqualTo(requestGas is not null));
+    }
+
+    [Test]
+    public async Task Debug_traceCallMany_resolves_calls_against_the_options_block_override([Values] bool stream, [Values] bool dynamicFees)
+    {
+        using Context ctx = await Context.Create(new CustomSpecProvider(((ForkActivation)0, Berlin.Instance), ((ForkActivation)1, London.Instance)));
+        ctx.Blockchain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = stream;
+        TransactionForRpc call = dynamicFees
+            ? new EIP1559TransactionForRpc { From = TestItem.AddressA, To = TestItem.AddressB, Gas = GasCostOf.Transaction, MaxFeePerGas = UInt256.Zero }
+            : new LegacyTransactionForRpc { From = TestItem.AddressA, To = TestItem.AddressB, Gas = GasCostOf.Transaction };
+        GethTraceOptions options = new() { BlockOverrides = new BlockOverride { Number = 0 } };
+
+        JArray result = await RunTraceCallManyAsJson(ctx, [CreateBundle(call)], options);
+
+        // Overridden to a Berlin block, a call without fee fields still runs, and one with dynamic fees is rejected.
+        Assert.That((bool)result[0][0]!["failed"]!, Is.EqualTo(dynamicFees), result.ToString());
     }
 
     [TestCaseSource(nameof(DebugTraceCallManyMissingGasCases))]

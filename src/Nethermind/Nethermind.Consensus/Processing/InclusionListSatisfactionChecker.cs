@@ -4,7 +4,6 @@
 using System;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
@@ -16,15 +15,14 @@ namespace Nethermind.Consensus.Processing;
 
 /// <inheritdoc cref="IInclusionListSatisfactionChecker"/>
 public sealed class InclusionListSatisfactionChecker(ISpecProvider specProvider, ITxValidator txValidator,
-    ILeanProofVerifier proofVerifier, ITransactionProcessor? transactionProcessor = null)
+    ITransactionProcessor? transactionProcessor = null)
     : IInclusionListSatisfactionChecker
 {
     public bool IsSatisfied(Block processedBlock, Block suggestedBlock, IWorldState worldState)
     {
         IReleaseSpec spec = specProvider.GetSpec(processedBlock.Header);
         return InclusionListValidator.IsSatisfied(processedBlock, suggestedBlock.InclusionListTransactions,
-            worldState, spec, txValidator, suggestedBlock.InclusionListRecursiveStark,
-            proofVerifier, CouldAppendFrame);
+            worldState, spec, txValidator, suggestedBlock.InclusionLists, CouldAppendFrame);
 
         bool CouldAppendFrame(Transaction tx)
         {
@@ -48,7 +46,7 @@ public sealed class InclusionListSatisfactionChecker(ISpecProvider specProvider,
                 processor.SetBlockExecutionContext(processedBlock.Header.Clone());
                 try
                 {
-                    return processor.Process(tx, tracer, ExecutionOptions.FrameValidationPrefixOnly | ExecutionOptions.FramePrefixAtExecutionBlock)
+                    return processor.Process(tx, tracer, ExecutionOptions.FrameValidationPrefixOnly)
                         && !tracer.Violated && tracer.Payer is not null;
                 }
                 catch (OperationCanceledException) when (tracer.Violated)

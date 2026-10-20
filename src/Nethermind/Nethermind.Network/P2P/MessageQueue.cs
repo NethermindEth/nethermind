@@ -43,6 +43,18 @@ namespace Nethermind.Network.P2P
             }
         }
 
+        /// <summary>
+        /// Returns the request awaiting a response, so the response can be checked against it before it is decoded.
+        /// </summary>
+        /// <exception cref="SubprotocolException">No request is awaiting a response.</exception>
+        public TMsg GetPendingRequest()
+        {
+            lock (_lock)
+            {
+                return _currentRequest?.Message ?? throw NotRequested();
+            }
+        }
+
         public void Handle(TData data, long size)
         {
             lock (_lock)
@@ -50,7 +62,7 @@ namespace Nethermind.Network.P2P
                 if (_currentRequest is null)
                 {
                     data.TryDispose();
-                    throw new SubprotocolException($"Received a response to {nameof(TMsg)} that has not been requested");
+                    throw NotRequested();
                 }
 
                 _currentRequest.ResponseSize = size;
@@ -65,6 +77,8 @@ namespace Nethermind.Network.P2P
                 }
             }
         }
+
+        private static SubprotocolException NotRequested() => new($"Received a response to {typeof(TMsg).Name} that has not been requested");
 
         public void CompleteAdding()
         {

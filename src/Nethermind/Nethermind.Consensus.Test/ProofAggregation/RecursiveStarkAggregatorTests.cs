@@ -5,11 +5,13 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Consensus.ProofAggregation;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
+using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
 namespace Nethermind.Consensus.Test.ProofAggregation;
@@ -33,7 +35,7 @@ public class RecursiveStarkAggregatorTests
             Witnesses = [new byte[] { 1 }, new byte[] { 1 }, new byte[] { 1 }],
         };
 
-        bool ok = RecursiveStarkAggregator.TryAggregate(input, Accepting, out IReadOnlyList<FrameDependency> filtered, out ValueHash256 depsHash);
+        bool ok = RecursiveStarkAggregator.TryAggregate(input, Accepting, Eip8288Verifier.Pinned, out IReadOnlyList<FrameDependency> filtered, out ValueHash256 depsHash);
 
         Assert.That(ok, Is.True);
         Assert.That(filtered, Is.EqualTo(Eip8288Dependencies.Canonicalize([a, b])));
@@ -52,7 +54,7 @@ public class RecursiveStarkAggregatorTests
             Discards = [a],
         };
 
-        RecursiveStarkAggregator.TryAggregate(input, Accepting, out IReadOnlyList<FrameDependency> filtered, out _);
+        RecursiveStarkAggregator.TryAggregate(input, Accepting, Eip8288Verifier.Pinned, out IReadOnlyList<FrameDependency> filtered, out _);
 
         Assert.That(filtered, Is.EqualTo(new[] { b }));
     }
@@ -69,7 +71,7 @@ public class RecursiveStarkAggregatorTests
             RecursiveProofs = [new RecursiveProofInput([b], [9])],
         };
 
-        RecursiveStarkAggregator.TryAggregate(input, Accepting, out IReadOnlyList<FrameDependency> filtered, out _);
+        RecursiveStarkAggregator.TryAggregate(input, Accepting, Eip8288Verifier.Pinned, out IReadOnlyList<FrameDependency> filtered, out _);
 
         Assert.That(filtered, Is.EqualTo(Eip8288Dependencies.Canonicalize([a, b])));
     }
@@ -79,7 +81,7 @@ public class RecursiveStarkAggregatorTests
     {
         AggregationInput input = new() { Deps = [Sphincs("a")], Witnesses = [] };
 
-        Assert.That(RecursiveStarkAggregator.TryAggregate(input, Accepting, out _, out _), Is.False);
+        Assert.That(RecursiveStarkAggregator.TryAggregate(input, Accepting, Eip8288Verifier.Pinned, out _, out _), Is.False);
     }
 
     [Test]
@@ -87,7 +89,49 @@ public class RecursiveStarkAggregatorTests
     {
         AggregationInput input = new() { Deps = [Sphincs("a")], Witnesses = [new byte[] { 1 }] };
 
-        Assert.That(RecursiveStarkAggregator.TryAggregate(input, Rejecting, out _, out _), Is.False);
+        Assert.That(RecursiveStarkAggregator.TryAggregate(input, Rejecting, Eip8288Verifier.Pinned, out _, out _), Is.False);
+    }
+
+    // EIP-8288 Test Case 10: a discard absent from the verified input union is rejected, whatever its scheme.
+    [TestCase("direct")]
+    [TestCase("recursive")]
+    [TestCase("discard")]
+    public void Aggregate_rejects_unknown_schemes_and_discards_outside_the_inputs(string list)
+    {
+        FrameDependency a = Sphincs("a");
+        FrameDependency unknown = new(0x12, a.DataHash, a.VerificationKey);
+        AggregationInput input = list switch
+        {
+            "direct" => new() { Deps = [unknown], Witnesses = [new byte[] { 1 }] },
+            "recursive" => new() { RecursiveProofs = [new RecursiveProofInput([a, unknown], [9])], Discards = [unknown] },
+            _ => new() { Deps = [a], Witnesses = [new byte[] { 1 }], Discards = [unknown] },
+        };
+
+        Assert.That(RecursiveStarkAggregator.TryAggregate(input, Accepting, Eip8288Verifier.Pinned, out _, out _), Is.False);
+    }
+
+    [Test]
+    public void Aggregate_rejects_a_canonical_enabled_discard_absent_from_the_inputs()
+    {
+        FrameDependency a = Sphincs("a"), b = Sphincs("b"), c = Sphincs("c");
+        AggregationInput input = new() { Deps = [a, b], Witnesses = [new byte[] { 1 }, new byte[] { 1 }], Discards = [a, c] };
+
+        Assert.That(RecursiveStarkAggregator.TryAggregate(input, Accepting, Eip8288Verifier.Pinned, out _, out _), Is.False);
+    }
+
+    [Test]
+    public void Discard_keeps_the_same_data_and_key_under_the_other_scheme()
+    {
+        FrameDependency sphincs = Sphincs("a");
+        FrameDependency stark = new(Eip8288Constants.LeanStarkScheme, sphincs.DataHash, sphincs.VerificationKey);
+        AggregationInput input = new() { RecursiveProofs = [new RecursiveProofInput([sphincs, stark], [9])], Discards = [stark] };
+
+        Assert.That(RecursiveStarkAggregator.TryAggregate(input, Accepting, Eip8288Verifier.Pinned, out IReadOnlyList<FrameDependency> filtered, out ValueHash256 hash), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(filtered, Is.EqualTo(new[] { sphincs }));
+            Assert.That(hash, Is.Not.EqualTo(Eip8288Dependencies.ComputeDepsHash([stark])));
+        }
     }
 
     [Test]
@@ -96,12 +140,12 @@ public class RecursiveStarkAggregatorTests
         FrameDependency a = Sphincs("a");
         FrameDependency b = Sphincs("b");
         byte[] first = [1];
-        LeanProofStore store = new();
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
         store.AddVerified([a, b], recursive ? null : [first, [2]], recursive ? first : null);
         first[0] = 9;
 
         Assert.That(store.TryGetInput([b], out AggregationInput input), Is.True);
-        Assert.That(RecursiveStarkAggregator.TryAggregate(input, Accepting, out IReadOnlyList<FrameDependency> deps, out _), Is.True);
+        Assert.That(RecursiveStarkAggregator.TryAggregate(input, Accepting, Eip8288Verifier.Pinned, out IReadOnlyList<FrameDependency> deps, out _), Is.True);
         Assert.That(deps, Is.EqualTo(new[] { b }));
         if (recursive)
         {
@@ -116,9 +160,61 @@ public class RecursiveStarkAggregatorTests
     }
 
     [Test]
+    public void Discard_set_keeps_dependencies_shared_with_retained_transactions()
+    {
+        FrameDependency a = Sphincs("a"), b = Sphincs("b"), c = Sphincs("c");
+        // A removed transaction also declared b; a retained one still needs it.
+        Assert.That(Eip8288Dependencies.DiscardDependencies([c, a, b, b], [b, c]), Is.EqualTo(new[] { a }));
+        Assert.That(Eip8288Dependencies.DiscardDependencies([a, b], [a, b]), Is.Empty);
+        Assert.That(() => Eip8288Dependencies.DiscardDependencies([a, b], [b, Sphincs("d")]), Throws.ArgumentException,
+            "retained dependencies absent from the inputs need another proof");
+    }
+
+    // EIPs#12473: input_deps includes dependencies covered only by mode-0 direct witnesses.
+    [Test]
+    public void Direct_witness_dependencies_count_as_discard_inputs()
+    {
+        FrameDependency a = Sphincs("a"), b = Sphincs("b"), c = Sphincs("c");
+        AggregationInput input = new()
+        {
+            Deps = [a],
+            Witnesses = [new byte[] { 1 }],
+            RecursiveProofs = [new RecursiveProofInput([b, c], [9])],
+            Discards = Eip8288Dependencies.DiscardDependencies([a, b, c], [b, c])
+        };
+        AggregationInput combined = RecursiveStarkAggregator.Combine(
+            [new() { Deps = [c], Witnesses = [new byte[] { 1 }] }, new() { RecursiveProofs = [new RecursiveProofInput([a, b], [9])] }], [b, c]);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(input.Discards, Is.EqualTo(new[] { a }));
+            Assert.That(RecursiveStarkAggregator.TryAggregate(input, Accepting, Eip8288Verifier.Pinned, out IReadOnlyList<FrameDependency> deps, out _), Is.True);
+            Assert.That(deps, Is.EqualTo(Eip8288Dependencies.Canonicalize([b, c])));
+            Assert.That(combined.Deps, Is.EqualTo(new[] { c }), "a retained dependency covered only by a direct witness is an input");
+            Assert.That(combined.Discards, Is.EqualTo(new[] { a }));
+        }
+    }
+
+    [Test]
+    public void Pruning_a_recursive_input_discards_only_dependencies_no_retained_transaction_needs()
+    {
+        FrameDependency a = Sphincs("a"), b = Sphincs("b"), c = Sphincs("c");
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
+        store.AddVerified([a, b, c], null, [1]);
+        Assert.That(store.TryGetInput([c, b], out AggregationInput input), Is.True);
+        AggregationInput combined = RecursiveStarkAggregator.Combine([input], [b, c]);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(input.Discards, Is.EqualTo(new[] { a }));
+            Assert.That(combined.Discards, Is.EqualTo(new[] { a }));
+            Assert.That(RecursiveStarkAggregator.TryAggregate(input, Accepting, Eip8288Verifier.Pinned, out IReadOnlyList<FrameDependency> deps, out _), Is.True);
+            Assert.That(deps, Is.EqualTo(Eip8288Dependencies.Canonicalize([b, c])));
+        }
+    }
+
+    [Test]
     public void Proof_store_rejects_missing_dependencies()
     {
-        LeanProofStore store = new();
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
         Assert.That(store.TryGetInput([Sphincs("missing")], out _), Is.False);
         Assert.That(store.TryGetInput([], out AggregationInput input), Is.True);
         Assert.That(input.Deps, Is.Empty);
@@ -137,7 +233,7 @@ public class RecursiveStarkAggregatorTests
         }
         AggregationInput input = new() { Deps = dependencies, Witnesses = witnesses };
         ValueHash256 hash = Eip8288Dependencies.ComputeDepsHash(dependencies);
-        Assert.Throws<OperationCanceledException>(() => RecursiveStarkAggregator.Prove(input, verifier, hash, cancellation.Token));
+        Assert.Throws<OperationCanceledException>(() => RecursiveStarkAggregator.Prove(input, verifier, Eip8288Verifier.Pinned, hash, cancellation.Token));
         Assert.That(verifier.ProofCalls, Is.EqualTo(1));
     }
 
@@ -150,7 +246,7 @@ public class RecursiveStarkAggregatorTests
         FakeLeanProofVerifier verifier = new(true);
         ValueHash256 hash = Eip8288Dependencies.ComputeDepsHash([a, b]);
 
-        byte[] proof = RecursiveStarkAggregator.Prove(input, verifier, hash);
+        byte[] proof = RecursiveStarkAggregator.Prove(input, verifier, Eip8288Verifier.Pinned, hash);
 
         using (Assert.EnterMultipleScope())
         {
@@ -179,7 +275,7 @@ public class RecursiveStarkAggregatorTests
         ValueHash256 hash = Eip8288Dependencies.ComputeDepsHash(change == StatementChange.TargetHash ? [b] : [a]);
         FakeLeanProofVerifier verifier = new(true);
 
-        RecursiveStarkAggregator.Prove(input, verifier, hash);
+        RecursiveStarkAggregator.Prove(input, verifier, Eip8288Verifier.Pinned, hash);
 
         Assert.That(verifier.ProofCalls, Is.EqualTo(1));
     }
@@ -192,7 +288,7 @@ public class RecursiveStarkAggregatorTests
         FakeLeanProofVerifier verifier = new(false);
         AggregationInput input = new() { RecursiveProofs = [new([dependency], [2])] };
 
-        Assert.Throws<InvalidOperationException>(() => RecursiveStarkAggregator.Prove(input, verifier, hash));
+        Assert.Throws<InvalidOperationException>(() => RecursiveStarkAggregator.Prove(input, verifier, Eip8288Verifier.Pinned, hash));
         using (Assert.EnterMultipleScope())
         {
             Assert.That(verifier.VerificationCalls, Is.EqualTo(1));
@@ -210,7 +306,7 @@ public class RecursiveStarkAggregatorTests
         AggregationInput input = new() { RecursiveProofs = [new([dependency], [2])] };
         if (beforeVerification) cancellation.Cancel();
 
-        Assert.Throws<OperationCanceledException>(() => RecursiveStarkAggregator.Prove(input, verifier, hash, cancellation.Token));
+        Assert.Throws<OperationCanceledException>(() => RecursiveStarkAggregator.Prove(input, verifier, Eip8288Verifier.Pinned, hash, cancellation.Token));
         using (Assert.EnterMultipleScope())
         {
             Assert.That(verifier.VerificationCalls, Is.EqualTo(beforeVerification ? 0 : 1));
@@ -231,13 +327,33 @@ public class RecursiveStarkAggregatorTests
         }
         FakeLeanProofVerifier verifier = new(true);
         ValueHash256 hash = Eip8288Dependencies.ComputeDepsHash(deps);
-        byte[] proof = RecursiveStarkAggregator.Prove(new() { RecursiveProofs = recursive }, verifier, in hash);
+        byte[] proof = RecursiveStarkAggregator.Prove(new() { RecursiveProofs = recursive }, verifier, Eip8288Verifier.Pinned, in hash);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(proof, Is.EqualTo(new byte[] { 1 }));
             Assert.That(verifier.LargestRecursiveInput, Is.EqualTo(2));
             Assert.That(verifier.ProofCalls, Is.GreaterThan(1));
         }
+    }
+
+    // EIPs#12475: a builder may merge the running aggregate with every inclusion-list proof, discarding what its block does not
+    // need. The prototype guest folds two inputs per step, so the managed tree merges them over several bounded steps.
+    [Test]
+    public void Committee_fan_in_folds_every_inclusion_list_proof_and_the_running_aggregate()
+    {
+        List<RecursiveProofInput> recursive = [];
+        List<FrameDependency> deps = [];
+        for (int i = 0; i <= Eip7805Constants.InclusionListCommitteeSize; i++)
+        {
+            FrameDependency dependency = Sphincs($"list{i}");
+            recursive.Add(new([dependency], [1]));
+            deps.Add(dependency);
+        }
+        // The last list is discarded entirely, as a builder may exclude any inclusion-list transaction.
+        FakeLeanProofVerifier verifier = new(true);
+        ValueHash256 hash = Eip8288Dependencies.ComputeDepsHash(deps.GetRange(0, deps.Count - 1));
+        byte[] proof = RecursiveStarkAggregator.Prove(new() { RecursiveProofs = recursive, Discards = [deps[^1]] }, verifier, Eip8288Verifier.Pinned, in hash);
+        Assert.That(proof, Is.EqualTo(new byte[] { 1 }));
     }
 
     [Test]
@@ -256,9 +372,10 @@ public class RecursiveStarkAggregatorTests
         {
             RecursiveProofs = children,
             Discards = dependencies[1..]
-        }, verifier, hash);
+        }, verifier, Eip8288Verifier.Pinned, hash);
         Assert.That(proof, Is.EqualTo(hash.ToByteArray()));
-        Assert.That(verifier.ProofCalls, Is.GreaterThan(1));
+        // Children whose every claim is discarded are dropped rather than reproven to an empty set.
+        Assert.That(verifier.ProofCalls, Is.EqualTo(1));
     }
 
     [Test]
@@ -276,7 +393,7 @@ public class RecursiveStarkAggregatorTests
         EnvelopeBoundedVerifier verifier = new();
         ValueHash256 hash = Eip8288Dependencies.ComputeDepsHash([dependency]);
 
-        byte[] result = RecursiveStarkAggregator.Prove(input, verifier, hash);
+        byte[] result = RecursiveStarkAggregator.Prove(input, verifier, Eip8288Verifier.Pinned, hash);
 
         Assert.That(verifier.VerifyRecursiveStark(hash, Eip8288Constants.AggregatedVk, result), Is.True);
         int directProves = 0;
@@ -305,7 +422,7 @@ public class RecursiveStarkAggregatorTests
         ValueHash256 hash = Eip8288Dependencies.ComputeDepsHash([a, b]);
         EnvelopeBoundedVerifier verifier = new();
 
-        byte[] proof = RecursiveStarkAggregator.Prove(input, verifier, hash);
+        byte[] proof = RecursiveStarkAggregator.Prove(input, verifier, Eip8288Verifier.Pinned, hash);
 
         Assert.That(verifier.VerifyRecursiveStark(hash, Eip8288Constants.AggregatedVk, proof), Is.True);
         int directLeaves = 0;
@@ -342,7 +459,7 @@ public class RecursiveStarkAggregatorTests
                 : []
         };
         ValueHash256 hash = Eip8288Dependencies.ComputeDepsHash(input.Deps);
-        Assert.Throws<InvalidOperationException>(() => RecursiveStarkAggregator.Prove(input, new EnvelopeBoundedVerifier(), hash));
+        Assert.Throws<InvalidOperationException>(() => RecursiveStarkAggregator.Prove(input, new EnvelopeBoundedVerifier(), Eip8288Verifier.Pinned, hash));
     }
 
     private sealed class EnvelopeBoundedVerifier : ILeanProofVerifier
@@ -364,12 +481,12 @@ public class RecursiveStarkAggregatorTests
             int count = System.Buffers.Binary.BinaryPrimitives.ReadInt32LittleEndian(proof[4..]);
             if (count < 0 || count > Eip8288Constants.MaxProofDependencies
                 || count > (proof.Length - 8) / Eip8288Constants.DependencyTripleLength) return false;
-            return ValueKeccak.Compute(proof.Slice(8, count * Eip8288Constants.DependencyTripleLength)) == hash;
+            return Eip8288Dependencies.ComputeDepsHash(Eip8288Dependencies.Parse(proof.Slice(8, count * Eip8288Constants.DependencyTripleLength))) == hash;
         }
         public byte[] ProveRecursiveStark(in ValueHash256 hash, ReadOnlySpan<byte> key, AggregationInput input)
         {
             ProvingInputs.Add(input);
-            if (!RecursiveStarkAggregator.TryAggregate(input, this, out IReadOnlyList<FrameDependency> dependencies, out ValueHash256 actual))
+            if (!RecursiveStarkAggregator.TryAggregate(input, this, Eip8288Verifier.Pinned, out IReadOnlyList<FrameDependency> dependencies, out ValueHash256 actual))
                 throw new InvalidOperationException("Invalid dependency input");
             Assert.That(actual, Is.EqualTo(hash));
             HashSet<FrameDependency> required = [.. dependencies];
@@ -387,7 +504,7 @@ public class RecursiveStarkAggregatorTests
         public bool VerifyRecursiveStark(in ValueHash256 hash, ReadOnlySpan<byte> key, ReadOnlySpan<byte> proof) => true;
         public byte[] ProveRecursiveStark(in ValueHash256 hash, ReadOnlySpan<byte> key, AggregationInput input)
         {
-            Assert.That(RecursiveStarkAggregator.TryAggregate(input, Accepting, out IReadOnlyList<FrameDependency> dependencies, out ValueHash256 actual), Is.True);
+            Assert.That(RecursiveStarkAggregator.TryAggregate(input, Accepting, Eip8288Verifier.Pinned, out IReadOnlyList<FrameDependency> dependencies, out ValueHash256 actual), Is.True);
             Assert.That(actual, Is.EqualTo(hash));
             Assert.That(dependencies.Count, Is.LessThanOrEqualTo(Eip8288Constants.MaxGenericStarkProofs));
             ProofCalls++;
@@ -398,7 +515,7 @@ public class RecursiveStarkAggregatorTests
     [Test]
     public void Proof_store_evicts_oldest_coverage_without_removing_newer_witnesses([Values] bool sameDependency)
     {
-        LeanProofStore store = new();
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
         FrameDependency first = Sphincs("0");
         byte[] witness = new byte[64 * 1024 - Eip8288Constants.DependencyTripleLength];
         for (int i = 0; i < 1025; i++) store.AddVerified([sameDependency ? first : Sphincs(i.ToString())], [witness], null);
@@ -408,7 +525,7 @@ public class RecursiveStarkAggregatorTests
     [Test]
     public void Empty_dependency_proofs_do_not_evict_useful_witnesses()
     {
-        LeanProofStore store = new();
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
         FrameDependency dependency = Sphincs("useful");
         store.AddVerified([dependency], [[1]], null);
         for (int i = 0; i < 1025; i++) store.AddVerified([], null, [2]);
@@ -418,7 +535,7 @@ public class RecursiveStarkAggregatorTests
     [Test]
     public void Repeated_identical_proofs_do_not_evict_other_coverage()
     {
-        LeanProofStore store = new();
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
         FrameDependency honest = Sphincs("honest");
         FrameDependency repeated = Sphincs("repeated");
         store.AddVerified([honest], [[1]], null);
@@ -432,7 +549,7 @@ public class RecursiveStarkAggregatorTests
     [Test]
     public void New_proof_identities_for_pending_coverage_do_not_evict_other_transactions()
     {
-        LeanProofStore store = new();
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
         FrameDependency honest = Sphincs("honest");
         FrameDependency pending = Sphincs("pending");
         store.AddVerified([honest], [[1]], null);
@@ -447,9 +564,9 @@ public class RecursiveStarkAggregatorTests
     [Test]
     public void Candidate_snapshots_share_owned_read_only_witness_buffers([Values] bool recursive)
     {
-        LeanProofStore store = new();
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
         FrameDependency dependency = Sphincs("large");
-        byte[] proof = new byte[4 * 1024 * 1024];
+        byte[] proof = new byte[LeanProofStore.MaxWrapperBytes - 1024];
         store.AddVerified([dependency], recursive ? null : [proof], recursive ? proof : null);
         long before = GC.GetAllocatedBytesForCurrentThread();
         for (int i = 0; i < 100; i++)
@@ -462,8 +579,8 @@ public class RecursiveStarkAggregatorTests
     public void Uninitialized_recursive_inputs_report_an_argument_error()
     {
         AggregationInput input = new() { RecursiveProofs = [default] };
-        Assert.Throws<ArgumentException>(() => RecursiveStarkAggregator.Prove(input, Accepting, default));
-        Assert.Throws<ArgumentException>(() => RecursiveStarkAggregator.TryAggregate(input, Accepting, out _, out _));
+        Assert.Throws<ArgumentException>(() => RecursiveStarkAggregator.Prove(input, Accepting, Eip8288Verifier.Pinned, default));
+        Assert.Throws<ArgumentException>(() => RecursiveStarkAggregator.TryAggregate(input, Accepting, Eip8288Verifier.Pinned, out _, out _));
         Assert.Throws<ArgumentException>(() => RecursiveStarkAggregator.Combine([input], []));
         Assert.Throws<ArgumentException>(() => RecursiveStarkAggregator.InputSize(input));
     }
@@ -471,7 +588,7 @@ public class RecursiveStarkAggregatorTests
     [Test]
     public async Task Disposed_admission_scope_revokes_captured_execution_context()
     {
-        LeanProofStore store = new();
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
         FrameDependency dependency = Sphincs("temporary");
         Transaction transaction = new()
         {
@@ -495,7 +612,7 @@ public class RecursiveStarkAggregatorTests
     [Test]
     public void Admission_reserves_capacity_and_pending_coverage_survives_unique_proof_floods()
     {
-        LeanProofStore store = new();
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
         List<Transaction> pending = [];
         byte[] witness = new byte[64 * 1024 - Eip8288Constants.DependencyTripleLength];
         for (int i = 0; i < 1024; i++)
@@ -521,7 +638,7 @@ public class RecursiveStarkAggregatorTests
     [Test]
     public void Overlapping_partial_admission_and_cache_eviction_preserve_original_pending_witnesses()
     {
-        LeanProofStore store = new();
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
         FrameDependency a = Sphincs("pending-a"), b = Sphincs("pending-b");
         Transaction original = DependencyTransaction(a), later = DependencyTransaction(b);
         store.AddVerified([a], [[1]], null);
@@ -547,7 +664,7 @@ public class RecursiveStarkAggregatorTests
     [Test]
     public void Rejected_reservations_release_capacity_without_publishing_coverage()
     {
-        LeanProofStore store = new();
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
         for (int i = 0; i < 1100; i++)
         {
             FrameDependency dependency = Sphincs($"rejected:{i}");
@@ -560,10 +677,11 @@ public class RecursiveStarkAggregatorTests
     [Test]
     public void Partial_direct_admission_releases_large_rejected_witnesses()
     {
-        LeanProofStore store = new();
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
         List<Transaction> pending = [];
-        byte[] rejectedWitness = new byte[4 * 1024 * 1024];
-        for (int i = 0; i < 24; i++)
+        // Enough near-maximum rejected witnesses to exceed the shared store several times over if they were retained.
+        byte[] rejectedWitness = new byte[LeanProofStore.MaxWrapperBytes - 1024];
+        for (int i = 0; i < 40; i++)
         {
             FrameDependency accepted = Sphincs($"accepted:{i}"), rejected = Sphincs($"rejected:{i}");
             Transaction transaction = DependencyTransaction(accepted);
@@ -582,7 +700,7 @@ public class RecursiveStarkAggregatorTests
     [Test]
     public void Rejected_pool_insertion_releases_unpublished_direct_witnesses()
     {
-        LeanProofStore store = new();
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
         FrameDependency dependency = Sphincs("rejected-insertion");
         Transaction transaction = DependencyTransaction(dependency);
         Assert.That(store.TryBeginAdmission([dependency], [[1]], null, out IDisposable? admission), Is.True);
@@ -597,17 +715,19 @@ public class RecursiveStarkAggregatorTests
     [Test]
     public void Sender_quota_counts_shared_recursive_records_once_and_releases_the_last_owner()
     {
-        LeanProofStore store = new();
-        FrameDependency a = Sphincs("quota-a"), b = Sphincs("quota-b"), c = Sphincs("quota-c");
-        byte[] proof = new byte[5 * 1024 * 1024];
-        store.AddVerified([a], null, proof);
-        store.AddVerified([b], null, proof);
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
+        // Records are bounded by MAX_WRAPPER_BYTES, so the sender quota holds a few near-maximum ones.
+        byte[] proof = new byte[LeanProofStore.MaxWrapperBytes - 1024];
+        int fitting = (int)(LeanProofStore.MaxSenderPinnedBytes / proof.Length);
+        FrameDependency[] dependencies = [.. Enumerable.Range(0, fitting).Select(i => Sphincs($"quota-{i}"))];
+        FrameDependency c = Sphincs("quota-c");
+        foreach (FrameDependency dependency in dependencies) store.AddVerified([dependency], null, proof);
         store.AddVerified([c], null, proof);
-        Transaction first = DependencyTransaction(a), shared = DependencyTransaction(a), second = DependencyTransaction(b);
+        Transaction first = DependencyTransaction(dependencies[0]), shared = DependencyTransaction(dependencies[0]);
         shared.Hash = Keccak.Compute("shared-transaction");
         Assert.That(store.PinPending(first), Is.True);
         Assert.That(store.PinPending(shared), Is.True, "the same proof is charged once for this sender");
-        Assert.That(store.PinPending(second), Is.True);
+        foreach (FrameDependency dependency in dependencies[1..]) Assert.That(store.PinPending(DependencyTransaction(dependency)), Is.True);
         Assert.That(store.TryReserveTransaction([c], out _, Address.Zero), Is.False);
         Address other = new("0x0000000000000000000000000000000000000001");
         Assert.That(store.TryReserveTransaction([c], out IDisposable? anotherSender, other), Is.True);
@@ -659,4 +779,108 @@ public class RecursiveStarkAggregatorTests
         }
     }
 
+    // EIP-8288 discard_dependencies: the FOCIL proof covers {a, b}; the omitted entry declared a and b, the included
+    // one declares a, so only b leaves the claim.
+    [Test]
+    public void Pruning_an_omitted_focil_entry_retains_dependencies_shared_with_included_transactions()
+    {
+        FrameDependency a = Sphincs("a");
+        FrameDependency b = Sphincs("b");
+        AggregationInput focil = new() { RecursiveProofs = [new([a, b], [1])] };
+        AggregationInput included = new() { Deps = [a], Witnesses = [new byte[] { 2 }] };
+        AggregationInput combined = RecursiveStarkAggregator.Combine([focil, included], [a]);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(combined.Discards, Is.EqualTo(new[] { b }));
+            Assert.That(combined.Deps, Is.Empty);
+            Assert.That(combined.RecursiveProofs, Has.Count.EqualTo(1));
+            Assert.That(RecursiveStarkAggregator.TryAggregate(combined, Accepting, Eip8288Verifier.Pinned, out IReadOnlyList<FrameDependency> proven, out _), Is.True);
+            Assert.That(proven, Is.EqualTo(new[] { a }));
+        }
+    }
+
+    // EIP-8288 MAX_AGGREGATE_PROOF_BYTES: a proof at the bound still needs full verification; one byte longer is rejected
+    // before the verifier runs.
+    [TestCase(Eip8288Constants.MaxAggregateProofBytes, true, 1)]
+    [TestCase(Eip8288Constants.MaxAggregateProofBytes, false, 1)]
+    [TestCase(Eip8288Constants.MaxAggregateProofBytes + 1, true, 0)]
+    public void Stark_check_bounds_the_proof_before_verification(int length, bool verdict, int expectedCalls)
+    {
+        FakeLeanProofVerifier verifier = new(verdict);
+        ValueHash256 depsHash = Eip8288Dependencies.ComputeDepsHash([Sphincs("a")]);
+        bool valid = RecursiveStarkAggregator.VerifyStarkCheck(verifier, Eip8288Verifier.Pinned, 1, in depsHash, new byte[length]);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(valid, Is.EqualTo(verdict && expectedCalls == 1));
+            Assert.That(verifier.VerificationCalls, Is.EqualTo(expectedCalls));
+        }
+    }
+
+    [TestCase(Eip8288Constants.MaxAggregateProofBytes, true)]
+    [TestCase(Eip8288Constants.MaxAggregateProofBytes + 1, false)]
+    public void Recursive_input_above_the_aggregate_proof_bound_fails_before_its_verifier_runs(int length, bool expected)
+    {
+        FakeLeanProofVerifier verifier = new(true);
+        AggregationInput input = new() { RecursiveProofs = [new RecursiveProofInput([Sphincs("a")], new byte[length])] };
+        bool valid = RecursiveStarkAggregator.TryAggregate(input, verifier, Eip8288Verifier.Pinned, out _, out _);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(valid, Is.EqualTo(expected));
+            Assert.That(verifier.VerificationCalls, Is.EqualTo(expected ? 1 : 0));
+        }
+    }
+
+    [Test]
+    public void Combining_leaves_out_recursive_children_without_required_dependencies([Values] bool withParent)
+    {
+        FrameDependency required = Sphincs("required");
+        RecursiveProofInput unrelated = new([Sphincs("unrelated")], [2]);
+        AggregationInput input = new() { Deps = [required], Witnesses = [new byte[] { 1 }], RecursiveProofs = [unrelated] };
+        RecursiveProofInput? parent = withParent ? new RecursiveProofInput([required, Sphincs("parent")], [3]) : null;
+
+        AggregationInput combined = RecursiveStarkAggregator.Combine([input], [required], parent);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(combined.RecursiveProofs, Is.EqualTo(withParent ? new[] { parent!.Value } : []));
+            Assert.That(combined.Discards, Is.EqualTo(withParent ? new[] { Sphincs("parent") } : []));
+        }
+    }
+
+    [Test]
+    public void Extending_a_parent_discards_its_dependencies_outside_the_required_set()
+    {
+        FrameDependency kept = Sphincs("kept");
+        FrameDependency other = Sphincs("other");
+        FrameDependency gone = Sphincs("gone");
+        FrameDependency added = Sphincs("added");
+        RecursiveProofInput parent = new(Eip8288Dependencies.Canonicalize([kept, other, gone]), [3]);
+        AggregationInput witnesses = new() { Deps = [kept, other, added], Witnesses = [new byte[] { 1 }, new byte[] { 1 }, new byte[] { 1 }] };
+
+        AggregationInput extended = RecursiveStarkAggregator.Combine([witnesses], [kept, other, added], parent);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(extended.RecursiveProofs, Is.EqualTo(new[] { parent }));
+            Assert.That(extended.Deps, Is.EqualTo(new[] { added }), "the parent covers its retained dependencies");
+            Assert.That(extended.Discards, Is.EqualTo(new[] { gone }));
+        }
+    }
+
+    [Test]
+    public void Estimated_cost_counts_a_discarding_call_only_when_the_input_needs_several()
+    {
+        FrameDependency gone = Sphincs("gone");
+        RecursiveProofInput parent = new([Sphincs("kept"), gone], [3]);
+        AggregationInput single = new() { RecursiveProofs = [parent], Discards = [gone] };
+        AggregationInput several = new() { RecursiveProofs = [parent, new([Sphincs("r1")], [4]), new([Sphincs("r2")], [5])], Discards = [gone] };
+        AggregationInput kept = new() { RecursiveProofs = [parent, new([Sphincs("r1")], [4]), new([Sphincs("r2")], [5])] };
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(RecursiveStarkAggregator.EstimatedCost(single), Is.EqualTo(RecursiveStarkAggregator.EstimatedCost(new() { RecursiveProofs = [parent, parent] })),
+                "a lone discarding parent is one native call");
+            Assert.That(RecursiveStarkAggregator.EstimatedCost(several) - RecursiveStarkAggregator.EstimatedCost(kept),
+                Is.EqualTo(RecursiveStarkAggregator.EstimatedCost(single)), "a discarding child in a tree needs its own call");
+        }
+    }
 }

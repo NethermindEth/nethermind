@@ -39,7 +39,12 @@ public sealed class BranchData : INodeData
     private BranchData(in BranchArray branches) => _branches = branches;
 
     public ref readonly BranchArray Branches => ref _branches;
-    public ref object? this[int index] => ref _branches[index];
+    public ref object? this[int index]
+    {
+        // Reached once per level of every trie walk; a walk as large as PatriciaTree.SetNew exhausts the inliner's budget before it.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        get => ref _branches[index];
+    }
 
     INodeData INodeData.Clone() => new BranchData(in _branches);
 

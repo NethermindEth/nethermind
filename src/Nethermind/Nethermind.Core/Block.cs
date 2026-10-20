@@ -48,11 +48,11 @@ public class Block
     )
     { }
 
-    public virtual Block WithReplacedHeader(BlockHeader newHeader) => new(newHeader, Body, BlockAccessList) { InclusionListTransactions = InclusionListTransactions, InclusionListRecursiveStark = InclusionListRecursiveStark, InclusionListProvenDependencies = InclusionListProvenDependencies };
+    public virtual Block WithReplacedHeader(BlockHeader newHeader) => new(newHeader, Body, BlockAccessList) { InclusionListTransactions = InclusionListTransactions, InclusionLists = InclusionLists };
 
-    public Block WithReplacedBody(BlockBody newBody) => new(Header, newBody, BlockAccessList) { InclusionListTransactions = InclusionListTransactions, InclusionListRecursiveStark = InclusionListRecursiveStark, InclusionListProvenDependencies = InclusionListProvenDependencies };
+    public Block WithReplacedBody(BlockBody newBody) => new(Header, newBody, BlockAccessList) { InclusionListTransactions = InclusionListTransactions, InclusionLists = InclusionLists };
 
-    public Block WithReplacedBodyCloned(BlockBody newBody) => new(Header.Clone(), newBody, BlockAccessList) { InclusionListTransactions = InclusionListTransactions, InclusionListRecursiveStark = InclusionListRecursiveStark, InclusionListProvenDependencies = InclusionListProvenDependencies };
+    public Block WithReplacedBodyCloned(BlockBody newBody) => new(Header.Clone(), newBody, BlockAccessList) { InclusionListTransactions = InclusionListTransactions, InclusionLists = InclusionLists };
 
     public BlockHeader Header { get; }
 
@@ -69,6 +69,9 @@ public class Block
     public BlockHeader[] Uncles => Body.Uncles; // do not add setter here
 
     public Withdrawal[]? Withdrawals => Body.Withdrawals; // do not add setter here
+
+    /// <summary>The recursive proof carried in the EIP-8288 block body.</summary>
+    public byte[]? StarkProof { get => Body.StarkProof; set => Body.StarkProof = value; }
 
     public Hash256? Hash => Header.Hash; // do not add setter here
 
@@ -139,11 +142,10 @@ public class Block
     [JsonIgnore]
     public Transaction[]? InclusionListTransactions { get; set; }
 
+    /// <summary>The counted inclusion lists with their EIP-8288 commitments, when the Engine API supplied them per list.</summary>
+    /// <remarks>Their transactions are also flattened into <see cref="InclusionListTransactions"/>.</remarks>
     [JsonIgnore]
-    public RecursiveStark? InclusionListRecursiveStark { get; set; }
-
-    [JsonIgnore]
-    public byte[]? InclusionListProvenDependencies { get; set; }
+    public IReadOnlyList<CommitteeInclusionList>? InclusionLists { get; set; }
 
     // Set after the post-execution check: false means the block is valid and executable but did not
     // honour its inclusion list (EIP-7805).
@@ -153,8 +155,15 @@ public class Block
     [JsonIgnore]
     public ArrayPoolList<AddressAsKey>? AccountChanges { get; set; }
 
+    // Kept in an int so that readers on other threads never see a torn value; -1 means unknown.
+    private int _encodedSize = -1;
+
     [JsonIgnore]
-    public int? EncodedSize { get; set; }
+    public int? EncodedSize
+    {
+        get => _encodedSize < 0 ? null : _encodedSize;
+        set => _encodedSize = value ?? -1;
+    }
 
     [JsonIgnore]
     public byte[]? EncodedBlockAccessList { get; set; }

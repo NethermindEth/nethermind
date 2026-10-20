@@ -594,6 +594,13 @@ namespace Nethermind.Synchronization.ParallelSync
             // and think that we have an invalid snapshot
             Snapshot best = TakeSnapshot(peerDifficulty, peerBlock, inBeaconControl);
 
+            // A pre-merge reorg to a shorter, heavier branch lowers the best header between the reads.
+            // Recalculating then would reset the pointers by number, back onto the lighter branch.
+            if (IsSnapshotInvalid(best))
+            {
+                best = TakeSnapshot(peerDifficulty, peerBlock, inBeaconControl);
+            }
+
             if (IsSnapshotInvalid(best))
             {
                 string stateString = BuildStateStringDebug(best);

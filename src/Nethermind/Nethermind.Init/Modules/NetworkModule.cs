@@ -31,6 +31,7 @@ using V69 = Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
 using V70 = Nethermind.Network.P2P.Subprotocols.Eth.V70.Messages;
 using V71 = Nethermind.Network.P2P.Subprotocols.Eth.V71.Messages;
 using V72 = Nethermind.Network.P2P.Subprotocols.Eth.V72.Messages;
+using V73 = Nethermind.Network.P2P.Subprotocols.Eth.V73;
 using SnapV1 = Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages;
 using SnapV2 = Nethermind.Network.P2P.Subprotocols.Snap.V2.Messages;
 using Subprotocols = Nethermind.Network.P2P.Subprotocols;
@@ -79,20 +80,8 @@ public class NetworkModule(IConfigProvider configProvider) : Module
             .AddSingleton<IProtocolsManager, ProtocolsManager>()
             .AddFirst<IP2PCapabilityResolver, DefaultP2PCapabilityResolver>()
             .AddLast<IP2PCapabilityResolver, SnapP2PCapabilityResolver>()
-            .AddLast<IP2PCapabilityResolver, LeanP2PCapabilityResolver>()
-            .AddSingleton<Subprotocols.Lean.LeanObjectTransport>()
-            .Bind<Consensus.ProofAggregation.IBlockProofSidecarSource, Subprotocols.Lean.LeanObjectTransport>()
-            .AddSingleton<Subprotocols.Lean.LeanProofGossip>()
-            .AddMessageSerializer<Subprotocols.Lean.LeanStatusMessage, Subprotocols.Lean.LeanStatusMessageSerializer>()
-            .AddMessageSerializer<Subprotocols.Lean.AnnounceObjectsMessage, Subprotocols.Lean.AnnounceObjectsMessageSerializer>()
-            .AddMessageSerializer<Subprotocols.Lean.GetObjectsMessage, Subprotocols.Lean.GetObjectsMessageSerializer>()
-            .AddMessageSerializer<Subprotocols.Lean.ObjectsMessage, Subprotocols.Lean.ObjectsMessageSerializer>()
-            .AddMessageSerializer<Subprotocols.Lean.GetChunksMessage, Subprotocols.Lean.GetChunksMessageSerializer>()
-            .AddMessageSerializer<Subprotocols.Lean.ChunkMessage, Subprotocols.Lean.ChunkMessageSerializer>()
-            .AddMessageSerializer<Subprotocols.Lean.CompleteMessage, Subprotocols.Lean.CompleteMessageSerializer>()
-            .AddMessageSerializer<Subprotocols.Lean.CancelMessage, Subprotocols.Lean.CancelMessageSerializer>()
-            .AddMessageSerializer<Subprotocols.Lean.GetTransactionsMessage, Subprotocols.Lean.GetTransactionsMessageSerializer>()
-            .AddMessageSerializer<Subprotocols.Lean.TransactionsMessage, Subprotocols.Lean.TransactionsMessageSerializer>()
+            .AddSingleton<V73.ProofWrapperTransport>()
+            .AddSingleton<V73.ProofWrapperGossip>()
 
             // Handshake
             .AddMessageSerializer<Handshake.AuthEip8Message, Handshake.AuthEip8MessageSerializer>()
@@ -124,8 +113,8 @@ public class NetworkModule(IConfigProvider configProvider) : Module
             // Base block RLP decoders so the Eth message serializers resolve them via DI instead of
             // ctor-default fallbacks. Consensus plugins (AuRa, Xdc) override these with their own decoders.
             .AddSingleton<IHeaderDecoder, HeaderDecoder>()
-            .AddSingleton(new BlockDecoder())
-            .AddSingleton(BlockBodyDecoder.Instance)
+            .AddSingleton<BlockDecoder, IHeaderDecoder>(static headerDecoder => new BlockDecoder(headerDecoder))
+            .AddSingleton<BlockBodyDecoder, IHeaderDecoder>(static headerDecoder => new BlockBodyDecoder(headerDecoder))
 
             // V62
             .AddMessageSerializer<V62.BlockBodiesMessage, V62.BlockBodiesMessageSerializer>()
@@ -183,6 +172,11 @@ public class NetworkModule(IConfigProvider configProvider) : Module
             .AddMessageSerializer<V72.GetCellsMessage72, V72.GetCellsMessageSerializer72>()
             .AddMessageSerializer<V72.CellsMessage72, V72.CellsMessageSerializer72>()
 
+            // V73
+            .AddMessageSerializer<V73.Messages.NewProofWrapperHashesMessage, V73.Messages.NewProofWrapperHashesMessageSerializer>()
+            .AddMessageSerializer<V73.Messages.GetProofWrappersMessage, V73.Messages.GetProofWrappersMessageSerializer>()
+            .AddMessageSerializer<V73.Messages.ProofWrappersMessage, V73.Messages.ProofWrappersMessageSerializer>()
+
             // P2P protocol handler factory (accepts any version; validation happens after Hello)
             .AddProtocolHandler<P2PProtocolHandler>(Protocol.P2P)
 
@@ -190,7 +184,6 @@ public class NetworkModule(IConfigProvider configProvider) : Module
             .AddSingleton<State.SnapServer.ISnapServer, Synchronization.SnapSync.SnapServer>()
 
             // Protocol handler factories
-            .AddProtocolHandler<Subprotocols.Lean.Lean1ProtocolHandler>()
             .AddProtocolHandler<Subprotocols.Snap.V1.Snap1ProtocolHandler>()
             .AddProtocolHandler<Subprotocols.Snap.V2.Snap2ProtocolHandler>()
             .AddProtocolHandler<Subprotocols.Eth.V66.Eth66ProtocolHandler>()
@@ -200,6 +193,7 @@ public class NetworkModule(IConfigProvider configProvider) : Module
             .AddProtocolHandler<Subprotocols.Eth.V70.Eth70ProtocolHandler>()
             .AddProtocolHandler<Subprotocols.Eth.V71.Eth71ProtocolHandler>()
             .AddProtocolHandler<Subprotocols.Eth.V72.Eth72ProtocolHandler>()
+            .AddProtocolHandler<Subprotocols.Eth.V73.Eth73ProtocolHandler>()
 
             ;
     }

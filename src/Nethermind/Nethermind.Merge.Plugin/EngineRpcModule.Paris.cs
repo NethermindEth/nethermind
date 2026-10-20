@@ -96,6 +96,7 @@ public partial class EngineRpcModule : IEngineRpcModule
         ExecutionPayload executionPayload = executionPayloadParams.ExecutionPayload;
         executionPayload.ExecutionRequests = executionPayloadParams.ExecutionRequests;
         executionPayload.InclusionListTransactions = executionPayloadParams.InclusionListTransactions;
+        executionPayload.InclusionLists = executionPayloadParams.InclusionLists;
 
         if (!executionPayload.ValidateForkOnNewPayload(_specProvider, version))
         {
@@ -112,6 +113,8 @@ public partial class EngineRpcModule : IEngineRpcModule
         }
 
         IReleaseSpec releaseSpec = _specProvider.GetSpec(executionPayload.BlockNumber, executionPayload.Timestamp);
+        // The converter reads "0x" as the EIP-7668 bloom; before the fork it is the zero bloom, as it always was.
+        if (executionPayload.LogsBloom is { IsZeroLength: true } && !releaseSpec.IsEip7668Enabled) executionPayload.LogsBloom = new Bloom();
 
         ValidationResult validationResult = executionPayloadParams.ValidateParams(releaseSpec, version, out string? error);
         if (validationResult != ValidationResult.Success)

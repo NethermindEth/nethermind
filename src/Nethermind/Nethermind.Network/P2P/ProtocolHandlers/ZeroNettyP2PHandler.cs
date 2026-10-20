@@ -136,9 +136,9 @@ public class ZeroNettyP2PHandler(ISession session, ILogManager logManager) : Sim
         }
     }
 
-    // EIP-8437 bounds lean/1 messages by their advertised uncompressed size, before any decompression.
+    // eth/73 wrapper messages are bounded by their advertised uncompressed size, before any decompression.
     private bool ExceedsProtocolLimit(int packetType, int uncompressedLength) =>
-        _session is ILeanBulkSession lean && lean.ExceedsMessageLimit(packetType, uncompressedLength);
+        _session is IMessageLimitSession limited && limited.ExceedsMessageLimit(packetType, uncompressedLength);
 
     private ZeroPacket TakeOutputPacket(IChannelHandlerContext context, int length)
     {
