@@ -256,12 +256,14 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 .AndGoodPeersAreKnown()
                 .TheSyncModeShouldBe(SyncMode.Full | fastBlocksState.GetSyncMode(true));
 
-        [TestCase(FastBlocksState.FinishedHeaders, SyncMode.FastBodies | SyncMode.FastBlockAccessLists)]
-        [TestCase(FastBlocksState.FinishedBodies, SyncMode.FastReceipts | SyncMode.FastBlockAccessLists)]
-        [TestCase(FastBlocksState.FinishedReceipts, SyncMode.Full | SyncMode.FastBlockAccessLists)]
-        public void Full_sync_waits_for_receipts_when_consensus_requires_them(FastBlocksState fastBlocksState, SyncMode expected) =>
+        [TestCase(FastBlocksState.FinishedHeaders, null, SyncMode.FastBodies | SyncMode.FastBlockAccessLists)]
+        [TestCase(FastBlocksState.FinishedBodies, null, SyncMode.FastReceipts | SyncMode.FastBlockAccessLists)]
+        [TestCase(FastBlocksState.FinishedBodies, 318UL, SyncMode.FastReceipts | SyncMode.FastBlockAccessLists)]
+        [TestCase(FastBlocksState.FinishedBodies, 319UL, SyncMode.Full | SyncMode.FastReceipts | SyncMode.FastBlockAccessLists)]
+        [TestCase(FastBlocksState.FinishedReceipts, null, SyncMode.Full | SyncMode.FastBlockAccessLists)]
+        public void Full_sync_waits_for_receipts_when_consensus_requires_them(FastBlocksState fastBlocksState, ulong? receiptsDownloadedBelowPivot, SyncMode expected) =>
             Scenario.GoesLikeThis(_needToWaitForHeaders)
-                .WhenConsensusRequiresToWaitForReceipts()
+                .WhenConsensusRequiresToWaitForReceipts(receiptsDownloadedBelowPivot)
                 .IfThisNodeJustFinishedStateSyncAndFastBlocks(fastBlocksState)
                 .When_FastSync_NoSnapSync_Configured()
                 .AndGoodPeersAreKnown()

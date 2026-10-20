@@ -11,7 +11,6 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
-using Nethermind.History;
 using Nethermind.Init.Steps;
 using Nethermind.Logging;
 using Nethermind.Specs.ChainSpecStyle;
@@ -68,18 +67,7 @@ public class ReviewBlockTreeEip8304Tests
             throws ? Throws.InstanceOf<InvalidConfigurationException>() : Throws.Nothing);
     }
 
-    [TestCase(PruningModes.Disabled, false)]
-    [TestCase(PruningModes.Rolling, false)]
-    [TestCase(PruningModes.UseAncientBarriers, true)]
-    public async Task Startup_rejects_history_pruning_up_to_ancient_barriers(PruningModes pruning, bool throws)
-    {
-        BlockTree tree = CoreBuild.A.BlockTree().OfChainLength(1).TestObject;
-
-        await Assert.ThatAsync(() => CreateStep(tree, activationTimestamp: 0, new SyncConfig(), new InMemoryReceiptStorage(), new HistoryConfig { Pruning = pruning }).Execute(CancellationToken.None),
-            throws ? Throws.InstanceOf<InvalidConfigurationException>() : Throws.Nothing);
-    }
-
-    private static ReviewBlockTree CreateStep(BlockTree tree, ulong activationTimestamp, ISyncConfig syncConfig, IReceiptStorage receiptStorage, IHistoryConfig? historyConfig = null) => new(
+    private static ReviewBlockTree CreateStep(BlockTree tree, ulong activationTimestamp, ISyncConfig syncConfig, IReceiptStorage receiptStorage) => new(
         Substitute.For<IWorldStateManager>(),
         Substitute.For<IInitConfig>(),
         syncConfig,
@@ -88,6 +76,5 @@ public class ReviewBlockTreeEip8304Tests
         Substitute.For<IBlockTreeHealer>(),
         LimboLogs.Instance,
         new ChainSpec { Parameters = new ChainParameters { Eip8304TransitionTimestamp = activationTimestamp } },
-        receiptStorage,
-        historyConfig: historyConfig);
+        receiptStorage);
 }

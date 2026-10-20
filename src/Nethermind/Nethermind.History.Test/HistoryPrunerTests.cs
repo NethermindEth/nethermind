@@ -331,6 +331,25 @@ public class HistoryPrunerTests
         CheckOldestAndCutoff(expectedPruneBelow, finalCutoff, historyPruner);
     }
 
+    [Test]
+    public async Task Ancient_barrier_cutoff_keeps_required_history_below_sync_pivot()
+    {
+        SyncConfig syncConfig = new()
+        {
+            AncientBodiesBarrier = BeaconGenesisBlockNumber,
+            AncientReceiptsBarrier = BeaconGenesisBlockNumber,
+            PivotNumber = 100,
+            SnapSync = true,
+            RequiredHistoryBelowPivot = 70
+        };
+        using BasicTestBlockchain testBlockchain = await CreateBlockchainWithBlocks(
+            new HistoryConfig { Pruning = PruningModes.UseAncientBarriers, PruningInterval = 0 }, blocks: 100, syncPivot: 100, syncConfig: syncConfig);
+
+        HistoryPruner historyPruner = (HistoryPruner)testBlockchain.Container.Resolve<IHistoryPruner>();
+
+        Assert.That(historyPruner.CutoffBlockNumber, Is.EqualTo(30UL));
+    }
+
     [TestCase(0UL, 0UL)]
     [TestCase(1UL, 32UL)]
     [TestCase(33024UL, 1_056_768UL)]
@@ -1296,9 +1315,10 @@ public class HistoryPrunerTests
         int blocks,
         ulong? syncPivot = null,
         List<Hash256> blockHashes = null,
-        IBackgroundTaskScheduler scheduler = null)
+        IBackgroundTaskScheduler scheduler = null,
+        ISyncConfig syncConfig = null)
     {
-        BasicTestBlockchain bc = await BasicTestBlockchain.Create(BuildContainer(historyConfig, scheduler));
+        BasicTestBlockchain bc = await BasicTestBlockchain.Create(BuildContainer(historyConfig, scheduler, syncConfig));
         bc.Container.Resolve<IDbProvider>().MetadataDb.Set(MetadataDbKeys.LowestInsertedBodyNumber, Rlp.Encode(1UL).Bytes);
         blockHashes?.Add(bc.BlockTree.Head!.Hash!);
         for (int i = 0; i < blocks; i++)
@@ -1324,7 +1344,7 @@ public class HistoryPrunerTests
             }, timeout);
     }
 
-    private static Action<ContainerBuilder> BuildContainer(IHistoryConfig historyConfig, IBackgroundTaskScheduler scheduler = null)
+    private static Action<ContainerBuilder> BuildContainer(IHistoryConfig historyConfig, IBackgroundTaskScheduler scheduler = null, ISyncConfig syncConfig = null)
     {
         // n.b. in prod MinHistoryRetentionEpochs should be 33024, however not feasible to test this
         ISpecProvider specProvider = new TestSpecProvider(new ReleaseSpec() { MinHistoryRetentionEpochs = 0 });
@@ -1339,7 +1359,7 @@ public class HistoryPrunerTests
             .AddSingleton(blockProcessingQueue)
             .AddSingleton(historyConfig)
             .AddSingleton(BlocksConfig)
-            .AddSingleton(SyncConfig);
+            .AddSingleton(syncConfig ?? SyncConfig);
 
             if (scheduler is not null)
                 containerBuilder.AddSingleton(scheduler);

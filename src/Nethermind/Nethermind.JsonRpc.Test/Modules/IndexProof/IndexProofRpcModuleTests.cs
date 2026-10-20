@@ -8,7 +8,6 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.JsonRpc.Modules.IndexProof;
-using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Modules.IndexProof;
@@ -224,14 +223,10 @@ public class IndexProofRpcModuleTests
     public void ProofEndpoints_resolve_against_canonical_branch_when_side_branch_was_cached_afterwards()
     {
         IndexTableStore store = new();
-        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        IBlockTree blockTree = Build.A.BlockTree().OfChainLength(101).TestObject;
 
-        Hash256 canonicalHash = TestItem.KeccakA;
+        Hash256 canonicalHash = blockTree.FindHeader(100, BlockTreeLookupOptions.RequireCanonical)!.Hash!;
         Hash256 sideBranchHash = TestItem.KeccakB;
-
-        BlockHeader canonicalHeader = Build.A.BlockHeader.WithNumber(100).WithHash(canonicalHash).TestObject;
-        blockTree.FindCanonicalBlockInfo(100).Returns(new BlockInfo(canonicalHash, 100));
-        blockTree.FindHeader(100, BlockTreeLookupOptions.RequireCanonical).Returns(canonicalHeader);
 
         Hash256 canonicalTxHash = TestItem.KeccakC;
         Hash256 sideBranchTxHash = TestItem.KeccakD;
@@ -263,7 +258,7 @@ public class IndexProofRpcModuleTests
         Hash256 txHash = TestItem.KeccakC;
         store.Store(0, 100, [IndexEntry.CreateTransaction(txHash, 100, 0, 0)], TestItem.KeccakB);
 
-        IIndexProofRpcModule module = CreateModule(store, Substitute.For<IBlockTree>());
+        IIndexProofRpcModule module = CreateModule(store, Build.A.BlockTree().OfChainLength(101).TestObject);
 
         ResultWrapper<IndexProofResult?> result = module.indexProof_getTransactionProof(txHash, 100);
 

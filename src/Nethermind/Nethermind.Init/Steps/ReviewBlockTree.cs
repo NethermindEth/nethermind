@@ -14,7 +14,6 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
-using Nethermind.History;
 using Nethermind.Logging;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
@@ -32,8 +31,7 @@ namespace Nethermind.Init.Steps
         ILogManager logManager,
         ChainSpec? chainSpec = null,
         IReceiptStorage? receiptStorage = null,
-        IReceiptConfig? receiptConfig = null,
-        IHistoryConfig? historyConfig = null
+        IReceiptConfig? receiptConfig = null
     ) : IStep
     {
         private readonly ILogger _logger = logManager.GetClassLogger<ReviewBlockTree>();
@@ -61,10 +59,6 @@ namespace Nethermind.Init.Steps
 
             if (syncConfig.FastSync && (!syncConfig.DownloadBodiesInFastSync || !syncConfig.DownloadReceiptsInFastSync))
                 throw Incompatible($"Sync.{nameof(ISyncConfig.DownloadBodiesInFastSync)} or Sync.{nameof(ISyncConfig.DownloadReceiptsInFastSync)} is disabled");
-
-            // That mode prunes up to the configured ancient barriers, which may lie above the blocks the tables still need.
-            if (historyConfig?.Pruning == PruningModes.UseAncientBarriers)
-                throw Incompatible($"History.{nameof(IHistoryConfig.Pruning)} is {nameof(PruningModes.UseAncientBarriers)}");
 
             InvalidConfigurationException Incompatible(string reason) => new(
                 $"EIP-8304 is configured (eip8304TransitionTimestamp={transitionTimestamp}) but {reason}. " +

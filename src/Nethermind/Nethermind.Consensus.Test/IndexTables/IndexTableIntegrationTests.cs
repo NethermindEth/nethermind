@@ -41,7 +41,7 @@ public class IndexTableIntegrationTests
     internal static readonly byte[] IndexContractCode = Bytes.FromHexString(
         "3373fffffffffffffffffffffffffffffffffffffffe1460605760403603605c576020358060801c605c576104008160048104430304828202925f35818106605c5704908103196103ff10605c570601548015605c575f5260205ff35b5f5ffd5b604035602035610400818102915f350406015500");
 
-    private static async Task<BasicTestBlockchain> CreateChain(bool enableBal = false, ISpecProvider? specProvider = null)
+    private static async Task<BasicTestBlockchain> CreateChain(bool enableBal = false, ISpecProvider? specProvider = null, bool deployContract = true)
     {
         specProvider ??= new TestSpecProvider(new OverridableReleaseSpec(Amsterdam.Instance)
         {
@@ -54,6 +54,8 @@ public class IndexTableIntegrationTests
             .AddSingleton<ISpecProvider>(specProvider)
             .AddScoped<IGenesisPostProcessor, IWorldState>(worldState => new FunctionalGenesisPostProcessor(_ =>
             {
+                if (!deployContract) return;
+
                 worldState.CreateAccount(IndexContract, 0);
                 worldState.InsertCode(IndexContract, IndexContractCode, specProvider.GenesisSpec);
                 worldState.RecalculateStateRoot();
@@ -116,6 +118,16 @@ public class IndexTableIntegrationTests
 
             Assert.That(GetStoredRoot(chain, head, tableSize: 4, firstBlock: 0), Is.EqualTo(SszRoot(level1Table)), "level-1 root of blocks 0-3");
         }
+    }
+
+    [Test]
+    public async Task BlockProcessing_without_index_contract_code_leaves_its_address_untouched([Values] bool enableBal)
+    {
+        using BasicTestBlockchain chain = await CreateChain(enableBal, deployContract: false);
+
+        await chain.BuildSomeBlocks(4);
+
+        Assert.That(chain.StateReader.TryGetAccount(chain.BlockTree.Head!.Header, IndexContract, out _), Is.False);
     }
 
     private static byte[] GetStoredRoot(BasicTestBlockchain chain, BlockHeader header, int tableSize, int firstBlock)

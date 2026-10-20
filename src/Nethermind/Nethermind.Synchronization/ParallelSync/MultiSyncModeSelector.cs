@@ -37,7 +37,8 @@ namespace Nethermind.Synchronization.ParallelSync
         ISyncConfig syncConfig,
         IBeaconSyncStrategy beaconSyncStrategy,
         IBetterPeerStrategy betterPeerStrategy,
-        ILogManager logManager) : ISyncModeSelector
+        ILogManager logManager,
+        ISyncPointers? syncPointers = null) : ISyncModeSelector
     {
         /// <summary>
         /// How many blocks can fast sync stay behind while state nodes is still syncing
@@ -50,7 +51,6 @@ namespace Nethermind.Synchronization.ParallelSync
         private readonly IBeaconSyncStrategy _beaconSyncStrategy = beaconSyncStrategy;
         private readonly IBetterPeerStrategy _betterPeerStrategy = betterPeerStrategy;
         private readonly bool _needToWaitForHeaders = syncConfig.NeedToWaitForHeader;
-        private readonly bool _needToWaitForReceipts = syncConfig.RequiredHistoryBelowPivot > 0;
         private readonly ILogger _logger = logManager.GetClassLogger<MultiSyncModeSelector>();
         private readonly Lock _modeLock = new();
 
@@ -66,7 +66,9 @@ namespace Nethermind.Synchronization.ParallelSync
         private bool FastBlocksReceiptsFinished => !FastReceiptsEnabled || _syncProgressResolver.IsFastBlocksReceiptsFinished();
         private bool FastBlockAccessListsFinished => !FastBlockAccessListsEnabled || _syncProgressResolver.IsFastBlockAccessListsFinished();
         private bool NotNeedToWaitForHeaders => !_needToWaitForHeaders || FastBlocksHeadersFinished;
-        private bool NotNeedToWaitForReceipts => !_needToWaitForReceipts || FastBlocksReceiptsFinished;
+        private bool NotNeedToWaitForReceipts => _syncConfig.RequiredHistoryBelowPivot == 0 || FastBlocksReceiptsFinished || RequiredReceiptsDownloaded;
+        private bool RequiredReceiptsDownloaded =>
+            syncPointers?.LowestInsertedReceiptBlockNumber <= ulong.Max(1, _syncProgressResolver.SyncPivot.BlockNumber.SaturatingSub(_syncConfig.RequiredHistoryBelowPivot));
         private ulong TotalSyncLag => _syncConfig.StateMinDistanceFromHead + _syncConfig.HeaderStateDistance;
 
         private CancellationTokenSource? _cancellation = new();

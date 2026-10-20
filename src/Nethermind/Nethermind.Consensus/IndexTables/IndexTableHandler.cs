@@ -336,6 +336,7 @@ public class IndexTableHandler(
         CallOutputTracer statusTracer = new();
         processor.Execute(transaction, tracer is NullTxTracer ? statusTracer : new CompositeTxTracer(tracer, statusTracer));
 
+        // EIP-8304 "Block processing": the call must execute to completion; only a missing contract fails silently.
         if (statusTracer.StatusCode == StatusCode.Failure)
             throw new InvalidBlockException(block, BlockErrorMessages.IndexContractFailed);
     }
