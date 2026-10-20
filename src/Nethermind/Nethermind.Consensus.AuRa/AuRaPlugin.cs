@@ -164,7 +164,8 @@ namespace Nethermind.Consensus.AuRa
                 ctx.Resolve<ITxGossipPolicy>(),
                 [new TxFilterAdapter(blockTree, txPoolFilter, logManager, specProvider)],
                 txPriorityContract is not null || localDataSource is not null,
-                frameTxPrefixSimulator: ctx.ResolveOptional<IFrameTxPrefixSimulator>());
+                frameTxPrefixSimulator: ctx.ResolveOptional<IFrameTxPrefixSimulator>(),
+                stateHeaderProvider: ctx.Resolve<IStateHeaderProvider>());
         }
 
         private static IComparer<Transaction> CreateTxPoolTxComparer(IComponentContext ctx, TxPriorityContract? txPriorityContract, TxPriorityContract.LocalDataSource? localDataSource)

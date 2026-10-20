@@ -824,6 +824,33 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
     }
 
     [Test]
+    public void Test_CallTrace_CallDepthExceeded_ConsumesNoGas()
+    {
+        // Calls itself until the self-call fails at the depth limit, then calls identity with no value and with 1 wei,
+        // and creates: four failed attempts. Before EIP-150 a call forwards what it asks for, so 2M gas gets that deep.
+        byte[] code = Bytes.FromHexString("0x60006000600060006000306102005a03f1603c576000600060006000600060046000f1506000600060006000600160046000f150600060006000f0505b00");
+        ForkActivation homestead = (ForkActivation)MainnetSpecProvider.HomesteadBlockNumber;
+        (Block block, Transaction tx) = PrepareTx(homestead, 2_000_000, code);
+        using NativeCallTracer tracer = new(tx, SpecProvider.GetSpec(homestead), GetGethTraceOptions(null));
+        _processor.CallAndRestore(tx, block.Header, tracer);
+        using GethLikeTxTrace trace = tracer.BuildResult();
+
+        NativeCallTracerCallFrame deepest = (NativeCallTracerCallFrame)trace.CustomTracerResult!.Value!;
+        while (deepest.CallsSpan.Length == 1 && deepest.CallsSpan[0].Error is null)
+        {
+            deepest = deepest.CallsSpan[0];
+        }
+
+        NativeCallTracerCallFrame[] attempts = deepest.CallsSpan.ToArray();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(attempts, Has.Length.EqualTo(4), "attempts");
+            Assert.That(attempts.Select(static frame => frame.Error), Is.All.EqualTo("max call depth exceeded"), "errors");
+            Assert.That(attempts.Select(static frame => frame.GasUsed), Is.All.Zero, "gasUsed");
+        }
+    }
+
+    [Test]
     public void Test_CallTrace_SelfDestruct()
     {
         byte[] code = Prepare.EvmCode

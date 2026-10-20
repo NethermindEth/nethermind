@@ -326,6 +326,36 @@ public partial class EngineModuleTests
     }
 
     [Test]
+    public async Task GetBlobsV2_should_return_blobs_of_a_transaction_included_in_the_head([Values(1, 3)] int numberOfBlobs)
+    {
+        (IEngineRpcModule rpcModule, string? payloadId, Transaction[] txs, MergeTestBlockchain chain) =
+            await BuildAndGetPayloadV3Result(Osaka.Instance, numberOfBlobs, oneBlobPerTx: false);
+        using MergeTestBlockchain disposeChain = chain;
+        Transaction blobTx = txs.Single();
+        byte[][] blobVersionedHashes = blobTx.BlobVersionedHashes!.Select(static h => h!).ToArray();
+        GetPayloadV5Result payload = (await rpcModule.engine_getPayloadV5(Bytes.FromHexString(payloadId!))).Data!;
+        ExecutionPayloadV3 executionPayload = payload.ExecutionPayload;
+
+        ResultWrapper<PayloadStatusV1> newPayloadResult = await rpcModule.engine_newPayloadV4(
+            executionPayload, blobVersionedHashes.Select(static h => new Hash256(h)).ToArray(), executionPayload.ParentBeaconBlockRoot, payload.ExecutionRequests);
+        Assert.That(newPayloadResult.Data.Status, Is.EqualTo(PayloadStatus.Valid));
+        // Not finalized: the blobs of finalized blocks are no longer served.
+        await rpcModule.engine_forkchoiceUpdatedV3(new ForkchoiceStateV1(executionPayload.BlockHash, Keccak.Zero, Keccak.Zero), null);
+
+        Assert.That(() => chain.TxPool.GetPendingBlobTransactionsCount(), Is.Zero.After(5000, 10), "precondition: the transaction left the blob pool");
+        ResultWrapper<IReadOnlyList<BlobAndProofV2?>?> result = await rpcModule.engine_getBlobsV2(blobVersionedHashes);
+
+        ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)blobTx.NetworkWrapper!;
+        Assert.That(result.Data, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chain.BlockTree.Head!.Hash, Is.EqualTo(executionPayload.BlockHash));
+            Assert.That(result.Data!.Select(static b => b!.Blob), Is.EqualTo(wrapper.Blobs));
+            Assert.That(result.Data!.Select(static b => b!.Proofs), Is.EqualTo(wrapper.Proofs.Chunk(Ckzg.CellsPerExtBlob)));
+        }
+    }
+
+    [Test]
     public async Task GetBlobsV2_should_return_empty_array_when_blobs_not_found([Values(1, 2, 3, 4, 5, 6)] int numberOfRequestedBlobs)
     {
         using MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Osaka.Instance);
