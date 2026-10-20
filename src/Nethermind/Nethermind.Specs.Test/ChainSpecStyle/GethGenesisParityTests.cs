@@ -85,7 +85,6 @@ public class GethGenesisParityTests
     /// <summary>Geth config fields that are not fork labels and have no same-named Parity <c>params</c> field, with the reason.</summary>
     private static readonly Dictionary<string, string> GethOnlyConfigFields = new()
     {
-        [nameof(GethGenesisConfigJson.DaoForkSupport)] = "Parity expresses an opted-out DAO fork by omitting daoHardforkTransition",
         [nameof(GethGenesisConfigJson.TerminalTotalDifficultyPassed)] = "informational in geth; Nethermind reads terminalTotalDifficulty only",
         [nameof(GethGenesisConfigJson.Eip150Block)] = "Parity's eip150Transition",
         [nameof(GethGenesisConfigJson.Eip155Block)] = "Parity's eip155Transition",
