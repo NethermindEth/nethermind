@@ -6,6 +6,10 @@
     <RootNamespace>Nethermind.Tools.LeanBench</RootNamespace>
   </PropertyGroup>
   <ItemGroup>
+    <!-- lean/1 chunk transport, its protocol handler and gossip scheduling were replaced by EIP-8437 eth/73 (#14508). -->
+    <Compile Remove="MixedTrafficBench.cs;MixedTrafficTransport.cs;ProtocolReceiver.cs;SchedulingChecks.cs;TransportChecks.cs" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="../../src/Nethermind/Nethermind.Crypto/Nethermind.Crypto.csproj" />
     <ProjectReference Include="../../src/Nethermind/Nethermind.Consensus/Nethermind.Consensus.csproj" />
     <ProjectReference Include="../../src/Nethermind/Nethermind.Network/Nethermind.Network.csproj" />
