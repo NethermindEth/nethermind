@@ -9,6 +9,12 @@ on:
   schedule:
     - cron: '17 * * * *'
   workflow_dispatch:
+    inputs:
+      seed:
+        description: Branch of this repository whose journal.jsonl.gz starts an empty state, so the first model
+          does not wait for the hourly backfill
+        required: false
+        default: ''
 
 permissions:
   # actions: write deletes the superseded state and model artifacts.
@@ -42,6 +48,8 @@ jobs:
           python-version: '3.12'
 
       - name: Restore the state
+        env:
+          SEED: ${{ inputs.seed }}
         run: |
           mkdir -p "$STATE"
           # A fork can name its branch master, but only the base repository can start scheduled or dispatched runs.
@@ -50,6 +58,11 @@ jobs:
             -q '[.[] | select(.event == "schedule" or .event == "workflow_dispatch")][0].databaseId // empty')
           if [ -n "$previous" ]; then
             gh run download "$previous" -R "$GITHUB_REPOSITORY" -n test-selection-state -D "$STATE" || true
+          fi
+          if [ -n "$SEED" ] && [ ! -f "$STATE/journal.jsonl.gz" ]; then
+            [[ "$SEED" =~ ^[A-Za-z0-9._/-]+$ ]] || { echo "::error::invalid seed branch"; exit 1; }
+            git fetch --no-tags --depth=1 origin "refs/heads/$SEED"
+            git show FETCH_HEAD:journal.jsonl.gz > "$STATE/journal.jsonl.gz"
           fi
           if [ "$(cat "$STATE/inventory-date" 2>/dev/null)" != "$(date -u +%F)" ]; then
             echo "DAILY=true" >> "$GITHUB_ENV"
