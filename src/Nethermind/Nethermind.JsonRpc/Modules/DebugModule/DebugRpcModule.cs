@@ -256,8 +256,6 @@ public class DebugRpcModule(
     /// </remarks>
     private ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> StreamBlockTrace(BlockHeader header, GethTraceOptions? options)
     {
-        if (CheckTraceBaseState<IReadOnlyCollection<GethLikeTxTrace>>(header) is { } baseStateError) return baseStateError;
-
         if (blockFinder.FindBlock(header.Hash!, header.Number) is null)
         {
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail($"Block body not found for {header.Hash}", ErrorCodes.ResourceNotFound);
@@ -436,8 +434,6 @@ public class DebugRpcModule(
 
         if (CanStreamBlockTrace(options))
         {
-            if (CheckTraceBaseState<IReadOnlyCollection<GethLikeTxTrace>>(block!.Header) is { } baseStateError) return baseStateError;
-
             GethTraceOptions effective = options ?? GethTraceOptions.Default;
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Success(BuildStreamingBlockResult(
                 (writer, pipeWriter, token) =>
