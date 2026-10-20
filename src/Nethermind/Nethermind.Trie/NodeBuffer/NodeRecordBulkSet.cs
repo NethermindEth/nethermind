@@ -237,7 +237,7 @@ internal static class NodeRecordBulkSet
             int remainderNibble = -1;
             Source remainder = default;
             // A branch record's children are copied out only once one changes.
-            int childrenStart = node.Kind == SourceKind.None ? _workingState.AddChildren()
+            int childrenStart = node.Kind == SourceKind.None ? _workingState.ReserveChildSpace()
                 : isNew ? MakeFakeBranch(node, out remainderNibble, out remainder)
                 : -1;
 
@@ -399,7 +399,7 @@ internal static class NodeRecordBulkSet
         /// <returns>The index of the branch's children.</returns>
         private int MakeFakeBranch(in Source source, out int remainderNibble, out Source remainder)
         {
-            int childrenStart = _workingState.AddChildren();
+            int childrenStart = _workingState.ReserveChildSpace();
             Span<byte> key = stackalloc byte[MaxKeyNibbles];
             int keyLength = source.CopyKey(key);
             if (source.NodeKind == NodeRecordKind.Extension && keyLength == 1)
@@ -424,13 +424,13 @@ internal static class NodeRecordBulkSet
             int keyLength = source.CopyKey(key);
             return source.NodeKind == NodeRecordKind.Extension
                 ? _workingState.AddExtension(key[..keyLength], source.Record.View.Child(0))
-                : _workingState.AddLeaf(key[..keyLength], source.LeafValue());
+                : _workingState.AddPendingLeaf(key[..keyLength], source.LeafValue());
         }
 
         /// <returns>The index of a copy of the branch's sixteen children.</returns>
         private int CopyChildren(NodeRecord branch)
         {
-            int childrenStart = _workingState.AddChildren();
+            int childrenStart = _workingState.ReserveChildSpace();
             NodeRecordRef view = branch.View;
             for (int i = 0; i < BranchChildCount; i++)
             {
@@ -482,7 +482,7 @@ internal static class NodeRecordBulkSet
                 int depth = path.Length;
                 if (current.Kind == SourceKind.None)
                 {
-                    result = isDelete ? Updated.Unchanged(current) : Updated.To(_workingState.AddLeaf(entryKey[depth..], value!));
+                    result = isDelete ? Updated.Unchanged(current) : Updated.To(_workingState.AddPendingLeaf(entryKey[depth..], value!));
                     break;
                 }
 
@@ -555,12 +555,12 @@ internal static class NodeRecordBulkSet
 
                 return leaf.LeafValue().Span.SequenceEqual(value)
                     ? Updated.Unchanged(leaf)
-                    : Updated.To(_workingState.AddLeaf(key[..keyLength], value!));
+                    : Updated.To(_workingState.AddPendingLeaf(key[..keyLength], value!));
             }
 
             if (isDelete) return Updated.Unchanged(leaf);
 
-            ChildRef existing = ChildRef.ForPending(_workingState.AddLeaf(key[(matched + 1)..keyLength], leaf.LeafValue()));
+            ChildRef existing = ChildRef.ForPending(_workingState.AddPendingLeaf(key[(matched + 1)..keyLength], leaf.LeafValue()));
             return Updated.To(DivergingBranch(entryKey, depth, matched, key[matched], existing, value!));
         }
 
@@ -577,8 +577,8 @@ internal static class NodeRecordBulkSet
         private int DivergingBranch(ReadOnlySpan<byte> entryKey, int depth, int matched, int existingNibble, ChildRef existing, byte[] value)
         {
             int branchDepth = depth + matched;
-            int leaf = _workingState.AddLeaf(entryKey[(branchDepth + 1)..], value);
-            int childrenStart = _workingState.AddChildren();
+            int leaf = _workingState.AddPendingLeaf(entryKey[(branchDepth + 1)..], value);
+            int childrenStart = _workingState.ReserveChildSpace();
             _workingState.Children[childrenStart + existingNibble] = existing;
             _workingState.Children[childrenStart + entryKey[branchDepth]] = ChildRef.ForPending(leaf);
             int branch = _workingState.AddBranch(childrenStart);

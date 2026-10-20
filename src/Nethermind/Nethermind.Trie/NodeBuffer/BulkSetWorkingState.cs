@@ -103,7 +103,7 @@ internal sealed class BulkSetWorkingState
     }
 
     /// <returns>The index of sixteen empty children.</returns>
-    public int AddChildren()
+    public int ReserveChildSpace()
     {
         if (ChildCount + BranchChildCount > Children.Length) Array.Resize(ref Children, Children.Length * 2);
 
@@ -113,7 +113,7 @@ internal sealed class BulkSetWorkingState
         return start;
     }
 
-    public int AddLeaf(ReadOnlySpan<byte> key, ReadOnlyMemory<byte> value)
+    public int AddPendingLeaf(ReadOnlySpan<byte> key, ReadOnlyMemory<byte> value)
     {
         int index = Add(PendingKind.Leaf, key);
         Nodes[index].Value = value;
