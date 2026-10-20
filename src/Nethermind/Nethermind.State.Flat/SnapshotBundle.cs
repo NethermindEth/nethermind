@@ -83,7 +83,7 @@ public sealed class SnapshotBundle : IDisposable
 
     /// <summary>The buffer the trie nodes written through this bundle are recorded in, also resolving the nodes warmed for the current block; <c>null</c> for a trie-less bundle.</summary>
     /// <remarks>Replaced when <see cref="CollectAndApplySnapshot"/> retires the block's transient resource, so read it for each operation.</remarks>
-    internal INodeRecordBuffer? CacheableNodeRecordBuffer => _cacheableNodeRecordBuffer;
+    internal INodeRecordBuffer? NodeRecordBuffer => _cacheableNodeRecordBuffer;
 
     private WarmedNodeRecordBuffer? CreateCacheableNodeRecordBuffer(TransientResource transientResource) =>
         _nodeRecordBuffer is null ? null : new WarmedNodeRecordBuffer(_nodeRecordBuffer, transientResource.WarmedNodeLog);
@@ -328,7 +328,7 @@ public sealed class SnapshotBundle : IDisposable
     /// <remarks>
     /// Tries the nodes warmed for this block by position, then persistence, whose node is trusted to be the one of
     /// <paramref name="hash"/> and appended to the warmed nodes. The nodes of this bundle's changes and of every in-memory snapshot
-    /// are in the buffer, which their pins keep readable, and <see cref="CacheableNodeRecordBuffer"/> resolves warmed nodes by pointer,
+    /// are in the buffer, which their pins keep readable, and <see cref="NodeRecordBuffer"/> resolves warmed nodes by pointer,
     /// so this source only fetches nodes the buffers reach by no pointer.
     /// </remarks>
     /// <param name="address">The storage trie's address hash, or null for the state trie.</param>
