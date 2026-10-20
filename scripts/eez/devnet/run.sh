@@ -78,7 +78,7 @@ export KURTOSIS_ARGS_FILE="$EEZ_CI_RESULT_DIR/ci-args-template.yaml"
     git -C "$EEZ_UPSTREAM" rev-parse HEAD
     git -C "$EEZ_UPSTREAM/eez-core-protocol" rev-parse HEAD
 } > "$EEZ_CI_RESULT_DIR/tools.txt"
-timeout 12m bash "$EEZ_UPSTREAM/testing/kurtosis/run-ci.sh"
+timeout --kill-after=5s 13m bash "$EEZ_UPSTREAM/testing/kurtosis/run-ci.sh"
 if [[ "$EEZ_SUITE" == recovery ]]; then
     test -s "$EEZ_CI_RESULT_DIR/fresh-follower.json"
     test -s "$EEZ_CI_RESULT_DIR/after-restart.json"

@@ -20,6 +20,19 @@ pub struct Candidate {
 }
 
 impl Candidate {
+    pub async fn start_cross_chain(
+        case: &str,
+        world: &eez_testkit::CrossChainWorld,
+    ) -> Result<Self> {
+        let mut env = world.follower_env();
+        let (_, deploy_block) = env
+            .iter_mut()
+            .find(|(key, _)| *key == "EEZ_REGISTRY_DEPLOY_BLOCK")
+            .context("missing registry deployment block")?;
+        *deploy_block = world.dep.deploy_block.to_string();
+        Self::start(case, &world.cfg.l2_genesis.0, &env).await
+    }
+
     pub async fn start(case: &str, genesis: &Path, env: &[(&str, String)]) -> Result<Self> {
         let required = |name| {
             env.iter()

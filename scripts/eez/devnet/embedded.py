@@ -72,10 +72,10 @@ def adapt(suite, source):
     module_marker = "use serde_json::{Value, json};" if suite == "native_system" else "use std::time::Duration;"
     after(module_marker, '\n\n#[path = "nethermind/mod.rs"]\nmod nethermind;')
     if suite == "native_system":
-        after("    let withdrawal_before = l2_balance(&l1_rpc, world.withdrawal_recipient).await?;", '\n    let candidate = nethermind::Candidate::start("native-system", &world.cfg.l2_genesis.0, &world.follower_env()).await?;\n    let mut native_expected = json!({\n        "system_balance": "0x0", "system_nonce": "0x1",\n        "recipient": world.recipient, "recipient_balance": format!("{:#x}", recipient_before + deposit),\n    });')
+        after("    let withdrawal_before = l2_balance(&l1_rpc, world.withdrawal_recipient).await?;", '\n    let candidate = nethermind::Candidate::start_cross_chain("native-system", &world).await?;\n    let mut native_expected = json!({\n        "system_balance": "0x0", "system_nonce": "0x1",\n        "recipient": world.recipient, "recipient_balance": format!("{:#x}", recipient_before + deposit),\n    });')
         after("    // Drain any already accepted Composer 1 bundle before switching producers.",
               '\n    candidate.verify_native(&primary_rpc, 1, "after-deposit", &native_expected).await?;')
-        after("    world.node.assert_no_divergence_failure_logs();", '\n    native_expected["system_balance"] = json!(format!("{withdrawal:#x}"));\n    native_expected["system_nonce"] = json!("0x2");\n    candidate.verify_native(&primary_rpc, final_height, "after-outbound", &native_expected).await?;\n    drop(candidate);\n    let fresh = nethermind::Candidate::start("native-system", &world.cfg.l2_genesis.0, &world.follower_env()).await?;\n    fresh.verify_native(&primary_rpc, final_height, "fresh-follower", &native_expected).await?;')
+        after("    world.node.assert_no_divergence_failure_logs();", '\n    native_expected["system_balance"] = json!(format!("{withdrawal:#x}"));\n    native_expected["system_nonce"] = json!("0x2");\n    candidate.verify_native(&primary_rpc, final_height, "after-outbound", &native_expected).await?;\n    drop(candidate);\n    let fresh = nethermind::Candidate::start_cross_chain("native-system", &world).await?;\n    fresh.verify_native(&primary_rpc, final_height, "fresh-follower", &native_expected).await?;')
     elif suite == "durability":
         after("    let states_before = chain.executed_states().await.unwrap();", "\n    let mut candidate = nethermind::Candidate::start(\"durability\", harness.l2_genesis_path(), &harness.follower_env(None).await.unwrap()).await.unwrap();")
         after('        .expect("composer did not retain its newly settled safe block");', '\n        candidate.verify(&node.l2_rpc_url(), settled_before_restart.0, "before-restart").await.unwrap();\n        candidate.restart().await.unwrap();')
@@ -91,7 +91,7 @@ def adapt(suite, source):
         additions.append(addition)
         after("    node.assert_no_process_death();", '\n    candidate.verify(&node.l2_rpc_url(), 1, "after-resumption").await.unwrap();')
     elif suite == "resumption_append":
-        after("    let w = setup_cross_chain().await.unwrap();", '\n    let candidate = nethermind::Candidate::start("resumption-append", &w.cfg.l2_genesis.0, &w.follower_env()).await.unwrap();')
+        after("    let w = setup_cross_chain().await.unwrap();", '\n    let candidate = nethermind::Candidate::start_cross_chain("resumption-append", &w).await.unwrap();')
         after("    let eez = w.cfg.eez_address;", '\n    candidate.verify(&l2, 1, "before-resumption").await.unwrap();')
         marker = '    .expect(\n        "no batch settled after the resumed append: the L1 commitment never \\\n         caught up to a new L2 safe block",\n    );'
         after(marker, '\n    candidate.verify(&l2, 1, "after-resumption").await.unwrap();')

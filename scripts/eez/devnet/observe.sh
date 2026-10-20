@@ -57,7 +57,7 @@ elif [[ "$phase" == recovery ]]; then
     height="$(jq -r '.height' "$EEZ_CI_RESULT_DIR/before-restart.json")"
     kurtosis service stop "$KURTOSIS_ENCLAVE" nethermind-l2
     kurtosis service start "$KURTOSIS_ENCLAVE" nethermind-l2
-    verify nethermind-l2 after-restart 1 "$((height + 1))"
+    verify nethermind-l2 after-restart 1 "$height"
     height="$(jq -r '.height' "$EEZ_CI_RESULT_DIR/after-restart.json")"
     python3 "$HERE/prepare.py" late --output "$EEZ_CI_RESULT_DIR/late-package" \
         --connection "$connection" --follower-image "$EEZ_NETHERMIND_IMAGE"

@@ -154,11 +154,13 @@ class ProverDeploymentSeamTests(unittest.TestCase):
         with (self.package / "ci-args.yaml").open("a") as target:
             target.write("  prover_backend: stateless\n")
         capture = '    timeout 30s kurtosis service logs "$KURTOSIS_ENCLAVE" "$service" '
-        (self.package / "run-ci.sh").write_text(capture + "\n" + self.driver)
+        readiness = 'timeout 10s kurtosis service logs "$KURTOSIS_ENCLAVE" eez-node'
+        (self.package / "run-ci.sh").write_text(readiness + "\n" + capture + "\n" + self.driver)
         self.prepare()
         commands = (self.package / "run-ci.sh").read_text()
         self.assertIn('[[ ! -s "$RESULT_DIR/$service.log" ]] || return 0', commands)
         self.assertIn('kurtosis service logs --all "$KURTOSIS_ENCLAVE" "$service"', commands)
+        self.assertIn('kurtosis service logs --all "$KURTOSIS_ENCLAVE" eez-node', commands)
         self.assertIn('test "$signed_window_count" -gt 0', commands)
 
     def test_missing_skip_switch_rejects_an_otherwise_valid_deployment(self):

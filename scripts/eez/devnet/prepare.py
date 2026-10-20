@@ -96,6 +96,10 @@ def prepare(args):
         raise ValueError("upstream diagnostic boundary changed")
     commands = commands.replace(log_loop, 'for service in nethermind-l2 nethermind-l2-late eez-node eez-proof-signer ')
     if "streaming" in manifest:
+        readiness = 'timeout 10s kurtosis service logs "$KURTOSIS_ENCLAVE" eez-node'
+        if commands.count(readiness) != 1:
+            raise ValueError("upstream streaming readiness log boundary changed")
+        commands = commands.replace(readiness, 'timeout 10s kurtosis service logs --all "$KURTOSIS_ENCLAVE" eez-node')
         capture = '    timeout 30s kurtosis service logs "$KURTOSIS_ENCLAVE" "$service" '
         if commands.count(capture) != 1:
             raise ValueError("upstream log capture boundary changed")
