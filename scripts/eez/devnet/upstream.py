@@ -195,9 +195,12 @@ def native_runtime(args, manifest):
         attempt = int(run["run_attempt"])
         if attempt <= 0 or not isinstance(run["id"], int) or run["id"] <= 0:
             raise ValueError("invalid upstream runtime run identity")
-        tag = image_repository + ":sha-" + revision + "-" + str(run["id"]) + "-" + str(attempt)
-        pull = subprocess.run(["docker", "pull", "--platform", "linux/amd64", tag], capture_output=True, text=True, timeout=600, check=False)
-        if pull.returncode:
+        for attempt in range(attempt, 0, -1):
+            tag = image_repository + ":sha-" + revision + "-" + str(run["id"]) + "-" + str(attempt)
+            pull = subprocess.run(["docker", "pull", "--platform", "linux/amd64", tag], capture_output=True, text=True, timeout=600, check=False)
+            if pull.returncode == 0:
+                break
+        else:
             print("Upstream runtime payload unavailable; build the selected source")
             continue
         digests = json.loads(subprocess.check_output(["docker", "image", "inspect", "--format", "{{json .RepoDigests}}", tag], text=True, timeout=30))
@@ -225,7 +228,7 @@ def native_runtime(args, manifest):
                 shutil.copy2(binaries.parent / name, args.output / name)
             record_build(args)
             recorded = json.loads(args.manifest.read_text())
-            recorded["runtime"].update(source="upstream-payload", run_id=run["id"], reference=reference)
+            recorded["runtime"].update(source="upstream-payload", run_id=run["id"], run_attempt=attempt, reference=reference)
             args.manifest.write_text(json.dumps(recorded, indent=2) + "\n")
         return True
     return False

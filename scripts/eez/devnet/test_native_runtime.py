@@ -12,7 +12,7 @@ import upstream
 
 class NativeRuntimeTests(unittest.TestCase):
     def test_only_matching_published_runtime_is_imported_and_validation_failures_are_fatal(self):
-        failures = (None, "unavailable", "source", "repository", "event", "branch", "conclusion", "workflow", "digest", "ambiguous", "payload",
+        failures = (None, "prior-attempt", "unavailable", "source", "repository", "event", "branch", "conclusion", "workflow", "digest", "ambiguous", "payload",
                     "manifest", "paths", "binary", "checkout", "core", "tool-version")
         for failure in failures:
             with self.subTest(failure=failure), tempfile.TemporaryDirectory() as directory:
@@ -32,14 +32,18 @@ class NativeRuntimeTests(unittest.TestCase):
                 if failure == "workflow": run["path"] = ".github/workflows/other.yml"
                 image = "ghcr.io/eez-association/eez-rollupx-ci-runtime"
                 reference = image + "@sha256:" + "d" * 64
+                pulls = []
                 helpers = []
                 exports = []
 
                 def execute(command, **options):
                     if command[0] == "docker":
+                        attempt = 2 - len(pulls)
+                        pulls.append(attempt)
                         self.assertEqual(command, ["docker", "pull", "--platform", "linux/amd64",
-                                                  image + ":sha-" + manifest["revision"] + "-7-2"])
-                        return subprocess.CompletedProcess(command, 1 if failure == "unavailable" else 0)
+                                                  image + ":sha-" + manifest["revision"] + "-7-" + str(attempt)])
+                        unavailable = failure == "unavailable" or failure == "prior-attempt" and attempt == 2
+                        return subprocess.CompletedProcess(command, 1 if unavailable else 0)
                     self.assertIs(options["check"], True)
                     environment = options["env"]
                     self.assertEqual(environment["GITHUB_SHA"], manifest["revision"])
@@ -69,6 +73,8 @@ class NativeRuntimeTests(unittest.TestCase):
 
                 def output(command, **options):
                     if command[0] == "docker":
+                        self.assertEqual(command, ["docker", "image", "inspect", "--format", "{{json .RepoDigests}}",
+                                                  image + ":sha-" + manifest["revision"] + "-7-" + str(pulls[-1])])
                         references = [] if failure == "digest" else [reference]
                         if failure == "ambiguous": references.append(image + "@sha256:" + "e" * 64)
                         return json.dumps(references)
@@ -79,7 +85,7 @@ class NativeRuntimeTests(unittest.TestCase):
                 with patch.object(upstream, "api", return_value={"workflow_runs": [run]}) as api, \
                      patch.object(upstream.subprocess, "run", side_effect=execute), \
                      patch.object(upstream.subprocess, "check_output", side_effect=output):
-                    if failure not in (None, "unavailable", "workflow"):
+                    if failure not in (None, "prior-attempt", "unavailable", "workflow"):
                         with self.assertRaises((ValueError, FileNotFoundError, subprocess.CalledProcessError)):
                             upstream.runtime(args)
                         self.assertNotIn("runtime", json.loads(args.manifest.read_text()))
@@ -92,6 +98,8 @@ class NativeRuntimeTests(unittest.TestCase):
                             self.assertEqual(helpers, [])
                         else:
                             self.assertEqual(result["source"], "upstream-payload")
+                            self.assertEqual(result["run_attempt"], 1 if failure == "prior-attempt" else 2)
+                            self.assertEqual(pulls, [2, 1] if failure == "prior-attempt" else [2])
                             self.assertEqual((result["run_id"], result["reference"]), (7, reference))
                             self.assertEqual(len(result["binaries"]), 7)
                             self.assertEqual(helpers, ["ci-payload.sh", "prepare-runtime-artifacts.sh"])
