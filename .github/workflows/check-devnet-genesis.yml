@@ -77,7 +77,7 @@ jobs:
         run: |
           title="Devnet genesis check failing"
           issue=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "in:title \"$title\"" --json number --jq '.[0].number // empty')
-          body="A devnet genesis file no longer loads as its forks require: $RUN_URL"
+          body="Devnet genesis check failed: $RUN_URL"
           if [[ -n "$issue" ]]; then
             gh issue comment "$issue" --repo "$GITHUB_REPOSITORY" --body "$body"
           else
