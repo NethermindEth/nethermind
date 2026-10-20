@@ -1149,7 +1149,7 @@ public partial class EthRpcModule(
 
         if (!_blockchainBridge.HasStateForBlock(header!))
         {
-            return _ethSyncingInfo.SyncMode.HaveNotSyncedStateYet()
+            return _ethSyncingInfo.SyncMode.HaveNotSyncedStateYet() || !WasStatePruned(header)
                 ? GetStateFailureResult<AccountProof>(header)
                 : ResultWrapper<AccountProof>.Fail(ErrorMessages.PrunedHistoryUnavailable, ErrorCodes.PrunedHistoryUnavailable);
         }
@@ -1317,6 +1317,12 @@ public partial class EthRpcModule(
 
     protected static ResultWrapper<TResult> GetFailureResult<TResult, TSearch>(SearchResult<TSearch> searchResult, bool isTemporary) where TSearch : class =>
         ResultWrapper<TResult>.Fail(searchResult, isTemporary && searchResult.ErrorCode == ErrorCodes.ResourceNotFound);
+
+    /// <remarks>
+    /// Blocks ahead of the processed head and side-chain blocks may simply never have been processed.
+    /// </remarks>
+    private bool WasStatePruned(BlockHeader header) =>
+        _blockFinder.Head?.Number >= header.Number && _blockFinder.IsMainChain(header);
 
     private ResultWrapper<TResult> GetStateFailureResult<TResult>(BlockHeader header) =>
         ResultWrapper<TResult>.Fail($"No state available for block {header.ToString(BlockHeader.Format.FullHashAndNumber)}", ErrorCodes.ResourceUnavailable, _ethSyncingInfo.SyncMode.HaveNotSyncedStateYet());

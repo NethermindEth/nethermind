@@ -650,19 +650,21 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
-    public async Task Eth_get_proof_accepts_leading_zero_key()
+    public async Task Eth_get_proof_accepts_leading_zero_key([Values(2, 5)] int keyCount)
     {
         // Both encodings name slot 1: same proof and value, but each entry echoes its own encoding.
+        // 5 keys reach the batched hashing path on AVX2-only hosts too.
         using Context ctx = await Context.Create();
         string padded = "0x0000000000000000000000000000000000000000000000000000000000000001";
-        string serialized = await ctx.Test.TestEthRpc("eth_getProof", TestItem.AddressA.Bytes.ToHexString(true), new[] { "0x1", padded }, "latest");
+        string[] keys = [.. Enumerable.Range(0, keyCount).Select(i => i % 2 == 0 ? "0x1" : padded)];
+        string serialized = await ctx.Test.TestEthRpc("eth_getProof", TestItem.AddressA.Bytes.ToHexString(true), keys, "latest");
 
         JArray storageProof = (JArray)JToken.Parse(serialized)["result"]!["storageProof"]!;
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(storageProof.Select(static p => (string?)p["key"]), Is.EqualTo(new[] { "0x1", padded }));
-            Assert.That(storageProof.Select(static p => (string?)p["value"]), Is.EqualTo(new[] { "0xabcdef", "0xabcdef" }));
-            Assert.That(storageProof[1]["proof"]!.ToString(), Is.EqualTo(storageProof[0]["proof"]!.ToString()));
+            Assert.That(storageProof.Select(static p => (string?)p["key"]), Is.EqualTo(keys));
+            Assert.That(storageProof.Select(static p => (string?)p["value"]), Is.All.EqualTo("0xabcdef"));
+            Assert.That(storageProof.Select(static p => p["proof"]!.ToString()), Is.All.EqualTo(storageProof[0]["proof"]!.ToString()));
         }
     }
 
@@ -725,6 +727,22 @@ public partial class EthRpcModuleTests
 
         string serialized = await chain.TestEthRpc("eth_getProof", TestItem.AddressA.Bytes.ToHexString(true), new[] { "0x1" }, "latest");
         Assert.That(serialized, Does.Contain($"\"code\":{expectedCode}"), serialized);
+    }
+
+    [Test]
+    public async Task Eth_get_proof_unprocessed_block_is_not_reported_as_pruned([Values] bool aheadOfHead)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithSyncMode(SyncMode.Full)
+            .WithConfig(new JsonRpcConfig { Timeout = -1 })
+            .Build();
+        Block head = chain.BlockTree.Head!;
+        Block parent = aheadOfHead ? head : chain.BlockTree.FindBlock(head.ParentHash!)!;
+        Block unprocessed = Build.A.Block.WithParent(parent).WithStateRoot(TestItem.KeccakA).WithExtraData([1]).TestObject;
+        chain.BlockTree.SuggestBlock(unprocessed, BlockTreeSuggestOptions.ForceDontSetAsMain);
+
+        string serialized = await chain.TestEthRpc("eth_getProof", TestItem.AddressA.Bytes.ToHexString(true), new[] { "0x1" }, new BlockParameter(unprocessed.Hash!));
+        Assert.That(serialized, Does.Contain($"\"code\":{ErrorCodes.ResourceUnavailable}"), serialized);
     }
 
     [TestCase("earliest", TestName = "Eth_get_storage_values_WhenEarliestBlock_ReturnsStorageValue")]
