@@ -130,7 +130,7 @@ public class ForkScheduleSpecProviderTests
             yield return new TestCaseData(MainnetSpecProvider.Instance, SealEngineType.Ethash) { TestName = "Mainnet" };
             yield return new TestCaseData(GnosisSpecProvider.Instance, SealEngineType.AuRa) { TestName = "Gnosis" };
             yield return new TestCaseData(ChiadoSpecProvider.Instance, SealEngineType.AuRa) { TestName = "Chiado" };
-            yield return new TestCaseData(SepoliaSpecProvider.Instance, SealEngineType.Clique) { TestName = "Sepolia" };
+            yield return new TestCaseData(SepoliaSpecProvider.Instance, SealEngineType.Ethash) { TestName = "Sepolia" };
             yield return new TestCaseData(HoodiSpecProvider.Instance, SealEngineType.Ethash) { TestName = "Hoodi" };
             yield return new TestCaseData(MordenSpecProvider.Instance, SealEngineType.Ethash) { TestName = "Morden" };
         }
