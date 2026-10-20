@@ -45,6 +45,27 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
             Assert.That(traceAddresses, Is.EqualTo(new[] { "", "0", "0,0", "0,0,0", "0,1", "1", "2", "4" }));
         }
 
+        // A halted frame, a suicide and a reward have no result, and a reward belongs to no transaction.
+        [TestCase("0,1", false)]
+        [TestCase("4", false)]
+        [TestCase("", true)]
+        public void Writes_an_absent_result_or_transaction_as_null(string traceAddress, bool reward)
+        {
+            ParityTxTraceFromStore record = ParityTxTraceFromStore.FromTxTrace(reward ? BuildRewardTrace() : BuildNestedTrace())
+                .Single(t => string.Join(",", t.TraceAddress.AsSpan().ToArray()) == traceAddress);
+
+            using JsonDocument document = JsonDocument.Parse(new EthereumJsonSerializer().Serialize(record));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(Kind("result"), Is.EqualTo(JsonValueKind.Null));
+                Assert.That(Kind("transactionHash"), Is.EqualTo(reward ? JsonValueKind.Null : JsonValueKind.String));
+                Assert.That(Kind("transactionPosition"), Is.EqualTo(reward ? JsonValueKind.Null : JsonValueKind.Number));
+            }
+
+            JsonValueKind Kind(string member) =>
+                document.RootElement.TryGetProperty(member, out JsonElement value) ? value.ValueKind : JsonValueKind.Undefined;
+        }
+
         [TestCaseSource(nameof(WriteCases))]
         public void Write_matches_serialized_items(ParityLikeTxTrace trace, Address[]? toAddresses, ulong after, ulong? count)
         {

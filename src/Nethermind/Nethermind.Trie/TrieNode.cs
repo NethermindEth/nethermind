@@ -555,7 +555,7 @@ namespace Nethermind.Trie
             ICappedArrayPool? bufferPool = null, bool canBeParallel = true)
         {
             bool isRoot = path.Length == 0;
-            CappedArray<byte> rlp = PrepareRlp(tree, ref path, bufferPool, canBeParallel, out PreviousRlp previous);
+            CappedArray<byte> rlp = PrepareRlp(tree, ref path, bufferPool, canBeParallel, hashedAtOnce: true, out PreviousRlp previous);
 
             // Descendant nodes with RLP shorter than a hash are embedded in their parent.
             if (rlp.Length >= 32 || isRoot)
@@ -569,12 +569,13 @@ namespace Nethermind.Trie
 
         internal CappedArray<byte> PrepareRlp(ITrieNodeResolver tree, ref TreePath path,
             ICappedArrayPool? bufferPool, bool canBeParallel) =>
-            PrepareRlp(tree, ref path, bufferPool, canBeParallel, out _);
+            PrepareRlp(tree, ref path, bufferPool, canBeParallel, hashedAtOnce: false, out _);
 
+        /// <param name="hashedAtOnce">Whether the caller hashes the returned RLP before encoding another node, and reads it no later.</param>
         /// <param name="previous">A re-encoded branch's RLP from before the re-encode, which <see cref="ComputeKeccak"/> may resume from.</param>
         [MethodImpl(PrepareRlpInlining)]
         private CappedArray<byte> PrepareRlp(ITrieNodeResolver tree, ref TreePath path,
-            ICappedArrayPool? bufferPool, bool canBeParallel, out PreviousRlp previous)
+            ICappedArrayPool? bufferPool, bool canBeParallel, bool hashedAtOnce, out PreviousRlp previous)
         {
             bool isRoot = path.Length == 0;
             previous = default;
@@ -588,6 +589,11 @@ namespace Nethermind.Trie
                     previous = ReadPreviousRlp();
                     fullRlp = TrieNodeDecoder.RlpEncodeBranch(this, tree, ref path, bufferPool,
                         canBeParallel: isRoot && canBeParallel);
+                    if (KeepsRlpOfHashedBranch)
+                    {
+                        if (hashedAtOnce && (isRoot || fullRlp.Length >= Hash256.Size)) return fullRlp;
+                        fullRlp = StorableBranchRlp(fullRlp, bufferPool);
+                    }
                 }
                 else
                 {

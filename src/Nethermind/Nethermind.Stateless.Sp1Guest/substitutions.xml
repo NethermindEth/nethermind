@@ -30,5 +30,9 @@
     <type fullname="Nethermind.Core.Extensions.StrictAlignmentFlag">
       <method signature="System.Boolean get_IsActive()" body="stub" value="true" />
     </type>
+    <!-- SP1 charges memory by the words a run first touches, so the guest reuses memory it has touched already. -->
+    <type fullname="Nethermind.Core.FirstTouchMemoryFlag">
+      <method signature="System.Boolean get_IsActive()" body="stub" value="true" />
+    </type>
   </assembly>
 </linker>

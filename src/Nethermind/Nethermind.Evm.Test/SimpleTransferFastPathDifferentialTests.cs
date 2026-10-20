@@ -86,7 +86,13 @@ public class SimpleTransferFastPathDifferentialTests
         long[] Refunds,
         string[] TracerEvents,
         string Bal,
-        UInt256? SenderBalanceInBal);
+        UInt256? SenderBalanceInBal,
+        UInt256 CoinbaseBalance,
+        BalEntry? CoinbaseInBal,
+        BalEntry? RecipientInBal);
+
+    /// <param name="Balance">The recorded post-tx balance, null when the balance did not change.</param>
+    private sealed record BalEntry(UInt256? Balance);
 
     private static IEnumerable<TestCaseData> Scenarios() =>
         PragueScenarios().SelectMany(static c => ((bool[])[false, true]).Select(plainState =>
@@ -347,13 +353,19 @@ public class SimpleTransferFastPathDifferentialTests
                 Refunds: recordingTracer?.Refunds.ToArray() ?? [],
                 TracerEvents: recordingTracer?.Events.ToArray() ?? [],
                 Bal: bal is null ? "" : DescribeBal(bal),
-                SenderBalanceInBal: bal?.GetAccountChanges(TestItem.AddressA)?.BalanceChange?.Value);
+                SenderBalanceInBal: bal?.GetAccountChanges(TestItem.AddressA)?.BalanceChange?.Value,
+                CoinbaseBalance: state.GetBalance(block.Header.Beneficiary!),
+                CoinbaseInBal: DescribeEntry(bal, block.Header.Beneficiary!),
+                RecipientInBal: DescribeEntry(bal, recipient));
         }
         finally
         {
             TransactionProcessorBase.ForceSimpleTransferDisabled = forceDisabledBefore;
         }
     }
+
+    private static BalEntry? DescribeEntry(BlockAccessListAtIndex? bal, Address address) =>
+        bal?.GetAccountChanges(address) is { } changes ? new BalEntry(changes.BalanceChange?.Value) : null;
 
     private static string DescribeBal(BlockAccessListAtIndex bal) =>
         string.Join(';', bal.AccountChanges
@@ -410,6 +422,39 @@ public class SimpleTransferFastPathDifferentialTests
             Assert.That(fast.SenderBalanceInBal, Is.EqualTo(fast.SenderBalance == SenderInitialBalance ? (UInt256?)null : fast.SenderBalance), "sender BAL balance change");
             if (senderNetZero)
                 Assert.That(fast.SenderBalance, Is.EqualTo(SenderInitialBalance), "sender coinbase net-zero");
+        }
+
+        AssertCoinbaseAndRecipientInBal(fast, value, recipientKind, coinbase, senderIsCoinbase);
+    }
+
+    // Expected from the sender's debit rather than the other path, so a fee or transfer both paths drop is still caught.
+    private static void AssertCoinbaseAndRecipientInBal(ExecutionCapture capture, ulong value, RecipientKind recipientKind, Coinbase coinbase, bool senderIsCoinbase)
+    {
+        UInt256 recipientBefore = recipientKind switch
+        {
+            RecipientKind.Existing or RecipientKind.Delegated => 1.Ether,
+            RecipientKind.Self => SenderInitialBalance,
+            _ => UInt256.Zero
+        };
+        // The base fee is zero, so the sender's debit is split between the transferred value and the coinbase fee.
+        UInt256 transferred = capture.EvmExceptionType is EvmExceptionType.None && recipientKind is not RecipientKind.Self ? value : UInt256.Zero;
+        UInt256 fee = senderIsCoinbase ? UInt256.Zero : SenderInitialBalance - capture.SenderBalance - transferred;
+        UInt256 recipientAfter = recipientBefore + transferred + (coinbase is Coinbase.Recipient ? fee : UInt256.Zero);
+
+        using (Assert.EnterMultipleScope())
+        {
+            if (recipientKind is not RecipientKind.Self)
+            {
+                Assert.That(capture.RecipientBalance, Is.EqualTo(recipientAfter), "recipient balance");
+                Assert.That(capture.RecipientInBal, Is.EqualTo(new BalEntry(recipientAfter == recipientBefore ? null : recipientAfter)), "recipient BAL entry");
+            }
+
+            if (coinbase is Coinbase.Other)
+            {
+                Assert.That(fee, Is.GreaterThan(UInt256.Zero), "coinbase fee");
+                Assert.That(capture.CoinbaseBalance, Is.EqualTo(fee), "coinbase balance");
+                Assert.That(capture.CoinbaseInBal, Is.EqualTo(new BalEntry(fee)), "coinbase BAL entry");
+            }
         }
     }
 

@@ -102,13 +102,14 @@ public class IpcSocketMessageStreamTests
     }
 
     [Test]
-    public async Task WriteEndOfMessageAsync_writes_a_single_newline()
+    public async Task WriteEndOfMessageAsync_writes_a_single_newline([Values] bool dataWithEnd)
     {
         using SocketPair pair = await SocketPair.CreateAsync();
         await using IpcSocketMessageStream stream = new(pair.Server);
 
-        await stream.WriteAsync("""{"id":1}"""u8.ToArray(), pair.Token);
-        int written = await stream.WriteEndOfMessageAsync();
+        byte[] data = """{"id":1}"""u8.ToArray();
+        if (!dataWithEnd) await stream.WriteAsync(data, pair.Token);
+        int written = await stream.WriteEndOfMessageAsync(dataWithEnd ? data : ReadOnlyMemory<byte>.Empty, pair.Token);
 
         byte[] expected = "{\"id\":1}\n"u8.ToArray();
         byte[] received = new byte[expected.Length];

@@ -165,6 +165,54 @@ namespace Nethermind.JsonRpc.Test.Modules
 
         }
 
+        [Test]
+        public async Task GetFeeHistory_DoesNotLoadTheParentOfTheOldestBlock()
+        {
+            await using IContainer container = new ContainerBuilder()
+                .AddModule(new TestNethermindModule())
+                .AddDecorator<IBlockTree, BodyLoadRecordingBlockTree>()
+                .Build();
+            BodyLoadRecordingBlockTree blockTree = (BodyLoadRecordingBlockTree)container.Resolve<IBlockTree>();
+            Block genesis = Build.A.Block.Genesis.TestObject;
+            Block parent = Build.A.Block.WithParent(genesis).TestObject;
+            Block oldest = Build.A.Block.WithParent(parent).WithGasLimit(100).WithGasUsed(50).TestObject;
+            foreach (Block block in (Block[])[genesis, parent, oldest])
+            {
+                blockTree.SuggestBlock(block);
+                blockTree.TryUpdateMainChain(block.Header, wereProcessed: true, forceUpdateHeadBlock: true, block);
+            }
+
+            IFeeHistoryOracle feeHistoryOracle = container.Resolve<IFeeHistoryOracle>();
+            blockTree.LoadedBodies.Clear();
+
+            using ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(1, new BlockParameter(oldest.Number), []);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(resultWrapper.Data.OldestBlock, Is.EqualTo(oldest.Number));
+                Assert.That(blockTree.LoadedBodies, Does.Contain(oldest.Hash), "the requested block is loaded");
+                Assert.That(blockTree.LoadedBodies, Does.Not.Contain(parent.Hash), "the parent of the oldest block is not loaded");
+            }
+        }
+
+        private sealed class BodyLoadRecordingBlockTree(IBlockTree inner) : BlockTreeTestDouble(inner)
+        {
+            public List<Hash256> LoadedBodies { get; } = [];
+
+            public override Block? FindBlock(Hash256 blockHash, BlockTreeLookupOptions options, ulong? blockNumber = null)
+            {
+                LoadedBodies.Add(blockHash);
+                return base.FindBlock(blockHash, options, blockNumber);
+            }
+
+            public override Block? FindBlock(ulong blockNumber, BlockTreeLookupOptions options)
+            {
+                Block? block = base.FindBlock(blockNumber, options);
+                if (block is not null) LoadedBodies.Add(block.Hash!);
+                return block;
+            }
+        }
+
         [TestCase(3UL, 3UL, 1)]
         [TestCase(100UL, 95UL, 0.95)]
         [TestCase(12UL, 3UL, 0.25)]
@@ -309,6 +357,35 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
 
         [Test]
+        public void GetFeeHistory_IfCachedAncestorBodyGoesMissingBeforeRewards_TruncatesAtOldestAvailableBlock()
+        {
+            IBlockTree blockTree = Substitute.For<IBlockTree>();
+            Block block3 = Build.A.Block.WithNumber(3UL).WithParentHash(TestItem.KeccakH).WithBaseFeePerGas(3).WithTransactions(GetTestTransactions()).TestObject;
+            Block block4 = Build.A.Block.WithParent(block3).WithBaseFeePerGas(4).WithTransactions(GetTestTransactions()).TestObject;
+            Block block5 = Build.A.Block.WithParent(block4).WithBaseFeePerGas(5).WithTransactions(GetTestTransactions()).TestObject;
+            foreach (Block block in (Block[])[block3, block4, block5])
+            {
+                blockTree.FindBlock(block.Hash!, Arg.Any<BlockTreeLookupOptions>(), block.Number).Returns(block);
+            }
+            blockTree.Head.Returns(block5);
+            blockTree.FindBlock(new BlockParameter(5UL)).Returns(block5);
+            FeeHistoryOracle feeHistoryOracle = GetSubstitutedFeeHistoryOracle(blockTree: blockTree);
+
+            feeHistoryOracle.GetFeeHistory(3UL, new BlockParameter(5UL), []).Dispose();
+            blockTree.FindBlock(block3.Hash!, Arg.Any<BlockTreeLookupOptions>(), block3.Number).Returns((Block?)null);
+            using ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(3UL, new BlockParameter(5UL), [50]);
+
+            FeeHistoryResults result = resultWrapper.Data;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result.OldestBlock, Is.EqualTo(4UL));
+                Assert.That(result.GasUsedRatio.Count, Is.EqualTo(2));
+                Assert.That(result.BaseFeePerGas.Take(2), Is.EqualTo((UInt256[])[4, 5]));
+                Assert.That(result.Reward, Has.Count.EqualTo(2).And.None.Null);
+            }
+        }
+
+        [Test]
         public async Task GetFeeHistory_IfNewestBlockIsCached_DoesNotLoadItsBody()
         {
             await using IContainer container = new ContainerBuilder()
@@ -421,6 +498,25 @@ namespace Nethermind.JsonRpc.Test.Modules
             UInt256[] expectedUInt256 = expected.Select(static x => (UInt256)x).ToArray();
             Assert.That(resultWrapper.Data.Reward!.Count, Is.EqualTo(1));
             Assert.That(resultWrapper.Data.Reward![0], Is.EqualTo(expectedUInt256));
+        }
+
+        [Test]
+        public void GetFeeHistory_WithoutRewardPercentiles_DoesNotReadReceipts()
+        {
+            Block headBlock = Build.A.Block.Genesis.WithBaseFeePerGas(3).WithGasUsed(100).WithTransactions(GetTestTransactions()).TestObject;
+            IBlockTree blockTree = Substitute.For<IBlockTree>();
+            BlockParameter newestBlockParameter = new(0UL);
+            blockTree.FindBlock(newestBlockParameter).Returns(headBlock);
+            blockTree.FindBlock(headBlock.Hash!, Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>()).Returns(headBlock);
+            InMemoryReceiptStorage receiptStorage = new();
+            FeeHistoryOracle feeHistoryOracle = GetSubstitutedFeeHistoryOracle(blockTree: blockTree, receiptStorage: receiptStorage);
+
+            feeHistoryOracle.GetFeeHistory(1, newestBlockParameter, []).Dispose();
+            // Rewards built by the call above would have fallen back to the gas limits: 4, 10, 13, 22.
+            receiptStorage.Insert(headBlock, BuildReceiptsWithGasUsed([10, 20, 30, 40], eip8116Receipts: false), ensureCanonical: false);
+            using ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(1, newestBlockParameter, [20, 40, 60, 80.5]);
+
+            Assert.That(resultWrapper.Data.Reward![0], Is.EqualTo((UInt256[])[4, 10, 10, 22]), "the cached block reads its receipts once percentiles are requested");
         }
 
         [Test]

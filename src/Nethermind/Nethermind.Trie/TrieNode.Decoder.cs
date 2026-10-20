@@ -275,7 +275,7 @@ namespace Nethermind.Trie
                 if (previousRlp.Length == FullBranchRlpLength)
                 {
                     const int fullContentLength = valueRlpLength + BranchesCount * Rlp.LengthOfKeccakRlp;
-                    result = pool.SafeRent(FullBranchRlpLength);
+                    result = RentBranchRlp(pool, FullBranchRlpLength, path);
                     resultSpan = result.AsSpan();
                     position = Rlp.StartSequence(resultSpan, 0, fullContentLength);
                     if (TryPatchFullBranch(tree, ref path, item, previousRlp, resultSpan.Slice(position, fullContentLength - valueRlpLength), pool, canBeParallel))
@@ -284,7 +284,7 @@ namespace Nethermind.Trie
                         return result;
                     }
 
-                    pool.SafeReturn(result);
+                    if (!KeepsRlpOfHashedBranch) pool.SafeReturn(result);
                 }
 
                 if (!previousRlp.IsEmpty)
@@ -297,7 +297,7 @@ namespace Nethermind.Trie
                 int childrenLength = WriteChildrenRlpBranch(tree, ref path, item, children, pool, canBeParallel);
                 contentLength = valueRlpLength + childrenLength;
                 sequenceLength = Rlp.LengthOfSequence(contentLength);
-                result = pool.SafeRent(sequenceLength);
+                result = RentBranchRlp(pool, sequenceLength, path);
                 resultSpan = result.AsSpan();
                 position = Rlp.StartSequence(resultSpan, 0, contentLength);
                 Bytes.Copy(children[..childrenLength], resultSpan[position..]);
@@ -1169,7 +1169,7 @@ namespace Nethermind.Trie
 
                 const int valueRlpLength = 1;
                 int contentLength = tailEnd - contentStart + lengthChange + (CopiesBranchValue ? 0 : valueRlpLength);
-                CappedArray<byte> result = pool.SafeRent(Rlp.LengthOfSequence(contentLength));
+                CappedArray<byte> result = RentBranchRlp(pool, Rlp.LengthOfSequence(contentLength), path);
                 Span<byte> destination = result.AsSpan();
                 int position = Rlp.StartSequence(destination, 0, contentLength);
                 int runStart = contentStart;

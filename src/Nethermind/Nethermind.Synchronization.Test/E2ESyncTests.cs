@@ -54,6 +54,7 @@ using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
+using Nethermind.State.Flat.History;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.TxPool;
@@ -95,6 +96,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
     private static readonly TimeSpan SetupTimeout = TimeSpan.FromSeconds(60);
     private static readonly TimeSpan TestTimeout = TimeSpan.FromSeconds(60);
     private static readonly TimeSpan SnapSyncTestTimeout = TimeSpan.FromMinutes(2);
+    private static readonly TimeSpan PivotHistoryTestTimeout = TimeSpan.FromMinutes(4);
 
     /// <summary>Runs a test body under a timeout.</summary>
     /// <remarks>NUnit re-runs assertion failures but not errors, so the timeout has to fail rather than
@@ -651,6 +653,68 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
         await RunWithTimeout(SnapSyncTestTimeout, RunSnapSyncOnce);
     }
 
+    // Unwindowed history after a snap sync has no fallback to the live state, so the pivot's whole state is written as
+    // rows in the background. The every-block walk then rebuilds the state root of every block from those rows and
+    // compares it with the header, which only passes when the image holds exactly the pivot's state.
+    [Test]
+    [Category("Flaky"), Retry(2)]
+    public async Task SnapSync_with_unwindowed_history_writes_the_pivot_state_as_rows_that_rebuild_the_headers()
+    {
+        if (!isPostMerge || dbMode != DbMode.Flat) Assert.Ignore("Unwindowed history at a snap pivot is a flat post-merge feature.");
+
+        await RunWithTimeout(PivotHistoryTestTimeout, async cancellationToken =>
+        {
+            await using IContainer client = await CreateNode(TestItem.PrivateKeyD, async (cfg, spec) =>
+            {
+                SyncConfig syncConfig = (SyncConfig)cfg.GetConfig<ISyncConfig>();
+                syncConfig.FastSync = true;
+                syncConfig.SnapSync = true;
+                await SetPivot(syncConfig, cancellationToken);
+
+                IFlatDbConfig flatDbConfig = cfg.GetConfig<IFlatDbConfig>();
+                flatDbConfig.HistoryEnabled = true;
+                flatDbConfig.HistoryVerifyEveryBlock = true;
+                flatDbConfig.ArchiveProofBuildEnabled = true;
+
+                ConfigureLocalNetwork(cfg, AllocatePort());
+            });
+
+            // What the startup steps do; this harness runs none.
+            PivotHistoryImageWriter image = client.Resolve<PivotHistoryImageWriter>();
+            image.Start();
+
+            await client.Resolve<SyncTestContext>().SyncFromServer(_server, cancellationToken);
+            await image.Released.WaitAsync(cancellationToken);
+
+            // The sync moves its pivot up from the configured one to a recent block, and history starts there.
+            HistoryAvailability availability = client.Resolve<HistoryAvailability>();
+            ulong configuredPivot = client.Resolve<ISyncConfig>().PivotNumber;
+            bool hasFloor = availability.TryGetGlobalFloor(out ulong floor);
+            bool hasWatermark = availability.TryGetWatermark(out ulong watermark);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(hasFloor, Is.True, "history starts at the pivot");
+                Assert.That(floor, Is.GreaterThanOrEqualTo(configuredPivot));
+                Assert.That(hasWatermark, Is.True);
+                Assert.That(watermark, Is.GreaterThanOrEqualTo(floor));
+                Assert.That(availability.TryGetPivotImageBlock(out ulong imageBlock) && imageBlock <= floor, Is.True);
+                Assert.That(availability.TryGetPendingPivotImage(out _), Is.False, "a complete image leaves no pending record");
+            }
+
+            HistoryWalkVerificationCoordinator walk = client.Resolve<HistoryWalkVerificationCoordinator>();
+            walk.Start();
+            while (walk.LastVerdict is null) await Task.Delay(100, cancellationToken);
+
+            HistoryWalkVerdict verdict = walk.LastVerdict;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(verdict.Mismatches, Is.Empty);
+                Assert.That(verdict.Verified, Is.True);
+                Assert.That(verdict.BlocksCompared, Is.GreaterThan(0UL));
+            }
+        });
+    }
+
     // Stress reproducer for SnapSync Windows flake — run manually; see PR #11443 for context.
     [Test, Explicit("Stress reproducer for SnapSync Windows flake — run manually")]
     [TestCaseSource(nameof(StressIterations))]
@@ -809,6 +873,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             await using IContainer client = await CreateNode(TestItem.PrivateKeyF, (cfg, spec) =>
             {
                 EnableBlockAccessListsFromGenesis(spec);
+                cfg.GetConfig<ISyncConfig>().ReconstructFinalizedStateFromBlockAccessLists = true;
                 ConfigureLocalNetwork(cfg, AllocatePort());
                 return Task.CompletedTask;
             }, serverKey);

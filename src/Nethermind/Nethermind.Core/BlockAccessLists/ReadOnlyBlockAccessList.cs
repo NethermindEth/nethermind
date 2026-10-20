@@ -111,7 +111,7 @@ public sealed class ReadOnlyBlockAccessList : IEquatable<ReadOnlyBlockAccessList
     }
 
     /// <summary>Returns the shared code index for this BAL, built once and frozen.</summary>
-    public FrozenDictionary<ValueHash256, (uint Index, byte[] Code)>? GetCodeChangesByHash()
+    internal FrozenDictionary<ValueHash256, (uint Index, byte[] Code)>? GetCodeChangesByHash()
         => _orderedAccounts.Length == 0 ? null
             : Volatile.Read(ref _codeChangesInitialized) ? _codeChangesByHash : InitializeCodeChangesByHash();
 

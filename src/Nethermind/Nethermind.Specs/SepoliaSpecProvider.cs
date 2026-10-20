@@ -49,7 +49,6 @@ public class SepoliaSpecProvider : ForkScheduleSpecProvider
     public override ulong TimestampFork => ISpecProvider.TimestampForkNever;
     public override ulong NetworkId => BlockchainIds.Sepolia;
     public override ulong? BeaconChainGenesisTimestamp => BeaconChainGenesisTimestampConst;
-    public string SealEngine => SealEngineType.Clique;
 
     public static SepoliaSpecProvider Instance => field ??= new();
 }

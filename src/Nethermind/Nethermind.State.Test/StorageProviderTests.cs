@@ -6,6 +6,7 @@ using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Reflection;
+using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Core;
@@ -420,7 +421,7 @@ public partial class StorageProviderTests(bool useFlat)
                 provider.GetOriginal(in probe, out UInt256 original);
                 Assert.That(original, Is.EqualTo((UInt256)7));
 
-                provider.Commit(Frontier.Instance);
+                provider.Commit(Frontier.Instance, new ReadCollectingStorageTracer());
                 capacities[round] = GetCollectionCapacity(GetPrivateField(provider._persistentStorageProvider, "_originalValues"));
             }
 
@@ -2586,6 +2587,64 @@ public partial class StorageProviderTests(bool useFlat)
         }
     }
 
+    [Test]
+    public void Commit_WhenEmptyStorageSlotIsWrittenBackToItsOriginal_LeavesTheStorageRootAlone()
+    {
+        using Context ctx = new(useFlat, setInitialState: false);
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell cell = new(ctx.Address1, 1);
+
+        BlockHeader baseBlock;
+        using (provider.BeginScope(IWorldState.PreGenesis))
+        {
+            provider.CreateAccount(ctx.Address1, 1);
+            provider.Commit(Frontier.Instance);
+            provider.CommitTree(0);
+            baseBlock = Build.A.BlockHeader.WithStateRoot(provider.StateRoot).TestObject;
+        }
+
+        using (provider.BeginScope(baseBlock))
+        {
+            provider.Get(cell, out UInt256 original);
+            provider.Set(cell, (UInt256)1);
+            provider.Set(cell, UInt256.Zero);
+            provider.Commit(Frontier.Instance, NullStateTracer.Instance, commitRoots: false);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(original, Is.EqualTo(UInt256.Zero), "precondition: the contract's storage starts empty");
+                Assert.That(((ICollection)GetPrivateField(provider._persistentStorageProvider, "_toUpdateRoots")).Count, Is.Zero,
+                    "the first read of an empty-storage contract keeps its round stamp, so a slot written back to its original is not saved");
+            }
+        }
+    }
+
+    [TestCase(false, TestName = "Clear")]
+    [TestCase(true, TestName = "Destroy")]
+    public void GetOriginal_RereadUnderClearAfterMemoMoved_ReturnsPreClearValue(bool destroy)
+    {
+        using Context ctx = new(useFlat, preBlockCaches: null);
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell first = new(ctx.Address1, 1);
+        StorageCell other = new(ctx.Address1, 2);
+        provider.Set(first, (UInt256)17);
+        provider.Commit(Frontier.Instance);
+
+        provider.Get(first, out _);
+        if (destroy) provider.MarkStorageDestroyed(ctx.Address1);
+        else provider.ClearStorage(ctx.Address1);
+
+        provider.Get(first, out UInt256 cleared);
+        provider.Get(other, out _);
+        provider.GetOriginal(first, out UInt256 original);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cleared, Is.EqualTo(UInt256.Zero), "the clear zeroes the slot for the rest of the round");
+            Assert.That(original, Is.EqualTo((UInt256)17), "the original is the value before the clear, even after another read moved the memo");
+        }
+    }
+
     [TestCase(RoundBoundary.None)]
     [TestCase(RoundBoundary.ResetKeepingBlockChanges)]
     [TestCase(RoundBoundary.ReadOnlyCommit)]
@@ -2939,8 +2998,8 @@ public partial class StorageProviderTests(bool useFlat)
             public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink sink = null)
                 => baseScope.HintBal(bal, sink);
 
-            public void ApplyBal(ReadOnlyBlockAccessList bal)
-                => baseScope.ApplyBal(bal);
+            public void ApplyBal(ReadOnlyBlockAccessList bal, CancellationToken cancellationToken)
+                => baseScope.ApplyBal(bal, cancellationToken);
 
             public IWorldStateScopeProvider.ICodeDb CodeDb => baseScope.CodeDb;
 

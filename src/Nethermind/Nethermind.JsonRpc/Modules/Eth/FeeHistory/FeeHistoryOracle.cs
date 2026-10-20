@@ -52,7 +52,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
 
             if (ShouldCache(e.Block))
             {
-                SaveHistorySearchInfo(e.Block);
+                SaveHistorySearchInfo(e.Block, withRewards: false);
                 TryRunCleanup();
             }
         });
@@ -74,13 +74,22 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
             double GasUsedRatio,
             double BlobGasUsedRatio,
             Hash256? ParentHash,
-            // Total of the per-tx reward weights. Not the header GasUsed: that is pre-refund under
-            // EIP-7778, and it never matched the GasLimit weights used when receipts are unavailable.
-            ulong RewardsGasUsedTotal,
+            Hash256 BlockHash,
             int BlockTransactionsLength,
-            List<RewardInfo> RewardsInBlocks);
+            // Filled by the first request for reward percentiles: loading receipts is wasted on head
+            // processing and on requests without percentiles.
+            StrongBox<BlockRewards?> Rewards);
 
-        private BlockFeeHistorySearchInfo? GetHistorySearchInfo(BlockParameter blockParameter)
+        /// <param name="GasUsedTotal">Total of the per-tx reward weights. Not the header GasUsed: that is pre-refund under
+        /// EIP-7778, and it never matched the GasLimit weights used when receipts are unavailable.</param>
+        /// <param name="SortedByPremium">The per-tx reward weights, ascending by premium.</param>
+        private sealed record BlockRewards(ulong GasUsedTotal, List<RewardInfo> SortedByPremium);
+
+        private const BlockTreeLookupOptions AncestorLookupOptions = BlockTreeLookupOptions.ExcludeTxHashes |
+                                                                     BlockTreeLookupOptions.TotalDifficultyNotNeeded |
+                                                                     BlockTreeLookupOptions.DoNotCreateLevelIfMissing;
+
+        private BlockFeeHistorySearchInfo? GetHistorySearchInfo(BlockParameter blockParameter, bool withRewards)
         {
             Hash256? hash = blockParameter.Type == BlockParameterType.BlockHash
                 ? blockParameter.BlockHash
@@ -95,19 +104,15 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
                 ? null
                 : _feeHistoryCache.TryGetValue(block.Hash!, out BlockFeeHistorySearchInfo info)
                     ? info
-                    : SaveHistorySearchInfo(block);
+                    : SaveHistorySearchInfo(block, withRewards);
         }
 
-        private BlockFeeHistorySearchInfo? GetHistorySearchInfo(Hash256 blockHash, ulong blockNumber)
+        private BlockFeeHistorySearchInfo? GetHistorySearchInfo(Hash256 blockHash, ulong blockNumber, bool withRewards)
         {
             if (!_feeHistoryCache.TryGetValue(blockHash, out BlockFeeHistorySearchInfo info))
             {
-                const BlockTreeLookupOptions options = BlockTreeLookupOptions.ExcludeTxHashes |
-                                                       BlockTreeLookupOptions.TotalDifficultyNotNeeded |
-                                                       BlockTreeLookupOptions.DoNotCreateLevelIfMissing;
-
-                Block? block = _blockTree.FindBlock(blockHash, options, blockNumber);
-                return block is null ? null : SaveHistorySearchInfo(block);
+                Block? block = _blockTree.FindBlock(blockHash, AncestorLookupOptions, blockNumber);
+                return block is null ? null : SaveHistorySearchInfo(block, withRewards);
             }
 
             return info;
@@ -115,7 +120,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
 
         // only saves block younger than the Oldest Block From the Head Allowed In Cache.
         // As time passes and the head progresses only older least used blocks are auto removed from the cache
-        private BlockFeeHistorySearchInfo? SaveHistorySearchInfo(Block block)
+        private BlockFeeHistorySearchInfo? SaveHistorySearchInfo(Block block, bool withRewards)
         {
             BlockFeeHistorySearchInfo BlockFeeHistorySearchInfoFromBlock(Block b)
             {
@@ -132,8 +137,6 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
                     ? fee
                     : UInt256.Zero;
 
-                List<RewardInfo> rewardsInBlock = GetRewardsInBlock(b, spec, out ulong rewardsGasUsedTotal);
-
                 return new(
                     b.Number,
                     b.BaseFeePerGas,
@@ -143,19 +146,15 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
                     b.GasUsed / (double)b.GasLimit,
                     blobGasUsedRatio,
                     b.ParentHash,
-                    rewardsGasUsedTotal,
+                    b.Hash!,
                     b.Transactions.Length,
-                    rewardsInBlock);
+                    new StrongBox<BlockRewards?>(withRewards ? GetRewardsInBlock(b, spec) : null));
             }
 
             BlockFeeHistorySearchInfo historyInfo = BlockFeeHistorySearchInfoFromBlock(block);
 
-            if (ShouldCache(block))
-            {
-                _feeHistoryCache[block.Hash!] = historyInfo;
-            }
-
-            return historyInfo;
+            // Keeps an entry already cached for the hash, so its filled rewards are not dropped.
+            return ShouldCache(block) ? _feeHistoryCache.GetOrAdd(block.Hash!, historyInfo) : historyInfo;
         }
 
         private bool ShouldCache(Block block) =>
@@ -176,7 +175,8 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
                 return initialCheckResult;
             }
 
-            BlockFeeHistorySearchInfo? historyInfo = GetHistorySearchInfo(newestBlock);
+            bool withRewards = rewardPercentiles.Length > 0;
+            BlockFeeHistorySearchInfo? historyInfo = GetHistorySearchInfo(newestBlock, withRewards);
 
             if (historyInfo is null)
             {
@@ -195,7 +195,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
             ArrayPoolList<UInt256> baseFeePerBlobGas = new(tempBlockCount, tempBlockCount);
             ArrayPoolList<double> gasUsedRatio = new(effectiveBlockCount, effectiveBlockCount);
             ArrayPoolList<double> blobGasUsedRatio = new(effectiveBlockCount, effectiveBlockCount);
-            ArrayPoolList<ArrayPoolList<UInt256>>? rewards = rewardPercentiles.Length > 0
+            ArrayPoolList<ArrayPoolList<UInt256>>? rewards = withRewards
                 ? new ArrayPoolList<ArrayPoolList<UInt256>>(effectiveBlockCount, effectiveBlockCount)
                 : null;
 
@@ -206,20 +206,25 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
             while (historyInfo is not null && effectiveBlockCount-- > 0)
             {
                 info = historyInfo.Value;
+                if (rewards is not null)
+                {
+                    // A cached block whose body is gone by the time its rewards are needed ends the walk like an unavailable ancestor.
+                    if (CalculateRewardsPercentiles(info, rewardPercentiles) is not { } rewardsInBlock)
+                    {
+                        effectiveBlockCount++;
+                        historyInfo = null;
+                        break;
+                    }
+
+                    rewards[effectiveBlockCount] = rewardsInBlock;
+                }
                 oldestBlockNumber = info.BlockNumber;
                 baseFeePerGas[effectiveBlockCount] = info.BlockBaseFeePerGas;
                 baseFeePerBlobGas[effectiveBlockCount] = info.BaseFeePerBlobGas;
                 gasUsedRatio[effectiveBlockCount] = info.GasUsedRatio;
                 blobGasUsedRatio[effectiveBlockCount] = info.BlobGasUsedRatio;
-                if (rewards is not null)
-                {
-                    ArrayPoolList<UInt256>? rewardsInBlock = CalculateRewardsPercentiles(info, rewardPercentiles);
-                    if (rewardsInBlock is not null)
-                    {
-                        rewards[effectiveBlockCount] = rewardsInBlock;
-                    }
-                }
-                historyInfo = info.ParentHash is null ? null : GetHistorySearchInfo(info.ParentHash, info.BlockNumber - 1);
+                // The oldest requested block needs no parent.
+                historyInfo = effectiveBlockCount == 0 || info.ParentHash is null ? null : GetHistorySearchInfo(info.ParentHash, info.BlockNumber - 1, withRewards);
             }
 
             // An unavailable ancestor ends the walk early; the leading slots were never filled,
@@ -271,13 +276,26 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
             _cleanupTask = null;
         }
 
-        private static ArrayPoolList<UInt256>? CalculateRewardsPercentiles(
+        private ArrayPoolList<UInt256>? CalculateRewardsPercentiles(
             BlockFeeHistorySearchInfo blockInfo,
             double[] rewardPercentiles) => blockInfo.BlockTransactionsLength == 0
                 ? new ArrayPoolList<UInt256>(rewardPercentiles.Length, rewardPercentiles.Length)
-                : CalculatePercentileValues(blockInfo, rewardPercentiles, blockInfo.RewardsInBlocks);
+                : GetRewards(blockInfo) is { } rewards
+                    ? CalculatePercentileValues(rewardPercentiles, rewards)
+                    : null;
 
-        private List<RewardInfo> GetRewardsInBlock(Block block, IReleaseSpec spec, out ulong gasUsedTotal)
+        private BlockRewards? GetRewards(BlockFeeHistorySearchInfo blockInfo)
+        {
+            StrongBox<BlockRewards?> rewards = blockInfo.Rewards;
+            if (rewards.Value is null && _blockTree.FindBlock(blockInfo.BlockHash, AncestorLookupOptions, blockInfo.BlockNumber) is { } block)
+            {
+                rewards.Value = GetRewardsInBlock(block, _specProvider.GetSpec(block.Header));
+            }
+
+            return rewards.Value;
+        }
+
+        private BlockRewards GetRewardsInBlock(Block block, IReleaseSpec spec)
         {
             Transaction[] txs = block.Transactions;
             using ArrayPoolListRef<ulong> gasUsed = new(txs.Length, txs.Length);
@@ -293,7 +311,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
             }
 
             List<RewardInfo> rewardInfos = new(txs.Length);
-            gasUsedTotal = 0;
+            ulong gasUsedTotal = 0;
             for (int i = 0; i < txs.Length; i++)
             {
                 txs[i].TryCalculatePremiumPerGas(block.BaseFeePerGas, out UInt256 premiumPerGas);
@@ -303,7 +321,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
 
             CollectionsMarshal.AsSpan(rewardInfos).Sort(default(RewardInfoByPremiumAscendingComparer));
 
-            return rewardInfos;
+            return new BlockRewards(gasUsedTotal, rewardInfos);
         }
 
         /// <summary>Reads each receipt's gas used, through the receipts iterator when the storage offers one, so its logs and bloom are not decoded.</summary>
@@ -345,17 +363,17 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
         }
 
         private static ArrayPoolList<UInt256> CalculatePercentileValues(
-            BlockFeeHistorySearchInfo blockInfo,
             double[] rewardPercentiles,
-            List<RewardInfo> rewardsInBlock)
+            BlockRewards blockRewards)
         {
+            List<RewardInfo> rewardsInBlock = blockRewards.SortedByPremium;
             ulong sumGasUsed = rewardsInBlock[0].GasUsed;
             int txIndex = 0;
             ArrayPoolList<UInt256> percentileValues = new(rewardPercentiles.Length);
 
             foreach (double percentile in rewardPercentiles)
             {
-                ulong thresholdGasUsed = (ulong)(blockInfo.RewardsGasUsedTotal * percentile / 100);
+                ulong thresholdGasUsed = (ulong)(blockRewards.GasUsedTotal * percentile / 100);
                 while (txIndex + 1 < rewardsInBlock.Count && sumGasUsed < thresholdGasUsed)
                 {
                     txIndex++;

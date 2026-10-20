@@ -103,7 +103,6 @@ public class GethLikeTxMemoryTracerTests : GethLikeTracerTestsBase
     }
 
     [Test]
-    [Todo("Verify the exact error string in Geth")]
     public void Can_trace_stack_underflow_failure()
     {
         byte[] code = Prepare.EvmCode
@@ -114,7 +113,7 @@ public class GethLikeTxMemoryTracerTests : GethLikeTracerTestsBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(trace.Failed, Is.EqualTo(true));
-            Assert.That(trace.Entries[0].Error, Is.EqualTo("StackUnderflow"));
+            Assert.That(trace.Entries[0].Error, Is.EqualTo("stack underflow (0 <=> 2)"));
         }
     }
 
@@ -138,7 +137,6 @@ public class GethLikeTxMemoryTracerTests : GethLikeTracerTestsBase
     }
 
     [Test]
-    [Todo("Verify the exact error string in Geth")]
     public void Can_trace_invalid_jump_failure()
     {
         byte[] code = Prepare.EvmCode
@@ -150,12 +148,11 @@ public class GethLikeTxMemoryTracerTests : GethLikeTracerTestsBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(trace.Failed, Is.EqualTo(true));
-            Assert.That(trace.Entries.Last().Error, Is.EqualTo("BadJumpDestination"));
+            Assert.That(trace.Entries.Last().Error, Is.Null);
         }
     }
 
     [Test]
-    [Todo("Verify the exact error string in Geth")]
     public void Can_trace_invalid_opcode_failure()
     {
         byte[] code = Prepare.EvmCode
@@ -166,7 +163,7 @@ public class GethLikeTxMemoryTracerTests : GethLikeTracerTestsBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(trace.Failed, Is.EqualTo(true));
-            Assert.That(trace.Entries.Last().Error, Is.EqualTo("BadInstruction"));
+            Assert.That(trace.Entries.Last().Error, Is.Null);
         }
     }
 
@@ -705,6 +702,28 @@ public class GethLikeTxMemoryTracerTests : GethLikeTracerTestsBase
 
         Assert.That(trace.Entries.Any(e => e.Opcode == "SLOAD"), Is.True, "expected an SLOAD entry");
 
+        AssertStreamingMatchesInMemory(code);
+    }
+
+    [Test]
+    public void Streamed_deep_stack_of_mixed_width_words_matches_in_memory()
+    {
+        const int depth = 300;
+        Prepare prepare = Prepare.EvmCode;
+        for (int i = 0; i < depth; i++)
+        {
+            prepare.PushData((i % 4) switch
+            {
+                0 => UInt256.Zero,
+                1 => (UInt256)i,
+                2 => (UInt256.One << 159) + (UInt256)i,
+                _ => UInt256.MaxValue >> (i % 8),
+            });
+        }
+        byte[] code = prepare.Op(Instruction.STOP).Done;
+
+        Assert.That(ExecuteStreamingTracerEntries(code)[^1].GetProperty("stack").GetArrayLength(), Is.EqualTo(depth),
+            "precondition: the last entry carries the whole stack");
         AssertStreamingMatchesInMemory(code);
     }
 

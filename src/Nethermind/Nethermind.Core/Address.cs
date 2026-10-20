@@ -338,6 +338,16 @@ namespace Nethermind.Core
         }
     }
 
+    /// <summary>Orders addresses by their bytes, as <see cref="Address.CompareTo"/> does.</summary>
+    /// <remarks>
+    /// A struct comparer lets generic sorts specialize and inline the comparison, which the shared code behind
+    /// <see cref="Comparer{T}.Default"/> for a reference type cannot.
+    /// </remarks>
+    public readonly struct AddressComparer : IComparer<Address>
+    {
+        public int Compare(Address? x, Address? y) => x is null ? (y is null ? 0 : -1) : x.CompareTo(y);
+    }
+
     public readonly struct AddressByEip55ChecksumOrdinalComparer : IComparer<Address>
     {
         [SkipLocalsInit]

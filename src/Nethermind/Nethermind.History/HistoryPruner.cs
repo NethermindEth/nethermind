@@ -164,7 +164,8 @@ public class HistoryPruner : IHistoryPruner
             }
             Metrics.PruningCutoffBlocknumber = CutoffBlockNumber;
             Metrics.BlockAccessListPruningCutoffBlocknumber = BalCutoffBlockNumber;
-            WarnIfDefaultRetentionPrunesBacklog(persistedPointer);
+            // With no pointer yet (pruning just enabled) the first pass starts from the oldest stored block.
+            WarnIfDefaultRetentionPrunesBacklog(persistedPointer ?? ulong.Max(barrierFloor, _minDeletableBlockNumber));
 
             blockProcessingQueue.ProcessingQueueEmpty += OnBlockProcessorQueueEmpty;
         }
@@ -176,10 +177,10 @@ public class HistoryPruner : IHistoryPruner
     }
 
     // A node upgraded from the old 82125-epoch default deletes more than a whole window on its first pass.
-    private void WarnIfDefaultRetentionPrunesBacklog(ulong? persistedPointer)
+    private void WarnIfDefaultRetentionPrunesBacklog(ulong oldest)
     {
         if (_historyConfig.Pruning != PruningModes.Rolling || _historyConfig.RetentionEpochs is not null || !_logger.IsWarn
-            || persistedPointer is not { } oldest || CutoffBlockNumber is not { } cutoff)
+            || CutoffBlockNumber is not { } cutoff)
         {
             return;
         }

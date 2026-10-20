@@ -232,6 +232,50 @@ namespace Nethermind.Trie
         /// and copying it spares the walk over the slots past a branch's last changed child.</remarks>
         private static bool CopiesBranchValue => true;
 
+        /// <summary>Whether a branch hashed as soon as it is encoded keeps the RLP it had rather than its new one.</summary>
+        /// <remarks>
+        /// The guest never commits a trie, so a new branch RLP has no reader once hashed: a parent takes the hash, and a
+        /// write that reaches the branch again unseals it and re-encodes it from its slots. The RLP kept, from the witness
+        /// or none for a branch built in this block, still encodes every null slot, as a slot is only ever filled. So the
+        /// new RLP is written to scratch from <see cref="RentBranchRlp"/> and dropped, which spares the memory a stored copy
+        /// per encoded branch would first-touch. A branch short enough to be embedded is kept as before: its parent copies it.
+        /// Only where <see cref="FirstTouchMemoryFlag"/> is on: the other guests pay more for the scratch bookkeeping than they save.
+        /// </remarks>
+        private static bool KeepsRlpOfHashedBranch => FirstTouchMemoryFlag.IsActive;
+
+        /// <summary>The scratch branches are encoded into; see <see cref="KeepsRlpOfHashedBranch"/>.</summary>
+        /// <remarks>A class of its own, with no initializer, so each access is a plain load rather than a class-initialization check.</remarks>
+        private static class BranchRlpScratch
+        {
+            /// <summary>Per depth, the scratch a branch at that depth is encoded into.</summary>
+            /// <remarks>A branch's children are all deeper, so one is hashed before any other branch at its depth is encoded.
+            /// Sixty-four depths: a branch has a child one nibble deeper, and a path is at most sixty-four nibbles.</remarks>
+            public static byte[]?[]? ByDepth;
+        }
+
+        /// <summary>Rents the buffer the encoding of the branch at <paramref name="path"/> is written into: where
+        /// <see cref="KeepsRlpOfHashedBranch"/>, the scratch for its depth, else from <paramref name="pool"/>.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static CappedArray<byte> RentBranchRlp(ICappedArrayPool? pool, int length, in TreePath path) =>
+            KeepsRlpOfHashedBranch ? RentBranchRlpScratch(length, path) : pool.SafeRent(length);
+
+        /// <summary>Rents the scratch for the depth of <paramref name="path"/>, holding at least <paramref name="length"/> bytes.</summary>
+        /// <remarks>Valid until the next branch at that depth is encoded; <see cref="StorableBranchRlp"/> copies out what a node keeps.</remarks>
+        private static CappedArray<byte> RentBranchRlpScratch(int length, in TreePath path)
+        {
+            ref byte[]? scratch = ref (BranchRlpScratch.ByDepth ??= new byte[2 * Hash256.Size][])[path.Length];
+            if (scratch is null || scratch.Length < length) scratch = new byte[Math.Max(length, FullBranchRlpLength)];
+            return new CappedArray<byte>(scratch, length);
+        }
+
+        /// <summary>Returns <paramref name="rlp"/>, a branch encoding, in a buffer the node can keep: a copy out of the scratch.</summary>
+        private static CappedArray<byte> StorableBranchRlp(CappedArray<byte> rlp, ICappedArrayPool? pool)
+        {
+            CappedArray<byte> copy = pool.SafeRent(rlp.Length);
+            rlp.AsSpan().CopyTo(copy.AsSpan());
+            return copy;
+        }
+
         /// <summary>How <see cref="GetChildWithChildPath"/> is inlined: always.</summary>
         /// <remarks><see cref="PatriciaTree"/>'s set walk outgrows the inliner's budget and
         /// would otherwise call it out of line per level, a frame and five saved registers for a slot load and a type test.</remarks>

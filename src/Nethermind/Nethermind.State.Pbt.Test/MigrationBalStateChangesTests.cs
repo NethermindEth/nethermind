@@ -78,6 +78,9 @@ public class MigrationBalStateChangesTests
             worldState.CreateAccount(TestItem.AddressB, 30, 1);
             worldState.InsertCode(TestItem.AddressB, code, Amsterdam.Instance);
             worldState.Set(new StorageCell(TestItem.AddressB, 2), 0xab);
+            worldState.CreateAccount(TestItem.AddressD, 20, 1);
+            worldState.Set(new StorageCell(TestItem.AddressD, 1), 0xff);
+            worldState.Set(new StorageCell(TestItem.AddressD, 3), 0x11);
             worldState.Commit(Amsterdam.Instance, isGenesis: true);
             worldState.CommitTree(0);
             parentRoot = worldState.StateRoot;
@@ -94,6 +97,12 @@ public class MigrationBalStateChangesTests
                 .WithStorageChanges(1, new StorageChange(1, 255u), new StorageChange(2, 42u)).TestObject)
             .WithAccountChanges(Build.An.AccountChanges.WithAddress(TestItem.AddressC)
                 .WithBalanceChanges(new BalanceChange(1, 25)).TestObject)
+            // Emptied at index 1 and revived at index 2: only the slot written after the removal survives.
+            .WithAccountChanges(Build.An.AccountChanges.WithAddress(TestItem.AddressD)
+                .WithBalanceChanges(new BalanceChange(1, 0), new BalanceChange(2, 5))
+                .WithNonceChanges(new NonceChange(1, 0))
+                .WithStorageChanges(1, new StorageChange(1, 0x22u))
+                .WithStorageChanges(2, new StorageChange(2, 7u)).TestObject)
             .TestObject;
         using (worldState.BeginScope(Build.A.BlockHeader.WithNumber(0).WithStateRoot(parentRoot).TestObject))
         {
@@ -109,6 +118,11 @@ public class MigrationBalStateChangesTests
                 Assert.That(worldState.Get(new StorageCell(TestItem.AddressB, 2)), Is.EqualTo((UInt256)0xab));
                 Assert.That(worldState.GetBalance(TestItem.AddressC), Is.EqualTo((UInt256)25));
                 Assert.That(worldState.GetCodeHash(TestItem.AddressC), Is.EqualTo(ValueKeccak.OfAnEmptyString));
+                Assert.That(worldState.GetBalance(TestItem.AddressD), Is.EqualTo((UInt256)5));
+                Assert.That(worldState.GetNonce(TestItem.AddressD), Is.Zero);
+                Assert.That(worldState.Get(new StorageCell(TestItem.AddressD, 1)), Is.EqualTo(UInt256.Zero), "written before the removal");
+                Assert.That(worldState.Get(new StorageCell(TestItem.AddressD, 2)), Is.EqualTo((UInt256)7), "written after the removal");
+                Assert.That(worldState.Get(new StorageCell(TestItem.AddressD, 3)), Is.EqualTo(UInt256.Zero), "held before the removal");
             }
         }
     }

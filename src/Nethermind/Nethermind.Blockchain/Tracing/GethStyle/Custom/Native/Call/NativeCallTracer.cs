@@ -36,8 +36,6 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
     /// <summary>Error reported for a frame an unrolled atomic batch or a failed assertion never ran.</summary>
     private const string SkippedFrameError = "frame skipped";
 
-    private static readonly NativeCallTracerConfig DefaultConfig = new();
-
     private readonly ulong _gasLimit;
     private readonly Hash256? _txHash;
     private readonly bool _isEip8037Enabled;
@@ -48,11 +46,10 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
     private readonly IReleaseSpec? _frameTxSpec;
     private readonly NativeCallTracerConfig _config;
     private readonly BlockLogIndex? _blockLogIndex;
-    private readonly ArrayPoolList<NativeCallTracerCallFrame> _callStack = new(1024);
+    private readonly ArrayPoolList<NativeCallTracerCallFrame> _callStack;
     private readonly ArrayPoolList<ulong>? _logIndexAtEntry;
 
     private EvmExceptionType? _error;
-    private ulong _remainingGas;
     private ulong _logIndexStart;
     private ulong _logIndex;
     private bool _framesCollapsed = false;
@@ -80,7 +77,8 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
         _frameTx = _isFrameTx ? tx : null;
         _frameTxSpec = _isFrameTx ? spec : null;
 
-        _config = TypeInfoJsonSerializer.Deserialize<NativeCallTracerConfig>(options.TracerConfig, EthereumJsonSerializer.JsonOptions) ?? DefaultConfig;
+        _config = NativeCallTracerConfig.FromJson(options.TracerConfig, EthereumJsonSerializer.JsonOptions);
+        _callStack = new(1024);
 
         if (_config.WithLog)
         {
@@ -179,8 +177,6 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
         callFrame.Logs.Add(callLog);
     }
 
-    public override void ReportActionRemainingGas(ulong gas) => _remainingGas = gas;
-
     public override void ReportActionEnd(ulong gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
     {
         OnExit(gas, deployedCode);
@@ -193,12 +189,16 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
         base.ReportActionEnd(gas, output);
     }
 
-    public override void ReportActionError(EvmExceptionType evmExceptionType)
+    /// <inheritdoc/>
+    public override void ReportActionErrorDetails(string error)
     {
-        _error = evmExceptionType;
-        OnExit(_remainingGas, null, _error);
-        base.ReportActionError(evmExceptionType);
+        if (_callStack.Count != 0 && (!_config.OnlyTopCall || Depth == 0))
+            _callStack[^1].Error = error;
     }
+
+    /// <inheritdoc/>
+    /// <remarks>An exceptional halt consumes all of the frame's gas, so its <c>gasUsed</c> equals its <c>gas</c>.</remarks>
+    public override void ReportActionError(EvmExceptionType evmExceptionType) => OnError(0, evmExceptionType);
 
     /// <summary>
     /// Like Geth, records a call or creation that failed its precheck or collided as a frame that failed with that
@@ -208,8 +208,14 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
         ReadOnlyMemory<byte> input, ExecutionType callType, EvmExceptionType error, bool isPrecompileCall = false)
     {
         ReportAction(gas, value, from, to!, input, callType, isPrecompileCall);
-        ReportActionRemainingGas(gasLeft);
-        ReportActionError(error);
+        OnError(gasLeft, error);
+    }
+
+    private void OnError(ulong gasLeft, EvmExceptionType error)
+    {
+        _error = error;
+        OnExit(gasLeft, null, _error);
+        base.ReportActionError(error);
     }
 
     public override void ReportActionRevert(ulong gas, ReadOnlyMemory<byte> output)
@@ -513,7 +519,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
     /// </remarks>
     private static void MarkFrameFailed(NativeCallTracerCallFrame callFrame, EvmExceptionType error)
     {
-        callFrame.Error = error.GetEvmExceptionDescription();
+        callFrame.Error ??= error.GetEvmExceptionDescription();
         if (callFrame.Type is Instruction.CREATE or Instruction.CREATE2 or Instruction.TCREATE)
         {
             callFrame.To = null;

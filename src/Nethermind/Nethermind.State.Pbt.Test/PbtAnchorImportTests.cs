@@ -674,7 +674,7 @@ public class PbtAnchorImportTests
 
         public OfflineFixture(string name, BlockHeader anchorHeader)
         {
-            PreimageRocksdbPersistence source = new(_sourceDatabase, LimboLogs.Instance, FlatLayout.PreimageFlat);
+            PreimageRocksdbPersistence source = new(_sourceDatabase, LimboLogs.Instance, FlatLayout.PreimageFlat, Flat.Persistence.TrieNodeLog.NullTrieNodeLog.Instance);
             using FileStream snapshot = OpenArtifact(name, "snapshot.pbt");
             using FileStream preimages = OpenArtifact(name, "preimages.bin");
             Eip8347FixtureState.ReplayInto(source, _code, anchorHeader, snapshot, preimages);

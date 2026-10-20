@@ -17,13 +17,14 @@ public sealed partial class CodeInfo
     private ReadOnlyMemory<byte> _code;
 
     /// <remarks>
-    /// Copies unless the code is an <see cref="ExecutableCodeMemory"/> buffer, as any other buffer promises nothing
-    /// about the bytes after the code. Padding here rather than on first execution keeps <see cref="Code"/> a plain
-    /// field read, which the guest pays for on every code access.
+    /// Copies unless the code is an <see cref="ExecutableCodeMemory"/> buffer, or code it placed in the input a guest
+    /// reuses, as any other buffer promises nothing about the bytes after the code. Padding here rather than on first
+    /// execution keeps <see cref="Code"/> a plain field read, which the guest pays for on every code access.
     /// </remarks>
     partial void InitializeCode(ReadOnlyMemory<byte> code) =>
         _code = code.IsEmpty ? code
             : ExecutableCodeMemory.TryGetExecutionBuffer(code, out byte[]? buffer) ? buffer.AsMemory(0, code.Length)
+            : FirstTouchMemoryFlag.IsActive && ExecutableCodeMemory.IsPlaced(code) ? code
             : CreatePaddedCode(code.Span).AsMemory(0, code.Length);
 
     public partial ReadOnlyMemory<byte> Code => _code;
