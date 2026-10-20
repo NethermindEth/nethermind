@@ -471,19 +471,18 @@ public sealed partial class KeccakHash
         Unsafe.SkipInit(out KeccakState stateBuffer);
         ref ulong lane = ref Unsafe.As<KeccakState, ulong>(ref stateBuffer);
         ref ulong first = ref StrictAlignmentFlag.IsActive ? ref *AlignedDown((ulong*)Unsafe.AsPointer(ref retained)) : ref retained;
-        ref ulong second = ref Unsafe.Add(ref first, STATE_LANES);
-        ref ulong third = ref Unsafe.Add(ref first, 2 * STATE_LANES);
 
         fixed (byte* data = node)
         {
+            // The later states are addressed off the first rather than held: the keying loop has no registers to keep them in.
             ZeroCapacity(ref first);
             AbsorbBlock(ref first, data, intoZeroState: true);
             Accelerators.KeccakF(ref first);
-            AbsorbBlockFrom(ref second, ref first, data + HASH_DATA_AREA);
-            Accelerators.KeccakF(ref second);
-            AbsorbBlockFrom(ref third, ref second, data + 2 * HASH_DATA_AREA);
-            Accelerators.KeccakF(ref third);
-            AbsorbFullBranchTailFrom(ref lane, ref third, data + RetainedBlocks * HASH_DATA_AREA);
+            AbsorbBlockFrom(ref Unsafe.Add(ref first, STATE_LANES), ref first, data + HASH_DATA_AREA);
+            Accelerators.KeccakF(ref Unsafe.Add(ref first, STATE_LANES));
+            AbsorbBlockFrom(ref Unsafe.Add(ref first, 2 * STATE_LANES), ref Unsafe.Add(ref first, STATE_LANES), data + 2 * HASH_DATA_AREA);
+            Accelerators.KeccakF(ref Unsafe.Add(ref first, 2 * STATE_LANES));
+            AbsorbFullBranchTailFrom(ref lane, ref Unsafe.Add(ref first, 2 * STATE_LANES), data + RetainedBlocks * HASH_DATA_AREA);
         }
 
         Unsafe.Add(ref lane, HASH_DATA_AREA / sizeof(ulong) - 1) = Unsafe.Add(ref lane, HASH_DATA_AREA / sizeof(ulong) - 1) ^ (0x80UL << 56);
