@@ -4,25 +4,37 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Messages;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Logging;
+using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.Specs.Test.ChainSpecStyle;
 using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Optimism.Test;
 
 [Parallelizable(ParallelScope.All)]
-[TestFixtureSource(typeof(Fork), nameof(Fork.AllAndNextToGenesis))]
+[TestFixtureSource(nameof(HeaderValidationForks))]
 public class OptimismHeaderValidatorTests(Fork fork)
 {
     private readonly ulong _timestamp = fork.Timestamp;
 
     private static readonly Hash256 PostCanyonWithdrawalsRoot = Keccak.OfAnEmptySequenceRlp;
+
+    private static IEnumerable<Fork> HeaderValidationForks => Fork.AllAndNextToGenesis.Concat(
+    [
+        new("Before Canyon", Spec.CanyonTimestamp - 1),
+        new("Before Ecotone", Spec.EcotoneTimestamp - 1)
+    ]);
 
     private (BlockHeader genesis, BlockHeader header) BuildHeaders(Action<BlockHeaderBuilder>? postBuild = null)
     {
@@ -39,8 +51,9 @@ public class OptimismHeaderValidatorTests(Fork fork)
             .WithNonce(0)
             .WithBlobGasUsed(0)
             .WithExcessBlobGas(0)
+            .WithParentBeaconBlockRoot(_timestamp >= Spec.EcotoneTimestamp ? Keccak.Zero : null)
             .WithUnclesHash(Keccak.OfAnEmptySequenceRlp)
-            .WithWithdrawalsRoot(PostCanyonWithdrawalsRoot)
+            .WithWithdrawalsRoot(_timestamp >= Spec.CanyonTimestamp ? PostCanyonWithdrawalsRoot : null)
             .WithRequestsHash(_timestamp >= Spec.IsthmusTimeStamp
                 ? OptimismPostMergeBlockProducer.PostIsthmusRequestHash
                 : null
@@ -53,6 +66,53 @@ public class OptimismHeaderValidatorTests(Fork fork)
         postBuild?.Invoke(builder);
 
         return (genesis, builder.TestObject);
+    }
+
+    [Test]
+    public void Validate_header_root_presence_matches_fork(
+        [Values] bool withdrawalsRoot,
+        [Values] bool present,
+        [Values] bool timestampSpec)
+    {
+        (BlockHeader genesis, BlockHeader header) = BuildHeaders(b =>
+        {
+            if (withdrawalsRoot)
+                b.WithWithdrawalsRoot(present ? PostCanyonWithdrawalsRoot : null);
+            else
+                b.WithParentBeaconBlockRoot(present ? Keccak.Zero : null);
+        });
+
+        ISpecProvider specProvider = timestampSpec
+            ? Spec.BuildFor(genesis.Timestamp, _timestamp)
+            : Spec.BuildFor(genesis, header);
+        ChainSpec chainSpec = new()
+        {
+            Genesis = Build.A.Block.WithHeader(genesis).TestObject,
+            Parameters = new ChainParameters(),
+            Allocations = [],
+            EngineChainSpecParametersProvider = new TestChainSpecParametersProvider(
+                new OptimismChainSpecEngineParameters { BedrockBlockNumber = 0 })
+        };
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(chainSpec))
+            .AddModule(new OptimismModule(chainSpec, new OptimismConfig()))
+            .AddSingleton<ISpecProvider>(specProvider)
+            .AddSingleton<IOptimismSpecHelper>(Spec.Instance)
+            .Build();
+        IHeaderValidator validator = container.Resolve<IHeaderValidator>();
+
+        bool enabled = _timestamp >= (withdrawalsRoot ? Spec.CanyonTimestamp : Spec.EcotoneTimestamp);
+        string? expectedError = present == enabled ? null : withdrawalsRoot
+            ? enabled ? BlockErrorMessages.MissingWithdrawalsRoot : BlockErrorMessages.WithdrawalsRootNotEnabled
+            : enabled ? BlockErrorMessages.MissingParentBeaconBlockRoot : BlockErrorMessages.ParentBeaconBlockRootNotEnabled;
+
+        bool valid = validator.Validate(header, genesis, false, out string? error);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(valid, Is.EqualTo(present == enabled), () => error!);
+            Assert.That(error, Is.EqualTo(expectedError));
+        }
     }
 
     private static IEnumerable<(string data, Valid isValid)> EIP1559ParametersExtraData => new (string data, Valid isValid)[]

@@ -43,6 +43,40 @@ namespace Nethermind.Blockchain.Test;
 [FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
 public class BlockTreeTests
 {
+    [Test]
+    public void IsKnownBlock_requires_the_correct_canonical_head_number([Range(-1, 1)] int offset)
+    {
+        BlockTree tree = Build.A.BlockTree().OfChainLength(3).TestObject;
+        Block head = tree.Head!;
+        ulong requestedNumber = (ulong)((long)head.Number + offset);
+        Assert.That(tree.IsKnownBlock(requestedNumber, head.Hash!), Is.EqualTo(offset == 0));
+    }
+
+    [Test]
+    public void IsKnownBlock_does_not_accept_an_unknown_hash_above_the_progress_bound()
+    {
+        BlockTree tree = Build.A.BlockTree().OfChainLength(3).TestObject;
+        Assert.That(tree.IsKnownBlock(tree.BestKnownNumber + 1, TestItem.KeccakA), Is.False);
+    }
+
+    [Test]
+    public void IsKnownBlock_does_not_accept_header_only_beacon_metadata([Values] bool aboveProgressBound)
+    {
+        BlockTree tree = Build.A.BlockTree().OfChainLength(3).TestObject;
+        Block head = tree.Head!;
+        ulong number = head.Number + (aboveProgressBound ? 1UL : 0UL);
+        BlockHeader beacon = Build.A.BlockHeader.WithNumber(number)
+            .WithParentHash(aboveProgressBound ? head.Hash! : head.ParentHash!)
+            .WithExtraData([1])
+            .TestObject;
+        Assert.That(tree.Insert(beacon, BlockTreeInsertHeaderOptions.BeaconHeaderInsert | BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded), Is.EqualTo(AddBlockResult.Added));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tree.IsKnownBeaconBlock(number, beacon.Hash!), Is.True);
+            Assert.That(tree.IsKnownBlock(number, beacon.Hash!), Is.False);
+        }
+    }
+
     [Test, MaxTime(Timeout.MaxTestTime)]
     public async Task Maintenance_waits_for_transient_ordinary_mutation([Values] bool releaseBeforeTimeout)
     {

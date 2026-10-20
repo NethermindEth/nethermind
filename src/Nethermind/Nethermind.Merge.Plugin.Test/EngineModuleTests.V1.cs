@@ -3444,6 +3444,7 @@ public partial class EngineModuleTests
     [
         SszRestPaths.PostBlobsV4,
         SszRestPaths.PostPayloadsWitness,
+        SszRestPaths.GetPayloadsWitness,
     ];
 
     public static IEnumerable<TestCaseData> SszRestPathsAdvertisedCases()
