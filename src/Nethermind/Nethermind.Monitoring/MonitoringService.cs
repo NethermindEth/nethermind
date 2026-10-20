@@ -33,6 +33,7 @@ public class MonitoringService : IMonitoringService, IAsyncDisposable
 
     private Task _monitoringTimerTask = Task.CompletedTask;
     private MetricPusher _metricPusher;
+    private NethermindKestrelMetricServer _metricServer;
     private HttpClient _pusherHttpClient;
     private int _isDisposed = 0;
 
@@ -69,7 +70,7 @@ public class MonitoringService : IMonitoringService, IAsyncDisposable
         _options = GetOptions(metricsConfig);
     }
 
-    public Task StartAsync()
+    public async Task StartAsync()
     {
         if (_pushGatewayUrl is not null)
         {
@@ -116,7 +117,9 @@ public class MonitoringService : IMonitoringService, IAsyncDisposable
 
         if (_exposePort is not null)
         {
-            new NethermindKestrelMetricServer(_exposeHost, _exposePort.Value).Start();
+            _metricServer = new NethermindKestrelMetricServer(_exposeHost, _exposePort.Value);
+            _metricServer.Start();
+            await _metricServer.Listening;
         }
 
         _monitoringTimerTask = Task.Run(async () =>
@@ -132,7 +135,6 @@ public class MonitoringService : IMonitoringService, IAsyncDisposable
         });
 
         if (_logger.IsInfo) _logger.Info($"Started monitoring for the group: {_options.Group}, instance: {_options.Instance}");
-        return Task.CompletedTask;
     }
 
     internal static AuthenticationHeaderValue CreateBasicAuthHeader(string username, string password) =>
@@ -165,6 +167,18 @@ public class MonitoringService : IMonitoringService, IAsyncDisposable
         await _timerCancellationSource.CancelAsync();
         await _monitoringTimerTask;
         _timerCancellationSource.Dispose();
+        if (_metricServer is not null)
+        {
+            try
+            {
+                await _metricServer.StopAsync();
+            }
+            // StopAsync rethrows a startup failure such as the port being taken
+            catch (Exception ex)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Metrics server on port {_exposePort} failed: {ex.Message}");
+            }
+        }
         if (_metricPusher is not null) await _metricPusher.StopAsync();
         _pusherHttpClient?.Dispose();
     }
