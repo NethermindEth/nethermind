@@ -1314,4 +1314,34 @@ public class LmdbDbTests
             if (Directory.Exists(path)) Directory.Delete(path, true);
         }
     }
+
+    [Test]
+    public void Reopening_an_already_partitioned_database_with_the_same_partition_count_does_not_throw()
+    {
+        // Regression test - observed live: restarting a node after a successful partitioned Account sync threw
+        // "already has 8 entries in its default (non-partitioned) database" even though partitioning had been on
+        // the whole time and 8 matched the configured partition count exactly. Once MaxDatabases > 0, LMDB's own
+        // unnamed root database stops holding user data and becomes the catalog mapping each named sub-database
+        // to its internal dbi - a normal reopen of an already-partitioned environment legitimately shows
+        // partitionCount entries there (one catalog row per partition name), which the guard must not mistake for
+        // real leftover non-partitioned data.
+        string path = Path.Combine("testdb-lmdb-partition-reopen", TestContext.CurrentContext.Test.ID);
+        if (Directory.Exists(path)) Directory.Delete(path, true);
+        try
+        {
+            using (LmdbDb first = new("reopen-test", path, TestMapSize, TestMaxReaders, TestMaxOperationsPerWave, partitionCount: 8, LimboLogs.Instance))
+            {
+                first.Set([1], [1]);
+                first.Set([200], [200]);
+            }
+
+            using LmdbDb reopened = new("reopen-test", path, TestMapSize, TestMaxReaders, TestMaxOperationsPerWave, partitionCount: 8, LimboLogs.Instance);
+            Assert.That(reopened.Get([1]), Is.EqualTo(new byte[] { 1 }));
+            Assert.That(reopened.Get([200]), Is.EqualTo(new byte[] { 200 }));
+        }
+        finally
+        {
+            if (Directory.Exists(path)) Directory.Delete(path, true);
+        }
+    }
 }

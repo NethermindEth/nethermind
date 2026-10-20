@@ -8,6 +8,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Runtime.ExceptionServices;
+using System.Text;
 using System.Threading;
 using LightningDB;
 using Nethermind.Core;
@@ -162,9 +163,20 @@ public sealed class LmdbDb : IDb, ISortedKeyValueStore, IKeyValueStoreWithSnapsh
                 // the default database already has data, silently "losing" it (reads would just see nothing,
                 // with no error) would be far worse than refusing to start. See
                 // ILmdbConfig.EnableAccountPartitioning's remarks.
+                //
+                // BUT: once MaxDatabases > 0, LMDB's own unnamed root database stops holding user data and
+                // becomes the catalog mapping each named sub-database to its internal dbi - simply reopening an
+                // environment that was already correctly partitioned on a previous run therefore legitimately
+                // shows up as "N entries in the default database" too (one catalog row per partition name), which
+                // looks identical to the real pre-existing-unpartitioned-data case from GetEntriesCount() alone.
+                // Observed live: reopening an 8-partition Account environment after a successful sync threw this
+                // guard with "already has 8 entries" - exactly matching partitionCount, not any amount of real
+                // account data. IsExistingPartitionCatalog distinguishes the two by checking the entries are
+                // exactly the catalog this constructor is about to open below ("p0".."p{partitionCount-1}"), not
+                // just non-empty.
                 using LightningDatabase defaultDatabase = tx.OpenDatabase(configuration: new DatabaseConfiguration { Flags = DatabaseOpenFlags.Create });
                 long existingUnpartitionedEntries = tx.GetEntriesCount(defaultDatabase);
-                if (existingUnpartitionedEntries > 0)
+                if (existingUnpartitionedEntries > 0 && !IsExistingPartitionCatalog(tx, defaultDatabase, partitionCount))
                 {
                     throw new InvalidOperationException(
                         $"Lmdb '{name}' at '{path}' already has {existingUnpartitionedEntries:N0} entries in its " +
@@ -196,6 +208,37 @@ public sealed class LmdbDb : IDb, ISortedKeyValueStore, IKeyValueStoreWithSnapsh
         // which must be in their final state before any write can be drained.
         _writerThread = new Thread(WriterThreadLoop) { IsBackground = true, Name = $"Lmdb.Writer.{name}" };
         _writerThread.Start();
+    }
+
+    /// <summary>
+    /// True when <paramref name="defaultDatabase"/>'s entries are exactly the named-database catalog rows
+    /// ("p0".."p{partitionCount-1}") this constructor is about to open as <see cref="_databases"/> - i.e. this is
+    /// a normal reopen of an environment that was already correctly partitioned, not real leftover
+    /// pre-existing non-partitioned data. See the constructor's remarks on why <c>GetEntriesCount() > 0</c> alone
+    /// cannot tell these two cases apart.
+    /// </summary>
+    private static bool IsExistingPartitionCatalog(LightningTransaction tx, LightningDatabase defaultDatabase, int partitionCount)
+    {
+        if (tx.GetEntriesCount(defaultDatabase) != partitionCount) return false;
+
+        HashSet<string> expectedNames = new(partitionCount);
+        for (int i = 0; i < partitionCount; i++) expectedNames.Add($"p{i}");
+
+        using LightningCursor cursor = tx.CreateCursor(defaultDatabase);
+        (MDBResultCode rc, MDBValue key, MDBValue _) = cursor.First();
+        while (rc == MDBResultCode.Success)
+        {
+            // LightningDB marshals a named database's name as a null-terminated string, and that trailing \0
+            // ends up persisted as part of the catalog key itself (confirmed live: "p0" is stored as the 3 bytes
+            // {'p','0',0}, not 2) - strip it before comparing against the plain name this constructor passes to
+            // OpenDatabase below.
+            ReadOnlySpan<byte> rawKey = key.AsSpan();
+            if (rawKey.Length > 0 && rawKey[^1] == 0) rawKey = rawKey[..^1];
+            if (!expectedNames.Remove(Encoding.UTF8.GetString(rawKey))) return false;
+            (rc, key, _) = cursor.Next();
+        }
+
+        return expectedNames.Count == 0;
     }
 
     /// <summary>

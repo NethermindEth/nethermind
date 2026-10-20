@@ -1763,7 +1763,67 @@ Account is unaffected. `storage.lmdb` must be wiped first - page size is stored 
 at creation time and only takes effect for a brand new directory. Watch the next sync's `mdb_stat` line for
 Storage specifically: does `entries/leaf-page` rise meaningfully above the ~65%-fill baseline now firmly
 established at the 4096-byte default, does `BTreeDepth` grow more slowly relative to entry count than the
-5→6 growth observed in this sync, and does per-op commit cost drop accordingly. Not yet observed live.
+5→6 growth observed in this sync, and does per-op commit cost drop accordingly.
+
+**Observed live (2026-10-20 testnet sync, `PageSizeBytesStorage=8192`) - confirmed win, same entry count as the
+4096-byte baseline above:**
+
+| page size | Storage entries | Storage BTreeDepth | Storage entries/leaf-page | Storage LeafPages | Storage BranchPages |
+|---|---|---|---|---|---|
+| 4096B (baseline, above) | 282,149,969 | 6 | 27.2 | ~10,374,632 (derived) | - |
+| 8192B (this run) | 282,149,969 | **5** | **61.2** | **4,609,257** | 67,684 |
+
+At essentially identical entry count (282,149,969 both times - a clean apples-to-apples comparison), doubling the
+page size dropped `BTreeDepth` by one full level (6 → 5, i.e. one fewer page traversed on every single random
+lookup or insert) and more than doubled `entries/leaf-page` (27.2 → 61.2, a 2.25x improvement - slightly better
+than the 2x a doubled page size alone would predict, consistent with per-page header/pointer overhead being a
+smaller fraction of a bigger page), cutting total leaf page count by the same ~2.25x. The underlying *fill ratio*
+itself barely moved (27.2/~41 naive-capacity ≈ 66% at 4096B vs 61.2/~85 naive-capacity ≈ 72% at 8192B) - exactly
+as expected, since random-key insertion's ~65-70% fill ratio is a structural property of the key order, not the
+page size (see above). The win here is purely from needing far fewer, bigger pages to hold the same fill ratio's
+worth of data, which is exactly what a `BTreeDepth` reduction requires. The page-count-based disk size estimate
+(~35.68 GiB) also matched the real on-disk size (35.70 GiB) to within 0.1%, confirming `GetPerPartitionStats()`
+remains accurate at the larger page size.
+
+Not yet confirmed: this sample was captured at idle (`WriteWave x0` for both columns, post-sync), so it shows the
+*structural* win (depth, packing) but not yet a direct per-op commit-cost comparison against the 4096-byte
+baseline's write-intensive-phase figures (4,010 ops/wave, 8.834us/op total, 5.517us/op commit). Watching for a
+phase-1 (bulk-sync, write-intensive) sample at 8192B next, to confirm the shallower tree also shows up as lower
+per-op commit cost under real write load, not just smaller/shallower at rest.
+
+### Node restart failure after the 8192B sync - a real bug in the partitioning guard, unrelated to page size
+
+Restarting the node after the sync above (storage.lmdb wiped, account.lmdb untouched - `EnableAccountPartitioning`
+had been on the whole time, as it has been since "Account partitioning" above) crashed startup entirely:
+
+```
+System.InvalidOperationException: Lmdb 'LmdbAccount' at '...\account.lmdb' already has 8 entries in its default
+(non-partitioned) database, but partitioning is now enabled. ...
+```
+
+"8" is not account data - it exactly matches `SnapSyncAccountRangePartitionCount` (8 partitions), every single
+time, regardless of how many real accounts exist. Root cause: the guard added in "Account partitioning" (above)
+opens the environment's unnamed/default database and throws if `GetEntriesCount() > 0`, intending to catch a
+*real* non-partitioned sync's leftover data. But once `MaxDatabases > 0`, LMDB's unnamed database **is** the
+catalog mapping each named sub-database ("p0".."p7") to its own internal dbi - it stops holding user data
+entirely. Reopening an environment that was already correctly partitioned on the *previous* run therefore
+legitimately shows up as "N entries in the default database" too (one catalog row per partition name) - and the
+old guard could not tell that apart from the real leftover-unpartitioned-data case it was built for. Every
+restart of an already-partitioned Account environment was broken, not just this particular sync.
+
+Fixed with `LmdbDb.IsExistingPartitionCatalog`: before throwing, checks that the default database's entries are
+*exactly* the catalog rows this constructor is about to open as `_databases` (count equals `partitionCount`, and
+every key matches "p0".."p{partitionCount-1}") - only then treats the non-empty default database as a safe reopen
+rather than real pre-existing data. Hit one marshaling subtlety while confirming this against real LMDB behavior
+(isolated scratch repro, not assumed): LightningDB marshals a named database's name as a null-terminated string,
+and that trailing `\0` is itself persisted as part of the catalog key - "p0" is stored as the 3 bytes
+`{'p','0',0}`, not 2 - so the comparison strips a trailing NUL byte before matching against the plain name.
+Covered by `Reopening_an_already_partitioned_database_with_the_same_partition_count_does_not_throw`, which
+reproduces the exact failure (open partitioned, close, reopen with the same partition count) and failed with the
+identical "already has 8 entries" message before the null-terminator fix, confirming the test isn't a false
+positive. The two pre-existing guard tests (real leftover non-partitioned data still throws; a brand new/empty
+directory still doesn't) continue to pass unchanged. All 76 `Nethermind.Db.Lmdb.Test` tests pass (75 succeeded,
+the one pre-existing unrelated `ThreadPool`-minimum failure).
 
 ### `mdb_cursor_put` over `mdb_put` - another dead end, confirmed at 10x larger wave size
 
