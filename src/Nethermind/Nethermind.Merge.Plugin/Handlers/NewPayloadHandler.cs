@@ -1011,15 +1011,17 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         return isValid;
     }
 
-    private PayloadStatusV1 BuildInvalidPayloadStatusV1(ExecutionPayload request, string? validationMessage) =>
-        new()
+    // The tracker alone names the last valid hash: it knows whether the parent was validated, this request does not.
+    private PayloadStatusV1 BuildInvalidPayloadStatusV1(ExecutionPayload request, string? validationMessage)
+    {
+        _invalidChainTracker.IsOnKnownInvalidChain(request.BlockHash!, out Hash256? lastValidHash);
+        return new()
         {
             Status = PayloadStatus.Invalid,
             ValidationError = validationMessage,
-            LatestValidHash = _invalidChainTracker.IsOnKnownInvalidChain(request.BlockHash!, out Hash256? lastValidHash)
-                ? lastValidHash
-                : request.ParentHash
+            LatestValidHash = lastValidHash
         };
+    }
 
     /// Pop blocks from cache up to ancestor on the beacon chain. Which is then inserted into the block tree
     /// which I assume will switch the canonical chain.

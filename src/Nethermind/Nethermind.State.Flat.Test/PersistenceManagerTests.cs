@@ -115,6 +115,8 @@ public class PersistenceManagerTests
         // AddStateId is needed for GetStatesAtBlockNumber to work
         _snapshotRepository.AddStateId(to);
 
+        // The repository owns the snapshot it holds, so the caller gets a lease of its own to dispose.
+        snapshot.AcquireLease();
         return snapshot;
     }
 

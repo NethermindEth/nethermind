@@ -163,6 +163,18 @@ public class SnapshotRepositoryTests
         Assert.That(leasedAfter, Is.False);
     }
 
+    [Test]
+    public void Dispose_ReleasesInMemorySnapshots([Values] bool compacted)
+    {
+        Snapshot snapshot = new(CreateStateId(0), CreateStateId(1), _resourcePool.GetSnapshotContent(ResourcePool.Usage.ReadOnlyProcessingEnv),
+            _resourcePool, ResourcePool.Usage.ReadOnlyProcessingEnv, null);
+        _repository.TryAdd(snapshot, compacted ? SnapshotTier.InMemoryCompacted : SnapshotTier.InMemoryBase);
+
+        _repository.Dispose();
+
+        Assert.That(snapshot.TryAcquire(), Is.False);
+    }
+
     #endregion
 
     #region Lease Operations

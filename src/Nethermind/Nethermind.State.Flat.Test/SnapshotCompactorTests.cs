@@ -548,12 +548,9 @@ public class SnapshotCompactorTests
         BuildSnapshotChain(0, 4);
 
         StateId target = CreateStateId(4);
-        SnapshotPooledList assembled = _snapshotRepository.AssembleInMemorySnapshotsForCompaction(target, 0, 10);
+        using SnapshotPooledList assembled = _snapshotRepository.AssembleInMemorySnapshotsForCompaction(target, 0, 10);
 
         Assert.That(assembled.Count, Is.EqualTo(4));
-
-        foreach (Snapshot s in assembled) s.Dispose();
-        assembled.Dispose();
     }
 
     [Test]
