@@ -111,6 +111,7 @@ public partial class EthRpcModuleTests
         await test.AddBlock(transactions);
         ulong blockNumber = test.BlockTree.Head!.Number;
         await test.AddBlock();
+        test.Container.Resolve<IDeferredBlockDataWriter>().Drain();
         return blockNumber;
     }
 
