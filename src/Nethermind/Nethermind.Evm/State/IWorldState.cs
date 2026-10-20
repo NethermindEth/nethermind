@@ -125,6 +125,12 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
 
     void WarmUp(Address address);
 
+    /// <inheritdoc cref="IWorldStateScopeProvider.IScope.Prefetch"/>
+    void Prefetch(Span<Address> accounts, Span<StorageCell> slots, CancellationToken cancellationToken) { }
+
+    /// <inheritdoc cref="IWorldStateScopeProvider.IScope.SupportsPrefetch"/>
+    bool SupportsPrefetch => false;
+
     /// <summary>Applies prefix account changes to block-start caches. False leaves state unchanged and requires ordinary replay.</summary>
     bool TryApplyAccountOverlay(IStateReadOverlay overlay) => false;
 
@@ -209,6 +215,17 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     void DecrementNonce(Address address) => DecrementNonce(address, 1);
 
     void SetNonce(Address address, in ulong nonce);
+
+    /// <summary>Same state effect as <see cref="SubtractFromBalance"/> followed by <see cref="SetNonce"/>.</summary>
+    /// <remarks>
+    /// Lets an implementation write the account once. A forwarding implementation that records either call must keep
+    /// this default, as deriving from <c>WorldStateDecorator</c> does, or record both changes itself.
+    /// </remarks>
+    void SubtractFromBalanceAndSetNonce(Address address, in UInt256 balanceChange, ulong nonce, IReleaseSpec spec)
+    {
+        SubtractFromBalance(address, in balanceChange, spec, out _);
+        SetNonce(address, nonce);
+    }
 
     /* snapshots */
     void Commit(IReleaseSpec releaseSpec, IWorldStateTracer tracer, bool isGenesis = false, bool commitRoots = true);

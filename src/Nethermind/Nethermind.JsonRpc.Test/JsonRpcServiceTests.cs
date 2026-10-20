@@ -496,6 +496,52 @@ public class JsonRpcServiceTests
         pool.Received().ReturnModule(rpcModule);
     }
 
+    [TestCase("eth_getLogs", "0x1")]
+    [TestCase("eth_newFilter", "0x1")]
+    [TestCase("eth_getBalance", "0xzz", "latest")]
+    [TestCase("eth_getBalance")]
+    [TestCase("eth_chainId", "0x1")]
+    public void Returns_module_to_pool_once_on_invalid_params(string method, params object[] parameters)
+    {
+        IRpcModulePool<IEthRpcModule> pool = Substitute.For<IRpcModulePool<IEthRpcModule>>();
+        IEthRpcModule rpcModule = Substitute.For<IEthRpcModule>();
+        pool.GetModule(Arg.Any<bool>()).Returns(rpcModule);
+
+        JsonRpcErrorResponse response = AssertJsonRpcError(TestRequestWithPool(pool, method, parameters), ErrorCodes.InvalidParams);
+        response.Dispose();
+
+        using (Assert.EnterMultipleScope())
+        {
+            pool.Received(1).ReturnModule(rpcModule);
+            Assert.That(rpcModule.ReceivedCalls(), Is.Empty);
+        }
+    }
+
+    [Test]
+    public void Returns_module_to_pool_once_and_internal_error_when_preparing_params_throws([Values("eth_getLogs", "eth_newFilter")] string method)
+    {
+        InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+        logger.IsTrace.Returns(true);
+        logger.IsError.Returns(true);
+        logger.When(static l => l.Trace(Arg.Is<string>(static text => text.StartsWith("Executing JSON RPC call"))))
+            .Do(static _ => throw new ArgumentException("log failed"));
+        _logManager = new OneLoggerLogManager(new ILogger(logger));
+
+        IRpcModulePool<IEthRpcModule> pool = Substitute.For<IRpcModulePool<IEthRpcModule>>();
+        IEthRpcModule rpcModule = Substitute.For<IEthRpcModule>();
+        pool.GetModule(Arg.Any<bool>()).Returns(rpcModule);
+
+        JsonRpcErrorResponse response = AssertJsonRpcError(TestRequestWithPool(pool, method, "{}"), ErrorCodes.InternalError);
+        response.Dispose();
+
+        using (Assert.EnterMultipleScope())
+        {
+            pool.Received(1).ReturnModule(rpcModule);
+            Assert.That(rpcModule.ReceivedCalls(), Is.Empty);
+            logger.Received(1).Error(Arg.Any<string>(), Arg.Any<ArgumentException>());
+        }
+    }
+
     // A streamed trace executes while the response is written, on the module's own overridable env; the module must
     // therefore stay rented until the response is disposed, or the next rental races it on that env.
     [Test]
@@ -1373,7 +1419,8 @@ public class JsonRpcServiceTests
     public void Module_rental_overload_does_not_log_or_return_exception_data(
         Exception exception,
         int expectedCode,
-        string expectedMessage)
+        string expectedMessage,
+        string filter)
     {
         InterfaceLogger logger = Substitute.For<InterfaceLogger>();
         logger.IsError.Returns(true);
@@ -1383,25 +1430,34 @@ public class JsonRpcServiceTests
         pool.GetModule(Arg.Any<bool>()).Returns(Task.FromException<IEthRpcModule>(exception));
 
         using JsonRpcErrorResponse response = AssertJsonRpcError(
-            TestRequestWithPool(pool, "eth_getLogs", "{}"),
+            TestRequestWithPool(pool, "eth_getLogs", filter),
             expectedCode,
             expectedMessage);
 
-        Assert.That(response.Error!.SuppressWarning, Is.True);
-        Assert.That(response.Error.Data, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Error!.SuppressWarning, Is.True);
+            Assert.That(response.Error.Data, Is.Null);
+        }
         logger.DidNotReceive().Error(Arg.Any<string>(), Arg.Any<Exception?>());
     }
 
     private static IEnumerable<TestCaseData> ModuleRentalOverloadExceptions()
     {
-        yield return new TestCaseData(
-            new LimitExceededException("limit"),
-            ErrorCodes.LimitExceeded,
-            "Too many requests");
-        yield return new TestCaseData(
-            new ModuleRentalTimeoutException("timeout"),
-            ErrorCodes.ModuleTimeout,
-            "Timeout");
+        // An undecodable filter still gets the overload error: params are not decoded until a module is rented.
+        foreach (string filter in new[] { "{}", "0x1" })
+        {
+            yield return new TestCaseData(
+                new LimitExceededException("limit"),
+                ErrorCodes.LimitExceeded,
+                "Too many requests",
+                filter);
+            yield return new TestCaseData(
+                new ModuleRentalTimeoutException("timeout"),
+                ErrorCodes.ModuleTimeout,
+                "Timeout",
+                filter);
+        }
     }
 
     [Test]

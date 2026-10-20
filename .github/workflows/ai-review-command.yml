@@ -68,7 +68,7 @@ jobs:
     concurrency:
       group: ai-pr-review-command-${{ github.event.issue.number }}
       cancel-in-progress: false
-    uses: NethermindEth/github-workflows/.github/workflows/ai-review-command.yaml@v2.4.0
+    uses: NethermindEth/github-workflows/.github/workflows/ai-review-command.yaml@v5.1.1
     with:
       secret_path: /apps/litellm/nethermind-ai-reviewer
       num_max_findings: 8
