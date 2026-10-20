@@ -153,12 +153,8 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
 
             BlockFeeHistorySearchInfo historyInfo = BlockFeeHistorySearchInfoFromBlock(block);
 
-            if (ShouldCache(block))
-            {
-                _feeHistoryCache[block.Hash!] = historyInfo;
-            }
-
-            return historyInfo;
+            // Keeps an entry already cached for the hash, so its filled rewards are not dropped.
+            return ShouldCache(block) ? _feeHistoryCache.GetOrAdd(block.Hash!, historyInfo) : historyInfo;
         }
 
         private bool ShouldCache(Block block) =>
@@ -210,19 +206,23 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
             while (historyInfo is not null && effectiveBlockCount-- > 0)
             {
                 info = historyInfo.Value;
+                if (rewards is not null)
+                {
+                    // A cached block whose body is gone by the time its rewards are needed ends the walk like an unavailable ancestor.
+                    if (CalculateRewardsPercentiles(info, rewardPercentiles) is not { } rewardsInBlock)
+                    {
+                        effectiveBlockCount++;
+                        historyInfo = null;
+                        break;
+                    }
+
+                    rewards[effectiveBlockCount] = rewardsInBlock;
+                }
                 oldestBlockNumber = info.BlockNumber;
                 baseFeePerGas[effectiveBlockCount] = info.BlockBaseFeePerGas;
                 baseFeePerBlobGas[effectiveBlockCount] = info.BaseFeePerBlobGas;
                 gasUsedRatio[effectiveBlockCount] = info.GasUsedRatio;
                 blobGasUsedRatio[effectiveBlockCount] = info.BlobGasUsedRatio;
-                if (rewards is not null)
-                {
-                    ArrayPoolList<UInt256>? rewardsInBlock = CalculateRewardsPercentiles(info, rewardPercentiles);
-                    if (rewardsInBlock is not null)
-                    {
-                        rewards[effectiveBlockCount] = rewardsInBlock;
-                    }
-                }
                 // The oldest requested block needs no parent.
                 historyInfo = effectiveBlockCount == 0 || info.ParentHash is null ? null : GetHistorySearchInfo(info.ParentHash, info.BlockNumber - 1, withRewards);
             }

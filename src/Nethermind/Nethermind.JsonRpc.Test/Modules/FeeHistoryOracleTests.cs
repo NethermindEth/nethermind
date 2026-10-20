@@ -357,6 +357,35 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
 
         [Test]
+        public void GetFeeHistory_IfCachedAncestorBodyGoesMissingBeforeRewards_TruncatesAtOldestAvailableBlock()
+        {
+            IBlockTree blockTree = Substitute.For<IBlockTree>();
+            Block block3 = Build.A.Block.WithNumber(3UL).WithParentHash(TestItem.KeccakH).WithBaseFeePerGas(3).WithTransactions(GetTestTransactions()).TestObject;
+            Block block4 = Build.A.Block.WithParent(block3).WithBaseFeePerGas(4).WithTransactions(GetTestTransactions()).TestObject;
+            Block block5 = Build.A.Block.WithParent(block4).WithBaseFeePerGas(5).WithTransactions(GetTestTransactions()).TestObject;
+            foreach (Block block in (Block[])[block3, block4, block5])
+            {
+                blockTree.FindBlock(block.Hash!, Arg.Any<BlockTreeLookupOptions>(), block.Number).Returns(block);
+            }
+            blockTree.Head.Returns(block5);
+            blockTree.FindBlock(new BlockParameter(5UL)).Returns(block5);
+            FeeHistoryOracle feeHistoryOracle = GetSubstitutedFeeHistoryOracle(blockTree: blockTree);
+
+            feeHistoryOracle.GetFeeHistory(3UL, new BlockParameter(5UL), []).Dispose();
+            blockTree.FindBlock(block3.Hash!, Arg.Any<BlockTreeLookupOptions>(), block3.Number).Returns((Block?)null);
+            using ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(3UL, new BlockParameter(5UL), [50]);
+
+            FeeHistoryResults result = resultWrapper.Data;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result.OldestBlock, Is.EqualTo(4UL));
+                Assert.That(result.GasUsedRatio.Count, Is.EqualTo(2));
+                Assert.That(result.BaseFeePerGas.Take(2), Is.EqualTo((UInt256[])[4, 5]));
+                Assert.That(result.Reward, Has.Count.EqualTo(2).And.None.Null);
+            }
+        }
+
+        [Test]
         public async Task GetFeeHistory_IfNewestBlockIsCached_DoesNotLoadItsBody()
         {
             await using IContainer container = new ContainerBuilder()
