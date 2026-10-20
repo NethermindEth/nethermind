@@ -388,7 +388,7 @@ public class SnapshotCompactorTests
     [Test]
     public void CompactSnapshotBundle_SelectsEarliestNativeWriteBoundaryWithinGeneration()
     {
-        using NativeTrieNodeLog log = new(0);
+        using NativeTrieNodeLog log = new(0, NativeTrieNodeLog.DefaultLiveGenerations);
         NativeTrieNodeLogPin earliest = log.PinActiveGeneration();
         Hash256 root = FlatTestHelpers.WriteNative(log, null, Keccak.EmptyTreeHash, new PatriciaTree.BulkSetEntry(TestItem.KeccakA.ValueHash256, [1]));
         using Snapshot first = new(new(0, Keccak.EmptyTreeHash), new(1, root), new SnapshotContent(), _resourcePool,

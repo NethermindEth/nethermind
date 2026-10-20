@@ -37,7 +37,7 @@ public class ReadOnlyScopeLifecycleBenchmark
     {
         _config = new FlatDbConfig();
         _resourcePool = new ResourcePool(_config);
-        _trieNodeLog = new NativeTrieNodeLog(0);
+        _trieNodeLog = new NativeTrieNodeLog(0, NativeTrieNodeLog.DefaultLiveGenerations);
         _warmer = new NoopTrieWarmer();
         _addresses = new Address[16];
         for (int i = 0; i < _addresses.Length; i++) _addresses[i] = DeriveAddress(i + 1);

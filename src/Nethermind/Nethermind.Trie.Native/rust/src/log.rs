@@ -38,7 +38,8 @@ impl MemoryPressure {
 
 const OFFSET_BITS: u32 = 32;
 const OFFSET_MASK: u64 = (1 << OFFSET_BITS) - 1;
-const LIVE_GENERATIONS: u64 = 8;
+/// The live generations of the logs that do not take them from configuration.
+pub const DEFAULT_LIVE_GENERATIONS: u64 = 8;
 /// Generations allocated at once, live, pinned or compacted, are capped by the size of the generation table.
 const MAX_GENERATIONS: usize = 4096;
 /// What generations start at, so as large as they grow under pressure.
@@ -89,7 +90,7 @@ static COMPACTOR: OnceLock<ThreadPool> = OnceLock::new();
 /// its root is found. Only roots are indexed, the state roots by hash and the storage roots by address and hash, each
 /// through a root key record logged next to the nodes.
 ///
-/// Records are appended to the active generation. Once [`LIVE_GENERATIONS`] are live, starting a new one drops the
+/// Records are appended to the active generation. Once its live generations are live, starting a new one drops the
 /// oldest, which is compacted in the background once no [`LogSession`] that could read its records in place is left.
 /// Compaction keeps the last record of every key, see [`node_key`], unless the bloom filter of a later generation holds
 /// the key, as that generation then likely holds a newer node at the same place, and keeps every root key record, so
@@ -104,7 +105,7 @@ static COMPACTOR: OnceLock<ThreadPool> = OnceLock::new();
 /// [`TrieNodeLog::release`], so every record appended since stays readable by later sessions too, and the log then
 /// holds more than its live generations.
 ///
-/// Under pressure, while more than [`LIVE_GENERATIONS`] are allocated, each new generation is twice the size of the one
+/// Under pressure, while more than its live generations are allocated, each new generation is twice the size of the one
 /// before, up to [`MAX_GROWN_GENERATION_BYTES`], so a bulk set larger than the log still fits in the generation table.
 pub struct TrieNodeLog {
     generations: Box<[Generation]>,
@@ -113,6 +114,8 @@ pub struct TrieNodeLog {
     /// Notified when compaction stops.
     compaction_idle: Condvar,
     generation_bytes: usize,
+    /// How many of the newest generations stay readable in place.
+    live_generations: u64,
     compressed_max_memory: u64,
     temporary: bool,
     memory_pressure: MemoryPressure,
@@ -146,13 +149,15 @@ struct State {
 }
 
 impl TrieNodeLog {
-    /// Creates a log whose compacted generations take about `compressed_max_memory` bytes, exceeded only while sessions
-    /// pin them. Boxed, as compaction reads it in the background, so it must not be moved out.
-    pub fn new(compressed_max_memory: u64) -> Box<TrieNodeLog> {
+    /// Creates a log keeping the newest `live_generations` readable in place, whose compacted generations take about
+    /// `compressed_max_memory` bytes, exceeded only while sessions pin them. Boxed, as compaction reads it in the
+    /// background, so it must not be moved out.
+    pub fn new(compressed_max_memory: u64, live_generations: u64) -> Box<TrieNodeLog> {
         let storage_root_slots =
             (compressed_max_memory / MEMORY_PER_STORAGE_ROOT_SLOT).max(STATE_ROOT_SLOTS as u64);
         TrieNodeLog::create(
             GENERATION_BYTES,
+            live_generations,
             compressed_max_memory,
             false,
             RootTable::new(STATE_ROOT_SLOTS),
@@ -161,9 +166,14 @@ impl TrieNodeLog {
     }
 
     /// A log with small generations for record-import fixtures.
-    pub(crate) fn for_fixtures(generation_bytes: usize, compressed_max_memory: u64) -> Box<TrieNodeLog> {
+    pub(crate) fn for_fixtures(
+        generation_bytes: usize,
+        compressed_max_memory: u64,
+        live_generations: u64,
+    ) -> Box<TrieNodeLog> {
         TrieNodeLog::create(
             generation_bytes.max(MIN_GENERATION_BYTES),
+            live_generations,
             compressed_max_memory,
             false,
             RootTable::new(STATE_ROOT_SLOTS),
@@ -183,6 +193,7 @@ impl TrieNodeLog {
     pub fn minimal() -> Box<TrieNodeLog> {
         TrieNodeLog::create(
             MIN_GENERATION_BYTES,
+            DEFAULT_LIVE_GENERATIONS,
             0,
             false,
             RootTable::new(STATE_ROOT_SLOTS),
@@ -203,6 +214,7 @@ impl TrieNodeLog {
     fn temporary() -> Box<TrieNodeLog> {
         TrieNodeLog::create(
             MIN_GENERATION_BYTES,
+            DEFAULT_LIVE_GENERATIONS,
             0,
             true,
             RootTable::new(0),
@@ -212,11 +224,16 @@ impl TrieNodeLog {
 
     fn create(
         generation_bytes: usize,
+        live_generations: u64,
         compressed_max_memory: u64,
         temporary: bool,
         state_roots: RootTable,
         storage_roots: RootTable,
     ) -> Box<TrieNodeLog> {
+        assert!(
+            (1..MAX_GENERATIONS as u64).contains(&live_generations),
+            "live generations out of range"
+        );
         let log = Box::new(TrieNodeLog {
             generations: (0..MAX_GENERATIONS)
                 .map(|_| Generation::default())
@@ -234,6 +251,7 @@ impl TrieNodeLog {
             }),
             compaction_idle: Condvar::new(),
             generation_bytes,
+            live_generations,
             compressed_max_memory,
             temporary,
             memory_pressure: MemoryPressure::default(),
@@ -357,7 +375,7 @@ impl TrieNodeLog {
         }
 
         self.reclaim(&mut state);
-        let under_pressure = self.temporary || state.oldest_allocated + LIVE_GENERATIONS <= full;
+        let under_pressure = self.temporary || state.oldest_allocated + self.live_generations <= full;
         let generation_length = match under_pressure {
             true => (self.generation(full).length.load(Ordering::Relaxed) * 2).clamp(
                 self.generation_bytes,
@@ -383,10 +401,10 @@ impl TrieNodeLog {
         self.reclaim(&mut state);
     }
 
-    /// Drops generations, oldest first, until [`LIVE_GENERATIONS`] are live or the oldest live one is retained.
+    /// Drops generations, oldest first, until its live generations are live or the oldest live one is retained.
     fn drop_old_generations(&self, state: &mut State) {
         let active = self.active.load(Ordering::Acquire);
-        let oldest_to_keep = active + 1 - LIVE_GENERATIONS.min(active);
+        let oldest_to_keep = active + 1 - self.live_generations.min(active);
         while state.oldest_live < oldest_to_keep && state.retains[slot(state.oldest_live)] == 0 {
             state.oldest_live += 1;
         }
@@ -1048,7 +1066,11 @@ mod tests {
 
         for compressed_max_memory in [0, 1 << 20] {
             EVENTS.lock().unwrap().clear();
-            let mut log = TrieNodeLog::for_fixtures(MIN_GENERATION_BYTES, compressed_max_memory);
+            let mut log = TrieNodeLog::for_fixtures(
+                MIN_GENERATION_BYTES,
+                compressed_max_memory,
+                DEFAULT_LIVE_GENERATIONS,
+            );
             unsafe { crate::nm_patricia_log_set_memory_pressure(&mut *log, report) };
             assert_eq!(reported(&EVENTS), allocated(&log));
             assert_eq!(EVENTS.lock().unwrap().len(), 2);
@@ -1079,7 +1101,7 @@ mod tests {
             let first = writer.append_keyed(&leaf(vec![0xaa; 40]), 1);
             writer.set_root(None, &[0x11; 32], first);
             let filler = leaf(vec![0xbb; 1000]);
-            while log.active.load(Ordering::Relaxed) <= LIVE_GENERATIONS + 2 {
+            while log.active.load(Ordering::Relaxed) <= DEFAULT_LIVE_GENERATIONS + 2 {
                 writer.append_keyed(&filler, 2);
             }
             assert!(active_length(&log) > MIN_GENERATION_BYTES);
@@ -1238,7 +1260,7 @@ mod tests {
         // Filling more generations than are live drops the first, but not for the session pinned before, and generations
         // grow while it pins the dropped ones.
         let filler = leaf(vec![0xcc; 1000]);
-        while log.active.load(Ordering::Relaxed) <= LIVE_GENERATIONS + 2 {
+        while log.active.load(Ordering::Relaxed) <= DEFAULT_LIVE_GENERATIONS + 2 {
             session.append(&filler);
         }
         assert!(active_length(&log) > MIN_GENERATION_BYTES);
@@ -1271,6 +1293,7 @@ mod tests {
         assert_eq!(session.root(Some(&[0x66; 32]), &[0x55; 32]), 0);
         let single = TrieNodeLog::create(
             MIN_GENERATION_BYTES,
+            DEFAULT_LIVE_GENERATIONS,
             0,
             false,
             RootTable::new(1),
@@ -1290,7 +1313,7 @@ mod tests {
         );
 
         // A lookup stops at the first root key record of a dropped generation.
-        while single.active.load(Ordering::Relaxed) <= LIVE_GENERATIONS + 1 {
+        while single.active.load(Ordering::Relaxed) <= DEFAULT_LIVE_GENERATIONS + 1 {
             single_session.append(&filler);
         }
         let newest_pointer = single_session.append(&filler);
@@ -1310,7 +1333,7 @@ mod tests {
         let retained = log.retain_active();
         let session = log.pin();
         let retained_pointer = session.append(&filler);
-        while log.active.load(Ordering::Relaxed) <= retained + LIVE_GENERATIONS {
+        while log.active.load(Ordering::Relaxed) <= retained + DEFAULT_LIVE_GENERATIONS {
             session.append(&filler);
         }
         drop(session);
@@ -1330,7 +1353,7 @@ mod tests {
         let temporary = TrieNodeLog::temporary();
         let session = temporary.pin();
         let first = session.append(&filler);
-        while temporary.active.load(Ordering::Relaxed) <= LIVE_GENERATIONS + 2 {
+        while temporary.active.load(Ordering::Relaxed) <= DEFAULT_LIVE_GENERATIONS + 2 {
             session.append(&filler);
         }
         assert!(temporary.pin().record(first).is_some());
@@ -1343,6 +1366,7 @@ mod tests {
     fn compaction_preserves_real_child_links_but_never_transient_links() {
         let log = TrieNodeLog::create(
             MIN_GENERATION_BYTES,
+            DEFAULT_LIVE_GENERATIONS,
             0,
             false,
             RootTable::new(1),
@@ -1361,7 +1385,7 @@ mod tests {
         let branch_hash = crate::keccak::keccak(&rlp(&branch));
         let root_pointer = writer.append_keyed(&branch, 2);
         writer.set_root(None, &branch_hash, root_pointer);
-        while log.active.load(Ordering::Relaxed) <= LIVE_GENERATIONS + 1 {
+        while log.active.load(Ordering::Relaxed) <= DEFAULT_LIVE_GENERATIONS + 1 {
             writer.append_keyed(&leaf(vec![0xcc; 1000]), 3);
         }
         let reader = log.pin();
@@ -1379,6 +1403,7 @@ mod tests {
     fn compaction_keeps_last_record_of_keys_not_rewritten_later_and_root_keys_while_pinned() {
         let log = TrieNodeLog::create(
             MIN_GENERATION_BYTES,
+            DEFAULT_LIVE_GENERATIONS,
             0,
             false,
             RootTable::new(1),
@@ -1395,7 +1420,7 @@ mod tests {
             .collect();
         writer.set_root(Some(&address), &[0x44; 32], pointers[3]);
         // Later generations rewrite the third key only, until the first generation is dropped.
-        while log.active.load(Ordering::Relaxed) <= LIVE_GENERATIONS + 1 {
+        while log.active.load(Ordering::Relaxed) <= DEFAULT_LIVE_GENERATIONS + 1 {
             writer.append_keyed(&leaf(vec![0xcc; 1000]), keys[2]);
         }
 
@@ -1422,5 +1447,33 @@ mod tests {
         drop(reader);
         assert!(log.pin().record(pointers[1]).is_none());
         assert_eq!(log.state.lock().unwrap().compressed_memory, 0);
+    }
+
+    #[test]
+    fn only_the_configured_live_generations_are_readable_in_place() {
+        for live_generations in [1, DEFAULT_LIVE_GENERATIONS] {
+            let log = TrieNodeLog::create(
+                MIN_GENERATION_BYTES,
+                live_generations,
+                0,
+                false,
+                RootTable::new(1),
+                RootTable::new(1),
+            );
+            let first = log.pin().append_keyed(&leaf(vec![0x11; 40]), 1);
+            for active in 2..=live_generations + 1 {
+                assert!(
+                    log.pin().record(first).is_some(),
+                    "live while {} is active",
+                    active - 1
+                );
+                while log.active.load(Ordering::Relaxed) < active {
+                    log.pin().append_keyed(&leaf(vec![0xcc; 1000]), 2);
+                }
+            }
+            wait_for_compaction(&log);
+            assert_eq!(log.state.lock().unwrap().oldest_live, 2);
+            assert!(log.pin().record(first).is_none());
+        }
     }
 }

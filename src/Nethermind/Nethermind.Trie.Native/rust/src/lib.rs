@@ -381,17 +381,28 @@ fn bulk_state_status(
     }
 }
 
-/// Creates a [`TrieNodeLog`] whose compacted generations take about `compressed_max_memory` bytes, to free with
-/// [`nm_patricia_log_free`].
+/// Creates a [`TrieNodeLog`] keeping the newest `live_generations` readable in place, whose compacted generations take
+/// about `compressed_max_memory` bytes, to free with [`nm_patricia_log_free`].
 #[no_mangle]
-pub extern "C" fn nm_patricia_log_new(compressed_max_memory: u64) -> *mut TrieNodeLog {
-    Box::into_raw(TrieNodeLog::new(compressed_max_memory))
+pub extern "C" fn nm_patricia_log_new(
+    compressed_max_memory: u64,
+    live_generations: u64,
+) -> *mut TrieNodeLog {
+    Box::into_raw(TrieNodeLog::new(compressed_max_memory, live_generations))
 }
 
 /// Creates a small-generation log for internal RLP fixtures.
 #[no_mangle]
-pub extern "C" fn nm_patricia_log_fixture_new(compressed_max_memory: u64, generation_bytes: usize) -> *mut TrieNodeLog {
-    Box::into_raw(TrieNodeLog::for_fixtures(generation_bytes, compressed_max_memory))
+pub extern "C" fn nm_patricia_log_fixture_new(
+    compressed_max_memory: u64,
+    generation_bytes: usize,
+    live_generations: u64,
+) -> *mut TrieNodeLog {
+    Box::into_raw(TrieNodeLog::for_fixtures(
+        generation_bytes,
+        compressed_max_memory,
+        live_generations,
+    ))
 }
 
 /// Reports the log's initial allocation and all subsequent allocation/reclamation deltas, including on compactor threads.
@@ -732,7 +743,7 @@ mod tests {
 
     #[test]
     fn fixture_append_links_matching_children_and_rejects_invalid_inputs() {
-        let log = TrieNodeLog::for_fixtures(64 << 10, 0);
+        let log = TrieNodeLog::for_fixtures(64 << 10, 0, crate::log::DEFAULT_LIVE_GENERATIONS);
         let session = log.pin();
         let rlp = [0xc4, 0x82, 0x20, 0x01, 0x05];
         let hash = keccak::keccak(&rlp);

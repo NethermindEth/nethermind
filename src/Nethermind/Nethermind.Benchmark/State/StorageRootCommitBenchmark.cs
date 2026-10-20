@@ -61,7 +61,7 @@ public class StorageRootCommitBenchmark
         FlatWorldStateBenchmarkHarness.RequireTieredCompilationDisabled();
 
         _config = new FlatDbConfig();
-        _nativeTrieNodeLog = new NativeTrieNodeLog(0);
+        _nativeTrieNodeLog = new NativeTrieNodeLog(0, NativeTrieNodeLog.DefaultLiveGenerations);
         _resourcePool = new ResourcePool(_config);
         _baseSnapshots = new List<FlatSnapshot>(1);
         _address = DeriveAddress(1);

@@ -21,9 +21,19 @@ namespace Nethermind.Trie.Native;
 /// </remarks>
 public sealed unsafe partial class NativeTrieNodeLog : SafeHandle
 {
-    public NativeTrieNodeLog(ulong compressedMaxMemory) : base(IntPtr.Zero, ownsHandle: true)
+    /// <summary>The live generations of the logs that do not take them from configuration.</summary>
+    public const int DefaultLiveGenerations = 8;
+
+    // Mirrors the size of the native generation table.
+    private const int MaxGenerations = 4096;
+
+    /// <param name="compressedMaxMemory">The memory budget in bytes for compacted generations; it also sizes the storage root index.</param>
+    /// <param name="liveGenerations">How many of the newest generations stay readable in place.</param>
+    public NativeTrieNodeLog(ulong compressedMaxMemory, int liveGenerations) : base(IntPtr.Zero, ownsHandle: true)
     {
-        SetHandle(nm_patricia_log_new(compressedMaxMemory));
+        ArgumentOutOfRangeException.ThrowIfLessThan(liveGenerations, 1);
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(liveGenerations, MaxGenerations);
+        SetHandle(nm_patricia_log_new(compressedMaxMemory, (ulong)liveGenerations));
         nm_patricia_log_set_memory_pressure(this, &ReportMemoryPressure);
     }
 
@@ -96,7 +106,7 @@ public sealed unsafe partial class NativeTrieNodeLog : SafeHandle
     }
 
     [LibraryImport(NativePatriciaBulkSet.LibraryName)]
-    private static partial nint nm_patricia_log_new(ulong compressedMaxMemory);
+    private static partial nint nm_patricia_log_new(ulong compressedMaxMemory, ulong liveGenerations);
 
     [LibraryImport(NativePatriciaBulkSet.LibraryName)]
     private static partial void nm_patricia_log_set_memory_pressure(NativeTrieNodeLog log, delegate* unmanaged<long, void> report);

@@ -1474,7 +1474,7 @@ mod tests {
     fn prepared_updates_remain_unhashed_and_preserve_unchanged_pending_children() {
         let items = generate_items(1000, 0x8765_4321);
         let expected = root_of(&items);
-        let log = TrieNodeLog::new(256 << 20);
+        let log = TrieNodeLog::new(256 << 20, crate::log::DEFAULT_LIVE_GENERATIONS);
         let pending = PendingNodes::default();
         let mut state = BulkSetState::new(EMPTY_TREE_HASH, None);
         let mut start = 0;
@@ -1508,7 +1508,7 @@ mod tests {
     #[test]
     fn prepared_updates_reconcile_logged_roots_and_delete_back_to_empty() {
         let items = generate_items(300, 0x1122_3344);
-        let log = TrieNodeLog::new(256 << 20);
+        let log = TrieNodeLog::new(256 << 20, crate::log::DEFAULT_LIVE_GENERATIONS);
         let pending = PendingNodes::default();
         let base = apply(&pending, Some(&log), EMPTY_TREE_HASH, &items).unwrap();
         pending.clear();
@@ -1769,7 +1769,7 @@ mod tests {
         }
 
         // Every node the first bulk set wrote is logged, so the second needs neither the pending nodes nor the store.
-        let log = TrieNodeLog::new(256 << 20);
+        let log = TrieNodeLog::new(256 << 20, crate::log::DEFAULT_LIVE_GENERATIONS);
         let logged = PendingNodes::default();
         let logged_root = apply(&logged, Some(&*log), EMPTY_TREE_HASH, &items[..300]).unwrap();
         let warmed = WarmedNodes::default();

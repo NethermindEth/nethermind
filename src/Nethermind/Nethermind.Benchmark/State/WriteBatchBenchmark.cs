@@ -48,7 +48,7 @@ public class WriteBatchBenchmark
     public void GlobalSetup()
     {
         _config = new FlatDbConfig();
-        _nativeTrieNodeLog = new NativeTrieNodeLog(0);
+        _nativeTrieNodeLog = new NativeTrieNodeLog(0, NativeTrieNodeLog.DefaultLiveGenerations);
         _resourcePool = new ResourcePool(_config);
         _baseSnapshots = new List<FlatSnapshot>(SnapshotCount);
         _currentStateId = new StateId(0, Keccak.EmptyTreeHash);

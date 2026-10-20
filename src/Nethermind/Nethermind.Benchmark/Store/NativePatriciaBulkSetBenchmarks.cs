@@ -50,7 +50,7 @@ public class NativePatriciaBulkSetBenchmarks
 
         _trieStore = new ParallelCommitTrieStore(new RawScopedTrieStore(new MemDb()));
         _preloadedRootHash = Keccak.EmptyTreeHash;
-        _warmLog = new NativeTrieNodeLog(1UL << 30);
+        _warmLog = new NativeTrieNodeLog(1UL << 30, NativeTrieNodeLog.DefaultLiveGenerations);
         Dictionary<TreePath, byte[]> preloadedNodes = [];
         if (PreloadedCount > 0)
         {

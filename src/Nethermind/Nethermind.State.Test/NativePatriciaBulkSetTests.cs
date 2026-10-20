@@ -48,7 +48,7 @@ public class NativePatriciaBulkSetTests
         // pending nodes when the small log dropped them.
         DictionaryNodeStore store = new(new Dictionary<TreePath, byte[]>());
         using NativePendingNodes pending = NativePendingNodes.Rent(existingItems.Count);
-        using NativeTrieNodeLog log = new(256 * 1024);
+        using NativeTrieNodeLog log = new(256 * 1024, NativeTrieNodeLog.DefaultLiveGenerations);
         Hash256 existingRoot = BulkSet(store, pending, log, Keccak.EmptyTreeHash, existingItems);
         Assert.That(BulkSet(store, pending, log, existingRoot, items), Is.EqualTo(tree.RootHash));
 
@@ -68,7 +68,7 @@ public class NativePatriciaBulkSetTests
 
         DictionaryNodeStore store = new(new Dictionary<TreePath, byte[]>());
         using NativePendingNodes pending = NativePendingNodes.Rent(existingItems.Count);
-        using NativeTrieNodeLog log = new(256 * 1024);
+        using NativeTrieNodeLog log = new(256 * 1024, NativeTrieNodeLog.DefaultLiveGenerations);
         using NativeTrieNodeLogPin pin = log.PinActiveGeneration();
         Hash256 existingRoot = BulkSet(store, pending, log, Keccak.EmptyTreeHash, existingItems);
         int pendingBefore = pending.Count;
@@ -100,7 +100,7 @@ public class NativePatriciaBulkSetTests
         ];
         DictionaryNodeStore store = new(new Dictionary<TreePath, byte[]>());
         using NativePendingNodes pending = NativePendingNodes.Rent(initial.Count);
-        using NativeTrieNodeLog log = new(256 * 1024);
+        using NativeTrieNodeLog log = new(256 * 1024, NativeTrieNodeLog.DefaultLiveGenerations);
         using NativeTrieNodeLogPin pin = log.PinActiveGeneration();
         Hash256 root = BulkSet(store, pending, log, Keccak.EmptyTreeHash, initial);
         pending.Clear();
@@ -124,7 +124,7 @@ public class NativePatriciaBulkSetTests
 
         DictionaryNodeStore store = new(new Dictionary<TreePath, byte[]>());
         using NativePendingNodes pending = NativePendingNodes.Rent(2);
-        using NativeTrieNodeLog log = new(256 * 1024);
+        using NativeTrieNodeLog log = new(256 * 1024, NativeTrieNodeLog.DefaultLiveGenerations);
         ValueHash256 root = Keccak.EmptyTreeHash.ValueHash256;
         using NativeBulkSetState trie = NativeBulkSetState.Create(root, null);
         root = TestItem.KeccakA.ValueHash256;
@@ -152,7 +152,7 @@ public class NativePatriciaBulkSetTests
 
         DictionaryNodeStore store = new(new Dictionary<TreePath, byte[]>());
         using NativePendingNodes pending = NativePendingNodes.Rent(1);
-        using NativeTrieNodeLog log = new(256 * 1024);
+        using NativeTrieNodeLog log = new(256 * 1024, NativeTrieNodeLog.DefaultLiveGenerations);
         using NativeBulkSetState discarded = NativeBulkSetState.Create(Keccak.EmptyTreeHash.ValueHash256, null);
         NativePatriciaBulkSet.Update(store, discarded, log, null, [new PatriciaTree.BulkSetEntry(TestItem.KeccakA.ValueHash256, [1])]);
         discarded.Dispose();
@@ -172,7 +172,7 @@ public class NativePatriciaBulkSetTests
         InvalidOperationException cause = new("fetch failed");
         ThrowingNodeStore store = new(cause);
         using NativePendingNodes pending = NativePendingNodes.Rent(1);
-        using NativeTrieNodeLog log = new(256 * 1024);
+        using NativeTrieNodeLog log = new(256 * 1024, NativeTrieNodeLog.DefaultLiveGenerations);
         using NativeBulkSetState trie = NativeBulkSetState.Create(TestItem.KeccakA.ValueHash256, null);
         PatriciaTree.BulkSetEntry[] entries = [new(TestItem.KeccakB.ValueHash256, [1])];
         Assert.That(() => Call(), Throws.InvalidOperationException.With.InnerException.SameAs(cause));
@@ -191,7 +191,7 @@ public class NativePatriciaBulkSetTests
         Assume.That(NativePatriciaBulkSet.IsAvailable, "libnethermind_patricia is not built");
 
         using NativePendingNodes pending = NativePendingNodes.Rent(1);
-        using NativeTrieNodeLog log = new(256 * 1024);
+        using NativeTrieNodeLog log = new(256 * 1024, NativeTrieNodeLog.DefaultLiveGenerations);
         using NativeBulkSetState trie = NativeBulkSetState.Create(fail ? TestItem.KeccakA.ValueHash256 : Keccak.EmptyTreeHash.ValueHash256, null);
         WeakReference store = CallWithTransientStore(trie, pending, log, finish, fail);
         GC.Collect();
@@ -208,7 +208,7 @@ public class NativePatriciaBulkSetTests
         List<(Hash256 key, byte[] value)> initial = [(TestItem.KeccakA, [1]), (TestItem.KeccakB, [2])];
         Dictionary<TreePath, byte[]> nodes = [];
         using NativePendingNodes pending = NativePendingNodes.Rent(initial.Count);
-        using NativeTrieNodeLog initialLog = new(256 * 1024);
+        using NativeTrieNodeLog initialLog = new(256 * 1024, NativeTrieNodeLog.DefaultLiveGenerations);
         Hash256 root = BulkSet(new DictionaryNodeStore(nodes), pending, initialLog, Keccak.EmptyTreeHash, initial);
         for (int shard = 0; shard < pending.ShardCount; shard++)
         {
@@ -216,7 +216,7 @@ public class NativePatriciaBulkSetTests
             for (int i = 0; i < view.Count; i++) nodes[view[i].Path] = view.GetRlp(view[i]).ToArray();
         }
         pending.Clear();
-        using NativeTrieNodeLog log = new(256 * 1024);
+        using NativeTrieNodeLog log = new(256 * 1024, NativeTrieNodeLog.DefaultLiveGenerations);
         using NativeWarmedNodes warmed = new();
         using NativeBulkSetState trie = NativeBulkSetState.Create(root.ValueHash256, TestItem.KeccakA);
         using ManualResetEventSlim entered = new();
@@ -305,7 +305,7 @@ public class NativePatriciaBulkSetTests
         Dictionary<TreePath, byte[]> nodes = [];
         DictionaryNodeStore store = new(nodes);
         using NativePendingNodes pending = NativePendingNodes.Rent(items.Count);
-        using NativeTrieNodeLog log = new(64 * 1024 * 1024);
+        using NativeTrieNodeLog log = new(64 * 1024 * 1024, NativeTrieNodeLog.DefaultLiveGenerations);
         Hash256 root = BulkSet(store, pending, log, Keccak.EmptyTreeHash, items);
         for (int shard = 0; shard < pending.ShardCount; shard++)
         {
@@ -324,7 +324,7 @@ public class NativePatriciaBulkSetTests
         BulkSet(store, pending, log, root, [(items[0].key, [1, 2, 3])]);
         // A new log does not have the trie, so its nodes are fetched from the store.
         using NativePendingNodes freshPending = NativePendingNodes.Rent(1);
-        using NativeTrieNodeLog freshLog = new(64 * 1024 * 1024);
+        using NativeTrieNodeLog freshLog = new(64 * 1024 * 1024, NativeTrieNodeLog.DefaultLiveGenerations);
         NativePatriciaBulkSet.BulkSet(store, freshPending, freshLog, null, TestItem.KeccakA, root.ValueHash256, [new PatriciaTree.BulkSetEntry(items[1].key.ValueHash256, [4, 5, 6])]);
 
         using (Assert.EnterMultipleScope())
@@ -348,7 +348,7 @@ public class NativePatriciaBulkSetTests
         List<(Hash256 key, byte[] value)> items = PatriciaTreeBulkSetterTests.GenRandomOfLength(1000, seed: 4);
         Dictionary<TreePath, byte[]> nodes = [];
         using NativePendingNodes pending = NativePendingNodes.Rent(items.Count);
-        using NativeTrieNodeLog log = new(64 * 1024 * 1024);
+        using NativeTrieNodeLog log = new(64 * 1024 * 1024, NativeTrieNodeLog.DefaultLiveGenerations);
         Hash256 root = BulkSet(new DictionaryNodeStore(nodes), pending, log, Keccak.EmptyTreeHash, items);
         for (int shard = 0; shard < pending.ShardCount; shard++)
         {
@@ -358,7 +358,7 @@ public class NativePatriciaBulkSetTests
 
         // A log without the trie stands for one written before the trie was persisted.
         CountingNodeStore store = new(new DictionaryNodeStore(nodes));
-        using NativeTrieNodeLog persistedLog = new(64 * 1024 * 1024);
+        using NativeTrieNodeLog persistedLog = new(64 * 1024 * 1024, NativeTrieNodeLog.DefaultLiveGenerations);
         using NativeWarmedNodes warmed = new();
         int fromLog = WarmUp(log, items[0].key);
         int fromStore = WarmUp(persistedLog, items[0].key);
@@ -410,7 +410,7 @@ public class NativePatriciaBulkSetTests
         [MethodImpl(MethodImplOptions.NoInlining)]
         static WeakReference CreatePinnedLog(bool disposeOwner, long before)
         {
-            NativeTrieNodeLog log = new(256 * 1024);
+            NativeTrieNodeLog log = new(256 * 1024, NativeTrieNodeLog.DefaultLiveGenerations);
             using NativeTrieNodeLogPin pin = log.PinActiveGeneration();
             using NativeTrieNodeLogPin copy = pin.Copy();
             long allocated = NativeMetrics.NativeTrieNodeLogMemory;
@@ -432,7 +432,7 @@ public class NativePatriciaBulkSetTests
         List<(Hash256 key, byte[] value)> items = PatriciaTreeBulkSetterTests.GenRandomOfLength(1000, seed: 5);
         CountingNodeStore store = new(new DictionaryNodeStore(new Dictionary<TreePath, byte[]>()));
         using NativePendingNodes pending = NativePendingNodes.Rent(items.Count);
-        using NativeTrieNodeLog log = new(256 * 1024);
+        using NativeTrieNodeLog log = new(256 * 1024, NativeTrieNodeLog.DefaultLiveGenerations);
         NativeTrieNodeLogPin pin = log.PinActiveGeneration();
         Hash256 root = BulkSet(store, pending, log, Keccak.EmptyTreeHash, items);
         NativeTrieNodeLogPin copy = pin.Copy();
@@ -480,7 +480,7 @@ public class NativePatriciaBulkSetTests
         Hash256 address = storage ? TestItem.KeccakA : null;
         List<(Hash256 key, byte[] value)> initial = PatriciaTreeBulkSetterTests.GenRandomOfLength(48, seed: 71);
         CountingNodeStore store = new(new DictionaryNodeStore(new Dictionary<TreePath, byte[]>()));
-        using NativeTrieNodeLog log = new(256 * 1024);
+        using NativeTrieNodeLog log = new(256 * 1024, NativeTrieNodeLog.DefaultLiveGenerations);
         using NativePendingNodes pending = NativePendingNodes.Rent(initial.Count);
         using NativeTrieNodeLogPin first = log.PinActiveGeneration();
         Hash256 root = NativePatriciaBulkSet.BulkSet(store, pending, log, null, address, Keccak.EmptyTreeHash.ValueHash256, ToEntries(initial));
@@ -521,7 +521,7 @@ public class NativePatriciaBulkSetTests
     {
         Assume.That(NativePatriciaBulkSet.IsAvailable, "libnethermind_patricia is not built");
         DictionaryNodeStore store = new(new Dictionary<TreePath, byte[]>());
-        using NativeTrieNodeLog log = new(256 * 1024);
+        using NativeTrieNodeLog log = new(256 * 1024, NativeTrieNodeLog.DefaultLiveGenerations);
         using NativeTrieNodeLogPin pin = log.PinActiveGeneration();
         using NativePendingNodes pending = NativePendingNodes.Rent(1);
         Hash256 root = BulkSet(store, pending, log, Keccak.EmptyTreeHash, [(TestItem.KeccakA, new byte[3000])]);
@@ -539,7 +539,7 @@ public class NativePatriciaBulkSetTests
     public void Root_snapshot_cursor_keeps_log_alive_after_original_pin_and_owner_are_disposed()
     {
         Assume.That(NativePatriciaBulkSet.IsAvailable, "libnethermind_patricia is not built");
-        using NativeTrieNodeLog log = new(256 * 1024);
+        using NativeTrieNodeLog log = new(256 * 1024, NativeTrieNodeLog.DefaultLiveGenerations);
         using NativeTrieNodeLogPin pin = log.PinActiveGeneration();
         using NativePendingNodes pending = NativePendingNodes.Rent(48);
         Hash256 root = BulkSet(new DictionaryNodeStore(new Dictionary<TreePath, byte[]>()), pending, log, Keccak.EmptyTreeHash,
@@ -561,7 +561,7 @@ public class NativePatriciaBulkSetTests
         Assume.That(NativePatriciaBulkSet.IsAvailable, "libnethermind_patricia is not built");
         List<(Hash256 key, byte[] value)> initial = PatriciaTreeBulkSetterTests.GenRandomOfLength(48, seed: 73);
         Dictionary<TreePath, byte[]> nodes = [];
-        using NativeTrieNodeLog writer = new(256 * 1024);
+        using NativeTrieNodeLog writer = new(256 * 1024, NativeTrieNodeLog.DefaultLiveGenerations);
         using NativePendingNodes pending = NativePendingNodes.Rent(initial.Count);
         Hash256 root = BulkSet(new DictionaryNodeStore(nodes), pending, writer, Keccak.EmptyTreeHash, initial);
         for (int shard = 0; shard < pending.ShardCount; shard++)
@@ -569,7 +569,7 @@ public class NativePatriciaBulkSetTests
             NativePendingNodesView view = pending.GetView(shard);
             for (int i = 0; i < view.Count; i++) nodes[view[i].Path] = view.GetRlp(view[i]).ToArray();
         }
-        using NativeTrieNodeLog log = new(256 * 1024);
+        using NativeTrieNodeLog log = new(256 * 1024, NativeTrieNodeLog.DefaultLiveGenerations);
         CountingNodeStore store = new(new DictionaryNodeStore(nodes));
         using NativeWarmedNodes first = new();
         using NativeWarmedNodes second = new();

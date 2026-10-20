@@ -1420,7 +1420,7 @@ public class FlatWorldStateScopeProviderTests
         const int keyCount = 48;
         const int versionCount = 3;
         ResourcePool pool = new(new FlatDbConfig());
-        using NativeTrieNodeLog log = new(1024 * 1024, 64 * 1024);
+        using NativeTrieNodeLog log = new(1024 * 1024, 64 * 1024, NativeTrieNodeLog.DefaultLiveGenerations);
         Hash256? address = storage ? TestItem.KeccakA : null;
         byte[] oldRlp = FlatTestHelpers.LeafRlp(0x01);
         ulong oldPointer = log.AppendRecordFromRlp(address, TreePath.FromHexString("f"), ValueKeccak.Compute(oldRlp), oldRlp);

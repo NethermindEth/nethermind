@@ -115,7 +115,7 @@ public class StorageDeleteWarmupBenchmark
         _address = DeriveAddress(7);
 
         // Build the trie in memory, then move all of it into persistence so every iteration starts cold.
-        using NativeTrieNodeLog log = new(0);
+        using NativeTrieNodeLog log = new(0, NativeTrieNodeLog.DefaultLiveGenerations);
         SnapshotBundle bundle = new(
             new ReadOnlySnapshotBundle(new SnapshotPooledList(0), new NoopPersistenceReader(), recordDetailedMetrics: false, PersistedSnapshotStack.Empty()),
             log, _resourcePool, ResourcePool.Usage.MainBlockProcessing);
@@ -155,7 +155,7 @@ public class StorageDeleteWarmupBenchmark
     /// </summary>
     private void GrowNodeCache()
     {
-        using NativeTrieNodeLog log = new(0);
+        using NativeTrieNodeLog log = new(0, NativeTrieNodeLog.DefaultLiveGenerations);
         SnapshotBundle bundle = new(
             new ReadOnlySnapshotBundle(new SnapshotPooledList(0), _persistence.CreateReader(), recordDetailedMetrics: false, PersistedSnapshotStack.Empty()),
             log, _resourcePool, ResourcePool.Usage.MainBlockProcessing);
@@ -168,7 +168,7 @@ public class StorageDeleteWarmupBenchmark
     public void IterationSetup()
     {
         _reader = new CountingReader(_persistence.CreateReader(), ReadMicros);
-        _log = new NativeTrieNodeLog(0);
+        _log = new NativeTrieNodeLog(0, NativeTrieNodeLog.DefaultLiveGenerations);
         SnapshotBundle bundle = new(
             new ReadOnlySnapshotBundle(new SnapshotPooledList(0), _reader, recordDetailedMetrics: false, PersistedSnapshotStack.Empty()),
             _log, _resourcePool, ResourcePool.Usage.MainBlockProcessing);

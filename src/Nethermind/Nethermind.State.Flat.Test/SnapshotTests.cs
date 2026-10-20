@@ -126,7 +126,7 @@ public class SnapshotTests
     [Test]
     public void NativeEnumerationIncludesOnlyReachableWritesSincePin([Values] bool storage)
     {
-        using NativeTrieNodeLog log = new(0);
+        using NativeTrieNodeLog log = new(0, NativeTrieNodeLog.DefaultLiveGenerations);
         using NativeTrieNodeLogPin originalPin = log.PinActiveGeneration();
         Hash256? address = storage ? TestItem.KeccakA : null;
         ValueHash256 firstKey = new Hash256("1000000000000000000000000000000000000000000000000000000000000000").ValueHash256;
@@ -164,7 +164,7 @@ public class SnapshotTests
     [Test]
     public void NativeUnchangedStateRootOmitsWritesAfterPin([Values] bool revert)
     {
-        using NativeTrieNodeLog log = new(0);
+        using NativeTrieNodeLog log = new(0, NativeTrieNodeLog.DefaultLiveGenerations);
         using NativeTrieNodeLogPin originalPin = log.PinActiveGeneration();
         ValueHash256 key = TestItem.KeccakA.ValueHash256;
         Hash256 root = FlatTestHelpers.WriteNative(log, null, Keccak.EmptyTreeHash, new PatriciaTree.BulkSetEntry(key, [1]));
@@ -187,7 +187,7 @@ public class SnapshotTests
     [Test]
     public void NativeStorageClearPublishesEmptyRootWithoutStaleWrites()
     {
-        using NativeTrieNodeLog log = new(0);
+        using NativeTrieNodeLog log = new(0, NativeTrieNodeLog.DefaultLiveGenerations);
         using SnapshotBundle bundle = new(FlatTestHelpers.MakeBundle(_pool), log, _pool,
             ResourcePool.Usage.MainBlockProcessing);
         using NativeTrieNodeStore store = new(bundle, TestItem.KeccakA, log);

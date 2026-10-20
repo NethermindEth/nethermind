@@ -70,7 +70,7 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                     throw new InvalidConfigurationException("FlatDb.VerifyWithTrie is not supported by the native Flat DB trie backend.", -1);
                 if (!NativePatriciaBulkSet.IsAvailable)
                     throw new InvalidConfigurationException("Flat DB requires libnethermind_patricia, but the native library could not be loaded.", -1);
-                return new NativeTrieNodeLog(config.CompressedNodeRecordBufferMemoryBudget);
+                return new NativeTrieNodeLog(config.CompressedNodeRecordBufferMemoryBudget, config.NodeRecordBufferLiveGenerations);
             })
             .AddSingleton<ICompactionSchedule, CompactionSchedule>()
             .AddSingleton<ISnapshotCompactor, SnapshotCompactor>()

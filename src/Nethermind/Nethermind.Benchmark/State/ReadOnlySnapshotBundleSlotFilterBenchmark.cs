@@ -132,7 +132,7 @@ public class ReadOnlySnapshotBundleSlotFilterBenchmark
 
         _persistence = new NoopPersistenceReader();
         _bundle = CreateBundle();
-        _nativeTrieNodeLog = new NativeTrieNodeLog(0);
+        _nativeTrieNodeLog = new NativeTrieNodeLog(0, NativeTrieNodeLog.DefaultLiveGenerations);
         _snapshotBundle = new SnapshotBundle(CreateBundle(), _nativeTrieNodeLog, resourcePool,
             ResourcePool.Usage.ReadOnlyProcessingEnv, filterInMemorySlotReads: Filtered);
 

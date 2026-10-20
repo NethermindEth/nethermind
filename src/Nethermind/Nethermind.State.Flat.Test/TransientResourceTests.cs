@@ -62,7 +62,7 @@ public class TransientResourceTests
     public void Reset_ClearsNativeWarmedRecords()
     {
         using TransientResource resource = new(new TransientResource.Size(1024));
-        using NativeTrieNodeLog log = new(0);
+        using NativeTrieNodeLog log = new(0, NativeTrieNodeLog.DefaultLiveGenerations);
         byte[] rlp = FlatTestHelpers.LeafRlp(1);
         ValueHash256 root = ValueKeccak.Compute(rlp);
         CountingSource source = new(rlp);

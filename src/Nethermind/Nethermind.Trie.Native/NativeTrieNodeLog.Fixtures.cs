@@ -14,9 +14,11 @@ namespace Nethermind.Trie.Native;
 
 public sealed partial class NativeTrieNodeLog
 {
-    internal unsafe NativeTrieNodeLog(ulong compressedMaxMemory, int generationBytes) : base(IntPtr.Zero, ownsHandle: true)
+    internal unsafe NativeTrieNodeLog(ulong compressedMaxMemory, int generationBytes, int liveGenerations) : base(IntPtr.Zero, ownsHandle: true)
     {
-        SetHandle(nm_patricia_log_fixture_new(compressedMaxMemory, checked((nuint)generationBytes)));
+        ArgumentOutOfRangeException.ThrowIfLessThan(liveGenerations, 1);
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(liveGenerations, MaxGenerations);
+        SetHandle(nm_patricia_log_fixture_new(compressedMaxMemory, checked((nuint)generationBytes), (ulong)liveGenerations));
         nm_patricia_log_set_memory_pressure(this, &ReportMemoryPressure);
     }
 
@@ -83,7 +85,7 @@ public sealed partial class NativeTrieNodeLog
     internal bool IsLive(ulong pointer) => nm_patricia_log_fixture_live(this, pointer);
 
     [LibraryImport(NativePatriciaBulkSet.LibraryName)]
-    private static partial nint nm_patricia_log_fixture_new(ulong compressedMaxMemory, nuint generationBytes);
+    private static partial nint nm_patricia_log_fixture_new(ulong compressedMaxMemory, nuint generationBytes, ulong liveGenerations);
 
     [LibraryImport(NativePatriciaBulkSet.LibraryName)]
     private static unsafe partial int nm_patricia_log_fixture_append_rlp(NativeTrieNodeLog log, ValueHash256* address,
