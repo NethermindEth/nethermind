@@ -6,64 +6,40 @@
         "ubuntu-24.04-arm"
       ],
       "project": [
-        "Nethermind.Abi.Test",
-        "Nethermind.Analyzers.Test",
-        "Nethermind.Api.Test",
-        "Nethermind.AuRa.Test",
-        "Nethermind.BalRecorder.Test",
-        "Nethermind.Blockchain.Test",
-        "Nethermind.CensorshipDetector.Plugin.Test",
-        "Nethermind.Clique.Test",
-        "Nethermind.Config.Test",
-        "Nethermind.Consensus.Test",
-        "Nethermind.Core.Test",
-        "Nethermind.Db.Test",
-        "Nethermind.Era1.Test",
-        "Nethermind.EraE.Test",
-        "Nethermind.Ethash.Test",
-        "Nethermind.EthStats.Test",
-        "Nethermind.Evm.Test",
-        "Nethermind.Facade.Test",
-        "Nethermind.Flashbots.Test",
-        "Nethermind.HealthChecks.Test",
-        "Nethermind.History.Test",
-        "Nethermind.Hive.Test",
-        "Nethermind.Init.Snapshot.Test",
-        "Nethermind.Init.Test",
         "Nethermind.JsonRpc.Test",
-        "Nethermind.JsonRpc.TraceStore.Test",
-        "Nethermind.KeyStore.Test",
-        "Nethermind.Logging.NLog.Test",
         "Nethermind.Merge.AuRa.Test",
         "Nethermind.Merge.Plugin.Test",
-        "Nethermind.Mining.Test",
-        "Nethermind.Monitoring.Test",
-        "Nethermind.Network.Discovery.Test",
-        "Nethermind.Network.Dns.Test",
-        "Nethermind.Network.Enr.Test",
-        "Nethermind.Network.Test",
-        "Nethermind.OpcodeTracing.Plugin.Test",
-        "Nethermind.Optimism.Test",
-        "Nethermind.PortfolioViewer.Plugin.Test",
-        "Nethermind.Runner.Test",
-        "Nethermind.SendPolicy.Plugin.Test",
-        "Nethermind.Serialization.JsonGenerator.Test",
-        "Nethermind.Serialization.Ssz.Test",
-        "Nethermind.Serialization.SszGenerator.Test",
-        "Nethermind.Shutter.Test",
-        "Nethermind.Sockets.Test",
-        "Nethermind.Specs.Test",
-        "Nethermind.State.Flat.History.Test",
-        "Nethermind.State.Flat.Test",
-        "Nethermind.State.Test",
-        "Nethermind.State.Test.Runner.Test",
-        "Nethermind.StateDiffsWriter.Test",
         "Nethermind.Synchronization.Test",
-        "Nethermind.Taiko.Test",
         "Nethermind.Trie.Test",
         "Nethermind.TxPool.Test",
-        "Nethermind.Wallet.Test",
-        "Nethermind.Xdc.Test"
+        {
+          "name": "Nethermind tests 1",
+          "list": "Nethermind.BalRecorder.Test Nethermind.Mining.Test Nethermind.Optimism.Test Nethermind.Sockets.Test Nethermind.State.Flat.History.Test Nethermind.Taiko.Test"
+        },
+        {
+          "name": "Nethermind tests 2",
+          "list": "Nethermind.Abi.Test Nethermind.AuRa.Test Nethermind.Ethash.Test Nethermind.SendPolicy.Plugin.Test Nethermind.Specs.Test Nethermind.State.Test Nethermind.State.Test.Runner.Test"
+        },
+        {
+          "name": "Nethermind tests 3",
+          "list": "Nethermind.Config.Test Nethermind.EraE.Test Nethermind.HealthChecks.Test Nethermind.Init.Test Nethermind.Monitoring.Test Nethermind.Network.Enr.Test Nethermind.Runner.Test"
+        },
+        {
+          "name": "Nethermind tests 4",
+          "list": "Nethermind.Blockchain.Test Nethermind.Clique.Test Nethermind.EthStats.Test Nethermind.Flashbots.Test Nethermind.Logging.NLog.Test Nethermind.Serialization.Ssz.Test Nethermind.StateDiffsWriter.Test Nethermind.Xdc.Test"
+        },
+        {
+          "name": "Nethermind tests 5",
+          "list": "Nethermind.Analyzers.Test Nethermind.CensorshipDetector.Plugin.Test Nethermind.Era1.Test Nethermind.Facade.Test Nethermind.OpcodeTracing.Plugin.Test Nethermind.Serialization.JsonGenerator.Test Nethermind.Shutter.Test Nethermind.State.Flat.Test"
+        },
+        {
+          "name": "Nethermind tests 6",
+          "list": "Nethermind.Api.Test Nethermind.Core.Test Nethermind.Hive.Test Nethermind.JsonRpc.TraceStore.Test Nethermind.KeyStore.Test Nethermind.Network.Discovery.Test Nethermind.Network.Test Nethermind.Serialization.SszGenerator.Test"
+        },
+        {
+          "name": "Nethermind tests 7",
+          "list": "Nethermind.Consensus.Test Nethermind.Db.Test Nethermind.Evm.Test Nethermind.History.Test Nethermind.Init.Snapshot.Test Nethermind.Network.Dns.Test Nethermind.PortfolioViewer.Plugin.Test Nethermind.Wallet.Test"
+        }
       ],
       "chunk": [
         ""
@@ -202,16 +178,6 @@
         },
         {
           "runner": "macos-latest",
-          "project": "Nethermind.Network.Dns.Test",
-          "chunk": ""
-        },
-        {
-          "runner": "macos-latest",
-          "project": "Nethermind.Network.Enr.Test",
-          "chunk": ""
-        },
-        {
-          "runner": "macos-latest",
           "project": "Nethermind.Network.Test",
           "chunk": ""
         },
@@ -227,7 +193,10 @@
         },
         {
           "runner": "macos-latest",
-          "project": "Nethermind.Sockets.Test",
+          "project": {
+            "name": "Nethermind network tests",
+            "list": "Nethermind.Network.Dns.Test Nethermind.Network.Enr.Test Nethermind.Sockets.Test"
+          },
           "chunk": ""
         },
         {
@@ -277,16 +246,6 @@
         },
         {
           "runner": "windows-latest",
-          "project": "Nethermind.Network.Dns.Test",
-          "chunk": ""
-        },
-        {
-          "runner": "windows-latest",
-          "project": "Nethermind.Network.Enr.Test",
-          "chunk": ""
-        },
-        {
-          "runner": "windows-latest",
           "project": "Nethermind.Network.Test",
           "chunk": ""
         },
@@ -302,7 +261,10 @@
         },
         {
           "runner": "windows-latest",
-          "project": "Nethermind.Sockets.Test",
+          "project": {
+            "name": "Nethermind network tests",
+            "list": "Nethermind.Network.Dns.Test Nethermind.Network.Enr.Test Nethermind.Sockets.Test"
+          },
           "chunk": ""
         },
         {
@@ -353,21 +315,15 @@
         "ubuntu-24.04-arm"
       ],
       "project": [
-        "Ethereum.Abi.Test",
-        "Ethereum.Basic.Test",
-        "Ethereum.Blockchain.Block.Test",
-        "Ethereum.Difficulty.Test",
-        "Ethereum.HexPrefix.Test",
-        "Ethereum.KeyAddress.Test",
-        "Ethereum.KeyStore.Test",
-        "Ethereum.Legacy.Blockchain.Block.Test",
-        "Ethereum.Legacy.Transition.Test",
-        "Ethereum.Legacy.VM.Test",
-        "Ethereum.PoW.Test",
-        "Ethereum.Rlp.Test",
-        "Ethereum.Ssz.Test",
-        "Ethereum.Transaction.Test",
-        "Ethereum.Trie.Test"
+        {
+          "name": "Ethereum fixture tests",
+          "fixtures": true,
+          "list": "Ethereum.Blockchain.Block.Test Ethereum.Legacy.Blockchain.Block.Test Ethereum.Legacy.Transition.Test Ethereum.Legacy.VM.Test"
+        },
+        {
+          "name": "Ethereum tests",
+          "list": "Ethereum.Abi.Test Ethereum.Basic.Test Ethereum.Difficulty.Test Ethereum.HexPrefix.Test Ethereum.KeyAddress.Test Ethereum.KeyStore.Test Ethereum.PoW.Test Ethereum.Rlp.Test Ethereum.Ssz.Test Ethereum.Transaction.Test Ethereum.Trie.Test"
+        }
       ],
       "chunk": [
         ""
@@ -473,65 +429,38 @@
         }
       ],
       "project": [
-        "Ethereum.Abi.Test",
-        "Ethereum.Basic.Test",
-        "Ethereum.Blockchain.Block.Test",
-        "Ethereum.Difficulty.Test",
-        "Ethereum.HexPrefix.Test",
-        "Ethereum.KeyAddress.Test",
-        "Ethereum.KeyStore.Test",
-        "Ethereum.Legacy.Blockchain.Block.Test",
-        "Ethereum.Legacy.Transition.Test",
-        "Ethereum.Legacy.VM.Test",
-        "Ethereum.PoW.Test",
-        "Ethereum.Rlp.Test",
-        "Ethereum.Transaction.Test",
-        "Ethereum.Trie.Test",
-        "Nethermind.Abi.Test",
-        "Nethermind.Api.Test",
-        "Nethermind.AuRa.Test",
-        "Nethermind.Blockchain.Test",
-        "Nethermind.Clique.Test",
-        "Nethermind.Config.Test",
-        "Nethermind.Consensus.Test",
-        "Nethermind.Core.Test",
-        "Nethermind.Db.Test",
-        "Nethermind.Era1.Test",
-        "Nethermind.Ethash.Test",
-        "Nethermind.EthStats.Test",
-        "Nethermind.Evm.Test",
-        "Nethermind.Facade.Test",
-        "Nethermind.Flashbots.Test",
-        "Nethermind.HealthChecks.Test",
-        "Nethermind.History.Test",
-        "Nethermind.Hive.Test",
         "Nethermind.JsonRpc.Test",
-        "Nethermind.JsonRpc.TraceStore.Test",
-        "Nethermind.KeyStore.Test",
-        "Nethermind.Logging.NLog.Test",
-        "Nethermind.Merge.AuRa.Test",
-        "Nethermind.Merge.Plugin.Test",
-        "Nethermind.Mining.Test",
-        "Nethermind.Monitoring.Test",
-        "Nethermind.Network.Discovery.Test",
-        "Nethermind.Network.Dns.Test",
-        "Nethermind.Network.Enr.Test",
-        "Nethermind.Network.Test",
-        "Nethermind.Optimism.Test",
-        "Nethermind.Runner.Test",
-        "Nethermind.SendPolicy.Plugin.Test",
-        "Nethermind.Serialization.Ssz.Test",
-        "Nethermind.Shutter.Test",
-        "Nethermind.Sockets.Test",
-        "Nethermind.Specs.Test",
-        "Nethermind.State.Test",
-        "Nethermind.State.Test.Runner.Test",
         "Nethermind.Synchronization.Test",
-        "Nethermind.Taiko.Test",
-        "Nethermind.Trie.Test",
         "Nethermind.TxPool.Test",
-        "Nethermind.Wallet.Test",
-        "Nethermind.Xdc.Test"
+        {
+          "name": "Ethereum fixture tests",
+          "fixtures": true,
+          "list": "Ethereum.Blockchain.Block.Test Ethereum.Legacy.Blockchain.Block.Test Ethereum.Legacy.Transition.Test Ethereum.Legacy.VM.Test"
+        },
+        {
+          "name": "Nethermind tests 1",
+          "list": "Nethermind.Core.Test Nethermind.Era1.Test Nethermind.Facade.Test Nethermind.Hive.Test Nethermind.Shutter.Test Nethermind.Trie.Test"
+        },
+        {
+          "name": "Nethermind tests 2",
+          "list": "Ethereum.Abi.Test Ethereum.Basic.Test Ethereum.HexPrefix.Test Ethereum.KeyAddress.Test Ethereum.KeyStore.Test Ethereum.PoW.Test Ethereum.Rlp.Test Nethermind.Abi.Test Nethermind.AuRa.Test Nethermind.Ethash.Test Nethermind.JsonRpc.TraceStore.Test Nethermind.KeyStore.Test Nethermind.Merge.Plugin.Test Nethermind.Network.Discovery.Test Nethermind.Network.Dns.Test Nethermind.Network.Enr.Test Nethermind.Optimism.Test Nethermind.SendPolicy.Plugin.Test Nethermind.Serialization.Ssz.Test Nethermind.Taiko.Test"
+        },
+        {
+          "name": "Nethermind tests 3",
+          "list": "Ethereum.Difficulty.Test Nethermind.Db.Test Nethermind.State.Test Nethermind.State.Test.Runner.Test Nethermind.Wallet.Test Nethermind.Xdc.Test"
+        },
+        {
+          "name": "Nethermind tests 4",
+          "list": "Ethereum.Transaction.Test Ethereum.Trie.Test Nethermind.Evm.Test Nethermind.History.Test Nethermind.Network.Test Nethermind.Runner.Test Nethermind.Specs.Test"
+        },
+        {
+          "name": "Nethermind tests 5",
+          "list": "Nethermind.Blockchain.Test Nethermind.Clique.Test Nethermind.Consensus.Test Nethermind.Flashbots.Test Nethermind.Merge.AuRa.Test Nethermind.Mining.Test"
+        },
+        {
+          "name": "Checked-only tests",
+          "list": "Nethermind.Api.Test Nethermind.Config.Test Nethermind.EthStats.Test Nethermind.HealthChecks.Test Nethermind.Logging.NLog.Test Nethermind.Monitoring.Test Nethermind.Sockets.Test"
+        }
       ],
       "include": [
         {
@@ -590,67 +519,10 @@
             "artifact": "release",
             "avx512": 1
           },
-          "project": "Nethermind.Api.Test"
-        },
-        {
-          "variant": {
-            "label": "no-intrinsics",
-            "dotnet-args": "",
-            "hw-intrinsic": 0,
-            "artifact": "release",
-            "avx512": 1
-          },
-          "project": "Nethermind.Config.Test"
-        },
-        {
-          "variant": {
-            "label": "no-intrinsics",
-            "dotnet-args": "",
-            "hw-intrinsic": 0,
-            "artifact": "release",
-            "avx512": 1
-          },
-          "project": "Nethermind.EthStats.Test"
-        },
-        {
-          "variant": {
-            "label": "no-intrinsics",
-            "dotnet-args": "",
-            "hw-intrinsic": 0,
-            "artifact": "release",
-            "avx512": 1
-          },
-          "project": "Nethermind.HealthChecks.Test"
-        },
-        {
-          "variant": {
-            "label": "no-intrinsics",
-            "dotnet-args": "",
-            "hw-intrinsic": 0,
-            "artifact": "release",
-            "avx512": 1
-          },
-          "project": "Nethermind.Logging.NLog.Test"
-        },
-        {
-          "variant": {
-            "label": "no-intrinsics",
-            "dotnet-args": "",
-            "hw-intrinsic": 0,
-            "artifact": "release",
-            "avx512": 1
-          },
-          "project": "Nethermind.Monitoring.Test"
-        },
-        {
-          "variant": {
-            "label": "no-intrinsics",
-            "dotnet-args": "",
-            "hw-intrinsic": 0,
-            "artifact": "release",
-            "avx512": 1
-          },
-          "project": "Nethermind.Sockets.Test"
+          "project": {
+            "name": "Checked-only tests",
+            "list": "Nethermind.Api.Test Nethermind.Config.Test Nethermind.EthStats.Test Nethermind.HealthChecks.Test Nethermind.Logging.NLog.Test Nethermind.Monitoring.Test Nethermind.Sockets.Test"
+          }
         }
       ]
     },
@@ -708,62 +580,24 @@
   "nethermind-tests-trie": {
     "tests": {
       "project": [
-        "Nethermind.Abi.Test",
-        "Nethermind.Analyzers.Test",
-        "Nethermind.Api.Test",
-        "Nethermind.AuRa.Test",
-        "Nethermind.BalRecorder.Test",
-        "Nethermind.Blockchain.Test",
-        "Nethermind.CensorshipDetector.Plugin.Test",
-        "Nethermind.Clique.Test",
-        "Nethermind.Config.Test",
-        "Nethermind.Consensus.Test",
-        "Nethermind.Core.Test",
-        "Nethermind.Db.Test",
-        "Nethermind.Era1.Test",
-        "Nethermind.EraE.Test",
-        "Nethermind.Ethash.Test",
-        "Nethermind.EthStats.Test",
-        "Nethermind.Evm.Test",
-        "Nethermind.Facade.Test",
-        "Nethermind.Flashbots.Test",
-        "Nethermind.HealthChecks.Test",
-        "Nethermind.History.Test",
-        "Nethermind.Hive.Test",
-        "Nethermind.Init.Snapshot.Test",
-        "Nethermind.Init.Test",
         "Nethermind.JsonRpc.Test",
-        "Nethermind.JsonRpc.TraceStore.Test",
-        "Nethermind.KeyStore.Test",
-        "Nethermind.Logging.NLog.Test",
-        "Nethermind.Merge.AuRa.Test",
-        "Nethermind.Merge.Plugin.Test",
-        "Nethermind.Mining.Test",
-        "Nethermind.Monitoring.Test",
-        "Nethermind.Network.Discovery.Test",
-        "Nethermind.Network.Dns.Test",
-        "Nethermind.Network.Enr.Test",
-        "Nethermind.Network.Test",
-        "Nethermind.OpcodeTracing.Plugin.Test",
-        "Nethermind.Optimism.Test",
-        "Nethermind.PortfolioViewer.Plugin.Test",
-        "Nethermind.Runner.Test",
-        "Nethermind.SendPolicy.Plugin.Test",
-        "Nethermind.Serialization.Ssz.Test",
-        "Nethermind.Serialization.SszGenerator.Test",
-        "Nethermind.Shutter.Test",
-        "Nethermind.Sockets.Test",
-        "Nethermind.Specs.Test",
-        "Nethermind.State.Flat.History.Test",
-        "Nethermind.State.Flat.Test",
-        "Nethermind.State.Test",
-        "Nethermind.State.Test.Runner.Test",
-        "Nethermind.StateDiffsWriter.Test",
-        "Nethermind.Taiko.Test",
-        "Nethermind.Trie.Test",
         "Nethermind.TxPool.Test",
-        "Nethermind.Wallet.Test",
-        "Nethermind.Xdc.Test"
+        {
+          "name": "Nethermind tests 1",
+          "list": "Nethermind.AuRa.Test Nethermind.Db.Test Nethermind.Era1.Test Nethermind.Facade.Test Nethermind.Network.Test Nethermind.Specs.Test Nethermind.State.Flat.History.Test Nethermind.Wallet.Test"
+        },
+        {
+          "name": "Nethermind tests 2",
+          "list": "Nethermind.Blockchain.Test Nethermind.Consensus.Test Nethermind.Flashbots.Test Nethermind.Init.Snapshot.Test Nethermind.KeyStore.Test Nethermind.Optimism.Test Nethermind.State.Flat.Test Nethermind.State.Test"
+        },
+        {
+          "name": "Nethermind tests 3",
+          "list": "Nethermind.Abi.Test Nethermind.Analyzers.Test Nethermind.Api.Test Nethermind.BalRecorder.Test Nethermind.CensorshipDetector.Plugin.Test Nethermind.Clique.Test Nethermind.Config.Test Nethermind.Core.Test Nethermind.EraE.Test Nethermind.EthStats.Test Nethermind.Ethash.Test Nethermind.HealthChecks.Test Nethermind.History.Test Nethermind.Hive.Test Nethermind.Init.Test Nethermind.JsonRpc.TraceStore.Test Nethermind.Logging.NLog.Test Nethermind.Merge.Plugin.Test Nethermind.Mining.Test Nethermind.Monitoring.Test Nethermind.Network.Dns.Test Nethermind.Network.Enr.Test Nethermind.OpcodeTracing.Plugin.Test Nethermind.PortfolioViewer.Plugin.Test Nethermind.Runner.Test Nethermind.SendPolicy.Plugin.Test Nethermind.Serialization.Ssz.Test Nethermind.Serialization.SszGenerator.Test Nethermind.Sockets.Test Nethermind.State.Test.Runner.Test Nethermind.StateDiffsWriter.Test"
+        },
+        {
+          "name": "Nethermind tests 4",
+          "list": "Nethermind.Evm.Test Nethermind.Merge.AuRa.Test Nethermind.Network.Discovery.Test Nethermind.Shutter.Test Nethermind.Taiko.Test Nethermind.Trie.Test Nethermind.Xdc.Test"
+        }
       ],
       "chunk": [
         ""
@@ -789,21 +623,15 @@
     },
     "tests-spec": {
       "project": [
-        "Ethereum.Abi.Test",
-        "Ethereum.Basic.Test",
-        "Ethereum.Blockchain.Block.Test",
-        "Ethereum.Difficulty.Test",
-        "Ethereum.HexPrefix.Test",
-        "Ethereum.KeyAddress.Test",
-        "Ethereum.KeyStore.Test",
-        "Ethereum.Legacy.Blockchain.Block.Test",
-        "Ethereum.Legacy.Transition.Test",
-        "Ethereum.Legacy.VM.Test",
-        "Ethereum.PoW.Test",
-        "Ethereum.Rlp.Test",
-        "Ethereum.Ssz.Test",
-        "Ethereum.Transaction.Test",
-        "Ethereum.Trie.Test"
+        {
+          "name": "Ethereum fixture tests",
+          "fixtures": true,
+          "list": "Ethereum.Blockchain.Block.Test Ethereum.Legacy.Blockchain.Block.Test Ethereum.Legacy.Transition.Test Ethereum.Legacy.VM.Test"
+        },
+        {
+          "name": "Ethereum tests",
+          "list": "Ethereum.Abi.Test Ethereum.Basic.Test Ethereum.Difficulty.Test Ethereum.HexPrefix.Test Ethereum.KeyAddress.Test Ethereum.KeyStore.Test Ethereum.PoW.Test Ethereum.Rlp.Test Ethereum.Ssz.Test Ethereum.Transaction.Test Ethereum.Trie.Test"
+        }
       ],
       "chunk": [
         ""

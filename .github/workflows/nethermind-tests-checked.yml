@@ -50,26 +50,27 @@ jobs:
           workflow: nethermind-tests-checked
 
   tests:
-    name: Run ${{ matrix.project }} [${{ matrix.variant.label }}]
+    name: Run ${{ matrix.project.name || matrix.project }} [${{ matrix.variant.label }}]
     needs: [build, select]
     if: fromJSON(needs.select.outputs.matrices).tests != null
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # A pack runs several projects one after another, so a hang in its last project needs more room to be dumped.
+    timeout-minutes: ${{ matrix.project.list && 25 || 15 }}
     env:
       DOTNET_GCConserveMemory: 9
-      # Only these fixture tests read the src/tests submodule at runtime.
-      FIXTURE_PROJECTS: '["Ethereum.Blockchain.Block.Test","Ethereum.Legacy.Blockchain.Block.Test","Ethereum.Legacy.Blockchain.Test","Ethereum.Legacy.Transition.Test","Ethereum.Legacy.VM.Test"]'
     strategy:
       fail-fast: false
       # The Keccak batch kernels are four lanes wide without AVX-512 and eight with it, and the
       # code that feeds them differs too, so the default runners cover only one of the two.
       # Hosted runners have AVX2, so no other lane runs the x64 128-bit nibble and hex loops.
+      # Projects under about 4 minutes share a job, run one after another (scripts/ci/run-test-projects.sh).
+      # Packs with fixtures: true read the src/tests submodule at runtime.
       matrix: ${{ fromJSON(needs.select.outputs.matrices).tests }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
         with:
-          submodules: ${{ contains(fromJSON(env.FIXTURE_PROJECTS), matrix.project) && 'recursive' || 'false' }}
+          submodules: ${{ matrix.project.fixtures && 'recursive' || 'false' }}
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
@@ -79,7 +80,18 @@ jobs:
         with:
           variant: ${{ matrix.variant.artifact }}
 
+      # A pack runs the checked and no-intrinsics lanes of several projects; the ISA lanes keep their own step.
+      - name: ${{ matrix.project.name }}
+        if: matrix.project.list
+        env:
+          PROJECTS: ${{ matrix.project.list }}
+          CRASH_RETRY: false
+          DOTNET_EnableHWIntrinsic: ${{ matrix.variant.hw-intrinsic }}
+          DOTNET_EnableAVX512: ${{ matrix.variant.avx512 }}
+        run: bash scripts/ci/run-test-projects.sh
+
       - name: ${{ matrix.project }}
+        if: '!matrix.project.list'
         id: test
         working-directory: src/Nethermind/${{ matrix.project }}
         env:
@@ -145,7 +157,7 @@ jobs:
         if: ${{ failure() || cancelled() }}
         uses: actions/upload-artifact@v7
         with:
-          name: ${{ matrix.project }}-${{ matrix.variant.label }}-dumps
+          name: ${{ matrix.project.name || matrix.project }}-${{ matrix.variant.label }}-dumps
           # The ISA lanes run several projects, each writing into its own TestResults.
           path: |
             src/Nethermind/*/TestResults/*_hang.*

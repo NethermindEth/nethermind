@@ -59,16 +59,17 @@ jobs:
           workflow: nethermind-tests-trie
 
   tests:
-    name: Run ${{ matrix.project }}${{ matrix.chunk && format(' ({0})', matrix.chunk) || '' }}
+    name: Run ${{ matrix.project.name || matrix.project }}${{ matrix.chunk && format(' ({0})', matrix.chunk) || '' }}
     needs: [build, select]
     if: fromJSON(needs.select.outputs.matrices).tests != null
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: ${{ matrix.project.list && 25 || 20 }}
     env:
       DOTNET_GCConserveMemory: 9
     strategy:
       fail-fast: false
       # Synchronization.Test is chunked on every runner in the main suite — its unchunked variant hits the wall.
+      # Projects under about 4 minutes share a job, run one after another (scripts/ci/run-test-projects.sh).
       matrix: ${{ fromJSON(needs.select.outputs.matrices).tests }}
     steps:
       - name: Check out repository
@@ -82,50 +83,41 @@ jobs:
         with:
           variant: release
 
-      - name: ${{ matrix.project }}${{ matrix.chunk && format(' ({0})', matrix.chunk) || '' }}
+      - name: ${{ matrix.project.name || matrix.project }}${{ matrix.chunk && format(' ({0})', matrix.chunk) || '' }}
         id: test
-        working-directory: src/Nethermind/${{ matrix.project }}
         env:
           TEST_CHUNK: ${{ matrix.chunk }}
-        run: |
-          # A hung test host is killed with a dump of every thread instead of running into the job
-          # timeout, which kills the job without one. The timeout counts inactivity, not runtime, and
-          # a mini dump keeps the write and upload inside whatever job budget the hang leaves.
-          # A host that dies mid-run leaves a dump, a crash report where the runtime writes one, and a
-          # sequence log of the tests in flight; on its own, exit code 7 names neither test nor cause.
-          ../artifacts/bin/${{ matrix.project }}/release/${{ matrix.project }} --results-directory TestResults \
-            --hangdump --hangdump-timeout 8m --hangdump-type Mini \
-            --crashdump --crashdump-type Mini --crash-report-if-supported
+          PROJECTS: ${{ matrix.project.list || matrix.project }}
+          CRASH_RETRY: false
+        run: bash scripts/ci/run-test-projects.sh
 
       - name: Upload dumps
         if: ${{ failure() || cancelled() }}
         uses: actions/upload-artifact@v7
         with:
-          name: ${{ matrix.project }}${{ matrix.chunk && format('-{0}', matrix.chunk) || '' }}-dumps
+          name: ${{ matrix.project.name || matrix.project }}${{ matrix.chunk && format('-{0}', matrix.chunk) || '' }}-dumps
           path: |
-            src/Nethermind/${{ matrix.project }}/TestResults/*_hang.*
-            src/Nethermind/${{ matrix.project }}/TestResults/*_crash.*
+            src/Nethermind/*/TestResults/*_hang.*
+            src/Nethermind/*/TestResults/*_crash.*
           if-no-files-found: ignore
           retention-days: 3
 
   tests-spec:
-    name: Run ${{ matrix.project }}${{ matrix.chunk && format(' ({0})', matrix.chunk) || '' }}
+    name: Run ${{ matrix.project.name || matrix.project }}${{ matrix.chunk && format(' ({0})', matrix.chunk) || '' }}
     needs: [build, select]
     if: fromJSON(needs.select.outputs.matrices).tests-spec != null
     runs-on: ubuntu-latest
-    timeout-minutes: 20
-    env:
-      # Only these EF fixture tests read the src/tests submodule at runtime.
-      FIXTURE_PROJECTS: '["Ethereum.Blockchain.Block.Test","Ethereum.Legacy.Blockchain.Block.Test","Ethereum.Legacy.Blockchain.Test","Ethereum.Legacy.Transition.Test","Ethereum.Legacy.VM.Test"]'
+    timeout-minutes: ${{ matrix.project.list && 25 || 20 }}
     strategy:
       fail-fast: false
+      # Packs with fixtures: true read the src/tests submodule at runtime.
       matrix: ${{ fromJSON(needs.select.outputs.matrices).tests-spec }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
 
       - name: Fetch submodules
-        if: ${{ contains(fromJSON(env.FIXTURE_PROJECTS), matrix.project) }}
+        if: matrix.project.fixtures
         uses: ./.github/actions/fetch-submodules
         with:
           submodules: recursive
@@ -138,24 +130,22 @@ jobs:
         with:
           variant: release
 
-      - name: ${{ matrix.project }}${{ matrix.chunk && format(' ({0})', matrix.chunk) || '' }}
+      - name: ${{ matrix.project.name || matrix.project }}${{ matrix.chunk && format(' ({0})', matrix.chunk) || '' }}
         id: test
-        working-directory: src/Nethermind/${{ matrix.project }}
         env:
           TEST_CHUNK: ${{ matrix.chunk }}
-        run: |
-          ../artifacts/bin/${{ matrix.project }}/release/${{ matrix.project }} --results-directory TestResults \
-            --hangdump --hangdump-timeout 8m --hangdump-type Mini \
-            --crashdump --crashdump-type Mini --crash-report-if-supported
+          PROJECTS: ${{ matrix.project.list || matrix.project }}
+          CRASH_RETRY: false
+        run: bash scripts/ci/run-test-projects.sh
 
       - name: Upload dumps
         if: ${{ failure() || cancelled() }}
         uses: actions/upload-artifact@v7
         with:
-          name: ${{ matrix.project }}${{ matrix.chunk && format('-{0}', matrix.chunk) || '' }}-dumps
+          name: ${{ matrix.project.name || matrix.project }}${{ matrix.chunk && format('-{0}', matrix.chunk) || '' }}-dumps
           path: |
-            src/Nethermind/${{ matrix.project }}/TestResults/*_hang.*
-            src/Nethermind/${{ matrix.project }}/TestResults/*_crash.*
+            src/Nethermind/*/TestResults/*_hang.*
+            src/Nethermind/*/TestResults/*_crash.*
           if-no-files-found: ignore
           retention-days: 3
 
