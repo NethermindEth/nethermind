@@ -121,6 +121,10 @@ public sealed class FlatTestContainer : IDisposable
 
     public T Resolve<T>() where T : notnull => Container.Resolve<T>();
 
+    /// <summary>A child scope of the built graph with the registrations of <paramref name="configure"/> on top, to
+    /// resolve a production component over this graph with some of its dependencies replaced. The caller disposes it.</summary>
+    public ILifetimeScope BeginScope(Action<ContainerBuilder> configure) => Container.BeginLifetimeScope(configure);
+
     public SnapshotRepository Repository => Resolve<SnapshotRepository>();
     public IPersistedSnapshotLoader Loader => Resolve<PersistedSnapshotLoader>();
     public ResourcePool ResourcePool => Resolve<ResourcePool>();
