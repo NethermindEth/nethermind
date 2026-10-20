@@ -22,7 +22,7 @@ public static partial class EvmInstructions
     private static partial void MulMod256(in UInt256 a, in UInt256 b, in UInt256 m, out UInt256 result);
 
     /// <summary>Computes <c>a / b</c>, for a non-zero <paramref name="b"/>.</summary>
-    private static partial void Divide256(in UInt256 a, in UInt256 b, out UInt256 result);
+    internal static partial void Divide256(in UInt256 a, in UInt256 b, out UInt256 result);
 
     /// <summary>Computes <c>a mod b</c>, for a <paramref name="b"/> above one.</summary>
     private static partial void Mod256(in UInt256 a, in UInt256 b, out UInt256 result);
