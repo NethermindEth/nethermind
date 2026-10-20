@@ -40,7 +40,8 @@ jobs:
     name: Run ${{ matrix.project.name || matrix.project }}${{ matrix.chunk && format(' ({0})', matrix.chunk) || '' }} (${{ matrix.runner }})
     needs: build
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 15
+    # A pack runs several projects one after another, so a hang in its last project needs more room to be dumped.
+    timeout-minutes: ${{ matrix.project.list && 25 || 15 }}
     outputs:
       collect_coverage: ${{ env.COLLECT_COVERAGE }}
     env:
@@ -204,7 +205,8 @@ jobs:
   tests-native:
     name: Run ${{ matrix.project.name || matrix.project }}${{ matrix.chunk && format(' ({0})', matrix.chunk) || '' }} (${{ matrix.runner }})
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 15
+    # A pack runs several projects one after another, so a hang in its last project needs more room to be dumped.
+    timeout-minutes: ${{ matrix.project.list && 25 || 15 }}
     env:
       DOTNET_GCConserveMemory: 9
     strategy:
@@ -246,7 +248,8 @@ jobs:
     name: Run ${{ matrix.project.name || matrix.project }}${{ matrix.chunk && format(' ({0})', matrix.chunk) || '' }} (${{ matrix.runner }})
     needs: build
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 15
+    # A pack runs several projects one after another, so a hang in its last project needs more room to be dumped.
+    timeout-minutes: ${{ matrix.project.list && 25 || 15 }}
     strategy:
       fail-fast: false
       matrix:

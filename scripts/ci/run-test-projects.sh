@@ -32,7 +32,8 @@ run_project() {
   dotnet build-server shutdown || true  # macOS VB/C# server sometimes fails to shut down; harmless
   # A hung test host is killed with a dump of every thread instead of running into the job
   # timeout, which kills the job without one. The timeout counts inactivity, not runtime, and
-  # a mini dump keeps the write and upload inside whatever job budget the hang leaves.
+  # a mini dump keeps the write and upload inside whatever job budget the hang leaves; a pack
+  # gets a larger job timeout, so a hang in its last project still has that budget.
   # A host that dies mid-run leaves a dump, a crash report where the runtime writes one, and a
   # sequence log of the tests in flight; on its own, exit code 7 names neither test nor cause.
   local test_args=(
@@ -53,10 +54,16 @@ run_project() {
   "${run_tests[@]}" "${test_args[@]}" "${coverage[@]}"
 }
 
+# Each project of a pack must write its own report, as it did when it had a job of its own.
+coverage_written() {
+  [ "${COVERAGE:-}" != "true" ] || compgen -G "TestResults/*.cobertura.xml" > /dev/null ||
+    { echo "::error::$1: wrote no coverage report"; return 1; }
+}
+
 failed=()
 for project in "${projects[@]}"; do
   echo "::group::$project"
-  (cd "src/Nethermind/$project" && run_project "$project") || failed+=("$project")
+  (cd "src/Nethermind/$project" && run_project "$project" && coverage_written "$project") || failed+=("$project")
   echo "::endgroup::"
 done
 
