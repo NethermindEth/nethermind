@@ -129,7 +129,6 @@ namespace Nethermind.Blockchain
             BlockGasLimit = header.GasLimit;
             CurrentBaseFee = header.BaseFeePerGas;
             IReleaseSpec childSpec = SpecProvider.GetSpec(header.Number + 1, header.Timestamp);
-            // Under EIP-8198 the next block is assumed to land in the next slot.
             NextBaseFee = childSpec.IsEip1559Enabled
                 ? BaseFeeCalculator.CalculateForNextSlot(header, (_slots ??= SpecProvider.GetSlotSchedule(_secondsPerSlot)).GetNextSlotTimestamp(header.Timestamp), childSpec)
                 : UInt256.Zero;

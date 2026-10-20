@@ -139,6 +139,15 @@ public static class BaseFeeCalculator
         Calculate(parent, nextSlotTimestamp, parent.SlotNumber + 1, specFor1559);
 
     /// <summary>
+    /// Predicts the base fee of the child of <paramref name="parent"/> in the slot after the parent's on
+    /// <paramref name="slots"/>, or for a <see cref="Eip8198Constants.BaseFeeReferenceSlotSeconds"/> slot without one.
+    /// </summary>
+    public static UInt256 CalculateForNextSlot(BlockHeader parent, SlotSchedule? slots, IEip1559Spec specFor1559) =>
+        slots is null
+            ? CalculateForReferenceSlot(parent, specFor1559)
+            : CalculateForNextSlot(parent, slots.GetNextSlotTimestamp(parent.Timestamp), specFor1559);
+
+    /// <summary>
     /// Predicts the base fee of the child of <paramref name="parent"/> where the slot duration is unknown, assuming a
     /// <see cref="Eip8198Constants.BaseFeeReferenceSlotSeconds"/> slot.
     /// </summary>
