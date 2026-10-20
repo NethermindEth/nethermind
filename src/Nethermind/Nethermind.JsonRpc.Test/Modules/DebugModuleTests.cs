@@ -257,7 +257,7 @@ public class DebugModuleTests
     {
         Block block = Build.A.Block.WithNumber(1).WithBlockAccessListHash(Keccak.OfAnEmptySequenceRlp).TestObject;
         byte[] rawBal = [0xc0];
-        _debugBridge.GetBlock(BlockParameter.Latest).Returns(block);
+        _blockFinder.FindBlock(BlockParameter.Latest).Returns(block);
         _blockchainBridge.GetBlockAccessListRlp(block.Number, block.Hash!).Returns(ArrayMemoryManager.From(rawBal));
 
         string serialized = await SerializedRequest("debug_getRawBlockAccessList", "latest");
@@ -265,11 +265,11 @@ public class DebugModuleTests
     }
 
     [TestCaseSource(nameof(RawBlockAccessListErrorCases))]
-    public async Task DebugGetRawBlockAccessList_WhenUnavailable_ReturnsError(Action<IDebugBridge, IBlockchainBridge> setup, int expectedErrorCode)
+    public async Task DebugGetRawBlockAccessList_WhenUnavailable_ReturnsError(Action<IBlockFinder, IBlockchainBridge> setup, object parameter, int expectedErrorCode)
     {
-        setup(_debugBridge, _blockchainBridge);
+        setup(_blockFinder, _blockchainBridge);
 
-        using JsonRpcResponse response = await Request("debug_getRawBlockAccessList", "latest");
+        using JsonRpcResponse response = await Request("debug_getRawBlockAccessList", parameter);
         Assert.That(RpcTest.AssertError(response).Code, Is.EqualTo(expectedErrorCode));
     }
 
@@ -1540,25 +1540,36 @@ public class DebugModuleTests
     private static IEnumerable<TestCaseData> RawBlockAccessListErrorCases()
     {
         yield return new TestCaseData(
-            (Action<IDebugBridge, IBlockchainBridge>)((debug, _) => debug.GetBlock(BlockParameter.Latest).ReturnsNull()),
-            ErrorCodes.BlockAccessListResourceNotFound)
+            (Action<IBlockFinder, IBlockchainBridge>)((_, _) => { }),
+            (object)"latest", ErrorCodes.BlockAccessListResourceNotFound)
         { TestName = "missing_block" };
 
         yield return new TestCaseData(
-            (Action<IDebugBridge, IBlockchainBridge>)((debug, _) =>
-                debug.GetBlock(BlockParameter.Latest).Returns(Build.A.Block.WithNumber(1).TestObject)),
-            ErrorCodes.BlockAccessListResourceNotFound)
+            (Action<IBlockFinder, IBlockchainBridge>)((finder, _) =>
+                finder.FindBlock(BlockParameter.Latest).Returns(Build.A.Block.WithNumber(1).TestObject)),
+            (object)"latest", ErrorCodes.BlockAccessListResourceNotFound)
         { TestName = "unavailable_before_fork" };
 
         yield return new TestCaseData(
-            (Action<IDebugBridge, IBlockchainBridge>)((debug, chain) =>
+            (Action<IBlockFinder, IBlockchainBridge>)((finder, chain) =>
             {
                 Block block = Build.A.Block.WithNumber(1).WithBlockAccessListHash(Keccak.OfAnEmptySequenceRlp).TestObject;
-                debug.GetBlock(BlockParameter.Latest).Returns(block);
+                finder.FindBlock(BlockParameter.Latest).Returns(block);
                 chain.GetBlockAccessListRlp(block.Number, block.Hash!).ReturnsNull();
             }),
-            ErrorCodes.PrunedHistoryUnavailable)
+            (object)"latest", ErrorCodes.PrunedHistoryUnavailable)
         { TestName = "pruned" };
+
+        yield return new TestCaseData(
+            (Action<IBlockFinder, IBlockchainBridge>)((finder, _) => finder.LowestServedBlock.Returns(10UL)),
+            (object)"0x1", ErrorCodes.PrunedHistoryUnavailable)
+        { TestName = "history_expired" };
+
+        BlockHeader sideHeader = Build.A.BlockHeader.WithNumber(1).TestObject;
+        yield return new TestCaseData(
+            (Action<IBlockFinder, IBlockchainBridge>)((finder, _) => finder.FindHeader(sideHeader.Hash!).Returns(sideHeader)),
+            (object)new BlockParameter(sideHeader.Hash!, requireCanonical: true), ErrorCodes.InvalidInput)
+        { TestName = "non_canonical_require_canonical" };
     }
 
     private static IEnumerable<TestCaseData> IntermediateRootsErrorCases()
