@@ -22,17 +22,17 @@ namespace Nethermind.Trie.NodeBuffer;
 /// <remarks>
 /// A node referenced by hash is read in place from the store's buffer when its pointer resolves, and otherwise loaded by the store, without being
 /// added to the buffer. Entries are bucketed by nibble one level at a time; a leaf or extension the entries split is walked in place, less
-/// the key nibbles the split dropped, and copied out only when it changes. New nodes stay pending in a <see cref="BulkSetArena"/> until
+/// the key nibbles the split dropped, and copied out only when it changes. New nodes stay pending in a <see cref="BulkSetWorkingState"/> until
 /// the commit encodes them straight into the buffer one path depth at a time, deepest first, hashing each level together.
-/// A full branch level with enough entries may update its children in parallel, each task committing its subtree in its own arena.
+/// A full branch level with enough entries may update its children in parallel, each task committing its subtree in its own working state.
 /// Nodes that become unreachable are not removed from the buffer.
 /// </remarks>
 internal static class NodeRecordBulkSet
 {
     private const int InPlaceSortThreshold = 32;
     private const int TinySortMaxCount = 3;
-    private const int MaxKeyNibbles = BulkSetArena.MaxKeyNibbles;
-    private const int BranchChildCount = BulkSetArena.BranchChildCount;
+    private const int MaxKeyNibbles = BulkSetWorkingState.MaxKeyNibbles;
+    private const int BranchChildCount = BulkSetWorkingState.BranchChildCount;
     private const int FullMask = (1 << BranchChildCount) - 1;
     private const int MaxWorkers = 16;
 
@@ -51,7 +51,7 @@ internal static class NodeRecordBulkSet
             && entries.Count >= PatriciaTree.MinEntriesToParallelizeThreshold
             ? ParallelUnbalancedWork.BeginWorkerScope(Math.Min(MaxWorkers, RuntimeInformation.ProcessorCount))
             : null;
-        BulkSetArena arena = BulkSetArena.Rent();
+        BulkSetWorkingState workingState = BulkSetWorkingState.Rent();
         try
         {
             Source rootNode;
@@ -62,14 +62,14 @@ internal static class NodeRecordBulkSet
             {
                 // The in-place sorts below the threshold need no separate buffer.
                 BulkSetEntry[] entriesArray = entries.UnsafeGetInternalArray();
-                context = new(store, address, arena, entriesArray, entriesArray, canParallelize);
+                context = new(store, address, workingState, entriesArray, entriesArray, canParallelize);
                 rootNode = context.LoadRoot(root);
                 updated = context.Update(entries.AsSpan(), entries.AsSpan(), flipped: false, ref path, rootNode);
             }
             else
             {
                 using ArrayPoolListRef<BulkSetEntry> sortBuffer = new(entries.Count, entries.Count);
-                context = new(store, address, arena, entries.UnsafeGetInternalArray(), sortBuffer.UnsafeGetInternalArray(), canParallelize);
+                context = new(store, address, workingState, entries.UnsafeGetInternalArray(), sortBuffer.UnsafeGetInternalArray(), canParallelize);
                 rootNode = context.LoadRoot(root);
                 updated = context.Update(entries.AsSpan(), sortBuffer.AsSpan(), flipped: false, ref path, rootNode);
             }
@@ -82,7 +82,7 @@ internal static class NodeRecordBulkSet
         }
         finally
         {
-            BulkSetArena.Return(arena);
+            BulkSetWorkingState.Return(workingState);
         }
     }
 
@@ -149,12 +149,12 @@ internal static class NodeRecordBulkSet
         }
 
         /// <remarks>An embedded leaf's value is copied, as it lives in this struct.</remarks>
-        public ValueRef LeafValue()
+        public ReadOnlyMemory<byte> LeafValue()
         {
             if (Kind == SourceKind.Record) return Record.LeafValue;
 
             ReadInlineLeaf(out ReadOnlySpan<byte> value);
-            return new ValueRef(value.ToArray(), 0, value.Length);
+            return value.ToArray();
         }
 
         private ReadOnlySpan<byte> ReadInlineLeaf(out ReadOnlySpan<byte> value)
@@ -187,7 +187,7 @@ internal static class NodeRecordBulkSet
         private T _element0;
     }
 
-    /// <summary>A branch level whose sixteen children are updated in parallel, each by a task that commits the child's subtree in an arena of its own, so only committed references cross threads.</summary>
+    /// <summary>A branch level whose sixteen children are updated in parallel, each by a task that commits the child's subtree in a working state of its own, so only committed references cross threads.</summary>
     private sealed class ParallelChildren
     {
         public bool Flipped;
@@ -204,15 +204,15 @@ internal static class NodeRecordBulkSet
         public int ChangedMask;
     }
 
-    /// <summary>What a bulk set on one arena shares: the store it reads and writes, the trie it writes and the arrays its entries are in.</summary>
+    /// <summary>What a bulk set on one working state shares: the store it reads and writes, the trie it writes and the arrays its entries are in.</summary>
     /// <param name="entries">The array of the entries passed in.</param>
     /// <param name="sortBuffer">The array of the sort buffer, the same as <paramref name="entries"/> when there is none.</param>
-    private readonly struct Context(INodeRecordStore store, Hash256? address, BulkSetArena arena,
+    private readonly struct Context(INodeRecordStore store, Hash256? address, BulkSetWorkingState workingState,
         BulkSetEntry[] entries, BulkSetEntry[] sortBuffer, bool canParallelize)
     {
         private readonly INodeRecordStore _store = store;
         private readonly Hash256? _address = address;
-        private readonly BulkSetArena _arena = arena;
+        private readonly BulkSetWorkingState _workingState = workingState;
         private readonly BulkSetEntry[] _entries = entries;
         private readonly BulkSetEntry[] _sortBuffer = sortBuffer;
         private readonly bool _canParallelize = canParallelize;
@@ -237,7 +237,7 @@ internal static class NodeRecordBulkSet
             int remainderNibble = -1;
             Source remainder = default;
             // A branch record's children are copied out only once one changes.
-            int childrenStart = node.Kind == SourceKind.None ? _arena.AddChildren()
+            int childrenStart = node.Kind == SourceKind.None ? _workingState.AddChildren()
                 : isNew ? MakeFakeBranch(node, out remainderNibble, out remainder)
                 : -1;
 
@@ -286,7 +286,7 @@ internal static class NodeRecordBulkSet
                 else
                 {
                     Source child = isRemainder ? remainder
-                        : Load(path, childrenStart >= 0 ? _arena.Children[childrenStart + nibble] : node.Record.View.Child(nibble));
+                        : Load(path, childrenStart >= 0 ? _workingState.Children[childrenStart + nibble] : node.Record.View.Child(nibble));
                     Updated updated = Update(entries[start..end], sortBuffer[start..end], flipped, ref path, child);
                     if (!updated.Changed) continue;
 
@@ -299,7 +299,7 @@ internal static class NodeRecordBulkSet
                 else nonEmptyCount++;
 
                 if (childrenStart < 0) childrenStart = CopyChildren(node.Record);
-                _arena.Children[childrenStart + nibble] = reference;
+                _workingState.Children[childrenStart + nibble] = reference;
             }
 
             path.TruncateOne();
@@ -309,11 +309,11 @@ internal static class NodeRecordBulkSet
             if (!changed) return Updated.Unchanged(node);
 
             // A remainder no entry changed stays below the new branch, with the key the branch shortened.
-            if (remainderKept) _arena.Children[childrenStart + remainderNibble] = ChildRef.ForPending(IntoNode(remainder));
+            if (remainderKept) _workingState.Children[childrenStart + remainderNibble] = ChildRef.ForPending(IntoNode(remainder));
 
             int pendingIndex = (hasRemove || isNew) && nonEmptyCount < 2
                 ? MaybeCombine(childrenStart, ref path)
-                : _arena.AddBranch(childrenStart);
+                : _workingState.AddBranch(childrenStart);
             return Updated.To(pendingIndex);
         }
 
@@ -334,7 +334,7 @@ internal static class NodeRecordBulkSet
             {
                 int end = nibble == BranchChildCount - 1 ? entries.Length : indexes[nibble + 1];
                 level.Ranges[nibble] = (offset + indexes[nibble], end - indexes[nibble]);
-                if (nibble != remainderNibble) level.Children[nibble] = childrenStart >= 0 ? _arena.Children[childrenStart + nibble] : node.Record.View.Child(nibble);
+                if (nibble != remainderNibble) level.Children[nibble] = childrenStart >= 0 ? _workingState.Children[childrenStart + nibble] : node.Record.View.Child(nibble);
             }
 
             ParallelUnbalancedWork.For(0, BranchChildCount, ParallelUnbalancedWork.DefaultOptions, (Context: this, Level: level),
@@ -345,13 +345,13 @@ internal static class NodeRecordBulkSet
                 });
         }
 
-        /// <summary>Updates child <paramref name="nibble"/> of <paramref name="level"/> in an arena of its own, committing it when it changed.</summary>
+        /// <summary>Updates child <paramref name="nibble"/> of <paramref name="level"/> in a working state of its own, committing it when it changed.</summary>
         private void UpdateChild(ParallelChildren level, int nibble)
         {
-            BulkSetArena arena = BulkSetArena.Rent();
+            BulkSetWorkingState workingState = BulkSetWorkingState.Rent();
             try
             {
-                Context context = new(_store, _address, arena, _entries, _sortBuffer, _canParallelize);
+                Context context = new(_store, _address, workingState, _entries, _sortBuffer, _canParallelize);
                 (int start, int count) = level.Ranges[nibble];
                 Span<BulkSetEntry> entries = (level.Flipped ? _sortBuffer : _entries).AsSpan(start, count);
                 Span<BulkSetEntry> sortBuffer = (level.Flipped ? _entries : _sortBuffer).AsSpan(start, count);
@@ -365,7 +365,7 @@ internal static class NodeRecordBulkSet
             }
             finally
             {
-                BulkSetArena.Return(arena);
+                BulkSetWorkingState.Return(workingState);
             }
         }
 
@@ -376,8 +376,8 @@ internal static class NodeRecordBulkSet
             int onlyChild = -1;
             for (int i = 0; i < BranchChildCount; i++)
             {
-                if (_arena.Children[childrenStart + i].Kind == ChildRefKind.Empty) continue;
-                if (onlyChild >= 0) return _arena.AddBranch(childrenStart);
+                if (_workingState.Children[childrenStart + i].Kind == ChildRefKind.Empty) continue;
+                if (onlyChild >= 0) return _workingState.AddBranch(childrenStart);
 
                 onlyChild = i;
             }
@@ -385,27 +385,27 @@ internal static class NodeRecordBulkSet
             if (onlyChild < 0) return -1;
 
             ReadOnlySpan<byte> prefix = [(byte)onlyChild];
-            ChildRef child = _arena.Children[childrenStart + onlyChild];
+            ChildRef child = _workingState.Children[childrenStart + onlyChild];
             if (child.Kind == ChildRefKind.Pending) return Prepend(prefix, child.PendingIndex);
 
             path.AppendMut(onlyChild);
             Source source = Load(path, child);
             path.TruncateOne();
             // A branch keeps its path, so its reference with the buffer pointer moves under the extension; anything else is re-encoded shorter.
-            return source.IsBranch ? _arena.AddExtension(prefix, child) : Prepend(prefix, IntoNode(source));
+            return source.IsBranch ? _workingState.AddExtension(prefix, child) : Prepend(prefix, IntoNode(source));
         }
 
         /// <summary>Splits a leaf or an extension into the children of a new branch: its child when its key is a single nibble, otherwise what remains of it below its first nibble.</summary>
         /// <returns>The index of the branch's children.</returns>
         private int MakeFakeBranch(in Source source, out int remainderNibble, out Source remainder)
         {
-            int childrenStart = _arena.AddChildren();
+            int childrenStart = _workingState.AddChildren();
             Span<byte> key = stackalloc byte[MaxKeyNibbles];
             int keyLength = source.CopyKey(key);
             if (source.NodeKind == NodeRecordKind.Extension && keyLength == 1)
             {
                 ChildRef child = source.Record.View.Child(0);
-                _arena.Children[childrenStart + key[0]] = child;
+                _workingState.Children[childrenStart + key[0]] = child;
                 remainderNibble = -1;
                 remainder = default;
                 return childrenStart;
@@ -423,18 +423,18 @@ internal static class NodeRecordBulkSet
             Span<byte> key = stackalloc byte[MaxKeyNibbles];
             int keyLength = source.CopyKey(key);
             return source.NodeKind == NodeRecordKind.Extension
-                ? _arena.AddExtension(key[..keyLength], source.Record.View.Child(0))
-                : _arena.AddLeaf(key[..keyLength], source.LeafValue());
+                ? _workingState.AddExtension(key[..keyLength], source.Record.View.Child(0))
+                : _workingState.AddLeaf(key[..keyLength], source.LeafValue());
         }
 
         /// <returns>The index of a copy of the branch's sixteen children.</returns>
         private int CopyChildren(NodeRecord branch)
         {
-            int childrenStart = _arena.AddChildren();
+            int childrenStart = _workingState.AddChildren();
             NodeRecordRef view = branch.View;
             for (int i = 0; i < BranchChildCount; i++)
             {
-                _arena.Children[childrenStart + i] = view.Child(i);
+                _workingState.Children[childrenStart + i] = view.Child(i);
             }
 
             return childrenStart;
@@ -473,7 +473,7 @@ internal static class NodeRecordBulkSet
             Nibbles.BytesToNibbleBytes(entry.Path.Bytes, entryKey);
             byte[]? value = entry.Value;
             bool isDelete = value is null || value.Length == 0;
-            SetOneFrame[] frames = _arena.Frames;
+            SetOneFrame[] frames = _workingState.Frames;
             int frameCount = 0;
             Source current = node;
             Updated result;
@@ -482,7 +482,7 @@ internal static class NodeRecordBulkSet
                 int depth = path.Length;
                 if (current.Kind == SourceKind.None)
                 {
-                    result = isDelete ? Updated.Unchanged(current) : Updated.To(_arena.AddLeaf(entryKey[depth..], new ValueRef(value!, 0, value!.Length)));
+                    result = isDelete ? Updated.Unchanged(current) : Updated.To(_workingState.AddLeaf(entryKey[depth..], value!));
                     break;
                 }
 
@@ -555,12 +555,12 @@ internal static class NodeRecordBulkSet
 
                 return leaf.LeafValue().Span.SequenceEqual(value)
                     ? Updated.Unchanged(leaf)
-                    : Updated.To(_arena.AddLeaf(key[..keyLength], new ValueRef(value!, 0, value!.Length)));
+                    : Updated.To(_workingState.AddLeaf(key[..keyLength], value!));
             }
 
             if (isDelete) return Updated.Unchanged(leaf);
 
-            ChildRef existing = ChildRef.ForPending(_arena.AddLeaf(key[(matched + 1)..keyLength], leaf.LeafValue()));
+            ChildRef existing = ChildRef.ForPending(_workingState.AddLeaf(key[(matched + 1)..keyLength], leaf.LeafValue()));
             return Updated.To(DivergingBranch(entryKey, depth, matched, key[matched], existing, value!));
         }
 
@@ -569,7 +569,7 @@ internal static class NodeRecordBulkSet
         private int DivergeExtension(ReadOnlySpan<byte> entryKey, int depth, int matched, ReadOnlySpan<byte> key, in ChildRef child, byte[] value)
         {
             ReadOnlySpan<byte> rest = key[(matched + 1)..];
-            ChildRef existing = rest.IsEmpty ? child : ChildRef.ForPending(_arena.AddExtension(rest, child));
+            ChildRef existing = rest.IsEmpty ? child : ChildRef.ForPending(_workingState.AddExtension(rest, child));
             return DivergingBranch(entryKey, depth, matched, key[matched], existing, value);
         }
 
@@ -577,19 +577,19 @@ internal static class NodeRecordBulkSet
         private int DivergingBranch(ReadOnlySpan<byte> entryKey, int depth, int matched, int existingNibble, ChildRef existing, byte[] value)
         {
             int branchDepth = depth + matched;
-            int leaf = _arena.AddLeaf(entryKey[(branchDepth + 1)..], new ValueRef(value, 0, value.Length));
-            int childrenStart = _arena.AddChildren();
-            _arena.Children[childrenStart + existingNibble] = existing;
-            _arena.Children[childrenStart + entryKey[branchDepth]] = ChildRef.ForPending(leaf);
-            int branch = _arena.AddBranch(childrenStart);
-            return matched == 0 ? branch : _arena.AddExtension(entryKey.Slice(depth, matched), ChildRef.ForPending(branch));
+            int leaf = _workingState.AddLeaf(entryKey[(branchDepth + 1)..], value);
+            int childrenStart = _workingState.AddChildren();
+            _workingState.Children[childrenStart + existingNibble] = existing;
+            _workingState.Children[childrenStart + entryKey[branchDepth]] = ChildRef.ForPending(leaf);
+            int branch = _workingState.AddBranch(childrenStart);
+            return matched == 0 ? branch : _workingState.AddExtension(entryKey.Slice(depth, matched), ChildRef.ForPending(branch));
         }
 
         /// <summary>Puts <paramref name="prefix"/> in front of the pending node at <paramref name="index"/>, merging into its key unless it is a branch.</summary>
         private int Prepend(ReadOnlySpan<byte> prefix, int index)
         {
-            ref PendingNode node = ref _arena.Nodes[index];
-            if (node.Kind == PendingKind.Branch) return _arena.AddExtension(prefix, ChildRef.ForPending(index));
+            ref PendingNode node = ref _workingState.Nodes[index];
+            if (node.Kind == PendingKind.Branch) return _workingState.AddExtension(prefix, ChildRef.ForPending(index));
 
             Span<byte> key = node.Key;
             key[..node.KeyLength].CopyTo(key[prefix.Length..]);
@@ -603,11 +603,11 @@ internal static class NodeRecordBulkSet
         {
             if (index >= 0)
             {
-                _arena.Children[childrenStart + nibble] = ChildRef.ForPending(index);
-                return _arena.AddBranch(childrenStart);
+                _workingState.Children[childrenStart + nibble] = ChildRef.ForPending(index);
+                return _workingState.AddBranch(childrenStart);
             }
 
-            _arena.Children[childrenStart + nibble] = default;
+            _workingState.Children[childrenStart + nibble] = default;
             return MaybeCombine(childrenStart, ref path);
         }
 
@@ -623,11 +623,11 @@ internal static class NodeRecordBulkSet
             int count = CollectPending(top, path);
             Span<int> levelEnds = stackalloc int[MaxKeyNibbles + 2];
             Span<int> positions = stackalloc int[MaxKeyNibbles + 2];
-            int[] collected = _arena.Collected;
-            int[] order = _arena.Order;
+            int[] collected = _workingState.Collected;
+            int[] order = _workingState.Order;
             for (int i = 0; i < count; i++)
             {
-                levelEnds[_arena.Nodes[collected[i]].Path.Length]++;
+                levelEnds[_workingState.Nodes[collected[i]].Path.Length]++;
             }
 
             // Suffix sums, so depth d takes [levelEnds[d + 1], levelEnds[d]) of the order.
@@ -639,7 +639,7 @@ internal static class NodeRecordBulkSet
             levelEnds.CopyTo(positions);
             for (int i = 0; i < count; i++)
             {
-                order[--positions[_arena.Nodes[collected[i]].Path.Length]] = collected[i];
+                order[--positions[_workingState.Nodes[collected[i]].Path.Length]] = collected[i];
             }
 
             ChildRef topReference = default;
@@ -651,19 +651,19 @@ internal static class NodeRecordBulkSet
             return topReference;
         }
 
-        /// <summary>Lists the pending node at <paramref name="top"/> and its pending descendants in <see cref="BulkSetArena.Collected"/>, setting their path, parent and slot.</summary>
+        /// <summary>Lists the pending node at <paramref name="top"/> and its pending descendants in <see cref="BulkSetWorkingState.Collected"/>, setting their path, parent and slot.</summary>
         /// <returns>The number listed.</returns>
         private int CollectPending(int top, in TreePath path)
         {
-            _arena.EnsureCommitCapacity(_arena.NodeCount);
-            int[] collected = _arena.Collected;
-            _arena.Nodes[top].Path = path;
+            _workingState.EnsureCommitCapacity(_workingState.NodeCount);
+            int[] collected = _workingState.Collected;
+            _workingState.Nodes[top].Path = path;
             collected[0] = top;
             int count = 1;
             for (int head = 0; head < count; head++)
             {
                 int parent = collected[head];
-                ref PendingNode node = ref _arena.Nodes[parent];
+                ref PendingNode node = ref _workingState.Nodes[parent];
                 if (node.Kind == PendingKind.Extension)
                 {
                     if (node.ExtensionChild.Kind == ChildRefKind.Pending) collected[count++] = SetPosition(node.ExtensionChild.PendingIndex, node.Path.Append(node.KeyNibbles), parent, 0);
@@ -672,7 +672,7 @@ internal static class NodeRecordBulkSet
                 {
                     for (int slot = 0; slot < BranchChildCount; slot++)
                     {
-                        ref ChildRef child = ref _arena.Children[node.ChildrenStart + slot];
+                        ref ChildRef child = ref _workingState.Children[node.ChildrenStart + slot];
                         if (child.Kind == ChildRefKind.Pending) collected[count++] = SetPosition(child.PendingIndex, node.Path.Append(slot), parent, slot);
                     }
                 }
@@ -683,7 +683,7 @@ internal static class NodeRecordBulkSet
 
         private int SetPosition(int index, in TreePath path, int parent, int slot)
         {
-            ref PendingNode node = ref _arena.Nodes[index];
+            ref PendingNode node = ref _workingState.Nodes[index];
             node.Path = path;
             node.Parent = parent;
             node.Slot = (byte)slot;
@@ -692,15 +692,15 @@ internal static class NodeRecordBulkSet
 
         private void CommitLevel(ReadOnlySpan<int> level, int top, bool isRoot, ref ChildRef topReference)
         {
-            int[] hashed = _arena.Hashed;
-            int[] recordStarts = _arena.RecordStarts;
-            (int Start, int Length)[] messages = _arena.Messages;
+            int[] hashed = _workingState.Hashed;
+            int[] recordStarts = _workingState.RecordStarts;
+            (int Start, int Length)[] messages = _workingState.Messages;
             Span<byte> inlineRlp = stackalloc byte[ValueHash256.MemorySize];
             int hashedCount = 0;
             int totalLength = 0;
             foreach (int index in level)
             {
-                ref PendingNode node = ref _arena.Nodes[index];
+                ref PendingNode node = ref _workingState.Nodes[index];
                 int rlpLength = RlpLength(ref node);
                 if (rlpLength < ValueHash256.MemorySize && !(isRoot && index == top))
                 {
@@ -723,12 +723,12 @@ internal static class NodeRecordBulkSet
             ulong basePointer = batch.BasePointer;
             for (int i = 0; i < hashedCount; i++)
             {
-                ref PendingNode node = ref _arena.Nodes[hashed[i]];
+                ref PendingNode node = ref _workingState.Nodes[hashed[i]];
                 int rlpOffset = WriteRecord(ref node, buffer[recordStarts[i]..], messages[i].Length, NodeRecordCodec.NodeKeyHash(_address, node.Path));
                 messages[i] = (recordStarts[i] + rlpOffset, messages[i].Length);
             }
 
-            Span<ValueHash256> hashes = _arena.Hashes.AsSpan(0, hashedCount);
+            Span<ValueHash256> hashes = _workingState.Hashes.AsSpan(0, hashedCount);
             KeccakBatch.Hash(buffer, messages.AsSpan(0, hashedCount), hashes);
             for (int i = 0; i < hashedCount; i++)
             {
@@ -746,10 +746,10 @@ internal static class NodeRecordBulkSet
                 return;
             }
 
-            ref PendingNode node = ref _arena.Nodes[index];
-            ref PendingNode parent = ref _arena.Nodes[node.Parent];
+            ref PendingNode node = ref _workingState.Nodes[index];
+            ref PendingNode parent = ref _workingState.Nodes[node.Parent];
             if (parent.Kind == PendingKind.Extension) parent.ExtensionChild = reference;
-            else _arena.Children[parent.ChildrenStart + node.Slot] = reference;
+            else _workingState.Children[parent.ChildrenStart + node.Slot] = reference;
         }
 
         /// <summary>Writes the record of <paramref name="node"/>, all but its hash, into the zero-filled <paramref name="record"/>.</summary>
@@ -758,7 +758,7 @@ internal static class NodeRecordBulkSet
         {
             ReadOnlySpan<ChildRef> children = node.Kind switch
             {
-                PendingKind.Branch => _arena.Children.AsSpan(node.ChildrenStart, BranchChildCount),
+                PendingKind.Branch => _workingState.Children.AsSpan(node.ChildrenStart, BranchChildCount),
                 PendingKind.Extension => new ReadOnlySpan<ChildRef>(ref node.ExtensionChild),
                 _ => [],
             };
@@ -793,14 +793,14 @@ internal static class NodeRecordBulkSet
         {
             PendingKind.Leaf => NodeRlp.LeafLength(node.KeyNibbles, node.Value.Span),
             PendingKind.Extension => NodeRlp.ExtensionLength(node.KeyNibbles, node.ExtensionChild),
-            _ => NodeRlp.BranchLength(_arena.Children.AsSpan(node.ChildrenStart, BranchChildCount)),
+            _ => NodeRlp.BranchLength(_workingState.Children.AsSpan(node.ChildrenStart, BranchChildCount)),
         };
 
         private int Encode(ref PendingNode node, Span<byte> destination) => node.Kind switch
         {
             PendingKind.Leaf => NodeRlp.WriteLeaf(node.KeyNibbles, node.Value.Span, destination),
             PendingKind.Extension => NodeRlp.WriteExtension(node.KeyNibbles, node.ExtensionChild, destination),
-            _ => NodeRlp.WriteBranch(_arena.Children.AsSpan(node.ChildrenStart, BranchChildCount), destination),
+            _ => NodeRlp.WriteBranch(_workingState.Children.AsSpan(node.ChildrenStart, BranchChildCount), destination),
         };
 
         private int HashChildCount(ref PendingNode node)
@@ -809,7 +809,7 @@ internal static class NodeRecordBulkSet
             if (node.Kind != PendingKind.Branch) return 0;
 
             int count = 0;
-            foreach (ChildRef child in _arena.Children.AsSpan(node.ChildrenStart, BranchChildCount))
+            foreach (ChildRef child in _workingState.Children.AsSpan(node.ChildrenStart, BranchChildCount))
             {
                 if (child.Kind == ChildRefKind.Hash) count++;
             }

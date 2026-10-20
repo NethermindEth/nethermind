@@ -46,14 +46,14 @@ public readonly struct NodeRecord
     internal NodeRecordRef View => new(Span);
 
     /// <summary>A leaf record's value, in place.</summary>
-    internal ValueRef LeafValue
+    internal ReadOnlyMemory<byte> LeafValue
     {
         get
         {
             ReadOnlySpan<byte> record = Span;
             ReadOnlySpan<byte> value = new NodeRecordRef(record).LeafValue;
             int valueOffset = (int)Unsafe.ByteOffset(ref MemoryMarshal.GetReference(record), ref MemoryMarshal.GetReference(value));
-            return new ValueRef(_buffer, _offset + valueOffset, value.Length);
+            return _buffer.Slice(_offset + valueOffset, value.Length);
         }
     }
 

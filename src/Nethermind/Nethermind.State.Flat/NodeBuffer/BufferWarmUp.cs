@@ -14,8 +14,8 @@ namespace Nethermind.State.Flat.NodeBuffer;
 /// <summary>Loads the nodes on a trie path into a <see cref="WarmedNodeLog"/> ahead of a <see cref="NodeRecordBulkSet"/> that changes it.</summary>
 internal static class BufferWarmUp
 {
-    private const int MaxKeyNibbles = BulkSetArena.MaxKeyNibbles;
-    private const int BranchChildCount = BulkSetArena.BranchChildCount;
+    private const int MaxKeyNibbles = BulkSetWorkingState.MaxKeyNibbles;
+    private const int BranchChildCount = BulkSetWorkingState.BranchChildCount;
     // Fits a full-depth path of branches with sixteen hashed children, about 46 KiB.
     private const int RecordsLength = 64 * 1024;
 

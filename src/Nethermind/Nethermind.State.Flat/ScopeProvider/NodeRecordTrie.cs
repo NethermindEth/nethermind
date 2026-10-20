@@ -92,8 +92,8 @@ internal sealed class NodeRecordTrie(SnapshotBundle bundle, Hash256? addressHash
     /// <exception cref="MissingTrieNodeException">A node on the path is in neither the buffer nor the bundle.</exception>
     public byte[]? TryGet(in ValueHash256 key)
     {
-        TreePath keyPath = new(key, BulkSetArena.MaxKeyNibbles);
-        Span<byte> nodeKey = stackalloc byte[BulkSetArena.MaxKeyNibbles];
+        TreePath keyPath = new(key, BulkSetWorkingState.MaxKeyNibbles);
+        Span<byte> nodeKey = stackalloc byte[BulkSetWorkingState.MaxKeyNibbles];
         TreePath path = TreePath.Empty;
         ChildRef child = Root.Hash == ValueKeccak.EmptyTreeHash ? default : ChildRef.ForHash(Root.Hash, Root.Pointer);
         while (true)

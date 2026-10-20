@@ -17,18 +17,8 @@ internal enum PendingKind : byte
     Branch,
 }
 
-/// <summary>An entry's managed value or a leaf value borrowed for the enclosing buffer operation.</summary>
-internal readonly struct ValueRef(ReadOnlyMemory<byte> array, int offset, int length)
-{
-    private readonly ReadOnlyMemory<byte> _array = array;
-    private readonly int _offset = offset;
-    private readonly int _length = length;
-
-    public ReadOnlySpan<byte> Span => _array.Span.Slice(_offset, _length);
-}
-
 /// <summary>Key nibbles, one per byte.</summary>
-[InlineArray(BulkSetArena.MaxKeyNibbles)]
+[InlineArray(BulkSetWorkingState.MaxKeyNibbles)]
 internal struct NibbleKey
 {
     private byte _element0;
@@ -40,9 +30,10 @@ internal struct PendingNode
     public PendingKind Kind;
     public byte KeyLength;
     public NibbleKey Key;
-    public ValueRef Value;
+    /// <summary>An entry's managed value or a leaf value borrowed for the enclosing buffer operation.</summary>
+    public ReadOnlyMemory<byte> Value;
 
-    /// <summary>Index of a branch's sixteen children in <see cref="BulkSetArena.Children"/>.</summary>
+    /// <summary>Index of a branch's sixteen children in <see cref="BulkSetWorkingState.Children"/>.</summary>
     public int ChildrenStart;
 
     public ChildRef ExtensionChild;
@@ -68,10 +59,10 @@ internal readonly struct SetOneFrame(NodeRecord record, byte skip, byte childNib
 /// <summary>The working memory of one bulk set on one thread: new nodes, their children and commit scratch.</summary>
 /// <remarks>
 /// Nodes and children are addressed by index, as their arrays grow by reallocation, so a reference into them does not survive
-/// an add. Arenas are pooled, unless grown past <see cref="MaxPooledNodeCapacity"/> nodes; a returned arena drops its references
+/// an add. Working states are pooled, unless grown past <see cref="MaxPooledNodeCapacity"/> nodes; a returned one drops its references
 /// to entry values and records.
 /// </remarks>
-internal sealed class BulkSetArena
+internal sealed class BulkSetWorkingState
 {
     public const int BranchChildCount = 16;
     public const int MaxKeyNibbles = 64;
@@ -80,14 +71,14 @@ internal sealed class BulkSetArena
     private const int InitialNodeCapacity = 64;
     private const int MaxPooledNodeCapacity = 4096;
 
-    private static readonly ConcurrentQueue<BulkSetArena> Pool = new();
+    private static readonly ConcurrentQueue<BulkSetWorkingState> Pool = new();
 
     public PendingNode[] Nodes = new PendingNode[InitialNodeCapacity];
     public int NodeCount;
     public ChildRef[] Children = new ChildRef[InitialNodeCapacity * BranchChildCount];
     public int ChildCount;
 
-    /// <summary>The traverse stack of a single-entry set, which never nests in another on the same arena.</summary>
+    /// <summary>The traverse stack of a single-entry set, which never nests in another on the same working state.</summary>
     public readonly SetOneFrame[] Frames = new SetOneFrame[MaxKeyNibbles];
 
     public int[] Collected = [];
@@ -97,17 +88,17 @@ internal sealed class BulkSetArena
     public (int Start, int Length)[] Messages = [];
     public ValueHash256[] Hashes = [];
 
-    public static BulkSetArena Rent() => Pool.TryDequeue(out BulkSetArena? arena) ? arena : new BulkSetArena();
+    public static BulkSetWorkingState Rent() => Pool.TryDequeue(out BulkSetWorkingState? workingState) ? workingState : new BulkSetWorkingState();
 
-    public static void Return(BulkSetArena arena)
+    public static void Return(BulkSetWorkingState workingState)
     {
-        Array.Clear(arena.Nodes, 0, arena.NodeCount);
-        Array.Clear(arena.Frames);
-        arena.NodeCount = 0;
-        arena.ChildCount = 0;
-        if (Pool.Count < MaxPooled && arena.Nodes.Length <= MaxPooledNodeCapacity && arena.Children.Length <= MaxPooledNodeCapacity * BranchChildCount)
+        Array.Clear(workingState.Nodes, 0, workingState.NodeCount);
+        Array.Clear(workingState.Frames);
+        workingState.NodeCount = 0;
+        workingState.ChildCount = 0;
+        if (Pool.Count < MaxPooled && workingState.Nodes.Length <= MaxPooledNodeCapacity && workingState.Children.Length <= MaxPooledNodeCapacity * BranchChildCount)
         {
-            Pool.Enqueue(arena);
+            Pool.Enqueue(workingState);
         }
     }
 
@@ -122,7 +113,7 @@ internal sealed class BulkSetArena
         return start;
     }
 
-    public int AddLeaf(ReadOnlySpan<byte> key, in ValueRef value)
+    public int AddLeaf(ReadOnlySpan<byte> key, ReadOnlyMemory<byte> value)
     {
         int index = Add(PendingKind.Leaf, key);
         Nodes[index].Value = value;
