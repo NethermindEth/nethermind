@@ -585,36 +585,42 @@ public class TraceRpcModuleTests
 
     [Test]
     [NonParallelizable]
-    public async Task Trace_get_disposes_materialized_stream([Values] bool replayFails)
+    public async Task Trace_get_disposes_materialized_stream()
     {
         Context context = new();
         await context.Build();
         using TestRpcBlockchain blockchain = context.Blockchain;
-        IJsonRpcConfig config = blockchain.Container.Resolve<IJsonRpcConfig>();
-        config.EnableTracingStreamMode = true;
-        // A zero timeout cancels the replay as soon as it starts.
-        if (replayFails) config.Timeout = 0;
+        blockchain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = true;
         TimeoutTestHelper.TrackingCancellationTokenSource timeout = TimeoutTestHelper.RentTrackingTimeoutSourceForNextRequest();
         Hash256 txHash = blockchain.BlockTree.Head!.Transactions[0].Hash!;
 
         try
         {
-            if (replayFails)
-            {
-                Assert.That(() => context.TraceRpcModule.trace_get(txHash, []), Throws.InstanceOf<OperationCanceledException>());
-            }
-            else
-            {
-                using ResultWrapper<ParityTxTraceFromStore?> result = context.TraceRpcModule.trace_get(txHash, []);
-                Assert.That(result.Data!.TransactionHash, Is.EqualTo(txHash));
-            }
-
+            using ResultWrapper<ParityTxTraceFromStore?> result = context.TraceRpcModule.trace_get(txHash, []);
+            Assert.That(result.Data!.TransactionHash, Is.EqualTo(txHash));
             Assert.Throws<ObjectDisposedException>(() => _ = timeout.Token);
         }
         finally
         {
             TimeoutTestHelper.DisposeIfNotAlreadyObserved(timeout);
         }
+    }
+
+    // A failing replay is injected directly: one forced through a zero timeout depends on whether the replay rents a
+    // fresh timeout source, which starts cancelled, or a pooled one, whose cancellation is a timer callback that can
+    // land after the replay has finished.
+    [Test]
+    public void Trace_get_disposes_materialized_stream_when_replay_fails()
+    {
+        using TimeoutTestHelper.TrackingCancellationTokenSource timeout = new();
+        ParityTxTraceStreamingResult<ParityTxTraceFromStore> stream = new(static (_, _, _) => { }, timeout, LimboLogs.Instance.GetClassLogger<TraceRpcModuleTests>())
+        {
+            MaterializeForInProcess = static () => throw new OperationCanceledException()
+        };
+
+        Assert.That(() => TraceRpcModule.SelectTraceAddress(ResultWrapper<IEnumerable<ParityTxTraceFromStore>?>.Success(stream), []),
+            Throws.InstanceOf<OperationCanceledException>());
+        Assert.That(timeout.DisposeCount, Is.EqualTo(1));
     }
 
     [Test]
