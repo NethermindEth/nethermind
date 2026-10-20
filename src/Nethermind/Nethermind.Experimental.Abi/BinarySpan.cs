@@ -32,7 +32,7 @@ public ref struct BinarySpanReader
     public ReadOnlySpan<byte> ReadBytesPadded(int length)
     {
         ReadOnlySpan<byte> bytes = ReadBytes(length);
-        ReadOnlySpan<byte> padding = ReadBytes(Math.PadTo32(length) - length);
+        ReadOnlySpan<byte> padding = ReadBytes(Padding.To32(length) - length);
         if (padding.ContainsAnyExcept((byte)0)) throw new AbiException();
 
         return bytes;
@@ -120,7 +120,7 @@ public ref struct BinarySpanWriter
     {
         Write(bytes);
 
-        int padding = Math.PadTo32(bytes.Length) - bytes.Length;
+        int padding = Padding.To32(bytes.Length) - bytes.Length;
         Take(padding).Clear();
     }
 
@@ -172,10 +172,10 @@ public ref struct BinarySpanWriter
 }
 
 
-public static class Math
+internal static class Padding
 {
     // Equivalent to:
     // int rem = length % 32;
     // return rem == 0 ? length : length + (32 - rem);
-    public static int PadTo32(int length) => checked(length + 31) & ~31;
+    public static int To32(int length) => checked(length + 31) & ~31;
 }
