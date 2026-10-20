@@ -171,6 +171,10 @@ public class GethGenesisLoader(IJsonSerializer serializer) : IChainSpecLoader
         HardforkLabels.ExpandAll(chainSpec.Parameters, config);
     }
 
+    /// <summary>Precedence of <paramref name="forkName"/>'s <c>blobSchedule</c> entry over others at the same timestamp; <c>null</c> when the key is ignored.</summary>
+    internal static int? BlobScheduleOrder(string forkName) =>
+        _blobScheduleForks.TryGetValue(forkName, out BlobScheduleFork fork) ? fork.Order : null;
+
     private readonly record struct BlobScheduleFork(int Order);
 
     private readonly record struct OrderedBlobScheduleSettings(int ForkOrder, BlobScheduleSettings Settings);

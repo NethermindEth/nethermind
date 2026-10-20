@@ -117,8 +117,8 @@ public class GethGenesisParityTests
         nameof(IReleaseSpec.Eip4844TransitionTimestamp),
     ];
 
-    private static readonly Lazy<NamedReleaseSpec[]> MainnetForks = new(DiscoverMainnetForks);
-    private static readonly Lazy<Dictionary<string, string>> GethTimeKeysByFork = new(DiscoverGethTimeKeys);
+    internal static readonly Lazy<NamedReleaseSpec[]> MainnetForks = new(DiscoverMainnetForks);
+    internal static readonly Lazy<Dictionary<string, string>> GethTimeKeysByFork = new(DiscoverGethTimeKeys);
 
     public static IEnumerable<TestCaseData> TimestampForkCases() =>
         MainnetForks.Value.Where(IsTimestampFork).Select(f => new TestCaseData(f).SetArgDisplayNames(f.GetType().Name));
@@ -261,7 +261,7 @@ public class GethGenesisParityTests
         }
     }
 
-    internal static NamedReleaseSpec[] DiscoverMainnetForks() =>
+    private static NamedReleaseSpec[] DiscoverMainnetForks() =>
     [
         .. typeof(NamedReleaseSpec).Assembly.GetTypes()
             .Where(static t => t.IsSubclassOf(typeof(NamedReleaseSpec)) && t is { IsAbstract: false, IsGenericType: false } && t.Namespace == typeof(NamedReleaseSpec).Namespace)
@@ -271,7 +271,7 @@ public class GethGenesisParityTests
     ];
 
     /// <summary>Maps each fork class name to the geth config key of the <c>*Time</c> property that schedules it.</summary>
-    internal static Dictionary<string, string> DiscoverGethTimeKeys()
+    private static Dictionary<string, string> DiscoverGethTimeKeys()
     {
         Dictionary<string, string> keys = new(StringComparer.OrdinalIgnoreCase);
         foreach (PropertyInfo property in typeof(GethGenesisConfigJson).GetProperties().Where(static p => IsForkLabel(p) && p.Name.EndsWith("Time", StringComparison.Ordinal)))

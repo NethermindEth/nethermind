@@ -77,8 +77,8 @@ public class GethGenesisDevnetTests
         }
 
         ChainSpecBasedSpecProvider provider = new(chainSpec);
-        Dictionary<string, string> forksByKey = GethGenesisParityTests.DiscoverGethTimeKeys().ToDictionary(static p => p.Value, static p => p.Key, StringComparer.OrdinalIgnoreCase);
-        Dictionary<string, NamedReleaseSpec> forkClasses = GethGenesisParityTests.DiscoverMainnetForks().ToDictionary(static f => f.GetType().Name, StringComparer.OrdinalIgnoreCase);
+        Dictionary<string, string> forksByKey = GethGenesisParityTests.GethTimeKeysByFork.Value.ToDictionary(static p => p.Value, static p => p.Key, StringComparer.OrdinalIgnoreCase);
+        Dictionary<string, NamedReleaseSpec> forkClasses = GethGenesisParityTests.MainnetForks.Value.ToDictionary(static f => f.GetType().Name, StringComparer.OrdinalIgnoreCase);
 
         using (Assert.EnterMultipleScope())
         {
@@ -121,15 +121,10 @@ public class GethGenesisDevnetTests
             if (honoured && config.TryGetProperty(timeKey, out JsonElement time)) times[entry.Name] = Math.Max(ReadUlong(time), genesisTimestamp);
         }
 
-        // Where several entries share a timestamp the newest fork's wins; skip ties between unrelated forks of equal depth.
+        // Where several entries share a timestamp the loader applies the one with the highest precedence.
         foreach (IGrouping<ulong, string> atTime in times.GroupBy(static t => t.Value, static t => t.Key))
         {
-            IGrouping<int, string> newest = atTime
-                .GroupBy(k => GethGenesisParityTests.Ancestry(forkClasses[forksByKey[k + "Time"]]).Count())
-                .MaxBy(static g => g.Key)!;
-            if (newest.Count() > 1) continue;
-
-            string key = newest.Single();
+            string key = atTime.MaxBy(k => GethGenesisLoader.BlobScheduleOrder(forksByKey[k + "Time"]))!;
             JsonElement entry = blobSchedule.GetProperty(key);
             IReleaseSpec spec = provider.GetSpec(new ForkActivation(1, atTime.Key));
             Assert.That((spec.TargetBlobCount, spec.MaxBlobCount, spec.BlobBaseFeeUpdateFraction),
