@@ -261,7 +261,7 @@ public partial class DebugRpcModuleTests
             using (Assert.EnterMultipleScope())
             {
                 Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.ResourceNotFound), response);
-                Assert.That((string?)json["error"]?["message"], Is.EqualTo("header not found"), response);
+                Assert.That((string?)json["error"]?["message"], Is.EqualTo($"block #{blockNumber} not found"), response);
             }
             return;
         }
