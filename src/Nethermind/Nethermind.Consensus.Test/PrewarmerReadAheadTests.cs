@@ -47,6 +47,7 @@ public class PrewarmerReadAheadTests
 {
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(30);
     private static readonly Address LongLoop = new("0x00000000000000000000000000000000004e4d3f");
+    private static readonly StorageCell LongLoopFirstRead = new(LongLoop, 1);
     private static readonly StorageCell LongLoopFinished = new(LongLoop, 2);
     // Reads slot 1, counts down from 2^32 - 1, then reads slot 2.
     private static readonly byte[] LongLoopCode =
@@ -99,7 +100,7 @@ public class PrewarmerReadAheadTests
             ColdTailContracts.Deploy(worldState, Spec);
             worldState.CreateAccount(LongLoop, 0);
             worldState.InsertCode(LongLoop, Keccak.Compute(LongLoopCode), LongLoopCode, Spec);
-            worldState.Set(new StorageCell(LongLoop, 1), 1);
+            worldState.Set(LongLoopFirstRead, 1);
             worldState.Set(LongLoopFinished, 1);
             worldState.CreateAccount(Reverts, 0);
             worldState.InsertCode(Reverts, Keccak.Compute(RevertsCode), RevertsCode, Spec);
@@ -206,7 +207,7 @@ public class PrewarmerReadAheadTests
             preWarmer.OnBeforeTxExecution();
 
             Assert.That(discovery.Wait(TimeSpan.FromSeconds(5)), Is.True, "the run stops once block processing has finished the transaction");
-            Assert.That(_caches.StorageCache.TryGetValue(LongLoopFinished, out _), Is.False);
+            Assert.That(_caches.StorageCache.TryGetValue(LongLoopFirstRead, out _), Is.False, "an overtaken run puts nothing it read into the caches");
         }
         finally
         {
@@ -306,6 +307,36 @@ public class PrewarmerReadAheadTests
         }
     }
 
+    /// <summary>
+    /// A candidate's runs are seeded from the first round it is admitted to. Every slot the second claim reads at the
+    /// parent's counter is cached, so its first run finds no cell: only the seed it learns in that run leads it to the
+    /// range the counter the first claim left points at.
+    /// </summary>
+    [Test]
+    public void A_run_learns_its_seeds_in_the_first_round_its_candidate_is_admitted_to()
+    {
+        using BlockCachePreWarmer preWarmer = CreatePreWarmer(readAhead: true);
+        Transaction second = BatchClaim(TestItem.PrivateKeyA, 1, 6);
+        Block block = BuildBlock(BatchClaim(TestItem.PrivateKeyA, 0, 6), second);
+        BlockFootprints footprints = new(block);
+        UInt256 moved = ColdTailContracts.BatchCounter + 6;
+        preWarmer.OnBeforeTxExecution();
+        footprints.QueueExecuted(0, new[] { (new StorageCell(ColdTailContracts.Batch, 0), moved) });
+        footprints.ApplyExecuted();
+        preWarmer.OnBeforeTxExecution();
+        _caches.StorageCache.Set(new StorageCell(ColdTailContracts.Batch, 0), ColdTailContracts.BatchCounter);
+        for (int i = 0; i < 6; i++) _caches.StorageCache.Set(ColdTailContracts.BatchSlot(ColdTailContracts.BatchCounter, i), UInt256.Zero);
+
+        preWarmer.DiscoverAndWarmStorage([(1, second)], block, Spec, null, CancellationToken.None, footprints: footprints, readAhead: true);
+
+        bool found = _caches.StorageCache.TryGetValue(ColdTailContracts.BatchSlot(moved, 5), out UInt256 value);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found, Is.True, "the second claim's own range is found on the seed of its first run");
+            if (found) Assert.That(value, Is.EqualTo(UInt256.Zero));
+        }
+    }
+
     /// <summary>Seeds may be wrong, as a footprint's prediction can be; the caches still only ever get parent values.</summary>
     [Test]
     public void A_wrong_seed_costs_precision_never_a_cached_value()
@@ -376,6 +407,35 @@ public class PrewarmerReadAheadTests
             Assert.That(idle, Is.True);
             Assert.That(_caches.StorageCache.TryGetValue(new StorageCell(ColdTailContracts.Walker, 0x5005), out _), Is.True,
                 "the read-ahead read the transaction's slots");
+        }
+    }
+
+    /// <summary>
+    /// Block processing's slot reads past the caches count towards the read-ahead as its account reads do: with the
+    /// account cached, slot misses alone start it.
+    /// </summary>
+    [Test]
+    public void Block_processings_slot_reads_past_the_caches_start_the_read_ahead()
+    {
+        using BlockCachePreWarmer preWarmer = CreatePreWarmer(readAhead: true, coldReads: 3);
+        Block block = BuildBlock(WalkerCall(TestItem.PrivateKeyA, 0, 0x5000, 6), Transfer(TestItem.PrivateKeyB, 0), Transfer(TestItem.PrivateKeyC, 0));
+        IWorldState worldState = _scope.Resolve<IWorldState>();
+        using IDisposable consumer = worldState.BeginScope(_parent);
+        using IDisposable session = preWarmer.PreWarmCaches(block, _parent, Spec)!;
+        ((PrewarmingSession)session).WaitForCompletion();
+        // Read before the first transaction, where no read is counted; block processing holds the account from here on.
+        Assert.That(worldState.AccountExists(ColdTailContracts.Walker), Is.True);
+        _caches.StorageCache.Clear();
+
+        preWarmer.OnBeforeTxExecution();
+        for (int i = 0; i < 3; i++) worldState.Get(new StorageCell(ColdTailContracts.Walker, 0x6000 + i), out _);
+        bool idle = SpinWait.SpinUntil(() => preWarmer.ReadAheadsRunning == 0, Timeout);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_caches.StateCache.TryGetValue(ColdTailContracts.Walker, out _), Is.True, "precondition: the account is cached");
+            Assert.That(preWarmer.ReadAheadsStarted, Is.EqualTo(1), "three slot misses start the read-ahead");
+            Assert.That(idle, Is.True);
         }
     }
 
