@@ -23,9 +23,17 @@ public class Types
             "39ce5e17" + // `MethodId`
             "000000000000000000000000dcc703c0e500b653ca82273b7bfad8045d85a470"); // `0xdcc703c0e500b653ca82273b7bfad8045d85a470`
 
+        yield return Case(new AbiSignature("abc").With(AbiType.BytesM(1)), Bytes.FromHexString("01"),
+            "9854c850" + // `MethodId`
+            "0100000000000000000000000000000000000000000000000000000000000000"); // Contents of the bytes, right-padded
+
         yield return Case(new AbiSignature("abc").With(AbiType.BytesM(19)), Bytes.FromHexString("0102030405060708090a0b0c0d0e0f10111213"),
             "e32d0436" + // `MethodId`
             "0102030405060708090a0b0c0d0e0f1011121300000000000000000000000000"); // Contents of the bytes, right-padded
+
+        yield return Case(new AbiSignature("abc").With(AbiType.BytesM(32)), Bytes.FromHexString("0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20"),
+            "cd200edb" + // `MethodId`
+            "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20"); // Contents of the bytes
 
         yield return Case(new AbiSignature("abc").With(AbiType.Bytes), Bytes.FromHexString("0102030405060708090a0b0c0d0e0f1011"),
             "02035fa1" + // `MethodId`

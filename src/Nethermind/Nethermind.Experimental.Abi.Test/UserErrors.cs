@@ -64,11 +64,19 @@ public class UserErrors
         yield return ThrowsOnBuild<ArgumentOutOfRangeException>(() => AbiType.Array(AbiType.UInt256, -1)).SetName("uint256[-1]");
     }
 
+    private static IEnumerable<TestCaseData> BytesMOutOfRangeTestCases()
+    {
+        yield return ThrowsOnBuild<ArgumentOutOfRangeException>(() => AbiType.BytesM(0)).SetName("bytes0");
+        yield return ThrowsOnBuild<ArgumentOutOfRangeException>(() => AbiType.BytesM(33)).SetName("bytes33");
+        yield return ThrowsOnBuild<ArgumentOutOfRangeException>(() => AbiType.Array(AbiType.BytesM(-32), 1 << 26)).SetName("bytes-32[2^26]");
+    }
+
     private static TestCaseData ThrowsOnBuild<TException>(Action build) where TException : Exception =>
         new(build, typeof(TException));
 
     [TestCaseSource(nameof(HeadSizeOutOfRangeTestCases))]
-    public void Build_HeadSizeOutOfRange(Action build, Type exception) =>
+    [TestCaseSource(nameof(BytesMOutOfRangeTestCases))]
+    public void Build_InvalidType(Action build, Type exception) =>
         Assert.That(build, Throws.TypeOf(exception));
 
     private static IEnumerable<TestCaseData> LoneSurrogateTestCases()
