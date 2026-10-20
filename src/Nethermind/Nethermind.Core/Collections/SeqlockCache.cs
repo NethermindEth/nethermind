@@ -485,6 +485,19 @@ public sealed class SeqlockCache<TKey, TValue>
         }
     }
 
+    /// <summary>For tests: the entries the cache holds, read with no regard for concurrent writers.</summary>
+    internal List<KeyValuePair<TKey, TValue?>> SnapshotForTests()
+    {
+        long live = Volatile.Read(ref _shiftedEpoch) | OccupiedBit;
+        List<KeyValuePair<TKey, TValue?>> entries = [];
+        foreach (Entry entry in _entries)
+        {
+            if ((entry.HashEpochSeqLock & (EpochOccMask | LockMarker)) == live) entries.Add(new(entry.Key, entry.Value));
+        }
+
+        return entries;
+    }
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static bool SameValue(in TValue? left, in TValue? right) => typeof(TValue).IsValueType
         ? EqualityComparer<TValue>.Default.Equals(left!, right!)

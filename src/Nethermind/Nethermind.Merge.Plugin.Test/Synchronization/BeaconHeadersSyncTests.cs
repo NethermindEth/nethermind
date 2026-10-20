@@ -332,8 +332,7 @@ public class BeaconHeadersSyncTests
         Hash256 lastValidHeader = syncedBlockTree.FindHeader(batch.StartNumber + 9, BlockTreeLookupOptions.None)!.GetOrCalculateHash();
         invalidChainTracker.OnInvalidBlock(headerToInvalidate, lastValidHeader);
         Assert.That(invalidChainTracker.IsOnKnownInvalidChain(lastHeader, out Hash256? storedLastValidHash), Is.True);
-        // Header sync never executes the parent, so no validated ancestor can be named as the last valid hash.
-        Assert.That(storedLastValidHash, Is.Null);
+        Assert.That(storedLastValidHash, Is.EqualTo(lastValidHeader));
     }
 
     [Test]

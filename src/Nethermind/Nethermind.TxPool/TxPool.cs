@@ -27,6 +27,7 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
@@ -44,7 +45,7 @@ namespace Nethermind.TxPool
     /// Stores all pending transactions. These will be used by block producer if this node is a miner / validator
     /// or simply for broadcasting and tracing in other cases.
     /// </summary>
-    public class TxPool : ITxPool, IAsyncDisposable, IRecyclableTxPool
+    public partial class TxPool : ITxPool, IAsyncDisposable, IRecyclableTxPool
     {
         private const int RevalidationAbandonmentWarningThreshold = 3;
         private const int MarkerPublicationDeferralWarningThreshold = 3;
@@ -72,6 +73,11 @@ namespace Nethermind.TxPool
         private readonly string? _specChangeValidationFingerprint;
         private readonly ISpecChangeValidationStorage? _specChangeValidationStorage;
         private readonly bool _blobReorgsSupportEnabled;
+        private readonly IProcessedBlobTxStorage? _processedBlobTxStorage;
+        private readonly IncludedBlobLocations? _includedBlobLocations;
+        // Head loop only: the new head's blob txs, mapped to the copy a reorg re-add read back from the processed rows.
+        private readonly Dictionary<ValueHash256, Transaction?> _reorganisedBlobTxs = [];
+        private readonly IStateHeaderProvider? _stateHeaderProvider;
         private bool _specChangeMarkerUnpublished;
         private readonly DelegationCache _pendingDelegations;
         private readonly PayerExposureCache _payerExposure = new();
@@ -188,6 +194,7 @@ namespace Nethermind.TxPool
         /// <param name="incomingTxFilters"></param>
         /// <param name="thereIsPriorityContract"></param>
         /// <param name="frameTxPrefixSimulator">Optional EIP-8141 opaque-prefix simulator; unwired on chains without frame transactions.</param>
+        /// <param name="stateHeaderProvider">Optional source of the finalized block number, used to prune the locations of included blobs; without it they are bounded by reorg depth alone.</param>
         public TxPool(IEthereumEcdsa ecdsa,
             IBlobTxStorage blobTxStorage,
             IChainHeadInfoProvider chainHeadInfoProvider,
@@ -200,7 +207,8 @@ namespace Nethermind.TxPool
             ITxGossipPolicy? transactionsGossipPolicy = null,
             IIncomingTxFilter[]? incomingTxFilters = null,
             bool thereIsPriorityContract = false,
-            IFrameTxPrefixSimulator? frameTxPrefixSimulator = null)
+            IFrameTxPrefixSimulator? frameTxPrefixSimulator = null,
+            IStateHeaderProvider? stateHeaderProvider = null)
         {
             _logger = logManager?.GetClassLogger<TxPool>() ?? throw new ArgumentNullException(nameof(logManager));
             _senderWidth = frameTxWidthLedger.SenderWidth;
@@ -220,6 +228,9 @@ namespace Nethermind.TxPool
                 : null;
             AcceptTxWhenNotSynced = txPoolConfig.AcceptTxWhenNotSynced;
             _blobReorgsSupportEnabled = txPoolConfig.BlobsSupport.SupportsReorgs();
+            _processedBlobTxStorage = _blobReorgsSupportEnabled ? blobTxStorage as IProcessedBlobTxStorage : null;
+            _includedBlobLocations = _processedBlobTxStorage is null ? null : new IncludedBlobLocations(IncludedBlobMaxBlockDistance);
+            _stateHeaderProvider = stateHeaderProvider;
             _frameEvictionRetryBudget = txPoolConfig.FrameTxEvictionRetryBudget;
             _frameRevalidationDeferralBudget = txPoolConfig.FrameTxRevalidationDeferralBudget;
             _frameTxPrefixSimulator = frameTxPrefixSimulator;
@@ -533,77 +544,11 @@ namespace Nethermind.TxPool
             return ready;
         }
 
-        public IDictionary<AddressAsKey, Transaction[]> GetPendingLightBlobTransactionsBySender() =>
-            _blobTransactions.GetBucketSnapshot();
-
-        public IDictionary<AddressAsKey, Transaction[]> GetPendingLightBlobTransactionsBySender(bool filterToReadyTx, UInt256 baseFee = default) =>
-            DropUnreadySenders(_blobTransactions.GetBucketSnapshot(), filterToReadyTx, baseFee);
-
         public Transaction[] GetPendingTransactionsBySender(Address address) =>
             _transactions.GetBucketSnapshot(address);
 
-        public Transaction[] GetPendingLightBlobTransactionsBySender(Address address) =>
-            _blobTransactions.GetBucketSnapshot(address);
-
         // only for testing reasons
         internal Transaction[] GetOwnPendingTransactions() => _broadcaster.GetSnapshot();
-
-        public int GetPendingBlobTransactionsCount() => _blobTransactions.Count;
-
-
-
-        public bool TryGetBlobAndProofV0(byte[] blobVersionedHash,
-            [NotNullWhen(true)] out byte[]? blob,
-            [NotNullWhen(true)] out byte[]? proof)
-            => _blobTransactions.TryGetBlobAndProofV0(blobVersionedHash, out blob, out proof);
-
-        public bool TryGetBlobAndProofV1(byte[] blobVersionedHash,
-            [NotNullWhen(true)] out byte[]? blob,
-            [NotNullWhen(true)] out byte[][]? cellProofs)
-            => _blobTransactions.TryGetBlobAndProofV1(blobVersionedHash, out blob, out cellProofs);
-
-        public int TryGetBlobsAndProofsV1(byte[][] requestedBlobVersionedHashes,
-            Span<byte[]?> blobs, Span<ReadOnlyMemory<byte[]>> proofs)
-            => _blobTransactions.TryGetBlobsAndProofsV1(requestedBlobVersionedHashes, blobs, proofs);
-
-        public bool TryGetPendingBlobCellMask(in ValueHash256 hash, out BlobCellMask availableMask)
-            => _blobTransactions.TryGetAvailableCellMask(hash, out availableMask);
-
-        public bool TryGetPendingBlobCellMetadata(
-            Hash256 hash,
-            out BlobCellMask availableMask,
-            out int blobCount,
-            out int materializationWork) =>
-            _blobTransactions.TryGetAvailableCellMetadata(
-                hash,
-                out availableMask,
-                out blobCount,
-                out materializationWork);
-
-        public bool TryGetBlobCells(Hash256 hash, BlobCellMask requestedMask, out BlobCellMask availableMask, [NotNullWhen(true)] out byte[][]? cells)
-            => _blobTransactions.TryGetCells(hash, requestedMask, out availableMask, out cells);
-
-        public bool TryGetBlobCellsAndProofsV1(byte[] blobVersionedHash, BlobCellMask requestedMask, out BlobCellMask availableMask, [NotNullWhen(true)] out byte[][]? cells, [NotNullWhen(true)] out byte[][]? proofs)
-            => _blobTransactions.TryGetBlobCellsAndProofsV1(blobVersionedHash, requestedMask, out availableMask, out cells, out proofs);
-
-        public bool TryMergeBlobCells(Hash256 hash, BlobCellMask cellMask, byte[][] cells) =>
-            MergeBlobCells(hash, cellMask, cells) == BlobCellMergeResult.Accepted;
-
-        public BlobCellMergeResult MergeBlobCells(Hash256 hash, BlobCellMask cellMask, byte[][] cells)
-        {
-            BlobCellMergeResult result = _blobTransactions.MergeCells(hash, cellMask, cells);
-            if (result != BlobCellMergeResult.Accepted)
-            {
-                return result;
-            }
-
-            if (_blobTransactions.TryGetValue(hash, out Transaction? transaction))
-            {
-                _broadcaster.Broadcast(transaction, isPersistent: false);
-            }
-
-            return BlobCellMergeResult.Accepted;
-        }
 
         private void OnInsertedTx(object? sender, SortedPool<ValueHash256, Transaction, AddressAsKey>.SortedPoolEventArgs args)
         {
@@ -945,9 +890,11 @@ namespace Nethermind.TxPool
                             _lastBlockNumber = args.Block.Number;
                             _lastBlockHash = args.Block.Hash;
 
+                            CollectReorganisedBlobTxs(args.Block, reorganised);
                             ReAddReorganisedTransactions(args.PreviousBlock);
                             ReAddRewoundTransactions(rewound);
                             RemoveProcessedTransactions(args.Block);
+                            _reorganisedBlobTxs.Clear();
                             RemoveExpiredFrameTransactions(args.Block);
                             EvictUnreferenceableRecentRootTransactions(unreferenceable);
                             RevalidateFrameTransactions(args.Block);
@@ -977,6 +924,12 @@ namespace Nethermind.TxPool
                         if (revalidationRequired)
                         {
                             RequestRevalidation(headChange.Generation);
+                        }
+
+                        // Outside _newHeadLock: the finalized number can be a block tree lookup.
+                        if (_stateHeaderProvider is not null)
+                        {
+                            _includedBlobLocations?.PruneFinalized(_stateHeaderProvider.FinalizedBlockNumber);
                         }
 
                         // Subscribers can re-enter the pool, so invoke them after releasing _newHeadLock.
@@ -1081,6 +1034,10 @@ namespace Nethermind.TxPool
                     {
                         if (_logger.IsTrace) _logger.Trace($"Readded tx {blobTx.Hash} from reorged block {previousBlock.Number} (hash {previousBlock.Hash}) to blob pool");
                         _hashCache.Delete(blobTx.Hash!);
+                        if (_reorganisedBlobTxs.ContainsKey(blobTx.Hash!.ValueHash256))
+                        {
+                            _reorganisedBlobTxs[blobTx.Hash!.ValueHash256] = blobTx;
+                        }
                         if (blobTx.SenderAddress is null)
                         {
                             if (!_ecdsa.TryRecoverAddress(blobTx, out Address? senderAddress))
@@ -1173,17 +1130,11 @@ namespace Nethermind.TxPool
             _rewoundHeaders.RemoveAt(highest);
         }
 
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        private void RecordUnrecoverableReorgedBlobTx(Transaction blobTx, Block previousBlock)
-        {
-            Metrics.PendingTransactionsUnresolvableSender++;
-            if (_logger.IsDebug) _logger.Debug($"Skipped readding tx {blobTx.Hash} from reorged block {previousBlock.Number} (hash {previousBlock.Hash}) to blob pool: sender address is not recoverable");
-        }
-
         private void RemoveProcessedTransactions(Block block)
         {
             Transaction[] blockTransactions = block.Transactions;
-            using ArrayPoolListRef<Transaction> blobTxsToSave = new((int)_specProvider.GetSpec(block.Header).MaxBlobCount);
+            // Saved before the removal below, so a blob is in the processed rows by the time its tx leaves the pool.
+            ExceptionDispatchInfo? saveFailure = SaveProcessedBlobTransactions(block);
             long discoveredForPendingTxs = 0;
             long discoveredForHashCache = 0;
             long notInMempool = 0;
@@ -1211,16 +1162,6 @@ namespace Nethermind.TxPool
                 {
                     blobTxs++;
                     blobs += (long)blockTx.GetBlobCount();
-
-                    if (_blobReorgsSupportEnabled)
-                    {
-                        if (_blobTransactions.TryGetValue(blockTx.Hash, out Transaction? fullBlobTx))
-                        {
-                            if (_logger.IsTrace) _logger.Trace($"Saved processed blob tx {blockTx.Hash} from block {block.Number} to ProcessedTxs db");
-                            blobTxsToSave.Add(fullBlobTx);
-                        }
-                        else if (_logger.IsTrace) _logger.Trace($"Skipped adding processed blob tx {blockTx.Hash} from block {block.Number} to ProcessedTxs db - not found in blob pool");
-                    }
                 }
 
                 bool isKnown = IsKnown(txHash);
@@ -1241,10 +1182,7 @@ namespace Nethermind.TxPool
                 }
             }
 
-            if (blobTxsToSave.Count > 0)
-            {
-                _blobTxStorage.AddBlobTransactionsFromBlock(block.Number, blobTxsToSave);
-            }
+            saveFailure?.Throw();
 
             long transactionsInBlock = blockTransactions.Length;
             if (transactionsInBlock != 0)
@@ -1944,28 +1882,6 @@ namespace Nethermind.TxPool
 
             _hashCache.DeleteFromCurrentBlock(in hash);
             return AnnounceResult.RequestRequired;
-        }
-
-        public AcceptTxResult ValidateTxForBlobSampling(Transaction tx)
-        {
-            if (!tx.SupportsBlobs)
-            {
-                return AcceptTxResult.Invalid;
-            }
-
-            TxFilteringState state = default;
-            _newHeadLock.EnterReadLock();
-            try
-            {
-                state = new(tx, _accounts, _specProvider.GetCurrentHeadSpec());
-                bool canRecycle = false;
-                return FilterTransactions(tx, TxHandlingOptions.None, ref state, ref canRecycle, skipSamplingDeferredFilters: true);
-            }
-            finally
-            {
-                state.SenderAdmissionGate?.Exit();
-                _newHeadLock.ExitReadLock();
-            }
         }
 
         private AcceptTxResult FilterTransactions(
@@ -3008,9 +2924,6 @@ namespace Nethermind.TxPool
             return false;
         }
 
-        public bool TryGetPendingBlobTransaction(Hash256 hash, [NotNullWhen(true)] out Transaction? blobTransaction) =>
-            _blobTransactions.TryGetValue(hash, out blobTransaction);
-
         /// <inheritdoc/>
         public PendingTransactionsView GetPendingForProduction(BlockHeader targetBlock, bool filterToReadyTx, UInt256 baseFee)
         {
@@ -3047,10 +2960,6 @@ namespace Nethermind.TxPool
                 && ReferenceEquals(targetSpec, validatedSpec)
                 && ReferenceEquals(targetSpec, currentSpec);
         }
-
-        // only for tests - to test sorting
-        internal void TryGetBlobTxSortingEquivalent(Hash256 hash, out Transaction? transaction)
-            => _blobTransactions.TryGetBlobTxSortingEquivalent(hash, out transaction);
 
         // should own transactions (in broadcaster) be also checked here?
         // maybe it should use NonceManager, as it already has info about local txs?
@@ -3108,10 +3017,6 @@ namespace Nethermind.TxPool
         public bool IsKnown(Hash256? hash) => hash is not null && _hashCache.Get(hash);
 
         public bool IsKnown(in ValueHash256 hash) => _hashCache.Get(in hash);
-
-        public void ForgetRejectedBlobTransaction(Hash256 hash) => _hashCache.DeleteFromCurrentBlock(hash);
-
-        public bool ForgetInvalidBlobProofs(Hash256 hash) => _hashCache.TryDeleteInvalidBlobProofs(hash);
 
         public event EventHandler<TxEventArgs>? NewDiscovered;
         public event EventHandler<TxEventArgs>? NewPending;
