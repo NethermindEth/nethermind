@@ -70,7 +70,7 @@ public class MonitoringService : IMonitoringService, IAsyncDisposable
         _options = GetOptions(metricsConfig);
     }
 
-    public Task StartAsync()
+    public async Task StartAsync()
     {
         if (_pushGatewayUrl is not null)
         {
@@ -119,6 +119,7 @@ public class MonitoringService : IMonitoringService, IAsyncDisposable
         {
             _metricServer = new NethermindKestrelMetricServer(_exposeHost, _exposePort.Value);
             _metricServer.Start();
+            await _metricServer.Listening;
         }
 
         _monitoringTimerTask = Task.Run(async () =>
@@ -134,7 +135,6 @@ public class MonitoringService : IMonitoringService, IAsyncDisposable
         });
 
         if (_logger.IsInfo) _logger.Info($"Started monitoring for the group: {_options.Group}, instance: {_options.Instance}");
-        return Task.CompletedTask;
     }
 
     internal static AuthenticationHeaderValue CreateBasicAuthHeader(string username, string password) =>

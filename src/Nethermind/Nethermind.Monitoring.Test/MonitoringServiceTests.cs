@@ -2,18 +2,22 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.IO;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Net.Sockets;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Core;
 using Nethermind.Init.Modules;
+using Nethermind.Init.Steps;
 using Nethermind.Logging;
 using Nethermind.Monitoring.Config;
 using Nethermind.Monitoring.Metrics;
+using Nethermind.Network;
 using NUnit.Framework;
 
 namespace Nethermind.Monitoring.Test;
@@ -23,22 +27,26 @@ public class MonitoringServiceTests
     [Test]
     public async Task Disposing_container_stops_metrics_server()
     {
-        // The probed port is released before the server binds it and bind failures are not surfaced,
-        // so retry on a fresh port if another process takes it in between.
+        // The probed port is released before the server binds it, so retry on a fresh port if another process takes it in between.
         int port = 0;
         IContainer container = null;
         for (int attempt = 0; attempt < 3 && container is null; attempt++)
         {
             port = GetFreePort();
             IContainer candidate = BuildMonitoringContainer(port);
-            await candidate.Resolve<IMonitoringService>().StartAsync();
-            if (await ServesMetrics(port))
+            try
+            {
+                await candidate.Resolve<IMonitoringService>().StartAsync();
                 container = candidate;
-            else
+            }
+            catch (IOException)
+            {
                 await candidate.DisposeAsync();
+            }
         }
 
         Assert.That(container, Is.Not.Null, "metrics server did not start");
+        Assert.That(await ServesMetrics(port), Is.True);
         await container.DisposeAsync();
 
         using TcpListener reboundListener = new(IPAddress.Loopback, port);
@@ -46,16 +54,14 @@ public class MonitoringServiceTests
     }
 
     [Test]
-    public async Task Disposing_container_does_not_throw_when_metrics_port_is_taken()
+    public async Task Taken_metrics_port_fails_startup_and_disposal_does_not_throw()
     {
         using TcpListener listener = new(IPAddress.Loopback, 0);
         listener.Start();
         IContainer container = BuildMonitoringContainer(((IPEndPoint)listener.LocalEndpoint).Port);
+        StartMonitoring step = new(container.Resolve<IMonitoringService>(), LimboLogs.Instance, container.Resolve<IMetricsConfig>());
 
-        await container.Resolve<IMonitoringService>().StartAsync();
-        // Let the server attempt the bind before it is stopped
-        await Task.Delay(1000);
-
+        await Assert.ThatAsync(() => step.Execute(CancellationToken.None), Throws.InstanceOf<PortInUseException>());
         await Assert.ThatAsync(async () => await container.DisposeAsync(), Throws.Nothing);
     }
 
