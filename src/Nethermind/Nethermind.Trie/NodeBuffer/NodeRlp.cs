@@ -15,59 +15,6 @@ internal static class NodeRlp
     private const byte LeafFlag = 0x20;
     private const byte OddFlag = 0x10;
     private const byte ShortStringOffset = 0x80;
-    private const byte LongStringOffset = 0xb7;
-    private const byte ShortListOffset = 0xc0;
-    private const byte LongListOffset = 0xf7;
-    private const int MaxLengthOfLength = 4;
-
-    /// <summary>One RLP item: <see cref="Encoded"/> includes its header, <see cref="Payload"/> does not.</summary>
-    public readonly ref struct Item(bool isList, ReadOnlySpan<byte> payload, ReadOnlySpan<byte> encoded)
-    {
-        public readonly bool IsList = isList;
-        public readonly ReadOnlySpan<byte> Payload = payload;
-        public readonly ReadOnlySpan<byte> Encoded = encoded;
-    }
-
-    /// <summary>Reads the first RLP item of <paramref name="data"/>.</summary>
-    /// <returns>False when the header or payload runs past the data.</returns>
-    public static bool NextItem(ReadOnlySpan<byte> data, out Item item, out ReadOnlySpan<byte> rest)
-    {
-        item = default;
-        rest = default;
-        if (data.IsEmpty) return false;
-
-        byte first = data[0];
-        bool isList = first >= ShortListOffset;
-        int headerLength = 1;
-        int payloadLength;
-        if (first < ShortStringOffset)
-        {
-            headerLength = 0;
-            payloadLength = 1;
-        }
-        else if (first <= LongStringOffset || (isList && first <= LongListOffset))
-        {
-            payloadLength = first - (isList ? ShortListOffset : ShortStringOffset);
-        }
-        else
-        {
-            int lengthOfLength = first - (isList ? LongListOffset : LongStringOffset);
-            if (lengthOfLength > MaxLengthOfLength || data.Length <= lengthOfLength) return false;
-
-            uint length = 0;
-            foreach (byte lengthByte in data.Slice(1, lengthOfLength)) length = length << 8 | lengthByte;
-            if (length > int.MaxValue) return false;
-            headerLength += lengthOfLength;
-            payloadLength = (int)length;
-        }
-
-        if (payloadLength > data.Length - headerLength) return false;
-
-        int end = headerLength + payloadLength;
-        item = new Item(isList, data[headerLength..end], data[..end]);
-        rest = data[end..];
-        return true;
-    }
 
     /// <summary>Length of the RLP string that carries the hex prefix of a key of <paramref name="nibbleCount"/> nibbles.</summary>
     /// <remarks>A one-byte hex prefix is below 0x80, so it is its own RLP string.</remarks>

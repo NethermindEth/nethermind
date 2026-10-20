@@ -6,6 +6,7 @@ using System.Buffers.Binary;
 using System.Numerics;
 using System.Runtime.InteropServices;
 using Nethermind.Core.Crypto;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Trie.NodeBuffer;
 
@@ -100,23 +101,37 @@ internal static class NodeRecordCodec
     {
         kind = default;
         hashMask = 0;
-        if (!NodeRlp.NextItem(rlp, out NodeRlp.Item node, out ReadOnlySpan<byte> rest) || !node.IsList || !rest.IsEmpty) return false;
-        if (!NodeRlp.NextItem(node.Payload, out NodeRlp.Item first, out rest) || !NodeRlp.NextItem(rest, out NodeRlp.Item second, out rest)) return false;
-        if (!rest.IsEmpty) return TryDecodeBranch(node.Payload, out kind, out hashMask);
-        if (!IsHexPrefix(first)) return false;
-
-        int keyLength = NodeRlp.HexPrefixNibbleCount(first.Payload);
-        if (NodeRlp.IsLeafHexPrefix(first.Payload))
+        try
         {
-            kind = NodeRecordKind.Leaf;
-            return !second.IsList;
+            RlpReader reader = new(rlp);
+            int length = reader.ReadSequenceLength();
+            if (reader.Position + length != rlp.Length) return false;
+
+            int itemCount = reader.PeekNumberOfItemsRemaining(maxSearch: 3);
+            if (itemCount > 2) return TryDecodeBranch(ref reader, out kind, out hashMask);
+            if (itemCount < 2) return false;
+
+            ReadOnlySpan<byte> hexPrefix = reader.DecodeByteArraySpan();
+            if (!IsHexPrefix(hexPrefix)) return false;
+
+            if (NodeRlp.IsLeafHexPrefix(hexPrefix))
+            {
+                kind = NodeRecordKind.Leaf;
+                reader.DecodeByteArraySpan();
+                return true;
+            }
+
+            kind = NodeRecordKind.Extension;
+            if (NodeRlp.HexPrefixNibbleCount(hexPrefix) == 0 || !TryDecodeChild(ref reader, out ChildRefKind child) || child == ChildRefKind.Empty) return false;
+
+            hashMask = (ushort)(child == ChildRefKind.Hash ? 1 : 0);
+            return true;
         }
-
-        kind = NodeRecordKind.Extension;
-        if (keyLength == 0 || !TryDecodeChild(second, out ChildRefKind child) || child == ChildRefKind.Empty) return false;
-
-        hashMask = (ushort)(child == ChildRefKind.Hash ? 1 : 0);
-        return true;
+        // RlpReader throws on malformed RLP, and indexes or slices past the end of a truncated item.
+        catch (Exception e) when (e is RlpException or IndexOutOfRangeException or ArgumentOutOfRangeException)
+        {
+            return false;
+        }
     }
 
     /// <summary>Writes the record of <paramref name="rlp"/>, with every child pointer 0.</summary>
@@ -136,53 +151,49 @@ internal static class NodeRecordCodec
         rlp.CopyTo(destination[(HeaderLength + pointersLength)..]);
     }
 
-    private static bool TryDecodeBranch(ReadOnlySpan<byte> payload, out NodeRecordKind kind, out ushort hashMask)
+    private static bool TryDecodeBranch(ref RlpReader reader, out NodeRecordKind kind, out ushort hashMask)
     {
         kind = NodeRecordKind.HashedBranch;
         hashMask = 0;
         for (int i = 0; i < BranchChildCount; i++)
         {
-            if (!NodeRlp.NextItem(payload, out NodeRlp.Item item, out payload) || !TryDecodeChild(item, out ChildRefKind child)) return false;
+            if (!TryDecodeChild(ref reader, out ChildRefKind child)) return false;
 
             if (child == ChildRefKind.Hash) hashMask |= (ushort)(1 << i);
             else if (child == ChildRefKind.Inline) kind = NodeRecordKind.InlineBranch;
         }
 
-        return NodeRlp.NextItem(payload, out NodeRlp.Item value, out payload)
-            && value is { IsList: false, Payload.IsEmpty: true }
-            && payload.IsEmpty;
+        return reader.DecodeByteArraySpan().IsEmpty && reader.Position == reader.Length;
     }
 
     /// <returns>False for a child that is malformed or embeds anything but a leaf.</returns>
-    private static bool TryDecodeChild(in NodeRlp.Item item, out ChildRefKind kind)
+    private static bool TryDecodeChild(ref RlpReader reader, out ChildRefKind kind)
     {
-        kind = item switch
+        if (reader.IsSequenceNext())
         {
-            { IsList: true } => ChildRefKind.Inline,
-            { Payload.Length: 0 } => ChildRefKind.Empty,
-            _ => ChildRefKind.Hash,
-        };
+            kind = ChildRefKind.Inline;
+            ReadOnlySpan<byte> inlineRlp = reader.PeekNextItem();
+            reader.SkipBytes(inlineRlp.Length);
+            return inlineRlp.Length < ValueHash256.MemorySize && IsInlineLeaf(inlineRlp);
+        }
 
-        return kind switch
-        {
-            ChildRefKind.Inline => item.Encoded.Length < ValueHash256.MemorySize && IsInlineLeaf(item.Encoded),
-            ChildRefKind.Hash => item.Payload.Length == ValueHash256.MemorySize,
-            _ => true,
-        };
+        ReadOnlySpan<byte> hash = reader.DecodeByteArraySpan();
+        kind = hash.IsEmpty ? ChildRefKind.Empty : ChildRefKind.Hash;
+        return hash.IsEmpty || hash.Length == ValueHash256.MemorySize;
     }
 
     /// <remarks>An embedded branch or extension would need two keys sharing 224 bits, which keccak keys never do.</remarks>
-    internal static bool IsInlineLeaf(ReadOnlySpan<byte> rlp) =>
-        NodeRlp.NextItem(rlp, out NodeRlp.Item node, out _)
-        && NodeRlp.NextItem(node.Payload, out NodeRlp.Item key, out ReadOnlySpan<byte> rest)
-        && NodeRlp.NextItem(rest, out NodeRlp.Item value, out rest)
-        && rest.IsEmpty
-        && IsHexPrefix(key)
-        && NodeRlp.IsLeafHexPrefix(key.Payload)
-        && !value.IsList;
+    internal static bool IsInlineLeaf(ReadOnlySpan<byte> rlp)
+    {
+        RlpReader reader = new(rlp);
+        reader.ReadSequenceLength();
+        ReadOnlySpan<byte> key = reader.DecodeByteArraySpan();
+        reader.DecodeByteArraySpan();
+        return reader.Position == reader.Length && IsHexPrefix(key) && NodeRlp.IsLeafHexPrefix(key);
+    }
 
-    private static bool IsHexPrefix(in NodeRlp.Item key) =>
-        key is { IsList: false, Payload.IsEmpty: false }
-        && key.Payload[0] >> 4 <= MaxHexPrefixFlag
-        && NodeRlp.HexPrefixNibbleCount(key.Payload) <= MaxKeyNibbles;
+    private static bool IsHexPrefix(ReadOnlySpan<byte> key) =>
+        !key.IsEmpty
+        && key[0] >> 4 <= MaxHexPrefixFlag
+        && NodeRlp.HexPrefixNibbleCount(key) <= MaxKeyNibbles;
 }
