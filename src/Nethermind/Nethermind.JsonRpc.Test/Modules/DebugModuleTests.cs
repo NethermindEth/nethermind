@@ -393,6 +393,26 @@ public class DebugModuleTests
     }
 
     [Test]
+    public void Debug_traceBlockByNumber_streaming_missing_body_for_tag_reports_hash()
+    {
+        BlockHeader parent = Build.A.BlockHeader.WithNumber(0).TestObject;
+        BlockHeader header = Build.A.BlockHeader.WithParent(parent).TestObject;
+        _jsonRpcConfig.EnableTracingStreamMode = true;
+        _blockFinder.Head.Returns(Build.A.Block.WithHeader(header).TestObject);
+        _blockFinder.FindHeader(Arg.Any<BlockParameter>()).Returns(header);
+        _blockFinder.FindHeader(parent.Hash!, BlockTreeLookupOptions.None, parent.Number).Returns(parent);
+        _blockchainBridge.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(true);
+
+        using ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> response = CreateModule().debug_traceBlockByNumber(BlockParameter.Latest);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.ErrorCode, Is.EqualTo(ErrorCodes.ResourceNotFound));
+            Assert.That(response.Result.Error, Is.EqualTo($"Block body not found for {header.Hash}"));
+        }
+    }
+
+    [Test]
     public void Debug_traceBlockByNumber_with_body_preserves_selector_replay([Values] bool filtered, [Values] bool replayThrows)
     {
         BlockHeader parent = Build.A.BlockHeader.WithNumber(0).TestObject;

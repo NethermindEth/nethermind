@@ -261,7 +261,7 @@ public class DebugRpcModule(
         if (blockFinder.FindBlock(header.Hash!, header.Number) is null)
         {
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail(
-                selector?.Type == BlockParameterType.BlockNumber ? $"block #{selector.BlockNumber} not found" : $"Block body not found for {selector?.ToString() ?? header.Hash!.ToString()}",
+                selector?.Type == BlockParameterType.BlockNumber ? $"block #{selector.BlockNumber} not found" : $"Block body not found for {header.Hash}",
                 ErrorCodes.ResourceNotFound);
         }
 
