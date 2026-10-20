@@ -5,7 +5,6 @@ using System;
 using System.IO;
 using System.Security.Cryptography;
 using System.Threading;
-using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -292,24 +291,18 @@ namespace Nethermind.Consensus.Processing
                     // later sender to the processing thread. A null sender still rejects the block.
                     if (txs.Length > 3)
                     {
-                        ParallelOptions options = cancellationToken.CanBeCanceled
-                            ? new() { MaxDegreeOfParallelism = ParallelUnbalancedWork.DefaultOptions.MaxDegreeOfParallelism, CancellationToken = cancellationToken }
-                            : ParallelUnbalancedWork.DefaultOptions;
-                        ParallelUnbalancedWork.For(0, txs.Length, options, StartWorker, RecoverOne, FinishWorker);
+                        ParallelUnbalancedWork.For(0, txs.Length, ParallelUnbalancedWork.DefaultOptions, StartWorker, RecoverOne, FinishWorker);
                     }
                     else
                     {
-                        foreach (Transaction tx in txs)
+                        int recovered = 0;
+                        for (; recovered < txs.Length && !cancellationToken.IsCancellationRequested; recovered++)
                         {
-                            cancellationToken.ThrowIfCancellationRequested();
-                            owner.TryRecover(tx, releaseSpec);
+                            owner.TryRecover(txs[recovered], releaseSpec);
                         }
 
-                        Interlocked.Add(ref _recovered, txs.Length);
+                        Interlocked.Add(ref _recovered, recovered);
                     }
-                }
-                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-                {
                 }
                 catch (Exception e)
                 {
@@ -332,11 +325,15 @@ namespace Nethermind.Consensus.Processing
 
             private Worker StartWorker() => new(this);
 
+            private bool IsCancellationRequested => cancellationToken.IsCancellationRequested;
+
             private void Recover(int i) => owner.TryRecover(txs[i], releaseSpec);
 
             private static Worker RecoverOne(int i, Worker worker)
             {
                 Recovery recovery = worker.Recovery;
+                // Cancellation skips the remaining indices instead of passing the token to For, which throws.
+                if (recovery.IsCancellationRequested) return worker;
                 recovery.Recover(i);
                 if (++worker.Pending == recovery._progressBatch)
                 {
