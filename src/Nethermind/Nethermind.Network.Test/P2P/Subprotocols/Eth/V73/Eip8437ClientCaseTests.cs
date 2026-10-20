@@ -48,7 +48,7 @@ public class Eip8437ClientCaseTests
         node.Transport.OnAnnounce(peer, new([announcement]));
         Assert.That(node.Pending, Is.Empty, "an announcement admits nothing");
         Answer(node, peer, link, wrapper);
-        await WrapperTestNode.Until(() => node.Transport.IsStored(announcement.Hash));
+        await WrapperTestNode.Until(() => node.Transport.IsStored(announcement.Hash) && node.Transport.FetchCount == 0);
 
         using (Assert.EnterMultipleScope())
         {
@@ -89,7 +89,7 @@ public class Eip8437ClientCaseTests
         (long second, ValueHash256[] rest) = EnvelopeRequest(link, 1);
         Assert.That(rest, Is.EqualTo(new[] { requested[1] }));
         node.Transport.OnPooledEnvelopes(peer, second, [PooledItem(Of(rest[0]))]);
-        await WrapperTestNode.Until(() => node.Transport.IsStored(announcement.Hash));
+        await WrapperTestNode.Until(() => node.Transport.IsStored(announcement.Hash) && node.Transport.FetchCount == 0);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(node.Pending.Select(t => t.Hash), Is.EquivalentTo(new[] { a.Hash, b.Hash }));

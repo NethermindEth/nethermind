@@ -152,7 +152,7 @@ public class Eth73ProtocolHandlerTests
 
         using PooledTransactionsMessage66 response = new(envelopeRequest.RequestId, new PooledTransactionsMessage65(new ArrayPoolList<Transaction>(1) { transaction }));
         Handle(response, Eth66MessageCode.PooledTransactions);
-        await WrapperTestNode.Until(() => _node.Transport.IsStored(Describe(wrapper).Hash));
+        await WrapperTestNode.Until(() => _node.Transport.IsStored(Describe(wrapper).Hash) && _node.Transport.FetchCount == 0);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(_node.Pending.Select(static t => t.Hash), Is.EqualTo(new[] { transaction.Hash }));
