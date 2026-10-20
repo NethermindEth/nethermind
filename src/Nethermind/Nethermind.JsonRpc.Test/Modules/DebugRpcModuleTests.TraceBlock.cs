@@ -90,10 +90,10 @@ public partial class DebugRpcModuleTests
         Assert.That((string?)streamed["error"]?["data"], Does.Contain("Cannot convert").And.Not.Contain("Cannot parse 'bad'"));
     }
 
-    [TestCase("json", ErrorCodes.InvalidParams)]
-    [TestCase("format", ErrorCodes.InternalError)]
-    [TestCase("cancel", ErrorCodes.Timeout)]
-    public async Task NativeStreamTimeout_Registered_constructor_failure_precedes_bad_duration(string kind, int expectedCode)
+    [Test]
+    public async Task NativeStreamTimeout_Registered_constructor_failure_preserves_error_boundary(
+        [Values("json", "format", "cancel")] string kind,
+        [Values("bad", "5s")] string timeout)
     {
         string tracer = $"native-host-{kind}-{Guid.NewGuid():N}";
         Exception failure = kind switch
@@ -102,16 +102,44 @@ public partial class DebugRpcModuleTests
             "format" => new FormatException("native host failure"),
             _ => new OperationCanceledException("native host failure")
         };
-        GethLikeNativeTracerFactory.RegisterTracer(tracer, (_, _, _, _) => throw failure);
+        int constructorCalls = 0;
+        GethLikeNativeTracerFactory.RegisterTracer(tracer, (_, _, _, _) =>
+        {
+            constructorCalls++;
+            throw failure;
+        });
         using Context context = await Context.Create();
         Block block = await context.Blockchain.AddBlock(CreateTraceBlockTransactions(context.Blockchain));
+        var options = new { tracer, timeout, streamMode = true };
 
-        JToken response = JToken.Parse(await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceBlockByNumber", block.Number,
-            new { tracer, timeout = "bad", streamMode = true }));
+        if (timeout == "5s")
+        {
+            using JsonRpcResponse response = await RpcTest.TestRequest(context.DebugRpcModule, "debug_traceBlockByNumber", block.Number, options);
+            Assert.That(response.TryGetStreamableResult(out IStreamableResult? result) ? result : null,
+                Is.InstanceOf<GethLikeTxTraceStreamingBlockResult>());
+            Assert.That(constructorCalls, Is.Zero, "the native constructor must remain deferred until the writer is consumed");
 
-        Assert.That((int?)response["error"]?["code"], Is.EqualTo(expectedCode), response.ToString());
-        Assert.That(response["result"], Is.Null);
-        Assert.That(response.ToString(), Does.Not.Contain("Cannot parse 'bad'"));
+            JArray envelopes = JArray.Parse(await StreamToStringAsync(result!));
+            Assert.That(constructorCalls, Is.EqualTo(1));
+            Assert.That(envelopes, Has.Count.EqualTo(1));
+            Assert.That((int?)envelopes[0]["errorCode"], Is.EqualTo(ErrorCodes.InternalError));
+            Assert.That((string?)envelopes[0]["error"], Is.EqualTo("tracing failed: native host failure"));
+            Assert.That(envelopes[0]["result"], Is.Null);
+        }
+        else
+        {
+            int expectedCode = kind switch
+            {
+                "json" => ErrorCodes.InvalidParams,
+                "format" => ErrorCodes.InternalError,
+                _ => ErrorCodes.Timeout
+            };
+            JToken response = JToken.Parse(await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceBlockByNumber", block.Number, options));
+
+            Assert.That((int?)response["error"]?["code"], Is.EqualTo(expectedCode), response.ToString());
+            Assert.That(response["result"], Is.Null);
+            Assert.That(response.ToString(), Does.Not.Contain("Cannot parse 'bad'"));
+        }
     }
 
     [Test]
