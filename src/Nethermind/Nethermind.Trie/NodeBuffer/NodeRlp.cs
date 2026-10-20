@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.InteropServices;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Trie.NodeBuffer;
@@ -90,12 +91,9 @@ internal static class NodeRlp
             destination[position++] = flag;
         }
 
-        for (int i = 0; i < nibbles.Length; i += 2)
-        {
-            destination[position++] = (byte)(nibbles[i] << 4 | nibbles[i + 1]);
-        }
-
-        return position;
+        Span<byte> packed = destination.Slice(position, nibbles.Length / 2);
+        Nibbles.PackNibbles(ref MemoryMarshal.GetReference(nibbles), ref MemoryMarshal.GetReference(packed), packed.Length);
+        return position + packed.Length;
     }
 
     /// <summary>Number of key nibbles a hex prefix, given without its RLP header, encodes.</summary>
@@ -107,14 +105,16 @@ internal static class NodeRlp
     public static void ReadHexPrefix(ReadOnlySpan<byte> hexPrefix, int skip, Span<byte> nibbles)
     {
         // Key nibble i sits at nibble i + 1 of the prefix when the key is odd, and after the padding nibble when even.
-        int offset = (hexPrefix[0] & OddFlag) != 0 ? 1 : 2;
-        int count = HexPrefixNibbleCount(hexPrefix);
-        for (int i = skip; i < count; i++)
+        int prefixNibble = skip + ((hexPrefix[0] & OddFlag) != 0 ? 1 : 2);
+        if ((prefixNibble & 1) == 1)
         {
-            int prefixNibble = i + offset;
-            byte value = hexPrefix[prefixNibble >> 1];
-            nibbles[i - skip] = (byte)((prefixNibble & 1) == 0 ? value >> 4 : value & 0x0F);
+            nibbles[0] = (byte)(hexPrefix[prefixNibble >> 1] & 0x0F);
+            nibbles = nibbles[1..];
+            prefixNibble++;
         }
+
+        ReadOnlySpan<byte> packed = hexPrefix[(prefixNibble >> 1)..];
+        Nibbles.ExpandNibbles(ref MemoryMarshal.GetReference(packed), ref MemoryMarshal.GetReference(nibbles[..(packed.Length * 2)]), packed.Length);
     }
 
     public static int LeafLength(ReadOnlySpan<byte> keyNibbles, ReadOnlySpan<byte> value)
