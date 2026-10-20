@@ -117,7 +117,7 @@ public class PersistedSnapshotTests
         using ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries = new(512);
         for (int i = 0; i < 512; i++)
             entries.Add(new PatriciaTree.BulkSetEntry(Keccak.Compute(BitConverter.GetBytes(i)).ValueHash256, new byte[32]));
-        TrieRoot root = FlatTestHelpers.BulkSet(_resourcePool, _buffer, address, TrieRoot.Empty, entries, canParallelize: true);
+        (ValueHash256 Hash, ulong Pointer) root = FlatTestHelpers.BulkSet(_resourcePool, _buffer, address, (ValueKeccak.EmptyTreeHash, 0), entries, canParallelize: true);
         FlatTestHelpers.StartNewGeneration(_buffer);
         using Snapshot snapshot = new(StateId.PreGenesis, new StateId(1, root.Hash), new SnapshotContent(), _resourcePool, ResourcePool.Usage.MainBlockProcessing, original.Copy());
         if (storage) snapshot.Content.StorageRoots[address!] = root.Pointer;
@@ -143,12 +143,12 @@ public class PersistedSnapshotTests
         INodeRecordBufferPin firstRetain = _buffer.PinHead();
         using ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries = new(keys.Length);
         foreach (Hash256 key in keys) entries.Add(new(key.ValueHash256, new byte[32]));
-        TrieRoot firstRoot = FlatTestHelpers.BulkSet(_resourcePool, _buffer, address, TrieRoot.Empty, entries, canParallelize: true);
+        (ValueHash256 Hash, ulong Pointer) firstRoot = FlatTestHelpers.BulkSet(_resourcePool, _buffer, address, (ValueKeccak.EmptyTreeHash, 0), entries, canParallelize: true);
         using Snapshot first = Create(0, ValueKeccak.EmptyTreeHash, firstRoot, firstRetain);
         INodeRecordBufferPin secondRetain = _buffer.PinHead();
         entries.Clear();
         entries.Add(new(keys[0].ValueHash256, Enumerable.Repeat((byte)1, 32).ToArray()));
-        TrieRoot secondRoot = FlatTestHelpers.BulkSet(_resourcePool, _buffer, address, firstRoot, entries, canParallelize: false);
+        (ValueHash256 Hash, ulong Pointer) secondRoot = FlatTestHelpers.BulkSet(_resourcePool, _buffer, address, firstRoot, entries, canParallelize: false);
         using Snapshot second = Create(1, firstRoot.Hash, secondRoot, secondRetain);
         int firstCount = storage ? first.StorageNodes.Count() : first.StateNodes.Count();
         int secondCount = storage ? second.StorageNodes.Count() : second.StateNodes.Count();
@@ -171,7 +171,7 @@ public class PersistedSnapshotTests
             }
         }
 
-        Snapshot Create(ulong block, ValueHash256 from, TrieRoot root, INodeRecordBufferPin retain)
+        Snapshot Create(ulong block, ValueHash256 from, (ValueHash256 Hash, ulong Pointer) root, INodeRecordBufferPin retain)
         {
             Snapshot snapshot = new(new(block, from), new(block + 1, root.Hash), new SnapshotContent(), _resourcePool, ResourcePool.Usage.MainBlockProcessing, retain);
             if (storage) snapshot.Content.StorageRoots[address!] = root.Pointer;

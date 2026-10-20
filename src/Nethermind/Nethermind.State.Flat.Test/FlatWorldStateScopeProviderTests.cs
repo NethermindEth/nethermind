@@ -1463,7 +1463,7 @@ public class FlatWorldStateScopeProviderTests
 
         ValueHash256[] keys = new ValueHash256[keyCount];
         for (int i = 0; i < keys.Length; i++) keys[i] = ValueKeccak.Compute($"snapshot-key-{i}");
-        TrieRoot[] roots = new TrieRoot[versionCount];
+        (ValueHash256 Hash, ulong Pointer)[] roots = new (ValueHash256 Hash, ulong Pointer)[versionCount];
         byte[][][] values = new byte[versionCount][][];
         SnapshotPooledList snapshots = new(versionCount);
         SinglePersistedNodeReader reader = new(TreePath.FromHexString("abcdef"), oldRlp);
@@ -1471,7 +1471,7 @@ public class FlatWorldStateScopeProviderTests
             new ReadOnlySnapshotBundle(new SnapshotPooledList(0), new NoopPersistenceReader(), false, PersistedSnapshotStack.Empty(), bufferPin: null),
             buffer, pool, ResourcePool.Usage.MainBlockProcessing))
         {
-            TrieRoot root = TrieRoot.Empty;
+            (ValueHash256 Hash, ulong Pointer) root = (ValueKeccak.EmptyTreeHash, 0);
             for (int version = 0; version < versionCount; version++)
             {
                 INodeRecordBufferPin retain = buffer.PinHead();
@@ -1508,7 +1508,7 @@ public class FlatWorldStateScopeProviderTests
         for (int version = 0; version < versionCount; version++)
         {
             Assert.That(buffer.FindRoot(address, roots[version].Hash), Is.EqualTo(roots[version].Pointer), $"indexed root {version}");
-            NodeRecordTrie trie = new(bundle, address, new TrieRoot(roots[version].Hash, buffer.FindRoot(address, roots[version].Hash)));
+            NodeRecordTrie trie = new(bundle, address, (roots[version].Hash, buffer.FindRoot(address, roots[version].Hash)));
             using (Assert.EnterMultipleScope())
             {
                 for (int i = 0; i < keys.Length; i++) Assert.That(trie.TryGet(keys[i]), Is.EqualTo(values[version][i]), $"version {version}, key {i}");

@@ -16,7 +16,6 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.Trie;
-using Nethermind.Trie.NodeBuffer;
 
 namespace Nethermind.State.Flat.ScopeProvider;
 
@@ -36,7 +35,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     private readonly Hash256 _initialStateRoot;
     // The state root warm-ups walk from; default in a trie-less scope.
-    private readonly TrieRoot _initialTrieRoot;
+    private readonly (ValueHash256 Hash, ulong Pointer) _initialTrieRoot;
     // Null in a trie-less scope.
     private readonly NodeRecordTrie? _stateTrie;
     private readonly Dictionary<AddressAsKey, FlatStorageTree> _storages = [];

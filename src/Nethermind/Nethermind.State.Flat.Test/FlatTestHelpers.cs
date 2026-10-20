@@ -187,7 +187,7 @@ public static class FlatTestHelpers
         buffer.AppendRecordFromRlp(address, path, ValueKeccak.Compute(rlp), rlp, []);
 
     /// <summary>Bulk-sets <paramref name="entries"/> over <paramref name="root"/> into <paramref name="buffer"/>, as a scope's commit does.</summary>
-    public static TrieRoot BulkSet(ResourcePool pool, INodeRecordBuffer buffer, Hash256? address, TrieRoot root, in ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries, bool canParallelize)
+    public static (ValueHash256 Hash, ulong Pointer) BulkSet(ResourcePool pool, INodeRecordBuffer buffer, Hash256? address, (ValueHash256 Hash, ulong Pointer) root, in ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries, bool canParallelize)
     {
         using SnapshotBundle bundle = new(MakeBundle(pool), buffer, pool, ResourcePool.Usage.MainBlockProcessing);
         NodeRecordTrie trie = new(bundle, address, root);

@@ -41,7 +41,7 @@ public sealed class FlatStorageTree(
     // The root a trie created from now on starts at.
     private Hash256 _rootBeforeTrie = storageRoot;
     // The root warm-ups walk from, resolved by the first one on a warmer thread.
-    private StrongBox<TrieRoot>? _preBlockRoot;
+    private StrongBox<(ValueHash256 Hash, ulong Pointer)>? _preBlockRoot;
 
     private const int EarlyIdle = 0;
     private const int EarlyApplying = 1;
@@ -52,7 +52,7 @@ public sealed class FlatStorageTree(
     private ConcurrentQueue<(UInt256 Slot, UInt256 Value)>? _earlyWrites;
     // Owned by whoever holds _earlyState.
     private SnapshotBundle.BackgroundTrieSource? _earlySource;
-    private TrieRoot _earlyRoot;
+    private (ValueHash256 Hash, ulong Pointer) _earlyRoot;
     private Dictionary<UInt256, UInt256>? _earlyApplied;
     private int _earlyState;
     private int _earlyQueued;
@@ -93,11 +93,11 @@ public sealed class FlatStorageTree(
         return new NodeRecordTrie(_bundle, AddressHash, buffer.ResolveRoot(AddressHash, _rootBeforeTrie.ValueHash256));
     }
 
-    private TrieRoot PreBlockRoot => (Volatile.Read(ref _preBlockRoot) ?? ResolvePreBlockRoot()).Value;
+    private (ValueHash256 Hash, ulong Pointer) PreBlockRoot => (Volatile.Read(ref _preBlockRoot) ?? ResolvePreBlockRoot()).Value;
 
-    private StrongBox<TrieRoot> ResolvePreBlockRoot()
+    private StrongBox<(ValueHash256 Hash, ulong Pointer)> ResolvePreBlockRoot()
     {
-        StrongBox<TrieRoot> resolved = new(_bundle.CacheableNodeRecordBuffer!.ResolveRoot(AddressHash, _storageRoot.ValueHash256));
+        StrongBox<(ValueHash256 Hash, ulong Pointer)> resolved = new(_bundle.CacheableNodeRecordBuffer!.ResolveRoot(AddressHash, _storageRoot.ValueHash256));
         Volatile.Write(ref _preBlockRoot, resolved);
         return resolved;
     }
