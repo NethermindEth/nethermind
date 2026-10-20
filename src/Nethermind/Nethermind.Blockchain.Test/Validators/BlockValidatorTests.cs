@@ -368,20 +368,25 @@ public class BlockValidatorTests
     }
 
     [Test]
-    public void ValidateSuggestedBlock_rejects_transactions_whose_minimum_gas_exceeds_gas_limit([Values(0, 1, 500)] int excessTransactions, [Values] bool senderKnown)
+    public void ValidateSuggestedBlock_rejects_transactions_whose_minimum_gas_exceeds_gas_limit([Values(0, 1, 500)] int excessTransactions, [Values] bool senderKnown, [Values] bool calldataHeavy)
     {
         const int txCount = 1000;
+        byte[] data = calldataHeavy ? Enumerable.Repeat((byte)0xFF, 1024).ToArray() : [];
         BlockHeader parent = Build.A.BlockHeader.TestObject;
         Transaction[] transactions = new Transaction[txCount];
         for (int i = 0; i < txCount; i++)
         {
-            transactions[i] = Build.A.Transaction.To(TestItem.AddressB).WithValue(1).WithGasLimit(1_000_000).TestObject;
+            transactions[i] = Build.A.Transaction.To(TestItem.AddressB).WithValue(1).WithData(data).WithGasLimit(1_000_000).TestObject;
             transactions[i].SenderAddress = senderKnown ? TestItem.AddressA : null;
+            // Memoizes intrinsic gas as the real IsWellFormed does, which the minimum-gas check then reuses.
+            IntrinsicGasCalculator.Calculate(transactions[i], Amsterdam.Instance);
         }
 
         // An unrecovered sender could still turn out to be the recipient, so it is held to the self-transfer price.
-        Transaction priced = Build.A.Transaction.To(TestItem.AddressB).WithValue(1).WithSenderAddress(senderKnown ? TestItem.AddressA : TestItem.AddressB).TestObject;
-        ulong minimumTransactionGas = IntrinsicGasCalculator.Calculate(priced, Amsterdam.Instance).MinimalGas;
+        Transaction priced = Build.A.Transaction.To(TestItem.AddressB).WithValue(1).WithData(data).WithSenderAddress(senderKnown ? TestItem.AddressA : TestItem.AddressB).TestObject;
+        EthereumIntrinsicGas pricedGas = IntrinsicGasCalculator.Calculate(priced, Amsterdam.Instance);
+        Assert.That(pricedGas.FloorGas > pricedGas.Standard, Is.EqualTo(calldataHeavy));
+        ulong minimumTransactionGas = pricedGas.MinimalGas;
         ulong gasLimit = (ulong)txCount * minimumTransactionGas;
         if (excessTransactions > 0) gasLimit -= (ulong)(excessTransactions - 1) * minimumTransactionGas + 1;
         Block suggestedBlock = Build.A.Block
