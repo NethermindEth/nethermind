@@ -9,6 +9,7 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
+using Nethermind.History;
 using Nethermind.Logging;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.Blocks;
@@ -32,6 +33,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
         IReceiptsRecovery receiptsRecovery,
         IBlockProcessingQueue blockProcessingQueue,
         ISyncConfig syncConfig,
+        BlockAccessListServingWindow balServingWindow,
         ILogManager logManager,
         FinalizedBlockAccessListPolicy? finalizedBalPolicy = null)
         : BlockDownloader(
@@ -47,6 +49,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
             receiptsRecovery,
             blockProcessingQueue,
             syncConfig,
+            balServingWindow,
             logManager)
     {
         private readonly IBlockTree _blockTree = blockTree;
@@ -61,8 +64,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
 
         protected override BlockTreeSuggestOptions GetSuggestOption(bool shouldProcess, Block currentBlock)
         {
-            BlockTreeSuggestOptions suggestOptions =
-                shouldProcess ? BlockTreeSuggestOptions.ShouldProcess : BlockTreeSuggestOptions.None;
+            BlockTreeSuggestOptions suggestOptions = base.GetSuggestOption(shouldProcess, currentBlock);
 
             bool isKnownBeaconBlock = _blockTree.IsKnownBeaconBlock(currentBlock.Number, currentBlock.GetOrCalculateHash());
             if (_logger.IsTrace) _logger.Trace($"Current block {currentBlock}, BeaconPivot: {beaconPivot.PivotNumber}, IsKnownBeaconBlock: {isKnownBeaconBlock}");
