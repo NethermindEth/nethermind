@@ -210,8 +210,8 @@ public class ChainParameters
     public ulong? Eip8198TransitionTimestamp { get; set; }
 
     /// <summary>
-    /// Slot length from the EIP-8198 fork, in milliseconds, when the network's consensus layer differs from EIP-8198's
-    /// 10 s; see <see cref="ISpecProvider.Eip8198SlotDurationMs"/>.
+    /// Slot length from the EIP-8198 fork, in milliseconds; <c>null</c> keeps <c>Blocks.SecondsPerSlot</c>. See
+    /// <see cref="ISpecProvider.Eip8198SlotDurationMs"/>.
     /// </summary>
     public ulong? Eip8198SlotDurationMs { get; set; }
 

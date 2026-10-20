@@ -120,6 +120,8 @@ namespace Nethermind.Specs.Test
         public bool IsEip7823Enabled { get; set; } = spec.IsEip7823Enabled;
         public bool IsEip7825Enabled { get; set; } = spec.IsEip7825Enabled;
         public UInt256 ForkBaseFee { get; set; } = spec.ForkBaseFee;
+        // A wrapped spec with EIP-8198 on reports 48 and hides its configured denominator, so fall back to EIP-1559's 8;
+        // set BaseFeeMaxChangeDenominator to keep another configured value after turning EIP-8198 off.
         private UInt256 _baseFeeMaxChangeDenominator =
             spec.IsEip8198Enabled ? Eip1559Constants.DefaultBaseFeeMaxChangeDenominator : spec.BaseFeeMaxChangeDenominator;
 

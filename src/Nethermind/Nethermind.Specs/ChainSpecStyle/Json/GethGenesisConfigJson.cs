@@ -92,7 +92,7 @@ public class GethGenesisConfigJson : IHasNamedForks
     public ulong? BeaconChainGenesisTimestamp { get; set; }
 
     /// <summary>
-    /// Slot length from the EIP-8198 fork, in milliseconds; <c>null</c> keeps EIP-8198's 10 s.
+    /// Slot length from the EIP-8198 fork, in milliseconds; <c>null</c> keeps <c>Blocks.SecondsPerSlot</c>.
     /// </summary>
     /// <remarks>
     /// Not part of EIP-7949; mirrors <c>params.eip8198SlotDurationMs</c> of Parity-style chainspecs and the consensus-layer

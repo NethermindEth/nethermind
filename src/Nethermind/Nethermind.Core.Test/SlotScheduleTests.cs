@@ -251,17 +251,36 @@ public class SlotScheduleTests
     }
 
     [Test]
-    public void Slot_length_comes_from_the_fork()
+    public void Eip8198_without_a_chain_slot_duration_keeps_the_configured_length()
+    {
+        CustomSpecProvider provider = new(((ForkActivation)0, London.Instance), (new ForkActivation(0, Fork), Bogota.Instance))
+        {
+            BeaconChainGenesisTimestamp = Genesis
+        };
+        SlotSchedule schedule = provider.GetSlotSchedule(12);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(schedule.GetSecondsPerSlot(Fork - 1), Is.EqualTo(12UL));
+            Assert.That(schedule.GetSecondsPerSlot(Fork), Is.EqualTo(12UL));
+            Assert.That(schedule.GetSlotTimestamp(6), Is.EqualTo(Fork + 12));
+        }
+    }
+
+    [Test]
+    public void Chain_slot_duration_applies_from_eip8198_however_it_is_enabled()
     {
         CustomSpecProvider bogota = new(((ForkActivation)0, London.Instance), (new ForkActivation(0, Fork), Bogota.Instance))
         {
-            BeaconChainGenesisTimestamp = Genesis
+            BeaconChainGenesisTimestamp = Genesis,
+            Eip8198SlotDurationMs = 10_000
         };
         CustomSpecProvider flagOnly = new(
             ((ForkActivation)0, London.Instance),
             (new ForkActivation(0, Fork), new OverridableReleaseSpec(London.Instance) { IsEip8198Enabled = true }))
         {
-            BeaconChainGenesisTimestamp = Genesis
+            BeaconChainGenesisTimestamp = Genesis,
+            Eip8198SlotDurationMs = 10_000
         };
 
         using (Assert.EnterMultipleScope())
@@ -303,7 +322,8 @@ public class SlotScheduleTests
             (new ForkActivation(0, 190), new OverridableReleaseSpec(Bogota.Instance) { IsEip7805Enabled = false }),
             (new ForkActivation(0, 200), Amsterdam.Instance))
         {
-            BeaconChainGenesisTimestamp = Genesis
+            BeaconChainGenesisTimestamp = Genesis,
+            Eip8198SlotDurationMs = 10_000
         };
         SlotSchedule schedule = provider.GetSlotSchedule(12);
 

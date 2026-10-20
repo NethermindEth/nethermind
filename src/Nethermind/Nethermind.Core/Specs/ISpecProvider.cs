@@ -54,8 +54,8 @@ namespace Nethermind.Core.Specs
         ulong? BeaconChainGenesisTimestamp { get; }
 
         /// <summary>
-        /// The chain's slot length from the EIP-8198 fork, in milliseconds, when its consensus layer
-        /// (<c>SLOT_DURATION_MS_EIP8198</c>) differs from EIP-8198's 10 s; <c>null</c> keeps 10 s.
+        /// The chain's slot length from the EIP-8198 fork, in milliseconds, matching its consensus layer
+        /// (<c>SLOT_DURATION_MS_EIP8198</c>); <c>null</c> keeps the configured <c>Blocks.SecondsPerSlot</c>.
         /// </summary>
         /// <remarks>
         /// Chain-level timing: the execution layer only uses it to place slots, never to validate blocks, so the EIP-8198 base fee

@@ -840,6 +840,7 @@ public class GethGenesisLoaderTests
             Assert.That(after.MaxBlobCount, Is.EqualTo(18));
             Assert.That(after.BlobBaseFeeUpdateFraction, Is.EqualTo(12018519));
             Assert.That(provider.Eip8198SlotDurationMs, Is.Null);
+            Assert.That(provider.GetSlotSchedule(12).GetSecondsPerSlot(bogotaTime), Is.EqualTo(12UL));
         }
     }
 
@@ -848,8 +849,9 @@ public class GethGenesisLoaderTests
         Assert.That(() => LoadStandardGethGenesis(configExtra: "\"bogotaTime\": 1792416379"), Throws.Nothing);
 
     // The base fee fraction is EIP-8198's 5/48 whatever slot length the chain overrides it with.
-    [TestCase(null, 10UL, TestName = "Bogota_without_a_slot_duration_has_ten_second_slots_and_five_forty_eighths")]
+    [TestCase(null, 12UL, TestName = "Bogota_without_a_slot_duration_keeps_12s_slots_and_five_forty_eighths")]
     [TestCase(6_000UL, 6UL, TestName = "Bogota_with_a_6s_slot_duration_keeps_five_forty_eighths")]
+    [TestCase(10_000UL, 10UL, TestName = "Bogota_with_a_10s_slot_duration_keeps_five_forty_eighths")]
     [TestCase(12_000UL, 12UL, TestName = "Bogota_with_a_12s_slot_duration_keeps_five_forty_eighths")]
     public void Bogota_activates_eip8198_at_the_configured_timestamp(ulong? slotDurationMs, ulong expectedSecondsPerSlot)
     {

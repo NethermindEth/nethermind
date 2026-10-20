@@ -300,7 +300,7 @@ public class ChainSpecLoaderTests
     }
 
     [Test]
-    public void Scheduled_eip8198_without_slot_duration_uses_ten_second_slots()
+    public void Scheduled_eip8198_without_slot_duration_keeps_the_configured_slot_length()
     {
         ISpecProvider provider = new ChainSpecBasedSpecProvider(LoadChainSpecWithParams(", \"eip8198TransitionTimestamp\": \"0x64\""));
         SlotSchedule slots = provider.GetSlotSchedule(12);
@@ -309,7 +309,7 @@ public class ChainSpecLoaderTests
         {
             Assert.That(provider.Eip8198SlotDurationMs, Is.Null);
             Assert.That(slots.GetSecondsPerSlot(99), Is.EqualTo(12UL));
-            Assert.That(slots.GetSecondsPerSlot(100), Is.EqualTo(10UL));
+            Assert.That(slots.GetSecondsPerSlot(100), Is.EqualTo(12UL));
         }
     }
 

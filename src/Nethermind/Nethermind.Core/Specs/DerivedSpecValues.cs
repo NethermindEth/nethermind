@@ -27,12 +27,15 @@ public static class DerivedSpecValues
         isEip8198Enabled ? Eip8198BaseFeeMaxChange.Denominator : configuredDenominator;
 
     /// <summary>
-    /// The slot length, in milliseconds, under <paramref name="spec"/>: <paramref name="eip8198SlotDurationMs"/> or else 10 s
-    /// under EIP-8198, otherwise <c>null</c> for the configured <c>Blocks.SecondsPerSlot</c>.
+    /// The slot length, in milliseconds, under <paramref name="spec"/>: <paramref name="eip8198SlotDurationMs"/> under EIP-8198,
+    /// otherwise <c>null</c> for the configured <c>Blocks.SecondsPerSlot</c>.
     /// </summary>
     /// <param name="spec">The active spec.</param>
-    /// <param name="eip8198SlotDurationMs">The chain's override, <see cref="ISpecProvider.Eip8198SlotDurationMs"/>.</param>
-    /// <remarks>Only places slots; unlike the base fee fraction it is not consensus, so a chain may override it.</remarks>
+    /// <param name="eip8198SlotDurationMs">The chain's slot length from EIP-8198, <see cref="ISpecProvider.Eip8198SlotDurationMs"/>.</param>
+    /// <remarks>
+    /// Only places slots, so it follows the chain's consensus layer: without a configured value the slot length stays
+    /// <c>Blocks.SecondsPerSlot</c>. The base fee fraction is consensus and stays 5/48 whatever this is.
+    /// </remarks>
     public static ulong? SlotDurationMs(IReleaseSpec spec, ulong? eip8198SlotDurationMs) =>
-        spec.IsEip8198Enabled ? eip8198SlotDurationMs ?? Eip8198Constants.DesignSlotDurationMs : null;
+        spec.IsEip8198Enabled ? eip8198SlotDurationMs : null;
 }

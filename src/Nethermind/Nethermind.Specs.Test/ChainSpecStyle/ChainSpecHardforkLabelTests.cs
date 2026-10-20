@@ -158,7 +158,7 @@ public class ChainSpecHardforkLabelTests
     }
 
     [Test]
-    public void Bogota_label_without_a_slot_duration_uses_ten_second_slots()
+    public void Bogota_label_without_a_slot_duration_keeps_the_configured_slot_length()
     {
         ChainSpecBasedSpecProvider provider = new(Load("\"bogota\": 1792416379"));
         SlotSchedule slots = provider.GetSlotSchedule(12);
@@ -167,7 +167,7 @@ public class ChainSpecHardforkLabelTests
         {
             Assert.That(provider.Eip8198SlotDurationMs, Is.Null);
             Assert.That(slots.GetSecondsPerSlot(1_792_416_378), Is.EqualTo(12UL));
-            Assert.That(slots.GetSecondsPerSlot(1_792_416_379), Is.EqualTo(10UL));
+            Assert.That(slots.GetSecondsPerSlot(1_792_416_379), Is.EqualTo(12UL));
         }
     }
 
