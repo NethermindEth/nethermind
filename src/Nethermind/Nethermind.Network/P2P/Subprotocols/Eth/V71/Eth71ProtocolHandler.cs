@@ -73,18 +73,28 @@ public class Eth71ProtocolHandler : Eth70ProtocolHandler, ISyncPeer, IStaticProt
                 HandleInBackground<GetBlockAccessListsMessage, BlockAccessListsMessage>(message, Handle);
                 return true;
             case Eth71MessageCode.BlockAccessLists:
-                _balRequests.ThrowIfNotRequested(message.Content);
-                BlockAccessListsMessage balMsg = Deserialize<BlockAccessListsMessage>(message.Content);
-                ReportIn(balMsg, size);
-                Handle(balMsg, size);
+                long balLateId = 0;
+                bool balLate = false;
+                using (MessageDictionary<GetBlockAccessListsMessage, BlockAccessListsMessage>.ResponseScope response = _balRequests.BeginResponse(message.Content))
+                {
+                    if (response.IsExpired)
+                    {
+                        balLate = true;
+                        balLateId = response.RequestId;
+                    }
+                    else
+                    {
+                        BlockAccessListsMessage balMsg = Deserialize<BlockAccessListsMessage>(message.Content);
+                        ReportIn(balMsg, size);
+                        response.Complete(balMsg.RequestId, balMsg, size);
+                    }
+                }
+                if (balLate) _balRequests.TraceLateResponse(balLateId);
                 return true;
             default:
                 return base.HandleMessageCore(message);
         }
     }
-
-    private void Handle(BlockAccessListsMessage msg, long size) =>
-        _balRequests.Handle(msg.RequestId, msg, size);
 
     private Task<BlockAccessListsMessage> Handle(GetBlockAccessListsMessage request, CancellationToken cancellationToken)
     {

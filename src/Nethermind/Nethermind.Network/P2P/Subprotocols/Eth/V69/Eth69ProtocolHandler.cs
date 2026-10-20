@@ -8,6 +8,7 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -69,10 +70,24 @@ public class Eth69ProtocolHandler(
                 Handle(statusMsg);
                 return true;
             case Eth69MessageCode.Receipts:
-                ThrowIfReceiptsUnexpected(message.Content);
-                ReceiptsMessage69 receiptsMessage = Deserialize<ReceiptsMessage69>(message.Content);
-                ReportIn(receiptsMessage, size);
-                base.Handle(receiptsMessage, size);
+                long receiptsLateId = 0;
+                bool receiptsLate = false;
+                using (MessageDictionary<GetReceiptsMessage, (IOwnedReadOnlyList<TxReceipt[]>, long)>.ResponseScope response = BeginReceiptsResponse(message.Content))
+                {
+                    if (response.IsExpired)
+                    {
+                        receiptsLate = true;
+                        receiptsLateId = response.RequestId;
+                    }
+                    else
+                    {
+                        ThrowIfReceiptsExceedRequest(message.Content, 1, response.Message.EthMessage);
+                        ReceiptsMessage69 receiptsMessage = Deserialize<ReceiptsMessage69>(message.Content);
+                        ReportIn(receiptsMessage, size);
+                        response.Complete(receiptsMessage.RequestId, (receiptsMessage.EthMessage.TxReceipts, size), size);
+                    }
+                }
+                if (receiptsLate) TraceLateReceiptsResponse(receiptsLateId);
                 return true;
             case Eth69MessageCode.GetReceipts:
                 HandleInBackground<GetReceiptsMessage, ReceiptsMessage69>(message, Handle);

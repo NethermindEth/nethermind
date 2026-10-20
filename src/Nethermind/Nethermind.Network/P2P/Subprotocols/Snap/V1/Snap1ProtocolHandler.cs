@@ -81,40 +81,92 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1
                         HandleInBackground<GetAccountRangeMessage, AccountRangeMessage>(message, Handle);
                     return true;
                 case Snap1MessageCode.AccountRange:
-                    _getAccountRangeRequests.ThrowIfNotRequested(message.Content);
-                    AccountRangeMessage accountRangeMessage = Deserialize<AccountRangeMessage>(message.Content);
-                    ReportIn(accountRangeMessage, size);
-                    Handle(accountRangeMessage, size);
+                    long accountLateId = 0;
+                    bool accountLate = false;
+                    using (MessageDictionary<GetAccountRangeMessage, AccountRangeMessage>.ResponseScope response = _getAccountRangeRequests.BeginResponse(message.Content))
+                    {
+                        if (response.IsExpired)
+                        {
+                            accountLate = true;
+                            accountLateId = response.RequestId;
+                        }
+                        else
+                        {
+                            AccountRangeMessage accountRangeMessage = Deserialize<AccountRangeMessage>(message.Content);
+                            ReportIn(accountRangeMessage, size);
+                            response.Complete(accountRangeMessage.RequestId, accountRangeMessage, size);
+                        }
+                    }
+                    if (accountLate) _getAccountRangeRequests.TraceLateResponse(accountLateId);
                     return true;
                 case Snap1MessageCode.GetStorageRanges:
                     if (ShouldServeSnap())
                         HandleInBackground<GetStorageRangeMessage, StorageRangeMessage>(message, Handle);
                     return true;
                 case Snap1MessageCode.StorageRanges:
-                    _getStorageRangeRequests.ThrowIfNotRequested(message.Content);
-                    StorageRangeMessage storageRangesMessage = Deserialize<StorageRangeMessage>(message.Content);
-                    ReportIn(storageRangesMessage, size);
-                    Handle(storageRangesMessage, size);
+                    long storageLateId = 0;
+                    bool storageLate = false;
+                    using (MessageDictionary<GetStorageRangeMessage, StorageRangeMessage>.ResponseScope response = _getStorageRangeRequests.BeginResponse(message.Content))
+                    {
+                        if (response.IsExpired)
+                        {
+                            storageLate = true;
+                            storageLateId = response.RequestId;
+                        }
+                        else
+                        {
+                            StorageRangeMessage storageRangesMessage = Deserialize<StorageRangeMessage>(message.Content);
+                            ReportIn(storageRangesMessage, size);
+                            response.Complete(storageRangesMessage.RequestId, storageRangesMessage, size);
+                        }
+                    }
+                    if (storageLate) _getStorageRangeRequests.TraceLateResponse(storageLateId);
                     return true;
                 case Snap1MessageCode.GetByteCodes:
                     if (ShouldServeSnap())
                         HandleInBackground<GetByteCodesMessage, ByteCodesMessage>(message, Handle);
                     return true;
                 case Snap1MessageCode.ByteCodes:
-                    _getByteCodesRequests.ThrowIfNotRequested(message.Content);
-                    ByteCodesMessage byteCodesMessage = Deserialize<ByteCodesMessage>(message.Content);
-                    ReportIn(byteCodesMessage, size);
-                    Handle(byteCodesMessage, size);
+                    long byteCodesLateId = 0;
+                    bool byteCodesLate = false;
+                    using (MessageDictionary<GetByteCodesMessage, ByteCodesMessage>.ResponseScope response = _getByteCodesRequests.BeginResponse(message.Content))
+                    {
+                        if (response.IsExpired)
+                        {
+                            byteCodesLate = true;
+                            byteCodesLateId = response.RequestId;
+                        }
+                        else
+                        {
+                            ByteCodesMessage byteCodesMessage = Deserialize<ByteCodesMessage>(message.Content);
+                            ReportIn(byteCodesMessage, size);
+                            response.Complete(byteCodesMessage.RequestId, byteCodesMessage, size);
+                        }
+                    }
+                    if (byteCodesLate) _getByteCodesRequests.TraceLateResponse(byteCodesLateId);
                     return true;
                 case Snap1MessageCode.GetTrieNodes:
                     if (ShouldServeSnap())
                         HandleInBackground<GetTrieNodesMessage, TrieNodesMessage>(message, Handle);
                     return true;
                 case Snap1MessageCode.TrieNodes:
-                    _getTrieNodesRequests.ThrowIfNotRequested(message.Content);
-                    TrieNodesMessage trieNodesMessage = Deserialize<TrieNodesMessage>(message.Content);
-                    ReportIn(trieNodesMessage, size);
-                    Handle(trieNodesMessage, size);
+                    long trieNodesLateId = 0;
+                    bool trieNodesLate = false;
+                    using (MessageDictionary<GetTrieNodesMessage, TrieNodesMessage>.ResponseScope response = _getTrieNodesRequests.BeginResponse(message.Content))
+                    {
+                        if (response.IsExpired)
+                        {
+                            trieNodesLate = true;
+                            trieNodesLateId = response.RequestId;
+                        }
+                        else
+                        {
+                            TrieNodesMessage trieNodesMessage = Deserialize<TrieNodesMessage>(message.Content);
+                            ReportIn(trieNodesMessage, size);
+                            response.Complete(trieNodesMessage.RequestId, trieNodesMessage, size);
+                        }
+                    }
+                    if (trieNodesLate) _getTrieNodesRequests.TraceLateResponse(trieNodesLateId);
                     return true;
                 default:
                     return false;
@@ -133,14 +185,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1
 
             return true;
         }
-
-        private void Handle(AccountRangeMessage msg, long size) => _getAccountRangeRequests.Handle(msg.RequestId, msg, size);
-
-        private void Handle(StorageRangeMessage msg, long size) => _getStorageRangeRequests.Handle(msg.RequestId, msg, size);
-
-        private void Handle(ByteCodesMessage msg, long size) => _getByteCodesRequests.Handle(msg.RequestId, msg, size);
-
-        private void Handle(TrieNodesMessage msg, long size) => _getTrieNodesRequests.Handle(msg.RequestId, msg, size);
 
         private ValueTask<AccountRangeMessage> Handle(GetAccountRangeMessage getAccountRangeMessage, CancellationToken cancellationToken)
         {

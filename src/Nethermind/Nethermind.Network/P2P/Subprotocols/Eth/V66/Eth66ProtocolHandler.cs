@@ -74,19 +74,45 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
                     HandleInBackground<Eth66ProtocolHandler, GetBlockHeadersMessage, BlockHeadersMessage, GetBlockHeadersHandler>(message);
                     return true;
                 case Eth66MessageCode.BlockHeaders:
-                    _headersRequests66.ThrowIfNotRequested(message.Content);
-                    BlockHeadersMessage headersMsg = Deserialize<BlockHeadersMessage>(message.Content);
-                    ReportIn(headersMsg, size);
-                    Handle(headersMsg, size);
+                    long headersLateId = 0;
+                    bool headersLate = false;
+                    using (MessageDictionary<GetBlockHeadersMessage, IOwnedReadOnlyList<BlockHeader>>.ResponseScope response = _headersRequests66.BeginResponse(message.Content))
+                    {
+                        if (response.IsExpired)
+                        {
+                            headersLate = true;
+                            headersLateId = response.RequestId;
+                        }
+                        else
+                        {
+                            BlockHeadersMessage headersMsg = Deserialize<BlockHeadersMessage>(message.Content);
+                            ReportIn(headersMsg, size);
+                            response.Complete(headersMsg.RequestId, headersMsg.EthMessage.BlockHeaders, size);
+                        }
+                    }
+                    if (headersLate) _headersRequests66.TraceLateResponse(headersLateId);
                     return true;
                 case Eth66MessageCode.GetBlockBodies:
                     HandleInBackground<Eth66ProtocolHandler, GetBlockBodiesMessage, BlockBodiesMessage, GetBlockBodiesHandler>(message);
                     return true;
                 case Eth66MessageCode.BlockBodies:
-                    _bodiesRequests66.ThrowIfNotRequested(message.Content);
-                    BlockBodiesMessage bodiesMsg = Deserialize<BlockBodiesMessage>(message.Content);
-                    ReportIn(bodiesMsg, size);
-                    HandleBodies(bodiesMsg, size);
+                    long bodiesLateId = 0;
+                    bool bodiesLate = false;
+                    using (MessageDictionary<GetBlockBodiesMessage, (OwnedBlockBodies, long)>.ResponseScope response = _bodiesRequests66.BeginResponse(message.Content))
+                    {
+                        if (response.IsExpired)
+                        {
+                            bodiesLate = true;
+                            bodiesLateId = response.RequestId;
+                        }
+                        else
+                        {
+                            BlockBodiesMessage bodiesMsg = Deserialize<BlockBodiesMessage>(message.Content);
+                            ReportIn(bodiesMsg, size);
+                            response.Complete(bodiesMsg.RequestId, (bodiesMsg.EthMessage.Bodies, size), size);
+                        }
+                    }
+                    if (bodiesLate) _bodiesRequests66.TraceLateResponse(bodiesLateId);
                     return true;
                 case Eth66MessageCode.GetPooledTransactions:
                     HandleInBackground<Eth66ProtocolHandler, GetPooledTransactionsMessage, PooledTransactionsMessage, GetPooledTransactionsHandler>(message);
@@ -118,19 +144,46 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
                     HandleInBackground<Eth66ProtocolHandler, GetReceiptsMessage, ReceiptsMessage, GetReceiptsHandler>(message);
                     return true;
                 case Eth66MessageCode.Receipts:
-                    ThrowIfReceiptsUnexpected(message.Content);
-                    ReceiptsMessage receiptsMessage = Deserialize<ReceiptsMessage>(message.Content);
-                    ReportIn(receiptsMessage, size);
-                    Handle(receiptsMessage, size);
+                    long receiptsLateId = 0;
+                    bool receiptsLate = false;
+                    using (MessageDictionary<GetReceiptsMessage, (IOwnedReadOnlyList<TxReceipt[]>, long)>.ResponseScope response = BeginReceiptsResponse(message.Content))
+                    {
+                        if (response.IsExpired)
+                        {
+                            receiptsLate = true;
+                            receiptsLateId = response.RequestId;
+                        }
+                        else
+                        {
+                            ThrowIfReceiptsExceedRequest(message.Content, 1, response.Message.EthMessage);
+                            ReceiptsMessage receiptsMessage = Deserialize<ReceiptsMessage>(message.Content);
+                            ReportIn(receiptsMessage, size);
+                            response.Complete(receiptsMessage.RequestId, (receiptsMessage.EthMessage.TxReceipts, size), size);
+                        }
+                    }
+                    if (receiptsLate) _receiptsRequests66.TraceLateResponse(receiptsLateId);
                     return true;
                 case Eth66MessageCode.GetNodeData:
                     HandleInBackground<Eth66ProtocolHandler, GetNodeDataMessage, NodeDataMessage, GetNodeDataHandler>(message);
                     return true;
                 case Eth66MessageCode.NodeData:
-                    _nodeDataRequests66.ThrowIfNotRequested(message.Content);
-                    NodeDataMessage nodeDataMessage = Deserialize<NodeDataMessage>(message.Content);
-                    ReportIn(nodeDataMessage, size);
-                    Handle(nodeDataMessage, size);
+                    long nodeDataLateId = 0;
+                    bool nodeDataLate = false;
+                    using (MessageDictionary<GetNodeDataMessage, IByteArrayList>.ResponseScope response = _nodeDataRequests66.BeginResponse(message.Content))
+                    {
+                        if (response.IsExpired)
+                        {
+                            nodeDataLate = true;
+                            nodeDataLateId = response.RequestId;
+                        }
+                        else
+                        {
+                            NodeDataMessage nodeDataMessage = Deserialize<NodeDataMessage>(message.Content);
+                            ReportIn(nodeDataMessage, size);
+                            response.Complete(nodeDataMessage.RequestId, nodeDataMessage.EthMessage.Data, size);
+                        }
+                    }
+                    if (nodeDataLate) _nodeDataRequests66.TraceLateResponse(nodeDataLateId);
                     return true;
                 default:
                     return base.HandleMessageCore(message);
@@ -172,13 +225,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
             return new NodeDataMessage(message.RequestId, nodeDataMessage);
         }
 
-        private void Handle(BlockHeadersMessage message, long size) => _headersRequests66.Handle(message.RequestId, message.EthMessage.BlockHeaders, size);
-
-        private void HandleBodies(BlockBodiesMessage blockBodiesMessage, long size) => _bodiesRequests66.Handle(blockBodiesMessage.RequestId, (blockBodiesMessage.EthMessage.Bodies, size), size);
-
-        private void Handle(NodeDataMessage msg, int size) => _nodeDataRequests66.Handle(msg.RequestId, msg.EthMessage.Data, size);
-
         protected void Handle(ReceiptsMessage msg, long size) => _receiptsRequests66.Handle(msg.RequestId, (msg.EthMessage.TxReceipts, size), size);
+        private protected MessageDictionary<GetReceiptsMessage, (IOwnedReadOnlyList<TxReceipt[]>, long)>.ResponseScope BeginReceiptsResponse(IByteBuffer content) =>
+            _receiptsRequests66.BeginResponse(content);
+        private protected void TraceLateReceiptsResponse(long id) => _receiptsRequests66.TraceLateResponse(id);
         protected void ThrowIfReceiptsUnexpected(IByteBuffer content) =>
             ThrowIfReceiptsExceedRequest(content, 1, _receiptsRequests66.GetPendingRequest(content).EthMessage);
 

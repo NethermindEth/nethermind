@@ -73,11 +73,25 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
         switch (message.PacketType)
         {
             case Eth70MessageCode.Receipts:
-                GetReceiptsMessage70 request = _receiptsRequests70.GetPendingRequest(message.Content);
-                ReceiptsResponseBudget.ThrowIfExceeded(message.Content, 2, request.RequestedBlocks, request.MaxReceiptsPerBlock.Span, request.FirstBlockReceiptIndex);
-                ReceiptsMessage70 receiptsMessage = Deserialize<ReceiptsMessage70>(message.Content);
-                ReportIn(receiptsMessage, size);
-                Handle(receiptsMessage, size);
+                long receiptsLateId = 0;
+                bool receiptsLate = false;
+                using (MessageDictionary<GetReceiptsMessage70, ReceiptsMessage70>.ResponseScope response = _receiptsRequests70.BeginResponse(message.Content))
+                {
+                    if (response.IsExpired)
+                    {
+                        receiptsLate = true;
+                        receiptsLateId = response.RequestId;
+                    }
+                    else
+                    {
+                        GetReceiptsMessage70 request = response.Message;
+                        ReceiptsResponseBudget.ThrowIfExceeded(message.Content, 2, request.RequestedBlocks, request.MaxReceiptsPerBlock.Span, request.FirstBlockReceiptIndex);
+                        ReceiptsMessage70 receiptsMessage = Deserialize<ReceiptsMessage70>(message.Content);
+                        ReportIn(receiptsMessage, size);
+                        response.Complete(receiptsMessage.RequestId, receiptsMessage, size);
+                    }
+                }
+                if (receiptsLate) _receiptsRequests70.TraceLateResponse(receiptsLateId);
                 return true;
             case Eth70MessageCode.GetReceipts:
                 HandleInBackground<GetReceiptsMessage70, ReceiptsMessage70>(message, Handle);
@@ -86,8 +100,6 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
                 return base.HandleMessageCore(message);
         }
     }
-
-    private void Handle(ReceiptsMessage70 msg, long size) => _receiptsRequests70.Handle(msg.RequestId, msg, size);
 
     internal ValueTask<ReceiptsMessage70> Handle(GetReceiptsMessage70 getReceiptsMessage, CancellationToken cancellationToken)
     {

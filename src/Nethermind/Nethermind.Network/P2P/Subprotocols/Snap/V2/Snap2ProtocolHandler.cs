@@ -53,17 +53,28 @@ public class Snap2ProtocolHandler : Snap1ProtocolHandler, ISnapSyncPeer, IStatic
                     HandleInBackground<GetBlockAccessListsMessage, BlockAccessListsMessage>(message, Handle);
                 return true;
             case Snap2MessageCode.BlockAccessLists:
-                _getBlockAccessListsRequests.ThrowIfNotRequested(message.Content);
-                BlockAccessListsMessage blockAccessListsMessage = Deserialize<BlockAccessListsMessage>(message.Content);
-                ReportIn(blockAccessListsMessage, size);
-                Handle(blockAccessListsMessage, size);
+                long balLateId = 0;
+                bool balLate = false;
+                using (MessageDictionary<GetBlockAccessListsMessage, BlockAccessListsMessage>.ResponseScope response = _getBlockAccessListsRequests.BeginResponse(message.Content))
+                {
+                    if (response.IsExpired)
+                    {
+                        balLate = true;
+                        balLateId = response.RequestId;
+                    }
+                    else
+                    {
+                        BlockAccessListsMessage blockAccessListsMessage = Deserialize<BlockAccessListsMessage>(message.Content);
+                        ReportIn(blockAccessListsMessage, size);
+                        response.Complete(blockAccessListsMessage.RequestId, blockAccessListsMessage, size);
+                    }
+                }
+                if (balLate) _getBlockAccessListsRequests.TraceLateResponse(balLateId);
                 return true;
             default:
                 return base.HandleMessageCore(message);
         }
     }
-
-    private void Handle(BlockAccessListsMessage msg, long size) => _getBlockAccessListsRequests.Handle(msg.RequestId, msg, size);
 
     private ValueTask<BlockAccessListsMessage> Handle(GetBlockAccessListsMessage getBlockAccessListsMessage, CancellationToken cancellationToken)
     {
