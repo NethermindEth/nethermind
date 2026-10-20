@@ -49,6 +49,79 @@ namespace Nethermind.JsonRpc.Test.Modules;
 
 public partial class DebugRpcModuleTests
 {
+    private static IEnumerable<TestCaseData> NativeBooleanConfigCases()
+    {
+        foreach (string field in new[] { "onlyTopCall", "withLog", "diffMode" })
+        {
+            foreach ((string values, bool expected) in new (string, bool)[]
+            {
+                ("null", false), ("true,null", true), ("false,null", false),
+                ("null,true", true), ("null,false", false), ("true,null,false", false),
+                ("false,null,true", true), ("\"true\",null", true), ("\"false\",null", false)
+            })
+            {
+                string[] members = values.Split(',');
+                for (int i = 0; i < members.Length; i++) members[i] = $"\"{field}\":{members[i]}";
+                string config = "{" + string.Join(',', members) + "}";
+                yield return new TestCaseData(field, config, expected).SetName($"Native_boolean_config_{field}_{values}");
+            }
+            yield return new TestCaseData(field, $$$"""{"{{{field.ToUpperInvariant()}}}":true,"{{{field}}}":null,"unknown":{"nested":null}}""", true)
+                .SetName($"Native_boolean_config_{field}_case_insensitive");
+        }
+    }
+
+    [TestCaseSource(nameof(NativeBooleanConfigCases))]
+    public async Task Debug_traceBlockByNumber_native_boolean_config_ignores_null(string field, string config, bool expected)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = false }).Build();
+        ulong nonce = chain.WorldStateManager.GlobalStateReader.GetNonce(chain.BlockTree.Head!.Header, TestItem.AddressB);
+        byte[] code = Prepare.EvmCode.Log(0, 0).Call(TestItem.AddressC, 30_000).STOP().Done;
+        Block block = await chain.AddBlock(Build.A.Transaction.WithNonce(nonce).WithCode(code)
+            .WithGasLimit(1_000_000).SignedAndResolved(TestItem.PrivateKeyB).TestObject);
+        string tracer = field == "diffMode" ? "prestateTracer" : "callTracer";
+        async Task<JToken> Trace(string json)
+        {
+            string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceBlockByNumber", block.Number,
+                new { tracer, tracerConfig = JsonSerializer.Deserialize<JsonElement>(json) });
+            JToken result = JToken.Parse(response);
+            Assert.That(result["error"], Is.Null, response);
+            return result["result"]![0]!["result"]!;
+        }
+
+        JToken baseline = await Trace(expected ? $$"""{"{{field}}":true}""" : "{}");
+        JToken actual = await Trace(config);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(JToken.DeepEquals(actual, baseline), Is.True, actual.ToString());
+            Assert.That(actual["calls"] is not null, Is.EqualTo(field != "diffMode" && !(field == "onlyTopCall" && expected)));
+            Assert.That(actual["logs"] is not null, Is.EqualTo(field == "withLog" && expected));
+            Assert.That(actual["pre"] is not null && actual["post"] is not null, Is.EqualTo(field == "diffMode" && expected));
+        }
+    }
+
+    [Test]
+    public async Task Debug_traceBlockByNumber_native_boolean_config_rejects_invalid_types(
+        [Values("onlyTopCall", "withLog", "diffMode", "disableCode", "disableStorage")] string field,
+        [Values("1", "[]", "{}", "\"invalid\"")] string value)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = false }).Build();
+        ulong nonce = chain.WorldStateManager.GlobalStateReader.GetNonce(chain.BlockTree.Head!.Header, TestItem.AddressB);
+        Block block = await chain.AddBlock(Build.A.Transaction.WithNonce(nonce).WithCode([0])
+            .WithGasLimit(1_000_000).SignedAndResolved(TestItem.PrivateKeyB).TestObject);
+        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceBlockByNumber", block.Number,
+            new
+            {
+                tracer = field is "onlyTopCall" or "withLog" ? "callTracer" : "prestateTracer",
+                tracerConfig = JsonSerializer.Deserialize<JsonElement>($$"""{"{{field}}":{{value}}}"""),
+                timeout = "0s"
+            });
+        JToken error = JToken.Parse(response)["error"]!;
+        Assert.That(error, Is.Not.Null, response);
+        Assert.That((string?)error["data"] ?? (string?)error["message"], Does.Contain("Cannot convert"), "native config errors remain top-level even with an expired timeout");
+    }
+
     [TestCase("result", 0)]
     [TestCase("result", 1)]
     [TestCase("result", 2)]
@@ -725,6 +798,52 @@ public partial class DebugRpcModuleTests
     }
 
     [Test]
+    public async Task Debug_traceBlock_native_tracer_streams_the_buffered_json(
+        [Values("debug_traceBlock", "debug_traceBlockByNumber", "debug_traceBlockByHash")] string method,
+        [Values(NativeCallTracer.CallTracer, NativePrestateTracer.PrestateTracer)] string tracer)
+    {
+        using Context context = await Context.Create();
+        Block block = await context.Blockchain.AddBlock(CreateTraceBlockTransactions(context.Blockchain));
+        object blockParameter = method switch
+        {
+            "debug_traceBlock" => Rlp.Encode(block).ToString(),
+            "debug_traceBlockByNumber" => block.Number,
+            _ => block.Hash!
+        };
+
+        using JsonRpcResponse response = await RpcTest.TestRequest(context.DebugRpcModule, method, blockParameter, new { tracer, streamMode = true });
+        string streamed = await RpcTest.TestSerializedRequest(context.DebugRpcModule, method, blockParameter, new { tracer, streamMode = true });
+        string buffered = await RpcTest.TestSerializedRequest(context.DebugRpcModule, method, blockParameter, new { tracer, streamMode = false });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.TryGetStreamableResult(out IStreamableResult? result) ? result : null, Is.InstanceOf<GethLikeTxTraceStreamingBlockResult>(), "precondition: the block is streamed");
+            Assert.That((JArray)JToken.Parse(streamed)["result"]!, Has.Count.EqualTo(block.Transactions.Length), streamed);
+            Assert.That(streamed, Is.EqualTo(buffered));
+        }
+    }
+
+    [Test]
+    public async Task Debug_traceBlock_native_tracer_with_malformed_config_fails_before_streaming(
+        [Values("debug_traceBlockByNumber", "debug_traceBlockByHash")] string method,
+        [Values(NativeCallTracer.CallTracer, NativePrestateTracer.PrestateTracer)] string tracer)
+    {
+        using Context context = await Context.Create();
+        Block block = await context.Blockchain.AddBlock(CreateTraceBlockTransactions(context.Blockchain));
+        object blockParameter = method == "debug_traceBlockByNumber" ? block.Number : block.Hash!;
+        // Each tracer rejects the mistyped field of its own config and ignores the other one.
+        var tracerConfig = new { withLog = "yes", diffMode = "yes" };
+
+        JToken response = JToken.Parse(await RpcTest.TestSerializedRequest(context.DebugRpcModule, method, blockParameter, new { tracer, tracerConfig, streamMode = true }));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response["error"], Is.Not.Null, response.ToString());
+            Assert.That(response["result"], Is.Null, response.ToString());
+        }
+    }
+
+    [Test]
     public async Task Debug_traceBlock_with_invalid_rlp()
     {
         using Context context = await Context.Create();
@@ -1005,7 +1124,8 @@ public partial class DebugRpcModuleTests
                             "0xb7705ae4c6f81b66cdb323c65f4e8133690fc099": {
                                 "balance": "0x3635c9adc5de9f09e5",
                                 "nonce": 3,
-                                "code": "0xabcd"
+                                "code": "0xabcd",
+                                "codeHash": "0xdbe576b4818846aa77e82f4ed5fa78f92766b141f282d36703886d196df39322"
                             },
                             "0x0ffd3e46594919c04bcfd4e146203c8255670828": {
                                 "balance": "0x0"
@@ -1027,7 +1147,8 @@ public partial class DebugRpcModuleTests
                             "0xb7705ae4c6f81b66cdb323c65f4e8133690fc099": {
                                 "balance": "0x3635c9adc5de9db350",
                                 "nonce": 4,
-                                "code": "0xabcd"
+                                "code": "0xabcd",
+                                "codeHash": "0xdbe576b4818846aa77e82f4ed5fa78f92766b141f282d36703886d196df39322"
                             },
                             "0x6b5887043de753ecfa6269f947129068263ffbe2": {
                                 "balance": "0x0"

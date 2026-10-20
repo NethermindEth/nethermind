@@ -5,11 +5,13 @@ using System.Net;
 using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.P2P.Analyzers;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Rlpx.Handshake;
+using Nethermind.Stats.Model;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -46,6 +48,9 @@ namespace Nethermind.Network.Test.Rlpx
                 new NetworkListenerState(networkConfig, ipResolver, LimboLogs.Instance));
             await host.Init();
             await host.Shutdown();
+
+            Node node = new(TestItem.PublicKeyA, "127.0.0.1", networkConfig.P2PPort);
+            Assert.That(await host.ConnectAsync(node), Is.False, "a dial after shutdown must not reach the closed worker group");
         }
 
         private static int GegAvailableLocalPort()

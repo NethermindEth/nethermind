@@ -9,5 +9,8 @@ public static class Eip8250Constants
     public const int MaxNonceKeys = 16;
     public const ulong MaxNonceSeq = ulong.MaxValue;
 
+    /// <summary><c>KEYED_NONCE_ACCESS_COST</c>: the cold read and the write of one <c>NONCE_MANAGER</c> slot.</summary>
+    public const ulong KeyedNonceAccessCost = Eip8038Constants.ColdStorageAccess + Eip8038Constants.StorageWrite;
+
     public static readonly Address NonceManagerAddress = new("0x8250968C12e01A19d6F667b9B2F3b3A4d0e51cB7");
 }

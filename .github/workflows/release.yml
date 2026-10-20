@@ -154,6 +154,7 @@ jobs:
         run: |
           cp $PACKAGE_DIR/**/*.zip $PACKAGE_DIR/**/*.zip.asc $PACKAGE_DIR
           rm -rf $PACKAGE_DIR/*/
+          rm -f $PACKAGE_DIR/*-ref-assemblies.zip
           echo "Publishing packages to GitHub"
           prerelease=${{ needs.build.outputs.prerelease && '1' || '' }}
           if gh release view "$GIT_TAG" >/dev/null 2>&1; then publish=1; else publish=0; fi

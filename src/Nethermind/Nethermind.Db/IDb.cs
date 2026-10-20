@@ -29,6 +29,12 @@ namespace Nethermind.Db
 
         /// <summary>Syncs the write-ahead log to durable storage, throwing on failure (<see cref="Flush"/> swallows).</summary>
         void SyncWal() => Flush(onlyWal: true);
+
+        /// <summary>
+        /// Flushes the memtable to durable storage, throwing on failure where <see cref="Flush"/> swallows. The RocksDB
+        /// column store implements it for its own column family; the default serves stores whose flush cannot fail.
+        /// </summary>
+        void FlushOrThrow() => Flush();
         void Clear() { }
         void Compact() { }
 

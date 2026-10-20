@@ -5,21 +5,26 @@ using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
+using Nethermind.Zkvm.Abstractions;
 
 namespace Nethermind.Evm.CodeAnalysis;
 
 public sealed partial class CodeInfo
 {
+    public static CodeInfo Empty => field ??= new CodeInfo(_emptyAnalyzer);
+    private static JumpDestinationAnalyzer _emptyAnalyzer => field ??= new JumpDestinationAnalyzer(new CodeInfo(), skipAnalysis: true);
+
     private ReadOnlyMemory<byte> _code;
 
     /// <remarks>
-    /// Copies unless the code is an <see cref="ExecutableCodeMemory"/> buffer, as any other buffer promises nothing
-    /// about the bytes after the code. Padding here rather than on first execution keeps <see cref="Code"/> a plain
-    /// field read, which the guest pays for on every code access.
+    /// Copies unless the code is an <see cref="ExecutableCodeMemory"/> buffer, or code it placed in the input a guest
+    /// reuses, as any other buffer promises nothing about the bytes after the code. Padding here rather than on first
+    /// execution keeps <see cref="Code"/> a plain field read, which the guest pays for on every code access.
     /// </remarks>
     partial void InitializeCode(ReadOnlyMemory<byte> code) =>
         _code = code.IsEmpty ? code
             : ExecutableCodeMemory.TryGetExecutionBuffer(code, out byte[]? buffer) ? buffer.AsMemory(0, code.Length)
+            : FirstTouchMemoryFlag.IsActive && ExecutableCodeMemory.IsPlaced(code) ? code
             : CreatePaddedCode(code.Span).AsMemory(0, code.Length);
 
     public partial ReadOnlyMemory<byte> Code => _code;
@@ -64,15 +69,11 @@ public sealed partial class CodeInfo
         fixed (long* bits = bitmap)
         {
             if ((((nuint)code | (nuint)bits) & (sizeof(long) - 1)) != 0) return;
-            ZiskJumpDestBitmap(bits, code, (ulong)CodeLength);
+            Accelerators.JumpDestBitmap((ulong*)bits, code, (nuint)CodeLength);
         }
 
         _analyzedUntil = CodeLength;
     }
-
-    /// <summary>ZisK's JUMPDEST bitmap precompile, from the guest's <c>jump_dest.S</c>.</summary>
-    [DllImport("__Internal", EntryPoint = "zisk_jump_dest_bitmap", ExactSpelling = true), SuppressGCTransition]
-    private static extern unsafe void ZiskJumpDestBitmap(long* bitmap, byte* code, ulong size);
 
     /// <summary>Extends the scan far enough to decide <paramref name="destination"/>, and reports whether it is a jump destination.</summary>
     /// <param name="destination">A destination inside the code.</param>

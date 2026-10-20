@@ -28,7 +28,7 @@ public class SimulateBlockTracer(bool isTracingLogs, ISpecProvider spec) : Block
     protected override SimulateCallResult OnEnd(SimulateTxTracer txTracer)
     {
         // EIP-8116: logIndex counts within the receipt.
-        if (!_logIndexPerReceipt) _logIndex += (ulong)txTracer.LogCount;
+        if (!_logIndexPerReceipt) _logIndex += (ulong)(txTracer.TraceResult?.Logs.Count ?? 0);
         return txTracer.TraceResult!;
     }
 
