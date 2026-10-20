@@ -218,7 +218,7 @@ public class RecoverSignaturesTest
             Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).WithSenderAddress(null).TestObject,
             Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).WithSenderAddress(null).TestObject,
         ];
-        // The block constructor copies the array, as the engine payload path does.
+        // The block constructor copies the array, so only the shared transaction objects identify the recovery.
         Block block = new(Build.A.BlockHeader.TestObject, txs, []);
         RecoverSignatures sut = CreateSut(gate, txs[0], txs[1]);
 
@@ -270,6 +270,22 @@ public class RecoverSignaturesTest
         {
             ReleaseAndDrain(gate, sut, inFlight);
         }
+    }
+
+    [Test]
+    public void StartRecovery_Cancelled_LeavesTheRemainingSendersToThePipeline([Values] bool parallel)
+    {
+        using ManualResetEventSlim gate = new();
+        using CancellationTokenSource cts = new();
+        // More transactions than workers, so a cancelled parallel run cannot have claimed them all.
+        Transaction[] txs = SignedTransactions(parallel ? Environment.ProcessorCount + 4 : 2);
+        RecoverSignatures sut = CreateSut(gate, txs);
+
+        sut.StartRecovery(TestItem.KeccakA, txs, ReleaseSpecSubstitute.Create(), cts.Token);
+        cts.Cancel();
+        ReleaseAndDrain(gate, sut, txs);
+
+        Assert.That(txs.Select(static tx => tx.SenderAddress), Has.Some.Null);
     }
 
     [Test]
