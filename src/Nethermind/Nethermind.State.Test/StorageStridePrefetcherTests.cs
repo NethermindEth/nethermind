@@ -471,8 +471,9 @@ public class StorageStridePrefetcherTests
                 "The detector created while all slots were occupied did not engage after a slot was freed.");
 
             controlledTrees.ReleaseReaders();
-            StorageCell lateFarCell = new(lateAddress, 64);
-            Assert.That(SpinWait.SpinUntil(() => caches.StorageCache.TryGetValue(in lateFarCell, out _), 5000), Is.True,
+            // Any slot ahead of the late consumer will do: once released, five detectors' readers fill the 2-way
+            // set-associative cache, so a single expected slot can be evicted before it is polled.
+            Assert.That(SpinWait.SpinUntil(() => AnyCached(caches, lateAddress, first: 32, last: 1024), 5000), Is.True,
                 "The late detector did not warm a slot after the earlier detector released its slot.");
         }
         finally
@@ -491,6 +492,17 @@ public class StorageStridePrefetcherTests
             .Returns(callInfo => controlledTrees.Get(callInfo.Arg<Address>()));
 
         return new PrewarmerScopeProvider(baseProvider, new PrewarmerState(caches, isPrewarmer: false), LimboLogs.Instance);
+    }
+
+    private static bool AnyCached(PreBlockCaches caches, Address address, int first, int last)
+    {
+        for (int index = first; index <= last; index++)
+        {
+            StorageCell cell = new(address, (UInt256)(uint)index);
+            if (caches.StorageCache.TryGetValue(in cell, out _)) return true;
+        }
+
+        return false;
     }
 
     private static void ReadStride(IWorldStateScopeProvider.IStorageTree storage, int startIndex, int count)
