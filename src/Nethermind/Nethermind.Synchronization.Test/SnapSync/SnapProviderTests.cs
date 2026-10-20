@@ -1024,14 +1024,15 @@ public class SnapProviderTests
     );
 
     /// <summary>
-    /// A restart keeps what the last checkpoint covers and downloads the rest again, now at a newer root. What the
-    /// interrupted run wrote after that checkpoint is still on disk, as after a crash that flushed it. Resuming has to
-    /// leave exactly what a run that was never interrupted leaves when its pivot moves at that checkpoint, which is the
-    /// state healing knows how to finish. The accounts past the checkpoint change between the roots, so anything left
+    /// A restart keeps what the last checkpoint covers and downloads the rest again, now at a newer root. After a crash,
+    /// what the interrupted run wrote after that checkpoint is still on disk, as when the crash flushed it. A shutdown
+    /// saves a checkpoint of everything written, counting the request it dropped in flight as still to do. Resuming has
+    /// to leave exactly what a run that was never interrupted leaves when its pivot moves at that checkpoint, which is
+    /// the state healing knows how to finish. The accounts past the checkpoint change between the roots, so anything left
     /// over from the older root shows up as a difference, and the double-write check fails on any key written twice.
     /// </summary>
     [Test]
-    public async Task Flat_snap_sync_resumed_from_a_checkpoint_matches_a_run_whose_pivot_moved_there()
+    public async Task Flat_snap_sync_resumed_from_a_checkpoint_matches_a_run_whose_pivot_moved_there([Values] bool shutDownGracefully)
     {
         const int checkpointedRequests = 6;
 
@@ -1054,16 +1055,25 @@ public class SnapProviderTests
         Hash256 firstRoot = CommitSource(0);
         TestSyncConfig syncConfig = new() { SnapResume = true, EnableSnapDoubleWriteCheck = true, SnapSyncAccountRangePartitionCount = 1 };
 
-        // The interrupted run went on to the end, but the checkpoint after a few requests is the last to reach the disk.
         using SnapshotableMemColumnsDb<FlatDbColumns> resumedDb = new();
         FlatSnapTrieFactory resumedFactory = CreateFlatSnapTrieFactory(resumedDb, syncConfig);
         IStateSyncPivot resumedPivot = CreatePivot(1, firstRoot);
-        byte[]? lastDurableCheckpoint = null;
-        await RunSnapSync(resumedFactory, syncConfig, resumedPivot, server, beforeRequest: request =>
+        byte[]? lastDurableCheckpoint;
+        if (shutDownGracefully)
         {
-            if (request == checkpointedRequests + 1) lastDurableCheckpoint = BasePersistence.ReadSnapCheckpoint(resumedDb.GetColumnDb(FlatDbColumns.Metadata));
-        });
-        BasePersistence.WriteSnapCheckpoint(resumedDb, lastDurableCheckpoint);
+            await RunSnapSync(resumedFactory, syncConfig, resumedPivot, server, shutDownAtRequest: checkpointedRequests);
+            lastDurableCheckpoint = BasePersistence.ReadSnapCheckpoint(resumedDb.GetColumnDb(FlatDbColumns.Metadata));
+        }
+        else
+        {
+            // The crashed run went on to the end, but the checkpoint after a few requests is the last to reach the disk.
+            lastDurableCheckpoint = null;
+            await RunSnapSync(resumedFactory, syncConfig, resumedPivot, server, beforeRequest: request =>
+            {
+                if (request == checkpointedRequests + 1) lastDurableCheckpoint = BasePersistence.ReadSnapCheckpoint(resumedDb.GetColumnDb(FlatDbColumns.Metadata));
+            });
+            BasePersistence.WriteSnapCheckpoint(resumedDb, lastDurableCheckpoint);
+        }
 
         ValueHash256 resumeFrom = SnapCheckpoint.Decode(lastDurableCheckpoint).Partitions[0].NextAccountPath;
         ValueHash256[] afterCheckpoint = accounts.Keys.Where(path => path >= resumeFrom).ToArray();
@@ -1147,19 +1157,31 @@ public class SnapProviderTests
     /// Called with the number of each request before it is made. With a checkpoint before every request, the one saved
     /// before request <c>n</c> covers the first <c>n</c> requests.
     /// </param>
-    private static async Task RunSnapSync(ISnapTrieFactory factory, ISyncConfig syncConfig, IStateSyncPivot pivot, ISnapStateServer server, Action<int>? beforeRequest = null)
+    /// <param name="shutDownAtRequest">
+    /// Shuts down once this request is made, leaving it unanswered, as a node shutting down drops it. No checkpoint is
+    /// taken while syncing then, so the one saved at the shutdown is the only one.
+    /// </param>
+    private static async Task RunSnapSync(ISnapTrieFactory factory, ISyncConfig syncConfig, IStateSyncPivot pivot, ISnapStateServer server, Action<int>? beforeRequest = null, int? shutDownAtRequest = null)
     {
         // Small enough that a range takes several requests.
         const long byteLimit = 250;
 
-        using ProgressTracker tracker = new(factory, syncConfig, pivot, LimboLogs.Instance, checkpointInterval: TimeSpan.Zero);
+        using ProgressTracker tracker = new(factory, syncConfig, pivot, LimboLogs.Instance,
+            checkpointInterval: shutDownAtRequest is null ? TimeSpan.Zero : TimeSpan.MaxValue);
         SnapProvider provider = new(tracker, new MemDb(), factory, LimboLogs.Instance);
+        using CancellationTokenSource shutdown = new();
         SnapSyncRunner runner = new(_ =>
         {
             for (int request = 0; ; request++)
             {
                 beforeRequest?.Invoke(request);
                 if (tracker.IsFinished(out SnapSyncBatch? batch)) break;
+
+                if (request == shutDownAtRequest)
+                {
+                    shutdown.Cancel();
+                    break;
+                }
 
                 using (batch)
                 {
@@ -1171,7 +1193,7 @@ public class SnapProviderTests
             return Task.CompletedTask;
         }, factory, tracker);
 
-        await runner.Run(CancellationToken.None);
+        await runner.Run(shutdown.Token);
     }
 
     private static void AnswerFrom(ISnapStateServer server, SnapProvider provider, SnapSyncBatch batch, long byteLimit)

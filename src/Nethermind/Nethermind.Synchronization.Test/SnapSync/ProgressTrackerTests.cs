@@ -168,6 +168,45 @@ public class ProgressTrackerTests
         }
     }
 
+    // A shutdown drops the requests in flight unanswered, so the checkpoint it saves has to count them as still to do.
+    [Test]
+    public void Checkpoint_at_shutdown_keeps_the_requests_dropped_in_flight()
+    {
+        SnapCheckpoint? saved = null;
+        ISnapTrieFactory snapTrieFactory = Substitute.For<ISnapTrieFactory>();
+        snapTrieFactory.SupportsCheckpoints.Returns(true);
+        snapTrieFactory.When(static f => f.SaveCheckpoint(Arg.Any<SnapCheckpoint?>())).Do(call => saved = call.Arg<SnapCheckpoint?>());
+        using ProgressTracker progressTracker = CreateProgressTracker(snapTrieFactory: snapTrieFactory, snapResume: true, checkpointInterval: TimeSpan.MaxValue);
+
+        PathWithAccount withStorage = new(TestItem.ValueKeccaks[1], Build.An.Account.WithBalance(1).WithStorageRoot(TestItem.KeccakA).TestObject);
+        PathWithAccount toRefresh = new(TestItem.ValueKeccaks[2], Build.An.Account.WithBalance(2).TestObject);
+        ValueHash256 refreshFrom = new("0x8000000000000000000000000000000000000000000000000000000000000000");
+        progressTracker.EnqueueAccountStorage(withStorage);
+        progressTracker.EnqueueAccountRefresh(toRefresh, refreshFrom, null);
+        progressTracker.EnqueueCodeHash(TestItem.ValueKeccaks[3]);
+
+        // A refresh, the account range, the storage and the code: all handed out, and only the code request answered.
+        List<SnapSyncBatch> batches = [];
+        for (int i = 0; i < 4; i++)
+        {
+            progressTracker.IsFinished(out SnapSyncBatch? batch);
+            batches.Add(batch!);
+        }
+
+        progressTracker.ReportRequestReleased(batches.Single(static b => b.CodesRequest is not null));
+        progressTracker.SaveCheckpointAtShutdown();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(saved!.StorageRanges.Select(static r => r.Accounts[0].Path), Is.EqualTo(new[] { withStorage.Path }));
+            Assert.That(saved.AccountsToRefresh.Select(static r => (r.PathAndAccount!.Path, r.StorageStartingHash)), Is.EqualTo(new[] { (toRefresh.Path, refreshFrom) }));
+            Assert.That(saved.CodesToRetrieve, Is.Empty, "the answered code request is done");
+            Assert.That(saved.Partitions.Single().MoreAccountsToRight, Is.True, "the account range in flight is requested again");
+        }
+
+        foreach (SnapSyncBatch batch in batches) batch.Dispose();
+    }
+
     // Regression: a restart during the state ranges phase used to start the account ranges over from the beginning.
     [Test]
     public void A_restarted_run_resumes_from_the_checkpoint_taken_while_no_request_was_in_flight()

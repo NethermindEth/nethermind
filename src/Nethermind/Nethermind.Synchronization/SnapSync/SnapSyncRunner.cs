@@ -29,6 +29,8 @@ public class SnapSyncRunner(
         {
             // Always finalize — FinalizeSync is idempotent and we want partial writes flushed on cancel/throw.
             snapTrieFactory.FinalizeSync();
+            // The dispatcher only returns once every request has stopped, so a shutdown leaves nothing unaccounted for.
+            if (token.IsCancellationRequested) progressTracker.SaveCheckpointAtShutdown();
         }
     }
 }

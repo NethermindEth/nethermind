@@ -93,6 +93,10 @@ namespace Nethermind.Synchronization.SnapSync
         /// <summary>The lowest pivot a request was issued at, see <see cref="SnapCheckpoint.AnchorNumber"/>.</summary>
         private (ulong Number, Hash256 Hash)? _anchor;
 
+        /// <summary>The requests handed out and not released yet, tracked while checkpoints are on.</summary>
+        /// <remarks>A shutdown drops the requests in flight unanswered, so they are still to do; see <see cref="SaveCheckpointAtShutdown"/>.</remarks>
+        private readonly ConcurrentDictionary<SnapSyncBatch, byte> _requestsInFlight = new();
+
         /// <param name="checkpointInterval">Overrides the interval between checkpoints, so tests do not have to wait it out.</param>
         public ProgressTracker(ISnapTrieFactory snapTrieFactory, ISyncConfig syncConfig, FastSync.IStateSyncPivot pivot, ILogManager? logManager, TimeSpan? checkpointInterval = null)
         {
@@ -279,9 +283,13 @@ namespace Nethermind.Synchronization.SnapSync
             }
 
             TakeTurn(nextBatch);
+            if (_checkpointInterval is not null && nextBatch is not null) _requestsInFlight.TryAdd(nextBatch, 0);
 
             return false;
         }
+
+        /// <summary>Stops counting <paramref name="batch"/> as in flight, once its response has been handled or handed back.</summary>
+        public void ReportRequestReleased(SnapSyncBatch batch) => _requestsInFlight.TryRemove(batch, out _);
 
         /// <summary>
         /// Turn-taking, see <see cref="MAX_CONSECUTIVE_ACCOUNT_REFRESHES"/>. Saturating so a long run of refreshes
@@ -548,6 +556,7 @@ namespace Nethermind.Synchronization.SnapSync
             _estimatedStorageRemaining = null;
             _shouldStartLoggingLargeStorage = false;
             _anchor = null;
+            _requestsInFlight.Clear();
         }
 
         public void LoadProgress()
@@ -574,17 +583,39 @@ namespace Nethermind.Synchronization.SnapSync
                    && _activeCodeRequests == 0
                    && _activeAccRefreshRequests == 0;
 
-        private void SaveCheckpoint()
+        /// <summary>Saves a checkpoint of the progress made up to a shutdown, so that a restart after it loses nothing.</summary>
+        /// <remarks>
+        /// To be called once the dispatcher has stopped, when no response is being handled any more. The requests it
+        /// dropped unanswered are counted as still to do, so unlike a checkpoint taken while syncing this one needs no
+        /// pause and covers everything written.
+        /// </remarks>
+        public void SaveCheckpointAtShutdown()
+        {
+            // Nothing was requested, so there is nothing to keep.
+            if (_checkpointInterval is null || _anchor is null) return;
+
+            try
+            {
+                SaveCheckpoint(atShutdown: true);
+            }
+            catch (Exception e)
+            {
+                // Thrown on, it would replace the cancellation and read as a failed state sync.
+                if (_logger.IsWarn) _logger.Warn($"Snap - could not save a resume checkpoint at shutdown, the restart resumes from the last one: {e}");
+            }
+        }
+
+        private void SaveCheckpoint(bool atShutdown = false)
         {
             long startTime = Stopwatch.GetTimestamp();
-            SnapCheckpoint checkpoint = CreateCheckpoint();
+            SnapCheckpoint checkpoint = CreateCheckpoint(includeRequestsInFlight: atShutdown);
             _snapTrieFactory.SaveCheckpoint(checkpoint);
             _lastCheckpointTimestamp = Stopwatch.GetTimestamp();
 
-            if (_logger.IsInfo) _logger.Info($"Snap - saved a resume checkpoint in {Stopwatch.GetElapsedTime(startTime, _lastCheckpointTimestamp).TotalSeconds:N1}s ({checkpoint.StoragesToRetrieve.Length + checkpoint.StorageRanges.Length} storage requests queued).");
+            if (_logger.IsInfo) _logger.Info($"Snap - saved a resume checkpoint{(atShutdown ? " at shutdown" : "")} in {Stopwatch.GetElapsedTime(startTime, _lastCheckpointTimestamp).TotalSeconds:N1}s ({checkpoint.StoragesToRetrieve.Length + checkpoint.StorageRanges.Length} storage requests queued).");
         }
 
-        private SnapCheckpoint CreateCheckpoint()
+        private SnapCheckpoint CreateCheckpoint(bool includeRequestsInFlight)
         {
             AccountRangeProgress[] partitions = new AccountRangeProgress[AccountRangePartitions.Count];
             int index = 0;
@@ -593,12 +624,20 @@ namespace Nethermind.Synchronization.SnapSync
                 partitions[index++] = new AccountRangeProgress(partition.NextAccountPath, partition.AccountPathLimit, partition.MoreAccountsToRight);
             }
 
-            StorageRange[] slotRanges = NextSlotRange.ToArray();
-            StorageRangeProgress[] storageRanges = new StorageRangeProgress[slotRanges.Length];
-            for (int i = 0; i < slotRanges.Length; i++)
+            List<StorageRangeProgress> storageRanges = [];
+            List<AccountWithStorageStartingHash> accountsToRefresh = [.. AccountsToRefresh];
+            List<ValueHash256> codesToRetrieve = [.. CodesToRetrieve];
+            foreach (StorageRange range in NextSlotRange) storageRanges.Add(ToProgress(range));
+
+            // An account range in flight needs nothing here: its partition records where it starts either way.
+            if (includeRequestsInFlight)
             {
-                StorageRange range = slotRanges[i];
-                storageRanges[i] = new StorageRangeProgress(range.Accounts.AsSpan().ToArray(), range.StartingHash, range.LimitHash);
+                foreach ((SnapSyncBatch batch, byte _) in _requestsInFlight)
+                {
+                    if (batch.StorageRangeRequest is { } storageRange) storageRanges.Add(ToProgress(storageRange));
+                    if (batch.CodesRequest is { } codes) codesToRetrieve.AddRange(codes.AsSpan());
+                    if (batch.AccountsToRefreshRequest is { } refresh) accountsToRefresh.AddRange(refresh.Paths.AsSpan());
+                }
             }
 
             (ulong anchorNumber, Hash256 anchorHash) = _anchor!.Value;
@@ -608,11 +647,14 @@ namespace Nethermind.Synchronization.SnapSync
                 AnchorHash = anchorHash,
                 Partitions = partitions,
                 StoragesToRetrieve = StoragesToRetrieve.ToArray(),
-                StorageRanges = storageRanges,
-                AccountsToRefresh = AccountsToRefresh.ToArray(),
-                CodesToRetrieve = CodesToRetrieve.ToArray(),
+                StorageRanges = [.. storageRanges],
+                AccountsToRefresh = [.. accountsToRefresh],
+                CodesToRetrieve = [.. codesToRetrieve],
                 UpdatedStorages = [.. _pivot.UpdatedStorages],
             };
+
+            static StorageRangeProgress ToProgress(StorageRange range) =>
+                new(range.Accounts.AsSpan().ToArray(), range.StartingHash, range.LimitHash);
         }
 
         private void Restore(SnapCheckpoint checkpoint)
