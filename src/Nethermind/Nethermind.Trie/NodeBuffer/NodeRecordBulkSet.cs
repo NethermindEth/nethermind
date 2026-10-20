@@ -484,7 +484,21 @@ internal static class NodeRecordBulkSet
 
                 if (current.NodeKind == NodeRecordKind.Leaf)
                 {
-                    result = SetLeaf(entryKey, depth, current, value);
+                    int keyLength = current.CopyKey(key);
+                    int matched = key[..keyLength].CommonPrefixLength(entryKey[depth..]);
+                    if (matched == keyLength)
+                    {
+                        result = isDelete ? Updated.To(-1)
+                            : current.LeafValue().Span.SequenceEqual(value) ? Updated.Unchanged(current)
+                            : Updated.To(_workingState.AddPendingLeaf(key[..keyLength], value!));
+                    }
+                    else
+                    {
+                        result = isDelete ? Updated.Unchanged(current)
+                            : Updated.To(DivergingBranch(_workingState, entryKey, depth, matched, key[matched],
+                                ChildRef.ForPending(_workingState.AddPendingLeaf(key[(matched + 1)..keyLength], current.LeafValue())), value!));
+                    }
+
                     break;
                 }
 
@@ -495,9 +509,16 @@ internal static class NodeRecordBulkSet
                     int matched = key[..keyLength].CommonPrefixLength(entryKey[depth..]);
                     if (matched < keyLength)
                     {
-                        result = isDelete
-                            ? Updated.Unchanged(current)
-                            : Updated.To(DivergeExtension(entryKey, depth, matched, key[..keyLength], view.Child(0), value!));
+                        if (isDelete)
+                        {
+                            result = Updated.Unchanged(current);
+                            break;
+                        }
+
+                        // When the extension's key ends at the divergence, its child moves under the new branch at the same path, so it is not loaded.
+                        ReadOnlySpan<byte> rest = key[(matched + 1)..keyLength];
+                        ChildRef existing = rest.IsEmpty ? view.Child(0) : ChildRef.ForPending(_workingState.AddPendingExtension(rest, view.Child(0)));
+                        result = Updated.To(DivergingBranch(_workingState, entryKey, depth, matched, key[matched], existing, value!));
                         break;
                     }
 
@@ -536,49 +557,19 @@ internal static class NodeRecordBulkSet
             }
 
             return result;
-        }
 
-        /// <summary>Sets the key <paramref name="entryKey"/> to <paramref name="value"/> in <paramref name="leaf"/> at <paramref name="depth"/>.</summary>
-        private Updated SetLeaf(ReadOnlySpan<byte> entryKey, int depth, in Source leaf, byte[]? value)
-        {
-            Span<byte> key = stackalloc byte[MaxKeyNibbles];
-            int keyLength = leaf.CopyKey(key);
-            int matched = key[..keyLength].CommonPrefixLength(entryKey[depth..]);
-            bool isDelete = value is null || value.Length == 0;
-            if (matched == keyLength)
+            // The branch where the entry diverges from an existing leaf or extension after matched nibbles, holding existing under
+            // existingNibble, behind an extension of the matched nibbles when there are any.
+            static int DivergingBranch(BulkSetWorkingState workingState, ReadOnlySpan<byte> entryKey, int depth, int matched, int existingNibble, ChildRef existing, byte[] value)
             {
-                if (isDelete) return Updated.To(-1);
-
-                return leaf.LeafValue().Span.SequenceEqual(value)
-                    ? Updated.Unchanged(leaf)
-                    : Updated.To(_workingState.AddPendingLeaf(key[..keyLength], value!));
+                int branchDepth = depth + matched;
+                int leaf = workingState.AddPendingLeaf(entryKey[(branchDepth + 1)..], value);
+                int childrenStart = workingState.ReserveChildSpace();
+                workingState.Children[childrenStart + existingNibble] = existing;
+                workingState.Children[childrenStart + entryKey[branchDepth]] = ChildRef.ForPending(leaf);
+                int branch = workingState.AddPendingBranch(childrenStart);
+                return matched == 0 ? branch : workingState.AddPendingExtension(entryKey.Slice(depth, matched), ChildRef.ForPending(branch));
             }
-
-            if (isDelete) return Updated.Unchanged(leaf);
-
-            ChildRef existing = ChildRef.ForPending(_workingState.AddPendingLeaf(key[(matched + 1)..keyLength], leaf.LeafValue()));
-            return Updated.To(DivergingBranch(entryKey, depth, matched, key[matched], existing, value!));
-        }
-
-        /// <summary>The node replacing the extension at <paramref name="depth"/> with <paramref name="key"/> and <paramref name="child"/>, from which the entry diverges after <paramref name="matched"/> nibbles.</summary>
-        /// <remarks>When the extension's key ends at the divergence, its child moves under the new branch at the same path, so it is not loaded.</remarks>
-        private int DivergeExtension(ReadOnlySpan<byte> entryKey, int depth, int matched, ReadOnlySpan<byte> key, in ChildRef child, byte[] value)
-        {
-            ReadOnlySpan<byte> rest = key[(matched + 1)..];
-            ChildRef existing = rest.IsEmpty ? child : ChildRef.ForPending(_workingState.AddPendingExtension(rest, child));
-            return DivergingBranch(entryKey, depth, matched, key[matched], existing, value);
-        }
-
-        /// <summary>The branch where the entry diverges from an existing leaf or extension after <paramref name="matched"/> nibbles, holding <paramref name="existing"/> under <paramref name="existingNibble"/>, behind an extension of the matched nibbles when there are any.</summary>
-        private int DivergingBranch(ReadOnlySpan<byte> entryKey, int depth, int matched, int existingNibble, ChildRef existing, byte[] value)
-        {
-            int branchDepth = depth + matched;
-            int leaf = _workingState.AddPendingLeaf(entryKey[(branchDepth + 1)..], value);
-            int childrenStart = _workingState.ReserveChildSpace();
-            _workingState.Children[childrenStart + existingNibble] = existing;
-            _workingState.Children[childrenStart + entryKey[branchDepth]] = ChildRef.ForPending(leaf);
-            int branch = _workingState.AddPendingBranch(childrenStart);
-            return matched == 0 ? branch : _workingState.AddPendingExtension(entryKey.Slice(depth, matched), ChildRef.ForPending(branch));
         }
 
         /// <summary>Puts <paramref name="prefix"/> in front of the pending node at <paramref name="index"/>, merging into its key unless it is a branch.</summary>
