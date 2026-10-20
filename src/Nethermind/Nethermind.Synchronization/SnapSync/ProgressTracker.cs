@@ -604,25 +604,31 @@ namespace Nethermind.Synchronization.SnapSync
             // Nothing was requested, so there is nothing to keep.
             if (_checkpointInterval is null || _anchor is null) return;
 
-            try
-            {
-                SaveCheckpoint(atShutdown: true);
-            }
-            catch (Exception e)
-            {
-                // Thrown on, it would replace the cancellation and read as a failed state sync.
-                if (_logger.IsWarn) _logger.Warn($"Snap - could not save a resume checkpoint at shutdown, the restart resumes from the last one: {e}");
-            }
+            SaveCheckpoint(atShutdown: true);
         }
 
+        /// <remarks>
+        /// A failure is logged rather than thrown: thrown while syncing, it would come back on every request until the
+        /// save worked, holding back every request meanwhile, and thrown at a shutdown it would read as a failed sync.
+        /// The next attempt waits a full interval either way, and a restart resumes from the last checkpoint saved.
+        /// </remarks>
         private void SaveCheckpoint(bool atShutdown = false)
         {
             long startTime = Stopwatch.GetTimestamp();
-            SnapCheckpoint checkpoint = CreateCheckpoint(includeRequestsInFlight: atShutdown);
-            _snapTrieFactory.SaveCheckpoint(checkpoint);
-            _lastCheckpointTimestamp = Stopwatch.GetTimestamp();
-
-            if (_logger.IsInfo) _logger.Info($"Snap - saved a resume checkpoint{(atShutdown ? " at shutdown" : "")} in {Stopwatch.GetElapsedTime(startTime, _lastCheckpointTimestamp).TotalSeconds:N1}s ({checkpoint.StoragesToRetrieve.Length + checkpoint.StorageRanges.Length} storage requests queued).");
+            try
+            {
+                SnapCheckpoint checkpoint = CreateCheckpoint(includeRequestsInFlight: atShutdown);
+                _snapTrieFactory.SaveCheckpoint(checkpoint);
+                if (_logger.IsInfo) _logger.Info($"Snap - saved a resume checkpoint{(atShutdown ? " at shutdown" : "")} in {Stopwatch.GetElapsedTime(startTime).TotalSeconds:N1}s ({checkpoint.StoragesToRetrieve.Length + checkpoint.StorageRanges.Length} storage requests queued).");
+            }
+            catch (Exception e)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Snap - could not save a resume checkpoint{(atShutdown ? " at shutdown" : "")}, a restart resumes from the last one: {e}");
+            }
+            finally
+            {
+                _lastCheckpointTimestamp = Stopwatch.GetTimestamp();
+            }
         }
 
         private SnapCheckpoint CreateCheckpoint(bool includeRequestsInFlight)

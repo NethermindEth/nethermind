@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Diagnostics;
-using System.IO;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
@@ -41,14 +40,9 @@ public class FlatSnapTrieFactory(
     {
         if (syncConfig.SnapResume && LoadCheckpoint() is { } checkpoint)
         {
-            if (checkpoint.Partitions.Length == syncConfig.SnapSyncAccountRangePartitionCount)
-            {
-                DiscardWritesAfter(checkpoint);
-                persistenceManager.ResetPersistedStateId();
-                return;
-            }
-
-            if (_logger.IsWarn) _logger.Warn($"The snap sync checkpoint was saved with {checkpoint.Partitions.Length} account range partitions, but {nameof(ISyncConfig.SnapSyncAccountRangePartitionCount)} is now {syncConfig.SnapSyncAccountRangePartitionCount}, so it cannot be resumed.");
+            DiscardWritesAfter(checkpoint);
+            persistenceManager.ResetPersistedStateId();
+            return;
         }
 
         // Log before probing: on a database holding only tombstones from an earlier wipe, the probe itself can take a while.
@@ -75,20 +69,34 @@ public class FlatSnapTrieFactory(
 
     public bool SupportsCheckpoints => true;
 
+    /// <inheritdoc/>
+    /// <remarks>
+    /// A checkpoint that cannot be read, or was saved with a different number of account range partitions, is not
+    /// returned, so every caller, including those ahead of <see cref="EnsureInitialize"/>, treats it as gone.
+    /// </remarks>
     public SnapCheckpoint? LoadCheckpoint()
     {
         byte[]? record = BasePersistence.ReadSnapCheckpoint(flatDb.GetColumnDb(FlatDbColumns.Metadata));
         if (record is null) return null;
 
+        SnapCheckpoint checkpoint;
         try
         {
-            return SnapCheckpoint.Decode(record);
+            checkpoint = SnapCheckpoint.Decode(record);
         }
         catch (InvalidDataException e)
         {
             if (_logger.IsWarn) _logger.Warn($"Ignoring the snap sync checkpoint, which cannot be read: {e.Message}");
             return null;
         }
+
+        if (checkpoint.Partitions.Length != syncConfig.SnapSyncAccountRangePartitionCount)
+        {
+            if (_logger.IsWarn) _logger.Warn($"Ignoring the snap sync checkpoint, saved with {checkpoint.Partitions.Length} account range partitions while {nameof(ISyncConfig.SnapSyncAccountRangePartitionCount)} is now {syncConfig.SnapSyncAccountRangePartitionCount}.");
+            return null;
+        }
+
+        return checkpoint;
     }
 
     public void SaveCheckpoint(SnapCheckpoint? checkpoint)

@@ -30,7 +30,6 @@ using Nethermind.State;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.Persistence.TrieNodeLog;
-using Nethermind.State.Flat.Sync;
 using Nethermind.State.Flat.Sync.Snap;
 using Nethermind.State.Proofs;
 using Nethermind.State.SnapServer;

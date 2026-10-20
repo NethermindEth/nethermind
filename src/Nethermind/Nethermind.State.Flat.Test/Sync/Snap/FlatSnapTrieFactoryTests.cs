@@ -330,6 +330,8 @@ public class FlatSnapTrieFactoryTests
         FlatSnapTrieFactory factory = CreateResumingFactory(persistence, db,
             partitionCount: reason == Unresumable.PartitionCountChanged ? 4 : 2,
             snapResume: reason != Unresumable.ResumeDisabled);
+        // Callers ahead of EnsureInitialize, such as the BAL healing anchor, must not resume what it is going to discard.
+        if (reason != Unresumable.ResumeDisabled) Assert.That(factory.LoadCheckpoint(), Is.Null);
         factory.EnsureInitialize();
 
         using IPersistence.IPersistenceReader reader = persistence.CreateReader();

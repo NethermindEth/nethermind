@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -159,13 +160,29 @@ public class ProgressTrackerTests
         Assert.That(finished, Is.True);
 
         snapTrieFactory.Received(1).MarkRangePhaseFinished();
-        snapTrieFactory.Received(checkpointed ? 1 : 0).SaveCheckpoint(null);
-        if (!checkpointed) snapTrieFactory.DidNotReceiveWithAnyArgs().SaveCheckpoint(default);
+        if (checkpointed) snapTrieFactory.Received(1).SaveCheckpoint(null);
+        else snapTrieFactory.DidNotReceiveWithAnyArgs().SaveCheckpoint(default);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(logger.LogList, Has.Some.StartsWith("Snap         State Ranges (Phase 1 of 2): ("));
             Assert.That(logger.LogList, Has.Some.EqualTo("Snap - State Ranges (Phase 1 of 2) finished."));
         }
+    }
+
+    // Regression: a checkpoint that failed to save threw out of IsFinished, came back on every retry and so held back
+    // every request until the save worked.
+    [Test]
+    public void A_checkpoint_that_fails_to_save_does_not_hold_back_the_requests()
+    {
+        ISnapTrieFactory snapTrieFactory = Substitute.For<ISnapTrieFactory>();
+        snapTrieFactory.SupportsCheckpoints.Returns(true);
+        snapTrieFactory.When(static f => f.SaveCheckpoint(Arg.Any<SnapCheckpoint?>())).Do(static _ => throw new IOException("No space left on device"));
+        using ProgressTracker progressTracker = CreateProgressTracker(snapTrieFactory: snapTrieFactory, snapResume: true);
+
+        SnapSyncBatch? request = null;
+        Assert.That(() => progressTracker.IsFinished(out request), Throws.Nothing);
+        Assert.That(request?.AccountRangeRequest, Is.Not.Null);
+        request?.Dispose();
     }
 
     // A shutdown drops the requests in flight unanswered, so the checkpoint it saves has to count them as still to do.
