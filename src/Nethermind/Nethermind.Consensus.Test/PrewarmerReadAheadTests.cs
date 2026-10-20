@@ -148,6 +148,33 @@ public class PrewarmerReadAheadTests
         Assert.That(_caches.StorageCache.TryGetValue(new StorageCell(ColdTailContracts.Walker, 0x4e4d), out _), Is.False);
     }
 
+    /// <summary>
+    /// A read-ahead stops warming the cells its runs found, as it stops the runs, once block processing has finished its
+    /// transaction: here block processing finishes it as the warm begins.
+    /// </summary>
+    [Test]
+    public void A_read_ahead_stops_warming_once_block_processing_finishes_its_transaction([Values] bool finished)
+    {
+        WarmWatchingEnvs envs = new(_scope.Resolve<PrewarmerEnvFactory>(), _caches);
+        using BlockCachePreWarmer preWarmer = CreatePreWarmer(readAhead: true, policy: envs);
+        Transaction walk = WalkerCall(TestItem.PrivateKeyA, 0, 0x4e4d, 4);
+        Block block = BuildBlock(walk, Transfer(TestItem.PrivateKeyB, 0));
+        preWarmer.OnBeforeTxExecution();
+        if (finished) envs.OnFirstWarm = preWarmer.OnBeforeTxExecution;
+
+        preWarmer.DiscoverAndWarmStorage([(0, walk)], block, Spec, null, CancellationToken.None, readAhead: true, inFlight: true);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(envs.Warms, Is.GreaterThan(0), "precondition: the run found slots to warm");
+            for (int i = 0; i < 4; i++)
+            {
+                Assert.That(_caches.StorageCache.TryGetValue(new StorageCell(ColdTailContracts.Walker, 0x4e4d + i), out _), Is.EqualTo(!finished),
+                    $"slot {i} of the walk");
+            }
+        }
+    }
+
     [Test]
     public void Switched_off_discovery_leaves_a_candidate_block_processing_has_started()
     {
@@ -841,6 +868,38 @@ public class PrewarmerReadAheadTests
                     owner.Captured.Set();
                 }
 
+                return inner.TryBuildAtTarget(targetBlock, out scope);
+            }
+
+            public void Dispose() => inner.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Envs that call <see cref="OnFirstWarm"/> as the first scope built outside a storage-read capture opens: discovery
+    /// builds one only to warm the cells its runs found.
+    /// </summary>
+    private sealed class WarmWatchingEnvs(PrewarmerEnvFactory factory, PreBlockCaches caches) : IPooledObjectPolicy<IPrewarmerEnv>
+    {
+        private int _warms;
+        public Action? OnFirstWarm;
+
+        public int Warms => Volatile.Read(ref _warms);
+
+        public IPrewarmerEnv Create() => new Env(factory.Create(caches), this, caches);
+
+        public bool Return(IPrewarmerEnv obj) => true;
+
+        private sealed class Env(IPrewarmerEnv inner, WarmWatchingEnvs owner, PreBlockCaches caches) : IPrewarmerEnv
+        {
+            public ReadOnlySpan<IHasAccessList> SystemAccessLists => inner.SystemAccessLists;
+            FootprintRecorder? IPrewarmerEnv.Recorder => inner.Recorder;
+
+            public bool TryBuild(BlockHeader? baseBlock, [NotNullWhen(true)] out IReadOnlyTxProcessingScope? scope) => inner.TryBuild(baseBlock, out scope);
+
+            public bool TryBuildAtTarget(BlockHeader targetBlock, [NotNullWhen(true)] out IReadOnlyTxProcessingScope? scope)
+            {
+                if (caches.CurrentStorageReadCapture is null && Interlocked.Increment(ref owner._warms) == 1) owner.OnFirstWarm?.Invoke();
                 return inner.TryBuildAtTarget(targetBlock, out scope);
             }
 

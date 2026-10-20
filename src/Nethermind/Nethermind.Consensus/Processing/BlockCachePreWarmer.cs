@@ -551,7 +551,10 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
     /// processing is executing is still discovered, a run stops once block processing has finished its transaction, and a
     /// run that reverts with every placeholder is repeated with zero.
     /// </param>
-    /// <param name="inFlight">Whether this is the read-ahead of the transaction block processing is executing; for the metrics.</param>
+    /// <param name="inFlight">
+    /// Whether this is the read-ahead of the transaction block processing is executing, its only candidate: for the metrics,
+    /// and its warm stops once block processing has finished that transaction.
+    /// </param>
     internal void DiscoverAndWarmStorage(List<(int Index, Transaction Tx)> candidates, Block block, IReleaseSpec spec, ISenderRecoveryProgress? recovery,
         CancellationToken cancellationToken, StrongBox<int>? sharedCells = null, BlockFootprints? footprints = null, bool readAhead = false,
         bool inFlight = false)
@@ -569,6 +572,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         int uncharged = 0;
         // Per candidate, kept across rounds; created between rounds, so a round only reads the dictionary.
         Dictionary<int, CellSeeds>? seeds = readAhead && footprints is not null ? new(candidates.Count) : null;
+        // A read-ahead's warm stops, as its runs do, once block processing has finished its transaction.
+        int warmedFor = inFlight && candidates.Count > 0 ? candidates[0].Index : int.MaxValue;
 
         for (int round = 0; round < MaxDiscoveryRounds && currentCandidates.Count > 0; round++)
         {
@@ -649,7 +654,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
             if (roundCells.Count > 0)
             {
                 allDiscoveredCells.UnionWith(roundCells);
-                if (!WarmDiscoveredStorage(block.Header, roundCells, cancellationToken)) return;
+                if (!WarmDiscoveredStorage(block.Header, roundCells, cancellationToken, warmedFor)) return;
                 if (inFlight) Interlocked.Add(ref Blockchain.Metrics.PrewarmInFlightCells, roundCells.Count);
                 // An exhausted shared budget ends discovery at the next round's budget check.
                 if (allDiscoveredCells.Count >= MaxDiscoveredCells) return;
@@ -1043,7 +1048,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         }
     }
 
-    private bool WarmDiscoveredStorage(BlockHeader target, PooledSet<StorageCell> discoveredCells, CancellationToken cancellationToken)
+    /// <param name="txIndex">The transaction the cells are warmed for: the warm stops once block processing has finished it.</param>
+    private bool WarmDiscoveredStorage(BlockHeader target, PooledSet<StorageCell> discoveredCells, CancellationToken cancellationToken,
+        int txIndex = int.MaxValue)
     {
         int cellCount = discoveredCells.Count;
         if (cellCount == 0) return true;
@@ -1075,7 +1082,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
                     int unreadable = 0;
                     for (int i = start; i < end; i++)
                     {
-                        if (((i - start) & 0x3F) == 0 && cancellationToken.IsCancellationRequested) return;
+                        if (((i - start) & 0x3F) == 0 && (cancellationToken.IsCancellationRequested || MainThreadTxIndex > txIndex)) return;
                         try
                         {
                             worldState.Get(in cells[i], out _);
