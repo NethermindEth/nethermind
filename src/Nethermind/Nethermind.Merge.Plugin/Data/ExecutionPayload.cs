@@ -251,7 +251,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
             WithdrawalsRoot = BuildWithdrawalsRoot(),
         };
 
-        Block block = new(header, transactions.Data, Array.Empty<BlockHeader>(), Withdrawals)
+        Block block = new(header, new BlockBody(transactions.Data, [], Withdrawals))
         {
             EncodedTransactions = encodedTransactions
         };
