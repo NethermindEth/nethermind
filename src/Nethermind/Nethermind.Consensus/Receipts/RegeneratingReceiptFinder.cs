@@ -8,6 +8,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Consensus.Receipts;
 
@@ -33,6 +34,11 @@ public sealed class RegeneratingReceiptFinder(
     public Hash256? FindBlockHash(Hash256 txHash) => inner.FindBlockHash(txHash);
 
     public bool CanGetReceiptsByHash(ulong blockNumber) => inner.CanGetReceiptsByHash(blockNumber);
+
+    /// <inheritdoc/>
+    /// <remarks>Serves stored receipts only; a block that needs regenerating reports <c>false</c> and goes through <see cref="Get(Block, bool, bool)"/>.</remarks>
+    public bool TryGetReceipt(ReceiptRecoveryBlock block, Hash256 txHash, [NotNullWhen(true)] out TxReceipt? receipt, out int txIndex, out int logIndexStart) =>
+        inner.TryGetReceipt(block, txHash, out receipt, out txIndex, out logIndexStart);
 
     public TxReceipt[] Get(Block block, bool recover = true, bool recoverSender = true)
     {

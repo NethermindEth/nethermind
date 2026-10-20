@@ -16,6 +16,8 @@ namespace Nethermind.Consensus.Rewards
 
         public BlockReward[] CalculateRewards(Block block) => _noRewards;
 
+        public bool MayReward(BlockHeader header) => false;
+
         public IRewardCalculator Get(ITransactionProcessor processor) => Instance;
     }
 }

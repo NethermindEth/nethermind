@@ -381,6 +381,19 @@ namespace Nethermind.Core.Test.Encoding
             Assert.That(receipt.Logs, Is.Empty);
         }
 
+        [Test]
+        public void Storage_decoding_normalizes_invalid_post_state_length_to_rlp_exception([Values] bool compact, [Values(5, 31, 33, 34)] int length)
+        {
+            RlpDecoder<TxReceipt> decoder = compact ? CompactReceiptStorageDecoder.Instance : new ReceiptStorageDecoder();
+            byte[] encoded = Rlp.Encode(Rlp.Encode(new byte[length])).Bytes;
+
+            Assert.That(() =>
+            {
+                RlpReader reader = new(encoded);
+                decoder.Decode(ref reader);
+            }, Throws.TypeOf<RlpException>());
+        }
+
         public static IEnumerable<(TxReceipt, string)> TestCaseSource()
         {
             Bloom bloom = new();

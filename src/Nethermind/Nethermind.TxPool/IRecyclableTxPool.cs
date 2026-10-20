@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.TxPool;
 
@@ -14,5 +15,18 @@ internal interface IRecyclableTxPool
     /// A true <paramref name="canRecycle"/> means no transaction reference escaped submission.
     /// The caller must finish reading the transaction before returning it to its object pool.
     /// </remarks>
-    AcceptTxResult SubmitOwnedTx(Transaction tx, out bool canRecycle);
+    /// <param name="frameValidationRan">Whether the pool spent frame validation work on the transaction, verifying
+    /// its signatures or executing its validation prefix, whatever the result.</param>
+    AcceptTxResult SubmitOwnedTx(Transaction tx, out bool canRecycle, out bool frameValidationRan);
+
+    /// <summary>Settles an incoming transaction the pool already knows, given only its hash.</summary>
+    /// <returns>
+    /// Whether the transaction was settled as <see cref="AcceptTxResult.AlreadyKnown"/>; when false, the caller
+    /// decodes it and submits it instead.
+    /// </returns>
+    /// <remarks>
+    /// Has the side effects <see cref="SubmitOwnedTx"/> would have for a known transaction, so a duplicate need
+    /// not be decoded at all.
+    /// </remarks>
+    bool TrySubmitKnown(in ValueHash256 hash);
 }

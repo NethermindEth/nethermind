@@ -12,6 +12,7 @@ using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.StateGas;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.Native;
 
@@ -45,4 +46,19 @@ public static class GethLikeNativeTracerFactory
         _tracers.TryGetValue(options.Tracer, out SpecAwareNativeTracerFactory? tracerDelegate)
             ? tracerDelegate(options, block, transaction, worldState, releaseSpec)
             : throw new ArgumentException($"Unknown tracer: {options.Tracer}");
+
+    /// <summary>Throws if a built-in tracer cannot parse the tracer config of <paramref name="options"/>.</summary>
+    /// <remarks>The tracers parse it per transaction, too late for a streamed response to fail as a JSON-RPC error.</remarks>
+    internal static void ValidateTracerConfig(GethTraceOptions options)
+    {
+        switch (options.Tracer)
+        {
+            case NativeCallTracer.CallTracer:
+                TypeInfoJsonSerializer.Deserialize<NativeCallTracerConfig>(options.TracerConfig, EthereumJsonSerializer.JsonOptions);
+                break;
+            case NativePrestateTracer.PrestateTracer:
+                TypeInfoJsonSerializer.Deserialize<NativePrestateTracerConfig>(options.TracerConfig, EthereumJsonSerializer.JsonOptions);
+                break;
+        }
+    }
 }

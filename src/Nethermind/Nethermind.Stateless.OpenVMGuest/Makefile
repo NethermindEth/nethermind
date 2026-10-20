@@ -9,8 +9,23 @@ SRC_DIR := /nethermind/src
 
 GUEST_LIBC := openvm
 
+# MUL on the bigint extension without the frame a call from managed code takes.
+GUEST_OBJECTS := mul.o
+
 # BIN_DIR must be set before the include - BFLAT_REFS expands it.
 include $(MAKEFILE_DIR)/../Nethermind.Stateless.Guest/build.mk
+
+# Fewer executed instructions for more compile time and code size (values in hex).
+# Tracking every local is most of the gain: the default 0x400 leaves locals of the
+# largest methods out of register allocation.
+OPT_FLAGS += \
+	--codegenopt JitMaxLocalsToTrack=10000 \
+	--codegenopt JitCloneLoopsSizeLimit=1000 \
+	--codegenopt JitLoopInversionSizeLimit=400 \
+	--codegenopt 'JitOptRepeat=*' \
+	--codegenopt JitOptRepeatCount=2 \
+	--codegenopt JitEnableHeadTailMerge=0
+
 # Execution harness. OpenVM publishes no image and `cargo openvm run` only takes
 # a transpiled .vmexe, so this is our own: NethermindEth/bflat-openvm builds the
 # SDK's develop-v2.1.0 rv64 line into a harness that transpiles the ELF and runs

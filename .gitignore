@@ -462,3 +462,6 @@ keystore/
 
 # Clawpatch
 .clawpatch/
+
+# Native objects built for the zkVM guests
+src/Nethermind/Nethermind.Stateless.*/*.o
