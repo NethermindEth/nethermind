@@ -19,11 +19,13 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Call;
+using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
+using Nethermind.Int256;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -111,7 +113,12 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         public override bool IsTracingActions => true;
         public bool HaltsLeftNoGas { get; private set; } = true;
         public int Errors { get; private set; }
-        public override void ReportActionRemainingGas(ulong gas) => _actionGas = gas;
+        public List<ulong> RemainingGasReports { get; } = [];
+        public override void ReportActionRemainingGas(ulong gas)
+        {
+            RemainingGasReports.Add(gas);
+            _actionGas = gas;
+        }
 
         public override void ReportActionError(EvmExceptionType evmExceptionType)
         {
@@ -974,6 +981,38 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         {
             Assert.That(checkpoints.Errors, Is.EqualTo(1), "action errors");
             Assert.That(checkpoints.HaltsLeftNoGas, Is.True, "every action error follows a report of no gas left");
+        }
+    }
+
+    [Test]
+    public void Invalid_code_frame_reports_zero_gas_once_before_error()
+    {
+        if (!TestState.AccountExists(Recipient)) TestState.CreateAccount(Recipient, UInt256.Zero);
+        using ExecutionEnvironment environment = ExecutionEnvironment.Rent(
+            null!, Recipient, Sender, Recipient, 0, UInt256.Zero, ReadOnlyMemory<byte>.Empty);
+        using StackAccessTracker accessTracker = new();
+        Snapshot snapshot = TestState.TakeSnapshot();
+        using VmState<EthereumGasPolicy> state = VmState<EthereumGasPolicy>.RentTopLevel(
+            EthereumGasPolicy.FromULong(100_000), ExecutionType.TRANSACTION, environment, in accessTracker, in snapshot);
+        Machine.SetBlockExecutionContext(new BlockExecutionContext(
+            Build.A.BlockHeader.WithNumber(BlockNumber).WithTimestamp(Timestamp).TestObject, Spec));
+        Machine.SetTxExecutionContext(new TxExecutionContext(Sender, CodeInfoRepository, null, UInt256.Zero));
+        GasCheckpointTracer checkpoints = new();
+
+        try
+        {
+            TransactionSubstate result = Machine.ExecuteTransaction<OnFlag>(state, TestState, checkpoints);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result.EvmExceptionType, Is.EqualTo(EvmExceptionType.InvalidCode));
+                Assert.That(checkpoints.Errors, Is.EqualTo(1), "action errors");
+                Assert.That(checkpoints.RemainingGasReports, Is.EqualTo([0UL]), "invalid code reports no gas exactly once");
+            }
+        }
+        finally
+        {
+            TestState.Restore(snapshot);
         }
     }
 
