@@ -140,7 +140,6 @@ public class IndexTableStoreTests
         store.Store(0, 0, branchA, TestItem.KeccakA);
         store.Store(0, 0, branchB, TestItem.KeccakB);
 
-        // Store MaxLevel0Heights additional heights, pushing total above capacity
         for (long height = 1; height <= IndexTableStore.MaxLevel0Heights; height++)
         {
             store.Store(0, height, [IndexEntry.CreateBlock(TestItem.KeccakC, (ulong)height)], TestItem.KeccakC);

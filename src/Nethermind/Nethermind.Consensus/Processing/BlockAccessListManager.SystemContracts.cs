@@ -94,6 +94,7 @@ public partial class BlockAccessListManager
 
     private IIndexTableHandler? _indexTableHandler;
 
+    /// <inheritdoc />
     public void CommitIndexTableRoots(Block block, TxReceipt[] receipts, IReleaseSpec spec, ITxTracer tracer)
     {
         CheckInitialized();
@@ -113,7 +114,9 @@ public partial class BlockAccessListManager
         _indexTableHandler.CommitIndexTableRoots(block, receipts, spec, tracer);
     }
 
+    /// <inheritdoc />
     public void RollbackBlock(Block block) => _indexTableHandler?.RollbackBlock(block);
 
+    /// <inheritdoc />
     public void UpdateFinalBlockHash(Block block) => _indexTableHandler?.UpdateFinalBlockHash(block);
 }

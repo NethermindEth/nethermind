@@ -14,6 +14,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
+using Nethermind.History;
 using Nethermind.Logging;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
@@ -31,7 +32,8 @@ namespace Nethermind.Init.Steps
         ILogManager logManager,
         ChainSpec? chainSpec = null,
         IReceiptStorage? receiptStorage = null,
-        IReceiptConfig? receiptConfig = null
+        IReceiptConfig? receiptConfig = null,
+        IHistoryConfig? historyConfig = null
     ) : IStep
     {
         private readonly ILogger _logger = logManager.GetClassLogger<ReviewBlockTree>();
@@ -57,14 +59,12 @@ namespace Nethermind.Init.Steps
             if (receiptConfig is not null && !receiptConfig.StoreReceipts)
                 throw Incompatible($"Receipt.{nameof(IReceiptConfig.StoreReceipts)} is disabled");
 
-            if (syncConfig.FastSync)
-            {
-                if (!syncConfig.DownloadBodiesInFastSync || !syncConfig.DownloadReceiptsInFastSync)
-                    throw Incompatible($"Sync.{nameof(ISyncConfig.DownloadBodiesInFastSync)} or Sync.{nameof(ISyncConfig.DownloadReceiptsInFastSync)} is disabled");
+            if (syncConfig.FastSync && (!syncConfig.DownloadBodiesInFastSync || !syncConfig.DownloadReceiptsInFastSync))
+                throw Incompatible($"Sync.{nameof(ISyncConfig.DownloadBodiesInFastSync)} or Sync.{nameof(ISyncConfig.DownloadReceiptsInFastSync)} is disabled");
 
-                if (syncConfig.AncientReceiptsBarrierCalc > 1 && syncConfig.AncientReceiptsBarrierCalc + (ulong)Eip8304Constants.SyncRecoveryBlocks > syncConfig.PivotNumber)
-                    throw Incompatible($"the ancient bodies or receipts barrier ({syncConfig.AncientReceiptsBarrierCalc}) is within {Eip8304Constants.SyncRecoveryBlocks} blocks of the pivot");
-            }
+            // That mode prunes up to the configured ancient barriers, which may lie above the blocks the tables still need.
+            if (historyConfig?.Pruning == PruningModes.UseAncientBarriers)
+                throw Incompatible($"History.{nameof(IHistoryConfig.Pruning)} is {nameof(PruningModes.UseAncientBarriers)}");
 
             InvalidConfigurationException Incompatible(string reason) => new(
                 $"EIP-8304 is configured (eip8304TransitionTimestamp={transitionTimestamp}) but {reason}. " +

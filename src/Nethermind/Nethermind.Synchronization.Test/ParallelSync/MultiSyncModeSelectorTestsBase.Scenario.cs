@@ -902,7 +902,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
 
                 public ScenarioBuilder WhenConsensusRequiresToWaitForReceipts()
                 {
-                    SyncConfig.NeedToWaitForReceipts = true;
+                    SyncConfig.RequiredHistoryBelowPivot = 319;
                     return this;
                 }
 

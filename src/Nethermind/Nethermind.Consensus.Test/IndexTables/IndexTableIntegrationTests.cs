@@ -17,7 +17,6 @@ using Nethermind.Core.Exceptions;
 using Nethermind.Core.Messages;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm;
-using Nethermind.State;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;

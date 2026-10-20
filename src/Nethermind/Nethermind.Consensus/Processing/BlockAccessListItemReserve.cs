@@ -18,7 +18,8 @@ namespace Nethermind.Consensus.Processing;
 /// <remarks>
 /// Withdrawals and the request-queue system calls (EIP-7002, EIP-7251, EIP-8282) spend no block gas. Withdrawals add
 /// one item per new recipient. Each queue adds its address and four header words, plus the slots of records queued
-/// before the block, up to its per-block maximum.
+/// before the block, up to its per-block maximum. The EIP-8304 index contract adds its address and one
+/// root slot per table published at the block, at most one per level.
 /// </remarks>
 public static class BlockAccessListItemReserve
 {
@@ -45,6 +46,12 @@ public static class BlockAccessListItemReserve
     public static long Calculate(Block block, IReleaseSpec spec, IWorldState state, GeneratedBlockAccessList blockAccessList)
     {
         long reserve = spec.WithdrawalsEnabled ? WithdrawalRecipients(block.Withdrawals, blockAccessList) : 0;
+
+        if (spec.IsEip8304Enabled && spec.Eip8304ContractAddress is not null)
+        {
+            reserve += Eip8304Constants.TableSizes.Length;
+            if (!blockAccessList.HasAccount(spec.Eip8304ContractAddress)) reserve++;
+        }
 
         if (!spec.RequestsEnabled) return reserve;
 

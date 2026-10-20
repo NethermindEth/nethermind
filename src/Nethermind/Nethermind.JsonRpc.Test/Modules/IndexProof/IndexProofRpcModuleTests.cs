@@ -239,9 +239,7 @@ public class IndexProofRpcModuleTests
         IndexEntry canonicalTx = IndexEntry.CreateTransaction(canonicalTxHash, 100, 0, 0);
         IndexEntry sideBranchTx = IndexEntry.CreateTransaction(sideBranchTxHash, 100, 0, 0);
 
-        // Store canonical table first
         store.Store(0, 100, [canonicalTx], canonicalHash);
-        // Store side branch table afterwards with different transaction
         store.Store(0, 100, [sideBranchTx], sideBranchHash);
 
         IIndexProofRpcModule module = CreateModule(store, blockTree);

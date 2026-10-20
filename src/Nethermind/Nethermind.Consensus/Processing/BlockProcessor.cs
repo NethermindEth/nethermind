@@ -290,7 +290,11 @@ public partial class BlockProcessor(
 
         _systemContractHandler.ProcessExecutionRequests(block, _stateProvider, receipts, spec);
 
-        _systemContractHandler.CommitIndexTableRoots(block, receipts, spec, NullTxTracer.Instance);
+        // Index tables are built from the receipts, which an unpersisted trace replay does not produce.
+        if (ReceiptsTracer.BuildsReceipts)
+        {
+            _systemContractHandler.CommitIndexTableRoots(block, receipts, spec, NullTxTracer.Instance);
+        }
 
         ReceiptsTracer.EndBlockTrace(accumulateBlockBloom: receiptWork is null && TComputesCommitments.IsActive && !bloomsRemoved);
 

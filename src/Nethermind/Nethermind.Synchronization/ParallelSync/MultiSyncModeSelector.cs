@@ -50,7 +50,7 @@ namespace Nethermind.Synchronization.ParallelSync
         private readonly IBeaconSyncStrategy _beaconSyncStrategy = beaconSyncStrategy;
         private readonly IBetterPeerStrategy _betterPeerStrategy = betterPeerStrategy;
         private readonly bool _needToWaitForHeaders = syncConfig.NeedToWaitForHeader;
-        private readonly bool _needToWaitForReceipts = syncConfig.NeedToWaitForReceipts;
+        private readonly bool _needToWaitForReceipts = syncConfig.RequiredHistoryBelowPivot > 0;
         private readonly ILogger _logger = logManager.GetClassLogger<MultiSyncModeSelector>();
         private readonly Lock _modeLock = new();
 

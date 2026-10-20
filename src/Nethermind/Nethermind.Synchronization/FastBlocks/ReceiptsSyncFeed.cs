@@ -38,7 +38,8 @@ namespace Nethermind.Synchronization.FastBlocks
             ulong requested = Math.Max(_syncConfig.AncientBodiesBarrier, _syncConfig.AncientReceiptsBarrier);
             ulong clamped = Math.Max(1UL, Math.Min(pivotNumber, requested));
             ulong? cutoffBlockNumber = _historyPruner.CutoffBlockNumber;
-            return cutoffBlockNumber is null ? clamped : ulong.Max(clamped, cutoffBlockNumber.Value);
+            ulong barrier = cutoffBlockNumber is null ? clamped : ulong.Max(clamped, cutoffBlockNumber.Value);
+            return KeepRequiredHistory(barrier, pivotNumber, _syncConfig.RequiredHistoryBelowPivot);
         }
 
         protected override Func<bool> HasPivot =>

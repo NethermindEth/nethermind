@@ -190,8 +190,8 @@ public interface ISyncConfig : IConfig
     [ConfigItem(Description = "_Technical._ MultiSyncModeSelector will wait for header to completely sync first.", DefaultValue = "false", HiddenFromDocs = true)]
     bool NeedToWaitForHeader { get; set; }
 
-    [ConfigItem(Description = "_Technical._ MultiSyncModeSelector will wait for receipts to completely sync before full sync.", DefaultValue = "false", HiddenFromDocs = true)]
-    bool NeedToWaitForReceipts { get; set; }
+    [ConfigItem(Description = "_Technical._ Number of blocks below the sync pivot whose bodies and receipts fast sync downloads regardless of the ancient barriers. A non-zero value also makes full sync wait for the receipts download to finish.", DefaultValue = "0", HiddenFromDocs = true)]
+    ulong RequiredHistoryBelowPivot { get; set; }
 
     [ConfigItem(Description = "_Technical._ Run verify trie on state sync is finished.", DefaultValue = "false", HiddenFromDocs = true)]
     bool VerifyTrieOnStateSyncFinished { get; set; }
