@@ -133,15 +133,7 @@ internal sealed class NodeRecordTrie(SnapshotBundle bundle, Hash256? addressHash
         return path.Length + keyLength == keyPath.Length && path.Append(nodeKey[..keyLength]) == keyPath ? value.Payload.ToArray() : null;
     }
 
-    public bool TryLocate(ulong pointer, out NodeRecord record)
-    {
-        if (!bundle.CacheableNodeRecordBuffer!.TryLocate(pointer, out record)) return false;
-
-        if (!bundle.IsMainBlockProcessing) return true;
-        if (NodeRecordCodec.IsTransient(pointer)) Metrics.IncrementWarmedNodeCacheHits();
-        else Metrics.IncrementNodeRecordBufferHits();
-        return true;
-    }
+    public bool TryLocate(ulong pointer, out NodeRecord record) => bundle.CacheableNodeRecordBuffer!.TryLocate(pointer, out record);
 
     public INodeRecordWriteBatch StartWriteBatch(int alignedTotalLength) => bundle.CacheableNodeRecordBuffer!.StartWriteBatch(alignedTotalLength);
 
