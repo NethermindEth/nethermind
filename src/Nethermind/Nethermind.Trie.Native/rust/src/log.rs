@@ -97,9 +97,10 @@ static COMPACTOR: OnceLock<ThreadPool> = OnceLock::new();
 /// lookups walk whole chains. The records kept are found by their pointer through a hash table. Compacted generations
 /// are freed oldest first, once they take more than the compressed memory and no session pins them.
 ///
-/// A session pins every generation live when it starts, and every compacted one, so a pointer is readable by it in place
-/// exactly when its generation is not older than the session's floor, and otherwise through its compacted generation
-/// when compaction kept it.
+/// A session pins every generation live when it starts, and every compacted one not yet due to be freed, so a pointer is
+/// readable by it in place exactly when its generation is not older than the session's floor, and otherwise through its
+/// compacted generation when compaction kept it and it was not due to be freed. A compacted generation due to be freed
+/// thus waits only for the sessions started before, however much later ones overlap.
 ///
 /// A generation [`TrieNodeLog::retain_active`] retained is not dropped, nor is any later one, until
 /// [`TrieNodeLog::release`], so every record appended since stays readable by later sessions too, and the log then
@@ -136,6 +137,8 @@ struct Generation {
 
 struct State {
     oldest_compressed: u64,
+    /// The oldest compacted generation not due to be freed, the compressed floor of new sessions.
+    oldest_kept_compressed: u64,
     oldest_allocated: u64,
     oldest_live: u64,
     /// Sessions by floor, indexed like the generation table.
@@ -241,6 +244,7 @@ impl TrieNodeLog {
             active: AtomicU64::new(1),
             state: Mutex::new(State {
                 oldest_compressed: 1,
+                oldest_kept_compressed: 1,
                 oldest_allocated: 1,
                 oldest_live: 1,
                 pins: vec![0; MAX_GENERATIONS].into_boxed_slice(),
@@ -297,11 +301,11 @@ impl TrieNodeLog {
         *self.active.get_mut() = 1;
     }
 
-    /// Pins every live and compacted generation until the returned session is dropped.
+    /// Pins every live generation, and every compacted one not due to be freed, until the returned session is dropped.
     pub fn pin(&self) -> LogSession<'_> {
         let mut state = self.state.lock().unwrap();
         let floor = state.oldest_live;
-        let compressed_floor = state.oldest_compressed;
+        let compressed_floor = state.oldest_kept_compressed;
         state.pins[slot(floor)] += 1;
         state.compressed_pins[slot(compressed_floor)] += 1;
         LogSession {
@@ -525,17 +529,31 @@ impl TrieNodeLog {
         Some(Box::new(compressed))
     }
 
-    /// Frees compacted generations, oldest first, up to the first one still pinned, while they take more than the
-    /// compressed memory, are older than `before`, or nothing of them was kept.
+    /// Marks compacted generations due to be freed, oldest first, while they and the ones after take more than the
+    /// compressed memory, are older than `before`, or nothing of them was kept, then frees the marked ones, oldest first,
+    /// up to the first one a session started before its mark still pins.
     fn evict_compressed(&self, state: &mut State, before: u64) {
-        while state.oldest_compressed < state.oldest_allocated
-            && (state.compressed_memory > self.compressed_max_memory
-                || state.oldest_compressed < before
-                || self
-                    .generation(state.oldest_compressed)
+        let mut kept_memory = state.compressed_memory;
+        let mut id = state.oldest_compressed;
+        while id < state.oldest_allocated {
+            let compressed = unsafe {
+                self.generation(id)
                     .compressed
                     .load(Ordering::Relaxed)
-                    .is_null())
+                    .as_ref()
+            };
+            if id >= state.oldest_kept_compressed
+                && compressed.is_some()
+                && kept_memory <= self.compressed_max_memory
+                && id >= before
+            {
+                break;
+            }
+            kept_memory -= compressed.map_or(0, |compressed| compressed.memory());
+            id += 1;
+        }
+        state.oldest_kept_compressed = id;
+        while state.oldest_compressed < state.oldest_kept_compressed
             && state.compressed_pins[slot(state.oldest_compressed)] == 0
         {
             state.compressed_memory -= self
@@ -1474,6 +1492,43 @@ mod tests {
             wait_for_compaction(&log);
             assert_eq!(log.state.lock().unwrap().oldest_live, 2);
             assert!(log.pin().record(first).is_none());
+        }
+    }
+
+    #[test]
+    fn overlapping_sessions_do_not_keep_compacted_generations_from_being_freed() {
+        for compressed_max_memory in [0, 1 << 20] {
+            let log = TrieNodeLog::create(
+                MIN_GENERATION_BYTES,
+                DEFAULT_LIVE_GENERATIONS,
+                compressed_max_memory,
+                false,
+                RootTable::new(1),
+                RootTable::new(1),
+            );
+            let first = log.pin().append_keyed(&leaf(vec![0x11; 40]), 1);
+            // Each session starts before the previous one ends, so some session is always open.
+            let mut reader = log.pin();
+            for _ in 0..2 * DEFAULT_LIVE_GENERATIONS {
+                let active = log.active.load(Ordering::Relaxed);
+                while log.active.load(Ordering::Relaxed) == active {
+                    reader.append_keyed(&leaf(vec![0xcc; 1000]), 2);
+                }
+                let next = log.pin();
+                drop(reader);
+                reader = next;
+                wait_for_compaction(&log);
+            }
+            let next = log.pin();
+            drop(reader);
+            reader = next;
+
+            let within_budget = compressed_max_memory != 0;
+            assert_eq!(reader.record(first).is_some(), within_budget);
+            assert_eq!(
+                log.state.lock().unwrap().oldest_compressed > 1,
+                !within_budget
+            );
         }
     }
 }
