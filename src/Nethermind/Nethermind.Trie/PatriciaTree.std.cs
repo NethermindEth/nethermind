@@ -15,8 +15,12 @@ public partial class PatriciaTree
     /// <summary>How <see cref="ShouldUpdateChild"/> is inlined: left to the JIT.</summary>
     private const MethodImplOptions ShouldUpdateChildInlining = default;
 
-    /// <summary>Whether a popped write-walk frame is cleared, so the pooled stack keeps no node alive.</summary>
+    /// <summary>Whether a write walk clears the frames it pops or abandons, so the pooled stack keeps no node alive.</summary>
     private static bool ReleasesPoppedFrames => true;
+
+    /// <summary>Whether a trie write that changes a level unseals every ancestor still on its stack at once: never.</summary>
+    /// <remarks>Unsealing clones a node here, so each ancestor has to take its new child as the climb reaches it.</remarks>
+    private static bool UnsealsAncestorsAtOnce => false;
 
     /// <summary>Whether a trie write may stop climbing at this level, the rest of the climb changing nothing: never.</summary>
     /// <remarks>A node can be shared with the trie store's caches here, so a dirty parent says nothing about its ancestors.</remarks>

@@ -27,19 +27,14 @@ internal sealed class ReceiptLogsForRpc : IReadOnlyList<LogEntryForRpc>
     private Hash256? _blockHash;
     private ulong _blockNumber;
     private ulong _blockTimestamp;
-    private LogEntryForRpc? _reusedEntry;
 
-    public ReceiptLogsForRpc(TxReceipt receipt, ulong blockTimestamp, int logIndexStart) => Set(receipt, blockTimestamp, logIndexStart);
+    // Write is synchronous and never nested, so one entry per thread serves every view.
+    [ThreadStatic] private static LogEntryForRpc? _writeEntry;
 
-    /// <summary>Points the view at <paramref name="receipt"/>, after which <see cref="Write"/> refills one kept entry.</summary>
-    /// <remarks>For a view that only one writer uses at a time.</remarks>
+    public ReceiptLogsForRpc(TxReceipt receipt, ulong blockTimestamp, int logIndexStart) => Reset(receipt, blockTimestamp, logIndexStart);
+
+    /// <summary>Points the view at <paramref name="receipt"/>.</summary>
     public void Reset(TxReceipt receipt, ulong blockTimestamp, int logIndexStart)
-    {
-        Set(receipt, blockTimestamp, logIndexStart);
-        _reusedEntry ??= new LogEntryForRpc();
-    }
-
-    private void Set(TxReceipt receipt, ulong blockTimestamp, int logIndexStart)
     {
         _logs = receipt.Logs ?? [];
         Count = _logs.Length;
@@ -88,7 +83,7 @@ internal sealed class ReceiptLogsForRpc : IReadOnlyList<LogEntryForRpc>
     public void Write(Utf8JsonWriter writer, JsonSerializerOptions options)
     {
         JsonTypeInfo<LogEntryForRpc> typeInfo = (JsonTypeInfo<LogEntryForRpc>)options.GetTypeInfo(typeof(LogEntryForRpc));
-        LogEntryForRpc entry = _reusedEntry is null ? CreateEntry() : SetReceipt(_reusedEntry);
+        LogEntryForRpc entry = SetReceipt(_writeEntry ??= new LogEntryForRpc());
         writer.WriteStartArray();
         for (int i = _offset; i < _offset + Count; i++)
         {
@@ -96,6 +91,12 @@ internal sealed class ReceiptLogsForRpc : IReadOnlyList<LogEntryForRpc>
             JsonSerializer.Serialize(writer, entry, typeInfo);
         }
 
+        // The entry outlives the view, so it must not keep this receipt's data reachable.
+        entry.TransactionHash = null;
+        entry.BlockHash = null;
+        entry.Address = null;
+        entry.Data = null;
+        entry.Topics = null;
         writer.WriteEndArray();
     }
 

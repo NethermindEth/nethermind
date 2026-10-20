@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Runtime.CompilerServices;
+using Nethermind.Core;
 
 namespace Nethermind.Trie;
 
@@ -20,8 +21,17 @@ public partial class PatriciaTree
 
     /// <inheritdoc cref="ReleasesPoppedFrames" path="/summary"/>
     /// <remarks>Not in the guest: it verifies one block and exits, so what the stack keeps alive costs nothing, while
-    /// the clear is a second index computation and three stores per level of every write's climb.</remarks>
+    /// the clear is a second index computation and three stores per level of every write's climb, and a memset for
+    /// every write that ends its climb early.</remarks>
     private static bool ReleasesPoppedFrames => false;
+
+    /// <summary>Whether a trie write that changes a level unseals every ancestor still on its stack at once.</summary>
+    /// <remarks>
+    /// Once a level takes a changed child, every level above it does too, and here <see cref="TrieNode.Unseal"/> leaves the
+    /// node in place. Unsealing the rest of the stack in one loop leaves each ancestor pending with the child it already
+    /// holds, so <see cref="IsUnchangedPendingLevel"/> ends the climb at the next level instead of each paying a full step.
+    /// </remarks>
+    private static bool UnsealsAncestorsAtOnce => true;
 
     /// <summary>Whether a trie write may stop climbing at this level, the rest of the climb changing nothing.</summary>
     /// <remarks>
@@ -44,4 +54,13 @@ public partial class PatriciaTree
         parent.Keccak is null && child is not null && ReferenceEquals(originalChild, child) && parent.IsPendingWith(childIndex, child);
 
     partial void AdjustBulkSetFlags(ref Flags flags) => flags |= Flags.DoNotParallelize;
+
+    /// <remarks>Where <see cref="FirstTouchMemoryFlag"/> is on, a branch hashed as soon as it is encoded keeps its previous
+    /// RLP (see <c>TrieNode.KeepsRlpOfHashedBranch</c>), so a commit persists a stale encoding. The guest never commits,
+    /// and this makes one fail loudly. It is checked after the commit: checked before, it would leave the commit
+    /// unreachable and change the guest's code generation.</remarks>
+    partial void ThrowIfCommitUnsupported()
+    {
+        if (FirstTouchMemoryFlag.IsActive) ThrowReadOnlyTrieException();
+    }
 }
