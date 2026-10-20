@@ -496,6 +496,27 @@ public class JsonRpcServiceTests
         pool.Received().ReturnModule(rpcModule);
     }
 
+    [TestCase("eth_getLogs", "0x1")]
+    [TestCase("eth_newFilter", "0x1")]
+    [TestCase("eth_getBalance", "0xzz", "latest")]
+    [TestCase("eth_getBalance")]
+    [TestCase("eth_chainId", "0x1")]
+    public void Returns_module_to_pool_once_on_invalid_params(string method, params object[] parameters)
+    {
+        IRpcModulePool<IEthRpcModule> pool = Substitute.For<IRpcModulePool<IEthRpcModule>>();
+        IEthRpcModule rpcModule = Substitute.For<IEthRpcModule>();
+        pool.GetModule(Arg.Any<bool>()).Returns(rpcModule);
+
+        JsonRpcErrorResponse response = AssertJsonRpcError(TestRequestWithPool(pool, method, parameters), ErrorCodes.InvalidParams);
+        response.Dispose();
+
+        using (Assert.EnterMultipleScope())
+        {
+            pool.Received(1).ReturnModule(rpcModule);
+            Assert.That(rpcModule.ReceivedCalls(), Is.Empty);
+        }
+    }
+
     // A streamed trace executes while the response is written, on the module's own overridable env; the module must
     // therefore stay rented until the response is disposed, or the next rental races it on that env.
     [Test]
@@ -1373,7 +1394,8 @@ public class JsonRpcServiceTests
     public void Module_rental_overload_does_not_log_or_return_exception_data(
         Exception exception,
         int expectedCode,
-        string expectedMessage)
+        string expectedMessage,
+        string filter)
     {
         InterfaceLogger logger = Substitute.For<InterfaceLogger>();
         logger.IsError.Returns(true);
@@ -1383,7 +1405,7 @@ public class JsonRpcServiceTests
         pool.GetModule(Arg.Any<bool>()).Returns(Task.FromException<IEthRpcModule>(exception));
 
         using JsonRpcErrorResponse response = AssertJsonRpcError(
-            TestRequestWithPool(pool, "eth_getLogs", "{}"),
+            TestRequestWithPool(pool, "eth_getLogs", filter),
             expectedCode,
             expectedMessage);
 
@@ -1394,14 +1416,20 @@ public class JsonRpcServiceTests
 
     private static IEnumerable<TestCaseData> ModuleRentalOverloadExceptions()
     {
-        yield return new TestCaseData(
-            new LimitExceededException("limit"),
-            ErrorCodes.LimitExceeded,
-            "Too many requests");
-        yield return new TestCaseData(
-            new ModuleRentalTimeoutException("timeout"),
-            ErrorCodes.ModuleTimeout,
-            "Timeout");
+        // An undecodable filter still gets the overload error: params are not decoded until a module is rented.
+        foreach (string filter in new[] { "{}", "0x1" })
+        {
+            yield return new TestCaseData(
+                new LimitExceededException("limit"),
+                ErrorCodes.LimitExceeded,
+                "Too many requests",
+                filter);
+            yield return new TestCaseData(
+                new ModuleRentalTimeoutException("timeout"),
+                ErrorCodes.ModuleTimeout,
+                "Timeout",
+                filter);
+        }
     }
 
     [Test]
