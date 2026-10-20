@@ -450,11 +450,14 @@ public static unsafe partial class IlEvm
                         stack.Add(Peek(op.Count));
                         break;
                     case IlKind.Swap:
-                        if (op.Count + 1 <= stack.Count)
-                            (stack[^1], stack[^(op.Count + 1)]) = (stack[^(op.Count + 1)], stack[^1]);
-                        else if (stack.Count > 0)
-                            stack[^1] = unknown;
+                    {
+                        int lower = op.Upper + op.Count;
+                        if (lower <= stack.Count)
+                            (stack[^op.Upper], stack[^lower]) = (stack[^lower], stack[^op.Upper]);
+                        else if (op.Upper <= stack.Count)
+                            stack[^op.Upper] = unknown;
                         break;
+                    }
                     case IlKind.Pop:
                         Pop();
                         break;
@@ -719,7 +722,7 @@ public static unsafe partial class IlEvm
                     }
                     case IlKind.Swap:
                     {
-                        Held a = At(h - 1), b = At(h - 1 - op.Count);
+                        Held a = At(h - op.Upper), b = At(h - op.Upper - op.Count);
                         if (a != Held.Memory && b != Held.Memory)
                         {
                             _il += 1;
@@ -733,8 +736,8 @@ public static unsafe partial class IlEvm
                             _il += 18;
                         }
 
-                        Set(h - 1, b);
-                        Set(h - 1 - op.Count, a);
+                        Set(h - op.Upper, b);
+                        Set(h - op.Upper - op.Count, a);
                         break;
                     }
                     case IlKind.Pop:
@@ -882,6 +885,16 @@ public static unsafe partial class IlEvm
                     instruction.U2 = System.Buffers.Binary.BinaryPrimitives.ReadUInt64BigEndian(word[8..]);
                     instruction.U1 = System.Buffers.Binary.BinaryPrimitives.ReadUInt64BigEndian(word[16..]);
                     instruction.U0 = System.Buffers.Binary.BinaryPrimitives.ReadUInt64BigEndian(word[24..]);
+                }
+                else if (op.Immediate != Eip8024Immediate.None)
+                {
+                    // A missing immediate reads as zero; a rejected one hands back, for the interpreter's BadInstruction.
+                    IlOp? resolved = IlEip8024Op(op, pc + 1 < code.Length ? code[pc + 1] : (byte)0);
+                    instruction.Op = resolved ?? op.Clone();
+                    if (resolved is null)
+                        instruction.Op.Kind = IlKind.Unsupported;
+                    else
+                        instruction.Size = 2;
                 }
 
                 instructions.Add(instruction);

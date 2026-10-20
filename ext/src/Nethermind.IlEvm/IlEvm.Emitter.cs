@@ -374,7 +374,7 @@ public static unsafe partial class IlEvm
                             break;
                         }
                         case IlKind.Swap when _vstack:
-                            SwapValues(delta - 1, delta - 1 - op.Count);
+                            SwapValues(delta - op.Upper, delta - op.Upper - op.Count);
                             break;
                         case IlKind.Dup:
                         {
@@ -393,8 +393,8 @@ public static unsafe partial class IlEvm
                         }
                         case IlKind.Swap:
                         {
-                            int a = delta - 1;
-                            int b = delta - 1 - op.Count;
+                            int a = delta - op.Upper;
+                            int b = a - op.Count;
                             VVal? va = Virtual(a);
                             VVal? vb = Virtual(b);
                             if (va is not null && vb is not null)

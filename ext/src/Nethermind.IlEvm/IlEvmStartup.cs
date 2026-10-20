@@ -437,8 +437,15 @@ public sealed class IlEvmStartupStep(
                     return;
             }
 
+            // Reserved once compiled: threads that each found room before compiling would otherwise all pass the cap.
+            if (Interlocked.Add(ref ilBytes, contract!.MemoryBytes) > MaxPrecompiledBytes)
+            {
+                Interlocked.Add(ref ilBytes, -contract.MemoryBytes);
+                Interlocked.Increment(ref skipped);
+                return;
+            }
+
             compiled[index] = contract;
-            Interlocked.Add(ref ilBytes, contract!.MemoryBytes);
             Interlocked.Add(ref codeBytes, codeLength);
         });
 

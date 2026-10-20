@@ -135,7 +135,11 @@ public static unsafe partial class IlEvm
 
         /// <summary>Legacy: whether the contract is of code a request brought, whose chunks' JITs the compile queue paces (<see cref="IlCompileQueue"/>).</summary>
         public bool FromRequest;
-        /// <summary>Whether <see cref="IlBytes"/> counts toward <see cref="IlEvmSettings.LiveIlBytes"/>; cleared once by release or collection.</summary>
+        private const int LiveNone = 0;
+        private const int LiveAll = 1;
+        private const int LiveTables = 2;
+
+        /// <summary>What of <see cref="MemoryBytes"/> counts toward <see cref="IlEvmSettings.LiveIlBytes"/>: none, all, or once released only <see cref="TableBytes"/>, held until collection.</summary>
         private int _live;
 
         private volatile bool _released;
@@ -146,24 +150,25 @@ public static unsafe partial class IlEvm
 
         public void MarkLive()
         {
-            if (Interlocked.Exchange(ref _live, 1) == 0)
+            if (Interlocked.CompareExchange(ref _live, LiveAll, LiveNone) == LiveNone)
                 IlEvmSettings.AddLiveIl(MemoryBytes);
         }
 
         /// <summary>Counts the contract's IL as alive only if it fits the live-IL cap once <paramref name="freed"/> bytes are let go of (<see cref="IlEvmSettings.TryReserveLiveIl"/>); true if counted already.</summary>
         public bool TryMarkLive(long freed = 0)
         {
-            if (Volatile.Read(ref _live) == 1)
+            if (Volatile.Read(ref _live) != LiveNone)
                 return true;
             if (!IlEvmSettings.TryReserveLiveIl(MemoryBytes, freed))
                 return false;
             // Marked meanwhile by another thread, which counted the bytes itself.
-            if (Interlocked.Exchange(ref _live, 1) == 1)
+            if (Interlocked.CompareExchange(ref _live, LiveAll, LiveNone) != LiveNone)
                 IlEvmSettings.AddLiveIl(-MemoryBytes);
             return true;
         }
 
         /// <summary>Drops the compiled code; its frames run on the interpreter from now on.</summary>
+        /// <remarks>The tables stay, as frames still in compiled code and the code states holding the contract read them: they count until collection.</remarks>
         public void Release()
         {
             lock (Prepared)
@@ -177,14 +182,20 @@ public static unsafe partial class IlEvm
                 }
             }
 
-            if (Interlocked.Exchange(ref _live, 0) == 1)
-                IlEvmSettings.AddLiveIl(-MemoryBytes);
+            if (Interlocked.CompareExchange(ref _live, LiveTables, LiveAll) == LiveAll)
+                IlEvmSettings.AddLiveIl(-IlBytes);
         }
 
         ~IlContract()
         {
-            if (Interlocked.Exchange(ref _live, 0) == 1)
-                IlEvmSettings.AddLiveIl(-MemoryBytes);
+            long counted = Interlocked.Exchange(ref _live, LiveNone) switch
+            {
+                LiveAll => MemoryBytes,
+                LiveTables => TableBytes,
+                _ => 0,
+            };
+            if (counted != 0)
+                IlEvmSettings.AddLiveIl(-counted);
         }
 
         /// <summary>Set on this thread when a run handed back because it reached a chunk not compiled yet, which the self-check does not time.</summary>

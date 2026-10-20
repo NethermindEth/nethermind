@@ -635,8 +635,10 @@ public static class IlEvmStats
 /// <remarks>
 /// A runner of its own, attached only for a measurement run, so the production runner carries no trace of the timing. A
 /// part the interpreter runs, alone or after a hand-back, is declined asking for its opcode count and timed until
-/// <see cref="OnInterpreted"/>. Initcode is never timed: it is never in the code database, so no list could ship it.
-/// Block processing runs compiled only the shipped contracts, so that two runs differ only by their lists.
+/// <see cref="OnInterpreted"/>. Initcode is declined first, as by the production runner: never counted, compiled or timed.
+/// A query's code is looked up as the production runner looks it up, and the trace runner takes the temperature gate's
+/// samples and verdicts as the production one does, so a run times the contracts production would run compiled. Block
+/// processing runs compiled only the shipped contracts, so that two runs differ only by their lists.
 /// </remarks>
 public sealed class IlEvmTimedFrameRunner : FrameCodeRunner<EthereumGasPolicy>
 {
@@ -677,11 +679,45 @@ public sealed class IlEvmTimedFrameRunner : FrameCodeRunner<EthereumGasPolicy>
     {
         long[] counts = IlSurfaceCounts.OfThisThread();
         int surface = (int)Surface;
-        counts[IlSurfaceCounts.Offered + surface]++;
+        // A temperature sample is due: only the trace runner's clock runs, while the gate is on.
+        bool sample = ++counts[IlSurfaceCounts.Offered + surface] >= counts[IlSurfaceCounts.SampleAt + surface] && StartSample(counts, surface);
         int before = vm.OpCodeCount;
         EvmExceptionType result = RunPart(vm, codeInfo, bodies, ref stack, ref gas, ref programCounter, ref opCodesSincePoll, flags);
-        if (vm.OpCodeCount != before)
+        int compiledOps = vm.OpCodeCount - before;
+        if (compiledOps != 0)
             counts[IlSurfaceCounts.Compiled + surface]++;
+        return sample ? EndSample(codeInfo, result, compiledOps) : result;
+    }
+
+    /// <summary>Sets this thread's next sample as the production trace runner does; false if the gate was turned off since its clock was set.</summary>
+    private bool StartSample(long[] counts, int surface)
+    {
+        if (!IlTemperature.On || Surface != IlEvmSurface.Trace)
+        {
+            counts[IlSurfaceCounts.SampleAt + surface] = long.MaxValue;
+            return false;
+        }
+
+        counts[IlSurfaceCounts.SampleAt + surface] = counts[IlSurfaceCounts.Offered + surface] + IlTemperature.NextGap();
+        IlTemperature.Roll();
+        return true;
+    }
+
+    /// <summary>Counts a sampled part toward its code's temperature: the opcodes compiled code ran now, the interpreter's once it reports them.</summary>
+    private static EvmExceptionType EndSample(CodeInfo codeInfo, EvmExceptionType result, int compiledOps)
+    {
+        if (CodeState(codeInfo) is not IlEvm.IlCodeState state)
+            return result;
+        if (result == Declined)
+        {
+            IlTemperature.Mark(codeInfo, state, compiledOps, hotness: false);
+            return DeclinedReportingOpcodes;
+        }
+
+        if (result == DeclinedReportingOpcodes)
+            IlTemperature.Mark(codeInfo, state, compiledOps, hotness: true);
+        else
+            IlTemperature.Add(state, compiledOps);
         return result;
     }
 
@@ -691,16 +727,15 @@ public sealed class IlEvmTimedFrameRunner : FrameCodeRunner<EthereumGasPolicy>
     {
         if (!IlEvmSettings.Enabled)
             return Declined;
+        if (vm.VmState.ExecutionType.IsAnyCreate())
+            return Declined;
 
-        bool create = vm.VmState.ExecutionType.IsAnyCreate();
         bool entry = programCounter == 0;
         IlEvm.IlContract? contract = null;
         bool count = false;
         if (IlEvmSettings.Profile)
         {
             // Nothing is compiled while profiling; the stats replace the profile's counters, and their dump logs its lines.
-            if (create)
-                return Declined;
         }
         else if (_block && !IlEvmSettings.BlockRuntimeCompile)
         {
@@ -708,22 +743,26 @@ public sealed class IlEvmTimedFrameRunner : FrameCodeRunner<EthereumGasPolicy>
         }
         else
         {
-            contract = IlEvm.Find(codeInfo, bodies, out _, out count);
+            bool gated = Surface == IlEvmSurface.Trace && IlTemperature.On;
+            contract = IlEvm.Find(codeInfo, bodies, out IlEvm.IlCodeState state, out count, query: _block ? null : vm, gated: gated);
+            // The temperature gate: a contract that is not hot in traces runs on the interpreter there.
+            if (contract is not null && gated)
+            {
+                bool hot = IlTemperature.IsHot(codeInfo, state);
+                IlSurfaceCounts.OfThisThread()[hot ? IlSurfaceCounts.HotDecisions : IlSurfaceCounts.ColdDecisions]++;
+                if (!hot)
+                    contract = null;
+            }
         }
 
         if (contract is null)
         {
-            if (create)
-                return count ? DeclinedReportingOpcodes : Declined;
             IlEvmStats.BeginInterpreted(codeInfo, entry, count);
             return DeclinedReportingOpcodes;
         }
 
         bool cancelable = (flags & FrameRunFlags.Cancelable) != 0;
         IlEvmSettings.SawFrame();
-        if (create)
-            return contract.Run(vm, ref stack, ref gas, ref programCounter, ref opCodesSincePoll, cancelable);
-
         int before = vm.OpCodeCount;
         long paused = IlEvmStats.PausedTicks();
         long start = Stopwatch.GetTimestamp();
@@ -745,16 +784,11 @@ public sealed class IlEvmTimedFrameRunner : FrameCodeRunner<EthereumGasPolicy>
     {
         // First, so the part's time ends as close to the interpreter as the runner gets.
         long end = Stopwatch.GetTimestamp();
-        if (IlEvmStats.TryEnd(codeInfo, opCodes, end, out bool forwardHotness))
-        {
-            // Only frames the lookup counted feed hotness, as with the production runner, where the others never report.
-            if (forwardHotness)
-                IlEvm.OnInterpreted(codeInfo, opCodes);
+        // A temperature sample's interpreted opcodes; a part declined only to be measured counts nowhere else.
+        if (IlTemperature.Finish(codeInfo, opCodes))
             return;
-        }
-
-        // Initcode the lookup counted, which reports for hotness alone.
-        if (IlEvmSettings.Enabled && !IlEvmSettings.Profile)
+        // Only frames the lookup counted feed hotness, as with the production runner, where the others never report.
+        if (IlEvmStats.TryEnd(codeInfo, opCodes, end, out bool forwardHotness) && forwardHotness)
             IlEvm.OnInterpreted(codeInfo, opCodes);
     }
 }

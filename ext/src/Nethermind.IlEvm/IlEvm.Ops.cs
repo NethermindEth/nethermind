@@ -53,6 +53,10 @@ public static unsafe partial class IlEvm
         public int StackInputs;
         public int StackGrowth;
         public int Count;
+        /// <summary>For a swap, the position from the top of the upper of its two slots: 1 but for EXCHANGE; the lower is <see cref="Count"/> below it.</summary>
+        public int Upper = 1;
+        /// <summary>For DUPN, SWAPN and EXCHANGE, whose depths each instruction's immediate gives (<see cref="IlEip8024Op"/>): which decoding.</summary>
+        public Eip8024Immediate Immediate;
         public bool UsesVm;
         /// <summary>Whether the opcode charges gas beyond <see cref="StaticGas"/>, which a segment cannot precompute.</summary>
         public bool Dynamic;
@@ -93,6 +97,34 @@ public static unsafe partial class IlEvm
         Shift,
     }
 
+
+    internal enum Eip8024Immediate : byte { None, Single, Pair }
+
+    /// <summary>
+    /// The op of a DUPN, SWAPN or EXCHANGE for <paramref name="immediate"/>, decoded as the core does (EIP-8024); null for an
+    /// immediate the core rejects, where the interpreter ends the frame with <c>BadInstruction</c>.
+    /// </summary>
+    internal static IlOp? IlEip8024Op(IlOp op, byte immediate)
+    {
+        IlOp resolved = op.Clone();
+        if (op.Immediate == Eip8024Immediate.Single)
+        {
+            if ((uint)(immediate - 0x5B) <= 0x24)
+                return null;
+            resolved.Count = (immediate + 145) & 0xFF;
+            resolved.StackInputs = op.Kind == IlKind.Dup ? resolved.Count : resolved.Count + 1;
+            return resolved;
+        }
+
+        if ((uint)(immediate - 0x52) <= 0x2D)
+            return null;
+        int k = immediate ^ 0x8F, q = k >> 4, r = k & 0x0F;
+        (int n, int m) = q < r ? (q + 2, r + 2) : (r + 2, 30 - q);
+        resolved.Upper = Math.Min(n, m);
+        resolved.Count = Math.Abs(m - n);
+        resolved.StackInputs = Math.Max(n, m);
+        return resolved;
+    }
 
     /// <summary>How the compiler runs each opcode of a fork, from what the core reports of its bodies; names are recognized only to pick a faster path.</summary>
     private static IlOp[] IlDescribeOps(OpcodeBodySet bodies)
@@ -170,6 +202,23 @@ public static unsafe partial class IlEvm
                     op.StaticGas = body.FixedGas;
                     op.Count = opcode - (int)Instruction.SWAP1 + 1;
                     op.StackInputs = op.Count + 1;
+                    continue;
+                // EIP-8024's bodies charge VeryLow before they decode their immediate, and report no fixed gas.
+                case Instruction.DUPN when IsBody("DupNOpcode"):
+                    op.Kind = IlKind.Dup;
+                    op.StaticGas = VeryLowGasCost.GasCost;
+                    op.StackGrowth = 1;
+                    op.Immediate = Eip8024Immediate.Single;
+                    continue;
+                case Instruction.SWAPN when IsBody("SwapNOpcode"):
+                    op.Kind = IlKind.Swap;
+                    op.StaticGas = VeryLowGasCost.GasCost;
+                    op.Immediate = Eip8024Immediate.Single;
+                    continue;
+                case Instruction.EXCHANGE when IsBody("ExchangeOpcode"):
+                    op.Kind = IlKind.Swap;
+                    op.StaticGas = VeryLowGasCost.GasCost;
+                    op.Immediate = Eip8024Immediate.Pair;
                     continue;
                 case Instruction.POP when IsBody("PopOpcode") && fixedGas:
                     op.Kind = IlKind.Pop;
