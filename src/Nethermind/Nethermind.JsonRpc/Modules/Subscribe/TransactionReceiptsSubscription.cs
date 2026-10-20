@@ -91,14 +91,8 @@ public class TransactionReceiptsSubscription : Subscription
         }
 
         BlockHeader header = e.BlockHeader;
-        Block? block = _blockTree.FindBlock(header.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded, header.Number);
-        if (block is null)
-        {
-            if (_logger.IsDebug) _logger.Debug($"TransactionReceipts subscription {Id}: block {header.ToString(BlockHeader.Format.FullHashAndNumber)} not found, its receipts are not published.");
-            return;
-        }
-
         IReleaseSpec spec = _specProvider.GetSpec(header);
+        Block? block = null;
         // Holds each receipt as a ReceiptForRpc, or as its SerializedJson when it is shared with other subscriptions.
         List<object> receipts = [];
         int cumulativeLogIndex = 0;
@@ -116,6 +110,14 @@ public class TransactionReceiptsSubscription : Subscription
                 // Not in filter, skip but still count logs
                 cumulativeLogIndex += receipt.Logs?.Length ?? 0;
                 continue;
+            }
+
+            // Looked up on the first match, as a filtered subscription matches nothing in most blocks.
+            block ??= _blockTree.FindBlock(header.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded, header.Number);
+            if (block is null)
+            {
+                if (_logger.IsDebug) _logger.Debug($"TransactionReceipts subscription {Id}: block {header.ToString(BlockHeader.Format.FullHashAndNumber)} not found, its receipts are not published.");
+                return;
             }
 
             if (!payloadsResolved)
