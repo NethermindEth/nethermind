@@ -311,14 +311,22 @@ public class RecoverSignaturesTest
             Has.Some.SameAs(container.Resolve<RecoverSignatures>()));
     }
 
-    /// <summary>Signed payloads are hashed out of the given encodings, and encodings misaligned with the transactions are ignored.</summary>
+    public enum Encodings { SignedTampered, Swapped, Short }
+
+    /// <summary>Signed payloads are hashed out of the given encodings, and encodings of other transactions are ignored.</summary>
     [Test]
-    public void Recovery_HashesSignedPayloadsOutOfAlignedEncodings([Values] bool background, [Values] bool aligned)
+    public void Recovery_HashesSignedPayloadsOutOfAlignedEncodings([Values] bool background, [Values] Encodings kind)
     {
-        // Legacy senders bypass the sender cache, and swapped encodings make their use show in the recovered addresses.
+        // Legacy senders bypass the sender cache. An encoding carrying the transaction's own signature over another
+        // payload makes its use show in the recovered addresses.
         Transaction[] txs = [Signed(TestItem.PrivateKeyA, nonce: 0), Signed(TestItem.PrivateKeyB, nonce: 1)];
-        byte[][] swapped = [Encode(txs[1]), Encode(txs[0])];
-        byte[][] encodings = aligned ? swapped : swapped[..1];
+        byte[][] encodings = kind switch
+        {
+            Encodings.SignedTampered => [EncodeWithNonce(txs[0], 7), EncodeWithNonce(txs[1], 7)],
+            Encodings.Swapped => [Encode(txs[1]), Encode(txs[0])],
+            _ => [Encode(txs[0])],
+        };
+        bool used = kind == Encodings.SignedTampered;
         IReleaseSpec spec = ReleaseSpecSubstitute.Create();
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);
@@ -336,12 +344,15 @@ public class RecoverSignaturesTest
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(txs[0].SenderAddress, aligned ? Is.Not.EqualTo(TestItem.PrivateKeyA.Address) : Is.EqualTo(TestItem.PrivateKeyA.Address));
-            Assert.That(txs[1].SenderAddress, aligned ? Is.Not.EqualTo(TestItem.PrivateKeyB.Address) : Is.EqualTo(TestItem.PrivateKeyB.Address));
+            Assert.That(txs[0].SenderAddress, used ? Is.Not.EqualTo(TestItem.PrivateKeyA.Address) : Is.EqualTo(TestItem.PrivateKeyA.Address));
+            Assert.That(txs[1].SenderAddress, used ? Is.Not.EqualTo(TestItem.PrivateKeyB.Address) : Is.EqualTo(TestItem.PrivateKeyB.Address));
         }
     }
 
     private static byte[] Encode(Transaction tx) => TxDecoder.Instance.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes;
+
+    private static byte[] EncodeWithNonce(Transaction tx, ulong nonce) =>
+        Encode(Build.A.Transaction.WithNonce(nonce).WithSignature(tx.Signature!).TestObject);
 
     private static Transaction Signed(PrivateKey signer, ulong nonce) =>
         Build.A.Transaction.WithNonce(nonce).SignedAndResolved(signer).WithSenderAddress(null).TestObject;
