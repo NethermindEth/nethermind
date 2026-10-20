@@ -1,0 +1,70 @@
+name: Master test failures
+
+# Pull requests run only the tests their change can affect (test-selection.yml), so a regression can reach
+# master. When a test workflow fails on master, this opens one issue for it, assigned to the author of the pull
+# request that most likely caused it (scripts/ci/master_failures.py). The issue closes when the workflow is
+# green on master again.
+on:
+  workflow_run:
+    workflows:
+      - Nethermind/Ethereum tests
+      - Nethermind extra test variants
+      - Nethermind tests (Trie DB)
+      - Nethermind tests (Single Proc)
+    types: [completed]
+    branches: [master]
+
+permissions:
+  actions: read
+  contents: read
+  issues: write
+
+concurrency:
+  group: master-failures-${{ github.event.workflow_run.workflow_id }}
+  cancel-in-progress: false
+
+jobs:
+  report:
+    name: Report master test failures
+    # A fork can name its branch master, so only pushes to this repository count.
+    if: >-
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_repository.full_name == github.repository &&
+      contains(fromJSON('["success", "failure"]'), github.event.workflow_run.conclusion)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+      STATE: ${{ github.workspace }}/state
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      # The journal tells failures that the environment explains from regressions; the model links projects
+      # to the failing tests. Without them every failure counts and only the dependency graph names a cause.
+      - name: Download the selection state
+        if: github.event.workflow_run.conclusion == 'failure'
+        run: |
+          mkdir -p "$STATE"
+          # A fork can name its branch master, but only the base repository can start scheduled or dispatched runs.
+          run=$(gh run list -R "$GITHUB_REPOSITORY" --workflow test-selection.yml --branch master \
+            --status success -L 20 --json databaseId,event \
+            -q '[.[] | select(.event == "schedule" or .event == "workflow_dispatch")][0].databaseId // empty')
+          if [ -n "$run" ]; then
+            gh run download "$run" -R "$GITHUB_REPOSITORY" -n test-selection-state -D "$STATE" || true
+            gh run download "$run" -R "$GITHUB_REPOSITORY" -n test-selection-model -D "$STATE" || true
+          fi
+
+      - name: Report
+        # bash runs with pipefail, so tee cannot hide a failed report.
+        shell: bash
+        env:
+          RUN_ID: ${{ github.event.workflow_run.id }}
+        run: |
+          python scripts/ci/master_failures.py --run "$RUN_ID" \
+            --journal "$STATE/journal.jsonl.gz" --model "$STATE/model.json.gz" | tee -a "$GITHUB_STEP_SUMMARY"

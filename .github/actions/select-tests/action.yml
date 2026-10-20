@@ -43,7 +43,10 @@ runs:
             git diff --name-only "$BASE_SHA" HEAD > "$work/changed.txt" || return 1
             model_run=$(gh run list -R "$GITHUB_REPOSITORY" --workflow test-selection.yml --branch master \
               --status success -L 20 --json databaseId,event -q "$TRUSTED_RUN") || return 1
-            gh run download "$model_run" -R "$GITHUB_REPOSITORY" -n test-selection-model -D "$work/model" || return 1
+            # Without a model run the selector reports that it has no model and keeps every test.
+            if [ -n "$model_run" ]; then
+              gh run download "$model_run" -R "$GITHUB_REPOSITORY" -n test-selection-model -D "$work/model" || return 1
+            fi
           fi
           python3 scripts/ci/select_tests.py select-projects --model "$work/model/model.json.gz" \
             --changed-files "$work/changed.txt" --run "$RUN_ID" --matrices scripts/ci/test-matrices.json \

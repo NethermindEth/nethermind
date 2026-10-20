@@ -401,6 +401,15 @@ class Projects:
             if directory.endswith(".Test") and (directory in changed or references & changed)
         }
 
+    def dependencies(self, directory: str) -> set[str]:
+        """Projects that the project references, directly or through other projects."""
+        found, pending = set(), [directory]
+        while pending:
+            for reference in self.references.get(pending.pop(), set()) - found:
+                found.add(reference)
+                pending.append(reference)
+        return found
+
     def _owners_of(self, name: str) -> set[str]:
         owners = set()
         path = name
@@ -726,18 +735,21 @@ def is_collectable(run: dict) -> bool:
 
 def read_run(github: GitHub, git: Git, run: dict) -> Entry | None:
     try:
-        failed = None
-        if run["conclusion"] == "failure":
-            jobs = [job for job in github.failed_jobs(run["id"]) if unit_of(job["name"])]
-            failed = classify(jobs, lambda job: github.text(f"repos/{github.repo}/actions/jobs/{job['id']}/logs"))
         return Entry(
             run=run["id"], at=datetime.fromisoformat(run["created_at"]), event=run["event"],
-            branch=run["head_branch"], files=git.changed_files(run), failed=failed,
+            branch=run["head_branch"], files=git.changed_files(run), failed=read_failures(github, run),
             selected=bool(SELECTION_ARTIFACTS & github.artifact_names(run["id"])),
         )
     except GitHubError as error:
         print(f"skipping run {run['id']}: {error}", file=sys.stderr)
         return None
+
+
+def read_failures(github: GitHub, run: dict) -> Failures | None:
+    if run["conclusion"] != "failure":
+        return None
+    jobs = [job for job in github.failed_jobs(run["id"]) if unit_of(job["name"])]
+    return classify(jobs, lambda job: github.text(f"repos/{github.repo}/actions/jobs/{job['id']}/logs"))
 
 
 def inventory(args: argparse.Namespace) -> None:

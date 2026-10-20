@@ -376,7 +376,10 @@ jobs:
           model_run=$(gh run list -R "$GITHUB_REPOSITORY" --workflow test-selection.yml --branch master \
             --status success -L 20 --json databaseId,event \
             -q '[.[] | select(.event == "schedule" or .event == "workflow_dispatch")][0].databaseId // empty')
-          gh run download "$model_run" -R "$GITHUB_REPOSITORY" -n test-selection-model -D "$work/model"
+          # Without a model run the selector reports that it has no model and keeps every test.
+          if [ -n "$model_run" ]; then
+            gh run download "$model_run" -R "$GITHUB_REPOSITORY" -n test-selection-model -D "$work/model"
+          fi
           python3 scripts/ci/select_tests.py select-eest --model "$work/model/model.json.gz" \
             --inventory "$work/model/inventory.json.gz" --changed-files "$work/changed.txt" --run "$GITHUB_RUN_ID" \
             --matrix "$work/matrix.json" --out-matrix "$work/selected.json" --filters "$work/filters" \
