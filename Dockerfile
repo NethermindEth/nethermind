@@ -13,6 +13,7 @@ ARG TARGETARCH
 WORKDIR /nethermind
 
 COPY global.json nuget.config Directory.Build.props Directory.Build.targets Directory.Packages.props ./
+COPY local-feed local-feed
 COPY --parents src/Nethermind/**/*.csproj src/Nethermind/Directory.Build.props src/Nethermind/Directory.Build.targets src/Nethermind/Nethermind.Runner/packages.lock.json ./
 RUN cd src/Nethermind/Nethermind.Runner && dotnet restore --locked-mode
 
