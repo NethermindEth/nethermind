@@ -42,7 +42,7 @@ public class InclusionListBlockProducerTxSourceFactoryTests
         dependency[31] = Eip8288Constants.LeanSphincsScheme;
         TxFrame[] frames = [FrameTxTestFrames.SelfVerify(FrameTxTestFrames.PrefixFrameGas),
             new(FrameMode.DepVerify, FrameFlags.None, null, Eip8288Constants.LeanSphincsVerificationGas, UInt256.Zero, dependency),
-            new(FrameMode.PostTx, FrameFlags.None, TestItem.AddressD, 10_000, UInt256.Zero, default)];
+            new(FrameMode.Assert, FrameFlags.None, TestItem.AddressD, 10_000, UInt256.Zero, default)];
         Transaction frame = new()
         {
             Type = TxType.FrameTx,
@@ -88,7 +88,7 @@ public class InclusionListBlockProducerTxSourceFactoryTests
             Assert.That(selected.Select(tx => tx.SenderAddress), Is.EqualTo([
                 TestItem.PrivateKeyB.Address, TestItem.PrivateKeyA.Address, TestItem.PrivateKeyC.Address]));
             Assert.That(selected[1].NonceKeys, Is.EqualTo((UInt256[])[0]));
-            Assert.That(selected[1].Frames![^1].Mode, Is.EqualTo(FrameMode.PostTx));
+            Assert.That(selected[1].Frames![^1].Mode, Is.EqualTo(FrameMode.Assert));
             Assert.That(store.Covers(selected[1]), Is.True);
             Assert.That(verifier.VerificationCalls, Is.EqualTo(1));
         }

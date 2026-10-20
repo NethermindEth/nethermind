@@ -238,7 +238,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
                 Transaction? transaction = entry.Full ?? (entry.Hash is null ? null : ResolvePending(entry.Hash));
                 if (transaction is null) return ProofWrapperAcceptance.LocalFailure(MempoolWrapperValidator.UnknownTransaction);
                 if (!Preflight(transaction, out string? frameError, admissionSpec))
-                    return frameError is FrameTxValidation.PostTxNotEnabled or FrameTxValidation.KeyedNoncesNotEnabled
+                    return frameError is FrameTxValidation.AssertFrameNotEnabled or FrameTxValidation.KeyedNoncesNotEnabled
                         or FrameTxValidation.LegacyNonceNotAllowed
                         ? ProofWrapperAcceptance.LocalFailure(frameError) : ProofWrapperAcceptance.Invalid(frameError!);
                 if (received[i].Hash is { } hash) resolved[hash.ValueHash256] = transaction;

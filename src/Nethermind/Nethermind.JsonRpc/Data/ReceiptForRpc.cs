@@ -8,9 +8,11 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm;
 using Nethermind.Int256;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.JsonRpc.Data
 {
+    [GenerateJsonWriter]
     public class ReceiptForRpc
     {
         public ReceiptForRpc()

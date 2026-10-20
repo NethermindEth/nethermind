@@ -153,13 +153,14 @@ public class InitializeNetwork : IStep
 
         _proofWrapperGossip?.Start();
 
-        await InitPeer().ContinueWith(initPeerTask =>
+        try
         {
-            if (initPeerTask.IsFaulted)
-            {
-                _logger.Error("Unable to init the peer manager.", initPeerTask.Exception);
-            }
-        });
+            await InitPeer();
+        }
+        catch (Exception e) when (e is not ListenerBindException)
+        {
+            _logger.Error("Unable to init the peer manager.", e);
+        }
 
         if (cancellationToken.IsCancellationRequested)
         {
@@ -179,13 +180,14 @@ public class InitializeNetwork : IStep
             return;
         }
 
-        await StartDiscovery().ContinueWith(initDiscoveryTask =>
+        try
         {
-            if (initDiscoveryTask.IsFaulted)
-            {
-                _logger.Error("Unable to start the discovery protocol.", initDiscoveryTask.Exception);
-            }
-        });
+            await StartDiscovery();
+        }
+        catch (Exception e) when (e is not ListenerBindException)
+        {
+            _logger.Error("Unable to start the discovery protocol.", e);
+        }
 
         try
         {
@@ -264,6 +266,7 @@ public class InitializeNetwork : IStep
         if (!_initConfig.PeerManagerEnabled)
         {
             if (_logger.IsWarn) _logger.Warn($"Skipping peer manager init due to {nameof(IInitConfig.PeerManagerEnabled)} set to false");
+            return;
         }
 
         if (_logger.IsDebug) _logger.Debug("Initializing peer manager");

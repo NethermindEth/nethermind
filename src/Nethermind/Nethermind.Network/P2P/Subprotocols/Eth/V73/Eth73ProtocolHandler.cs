@@ -119,6 +119,17 @@ public class Eth73ProtocolHandler(
     /// unavailable.</summary>
     protected override bool ServesDependencyBearingTransactions => true;
 
+    /// <summary>On <c>eth/73</c> pooled dependency-bearing transactions propagate through Transactions and
+    /// NewPooledTransactionHashes alongside their covering wrappers' announcements, under the existing fan-out.</summary>
+    protected override bool PropagatesDependencyBearingTransactions => true;
+
+    /// <summary>Retains a pushed dependency-bearing envelope for a covering wrapper; it is not admitted or relayed before
+    /// that wrapper is fully validated.</summary>
+    protected override void HandleDependencyBearingTransaction(Transaction tx)
+    {
+        if (Volatile.Read(ref _wrapperPeer) is { } peer) wrapperTransport.RetainEnvelope(peer, tx);
+    }
+
     /// <summary>Serves from the pool, then from the wrapper-envelope cache, which keeps every envelope a held wrapper lists
     /// after pool rejection or eviction.</summary>
     protected override bool TryGetPooledTransactionToServe(in ValueHash256 hash, [NotNullWhen(true)] out Transaction? tx)
@@ -143,6 +154,20 @@ public class Eth73ProtocolHandler(
     }
 
     void IWrapperLink.Penalize(string reason) => Disconnect(DisconnectReason.BreachOfProtocol, reason);
+
+    /// <summary>Counts an envelope pushed without a covering wrapper as an unaccepted transaction, lowering the peer's gossip
+    /// standing without disconnecting it.</summary>
+    void IWrapperLink.LowerScore(string reason)
+    {
+        if (Logger.IsDebug) Logger.Debug($"{Session} {reason}");
+        ReportUnacceptedTransaction(AcceptTxResult.MissingDependencyProof);
+    }
+
+    /// <summary>Checks a recovered envelope against the type and size this peer announced for it, taking the announcement as
+    /// a delivered PooledTransactions entry does.</summary>
+    bool IWrapperLink.MatchesAnnouncedShape(Transaction transaction) =>
+        transaction.Hash is not { } hash || !TryTakeTxShape(hash.ValueHash256, out (int Size, TxType Type) shape)
+        || transaction.Type == shape.Type && MatchesAnnouncedTransactionSize(transaction, shape.Size);
 
     protected override void OnDisposed()
     {

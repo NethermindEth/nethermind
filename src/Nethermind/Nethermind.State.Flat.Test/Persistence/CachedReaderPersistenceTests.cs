@@ -9,6 +9,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State.Flat.Persistence;
+using Nethermind.State.Flat.Persistence.TrieNodeLog;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -23,7 +24,7 @@ public class CachedReaderPersistenceTests
     public async Task Clear_ReaderLeasedDuringWipe_IsNotServedAfterIt()
     {
         StateId genesis = new(0, Keccak.Compute("genesis"));
-        RocksDbPersistence db = new(new SnapshotableMemColumnsDb<FlatDbColumns>(), LimboLogs.Instance);
+        RocksDbPersistence db = new(new SnapshotableMemColumnsDb<FlatDbColumns>(), LimboLogs.Instance, NullTrieNodeLog.Instance);
         using (db.CreateWriteBatch(StateId.PreGenesis, genesis, WriteFlags.None)) { }
 
         IPersistence inner = Substitute.For<IPersistence>();

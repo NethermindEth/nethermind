@@ -53,7 +53,7 @@ public class NativeFrameAssertionsTests
         Transaction transaction = NativeBlockProductionTests.CreateTransaction(chain);
         transaction.Frames = [.. transaction.Frames!,
             new(FrameMode.Sender, FrameFlags.None, Body, 100_000, GasCostOf.SSetState, UInt256.Zero, default),
-            new(FrameMode.PostTx, FrameFlags.None, Assertion, 100_000, UInt256.Zero, default)];
+            new(FrameMode.Assert, FrameFlags.None, Assertion, 100_000, UInt256.Zero, default)];
         transaction.GasLimit = FrameTxValidation.TotalGasLimit(transaction.Frames);
         FrameTxTestFrames.SignSecp256k1(transaction, TestItem.PrivateKeyB, TestItem.PrivateKeyB.Address);
         transaction.Hash = transaction.CalculateHash();
@@ -72,7 +72,7 @@ public class NativeFrameAssertionsTests
         using (chain.MainWorldState.BeginScope(block.Header))
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(block.Transactions, Has.Length.EqualTo(1), "a failing POST_TX assertion remains an included, paid transaction");
+            Assert.That(block.Transactions, Has.Length.EqualTo(1), "a failing ASSERT frame remains an included, paid transaction");
             Assert.That(receipt.StatusCode, Is.EqualTo(passes ? StatusCode.Success : StatusCode.Failure));
             Assert.That(receipt.FrameReceipts![^1].Status, Is.EqualTo(passes ? StatusCode.Success : StatusCode.Failure));
             chain.MainWorldState.Get(new StorageCell(Body, UInt256.Zero), out UInt256 stored);

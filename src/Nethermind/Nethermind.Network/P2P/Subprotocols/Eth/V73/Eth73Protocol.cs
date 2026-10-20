@@ -31,14 +31,18 @@ public static class Eth73Protocol
     /// <summary>EIP-8288 <c>MAX_WRAPPER_BYTES</c>, at most <see cref="SoftResponseLimit"/>.</summary>
     public const int MaxWrapperBytes = Eip8288Constants.MaxWrapperBytes;
 
-    /// <summary>This client's own cap on ProofWrappers message data, checked before decompression.</summary>
-    /// <remarks>EIP-8437 sets no hard response ceiling: a responder stops before the soft limit but always includes the first
-    /// wrapper, so a response holds one wrapper of up to <see cref="MaxWrapperBytes"/> plus its RLP framing.</remarks>
-    public const int LocalMaxResponseBytes = SoftResponseLimit + 1024;
+    /// <summary>The largest valid ProofWrappers message data, checked before decompression.</summary>
+    /// <remarks>EIP-8437: a responder stops adding wrappers once the response reaches the soft limit, so the last wrapper may
+    /// take it above the limit by at most one <see cref="MaxWrapperBytes"/> wrapper; the rest is RLP framing. Exceeding the
+    /// soft limit alone is not a violation.</remarks>
+    public const int LocalMaxResponseBytes = SoftResponseLimit + MaxWrapperBytes + 64;
 
-    /// <summary>The largest valid NewProofWrapperHashes, 64 entries at their widest, bounding message data before
-    /// decompression (EIP-8437).</summary>
-    public const int MaxNewProofWrapperHashesBytes = 2435;
+    /// <summary>Bytes reserved for one envelope-recovery PooledTransactions response, which keeps its <c>eth</c> soft limit.</summary>
+    public const int EnvelopeResponseReservation = SoftResponseLimit + 1024;
+
+    /// <summary>The largest valid NewProofWrapperHashes, 64 <c>[mode, length, hash]</c> entries at their widest, bounding
+    /// message data before decompression (EIP-8437 check_vectors.py).</summary>
+    public const int MaxNewProofWrapperHashesBytes = 2499;
 
     /// <summary>The largest valid GetProofWrappers, 64 hashes under the widest request ID, bounding message data before
     /// decompression (EIP-8437).</summary>
@@ -100,6 +104,19 @@ public static class WrapperTransportLimits
     public const int MaxValidationWorkers = MaxRequestsPerPeer;
     public const long MaxStoreBytes = 128L * 1024 * 1024;
     public const int MaxStoreObjects = 256;
+
+    /// <summary>Bytes of dependency-bearing envelopes retained ahead of a covering wrapper.</summary>
+    public const long MaxRetainedEnvelopeBytes = 16L * 1024 * 1024;
+
+    /// <summary>Dependency-bearing envelopes retained ahead of a covering wrapper.</summary>
+    public const int MaxRetainedEnvelopes = 4096;
+
+    /// <summary>Retained envelopes one peer's transaction messages may hold.</summary>
+    public const int MaxRetainedEnvelopesPerPeer = MaxRetainedEnvelopes / 4;
+
+    /// <summary>How long a pushed envelope waits for a covering wrapper on its connection; one that expires uncovered lowers
+    /// the sender's transaction-gossip score unless its announcements are unresolved or a local limit intervened.</summary>
+    public static readonly TimeSpan EnvelopeRetention = TimeSpan.FromSeconds(60);
     public const int MaxTombstones = 4096;
     public const int MaxKnownPerPeer = 4096;
     public static readonly TimeSpan SoftTombstone = TimeSpan.FromSeconds(60);

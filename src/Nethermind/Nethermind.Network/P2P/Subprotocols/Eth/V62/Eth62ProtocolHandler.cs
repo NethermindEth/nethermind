@@ -77,6 +77,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
         private protected void IgnorePooledTransactionResponse() => _floodController.ClearPooledTransactionRequests();
 
+        /// <summary>Counts an unaccepted transaction against this peer's gossip score, as a pool rejection would.</summary>
+        private protected void ReportUnacceptedTransaction(AcceptTxResult result) => _floodController.Report(result);
+
+        /// <summary>This peer's budget for failing frame transaction validation, or <see langword="null"/> when unlimited.</summary>
+        private protected virtual PeerValidationGasBudget? FrameValidationBudget => null;
+
         public static string Code => Protocol.Eth;
         public override byte ProtocolVersion => EthVersions.Eth62;
         public override string ProtocolCode => Protocol.Eth;
@@ -425,6 +431,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             return ValueTask.CompletedTask;
         }
 
+        /// <summary>Takes a dependency-bearing transaction received through a transaction message, before it is recycled.</summary>
+        /// <remarks>Below <c>eth/73</c> peers must not send these, and they are ignored.</remarks>
+        protected virtual void HandleDependencyBearingTransaction(Transaction tx) { }
+
         protected static void ReturnUnsubmittedTransactions(ReadOnlySpan<Transaction> transactions)
         {
             foreach (Transaction tx in transactions)
@@ -438,11 +448,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
         /// <remarks>The caller must not access the transaction after submission.</remarks>
         protected void PrepareAndSubmitTransaction(Transaction tx, bool isTrace)
         {
-            // EIP-8437: a dependency-bearing transaction is admitted only with a fully validated covering wrapper. It is never
-            // broadcast or announced, and eth/73 routes envelope-recovery responses to the wrapper transport before this point.
+            // EIP-8437: a dependency-bearing transaction is admitted only with a fully validated covering wrapper, so it never
+            // reaches the pool from a transaction message. eth/73 retains it for that wrapper; below eth/73 it is ignored.
             if (Eip8288Dependencies.IsDependencyBearing(tx))
             {
-                if (isTrace) Logger.Trace($"{Node:c} sent dependency-bearing {tx.Hash} outside a proof wrapper; ignored");
+                if (isTrace) Logger.Trace($"{Node:c} sent dependency-bearing {tx.Hash} outside a proof wrapper");
+                HandleDependencyBearingTransaction(tx);
                 ReturnUnsubmittedTransactions(new ReadOnlySpan<Transaction>(in tx));
                 return;
             }
@@ -451,6 +462,17 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             if (tx.Hash is not null)
             {
                 NotifiedTransactions.Set(tx.Hash.ValueHash256);
+            }
+
+            PeerValidationGasBudget? budget = tx.SupportsFrames ? FrameValidationBudget : null;
+            ulong validationGas = budget is null ? 0 : FrameTxValidation.ValidationWorkGas(tx);
+            if (budget is not null && !budget.TryReserve(validationGas))
+            {
+                // Out of budget: dropped unvalidated, and counted against the peer whose failing validations spent it.
+                _floodController.Report(AcceptTxResult.FramePeerValidationBudgetSpent);
+                if (isTrace) Log(tx, AcceptTxResult.FramePeerValidationBudgetSpent);
+                ReturnUnsubmittedTransactions(new ReadOnlySpan<Transaction>(in tx));
+                return;
             }
 
             // A blob tx hash does not cover the sidecar: if a copy with a bad sidecar was rejected first, judge this
@@ -462,9 +484,16 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             }
 
             bool canRecycle = false;
+            bool validationRan = false;
             AcceptTxResult accepted = _txPool is IRecyclableTxPool recyclablePool
-                ? recyclablePool.SubmitOwnedTx(tx, out canRecycle)
+                ? recyclablePool.SubmitOwnedTx(tx, out canRecycle, out validationRan)
                 : _txPool.SubmitTx(tx, TxHandlingOptions.None);
+            // Validation the pool ran for a transaction it then rejected stays charged, whichever filter rejected it,
+            // unless the pool deferred it for a bound of its own: that load is the node's, not this peer's.
+            bool charged = !accepted
+                && accepted != AcceptTxResult.FrameSimulationDeferred
+                && (validationRan || accepted == AcceptTxResult.FrameSimulationFailed);
+            if (budget is not null && !charged) budget.Refund(validationGas);
             _floodController.Report(accepted);
             if (isTrace) Log(tx, accepted);
             if (!accepted && canRecycle) ReturnUnsubmittedTransactions(new ReadOnlySpan<Transaction>(in tx));

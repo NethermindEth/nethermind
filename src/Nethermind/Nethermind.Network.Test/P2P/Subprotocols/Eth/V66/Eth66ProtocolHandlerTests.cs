@@ -718,6 +718,13 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
                 _transactionPool.Received(1).SubmitTx(Arg.Is<Transaction>(tx => tx.Hash == ordinary.Hash), Arg.Any<TxHandlingOptions>());
                 _transactionPool.DidNotReceive().SubmitTx(Arg.Is<Transaction>(tx => tx.Hash == dependent.Hash), Arg.Any<TxHandlingOptions>());
             }
+
+            // EIP-8437: below eth/73 they are neither broadcast nor announced.
+            _session.ClearReceivedCalls();
+            _handler.SendNewTransactions([dependent], sendFullTx: true);
+            _handler.SendNewTransactions([dependent], sendFullTx: false);
+            _session.DidNotReceive().DeliverMessage(Arg.Any<TransactionsMessage>());
+            _session.DidNotReceive().DeliverMessage(Arg.Any<NewPooledTransactionHashesMessage>());
         }
 
         [Test]

@@ -110,8 +110,8 @@ namespace Nethermind.TxPool
         {
             if (isPersistent)
             {
-                // EIP-8288 dependency-bearing transactions are never broadcast, and a persistent copy outside the pool would
-                // outlive the proof coverage their admission requires, such as at a verifier change.
+                // A persistent copy of an EIP-8288 dependency-bearing transaction outside the pool would outlive the proof
+                // coverage its admission requires, such as at a verifier change; it is relayed once instead.
                 return !Eip8288Dependencies.IsDependencyBearing(tx) && StartBroadcast(tx);
             }
 

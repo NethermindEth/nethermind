@@ -95,14 +95,14 @@ public class ProofWrapperServiceTests
         }
     }
 
-    [TestCase("post-tx")]
+    [TestCase("assert")]
     [TestCase("keyed")]
     [TestCase("scalar")]
     public async Task Frame_fork_mismatch_is_local_and_can_be_retried_without_a_negative_memo(string scenario)
     {
         OverridableReleaseSpec spec = new(Eip8288Prototype.Instance)
         {
-            IsEip7906Enabled = scenario != "post-tx",
+            IsEip7906Enabled = scenario != "assert",
             IsEip8250Enabled = scenario != "keyed"
         };
         FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, TestItem.KeccakA.ValueHash256, default);
@@ -114,8 +114,8 @@ public class ProofWrapperServiceTests
             ChainId = 1,
             SenderAddress = Address.Zero,
             NonceKeys = scenario == "scalar" ? null : [UInt256.Zero],
-            Frames = scenario == "post-tx"
-                ? [dependencyFrame, new(FrameMode.PostTx, FrameFlags.None, Address.Zero, 1000, UInt256.Zero, default)]
+            Frames = scenario == "assert"
+                ? [dependencyFrame, new(FrameMode.Assert, FrameFlags.None, Address.Zero, 1000, UInt256.Zero, default)]
                 : [dependencyFrame]
         };
         FakeLeanProofVerifier verifier = new(true);

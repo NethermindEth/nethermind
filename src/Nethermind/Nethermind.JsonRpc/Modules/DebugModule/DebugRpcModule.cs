@@ -96,12 +96,12 @@ public class DebugRpcModule(
             GethTraceOptions effective = options ?? GethTraceOptions.Default;
             return ResultWrapper<GethLikeTxTrace>.Success(BuildStreamingResult(
                 (writer, pipeWriter, token) =>
-                    debugBridge.GetTransactionTrace(transactionHash, token, effective, writer, pipeWriter)));
+                    debugBridge.GetTransactionTrace(blockHash, transactionHash, token, effective, writer, pipeWriter)));
         }
 
         using RentedTimeout timeout = jsonRpcConfig.RentTimeout();
         CancellationToken cancellationToken = timeout.Token;
-        GethLikeTxTrace? transactionTrace = debugBridge.GetTransactionTrace(transactionHash, cancellationToken, WithBufferedLimit(options));
+        GethLikeTxTrace? transactionTrace = debugBridge.GetTransactionTrace(blockHash, transactionHash, cancellationToken, WithBufferedLimit(options));
         if (transactionTrace is null)
         {
             return ResultWrapper<GethLikeTxTrace>.Fail("transaction not found", ErrorCodes.ResourceNotFound);
@@ -197,13 +197,14 @@ public class DebugRpcModule(
             error = ResultWrapper<GethLikeTxTrace>.Fail("no transaction in genesis", ErrorCodes.InvalidInput);
             return null;
         }
+        _ = TryGetHeaderAndCheckState(block.ParentHash!, out error);
+        if (error is not null) return null;
         if (txIndex >= (ulong)Math.Max(block.Transactions.Length, 1))
         {
             error = ResultWrapper<GethLikeTxTrace>.Fail($"transaction index {txIndex} out of range for block {block.Hash}", ErrorCodes.InvalidInput);
             return null;
         }
-        _ = TryGetHeaderAndCheckState(block.ParentHash!, out error);
-        return error is null ? block.Header : null;
+        return block.Header;
     }
 
     private bool CanStreamStructLogs(GethTraceOptions? options)
@@ -333,28 +334,23 @@ public class DebugRpcModule(
             return blockError;
         }
 
+        if (txIndex < 0 || txIndex >= block!.Transactions.Length)
+        {
+            return ResultWrapper<GethLikeTxTrace>.Fail($"Trace is null for RLP {blockRlp.ToHexString()} and transaction index {txIndex}", ErrorCodes.ResourceNotFound);
+        }
+
+        Hash256 targetTxHash = block.Transactions[txIndex].Hash!;
         if (CanStreamStructLogs(options))
         {
-            if (txIndex < 0 || txIndex >= block!.Transactions.Length)
-            {
-                return ResultWrapper<GethLikeTxTrace>.Fail($"Trace is null for RLP {blockRlp.ToHexString()} and transaction index {txIndex}", ErrorCodes.ResourceNotFound);
-            }
-
-            Hash256? targetTxHash = block.Transactions[txIndex].Hash;
             GethTraceOptions effective = options ?? GethTraceOptions.Default;
             return ResultWrapper<GethLikeTxTrace>.Success(BuildStreamingResult(
                 (writer, pipeWriter, token) =>
-                    debugBridge.GetTransactionTrace(block, targetTxHash!, token, effective, writer, pipeWriter)));
+                    debugBridge.GetTransactionTrace(block, targetTxHash, token, effective, writer, pipeWriter)));
         }
 
+        // Like the streaming path, stops after the target.
         using RentedTimeout timeout = jsonRpcConfig.RentTimeout();
-        CancellationToken cancellationToken = timeout.Token;
-        IReadOnlyCollection<GethLikeTxTrace>? blockTrace = debugBridge.GetBlockTrace(block, cancellationToken, WithBufferedLimit(options));
-
-        // Not disposing blockTrace: GethLikeTxTraceCollection.Dispose() disposes every item,
-        // including the one we return. The collection holds no pooled or unmanaged resource of
-        // its own, so abandoning it leaks nothing.
-        GethLikeTxTrace? transactionTrace = blockTrace is null ? null : SelectTraceDisposingTheRest(blockTrace, txIndex);
+        GethLikeTxTrace? transactionTrace = debugBridge.GetTransactionTrace(block, targetTxHash, timeout.Token, WithBufferedLimit(options));
 
         if (transactionTrace is null)
         {
@@ -362,24 +358,6 @@ public class DebugRpcModule(
         }
 
         return ResultWrapper<GethLikeTxTrace>.Success(transactionTrace);
-    }
-
-    private static GethLikeTxTrace? SelectTraceDisposingTheRest(IReadOnlyCollection<GethLikeTxTrace> blockTrace, int txIndex)
-    {
-        GethLikeTxTrace? selected = null;
-        int index = 0;
-        foreach (GethLikeTxTrace trace in blockTrace)
-        {
-            if (index++ == txIndex)
-            {
-                selected = trace;
-                continue;
-            }
-
-            trace.Dispose();
-        }
-
-        return selected;
     }
 
     public async Task<ResultWrapper<bool>> debug_migrateReceipts(ulong from, ulong to) =>
@@ -473,7 +451,7 @@ public class DebugRpcModule(
 
         if (CanStreamStructLogs(options))
         {
-            Block? resolvedBlock = blockFinder.FindBlock(blockNumber);
+            Block? resolvedBlock = blockFinder.FindBlock(header.Hash!, header.Number);
             if (resolvedBlock is null)
             {
                 return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail($"Block body not found for {blockNumber}", ErrorCodes.ResourceNotFound);
@@ -490,7 +468,7 @@ public class DebugRpcModule(
 
         try
         {
-            IReadOnlyCollection<GethLikeTxTrace>? blockTrace = debugBridge.GetBlockTrace(blockNumber, cancellationToken, WithBufferedLimit(options));
+            IReadOnlyCollection<GethLikeTxTrace>? blockTrace = debugBridge.GetBlockTrace(new BlockParameter(header.Hash!), cancellationToken, WithBufferedLimit(options));
 
             if (blockTrace is null)
                 return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail($"Trace is null for block {blockNumber}", ErrorCodes.ResourceNotFound);
@@ -626,12 +604,33 @@ public class DebugRpcModule(
 
     public ResultWrapper<RawReceiptsResult> debug_getRawReceipts(BlockParameter blockParameter)
     {
-        TxReceipt[]? receipts = debugBridge.GetReceiptsForBlock(blockParameter);
-        if (receipts is null)
+        Block? block;
+        if (blockParameter.BlockHash is { } blockHash)
         {
-            return ResultWrapper<RawReceiptsResult>.Fail($"Receipts are not found for block {blockParameter}", ErrorCodes.ResourceNotFound);
+            // As in geth, a hash is read as given, ignoring requireCanonical, and a block that is not stored has no receipts.
+            block = blockFinder.FindBlock(blockHash, BlockTreeLookupOptions.None);
+
+            // Deliberately unlike geth, which returns [] here: pruned history is reported rather than shown as an empty block.
+            if (block is null && blockFinder.IsBlockPruned(blockParameter))
+            {
+                return ResultWrapper<RawReceiptsResult>.Fail($"{ErrorMessages.PrunedHistoryUnavailable} for block {blockParameter}", ErrorCodes.PrunedHistoryUnavailable);
+            }
+        }
+        else
+        {
+            SearchResult<Block> searchResult = blockFinder.SearchForBlock(blockParameter);
+            if (searchResult.IsError)
+            {
+                // Unknown block numbers yield null; pruned history and unknown safe/finalized blocks keep their error.
+                return searchResult.Error == BlockFinderExtensions.HeaderNotFound
+                    ? ResultWrapper<RawReceiptsResult>.Success(null)
+                    : ResultWrapper<RawReceiptsResult>.Fail(searchResult);
+            }
+
+            block = searchResult.Object;
         }
 
+        TxReceipt[] receipts = block is null ? [] : debugBridge.GetReceiptsForBlock(block);
         if (receipts.Length == 0)
         {
             return ResultWrapper<RawReceiptsResult>.Success(new RawReceiptsResult(ArrayPoolList<ArrayPoolList<byte>>.Empty()));
@@ -839,7 +838,7 @@ public class DebugRpcModule(
 
         return bundles.Any(b => b.BlockOverride is not null || b.StateOverrides is not null)
             ? TraceCallManyWithOverrides(bundles, options, header)
-            : TraceCallMany(bundles, blockParameter, options, header);
+            : TraceCallMany(bundles, new BlockParameter(header.Hash!), options, header);
     }
 
     private ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> TraceCallMany(TransactionBundle[] bundles, BlockParameter blockParameter, GethTraceOptions? options, BlockHeader header)
@@ -947,8 +946,6 @@ public class DebugRpcModule(
             lastBlockTime = time;
         }
 
-        BlockParameter concreteBlockParameter = new(header.Number);
-
         ResultWrapper<IReadOnlyList<SimulateBlockResult<GethLikeTxTrace>>> simulationResult =
             new SimulateTxExecutor<GethLikeTxTrace>(
                 blockchainBridge,
@@ -961,7 +958,7 @@ public class DebugRpcModule(
                 readLoneBlobFeeCapAsAbsent: false,
                 // A bundle call runs as eth_call does: the block gas limit does not bound it, which FillOmittedGas relies on.
                 callSemantics: true
-            ).Execute(simulatePayload, concreteBlockParameter);
+            ).Execute(simulatePayload, null, searchResult: new(header));
 
         if (simulationResult.ErrorCode != 0)
         {

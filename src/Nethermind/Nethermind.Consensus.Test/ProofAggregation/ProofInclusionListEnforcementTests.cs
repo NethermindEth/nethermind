@@ -97,7 +97,7 @@ public class ProofInclusionListEnforcementTests
         TxFrame[] frames = [FrameTxTestFrames.SelfVerify(FrameTxTestFrames.PrefixFrameGas),
             new(FrameMode.DepVerify, FrameFlags.None, null, coveredAndNew ? Eip8288Constants.LeanStarkVerificationGas + Eip8288Constants.LeanSphincsVerificationGas
                 : generic ? Eip8288Constants.LeanStarkVerificationGas : Eip8288Constants.LeanSphincsVerificationGas, UInt256.Zero, dependency)];
-        if (mixed) frames = [.. frames, new(FrameMode.PostTx, FrameFlags.None, TestItem.AddressD, 10_000, UInt256.Zero, default)];
+        if (mixed) frames = [.. frames, new(FrameMode.Assert, FrameFlags.None, TestItem.AddressD, 10_000, UInt256.Zero, default)];
         Transaction transaction = new()
         {
             Type = TxType.FrameTx,

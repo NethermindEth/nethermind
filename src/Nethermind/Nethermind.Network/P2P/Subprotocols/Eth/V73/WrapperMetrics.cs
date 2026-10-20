@@ -20,7 +20,10 @@ internal enum WrapperEvent
     UpgradeDropped,
     GraceRefused,
     EnvelopeRequested,
-    EnvelopeRecovered
+    EnvelopeRecovered,
+    EnvelopeRetained,
+    EnvelopeUncovered,
+    AnnouncementSuppressed
 }
 
 internal static class WrapperMetrics
@@ -29,7 +32,7 @@ internal static class WrapperMetrics
     [
         "announced", "announcement_received", "requested", "received", "validated", "invalid", "local_failure",
         "expired", "published", "served", "request_expired", "violation", "upgrade_dropped", "grace_refused",
-        "envelope_requested", "envelope_recovered"
+        "envelope_requested", "envelope_recovered", "envelope_retained", "envelope_uncovered", "announcement_suppressed"
     ];
 
     public static void Record(WrapperEvent wrapperEvent, long count = 1) =>

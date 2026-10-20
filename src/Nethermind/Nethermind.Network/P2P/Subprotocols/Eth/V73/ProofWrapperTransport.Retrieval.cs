@@ -35,28 +35,38 @@ public sealed partial class ProofWrapperTransport
         Outbox outbox = new();
         lock (_gate)
         {
-            // Announcements beyond the rate limit are ignored, not penalized.
-            if (peer.Closed || !peer.AnnouncementsIn.TryTake(1)) return;
+            if (peer.Closed) return;
             long now = _clock.GetTimestamp();
+            // Announcements beyond the rate limit are ignored, not penalized.
+            if (!peer.AnnouncementsIn.TryTake(1))
+            {
+                peer.ScoreExemptAt = now;
+                return;
+            }
             foreach (WrapperAnnouncement announcement in message.Announcements)
             {
                 WrapperMetrics.Record(WrapperEvent.AnnouncementReceived);
                 ValueHash256 wrapperHash = announcement.Hash;
                 peer.Known.Add(wrapperHash);
+                peer.Exchanged.Add(wrapperHash);
                 if (!enabled || _store.Contains(wrapperHash)
                     || _tombstones.Contains(wrapperHash, now)) continue;
                 if (_fetches.TryGetValue(wrapperHash, out WrapperFetch? existing))
                 {
-                    existing.AddSource(peer, announcement.Length);
+                    existing.AddSource(peer, announcement.Mode, announcement.Length);
                     continue;
                 }
                 // The pending cache is bounded, and each peer holds at most a share of it, so one peer announcing wrappers it
                 // never serves cannot crowd out the others. Announcements are not repeated, so excess ones are lost.
                 if (_fetches.Count >= WrapperTransportLimits.MaxPendingAnnouncements
-                    || peer.PendingFetches >= WrapperTransportLimits.MaxPendingAnnouncementsPerPeer) continue;
+                    || peer.PendingFetches >= WrapperTransportLimits.MaxPendingAnnouncementsPerPeer)
+                {
+                    peer.ScoreExemptAt = now;
+                    continue;
+                }
                 WrapperFetch fetch = new(announcement, now) { Announcer = peer };
                 peer.PendingFetches++;
-                fetch.AddSource(peer, announcement.Length);
+                fetch.AddSource(peer, announcement.Mode, announcement.Length);
                 _fetches.Add(wrapperHash, fetch);
             }
             Schedule(outbox);
@@ -83,7 +93,11 @@ public sealed partial class ProofWrapperTransport
                 queued.Add(fetch);
             }
         }
-        foreach (WrapperFetch fetch in exhausted ?? []) Remove(fetch, "every source tried");
+        foreach (WrapperFetch fetch in exhausted ?? [])
+        {
+            MarkUnresolved(fetch, now);
+            Remove(fetch, "every source tried");
+        }
         if (bySource is null) return;
         int count = _peers.Count;
         int first = _nextPeer % count;
@@ -110,9 +124,14 @@ public sealed partial class ProofWrapperTransport
             batch.Add(fetch);
             bytes += length;
         }
-        // A response stops before the soft limit after its first wrapper, so the local response cap bounds the reservation.
+        // Requests are batched within the soft limit, so a response carries at most the requested bytes.
         long reserved = Math.Min(bytes, Eth73Protocol.LocalMaxResponseBytes);
-        if (batch.Count == 0 || peer.LastIssued == long.MaxValue || !TryCharge(peer, reserved)) return false;
+        if (batch.Count == 0 || peer.LastIssued == long.MaxValue) return false;
+        if (!TryCharge(peer, reserved))
+        {
+            peer.ScoreExemptAt = now;
+            return false;
+        }
         ValueHash256[] ids = new ValueHash256[batch.Count];
         for (int i = 0; i < ids.Length; i++)
         {
@@ -129,14 +148,16 @@ public sealed partial class ProofWrapperTransport
         return true;
     }
 
-    /// <summary>Matches returned wrappers, in order, to distinct requested announcements, then queues them for validation.</summary>
+    /// <summary>Matches returned wrappers, in order, to distinct requested hashes and the responding peer's announced modes and
+    /// lengths, then queues them for validation.</summary>
     /// <remarks>Requested wrappers skipped before the last one returned were unavailable from this peer; those after it were cut
     /// by the soft limit and are requested again from the same peer.</remarks>
     internal void OnProofWrappers(WrapperPeer peer, ProofWrappersMessage message)
     {
         // Hash outside the lock: a response carries up to 2 MiB.
-        (int Length, ValueHash256 Hash)[] identities = new (int, ValueHash256)[message.Wrappers.Length];
-        for (int i = 0; i < identities.Length; i++) identities[i] = (message.Wrappers[i].Length, ValueKeccak.Compute(message.Wrappers[i]));
+        (int Mode, int Length, ValueHash256 Hash)[] identities = new (int, int, ValueHash256)[message.Wrappers.Length];
+        for (int i = 0; i < identities.Length; i++)
+            identities[i] = (WrapperBodies.TryReadMode(message.Wrappers[i]), message.Wrappers[i].Length, ValueKeccak.Compute(message.Wrappers[i]));
         Outbox outbox = new();
         lock (_gate)
         {
@@ -154,6 +175,7 @@ public sealed partial class ProofWrapperTransport
             for (int i = 0; i < identities.Length; i++)
             {
                 while (cursor < fetches.Length && (fetches[cursor].LengthFrom(peer) != identities[i].Length
+                    || fetches[cursor].ModeFrom(peer) != identities[i].Mode
                     || fetches[cursor].Announcement.Hash != identities[i].Hash)) cursor++;
                 if (cursor == fetches.Length)
                 {
@@ -173,13 +195,20 @@ public sealed partial class ProofWrapperTransport
                 fetch.Requested = false;
                 if (next < matched.Length && matched[next] == position)
                 {
+                    int mode = identities[next].Mode;
                     byte[] wrapper = message.Wrappers[next++];
                     peer.Known.Add(fetch.Announcement.Hash);
-                    if (fetch.Removed || fetch.Wrapper is not null || !TryCharge(peer, wrapper.Length)) continue;
+                    peer.Exchanged.Add(fetch.Announcement.Hash);
+                    if (fetch.Removed || fetch.Wrapper is not null) continue;
+                    if (!TryCharge(peer, wrapper.Length))
+                    {
+                        peer.ScoreExemptAt = _clock.GetTimestamp();
+                        continue;
+                    }
                     fetch.Wrapper = wrapper;
                     fetch.ChargedBytes = wrapper.Length;
                     fetch.Server = peer;
-                    fetch.AddSource(peer, wrapper.Length);
+                    fetch.AddSource(peer, mode, wrapper.Length);
                     Enqueue(fetch);
                 }
                 // A wrapper after the last returned one was cut by the soft limit: ask the same peer again.
@@ -205,10 +234,20 @@ public sealed partial class ProofWrapperTransport
         foreach (WrapperFetch fetch in expired ?? [])
         {
             WrapperMetrics.Record(WrapperEvent.Expired);
+            MarkUnresolved(fetch, now);
             // Validation releases its own fetch once its cancelled work unwinds.
             if (fetch.Processing is { } processing) outbox.Cancel(processing);
             else Remove(fetch, "deadline");
         }
+    }
+
+    /// <summary>An announcement that ends without a validated wrapper establishes no absence of coverage: envelopes its
+    /// sources pushed so far lower no score.</summary>
+    private static void MarkUnresolved(WrapperFetch fetch, long now)
+    {
+        foreach (WrapperPeer source in fetch.Sources) source.ScoreExemptAt = now;
+        foreach (WrapperPeer source in fetch.Tried) source.ScoreExemptAt = now;
+        if (fetch.Announcer is { } announcer) announcer.ScoreExemptAt = now;
     }
 
     private void Remove(WrapperFetch fetch, string reason)
@@ -285,10 +324,12 @@ public sealed partial class ProofWrapperTransport
         }
         catch (OperationCanceledException) when (processing.IsCancellationRequested)
         {
+            lock (_gate) MarkUnresolved(fetch, _clock.GetTimestamp());
             if (_logger.IsDebug) _logger.Debug($"eth/73 recovery deadline passed for {fetch.Announcement}");
         }
         catch (Exception exception)
         {
+            lock (_gate) MarkUnresolved(fetch, _clock.GetTimestamp());
             if (_logger.IsWarn) _logger.Warn($"eth/73 validation of {fetch.Announcement} failed: {exception.Message}");
         }
         finally
@@ -322,7 +363,8 @@ public sealed partial class ProofWrapperTransport
         {
             if (_txPool.TryGetPendingTransaction(hashes[i], out _)) continue;
             byte[]? retained = null;
-            lock (_gate) if (_store.TryGetEnvelope(hashes[i], out byte[] envelope)) retained = envelope;
+            // Envelopes pushed ahead of the wrapper through transaction messages stand in for GetPooledTransactions.
+            lock (_gate) if (_store.TryGetEnvelope(hashes[i], out byte[] envelope) || _retained.TryGet(hashes[i], out envelope)) retained = envelope;
             if (retained is not null && TryDecode(retained, hashes[i]) is { } transaction) recovered[hashes[i]] = transaction;
             else missing.Add(i);
         }
@@ -369,6 +411,9 @@ public sealed partial class ProofWrapperTransport
 
     private void Conclude(WrapperFetch fetch, Verdict verdict, string? error)
     {
+        // An announcement left unresolved, or refused under local limits, establishes no absence of coverage.
+        if (verdict is Verdict.Refused or Verdict.LocalFailure or Verdict.Unresolved)
+            lock (_gate) MarkUnresolved(fetch, _clock.GetTimestamp());
         switch (verdict)
         {
             case Verdict.Valid:
@@ -504,9 +549,9 @@ public sealed partial class ProofWrapperTransport
             lock (_gate)
             {
                 if (source.Closed || _disposed) return null;
-                if (source.CanRequest && source.LastIssued != long.MaxValue && TryCharge(source, Eth73Protocol.LocalMaxResponseBytes))
+                if (source.CanRequest && source.LastIssued != long.MaxValue && TryCharge(source, Eth73Protocol.EnvelopeResponseReservation))
                 {
-                    request = new(++source.LastIssued, _clock.GetTimestamp(), Eth73Protocol.LocalMaxResponseBytes, hashes);
+                    request = new(++source.LastIssued, _clock.GetTimestamp(), Eth73Protocol.EnvelopeResponseReservation, hashes);
                     source.Requests.Add(request.Id, request);
                     ArrayPoolList<ValueHash256> wire = new(hashes.Length);
                     wire.AddRange(hashes);
@@ -531,6 +576,7 @@ public sealed partial class ProofWrapperTransport
         {
             accepted = !fetch.Removed && fetch.Server is { } server && TryCharge(server, bytes);
             if (accepted) fetch.ChargedBytes += bytes;
+            else if (fetch.Server is { } refused) refused.ScoreExemptAt = _clock.GetTimestamp();
         }
         if (!accepted) return false;
         foreach (Transaction transaction in transactions) recovered[transaction.Hash!.ValueHash256] = transaction;
@@ -565,6 +611,10 @@ public sealed partial class ProofWrapperTransport
             }
             else transactions = null;
         }
+        // EIP-5793: a returned envelope must agree with any type and size the responding peer announced for it.
+        bool shapes = true;
+        for (int i = 0; transactions is not null && i < transactions.Length && shapes; i++)
+            shapes = peer.Link.MatchesAnnouncedShape(transactions[i]);
         Outbox outbox = new();
         EnvelopesRequest? request;
         bool matches = false;
@@ -576,9 +626,10 @@ public sealed partial class ProofWrapperTransport
             if (request is not null)
             {
                 Release(peer, request.Reserved);
-                matches = transactions is not null && MatchesInOrder(hashes, request.Hashes);
+                matches = transactions is not null && MatchesInOrder(hashes, request.Hashes) && shapes;
                 if (!matches)
                     Violation(peer, transactions is null ? "PooledTransactions carries a malformed transaction"
+                        : !shapes ? "PooledTransactions disagrees with the announced transaction type or size"
                         : "PooledTransactions repeats, reorders or adds envelopes", outbox);
             }
             Schedule(outbox);

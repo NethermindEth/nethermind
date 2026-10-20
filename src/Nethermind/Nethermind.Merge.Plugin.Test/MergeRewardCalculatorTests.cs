@@ -137,6 +137,23 @@ namespace Nethermind.Merge.Plugin.Test
             Assert.That(rewards.Length, Is.EqualTo(0));
         }
 
+        [Test]
+        public void May_reward_only_before_the_merge()
+        {
+            Block preMerge = Build.A.Block.WithNumber(2).WithTotalDifficulty(1L).WithDifficulty(300).TestObject;
+            Block postMerge = Build.A.Block.WithNumber(3).WithTotalDifficulty(3L).WithDifficulty(0).TestObject;
+
+            PoSSwitcher poSSwitcher = CreatePosSwitcher();
+            poSSwitcher.TryUpdateTerminalBlock(preMerge.Header);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(new MergeRewardCalculator(new RewardCalculator(MainnetSpecProvider.Instance), poSSwitcher).MayReward(preMerge.Header), Is.True);
+                Assert.That(new MergeRewardCalculator(new RewardCalculator(MainnetSpecProvider.Instance), poSSwitcher).MayReward(postMerge.Header), Is.False);
+                Assert.That(new MergeRewardCalculator(NoBlockRewards.Instance, poSSwitcher).MayReward(preMerge.Header), Is.False);
+            }
+        }
+
         private static void AssertRewards(BlockReward[] rewards, long minerReward, params long[] uncleRewards)
         {
             using (Assert.EnterMultipleScope())

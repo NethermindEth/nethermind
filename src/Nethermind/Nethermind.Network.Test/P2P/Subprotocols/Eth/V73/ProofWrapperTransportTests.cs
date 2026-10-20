@@ -147,8 +147,8 @@ public class ProofWrapperTransportTests
         WrapperPeer liarPeer = node.Connect(liar), honestPeer = node.Connect(honest);
         byte[] wrapper = Wrapper(64, FrameTransaction(1));
         WrapperAnnouncement truth = Describe(wrapper);
-        WrapperAnnouncement lie = WrapperAnnouncement.Decode(Eth73Rlp.EncodeList(Eth73Rlp.EncodeUInt((ulong)wrapper.Length + 1),
-            Eth73Rlp.EncodeBytes(truth.Hash.Bytes)));
+        WrapperAnnouncement lie = WrapperAnnouncement.Decode(Eth73Rlp.EncodeList(Eth73Rlp.EncodeUInt((ulong)truth.Mode),
+            Eth73Rlp.EncodeUInt((ulong)wrapper.Length + 1), Eth73Rlp.EncodeBytes(truth.Hash.Bytes)));
         node.Transport.OnAnnounce(liarPeer, new([lie]));
         node.Transport.OnAnnounce(honestPeer, new([truth]));
         node.Transport.OnProofWrappers(liarPeer, new(liar.Sent<GetProofWrappersMessage>().Single().RequestId, []));
@@ -171,7 +171,8 @@ public class ProofWrapperTransportTests
         for (int message = 0; message < 6; message++)
         {
             WrapperAnnouncement[] batch = [.. Enumerable.Range(0, Eth73Protocol.MaxAnnouncements)
-                .Select(_ => WrapperAnnouncement.Decode(Eth73Rlp.EncodeList(Eth73Rlp.EncodeUInt(64), Eth73Rlp.EncodeBytes(Keccak.Compute($"silent:{announced++}").Bytes))))
+                .Select(_ => WrapperAnnouncement.Decode(Eth73Rlp.EncodeList(Eth73Rlp.EncodeUInt(1), Eth73Rlp.EncodeUInt(64),
+                    Eth73Rlp.EncodeBytes(Keccak.Compute($"silent:{announced++}").Bytes))))
                 .OrderBy(a => a.Hash)];
             node.Transport.OnAnnounce(silentPeer, new(batch));
             node.Tick(TimeSpan.FromSeconds(1));
@@ -204,26 +205,34 @@ public class ProofWrapperTransportTests
         }
     }
 
+    // EIP-8437 18a4d088: a responder adds no wrapper once the response reaches the soft limit, so the last one added may
+    // take it past the limit; check_vectors.py packs three of four 1 MB wrappers.
     [Test]
-    public void Responder_returns_held_wrappers_in_request_order_and_always_the_first()
+    public void Responder_returns_held_wrappers_in_request_order_until_the_soft_limit_is_reached()
     {
-        Transaction a = FrameTransaction(1), b = FrameTransaction(2);
-        byte[] first = Wrapper(Eip8288Constants.MaxAggregateProofBytes, a), second = Wrapper(Eip8288Constants.MaxAggregateProofBytes - 1, b);
+        Transaction a = FrameTransaction(1), b = FrameTransaction(2), c = FrameTransaction(3);
+        byte[] first = Wrapper(Eip8288Constants.MaxAggregateProofBytes, a), second = Wrapper(Eip8288Constants.MaxAggregateProofBytes - 1, b),
+            third = Wrapper(Eip8288Constants.MaxAggregateProofBytes - 2, c);
         using WrapperTestNode node = Holder(first, a);
-        node.Pending.Add(b);
+        node.Pending.AddRange([b, c]);
         Assert.That(node.Transport.PublishWrapper(second), Is.True);
+        Assert.That(node.Transport.PublishWrapper(third), Is.True);
         FakeWrapperLink link = new();
         WrapperPeer peer = node.Connect(link);
+        node.Tick(TimeSpan.FromSeconds(1));
         ValueHash256 unknown = TestItem.KeccakA.ValueHash256;
-        node.Transport.OnGetProofWrappers(peer, new(7, [unknown, Describe(second).Hash, Describe(first).Hash]));
+        node.Transport.OnGetProofWrappers(peer, new(7, [unknown, Describe(second).Hash, Describe(first).Hash, Describe(third).Hash]));
         node.Transport.OnGetProofWrappers(peer, new(8, [unknown]));
         ProofWrappersMessage[] responses = link.Sent<ProofWrappersMessage>();
+        int length = new ProofWrappersMessageSerializer().Encode(responses[0]).Length;
         using (Assert.EnterMultipleScope())
         {
             Assert.That(responses[0].RequestId, Is.EqualTo(7));
-            Assert.That(responses[0].Wrappers, Is.EqualTo(new[] { second }), "unknown IDs are skipped and the next one would pass the soft limit");
+            Assert.That(responses[0].Wrappers, Is.EqualTo(new[] { second, first }),
+                "unknown IDs are skipped, the second wrapper overshoots the soft limit and the third is not added");
             Assert.That(responses[1].Wrappers, Is.Empty);
-            Assert.That(new ProofWrappersMessageSerializer().Encode(responses[0]).Length, Is.LessThanOrEqualTo(Eth73Protocol.SoftResponseLimit));
+            Assert.That(length, Is.GreaterThan(Eth73Protocol.SoftResponseLimit).And.LessThanOrEqualTo(Eth73Protocol.LocalMaxResponseBytes));
+            Assert.That(Eth73Protocol.ExceedsMessageLimit(Eth73MessageCode.ProofWrappers, length), Is.False, "overshooting the soft limit is valid");
         }
     }
 
@@ -481,6 +490,10 @@ public class ProofWrapperTransportTests
             Assert.That(link.Sent<ProofWrappersMessage>().Single().Wrappers, Is.EqualTo(new[] { mode0 }), "the dropped wrapper is not served");
             Assert.That(late.Sent<NewProofWrapperHashesMessage>().Single().Announcements.Select(d => d.Hash),
                 Is.EqualTo(new[] { Describe(mode0).Hash }), "nor announced");
+            // EIP-8437 18a4d088: suppression records reset at the verifier change, so the revalidated wrapper is announced
+            // again on the same connection.
+            Assert.That(link.Sent<NewProofWrapperHashesMessage>()[^1].Announcements.Select(d => d.Hash),
+                Is.EqualTo(new[] { Describe(mode0).Hash }));
             Assert.That(node.Transport.PublishWrapper(mode1), Is.True, "re-validated under the new verifier, it is offered again");
         }
     }
