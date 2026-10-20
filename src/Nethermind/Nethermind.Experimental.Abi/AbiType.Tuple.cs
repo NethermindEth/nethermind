@@ -54,7 +54,7 @@ public static partial class AbiType
     // TODO: Investigate if we can generalize this code to avoid duplication when dealing with tuples of different sizes
     public static Abi<(T1, T2)> Tuple<T1, T2>(Abi<T1> abi1, Abi<T2> abi2)
     {
-        int headSize = abi1.HeadSize + abi2.HeadSize;
+        int headSize = checked(abi1.HeadSize + abi2.HeadSize);
         int offsetsSize = (abi1.IsDynamic ? 32 : 0) + (abi2.IsDynamic ? 32 : 0);
         bool isDynamic = abi1.IsDynamic || abi2.IsDynamic;
 
@@ -96,7 +96,7 @@ public static partial class AbiType
 
     public static Abi<(T1, T2, T3)> Tuple<T1, T2, T3>(Abi<T1> abi1, Abi<T2> abi2, Abi<T3> abi3)
     {
-        int headSize = abi1.HeadSize + abi2.HeadSize + abi3.HeadSize;
+        int headSize = checked(abi1.HeadSize + abi2.HeadSize + abi3.HeadSize);
         int offsetsSize = (abi1.IsDynamic ? 32 : 0) + (abi2.IsDynamic ? 32 : 0) + (abi3.IsDynamic ? 32 : 0);
         bool isDynamic = abi1.IsDynamic || abi2.IsDynamic || abi3.IsDynamic;
 
@@ -141,7 +141,7 @@ public static partial class AbiType
 
     public static Abi<(T1, T2, T3, T4)> Tuple<T1, T2, T3, T4>(Abi<T1> abi1, Abi<T2> abi2, Abi<T3> abi3, Abi<T4> abi4)
     {
-        int headSize = abi1.HeadSize + abi2.HeadSize + abi3.HeadSize + abi4.HeadSize;
+        int headSize = checked(abi1.HeadSize + abi2.HeadSize + abi3.HeadSize + abi4.HeadSize);
         int offsetsSize = (abi1.IsDynamic ? 32 : 0) + (abi2.IsDynamic ? 32 : 0) + (abi3.IsDynamic ? 32 : 0) + (abi4.IsDynamic ? 32 : 0);
         bool isDynamic = abi1.IsDynamic || abi2.IsDynamic || abi3.IsDynamic || abi4.IsDynamic;
 
@@ -189,7 +189,7 @@ public static partial class AbiType
 
     public static Abi<(T1, T2, T3, T4, T5)> Tuple<T1, T2, T3, T4, T5>(Abi<T1> abi1, Abi<T2> abi2, Abi<T3> abi3, Abi<T4> abi4, Abi<T5> abi5)
     {
-        int headSize = abi1.HeadSize + abi2.HeadSize + abi3.HeadSize + abi4.HeadSize + abi5.HeadSize;
+        int headSize = checked(abi1.HeadSize + abi2.HeadSize + abi3.HeadSize + abi4.HeadSize + abi5.HeadSize);
         int offsetsSize = (abi1.IsDynamic ? 32 : 0) + (abi2.IsDynamic ? 32 : 0) + (abi3.IsDynamic ? 32 : 0) + (abi4.IsDynamic ? 32 : 0) + (abi5.IsDynamic ? 32 : 0);
         bool isDynamic = abi1.IsDynamic || abi2.IsDynamic || abi3.IsDynamic || abi4.IsDynamic || abi5.IsDynamic;
 
@@ -240,7 +240,7 @@ public static partial class AbiType
 
     public static Abi<(T1, T2, T3, T4, T5, T6)> Tuple<T1, T2, T3, T4, T5, T6>(Abi<T1> abi1, Abi<T2> abi2, Abi<T3> abi3, Abi<T4> abi4, Abi<T5> abi5, Abi<T6> abi6)
     {
-        int headSize = abi1.HeadSize + abi2.HeadSize + abi3.HeadSize + abi4.HeadSize + abi5.HeadSize + abi6.HeadSize;
+        int headSize = checked(abi1.HeadSize + abi2.HeadSize + abi3.HeadSize + abi4.HeadSize + abi5.HeadSize + abi6.HeadSize);
         int offsetsSize = (abi1.IsDynamic ? 32 : 0) + (abi2.IsDynamic ? 32 : 0) + (abi3.IsDynamic ? 32 : 0) + (abi4.IsDynamic ? 32 : 0) + (abi5.IsDynamic ? 32 : 0) + (abi6.IsDynamic ? 32 : 0);
         bool isDynamic = abi1.IsDynamic || abi2.IsDynamic || abi3.IsDynamic || abi4.IsDynamic || abi5.IsDynamic || abi6.IsDynamic;
 
@@ -294,7 +294,7 @@ public static partial class AbiType
 
     public static Abi<(T1, T2, T3, T4, T5, T6, T7)> Tuple<T1, T2, T3, T4, T5, T6, T7>(Abi<T1> abi1, Abi<T2> abi2, Abi<T3> abi3, Abi<T4> abi4, Abi<T5> abi5, Abi<T6> abi6, Abi<T7> abi7)
     {
-        int headSize = abi1.HeadSize + abi2.HeadSize + abi3.HeadSize + abi4.HeadSize + abi5.HeadSize + abi6.HeadSize + abi7.HeadSize;
+        int headSize = checked(abi1.HeadSize + abi2.HeadSize + abi3.HeadSize + abi4.HeadSize + abi5.HeadSize + abi6.HeadSize + abi7.HeadSize);
         int offsetsSize = (abi1.IsDynamic ? 32 : 0) + (abi2.IsDynamic ? 32 : 0) + (abi3.IsDynamic ? 32 : 0) + (abi4.IsDynamic ? 32 : 0) + (abi5.IsDynamic ? 32 : 0) + (abi6.IsDynamic ? 32 : 0) + (abi7.IsDynamic ? 32 : 0);
         bool isDynamic = abi1.IsDynamic || abi2.IsDynamic || abi3.IsDynamic || abi4.IsDynamic || abi5.IsDynamic || abi6.IsDynamic || abi7.IsDynamic;
 

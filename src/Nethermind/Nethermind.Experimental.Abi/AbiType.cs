@@ -137,27 +137,33 @@ public static partial class AbiType
         }
     };
 
-    public static Abi<T[]> Array<T>(Abi<T> abi, int length) => new()
+    public static Abi<T[]> Array<T>(Abi<T> abi, int length)
     {
-        Name = $"{abi.Name}[{length}]",
-        Read = (ref BinarySpanReader r) => r.ReadArray(abi, length),
-        Write = (ref BinarySpanWriter w, T[] array) =>
-        {
-            if (array.Length != length) throw new AbiException();
-            w.WriteArray(abi, array);
-        },
-        HeadSize = abi.IsDynamic ? 32 : length * abi.HeadSize,
-        TailSize = !abi.IsDynamic ? null : array =>
-        {
-            int size = 0;
-            foreach (T e in array)
-            {
-                size += 32 + abi.Size(e);
-            }
+        ArgumentOutOfRangeException.ThrowIfNegative(length);
+        int headSize = checked(length * abi.HeadSize);
 
-            return size;
-        }
-    };
+        return new()
+        {
+            Name = $"{abi.Name}[{length}]",
+            Read = (ref BinarySpanReader r) => r.ReadArray(abi, length),
+            Write = (ref BinarySpanWriter w, T[] array) =>
+            {
+                if (array.Length != length) throw new AbiException();
+                w.WriteArray(abi, array);
+            },
+            HeadSize = abi.IsDynamic ? 32 : headSize,
+            TailSize = !abi.IsDynamic ? null : array =>
+            {
+                int size = 0;
+                foreach (T e in array)
+                {
+                    size += 32 + abi.Size(e);
+                }
+
+                return size;
+            }
+        };
+    }
 
     public static readonly Abi<byte[]> Bytes = new()
     {
