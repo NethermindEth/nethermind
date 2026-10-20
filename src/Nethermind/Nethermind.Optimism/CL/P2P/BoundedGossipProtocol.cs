@@ -1,13 +1,17 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Libp2p.Core;
+using Nethermind.Libp2p.Core.Exceptions;
 
 namespace Nethermind.Optimism.CL.P2P;
 
-/// <summary>Reserves an inbound RPC allowance before the library reads or decodes gossip.</summary>
+/// <summary>Reserves an inbound RPC allowance before the library reads or decodes an RPC body.</summary>
 /// <remarks>The library reads one RPC at a time per stream. All protocol versions share the same allowance,
 /// including duplicate streams on different sessions of one peer.</remarks>
 internal sealed class BoundedGossipProtocol(ISessionProtocol inner, GossipStreamBudget budget) : ISessionProtocol
@@ -18,20 +22,53 @@ internal sealed class BoundedGossipProtocol(ISessionProtocol inner, GossipStream
 
     public async Task ListenAsync(IChannel channel, ISessionContext context)
     {
-        if (context.State.RemotePeerId is not { } peer || !budget.TryAcquire(peer))
+        if (context.State.RemotePeerId is not { } peer)
         {
             await channel.CloseAsync();
             return;
         }
 
+        BudgetedChannel bounded = new(channel, budget, peer);
         try
         {
-            await inner.ListenAsync(channel, context);
+            await inner.ListenAsync(bounded, context);
         }
         finally
         {
-            budget.Release(peer);
+            bounded.Release();
         }
+    }
+
+    private sealed class BudgetedChannel(IChannel channel, GossipStreamBudget budget, PeerId peer) : IChannel
+    {
+        private bool _reserved;
+
+        public async Task<ulong> ReadVarintUlongAsync(CancellationToken token)
+        {
+            ulong length = await channel.ReadVarintUlongAsync(token);
+            // Duplicate outbound dials can leave an idle stream ahead of the stream selected to send RPCs.
+            if (!_reserved && !(_reserved = budget.TryAcquire(peer)))
+            {
+                await channel.CloseAsync();
+                throw new ChannelClosedException();
+            }
+            return length;
+        }
+
+        public void Release()
+        {
+            if (_reserved) budget.Release(peer);
+        }
+
+        public ValueTask<ReadResult> ReadAsync(int length, ReadBlockingMode blockingMode = ReadBlockingMode.WaitAll, CancellationToken token = default) =>
+            channel.ReadAsync(length, blockingMode, token);
+        public ValueTask<IOResult> WriteAsync(ReadOnlySequence<byte> bytes, CancellationToken token = default) => channel.WriteAsync(bytes, token);
+        public ValueTask<IOResult> WriteEofAsync(CancellationToken token = default) => channel.WriteEofAsync(token);
+        public ValueTask CloseAsync() => channel.CloseAsync();
+        public ValueTask AbortAsync() => channel.AbortAsync();
+        public ValueTask CloseReadAsync() => channel.CloseReadAsync();
+        public TaskAwaiter GetAwaiter() => channel.GetAwaiter();
+        public CancellationToken CancellationToken => channel.CancellationToken;
     }
 }
 

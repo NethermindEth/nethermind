@@ -3,6 +3,7 @@
 
 using System;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
 using Multiformats.Address;
@@ -15,6 +16,7 @@ using Nethermind.Optimism.CL;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Libp2p.Core;
+using Nethermind.Libp2p.Core.Exceptions;
 using Nethermind.Libp2p.Protocols;
 using Nethermind.Network.Libp2p;
 using Nethermind.Libp2p.Protocols.Pubsub;
@@ -22,6 +24,7 @@ using Nethermind.Libp2p.Protocols.Pubsub.Dto;
 using Nethermind.Optimism.CL.P2P;
 using NSubstitute;
 using NUnit.Framework;
+using GossipRpc = Nethermind.Libp2p.Protocols.Pubsub.Dto.Rpc;
 
 namespace Nethermind.Optimism.Test.CL;
 
@@ -54,31 +57,41 @@ public class OptimismGossipSettingsTests
     }
 
     [Test]
-    public async Task Gossip_streams_share_a_global_and_per_peer_allowance_before_any_rpc_read()
+    public async Task Gossip_streams_share_a_global_and_per_peer_allowance_before_any_rpc_body_read()
     {
         GossipStreamBudget budget = new();
         ISessionProtocol inner = Substitute.For<ISessionProtocol>();
         TaskCompletionSource done = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        inner.ListenAsync(Arg.Any<IChannel>(), Arg.Any<ISessionContext>()).Returns(done.Task);
+        int admitted = 0;
+        inner.ListenAsync(Arg.Any<IChannel>(), Arg.Any<ISessionContext>()).Returns(async call =>
+        {
+            try
+            {
+                await call.Arg<IChannel>().ReadVarintUlongAsync(CancellationToken.None);
+                Interlocked.Increment(ref admitted);
+                await done.Task;
+            }
+            catch (ChannelClosedException) { }
+        });
         BoundedGossipProtocol first = new(inner, budget);
         BoundedGossipProtocol otherVersion = new(inner, budget);
         ISessionContext[] peers = Enumerable.Range(0, GossipStreamBudget.MaxStreams + 1).Select(_ => Session()).ToArray();
         Task[] listening = new Task[GossipStreamBudget.MaxStreams];
         Array.Fill(listening, Task.CompletedTask);
-        listening[0] = first.ListenAsync(Substitute.For<IChannel>(), peers[0]);
+        listening[0] = first.ListenAsync(ReadyChannel(), peers[0]);
         try
         {
-            IChannel duplicate = Substitute.For<IChannel>();
+            IChannel duplicate = ReadyChannel();
             await otherVersion.ListenAsync(duplicate, peers[0]);
             await duplicate.Received(1).CloseAsync();
-            _ = inner.Received(1).ListenAsync(Arg.Any<IChannel>(), Arg.Any<ISessionContext>());
+            Assert.That(admitted, Is.EqualTo(1));
 
-            Parallel.For(1, listening.Length, i => listening[i] = first.ListenAsync(Substitute.For<IChannel>(), peers[i]));
-            IChannel excess = Substitute.For<IChannel>();
+            Parallel.For(1, listening.Length, i => listening[i] = first.ListenAsync(ReadyChannel(), peers[i]));
+            IChannel excess = ReadyChannel();
             await otherVersion.ListenAsync(excess, peers[^1]);
 
             await excess.Received(1).CloseAsync();
-            _ = inner.Received(GossipStreamBudget.MaxStreams).ListenAsync(Arg.Any<IChannel>(), Arg.Any<ISessionContext>());
+            Assert.That(admitted, Is.EqualTo(GossipStreamBudget.MaxStreams));
         }
         finally
         {
@@ -93,18 +106,71 @@ public class OptimismGossipSettingsTests
         GossipStreamBudget budget = new();
         ISessionProtocol inner = Substitute.For<ISessionProtocol>();
         Exception? failure = error is null ? null : (Exception)Activator.CreateInstance(error)!;
-        inner.ListenAsync(Arg.Any<IChannel>(), Arg.Any<ISessionContext>()).Returns(failure is null ? Task.CompletedTask : Task.FromException(failure));
+        inner.ListenAsync(Arg.Any<IChannel>(), Arg.Any<ISessionContext>()).Returns(async call =>
+        {
+            await call.Arg<IChannel>().ReadVarintUlongAsync(CancellationToken.None);
+            if (failure is not null) throw failure;
+        });
         BoundedGossipProtocol protocol = new(inner, budget);
         ISessionContext peer = Session();
-        IChannel channel = Substitute.For<IChannel>();
+        IChannel channel = ReadyChannel();
 
         if (failure is null) await protocol.ListenAsync(channel, peer);
         else await Assert.ThrowsAsync(error!, () => protocol.ListenAsync(channel, peer));
 
-        inner.ListenAsync(Arg.Any<IChannel>(), Arg.Any<ISessionContext>()).Returns(Task.CompletedTask);
+        failure = null;
         await protocol.ListenAsync(channel, peer);
-        await inner.Received(2).ListenAsync(channel, peer);
+        await inner.Received(2).ListenAsync(Arg.Any<IChannel>(), peer);
         await channel.DidNotReceive().CloseAsync();
+    }
+
+    [Test]
+    [CancelAfter(5_000)]
+    public async Task An_idle_duplicate_stream_does_not_reserve_the_rpc_allowance(CancellationToken token)
+    {
+        GossipStreamBudget budget = new();
+        ISessionProtocol inner = Substitute.For<ISessionProtocol>();
+        TaskCompletionSource<GossipRpc> received = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource done = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        inner.ListenAsync(Arg.Any<IChannel>(), Arg.Any<ISessionContext>()).Returns(async call =>
+        {
+            try
+            {
+                received.TrySetResult(await call.Arg<IChannel>().ReadPrefixedProtobufAsync(GossipRpc.Parser, 1024, token));
+                await done.Task.WaitAsync(token);
+            }
+            catch (ChannelClosedException) { }
+        });
+        BoundedGossipProtocol protocol = new(inner, budget);
+        ISessionContext peer = Session();
+        Channel idle = new();
+        Channel active = new();
+        Task idleListener = protocol.ListenAsync(idle, peer);
+        Task activeListener = protocol.ListenAsync(active, peer);
+        GossipRpc rpc = new() { Subscriptions = { new GossipRpc.Types.SubOpts { Topicid = BlocksTopic, Subscribe = true } } };
+        try
+        {
+            await active.Reverse.WriteSizeAndProtobufAsync(rpc).AsTask().WaitAsync(token);
+            Assert.That(await received.Task.WaitAsync(token), Is.EqualTo(rpc));
+            Assert.That(idleListener.IsCompleted, Is.False);
+            await idle.CloseAsync();
+            await idleListener.WaitAsync(token);
+            Assert.That(budget.TryAcquire(peer.State.RemotePeerId!), Is.False, "closing an idle stream must not release the active stream's allowance");
+        }
+        finally
+        {
+            done.TrySetResult();
+            await idle.CloseAsync();
+            await active.CloseAsync();
+            await Task.WhenAll(idleListener, activeListener);
+        }
+    }
+
+    private static IChannel ReadyChannel()
+    {
+        IChannel channel = Substitute.For<IChannel>();
+        channel.ReadVarintUlongAsync(Arg.Any<CancellationToken>()).Returns(Task.FromResult(1UL));
+        return channel;
     }
 
     private static ISessionContext Session()

@@ -50,12 +50,24 @@ public class OptimismGossipLoopbackTests
         while (!received.Task.IsCompleted)
         {
             // The publisher sends only once it has learnt the subscription, so it repeats until the subscriber has the block.
-            token.ThrowIfCancellationRequested();
+            if (token.IsCancellationRequested)
+            {
+                Assert.Fail($"No gossip delivery: publisher {Describe(publisher)}, subscriber {Describe(subscriber)}");
+            }
+
             topic.Publish(block);
             await Task.WhenAny(received.Task, Task.Delay(500, token));
         }
 
         Assert.That(await received.Task, Is.EqualTo(block));
+    }
+
+    private static string Describe(Host host)
+    {
+        IRoutingStateContainer state = host.Router;
+        return $"sessions={((LocalPeer)host.Peer).Sessions.Count}, peers={state.ConnectedPeers.Count}, " +
+            $"subscribers={state.GossipsubPeers.GetValueOrDefault(BlocksTopic)?.Count ?? 0}, " +
+            $"mesh={state.Mesh.GetValueOrDefault(BlocksTopic)?.Count ?? 0}";
     }
 
     [Test]
