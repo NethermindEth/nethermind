@@ -38,9 +38,27 @@ jobs:
     with:
       matrix: '{"include":[{"rid":"linux-x64","os":"ubuntu-latest","variant":"release","build_args":""},{"rid":"linux-arm64","os":"ubuntu-24.04-arm","variant":"release","build_args":""}]}'
 
+  # Pull requests run only the test projects their change can affect (.github/actions/select-tests); every
+  # other event runs every project. The matrices live in scripts/ci/test-matrices.json.
+  select:
+    name: Select test projects
+    runs-on: ubuntu-latest
+    outputs:
+      matrices: ${{ steps.select.outputs.matrices }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Select test projects
+        id: select
+        uses: ./.github/actions/select-tests
+        with:
+          workflow: nethermind-tests
+
   tests:
     name: Run ${{ matrix.project }}${{ matrix.chunk && format(' ({0})', matrix.chunk) || '' }} (${{ matrix.runner }})
-    needs: build
+    needs: [build, select]
+    if: fromJSON(needs.select.outputs.matrices).tests != null
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 15
     outputs:
@@ -49,100 +67,8 @@ jobs:
       DOTNET_GCConserveMemory: 9
     strategy:
       fail-fast: false
-      matrix:
-        runner:
-          - ubuntu-latest
-          - ubuntu-24.04-arm
-        project:
-          - Nethermind.Abi.Test
-          - Nethermind.Analyzers.Test
-          - Nethermind.Api.Test
-          - Nethermind.AuRa.Test
-          - Nethermind.BalRecorder.Test
-          - Nethermind.Blockchain.Test
-          - Nethermind.CensorshipDetector.Plugin.Test
-          - Nethermind.Clique.Test
-          - Nethermind.Config.Test
-          - Nethermind.Consensus.Test
-          - Nethermind.Core.Test
-          - Nethermind.Db.Test
-          - Nethermind.Era1.Test
-          - Nethermind.EraE.Test
-          - Nethermind.Ethash.Test
-          - Nethermind.EthStats.Test
-          - Nethermind.Evm.Test
-          - Nethermind.Facade.Test
-          - Nethermind.Flashbots.Test
-          - Nethermind.HealthChecks.Test
-          - Nethermind.History.Test
-          - Nethermind.Hive.Test
-          - Nethermind.Init.Snapshot.Test
-          - Nethermind.Init.Test
-          - Nethermind.JsonRpc.Test
-          - Nethermind.JsonRpc.TraceStore.Test
-          - Nethermind.KeyStore.Test
-          - Nethermind.Logging.NLog.Test
-          - Nethermind.Merge.AuRa.Test
-          - Nethermind.Merge.Plugin.Test
-          - Nethermind.Mining.Test
-          - Nethermind.Monitoring.Test
-          - Nethermind.Network.Discovery.Test
-          - Nethermind.Network.Dns.Test
-          - Nethermind.Network.Enr.Test
-          - Nethermind.Network.Test
-          - Nethermind.OpcodeTracing.Plugin.Test
-          - Nethermind.Optimism.Test
-          - Nethermind.PortfolioViewer.Plugin.Test
-          - Nethermind.Runner.Test
-          - Nethermind.SendPolicy.Plugin.Test
-          - Nethermind.Serialization.JsonGenerator.Test
-          - Nethermind.Serialization.Ssz.Test
-          - Nethermind.Serialization.SszGenerator.Test
-          - Nethermind.Shutter.Test
-          - Nethermind.Sockets.Test
-          - Nethermind.Specs.Test
-          - Nethermind.State.Flat.History.Test
-          - Nethermind.State.Flat.Test
-          - Nethermind.State.Test
-          - Nethermind.State.Test.Runner.Test
-          - Nethermind.StateDiffsWriter.Test
-          - Nethermind.Synchronization.Test
-          - Nethermind.Taiko.Test
-          - Nethermind.Trie.Test
-          - Nethermind.TxPool.Test
-          - Nethermind.Wallet.Test
-          - Nethermind.Xdc.Test
-        chunk: ['']
-        exclude: # These projects are chunked on slower runners (see include block) to stay within the 15-minute job budget.
-          - runner: ubuntu-24.04-arm
-            project: Nethermind.Synchronization.Test
-            chunk: ''
-          - runner: ubuntu-latest
-            project: Nethermind.Synchronization.Test
-            chunk: ''
-          - runner: ubuntu-24.04-arm
-            project: Nethermind.Merge.Plugin.Test
-            chunk: ''
-          - runner: ubuntu-24.04-arm
-            project: Nethermind.Merge.AuRa.Test
-            chunk: ''
-        include:
-          - { runner: ubuntu-24.04-arm, project: Nethermind.Synchronization.Test, chunk: 1of4 }
-          - { runner: ubuntu-24.04-arm, project: Nethermind.Synchronization.Test, chunk: 2of4 }
-          - { runner: ubuntu-24.04-arm, project: Nethermind.Synchronization.Test, chunk: 3of4 }
-          - { runner: ubuntu-24.04-arm, project: Nethermind.Synchronization.Test, chunk: 4of4 }
-          - { runner: ubuntu-24.04-arm, project: Nethermind.Merge.Plugin.Test, chunk: 1of4 }
-          - { runner: ubuntu-24.04-arm, project: Nethermind.Merge.Plugin.Test, chunk: 2of4 }
-          - { runner: ubuntu-24.04-arm, project: Nethermind.Merge.Plugin.Test, chunk: 3of4 }
-          - { runner: ubuntu-24.04-arm, project: Nethermind.Merge.Plugin.Test, chunk: 4of4 }
-          - { runner: ubuntu-24.04-arm, project: Nethermind.Merge.AuRa.Test, chunk: 1of4 }
-          - { runner: ubuntu-24.04-arm, project: Nethermind.Merge.AuRa.Test, chunk: 2of4 }
-          - { runner: ubuntu-24.04-arm, project: Nethermind.Merge.AuRa.Test, chunk: 3of4 }
-          - { runner: ubuntu-24.04-arm, project: Nethermind.Merge.AuRa.Test, chunk: 4of4 }
-          - { runner: ubuntu-latest, project: Nethermind.Synchronization.Test, chunk: 1of4 }
-          - { runner: ubuntu-latest, project: Nethermind.Synchronization.Test, chunk: 2of4 }
-          - { runner: ubuntu-latest, project: Nethermind.Synchronization.Test, chunk: 3of4 }
-          - { runner: ubuntu-latest, project: Nethermind.Synchronization.Test, chunk: 4of4 }
+      # These projects are chunked on slower runners (see include block) to stay within the 15-minute job budget.
+      matrix: ${{ fromJSON(needs.select.outputs.matrices).tests }}
     steps: &test-steps
       - name: Check out repository
         uses: actions/checkout@v6
@@ -225,52 +151,21 @@ jobs:
   # so they start right away instead of waiting for the build.
   tests-native:
     name: Run ${{ matrix.project }}${{ matrix.chunk && format(' ({0})', matrix.chunk) || '' }} (${{ matrix.runner }})
+    needs: select
+    if: fromJSON(needs.select.outputs.matrices).tests-native != null
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 15
     env:
       DOTNET_GCConserveMemory: 9
     strategy:
       fail-fast: false
-      matrix:
-        include: # macOS/Windows only for OS-sensitive tests (I/O, networking, sockets)
-          - { runner: macos-latest, project: Nethermind.Db.Test, chunk: '' }
-          - { runner: macos-latest, project: Nethermind.JsonRpc.Test, chunk: 1of2 }
-          - { runner: macos-latest, project: Nethermind.JsonRpc.Test, chunk: 2of2 }
-          - { runner: macos-latest, project: Nethermind.KeyStore.Test, chunk: '' }
-          - { runner: macos-latest, project: Nethermind.Network.Discovery.Test, chunk: '' }
-          - { runner: macos-latest, project: Nethermind.Network.Dns.Test, chunk: '' }
-          - { runner: macos-latest, project: Nethermind.Network.Enr.Test, chunk: '' }
-          - { runner: macos-latest, project: Nethermind.Network.Test, chunk: '' }
-          - { runner: macos-latest, project: Nethermind.Runner.Test, chunk: 1of2 }
-          - { runner: macos-latest, project: Nethermind.Runner.Test, chunk: 2of2 }
-          - { runner: macos-latest, project: Nethermind.Sockets.Test, chunk: '' }
-          - { runner: macos-latest, project: Nethermind.Synchronization.Test, chunk: 1of4 }
-          - { runner: macos-latest, project: Nethermind.Synchronization.Test, chunk: 2of4 }
-          - { runner: macos-latest, project: Nethermind.Synchronization.Test, chunk: 3of4 }
-          - { runner: macos-latest, project: Nethermind.Synchronization.Test, chunk: 4of4 }
-          - { runner: windows-latest, project: Nethermind.Db.Test, chunk: '' }
-          - { runner: windows-latest, project: Nethermind.JsonRpc.Test, chunk: 1of2 }
-          - { runner: windows-latest, project: Nethermind.JsonRpc.Test, chunk: 2of2 }
-          - { runner: windows-latest, project: Nethermind.KeyStore.Test, chunk: '' }
-          - { runner: windows-latest, project: Nethermind.Network.Discovery.Test, chunk: '' }
-          - { runner: windows-latest, project: Nethermind.Network.Dns.Test, chunk: '' }
-          - { runner: windows-latest, project: Nethermind.Network.Enr.Test, chunk: '' }
-          - { runner: windows-latest, project: Nethermind.Network.Test, chunk: '' }
-          - { runner: windows-latest, project: Nethermind.Runner.Test, chunk: 1of2 }
-          - { runner: windows-latest, project: Nethermind.Runner.Test, chunk: 2of2 }
-          - { runner: windows-latest, project: Nethermind.Sockets.Test, chunk: '' }
-          - { runner: windows-latest, project: Nethermind.Synchronization.Test, chunk: 1of4 }
-          - { runner: windows-latest, project: Nethermind.Synchronization.Test, chunk: 2of4 }
-          - { runner: windows-latest, project: Nethermind.Synchronization.Test, chunk: 3of4 }
-          - { runner: windows-latest, project: Nethermind.Synchronization.Test, chunk: 4of4 }
-          - { runner: windows-11-arm, project: Nethermind.Db.Test, chunk: '' }
-          - { runner: windows-11-arm, project: Nethermind.Evm.Test, chunk: '' }
-          - { runner: windows-11-arm, project: Nethermind.Runner.Test, chunk: 1of2 }
-          - { runner: windows-11-arm, project: Nethermind.Runner.Test, chunk: 2of2 }
+      # macOS/Windows only for OS-sensitive tests (I/O, networking, sockets)
+      matrix: ${{ fromJSON(needs.select.outputs.matrices).tests-native }}
     steps: *test-steps
   tests-spec:
     name: Run ${{ matrix.project }}${{ matrix.chunk && format(' ({0})', matrix.chunk) || '' }} (${{ matrix.runner }})
-    needs: build
+    needs: [build, select]
+    if: fromJSON(needs.select.outputs.matrices).tests-spec != null
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 15
     env:
@@ -278,27 +173,7 @@ jobs:
       FIXTURE_PROJECTS: '["Ethereum.Blockchain.Block.Test","Ethereum.Legacy.Blockchain.Block.Test","Ethereum.Legacy.Blockchain.Test","Ethereum.Legacy.Transition.Test","Ethereum.Legacy.VM.Test"]'
     strategy:
       fail-fast: false
-      matrix:
-        runner:
-          - ubuntu-latest
-          - ubuntu-24.04-arm
-        project:
-          - Ethereum.Abi.Test
-          - Ethereum.Basic.Test
-          - Ethereum.Blockchain.Block.Test
-          - Ethereum.Difficulty.Test
-          - Ethereum.HexPrefix.Test
-          - Ethereum.KeyAddress.Test
-          - Ethereum.KeyStore.Test
-          - Ethereum.Legacy.Blockchain.Block.Test
-          - Ethereum.Legacy.Transition.Test
-          - Ethereum.Legacy.VM.Test
-          - Ethereum.PoW.Test
-          - Ethereum.Rlp.Test
-          - Ethereum.Ssz.Test
-          - Ethereum.Transaction.Test
-          - Ethereum.Trie.Test
-        chunk: ['']
+      matrix: ${{ fromJSON(needs.select.outputs.matrices).tests-spec }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
@@ -375,24 +250,13 @@ jobs:
 
   tests-chunked:
     name: Run ${{ matrix.test.project }}${{ matrix.test.label && format(' [{0}]', matrix.test.label) || '' }} (${{ matrix.test.chunk }}) (${{ matrix.runner }})
-    needs: build
+    needs: [build, select]
+    if: fromJSON(needs.select.outputs.matrices).tests-chunked != null
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 20
     strategy:
       fail-fast: false
-      matrix:
-        runner:
-          - ubuntu-latest
-          - ubuntu-24.04-arm
-        test: &legacy-blockchain-chunks
-          - { project: Ethereum.Legacy.Blockchain.Test, chunk: 1of8 }
-          - { project: Ethereum.Legacy.Blockchain.Test, chunk: 2of8 }
-          - { project: Ethereum.Legacy.Blockchain.Test, chunk: 3of8 }
-          - { project: Ethereum.Legacy.Blockchain.Test, chunk: 4of8 }
-          - { project: Ethereum.Legacy.Blockchain.Test, chunk: 5of8 }
-          - { project: Ethereum.Legacy.Blockchain.Test, chunk: 6of8 }
-          - { project: Ethereum.Legacy.Blockchain.Test, chunk: 7of8 }
-          - { project: Ethereum.Legacy.Blockchain.Test, chunk: 8of8 }
+      matrix: ${{ fromJSON(needs.select.outputs.matrices).tests-chunked }}
     steps: &chunked-test-steps
       - name: Enable long paths (Windows)
         if: runner.os == 'Windows'
@@ -475,15 +339,13 @@ jobs:
 
   tests-chunked-native:
     name: Run ${{ matrix.test.project }}${{ matrix.test.label && format(' [{0}]', matrix.test.label) || '' }} (${{ matrix.test.chunk }}) (${{ matrix.runner }})
+    needs: select
+    if: fromJSON(needs.select.outputs.matrices).tests-chunked-native != null
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 20
     strategy:
       fail-fast: false
-      matrix:
-        runner:
-          - windows-latest
-          - macos-latest
-        test: *legacy-blockchain-chunks
+      matrix: ${{ fromJSON(needs.select.outputs.matrices).tests-chunked-native }}
     steps: *chunked-test-steps
   # EEST and zkEVM fixtures (formerly the Ethereum.Blockchain.Pyspec.Test shards) run
   # through the reusable nethtest workflow: same fixture releases, all fixture formats.
@@ -521,9 +383,9 @@ jobs:
             project=$(basename "$dir")
             [[ -f "$dir/$project.csproj" ]] || continue
             [[ " $allowlist " == *" $project "* ]] && continue
-            esc=$(printf '%s' "$project" | sed 's/\./\\./g')
-            if ! grep -qE "^ +- ${esc}\$|project: ${esc}[,} ]" .github/workflows/nethermind-tests.yml; then
-              echo "::error::$project runs in no CI matrix - add it to a matrix in nethermind-tests.yml or to the allowlist in this step"
+            if ! jq -e --arg project "$project" \
+                '."nethermind-tests" | [.. | strings] | index($project) != null' scripts/ci/test-matrices.json > /dev/null; then
+              echo "::error::$project runs in no CI matrix - add it to nethermind-tests in scripts/ci/test-matrices.json or to the allowlist in this step"
               missing=1
             fi
           done
@@ -531,21 +393,27 @@ jobs:
 
   tests-summary:
     name: Tests summary
-    needs: [tests, tests-native, tests-spec, tests-chunked, tests-chunked-native, nethtest, matrix-guard]
+    needs: [select, tests, tests-native, tests-spec, tests-chunked, tests-chunked-native, nethtest, matrix-guard]
     if: always()
     runs-on: ubuntu-latest
     steps:
       - name: Check result
+        env:
+          MATRICES: ${{ needs.select.outputs.matrices }}
         run: |
-          [[ \
-            "${{ needs.tests.result }}" == "success" && \
-            "${{ needs.tests-native.result }}" == "success" && \
-            "${{ needs.tests-spec.result }}" == "success" && \
-            "${{ needs.tests-chunked.result }}" == "success" && \
-            "${{ needs.tests-chunked-native.result }}" == "success" && \
-            "${{ needs.nethtest.result }}" == "success" && \
-            "${{ needs.matrix-guard.result }}" == "success" \
-          ]]
+          # A test job may be skipped only when the selection left it nothing to run; skipped for any other
+          # reason (a failed build, a failed selection) is a failure.
+          job_ok() {
+            [[ "$2" == "success" ]] || [[ "$2" == "skipped" && "$(jq -r --arg job "$1" '.[$job] == null' <<< "$MATRICES")" == "true" ]]
+          }
+          [[ "${{ needs.select.result }}" == "success" ]]
+          job_ok tests "${{ needs.tests.result }}"
+          job_ok tests-native "${{ needs.tests-native.result }}"
+          job_ok tests-spec "${{ needs.tests-spec.result }}"
+          job_ok tests-chunked "${{ needs.tests-chunked.result }}"
+          job_ok tests-chunked-native "${{ needs.tests-chunked-native.result }}"
+          [[ "${{ needs.nethtest.result }}" == "success" ]]
+          [[ "${{ needs.matrix-guard.result }}" == "success" ]]
 
   codecov-upload:
     name: Upload Codecov reports

@@ -15,10 +15,14 @@ env:
   TERM: xterm
 
 permissions:
+  # actions: read lets the select job download the test selection model from test-selection.yml.
+  actions: read
   contents: read
 
 jobs:
   build:
+    needs: select
+    if: needs.select.outputs.any == 'true'
     uses: ./.github/workflows/build-test-artifacts.yml
     with:
       matrix: >-
@@ -28,27 +32,36 @@ jobs:
   # processor, which the regular matrix never does. These projects hold every such gate.
   # Nethermind.Core.Test carries the guard that fails the run if the pin stops reaching the runtime;
   # it runs without the fixtures known to need more than one worker, listed in its filter.
+  # Pull requests run only the test projects their change can affect (.github/actions/select-tests); every
+  # other event runs every project. The matrices live in scripts/ci/test-matrices.json.
+  select:
+    name: Select test projects
+    runs-on: ubuntu-latest
+    outputs:
+      matrices: ${{ steps.select.outputs.matrices }}
+      any: ${{ steps.select.outputs.any }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Select test projects
+        id: select
+        uses: ./.github/actions/select-tests
+        with:
+          workflow: nethermind-tests-single-proc
+
   tests:
     name: Run ${{ matrix.project }}
-    needs: build
+    needs: [build, select]
+    if: fromJSON(needs.select.outputs.matrices).tests != null
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
       DOTNET_GCConserveMemory: 9
     strategy:
       fail-fast: false
-      matrix:
-        project:
-          - Nethermind.Blockchain.Test
-          - Nethermind.Evm.Test
-          - Nethermind.Merge.Plugin.Test
-          - Nethermind.State.Test
-          - Nethermind.Trie.Test
-        filter: ['']
-        include:
-          # The rate limiter's wall-clock throughput cases starve on one processor.
-          - project: Nethermind.Core.Test
-            filter: FullyQualifiedName!~RateLimiterTests
+      # The rate limiter's wall-clock throughput cases starve on one processor.
+      matrix: ${{ fromJSON(needs.select.outputs.matrices).tests }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
@@ -93,10 +106,18 @@ jobs:
 
   tests-summary:
     name: Tests summary
-    needs: [tests]
+    needs: [select, tests]
     if: always()
     runs-on: ubuntu-latest
     steps:
       - name: Check result
+        env:
+          MATRICES: ${{ needs.select.outputs.matrices }}
         run: |
-          [[ "${{ needs.tests.result }}" == "success" ]]
+          # A test job may be skipped only when the selection left it nothing to run; skipped for any other
+          # reason (a failed build, a failed selection) is a failure.
+          job_ok() {
+            [[ "$2" == "success" ]] || [[ "$2" == "skipped" && "$(jq -r --arg job "$1" '.[$job] == null' <<< "$MATRICES")" == "true" ]]
+          }
+          [[ "${{ needs.select.result }}" == "success" ]]
+          job_ok tests "${{ needs.tests.result }}"

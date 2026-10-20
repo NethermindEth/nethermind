@@ -1,0 +1,869 @@
+{
+  "nethermind-tests": {
+    "tests": {
+      "runner": [
+        "ubuntu-latest",
+        "ubuntu-24.04-arm"
+      ],
+      "project": [
+        "Nethermind.Abi.Test",
+        "Nethermind.Analyzers.Test",
+        "Nethermind.Api.Test",
+        "Nethermind.AuRa.Test",
+        "Nethermind.BalRecorder.Test",
+        "Nethermind.Blockchain.Test",
+        "Nethermind.CensorshipDetector.Plugin.Test",
+        "Nethermind.Clique.Test",
+        "Nethermind.Config.Test",
+        "Nethermind.Consensus.Test",
+        "Nethermind.Core.Test",
+        "Nethermind.Db.Test",
+        "Nethermind.Era1.Test",
+        "Nethermind.EraE.Test",
+        "Nethermind.Ethash.Test",
+        "Nethermind.EthStats.Test",
+        "Nethermind.Evm.Test",
+        "Nethermind.Facade.Test",
+        "Nethermind.Flashbots.Test",
+        "Nethermind.HealthChecks.Test",
+        "Nethermind.History.Test",
+        "Nethermind.Hive.Test",
+        "Nethermind.Init.Snapshot.Test",
+        "Nethermind.Init.Test",
+        "Nethermind.JsonRpc.Test",
+        "Nethermind.JsonRpc.TraceStore.Test",
+        "Nethermind.KeyStore.Test",
+        "Nethermind.Logging.NLog.Test",
+        "Nethermind.Merge.AuRa.Test",
+        "Nethermind.Merge.Plugin.Test",
+        "Nethermind.Mining.Test",
+        "Nethermind.Monitoring.Test",
+        "Nethermind.Network.Discovery.Test",
+        "Nethermind.Network.Dns.Test",
+        "Nethermind.Network.Enr.Test",
+        "Nethermind.Network.Test",
+        "Nethermind.OpcodeTracing.Plugin.Test",
+        "Nethermind.Optimism.Test",
+        "Nethermind.PortfolioViewer.Plugin.Test",
+        "Nethermind.Runner.Test",
+        "Nethermind.SendPolicy.Plugin.Test",
+        "Nethermind.Serialization.JsonGenerator.Test",
+        "Nethermind.Serialization.Ssz.Test",
+        "Nethermind.Serialization.SszGenerator.Test",
+        "Nethermind.Shutter.Test",
+        "Nethermind.Sockets.Test",
+        "Nethermind.Specs.Test",
+        "Nethermind.State.Flat.History.Test",
+        "Nethermind.State.Flat.Test",
+        "Nethermind.State.Test",
+        "Nethermind.State.Test.Runner.Test",
+        "Nethermind.StateDiffsWriter.Test",
+        "Nethermind.Synchronization.Test",
+        "Nethermind.Taiko.Test",
+        "Nethermind.Trie.Test",
+        "Nethermind.TxPool.Test",
+        "Nethermind.Wallet.Test",
+        "Nethermind.Xdc.Test"
+      ],
+      "chunk": [
+        ""
+      ],
+      "exclude": [
+        {
+          "runner": "ubuntu-24.04-arm",
+          "project": "Nethermind.Synchronization.Test",
+          "chunk": ""
+        },
+        {
+          "runner": "ubuntu-latest",
+          "project": "Nethermind.Synchronization.Test",
+          "chunk": ""
+        },
+        {
+          "runner": "ubuntu-24.04-arm",
+          "project": "Nethermind.Merge.Plugin.Test",
+          "chunk": ""
+        },
+        {
+          "runner": "ubuntu-24.04-arm",
+          "project": "Nethermind.Merge.AuRa.Test",
+          "chunk": ""
+        }
+      ],
+      "include": [
+        {
+          "runner": "ubuntu-24.04-arm",
+          "project": "Nethermind.Synchronization.Test",
+          "chunk": "1of4"
+        },
+        {
+          "runner": "ubuntu-24.04-arm",
+          "project": "Nethermind.Synchronization.Test",
+          "chunk": "2of4"
+        },
+        {
+          "runner": "ubuntu-24.04-arm",
+          "project": "Nethermind.Synchronization.Test",
+          "chunk": "3of4"
+        },
+        {
+          "runner": "ubuntu-24.04-arm",
+          "project": "Nethermind.Synchronization.Test",
+          "chunk": "4of4"
+        },
+        {
+          "runner": "ubuntu-24.04-arm",
+          "project": "Nethermind.Merge.Plugin.Test",
+          "chunk": "1of4"
+        },
+        {
+          "runner": "ubuntu-24.04-arm",
+          "project": "Nethermind.Merge.Plugin.Test",
+          "chunk": "2of4"
+        },
+        {
+          "runner": "ubuntu-24.04-arm",
+          "project": "Nethermind.Merge.Plugin.Test",
+          "chunk": "3of4"
+        },
+        {
+          "runner": "ubuntu-24.04-arm",
+          "project": "Nethermind.Merge.Plugin.Test",
+          "chunk": "4of4"
+        },
+        {
+          "runner": "ubuntu-24.04-arm",
+          "project": "Nethermind.Merge.AuRa.Test",
+          "chunk": "1of4"
+        },
+        {
+          "runner": "ubuntu-24.04-arm",
+          "project": "Nethermind.Merge.AuRa.Test",
+          "chunk": "2of4"
+        },
+        {
+          "runner": "ubuntu-24.04-arm",
+          "project": "Nethermind.Merge.AuRa.Test",
+          "chunk": "3of4"
+        },
+        {
+          "runner": "ubuntu-24.04-arm",
+          "project": "Nethermind.Merge.AuRa.Test",
+          "chunk": "4of4"
+        },
+        {
+          "runner": "ubuntu-latest",
+          "project": "Nethermind.Synchronization.Test",
+          "chunk": "1of4"
+        },
+        {
+          "runner": "ubuntu-latest",
+          "project": "Nethermind.Synchronization.Test",
+          "chunk": "2of4"
+        },
+        {
+          "runner": "ubuntu-latest",
+          "project": "Nethermind.Synchronization.Test",
+          "chunk": "3of4"
+        },
+        {
+          "runner": "ubuntu-latest",
+          "project": "Nethermind.Synchronization.Test",
+          "chunk": "4of4"
+        }
+      ]
+    },
+    "tests-native": {
+      "include": [
+        {
+          "runner": "macos-latest",
+          "project": "Nethermind.Db.Test",
+          "chunk": ""
+        },
+        {
+          "runner": "macos-latest",
+          "project": "Nethermind.JsonRpc.Test",
+          "chunk": "1of2"
+        },
+        {
+          "runner": "macos-latest",
+          "project": "Nethermind.JsonRpc.Test",
+          "chunk": "2of2"
+        },
+        {
+          "runner": "macos-latest",
+          "project": "Nethermind.KeyStore.Test",
+          "chunk": ""
+        },
+        {
+          "runner": "macos-latest",
+          "project": "Nethermind.Network.Discovery.Test",
+          "chunk": ""
+        },
+        {
+          "runner": "macos-latest",
+          "project": "Nethermind.Network.Dns.Test",
+          "chunk": ""
+        },
+        {
+          "runner": "macos-latest",
+          "project": "Nethermind.Network.Enr.Test",
+          "chunk": ""
+        },
+        {
+          "runner": "macos-latest",
+          "project": "Nethermind.Network.Test",
+          "chunk": ""
+        },
+        {
+          "runner": "macos-latest",
+          "project": "Nethermind.Runner.Test",
+          "chunk": "1of2"
+        },
+        {
+          "runner": "macos-latest",
+          "project": "Nethermind.Runner.Test",
+          "chunk": "2of2"
+        },
+        {
+          "runner": "macos-latest",
+          "project": "Nethermind.Sockets.Test",
+          "chunk": ""
+        },
+        {
+          "runner": "macos-latest",
+          "project": "Nethermind.Synchronization.Test",
+          "chunk": "1of4"
+        },
+        {
+          "runner": "macos-latest",
+          "project": "Nethermind.Synchronization.Test",
+          "chunk": "2of4"
+        },
+        {
+          "runner": "macos-latest",
+          "project": "Nethermind.Synchronization.Test",
+          "chunk": "3of4"
+        },
+        {
+          "runner": "macos-latest",
+          "project": "Nethermind.Synchronization.Test",
+          "chunk": "4of4"
+        },
+        {
+          "runner": "windows-latest",
+          "project": "Nethermind.Db.Test",
+          "chunk": ""
+        },
+        {
+          "runner": "windows-latest",
+          "project": "Nethermind.JsonRpc.Test",
+          "chunk": "1of2"
+        },
+        {
+          "runner": "windows-latest",
+          "project": "Nethermind.JsonRpc.Test",
+          "chunk": "2of2"
+        },
+        {
+          "runner": "windows-latest",
+          "project": "Nethermind.KeyStore.Test",
+          "chunk": ""
+        },
+        {
+          "runner": "windows-latest",
+          "project": "Nethermind.Network.Discovery.Test",
+          "chunk": ""
+        },
+        {
+          "runner": "windows-latest",
+          "project": "Nethermind.Network.Dns.Test",
+          "chunk": ""
+        },
+        {
+          "runner": "windows-latest",
+          "project": "Nethermind.Network.Enr.Test",
+          "chunk": ""
+        },
+        {
+          "runner": "windows-latest",
+          "project": "Nethermind.Network.Test",
+          "chunk": ""
+        },
+        {
+          "runner": "windows-latest",
+          "project": "Nethermind.Runner.Test",
+          "chunk": "1of2"
+        },
+        {
+          "runner": "windows-latest",
+          "project": "Nethermind.Runner.Test",
+          "chunk": "2of2"
+        },
+        {
+          "runner": "windows-latest",
+          "project": "Nethermind.Sockets.Test",
+          "chunk": ""
+        },
+        {
+          "runner": "windows-latest",
+          "project": "Nethermind.Synchronization.Test",
+          "chunk": "1of4"
+        },
+        {
+          "runner": "windows-latest",
+          "project": "Nethermind.Synchronization.Test",
+          "chunk": "2of4"
+        },
+        {
+          "runner": "windows-latest",
+          "project": "Nethermind.Synchronization.Test",
+          "chunk": "3of4"
+        },
+        {
+          "runner": "windows-latest",
+          "project": "Nethermind.Synchronization.Test",
+          "chunk": "4of4"
+        },
+        {
+          "runner": "windows-11-arm",
+          "project": "Nethermind.Db.Test",
+          "chunk": ""
+        },
+        {
+          "runner": "windows-11-arm",
+          "project": "Nethermind.Evm.Test",
+          "chunk": ""
+        },
+        {
+          "runner": "windows-11-arm",
+          "project": "Nethermind.Runner.Test",
+          "chunk": "1of2"
+        },
+        {
+          "runner": "windows-11-arm",
+          "project": "Nethermind.Runner.Test",
+          "chunk": "2of2"
+        }
+      ]
+    },
+    "tests-spec": {
+      "runner": [
+        "ubuntu-latest",
+        "ubuntu-24.04-arm"
+      ],
+      "project": [
+        "Ethereum.Abi.Test",
+        "Ethereum.Basic.Test",
+        "Ethereum.Blockchain.Block.Test",
+        "Ethereum.Difficulty.Test",
+        "Ethereum.HexPrefix.Test",
+        "Ethereum.KeyAddress.Test",
+        "Ethereum.KeyStore.Test",
+        "Ethereum.Legacy.Blockchain.Block.Test",
+        "Ethereum.Legacy.Transition.Test",
+        "Ethereum.Legacy.VM.Test",
+        "Ethereum.PoW.Test",
+        "Ethereum.Rlp.Test",
+        "Ethereum.Ssz.Test",
+        "Ethereum.Transaction.Test",
+        "Ethereum.Trie.Test"
+      ],
+      "chunk": [
+        ""
+      ]
+    },
+    "tests-chunked": {
+      "runner": [
+        "ubuntu-latest",
+        "ubuntu-24.04-arm"
+      ],
+      "test": [
+        {
+          "project": "Ethereum.Legacy.Blockchain.Test",
+          "chunk": "1of8"
+        },
+        {
+          "project": "Ethereum.Legacy.Blockchain.Test",
+          "chunk": "2of8"
+        },
+        {
+          "project": "Ethereum.Legacy.Blockchain.Test",
+          "chunk": "3of8"
+        },
+        {
+          "project": "Ethereum.Legacy.Blockchain.Test",
+          "chunk": "4of8"
+        },
+        {
+          "project": "Ethereum.Legacy.Blockchain.Test",
+          "chunk": "5of8"
+        },
+        {
+          "project": "Ethereum.Legacy.Blockchain.Test",
+          "chunk": "6of8"
+        },
+        {
+          "project": "Ethereum.Legacy.Blockchain.Test",
+          "chunk": "7of8"
+        },
+        {
+          "project": "Ethereum.Legacy.Blockchain.Test",
+          "chunk": "8of8"
+        }
+      ]
+    },
+    "tests-chunked-native": {
+      "runner": [
+        "windows-latest",
+        "macos-latest"
+      ],
+      "test": [
+        {
+          "project": "Ethereum.Legacy.Blockchain.Test",
+          "chunk": "1of8"
+        },
+        {
+          "project": "Ethereum.Legacy.Blockchain.Test",
+          "chunk": "2of8"
+        },
+        {
+          "project": "Ethereum.Legacy.Blockchain.Test",
+          "chunk": "3of8"
+        },
+        {
+          "project": "Ethereum.Legacy.Blockchain.Test",
+          "chunk": "4of8"
+        },
+        {
+          "project": "Ethereum.Legacy.Blockchain.Test",
+          "chunk": "5of8"
+        },
+        {
+          "project": "Ethereum.Legacy.Blockchain.Test",
+          "chunk": "6of8"
+        },
+        {
+          "project": "Ethereum.Legacy.Blockchain.Test",
+          "chunk": "7of8"
+        },
+        {
+          "project": "Ethereum.Legacy.Blockchain.Test",
+          "chunk": "8of8"
+        }
+      ]
+    }
+  },
+  "nethermind-tests-checked": {
+    "tests": {
+      "variant": [
+        {
+          "label": "checked",
+          "dotnet-args": "-p:DefineConstants=TRACE%3BDEBUG",
+          "hw-intrinsic": "",
+          "artifact": "checked",
+          "avx512": 1
+        },
+        {
+          "label": "no-intrinsics",
+          "dotnet-args": "",
+          "hw-intrinsic": 0,
+          "artifact": "release",
+          "avx512": 1
+        }
+      ],
+      "project": [
+        "Ethereum.Abi.Test",
+        "Ethereum.Basic.Test",
+        "Ethereum.Blockchain.Block.Test",
+        "Ethereum.Difficulty.Test",
+        "Ethereum.HexPrefix.Test",
+        "Ethereum.KeyAddress.Test",
+        "Ethereum.KeyStore.Test",
+        "Ethereum.Legacy.Blockchain.Block.Test",
+        "Ethereum.Legacy.Transition.Test",
+        "Ethereum.Legacy.VM.Test",
+        "Ethereum.PoW.Test",
+        "Ethereum.Rlp.Test",
+        "Ethereum.Transaction.Test",
+        "Ethereum.Trie.Test",
+        "Nethermind.Abi.Test",
+        "Nethermind.Api.Test",
+        "Nethermind.AuRa.Test",
+        "Nethermind.Blockchain.Test",
+        "Nethermind.Clique.Test",
+        "Nethermind.Config.Test",
+        "Nethermind.Consensus.Test",
+        "Nethermind.Core.Test",
+        "Nethermind.Db.Test",
+        "Nethermind.Era1.Test",
+        "Nethermind.Ethash.Test",
+        "Nethermind.EthStats.Test",
+        "Nethermind.Evm.Test",
+        "Nethermind.Facade.Test",
+        "Nethermind.Flashbots.Test",
+        "Nethermind.HealthChecks.Test",
+        "Nethermind.History.Test",
+        "Nethermind.Hive.Test",
+        "Nethermind.JsonRpc.Test",
+        "Nethermind.JsonRpc.TraceStore.Test",
+        "Nethermind.KeyStore.Test",
+        "Nethermind.Logging.NLog.Test",
+        "Nethermind.Merge.AuRa.Test",
+        "Nethermind.Merge.Plugin.Test",
+        "Nethermind.Mining.Test",
+        "Nethermind.Monitoring.Test",
+        "Nethermind.Network.Discovery.Test",
+        "Nethermind.Network.Dns.Test",
+        "Nethermind.Network.Enr.Test",
+        "Nethermind.Network.Test",
+        "Nethermind.Optimism.Test",
+        "Nethermind.Runner.Test",
+        "Nethermind.SendPolicy.Plugin.Test",
+        "Nethermind.Serialization.Ssz.Test",
+        "Nethermind.Shutter.Test",
+        "Nethermind.Sockets.Test",
+        "Nethermind.Specs.Test",
+        "Nethermind.State.Test",
+        "Nethermind.State.Test.Runner.Test",
+        "Nethermind.Synchronization.Test",
+        "Nethermind.Taiko.Test",
+        "Nethermind.Trie.Test",
+        "Nethermind.TxPool.Test",
+        "Nethermind.Wallet.Test",
+        "Nethermind.Xdc.Test"
+      ],
+      "include": [
+        {
+          "project": "Nethermind.Core.Test",
+          "variant": {
+            "label": "avx2",
+            "dotnet-args": "",
+            "hw-intrinsic": "",
+            "artifact": "release",
+            "avx512": 0,
+            "require-avx2": 1
+          }
+        },
+        {
+          "project": "Nethermind.Core.Test",
+          "variant": {
+            "label": "avx512",
+            "dotnet-args": "",
+            "hw-intrinsic": "",
+            "artifact": "release",
+            "avx512": 1,
+            "require-avx512": 1
+          }
+        },
+        {
+          "project": "Nethermind.Trie.Test",
+          "variant": {
+            "label": "no-avx2",
+            "dotnet-args": "",
+            "hw-intrinsic": "",
+            "artifact": "release",
+            "avx2": 0,
+            "avx512": 0,
+            "require-no-avx2": 1
+          }
+        },
+        {
+          "project": "Nethermind.Core.Test",
+          "variant": {
+            "label": "no-avx2",
+            "dotnet-args": "",
+            "hw-intrinsic": "",
+            "artifact": "release",
+            "avx2": 0,
+            "avx512": 0,
+            "require-no-avx2": 1
+          }
+        }
+      ],
+      "exclude": [
+        {
+          "variant": {
+            "label": "no-intrinsics",
+            "dotnet-args": "",
+            "hw-intrinsic": 0,
+            "artifact": "release",
+            "avx512": 1
+          },
+          "project": "Nethermind.Api.Test"
+        },
+        {
+          "variant": {
+            "label": "no-intrinsics",
+            "dotnet-args": "",
+            "hw-intrinsic": 0,
+            "artifact": "release",
+            "avx512": 1
+          },
+          "project": "Nethermind.Config.Test"
+        },
+        {
+          "variant": {
+            "label": "no-intrinsics",
+            "dotnet-args": "",
+            "hw-intrinsic": 0,
+            "artifact": "release",
+            "avx512": 1
+          },
+          "project": "Nethermind.EthStats.Test"
+        },
+        {
+          "variant": {
+            "label": "no-intrinsics",
+            "dotnet-args": "",
+            "hw-intrinsic": 0,
+            "artifact": "release",
+            "avx512": 1
+          },
+          "project": "Nethermind.HealthChecks.Test"
+        },
+        {
+          "variant": {
+            "label": "no-intrinsics",
+            "dotnet-args": "",
+            "hw-intrinsic": 0,
+            "artifact": "release",
+            "avx512": 1
+          },
+          "project": "Nethermind.Logging.NLog.Test"
+        },
+        {
+          "variant": {
+            "label": "no-intrinsics",
+            "dotnet-args": "",
+            "hw-intrinsic": 0,
+            "artifact": "release",
+            "avx512": 1
+          },
+          "project": "Nethermind.Monitoring.Test"
+        },
+        {
+          "variant": {
+            "label": "no-intrinsics",
+            "dotnet-args": "",
+            "hw-intrinsic": 0,
+            "artifact": "release",
+            "avx512": 1
+          },
+          "project": "Nethermind.Sockets.Test"
+        }
+      ]
+    },
+    "tests-chunked": {
+      "variant": [
+        {
+          "label": "checked",
+          "dotnet-args": "-p:DefineConstants=TRACE%3BDEBUG",
+          "hw-intrinsic": "",
+          "artifact": "checked"
+        },
+        {
+          "label": "no-intrinsics",
+          "dotnet-args": "",
+          "hw-intrinsic": 0,
+          "artifact": "release"
+        }
+      ],
+      "test": [
+        {
+          "project": "Ethereum.Legacy.Blockchain.Test",
+          "chunk": "1of8"
+        },
+        {
+          "project": "Ethereum.Legacy.Blockchain.Test",
+          "chunk": "2of8"
+        },
+        {
+          "project": "Ethereum.Legacy.Blockchain.Test",
+          "chunk": "3of8"
+        },
+        {
+          "project": "Ethereum.Legacy.Blockchain.Test",
+          "chunk": "4of8"
+        },
+        {
+          "project": "Ethereum.Legacy.Blockchain.Test",
+          "chunk": "5of8"
+        },
+        {
+          "project": "Ethereum.Legacy.Blockchain.Test",
+          "chunk": "6of8"
+        },
+        {
+          "project": "Ethereum.Legacy.Blockchain.Test",
+          "chunk": "7of8"
+        },
+        {
+          "project": "Ethereum.Legacy.Blockchain.Test",
+          "chunk": "8of8"
+        }
+      ]
+    }
+  },
+  "nethermind-tests-trie": {
+    "tests": {
+      "project": [
+        "Nethermind.Abi.Test",
+        "Nethermind.Analyzers.Test",
+        "Nethermind.Api.Test",
+        "Nethermind.AuRa.Test",
+        "Nethermind.BalRecorder.Test",
+        "Nethermind.Blockchain.Test",
+        "Nethermind.CensorshipDetector.Plugin.Test",
+        "Nethermind.Clique.Test",
+        "Nethermind.Config.Test",
+        "Nethermind.Consensus.Test",
+        "Nethermind.Core.Test",
+        "Nethermind.Db.Test",
+        "Nethermind.Era1.Test",
+        "Nethermind.EraE.Test",
+        "Nethermind.Ethash.Test",
+        "Nethermind.EthStats.Test",
+        "Nethermind.Evm.Test",
+        "Nethermind.Facade.Test",
+        "Nethermind.Flashbots.Test",
+        "Nethermind.HealthChecks.Test",
+        "Nethermind.History.Test",
+        "Nethermind.Hive.Test",
+        "Nethermind.Init.Snapshot.Test",
+        "Nethermind.Init.Test",
+        "Nethermind.JsonRpc.Test",
+        "Nethermind.JsonRpc.TraceStore.Test",
+        "Nethermind.KeyStore.Test",
+        "Nethermind.Logging.NLog.Test",
+        "Nethermind.Merge.AuRa.Test",
+        "Nethermind.Merge.Plugin.Test",
+        "Nethermind.Mining.Test",
+        "Nethermind.Monitoring.Test",
+        "Nethermind.Network.Discovery.Test",
+        "Nethermind.Network.Dns.Test",
+        "Nethermind.Network.Enr.Test",
+        "Nethermind.Network.Test",
+        "Nethermind.OpcodeTracing.Plugin.Test",
+        "Nethermind.Optimism.Test",
+        "Nethermind.PortfolioViewer.Plugin.Test",
+        "Nethermind.Runner.Test",
+        "Nethermind.SendPolicy.Plugin.Test",
+        "Nethermind.Serialization.Ssz.Test",
+        "Nethermind.Serialization.SszGenerator.Test",
+        "Nethermind.Shutter.Test",
+        "Nethermind.Sockets.Test",
+        "Nethermind.Specs.Test",
+        "Nethermind.State.Flat.History.Test",
+        "Nethermind.State.Flat.Test",
+        "Nethermind.State.Test",
+        "Nethermind.State.Test.Runner.Test",
+        "Nethermind.StateDiffsWriter.Test",
+        "Nethermind.Taiko.Test",
+        "Nethermind.Trie.Test",
+        "Nethermind.TxPool.Test",
+        "Nethermind.Wallet.Test",
+        "Nethermind.Xdc.Test"
+      ],
+      "chunk": [
+        ""
+      ],
+      "include": [
+        {
+          "project": "Nethermind.Synchronization.Test",
+          "chunk": "1of4"
+        },
+        {
+          "project": "Nethermind.Synchronization.Test",
+          "chunk": "2of4"
+        },
+        {
+          "project": "Nethermind.Synchronization.Test",
+          "chunk": "3of4"
+        },
+        {
+          "project": "Nethermind.Synchronization.Test",
+          "chunk": "4of4"
+        }
+      ]
+    },
+    "tests-spec": {
+      "project": [
+        "Ethereum.Abi.Test",
+        "Ethereum.Basic.Test",
+        "Ethereum.Blockchain.Block.Test",
+        "Ethereum.Difficulty.Test",
+        "Ethereum.HexPrefix.Test",
+        "Ethereum.KeyAddress.Test",
+        "Ethereum.KeyStore.Test",
+        "Ethereum.Legacy.Blockchain.Block.Test",
+        "Ethereum.Legacy.Transition.Test",
+        "Ethereum.Legacy.VM.Test",
+        "Ethereum.PoW.Test",
+        "Ethereum.Rlp.Test",
+        "Ethereum.Ssz.Test",
+        "Ethereum.Transaction.Test",
+        "Ethereum.Trie.Test"
+      ],
+      "chunk": [
+        ""
+      ]
+    },
+    "tests-chunked": {
+      "test": [
+        {
+          "project": "Ethereum.Legacy.Blockchain.Test",
+          "chunk": "1of8"
+        },
+        {
+          "project": "Ethereum.Legacy.Blockchain.Test",
+          "chunk": "2of8"
+        },
+        {
+          "project": "Ethereum.Legacy.Blockchain.Test",
+          "chunk": "3of8"
+        },
+        {
+          "project": "Ethereum.Legacy.Blockchain.Test",
+          "chunk": "4of8"
+        },
+        {
+          "project": "Ethereum.Legacy.Blockchain.Test",
+          "chunk": "5of8"
+        },
+        {
+          "project": "Ethereum.Legacy.Blockchain.Test",
+          "chunk": "6of8"
+        },
+        {
+          "project": "Ethereum.Legacy.Blockchain.Test",
+          "chunk": "7of8"
+        },
+        {
+          "project": "Ethereum.Legacy.Blockchain.Test",
+          "chunk": "8of8"
+        }
+      ]
+    }
+  },
+  "nethermind-tests-single-proc": {
+    "tests": {
+      "project": [
+        "Nethermind.Blockchain.Test",
+        "Nethermind.Evm.Test",
+        "Nethermind.Merge.Plugin.Test",
+        "Nethermind.State.Test",
+        "Nethermind.Trie.Test"
+      ],
+      "filter": [
+        ""
+      ],
+      "include": [
+        {
+          "project": "Nethermind.Core.Test",
+          "filter": "FullyQualifiedName!~RateLimiterTests"
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,68 @@
+name: Select test projects
+description: >-
+  Writes the NUnit matrices of a workflow from scripts/ci/test-matrices.json. A pull request keeps only the test
+  projects that its change can affect (scripts/ci/select_tests.py, model built hourly by test-selection.yml);
+  every other event, the ci-full label, and any problem with the selection keep every matrix whole.
+
+inputs:
+  workflow:
+    description: Key of the workflow in scripts/ci/test-matrices.json
+    required: true
+
+outputs:
+  matrices:
+    description: JSON object from job id to its matrix, or null for a job with nothing to run
+    value: ${{ steps.select.outputs.matrices }}
+  any:
+    description: Whether any job has something to run
+    value: ${{ steps.select.outputs.any }}
+
+runs:
+  using: composite
+  steps:
+    - name: Select test projects
+      id: select
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        WORKFLOW: ${{ inputs.workflow }}
+        EVENT: ${{ contains(github.event.pull_request.labels.*.name, 'ci-full') && 'ci-full' || github.event_name }}
+        BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        RUN_ID: ${{ github.run_id }}
+      run: |
+        work="$RUNNER_TEMP/test-selection"
+        mkdir -p "$work/model"
+        # errexit does not apply inside a function called as an if condition, so every step returns explicitly:
+        # a failed diff must never reach the selector as an empty change.
+        run_selection() {
+          : > "$work/changed.txt"
+          if [ "$EVENT" = "pull_request" ]; then
+            git fetch --no-tags --depth=1 origin "$BASE_SHA" || return 1
+            git diff --name-only "$BASE_SHA" HEAD > "$work/changed.txt" || return 1
+            model_run=$(gh run list -R "$GITHUB_REPOSITORY" --workflow test-selection.yml --branch master \
+              --status success -L 1 --json databaseId -q '.[0].databaseId') || return 1
+            gh run download "$model_run" -R "$GITHUB_REPOSITORY" -n test-selection-model -D "$work/model" || return 1
+          fi
+          python3 scripts/ci/select_tests.py select-projects --model "$work/model/model.json.gz" \
+            --changed-files "$work/changed.txt" --run "$RUN_ID" --matrices scripts/ci/test-matrices.json \
+            --workflow "$WORKFLOW" --event "$EVENT" --output "$work/output" || return 1
+        }
+        # Any failure runs every test.
+        if run_selection > "$work/log" 2>&1; then
+          cat "$work/log" >> "$GITHUB_STEP_SUMMARY"
+          cat "$work/output" >> "$GITHUB_OUTPUT"
+        else
+          cat "$work/log"
+          echo "::warning::Test selection failed; running every test project"
+          echo "matrices=$(jq -c --arg workflow "$WORKFLOW" '.[$workflow]' scripts/ci/test-matrices.json)" >> "$GITHUB_OUTPUT"
+          echo "any=true" >> "$GITHUB_OUTPUT"
+        fi
+        grep -q "^running [0-9]* test projects" "$work/log" && echo "selected=true" >> "$GITHUB_OUTPUT" || true
+
+    - name: Record that the run used the selection
+      if: steps.select.outputs.selected == 'true'
+      uses: actions/upload-artifact@v7
+      with:
+        name: test-selection
+        path: ${{ runner.temp }}/test-selection/log
+        retention-days: 7

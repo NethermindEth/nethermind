@@ -1,48 +1,47 @@
 name: Test selection
 
-# Builds the model that run-nethtest.yml uses to run, on a pull request, only the EEST tests that the change
-# can affect (scripts/ci/select_tests.py). Every hour it reads the finished runs of nethermind-tests.yml
-# (changed files, test-level failures), grows the journal back to 60 days, rebuilds the model and replays
-# the selector over the journal into the job summary: the share of EEST cost it runs and the failures it
-# would have hidden.
+# Builds the model that pull requests use to run only the tests their change can affect
+# (scripts/ci/select_tests.py, .github/actions/select-tests, the Select EEST tests step of run-nethtest.yml).
+# Every hour it adds the finished test runs to the journal, growing it back to 60 days, and rebuilds the model.
+# Once a day it refreshes the test costs and replays the selector over the journal into the job summary: the
+# share of cost it runs and the failures it would have hidden.
 on:
   schedule:
     - cron: '17 * * * *'
   workflow_dispatch:
 
 permissions:
-  actions: read
+  # actions: write deletes the superseded state and model artifacts.
+  actions: write
   contents: read
 
 concurrency:
   group: test-selection
   cancel-in-progress: false
 
+env:
+  GH_TOKEN: ${{ github.token }}
+  STATE: ${{ github.workspace }}/state
+
 jobs:
   model:
     name: Build the selection model
     runs-on: ubuntu-latest
     timeout-minutes: 120
-    env:
-      GH_TOKEN: ${{ github.token }}
-      STATE: ${{ github.workspace }}/state
     steps:
-      # Full history without file contents: pull request diffs come from local git, not the API.
+      # Full history without file contents: the merge base and the diff of every run come from local git.
       - name: Check out repository
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
           filter: blob:none
 
-      - name: Fetch pull request heads
-        run: git fetch --no-tags --filter=blob:none origin '+refs/pull/*/head:refs/remotes/origin/pr/*' || true
-
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
           python-version: '3.12'
 
-      - name: Restore the journal and the inventory
+      - name: Restore the state
         run: |
           mkdir -p "$STATE"
           previous=$(gh run list -R "$GITHUB_REPOSITORY" --workflow test-selection.yml --branch master \
@@ -50,45 +49,55 @@ jobs:
           if [ -n "$previous" ]; then
             gh run download "$previous" -R "$GITHUB_REPOSITORY" -n test-selection-state -D "$STATE" || true
           fi
-
-      - name: Refresh the EEST inventory once a day
-        run: |
-          today=$(date -u +%F)
-          if [ "$(cat "$STATE/inventory-date" 2>/dev/null)" != "$today" ] || [ ! -s "$STATE/eest-inventory.json" ]; then
-            run=$(gh run list -R "$GITHUB_REPOSITORY" --workflow nethermind-tests.yml --branch master --event push \
-              --status success -L 1 --json databaseId -q '.[0].databaseId')
-            if [ -n "$run" ]; then
-              python scripts/ci/select_tests.py inventory --run "$run" --out "$STATE/eest-inventory.json"
-              echo "$today" > "$STATE/inventory-date"
-            fi
+          if [ "$(cat "$STATE/inventory-date" 2>/dev/null)" != "$(date -u +%F)" ]; then
+            echo "DAILY=true" >> "$GITHUB_ENV"
           fi
+
+      - name: Refresh the test costs
+        if: env.DAILY == 'true'
+        run: |
+          run=$(gh run list -R "$GITHUB_REPOSITORY" --workflow nethermind-tests.yml --branch master --event push \
+            --status success -L 1 --json databaseId -q '.[0].databaseId')
+          python scripts/ci/select_tests.py inventory --run "$run" --out "$STATE/inventory.json.gz"
+          date -u +%F > "$STATE/inventory-date"
 
       - name: Collect runs
-        run: python scripts/ci/select_tests.py collect --journal "$STATE/journal.jsonl" --days 1
+        run: python scripts/ci/select_tests.py collect --journal "$STATE/journal.jsonl.gz"
 
       - name: Build the model
-        run: |
-          python scripts/ci/select_tests.py model --journal "$STATE/journal.jsonl" \
-            --inventory "$STATE/eest-inventory.json" --out "$STATE/model.json"
+        run: python scripts/ci/select_tests.py model --journal "$STATE/journal.jsonl.gz" --out "$STATE/model.json.gz"
 
       - name: Replay the selector over the journal
+        if: env.DAILY == 'true'
         run: |
-          python scripts/ci/select_tests.py replay --journal "$STATE/journal.jsonl" \
-            --inventory "$STATE/eest-inventory.json" --report "$STATE/report.md"
-          if [ -s "$STATE/report.md" ]; then
-            cat "$STATE/report.md" >> "$GITHUB_STEP_SUMMARY"
-          fi
+          python scripts/ci/select_tests.py replay --journal "$STATE/journal.jsonl.gz" \
+            --inventory "$STATE/inventory.json.gz" --report "$STATE/report.md"
+          cat "$STATE/report.md" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Save the state
-        if: always()
         uses: actions/upload-artifact@v7
         with:
           name: test-selection-state
           path: |
-            ${{ env.STATE }}/journal.jsonl
-            ${{ env.STATE }}/eest-inventory.json
+            ${{ env.STATE }}/journal.jsonl.gz
+            ${{ env.STATE }}/inventory.json.gz
             ${{ env.STATE }}/inventory-date
-            ${{ env.STATE }}/model.json
-            ${{ env.STATE }}/report.md
-          if-no-files-found: warn
-          retention-days: 30
+          retention-days: 7
+
+      - name: Publish the model
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-selection-model
+          path: |
+            ${{ env.STATE }}/model.json.gz
+            ${{ env.STATE }}/inventory.json.gz
+          retention-days: 7
+
+      # Each run supersedes the previous one; keep the newest two of each artifact so a broken run can fall back.
+      - name: Delete superseded artifacts
+        run: |
+          for name in test-selection-state test-selection-model; do
+            gh api --paginate "repos/$GITHUB_REPOSITORY/actions/artifacts?name=$name&per_page=100" \
+              -q '.artifacts | sort_by(.created_at) | reverse | .[2:][] | .id' |
+              xargs -r -I{} gh api -X DELETE "repos/$GITHUB_REPOSITORY/actions/artifacts/{}"
+          done

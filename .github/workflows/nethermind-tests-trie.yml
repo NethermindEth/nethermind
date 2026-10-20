@@ -27,88 +27,49 @@ defaults:
     shell: bash
 
 permissions:
+  # actions: read lets the select job download the test selection model from test-selection.yml.
+  actions: read
   contents: read
 
 jobs:
   build:
+    needs: select
+    if: needs.select.outputs.any == 'true'
     uses: ./.github/workflows/build-test-artifacts.yml
     with:
       matrix: >-
         {"include":[{"rid":"linux-x64","os":"ubuntu-latest","variant":"release","build_args":""}]}
 
+  # Pull requests run only the test projects their change can affect (.github/actions/select-tests); every
+  # other event runs every project. The matrices live in scripts/ci/test-matrices.json.
+  select:
+    name: Select test projects
+    runs-on: ubuntu-latest
+    outputs:
+      matrices: ${{ steps.select.outputs.matrices }}
+      any: ${{ steps.select.outputs.any }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Select test projects
+        id: select
+        uses: ./.github/actions/select-tests
+        with:
+          workflow: nethermind-tests-trie
+
   tests:
     name: Run ${{ matrix.project }}${{ matrix.chunk && format(' ({0})', matrix.chunk) || '' }}
-    needs: build
+    needs: [build, select]
+    if: fromJSON(needs.select.outputs.matrices).tests != null
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
       DOTNET_GCConserveMemory: 9
     strategy:
       fail-fast: false
-      matrix:
-        project:
-          - Nethermind.Abi.Test
-          - Nethermind.Analyzers.Test
-          - Nethermind.Api.Test
-          - Nethermind.AuRa.Test
-          - Nethermind.BalRecorder.Test
-          - Nethermind.Blockchain.Test
-          - Nethermind.CensorshipDetector.Plugin.Test
-          - Nethermind.Clique.Test
-          - Nethermind.Config.Test
-          - Nethermind.Consensus.Test
-          - Nethermind.Core.Test
-          - Nethermind.Db.Test
-          - Nethermind.Era1.Test
-          - Nethermind.EraE.Test
-          - Nethermind.Ethash.Test
-          - Nethermind.EthStats.Test
-          - Nethermind.Evm.Test
-          - Nethermind.Facade.Test
-          - Nethermind.Flashbots.Test
-          - Nethermind.HealthChecks.Test
-          - Nethermind.History.Test
-          - Nethermind.Hive.Test
-          - Nethermind.Init.Snapshot.Test
-          - Nethermind.Init.Test
-          - Nethermind.JsonRpc.Test
-          - Nethermind.JsonRpc.TraceStore.Test
-          - Nethermind.KeyStore.Test
-          - Nethermind.Logging.NLog.Test
-          - Nethermind.Merge.AuRa.Test
-          - Nethermind.Merge.Plugin.Test
-          - Nethermind.Mining.Test
-          - Nethermind.Monitoring.Test
-          - Nethermind.Network.Discovery.Test
-          - Nethermind.Network.Dns.Test
-          - Nethermind.Network.Enr.Test
-          - Nethermind.Network.Test
-          - Nethermind.OpcodeTracing.Plugin.Test
-          - Nethermind.Optimism.Test
-          - Nethermind.PortfolioViewer.Plugin.Test
-          - Nethermind.Runner.Test
-          - Nethermind.SendPolicy.Plugin.Test
-          - Nethermind.Serialization.Ssz.Test
-          - Nethermind.Serialization.SszGenerator.Test
-          - Nethermind.Shutter.Test
-          - Nethermind.Sockets.Test
-          - Nethermind.Specs.Test
-          - Nethermind.State.Flat.History.Test
-          - Nethermind.State.Flat.Test
-          - Nethermind.State.Test
-          - Nethermind.State.Test.Runner.Test
-          - Nethermind.StateDiffsWriter.Test
-          - Nethermind.Taiko.Test
-          - Nethermind.Trie.Test
-          - Nethermind.TxPool.Test
-          - Nethermind.Wallet.Test
-          - Nethermind.Xdc.Test
-        chunk: ['']
-        include: # Synchronization.Test is chunked on every runner in the main suite — its unchunked variant hits the wall.
-          - { project: Nethermind.Synchronization.Test, chunk: 1of4 }
-          - { project: Nethermind.Synchronization.Test, chunk: 2of4 }
-          - { project: Nethermind.Synchronization.Test, chunk: 3of4 }
-          - { project: Nethermind.Synchronization.Test, chunk: 4of4 }
+      # Synchronization.Test is chunked on every runner in the main suite — its unchunked variant hits the wall.
+      matrix: ${{ fromJSON(needs.select.outputs.matrices).tests }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
@@ -149,7 +110,8 @@ jobs:
 
   tests-spec:
     name: Run ${{ matrix.project }}${{ matrix.chunk && format(' ({0})', matrix.chunk) || '' }}
-    needs: build
+    needs: [build, select]
+    if: fromJSON(needs.select.outputs.matrices).tests-spec != null
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
@@ -157,24 +119,7 @@ jobs:
       FIXTURE_PROJECTS: '["Ethereum.Blockchain.Block.Test","Ethereum.Legacy.Blockchain.Block.Test","Ethereum.Legacy.Blockchain.Test","Ethereum.Legacy.Transition.Test","Ethereum.Legacy.VM.Test"]'
     strategy:
       fail-fast: false
-      matrix:
-        project:
-          - Ethereum.Abi.Test
-          - Ethereum.Basic.Test
-          - Ethereum.Blockchain.Block.Test
-          - Ethereum.Difficulty.Test
-          - Ethereum.HexPrefix.Test
-          - Ethereum.KeyAddress.Test
-          - Ethereum.KeyStore.Test
-          - Ethereum.Legacy.Blockchain.Block.Test
-          - Ethereum.Legacy.Transition.Test
-          - Ethereum.Legacy.VM.Test
-          - Ethereum.PoW.Test
-          - Ethereum.Rlp.Test
-          - Ethereum.Ssz.Test
-          - Ethereum.Transaction.Test
-          - Ethereum.Trie.Test
-        chunk: ['']
+      matrix: ${{ fromJSON(needs.select.outputs.matrices).tests-spec }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
@@ -216,21 +161,13 @@ jobs:
 
   tests-chunked:
     name: Run ${{ matrix.test.project }} (${{ matrix.test.chunk }})
-    needs: build
+    needs: [build, select]
+    if: fromJSON(needs.select.outputs.matrices).tests-chunked != null
     runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
       fail-fast: false
-      matrix:
-        test:
-          - { project: Ethereum.Legacy.Blockchain.Test, chunk: 1of8 }
-          - { project: Ethereum.Legacy.Blockchain.Test, chunk: 2of8 }
-          - { project: Ethereum.Legacy.Blockchain.Test, chunk: 3of8 }
-          - { project: Ethereum.Legacy.Blockchain.Test, chunk: 4of8 }
-          - { project: Ethereum.Legacy.Blockchain.Test, chunk: 5of8 }
-          - { project: Ethereum.Legacy.Blockchain.Test, chunk: 6of8 }
-          - { project: Ethereum.Legacy.Blockchain.Test, chunk: 7of8 }
-          - { project: Ethereum.Legacy.Blockchain.Test, chunk: 8of8 }
+      matrix: ${{ fromJSON(needs.select.outputs.matrices).tests-chunked }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
@@ -271,14 +208,20 @@ jobs:
 
   tests-summary:
     name: Tests summary
-    needs: [tests, tests-spec, tests-chunked]
+    needs: [select, tests, tests-spec, tests-chunked]
     if: always()
     runs-on: ubuntu-latest
     steps:
       - name: Check result
+        env:
+          MATRICES: ${{ needs.select.outputs.matrices }}
         run: |
-          [[ \
-            "${{ needs.tests.result }}" == "success" && \
-            "${{ needs.tests-spec.result }}" == "success" && \
-            "${{ needs.tests-chunked.result }}" == "success" \
-          ]]
+          # A test job may be skipped only when the selection left it nothing to run; skipped for any other
+          # reason (a failed build, a failed selection) is a failure.
+          job_ok() {
+            [[ "$2" == "success" ]] || [[ "$2" == "skipped" && "$(jq -r --arg job "$1" '.[$job] == null' <<< "$MATRICES")" == "true" ]]
+          }
+          [[ "${{ needs.select.result }}" == "success" ]]
+          job_ok tests "${{ needs.tests.result }}"
+          job_ok tests-spec "${{ needs.tests-spec.result }}"
+          job_ok tests-chunked "${{ needs.tests-chunked.result }}"
