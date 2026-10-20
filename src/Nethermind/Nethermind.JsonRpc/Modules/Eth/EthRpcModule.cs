@@ -77,7 +77,7 @@ public partial class EthRpcModule(
     HashesOnlyBlockReader? hashesOnlyBlockReader = null,
     IReceiptFinder? storedReceiptFinder = null) : IEthRpcModule
 {
-    public const int GetProofStorageKeyLimit = 1000;
+    public const int GetProofStorageKeyLimit = 1024;
     public const int MaxGetStorageSlots = StorageValuesRequest.MaxSlots;
     private const string UnknownAccount = "unknown account";
     protected readonly Encoding _messageEncoding = Encoding.UTF8;
@@ -1149,13 +1149,31 @@ public partial class EthRpcModule(
 
         if (!_blockchainBridge.HasStateForBlock(header!))
         {
-            return GetStateFailureResult<AccountProof>(header);
+            return NoStateResult();
         }
 
         using RentedTimeout timeout = _rpcConfig.RentTimeout();
         AccountProofCollector accountProofCollector = new(accountAddress, storageKeys, timeout.Token);
-        _blockchainBridge.RunTreeVisitor(accountProofCollector, header!);
-        return ResultWrapper<AccountProof>.Success(accountProofCollector.BuildResult());
+        try
+        {
+            _blockchainBridge.RunTreeVisitor(accountProofCollector, header!);
+        }
+        catch (Exception e) when (e is StateNotRetainedException or MissingTrieNodeException { InnerException: StateNotRetainedException })
+        {
+            return NoStateResult();
+        }
+
+        AccountProof proof = accountProofCollector.BuildResult();
+        for (int i = 0; i < proof.StorageProofs.Length; i++)
+        {
+            proof.StorageProofs[i].Key = storageKeys.FormatKey(i);
+        }
+
+        return ResultWrapper<AccountProof>.Success(proof);
+
+        ResultWrapper<AccountProof> NoStateResult() => _ethSyncingInfo.SyncMode.HaveNotSyncedStateYet()
+            ? GetStateFailureResult<AccountProof>(header)
+            : ResultWrapper<AccountProof>.Fail(ErrorMessages.PrunedHistoryUnavailable, ErrorCodes.PrunedHistoryUnavailable);
     }
 
     public ResultWrapper<ulong> eth_chainId()

@@ -6,6 +6,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 
 namespace Nethermind.Serialization.Json;
@@ -13,13 +14,23 @@ namespace Nethermind.Serialization.Json;
 [JsonConverter(typeof(StorageKeysConverter))]
 public sealed class StorageKeys : IReadOnlyCollection<UInt256>
 {
-    private readonly HashSet<UInt256> _keys = [];
+    private readonly List<UInt256> _keys = [];
+    private readonly List<bool> _isFullWidth = [];
 
     public int Count => _keys.Count;
 
-    public void Add(UInt256 key) => _keys.Add(key);
+    public void Add(UInt256 key) => Add(key, isFullWidth: false);
 
-    public HashSet<UInt256>.Enumerator GetEnumerator() => _keys.GetEnumerator();
+    internal void Add(UInt256 key, bool isFullWidth)
+    {
+        _keys.Add(key);
+        _isFullWidth.Add(isFullWidth);
+    }
+
+    // execution-apis eth_getProof: a key sent with 63 or 64 hex digits is echoed as 32 bytes, any other as a quantity.
+    internal string FormatKey(int index) => _keys[index].ToHexString(skipLeadingZeros: !_isFullWidth[index]);
+
+    public List<UInt256>.Enumerator GetEnumerator() => _keys.GetEnumerator();
 
     IEnumerator<UInt256> IEnumerable<UInt256>.GetEnumerator() => _keys.GetEnumerator();
 
@@ -28,6 +39,8 @@ public sealed class StorageKeys : IReadOnlyCollection<UInt256>
 
 public sealed class StorageKeysConverter : JsonConverter<StorageKeys>
 {
+    private const int FullWidthMinLength = 2 + 63;
+
     public override StorageKeys Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
         if (reader.TokenType == JsonTokenType.String)
@@ -43,7 +56,15 @@ public sealed class StorageKeysConverter : JsonConverter<StorageKeys>
         StorageKeys keys = [];
         while (reader.Read() && reader.TokenType != JsonTokenType.EndArray)
         {
-            keys.Add(StorageIndexConverter.ReadValue(ref reader));
+            if (reader.TokenType == JsonTokenType.String && reader.ValueTextEquals("0x"u8))
+            {
+                keys.Add(UInt256.Zero);
+                continue;
+            }
+
+            UInt256 key = StorageIndexConverter.ReadValue(ref reader);
+            int length = reader.HasValueSequence ? (int)reader.ValueSequence.Length : reader.ValueSpan.Length;
+            keys.Add(key, length >= FullWidthMinLength);
         }
 
         return keys;

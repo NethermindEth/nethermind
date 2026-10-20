@@ -169,9 +169,15 @@ namespace Nethermind.JsonRpc.Modules.Proof
             VisitingStats diagnostics = new();
             blockchainBridge.RunTreeVisitor(accountProofCollector, header!, diagnostics: diagnostics);
 
+            AccountProof proof = accountProofCollector.BuildResult();
+            for (int i = 0; i < proof.StorageProofs.Length; i++)
+            {
+                proof.StorageProofs[i].Key = storageKeys.FormatKey(i);
+            }
+
             return ResultWrapper<AccountProofWithMeta>.Success(new AccountProofWithMeta
             {
-                Proof = accountProofCollector.BuildResult(),
+                Proof = proof,
                 Meta = new ProofMeta
                 {
                     NodeLookups = diagnostics.NodeLookups,

@@ -63,6 +63,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         public IGasPriceOracle GasPriceOracle { get; private set; } = null!;
         public IProtocolsManager ProtocolsManager { get; private set; } = null!;
         public IReceiptConfig ReceiptConfig { get; private set; } = new ReceiptConfig();
+        public SyncMode SyncMode { get; private set; } = SyncMode.All;
 
         public IKeyStore KeyStore { get; } = new MemKeyStore(TestItem.PrivateKeys, Path.Combine("testKeyStoreDir", Path.GetRandomFileName()));
         public IWallet TestWallet { get; private set; } =
@@ -149,6 +150,12 @@ namespace Nethermind.JsonRpc.Test.Modules
                 return this;
             }
 
+            public Builder<T> WithSyncMode(SyncMode syncMode)
+            {
+                _blockchain.SyncMode = syncMode;
+                return this;
+            }
+
             public Builder<T> WithEthRpcModule(Func<TestRpcBlockchain, IEthRpcModule> builder)
             {
                 _blockchain._ethRpcModuleBuilder = builder;
@@ -202,7 +209,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             @this.SpecProvider,
             @this.GasPriceOracle,
             new EthSyncingInfo(@this.BlockTree, Substitute.For<ISyncPointers>(), @this.Container.Resolve<ISyncConfig>(),
-            new StaticSelector(SyncMode.All), Substitute.For<ISyncProgressResolver>(), Synchronization.No.BeaconSync, @this.LogManager),
+            new StaticSelector(@this.SyncMode), Substitute.For<ISyncProgressResolver>(), Synchronization.No.BeaconSync, @this.LogManager),
             @this.FeeHistoryOracle ??
             new FeeHistoryOracle(@this.BlockTree, @this.ReceiptStorage, @this.SpecProvider),
             @this.ProtocolsManager,

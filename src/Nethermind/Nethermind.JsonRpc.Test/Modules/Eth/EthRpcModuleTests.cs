@@ -44,6 +44,7 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
+using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Trie;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
@@ -651,11 +652,110 @@ public partial class EthRpcModuleTests
     [Test]
     public async Task Eth_get_proof_accepts_leading_zero_key()
     {
+        // Both encodings name slot 1: same proof and value, but each entry echoes its own encoding.
         using Context ctx = await Context.Create();
-        string address = TestItem.AddressA.Bytes.ToHexString(true);
-        string canonical = await ctx.Test.TestEthRpc("eth_getProof", address, new[] { "0x1" }, "latest");
-        string padded = await ctx.Test.TestEthRpc("eth_getProof", address, new[] { "0x0000000000000000000000000000000000000000000000000000000000000001" }, "latest");
-        Assert.That(padded, Is.EqualTo(canonical));
+        string padded = "0x0000000000000000000000000000000000000000000000000000000000000001";
+        string serialized = await ctx.Test.TestEthRpc("eth_getProof", TestItem.AddressA.Bytes.ToHexString(true), new[] { "0x1", padded }, "latest");
+
+        JArray storageProof = (JArray)JToken.Parse(serialized)["result"]!["storageProof"]!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(storageProof.Select(static p => (string?)p["key"]), Is.EqualTo(new[] { "0x1", padded }));
+            Assert.That(storageProof.Select(static p => (string?)p["value"]), Is.EqualTo(new[] { "0xabcdef", "0xabcdef" }));
+            Assert.That(storageProof[1]["proof"]!.ToString(), Is.EqualTo(storageProof[0]["proof"]!.ToString()));
+        }
+    }
+
+    [TestCase("0x1", "0x1")]
+    [TestCase("0x01", "0x1")]
+    [TestCase("0x0", "0x0")]
+    [TestCase("0x", "0x0")]
+    [TestCase("0x000000000000000000000000000000000000000000000000000000000000001", "0x0000000000000000000000000000000000000000000000000000000000000001")]
+    [TestCase("0x0000000000000000000000000000000000000000000000000000000000000001", "0x0000000000000000000000000000000000000000000000000000000000000001")]
+    [TestCase("0x00000000000000000000000000000000000000000000000000000000000001", "0x1")]
+    [TestCase("0x0000000000000000000000000000000000000000000000000000000000ABCDEF", "0x0000000000000000000000000000000000000000000000000000000000abcdef")]
+    [TestCase("0xABCDEF", "0xabcdef")]
+    public async Task Eth_get_proof_echoes_storage_key(string key, string expectedKey)
+    {
+        using Context ctx = await Context.Create();
+        string serialized = await ctx.Test.TestEthRpc("eth_getProof", TestItem.AddressA.Bytes.ToHexString(true), new[] { key }, "latest");
+
+        JArray storageProof = (JArray)JToken.Parse(serialized)["result"]!["storageProof"]!;
+        Assert.That(storageProof.Select(static p => (string?)p["key"]), Is.EqualTo(new[] { expectedKey }), serialized);
+    }
+
+    [Test]
+    public async Task Eth_get_proof_returns_one_entry_per_key_in_request_order()
+    {
+        using Context ctx = await Context.Create();
+        string serialized = await ctx.Test.TestEthRpc("eth_getProof", TestItem.AddressA.Bytes.ToHexString(true), new[] { "0x2", "0x1", "0x1" }, "latest");
+
+        JArray storageProof = (JArray)JToken.Parse(serialized)["result"]!["storageProof"]!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(storageProof.Select(static p => (string?)p["key"]), Is.EqualTo(new[] { "0x2", "0x1", "0x1" }));
+            Assert.That(storageProof.Select(static p => (string?)p["value"]), Is.EqualTo(new[] { "0x0", "0xabcdef", "0xabcdef" }));
+            Assert.That(storageProof[2]["proof"]!.ToString(), Is.EqualTo(storageProof[1]["proof"]!.ToString()));
+        }
+    }
+
+    [TestCase("\"0xzz\"")]
+    [TestCase("\"0x10000000000000000000000000000000000000000000000000000000000000000\"")]
+    [TestCase("\"1\"")]
+    [TestCase("1")]
+    public async Task Eth_get_proof_rejects_invalid_storage_key(string key)
+    {
+        using Context ctx = await Context.Create();
+        string serialized = await ctx.Test.TestEthRpc("eth_getProof", TestItem.AddressA.Bytes.ToHexString(true), $"[{key}]", "latest");
+        Assert.That(serialized, Does.Contain($"\"code\":{ErrorCodes.InvalidParams}"), serialized);
+    }
+
+    // Retained state is answered; state the node no longer keeps is 4444, but a node still syncing state keeps -32002.
+    [TestCase(SyncMode.Full, ErrorCodes.PrunedHistoryUnavailable)]
+    [TestCase(SyncMode.StateNodes, ErrorCodes.ResourceUnavailable)]
+    public async Task Eth_get_proof_no_state_maps_by_sync_mode(SyncMode syncMode, int expectedCode)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithSyncMode(syncMode)
+            .WithFlatDb(false)
+            .WithConfig(new JsonRpcConfig { Timeout = -1 })
+            .Build();
+        chain.WorldStateManager.FlushCache(CancellationToken.None);
+        chain.StateDb.Clear();
+
+        string serialized = await chain.TestEthRpc("eth_getProof", TestItem.AddressA.Bytes.ToHexString(true), new[] { "0x1" }, "latest");
+        Assert.That(serialized, Does.Contain($"\"code\":{expectedCode}"), serialized);
+    }
+
+    [TestCase(SyncMode.Full, true, false, ErrorCodes.PrunedHistoryUnavailable)]
+    [TestCase(SyncMode.Full, true, true, ErrorCodes.PrunedHistoryUnavailable)]
+    [TestCase(SyncMode.StateNodes, true, false, ErrorCodes.ResourceUnavailable)]
+    [TestCase(SyncMode.StateNodes, true, true, ErrorCodes.ResourceUnavailable)]
+    [TestCase(SyncMode.Full, false, true, ErrorCodes.ResourceNotFound)]
+    public async Task Eth_get_proof_state_not_retained_during_traversal_maps_by_sync_mode(SyncMode syncMode, bool stateNotRetained, bool wrapInMissingNode, int expectedCode)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithSyncMode(syncMode)
+            .WithConfig(new JsonRpcConfig { Timeout = -1 })
+            .Build(builder => builder.AddDecorator<IStateReader>((_, inner) => new NotRetainedProofStateReader(inner, stateNotRetained, wrapInMissingNode)));
+
+        string serialized = await chain.TestEthRpc("eth_getProof", TestItem.AddressA.Bytes.ToHexString(true), new[] { "0x1" }, "latest");
+        Assert.That(serialized, Does.Contain($"\"code\":{expectedCode}"), serialized);
+    }
+
+    private sealed class NotRetainedProofStateReader(IStateReader inner, bool stateNotRetained, bool wrapInMissingNode) : IStateReader
+    {
+        public bool TryGetAccount(BlockHeader? baseBlock, Address address, out AccountStruct account) => inner.TryGetAccount(baseBlock, address, out account);
+        public void GetStorage(BlockHeader? baseBlock, Address address, in UInt256 index, out UInt256 value) => inner.GetStorage(baseBlock, address, in index, out value);
+        public byte[]? GetCode(Hash256 codeHash) => inner.GetCode(codeHash);
+        public byte[]? GetCode(in ValueHash256 codeHash) => inner.GetCode(in codeHash);
+        public void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, BlockHeader? baseBlock, VisitingOptions? visitingOptions = null, VisitingStats? diagnostics = null) where TCtx : struct, INodeContext<TCtx>
+        {
+            StateNotRetainedException? notRetained = stateNotRetained ? new StateNotRetainedException($"No state available for block {baseBlock?.Number}") : null;
+            if (!wrapInMissingNode) throw notRetained!;
+            throw new MissingTrieNodeException($"State for block {baseBlock?.Number} is unavailable", null, TreePath.Empty, Keccak.EmptyTreeHash, notRetained);
+        }
+        public bool HasStateForBlock(BlockHeader? baseBlock) => inner.HasStateForBlock(baseBlock);
     }
 
     [TestCase("earliest", TestName = "Eth_get_storage_values_WhenEarliestBlock_ReturnsStorageValue")]
@@ -1686,12 +1786,23 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
-    public async Task Eth_get_proof_withTooManyKeys()
+    public async Task Eth_get_proof_withTooManyKeys([Values] bool duplicates)
     {
         using Context ctx = await Context.Create();
-        string serialized = await ctx.Test.TestEthRpc("eth_getProof", TestBlockchain.AccountA.ToString(), $"[{string.Join(", ", Enumerable.Range(1, EthRpcModule.GetProofStorageKeyLimit + 1).Select(i => "\"" + i.ToHexString() + "\""))}]", "0x2");
-        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"storageKeys: 1001 is over the query limit 1000.\"},\"id\":67}"));
+        string serialized = await ctx.Test.TestEthRpc("eth_getProof", TestBlockchain.AccountA.ToString(), StorageKeysJson(1025, duplicates), "0x2");
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"storageKeys: 1025 is over the query limit 1024.\"},\"id\":67}"));
     }
+
+    [Test]
+    public async Task Eth_get_proof_accepts_1024_keys([Values] bool duplicates)
+    {
+        using Context ctx = await Context.Create();
+        string serialized = await ctx.Test.TestEthRpc("eth_getProof", TestBlockchain.AccountA.ToString(), StorageKeysJson(1024, duplicates), "0x2");
+        Assert.That(((JArray)JToken.Parse(serialized)["result"]!["storageProof"]!).Count, Is.EqualTo(1024), serialized);
+    }
+
+    private static string StorageKeysJson(int count, bool duplicates) =>
+        $"[{string.Join(", ", Enumerable.Range(1, count).Select(i => "\"" + (duplicates ? 1 : i).ToHexString() + "\""))}]";
 
     [Test]
     public async Task Eth_get_proof_for_non_existent_account_returns_zero_hashes()
