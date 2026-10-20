@@ -125,12 +125,12 @@ public static partial class AbiType
         TailSize = array =>
         {
             const int lengthSize = 32;
-            if (!abi.IsDynamic) return lengthSize + array.Length * abi.HeadSize;
+            if (!abi.IsDynamic) return checked(lengthSize + array.Length * abi.HeadSize);
 
             int size = lengthSize;
             foreach (T e in array)
             {
-                size += 32 + abi.Size(e);
+                size = checked(size + 32 + abi.Size(e));
             }
 
             return size;
@@ -157,7 +157,7 @@ public static partial class AbiType
                 int size = 0;
                 foreach (T e in array)
                 {
-                    size += 32 + abi.Size(e);
+                    size = checked(size + 32 + abi.Size(e));
                 }
 
                 return size;
@@ -185,7 +185,7 @@ public static partial class AbiType
             const int lengthSize = 32;
             int bytesSize = Math.PadTo32(bytes.Length);
 
-            return lengthSize + bytesSize;
+            return checked(lengthSize + bytesSize);
         }
     };
 
@@ -242,7 +242,7 @@ public static partial class AbiType
             int byteCount = StrictUtf8.GetByteCount(v);
             int byteSize = Math.PadTo32(byteCount);
 
-            return lengthSize + byteSize;
+            return checked(lengthSize + byteSize);
         }
     };
 

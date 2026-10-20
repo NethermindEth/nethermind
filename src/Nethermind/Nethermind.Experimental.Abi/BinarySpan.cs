@@ -160,7 +160,7 @@ public ref struct BinarySpanWriter
         {
             (Abi<T> element, T[] values) = ctx;
 
-            int headSize = values.Length * element.HeadSize;
+            int headSize = checked(values.Length * element.HeadSize);
             int next = headSize;
             foreach (T value in values)
             {
@@ -177,5 +177,5 @@ public static class Math
     // Equivalent to:
     // int rem = length % 32;
     // return rem == 0 ? length : length + (32 - rem);
-    public static int PadTo32(int length) => (length + 31) & ~31;
+    public static int PadTo32(int length) => checked(length + 31) & ~31;
 }

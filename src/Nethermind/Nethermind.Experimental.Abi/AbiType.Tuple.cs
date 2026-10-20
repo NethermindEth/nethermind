@@ -47,7 +47,7 @@ public static partial class AbiType
                 });
             },
             HeadSize = abi.IsDynamic ? 32 : headSize,
-            TailSize = abi.IsDynamic ? v => offsetsSize + abi.Size(v) : null
+            TailSize = abi.IsDynamic ? v => checked(offsetsSize + abi.Size(v)) : null
         };
     }
 
@@ -90,7 +90,7 @@ public static partial class AbiType
                 });
             },
             HeadSize = isDynamic ? 32 : headSize,
-            TailSize = isDynamic ? v => offsetsSize + abi1.Size(v.Item1) + abi2.Size(v.Item2) : null
+            TailSize = isDynamic ? v => checked(offsetsSize + abi1.Size(v.Item1) + abi2.Size(v.Item2)) : null
         };
     }
 
@@ -135,7 +135,7 @@ public static partial class AbiType
                 });
             },
             HeadSize = isDynamic ? 32 : headSize,
-            TailSize = isDynamic ? v => offsetsSize + abi1.Size(v.Item1) + abi2.Size(v.Item2) + abi3.Size(v.Item3) : null
+            TailSize = isDynamic ? v => checked(offsetsSize + abi1.Size(v.Item1) + abi2.Size(v.Item2) + abi3.Size(v.Item3)) : null
         };
     }
 
@@ -183,7 +183,7 @@ public static partial class AbiType
                 });
             },
             HeadSize = isDynamic ? 32 : headSize,
-            TailSize = isDynamic ? v => offsetsSize + abi1.Size(v.Item1) + abi2.Size(v.Item2) + abi3.Size(v.Item3) + abi4.Size(v.Item4) : null
+            TailSize = isDynamic ? v => checked(offsetsSize + abi1.Size(v.Item1) + abi2.Size(v.Item2) + abi3.Size(v.Item3) + abi4.Size(v.Item4)) : null
         };
     }
 
@@ -234,7 +234,7 @@ public static partial class AbiType
                 });
             },
             HeadSize = isDynamic ? 32 : headSize,
-            TailSize = isDynamic ? v => offsetsSize + abi1.Size(v.Item1) + abi2.Size(v.Item2) + abi3.Size(v.Item3) + abi4.Size(v.Item4) + abi5.Size(v.Item5) : null
+            TailSize = isDynamic ? v => checked(offsetsSize + abi1.Size(v.Item1) + abi2.Size(v.Item2) + abi3.Size(v.Item3) + abi4.Size(v.Item4) + abi5.Size(v.Item5)) : null
         };
     }
 
@@ -288,7 +288,7 @@ public static partial class AbiType
                 });
             },
             HeadSize = isDynamic ? 32 : headSize,
-            TailSize = isDynamic ? v => offsetsSize + abi1.Size(v.Item1) + abi2.Size(v.Item2) + abi3.Size(v.Item3) + abi4.Size(v.Item4) + abi5.Size(v.Item5) + abi6.Size(v.Item6) : null
+            TailSize = isDynamic ? v => checked(offsetsSize + abi1.Size(v.Item1) + abi2.Size(v.Item2) + abi3.Size(v.Item3) + abi4.Size(v.Item4) + abi5.Size(v.Item5) + abi6.Size(v.Item6)) : null
         };
     }
 
@@ -345,7 +345,7 @@ public static partial class AbiType
                 });
             },
             HeadSize = isDynamic ? 32 : headSize,
-            TailSize = isDynamic ? v => offsetsSize + abi1.Size(v.Item1) + abi2.Size(v.Item2) + abi3.Size(v.Item3) + abi4.Size(v.Item4) + abi5.Size(v.Item5) + abi6.Size(v.Item6) + abi7.Size(v.Item7) : null
+            TailSize = isDynamic ? v => checked(offsetsSize + abi1.Size(v.Item1) + abi2.Size(v.Item2) + abi3.Size(v.Item3) + abi4.Size(v.Item4) + abi5.Size(v.Item5) + abi6.Size(v.Item6) + abi7.Size(v.Item7)) : null
         };
     }
 }
