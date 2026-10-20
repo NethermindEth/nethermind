@@ -148,7 +148,18 @@ public sealed partial class KeccakHash
             Accelerators.KeccakF(ref lane);
             data += HASH_DATA_AREA;
 
-            while (data <= lastBlock)
+            // Two blocks per iteration halve the loop's compare and pointer bump on long inputs such as code.
+            byte* lastPair = lastBlock - HASH_DATA_AREA;
+            while (data <= lastPair)
+            {
+                AbsorbBlock(ref lane, data, intoZeroState: false);
+                Accelerators.KeccakF(ref lane);
+                AbsorbBlock(ref lane, data + HASH_DATA_AREA, intoZeroState: false);
+                Accelerators.KeccakF(ref lane);
+                data += 2 * HASH_DATA_AREA;
+            }
+
+            if (data <= lastBlock)
             {
                 AbsorbBlock(ref lane, data, intoZeroState: false);
                 Accelerators.KeccakF(ref lane);
