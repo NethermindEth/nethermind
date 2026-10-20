@@ -6,7 +6,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Int256;
-using Nethermind.State.Flat.NodeBuffer;
+using Nethermind.Logging;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.Trie;
 
@@ -16,7 +16,7 @@ public class FlatStateReader(
     [KeyFilter(DbNames.Code)] IDb codeDb,
     IFlatDbManager flatDbManager,
     IHistoricalTrieVisitor historicalTrieVisitor,
-    INodeRecordBuffer buffer
+    ILogManager logManager
 ) : IStateReader
 {
     public bool TryGetAccount(BlockHeader? baseBlock, Address address, out AccountStruct account)
@@ -65,8 +65,8 @@ public class FlatStateReader(
         using (reader)
         {
             ReadOnlyStateTrieStoreAdapter trieStoreAdapter = new(reader);
-            NodeRecordBufferVisitor<TCtx> visitor = new(buffer, treeVisitor, visitingOptions, diagnostics);
-            visitor.Accept(stateId.StateRoot.ToCommitment(), trieStoreAdapter);
+            PatriciaTree patriciaTree = new(trieStoreAdapter, logManager);
+            patriciaTree.Accept(treeVisitor, stateId.StateRoot.ToCommitment(), visitingOptions, diagnostics: diagnostics);
         }
     }
 
