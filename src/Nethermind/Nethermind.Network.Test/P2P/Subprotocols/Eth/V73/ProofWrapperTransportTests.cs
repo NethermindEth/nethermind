@@ -524,6 +524,28 @@ public class ProofWrapperTransportTests
         }
     }
 
+    [Test]
+    public void Upgrade_rule_fault_on_the_timer_is_contained_and_retried()
+    {
+        using WrapperTestNode node = new(UpgradingChain());
+        node.SetHead(10, 100);
+        node.Wrappers.RefreshVerifier();
+        int changes = 0;
+        node.Wrappers.VerifierChanged += _ =>
+        {
+            if (++changes == 1) throw new InvalidOperationException("native fault");
+        };
+
+        Assert.That(() => CrossVerifierFork(node), Throws.Nothing, "a fault must not escape the timer callback");
+        node.Tick(WrapperTransportLimits.Tick);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(changes, Is.EqualTo(2), "the faulted upgrade rule runs again on the next tick");
+            Assert.That(node.Wrappers.CurrentVerifier, Is.EqualTo(new Eip8288Verifier(UpgradedVk)));
+        }
+    }
+
     // EIP-8437 Errors: around a fork that changes the verifier, a peer's proof failure is a local refusal within the configured
     // grace window (default until the head is 64 blocks past the fork), and invalid peer data after it.
     [TestCase(74UL, false)]

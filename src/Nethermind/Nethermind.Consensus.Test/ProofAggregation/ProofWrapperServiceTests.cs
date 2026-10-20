@@ -983,6 +983,78 @@ public class ProofWrapperServiceTests
         }
     }
 
+    [Test]
+    public async Task Verifier_fault_in_preliminary_proof_check_is_a_local_failure_and_not_remembered()
+    {
+        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, TestItem.KeccakA.ValueHash256, default);
+        Transaction transaction = CreateTransaction(dependency, TestItem.KeccakA);
+        transaction.Hash = transaction.CalculateHash();
+        FakeLeanProofVerifier verifier = new(true) { OnVerification = static () => throw new InvalidOperationException("native fault") };
+        ProofWrapperService service = CreateService([], new LeanProofStore(FrameTxSigHash.ComputeValue), verifier);
+        byte[] wrapper = MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
+        {
+            Transactions = [new WrapperTransaction(transaction.Hash)],
+            Deps = [dependency],
+            Mode = MempoolWrapper.ModeRecursive,
+            RecursiveStark = new RecursiveStark([1], new Hash256(Eip8288Dependencies.ComputeDepsHash([dependency])))
+        }).Bytes;
+
+        ProofWrapperAcceptance faulted = await service.VerifyClaimedProofsAsync(wrapper);
+        verifier.OnVerification = null;
+        ProofWrapperAcceptance retried = await service.VerifyClaimedProofsAsync(wrapper);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(faulted.Status, Is.EqualTo(ProofWrapperAcceptanceStatus.LocalFailure));
+            Assert.That(retried.Status, Is.EqualTo(ProofWrapperAcceptanceStatus.Accepted), "a fault is not remembered as a verdict");
+        }
+    }
+
+    [Test]
+    public async Task Verifier_fault_during_the_upgrade_rule_is_a_local_failure_and_retried_on_the_next_refresh()
+    {
+        FrameDependency direct = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("direct"), default);
+        FrameDependency aggregated = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("aggregated"), default);
+        Transaction aggregatedTx = CreateTransaction(aggregated, TestItem.KeccakB);
+        aggregatedTx.Hash = aggregatedTx.CalculateHash();
+        LeanProofStore store = new(FrameTxSigHash.ComputeValue);
+        store.AddVerified([direct], [[1]], null);
+        store.AddVerified([aggregated], null, [2]);
+        FakeLeanProofVerifier verifier = new(true) { OnVerification = static () => throw new InvalidOperationException("native fault") };
+        ITxPool pool = Substitute.For<ITxPool>();
+        pool.GetPendingTransactions().Returns([aggregatedTx]);
+        ValueHash256 upgradedVk = ValueKeccak.Compute("next AGGREGATED_VK");
+        CustomSpecProvider specs = new(((ForkActivation)0, Eip8288Prototype.Instance),
+            (new ForkActivation(0, 1_000), new OverridableReleaseSpec(Eip8288Prototype.Instance) { Eip8288AggregatedVk = upgradedVk }));
+        IBlockFinder finder = Substitute.For<IBlockFinder>();
+        Block head = HeadWithParent(finder, 9, 980);
+        finder.Head.Returns(_ => head);
+        ProofWrapperService service = new(pool, specs, finder, store, verifier);
+        List<Eip8288Verifier> changes = [];
+        service.VerifierChanged += changes.Add;
+        service.RefreshVerifier();
+        head = HeadWithParent(finder, 10, 990);
+
+        Assert.That(() => service.RefreshVerifier(), Throws.InvalidOperationException);
+        Assert.That(service.CurrentVerifier, Is.EqualTo(Eip8288Verifier.Pinned), "a half-applied upgrade is not committed");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((await service.VerifyClaimedProofsAsync([0xc0])).Status, Is.EqualTo(ProofWrapperAcceptanceStatus.LocalFailure));
+            Assert.That((await service.AcceptDetailedAsync([0xc0], null)).Status, Is.EqualTo(ProofWrapperAcceptanceStatus.LocalFailure));
+            Assert.That(service.GetLatestWrapper().IsSuccess, Is.False);
+            Assert.That(service.BuildWrapper().IsSuccess, Is.False);
+        }
+        verifier.OnVerification = null;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(service.RefreshVerifier(), Is.EqualTo(new Eip8288Verifier(upgradedVk)));
+            Assert.That(changes, Is.EqualTo(new[] { new Eip8288Verifier(upgradedVk) }));
+            Assert.That(store.Covers(aggregatedTx), Is.False, "the retried upgrade drops every aggregate proof");
+            pool.Received(1).RemoveTransaction(aggregatedTx.Hash);
+        }
+    }
+
     // EIP-8288 Test Case 12: once the local head reaches a target fork with another AGGREGATED_VK, every held aggregate proof
     // is dropped, a direct witness whose scheme parameters are unchanged is kept by reusing its verdict, and pending
     // transactions left without proof coverage leave the pool. Peer proof failures are local refusals within the window.

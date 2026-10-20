@@ -9,6 +9,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Core;
 using NUnit.Framework;
 
 namespace Nethermind.Crypto.LeanFfi.Test;
@@ -39,8 +40,27 @@ internal static class NativeStartupProbe
         catch (InvalidOperationException exception)
         {
             Console.WriteLine($"{exception.Message}: {exception.InnerException?.GetType().Name}: {exception.InnerException?.Message}");
-            Environment.Exit(exception.InnerException is null ? 2 : 0);
+            if (exception.InnerException is null) Environment.Exit(2);
         }
+        // An unusable backend must fault verification: a false verdict would mark a valid block INVALID.
+        if (mode is "missing" or "abi")
+        {
+            NativeLeanProofVerifier verifier = NativeLeanProofVerifier.Instance;
+            ExpectFault("VerifyRecursiveStark", () => verifier.VerifyRecursiveStark(default, new byte[32], new byte[1]));
+            ExpectFault("VerifyLeanSphincs", () => verifier.VerifyLeanSphincs(default, default, new byte[Eip8288Constants.LeanSphincsWitnessBytes]));
+            ExpectFault("VerifyLeanStark", () => verifier.VerifyLeanStark(default, default, new byte[1]));
+        }
+        Environment.Exit(0);
+    }
+
+    private static void ExpectFault(string name, Func<bool> verify)
+    {
+        try
+        {
+            Console.Error.WriteLine($"{name} returned a verdict ({verify()}) instead of faulting");
+            Environment.Exit(3);
+        }
+        catch (InvalidOperationException) { }
     }
 }
 

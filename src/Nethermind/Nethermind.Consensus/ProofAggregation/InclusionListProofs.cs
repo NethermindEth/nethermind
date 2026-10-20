@@ -216,8 +216,12 @@ public sealed class InclusionListProofService(ISpecProvider specProvider, ILeanP
     /// <summary>Whether the mempool proof store's proof is verified under <paramref name="forkVerifier"/>: by its cached verdict, or,
     /// once that is evicted, because the verifier upgrade rule keeps the store to the current target fork's verifier.</summary>
     private bool IsVerifiedUnder(in ValueHash256 proofHash, in ValueHash256 depsHash, in Eip8288Verifier forkVerifier)
-        => ProofVerdictCache.For(verifier).TryGetVerdict(proofHash, depsHash, forkVerifier.AggregatedVk)
-            ?? wrappers?.RefreshVerifier() == forkVerifier;
+    {
+        if (ProofVerdictCache.For(verifier).TryGetVerdict(proofHash, depsHash, forkVerifier.AggregatedVk) is { } verdict) return verdict;
+        // A pending upgrade rule has not yet kept the store to the current verifier, so its proofs are not counted as verified.
+        try { return wrappers?.RefreshVerifier() == forkVerifier; }
+        catch (InvalidOperationException) { return false; }
+    }
 
     private IReleaseSpec SpecAt(ulong timestamp) => specProvider.GetSpec(ForkActivation.TimestampOnly(timestamp));
 }

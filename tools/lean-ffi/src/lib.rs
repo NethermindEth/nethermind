@@ -631,6 +631,9 @@ unsafe fn bytes_with_limit<'a>(ptr: *const u8, len: usize, limit: usize) -> Resu
         Ok(unsafe { std::slice::from_raw_parts(ptr, len) })
     }
 }
+/// Runs one ABI call: returns 1 for accepted, 0 for rejected input and -1 for a contained panic,
+/// so callers never read a fault as a verdict. Every `checked` export shares this contract, including
+/// `nlean_aggregated_vk` and `nlean_prove_recursive`, where the C# side accepts only `== 1` as success.
 fn checked(f: impl FnOnce() -> Result<bool, ()>) -> i32 {
     static HOOK: OnceLock<()> = OnceLock::new();
     struct CallGuard(bool);
@@ -672,13 +675,11 @@ fn checked(f: impl FnOnce() -> Result<bool, ()>) -> i32 {
         });
         f()
     }))
-    .ok()
-    .and_then(Result::ok)
-    .unwrap_or(false) as i32
+    .map_or(-1, |verdict| verdict.unwrap_or(false) as i32)
 }
 #[unsafe(no_mangle)]
 pub extern "C" fn nlean_abi_version() -> u32 {
-    6
+    7
 }
 /// # Safety
 /// Output must hold nine writable u32 values.
@@ -1211,7 +1212,7 @@ mod tests {
     }
     #[test]
     fn exported_limits_match_and_panics_fail_closed() {
-        assert_eq!(nlean_abi_version(), 6);
+        assert_eq!(nlean_abi_version(), 7);
         let mut key = [0u8; 32];
         assert_eq!(unsafe { nlean_aggregated_vk(key.as_mut_ptr()) }, 1);
         assert_eq!(
@@ -1238,7 +1239,8 @@ mod tests {
         );
         assert_eq!(unsafe { nlean_limits(std::ptr::null_mut(), 9) }, 0);
         assert_eq!(unsafe { nlean_limits(limits.as_mut_ptr(), 8) }, 0);
-        assert_eq!(checked(|| panic!("contained upstream failure")), 0);
+        assert_eq!(checked(|| panic!("contained upstream failure")), -1);
+        assert_eq!(checked(|| Err(())), 0);
     }
 
     #[test]
@@ -1497,7 +1499,7 @@ mod tests {
                 });
                 panic!("contained calling thread");
             }),
-            0
+            -1
         );
         assert_eq!(diagnostics.load(Ordering::Relaxed), 1);
         assert!(std::panic::catch_unwind(|| panic!("caller outside ABI")).is_err());
