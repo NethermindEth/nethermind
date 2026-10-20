@@ -125,6 +125,27 @@ public class GethGenesisDevnetTests
         }
     }
 
+    /// <summary>Runs the devnet checks on a synthetic genesis, so they are exercised without <see cref="GenesisDirectoryVariable"/>.</summary>
+    [TestCase(nameof(Osaka))]
+    [TestCase(nameof(BPO2))]
+    [TestCase(nameof(Bogota))]
+    public void Synthetic_genesis_passes_devnet_checks(string forkName)
+    {
+        NamedReleaseSpec fork = GethGenesisParityTests.MainnetForks.Value.Single(f => f.GetType().Name == forkName);
+        string path = Path.Combine(Path.GetTempPath(), $"{nameof(GethGenesisDevnetTests)}-{Guid.NewGuid():N}.json");
+        // Own blobSchedule entry with values no fork class has, so ignoring the key fails the check.
+        string blobKey = GethGenesisParityTests.GethTimeKeysByFork.Value[forkName][..^"Time".Length];
+        File.WriteAllText(path, GethGenesisParityTests.BuildGethGenesis(fork, (blobKey, 7, 11, 1234567)));
+        try
+        {
+            Devnet_genesis_loads_and_activates_its_forks(path);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
     [Test]
     public void Missing_eips_includes_inherited_flags(
         [Values(nameof(IReceiptSpec.IsEip7778Enabled), nameof(IEip1559Spec.IsEip1559Enabled))] string property,

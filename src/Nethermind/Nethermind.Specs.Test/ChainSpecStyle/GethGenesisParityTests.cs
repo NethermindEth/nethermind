@@ -317,7 +317,7 @@ public class GethGenesisParityTests
         && (fork.TargetBlobCount, fork.MaxBlobCount, fork.BlobBaseFeeUpdateFraction) != (parent.TargetBlobCount, parent.MaxBlobCount, parent.BlobBaseFeeUpdateFraction);
 
     /// <param name="blobOverride">A <c>blobSchedule</c> entry replacing whatever the fork classes would give that key.</param>
-    private static string BuildGethGenesis(NamedReleaseSpec fork, (string Key, ulong Target, ulong Max, ulong Fraction)? blobOverride = null)
+    internal static string BuildGethGenesis(NamedReleaseSpec fork, (string Key, ulong Target, ulong Max, ulong Fraction)? blobOverride = null)
     {
         List<string> labels = [];
         Dictionary<string, string> blobEntries = [];
