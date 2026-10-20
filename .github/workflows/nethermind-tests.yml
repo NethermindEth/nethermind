@@ -476,7 +476,7 @@ jobs:
           done
           exit $missing
 
-  # Hive gates only the merge queue: a pull request still merges with Hive red, as before.
+  # Hive runs only in the merge queue, once per group of pull requests, and gates the merge there.
   tests-summary:
     name: Tests summary
     needs: [tests, tests-native, tests-spec, tests-chunked, tests-chunked-native, nethtest, matrix-guard, hive-tests]
@@ -535,5 +535,5 @@ jobs:
 
   hive-tests:
     name: Hive tests
-    if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
+    if: github.event_name == 'merge_group'
     uses: ./.github/workflows/hive-tests.yml
