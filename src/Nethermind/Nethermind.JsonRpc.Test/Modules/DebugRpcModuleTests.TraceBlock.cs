@@ -78,6 +78,32 @@ public partial class DebugRpcModuleTests
     }
 
     [Test]
+    public async Task NativeConfigPreflight_malformed_config_streams_like_buffered(
+        [Values("debug_traceBlockByNumber", "debug_traceBlockByHash", "debug_traceBlock")] string method,
+        [Values("callTracer", "prestateTracer")] string tracer,
+        [Values] bool empty)
+    {
+        using Context context = await Context.Create();
+        Block block = empty
+            ? await context.Blockchain.AddBlock()
+            : await context.Blockchain.AddBlock(CreateTraceBlockTransactions(context.Blockchain));
+        object selector = method switch
+        {
+            "debug_traceBlockByNumber" => block.Number,
+            "debug_traceBlockByHash" => block.Hash!,
+            _ => Rlp.Encode(block).ToString()
+        };
+        JsonElement tracerConfig = JsonSerializer.Deserialize<JsonElement>("""{"onlyTopCall":17,"diffMode":17}""");
+        string buffered = await RpcTest.TestSerializedRequest(context.DebugRpcModule, method, selector,
+            new { tracer, tracerConfig, streamMode = false });
+        string streamed = await RpcTest.TestSerializedRequest(context.DebugRpcModule, method, selector,
+            new { tracer, tracerConfig, streamMode = true });
+
+        Assert.That(streamed, Is.EqualTo(buffered));
+        Assert.That(JToken.Parse(streamed)["error"], empty ? Is.Null : Is.Not.Null, streamed);
+    }
+
+    [Test]
     public async Task NativeStreamTimeout_Valid_duration_keeps_indexed_streaming(
         [Values("5s", "0s", "-1s", "4294968s")] string timeout)
     {
