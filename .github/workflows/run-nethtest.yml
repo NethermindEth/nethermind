@@ -142,8 +142,8 @@ env:
   # The same floor for the frame transaction-test lane, whose subtree is a much smaller fixture set.
   FRAME_TX_MIN_CASES: '99'
   # nethtest runs with the server GC from its project. A workstation GC + GCConserveMemory=9 override spent more
-  # than half of each blockTest chunk in GC pauses. Most of the garbage was a 33.5 MB trie node cache per test,
-  # which Ethereum.Test.Base now sizes for EF-test chains.
+  # than half of each blockTest chunk in GC pauses. Most of the garbage was a production-sized trie node cache
+  # per test, which Ethereum.Test.Base now sizes for EF-test chains.
   # Build/runtime variant for the nethermind-tests-checked matrix: checked builds the
   # runner with TRACE;DEBUG defines (overflow/assert checks); no-intrinsics disables
   # hardware intrinsics at run time (SIMD software-fallback paths). Empty = standard.
