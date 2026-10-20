@@ -18,11 +18,13 @@ public interface IExecutionPayloadParams
 
     /// <summary>Validates request parameters and bounds the transaction count before decoding when supported.</summary>
     /// <remarks>The default preserves validation behavior for existing plugin implementations.</remarks>
-    internal ValidationResult ValidateParams(IReleaseSpec spec, int version, PayloadTransactionCountGuard? transactionCountGuard, out string? error)
+    /// <param name="latestValidHash">The latest valid ancestor known when the guard rejects the payload; otherwise <c>null</c>.</param>
+    internal ValidationResult ValidateParams(IReleaseSpec spec, int version, PayloadTransactionCountGuard? transactionCountGuard, out string? error, out Hash256? latestValidHash)
     {
+        latestValidHash = null;
         ValidationResult result = ValidateParams(spec, version, out error);
         return result == ValidationResult.Success && transactionCountGuard is not null &&
-            !transactionCountGuard.IsWithinParentGasLimit(ExecutionPayload, spec, out error)
+            !transactionCountGuard.IsWithinParentGasLimit(ExecutionPayload, spec, out error, out latestValidHash)
             ? ValidationResult.Invalid
             : result;
     }
@@ -123,11 +125,12 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
     public Hash256? ParentBeaconBlockRoot => parentBeaconBlockRoot;
 
     public ValidationResult ValidateParams(IReleaseSpec spec, int version, out string? error) =>
-        ((IExecutionPayloadParams)this).ValidateParams(spec, version, null, out error);
+        ((IExecutionPayloadParams)this).ValidateParams(spec, version, null, out error, out _);
 
     /// <inheritdoc/>
-    ValidationResult IExecutionPayloadParams.ValidateParams(IReleaseSpec spec, int version, PayloadTransactionCountGuard? transactionCountGuard, out string? error)
+    ValidationResult IExecutionPayloadParams.ValidateParams(IReleaseSpec spec, int version, PayloadTransactionCountGuard? transactionCountGuard, out string? error, out Hash256? latestValidHash)
     {
+        latestValidHash = null;
         ValidationResult result = ValidateInitialParams(spec, out error);
         if (result != ValidationResult.Success)
         {
@@ -146,7 +149,7 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
             return ValidationResult.Fail;
         }
 
-        if (transactionCountGuard is not null && !transactionCountGuard.IsWithinParentGasLimit(executionPayload, spec, out error))
+        if (transactionCountGuard is not null && !transactionCountGuard.IsWithinParentGasLimit(executionPayload, spec, out error, out latestValidHash))
         {
             return ValidationResult.Invalid;
         }

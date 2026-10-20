@@ -116,13 +116,13 @@ public partial class EngineRpcModule : IEngineRpcModule
         // The converter reads "0x" as the EIP-7668 bloom; before the fork it is the zero bloom, as it always was.
         if (executionPayload.LogsBloom is { IsZeroLength: true } && !releaseSpec.IsEip7668Enabled) executionPayload.LogsBloom = new Bloom();
 
-        ValidationResult validationResult = executionPayloadParams.ValidateParams(releaseSpec, version, _transactionCountGuard, out string? error);
+        ValidationResult validationResult = executionPayloadParams.ValidateParams(releaseSpec, version, _transactionCountGuard, out string? error, out Hash256? latestValidHash);
         if (validationResult != ValidationResult.Success)
         {
             if (_logger.IsWarn) _logger.Warn(error!);
             return validationResult == ValidationResult.Fail
                 ? ResultWrapper<PayloadStatusV1>.Fail(error!, ErrorCodes.InvalidParams)
-                : ResultWrapper<PayloadStatusV1>.Success(PayloadStatusV1.Invalid(null, error));
+                : ResultWrapper<PayloadStatusV1>.Success(PayloadStatusV1.Invalid(latestValidHash, error));
         }
 
         if (await _locker.WaitAsync(LockTimeout))

@@ -306,9 +306,14 @@ public partial class EngineModuleTests
             missingField == "parentBeaconBlockRoot" ? null : payload.ParentBeaconBlockRoot);
 
         if (missingField is null)
+        {
             AssertInvalidNewPayload(result, expectedValidationErrorPrefix: "Transaction count");
+            Assert.That(result.Data.LatestValidHash, Is.EqualTo(payload.ParentHash));
+        }
         else
+        {
             Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
+        }
     }
 
     [Test]

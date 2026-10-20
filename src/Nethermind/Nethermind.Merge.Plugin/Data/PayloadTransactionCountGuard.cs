@@ -4,8 +4,8 @@
 using System;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Find;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 
 namespace Nethermind.Merge.Plugin.Data;
@@ -16,7 +16,7 @@ namespace Nethermind.Merge.Plugin.Data;
 /// The payload's own gas limit cannot bound the count: it is checked against the parent only after decoding.
 /// Chains whose gas limit is not bound by <see cref="IReleaseSpec.GasLimitBoundDivisor"/> register <see cref="Disabled"/>.
 /// </remarks>
-public sealed class PayloadTransactionCountGuard(IBlockFinder? blockFinder)
+public sealed class PayloadTransactionCountGuard(IBlockTree? blockTree)
 {
     /// <summary>Gas used by the cheapest transaction on any fork: the base cost halved by the pre-EIP-3529 refund cap.</summary>
     /// <remarks>EIP-2780's lower base cost still sits above it.</remarks>
@@ -26,13 +26,15 @@ public sealed class PayloadTransactionCountGuard(IBlockFinder? blockFinder)
     public static readonly PayloadTransactionCountGuard Disabled = new(null);
 
     /// <summary>Checks whether the payload's transaction count can fit within its parent's gas limit bound.</summary>
+    /// <param name="latestValidHash">On rejection, the parent's hash when the parent was processed; otherwise <c>null</c>.</param>
     /// <returns><c>false</c> when the count cannot fit; <c>true</c> when it can, or when the parent is unknown.</returns>
-    public bool IsWithinParentGasLimit(ExecutionPayload payload, IReleaseSpec spec, [NotNullWhen(false)] out string? error)
+    public bool IsWithinParentGasLimit(ExecutionPayload payload, IReleaseSpec spec, [NotNullWhen(false)] out string? error, out Hash256? latestValidHash)
     {
         error = null;
-        if (blockFinder is null || spec.GasLimitBoundDivisor == 0) return true;
+        latestValidHash = null;
+        if (blockTree is null || spec.GasLimitBoundDivisor == 0) return true;
 
-        BlockHeader? parent = blockFinder.FindHeader(payload.ParentHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
+        BlockHeader? parent = blockTree.FindHeader(payload.ParentHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
         if (parent is null) return true;
 
         // The fork-block elasticity jump mirrors Eip1559GasLimitAdjuster; UInt128 because hive sets parent gas limits up to ulong.MaxValue.
@@ -42,6 +44,7 @@ public sealed class PayloadTransactionCountGuard(IBlockFinder? blockFinder)
         if ((UInt128)payload.Transactions.Length <= maxTransactions) return true;
 
         error = $"Transaction count {payload.Transactions.Length} exceeds {maxTransactions}, the most the parent gas limit allows";
+        if (blockTree.WasProcessed(parent.Number, payload.ParentHash)) latestValidHash = payload.ParentHash;
         return false;
     }
 }
