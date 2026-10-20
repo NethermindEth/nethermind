@@ -848,7 +848,7 @@ public class GethGenesisLoaderTests
     public void Bogota_time_alone_loads() =>
         Assert.That(() => LoadStandardGethGenesis(configExtra: "\"bogotaTime\": 1792416379"), Throws.Nothing);
 
-    // The base fee fraction is EIP-8198's 5/48 whatever slot length the chain overrides it with.
+    // The base fee fraction is EIP-8198's 5/48 whatever slot length the chain sets.
     [TestCase(null, 12UL, TestName = "Bogota_without_a_slot_duration_keeps_12s_slots_and_five_forty_eighths")]
     [TestCase(6_000UL, 6UL, TestName = "Bogota_with_a_6s_slot_duration_keeps_five_forty_eighths")]
     [TestCase(10_000UL, 10UL, TestName = "Bogota_with_a_10s_slot_duration_keeps_five_forty_eighths")]
