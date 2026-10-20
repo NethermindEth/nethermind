@@ -1,5 +1,6 @@
 {
   "$schema": "https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/schemas/genesis.json",
+  "name": "Plataberget",
   "config": {
     "chainId": 7091047534,
     "homesteadBlock": 0,

@@ -4,6 +4,7 @@
 using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -199,7 +200,7 @@ public class PrewarmerScopeProvider(
             bool bypassCache = preBlockCaches.BypassesStorageCache(address);
             return storageReadCapture is not null
                 ? new CapturingStorageTreeWrapper(baseTree, storageReadCapture, storageCache, address, bypassCache)
-                : new StorageTreeWrapper(baseTree, storageCache, address, isPrewarmer, _metrics, bypassCache, committedWrites);
+                : new StorageTreeWrapper(baseTree, preBlockCaches, address, isPrewarmer, _metrics, bypassCache, committedWrites);
         }
 
         public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum)
@@ -305,6 +306,7 @@ public class PrewarmerScopeProvider(
             }
             else
             {
+                if (!isPrewarmer) preBlockCaches.ReportConsumerColdRead();
                 account = GetFromBaseTree(in addressAsKey);
                 // Backfill so other readers reuse this resolve; SeqlockCache.Set is safe under concurrent writers.
                 preBlockCache.Set(in addressAsKey, account);
@@ -315,6 +317,32 @@ public class PrewarmerScopeProvider(
         }
 
         public void HintGet(Address address, Account? account) => baseScope.HintGet(address, account);
+
+        public bool SupportsPrefetch => baseScope.SupportsPrefetch;
+
+        /// <summary>Forwards only keys the pre-block caches do not hold: a cached key is never read from persistence.</summary>
+        /// <remarks>
+        /// Unlike the warm hints below, a capturing scope forwards a prefetch too: its keys are named by the block's own
+        /// transactions, never derived from placeholder values.
+        /// </remarks>
+        public void Prefetch(Span<Address> accounts, Span<StorageCell> slots, CancellationToken cancellationToken)
+        {
+            // Compacted in place: cached keys are dropped without copying the others.
+            int keptAccounts = 0;
+            foreach (Address address in accounts)
+            {
+                AddressAsKey key = address;
+                if (!preBlockCache.TryGetValue(in key, out _)) accounts[keptAccounts++] = address;
+            }
+
+            int keptSlots = 0;
+            foreach (StorageCell cell in slots)
+            {
+                if (!storageCache.TryGetValue(in cell, out _)) slots[keptSlots++] = cell;
+            }
+
+            if (keptAccounts != 0 || keptSlots != 0) baseScope.Prefetch(accounts[..keptAccounts], slots[..keptSlots], cancellationToken);
+        }
 
         // Populator hints target the block's consumer scope (whose commit walks the hinted paths);
         // consumer hints go straight to the backend. Capturing (discovery) scopes execute on placeholder
@@ -517,7 +545,7 @@ public class PrewarmerScopeProvider(
 
     private sealed class StorageTreeWrapper(
         IWorldStateScopeProvider.IStorageTree baseStorageTree,
-        SeqlockCache<StorageCell, UInt256> preBlockCache,
+        PreBlockCaches preBlockCaches,
         Address address,
         bool isPrewarmer,
         LocalMetrics metrics,
@@ -525,7 +553,8 @@ public class PrewarmerScopeProvider(
         CommittedStorageWrites? committedWrites) : IWorldStateScopeProvider.IStorageTree
     {
         private readonly IWorldStateScopeProvider.IStorageTree baseStorageTree = baseStorageTree;
-        private readonly SeqlockCache<StorageCell, UInt256> preBlockCache = preBlockCache;
+        private readonly PreBlockCaches preBlockCaches = preBlockCaches;
+        private readonly SeqlockCache<StorageCell, UInt256> preBlockCache = preBlockCaches.StorageCache;
         private readonly Address address = address;
         private readonly bool isPrewarmer = isPrewarmer;
         private readonly LocalMetrics _metrics = metrics;
@@ -575,13 +604,22 @@ public class PrewarmerScopeProvider(
             baseStorageTree.HintSet(in index, in value);
         }
 
+        // Keeps the miss path inlined into Get: without the attribute the JIT inlines only the bypass call.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void LoadFromTreeStorage(in StorageCell storageCell, out UInt256 value)
         {
             // PreBlock misses only (consumer scope): StorageTreeReads is already counted once per
             // first-in-block touch by PersistentStorageProvider; counting it here again double-counted
             // fully-cold reads. Populator probes are excluded — they miss by design while filling.
-            if (!isPrewarmer) _metrics.IncrementPreBlockStorageMisses();
-            else ColdReadWatch.Read();
+            if (!isPrewarmer)
+            {
+                _metrics.IncrementPreBlockStorageMisses();
+                preBlockCaches.ReportConsumerColdRead();
+            }
+            else
+            {
+                ColdReadWatch.Read();
+            }
 
             baseStorageTree.Get(storageCell.Index, out value);
         }
@@ -601,6 +639,7 @@ public class PrewarmerScopeProvider(
             StorageCell storageCell = new(address, in index);
             if (!bypassCache && preBlockCache.TryGetValue(in storageCell, out value))
             {
+                storageReadCapture.RecordRead(in storageCell);
                 return;
             }
 
