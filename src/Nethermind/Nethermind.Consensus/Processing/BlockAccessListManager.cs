@@ -157,7 +157,7 @@ public partial class BlockAccessListManager(
             {
                 BlockAccessListValidationIndex.AddressIndex addressIndex = new();
                 ReadOnlyBlockAccessList suggested = suggestedBlock.BlockAccessList;
-                _suggestedValidationIndex = BlockAccessListValidationIndex.Build(suggested, suggestedBlock.Transactions.Length, addressIndex);
+                _suggestedValidationIndex = BlockAccessListValidationIndex.Build(suggested, suggestedBlock.Header, suggestedBlock.Transactions.Length, addressIndex);
                 _generatedValidationIndex = new(suggestedBlock.Transactions.Length, addressIndex, _suggestedValidationIndex, suggested.TotalStorageReads, suggested.TotalStorageChangeEvents, trackStorageReads: VerifyOnly && _readPlan is null);
                 ulong suggestedReads = 0;
                 foreach (ReadOnlyAccountChanges ac in suggested.AccountChanges)
