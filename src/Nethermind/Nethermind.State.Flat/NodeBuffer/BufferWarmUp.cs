@@ -30,7 +30,7 @@ internal static class BufferWarmUp
     /// <param name="reader">Reads the nodes neither <paramref name="buffer"/> nor <paramref name="warmed"/> holds.</param>
     /// <param name="forDelete">Also loads the sibling a two-child branch collapses into when its matching leaf is deleted.</param>
     public static void WarmUp(INodeRecordBuffer buffer, WarmedNodeLog warmed, ReadOnlySnapshotBundle reader, Hash256? address,
-        TrieRoot root, in ValueHash256 key, bool forDelete)
+        (ValueHash256 Hash, ulong Pointer) root, in ValueHash256 key, bool forDelete)
     {
         if (root.Hash == ValueKeccak.EmptyTreeHash) return;
         TreePath keyPath = new(key, MaxKeyNibbles);
@@ -111,20 +111,7 @@ internal static class BufferWarmUp
     {
         frame = new Frame { Path = path, ChildSlot = -1, SiblingSlot = -1 };
         ulong pointer = child.Pointer;
-        bool found = buffer.TryLocate(pointer, out NodeRecord record);
-        if (found)
-        {
-            if (NodeRecordCodec.IsTransient(pointer)) Metrics.IncrementWarmUpWarmedNodeCacheHits();
-            else Metrics.IncrementWarmUpNodeRecordBufferHits();
-        }
-        else
-        {
-            found = warmed.TryGet(address, path, out record, out pointer);
-            if (found) Metrics.IncrementWarmUpWarmedNodeCacheHits();
-            else Metrics.IncrementWarmUpWarmedNodeCacheMisses();
-        }
-
-        if (found)
+        if (buffer.TryLocate(pointer, out NodeRecord record) || warmed.TryGet(address, path, out record, out pointer))
         {
             frame.Record = record;
             frame.Pointer = pointer;
@@ -164,13 +151,8 @@ internal static class BufferWarmUp
         if (sibling.Kind != ChildRefKind.Hash || buffer.TryLocate(sibling.Pointer, out _)) return;
 
         TreePath siblingPath = branch.Path.Append(siblingSlot);
-        if (warmed.TryGet(address, siblingPath, out _, out ulong pointer))
+        if (!warmed.TryGet(address, siblingPath, out _, out ulong pointer))
         {
-            Metrics.IncrementWarmUpWarmedNodeCacheHits();
-        }
-        else
-        {
-            Metrics.IncrementWarmUpWarmedNodeCacheMisses();
             scratch.Clear();
             if (!reader.TryLoadPersistedRlp(address, siblingPath, ReadFlags.None, CopyRlp, scratch)) return;
             warmed.Append(address, siblingPath, sibling.Data, scratch.AsSpan(), [], out _, out pointer);

@@ -15,7 +15,6 @@ using Nethermind.Int256;
 using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.Trie;
-using Nethermind.Trie.NodeBuffer;
 using NUnit.Framework;
 
 namespace Nethermind.State.Flat.Test;
@@ -133,10 +132,10 @@ public class SnapshotTests
         Hash256? address = storage ? TestItem.KeccakA : null;
         Hash256 firstKey = new("1000000000000000000000000000000000000000000000000000000000000000");
         Hash256 lastKey = new("f000000000000000000000000000000000000000000000000000000000000000");
-        TrieRoot original = Write(TrieRoot.Empty, firstKey, 1, lastKey);
+        (ValueHash256 Hash, ulong Pointer) original = Write((ValueKeccak.EmptyTreeHash, 0), firstKey, 1, lastKey);
         INodeRecordBufferPin updateRetain = buffer.PinHead();
-        TrieRoot unrelated = Write(TrieRoot.Empty, firstKey, 3);
-        TrieRoot updated = Write(original, lastKey, 2);
+        (ValueHash256 Hash, ulong Pointer) unrelated = Write((ValueKeccak.EmptyTreeHash, 0), firstKey, 3);
+        (ValueHash256 Hash, ulong Pointer) updated = Write(original, lastKey, 2);
         using Snapshot snapshot = new(new(1, original.Hash), new(2, updated.Hash), new SnapshotContent(), _pool, ResourcePool.Usage.MainBlockProcessing, updateRetain);
         if (storage) snapshot.Content.StorageRoots[address!] = updated.Pointer;
         else
@@ -158,7 +157,7 @@ public class SnapshotTests
             Assert.That(inherited!.FullRlp.ToArray(), Is.Not.Empty);
         }
 
-        TrieRoot Write(TrieRoot root, Hash256 key, byte value, Hash256? other = null)
+        (ValueHash256 Hash, ulong Pointer) Write((ValueHash256 Hash, ulong Pointer) root, Hash256 key, byte value, Hash256? other = null)
         {
             using ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries = new(2);
             entries.Add(new(key.ValueHash256, Enumerable.Repeat(value, 32).ToArray()));
@@ -332,7 +331,7 @@ public class SnapshotTests
         INodeRecordBufferPin retain = buffer.PinHead();
         byte[] rlp = FlatTestHelpers.LeafRlp(1);
         ValueHash256 hash = ValueKeccak.Compute(rlp);
-        TrieRoot root = empty ? TrieRoot.Empty : new(hash, buffer.AppendRecordFromRlp(null, TreePath.Empty, hash, rlp, []));
+        (ValueHash256 Hash, ulong Pointer) root = empty ? (ValueKeccak.EmptyTreeHash, 0) : (hash, buffer.AppendRecordFromRlp(null, TreePath.Empty, hash, rlp, []));
         bundle.PublishBufferedStateRoot(root);
         (Snapshot? published, TransientResource? retired) = bundle.CollectAndApplySnapshot(
             StateId.PreGenesis, new(1, root.Hash), retain);

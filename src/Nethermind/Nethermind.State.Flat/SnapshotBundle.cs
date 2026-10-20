@@ -306,7 +306,7 @@ public sealed class SnapshotBundle : IDisposable
     }
 
     /// <summary>Makes the final state trie readable from this bundle.</summary>
-    internal void PublishBufferedStateRoot(in TrieRoot root)
+    internal void PublishBufferedStateRoot(in (ValueHash256 Hash, ulong Pointer) root)
     {
         GuardDispose();
         Debug.Assert(root.Pointer != 0 || root.Hash == ValueKeccak.EmptyTreeHash);
@@ -314,7 +314,7 @@ public sealed class SnapshotBundle : IDisposable
     }
 
     /// <summary>Makes a changed storage trie readable from this bundle, including a change to empty.</summary>
-    internal void PublishBufferedStorageRoot(Hash256 address, in TrieRoot root)
+    internal void PublishBufferedStorageRoot(Hash256 address, in (ValueHash256 Hash, ulong Pointer) root)
     {
         GuardDispose();
         Debug.Assert(root.Pointer != 0 || root.Hash == ValueKeccak.EmptyTreeHash);
@@ -322,15 +322,7 @@ public sealed class SnapshotBundle : IDisposable
     }
 
     /// <summary>Finds a record by pointer in the trie node buffer or among the nodes warmed for the current block.</summary>
-    internal bool TryLocate(ulong pointer, out NodeRecord record)
-    {
-        if (!_cacheableNodeRecordBuffer!.TryLocate(pointer, out record)) return false;
-
-        if (!IsMainBlockProcessing) return true;
-        if (NodeRecordCodec.IsTransient(pointer)) Metrics.IncrementWarmedNodeCacheHits();
-        else Metrics.IncrementNodeRecordBufferHits();
-        return true;
-    }
+    internal bool TryLocate(ulong pointer, out NodeRecord record) => _cacheableNodeRecordBuffer!.TryLocate(pointer, out record);
 
     /// <summary>Loads the record of a trie node the trie node buffer does not hold, for a bulk set or point read.</summary>
     /// <remarks>
@@ -345,22 +337,9 @@ public sealed class SnapshotBundle : IDisposable
         GuardDispose();
 
         WarmedNodeLog warmed = _transientResource.WarmedNodeLog;
-        if (warmed.TryGet(address, path, out record, out _))
-        {
-            if (IsMainBlockProcessing) Metrics.IncrementWarmedNodeCacheHits();
-            return true;
-        }
-
-        if (IsMainBlockProcessing) Metrics.IncrementWarmedNodeCacheMisses();
-        return TryLoadNodeRecordFromPersistence(_readOnlySnapshotBundle, warmed, address, path, hash, out record);
+        return warmed.TryGet(address, path, out record, out _)
+            || TryLoadNodeRecordFromPersistence(_readOnlySnapshotBundle, warmed, address, path, hash, out record);
     }
-
-    /// <summary>Whether this bundle processes a main-chain block, the only bulk-set reads the trie read metrics count.</summary>
-    /// <remarks>
-    /// The usage turns <see cref="ResourcePool.Usage.PostMainBlockProcessing"/> once the first block commits, so a scope processing several
-    /// blocks, as in sync or a deep reorg, counts only its first block. That leaves the metrics inaccurate only off the usual one block per scope.
-    /// </remarks>
-    internal bool IsMainBlockProcessing => _usage == ResourcePool.Usage.MainBlockProcessing;
 
     /// <summary>Warms the nodes on the path to <paramref name="key"/> that the trie node buffer does not hold, for this block's bulk sets.</summary>
     /// <remarks>
@@ -371,7 +350,7 @@ public sealed class SnapshotBundle : IDisposable
     /// <param name="address">The storage trie's address hash, or null for the state trie.</param>
     /// <param name="root">The trie's root before the block, as <see cref="NodeRecordBufferExtensions.ResolveRoot"/> returns it.</param>
     /// <param name="forDelete">Also warms the sibling needed when deleting the leaf collapses its branch.</param>
-    internal void WarmUp(Hash256? address, TrieRoot root, in ValueHash256 key, bool forDelete)
+    internal void WarmUp(Hash256? address, (ValueHash256 Hash, ulong Pointer) root, in ValueHash256 key, bool forDelete)
     {
         TransientResource? transientResource = TryLeaseTransientResource();
         if (transientResource is null) return;
@@ -438,28 +417,12 @@ public sealed class SnapshotBundle : IDisposable
             }
         }
 
-        public bool TryLocate(ulong pointer, out NodeRecord record)
-        {
-            if (!_buffer.TryLocate(pointer, out record)) return false;
-
-            if (NodeRecordCodec.IsTransient(pointer)) Metrics.IncrementIdleWarmedNodeCacheHits();
-            else Metrics.IncrementIdleNodeRecordBufferHits();
-            return true;
-        }
+        public bool TryLocate(ulong pointer, out NodeRecord record) => _buffer.TryLocate(pointer, out record);
 
         public INodeRecordWriteBatch StartWriteBatch(int alignedTotalLength) => _buffer.StartWriteBatch(alignedTotalLength);
 
-        public bool TryLoad(in TreePath path, in ValueHash256 hash, out NodeRecord record)
-        {
-            if (_warmed.TryGet(_address, path, out record, out _))
-            {
-                Metrics.IncrementIdleWarmedNodeCacheHits();
-                return true;
-            }
-
-            Metrics.IncrementIdleWarmedNodeCacheMisses();
-            return TryLoadNodeRecordFromPersistence(_readOnly, _warmed, _address, path, hash, out record);
-        }
+        public bool TryLoad(in TreePath path, in ValueHash256 hash, out NodeRecord record) =>
+            _warmed.TryGet(_address, path, out record, out _) || TryLoadNodeRecordFromPersistence(_readOnly, _warmed, _address, path, hash, out record);
 
         public void Dispose()
         {

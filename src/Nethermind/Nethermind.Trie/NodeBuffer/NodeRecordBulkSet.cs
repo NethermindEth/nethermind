@@ -42,10 +42,10 @@ internal static class NodeRecordBulkSet
     /// <param name="canParallelize">Whether the children of a full branch level with enough entries may be updated in parallel.</param>
     /// <exception cref="MissingTrieNodeException">The store has no node on a changed path.</exception>
     /// <exception cref="InvalidOperationException">Two entries have the same key.</exception>
-    public static TrieRoot BulkSet(INodeRecordStore store, Hash256? address, TrieRoot root,
+    public static (ValueHash256 Hash, ulong Pointer) BulkSet(INodeRecordStore store, Hash256? address, (ValueHash256 Hash, ulong Pointer) root,
         in ArrayPoolListRef<BulkSetEntry> entries, bool canParallelize)
     {
-        if (entries.Count == 0) return new TrieRoot(root.Hash, NodeRecordCodec.PersistentPointer(root.Pointer));
+        if (entries.Count == 0) return (root.Hash, NodeRecordCodec.PersistentPointer(root.Pointer));
 
         using ParallelUnbalancedWork.WorkerScope? workers = canParallelize && !RuntimeInformation.IsSingleProcessor
             && entries.Count >= PatriciaTree.MinEntriesToParallelizeThreshold
@@ -74,11 +74,11 @@ internal static class NodeRecordBulkSet
                 updated = context.Update(entries.AsSpan(), sortBuffer.AsSpan(), flipped: false, ref path, rootNode);
             }
 
-            if (!updated.Changed) return new TrieRoot(root.Hash, NodeRecordCodec.PersistentPointer(root.Pointer));
-            if (updated.PendingIndex < 0) return TrieRoot.Empty;
+            if (!updated.Changed) return (root.Hash, NodeRecordCodec.PersistentPointer(root.Pointer));
+            if (updated.PendingIndex < 0) return (ValueKeccak.EmptyTreeHash, 0);
 
             ChildRef top = context.Commit(updated.PendingIndex, TreePath.Empty, isRoot: true);
-            return new TrieRoot(top.Data, top.Pointer);
+            return (top.Data, top.Pointer);
         }
         finally
         {
@@ -442,7 +442,7 @@ internal static class NodeRecordBulkSet
 
         /// <summary>The root node, read by its supplied pointer like any child.</summary>
         /// <exception cref="MissingTrieNodeException">The store has no such node.</exception>
-        public Source LoadRoot(in TrieRoot root) =>
+        public Source LoadRoot(in (ValueHash256 Hash, ulong Pointer) root) =>
             root.Hash == ValueKeccak.EmptyTreeHash ? default : Load(TreePath.Empty, ChildRef.ForHash(root.Hash, root.Pointer));
 
         /// <summary>The node <paramref name="child"/> at <paramref name="path"/> refers to, read in place from the buffer when its pointer resolves, otherwise loaded by the store.</summary>

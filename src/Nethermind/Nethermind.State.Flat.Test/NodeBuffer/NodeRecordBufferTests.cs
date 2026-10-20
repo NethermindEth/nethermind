@@ -478,13 +478,11 @@ public class NodeRecordBufferTests
         retain.Dispose();
         while (GenerationOf(Append(buffer, Leaf(0, 1000))) < GenerationOf(droppedPointer) + LiveGenerations) { }
 
-        long missesBefore = Nethermind.State.Flat.Metrics.NodeRecordBufferRootMisses;
         buffer.SetRoot(address, Root(-2), droppedPointer);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(() => buffer.FindRoot(address, Root(-2)), Is.Zero.After(CompactionTimeoutMilliseconds, PollingMilliseconds), "a root whose record dropped");
             Assert.That(() => buffer.FindRoot(address, roots[0]), Is.Zero.After(CompactionTimeoutMilliseconds, PollingMilliseconds), "a root whose root key dropped");
-            Assert.That(Nethermind.State.Flat.Metrics.NodeRecordBufferRootMisses, Is.GreaterThanOrEqualTo(missesBefore + 2), "misses are counted");
         }
     }
 

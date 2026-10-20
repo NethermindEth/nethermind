@@ -483,16 +483,12 @@ public sealed class NodeRecordBuffer : INodeRecordBuffer
             if (RootKeyRecordCodec.Matches(record, addressHash, root))
             {
                 ulong rootPointer = RootKeyRecordCodec.RootPointer(record);
-                if (!TryLocate(rootPointer, out _)) break;
-
-                Metrics.IncrementNodeRecordBufferRootHits();
-                return rootPointer;
+                return TryLocate(rootPointer, out _) ? rootPointer : 0;
             }
 
             pointer = RootKeyRecordCodec.Previous(record);
         }
 
-        Metrics.IncrementNodeRecordBufferRootMisses();
         return 0;
     }
 
