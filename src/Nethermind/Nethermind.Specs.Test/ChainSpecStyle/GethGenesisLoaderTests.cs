@@ -960,7 +960,7 @@ public class GethGenesisLoaderTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(provider.Eip8198SlotDurationMs, Is.EqualTo(10_000UL));
-            // EIP-8198 is not scheduled, so the slot length stays the configured one.
+            // EIP-8198 is not scheduled, so the slot length stays Blocks.SecondsPerSlot.
             Assert.That(provider.GetSlotSchedule(12).GetSecondsPerSlot(Nethermind.Core.Specs.SpecProviderExtensions.LastScheduledForkTimestamp), Is.EqualTo(12UL));
         }
     }
