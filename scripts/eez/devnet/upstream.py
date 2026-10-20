@@ -254,7 +254,7 @@ def record_build(args):
             path = args.output / (tool + "-version.txt")
             if not 0 < path.stat().st_size <= 1024:
                 raise ValueError("invalid build tool version")
-            versions[tool] = path.read_text().strip()
+            versions[tool] = path.read_text().splitlines()[0].strip()
             if not versions[tool].startswith(tool + " ") or "\n" in versions[tool]:
                 raise ValueError("invalid build tool version")
         else:

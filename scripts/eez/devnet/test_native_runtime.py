@@ -67,7 +67,8 @@ class NativeRuntimeTests(unittest.TestCase):
                             binary.chmod(0o555)
                         for name in ("rustc", "cargo"):
                             (binaries.parent / (name + "-version.txt")).write_text(
-                                "invalid" if failure == "tool-version" else name + " 1.95.0 (published)")
+                                "invalid" if failure == "tool-version" else name + " 1.95.0 (published)"
+                                + ("\nbinary: rustc\ncommit-hash: " + "a" * 40 + "\nhost: x86_64-unknown-linux-gnu\nrelease: 1.95.0\n" if name == "rustc" else "\n"))
                         Path(environment["GITHUB_PATH"]).write_text(str(binaries) + "\n" + ("duplicate\n" if failure == "paths" else ""))
                     return subprocess.CompletedProcess(command, 0)
 
@@ -98,6 +99,8 @@ class NativeRuntimeTests(unittest.TestCase):
                             self.assertEqual(helpers, [])
                         else:
                             self.assertEqual(result["source"], "upstream-payload")
+                            self.assertEqual(result["rustc"], "rustc 1.95.0 (published)")
+                            self.assertIn("host: x86_64-unknown-linux-gnu", (args.output / "rustc-version.txt").read_text())
                             self.assertEqual(result["run_attempt"], 1 if failure == "prior-attempt" else 2)
                             self.assertEqual(pulls, [2, 1] if failure == "prior-attempt" else [2])
                             self.assertEqual((result["run_id"], result["reference"]), (7, reference))
