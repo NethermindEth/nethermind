@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Concurrent;
 using Autofac;
 using Autofac.Features.AttributeFilters;
 using Microsoft.Extensions.Caching.Memory;
@@ -16,6 +17,7 @@ using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
@@ -51,11 +53,16 @@ namespace Nethermind.LightClient;
 /// <summary>Connects to execution peers without starting block or state synchronization.</summary>
 internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisposable
 {
+    private const int ExecutionRequestLimit = 4;
     private readonly IContainer _services;
     private readonly ILogManager _logManager;
     private readonly Nethermind.Logging.ILogger _logger;
     private readonly CancellationTokenSource _stop = new();
-    private readonly SemaphoreSlim _executionDataRequests = new(4, 4);
+    private readonly SemaphoreSlim _executionDataRequests = new(ExecutionRequestLimit, ExecutionRequestLimit);
+    private readonly MemoryCache _executionCooldowns = new(new MemoryCacheOptions { SizeLimit = 256 });
+    private readonly ConcurrentDictionary<AllocationContexts, PeerInfo> _preferredExecutionPeers = new();
+    private readonly ConcurrentDictionary<AllocationContexts, PeerInfo> _lastExecutionPeers = new();
+    private readonly TimeProvider _clock;
     private readonly SemaphoreSlim _snapRequests = new(8);
     private readonly MemoryCache _snapCooldowns = new(new MemoryCacheOptions { SizeLimit = 256 });
     private PeerInfo? _preferredSnapPeer;
@@ -87,8 +94,10 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
         _hostedAccounts?.GetProgress(target) ?? [];
 
     internal ExecutionPeerTransport(string network, ILogManager logManager, VerifiedHead head, ulong timestamp,
-        string? dataDirectory = null, Address[]? hostedAccounts = null, bool hostedAccountsBal = false, int port = 30307)
+        string? dataDirectory = null, Address[]? hostedAccounts = null, bool hostedAccountsBal = false, int port = 30307,
+        TimeProvider? clock = null)
     {
+        _clock = clock ?? TimeProvider.System;
         _logManager = logManager;
         _logger = logManager.GetClassLogger<ExecutionPeerTransport>();
         if (hostedAccounts is { Length: > 0 })
@@ -406,7 +415,7 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
         Hash256 hash = header.Hash ?? throw new InvalidDataException("BAL lookup requires an authenticated block hash.");
         if (Volatile.Read(ref _lastBlockAccessList) is { } cached && cached.Item1 == hash) return cached.Item2;
 
-        ReadOnlyBlockAccessList list = await RequestExecutionAsync(async (peer, token) =>
+        ReadOnlyBlockAccessList list = await RequestExecutionAsync(AllocationContexts.BlockAccessLists, async (peer, token) =>
         {
             if (peer.TryGetSatelliteProtocol<ISnapSyncPeer>(Protocol.Snap, out ISnapSyncPeer? snap) && snap.SnapProtocolVersion >= SnapVersions.Snap2)
             {
@@ -435,82 +444,44 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
         return list;
     }
 
-    public async Task<BlockHeader> GetHeaderByHashAsync(Hash256 hash, CancellationToken cancellationToken)
-    {
-        using CancellationTokenSource deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        deadline.CancelAfter(TimeSpan.FromSeconds(30));
-        ISyncPeerPool pool = _services.Resolve<ISyncPeerPool>();
-        while (!deadline.IsCancellationRequested)
+    public Task<BlockHeader> GetHeaderByHashAsync(Hash256 hash, CancellationToken cancellationToken) =>
+        RequestExecutionAsync(AllocationContexts.Headers, async (peer, token) =>
         {
-            foreach (PeerInfo peer in pool.AllPeers)
-            {
-                try
-                {
-                    using CancellationTokenSource peerTimeout = CancellationTokenSource.CreateLinkedTokenSource(deadline.Token);
-                    peerTimeout.CancelAfter(TimeSpan.FromSeconds(10));
-                    BlockHeader? header = await peer.SyncPeer.GetHeadBlockHeader(hash, peerTimeout.Token);
-                    if (header is not null && header.Hash == hash)
-                        return header;
-                }
-                catch (OperationCanceledException) when (deadline.IsCancellationRequested) { break; }
-                catch (Exception exception) when (exception is not OperationCanceledException || !deadline.IsCancellationRequested)
-                {
-                    if (_logger.IsWarn) _logger.Warn($"Execution header peer {peer.SyncPeer.Node:c} failed: {exception.Message}");
-                }
-            }
-            await Task.Delay(TimeSpan.FromSeconds(1), deadline.Token).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
-        }
-        cancellationToken.ThrowIfCancellationRequested();
-        throw new RpcException(-32000, "No execution peer supplied the requested execution header.");
-    }
+            BlockHeader header = await peer.GetHeadBlockHeader(hash, token)
+                ?? throw new IOException("Execution peer did not supply the requested header.");
+            if (header.Hash != hash) throw new InvalidDataException("Execution peer returned a header inconsistent with the requested hash.");
+            return header;
+        }, cancellationToken, failureMessage: "No execution peer supplied the requested execution header.");
 
     public async Task<Hash256[]> GetAncestorHashesAsync(VerifiedHead head, ulong firstNumber, CancellationToken cancellationToken)
     {
         if (firstNumber >= head.Number || head.Number - firstNumber > 256)
             throw new ArgumentOutOfRangeException(nameof(firstNumber));
-        using CancellationTokenSource deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        deadline.CancelAfter(TimeSpan.FromSeconds(30));
-        ISyncPeerPool pool = _services.Resolve<ISyncPeerPool>();
-        while (!deadline.IsCancellationRequested)
+        return await RequestExecutionAsync(AllocationContexts.Headers, async (peer, token) =>
         {
-            foreach (PeerInfo peer in pool.AllPeers)
+            Hash256[] hashes = new Hash256[checked((int)(head.Number - firstNumber + 1))];
+            for (int offset = 0; offset < hashes.Length;)
             {
-                try
+                int count = Math.Min(128, hashes.Length - offset);
+                using IOwnedReadOnlyList<BlockHeader>? headers = await peer.GetBlockHeaders(firstNumber + (ulong)offset,
+                    count, 0, token);
+                if (headers is null || headers.Count != count)
+                    throw new IOException("Execution peer did not supply the complete ancestor header page.");
+                for (int i = 0; i < count; i++)
                 {
-                    using CancellationTokenSource peerTimeout = CancellationTokenSource.CreateLinkedTokenSource(deadline.Token);
-                    peerTimeout.CancelAfter(TimeSpan.FromSeconds(10));
-                    Hash256[] hashes = new Hash256[checked((int)(head.Number - firstNumber + 1))];
-                    bool valid = true;
-                    for (int offset = 0; offset < hashes.Length;)
-                    {
-                        int count = Math.Min(128, hashes.Length - offset);
-                        using IOwnedReadOnlyList<BlockHeader>? headers = await peer.SyncPeer.GetBlockHeaders(firstNumber + (ulong)offset,
-                            count, 0, peerTimeout.Token);
-                        if (headers is null || headers.Count != count) { valid = false; break; }
-                        for (int i = 0; i < count; i++)
-                        {
-                            BlockHeader header = headers[i];
-                            int index = offset + i;
-                            if (header.Hash is null || header.Number != firstNumber + (ulong)index
-                                || (index > 0 && header.ParentHash != hashes[index - 1])) valid = false;
-                            hashes[index] = header.Hash!;
-                        }
-                        if (!valid) break;
-                        offset += count;
-                    }
-                    valid &= hashes[^1] == head.BlockHash;
-                    if (valid) return hashes;
+                    BlockHeader header = headers[i];
+                    int index = offset + i;
+                    if (header.Hash is null || header.Number != firstNumber + (ulong)index
+                        || (index > 0 && header.ParentHash != hashes[index - 1]))
+                        throw new InvalidDataException("Execution peer returned an inconsistent ancestor header chain.");
+                    hashes[index] = header.Hash;
                 }
-                catch (OperationCanceledException) when (deadline.IsCancellationRequested) { break; }
-                catch (Exception exception) when (exception is not OperationCanceledException || !deadline.IsCancellationRequested)
-                {
-                    if (_logger.IsWarn) _logger.Warn($"Execution ancestor peer {peer.SyncPeer.Node:c} failed: {exception.Message}");
-                }
+                offset += count;
             }
-            await Task.Delay(TimeSpan.FromSeconds(1), deadline.Token).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
-        }
-        cancellationToken.ThrowIfCancellationRequested();
-        throw new RpcException(-32000, "No execution peer supplied an authenticated header chain.");
+            if (hashes[^1] != head.BlockHash)
+                throw new InvalidDataException("Execution peer returned an ancestor chain outside the verified head.");
+            return hashes;
+        }, cancellationToken, failureMessage: "No execution peer supplied an authenticated header chain.");
     }
 
     public async Task<BlockHeader> GetCanonicalHeaderAsync(VerifiedHead head, ulong number, CancellationToken cancellationToken)
@@ -548,7 +519,7 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
     }
 
     private Task<BlockHeader[]> FetchLogHeaderPageAsync(BlockHeader cursor, int count, CancellationToken cancellationToken) =>
-        RequestExecutionAsync((peer, token) => ReadLogHeaderPageAsync(peer, cursor, count, token), cancellationToken);
+        RequestExecutionAsync(AllocationContexts.Headers, (peer, token) => ReadLogHeaderPageAsync(peer, cursor, count, token), cancellationToken);
 
     internal static async Task<BlockHeader[]> ReadLogHeaderPageAsync(ISyncPeer peer, BlockHeader cursor, int count,
         CancellationToken cancellationToken)
@@ -600,7 +571,7 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
             VerifyBlockBody(header, empty);
             return Task.FromResult(new Block(header, empty));
         }
-        return RequestExecutionAsync(async (peer, token) =>
+        return RequestExecutionAsync(AllocationContexts.Bodies, async (peer, token) =>
         {
             using OwnedBlockBodies bodies = await peer.GetBlockBodies([header.Hash!], token);
             if (bodies.Count != 1 || bodies[0] is not { } body)
@@ -626,7 +597,7 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
             VerifyReceipts(block.Header, [], SpecProvider);
             return Task.FromResult(Array.Empty<TxReceipt>());
         }
-        return RequestExecutionAsync(async (peer, token) =>
+        return RequestExecutionAsync(AllocationContexts.Receipts, async (peer, token) =>
         {
             int count = block.Transactions.Length;
             using IOwnedReadOnlyList<TxReceipt[]?> batches = await peer.GetReceipts([block.Hash!], new[] { count }, token);
@@ -645,16 +616,18 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
             throw new InvalidDataException("Execution peer returned receipts inconsistent with the verified header.");
     }
 
-    private async Task<T> RequestExecutionAsync<T>(Func<ISyncPeer, CancellationToken, Task<T>> request,
-        CancellationToken cancellationToken, Func<ISyncPeer, bool>? canServe = null)
+    private async Task<T> RequestExecutionAsync<T>(AllocationContexts context, Func<ISyncPeer, CancellationToken, Task<T>> request,
+        CancellationToken cancellationToken, Func<ISyncPeer, bool>? canServe = null,
+        string failureMessage = "No execution peer supplied authenticated block data.")
     {
-        using CancellationTokenSource deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _stop.Token);
-        deadline.CancelAfter(TimeSpan.FromSeconds(30));
+        CancellationToken stopToken = _stop.Token;
+        using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(30), _clock);
+        using CancellationTokenSource deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, stopToken, timeout.Token);
         try
         {
             await _executionDataRequests.WaitAsync(deadline.Token);
         }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested && !_stop.IsCancellationRequested)
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested && !stopToken.IsCancellationRequested)
         {
             throw new RpcException(-32000, "Timed out waiting for an available execution data request slot.");
         }
@@ -664,28 +637,58 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
             while (!deadline.IsCancellationRequested)
             {
                 bool hasCapablePeer = false;
-                foreach (PeerInfo peer in pool.AllPeers)
+                _preferredExecutionPeers.TryGetValue(context, out PeerInfo? preferred);
+                _lastExecutionPeers.TryGetValue(context, out PeerInfo? last);
+                using ArrayPoolList<PeerInfo> peers = new(pool.PeerCount);
+                foreach (PeerInfo peer in pool.InitializedPeers) peers.Add(peer);
+                int start = 0;
+                int preferredIndex = -1;
+                for (int i = 0; i < peers.Count; i++)
                 {
+                    if (ReferenceEquals(peers[i], last)) start = (i + 1) % peers.Count;
+                    if (ReferenceEquals(peers[i], preferred)) preferredIndex = i;
+                }
+                for (int offset = preferredIndex >= 0 ? -1 : 0; offset < peers.Count; offset++)
+                {
+                    int index = offset < 0 ? preferredIndex : (start + offset) % peers.Count;
+                    if (offset >= 0 && index == preferredIndex) continue;
+                    PeerInfo peer = peers[index];
+                    if (deadline.IsCancellationRequested) break;
                     if (canServe is not null && !canServe(peer.SyncPeer)) continue;
                     hasCapablePeer = true;
+                    (PublicKey, AllocationContexts) key = (peer.SyncPeer.Id, context);
+                    if (_executionCooldowns.TryGetValue(key, out long failedAt)
+                        && _clock.GetElapsedTime(failedAt) < TimeSpan.FromMinutes(1)) continue;
+                    // Scheduling progress survives an overall timeout without blaming the interrupted peer.
+                    _lastExecutionPeers[context] = peer;
                     try
                     {
-                        using CancellationTokenSource peerTimeout = CancellationTokenSource.CreateLinkedTokenSource(deadline.Token);
-                        peerTimeout.CancelAfter(TimeSpan.FromSeconds(10));
-                        return await request(peer.SyncPeer, peerTimeout.Token);
+                        using CancellationTokenSource peerTimeout = new(TimeSpan.FromSeconds(10), _clock);
+                        using CancellationTokenSource peerAttempt = CancellationTokenSource.CreateLinkedTokenSource(deadline.Token, peerTimeout.Token);
+                        T result = await request(peer.SyncPeer, peerAttempt.Token);
+                        _preferredExecutionPeers[context] = peer;
+                        return result;
                     }
-                    catch (OperationCanceledException) when (deadline.IsCancellationRequested) { break; }
-                    catch (Exception exception) when (exception is not OperationCanceledException || !deadline.IsCancellationRequested)
+                    catch (Exception) when (cancellationToken.IsCancellationRequested || stopToken.IsCancellationRequested || timeout.IsCancellationRequested) { break; }
+                    catch (ConcurrencyLimitReachedException exception)
                     {
-                        if (_logger.IsWarn) _logger.Warn($"Execution data peer {peer.SyncPeer.Node:c} failed: {exception.Message}");
+                        if (_logger.IsDebug) _logger.Debug($"Execution {context} peer {peer.SyncPeer.Node:c} is busy: {exception.Message}");
+                    }
+                    catch (Exception exception)
+                    {
+                        _executionCooldowns.Set(key, _clock.GetTimestamp(), new MemoryCacheEntryOptions { Size = 1 });
+                        _preferredExecutionPeers.TryRemove(new KeyValuePair<AllocationContexts, PeerInfo>(context, peer));
+                        pool.ReportWeakPeer(peer, context);
+                        if (_logger.IsWarn) _logger.Warn($"Execution {context} peer {peer.SyncPeer.Node:c} failed: {exception.GetType().Name}: {exception.Message}");
                     }
                 }
-                if (canServe is not null && !hasCapablePeer)
+                if (canServe is not null && !hasCapablePeer && !deadline.IsCancellationRequested)
                     throw new NotSupportedException("No execution peer supports the requested data protocol.");
-                await Task.Delay(TimeSpan.FromSeconds(1), deadline.Token).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+                await Task.Delay(TimeSpan.FromSeconds(1), _clock, deadline.Token).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
             }
             cancellationToken.ThrowIfCancellationRequested();
-            throw new RpcException(-32000, "No execution peer supplied authenticated block data.");
+            stopToken.ThrowIfCancellationRequested();
+            throw new RpcException(-32000, failureMessage);
         }
         finally
         {
@@ -846,6 +849,8 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
             history = _logHistory.IsValueCreated ? _logHistory.Value : null;
         }
         await _stop.CancelAsync();
+        // Callers must leave the selector before its cooldown cache and services are disposed.
+        for (int i = 0; i < ExecutionRequestLimit; i++) await _executionDataRequests.WaitAsync();
         if (history is not null) await history.DisposeAsync();
         if (_snapCapacityTask is not null)
         {
@@ -868,6 +873,7 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
         if (_discovery is not null) await _discovery.StopAsync();
         if (_host is not null) await _host.Shutdown();
         await _services.DisposeAsync();
+        _executionCooldowns.Dispose();
         _snapCooldowns.Dispose();
         _stop.Dispose();
     }
