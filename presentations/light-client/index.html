@@ -1,0 +1,318 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Nethermind Light Client — verified Ethereum, directly from peers</title>
+  <style>
+    :root { color-scheme: dark; --blue:#00b3ff; --orange:#ff9900; --ink:#ecf5ff; --muted:#9ab0c6; --line:#23354b; --scale:1; }
+    * { box-sizing:border-box; }
+    html,body { margin:0; width:100%; height:100%; overflow:hidden; background:#040811; color:var(--ink); font-family:"Segoe UI Variable","Segoe UI",Arial,sans-serif; }
+    .viewport { position:fixed; inset:0 0 56px; display:flex; align-items:center; justify-content:center; overflow:hidden; }
+    .deck { position:relative; width:1600px; height:900px; flex:none; transform:scale(var(--scale)); transform-origin:center; }
+    .slide { position:absolute; inset:0; padding:48px 70px 52px; overflow:hidden; visibility:hidden; opacity:0; pointer-events:none; transition:opacity .18s ease; background:radial-gradient(ellipse at 95% 0%,#102e45 0%,transparent 42%),linear-gradient(125deg,#0a1523,#080e19 75%); border:1px solid #23384e; }
+    .slide::before { content:""; position:absolute; inset:0; background-image:linear-gradient(#7cb7e506 1px,transparent 1px),linear-gradient(90deg,#7cb7e506 1px,transparent 1px); background-size:56px 56px; pointer-events:none; }
+    .slide.active { visibility:visible; opacity:1; pointer-events:auto; }
+    .slide > * { position:relative; }
+    header { display:flex; align-items:center; justify-content:space-between; height:42px; margin-bottom:34px; }
+    .logo { display:flex; align-items:baseline; gap:10px; font-size:35px; font-weight:900; font-style:italic; letter-spacing:-2px; }
+    .logo .nm { color:var(--blue); } .logo .lc { color:var(--orange); }
+    .brand-name { font-size:12px; letter-spacing:3px; color:var(--muted); font-style:normal; font-weight:600; margin-left:14px; }
+    .eyebrow { font-size:14px; text-transform:uppercase; letter-spacing:3px; color:var(--blue); font-weight:650; }
+    h1,h2,h3,p { margin:0; }
+    h1 { font-size:72px; line-height:1.06; letter-spacing:-2.7px; font-weight:720; }
+    h2 { font-size:61px; line-height:1.08; letter-spacing:-2px; font-weight:700; }
+    h3 { font-size:26px; line-height:1.2; font-weight:650; }
+    .lead { font-size:25px; line-height:1.42; color:var(--muted); margin-top:17px; }
+    .blue { color:var(--blue); } .orange { color:var(--orange); }
+    .pill { display:inline-block; border:1px solid #2e506b; border-radius:100px; padding:7px 14px; font-size:14px; color:#b8d9ed; letter-spacing:.4px; }
+    .pill.warm { color:#ffc678; border-color:#7a4d1b; }
+    .panel { border:1px solid var(--line); background:#0b1726d9; border-radius:16px; padding:26px 28px; }
+    .panel.blue-edge { border-top:3px solid var(--blue); } .panel.orange-edge { border-top:3px solid var(--orange); }
+    .two { display:grid; grid-template-columns:1fr 1fr; gap:22px; }
+    .small { font-size:19px; line-height:1.45; color:var(--muted); }
+    .body { font-size:23px; line-height:1.4; color:#cbd9e7; }
+    footer { position:absolute!important; bottom:28px; left:70px; right:70px; display:flex; align-items:center; justify-content:space-between; color:#7e98b2; font-size:13px; }
+    footer a { color:#9abbd2; text-decoration:none; border-bottom:1px solid #34516b; }
+    .sources { display:flex; gap:18px; }
+    .page { font-size:15px; letter-spacing:2px; color:#bad1e5; }
+    .trust-chain { display:grid; grid-template-columns:repeat(5,1fr); gap:23px; margin-top:39px; }
+    .trust-node { padding:22px 19px; border:1px solid #2c4a63; background:#0b1a2bdd; border-radius:13px; min-height:151px; position:relative; }
+    .trust-node:not(:last-child)::after { content:"→"; position:absolute; right:-22px; top:57px; color:var(--blue); font-size:25px; }
+    .trust-node:first-child { border-color:#936224; }
+    .number { display:block; font-size:12px; color:var(--blue); letter-spacing:2px; margin-bottom:11px; }
+    .trust-node:first-child .number { color:var(--orange); }
+    .trust-node h3 { font-size:23px; margin-bottom:9px; }
+    .trust-node p { font-size:18px; line-height:1.35; color:var(--muted); }
+    .head-cards { margin-top:26px; }
+    .head-card { display:flex; gap:25px; align-items:center; padding:23px 27px; }
+    .metric { font-size:54px; font-weight:700; letter-spacing:-2px; white-space:nowrap; color:var(--blue); }
+    .metric.orange { color:var(--orange); }
+    .metric span { font-size:22px; color:#7d9ab4; letter-spacing:0; }
+    .head-card h3 { font-size:23px; margin-bottom:6px; }
+    .assumption { margin-top:22px; border-left:3px solid var(--orange); padding-left:18px; font-size:19px; line-height:1.4; color:#c5d3e2; }
+    .network-panels { margin-top:25px; }
+    .network-panel { min-height:340px; padding:22px 26px; }
+    .network-label { text-transform:uppercase; font-size:13px; letter-spacing:2.3px; margin-bottom:17px; color:var(--blue); }
+    .network-panel.orange-edge .network-label { color:var(--orange); }
+    .data-row { display:grid; grid-template-columns:135px 1fr; gap:20px; padding:11px 0; border-bottom:1px solid #21344a; }
+    .data-row:last-of-type { border-bottom:0; }
+    .data-row strong { font-size:21px; font-weight:600; }
+    .data-row span { font-size:21px; line-height:1.35; color:#bccde0; }
+    .verification { margin-top:16px; font-size:17px; line-height:1.4; color:#7ad0f4; }
+    .orange-edge .verification { color:#e6b76f; }
+    .discovery { margin-top:18px; display:grid; grid-template-columns:1.15fr .85fr; gap:22px; }
+    .discovery .panel { padding:20px 25px; }
+    .discovery h3 { font-size:22px; margin-bottom:8px; }
+    code { font-family:"Cascadia Code",Consolas,monospace; }
+    .api-lead { display:flex; align-items:center; justify-content:space-between; margin-top:18px; }
+    .api-lead .lead { margin:0; }
+    .api-grid { display:grid; grid-template-columns:repeat(3,1fr); grid-template-rows:258px 258px; gap:17px; margin-top:25px; }
+    .api-card { padding:20px 22px; }
+    .api-card h3 { font-size:22px; margin-bottom:12px; display:flex; justify-content:space-between; }
+    .api-card h3 span { font-size:13px; color:var(--blue); font-weight:500; }
+    .methods { display:grid; gap:5px; }
+    .methods code { font-size:17px; line-height:1.2; color:#cedfee; overflow-wrap:anywhere; }
+    .api-card .small { font-size:17px; margin-top:13px; }
+    .api-foot { margin-top:14px; font-size:19px; color:var(--muted); display:flex; gap:24px; }
+    .api-foot strong { color:#deeffb; font-weight:600; }
+    .hook-panels { margin-top:27px; grid-template-columns:1.08fr .92fr; }
+    .hook-panel { min-height:410px; }
+    .hook-panel h3 { display:flex; align-items:center; justify-content:space-between; margin-bottom:19px; }
+    .hook-panel .body { font-size:21px; }
+    pre { margin:19px 0; padding:20px 22px; border:1px solid #27455c; border-radius:10px; background:#07101c; color:#9ad8fb; font-size:19px; line-height:1.5; white-space:pre-wrap; }
+    .hook-step { display:flex; gap:15px; align-items:center; margin:19px 0; }
+    .step-dot { flex:none; width:36px; height:36px; border-radius:50%; display:grid; place-items:center; color:var(--orange); background:#352618; border:1px solid #705026; font-size:15px; }
+    .step-text { font-size:21px; line-height:1.3; color:#c9d8e6; }
+    .reorg-strip { display:flex; align-items:center; gap:13px; margin:22px 0 13px; }
+    .block { padding:10px 15px; border:1px solid #395470; background:#112338; border-radius:7px; font-family:Consolas,monospace; font-size:19px; }
+    .block.orphan { color:#e7ac77; border-color:#76543c; text-decoration:line-through; background:#2b1e16; }
+    .block.replacement { color:#80d7fb; border-color:#2780a6; }
+    .reorg-arrow { font-size:23px; color:#6d9ab9; }
+    .hook-contract { border-left:3px solid var(--orange); padding-left:17px; margin-top:20px; }
+    .hook-contract code { font-size:20px; color:#ffc677; }
+    .rules { margin-top:23px; display:flex; gap:12px; }
+    .hook-note { font-size:18px; color:var(--muted); margin-top:16px; line-height:1.4; }
+    .run-layout { grid-template-columns:1.05fr .95fr; margin-top:25px; }
+    .run-panel pre { font-size:18px; margin:12px 0; padding:16px 20px; line-height:1.45; }
+    .endpoint { margin-top:17px; display:grid; gap:9px; font-size:19px; color:#c4d7e8; }
+    .run-panel h3,.gaps-panel h3 { font-size:24px; }
+    .bound-list { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin-top:16px; }
+    .bound { border:1px solid #284358; border-radius:9px; padding:12px; text-align:center; }
+    .bound b { color:var(--blue); font-size:35px; display:block; font-weight:650; }
+    .bound span { font-size:15px; color:var(--muted); }
+    .gaps-list { margin:17px 0 0; padding:0; list-style:none; }
+    .gaps-list li { margin:0 0 12px; padding-left:21px; position:relative; font-size:19px; line-height:1.3; color:#c7d5e4; }
+    .gaps-list li::before { content:""; width:6px; height:6px; border-radius:50%; background:var(--orange); position:absolute; left:0; top:10px; }
+    .gap-divider { border-top:1px solid #293b50; margin:16px 0; }
+    .summary-bar { margin-top:19px; padding:18px 24px; border:1px solid #39506a; border-radius:12px; display:flex; align-items:center; justify-content:space-between; font-size:19px; background:#102031; }
+    .summary-bar strong { color:var(--blue); }
+    .controls { position:fixed; height:56px; bottom:0; left:0; right:0; display:flex; align-items:center; justify-content:center; gap:14px; font-size:12px; color:#859cb1; background:#040811; }
+    button { border:1px solid #294057; border-radius:6px; color:#c2d8ea; background:#0e1d2d; padding:7px 13px; font:inherit; cursor:pointer; }
+    button:hover,button:focus-visible { border-color:var(--blue); color:white; outline:none; }
+    button:disabled { opacity:.35; cursor:default; }
+    .dots { display:flex; gap:8px; }
+    .dot { width:8px; height:8px; padding:0; border-radius:50%; background:#284158; border:0; }
+    .dot.selected { background:var(--blue); box-shadow:0 0 10px #00b3ff55; }
+    .keys { margin-left:8px; }
+    @media (max-width:650px) { .keys { display:none; } .controls { gap:9px; } }
+    @media print {
+      @page { size:1600px 900px; margin:0; }
+      html,body { width:auto; height:auto; overflow:visible; background:#080e19; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+      .viewport { position:static; display:block; overflow:visible; }
+      .deck { transform:none!important; height:auto; width:1600px; }
+      .slide { position:relative; width:1600px; height:900px; visibility:visible!important; opacity:1!important; pointer-events:auto; break-after:page; border:0; }
+      .slide:last-child { break-after:auto; }
+      .controls { display:none; }
+    }
+  </style>
+</head>
+<body>
+  <main class="viewport" aria-label="Nethermind Light Client presentation">
+    <div class="deck">
+      <section class="slide active" data-slide="1" aria-label="1. Trust and verification">
+        <header><div class="logo"><span class="nm">NM</span><span class="lc">LC</span><span class="brand-name">NETHERMIND LIGHT CLIENT</span></div><span class="eyebrow">01 / Trust &amp; verification</span></header>
+        <h1>Trustless RPC.<br><span class="blue">A verifiable path to Ethereum.</span></h1>
+        <p class="lead">Direct consensus and execution P2P. Proof-backed state. Local EVM execution.</p>
+        <div class="trust-chain" aria-label="Verification chain">
+          <div class="trust-node"><span class="number">01 · TRUST ANCHOR</span><h3>Recent checkpoint</h3><p>Finalized beacon root supplied explicitly or by a chosen HTTPS provider.</p></div>
+          <div class="trust-node"><span class="number">02 · BOOTSTRAP</span><h3>Committee proof</h3><p>Merkle proof binds the 512 committee keys to the checkpoint state.</p></div>
+          <div class="trust-node"><span class="number">03 · CONSENSUS</span><h3>Signed beacon head</h3><p>Verify aggregate BLS signatures, slots, participation and fork domain.</p></div>
+          <div class="trust-node"><span class="number">04 · COMMITMENT</span><h3>Execution block</h3><p>Verify its beacon commitment, then the execution roots and hashes.</p></div>
+          <div class="trust-node"><span class="number">05 · APPLICATION</span><h3>Verified RPC</h3><p>Check state / storage proofs and code hashes. Run calls locally.</p></div>
+        </div>
+        <div class="two head-cards">
+          <div class="panel head-card"><div class="metric">342<span> / 512</span></div><div><h3>Finalized head</h3><p class="small">Committee supermajority + finality proof.<br>Use for actions that must be irreversible.</p></div></div>
+          <div class="panel head-card"><div class="metric orange" style="font-size:41px">LATEST</div><div><h3>Authenticated optimistic head</h3><p class="small">Adaptive participation threshold.<br>Timely for wallets; can reorganize.</p></div></div>
+        </div>
+        <p class="assumption"><strong>Trust-minimized:</strong> checkpoint + honest committee participation remain assumptions. Full block validity rests on Ethereum consensus. Timeout committee recovery has weaker assumptions.</p>
+        <footer><div class="sources"><a href="https://ethereum.github.io/consensus-specs/specs/altair/light-client/sync-protocol/" target="_blank" rel="noopener">Consensus specification</a><a href="https://github.com/NethermindEth/nethermind/blob/13c20f6f2c264750301d28db7f67ed302b355889/src/Nethermind/Nethermind.LightClient/Consensus/LightClientStore.cs" target="_blank" rel="noopener">Verifier implementation</a></div><span class="page">01 / 05</span></footer>
+      </section>
+
+      <section class="slide" data-slide="2" aria-label="2. Data retrieved from peers">
+        <header><div class="logo"><span class="nm">NM</span><span class="lc">LC</span><span class="brand-name">NETHERMIND LIGHT CLIENT</span></div><span class="eyebrow">02 / The peer data path</span></header>
+        <h2>P2P data. <span class="blue">Local verification.</span></h2>
+        <p class="lead">Fetch the authenticated head and the witnesses a request needs. No upstream execution JSON-RPC.</p>
+        <div class="two network-panels">
+          <div class="panel blue-edge network-panel"><div class="network-label">Consensus network · libp2p</div><h3>Beacon light-client data</h3>
+            <div class="data-row"><strong>Bootstrap</strong><span>Checkpoint header, committee keys and committee proof.</span></div>
+            <div class="data-row"><strong>Live gossip</strong><span>Optimistic and finality updates, signatures and finality branches.</span></div>
+            <div class="data-row"><strong>Recovery</strong><span>Committee updates and next-committee proofs through request/response.</span></div>
+            <p class="verification">BLS + SSZ/Merkle verification · TCP/Noise/yamux or authenticated QUIC</p>
+          </div>
+          <div class="panel orange-edge network-panel"><div class="network-label">Execution network · RLPx / ETH / SNAP</div><h3>Execution data on demand</h3>
+            <div class="data-row"><strong>ETH</strong><span>Block headers, bodies, transactions and receipts.</span></div>
+            <div class="data-row"><strong>SNAP</strong><span>Account/storage ranges, Merkle witnesses and contract bytecode.</span></div>
+            <div class="data-row"><strong>Local EVM</strong><span>Calls and gas estimates execute against proven state; changes are discarded.</span></div>
+            <p class="verification">Header hashes + body/receipt roots + state proofs + code hashes</p>
+          </div>
+        </div>
+        <div class="discovery">
+          <div class="panel"><h3>Find peers, then authenticate data</h3><p class="small">Both stacks use discv5. EL also uses signed DNS discovery at<br><code>snap.&lt;network&gt;.ethdisco.net</code>. Gossip follows heads; polling repairs gaps.</p></div>
+          <div class="panel"><h3>Availability remains a peer dependency</h3><p class="small">Peers can withhold data or stall a request. Invalid signatures, proofs or hashes are rejected against the authenticated commitments.</p></div>
+        </div>
+        <footer><div class="sources"><a href="https://github.com/ethereum/devp2p/blob/master/caps/snap.md" target="_blank" rel="noopener">SNAP protocol</a><a href="https://ethereum.github.io/consensus-specs/specs/altair/light-client/p2p-interface/" target="_blank" rel="noopener">Light-client P2P</a><a href="https://github.com/NethermindEth/nethermind/blob/13c20f6f2c264750301d28db7f67ed302b355889/src/Nethermind/Nethermind.LightClient/ExecutionPeerTransport.cs" target="_blank" rel="noopener">Execution transport</a></div><span class="page">02 / 05</span></footer>
+      </section>
+
+      <section class="slide" data-slide="3" aria-label="3. Supported RPC API">
+        <header><div class="logo"><span class="nm">NM</span><span class="lc">LC</span><span class="brand-name">NETHERMIND LIGHT CLIENT</span></div><span class="eyebrow">03 / Supported API</span></header>
+        <h2>Wallet-ready RPC, <span class="blue">executed locally.</span></h2>
+        <div class="api-lead"><p class="lead">23 ordinary methods over HTTP and WebSocket · 2 additional WebSocket methods</p><span class="pill">JSON-RPC 2.0 · port 8545</span></div>
+        <div class="api-grid">
+          <div class="panel api-card"><h3>Identity &amp; verified state <span>7 METHODS</span></h3><div class="methods">
+            <code data-rpc-method="eth_chainId">eth_chainId</code><code data-rpc-method="eth_blockNumber">eth_blockNumber</code><code data-rpc-method="eth_getBalance">eth_getBalance</code><code data-rpc-method="eth_getTransactionCount">eth_getTransactionCount</code><code data-rpc-method="eth_getStorageAt">eth_getStorageAt</code><code data-rpc-method="eth_getCode">eth_getCode</code><code data-rpc-method="eth_getProof">eth_getProof</code>
+          </div></div>
+          <div class="panel api-card"><h3>Simulation &amp; fees <span>5 METHODS</span></h3><div class="methods">
+            <code data-rpc-method="eth_call">eth_call</code><code data-rpc-method="eth_estimateGas">eth_estimateGas</code><code data-rpc-method="eth_feeHistory">eth_feeHistory</code><code data-rpc-method="eth_gasPrice">eth_gasPrice</code><code data-rpc-method="eth_maxPriorityFeePerGas">eth_maxPriorityFeePerGas</code>
+          </div><p class="small">Nethermind EVM simulation.<br>Fee suggestions use verified headers and receipts.</p></div>
+          <div class="panel api-card"><h3>Blocks &amp; counts <span>4 METHODS</span></h3><div class="methods">
+            <code data-rpc-method="eth_getBlockByNumber">eth_getBlockByNumber</code><code data-rpc-method="eth_getBlockByHash">eth_getBlockByHash</code><code data-rpc-method="eth_getBlockTransactionCountByNumber">eth_getBlockTransactionCountByNumber</code><code data-rpc-method="eth_getBlockTransactionCountByHash">eth_getBlockTransactionCountByHash</code>
+          </div><p class="small">Authenticated headers and verified block bodies.</p></div>
+          <div class="panel api-card"><h3>Transactions &amp; receipts <span>5 METHODS</span></h3><div class="methods">
+            <code data-rpc-method="eth_getTransactionByBlockNumberAndIndex">eth_getTransactionByBlockNumberAndIndex</code><code data-rpc-method="eth_getTransactionByBlockHashAndIndex">eth_getTransactionByBlockHashAndIndex</code><code data-rpc-method="eth_getTransactionByHash">eth_getTransactionByHash</code><code data-rpc-method="eth_getTransactionReceipt">eth_getTransactionReceipt</code><code data-rpc-method="eth_getBlockReceipts">eth_getBlockReceipts</code>
+          </div><p class="small">Hash lookup uses a bounded recent/observed index.</p></div>
+          <div class="panel api-card"><h3>Logs &amp; signed relay <span>2 METHODS</span></h3><div class="methods">
+            <code data-rpc-method="eth_getLogs">eth_getLogs</code><code data-rpc-method="eth_sendRawTransaction">eth_sendRawTransaction</code>
+          </div><p class="small">Verify receipt-backed logs.<br>Validate already-signed transactions, then relay through execution P2P.</p><p class="small orange">No signing keys. A relay hash is not proof of inclusion.</p></div>
+          <div class="panel api-card blue-edge"><h3>WebSocket subscriptions <span>2 METHODS</span></h3><div class="methods">
+            <code data-rpc-method="eth_subscribe">eth_subscribe</code><code data-rpc-method="eth_unsubscribe">eth_unsubscribe</code>
+          </div><p class="small"><strong class="blue">newHeads</strong> — authenticated execution tips<br><strong class="blue">logs</strong> — verified events, with reorg removal notifications</p><p class="small"><code>ws://127.0.0.1:8545/ws</code></p></div>
+        </div>
+        <div class="api-foot"><span><strong>latest</strong> = optimistic, reorgable</span><span><strong>finalized</strong> = proven finalized state</span><span>History and lookup are explicitly bounded.</span></div>
+        <footer><div class="sources"><a href="https://github.com/NethermindEth/nethermind/blob/13c20f6f2c264750301d28db7f67ed302b355889/src/Nethermind/Nethermind.LightClient/README.md#verified-rpc-contract" target="_blank" rel="noopener">Run guide &amp; RPC contract</a><a href="https://github.com/NethermindEth/nethermind/blob/13c20f6f2c264750301d28db7f67ed302b355889/src/Nethermind/Nethermind.LightClient/VerifiedRpc.cs" target="_blank" rel="noopener">RPC implementation</a></div><span class="page">03 / 05</span></footer>
+      </section>
+
+      <section class="slide" data-slide="4" aria-label="4. Extending the client for heads and reorgs">
+        <header><div class="logo"><span class="nm">NM</span><span class="lc">LC</span><span class="brand-name">NETHERMIND LIGHT CLIENT</span></div><span class="eyebrow">04 / Custom logic</span></header>
+        <h2>React to <span class="blue">authenticated heads.</span></h2>
+        <p class="lead">Use subscriptions today. Add a native consumer at the verified publication boundary.</p>
+        <div class="two hook-panels">
+          <div class="panel blue-edge hook-panel"><h3>External handler <span class="pill">AVAILABLE NOW</span></h3><p class="body">Connect to <code>ws://127.0.0.1:8545/ws</code></p>
+            <pre><code>{"jsonrpc":"2.0","id":1,
+ "method":"eth_subscribe","params":["newHeads"]}</code></pre>
+            <p class="body"><strong class="blue">newHeads:</strong> compare hashes and ancestry to detect reorgs.<br><strong class="blue">logs:</strong> orphaned events carry <code>removed: true</code>.</p>
+            <div class="reorg-strip" aria-label="Example reorganization"><span class="block">A</span><span class="reorg-arrow">→</span><span class="block">B</span><span class="reorg-arrow">→</span><span class="block orphan">C</span><span class="reorg-arrow">↦</span><span class="block replacement">C′</span><span class="reorg-arrow">→</span><span class="block replacement">D′</span></div>
+            <p class="small">Undo effects from the old branch; apply the replacement branch.</p>
+          </div>
+          <div class="panel orange-edge hook-panel"><h3>In-process handler <span class="pill warm">PROPOSED EXTENSION</span></h3>
+            <div class="hook-step"><span class="step-dot">1</span><span class="step-text">Verify consensus update and execution commitment.</span></div>
+            <div class="hook-step"><span class="step-dot">2</span><span class="step-text">Persist verified progress, then publish the head.</span></div>
+            <div class="hook-step"><span class="step-dot">3</span><span class="step-text">Dispatch to a bounded asynchronous custom worker.</span></div>
+            <div class="hook-contract"><code>oldHead → commonAncestor → newHead</code><p class="small" style="margin-top:12px">Reuse the existing removed/added branch logic for explicit reorg callbacks. Make it independent of WebSocket subscriber interests.</p></div>
+            <p class="small" style="margin-top:17px">The publication point exists. Public native callbacks and automatic plugin loading are not wired yet.</p>
+          </div>
+        </div>
+        <div class="rules"><span class="pill">Durable consumer cursor</span><span class="pill">Gap recovery</span><span class="pill">Idempotent rollback</span><span class="pill warm">Finality for irreversible actions</span></div>
+        <p class="hook-note">Heads are sampled once per second and can skip intermediate tips. Subscription repair covers 32 blocks; reconnect and recover when the stream cannot repair a gap.</p>
+        <footer><div class="sources"><a href="https://github.com/NethermindEth/nethermind/blob/13c20f6f2c264750301d28db7f67ed302b355889/src/Nethermind/Nethermind.LightClient/Program.cs#L310" target="_blank" rel="noopener">Head publication point</a><a href="https://github.com/NethermindEth/nethermind/blob/13c20f6f2c264750301d28db7f67ed302b355889/src/Nethermind/Nethermind.LightClient/VerifiedSubscriptions.cs#L203" target="_blank" rel="noopener">Reorg reconstruction</a></div><span class="page">04 / 05</span></footer>
+      </section>
+
+      <section class="slide" data-slide="5" aria-label="5. Running the client and remaining gaps">
+        <header><div class="logo"><span class="nm">NM</span><span class="lc">LC</span><span class="brand-name">NETHERMIND LIGHT CLIENT</span></div><span class="eyebrow">05 / Run &amp; boundaries</span></header>
+        <h2>Run it. <span class="blue">Know the boundaries.</span></h2>
+        <p class="lead">Native CLI · .NET 10 · Mainnet by default · Sepolia and Hoodi options</p>
+        <div class="two run-layout">
+          <div class="panel blue-edge run-panel"><h3>Start from the repository root</h3><pre><code>dotnet run --project src/Nethermind/Nethermind.LightClient -c release -p:SaveDiskSpace=true -- --checkpoint-url https://mainnet.checkpoint.sigp.io</code></pre>
+            <p class="small">Example uses Sigma Prime's checkpoint service as the trust anchor. Alternatively provide <code>--checkpoint &lt;trusted-root&gt;</code>.</p>
+            <div class="endpoint"><span><span class="blue">HTTP</span> <code>http://127.0.0.1:8545</code></span><span><span class="blue">WS</span> <code>ws://127.0.0.1:8545/ws</code></span></div>
+            <div class="bound-list"><div class="bound"><b>32</b><span>state ancestors</span></div><div class="bound"><b>256</b><span>block / receipt ancestors</span></div><div class="bound"><b>16</b><span>finalized blocks / log range</span></div></div>
+          </div>
+          <div class="panel orange-edge gaps-panel"><h3>Scope to communicate clearly</h3><ul class="gaps-list"><li><code>pending</code>, <code>safe</code> and <code>earliest</code> selectors are unavailable.</li><li>Transaction lookup is bounded. <code>null</code> means unknown in scope, not global absence.</li><li>Recent Electra-or-later checkpoints; this is light-client verification, not full-chain replay.</li></ul>
+            <div class="gap-divider"></div><h3>Remaining engineering work</h3><ul class="gaps-list"><li>Peer diversity, CL capability selection and wider interoperability.</li><li>QUIC/TLS conformance and lifecycle follow-up; native handler cursors/recovery.</li><li>Browser/mobile ports and BAL-based cache advancement remain future work.</li></ul>
+          </div>
+        </div>
+        <div class="summary-bar"><span><strong>Local wallets work by default.</strong> Browser extension origins are allowed.</span><span>Public RPC needs an authenticated gateway.</span></div>
+        <footer><div class="sources"><a href="https://github.com/NethermindEth/nethermind/pull/14457" target="_blank" rel="noopener">Draft PR #14457</a><a href="https://github.com/NethermindEth/nethermind/blob/13c20f6f2c264750301d28db7f67ed302b355889/src/Nethermind/Nethermind.LightClient/README.md" target="_blank" rel="noopener">Run guide &amp; limits</a></div><span>Implementation snapshot 13c20f6f2c · 14 Oct 2026</span><span class="page">05 / 05</span></footer>
+      </section>
+    </div>
+  </main>
+  <nav class="controls" aria-label="Presentation controls">
+    <button id="previous" aria-label="Previous slide">← Previous</button>
+    <div class="dots" aria-label="Choose a slide"></div>
+    <span id="counter" aria-live="polite">1 / 5</span>
+    <button id="next" aria-label="Next slide">Next →</button>
+    <button id="fullscreen">Fullscreen</button>
+    <button id="print">Print / PDF</button>
+    <span class="keys">← → / Space · 1–5 · F fullscreen · P print</span>
+  </nav>
+  <script>
+    const slides = [...document.querySelectorAll('.slide')];
+    const previous = document.querySelector('#previous');
+    const next = document.querySelector('#next');
+    const dots = document.querySelector('.dots');
+    let active = 0;
+    slides.forEach((slide, index) => {
+      slide.setAttribute('role', 'group');
+      slide.setAttribute('aria-roledescription', 'slide');
+      const button = document.createElement('button');
+      button.className = 'dot';
+      button.setAttribute('aria-label', `Show slide ${index + 1}`);
+      button.addEventListener('click', () => show(index));
+      dots.appendChild(button);
+    });
+    function show(index) {
+      const integer = Number.isFinite(index) ? Math.trunc(index) : 0;
+      active = Math.max(0, Math.min(slides.length - 1, integer));
+      slides.forEach((slide, i) => {
+        slide.classList.toggle('active', i === active);
+        slide.setAttribute('aria-hidden', String(i !== active));
+        dots.children[i].classList.toggle('selected', i === active);
+        dots.children[i].setAttribute('aria-current', String(i === active));
+      });
+      previous.disabled = active === 0;
+      next.disabled = active === slides.length - 1;
+      document.querySelector('#counter').textContent = `${active + 1} / ${slides.length}`;
+      history.replaceState(null, '', `#${active + 1}`);
+    }
+    function resize() {
+      const scale = Math.min((innerWidth - 12) / 1600, (innerHeight - 68) / 900);
+      document.documentElement.style.setProperty('--scale', Math.max(.1, scale));
+    }
+    async function fullscreen() {
+      try {
+        if (document.fullscreenElement) await document.exitFullscreen();
+        else await document.documentElement.requestFullscreen();
+      } catch { /* Browser fullscreen permissions vary; the controls remain available. */ }
+    }
+    previous.addEventListener('click', () => show(active - 1));
+    next.addEventListener('click', () => show(active + 1));
+    document.querySelector('#fullscreen').addEventListener('click', fullscreen);
+    document.querySelector('#print').addEventListener('click', () => print());
+    addEventListener('resize', resize);
+    addEventListener('hashchange', () => show(Number(location.hash.slice(1)) - 1));
+    addEventListener('keydown', event => {
+      if (event.ctrlKey || event.altKey || event.metaKey || /^(INPUT|TEXTAREA|SELECT)$/.test(event.target.tagName)) return;
+      if (event.key === ' ' && event.target.closest?.('button,a')) return;
+      if (['ArrowRight','PageDown',' '].includes(event.key)) { event.preventDefault(); show(active + 1); }
+      else if (['ArrowLeft','PageUp'].includes(event.key)) { event.preventDefault(); show(active - 1); }
+      else if (event.key === 'Home') { event.preventDefault(); show(0); }
+      else if (event.key === 'End') { event.preventDefault(); show(slides.length - 1); }
+      else if (/^[1-5]$/.test(event.key)) show(Number(event.key) - 1);
+      else if (event.key.toLowerCase() === 'f') fullscreen();
+      else if (event.key.toLowerCase() === 'p') print();
+    });
+    show(Number(location.hash.replace('#', '')) - 1 || 0);
+    resize();
+  </script>
+</body>
+</html>

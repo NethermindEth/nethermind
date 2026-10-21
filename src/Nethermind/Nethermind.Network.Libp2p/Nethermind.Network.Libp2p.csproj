@@ -11,6 +11,7 @@
     <PackageReference Include="Nethermind.Libp2p.Protocols.Noise" />
     <PackageReference Include="Nethermind.Libp2p.Protocols.Ping" />
     <PackageReference Include="Nethermind.Libp2p.Protocols.Pubsub" />
+    <PackageReference Include="Nethermind.Libp2p.Protocols.Quic" />
     <PackageReference Include="Nethermind.Libp2p.Protocols.Yamux" />
     <PackageReference Include="Snappier" />
   </ItemGroup>

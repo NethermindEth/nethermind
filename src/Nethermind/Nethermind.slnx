@@ -1,4 +1,8 @@
 <Solution>
+  <Folder Name="/LightClient/">
+    <Project Path="Nethermind.LightClient.Test/Nethermind.LightClient.Test.csproj" />
+    <Project Path="Nethermind.LightClient/Nethermind.LightClient.csproj" />
+  </Folder>
   <Folder Name="/Logging/">
     <Project Path="Nethermind.Logging.Microsoft/Nethermind.Logging.Microsoft.csproj" />
     <Project Path="Nethermind.Logging.NLog.Test/Nethermind.Logging.NLog.Test.csproj" />

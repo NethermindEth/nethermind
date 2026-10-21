@@ -63,6 +63,18 @@ namespace Nethermind.Network.Enr
         public static ReadOnlySpan<byte> Tcp6U8 => "tcp6"u8;
 
         /// <summary>
+        /// IPv4 libp2p QUIC port, big endian integer
+        /// </summary>
+        public const string Quic = "quic";
+        public static ReadOnlySpan<byte> QuicU8 => "quic"u8;
+
+        /// <summary>
+        /// IPv6-specific libp2p QUIC port, big endian integer
+        /// </summary>
+        public const string Quic6 = "quic6";
+        public static ReadOnlySpan<byte> Quic6U8 => "quic6"u8;
+
+        /// <summary>
         /// UDP port, big endian integer
         /// </summary>
         public const string Udp = "udp";

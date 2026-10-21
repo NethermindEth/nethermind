@@ -65,6 +65,21 @@ public class PeerBandTests
             configurationError ? Throws.TypeOf<InvalidConfigurationException>() : Throws.Nothing);
     }
 
+    [TestCase("/ip4/1.2.3.4/udp/9001/quic-v1/p2p/16Uiu2HAkyxG4bkiFUNXPANdX7n13Lz8A2WsDyNkAyJ1Lfs6AXD2e", true, false)]
+    [TestCase("/ip6/2001:4860:4860::8888/udp/9001/quic-v1/p2p/16Uiu2HAkyxG4bkiFUNXPANdX7n13Lz8A2WsDyNkAyJ1Lfs6AXD2e", true, false)]
+    [TestCase("/ip4/1.2.3.4/udp/9001/quic-v1/p2p/16Uiu2HAkyxG4bkiFUNXPANdX7n13Lz8A2WsDyNkAyJ1Lfs6AXD2e", false, true)]
+    [TestCase("/ip4/1.2.3.4/udp/0/quic-v1/p2p/16Uiu2HAkyxG4bkiFUNXPANdX7n13Lz8A2WsDyNkAyJ1Lfs6AXD2e", true, true)]
+    [TestCase("/ip4/1.2.3.4/udp/9001/p2p/16Uiu2HAkyxG4bkiFUNXPANdX7n13Lz8A2WsDyNkAyJ1Lfs6AXD2e", true, true)]
+    public void Static_quic_peers_require_local_quic_and_a_dialable_address(string address, bool quicEnabled, bool configurationError)
+    {
+        using Node node = CreateNode();
+        node.Config.QuicPort = quicEnabled ? 9051 : 0;
+        node.Config.StaticPeers = address;
+
+        Assert.That(() => new PeerManager(node.P2P, node.Config, node.StatusHolder, LimboLogs.Instance),
+            configurationError ? Throws.TypeOf<InvalidConfigurationException>() : Throws.Nothing);
+    }
+
     [Test]
     [CancelAfter(60_000)]
     public async Task A_static_dns_peer_is_retried_after_name_resolution_fails(CancellationToken token)

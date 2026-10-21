@@ -934,6 +934,7 @@
           "Nethermind.Libp2p.Protocols.Noise": "[1.1.0, )",
           "Nethermind.Libp2p.Protocols.Ping": "[1.1.0, )",
           "Nethermind.Libp2p.Protocols.Pubsub": "[1.1.0, )",
+          "Nethermind.Libp2p.Protocols.Quic": "[1.1.0, )",
           "Nethermind.Libp2p.Protocols.Yamux": "[1.1.0, )",
           "Nethermind.Logging": "[2.3.0-preview, )",
           "Snappier": "[1.3.1, )"
@@ -1558,6 +1559,16 @@
           "Makaretu.Dns.Multicast": "0.27.0",
           "Nethermind.Libp2p.Core": "1.1.0",
           "Nethermind.Libp2p.Protocols.Pubsub": "1.1.0"
+        }
+      },
+      "Nethermind.Libp2p.Protocols.Quic": {
+        "type": "CentralTransitive",
+        "requested": "[1.1.0, )",
+        "resolved": "1.1.0",
+        "contentHash": "CjRu+WLwRF1Q/BZJaExz4h+0VhN8rnlOxNnw2UA4LXWGEaUjy3RrmYd3FTyZ/AdEYgCkiDbbWDfslpqaCEWK3w==",
+        "dependencies": {
+          "BouncyCastle.Cryptography": "2.6.2",
+          "Nethermind.Libp2p.Core": "1.1.0"
         }
       },
       "Nethermind.Libp2p.Protocols.Yamux": {

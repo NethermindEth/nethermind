@@ -83,6 +83,7 @@ public class IdentifyTests
         Assert.That(advertised.Count(static id => id == IdentifyProtocolId), Is.EqualTo(1), "identify is advertised once");
         Assert.That(advertised.Count(static id => id == IdentifyPushProtocolId), Is.EqualTo(1), "identify push is advertised once");
         Assert.That(advertised, Does.Contain("/eth2/beacon_chain/req/status/2/ssz_snappy"), "the rest of the stack is still advertised");
+        Assert.That(advertised, Has.None.Contains("/light_client_"), "light-client data is requested but never served");
         Assert.That(info.AgentVersion, Is.EqualTo(BeaconP2P.ClientAgentVersion), "the agent string a peer reads is the one the API reports");
     }
 

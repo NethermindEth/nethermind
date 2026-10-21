@@ -57,6 +57,7 @@ jobs:
         project:
           - Nethermind.BeaconChain.Test
           - Nethermind.JsonRpc.Test
+          - Nethermind.LightClient.Test
           - Nethermind.Merge.AuRa.Test
           - Nethermind.Merge.Plugin.Test
           - Nethermind.Synchronization.Test
@@ -243,6 +244,11 @@ jobs:
           - { runner: macos-latest, project: Nethermind.Synchronization.Test, chunk: 3of4 }
           - { runner: macos-latest, project: Nethermind.Synchronization.Test, chunk: 4of4 }
           - { runner: windows-latest, project: Nethermind.Db.Test, chunk: '' }
+          - { runner: windows-latest, project: Nethermind.BeaconChain.Test, chunk: 1of4 }
+          - { runner: windows-latest, project: Nethermind.BeaconChain.Test, chunk: 2of4 }
+          - { runner: windows-latest, project: Nethermind.BeaconChain.Test, chunk: 3of4 }
+          - { runner: windows-latest, project: Nethermind.BeaconChain.Test, chunk: 4of4 }
+          - { runner: windows-latest, project: Nethermind.LightClient.Test, chunk: '' }
           - { runner: windows-latest, project: Nethermind.JsonRpc.Test, chunk: 1of2 }
           - { runner: windows-latest, project: Nethermind.JsonRpc.Test, chunk: 2of2 }
           - { runner: windows-latest, project: Nethermind.KeyStore.Test, chunk: '' }
