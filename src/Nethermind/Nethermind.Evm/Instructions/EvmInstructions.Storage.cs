@@ -392,6 +392,7 @@ public static partial class EvmInstructions
 
         // Retrieve the current value from persistent storage.
         vm.WorldState.Get(in storageCell, out UInt256 currentValue);
+        if (RepairProbe.Armed) RepairProbe.Read(in storageCell, in currentValue);
         bool currentIsZero = currentValue.IsZero;
 
         // Determine whether the new value is identical to the current stored value.
@@ -507,6 +508,7 @@ public static partial class EvmInstructions
             goto OutOfGas;
 
         vm.WorldState.Get(in storageCell, out UInt256 currentValue);
+        if (RepairProbe.Armed) RepairProbe.Read(in storageCell, in currentValue);
         bool currentIsZero = currentValue.IsZero;
 
         // Determine whether the new value is identical to the current stored value.
@@ -738,6 +740,7 @@ public static partial class EvmInstructions
             goto OutOfGas;
 
         vm.WorldState.Get(in storageCell, out value);
+        if (RepairProbe.Armed) RepairProbe.Read(in storageCell, in value);
         stack.Head++;
         if (TTracingInst.IsActive) stack.ReportPushWord(ref Unsafe.As<UInt256, byte>(ref value));
 

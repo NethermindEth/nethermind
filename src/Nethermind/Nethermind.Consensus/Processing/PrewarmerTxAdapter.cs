@@ -56,14 +56,54 @@ public class PrewarmerTxAdapter(
 
             bool probePath = _probeClass is >= 2 and <= 5;
             if (probePath) Nethermind.Evm.PathProbe.Hash = 0;
-            TransactionResult executed = prewarmerState.CommittedWrites is { } committed && preWarmer.TakesExecutedWrites
-                ? ExecuteReportingWrites(transaction, txTracer, committed)
-                : baseAdapter.Execute(transaction, txTracer);
+            bool repairAccountOnly = true;
+            if (probePath && _probeFootprint is not null)
+            {
+                Dictionary<StorageCell, UInt256> reads = [];
+                foreach (ref readonly SlotPrecondition slot in _probeFootprint.Slots)
+                {
+                    if (!slot.Read) continue;
+                    worldState.Get(in slot.Cell, out UInt256 current);
+                    if (current == slot.Value) continue;
+                    reads[slot.Cell] = slot.Value;
+                    repairAccountOnly = false;
+                }
+                RepairProbe.Begin(reads, transaction.GasLimit);
+            }
+            TransactionResult executed;
+            long repairStart = Stopwatch.GetTimestamp();
+            long repairTicks;
+            try
+            {
+                executed = prewarmerState.CommittedWrites is { } committed && preWarmer.TakesExecutedWrites
+                    ? ExecuteReportingWrites(transaction, txTracer, committed)
+                    : baseAdapter.Execute(transaction, txTracer);
+                repairTicks = Stopwatch.GetTimestamp() - repairStart;
+            }
+            finally
+            {
+                if (probePath) RepairProbe.End();
+            }
             int probeClass = _probeClass;
             if (probePath)
             {
                 ulong warmPath = preWarmer.ProbePathAtMain();
                 ProbeAdd(warmPath == 0 ? 24 : warmPath == (Nethermind.Evm.PathProbe.Hash | 1UL) ? 22 : 23, transaction, probeStart);
+                if (warmPath != 0 && warmPath == (Nethermind.Evm.PathProbe.Hash | 1UL))
+                {
+                    _repairCount++;
+                    _repairGas += (long)transaction.SpentGas;
+                    _repairTicks += repairTicks;
+                    _repairPrefixGas += repairAccountOnly ? 0 : RepairProbe.PrefixGas;
+                    _repairOps += RepairProbe.Ops;
+                    _repairTaintedOps += RepairProbe.TaintedOps;
+                    if (RepairProbe.Unrepairable)
+                    {
+                        _repairUnrepairable++;
+                        _repairUnrepairableTicks += repairTicks;
+                    }
+                    if (repairAccountOnly) _repairAccountOnly++;
+                }
             }
 
             if (probeClass == 4 && _probeFootprint is not null && ProbeIsAdditive(_probeFootprint, transaction)) probeClass = 5;
@@ -200,6 +240,8 @@ public class PrewarmerTxAdapter(
         return 19;
     }
     private readonly List<(StorageCell Cell, UInt256 Read, UInt256 Current)> _probeFailed = [];
+    private long _repairCount, _repairGas, _repairTicks, _repairPrefixGas, _repairOps, _repairTaintedOps;
+    private long _repairUnrepairable, _repairUnrepairableTicks, _repairAccountOnly;
     private long _probeBlock = -1;
     private int _probeClass;
     private TransactionFootprint? _probeFootprint;
@@ -219,8 +261,11 @@ public class PrewarmerTxAdapter(
                     .Append(_probeTicks[i] * 1_000_000 / Stopwatch.Frequency);
             }
             Console.WriteLine(sb.ToString());
+            Console.WriteLine($"REPAIRPROBE block={_probeBlock} n={_repairCount} gas={_repairGas} ticks={_repairTicks} sum_prefix_gas={_repairPrefixGas} sum_ops={_repairOps} sum_tainted_ops={_repairTaintedOps} n_unrepairable={_repairUnrepairable} ticks_unrepairable={_repairUnrepairableTicks} n_acct_only={_repairAccountOnly}");
         }
 
+        _repairCount = _repairGas = _repairTicks = _repairPrefixGas = _repairOps = _repairTaintedOps = 0;
+        _repairUnrepairable = _repairUnrepairableTicks = _repairAccountOnly = 0;
         Array.Clear(_probeCount);
         Array.Clear(_probeGas);
         Array.Clear(_probeTicks);

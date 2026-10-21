@@ -137,7 +137,7 @@ public static partial class EvmInstructions
             programCounter += Size;
             return EvmExceptionType.StackOverflow;
         }
-        if (!TTracingInst.IsActive &&
+        if (!TTracingInst.IsActive && !RepairProbe.Armed &&
             (TCallSub.IsActive
                 // Non-short-circuit so the common unfused case takes one branch. The flag-off arm stays short-circuit,
                 // which the JIT compiles to tighter code there.

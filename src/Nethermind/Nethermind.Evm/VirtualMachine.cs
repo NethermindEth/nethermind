@@ -1536,6 +1536,10 @@ public partial class VirtualMachine<TGasPolicy>(
             GetExecutionHandlers().InitializeFrame(this, vmState);
         }
 
+        if (RepairProbe.Armed)
+            RepairProbe.Enter(vmState, vmState.IsContinuation, TGasPolicy.GetRemainingGas(in vmState.Gas),
+                vmState.DataStackHead + (previousCallResult.Success.HasValue ? 1 : 0));
+
         // If no machine code is present, treat the call as empty.
         if (env.CodeInfo.CodeLength == 0)
         {
@@ -1625,6 +1629,7 @@ public partial class VirtualMachine<TGasPolicy>(
         };
 
     Empty:
+        if (RepairProbe.Armed) RepairProbe.Leave(TGasPolicy.GetRemainingGas(in vmState.Gas), false);
         // Return an empty CallResult if there is no machine code to execute.
         return CallResult.Empty();
     }
@@ -1644,6 +1649,9 @@ public partial class VirtualMachine<TGasPolicy>(
         nint programCounter = VmState.ProgramCounter;
         EvmExceptionType exceptionType =
             RunDispatchLoop<TTracingInst, TCancelable>(ref stack, ref gas, ref programCounter);
+
+        if (RepairProbe.Armed)
+            RepairProbe.Leave(TGasPolicy.GetRemainingGas(in gas), exceptionType == EvmExceptionType.Suspend);
 
         if (TTracingInst.IsActive
             && exceptionType == EvmExceptionType.None

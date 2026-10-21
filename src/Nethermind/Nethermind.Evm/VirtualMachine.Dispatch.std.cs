@@ -293,12 +293,16 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 state.Vm.StartInstructionTrace(instruction, TGasPolicy.GetRemainingGas(in state.Gas), (int)pc, in stack);
             }
 
+            if (RepairProbe.Armed && (nuint)pc < (nuint)stack.CodeLength && (!carriesExecutionGas || !TOpcode.HasUntracedFastPath))
+                RepairProbe.Step(Unsafe.Add(ref stack.Code, pc), (int)stack.Head,
+                    carriesExecutionGas ? gas : TGasPolicy.GetRemainingGas(in state.Gas));
+
             if (carriesExecutionGas && TOpcode.HasUntracedFastPath)
             {
                 // Fast probes promise to leave the stack and policy untouched when they return false. Keep the
                 // probe's policy local so a failed probe cannot touch the authoritative full policy.
                 LoadFixedGas(out TGasPolicy fastGas, gas);
-                if (TOpcode.TryExecuteFast(ref stack, ref fastGas, ref state))
+                if (!RepairProbe.Armed && TOpcode.TryExecuteFast(ref stack, ref fastGas, ref state))
                 {
                     gas = GetExecutionGas(ref fastGas);
                     goto FastPathComplete;
@@ -492,6 +496,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 Instruction instruction = (Instruction)Unsafe.Add(ref stack.Code, pc);
                 vm.StartInstructionTrace(instruction, TGasPolicy.GetRemainingGas(in state.Gas), (int)pc, in stack);
             }
+
+            if (RepairProbe.Armed && (nuint)pc < (nuint)stack.CodeLength)
+                RepairProbe.Step(Unsafe.Add(ref stack.Code, pc), (int)stack.Head,
+                    carriesExecutionGas ? gas : TGasPolicy.GetRemainingGas(in state.Gas));
 
             pc++;
             opCodeCount++;
