@@ -86,15 +86,16 @@ public class JsonRpcResponseWriterTests
     }
 
     [Test]
-    public void Repeated_payload_serialization_allocates_only_the_payload()
+    public void Repeated_payload_serialization_allocates_only_the_payload_unless_a_large_one_grew_the_buffer([Values] bool previousLarge)
     {
-        JsonRpcResponseWriter.SerializePayload("ok", EthereumJsonSerializer.JsonOptions);
+        JsonRpcResponseWriter.SerializePayload(previousLarge ? new string('a', 64 * 1024) : "ok", EthereumJsonSerializer.JsonOptions);
 
         long before = GC.GetAllocatedBytesForCurrentThread();
         JsonRpcResponseWriter.SerializePayload("ok", EthereumJsonSerializer.JsonOptions);
         long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
 
-        Assert.That(allocated, Is.LessThan(128), "the payload array, not a fresh buffer and writer");
+        Assert.That(allocated, previousLarge ? Is.GreaterThan(16 * 1024) : Is.LessThan(128),
+            previousLarge ? "a fresh buffer, as the grown one is not kept" : "the payload array, not a fresh buffer and writer");
     }
 
     [Test]

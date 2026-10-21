@@ -18,7 +18,6 @@ using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Subscribe;
 using Nethermind.Logging;
-using Nethermind.Serialization.Json;
 using NSubstitute;
 using NUnit.Framework;
 using LogsFilter = Nethermind.JsonRpc.Modules.Eth.Filter;
@@ -88,40 +87,52 @@ public class ReceiptsEventPayloadCacheTests
         leaving.Dispose();
 
         Assert.That(staying.ForEvent(e).Stores, Is.False);
+
+        using ReceiptsEventPayloadCache.Membership joining = cache.Join("a");
+        Assert.That(staying.ForEvent(e).Stores, Is.True, "a membership disposed twice leaves once");
     }
 
     [Test]
-    public void Store_for_the_same_payload_at_once_keeps_one()
+    public void Store_of_an_already_stored_payload_returns_the_stored_one()
     {
-        const int subscribers = 8;
         ReceiptsEventPayloadCache cache = new(static _ => 1);
         ReceiptsEventArgs e = CreateEvent(removed: false, logIndexPerReceipt: false);
         using ReceiptsEventPayloadCache.Membership first = cache.Join("a");
         using ReceiptsEventPayloadCache.Membership second = cache.Join("a");
-        using Barrier start = new(subscribers);
 
-        Task<byte[]>[] stores = [.. Enumerable.Range(0, subscribers)
-            .Select(_ => Task.Factory.StartNew(() =>
-            {
-                start.SignalAndWait();
-                return first.ForEvent(e).Store(0, "payload").Utf8Json;
-            }, TaskCreationOptions.LongRunning))];
-        Task.WaitAll(stores);
+        byte[] stored = first.ForEvent(e).Store(0, "payload").Utf8Json;
 
-        Assert.That(stores.Select(static store => store.Result), Is.All.SameAs(stores[0].Result));
+        Assert.That(second.ForEvent(e).Store(0, "other").Utf8Json, Is.SameAs(stored));
     }
 
     [Test]
-    public void Logs_subscribers_of_one_factory_each_receive_their_own_logs_as_a_lone_subscriber_would([Values] bool removed, [Values] bool logIndexPerReceipt)
+    public void Filtered_logs_subscriber_stores_each_log_at_its_position_in_the_block()
+    {
+        ReceiptsEventArgs e = CreateEvent(removed: false, logIndexPerReceipt: false);
+        using Fixture fixture = new();
+        using ReceiptsEventPayloadCache.Membership unfiltered = fixture.LogPayloads.Join(null);
+        // Address C's only log is at position 3; the bloom of the first receipt does not match C.
+        (CollectingClient client, _) = fixture.SubscribeToLogs(TestItem.AddressC, 1);
+
+        fixture.Monitor.Raise(e);
+        Assert.That(client.Received.Wait(DeliveryTimeout), Is.True);
+
+        EventPayloads payloads = unfiltered.ForEvent(e);
+        Assert.That(Enumerable.Range(0, 4).Where(position => payloads.TryGet(position, out _)), Is.EqualTo([3]));
+    }
+
+    [Test]
+    public void Logs_subscribers_of_one_factory_each_receive_their_own_logs_as_a_lone_subscriber_would([Values] bool removed, [Values] bool logIndexPerReceipt, [Values] bool afterEmptyBlock)
     {
         ReceiptsEventArgs e = CreateEvent(removed, logIndexPerReceipt);
         using Fixture fixture = new();
 
-        // Two subscribers share address A's logs and the unfiltered one overlaps all of them.
-        Address?[] filters = [TestItem.AddressA, TestItem.AddressA, null, TestItem.AddressB];
+        // Two subscribers share address A's logs and two unfiltered ones share all of them.
+        Address?[] filters = [TestItem.AddressA, TestItem.AddressA, null, null, TestItem.AddressB];
         (CollectingClient Client, Subscription Subscription)[] subscribers = [.. filters.Select(address =>
             fixture.SubscribeToLogs(address, ExpectedLogs(e, address).Count))];
 
+        if (afterEmptyBlock) fixture.Monitor.Raise(new ReceiptsEventArgs(Build.A.BlockHeader.WithNumber(6).TestObject, [], removed, logIndexPerReceipt));
         fixture.Monitor.Raise(e);
 
         for (int i = 0; i < filters.Length; i++)
