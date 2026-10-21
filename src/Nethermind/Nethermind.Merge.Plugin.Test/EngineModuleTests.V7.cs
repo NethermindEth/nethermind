@@ -266,6 +266,8 @@ public partial class EngineModuleTests
 
         ResultWrapper<PayloadStatusV2> result = await rpc.engine_newPayloadV6(payload, [], Keccak.Zero, built.Data.ExecutionRequests, list);
         Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Valid));
+        await rpc.engine_forkchoiceUpdatedV5(
+            new ForkchoiceStateV1(payload.BlockHash, payload.BlockHash, payload.BlockHash), payloadAttributes: null);
         bool? rechecked = chain.Container.Resolve<IInclusionListComplianceEvaluator>().TryEvaluate(payload.BlockHash, list);
 
         using (Assert.EnterMultipleScope())
