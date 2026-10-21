@@ -127,10 +127,11 @@ class FeedbackTests(unittest.TestCase):
                 {"isResolved": True, "path": "b.cs", "line": 1, "comments": {"nodes": [comment("m", "MEMBER", "done")]}},
                 {"isResolved": False, "path": "c.cs", "line": 2, "comments": {"nodes": [comment("x", "NONE", "evil")]}},
             ]},
-            "comments": {"nodes": [comment("m", "MEMBER", "Please rename"), comment("x", "CONTRIBUTOR", "evil")]},
+            "comments": {"nodes": [comment("claude", "NONE", "Round 1", "Bot"), comment("m", "MEMBER", "Please rename"),
+                                   comment("x", "CONTRIBUTOR", "evil"), comment("claude", "NONE", "Round 2", "Bot")]},
         }
         self.assertEqual(flaky_tests.trusted_feedback(pull_request),
-                         "### a.cs:3\n\nHigh: race\n\n### PR comment\n\nPlease rename")
+                         "### a.cs:3\n\nHigh: race\n\n### PR comment\n\nPlease rename\n\n### PR comment\n\nRound 2")
 
 
 class VerdictTests(unittest.TestCase):

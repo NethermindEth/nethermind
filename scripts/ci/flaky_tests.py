@@ -219,10 +219,13 @@ def blocked_paths(paths):
     return [path for path in paths if PROTECTED_PATH.search(path)]
 
 
-def is_trusted(comment):
+def is_review_bot(comment):
     author = comment.get("author") or {}
-    is_review_bot = author.get("__typename") == "Bot" and author.get("login") == REVIEW_BOT
-    return is_review_bot or comment.get("authorAssociation") in TRUSTED_ASSOCIATIONS
+    return author.get("__typename") == "Bot" and author.get("login") == REVIEW_BOT
+
+
+def is_trusted(comment):
+    return is_review_bot(comment) or comment.get("authorAssociation") in TRUSTED_ASSOCIATIONS
 
 
 def trusted_feedback(pull_request):
@@ -232,7 +235,9 @@ def trusted_feedback(pull_request):
         if thread["isResolved"] or not comments:
             continue
         sections.append(f"### {thread['path']}:{thread['line']}\n\n" + "\n\n---\n\n".join(c["body"] for c in comments))
-    sections += [f"### PR comment\n\n{c['body']}" for c in pull_request["comments"]["nodes"] if is_trusted(c)]
+    comments = [c for c in pull_request["comments"]["nodes"] if is_trusted(c)]
+    latest_summary = next((c for c in reversed(comments) if is_review_bot(c)), None)
+    sections += [f"### PR comment\n\n{c['body']}" for c in comments if not is_review_bot(c) or c is latest_summary]
     return "\n\n".join(sections)
 
 
