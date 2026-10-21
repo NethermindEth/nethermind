@@ -394,7 +394,7 @@ public partial class DebugRpcModuleTests
         Block block = await context.Blockchain.AddBlock(CreateTraceBlockTransactions(context.Blockchain));
         string members = $"\"limit\":1000,\"streamMode\":{streamMode.ToString().ToLowerInvariant()},\"{property}\":{enabled.ToString().ToLowerInvariant()}";
         using JsonDocument baselineOptions = JsonDocument.Parse("{" + members + "}");
-        using JsonDocument nullOptions = JsonDocument.Parse("{" + members + $",\"{property}\":null" + "}");
+        using JsonDocument nullOptions = JsonDocument.Parse($"{{\"{property}\":null," + members + "}");
 
         string expected = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceBlockByNumber", block.Number, baselineOptions.RootElement);
         string actual = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceBlockByNumber", block.Number, nullOptions.RootElement);
