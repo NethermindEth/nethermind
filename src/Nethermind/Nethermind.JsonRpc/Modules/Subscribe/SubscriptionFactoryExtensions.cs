@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using Nethermind.Blockchain;
 using Nethermind.Facade.Filters;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc.Modules.Eth;
@@ -36,7 +38,7 @@ public static class SubscriptionFactoryExtensions
         IBlockTree? blockTree,
         ILogManager? logManager)
     {
-        ReceiptsEventPayloadCache payloads = LogsSubscription.CreatePayloadCache();
+        ReceiptsEventPayloadCache<LogsSubscription.FilterKey> payloads = LogsSubscription.CreatePayloadCache();
         subscriptionFactory.RegisterSubscriptionType<Filter?>(
             SubscriptionType.EthSubscription.Logs,
             (jsonRpcDuplexClient, filter) =>
@@ -50,7 +52,7 @@ public static class SubscriptionFactoryExtensions
         IBlockTree? blockTree,
         ILogManager? logManager)
     {
-        ReceiptsEventPayloadCache payloads = TransactionReceiptsSubscription.CreatePayloadCache();
+        ReceiptsEventPayloadCache<HashSet<ValueHash256>> payloads = TransactionReceiptsSubscription.CreatePayloadCache();
         subscriptionFactory.RegisterSubscriptionType<TransactionHashesFilter?>(
             SubscriptionType.EthSubscription.TransactionReceipts,
             (jsonRpcDuplexClient, filter) =>

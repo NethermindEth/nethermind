@@ -7,6 +7,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -41,11 +42,11 @@ public class ReceiptsEventPayloadCacheTests
     [TestCaseSource(nameof(SubscriptionsThatCannotShare))]
     public void ForEvent_without_a_possible_reuse_gives_no_shared_payloads(string?[] filterKeys)
     {
-        ReceiptsEventPayloadCache cache = new(static _ => 1);
+        ReceiptsEventPayloadCache<string> cache = new(static _ => 1);
         ReceiptsEventArgs e = CreateEvent(removed: false, logIndexPerReceipt: false);
-        ReceiptsEventPayloadCache.Membership[] members = [.. filterKeys.Select(cache.Join)];
+        ReceiptsEventPayloadCache<string>.Membership[] members = [.. filterKeys.Select(cache.Join)];
 
-        foreach (ReceiptsEventPayloadCache.Membership member in members)
+        foreach (ReceiptsEventPayloadCache<string>.Membership member in members)
         {
             EventPayloads payloads = member.ForEvent(e);
             Assert.That(payloads.Stores || payloads.TryGet(0, out _), Is.False);
@@ -57,10 +58,10 @@ public class ReceiptsEventPayloadCacheTests
     [TestCase("a", null, false, TestName = "Filtered and unfiltered")]
     public void ForEvent_with_a_possible_reuse_shares_one_payload(string? storingKey, string? otherKey, bool otherStores)
     {
-        ReceiptsEventPayloadCache cache = new(static _ => 1);
+        ReceiptsEventPayloadCache<string> cache = new(static _ => 1);
         ReceiptsEventArgs e = CreateEvent(removed: false, logIndexPerReceipt: false);
-        using ReceiptsEventPayloadCache.Membership storing = cache.Join(storingKey);
-        using ReceiptsEventPayloadCache.Membership other = cache.Join(otherKey);
+        using ReceiptsEventPayloadCache<string>.Membership storing = cache.Join(storingKey);
+        using ReceiptsEventPayloadCache<string>.Membership other = cache.Join(otherKey);
 
         EventPayloads stored = storing.ForEvent(e);
         Assert.That(stored.Stores, Is.True);
@@ -78,27 +79,27 @@ public class ReceiptsEventPayloadCacheTests
     [Test]
     public void ForEvent_after_the_other_subscription_with_the_same_filter_left_gives_no_shared_payloads()
     {
-        ReceiptsEventPayloadCache cache = new(static _ => 1);
+        ReceiptsEventPayloadCache<string> cache = new(static _ => 1);
         ReceiptsEventArgs e = CreateEvent(removed: false, logIndexPerReceipt: false);
-        using ReceiptsEventPayloadCache.Membership staying = cache.Join("a");
-        ReceiptsEventPayloadCache.Membership leaving = cache.Join("a");
+        using ReceiptsEventPayloadCache<string>.Membership staying = cache.Join("a");
+        ReceiptsEventPayloadCache<string>.Membership leaving = cache.Join("a");
 
         leaving.Dispose();
         leaving.Dispose();
 
         Assert.That(staying.ForEvent(e).Stores, Is.False);
 
-        using ReceiptsEventPayloadCache.Membership joining = cache.Join("a");
+        using ReceiptsEventPayloadCache<string>.Membership joining = cache.Join("a");
         Assert.That(staying.ForEvent(e).Stores, Is.True, "a membership disposed twice leaves once");
     }
 
     [Test]
     public void Store_of_an_already_stored_payload_returns_the_stored_one()
     {
-        ReceiptsEventPayloadCache cache = new(static _ => 1);
+        ReceiptsEventPayloadCache<string> cache = new(static _ => 1);
         ReceiptsEventArgs e = CreateEvent(removed: false, logIndexPerReceipt: false);
-        using ReceiptsEventPayloadCache.Membership first = cache.Join("a");
-        using ReceiptsEventPayloadCache.Membership second = cache.Join("a");
+        using ReceiptsEventPayloadCache<string>.Membership first = cache.Join("a");
+        using ReceiptsEventPayloadCache<string>.Membership second = cache.Join("a");
 
         byte[] stored = first.ForEvent(e).Store(0, "payload").Utf8Json;
 
@@ -110,7 +111,7 @@ public class ReceiptsEventPayloadCacheTests
     {
         ReceiptsEventArgs e = CreateEvent(removed: false, logIndexPerReceipt: false);
         using Fixture fixture = new();
-        using ReceiptsEventPayloadCache.Membership unfiltered = fixture.LogPayloads.Join(null);
+        using ReceiptsEventPayloadCache<LogsSubscription.FilterKey>.Membership unfiltered = fixture.LogPayloads.Join(null);
         // Address C's only log is at position 3; the bloom of the first receipt does not match C.
         (CollectingClient client, _) = fixture.SubscribeToLogs(TestItem.AddressC, 1);
 
@@ -190,9 +191,29 @@ public class ReceiptsEventPayloadCacheTests
         if (other.ExpectedMessages > 0) Assert.That(other.Received.Wait(DeliveryTimeout), Is.True);
 
         // An unfiltered subscriber joining now only reads what the others stored for the event.
-        using ReceiptsEventPayloadCache.Membership probe = (logs ? fixture.LogPayloads : fixture.ReceiptPayloads).Join(null);
-        EventPayloads payloads = probe.ForEvent(e);
-        Assert.That(payloads.TryGet(0, out _), Is.EqualTo(sameFilter));
+        Assert.That(logs ? IsStoredForLateReader(fixture.LogPayloads, e) : IsStoredForLateReader(fixture.ReceiptPayloads, e), Is.EqualTo(sameFilter));
+    }
+
+    private static IEnumerable<TestCaseData> LogsFilterKeys()
+    {
+        Hash256[]?[] topics = [[TestItem.KeccakA], null, [TestItem.KeccakB, TestItem.KeccakC]];
+        yield return new TestCaseData(BlockParameter.Latest, new[] { TestItem.AddressB, TestItem.AddressA }, topics, true).SetName("Same addresses in another order");
+        yield return new TestCaseData(BlockParameter.Latest, new[] { TestItem.AddressA }, topics, false).SetName("Fewer addresses");
+        yield return new TestCaseData(BlockParameter.Latest, null, topics, false).SetName("Any address");
+        yield return new TestCaseData(BlockParameter.Latest, new[] { TestItem.AddressA, TestItem.AddressB }, new Hash256[]?[] { [TestItem.KeccakA], [TestItem.KeccakD], [TestItem.KeccakB, TestItem.KeccakC] }, false).SetName("A specific topic for any");
+        yield return new TestCaseData(BlockParameter.Latest, new[] { TestItem.AddressA, TestItem.AddressB }, new Hash256[]?[] { [TestItem.KeccakA], null, [TestItem.KeccakB] }, false).SetName("Fewer topic alternatives");
+        yield return new TestCaseData(BlockParameter.Latest, new[] { TestItem.AddressA, TestItem.AddressB }, new Hash256[]?[] { [TestItem.KeccakA], null }, false).SetName("Fewer topic positions");
+        yield return new TestCaseData(new BlockParameter(5), new[] { TestItem.AddressA, TestItem.AddressB }, topics, false).SetName("Another block range");
+    }
+
+    [TestCaseSource(nameof(LogsFilterKeys))]
+    public void Logs_filter_keys_are_equal_only_for_filters_accepting_the_same_logs(BlockParameter toBlock, Address[]? addresses, Hash256[]?[] topics, bool equal)
+    {
+        LogsSubscription.FilterKey key = LogsKey(BlockParameter.Latest, [TestItem.AddressA, TestItem.AddressB], [[TestItem.KeccakA], null, [TestItem.KeccakB, TestItem.KeccakC]]);
+        LogsSubscription.FilterKey other = LogsKey(toBlock, addresses, topics);
+
+        Assert.That(key.Equals(other), Is.EqualTo(equal));
+        if (equal) Assert.That(key.GetHashCode(), Is.EqualTo(other.GetHashCode()));
     }
 
     [Test]
@@ -230,6 +251,15 @@ public class ReceiptsEventPayloadCacheTests
             Assert.That(client.Messages, Is.EqualTo(published.SelectMany(e => ExpectedLogMessages(e, subscription.Id, TestItem.AddressA))));
         }
     }
+
+    private static bool IsStoredForLateReader<TKey>(ReceiptsEventPayloadCache<TKey> cache, ReceiptsEventArgs e) where TKey : class
+    {
+        using ReceiptsEventPayloadCache<TKey>.Membership probe = cache.Join(null);
+        return probe.ForEvent(e).TryGet(0, out _);
+    }
+
+    private static LogsSubscription.FilterKey LogsKey(BlockParameter toBlock, Address[]? addresses, Hash256[]?[] topics) =>
+        new(BlockParameter.Latest, toBlock, addresses is null ? null : [.. addresses.Select(static a => new AddressAsKey(a))], topics);
 
     /// <summary>Two receipts of <see cref="LogsPerReceipt"/> logs: positions 0 and 2 come from address A, 1 from B and 3 from C.</summary>
     private static ReceiptsEventArgs CreateEvent(bool removed, bool logIndexPerReceipt)
@@ -288,8 +318,8 @@ public class ReceiptsEventPayloadCacheTests
         private readonly List<Subscription> _subscriptions = [];
 
         public ReceiptMonitor Monitor { get; } = new();
-        public ReceiptsEventPayloadCache LogPayloads { get; } = LogsSubscription.CreatePayloadCache();
-        public ReceiptsEventPayloadCache ReceiptPayloads { get; } = TransactionReceiptsSubscription.CreatePayloadCache();
+        public ReceiptsEventPayloadCache<LogsSubscription.FilterKey> LogPayloads { get; } = LogsSubscription.CreatePayloadCache();
+        public ReceiptsEventPayloadCache<HashSet<ValueHash256>> ReceiptPayloads { get; } = TransactionReceiptsSubscription.CreatePayloadCache();
 
         public (CollectingClient, Subscription) SubscribeToLogs(Address? address, int expectedMessages) =>
             SubscribeToLogs(address is null ? null : [address], expectedMessages);

@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
@@ -23,7 +22,7 @@ public class TransactionReceiptsSubscription : Subscription
     private readonly IReceiptMonitor _receiptMonitor;
     private readonly IBlockTree _blockTree;
     private readonly HashSet<ValueHash256>? _filterHashes;
-    private readonly ReceiptsEventPayloadCache.Membership _payloads;
+    private readonly ReceiptsEventPayloadCache<HashSet<ValueHash256>>.Membership _payloads;
 
     public TransactionReceiptsSubscription(
         IJsonRpcDuplexClient jsonRpcDuplexClient,
@@ -40,7 +39,7 @@ public class TransactionReceiptsSubscription : Subscription
         IReceiptMonitor receiptCanonicalityMonitor,
         IBlockTree blockTree,
         ILogManager logManager,
-        ReceiptsEventPayloadCache payloads,
+        ReceiptsEventPayloadCache<HashSet<ValueHash256>> payloads,
         TransactionHashesFilter? filter)
         : base(jsonRpcDuplexClient, MaxQueuedBlocks)
     {
@@ -60,13 +59,14 @@ public class TransactionReceiptsSubscription : Subscription
 
         _filterHashes = filter?.TransactionHashes;
 
-        _payloads = payloads.Join(_filterHashes is null ? null : string.Join(',', _filterHashes.Select(static h => h.ToString()).Order(StringComparer.Ordinal)));
+        _payloads = payloads.Join(_filterHashes);
         _receiptMonitor.ReceiptsInserted += OnReceiptsInserted;
         if (_logger.IsTrace) _logger.Trace($"TransactionReceipts subscription {Id} will track ReceiptsInserted.");
     }
 
     /// <summary>Creates the cache the receipts subscriptions of one factory share their serialized receipts through.</summary>
-    internal static ReceiptsEventPayloadCache CreatePayloadCache() => new(static e => e.TxReceipts.Length);
+    internal static ReceiptsEventPayloadCache<HashSet<ValueHash256>> CreatePayloadCache() =>
+        new(static e => e.TxReceipts.Length, HashSet<ValueHash256>.CreateSetComparer());
 
     private void OnReceiptsInserted(object? sender, ReceiptsEventArgs e) => ScheduleAction(() => TryPublishReceipts(e));
 

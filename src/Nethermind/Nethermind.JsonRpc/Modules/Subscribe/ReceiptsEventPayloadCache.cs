@@ -30,19 +30,22 @@ namespace Nethermind.JsonRpc.Modules.Subscribe;
 /// event in its queue, up to its queued-block limit.
 /// </para>
 /// </remarks>
+/// <typeparam name="TKey">The type of the filter keys.</typeparam>
 /// <param name="payloadCount">The number of payloads an event can have, each addressed by its position.</param>
-internal sealed class ReceiptsEventPayloadCache(Func<ReceiptsEventArgs, int> payloadCount)
+/// <param name="keyComparer">The comparer of filter keys, or <c>null</c> for the default one.</param>
+internal sealed class ReceiptsEventPayloadCache<TKey>(Func<ReceiptsEventArgs, int> payloadCount, IEqualityComparer<TKey>? keyComparer = null)
+    where TKey : class
 {
     private readonly ConditionalWeakTable<ReceiptsEventArgs, Lazy<byte[]>?[]> _payloads = [];
     private readonly ConditionalWeakTable<ReceiptsEventArgs, Lazy<byte[]>?[]>.CreateValueCallback _createSlots = e => new Lazy<byte[]>?[payloadCount(e)];
-    private readonly Dictionary<string, Group> _groups = [];
+    private readonly Dictionary<TKey, Group> _groups = new(keyComparer);
     private readonly Group _unfiltered = new(null);
     private readonly Lock _lock = new();
     private int _members;
 
     /// <summary>Registers a subscription until the returned membership is disposed.</summary>
     /// <param name="filterKey">The key of the subscription's filter, or <c>null</c> when it accepts every payload.</param>
-    public Membership Join(string? filterKey)
+    public Membership Join(TKey? filterKey)
     {
         lock (_lock)
         {
@@ -52,8 +55,8 @@ internal sealed class ReceiptsEventPayloadCache(Func<ReceiptsEventArgs, int> pay
                 _groups.Add(filterKey, group = new Group(filterKey));
             }
 
-            Interlocked.Increment(ref group.Count);
-            Interlocked.Increment(ref _members);
+            group.Count++;
+            _members++;
             return new Membership(this, group);
         }
     }
@@ -62,8 +65,8 @@ internal sealed class ReceiptsEventPayloadCache(Func<ReceiptsEventArgs, int> pay
     {
         lock (_lock)
         {
-            Interlocked.Decrement(ref _members);
-            if (Interlocked.Decrement(ref group.Count) == 0 && group.Key is not null) _groups.Remove(group.Key);
+            _members--;
+            if (--group.Count == 0 && group.Key is not null) _groups.Remove(group.Key);
         }
     }
 
@@ -80,8 +83,8 @@ internal sealed class ReceiptsEventPayloadCache(Func<ReceiptsEventArgs, int> pay
             : default;
     }
 
-    /// <summary>A subscription's registration with a <see cref="ReceiptsEventPayloadCache"/>.</summary>
-    internal sealed class Membership(ReceiptsEventPayloadCache cache, Group group) : IDisposable
+    /// <summary>A subscription's registration with a <see cref="ReceiptsEventPayloadCache{TKey}"/>.</summary>
+    internal sealed class Membership(ReceiptsEventPayloadCache<TKey> cache, Group group) : IDisposable
     {
         private int _disposed;
 
@@ -94,9 +97,9 @@ internal sealed class ReceiptsEventPayloadCache(Func<ReceiptsEventArgs, int> pay
         }
     }
 
-    internal sealed class Group(string? key)
+    internal sealed class Group(TKey? key)
     {
-        public readonly string? Key = key;
+        public readonly TKey? Key = key;
         public int Count;
     }
 }

@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Facade.Filters;
@@ -23,7 +22,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         private readonly IBlockTree _blockTree;
         private readonly LogFilter _filter;
         private readonly bool _isBlockHashFilter;
-        private readonly ReceiptsEventPayloadCache.Membership _payloads;
+        private readonly ReceiptsEventPayloadCache<FilterKey>.Membership _payloads;
 
         public LogsSubscription(
             IJsonRpcDuplexClient jsonRpcDuplexClient,
@@ -42,7 +41,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             FilterStore? store,
             IBlockTree? blockTree,
             ILogManager? logManager,
-            ReceiptsEventPayloadCache payloads,
+            ReceiptsEventPayloadCache<FilterKey> payloads,
             Filter? filter = null)
             : base(jsonRpcDuplexClient, MaxQueuedBlocks)
         {
@@ -95,7 +94,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         }
 
         /// <summary>Creates the cache the logs subscriptions of one factory share their serialized logs through.</summary>
-        internal static ReceiptsEventPayloadCache CreatePayloadCache() => new(static e =>
+        internal static ReceiptsEventPayloadCache<FilterKey> CreatePayloadCache() => new(static e =>
         {
             int logs = 0;
             foreach (TxReceipt receipt in e.TxReceipts) logs += receipt.Logs?.Length ?? 0;
@@ -106,46 +105,56 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         /// A key equal for filters accepting the same logs of the same blocks, or <c>null</c> for one accepting every log
         /// of every block.
         /// </summary>
-        private static string? GetFilterKey(Filter? filter)
+        private static FilterKey? GetFilterKey(Filter? filter) =>
+            filter is null || (filter.Address is null && filter.Topics is null
+                && filter.FromBlock.Type == BlockParameterType.Latest && filter.ToBlock.Type == BlockParameterType.Latest)
+                ? null
+                : new FilterKey(filter.FromBlock, filter.ToBlock, filter.Address, filter.Topics?.ToArray() ?? []);
+
+        /// <summary>The parts of a <see cref="Filter"/> that decide which logs it accepts.</summary>
+        /// <remarks>Addresses are compared as a set; topics position by position, in order.</remarks>
+        internal sealed record FilterKey(BlockParameter FromBlock, BlockParameter ToBlock, HashSet<AddressAsKey>? Addresses, Hash256[]?[] Topics)
         {
-            if (filter is null || (filter.Address is null && filter.Topics is null
-                && filter.FromBlock.Type == BlockParameterType.Latest && filter.ToBlock.Type == BlockParameterType.Latest))
+            public bool Equals(FilterKey? other) =>
+                other is not null
+                && FromBlock == other.FromBlock
+                && ToBlock == other.ToBlock
+                && (Addresses is null ? other.Addresses is null : other.Addresses is not null && Addresses.SetEquals(other.Addresses))
+                && Topics.AsSpan().SequenceEqual(other.Topics, TopicComparer.Instance);
+
+            public override int GetHashCode()
             {
-                return null;
+                int addresses = 0;
+                foreach (AddressAsKey address in Addresses ?? []) addresses += address.GetHashCode();
+                return HashCode.Combine(FromBlock, ToBlock, addresses, Topics.Length);
             }
 
-            StringBuilder key = new();
-            key.Append(filter.FromBlock).Append('|').Append(filter.ToBlock).Append('|');
-            if (filter.Address is not null) key.AppendJoin(',', filter.Address.Select(static a => a.Value.ToString()).Order(StringComparer.Ordinal));
-            foreach (Hash256[]? topics in filter.Topics ?? [])
+            private sealed class TopicComparer : IEqualityComparer<Hash256[]?>
             {
-                key.Append('|');
-                if (topics is null) key.Append('*');
-                else key.AppendJoin(',', topics.Select(static t => t.ToString()).Order(StringComparer.Ordinal));
-            }
+                public static readonly TopicComparer Instance = new();
 
-            return key.ToString();
+                public bool Equals(Hash256[]? x, Hash256[]? y) => x is null ? y is null : y is not null && x.AsSpan().SequenceEqual(y);
+
+                public int GetHashCode(Hash256[]? obj) => obj?.Length ?? -1;
+            }
         }
 
         private async Task PublishLogs(ReceiptsEventArgs e)
         {
-            foreach (object log in GetFilterLogs(e))
+            foreach (JsonRpcResult message in GetLogMessages(e))
             {
-                using JsonRpcResult result = log is byte[] payload
-                    ? CreateSubscriptionMessage(new SerializedJson(payload))
-                    : CreateSubscriptionMessage((FilterLog)log);
+                using JsonRpcResult result = message;
                 await JsonRpcDuplexClient.SendJsonRpcResult(result);
                 if (_logger.IsTrace) _logger.Trace($"Logs subscription {Id} printed new log.");
             }
         }
 
-        /// <returns>The log's shared serialized payload, or the <see cref="FilterLog"/> itself when it is not shared.</returns>
-        private static object GetFilterLog(EventPayloads payloads, int position, ReceiptsEventArgs e, long logIndex, TxReceipt receipt, LogEntry log)
+        private JsonRpcResult CreateLogMessage(EventPayloads payloads, int position, ReceiptsEventArgs e, long logIndex, TxReceipt receipt, LogEntry log)
         {
-            if (payloads.TryGet(position, out SerializedJson payload)) return payload.Utf8Json;
+            if (payloads.TryGet(position, out SerializedJson payload)) return CreateSubscriptionMessage(payload);
 
             FilterLog filterLog = new(logIndex, receipt, log, e.BlockHeader.Timestamp, e.WasRemoved);
-            return payloads.Stores ? payloads.Store(position, filterLog).Utf8Json : filterLog;
+            return payloads.Stores ? CreateSubscriptionMessage(payloads.Store(position, filterLog)) : CreateSubscriptionMessage(filterLog);
         }
 
         /// <summary>
@@ -184,8 +193,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             return false;
         }
 
-        /// <returns>Each accepted log, as <see cref="GetFilterLog"/> gives it.</returns>
-        private IEnumerable<object> GetFilterLogs(ReceiptsEventArgs e)
+        private IEnumerable<JsonRpcResult> GetLogMessages(ReceiptsEventArgs e)
         {
             if (_filter.Matches(e.BlockHeader.Bloom!))
             {
@@ -203,7 +211,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
                             LogEntry receiptLog = receipt.Logs[j];
                             if (_filter.Accepts(receiptLog))
                             {
-                                yield return GetFilterLog(payloads, position + j, e, logIndex, receipt, receiptLog);
+                                yield return CreateLogMessage(payloads, position + j, e, logIndex, receipt, receiptLog);
                             }
 
                             logIndex++;
