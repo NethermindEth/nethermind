@@ -3,7 +3,9 @@
 
 using System;
 using System.Diagnostics.CodeAnalysis;
+using System.Numerics;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -109,29 +111,56 @@ internal sealed class WitnessTrieStoreScopeProvider : TrieStoreScopeProvider
         Span<HashKeyedNodeStorage.HeldChild> held = _held;
         _pendingCount = 0;
         Push(rootRlp, root.ToArray(), 0, HashedKeyNibbles);
-        while (_pendingCount != 0)
+        // Locals rather than the fields, which the loop would reload and store for every node; synced around the calls
+        // that push themselves.
+        PendingNode[] pending = _pending;
+        nint pendingCount = _pendingCount;
+        long bytesBeforeMemo = _bytesBeforeMemo;
+        while (pendingCount != 0)
         {
-            PendingNode node = _pending[--_pendingCount];
+            // Unchecked: the count stays within the stack, which grows before a full branch's children are stacked.
+            PendingNode node = Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(pending), --pendingCount);
             byte[] rlp = node.Rlp;
-            int remainingNibbles = node.RemainingNibbles;
-            if ((_bytesBeforeMemo -= rlp.Length) < 0
-                && !(_walked ??= []).Add(new WalkedNode(new ValueHash256(node.Parent.AsSpan(node.KeccakOffset, Hash256.Size)), remainingNibbles)))
+            nint remainingNibbles = node.RemainingNibbles;
+            if ((bytesBeforeMemo -= rlp.Length) < 0
+                && !(_walked ??= []).Add(new WalkedNode(new ValueHash256(node.Parent.AsSpan((int)node.KeccakOffset, Hash256.Size)), (int)remainingNibbles)))
             {
                 continue;
             }
 
-            int heldCount = probe.FindHeldBranchChildren(rlp, held);
+            int candidates = probe.FilterFullBranch(rlp);
+            int heldCount = candidates < 0 ? probe.FindHeldOtherBranchChildren(rlp, held) : 0;
             if (heldCount < 0)
             {
-                ValidateOtherNode(rlp, 0, rlp.Length, remainingNibbles);
+                _pendingCount = (int)pendingCount;
+                _bytesBeforeMemo = bytesBeforeMemo;
+                ValidateOtherNode(rlp, 0, rlp.Length, (int)remainingNibbles);
+                pending = _pending;
+                pendingCount = _pendingCount;
+                bytesBeforeMemo = _bytesBeforeMemo;
                 continue;
             }
 
             if (remainingNibbles == 0) ThrowPathExceedsKey();
 
+            if (pending.Length - pendingCount < BranchChildren)
+            {
+                Array.Resize(ref _pending, 2 * pending.Length);
+                pending = _pending;
+            }
+
+            ref PendingNode top = ref MemoryMarshal.GetArrayDataReference(pending);
+            ref byte first = ref MemoryMarshal.GetArrayDataReference(rlp);
+            for (; candidates > 0; candidates &= candidates - 1)
+            {
+                nint offset = HashKeyedNodeStorage.FullBranchFirstKeccak + BitOperations.TrailingZeroCount(candidates) * HashKeyedNodeStorage.KeccakItemLength;
+                byte[]? child = probe.FindFiltered(ref Unsafe.Add(ref first, offset));
+                if (child is not null) Unsafe.Add(ref top, pendingCount++) = new PendingNode(child, rlp, offset, remainingNibbles - 1);
+            }
+
             for (int i = 0; i < heldCount; i++)
             {
-                Push(held[i].Node, rlp, held[i].Offset, remainingNibbles - 1);
+                Unsafe.Add(ref top, pendingCount++) = new PendingNode(held[i].Node, rlp, held[i].Offset, remainingNibbles - 1);
             }
         }
     }
@@ -237,7 +266,8 @@ internal sealed class WitnessTrieStoreScopeProvider : TrieStoreScopeProvider
 
     private readonly record struct WalkedNode(ValueHash256 Hash, int RemainingNibbles);
 
-    private readonly record struct PendingNode(byte[] Rlp, byte[] Parent, int KeccakOffset, int RemainingNibbles);
+    // Word-sized offsets: the guest pays several times an aligned access for a narrow one.
+    private readonly record struct PendingNode(byte[] Rlp, byte[] Parent, nint KeccakOffset, nint RemainingNibbles);
 
     /// <summary>The host's node storage, reporting each storage node it loads as <see cref="HashKeyedNodeStorage"/>
     /// does.</summary>
