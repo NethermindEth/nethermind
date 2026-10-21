@@ -17,7 +17,6 @@ using Nethermind.Specs.Forks;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.State.Flat.Test;
-using Nethermind.Trie.Native;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -32,7 +31,6 @@ public class HistoricalTraceReExecutionTests
     private static readonly UInt256 ExistingSlot = 7;
 
     private ResourcePool _resourcePool = null!;
-    private NativeTrieNodeLog _log = null!;
     private IProcessExitSource _processExitSource = null!;
     private ISnapshotCompactor _snapshotCompactor = null!;
     private ISnapshotRepository _snapshotRepository = null!;
@@ -48,7 +46,6 @@ public class HistoricalTraceReExecutionTests
     public void SetUp()
     {
         _resourcePool = new ResourcePool(new FlatDbConfig { CompactSize = 16 });
-        _log = FlatTestHelpers.NewTestLog();
         _cts = new CancellationTokenSource();
         _processExitSource = Substitute.For<IProcessExitSource>();
         _processExitSource.Token.Returns(_cts.Token);
@@ -72,7 +69,6 @@ public class HistoricalTraceReExecutionTests
     {
         _cts.Cancel();
         _cts.Dispose();
-        _log.Dispose();
         _historyDb.Dispose();
         _historyColumns.Dispose();
     }
@@ -177,7 +173,7 @@ public class HistoricalTraceReExecutionTests
     private FlatDbManager CreateManager() => new(
         _resourcePool,
         _processExitSource,
-        _log,
+        FlatTestHelpers.NewTestBuffer(),
         _snapshotCompactor,
         _snapshotRepository,
         _persistenceManager,
@@ -187,11 +183,10 @@ public class HistoricalTraceReExecutionTests
         LimboLogs.Instance,
         enableDetailedMetrics: false);
 
-    private FlatScopeProvider CreateScopeProvider(IFlatDbManager manager, ResourcePool.Usage usage) => new(
+    private static FlatScopeProvider CreateScopeProvider(IFlatDbManager manager, ResourcePool.Usage usage) => new(
         new MemDb(),
         manager,
         new FlatDbConfig { CompactSize = 16, HistoryEnabled = true },
-        _log,
         new NoopTrieWarmer(),
         usage,
         UnavailableStateHeaderProvider.Instance,

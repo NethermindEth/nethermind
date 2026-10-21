@@ -9,6 +9,7 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
+using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.Trie;
 using Nethermind.Trie.Native;
@@ -50,7 +51,7 @@ public sealed class SnapshotBundle : IDisposable
     private TransientResource _transientResource = null!;
 
     internal SnapshotPooledList _snapshots;
-    private readonly NativeTrieNodeLog? _nativeTrieNodeLog;
+    private readonly INodeRecordBuffer? _nodeRecordBuffer;
     private bool _isDisposed;
     private readonly IResourcePool _resourcePool;
 
@@ -60,21 +61,21 @@ public sealed class SnapshotBundle : IDisposable
     // block processing keeps the plain loop, so its reads do not depend on the filter.
     private readonly bool _filterInMemorySlotReads;
 
-    /// <param name="nativeTrieNodeLog">The log the native bulk set writes the nodes of this bundle to; null only for a trie-less historical bundle.</param>
+    /// <param name="nodeRecordBuffer">The buffer the native bulk set writes the nodes of this bundle to; null only for a trie-less historical bundle.</param>
     /// <param name="filterInMemorySlotReads">Serve slot reads with
     /// <see cref="ReadOnlySnapshotBundle.GetSlotFiltered"/>; for read-only execution only.</param>
     public SnapshotBundle(
         ReadOnlySnapshotBundle readOnlySnapshotBundle,
-        NativeTrieNodeLog? nativeTrieNodeLog,
+        INodeRecordBuffer? nodeRecordBuffer,
         IResourcePool resourcePool,
         ResourcePool.Usage usage,
         SnapshotPooledList? snapshots = null,
         bool filterInMemorySlotReads = false)
     {
-        if (!readOnlySnapshotBundle.IsHistorical) ArgumentNullException.ThrowIfNull(nativeTrieNodeLog);
+        if (!readOnlySnapshotBundle.IsHistorical) ArgumentNullException.ThrowIfNull(nodeRecordBuffer);
         _readOnlySnapshotBundle = readOnlySnapshotBundle;
         _snapshots = snapshots ?? new SnapshotPooledList(1);
-        _nativeTrieNodeLog = nativeTrieNodeLog;
+        _nodeRecordBuffer = nodeRecordBuffer;
         _resourcePool = resourcePool;
         _usage = usage;
         // A bundle that can never have a filter would only pay GetSlotFiltered's extra checks on every read.
@@ -88,8 +89,8 @@ public sealed class SnapshotBundle : IDisposable
         Metrics.ActiveSnapshotBundle++;
     }
 
-    /// <summary>The log the trie nodes written through this bundle are recorded in.</summary>
-    internal NativeTrieNodeLog NativeTrieNodeLog => _nativeTrieNodeLog!;
+    /// <summary>The buffer the trie nodes written through this bundle are recorded in.</summary>
+    internal INodeRecordBuffer NodeRecordBuffer => _nodeRecordBuffer!;
 
     private void ExpandCurrentPooledContent()
     {
@@ -216,14 +217,14 @@ public sealed class SnapshotBundle : IDisposable
     /// Warms the path to <paramref name="key"/> in the trie with root hash <paramref name="root"/> into the transient
     /// resource, see <see cref="NativePatriciaBulkSet.WarmUp"/>, unless the bundle is being torn down.
     /// </summary>
-    internal void WarmUpNative(NativeTrieNodeStore store, NativeTrieNodeLog log, Hash256? address, Hash256 root, in ValueHash256 key, bool forDelete = false)
+    internal void WarmUpNative(NativeTrieNodeStore store, INodeRecordBuffer buffer, Hash256? address, Hash256 root, in ValueHash256 key, bool forDelete = false)
     {
         if (!TryLeaseReadOnlyBundle()) return;
         TransientResource? transientResource = TryLeaseTransientResource();
         try
         {
             if (transientResource is not null)
-                NativePatriciaBulkSet.WarmUp(store.WarmUpSource, log, transientResource.NativeWarmedNodes, address, root.ValueHash256, key, forDelete);
+                NativePatriciaBulkSet.WarmUp(store.WarmUpSource, buffer.Native, transientResource.NativeWarmedNodes, address, root.ValueHash256, key, forDelete);
         }
         finally
         {
@@ -273,7 +274,7 @@ public sealed class SnapshotBundle : IDisposable
     }
 
     private bool TryGetNode(ulong root, in TreePath path, [NotNullWhen(true)] out TrieNode? node) =>
-        NativeTrieNodeLog.TryGetNode(root, path, out node);
+        NodeRecordBuffer.TryGetNode(root, path, out node);
 
     private bool DoFindStateNodeExternal(in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node)
     {
@@ -369,31 +370,31 @@ public sealed class SnapshotBundle : IDisposable
     internal BackgroundNativeTrieSource CreateBackgroundNativeTrieSource(Hash256 address)
     {
         GuardDispose();
-        return new BackgroundNativeTrieSource(_readOnlySnapshotBundle, NativeTrieNodeLog, _snapshots, address);
+        return new BackgroundNativeTrieSource(_readOnlySnapshotBundle, NodeRecordBuffer, _snapshots, address);
     }
 
     internal sealed class BackgroundNativeTrieSource : INativeNodeStore, IDisposable
     {
         private readonly ReadOnlySnapshotBundle _readOnly;
         private readonly Hash256 _address;
-        private readonly NativeTrieNodeLogPin _pin;
-        private readonly NativeTrieNodeLogPin? _snapshotPin;
+        private readonly INodeRecordBufferPin _pin;
+        private readonly INodeRecordBufferPin? _snapshotPin;
         private int _disposed;
 
         internal NativeWarmedNodes WarmedNodes { get; } = new();
 
-        internal BackgroundNativeTrieSource(ReadOnlySnapshotBundle readOnly, NativeTrieNodeLog log, SnapshotPooledList snapshots, Hash256 address)
+        internal BackgroundNativeTrieSource(ReadOnlySnapshotBundle readOnly, INodeRecordBuffer buffer, SnapshotPooledList snapshots, Hash256 address)
         {
             _readOnly = readOnly;
             _address = address;
             readOnly.AcquireLease();
             try
             {
-                _pin = log.PinActiveGeneration();
-                NativeTrieNodeLogPin? oldest = null;
+                _pin = buffer.PinHead();
+                INodeRecordBufferPin? oldest = null;
                 foreach (Snapshot snapshot in snapshots)
                 {
-                    if (snapshot.LogPin is { } pin && (oldest is null || pin.WriteBoundary < oldest.WriteBoundary)) oldest = pin;
+                    if (snapshot.BufferPin is { } pin && (oldest is null || pin.WriteBoundary < oldest.WriteBoundary)) oldest = pin;
                 }
                 _snapshotPin = oldest?.Copy();
             }
@@ -544,8 +545,8 @@ public sealed class SnapshotBundle : IDisposable
     internal void ReleaseReadOnlyBundleLease() => _readOnlySnapshotBundle.Dispose();
 
     /// <summary>Turns the changes written since the previous snapshot into a new snapshot and starts collecting the next one.</summary>
-    /// <param name="logPin">The pin covering the trie nodes written since the previous snapshot; the snapshot takes ownership.</param>
-    public (Snapshot?, TransientResource?) CollectAndApplySnapshot(StateId from, StateId to, NativeTrieNodeLogPin? logPin, bool returnSnapshot = true)
+    /// <param name="bufferPin">The pin covering the trie nodes written since the previous snapshot; the snapshot takes ownership.</param>
+    public (Snapshot?, TransientResource?) CollectAndApplySnapshot(StateId from, StateId to, INodeRecordBufferPin? bufferPin, bool returnSnapshot = true)
     {
         // When assembling the snapshot, we straight up pass the _currentPooledContent into the new snapshot
         // This is because copying the values have a measurable impact on overall performance.
@@ -555,7 +556,7 @@ public sealed class SnapshotBundle : IDisposable
             content: _currentPooledContent,
             resourcePool: _resourcePool,
             usage: _usage,
-            logPin: logPin);
+            bufferPin: bufferPin);
 
         snapshot.AcquireLease(); // For this SnapshotBundle.
         _snapshots.Add(snapshot); // Now later reads are correct

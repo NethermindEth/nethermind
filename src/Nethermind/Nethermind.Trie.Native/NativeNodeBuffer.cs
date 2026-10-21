@@ -8,56 +8,56 @@ using Nethermind.Core.Crypto;
 namespace Nethermind.Trie.Native;
 
 /// <summary>
-/// Decoded trie nodes native bulk sets wrote, held natively in a log they read them back from in place.
+/// Decoded trie nodes native bulk sets wrote, held natively in a buffer they read them back from in place.
 /// </summary>
 /// <remarks>
-/// Each node references its children by hash and by their place in the log, and only trie roots are indexed: state roots
+/// Each node references its children by hash and by their place in the buffer, and only trie roots are indexed: state roots
 /// by hash, storage roots by address and hash. A trie is therefore found by its root and walked in place, so nodes of every
 /// branch can be kept without being invalidated on reorgs. Holds nodes in a few small generations, dropping the oldest
 /// when a new one starts, which is compacted in the background once no bulk set that started before is still running:
 /// only the last node at each path is kept, unless a later generation likely rewrote that path. Compacted generations
 /// take about <c>compressedMaxMemory</c> bytes, the oldest being freed beyond it once no running bulk set started before.
-/// A <see cref="NativeTrieNodeLogPin"/> keeps its generation and every later one, so the log holds more while pinned.
+/// A <see cref="NativeNodeBufferPin"/> keeps its generation and every later one, so the buffer holds more while pinned.
 /// </remarks>
-public sealed unsafe partial class NativeTrieNodeLog : SafeHandle
+public sealed unsafe partial class NativeNodeBuffer : SafeHandle
 {
-    /// <summary>The live generations of the logs that do not take them from configuration.</summary>
+    /// <summary>The live generations of the buffers that do not take them from configuration.</summary>
     public const int DefaultLiveGenerations = 8;
 
     // Mirrors the size of the native generation table.
     private const int MaxGenerations = 4096;
 
     // The overlay's dangerous reference on its parent, which it reads until freed.
-    private readonly NativeTrieNodeLog? _parent;
+    private readonly NativeNodeBuffer? _parent;
 
     /// <param name="compressedMaxMemory">The memory budget in bytes for compacted generations; it also sizes the storage root index.</param>
     /// <param name="liveGenerations">How many of the newest generations stay readable in place.</param>
-    public NativeTrieNodeLog(ulong compressedMaxMemory, int liveGenerations) : base(IntPtr.Zero, ownsHandle: true)
+    public NativeNodeBuffer(ulong compressedMaxMemory, int liveGenerations) : base(IntPtr.Zero, ownsHandle: true)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(liveGenerations, 1);
         ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(liveGenerations, MaxGenerations);
-        SetHandle(nm_patricia_log_new(compressedMaxMemory, (ulong)liveGenerations));
-        nm_patricia_log_set_memory_pressure(this, &ReportMemoryPressure);
+        SetHandle(nm_patricia_buffer_new(compressedMaxMemory, (ulong)liveGenerations));
+        nm_patricia_buffer_set_memory_pressure(this, &ReportMemoryPressure);
     }
 
-    private NativeTrieNodeLog(NativeTrieNodeLog parent) : base(IntPtr.Zero, ownsHandle: true)
+    private NativeNodeBuffer(NativeNodeBuffer parent) : base(IntPtr.Zero, ownsHandle: true)
     {
         bool referenced = false;
         parent.DangerousAddRef(ref referenced);
         _parent = parent;
-        SetHandle(nm_patricia_log_overlay_new(parent));
-        nm_patricia_log_set_memory_pressure(this, &ReportMemoryPressure);
+        SetHandle(nm_patricia_buffer_overlay_new(parent));
+        nm_patricia_buffer_set_memory_pressure(this, &ReportMemoryPressure);
     }
 
     /// <summary>
-    /// Creates a log that reads the nodes this log holds now and keeps the nodes written to it privately, so they never
-    /// grow this log.
+    /// Creates a buffer that reads the nodes this buffer holds now and keeps the nodes written to it privately, so they never
+    /// grow this buffer.
     /// </summary>
     /// <remarks>
     /// The overlay pins the generation active now until it is freed, resolves only the roots indexed before now, and
     /// keeps every node written to it until freed.
     /// </remarks>
-    public NativeTrieNodeLog CreateOverlay() => new(this);
+    public NativeNodeBuffer CreateOverlay() => new(this);
 
     // The static entry point outlives native compaction and pins without rooting the SafeHandle against finalization.
     [UnmanagedCallersOnly]
@@ -71,7 +71,7 @@ public sealed unsafe partial class NativeTrieNodeLog : SafeHandle
         catch (Exception exception)
         {
             // Managed exceptions must never unwind through native allocation or compactor frames.
-            Environment.FailFast("Native trie log memory pressure reporting failed", exception);
+            Environment.FailFast("Native trie buffer memory pressure reporting failed", exception);
         }
     }
 
@@ -79,76 +79,76 @@ public sealed unsafe partial class NativeTrieNodeLog : SafeHandle
 
     protected override bool ReleaseHandle()
     {
-        nm_patricia_log_free(handle);
+        nm_patricia_buffer_free(handle);
         _parent?.DangerousRelease();
         return true;
     }
 
     /// <summary>
     /// Pins the generation nodes are written to now, so native bulk sets started before the returned pin is disposed
-    /// read every node written from now on from this log, reached from its trie's root.
+    /// read every node written from now on from this buffer, reached from its trie's root.
     /// </summary>
-    public NativeTrieNodeLogPin PinActiveGeneration()
+    public NativeNodeBufferPin PinActiveGeneration()
     {
         bool referenced = false;
         DangerousAddRef(ref referenced);
         ulong boundary;
-        ulong generation = nm_patricia_log_retain_active(this, &boundary);
-        return new NativeTrieNodeLogPin(this, generation, boundary);
+        ulong generation = nm_patricia_buffer_retain_active(this, &boundary);
+        return new NativeNodeBufferPin(this, generation, boundary);
     }
 
-    internal NativeTrieNodeLogPin Pin(ulong generation, ulong writeBoundary)
+    internal NativeNodeBufferPin Pin(ulong generation, ulong writeBoundary)
     {
         bool referenced = false;
         DangerousAddRef(ref referenced);
-        nm_patricia_log_retain(this, generation);
-        return new NativeTrieNodeLogPin(this, generation, writeBoundary);
+        nm_patricia_buffer_retain(this, generation);
+        return new NativeNodeBufferPin(this, generation, writeBoundary);
     }
 
     internal void Unpin(ulong generation)
     {
         // The pin's dangerous reference keeps this raw handle valid even after the owning SafeHandle is closed.
-        nm_patricia_log_release(handle, generation);
+        nm_patricia_buffer_release(handle, generation);
         DangerousRelease();
     }
 
     /// <summary>The RLP and hash of the node whose record is at <paramref name="pointer"/>.</summary>
     /// <remarks>
-    /// The RLP is read in place, so it stays valid only while a <see cref="NativeTrieNodeLogPin"/> keeps the generation
+    /// The RLP is read in place, so it stays valid only while a <see cref="NativeNodeBufferPin"/> keeps the generation
     /// of <paramref name="pointer"/>, as one taken before the node was written does.
     /// </remarks>
     public ReadOnlySpan<byte> GetNodeRlp(ulong pointer, out ValueHash256 hash)
     {
         ValueHash256 nodeHash = default;
         byte* rlp;
-        int length = nm_patricia_log_node(this, pointer, &nodeHash, &rlp);
-        if (length < 0) throw new InvalidOperationException($"Native trie node log read failed with status {length}");
+        int length = nm_patricia_buffer_node(this, pointer, &nodeHash, &rlp);
+        if (length < 0) throw new InvalidOperationException($"Native trie node buffer read failed with status {length}");
 
         hash = nodeHash;
         return new ReadOnlySpan<byte>(rlp, length);
     }
 
     [LibraryImport(NativePatriciaBulkSet.LibraryName)]
-    private static partial nint nm_patricia_log_new(ulong compressedMaxMemory, ulong liveGenerations);
+    private static partial nint nm_patricia_buffer_new(ulong compressedMaxMemory, ulong liveGenerations);
 
     [LibraryImport(NativePatriciaBulkSet.LibraryName)]
-    private static partial nint nm_patricia_log_overlay_new(NativeTrieNodeLog parent);
+    private static partial nint nm_patricia_buffer_overlay_new(NativeNodeBuffer parent);
 
     [LibraryImport(NativePatriciaBulkSet.LibraryName)]
-    private static partial void nm_patricia_log_set_memory_pressure(NativeTrieNodeLog log, delegate* unmanaged<long, void> report);
+    private static partial void nm_patricia_buffer_set_memory_pressure(NativeNodeBuffer buffer, delegate* unmanaged<long, void> report);
 
     [LibraryImport(NativePatriciaBulkSet.LibraryName)]
-    private static partial int nm_patricia_log_node(NativeTrieNodeLog log, ulong pointer, ValueHash256* hashOut, byte** rlpOut);
+    private static partial int nm_patricia_buffer_node(NativeNodeBuffer buffer, ulong pointer, ValueHash256* hashOut, byte** rlpOut);
 
     [LibraryImport(NativePatriciaBulkSet.LibraryName)]
-    private static partial ulong nm_patricia_log_retain_active(NativeTrieNodeLog log, ulong* writeBoundary);
+    private static partial ulong nm_patricia_buffer_retain_active(NativeNodeBuffer buffer, ulong* writeBoundary);
 
     [LibraryImport(NativePatriciaBulkSet.LibraryName)]
-    private static partial void nm_patricia_log_retain(NativeTrieNodeLog log, ulong generation);
+    private static partial void nm_patricia_buffer_retain(NativeNodeBuffer buffer, ulong generation);
 
     [LibraryImport(NativePatriciaBulkSet.LibraryName)]
-    private static partial void nm_patricia_log_release(nint log, ulong generation);
+    private static partial void nm_patricia_buffer_release(nint buffer, ulong generation);
 
     [LibraryImport(NativePatriciaBulkSet.LibraryName)]
-    private static partial void nm_patricia_log_free(nint log);
+    private static partial void nm_patricia_buffer_free(nint buffer);
 }

@@ -4,11 +4,11 @@
 //! Patricia trie bulk set over a path-keyed node store, exposed to Nethermind via FFI.
 //!
 //! Every node referenced by hash is stored at its `TreePath` as its RLP. Bulk sets write new nodes into a pooled
-//! [`PendingNodes`] the caller publishes from, and keep decoded nodes in a shared [`TrieNodeLog`].
+//! [`PendingNodes`] the caller publishes from, and keep decoded nodes in a shared [`NodeRecordBuffer`].
 
+mod buffer;
 mod bulk_set;
 mod keccak;
-mod log;
 mod metrics;
 mod node;
 mod pending;
@@ -19,7 +19,7 @@ use std::ffi::c_void;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 
 pub use bulk_set::{bulk_set, BulkSetState, EMPTY_TREE_HASH};
-pub use log::TrieNodeLog;
+pub use buffer::NodeRecordBuffer;
 pub use metrics::Metrics;
 pub use node::TreePath;
 use node::{decode_rlp, Node};
@@ -153,15 +153,15 @@ unsafe extern "C" fn receive_rlp(context: *mut c_void, rlp: *const u8, length: i
 }
 
 /// Applies `entries` to the trie whose root hash is `root`, writing new nodes into `pending`, and writes the new root
-/// hash to `root_out`. Nodes written also go into `log`, or a temporary log when null, the new root indexed as that of
-/// the trie of `address`, the state trie when null. Nodes reachable through that root in `log` are read there, and the
+/// hash to `root_out`. Nodes written also go into `buffer`, or a temporary buffer when null, the new root indexed as that of
+/// the trie of `address`, the state trie when null. Nodes reachable through that root in `buffer` are read there, and the
 /// others from `pending`, then `warmed` unless null, then `fetch`. `entries` is reordered in place.
 /// Returns 0 on success, -1 on panic, or an [`Error::code`].
 ///
 /// # Safety
 /// `entries`, `values`, `root`, `address` and `root_out` must be valid for the given lengths (32 bytes for `root`,
-/// `address` and `root_out`), `pending` must come from [`nm_patricia_pending_rent`], `log` must be null or come
-/// from [`nm_patricia_log_new`], `warmed` must be null or come from [`nm_patricia_warmed_new`] and not be reset
+/// `address` and `root_out`), `pending` must come from [`nm_patricia_pending_rent`], `buffer` must be null or come
+/// from [`nm_patricia_buffer_new`], `warmed` must be null or come from [`nm_patricia_warmed_new`] and not be reset
 /// during the call, and `fetch` must be callable concurrently with `context`.
 #[no_mangle]
 pub unsafe extern "C" fn nm_patricia_bulk_set(
@@ -171,7 +171,7 @@ pub unsafe extern "C" fn nm_patricia_bulk_set(
     values_length: i32,
     root: *const [u8; 32],
     pending: *const PendingNodes,
-    log: *const TrieNodeLog,
+    buffer: *const NodeRecordBuffer,
     warmed: *const WarmedNodes,
     address: *const [u8; 32],
     fetch: FetchFn,
@@ -201,7 +201,7 @@ pub unsafe extern "C" fn nm_patricia_bulk_set(
         bulk_set(
             &CallbackStore { fetch, context },
             &*pending,
-            log.as_ref(),
+            buffer.as_ref(),
             warmed.as_ref(),
             address.as_ref(),
             &*root,
@@ -221,7 +221,7 @@ pub unsafe extern "C" fn nm_patricia_bulk_set(
 }
 
 /// Creates an owned unhashed trie, to release with [`nm_patricia_bulk_state_free`]. Returns null for a null root or
-/// a panic. The root and optional address are copied; no node store or log is retained.
+/// a panic. The root and optional address are copied; no node store or buffer is retained.
 ///
 /// # Safety
 /// `root` must point to 32 readable bytes, and `address` must be null or point to 32 readable bytes.
@@ -248,9 +248,9 @@ pub unsafe extern "C" fn nm_patricia_bulk_state_new(
 ///
 /// # Safety
 /// `state` must come from [`nm_patricia_bulk_state_new`], not be freed, and be exclusively accessed during this call.
-/// `log` must come from [`nm_patricia_log_new`], be the same log for every call on this state, and not be freed
+/// `buffer` must come from [`nm_patricia_buffer_new`], be the same buffer for every call on this state, and not be freed
 /// during the call. The caller must retain the base
-/// trie's nonpersisted nodes in the log between calls. `warmed` must be null or come from [`nm_patricia_warmed_new`]
+/// trie's nonpersisted nodes in the buffer between calls. `warmed` must be null or come from [`nm_patricia_warmed_new`]
 /// and not be reset or freed during this call. Nonempty `entries` and `values` must be valid for their lengths;
 /// `fetch` and `context` must be valid for the call.
 #[no_mangle]
@@ -260,7 +260,7 @@ pub unsafe extern "C" fn nm_patricia_bulk_state_update(
     entry_count: i32,
     values: *const u8,
     values_length: i32,
-    log: *const TrieNodeLog,
+    buffer: *const NodeRecordBuffer,
     warmed: *const WarmedNodes,
     fetch: FetchFn,
     context: *mut c_void,
@@ -269,11 +269,11 @@ pub unsafe extern "C" fn nm_patricia_bulk_state_update(
         return Error::InvalidArgument.code();
     };
     let result = catch_unwind(AssertUnwindSafe(|| {
-        let log = log.as_ref().ok_or(Error::InvalidArgument)?;
+        let buffer = buffer.as_ref().ok_or(Error::InvalidArgument)?;
         let (entries, values) = bulk_state_inputs(entries, entry_count, values, values_length)?;
         state.update(
             &CallbackStore { fetch, context },
-            log,
+            buffer,
             warmed.as_ref(),
             entries,
             values,
@@ -282,12 +282,12 @@ pub unsafe extern "C" fn nm_patricia_bulk_state_update(
     bulk_state_status(state, result)
 }
 
-/// Applies final corrections, then hashes the complete trie into `pending`, indexes its root in `log`, and writes
+/// Applies final corrections, then hashes the complete trie into `pending`, indexes its root in `buffer`, and writes
 /// its hash to `root_out`. The state is invalidated on success or failure, but its allocation still must be freed.
 /// Zero correction entries still finish the prepared trie. Returns 0, -1 on panic, or an [`Error::code`].
 ///
 /// # Safety
-/// The state, buffers, log, warmed nodes, and callback have the same requirements as
+/// The state, buffers, node record buffer, warmed nodes, and callback have the same requirements as
 /// [`nm_patricia_bulk_state_update`]. `pending` must come from [`nm_patricia_pending_rent`] and remain alive for the
 /// call. `root_out` must point to 32 writable bytes. Neither `state` nor `pending` may be used concurrently with this
 /// call. Nodes written before a failure must not be published.
@@ -299,7 +299,7 @@ pub unsafe extern "C" fn nm_patricia_bulk_state_finish(
     values: *const u8,
     values_length: i32,
     pending: *const PendingNodes,
-    log: *const TrieNodeLog,
+    buffer: *const NodeRecordBuffer,
     warmed: *const WarmedNodes,
     fetch: FetchFn,
     context: *mut c_void,
@@ -309,7 +309,7 @@ pub unsafe extern "C" fn nm_patricia_bulk_state_finish(
         return Error::InvalidArgument.code();
     };
     let result = catch_unwind(AssertUnwindSafe(|| {
-        let log = log.as_ref().ok_or(Error::InvalidArgument)?;
+        let buffer = buffer.as_ref().ok_or(Error::InvalidArgument)?;
         let pending = pending.as_ref().ok_or(Error::InvalidArgument)?;
         if root_out.is_null() {
             return Err(Error::InvalidArgument);
@@ -318,7 +318,7 @@ pub unsafe extern "C" fn nm_patricia_bulk_state_finish(
         let root = state.finish(
             &CallbackStore { fetch, context },
             pending,
-            log,
+            buffer,
             warmed.as_ref(),
             entries,
             values,
@@ -329,7 +329,7 @@ pub unsafe extern "C" fn nm_patricia_bulk_state_finish(
     bulk_state_status(state, result)
 }
 
-/// Releases an owned trie, whether prepared, finished, or invalidated. No log or node store is needed.
+/// Releases an owned trie, whether prepared, finished, or invalidated. No buffer or node store is needed.
 ///
 /// # Safety
 /// `state` must come from [`nm_patricia_bulk_state_new`], not have been freed, and not be in use.
@@ -381,65 +381,74 @@ fn bulk_state_status(
     }
 }
 
-/// Creates a [`TrieNodeLog`] keeping the newest `live_generations` readable in place, whose compacted generations take
-/// about `compressed_max_memory` bytes, to free with [`nm_patricia_log_free`].
+/// Creates a [`NodeRecordBuffer`] keeping the newest `live_generations` readable in place, whose compacted generations take
+/// about `compressed_max_memory` bytes, to free with [`nm_patricia_buffer_free`].
 #[no_mangle]
-pub extern "C" fn nm_patricia_log_new(
+pub extern "C" fn nm_patricia_buffer_new(
     compressed_max_memory: u64,
     live_generations: u64,
-) -> *mut TrieNodeLog {
-    Box::into_raw(TrieNodeLog::new(compressed_max_memory, live_generations))
+) -> *mut NodeRecordBuffer {
+    Box::into_raw(NodeRecordBuffer::new(
+        compressed_max_memory,
+        live_generations,
+    ))
 }
 
-/// Creates a small-generation log for internal RLP fixtures.
+/// Creates a small-generation buffer for internal RLP fixtures.
 #[no_mangle]
-pub extern "C" fn nm_patricia_log_fixture_new(
+pub extern "C" fn nm_patricia_buffer_fixture_new(
     compressed_max_memory: u64,
     generation_bytes: usize,
     live_generations: u64,
-) -> *mut TrieNodeLog {
-    Box::into_raw(TrieNodeLog::for_fixtures(
+) -> *mut NodeRecordBuffer {
+    Box::into_raw(NodeRecordBuffer::for_fixtures(
         generation_bytes,
         compressed_max_memory,
         live_generations,
     ))
 }
 
-/// Creates an overlay of `parent`, see [`TrieNodeLog::overlay`], to free with [`nm_patricia_log_free`].
+/// Creates an overlay of `parent`, see [`NodeRecordBuffer::overlay`], to free with [`nm_patricia_buffer_free`].
 ///
 /// # Safety
-/// `parent` must come from [`nm_patricia_log_new`] and outlive the returned log.
+/// `parent` must come from [`nm_patricia_buffer_new`] and outlive the returned buffer.
 #[no_mangle]
-pub unsafe extern "C" fn nm_patricia_log_overlay_new(
-    parent: *const TrieNodeLog,
-) -> *mut TrieNodeLog {
-    Box::into_raw(TrieNodeLog::overlay(&*parent))
+pub unsafe extern "C" fn nm_patricia_buffer_overlay_new(
+    parent: *const NodeRecordBuffer,
+) -> *mut NodeRecordBuffer {
+    Box::into_raw(NodeRecordBuffer::overlay(&*parent))
 }
 
-/// Reports the log's initial allocation and all subsequent allocation/reclamation deltas, including on compactor threads.
+/// Reports the buffer's initial allocation and all subsequent allocation/reclamation deltas, including on compactor threads.
 ///
 /// # Safety
-/// `log` must be newly created, not yet used or shared, and this must be called only once. `report` must remain callable
-/// from any thread until [`nm_patricia_log_free`] returns and must not unwind or re-enter the log.
+/// `buffer` must be newly created, not yet used or shared, and this must be called only once. `report` must remain callable
+/// from any thread until [`nm_patricia_buffer_free`] returns and must not unwind or re-enter the buffer.
 #[no_mangle]
-pub unsafe extern "C" fn nm_patricia_log_set_memory_pressure(
-    log: *mut TrieNodeLog,
-    report: log::MemoryPressureFn,
+pub unsafe extern "C" fn nm_patricia_buffer_set_memory_pressure(
+    buffer: *mut NodeRecordBuffer,
+    report: buffer::MemoryPressureFn,
 ) {
-    (*log).set_memory_pressure(report);
+    (*buffer).set_memory_pressure(report);
 }
 
 /// Appends fixture RLP using the live record encoder, linking only matching hash-referenced children.
 ///
 /// # Safety
-/// `log` is live, `rlp` is readable for `length`, `path` and `pointer_out` are valid, and `address` is null or
-/// readable for 32 bytes. `children` is null or readable for 16 pointers to retained records in this log.
+/// `buffer` is live, `rlp` is readable for `length`, `path` and `pointer_out` are valid, and `address` is null or
+/// readable for 32 bytes. `children` is null or readable for 16 pointers to retained records in this buffer.
 #[no_mangle]
-pub unsafe extern "C" fn nm_patricia_log_fixture_append_rlp(
-    log: *const TrieNodeLog, address: *const [u8; 32], path: *const TreePath,
-    rlp: *const u8, length: usize, children: *const u64, index_root: bool, pointer_out: *mut u64,
+pub unsafe extern "C" fn nm_patricia_buffer_fixture_append_rlp(
+    buffer: *const NodeRecordBuffer,
+    address: *const [u8; 32],
+    path: *const TreePath,
+    rlp: *const u8,
+    length: usize,
+    children: *const u64,
+    index_root: bool,
+    pointer_out: *mut u64,
 ) -> i32 {
-    if log.is_null() || rlp.is_null() || path.is_null() || pointer_out.is_null() {
+    if buffer.is_null() || rlp.is_null() || path.is_null() || pointer_out.is_null() {
         return Error::InvalidArgument.code();
     }
     match catch_unwind(AssertUnwindSafe(|| {
@@ -449,13 +458,20 @@ pub unsafe extern "C" fn nm_patricia_log_fixture_append_rlp(
         if pointers.is_some_and(|p| p.iter().any(|pointer| pointer & node::TRANSIENT_POINTER != 0)) {
             return Err(Error::CorruptNode);
         }
-        let session = (*log).pin();
+        let session = (*buffer).pin();
         let link = |child: &mut node::ChildRef, slot: usize| {
-            let Some(pointers) = pointers else { return; };
+            let Some(pointers) = pointers else {
+                return;
+            };
             let candidate = pointers[slot];
-            if candidate == 0 { return; }
+            if candidate == 0 {
+                return;
+            }
             if let node::ChildRef::Hash { hash, pointer } = child {
-                if session.record(candidate).is_some_and(|record| node::LoggedNode::new(record).hash() == hash) {
+                if session
+                    .record(candidate)
+                    .is_some_and(|record| node::BufferedNode::new(record).hash() == hash)
+                {
                     *pointer = candidate;
                 }
             }
@@ -468,7 +484,7 @@ pub unsafe extern "C" fn nm_patricia_log_fixture_append_rlp(
             }
         }
         let hash = keccak::keccak(rlp);
-        let key = log::node_key(address.as_ref(), &*path);
+        let key = buffer::node_key(address.as_ref(), &*path);
         let mut written = Vec::new();
         session.append_all(std::iter::once((&decoded, key, &hash, rlp)), &mut written);
         let pointer = written[0];
@@ -485,74 +501,98 @@ pub unsafe extern "C" fn nm_patricia_log_fixture_append_rlp(
 /// Copies a fixture record while a read session protects it; returns the required size or zero if unavailable.
 ///
 /// # Safety
-/// `log` is live, `pointer` is a previously imported or written record, and `output` is writable for `capacity`.
+/// `buffer` is live, `pointer` is a previously imported or written record, and `output` is writable for `capacity`.
 #[no_mangle]
-pub unsafe extern "C" fn nm_patricia_log_fixture_copy(log: *const TrieNodeLog, pointer: u64, output: *mut u8, capacity: usize) -> i32 {
+pub unsafe extern "C" fn nm_patricia_buffer_fixture_copy(
+    buffer: *const NodeRecordBuffer,
+    pointer: u64,
+    output: *mut u8,
+    capacity: usize,
+) -> i32 {
     match catch_unwind(AssertUnwindSafe(|| {
-        let session = (*log).pin();
-        let Some(record) = session.record(pointer) else { return 0; };
-        if record.len() <= capacity { std::ptr::copy_nonoverlapping(record.as_ptr(), output, record.len()); }
+        let session = (*buffer).pin();
+        let Some(record) = session.record(pointer) else {
+            return 0;
+        };
+        if record.len() <= capacity {
+            std::ptr::copy_nonoverlapping(record.as_ptr(), output, record.len());
+        }
         record.len() as i32
-    })) { Ok(length) => length, Err(_) => -1 }
+    })) {
+        Ok(length) => length,
+        Err(_) => -1,
+    }
 }
 
 /// Whether a fixture record still has its uncompressed generation buffer.
 ///
 /// # Safety
-/// `log` must be live.
+/// `buffer` must be live.
 #[no_mangle]
-pub unsafe extern "C" fn nm_patricia_log_fixture_live(log: *const TrieNodeLog, pointer: u64) -> bool {
-    (*log).fixture_generation_live(pointer)
+pub unsafe extern "C" fn nm_patricia_buffer_fixture_live(
+    buffer: *const NodeRecordBuffer,
+    pointer: u64,
+) -> bool {
+    (*buffer).fixture_generation_live(pointer)
 }
 
 /// # Safety
-/// `log` must come from [`nm_patricia_log_new`], not be freed yet, and not be in use by a bulk set.
+/// `buffer` must come from [`nm_patricia_buffer_new`], not be freed yet, and not be in use by a bulk set.
 #[no_mangle]
-pub unsafe extern "C" fn nm_patricia_log_free(log: *mut TrieNodeLog) {
-    drop(Box::from_raw(log));
+pub unsafe extern "C" fn nm_patricia_buffer_free(buffer: *mut NodeRecordBuffer) {
+    drop(Box::from_raw(buffer));
 }
 
-/// Retains the active generation of `log`, and so every later one, for bulk sets until [`nm_patricia_log_release`],
+/// Retains the active generation of `buffer`, and so every later one, for bulk sets until [`nm_patricia_buffer_release`],
 /// and returns it.
 ///
 /// # Safety
-/// `log` must come from [`nm_patricia_log_new`] and not be freed yet.
+/// `buffer` must come from [`nm_patricia_buffer_new`] and not be freed yet.
 #[no_mangle]
-pub unsafe extern "C" fn nm_patricia_log_retain_active(log: *const TrieNodeLog, boundary_out: *mut u64) -> u64 {
-    let (generation, boundary) = (*log).retain_active_boundary();
+pub unsafe extern "C" fn nm_patricia_buffer_retain_active(
+    buffer: *const NodeRecordBuffer,
+    boundary_out: *mut u64,
+) -> u64 {
+    let (generation, boundary) = (*buffer).retain_active_boundary();
     *boundary_out = boundary;
     generation
 }
 
-/// Retains `generation` of `log` once more, until [`nm_patricia_log_release`].
+/// Retains `generation` of `buffer` once more, until [`nm_patricia_buffer_release`].
 ///
 /// # Safety
-/// `log` must come from [`nm_patricia_log_new`] and not be freed yet, and `generation` must be retained.
+/// `buffer` must come from [`nm_patricia_buffer_new`] and not be freed yet, and `generation` must be retained.
 #[no_mangle]
-pub unsafe extern "C" fn nm_patricia_log_retain(log: *const TrieNodeLog, generation: u64) {
-    (*log).retain(generation)
+pub unsafe extern "C" fn nm_patricia_buffer_retain(
+    buffer: *const NodeRecordBuffer,
+    generation: u64,
+) {
+    (*buffer).retain(generation)
 }
 
-/// Releases a retain of `generation` of `log`.
+/// Releases a retain of `generation` of `buffer`.
 ///
 /// # Safety
-/// `log` must come from [`nm_patricia_log_new`] and not be freed yet, and `generation` must be retained.
+/// `buffer` must come from [`nm_patricia_buffer_new`] and not be freed yet, and `generation` must be retained.
 #[no_mangle]
-pub unsafe extern "C" fn nm_patricia_log_release(log: *const TrieNodeLog, generation: u64) {
-    (*log).release(generation)
+pub unsafe extern "C" fn nm_patricia_buffer_release(
+    buffer: *const NodeRecordBuffer,
+    generation: u64,
+) {
+    (*buffer).release(generation)
 }
 
 /// Warms the path to `key` in the trie of `address`, the state trie when null, with root hash `root`: every node on it
-/// that bulk sets cannot read from `log` nor `warmed` is fetched through `fetch` and added to `warmed`.
+/// that bulk sets cannot read from `buffer` nor `warmed` is fetched through `fetch` and added to `warmed`.
 /// Returns 0 on success, -1 on panic, or an [`Error::code`].
 ///
 /// # Safety
-/// `log` must come from [`nm_patricia_log_new`], `warmed` from [`nm_patricia_warmed_new`] and not be reset during the
+/// `buffer` must come from [`nm_patricia_buffer_new`], `warmed` from [`nm_patricia_warmed_new`] and not be reset during the
 /// call, `address` must be null or valid for 32 bytes, `root` and `key` must be valid for 32 bytes, and `fetch` must be
 /// callable with `context`.
 #[no_mangle]
 pub unsafe extern "C" fn nm_patricia_warm_up(
-    log: *const TrieNodeLog,
+    buffer: *const NodeRecordBuffer,
     warmed: *const WarmedNodes,
     address: *const [u8; 32],
     root: *const [u8; 32],
@@ -564,7 +604,7 @@ pub unsafe extern "C" fn nm_patricia_warm_up(
     match catch_unwind(AssertUnwindSafe(|| {
         warm_up(
             &CallbackStore { fetch, context },
-            &*log,
+            &*buffer,
             &*warmed,
             address.as_ref(),
             &*root,
@@ -603,24 +643,39 @@ pub unsafe extern "C" fn nm_patricia_warmed_reset(warmed: *const WarmedNodes) {
 /// Resolves a trie root through a session that protects the root-index walk.
 ///
 /// # Safety
-/// `log` must be live, `root` readable for 32 bytes, and `address` null or readable for 32 bytes.
+/// `buffer` must be live, `root` readable for 32 bytes, and `address` null or readable for 32 bytes.
 #[no_mangle]
-pub unsafe extern "C" fn nm_patricia_log_root(log: *const TrieNodeLog, address: *const [u8; 32], root: *const [u8; 32]) -> u64 {
-    (*log).pin().root(address.as_ref(), &*root)
+pub unsafe extern "C" fn nm_patricia_buffer_root(
+    buffer: *const NodeRecordBuffer,
+    address: *const [u8; 32],
+    root: *const [u8; 32],
+) -> u64 {
+    (*buffer).pin().root(address.as_ref(), &*root)
 }
 
 /// Copies the exact-path node while its read session is alive. Returns its length, zero on a miss, or -1 on panic.
 /// A short output buffer is not written and the required length is returned.
 ///
 /// # Safety
-/// `log` must be live and the root must have originated from it. `path` and `hash_out` must be valid;
+/// `buffer` must be live and the root must have originated from it. `path` and `hash_out` must be valid;
 /// `out` must be writable for `capacity` bytes. No borrowed record escapes the session.
 #[no_mangle]
-pub unsafe extern "C" fn nm_patricia_log_find_node(log: *const TrieNodeLog, root: u64, path: *const TreePath, hash_out: *mut [u8; 32], out: *mut u8, capacity: usize) -> i32 {
+pub unsafe extern "C" fn nm_patricia_buffer_find_node(
+    buffer: *const NodeRecordBuffer,
+    root: u64,
+    path: *const TreePath,
+    hash_out: *mut [u8; 32],
+    out: *mut u8,
+    capacity: usize,
+) -> i32 {
     match catch_unwind(AssertUnwindSafe(|| {
-        if (*path).length < 0 || (*path).length > 64 { return 0; }
-        let session = (*log).pin();
-        let Some(node) = session.find_node(root, &*path) else { return 0; };
+        if (*path).length < 0 || (*path).length > 64 {
+            return 0;
+        }
+        let session = (*buffer).pin();
+        let Some(node) = session.find_node(root, &*path) else {
+            return 0;
+        };
         *hash_out = *node.hash();
         if capacity >= node.rlp().len() {
             std::ptr::copy_nonoverlapping(node.rlp().as_ptr(), out, node.rlp().len());
@@ -632,46 +687,65 @@ pub unsafe extern "C" fn nm_patricia_log_find_node(log: *const TrieNodeLog, root
 /// Creates a bounded cursor with its own generation retain.
 ///
 /// # Safety
-/// `log` must outlive the cursor, and `boundary` must belong to a currently retained generation of it.
-/// `root` must be zero or a node pointer from the same log.
+/// `buffer` must outlive the cursor, and `boundary` must belong to a currently retained generation of it.
+/// `root` must be zero or a node pointer from the same buffer.
 #[no_mangle]
-pub unsafe extern "C" fn nm_patricia_log_cursor_new(log: *const TrieNodeLog, root: u64, boundary: u64) -> *mut c_void {
-    if log.is_null() || boundary >> 32 == 0 { return std::ptr::null_mut(); }
-    Box::into_raw(Box::new(traversal::SnapshotCursor::new(&*log, root, boundary))).cast()
+pub unsafe extern "C" fn nm_patricia_buffer_cursor_new(
+    buffer: *const NodeRecordBuffer,
+    root: u64,
+    boundary: u64,
+) -> *mut c_void {
+    if buffer.is_null() || boundary >> 32 == 0 {
+        return std::ptr::null_mut();
+    }
+    Box::into_raw(Box::new(traversal::SnapshotCursor::new(
+        &*buffer, root, boundary,
+    )))
+    .cast()
 }
 
 /// # Safety
 /// `cursor` must be a live exclusively owned cursor; `path_out` and `pointer_out` must be writable.
 #[no_mangle]
-pub unsafe extern "C" fn nm_patricia_log_cursor_next(cursor: *mut c_void, path_out: *mut TreePath, pointer_out: *mut u64) -> i32 {
-    match catch_unwind(AssertUnwindSafe(|| (*cursor.cast::<traversal::SnapshotCursor<'static>>()).next())) {
-        Ok(Some((path, pointer))) => { *path_out = path; *pointer_out = pointer; 1 }
+pub unsafe extern "C" fn nm_patricia_buffer_cursor_next(
+    cursor: *mut c_void,
+    path_out: *mut TreePath,
+    pointer_out: *mut u64,
+) -> i32 {
+    match catch_unwind(AssertUnwindSafe(|| {
+        (*cursor.cast::<traversal::SnapshotCursor<'static>>()).next()
+    })) {
+        Ok(Some((path, pointer))) => {
+            *path_out = path;
+            *pointer_out = pointer;
+            1
+        }
         Ok(None) => 0,
         Err(_) => -1,
     }
 }
 
 /// # Safety
-/// `cursor` must be a cursor not previously freed, whose log is still alive.
+/// `cursor` must be a cursor not previously freed, whose buffer is still alive.
 #[no_mangle]
-pub unsafe extern "C" fn nm_patricia_log_cursor_free(cursor: *mut c_void) {
+pub unsafe extern "C" fn nm_patricia_buffer_cursor_free(cursor: *mut c_void) {
     drop(Box::from_raw(cursor.cast::<traversal::SnapshotCursor>()));
 }
 
-/// Writes to `hash_out` the hash of the node whose record is at `pointer` in `log`, points `rlp_out` at its RLP, valid
+/// Writes to `hash_out` the hash of the node whose record is at `pointer` in `buffer`, points `rlp_out` at its RLP, valid
 /// as long as the record, and returns the RLP length, or -1 on panic.
 ///
 /// # Safety
-/// `log` must come from [`nm_patricia_log_new`], `pointer` must be a node record of a generation retained, as by
-/// [`nm_patricia_log_retain_active`], and `hash_out` and `rlp_out` must be writable.
+/// `buffer` must come from [`nm_patricia_buffer_new`], `pointer` must be a node record of a generation retained, as by
+/// [`nm_patricia_buffer_retain_active`], and `hash_out` and `rlp_out` must be writable.
 #[no_mangle]
-pub unsafe extern "C" fn nm_patricia_log_node(
-    log: *const TrieNodeLog,
+pub unsafe extern "C" fn nm_patricia_buffer_node(
+    buffer: *const NodeRecordBuffer,
     pointer: u64,
     hash_out: *mut [u8; 32],
     rlp_out: *mut *const u8,
 ) -> i32 {
-    match catch_unwind(AssertUnwindSafe(|| (*log).node(pointer))) {
+    match catch_unwind(AssertUnwindSafe(|| (*buffer).node(pointer))) {
         Ok(node) => {
             *hash_out = *node.hash();
             *rlp_out = node.rlp().as_ptr();
@@ -738,7 +812,7 @@ pub unsafe extern "C" fn nm_patricia_pending_view(
     })
 }
 
-/// Writes the process-wide bulk set and trie node log counters to `metrics`.
+/// Writes the process-wide bulk set and trie node buffer counters to `metrics`.
 ///
 /// # Safety
 /// `metrics` must be writable.
@@ -754,16 +828,32 @@ mod tests {
 
     #[test]
     fn fixture_append_links_matching_children_and_rejects_invalid_inputs() {
-        let log = TrieNodeLog::for_fixtures(64 << 10, 0, crate::log::DEFAULT_LIVE_GENERATIONS);
-        let session = log.pin();
+        let buffer =
+            NodeRecordBuffer::for_fixtures(64 << 10, 0, crate::buffer::DEFAULT_LIVE_GENERATIONS);
+        let session = buffer.pin();
         let rlp = [0xc4, 0x82, 0x20, 0x01, 0x05];
         let hash = keccak::keccak(&rlp);
         let path = TreePath::default();
         let mut child = 0;
         unsafe {
-            assert_eq!(nm_patricia_log_fixture_append_rlp(&*log, null(), &path, rlp.as_ptr(), rlp.len(), null(), false, &mut child), 0);
+            assert_eq!(
+                nm_patricia_buffer_fixture_append_rlp(
+                    &*buffer,
+                    null(),
+                    &path,
+                    rlp.as_ptr(),
+                    rlp.len(),
+                    null(),
+                    false,
+                    &mut child
+                ),
+                0
+            );
         }
-        let extension = Node::Extension { key: node::Nibbles::from_slice(&[1]), child: node::ChildRef::Hash { hash, pointer: 0 } };
+        let extension = Node::Extension {
+            key: node::Nibbles::from_slice(&[1]),
+            child: node::ChildRef::Hash { hash, pointer: 0 },
+        };
         let mut extension_rlp = Vec::new();
         node::encode(&extension, &mut extension_rlp);
         let extension_hash = keccak::keccak(&extension_rlp);
@@ -771,20 +861,77 @@ mod tests {
         children[0] = child;
         let mut root = 0;
         unsafe {
-            assert_eq!(nm_patricia_log_fixture_append_rlp(&*log, null(), &path, extension_rlp.as_ptr(), extension_rlp.len(), children.as_ptr(), true, &mut root), 0);
+            assert_eq!(
+                nm_patricia_buffer_fixture_append_rlp(
+                    &*buffer,
+                    null(),
+                    &path,
+                    extension_rlp.as_ptr(),
+                    extension_rlp.len(),
+                    children.as_ptr(),
+                    true,
+                    &mut root
+                ),
+                0
+            );
         }
         assert_eq!(session.root(None, &extension_hash), root);
-        assert_eq!(session.find_node(root, &path.append(&[1])).unwrap().rlp(), rlp);
-        assert_eq!(node::LoggedNode::new(session.record(root).unwrap()).pointer(0), child);
+        assert_eq!(
+            session.find_node(root, &path.append(&[1])).unwrap().rlp(),
+            rlp
+        );
+        assert_eq!(
+            node::BufferedNode::new(session.record(root).unwrap()).pointer(0),
+            child
+        );
         children[0] = root;
         unsafe {
-            assert_eq!(nm_patricia_log_fixture_append_rlp(&*log, null(), &path, extension_rlp.as_ptr(), extension_rlp.len(), children.as_ptr(), false, &mut root), 0);
+            assert_eq!(
+                nm_patricia_buffer_fixture_append_rlp(
+                    &*buffer,
+                    null(),
+                    &path,
+                    extension_rlp.as_ptr(),
+                    extension_rlp.len(),
+                    children.as_ptr(),
+                    false,
+                    &mut root
+                ),
+                0
+            );
         }
-        assert_eq!(node::LoggedNode::new(session.record(root).unwrap()).pointer(0), 0);
+        assert_eq!(
+            node::BufferedNode::new(session.record(root).unwrap()).pointer(0),
+            0
+        );
         children[0] = node::TRANSIENT_POINTER;
         unsafe {
-            assert_eq!(nm_patricia_log_fixture_append_rlp(&*log, null(), &path, extension_rlp.as_ptr(), extension_rlp.len(), children.as_ptr(), false, &mut root), Error::CorruptNode.code());
-            assert_eq!(nm_patricia_log_fixture_append_rlp(&*log, null(), &path, rlp.as_ptr(), rlp.len() - 1, null(), false, &mut root), Error::CorruptNode.code());
+            assert_eq!(
+                nm_patricia_buffer_fixture_append_rlp(
+                    &*buffer,
+                    null(),
+                    &path,
+                    extension_rlp.as_ptr(),
+                    extension_rlp.len(),
+                    children.as_ptr(),
+                    false,
+                    &mut root
+                ),
+                Error::CorruptNode.code()
+            );
+            assert_eq!(
+                nm_patricia_buffer_fixture_append_rlp(
+                    &*buffer,
+                    null(),
+                    &path,
+                    rlp.as_ptr(),
+                    rlp.len() - 1,
+                    null(),
+                    false,
+                    &mut root
+                ),
+                Error::CorruptNode.code()
+            );
         }
     }
 
@@ -810,7 +957,7 @@ mod tests {
 
     #[test]
     fn bulk_state_ffi_retains_owned_inputs_and_finishes_without_corrections() {
-        let log = TrieNodeLog::minimal();
+        let buffer = NodeRecordBuffer::minimal();
         let pending = pending::rent(2);
         let address = [7; 32];
         let mut input_address = address;
@@ -838,7 +985,7 @@ mod tests {
                     entries.len() as i32,
                     values.as_ptr(),
                     values.len() as i32,
-                    &*log,
+                    &*buffer,
                     null(),
                     missing_node,
                     null_mut(),
@@ -862,7 +1009,7 @@ mod tests {
                     null(),
                     0,
                     &*pending,
-                    &*log,
+                    &*buffer,
                     null(),
                     missing_node,
                     null_mut(),
@@ -870,7 +1017,7 @@ mod tests {
                 ),
                 0
             );
-            assert_ne!(log.pin().root(Some(&address), &root), 0);
+            assert_ne!(buffer.pin().root(Some(&address), &root), 0);
             let mut expected_entries = [
                 Entry {
                     key: [1; 32],
@@ -905,7 +1052,7 @@ mod tests {
                     0,
                     null(),
                     0,
-                    &*log,
+                    &*buffer,
                     null(),
                     missing_node,
                     null_mut(),
@@ -919,7 +1066,7 @@ mod tests {
 
     #[test]
     fn bulk_state_ffi_invalidates_on_bad_arguments_and_callback_errors() {
-        let log = TrieNodeLog::minimal();
+        let buffer = NodeRecordBuffer::minimal();
         let mut entry = Entry {
             key: [0; 32],
             offset: 0,
@@ -943,7 +1090,7 @@ mod tests {
                         count,
                         values,
                         length,
-                        &*log,
+                        &*buffer,
                         null(),
                         missing_node,
                         null_mut(),
@@ -957,7 +1104,7 @@ mod tests {
                         0,
                         null(),
                         0,
-                        &*log,
+                        &*buffer,
                         null(),
                         missing_node,
                         null_mut(),
@@ -974,7 +1121,7 @@ mod tests {
                     1,
                     &value,
                     1,
-                    &*log,
+                    &*buffer,
                     null(),
                     failing_node,
                     null_mut(),
@@ -988,7 +1135,7 @@ mod tests {
                     0,
                     null(),
                     0,
-                    &*log,
+                    &*buffer,
                     null(),
                     missing_node,
                     null_mut(),
@@ -1005,7 +1152,7 @@ mod tests {
                     null(),
                     0,
                     null(),
-                    &*log,
+                    &*buffer,
                     null(),
                     missing_node,
                     null_mut(),
@@ -1020,7 +1167,7 @@ mod tests {
                     0,
                     null(),
                     0,
-                    &*log,
+                    &*buffer,
                     null(),
                     missing_node,
                     null_mut(),

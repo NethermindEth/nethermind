@@ -12,6 +12,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
+using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.Trie;
@@ -30,8 +31,8 @@ public static class FlatTestHelpers
         return new Snapshot(StateId.PreGenesis, StateId.PreGenesis, content, pool, ResourcePool.Usage.MainBlockProcessing, null);
     }
 
-    /// <summary>A log with 64 KiB generations, so tests can rotate it cheaply.</summary>
-    public static NativeTrieNodeLog NewTestLog() => new(0, 64 * 1024, NativeTrieNodeLog.DefaultLiveGenerations);
+    /// <summary>A buffer with 64 KiB generations, so tests can rotate it cheaply.</summary>
+    public static INodeRecordBuffer NewTestBuffer() => new NodeRecordBuffer(new NativeNodeBuffer(0, 64 * 1024, NodeRecordBuffer.DefaultLiveGenerations));
 
     /// <summary>A trie-node path with all nibbles after its length cleared.</summary>
     public static TreePath CanonicalPath(in ValueHash256 hash, int length) => new TreePath(hash, 64).Truncate(length);
@@ -40,43 +41,43 @@ public static class FlatTestHelpers
     public const string LeafRlpB = "c482200102";
     public const string LeafRlpC = "c482200103";
 
-    /// <summary>Creates a snapshot owning a retain on the active generation of <paramref name="log"/>.</summary>
-    public static Snapshot CreateSnapshot(this IResourcePool pool, in StateId from, in StateId to, ResourcePool.Usage usage, NativeTrieNodeLog log) =>
-        new(from, to, pool.GetSnapshotContent(usage), pool, usage, log.PinActiveGeneration());
+    /// <summary>Creates a snapshot owning a retain on the active generation of <paramref name="buffer"/>.</summary>
+    public static Snapshot CreateSnapshot(this IResourcePool pool, in StateId from, in StateId to, ResourcePool.Usage usage, INodeRecordBuffer buffer) =>
+        new(from, to, pool.GetSnapshotContent(usage), pool, usage, buffer.PinHead());
 
-    /// <summary>Appends records until <paramref name="log"/> starts a new generation.</summary>
-    public static void StartNewGeneration(NativeTrieNodeLog log)
+    /// <summary>Appends records until <paramref name="buffer"/> starts a new generation.</summary>
+    public static void StartNewGeneration(INodeRecordBuffer buffer)
     {
         byte[] leaf = Bytes.FromHexString(LeafRlpA);
-        ulong generation = AppendNode(log, null, TreePath.Empty, leaf) >> 32;
-        while (AppendNode(log, null, TreePath.Empty, leaf) >> 32 == generation) { }
+        ulong generation = AppendNode(buffer, null, TreePath.Empty, leaf) >> 32;
+        while (AppendNode(buffer, null, TreePath.Empty, leaf) >> 32 == generation) { }
     }
 
-    /// <summary>Makes a snapshot owning a retain on <paramref name="log"/> taken before <paramref name="populate"/> writes its nodes.</summary>
-    public static Snapshot MakeSnapshot(IResourcePool pool, NativeTrieNodeLog log, Action<SnapshotContent> populate)
+    /// <summary>Makes a snapshot owning a retain on <paramref name="buffer"/> taken before <paramref name="populate"/> writes its nodes.</summary>
+    public static Snapshot MakeSnapshot(IResourcePool pool, INodeRecordBuffer buffer, Action<SnapshotContent> populate)
     {
-        Snapshot snapshot = pool.CreateSnapshot(StateId.PreGenesis, new(1, Keccak.Zero), ResourcePool.Usage.MainBlockProcessing, log);
+        Snapshot snapshot = pool.CreateSnapshot(StateId.PreGenesis, new(1, Keccak.Zero), ResourcePool.Usage.MainBlockProcessing, buffer);
         populate(snapshot.Content);
         return snapshot;
     }
 
-    internal static Hash256 WriteNative(NativeTrieNodeLog log, Hash256? address, Hash256 root, params PatriciaTree.BulkSetEntry[] entries)
+    internal static Hash256 WriteNative(INodeRecordBuffer buffer, Hash256? address, Hash256 root, params PatriciaTree.BulkSetEntry[] entries)
     {
         using NativePendingNodes pending = NativePendingNodes.Rent(entries.Length);
-        return NativePatriciaBulkSet.BulkSet(new NativeLogOnlySource(), pending, log, null, address, root.ValueHash256, entries);
+        return NativePatriciaBulkSet.BulkSet(new NativeBufferOnlySource(), pending, buffer.Native, null, address, root.ValueHash256, entries);
     }
 
-    internal static FixtureRoot BulkSet(NativeTrieNodeLog log, Hash256? address, FixtureRoot root, ReadOnlySpan<PatriciaTree.BulkSetEntry> entries)
+    internal static FixtureRoot BulkSet(INodeRecordBuffer buffer, Hash256? address, FixtureRoot root, ReadOnlySpan<PatriciaTree.BulkSetEntry> entries)
     {
         using NativePendingNodes pending = NativePendingNodes.Rent(entries.Length);
-        Hash256 hash = NativePatriciaBulkSet.BulkSet(new NativeLogOnlySource(), pending, log, null, address, root.Hash, entries);
-        return new FixtureRoot(hash.ValueHash256, log.ResolveRoot(address, hash.ValueHash256));
+        Hash256 hash = NativePatriciaBulkSet.BulkSet(new NativeBufferOnlySource(), pending, buffer.Native, null, address, root.Hash, entries);
+        return new FixtureRoot(hash.ValueHash256, buffer.FindRoot(address, hash.ValueHash256));
     }
 
-    internal static IEnumerable<(TreePath Path, ulong Pointer, NativeTrieNodeLog.FixtureRecord Record)> EnumerateNodes(this NativeTrieNodeLog log, ulong root) =>
-        log.EnumerateFixtureNodes(root);
+    internal static IEnumerable<(TreePath Path, ulong Pointer, NativeNodeBuffer.FixtureRecord Record)> EnumerateNodes(this INodeRecordBuffer buffer, ulong root) =>
+        buffer.EnumerateFixtureNodes(root);
 
-    private sealed class NativeLogOnlySource : INativeNodeStore
+    private sealed class NativeBufferOnlySource : INativeNodeStore
     {
         public bool Fetch(in TreePath path, in ValueHash256 hash, NativeNodeReceiver receiver) => false;
     }
@@ -85,30 +86,30 @@ public static class FlatTestHelpers
 
     /// <summary>Connects supplied state nodes to the snapshot root, synthesizing missing ancestors.</summary>
     /// <remarks>Supplied parent RLP is authoritative; inputs it does not reference remain unreachable.</remarks>
-    public static ulong SetStateNodeRlp(this SnapshotContent content, NativeTrieNodeLog log, in TreePath path, string rlpHex) =>
-        content.SetStateNodeRlp(log, path, Bytes.FromHexString(rlpHex));
+    public static ulong SetStateNodeRlp(this SnapshotContent content, INodeRecordBuffer buffer, in TreePath path, string rlpHex) =>
+        content.SetStateNodeRlp(buffer, path, Bytes.FromHexString(rlpHex));
 
-    /// <inheritdoc cref="SetStateNodeRlp(SnapshotContent, NativeTrieNodeLog, in TreePath, string)"/>
-    public static ulong SetStateNodeRlp(this SnapshotContent content, NativeTrieNodeLog log, in TreePath path, byte[] rlp)
+    /// <inheritdoc cref="SetStateNodeRlp(SnapshotContent, INodeRecordBuffer, in TreePath, string)"/>
+    public static ulong SetStateNodeRlp(this SnapshotContent content, INodeRecordBuffer buffer, in TreePath path, byte[] rlp)
     {
         FixtureTrie trie = _fixtureNodes.GetValue(content, static _ => new FixtureNodes()).State;
         if (content.StateRootPointer != trie.RootPointer) trie.Nodes.Clear();
-        ulong pointer = trie.Set(log, null, path, rlp);
+        ulong pointer = trie.Set(buffer, null, path, rlp);
         content.StateRootPointer = trie.RootPointer;
         return pointer;
     }
 
     /// <summary>Connects the supplied storage node to its address's root, synthesizing missing ancestors.</summary>
-    public static ulong SetStorageNodeRlp(this SnapshotContent content, NativeTrieNodeLog log, Hash256 address, in TreePath path, string rlpHex) =>
-        content.SetStorageNodeRlp(log, address, path, Bytes.FromHexString(rlpHex));
+    public static ulong SetStorageNodeRlp(this SnapshotContent content, INodeRecordBuffer buffer, Hash256 address, in TreePath path, string rlpHex) =>
+        content.SetStorageNodeRlp(buffer, address, path, Bytes.FromHexString(rlpHex));
 
-    /// <inheritdoc cref="SetStorageNodeRlp(SnapshotContent, NativeTrieNodeLog, Hash256, in TreePath, string)"/>
-    public static ulong SetStorageNodeRlp(this SnapshotContent content, NativeTrieNodeLog log, Hash256 address, in TreePath path, byte[] rlp)
+    /// <inheritdoc cref="SetStorageNodeRlp(SnapshotContent, INodeRecordBuffer, Hash256, in TreePath, string)"/>
+    public static ulong SetStorageNodeRlp(this SnapshotContent content, INodeRecordBuffer buffer, Hash256 address, in TreePath path, byte[] rlp)
     {
         FixtureNodes fixtures = _fixtureNodes.GetValue(content, static _ => new FixtureNodes());
         if (!fixtures.Storage.TryGetValue(address, out FixtureTrie? trie)) fixtures.Storage[address] = trie = new();
         if (!content.StorageRoots.TryGetValue(address, out ulong root) || root != trie.RootPointer) trie.Nodes.Clear();
-        ulong pointer = trie.Set(log, address, path, rlp);
+        ulong pointer = trie.Set(buffer, address, path, rlp);
         content.StorageRoots[address] = trie.RootPointer;
         return pointer;
     }
@@ -124,15 +125,15 @@ public static class FlatTestHelpers
         public readonly Dictionary<TreePath, byte[]> Nodes = [];
         public ulong RootPointer;
 
-        public ulong Set(NativeTrieNodeLog log, Hash256? address, in TreePath path, byte[] rlp)
+        public ulong Set(INodeRecordBuffer buffer, Hash256? address, in TreePath path, byte[] rlp)
         {
             TreePath normalizedPath = CanonicalPath(path.Path, path.Length);
             Nodes[normalizedPath] = rlp;
-            RootPointer = Build(log, address, TreePath.Empty, Nodes.ToArray()).Pointer;
-            return log.TryGetNodePointer(RootPointer, path, out ulong pointer) ? pointer : AppendNode(log, address, path, rlp);
+            RootPointer = Build(buffer, address, TreePath.Empty, Nodes.ToArray()).Pointer;
+            return buffer.TryGetNodePointer(RootPointer, path, out ulong pointer) ? pointer : AppendNode(buffer, address, path, rlp);
         }
 
-        private static FixtureRoot Build(NativeTrieNodeLog log, Hash256? address, TreePath path, KeyValuePair<TreePath, byte[]>[] nodes)
+        private static FixtureRoot Build(INodeRecordBuffer buffer, Hash256? address, TreePath path, KeyValuePair<TreePath, byte[]>[] nodes)
         {
             KeyValuePair<TreePath, byte[]> exact = nodes.FirstOrDefault(n => n.Key == path);
             byte[] rlp;
@@ -148,7 +149,7 @@ public static class FlatTestHelpers
                 if (shared > path.Length)
                 {
                     TreePath childPath = nodes[0].Key.Truncate(shared);
-                    references[0] = Build(log, address, childPath, nodes);
+                    references[0] = Build(buffer, address, childPath, nodes);
                     byte[] key = Enumerable.Range(path.Length, shared - path.Length).Select(i => (byte)nodes[0].Key[i]).ToArray();
                     rlp = ExtensionRlp(key, references[0].Hash);
                 }
@@ -160,7 +161,7 @@ public static class FlatTestHelpers
                         TreePath childPath = path.Append(i);
                         KeyValuePair<TreePath, byte[]>[] descendants = nodes.Where(n => n.Key.Length >= childPath.Length && n.Key.StartsWith(childPath)).ToArray();
                         if (descendants.Length == 0) continue;
-                        references[i] = Build(log, address, childPath, descendants);
+                        references[i] = Build(buffer, address, childPath, descendants);
                         children.Add((i, references[i].Hash));
                     }
                     rlp = BranchRlp([.. children]);
@@ -182,13 +183,13 @@ public static class FlatTestHelpers
                     if (exact.Value is not null)
                     {
                         KeyValuePair<TreePath, byte[]>[] descendants = nodes.Where(n => n.Key.Length >= childPath.Length && n.Key.StartsWith(childPath)).ToArray();
-                        if (descendants.Length > 0) child = Build(log, address, childPath, descendants);
+                        if (descendants.Length > 0) child = Build(buffer, address, childPath, descendants);
                     }
                     if (child.Pointer != 0 && child.Hash == expectedHash.ValueHash256) pointers[i] = child.Pointer;
                 }
             }
 
-            ulong pointer = log.AppendRlp(address, path, rlp, pointers, indexRoot: path.Length == 0);
+            ulong pointer = buffer.Native.AppendRlp(address, path, rlp, pointers, indexRoot: path.Length == 0);
             return new FixtureRoot(ValueKeccak.Compute(rlp), pointer);
         }
     }
@@ -206,13 +207,13 @@ public static class FlatTestHelpers
         return Rlp.Encode(items).Bytes;
     }
 
-    private static ulong AppendNode(NativeTrieNodeLog log, Hash256? address, in TreePath path, byte[] rlp) =>
-        log.AppendRlp(address, path, rlp, indexRoot: path.Length == 0);
+    private static ulong AppendNode(INodeRecordBuffer buffer, Hash256? address, in TreePath path, byte[] rlp) =>
+        buffer.Native.AppendRlp(address, path, rlp, indexRoot: path.Length == 0);
 
-    internal static ulong AppendRecordFromRlp(this NativeTrieNodeLog log, Hash256? address, in TreePath path, in ValueHash256 hash, ReadOnlySpan<byte> rlp)
+    internal static ulong AppendRecordFromRlp(this INodeRecordBuffer buffer, Hash256? address, in TreePath path, in ValueHash256 hash, ReadOnlySpan<byte> rlp)
     {
         if (ValueKeccak.Compute(rlp) != hash) throw new ArgumentException("Fixture node hash does not match its RLP.", nameof(hash));
-        return log.AppendRlp(address, path, rlp, indexRoot: path.Length == 0);
+        return buffer.Native.AppendRlp(address, path, rlp, indexRoot: path.Length == 0);
     }
 
     /// <summary>The pointer of the state node at <paramref name="key"/> written within the snapshot's range.</summary>
@@ -229,8 +230,8 @@ public static class FlatTestHelpers
     private static bool TryGetNodePointer(this Snapshot snapshot, ulong root, in TreePath path, out ulong pointer)
     {
         pointer = 0;
-        if (snapshot.LogPin is not { } pin) return false;
-        foreach ((TreePath nodePath, ulong candidate) in pin.Log.EnumerateNodes(root, pin.WriteBoundary))
+        if (snapshot.BufferPin is not { } pin) return false;
+        foreach ((TreePath nodePath, ulong candidate) in pin.Buffer.EnumerateNodes(root, pin.WriteBoundary))
         {
             if (nodePath == path)
             {
@@ -241,9 +242,9 @@ public static class FlatTestHelpers
         return false;
     }
 
-    internal static bool TryGetNodePointer(this NativeTrieNodeLog log, ulong root, in TreePath path, out ulong pointer)
+    internal static bool TryGetNodePointer(this INodeRecordBuffer buffer, ulong root, in TreePath path, out ulong pointer)
     {
-        foreach ((TreePath nodePath, ulong candidate, _) in log.EnumerateFixtureNodes(root))
+        foreach ((TreePath nodePath, ulong candidate, _) in buffer.EnumerateFixtureNodes(root))
         {
             if (nodePath == path)
             {
@@ -255,14 +256,14 @@ public static class FlatTestHelpers
         return false;
     }
 
-    internal static IEnumerable<(TreePath Path, ulong Pointer, NativeTrieNodeLog.FixtureRecord Record)> EnumerateFixtureNodes(this NativeTrieNodeLog log, ulong root)
+    internal static IEnumerable<(TreePath Path, ulong Pointer, NativeNodeBuffer.FixtureRecord Record)> EnumerateFixtureNodes(this INodeRecordBuffer buffer, ulong root)
     {
         if (root == 0) yield break;
         Stack<(TreePath Path, ulong Pointer)> pending = new();
         pending.Push((TreePath.Empty, root));
         while (pending.TryPop(out (TreePath Path, ulong Pointer) next))
         {
-            NativeTrieNodeLog.FixtureRecord record = log.GetRecord(next.Pointer);
+            NativeNodeBuffer.FixtureRecord record = buffer.Native.GetRecord(next.Pointer);
             yield return (next.Path, next.Pointer, record);
             TrieNode node = new(NodeType.Unknown, record.Rlp.ToArray());
             node.ResolveNode(NullTrieNodeResolver.Instance, next.Path);
@@ -307,9 +308,9 @@ public static class FlatTestHelpers
             recordDetailedMetrics: false, PersistedSnapshotStack.Empty());
 
     /// <inheritdoc cref="MakeBundle(ResourcePool, Action{SnapshotContent})"/>
-    /// <param name="log">The log <paramref name="populate"/> records nodes in; the snapshot retains it.</param>
-    public static ReadOnlySnapshotBundle MakeBundle(ResourcePool pool, NativeTrieNodeLog log, Action<SnapshotContent> populate) =>
-        new(SnapshotList(MakeSnapshot(pool, log, populate)), Substitute.For<IPersistence.IPersistenceReader>(),
+    /// <param name="buffer">The buffer <paramref name="populate"/> records nodes in; the snapshot retains it.</param>
+    public static ReadOnlySnapshotBundle MakeBundle(ResourcePool pool, INodeRecordBuffer buffer, Action<SnapshotContent> populate) =>
+        new(SnapshotList(MakeSnapshot(pool, buffer, populate)), Substitute.For<IPersistence.IPersistenceReader>(),
             recordDetailedMetrics: false, PersistedSnapshotStack.Empty());
 }
 

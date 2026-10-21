@@ -92,7 +92,7 @@ public sealed class FlatStorageTree(
     // Warmers read it concurrently with the owner, which must not lose its pending nodes to a store a warmer created.
     private NativeTrieNodeStore NativeStore =>
         Volatile.Read(ref _nativeStore)
-        ?? Interlocked.CompareExchange(ref _nativeStore, new NativeTrieNodeStore(_bundle, AddressHash, _scope.NativeTrieNodeLog), null)
+        ?? Interlocked.CompareExchange(ref _nativeStore, new NativeTrieNodeStore(_bundle, AddressHash, _scope.NodeRecordBuffer), null)
         ?? _nativeStore!;
 
     public Hash256 RootHash => _nativeRoot;
@@ -152,7 +152,7 @@ public sealed class FlatStorageTree(
             {
                 OnEarlyPassDrained?.Invoke();
                 NativeBulkSetState prepared = early.NativeState ??= NativeBulkSetState.Create(early.InitialRoot.ValueHash256, AddressHash);
-                NativePatriciaBulkSet.Update(early.NativeSource, prepared, _scope.NativeTrieNodeLog, early.NativeSource.WarmedNodes, entries.AsSpan());
+                NativePatriciaBulkSet.Update(early.NativeSource, prepared, _scope.NodeRecordBuffer.Native, early.NativeSource.WarmedNodes, entries.AsSpan());
                 _scope.CountEarlyApplied(entries.Count);
             }
         }
@@ -237,7 +237,7 @@ public sealed class FlatStorageTree(
                 ValueHash256 key = ValueKeccak.Zero;
                 StorageTree.ComputeKeyWithLookup(index, ref key);
 
-                _bundle.WarmUpNative(NativeStore, _scope.NativeTrieNodeLog, AddressHash, _storageRoot, key, forDelete: isDelete);
+                _bundle.WarmUpNative(NativeStore, _scope.NodeRecordBuffer, AddressHash, _storageRoot, key, forDelete: isDelete);
                 return true;
             }
             finally

@@ -7,7 +7,6 @@ using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Logging;
-using Nethermind.Trie.Native;
 
 namespace Nethermind.State.Flat.ScopeProvider;
 
@@ -17,7 +16,6 @@ public class FlatScopeProvider(
     [KeyFilter(DbNames.Code)] IDb codeDb,
     IFlatDbManager flatDbManager,
     IFlatDbConfig configuration,
-    NativeTrieNodeLog nativeTrieNodeLog,
     ITrieWarmer trieWarmer,
     ResourcePool.Usage usage,
     IStateHeaderProvider stateHeaderProvider,
@@ -63,7 +61,6 @@ public class FlatScopeProvider(
             _codeDb,
             flatDbManager,
             configuration,
-            nativeTrieNodeLog,
             trieWarmer,
             logManager,
             warmReadPool: _warmReadPool,

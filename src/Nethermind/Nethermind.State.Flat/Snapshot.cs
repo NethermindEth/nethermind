@@ -10,8 +10,8 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Utils;
 using Nethermind.Int256;
 using Nethermind.State.Flat.Collections;
+using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.Trie;
-using Nethermind.Trie.Native;
 using IResettable = Nethermind.Core.Resettables.IResettable;
 
 namespace Nethermind.State.Flat;
@@ -37,8 +37,8 @@ public class Snapshot : RefCountingDisposable
     // Boxed so publication is a single reference CAS.
     private StrongBox<SnapshotContentCounts>? _sealedCounts;
 
-    /// <param name="logPin">The pin protecting the trie node log records this snapshot references; the snapshot takes ownership.</param>
-    public Snapshot(in StateId from, in StateId to, SnapshotContent content, IResourcePool resourcePool, ResourcePool.Usage usage, NativeTrieNodeLogPin? logPin)
+    /// <param name="bufferPin">The pin protecting the trie node records this snapshot references; the snapshot takes ownership.</param>
+    public Snapshot(in StateId from, in StateId to, SnapshotContent content, IResourcePool resourcePool, ResourcePool.Usage usage, INodeRecordBufferPin? bufferPin)
     {
         _from = from;
         _to = to;
@@ -46,11 +46,11 @@ public class Snapshot : RefCountingDisposable
         _resourcePool = resourcePool;
         _usage = usage;
         _isSorted = false;
-        LogPin = logPin;
+        BufferPin = bufferPin;
     }
 
-    /// <inheritdoc cref="Snapshot(in StateId, in StateId, SnapshotContent, IResourcePool, ResourcePool.Usage, NativeTrieNodeLogPin?)"/>
-    public Snapshot(in StateId from, in StateId to, SortedSnapshotContent content, IResourcePool resourcePool, ResourcePool.Usage usage, NativeTrieNodeLogPin? logPin)
+    /// <inheritdoc cref="Snapshot(in StateId, in StateId, SnapshotContent, IResourcePool, ResourcePool.Usage, INodeRecordBufferPin?)"/>
+    public Snapshot(in StateId from, in StateId to, SortedSnapshotContent content, IResourcePool resourcePool, ResourcePool.Usage usage, INodeRecordBufferPin? bufferPin)
     {
         _from = from;
         _to = to;
@@ -58,7 +58,7 @@ public class Snapshot : RefCountingDisposable
         _resourcePool = resourcePool;
         _usage = usage;
         _isSorted = true;
-        LogPin = logPin;
+        BufferPin = bufferPin;
     }
 
     public long EstimateMemory() => _isSorted ? _sorted!.EstimateMemory() : Counts.EstimateMemory();
@@ -88,15 +88,13 @@ public class Snapshot : RefCountingDisposable
 
     public bool IsSorted => _isSorted;
 
-    /// <summary>
-    /// The pin on the trie node log generation this snapshot's first block started writing to, released with the snapshot.
-    /// </summary>
+    /// <summary>The pin on the trie node buffer generation that was active when this snapshot's first block started writing; released with the snapshot.</summary>
     /// <remarks>
-    /// While held, native bulk sets read every trie node of this snapshot from the log, so they never look nodes up in
-    /// the in-memory snapshots, see <c>NativeTrieNodeStore</c>, and the nodes this snapshot holds as log pointers are
+    /// While held, native bulk sets read every trie node of this snapshot from the buffer, so they never look nodes up in
+    /// the in-memory snapshots, see <c>NativeTrieNodeStore</c>, and the nodes this snapshot holds as buffer pointers are
     /// read through it.
     /// </remarks>
-    internal NativeTrieNodeLogPin? LogPin { get; }
+    internal INodeRecordBufferPin? BufferPin { get; }
 
     public StateId From => _from;
     public StateId To => _to;
@@ -104,7 +102,7 @@ public class Snapshot : RefCountingDisposable
     public IEnumerable<KeyValuePair<HashedKey<Address>, bool>> SelfDestructedStorageAddresses => _isSorted ? _sorted!.SelfDestructedStorageAddresses : _mutable!.SelfDestructedStorageAddresses;
     public IEnumerable<KeyValuePair<HashedKey<(Address, UInt256)>, UInt256?>> Storages => _isSorted ? _sorted!.Storages : _mutable!.Storages;
 
-    /// <summary>Reachable state nodes written within this snapshot's range, as log pointers readable through <see cref="GetRlp"/>.</summary>
+    /// <summary>Reachable state nodes written within this snapshot's range, as buffer pointers readable through <see cref="GetRlp"/>.</summary>
     /// <remarks>
     /// Nodes come in ascending <see cref="TreePath.CompareTo(in TreePath)"/> order: the walk visits each node before its subtree and children by ascending nibble,
     /// so a persisted snapshot is built from them without sorting. Pointers must not be read after the snapshot is released.
@@ -142,15 +140,15 @@ public class Snapshot : RefCountingDisposable
 
     private IEnumerable<(TreePath Path, ulong Pointer)> EnumerateNodes(ulong root)
     {
-        if (LogPin is { } pin)
+        if (BufferPin is { } pin)
         {
-            foreach ((TreePath path, ulong pointer) in pin.Log.EnumerateNodes(root, pin.WriteBoundary))
+            foreach ((TreePath path, ulong pointer) in pin.Buffer.EnumerateNodes(root, pin.WriteBoundary))
                 yield return (path, pointer);
         }
     }
 
     /// <summary>Protects buffered snapshot-write pointers until their last RLP read.</summary>
-    internal IDisposable? BeginNodeReadScope() => LogPin?.Copy();
+    internal IDisposable? BeginNodeReadScope() => BufferPin?.Copy();
 
     /// <summary>The mutable content; only valid for snapshots created for commit (not compacted ones).</summary>
     public SnapshotContent Content => _mutable!;
@@ -207,17 +205,17 @@ public class Snapshot : RefCountingDisposable
     private bool TryGetNode(ulong root, in TreePath path, [NotNullWhen(true)] out TrieNode? node)
     {
         node = null;
-        return LogPin is { } pin && pin.Log.TryGetNode(root, path, out node);
+        return BufferPin is { } pin && pin.Buffer.TryGetNode(root, path, out node);
     }
 
     /// <summary>The RLP of a retained write pointer, borrowed until the snapshot's read scope is released.</summary>
-    public ReadOnlySpan<byte> GetRlp(ulong pointer) => LogPin!.Log.GetNodeRlp(pointer, out _);
+    public ReadOnlySpan<byte> GetRlp(ulong pointer) => BufferPin!.Buffer.Native.GetNodeRlp(pointer, out _);
 
     protected override void CleanUp()
     {
         if (_isSorted) _resourcePool.ReturnSortedSnapshotContent(_usage, _sorted!);
         else _resourcePool.ReturnSnapshotContent(_usage, _mutable!);
-        LogPin?.Dispose();
+        BufferPin?.Dispose();
     }
 
     public bool TryAcquire() => TryAcquireLease();
@@ -238,7 +236,7 @@ public sealed class SnapshotContent : IDisposable, IResettable
     public readonly ConcurrentDictionary<HashedKey<(Address, UInt256)>, UInt256?> Storages = new();
     public readonly ConcurrentDictionary<HashedKey<Address>, bool> SelfDestructedStorageAddresses = new();
 
-    /// <summary>The final published state-root pointer, zero for an empty root or one the trie node log does not hold.</summary>
+    /// <summary>The final published state-root pointer, zero for an empty root or one the trie node buffer does not hold.</summary>
     public ulong StateRootPointer;
     /// <summary>Final roots of changed storage tries. Missing addresses are unchanged; zero marks an empty trie.</summary>
     public readonly ConcurrentDictionary<Hash256, ulong> StorageRoots = new();

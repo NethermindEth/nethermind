@@ -54,8 +54,7 @@ public static class TestStateBackend
     {
         if (!PinsBackend(explicitConfigs))
         {
-            IFlatDbConfig flatDbConfig = configProvider.GetConfig<IFlatDbConfig>();
-            flatDbConfig.Enabled = UseFlatDb;
+            configProvider.GetConfig<IFlatDbConfig>().Enabled = UseFlatDb;
         }
 
         return configProvider;

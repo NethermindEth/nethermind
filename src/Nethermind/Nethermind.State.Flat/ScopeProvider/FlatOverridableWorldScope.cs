@@ -9,8 +9,8 @@ using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.Trie;
-using Nethermind.Trie.Native;
 using NonBlocking;
 
 namespace Nethermind.State.Flat.ScopeProvider;
@@ -26,15 +26,15 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
     private readonly IResourcePool _resourcePool;
     private readonly IFlatDbManager _flatDbManager;
     private readonly KnownHeadersScopeProvider _worldState;
-    private readonly NativeTrieNodeLog _nativeTrieNodeLog;
-    private NativeTrieNodeLog? _overlayLog;
+    private readonly INodeRecordBuffer _nodeRecordBuffer;
+    private INodeRecordBuffer? _overlayNodeRecordBuffer;
     private bool _isDisposed = false;
 
     public FlatOverridableWorldScope(
         [KeyFilter(DbNames.Code)] IDb codeDb,
         IFlatDbManager flatDbManager,
         IFlatDbConfig configuration,
-        NativeTrieNodeLog nativeTrieNodeLog,
+        INodeRecordBuffer nodeRecordBuffer,
         IResourcePool resourcePool,
         IStateHeaderProvider stateHeaderProvider,
         ILogManager logManager)
@@ -43,7 +43,7 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
         _codeDbOverlay = new ReadOnlyDb(codeDb, true);
         _resourcePool = resourcePool;
         _flatDbManager = flatDbManager;
-        _nativeTrieNodeLog = nativeTrieNodeLog;
+        _nodeRecordBuffer = nodeRecordBuffer;
         _worldState = new KnownHeadersScopeProvider(stateHeaderProvider, headerProvider => new OverridableFlatScopeProvider(
             this,
             configuration,
@@ -56,8 +56,8 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
     public IWorldStateScopeProvider WorldState => _worldState;
     public IStateReader GlobalStateReader { get; }
 
-    /// <remarks>Created on first use after a reset and disposed by the next reset, so the global log stays retained only that long.</remarks>
-    private NativeTrieNodeLog OverlayLog => _overlayLog ??= _nativeTrieNodeLog.CreateOverlay();
+    /// <remarks>Created on first use after a reset and disposed by the next reset, so the global buffer stays pinned only that long.</remarks>
+    private INodeRecordBuffer OverlayBuffer => _overlayNodeRecordBuffer ??= new NodeRecordBuffer(_nodeRecordBuffer.Native.CreateOverlay());
 
     public void ResetOverrides()
     {
@@ -74,8 +74,8 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
 
     private void DisposeOverlay()
     {
-        _overlayLog?.Dispose();
-        _overlayLog = null;
+        _overlayNodeRecordBuffer?.Dispose();
+        _overlayNodeRecordBuffer = null;
     }
 
     private bool HasStateForBlock(BlockHeader? baseBlock)
@@ -123,7 +123,7 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
         // snapshots' negative filter.
         return new SnapshotBundle(
             readOnlySnapshotBundle,
-            OverlayLog,
+            OverlayBuffer,
             _resourcePool,
             ResourcePool.Usage.ReadOnlyProcessingEnv,
             snapshots,
@@ -180,7 +180,6 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
                 codeDb,
                 flatOverrideScope,
                 configuration,
-                snapshotBundle.NativeTrieNodeLog,
                 trieWarmer,
                 logManager);
             return true;

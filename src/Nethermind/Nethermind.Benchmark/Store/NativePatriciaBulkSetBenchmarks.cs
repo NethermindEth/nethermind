@@ -39,7 +39,7 @@ public class NativePatriciaBulkSetBenchmarks
     private Hash256 _preloadedRootHash;
     private DictionaryNodeStore _nativeStore;
     private NativePendingNodes _nativePending;
-    private NativeTrieNodeLog _warmLog;
+    private NativeNodeBuffer _warmBuffer;
 
     [GlobalSetup]
     public void Setup()
@@ -50,7 +50,7 @@ public class NativePatriciaBulkSetBenchmarks
 
         _trieStore = new ParallelCommitTrieStore(new RawScopedTrieStore(new MemDb()));
         _preloadedRootHash = Keccak.EmptyTreeHash;
-        _warmLog = new NativeTrieNodeLog(1UL << 30, NativeTrieNodeLog.DefaultLiveGenerations);
+        _warmBuffer = new NativeNodeBuffer(1UL << 30, NativeNodeBuffer.DefaultLiveGenerations);
         Dictionary<TreePath, byte[]> preloadedNodes = [];
         if (PreloadedCount > 0)
         {
@@ -63,7 +63,7 @@ public class NativePatriciaBulkSetBenchmarks
             _preloadedRootHash = preloadTree.RootHash;
 
             using NativePendingNodes preloadPending = NativePendingNodes.Rent(PreloadedCount);
-            Hash256 nativeRoot = NativePatriciaBulkSet.BulkSet(new DictionaryNodeStore(preloadedNodes), preloadPending, _warmLog, null, null, Keccak.EmptyTreeHash.ValueHash256, nativePreload, preloadValues);
+            Hash256 nativeRoot = NativePatriciaBulkSet.BulkSet(new DictionaryNodeStore(preloadedNodes), preloadPending, _warmBuffer, null, null, Keccak.EmptyTreeHash.ValueHash256, nativePreload, preloadValues);
             if (nativeRoot != _preloadedRootHash) throw new InvalidOperationException($"Native root {nativeRoot} differs from {_preloadedRootHash}");
 
             for (int shard = 0; shard < preloadPending.ShardCount; shard++)
@@ -81,7 +81,7 @@ public class NativePatriciaBulkSetBenchmarks
     public void Cleanup()
     {
         _nativePending.Dispose();
-        _warmLog.Dispose();
+        _warmBuffer.Dispose();
     }
 
     /// <summary>The production flow: hash with the write batch, persist at the end of the block.</summary>
@@ -110,14 +110,14 @@ public class NativePatriciaBulkSetBenchmarks
         }
     }
 
-    /// <summary>Like <see cref="NativeBulkSet"/>, but every batch finds the preloaded trie in a shared log the preload filled.</summary>
+    /// <summary>Like <see cref="NativeBulkSet"/>, but every batch finds the preloaded trie in a shared buffer the preload filled.</summary>
     [Benchmark]
-    public void NativeBulkSetWarmLog()
+    public void NativeBulkSetWarmBuffer()
     {
         _nativeEntries.CopyTo(_nativeBatches, 0);
         for (int start = 0; start < EntryCount; start += BatchSize)
         {
-            NativePatriciaBulkSet.BulkSet(_nativeStore, _nativePending, _warmLog, null, null, _preloadedRootHash.ValueHash256, _nativeBatches.AsSpan(start, BatchSize), _values);
+            NativePatriciaBulkSet.BulkSet(_nativeStore, _nativePending, _warmBuffer, null, null, _preloadedRootHash.ValueHash256, _nativeBatches.AsSpan(start, BatchSize), _values);
             _nativePending.Clear();
         }
     }

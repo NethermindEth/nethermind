@@ -15,6 +15,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.Trie;
@@ -31,53 +32,53 @@ public class SnapshotBundleWarmerTests
     private static readonly TimeSpan BailOutTimeout = TimeSpan.FromSeconds(30);
 
     private ResourcePool _pool = null!;
-    private NativeTrieNodeLog _log = null!;
+    private INodeRecordBuffer _buffer = null!;
 
     [SetUp]
     public void SetUp()
     {
         _pool = new ResourcePool(new FlatDbConfig());
-        _log = FlatTestHelpers.NewTestLog();
+        _buffer = FlatTestHelpers.NewTestBuffer();
     }
 
     [TearDown]
-    public void TearDown() => _log.Dispose();
+    public void TearDown() => _buffer.Dispose();
 
     private SnapshotBundle NewBundle(NodeReader reader) =>
-        new(FlatTestHelpers.MakeBundle(_pool, reader), _log, _pool, ResourcePool.Usage.MainBlockProcessing);
+        new(FlatTestHelpers.MakeBundle(_pool, reader), _buffer, _pool, ResourcePool.Usage.MainBlockProcessing);
 
     private static (Hash256 Root, Dictionary<TreePath, byte[]> Nodes) LeafTrie(byte[] rootRlp) =>
         (new Hash256(ValueKeccak.Compute(rootRlp)), new Dictionary<TreePath, byte[]> { [TreePath.Empty] = rootRlp });
 
     private void WarmUp(SnapshotBundle bundle, Hash256? address, Hash256 root, in ValueHash256 key)
     {
-        using NativeTrieNodeStore source = new(bundle, address, _log);
-        bundle.WarmUpNative(source, _log, address, root, key);
+        using NativeTrieNodeStore source = new(bundle, address, _buffer);
+        bundle.WarmUpNative(source, _buffer, address, root, key);
     }
 
     [Test]
-    public void Warm_up_reads_persistence_only_and_reuses_committed_nodes_from_the_log([Values] bool storage)
+    public void Warm_up_reads_persistence_only_and_reuses_committed_nodes_from_the_buffer([Values] bool storage)
     {
         Hash256? address = storage ? TestItem.KeccakC : null;
         byte[] committedRlp = FlatTestHelpers.LeafRlp(0x82);
         (Hash256 persistedRoot, Dictionary<TreePath, byte[]> persisted) = LeafTrie(FlatTestHelpers.LeafRlp(0x80));
         NodeReader reader = new(persisted);
         using SnapshotBundle bundle = NewBundle(reader);
-        using NativeTrieNodeLogPin pin = _log.PinActiveGeneration();
+        using INodeRecordBufferPin pin = _buffer.PinHead();
         ulong committedPointer = PublishNode(bundle, address, TreePath.Empty, committedRlp);
         Hash256 committedRoot = new(ValueKeccak.Compute(committedRlp));
         bundle.CollectAndApplySnapshot(
-            StateId.PreGenesis, new StateId(1, TestItem.KeccakA), returnSnapshot: false, logPin: pin.Copy());
+            StateId.PreGenesis, new StateId(1, TestItem.KeccakA), returnSnapshot: false, bufferPin: pin.Copy());
 
         WarmUp(bundle, address, committedRoot, ValueKeccak.Zero);
-        Assert.That(reader.Reads, Is.Zero, "committed nodes are read through the native log, not the persisted source");
+        Assert.That(reader.Reads, Is.Zero, "committed nodes are read through the native buffer, not the persisted source");
         WarmUp(bundle, address, persistedRoot, ValueKeccak.Zero);
         WarmUp(bundle, address, persistedRoot, ValueKeccak.Zero);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(reader.Reads, Is.EqualTo(1), "persisted nodes are reused within the transient resource");
-            Assert.That(_log.GetNodeRlp(committedPointer, out _).ToArray(), Is.EqualTo(committedRlp));
+            Assert.That(_buffer.Native.GetNodeRlp(committedPointer, out _).ToArray(), Is.EqualTo(committedRlp));
         }
     }
 
@@ -89,12 +90,12 @@ public class SnapshotBundleWarmerTests
         (Hash256 root, Dictionary<TreePath, byte[]> persisted) = LeafTrie(FlatTestHelpers.LeafRlp(0x80));
         NodeReader reader = new(persisted);
         using SnapshotBundle bundle = NewBundle(reader);
-        using NativeTrieNodeStore source = new(bundle, address, _log);
+        using NativeTrieNodeStore source = new(bundle, address, _buffer);
         TransientResource rented = _pool.GetCachedResource(usage);
         try
         {
-            NativePatriciaBulkSet.WarmUp(source, _log, rented.NativeWarmedNodes, address, root.ValueHash256, ValueKeccak.Zero);
-            NativePatriciaBulkSet.WarmUp(source, _log, rented.NativeWarmedNodes, address, root.ValueHash256, ValueKeccak.Zero);
+            NativePatriciaBulkSet.WarmUp(source, _buffer.Native, rented.NativeWarmedNodes, address, root.ValueHash256, ValueKeccak.Zero);
+            NativePatriciaBulkSet.WarmUp(source, _buffer.Native, rented.NativeWarmedNodes, address, root.ValueHash256, ValueKeccak.Zero);
             Assert.That(reader.Reads, Is.EqualTo(1));
         }
         finally
@@ -105,7 +106,7 @@ public class SnapshotBundleWarmerTests
         TransientResource recycled = _pool.GetCachedResource(usage);
         try
         {
-            NativePatriciaBulkSet.WarmUp(source, _log, recycled.NativeWarmedNodes, address, root.ValueHash256, ValueKeccak.Zero);
+            NativePatriciaBulkSet.WarmUp(source, _buffer.Native, recycled.NativeWarmedNodes, address, root.ValueHash256, ValueKeccak.Zero);
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(recycled, Is.SameAs(rented));
@@ -165,8 +166,8 @@ public class SnapshotBundleWarmerTests
 
             NodeReader reader = new(persisted);
             using SnapshotBundle verifier = NewBundle(reader);
-            using NativeTrieNodeStore source = new(verifier, null, _log);
-            NativePatriciaBulkSet.WarmUp(source, _log, recycled.NativeWarmedNodes, null, root.ValueHash256, ValueKeccak.Zero);
+            using NativeTrieNodeStore source = new(verifier, null, _buffer);
+            NativePatriciaBulkSet.WarmUp(source, _buffer.Native, recycled.NativeWarmedNodes, null, root.ValueHash256, ValueKeccak.Zero);
             Assert.That(reader.Reads, Is.EqualTo(1), "reset happens after the warmer finishes writing");
         }
         finally
@@ -362,17 +363,17 @@ public class SnapshotBundleWarmerTests
         for (int i = 0; i < keys.Length; i++) keys[i] = ValueKeccak.Compute([(byte)i]);
         byte[] newValue = Bytes.FromHexString("0xff");
 
-        using NativeTrieNodeLog persistedLog = FlatTestHelpers.NewTestLog();
-        using NativeTrieNodeLogPin persistedPin = persistedLog.PinActiveGeneration();
+        using INodeRecordBuffer persistedBuffer = FlatTestHelpers.NewTestBuffer();
+        using INodeRecordBufferPin persistedPin = persistedBuffer.PinHead();
         PatriciaTree.BulkSetEntry[] entries = keys.Select((key, i) => new PatriciaTree.BulkSetEntry(key, [(byte)(i + 1)])).ToArray();
-        Hash256 root = FlatTestHelpers.WriteNative(persistedLog, address, Keccak.EmptyTreeHash, entries);
-        ulong rootPointer = persistedLog.ResolveRoot(address, root.ValueHash256);
-        Dictionary<TreePath, byte[]> persisted = persistedLog.EnumerateNodes(rootPointer, persistedPin.WriteBoundary)
-            .ToDictionary(node => node.Path, node => persistedLog.GetNodeRlp(node.Pointer, out _).ToArray());
+        Hash256 root = FlatTestHelpers.WriteNative(persistedBuffer, address, Keccak.EmptyTreeHash, entries);
+        ulong rootPointer = persistedBuffer.FindRoot(address, root.ValueHash256);
+        Dictionary<TreePath, byte[]> persisted = persistedBuffer.EnumerateNodes(rootPointer, persistedPin.WriteBoundary)
+            .ToDictionary(node => node.Path, node => persistedBuffer.Native.GetNodeRlp(node.Pointer, out _).ToArray());
         NodeReader reader = new(persisted);
         using SnapshotBundle bundle = NewBundle(reader);
-        using NativeTrieNodeLogPin pin = _log.PinActiveGeneration();
-        using NativeTrieNodeStore source = new(bundle, address, _log);
+        using INodeRecordBufferPin pin = _buffer.PinHead();
+        using NativeTrieNodeStore source = new(bundle, address, _buffer);
 
         int firstWarmUp = WarmUpAll();
         int secondWarmUp = WarmUpAll();
@@ -394,18 +395,18 @@ public class SnapshotBundleWarmerTests
         }
 
         (Snapshot? snapshot, TransientResource? retired) = bundle.CollectAndApplySnapshot(
-            StateId.PreGenesis, new StateId(1, updatedRoot), logPin: pin.Copy());
+            StateId.PreGenesis, new StateId(1, updatedRoot), bufferPin: pin.Copy());
         try
         {
             ulong[] published = storage ? snapshot!.StorageNodes.Select(node => node.Pointer).ToArray() : snapshot!.StateNodes.Select(node => node.Pointer).ToArray();
-            Assert.That(published, Does.Contain(_log.ResolveRoot(address, updatedRoot.ValueHash256)));
+            Assert.That(published, Does.Contain(_buffer.FindRoot(address, updatedRoot.ValueHash256)));
             retired!.ReleaseLease();
             retired = null;
             foreach (ulong pointer in published)
-                Assert.That(_log.GetNodeRlp(pointer, out _).ToArray(), Is.Not.Empty, "persistent records survive transient reset");
+                Assert.That(_buffer.Native.GetNodeRlp(pointer, out _).ToArray(), Is.Not.Empty, "persistent records survive transient reset");
 
-            FlatTestHelpers.StartNewGeneration(_log);
-            using NativeTrieNodeStore next = new(bundle, address, _log);
+            FlatTestHelpers.StartNewGeneration(_buffer);
+            using NativeTrieNodeStore next = new(bundle, address, _buffer);
             Hash256 nextRoot = next.BulkSet(updatedRoot, [new PatriciaTree.BulkSetEntry(keys[0], [(byte)0xfe])]);
             expected.Set(keys[0].Bytes, [(byte)0xfe]);
             expected.UpdateRootHash();
@@ -429,7 +430,7 @@ public class SnapshotBundleWarmerTests
     private ulong PublishNode(SnapshotBundle bundle, Hash256? address, in TreePath path, byte[] rlp)
     {
         ValueHash256 hash = ValueKeccak.Compute(rlp);
-        ulong pointer = _log.AppendRecordFromRlp(address, path, hash, rlp);
+        ulong pointer = _buffer.AppendRecordFromRlp(address, path, hash, rlp);
         if (address is null) bundle.PublishNativeStateRoot(pointer);
         else bundle.PublishNativeStorageRoot(address, pointer, hash);
         return pointer;

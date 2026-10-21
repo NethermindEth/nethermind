@@ -15,10 +15,10 @@ using Nethermind.Evm.State;
 using Nethermind.Init.Modules;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.ScopeProvider;
-using Nethermind.Trie.Native;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -45,7 +45,7 @@ public class FlatOverridableWorldScopeTests
         public IFlatDbManager FlatDbManager => field ??= Container.Resolve<IFlatDbManager>();
         public FlatOverridableWorldScope OverridableScope => field ??= Container.Resolve<FlatOverridableWorldScope>();
         public List<(Snapshot Snapshot, TransientResource Resource)> FlatDbManagerAddSnapshotCalls { get; } = [];
-        public NativeTrieNodeLog GlobalLog => Container.Resolve<NativeTrieNodeLog>();
+        public INodeRecordBuffer GlobalNodeRecordBuffer => Container.Resolve<INodeRecordBuffer>();
 
         public TestContext(FlatDbConfig? config = null)
         {
@@ -196,7 +196,7 @@ public class FlatOverridableWorldScopeTests
     }
 
     [Test]
-    public void CommitThroughOverridableScope_KeepsTrieNodesOutOfGlobalLog()
+    public void CommitThroughOverridableScope_KeepsTrieNodesOutOfGlobalBuffer()
     {
         using TestContext ctx = new();
         FlatOverridableWorldScope overridableScope = ctx.OverridableScope;
@@ -223,8 +223,8 @@ public class FlatOverridableWorldScopeTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(ctx.GlobalLog.ResolveRoot(null, rootA), Is.Zero);
-            Assert.That(ctx.GlobalLog.ResolveRoot(null, rootAB), Is.Zero);
+            Assert.That(ctx.GlobalNodeRecordBuffer.FindRoot(null, rootA), Is.Zero);
+            Assert.That(ctx.GlobalNodeRecordBuffer.FindRoot(null, rootAB), Is.Zero);
             Assert.That(rootAB, Is.EqualTo(rootABInOneCommit));
         }
     }

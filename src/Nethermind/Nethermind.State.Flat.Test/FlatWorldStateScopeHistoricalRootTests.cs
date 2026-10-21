@@ -10,6 +10,7 @@ using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.ScopeProvider;
@@ -17,25 +18,23 @@ using Nethermind.Trie;
 using NSubstitute;
 using NUnit.Framework;
 
-using Nethermind.Trie.Native;
-
 namespace Nethermind.State.Flat.Test;
 
 [TestFixture]
 public class FlatWorldStateScopeHistoricalRootTests
 {
     private ResourcePool _pool = null!;
-    private NativeTrieNodeLog _log = null!;
+    private INodeRecordBuffer _buffer = null!;
 
     [SetUp]
     public void SetUp()
     {
         _pool = new ResourcePool(new FlatDbConfig { CompactSize = 2 });
-        _log = FlatTestHelpers.NewTestLog();
+        _buffer = FlatTestHelpers.NewTestBuffer();
     }
 
     [TearDown]
-    public void TearDown() => _log.Dispose();
+    public void TearDown() => _buffer.Dispose();
 
     [Test]
     public void UpdateRootHash_HistoricalScope_DoesNotThrow_AndRetainsKnownRoot()
@@ -189,7 +188,6 @@ public class FlatWorldStateScopeHistoricalRootTests
             new TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb(new MemDb()),
             Substitute.For<IFlatCommitTarget>(),
             new FlatDbConfig { CompactSize = 2 },
-            _log,
             new NoopTrieWarmer(),
             LimboLogs.Instance);
     }
@@ -211,7 +209,7 @@ public class FlatWorldStateScopeHistoricalRootTests
 
         return new SnapshotBundle(
             readOnlyBundle,
-            _log,
+            _buffer,
             _pool,
             ResourcePool.Usage.MainBlockProcessing);
     }

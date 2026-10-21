@@ -7,17 +7,17 @@ using System.Threading;
 namespace Nethermind.Trie.Native;
 
 /// <summary>
-/// A pinned generation of a <see cref="NativeTrieNodeLog"/>, which the log keeps, with every later generation, until
+/// A pinned generation of a <see cref="NativeNodeBuffer"/>, which the buffer keeps, with every later generation, until
 /// the pin is disposed.
 /// </summary>
-public sealed class NativeTrieNodeLogPin : IDisposable
+public sealed class NativeNodeBufferPin : IDisposable
 {
-    private readonly NativeTrieNodeLog _log;
+    private readonly NativeNodeBuffer _buffer;
     private int _disposed;
 
-    internal NativeTrieNodeLogPin(NativeTrieNodeLog log, ulong generation, ulong writeBoundary)
+    internal NativeNodeBufferPin(NativeNodeBuffer buffer, ulong generation, ulong writeBoundary)
     {
-        _log = log;
+        _buffer = buffer;
         Generation = generation;
         WriteBoundary = writeBoundary;
     }
@@ -28,13 +28,13 @@ public sealed class NativeTrieNodeLogPin : IDisposable
     /// <summary>The first unreserved record position when this pin was acquired.</summary>
     public ulong WriteBoundary { get; }
 
-    public NativeTrieNodeLog Log => _log;
+    public NativeNodeBuffer Buffer => _buffer;
 
     /// <summary>Pins <see cref="Generation"/> again, for as long as the returned pin.</summary>
-    public NativeTrieNodeLogPin Copy() => _log.Pin(Generation, WriteBoundary);
+    public NativeNodeBufferPin Copy() => _buffer.Pin(Generation, WriteBoundary);
 
     public void Dispose()
     {
-        if (Interlocked.Exchange(ref _disposed, 1) == 0) _log.Unpin(Generation);
+        if (Interlocked.Exchange(ref _disposed, 1) == 0) _buffer.Unpin(Generation);
     }
 }

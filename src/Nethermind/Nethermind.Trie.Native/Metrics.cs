@@ -8,37 +8,37 @@ using Nethermind.Core.Attributes;
 
 namespace Nethermind.Trie.Native;
 
-/// <summary>Process-wide counters of native bulk sets and their <see cref="NativeTrieNodeLog"/>, read from the native library.</summary>
+/// <summary>Process-wide counters of native bulk sets and their <see cref="NativeNodeBuffer"/>, read from the native library.</summary>
 /// <remarks>All zero when the native library is not available.</remarks>
 public static partial class Metrics
 {
     [GaugeMetric]
-    [Description("Bytes of the native trie node log generations allocated, live or still pinned by a running bulk set")]
-    public static long NativeTrieNodeLogMemory => (long)Read().LogMemory;
+    [Description("Bytes of the native trie node buffer generations allocated, live or still pinned by a running bulk set")]
+    public static long NodeRecordBufferMemory => (long)Read().BufferMemory;
 
     [GaugeMetric]
-    [Description("Native trie node log generations allocated, live or still pinned by a running bulk set")]
-    public static long NativeTrieNodeLogGenerations => (long)Read().LogGenerations;
+    [Description("Native trie node buffer generations allocated, live or still pinned by a running bulk set")]
+    public static long NodeRecordBufferGenerations => (long)Read().BufferGenerations;
 
     [GaugeMetric]
-    [Description("Bytes of what compaction kept of dropped native trie node log generations")]
-    public static long NativeTrieNodeLogCompressedMemory => (long)Read().CompressedMemory;
+    [Description("Bytes of what compaction kept of dropped native trie node buffer generations")]
+    public static long NodeRecordBufferCompressedMemory => (long)Read().CompressedMemory;
 
     [GaugeMetric]
-    [Description("Compacted native trie node log generations of which something is kept")]
-    public static long NativeTrieNodeLogCompressedGenerations => (long)Read().CompressedGenerations;
+    [Description("Compacted native trie node buffer generations of which something is kept")]
+    public static long NodeRecordBufferCompressedGenerations => (long)Read().CompressedGenerations;
 
     [CounterMetric]
-    [Description("Native bulk sets on a non-empty trie whose root was in the native trie node log")]
-    public static long NativeTrieNodeLogRootHits => (long)Read().RootHits;
+    [Description("Native bulk sets on a non-empty trie whose root was in the native trie node buffer")]
+    public static long NodeRecordBufferRootHits => (long)Read().RootHits;
 
     [CounterMetric]
-    [Description("Native bulk sets on a non-empty trie whose root was not in the native trie node log")]
-    public static long NativeTrieNodeLogRootMisses => (long)Read().RootMisses;
+    [Description("Native bulk sets on a non-empty trie whose root was not in the native trie node buffer")]
+    public static long NodeRecordBufferRootMisses => (long)Read().RootMisses;
 
     [CounterMetric]
-    [Description("Trie nodes native bulk sets read in place from the native trie node log")]
-    public static long NativeBulkSetNodesFromLog => (long)Read().NodesFromLog;
+    [Description("Trie nodes native bulk sets read in place from the native trie node buffer")]
+    public static long NativeBulkSetNodesFromBuffer => (long)Read().NodesFromBuffer;
 
     [CounterMetric]
     [Description("Trie nodes native bulk sets read back from the nodes pending publication")]
@@ -85,11 +85,11 @@ public static partial class Metrics
     [StructLayout(LayoutKind.Sequential)]
     private readonly struct NativeMetrics
     {
-        public readonly ulong LogMemory;
-        public readonly ulong LogGenerations;
+        public readonly ulong BufferMemory;
+        public readonly ulong BufferGenerations;
         public readonly ulong RootHits;
         public readonly ulong RootMisses;
-        public readonly ulong NodesFromLog;
+        public readonly ulong NodesFromBuffer;
         public readonly ulong NodesFromPending;
         public readonly ulong NodesFetched;
         public readonly ulong CompressedMemory;

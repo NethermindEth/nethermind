@@ -12,6 +12,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.State.Flat;
+using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.ScopeProvider;
@@ -43,8 +44,8 @@ public class StorageRootCommitBenchmark
     private const ulong BaseBlockNumber = 1;
 
     private FlatDbConfig _config = null!;
-    private NativeTrieNodeLog _nativeTrieNodeLog;
     private ResourcePool _resourcePool = null!;
+    private INodeRecordBuffer _nodeRecordBuffer = null!;
     private List<FlatSnapshot> _baseSnapshots = null!;
     private StateId _baseStateId;
     private Address _address = null!;
@@ -61,8 +62,8 @@ public class StorageRootCommitBenchmark
         FlatWorldStateBenchmarkHarness.RequireTieredCompilationDisabled();
 
         _config = new FlatDbConfig();
-        _nativeTrieNodeLog = new NativeTrieNodeLog(0, NativeTrieNodeLog.DefaultLiveGenerations);
         _resourcePool = new ResourcePool(_config);
+        _nodeRecordBuffer = new NodeRecordBuffer(new NativeNodeBuffer(0, NodeRecordBuffer.DefaultLiveGenerations));
         _baseSnapshots = new List<FlatSnapshot>(1);
         _address = DeriveAddress(1);
 
@@ -73,7 +74,7 @@ public class StorageRootCommitBenchmark
             prevSnapshots, new NoopPersistenceReader(), recordDetailedMetrics: false,
             PersistedSnapshotStack.Empty());
         SnapshotBundle bundle = new(
-            readOnly, _nativeTrieNodeLog, _resourcePool, ResourcePool.Usage.MainBlockProcessing);
+            readOnly, _nodeRecordBuffer, _resourcePool, ResourcePool.Usage.MainBlockProcessing);
         CapturingCommitTarget commitTarget = new();
         using FlatWorldStateScope scope = new(
             currentStateId: initialStateId,
@@ -81,7 +82,6 @@ public class StorageRootCommitBenchmark
             codeDb: new NullCodeDb(),
             commitTarget: commitTarget,
             configuration: _config,
-            nativeTrieNodeLog: _nativeTrieNodeLog,
             trieCacheWarmer: new NoopTrieWarmer(),
             logManager: NullLogManager.Instance);
 
@@ -111,7 +111,7 @@ public class StorageRootCommitBenchmark
     {
         IterationCleanup();
         foreach (FlatSnapshot snapshot in _baseSnapshots) snapshot.Dispose();
-        _nativeTrieNodeLog.Dispose();
+        _nodeRecordBuffer.Dispose();
     }
 
     [IterationSetup]
@@ -128,7 +128,7 @@ public class StorageRootCommitBenchmark
             prevSnapshots, new NoopPersistenceReader(), recordDetailedMetrics: false,
             PersistedSnapshotStack.Empty());
         SnapshotBundle bundle = new(
-            readOnly, _nativeTrieNodeLog, _resourcePool, ResourcePool.Usage.MainBlockProcessing);
+            readOnly, _nodeRecordBuffer, _resourcePool, ResourcePool.Usage.MainBlockProcessing);
         _commitTarget = new CapturingCommitTarget();
         _scope = new FlatWorldStateScope(
             currentStateId: _baseStateId,
@@ -136,7 +136,6 @@ public class StorageRootCommitBenchmark
             codeDb: new NullCodeDb(),
             commitTarget: _commitTarget,
             configuration: _config,
-            nativeTrieNodeLog: _nativeTrieNodeLog,
             trieCacheWarmer: new NoopTrieWarmer(),
             logManager: NullLogManager.Instance);
     }

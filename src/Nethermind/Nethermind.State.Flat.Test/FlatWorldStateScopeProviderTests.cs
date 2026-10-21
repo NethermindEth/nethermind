@@ -26,6 +26,7 @@ using Nethermind.Evm.State;
 using Nethermind.Init.Modules;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.Sync.Snap;
@@ -174,12 +175,12 @@ public class FlatWorldStateScopeProviderTests
 
     private static Exception CreateStateUnavailableException() => new StateUnavailableException("state removed during acquisition");
 
-    private static SnapshotBundle CreateSnapshotBundle(ResourcePool resourcePool, NativeTrieNodeLog trieNodeLog, IPersistence.IPersistenceReader? persistenceReader = null)
+    private static SnapshotBundle CreateSnapshotBundle(ResourcePool resourcePool, INodeRecordBuffer nodeRecordBuffer, IPersistence.IPersistenceReader? persistenceReader = null)
     {
         persistenceReader ??= Substitute.For<IPersistence.IPersistenceReader>();
         return new SnapshotBundle(
             new ReadOnlySnapshotBundle(new SnapshotPooledList(0), persistenceReader, false, PersistedSnapshotStack.Empty()),
-            trieNodeLog,
+            nodeRecordBuffer,
             resourcePool,
             ResourcePool.Usage.ReadOnlyProcessingEnv);
     }
@@ -193,7 +194,7 @@ public class FlatWorldStateScopeProviderTests
         private IContainer Container => _container ??= _containerBuilder.Build();
 
         public ResourcePool ResourcePool => field ??= Container.Resolve<ResourcePool>();
-        public NativeTrieNodeLog TrieNodeLog => field ??= Container.Resolve<NativeTrieNodeLog>();
+        public INodeRecordBuffer TrieNodeLog => field ??= Container.Resolve<INodeRecordBuffer>();
         public IFlatDbManager FlatDbManager => field ??= Container.Resolve<IFlatDbManager>();
         public IWorldStateManager WorldStateManager => field ??= Container.Resolve<IWorldStateManager>();
         public SnapshotBundle SnapshotBundle => Container.Resolve<SnapshotBundle>();
@@ -208,7 +209,7 @@ public class FlatWorldStateScopeProviderTests
 
             _containerBuilder = new ContainerBuilder()
                     .AddModule(new FlatWorldStateModule(config))
-                    .AddSingleton<NativeTrieNodeLog>(_ => FlatTestHelpers.NewTestLog())
+                    .AddSingleton<INodeRecordBuffer>(_ => FlatTestHelpers.NewTestBuffer())
                     .Bind<IWorldStateManager, FlatWorldStateManager>()
                     .AddSingleton<IPersistence>(Substitute.For<IPersistence>())
                     .AddSingleton<IFlatStateRootIndex>(Substitute.For<IFlatStateRootIndex>())
@@ -239,7 +240,7 @@ public class FlatWorldStateScopeProviderTests
                             });
 
                         flatDiff.GatherSnapshotBundle(Arg.Any<StateId>(), Arg.Any<ResourcePool.Usage>(), Arg.Any<bool>())
-                            .Returns(_ => CreateSnapshotBundle(Container.Resolve<ResourcePool>(), Container.Resolve<NativeTrieNodeLog>()));
+                            .Returns(_ => CreateSnapshotBundle(Container.Resolve<ResourcePool>(), Container.Resolve<INodeRecordBuffer>()));
                         flatDiff.GatherReadOnlySnapshotBundle(Arg.Any<StateId>())
                             .Returns(_ => new ReadOnlySnapshotBundle(new SnapshotPooledList(0), Substitute.For<IPersistence.IPersistenceReader>(), false, PersistedSnapshotStack.Empty()));
                         flatDiff.HasStateForBlock(Arg.Any<StateId>()).Returns(true);
@@ -1218,7 +1219,7 @@ public class FlatWorldStateScopeProviderTests
         Assert.That(nodesAtCommit, Is.EquivalentTo(nodesInBatch));
         Assert.That(rootsAtCommit, Is.EqualTo(rootsInBatch));
 
-        // The native bulk set's snapshot holds log pointers, which must read back as the nodes the managed trie commits.
+        // The native bulk set's snapshot holds buffer pointers, which must read back as the nodes the managed trie commits.
 
     }
 
@@ -1337,7 +1338,7 @@ public class FlatWorldStateScopeProviderTests
         }
         expectedState.Commit();
 
-        // The tries start from nodes only persistence holds, so the blocks load and warm nodes from outside the trie node log.
+        // The tries start from nodes only persistence holds, so the blocks load and warm nodes from outside the trie node buffer.
         Dictionary<(Hash256? Storage, TreePath Path), byte[]> persistedNodes = CollectNodes(expectedStore.GetTrieStore(null), expectedState.RootHash).Rlps;
         InlineTrieWarmer warmer = new();
         using TestContext ctx = new(config: config, trieWarmer: warmer, stateRoot: expectedState.RootHash);
@@ -1355,7 +1356,7 @@ public class FlatWorldStateScopeProviderTests
 
         int lastBlock = blocksBetweenCommits + 2;
         // The first and last blocks write every contract and the ones in between one each, so the last block
-        // updates tries committed many blocks, and log generations, before.
+        // updates tries committed many blocks, and buffer generations, before.
         (int First, int End) ContractsOf(int block) =>
             block == 1 || block == lastBlock ? (0, contractCount) : (block % contractCount, block % contractCount + 1);
         UInt256 SlotOf(int block, int i) => (UInt256)((block * 7 + i) % (2 * slotsPerContract));
@@ -1419,17 +1420,17 @@ public class FlatWorldStateScopeProviderTests
     }
 
     [Test]
-    public void Retained_snapshot_roots_are_read_and_updated_from_the_log_after_rotation(
+    public void Retained_snapshot_roots_are_read_and_updated_from_the_buffer_after_rotation(
         [Values] bool storage, [Values] bool readOnlySnapshots)
     {
         const int keyCount = 48;
         const int versionCount = 3;
         ResourcePool pool = new(new FlatDbConfig());
-        using NativeTrieNodeLog log = new(1024 * 1024, 64 * 1024, NativeTrieNodeLog.DefaultLiveGenerations);
+        using INodeRecordBuffer buffer = new NodeRecordBuffer(new NativeNodeBuffer(1024 * 1024, 64 * 1024, NodeRecordBuffer.DefaultLiveGenerations));
         Hash256? address = storage ? TestItem.KeccakA : null;
         byte[] oldRlp = FlatTestHelpers.LeafRlp(0x01);
-        ulong oldPointer = log.AppendRecordFromRlp(address, TreePath.FromHexString("f"), ValueKeccak.Compute(oldRlp), oldRlp);
-        FlatTestHelpers.StartNewGeneration(log);
+        ulong oldPointer = buffer.AppendRecordFromRlp(address, TreePath.FromHexString("f"), ValueKeccak.Compute(oldRlp), oldRlp);
+        FlatTestHelpers.StartNewGeneration(buffer);
 
         ValueHash256[] keys = new ValueHash256[keyCount];
         for (int i = 0; i < keys.Length; i++) keys[i] = ValueKeccak.Compute($"snapshot-key-{i}");
@@ -1439,13 +1440,13 @@ public class FlatWorldStateScopeProviderTests
         SinglePersistedNodeReader reader = new(TreePath.FromHexString("abcdef"), oldRlp);
         using (SnapshotBundle writer = new(
             new ReadOnlySnapshotBundle(new SnapshotPooledList(0), new NoopPersistenceReader(), false, PersistedSnapshotStack.Empty()),
-            log, pool, ResourcePool.Usage.MainBlockProcessing))
+            buffer, pool, ResourcePool.Usage.MainBlockProcessing))
         {
             FixtureRoot root = FixtureRoot.Empty;
             for (int version = 0; version < versionCount; version++)
             {
-                NativeTrieNodeLogPin retain = log.PinActiveGeneration();
-                using NativeTrieNodeStore trie = new(writer, address, log);
+                INodeRecordBufferPin retain = buffer.PinHead();
+                using NativeTrieNodeStore trie = new(writer, address, buffer);
                 using ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries = new(keyCount);
                 values[version] = version == 0 ? new byte[keyCount][] : (byte[][])values[version - 1].Clone();
                 for (int i = 0; i < (version == 0 ? keyCount : 1); i++)
@@ -1457,30 +1458,30 @@ public class FlatWorldStateScopeProviderTests
                 }
 
                 Hash256 updatedRoot = trie.BulkSet(new Hash256(root.Hash), entries.AsSpan());
-                root = roots[version] = new(updatedRoot.ValueHash256, log.ResolveRoot(address, updatedRoot.ValueHash256));
+                root = roots[version] = new(updatedRoot.ValueHash256, buffer.FindRoot(address, updatedRoot.ValueHash256));
                 trie.Publish(updatedRoot);
-                writer.CollectAndApplySnapshot(new StateId((ulong)version, Keccak.EmptyTreeHash), new StateId((ulong)version + 1, root.Hash), returnSnapshot: false, logPin: retain);
+                writer.CollectAndApplySnapshot(new StateId((ulong)version, Keccak.EmptyTreeHash), new StateId((ulong)version + 1, root.Hash), returnSnapshot: false, bufferPin: retain);
                 Snapshot snapshot = writer._snapshots[version];
                 snapshot.AcquireLease();
                 snapshots.Add(snapshot);
-                FlatTestHelpers.StartNewGeneration(log);
+                FlatTestHelpers.StartNewGeneration(buffer);
             }
         }
 
         using SnapshotBundle bundle = new(
             new ReadOnlySnapshotBundle(readOnlySnapshots ? snapshots : new SnapshotPooledList(0), reader, false, PersistedSnapshotStack.Empty()),
-            log, pool, ResourcePool.Usage.MainBlockProcessing,
+            buffer, pool, ResourcePool.Usage.MainBlockProcessing,
             readOnlySnapshots ? null : snapshots);
-        for (int i = 0; i < 12; i++) FlatTestHelpers.StartNewGeneration(log);
-        Assert.That(() => !log.IsLive(oldPointer), Is.True.After(10_000, 10), "the unretained generation is compacted while snapshots retain later generations");
+        for (int i = 0; i < 12; i++) FlatTestHelpers.StartNewGeneration(buffer);
+        Assert.That(() => !buffer.Native.IsLive(oldPointer), Is.True.After(10_000, 10), "the unretained generation is compacted while snapshots retain later generations");
 
-        using NativeTrieNodeLogPin writeRetain = log.PinActiveGeneration();
+        using INodeRecordBufferPin writeRetain = buffer.PinHead();
         for (int version = 0; version < versionCount; version++)
         {
-            Assert.That(log.ResolveRoot(address, roots[version].Hash), Is.EqualTo(roots[version].Pointer), $"indexed root {version}");
+            Assert.That(buffer.FindRoot(address, roots[version].Hash), Is.EqualTo(roots[version].Pointer), $"indexed root {version}");
             FixtureRoot currentRoot = roots[version];
-            using NativeTrieNodeStore trie = new(bundle, address, log);
-            byte[] Read(in ValueHash256 key) => new PatriciaTree(new NativeLogTrieStore(log, currentRoot.Pointer), LimboLogs.Instance).Get(key.Bytes, new Hash256(currentRoot.Hash)).ToArray();
+            using NativeTrieNodeStore trie = new(bundle, address, buffer);
+            byte[] Read(in ValueHash256 key) => new PatriciaTree(new NativeBufferTrieStore(buffer, currentRoot.Pointer), LimboLogs.Instance).Get(key.Bytes, new Hash256(currentRoot.Hash)).ToArray();
             using (Assert.EnterMultipleScope())
             {
                 for (int i = 0; i < keys.Length; i++) Assert.That(Read(keys[i]), Is.EqualTo(values[version][i]), $"version {version}, key {i}");
@@ -1491,7 +1492,7 @@ public class FlatWorldStateScopeProviderTests
             using ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries = new(1);
             entries.Add(new PatriciaTree.BulkSetEntry(keys[^1], updated));
             Hash256 updatedRoot = trie.BulkSet(new Hash256(currentRoot.Hash), entries.AsSpan());
-            currentRoot = new(updatedRoot.ValueHash256, log.ResolveRoot(address, updatedRoot.ValueHash256));
+            currentRoot = new(updatedRoot.ValueHash256, buffer.FindRoot(address, updatedRoot.ValueHash256));
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(Read(keys[^1]), Is.EqualTo(updated), $"updated version {version}");
@@ -1499,16 +1500,16 @@ public class FlatWorldStateScopeProviderTests
             }
         }
 
-        Assert.That(reader.Loads, Is.Zero, "in-memory nodes must resolve through the retained log, without source fetches");
+        Assert.That(reader.Loads, Is.Zero, "in-memory nodes must resolve through the retained buffer, without source fetches");
     }
 
-    private sealed class NativeLogTrieStore(NativeTrieNodeLog log, ulong root) : AbstractMinimalTrieStore
+    private sealed class NativeBufferTrieStore(INodeRecordBuffer buffer, ulong root) : AbstractMinimalTrieStore
     {
         public override TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash) =>
-            log.TryGetNode(root, path, out TrieNode? node) && node.Keccak == hash ? node : new TrieNode(NodeType.Unknown, hash);
+            buffer.TryGetNode(root, path, out TrieNode? node) && node.Keccak == hash ? node : new TrieNode(NodeType.Unknown, hash);
 
         public override byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
-            log.TryGetNode(root, path, out TrieNode? node) && node.Keccak == hash ? node.FullRlp.ToArray() : null;
+            buffer.TryGetNode(root, path, out TrieNode? node) && node.Keccak == hash ? node.FullRlp.ToArray() : null;
     }
 
     /// <summary>The hash-referenced nodes of the state trie at <paramref name="root"/> and its storage tries, by address hash, path and RLP.</summary>
@@ -1556,7 +1557,7 @@ public class FlatWorldStateScopeProviderTests
     [Test]
     public void TestStorageRootAfterMultipleCommits([Values(0, 20)] int blocksBetweenCommits)
     {
-        // The blocks in between outgrow a log this small, which then keeps the first commit's nodes only as its
+        // The blocks in between outgrow a buffer this small, which then keeps the first commit's nodes only as its
         // snapshot pins them, and the native bulk set does not look for them in the in-memory snapshots.
         FlatDbConfig config = new();
         using TestContext ctx = new(config: config);
@@ -1771,9 +1772,9 @@ public class FlatWorldStateScopeProviderTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(resumedSnapshot.LogPin!.Generation, Is.EqualTo(interleavedSnapshot.LogPin!.Generation));
-            Assert.That(resumedSnapshot.LogPin.WriteBoundary, Is.LessThan(interleavedSnapshot.LogPin.WriteBoundary));
-            Assert.That(resumed, Has.Some.LessThan(interleavedSnapshot.LogPin.WriteBoundary), "the paused scope retains its earlier reachable writes");
+            Assert.That((resumedSnapshot.BufferPin!.WriteBoundary >> NodeRecordBuffer.OffsetBits), Is.EqualTo((interleavedSnapshot.BufferPin!.WriteBoundary >> NodeRecordBuffer.OffsetBits)));
+            Assert.That(resumedSnapshot.BufferPin.WriteBoundary, Is.LessThan(interleavedSnapshot.BufferPin.WriteBoundary));
+            Assert.That(resumed, Has.Some.LessThan(interleavedSnapshot.BufferPin.WriteBoundary), "the paused scope retains its earlier reachable writes");
             Assert.That(resumed, Does.Not.Contain(interleavedSnapshot.StateRootPointer));
             Assert.That(resumed.Length, Is.EqualTo(ctx.TrieNodeLog.EnumerateNodes(resumedSnapshot.StateRootPointer).Count()));
             Assert.That(interleavedSnapshot.StateNodes.Count(), Is.EqualTo(1));
@@ -2270,8 +2271,8 @@ public class FlatWorldStateScopeProviderTests
         ReadOnlySnapshotBundle readOnlyBundle = new(new SnapshotPooledList(0), reader, recordDetailedMetrics: false, PersistedSnapshotStack.Empty());
         FlatDbConfig config = new();
         ResourcePool resourcePool = new(config);
-        using NativeTrieNodeLog log = FlatTestHelpers.NewTestLog();
-        SnapshotBundle bundle = new(readOnlyBundle, log, resourcePool, ResourcePool.Usage.MainBlockProcessing);
+        using INodeRecordBuffer buffer = FlatTestHelpers.NewTestBuffer();
+        SnapshotBundle bundle = new(readOnlyBundle, buffer, resourcePool, ResourcePool.Usage.MainBlockProcessing);
         await using TrieWarmer warmer = new(LimboLogs.Instance, config);
 
         using FlatWorldStateScope scope = new(
@@ -2280,7 +2281,6 @@ public class FlatWorldStateScopeProviderTests
             new TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb(new TestMemDb()),
             Substitute.For<IFlatCommitTarget>(),
             config,
-            log,
             warmer,
             LimboLogs.Instance);
 

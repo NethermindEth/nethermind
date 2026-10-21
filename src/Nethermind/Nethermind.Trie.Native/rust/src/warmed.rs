@@ -3,9 +3,9 @@
 
 //! Decoded, linked nodes the trie warmer loaded for one block.
 
+use crate::buffer::{BufferPointer, BufferSession, NodeRecordBuffer};
 use crate::bulk_set::{matched_length, EMPTY_TREE_HASH};
 use crate::keccak::keccak;
-use crate::log::{LogPointer, LogSession, TrieNodeLog};
 use crate::node::{
     decode_rlp, nibble, record_length, write_warmed_record, ChildRef, Nibbles, Node, NodeKind,
     RecordPtr, TreePath, TRANSIENT_POINTER,
@@ -32,7 +32,7 @@ pub struct WarmedNodes {
 #[derive(Clone, Copy)]
 struct WarmedRecord {
     record: RecordPtr,
-    pointer: LogPointer,
+    pointer: BufferPointer,
 }
 
 struct Arena {
@@ -92,7 +92,7 @@ impl WarmedNodes {
     /// verify the full trie position and hash rather than trusting a stale or foreign resource's pointer.
     pub fn get_pointer(
         &self,
-        pointer: LogPointer,
+        pointer: BufferPointer,
         address: Option<&[u8; 32]>,
         path: &TreePath,
         hash: &[u8; 32],
@@ -182,7 +182,7 @@ struct Frame {
     hash: [u8; 32],
     source: FrameSource,
     child_slot: Option<u8>,
-    sibling: Option<(u8, LogPointer)>,
+    sibling: Option<(u8, BufferPointer)>,
 }
 
 enum FrameSource {
@@ -229,12 +229,12 @@ impl Frame {
         mut self,
         warmed: &WarmedNodes,
         address: Option<&[u8; 32]>,
-        child: LogPointer,
-    ) -> LogPointer {
+        child: BufferPointer,
+    ) -> BufferPointer {
         match &mut self.source {
             FrameSource::Record(record) => record.pointer,
             FrameSource::Fetched { node, rlp } => {
-                let mut link = |slot: u8, pointer: LogPointer| {
+                let mut link = |slot: u8, pointer: BufferPointer| {
                     let reference = match node {
                         Node::Extension { child, .. } => child,
                         Node::Branch { children } => &mut children[slot as usize],
@@ -263,12 +263,12 @@ impl Frame {
 
 fn read_frame<S: NodeStore>(
     store: &S,
-    session: &LogSession<'_>,
+    session: &BufferSession<'_>,
     warmed: &WarmedNodes,
     address: Option<&[u8; 32]>,
     path: TreePath,
     hash: [u8; 32],
-    pointer: LogPointer,
+    pointer: BufferPointer,
 ) -> Result<Option<Frame>, Error> {
     let record = session
         .record(pointer)
@@ -315,7 +315,7 @@ fn read_frame<S: NodeStore>(
 /// A persistence miss or malformed/hash-mismatching node leaves only the verified prefix warmed.
 pub fn warm_up<S: NodeStore>(
     store: &S,
-    log: &TrieNodeLog,
+    buffer: &NodeRecordBuffer,
     warmed: &WarmedNodes,
     address: Option<&[u8; 32]>,
     root: &[u8; 32],
@@ -325,7 +325,7 @@ pub fn warm_up<S: NodeStore>(
     if *root == EMPTY_TREE_HASH {
         return Ok(());
     }
-    let session = log.pin();
+    let session = buffer.pin();
     let mut frames = Vec::with_capacity(65);
     let mut path = TreePath::default();
     let mut child = ChildRef::Hash {
@@ -419,7 +419,7 @@ fn matches_leaf(leaf_key: Nibbles, path: &TreePath, key: &[u8; 32]) -> bool {
 
 fn warm_sibling<S: NodeStore>(
     store: &S,
-    session: &LogSession<'_>,
+    session: &BufferSession<'_>,
     warmed: &WarmedNodes,
     address: Option<&[u8; 32]>,
     frames: &mut [Frame],
@@ -488,7 +488,7 @@ mod tests {
     fn apply_items(
         store: &MapStore,
         pending: &crate::PendingNodes,
-        log: &TrieNodeLog,
+        buffer: &NodeRecordBuffer,
         warmed: Option<&WarmedNodes>,
         root: &[u8; 32],
         items: &[([u8; 32], Vec<u8>)],
@@ -509,7 +509,7 @@ mod tests {
         crate::bulk_set(
             store,
             pending,
-            Some(log),
+            Some(buffer),
             warmed,
             None,
             root,
@@ -520,10 +520,10 @@ mod tests {
     }
 
     fn persisted_items(items: &[([u8; 32], Vec<u8>)]) -> (MapStore, [u8; 32]) {
-        let log = TrieNodeLog::minimal();
+        let buffer = NodeRecordBuffer::minimal();
         let pending = crate::PendingNodes::default();
         let mut store = MapStore::default();
-        let root = apply_items(&store, &pending, &log, None, &EMPTY_TREE_HASH, items);
+        let root = apply_items(&store, &pending, &buffer, None, &EMPTY_TREE_HASH, items);
         for shard in 0..pending.shard_count() {
             pending.with_view(shard, |nodes, rlp| {
                 for node in nodes {
@@ -587,9 +587,9 @@ mod tests {
     fn warmed_children_survive_position_index_misses_and_commit_without_transient_links() {
         let items = pair();
         let (store, root) = persisted_items(&items);
-        let log = TrieNodeLog::minimal();
+        let buffer = NodeRecordBuffer::minimal();
         let warmed = WarmedNodes::default();
-        warm_up(&store, &log, &warmed, None, &root, &items[0].0, true).unwrap();
+        warm_up(&store, &buffer, &warmed, None, &root, &items[0].0, true).unwrap();
         let branch = warmed
             .get(None, &TreePath::default(), &root)
             .unwrap()
@@ -609,20 +609,20 @@ mod tests {
             assert!(warmed.get_pointer(pointer, None, &path, &hash).is_some());
         }
         let before = store.fetches.load(Ordering::Relaxed);
-        warm_up(&store, &log, &warmed, None, &root, &items[0].0, true).unwrap();
+        warm_up(&store, &buffer, &warmed, None, &root, &items[0].0, true).unwrap();
         assert_eq!(store.fetches.load(Ordering::Relaxed), before);
         let changed = [(items[0].0, vec![3; 40])];
         let updated = apply_items(
             &store,
             &crate::PendingNodes::default(),
-            &log,
+            &buffer,
             Some(&warmed),
             &root,
             &changed,
         );
         assert_eq!(store.fetches.load(Ordering::Relaxed), before);
-        let session = log.pin();
-        let node = crate::node::LoggedNode::new(
+        let session = buffer.pin();
+        let node = crate::node::BufferedNode::new(
             session.record(session.find_root(None, &updated)).unwrap(),
         );
         let ChildRef::Hash {
@@ -654,7 +654,7 @@ mod tests {
         let final_root = apply_items(
             &store,
             &crate::PendingNodes::default(),
-            &log,
+            &buffer,
             Some(&warmed),
             &updated,
             &[(items[1].0, vec![4; 40])],
@@ -721,7 +721,7 @@ mod tests {
             key[0] = 0x10;
             warm_up(
                 &store,
-                &TrieNodeLog::minimal(),
+                &NodeRecordBuffer::minimal(),
                 &warmed,
                 None,
                 &root,
@@ -739,22 +739,22 @@ mod tests {
     }
 
     #[test]
-    fn no_op_warmed_roots_never_enter_the_log_root_index() {
+    fn no_op_warmed_roots_never_enter_the_buffer_root_index() {
         let items = pair();
         let (store, root) = persisted_items(&items);
-        let log = TrieNodeLog::minimal();
+        let buffer = NodeRecordBuffer::minimal();
         let warmed = WarmedNodes::default();
-        warm_up(&store, &log, &warmed, None, &root, &items[0].0, true).unwrap();
+        warm_up(&store, &buffer, &warmed, None, &root, &items[0].0, true).unwrap();
         let pending = crate::PendingNodes::default();
         assert_eq!(
-            apply_items(&store, &pending, &log, Some(&warmed), &root, &items),
+            apply_items(&store, &pending, &buffer, Some(&warmed), &root, &items),
             root
         );
         assert_eq!(pending.count(), 0);
-        assert_eq!(log.pin().find_root(None, &root), 0);
+        assert_eq!(buffer.pin().find_root(None, &root), 0);
         warmed.reset();
         assert_eq!(
-            apply_items(&store, &pending, &log, Some(&warmed), &root, &items),
+            apply_items(&store, &pending, &buffer, Some(&warmed), &root, &items),
             root
         );
     }
@@ -764,9 +764,9 @@ mod tests {
         for replace_resource in [false, true] {
             let items = pair();
             let (store, root) = persisted_items(&items);
-            let log = TrieNodeLog::minimal();
+            let buffer = NodeRecordBuffer::minimal();
             let warmed = WarmedNodes::default();
-            warm_up(&store, &log, &warmed, None, &root, &items[0].0, true).unwrap();
+            warm_up(&store, &buffer, &warmed, None, &root, &items[0].0, true).unwrap();
             let mut state = crate::bulk_set::BulkSetState::new(root, None);
             let mut entries = [crate::Entry {
                 key: items[0].0,
@@ -774,7 +774,7 @@ mod tests {
                 length: 40,
             }];
             state
-                .update(&store, &log, Some(&warmed), &mut entries, &[3; 40])
+                .update(&store, &buffer, Some(&warmed), &mut entries, &[3; 40])
                 .unwrap();
             let foreign = WarmedNodes::default();
             let next = if replace_resource {
@@ -793,7 +793,7 @@ mod tests {
                 .finish(
                     &store,
                     &crate::PendingNodes::default(),
-                    &log,
+                    &buffer,
                     Some(next),
                     &mut corrections,
                     &[4; 40],
@@ -829,9 +829,9 @@ mod tests {
                         items.push((key_d, vec![4; 40]));
                     }
                     let (store, root) = persisted_items(&items);
-                    let log = TrieNodeLog::minimal();
+                    let buffer = NodeRecordBuffer::minimal();
                     let warmed = WarmedNodes::default();
-                    warm_up(&store, &log, &warmed, None, &root, &key_a, for_delete).unwrap();
+                    warm_up(&store, &buffer, &warmed, None, &root, &key_a, for_delete).unwrap();
                     let before = store.fetches.load(Ordering::Relaxed);
                     assert_eq!(
                         before,
@@ -840,7 +840,7 @@ mod tests {
                     let updated = apply_items(
                         &store,
                         &crate::PendingNodes::default(),
-                        &log,
+                        &buffer,
                         Some(&warmed),
                         &root,
                         &[(key_a, Vec::new())],
@@ -870,10 +870,10 @@ mod tests {
             let mut missing = key_a;
             missing[0] = if diverging_leaf { 0x10 } else { 0x30 };
             missing[31] = 4;
-            let log = TrieNodeLog::minimal();
+            let buffer = NodeRecordBuffer::minimal();
             warm_up(
                 &store,
-                &log,
+                &buffer,
                 &WarmedNodes::default(),
                 None,
                 &root,
@@ -884,7 +884,7 @@ mod tests {
             let ordinary = store.fetches.load(Ordering::Relaxed);
             warm_up(
                 &store,
-                &log,
+                &buffer,
                 &WarmedNodes::default(),
                 None,
                 &root,
@@ -897,15 +897,15 @@ mod tests {
     }
 
     #[test]
-    fn warm_up_fetches_only_nodes_neither_logged_nor_warmed() {
-        // A logged root branch whose child 1 is logged, and whose child 2, an extension over a leaf, is only in the store.
-        let log = TrieNodeLog::minimal();
-        let session = log.pin();
+    fn warm_up_fetches_only_nodes_neither_buffered_nor_warmed() {
+        // A buffered root branch whose child 1 is buffered, and whose child 2, an extension over a leaf, is only in the store.
+        let buffer = NodeRecordBuffer::minimal();
+        let session = buffer.pin();
         let leaf = Node::Leaf {
             key: Nibbles::from_slice(&[0; 61]),
             value: vec![0xaa; 40],
         };
-        let logged_leaf = session.append(&leaf);
+        let buffered_leaf = session.append(&leaf);
         let stored_leaf_hash = keccak(&rlp(&leaf));
         let extension = Node::Extension {
             key: Nibbles::from_slice(&[0, 0]),
@@ -917,7 +917,7 @@ mod tests {
         let mut children = empty_children();
         children[1] = ChildRef::Hash {
             hash: [0x22; 32],
-            pointer: logged_leaf,
+            pointer: buffered_leaf,
         };
         children[2] = ChildRef::Hash {
             hash: keccak(&rlp(&extension)),
@@ -948,11 +948,11 @@ mod tests {
         };
         let warm = |address: Option<&[u8; 32]>, root: &[u8; 32], key: [u8; 32]| {
             let before = store.fetches.load(Ordering::Relaxed);
-            warm_up(&store, &log, &warmed, address, root, &key, false).unwrap();
+            warm_up(&store, &buffer, &warmed, address, root, &key, false).unwrap();
             store.fetches.load(Ordering::Relaxed) - before
         };
 
-        // The logged part of a path is never fetched, the rest once, and an unknown root ends the walk at once.
+        // The buffered part of a path is never fetched, the rest once, and an unknown root ends the walk at once.
         assert_eq!(warm(Some(&address), &root, key(0x10)), 0);
         assert_eq!(warm(Some(&address), &root, key(0x20)), 2);
         assert_eq!(warm(Some(&address), &root, key(0x20)), 0);

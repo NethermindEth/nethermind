@@ -10,7 +10,7 @@ using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Flat.Collections;
-using Nethermind.Trie.Native;
+using Nethermind.State.Flat.NodeBuffer;
 
 namespace Nethermind.State.Flat;
 
@@ -168,7 +168,7 @@ public class SnapshotCompactor(
         }
 
         // The oldest pin covers every merged snapshot, whose pins may be released before the compacted snapshot.
-        return new Snapshot(from, to, content, _resourcePool, usage, OldestLogPin(snapshots)?.Copy());
+        return new Snapshot(from, to, content, _resourcePool, usage, OldestBufferPin(snapshots)?.Copy());
     }
 
     private static void MergeRoots(SortedSnapshotContent content, SnapshotPooledList snapshots)
@@ -197,13 +197,14 @@ public class SnapshotCompactor(
         }
     }
 
-    private static NativeTrieNodeLogPin? OldestLogPin(SnapshotPooledList snapshots)
+    private static INodeRecordBufferPin? OldestBufferPin(SnapshotPooledList snapshots)
     {
-        NativeTrieNodeLogPin? oldest = null;
-        foreach (Snapshot snapshot in snapshots)
+        INodeRecordBufferPin? oldest = null;
+        for (int i = 0; i < snapshots.Count; i++)
         {
-            if (snapshot.LogPin is { } pin && (oldest is null || pin.WriteBoundary < oldest.WriteBoundary)) oldest = pin;
+            if (snapshots[i].BufferPin is { } pin && (oldest is null || pin.WriteBoundary < oldest.WriteBoundary)) oldest = pin;
         }
+
         return oldest;
     }
 

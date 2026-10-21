@@ -12,17 +12,17 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Trie.Native;
 
-public sealed partial class NativeTrieNodeLog
+public sealed partial class NativeNodeBuffer
 {
-    internal unsafe NativeTrieNodeLog(ulong compressedMaxMemory, int generationBytes, int liveGenerations) : base(IntPtr.Zero, ownsHandle: true)
+    internal unsafe NativeNodeBuffer(ulong compressedMaxMemory, int generationBytes, int liveGenerations) : base(IntPtr.Zero, ownsHandle: true)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(liveGenerations, 1);
         ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(liveGenerations, MaxGenerations);
-        SetHandle(nm_patricia_log_fixture_new(compressedMaxMemory, checked((nuint)generationBytes), (ulong)liveGenerations));
-        nm_patricia_log_set_memory_pressure(this, &ReportMemoryPressure);
+        SetHandle(nm_patricia_buffer_fixture_new(compressedMaxMemory, checked((nuint)generationBytes), (ulong)liveGenerations));
+        nm_patricia_buffer_set_memory_pressure(this, &ReportMemoryPressure);
     }
 
-    // The input spans are pinned, and the SafeHandle keeps the log alive while Rust decodes and copies the RLP.
+    // The input spans are pinned, and the SafeHandle keeps the buffer alive while Rust decodes and copies the RLP.
     internal unsafe ulong AppendRlp(Hash256? address, in TreePath path, ReadOnlySpan<byte> rlp,
         ReadOnlySpan<ulong> childPointers = default, bool indexRoot = false)
     {
@@ -34,7 +34,7 @@ public sealed partial class NativeTrieNodeLog
         fixed (byte* bytes = rlp)
         fixed (ulong* children = childPointers)
         {
-            int status = nm_patricia_log_fixture_append_rlp(this, address is null ? null : &addressHash,
+            int status = nm_patricia_buffer_fixture_append_rlp(this, address is null ? null : &addressHash,
                 pathPointer, bytes, (nuint)rlp.Length, children, indexRoot, &pointer);
             if (status != 0) throw new ArgumentException($"Invalid native fixture RLP: status {status}", nameof(rlp));
         }
@@ -47,7 +47,7 @@ public sealed partial class NativeTrieNodeLog
     // The native call copies under its own read session; this managed record does not borrow native storage.
     internal unsafe bool TryLocate(ulong pointer, out FixtureRecord record)
     {
-        int length = nm_patricia_log_fixture_copy(this, pointer, null, 0);
+        int length = nm_patricia_buffer_fixture_copy(this, pointer, null, 0);
         if (length < 0) throw new InvalidOperationException($"Native fixture read failed with status {length}");
         if (length == 0)
         {
@@ -57,7 +57,7 @@ public sealed partial class NativeTrieNodeLog
         byte[] bytes = new byte[length];
         fixed (byte* output = bytes)
         {
-            length = nm_patricia_log_fixture_copy(this, pointer, output, (nuint)bytes.Length);
+            length = nm_patricia_buffer_fixture_copy(this, pointer, output, (nuint)bytes.Length);
         }
         if (length != bytes.Length) throw new InvalidOperationException("Native fixture record expired during its copy");
         record = new FixtureRecord(bytes);
@@ -82,19 +82,19 @@ public sealed partial class NativeTrieNodeLog
 
     internal bool IsReadable(ulong pointer) => TryLocate(pointer, out _);
 
-    internal bool IsLive(ulong pointer) => nm_patricia_log_fixture_live(this, pointer);
+    internal bool IsLive(ulong pointer) => nm_patricia_buffer_fixture_live(this, pointer);
 
     [LibraryImport(NativePatriciaBulkSet.LibraryName)]
-    private static partial nint nm_patricia_log_fixture_new(ulong compressedMaxMemory, nuint generationBytes, ulong liveGenerations);
+    private static partial nint nm_patricia_buffer_fixture_new(ulong compressedMaxMemory, nuint generationBytes, ulong liveGenerations);
 
     [LibraryImport(NativePatriciaBulkSet.LibraryName)]
-    private static unsafe partial int nm_patricia_log_fixture_append_rlp(NativeTrieNodeLog log, ValueHash256* address,
+    private static unsafe partial int nm_patricia_buffer_fixture_append_rlp(NativeNodeBuffer buffer, ValueHash256* address,
         TreePath* path, byte* rlp, nuint length, ulong* children, [MarshalAs(UnmanagedType.U1)] bool indexRoot, ulong* pointer);
 
     [LibraryImport(NativePatriciaBulkSet.LibraryName)]
-    private static unsafe partial int nm_patricia_log_fixture_copy(NativeTrieNodeLog log, ulong pointer, byte* output, nuint capacity);
+    private static unsafe partial int nm_patricia_buffer_fixture_copy(NativeNodeBuffer buffer, ulong pointer, byte* output, nuint capacity);
 
     [LibraryImport(NativePatriciaBulkSet.LibraryName)]
     [return: MarshalAs(UnmanagedType.U1)]
-    private static partial bool nm_patricia_log_fixture_live(NativeTrieNodeLog log, ulong pointer);
+    private static partial bool nm_patricia_buffer_fixture_live(NativeNodeBuffer buffer, ulong pointer);
 }

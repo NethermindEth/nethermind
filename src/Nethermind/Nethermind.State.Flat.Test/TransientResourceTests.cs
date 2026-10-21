@@ -5,6 +5,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
+using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.Trie;
 using Nethermind.Trie.Native;
 using NUnit.Framework;
@@ -62,7 +63,7 @@ public class TransientResourceTests
     public void Reset_ClearsNativeWarmedRecords()
     {
         using TransientResource resource = new(new TransientResource.Size(1024));
-        using NativeTrieNodeLog log = new(0, NativeTrieNodeLog.DefaultLiveGenerations);
+        using INodeRecordBuffer buffer = new NodeRecordBuffer(new NativeNodeBuffer(0, NodeRecordBuffer.DefaultLiveGenerations));
         byte[] rlp = FlatTestHelpers.LeafRlp(1);
         ValueHash256 root = ValueKeccak.Compute(rlp);
         CountingSource source = new(rlp);
@@ -81,7 +82,7 @@ public class TransientResourceTests
             Assert.That(source.Reads, Is.EqualTo(2), "reset must discard the old native records");
         }
 
-        void WarmUp() => NativePatriciaBulkSet.WarmUp(source, log, resource.NativeWarmedNodes, null, root, ValueKeccak.Zero);
+        void WarmUp() => NativePatriciaBulkSet.WarmUp(source, buffer.Native, resource.NativeWarmedNodes, null, root, ValueKeccak.Zero);
     }
 
     private sealed class CountingSource(byte[] rlp) : INativeNodeStore

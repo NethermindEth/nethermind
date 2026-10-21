@@ -13,6 +13,7 @@ using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Flat;
+using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.ScopeProvider;
@@ -30,7 +31,7 @@ namespace Nethermind.Benchmarks.State;
 public class ReadOnlySnapshotBundleBenchmark
 {
     private ReadOnlySnapshotBundle _bundle = null!;
-    private NativeTrieNodeLog _trieNodeLog = null!;
+    private INodeRecordBuffer _nodeRecordBuffer = null!;
 
     // Hit arrays — sampled from actually written data
     private Address[] _hitAccounts = null!;
@@ -66,7 +67,7 @@ public class ReadOnlySnapshotBundleBenchmark
     {
         FlatDbConfig config = new() { CompactionOffset = 0 };
         ResourcePool resourcePool = new(config);
-        _trieNodeLog = new NativeTrieNodeLog(0, NativeTrieNodeLog.DefaultLiveGenerations);
+        _nodeRecordBuffer = new NodeRecordBuffer(new NativeNodeBuffer(0, NodeRecordBuffer.DefaultLiveGenerations));
         // The repository only satisfies the compactor ctor; CompactSnapshotBundle never touches it, and the
         // repository itself does not use the arena managers, so the persisted tier can stay unwired.
         SnapshotCompactor compactor = new(
@@ -102,7 +103,7 @@ public class ReadOnlySnapshotBundleBenchmark
                 prevSnapshots, new NoopPersistenceReader(), recordDetailedMetrics: false,
                 PersistedSnapshotStack.Empty());
             SnapshotBundle bundle = new(
-                readOnly, _trieNodeLog, resourcePool, ResourcePool.Usage.MainBlockProcessing);
+                readOnly, _nodeRecordBuffer, resourcePool, ResourcePool.Usage.MainBlockProcessing);
             CapturingCommitTarget commitTarget = new();
             using FlatWorldStateScope scope = new(
                 currentStateId: currentStateId,
@@ -110,7 +111,6 @@ public class ReadOnlySnapshotBundleBenchmark
                 codeDb: new NullCodeDb(),
                 commitTarget: commitTarget,
                 configuration: config,
-                nativeTrieNodeLog: _trieNodeLog,
                 trieCacheWarmer: new NoopTrieWarmer(),
                 logManager: NullLogManager.Instance);
 
@@ -333,7 +333,7 @@ public class ReadOnlySnapshotBundleBenchmark
     public void Cleanup()
     {
         _bundle.Dispose();
-        _trieNodeLog.Dispose();
+        _nodeRecordBuffer.Dispose();
     }
 
     [Benchmark]

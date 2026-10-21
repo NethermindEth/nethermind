@@ -50,7 +50,7 @@ public sealed class BulkFillScopeProvider(
         try
         {
             scope = new Scope(new FlatWorldStateScope(session.CurrentState, bundle, session,
-                RejectCommit.Instance, config, null, new NoopTrieWarmer(), logs, isReadOnly: true), session);
+                RejectCommit.Instance, config, new NoopTrieWarmer(), logs, isReadOnly: true), session);
             return true;
         }
         catch

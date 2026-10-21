@@ -10,16 +10,16 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Trie.Native;
 
-public sealed partial class NativeTrieNodeLog
+public sealed partial class NativeNodeBuffer
 {
     /// <summary>Finds an indexed root of the state trie, or the storage trie of <paramref name="address"/>.</summary>
-    /// <returns>The root's log pointer, or zero when the root is not available.</returns>
+    /// <returns>The root's buffer pointer, or zero when the root is not available.</returns>
     public unsafe ulong ResolveRoot(Hash256? address, in ValueHash256 rootHash)
     {
         ValueHash256 addressHash = address?.ValueHash256 ?? default;
         fixed (ValueHash256* hash = &rootHash)
         {
-            return nm_patricia_log_root(this, address is null ? null : &addressHash, hash);
+            return nm_patricia_buffer_root(this, address is null ? null : &addressHash, hash);
         }
     }
 
@@ -46,7 +46,7 @@ public sealed partial class NativeTrieNodeLog
         fixed (TreePath* pathPointer = &path)
         fixed (byte* output = buffer)
         {
-            int length = nm_patricia_log_find_node(this, root, pathPointer, &copiedHash, output, (nuint)buffer.Length);
+            int length = nm_patricia_buffer_find_node(this, root, pathPointer, &copiedHash, output, (nuint)buffer.Length);
             hash = copiedHash;
             return length;
         }
@@ -54,7 +54,7 @@ public sealed partial class NativeTrieNodeLog
 
     /// <summary>Enumerates reachable hash-referenced nodes written at or after <paramref name="writeBoundary"/>.</summary>
     /// <remarks>
-    /// The boundary's pin must remain alive when enumeration starts. The cursor acquires its own retain and keeps the log
+    /// The boundary's pin must remain alive when enumeration starts. The cursor acquires its own retain and keeps the buffer
     /// alive until disposed. Returned pointers are readable through <see cref="GetNodeRlp"/> while a covering pin is held.
     /// </remarks>
     public IEnumerable<(TreePath Path, ulong Pointer)> EnumerateNodes(ulong root, ulong writeBoundary)
@@ -66,21 +66,21 @@ public sealed partial class NativeTrieNodeLog
 
     private sealed partial class NativeNodeCursor : SafeHandle
     {
-        private readonly NativeTrieNodeLog _log;
+        private readonly NativeNodeBuffer _buffer;
 
-        public NativeNodeCursor(NativeTrieNodeLog log, ulong root, ulong boundary) : base(IntPtr.Zero, ownsHandle: true)
+        public NativeNodeCursor(NativeNodeBuffer buffer, ulong root, ulong boundary) : base(IntPtr.Zero, ownsHandle: true)
         {
-            _log = log;
+            _buffer = buffer;
             bool referenced = false;
-            log.DangerousAddRef(ref referenced);
+            buffer.DangerousAddRef(ref referenced);
             try
             {
-                SetHandle(nm_patricia_log_cursor_new(log, root, boundary));
+                SetHandle(nm_patricia_buffer_cursor_new(buffer, root, boundary));
                 if (IsInvalid) throw new InvalidOperationException("Native trie node cursor creation failed");
             }
             catch
             {
-                if (referenced) log.DangerousRelease();
+                if (referenced) buffer.DangerousRelease();
                 throw;
             }
         }
@@ -92,7 +92,7 @@ public sealed partial class NativeTrieNodeLog
         {
             TreePath nextPath = default;
             ulong nextPointer = 0;
-            int status = nm_patricia_log_cursor_next(this, &nextPath, &nextPointer);
+            int status = nm_patricia_buffer_cursor_next(this, &nextPath, &nextPointer);
             if (status < 0) throw new InvalidOperationException($"Native trie node enumeration failed with status {status}");
             path = nextPath;
             pointer = nextPointer;
@@ -101,24 +101,24 @@ public sealed partial class NativeTrieNodeLog
 
         protected override bool ReleaseHandle()
         {
-            nm_patricia_log_cursor_free(handle);
-            _log.DangerousRelease();
+            nm_patricia_buffer_cursor_free(handle);
+            _buffer.DangerousRelease();
             return true;
         }
 
         [LibraryImport(NativePatriciaBulkSet.LibraryName)]
-        private static partial nint nm_patricia_log_cursor_new(NativeTrieNodeLog log, ulong root, ulong boundary);
+        private static partial nint nm_patricia_buffer_cursor_new(NativeNodeBuffer buffer, ulong root, ulong boundary);
 
         [LibraryImport(NativePatriciaBulkSet.LibraryName)]
-        private static unsafe partial int nm_patricia_log_cursor_next(NativeNodeCursor cursor, TreePath* path, ulong* pointer);
+        private static unsafe partial int nm_patricia_buffer_cursor_next(NativeNodeCursor cursor, TreePath* path, ulong* pointer);
 
         [LibraryImport(NativePatriciaBulkSet.LibraryName)]
-        private static partial void nm_patricia_log_cursor_free(nint cursor);
+        private static partial void nm_patricia_buffer_cursor_free(nint cursor);
     }
 
     [LibraryImport(NativePatriciaBulkSet.LibraryName)]
-    private static unsafe partial ulong nm_patricia_log_root(NativeTrieNodeLog log, ValueHash256* address, ValueHash256* root);
+    private static unsafe partial ulong nm_patricia_buffer_root(NativeNodeBuffer buffer, ValueHash256* address, ValueHash256* root);
 
     [LibraryImport(NativePatriciaBulkSet.LibraryName)]
-    private static unsafe partial int nm_patricia_log_find_node(NativeTrieNodeLog log, ulong root, TreePath* path, ValueHash256* hash, byte* output, nuint capacity);
+    private static unsafe partial int nm_patricia_buffer_find_node(NativeNodeBuffer buffer, ulong root, TreePath* path, ValueHash256* hash, byte* output, nuint capacity);
 }

@@ -5,6 +5,7 @@ using System.Diagnostics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Trie;
+using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.Trie.Native;
 
 namespace Nethermind.State.Flat.ScopeProvider;
@@ -13,10 +14,10 @@ namespace Nethermind.State.Flat.ScopeProvider;
 /// The native node source of one trie in a bundle, publishing only its final root at commit.
 /// </summary>
 /// <remarks>
-/// Pending output is private to this trie until publication. Nodes already reside in the Rust-owned log, protected
+/// Pending output is private to this trie until publication. Nodes already reside in the Rust-owned buffer, protected
 /// by the scope's pin; the snapshot receives that pin and the final root, not an index of each written node.
 /// </remarks>
-internal sealed class NativeTrieNodeStore(SnapshotBundle bundle, Hash256? addressHash, NativeTrieNodeLog log) : INativeNodeStore, IDisposable
+internal sealed class NativeTrieNodeStore(SnapshotBundle bundle, Hash256? addressHash, INodeRecordBuffer buffer) : INativeNodeStore, IDisposable
 {
     private NativePendingNodes? _pending;
     private bool _rootDirty;
@@ -33,7 +34,7 @@ internal sealed class NativeTrieNodeStore(SnapshotBundle bundle, Hash256? addres
     /// <summary>Applies updates and returns the new root.</summary>
     public Hash256 BulkSet(Hash256 root, ReadOnlySpan<PatriciaTree.BulkSetEntry> entries)
     {
-        Hash256 updated = NativePatriciaBulkSet.BulkSet(this, _pending ??= NativePendingNodes.Rent(entries.Length), log,
+        Hash256 updated = NativePatriciaBulkSet.BulkSet(this, _pending ??= NativePendingNodes.Rent(entries.Length), buffer.Native,
             bundle.NativeWarmedNodes, addressHash, root.ValueHash256, entries);
         _rootDirty |= updated != root || _pending.Count > 0;
         return updated;
@@ -47,7 +48,7 @@ internal sealed class NativeTrieNodeStore(SnapshotBundle bundle, Hash256? addres
         try
         {
             transient = bundle.TryLeaseTransientResource() ?? throw new ObjectDisposedException(nameof(SnapshotBundle));
-            NativePatriciaBulkSet.Update(this, prepared, log, transient.NativeWarmedNodes, entries);
+            NativePatriciaBulkSet.Update(this, prepared, buffer.Native, transient.NativeWarmedNodes, entries);
         }
         finally
         {
@@ -65,7 +66,7 @@ internal sealed class NativeTrieNodeStore(SnapshotBundle bundle, Hash256? addres
         {
             transient = bundle.TryLeaseTransientResource() ?? throw new ObjectDisposedException(nameof(SnapshotBundle));
             Hash256 updated = NativePatriciaBulkSet.Finish(this, prepared, _pending ??= NativePendingNodes.Rent(entries.Length),
-                log, transient.NativeWarmedNodes, entries);
+                buffer.Native, transient.NativeWarmedNodes, entries);
             _rootDirty |= _pending.Count > 0 || updated == Keccak.EmptyTreeHash;
             return updated;
         }
@@ -77,7 +78,7 @@ internal sealed class NativeTrieNodeStore(SnapshotBundle bundle, Hash256? addres
     }
 
     /// <inheritdoc/>
-    /// <remarks>Retained in-memory nodes are reached through the native log; the source only fetches persisted nodes.</remarks>
+    /// <remarks>Retained in-memory nodes are reached through the native buffer; the source only fetches persisted nodes.</remarks>
     public bool Fetch(in TreePath path, in ValueHash256 hash, NativeNodeReceiver receiver) =>
         bundle.TryLoadPersistedRlp(addressHash, path, ReadFlags.None, static (rlp, receiver) => receiver.Receive(rlp), receiver);
 
@@ -87,7 +88,7 @@ internal sealed class NativeTrieNodeStore(SnapshotBundle bundle, Hash256? addres
         if (addressHash is not null && !_rootDirty) return;
 
         long start = Stopwatch.GetTimestamp();
-        ulong pointer = log.ResolveRoot(addressHash, root.ValueHash256);
+        ulong pointer = buffer.FindRoot(addressHash, root.ValueHash256);
         if (addressHash is null) bundle.PublishNativeStateRoot(pointer);
         else bundle.PublishNativeStorageRoot(addressHash, pointer, root.ValueHash256);
         Dispose();

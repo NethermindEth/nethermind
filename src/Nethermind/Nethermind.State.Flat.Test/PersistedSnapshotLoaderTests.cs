@@ -6,10 +6,10 @@ using System.Collections.Generic;
 using System.IO;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using Nethermind.Trie;
-using Nethermind.Trie.Native;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -36,10 +36,10 @@ public class PersistedSnapshotLoaderTests
     [Test]
     public void ConversionRegistersOnlyWhenTheArenaSucceeds([Values] bool failArena)
     {
-        using NativeTrieNodeLog log = FlatTestHelpers.NewTestLog();
+        using INodeRecordBuffer buffer = FlatTestHelpers.NewTestBuffer();
         ResourcePool pool = new(new FlatDbConfig());
-        using Snapshot snapshot = FlatTestHelpers.MakeSnapshot(pool, log, content =>
-            content.SetStateNodeRlp(log, TreePath.Empty, FlatTestHelpers.LeafRlpA));
+        using Snapshot snapshot = FlatTestHelpers.MakeSnapshot(pool, buffer, content =>
+            content.SetStateNodeRlp(buffer, TreePath.Empty, FlatTestHelpers.LeafRlpA));
         using ArenaManager realArena = TestFixtureHelpers.CreateArenaManager(Path.Combine(_testDir, "arena"));
         IArenaManager arena = failArena ? Substitute.For<IArenaManager>() : realArena;
         if (failArena)

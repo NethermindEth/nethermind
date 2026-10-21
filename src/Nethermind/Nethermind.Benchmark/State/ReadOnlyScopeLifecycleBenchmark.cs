@@ -8,6 +8,7 @@ using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Flat;
+using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.ScopeProvider;
@@ -25,7 +26,7 @@ public class ReadOnlyScopeLifecycleBenchmark
 {
     private FlatDbConfig _config = null!;
     private ResourcePool _resourcePool = null!;
-    private NativeTrieNodeLog _trieNodeLog = null!;
+    private INodeRecordBuffer _nodeRecordBuffer = null!;
     private NoopTrieWarmer _warmer = null!;
     private Address[] _addresses = null!;
 
@@ -37,28 +38,27 @@ public class ReadOnlyScopeLifecycleBenchmark
     {
         _config = new FlatDbConfig();
         _resourcePool = new ResourcePool(_config);
-        _trieNodeLog = new NativeTrieNodeLog(0, NativeTrieNodeLog.DefaultLiveGenerations);
+        _nodeRecordBuffer = new NodeRecordBuffer(new NativeNodeBuffer(0, NodeRecordBuffer.DefaultLiveGenerations));
         _warmer = new NoopTrieWarmer();
         _addresses = new Address[16];
         for (int i = 0; i < _addresses.Length; i++) _addresses[i] = DeriveAddress(i + 1);
     }
 
     [GlobalCleanup]
-    public void GlobalCleanup() => _trieNodeLog.Dispose();
+    public void GlobalCleanup() => _nodeRecordBuffer.Dispose();
 
     [Benchmark]
     public void CreateHintDispose()
     {
         ReadOnlySnapshotBundle readOnly = new(
             new SnapshotPooledList(0), new NoopPersistenceReader(), recordDetailedMetrics: false, PersistedSnapshotStack.Empty());
-        SnapshotBundle bundle = new(readOnly, _trieNodeLog, _resourcePool, ResourcePool.Usage.ReadOnlyProcessingEnv);
+        SnapshotBundle bundle = new(readOnly, _nodeRecordBuffer, _resourcePool, ResourcePool.Usage.ReadOnlyProcessingEnv);
         using FlatWorldStateScope scope = new(
             new StateId(0, Keccak.EmptyTreeHash),
             bundle,
             new NullCodeDb(),
             new CapturingCommitTarget(),
             _config,
-            _trieNodeLog,
             _warmer,
             NullLogManager.Instance,
             isReadOnly: true);

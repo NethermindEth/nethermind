@@ -10,14 +10,13 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Proofs;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
-
-using Nethermind.Trie.Native;
 
 namespace Nethermind.State.Flat.Test;
 
@@ -84,10 +83,10 @@ public class FlatStateReaderTests
     {
         CountingTrieReader trieReader = CountingTrieReader.WithSingleAccountAndSlot(TestItem.AddressA, 1, out Hash256 stateRoot);
         BlockHeader header = Build.A.BlockHeader.WithNumber(5).WithStateRoot(stateRoot).TestObject;
-        using NativeTrieNodeLog log = FlatTestHelpers.NewTestLog();
+        using INodeRecordBuffer buffer = FlatTestHelpers.NewTestBuffer();
         ResourcePool pool = new(new FlatDbConfig());
-        using Snapshot snapshot = pool.CreateSnapshot(StateId.PreGenesis, new StateId(header), ResourcePool.Usage.MainBlockProcessing, log);
-        trieReader.AddRootsTo(snapshot, log);
+        using Snapshot snapshot = pool.CreateSnapshot(StateId.PreGenesis, new StateId(header), ResourcePool.Usage.MainBlockProcessing, buffer);
+        trieReader.AddRootsTo(snapshot, buffer);
         FlatStateReader reader = CreateReader(new CurrentBundleFlatDbManager(trieReader, snapshot));
 
         if (fullScan)
@@ -180,10 +179,10 @@ public class FlatStateReaderTests
                 nodeStorage.Get(addressHash, TreePath.Empty, storageTree.RootHash)!);
         }
 
-        public void AddRootsTo(Snapshot snapshot, NativeTrieNodeLog log)
+        public void AddRootsTo(Snapshot snapshot, INodeRecordBuffer buffer)
         {
-            snapshot.Content.SetStateNodeRlp(log, TreePath.Empty, stateRootRlp);
-            snapshot.Content.SetStorageNodeRlp(log, addressHash, TreePath.Empty, storageRootRlp);
+            snapshot.Content.SetStateNodeRlp(buffer, TreePath.Empty, stateRootRlp);
+            snapshot.Content.SetStorageNodeRlp(buffer, addressHash, TreePath.Empty, storageRootRlp);
         }
 
         public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags)

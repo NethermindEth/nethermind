@@ -17,8 +17,8 @@ public readonly struct NativeWrittenNode
     [field: FieldOffset(72)] public int RlpOffset { get; }
     [field: FieldOffset(76)] public int RlpLength { get; }
 
-    /// <summary>Where the node's record is in the <see cref="NativeTrieNodeLog"/> given to the bulk set, meaningless when it was given none.</summary>
-    [field: FieldOffset(80)] public ulong LogPointer { get; }
+    /// <summary>Where the node's record is in the <see cref="NativeNodeBuffer"/> given to the bulk set, meaningless when it was given none.</summary>
+    [field: FieldOffset(80)] public ulong BufferPointer { get; }
 }
 
 /// <summary>The nodes held by <see cref="NativePendingNodes"/>, valid until its next bulk set, clear or dispose.</summary>

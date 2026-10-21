@@ -16,14 +16,13 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using Nethermind.Trie;
 using NSubstitute;
 using NUnit.Framework;
-
-using Nethermind.Trie.Native;
 
 namespace Nethermind.State.Flat.Test;
 
@@ -1328,8 +1327,8 @@ public class PersistenceManagerTests
         // Arrange
         StateId from = Block0;
         StateId to = CreateStateId(16);
-        using NativeTrieNodeLog log = FlatTestHelpers.NewTestLog();
-        using Snapshot snapshot = _resourcePool.CreateSnapshot(from, to, ResourcePool.Usage.ReadOnlyProcessingEnv, log);
+        using INodeRecordBuffer buffer = FlatTestHelpers.NewTestBuffer();
+        using Snapshot snapshot = _resourcePool.CreateSnapshot(from, to, ResourcePool.Usage.ReadOnlyProcessingEnv, buffer);
 
         // Add accounts
         snapshot.Content.Accounts[TestItem.AddressA] = new Account(1, 100);
@@ -1341,7 +1340,7 @@ public class PersistenceManagerTests
 
         // Add trie nodes
         TreePath path = TreePath.Empty;
-        snapshot.Content.SetStateNodeRlp(log, path, FlatTestHelpers.LeafRlpA);
+        snapshot.Content.SetStateNodeRlp(buffer, path, FlatTestHelpers.LeafRlpA);
 
         FakeWriteBatch writeBatch = new();
         _persistence.CreateWriteBatch(from, to).Returns(writeBatch);

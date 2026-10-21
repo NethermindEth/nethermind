@@ -14,8 +14,8 @@ using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.Trie;
-using Nethermind.Trie.Native;
 
 namespace Nethermind.State.Flat.ScopeProvider;
 
@@ -33,9 +33,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     private readonly Hash256 _initialStateRoot;
     // Null in a trie-less scope.
     private readonly NativeTrieNodeStore? _nativeStateStore;
-    private readonly NativeTrieNodeLog? _nativeTrieNodeLog;
     // With _nativeStateStore, the pin of the block being processed, handed to its snapshot on commit.
-    private NativeTrieNodeLogPin? _logPin;
+    private INodeRecordBufferPin? _bufferPin;
     private Hash256 _nativeStateRoot;
     private readonly Dictionary<AddressAsKey, FlatStorageTree> _storages = [];
     private ConcurrentDictionary<AddressAsKey, FlatStorageTree?>? _hintWarmStorages;
@@ -73,7 +72,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     // A history-backed scope is trie-less: flat reads/writes only, no trie node loads, writes or hashing.
     internal bool Trieless => _trieless;
 
-    internal NativeTrieNodeLog NativeTrieNodeLog => _nativeTrieNodeLog!;
+    internal INodeRecordBuffer NodeRecordBuffer => _snapshotBundle.NodeRecordBuffer;
 
     public FlatWorldStateScope(
         StateId currentStateId,
@@ -81,7 +80,6 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         IWorldStateScopeProvider.ICodeDb codeDb,
         IFlatCommitTarget commitTarget,
         IFlatDbConfig configuration,
-        NativeTrieNodeLog? nativeTrieNodeLog,
         ITrieWarmer trieCacheWarmer,
         ILogManager logManager,
         Lazy<WarmReadPool>? warmReadPool = null,
@@ -96,7 +94,6 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         _nativeStateRoot = _initialStateRoot;
 
         _configuration = configuration;
-        _nativeTrieNodeLog = nativeTrieNodeLog;
         _warmReadPool = warmReadPool;
         _logManager = logManager;
         _warmer = trieCacheWarmer;
@@ -107,8 +104,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         _trieless = snapshotBundle.IsHistorical;
         if (!_trieless)
         {
-            _nativeStateStore = new NativeTrieNodeStore(snapshotBundle, null, NativeTrieNodeLog);
-            _logPin = NativeTrieNodeLog.PinActiveGeneration();
+            _nativeStateStore = new NativeTrieNodeStore(snapshotBundle, null, NodeRecordBuffer);
+            _bufferPin = NodeRecordBuffer.PinHead();
         }
 
         if (configuration.ApplyStorageWritesOnIdleThread && !isReadOnly && !_trieless
@@ -151,7 +148,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         WaitForOutstandingWarmups();
         _snapshotBundle.Dispose();
         ReleaseStorageTrees();
-        _logPin?.Dispose();
+        _bufferPin?.Dispose();
         _nativeStateStore?.Dispose();
         _warmer.OnExitScope();
     }
@@ -498,7 +495,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             {
                 // Note: tree root not changed after writing batch. Also, not cleared. So the result is not correct.
                 // this is just for warming up
-                _snapshotBundle.WarmUpNative(_nativeStateStore!, NativeTrieNodeLog, null, _initialStateRoot, address.ToAccountPath);
+                _snapshotBundle.WarmUpNative(_nativeStateStore!, NodeRecordBuffer, null, _initialStateRoot, address.ToAccountPath);
 
                 return true;
             }
@@ -627,8 +624,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
         StateId newStateId = new(blockNumber, RootHash);
         bool shouldAddSnapshot = !_isReadOnly && _currentStateId != newStateId;
-        (Snapshot? newSnapshot, TransientResource? cachedResource) = _snapshotBundle.CollectAndApplySnapshot(_currentStateId, newStateId, _logPin, shouldAddSnapshot);
-        _logPin = _trieless ? null : NativeTrieNodeLog.PinActiveGeneration();
+        (Snapshot? newSnapshot, TransientResource? cachedResource) = _snapshotBundle.CollectAndApplySnapshot(_currentStateId, newStateId, _bufferPin, shouldAddSnapshot);
+        _bufferPin = _trieless ? null : NodeRecordBuffer.PinHead();
 
         if (shouldAddSnapshot)
         {

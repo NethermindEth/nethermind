@@ -23,6 +23,7 @@ using Nethermind.Logging;
 using Nethermind.Monitoring.Config;
 using Nethermind.Api;
 using Nethermind.State.Flat;
+using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.Persistence.TrieNodeLog;
 using Nethermind.State.Flat.PersistedSnapshots;
@@ -54,7 +55,7 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
             .AddSingleton<IFlatDbManager>((ctx) => new FlatDbManager(
                 ctx.Resolve<IResourcePool>(),
                 ctx.Resolve<IProcessExitSource>(),
-                ctx.Resolve<NativeTrieNodeLog>(),
+                ctx.Resolve<INodeRecordBuffer>(),
                 ctx.Resolve<ISnapshotCompactor>(),
                 ctx.Resolve<ISnapshotRepository>(),
                 ctx.Resolve<IPersistenceManager>(),
@@ -64,13 +65,13 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                 ctx.Resolve<ILogManager>(),
                 ctx.Resolve<IMetricsConfig>().EnableDetailedMetric))
             .AddSingleton<IResourcePool, ResourcePool>()
-            .AddSingleton<NativeTrieNodeLog, IFlatDbConfig>(config =>
+            .AddSingleton<INodeRecordBuffer, IFlatDbConfig>(config =>
             {
                 if (config.VerifyWithTrie)
                     throw new InvalidConfigurationException("FlatDb.VerifyWithTrie is not supported by the native Flat DB trie backend.", -1);
                 if (!NativePatriciaBulkSet.IsAvailable)
                     throw new InvalidConfigurationException("Flat DB requires libnethermind_patricia, but the native library could not be loaded.", -1);
-                return new NativeTrieNodeLog(config.CompressedNodeRecordBufferMemoryBudget, config.NodeRecordBufferLiveGenerations);
+                return new NodeRecordBuffer(new NativeNodeBuffer(config.CompressedNodeRecordBufferMemoryBudget, config.NodeRecordBufferLiveGenerations));
             })
             .AddSingleton<ICompactionSchedule, CompactionSchedule>()
             .AddSingleton<ISnapshotCompactor, SnapshotCompactor>()

@@ -14,14 +14,13 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using Nethermind.Trie;
 using NSubstitute;
 using NUnit.Framework;
-
-using Nethermind.Trie.Native;
 
 namespace Nethermind.State.Flat.Test;
 
@@ -35,7 +34,7 @@ public class LongFinalityIntegrationTests
     private IFlatDbConfig _config = null!;
     private ArenaManager _memArena = null!;
     private BlobArenaManager _helperBlobs = null!;
-    private NativeTrieNodeLog _log = null!;
+    private INodeRecordBuffer _buffer = null!;
 
     [SetUp]
     public void SetUp()
@@ -43,7 +42,7 @@ public class LongFinalityIntegrationTests
         _testDir = Path.Combine(Path.GetTempPath(), $"nethermind_test_{Guid.NewGuid():N}");
         Directory.CreateDirectory(_testDir);
         _pool = new ResourcePool(new FlatDbConfig());
-        _log = FlatTestHelpers.NewTestLog();
+        _buffer = FlatTestHelpers.NewTestBuffer();
         _cts = new CancellationTokenSource();
         _processExitSource = Substitute.For<IProcessExitSource>();
         _processExitSource.Token.Returns(_cts.Token);
@@ -59,14 +58,14 @@ public class LongFinalityIntegrationTests
         _cts.Dispose();
         _helperBlobs.Dispose();
         _memArena.Dispose();
-        _log.Dispose();
+        _buffer.Dispose();
         if (Directory.Exists(_testDir))
             Directory.Delete(_testDir, recursive: true);
     }
 
     private Snapshot CreateSnapshot(StateId from, StateId to, Action<SnapshotContent> configure)
     {
-        Snapshot snapshot = _pool.CreateSnapshot(from, to, ResourcePool.Usage.MainBlockProcessing, _log);
+        Snapshot snapshot = _pool.CreateSnapshot(from, to, ResourcePool.Usage.MainBlockProcessing, _buffer);
         configure(snapshot.Content);
         return snapshot;
     }
@@ -95,8 +94,8 @@ public class LongFinalityIntegrationTests
             byte[] slotVal = new byte[32]; slotVal[31] = 0xFF;
             c.Storages[(TestItem.AddressA, (UInt256)42)] = new UInt256(slotVal, isBigEndian: true);
             c.SelfDestructedStorageAddresses[TestItem.AddressB] = false;
-            c.SetStateNodeRlp(_log, statePath, stateRlp);
-            c.SetStorageNodeRlp(_log, storageAddr, storagePath, storageRlp);
+            c.SetStateNodeRlp(_buffer, statePath, stateRlp);
+            c.SetStorageNodeRlp(_buffer, storageAddr, storagePath, storageRlp);
         });
 
         tier.ConvertToPersistedBase(snap).Dispose();
@@ -150,14 +149,14 @@ public class LongFinalityIntegrationTests
 
             using Snapshot source1 = CreateSnapshot(s0, s1, c =>
             {
-                foreach (TreePath p in paths1) c.SetStateNodeRlp(_log, p, rlp1);
+                foreach (TreePath p in paths1) c.SetStateNodeRlp(_buffer, p, rlp1);
                 c.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance(100).TestObject;
             });
             tier1.ConvertToPersistedBase(source1).Dispose();
 
             using Snapshot source2 = CreateSnapshot(s1, s2, c =>
             {
-                foreach (TreePath p in paths2) c.SetStateNodeRlp(_log, p, rlp2);
+                foreach (TreePath p in paths2) c.SetStateNodeRlp(_buffer, p, rlp2);
                 c.Accounts[TestItem.AddressB] = Build.An.Account.WithBalance(200).TestObject;
             });
             tier1.ConvertToPersistedBase(source2).Dispose();
@@ -241,14 +240,14 @@ public class LongFinalityIntegrationTests
         using Snapshot snap1 = CreateSnapshot(s0, s1, c =>
         {
             c.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance(100).TestObject;
-            c.SetStateNodeRlp(_log, statePath, FlatTestHelpers.LeafRlp(0xC0));
-            c.SetStorageNodeRlp(_log, storageAddr, storagePath, FlatTestHelpers.LeafRlp(0xC1, 0x80));
+            c.SetStateNodeRlp(_buffer, statePath, FlatTestHelpers.LeafRlp(0xC0));
+            c.SetStorageNodeRlp(_buffer, storageAddr, storagePath, FlatTestHelpers.LeafRlp(0xC1, 0x80));
         });
 
         using Snapshot snap2 = CreateSnapshot(s1, s2, c =>
         {
             c.Accounts[TestItem.AddressB] = Build.An.Account.WithBalance(200).TestObject;
-            c.SetStateNodeRlp(_log, statePath, FlatTestHelpers.LeafRlp(0xC2, 0x80, 0x80)); // Override
+            c.SetStateNodeRlp(_buffer, statePath, FlatTestHelpers.LeafRlp(0xC2, 0x80, 0x80)); // Override
         });
 
         byte[] data1 = PersistedSnapshotBuilderTestExtensions.Build(snap1, _helperBlobs);
@@ -305,7 +304,7 @@ public class LongFinalityIntegrationTests
         byte[] nodeRlp = FlatTestHelpers.LeafRlp(0xC1, 0x80);
 
         using Snapshot source = CreateSnapshot(s0, s1, c =>
-            c.SetStateNodeRlp(_log, path, nodeRlp));
+            c.SetStateNodeRlp(_buffer, path, nodeRlp));
         tier.ConvertToPersistedBase(source).Dispose();
 
         // Set up persistence reader at s0 — persisted snapshot fills gap s0→s1
@@ -318,7 +317,7 @@ public class LongFinalityIntegrationTests
         await using FlatDbManager manager = new(
             Substitute.For<IResourcePool>(),
             _processExitSource,
-            _log,
+            _buffer,
             Substitute.For<ISnapshotCompactor>(),
             repo,
             persistenceManager,

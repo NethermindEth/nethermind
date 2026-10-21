@@ -9,11 +9,11 @@ use std::sync::Mutex;
 
 use rustc_hash::FxBuildHasher;
 
-use crate::log::LogPointer;
+use crate::buffer::BufferPointer;
 use crate::node::TreePath;
 
 /// A written node, whose RLP is `rlp_length` bytes at `rlp_offset` in the arena of its [`PendingNodes`], and whose
-/// record is at `log_pointer` in the log of the bulk set that wrote it, meaningless for a temporary log.
+/// record is at `buffer_pointer` in the buffer of the bulk set that wrote it, meaningless for a temporary buffer.
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
 pub struct WrittenNode {
@@ -21,7 +21,7 @@ pub struct WrittenNode {
     pub hash: [u8; 32],
     pub rlp_offset: i32,
     pub rlp_length: i32,
-    pub log_pointer: LogPointer,
+    pub buffer_pointer: BufferPointer,
 }
 
 // Mirrored by NativeWrittenNode in C#.
@@ -31,7 +31,7 @@ const _: () = {
     assert!(std::mem::offset_of!(WrittenNode, hash) == 40);
     assert!(std::mem::offset_of!(WrittenNode, rlp_offset) == 72);
     assert!(std::mem::offset_of!(WrittenNode, rlp_length) == 76);
-    assert!(std::mem::offset_of!(WrittenNode, log_pointer) == 80);
+    assert!(std::mem::offset_of!(WrittenNode, buffer_pointer) == 80);
 };
 
 /// The nodes bulk sets wrote, one per path with the last write winning, so later bulk sets read them back. Sharded by
@@ -97,12 +97,12 @@ impl PendingNodes {
         (path.path[0] as usize * self.0.len()) >> 8
     }
 
-    /// Stores `record(index)`, a `(path, hash, rlp, log pointer)`, for every index below `count`, locking each shard
+    /// Stores `record(index)`, a `(path, hash, rlp, buffer pointer)`, for every index below `count`, locking each shard
     /// written to once. Overwriting a path leaves its old RLP in the arena until [`PendingNodes::clear`].
     pub fn write<'a>(
         &self,
         count: usize,
-        record: impl Fn(usize) -> (&'a TreePath, &'a [u8; 32], &'a [u8], LogPointer),
+        record: impl Fn(usize) -> (&'a TreePath, &'a [u8; 32], &'a [u8], BufferPointer),
     ) {
         if self.0.len() == 1 {
             self.write_shard(0, (0..count).map(record));
@@ -137,17 +137,17 @@ impl PendingNodes {
     fn write_shard<'a>(
         &self,
         shard: usize,
-        records: impl Iterator<Item = (&'a TreePath, &'a [u8; 32], &'a [u8], LogPointer)>,
+        records: impl Iterator<Item = (&'a TreePath, &'a [u8; 32], &'a [u8], BufferPointer)>,
     ) {
         let mut inner = self.0[shard].lock().unwrap();
         let Inner { nodes, rlp, .. } = &mut *inner;
-        for (path, hash, node_rlp, log_pointer) in records {
+        for (path, hash, node_rlp, buffer_pointer) in records {
             nodes.push(WrittenNode {
                 path: *path,
                 hash: *hash,
                 rlp_offset: rlp.len() as i32,
                 rlp_length: node_rlp.len() as i32,
-                log_pointer,
+                buffer_pointer,
             });
             rlp.extend_from_slice(node_rlp);
         }

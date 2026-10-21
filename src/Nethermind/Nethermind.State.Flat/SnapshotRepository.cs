@@ -959,7 +959,7 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
         _largeCompacted.DisposeAndClear();
         _compactSized.DisposeAndClear();
 
-        // In-memory snapshots pin their trie node log generations, which stay allocated until every pin is released.
+        // In-memory snapshots pin their trie node buffer generations, which stay allocated until every pin is released.
         foreach (KeyValuePair<StateId, Snapshot> compacted in _compactedSnapshots) RemoveAndReleaseInMemoryKnownState(compacted.Key, SnapshotTier.InMemoryCompacted);
         foreach (KeyValuePair<StateId, Snapshot> snapshot in _snapshots) RemoveAndReleaseInMemoryKnownState(snapshot.Key, SnapshotTier.InMemoryBase);
     }

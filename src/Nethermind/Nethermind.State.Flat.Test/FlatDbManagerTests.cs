@@ -15,12 +15,11 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.History;
+using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
 using NSubstitute;
 using NUnit.Framework;
-
-using Nethermind.Trie.Native;
 
 namespace Nethermind.State.Flat.Test;
 
@@ -36,7 +35,7 @@ public class FlatDbManagerTests
     private IFlatDbConfig _config = null!;
     private IBlocksConfig _blocksConfig = null!;
     private CancellationTokenSource _cts = null!;
-    private NativeTrieNodeLog _log = null!;
+    private INodeRecordBuffer _buffer = null!;
 
     private const long HistoryBarrier = 100;
     private static readonly Address HistoryAddr = new("0x0000000000000000000000000000000000000abc");
@@ -53,7 +52,7 @@ public class FlatDbManagerTests
     {
         _resourcePool = Substitute.For<IResourcePool>();
         _cts = new CancellationTokenSource();
-        _log = FlatTestHelpers.NewTestLog();
+        _buffer = FlatTestHelpers.NewTestBuffer();
         _processExitSource = Substitute.For<IProcessExitSource>();
         _processExitSource.Token.Returns(_cts.Token);
         _snapshotCompactor = Substitute.For<ISnapshotCompactor>();
@@ -81,13 +80,13 @@ public class FlatDbManagerTests
         _cts.Dispose();
         _historyDb.Dispose();
         _historyColumns.Dispose();
-        _log.Dispose();
+        _buffer.Dispose();
     }
 
     private FlatDbManager CreateManager() => new(
         _resourcePool,
         _processExitSource,
-        _log,
+        _buffer,
         _snapshotCompactor,
         _snapshotRepository,
         _persistenceManager,

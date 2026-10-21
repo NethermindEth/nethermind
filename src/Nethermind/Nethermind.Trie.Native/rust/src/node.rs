@@ -3,7 +3,7 @@
 
 //! Node model and its standard Ethereum node RLP, whose keccak is the node hash.
 
-use crate::log::LogPointer;
+use crate::buffer::BufferPointer;
 use crate::Error;
 
 const EMPTY_STRING: u8 = 0x80;
@@ -143,10 +143,10 @@ impl InlineRlp {
 pub enum ChildRef {
     #[default]
     Empty,
-    /// A node referenced by `hash`, also at `pointer` in the log unless that is zero.
+    /// A node referenced by `hash`, also at `pointer` in the buffer unless that is zero.
     Hash {
         hash: [u8; 32],
-        pointer: LogPointer,
+        pointer: BufferPointer,
     },
     Inline(InlineRlp),
     /// A node created during this bulk set that is not encoded yet.
@@ -208,10 +208,10 @@ const EXTENSION: u8 = 1;
 const HASHED_BRANCH: u8 = 2;
 /// A branch with an inline child, whose children are found by parsing those before them.
 const INLINE_BRANCH: u8 = 3;
-/// kind: u8, zero: u8, hash mask: u16, RLP length: u32, node hash: [u8; 32], key: u64, see [`crate::log::node_key`].
+/// kind: u8, zero: u8, hash mask: u16, RLP length: u32, node hash: [u8; 32], key: u64, see [`crate::buffer::node_key`].
 pub const RECORD_HEADER_LENGTH: usize = 48;
 const POINTER_LENGTH: usize = 8;
-/// High-bit tagged pointers are resource-local warmed records, never persistent log addresses.
+/// High-bit tagged pointers are resource-local warmed records, never persistent buffer addresses.
 pub const TRANSIENT_POINTER: u64 = 1 << 63;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -238,12 +238,12 @@ fn hash_mask(node: &Node) -> u16 {
         .fold(0, |mask, (index, _)| mask | 1 << index)
 }
 
-/// Length of the log record of `node`, whose RLP is `rlp_length` bytes.
+/// Length of the buffer record of `node`, whose RLP is `rlp_length` bytes.
 pub fn record_length(node: &Node, rlp_length: usize) -> usize {
     RECORD_HEADER_LENGTH + POINTER_LENGTH * hash_mask(node).count_ones() as usize + rlp_length
 }
 
-/// Length of the log record starting with `header`.
+/// Length of the buffer record starting with `header`.
 pub fn record_length_of(header: &[u8]) -> usize {
     RECORD_HEADER_LENGTH
         + POINTER_LENGTH
@@ -251,11 +251,11 @@ pub fn record_length_of(header: &[u8]) -> usize {
         + u32::from_le_bytes(header[4..8].try_into().unwrap()) as usize
 }
 
-/// Writes the log record of `node`, whose children must all be resolved, with key `key`, hash `hash` and RLP `rlp`, to
+/// Writes the buffer record of `node`, whose children must all be resolved, with key `key`, hash `hash` and RLP `rlp`, to
 /// `out` of [`record_length`] bytes.
 ///
-/// A record is its header, the log pointer of every child referenced by hash, in child order, then the RLP, which
-/// [`LoggedNode`] decodes in place.
+/// A record is its header, the buffer pointer of every child referenced by hash, in child order, then the RLP, which
+/// [`BufferedNode`] decodes in place.
 pub fn write_record(node: &Node, key: u64, hash: &[u8; 32], rlp: &[u8], out: &mut [u8]) {
     write_record_inner(node, key, hash, rlp, out, false);
 }
@@ -288,23 +288,23 @@ fn write_record_inner(node: &Node, key: u64, hash: &[u8; 32], rlp: &[u8], out: &
     for child in children(node) {
         match child {
             ChildRef::Hash { pointer, .. } => {
-                // A logged node can outlive or be compacted after the warmed resource is reset.
+                // A buffered node can outlive or be compacted after the warmed resource is reset.
                 let pointer = if !transient && pointer & TRANSIENT_POINTER != 0 { 0 } else { *pointer };
                 out[offset..offset + POINTER_LENGTH].copy_from_slice(&pointer.to_le_bytes());
                 offset += POINTER_LENGTH;
             }
-            ChildRef::Pending(_) => unreachable!("only resolved children are logged"),
+            ChildRef::Pending(_) => unreachable!("only resolved children are buffered"),
             ChildRef::Empty | ChildRef::Inline(_) => {}
         }
     }
     out[offset..].copy_from_slice(rlp);
 }
 
-/// The address of a node record, in a log or in warmed nodes, which its holder keeps for as long as it is used.
+/// The address of a node record, in a buffer or in warmed nodes, which its holder keeps for as long as it is used.
 #[derive(Clone, Copy)]
 pub struct RecordPtr(*const u8);
 
-// Records are never written once appended, and a bulk set only reads them while their log session or warmed nodes
+// Records are never written once appended, and a bulk set only reads them while their buffer session or warmed nodes
 // keep them.
 unsafe impl Send for RecordPtr {}
 unsafe impl Sync for RecordPtr {}
@@ -315,23 +315,23 @@ impl RecordPtr {
     }
 
     /// The node of the record, which must still be kept.
-    pub fn node<'a>(self) -> LoggedNode<'a> {
+    pub fn node<'a>(self) -> BufferedNode<'a> {
         unsafe {
             let length = record_length_of(std::slice::from_raw_parts(self.0, RECORD_HEADER_LENGTH));
-            LoggedNode::new(std::slice::from_raw_parts(self.0, length))
+            BufferedNode::new(std::slice::from_raw_parts(self.0, length))
         }
     }
 }
 
-/// A node read in place from its log record.
+/// A node read in place from its buffer record.
 #[derive(Clone, Copy)]
-pub struct LoggedNode<'a> {
+pub struct BufferedNode<'a> {
     record: &'a [u8],
 }
 
-impl<'a> LoggedNode<'a> {
-    pub fn new(record: &'a [u8]) -> LoggedNode<'a> {
-        LoggedNode { record }
+impl<'a> BufferedNode<'a> {
+    pub fn new(record: &'a [u8]) -> BufferedNode<'a> {
+        BufferedNode { record }
     }
 
     pub fn kind(&self) -> NodeKind {
@@ -346,7 +346,7 @@ impl<'a> LoggedNode<'a> {
         self.record[8..40].try_into().unwrap()
     }
 
-    pub fn log_key(&self) -> u64 {
+    pub fn buffer_key(&self) -> u64 {
         u64::from_le_bytes(self.record[40..RECORD_HEADER_LENGTH].try_into().unwrap())
     }
 
@@ -360,9 +360,9 @@ impl<'a> LoggedNode<'a> {
         match self.kind() {
             NodeKind::Branch => Nibbles::from_slice(&[]),
             _ => {
-                let (key, _) = logged_item(self.payload());
+                let (key, _) = buffered_item(self.payload());
                 decode_hex_prefix(key.payload)
-                    .expect("logged RLP is well formed")
+                    .expect("buffered RLP is well formed")
                     .0
             }
         }
@@ -370,8 +370,8 @@ impl<'a> LoggedNode<'a> {
 
     /// The value of a leaf.
     pub fn value(&self) -> &'a [u8] {
-        let (_, rest) = logged_item(self.payload());
-        logged_item(rest).0.payload
+        let (_, rest) = buffered_item(self.payload());
+        buffered_item(rest).0.payload
     }
 
     /// Child `index` of a branch, or the child of an extension.
@@ -393,11 +393,11 @@ impl<'a> LoggedNode<'a> {
             INLINE_BRANCH => {
                 let mut remaining = self.payload();
                 for _ in 0..index {
-                    remaining = logged_item(remaining).1;
+                    remaining = buffered_item(remaining).1;
                 }
-                self.read_child(&logged_item(remaining).0, position)
+                self.read_child(&buffered_item(remaining).0, position)
             }
-            EXTENSION => self.read_child(&logged_item(logged_item(self.payload()).1).0, 0),
+            EXTENSION => self.read_child(&buffered_item(buffered_item(self.payload()).1).0, 0),
             _ => unreachable!("a leaf has no children"),
         }
     }
@@ -418,7 +418,7 @@ impl<'a> LoggedNode<'a> {
                 let mut remaining = self.payload();
                 let mut position = 0;
                 for child in children.iter_mut() {
-                    let (item, rest) = logged_item(remaining);
+                    let (item, rest) = buffered_item(remaining);
                     remaining = rest;
                     *child = self.read_child(&item, position);
                     if matches!(child, ChildRef::Hash { .. }) {
@@ -435,7 +435,7 @@ impl<'a> LoggedNode<'a> {
     }
 
     /// The pointer of the child at `position` among those referenced by hash.
-    pub(crate) fn pointer(&self, position: usize) -> LogPointer {
+    pub(crate) fn pointer(&self, position: usize) -> BufferPointer {
         let start = RECORD_HEADER_LENGTH + POINTER_LENGTH * position;
         u64::from_le_bytes(
             self.record[start..start + POINTER_LENGTH]
@@ -465,8 +465,8 @@ impl<'a> LoggedNode<'a> {
     }
 }
 
-fn logged_item(data: &[u8]) -> (Item<'_>, &[u8]) {
-    next_item(data).expect("logged RLP is well formed")
+fn buffered_item(data: &[u8]) -> (Item<'_>, &[u8]) {
+    next_item(data).expect("buffered RLP is well formed")
 }
 
 /// Appends the RLP of `node` to `out`.

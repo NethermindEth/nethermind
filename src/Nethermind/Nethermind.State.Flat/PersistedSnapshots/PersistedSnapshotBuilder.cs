@@ -53,7 +53,7 @@ public static class PersistedSnapshotBuilder
 
     public static void Build<TWriter>(Snapshot snapshot, ref TWriter writer, BlobArenaWriter blobWriter, BloomFilter bloom) where TWriter : IByteBufferWriter
     {
-        // Protects the buffered log pointers through their final RLP copy, even if the snapshot's own retain is released mid-write.
+        // Protects the buffer pointers through their final RLP copy, even if the snapshot's own retain is released mid-write.
         using IDisposable? readScope = snapshot.BeginNodeReadScope();
         using ParallelUnbalancedWork.WorkerScope workers = ParallelUnbalancedWork.BeginWorkerScope(Environment.ProcessorCount);
         // To stay off the LOH, we keep only the unmanaged sort keys in NativeMemoryList

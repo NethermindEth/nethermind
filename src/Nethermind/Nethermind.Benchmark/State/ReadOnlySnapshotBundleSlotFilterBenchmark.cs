@@ -14,6 +14,7 @@ using Nethermind.Core.Test.IO;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Db;
 using Nethermind.Int256;
+using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.Trie.Native;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.PersistedSnapshots;
@@ -35,7 +36,7 @@ namespace Nethermind.Benchmarks.State;
 [IterationCount(10)]
 public class ReadOnlySnapshotBundleSlotFilterBenchmark
 {
-    private NativeTrieNodeLog _nativeTrieNodeLog = null!;
+    private INodeRecordBuffer _nodeRecordBuffer = null!;
 
     // Unique slots written per in-memory layer of the bundle at mainnet head 26081247, newest first: two small
     // compactions, then 32-block ones. Deeper bundles repeat the pattern.
@@ -132,8 +133,8 @@ public class ReadOnlySnapshotBundleSlotFilterBenchmark
 
         _persistence = new NoopPersistenceReader();
         _bundle = CreateBundle();
-        _nativeTrieNodeLog = new NativeTrieNodeLog(0, NativeTrieNodeLog.DefaultLiveGenerations);
-        _snapshotBundle = new SnapshotBundle(CreateBundle(), _nativeTrieNodeLog, resourcePool,
+        _nodeRecordBuffer = new NodeRecordBuffer(new NativeNodeBuffer(0, NodeRecordBuffer.DefaultLiveGenerations));
+        _snapshotBundle = new SnapshotBundle(CreateBundle(), _nodeRecordBuffer, resourcePool,
             ResourcePool.Usage.ReadOnlyProcessingEnv, filterInMemorySlotReads: Filtered);
 
         // Build the filters now so the read benchmarks measure steady-state reads.
@@ -145,7 +146,7 @@ public class ReadOnlySnapshotBundleSlotFilterBenchmark
     public void Cleanup()
     {
         _snapshotBundle.Dispose();
-        _nativeTrieNodeLog.Dispose();
+        _nodeRecordBuffer.Dispose();
         _bundle.Dispose();
         foreach (FlatSnapshot layer in _layers) layer.Dispose();
         _container.Dispose();

@@ -10,6 +10,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.Trie;
 using Nethermind.Trie.Native;
 using NUnit.Framework;
@@ -24,7 +25,7 @@ public class SnapshotCompactorTests
     private FlatDbConfig _config = null!;
     private FlatTestContainer _tier = null!;
     private SnapshotRepository _snapshotRepository;
-    private NativeTrieNodeLog _log = null!;
+    private INodeRecordBuffer _buffer = null!;
 
     [SetUp]
     public void SetUp()
@@ -33,7 +34,7 @@ public class SnapshotCompactorTests
         _resourcePool = new ResourcePool(_config);
         _tier = new FlatTestContainer();
         _snapshotRepository = _tier.Repository;
-        _log = FlatTestHelpers.NewTestLog();
+        _buffer = FlatTestHelpers.NewTestBuffer();
         _compactor = new SnapshotCompactor(_config, ScheduleHelper.CreateWithOffset(_config, 0), _resourcePool, _snapshotRepository, LimboLogs.Instance);
     }
 
@@ -41,7 +42,7 @@ public class SnapshotCompactorTests
     public void TearDown()
     {
         _tier.Dispose();
-        _log.Dispose();
+        _buffer.Dispose();
     }
 
     private static StateId CreateStateId(ulong blockNumber, byte rootByte = 0)
@@ -105,7 +106,7 @@ public class SnapshotCompactorTests
         StateId from = new(0, Keccak.Zero);
         StateId to = new(1, TestItem.KeccakA);
 
-        using Snapshot snapshot = _resourcePool.CreateSnapshot(from, to, ResourcePool.Usage.ReadOnlyProcessingEnv, _log);
+        using Snapshot snapshot = _resourcePool.CreateSnapshot(from, to, ResourcePool.Usage.ReadOnlyProcessingEnv, _buffer);
         Address address1 = new("0x1111111111111111111111111111111111111111");
         Address address2 = new("0x2222222222222222222222222222222222222222");
         UInt256 storageIndex1 = new(1);
@@ -126,14 +127,14 @@ public class SnapshotCompactorTests
         snapshot.Content.Storages[(address2, storageIndex2)] = slotValue2;
 
         // Add state nodes
-        snapshot.Content.SetStateNodeRlp(_log, statePath1, FlatTestHelpers.LeafRlpA);
-        snapshot.Content.SetStateNodeRlp(_log, statePath2, FlatTestHelpers.LeafRlpB);
+        snapshot.Content.SetStateNodeRlp(_buffer, statePath1, FlatTestHelpers.LeafRlpA);
+        snapshot.Content.SetStateNodeRlp(_buffer, statePath2, FlatTestHelpers.LeafRlpB);
 
         // Add storage nodes
         Hash256 address1Hash = address1.ToAccountPath.ToCommitment();
         Hash256 address2Hash = address2.ToAccountPath.ToCommitment();
-        snapshot.Content.SetStorageNodeRlp(_log, address1Hash, storageNodePath1, FlatTestHelpers.LeafRlpA);
-        snapshot.Content.SetStorageNodeRlp(_log, address2Hash, storageNodePath2, FlatTestHelpers.LeafRlpB);
+        snapshot.Content.SetStorageNodeRlp(_buffer, address1Hash, storageNodePath1, FlatTestHelpers.LeafRlpA);
+        snapshot.Content.SetStorageNodeRlp(_buffer, address2Hash, storageNodePath2, FlatTestHelpers.LeafRlpB);
 
         SnapshotPooledList snapshots = new(1)
         {
@@ -183,24 +184,24 @@ public class SnapshotCompactorTests
         // First snapshot
         StateId from0 = new(0, Keccak.Zero);
         StateId to0 = new(1, TestItem.KeccakA);
-        using Snapshot snapshot0 = _resourcePool.CreateSnapshot(from0, to0, ResourcePool.Usage.ReadOnlyProcessingEnv, _log);
+        using Snapshot snapshot0 = _resourcePool.CreateSnapshot(from0, to0, ResourcePool.Usage.ReadOnlyProcessingEnv, _buffer);
         snapshot0.Content.Accounts[address1] = new Account(1, 100);
         snapshot0.Content.Storages[(address1, storageIndex1)] = slotValue1;
-        snapshot0.Content.SetStateNodeRlp(_log, statePath1, FlatTestHelpers.LeafRlpA);
+        snapshot0.Content.SetStateNodeRlp(_buffer, statePath1, FlatTestHelpers.LeafRlpA);
         Hash256 address1Hash = address1.ToAccountPath.ToCommitment();
-        snapshot0.Content.SetStorageNodeRlp(_log, address1Hash, storageNodePath1, FlatTestHelpers.LeafRlpA);
-        FlatTestHelpers.StartNewGeneration(_log);
+        snapshot0.Content.SetStorageNodeRlp(_buffer, address1Hash, storageNodePath1, FlatTestHelpers.LeafRlpA);
+        FlatTestHelpers.StartNewGeneration(_buffer);
 
         // Second snapshot with different items
         StateId from1 = new(1, TestItem.KeccakA);
         StateId to1 = new(2, TestItem.KeccakB);
-        using Snapshot snapshot1 = _resourcePool.CreateSnapshot(from1, to1, ResourcePool.Usage.ReadOnlyProcessingEnv, _log);
+        using Snapshot snapshot1 = _resourcePool.CreateSnapshot(from1, to1, ResourcePool.Usage.ReadOnlyProcessingEnv, _buffer);
         snapshot1.Content.Accounts[address2] = new Account(2, 200);
         snapshot1.Content.Storages[(address2, storageIndex2)] = slotValue2;
-        snapshot1.Content.SetStateNodeRlp(_log, statePath1, FlatTestHelpers.LeafRlpA);
-        snapshot1.Content.SetStateNodeRlp(_log, statePath2, FlatTestHelpers.LeafRlpB);
+        snapshot1.Content.SetStateNodeRlp(_buffer, statePath1, FlatTestHelpers.LeafRlpA);
+        snapshot1.Content.SetStateNodeRlp(_buffer, statePath2, FlatTestHelpers.LeafRlpB);
         Hash256 address2Hash = address2.ToAccountPath.ToCommitment();
-        snapshot1.Content.SetStorageNodeRlp(_log, address2Hash, storageNodePath2, FlatTestHelpers.LeafRlpB);
+        snapshot1.Content.SetStorageNodeRlp(_buffer, address2Hash, storageNodePath2, FlatTestHelpers.LeafRlpB);
 
         SnapshotPooledList snapshots = new(2)
         {
@@ -215,8 +216,8 @@ public class SnapshotCompactorTests
         Assert.That(compacted.StoragesCount, Is.EqualTo(2));
         Assert.That(compacted.StateNodes.Count(), Is.EqualTo(3));
         Assert.That(compacted.StorageNodes.Count(), Is.EqualTo(2));
-        Assert.That(snapshot1.LogPin!.Generation, Is.GreaterThan(snapshot0.LogPin!.Generation));
-        Assert.That(compacted.LogPin!.Generation, Is.EqualTo(snapshot0.LogPin.Generation));
+        Assert.That((snapshot1.BufferPin!.WriteBoundary >> NodeRecordBuffer.OffsetBits), Is.GreaterThan((snapshot0.BufferPin!.WriteBoundary >> NodeRecordBuffer.OffsetBits)));
+        Assert.That((compacted.BufferPin!.WriteBoundary >> NodeRecordBuffer.OffsetBits), Is.EqualTo((snapshot0.BufferPin.WriteBoundary >> NodeRecordBuffer.OffsetBits)));
         Assert.That(compacted.TryGetStateNode(statePath1, out ulong stateNode1), Is.True);
         Assert.That(compacted.GetRlp(stateNode1).ToArray(), Is.EqualTo(Bytes.FromHexString(FlatTestHelpers.LeafRlpA)));
     }
@@ -234,21 +235,21 @@ public class SnapshotCompactorTests
         // First snapshot with initial values
         StateId from0 = new(0, Keccak.Zero);
         StateId to0 = new(1, TestItem.KeccakA);
-        using Snapshot snapshot0 = _resourcePool.CreateSnapshot(from0, to0, ResourcePool.Usage.ReadOnlyProcessingEnv, _log);
+        using Snapshot snapshot0 = _resourcePool.CreateSnapshot(from0, to0, ResourcePool.Usage.ReadOnlyProcessingEnv, _buffer);
         snapshot0.Content.Accounts[address] = new Account(1, 100);
         snapshot0.Content.Storages[(address, storageIndex)] = slotValue1;
-        snapshot0.Content.SetStateNodeRlp(_log, statePath, FlatTestHelpers.LeafRlpA);
+        snapshot0.Content.SetStateNodeRlp(_buffer, statePath, FlatTestHelpers.LeafRlpA);
         Hash256 addressHash = address.ToAccountPath.ToCommitment();
-        snapshot0.Content.SetStorageNodeRlp(_log, addressHash, storageNodePath, FlatTestHelpers.LeafRlpA);
+        snapshot0.Content.SetStorageNodeRlp(_buffer, addressHash, storageNodePath, FlatTestHelpers.LeafRlpA);
 
         // Second snapshot with updated values for same keys
         StateId from1 = new(1, TestItem.KeccakA);
         StateId to1 = new(2, TestItem.KeccakB);
-        using Snapshot snapshot1 = _resourcePool.CreateSnapshot(from1, to1, ResourcePool.Usage.ReadOnlyProcessingEnv, _log);
+        using Snapshot snapshot1 = _resourcePool.CreateSnapshot(from1, to1, ResourcePool.Usage.ReadOnlyProcessingEnv, _buffer);
         snapshot1.Content.Accounts[address] = new Account(2, 200);
         snapshot1.Content.Storages[(address, storageIndex)] = slotValue2;
-        snapshot1.Content.SetStateNodeRlp(_log, statePath, FlatTestHelpers.LeafRlpB);
-        snapshot1.Content.SetStorageNodeRlp(_log, addressHash, storageNodePath, FlatTestHelpers.LeafRlpB);
+        snapshot1.Content.SetStateNodeRlp(_buffer, statePath, FlatTestHelpers.LeafRlpB);
+        snapshot1.Content.SetStorageNodeRlp(_buffer, addressHash, storageNodePath, FlatTestHelpers.LeafRlpB);
 
         SnapshotPooledList snapshots = new(2)
         {
@@ -285,10 +286,10 @@ public class SnapshotCompactorTests
 
         StateId from0 = new(0, Keccak.Zero);
         StateId to0 = new(1, Keccak.Zero);
-        using Snapshot snapshot0 = _resourcePool.CreateSnapshot(from0, to0, ResourcePool.Usage.ReadOnlyProcessingEnv, _log);
+        using Snapshot snapshot0 = _resourcePool.CreateSnapshot(from0, to0, ResourcePool.Usage.ReadOnlyProcessingEnv, _buffer);
         snapshot0.Content.Accounts[address] = new Account(1, 100);
         snapshot0.Content.Storages[(address, storageIndex)] = slotValue;
-        snapshot0.Content.SetStorageNodeRlp(_log, address.ToAccountPath.ToCommitment(), storagePath, FlatTestHelpers.LeafRlpA);
+        snapshot0.Content.SetStorageNodeRlp(_buffer, address.ToAccountPath.ToCommitment(), storagePath, FlatTestHelpers.LeafRlpA);
 
         StateId from1 = new(1, Keccak.Zero);
         StateId to1 = new(2, Keccak.Zero);
@@ -323,24 +324,24 @@ public class SnapshotCompactorTests
         static UInt256 Slot(byte marker) => (UInt256)marker << 248;
 
         // Block 0 -> 1: A gets a slot/node written before it is ever self-destructed; B is unrelated.
-        using Snapshot s0 = _resourcePool.CreateSnapshot(new(0, Keccak.Zero), new(1, Keccak.Zero), ResourcePool.Usage.ReadOnlyProcessingEnv, _log);
+        using Snapshot s0 = _resourcePool.CreateSnapshot(new(0, Keccak.Zero), new(1, Keccak.Zero), ResourcePool.Usage.ReadOnlyProcessingEnv, _buffer);
         s0.Content.Storages[(a, new UInt256(1))] = Slot(0xA0);
-        s0.Content.SetStorageNodeRlp(_log, aHash, pBefore, FlatTestHelpers.LeafRlpA);
+        s0.Content.SetStorageNodeRlp(_buffer, aHash, pBefore, FlatTestHelpers.LeafRlpA);
         s0.Content.Storages[(b, new UInt256(1))] = Slot(0xBB);
-        s0.Content.SetStorageNodeRlp(_log, bHash, pB, FlatTestHelpers.LeafRlpA);
+        s0.Content.SetStorageNodeRlp(_buffer, bHash, pB, FlatTestHelpers.LeafRlpA);
 
         // Block 1 -> 2: A is self-destructed and re-written in the same snapshot (add after clear survives).
-        using Snapshot s1 = _resourcePool.CreateSnapshot(new(1, Keccak.Zero), new(2, Keccak.Zero), ResourcePool.Usage.ReadOnlyProcessingEnv, _log);
+        using Snapshot s1 = _resourcePool.CreateSnapshot(new(1, Keccak.Zero), new(2, Keccak.Zero), ResourcePool.Usage.ReadOnlyProcessingEnv, _buffer);
         s1.Content.SelfDestructedStorageAddresses[a] = false;
         s1.Content.Storages[(a, new UInt256(2))] = Slot(0xA2);
-        s1.Content.SetStorageNodeRlp(_log, aHash, pSame, FlatTestHelpers.LeafRlpA);
+        s1.Content.SetStorageNodeRlp(_buffer, aHash, pSame, FlatTestHelpers.LeafRlpA);
 
         // Block 2 -> 3: A is written again, optionally self-destructed again (which raises the boundary).
-        using Snapshot s2 = _resourcePool.CreateSnapshot(new(2, Keccak.Zero), new(3, Keccak.Zero), ResourcePool.Usage.ReadOnlyProcessingEnv, _log);
+        using Snapshot s2 = _resourcePool.CreateSnapshot(new(2, Keccak.Zero), new(3, Keccak.Zero), ResourcePool.Usage.ReadOnlyProcessingEnv, _buffer);
         if (selfDestructAgainInLastSnapshot) s2.Content.SelfDestructedStorageAddresses[a] = false;
         s2.Content.Storages[(a, new UInt256(3))] = Slot(0xA3);
-        if (!selfDestructAgainInLastSnapshot) s2.Content.SetStorageNodeRlp(_log, aHash, pSame, FlatTestHelpers.LeafRlpA);
-        s2.Content.SetStorageNodeRlp(_log, aHash, pAfter, FlatTestHelpers.LeafRlpA);
+        if (!selfDestructAgainInLastSnapshot) s2.Content.SetStorageNodeRlp(_buffer, aHash, pSame, FlatTestHelpers.LeafRlpA);
+        s2.Content.SetStorageNodeRlp(_buffer, aHash, pAfter, FlatTestHelpers.LeafRlpA);
 
         SnapshotPooledList snapshots = new(3) { s0, s1, s2 };
         using Snapshot compacted = _compactor.CompactSnapshotBundle(snapshots);
@@ -368,19 +369,19 @@ public class SnapshotCompactorTests
     [Test]
     public void CompactSnapshotBundle_SelectsEarliestFullBoundaryNotFirstGenerationMatch()
     {
-        NativeTrieNodeLogPin earliest = _log.PinActiveGeneration();
+        INodeRecordBufferPin earliest = _buffer.PinHead();
         SnapshotContent finalContent = new();
-        finalContent.SetStateNodeRlp(_log, TreePath.FromHexString("1"), FlatTestHelpers.LeafRlpA);
-        using Snapshot first = _resourcePool.CreateSnapshot(new(0, Keccak.EmptyTreeHash), new(1, TestItem.KeccakA), ResourcePool.Usage.ReadOnlyProcessingEnv, _log);
+        finalContent.SetStateNodeRlp(_buffer, TreePath.FromHexString("1"), FlatTestHelpers.LeafRlpA);
+        using Snapshot first = _resourcePool.CreateSnapshot(new(0, Keccak.EmptyTreeHash), new(1, TestItem.KeccakA), ResourcePool.Usage.ReadOnlyProcessingEnv, _buffer);
         using Snapshot final = new(first.To, new(2, TestItem.KeccakB), finalContent, _resourcePool, ResourcePool.Usage.ReadOnlyProcessingEnv, earliest);
         using Snapshot compacted = _compactor.CompactSnapshotBundle(new(2) { first, final });
         using Snapshot result = _compactor.CompactSnapshotBundle(new(1) { compacted });
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(first.LogPin!.Generation, Is.EqualTo(earliest.Generation));
-            Assert.That(first.LogPin.WriteBoundary, Is.GreaterThan(earliest.WriteBoundary));
-            Assert.That(result.LogPin!.WriteBoundary, Is.EqualTo(earliest.WriteBoundary));
+            Assert.That((first.BufferPin!.WriteBoundary >> NodeRecordBuffer.OffsetBits), Is.EqualTo((earliest.WriteBoundary >> NodeRecordBuffer.OffsetBits)));
+            Assert.That(first.BufferPin.WriteBoundary, Is.GreaterThan(earliest.WriteBoundary));
+            Assert.That(result.BufferPin!.WriteBoundary, Is.EqualTo(earliest.WriteBoundary));
             Assert.That(result.StateNodes.Count(), Is.EqualTo(2));
         }
     }
@@ -388,21 +389,21 @@ public class SnapshotCompactorTests
     [Test]
     public void CompactSnapshotBundle_SelectsEarliestNativeWriteBoundaryWithinGeneration()
     {
-        using NativeTrieNodeLog log = new(0, NativeTrieNodeLog.DefaultLiveGenerations);
-        NativeTrieNodeLogPin earliest = log.PinActiveGeneration();
-        Hash256 root = FlatTestHelpers.WriteNative(log, null, Keccak.EmptyTreeHash, new PatriciaTree.BulkSetEntry(TestItem.KeccakA.ValueHash256, [1]));
+        using INodeRecordBuffer buffer = new NodeRecordBuffer(new NativeNodeBuffer(0, NodeRecordBuffer.DefaultLiveGenerations));
+        INodeRecordBufferPin earliest = buffer.PinHead();
+        Hash256 root = FlatTestHelpers.WriteNative(buffer, null, Keccak.EmptyTreeHash, new PatriciaTree.BulkSetEntry(TestItem.KeccakA.ValueHash256, [1]));
         using Snapshot first = new(new(0, Keccak.EmptyTreeHash), new(1, root), new SnapshotContent(), _resourcePool,
-            ResourcePool.Usage.ReadOnlyProcessingEnv, log.PinActiveGeneration());
+            ResourcePool.Usage.ReadOnlyProcessingEnv, buffer.PinHead());
         using Snapshot final = new(first.To, new(2, root), new SnapshotContent(), _resourcePool,
             ResourcePool.Usage.ReadOnlyProcessingEnv, earliest);
-        final.Content.StateRootPointer = log.ResolveRoot(null, root.ValueHash256);
+        final.Content.StateRootPointer = buffer.FindRoot(null, root.ValueHash256);
         using Snapshot compacted = _compactor.CompactSnapshotBundle(new(2) { first, final });
         using Snapshot result = _compactor.CompactSnapshotBundle(new(1) { compacted });
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(first.LogPin!.Generation, Is.EqualTo(earliest.Generation));
-            Assert.That(first.LogPin.WriteBoundary, Is.GreaterThan(earliest.WriteBoundary));
-            Assert.That(result.LogPin!.WriteBoundary, Is.EqualTo(earliest.WriteBoundary));
+            Assert.That((first.BufferPin!.WriteBoundary >> NodeRecordBuffer.OffsetBits), Is.EqualTo((earliest.WriteBoundary >> NodeRecordBuffer.OffsetBits)));
+            Assert.That(first.BufferPin.WriteBoundary, Is.GreaterThan(earliest.WriteBoundary));
+            Assert.That(result.BufferPin!.WriteBoundary, Is.EqualTo(earliest.WriteBoundary));
             Assert.That(result.StateNodes.Count(), Is.EqualTo(1));
         }
     }
@@ -412,10 +413,10 @@ public class SnapshotCompactorTests
     {
         TreePath oldPath = TreePath.FromHexString("1");
         TreePath finalPath = TreePath.FromHexString("2");
-        using Snapshot older = _resourcePool.CreateSnapshot(new(0, Keccak.Zero), new(1, Keccak.Zero), ResourcePool.Usage.ReadOnlyProcessingEnv, _log);
-        older.Content.SetStateNodeRlp(_log, oldPath, FlatTestHelpers.LeafRlpA);
-        using Snapshot final = _resourcePool.CreateSnapshot(older.To, new(2, Keccak.Zero), ResourcePool.Usage.ReadOnlyProcessingEnv, _log);
-        final.Content.SetStateNodeRlp(_log, finalPath, FlatTestHelpers.LeafRlpB);
+        using Snapshot older = _resourcePool.CreateSnapshot(new(0, Keccak.Zero), new(1, Keccak.Zero), ResourcePool.Usage.ReadOnlyProcessingEnv, _buffer);
+        older.Content.SetStateNodeRlp(_buffer, oldPath, FlatTestHelpers.LeafRlpA);
+        using Snapshot final = _resourcePool.CreateSnapshot(older.To, new(2, Keccak.Zero), ResourcePool.Usage.ReadOnlyProcessingEnv, _buffer);
+        final.Content.SetStateNodeRlp(_buffer, finalPath, FlatTestHelpers.LeafRlpB);
 
         using Snapshot compacted = _compactor.CompactSnapshotBundle(new(2) { older, final });
 
@@ -433,9 +434,9 @@ public class SnapshotCompactorTests
     {
         byte[] rlp = Bytes.FromHexString(FlatTestHelpers.LeafRlpA);
         Hash256 hash = new(ValueKeccak.Compute(rlp));
-        using Snapshot older = _resourcePool.CreateSnapshot(new(0, Keccak.EmptyTreeHash), new(1, hash), ResourcePool.Usage.ReadOnlyProcessingEnv, _log);
-        older.Content.SetStateNodeRlp(_log, TreePath.Empty, rlp);
-        using Snapshot final = _resourcePool.CreateSnapshot(older.To, new(2, matchingHash ? hash : TestItem.KeccakB), ResourcePool.Usage.ReadOnlyProcessingEnv, _log);
+        using Snapshot older = _resourcePool.CreateSnapshot(new(0, Keccak.EmptyTreeHash), new(1, hash), ResourcePool.Usage.ReadOnlyProcessingEnv, _buffer);
+        older.Content.SetStateNodeRlp(_buffer, TreePath.Empty, rlp);
+        using Snapshot final = _resourcePool.CreateSnapshot(older.To, new(2, matchingHash ? hash : TestItem.KeccakB), ResourcePool.Usage.ReadOnlyProcessingEnv, _buffer);
 
         using Snapshot compacted = _compactor.CompactSnapshotBundle(new(2) { older, final });
 
@@ -446,9 +447,9 @@ public class SnapshotCompactorTests
     [Test]
     public void CompactSnapshotBundle_FinalEmptyStateDoesNotResurrectEarlierRoot()
     {
-        using Snapshot older = _resourcePool.CreateSnapshot(new(0, Keccak.EmptyTreeHash), new(1, Keccak.Zero), ResourcePool.Usage.ReadOnlyProcessingEnv, _log);
-        older.Content.SetStateNodeRlp(_log, TreePath.Empty, FlatTestHelpers.LeafRlpA);
-        using Snapshot final = _resourcePool.CreateSnapshot(older.To, new(2, Keccak.EmptyTreeHash), ResourcePool.Usage.ReadOnlyProcessingEnv, _log);
+        using Snapshot older = _resourcePool.CreateSnapshot(new(0, Keccak.EmptyTreeHash), new(1, Keccak.Zero), ResourcePool.Usage.ReadOnlyProcessingEnv, _buffer);
+        older.Content.SetStateNodeRlp(_buffer, TreePath.Empty, FlatTestHelpers.LeafRlpA);
+        using Snapshot final = _resourcePool.CreateSnapshot(older.To, new(2, Keccak.EmptyTreeHash), ResourcePool.Usage.ReadOnlyProcessingEnv, _buffer);
 
         using Snapshot compacted = _compactor.CompactSnapshotBundle(new(2) { older, final });
 
@@ -463,13 +464,13 @@ public class SnapshotCompactorTests
     public void CompactSnapshotBundle_EmptyStorageMarkerSurvivesNestedCompaction([Values] bool recreate)
     {
         Hash256 addressHash = TestItem.AddressA.ToAccountPath.ToHash256();
-        using Snapshot older = _resourcePool.CreateSnapshot(new(0, Keccak.Zero), new(1, Keccak.Zero), ResourcePool.Usage.ReadOnlyProcessingEnv, _log);
-        older.Content.SetStorageNodeRlp(_log, addressHash, TreePath.Empty, FlatTestHelpers.LeafRlpA);
-        using Snapshot cleared = _resourcePool.CreateSnapshot(older.To, new(2, Keccak.Zero), ResourcePool.Usage.ReadOnlyProcessingEnv, _log);
+        using Snapshot older = _resourcePool.CreateSnapshot(new(0, Keccak.Zero), new(1, Keccak.Zero), ResourcePool.Usage.ReadOnlyProcessingEnv, _buffer);
+        older.Content.SetStorageNodeRlp(_buffer, addressHash, TreePath.Empty, FlatTestHelpers.LeafRlpA);
+        using Snapshot cleared = _resourcePool.CreateSnapshot(older.To, new(2, Keccak.Zero), ResourcePool.Usage.ReadOnlyProcessingEnv, _buffer);
         cleared.Content.StorageRoots[addressHash] = 0;
         using Snapshot compactedClear = _compactor.CompactSnapshotBundle(new(2) { older, cleared });
-        using Snapshot final = _resourcePool.CreateSnapshot(cleared.To, new(3, Keccak.Zero), ResourcePool.Usage.ReadOnlyProcessingEnv, _log);
-        if (recreate) final.Content.SetStorageNodeRlp(_log, addressHash, TreePath.Empty, FlatTestHelpers.LeafRlpB);
+        using Snapshot final = _resourcePool.CreateSnapshot(cleared.To, new(3, Keccak.Zero), ResourcePool.Usage.ReadOnlyProcessingEnv, _buffer);
+        if (recreate) final.Content.SetStorageNodeRlp(_buffer, addressHash, TreePath.Empty, FlatTestHelpers.LeafRlpB);
 
         using Snapshot compacted = _compactor.CompactSnapshotBundle(new(2) { compactedClear, final });
 

@@ -13,7 +13,7 @@ using Nethermind.Core.Exceptions;
 using Nethermind.Init.Modules;
 using Nethermind.Init.Steps;
 using Nethermind.Logging;
-using Nethermind.Trie.Native;
+using Nethermind.State.Flat.NodeBuffer;
 using NUnit.Framework;
 
 namespace Nethermind.Runner.Test.Module;
@@ -44,7 +44,7 @@ public class FlatWorldStateModuleTests
     }
 
     [Test]
-    public void Native_trie_node_log_is_registered_by_default()
+    public void Native_trie_node_buffer_is_registered_by_default()
     {
         FlatDbConfig config = new();
         using IContainer container = new ContainerBuilder()
@@ -53,7 +53,7 @@ public class FlatWorldStateModuleTests
             .AddSingleton<ILogManager>(LimboLogs.Instance)
             .Build();
 
-        Assert.That(container.Resolve<NativeTrieNodeLog>(), Is.Not.Null);
+        Assert.That(container.Resolve<INodeRecordBuffer>(), Is.Not.Null);
     }
 
     [Test]
@@ -65,7 +65,7 @@ public class FlatWorldStateModuleTests
             .AddSingleton<IFlatDbConfig>(config)
             .Build();
 
-        DependencyResolutionException error = Assert.Throws<DependencyResolutionException>(() => container.Resolve<NativeTrieNodeLog>())!;
+        DependencyResolutionException error = Assert.Throws<DependencyResolutionException>(() => container.Resolve<INodeRecordBuffer>())!;
         Exception cause = error.GetBaseException();
         using (Assert.EnterMultipleScope())
         {

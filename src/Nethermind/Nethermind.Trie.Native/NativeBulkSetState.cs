@@ -9,9 +9,9 @@ namespace Nethermind.Trie.Native;
 
 /// <summary>An owned trie whose changed nodes remain unhashed until <see cref="NativePatriciaBulkSet.Finish"/>.</summary>
 /// <remarks>
-/// Use the same log for every update and finish, retaining the base trie's nonpersisted nodes through its normal generation pins.
+/// Use the same buffer for every update and finish, retaining the base trie's nonpersisted nodes through its normal generation pins.
 /// Calls must not overlap, but ownership can move between threads. A failed update or any finish invalidates the contents;
-/// disposal still frees the allocation. Disposal requires no live node store, log, or warmed cache.
+/// disposal still frees the allocation. Disposal requires no live node store, buffer, or warmed cache.
 /// </remarks>
 public sealed unsafe partial class NativeBulkSetState : SafeHandle
 {

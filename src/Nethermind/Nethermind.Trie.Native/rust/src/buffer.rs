@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-//! In-memory log of the decoded nodes bulk sets write, which later bulk sets read in place.
+//! In-memory buffer of the decoded nodes bulk sets write, which later bulk sets read in place.
 
 use std::alloc::{alloc, alloc_zeroed, dealloc, Layout};
 use std::cell::RefCell;
@@ -15,12 +15,13 @@ use rustc_hash::{FxBuildHasher, FxHasher};
 
 use crate::metrics;
 use crate::node::{
-    record_length, record_length_of, write_record, LoggedNode, Node, TreePath, RECORD_HEADER_LENGTH,
+    record_length, record_length_of, write_record, BufferedNode, Node, TreePath,
+    RECORD_HEADER_LENGTH,
 };
 
-/// Where a record is in a [`TrieNodeLog`]: its generation in the high 32 bits and its offset in that generation in the
+/// Where a record is in a [`NodeRecordBuffer`]: its generation in the high 32 bits and its offset in that generation in the
 /// low 32 bits. Zero is no record. Compaction keeps the pointers of the records it keeps.
-pub type LogPointer = u64;
+pub type BufferPointer = u64;
 
 /// Reports allocated bytes as positive deltas and reclaimed bytes as negative deltas. Must not unwind.
 pub(crate) type MemoryPressureFn = unsafe extern "C" fn(i64);
@@ -38,7 +39,7 @@ impl MemoryPressure {
 
 const OFFSET_BITS: u32 = 32;
 const OFFSET_MASK: u64 = (1 << OFFSET_BITS) - 1;
-/// The live generations of the logs that do not take them from configuration.
+/// The live generations of the buffers that do not take them from configuration.
 pub const DEFAULT_LIVE_GENERATIONS: u64 = 8;
 /// Generations allocated at once, live, pinned or compacted, are capped by the size of the generation table.
 const MAX_GENERATIONS: usize = 4096;
@@ -80,18 +81,18 @@ const ROOT_KEY: u8 = 4;
 const ROOT_KEY_LENGTH: usize = 88;
 
 thread_local! {
-    static TEMPORARY: RefCell<Option<Box<TrieNodeLog>>> = const { RefCell::new(None) };
+    static TEMPORARY: RefCell<Option<Box<NodeRecordBuffer>>> = const { RefCell::new(None) };
 }
 
-/// Runs the compactions of every log, one at a time, off the threads of bulk sets.
+/// Runs the compactions of every buffer, one at a time, off the threads of bulk sets.
 static COMPACTOR: OnceLock<ThreadPool> = OnceLock::new();
 
-/// Decoded nodes, each child reference holding the log pointer of its child, so a trie is walked through pointers once
+/// Decoded nodes, each child reference holding the buffer pointer of its child, so a trie is walked through pointers once
 /// its root is found. Only roots are indexed, the state roots by hash and the storage roots by address and hash, each
-/// through a root key record logged next to the nodes.
+/// through a root key record buffered next to the nodes.
 ///
 /// Records are appended to the active generation. Once its live generations are live, starting a new one drops the
-/// oldest, which is compacted in the background once no [`LogSession`] that could read its records in place is left.
+/// oldest, which is compacted in the background once no [`BufferSession`] that could read its records in place is left.
 /// Compaction keeps the last record of every key, see [`node_key`], unless the bloom filter of a later generation holds
 /// the key, as that generation then likely holds a newer node at the same place, and keeps every root key record, so
 /// lookups walk whole chains. The records kept are found by their pointer through a hash table. Compacted generations
@@ -102,13 +103,13 @@ static COMPACTOR: OnceLock<ThreadPool> = OnceLock::new();
 /// compacted generation when compaction kept it and it was not due to be freed. A compacted generation due to be freed
 /// thus waits only for the sessions started before, however much later ones overlap.
 ///
-/// A generation [`TrieNodeLog::retain_active`] retained is not dropped, nor is any later one, until
-/// [`TrieNodeLog::release`], so every record appended since stays readable by later sessions too, and the log then
+/// A generation [`NodeRecordBuffer::retain_active`] retained is not dropped, nor is any later one, until
+/// [`NodeRecordBuffer::release`], so every record appended since stays readable by later sessions too, and the buffer then
 /// holds more than its live generations.
 ///
 /// Under pressure, while more than its live generations are allocated, each new generation is twice the size of the one
-/// before, up to [`MAX_GROWN_GENERATION_BYTES`], so a bulk set larger than the log still fits in the generation table.
-pub struct TrieNodeLog {
+/// before, up to [`MAX_GROWN_GENERATION_BYTES`], so a bulk set larger than the buffer still fits in the generation table.
+pub struct NodeRecordBuffer {
     generations: Box<[Generation]>,
     active: AtomicU64,
     state: Mutex<State>,
@@ -122,30 +123,30 @@ pub struct TrieNodeLog {
     memory_pressure: MemoryPressure,
     state_roots: RootTable,
     storage_roots: RootTable,
-    /// The log an overlay reads the records written before it started from.
+    /// The buffer an overlay reads the records written before it started from.
     parent: Option<Parent>,
 }
 
-/// The log an overlay reads, retained from the generation active when the overlay started until it is dropped.
+/// The buffer an overlay reads, retained from the generation active when the overlay started until it is dropped.
 struct Parent {
-    log: *const TrieNodeLog,
+    buffer: *const NodeRecordBuffer,
     generation: u64,
     /// The first position not yet reserved when the overlay started, so the first one it does not read.
-    boundary: LogPointer,
+    boundary: BufferPointer,
 }
 
-// The parent log is shared as immutably as the overlay itself, and outlives it.
+// The parent buffer is shared as immutably as the overlay itself, and outlives it.
 unsafe impl Send for Parent {}
 unsafe impl Sync for Parent {}
 
 impl Parent {
     /// Whether `pointer` is of the parent, so of a generation not newer than the retained one.
-    fn holds(&self, pointer: LogPointer) -> bool {
+    fn holds(&self, pointer: BufferPointer) -> bool {
         pointer >> OFFSET_BITS <= self.generation
     }
 
-    fn log<'a>(&self) -> &'a TrieNodeLog {
-        unsafe { &*self.log }
+    fn buffer<'a>(&self) -> &'a NodeRecordBuffer {
+        unsafe { &*self.buffer }
     }
 }
 
@@ -176,14 +177,14 @@ struct State {
     compacting: bool,
 }
 
-impl TrieNodeLog {
-    /// Creates a log keeping the newest `live_generations` readable in place, whose compacted generations take about
+impl NodeRecordBuffer {
+    /// Creates a buffer keeping the newest `live_generations` readable in place, whose compacted generations take about
     /// `compressed_max_memory` bytes, exceeded only while sessions pin them. Boxed, as compaction reads it in the
     /// background, so it must not be moved out.
-    pub fn new(compressed_max_memory: u64, live_generations: u64) -> Box<TrieNodeLog> {
+    pub fn new(compressed_max_memory: u64, live_generations: u64) -> Box<NodeRecordBuffer> {
         let storage_root_slots =
             (compressed_max_memory / MEMORY_PER_STORAGE_ROOT_SLOT).max(STATE_ROOT_SLOTS as u64);
-        TrieNodeLog::create(
+        NodeRecordBuffer::create(
             GENERATION_BYTES,
             live_generations,
             compressed_max_memory,
@@ -193,13 +194,13 @@ impl TrieNodeLog {
         )
     }
 
-    /// A log with small generations for record-import fixtures.
+    /// A buffer with small generations for record-import fixtures.
     pub(crate) fn for_fixtures(
         generation_bytes: usize,
         compressed_max_memory: u64,
         live_generations: u64,
-    ) -> Box<TrieNodeLog> {
-        TrieNodeLog::create(
+    ) -> Box<NodeRecordBuffer> {
+        NodeRecordBuffer::create(
             generation_bytes.max(MIN_GENERATION_BYTES),
             live_generations,
             compressed_max_memory,
@@ -209,17 +210,17 @@ impl TrieNodeLog {
         )
     }
 
-    pub(crate) fn fixture_generation_live(&self, pointer: LogPointer) -> bool {
+    pub(crate) fn fixture_generation_live(&self, pointer: BufferPointer) -> bool {
         let id = pointer >> OFFSET_BITS;
         let state = self.state.lock().unwrap();
         id >= state.oldest_allocated && id <= self.active.load(Ordering::Acquire)
             && !self.generation(id).base.load(Ordering::Acquire).is_null()
     }
 
-    /// A log of the smallest generations, which keeps nothing compacted.
+    /// A buffer of the smallest generations, which keeps nothing compacted.
     #[cfg(test)]
-    pub fn minimal() -> Box<TrieNodeLog> {
-        TrieNodeLog::create(
+    pub fn minimal() -> Box<NodeRecordBuffer> {
+        NodeRecordBuffer::create(
             MIN_GENERATION_BYTES,
             DEFAULT_LIVE_GENERATIONS,
             0,
@@ -229,18 +230,18 @@ impl TrieNodeLog {
         )
     }
 
-    /// Calls `use_log` with a log for a single bulk set, which never drops a generation, so is always under pressure,
+    /// Calls `use_buffer` with a buffer for a single bulk set, which never drops a generation, so is always under pressure,
     /// and indexes no root. The thread reuses it afterwards, emptied.
-    pub fn with_temporary<R>(use_log: impl FnOnce(&TrieNodeLog) -> R) -> R {
-        let mut log = TEMPORARY.take().unwrap_or_else(TrieNodeLog::temporary);
-        let result = use_log(&log);
-        log.empty_temporary();
-        TEMPORARY.set(Some(log));
+    pub fn with_temporary<R>(use_buffer: impl FnOnce(&NodeRecordBuffer) -> R) -> R {
+        let mut buffer = TEMPORARY.take().unwrap_or_else(NodeRecordBuffer::temporary);
+        let result = use_buffer(&buffer);
+        buffer.empty_temporary();
+        TEMPORARY.set(Some(buffer));
         result
     }
 
-    fn temporary() -> Box<TrieNodeLog> {
-        TrieNodeLog::create(
+    fn temporary() -> Box<NodeRecordBuffer> {
+        NodeRecordBuffer::create(
             MIN_GENERATION_BYTES,
             DEFAULT_LIVE_GENERATIONS,
             0,
@@ -250,17 +251,17 @@ impl TrieNodeLog {
         )
     }
 
-    /// Creates a log that reads the records `parent` holds now and keeps its own, in generations numbered after the
+    /// Creates a buffer that reads the records `parent` holds now and keeps its own, in generations numbered after the
     /// parent's active one, until it is dropped, so they never grow the parent. Retains the parent's active generation,
     /// and resolves only the parent's roots indexed before now.
     ///
     /// # Safety
-    /// `parent` must outlive the returned log.
-    pub unsafe fn overlay(parent: &TrieNodeLog) -> Box<TrieNodeLog> {
+    /// `parent` must outlive the returned buffer.
+    pub unsafe fn overlay(parent: &NodeRecordBuffer) -> Box<NodeRecordBuffer> {
         let (generation, boundary) = parent.retain_active_boundary();
-        TrieNodeLog::create_over(
+        NodeRecordBuffer::create_over(
             Some(Parent {
-                log: parent,
+                buffer: parent,
                 generation,
                 boundary,
             }),
@@ -280,8 +281,8 @@ impl TrieNodeLog {
         temporary: bool,
         state_roots: RootTable,
         storage_roots: RootTable,
-    ) -> Box<TrieNodeLog> {
-        TrieNodeLog::create_over(
+    ) -> Box<NodeRecordBuffer> {
+        NodeRecordBuffer::create_over(
             None,
             generation_bytes,
             live_generations,
@@ -300,13 +301,13 @@ impl TrieNodeLog {
         temporary: bool,
         state_roots: RootTable,
         storage_roots: RootTable,
-    ) -> Box<TrieNodeLog> {
+    ) -> Box<NodeRecordBuffer> {
         assert!(
             (1..MAX_GENERATIONS as u64).contains(&live_generations),
             "live generations out of range"
         );
         let first = parent.as_ref().map_or(1, |parent| parent.generation + 1);
-        let log = Box::new(TrieNodeLog {
+        let buffer = Box::new(NodeRecordBuffer {
             generations: (0..MAX_GENERATIONS)
                 .map(|_| Generation::default())
                 .collect(),
@@ -332,12 +333,13 @@ impl TrieNodeLog {
             storage_roots,
             parent,
         });
-        log.generation(first)
-            .start(generation_bytes, temporary, log.memory_pressure);
-        log
+        buffer
+            .generation(first)
+            .start(generation_bytes, temporary, buffer.memory_pressure);
+        buffer
     }
 
-    /// Installs a reporter on a newly created log before its first use, accounting for its initial allocations once.
+    /// Installs a reporter on a newly created buffer before its first use, accounting for its initial allocations once.
     pub(crate) fn set_memory_pressure(&mut self, report: MemoryPressureFn) {
         assert!(self.memory_pressure.0.is_none());
         self.memory_pressure = MemoryPressure(Some(report));
@@ -362,7 +364,7 @@ impl TrieNodeLog {
             + std::mem::size_of_val(&*self.storage_roots.slots)
     }
 
-    /// Drops every record of a temporary log, which keeps its first generation and nothing else.
+    /// Drops every record of a temporary buffer, which keeps its first generation and nothing else.
     fn empty_temporary(&mut self) {
         let active = *self.active.get_mut();
         for id in 2..=active {
@@ -374,31 +376,31 @@ impl TrieNodeLog {
 
     /// Pins every live generation, and every compacted one not due to be freed, until the returned session is dropped.
     /// An overlay also pins its parent's, through a session of the parent.
-    pub fn pin(&self) -> LogSession<'_> {
+    pub fn pin(&self) -> BufferSession<'_> {
         let parent = self
             .parent
             .as_ref()
-            .map(|parent| Box::new(parent.log().pin()));
+            .map(|parent| Box::new(parent.buffer().pin()));
         let mut state = self.state.lock().unwrap();
         let floor = state.oldest_live;
         let compressed_floor = state.oldest_kept_compressed;
         state.pins[slot(floor)] += 1;
         state.compressed_pins[slot(compressed_floor)] += 1;
-        LogSession {
-            log: self,
+        BufferSession {
+            buffer: self,
             floor,
             compressed_floor,
             parent,
         }
     }
 
-    /// Retains the active generation until [`TrieNodeLog::release`] and returns it.
+    /// Retains the active generation until [`NodeRecordBuffer::release`] and returns it.
     pub fn retain_active(&self) -> u64 {
         self.retain_active_boundary().0
     }
 
     /// Retains the active generation and captures the first offset not yet reserved, under the rotation lock.
-    pub(crate) fn retain_active_boundary(&self) -> (u64, LogPointer) {
+    pub(crate) fn retain_active_boundary(&self) -> (u64, BufferPointer) {
         let mut state = self.state.lock().unwrap();
         let active = self.active.load(Ordering::Acquire);
         state.retains[slot(active)] += 1;
@@ -407,7 +409,7 @@ impl TrieNodeLog {
         (active, active << OFFSET_BITS | offset as u64)
     }
 
-    /// Retains `generation` once more until [`TrieNodeLog::release`]. It must still be live, as it is while retained.
+    /// Retains `generation` once more until [`NodeRecordBuffer::release`]. It must still be live, as it is while retained.
     pub fn retain(&self, generation: u64) {
         let mut state = self.state.lock().unwrap();
         debug_assert!(generation >= state.oldest_live);
@@ -427,16 +429,16 @@ impl TrieNodeLog {
     }
 
     /// The node record at `pointer`, whose generation must be retained, as an in-memory snapshot's pin does.
-    pub fn node(&self, pointer: LogPointer) -> LoggedNode<'_> {
+    pub fn node(&self, pointer: BufferPointer) -> BufferedNode<'_> {
         if let Some(parent) = self.parent.as_ref().filter(|parent| parent.holds(pointer)) {
-            return parent.log().node(pointer);
+            return parent.buffer().node(pointer);
         }
         let length = record_length_of(self.bytes(pointer, RECORD_HEADER_LENGTH));
-        LoggedNode::new(self.bytes(pointer, length))
+        BufferedNode::new(self.bytes(pointer, length))
     }
 
     /// The `length` bytes at `pointer`, whose generation must not be freed.
-    fn bytes(&self, pointer: LogPointer, length: usize) -> &[u8] {
+    fn bytes(&self, pointer: BufferPointer, length: usize) -> &[u8] {
         let base = self
             .generation(pointer >> OFFSET_BITS)
             .base
@@ -477,7 +479,7 @@ impl TrieNodeLog {
         assert!(
             generation.base.load(Ordering::Relaxed).is_null()
                 && generation.compressed.load(Ordering::Relaxed).is_null(),
-            "too many trie node log generations pinned"
+            "too many trie node buffer generations pinned"
         );
         generation.start(generation_length, self.temporary, self.memory_pressure);
         self.active.store(id, Ordering::Release);
@@ -507,15 +509,15 @@ impl TrieNodeLog {
             return;
         }
         state.compacting = true;
-        let log = LogRef(self);
+        let buffer = BufferRef(self);
         COMPACTOR
             .get_or_init(|| {
                 ThreadPoolBuilder::new()
                     .num_threads(1)
                     .build()
-                    .expect("trie node log compactor")
+                    .expect("trie node buffer compactor")
             })
-            .spawn(move || log.get().compact_dropped());
+            .spawn(move || buffer.get().compact_dropped());
     }
 
     /// Whether the oldest allocated generation is dropped and no session reads it in place, so none writes it either.
@@ -523,7 +525,7 @@ impl TrieNodeLog {
         state.oldest_allocated < state.oldest_live && state.pins[slot(state.oldest_allocated)] == 0
     }
 
-    /// Compacts the generations [`TrieNodeLog::compactable`], oldest first, freeing their allocation.
+    /// Compacts the generations [`NodeRecordBuffer::compactable`], oldest first, freeing their allocation.
     fn compact_dropped(&self) {
         loop {
             let (id, newest) = {
@@ -578,7 +580,7 @@ impl TrieNodeLog {
                 // Past the last record, the generation is zeroed, so reads as a record without RLP.
                 _ if length == RECORD_HEADER_LENGTH => break,
                 _ => {
-                    let key = LoggedNode::new(&records[offset..offset + length]).log_key();
+                    let key = BufferedNode::new(&records[offset..offset + length]).buffer_key();
                     last.insert(key, offset as u32);
                 }
             }
@@ -594,7 +596,7 @@ impl TrieNodeLog {
         if kept.is_empty() {
             return None;
         }
-        // In log order, as a trie's records were appended near each other.
+        // In buffer order, as a trie's records were appended near each other.
         kept.sort_unstable();
 
         let mut compressed = CompressedGeneration {
@@ -650,7 +652,7 @@ impl TrieNodeLog {
     }
 }
 
-impl Drop for TrieNodeLog {
+impl Drop for NodeRecordBuffer {
     fn drop(&mut self) {
         let mut state = self.state.lock().unwrap();
         while state.compacting {
@@ -663,18 +665,18 @@ impl Drop for TrieNodeLog {
         }
         self.memory_pressure.report(-(self.fixed_memory() as i64));
         if let Some(parent) = &self.parent {
-            parent.log().release(parent.generation);
+            parent.buffer().release(parent.generation);
         }
     }
 }
 
-/// A log compaction reads in the background, which the log waits for before it is dropped.
-struct LogRef(*const TrieNodeLog);
+/// A buffer compaction reads in the background, which the buffer waits for before it is dropped.
+struct BufferRef(*const NodeRecordBuffer);
 
-unsafe impl Send for LogRef {}
+unsafe impl Send for BufferRef {}
 
-impl LogRef {
-    fn get(&self) -> &TrieNodeLog {
+impl BufferRef {
+    fn get(&self) -> &NodeRecordBuffer {
         unsafe { &*self.0 }
     }
 }
@@ -851,11 +853,11 @@ fn bloom_masks(key: u64) -> [u64; 8] {
 struct CompressedGeneration {
     records: Vec<u8>,
     /// (pointer, offset in `records`) of every record kept, by open addressing with linear probing, zero pointers free.
-    table: Box<[(LogPointer, u64)]>,
+    table: Box<[(BufferPointer, u64)]>,
 }
 
 impl CompressedGeneration {
-    fn insert(&mut self, pointer: LogPointer, offset: u64) {
+    fn insert(&mut self, pointer: BufferPointer, offset: u64) {
         let mut index = self.index(pointer);
         while self.table[index].0 != 0 {
             index = (index + 1) & (self.table.len() - 1);
@@ -864,7 +866,7 @@ impl CompressedGeneration {
     }
 
     /// Where the record kept at `pointer` starts, if kept.
-    fn find(&self, pointer: LogPointer) -> Option<*const u8> {
+    fn find(&self, pointer: BufferPointer) -> Option<*const u8> {
         let mut index = self.index(pointer);
         loop {
             match self.table[index] {
@@ -877,7 +879,7 @@ impl CompressedGeneration {
         }
     }
 
-    fn index(&self, pointer: LogPointer) -> usize {
+    fn index(&self, pointer: BufferPointer) -> usize {
         (pointer.wrapping_mul(0x9e3779b97f4a7c15) >> 32) as usize & (self.table.len() - 1)
     }
 
@@ -886,19 +888,19 @@ impl CompressedGeneration {
     }
 }
 
-/// A pin on a [`TrieNodeLog`], through which one bulk set reads and appends records.
-pub struct LogSession<'a> {
-    log: &'a TrieNodeLog,
+/// A pin on a [`NodeRecordBuffer`], through which one bulk set reads and appends records.
+pub struct BufferSession<'a> {
+    buffer: &'a NodeRecordBuffer,
     floor: u64,
     compressed_floor: u64,
     /// The session of an overlay's parent, through which it reads the parent's records.
-    parent: Option<Box<LogSession<'a>>>,
+    parent: Option<Box<BufferSession<'a>>>,
 }
 
-impl LogSession<'_> {
+impl BufferSession<'_> {
     /// The node record at `pointer`, or `None` when this session cannot read it: zero, dropped before it started and
     /// not kept by compaction, or freed.
-    pub fn record(&self, pointer: LogPointer) -> Option<&[u8]> {
+    pub fn record(&self, pointer: BufferPointer) -> Option<&[u8]> {
         let start = self.locate(pointer)?;
         unsafe {
             let length = record_length_of(std::slice::from_raw_parts(start, RECORD_HEADER_LENGTH));
@@ -909,12 +911,12 @@ impl LogSession<'_> {
     /// Where the record at `pointer` starts, if this session can read it, in its generation while not older than the
     /// floor, and otherwise in what compaction kept of it. An overlay reads its parent's records written before it
     /// started through its parent's session.
-    fn locate(&self, pointer: LogPointer) -> Option<*const u8> {
+    fn locate(&self, pointer: BufferPointer) -> Option<*const u8> {
         if pointer & crate::node::TRANSIENT_POINTER != 0 {
             return None;
         }
         if let Some(parent) = self
-            .log
+            .buffer
             .parent
             .as_ref()
             .filter(|parent| parent.holds(pointer))
@@ -926,25 +928,29 @@ impl LogSession<'_> {
         }
         let id = pointer >> OFFSET_BITS;
         if id >= self.floor {
-            return Some(self.log.bytes(pointer, 0).as_ptr());
+            return Some(self.buffer.bytes(pointer, 0).as_ptr());
         }
         if id < self.compressed_floor {
             return None;
         }
         // Null while compaction has not kept anything of it, and never another generation's, as the session pins it.
-        let compressed = self.log.generation(id).compressed.load(Ordering::Acquire);
+        let compressed = self
+            .buffer
+            .generation(id)
+            .compressed
+            .load(Ordering::Acquire);
         unsafe { compressed.as_ref() }?.find(pointer)
     }
 
     /// Appends the record of `node`, whose children must all be resolved, under key zero and returns its pointer.
     #[cfg(test)]
-    pub fn append(&self, node: &Node) -> LogPointer {
+    pub fn append(&self, node: &Node) -> BufferPointer {
         self.append_keyed(node, 0)
     }
 
     /// Appends the record of `node`, whose children must all be resolved, under `key` and returns its pointer.
     #[cfg(test)]
-    pub fn append_keyed(&self, node: &Node, key: u64) -> LogPointer {
+    pub fn append_keyed(&self, node: &Node, key: u64) -> BufferPointer {
         let mut rlp = Vec::new();
         crate::node::encode(node, &mut rlp);
         let hash = crate::keccak::keccak(&rlp);
@@ -961,14 +967,14 @@ impl LogSession<'_> {
     pub fn append_all<'n>(
         &self,
         nodes: impl Iterator<Item = (&'n Node, u64, &'n [u8; 32], &'n [u8])> + Clone,
-        pointers: &mut Vec<LogPointer>,
+        pointers: &mut Vec<BufferPointer>,
     ) {
         let first = pointers.len();
         // Each record's length, until it becomes its pointer.
         pointers.extend(
             nodes
                 .clone()
-                .map(|(node, _, _, rlp)| record_length(node, rlp.len()) as LogPointer),
+                .map(|(node, _, _, rlp)| record_length(node, rlp.len()) as BufferPointer),
         );
         let total = pointers[first..]
             .iter()
@@ -982,25 +988,25 @@ impl LogSession<'_> {
             for ((node, key, hash, rlp), pointer) in nodes.clone().zip(&mut pointers[first..]) {
                 let length = *pointer as usize;
                 write_record(node, key, hash, rlp, &mut out[offset..offset + length]);
-                *pointer = offset as LogPointer;
+                *pointer = offset as BufferPointer;
                 offset += length.next_multiple_of(RECORD_ALIGNMENT);
             }
         });
         for pointer in &mut pointers[first..] {
             *pointer += base;
         }
-        let bloom = self.log.generation(base >> OFFSET_BITS).bloom();
+        let bloom = self.buffer.generation(base >> OFFSET_BITS).bloom();
         for (_, key, _, _) in nodes {
             bloom.insert(key);
         }
     }
 
     /// Appends `length` bytes that `write` fills and returns their pointer.
-    fn append_bytes(&self, length: usize, write: impl FnOnce(&mut [u8])) -> LogPointer {
+    fn append_bytes(&self, length: usize, write: impl FnOnce(&mut [u8])) -> BufferPointer {
         let aligned = length.next_multiple_of(RECORD_ALIGNMENT);
         loop {
-            let id = self.log.active.load(Ordering::Acquire);
-            let generation = self.log.generation(id);
+            let id = self.buffer.active.load(Ordering::Acquire);
+            let generation = self.buffer.generation(id);
             let offset = generation.used.fetch_add(aligned, Ordering::Relaxed);
             if offset + length <= generation.length.load(Ordering::Relaxed) {
                 // The range is this thread's alone, and the generation outlives the session as it is not older than
@@ -1014,23 +1020,23 @@ impl LogSession<'_> {
                 write(out);
                 return id << OFFSET_BITS | offset as u64;
             }
-            self.log.rotate(id, length);
+            self.buffer.rotate(id, length);
         }
     }
 
     /// The pointer of the root `root` of the trie of `address`, the state trie when `None`, or zero when not found.
-    pub fn root(&self, address: Option<&[u8; 32]>, root: &[u8; 32]) -> LogPointer {
+    pub fn root(&self, address: Option<&[u8; 32]>, root: &[u8; 32]) -> BufferPointer {
         let pointer = self.find_root(address, root);
-        if !self.log.temporary {
+        if !self.buffer.temporary {
             metrics::root_looked_up(pointer != 0);
         }
         pointer
     }
 
-    /// Finds the root in this log, and otherwise, for an overlay, among the roots its parent indexed before it started.
-    pub(crate) fn find_root(&self, address: Option<&[u8; 32]>, root: &[u8; 32]) -> LogPointer {
+    /// Finds the root in this buffer, and otherwise, for an overlay, among the roots its parent indexed before it started.
+    pub(crate) fn find_root(&self, address: Option<&[u8; 32]>, root: &[u8; 32]) -> BufferPointer {
         let pointer = self.find_own_root(address, root);
-        match (pointer, &self.parent, &self.log.parent) {
+        match (pointer, &self.parent, &self.buffer.parent) {
             (0, Some(session), Some(parent)) => {
                 let pointer = session.find_root(address, root);
                 if pointer < parent.boundary {
@@ -1046,8 +1052,8 @@ impl LogSession<'_> {
     /// Walks the root key records of the slot, newest first, up to the first this session cannot read. A chain never
     /// links a record to one of a newer generation, and compaction keeps every root key record, so the records left are
     /// all freed, or dropped and not compacted yet.
-    fn find_own_root(&self, address: Option<&[u8; 32]>, root: &[u8; 32]) -> LogPointer {
-        let Some(slot) = self.log.roots(address).slot(address, root) else {
+    fn find_own_root(&self, address: Option<&[u8; 32]>, root: &[u8; 32]) -> BufferPointer {
+        let Some(slot) = self.buffer.roots(address).slot(address, root) else {
             return 0;
         };
         let address = address.copied().unwrap_or_default();
@@ -1067,8 +1073,8 @@ impl LogSession<'_> {
     }
 
     /// Indexes `pointer` as the root `root` of the trie of `address`, the state trie when `None`.
-    pub fn set_root(&self, address: Option<&[u8; 32]>, root: &[u8; 32], pointer: LogPointer) {
-        let Some(slot) = self.log.roots(address).slot(address, root) else {
+    pub fn set_root(&self, address: Option<&[u8; 32]>, root: &[u8; 32], pointer: BufferPointer) {
+        let Some(slot) = self.buffer.roots(address).slot(address, root) else {
             return;
         };
         let mut previous = slot.load(Ordering::Acquire);
@@ -1090,12 +1096,12 @@ impl LogSession<'_> {
     }
 }
 
-impl Drop for LogSession<'_> {
+impl Drop for BufferSession<'_> {
     fn drop(&mut self) {
-        let mut state = self.log.state.lock().unwrap();
+        let mut state = self.buffer.state.lock().unwrap();
         state.pins[slot(self.floor)] -= 1;
         state.compressed_pins[slot(self.compressed_floor)] -= 1;
-        self.log.reclaim(&mut state);
+        self.buffer.reclaim(&mut state);
     }
 }
 
@@ -1127,7 +1133,7 @@ impl RootTable {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::node::{decode_rlp, empty_children, encode, ChildRef, LoggedNode, Nibbles};
+    use crate::node::{decode_rlp, empty_children, encode, BufferedNode, ChildRef, Nibbles};
 
     fn rlp(node: &Node) -> Vec<u8> {
         let mut out = Vec::new();
@@ -1142,34 +1148,35 @@ mod tests {
         }
     }
 
-    fn active_length(log: &TrieNodeLog) -> usize {
-        log.generation(log.active.load(Ordering::Relaxed))
+    fn active_length(buffer: &NodeRecordBuffer) -> usize {
+        buffer
+            .generation(buffer.active.load(Ordering::Relaxed))
             .length
             .load(Ordering::Relaxed)
     }
 
-    fn read(session: &LogSession, pointer: LogPointer) -> Vec<u8> {
-        rlp(&LoggedNode::new(session.record(pointer).unwrap()).to_owned(0))
+    fn read(session: &BufferSession, pointer: BufferPointer) -> Vec<u8> {
+        rlp(&BufferedNode::new(session.record(pointer).unwrap()).to_owned(0))
     }
 
-    fn wait_for_compaction(log: &TrieNodeLog) {
-        let mut state = log.state.lock().unwrap();
+    fn wait_for_compaction(buffer: &NodeRecordBuffer) {
+        let mut state = buffer.state.lock().unwrap();
         while state.compacting {
-            state = log.compaction_idle.wait(state).unwrap();
+            state = buffer.compaction_idle.wait(state).unwrap();
         }
     }
 
     #[test]
     fn snapshot_cursor_releases_its_own_retain_when_abandoned() {
-        let log = TrieNodeLog::minimal();
-        let (generation, boundary) = log.retain_active_boundary();
-        let pointer = log.pin().append(&leaf(vec![1; 40]));
-        let mut cursor = crate::traversal::SnapshotCursor::new(&log, pointer, boundary);
-        assert_eq!(log.state.lock().unwrap().retains[slot(generation)], 2);
-        log.release(generation);
+        let buffer = NodeRecordBuffer::minimal();
+        let (generation, boundary) = buffer.retain_active_boundary();
+        let pointer = buffer.pin().append(&leaf(vec![1; 40]));
+        let mut cursor = crate::traversal::SnapshotCursor::new(&buffer, pointer, boundary);
+        assert_eq!(buffer.state.lock().unwrap().retains[slot(generation)], 2);
+        buffer.release(generation);
         assert_eq!(cursor.next(), Some((TreePath::default(), pointer)));
         drop(cursor);
-        assert_eq!(log.state.lock().unwrap().retains[slot(generation)], 0);
+        assert_eq!(buffer.state.lock().unwrap().retains[slot(generation)], 0);
     }
 
     #[test]
@@ -1184,10 +1191,10 @@ mod tests {
         fn reported(events: &Mutex<Vec<(i64, std::thread::ThreadId)>>) -> i64 {
             events.lock().unwrap().iter().map(|&(bytes, _)| bytes).sum()
         }
-        fn allocated(log: &TrieNodeLog) -> i64 {
-            let _state = log.state.lock().unwrap();
-            let mut bytes = log.fixed_memory();
-            for generation in log.generations.iter() {
+        fn allocated(buffer: &NodeRecordBuffer) -> i64 {
+            let _state = buffer.state.lock().unwrap();
+            let mut bytes = buffer.fixed_memory();
+            for generation in buffer.generations.iter() {
                 if !generation.base.load(Ordering::Relaxed).is_null() {
                     bytes += allocation_size(
                         generation.length.load(Ordering::Relaxed),
@@ -1205,13 +1212,13 @@ mod tests {
 
         for compressed_max_memory in [0, 1 << 20] {
             EVENTS.lock().unwrap().clear();
-            let mut log = TrieNodeLog::for_fixtures(
+            let mut buffer = NodeRecordBuffer::for_fixtures(
                 MIN_GENERATION_BYTES,
                 compressed_max_memory,
                 DEFAULT_LIVE_GENERATIONS,
             );
-            unsafe { crate::nm_patricia_log_set_memory_pressure(&mut *log, report) };
-            assert_eq!(reported(&EVENTS), allocated(&log));
+            unsafe { crate::nm_patricia_buffer_set_memory_pressure(&mut *buffer, report) };
+            assert_eq!(reported(&EVENTS), allocated(&buffer));
             assert_eq!(EVENTS.lock().unwrap().len(), 2);
 
             // Failed fixture decoding must neither allocate a generation nor change pressure.
@@ -1219,8 +1226,8 @@ mod tests {
             let mut pointer = 0;
             assert_eq!(
                 unsafe {
-                    crate::nm_patricia_log_fixture_append_rlp(
-                        &*log,
+                    crate::nm_patricia_buffer_fixture_append_rlp(
+                        &*buffer,
                         std::ptr::null(),
                         &TreePath::default(),
                         [0xff].as_ptr(),
@@ -1234,26 +1241,26 @@ mod tests {
             );
             assert_eq!(reported(&EVENTS), before);
 
-            let retained = log.retain_active();
-            log.retain(retained);
-            let writer = log.pin();
+            let retained = buffer.retain_active();
+            buffer.retain(retained);
+            let writer = buffer.pin();
             let first = writer.append_keyed(&leaf(vec![0xaa; 40]), 1);
             writer.set_root(None, &[0x11; 32], first);
             let filler = leaf(vec![0xbb; 1000]);
-            while log.active.load(Ordering::Relaxed) <= DEFAULT_LIVE_GENERATIONS + 2 {
+            while buffer.active.load(Ordering::Relaxed) <= DEFAULT_LIVE_GENERATIONS + 2 {
                 writer.append_keyed(&filler, 2);
             }
-            assert!(active_length(&log) > MIN_GENERATION_BYTES);
-            assert_eq!(reported(&EVENTS), allocated(&log));
-            log.release(retained);
-            assert_eq!(reported(&EVENTS), allocated(&log));
-            log.release(retained);
+            assert!(active_length(&buffer) > MIN_GENERATION_BYTES);
+            assert_eq!(reported(&EVENTS), allocated(&buffer));
+            buffer.release(retained);
+            assert_eq!(reported(&EVENTS), allocated(&buffer));
+            buffer.release(retained);
             // This reader lets compaction run but retains its compressed output.
-            let reader = log.pin();
+            let reader = buffer.pin();
             drop(writer);
-            wait_for_compaction(&log);
-            assert!(log.state.lock().unwrap().compressed_memory > 0);
-            assert_eq!(reported(&EVENTS), allocated(&log));
+            wait_for_compaction(&buffer);
+            assert!(buffer.state.lock().unwrap().compressed_memory > 0);
+            assert_eq!(reported(&EVENTS), allocated(&buffer));
             assert!(EVENTS
                 .lock()
                 .unwrap()
@@ -1261,19 +1268,19 @@ mod tests {
                 .any(|&(bytes, thread)| bytes < 0 && thread != std::thread::current().id()));
             assert!(reader.record(first).is_some());
             drop(reader);
-            wait_for_compaction(&log);
-            assert_eq!(reported(&EVENTS), allocated(&log));
+            wait_for_compaction(&buffer);
+            assert_eq!(reported(&EVENTS), allocated(&buffer));
             if compressed_max_memory == 0 {
-                assert_eq!(log.state.lock().unwrap().compressed_memory, 0);
+                assert_eq!(buffer.state.lock().unwrap().compressed_memory, 0);
             }
             // Drop may itself have to wait for compaction before its final removals.
-            let writer = log.pin();
-            let active = log.active.load(Ordering::Relaxed);
-            while log.active.load(Ordering::Relaxed) == active {
+            let writer = buffer.pin();
+            let active = buffer.active.load(Ordering::Relaxed);
+            while buffer.active.load(Ordering::Relaxed) == active {
                 writer.append_keyed(&filler, 2);
             }
             drop(writer);
-            drop(log);
+            drop(buffer);
             let events = EVENTS.lock().unwrap();
             let mut outstanding = 0;
             for &(bytes, _) in events.iter() {
@@ -1323,8 +1330,8 @@ mod tests {
 
     #[test]
     fn appends_reads_in_place_truncates_and_indexes_roots() {
-        let log = TrieNodeLog::minimal();
-        let session = log.pin();
+        let buffer = NodeRecordBuffer::minimal();
+        let session = buffer.pin();
 
         let inline_leaf = decode_rlp(&[0xc4, 0x82, 0x20, 0x01, 0x05]).unwrap();
         let leaf_pointer = session.append(&leaf(vec![0xaa; 40]));
@@ -1349,7 +1356,7 @@ mod tests {
         };
         children[9] = ChildRef::inline(&rlp(&inline_leaf));
         let inline_branch = Node::Branch { children };
-        let pointers: Vec<LogPointer> = [
+        let pointers: Vec<BufferPointer> = [
             leaf(vec![0xaa; 40]),
             extension,
             hashed_branch,
@@ -1360,9 +1367,9 @@ mod tests {
             let pointer = session.append(node);
             assert_eq!(read(&session, pointer), rlp(node));
             // The record holds the node's RLP and hash, readable without a session while its generation is live.
-            let logged = log.node(pointer);
-            assert_eq!(logged.rlp(), rlp(node));
-            assert_eq!(*logged.hash(), crate::keccak::keccak(&rlp(node)));
+            let buffered = buffer.node(pointer);
+            assert_eq!(buffered.rlp(), rlp(node));
+            assert_eq!(*buffered.hash(), crate::keccak::keccak(&rlp(node)));
             pointer
         })
         .collect();
@@ -1374,12 +1381,12 @@ mod tests {
                 .collect::<Vec<_>>(),
             [2, 3]
         );
-        let extension = LoggedNode::new(session.record(pointers[1]).unwrap());
+        let extension = BufferedNode::new(session.record(pointers[1]).unwrap());
         assert!(
             matches!(extension.child(0), ChildRef::Hash { pointer, .. } if pointer == leaf_pointer)
         );
         for &pointer in &pointers[2..] {
-            let branch = LoggedNode::new(session.record(pointer).unwrap());
+            let branch = BufferedNode::new(session.record(pointer).unwrap());
             assert!(
                 matches!(branch.child(3), ChildRef::Hash { pointer, .. } if pointer == leaf_pointer)
             );
@@ -1389,7 +1396,7 @@ mod tests {
             );
         }
         assert!(
-            matches!(LoggedNode::new(session.record(pointers[3]).unwrap()).child(9), ChildRef::Inline(inline) if inline.as_slice() == rlp(&inline_leaf))
+            matches!(BufferedNode::new(session.record(pointers[3]).unwrap()).child(9), ChildRef::Inline(inline) if inline.as_slice() == rlp(&inline_leaf))
         );
 
         // A record larger than a generation gets one of its own.
@@ -1399,26 +1406,26 @@ mod tests {
         // Filling more generations than are live drops the first, but not for the session pinned before, and generations
         // grow while it pins the dropped ones.
         let filler = leaf(vec![0xcc; 1000]);
-        while log.active.load(Ordering::Relaxed) <= DEFAULT_LIVE_GENERATIONS + 2 {
+        while buffer.active.load(Ordering::Relaxed) <= DEFAULT_LIVE_GENERATIONS + 2 {
             session.append(&filler);
         }
-        assert!(active_length(&log) > MIN_GENERATION_BYTES);
-        assert!(log.pin().record(leaf_pointer).is_none());
+        assert!(active_length(&buffer) > MIN_GENERATION_BYTES);
+        assert!(buffer.pin().record(leaf_pointer).is_none());
         assert_eq!(read(&session, leaf_pointer), rlp(&leaf(vec![0xaa; 40])));
-        assert_eq!(log.state.lock().unwrap().oldest_allocated, 1);
-        // Compacted once the session is gone, then freed, as the log keeps no compacted generation.
+        assert_eq!(buffer.state.lock().unwrap().oldest_allocated, 1);
+        // Compacted once the session is gone, then freed, as the buffer keeps no compacted generation.
         drop(session);
-        wait_for_compaction(&log);
-        let state = log.state.lock().unwrap();
+        wait_for_compaction(&buffer);
+        let state = buffer.state.lock().unwrap();
         assert!(state.oldest_allocated > 1 && state.oldest_allocated == state.oldest_live);
         assert_eq!(state.oldest_compressed, state.oldest_allocated);
         drop(state);
-        let session = log.pin();
-        let active = log.active.load(Ordering::Relaxed);
-        while log.active.load(Ordering::Relaxed) == active {
+        let session = buffer.pin();
+        let active = buffer.active.load(Ordering::Relaxed);
+        while buffer.active.load(Ordering::Relaxed) == active {
             session.append(&filler);
         }
-        assert_eq!(active_length(&log), MIN_GENERATION_BYTES);
+        assert_eq!(active_length(&buffer), MIN_GENERATION_BYTES);
 
         // Roots hit on the same trie and hash only, and colliding roots are all kept.
         let pointer = session.append(&filler);
@@ -1430,7 +1437,7 @@ mod tests {
         assert_eq!(session.root(Some(&address), &[0x44; 32]), 0);
         assert_eq!(session.root(None, &[0x55; 32]), 0);
         assert_eq!(session.root(Some(&[0x66; 32]), &[0x55; 32]), 0);
-        let single = TrieNodeLog::create(
+        let single = NodeRecordBuffer::create(
             MIN_GENERATION_BYTES,
             DEFAULT_LIVE_GENERATIONS,
             0,
@@ -1469,27 +1476,27 @@ mod tests {
         // A retained generation, and every later one, stays live for later sessions until released, with generations
         // growing meanwhile, and a second retain keeps it once the first is released.
         drop(session);
-        let retained = log.retain_active();
-        let session = log.pin();
+        let retained = buffer.retain_active();
+        let session = buffer.pin();
         let retained_pointer = session.append(&filler);
-        while log.active.load(Ordering::Relaxed) <= retained + DEFAULT_LIVE_GENERATIONS {
+        while buffer.active.load(Ordering::Relaxed) <= retained + DEFAULT_LIVE_GENERATIONS {
             session.append(&filler);
         }
         drop(session);
-        assert!(log.pin().record(retained_pointer).is_some());
-        assert!(active_length(&log) > MIN_GENERATION_BYTES);
-        log.retain(retained);
-        log.release(retained);
-        assert!(log.pin().record(retained_pointer).is_some());
-        log.release(retained);
-        wait_for_compaction(&log);
-        assert!(log.pin().record(retained_pointer).is_none());
-        let state = log.state.lock().unwrap();
+        assert!(buffer.pin().record(retained_pointer).is_some());
+        assert!(active_length(&buffer) > MIN_GENERATION_BYTES);
+        buffer.retain(retained);
+        buffer.release(retained);
+        assert!(buffer.pin().record(retained_pointer).is_some());
+        buffer.release(retained);
+        wait_for_compaction(&buffer);
+        assert!(buffer.pin().record(retained_pointer).is_none());
+        let state = buffer.state.lock().unwrap();
         assert!(state.oldest_allocated > retained && state.oldest_allocated == state.oldest_live);
         drop(state);
 
-        // A temporary log keeps every generation, which keep growing, and indexes no root.
-        let temporary = TrieNodeLog::temporary();
+        // A temporary buffer keeps every generation, which keep growing, and indexes no root.
+        let temporary = NodeRecordBuffer::temporary();
         let session = temporary.pin();
         let first = session.append(&filler);
         while temporary.active.load(Ordering::Relaxed) <= DEFAULT_LIVE_GENERATIONS + 2 {
@@ -1503,7 +1510,7 @@ mod tests {
 
     #[test]
     fn compaction_preserves_real_child_links_but_never_transient_links() {
-        let log = TrieNodeLog::create(
+        let buffer = NodeRecordBuffer::create(
             MIN_GENERATION_BYTES,
             DEFAULT_LIVE_GENERATIONS,
             0,
@@ -1511,7 +1518,7 @@ mod tests {
             RootTable::new(1),
             RootTable::new(1),
         );
-        let writer = log.pin();
+        let writer = buffer.pin();
         let child = leaf(vec![0x11; 40]);
         let child_hash = crate::keccak::keccak(&rlp(&child));
         let child_pointer = writer.append_keyed(&child, 1);
@@ -1524,13 +1531,13 @@ mod tests {
         let branch_hash = crate::keccak::keccak(&rlp(&branch));
         let root_pointer = writer.append_keyed(&branch, 2);
         writer.set_root(None, &branch_hash, root_pointer);
-        while log.active.load(Ordering::Relaxed) <= DEFAULT_LIVE_GENERATIONS + 1 {
+        while buffer.active.load(Ordering::Relaxed) <= DEFAULT_LIVE_GENERATIONS + 1 {
             writer.append_keyed(&leaf(vec![0xcc; 1000]), 3);
         }
-        let reader = log.pin();
+        let reader = buffer.pin();
         drop(writer);
-        wait_for_compaction(&log);
-        let record = LoggedNode::new(reader.record(root_pointer).unwrap());
+        wait_for_compaction(&buffer);
+        let record = BufferedNode::new(reader.record(root_pointer).unwrap());
         assert_eq!(record.hash(), &branch_hash);
         assert!(matches!(record.child(1), ChildRef::Hash { pointer, hash } if pointer == child_pointer && hash == child_hash));
         assert!(matches!(record.child(2), ChildRef::Hash { pointer: 0, hash } if hash == [0x22; 32]));
@@ -1540,7 +1547,7 @@ mod tests {
 
     #[test]
     fn compaction_keeps_last_record_of_keys_not_rewritten_later_and_root_keys_while_pinned() {
-        let log = TrieNodeLog::create(
+        let buffer = NodeRecordBuffer::create(
             MIN_GENERATION_BYTES,
             DEFAULT_LIVE_GENERATIONS,
             0,
@@ -1551,27 +1558,30 @@ mod tests {
         let address = [0x33; 32];
         let keys = [1, 1, 2, 3]
             .map(|nibble| node_key(Some(&address), &TreePath::default().append(&[nibble])));
-        let writer = log.pin();
-        let pointers: Vec<LogPointer> = keys
+        let writer = buffer.pin();
+        let pointers: Vec<BufferPointer> = keys
             .iter()
             .enumerate()
             .map(|(index, &key)| writer.append_keyed(&leaf(vec![index as u8; 40]), key))
             .collect();
         writer.set_root(Some(&address), &[0x44; 32], pointers[3]);
         // Later generations rewrite the third key only, until the first generation is dropped.
-        while log.active.load(Ordering::Relaxed) <= DEFAULT_LIVE_GENERATIONS + 1 {
+        while buffer.active.load(Ordering::Relaxed) <= DEFAULT_LIVE_GENERATIONS + 1 {
             writer.append_keyed(&leaf(vec![0xcc; 1000]), keys[2]);
         }
 
         let mut children = empty_children();
-        children[1] = ChildRef::Hash { hash: *log.node(pointers[1]).hash(), pointer: pointers[1] };
+        children[1] = ChildRef::Hash {
+            hash: *buffer.node(pointers[1]).hash(),
+            pointer: pointers[1],
+        };
         let inherited_root = writer.append_keyed(&Node::Branch { children }, 0x12345678);
 
         // A session started once it is dropped cannot read it until compacted, but pins what compaction keeps.
-        let reader = log.pin();
+        let reader = buffer.pin();
         assert!(reader.record(pointers[1]).is_none());
         drop(writer);
-        wait_for_compaction(&log);
+        wait_for_compaction(&buffer);
         let kept: Vec<bool> = pointers
             .iter()
             .map(|&pointer| reader.record(pointer).is_some())
@@ -1580,18 +1590,18 @@ mod tests {
         assert_eq!(read(&reader, pointers[1]), rlp(&leaf(vec![1; 40])));
         assert_eq!(reader.find_node(inherited_root, &TreePath::default().append(&[1])).unwrap().rlp(), rlp(&leaf(vec![1; 40])));
         assert_eq!(reader.root(Some(&address), &[0x44; 32]), pointers[3]);
-        assert!(log.state.lock().unwrap().compressed_memory > 0);
+        assert!(buffer.state.lock().unwrap().compressed_memory > 0);
 
         // Over the compressed memory, so freed once no session pins it.
         drop(reader);
-        assert!(log.pin().record(pointers[1]).is_none());
-        assert_eq!(log.state.lock().unwrap().compressed_memory, 0);
+        assert!(buffer.pin().record(pointers[1]).is_none());
+        assert_eq!(buffer.state.lock().unwrap().compressed_memory, 0);
     }
 
     #[test]
     fn only_the_configured_live_generations_are_readable_in_place() {
         for live_generations in [1, DEFAULT_LIVE_GENERATIONS] {
-            let log = TrieNodeLog::create(
+            let buffer = NodeRecordBuffer::create(
                 MIN_GENERATION_BYTES,
                 live_generations,
                 0,
@@ -1599,27 +1609,27 @@ mod tests {
                 RootTable::new(1),
                 RootTable::new(1),
             );
-            let first = log.pin().append_keyed(&leaf(vec![0x11; 40]), 1);
+            let first = buffer.pin().append_keyed(&leaf(vec![0x11; 40]), 1);
             for active in 2..=live_generations + 1 {
                 assert!(
-                    log.pin().record(first).is_some(),
+                    buffer.pin().record(first).is_some(),
                     "live while {} is active",
                     active - 1
                 );
-                while log.active.load(Ordering::Relaxed) < active {
-                    log.pin().append_keyed(&leaf(vec![0xcc; 1000]), 2);
+                while buffer.active.load(Ordering::Relaxed) < active {
+                    buffer.pin().append_keyed(&leaf(vec![0xcc; 1000]), 2);
                 }
             }
-            wait_for_compaction(&log);
-            assert_eq!(log.state.lock().unwrap().oldest_live, 2);
-            assert!(log.pin().record(first).is_none());
+            wait_for_compaction(&buffer);
+            assert_eq!(buffer.state.lock().unwrap().oldest_live, 2);
+            assert!(buffer.pin().record(first).is_none());
         }
     }
 
     #[test]
     fn overlapping_sessions_do_not_keep_compacted_generations_from_being_freed() {
         for compressed_max_memory in [0, 1 << 20] {
-            let log = TrieNodeLog::create(
+            let buffer = NodeRecordBuffer::create(
                 MIN_GENERATION_BYTES,
                 DEFAULT_LIVE_GENERATIONS,
                 compressed_max_memory,
@@ -1627,27 +1637,27 @@ mod tests {
                 RootTable::new(1),
                 RootTable::new(1),
             );
-            let first = log.pin().append_keyed(&leaf(vec![0x11; 40]), 1);
+            let first = buffer.pin().append_keyed(&leaf(vec![0x11; 40]), 1);
             // Each session starts before the previous one ends, so some session is always open.
-            let mut reader = log.pin();
+            let mut reader = buffer.pin();
             for _ in 0..2 * DEFAULT_LIVE_GENERATIONS {
-                let active = log.active.load(Ordering::Relaxed);
-                while log.active.load(Ordering::Relaxed) == active {
+                let active = buffer.active.load(Ordering::Relaxed);
+                while buffer.active.load(Ordering::Relaxed) == active {
                     reader.append_keyed(&leaf(vec![0xcc; 1000]), 2);
                 }
-                let next = log.pin();
+                let next = buffer.pin();
                 drop(reader);
                 reader = next;
-                wait_for_compaction(&log);
+                wait_for_compaction(&buffer);
             }
-            let next = log.pin();
+            let next = buffer.pin();
             drop(reader);
             reader = next;
 
             let within_budget = compressed_max_memory != 0;
             assert_eq!(reader.record(first).is_some(), within_budget);
             assert_eq!(
-                log.state.lock().unwrap().oldest_compressed > 1,
+                buffer.state.lock().unwrap().oldest_compressed > 1,
                 !within_budget
             );
         }
@@ -1655,11 +1665,11 @@ mod tests {
 
     #[test]
     fn overlay_reads_parent_records_from_before_it_started_and_keeps_its_own() {
-        let parent = TrieNodeLog::minimal();
+        let parent = NodeRecordBuffer::minimal();
         let writer = parent.pin();
         let before = writer.append_keyed(&leaf(vec![0x11; 40]), 1);
         writer.set_root(None, &[0x11; 32], before);
-        let overlay = unsafe { TrieNodeLog::overlay(&parent) };
+        let overlay = unsafe { NodeRecordBuffer::overlay(&parent) };
         let after = writer.append_keyed(&leaf(vec![0x22; 40]), 2);
         writer.set_root(None, &[0x22; 32], after);
         let parent_active = parent.active.load(Ordering::Relaxed);
