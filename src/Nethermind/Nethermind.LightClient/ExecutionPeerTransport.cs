@@ -62,6 +62,9 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
     private readonly LightSyncServer _syncServer;
     private readonly BoundedTransactionRelay _transactionRelay = new();
     private readonly HostedAccountState? _hostedAccounts;
+    private readonly Lazy<VerifiedHeaderHistory> _logHistory;
+    private readonly Lock _historyLifetime = new();
+    private bool _historyStopped;
     private Tuple<Hash256, ReadOnlyBlockAccessList>? _lastBlockAccessList;
     private IRlpxHost? _host;
     private IDiscoveryApp? _discovery;
@@ -78,6 +81,8 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
     internal int CandidateCount => _peerPool?.PeerCount ?? 0;
     internal string DiscoveryStatus => _feederTask?.Status.ToString() ?? "not started";
     internal string DiscoveryDomain => _services.Resolve<INetworkConfig>().DiscoveryDns ?? "<unset>";
+    internal HistoryProgress LogHistoryProgress => _logHistory.IsValueCreated ? _logHistory.Value.Progress
+        : new(null, null, null, null, false, null);
 
     internal ExecutionPeerTransport(string network, ILogManager logManager, VerifiedHead head, ulong timestamp,
         string? dataDirectory = null, Address[]? hostedAccounts = null, bool hostedAccountsBal = false, int port = 30307)
@@ -128,6 +133,17 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
                 .Keyed<INetworkStorage>(DbNames.DiscoveryV5Nodes).SingleInstance();
         }
         _services = builder.Build();
+        _logHistory = new(() =>
+        {
+            string? directory = dataDirectory is null ? null : Path.GetFullPath(Path.Combine(dataDirectory, "el", network, "log-history"));
+            IDb db = directory is null ? new MemDb("lightClientLogHeaders") : VerifiedHeaderHistory.OpenDb(directory, logManager);
+            try
+            {
+                return new(db, genesisHash, SpecProvider, GetHeaderAsync, FetchLogHeaderPageAsync, _logger,
+                    directory: directory);
+            }
+            catch { db.Dispose(); throw; }
+        });
     }
 
     internal async Task StartAsync(CancellationToken cancellationToken)
@@ -505,6 +521,75 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
         return header;
     }
 
+    public Task<BlockHeader[]> GetLogHeadersAsync(VerifiedHead anchor, VerifiedHead finalized, ulong firstNumber,
+        ulong lastNumber, CancellationToken cancellationToken)
+    {
+        lock (_historyLifetime)
+        {
+            ObjectDisposedException.ThrowIf(_historyStopped, this);
+            cancellationToken.ThrowIfCancellationRequested();
+        }
+        return VerifiedLogHeaders.GetAsync(this, anchor, finalized, firstNumber, lastNumber, cancellationToken,
+            ReadFinalizedAsync, ReadTransientLogHeadersAsync);
+
+        Task<BlockHeader[]> ReadFinalizedAsync(VerifiedHead head, ulong first, ulong last, CancellationToken token)
+        {
+            VerifiedHeaderHistory history;
+            lock (_historyLifetime)
+            {
+                ObjectDisposedException.ThrowIf(_historyStopped, this);
+                token.ThrowIfCancellationRequested();
+                history = _logHistory.Value;
+            }
+            return history.GetHeadersAsync(head, first, last, token);
+        }
+    }
+
+    private Task<BlockHeader[]> FetchLogHeaderPageAsync(BlockHeader cursor, int count, CancellationToken cancellationToken) =>
+        RequestExecutionAsync((peer, token) => ReadLogHeaderPageAsync(peer, cursor, count, token), cancellationToken);
+
+    internal static async Task<BlockHeader[]> ReadLogHeaderPageAsync(ISyncPeer peer, BlockHeader cursor, int count,
+        CancellationToken cancellationToken)
+    {
+        int responseCount;
+        using (IOwnedReadOnlyList<BlockHeader>? headers = await peer.GetBlockHeaders(cursor.Number - (ulong)count, count, 0, cancellationToken))
+        {
+            if (headers is null || headers.Count == 0 || headers.Count > count)
+                throw new InvalidDataException("Execution peer supplied an incomplete log header page.");
+            responseCount = headers.Count;
+            if (responseCount == count)
+            {
+                BlockHeader[] result = new BlockHeader[count];
+                for (int i = 0; i < count; i++) result[i] = headers[i];
+                VerifiedHeaderHistory.VerifyPage(cursor, count, result);
+                return result;
+            }
+        }
+        BlockHeader[] newer = await ReadLogHeaderPageAsync(peer, cursor, responseCount, cancellationToken);
+        BlockHeader[] older = await ReadLogHeaderPageAsync(peer, newer[0], count - responseCount, cancellationToken);
+        return [.. older, .. newer];
+    }
+
+    private async Task<BlockHeader[]> ReadTransientLogHeadersAsync(VerifiedHead anchor, ulong first, ulong last,
+        CancellationToken cancellationToken)
+    {
+        BlockHeader cursor = await GetHeaderAsync(anchor, cancellationToken);
+        VerifiedLogHeaders.Verify(cursor, anchor.Number, anchor.BlockHash);
+        if (cursor.StateRoot != anchor.StateRoot)
+            throw new InvalidDataException("Optimistic log anchor has an inconsistent state root.");
+        BlockHeader[] result = new BlockHeader[checked((int)(last - first + 1))];
+        if (cursor.Number <= last) result[checked((int)(cursor.Number - first))] = cursor;
+        while (cursor.Number > first)
+        {
+            int count = (int)Math.Min(VerifiedHeaderHistory.PageSize, cursor.Number - first);
+            BlockHeader[] page = await FetchLogHeaderPageAsync(cursor, count, cancellationToken);
+            foreach (BlockHeader header in page)
+                if (header.Number <= last) result[checked((int)(header.Number - first))] = header;
+            cursor = page[0];
+        }
+        return result;
+    }
+
     public Task<Block> GetBlockAsync(BlockHeader header, CancellationToken cancellationToken)
     {
         if (!header.HasBody)
@@ -752,7 +837,14 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
 
     public async ValueTask DisposeAsync()
     {
+        VerifiedHeaderHistory? history;
+        lock (_historyLifetime)
+        {
+            _historyStopped = true;
+            history = _logHistory.IsValueCreated ? _logHistory.Value : null;
+        }
         await _stop.CancelAsync();
+        if (history is not null) await history.DisposeAsync();
         if (_snapCapacityTask is not null)
         {
             try { await _snapCapacityTask; }

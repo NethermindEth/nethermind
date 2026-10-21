@@ -18,6 +18,9 @@ internal interface IExecutionStateSource
     Task<ReadOnlyBlockAccessList> GetBlockAccessListAsync(BlockHeader header, CancellationToken cancellationToken) => throw new NotSupportedException();
     Task<Hash256[]> GetAncestorHashesAsync(VerifiedHead head, ulong firstNumber, CancellationToken cancellationToken);
     Task<BlockHeader> GetCanonicalHeaderAsync(VerifiedHead head, ulong number, CancellationToken cancellationToken) => throw new NotSupportedException();
+    Task<BlockHeader[]> GetLogHeadersAsync(VerifiedHead anchor, VerifiedHead finalized, ulong firstNumber,
+        ulong lastNumber, CancellationToken cancellationToken) =>
+        VerifiedLogHeaders.GetAsync(this, anchor, finalized, firstNumber, lastNumber, cancellationToken);
     Task<Block> GetBlockAsync(BlockHeader header, CancellationToken cancellationToken) => throw new NotSupportedException();
     Task<TxReceipt[]> GetReceiptsAsync(Block block, CancellationToken cancellationToken) => throw new NotSupportedException();
     Task BroadcastTransactionAsync(Transaction transaction, CancellationToken cancellationToken) => throw new NotSupportedException();

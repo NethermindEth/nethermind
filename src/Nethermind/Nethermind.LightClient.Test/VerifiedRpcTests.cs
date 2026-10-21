@@ -545,26 +545,26 @@ public class VerifiedRpcTests
         JsonElement logs = (JsonElement)await rpc.InvokeAsync("eth_getLogs", Parameters(filter), CancellationToken.None);
 
         AssertRangeLogs(logs, source, first, last);
-        Assert.That(source.Anchors.Single().BlockHash, Is.EqualTo(source.Head(last > 320 ? 325UL : 320UL).BlockHash));
+        Assert.That(source.Anchors[0].BlockHash, Is.EqualTo(source.Head(last > 320 ? 325UL : 320UL).BlockHash));
     }
 
     [Test]
-    public async Task Log_range_depth_is_bounded_by_its_selected_head([Values] bool optimistic, [Values(256, 257)] int depth)
+    public async Task Log_range_width_is_bounded([Values] bool optimistic, [Values(256, 257, 498, 511, 512)] int depth)
     {
-        LogRangeSource source = new(143, 400);
-        using VerifiedRpc rpc = new(source, () => source.Head(optimistic ? 390UL : 400UL), 1,
-            specProvider: MainnetSpecProvider.Instance, getLatestHead: () => source.Head(400));
+        LogRangeSource source = new(143, 655);
+        using VerifiedRpc rpc = new(source, () => source.Head(optimistic ? 645UL : 655UL), 1,
+            specProvider: MainnetSpecProvider.Instance, getLatestHead: () => source.Head(655));
         JsonElement parameters = Parameters(new
         {
-            fromBlock = VerifiedRpc.Quantity(400UL - (ulong)depth),
+            fromBlock = VerifiedRpc.Quantity(655UL - (ulong)depth),
             toBlock = optimistic ? "latest" : "finalized",
             address = AccountAddress.ToString(),
         });
 
-        if (depth == 256)
+        if (depth <= 511)
         {
             JsonElement logs = (JsonElement)await rpc.InvokeAsync("eth_getLogs", parameters, CancellationToken.None);
-            AssertRangeLogs(logs, source, 144, 400);
+            AssertRangeLogs(logs, source, 655UL - (ulong)depth, 655);
         }
         else
         {
@@ -573,6 +573,27 @@ public class VerifiedRpcTests
             Assert.That(error!.Code, Is.EqualTo(-32001));
             Assert.That(source.HeaderReads, Is.Zero);
             Assert.That(source.Anchors, Is.Empty);
+        }
+    }
+
+    [Test]
+    public async Task Historical_log_block_hash_does_not_expand_block_data_history([Values(256, 257, 499)] int depth)
+    {
+        LogRangeSource source = new(100, 605);
+        ulong number = 600UL - (ulong)depth;
+        using VerifiedRpc rpc = new(source, () => source.Head(600), 1,
+            specProvider: MainnetSpecProvider.Instance, getLatestHead: () => source.Head(605));
+        string hash = source[number].Hash!.ToString();
+
+        JsonElement logs = (JsonElement)await rpc.InvokeAsync("eth_getLogs",
+            Parameters(new { blockHash = hash, address = AccountAddress.ToString() }), CancellationToken.None);
+
+        AssertRangeLogs(logs, source, number, number);
+        if (depth > 256)
+        {
+            RpcException? error = await Assert.ThrowsAsync<RpcException>(async () =>
+                await rpc.InvokeAsync("eth_getBlockByHash", Parameters(hash, false), CancellationToken.None));
+            Assert.That(error!.Code, Is.EqualTo(-32001));
         }
     }
 
@@ -620,7 +641,6 @@ public class VerifiedRpcTests
     [TestCase("0x190", "0x191", -32602)]
     [TestCase("0x186", "0x185", -32602)]
     [TestCase("0x10000000000000000", "latest", -32602)]
-    [TestCase("0x8f", "latest", -32001)]
     [TestCase("safe", "latest", -32001)]
     [TestCase("pending", "latest", -32001)]
     [TestCase("earliest", "latest", -32001)]

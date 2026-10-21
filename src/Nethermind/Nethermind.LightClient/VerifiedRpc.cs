@@ -382,7 +382,26 @@ internal sealed class VerifiedRpc(IExecutionStateSource execution, Func<Verified
             (from.ValueKind != JsonValueKind.Undefined || to.ValueKind != JsonValueKind.Undefined)) throw InvalidParameters();
         if (blockHash.ValueKind != JsonValueKind.Undefined)
         {
-            BlockHeader one = await ResolveDataHeaderAsync(blockHash, hashOnly: true, cancellationToken);
+            Hash256 requested = new(ReadParameterData(blockHash, 32));
+            VerifiedHead? latest = getLatestHead?.Invoke();
+            BlockHeader one;
+            if (latest?.BlockHash == requested) one = await execution.GetHeaderAsync(latest, cancellationToken);
+            else
+            {
+                VerifiedHead hashFinalized = getHead();
+                if (hashFinalized.BlockHash == requested) one = await execution.GetHeaderAsync(hashFinalized, cancellationToken);
+                else
+                {
+                    BlockHeader candidate = await execution.GetHeaderByHashAsync(requested, cancellationToken);
+                    VerifiedHead hashAnchor = candidate.Number > hashFinalized.Number ? latest ?? hashFinalized : hashFinalized;
+                    if (candidate.Number > hashAnchor.Number)
+                        throw new RpcException(-32001, "Block is outside the authenticated log chain.");
+                    BlockHeader[] verified = await execution.GetLogHeadersAsync(hashAnchor, hashFinalized, candidate.Number, candidate.Number, cancellationToken);
+                    one = verified[0];
+                    if (one.Hash != requested)
+                        throw new RpcException(-32001, "Block is not in the selected authenticated chain.");
+                }
+            }
             return await _data!.GetLogsAsync([one], addresses, topics, cancellationToken);
         }
         bool latestFrom = from.ValueKind == JsonValueKind.Undefined || from.ValueKind == JsonValueKind.String && from.GetString() == "latest";
@@ -406,27 +425,7 @@ internal sealed class VerifiedRpc(IExecutionStateSource execution, Func<Verified
         if (first > last) throw InvalidParameters();
         VerifiedHead anchor = optimisticFrom || optimisticTo || last > finalized.Number ? current ?? finalized : finalized;
         if (first > anchor.Number || last > anchor.Number) throw InvalidParameters();
-        if (anchor.Number < finalized.Number || anchor.Number - first > 256)
-            throw new RpcException(-32001, "Block is outside the verified history window.");
-        Hash256[] hashes = first == anchor.Number ? [anchor.BlockHash]
-            : await execution.GetAncestorHashesAsync(anchor, first, cancellationToken);
-        if (hashes.Length != checked((int)(anchor.Number - first + 1)) || hashes[^1] != anchor.BlockHash)
-            throw new InvalidDataException("Invalid authenticated ancestor chain.");
-        if (first <= finalized.Number && finalized.Number <= anchor.Number
-            && hashes[checked((int)(finalized.Number - first))] != finalized.BlockHash)
-            throw new InvalidDataException("Optimistic ancestry conflicts with authenticated finality.");
-        BlockHeader[] headers = new BlockHeader[checked((int)(last - first + 1))];
-        for (int i = 0; i < headers.Length; i++)
-        {
-            ulong number = first + (ulong)i;
-            BlockHeader header = number == anchor.Number
-                ? await execution.GetHeaderAsync(anchor, cancellationToken)
-                : await execution.GetHeaderByHashAsync(hashes[i], cancellationToken);
-            if (header.Number != number || header.Hash != hashes[i]
-                || i > 0 && header.ParentHash != headers[i - 1].Hash)
-                throw new InvalidDataException("An ancestor header differs from the authenticated chain.");
-            headers[i] = header;
-        }
+        BlockHeader[] headers = await execution.GetLogHeadersAsync(anchor, finalized, first, last, cancellationToken);
         return await _data!.GetLogsAsync(headers, addresses, topics, cancellationToken);
     }
 
