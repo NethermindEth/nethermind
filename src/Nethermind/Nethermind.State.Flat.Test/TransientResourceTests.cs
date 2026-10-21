@@ -59,11 +59,11 @@ public class TransientResourceTests
     }
 
     [Test]
-    public void Reset_ClearsTheWarmedNodeLogAndGrowsItsSizeOnlyPastItsCapacity([Values] bool pastCapacity)
+    public void Reset_ClearsTheWarmedNodeBufferAndGrowsItsSizeOnlyPastItsCapacity([Values] bool pastCapacity)
     {
         const int capacity = 4;
         using TransientResource resource = new(new TransientResource.Size(1024, capacity));
-        WarmedNodeLog warmedNodeLog = resource.WarmedNodeLog;
+        WarmedNodeBuffer warmedNodeLog = resource.WarmedNodeBuffer;
         int nodeCount = pastCapacity ? capacity + 1 : capacity;
         ulong originalPointer = 0;
         for (byte value = 0; value < nodeCount; value++)
@@ -81,7 +81,7 @@ public class TransientResourceTests
         warmedNodeLog.Append(null, TreePath.Empty.Append(0), originalHash, originalRlp, [], out _, out ulong newPointer);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(resource.WarmedNodeLog, Is.SameAs(warmedNodeLog));
+            Assert.That(resource.WarmedNodeBuffer, Is.SameAs(warmedNodeLog));
             Assert.That(foundAfterReset, Is.False);
             Assert.That(resource.GetSize().NodesCacheSize, Is.EqualTo(nodeCount));
             Assert.That(newPointer, Is.Not.EqualTo(originalPointer), "a reset never reuses a pointer");

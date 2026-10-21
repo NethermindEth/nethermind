@@ -15,7 +15,7 @@ using NUnit.Framework;
 
 namespace Nethermind.State.Flat.Test.NodeBuffer;
 
-internal class WarmedNodeLogTests
+internal class WarmedNodeBufferTests
 {
     private const int GenerationBytes = 1 << 20;
     private const int LargeRecordCount = 5000;
@@ -23,7 +23,7 @@ internal class WarmedNodeLogTests
     [Test]
     public void Append_indexes_by_position_and_resolves_through_the_combined_buffer([Values] bool storage)
     {
-        using WarmedNodeLog warmed = new(1024);
+        using WarmedNodeBuffer warmed = new(1024);
         using NodeRecordBuffer global = new(0, GenerationBytes, NodeRecordBuffer.DefaultLiveGenerations);
         WarmedNodeRecordBuffer combined = new(global, warmed);
         Hash256? address = storage ? TestItem.KeccakA : null;
@@ -59,7 +59,7 @@ internal class WarmedNodeLogTests
             Assert.That(combined.TryLocate(globalPointer, out located) && located.Rlp.SequenceEqual(rlp), Is.True, "combined resolves the global pointer");
             Assert.That(combined.FindRoot(address, hash), Is.Zero, "roots stay global");
             Assert.That(global.TryLocate(pointer, out _), Is.False, "the global buffer misses transient pointers");
-            Assert.That(warmed.TryLocate(globalPointer, out _), Is.False, "the log misses global pointers");
+            Assert.That(warmed.TryLocate(globalPointer, out _), Is.False, "the warmed buffer misses global pointers");
         }
 
         warmed.Append(address, path, otherHash, otherRlp, [], out _, out ulong repeatedPositionPointer);
@@ -99,7 +99,7 @@ internal class WarmedNodeLogTests
     public void Concurrent_appends_publish_complete_records([Values] bool samePosition)
     {
         const int count = 1000;
-        using WarmedNodeLog warmed = new(1);
+        using WarmedNodeBuffer warmed = new(1);
         byte[] rlp = NodeRecordBufferTests.Leaf(0, 400);
         ValueHash256 hash = ValueKeccak.Compute(rlp);
         bool[] complete = new bool[count];
@@ -122,6 +122,6 @@ internal class WarmedNodeLogTests
 
     private static TreePath Path(int seed) => new(ValueKeccak.Compute(BitConverter.GetBytes(seed)), 64);
 
-    private static byte[]? Get(WarmedNodeLog warmed, Hash256? address, in TreePath path) =>
+    private static byte[]? Get(WarmedNodeBuffer warmed, Hash256? address, in TreePath path) =>
         warmed.TryGet(address, path, out NodeRecord record, out _) ? record.Rlp.ToArray() : null;
 }

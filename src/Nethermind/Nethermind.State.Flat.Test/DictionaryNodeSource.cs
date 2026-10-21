@@ -19,7 +19,7 @@ namespace Nethermind.State.Flat.Test;
 
 /// <summary>A node source over path-keyed node RLP, for tests and benchmarks: a fetched node is verified and inserted into <paramref name="warmed"/>, which serves it after.</summary>
 /// <param name="address">The storage trie's address hash, or null for the state trie.</param>
-public sealed class DictionaryNodeSource(IReadOnlyDictionary<TreePath, byte[]> nodes, WarmedNodeLog warmed, Hash256? address)
+public sealed class DictionaryNodeSource(IReadOnlyDictionary<TreePath, byte[]> nodes, WarmedNodeBuffer warmed, Hash256? address)
 {
     private int _fetchCount;
 

@@ -12,7 +12,7 @@ using Nethermind.Trie.NodeBuffer;
 
 namespace Nethermind.State.Flat.NodeBuffer;
 
-/// <summary>Loads the nodes on a trie path into a <see cref="WarmedNodeLog"/> ahead of a <see cref="NodeRecordBulkSet"/> that changes it.</summary>
+/// <summary>Loads the nodes on a trie path into a <see cref="WarmedNodeBuffer"/> ahead of a <see cref="NodeRecordBulkSet"/> that changes it.</summary>
 internal static class BufferWarmUp
 {
     private const int MaxKeyNibbles = BulkSetWorkingState.MaxKeyNibbles;
@@ -30,7 +30,7 @@ internal static class BufferWarmUp
     /// <param name="buffer">The buffer holding the pre-block trie, which also resolves the pointers of <paramref name="warmed"/>.</param>
     /// <param name="reader">Reads the nodes neither <paramref name="buffer"/> nor <paramref name="warmed"/> holds.</param>
     /// <param name="forDelete">Also loads the sibling a two-child branch collapses into when its matching leaf is deleted.</param>
-    public static void WarmUp(INodeRecordBuffer buffer, WarmedNodeLog warmed, ReadOnlySnapshotBundle reader, Hash256? address,
+    public static void WarmUp(INodeRecordBuffer buffer, WarmedNodeBuffer warmed, ReadOnlySnapshotBundle reader, Hash256? address,
         (ValueHash256 Hash, ulong Pointer) root, in ValueHash256 key, bool forDelete)
     {
         if (root.Hash == ValueKeccak.EmptyTreeHash) return;
@@ -107,7 +107,7 @@ internal static class BufferWarmUp
     /// <remarks>Read RLP is trusted to be the node of the hash its parent holds: the pre-block path reaches the reader only below a subtree unchanged since persistence.</remarks>
     /// <param name="recordsLength">The bytes of <paramref name="records"/> in use, advanced past a written record.</param>
     /// <returns>False when the reader misses, the RLP is not a valid trie node, or its record does not fit <paramref name="records"/>.</returns>
-    private static bool TryRead(INodeRecordBuffer buffer, WarmedNodeLog warmed, ReadOnlySnapshotBundle reader, Hash256? address,
+    private static bool TryRead(INodeRecordBuffer buffer, WarmedNodeBuffer warmed, ReadOnlySnapshotBundle reader, Hash256? address,
         in TreePath path, in ChildRef child, ArrayPoolList<byte> scratch, ArrayPoolList<byte> records, ref int recordsLength, out Frame frame)
     {
         frame = new Frame { Path = path, ChildSlot = -1, SiblingSlot = -1 };
@@ -132,7 +132,7 @@ internal static class BufferWarmUp
     }
 
     /// <summary>Loads the only other child of <paramref name="branch"/>, which it collapses into when the matching leaf is deleted.</summary>
-    private static void PrefetchSibling(INodeRecordBuffer buffer, WarmedNodeLog warmed, ReadOnlySnapshotBundle reader, Hash256? address,
+    private static void PrefetchSibling(INodeRecordBuffer buffer, WarmedNodeBuffer warmed, ReadOnlySnapshotBundle reader, Hash256? address,
         ref Frame branch, ArrayPoolList<byte> scratch)
     {
         if (branch.Record.Kind is not (NodeRecordKind.HashedBranch or NodeRecordKind.InlineBranch)) return;

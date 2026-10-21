@@ -6,12 +6,12 @@ using Nethermind.Trie.NodeBuffer;
 
 namespace Nethermind.State.Flat.NodeBuffer;
 
-/// <summary>A node-record buffer that also resolves the transient pointers of a <see cref="WarmedNodeLog"/>.</summary>
+/// <summary>A node-record buffer that also resolves the transient pointers of a <see cref="WarmedNodeBuffer"/>.</summary>
 /// <remarks>
-/// Writes, pins and roots go to <paramref name="global"/>; the log keeps its own records readable until it is reset.
+/// Writes, pins and roots go to <paramref name="global"/>; the warmed buffer keeps its own records readable until it is reset.
 /// Owns neither, so <see cref="Dispose"/> does nothing.
 /// </remarks>
-internal sealed class WarmedNodeRecordBuffer(INodeRecordBuffer global, WarmedNodeLog warmed) : INodeRecordBuffer
+internal sealed class WarmedNodeRecordBuffer(INodeRecordBuffer global, WarmedNodeBuffer warmed) : INodeRecordBuffer
 {
     /// <inheritdoc/>
     public INodeRecordBufferPin PinHead() => global.PinHead();

@@ -74,7 +74,7 @@ public class NodeRecordBufferTests
         using NodeRecordBuffer buffer = new(0, GenerationBytes, LiveGenerations);
         byte[] rlp = Leaf(1, 8);
         ulong realPointer = Append(buffer, rlp);
-        using WarmedNodeLog warmed = new(1);
+        using WarmedNodeBuffer warmed = new(1);
         ValueHash256 hash = ValueKeccak.Compute(rlp);
         warmed.Append(null, TreePath.Empty, hash, rlp, [], out _, out ulong temporaryPointer);
 
@@ -88,9 +88,10 @@ public class NodeRecordBufferTests
     }
 
     [Test]
-    public void Native_buffers_are_zero_filled([Values(0, 1, GenerationBytes, 2 * 1024 * 1024 - 1, 2 * 1024 * 1024, 2 * 1024 * 1024 + 1)] int length)
+    public void Native_buffers_are_zero_filled([Values(0, 1, GenerationBytes, 2 * 1024 * 1024 - 1, 2 * 1024 * 1024, 2 * 1024 * 1024 + 1)] int length, [Values] bool prefault)
     {
         using NativeNodeBuffer buffer = NativeNodeBuffer.Allocate(length);
+        if (prefault) buffer.Prefault();
         using (Assert.EnterMultipleScope())
         {
             Assert.That(buffer.Length, Is.EqualTo(length));
@@ -242,7 +243,7 @@ public class NodeRecordBufferTests
         {
             Assert.That(() => buffer.FindBloom(later) is null, Is.True.After(CompactionTimeoutMilliseconds, PollingMilliseconds), "released generations are compacted");
             Assert.That(() => IsLocatable(buffer, pointer), Is.False.After(CompactionTimeoutMilliseconds, PollingMilliseconds), "and evicted over the budget");
-            Assert.That(() => record.Rlp.ToArray(), Throws.InstanceOf<ObjectDisposedException>(), "the released native owner is freed");
+            Assert.That(() => ThrowsDisposed(() => record.Rlp.ToArray()), Is.True.After(CompactionTimeoutMilliseconds, PollingMilliseconds), "the released native owner is freed");
         }
 
         void AdvanceTo(ulong generation)
@@ -276,6 +277,37 @@ public class NodeRecordBufferTests
         }
 
         reader.Dispose();
+    }
+
+    [Test]
+    public void Compacted_generation_stays_allocated_for_pin_alls_taken_while_it_was_dropped()
+    {
+        const int generationBytes = 4096;
+        // One compacted generation of these records fits the budget, two do not.
+        using NodeRecordBuffer buffer = new(4096, generationBytes, liveGenerations: 1);
+        byte[] firstRlp = Leaf(1, 2500);
+        ulong first = AppendAt(buffer, TestItem.KeccakA, firstRlp);
+        IDisposable holdsFirst = buffer.PinAll();
+        ulong second = AppendAt(buffer, TestItem.KeccakB, Leaf(2, 2500));
+        IDisposable holdsSecond = buffer.PinAll();
+        buffer.Reserve(generationBytes, out _, out _);
+        // Both older generations are dropped, so this pin skips them.
+        IDisposable reader = buffer.PinAll();
+
+        holdsFirst.Dispose();
+        Assert.That(() => buffer.FindBloom(first) is null, Is.True.After(CompactionTimeoutMilliseconds, PollingMilliseconds));
+        Assert.That(buffer.TryLocate(first, out NodeRecord record) && Matches(record, firstRlp), Is.True, "the reader reads the compacted record");
+
+        holdsSecond.Dispose();
+        Assert.That(() => buffer.FindBloom(second) is null, Is.True.After(CompactionTimeoutMilliseconds, PollingMilliseconds));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(IsLocatable(buffer, first), Is.False, "the second compaction pushes the first over the budget");
+            Assert.That(Matches(record, firstRlp), Is.True, "the borrowed record stays valid while the reader lives");
+        }
+
+        reader.Dispose();
+        Assert.That(() => ThrowsDisposed(() => record.Rlp.ToArray()), Is.True.After(CompactionTimeoutMilliseconds, PollingMilliseconds), "freed once the reader is released");
     }
 
     [Test]
@@ -356,7 +388,7 @@ public class NodeRecordBufferTests
         Assert.That(() => IsDisposed(first), Is.True.After(CompactionTimeoutMilliseconds, PollingMilliseconds));
         // Wait for the disposal lock to cover the rest of this generation's cleanup, too.
         buffer.Dispose();
-        Assert.That(() => bloom.MightContain(0), Throws.InstanceOf<ObjectDisposedException>());
+        Assert.That(() => ThrowsDisposed(() => bloom.MightContain(0)), Is.True.After(CompactionTimeoutMilliseconds, PollingMilliseconds));
     }
 
     [Test]
@@ -600,6 +632,20 @@ public class NodeRecordBufferTests
         byte[] value = new byte[valueLength];
         BinaryPrimitives.WriteInt32LittleEndian(value, seed);
         return Rlp.Encode(Rlp.Encode(HexPrefix.ToBytes([1, 2], isLeaf: true)), Rlp.Encode(value)).Bytes;
+    }
+
+    /// <remarks>Retired native owners are freed in the background.</remarks>
+    private static bool ThrowsDisposed(Action action)
+    {
+        try
+        {
+            action();
+            return false;
+        }
+        catch (ObjectDisposedException)
+        {
+            return true;
+        }
     }
 
     private static bool IsDisposed(NativeNodeBuffer buffer)

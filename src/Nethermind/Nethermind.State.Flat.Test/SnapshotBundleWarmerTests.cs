@@ -139,7 +139,7 @@ public class SnapshotBundleWarmerTests
         {
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(retired!.WarmedNodeLog.TryGet(address, TreePath.Empty, out NodeRecord warmedRoot, out _), Is.True);
+                Assert.That(retired!.WarmedNodeBuffer.TryGet(address, TreePath.Empty, out NodeRecord warmedRoot, out _), Is.True);
                 Assert.That(warmedRoot.Hash, Is.EqualTo(persistedRoot.Hash), "the persisted node is warmed, the committed one is not");
                 Assert.That(_buffer.TryLocate(committedRoot.Pointer, out NodeRecord committedRecord) && committedRecord.Rlp.SequenceEqual(committedRlp), Is.True, "committed node remains in the retained buffer");
             }
@@ -196,7 +196,7 @@ public class SnapshotBundleWarmerTests
     {
         byte[] rlp = FlatTestHelpers.LeafRlp(0x80);
         ValueHash256 hash = ValueKeccak.Compute(rlp);
-        using WarmedNodeLog warmed = new(1);
+        using WarmedNodeBuffer warmed = new(1);
         ulong pointer;
         if (inBuffer) pointer = _buffer.AppendRecordFromRlp(null, TreePath.Empty, hash, rlp, []);
         else warmed.Append(null, TreePath.Empty, hash, rlp, [], out _, out pointer);
@@ -218,7 +218,7 @@ public class SnapshotBundleWarmerTests
         TransientResource rented = _pool.GetCachedResource(usage);
         try
         {
-            rented.WarmedNodeLog.Append(address, TreePath.Empty, hash, rlp, [], out _, out _);
+            rented.WarmedNodeBuffer.Append(address, TreePath.Empty, hash, rlp, [], out _, out _);
         }
         finally
         {
@@ -231,7 +231,7 @@ public class SnapshotBundleWarmerTests
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(recycled, Is.SameAs(rented));
-                Assert.That(recycled.WarmedNodeLog.TryGet(address, TreePath.Empty, out _, out _), Is.False);
+                Assert.That(recycled.WarmedNodeBuffer.TryGet(address, TreePath.Empty, out _, out _), Is.False);
             }
         }
         finally
@@ -290,7 +290,7 @@ public class SnapshotBundleWarmerTests
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(recycled, Is.SameAs(retired), "the final warmer release returns the resource exactly once");
-                Assert.That(recycled.WarmedNodeLog.Count, Is.Zero, "reset happens after the warmer finishes writing");
+                Assert.That(recycled.WarmedNodeBuffer.Count, Is.Zero, "reset happens after the warmer finishes writing");
             }
         }
         finally
@@ -321,7 +321,7 @@ public class SnapshotBundleWarmerTests
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(reader.Reads, Is.EqualTo(1));
-                Assert.That(retired!.WarmedNodeLog.Count, Is.Zero);
+                Assert.That(retired!.WarmedNodeBuffer.Count, Is.Zero);
             }
         }
         finally
@@ -435,10 +435,10 @@ public class SnapshotBundleWarmerTests
             StateId from = new(blockNumber, TestItem.KeccakA);
             StateId to = new(++blockNumber, TestItem.KeccakA);
             (Snapshot? snapshot, TransientResource? retired) = current.Bundle.CollectAndApplySnapshot(from, to, null);
-            int recordCount = retired!.WarmedNodeLog.Count;
+            int recordCount = retired!.WarmedNodeBuffer.Count;
             retiredRecords += recordCount;
             foreignRecords += Math.Max(0, recordCount - 1);
-            if (recordCount != 0 && !(retired.WarmedNodeLog.TryGet(null, TreePath.Empty, out NodeRecord warmedRoot, out _) && warmedRoot.Hash == current.Root.Hash)) foreignRecords++;
+            if (recordCount != 0 && !(retired.WarmedNodeBuffer.TryGet(null, TreePath.Empty, out NodeRecord warmedRoot, out _) && warmedRoot.Hash == current.Root.Hash)) foreignRecords++;
             snapshot!.Dispose();
             retired.ReleaseLease();
             retirements++;
@@ -530,10 +530,10 @@ public class SnapshotBundleWarmerTests
             Assert.That(published, Does.Contain(trie.Root.Pointer), "the root is published into the snapshot");
             Assert.That(published.All(pointer => _buffer.TryLocate(pointer, out _)), Is.True, "snapshot pointers are real-buffer records");
             // A published record linking a warmed child would end the walk through the real buffer early.
-            WarmedNodeRecordBuffer warmedView = new(_buffer, retired!.WarmedNodeLog);
+            WarmedNodeRecordBuffer warmedView = new(_buffer, retired!.WarmedNodeBuffer);
             Assert.That(_buffer.EnumerateNodes(trie.Root.Pointer).Count(), Is.EqualTo(warmedView.EnumerateNodes(trie.Root.Pointer).Count()), "published records cannot retain temporary children");
 
-            Assert.That(retired.WarmedNodeLog.TryGet(address, TreePath.Empty, out _, out ulong warmedRoot), Is.True);
+            Assert.That(retired.WarmedNodeBuffer.TryGet(address, TreePath.Empty, out _, out ulong warmedRoot), Is.True);
             (TreePath Path, ulong Pointer, NodeRecord Record)[] warmedNodes = warmedView.EnumerateNodes(warmedRoot).ToArray();
             Assert.That(warmedNodes, Has.Length.GreaterThan(1), "warm-up must populate child pointers, not just path entries");
             foreach ((TreePath path, _, NodeRecord record) in warmedNodes)

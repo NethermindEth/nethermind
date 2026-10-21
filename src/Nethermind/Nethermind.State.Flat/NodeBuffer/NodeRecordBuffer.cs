@@ -29,7 +29,8 @@ namespace Nethermind.State.Flat.NodeBuffer;
 /// two contiguous ranges.
 /// </para>
 /// <para>
-/// A dropped generation is compacted in the background, oldest first and one at a time, and resolves again once compacted.
+/// A dropped generation is compacted in the background, oldest first and one at a time, and resolves again once compacted. The
+/// <see cref="PinAll"/> pins taken while it was marked skipped it, so it is evicted only after they are released too.
 /// Compaction keeps every root key record, and the last record of every node key hash that no bloom filter of a later generation holds,
 /// since a later generation then likely holds a newer node at the same position. Newer records reference the unchanged subtrees of older ones
 /// by pointer, so the records kept are those likely still reachable from current roots. They keep their pointers and resolve through a
@@ -73,6 +74,16 @@ public sealed class NodeRecordBuffer : INodeRecordBuffer
     private ulong _oldestCompressed = 1;
     private ulong _compressedMemory;
     private bool _compacting;
+    // Reused by compaction, of which one pass runs at a time.
+    private readonly Dictionary<ulong, int> _lastOffsetByNodeKeyHash = [];
+
+    // Advanced each time compaction makes a dropped generation resolvable again; see EvictCompressed.
+    private ulong _resolveEpoch;
+    private readonly Dictionary<ulong, int> _pinAllsByEpoch = [];
+
+    // The next generation, allocated and faulted in the background, so a rotation on a writer only swaps it in.
+    private Generation? _standby;
+    private bool _preparingStandby;
 
     private const int StateRootSlots = 1024;
     private const int MemoryPerStorageRootSlot = 4096;
@@ -97,7 +108,7 @@ public sealed class NodeRecordBuffer : INodeRecordBuffer
         _liveGenerations = liveGenerations;
         _compressedMaxMemory = compressedMaxMemory;
         _storageRootIndex = new ulong[BitOperations.RoundUpToPowerOf2(Math.Max(compressedMaxMemory / MemoryPerStorageRootSlot, StateRootSlots))];
-        _active = StartGeneration(1, generationBytes);
+        _active = StartGeneration(1, new Generation(generationBytes));
         UpdateMetrics();
     }
 
@@ -132,7 +143,8 @@ public sealed class NodeRecordBuffer : INodeRecordBuffer
             ulong compressedFrom = PinFromFirstUnmarked(_oldestCompressed, _oldestAllocated);
             ulong inPlaceFrom = PinFromFirstUnmarked(_oldestAllocated, _active.Id + 1);
             _pinCount++;
-            return new AllGenerationsPin(this, compressedFrom, _oldestAllocated, inPlaceFrom, _active.Id + 1);
+            CollectionsMarshal.GetValueRefOrAddDefault(_pinAllsByEpoch, _resolveEpoch, out _)++;
+            return new AllGenerationsPin(this, compressedFrom, _oldestAllocated, inPlaceFrom, _active.Id + 1, _resolveEpoch);
         }
     }
 
@@ -168,12 +180,14 @@ public sealed class NodeRecordBuffer : INodeRecordBuffer
         }
     }
 
-    private void RemovePins(ulong compressedFrom, ulong compressedTo, ulong inPlaceFrom, ulong inPlaceTo)
+    private void RemovePins(ulong compressedFrom, ulong compressedTo, ulong inPlaceFrom, ulong inPlaceTo, ulong epoch)
     {
         lock (_lock)
         {
             Unpin(compressedFrom, compressedTo);
             Unpin(inPlaceFrom, inPlaceTo);
+            ref int pinAlls = ref CollectionsMarshal.GetValueRefOrNullRef(_pinAllsByEpoch, epoch);
+            if (--pinAlls == 0) _pinAllsByEpoch.Remove(epoch);
             ReleasePin();
         }
     }
@@ -270,9 +284,11 @@ public sealed class NodeRecordBuffer : INodeRecordBuffer
 
             ulong id = NextGeneration(fullGeneration);
             EvictCompressed(id >= MaxGenerations ? id + 1 - MaxGenerations : 0);
-            if (_generations[id & GenerationSlotMask] is { } reused && (reused.Data is not null || reused.Compressed is not null)) ThrowTooManyPinned();
+            // The slot's previous generation is still tracked, even one compaction kept nothing of.
+            if (id >= MaxGenerations && id - MaxGenerations >= _oldestCompressed) ThrowTooManyPinned();
 
-            Volatile.Write(ref _active, StartGeneration(id, Math.Max(_generationBytes, length)));
+            Volatile.Write(ref _active, StartGeneration(id, TakeStandby(length) ?? new Generation(Math.Max(_generationBytes, length))));
+            PrepareStandby();
             DropOldGenerations();
         }
     }
@@ -283,12 +299,54 @@ public sealed class NodeRecordBuffer : INodeRecordBuffer
         return current + 1;
     }
 
-    private Generation StartGeneration(ulong id, int length)
+    private Generation StartGeneration(ulong id, Generation generation)
     {
-        Generation generation = new(id, length);
+        generation.Id = id;
         Volatile.Write(ref _generations[id & GenerationSlotMask], generation);
-        _inPlaceBytes += length;
+        _inPlaceBytes += generation.Data!.Length;
         return generation;
+    }
+
+    /// <returns>The standby generation when it fits a record of <paramref name="length"/> bytes, or null to allocate one inline.</returns>
+    private Generation? TakeStandby(int length)
+    {
+        Generation? standby = _standby;
+        if (standby is null || length > standby.Data!.Length) return null;
+
+        _standby = null;
+        return standby;
+    }
+
+    /// <remarks>Only buffers that rotate get a standby, so a buffer that never fills its first generation commits no second one.</remarks>
+    private void PrepareStandby()
+    {
+        if (_standby is not null || _preparingStandby || _disposed) return;
+
+        _preparingStandby = true;
+        ThreadPool.UnsafeQueueUserWorkItem(static buffer => buffer.AllocateStandby(), this, preferLocal: false);
+    }
+
+    private void AllocateStandby()
+    {
+        Generation? generation = null;
+        try
+        {
+            generation = new Generation(_generationBytes);
+            generation.Data!.Prefault();
+        }
+        catch
+        {
+            // A failed allocation leaves no standby, so the next rotation allocates inline and reports the failure to its writer.
+            generation?.Free();
+            generation = null;
+        }
+
+        lock (_lock)
+        {
+            _preparingStandby = false;
+            if (_disposed || generation is null) generation?.Free();
+            else _standby = generation;
+        }
     }
 
     private void DropOldGenerations()
@@ -378,6 +436,7 @@ public sealed class NodeRecordBuffer : INodeRecordBuffer
                         Volatile.Write(ref generation.Data, null);
                         Retire(generation.Bloom);
                         Volatile.Write(ref generation.Bloom, null);
+                        generation.ResolvedEpoch = ++_resolveEpoch;
                         Volatile.Write(ref generation.Dropping, false);
                         _oldestAllocated++;
                         EvictCompressed(0);
@@ -413,7 +472,8 @@ public sealed class NodeRecordBuffer : INodeRecordBuffer
         // Reservations that did not fit leave Used past the end.
         long end = Math.Min(Volatile.Read(ref generation.Used), data.Length);
         using ArrayPoolList<int> kept = new(InitialKeptCapacity);
-        Dictionary<ulong, int> lastOffsetByNodeKeyHash = [];
+        Dictionary<ulong, int> lastOffsetByNodeKeyHash = _lastOffsetByNodeKeyHash;
+        lastOffsetByNodeKeyHash.Clear();
         for (int offset = 0; offset + NodeRecordCodec.HeaderLength <= end;)
         {
             ReadOnlySpan<byte> record = data.AsSpan(offset);
@@ -450,7 +510,10 @@ public sealed class NodeRecordBuffer : INodeRecordBuffer
     }
 
     /// <summary>Evicts compressed generations, oldest first, while they take more than the budget, are older than <paramref name="before"/>, or kept nothing.</summary>
-    /// <remarks>Each one is marked first and evicted once the pins taken before the mark are released.</remarks>
+    /// <remarks>
+    /// Each one is marked first and evicted once the pins taken before the mark are released, and the <see cref="PinAll"/> pins
+    /// taken before it became resolvable: those skipped it while it was dropped, but may have read it since.
+    /// </remarks>
     private void EvictCompressed(ulong before)
     {
         ulong retainedMemory = _compressedMemory;
@@ -462,7 +525,7 @@ public sealed class NodeRecordBuffer : INodeRecordBuffer
 
             retainedMemory -= (ulong)(compressed?.Memory ?? 0);
             Volatile.Write(ref generation.Dropping, true);
-            if (id != _oldestCompressed || generation.PinCount != 0) continue;
+            if (id != _oldestCompressed || generation.PinCount != 0 || compressed is not null && HasPinAllBefore(generation.ResolvedEpoch)) continue;
 
             _compressedMemory -= (ulong)(compressed?.Memory ?? 0);
             Retire(compressed);
@@ -522,8 +585,24 @@ public sealed class NodeRecordBuffer : INodeRecordBuffer
         return ref slots[(MemoryMarshal.Read<ulong>(root.Bytes) ^ addressWord) & (ulong)(slots.Length - 1)];
     }
 
-    /// <remarks>Only storage of a generation no pin covers is retired, so no reader can still borrow it.</remarks>
-    private static void Retire(IDisposable? owner) => owner?.Dispose();
+    private bool HasPinAllBefore(ulong epoch)
+    {
+        foreach (KeyValuePair<ulong, int> pinAlls in _pinAllsByEpoch)
+        {
+            if (pinAlls.Key < epoch) return true;
+        }
+
+        return false;
+    }
+
+    /// <remarks>
+    /// Only storage of a generation no pin covers is retired, so no reader can still borrow it. It is freed in the background, as
+    /// unmapping a generation is slow and the retiring thread, which holds the lock, is often a writer or the block thread.
+    /// </remarks>
+    private static void Retire(IDisposable? owner)
+    {
+        if (owner is not null) ThreadPool.UnsafeQueueUserWorkItem(static owner => owner.Dispose(), owner, preferLocal: false);
+    }
 
     private void ThrowIfUnavailable()
     {
@@ -548,16 +627,16 @@ public sealed class NodeRecordBuffer : INodeRecordBuffer
     {
         if (!_disposed || _pinCount != 0 || _compacting) return;
 
+        // Freed at once, as nothing is left to stall.
         foreach (Generation? generation in _generations)
         {
             if (generation is null) continue;
-            Retire(generation.Data);
-            Retire(generation.Bloom);
-            Retire(generation.Compressed);
-            generation.Data = null;
-            generation.Bloom = null;
+            generation.Free();
+            generation.Compressed?.Dispose();
             generation.Compressed = null;
         }
+        _standby?.Free();
+        _standby = null;
         _inPlaceBytes = 0;
         _compressedMemory = 0;
         UpdateMetrics();
@@ -600,21 +679,21 @@ public sealed class NodeRecordBuffer : INodeRecordBuffer
         }
     }
 
-    private sealed class AllGenerationsPin(NodeRecordBuffer buffer, ulong compressedFrom, ulong compressedTo, ulong inPlaceFrom, ulong inPlaceTo) : IDisposable
+    private sealed class AllGenerationsPin(NodeRecordBuffer buffer, ulong compressedFrom, ulong compressedTo, ulong inPlaceFrom, ulong inPlaceTo, ulong epoch) : IDisposable
     {
         private int _disposed;
 
         public void Dispose()
         {
-            if (Interlocked.Exchange(ref _disposed, 1) == 0) buffer.RemovePins(compressedFrom, compressedTo, inPlaceFrom, inPlaceTo);
+            if (Interlocked.Exchange(ref _disposed, 1) == 0) buffer.RemovePins(compressedFrom, compressedTo, inPlaceFrom, inPlaceTo, epoch);
         }
     }
 
     private sealed class Generation
     {
-        public Generation(ulong id, int length)
+        /// <remarks>The id is set when the generation becomes active.</remarks>
+        public Generation(int length)
         {
-            Id = id;
             Data = NativeNodeBuffer.Allocate(length);
             try
             {
@@ -627,7 +706,7 @@ public sealed class NodeRecordBuffer : INodeRecordBuffer
             }
         }
 
-        public readonly ulong Id;
+        public ulong Id;
         public BloomFilter? Bloom;
         public NativeNodeBuffer? Data;
         public CompressedGeneration? Compressed;
@@ -636,5 +715,15 @@ public sealed class NodeRecordBuffer : INodeRecordBuffer
         // The pins of a NodeRecordBufferPin, which also keeps every later generation.
         public int HeadPinCount;
         public bool Dropping;
+        // The resolve epoch in which compaction made this dropped generation resolvable again.
+        public ulong ResolvedEpoch;
+
+        public void Free()
+        {
+            ((IDisposable?)Data)?.Dispose();
+            Bloom?.Dispose();
+            Data = null;
+            Bloom = null;
+        }
     }
 }

@@ -93,7 +93,7 @@ public sealed class SnapshotBundle : IDisposable
     internal INodeRecordBuffer? NodeRecordBuffer => _cacheableNodeRecordBuffer;
 
     private WarmedNodeRecordBuffer? CreateCacheableNodeRecordBuffer(TransientResource transientResource) =>
-        _nodeRecordBuffer is null ? null : new WarmedNodeRecordBuffer(_nodeRecordBuffer, transientResource.WarmedNodeLog);
+        _nodeRecordBuffer is null ? null : new WarmedNodeRecordBuffer(_nodeRecordBuffer, transientResource.WarmedNodeBuffer);
 
     private void ExpandCurrentPooledContent()
     {
@@ -343,7 +343,7 @@ public sealed class SnapshotBundle : IDisposable
     {
         GuardDispose();
 
-        WarmedNodeLog warmed = _transientResource.WarmedNodeLog;
+        WarmedNodeBuffer warmed = _transientResource.WarmedNodeBuffer;
         return warmed.TryGet(address, path, out record, out _)
             || TryLoadNodeRecordFromPersistence(_readOnlySnapshotBundle, warmed, address, path, hash, out record);
     }
@@ -364,7 +364,7 @@ public sealed class SnapshotBundle : IDisposable
 
         try
         {
-            BufferWarmUp.WarmUp(CreateCacheableNodeRecordBuffer(transientResource)!, transientResource.WarmedNodeLog, _readOnlySnapshotBundle, address, root, key, forDelete);
+            BufferWarmUp.WarmUp(CreateCacheableNodeRecordBuffer(transientResource)!, transientResource.WarmedNodeBuffer, _readOnlySnapshotBundle, address, root, key, forDelete);
         }
         finally
         {
@@ -373,7 +373,7 @@ public sealed class SnapshotBundle : IDisposable
     }
 
     /// <summary>Reads the node at <paramref name="path"/> from persistence into <paramref name="warmed"/> as the node of <paramref name="hash"/>.</summary>
-    private static bool TryLoadNodeRecordFromPersistence(ReadOnlySnapshotBundle readOnly, WarmedNodeLog warmed, Hash256? address, in TreePath path, in ValueHash256 hash, out NodeRecord record)
+    private static bool TryLoadNodeRecordFromPersistence(ReadOnlySnapshotBundle readOnly, WarmedNodeBuffer warmed, Hash256? address, in TreePath path, in ValueHash256 hash, out NodeRecord record)
     {
         record = default;
         return readOnly.TryLoadPersistedRlp(address, path, ReadFlags.None, CachePersistedNodeState.Insert, new CachePersistedNodeState(warmed, address, in path, in hash, ref record));
@@ -392,7 +392,7 @@ public sealed class SnapshotBundle : IDisposable
     /// adopts the resulting root instead of bulk-setting those writes again. That apply runs off the owner thread and may
     /// still run after the block's transient resource is retired or this bundle is recycled, so unlike the bundle's own
     /// tries it cannot read the bundle or its per-block warmed nodes. It reads only the buffer, which its pins keep
-    /// readable, a private <see cref="WarmedNodeLog"/>, and persistence through its own lease of the read-only bundle.
+    /// readable, a private <see cref="WarmedNodeBuffer"/>, and persistence through its own lease of the read-only bundle.
     /// </remarks>
     internal sealed class BackgroundTrieSource : INodeRecordStore, IDisposable
     {
@@ -401,7 +401,7 @@ public sealed class SnapshotBundle : IDisposable
         private readonly ReadOnlySnapshotBundle _readOnly;
         private readonly INodeRecordBuffer _buffer;
         private readonly Hash256 _address;
-        private readonly WarmedNodeLog _warmed = new(WarmedNodeCapacity);
+        private readonly WarmedNodeBuffer _warmed = new(WarmedNodeCapacity);
         private readonly INodeRecordBufferPin _pin;
         private readonly INodeRecordBufferPin? _snapshotPin;
 
@@ -454,14 +454,14 @@ public sealed class SnapshotBundle : IDisposable
         public static readonly ReadOnlySpanAction<byte, CachePersistedNodeState> Insert = static (rlp, insert) =>
             insert._warmed.Append(insert._address, insert._path, insert._hash, rlp, [], out insert._record, out _);
 
-        private readonly WarmedNodeLog _warmed;
+        private readonly WarmedNodeBuffer _warmed;
         private readonly Hash256? _address;
         private readonly ref readonly TreePath _path;
         private readonly ref readonly ValueHash256 _hash;
         private readonly ref NodeRecord _record;
 
         /// <param name="record">Set to the inserted record.</param>
-        public CachePersistedNodeState(WarmedNodeLog warmed, Hash256? address, ref readonly TreePath path, ref readonly ValueHash256 hash,
+        public CachePersistedNodeState(WarmedNodeBuffer warmed, Hash256? address, ref readonly TreePath path, ref readonly ValueHash256 hash,
             ref NodeRecord record)
         {
             _warmed = warmed;

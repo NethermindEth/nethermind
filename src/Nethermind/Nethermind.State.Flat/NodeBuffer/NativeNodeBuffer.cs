@@ -11,6 +11,7 @@ internal sealed unsafe class NativeNodeBuffer : MemoryManager<byte>
 {
     private const nuint HugePageBytes = 2 * 1024 * 1024;
     private const int MadvHugePage = 14;
+    private const int PageBytes = 4096;
 
     private nint _address;
     private readonly void* _allocation;
@@ -52,6 +53,14 @@ internal sealed unsafe class NativeNodeBuffer : MemoryManager<byte>
     public int Length { get; }
 
     public static NativeNodeBuffer Allocate(int length) => new(length);
+
+    /// <summary>Makes every page resident, so the writers that later fill it take no page faults.</summary>
+    /// <remarks>Writes a zero to each page, which keeps the buffer zero-filled.</remarks>
+    public void Prefault()
+    {
+        Span<byte> span = GetSpan();
+        for (int offset = 0; offset < span.Length; offset += PageBytes) span[offset] = 0;
+    }
 
     // Native spans do not root their owner: the pin protecting them must outlive their use.
     public override Span<byte> GetSpan() => new((void*)UnsafeAddress(), Length);

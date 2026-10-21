@@ -30,7 +30,7 @@ public record TransientResource(TransientResource.Size size) : IDisposable, IRes
     private ResourcePool.Usage _returnUsage;
 
     public BloomFilter PrewarmedAddresses = new(size.PrewarmedAddressSize, 14); // 14 is exactly 8 probes, which the SIMD instruction does.
-    internal readonly WarmedNodeLog WarmedNodeLog = new(size.NodesCacheSize);
+    internal readonly WarmedNodeBuffer WarmedNodeBuffer = new(size.NodesCacheSize);
     private int _nodesCacheSize = size.NodesCacheSize;
 
     internal void OnRented(IResourcePool pool, ResourcePool.Usage usage)
@@ -69,8 +69,8 @@ public record TransientResource(TransientResource.Size size) : IDisposable, IRes
 
     public void Reset()
     {
-        _nodesCacheSize = Math.Max(_nodesCacheSize, WarmedNodeLog.Count);
-        WarmedNodeLog.Reset();
+        _nodesCacheSize = Math.Max(_nodesCacheSize, WarmedNodeBuffer.Count);
+        WarmedNodeBuffer.Reset();
 
         if (PrewarmedAddresses.Count > PrewarmedAddresses.Capacity)
         {
@@ -118,6 +118,6 @@ public record TransientResource(TransientResource.Size size) : IDisposable, IRes
     public void Dispose()
     {
         PrewarmedAddresses.Dispose();
-        WarmedNodeLog.Dispose();
+        WarmedNodeBuffer.Dispose();
     }
 }

@@ -13,17 +13,17 @@ namespace Nethermind.State.Flat.NodeBuffer;
 /// <summary>The trie nodes fetched from persistence for one block, as records in a <see cref="PrivateNodeRecordBuffer"/>, also indexed by node position.</summary>
 /// <remarks>
 /// Pointers carry <see cref="NodeRecordCodec.TransientPointerMask"/>, so <see cref="WarmedNodeRecordBuffer"/> can tell them from the global buffer's.
-/// Transient pointers live only in this log's records and position index: records committed to the global buffer drop them,
+/// Transient pointers live only in this buffer's records and position index: records committed to the global buffer drop them,
 /// so a pointer from before a <see cref="Reset"/> is unreachable after it.
 /// Every record stays readable until the next <see cref="Reset"/>.
 /// </remarks>
 /// <param name="capacity">The expected number of nodes, which sizes the position index.</param>
-public sealed class WarmedNodeLog(int capacity) : IDisposable
+public sealed class WarmedNodeBuffer(int capacity) : IDisposable
 {
     private const int GenerationBytes = 1024 * 1024;
 
     private readonly PrivateNodeRecordBuffer _buffer = new(GenerationBytes);
-    // The path to pointer index is only for the warmer. The main buffer is not connected to this log: its records never point
+    // The path to pointer index is only for the warmer. The main buffer is not connected to the warmed one: its records never point
     // into it, as committed records drop transient pointers, so a warmed node below a main-buffer record is found by its position.
     private readonly ConcurrentDictionary<(Hash256? Address, TreePath Path), ulong> _pointers = new(Environment.ProcessorCount, Math.Max(capacity, 1));
 
@@ -31,7 +31,7 @@ public sealed class WarmedNodeLog(int capacity) : IDisposable
     /// <remarks>Takes every lock of the position index.</remarks>
     public int Count => _pointers.Count;
 
-    /// <summary>Finds the record at a pointer of this log; misses on any pointer without the transient prefix.</summary>
+    /// <summary>Finds the record at a pointer of this buffer; misses on any pointer without the transient prefix.</summary>
     public bool TryLocate(ulong pointer, out NodeRecord record)
     {
         if (NodeRecordCodec.IsTransient(pointer)) return _buffer.TryLocate(pointer & ~NodeRecordCodec.TransientPointerMask, out record);
@@ -55,7 +55,7 @@ public sealed class WarmedNodeLog(int capacity) : IDisposable
     /// <remarks>
     /// The node is trusted to be the one of <paramref name="hash"/>, which only debug builds check. Nodes are appended along a traversal
     /// from a known root, each read for the hash its parent references, so a correct traversal appends correct nodes and links a correct
-    /// graph. For the same reason, a record read back from the log is not verified either: it is always reached through that traversal.
+    /// graph. For the same reason, a record read back from the buffer is not verified either: it is always reached through that traversal.
     /// </remarks>
     /// <param name="childPointers">Pointers by child slot, or empty to leave every pointer zero.</param>
     /// <param name="record">The appended record.</param>

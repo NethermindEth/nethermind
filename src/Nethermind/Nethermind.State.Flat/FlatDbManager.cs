@@ -387,7 +387,8 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         // The latest block the main processing scope committed; used as the head for forced persists.
         _snapshotRepository.SetLastCommittedStateId(endBlock);
 
-        transientResource.ReleaseLease();
+        // The final release resets the block's warmed nodes, which is slow, so it is kept off the committing block thread.
+        ThreadPool.UnsafeQueueUserWorkItem(static resource => resource.ReleaseLease(), transientResource, preferLocal: false);
         if (_inlineCompaction)
         {
             RunCompactJob(endBlock, _processExitToken).Wait();
