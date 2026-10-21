@@ -600,6 +600,8 @@ public class ReadOnlyQueryModuleTests
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(builder => builder
             .AddSingleton<ISpecProvider>(new TestSpecProvider(Eip8141Prototype.Instance))
             .AddSingleton<IReadOnlyQueryModule>(probe.ModuleFor(ReadOnlyQueryKind.All))
+            // The first traced simulation runs cold and overruns the default timeout on CI.
+            .AddSingleton<ITxPoolConfig>(new TxPoolConfig { FrameTxSimulationTimeoutMs = 0 })
             .WithGenesisPostProcessor((_, state, specProvider) =>
             {
                 state.CreateAccount(factory, UInt256.Zero);

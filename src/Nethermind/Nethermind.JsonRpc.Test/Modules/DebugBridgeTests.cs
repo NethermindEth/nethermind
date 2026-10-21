@@ -1013,6 +1013,7 @@ public class DebugBridgeTests
         public StateId GetCurrentPersistedStateId() => inner.GetCurrentPersistedStateId();
         public Task AddToPersistence(StateId latestSnapshot) => inner.AddToPersistence(latestSnapshot);
         public StateId FlushToPersistence(CancellationToken cancellationToken) => inner.FlushToPersistence(cancellationToken);
+        public int PersistInMemoryTailForShutdown(CancellationToken cancellationToken) => inner.PersistInMemoryTailForShutdown(cancellationToken);
         public void ResetPersistedStateId() => inner.ResetPersistedStateId();
         public void DropStateNotReachableFrom(in StateId head)
         {

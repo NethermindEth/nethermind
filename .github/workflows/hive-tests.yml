@@ -126,7 +126,7 @@ jobs:
           outputs: type=docker,dest=${{ github.workspace }}/image.tar
 
       - name: Upload image artifact
-        uses: actions/upload-artifact@v7
+        uses: ./nethermind/.github/actions/upload-artifact
         with:
           name: nethermind-image-${{ github.run_id }}
           overwrite: true
@@ -155,7 +155,7 @@ jobs:
           path: nethermind
 
       - name: Download image artifact
-        uses: actions/download-artifact@v8
+        uses: ./nethermind/.github/actions/download-artifact
         with:
           name: nethermind-image-${{ github.run_id }}
 
@@ -191,7 +191,7 @@ jobs:
           ./hive "${hive_args[@]}"
 
       - name: Upload results
-        uses: actions/upload-artifact@v7
+        uses: ./nethermind/.github/actions/upload-artifact
         with:
           name: results-${{ strategy.job-index }}-${{ github.run_number }}-${{ github.run_attempt }}
           path: hive/workspace
