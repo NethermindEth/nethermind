@@ -1606,7 +1606,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             IBlockProcessor blockProcessor,
             BlockProcessorExceptionDetector blockProcessorExceptionDetector) : IBlockProcessor
         {
-            public event Action? TransactionsExecuted
+            public event Action<Block>? TransactionsExecuted
             {
                 add => blockProcessor.TransactionsExecuted += value;
                 remove => blockProcessor.TransactionsExecuted -= value;

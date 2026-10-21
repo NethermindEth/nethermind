@@ -523,18 +523,18 @@ namespace Nethermind.Trie
         private void DecodeLeafOrExtension(ReadOnlySpan<byte> data, int position, ICappedArrayPool? bufferPool)
         {
             LiteRlpReader reader = new(data);
-            reader.DecodeByteArraySpan(ref position, out ReadOnlySpan<byte> valueSpan);
-            (byte[] key, bool isLeaf) = HexPrefix.FromBytes(valueSpan);
-            if (isLeaf)
+            reader.DecodeByteArraySpan(ref position, out ReadOnlySpan<byte> keySpan);
+            int keyEnd = position;
+            if (keySpan[0] >= 0x20)
             {
-                reader.DecodeByteArraySpan(ref position, out valueSpan);
+                reader.DecodeByteArraySpan(ref position, out ReadOnlySpan<byte> valueSpan);
                 CappedArray<byte> buffer = bufferPool.SafeRent(valueSpan.Length);
                 Bytes.Copy(valueSpan, buffer.AsSpan());
-                Volatile.Write(ref _nodeData, new LeafData(key, buffer));
+                Volatile.Write(ref _nodeData, CreateLeafData(keySpan, keyEnd, buffer));
             }
             else
             {
-                Volatile.Write(ref _nodeData, new ExtensionData(key));
+                Volatile.Write(ref _nodeData, new ExtensionData(HexPrefix.FromBytes(keySpan).key));
             }
         }
 
@@ -1313,11 +1313,10 @@ namespace Nethermind.Trie
 
         /// <summary>Resolves child <paramref name="i"/> from this node's RLP and caches it in <paramref name="data"/>, its slot.</summary>
         /// <remarks>
-        /// Out of line so the resolved-child check above stays small enough to inline into every walk. A hashed child of
-        /// a full branch, the most common case, is resolved here; every other shape goes to
-        /// <see cref="ResolveChildFromAnyRlp"/>, whose item scan would otherwise make this frame save every register.
+        /// A hashed child of a full branch, the most common case, is resolved here; every other shape goes to
+        /// <see cref="ResolveChildFromSparseRlp"/>, so that no item scan makes this frame save every register.
         /// </remarks>
-        [MethodImpl(MethodImplOptions.NoInlining)]
+        [MethodImpl(ResolveChildFromRlpInlining)]
         private object? ResolveChildFromRlp(ITrieNodeResolver tree, ref TreePath childPath, ref object? data, int i)
         {
             CappedArray<byte> rlp = ReadRlp();
@@ -1325,7 +1324,7 @@ namespace Nethermind.Trie
             int position = 3 + i * Rlp.LengthOfKeccakRlp;
             return span.Length == FullBranchRlpLength && IsBranch && span[position] == 160
                 ? ResolveHashedChild(tree, ref childPath, ref data, span.Slice(position + 1, Hash256.Size))
-                : ResolveChildFromAnyRlp(tree, ref childPath, ref data, i, rlp);
+                : ResolveChildFromSparseRlp(tree, ref childPath, ref data, i, rlp);
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
