@@ -13,8 +13,8 @@ namespace Nethermind.Trie.ZkEvm.Test;
 
 /// <summary>Tests for the guest's raw-key trie write, which creates, compares and splits leaves in hex-prefix form.</summary>
 /// <remarks>The reference is the nibble walk, reached through a single-entry <c>BulkSet</c>. Without hashing: in a ZK_EVM build
-/// the Keccak permutation is a zkVM precompile that throws outside the guest.
-/// Writes must run nonparallel because the guest replaces <c>ThreadStatic</c> with a no-op, making the traversal stack process-wide.</remarks>
+/// the Keccak permutation is a zkVM precompile that throws outside the guest. Not parallel: a ZK_EVM build makes
+/// <c>[ThreadStatic]</c> a no-op, so concurrent writes share <see cref="PatriciaTree"/>'s traverse stack.</remarks>
 [NonParallelizable]
 public class GuestRawKeyWriteTests
 {
