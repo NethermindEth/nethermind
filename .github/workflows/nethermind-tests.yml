@@ -206,8 +206,7 @@ jobs:
     name: Run ${{ matrix.project.name || matrix.project }}${{ matrix.chunk && format(' ({0})', matrix.chunk) || '' }} (${{ matrix.runner }})
     runs-on: ${{ matrix.runner }}
     # A pack runs several projects one after another, so a hang in its last project needs more room to be dumped.
-    # The in-job build takes about 10 minutes on macOS, so a single project needs more than the Linux budget.
-    timeout-minutes: ${{ matrix.project.list && 25 || 20 }}
+    timeout-minutes: ${{ matrix.project.list && 25 || 15 }}
     env:
       DOTNET_GCConserveMemory: 9
     strategy:
@@ -377,7 +376,7 @@ jobs:
             # Run the prebuilt test host directly: dotnet test would restore and evaluate the project first.
             run_tests=(../artifacts/bin/${{ matrix.test.project }}/release/${{ matrix.test.project }} --results-directory TestResults)
           else
-            dotnet build ${{ matrix.test.project }}.csproj -c release
+            dotnet build ${{ matrix.test.project }}.csproj -c release -p:RunAnalyzersDuringBuild=false  # analyzers run in code-lint
             hang_timeout=4m  # the in-job build leaves less of the job budget for a hang to be dumped in
             run_tests=(dotnet test --project ${{ matrix.test.project }}.csproj -c release --no-build --no-restore)
           fi

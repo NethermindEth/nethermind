@@ -25,7 +25,7 @@ run_project() {
     # Run the prebuilt test host directly: dotnet test would restore and evaluate the project first.
     run_tests=("../artifacts/bin/$project/release/$project" --results-directory TestResults)
   else
-    dotnet build "$project.csproj" -c release || return 1  # Windows/macOS: no artifact, build in-job
+    dotnet build "$project.csproj" -c release -p:RunAnalyzersDuringBuild=false || return 1  # Windows/macOS: no artifact, build in-job; analyzers run in code-lint
     hang_timeout=4m  # the in-job build leaves less of the job budget for a hang to be dumped in
     run_tests=(dotnet test --project "$project.csproj" -c release --no-build --no-restore)
   fi
