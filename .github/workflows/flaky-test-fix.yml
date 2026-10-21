@@ -94,6 +94,9 @@ jobs:
       issues: write
       pull-requests: read
       id-token: write
+    outputs:
+      verified: ${{ steps.verify.outcome == 'success' }}
+      base: ${{ steps.check.outputs.base }}
     env:
       PROJECT: ${{ needs.detect.outputs.project }}
       METHOD: ${{ needs.detect.outputs.method }}
@@ -194,8 +197,25 @@ jobs:
             --add-dir ${{ runner.temp }}/claude
             --allowedTools "Read,Edit,Write,Glob,Grep,Bash(dotnet build:*),Bash(python3 scripts/ci/flaky_tests.py:*),Bash(git diff:*),Bash(git status:*),Bash(git log:*)"
 
-      - name: Verify the fix independently
+      - name: Check the change
         if: steps.baseline.outputs.verdict == 'flaky'
+        id: check
+        run: |
+          git add -A
+          git diff --cached --quiet && { echo "::error::Claude produced no change"; exit 1; }
+          git diff --cached --name-only -z | xargs -0 python3 "$RUNNER_TEMP/flaky_tests.py" guard
+          mkdir -p "$RUNNER_TEMP/patch"
+          git diff --cached --binary > "$RUNNER_TEMP/patch/fix.patch"
+          echo "base=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - if: steps.check.outcome == 'success'
+        uses: actions/upload-artifact@v7
+        with:
+          name: flaky-fix-patch
+          path: ${{ runner.temp }}/patch/fix.patch
+
+      - name: Verify the fix independently
+        if: steps.check.outcome == 'success'
         id: verify
         env:
           FAILURES: ${{ steps.baseline.outputs.failures }}
@@ -203,9 +223,6 @@ jobs:
           SECONDS_TAKEN: ${{ steps.baseline.outputs.seconds }}
         run: |
           tool="$RUNNER_TEMP/flaky_tests.py"
-          git add -A
-          git diff --cached --quiet && { echo "::error::Claude produced no change"; exit 1; }
-          git diff --cached --name-only -z | xargs -0 python3 "$tool" guard
           dotnet build "src/Nethermind/$PROJECT/$PROJECT.csproj" -c release
           plan=$(python3 "$tool" required-runs "$RUNS" "$FAILURES" "$SECONDS_TAKEN")
           runs=$(jq -r .runs <<< "$plan")
@@ -213,35 +230,25 @@ jobs:
             --runs "$runs" --budget "$(jq -r .budget <<< "$plan")" --stop-after 1 --out-dir "$RUNNER_TEMP/verify" | tee "$RUNNER_TEMP/verify.json"
           [ "$(jq -r .failures "$RUNNER_TEMP/verify.json")" = 0 ] && [ "$(jq -r .runs "$RUNNER_TEMP/verify.json")" = "$runs" ]
 
-      - name: Authenticate App
-        if: steps.verify.outcome == 'success'
-        id: gh-app
-        uses: actions/create-github-app-token@v3
-        with:
-          app-id: ${{ vars.APP_ID }}
-          private-key: ${{ secrets.APP_PRIVATE_KEY }}
-
-      - name: Open a draft PR
+      - name: Write the PR description
         if: steps.verify.outcome == 'success'
         env:
-          GH_TOKEN: ${{ steps.gh-app.outputs.token }}
           BEFORE: ${{ steps.baseline.outputs.failures }}/${{ steps.baseline.outputs.runs }}
           AFTER: ${{ steps.verify.outputs.failures }}/${{ steps.verify.outputs.runs }}
           FAILED_RUN: ${{ github.event.workflow_run.html_url || inputs.run_id }}
         run: |
-          gh label create "$LABEL" --color FBCA04 --description "Flaky test" 2>/dev/null || true
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git checkout -b "$BRANCH"
-          git commit -m "Fix flaky $METHOD"
-          git push "https://x-access-token:$GH_TOKEN@github.com/$GITHUB_REPOSITORY.git" "HEAD:refs/heads/$BRANCH"
+          mkdir -p "$RUNNER_TEMP/body"
           {
             if [ -f "$RUNNER_TEMP/claude/report.md" ]; then cat "$RUNNER_TEMP/claude/report.md"; else echo "_Claude did not write a root-cause report._"; fi
             printf '\n## Evidence\n\n- Project: `%s`\n- Test filter: `%s`\n- Failed on master: %s\n- Before: %s reruns failed under CPU load\n- After: %s reruns failed\n' \
               "$PROJECT" "$FILTER" "$FAILED_RUN" "$BEFORE" "$AFTER"
-          } > "$RUNNER_TEMP/body.md"
-          gh pr create --draft --base master --head "$BRANCH" --label "$LABEL" \
-            --title "Fix flaky $METHOD" --body-file "$RUNNER_TEMP/body.md"
+          } > "$RUNNER_TEMP/body/body.md"
+
+      - if: steps.verify.outcome == 'success'
+        uses: actions/upload-artifact@v7
+        with:
+          name: flaky-fix-body
+          path: ${{ runner.temp }}/body/body.md
 
       - name: Record a failed fix attempt
         if: failure() && steps.baseline.outcome != 'skipped'
@@ -255,6 +262,54 @@ jobs:
           gh issue create --label "$LABEL" --title "Flaky test: $METHOD" --body "$(printf \
             '`%s` in `%s` failed on master (%s). The automatic reproduction or fix did not finish: %s\n' \
             "$TEST" "$PROJECT" "$FAILED_RUN" "$RUN_URL")"
+
+  publish:
+    needs: [detect, fix]
+    if: needs.fix.outputs.verified == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    env:
+      METHOD: ${{ needs.detect.outputs.method }}
+      BRANCH: ${{ needs.detect.outputs.branch }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.fix.outputs.base }}
+          persist-credentials: false
+
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: flaky-fix-*
+          merge-multiple: true
+          path: ${{ runner.temp }}/fix
+
+      - name: Apply the verified change
+        run: |
+          cp scripts/ci/flaky_tests.py "$RUNNER_TEMP/flaky_tests.py"
+          git apply --index --binary "$RUNNER_TEMP/fix/fix.patch"
+          git diff --cached --name-only -z | xargs -0 python3 "$RUNNER_TEMP/flaky_tests.py" guard
+
+      - name: Authenticate App
+        id: gh-app
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
+      - name: Open a draft PR
+        env:
+          GH_TOKEN: ${{ steps.gh-app.outputs.token }}
+        run: |
+          gh label create "$LABEL" --color FBCA04 --description "Flaky test" 2>/dev/null || true
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$BRANCH"
+          git -c core.hooksPath=/dev/null commit -m "Fix flaky $METHOD"
+          git push "https://x-access-token:$GH_TOKEN@github.com/$GITHUB_REPOSITORY.git" "HEAD:refs/heads/$BRANCH"
+          gh pr create --draft --base master --head "$BRANCH" --label "$LABEL" \
+            --title "Fix flaky $METHOD" --body-file "$RUNNER_TEMP/fix/body.md"
 
   follow-up:
     if: |
@@ -272,6 +327,9 @@ jobs:
       pull-requests: read
       statuses: read
       id-token: write
+    outputs:
+      verified: ${{ steps.verify.outcome == 'success' }}
+      number: ${{ steps.pr.outputs.number }}
     env:
       SHA: ${{ github.event.workflow_run.head_sha }}
       BRANCH: ${{ github.event.workflow_run.head_branch }}
@@ -396,23 +454,71 @@ jobs:
 
       - name: Check the change
         if: steps.next.outputs.step == 'fix'
+        id: check
         env:
           PR_BODY: ${{ runner.temp }}/pr-body.md
         run: |
-          tool="$RUNNER_TEMP/flaky_tests.py"
           git add -A
           git diff --cached --quiet && { echo "::error::Claude produced no change"; exit 1; }
-          git diff --cached --name-only -z | xargs -0 python3 "$tool" guard
+          git diff --cached --name-only -z | xargs -0 python3 "$RUNNER_TEMP/flaky_tests.py" guard
           project=$(sed -n 's/^- Project: `\(.*\)`$/\1/p' "$PR_BODY")
           filter=$(sed -n 's/^- Test filter: `\(.*\)`$/\1/p' "$PR_BODY")
           [[ "$project" =~ ^Nethermind(\.[A-Za-z0-9]+)+\.Test$ ]] || { echo "::error::Bad project in PR body"; exit 1; }
-          dotnet build "src/Nethermind/$project/$project.csproj" -c release
-          python3 "$tool" repeat --project "$project" --filter "$filter" \
+          mkdir -p "$RUNNER_TEMP/patch"
+          git diff --cached --binary > "$RUNNER_TEMP/patch/fix.patch"
+          echo "project=$project" >> "$GITHUB_OUTPUT"
+          echo "filter=$filter" >> "$GITHUB_OUTPUT"
+
+      - if: steps.check.outcome == 'success'
+        uses: actions/upload-artifact@v7
+        with:
+          name: flaky-follow-up-patch
+          path: ${{ runner.temp }}/patch/fix.patch
+
+      - name: Verify the change
+        if: steps.check.outcome == 'success'
+        id: verify
+        env:
+          PROJECT: ${{ steps.check.outputs.project }}
+          FILTER: ${{ steps.check.outputs.filter }}
+        run: |
+          dotnet build "src/Nethermind/$PROJECT/$PROJECT.csproj" -c release
+          python3 "$RUNNER_TEMP/flaky_tests.py" repeat --project "$PROJECT" --filter "$FILTER" \
             --runs "$FOLLOW_UP_RUNS" --budget 3600 --stop-after 1 --out-dir "$RUNNER_TEMP/verify" | tee "$RUNNER_TEMP/verify.json"
           [ "$(jq -r .failures "$RUNNER_TEMP/verify.json")" = 0 ] && [ "$(jq -r .runs "$RUNNER_TEMP/verify.json")" = "$FOLLOW_UP_RUNS" ]
 
+  follow-up-push:
+    needs: follow-up
+    if: needs.follow-up.outputs.verified == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    env:
+      SHA: ${{ github.event.workflow_run.head_sha }}
+      BRANCH: ${{ github.event.workflow_run.head_branch }}
+      PR: ${{ needs.follow-up.outputs.number }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ env.SHA }}
+          persist-credentials: false
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: flaky-follow-up-patch
+          path: ${{ runner.temp }}/fix
+
+      - name: Apply the verified change
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api -H "Accept: application/vnd.github.raw" "repos/$GITHUB_REPOSITORY/contents/scripts/ci/flaky_tests.py?ref=master" \
+            > "$RUNNER_TEMP/flaky_tests.py"
+          git apply --index --binary "$RUNNER_TEMP/fix/fix.patch"
+          git diff --cached --name-only -z | xargs -0 python3 "$RUNNER_TEMP/flaky_tests.py" guard
+
       - name: Authenticate App
-        if: steps.next.outputs.step == 'fix'
         id: push-app
         uses: actions/create-github-app-token@v3
         with:
@@ -420,14 +526,12 @@ jobs:
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
 
       - name: Push and request a new review
-        if: steps.next.outputs.step == 'fix'
         env:
           GH_TOKEN: ${{ steps.push-app.outputs.token }}
-          PR: ${{ steps.pr.outputs.number }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -m "Address review findings"
+          git -c core.hooksPath=/dev/null commit -m "Address review findings"
           git push "https://x-access-token:$GH_TOKEN@github.com/$GITHUB_REPOSITORY.git" "HEAD:refs/heads/$BRANCH"
           gh api -X POST "repos/$GITHUB_REPOSITORY/issues/$PR/labels" -f 'labels[]=wip' --silent
           gh api -X DELETE "repos/$GITHUB_REPOSITORY/issues/$PR/labels/wip" --silent
