@@ -468,9 +468,7 @@ namespace Nethermind.Consensus.Processing
             double chunkMs = (chunkMicroseconds == 0 ? -1 : chunkMicroseconds / 1000.0);
             double runMs = (data.RunMicroseconds == 0 ? -1 : data.RunMicroseconds / 1000.0);
             string blockGas = "";
-            // Read the stable gauges (published once per block, never reset) rather than the transient
-            // per-block aggregates: GenerateReport runs on the ThreadPool and can fire after the next
-            // block's ResetBlockStats has already cleared the transient values.
+            // Read the gauges, published once per processed block and never reset.
             if (Evm.Metrics.GasPriceMax != 0f)
             {
                 float minGas = Evm.Metrics.GasPriceMin;
