@@ -173,7 +173,7 @@ jobs:
           ref: ${{ inputs.branch || github.ref }}
 
       - name: Set up .NET
-        uses: ./.github/actions/setup-dotnet
+        uses: actions/setup-dotnet@v5
 
       - name: Build Nethermind.Test.Runner
         working-directory: src/Nethermind
@@ -186,7 +186,7 @@ jobs:
           dotnet build Nethermind.Test.Runner/Nethermind.Test.Runner.csproj -c Release -p:PublishReadyToRun=false $BUILD_ARGS
 
       - name: Upload runner artifact
-        uses: ./.github/actions/upload-artifact
+        uses: actions/upload-artifact@v7
         with:
           # Variant-suffixed so a caller can invoke this workflow once per variant in the
           # same run without the artifact names colliding.
@@ -425,10 +425,10 @@ jobs:
           ref: ${{ inputs.branch || github.ref }}
 
       - name: Set up .NET
-        uses: ./.github/actions/setup-dotnet
+        uses: actions/setup-dotnet@v5
 
       - name: Download runner artifact
-        uses: ./.github/actions/download-artifact
+        uses: actions/download-artifact@v8
         with:
           name: nethtest-runner-${{ inputs.variant || 'default' }}
           path: src/Nethermind/artifacts/bin/Nethermind.Test.Runner/release/
@@ -961,7 +961,7 @@ jobs:
 
       - name: Upload results
         if: always()
-        uses: ./.github/actions/upload-artifact
+        uses: actions/upload-artifact@v7
         with:
           name: nethtest-results-${{ matrix.test_type }}-${{ matrix.test_setup }}-${{ matrix.chunk }}
           path: |

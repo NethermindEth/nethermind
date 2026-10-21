@@ -192,7 +192,7 @@ jobs:
 
       - name: Upload coverage report
         if: matrix.runner == 'ubuntu-latest' && env.COLLECT_COVERAGE == 'true'
-        uses: ./.github/actions/upload-artifact
+        uses: actions/upload-artifact@v7 # no retry wrapper: a missing report after a test crash fails every attempt
         with:
           name: ${{ matrix.project.name || matrix.project }}${{ matrix.chunk && format('-{0}', matrix.chunk) || '' }}-coverage
           path: src/Nethermind/*/TestResults/*.cobertura.xml
