@@ -190,8 +190,9 @@ public partial class EngineModuleTests
     }
 
     [Test]
-    public async Task NewPayloadV6_judges_the_inclusion_list_before_the_post_execution_system_calls([Values] bool fundedBySystemCall)
+    public async Task NewPayloadV6_judges_the_inclusion_list_before_the_post_execution_system_calls([Values] InclusionListSenderFunding funding)
     {
+        bool fundedBySystemCall = funding == InclusionListSenderFunding.PostExecutionSystemCall;
         Transaction inclusionListTx = Build.A.Transaction
             .WithNonce(0)
             .WithMaxFeePerGas(10.GWei)
@@ -206,21 +207,38 @@ public partial class EngineModuleTests
         using MergeTestBlockchain chain = await CreateBlockchainWithHeadState(headState, new MergeConfig { TerminalTotalDifficulty = "0", NewPayloadCacheSize = 0 },
             configure: builder => builder.WithGenesisPostProcessor((_, state, specProvider) =>
             {
-                if (!fundedBySystemCall)
+                if (funding == InclusionListSenderFunding.Parent)
                 {
                     state.CreateAccount(TestItem.AddressF, senderFunds);
                     return;
                 }
+                if (!fundedBySystemCall) return;
                 state.AddToBalance(Eip7002Constants.WithdrawalRequestPredeployAddress, senderFunds, specProvider.GenesisSpec);
                 state.InsertCode(Eip7002Constants.WithdrawalRequestPredeployAddress,
                     Prepare.EvmCode.CallWithValue(TestItem.AddressF, 50_000, senderFunds).Done, specProvider.GenesisSpec);
             }));
         IEngineRpcModule rpc = chain.EngineRpcModule;
         Hash256 startingHead = chain.BlockTree.HeadHash;
+        Task fundingIncluded = Task.CompletedTask;
+        if (funding == InclusionListSenderFunding.TransactionInTheBlock)
+        {
+            Transaction fundingTx = Build.A.Transaction
+                .WithNonce(0)
+                .WithMaxFeePerGas(10.GWei)
+                .WithMaxPriorityFeePerGas(2.GWei)
+                .WithGasLimit(1_000_000)
+                .WithTo(TestItem.AddressF)
+                .WithValue(senderFunds)
+                .SignedAndResolved(TestItem.PrivateKeyB)
+                .TestObject;
+            Assert.That(chain.TxPool.SubmitTx(fundingTx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            fundingIncluded = chain.WaitForImprovedBlock(startingHead, minTransactions: 1);
+        }
 
         ResultWrapper<ForkchoiceUpdatedV2Result> buildFcu = await rpc.engine_forkchoiceUpdatedV5(
             new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead),
             BuildBogotaPayloadAttributes(inclusionList: []));
+        await fundingIncluded;
         ResultWrapper<GetPayloadV6Result?> payloadResult = await rpc.engine_getPayloadV6(Bytes.FromHexString(buildFcu.Data.PayloadId!));
         ExecutionPayloadV4 emptyPayload = payloadResult.Data!.ExecutionPayload;
 
@@ -1659,6 +1677,8 @@ public partial class EngineModuleTests
 
     /// <summary>Entries exercising known and ambiguous compliance after gas-dimension cache loss.</summary>
     public enum InclusionListEntry { Boundary, Included, Small, WrongNonce }
+
+    public enum InclusionListSenderFunding { Parent, PostExecutionSystemCall, TransactionInTheBlock }
 
     /// <summary>Counts a selected sender's account reads during one payload resend.</summary>
     private sealed class AccountReadCountingStateReader(IStateReader inner, Address sender) : IStateReader

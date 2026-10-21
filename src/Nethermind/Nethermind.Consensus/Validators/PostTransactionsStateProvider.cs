@@ -29,6 +29,7 @@ public sealed class PostTransactionsStateProvider(
         if (blockAccessList.GetAccountChanges(address) is not { } changes) return postBlockState.TryGetAccount(address, out account);
 
         bool exists = parentState.TryGetAccount(address, out AccountStruct parent);
+        if (!exists) parent = AccountStruct.TotallyEmpty;
         bool balanceChanged = changes.TryGetLastBalanceChangeBefore(_postExecutionIndex, out BalanceChange balance);
         bool nonceChanged = changes.TryGetLastNonceChangeBefore(_postExecutionIndex, out NonceChange nonce);
         bool codeChanged = changes.TryGetLastCodeChangeBefore(_postExecutionIndex, out CodeChange code);
