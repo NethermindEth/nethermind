@@ -1512,8 +1512,8 @@ public class FlatWorldStateScopeProviderTests
         using INodeRecordBufferPin writeRetain = buffer.PinHead();
         for (int version = 0; version < versionCount; version++)
         {
-            Assert.That(buffer.FindRoot(address, roots[version].Hash), Is.EqualTo(roots[version].Pointer), $"indexed root {version}");
-            NodeRecordTrie trie = new(bundle, address, (roots[version].Hash, buffer.FindRoot(address, roots[version].Hash)));
+            Assert.That(buffer.FindRoot(address, roots[version].Hash, ulong.MaxValue), Is.EqualTo(roots[version].Pointer), $"indexed root {version}");
+            NodeRecordTrie trie = new(bundle, address, (roots[version].Hash, buffer.FindRoot(address, roots[version].Hash, ulong.MaxValue)));
             using (Assert.EnterMultipleScope())
             {
                 for (int i = 0; i < keys.Length; i++) Assert.That(trie.TryGet(keys[i]), Is.EqualTo(values[version][i]), $"version {version}, key {i}");

@@ -27,7 +27,7 @@ internal sealed class WarmedNodeRecordBuffer(INodeRecordBuffer global, WarmedNod
     public INodeRecordWriteBatch StartWriteBatch(int alignedTotalLength) => global.StartWriteBatch(alignedTotalLength);
 
     /// <inheritdoc/>
-    public ulong FindRoot(Hash256? address, in ValueHash256 root) => global.FindRoot(address, root);
+    public ulong FindRoot(Hash256? address, in ValueHash256 root, ulong boundary) => global.FindRoot(address, root, boundary);
 
     /// <inheritdoc/>
     public void SetRoot(Hash256? address, in ValueHash256 root, ulong rootPointer) => global.SetRoot(address, root, rootPointer);

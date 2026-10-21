@@ -58,14 +58,16 @@ internal sealed class OverlayNodeRecordBuffer : INodeRecordBuffer
     public INodeRecordWriteBatch StartWriteBatch(int alignedTotalLength) => new LocalWriteBatch(_local.StartWriteBatch(alignedTotalLength), _localOffset);
 
     /// <inheritdoc/>
-    public ulong FindRoot(Hash256? address, in ValueHash256 root)
+    public ulong FindRoot(Hash256? address, in ValueHash256 root, ulong boundary)
     {
-        ulong pointer = _local.FindRoot(address, root);
-        if (pointer != 0) return pointer + _localOffset;
+        if (boundary > _globalBoundary)
+        {
+            ulong pointer = _local.FindRoot(address, root, boundary - _localOffset);
+            if (pointer != 0) return pointer + _localOffset;
+        }
 
-        // A root the global buffer indexed after the pin would resolve in the private buffer instead.
-        pointer = _global.FindRoot(address, root);
-        return IsLocal(pointer) ? 0 : pointer;
+        // The global buffer may index the same root again after the pin; the entry visible at the pin is still pinned.
+        return _global.FindRoot(address, root, Math.Min(boundary, _globalBoundary));
     }
 
     /// <inheritdoc/>

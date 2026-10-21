@@ -26,6 +26,8 @@ public class OverlayNodeRecordBufferTests
 
         OverlayNodeRecordBuffer overlay = new(global);
         ulong afterPin = Append(global, AfterPinLeaf);
+        // The global buffer indexes the same root again, as when block processing returns storage to an earlier root.
+        ulong reindexed = Append(global, BeforePinLeaf);
         int globalWrites = global.CompletedWrites;
 
         INodeRecordBufferPin overlayPin = overlay.PinHead();
@@ -39,10 +41,12 @@ public class OverlayNodeRecordBufferTests
             Assert.That(overlay.TryLocate(beforePin, out NodeRecord beforePinRecord) && beforePinRecord.Rlp.SequenceEqual(BeforePinLeaf), Is.True);
             Assert.That(overlay.TryLocate(written, out NodeRecord writtenRecord) && writtenRecord.Rlp.SequenceEqual(OverlayLeaf), Is.True);
             Assert.That(overlay.TryLocate(afterPin, out _), Is.False, "global records written after the pin are not visible");
-            Assert.That(overlay.FindRoot(null, ValueKeccak.Compute(BeforePinLeaf)), Is.EqualTo(beforePin));
-            Assert.That(overlay.FindRoot(null, ValueKeccak.Compute(AfterPinLeaf)), Is.Zero);
-            Assert.That(overlay.FindRoot(null, ValueKeccak.Compute(OverlayLeaf)), Is.EqualTo(written));
-            Assert.That(global.FindRoot(null, ValueKeccak.Compute(OverlayLeaf)), Is.Zero);
+            Assert.That(overlay.FindRoot(null, ValueKeccak.Compute(BeforePinLeaf), ulong.MaxValue), Is.EqualTo(beforePin), "a root indexed again after the pin resolves to the entry visible at the pin");
+            Assert.That(global.FindRoot(null, ValueKeccak.Compute(BeforePinLeaf), ulong.MaxValue), Is.EqualTo(reindexed));
+            Assert.That(global.FindRoot(null, ValueKeccak.Compute(BeforePinLeaf), reindexed), Is.EqualTo(beforePin), "a bound skips the newer entries of the root");
+            Assert.That(overlay.FindRoot(null, ValueKeccak.Compute(AfterPinLeaf), ulong.MaxValue), Is.Zero);
+            Assert.That(overlay.FindRoot(null, ValueKeccak.Compute(OverlayLeaf), ulong.MaxValue), Is.EqualTo(written));
+            Assert.That(global.FindRoot(null, ValueKeccak.Compute(OverlayLeaf), ulong.MaxValue), Is.Zero);
         }
 
         overlay.Dispose();

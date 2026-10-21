@@ -318,7 +318,7 @@ internal sealed class ForwardingNodeRecordBuffer(INodeRecordBuffer inner) : INod
     public bool TryLocate(ulong pointer, out NodeRecord record) => inner.TryLocate(pointer, out record);
     public INodeRecordWriteBatch StartWriteBatch(int alignedTotalLength) => new ForwardedWriteBatch(this, inner.StartWriteBatch(alignedTotalLength));
 
-    public ulong FindRoot(Hash256? address, in ValueHash256 root) => inner.FindRoot(address, root);
+    public ulong FindRoot(Hash256? address, in ValueHash256 root, ulong boundary) => inner.FindRoot(address, root, boundary);
     public void SetRoot(Hash256? address, in ValueHash256 root, ulong rootPointer) => inner.SetRoot(address, root, rootPointer);
     public INodeRecordBufferPin PinHead() => Wrap(inner.PinHead());
     public IDisposable PinAll() => inner.PinAll();

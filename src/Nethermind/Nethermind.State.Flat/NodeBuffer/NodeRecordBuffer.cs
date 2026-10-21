@@ -534,16 +534,17 @@ public sealed class NodeRecordBuffer : INodeRecordBuffer
         }
     }
 
-    /// <summary>The record pointer of the newest indexed <paramref name="root"/> of the trie, or 0 when it is not indexed or its record no longer resolves.</summary>
+    /// <summary>The record pointer of the newest <paramref name="root"/> of the trie indexed below <paramref name="boundary"/>, or 0 when there is none or its record no longer resolves.</summary>
     /// <param name="address">The storage trie's address hash, or null for the state trie.</param>
-    internal ulong FindRoot(Hash256? address, in ValueHash256 root)
+    /// <param name="boundary">Root key records at or past this pointer are skipped, as by a reader pinned there; <see cref="ulong.MaxValue"/> for none.</param>
+    internal ulong FindRoot(Hash256? address, in ValueHash256 root, ulong boundary)
     {
         ValueHash256 addressHash = address?.ValueHash256 ?? default;
         ulong pointer = Volatile.Read(ref RootSlot(address, root));
         while (TryLocate(pointer, out NodeRecord rootKey))
         {
             ReadOnlySpan<byte> record = rootKey.Span;
-            if (RootKeyRecordCodec.Matches(record, addressHash, root))
+            if (pointer < boundary && RootKeyRecordCodec.Matches(record, addressHash, root))
             {
                 ulong rootPointer = RootKeyRecordCodec.RootPointer(record);
                 return TryLocate(rootPointer, out _) ? rootPointer : 0;
@@ -574,7 +575,7 @@ public sealed class NodeRecordBuffer : INodeRecordBuffer
         }
     }
 
-    ulong INodeRecordBuffer.FindRoot(Hash256? address, in ValueHash256 root) => FindRoot(address, root);
+    ulong INodeRecordBuffer.FindRoot(Hash256? address, in ValueHash256 root, ulong boundary) => FindRoot(address, root, boundary);
 
     void INodeRecordBuffer.SetRoot(Hash256? address, in ValueHash256 root, ulong rootPointer) => SetRoot(address, root, rootPointer);
 

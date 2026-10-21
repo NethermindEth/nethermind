@@ -36,7 +36,8 @@ public interface INodeRecordBuffer : IDisposable
     /// <summary>Finds the newest available indexed pointer for a trie root, or returns zero.</summary>
     /// <param name="address">The storage trie address hash, or null for the state trie.</param>
     /// <param name="root">The root hash.</param>
-    ulong FindRoot(Hash256? address, in ValueHash256 root);
+    /// <param name="boundary">Roots indexed at or past this pointer are skipped, as by a reader pinned there; <see cref="ulong.MaxValue"/> for none.</param>
+    ulong FindRoot(Hash256? address, in ValueHash256 root, ulong boundary);
 
     /// <summary>Indexes a completed node as the root of a trie.</summary>
     /// <param name="address">The storage trie address hash, or null for the state trie.</param>

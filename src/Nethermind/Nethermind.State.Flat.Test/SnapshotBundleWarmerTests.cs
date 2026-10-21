@@ -74,7 +74,7 @@ public class SnapshotBundleWarmerTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(buffer.FindRoot(address, root.Hash), Is.EqualTo(root.Pointer));
+            Assert.That(buffer.FindRoot(address, root.Hash, ulong.MaxValue), Is.EqualTo(root.Pointer));
             Assert.That(buffer.CompletedRecords - completedBefore, Is.EqualTo(nodes.Length));
             Assert.That(buffer.CompletedWrites - batchesBefore, Is.LessThan(nodes.Length), "a batch contains multiple relative record offsets");
             Assert.That(nodes.All(node => node.Record.Hash == ValueKeccak.Compute(node.Record.Rlp)), Is.True);
@@ -100,7 +100,7 @@ public class SnapshotBundleWarmerTests
                 Assert.That(snapshot!.StateRootPointer, Is.Not.Zero);
                 Assert.That(snapshot.TryGetStateNode(TreePath.Empty, out TrieNode? node), Is.True);
                 Assert.That(node!.FullRlp.ToArray(), Is.EqualTo(rlp));
-                Assert.That(_buffer.FindRoot(null, root.Hash), Is.EqualTo(snapshot.StateRootPointer), "the copy is indexed");
+                Assert.That(_buffer.FindRoot(null, root.Hash, ulong.MaxValue), Is.EqualTo(snapshot.StateRootPointer), "the copy is indexed");
             }
         }
         finally
@@ -495,7 +495,7 @@ public class SnapshotBundleWarmerTests
         NodeReader reader = new(persisted);
         using SnapshotBundle bundle = NewBundle(reader);
         using INodeRecordBufferPin retain = _buffer.PinHead();
-        (ValueHash256 Hash, ulong Pointer) preBlockRoot = (root.Hash, _buffer.FindRoot(address, root.Hash));
+        (ValueHash256 Hash, ulong Pointer) preBlockRoot = (root.Hash, _buffer.FindRoot(address, root.Hash, ulong.MaxValue));
 
         int firstWarmUp = WarmUpAll();
         int secondWarmUp = WarmUpAll();

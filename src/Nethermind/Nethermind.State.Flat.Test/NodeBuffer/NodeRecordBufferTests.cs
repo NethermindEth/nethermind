@@ -502,9 +502,9 @@ public class NodeRecordBufferTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(roots.Select(root => buffer.FindRoot(address, root)), Is.EqualTo(pointers), "newest pointer of every root");
-            Assert.That(buffer.FindRoot(otherAddress, roots[0]), Is.EqualTo(otherAddressPointer), "the same root under another address");
-            Assert.That(buffer.FindRoot(address, Root(-1)), Is.Zero, "a root never set");
+            Assert.That(roots.Select(root => buffer.FindRoot(address, root, ulong.MaxValue)), Is.EqualTo(pointers), "newest pointer of every root");
+            Assert.That(buffer.FindRoot(otherAddress, roots[0], ulong.MaxValue), Is.EqualTo(otherAddressPointer), "the same root under another address");
+            Assert.That(buffer.FindRoot(address, Root(-1), ulong.MaxValue), Is.Zero, "a root never set");
         }
 
         retain.Dispose();
@@ -513,8 +513,8 @@ public class NodeRecordBufferTests
         buffer.SetRoot(address, Root(-2), droppedPointer);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(() => buffer.FindRoot(address, Root(-2)), Is.Zero.After(CompactionTimeoutMilliseconds, PollingMilliseconds), "a root whose record dropped");
-            Assert.That(() => buffer.FindRoot(address, roots[0]), Is.Zero.After(CompactionTimeoutMilliseconds, PollingMilliseconds), "a root whose root key dropped");
+            Assert.That(() => buffer.FindRoot(address, Root(-2), ulong.MaxValue), Is.Zero.After(CompactionTimeoutMilliseconds, PollingMilliseconds), "a root whose record dropped");
+            Assert.That(() => buffer.FindRoot(address, roots[0], ulong.MaxValue), Is.Zero.After(CompactionTimeoutMilliseconds, PollingMilliseconds), "a root whose root key dropped");
         }
     }
 
@@ -535,7 +535,7 @@ public class NodeRecordBufferTests
 
         bool keeps = compressedBudget > 0;
         // The scenario generation is the newest dropped one and generations are compacted and evicted oldest first.
-        Assert.That(() => (IsLocatable(buffer, superseded.Pointer), buffer.FindRoot(null, Root(-1))), Is.EqualTo((false, keeps ? kept.Pointer : 0UL)).After(CompactionTimeoutMilliseconds, PollingMilliseconds),
+        Assert.That(() => (IsLocatable(buffer, superseded.Pointer), buffer.FindRoot(null, Root(-1), ulong.MaxValue)), Is.EqualTo((false, keeps ? kept.Pointer : 0UL)).After(CompactionTimeoutMilliseconds, PollingMilliseconds),
             "the scenario generation is compacted, keeping its root key only within the budget");
         ulong oldestResolving = unique.Where(record => Resolves(buffer, record)).Min(record => GenerationOf(record.Pointer));
         using (Assert.EnterMultipleScope())
@@ -599,7 +599,7 @@ public class NodeRecordBufferTests
                 using IDisposable pin = buffer.PinAll();
                 bool located = buffer.TryLocate(pointer, out NodeRecord record);
                 if (located ? !Matches(record, Leaf(seed, 8)) : retained) failures.Add($"record {seed}");
-                ulong root = buffer.FindRoot(ConcurrentAddress(thread), Root(seed));
+                ulong root = buffer.FindRoot(ConcurrentAddress(thread), Root(seed), ulong.MaxValue);
                 if (root != pointer && (retained || root != 0)) failures.Add($"root {seed}");
             }
         }

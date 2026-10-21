@@ -21,7 +21,7 @@ public static class NodeRecordBufferExtensions
     /// <summary>The root of <paramref name="rootHash"/>, with its record pointer when the buffer indexes it.</summary>
     /// <param name="address">The storage trie's address hash, or null for the state trie.</param>
     internal static (ValueHash256 Hash, ulong Pointer) ResolveRoot(this INodeRecordBuffer buffer, Hash256? address, in ValueHash256 rootHash) =>
-        new(rootHash, rootHash == ValueKeccak.EmptyTreeHash ? 0 : buffer.FindRoot(address, rootHash));
+        new(rootHash, rootHash == ValueKeccak.EmptyTreeHash ? 0 : buffer.FindRoot(address, rootHash, ulong.MaxValue));
 
     /// <summary>Appends a node's RLP with the given pointers to the records of its hashed children.</summary>
     /// <param name="address">The storage trie's address hash, or null for the state trie.</param>

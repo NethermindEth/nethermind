@@ -57,7 +57,7 @@ internal class WarmedNodeBufferTests
             Assert.That(oversized.Rlp.ToArray(), Is.EqualTo(oversizedRlp), "a record larger than a generation");
             Assert.That(combined.TryLocate(pointer, out NodeRecord located) && located.Rlp.SequenceEqual(rlp), Is.True, "combined resolves the transient pointer");
             Assert.That(combined.TryLocate(globalPointer, out located) && located.Rlp.SequenceEqual(rlp), Is.True, "combined resolves the global pointer");
-            Assert.That(combined.FindRoot(address, hash), Is.Zero, "roots stay global");
+            Assert.That(combined.FindRoot(address, hash, ulong.MaxValue), Is.Zero, "roots stay global");
             Assert.That(global.TryLocate(pointer, out _), Is.False, "the global buffer misses transient pointers");
             Assert.That(warmed.TryLocate(globalPointer, out _), Is.False, "the warmed buffer misses global pointers");
         }

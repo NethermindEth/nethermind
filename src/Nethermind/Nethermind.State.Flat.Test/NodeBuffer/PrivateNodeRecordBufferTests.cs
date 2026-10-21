@@ -30,7 +30,7 @@ internal class PrivateNodeRecordBufferTests
         {
             Assert.That(records.Select(record => record.Pointer >> 32).Distinct().Count(), Is.GreaterThan(20), "records span many generations");
             Assert.That(records.Select(record => buffer.TryLocate(record.Pointer, out NodeRecord located) && located.Rlp.SequenceEqual(record.Rlp)), Is.All.True, "no generation is dropped");
-            Assert.That(records.Select(record => buffer.FindRoot(null, ValueKeccak.Compute(record.Rlp))), Is.EqualTo(records.Select(record => record.Pointer)), "roots");
+            Assert.That(records.Select(record => buffer.FindRoot(null, ValueKeccak.Compute(record.Rlp), ulong.MaxValue)), Is.EqualTo(records.Select(record => record.Pointer)), "roots");
             Assert.That(records[0].Pointer, Is.GreaterThanOrEqualTo(pin.WriteBoundary), "writes follow the pin boundary");
         }
 
@@ -41,7 +41,7 @@ internal class PrivateNodeRecordBufferTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(records.Select(record => buffer.TryLocate(record.Pointer, out _)), Is.All.False, "cleared records miss");
-            Assert.That(buffer.FindRoot(null, ValueKeccak.Compute(records[1].Rlp)), Is.Zero, "cleared roots miss");
+            Assert.That(buffer.FindRoot(null, ValueKeccak.Compute(records[1].Rlp), ulong.MaxValue), Is.Zero, "cleared roots miss");
             Assert.That(afterClear, Is.GreaterThan(lastPointer), "pointers continue past the cleared records");
             Assert.That(firstBeforeClear.Rlp.ToArray(), Is.EqualTo(records[0].Rlp), "the first generation's storage is reused");
         }

@@ -86,7 +86,12 @@ internal sealed class PrivateNodeRecordBuffer(int generationBytes) : INodeRecord
     }
 
     /// <inheritdoc/>
-    public ulong FindRoot(Hash256? address, in ValueHash256 root) => _roots.GetValueOrDefault((address, root));
+    /// <remarks>Only the newest pointer of a root is kept, so one indexed at or past <paramref name="boundary"/> hides any older one.</remarks>
+    public ulong FindRoot(Hash256? address, in ValueHash256 root, ulong boundary)
+    {
+        ulong pointer = _roots.GetValueOrDefault((address, root));
+        return pointer < boundary ? pointer : 0;
+    }
 
     /// <inheritdoc/>
     public void SetRoot(Hash256? address, in ValueHash256 root, ulong rootPointer) => _roots[(address, root)] = rootPointer;
