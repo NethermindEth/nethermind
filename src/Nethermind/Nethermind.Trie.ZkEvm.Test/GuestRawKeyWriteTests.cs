@@ -85,6 +85,38 @@ public class GuestRawKeyWriteTests
     }
 
     [Test]
+    public void Raw_key_writes_reach_expanded_leaves_and_missing_keys()
+    {
+        PatriciaTree tree = new();
+        PatriciaTree reference = new();
+        byte[] a = RawKey(1);
+        byte[] b = Sharing(a, 2, 9);
+        byte[] c = Sharing(a, 3, 4);
+        byte[] d = Sharing(b, 4, 20);
+
+        void Step(byte[] key, byte[] value)
+        {
+            Write(tree, reference, key, value);
+            AssertSameTrie(tree.RootRef, reference.RootRef);
+        }
+
+        Step(a, [1]);
+        Step(b, [2]);
+        Step(c, [3]);
+        // Missing keys deleted: one diverging inside a leaf, one inside an extension.
+        Step(Flipped(a, 40), []);
+        Step(Flipped(a, 6), []);
+        // Deleting a merges b into a leaf with an expanded key, which every write after it reaches: a missing key
+        // diverging inside it, a value change, a split, a deletion, and an unchanged value.
+        Step(a, []);
+        Step(Flipped(b, 30), []);
+        Step(b, [5]);
+        Step(d, [6]);
+        Step(b, []);
+        Step(d, [6]);
+    }
+
+    [Test]
     public void Raw_key_write_splits_a_decoded_leaf([Values(0, 1, 2, 5, 62)] int sharedNibbles, [Values(0, 1)] int depth)
     {
         byte[] leafKey = RawKey(3);
@@ -179,6 +211,22 @@ public class GuestRawKeyWriteTests
         TrieNode leaf = new(NodeType.Unknown, Encode(TrieNodeFactory.CreateLeaf(key, new CappedArray<byte>([1]))));
         leaf.ResolveNode(NullTrieNodeResolver.Instance, TreePath.Empty);
         return leaf;
+    }
+
+    /// <summary>A key with the first <paramref name="count"/> nibbles of <paramref name="source"/> and a different next one.</summary>
+    private static byte[] Sharing(byte[] source, byte seed, int count)
+    {
+        byte[] key = RawKey(seed);
+        ShareNibbles(source, key, count);
+        if (Nibbles.NibbleAt(key, count) == Nibbles.NibbleAt(source, count)) SetNibble(key, count, Nibbles.NibbleAt(key, count) ^ 0x1);
+        return key;
+    }
+
+    private static byte[] Flipped(byte[] key, int nibble)
+    {
+        byte[] flipped = (byte[])key.Clone();
+        SetNibble(flipped, nibble, Nibbles.NibbleAt(key, nibble) ^ 0x1);
+        return flipped;
     }
 
     private static void ShareNibbles(byte[] source, byte[] key, int count)
