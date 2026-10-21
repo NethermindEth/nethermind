@@ -144,9 +144,9 @@ jobs:
             minutes: 5
           - vm: sp1
             project: Nethermind.Stateless.Sp1Guest
-            # SP1 executes ~500-830 M cycles per block. On zk-testing (6 cores)
-            # that is ~75 s; a GitHub runner is slower and the image pull is on
-            # top, so this is deliberately loose.
+            # SP1 is the slowest of the three guests, a GitHub runner is slower
+            # than zk-testing and the image pull is on top, so this is
+            # deliberately loose.
             minutes: 30
           - vm: openvm
             project: Nethermind.Stateless.OpenVMGuest

@@ -157,8 +157,8 @@ jobs:
       # One ziskemu run per block yields the output hash, the step count and the cost model, so
       # correctness and cost come from the same execution and cannot describe different builds.
       #
-      # A block of ~400M steps emulates in about 45 s here, so the eleven of them plus the image pull
-      # land near eight minutes; the cap below is headroom for a slower runner, not a budget.
+      # The run time scales with the pinned blocks' total steps; the cap below is headroom for a slower
+      # runner, not a budget, so revisit it when the pinned set grows.
       - name: Measure
         id: measure
         working-directory: ${{ env.GUEST_DIR }}
