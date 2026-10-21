@@ -130,7 +130,23 @@ public partial class DebugRpcModuleTests
     public async Task Debug_traceBlockByNumber_native_config_errors_are_execution_input_errors(
         [Values("callTracer", "prestateTracer", "noopTracer")] string tracer,
         [Values("17", "[]", "\"bad\"", "{\"onlyTopCall\":17,\"diffMode\":17}")] string configuration,
-        [Values] bool empty)
+        [Values] bool empty) =>
+        await AssertNativeConfigError("debug_traceBlockByNumber", tracer, configuration, empty);
+
+    [TestCase("callTracer", "{\"onlyTopCall\":17}", false, false)]
+    [TestCase("prestateTracer", "{\"diffMode\":[]}", false, false)]
+    [TestCase("prestateTracer", "17", false, false)]
+    [TestCase("prestateTracer", "{\"diffMode\":[]}", true, false)]
+    [TestCase("prestateTracer", "{\"diffMode\":[]}", false, true)]
+    public async Task Debug_traceBlockByHash_native_config_errors_are_execution_input_errors(
+        string tracer, string configuration, bool empty, bool unknown) =>
+        await AssertNativeConfigError("debug_traceBlockByHash", tracer, configuration, empty, unknown);
+
+    [Test]
+    public async Task Debug_traceTransaction_native_config_errors_remain_invalid_params() =>
+        await AssertNativeConfigError("debug_traceTransaction", "prestateTracer", "{\"diffMode\":[]}", empty: false, expectedError: ErrorCodes.InvalidParams);
+
+    private static async Task AssertNativeConfigError(string method, string tracer, string configuration, bool empty, bool unknown = false, int? expectedError = null, bool? streamMode = null)
     {
         using Context context = await Context.Create();
         Block block = empty
@@ -138,15 +154,30 @@ public partial class DebugRpcModuleTests
             : await context.Blockchain.AddBlock(CreateTraceBlockTransactions(context.Blockchain));
         using JsonDocument config = JsonDocument.Parse(configuration);
 
-        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceBlockByNumber", block.Number,
-            new { tracer, tracerConfig = config.RootElement });
+        object target = method switch
+        {
+            "debug_traceBlockByNumber" => block.Number,
+            "debug_traceTransaction" => block.Transactions[0].Hash!,
+            _ => unknown ? TestItem.KeccakD : block.Hash!
+        };
+        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, method, target,
+            new { tracer, tracerConfig = config.RootElement, timeout = "5s", streamMode });
         JToken json = JToken.Parse(response);
 
-        if (!empty && tracer != "noopTracer")
+        if (unknown)
         {
             using (Assert.EnterMultipleScope())
             {
-                Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidInput), response);
+                Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.ResourceNotFound), response);
+                Assert.That((string?)json["error"]?["message"], Does.Contain(TestItem.KeccakD.ToString()), response);
+                Assert.That(json["result"], Is.Null, response);
+            }
+        }
+        else if (!empty && tracer != "noopTracer")
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That((int?)json["error"]?["code"], Is.EqualTo(expectedError ?? ErrorCodes.InvalidInput), response);
                 Assert.That(json["result"], Is.Null, response);
             }
         }
@@ -158,8 +189,19 @@ public partial class DebugRpcModuleTests
     }
 
     [Test]
+    [NonParallelizable]
+    [Repeat(2)]
+    public async Task Debug_native_tracer_host_json_errors_remain_invalid_params_when_buffered(
+        [Values("debug_traceBlockByHash", "debug_traceBlockByNumber")] string method)
+    {
+        string tracer = $"native-host-buffered-{method}-{Guid.NewGuid():N}";
+        GethLikeNativeTracerFactory.RegisterTracer(tracer, static (_, _, _, _) => throw new JsonException("host construction failure"));
+        await AssertNativeConfigError(method, tracer, "{}", empty: false, expectedError: ErrorCodes.InvalidParams, streamMode: false);
+    }
+
+    [Test]
     public async Task Debug_native_config_errors_keep_sibling_invalid_params(
-        [Values("debug_traceBlockByHash", "debug_traceBlock", "debug_traceTransaction", "debug_traceCall")] string method,
+        [Values("debug_traceBlock", "debug_traceTransaction", "debug_traceCall")] string method,
         [Values("callTracer", "prestateTracer")] string tracer)
     {
         using Context context = await Context.Create();
