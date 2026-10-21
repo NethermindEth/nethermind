@@ -156,7 +156,6 @@ public class UserErrors
 
         byte[] encoded = AbiCodec.Encode(signature, 69u);
 
-        // Change the method id to something else
         encoded[0] ^= 1;
 
         Assert.Throws<AbiException>(() => AbiCodec.Decode(signature, encoded));
