@@ -176,6 +176,10 @@ public class GethGenesisLoader(IJsonSerializer serializer, ILogManager? logManag
         HardforkLabels.ExpandAll(chainSpec.Parameters, config);
     }
 
+    /// <summary>Precedence of <paramref name="forkName"/>'s <c>blobSchedule</c> entry over others at the same timestamp; <c>null</c> when the key is ignored.</summary>
+    internal static int? BlobScheduleOrder(string forkName) =>
+        _blobScheduleForks.TryGetValue(forkName, out BlobScheduleFork fork) ? fork.Order : null;
+
     private readonly record struct BlobScheduleFork(int Order);
 
     private readonly record struct OrderedBlobScheduleSettings(int ForkOrder, BlobScheduleSettings Settings);
@@ -192,6 +196,7 @@ public class GethGenesisLoader(IJsonSerializer serializer, ILogManager? logManag
             [nameof(BPO3)] = new(6),
             [nameof(BPO4)] = new(7),
             [nameof(BPO5)] = new(8),
+            [nameof(Bogota)] = new(9),
         };
 
     private static void LoadGenesis(GethGenesisJson gethGenesisJson, GethGenesisConfigJson config, ChainSpec chainSpec)

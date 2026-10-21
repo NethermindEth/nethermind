@@ -600,8 +600,7 @@ public class ReadOnlyQueryModuleTests
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(builder => builder
             .AddSingleton<ISpecProvider>(new TestSpecProvider(Eip8141Prototype.Instance))
             .AddSingleton<IReadOnlyQueryModule>(probe.ModuleFor(ReadOnlyQueryKind.All))
-            // The first simulation runs cold code with every instruction traced, which can exceed the default
-            // wall-clock limit on a slow runner.
+            // The first traced simulation runs cold and overruns the default timeout on CI.
             .AddSingleton<ITxPoolConfig>(new TxPoolConfig { FrameTxSimulationTimeoutMs = 0 })
             .WithGenesisPostProcessor((_, state, specProvider) =>
             {
