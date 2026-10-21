@@ -156,6 +156,8 @@ public abstract class BlockchainTestBase
         blocksConfig.PreWarming = PreWarmMode.Block;
         blocksConfig.PreWarmInFlightReadAhead = true;
         blocksConfig.PreWarmInFlightReadAheadColdReads = 0;
+        // Bench harness, not for merge: consecutive takeovers share their commits.
+        blocksConfig.PreWarmBatchedReplayCommit = true;
         if (ParallelExecutionOverride.HasValue)
         {
             blocksConfig.ParallelExecution = ParallelExecutionOverride.Value;
