@@ -1,0 +1,115 @@
+name: EEZ setup live validation
+
+on:
+  push:
+    branches: [diagnostics/eez-setup-reorg]
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  replay:
+    name: Original runtime / ${{ matrix.mode }} / ${{ matrix.repeat }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - mode: baseline
+            repeat: 1
+            probe: '0'
+          - mode: patched
+            repeat: 1
+            probe: '0'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      TESTED_CANDIDATE: 3d29c4cee504dadc9e936ec2bd7c6f5ec038c099
+      EEZ_PROFILE: rollupx
+      EEZ_SUITE: protocol
+      EEZ_UPSTREAM: ${{ github.workspace }}/upstream
+      EEZ_CI_RESULT_DIR: ${{ github.workspace }}/artifacts/eez-quote-diagnostic
+      EEZ_RUNTIME_DIR: ${{ github.workspace }}/artifacts/eez-quote-diagnostic/runtime
+      EEZ_NETHERMIND_BASE_IMAGE: nethermind:eez-39508334913
+      EEZ_NETHERMIND_PROVER_BASE_IMAGE: nethermind-eez-attester:eez-39508334913
+      EEZ_PROTOCOL_MAX_PARALLEL: '8'
+      EEZ_DIAGNOSTIC_DIR: ${{ github.workspace }}/artifacts/eez-quote-diagnostic/nonce-observations
+      EEZ_DIAGNOSTIC_PROBE: ${{ matrix.probe }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: eez-inputs-rollupx-39508334913
+          run-id: 39508334913
+          github-token: ${{ github.token }}
+          path: ${{ env.EEZ_CI_RESULT_DIR }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: eez-candidate-39508334913
+          run-id: 39508334913
+          github-token: ${{ github.token }}
+          path: artifacts/eez-candidate
+      - name: Load exact failed-run sources and images
+        run: |
+          mkdir -p "$EEZ_UPSTREAM"
+          tar -I zstd -xf "$EEZ_CI_RESULT_DIR/sources.tar.zst" -C "$EEZ_UPSTREAM"
+          tar -I zstd -xf "$EEZ_CI_RESULT_DIR/runtime.tar.zst" -C "$EEZ_CI_RESULT_DIR"
+          python3 scripts/eez/devnet/partitions.py plan --upstream "$EEZ_UPSTREAM" \
+            --manifest "$EEZ_CI_RESULT_DIR/upstream.json" --output "$EEZ_CI_RESULT_DIR/partitions.json"
+          zstd -dc artifacts/eez-candidate/images.tar.zst | docker load
+          zstd -dc "$EEZ_CI_RESULT_DIR/upstream-images.tar.zst" | docker load
+          candidate_revision="$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$EEZ_NETHERMIND_BASE_IMAGE")"
+          test "$candidate_revision" = "$TESTED_CANDIDATE"
+          echo "$EEZ_RUNTIME_DIR" >> "$GITHUB_PATH"
+          echo "LD_LIBRARY_PATH=$EEZ_RUNTIME_DIR/lib" >> "$GITHUB_ENV"
+          echo 'RUST_MIN_STACK=16777216' >> "$GITHUB_ENV"
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@b00af27efadbc7b4ca8b82abbd903b17cc874d2a
+        with:
+          version: v1.7.1
+      - name: Install Kurtosis
+        run: |
+          echo 'deb [trusted=yes] https://sdk.kurtosis.com/kurtosis-cli-release-artifacts/ /' | sudo tee /etc/apt/sources.list.d/kurtosis.list
+          sudo apt-get update
+          sudo apt-get install -y bc kurtosis-cli jq openssl
+          DOCKER_API_VERSION="$(docker version --format '{{.Server.APIVersion}}')"
+          export DOCKER_API_VERSION
+          echo "DOCKER_API_VERSION=$DOCKER_API_VERSION" >> "$GITHUB_ENV"
+          kurtosis_config="$(kurtosis config path)"
+          mkdir -p "$(dirname "$kurtosis_config")"
+          cp scripts/eez/devnet/kurtosis-config.yml "$kurtosis_config"
+          kurtosis engine start
+      - name: Apply setup fix only in the patched lane
+        env:
+          MODE: ${{ matrix.mode }}
+        run: |
+          core_directory="$EEZ_UPSTREAM/eez-core-protocol"
+          test "$(git -C "$core_directory" rev-parse HEAD)" = abcf9d8ffc4e0ccb5df271fc19efdf9a7fb57774
+          if [[ "$MODE" == patched ]]; then
+            git -C "$core_directory" apply "$GITHUB_WORKSPACE/scripts/eez/devnet/core-setup.patch"
+          fi
+          sha256sum scripts/eez/devnet/core-setup.patch > "$EEZ_CI_RESULT_DIR/setup-patch.sha256.txt"
+          jq -n --arg candidate "$TESTED_CANDIDATE" --arg harness "$GITHUB_SHA" \
+            --arg source_run '39508334913' --arg mode "$MODE" \
+            --arg core_base abcf9d8ffc4e0ccb5df271fc19efdf9a7fb57774 \
+            '{tested_candidate:$candidate,diagnostic_harness:$harness,source_run:$source_run,mode:$mode,core_base:$core_base,core_setup_patch_applied:($mode=="patched"),compatibility_gate:false}' \
+            > "$EEZ_CI_RESULT_DIR/diagnostic-provenance.json"
+      - name: Run the original protocol suite
+        run: |
+          export GITHUB_SHA="$TESTED_CANDIDATE"
+          bash scripts/eez/devnet/test-partition.sh
+      - name: Upload original results and observations
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eez-setup-live-${{ matrix.mode }}-${{ matrix.repeat }}
+          path: |
+            artifacts/eez-quote-diagnostic/**/*.json
+            artifacts/eez-quote-diagnostic/**/*.jsonl
+            artifacts/eez-quote-diagnostic/**/*.log
+            artifacts/eez-quote-diagnostic/**/*.txt
+          if-no-files-found: error
+          retention-days: 7
+          overwrite: true

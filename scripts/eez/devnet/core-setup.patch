@@ -1,29 +1,20 @@
 diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
-index 0b45679..c094223 100644
+index 0b45679..dc3e784 100644
 --- a/.github/workflows/ci.yml
 +++ b/.github/workflows/ci.yml
-@@ -19,6 +19,21 @@ env:
-   FOUNDRY_DISABLE_NIGHTLY_WARNING: 1
- 
- jobs:
-+  runner-tests:
-+    name: E2E runner regressions
-+    runs-on: ubuntu-latest
-+    timeout-minutes: 10
-+    steps:
-+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-+        with:
-+          persist-credentials: false
-+      - name: Install runner dependencies
-+        run: sudo apt-get update && sudo apt-get install -y bc jq
-+      - name: Check runner scripts and regressions
+@@ -34,6 +34,12 @@ jobs:
+           version: v1.7.1
+       - name: Build
+         run: forge build
++      - name: E2E runner regressions
 +        run: |
++          sudo apt-get update
++          sudo apt-get install -y bc jq
 +          for script in script/e2e/lib/*.sh; do bash -n "$script"; done
 +          PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s script/e2e/tests -v
-+
-   contract-tests:
-     name: Contract Tests
-     runs-on: ubuntu-latest
+       # EEZ sits within ~1 KB of the EIP-170 runtime limit. `forge build --sizes`
+       # cannot be used directly: BlobTranslator (script-side tooling, never
+       # deployed) is far over the limit, so check only the deployable contracts.
 diff --git a/script/e2e/README.md b/script/e2e/README.md
 index 7dc7034..0c7df31 100644
 --- a/script/e2e/README.md
@@ -196,10 +187,10 @@ index 0000000..066596d
 +}
 diff --git a/script/e2e/tests/test_network_setup.py b/script/e2e/tests/test_network_setup.py
 new file mode 100644
-index 0000000..6ef37dc
+index 0000000..f2542f9
 --- /dev/null
 +++ b/script/e2e/tests/test_network_setup.py
-@@ -0,0 +1,177 @@
+@@ -0,0 +1,185 @@
 +"""Setup receipts can move before trigger preparation; use the settled inclusion."""
 +import json
 +import os
@@ -211,17 +202,20 @@ index 0000000..6ef37dc
 +LIB = Path(__file__).resolve().parents[1] / "lib"
 +TX = "0x" + "1" * 64
 +OLD_BLOCK = "0x" + "2" * 64
-+NEW_BLOCK = "0x" + "3" * 64
 +SECOND_TX = "0x" + "6" * 64
 +
 +TRANSPORT = r'''#!/usr/bin/env python3
-+import json, os, pathlib, sys
++import json
++import os
++import pathlib
++import sys
 +root = pathlib.Path(os.environ["TEST_ROOT"])
 +clock = int((root / "clock").read_text())
 +mode = os.environ.get("TEST_MODE", "reorg")
 +args = sys.argv[1:]
 +payload = args[args.index("--data") + 1]
-+if payload == "@-": payload = sys.stdin.read()
++if payload == "@-":
++    payload = sys.stdin.read()
 +request = json.loads(payload)
 +def respond(item):
 +    method, params = item["method"], item["params"]
@@ -231,11 +225,14 @@ index 0000000..6ef37dc
 +    if method == "eth_getBlockByNumber":
 +        if mode == "unsupported" and params[0] == "safe":
 +            return {"jsonrpc":"2.0", "id":item["id"], "error":{"code":-32602,"message":"unsupported safe"}}
-+        if mode == "malformed": result = {"number":"invalid", "hash":"0x"}
++        if mode == "malformed":
++            result = {"number":"invalid", "hash":"0x"}
 +        else:
 +            number = 9 if params[0] == "safe" and (clock < 1004 or mode == "stalled") else 10
-+            if mode in ("orphaned", "safe_reorg") and params[0] == "safe": number = 10
-+            if params[0] != "safe": number = int(params[0], 16)
++            if mode in ("orphaned", "safe_reorg") and params[0] == "safe":
++                number = 10
++            if params[0] != "safe":
++                number = int(params[0], 16)
 +            block_hash = "0x" + ("3" if number == 10 else "4") * 64
 +            if params[0] != "safe" and ((mode == "orphaned" and number == 9) or
 +                                         (mode == "safe_reorg" and number == 10)):
@@ -247,8 +244,10 @@ index 0000000..6ef37dc
 +            result = {"transactionHash":params[0], "blockNumber":hex(height),
 +                      "blockHash":"0x" + ("3" if height == 10 else "4") * 64,
 +                      "status":"0x0" if mode == "reverted" else "0x1"}
-+        if mode == "wrong_hash" and result: result["transactionHash"] = "0x" + "9" * 64
-+    else: raise AssertionError(item)
++        if mode == "wrong_hash" and result:
++            result["transactionHash"] = "0x" + "9" * 64
++    else:
++        raise AssertionError(item)
 +    return {"jsonrpc":"2.0", "id":item["id"], "result":result}
 +print(json.dumps([respond(item) for item in reversed(request)] if isinstance(request,list) else respond(request)))
 +'''
