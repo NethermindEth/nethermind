@@ -18,11 +18,20 @@ jobs:
           - mode: record
             repeat: 1
             probe: '0'
+          - mode: record
+            repeat: 2
+            probe: '0'
+          - mode: record
+            repeat: 3
+            probe: '0'
           - mode: probe
             repeat: 1
             probe: '1'
           - mode: probe
             repeat: 2
+            probe: '1'
+          - mode: probe
+            repeat: 3
             probe: '1'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
@@ -132,3 +141,4 @@ jobs:
             artifacts/eez-quote-diagnostic/**/*.txt
           if-no-files-found: error
           retention-days: 7
+          overwrite: true

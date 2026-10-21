@@ -40,6 +40,28 @@ def probes(url, sender):
     return results
 
 
+def broadcast_manifest(text):
+    match = re.search(r"(?m)^Transactions saved to: (.+)$", text)
+    if not match:
+        return None
+    path = Path(match[1].strip()).resolve(strict=True)
+    path.relative_to((Path.cwd() / "broadcast").resolve(strict=True))
+    if path.stat().st_size > 16 * 1024 * 1024:
+        raise ValueError("broadcast manifest exceeds diagnostic limit")
+    data = json.loads(path.read_text())
+    receipt_fields = ("transactionHash", "blockHash", "blockNumber", "transactionIndex",
+                      "status", "from", "to", "contractAddress")
+    transaction_fields = ("from", "to", "nonce", "chainId", "type")
+    return {
+        "path": str(path.relative_to(Path.cwd())),
+        "pending": data.get("pending", []),
+        "transactions": [{"hash": tx.get("hash"), "contractAddress": tx.get("contractAddress"),
+                          "transaction": {key: tx.get("transaction", {}).get(key) for key in transaction_fields}}
+                         for tx in data.get("transactions", [])],
+        "receipts": [{key: receipt.get(key) for key in receipt_fields} for receipt in data.get("receipts", [])],
+    }
+
+
 def main():
     tool = sys.argv[1]
     args = sys.argv[2:]
@@ -72,6 +94,9 @@ def main():
             event["script"] = args[1]
             text = event["stdout"] + event["stderr"]
             hashes = list(dict.fromkeys(re.findall(r"(?i)\b(?:transaction\s+hash|hash):\s*(0x[0-9a-f]{64})", text)))
+            event["broadcast_manifest"] = broadcast_manifest(text)
+            if event["broadcast_manifest"]:
+                hashes = list(dict.fromkeys([*hashes, *[tx["hash"] for tx in event["broadcast_manifest"]["transactions"] if tx["hash"]]]))
             if collect:
                 event["after_original_result"] = [rpc(url, "eth_getTransactionReceipt", [tx]) for tx in hashes]
     except Exception as error:
