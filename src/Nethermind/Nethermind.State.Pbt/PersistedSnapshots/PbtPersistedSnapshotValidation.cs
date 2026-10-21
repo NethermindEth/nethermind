@@ -5,7 +5,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Memory;
 using Nethermind.Pbt;
-using Nethermind.Pbt.NodeLog;
+using Nethermind.Pbt.NodeBuffer;
 using Nethermind.State.Pbt.Common;
 using Nethermind.State.Pbt.Snapshot;
 

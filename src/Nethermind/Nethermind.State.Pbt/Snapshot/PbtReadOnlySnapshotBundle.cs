@@ -14,7 +14,7 @@ using Nethermind.Core.Utils;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Int256;
 using Nethermind.Pbt;
-using Nethermind.Pbt.NodeLog;
+using Nethermind.Pbt.NodeBuffer;
 using Nethermind.State.Pbt.Common;
 using Nethermind.State.Pbt.Persistence;
 using Nethermind.State.Pbt.PersistedSnapshots;
@@ -22,7 +22,7 @@ using Nethermind.State.Pbt.PersistedSnapshots;
 namespace Nethermind.State.Pbt.Snapshot;
 
 /// <summary>An immutable canonical state view composed from snapshot diffs over one persistence snapshot.</summary>
-/// <param name="nodeGroupPin">A <see cref="PbtGroupLog.PinAll"/> keeping every group log record the bundle's readers may
+/// <param name="nodeGroupPin">A <see cref="PbtGroupRecordBuffer.PinAll"/> keeping every buffer record the bundle's readers may
 /// borrow valid; released with the bundle.</param>
 /// <param name="slotFilterBitsPerKey">Bits per key of the negative filter <see cref="RentRunFiltered"/> builds over the
 /// in-memory layers' slot runs; 0 never builds one.</param>
@@ -77,11 +77,11 @@ public sealed class PbtReadOnlySnapshotBundle(
     private PbtSnapshot? MemoryLayer(int index) => index >= persistedSnapshots.Count ? snapshots[index - persistedSnapshots.Count] : null;
     private PbtPersistedSnapshot? PersistedLayer(int index) => index < persistedSnapshots.Count ? persistedSnapshots[index] : null;
 
-    internal PbtGroupReference GetRootGroupReference(IPbtGroupLog log)
+    internal PbtGroupReference GetRootGroupReference(IPbtGroupRecordBuffer buffer)
     {
         ObjectDisposedException.ThrowIf(_isDisposed, this);
-        if (snapshots.Count > 0) return snapshots[^1].MapRootGroupReference(log);
-        return TreeRoot == default ? PbtGroupReference.None : log.FindRoot(TreeRoot);
+        if (snapshots.Count > 0) return snapshots[^1].MapRootGroupReference(buffer);
+        return TreeRoot == default ? PbtGroupReference.None : buffer.FindRoot(TreeRoot);
     }
 
     private bool TryAccount(int index, in ValueHash256 address, out PbtAccount? account) =>

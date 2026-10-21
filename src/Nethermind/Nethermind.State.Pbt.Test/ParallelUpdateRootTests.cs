@@ -12,7 +12,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Memory;
 using Nethermind.Core.Threading;
 using Nethermind.Pbt;
-using Nethermind.Pbt.NodeLog;
+using Nethermind.Pbt.NodeBuffer;
 using Nethermind.State.Pbt.Persistence;
 using Nethermind.State.Pbt.Snapshot;
 using NUnit.Framework;
@@ -427,7 +427,7 @@ public class ParallelUpdateRootTests
     private static void AssertLoggedFold(LoggedGroupStore store, PbtTreeHarness expected, (byte[] Key, byte[]? Value)[] writes, FoldFanOut fanOut)
     {
         PbtStorageNodePath[] previous = store.TreePayloads().Select(static group => group.Key).ToArray();
-        using PbtGroupLog.GenerationPin pin = store.Log.Pin();
+        using PbtGroupRecordBuffer.GenerationPin pin = store.Buffer.PinHead();
         ValueHash256 actual = store.Fold(writes, fanOut);
         expected.ApplyBatch(writes);
         HashSet<PbtStorageNodePath> current = expected.PhysicalPayloads.Select(static group => group.Key).ToHashSet();
@@ -468,7 +468,7 @@ public class ParallelUpdateRootTests
         using PbtTreeHarness expected = new();
         (byte[] Key, byte[]? Value)[] entries = ZoneEntries(3, compressed: true);
         expected.ApplyBatch(entries);
-        PbtGroupReference unavailable = store.Log.Append(default, expected.PhysicalPayloads.Single(static group => group.Key.BitDepth == 0).Payload.Span, PbtGroupLinks.Unknown);
+        PbtGroupReference unavailable = store.Buffer.Append(default, expected.PhysicalPayloads.Single(static group => group.Key.BitDepth == 0).Payload.Span, PbtGroupLinks.Unknown);
         store.Seed(expected.RootHash, expected.PhysicalPayloads);
         (byte[] Key, byte[]? Value)[] changes = Changes(entries);
         ValueHash256 actual = store.Fold(changes, SplitFanOut(true), retired ? unavailable : PbtGroupReference.Unknown);
@@ -488,14 +488,14 @@ public class ParallelUpdateRootTests
     public void Log_reference_fold_failure_does_not_publish_partial_records(bool splitEveryFrame, bool failAfterWrite)
     {
         TrackingMemoryProvider memory = new();
-        using PbtGroupLog log = new(memory, compressedMemoryBudget: 0, generationBytes: 256, retainedGenerations: 0);
-        using LoggedGroupStore store = new(PooledRefCountingMemoryProvider.Instance, log);
+        using PbtGroupRecordBuffer buffer = new(memory, compressedMaxMemory: 0, generationBytes: 256, liveGenerations: 0);
+        using LoggedGroupStore store = new(PooledRefCountingMemoryProvider.Instance, buffer);
         using PbtTreeHarness expected = new();
         (byte[] Key, byte[]? Value)[] entries = ZoneEntries(3, compressed: false);
         expected.ApplyBatch(entries);
         store.Seed(expected.RootHash, expected.PhysicalPayloads);
         string[] initial = store.Payloads().PhysicalRecords();
-        long initialBytes = log.UsedBytes;
+        long initialBytes = buffer.UsedBytes;
         if (failAfterWrite)
         {
             store.FoldConcurrency = 1;
@@ -511,7 +511,7 @@ public class ParallelUpdateRootTests
             Assert.That(store.RootReference, Is.EqualTo(PbtGroupReference.Unknown));
             if (failAfterWrite) Assert.That(store.LastUsedBytes, Is.GreaterThan(initialBytes), "the failure followed actual private group writes");
             store.DiscardUncommittedState();
-            Assert.That(log.UsedBytes, Is.EqualTo(initialBytes), "aborting the scope releases its generation pin");
+            Assert.That(buffer.UsedBytes, Is.EqualTo(initialBytes), "aborting the scope releases its generation pin");
         }
     }
 
@@ -520,9 +520,9 @@ public class ParallelUpdateRootTests
     {
         using NativeBucketedMemoryPool nativePool = PbtNodeGroupMemory.CreateNativePool();
         TrackingMemoryProvider memory = new(native ? nativePool : PooledRefCountingMemoryProvider.Instance);
-        using PbtGroupLog log = new(memory, compressedMemoryBudget: 0, generationBytes: 256, retainedGenerations: 0);
-        using LoggedGroupStore first = new(memory, log);
-        using LoggedGroupStore second = new(memory, log);
+        using PbtGroupRecordBuffer buffer = new(memory, compressedMaxMemory: 0, generationBytes: 256, liveGenerations: 0);
+        using LoggedGroupStore first = new(memory, buffer);
+        using LoggedGroupStore second = new(memory, buffer);
         using PbtTreeHarness firstExpected = new();
         using PbtTreeHarness secondExpected = new();
         (byte[] Key, byte[]? Value)[] firstEntries = ZoneEntries(3, compressed: true);
@@ -531,8 +531,8 @@ public class ParallelUpdateRootTests
         second.Fold(secondEntries, SplitFanOut(true));
         firstExpected.ApplyBatch(firstEntries);
         secondExpected.ApplyBatch(secondEntries);
-        Assert.That(log.TryGetRecord(first.RootReference, out PbtGroupRecord firstParent), Is.True);
-        Assert.That(log.TryGetRecord(second.RootReference, out PbtGroupRecord secondParent), Is.True);
+        Assert.That(buffer.TryLocate(first.RootReference, out PbtGroupRecord firstParent), Is.True);
+        Assert.That(buffer.TryLocate(second.RootReference, out PbtGroupRecord secondParent), Is.True);
         PbtGroupReference firstChild = firstParent.GetLink(0);
         PbtGroupReference secondChild = secondParent.GetLink(0);
         Assert.That(firstChild.IsDirect && secondChild.IsDirect, Is.True);
@@ -540,10 +540,10 @@ public class ParallelUpdateRootTests
         second.RetireDescendants(unknownChildren);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(log.TryGetRecord(first.RootReference, out _), Is.True);
-            Assert.That(log.TryGetRecord(second.RootReference, out _), Is.True);
-            Assert.That(log.TryGetRecord(firstChild, out _), Is.False, "the live parent must not require its old child generation to stay resident");
-            Assert.That(log.TryGetRecord(secondChild, out _), Is.False);
+            Assert.That(buffer.TryLocate(first.RootReference, out _), Is.True);
+            Assert.That(buffer.TryLocate(second.RootReference, out _), Is.True);
+            Assert.That(buffer.TryLocate(firstChild, out _), Is.False, "the live parent must not require its old child generation to stay resident");
+            Assert.That(buffer.TryLocate(secondChild, out _), Is.False);
         }
         (byte[] Key, byte[]? Value)[] firstChanges = Changes(firstEntries);
         (byte[] Key, byte[]? Value)[] secondChanges = [(secondEntries[0].Key, Value(0xE1)), (secondEntries[^1].Key, null)];
@@ -558,7 +558,7 @@ public class ParallelUpdateRootTests
         second.Dispose();
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(log.ResidentBytes, Is.Zero);
+            Assert.That(buffer.ResidentBytes, Is.Zero);
             Assert.That(TrackingMemoryProvider.CountUnreleased(memory.Rented), Is.Zero);
         }
 
@@ -573,7 +573,7 @@ public class ParallelUpdateRootTests
                 Assert.That(root.Bytes.ToArray(), Is.EqualTo(reference.Merkelize()));
                 Assert.That(root, Is.EqualTo(expected.RootHash));
                 Assert.That(store.Payloads().PhysicalRecords(), Is.EqualTo(expected.PhysicalPayloads.PhysicalRecords()));
-                Assert.That(store.LastDirectReads, Is.GreaterThan(0), "the parent itself stayed in the shared log");
+                Assert.That(store.LastDirectReads, Is.GreaterThan(0), "the parent itself stayed in the shared buffer");
                 Assert.That(store.LastFallbackReads, Is.GreaterThan(0));
                 Assert.That(store.StoreReads, Is.EqualTo(store.LastFallbackReads));
             }
@@ -584,7 +584,7 @@ public class ParallelUpdateRootTests
     {
         private readonly IRefCountingMemoryProvider _memory;
         private PbtSnapshotContent _content;
-        private readonly bool _ownsLog;
+        private readonly bool _ownsBuffer;
         private PbtNodeGroupStore? _persisted;
         private ValueHash256 _root;
         private long _storeReads;
@@ -595,20 +595,20 @@ public class ParallelUpdateRootTests
         // Groups the folds published, with None for removed ones, over the persisted groups.
         private readonly Dictionary<PbtStorageNodePath, PbtGroupReference> _groups = [];
 
-        public LoggedGroupStore(IRefCountingMemoryProvider memory, PbtGroupLog? log = null)
+        public LoggedGroupStore(IRefCountingMemoryProvider memory, PbtGroupRecordBuffer? buffer = null)
         {
             _memory = memory;
-            _ownsLog = log is null;
-            Log = log ?? new PbtGroupLog(memory, compressedMemoryBudget: 0, generationBytes: 4096, retainedGenerations: 0);
+            _ownsBuffer = buffer is null;
+            Buffer = buffer ?? new PbtGroupRecordBuffer(memory, compressedMaxMemory: 0, generationBytes: 4096, liveGenerations: 0);
             _content = NewContent();
         }
 
-        public PbtGroupLog Log { get; }
+        public PbtGroupRecordBuffer Buffer { get; }
 
         private PbtSnapshotContent NewContent()
         {
             PbtSnapshotContent content = new(_memory);
-            content.BeginNodeGroupWrites(Log);
+            content.BeginNodeGroupWrites(Buffer);
             return content;
         }
         public PbtGroupReference RootReference { get; private set; }
@@ -627,7 +627,7 @@ public class ParallelUpdateRootTests
 
         public bool TryGetNodeGroupRecord(PbtGroupReference reference, scoped in PbtTraversalPath path, out PbtGroupRecord record)
         {
-            if (Log.TryGetRecord(reference, out record) && PbtNodePathOperations.Equal(record.Path, path.ToPath<PbtStorageNodePath>()))
+            if (Buffer.TryLocate(reference, out record) && PbtNodePathOperations.Equal(record.Path, path.ToPath<PbtStorageNodePath>()))
             {
                 Interlocked.Increment(ref _directReads);
                 return true;
@@ -644,7 +644,7 @@ public class ParallelUpdateRootTests
             {
                 PbtStorageNodePath key = path.ToPath<PbtStorageNodePath>();
                 payload = default;
-                PbtGroupReference reference = length == 0 ? PbtGroupReference.None : store.Log.Reserve(key, length, links, out payload);
+                PbtGroupReference reference = length == 0 ? PbtGroupReference.None : store.Buffer.Reserve(key, length, links, out payload);
                 _buffer.Add((key, reference));
                 return reference;
             }
@@ -680,7 +680,7 @@ public class ParallelUpdateRootTests
             }
             finally
             {
-                LastUsedBytes = Log.UsedBytes;
+                LastUsedBytes = Buffer.UsedBytes;
                 LastDirectReads = _directReads;
                 LastFallbackReads = _fallbackReads;
                 LastWrittenGroups.Clear();
@@ -719,21 +719,21 @@ public class ParallelUpdateRootTests
             PbtNodeGroupStore persisted = PbtNodeGroupStore.FromPhysicalPayloads(Payloads());
             _persisted?.Dispose();
             _persisted = persisted;
-            Assert.That(Log.TryGetRecord(RootReference, out PbtGroupRecord record), Is.True);
-            using PbtGroupLog.GenerationPin parent = Log.Pin();
-            RootReference = Log.Append(default, record.Payload.Span, unknownLinks ? PbtGroupLinks.Unknown : record.Links);
+            Assert.That(Buffer.TryLocate(RootReference, out PbtGroupRecord record), Is.True);
+            using PbtGroupRecordBuffer.GenerationPin parent = Buffer.PinHead();
+            RootReference = Buffer.Append(default, record.Payload.Span, unknownLinks ? PbtGroupLinks.Unknown : record.Links);
             DiscardUncommittedState();
             _groups[default] = RootReference;
         }
 
-        /// <summary>The groups reached by walking the log from <see cref="RootReference"/>, pruned below <paramref name="lowerBound"/>.</summary>
+        /// <summary>The groups reached by walking the buffer from <see cref="RootReference"/>, pruned below <paramref name="lowerBound"/>.</summary>
         public IReadOnlyList<PbtPhysicalPayload> TreePayloads(PbtGroupReference lowerBound = default) =>
-            PbtNodeGroupKey.InKeyOrder(Log, RootReference, lowerBound).Select(static record => new PbtPhysicalPayload(record.Path, record.Payload.Span)).ToArray();
+            PbtNodeGroupKey.InKeyOrder(Buffer, RootReference, lowerBound).Select(static record => new PbtPhysicalPayload(record.Path, record.Payload.Span)).ToArray();
 
         /// <summary>The payload of the group at <paramref name="path"/> in the tree under <see cref="RootReference"/>, empty when the tree has none, or null when unresolved.</summary>
         public byte[]? FindGroup(PbtStorageNodePath path)
         {
-            PbtGroupReference reference = Log.FindGroup(RootReference, path, out PbtGroupRecord record);
+            PbtGroupReference reference = Buffer.FindGroup(RootReference, path, out PbtGroupRecord record);
             return reference.IsDirect ? record.Payload.ToArray() : reference.IsNone ? [] : null;
         }
 
@@ -745,7 +745,7 @@ public class ParallelUpdateRootTests
             foreach ((PbtStorageNodePath key, PbtGroupReference reference) in _groups)
             {
                 if (reference.IsNone) { groups.Remove(key); continue; }
-                Assert.That(Log.TryGetRecord(reference, out PbtGroupRecord record), Is.True);
+                Assert.That(Buffer.TryLocate(reference, out PbtGroupRecord record), Is.True);
                 groups[key] = new PbtPhysicalPayload(key, record.Payload.Span);
             }
             return groups.Values.ToArray();
@@ -755,7 +755,7 @@ public class ParallelUpdateRootTests
         {
             _content.Dispose();
             _persisted?.Dispose();
-            if (_ownsLog) Log.Dispose();
+            if (_ownsBuffer) Buffer.Dispose();
         }
     }
 

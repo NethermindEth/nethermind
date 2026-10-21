@@ -7,7 +7,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Pbt;
-using Nethermind.Pbt.NodeLog;
+using Nethermind.Pbt.NodeBuffer;
 using Nethermind.State.Flat;
 using Nethermind.State.Pbt.Persistence;
 using Nethermind.State.Pbt.PersistedSnapshots;
@@ -17,16 +17,16 @@ namespace Nethermind.State.Pbt.Test;
 
 internal static class PbtSnapshotBundleTestExtensions
 {
-    /// <summary>A read-only bundle pin for tests whose group log records outlive the bundle.</summary>
+    /// <summary>A read-only bundle pin for tests whose buffer records outlive the bundle.</summary>
     public static IDisposable NoNodeGroupPin => new Reactive.AnonymousDisposable(static () => { });
 
     public static void SetSlot(this PbtSnapshotBundle bundle, Address address, in UInt256 slot, in UInt256 value) =>
         bundle.SetSlots(address, Eip8297KeyDerivation.AddressHash(address.ToHash().Bytes), [(slot, value)]);
 
-    public static PbtSnapshotBundle CreateBundle(IPbtResourcePool pool, IPbtPersistence.IReader reader, IPbtGroupLog? nodeGroupLog = null) => new(
+    public static PbtSnapshotBundle CreateBundle(IPbtResourcePool pool, IPbtPersistence.IReader reader, IPbtGroupRecordBuffer? groupRecordBuffer = null) => new(
         new PbtSnapshotPooledList(0),
         new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), reader, recordDetailedMetrics: false, new PbtPersistedSnapshotList(0), NoNodeGroupPin, slotFilterBitsPerKey: 0),
-        nodeGroupLog ?? PbtSnapshotTestExtensions.DefaultNodeGroupLog, pool, PbtResourcePool.Usage.MainBlockProcessing, filterInMemorySlotReads: false);
+        groupRecordBuffer ?? PbtSnapshotTestExtensions.DefaultGroupRecordBuffer, pool, PbtResourcePool.Usage.MainBlockProcessing, filterInMemorySlotReads: false);
 
     /// <summary>Folds the bundle's pending leaf changes into the tree at <paramref name="root"/> and returns the new root.</summary>
     public static ValueHash256 Fold(this PbtSnapshotBundle bundle, ValueHash256 root)

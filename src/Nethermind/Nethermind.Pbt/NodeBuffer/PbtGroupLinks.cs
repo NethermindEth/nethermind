@@ -3,7 +3,7 @@
 
 using System.Runtime.CompilerServices;
 
-namespace Nethermind.Pbt.NodeLog;
+namespace Nethermind.Pbt.NodeBuffer;
 
 /// <summary>The first physical descendant group of each boundary slot, possibly across compressed absent groups.</summary>
 [InlineArray(PbtThreeLevelGroupGeometry.BoundarySlots)]

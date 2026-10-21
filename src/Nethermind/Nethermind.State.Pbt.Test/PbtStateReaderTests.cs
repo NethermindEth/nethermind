@@ -9,7 +9,7 @@ using Nethermind.Logging;
 using Nethermind.State.Pbt.Common;
 using Nethermind.State.Pbt.Persistence;
 using Nethermind.Pbt;
-using Nethermind.Pbt.NodeLog;
+using Nethermind.Pbt.NodeBuffer;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -38,8 +38,8 @@ public class PbtStateReaderTests
     {
         IPbtDbManager manager = Substitute.For<IPbtDbManager>();
         using MemDb codeDb = new();
-        using PbtGroupLog log = new(PooledRefCountingMemoryProvider.Instance, compressedMemoryBudget: 0, retainedGenerations: 0);
-        using PbtOverridableWorldScope overridableScope = new(codeDb, manager, PooledRefCountingMemoryProvider.Instance, log, new PbtConfig(), UnavailableStateHeaderProvider.Instance, LimboLogs.Instance);
+        using PbtGroupRecordBuffer buffer = new(PooledRefCountingMemoryProvider.Instance, compressedMaxMemory: 0, liveGenerations: 0);
+        using PbtOverridableWorldScope overridableScope = new(codeDb, manager, PooledRefCountingMemoryProvider.Instance, buffer, new PbtConfig(), UnavailableStateHeaderProvider.Instance, LimboLogs.Instance);
         IStateReader reader = overridable ? overridableScope.GlobalStateReader : new PbtStateReader(codeDb, manager);
         BlockHeader? header = nullHeader ? null : Build.A.BlockHeader.WithNumber(9).WithStateRoot(TestItem.KeccakA).TestObject;
         StateId stateId = new(header);
@@ -50,7 +50,7 @@ public class PbtStateReaderTests
             _ => null
         };
         manager.TryGatherReadOnlyBundle(stateId).Returns(_ => cause is null ? null : throw cause);
-        manager.TryGatherBundle(stateId, Arg.Any<PbtSnapshotPooledList>(), Arg.Any<PbtResourcePool.Usage>(), Arg.Any<bool>(), Arg.Any<IPbtGroupLog>()).Returns(_ => cause is null ? null : throw cause);
+        manager.TryGatherBundle(stateId, Arg.Any<PbtSnapshotPooledList>(), Arg.Any<PbtResourcePool.Usage>(), Arg.Any<bool>(), Arg.Any<IPbtGroupRecordBuffer>()).Returns(_ => cause is null ? null : throw cause);
         manager.TryGatherBundle(stateId, Arg.Any<PbtResourcePool.Usage>()).Returns(_ => cause is null ? null : throw cause);
 
         MissingTrieNodeException? exception = Assert.Throws<MissingTrieNodeException>(() => Read(reader, header, storage));

@@ -11,7 +11,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Int256;
 using Nethermind.Pbt;
-using Nethermind.Pbt.NodeLog;
+using Nethermind.Pbt.NodeBuffer;
 using Nethermind.State.Flat;
 using Nethermind.State.Pbt.Common;
 using Nethermind.State.Pbt.Persistence;
@@ -25,12 +25,12 @@ namespace Nethermind.State.Pbt.Snapshot;
 public sealed class PbtSnapshotBundle(
     PbtSnapshotPooledList snapshots,
     PbtReadOnlySnapshotBundle readOnlyBundle,
-    IPbtGroupLog nodeGroupLog,
+    IPbtGroupRecordBuffer groupRecordBuffer,
     IPbtResourcePool resourcePool,
     PbtResourcePool.Usage usage,
     bool filterInMemorySlotReads) : IDisposable
 {
-    private PbtSnapshotContent? _writeBuffer = RentWriteBuffer(resourcePool, usage, nodeGroupLog);
+    private PbtSnapshotContent? _writeBuffer = RentWriteBuffer(resourcePool, usage, groupRecordBuffer);
     // Taken before the first root index lookup and after the write buffer's generation pin, so with it this covers an
     // indexed root written after the read-only base was pinned.
     private IDisposable? _rootLookupPin;
@@ -54,8 +54,8 @@ public sealed class PbtSnapshotBundle(
 
     public ValueHash256 TreeRoot => snapshots.Count > 0 ? snapshots[^1].TreeRoot : readOnlyBundle.TreeRoot;
 
-    /// <summary>The traversal log of this branch's write buffers and local snapshots.</summary>
-    public IPbtGroupLog NodeGroupLog => nodeGroupLog;
+    /// <summary>The group record buffer of this branch's write buffers and local snapshots.</summary>
+    public IPbtGroupRecordBuffer GroupRecordBuffer => groupRecordBuffer;
 
     /// <summary>The last published root reference visible to this branch, an indexed persisted root, or an unresolved persisted root.</summary>
     public PbtGroupReference RootGroupReference
@@ -63,13 +63,13 @@ public sealed class PbtSnapshotBundle(
         get
         {
             if (!WriteBuffer.RootGroupReference.IsUnknown) return WriteBuffer.RootGroupReference;
-            if (snapshots.Count > 0) return snapshots[^1].MapRootGroupReference(NodeGroupLog);
+            if (snapshots.Count > 0) return snapshots[^1].MapRootGroupReference(GroupRecordBuffer);
             if (Volatile.Read(ref _rootLookupPin) is null)
             {
-                IDisposable pin = NodeGroupLog.PinAll();
+                IDisposable pin = GroupRecordBuffer.PinAll();
                 if (Interlocked.CompareExchange(ref _rootLookupPin, pin, null) is not null) pin.Dispose();
             }
-            return readOnlyBundle.GetRootGroupReference(NodeGroupLog);
+            return readOnlyBundle.GetRootGroupReference(GroupRecordBuffer);
         }
     }
 
@@ -110,7 +110,7 @@ public sealed class PbtSnapshotBundle(
 
     public void CompleteLeafChanges() => _leafChanges.Reset();
 
-    /// <summary>Publishes a completed fold's root group from this bundle's traversal log and accounts for the groups the fold wrote.</summary>
+    /// <summary>Publishes a completed fold's root group from this bundle's group record buffer and accounts for the groups the fold wrote.</summary>
     /// <param name="root">The new tree's root group, or None for an empty tree.</param>
     /// <param name="count">The number of groups the fold wrote.</param>
     /// <param name="bytes">Their path and payload bytes.</param>
@@ -357,7 +357,7 @@ public sealed class PbtSnapshotBundle(
 
     /// <summary>Seals the write buffer into a snapshot and hands its initial lease to the caller.</summary>
     /// <remarks>
-    /// The snapshot's root group reference is None only for the empty tree: a root group this branch's log cannot reach is
+    /// The snapshot's root group reference is None only for the empty tree: a root group this branch's buffer cannot reach is
     /// copied back in.
     /// </remarks>
     public PbtSnapshot CollectSnapshot(in StateId from, in StateId to, in ValueHash256 treeRoot)
@@ -371,16 +371,16 @@ public sealed class PbtSnapshotBundle(
             else if (treeRoot != TreeRoot) throw new InvalidOperationException("The tree root changed without a published root group.");
             else rootReference = RootGroupReference.IsDirect ? RootGroupReference : CopyRootGroup();
         }
-        if (rootReference.IsDirect) NodeGroupLog.SetRoot(treeRoot, rootReference);
+        if (rootReference.IsDirect) GroupRecordBuffer.SetRoot(treeRoot, rootReference);
         WriteBuffer.RootGroupReference = rootReference;
         PbtSnapshot snapshot = new(from, to, treeRoot, WriteBuffer, resourcePool, usage);
         snapshot.TryLease();
         snapshots.Add(snapshot);
-        if (NodeGroupLog is PbtGroupLog log) Metrics.ObserveGroupLog(log);
+        if (GroupRecordBuffer is PbtGroupRecordBuffer buffer) Metrics.ObserveGroupRecordBuffer(buffer);
         _hintedAccounts.Clear();
         ReleasePersistedNodeGroups();
         ReturnReplacedRuns();
-        _writeBuffer = RentWriteBuffer(resourcePool, usage, nodeGroupLog);
+        _writeBuffer = RentWriteBuffer(resourcePool, usage, groupRecordBuffer);
         return snapshot;
     }
 
@@ -389,15 +389,15 @@ public sealed class PbtSnapshotBundle(
     {
         using RefCountingMemory payload = GetNodeGroup(default) ?? throw new InvalidDataException("A referenced PBT node group is missing.");
         ReadOnlySpan<byte> bytes = payload.GetSpan();
-        PbtGroupReference reference = NodeGroupLog.Append(default, bytes, PbtGroupLinks.Unknown);
+        PbtGroupReference reference = GroupRecordBuffer.Append(default, bytes, PbtGroupLinks.Unknown);
         WriteBuffer.AddNodeGroups(1, bytes.Length);
         return reference;
     }
 
-    private static PbtSnapshotContent RentWriteBuffer(IPbtResourcePool resourcePool, PbtResourcePool.Usage usage, IPbtGroupLog nodeGroupLog)
+    private static PbtSnapshotContent RentWriteBuffer(IPbtResourcePool resourcePool, PbtResourcePool.Usage usage, IPbtGroupRecordBuffer groupRecordBuffer)
     {
         PbtSnapshotContent content = resourcePool.GetSnapshotContent(usage);
-        content.BeginNodeGroupWrites(nodeGroupLog);
+        content.BeginNodeGroupWrites(groupRecordBuffer);
         return content;
     }
 

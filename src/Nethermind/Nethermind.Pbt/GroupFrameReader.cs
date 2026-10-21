@@ -7,7 +7,7 @@ using System.Numerics;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Memory;
-using Nethermind.Pbt.NodeLog;
+using Nethermind.Pbt.NodeBuffer;
 
 namespace Nethermind.Pbt;
 
@@ -30,7 +30,7 @@ public struct GroupFrameReader<TKey, TPath> : IGroupFrame<TKey, TPath>, IDisposa
     /// <summary>Takes ownership of <paramref name="lease"/>, a group payload stored at depth <paramref name="bitDepth"/>.</summary>
     public GroupFrameReader(RefCountingMemory lease, int bitDepth) : this(lease.Memory, bitDepth, PbtGroupLinks.Unknown, lease) { }
 
-    /// <summary>Borrows a log record whose operation lease remains alive throughout this frame.</summary>
+    /// <summary>Borrows a buffer record whose operation lease remains alive throughout this frame.</summary>
     public GroupFrameReader(PbtGroupRecord record) : this(record.Payload, record.Path.BitDepth, record.Links, null) { }
 
     private GroupFrameReader(ReadOnlyMemory<byte> memory, int bitDepth, PbtGroupLinks links, RefCountingMemory? lease)

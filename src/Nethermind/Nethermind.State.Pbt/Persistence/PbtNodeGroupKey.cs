@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Pbt;
-using Nethermind.Pbt.NodeLog;
+using Nethermind.Pbt.NodeBuffer;
 
 namespace Nethermind.State.Pbt.Persistence;
 
@@ -53,24 +53,24 @@ public static class PbtNodeGroupKey
     /// <paramref name="lowerBound"/> must outlive every use of the records.
     /// </remarks>
     /// <exception cref="InvalidOperationException">A record at or above <paramref name="lowerBound"/> is no longer resident.</exception>
-    public static List<PbtGroupRecord> InKeyOrder(IPbtGroupLog log, PbtGroupReference root, PbtGroupReference lowerBound)
+    public static List<PbtGroupRecord> InKeyOrder(IPbtGroupRecordBuffer buffer, PbtGroupReference root, PbtGroupReference lowerBound)
     {
         List<PbtGroupRecord> ordered = [];
-        if (!TryResolve(log, root, lowerBound, out PbtGroupRecord rootRecord)) return ordered;
+        if (!TryResolve(buffer, root, lowerBound, out PbtGroupRecord rootRecord)) return ordered;
         ordered.Add(rootRecord);
-        MergeBelow(log, rootRecord, lowerBound, [], ordered);
+        MergeBelow(buffer, rootRecord, lowerBound, [], ordered);
         return ordered;
     }
 
     /// <summary>Emits the groups below <paramref name="record"/> merged with <paramref name="pending"/>, the sorted groups above them whose keys fall in its range.</summary>
-    private static void MergeBelow(IPbtGroupLog log, in PbtGroupRecord record, PbtGroupReference lowerBound,
+    private static void MergeBelow(IPbtGroupRecordBuffer buffer, in PbtGroupRecord record, PbtGroupReference lowerBound,
         List<(byte[] Key, PbtGroupRecord Record)> pending, List<PbtGroupRecord> ordered)
     {
         PbtGroupLinks links = record.Links;
         Span<byte> key = stackalloc byte[MaxLength];
         for (int slot = 0; slot < PbtThreeLevelGroupGeometry.BoundarySlots; slot++)
         {
-            if (!TryResolve(log, links[slot], lowerBound, out PbtGroupRecord child)) continue;
+            if (!TryResolve(buffer, links[slot], lowerBound, out PbtGroupRecord child)) continue;
             int below = 0;
             while (below < pending.Count && CompareToRange(pending[below].Key, child.Path) < 0) ordered.Add(pending[below++].Record);
             int inside = below;
@@ -81,16 +81,16 @@ public static class PbtNodeGroupKey
             int index = 0;
             while (index < childPending.Count && childPending[index].Key.AsSpan().SequenceCompareTo(childKey) < 0) index++;
             childPending.Insert(index, (childKey, child));
-            MergeBelow(log, child, lowerBound, childPending, ordered);
+            MergeBelow(buffer, child, lowerBound, childPending, ordered);
         }
         foreach ((_, PbtGroupRecord group) in pending) ordered.Add(group);
     }
 
-    private static bool TryResolve(IPbtGroupLog log, PbtGroupReference reference, PbtGroupReference lowerBound, out PbtGroupRecord record)
+    private static bool TryResolve(IPbtGroupRecordBuffer buffer, PbtGroupReference reference, PbtGroupReference lowerBound, out PbtGroupRecord record)
     {
         record = default;
         if (!reference.IsDirect || reference.CompareTo(lowerBound) < 0) return false;
-        if (!log.TryGetRecord(reference, out record)) throw new InvalidOperationException("A group record written since the lower bound is no longer resident.");
+        if (!buffer.TryLocate(reference, out record)) throw new InvalidOperationException("A group record written since the lower bound is no longer resident.");
         return true;
     }
 

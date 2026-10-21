@@ -4,14 +4,14 @@
 using System.Runtime.InteropServices;
 using Nethermind.Core.Crypto;
 
-namespace Nethermind.Pbt.NodeLog;
+namespace Nethermind.Pbt.NodeBuffer;
 
 /// <remarks>
 /// The root index maps tree roots to the records of their root groups, so a branch whose base is no longer in memory
 /// can still start from a resident root. A slot keeps the newest root hashing to it; an entry whose record has been
 /// reclaimed reads as a miss.
 /// </remarks>
-public sealed partial class PbtGroupLog
+public sealed partial class PbtGroupRecordBuffer
 {
     private const int RootSlots = 1024;
 
@@ -37,7 +37,7 @@ public sealed partial class PbtGroupLog
         {
             ThrowIfDisposed();
             (ValueHash256 indexed, PbtGroupReference reference) = _roots[RootSlot(root)];
-            return indexed == root && TryLocate(reference, out _) ? reference : PbtGroupReference.Unknown;
+            return indexed == root && TryLocateBytes(reference, out _) ? reference : PbtGroupReference.Unknown;
         }
     }
 

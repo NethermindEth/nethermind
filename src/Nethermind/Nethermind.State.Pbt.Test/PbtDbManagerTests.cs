@@ -36,7 +36,7 @@ using NUnit.Framework;
 using NSubstitute;
 using Nethermind.Logging;
 using Nethermind.Pbt;
-using Nethermind.Pbt.NodeLog;
+using Nethermind.Pbt.NodeBuffer;
 using Nethermind.Monitoring.Config;
 using Nethermind.State.Pbt.Persistence;
 using Nethermind.State.Pbt.Snapshot;
@@ -1496,7 +1496,7 @@ public class PbtDbManagerTests
 
         public PbtConfig Config { get; }
         public PbtResourcePool Pool { get; }
-        public PbtGroupLog NodeGroupLog { get; } = new(PooledRefCountingMemoryProvider.Instance, compressedMemoryBudget: 0, retainedGenerations: 0);
+        public PbtGroupRecordBuffer GroupRecordBuffer { get; } = new(PooledRefCountingMemoryProvider.Instance, compressedMaxMemory: 0, liveGenerations: 0);
         public PbtSnapshotRepository Repository { get; } = new(new MetricsConfig(), NullSnapshotCatalog.Instance, new PbtPersistedPublicationGate());
         public MemDb Metadata { get; } = new();
         public ICompactionSchedule Schedule { get; }
@@ -1506,7 +1506,7 @@ public class PbtDbManagerTests
         public PbtPersistenceManager PersistenceManager { get; }
 
         public PbtDbManager CreateManager(IProcessExitSource exitSource, ILogManager logs) =>
-            new(Repository, PersistenceManager, Persistence, Pool, NodeGroupLog, new PbtSnapshotCompactor(Pool, Schedule, Repository, Config, logs), exitSource, logs,
+            new(Repository, PersistenceManager, Persistence, Pool, GroupRecordBuffer, new PbtSnapshotCompactor(Pool, Schedule, Repository, Config, logs), exitSource, logs,
                 new MetricsConfig(), NullPbtPersistedSnapshotLoader.Instance);
 
         public void Dispose()

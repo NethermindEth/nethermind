@@ -3,7 +3,7 @@
 
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Memory;
-using Nethermind.Pbt.NodeLog;
+using Nethermind.Pbt.NodeBuffer;
 
 namespace Nethermind.Pbt;
 

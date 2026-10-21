@@ -6,7 +6,7 @@ using System.Numerics;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Memory;
 using Nethermind.Core.Threading;
-using Nethermind.Pbt.NodeLog;
+using Nethermind.Pbt.NodeBuffer;
 using static Nethermind.Pbt.TrieUpdater;
 
 namespace Nethermind.Pbt;
@@ -181,7 +181,7 @@ public static partial class TrieUpdater<TKey, TPath>
     /// <see cref="Operations"/>, set only when wide frames may fold their buckets concurrently, is the backing array of
     /// every operation range, so a bucket can rebuild its span on another thread,
     /// and <see cref="FanOut"/> gives how many operations a concurrent run of buckets holds at least, by what it has stored below it.
-    /// Log frames borrow records directly; <see cref="Store"/> remains the exact-view fallback. Each concurrent bucket
+    /// Buffer frames borrow records directly; <see cref="Store"/> remains the exact-view fallback. Each concurrent bucket
     /// owns its publication writer, so workers never modify the visible store directly.
     /// </remarks>
     public sealed class FoldContext(IPbtStore store, IPbtNodeGroupSink writer, IRefCountingMemoryProvider memoryProvider, ConcurrencyController foldQuota, PbtWriteOperation<TKey>[]? operations, FoldFanOut fanOut)

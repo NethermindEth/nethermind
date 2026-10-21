@@ -3,7 +3,7 @@
 
 using System.Diagnostics;
 using Nethermind.Core.Crypto;
-using Nethermind.Pbt.NodeLog;
+using Nethermind.Pbt.NodeBuffer;
 using static Nethermind.Pbt.TrieUpdater;
 
 namespace Nethermind.Pbt;

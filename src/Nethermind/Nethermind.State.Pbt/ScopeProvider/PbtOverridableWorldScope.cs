@@ -10,7 +10,7 @@ using Nethermind.Core.Memory;
 using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Logging;
-using Nethermind.Pbt.NodeLog;
+using Nethermind.Pbt.NodeBuffer;
 using Nethermind.Int256;
 using Nethermind.State.Flat;
 using Nethermind.State.Pbt.Snapshot;
@@ -30,9 +30,9 @@ public class PbtOverridableWorldScope : IOverridableWorldScope, IPbtCommitTarget
     private readonly ILogManager _logManager;
     private readonly IPbtDbManager _manager;
     private readonly IRefCountingMemoryProvider _nodeGroupMemory;
-    private readonly PbtGroupLog _nodeGroupLog;
-    // Keeps the groups the overrides fold out of the global log; created by the first bundle after a reset.
-    private PbtOverlayGroupLog? _overlayGroupLog;
+    private readonly PbtGroupRecordBuffer _groupRecordBuffer;
+    // Keeps the groups the overrides fold out of the global buffer; created by the first bundle after a reset.
+    private PbtOverlayGroupRecordBuffer? _overlayGroupRecordBuffer;
     private readonly IPbtConfig _config;
     private readonly KnownHeadersScopeProvider _worldState;
     private bool _isDisposed;
@@ -41,7 +41,7 @@ public class PbtOverridableWorldScope : IOverridableWorldScope, IPbtCommitTarget
         [KeyFilter(DbNames.Code)] IDb codeDb,
         IPbtDbManager manager,
         IRefCountingMemoryProvider nodeGroupMemory,
-        PbtGroupLog nodeGroupLog,
+        PbtGroupRecordBuffer groupRecordBuffer,
         IPbtConfig config,
         IStateHeaderProvider stateHeaderProvider,
         ILogManager logManager)
@@ -50,7 +50,7 @@ public class PbtOverridableWorldScope : IOverridableWorldScope, IPbtCommitTarget
         _config = config;
         _manager = manager;
         _nodeGroupMemory = nodeGroupMemory;
-        _nodeGroupLog = nodeGroupLog;
+        _groupRecordBuffer = groupRecordBuffer;
         _codeDbOverlay = new ReadOnlyDb(codeDb, createInMemWriteStore: true);
         GlobalStateReader = new OverridableStateReader(this);
         _worldState = new KnownHeadersScopeProvider(stateHeaderProvider, headerProvider => new OverridableScopeProvider(this, headerProvider));
@@ -85,8 +85,8 @@ public class PbtOverridableWorldScope : IOverridableWorldScope, IPbtCommitTarget
         }
 
         _snapshots.Clear();
-        _overlayGroupLog?.Dispose();
-        _overlayGroupLog = null;
+        _overlayGroupRecordBuffer?.Dispose();
+        _overlayGroupRecordBuffer = null;
     }
 
     private bool HasStateForBlock(BlockHeader? baseBlock)
@@ -111,7 +111,7 @@ public class PbtOverridableWorldScope : IOverridableWorldScope, IPbtCommitTarget
         // receipt regeneration and the transaction changeset index), so its slot reads may use the in-memory
         // snapshots' negative filter.
         return _manager.TryGatherBundle(current, localChain, PbtResourcePool.Usage.ReadOnlyProcessingEnv, filterInMemorySlotReads: true,
-            _overlayGroupLog ??= new PbtOverlayGroupLog(_nodeGroupLog, _nodeGroupMemory));
+            _overlayGroupRecordBuffer ??= new PbtOverlayGroupRecordBuffer(_groupRecordBuffer, _nodeGroupMemory));
     }
 
     private class OverridableScopeProvider(PbtOverridableWorldScope outer, IStateHeaderProvider stateHeaderProvider) : IWorldStateScopeProvider

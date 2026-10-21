@@ -6,7 +6,7 @@ using Nethermind.Core.Attributes;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Metric;
 using Nethermind.Pbt;
-using Nethermind.Pbt.NodeLog;
+using Nethermind.Pbt.NodeBuffer;
 using Nethermind.State.Flat;
 using Nethermind.State.Pbt.Snapshot;
 using NonBlocking;
@@ -173,28 +173,28 @@ public static class Metrics
     public static long PbtSnapshotBundleSize { get; set; }
 
     [GaugeMetric]
-    [Description("Capacity in bytes of pbt node group log generations held in place")]
-    public static long PbtGroupLogMemory { get; set; }
+    [Description("Capacity in bytes of pbt group record buffer generations held in place")]
+    public static long PbtGroupRecordBufferMemory { get; set; }
 
     [GaugeMetric]
-    [Description("Number of pbt node group log generations, in place or compacted")]
-    public static long PbtGroupLogGenerations { get; set; }
+    [Description("Number of pbt group record buffer generations, in place or compacted")]
+    public static long PbtGroupRecordBufferGenerations { get; set; }
 
     [GaugeMetric]
-    [Description("Bytes held by compacted pbt node group log generations")]
-    public static long PbtGroupLogCompressedMemory { get; set; }
+    [Description("Bytes held by compacted pbt group record buffer generations")]
+    public static long PbtGroupRecordBufferCompressedMemory { get; set; }
 
     [GaugeMetric]
-    [Description("Number of compacted pbt node group log generations")]
-    public static long PbtGroupLogCompressedGenerations { get; set; }
+    [Description("Number of compacted pbt group record buffer generations")]
+    public static long PbtGroupRecordBufferCompressedGenerations { get; set; }
 
-    /// <summary>Refreshes the node group log metrics from <paramref name="log"/>.</summary>
-    public static void ObserveGroupLog(PbtGroupLog log)
+    /// <summary>Refreshes the group record buffer metrics from <paramref name="buffer"/>.</summary>
+    public static void ObserveGroupRecordBuffer(PbtGroupRecordBuffer buffer)
     {
-        PbtGroupLogMemory = log.ResidentBytes;
-        PbtGroupLogGenerations = log.GenerationCount;
-        PbtGroupLogCompressedMemory = log.CompressedBytes;
-        PbtGroupLogCompressedGenerations = log.CompressedGenerationCount;
+        PbtGroupRecordBufferMemory = buffer.ResidentBytes;
+        PbtGroupRecordBufferGenerations = buffer.GenerationCount;
+        PbtGroupRecordBufferCompressedMemory = buffer.CompressedBytes;
+        PbtGroupRecordBufferCompressedGenerations = buffer.CompressedGenerationCount;
     }
 
     /// <remarks>Layers widen as they compact, so this diverges from the layer count as compaction runs.</remarks>

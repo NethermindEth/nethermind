@@ -12,7 +12,7 @@ using Nethermind.Core.Memory;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Pbt;
-using Nethermind.Pbt.NodeLog;
+using Nethermind.Pbt.NodeBuffer;
 using Nethermind.State.Pbt.Snapshot;
 using NUnit.Framework;
 
@@ -171,8 +171,8 @@ public class PbtResourcePoolTests
         content.Codes[TestItem.KeccakA.ValueHash256] = new CodeInfo(Bytes.FromHexString("6001"));
         content.SelfDestructedStorageAddresses[addressHash] = true;
         byte[] encoding = PbtNodeGroupEncoder.Encode(default(PbtNodePath), [new PbtNodeRecord(default, PbtTreeHarness.EncodeLeaf(new PbtVariableTreeKey([0])))], default);
-        using PbtGroupLog log = new(PooledRefCountingMemoryProvider.Instance, compressedMemoryBudget: 0, retainedGenerations: 0);
-        content.BeginNodeGroupWrites(log);
+        using PbtGroupRecordBuffer buffer = new(PooledRefCountingMemoryProvider.Instance, compressedMaxMemory: 0, liveGenerations: 0);
+        content.BeginNodeGroupWrites(buffer);
         content.SetTree((default, encoding));
         PbtGroupReference reference = content.RootGroupReference;
         Assert.That(reference.IsDirect, Is.True);
@@ -188,9 +188,9 @@ public class PbtResourcePoolTests
             Assert.That(rented.RootGroupReference, Is.EqualTo(PbtGroupReference.Unknown));
             Assert.That(rented.NodeGroupCount, Is.Zero);
             Assert.That(rented.GetPayloadSize(), Is.EqualTo(default(PbtSnapshotPayloadSize)));
-            Assert.That(rented.NodeGroupLog, Is.Null, "a reset layer keeps no generation pin");
-            Assert.That(log.ResidentBytes, Is.Zero);
-            Assert.That(log.TryGetRecord(reference, out _), Is.False);
+            Assert.That(rented.GroupRecordBuffer, Is.Null, "a reset layer keeps no generation pin");
+            Assert.That(buffer.ResidentBytes, Is.Zero);
+            Assert.That(buffer.TryLocate(reference, out _), Is.False);
         }
         _pool.ReturnSnapshotContent(PbtResourcePool.Usage.MainBlockProcessing, rented);
     }

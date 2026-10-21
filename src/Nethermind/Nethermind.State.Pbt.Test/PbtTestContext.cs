@@ -19,7 +19,7 @@ using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Monitoring.Config;
-using Nethermind.Pbt.NodeLog;
+using Nethermind.Pbt.NodeBuffer;
 using Nethermind.Specs.Forks;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.PersistedSnapshots;
@@ -46,14 +46,14 @@ internal sealed class PbtTestContext : IAsyncDisposable
     public PbtSnapshotRepository Repository { get; } = new(new MetricsConfig(), NullSnapshotCatalog.Instance, new PbtPersistedPublicationGate());
     public IPbtResourcePool ResourcePool { get; }
     public IRefCountingMemoryProvider NodeGroupMemory { get; }
-    public PbtGroupLog NodeGroupLog { get; }
+    public PbtGroupRecordBuffer GroupRecordBuffer { get; }
     public IPbtPersistence Persistence { get; }
     public PbtPersistenceManager PersistenceManager { get; }
     public PbtDbManager Manager { get; }
     public PbtStateReader StateReader { get; }
     public PbtWorldStateManager WorldStateManager { get; }
 
-    public PbtTestContext(IColumnsDb<PbtColumns>? db = null, PbtConfig? config = null, IPbtChildHeaderSource? childHeaders = null, IMetricsConfig? metricsConfig = null, IRefCountingMemoryProvider? nodeGroupMemory = null, PbtGroupLog? nodeGroupLog = null)
+    public PbtTestContext(IColumnsDb<PbtColumns>? db = null, PbtConfig? config = null, IPbtChildHeaderSource? childHeaders = null, IMetricsConfig? metricsConfig = null, IRefCountingMemoryProvider? nodeGroupMemory = null, PbtGroupRecordBuffer? groupRecordBuffer = null)
     {
         metricsConfig ??= new MetricsConfig();
         db ??= new SnapshotableMemColumnsDb<PbtColumns>("pbt");
@@ -66,15 +66,15 @@ internal sealed class PbtTestContext : IAsyncDisposable
         _cachedReaderPersistence = new PbtCachedReaderPersistence(new PbtRocksDbPersistence(db, Config, NullTrieNodeLog.Instance), processExitSource);
         Persistence = Config.CarryForwardCache ? new PbtCarryForwardCachingPersistence(_cachedReaderPersistence, PbtCarryForwardCachingPersistence.DefaultMaxEntriesPerKind) : _cachedReaderPersistence;
         NodeGroupMemory = nodeGroupMemory ?? PooledRefCountingMemoryProvider.Instance;
-        NodeGroupLog = nodeGroupLog ?? new PbtGroupLog(NodeGroupMemory, compressedMemoryBudget: 0, retainedGenerations: 0);
+        GroupRecordBuffer = groupRecordBuffer ?? new PbtGroupRecordBuffer(NodeGroupMemory, compressedMaxMemory: 0, liveGenerations: 0);
         ResourcePool = new PbtResourcePool(Config, NodeGroupMemory);
         ICompactionSchedule schedule = PbtCoreRegistration.CreateCompactionSchedule(new MemDb(), Config, LimboLogs.Instance);
         PbtSnapshotCompactor compactor = new(ResourcePool, schedule, Repository, Config, LimboLogs.Instance);
         PersistenceManager = new PbtPersistenceManager(Config, FinalizedStateProvider, Persistence, Repository, schedule, NullStatePersistenceBarrier.Instance, LimboLogs.Instance,
             NullPbtPersistedSnapshotLoader.Instance, NullPbtPersistedSnapshotCompactor.Instance, CancellationToken.None);
-        Manager = new PbtDbManager(Repository, PersistenceManager, Persistence, ResourcePool, NodeGroupLog, compactor, processExitSource, LimboLogs.Instance, metricsConfig, NullPbtPersistedSnapshotLoader.Instance);
+        Manager = new PbtDbManager(Repository, PersistenceManager, Persistence, ResourcePool, GroupRecordBuffer, compactor, processExitSource, LimboLogs.Instance, metricsConfig, NullPbtPersistedSnapshotLoader.Instance);
         StateReader = new PbtStateReader(CodeDb, Manager);
-        WorldStateManager = new PbtWorldStateManager(Manager, _childHeaders, _stateHeaderProvider, NodeGroupMemory, StateReader, () => new PbtOverridableWorldScope(CodeDb, Manager, NodeGroupMemory, NodeGroupLog, Config, _stateHeaderProvider, LimboLogs.Instance), CodeDb, Config, LimboLogs.Instance);
+        WorldStateManager = new PbtWorldStateManager(Manager, _childHeaders, _stateHeaderProvider, NodeGroupMemory, StateReader, () => new PbtOverridableWorldScope(CodeDb, Manager, NodeGroupMemory, GroupRecordBuffer, Config, _stateHeaderProvider, LimboLogs.Instance), CodeDb, Config, LimboLogs.Instance);
     }
 
     public PbtScopeProvider CreateScopeProvider(bool isReadOnly = false, ILogManager? logManager = null) =>

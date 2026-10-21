@@ -7,14 +7,14 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Memory;
 using Nethermind.Core.Metric;
 using Nethermind.Pbt;
-using Nethermind.Pbt.NodeLog;
+using Nethermind.Pbt.NodeBuffer;
 using Nethermind.State.Pbt.Common;
 
 namespace Nethermind.State.Pbt.Snapshot;
 
 /// <summary>Adapts a writable snapshot bundle to the canonical <see cref="TrieUpdater"/> store contract.</summary>
 /// <remarks>
-/// One store serves one root fold. Workers reserve log records and hand their references over on disposal.
+/// One store serves one root fold. Workers reserve buffer records and hand their references over on disposal.
 /// The owner publishes the new tree's root on store disposal only after a successful fold. The bundle's read-only base pins
 /// every record the fold borrows, and its write buffer's generation pin every record the fold writes. A removed group is
 /// simply no longer linked, so nothing records its removal.
@@ -28,14 +28,14 @@ public sealed class PbtSnapshotStore(PbtSnapshotBundle bundle) : IPbtStore, IDis
     private readonly bool _recordReadTimes = Metrics.PbtTrieUpdaterNodeGroupReadTimes is not NoopMetricObserver;
     private readonly ArrayPoolList<ArrayPoolList<BufferedNodeGroup>> _handedOff = new(16);
     private bool _complete;
-    private IPbtGroupLog Log => bundle.NodeGroupLog;
+    private IPbtGroupRecordBuffer Buffer => bundle.GroupRecordBuffer;
 
     /// <inheritdoc/>
     public PbtGroupReference RootGroupReference => bundle.RootGroupReference;
 
     /// <inheritdoc/>
     public bool TryGetNodeGroupRecord(PbtGroupReference reference, scoped in PbtTraversalPath groupKey, out PbtGroupRecord record) =>
-        bundle.NodeGroupLog.TryGetRecord(reference, out record)
+        bundle.GroupRecordBuffer.TryLocate(reference, out record)
         && PbtNodePathOperations.Equal(record.Path, groupKey.ToPath<PbtStorageNodePath>());
 
     /// <inheritdoc/>
@@ -43,7 +43,7 @@ public sealed class PbtSnapshotStore(PbtSnapshotBundle bundle) : IPbtStore, IDis
 
     /// <inheritdoc/>
     /// <remarks>
-    /// A miss also searches the in-memory snapshot trees: an overlay log cannot reach a shared snapshot written after its
+    /// A miss also searches the in-memory snapshot trees: an overlay buffer cannot reach a shared snapshot written after its
     /// pin, so such a branch starts from an unresolved root.
     /// </remarks>
     public RefCountingMemory? GetNodeGroup(scoped in PbtTraversalPath groupKey)
@@ -110,14 +110,14 @@ public sealed class PbtSnapshotStore(PbtSnapshotBundle bundle) : IPbtStore, IDis
             PbtStorageNodePath path = groupKey.ToPath<PbtStorageNodePath>();
             payload = default;
             PbtGroupReference reference = length == 0 ? PbtGroupReference.None
-                : store.Log.Reserve(path, length, links, out payload);
+                : store.Buffer.Reserve(path, length, links, out payload);
             _buffer.Add(new BufferedNodeGroup(path, reference, length));
             return reference;
         }
 
-        /// <remarks>Never called: reservations here always return a log reference, so folds write groups in place.</remarks>
+        /// <remarks>Never called: reservations here always return a buffer reference, so folds write groups in place.</remarks>
         public void SetNodeGroup(scoped in PbtTraversalPath groupKey, RefCountingMemory? payload) =>
-            throw new NotSupportedException("Snapshot folds write reserved log records.");
+            throw new NotSupportedException("Snapshot folds write reserved buffer records.");
 
         public void Dispose()
         {

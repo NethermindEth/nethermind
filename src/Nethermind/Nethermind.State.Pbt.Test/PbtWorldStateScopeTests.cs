@@ -19,7 +19,7 @@ using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Pbt;
-using Nethermind.Pbt.NodeLog;
+using Nethermind.Pbt.NodeBuffer;
 using Nethermind.State.Flat;
 using Nethermind.State.Pbt.Common;
 using Nethermind.State.Pbt.ScopeProvider;
@@ -64,22 +64,22 @@ public class PbtWorldStateScopeTests
     }
 
     [Test]
-    public async Task Override_folds_write_to_their_own_log_and_build_on_newer_global_state()
+    public async Task Override_folds_write_to_their_own_buffer_and_build_on_newer_global_state()
     {
         PbtConfig config = new() { Enabled = true };
         await using IContainer container = PbtTestContext.BuildProductionContainer(config);
         PbtWorldStateManager manager = container.Resolve<PbtWorldStateManager>();
-        PbtGroupLog log = container.Resolve<PbtGroupLog>();
+        PbtGroupRecordBuffer buffer = container.Resolve<PbtGroupRecordBuffer>();
         BlockHeader first = CommitCanonical(manager, null, 1, 1);
         using IOverridableWorldScope overrides = manager.CreateOverridableWorldScope();
-        long globalBytes = log.UsedBytes;
+        long globalBytes = buffer.UsedBytes;
         using (IWorldStateScopeProvider.IScope scope = overrides.WorldState.BeginScope(first, new LocalMetrics()))
         {
             Write(scope, 5);
             scope.Commit(2);
         }
-        Assert.That(log.UsedBytes, Is.EqualTo(globalBytes), "override folds write to the overlay log");
-        // The overlay pinned the global log before this block, so it cannot reach the block's root group.
+        Assert.That(buffer.UsedBytes, Is.EqualTo(globalBytes), "override folds write to the overlay buffer");
+        // The overlay pinned the global buffer before this block, so it cannot reach the block's root group.
         BlockHeader second = CommitCanonical(manager, first, 2, 3);
         Hash256 expected;
         using (IWorldStateScopeProvider.IScope canonical = manager.GlobalWorldState.BeginScope(second, new LocalMetrics()))

@@ -5,39 +5,39 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Memory;
 using Nethermind.Pbt;
-using Nethermind.Pbt.NodeLog;
+using Nethermind.Pbt.NodeBuffer;
 
 namespace Nethermind.State.Pbt.Snapshot;
 
-/// <summary>A group log that reads a pinned global log and keeps its own writes in a private log.</summary>
+/// <summary>A group record buffer that reads a pinned global buffer and keeps its own writes in a private buffer.</summary>
 /// <remarks>
-/// References below the write boundary of the global pin taken at construction resolve in the global log, and the rest in a
-/// private <see cref="PbtGroupLog"/> that takes every write. Private generations are numbered after the pinned global one, so
-/// the two reference ranges never overlap and the private records are freed with this log instead of growing the global one.
-/// A global record written after the pin is out of reach, so a snapshot root there maps to Unknown. Every pin of this log also
+/// References below the write boundary of the global pin taken at construction resolve in the global buffer, and the rest in a
+/// private <see cref="PbtGroupRecordBuffer"/> that takes every write. Private generations are numbered after the pinned global one, so
+/// the two reference ranges never overlap and the private records are freed with this buffer instead of growing the global one.
+/// A global record written after the pin is out of reach, so a snapshot root there maps to Unknown. Every pin of this buffer also
 /// holds the global pin, so the global records it reads outlive <see cref="Dispose"/> until its last pin is released.
 /// </remarks>
-public sealed class PbtOverlayGroupLog : IPbtGroupLog, IDisposable
+public sealed class PbtOverlayGroupRecordBuffer : IPbtGroupRecordBuffer, IDisposable
 {
     private const int LocalGenerationBytes = 128 * 1024;
 
-    private readonly IPbtGroupLog _global;
-    private readonly PbtGroupLog _local;
-    private readonly IPbtGroupLogPin _globalPin;
+    private readonly IPbtGroupRecordBuffer _global;
+    private readonly PbtGroupRecordBuffer _local;
+    private readonly IPbtGroupRecordBufferPin _globalPin;
     private readonly PbtGroupReference _globalBoundary;
     private readonly uint _generationShift;
 
-    public PbtOverlayGroupLog(IPbtGroupLog global, IRefCountingMemoryProvider memoryProvider)
+    public PbtOverlayGroupRecordBuffer(IPbtGroupRecordBuffer global, IRefCountingMemoryProvider memoryProvider)
     {
         _global = global;
-        _local = new PbtGroupLog(memoryProvider, compressedMemoryBudget: 0, LocalGenerationBytes);
-        _globalPin = global.Pin();
+        _local = new PbtGroupRecordBuffer(memoryProvider, compressedMaxMemory: 0, LocalGenerationBytes);
+        _globalPin = global.PinHead();
         _globalBoundary = _globalPin.WriteBoundary;
         _generationShift = _globalBoundary.Generation;
     }
 
     /// <inheritdoc/>
-    public IPbtGroupLogPin Pin() => CombinePin(_local.Pin());
+    public IPbtGroupRecordBufferPin PinHead() => CombinePin(_local.PinHead());
 
     /// <inheritdoc/>
     public IDisposable PinAll()
@@ -55,10 +55,10 @@ public sealed class PbtOverlayGroupLog : IPbtGroupLog, IDisposable
     }
 
     /// <inheritdoc/>
-    public bool TryGetRecord(PbtGroupReference reference, out PbtGroupRecord record)
+    public bool TryLocate(PbtGroupReference reference, out PbtGroupRecord record)
     {
-        if (!IsLocal(reference)) return _global.TryGetRecord(reference, out record);
-        if (!_local.TryGetRecord(ToLocal(reference), out record)) return false;
+        if (!IsLocal(reference)) return _global.TryLocate(reference, out record);
+        if (!_local.TryLocate(ToLocal(reference), out record)) return false;
         record = record.WithReference(reference);
         return true;
     }
@@ -73,13 +73,13 @@ public sealed class PbtOverlayGroupLog : IPbtGroupLog, IDisposable
         PbtGroupReference reference = _local.FindRoot(root);
         if (reference.IsDirect) return FromLocal(reference);
 
-        // A root the global log indexed after the pin would resolve in the private log instead.
+        // A root the global buffer indexed after the pin would resolve in the private buffer instead.
         reference = _global.FindRoot(root);
         return IsLocal(reference) ? PbtGroupReference.Unknown : reference;
     }
 
     /// <inheritdoc/>
-    /// <remarks>A root among the global records is not indexed, as that would write to the global log.</remarks>
+    /// <remarks>A root among the global records is not indexed, as that would write to the global buffer.</remarks>
     public void SetRoot(in ValueHash256 root, PbtGroupReference reference)
     {
         if (!reference.IsDirect) throw new ArgumentException("Only a published root group can be indexed.", nameof(reference));
@@ -87,14 +87,14 @@ public sealed class PbtOverlayGroupLog : IPbtGroupLog, IDisposable
     }
 
     /// <inheritdoc/>
-    public PbtGroupReference MapReference(IPbtGroupLog source, PbtGroupReference reference)
+    public PbtGroupReference MapReference(IPbtGroupRecordBuffer source, PbtGroupReference reference)
     {
         if (ReferenceEquals(source, this)) return reference;
-        if (!ReferenceEquals(source, _global)) throw new InvalidOperationException("A branch must share the traversal log of its in-memory snapshots.");
+        if (!ReferenceEquals(source, _global)) throw new InvalidOperationException("A branch must share the group record buffer of its in-memory snapshots.");
         return IsLocal(reference) ? PbtGroupReference.Unknown : reference;
     }
 
-    /// <summary>Stops new pins and writes; the private records and the global pin are released once every pin of this log is.</summary>
+    /// <summary>Stops new pins and writes; the private records and the global pin are released once every pin of this buffer is.</summary>
     public void Dispose()
     {
         _local.Dispose();
@@ -108,7 +108,7 @@ public sealed class PbtOverlayGroupLog : IPbtGroupLog, IDisposable
     private PbtGroupReference FromLocal(PbtGroupReference reference) =>
         reference.IsDirect ? new(reference.Generation + _generationShift, reference.Offset) : reference;
 
-    private OverlayPin CombinePin(IPbtGroupLogPin localPin)
+    private OverlayPin CombinePin(IPbtGroupRecordBufferPin localPin)
     {
         try
         {
@@ -121,13 +121,13 @@ public sealed class PbtOverlayGroupLog : IPbtGroupLog, IDisposable
         }
     }
 
-    private sealed class OverlayPin(PbtOverlayGroupLog log, IPbtGroupLogPin localPin, IPbtGroupLogPin globalPin) : IPbtGroupLogPin
+    private sealed class OverlayPin(PbtOverlayGroupRecordBuffer buffer, IPbtGroupRecordBufferPin localPin, IPbtGroupRecordBufferPin globalPin) : IPbtGroupRecordBufferPin
     {
-        public IPbtGroupLog Log => log;
+        public IPbtGroupRecordBuffer Buffer => buffer;
 
-        public PbtGroupReference WriteBoundary => log.FromLocal(localPin.WriteBoundary);
+        public PbtGroupReference WriteBoundary => buffer.FromLocal(localPin.WriteBoundary);
 
-        public IPbtGroupLogPin Copy() => log.CombinePin(localPin.Copy());
+        public IPbtGroupRecordBufferPin Copy() => buffer.CombinePin(localPin.Copy());
 
         public void Dispose()
         {

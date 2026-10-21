@@ -6,7 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core.Memory;
 using Nethermind.Pbt;
-using Nethermind.Pbt.NodeLog;
+using Nethermind.Pbt.NodeBuffer;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Pbt.PersistedSnapshots;
@@ -60,8 +60,8 @@ internal static class PbtSnapshotTestExtensions
         }
     }
 
-    /// <summary>The group log of test layers and bundles that bring none of their own.</summary>
-    internal static PbtGroupLog DefaultNodeGroupLog { get; } = new(PooledRefCountingMemoryProvider.Instance, compressedMemoryBudget: 0, retainedGenerations: 0);
+    /// <summary>The group record buffer of test layers and bundles that bring none of their own.</summary>
+    internal static PbtGroupRecordBuffer DefaultGroupRecordBuffer { get; } = new(PooledRefCountingMemoryProvider.Instance, compressedMaxMemory: 0, liveGenerations: 0);
 
     /// <summary>Publishes a tree holding <paramref name="groups"/> as the layer's own groups.</summary>
     /// <remarks>
@@ -71,8 +71,8 @@ internal static class PbtSnapshotTestExtensions
     /// </remarks>
     internal static void SetTree(this PbtSnapshotContent content, params (PbtStorageNodePath Path, byte[]? Payload)[] groups)
     {
-        content.BeginNodeGroupWrites(content.NodeGroupLog ?? DefaultNodeGroupLog);
-        (PbtGroupReference root, int count, long bytes) = BuildTree(content.NodeGroupLog!, groups, fillAncestors: true);
+        content.BeginNodeGroupWrites(content.GroupRecordBuffer ?? DefaultGroupRecordBuffer);
+        (PbtGroupReference root, int count, long bytes) = BuildTree(content.GroupRecordBuffer!, groups, fillAncestors: true);
         content.RootGroupReference = root;
         content.AddNodeGroups(count, bytes);
     }
@@ -80,8 +80,8 @@ internal static class PbtSnapshotTestExtensions
     /// <summary>Publishes a complete physical tree as the layer's own groups, each linked from its nearest physical ancestor across compressed routes.</summary>
     internal static void SetPhysicalTree(this PbtSnapshotContent content, IEnumerable<PbtPhysicalPayload> groups)
     {
-        content.BeginNodeGroupWrites(content.NodeGroupLog ?? DefaultNodeGroupLog);
-        (PbtGroupReference root, int count, long bytes) = BuildTree(content.NodeGroupLog!,
+        content.BeginNodeGroupWrites(content.GroupRecordBuffer ?? DefaultGroupRecordBuffer);
+        (PbtGroupReference root, int count, long bytes) = BuildTree(content.GroupRecordBuffer!,
             [.. groups.Select(static group => (group.Key, (byte[]?)group.Payload.ToArray()))], fillAncestors: false);
         content.RootGroupReference = root;
         content.AddNodeGroups(count, bytes);
@@ -90,11 +90,11 @@ internal static class PbtSnapshotTestExtensions
     /// <inheritdoc cref="SetTree(PbtSnapshotContent, ValueTuple{PbtStorageNodePath, byte[]}[])"/>
     internal static void SetTree(this PbtSnapshotBundle bundle, params (PbtStorageNodePath Path, byte[]? Payload)[] groups)
     {
-        (PbtGroupReference root, int count, long bytes) = BuildTree(bundle.NodeGroupLog, groups, fillAncestors: true);
+        (PbtGroupReference root, int count, long bytes) = BuildTree(bundle.GroupRecordBuffer, groups, fillAncestors: true);
         bundle.PublishNodeGroups(root, count, bytes);
     }
 
-    private static (PbtGroupReference Root, int Count, long Bytes) BuildTree(IPbtGroupLog log, (PbtStorageNodePath Path, byte[]? Payload)[] groups, bool fillAncestors)
+    private static (PbtGroupReference Root, int Count, long Bytes) BuildTree(IPbtGroupRecordBuffer buffer, (PbtStorageNodePath Path, byte[]? Payload)[] groups, bool fillAncestors)
     {
         if (groups.Any(static group => group.Path.BitDepth == 0 && group.Payload is null)) return (PbtGroupReference.None, 0, 0);
         Dictionary<PbtStorageNodePath, byte[]?> tree = groups.ToDictionary(static group => group.Path, static group => group.Payload);
@@ -121,7 +121,7 @@ internal static class PbtSnapshotTestExtensions
                 PbtNodePathOperations.CopyTo(child, childBytes);
                 links[TrieUpdater.BoundarySlot(childBytes, path.BitDepth)] = reference;
             }
-            published[path] = log.Append(path, payload, links);
+            published[path] = buffer.Append(path, payload, links);
             count++;
             bytes += ((path.BitDepth + 7) >> 3) + payload.Length;
         }

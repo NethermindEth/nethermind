@@ -24,7 +24,7 @@ using Nethermind.State.Pbt.Persistence.TrieNodeLog;
 using Nethermind.State.Pbt.ScopeProvider;
 using Nethermind.State.Pbt.Snapshot;
 using Nethermind.State.Pbt.Sync;
-using Nethermind.Pbt.NodeLog;
+using Nethermind.Pbt.NodeBuffer;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.SnapSync;
 
@@ -43,8 +43,8 @@ public static class PbtCoreRegistration
             // A second pool would halve each pool's hit rate.
             .AddSingleton<IPbtResourcePool, PbtResourcePool>()
             .AddSingleton<IRefCountingMemoryProvider>(PbtNodeGroupMemory.CreateProvider(config))
-            .AddSingleton<PbtGroupLog>(ctx => new PbtGroupLog(ctx.Resolve<IRefCountingMemoryProvider>(), config.NodeGroupLogCompressedMemoryBudget,
-                PbtGroupLog.DefaultGenerationBytes, config.NodeGroupLogRetainedGenerations))
+            .AddSingleton<PbtGroupRecordBuffer>(ctx => new PbtGroupRecordBuffer(ctx.Resolve<IRefCountingMemoryProvider>(), config.CompressedGroupRecordBufferMemoryBudget,
+                PbtGroupRecordBuffer.DefaultGenerationBytes, config.GroupRecordBufferLiveGenerations))
             .AddPbtPersisted(config)
             .AddSingleton<PbtSnapshotRepository>(ctx => new PbtSnapshotRepository(
                 ctx.Resolve<IMetricsConfig>(), ctx.ResolveKeyed<ISnapshotCatalog>(DbNames.Pbt),
@@ -57,7 +57,7 @@ public static class PbtCoreRegistration
                 ctx.Resolve<IPbtPersistedSnapshotLoader>(), ctx.Resolve<IPbtPersistedSnapshotCompactor>(), ctx.Resolve<IProcessExitSource>().Token))
             .AddSingleton<IPbtDbManager>(ctx => new PbtDbManager(
                 ctx.Resolve<PbtSnapshotRepository>(), ctx.Resolve<PbtPersistenceManager>(), ctx.Resolve<IPbtPersistence>(),
-                ctx.Resolve<IPbtResourcePool>(), ctx.Resolve<PbtGroupLog>(), ctx.Resolve<PbtSnapshotCompactor>(), ctx.Resolve<IProcessExitSource>(),
+                ctx.Resolve<IPbtResourcePool>(), ctx.Resolve<PbtGroupRecordBuffer>(), ctx.Resolve<PbtSnapshotCompactor>(), ctx.Resolve<IProcessExitSource>(),
                 ctx.Resolve<ILogManager>(), ctx.Resolve<IMetricsConfig>(), ctx.Resolve<IPbtPersistedSnapshotLoader>()))
             .AddSingleton<PbtStateReader>()
             .AddSingleton<PbtWorldStateManager>()

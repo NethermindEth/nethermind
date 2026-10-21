@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Threading;
-using Nethermind.Pbt.NodeLog;
+using Nethermind.Pbt.NodeBuffer;
 using Nethermind.State.Flat;
 using Nethermind.State.Pbt.Snapshot;
 
@@ -34,8 +34,8 @@ public interface IPbtDbManager : IPbtCommitTarget
     /// <param name="localSnapshots">Leased snapshots kept outside this manager, oldest first; taken over on every path.</param>
     /// <param name="usage">Pool category for the bundle's write buffer and the layers it seals.</param>
     /// <param name="filterInMemorySlotReads">Serve slot reads through the in-memory layers' negative filter; for read-only execution only.</param>
-    /// <param name="nodeGroupLog">The log the bundle writes its groups to and <paramref name="localSnapshots"/> wrote theirs to.</param>
-    PbtSnapshotBundle? TryGatherBundle(in StateId baseStateId, PbtSnapshotPooledList localSnapshots, PbtResourcePool.Usage usage, bool filterInMemorySlotReads, IPbtGroupLog nodeGroupLog);
+    /// <param name="groupRecordBuffer">The buffer the bundle writes its groups to and <paramref name="localSnapshots"/> wrote theirs to.</param>
+    PbtSnapshotBundle? TryGatherBundle(in StateId baseStateId, PbtSnapshotPooledList localSnapshots, PbtResourcePool.Usage usage, bool filterInMemorySlotReads, IPbtGroupRecordBuffer groupRecordBuffer);
 
     /// <inheritdoc cref="TryGatherBundle(in StateId, PbtResourcePool.Usage)"/>
     /// <exception cref="StateNotRetainedException">The state is not available.</exception>

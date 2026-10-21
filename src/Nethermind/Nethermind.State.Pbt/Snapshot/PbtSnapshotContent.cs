@@ -11,7 +11,7 @@ using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Pbt;
-using Nethermind.Pbt.NodeLog;
+using Nethermind.Pbt.NodeBuffer;
 using Nethermind.State.Pbt.Common;
 using Nethermind.State.Pbt.Persistence;
 using IResettable = Nethermind.Core.Resettables.IResettable;
@@ -20,7 +20,7 @@ namespace Nethermind.State.Pbt.Snapshot;
 
 /// <summary>One immutable-at-seal diff layer of flat values and the root of its canonical group tree.</summary>
 /// <remarks>
-/// The layer's groups are the log records of its tree written since its generation pin. A tree root is published by one
+/// The layer's groups are the buffer records of its tree written since its generation pin. A tree root is published by one
 /// fold at a time, and reads concurrent with that are unsupported. Sealed content supports concurrent readers while its
 /// snapshot is leased. Reset requires exclusive ownership.
 /// </remarks>
@@ -36,17 +36,17 @@ public sealed class PbtSnapshotContent(IRefCountingMemoryProvider? nodeGroupMemo
     public readonly ConcurrentDictionary<ValueHash256, CodeInfo> Codes = new();
     public readonly ConcurrentDictionary<ValueHash256, bool> SelfDestructedStorageAddresses = new();
     private readonly IRefCountingMemoryProvider _nodeGroupMemory = nodeGroupMemory ?? PooledRefCountingMemoryProvider.Instance;
-    private IPbtGroupLogPin? _nodeGroupPin;
+    private IPbtGroupRecordBufferPin? _nodeGroupPin;
     private long _nodeGroupBytes;
 
-    /// <summary>The traversal log whose references this content owns, or null before <see cref="BeginNodeGroupWrites"/>.</summary>
-    public IPbtGroupLog? NodeGroupLog => _nodeGroupPin?.Log;
+    /// <summary>The group record buffer whose references this content owns, or null before <see cref="BeginNodeGroupWrites"/>.</summary>
+    public IPbtGroupRecordBuffer? GroupRecordBuffer => _nodeGroupPin?.Buffer;
 
-    /// <summary>Pins the active generation of <paramref name="log"/>, unless already pinned, so later group writes stay readable.</summary>
-    public void BeginNodeGroupWrites(IPbtGroupLog log)
+    /// <summary>Pins the active generation of <paramref name="buffer"/>, unless already pinned, so later group writes stay readable.</summary>
+    public void BeginNodeGroupWrites(IPbtGroupRecordBuffer buffer)
     {
-        Debug.Assert(_nodeGroupPin is null || ReferenceEquals(_nodeGroupPin.Log, log), "A layer writes its groups to one log.");
-        _nodeGroupPin ??= log.Pin();
+        Debug.Assert(_nodeGroupPin is null || ReferenceEquals(_nodeGroupPin.Buffer, buffer), "A layer writes its groups to one buffer.");
+        _nodeGroupPin ??= buffer.PinHead();
     }
 
     /// <summary>The root group of the tree this layer published, None for an empty tree, or Unknown when it published none.</summary>
@@ -70,7 +70,7 @@ public sealed class PbtSnapshotContent(IRefCountingMemoryProvider? nodeGroupMemo
     /// generation pin keeps the records valid while the layer is not reset.
     /// </remarks>
     public IEnumerable<PbtGroupRecord> EnumerateNodeGroups() =>
-        _nodeGroupPin is null ? [] : PbtNodeGroupKey.InKeyOrder(_nodeGroupPin.Log, RootGroupReference, _nodeGroupPin.WriteBoundary);
+        _nodeGroupPin is null ? [] : PbtNodeGroupKey.InKeyOrder(_nodeGroupPin.Buffer, RootGroupReference, _nodeGroupPin.WriteBoundary);
 
     /// <summary>The runs of header slots for <see cref="PbtPath"/> run keys, or of the other slots for <see cref="PbtStoragePath"/> ones.</summary>
     private ConcurrentDictionary<HashedKey<TKey>, PackedSlotRun> Runs<TKey>() where TKey : struct, IPbtKey<TKey> =>
@@ -142,12 +142,12 @@ public sealed class PbtSnapshotContent(IRefCountingMemoryProvider? nodeGroupMemo
 
     /// <summary>Resolves <paramref name="groupKey"/> in the tree whose root group is <paramref name="root"/>, as an independent caller-owned payload or a null absence.</summary>
     /// <returns>False when the root is unresolved or the walk reaches a group that is not resident, which the persisted view must then provide.</returns>
-    /// <remarks>The caller holds a <see cref="PbtGroupLog.PinAll"/> of the log, as a read-only bundle does.</remarks>
+    /// <remarks>The caller holds a <see cref="PbtGroupRecordBuffer.PinAll"/> of the buffer, as a read-only bundle does.</remarks>
     public bool TryFindNodeGroup(PbtGroupReference root, PbtStorageNodePath groupKey, out RefCountingMemory? payload)
     {
         payload = null;
         PbtGroupRecord record = default;
-        PbtGroupReference reference = root.IsDirect ? _nodeGroupPin!.Log.FindGroup(root, groupKey, out record) : root;
+        PbtGroupReference reference = root.IsDirect ? _nodeGroupPin!.Buffer.FindGroup(root, groupKey, out record) : root;
         if (reference.IsUnknown) return false;
         if (reference.IsDirect)
         {
@@ -160,10 +160,10 @@ public sealed class PbtSnapshotContent(IRefCountingMemoryProvider? nodeGroupMemo
     /// <summary>Takes over the generation range of <paramref name="source"/>, whose groups a merged layer covers.</summary>
     internal void CopyNodeGroupsFrom(PbtSnapshotContent source)
     {
-        Debug.Assert(_nodeGroupPin is null || source._nodeGroupPin is null || ReferenceEquals(_nodeGroupPin.Log, source._nodeGroupPin.Log));
+        Debug.Assert(_nodeGroupPin is null || source._nodeGroupPin is null || ReferenceEquals(_nodeGroupPin.Buffer, source._nodeGroupPin.Buffer));
         if (source._nodeGroupPin is { } pin && (_nodeGroupPin is null || pin.WriteBoundary.CompareTo(_nodeGroupPin.WriteBoundary) < 0))
         {
-            IPbtGroupLogPin copy = pin.Copy();
+            IPbtGroupRecordBufferPin copy = pin.Copy();
             _nodeGroupPin?.Dispose();
             _nodeGroupPin = copy;
         }

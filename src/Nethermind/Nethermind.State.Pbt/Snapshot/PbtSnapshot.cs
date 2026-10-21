@@ -3,7 +3,7 @@
 
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Utils;
-using Nethermind.Pbt.NodeLog;
+using Nethermind.Pbt.NodeBuffer;
 using Nethermind.State.Flat;
 
 namespace Nethermind.State.Pbt.Snapshot;
@@ -26,9 +26,9 @@ public class PbtSnapshot(
     public PbtGroupReference RootGroupReference { get; } = content.RootGroupReference;
     public PbtSnapshotContent Content { get; } = content;
 
-    /// <summary>The root group reference as <paramref name="log"/> resolves it, or Unknown when it cannot.</summary>
-    public PbtGroupReference MapRootGroupReference(IPbtGroupLog log) =>
-        RootGroupReference.IsDirect ? log.MapReference(Content.NodeGroupLog!, RootGroupReference) : RootGroupReference;
+    /// <summary>The root group reference as <paramref name="buffer"/> resolves it, or Unknown when it cannot.</summary>
+    public PbtGroupReference MapRootGroupReference(IPbtGroupRecordBuffer buffer) =>
+        RootGroupReference.IsDirect ? buffer.MapReference(Content.GroupRecordBuffer!, RootGroupReference) : RootGroupReference;
 
     public PbtSnapshotPayloadSize PayloadSize => _payloadSize ??= Content.GetPayloadSize();
 

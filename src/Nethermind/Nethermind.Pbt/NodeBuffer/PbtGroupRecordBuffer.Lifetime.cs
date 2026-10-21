@@ -4,7 +4,7 @@
 using System.Diagnostics;
 using System.Threading;
 
-namespace Nethermind.Pbt.NodeLog;
+namespace Nethermind.Pbt.NodeBuffer;
 
 /// <remarks>
 /// Generation ids are contiguous: compacted generations come first, then those still in place. A generation outside the
@@ -13,7 +13,7 @@ namespace Nethermind.Pbt.NodeLog;
 /// overlap. It is compacted, evicted or freed once no <see cref="PinAll"/> covers it. Only the oldest consecutive compacted and
 /// in-place generations are marked, so a <see cref="PinAll"/> pins two contiguous ranges.
 /// </remarks>
-public sealed partial class PbtGroupLog
+public sealed partial class PbtGroupRecordBuffer
 {
     private uint _oldestCompressed = 1;
     private uint _oldestInPlace = 1;
@@ -21,7 +21,7 @@ public sealed partial class PbtGroupLog
 
     /// <summary>Keeps the active generation and every later generation readable until the pin is disposed.</summary>
     /// <remarks>The pin's <see cref="GenerationPin.WriteBoundary"/> is the allocation frontier at this call.</remarks>
-    public GenerationPin Pin()
+    public GenerationPin PinHead()
     {
         lock (_lock)
         {
@@ -31,7 +31,7 @@ public sealed partial class PbtGroupLog
         }
     }
 
-    IPbtGroupLogPin IPbtGroupLog.Pin() => Pin();
+    IPbtGroupRecordBufferPin IPbtGroupRecordBuffer.PinHead() => PinHead();
 
     /// <inheritdoc/>
     public IDisposable PinAll()
@@ -120,9 +120,9 @@ public sealed partial class PbtGroupLog
 
     private uint OldestPinnedGeneration => _pins.Count == 0 ? uint.MaxValue : _pins.Keys[0];
 
-    private bool CompactsDropped => _compressedMemoryBudget > 0 && !_disposed && _compactionFailure is null;
+    private bool CompactsDropped => _compressedMaxMemory > 0 && !_disposed && _compactionFailure is null;
 
-    private bool KeepOpportunistically(uint generation) => _lastGeneration - generation < (uint)_retainedGenerations;
+    private bool KeepOpportunistically(uint generation) => _lastGeneration - generation < (uint)_liveGenerations;
 
     private bool IsCompactable => _oldestInPlace <= _lastGeneration && _generations[_oldestInPlace] is { Dropping: true, PinCount: 0 };
 
@@ -188,18 +188,18 @@ public sealed partial class PbtGroupLog
     private void ThrowIfUnavailable()
     {
         ThrowIfDisposed();
-        if (Volatile.Read(ref _compactionFailure) is { } failure) throw new InvalidOperationException("PBT group log compaction failed.", failure);
+        if (Volatile.Read(ref _compactionFailure) is { } failure) throw new InvalidOperationException("PBT group record buffer compaction failed.", failure);
     }
 
     /// <summary>Keeps one generation and every later generation available to snapshot readers.</summary>
-    public sealed class GenerationPin : IPbtGroupLogPin
+    public sealed class GenerationPin : IPbtGroupRecordBufferPin
     {
-        private readonly PbtGroupLog _log;
+        private readonly PbtGroupRecordBuffer _buffer;
         private int _disposed;
 
-        internal GenerationPin(PbtGroupLog log, uint generation, PbtGroupReference writeBoundary)
+        internal GenerationPin(PbtGroupRecordBuffer buffer, uint generation, PbtGroupReference writeBoundary)
         {
-            _log = log;
+            _buffer = buffer;
             Generation = generation;
             WriteBoundary = writeBoundary;
         }
@@ -208,34 +208,34 @@ public sealed partial class PbtGroupLog
         public uint Generation { get; }
 
         /// <inheritdoc/>
-        public IPbtGroupLog Log => _log;
+        public IPbtGroupRecordBuffer Buffer => _buffer;
 
         /// <inheritdoc/>
         public PbtGroupReference WriteBoundary { get; }
 
         /// <summary>Keeps the same generation range independently of this pin.</summary>
-        /// <exception cref="ObjectDisposedException">This pin or the log is disposed.</exception>
+        /// <exception cref="ObjectDisposedException">This pin or the buffer is disposed.</exception>
         public GenerationPin Copy()
         {
             ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
-            return _log.PinGeneration(Generation, WriteBoundary);
+            return _buffer.PinGeneration(Generation, WriteBoundary);
         }
 
-        IPbtGroupLogPin IPbtGroupLogPin.Copy() => Copy();
+        IPbtGroupRecordBufferPin IPbtGroupRecordBufferPin.Copy() => Copy();
 
         public void Dispose()
         {
-            if (Interlocked.Exchange(ref _disposed, 1) == 0) _log.RemovePin(Generation);
+            if (Interlocked.Exchange(ref _disposed, 1) == 0) _buffer.RemovePin(Generation);
         }
     }
 
-    private sealed class AllGenerationsPin(PbtGroupLog log, uint compressedFrom, uint compressedTo, uint inPlaceFrom, uint inPlaceTo) : IDisposable
+    private sealed class AllGenerationsPin(PbtGroupRecordBuffer buffer, uint compressedFrom, uint compressedTo, uint inPlaceFrom, uint inPlaceTo) : IDisposable
     {
         private int _disposed;
 
         public void Dispose()
         {
-            if (Interlocked.Exchange(ref _disposed, 1) == 0) log.RemovePins(compressedFrom, compressedTo, inPlaceFrom, inPlaceTo);
+            if (Interlocked.Exchange(ref _disposed, 1) == 0) buffer.RemovePins(compressedFrom, compressedTo, inPlaceFrom, inPlaceTo);
         }
     }
 }

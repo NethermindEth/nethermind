@@ -29,7 +29,7 @@ using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Pbt;
-using Nethermind.Pbt.NodeLog;
+using Nethermind.Pbt.NodeBuffer;
 using Nethermind.State.Pbt.Snapshot;
 using NSubstitute;
 using NUnit.Framework;
@@ -87,7 +87,7 @@ public class PbtSnapshotCompactorTests
     {
         using NativeBucketedMemoryPool nativePool = PbtNodeGroupMemory.CreateNativePool();
         IRefCountingMemoryProvider memory = native ? nativePool : PooledRefCountingMemoryProvider.Instance;
-        using PbtGroupLog log = new(memory, compressedMemoryBudget: 0, generationBytes: 256, retainedGenerations: 0);
+        using PbtGroupRecordBuffer buffer = new(memory, compressedMaxMemory: 0, generationBytes: 256, liveGenerations: 0);
         PbtResourcePool pool = new(new PbtConfig(), memory);
         using PbtTreeHarness tree = new();
         tree.ApplyBatch(Enumerable.Range(0, 16).Select(index =>
@@ -102,27 +102,27 @@ public class PbtSnapshotCompactorTests
         PbtStorageNodePath childPath = payloads.Last(static group => group.Key.BitDepth != 0).Key;
         PbtSnapshotContent older = pool.GetSnapshotContent(PbtResourcePool.Usage.MainBlockProcessing);
         PbtSnapshotContent newer = pool.GetSnapshotContent(PbtResourcePool.Usage.MainBlockProcessing);
-        older.BeginNodeGroupWrites(log);
-        newer.BeginNodeGroupWrites(log);
+        older.BeginNodeGroupWrites(buffer);
+        newer.BeginNodeGroupWrites(buffer);
         Dictionary<PbtStorageNodePath, PbtGroupReference> original = [];
         foreach (PbtPhysicalPayload group in payloads)
         {
             PbtGroupLinks links = PbtGroupLinks.Unknown;
             if (group.Key.BitDepth == 0) links[0] = original[childPath];
-            original[group.Key] = log.Append(group.Key, group.Payload.Span, links);
+            original[group.Key] = buffer.Append(group.Key, group.Payload.Span, links);
         }
         older.RootGroupReference = original[default];
         // An unchanged block inherits its parent's root.
         newer.RootGroupReference = original[default];
         using PbtSnapshot compacted = Compact(pool, older, newer);
-        Assert.That(log.TryGetRecord(compacted.RootGroupReference, out PbtGroupRecord root), Is.True);
+        Assert.That(buffer.TryLocate(compacted.RootGroupReference, out PbtGroupRecord root), Is.True);
         PbtGroupReference childReference = root.GetLink(0);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(compacted.RootGroupReference, Is.EqualTo(original[default]));
-            Assert.That(log.TryGetRecord(original[default], out _), Is.True, "the compacted snapshot inherits the oldest generation pin");
+            Assert.That(buffer.TryLocate(original[default], out _), Is.True, "the compacted snapshot inherits the oldest generation pin");
             Assert.That(childReference, Is.EqualTo(original[childPath]));
-            Assert.That(log.TryGetRecord(childReference, out PbtGroupRecord child), Is.True);
+            Assert.That(buffer.TryLocate(childReference, out PbtGroupRecord child), Is.True);
             Assert.That(child.Path, Is.EqualTo(childPath));
         }
         Assert.That(compacted.Content.EnumerateNodeGroups().Select(static record => record.Reference), Is.EquivalentTo(new[] { original[default], original[childPath] }),

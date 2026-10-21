@@ -16,7 +16,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Monitoring.Config;
 using Nethermind.Pbt;
-using Nethermind.Pbt.NodeLog;
+using Nethermind.Pbt.NodeBuffer;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Pbt.Common;
@@ -182,7 +182,7 @@ public class PbtReadOnlySnapshotBundleSlotFilterTests
         persisted.SetSlot(PbtTestLeaves.SlotKey(TestItem.AddressA, 5000), 22);
         PbtReadOnlySnapshotBundle readOnly = new(PbtSnapshotBundleTestExtensions.Chain(pool, LayerWriting(TestItem.AddressA, 1000, 1), LayerWriting(TestItem.AddressB, 1000, 2)),
             new ContentReader(persisted), recordDetailedMetrics: false, new PbtPersistedSnapshotList(0), PbtSnapshotBundleTestExtensions.NoNodeGroupPin, RealBitsPerKey);
-        using PbtSnapshotBundle bundle = new(new PbtSnapshotPooledList(0), readOnly, PbtSnapshotTestExtensions.DefaultNodeGroupLog, pool, PbtResourcePool.Usage.ReadOnlyProcessingEnv, filterInMemorySlotReads);
+        using PbtSnapshotBundle bundle = new(new PbtSnapshotPooledList(0), readOnly, PbtSnapshotTestExtensions.DefaultGroupRecordBuffer, pool, PbtResourcePool.Usage.ReadOnlyProcessingEnv, filterInMemorySlotReads);
 
         using (Assert.EnterMultipleScope())
         {
@@ -207,7 +207,7 @@ public class PbtReadOnlySnapshotBundleSlotFilterTests
 
         StateId state = new(Build.A.BlockHeader.WithNumber(3).WithStateRoot(root).TestObject);
         long builds = Metrics.PbtInMemorySlotFilterBuilds;
-        using (PbtSnapshotBundle bundle = ctx.Manager.TryGatherBundle(state, new PbtSnapshotPooledList(0), PbtResourcePool.Usage.ReadOnlyProcessingEnv, filterInMemorySlotReads: true, ctx.NodeGroupLog)!)
+        using (PbtSnapshotBundle bundle = ctx.Manager.TryGatherBundle(state, new PbtSnapshotPooledList(0), PbtResourcePool.Usage.ReadOnlyProcessingEnv, filterInMemorySlotReads: true, ctx.GroupRecordBuffer)!)
             Assert.That(bundle.GetSlot(TestItem.AddressA, 1000), Is.EqualTo((UInt256)3));
         Assert.That(Metrics.PbtInMemorySlotFilterBuilds - builds, Is.EqualTo(bitsPerKey > 0 ? 1 : 0));
 
@@ -220,11 +220,11 @@ public class PbtReadOnlySnapshotBundleSlotFilterTests
     {
         IPbtDbManager manager = Substitute.For<IPbtDbManager>();
         using MemDb codeDb = new();
-        using PbtGroupLog log = new(PooledRefCountingMemoryProvider.Instance, compressedMemoryBudget: 0, retainedGenerations: 0);
-        using PbtOverridableWorldScope scope = new(codeDb, manager, PooledRefCountingMemoryProvider.Instance, log, new PbtConfig(), UnavailableStateHeaderProvider.Instance, LimboLogs.Instance);
+        using PbtGroupRecordBuffer buffer = new(PooledRefCountingMemoryProvider.Instance, compressedMaxMemory: 0, liveGenerations: 0);
+        using PbtOverridableWorldScope scope = new(codeDb, manager, PooledRefCountingMemoryProvider.Instance, buffer, new PbtConfig(), UnavailableStateHeaderProvider.Instance, LimboLogs.Instance);
 
         Assert.Throws<MissingTrieNodeException>(() => scope.GlobalStateReader.GetStorage(null, TestItem.AddressA, 1, out _));
-        manager.Received(1).TryGatherBundle(Arg.Any<StateId>(), Arg.Any<PbtSnapshotPooledList>(), PbtResourcePool.Usage.ReadOnlyProcessingEnv, filterInMemorySlotReads: true, Arg.Any<IPbtGroupLog>());
+        manager.Received(1).TryGatherBundle(Arg.Any<StateId>(), Arg.Any<PbtSnapshotPooledList>(), PbtResourcePool.Usage.ReadOnlyProcessingEnv, filterInMemorySlotReads: true, Arg.Any<IPbtGroupRecordBuffer>());
     }
 
     private static PbtSnapshotContent LayerWriting(Address address, in UInt256 slot, in UInt256 value)

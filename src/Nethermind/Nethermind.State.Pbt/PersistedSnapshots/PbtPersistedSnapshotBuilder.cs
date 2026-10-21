@@ -5,7 +5,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Pbt;
-using Nethermind.Pbt.NodeLog;
+using Nethermind.Pbt.NodeBuffer;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.Io;

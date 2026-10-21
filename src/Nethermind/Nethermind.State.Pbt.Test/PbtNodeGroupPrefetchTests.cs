@@ -198,7 +198,7 @@ public class PbtNodeGroupPrefetchTests
         using (RefCountingMemory payload = LifecyclePrefetchPayload(memory, paths[0], 0)) content.SetTree((paths[0], payload.GetSpan().ToArray()));
         using (PbtSnapshotBundle bundle = new(PbtSnapshotBundleTestExtensions.Chain(pool, content),
             new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), reader, recordDetailedMetrics: false, new PbtPersistedSnapshotList(0), PbtSnapshotBundleTestExtensions.NoNodeGroupPin, slotFilterBitsPerKey: 0),
-            PbtSnapshotTestExtensions.DefaultNodeGroupLog, pool, PbtResourcePool.Usage.MainBlockProcessing, filterInMemorySlotReads: false))
+            PbtSnapshotTestExtensions.DefaultGroupRecordBuffer, pool, PbtResourcePool.Usage.MainBlockProcessing, filterInMemorySlotReads: false))
         {
             InterfaceLogger logger = ErrorLogger();
             PbtWorldStateScope scope = HintBal(bundle, bal, logger);

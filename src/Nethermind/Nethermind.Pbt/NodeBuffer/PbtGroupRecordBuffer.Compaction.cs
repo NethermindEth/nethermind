@@ -7,7 +7,7 @@ using System.Runtime.InteropServices;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Memory;
 
-namespace Nethermind.Pbt.NodeLog;
+namespace Nethermind.Pbt.NodeBuffer;
 
 /// <remarks>
 /// A dropped generation stays readable in place until it is compacted in the background, oldest first and one at a time.
@@ -16,12 +16,12 @@ namespace Nethermind.Pbt.NodeLog;
 /// kept are those likely still reachable from current roots. They keep their references and resolve through a compressed
 /// generation, evicted oldest first while compressed generations take more than the compressed memory budget.
 /// </remarks>
-public sealed partial class PbtGroupLog
+public sealed partial class PbtGroupRecordBuffer
 {
     private const int BloomBytesPerKey = 128;
     private const double BloomBitsPerKey = 14;
 
-    private readonly long _compressedMemoryBudget;
+    private readonly long _compressedMaxMemory;
     private long _compressedBytes;
     private bool _compacting;
     private Exception? _compactionFailure;
@@ -47,7 +47,7 @@ public sealed partial class PbtGroupLog
     private static ulong PathKey(in PbtStorageNodePath path) => (ulong)(uint)path.GetHashCode() * 0x9E3779B97F4A7C15UL;
 
     private BloomFilter? CreateBloom(int length) =>
-        _compressedMemoryBudget > 0 ? new BloomFilter(Math.Max(1, length / BloomBytesPerKey), BloomBitsPerKey) : null;
+        _compressedMaxMemory > 0 ? new BloomFilter(Math.Max(1, length / BloomBytesPerKey), BloomBitsPerKey) : null;
 
     private void ScheduleCompaction()
     {
@@ -55,7 +55,7 @@ public sealed partial class PbtGroupLog
         _compacting = true;
         try
         {
-            ThreadPool.UnsafeQueueUserWorkItem(static log => log.CompactDropped(), this, preferLocal: false);
+            ThreadPool.UnsafeQueueUserWorkItem(static buffer => buffer.CompactDropped(), this, preferLocal: false);
         }
         catch
         {
@@ -126,7 +126,7 @@ public sealed partial class PbtGroupLog
         foreach ((PbtStorageNodePath path, int offset) in lastOffsetByPath)
             if (!IsWrittenAfter(later, PathKey(path))) kept.Add(offset);
         if (kept.Count == 0) return null;
-        // In log order, as the records of a tree were appended near each other.
+        // In buffer order, as the records of a tree were appended near each other.
         kept.Sort();
         return new CompressedGeneration(_memoryProvider, generation.Id, memory.Span, kept);
     }
@@ -149,7 +149,7 @@ public sealed partial class PbtGroupLog
         {
             Generation generation = _generations[id];
             CompressedGeneration? compressed = generation.Compressed;
-            if (compressed is not null && retainedBytes <= _compressedMemoryBudget) return;
+            if (compressed is not null && retainedBytes <= _compressedMaxMemory) return;
 
             retainedBytes -= compressed?.Memory ?? 0;
             Volatile.Write(ref generation.Dropping, true);
