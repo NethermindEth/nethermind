@@ -47,10 +47,15 @@ using NUnit.Framework;
 namespace Nethermind.Consensus.Test;
 
 [TestFixtureSource(nameof(Forks))]
-public class PrewarmerHandoffTests(IReleaseSpec spec) : PrewarmerHandoffTestBase(spec)
+public class PrewarmerHandoffTests(IReleaseSpec spec) : PrewarmerHandoffScenarios(spec)
 {
     // Shanghai still deletes a self-destructed account; Cancun only does for one created in the same transaction.
-    private static readonly IReleaseSpec[] Forks = [Osaka.Instance, Shanghai.Instance];
+    internal static readonly IReleaseSpec[] Forks = [Osaka.Instance, Shanghai.Instance];
+}
+
+/// <summary>Blocks taken over from their pre-warm runs, each ending in the state, results and receipts of executing it.</summary>
+public abstract class PrewarmerHandoffScenarios(IReleaseSpec spec) : PrewarmerHandoffTestBase(spec)
+{
 
     [Test]
     public void A_block_of_mixed_transactions_ends_in_the_state_and_receipts_of_executing_it()

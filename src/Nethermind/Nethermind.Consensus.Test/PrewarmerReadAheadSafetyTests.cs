@@ -35,9 +35,14 @@ namespace Nethermind.Consensus.Test;
 /// runs its rounds to the end inside the transaction, or, paced at random, races it.
 /// </summary>
 [TestFixtureSource(nameof(Forks))]
-public class PrewarmerReadAheadSafetyTests(IReleaseSpec spec) : PrewarmerReadAheadTestBase(spec)
+public class PrewarmerReadAheadSafetyTests(IReleaseSpec spec) : PrewarmerReadAheadSafetyScenarios(spec)
 {
-    private static readonly IReleaseSpec[] Forks = [Osaka.Instance, Shanghai.Instance];
+    internal static readonly IReleaseSpec[] Forks = [Osaka.Instance, Shanghai.Instance];
+}
+
+/// <inheritdoc cref="PrewarmerReadAheadSafetyTests"/>
+public abstract class PrewarmerReadAheadSafetyScenarios(IReleaseSpec spec) : PrewarmerReadAheadTestBase(spec)
+{
 
     /// <summary>The shapes of the cold tail in one block.</summary>
     private Block ColdTailBlock() => BuildBlock(

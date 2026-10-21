@@ -21,20 +21,16 @@ using NUnit.Framework;
 namespace Nethermind.Consensus.Test;
 
 /// <summary>Every handoff scenario, with consecutive takeovers sharing their commits.</summary>
-[TestFixtureSource(nameof(SharedCommitForks))]
-public class PrewarmerHandoffSharedCommitTests(IReleaseSpec spec) : PrewarmerHandoffTests(spec)
+[TestFixtureSource(typeof(PrewarmerHandoffTests), nameof(PrewarmerHandoffTests.Forks))]
+public class PrewarmerHandoffSharedCommitTests(IReleaseSpec spec) : PrewarmerHandoffScenarios(spec)
 {
-    private static readonly IReleaseSpec[] SharedCommitForks = [Osaka.Instance, Shanghai.Instance];
-
     protected override void ConfigureBlocks(BlocksConfig config) => config.PreWarmBatchedReplayCommit = true;
 }
 
 /// <summary>Every read-ahead safety scenario, the randomized blocks included, with consecutive takeovers sharing their commits.</summary>
-[TestFixtureSource(nameof(SharedCommitForks))]
-public class PrewarmerReadAheadSafetySharedCommitTests(IReleaseSpec spec) : PrewarmerReadAheadSafetyTests(spec)
+[TestFixtureSource(typeof(PrewarmerReadAheadSafetyTests), nameof(PrewarmerReadAheadSafetyTests.Forks))]
+public class PrewarmerReadAheadSafetySharedCommitTests(IReleaseSpec spec) : PrewarmerReadAheadSafetyScenarios(spec)
 {
-    private static readonly IReleaseSpec[] SharedCommitForks = [Osaka.Instance, Shanghai.Instance];
-
     protected override void ConfigureBlocks(BlocksConfig config)
     {
         base.ConfigureBlocks(config);
