@@ -195,7 +195,18 @@ public class ResourcePoolTests
 
         resource.ReleaseLease();
 
-        Assert.That(_resourcePool.GetCachedResource(usage), Is.SameAs(resource));
+        TransientResource returned = _resourcePool.GetCachedResource(usage);
+        try
+        {
+            if (DeterministicBenchmark.Enabled)
+                Assert.That(returned, Is.Not.SameAs(resource));
+            else
+                Assert.That(returned, Is.SameAs(resource));
+        }
+        finally
+        {
+            returned.ReleaseLease();
+        }
     }
 
     [Test]
@@ -215,9 +226,17 @@ public class ResourcePoolTests
         _resourcePool.ReturnCachedResource(usage, resource1);
 
         TransientResource resource2 = _resourcePool.GetCachedResource(usage);
-
-        // Should be the same instance
-        Assert.That(resource2, Is.SameAs(resource1));
+        try
+        {
+            if (DeterministicBenchmark.Enabled)
+                Assert.That(resource2, Is.Not.SameAs(resource1));
+            else
+                Assert.That(resource2, Is.SameAs(resource1));
+        }
+        finally
+        {
+            resource2.ReleaseLease();
+        }
     }
 
     [Test]
@@ -238,9 +257,77 @@ public class ResourcePoolTests
         TransientResource p2 = _resourcePool.GetCachedResource(usage);
         TransientResource p3 = _resourcePool.GetCachedResource(usage);
 
-        Assert.That(p1, Is.SameAs(r2)); // LIFO
-        Assert.That(p2, Is.SameAs(r1));
-        Assert.That(p3, Is.Not.SameAs(r3));
+        try
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                if (DeterministicBenchmark.Enabled)
+                {
+                    Assert.That(p1, Is.Not.SameAs(r1));
+                    Assert.That(p1, Is.Not.SameAs(r2));
+                    Assert.That(p1, Is.Not.SameAs(r3));
+                    Assert.That(p2, Is.Not.SameAs(r1));
+                    Assert.That(p2, Is.Not.SameAs(r2));
+                    Assert.That(p2, Is.Not.SameAs(r3));
+                    Assert.That(p3, Is.Not.SameAs(r1));
+                    Assert.That(p3, Is.Not.SameAs(r2));
+                    Assert.That(p3, Is.Not.SameAs(r3));
+                }
+                else
+                {
+                    Assert.That(p1, Is.SameAs(r2)); // LIFO
+                    Assert.That(p2, Is.SameAs(r1));
+                    Assert.That(p3, Is.Not.SameAs(r3));
+                }
+            }
+        }
+        finally
+        {
+            p1.ReleaseLease();
+            p2.ReleaseLease();
+            p3.ReleaseLease();
+        }
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public void Test_CachedResource_CheckoutStartsAtModeSpecificInitialSize(bool releaseWithLease)
+    {
+        ResourcePool.Usage usage = ResourcePool.Usage.MainBlockProcessing;
+        TransientResource first = _resourcePool.GetCachedResource(usage);
+        for (ulong key = 0; key < 2048; key++) first.PrewarmedAddresses.Add(key);
+
+        if (releaseWithLease)
+            first.ReleaseLease();
+        else
+            _resourcePool.ReturnCachedResource(usage, first);
+
+        if (DeterministicBenchmark.Enabled)
+            Assert.That(() => first.PrewarmedAddresses.Add(0), Throws.TypeOf<ObjectDisposedException>());
+
+        TransientResource second = _resourcePool.GetCachedResource(usage);
+        try
+        {
+            TransientResource.Size size = second.GetSize();
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(size.NodesCacheSize, Is.EqualTo(1024));
+                if (DeterministicBenchmark.Enabled)
+                {
+                    Assert.That(second, Is.Not.SameAs(first));
+                    Assert.That(size.PrewarmedAddressSize, Is.EqualTo(1024));
+                }
+                else
+                {
+                    Assert.That(second, Is.SameAs(first));
+                    Assert.That(size.PrewarmedAddressSize, Is.EqualTo(2048));
+                }
+            }
+        }
+        finally
+        {
+            second.ReleaseLease();
+        }
     }
 
     [Test]

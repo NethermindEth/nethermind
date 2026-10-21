@@ -19,17 +19,20 @@ namespace Nethermind.BlockProfiler;
 /// <summary>
 /// Diagnostic/benchmark plugin. When <c>NETHERMIND_PROFILE_BLOCKS</c> lists block numbers, it brackets each
 /// such block's main-pipeline processing with a JetBrains dotTrace collection window, yielding one snapshot
-/// per target block. Inert when the variable is unset; the profiler API calls are no-ops off the profiler.
+/// per target block. When <c>NETHERMIND_COUNT_INSTRUCTIONS=1</c>, it logs each block's user-space instruction and
+/// cycle counts (see <see cref="CountingBranchProcessor"/>). Inert when neither variable is set; the profiler API
+/// calls are no-ops off the profiler.
 /// </summary>
 public class BlockProfilerPlugin : INethermindPlugin
 {
     private readonly FrozenSet<ulong> _targets = ParseTargets();
+    private readonly bool _countInstructions = Environment.GetEnvironmentVariable("NETHERMIND_COUNT_INSTRUCTIONS") == "1";
 
     public string Name => "BlockProfiler";
-    public string Description => "Captures a dotTrace snapshot per configured block number (NETHERMIND_PROFILE_BLOCKS)";
+    public string Description => "Captures a dotTrace snapshot per configured block number (NETHERMIND_PROFILE_BLOCKS) and counts instructions per block (NETHERMIND_COUNT_INSTRUCTIONS)";
     public string Author => "Nethermind";
-    public bool Enabled => _targets.Count > 0;
-    public IModule? Module => new BlockProfilerModule(_targets);
+    public bool Enabled => _targets.Count > 0 || _countInstructions;
+    public IModule? Module => new BlockProfilerModule(_targets, _countInstructions);
 
     internal static FrozenSet<ulong> ParseTargets()
     {
@@ -44,14 +47,16 @@ public class BlockProfilerPlugin : INethermindPlugin
     }
 }
 
-public class BlockProfilerModule(FrozenSet<ulong> targets) : Module
+public class BlockProfilerModule(FrozenSet<ulong> targets, bool countInstructions = false) : Module
 {
-    protected override void Load(ContainerBuilder builder) =>
+    protected override void Load(ContainerBuilder builder)
+    {
         // Decorating IBranchProcessor guarantees the observer is instantiated with the main processor
         // (no eager-activation dance).
-        builder
-            .AddSingleton(targets)
-            .AddDecorator<IBranchProcessor, ProfilingBranchProcessor>();
+        builder.AddSingleton(targets);
+        if (targets.Count > 0) builder.AddDecorator<IBranchProcessor, ProfilingBranchProcessor>();
+        if (countInstructions) builder.AddDecorator<IBranchProcessor, CountingBranchProcessor>();
+    }
 }
 
 /// <summary>

@@ -488,6 +488,9 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 
     private async Task RunClearBundleCache(CancellationToken cancellationToken)
     {
+        // A clock-driven clear lands on a different block every run; compactions and writes still clear the cache.
+        if (Core.DeterministicBenchmark.Enabled) return;
+
         using PeriodicTimer timer = new(TimeSpan.FromSeconds(15));
         try
         {
@@ -538,6 +541,33 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         if (_logger.IsInfo) _logger.Info($"FlatDbManager FlushCache completed. Persisted to {persistedState}.");
     }
 
+    /// <summary>How long a clean shutdown may spend converting the in-memory tail.</summary>
+    /// <remarks>
+    /// Spent before the databases close, so a supervisor's stop grace period (Docker's default is 10 s) should leave
+    /// room for it. The budget is checked between blocks; an in-flight flush or conversion may run past it.
+    /// </remarks>
+    internal static readonly TimeSpan ShutdownTailBudget = TimeSpan.FromSeconds(10);
+
+    private void PersistInMemoryTail()
+    {
+        // Only after a clean drain: a worker that stopped early may have left the queue mid-persist.
+        if (_cancelTokenSource.IsCancellationRequested) return;
+
+        long start = Stopwatch.GetTimestamp();
+        try
+        {
+            using CancellationTokenSource budget = new(ShutdownTailBudget);
+            int converted = _persistenceManager.PersistInMemoryTailForShutdown(budget.Token);
+            if (converted > 0 && _logger.IsInfo)
+                _logger.Info($"Kept the state of the last {converted} blocks for the next start in {Stopwatch.GetElapsedTime(start).TotalMilliseconds:N0} ms.");
+        }
+        catch (Exception e)
+        {
+            // Best-effort conversion must not interrupt database disposal; the missing tail is replayed.
+            if (_logger.IsWarn) _logger.Warn($"Could not keep the in-memory state for the next start; it will be re-executed. {e}");
+        }
+    }
+
     public bool HasStateForBlock(in StateId stateId)
     {
         if (_snapshotRepository.HasState(stateId)) return true;
@@ -558,7 +588,8 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
     /// Drains the queues in feed order — the compactor writes into the persistence queue, so it has to
     /// drain first — before cancelling, so in-flight finality-driven persistence is not lost. It does not
     /// <see cref="FlushCache"/>: that would persist the unfinalized tail and break reorgs across the
-    /// restart. The in-memory tier is re-executed from the persisted-snapshot tier on the next start.
+    /// restart. Instead the in-memory tail is converted to the persisted-snapshot tier, within
+    /// <see cref="ShutdownTailBudget"/>, so the next start resumes from the head; whatever is left is re-executed.
     /// If a worker stops before draining, sibling waits are cancelled instead; a failed job does not stop a worker.
     /// </remarks>
     public async ValueTask DisposeAsync()
@@ -574,6 +605,8 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 
             _persistenceJobs.Writer.TryComplete();
             await _persistenceTask;
+
+            PersistInMemoryTail();
         }
         finally
         {

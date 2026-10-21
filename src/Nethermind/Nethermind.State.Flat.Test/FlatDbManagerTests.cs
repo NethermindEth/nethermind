@@ -175,6 +175,21 @@ public class FlatDbManagerTests
     }
 
     [Test]
+    public async Task DisposeAsync_KeepsTheInMemoryTailAfterDrainingPersistence([Values] bool processExitAlreadyCancelled, [Values] bool conversionThrows)
+    {
+        (FlatDbManager manager, StateId snapshotTo) = CreateManagerWithQueuedSnapshot(processExitAlreadyCancelled);
+        if (conversionThrows) _persistenceManager.PersistInMemoryTailForShutdown(Arg.Any<CancellationToken>()).Returns(_ => throw new InvalidOperationException("disk full"));
+
+        await Assert.ThatAsync(async () => await manager.DisposeAsync(), Throws.Nothing, "the conversion is an optimisation and must not fail shutdown");
+
+        Received.InOrder(() =>
+        {
+            _ = _persistenceManager.AddToPersistence(snapshotTo);
+            _persistenceManager.PersistInMemoryTailForShutdown(Arg.Is<CancellationToken>(t => t.CanBeCanceled));
+        });
+    }
+
+    [Test]
     public async Task AddSnapshot_QueuedCompactionAndPersistence_AreDrainedOnDispose(
         [Values] bool processExitAlreadyCancelled)
     {
@@ -252,6 +267,14 @@ public class FlatDbManagerTests
         _persistenceManager.ClearReceivedCalls();
         using (ReadOnlySnapshotBundle bundle2 = manager.GatherReadOnlySnapshotBundle(stateId)) { }
         _persistenceManager.DidNotReceive().LeaseReader();
+
+        if (DeterministicBenchmark.Enabled)
+        {
+            // Deterministic runs disable the wall-clock cache-clear task so timing cannot affect results.
+            using (ReadOnlySnapshotBundle bundle3 = manager.GatherReadOnlySnapshotBundle(stateId)) { }
+            _persistenceManager.DidNotReceive().LeaseReader();
+            return;
+        }
 
         // Wait for periodic clear (15s + margin)
         await Task.Delay(TimeSpan.FromSeconds(17));
@@ -375,7 +398,18 @@ public class FlatDbManagerTests
         manager.AddSnapshot(snapshot, transientResource);
 
         // The final lease release returns the resource to the pool it was checked out from.
-        Assert.That(realResourcePool.GetCachedResource(ResourcePool.Usage.MainBlockProcessing), Is.SameAs(transientResource));
+        TransientResource returnedResource = realResourcePool.GetCachedResource(ResourcePool.Usage.MainBlockProcessing);
+        try
+        {
+            if (DeterministicBenchmark.Enabled)
+                Assert.That(returnedResource, Is.Not.SameAs(transientResource));
+            else
+                Assert.That(returnedResource, Is.SameAs(transientResource));
+        }
+        finally
+        {
+            returnedResource.ReleaseLease();
+        }
         _snapshotRepository.DidNotReceive().SetLastCommittedStateId(Arg.Any<StateId>());
     }
 

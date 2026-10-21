@@ -1142,7 +1142,7 @@ public class BlockchainProcessorTests
                     : BlockTreeSuggestOptions.ShouldProcess);
             Assert.That(processing.Wait(TimeSpan.FromSeconds(10)), Is.True, "the first block never started processing");
             Task removed = context.WaitUntilRemoved(first);
-            if (directEnqueue || !nonBlockingProcessing)
+            if (!DeterministicBenchmark.Enabled && (directEnqueue || !nonBlockingProcessing))
             {
                 Assert.That(enqueue.IsCompleted, Is.False, "synchronous processing completed while processing was gated");
             }

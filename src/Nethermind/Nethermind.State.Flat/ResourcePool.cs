@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Diagnostics.CodeAnalysis;
+using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Metric;
 using Nethermind.Db;
 using IResettable = Nethermind.Core.Resettables.IResettable;
@@ -156,7 +158,8 @@ public class ResourcePool : IResourcePool
         private readonly ConcurrentStackPool<SnapshotContent> _snapshotPool = new(snapshotContentPoolSize);
         private readonly ConcurrentStackPool<SortedSnapshotContent> _sortedPool = new(snapshotContentPoolSize);
         private readonly ConcurrentStackPool<TransientResource> _cachedResourcePool = new(cachedResourcePoolSize);
-        private TransientResource.Size _lastCachedResourceSize = new(1024, 1024);
+        private static readonly TransientResource.Size InitialCachedResourceSize = new(1024, 1024);
+        private TransientResource.Size _lastCachedResourceSize = InitialCachedResourceSize;
         private readonly PooledResourceMetrics _snapshotMetrics = new(usage, "SnapshotContent");
         private readonly PooledResourceMetrics _sortedMetrics = new(usage, "SortedSnapshotContent");
         private readonly PooledResourceMetrics _cachedResourceMetrics = new(usage, "CachedResource");
@@ -199,18 +202,28 @@ public class ResourcePool : IResourcePool
 
         public TransientResource GetCachedResource()
         {
-            if (_cachedResourcePool.TryGet(out TransientResource? cachedResource))
+            // A deterministic benchmark gives every block a new resource of the initial size: a pooled one keeps the
+            // capacity earlier blocks grew it to, which the trie node cache walks, and which one a block gets depends
+            // on when earlier holders released theirs.
+            if (!DeterministicBenchmark.Enabled && _cachedResourcePool.TryGet(out TransientResource? cachedResource))
             {
                 _cachedResourceMetrics.OnRented(_cachedResourcePool.PooledItemCount);
                 return cachedResource;
             }
 
             _cachedResourceMetrics.OnCreated(_cachedResourcePool.PooledItemCount);
-            return new TransientResource(_lastCachedResourceSize);
+            return new TransientResource(DeterministicBenchmark.Enabled ? InitialCachedResourceSize : _lastCachedResourceSize);
         }
 
         public void ReturnCachedResource(TransientResource transientResource)
         {
+            if (DeterministicBenchmark.Enabled)
+            {
+                _cachedResourceMetrics.OnReturned(_cachedResourcePool.PooledItemCount);
+                transientResource.Dispose();
+                return;
+            }
+
             if (!_cachedResourcePool.Return(transientResource))
             {
                 _lastCachedResourceSize = transientResource.GetSize();

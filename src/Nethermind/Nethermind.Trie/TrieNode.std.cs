@@ -240,6 +240,11 @@ namespace Nethermind.Trie
         /// <summary>How <see cref="GetChildWithChildPath"/> is inlined: left to the JIT.</summary>
         private const MethodImplOptions GetChildWithChildPathInlining = default;
 
+        /// <summary>How <see cref="ResolveChildFromRlp"/> is inlined: never.</summary>
+        /// <remarks>Out of line so the resolved-child check of <see cref="ResolveChildWithChildPath"/> stays small enough to
+        /// inline into every walk.</remarks>
+        private const MethodImplOptions ResolveChildFromRlpInlining = MethodImplOptions.NoInlining;
+
         /// <summary>How <see cref="SetChild"/> is inlined: left to the JIT.</summary>
         private const MethodImplOptions SetChildInlining = default;
 
@@ -258,6 +263,16 @@ namespace Nethermind.Trie
             rlp = default;
             return false;
         }
+
+        /// <summary>Resolves child <paramref name="i"/> from an RLP other than a full branch's: through <see cref="ResolveChildFromAnyRlp"/>.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private object? ResolveChildFromSparseRlp(ITrieNodeResolver tree, ref TreePath childPath, ref object? data, int i, CappedArray<byte> rlp) =>
+            ResolveChildFromAnyRlp(tree, ref childPath, ref data, i, rlp);
+
+        /// <summary>Creates the data of a leaf decoded from RLP, with the hex-prefix key <paramref name="compactKey"/>.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static LeafData CreateLeafData(ReadOnlySpan<byte> compactKey, int compactKeyEnd, CappedArray<byte> value) =>
+            new(HexPrefix.FromBytes(compactKey).key, value);
 
         /// <summary>Descends <paramref name="path"/> into child <paramref name="index"/> of the node being encoded.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

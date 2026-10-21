@@ -3,12 +3,17 @@
 
 using System;
 using System.Buffers;
+using System.Collections.Concurrent;
+using System.Collections.Frozen;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Text;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Core;
 using Nethermind.Core.Container;
@@ -18,6 +23,8 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
+using Nethermind.Evm.CodeAnalysis;
+using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
@@ -28,6 +35,7 @@ using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.State;
 using Newtonsoft.Json.Linq;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Modules;
@@ -1208,8 +1216,283 @@ public partial class DebugRpcModuleTests
     }
 
     [Test]
+    public async Task Debug_traceCall_rejects_precompile_move_collision_before_fee_validation([Values] bool streaming)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = streaming }).Build();
+        Block block = chain.BlockTree.Head!;
+        BlockHeader parent = chain.BlockTree.FindHeader(block.ParentHash!)!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(block.IsGenesis, Is.False);
+            Assert.That(parent, Is.Not.Null);
+            Assert.That(chain.Bridge.HasStateForBlock(block.Header), Is.True);
+            Assert.That(chain.Bridge.HasStateForBlock(parent), Is.True);
+        }
+
+        const string source = "0x0000000000000000000000000000000000000001";
+        const string destination = "0x0000000000000000000000000000000000000002";
+        object options = new
+        {
+            stateOverrides = new Dictionary<string, object>
+            {
+                [source] = new { movePrecompileToAddress = destination },
+                [destination] = new { }
+            }
+        };
+        Dictionary<string, object> mixedFees = new()
+        {
+            ["from"] = TestItem.AddressB.ToString(),
+            ["to"] = TestItem.AddressD.ToString(),
+            ["gas"] = "0x186a0",
+            ["gasPrice"] = "0x1",
+            ["maxFeePerGas"] = "0x2"
+        };
+        Dictionary<string, object> validFees = new(mixedFees);
+        validFees.Remove("maxFeePerGas");
+        string selector = block.Hash!.ToString();
+        string feeResponse = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceCall", mixedFees, selector);
+        AssertTraceCallInputError(feeResponse, "both gasPrice and (maxFeePerGas or maxPriorityFeePerGas) specified");
+
+        string collisionResponse = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceCall", validFees, selector, options);
+        string expectedCollision = $"account {destination} is already overridden";
+        AssertTraceCallInputError(collisionResponse, expectedCollision);
+
+        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceCall", mixedFees, selector, options);
+        AssertTraceCallInputError(response, expectedCollision);
+    }
+
+    private static void AssertTraceCallInputError(string response, string message)
+    {
+        JToken json = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidInput), response);
+            Assert.That((string?)json["error"]?["message"], Is.EqualTo(message), response);
+            Assert.That(json["result"], Is.Null, response);
+            Assert.That(json["error"]?["data"], Is.Null, response);
+            Assert.That((int?)json["id"], Is.EqualTo(67), response);
+        }
+    }
+
+    [Test]
+    public async Task Debug_traceCall_orders_override_validation(
+        [Values] bool streaming, [Values] bool reverse,
+        [Values("move-before-storage", "storage-before-move", "source-before-destination", "move-before-own-storage")] string scenario)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = streaming }).Build();
+        Address source = scenario == "source-before-destination" ? Address.Zero : new("0x0000000000000000000000000000000000000001");
+        Address destination = new("0x0000000000000000000000000000000000000002");
+        Dictionary<string, object> sourceOverride = new() { ["movePrecompileToAddress"] = destination.ToString() };
+        if (scenario == "move-before-own-storage")
+        {
+            sourceOverride["state"] = new { };
+            sourceOverride["stateDiff"] = new { };
+        }
+        Dictionary<string, object> overrides = new()
+        {
+            [source.ToString()] = sourceOverride,
+            [destination.ToString()] = new { }
+        };
+        if (scenario is "move-before-storage" or "storage-before-move")
+            overrides[(scenario == "move-before-storage" ? new Address("0x0000000000000000000000000000000000000003") : Address.Zero).ToString()] = new { state = new { }, stateDiff = new { } };
+        if (reverse)
+        {
+            KeyValuePair<string, object>[] entries = new KeyValuePair<string, object>[overrides.Count];
+            ((ICollection<KeyValuePair<string, object>>)overrides).CopyTo(entries, 0);
+            Array.Reverse(entries);
+            overrides.Clear();
+            foreach (KeyValuePair<string, object> entry in entries) overrides.Add(entry.Key, entry.Value);
+        }
+        string expected = scenario switch
+        {
+            "source-before-destination" => $"Account {source} is not a precompile",
+            "storage-before-move" => $"account {Address.Zero} has both 'state' and 'stateDiff'",
+            _ => $"account {destination} is already overridden"
+        };
+        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceCall",
+            new { to = TestItem.AddressC.ToString(), gasPrice = "0x1", maxFeePerGas = "0x2" }, "latest",
+            new { stateOverrides = overrides });
+        AssertTraceCallInputError(response, expected);
+    }
+
+    [Test]
+    public async Task Debug_traceCall_uses_the_trace_repository_for_custom_precompile_preflight(
+        [Values] bool streaming, [Values] bool indexed)
+    {
+        Address source = new("0x0000000000000000000000000000000000010001");
+        Address destination = new("0x0000000000000000000000000000000000020000");
+        TestSpecProvider specs = new(Berlin.Instance)
+        {
+            ForkOnBlockNumber = 100,
+            NextForkSpec = new ExtraPrecompileSpec(source)
+        };
+        IPrecompileProvider provider = Substitute.For<IPrecompileProvider>();
+        Dictionary<AddressAsKey, CodeInfo> precompiles = new(new EthereumPrecompileProvider().GetPrecompiles())
+        {
+            [source] = new CodeInfo(IdentityPrecompile.Instance)
+        };
+        provider.GetPrecompiles().Returns(precompiles.ToFrozenDictionary());
+        ConcurrentBag<PrecompileRepositoryProbe> repositories = [];
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = streaming }).Build(builder => builder
+                .AddSingleton<ISpecProvider>(specs)
+                .AddSingleton<IPrecompileProvider>(provider)
+                .AddDecorator<ICodeInfoRepository>((_, inner) =>
+                {
+                    PrecompileRepositoryProbe probe = new(inner, source);
+                    repositories.Add(probe);
+                    return probe;
+                })
+                .AddDecorator<IOverridableCodeInfoRepository>((_, inner) =>
+                {
+                    OverridablePrecompileRepositoryProbe probe = new(inner, source);
+                    repositories.Add(probe);
+                    return probe;
+                }));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(specs.GetSpec((ForkActivation)100).IsPrecompile(source), Is.True);
+            Assert.That(chain.SpecProvider.GetSpec((ForkActivation)100).IsPrecompile(source), Is.True,
+                "the test-chain spec wrapper must retain the custom precompile set");
+            Assert.That(chain.SpecProvider.GetSpec((ForkActivation)1).IsPrecompile(source), Is.False);
+        }
+        IDebugRpcModule module = chain.DebugRpcModule;
+        Hash256 originalRoot = chain.BlockTree.Head!.StateRoot!;
+        Dictionary<string, object> mixedFees = new()
+        {
+            ["from"] = TestItem.AddressB.ToString(),
+            ["to"] = destination.ToString(),
+            ["gas"] = "0x186a0",
+            ["gasPrice"] = "0x1",
+            ["maxFeePerGas"] = "0x2"
+        };
+        Dictionary<string, object> collision = new()
+        {
+            [source.ToString()] = new { movePrecompileToAddress = destination.ToString() },
+            [destination.ToString()] = new { }
+        };
+        string inactive = await RpcTest.TestSerializedRequest(module, "debug_traceCall", mixedFees, "latest",
+            new { stateOverrides = collision });
+        AssertTraceCallInputError(inactive, $"Account {source} is not a precompile");
+        object collisionOptions = new
+        {
+            txIndex = indexed ? "0x0" : null,
+            blockOverrides = new { number = "0x64" },
+            stateOverrides = collision
+        };
+        string rejected = await RpcTest.TestSerializedRequest(module, "debug_traceCall", mixedFees, "latest", collisionOptions);
+        AssertTraceCallInputError(rejected, $"account {destination} is already overridden");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(CountRepositoryReads(repositories).Precompile, Is.GreaterThan(0));
+            Assert.That(CountRepositoryReads(repositories).Code, Is.Zero, "preflight must not use the stateful lookup");
+            Assert.That(chain.BlockTree.Head.StateRoot, Is.EqualTo(originalRoot));
+        }
+
+        object validMove = new
+        {
+            txIndex = indexed ? "0x0" : null,
+            blockOverrides = new { number = "0x64" },
+            stateOverrides = new Dictionary<string, object> { [source.ToString()] = new { movePrecompileToAddress = destination.ToString() } }
+        };
+        string feeOnly = await RpcTest.TestSerializedRequest(module, "debug_traceCall", mixedFees, "latest", validMove);
+        AssertTraceCallInputError(feeOnly, "both gasPrice and (maxFeePerGas or maxPriorityFeePerGas) specified");
+        Assert.That(CountRepositoryReads(repositories).Code, Is.Zero);
+
+        string success = await RpcTest.TestSerializedRequest(module, "debug_traceCall",
+            new { from = TestItem.AddressB.ToString(), to = destination.ToString(), gas = "0x186a0", data = "0x010203" }, "latest", validMove);
+        JToken json = JToken.Parse(success);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(json["error"], Is.Null, success);
+            Assert.That((bool?)json["result"]?["failed"], Is.False, success);
+            Assert.That((string?)json["result"]?["returnValue"], Is.EqualTo("0x010203"), success);
+            int moves = 0;
+            int sourceReads = 0;
+            foreach (PrecompileRepositoryProbe probe in repositories)
+            {
+                if (probe is OverridablePrecompileRepositoryProbe overridable)
+                {
+                    moves += overridable.Moves;
+                    Assert.That(probe.SourceCodeReads, Is.EqualTo(overridable.Moves));
+                    if (overridable.Moves != 0)
+                        Assert.That(probe.PrecompileReads, Is.GreaterThan(0),
+                            "preflight must use the same decorator as override application");
+                }
+                else
+                    sourceReads += probe.SourceCodeReads;
+            }
+            Assert.That(sourceReads, Is.EqualTo(2),
+                "application must retain its source-check and move lookups");
+            Assert.That(moves, Is.GreaterThan(0));
+            Assert.That(chain.BlockTree.Head.StateRoot, Is.EqualTo(originalRoot));
+        }
+        int readsAfterMove = CountRepositoryReads(repositories).Code;
+        string afterReset = await RpcTest.TestSerializedRequest(module, "debug_traceCall", mixedFees, "latest", collisionOptions);
+        AssertTraceCallInputError(afterReset, $"account {destination} is already overridden");
+        Assert.That(CountRepositoryReads(repositories).Code, Is.EqualTo(readsAfterMove));
+    }
+
+    private static (int Precompile, int Code) CountRepositoryReads(IEnumerable<PrecompileRepositoryProbe> repositories)
+    {
+        int precompile = 0;
+        int code = 0;
+        foreach (PrecompileRepositoryProbe probe in repositories)
+        {
+            precompile += probe.PrecompileReads;
+            code += probe.SourceCodeReads;
+        }
+        return (precompile, code);
+    }
+
+    private sealed class ExtraPrecompileSpec(Address source) : ReleaseSpecDecorator(Berlin.Instance), IReleaseSpec
+    {
+        FrozenSet<AddressAsKey> IReleaseSpec.Precompiles { get; } =
+            new HashSet<AddressAsKey>(((IReleaseSpec)Berlin.Instance).Precompiles) { source }.ToFrozenSet();
+        bool IReleaseSpec.IsPrecompile(Address address) => address == source || ((IReleaseSpec)Berlin.Instance).IsPrecompile(address);
+    }
+
+    private class PrecompileRepositoryProbe(ICodeInfoRepository inner, Address source) : ICodeInfoRepository
+    {
+        public int PrecompileReads;
+        public int SourceCodeReads;
+        public bool IsCodeOverridable => inner.IsCodeOverridable;
+        public IPrecompile? GetPrecompile(Address address, IReleaseSpec spec)
+        {
+            if (address == source) Interlocked.Increment(ref PrecompileReads);
+            return inner.GetPrecompile(address, spec);
+        }
+        public CodeInfo GetCachedCodeInfo(Address address, bool followDelegation, IReleaseSpec spec, out Address? delegation)
+        {
+            if (address == source) Interlocked.Increment(ref SourceCodeReads);
+            return inner.GetCachedCodeInfo(address, followDelegation, spec, out delegation);
+        }
+        public CodeInfo GetDelegatedCodeInfo(Address address, IReleaseSpec spec) => inner.GetDelegatedCodeInfo(address, spec);
+        public void InsertCode(ReadOnlyMemory<byte> code, Address address, IReleaseSpec spec) => inner.InsertCode(code, address, spec);
+        public void InsertTransientCode(ReadOnlyMemory<byte> code, Address address, IReleaseSpec spec) => inner.InsertTransientCode(code, address, spec);
+        public void SetDelegation(Address codeSource, Address authority, IReleaseSpec spec) => inner.SetDelegation(codeSource, authority, spec);
+        public bool TryGetDelegation(Address address, IReleaseSpec spec, [NotNullWhen(true)] out Address? delegatedAddress) => inner.TryGetDelegation(address, spec, out delegatedAddress);
+    }
+
+    private sealed class OverridablePrecompileRepositoryProbe(IOverridableCodeInfoRepository inner, Address source)
+        : PrecompileRepositoryProbe(inner, source), IOverridableCodeInfoRepository
+    {
+        public int Moves;
+        public void SetCodeOverride(IReleaseSpec spec, Address address, CodeInfo code) => inner.SetCodeOverride(spec, address, code);
+        public void MovePrecompile(IReleaseSpec spec, Address source, Address destination)
+        {
+            Interlocked.Increment(ref Moves);
+            inner.MovePrecompile(spec, source, destination);
+        }
+        public void ResetOverrides() => inner.ResetOverrides();
+        public void ResetPrecompileOverrides(IReleaseSpec spec) => inner.ResetPrecompileOverrides(spec);
+    }
+
+    [Test]
     public async Task Debug_traceCall_selects_block_and_state_before_conflicting_storage(
-        [Values("pending", "missing", "unavailable", "unavailable-parent", "unavailable-with-withdrawals")] string selection, [Values] bool streaming)
+        [Values("pending", "missing", "unavailable", "unavailable-parent", "unavailable-with-withdrawals")] string selection, [Values] bool streaming, [Values] bool movePrecompile)
     {
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
             .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = streaming }).Build();
@@ -1232,7 +1515,15 @@ public partial class DebugRpcModuleTests
             {
                 txIndex = selection == "unavailable-parent" ? "0x0" : null,
                 blockOverrides = selection == "unavailable-with-withdrawals" ? new { withdrawals = Array.Empty<object>() } : null,
-                stateOverrides = new Dictionary<string, object> { [TestItem.AddressC.ToString()] = new { state = new { }, stateDiff = new { } } }
+                stateOverrides = new Dictionary<string, object>
+                {
+                    [TestItem.AddressC.ToString()] = new
+                    {
+                        state = new { },
+                        stateDiff = new { },
+                        movePrecompileToAddress = movePrecompile ? TestItem.AddressB.ToString() : null
+                    }
+                }
             });
         (int code, string message) = selection switch
         {
