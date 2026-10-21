@@ -213,7 +213,7 @@ jobs:
           [ "$(jq -r .failures "$RUNNER_TEMP/verify.json")" = 0 ] && [ "$(jq -r .runs "$RUNNER_TEMP/verify.json")" = "$FOLLOW_UP_RUNS" ]
 
       - name: Authenticate App
-        if: failure() && steps.next.outputs.step == 'fix'
+        if: (failure() || cancelled()) && steps.next.outputs.step == 'fix'
         id: fail-app
         uses: actions/create-github-app-token@v3
         with:
@@ -221,7 +221,7 @@ jobs:
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
 
       - name: Hand over a failed review-fix round
-        if: failure() && steps.next.outputs.step == 'fix'
+        if: (failure() || cancelled()) && steps.next.outputs.step == 'fix'
         env:
           GH_TOKEN: ${{ steps.fail-app.outputs.token }}
           PR: ${{ steps.pr.outputs.number }}
@@ -279,3 +279,21 @@ jobs:
           git push "https://x-access-token:$GH_TOKEN@github.com/$GITHUB_REPOSITORY.git" "HEAD:refs/heads/$BRANCH"
           gh api -X POST "repos/$GITHUB_REPOSITORY/issues/$PR/labels" -f 'labels[]=wip' --silent
           gh api -X DELETE "repos/$GITHUB_REPOSITORY/issues/$PR/labels/wip" --silent
+
+      - name: Authenticate App
+        if: failure() || cancelled()
+        id: fail-app
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
+      - name: Hand over a failed push
+        if: failure() || cancelled()
+        env:
+          GH_TOKEN: ${{ steps.fail-app.outputs.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          gh pr comment "$PR" --repo "$GITHUB_REPOSITORY" \
+            --body "Claude addressed the review findings, but the change could not be pushed: $RUN_URL. Handing this over to the code owners."
+          gh pr ready "$PR" --repo "$GITHUB_REPOSITORY"
