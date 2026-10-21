@@ -3,6 +3,7 @@
 
 using System.Net;
 using System.Reflection;
+using Autofac;
 using Multiformats.Address;
 using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.P2P.ReqResp;
@@ -14,7 +15,6 @@ using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
-using Nethermind.Db;
 using Nethermind.Libp2p.Core;
 using Nethermind.Logging;
 using NSubstitute;
@@ -23,6 +23,15 @@ namespace Nethermind.BeaconChain.Test.P2P;
 
 public class PeerBandTests
 {
+    private readonly List<Node> _unstartedNodes = [];
+
+    [TearDown]
+    public async Task DisposeUnstartedNodes()
+    {
+        foreach (Node node in _unstartedNodes) await node.DisposeAsync();
+        _unstartedNodes.Clear();
+    }
+
     private static readonly BeaconChainSpec Spec = BeaconChainSpec.Mainnet;
     private const ulong AnchorSlot = 13_410_304;
 
@@ -49,7 +58,7 @@ public class PeerBandTests
     [TestCase("/ip4/1.2.3.4/tcp/9000/p2p/16Uiu2HAkyxG4bkiFUNXPANdX7n13Lz8A2WsDyNkAyJ1Lfs6AXD2e, /ip6/::1/tcp/9000/p2p/16Uiu2HAkyxG4bkiFUNXPANdX7n13Lz8A2WsDyNkAyJ1Lfs6AXD2e", false)]
     public void Static_peer_configuration_accepts_dialable_addresses_and_refuses_undialable_addresses(string address, bool configurationError)
     {
-        Node node = CreateNode();
+        using Node node = CreateNode();
         node.Config.StaticPeers = address;
 
         Assert.That(() => new PeerManager(node.P2P, node.Config, node.StatusHolder, LimboLogs.Instance),
@@ -63,7 +72,7 @@ public class PeerBandTests
         Node server = CreateNode();
         Node client = CreateNode();
         SetMatchingStatus(server, client);
-        await using PeerHostScope nodes = new(client.P2P, server.P2P);
+        await using PeerHostScope nodes = new(client, server);
         await nodes.StartAsync(token, server.P2P, client.P2P);
 
         const string hostname = "beacon.invalid";
@@ -103,7 +112,7 @@ public class PeerBandTests
     public async Task A_dial_address_that_does_not_decode_is_refused_without_throwing(CancellationToken token)
     {
         Node node = CreateNode();
-        await using PeerHostScope nodes = new(node.P2P);
+        await using PeerHostScope nodes = new(node);
         await nodes.StartAsync(token, node.P2P);
         PeerManager peerManager = new(node.P2P, node.Config, node.StatusHolder, LimboLogs.Instance);
 
@@ -128,7 +137,7 @@ public class PeerBandTests
         Node client = CreateNode();
         Node server = CreateNode();
         SetMatchingStatus(client, server);
-        await using PeerHostScope nodes = new(client.P2P, server.P2P);
+        await using PeerHostScope nodes = new(client, server);
         await nodes.StartAsync(token, client.P2P, server.P2P);
         PeerManager manager = new(client.P2P, client.Config, client.StatusHolder, LimboLogs.Instance);
         ulong connectedBefore = Metrics.BeaconChainPeersConnected;
@@ -239,7 +248,7 @@ public class PeerBandTests
         SetMatchingStatus(local, remote);
         if (finalized) remote.StatusHolder.CurrentStatus.FinalizedEpoch = ulong.MaxValue;
         else remote.StatusHolder.CurrentStatus.HeadSlot = ulong.MaxValue;
-        await using PeerHostScope hosts = new(local.P2P, remote.P2P);
+        await using PeerHostScope hosts = new(local, remote);
         await hosts.StartAsync(token, remote.P2P, local.P2P);
         ManualTimestamper time = new(DateTime.UnixEpoch.AddSeconds(Spec.GenesisTime + AnchorSlot * Spec.SecondsPerSlot));
         PeerManager manager = new(local.P2P, local.Config, local.StatusHolder, LimboLogs.Instance, timestamper: time, spec: Spec);
@@ -258,7 +267,7 @@ public class PeerBandTests
         SetMatchingStatus(local, inbound, extraInbound, outbound);
         local.Config.TargetPeerCount = 2;
         local.Config.MaxPeerCount = 2;
-        await using PeerHostScope hosts = new(local.P2P, inbound.P2P, extraInbound.P2P, outbound.P2P);
+        await using PeerHostScope hosts = new(local, inbound, extraInbound, outbound);
         await hosts.StartAsync(token, inbound.P2P, extraInbound.P2P, outbound.P2P, local.P2P);
         PeerManager manager = new(local.P2P, local.Config, local.StatusHolder, LimboLogs.Instance);
         await inbound.P2P.DialPeerAsync(Multiaddress.Decode(LoopbackAddress(local.P2P)), token);
@@ -280,7 +289,7 @@ public class PeerBandTests
         // Target 1 and max 3 reserve one outbound slot, so two inbound peers fill the inbound share without passing the ceiling.
         local.Config.TargetPeerCount = 1;
         local.Config.MaxPeerCount = 3;
-        await using PeerHostScope hosts = new(local.P2P, first.P2P, second.P2P);
+        await using PeerHostScope hosts = new(local, first, second);
         await hosts.StartAsync(token, first.P2P, second.P2P, local.P2P);
         PeerManager manager = new(local.P2P, local.Config, local.StatusHolder, LimboLogs.Instance);
         await first.P2P.DialPeerAsync(Multiaddress.Decode(LoopbackAddress(local.P2P)), token);
@@ -308,7 +317,7 @@ public class PeerBandTests
         local.Config.MaxPeerCount = 1;
         if (path == CeilingAdmission.StaticReconnect) local.Config.TargetPeerCount = 1;
         if (path == CeilingAdmission.InboundWithFaultHistory) local.Config.FaultDisconnectsBeforeBan = 2;
-        await using PeerHostScope nodes = new([local.P2P, .. remotes.Select(static node => node.P2P)]);
+        await using PeerHostScope nodes = new([local, .. remotes]);
         await nodes.StartAsync(token, [.. remotes.Select(static node => node.P2P), local.P2P]);
         PeerManager manager = new(local.P2P, local.Config, local.StatusHolder, LimboLogs.Instance);
 
@@ -374,7 +383,7 @@ public class PeerBandTests
         Node[] remotes = [.. Enumerable.Range(0, 4).Select(_ => CreateNode())];
         Node local = CreateNode();
         SetMatchingStatus([.. remotes, local]);
-        await using PeerHostScope nodes = new([local.P2P, .. remotes.Select(static node => node.P2P)]);
+        await using PeerHostScope nodes = new([local, .. remotes]);
         await nodes.StartAsync(token, [.. remotes.Select(static node => node.P2P), local.P2P]);
         if (staticPeers) local.Config.StaticPeers = string.Join(',', remotes.Select(static node => LoopbackAddress(node.P2P)));
         PeerManager manager = new(local.P2P, local.Config, local.StatusHolder, LimboLogs.Instance);
@@ -429,7 +438,7 @@ public class PeerBandTests
             release.Wait(TimeSpan.FromSeconds(30));
             return answered;
         }));
-        await using PeerHostScope nodes = new(local.P2P, remote.P2P);
+        await using PeerHostScope nodes = new(local, remote);
         try
         {
             await nodes.StartAsync(token, remote.P2P, local.P2P);
@@ -480,7 +489,7 @@ public class PeerBandTests
     [TestCase(StatusPass.StaleBeforeReservation, false)]
     public void A_status_that_passed_our_checks_opens_the_data_protocols_only_while_the_admission_is_pending(StatusPass pass, bool opens)
     {
-        Node node = CreateNode();
+        using Node node = CreateNode();
         SetMatchingStatus(node);
         ManualTimestamper time = new();
         PeerManager manager = new(node.P2P, node.Config, node.StatusHolder, LimboLogs.Instance, timestamper: time);
@@ -525,7 +534,7 @@ public class PeerBandTests
         SetMatchingStatus(worse, better, local);
         worse.StatusHolder.CurrentStatus.HeadSlot = AnchorSlot;
         better.StatusHolder.CurrentStatus.HeadSlot = AnchorSlot + 100;
-        await using PeerHostScope nodes = new(local.P2P, worse.P2P, better.P2P);
+        await using PeerHostScope nodes = new(local, worse, better);
         await nodes.StartAsync(token, worse.P2P, better.P2P, local.P2P);
         if (inboundStatic) local.Config.StaticPeers = LoopbackAddress(worse.P2P);
         PeerManager peerManager = inboundStatic ? watch.Watch(local, worse, better)
@@ -573,7 +582,7 @@ public class PeerBandTests
             staticAddress += $"/p2p/{staticPeer.Peer.Identity.PeerId}";
         }
 
-        await using PeerHostScope hosts = new(local.P2P, first.P2P, second.P2P);
+        await using PeerHostScope hosts = new(local, first, second);
         await hosts.StartAsync(token, first.P2P, second.P2P, local.P2P);
         PeerManager manager = new(local.P2P, local.Config, local.StatusHolder, LimboLogs.Instance);
         Assert.That(await manager.TryAddPeerAsync(LoopbackAddress(first.P2P), token), Is.True);
@@ -604,7 +613,7 @@ public class PeerBandTests
         Node server = CreateNode();
         Node client = CreateNode();
         SetMatchingStatus(server, client);
-        await using PeerHostScope nodes = new(client.P2P, server.P2P);
+        await using PeerHostScope nodes = new(client, server);
         await nodes.StartAsync(token, server.P2P, client.P2P);
 
         string address = LoopbackAddress(server.P2P);
@@ -642,7 +651,7 @@ public class PeerBandTests
         string agent = outbound ? "test-remote/outbound-4.5.6" : "test-remote/inbound-1.2.3";
         remote.P2P.IdentifySettingsForTest.AgentVersion = agent;
         const string discoveredEnr = "enr:-discovered-test-record";
-        await using PeerHostScope nodes = new(local.P2P, remote.P2P);
+        await using PeerHostScope nodes = new(local, remote);
         await nodes.StartAsync(token, remote.P2P, local.P2P);
         string address = LoopbackAddress(remote.P2P);
         string expectedPeerId = outbound ? PeerManager.ExtractPeerIdForTest(address) : remote.P2P.LocalPeerId!.ToString();
@@ -708,7 +717,7 @@ public class PeerBandTests
         Node local = CreateNode();
         SetMatchingStatus(banned, local);
 
-        await using PeerHostScope nodes = new(local.P2P, banned.P2P);
+        await using PeerHostScope nodes = new(local, banned);
         await nodes.StartAsync(token, banned.P2P, local.P2P);
         PeerManager peerManager = new(local.P2P, local.Config, local.StatusHolder, LimboLogs.Instance);
 
@@ -735,7 +744,7 @@ public class PeerBandTests
         Node local = CreateNode();
         SetMatchingStatus(local);
 
-        await using PeerHostScope nodes = new(local.P2P, remote.P2P);
+        await using PeerHostScope nodes = new(local, remote);
         await nodes.StartAsync(token, remote.P2P, local.P2P);
         ManualTimestamper? clock = outbound ? new() : null;
         PeerManager peerManager = new(local.P2P, local.Config, local.StatusHolder, LimboLogs.Instance, timestamper: clock);
@@ -780,7 +789,7 @@ public class PeerBandTests
         Node client = CreateNode();
         SetMatchingStatus(server, client);
 
-        await using PeerHostScope nodes = new(client.P2P, server.P2P);
+        await using PeerHostScope nodes = new(client, server);
         PeerManager peerManager = new(client.P2P, client.Config, client.StatusHolder, LimboLogs.Instance);
         int originalTarget = client.Config.TargetPeerCount;
         client.Config.TargetPeerCount = 5;
@@ -807,7 +816,7 @@ public class PeerBandTests
     [Test]
     public void Maintenance_runs_more_often_while_under_the_low_watermark()
     {
-        Node node = CreateNode();
+        using Node node = CreateNode();
         node.Config.MinPeerCount = 20;
         PeerManager peerManager = new(node.P2P, node.Config, node.StatusHolder, LimboLogs.Instance);
 
@@ -823,7 +832,7 @@ public class PeerBandTests
     [TestCase("", TestName = "TryGetPeer_refuses_an_empty_id_even_when_an_unresolved_dialing_address_would_otherwise_match_it")]
     public void TryGetPeer_refuses_unmatched_ids(string peerId)
     {
-        Node node = CreateNode();
+        using Node node = CreateNode();
         PeerManager peerManager = new(node.P2P, node.Config, node.StatusHolder, LimboLogs.Instance);
         // A real dial clears this unresolved reservation before the test could observe it.
         if (peerId.Length == 0) peerManager.ReserveDialingForTest("/ip4/1.2.3.4/tcp/9000/p2p/");
@@ -890,7 +899,7 @@ public class PeerBandTests
     [TestCase(int.MaxValue, true)]
     public void An_out_of_range_ban_duration_does_not_throw(int banMinutes, bool expectedBanned)
     {
-        Node node = CreateNode();
+        using Node node = CreateNode();
         node.Config.FaultDisconnectsBeforeBan = 1;
         node.Config.PeerBanMinutes = banMinutes;
         PeerManager manager = new(node.P2P, node.Config, node.StatusHolder, LimboLogs.Instance);
@@ -902,9 +911,10 @@ public class PeerBandTests
     private static long FailureCount(string reason) =>
         Metrics.BeaconChainPeerFailuresByReason.TryGetValue(new StringLabel(reason), out long count) ? count : 0;
 
-    private static PeerManager NewManagerWithoutSessions(int faultDisconnectsBeforeBan, ITimestamper? timestamper = null)
+    private PeerManager NewManagerWithoutSessions(int faultDisconnectsBeforeBan, ITimestamper? timestamper = null)
     {
         Node node = CreateNode();
+        _unstartedNodes.Add(node);
         node.Config.FaultDisconnectsBeforeBan = faultDisconnectsBeforeBan;
         return new PeerManager(node.P2P, node.Config, node.StatusHolder, LimboLogs.Instance, timestamper: timestamper);
     }
@@ -937,20 +947,26 @@ public class PeerBandTests
         return address;
     }
 
-    internal record Node(BeaconP2P P2P, BeaconChainStatusHolder StatusHolder, BeaconChainConfig Config, BeaconChainStore Store, LocalMetadataSource Metadata);
+    internal sealed record Node(IContainer Container, BeaconP2P P2P, BeaconChainStatusHolder StatusHolder, BeaconChainConfig Config, BeaconChainStore Store, LocalMetadataSource Metadata) : IDisposable, IAsyncDisposable
+    {
+        public void Dispose() => Container.Dispose();
+        public ValueTask DisposeAsync() => Container.DisposeAsync();
+    }
 
     internal static Node CreateNode(IBeaconChainStatusSource? statusSource = null, ILogManager? logManager = null, TimeSpan? requestTimeout = null,
         Lazy<IBeaconSyncPeerPool>? peerPool = null)
     {
         BeaconChainConfig config = new() { P2PPort = 0 };
-        BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>());
-        BeaconChainStatusHolder statusHolder = new(Spec, Timestamper.Default);
-        LocalMetadataSource metadataSource = new();
         ILogManager hostLogs = logManager ?? LoopbackTrace.NewNode() ?? LimboLogs.Instance;
-        BeaconP2P p2p = requestTimeout is { } timeout
-            ? new BeaconP2P(config, Spec, store, statusSource ?? statusHolder, metadataSource, new DataColumnSidecarPool(), new ExecutionPayloadEnvelopePool(), hostLogs, peerPool: peerPool) { RequestTimeout = timeout }
-            : new BeaconP2P(config, Spec, store, statusSource ?? statusHolder, metadataSource, new DataColumnSidecarPool(), new ExecutionPayloadEnvelopePool(), hostLogs, peerPool: peerPool);
-        return new Node(p2p, statusHolder, config, store, metadataSource);
+        ContainerBuilder builder = BeaconChainTestContainer.Builder(logManager: hostLogs, config: config);
+        if (statusSource is not null) builder.AddSingleton(statusSource);
+        builder.RegisterType<BeaconP2P>().SingleInstance().WithParameter("peerPool", peerPool!);
+        if (requestTimeout is { } timeout)
+            builder.RegisterBuildCallback(container => typeof(BeaconP2P).GetProperty(nameof(BeaconP2P.RequestTimeout), BindingFlags.Instance | BindingFlags.NonPublic)!
+                .SetValue(container.Resolve<BeaconP2P>(), timeout));
+        IContainer container = builder.Build();
+        return new Node(container, container.Resolve<BeaconP2P>(), container.Resolve<BeaconChainStatusHolder>(), config,
+            container.Resolve<BeaconChainStore>(), container.Resolve<LocalMetadataSource>());
     }
 
     private sealed class AdmissionWatch

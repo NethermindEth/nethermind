@@ -21,7 +21,6 @@ jobs:
     if: github.event.pull_request.head.repo.fork == false
     runs-on: ubuntu-arm64-8-core
     timeout-minutes: 180
-    continue-on-error: ${{ matrix.consensus == 'Embedded' }}
     strategy:
       fail-fast: false
       matrix:

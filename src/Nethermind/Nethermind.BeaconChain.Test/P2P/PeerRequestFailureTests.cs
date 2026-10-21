@@ -375,11 +375,11 @@ public class PeerRequestFailureTests
         public async ValueTask DisposeAsync()
         {
             _hang?.Release();
-            await _client.P2P.DisposeAsync();
-            await _server.P2P.DisposeAsync();
+            await _client.DisposeAsync();
+            await _server.DisposeAsync();
             if (_usable is not null)
             {
-                await _usable.P2P.DisposeAsync();
+                await _usable.DisposeAsync();
             }
         }
     }

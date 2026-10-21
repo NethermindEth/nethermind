@@ -41,8 +41,8 @@ public partial class BeaconSyncOrchestratorTests
     public async Task Metrics_head_delay_timer_advances_without_worker_progress([Values] bool blockedEngine, CancellationToken token)
     {
         await using BeaconDiscovery discovery = CreateDiscovery();
-        PeerBandTests.Node node = PeerBandTests.CreateNode();
-        await using BeaconP2P p2p = node.P2P;
+        await using PeerBandTests.Node node = PeerBandTests.CreateNode();
+        BeaconP2P p2p = node.P2P;
         Harness harness = CreateHarness(discovery: discovery, p2p: p2p, peerManager: new PeerManager(p2p, node.Config, node.StatusHolder, LimboLogs.Instance));
         Assert.That(Metrics.BeaconChainHeadSlotDelay, Is.EqualTo((long)(WallSlot - AnchorSlot)));
         using CancellationTokenSource stop = CancellationTokenSource.CreateLinkedTokenSource(token);
@@ -589,8 +589,8 @@ public partial class BeaconSyncOrchestratorTests
     public async Task A_run_cancelled_before_or_during_the_engine_kick_builds_no_cache([Values] bool duringKick, CancellationToken testToken)
     {
         await using BeaconDiscovery discovery = CreateDiscovery();
-        PeerBandTests.Node node = PeerBandTests.CreateNode();
-        await using BeaconP2P p2p = node.P2P;
+        await using PeerBandTests.Node node = PeerBandTests.CreateNode();
+        BeaconP2P p2p = node.P2P;
         Harness harness = CreateHarness(discovery: discovery, p2p: p2p, peerManager: new PeerManager(p2p, node.Config, node.StatusHolder, LimboLogs.Instance));
         (SignedBeaconBlock anchorBlock, Hash256 anchorRoot, SignedBeaconBlock[] _) = TestChain.BuildLinkedChain(AnchorSlot);
         using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(testToken);
@@ -1249,8 +1249,8 @@ public partial class BeaconSyncOrchestratorTests
         BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>());
         (SignedBeaconBlock anchor, Hash256 anchorRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(NearHeadAnchorSlot, NearHeadAnchorSlot + 1, NearHeadAnchorSlot + 2);
         TestChain.Persist(store, anchor, anchorRoot, chain);
-        PeerBandTests.Node node = PeerBandTests.CreateNode();
-        await using BeaconP2P p2p = node.P2P;
+        await using PeerBandTests.Node node = PeerBandTests.CreateNode();
+        BeaconP2P p2p = node.P2P;
         Harness harness = CreateHarness(anchorSlot: NearHeadAnchorSlot, store: store, p2p: p2p);
         harness.Importer.Known.Add(anchorRoot);
         harness.Importer.Head = CreateHead(TestItem.KeccakA, NearHeadAnchorSlot + 2, finalizedEpoch: Spec.GetEpoch(NearHeadAnchorSlot));
@@ -1274,8 +1274,8 @@ public partial class BeaconSyncOrchestratorTests
         (SignedBeaconBlock anchorBlock, Hash256 anchorRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(AnchorSlot, AnchorSlot + 1);
         TestChain.Persist(store, anchorBlock, anchorRoot, chain);
         await using BeaconDiscovery discovery = new(new BeaconChainConfig { Discv5Port = 0 }, Spec, new BeaconChainStore(new MemColumnsDb<BeaconChainDbColumns>()), new RangeSyncTests.FixedIPResolver(IPAddress.Loopback), Timestamper.Default, LimboLogs.Instance);
-        PeerBandTests.Node node = PeerBandTests.CreateNode();
-        await using BeaconP2P p2p = node.P2P;
+        await using PeerBandTests.Node node = PeerBandTests.CreateNode();
+        BeaconP2P p2p = node.P2P;
         Harness harness = CreateHarness(store: store, discovery: discovery, p2p: p2p, peerManager: new PeerManager(p2p, node.Config, node.StatusHolder, LimboLogs.Instance));
         harness.Importer.Known.Add(anchorRoot);
         using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(testToken);

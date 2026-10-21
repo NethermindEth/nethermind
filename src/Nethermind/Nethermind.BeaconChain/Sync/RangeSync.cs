@@ -392,13 +392,19 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
                 responses[i] = RequestColumnsByRangeAsync(requests[i].Peer, from, roundEnd - from + 1, requests[i].Columns, token);
             }
 
-            await Task.WhenAll(responses);
+            ColumnsReply[] replies = await Task.WhenAll(responses);
             for (int i = 0; i < requests.Count; i++)
             {
-                ColumnsReply reply = responses[i].Result;
+                ColumnsReply reply = replies[i];
                 AddVerifiedSidecars(requests[i].Peer, reply.Sidecars, blobBlocksByRoot);
                 // A peer that failed, or left a column it was asked for unserved, is not asked again for this batch.
-                if (reply.Failed || requests[i].Columns.Any(column => !HoldsColumnForAll(column, blobBlocksByRoot)))
+                bool incomplete = reply.Failed;
+                foreach (ulong column in requests[i].Columns)
+                {
+                    if (incomplete) break;
+                    incomplete = !HoldsColumnForAll(column, blobBlocksByRoot);
+                }
+                if (incomplete)
                 {
                     spent.Add(requests[i].Peer.Id);
                 }
@@ -755,11 +761,11 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
             responses[i] = RequestColumnsByRootAsync(asked[i], blockRoot, CustodiedColumns(missing, peerCustody), static (peer, ids, t) => peer.RequestDataColumnSidecarsByRootAsync(ids, t), token);
         }
 
-        await Task.WhenAll(responses);
+        IReadOnlyList<DataColumnSidecar>?[] replies = await Task.WhenAll(responses);
         Dictionary<Hash256, SignedBeaconBlock> blocksByRoot = new() { [blockRoot] = block };
         for (int i = 0; i < asked.Count; i++)
         {
-            if (responses[i].Result is { } sidecars)
+            if (replies[i] is { } sidecars)
             {
                 AddVerifiedSidecars(asked[i], sidecars, blocksByRoot);
             }
@@ -848,11 +854,11 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
             responses[i] = RequestColumnsByRootAsync(asked[i], blockRoot, requested[i], static (peer, ids, t) => peer.RequestGloasDataColumnSidecarsByRootAsync(ids, t), token);
         }
 
-        await Task.WhenAll(responses);
+        IReadOnlyList<DataColumnSidecarGloas>?[] replies = await Task.WhenAll(responses);
         for (int i = 0; i < asked.Count; i++)
         {
             HashSet<(Hash256 Root, ulong Index)> rejected = [];
-            foreach (DataColumnSidecarGloas sidecar in responses[i].Result ?? [])
+            foreach (DataColumnSidecarGloas sidecar in replies[i] ?? [])
             {
                 // A repeat of a (root, index) this reply already failed is neither verified nor penalized again.
                 if (sidecar.BeaconBlockRoot is { } sidecarRoot && rejected.Contains((sidecarRoot, sidecar.Index)))
@@ -939,16 +945,29 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
                 responses[i] = RequestGloasColumnsByRangeAsync(requests[i].Peer, from, roundEnd - from + 1, requests[i].Columns, token);
             }
 
-            await Task.WhenAll(responses);
+            IReadOnlyList<DataColumnSidecarGloas>?[] replies = await Task.WhenAll(responses);
             for (int i = 0; i < requests.Count; i++)
             {
-                if (responses[i].Result is { } sidecars)
+                if (replies[i] is { } sidecars)
                 {
                     AddVerifiedGloasSidecars(requests[i].Peer, sidecars, bidsByRoot, requests[i].Columns);
                 }
 
                 // A peer that failed, or left a column it was asked for unserved, is not asked again for this batch.
-                if (responses[i].Result is null || requests[i].Columns.Any(column => !bidsByRoot.Keys.All(root => sidecarPool.TryGetGloas(root, column, out _))))
+                bool incomplete = replies[i] is null;
+                foreach (ulong column in requests[i].Columns)
+                {
+                    if (incomplete) break;
+                    foreach (Hash256 root in bidsByRoot.Keys)
+                    {
+                        if (!sidecarPool.TryGetGloas(root, column, out _))
+                        {
+                            incomplete = true;
+                            break;
+                        }
+                    }
+                }
+                if (incomplete)
                 {
                     spent.Add(requests[i].Peer.Id);
                 }
@@ -1077,7 +1096,8 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
         /// <summary>Takes up to <paramref name="max"/> of <paramref name="custodians"/>, in their order within each group, and records them as asked.</summary>
         public List<IBeaconSyncPeer> Take(IReadOnlyList<IBeaconSyncPeer> custodians, int max)
         {
-            HashSet<string> current = new(custodians.Select(static p => p.Id), StringComparer.Ordinal);
+            HashSet<string> current = new(StringComparer.Ordinal);
+            foreach (IBeaconSyncPeer peer in custodians) current.Add(peer.Id);
             _asked.IntersectWith(current);
             ulong slot = clock.CurrentSlot;
             if (slot > _cycleSlot && _asked.Count == current.Count)

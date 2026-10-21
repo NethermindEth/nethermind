@@ -22,7 +22,7 @@ public class PeerStatusRefreshTests
         ulong head = status.HeadSlot;
         Node server = CreateNode(new ScriptedStatusSource(n => WithHead(status, n == 1 ? head : head + ChainAheadBy)));
         TestLogRecorder log = new(TestLogLevels.Debug);
-        await using PeerHostScope hosts = new(client.P2P, server.P2P);
+        await using PeerHostScope hosts = new(client, server);
         PeerManager peerManager = await PeerHealthCheckRoundTests.StartAndAdmitAsync(client, [server], token, log);
         Assert.That(peerManager.GetBestPeers(head + 1), Is.Empty, "fixture: the admission status is behind the chain");
         // The admission's own request would otherwise hold the first refresh back.
@@ -46,7 +46,7 @@ public class PeerStatusRefreshTests
         (Node client, StatusMessageV2 status) = CreateClient();
         ulong head = status.HeadSlot;
         Node server = CreateNode(new ScriptedStatusSource(n => n == 1 ? status : throw new Eth2ReqRespException("status refused for the test")));
-        await using PeerHostScope hosts = new(client.P2P, server.P2P);
+        await using PeerHostScope hosts = new(client, server);
         PeerManager peerManager = await PeerHealthCheckRoundTests.StartAndAdmitAsync(client, [server], token);
         Assert.That(peerManager.GetBestPeers(head + 1), Is.Empty, "fixture: the admission status is behind the chain");
         peerManager.MinStatusRefreshInterval = TimeSpan.Zero;
@@ -64,7 +64,7 @@ public class PeerStatusRefreshTests
         ulong head = status.HeadSlot;
         ScriptedStatusSource source = new(n => n == 1 ? status : throw new Eth2ReqRespException("status refused for the test"));
         Node server = CreateNode(source);
-        await using PeerHostScope hosts = new(client.P2P, server.P2P);
+        await using PeerHostScope hosts = new(client, server);
         PeerManager peerManager = await PeerHealthCheckRoundTests.StartAndAdmitAsync(client, [server], token);
         peerManager.MinStatusRefreshInterval = TimeSpan.Zero;
         int admissionRequests = source.Requests;
@@ -90,7 +90,7 @@ public class PeerStatusRefreshTests
         ulong head = status.HeadSlot;
         Node server = CreateNode(new ScriptedStatusSource(n => n == 1 ? status : throw new Eth2ReqRespException("status refused for the test")));
         TestLogRecorder log = new(TestLogLevels.Debug);
-        await using PeerHostScope hosts = new(client.P2P, server.P2P);
+        await using PeerHostScope hosts = new(client, server);
         PeerManager peerManager = await PeerHealthCheckRoundTests.StartAndAdmitAsync(client, [server], token, log);
         peerManager.MinStatusRefreshInterval = TimeSpan.Zero;
         const int failedRefreshes = 8;

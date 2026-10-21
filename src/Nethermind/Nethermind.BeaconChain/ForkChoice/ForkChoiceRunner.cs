@@ -988,10 +988,11 @@ public sealed class ForkChoiceRunner
 
         ShufflingKey? key = GetShufflingKey(target);
         ForkedBeaconState? targetState = HeldVoteState(target, key);
+        ulong[]? verifiedIndices = null;
         if (aggregator is { } gossipProof)
         {
-            targetState = GetGossipTargetState(target, targetState, data, aggregationBits, committeeBits, signature, gossipProof, out bool signatureVerified);
-            verifySignature &= !signatureVerified;
+            targetState = GetGossipTargetState(target, targetState, data, aggregationBits, committeeBits, signature, gossipProof, out verifiedIndices);
+            verifySignature &= verifiedIndices is null;
         }
 
         // p2p-interface.md beacon_aggregate_and_proof: IGNORE unless the finalized checkpoint is an ancestor of the voted block.
@@ -1011,11 +1012,12 @@ public sealed class ForkChoiceRunner
             }
 
             (targetState, verifySignature, fromIncludingBlock) = source;
+            verifiedIndices = null;
         }
 
         bool unheld = targetState is null;
         targetState ??= ComputeCheckpointState(target, requireHeld: aggregator is not null);
-        ulong[] attestingIndices = AttestingIndices(targetState, target.Epoch, data, aggregationBits, committeeBits, signature);
+        ulong[] attestingIndices = verifiedIndices ?? AttestingIndices(targetState, target.Epoch, data, aggregationBits, committeeBits, signature);
         if (gloasContainer)
             ThrowIfOverGloasIndexedAttestationBound(attestingIndices, "Attestation");
         IndexedVote vote = new(attestingIndices, data, signature);
@@ -1891,10 +1893,10 @@ public sealed class ForkChoiceRunner
     /// </remarks>
     /// <exception cref="ForkChoiceException">The target is such an ancestor, the aggregate does not authenticate with the head state, or the builds for other shufflings are spent.</exception>
     /// <param name="held">A state held for the target's shuffling, which stands in for the head's only when the shuffling is the head's.</param>
-    /// <param name="signatureVerified">Whether the aggregate signature already verified against the returned state.</param>
-    private ForkedBeaconState? GetGossipTargetState(CheckpointRef target, ForkedBeaconState? held, AttestationData data, BitArray aggregationBits, BitArray committeeBits, BlsSignature signature, AggregatorProof proof, out bool signatureVerified)
+    /// <param name="verifiedIndices">The attesting indices whose aggregate signature verified against the returned state, or <c>null</c> for another shuffling.</param>
+    private ForkedBeaconState? GetGossipTargetState(CheckpointRef target, ForkedBeaconState? held, AttestationData data, BitArray aggregationBits, BitArray committeeBits, BlsSignature signature, AggregatorProof proof, out ulong[]? verifiedIndices)
     {
-        signatureVerified = false;
+        verifiedIndices = null;
         Hash256 head = _lastHeadRoot ?? throw new ForkChoiceException("No cached head for gossip validation");
         CheckpointRef headTarget = new(target.Epoch, GetCheckpointBlock(head, target.Epoch));
         ShufflingKey? headKey = GetShufflingKey(headTarget);
@@ -1907,7 +1909,7 @@ public sealed class ForkChoiceRunner
         VerifyAggregator(headState, target.Epoch, data.Slot, committeeBits, proof, new IndexedVote(headIndices, data, signature));
         if (sameShuffling)
         {
-            signatureVerified = true;
+            verifiedIndices = headIndices;
             return headState;
         }
         if (held is not null)

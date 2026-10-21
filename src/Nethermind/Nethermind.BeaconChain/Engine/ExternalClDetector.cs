@@ -96,6 +96,10 @@ public sealed class ExternalClDetector(
     }
 
     /// <summary>Prevents new embedded calls and waits for existing ones before forwarding an external call.</summary>
+    /// <remarks>
+    /// The wait has no independent timeout: an embedded caller's timeout does not cancel its underlying
+    /// execution work. Forwarding before that work finishes could let it overwrite the external client's head.
+    /// </remarks>
     internal Task OnExternalEngineCallStarted()
     {
         lock (_engineCallLock)

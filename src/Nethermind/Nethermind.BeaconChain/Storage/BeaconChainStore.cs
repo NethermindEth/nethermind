@@ -1172,31 +1172,43 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
     /// <summary>Stores a verified Fulu data column sidecar under (<paramref name="blockRoot"/>, index) and indexes it by <paramref name="slot"/> for <see cref="PruneDataColumnSidecars"/>.</summary>
     /// <remarks>The record, its slot index entry and the slot bounds are one write batch. A record is stored raw: cells and proofs are high-entropy, so compression only costs CPU.</remarks>
     /// <exception cref="ArgumentException">The column index is out of range, or the sidecar encodes to more than <c>MAX_PAYLOAD_SIZE</c> bytes.</exception>
-    public void PutDataColumnSidecar(Hash256 blockRoot, ulong slot, DataColumnSidecar sidecar) =>
-        PutDataColumnRecord(blockRoot, slot, sidecar.Index, FuluColumnRecord, DataColumnSidecar.Encode(sidecar));
+    public void PutDataColumnSidecar(Hash256 blockRoot, ulong slot, DataColumnSidecar sidecar)
+    {
+        byte[] record = CreateDataColumnRecord(blockRoot, slot, sidecar.Index, FuluColumnRecord, DataColumnSidecar.GetLength(sidecar));
+        DataColumnSidecar.Encode(record.AsSpan(ColumnRecordHeaderLength), sidecar);
+        PutDataColumnRecord(blockRoot, slot, sidecar.Index, record);
+    }
 
     /// <summary>Stores a verified Gloas data column sidecar under its own <c>beacon_block_root</c> and index; see <see cref="PutDataColumnSidecar(Hash256, ulong, DataColumnSidecar)"/>.</summary>
     /// <exception cref="ArgumentException">The sidecar names no beacon block root, its column index is out of range, or it encodes to more than <c>MAX_PAYLOAD_SIZE</c> bytes.</exception>
-    public void PutDataColumnSidecar(DataColumnSidecarGloas sidecar) =>
-        PutDataColumnRecord(sidecar.BeaconBlockRoot ?? throw new ArgumentException("A Gloas data column sidecar must name its beacon block root", nameof(sidecar)),
-            sidecar.Slot, sidecar.Index, GloasColumnRecord, DataColumnSidecarGloas.Encode(sidecar));
+    public void PutDataColumnSidecar(DataColumnSidecarGloas sidecar)
+    {
+        Hash256 blockRoot = sidecar.BeaconBlockRoot ?? throw new ArgumentException("A Gloas data column sidecar must name its beacon block root", nameof(sidecar));
+        byte[] record = CreateDataColumnRecord(blockRoot, sidecar.Slot, sidecar.Index, GloasColumnRecord, DataColumnSidecarGloas.GetLength(sidecar));
+        DataColumnSidecarGloas.Encode(record.AsSpan(ColumnRecordHeaderLength), sidecar);
+        PutDataColumnRecord(blockRoot, sidecar.Slot, sidecar.Index, record);
+    }
 
-    private void PutDataColumnRecord(Hash256 blockRoot, ulong slot, ulong index, byte shape, byte[] ssz)
+    private static byte[] CreateDataColumnRecord(Hash256 blockRoot, ulong slot, ulong index, byte shape, int sszLength)
     {
         if (index >= Eip7594DasConstants.NumberOfColumns)
         {
             throw new ArgumentException($"Column index {index} is not below NUMBER_OF_COLUMNS", nameof(index));
         }
 
-        if (ssz.Length > ReqRespFraming.MaxPayloadSize)
+        if (sszLength > ReqRespFraming.MaxPayloadSize)
         {
-            throw new ArgumentException($"The column sidecar for {blockRoot} encodes to {ssz.Length} bytes, above MAX_PAYLOAD_SIZE, so no read would accept it", nameof(ssz));
+            throw new ArgumentException($"The column sidecar for {blockRoot} encodes to {sszLength} bytes, above MAX_PAYLOAD_SIZE, so no read would accept it", nameof(sszLength));
         }
 
-        byte[] record = new byte[ColumnRecordHeaderLength + ssz.Length];
+        byte[] record = new byte[ColumnRecordHeaderLength + sszLength];
         record[0] = shape;
         BinaryPrimitives.WriteUInt64BigEndian(record.AsSpan(1), slot);
-        ssz.CopyTo(record.AsSpan(ColumnRecordHeaderLength));
+        return record;
+    }
+
+    private void PutDataColumnRecord(Hash256 blockRoot, ulong slot, ulong index, byte[] record)
+    {
         Span<byte> key = stackalloc byte[ColumnKeyLength];
         WriteColumnKey(key, blockRoot, index);
 

@@ -28,6 +28,27 @@ public class IdentifyTests
     private const string ServerAgent = "test-server/identify-1.0.0";
     private const int MaxIdentifyMessageSize = 8 * 1024;
 
+    [Test]
+    public void Recording_admitted_peer_metadata_evicts_inactive_entries_at_capacity()
+    {
+        const int capacity = 3;
+        PeerStore store = new(capacity);
+        PeerId[] peers = [.. Enumerable.Range(0, capacity + 1).Select(_ => new Identity().PeerId)];
+        foreach (PeerId peer in peers)
+            BeaconP2P.RecordIdentify(store, peer, new IdentifyResult { PeerId = peer, AgentVersion = ServerAgent, Protocols = [IdentifyProtocolId] });
+
+        Assert.That(store.TryGetPeerInfo(peers[0], out _), Is.False, "the oldest inactive peer must not survive capacity pressure");
+        foreach (PeerId peer in peers.Skip(1))
+        {
+            Assert.That(store.TryGetPeerInfo(peer, out PeerStore.PeerInfo? info), Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(info!.AgentVersion, Is.EqualTo(ServerAgent));
+                Assert.That(info.SupportedProtocols, Is.EqualTo(new[] { IdentifyProtocolId }));
+            }
+        }
+    }
+
     public enum Answer
     {
         Valid,

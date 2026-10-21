@@ -75,7 +75,7 @@ public class PeerColumnCustodyTests
         using PrivateKey serverKey = new("1c71a67e1177ad4e901695e1b4b9ee17ae16c6668d313eac2f96dbcda3f29111");
         server.Store.PutMetadata(BeaconDiscovery.IdentityMetadataKey, serverKey.KeyBytes);
 
-        await using PeerHostScope hosts = new(client.P2P, server.P2P);
+        await using PeerHostScope hosts = new(client, server);
         await hosts.StartAsync(token, server.P2P, client.P2P);
         Hash256 serverNodeId = serverKey.PublicKey.Hash;
 

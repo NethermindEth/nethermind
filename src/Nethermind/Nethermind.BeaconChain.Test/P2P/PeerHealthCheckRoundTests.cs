@@ -283,7 +283,7 @@ public class PeerHealthCheckRoundTests
     {
         foreach (Node node in (Node[])[.. servers, client])
         {
-            await node.P2P.DisposeAsync();
+            await node.DisposeAsync();
         }
     }
 

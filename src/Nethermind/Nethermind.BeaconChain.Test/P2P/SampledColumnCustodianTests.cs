@@ -43,7 +43,7 @@ public class SampledColumnCustodianTests
         client.Config.TargetPeerCount = 1;
         await using BeaconDiscovery discovery = CreateDiscovery();
 
-        await using PeerHostScope hosts = new(client.P2P, partial.P2P, bystander.P2P, supernode.P2P);
+        await using PeerHostScope hosts = new(client, partial, bystander, supernode);
         await StartAsync(token, partial, bystander, supernode, client);
         PeerManager peerManager = new(client.P2P, client.Config, client.StatusHolder, LimboLogs.Instance, discovery);
         Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(partial.P2P), token, Enr(partialKey, partial, Eip7594DasConstants.CustodyRequirement)), Is.True);
@@ -84,7 +84,7 @@ public class SampledColumnCustodianTests
             address += $"/p2p/{silent.Peer.Identity.PeerId}";
         }
 
-        await using PeerHostScope hosts = new(client.P2P);
+        await using PeerHostScope hosts = new(client);
         await client.P2P.StartAsync(token);
         PeerManager peerManager = new(client.P2P, client.Config, client.StatusHolder, LimboLogs.Instance, discovery);
 
@@ -137,7 +137,7 @@ public class SampledColumnCustodianTests
         {
             foreach (Node node in (Node[])[.. supernodes, partial, client])
             {
-                await node.P2P.DisposeAsync();
+                await node.DisposeAsync();
             }
         }
     }
@@ -152,7 +152,7 @@ public class SampledColumnCustodianTests
         serverStatus.Status = server.StatusHolder.CurrentStatus;
         TestLogRecorder logger = new() { IsDebug = false, IsTrace = false };
 
-        await using PeerHostScope hosts = new(client.P2P, server.P2P);
+        await using PeerHostScope hosts = new(client, server);
         await StartAsync(token, server, client);
         PeerManager peerManager = new(client.P2P, client.Config, client.StatusHolder, new OneLoggerLogManager(new ILogger(logger)));
         Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(server.P2P), token), Is.True);
@@ -183,7 +183,7 @@ public class SampledColumnCustodianTests
         client.Config.MaxPeerCount = 4;
         await using BeaconDiscovery discovery = CreateDiscovery();
 
-        await using PeerHostScope hosts = new(client.P2P, partial.P2P, supernode.P2P);
+        await using PeerHostScope hosts = new(client, partial, supernode);
         await StartAsync(token, supernode, partial, client);
         PeerManager peerManager = new(client.P2P, client.Config, client.StatusHolder, LimboLogs.Instance, discovery);
         Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(supernode.P2P), token), Is.True);
@@ -229,7 +229,7 @@ public class SampledColumnCustodianTests
         client.Config.MaxPeerCount = 4;
         await using BeaconDiscovery discovery = CreateDiscovery();
 
-        await using PeerHostScope hosts = new(client.P2P, failing.P2P, partial.P2P, replacement.P2P);
+        await using PeerHostScope hosts = new(client, failing, partial, replacement);
         await StartAsync(token, failing, partial, replacement, client);
         PeerManager peerManager = new(client.P2P, client.Config, client.StatusHolder, LimboLogs.Instance, discovery);
         Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(failing.P2P), token), Is.True);
@@ -271,7 +271,7 @@ public class SampledColumnCustodianTests
         Node replacement = CreateNode(replacementKey, Eip7594DasConstants.NumberOfCustodyGroups);
         SetMatchingStatus(replacement);
 
-        await using PeerHostScope hosts = new(client.P2P, failing.P2P, bystander.P2P, replacement.P2P);
+        await using PeerHostScope hosts = new(client, failing, bystander, replacement);
         await StartAsync(token, failing, bystander, replacement, client);
         PeerManager peerManager = new(client.P2P, client.Config, client.StatusHolder, LimboLogs.Instance, discovery);
         Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(failing.P2P), token), Is.True);
@@ -321,7 +321,7 @@ public class SampledColumnCustodianTests
         client.Config.TargetPeerCount = 1;
         client.Config.MaxPeerCount = 1;
 
-        await using PeerHostScope hosts = new(client.P2P, connected.P2P, candidate.P2P);
+        await using PeerHostScope hosts = new(client, connected, candidate);
         await StartAsync(token, connected, candidate, client);
         string candidateAddress = LoopbackAddress(candidate.P2P);
         string candidateEnr = Enr(candidateKey, candidate, Eip7594DasConstants.CustodyRequirement);
@@ -362,7 +362,7 @@ public class SampledColumnCustodianTests
         client.Config.TargetPeerCount = 2;
         client.Config.MaxPeerCount = 2;
 
-        await using PeerHostScope hosts = new(client.P2P, connected.P2P, late.P2P);
+        await using PeerHostScope hosts = new(client, connected, late);
         await StartAsync(token, connected, late, client);
         PeerManager peerManager = new(client.P2P, client.Config, client.StatusHolder, LimboLogs.Instance);
         Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(connected.P2P), token), Is.True);

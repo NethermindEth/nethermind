@@ -243,6 +243,11 @@ public sealed class BeaconChainService(
     }
 
     /// <summary>Stops the driver and waits for its run loop to finish before dependencies can be disposed.</summary>
+    /// <remarks>
+    /// Waits without a deadline, including for in-flight execution work after an Engine API timeout.
+    /// Returning early would allow the node to dispose databases still used by that work. An unresponsive
+    /// execution call therefore requires the operator to terminate the process to finish shutdown.
+    /// </remarks>
     public async Task StopAsync()
     {
         Stop();

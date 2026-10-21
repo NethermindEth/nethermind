@@ -98,7 +98,6 @@ public class ForkChoiceRunnerTests
         // The eight columns a base-custody node would hold: enough for the production rule, never for this one.
         DataColumnSidecar[] eightColumns = [.. chain.Columns.Take(8)];
 
-        using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(() => runner.OnBlock(chain.Block, postState, ExecutionStatus.Valid, eightColumns),
             Throws.TypeOf<ForkChoiceException>().With.Message.Contains("blob data"));
         Assert.That(runner.ContainsBlock(chain.BlockRoot), Is.False, "a rejected block must not have been added to the tree");
@@ -115,15 +114,20 @@ public class ForkChoiceRunnerTests
         RecordingRule refusing = new(verdict: false);
         RecordingRule accepting = new(verdict: true);
 
-        using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(() => runner.OnBlock(chain.Block, postState, ExecutionStatus.Valid, refusing), Throws.TypeOf<ForkChoiceException>());
-        Assert.That(refusing.Asked, Is.EqualTo(new List<(BeaconBlock, Hash256)> { (chain.Block.Message!, chain.BlockRoot) }),
-            "the rule is consulted for this block, keyed by its real root");
-        Assert.That(runner.ContainsBlock(chain.BlockRoot), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(refusing.Asked, Is.EqualTo(new List<(BeaconBlock, Hash256)> { (chain.Block.Message!, chain.BlockRoot) }),
+                "the rule is consulted for this block, keyed by its real root");
+            Assert.That(runner.ContainsBlock(chain.BlockRoot), Is.False);
+        }
 
         Assert.That(() => runner.OnBlock(chain.Block, postState, ExecutionStatus.Valid, accepting), Throws.Nothing);
-        Assert.That(accepting.Asked, Has.Count.EqualTo(1));
-        Assert.That(runner.ContainsBlock(chain.BlockRoot), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(accepting.Asked, Has.Count.EqualTo(1));
+            Assert.That(runner.ContainsBlock(chain.BlockRoot), Is.True);
+        }
     }
 
     [Test]

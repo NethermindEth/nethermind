@@ -20,7 +20,6 @@ using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
-using Nethermind.Db;
 using Nethermind.Libp2p.Core;
 using Nethermind.Libp2p.Protocols.Pubsub;
 using Nethermind.Logging;
@@ -36,6 +35,15 @@ namespace Nethermind.BeaconChain.Test.P2P.Gossip;
 // only under a header a validator signed, and a forgery must never shadow or crowd out the honest sidecar.
 public class ColumnGossipRouterFuluHeaderTests
 {
+    private readonly List<IContainer> _containers = [];
+
+    [TearDown]
+    public void DisposeContainers()
+    {
+        foreach (IContainer container in _containers) container.Dispose();
+        _containers.Clear();
+    }
+
     private const ulong CurrentSlot = 13_410_304;
     private const ulong Column = 5;
     private const int Validators = 4;
@@ -781,7 +789,7 @@ public class ColumnGossipRouterFuluHeaderTests
         Assert.That(headers.HeaderSignatureVerificationCount, Is.EqualTo(verifiedBeforeSecond), "the second block costs no BLS work");
     }
 
-    private static (GossipRouter Router, ColumnGossipRouter Headers) BlockRouter(Hash256 dependentRoot, ulong expectedProposer, out List<GossipVerdict> raised, ForkChoiceSnapshot? snapshot = null)
+    private (GossipRouter Router, ColumnGossipRouter Headers) BlockRouter(Hash256 dependentRoot, ulong expectedProposer, out List<GossipVerdict> raised, ForkChoiceSnapshot? snapshot = null)
     {
         (ColumnGossipRouter headers, _, _) = Create(snapshot ?? Snapshot(Ancestry.DescendsFromFinalized, parentInSnapshot: true),
             lookaheads: new ProposerLookaheadHolder { Current = Lookahead(dependentRoot, expectedProposer) });
@@ -984,16 +992,27 @@ public class ColumnGossipRouterFuluHeaderTests
     private static HeaderValidationCase Unimported(string name, Action<DataColumnSidecar>? mutate, int signer, Ancestry ancestry, MessageValidity expected, int kzgBatches, bool consumed, ColumnGossipDropReason? reason, bool withPubkeys = true) =>
         new(name, mutate, ancestry, expected, kzgBatches, consumed, reason, Signer: signer, WithPubkeys: withPubkeys);
 
-    private static (ColumnGossipRouter Router, DataColumnSidecarPool Pool, BeaconChainStore Store) Create(Ancestry ancestry, bool parentInSnapshot = false, ulong[]? subnets = null, bool withPubkeys = true, ProposerLookaheadHolder? lookaheads = null, PubkeyCache? keys = null, FailedBlockRoots? failedBlocks = null) =>
+    private (ColumnGossipRouter Router, DataColumnSidecarPool Pool, BeaconChainStore Store) Create(Ancestry ancestry, bool parentInSnapshot = false, ulong[]? subnets = null, bool withPubkeys = true, ProposerLookaheadHolder? lookaheads = null, PubkeyCache? keys = null, FailedBlockRoots? failedBlocks = null) =>
         Create(ancestry == Ancestry.NoSource ? null : Snapshot(ancestry, parentInSnapshot), subnets, withSource: ancestry != Ancestry.NoSource, withPubkeys, lookaheads, keys: keys, failedBlocks: failedBlocks);
 
-    private static (ColumnGossipRouter Router, DataColumnSidecarPool Pool, BeaconChainStore Store) Create(ForkChoiceSnapshot? snapshot, ulong[]? subnets = null, bool withSource = true, bool withPubkeys = true, ProposerLookaheadHolder? lookaheads = null, ForkChoiceSnapshotHolder? forkChoice = null, PubkeyCache? keys = null, FailedBlockRoots? failedBlocks = null, Func<string, ITopic>? getTopic = null)
+    private (ColumnGossipRouter Router, DataColumnSidecarPool Pool, BeaconChainStore Store) Create(ForkChoiceSnapshot? snapshot, ulong[]? subnets = null, bool withSource = true, bool withPubkeys = true, ProposerLookaheadHolder? lookaheads = null, ForkChoiceSnapshotHolder? forkChoice = null, PubkeyCache? keys = null, FailedBlockRoots? failedBlocks = null, Func<string, ITopic>? getTopic = null)
     {
         DateTime now = DateTime.UnixEpoch.AddSeconds(Spec.GenesisTime + CurrentSlot * Spec.SecondsPerSlot).AddSeconds(6);
-        DataColumnSidecarPool pool = new();
-        BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>(), Spec);
         ForkChoiceSnapshotHolder? holder = forkChoice ?? (withSource ? new ForkChoiceSnapshotHolder { Current = snapshot } : null);
-        ColumnGossipRouter router = new(Spec, new SlotClock(Spec, new ManualTimestamper(now)), LimboLogs.Instance, pool, store, forkChoice: holder, pubkeys: keys ?? (withPubkeys ? Pubkeys() : null), proposerLookahead: lookaheads, failedBlocks: failedBlocks);
+        ContainerBuilder builder = BeaconChainTestContainer.Builder()
+            .AddSingleton(Spec)
+            .AddSingleton<ITimestamper>(new ManualTimestamper(now));
+        builder.RegisterType<ColumnGossipRouter>().SingleInstance()
+            .WithParameter("status", null!)
+            .WithParameter("forkChoice", holder!)
+            .WithParameter("pubkeys", (keys ?? (withPubkeys ? Pubkeys() : null))!)
+            .WithParameter("proposerLookahead", lookaheads!)
+            .WithParameter("failedBlocks", failedBlocks!);
+        IContainer container = builder.Build();
+        _containers.Add(container);
+        DataColumnSidecarPool pool = container.Resolve<DataColumnSidecarPool>();
+        BeaconChainStore store = container.Resolve<BeaconChainStore>();
+        ColumnGossipRouter router = container.Resolve<ColumnGossipRouter>();
         router.Start(getTopic ?? (_ => new SilentTopic()), ForkDigest.Compute(Spec, Spec.GetEpoch(CurrentSlot)), subnets ?? [Column]);
         return (router, pool, store);
     }

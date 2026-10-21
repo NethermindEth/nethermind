@@ -27,7 +27,7 @@ public class PeerAdmissionMetadataTests
         Node other = CreateNode();
         SetMatchingStatus(client, other);
 
-        await using PeerHostScope hosts = new(client.P2P, other.P2P);
+        await using PeerHostScope hosts = new(client, other);
         await hosts.StartAsync(token, client.P2P, other.P2P);
         PeerManager peerManager = new(client.P2P, client.Config, client.StatusHolder, LimboLogs.Instance);
         List<(IBeaconSyncPeer Peer, bool InPool, bool CustodyKnown)> announced = [];
@@ -56,7 +56,7 @@ public class PeerAdmissionMetadataTests
         await using PlainPeer silent = await PlainPeer.StartAsync(static settings => new Nethermind.Libp2p.Protocols.IdentifyProtocol(settings), token,
             new ScriptedStatusSource(_ => client.StatusHolder.CurrentStatus));
 
-        await using PeerHostScope hosts = new(client.P2P, other.P2P);
+        await using PeerHostScope hosts = new(client, other);
         await hosts.StartAsync(token, client.P2P, other.P2P);
         PeerManager peerManager = new(client.P2P, client.Config, client.StatusHolder, LimboLogs.Instance);
         string silentAddress = silent.Address.ToString();
@@ -90,7 +90,7 @@ public class PeerAdmissionMetadataTests
         await using PlainPeer silent = await PlainPeer.StartAsync(static settings => new Nethermind.Libp2p.Protocols.IdentifyProtocol(settings), token,
             new ScriptedStatusSource(_ => client.StatusHolder.CurrentStatus));
 
-        await using PeerHostScope hosts = new(client.P2P);
+        await using PeerHostScope hosts = new(client);
         await client.P2P.StartAsync(token);
         PeerManager peerManager = new(client.P2P, client.Config, client.StatusHolder, LimboLogs.Instance, discovery);
         string silentAddress = silent.Address.ToString();

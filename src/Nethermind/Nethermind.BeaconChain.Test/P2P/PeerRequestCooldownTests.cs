@@ -112,9 +112,9 @@ public class PeerRequestCooldownTests
 
         public async ValueTask DisposeAsync()
         {
-            await _client.P2P.DisposeAsync();
-            await AheadNode.P2P.DisposeAsync();
-            await BehindNode.P2P.DisposeAsync();
+            await _client.DisposeAsync();
+            await AheadNode.DisposeAsync();
+            await BehindNode.DisposeAsync();
         }
     }
 }

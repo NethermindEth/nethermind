@@ -766,7 +766,14 @@ public sealed class ColumnGossipRouter(
             return ExpectedProposer.Unverifiable;
         }
 
-        if (ProposerLookaheadSnapshot.FindDependentRoot(snapshot.Snapshot.Nodes, parent.Root, lookahead.StartSlot) != lookahead.DependentRoot)
+        Hash256 dependentRoot = parent.Root;
+        while (parent.Slot >= lookahead.StartSlot && parent.ParentRoot is { } parentRoot
+            && snapshot.Nodes.TryGetValue(parentRoot, out parent))
+        {
+            dependentRoot = parent.Root;
+        }
+
+        if (dependentRoot != lookahead.DependentRoot)
         {
             return ExpectedProposer.Unverifiable;
         }

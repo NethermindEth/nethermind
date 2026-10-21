@@ -34,7 +34,7 @@ public class PeerDialPolicyTests
         await using BeaconDiscovery discovery = new(local.Config, BeaconChainSpec.Mainnet, new BeaconChainStore(new MemColumnsDb<BeaconChainDbColumns>()),
             new RangeSyncTests.FixedIPResolver(IPAddress.Loopback), clock, LimboLogs.Instance);
         using CancellationTokenSource caller = CancellationTokenSource.CreateLinkedTokenSource(token);
-        await using PeerHostScope hosts = new(remote.P2P, local.P2P);
+        await using PeerHostScope hosts = new(remote, local);
         await remote.P2P.StartAsync(token);
         await local.P2P.StartAsync(token);
         PeerManager manager = new(local.P2P, local.Config, local.StatusHolder, LimboLogs.Instance, discovery, clock);
@@ -95,7 +95,7 @@ public class PeerDialPolicyTests
         SetMatchingStatus(local, remote);
         local.StatusHolder.CurrentStatus.FinalizedRoot = Root(1);
         remote.StatusHolder.CurrentStatus.FinalizedRoot = Root(conflicting ? 2 : 1);
-        await using PeerHostScope hosts = new(remote.P2P, local.P2P);
+        await using PeerHostScope hosts = new(remote, local);
         await remote.P2P.StartAsync(token);
         await local.P2P.StartAsync(token);
         ManualTimestamper clock = new();
@@ -162,7 +162,7 @@ public class PeerDialPolicyTests
         {
             await stop.CancelAsync();
             await AwaitStoppedOperationAndDisposeNodeAsync(dialing, local);
-            await remote.P2P.DisposeAsync();
+            await remote.DisposeAsync();
         }
     }
 
@@ -228,7 +228,7 @@ public class PeerDialPolicyTests
             HeadRoot = Hash256.Zero,
         };
         Node remote = CreateNode(new ScriptedStatusSource(_ => Volatile.Read(ref compatible) ? local.StatusHolder.CurrentStatus : incompatible));
-        await using PeerHostScope hosts = new(remote.P2P, local.P2P);
+        await using PeerHostScope hosts = new(remote, local);
         await remote.P2P.StartAsync(token);
         await local.P2P.StartAsync(token);
         local.Config.StaticPeers = LoopbackAddress(remote.P2P);
@@ -277,9 +277,9 @@ public class PeerDialPolicyTests
         finally
         {
             hanging.Release();
-            await local.P2P.DisposeAsync();
-            await hangingRemote.P2P.DisposeAsync();
-            await slowRemote.P2P.DisposeAsync();
+            await local.DisposeAsync();
+            await hangingRemote.DisposeAsync();
+            await slowRemote.DisposeAsync();
         }
     }
 
@@ -358,6 +358,6 @@ public class PeerDialPolicyTests
         {
         }
 
-        await node.P2P.DisposeAsync();
+        await node.DisposeAsync();
     }
 }

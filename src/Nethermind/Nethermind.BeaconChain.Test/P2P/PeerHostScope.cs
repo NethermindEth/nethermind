@@ -5,7 +5,7 @@ using Nethermind.BeaconChain.P2P;
 
 namespace Nethermind.BeaconChain.Test.P2P;
 
-internal sealed class PeerHostScope(params BeaconP2P[] hosts) : IAsyncDisposable
+internal sealed class PeerHostScope(params IAsyncDisposable[] hosts) : IAsyncDisposable
 {
     public async Task StartAsync(CancellationToken token, params BeaconP2P[] startupOrder)
     {
