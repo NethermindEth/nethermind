@@ -277,6 +277,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
     private static Account ThrowIfNull(Address address)
         => throw new InvalidOperationException($"Account {address} is null when updating code hash");
 
+    [SkipLocalsInit]
     private void SetNewBalance(Address address, in UInt256 balanceChange, IReleaseSpec releaseSpec, bool isSubtracting, out UInt256 oldBalance)
     {
         _needsStateRootUpdate = true;

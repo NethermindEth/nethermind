@@ -39,6 +39,7 @@ namespace Nethermind.State
         }
 
         [DebuggerStepThrough]
+        [SkipLocalsInit]
         public Account? Get(Address address, Hash256? rootHash = null)
         {
             ReadOnlySpan<byte> bytes = Get(KeccakCache.Compute(address.Bytes).BytesAsSpan, rootHash);

@@ -40,7 +40,7 @@ on:
       frames_version:
         description: Frame-transaction fixtures release tag (frame lanes only) - pin to an exact tag
         required: false
-        default: tests-bogota-devnet@v1.1.0
+        default: tests-bogota-devnet@v1.1.1
         type: string
       filter:
         description: Regex filter for test names
@@ -96,7 +96,7 @@ on:
       frames_version:
         description: Frame-transaction fixtures release tag (frame lanes only) - pin to an exact tag
         required: false
-        default: tests-bogota-devnet@v1.1.0
+        default: tests-bogota-devnet@v1.1.1
         type: string
       filter:
         description: Regex filter for test names (optional)
@@ -135,10 +135,10 @@ env:
   # This archive labels its fork "Bogota" meaning Amsterdam plus EIP-8141, EIP-8250, EIP-8272 and
   # EIP-7906, where the Heze archive means Amsterdam plus EIP-7805 and EIP-8198; nothing inside a fixture
   # separates the two, so the lane names the fork it means through the runner's --forkAlias.
-  FRAMES_VERSION: ${{ inputs.frames_version || 'tests-bogota-devnet@v1.1.0' }}
+  FRAMES_VERSION: ${{ inputs.frames_version || 'tests-bogota-devnet@v1.1.1' }}
   # Minimum cases the pinned release ships across the frame lanes, set to the exact counts it holds.
   # Asserted so a scope resolving to nothing, or to fewer cases, fails rather than reporting a clean run.
-  FRAME_MIN_CASES: '741'
+  FRAME_MIN_CASES: '750'
   # The same floor for the frame transaction-test lane, whose subtree is a much smaller fixture set.
   FRAME_TX_MIN_CASES: '99'
   # nethtest runs with the server GC from its project. A workstation GC + GCConserveMemory=9 override spent more
