@@ -69,11 +69,160 @@ public partial class PatriciaTree
         return true;
     }
 
-    /// <summary>Whether <paramref name="node"/> is a leaf at <paramref name="key"/>, a nibble path, told without
-    /// expanding a key the leaf has kept in hex-prefix form.</summary>
-    /// <remarks>Spares the expansion for a leaf a write only changes the value of, re-encoded from its stored key item.</remarks>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static bool IsLeafWithKey(TrieNode node, ReadOnlySpan<byte> key) => node.NodeData is LeafData leaf && leaf.KeyEquals(key);
+    /// <remarks>Always, sparing the nibble expansion of the key as <see cref="TryGetByRawKey"/> does; see <see cref="SetByRawKey"/>.</remarks>
+    private partial bool TrySetByRawKey(ReadOnlySpan<byte> rawKey, CappedArray<byte> value)
+    {
+        TraverseStack traverseStack = GetTraverseStack();
+        TreePath empty = TreePath.Empty;
+        RootRef = SetByRawKey(traverseStack, rawKey, value, ref empty, RootRef);
+        ReturnTraverseStack(traverseStack);
+        return true;
+    }
+
+    /// <summary>Writes <paramref name="value"/> at <paramref name="key"/> below <paramref name="node"/>, leaving the trie
+    /// <see cref="SetNew"/> leaves for the key's nibbles.</summary>
+    /// <remarks>
+    /// A branch takes its nibble from the key's bytes, and a leaf keeping its key in hex-prefix form is compared, split and
+    /// created in that form, so neither the key nor the leaf's key is expanded. Other node keys are read as nibbles.
+    /// It repeats the steps of <see cref="SetNew"/>, so a change to either belongs in both.
+    /// </remarks>
+    private TrieNode? SetByRawKey(TraverseStack traverseStack, ReadOnlySpan<byte> key, CappedArray<byte> value, ref TreePath path, TrieNode? node)
+    {
+        TrieNode? originalNode = node;
+        int originalPathLength = path.Length;
+        int nibbleCount = 2 * key.Length;
+        int consumed = 0;
+
+        while (true)
+        {
+            if (node is null)
+            {
+                node = value.IsNullOrEmpty ? null : new TrieNode(LeafData.WithKeyFrom(key, consumed, value));
+                break;
+            }
+
+            node.ResolveNode(TrieStore, path);
+
+            if (!node.IsBranch)
+            {
+                int remaining = nibbleCount - consumed;
+                ReadOnlySpan<byte> compactKey = default;
+                bool isCompactLeaf = node.NodeData is LeafData leaf && leaf.TryGetCompactKey(out compactKey);
+                // A hex-prefix key's nibbles start after its flag nibble, and after the padding nibble of an even key.
+                int compactStart = isCompactLeaf ? 2 - ((compactKey[0] >> 4) & 1) : 0;
+                byte[]? nibbleKey = isCompactLeaf ? null : node.Key!;
+                int keyLength = isCompactLeaf ? 2 * compactKey.Length - compactStart : nibbleKey!.Length;
+                int commonPrefixLength = isCompactLeaf
+                    ? Nibbles.CommonPrefixLength(compactKey, compactStart, key, consumed, Math.Min(keyLength, remaining))
+                    : CommonPrefixLength(nibbleKey!, key, consumed, Math.Min(keyLength, remaining));
+
+                if (commonPrefixLength == keyLength)
+                {
+                    if (node.IsExtension)
+                    {
+                        TrieNode? extensionChild = node.GetChildWithChildPath(TrieStore, ref path, 0);
+                        traverseStack.Push(new TraverseStackFrame()
+                        {
+                            Node = node,
+                            OriginalChild = extensionChild,
+                            ChildIdx = 0,
+                        });
+
+                        consumed += keyLength;
+                        node = extensionChild;
+                        continue;
+                    }
+
+                    if (value.IsNullOrEmpty)
+                    {
+                        node = null;
+                    }
+                    else if (node.Value.AsSpan().SequenceEqual(value.AsSpan()))
+                    {
+                        path.TruncateMut(originalPathLength);
+                        traverseStack.Clear();
+                        return originalNode;
+                    }
+                    else
+                    {
+                        if (node.IsSealed) node = node.Unseal();
+                        node.Value = value;
+                        node.Keccak = null;
+                    }
+
+                    break;
+                }
+
+                if (value.IsNullOrEmpty)
+                {
+                    path.TruncateMut(originalPathLength);
+                    traverseStack.Clear();
+                    return originalNode;
+                }
+
+                TrieNode theBranch = TrieNodeFactory.CreateBranch();
+                if (isCompactLeaf)
+                {
+                    int leafNibble = compactStart + commonPrefixLength;
+                    theBranch[Nibbles.NibbleAt(compactKey, leafNibble)] = new TrieNode(LeafData.WithKeyFrom(compactKey, leafNibble + 1, node.Value));
+                }
+                else
+                {
+                    int currentNodeNib = nibbleKey![commonPrefixLength];
+                    if (nibbleKey.Length == commonPrefixLength + 1 && node.IsExtension)
+                    {
+                        int originalLength = path.Length;
+                        path.AppendMut(nibbleKey);
+                        theBranch[currentNodeNib] = node.GetChildWithChildPath(TrieStore, ref path, 0);
+                        path.TruncateMut(originalLength);
+                    }
+                    else
+                    {
+                        theBranch[currentNodeNib] = node.CloneWithChangedKey(HexPrefix.GetArray(nibbleKey.AsSpan(commonPrefixLength + 1)));
+                    }
+                }
+
+                int keyNibble = consumed + commonPrefixLength;
+                theBranch[Nibbles.NibbleAt(key, keyNibble)] = new TrieNode(LeafData.WithKeyFrom(key, keyNibble + 1, value));
+
+                node = commonPrefixLength == 0 ? theBranch : TrieNodeFactory.CreateExtension(KeyNibbles(key, consumed, commonPrefixLength), theBranch);
+                break;
+            }
+
+            int nib = Nibbles.NibbleAt(key, consumed);
+            TrieNode? child = node.GetChildWithChildPath(TrieStore, ref path, nib);
+            traverseStack.Push(new TraverseStackFrame()
+            {
+                Node = node,
+                OriginalChild = child,
+                ChildIdx = nib,
+            });
+
+            node = child;
+            consumed++;
+        }
+
+        return ClimbToRoot(traverseStack, node, ref path, originalPathLength, originalNode);
+    }
+
+    /// <summary>Length of the common prefix, at most <paramref name="count"/>, of <paramref name="nibbles"/> and the nibbles
+    /// of <paramref name="key"/> from nibble <paramref name="start"/>.</summary>
+    private static int CommonPrefixLength(byte[] nibbles, ReadOnlySpan<byte> key, int start, int count)
+    {
+        int i = 0;
+        while (i < count && nibbles[i] == Nibbles.NibbleAt(key, start + i)) i++;
+        return i;
+    }
+
+    /// <summary>The <paramref name="count"/> nibbles of <paramref name="key"/> from nibble <paramref name="start"/>.</summary>
+    [SkipLocalsInit]
+    private static byte[] KeyNibbles(ReadOnlySpan<byte> key, int start, int count)
+    {
+        Span<byte> nibbles = count <= MaxKeyStackAlloc ? stackalloc byte[MaxKeyStackAlloc] : new byte[count];
+        nibbles = nibbles[..count];
+        for (int i = 0; i < nibbles.Length; i++) nibbles[i] = (byte)Nibbles.NibbleAt(key, start + i);
+        return HexPrefix.GetArray(nibbles);
+    }
 
     /// <summary>The value at <paramref name="key"/> below <paramref name="node"/>, as <see cref="GetNew"/> finds it from the key's nibbles.</summary>
     private CappedArray<byte> GetByRawKey(ReadOnlySpan<byte> key, TrieNode? node)

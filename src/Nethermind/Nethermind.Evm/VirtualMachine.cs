@@ -572,7 +572,10 @@ public partial class VirtualMachine<TGasPolicy>(
     /// that returns <c>true</c> for a newly entered frame owns the action-trace start needed to balance the
     /// common completion callbacks, the EIP-7708 transfer log, and precompile value credit that normal
     /// execution would perform. Use <see cref="VmState{TGasPolicy}.IsContinuation"/> to avoid repeating
-    /// entry-only effects on continuations. The default implementation preserves Ethereum execution exactly.
+    /// entry-only effects on continuations. Override <see cref="CanExecutePrecompileCallDirectly"/> to force
+    /// an inline precompile call through this hook, and pair it with <see cref="ShouldSkipEoaCallFastPath"/>
+    /// when the full frame path must also observe calls to empty accounts. The default implementation
+    /// preserves Ethereum execution exactly.
     /// </remarks>
     protected virtual bool TryExecuteFrameInitialization(VmState<TGasPolicy> currentState, out CallResult result)
     {
@@ -620,7 +623,12 @@ public partial class VirtualMachine<TGasPolicy>(
     }
 
     /// <summary>Reports the completed result of a nested frame to a specialized virtual machine.</summary>
-    /// <remarks>The callback runs before the frame is merged or disposed and is a no-op for Ethereum.</remarks>
+    /// <remarks>
+    /// The callback runs before the frame is merged or disposed and is a no-op for Ethereum. For CREATE and
+    /// CREATE2, it reports the initialization result before <see cref="HandleCreate"/> performs code-deposit
+    /// gas charging and code validation; those checks can still turn an otherwise successful initialization
+    /// into a failed creation.
+    /// </remarks>
     protected virtual void OnChildFrameCompleted(
         VmState<TGasPolicy> childState,
         EvmExceptionType exceptionType,

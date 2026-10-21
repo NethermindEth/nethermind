@@ -3868,6 +3868,81 @@ public sealed class VirtualMachineExtensionHooksTests
         }
     }
 
+    [TestCase(true)]
+    [TestCase(false)]
+    public void Intercepted_bad_instruction_precompile_call_returns_failure_without_refunding_child_gas(bool traced)
+    {
+        _hookedMachine.HandleChildFrame = true;
+        _hookedMachine.HandledChildExceptionType = EvmExceptionType.BadInstruction;
+        Address parent = SenderRecipientAndMiner.Default.Recipient;
+        _worldState.CreateAccount(parent, 100.Ether);
+        _worldState.Set(new StorageCell(parent, UInt256.Zero), UInt256.One);
+        _worldState.Set(new StorageCell(parent, UInt256.One), UInt256.One);
+        _worldState.Set(new StorageCell(parent, (UInt256)2), UInt256.One);
+        byte[] code = Prepare.EvmCode
+            .Op(Instruction.GAS).PushData(0).Op(Instruction.MSTORE)
+            .CALL(50_000, BN254AddPrecompile.Address, 0, 0, 0, 0, 0)
+            .Op(Instruction.DUP1).PushData(32).Op(Instruction.MSTORE)
+            .Op(Instruction.GAS).PushData(64).Op(Instruction.MSTORE)
+            .MLOAD(0).PushData(0).Op(Instruction.SSTORE)
+            .MLOAD(32).PushData(1).Op(Instruction.SSTORE)
+            .MLOAD(64).PushData(2).Op(Instruction.SSTORE)
+            .RETURN(0, 96)
+            .Done;
+
+        (Block block, Transaction transaction) prepared = PrepareTx(code);
+        if (traced)
+        {
+            TestAllTracerWithOutput result = ExecutePrepared(prepared);
+            Assert.That(result.Error, Is.Null);
+        }
+        else
+        {
+            TransactionResult result = ExecutePrepared(prepared, NullTxTracer.Instance);
+            Assert.That(result.TransactionExecuted, Is.True);
+        }
+
+        StorageCell initialGasCell = new(parent, UInt256.Zero);
+        StorageCell callResultCell = new(parent, UInt256.One);
+        StorageCell finalGasCell = new(parent, (UInt256)2);
+        _worldState.Get(in initialGasCell, out UInt256 initialGas);
+        _worldState.Get(in callResultCell, out UInt256 callResult);
+        _worldState.Get(in finalGasCell, out UInt256 finalGas);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(callResult, Is.EqualTo(UInt256.Zero));
+            Assert.That(initialGas - finalGas, Is.GreaterThan((UInt256)50_000));
+            Assert.That(initialGas - finalGas, Is.LessThan((UInt256)51_000));
+        }
+
+        Assert.That(_hookedMachine.Completions, Is.EqualTo([(EvmExceptionType.BadInstruction, false)]));
+    }
+
+    [TestCase(true)]
+    [TestCase(false)]
+    public void Precompile_out_of_gas_is_reported_to_completion_hook(bool traced)
+    {
+        byte[] code = Prepare.EvmCode
+            .CALL(100, BN254AddPrecompile.Address, 0, 0, 0, 0, 0)
+            .Op(Instruction.POP)
+            .Done;
+        (Block block, Transaction transaction) prepared = PrepareTx(code);
+
+        if (traced)
+        {
+            TestAllTracerWithOutput result = ExecutePrepared(prepared);
+            Assert.That(result.Error, Is.Null);
+        }
+        else
+        {
+            TransactionResult result = ExecutePrepared(prepared, NullTxTracer.Instance);
+            Assert.That(result.TransactionExecuted, Is.True);
+        }
+
+        Assert.That(_hookedMachine.Completions, Is.EqualTo([(EvmExceptionType.OutOfGas, false)]));
+    }
+
     [Test]
     public void Intercepted_value_call_preserves_action_trace_transfer_and_balance()
     {
@@ -4005,6 +4080,55 @@ public sealed class VirtualMachineExtensionHooksTests
         }
     }
 
+    [TestCase(true)]
+    [TestCase(false)]
+    public void Staticcall_selfdestruct_does_not_invoke_selfdestruct_hook(bool traced)
+    {
+        Deploy(Prepare.EvmCode
+            .PushData(TestItem.AddressA)
+            .Op(Instruction.SELFDESTRUCT)
+            .Done);
+        _hookedMachine.HandleSelfDestruct = true;
+        byte[] code = Prepare.EvmCode
+            .STATICCALL(50_000, Child, 0, 0, 0, 0)
+            .Op(Instruction.POP)
+            .Done;
+        (Block block, Transaction transaction) prepared = PrepareTx(code);
+
+        if (traced)
+        {
+            TestAllTracerWithOutput result = ExecutePrepared(prepared);
+            Assert.That(result.Error, Is.Null);
+        }
+        else
+        {
+            TransactionResult result = ExecutePrepared(prepared, NullTxTracer.Instance);
+            Assert.That(result.TransactionExecuted, Is.True);
+        }
+
+        Assert.That(_hookedMachine.SelfDestructCalls, Is.Zero);
+    }
+
+    [Test]
+    public void Selfdestruct_hook_observes_gas_after_base_charge()
+    {
+        _hookedMachine.HandleSelfDestruct = true;
+        byte[] code = Prepare.EvmCode
+            .PushData(TestItem.AddressA)
+            .Op(Instruction.SELFDESTRUCT)
+            .Done;
+
+        TestAllTracerWithOutput result = Execute(code);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Failure));
+            Assert.That(_hookedMachine.SelfDestructCalls, Is.EqualTo(1));
+            Assert.That(_hookedMachine.SelfDestructGas, Is.EqualTo([
+                100_000UL - GasCostOf.Transaction - GasCostOf.VeryLow - GasCostOf.SelfDestructEip150]));
+        }
+    }
+
     [TestCase(false)]
     [TestCase(true)]
     public void Eoa_fast_path_can_be_controlled_by_the_vm(bool skipFastPath)
@@ -4135,6 +4259,9 @@ public sealed class VirtualMachineExtensionHooksTests
         return tracer;
     }
 
+    private TransactionResult ExecutePrepared((Block Block, Transaction Transaction) prepared, ITxTracer tracer) =>
+        _processor.Execute(prepared.Transaction, new BlockExecutionContext(prepared.Block.Header, _specProvider.GetSpec(prepared.Block.Header)), tracer);
+
     private sealed class ActionAndLogTracer : TestAllTracerWithOutput
     {
         public override bool IsTracingLogs => true;
@@ -4204,6 +4331,7 @@ public sealed class VirtualMachineExtensionHooksTests
         public bool SkipEoaCallFastPath { get; set; }
         public bool HandleSelfDestruct { get; set; }
         public int SelfDestructCalls { get; private set; }
+        public List<ulong> SelfDestructGas { get; } = [];
         public int DelegatedResolutions { get; private set; }
         public int HandledPrecompileFrames { get; private set; }
         public byte[]? DelegatedCodeOverride { get; set; }
@@ -4279,6 +4407,7 @@ public sealed class VirtualMachineExtensionHooksTests
             out EvmExceptionType result)
         {
             SelfDestructCalls++;
+            SelfDestructGas.Add(EthereumGasPolicy.GetRemainingGas(in gas));
             if (HandleSelfDestruct)
                 ReturnData = Array.Empty<byte>();
             result = EvmExceptionType.Revert;

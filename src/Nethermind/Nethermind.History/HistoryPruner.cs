@@ -186,6 +186,10 @@ public class HistoryPruner : IHistoryPruner
         {
             Metrics.BlockAccessListPruningCutoffBlocknumber = BalCutoffBlockNumber;
             blockProcessingQueue.ProcessingQueueEmpty += OnBlockProcessorQueueEmpty;
+            if (!_fastSync)
+            {
+                blockTree.NewHeadBlock += OnFullSyncNewHeadBlock;
+            }
         }
     }
 
@@ -245,7 +249,11 @@ public class HistoryPruner : IHistoryPruner
             if (_fastSync) return _blockTree.SyncPivot.BlockNumber;
 
             ulong head = _blockTree.Head?.Number ?? 0;
-            return ulong.Min(head, _stateBoundary.BestPersistedState ?? 0);
+            ulong durable = _stateBoundary.BestPersistedState ?? 0;
+            ulong finality = _blockTree.FinalizedHash is { } finalizedHash
+                ? _blockTree.FindHeader(finalizedHash, BlockTreeLookupOptions.RequireCanonical)?.Number ?? 0
+                : head.SaturatingSub(Reorganization.MaxDepth);
+            return ulong.Min(ulong.Min(head, durable), finality);
         }
     }
 
@@ -312,7 +320,9 @@ public class HistoryPruner : IHistoryPruner
             return;
         }
 
-        SchedulePruneHistory(_processExitSource.Token);
+        SchedulePruneHistory(
+            _processExitSource.Token,
+            () => Interlocked.CompareExchange(ref _lastFullSyncHeadTriggerBucket, previousBucket, triggerBucket));
     }
 
     /// <summary>
@@ -323,6 +333,9 @@ public class HistoryPruner : IHistoryPruner
     public void SchedulePruneHistory() => SchedulePruneHistory(_processExitSource.Token);
 
     protected void SchedulePruneHistory(CancellationToken cancellationToken)
+        => SchedulePruneHistory(cancellationToken, onScheduleRejected: null);
+
+    private void SchedulePruneHistory(CancellationToken cancellationToken, Action? onScheduleRejected)
     {
         if (Volatile.Read(ref _currentlyPruning) == 0)
         {
@@ -353,16 +366,26 @@ public class HistoryPruner : IHistoryPruner
                                 }, timeout: pruningTimeout))
                         {
                             Interlocked.Exchange(ref _currentlyPruning, 0);
+                            onScheduleRejected?.Invoke();
                             if (_logger.IsDebug) _logger.Debug("Failed to schedule historical block pruning (queue full). Will retry on next trigger.");
                         }
                     }
                     catch
                     {
                         Interlocked.Exchange(ref _currentlyPruning, 0);
+                        onScheduleRejected?.Invoke();
                         throw;
                     }
                 }
+                else
+                {
+                    onScheduleRejected?.Invoke();
+                }
             });
+        }
+        else
+        {
+            onScheduleRejected?.Invoke();
         }
     }
 
