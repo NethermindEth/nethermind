@@ -54,6 +54,7 @@ public class GethGenesisParityTests
         nameof(Eip8250Prototype),
         nameof(Eip8272Prototype),
         nameof(Eip7906Prototype),
+        nameof(Eip4758Prototype),
     ];
 
     /// <summary>Parity <c>*TransitionTimestamp</c> fields a geth genesis cannot set, with the reason.</summary>
