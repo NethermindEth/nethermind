@@ -35,6 +35,16 @@ namespace Nethermind.JsonRpc
 
         internal JsonRpcService.StreamingContext? Streaming { get; set; }
 
+        internal StreamedResultObservation? StreamedResultObservation { get; private set; }
+
+        /// <summary>Reports this response's result to <paramref name="observer"/> as it is written, when the result is streamed.</summary>
+        /// <remarks>Has no effect on a result that is not streamed. A later call replaces the observer.</remarks>
+        public void ObserveStreamedResult(IStreamedResultObserver observer)
+        {
+            ArgumentNullException.ThrowIfNull(observer);
+            StreamedResultObservation = new StreamedResultObservation(observer);
+        }
+
         internal virtual bool IsResourceUnavailableError => false;
 
         internal virtual JsonRpcResponse WithResponseContext(in JsonRpcId id, Action? disposableAction)
@@ -48,6 +58,7 @@ namespace Nethermind.JsonRpc
         {
             action = null;
             Streaming = null;
+            StreamedResultObservation = null;
         }
 
         internal virtual bool TryGetError(out Error? error)
@@ -73,6 +84,7 @@ namespace Nethermind.JsonRpc
             action?.Invoke();
             action = null;
             Streaming = null;
+            StreamedResultObservation = null;
         }
     }
 
