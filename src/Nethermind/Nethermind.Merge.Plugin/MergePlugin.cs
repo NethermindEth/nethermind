@@ -174,6 +174,7 @@ public class BaseMergePluginModule : Module
             // Engine rpc related
             .AddComposite<IBuilderOverridePolicy, CompositeBuilderOverridePolicy>()
             .RegisterSingletonJsonRpcModule<IEngineRpcModule, EngineRpcModule>()
+                .AddSingleton<PayloadTransactionCountGuard>()
                 .AddSingleton<IPayloadPreparationService, PayloadPreparationService>()
                     .AddSingleton<IBlockImprovementContextFactory>(CreateBlockImprovementContextFactory)
 

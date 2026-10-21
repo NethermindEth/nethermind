@@ -102,6 +102,18 @@ public class TraceSerializerTests
         Assert.That(DeserializeStored(stored)[0].VmTrace!.Operations[0].Memory.Offset, Is.EqualTo(32));
     }
 
+    // An operation is named by its frame's code at its pc, also when stored without a name; the operations heading
+    // EIP-8141 frames sit in a frame without code and have none.
+    [TestCase("0x6000", ",\"op\":\"PUSH1\"")]
+    [TestCase("0x", "")]
+    public void names_stored_vm_operations_by_their_code(string code, string op)
+    {
+        string stored = $$$"""[{"blockNumber":0,"vmTrace":{"code":"{{{code}}}","ops":[{"cost":3,"ex":{"mem":null,"push":["0x0"],"store":null,"used":97},"pc":0,"sub":null}]}}]""";
+
+        Assert.That(Json.Serialize(DeserializeStored(stored)[0].VmTrace),
+            Is.EqualTo($$$"""{"code":"{{{code}}}","ops":[{"cost":3,"ex":{"mem":null,"push":["0x0"],"store":null,"used":97}{{{op}}},"pc":0,"sub":null}]}"""));
+    }
+
     // Stores written before the deletion markers hold a deleted field as a change to null.
     [Test]
     public void reads_stored_state_deletions()
