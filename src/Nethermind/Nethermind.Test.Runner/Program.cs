@@ -204,7 +204,7 @@ internal class Program
                 List<EthereumTestResult> results = await RunBlockTestFiles(files, runnerOptions, workers);
                 resultsOut.Write(_serializer.Serialize(results, true));
                 // Bench harness, not for merge: shows the prewarming ran.
-                Console.Error.WriteLine($"PREWARM-COUNTERS handoffs={Nethermind.Blockchain.Metrics.PrewarmHandoffs} rejected={Nethermind.Blockchain.Metrics.PrewarmHandoffsRejected} missing={Nethermind.Blockchain.Metrics.PrewarmHandoffsMissing} refreshes={Nethermind.Blockchain.Metrics.PrewarmRefreshes} in_flight_started={Nethermind.Blockchain.Metrics.PrewarmInFlightStarted} in_flight_rounds={Nethermind.Blockchain.Metrics.PrewarmInFlightRounds} in_flight_cells={Nethermind.Blockchain.Metrics.PrewarmInFlightCells} in_flight_late_misses={Nethermind.Blockchain.Metrics.PrewarmInFlightLateMisses}");
+                Console.Error.WriteLine($"PREWARM-COUNTERS handoffs={Nethermind.Blockchain.Metrics.PrewarmHandoffs} rejected={Nethermind.Blockchain.Metrics.PrewarmHandoffsRejected} missing={Nethermind.Blockchain.Metrics.PrewarmHandoffsMissing} shared_commits={Nethermind.Blockchain.Metrics.PrewarmReplayCommitsShared} refreshes={Nethermind.Blockchain.Metrics.PrewarmRefreshes} in_flight_started={Nethermind.Blockchain.Metrics.PrewarmInFlightStarted} in_flight_rounds={Nethermind.Blockchain.Metrics.PrewarmInFlightRounds} in_flight_cells={Nethermind.Blockchain.Metrics.PrewarmInFlightCells} in_flight_late_misses={Nethermind.Blockchain.Metrics.PrewarmInFlightLateMisses}");
                 Console.Error.Flush();
             }
             else if (isStateTest)
