@@ -187,7 +187,8 @@ internal sealed class HashKeyedNodeStorage : INodeStorage, INodeStorage.IWriteBa
             if (count >= 0) return count;
         }
 
-        return FindHeldListChildren(rlp, filter, held);
+        // Only the empty value ends a branch of that shape: this turns most leaves away without parsing them.
+        return rlp.IsEmpty || rlp[^1] != EmptyItem ? -1 : FindHeldListChildren(rlp, filter, held);
     }
 
     /// <summary><see cref="FindHeldBranchChildren"/> for a node of <see cref="FullBranchLength"/> bytes, starting at
