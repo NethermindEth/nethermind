@@ -43,7 +43,8 @@ public static class PbtCoreRegistration
             // A second pool would halve each pool's hit rate.
             .AddSingleton<IPbtResourcePool, PbtResourcePool>()
             .AddSingleton<IRefCountingMemoryProvider>(PbtNodeGroupMemory.CreateProvider(config))
-            .AddSingleton<PbtGroupLog>(ctx => new PbtGroupLog(ctx.Resolve<IRefCountingMemoryProvider>(), config.NodeGroupLogCompressedMemoryBudget))
+            .AddSingleton<PbtGroupLog>(ctx => new PbtGroupLog(ctx.Resolve<IRefCountingMemoryProvider>(), config.NodeGroupLogCompressedMemoryBudget,
+                PbtGroupLog.DefaultGenerationBytes, config.NodeGroupLogRetainedGenerations))
             .AddPbtPersisted(config)
             .AddSingleton<PbtSnapshotRepository>(ctx => new PbtSnapshotRepository(
                 ctx.Resolve<IMetricsConfig>(), ctx.ResolveKeyed<ISnapshotCatalog>(DbNames.Pbt),
