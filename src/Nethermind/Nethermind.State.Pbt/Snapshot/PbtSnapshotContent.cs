@@ -149,7 +149,6 @@ public sealed class PbtSnapshotContent(IRefCountingMemoryProvider? nodeGroupMemo
         PbtGroupRecord record = default;
         PbtGroupReference reference = root.IsDirect ? _nodeGroupPin!.Log.FindGroup(root, groupKey, out record) : root;
         if (reference.IsUnknown) return false;
-        if (root.IsDirect) Metrics.IncrementPbtGroupLogReadHits();
         if (reference.IsDirect)
         {
             payload = _nodeGroupMemory.Rent(record.Payload.Length);

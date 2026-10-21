@@ -16,14 +16,6 @@ public sealed partial class PbtGroupLog
     private const int RootSlots = 1024;
 
     private readonly (ValueHash256 Root, PbtGroupReference Reference)[] _roots = new (ValueHash256, PbtGroupReference)[RootSlots];
-    private long _rootHits;
-    private long _rootMisses;
-
-    /// <summary>The number of <see cref="FindRoot"/> calls that resolved a resident root group.</summary>
-    public long RootHits => Interlocked.Read(ref _rootHits);
-
-    /// <summary>The number of <see cref="FindRoot"/> calls that found no resident root group.</summary>
-    public long RootMisses => Interlocked.Read(ref _rootMisses);
 
     /// <inheritdoc/>
     /// <remarks>The entry replaces its slot's previous one.</remarks>
@@ -45,13 +37,7 @@ public sealed partial class PbtGroupLog
         {
             ThrowIfDisposed();
             (ValueHash256 indexed, PbtGroupReference reference) = _roots[RootSlot(root)];
-            if (indexed == root && TryLocate(reference, out _))
-            {
-                _rootHits++;
-                return reference;
-            }
-            _rootMisses++;
-            return PbtGroupReference.Unknown;
+            return indexed == root && TryLocate(reference, out _) ? reference : PbtGroupReference.Unknown;
         }
     }
 

@@ -223,7 +223,6 @@ public class PbtSnapshotBundleTests
         context.Manager.FlushCache(CancellationToken.None);
         BlockHeader parent = Build.A.BlockHeader.WithNumber(1).WithStateRoot(rootHash).TestObject;
         using PbtWorldStateScope next = context.BeginScope(parent, out PbtSnapshotBundle bundle);
-        long hits = log.RootHits;
         Assert.That(bundle.RootGroupReference.IsDirect, Is.EqualTo(indexed));
         using PbtSnapshot unchanged = bundle.CollectSnapshot(new StateId(parent), new StateId(2, rootHash), bundle.TreeRoot);
         Assert.That(log.TryGetRecord(unchanged.RootGroupReference, out PbtGroupRecord root), Is.True, "an unchanged non-empty tree always publishes a resident root group");
@@ -237,7 +236,6 @@ public class PbtSnapshotBundleTests
         bundle.CompleteLeafChanges();
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(log.RootHits, indexed ? Is.GreaterThan(hits) : Is.EqualTo(hits));
             Assert.That(counted.DirectReads, Is.GreaterThan(0), "the fold reads its root group from the log");
             // A copied root group links to no descendants, which the fold then reads from persistence.
             Assert.That(counted.SnapshotReads, indexed ? Is.Zero : Is.GreaterThan(0));

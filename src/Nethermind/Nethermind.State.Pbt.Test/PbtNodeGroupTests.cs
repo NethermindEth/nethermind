@@ -1146,8 +1146,6 @@ public class PbtNodeGroupTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(context.Log.FindRoot(colliding), Is.EqualTo(PbtGroupReference.Unknown), "a reclaimed root record misses");
-            Assert.That(context.Log.RootHits, Is.EqualTo(2));
-            Assert.That(context.Log.RootMisses, Is.EqualTo(3));
             Assert.Throws<ArgumentException>(() => context.Log.SetRoot(first, PbtGroupReference.Unknown));
         }
     }

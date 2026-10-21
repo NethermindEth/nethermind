@@ -188,22 +188,6 @@ public static class Metrics
     [Description("Number of compacted pbt node group log generations")]
     public static long PbtGroupLogCompressedGenerations { get; set; }
 
-    [CounterMetric]
-    [Description("Pbt node group log root index lookups that found a resident root group")]
-    public static long PbtGroupLogRootHits { get; set; }
-
-    [CounterMetric]
-    [Description("Pbt node group log root index lookups that found no resident root group, so the fold resolved the root from persistence")]
-    public static long PbtGroupLogRootMisses { get; set; }
-
-    private static long _pbtGroupLogReadHits;
-
-    [CounterMetric]
-    [Description("Pbt node group reads served by the node group log, through a fold's descendant link or a walk of a branch's tree")]
-    public static long PbtGroupLogReadHits => Volatile.Read(ref _pbtGroupLogReadHits);
-
-    public static void IncrementPbtGroupLogReadHits() => Interlocked.Increment(ref _pbtGroupLogReadHits);
-
     /// <summary>Refreshes the node group log metrics from <paramref name="log"/>.</summary>
     public static void ObserveGroupLog(PbtGroupLog log)
     {
@@ -211,8 +195,6 @@ public static class Metrics
         PbtGroupLogGenerations = log.GenerationCount;
         PbtGroupLogCompressedMemory = log.CompressedBytes;
         PbtGroupLogCompressedGenerations = log.CompressedGenerationCount;
-        PbtGroupLogRootHits = log.RootHits;
-        PbtGroupLogRootMisses = log.RootMisses;
     }
 
     /// <remarks>Layers widen as they compact, so this diverges from the layer count as compaction runs.</remarks>

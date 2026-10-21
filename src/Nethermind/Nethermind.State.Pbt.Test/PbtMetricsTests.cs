@@ -70,29 +70,18 @@ public class PbtMetricsTests
     public async Task Collected_snapshots_report_the_group_log()
     {
         await using PbtTestContext context = new();
-        Hash256 root;
         using (PbtWorldStateScope scope = context.BeginScope(null))
         {
             using (IWorldStateScopeProvider.IWorldStateWriteBatch batch = scope.StartWriteBatch(1)) batch.Set(TestItem.AddressA, new Account(1, 100));
             scope.Commit(1);
-            root = scope.RootHash;
-        }
-        long readHits = Metrics.PbtGroupLogReadHits;
-        using (PbtWorldStateScope scope = context.BeginScope(Build.A.BlockHeader.WithNumber(1).WithStateRoot(root).TestObject))
-        {
-            using (IWorldStateScopeProvider.IWorldStateWriteBatch batch = scope.StartWriteBatch(1)) batch.Set(TestItem.AddressA, new Account(2, 100));
-            scope.Commit(2);
         }
         PbtGroupLog log = context.NodeGroupLog;
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(Metrics.PbtGroupLogReadHits, Is.GreaterThan(readHits), "the second fold reads its parent's groups from the log");
             Assert.That(Metrics.PbtGroupLogGenerations, Is.EqualTo(log.GenerationCount).And.GreaterThan(0));
             Assert.That(Metrics.PbtGroupLogMemory, Is.EqualTo(log.ResidentBytes).And.GreaterThan(0));
             Assert.That(Metrics.PbtGroupLogCompressedMemory, Is.EqualTo(log.CompressedBytes));
             Assert.That(Metrics.PbtGroupLogCompressedGenerations, Is.EqualTo(log.CompressedGenerationCount));
-            Assert.That(Metrics.PbtGroupLogRootHits, Is.EqualTo(log.RootHits));
-            Assert.That(Metrics.PbtGroupLogRootMisses, Is.EqualTo(log.RootMisses));
         }
     }
 
