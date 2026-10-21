@@ -14,9 +14,11 @@ namespace Nethermind.JsonRpc.Test.Modules;
 
 public partial class DebugRpcModuleTests
 {
+    private const string ThrowingResultJavaScriptTracer = "{fault:function(){},result:function(){throw Error('result failure');}}";
+
     [Test]
     public async Task Debug_traceBadBlock_replays_rejected_block_on_its_parent_state(
-        [Values] bool streamMode, [Values(null, "callTracer", "{fault:function(){},result:function(){throw Error('result failure');}}")] string? tracer)
+        [Values] bool streamMode, [Values(null, "callTracer", ThrowingResultJavaScriptTracer)] string? tracer)
     {
         using Context context = await Context.Create();
         Block valid = await context.Blockchain.AddBlock(CreateTraceBlockTransactions(context.Blockchain));
@@ -29,8 +31,17 @@ public partial class DebugRpcModuleTests
         string expected = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceBlockByHash", valid.Hash!, new { tracer, streamMode });
         string actual = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceBadBlock", bad.Hash!, new { tracer, streamMode });
 
-        Assert.That(JToken.Parse(actual)["error"], Is.Null, actual);
-        Assert.That((JArray)JToken.Parse(actual)["result"]!, Has.Count.EqualTo(valid.Transactions.Length));
+        JToken json = JToken.Parse(actual);
+        Assert.That(json["error"], Is.Null, actual);
+        JArray entries = (JArray)json["result"]!;
+        Assert.That(entries, Has.Count.EqualTo(valid.Transactions.Length));
         Assert.That(actual, Is.EqualTo(expected));
+        if (tracer is ThrowingResultJavaScriptTracer)
+        {
+            foreach (JToken entry in entries)
+            {
+                Assert.That((string?)entry["error"] ?? "", Does.Contain("result failure"), actual);
+            }
+        }
     }
 }
