@@ -66,6 +66,7 @@ public class CustomTimeDurationConverterTests
         new TestCaseData("\"0.0000000000277777778h\"", TimeSpan.FromTicks(1)).SetName("leading_zero_fraction_rounds_to_tick"),
         new TestCaseData("\"-0.0000000000277777778h\"", TimeSpan.FromTicks(-1)).SetName("negative_leading_zero_fraction_rounds_to_tick"),
         new TestCaseData("\"0.000000000027777777800000000000000000h\"", TimeSpan.FromTicks(1)).SetName("long_leading_zero_fraction_rounds_to_tick"),
+        new TestCaseData("\"0.00000009999999999999999s\"", TimeSpan.FromTicks(1)).SetName("fraction_scale_matches_go_repeated_multiplication"),
         new TestCaseData("\"0.00000000000000000000000000000000000000000001h\"", TimeSpan.Zero).SetName("fraction_scale_beyond_ulong"),
         new TestCaseData("\"0.9223372036854775807h\"", TimeSpan.FromTicks(33204139332)).SetName("fraction_integer_below_cap"),
         new TestCaseData("\"0.9223372036854775808h\"", TimeSpan.FromTicks(33204139332)).SetName("fraction_integer_at_cap"),
