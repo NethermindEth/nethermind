@@ -23,5 +23,10 @@ internal sealed class RecordingTxPoolPeer(PublicKey id, ulong headNumber = 0) : 
 
     public int BatchCount(bool sendFullTx) => _batches.Count(batch => batch.SendFullTx == sendFullTx);
 
-    public void SendNewTransactions(ReadOnlySpan<Transaction> txs, bool sendFullTx) => _batches.Enqueue((txs.ToArray(), sendFullTx));
+    // The broadcaster's 1 s timer notifies every peer also when it has nothing to announce; an empty batch sends
+    // nothing, so recording it would only make the counts depend on how long a test runs.
+    public void SendNewTransactions(ReadOnlySpan<Transaction> txs, bool sendFullTx)
+    {
+        if (!txs.IsEmpty) _batches.Enqueue((txs.ToArray(), sendFullTx));
+    }
 }
