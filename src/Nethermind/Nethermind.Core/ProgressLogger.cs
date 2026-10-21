@@ -113,11 +113,14 @@ namespace Nethermind.Core
         private TimeSpan Elapsed => (UtcEndTime ?? _timestamper.UtcNow) - (UtcStartTime ?? DateTime.MinValue);
         private TimeSpan ElapsedSinceLastMeasurement => _timestamper.UtcNow - (LastMeasurement ?? DateTime.MinValue);
 
+        // Ticks convert to decimal exactly, whereas TotalSeconds carries binary rounding error (e.g. 0.1 s) into the rate.
+        private static decimal ToSeconds(TimeSpan span) => (decimal)span.Ticks / TimeSpan.TicksPerSecond;
+
         public decimal TotalPerSecond
         {
             get
             {
-                decimal timePassed = (decimal)Elapsed.TotalSeconds;
+                decimal timePassed = ToSeconds(Elapsed);
                 if (timePassed == 0M)
                 {
                     return 0M;
@@ -137,7 +140,7 @@ namespace Nethermind.Core
                     return 0;
                 }
 
-                decimal timePassed = (decimal)ElapsedSinceLastMeasurement.TotalSeconds;
+                decimal timePassed = ToSeconds(ElapsedSinceLastMeasurement);
                 if (timePassed == 0M)
                 {
                     return 0M;
@@ -156,7 +159,7 @@ namespace Nethermind.Core
                     return 0;
                 }
 
-                decimal timePassed = (decimal)ElapsedSinceLastMeasurement.TotalSeconds;
+                decimal timePassed = ToSeconds(ElapsedSinceLastMeasurement);
                 if (timePassed == 0M)
                 {
                     return 0M;

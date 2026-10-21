@@ -656,7 +656,7 @@ public class OpcodeTracingPluginTests
         ulong nonce = await GetNonceAsync(ethHttp, signer.Address);
 
         // Submit txs upfront so they land in the next FCU's payload build.
-        List<string> txHashes = new(contractCreationsToSubmit);
+        List<string> txHashes = [with(contractCreationsToSubmit)];
         for (int i = 0; i < contractCreationsToSubmit; i++)
         {
             Transaction tx = BuildContractCreationTx(nonce++);

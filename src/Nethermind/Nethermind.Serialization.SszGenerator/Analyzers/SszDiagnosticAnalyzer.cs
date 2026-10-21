@@ -40,7 +40,7 @@ public abstract class SszDiagnosticAnalyzer : DiagnosticAnalyzer
 
     private static HashSet<string> CreateAttributeNameSet(params string[] attributeTypeNames)
     {
-        HashSet<string> names = new(StringComparer.Ordinal);
+        HashSet<string> names = [with(StringComparer.Ordinal)];
         foreach (string attributeTypeName in attributeTypeNames)
         {
             names.Add(attributeTypeName);

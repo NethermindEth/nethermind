@@ -48,7 +48,7 @@ public class NodeDataRecovery(ISyncPeerPool peerPool, INodeStorage nodeStorage, 
             queryPath = startingPath.Append(0, 64 - startingPath.Length);
         }
 
-        ArrayPoolList<(TreePath, byte[])> recoveredNodes = new(1);
+        ArrayPoolList<(TreePath, byte[])> recoveredNodes = [with(1)];
         try
         {
             do

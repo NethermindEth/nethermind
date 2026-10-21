@@ -62,7 +62,7 @@ public static class ScopeBalApplier
                             {
                                 codeSetter ??= scope.CodeDb.BeginCodeWrite();
                                 codeSetter.Set(codeChange.CodeHash, code);
-                                (writtenCodeHashes ??= new ArrayPoolList<ValueHash256>(1)).Add(codeChange.CodeHash);
+                                (writtenCodeHashes ??= [with(1)]).Add(codeChange.CodeHash);
                             }
                             else
                             {

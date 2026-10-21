@@ -27,7 +27,7 @@ namespace Nethermind.JsonRpc.Test
                 JsonRpcRequest request = CreateRequest("eth_getBlockByHash", Parameter.ToString(), false);
                 string blockJson = await SendRequest(request);
                 BlockForRpcTxHashes block = _serializer.Deserialize<JsonRpcSuccessResponse<BlockForRpcTxHashes>>(blockJson)!.Result;
-                List<string> transactionJsonPayloads = new(block.Transactions!.Length);
+                List<string> transactionJsonPayloads = [with(block.Transactions!.Length)];
                 foreach (string tx in block.Transactions)
                 {
                     transactionJsonPayloads.Add(await SendRequest(CreateRequest("eth_getTransactionReceipt", tx)));

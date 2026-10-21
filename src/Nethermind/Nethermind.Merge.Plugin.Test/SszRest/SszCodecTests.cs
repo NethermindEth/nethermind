@@ -966,7 +966,7 @@ public class SszCodecTests
     [TestCaseSource(nameof(WitnessBoundCases))]
     public void EncodeNewPayloadWithWitnessResponse_enforces_witness_bounds(WitnessField field, int itemCount, int itemLength, bool withinBound)
     {
-        ArrayPoolList<byte[]> items = new(itemCount);
+        ArrayPoolList<byte[]> items = [with(itemCount)];
         for (int i = 0; i < itemCount; i++) items.Add(new byte[itemLength]);
 
         using Witness witness = new()

@@ -158,14 +158,14 @@ public sealed class DiffsWriterService : IDisposable
         // Fresh walker per call drops the implicit single-thread invariant of a shared instance.
         TrieDiff diff = new TrieDiffWalker().ComputeDiff(parentRoot, newRoot, oldResolver, newResolver);
 
-        List<CodeHashEntry> codeEntries = new(diff.CodeHashChanges.Count);
+        List<CodeHashEntry> codeEntries = [with(diff.CodeHashChanges.Count)];
         foreach (CodeHashChange change in diff.CodeHashChanges)
         {
             uint newCodeSize = ResolveNewCodeSize(change, (long)block.Number);
             codeEntries.Add(new CodeHashEntry(change.OldCodeHash, change.NewCodeHash, newCodeSize));
         }
 
-        List<SlotCountEntry> slotEntries = new(diff.SlotCountChanges.Count);
+        List<SlotCountEntry> slotEntries = [with(diff.SlotCountChanges.Count)];
         foreach (SlotCountChange change in diff.SlotCountChanges)
         {
             ulong oldCount = _store.GetSlotCount(change.AddressHash);

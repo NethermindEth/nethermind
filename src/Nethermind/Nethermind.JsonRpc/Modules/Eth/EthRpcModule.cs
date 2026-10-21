@@ -255,7 +255,7 @@ public partial class EthRpcModule(
         byte[] buffer = ArrayPool<byte>.Shared.Rent(requests.TotalSlots * 32);
         int bufferOffset = 0;
 
-        Dictionary<Address, Memory<byte>[]> slots = new(requests.Entries.Count);
+        Dictionary<Address, Memory<byte>[]> slots = [with(requests.Entries.Count)];
         foreach (KeyValuePair<Address, UInt256[]> entry in requests.Entries)
         {
             UInt256[] slotKeys = entry.Value;

@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Evm;
 
@@ -20,18 +19,20 @@ public static class DeepStackLoopCode
     public static byte[] Build(int stackDepth, int memoryStride)
     {
         int loopStart = 33 + (stackDepth - 1) + 2;
-        List<byte> code = new(loopStart + 12) { (byte)Instruction.PUSH32 };
-        code.AddRange(Enumerable.Repeat((byte)0xff, 32));
-        code.AddRange(Enumerable.Repeat((byte)Instruction.DUP1, stackDepth - 1));
-        code.AddRange([(byte)Instruction.PUSH1, 0]);
-        code.Add((byte)Instruction.JUMPDEST);
-        code.AddRange([(byte)Instruction.PUSH2, (byte)(memoryStride >> 8), (byte)memoryStride]);
-        code.Add((byte)Instruction.ADD);
-        code.Add((byte)Instruction.DUP1);
-        code.Add((byte)Instruction.DUP1);
-        code.Add((byte)Instruction.MSTORE8);
-        code.AddRange([(byte)Instruction.PUSH2, (byte)(loopStart >> 8), (byte)loopStart]);
-        code.Add((byte)Instruction.JUMP);
-        return [.. code];
+        return
+        [
+            (byte)Instruction.PUSH32,
+            .. Enumerable.Repeat((byte)0xff, 32),
+            .. Enumerable.Repeat((byte)Instruction.DUP1, stackDepth - 1),
+            (byte)Instruction.PUSH1, 0,
+            (byte)Instruction.JUMPDEST,
+            (byte)Instruction.PUSH2, (byte)(memoryStride >> 8), (byte)memoryStride,
+            (byte)Instruction.ADD,
+            (byte)Instruction.DUP1,
+            (byte)Instruction.DUP1,
+            (byte)Instruction.MSTORE8,
+            (byte)Instruction.PUSH2, (byte)(loopStart >> 8), (byte)loopStart,
+            (byte)Instruction.JUMP,
+        ];
     }
 }

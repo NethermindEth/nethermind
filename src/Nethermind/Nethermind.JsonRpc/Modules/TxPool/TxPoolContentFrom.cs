@@ -30,7 +30,7 @@ public class TxPoolContentFrom
         IDictionary<TxPoolTxKey, Transaction> source,
         in TransactionForRpcContext extraData)
     {
-        Dictionary<TxPoolTxKey, TransactionForRpc> result = new(source.Count);
+        Dictionary<TxPoolTxKey, TransactionForRpc> result = [with(source.Count)];
         foreach (KeyValuePair<TxPoolTxKey, Transaction> kv in source)
             result[kv.Key] = TransactionForRpc.FromTransaction(kv.Value, extraData);
         return result;

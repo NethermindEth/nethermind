@@ -200,7 +200,7 @@ public class Eth68ProtocolHandler(ISession session,
                 SendHashesToRequest();
             }
 
-            hashesToRequest ??= new ArrayPoolList<ValueHash256>(requestCapacity);
+            hashesToRequest ??= [with(requestCapacity)];
             hashesToRequest.Add(hash);
             toRequestCount++;
 
@@ -255,9 +255,9 @@ public class Eth68ProtocolHandler(ISession session,
                 ValueHash256 txHash = txHashes[i];
                 if (TryGetTxShape(in txHash, out (int Size, TxType Type) txShape))
                 {
-                    hashesWithShape ??= new ArrayPoolList<ValueHash256>(txHashes.Length);
-                    sizes ??= new ArrayPoolList<int>(txHashes.Length);
-                    types ??= new ArrayPoolList<byte>(txHashes.Length);
+                    hashesWithShape ??= [with(txHashes.Length)];
+                    sizes ??= [with(txHashes.Length)];
+                    types ??= [with(txHashes.Length)];
 
                     hashesWithShape.Add(txHash);
                     sizes.Add(txShape.Size);
@@ -265,7 +265,7 @@ public class Eth68ProtocolHandler(ISession session,
                 }
                 else
                 {
-                    hashesWithoutShape ??= new ArrayPoolList<ValueHash256>(txHashes.Length);
+                    hashesWithoutShape ??= [with(txHashes.Length)];
                     hashesWithoutShape.Add(txHash);
                 }
             }

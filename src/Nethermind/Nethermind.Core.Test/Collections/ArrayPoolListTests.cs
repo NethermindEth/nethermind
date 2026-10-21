@@ -349,12 +349,13 @@ public class ArrayPoolListTests
     [Test]
     public void Dispose_recursive()
     {
-        ArrayPoolList<ArrayPoolList<int>> list = new(8)
-        {
-            new ArrayPoolList<int>(8),
-            new ArrayPoolList<int>(8),
-            new ArrayPoolList<int>(8)
-        };
+        ArrayPoolList<ArrayPoolList<int>> list =
+        [
+            with(8),
+            [with(8)],
+            [with(8)],
+            [with(8)]
+        ];
 
         list.DisposeRecursive();
         list.DisposeRecursive();

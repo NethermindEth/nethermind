@@ -78,7 +78,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
         _frameTxSpec = _isFrameTx ? spec : null;
 
         _config = NativeCallTracerConfig.FromJson(options.TracerConfig, EthereumJsonSerializer.JsonOptions);
-        _callStack = new(1024);
+        _callStack = [with(1024)];
 
         if (_config.WithLog)
         {
@@ -86,7 +86,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
             _blockLogIndex = options.LogIndex;
             _logIndexStart = (ulong)(_blockLogIndex?.Next ?? 0);
             _logIndex = _logIndexStart;
-            _logIndexAtEntry = new ArrayPoolList<ulong>(16);
+            _logIndexAtEntry = [with(16)];
         }
     }
 
@@ -173,7 +173,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
             index,
             (ulong)callFrame.CallsSpan.Length);
 
-        callFrame.Logs ??= new ArrayPoolList<NativeCallTracerLogEntry>(8);
+        callFrame.Logs ??= [with(8)];
         callFrame.Logs.Add(callLog);
     }
 

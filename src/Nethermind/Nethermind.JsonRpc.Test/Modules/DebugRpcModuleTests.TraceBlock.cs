@@ -1891,7 +1891,7 @@ public partial class DebugRpcModuleTests
     public async Task GethLikeTxTraceStreamingResult_WriteToAsync_produces_same_json_as_serializer(
         [Values(1, 100, 1000)] int traceCount, [Values] bool errors)
     {
-        List<GethLikeTxTrace> traces = new(traceCount);
+        List<GethLikeTxTrace> traces = [with(traceCount)];
         for (int i = 0; i < traceCount; i++)
         {
             GethLikeTxTrace trace = new();

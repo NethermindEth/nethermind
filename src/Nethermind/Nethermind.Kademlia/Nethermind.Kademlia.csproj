@@ -21,7 +21,6 @@
 
   <ItemGroup>
     <PackageReference Include="Collections.Pooled" />
-    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
     <PackageReference Include="Microsoft.SourceLink.GitHub" PrivateAssets="all" />
   </ItemGroup>
 

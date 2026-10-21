@@ -300,7 +300,7 @@ public class SortedTableTests
         for (int iter = 0; iter < 25; iter++)
         {
             int count = rng.Next(1, 1500);
-            Dictionary<string, byte[]> map = new(count);
+            Dictionary<string, byte[]> map = [with(count)];
             while (map.Count < count)
             {
                 byte[] key = new byte[rng.Next(1, 56)];

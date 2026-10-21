@@ -232,7 +232,7 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
         // Pinned before the snapshot so a generation merged and deleted in between stays readable, bound after it
         // so the view serves exactly the log version the snapshot's metadata confirms. The second level is pinned after
         // the first, so a generation the first level dropped before its pin is already published in the second level.
-        ArrayPoolList<TrieNodeLogView> views = new(_shards.Length + _secondLevelShards.Length);
+        ArrayPoolList<TrieNodeLogView> views = [with(_shards.Length + _secondLevelShards.Length)];
         IColumnDbSnapshot<FlatDbColumns>? snapshot = null;
         try
         {
@@ -255,7 +255,7 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
     {
         if (bypass) return NullTrieNodeLog.Instance;
 
-        ArrayPoolList<TrieNodeLogWriteBatch> batches = new(_shards.Length);
+        ArrayPoolList<TrieNodeLogWriteBatch> batches = [with(_shards.Length)];
         try
         {
             foreach (TrieNodeLogShard shard in _shards) batches.Add(shard.StartWriteBatch());
@@ -389,7 +389,7 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
             _log = log;
             _rocksDbBatch = rocksDbBatch;
             _batches = batches;
-            _writers = new ArrayPoolList<ShardWriter>(batches.Count);
+            _writers = [with(batches.Count)];
             foreach (TrieNodeLogWriteBatch batch in batches) _writers.Add(new ShardWriter(batch, log._logger));
         }
 

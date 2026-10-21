@@ -39,7 +39,7 @@ namespace Nethermind.Network.Test.P2P
             bool shouldThrow)
             where TMessage : P2PMessage
         {
-            ArrayPoolList<byte[]> entries = new(items);
+            ArrayPoolList<byte[]> entries = [with(items)];
             for (int i = 0; i < items; i++)
             {
                 entries.Add([0x42]);

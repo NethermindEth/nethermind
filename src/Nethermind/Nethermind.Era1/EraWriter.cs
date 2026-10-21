@@ -44,7 +44,7 @@ public class EraWriter : IDisposable
         _e2StoreWriter = e2StoreWriter;
         _accumulatorCalculator = new();
         _specProvider = specProvider;
-        _entryIndexes = new(MaxEra1Size);
+        _entryIndexes = [with(MaxEra1Size)];
     }
 
     public async Task Add(Block block, TxReceipt[] receipts, CancellationToken cancellation = default)

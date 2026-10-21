@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using NUnit.Framework;
@@ -26,10 +25,7 @@ internal class BlockTests
     public void DisposeAccountChanges_should_dispose_and_null_account_changes()
     {
         Block block = new(new BlockHeader());
-        block.AccountChanges = new ArrayPoolList<AddressAsKey>(10)
-        {
-            TestItem.AddressA
-        };
+        block.AccountChanges = [with(10), TestItem.AddressA];
 
         block.DisposeAccountChanges();
 
