@@ -91,7 +91,7 @@ public interface IBlocksConfig : IConfig
     [ConfigItem(Description = "Commit consecutive transactions taken over from their pre-warm runs together, up to PreWarmBatchedReplayCommitMaxTxs at a time. Requires PreWarmHandoff.", DefaultValue = "true", HiddenFromDocs = true)]
     bool PreWarmBatchedReplayCommit { get; set; }
 
-    [ConfigItem(Description = "The most taken-over transactions one state commit covers with PreWarmBatchedReplayCommit.", DefaultValue = "16", HiddenFromDocs = true)]
+    [ConfigItem(Description = "The most taken-over transactions one state commit covers with PreWarmBatchedReplayCommit. 1 or less turns sharing off: every takeover commits on its own.", DefaultValue = "16", HiddenFromDocs = true)]
     int PreWarmBatchedReplayCommitMaxTxs { get; set; }
 
     /// <summary>
