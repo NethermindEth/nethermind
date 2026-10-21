@@ -1,0 +1,17 @@
+name: Set up .NET
+description: >-
+  Runs actions/setup-dotnet and retries it once on failure: the dotnet-install
+  script sometimes crashes on hosted runners (e.g. "Internal CLR error" on windows-11-arm).
+  Run after actions/checkout, as this action is local.
+
+runs:
+  using: composite
+  steps:
+    - name: Set up .NET
+      id: setup
+      continue-on-error: true
+      uses: actions/setup-dotnet@v5
+
+    - name: Set up .NET (retry)
+      if: steps.setup.outcome == 'failure'
+      uses: actions/setup-dotnet@v5

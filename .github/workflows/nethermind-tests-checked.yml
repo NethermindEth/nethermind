@@ -167,7 +167,7 @@ jobs:
           submodules: ${{ matrix.project.fixtures && 'recursive' || 'false' }}
 
       - name: Set up .NET
-        uses: actions/setup-dotnet@v5
+        uses: ./.github/actions/setup-dotnet
 
       - name: Download test binaries
         uses: ./.github/actions/download-test-artifacts
@@ -294,7 +294,7 @@ jobs:
           submodules: recursive
 
       - name: Set up .NET
-        uses: actions/setup-dotnet@v5
+        uses: ./.github/actions/setup-dotnet
 
       - name: Download test binaries
         uses: ./.github/actions/download-test-artifacts
