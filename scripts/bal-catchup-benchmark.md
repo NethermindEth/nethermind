@@ -51,4 +51,8 @@ Fixture cases measure five iterations; synthetic cases measure ten. Both use two
 warmups. Every cold iteration copies the complete datadir, so large fixtures can
 spend most of the run in setup. File copying warms the OS page cache; use
 `NETHERMIND_BALCATCHUP_DROP_CACHES=1` when measuring cold disk reads.
+Synthetic warm segments are checked before creating database copies. Fixtures
+check the actual segment above the persisted head after opening a working copy;
+failed setup deletes that copy. `NETHERMIND_BALCATCHUP_BLOCKS` is an upper limit,
+so a shorter fixture remains valid even when its limit exceeds the warm window.
 Compare timings only from the same runner and cache mode.

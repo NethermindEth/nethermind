@@ -171,7 +171,7 @@ public partial class EngineModuleTests
     }
 
     [Test]
-    public void Inclusion_list_committed_state_requires_nonempty_code_bytes([Values] bool codeAvailable)
+    public void Inclusion_list_committed_state_marks_missing_code_unavailable([Values] bool codeAvailable)
     {
         byte[] expected = [.. Eip7702Constants.DelegationHeader, .. TestItem.AddressA.Bytes];
         ValueHash256 hash = ValueKeccak.Compute(expected);
