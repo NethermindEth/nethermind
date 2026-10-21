@@ -77,6 +77,15 @@ public sealed class ReadOnlySnapshotBundle(
         if (persistenceReader is IPersistence.IPrefetchingReader prefetcher) prefetcher.Prefetch(accounts, slots, cancellationToken);
     }
 
+    /// <summary>Which columns of a block are worth prefetching, decided from sampled keys; see <see cref="IPersistence.IPrefetchingReader.PlanPrefetch"/>.</summary>
+    public IPersistence.PrefetchColumns PlanPrefetch(Span<Address> accountSamples, Span<StorageCell> slotSamples)
+    {
+        GuardDispose();
+        return persistenceReader is IPersistence.IPrefetchingReader prefetcher
+            ? prefetcher.PlanPrefetch(accountSamples, slotSamples)
+            : IPersistence.PrefetchColumns.None;
+    }
+
     /// <summary>Whether <see cref="Prefetch"/> reads anything ahead from the persistence below.</summary>
     public bool SupportsPrefetch => persistenceReader is IPersistence.IPrefetchingReader { SupportsPrefetch: true };
 

@@ -9,6 +9,8 @@ using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Trie;
 
+using Nethermind.State.Flat.Persistence;
+
 namespace Nethermind.State.Flat;
 
 /// <summary>
@@ -27,6 +29,10 @@ public sealed class SnapshotBundle : IDisposable
     /// <summary>Starts reading persisted accounts and slots ahead of use; see <see cref="ReadOnlySnapshotBundle.Prefetch"/>.</summary>
     public void Prefetch(Span<Address> accounts, Span<StorageCell> slots, CancellationToken cancellationToken) =>
         _readOnlySnapshotBundle.Prefetch(accounts, slots, cancellationToken);
+
+    /// <summary>Passthrough of <see cref="ReadOnlySnapshotBundle.PlanPrefetch"/>.</summary>
+    public IPersistence.PrefetchColumns PlanPrefetch(Span<Address> accountSamples, Span<StorageCell> slotSamples) =>
+        _readOnlySnapshotBundle.PlanPrefetch(accountSamples, slotSamples);
 
     /// <summary>Passthrough of <see cref="ReadOnlySnapshotBundle.SupportsPrefetch"/>.</summary>
     public bool SupportsPrefetch => _readOnlySnapshotBundle.SupportsPrefetch;

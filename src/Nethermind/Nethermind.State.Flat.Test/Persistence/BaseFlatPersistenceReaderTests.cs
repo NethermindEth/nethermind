@@ -93,7 +93,7 @@ public class BaseFlatPersistenceReaderTests
             slots[i] = new StorageCell(accounts[i % 3], (UInt256)(i * 7919));
         }
 
-        reader.Prefetch(accounts, slots, CancellationToken.None);
+        PlanAndPrefetch(reader, accounts, slots, CancellationToken.None);
         // The timed read of the first missed sample is not a scalar read of the block.
         accountStore.ReadKeys.Clear();
         storageStore.ReadKeys.Clear();
@@ -129,7 +129,7 @@ public class BaseFlatPersistenceReaderTests
         BasePersistence.ToHashedFlatReader<BaseFlatPersistence.Reader> reader = new(new BaseFlatPersistence.Reader(accountStore, new RecordingStore()));
         long skipped = Nethermind.Db.Metrics.PrefetchesSkippedCached;
 
-        reader.Prefetch(accounts, [], CancellationToken.None);
+        PlanAndPrefetch(reader, accounts, [], CancellationToken.None);
 
         using (Assert.EnterMultipleScope())
         {
@@ -152,7 +152,7 @@ public class BaseFlatPersistenceReaderTests
         StorageCell[] slots = accounts.Select(static (address, i) => new StorageCell(address, (UInt256)i)).ToArray();
         long skipped = Nethermind.Db.Metrics.PrefetchesSkippedCached;
 
-        reader.Prefetch(accounts, slots, CancellationToken.None);
+        PlanAndPrefetch(reader, accounts, slots, CancellationToken.None);
 
         using (Assert.EnterMultipleScope())
         {
@@ -176,7 +176,7 @@ public class BaseFlatPersistenceReaderTests
         RecordingStore accountStore = new(missDelay: TimeSpan.Zero, slowKey: slowKey);
         BasePersistence.ToHashedFlatReader<BaseFlatPersistence.Reader> reader = new(new BaseFlatPersistence.Reader(accountStore, new RecordingStore()));
 
-        reader.Prefetch(accounts, [], CancellationToken.None);
+        PlanAndPrefetch(reader, accounts, [], CancellationToken.None);
 
         using (Assert.EnterMultipleScope())
         {
@@ -186,7 +186,7 @@ public class BaseFlatPersistenceReaderTests
         }
     }
 
-    // After one disk read, a column trusts the next misses to be disk reads: the next DiskRecheckInterval blocks send
+    // After one disk read, a column trusts the next misses to be disk reads: the next RecheckInterval blocks send
     // the prefetch without a timed read, and the block after them is timed again.
     [Test]
     public void Prefetch_AfterADiskRead_SendsWithoutTimingUntilTheRecheck()
@@ -198,18 +198,18 @@ public class BaseFlatPersistenceReaderTests
         Address[] accounts = Accounts(70);
         List<int> timedReads = [];
 
-        for (int block = 0; block < PrefetchSampling.DiskRecheckInterval + 2; block++)
+        for (int block = 0; block < PrefetchSampling.RecheckInterval + 2; block++)
         {
             accountStore.ReadKeys.Clear();
             int prefetchedBefore = accountStore.PrefetchedKeys.Count;
-            reader.Prefetch(accounts, [], CancellationToken.None);
+            PlanAndPrefetch(reader, accounts, [], CancellationToken.None);
             Assert.That(accountStore.PrefetchedKeys.Count - prefetchedBefore, Is.EqualTo(accounts.Length), $"block {block}");
             timedReads.Add(accountStore.ReadKeys.Count);
         }
 
-        int[] expected = new int[PrefetchSampling.DiskRecheckInterval + 2];
+        int[] expected = new int[PrefetchSampling.RecheckInterval + 2];
         expected[0] = 1;
-        expected[PrefetchSampling.DiskRecheckInterval + 1] = 1;
+        expected[PrefetchSampling.RecheckInterval + 1] = 1;
         Assert.That(timedReads, Is.EqualTo(expected));
     }
 
@@ -225,8 +225,66 @@ public class BaseFlatPersistenceReaderTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(trusted, Is.EqualTo(PrefetchSampling.DiskRecheckInterval));
+            Assert.That(trusted, Is.EqualTo(PrefetchSampling.RecheckInterval));
             Assert.That(sampling.Slots.TrustMissAsDiskRead(), Is.False);
+        }
+    }
+
+    // After a block whose misses were read from the page cache, the next RecheckInterval blocks skip the decision
+    // without a probe or a read, and the block after them decides again.
+    [Test]
+    [Retry(3)]
+    public void Plan_AfterPageCacheReads_SkipsWithoutProbesUntilTheRecheck()
+    {
+        RecordingStore accountStore = new(missDelay: TimeSpan.Zero);
+        PrefetchSampling sampling = new();
+        BasePersistence.ToHashedFlatReader<BaseFlatPersistence.Reader> reader = new(
+            new BaseFlatPersistence.Reader(accountStore, new RecordingStore()), sampling: sampling);
+        Address[] accounts = Accounts(70);
+        List<int> probes = [];
+
+        for (int block = 0; block < PrefetchSampling.RecheckInterval + 2; block++)
+        {
+            accountStore.ProbedKeys.Clear();
+            PlanAndPrefetch(reader, accounts, [], CancellationToken.None);
+            probes.Add(accountStore.ProbedKeys.Count);
+        }
+
+        int[] expected = new int[PrefetchSampling.RecheckInterval + 2];
+        expected[0] = BasePersistence.PrefetchSamples;
+        expected[PrefetchSampling.RecheckInterval + 1] = BasePersistence.PrefetchSamples;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(probes, Is.EqualTo(expected));
+            Assert.That(accountStore.PrefetchedKeys, Is.Empty);
+        }
+    }
+
+    // While blocks are fully cached the next block probes two samples; a miss among them restores all eight.
+    [Test]
+    public void Plan_AfterAFullyCachedBlock_ProbesTwoSamples()
+    {
+        bool cold = false;
+        RecordingStore accountStore = new(cached: _ => !cold);
+        PrefetchSampling sampling = new();
+        BasePersistence.ToHashedFlatReader<BaseFlatPersistence.Reader> reader = new(
+            new BaseFlatPersistence.Reader(accountStore, new RecordingStore()), sampling: sampling);
+        Address[] accounts = Accounts(70);
+        List<int> probes = [];
+
+        for (int block = 0; block < 4; block++)
+        {
+            cold = block == 2;
+            accountStore.ProbedKeys.Clear();
+            PlanAndPrefetch(reader, accounts, [], CancellationToken.None);
+            probes.Add(accountStore.ProbedKeys.Count);
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            // Cached, cached run, cold block found by its first of two probes, then all eight again.
+            Assert.That(probes, Is.EqualTo(new[] { 8, 2, 1, 8 }));
+            Assert.That(accountStore.PrefetchedKeys, Has.Count.EqualTo(accounts.Length));
         }
     }
 
@@ -261,7 +319,7 @@ public class BaseFlatPersistenceReaderTests
         Address[] accounts = Accounts(count);
         StorageCell[] slots = accounts.Select(static (address, i) => new StorageCell(address, (UInt256)i)).ToArray();
 
-        reader.Prefetch(accounts, slots, CancellationToken.None);
+        PlanAndPrefetch(reader, accounts, slots, CancellationToken.None);
 
         using (Assert.EnterMultipleScope())
         {
@@ -272,20 +330,20 @@ public class BaseFlatPersistenceReaderTests
         }
     }
 
-    // A cancelled prefetch probes nothing and sends nothing.
+    // A cancelled prefetch sends nothing; the plan before it probes at most its samples.
     [Test]
-    public void Prefetch_WithACancelledToken_DoesNothing()
+    public void Prefetch_WithACancelledToken_SendsNothing()
     {
         RecordingStore accountStore = new();
         RecordingStore storageStore = new();
         BasePersistence.ToHashedFlatReader<BaseFlatPersistence.Reader> reader = new(new BaseFlatPersistence.Reader(accountStore, storageStore));
         Address[] accounts = Accounts(70);
 
-        reader.Prefetch(accounts, [new StorageCell(accounts[0], 1)], new CancellationToken(canceled: true));
+        PlanAndPrefetch(reader, accounts, [new StorageCell(accounts[0], 1)], new CancellationToken(canceled: true));
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(accountStore.ProbedKeys, Is.Empty);
+            Assert.That(accountStore.ProbedKeys, Has.Count.LessThanOrEqualTo(BasePersistence.PrefetchSamples));
             Assert.That(accountStore.PrefetchBatches, Is.Empty);
             Assert.That(storageStore.PrefetchBatches, Is.Empty);
         }
@@ -301,13 +359,28 @@ public class BaseFlatPersistenceReaderTests
         BasePersistence.ToHashedFlatReader<BaseFlatPersistence.Reader> reader = new(new BaseFlatPersistence.Reader(accountStore, storageStore));
         Address[] accounts = Accounts(200);
 
-        reader.Prefetch(accounts, [new StorageCell(accounts[0], 1)], cancellation.Token);
+        PlanAndPrefetch(reader, accounts, [new StorageCell(accounts[0], 1)], cancellation.Token);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(accountStore.PrefetchBatches, Is.EqualTo(new[] { 64 }));
             Assert.That(storageStore.PrefetchBatches, Is.Empty);
         }
+    }
+
+    /// <summary>What the scope does: plans on samples spread over the keys, then sends the columns the plan chose.</summary>
+    private static void PlanAndPrefetch(BasePersistence.ToHashedFlatReader<BaseFlatPersistence.Reader> reader, Address[] accounts, StorageCell[] slots,
+        CancellationToken cancellationToken)
+    {
+        Address[] accountSamples = new Address[BasePersistence.PrefetchSamples];
+        StorageCell[] slotSamples = new StorageCell[BasePersistence.PrefetchSamples];
+        int accountCount = BasePersistence.FillSamples<Address>(accounts, accountSamples);
+        int slotCount = BasePersistence.FillSamples<StorageCell>(slots, slotSamples);
+        IPersistence.PrefetchColumns columns = reader.PlanPrefetch(accountSamples.AsSpan(0, accountCount), slotSamples.AsSpan(0, slotCount));
+        reader.Prefetch(
+            (columns & IPersistence.PrefetchColumns.Accounts) != 0 ? accounts : default,
+            (columns & IPersistence.PrefetchColumns.Slots) != 0 ? slots : default,
+            cancellationToken);
     }
 
     private static Address[] Accounts(int count)

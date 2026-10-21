@@ -32,7 +32,23 @@ namespace Nethermind.State.Flat.Persistence;
 public static class BasePersistence
 {
     /// <summary>The index of sample <paramref name="sample"/> of <paramref name="sampleCount"/> spread evenly over <paramref name="length"/> keys.</summary>
-    private static int SampleIndex(int sample, int sampleCount, int length) => (int)((long)sample * length / sampleCount);
+    internal static int SampleIndex(int sample, int sampleCount, int length) => (int)((long)sample * length / sampleCount);
+
+    /// <summary>How many keys per column decide a block's prefetch: enough that a block with a third of its reads cold
+    /// is sampled cold with over 95% probability.</summary>
+    public const int PrefetchSamples = 8;
+
+    /// <summary>How many of those samples are probed while the previous block of the column was fully cached.</summary>
+    private const int CachedRunSamples = 2;
+
+    /// <summary>Copies up to <see cref="PrefetchSamples"/> keys spread evenly over <paramref name="keys"/>.</summary>
+    /// <returns>How many samples were copied.</returns>
+    public static int FillSamples<T>(ReadOnlySpan<T> keys, Span<T> samples)
+    {
+        int count = Math.Min(Math.Min(keys.Length, PrefetchSamples), samples.Length);
+        for (int sample = 0; sample < count; sample++) samples[sample] = keys[SampleIndex(sample, count, keys.Length)];
+        return count;
+    }
 
     /// <summary>The longest read of one sampled key that still counts as answered from memory.</summary>
     /// <remarks>
@@ -384,6 +400,9 @@ public static class BasePersistence
         public IPersistence.IFlatIterator CreateStorageIterator(in ValueHash256 accountKey, in ValueHash256 startSlotKey, in ValueHash256 endSlotKey);
         public bool IsPreimageMode { get; }
 
+        /// <summary>Which columns of a block are worth prefetching, decided from sampled keys; none by default.</summary>
+        public IPersistence.PrefetchColumns PlanPrefetch(Span<Address> accountSamples, Span<StorageCell> slotSamples) => IPersistence.PrefetchColumns.None;
+
         /// <summary>Starts reading accounts and slots ahead of use; does nothing by default.</summary>
         /// <remarks>The spans are the caller's scratch: readers may filter them in place.</remarks>
         public void Prefetch(Span<Address> accounts, Span<StorageCell> slots, CancellationToken cancellationToken) { }
@@ -523,19 +542,19 @@ public static class BasePersistence
 
         public bool SupportsPrefetch => _flatReader.SupportsPrefetch;
 
+        public IPersistence.PrefetchColumns PlanPrefetch(Span<Address> accountSamples, Span<StorageCell> slotSamples)
+        {
+            IPersistence.PrefetchColumns columns = IPersistence.PrefetchColumns.None;
+            if (!accountSamples.IsEmpty && AccountsNeedPrefetch(accountSamples)) columns |= IPersistence.PrefetchColumns.Accounts;
+            if (!slotSamples.IsEmpty && SlotsNeedPrefetch(slotSamples)) columns |= IPersistence.PrefetchColumns.Slots;
+            if (columns == IPersistence.PrefetchColumns.None) Db.Metrics.IncrementPrefetchesSkippedCached();
+            return columns;
+        }
+
+        /// <summary>Sends the keys; <see cref="PlanPrefetch"/> has already decided that their columns are worth it.</summary>
         public void Prefetch(Span<Address> accounts, Span<StorageCell> slots, CancellationToken cancellationToken)
         {
-            if (cancellationToken.IsCancellationRequested) return;
-            // A few spread-out keys decide before the rest are hashed: when all of them are in memory the block is
-            // treated as cached and costs only those probes.
-            if (SampledAccountsInMemory(accounts)) accounts = default;
-            if (SampledSlotsInMemory(slots)) slots = default;
-            if (accounts.IsEmpty && slots.IsEmpty)
-            {
-                Db.Metrics.IncrementPrefetchesSkippedCached();
-                return;
-            }
-
+            if (cancellationToken.IsCancellationRequested || (accounts.IsEmpty && slots.IsEmpty)) return;
             HashingPrefetchKeys keys = new(accounts, slots);
             _flatReader.Prefetch(ref keys, cancellationToken);
         }
@@ -568,53 +587,67 @@ public static class BasePersistence
             }
         }
 
-        // Enough probes that a block with a third of its reads cold is sampled cold with over 95% probability.
-        private const int PrefetchSamples = 8;
-
+        // A sampled key that misses the block cache is cold only if reading it takes disk time: a key in the OS page
+        // cache reads in microseconds, and prefetching it would only repeat the read. The column remembers the outcome
+        // (see PrefetchSampling), so a run of disk-cold or page-cache blocks does not time a read on every block.
         [SkipLocalsInit]
-        private bool SampledAccountsInMemory(ReadOnlySpan<Address> accounts)
+        private bool AccountsNeedPrefetch(ReadOnlySpan<Address> samples)
         {
-            int sampleCount = Math.Min(accounts.Length, PrefetchSamples);
+            PrefetchSampling.Column? column = sampling?.Accounts;
+            if (column?.TrustMissesInMemory() == true) return false;
+
             Span<byte> value = stackalloc byte[_accountSpanBufferSize];
-            for (int sample = 0; sample < sampleCount; sample++)
+            int probes = column?.LastBlockCached == true ? Math.Min(samples.Length, CachedRunSamples) : samples.Length;
+            bool missed = false;
+            for (int i = 0; i < probes; i++)
             {
-                ValueHash256 path = accounts[SampleIndex(sample, sampleCount, accounts.Length)].ToAccountPath;
+                ValueHash256 path = samples[SampleIndex(i, probes, samples.Length)].ToAccountPath;
                 if (_flatReader.IsAccountCached(path)) continue;
-                if (sampling?.Accounts.TrustMissAsDiskRead() == true) return false;
+                if (!missed && column?.TrustMissAsDiskRead() == true) return true;
+                missed = true;
 
                 long start = Stopwatch.GetTimestamp();
                 _flatReader.GetAccount(path, value);
                 if (IsDiskRead(start, Stopwatch.GetTimestamp()))
                 {
-                    sampling?.Accounts.RecordDiskRead();
-                    return false;
+                    column?.RecordDiskRead();
+                    return true;
                 }
             }
-            return true;
+
+            column?.RecordInMemory(missed);
+            return false;
         }
 
-        private bool SampledSlotsInMemory(ReadOnlySpan<StorageCell> slots)
+        private bool SlotsNeedPrefetch(ReadOnlySpan<StorageCell> samples)
         {
-            int sampleCount = Math.Min(slots.Length, PrefetchSamples);
-            for (int sample = 0; sample < sampleCount; sample++)
+            PrefetchSampling.Column? column = sampling?.Slots;
+            if (column?.TrustMissesInMemory() == true) return false;
+
+            int probes = column?.LastBlockCached == true ? Math.Min(samples.Length, CachedRunSamples) : samples.Length;
+            bool missed = false;
+            for (int i = 0; i < probes; i++)
             {
-                ref readonly StorageCell cell = ref slots[SampleIndex(sample, sampleCount, slots.Length)];
+                ref readonly StorageCell cell = ref samples[SampleIndex(i, probes, samples.Length)];
                 ValueHash256 path = cell.Address.ToAccountPath;
                 ValueHash256 slotHash = ValueKeccak.Zero;
                 StorageTree.ComputeKeyWithLookup(cell.Index, ref slotHash);
                 if (_flatReader.IsSlotCached(path, slotHash)) continue;
-                if (sampling?.Slots.TrustMissAsDiskRead() == true) return false;
+                if (!missed && column?.TrustMissAsDiskRead() == true) return true;
+                missed = true;
 
                 UInt256 value = default;
                 long start = Stopwatch.GetTimestamp();
                 _flatReader.TryGetStorage(path, slotHash, ref value);
                 if (IsDiskRead(start, Stopwatch.GetTimestamp()))
                 {
-                    sampling?.Slots.RecordDiskRead();
-                    return false;
+                    column?.RecordDiskRead();
+                    return true;
                 }
             }
-            return true;
+
+            column?.RecordInMemory(missed);
+            return false;
         }
     }
 
@@ -661,6 +694,9 @@ public static class BasePersistence
         public bool IsPreimageMode => _flatReader.IsPreimageMode;
 
         public bool SupportsPrefetch => _flatReader.SupportsPrefetch;
+
+        public IPersistence.PrefetchColumns PlanPrefetch(Span<Address> accountSamples, Span<StorageCell> slotSamples) =>
+            _flatReader.PlanPrefetch(accountSamples, slotSamples);
 
         public void Prefetch(Span<Address> accounts, Span<StorageCell> slots, CancellationToken cancellationToken) =>
             _flatReader.Prefetch(accounts, slots, cancellationToken);

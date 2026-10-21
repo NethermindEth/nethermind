@@ -1962,7 +1962,17 @@ public class FlatWorldStateScopeProviderTests
 
         public List<Address> Accounts { get; } = [];
         public List<StorageCell> Slots { get; } = [];
+        public List<Address> AccountSamples { get; } = [];
+        public List<StorageCell> SlotSamples { get; } = [];
         public bool SupportsPrefetch { get; init; } = true;
+        public IPersistence.PrefetchColumns Plan { get; init; } = IPersistence.PrefetchColumns.All;
+
+        public IPersistence.PrefetchColumns PlanPrefetch(Span<Address> accountSamples, Span<StorageCell> slotSamples)
+        {
+            AccountSamples.AddRange(accountSamples);
+            SlotSamples.AddRange(slotSamples);
+            return Plan;
+        }
 
         public void Prefetch(Span<Address> accounts, Span<StorageCell> slots, CancellationToken cancellationToken)
         {
@@ -2106,6 +2116,57 @@ public class FlatWorldStateScopeProviderTests
             Assert.That(scope.SupportsPrefetch, Is.False, "the scope reports the store's prefetch support");
             Assert.That(reader.Accounts, Is.Empty);
             Assert.That(reader.Slots, Is.Empty);
+        }
+    }
+
+    // The plan sees samples spread over the access list; only the columns it chooses are collected and sent.
+    [Test]
+    public async Task HintBal_CollectsOnlyThePlannedColumns([Values(IPersistence.PrefetchColumns.None, IPersistence.PrefetchColumns.Accounts,
+        IPersistence.PrefetchColumns.Slots, IPersistence.PrefetchColumns.All)] IPersistence.PrefetchColumns plan)
+    {
+        PrefetchRecordingReader reader = new() { Plan = plan };
+        using TestContext ctx = new(persistenceReader: reader);
+
+        await ctx.Scope.HintBal(CreateBal(WrittenAccount(TestItem.AddressA, BalWriteKind.Storage), ReadOnlyAccount(TestItem.AddressB)));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reader.AccountSamples, Is.EquivalentTo(new[] { TestItem.AddressA, TestItem.AddressB }));
+            Assert.That(reader.SlotSamples, Is.EquivalentTo(new[] { new StorageCell(TestItem.AddressA, 1), new StorageCell(TestItem.AddressB, 1) }));
+            Assert.That(reader.Accounts, (plan & IPersistence.PrefetchColumns.Accounts) != 0 ? Has.Count.EqualTo(2) : Is.Empty);
+            Assert.That(reader.Slots, (plan & IPersistence.PrefetchColumns.Slots) != 0 ? Has.Count.EqualTo(2) : Is.Empty);
+        }
+    }
+
+    // Slot samples are the cells at the evenly spread ordinals of the collection order: per account, writes then reads.
+    [Test]
+    public void SampleBalSlots_TakesTheSpreadOrdinalsInCollectionOrder()
+    {
+        ReadOnlyAccountChanges first = new(TestItem.AddressA,
+            [new ReadOnlySlotChanges((UInt256)100, [new StorageChange(0, default)]), new ReadOnlySlotChanges((UInt256)101, [new StorageChange(0, default)])],
+            [(UInt256)102], [], [], []);
+        ReadOnlyAccountChanges empty = new(TestItem.AddressB, [], [], [], [], []);
+        UInt256[] reads = new UInt256[13];
+        for (int i = 0; i < reads.Length; i++) reads[i] = (UInt256)(200 + i);
+        ReadOnlyAccountChanges second = new(TestItem.AddressC, [], reads, [], [], []);
+        ReadOnlyAccountChanges[] changes = [first, empty, second];
+        StorageCell[] samples = new StorageCell[BasePersistence.PrefetchSamples];
+
+        int count = FlatWorldStateScope.SampleBalSlots(changes, 16, samples);
+
+        // 16 slots, 8 samples: ordinals 0, 2, 4, ..., 14; 0-2 are the first account's, 3-15 the third account's reads.
+        StorageCell[] expected = new StorageCell[8];
+        for (int k = 0; k < 8; k++)
+        {
+            int ordinal = 2 * k;
+            expected[k] = ordinal < 3
+                ? new StorageCell(TestItem.AddressA, (UInt256)(100 + ordinal))
+                : new StorageCell(TestItem.AddressC, (UInt256)(200 + ordinal - 3));
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(count, Is.EqualTo(8));
+            Assert.That(samples, Is.EqualTo(expected));
         }
     }
 
