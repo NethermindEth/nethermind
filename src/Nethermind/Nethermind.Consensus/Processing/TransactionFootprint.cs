@@ -45,6 +45,13 @@ internal sealed class TransactionFootprint(
     /// <summary>The storage writes replay makes, one per slot.</summary>
     public int StorageWrites { get; } = CountStorageWrites(effects);
 
+    /// <summary>
+    /// Whether replay changes nothing but balances, nonces and slots, so it may share a commit with the replays around it:
+    /// it deletes no account, creates none over another, gives none code and clears no storage.
+    /// </summary>
+    /// <remarks>A credit may still create the account it pays, or touch an empty one; the world state tells those apart.</remarks>
+    public bool MayShareCommit { get; } = ChangesOnlyBalancesNoncesAndSlots(effects);
+
     public ref readonly FootprintReceipt Receipt => ref _receipt;
 
     public ref readonly TransactionResult Result => ref _result;
@@ -90,6 +97,17 @@ internal sealed class TransactionFootprint(
         }
 
         return count;
+    }
+
+    private static bool ChangesOnlyBalancesNoncesAndSlots(StateEffect[] effects)
+    {
+        foreach (ref readonly StateEffect effect in effects.AsSpan())
+        {
+            if (effect.Kind is not (EffectKind.SetStorage or EffectKind.AddToBalance or EffectKind.AddToBalanceAndCreateIfNotExists
+                or EffectKind.SubtractFromBalance or EffectKind.IncrementNonce)) return false;
+        }
+
+        return true;
     }
 
     public void Replay(IWorldState state, IReleaseSpec spec)

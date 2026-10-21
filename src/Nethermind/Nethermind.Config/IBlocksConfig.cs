@@ -80,6 +80,21 @@ public interface IBlocksConfig : IConfig
     bool PreWarmHandoff { get; set; }
 
     /// <summary>
+    /// Whether consecutive transactions taken over from their pre-warm runs share one state commit instead of committing
+    /// one by one.
+    /// </summary>
+    /// <remarks>
+    /// Only runs that change nothing but balances, nonces and slots share it, and only while what they change commits as
+    /// it reads; anything else, and every executed transaction, starts from committed state. Requires
+    /// <see cref="PreWarmHandoff"/>.
+    /// </remarks>
+    [ConfigItem(Description = "Commit consecutive transactions taken over from their pre-warm runs together, up to PreWarmBatchedReplayCommitMaxTxs at a time. Requires PreWarmHandoff.", DefaultValue = "false", HiddenFromDocs = true)]
+    bool PreWarmBatchedReplayCommit { get; set; }
+
+    [ConfigItem(Description = "The most taken-over transactions one state commit covers with PreWarmBatchedReplayCommit.", DefaultValue = "16", HiddenFromDocs = true)]
+    int PreWarmBatchedReplayCommitMaxTxs { get; set; }
+
+    /// <summary>
     /// Whether the transaction block processing is executing gets a storage discovery of its own once it has read
     /// <see cref="PreWarmInFlightReadAheadColdReads"/> values past the pre-block caches.
     /// </summary>

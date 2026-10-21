@@ -76,6 +76,10 @@ namespace Nethermind.Config
 
         public bool PreWarmHandoff { get; set; } = true;
 
+        public bool PreWarmBatchedReplayCommit { get; set; }
+
+        public int PreWarmBatchedReplayCommitMaxTxs { get; set; } = 16;
+
         public bool PreWarmInFlightReadAhead { get; set; } = true;
 
         public int PreWarmInFlightReadAheadColdReads { get; set; } = 32;

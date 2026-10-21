@@ -889,6 +889,40 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
     private static Dictionary<AddressAsKey, ChangeTrace> RequireTrace(Dictionary<AddressAsKey, ChangeTrace>? trace) =>
         trace ?? throw new InvalidOperationException("State tracing is active without a trace accumulator.");
 
+    /// <summary>
+    /// Whether every change after <paramref name="snapshot"/> commits as its account reads: a read, an update that leaves
+    /// the account not empty, or the creation of an account the journal holds nothing else of, not empty either.
+    /// </summary>
+    /// <remarks>
+    /// A commit writes such a change's account as it is, so reads see the same before and after it. It removes an empty
+    /// account (EIP-161) instead, and decides a removal by the account's earlier changes, so a touch, an emptying update,
+    /// an empty creation, a recreation and a removal all rule it out. Staged code does too: only a commit makes it
+    /// permanent.
+    /// </remarks>
+    internal bool ChangesCommitAsReadSince(int snapshot)
+    {
+        if (_codeInsertJournal.Count != 0 || _transientCode is { Count: > 0 }) return false;
+
+        ReadOnlySpan<Change> changes = CollectionsMarshal.AsSpan(_changes);
+        for (int i = snapshot + 1; i < changes.Length; i++)
+        {
+            ref readonly Change change = ref changes[i];
+            switch (change.ChangeType)
+            {
+                case ChangeType.JustCache:
+                    break;
+                case ChangeType.Update when change.Account is { IsEmpty: false }:
+                    break;
+                case ChangeType.New when change.PrevIdx == -1 && change.Account is { IsEmpty: false }:
+                    break;
+                default:
+                    return false;
+            }
+        }
+
+        return true;
+    }
+
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void TraceRemove(in Change change) => _logger.Trace($"Commit remove {change.Address}");
 

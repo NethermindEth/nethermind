@@ -102,6 +102,10 @@ public static class Metrics
     public static long PrewarmRefreshesTakenOver { get; set; }
 
     [CounterMetric]
+    [Description("Transactions block processing took over whose state commit it left to a later one")]
+    public static long PrewarmReplayCommitsShared { get; set; }
+
+    [CounterMetric]
     [Description("Pre-warm runs of the mempool pass stored for block processing to take over")]
     public static long PrewarmMempoolRunsStored { get; set; }
 

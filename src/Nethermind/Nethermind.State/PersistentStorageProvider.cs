@@ -815,6 +815,9 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         base.Commit(tracer);
     }
 
+    /// <summary>Whether no storage was cleared or destroyed since the last commit.</summary>
+    internal bool ClearsNoStorage => _storageClearJournal.Count == 0 && _destroyedThisRound.Count == 0;
+
     public void MarkStorageDestroyed(Address address)
     {
         _destroyedThisRound.Add(address);

@@ -1434,6 +1434,12 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         return footprints?.Find(_mainThreadTxIndex, tx, header);
     }
 
+    /// <summary>
+    /// Whether the transaction the main thread just reported starting is the last of the block its footprints are for, or
+    /// there are no footprints to tell.
+    /// </summary>
+    internal bool StartedLastTransaction => Volatile.Read(ref _footprints) is not { } footprints || _mainThreadTxIndex >= footprints.Count - 1;
+
     public void ClearCaches()
     {
         if (_logger.IsDebug) _logger.Debug("Clearing caches");

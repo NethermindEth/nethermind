@@ -477,6 +477,23 @@ namespace Nethermind.State
             _localMetrics.Flush();
         }
 
+        /// <summary>
+        /// Whether the changes made since <paramref name="snapshot"/> commit as they read: they leave every account they
+        /// change existing and not empty, write slots, and clear no storage, stage no code and touch no transient storage.
+        /// </summary>
+        /// <remarks>
+        /// A transaction then reads the same state whether or not the changes before it were committed, and committing
+        /// them together with the next ones leaves the state committing them one by one would. Checked for one
+        /// transaction's changes, after the ones before it passed, since a commit removes empty accounts (EIP-161).
+        /// </remarks>
+        public bool ChangesCommitAsReadSince(in Snapshot snapshot)
+        {
+            DebugGuardInScope();
+            return !_transientStorageProvider.HasChanges
+                && _persistentStorageProvider.ClearsNoStorage
+                && _stateProvider.ChangesCommitAsReadSince(snapshot.StateSnapshot);
+        }
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public Snapshot TakeSnapshot(bool newTransactionStart = false)
         {

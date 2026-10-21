@@ -28,6 +28,9 @@ namespace Nethermind.State
         // this is needed for OriginalValues for new transactions
         protected readonly Stack<int> _transactionChangesSnapshots = new();
 
+        /// <summary>Whether anything was written since the last commit.</summary>
+        internal bool HasChanges => _changes.Count != 0;
+
         /// <summary>
         /// Get the storage value at the specified storage cell
         /// </summary>
