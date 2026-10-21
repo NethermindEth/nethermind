@@ -73,7 +73,7 @@ jobs:
           github_token: ${{ github.token }}
           prompt: |
             Run ${{ github.event.workflow_run.html_url }} of "Nethermind/Ethereum tests" failed on master.
-            List its failed jobs with `gh api repos/${{ github.repository }}/actions/runs/${{ github.event.workflow_run.id }}/jobs`
+            List its failed jobs with `gh api repos/${{ github.repository }}/actions/runs/${{ github.event.workflow_run.id }}/jobs --paginate --jq '.jobs[] | select(.conclusion == "failure") | "\(.id) \(.name)"'`
             and read their logs with `gh api repos/${{ github.repository }}/actions/jobs/<job id>/logs`.
 
             For each failed test, compare with recent runs (`gh run list --workflow "Nethermind/Ethereum tests"`)
