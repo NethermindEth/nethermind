@@ -1,7 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Runtime.CompilerServices;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.Trie;
 
@@ -26,4 +28,15 @@ public partial class PatriciaTree
     /// <remarks>A node can be shared with the trie store's caches here, so a dirty parent says nothing about its ancestors.</remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static bool IsUnchangedPendingLevel(TrieNode parent, int childIndex, TrieNode? originalChild, TrieNode? child) => false;
+
+    /// <summary>Whether <paramref name="node"/> is known, without reading its key, to be a leaf at <paramref name="key"/>: never.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool IsLeafWithKey(TrieNode node, ReadOnlySpan<byte> key) => false;
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private partial bool TryGetByRawKey(ReadOnlySpan<byte> rawKey, Hash256? rootHash, out ReadOnlySpan<byte> value)
+    {
+        value = default;
+        return false;
+    }
 }

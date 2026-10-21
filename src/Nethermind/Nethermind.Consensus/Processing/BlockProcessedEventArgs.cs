@@ -10,8 +10,5 @@ namespace Nethermind.Consensus.Processing
     {
         public Block Block { get; } = block;
         public TxReceipt[] TxReceipts { get; } = txReceipts;
-
-        /// <summary>Whether processing validated the block against its suggested header.</summary>
-        public bool WasValidated { get; init; }
     }
 }

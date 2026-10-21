@@ -35,6 +35,9 @@ public class BlockOverride
         return result;
     }
 
+    /// <summary>Gets or sets the requested beacon root, which debug_traceCall rejects as unsupported.</summary>
+    public Hash256? BeaconRoot { get; set; }
+
     public void ApplyOverrides(BlockHeader result)
     {
         if (Time is not null) result.Timestamp = Time.Value;
