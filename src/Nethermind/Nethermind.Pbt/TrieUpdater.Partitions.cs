@@ -79,7 +79,7 @@ public static partial class TrieUpdater
             return FoldRoot(store, ref emptyRoot, default, touchedSlots, foldSlot, foldQuota, fanOut, memoryProvider);
         }
         GroupFrameReader<PbtVariableTreeKey, PbtStorageNodePath> rootReader;
-        if (store.TryGetNodeGroupRecord(store.RootGroupReference, rootPath, out PbtGroupRecord rootRecord))
+        if (store.TryGetNodeGroupRecord(store.RootGroupPointer, rootPath, out PbtGroupRecord rootRecord))
             rootReader = new(rootRecord);
         else
         {
@@ -162,7 +162,7 @@ public static partial class TrieUpdater
             TrieUpdater<TKey, TPath>.SlotNode result = TrieUpdater<TKey, TPath>.FoldDetachedSlot(context, TPath.Create(ReadOnlySpan<byte>.Empty, 0), 0, slot,
                 TrieUpdater<TKey, TPath>.BoundaryNode.TakeFrom<PbtVariableTreeKey, PbtStorageNodePath>(boundary), descendantBytes, operations, encoding);
             foldTime?.Observe(Stopwatch.GetTimestamp() - start, foldLabel);
-            return new(result.Length, result.Hash) { SizeDelta = result.SizeDelta, GroupReference = result.GroupReference };
+            return new(result.Length, result.Hash) { SizeDelta = result.SizeDelta, GroupPointer = result.GroupPointer };
         }
 
         public void Dispose()

@@ -44,26 +44,26 @@ public static class PbtNodeGroupKey
         return PbtStorageNodePath.Create(path, depth);
     }
 
-    /// <summary>The groups of the tree under <paramref name="root"/> reserved at or after <paramref name="lowerBound"/>: the root group first, then the rest in key order.</summary>
+    /// <summary>The groups of the tree under <paramref name="rootPointer"/> reserved at or after <paramref name="lowerBound"/>: the root group first, then the rest in key order.</summary>
     /// <remarks>
     /// The root group is keyed apart from the others. Below it, a linked group's subtree is one contiguous key range whose
     /// prefix is the group's path, and the ranges of a group's links follow their slot order. A group sorts before its
     /// subtree or inside one of its children's ranges, so it is carried down as pending until the walk passes it. Links below
-    /// <paramref name="lowerBound"/>, and unresolved or absent links, are not followed. A pin at or below
+    /// <paramref name="lowerBound"/>, and links not in the buffer, are not followed. A pin at or below
     /// <paramref name="lowerBound"/> must outlive every use of the records.
     /// </remarks>
     /// <exception cref="InvalidOperationException">A record at or above <paramref name="lowerBound"/> is no longer resident.</exception>
-    public static List<PbtGroupRecord> InKeyOrder(IPbtGroupRecordBuffer buffer, PbtGroupReference root, PbtGroupReference lowerBound)
+    public static List<PbtGroupRecord> InKeyOrder(IPbtGroupRecordBuffer buffer, ulong rootPointer, ulong lowerBound)
     {
         List<PbtGroupRecord> ordered = [];
-        if (!TryResolve(buffer, root, lowerBound, out PbtGroupRecord rootRecord)) return ordered;
+        if (!TryResolve(buffer, rootPointer, lowerBound, out PbtGroupRecord rootRecord)) return ordered;
         ordered.Add(rootRecord);
         MergeBelow(buffer, rootRecord, lowerBound, [], ordered);
         return ordered;
     }
 
     /// <summary>Emits the groups below <paramref name="record"/> merged with <paramref name="pending"/>, the sorted groups above them whose keys fall in its range.</summary>
-    private static void MergeBelow(IPbtGroupRecordBuffer buffer, in PbtGroupRecord record, PbtGroupReference lowerBound,
+    private static void MergeBelow(IPbtGroupRecordBuffer buffer, in PbtGroupRecord record, ulong lowerBound,
         List<(byte[] Key, PbtGroupRecord Record)> pending, List<PbtGroupRecord> ordered)
     {
         PbtGroupLinks links = record.Links;
@@ -86,11 +86,11 @@ public static class PbtNodeGroupKey
         foreach ((_, PbtGroupRecord group) in pending) ordered.Add(group);
     }
 
-    private static bool TryResolve(IPbtGroupRecordBuffer buffer, PbtGroupReference reference, PbtGroupReference lowerBound, out PbtGroupRecord record)
+    private static bool TryResolve(IPbtGroupRecordBuffer buffer, ulong pointer, ulong lowerBound, out PbtGroupRecord record)
     {
         record = default;
-        if (!reference.IsDirect || reference.CompareTo(lowerBound) < 0) return false;
-        if (!buffer.TryLocate(reference, out record)) throw new InvalidOperationException("A group record written since the lower bound is no longer resident.");
+        if (pointer == 0 || pointer < lowerBound) return false;
+        if (!buffer.TryLocate(pointer, out record)) throw new InvalidOperationException("A group record written since the lower bound is no longer resident.");
         return true;
     }
 

@@ -11,11 +11,10 @@ namespace Nethermind.State.Pbt.Snapshot;
 
 /// <summary>A group record buffer that reads a pinned global buffer and keeps its own writes in a private buffer.</summary>
 /// <remarks>
-/// References below the write boundary of the global pin taken at construction resolve in the global buffer, and the rest in a
-/// private <see cref="PbtGroupRecordBuffer"/> that takes every write. Private generations are numbered after the pinned global one, so
-/// the two reference ranges never overlap and the private records are freed with this buffer instead of growing the global one.
-/// A global record written after the pin is out of reach, so a snapshot root there maps to Unknown. Every pin of this buffer also
-/// holds the global pin, so the global records it reads outlive <see cref="Dispose"/> until its last pin is released.
+/// Pointers below the boundary of the global pin taken at construction resolve in the global buffer, and the rest in a private
+/// <see cref="PbtGroupRecordBuffer"/> that takes every write. Private generations are exposed numbered after the pinned global one,
+/// so the two pointer ranges never overlap and the private records are freed with this buffer instead of growing the global one.
+/// Every pin of this buffer also holds the global pin, so the global records it reads outlive <see cref="Dispose"/> until its last pin is released.
 /// </remarks>
 public sealed class PbtOverlayGroupRecordBuffer : IPbtGroupRecordBuffer, IDisposable
 {
@@ -24,8 +23,8 @@ public sealed class PbtOverlayGroupRecordBuffer : IPbtGroupRecordBuffer, IDispos
     private readonly IPbtGroupRecordBuffer _global;
     private readonly PbtGroupRecordBuffer _local;
     private readonly IPbtGroupRecordBufferPin _globalPin;
-    private readonly PbtGroupReference _globalBoundary;
-    private readonly uint _generationShift;
+    private readonly ulong _globalBoundary;
+    private readonly ulong _localOffset;
 
     public PbtOverlayGroupRecordBuffer(IPbtGroupRecordBuffer global, IRefCountingMemoryProvider memoryProvider)
     {
@@ -33,7 +32,7 @@ public sealed class PbtOverlayGroupRecordBuffer : IPbtGroupRecordBuffer, IDispos
         _local = new PbtGroupRecordBuffer(memoryProvider, compressedMaxMemory: 0, LocalGenerationBytes);
         _globalPin = global.PinHead();
         _globalBoundary = _globalPin.WriteBoundary;
-        _generationShift = _globalBoundary.Generation;
+        _localOffset = _globalBoundary >> PbtGroupRecordBuffer.OffsetBits << PbtGroupRecordBuffer.OffsetBits;
     }
 
     /// <inheritdoc/>
@@ -55,43 +54,35 @@ public sealed class PbtOverlayGroupRecordBuffer : IPbtGroupRecordBuffer, IDispos
     }
 
     /// <inheritdoc/>
-    public bool TryLocate(PbtGroupReference reference, out PbtGroupRecord record)
+    public bool TryLocate(ulong pointer, out PbtGroupRecord record)
     {
-        if (!IsLocal(reference)) return _global.TryLocate(reference, out record);
-        if (!_local.TryLocate(ToLocal(reference), out record)) return false;
-        record = record.WithReference(reference);
+        if (!IsLocal(pointer)) return _global.TryLocate(pointer, out record);
+        if (!_local.TryLocate(pointer - _localOffset, out record)) return false;
+        record = record.WithPointer(pointer);
         return true;
     }
 
     /// <inheritdoc/>
-    public PbtGroupReference Reserve(PbtStorageNodePath path, int payloadLength, in PbtGroupLinks links, out Span<byte> payload) =>
+    public ulong Reserve(PbtStorageNodePath path, int payloadLength, in PbtGroupLinks links, out Span<byte> payload) =>
         FromLocal(_local.Reserve(path, payloadLength, links, out payload));
 
     /// <inheritdoc/>
-    public PbtGroupReference FindRoot(in ValueHash256 root)
+    public ulong FindRoot(in ValueHash256 root)
     {
-        PbtGroupReference reference = _local.FindRoot(root);
-        if (reference.IsDirect) return FromLocal(reference);
+        ulong pointer = _local.FindRoot(root);
+        if (pointer != 0) return FromLocal(pointer);
 
         // A root the global buffer indexed after the pin would resolve in the private buffer instead.
-        reference = _global.FindRoot(root);
-        return IsLocal(reference) ? PbtGroupReference.Unknown : reference;
+        pointer = _global.FindRoot(root);
+        return IsLocal(pointer) ? 0 : pointer;
     }
 
     /// <inheritdoc/>
     /// <remarks>A root among the global records is not indexed, as that would write to the global buffer.</remarks>
-    public void SetRoot(in ValueHash256 root, PbtGroupReference reference)
+    public void SetRoot(in ValueHash256 root, ulong rootPointer)
     {
-        if (!reference.IsDirect) throw new ArgumentException("Only a published root group can be indexed.", nameof(reference));
-        if (IsLocal(reference)) _local.SetRoot(root, ToLocal(reference));
-    }
-
-    /// <inheritdoc/>
-    public PbtGroupReference MapReference(IPbtGroupRecordBuffer source, PbtGroupReference reference)
-    {
-        if (ReferenceEquals(source, this)) return reference;
-        if (!ReferenceEquals(source, _global)) throw new InvalidOperationException("A branch must share the group record buffer of its in-memory snapshots.");
-        return IsLocal(reference) ? PbtGroupReference.Unknown : reference;
+        if (rootPointer == 0) throw new ArgumentException("Only a published root group can be indexed.", nameof(rootPointer));
+        if (IsLocal(rootPointer)) _local.SetRoot(root, rootPointer - _localOffset);
     }
 
     /// <summary>Stops new pins and writes; the private records and the global pin are released once every pin of this buffer is.</summary>
@@ -101,12 +92,9 @@ public sealed class PbtOverlayGroupRecordBuffer : IPbtGroupRecordBuffer, IDispos
         _globalPin.Dispose();
     }
 
-    private bool IsLocal(PbtGroupReference reference) => reference.IsDirect && reference.CompareTo(_globalBoundary) >= 0;
+    private bool IsLocal(ulong pointer) => pointer >= _globalBoundary;
 
-    private PbtGroupReference ToLocal(PbtGroupReference reference) => new(reference.Generation - _generationShift, reference.Offset);
-
-    private PbtGroupReference FromLocal(PbtGroupReference reference) =>
-        reference.IsDirect ? new(reference.Generation + _generationShift, reference.Offset) : reference;
+    private ulong FromLocal(ulong pointer) => pointer == 0 ? 0 : pointer + _localOffset;
 
     private OverlayPin CombinePin(IPbtGroupRecordBufferPin localPin)
     {
@@ -125,7 +113,7 @@ public sealed class PbtOverlayGroupRecordBuffer : IPbtGroupRecordBuffer, IDispos
     {
         public IPbtGroupRecordBuffer Buffer => buffer;
 
-        public PbtGroupReference WriteBoundary => buffer.FromLocal(localPin.WriteBoundary);
+        public ulong WriteBoundary => buffer.FromLocal(localPin.WriteBoundary);
 
         public IPbtGroupRecordBufferPin Copy() => buffer.CombinePin(localPin.Copy());
 

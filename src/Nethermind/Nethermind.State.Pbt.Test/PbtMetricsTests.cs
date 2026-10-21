@@ -192,7 +192,7 @@ public class PbtMetricsTests
         // An unchanged block inherits its parent's tree.
         using PbtSnapshotContent emptyContent = new();
         emptyContent.BeginNodeGroupWrites(content.GroupRecordBuffer ?? PbtSnapshotTestExtensions.DefaultGroupRecordBuffer);
-        emptyContent.RootGroupReference = content.RootGroupReference;
+        emptyContent.RootGroupPointer = content.RootGroupPointer;
         using PbtReadOnlySnapshotBundle bundle = new(PbtSnapshotBundleTestExtensions.Chain(pool, content, emptyContent), reader, detailedMetrics, new PbtPersistedSnapshotList(0), PbtSnapshotBundleTestExtensions.NoNodeGroupPin, slotFilterBitsPerKey: 0);
 
         Account? actualAccount = bundle.GetAccount(TestItem.AddressA)?.ToAccount();
@@ -204,8 +204,7 @@ public class PbtMetricsTests
         CodeInfo? actualCode = bundle.GetCode(codeHash);
 
         string tier = snapshotHit ? "snapshot" : scenario == "missing" ? "persistence_null" : "persistence";
-        string codeTier = deleted ? "persistence" : tier;
-        string groupTier = deleted ? "snapshot_null" : tier;
+        string fallthroughTier = deleted ? "persistence" : tier;
         bool empty = deleted || scenario == "missing";
         using (Assert.EnterMultipleScope())
         {
@@ -214,10 +213,10 @@ public class PbtMetricsTests
             Assert.That(actualSlot, Is.EqualTo(empty ? default : slot));
             Assert.That(headerRun.Get(SlotRun.IndexOf(headerStorageKey)), Is.EqualTo(actualHeaderSlot));
             Assert.That(storageRun.Get(SlotRun.IndexOf(storageKey)), Is.EqualTo(actualSlot));
-            Assert.That(actualGroup?.GetSpan().ToArray(), Is.EqualTo(empty ? null : payload.GetSpan().ToArray()));
+            Assert.That(actualGroup?.GetSpan().ToArray(), Is.EqualTo(scenario == "missing" ? null : payload.GetSpan().ToArray()));
             Assert.That(actualCode, Is.SameAs(scenario == "missing" ? null : code));
             Assert.That(_readOnlyBundleTime.Labels, Is.EqualTo(detailedMetrics
-                ? new[] { $"account_{tier}", $"storage_header_{tier}", $"storage_{tier}", $"storage_run_header_{tier}", $"storage_run_{tier}", $"node_group_{partition}_{groupTier}", $"code_{codeTier}" }
+                ? new[] { $"account_{tier}", $"storage_header_{tier}", $"storage_{tier}", $"storage_run_header_{tier}", $"storage_run_{tier}", $"node_group_{partition}_{fallthroughTier}", $"code_{fallthroughTier}" }
                 : []));
             Assert.That(_readOnlyBundleTime.Observations, Has.Count.EqualTo(detailedMetrics ? 7 : 0));
             Assert.That(_readOnlyBundleTime.Observations, Is.All.GreaterThanOrEqualTo(0));

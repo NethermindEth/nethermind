@@ -105,57 +105,57 @@ public static partial class TrieUpdater<TKey, TPath>
     /// </remarks>
     public static long PublishGroup<TFrame>(IPbtNodeGroupSink sink, ref TFrame reader, PbtNodeGroupWriter<TPath> writer,
         scoped in PbtTraversalPath path)
-        where TFrame : struct, IGroupFrame<TKey, TPath> => PublishGroupWithReference(sink, ref reader, writer, path).SizeDelta;
+        where TFrame : struct, IGroupFrame<TKey, TPath> => PublishGroupWithPointer(sink, ref reader, writer, path).SizeDelta;
 
-    internal readonly record struct GroupPublication(long SizeDelta, PbtGroupReference Reference);
+    internal readonly record struct GroupPublication(long SizeDelta, ulong Pointer);
 
     internal static GroupPublication PublishGroup<TFrame>(FoldContext context, ref TFrame reader, PbtNodeGroupWriter<TPath> writer,
         scoped in PbtTraversalPath path) where TFrame : struct, IGroupFrame<TKey, TPath> =>
-        PublishGroupWithReference(context.Writer, ref reader, writer, path);
+        PublishGroupWithPointer(context.Writer, ref reader, writer, path);
 
-    private static GroupPublication PublishGroupWithReference<TFrame>(IPbtNodeGroupSink sink,
+    private static GroupPublication PublishGroupWithPointer<TFrame>(IPbtNodeGroupSink sink,
         ref TFrame reader, PbtNodeGroupWriter<TPath> writer, scoped in PbtTraversalPath path)
         where TFrame : struct, IGroupFrame<TKey, TPath>
     {
         Span<long> descendantBytes = stackalloc long[PbtThreeLevelGroupGeometry.BoundarySlots];
         ushort candidateSlots = (ushort)(reader.DescendantMask | writer.DescendantDeltaMask);
         long deltaTotal = 0;
-        PbtGroupLinks links = writer.DescendantReferences;
+        PbtGroupLinks links = writer.DescendantPointers;
         // Only an absent group uses this link; its descendants follow a single compressed route.
-        PbtGroupReference surviving = PbtGroupReference.None;
+        ulong surviving = 0;
         for (uint remaining = candidateSlots; remaining != 0; remaining &= remaining - 1)
         {
             int slot = BitOperations.TrailingZeroCount(remaining);
             long delta = writer.DescendantDelta(slot);
             descendantBytes[slot] = reader.DescendantBytes(slot) + delta;
             deltaTotal += delta;
-            if (descendantBytes[slot] == 0) links[slot] = PbtGroupReference.None;
+            if (descendantBytes[slot] == 0) links[slot] = 0;
             else surviving = links[slot];
         }
         int length = writer.GetPayloadLength(descendantBytes, candidateSlots);
-        PbtGroupReference reference = PbtGroupReference.None;
+        ulong pointer = 0;
         if (length != 0 || reader.PayloadLength != 0)
         {
-            reference = sink.ReserveNodeGroup(path, length, links, out Span<byte> destination);
-            if (reference.IsUnknown)
+            if (sink.TryReserveNodeGroup(path, length, links, out pointer, out Span<byte> destination))
+                writer.DetachTo(destination, descendantBytes, candidateSlots);
+            else
             {
                 using RefCountingMemory? payload = writer.Detach(descendantBytes, candidateSlots);
                 sink.SetNodeGroup(path, payload);
             }
-            else writer.DetachTo(destination, descendantBytes, candidateSlots);
         }
         else writer.DetachTo(Span<byte>.Empty, descendantBytes, candidateSlots);
-        if (length == 0) reference = surviving;
-        return new GroupPublication(length - reader.PayloadLength + deltaTotal, reference);
+        if (length == 0) pointer = surviving;
+        return new GroupPublication(length - reader.PayloadLength + deltaTotal, pointer);
     }
 
-    private static void InitializeDescendantReferences<TFrame>(ref TFrame reader, PbtNodeGroupWriter<TPath> writer)
+    private static void InitializeDescendantPointers<TFrame>(ref TFrame reader, PbtNodeGroupWriter<TPath> writer)
         where TFrame : struct, IGroupFrame<TKey, TPath>
     {
         for (uint remaining = reader.DescendantMask; remaining != 0; remaining &= remaining - 1)
         {
             int slot = BitOperations.TrailingZeroCount(remaining);
-            writer.DescendantReferences[slot] = reader.DescendantReference(slot);
+            writer.DescendantPointers[slot] = reader.DescendantPointer(slot);
         }
     }
 

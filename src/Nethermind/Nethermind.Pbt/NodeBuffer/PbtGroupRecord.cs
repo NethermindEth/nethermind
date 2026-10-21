@@ -12,17 +12,17 @@ public readonly struct PbtGroupRecord
 {
     private readonly ReadOnlyMemory<byte> _record;
 
-    internal PbtGroupRecord(PbtGroupReference reference, ReadOnlyMemory<byte> record)
+    internal PbtGroupRecord(ulong pointer, ReadOnlyMemory<byte> record)
     {
-        Reference = reference;
+        Pointer = pointer;
         _record = record;
     }
 
-    /// <summary>The generation-qualified identity of this record.</summary>
-    public PbtGroupReference Reference { get; }
+    /// <summary>The buffer pointer of this record.</summary>
+    public ulong Pointer { get; }
 
-    /// <summary>The same record under <paramref name="reference"/>, as a buffer that numbers another buffer's records exposes it.</summary>
-    public PbtGroupRecord WithReference(PbtGroupReference reference) => new(reference, _record);
+    /// <summary>The same record under <paramref name="pointer"/>, as a buffer that numbers another buffer's records exposes it.</summary>
+    public PbtGroupRecord WithPointer(ulong pointer) => new(pointer, _record);
 
     /// <summary>The canonical path of the physical group.</summary>
     public PbtStorageNodePath Path => MemoryMarshal.AsRef<PbtGroupRecordHeader>(_record.Span).Path;
@@ -33,8 +33,8 @@ public readonly struct PbtGroupRecord
     /// <summary>A copy of the boundary links, for inheriting the untouched slots of a replacement group.</summary>
     public PbtGroupLinks Links => MemoryMarshal.AsRef<PbtGroupRecordHeader>(_record.Span).Links;
 
-    /// <summary>The first physical descendant group owned by boundary <paramref name="slot"/>.</summary>
-    public PbtGroupReference GetLink(int slot)
+    /// <summary>The pointer of the first physical descendant group owned by boundary <paramref name="slot"/>, or 0 when it is not in the buffer.</summary>
+    public ulong GetLink(int slot)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(slot);
         ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(slot, PbtThreeLevelGroupGeometry.BoundarySlots);

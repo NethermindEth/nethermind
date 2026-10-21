@@ -57,7 +57,7 @@ public class PbtSnapshotCompactor(
             }
 
             PbtSnapshot newest = chainOldestFirst[^1];
-            merged.RootGroupReference = newest.RootGroupReference;
+            merged.RootGroupPointer = newest.RootGroupPointer;
             return new PbtSnapshot(chainOldestFirst[0].From, newest.To, newest.TreeRoot, merged, resourcePool, usage);
         }
         catch

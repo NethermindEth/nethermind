@@ -5,20 +5,9 @@ using System.Runtime.CompilerServices;
 
 namespace Nethermind.Pbt.NodeBuffer;
 
-/// <summary>The first physical descendant group of each boundary slot, possibly across compressed absent groups.</summary>
+/// <summary>The pointer of the first physical descendant group of each boundary slot, possibly across compressed absent groups, or 0 when it is not in the buffer.</summary>
 [InlineArray(PbtThreeLevelGroupGeometry.BoundarySlots)]
 public struct PbtGroupLinks
 {
-    private PbtGroupReference _element0;
-
-    /// <summary>Links for a group loaded without traversal metadata, which must resolve its descendants from the snapshot.</summary>
-    public static PbtGroupLinks Unknown
-    {
-        get
-        {
-            PbtGroupLinks links = default;
-            for (int slot = 0; slot < PbtThreeLevelGroupGeometry.BoundarySlots; slot++) links[slot] = PbtGroupReference.Unknown;
-            return links;
-        }
-    }
+    private ulong _element0;
 }

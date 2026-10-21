@@ -57,6 +57,15 @@ internal static class PbtSnapshotBundleTestExtensions
     public static PbtReadOnlySnapshotBundle ReadOnlyBundle(PbtAssembledSnapshotResult assembled, IPbtPersistence.IReader reader, double slotFilterBitsPerKey) =>
         new(assembled.InMemory, reader, recordDetailedMetrics: false, assembled.Persisted, NoNodeGroupPin, slotFilterBitsPerKey);
 
-    private static PbtSnapshot Layer(IPbtResourcePool pool, PbtSnapshotContent content, int index) =>
-        new(index == 0 ? StateId.PreGenesis : new StateId((ulong)index, default), new StateId((ulong)index + 1, default), default, content, pool, PbtResourcePool.Usage.MainBlockProcessing);
+    /// <remarks>A layer publishing a root group gets a tree root unique to that group, indexed in its buffer as a collected snapshot's is.</remarks>
+    private static PbtSnapshot Layer(IPbtResourcePool pool, PbtSnapshotContent content, int index)
+    {
+        ValueHash256 treeRoot = default;
+        if (content.RootGroupPointer != 0)
+        {
+            treeRoot = ValueKeccak.Compute(BitConverter.GetBytes(content.RootGroupPointer));
+            content.GroupRecordBuffer!.SetRoot(treeRoot, content.RootGroupPointer);
+        }
+        return new(index == 0 ? StateId.PreGenesis : new StateId((ulong)index, default), new StateId((ulong)index + 1, default), treeRoot, content, pool, PbtResourcePool.Usage.MainBlockProcessing);
+    }
 }

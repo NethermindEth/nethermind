@@ -72,8 +72,8 @@ internal static class PbtSnapshotTestExtensions
     internal static void SetTree(this PbtSnapshotContent content, params (PbtStorageNodePath Path, byte[]? Payload)[] groups)
     {
         content.BeginNodeGroupWrites(content.GroupRecordBuffer ?? DefaultGroupRecordBuffer);
-        (PbtGroupReference root, int count, long bytes) = BuildTree(content.GroupRecordBuffer!, groups, fillAncestors: true);
-        content.RootGroupReference = root;
+        (ulong root, int count, long bytes) = BuildTree(content.GroupRecordBuffer!, groups, fillAncestors: true);
+        content.RootGroupPointer = root;
         content.AddNodeGroups(count, bytes);
     }
 
@@ -81,45 +81,45 @@ internal static class PbtSnapshotTestExtensions
     internal static void SetPhysicalTree(this PbtSnapshotContent content, IEnumerable<PbtPhysicalPayload> groups)
     {
         content.BeginNodeGroupWrites(content.GroupRecordBuffer ?? DefaultGroupRecordBuffer);
-        (PbtGroupReference root, int count, long bytes) = BuildTree(content.GroupRecordBuffer!,
+        (ulong root, int count, long bytes) = BuildTree(content.GroupRecordBuffer!,
             [.. groups.Select(static group => (group.Key, (byte[]?)group.Payload.ToArray()))], fillAncestors: false);
-        content.RootGroupReference = root;
+        content.RootGroupPointer = root;
         content.AddNodeGroups(count, bytes);
     }
 
     /// <inheritdoc cref="SetTree(PbtSnapshotContent, ValueTuple{PbtStorageNodePath, byte[]}[])"/>
     internal static void SetTree(this PbtSnapshotBundle bundle, params (PbtStorageNodePath Path, byte[]? Payload)[] groups)
     {
-        (PbtGroupReference root, int count, long bytes) = BuildTree(bundle.GroupRecordBuffer, groups, fillAncestors: true);
+        (ulong root, int count, long bytes) = BuildTree(bundle.GroupRecordBuffer, groups, fillAncestors: true);
         bundle.PublishNodeGroups(root, count, bytes);
     }
 
-    private static (PbtGroupReference Root, int Count, long Bytes) BuildTree(IPbtGroupRecordBuffer buffer, (PbtStorageNodePath Path, byte[]? Payload)[] groups, bool fillAncestors)
+    private static (ulong Root, int Count, long Bytes) BuildTree(IPbtGroupRecordBuffer buffer, (PbtStorageNodePath Path, byte[]? Payload)[] groups, bool fillAncestors)
     {
-        if (groups.Any(static group => group.Path.BitDepth == 0 && group.Payload is null)) return (PbtGroupReference.None, 0, 0);
+        if (groups.Any(static group => group.Path.BitDepth == 0 && group.Payload is null)) return (0, 0, 0);
         Dictionary<PbtStorageNodePath, byte[]?> tree = groups.ToDictionary(static group => group.Path, static group => group.Payload);
         tree.TryAdd(default, [0]);
         if (fillAncestors)
             foreach ((PbtStorageNodePath path, _) in groups)
                 for (int depth = 0; depth < path.BitDepth; depth += PbtThreeLevelGroupGeometry.LevelsPerGroup) tree.TryAdd(path.Prefix(depth), [0]);
-        Dictionary<PbtStorageNodePath, PbtGroupReference> published = [];
+        Dictionary<PbtStorageNodePath, ulong> published = [];
         int count = 0;
         long bytes = 0;
         foreach ((PbtStorageNodePath path, byte[]? payload) in tree.OrderByDescending(static group => group.Key.BitDepth))
         {
             if (payload is null)
             {
-                published[path] = PbtGroupReference.None;
+                published[path] = 0;
                 continue;
             }
-            PbtGroupLinks links = PbtGroupLinks.Unknown;
+            PbtGroupLinks links = default;
             byte[] childBytes = new byte[PbtVariableTreeKey.MaxLength];
-            foreach ((PbtStorageNodePath child, PbtGroupReference reference) in published)
+            foreach ((PbtStorageNodePath child, ulong pointer) in published)
             {
                 if (!NearestAncestor(tree, child).Equals(path)) continue;
                 Array.Clear(childBytes);
                 PbtNodePathOperations.CopyTo(child, childBytes);
-                links[TrieUpdater.BoundarySlot(childBytes, path.BitDepth)] = reference;
+                links[TrieUpdater.BoundarySlot(childBytes, path.BitDepth)] = pointer;
             }
             published[path] = buffer.Append(path, payload, links);
             count++;

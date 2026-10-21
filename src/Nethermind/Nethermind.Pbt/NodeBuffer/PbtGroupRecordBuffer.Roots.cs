@@ -15,29 +15,29 @@ public sealed partial class PbtGroupRecordBuffer
 {
     private const int RootSlots = 1024;
 
-    private readonly (ValueHash256 Root, PbtGroupReference Reference)[] _roots = new (ValueHash256, PbtGroupReference)[RootSlots];
+    private readonly (ValueHash256 Root, ulong Pointer)[] _roots = new (ValueHash256, ulong)[RootSlots];
 
     /// <inheritdoc/>
     /// <remarks>The entry replaces its slot's previous one.</remarks>
-    public void SetRoot(in ValueHash256 root, PbtGroupReference reference)
+    public void SetRoot(in ValueHash256 root, ulong rootPointer)
     {
-        if (!reference.IsDirect) throw new ArgumentException("Only a published root group can be indexed.", nameof(reference));
+        if (rootPointer == 0) throw new ArgumentException("Only a published root group can be indexed.", nameof(rootPointer));
         lock (_lock)
         {
             ThrowIfDisposed();
-            _roots[RootSlot(root)] = (root, reference);
+            _roots[RootSlot(root)] = (root, rootPointer);
         }
     }
 
     /// <inheritdoc/>
     /// <remarks>A resident record may still be reclaimed after this call; a later miss resolves through the persisted view.</remarks>
-    public PbtGroupReference FindRoot(in ValueHash256 root)
+    public ulong FindRoot(in ValueHash256 root)
     {
         lock (_lock)
         {
             ThrowIfDisposed();
-            (ValueHash256 indexed, PbtGroupReference reference) = _roots[RootSlot(root)];
-            return indexed == root && TryLocateBytes(reference, out _) ? reference : PbtGroupReference.Unknown;
+            (ValueHash256 indexed, ulong pointer) = _roots[RootSlot(root)];
+            return indexed == root && TryLocateBytes(pointer, out _) ? pointer : 0;
         }
     }
 

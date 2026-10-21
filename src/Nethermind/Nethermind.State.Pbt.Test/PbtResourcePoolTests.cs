@@ -174,8 +174,8 @@ public class PbtResourcePoolTests
         using PbtGroupRecordBuffer buffer = new(PooledRefCountingMemoryProvider.Instance, compressedMaxMemory: 0, liveGenerations: 0);
         content.BeginNodeGroupWrites(buffer);
         content.SetTree((default, encoding));
-        PbtGroupReference reference = content.RootGroupReference;
-        Assert.That(reference.IsDirect, Is.True);
+        ulong pointer = content.RootGroupPointer;
+        Assert.That(pointer != 0, Is.True);
         _pool.ReturnSnapshotContent(PbtResourcePool.Usage.MainBlockProcessing, content);
         PbtSnapshotContent rented = _pool.GetSnapshotContent(PbtResourcePool.Usage.MainBlockProcessing);
         using (Assert.EnterMultipleScope())
@@ -185,12 +185,12 @@ public class PbtResourcePoolTests
             Assert.That(rented.HeaderStorages, Is.Empty);
             Assert.That(rented.Codes, Is.Empty);
             Assert.That(rented.SelfDestructedStorageAddresses, Is.Empty);
-            Assert.That(rented.RootGroupReference, Is.EqualTo(PbtGroupReference.Unknown));
+            Assert.That(rented.RootGroupPointer, Is.Zero);
             Assert.That(rented.NodeGroupCount, Is.Zero);
             Assert.That(rented.GetPayloadSize(), Is.EqualTo(default(PbtSnapshotPayloadSize)));
             Assert.That(rented.GroupRecordBuffer, Is.Null, "a reset layer keeps no generation pin");
             Assert.That(buffer.ResidentBytes, Is.Zero);
-            Assert.That(buffer.TryLocate(reference, out _), Is.False);
+            Assert.That(buffer.TryLocate(pointer, out _), Is.False);
         }
         _pool.ReturnSnapshotContent(PbtResourcePool.Usage.MainBlockProcessing, rented);
     }

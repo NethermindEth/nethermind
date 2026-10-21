@@ -77,13 +77,6 @@ public sealed class PbtReadOnlySnapshotBundle(
     private PbtSnapshot? MemoryLayer(int index) => index >= persistedSnapshots.Count ? snapshots[index - persistedSnapshots.Count] : null;
     private PbtPersistedSnapshot? PersistedLayer(int index) => index < persistedSnapshots.Count ? persistedSnapshots[index] : null;
 
-    internal PbtGroupReference GetRootGroupReference(IPbtGroupRecordBuffer buffer)
-    {
-        ObjectDisposedException.ThrowIf(_isDisposed, this);
-        if (snapshots.Count > 0) return snapshots[^1].MapRootGroupReference(buffer);
-        return TreeRoot == default ? PbtGroupReference.None : buffer.FindRoot(TreeRoot);
-    }
-
     private bool TryAccount(int index, in ValueHash256 address, out PbtAccount? account) =>
         MemoryLayer(index) is { } memory ? memory.Content.Accounts.TryGetValue(address, out account) : PersistedLayer(index)!.TryGetAccount(address, out account);
     private bool TryCode(int index, in ValueHash256 hash, out CodeInfo? code) =>
@@ -139,14 +132,14 @@ public sealed class PbtReadOnlySnapshotBundle(
         }
     }
 
-    /// <summary>Returns a caller-owned group lease, or null when the newest in-memory tree has no group there, from that tree or the persisted snapshots.</summary>
+    /// <summary>Returns a caller-owned group lease, or null when a persisted snapshot has no group there, from the newest in-memory tree or the persisted snapshots.</summary>
     /// <returns>False when neither resolves the group, which the persistence reader must then provide.</returns>
     public bool TryGetSnapshotNodeGroup(PbtStorageNodePath groupKey, out RefCountingMemory? payload)
     {
         GuardDispose();
         long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
         payload = null;
-        bool found = snapshots.Count > 0 && snapshots[^1].Content.TryFindNodeGroup(snapshots[^1].RootGroupReference, groupKey, out payload);
+        bool found = snapshots.Count > 0 && snapshots[^1].Content.TryFindNodeGroup(snapshots[^1].RootGroupPointer, groupKey, out payload);
         for (int index = persistedSnapshots.Count - 1; !found && index >= 0; index--) found = persistedSnapshots[index].TryGetNodeGroup(groupKey, out payload);
         if (!found) return false;
         if (recordDetailedMetrics)

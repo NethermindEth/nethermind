@@ -58,7 +58,7 @@ public sealed class PbtNodeGroupWriter<TPath> : IDisposable
         writer._memoryProvider = memoryProvider;
         ((Span<long>)writer._descendantDeltas).Clear();
         writer._descendantDeltaMask = 0;
-        writer.DescendantReferences = default;
+        writer.DescendantPointers = default;
         writer._availability = 0;
         writer._written = 0;
         writer._disposed = false;
@@ -66,7 +66,7 @@ public sealed class PbtNodeGroupWriter<TPath> : IDisposable
         return writer;
     }
 
-    internal PbtGroupLinks DescendantReferences;
+    internal PbtGroupLinks DescendantPointers;
 
     public int WrittenCount => _written;
     /// <summary>The number of leading key bytes inline leaf keys omit in a branch written at <paramref name="position"/>.</summary>

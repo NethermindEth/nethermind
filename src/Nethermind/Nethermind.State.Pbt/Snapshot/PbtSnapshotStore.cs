@@ -31,11 +31,11 @@ public sealed class PbtSnapshotStore(PbtSnapshotBundle bundle) : IPbtStore, IDis
     private IPbtGroupRecordBuffer Buffer => bundle.GroupRecordBuffer;
 
     /// <inheritdoc/>
-    public PbtGroupReference RootGroupReference => bundle.RootGroupReference;
+    public ulong RootGroupPointer => bundle.RootGroupPointer;
 
     /// <inheritdoc/>
-    public bool TryGetNodeGroupRecord(PbtGroupReference reference, scoped in PbtTraversalPath groupKey, out PbtGroupRecord record) =>
-        bundle.GroupRecordBuffer.TryLocate(reference, out record)
+    public bool TryGetNodeGroupRecord(ulong pointer, scoped in PbtTraversalPath groupKey, out PbtGroupRecord record) =>
+        bundle.GroupRecordBuffer.TryLocate(pointer, out record)
         && PbtNodePathOperations.Equal(record.Path, groupKey.ToPath<PbtStorageNodePath>());
 
     /// <inheritdoc/>
@@ -44,7 +44,7 @@ public sealed class PbtSnapshotStore(PbtSnapshotBundle bundle) : IPbtStore, IDis
     /// <inheritdoc/>
     /// <remarks>
     /// A miss also searches the in-memory snapshot trees: an overlay buffer cannot reach a shared snapshot written after its
-    /// pin, so such a branch starts from an unresolved root.
+    /// pin, so such a branch's root lookup misses.
     /// </remarks>
     public RefCountingMemory? GetNodeGroup(scoped in PbtTraversalPath groupKey)
     {
@@ -78,14 +78,14 @@ public sealed class PbtSnapshotStore(PbtSnapshotBundle bundle) : IPbtStore, IDis
         {
             if (_complete)
             {
-                PbtGroupReference? root = null;
+                ulong? root = null;
                 int count = 0;
                 long bytes = 0;
                 foreach (ArrayPoolList<BufferedNodeGroup> buffer in _handedOff)
                     foreach (BufferedNodeGroup group in buffer)
                     {
-                        if (group.Path.BitDepth == 0) root = group.Reference;
-                        if (!group.Reference.IsDirect) continue;
+                        if (group.Path.BitDepth == 0) root = group.Pointer;
+                        if (group.Pointer == 0) continue;
                         count++;
                         bytes += ((group.Path.BitDepth + 7) >> 3) + group.Length;
                     }
@@ -99,23 +99,22 @@ public sealed class PbtSnapshotStore(PbtSnapshotBundle bundle) : IPbtStore, IDis
         }
     }
 
-    private readonly record struct BufferedNodeGroup(PbtStorageNodePath Path, PbtGroupReference Reference, int Length);
+    private readonly record struct BufferedNodeGroup(PbtStorageNodePath Path, ulong Pointer, int Length);
 
     private sealed class ConcurrentWriter(PbtSnapshotStore store) : IPbtConcurrentWriter
     {
         private readonly ArrayPoolList<BufferedNodeGroup> _buffer = new(16);
 
-        public PbtGroupReference ReserveNodeGroup(scoped in PbtTraversalPath groupKey, int length, in PbtGroupLinks links, out Span<byte> payload)
+        public bool TryReserveNodeGroup(scoped in PbtTraversalPath groupKey, int length, in PbtGroupLinks links, out ulong pointer, out Span<byte> payload)
         {
             PbtStorageNodePath path = groupKey.ToPath<PbtStorageNodePath>();
             payload = default;
-            PbtGroupReference reference = length == 0 ? PbtGroupReference.None
-                : store.Buffer.Reserve(path, length, links, out payload);
-            _buffer.Add(new BufferedNodeGroup(path, reference, length));
-            return reference;
+            pointer = length == 0 ? 0 : store.Buffer.Reserve(path, length, links, out payload);
+            _buffer.Add(new BufferedNodeGroup(path, pointer, length));
+            return true;
         }
 
-        /// <remarks>Never called: reservations here always return a buffer reference, so folds write groups in place.</remarks>
+        /// <remarks>Never called: every reservation here succeeds, so folds write groups in place.</remarks>
         public void SetNodeGroup(scoped in PbtTraversalPath groupKey, RefCountingMemory? payload) =>
             throw new NotSupportedException("Snapshot folds write reserved buffer records.");
 

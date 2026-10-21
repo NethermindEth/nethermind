@@ -196,12 +196,13 @@ public sealed partial class PbtGroupRecordBuffer
         /// <summary>Bytes held by the records and the table.</summary>
         public long Memory => _records.Capacity + (long)_table.Length * Unsafe.SizeOf<(int, int)>();
 
-        public bool TryFind(PbtGroupReference reference, out ReadOnlyMemory<byte> record)
+        public bool TryFind(ulong pointer, out ReadOnlyMemory<byte> record)
         {
-            if (reference.Generation == _generation)
-                for (int index = Index(reference.Offset); _table[index].Offset != -1; index = (index + 1) & _tableMask)
+            int offset = (int)(uint)pointer;
+            if (pointer >> OffsetBits == _generation)
+                for (int index = Index(offset); _table[index].Offset != -1; index = (index + 1) & _tableMask)
                 {
-                    if (_table[index].Offset != reference.Offset) continue;
+                    if (_table[index].Offset != offset) continue;
                     ReadOnlyMemory<byte> records = _records.Memory;
                     int copied = _table[index].CopiedOffset;
                     record = records.Slice(copied, PbtGroupRecordHeader.Size + PayloadLength(records.Span, copied));

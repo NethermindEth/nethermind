@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Pbt.NodeBuffer;
-
 namespace Nethermind.Pbt;
 
 /// <summary>The group a fold composes one frame against: a stored <see cref="GroupFrameReader{TKey, TPath}"/> or an <see cref="AbsentGroupFrame{TKey, TPath}"/>.</summary>
@@ -22,8 +20,8 @@ public interface IGroupFrame<TKey, TPath>
     /// <summary>The boundary slots whose <see cref="DescendantBytes"/> may be nonzero; every other slot is zero.</summary>
     ushort DescendantMask { get; }
 
-    /// <summary>The first physical descendant group owned by the boundary slot, or an unresolved reference for legacy frames.</summary>
-    PbtGroupReference DescendantReference(int slot) => DescendantBytes(slot) == 0 ? PbtGroupReference.None : PbtGroupReference.Unknown;
+    /// <summary>The pointer of the first physical descendant group owned by the boundary slot, or 0 when it is not in the buffer.</summary>
+    ulong DescendantPointer(int slot) => 0;
 
     /// <summary>The positions the group stores an encoding at.</summary>
     uint StoredPositions { get; }

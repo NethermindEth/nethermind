@@ -1028,22 +1028,6 @@ public class PbtNodeGroupTests
     }
 
     [Test]
-    public void Group_buffer_links_distinguish_tombstones_from_unresolved_descendants()
-    {
-        PbtGroupLinks unknown = PbtGroupLinks.Unknown;
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(default(PbtGroupReference), Is.EqualTo(PbtGroupReference.None));
-            Assert.That(PbtGroupReference.None.IsNone, Is.True);
-            Assert.That(PbtGroupReference.Unknown.IsUnknown, Is.True);
-            Assert.That(PbtGroupReference.Unknown, Is.Not.EqualTo(PbtGroupReference.None));
-            Assert.That(PbtGroupReference.None.IsDirect || PbtGroupReference.Unknown.IsDirect, Is.False);
-            Assert.That(((ReadOnlySpan<PbtGroupReference>)unknown).ToArray(), Has.All.EqualTo(PbtGroupReference.Unknown));
-            Assert.That(Unsafe.SizeOf<PbtGroupReference>(), Is.EqualTo(sizeof(ulong)));
-        }
-    }
-
-    [Test]
     public void Group_buffer_reservations_preserve_canonical_payloads_and_immutable_links([Values] bool native, [Values(0, 3, 267)] int depth)
     {
         using GroupRecordBufferContext context = new(native);
@@ -1052,23 +1036,23 @@ public class PbtNodeGroupTests
         PbtStorageNodePath path = PbtTestPaths.Prefix<PbtStorageNodePath>(key, depth);
         PbtStorageNodePath childPath = PbtTestPaths.Prefix<PbtStorageNodePath>(key, depth + 6);
         byte[] payload = GroupRecordPayload(path);
-        PbtGroupReference child = context.Buffer.Append(childPath, GroupRecordPayload(childPath), default);
+        ulong child = context.Buffer.Append(childPath, GroupRecordPayload(childPath), default);
         PbtGroupLinks links = default;
         links[0] = child;
-        links[1] = PbtGroupReference.Unknown;
-        PbtGroupReference reference = context.Buffer.Reserve(path, payload.Length, links, out Span<byte> destination);
+        links[1] = 0;
+        ulong pointer = context.Buffer.Reserve(path, payload.Length, links, out Span<byte> destination);
         payload.CopyTo(destination);
-        Assert.That(context.Buffer.TryLocate(reference, out PbtGroupRecord record), Is.True);
+        Assert.That(context.Buffer.TryLocate(pointer, out PbtGroupRecord record), Is.True);
         PbtGroupLinks copiedLinks = record.Links;
-        copiedLinks[0] = PbtGroupReference.None;
+        copiedLinks[0] = 0;
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(reference.IsDirect, Is.True);
+            Assert.That(pointer != 0, Is.True);
             Assert.That(record.Path, Is.EqualTo(path));
             Assert.That(record.Payload.ToArray(), Is.EqualTo(payload));
             Assert.That(record.GetLink(0), Is.EqualTo(child));
-            Assert.That(record.GetLink(1), Is.EqualTo(PbtGroupReference.Unknown));
-            Assert.That(record.GetLink(2), Is.EqualTo(PbtGroupReference.None));
+            Assert.That(record.GetLink(1), Is.Zero);
+            Assert.That(record.GetLink(2), Is.Zero);
         }
         PbtNodeGroupCodec.ValidateNodes(path, record.Payload.Span);
     }
@@ -1079,17 +1063,17 @@ public class PbtNodeGroupTests
         using GroupRecordBufferContext context = new(native);
         PbtGroupRecordBuffer.GenerationPin pin = context.Buffer.PinHead();
         byte[] payload = RootGroup(LeafEncoding(0x20));
-        PbtGroupReference[] references = new PbtGroupReference[16];
-        for (int i = 0; i < references.Length; i++)
-            references[i] = context.Buffer.Append(default, payload, default);
+        ulong[] pointers = new ulong[16];
+        for (int i = 0; i < pointers.Length; i++)
+            pointers[i] = context.Buffer.Append(default, payload, default);
         using (PbtGroupRecordBuffer.GenerationPin later = context.Buffer.PinHead())
         {
-            PbtGroupReference next = context.Buffer.Append(default, payload, default);
+            ulong next = context.Buffer.Append(default, payload, default);
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(context.Buffer.GenerationCount, Is.GreaterThan(1));
-                Assert.That(references, Is.All.GreaterThanOrEqualTo(pin.WriteBoundary));
-                Assert.That(references, Is.All.LessThan(later.WriteBoundary));
+                Assert.That(pointers, Is.All.GreaterThanOrEqualTo(pin.WriteBoundary));
+                Assert.That(pointers, Is.All.LessThan(later.WriteBoundary));
                 Assert.That(next, Is.GreaterThanOrEqualTo(later.WriteBoundary));
             }
         }
@@ -1106,9 +1090,9 @@ public class PbtNodeGroupTests
             Assert.That(context.Buffer.PinnedBytes, Is.EqualTo(context.Buffer.ResidentBytes));
             Assert.That(TrackingMemoryProvider.CountUnreleased(context.Memory.Rented), Is.GreaterThan(1));
         }
-        foreach (PbtGroupReference reference in references)
+        foreach (ulong pointer in pointers)
         {
-            Assert.That(context.Buffer.TryLocate(reference, out PbtGroupRecord record), Is.True);
+            Assert.That(context.Buffer.TryLocate(pointer, out PbtGroupRecord record), Is.True);
             Assert.That(record.Payload.ToArray(), Is.EqualTo(payload));
         }
         copy.Dispose();
@@ -1129,25 +1113,25 @@ public class PbtNodeGroupTests
         ValueHash256 first = new(Bytes.FromHexString("1111111111111111aa0000000000000000000000000000000000000000000000"));
         ValueHash256 colliding = new(Bytes.FromHexString("1111111111111111bb0000000000000000000000000000000000000000000000"));
         PbtGroupRecordBuffer.GenerationPin pin = context.Buffer.PinHead();
-        PbtGroupReference firstRoot = context.Buffer.Append(default, RootGroup(LeafEncoding(0x20)), default);
-        PbtGroupReference collidingRoot = context.Buffer.Append(default, RootGroup(LeafEncoding(0x40)), default);
+        ulong firstRoot = context.Buffer.Append(default, RootGroup(LeafEncoding(0x20)), default);
+        ulong collidingRoot = context.Buffer.Append(default, RootGroup(LeafEncoding(0x40)), default);
         context.Buffer.SetRoot(first, firstRoot);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(context.Buffer.FindRoot(first), Is.EqualTo(firstRoot));
-            Assert.That(context.Buffer.FindRoot(colliding), Is.EqualTo(PbtGroupReference.Unknown));
+            Assert.That(context.Buffer.FindRoot(colliding), Is.Zero);
         }
         context.Buffer.SetRoot(colliding, collidingRoot);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(context.Buffer.FindRoot(first), Is.EqualTo(PbtGroupReference.Unknown), "a newer root replaces its slot");
+            Assert.That(context.Buffer.FindRoot(first), Is.Zero, "a newer root replaces its slot");
             Assert.That(context.Buffer.FindRoot(colliding), Is.EqualTo(collidingRoot));
         }
         pin.Dispose();
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(context.Buffer.FindRoot(colliding), Is.EqualTo(PbtGroupReference.Unknown), "a reclaimed root record misses");
-            Assert.Throws<ArgumentException>(() => context.Buffer.SetRoot(first, PbtGroupReference.Unknown));
+            Assert.That(context.Buffer.FindRoot(colliding), Is.Zero, "a reclaimed root record misses");
+            Assert.Throws<ArgumentException>(() => context.Buffer.SetRoot(first, 0));
         }
     }
 
@@ -1157,14 +1141,14 @@ public class PbtNodeGroupTests
         using GroupRecordBufferContext context = new(native);
         PbtGroupRecordBuffer.GenerationPin pin = context.Buffer.PinHead();
         byte[] payload = RootGroup(LeafEncoding(0x20));
-        PbtGroupReference reference = context.Buffer.Append(default, payload, default);
+        ulong pointer = context.Buffer.Append(default, payload, default);
         IDisposable earlier = context.Buffer.PinAll();
-        Assert.That(context.Buffer.TryLocate(reference, out PbtGroupRecord borrowed), Is.True);
+        Assert.That(context.Buffer.TryLocate(pointer, out PbtGroupRecord borrowed), Is.True);
         pin.Dispose();
         IDisposable later = context.Buffer.PinAll();
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(context.Buffer.TryLocate(reference, out _), Is.False, "a dropped generation misses at once");
+            Assert.That(context.Buffer.TryLocate(pointer, out _), Is.False, "a dropped generation misses at once");
             Assert.That(borrowed.Payload.ToArray(), Is.EqualTo(payload), "records borrowed before the drop stay valid");
             Assert.That(TrackingMemoryProvider.CountUnreleased(context.Memory.Rented), Is.EqualTo(1));
         }
@@ -1182,9 +1166,9 @@ public class PbtNodeGroupTests
         PbtStorageNodePath kept = new([0x40], 3);
         PbtGroupRecordBuffer.GenerationPin pin = context.Buffer.PinHead();
         // Each record fills a 256-byte generation of its own.
-        PbtGroupReference superseded = context.Buffer.Append(rewritten, FillingPayload(1), default);
-        PbtGroupReference survivor = context.Buffer.Append(kept, FillingPayload(2), default);
-        PbtGroupReference replacement = context.Buffer.Append(rewritten, FillingPayload(3), default);
+        ulong superseded = context.Buffer.Append(rewritten, FillingPayload(1), default);
+        ulong survivor = context.Buffer.Append(kept, FillingPayload(2), default);
+        ulong replacement = context.Buffer.Append(rewritten, FillingPayload(3), default);
         PbtGroupRecordBuffer.GenerationPin newest = context.Buffer.PinHead();
         Assert.That(context.Buffer.GenerationCount, Is.GreaterThanOrEqualTo(3));
         IDisposable reader = context.Buffer.PinAll();
@@ -1237,9 +1221,9 @@ public class PbtNodeGroupTests
         using GroupRecordBufferContext context = new(native);
         PbtGroupRecordBuffer.GenerationPin pin = context.Buffer.PinHead();
         byte[] payload = RootGroup(LeafEncoding(0x40));
-        PbtGroupReference reference = context.Buffer.Append(default, payload, default);
+        ulong pointer = context.Buffer.Append(default, payload, default);
         IDisposable reader = context.Buffer.PinAll();
-        Assert.That(context.Buffer.TryLocate(reference, out PbtGroupRecord record), Is.True);
+        Assert.That(context.Buffer.TryLocate(pointer, out PbtGroupRecord record), Is.True);
         Parallel.For(0, rotations, index =>
         {
             context.Buffer.Append(default, RootGroup(LeafEncoding((byte)(index + 1))), default);
@@ -1261,7 +1245,7 @@ public class PbtNodeGroupTests
         {
             Assert.That(context.Buffer.ResidentBytes, Is.Zero);
             Assert.That(TrackingMemoryProvider.CountUnreleased(context.Memory.Rented), Is.Zero);
-            Assert.That(context.Buffer.TryLocate(reference, out _), Is.False);
+            Assert.That(context.Buffer.TryLocate(pointer, out _), Is.False);
         }
     }
 
@@ -1269,12 +1253,12 @@ public class PbtNodeGroupTests
     public void Group_buffer_retired_references_miss_even_when_storage_is_reused([Values] bool native)
     {
         using GroupRecordBufferContext context = new(native);
-        PbtGroupReference retired;
+        ulong retired;
         using (context.Buffer.PinHead()) retired = context.Buffer.Append(default, RootGroup(LeafEncoding(0x20)), default);
         Assert.That(context.Buffer.ResidentBytes, Is.Zero);
         using PbtGroupRecordBuffer.GenerationPin pin = context.Buffer.PinHead();
         byte[] payload = RootGroup(LeafEncoding(0x40));
-        PbtGroupReference current = context.Buffer.Append(default, payload, default);
+        ulong current = context.Buffer.Append(default, payload, default);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(current, Is.Not.EqualTo(retired));
@@ -1289,21 +1273,21 @@ public class PbtNodeGroupTests
     {
         using GroupRecordBufferContext context = new(native);
         using PbtGroupRecordBuffer.GenerationPin pin = context.Buffer.PinHead();
-        ConcurrentBag<(PbtGroupReference Reference, byte[] Payload)> written = [];
+        ConcurrentBag<(ulong Pointer, byte[] Payload)> written = [];
         Parallel.For(0, 128, index =>
         {
             byte[] payload = RootGroup(LeafEncoding((byte)index));
-            PbtGroupReference reference = context.Buffer.Reserve(default, payload.Length, default, out Span<byte> destination);
+            ulong pointer = context.Buffer.Reserve(default, payload.Length, default, out Span<byte> destination);
             payload.CopyTo(destination);
-            written.Add((reference, payload));
+            written.Add((pointer, payload));
         });
-        Assert.That(written.Select(static entry => entry.Reference).Distinct().Count(), Is.EqualTo(128));
-        foreach ((PbtGroupReference reference, byte[] payload) in written)
+        Assert.That(written.Select(static entry => entry.Pointer).Distinct().Count(), Is.EqualTo(128));
+        foreach ((ulong pointer, byte[] payload) in written)
         {
-            Assert.That(context.Buffer.TryLocate(reference, out PbtGroupRecord record), Is.True);
+            Assert.That(context.Buffer.TryLocate(pointer, out PbtGroupRecord record), Is.True);
             Assert.That(record.Payload.ToArray(), Is.EqualTo(payload));
         }
-        PbtGroupReference retained = written.First().Reference;
+        ulong retained = written.First().Pointer;
         for (int i = 0; i < 100; i++) context.Buffer.TryLocate(retained, out _);
         long allocated = GC.GetAllocatedBytesForCurrentThread();
         bool found = true;
@@ -1320,40 +1304,35 @@ public class PbtNodeGroupTests
     public void Overlay_buffer_writes_privately_and_reaches_global_records_only_before_its_pin([Values] bool native)
     {
         using GroupRecordBufferContext context = new(native);
-        using PbtGroupRecordBuffer foreign = new(context.Memory, compressedMaxMemory: 0);
         ValueHash256 globalRoot = new(Bytes.FromHexString("0100000000000000000000000000000000000000000000000000000000000000"));
         ValueHash256 laterRoot = new(Bytes.FromHexString("0200000000000000000000000000000000000000000000000000000000000000"));
         ValueHash256 localRoot = new(Bytes.FromHexString("0300000000000000000000000000000000000000000000000000000000000000"));
         PbtGroupRecordBuffer.GenerationPin writer = context.Buffer.PinHead();
-        PbtGroupReference global = context.Buffer.Append(default, RootGroup(LeafEncoding(0x20)), default);
+        ulong global = context.Buffer.Append(default, RootGroup(LeafEncoding(0x20)), default);
         context.Buffer.SetRoot(globalRoot, global);
         PbtOverlayGroupRecordBuffer overlay = new(context.Buffer, context.Memory);
-        PbtGroupReference later = context.Buffer.Append(default, RootGroup(LeafEncoding(0x40)), default);
+        ulong later = context.Buffer.Append(default, RootGroup(LeafEncoding(0x40)), default);
         context.Buffer.SetRoot(laterRoot, later);
         long globalUsed = context.Buffer.UsedBytes;
         IPbtGroupRecordBufferPin pin = overlay.PinHead();
         PbtGroupLinks links = default;
         links[0] = global;
         byte[] payload = RootGroup(LeafEncoding(0x60));
-        PbtGroupReference local = overlay.Append(default, payload, links);
+        ulong local = overlay.Append(default, payload, links);
         overlay.SetRoot(localRoot, local);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(context.Buffer.UsedBytes, Is.EqualTo(globalUsed), "the overlay writes to its private buffer");
             Assert.That(local, Is.GreaterThanOrEqualTo(pin.WriteBoundary));
             Assert.That(overlay.TryLocate(local, out PbtGroupRecord record), Is.True);
-            Assert.That(record.Reference, Is.EqualTo(local));
+            Assert.That(record.Pointer, Is.EqualTo(local));
             Assert.That(record.Payload.ToArray(), Is.EqualTo(payload));
             Assert.That(record.GetLink(0), Is.EqualTo(global));
             Assert.That(overlay.TryLocate(global, out _), Is.True);
-            Assert.That(overlay.MapReference(context.Buffer, global), Is.EqualTo(global));
-            Assert.That(overlay.MapReference(context.Buffer, later), Is.EqualTo(PbtGroupReference.Unknown), "a global record written after the pin is out of reach");
-            Assert.That(overlay.MapReference(overlay, local), Is.EqualTo(local));
             Assert.That(overlay.FindRoot(globalRoot), Is.EqualTo(global));
-            Assert.That(overlay.FindRoot(laterRoot), Is.EqualTo(PbtGroupReference.Unknown));
+            Assert.That(overlay.FindRoot(laterRoot), Is.Zero);
             Assert.That(overlay.FindRoot(localRoot), Is.EqualTo(local));
-            Assert.That(context.Buffer.FindRoot(localRoot), Is.EqualTo(PbtGroupReference.Unknown), "a private root stays out of the global index");
-            Assert.Throws<InvalidOperationException>(() => overlay.MapReference(foreign, global));
+            Assert.That(context.Buffer.FindRoot(localRoot), Is.Zero, "a private root stays out of the global index");
         }
         overlay.Dispose();
         writer.Dispose();

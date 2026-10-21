@@ -3,7 +3,6 @@
 
 using System.Diagnostics;
 using Nethermind.Core.Crypto;
-using Nethermind.Pbt.NodeBuffer;
 using static Nethermind.Pbt.TrieUpdater;
 
 namespace Nethermind.Pbt;
@@ -68,11 +67,10 @@ public static partial class TrieUpdater<TKey, TPath>
             _anchorDepth = (ushort)anchorDepth;
             _hash = hash;
             _source = source;
-            GroupReference = source == LeafSource.None ? PbtGroupReference.Unknown : PbtGroupReference.None;
         }
 
         /// <summary>The first physical group owned by this subtree, possibly below a compressed span.</summary>
-        public PbtGroupReference GroupReference { get; init; }
+        public ulong GroupPointer { get; init; }
 
         public readonly bool IsEmpty => _encoding.IsEmpty;
         /// <summary>The encoding this node is read from: its own, or the branch that inlines it.</summary>
@@ -193,6 +191,6 @@ public static partial class TrieUpdater<TKey, TPath>
         public static BoundaryNode TakeFrom<TSourceKey, TSourcePath>(in TrieUpdater<TSourceKey, TSourcePath>.BoundaryNode source)
             where TSourceKey : unmanaged, IPbtKey<TSourceKey>
             where TSourcePath : struct, IPbtNodePath<TSourcePath> =>
-            new(source.Encoding, source.AnchorDepth, source.Hash, source.Source) { GroupReference = source.GroupReference };
+            new(source.Encoding, source.AnchorDepth, source.Hash, source.Source) { GroupPointer = source.GroupPointer };
     }
 }

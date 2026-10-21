@@ -39,7 +39,7 @@ public sealed class PbtSnapshotContent(IRefCountingMemoryProvider? nodeGroupMemo
     private IPbtGroupRecordBufferPin? _nodeGroupPin;
     private long _nodeGroupBytes;
 
-    /// <summary>The group record buffer whose references this content owns, or null before <see cref="BeginNodeGroupWrites"/>.</summary>
+    /// <summary>The group record buffer whose records this content owns, or null before <see cref="BeginNodeGroupWrites"/>.</summary>
     public IPbtGroupRecordBuffer? GroupRecordBuffer => _nodeGroupPin?.Buffer;
 
     /// <summary>Pins the active generation of <paramref name="buffer"/>, unless already pinned, so later group writes stay readable.</summary>
@@ -49,8 +49,8 @@ public sealed class PbtSnapshotContent(IRefCountingMemoryProvider? nodeGroupMemo
         _nodeGroupPin ??= buffer.PinHead();
     }
 
-    /// <summary>The root group of the tree this layer published, None for an empty tree, or Unknown when it published none.</summary>
-    public PbtGroupReference RootGroupReference { get; set; } = PbtGroupReference.Unknown;
+    /// <summary>The pointer of the root group of the tree this layer published, or 0 for an empty tree or when it published none.</summary>
+    public ulong RootGroupPointer { get; set; }
 
     /// <summary>An upper bound of the groups this layer wrote, counting groups later replaced within the layer.</summary>
     public int NodeGroupCount { get; private set; }
@@ -70,7 +70,7 @@ public sealed class PbtSnapshotContent(IRefCountingMemoryProvider? nodeGroupMemo
     /// generation pin keeps the records valid while the layer is not reset.
     /// </remarks>
     public IEnumerable<PbtGroupRecord> EnumerateNodeGroups() =>
-        _nodeGroupPin is null ? [] : PbtNodeGroupKey.InKeyOrder(_nodeGroupPin.Buffer, RootGroupReference, _nodeGroupPin.WriteBoundary);
+        _nodeGroupPin is null ? [] : PbtNodeGroupKey.InKeyOrder(_nodeGroupPin.Buffer, RootGroupPointer, _nodeGroupPin.WriteBoundary);
 
     /// <summary>The runs of header slots for <see cref="PbtPath"/> run keys, or of the other slots for <see cref="PbtStoragePath"/> ones.</summary>
     private ConcurrentDictionary<HashedKey<TKey>, PackedSlotRun> Runs<TKey>() where TKey : struct, IPbtKey<TKey> =>
@@ -140,20 +140,15 @@ public sealed class PbtSnapshotContent(IRefCountingMemoryProvider? nodeGroupMemo
     public bool TryReplaceRun<TKey>(in HashedKey<TKey> runKey, PackedSlotRun run, PackedSlotRun expected) where TKey : struct, IPbtKey<TKey> =>
         Runs<TKey>().TryUpdate(runKey, run, expected);
 
-    /// <summary>Resolves <paramref name="groupKey"/> in the tree whose root group is <paramref name="root"/>, as an independent caller-owned payload or a null absence.</summary>
-    /// <returns>False when the root is unresolved or the walk reaches a group that is not resident, which the persisted view must then provide.</returns>
+    /// <summary>Copies the group at <paramref name="groupKey"/> in the tree whose root group is at <paramref name="rootPointer"/> into an independent caller-owned payload.</summary>
+    /// <returns>False when the walk misses, which the persisted view must then resolve.</returns>
     /// <remarks>The caller holds a <see cref="PbtGroupRecordBuffer.PinAll"/> of the buffer, as a read-only bundle does.</remarks>
-    public bool TryFindNodeGroup(PbtGroupReference root, PbtStorageNodePath groupKey, out RefCountingMemory? payload)
+    public bool TryFindNodeGroup(ulong rootPointer, PbtStorageNodePath groupKey, [NotNullWhen(true)] out RefCountingMemory? payload)
     {
         payload = null;
-        PbtGroupRecord record = default;
-        PbtGroupReference reference = root.IsDirect ? _nodeGroupPin!.Buffer.FindGroup(root, groupKey, out record) : root;
-        if (reference.IsUnknown) return false;
-        if (reference.IsDirect)
-        {
-            payload = _nodeGroupMemory.Rent(record.Payload.Length);
-            record.Payload.Span.CopyTo(payload.GetSpan());
-        }
+        if (_nodeGroupPin is null || !_nodeGroupPin.Buffer.TryFindGroup(rootPointer, groupKey, out PbtGroupRecord record)) return false;
+        payload = _nodeGroupMemory.Rent(record.Payload.Length);
+        record.Payload.Span.CopyTo(payload.GetSpan());
         return true;
     }
 
@@ -161,7 +156,7 @@ public sealed class PbtSnapshotContent(IRefCountingMemoryProvider? nodeGroupMemo
     internal void CopyNodeGroupsFrom(PbtSnapshotContent source)
     {
         Debug.Assert(_nodeGroupPin is null || source._nodeGroupPin is null || ReferenceEquals(_nodeGroupPin.Buffer, source._nodeGroupPin.Buffer));
-        if (source._nodeGroupPin is { } pin && (_nodeGroupPin is null || pin.WriteBoundary.CompareTo(_nodeGroupPin.WriteBoundary) < 0))
+        if (source._nodeGroupPin is { } pin && (_nodeGroupPin is null || pin.WriteBoundary < _nodeGroupPin.WriteBoundary))
         {
             IPbtGroupRecordBufferPin copy = pin.Copy();
             _nodeGroupPin?.Dispose();
@@ -179,7 +174,7 @@ public sealed class PbtSnapshotContent(IRefCountingMemoryProvider? nodeGroupMemo
         Storages.NoLockClear();
         Codes.NoLockClear();
         SelfDestructedStorageAddresses.NoLockClear();
-        RootGroupReference = PbtGroupReference.Unknown;
+        RootGroupPointer = 0;
         NodeGroupCount = 0;
         _nodeGroupBytes = 0;
         _nodeGroupPin?.Dispose();

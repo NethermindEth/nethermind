@@ -20,27 +20,29 @@ public interface IPbtNodeGroupSink
     /// </remarks>
     void SetNodeGroup(scoped in PbtTraversalPath groupKey, RefCountingMemory? payload);
 
-    /// <summary>Reserves a replacement's final payload and hands its reference off with this writer; zero length deletes the group.</summary>
+    /// <summary>Reserves a replacement's final payload and hands its pointer off with this writer; zero length deletes the group.</summary>
+    /// <returns>False for a payload-only sink, which receives <see cref="SetNodeGroup"/> instead.</returns>
     /// <remarks>
-    /// The caller fills the borrowed span before publishing its reference to a parent. The store keeps the reservation
-    /// alive through fold completion and publication. Payload-only sinks return Unknown and receive SetNodeGroup instead.
+    /// The caller fills the borrowed span before publishing its pointer to a parent. The store keeps the reservation
+    /// alive through fold completion and publication. A deletion reserves no record, so its pointer is 0.
     /// </remarks>
-    PbtGroupReference ReserveNodeGroup(scoped in PbtTraversalPath groupKey, int length, in PbtGroupLinks links, out Span<byte> payload)
+    bool TryReserveNodeGroup(scoped in PbtTraversalPath groupKey, int length, in PbtGroupLinks links, out ulong pointer, out Span<byte> payload)
     {
+        pointer = 0;
         payload = default;
-        return PbtGroupReference.Unknown;
+        return false;
     }
 }
 
 /// <summary>Backing store used by <see cref="TrieUpdater"/> for canonical complete-key mutations.</summary>
 public interface IPbtStore
 {
-    /// <summary>The input root's group reference, None for a known empty root, or Unknown when unavailable.</summary>
-    PbtGroupReference RootGroupReference => PbtGroupReference.Unknown;
+    /// <summary>The pointer of the input root's group, or 0 when it is not in the buffer.</summary>
+    ulong RootGroupPointer => 0;
 
     /// <summary>Borrows a direct record for this path, or returns false to use the exact store lookup.</summary>
     /// <remarks>The store protects the record's lifetime through worker completion and publication.</remarks>
-    bool TryGetNodeGroupRecord(PbtGroupReference reference, scoped in PbtTraversalPath groupKey, out PbtGroupRecord record)
+    bool TryGetNodeGroupRecord(ulong pointer, scoped in PbtTraversalPath groupKey, out PbtGroupRecord record)
     {
         record = default;
         return false;
@@ -75,8 +77,8 @@ public interface IPbtConcurrentWriter : IPbtNodeGroupSink, IDisposable;
 public sealed class PbtPassThroughWriter(IPbtNodeGroupSink store) : IPbtConcurrentWriter
 {
     /// <inheritdoc/>
-    public PbtGroupReference ReserveNodeGroup(scoped in PbtTraversalPath groupKey, int length, in PbtGroupLinks links, out Span<byte> payload) =>
-        store.ReserveNodeGroup(groupKey, length, links, out payload);
+    public bool TryReserveNodeGroup(scoped in PbtTraversalPath groupKey, int length, in PbtGroupLinks links, out ulong pointer, out Span<byte> payload) =>
+        store.TryReserveNodeGroup(groupKey, length, links, out pointer, out payload);
 
     public void SetNodeGroup(scoped in PbtTraversalPath groupKey, RefCountingMemory? payload) =>
         store.SetNodeGroup(groupKey, payload);

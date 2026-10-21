@@ -9,8 +9,10 @@ using Nethermind.Core.Memory;
 
 namespace Nethermind.Pbt.NodeBuffer;
 
-/// <summary>An append-only in-memory buffer of canonical PBT groups and direct descendant references.</summary>
+/// <summary>An append-only in-memory buffer of canonical PBT groups and descendant pointers, split into generations and addressed by 64-bit pointers.</summary>
 /// <remarks>
+/// A pointer is <c>(generationId &lt;&lt; 32) | byteOffset</c> and 0 means none. Generation ids start at 1 and are never reused, so a
+/// stale pointer misses rather than resolving to another record.
 /// A writer holds a <see cref="PinHead"/> no newer than the generations it writes, which keeps that generation and every later one
 /// readable in place. A reader holds a <see cref="PinAll"/> taken before it looks up the records it borrows. Other generations
 /// are dropped, compacted and reclaimed once no pin covers them. Reads and reservations do not take the lifetime lock; only
@@ -20,6 +22,9 @@ public sealed partial class PbtGroupRecordBuffer : IPbtGroupRecordBuffer, IDispo
 {
     /// <summary>The default generation capacity, in bytes.</summary>
     public const int DefaultGenerationBytes = 1024 * 1024;
+
+    /// <summary>The bits of a pointer that hold the byte offset in its generation.</summary>
+    public const int OffsetBits = 32;
 
     private const int RecordAlignment = sizeof(ulong);
     private readonly Lock _lock = new();
@@ -87,7 +92,7 @@ public sealed partial class PbtGroupRecordBuffer : IPbtGroupRecordBuffer, IDispo
     public int GenerationCount => _generations.Count;
 
     /// <inheritdoc/>
-    public PbtGroupReference Reserve(PbtStorageNodePath path, int payloadLength, in PbtGroupLinks links, out Span<byte> payload)
+    public ulong Reserve(PbtStorageNodePath path, int payloadLength, in PbtGroupLinks links, out Span<byte> payload)
     {
         ThrowIfUnavailable();
         if (!PbtThreeLevelGroupGeometry.IsGroupDepth(path.BitDepth)) throw new ArgumentException("The path is not a PBT group boundary.", nameof(path));
@@ -109,7 +114,7 @@ public sealed partial class PbtGroupRecordBuffer : IPbtGroupRecordBuffer, IDispo
                     MemoryMarshal.Write(record.Span, in header);
                     generation.Bloom?.Add(PathKey(path));
                     payload = record.Span[PbtGroupRecordHeader.Size..];
-                    return new PbtGroupReference(generation.Id, offset);
+                    return (ulong)generation.Id << OffsetBits | (uint)offset;
                 }
             }
             Rotate(generation, alignedLength);
@@ -117,26 +122,21 @@ public sealed partial class PbtGroupRecordBuffer : IPbtGroupRecordBuffer, IDispo
     }
 
     /// <inheritdoc/>
-    public bool TryLocate(PbtGroupReference reference, out PbtGroupRecord record)
+    public bool TryLocate(ulong pointer, out PbtGroupRecord record)
     {
         record = default;
-        if (!TryLocateBytes(reference, out ReadOnlyMemory<byte> memory)) return false;
-        record = new PbtGroupRecord(reference, memory);
+        if (!TryLocateBytes(pointer, out ReadOnlyMemory<byte> memory)) return false;
+        record = new PbtGroupRecord(pointer, memory);
         return true;
     }
 
-    /// <inheritdoc/>
-    /// <remarks>Snapshots of a branch share its buffer, so only this buffer's own references map.</remarks>
-    public PbtGroupReference MapReference(IPbtGroupRecordBuffer source, PbtGroupReference reference) =>
-        ReferenceEquals(source, this) ? reference : throw new InvalidOperationException("A branch must share the group record buffer of its in-memory snapshots.");
-
-    private bool TryLocateBytes(PbtGroupReference reference, out ReadOnlyMemory<byte> record)
+    private bool TryLocateBytes(ulong pointer, out ReadOnlyMemory<byte> record)
     {
         record = default;
-        if (!reference.IsDirect || !_generations.TryGetValue(reference.Generation, out Generation? generation) || Volatile.Read(ref generation.Dropping)) return false;
+        if (pointer == 0 || !_generations.TryGetValue((uint)(pointer >> OffsetBits), out Generation? generation) || Volatile.Read(ref generation.Dropping)) return false;
         // A compacted generation publishes its copy before it unlinks its buffer.
-        if (Volatile.Read(ref generation.Buffer) is null) return Volatile.Read(ref generation.Compressed)?.TryFind(reference, out record) == true;
-        int offset = reference.Offset;
+        if (Volatile.Read(ref generation.Buffer) is null) return Volatile.Read(ref generation.Compressed)?.TryFind(pointer, out record) == true;
+        int offset = (int)(uint)pointer;
         if ((uint)offset > (uint)(generation.Memory.Length - PbtGroupRecordHeader.Size)) return false;
         ReadOnlySpan<byte> remaining = generation.Memory.Span[offset..];
         ref readonly PbtGroupRecordHeader header = ref MemoryMarshal.AsRef<PbtGroupRecordHeader>(remaining);

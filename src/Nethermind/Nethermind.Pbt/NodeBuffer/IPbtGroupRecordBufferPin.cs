@@ -10,8 +10,8 @@ public interface IPbtGroupRecordBufferPin : IDisposable
     IPbtGroupRecordBuffer Buffer { get; }
 
     /// <summary>The inclusive allocation frontier captured when the pin was first acquired.</summary>
-    /// <remarks>Every record reserved after the pin compares greater than or equal to it.</remarks>
-    PbtGroupReference WriteBoundary { get; }
+    /// <remarks>Every record reserved after the pin has a pointer greater than or equal to it.</remarks>
+    ulong WriteBoundary { get; }
 
     /// <summary>Keeps the same records readable independently of this pin.</summary>
     IPbtGroupRecordBufferPin Copy();

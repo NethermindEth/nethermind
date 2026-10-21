@@ -27,7 +27,7 @@ public sealed partial class PbtGroupRecordBuffer
         {
             Generation? active = _active;
             uint generation = active?.Id ?? checked(_lastGeneration + 1);
-            return PinGeneration(generation, new PbtGroupReference(generation, active is null ? 0 : Volatile.Read(ref active.Used)));
+            return PinGeneration(generation, (ulong)generation << OffsetBits | (uint)(active is null ? 0 : Volatile.Read(ref active.Used)));
         }
     }
 
@@ -46,7 +46,7 @@ public sealed partial class PbtGroupRecordBuffer
         }
     }
 
-    private GenerationPin PinGeneration(uint generation, PbtGroupReference writeBoundary)
+    private GenerationPin PinGeneration(uint generation, ulong writeBoundary)
     {
         lock (_lock)
         {
@@ -197,7 +197,7 @@ public sealed partial class PbtGroupRecordBuffer
         private readonly PbtGroupRecordBuffer _buffer;
         private int _disposed;
 
-        internal GenerationPin(PbtGroupRecordBuffer buffer, uint generation, PbtGroupReference writeBoundary)
+        internal GenerationPin(PbtGroupRecordBuffer buffer, uint generation, ulong writeBoundary)
         {
             _buffer = buffer;
             Generation = generation;
@@ -211,7 +211,7 @@ public sealed partial class PbtGroupRecordBuffer
         public IPbtGroupRecordBuffer Buffer => _buffer;
 
         /// <inheritdoc/>
-        public PbtGroupReference WriteBoundary { get; }
+        public ulong WriteBoundary { get; }
 
         /// <summary>Keeps the same generation range independently of this pin.</summary>
         /// <exception cref="ObjectDisposedException">This pin or the buffer is disposed.</exception>

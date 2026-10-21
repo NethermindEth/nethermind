@@ -75,7 +75,7 @@ public class PbtSnapshotBundleTests
         try { Assert.That(run.Get(SlotRun.IndexOf(key)), Is.EqualTo(bundle.GetSlot(TestItem.AddressA, 5))); }
         finally { SlotRun.Return(run); }
         bundle.Dispose();
-        Assert.That(reader.DisposeCount, Is.Zero, "independent bundle reference still owns the reader");
+        Assert.That(reader.DisposeCount, Is.Zero, "independent bundle pointer still owns the reader");
     }
 
     [Test]
@@ -138,7 +138,7 @@ public class PbtSnapshotBundleTests
         if (memoryTier == 0) PublishRoot(bundle, memory);
         using PbtSnapshotStore store = new(bundle);
         PbtTraversalPath cursor = new(Span<byte>.Empty);
-        Assert.That(store.TryGetNodeGroupRecord(PbtGroupReference.Unknown, cursor, out _), Is.False);
+        Assert.That(store.TryGetNodeGroupRecord(0, cursor, out _), Is.False);
         // Nothing records a removed group, so a newer persisted snapshot without the group leaves the older one visible.
         byte[] expected = persistedTier switch { 0 => database, 1 => newer, _ => older };
         for (int attempt = 0; attempt < 2; attempt++)
@@ -188,7 +188,7 @@ public class PbtSnapshotBundleTests
             Assert.That(compactor.DoCompactSnapshot(new StateId(parent)), Is.True);
         }
         using PbtWorldStateScope next = context.BeginScope(parent, out PbtSnapshotBundle bundle);
-        Assert.That(bundle.RootGroupReference.IsDirect, Is.True);
+        Assert.That(bundle.RootGroupPointer != 0, Is.True);
         bundle.SetAccount(TestItem.AddressA, new Account(2, 100));
         using PbtPartitionBatches changes = bundle.PrepareLeafChanges();
         using PbtSnapshotStore store = new(bundle);
@@ -223,9 +223,9 @@ public class PbtSnapshotBundleTests
         context.Manager.FlushCache(CancellationToken.None);
         BlockHeader parent = Build.A.BlockHeader.WithNumber(1).WithStateRoot(rootHash).TestObject;
         using PbtWorldStateScope next = context.BeginScope(parent, out PbtSnapshotBundle bundle);
-        Assert.That(bundle.RootGroupReference.IsDirect, Is.EqualTo(indexed));
+        Assert.That(bundle.RootGroupPointer != 0, Is.EqualTo(indexed));
         using PbtSnapshot unchanged = bundle.CollectSnapshot(new StateId(parent), new StateId(2, rootHash), bundle.TreeRoot);
-        Assert.That(buffer.TryLocate(unchanged.RootGroupReference, out PbtGroupRecord root), Is.True, "an unchanged non-empty tree always publishes a resident root group");
+        Assert.That(buffer.TryLocate(unchanged.RootGroupPointer, out PbtGroupRecord root), Is.True, "an unchanged non-empty tree always publishes a resident root group");
         using (RefCountingMemory persisted = bundle.GetPersistedNodeGroup(default)!)
             Assert.That(root.Payload.ToArray(), Is.EqualTo(persisted.GetSpan().ToArray()));
         bundle.SetAccount(TestItem.AddressA, new Account(2, 100));
@@ -243,10 +243,9 @@ public class PbtSnapshotBundleTests
     }
 
     [Test]
-    public void Changed_roots_without_a_published_root_and_foreign_buffers_are_rejected([Values] bool foreignBuffer)
+    public void Changed_roots_without_a_published_root_are_rejected()
     {
         using PbtGroupRecordBuffer sourceBuffer = new(PooledRefCountingMemoryProvider.Instance, compressedMaxMemory: 0, liveGenerations: 0);
-        using PbtGroupRecordBuffer otherBuffer = new(PooledRefCountingMemoryProvider.Instance, compressedMaxMemory: 0, liveGenerations: 0);
         PbtResourcePool pool = new(new PbtConfig());
         PbtSnapshotContent content = pool.GetSnapshotContent(PbtResourcePool.Usage.MainBlockProcessing);
         content.BeginNodeGroupWrites(sourceBuffer);
@@ -256,9 +255,8 @@ public class PbtSnapshotBundleTests
         PbtSnapshot source = new(StateId.PreGenesis, new StateId(1, default), TestItem.KeccakA.ValueHash256, content, pool, PbtResourcePool.Usage.MainBlockProcessing);
         PbtSnapshotPooledList chain = new(1) { source };
         PbtReadOnlySnapshotBundle readOnly = new(chain, new Reader(default, null), false, new PbtPersistedSnapshotList(0), PbtSnapshotBundleTestExtensions.NoNodeGroupPin, slotFilterBitsPerKey: 0);
-        using PbtSnapshotBundle branch = new(new PbtSnapshotPooledList(0), readOnly, foreignBuffer ? otherBuffer : sourceBuffer, pool, PbtResourcePool.Usage.MainBlockProcessing, filterInMemorySlotReads: false);
-        if (foreignBuffer) Assert.Throws<InvalidOperationException>(() => _ = branch.RootGroupReference);
-        else Assert.Throws<InvalidOperationException>(() => branch.CollectSnapshot(source.To, new StateId(2, default), TestItem.KeccakB.ValueHash256));
+        using PbtSnapshotBundle branch = new(new PbtSnapshotPooledList(0), readOnly, sourceBuffer, pool, PbtResourcePool.Usage.MainBlockProcessing, filterInMemorySlotReads: false);
+        Assert.Throws<InvalidOperationException>(() => branch.CollectSnapshot(source.To, new StateId(2, default), TestItem.KeccakB.ValueHash256));
     }
 
     [Test]
@@ -275,7 +273,8 @@ public class PbtSnapshotBundleTests
         content.BeginNodeGroupWrites(buffer);
         content.SetTree((path, encoding));
         PbtSnapshot source = new(StateId.PreGenesis, new StateId(1, default), TestItem.KeccakA.ValueHash256, content, pool, PbtResourcePool.Usage.MainBlockProcessing);
-        PbtGroupReference rootReference = source.RootGroupReference;
+        ulong rootPointer = source.RootGroupPointer;
+        buffer.SetRoot(source.TreeRoot, rootPointer);
         Assert.That(repository.TryAdd(source), Is.True);
         PbtReadOnlySnapshotBundle readOnly = PbtSnapshotBundleTestExtensions.ReadOnlyBundle(repository.TryLeaseReadChain(source.To, StateId.PreGenesis), new Reader(default, null), slotFilterBitsPerKey: 0);
         using PbtSnapshotBundle branch = new(new PbtSnapshotPooledList(0), readOnly, buffer, pool, PbtResourcePool.Usage.MainBlockProcessing, filterInMemorySlotReads: false);
@@ -283,17 +282,17 @@ public class PbtSnapshotBundleTests
         using RefCountingMemory? independentlyOwned = branch.GetNodeGroup(path);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(rootReference.IsDirect, Is.True);
-            Assert.That(branch.RootGroupReference, Is.EqualTo(rootReference));
+            Assert.That(rootPointer != 0, Is.True);
+            Assert.That(branch.RootGroupPointer, Is.EqualTo(rootPointer));
             Assert.That(independentlyOwned!.GetSpan().ToArray(), Is.EqualTo(encoding));
             Assert.That(repository.HasState(source.To), Is.False);
         }
-        Assert.That(buffer.TryLocate(rootReference, out _), Is.True);
+        Assert.That(buffer.TryLocate(rootPointer, out _), Is.True);
         branch.Dispose();
         using (Assert.EnterMultipleScope())
         {
             Assert.That(buffer.ResidentBytes, Is.Zero);
-            Assert.That(source.RootGroupReference, Is.EqualTo(rootReference), "the snapshot root hint is not read back from recycled content");
+            Assert.That(source.RootGroupPointer, Is.EqualTo(rootPointer), "the snapshot root hint is not read back from recycled content");
             Assert.That(independentlyOwned!.GetSpan().ToArray(), Is.EqualTo(encoding));
             Assert.That(TrackingMemoryProvider.CountUnreleased(memory.Rented), Is.EqualTo(1), "only the independent caller payload remains");
         }
@@ -314,10 +313,10 @@ public class PbtSnapshotBundleTests
                 PbtTraversalPath path = new(Span<byte>.Empty);
                 for (int write = 0; write < 2; write++)
                 {
-                    writer.ReserveNodeGroup(path, encoding.Length, PbtGroupLinks.Unknown, out Span<byte> payload);
+                    writer.TryReserveNodeGroup(path, encoding.Length, default, out _, out Span<byte> payload);
                     encoding.CopyTo(payload);
                 }
-                if (emptied) writer.ReserveNodeGroup(path, 0, default, out _);
+                if (emptied) writer.TryReserveNodeGroup(path, 0, default, out _, out _);
             });
 
             using RefCountingMemory? pending = bundle.GetNodeGroup(groupPath);
@@ -326,12 +325,12 @@ public class PbtSnapshotBundleTests
         }
 
         using PbtSnapshot snapshot = bundle.CollectSnapshot(StateId.PreGenesis, new StateId(1, default), default);
-        bool found = snapshot.Content.TryFindNodeGroup(snapshot.RootGroupReference, groupPath, out RefCountingMemory? current);
+        bool found = snapshot.Content.TryFindNodeGroup(snapshot.RootGroupPointer, groupPath, out RefCountingMemory? current);
         using (current)
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(snapshot.RootGroupReference.IsDirect, Is.EqualTo(complete && !emptied));
-            Assert.That(found, Is.True);
+            Assert.That(snapshot.RootGroupPointer != 0, Is.EqualTo(complete && !emptied));
+            Assert.That(found, Is.EqualTo(complete && !emptied));
             Assert.That(current?.GetSpan().ToArray(), Is.EqualTo(emptied || !complete ? null : encoding));
             Assert.That(snapshot.Content.NodeGroupCount, Is.EqualTo(complete ? 2000 : 0), "every reserved group counts towards the layer's size bound");
         }
@@ -350,7 +349,7 @@ public class PbtSnapshotBundleTests
             byte[][] originals = [.. paths.Select(path => Group(path, (byte)(round + 1)))];
             byte[][] replacements = [.. paths.Select(path => Group(path, (byte)(round + 3)))];
             content.SetTree([.. paths.Select((path, index) => (path, (byte[]?)originals[index]))]);
-            PbtGroupReference originalRoot = content.RootGroupReference;
+            ulong originalRoot = content.RootGroupPointer;
             RefCountingMemory?[] read = new RefCountingMemory?[groupCount];
             try
             {
@@ -360,7 +359,7 @@ public class PbtSnapshotBundleTests
                 {
                     for (int index = 0; index < groupCount; index++)
                     {
-                        Assert.That(content.TryFindNodeGroup(content.RootGroupReference, paths[index], out RefCountingMemory? current), Is.True);
+                        Assert.That(content.TryFindNodeGroup(content.RootGroupPointer, paths[index], out RefCountingMemory? current), Is.EqualTo(!removed));
                         using (current) Assert.That(current?.GetSpan().ToArray(), Is.EqualTo(removed ? null : replacements[index]));
                         Assert.That(content.TryFindNodeGroup(originalRoot, paths[index], out RefCountingMemory? replaced), Is.True);
                         using (replaced) Assert.That(replaced!.GetSpan().ToArray(), Is.EqualTo(originals[index]), "the pin keeps a replaced tree readable until reset");
@@ -373,7 +372,7 @@ public class PbtSnapshotBundleTests
                 content.Reset();
                 using (Assert.EnterMultipleScope())
                 {
-                    Assert.That(content.RootGroupReference, Is.EqualTo(PbtGroupReference.Unknown));
+                    Assert.That(content.RootGroupPointer, Is.Zero);
                     Assert.That(content.NodeGroupCount, Is.Zero);
                     Assert.That(content.GetPayloadSize(), Is.EqualTo(default(PbtSnapshotPayloadSize)));
                     Assert.That(TrackingMemoryProvider.CountUnreleased(memoryProvider.Rented), Is.EqualTo(groupCount), "reset releases every generation but not caller-owned reads");
@@ -469,7 +468,7 @@ public class PbtSnapshotBundleTests
         using PbtSnapshotStore reader = new(bundle);
         PbtTraversalPath rootPath = new(Span<byte>.Empty);
         byte[]? encoding = null;
-        if (reader.TryGetNodeGroupRecord(reader.RootGroupReference, rootPath, out PbtGroupRecord record))
+        if (reader.TryGetNodeGroupRecord(reader.RootGroupPointer, rootPath, out PbtGroupRecord record))
         {
             using GroupFrameReader<PbtVariableTreeKey, PbtStorageNodePath> frame = new(record);
             encoding = frame.GetEncoding(PbtThreeLevelGroupGeometry.RootPosition).ToArray();
@@ -489,7 +488,7 @@ public class PbtSnapshotBundleTests
     [TestCase(1, true)]
     [TestCase(2, true)]
     [TestCase(3, true)]
-    public void Node_group_newest_tree_replacement_or_emptied_tree_stops_fallback(int newestTier, bool tombstone)
+    public void Node_group_newest_tree_replacement_stops_fallback_and_an_emptied_tree_falls_through(int newestTier, bool tombstone)
     {
         TrackingMemoryProvider memoryProvider = new();
         PbtNodePath groupKey = new([], 0);
@@ -511,12 +510,13 @@ public class PbtSnapshotBundleTests
         using PbtSnapshotBundle bundle = new(localSnapshots, new PbtReadOnlySnapshotBundle(sharedSnapshots, reader, recordDetailedMetrics: false, new PbtPersistedSnapshotList(0), PbtSnapshotBundleTestExtensions.NoNodeGroupPin, slotFilterBitsPerKey: 0), PbtSnapshotTestExtensions.DefaultGroupRecordBuffer, pool, PbtResourcePool.Usage.MainBlockProcessing, filterInMemorySlotReads: false);
         if (newestTier == 3) PublishRoot(bundle, tombstone ? null : write);
 
+        int answeringTier = tombstone ? newestTier - 1 : newestTier;
         bool snapshotFound = bundle.TryGetSnapshotNodeGroup(wideGroupKey, out RefCountingMemory? snapshotPayload);
         using (snapshotPayload)
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(snapshotFound, Is.EqualTo(newestTier > 0));
-            byte[]? expectedSnapshot = tombstone ? null : newestTier switch { 0 => null, 1 => shared, 2 => local, _ => write };
+            Assert.That(snapshotFound, Is.EqualTo(answeringTier > 0));
+            byte[]? expectedSnapshot = answeringTier switch { 0 => null, 1 => shared, 2 => local, _ => write };
             Assert.That(snapshotPayload?.Memory.ToArray(), Is.EqualTo(expectedSnapshot));
             Assert.That(reader.GroupReadCount, Is.Zero);
         }
@@ -524,9 +524,9 @@ public class PbtSnapshotBundleTests
         using (RefCountingMemory? actual = bundle.GetNodeGroup(wideGroupKey))
         using (Assert.EnterMultipleScope())
         {
-            byte[]? expected = tombstone ? null : newestTier switch { 0 => persisted, 1 => shared, 2 => local, _ => write };
+            byte[]? expected = answeringTier switch { 0 => persisted, 1 => shared, 2 => local, _ => write };
             Assert.That(actual?.Memory.ToArray(), Is.EqualTo(expected));
-            Assert.That(reader.GroupReadCount, Is.EqualTo(newestTier == 0 ? 1 : 0));
+            Assert.That(reader.GroupReadCount, Is.EqualTo(answeringTier == 0 ? 1 : 0));
         }
         bundle.Dispose();
         Assert.That(TrackingMemoryProvider.CountUnreleased(memoryProvider.Rented), Is.Zero);
@@ -559,9 +559,8 @@ public class PbtSnapshotBundleTests
         {
             using (Assert.EnterMultipleScope())
             {
-                // A persisted snapshot records no removed groups, so only a newer in-memory tree can answer absent.
                 Assert.That(found, Is.EqualTo(newerMemory || !tombstone));
-                Assert.That(payload?.Memory.ToArray(), Is.EqualTo(tombstone ? null : newerMemory ? memoryEncoding : persistedEncoding));
+                Assert.That(payload?.Memory.ToArray(), Is.EqualTo(!tombstone && newerMemory ? memoryEncoding : newerMemory || !tombstone ? persistedEncoding : null));
                 Assert.That(reader.GroupReadCount, Is.Zero);
             }
         }
@@ -570,7 +569,7 @@ public class PbtSnapshotBundleTests
         using (missingPayload)
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(missingFound, Is.EqualTo(newerMemory && tombstone), "an emptied tree has no group anywhere");
+            Assert.That(missingFound, Is.False);
             Assert.That(missingPayload, Is.Null);
             Assert.That(reader.GroupReadCount, Is.Zero);
         }
@@ -611,7 +610,7 @@ public class PbtSnapshotBundleTests
             Assert.That(snapshot.Content.HeaderStorages, Has.Count.EqualTo(1));
             Assert.That(snapshot.Content.GetSlot(originalLeafKey), Is.EqualTo(new UInt256(originalLeafValue.Bytes, isBigEndian: true)));
             Assert.That(snapshot.Content.NodeGroupCount, Is.Zero, "a failed fold publishes no groups");
-            Assert.That(snapshot.RootGroupReference, Is.EqualTo(PbtGroupReference.None));
+            Assert.That(snapshot.RootGroupPointer, Is.Zero);
         }
     }
 
@@ -965,7 +964,7 @@ public class PbtSnapshotBundleTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(bundle.TreeRoot, Is.EqualTo(root));
-            Assert.That(bundle.RootGroupReference, Is.EqualTo(original.RootGroupReference), "failed folds publish no references");
+            Assert.That(bundle.RootGroupPointer, Is.EqualTo(original.RootGroupPointer), "failed folds publish no pointers");
             Assert.That(bundle.GetAccount(TestItem.AddressA), Is.EqualTo(replacement));
             Assert.Throws<InvalidOperationException>(() => bundle.CollectSnapshot(new StateId(1, default), new StateId(2, default), root));
             Assert.That(original.TreeRoot, Is.EqualTo(root));
@@ -993,7 +992,7 @@ public class PbtSnapshotBundleTests
     /// <summary>Publishes a root group holding <paramref name="encoding"/>, or an emptied tree, as the bundle's current fold result.</summary>
     private static void PublishRoot(PbtSnapshotBundle bundle, byte[]? encoding)
     {
-        PbtGroupReference root = encoding is null ? PbtGroupReference.None : bundle.GroupRecordBuffer.Append(default, encoding, PbtGroupLinks.Unknown);
+        ulong root = encoding is null ? 0 : bundle.GroupRecordBuffer.Append(default, encoding, default);
         bundle.PublishNodeGroups(root, encoding is null ? 0 : 1, encoding?.Length ?? 0);
     }
 
@@ -1070,12 +1069,12 @@ public class PbtSnapshotBundleTests
         public int SnapshotReads => _snapshotReads;
         public int ApplyCount => _applyCount;
         public int? FailedZone { get; init; }
-        public PbtGroupReference RootGroupReference => store.RootGroupReference;
+        public ulong RootGroupPointer => store.RootGroupPointer;
         public IPbtConcurrentWriter CreateWriter() => new Writer(this, store.CreateWriter());
         public void CompleteFold() => store.CompleteFold();
-        public bool TryGetNodeGroupRecord(PbtGroupReference reference, scoped in PbtTraversalPath path, out PbtGroupRecord record)
+        public bool TryGetNodeGroupRecord(ulong pointer, scoped in PbtTraversalPath path, out PbtGroupRecord record)
         {
-            bool found = store.TryGetNodeGroupRecord(reference, path, out record);
+            bool found = store.TryGetNodeGroupRecord(pointer, path, out record);
             if (found) System.Threading.Interlocked.Increment(ref _directReads);
             return found;
         }
@@ -1087,13 +1086,13 @@ public class PbtSnapshotBundleTests
 
         private sealed class Writer(CountingStore owner, IPbtConcurrentWriter writer) : IPbtConcurrentWriter
         {
-            public PbtGroupReference ReserveNodeGroup(scoped in PbtTraversalPath path, int length, in PbtGroupLinks links, out Span<byte> payload)
+            public bool TryReserveNodeGroup(scoped in PbtTraversalPath path, int length, in PbtGroupLinks links, out ulong pointer, out Span<byte> payload)
             {
                 if (path.BitDepth >= 9 && path.ToPath<PbtStorageNodePath>().GetByte(0) == owner.FailedZone)
                     throw new InvalidDataException("Configured partition write failure.");
-                PbtGroupReference reference = writer.ReserveNodeGroup(path, length, links, out payload);
+                bool reserved = writer.TryReserveNodeGroup(path, length, links, out pointer, out payload);
                 System.Threading.Interlocked.Increment(ref owner._applyCount);
-                return reference;
+                return reserved;
             }
             public void SetNodeGroup(scoped in PbtTraversalPath path, RefCountingMemory? payload) => writer.SetNodeGroup(path, payload);
             public void Dispose() => writer.Dispose();

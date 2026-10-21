@@ -28,7 +28,7 @@ public struct GroupFrameReader<TKey, TPath> : IGroupFrame<TKey, TPath>, IDisposa
     private readonly uint _stored;
 
     /// <summary>Takes ownership of <paramref name="lease"/>, a group payload stored at depth <paramref name="bitDepth"/>.</summary>
-    public GroupFrameReader(RefCountingMemory lease, int bitDepth) : this(lease.Memory, bitDepth, PbtGroupLinks.Unknown, lease) { }
+    public GroupFrameReader(RefCountingMemory lease, int bitDepth) : this(lease.Memory, bitDepth, default, lease) { }
 
     /// <summary>Borrows a buffer record whose operation lease remains alive throughout this frame.</summary>
     public GroupFrameReader(PbtGroupRecord record) : this(record.Payload, record.Path.BitDepth, record.Links, null) { }
@@ -71,7 +71,7 @@ public struct GroupFrameReader<TKey, TPath> : IGroupFrame<TKey, TPath>, IDisposa
     public readonly ushort DescendantMask => PbtNodeGroupCodec.ReadDescendantMask(_payload.Span);
 
     /// <inheritdoc/>
-    public readonly PbtGroupReference DescendantReference(int slot) => (DescendantMask & (1 << slot)) == 0 ? PbtGroupReference.None : _links[slot];
+    public readonly ulong DescendantPointer(int slot) => (DescendantMask & (1 << slot)) == 0 ? 0 : _links[slot];
 
     /// <inheritdoc/>
     public readonly ReadOnlyMemory<byte> GetEncoding(int position)

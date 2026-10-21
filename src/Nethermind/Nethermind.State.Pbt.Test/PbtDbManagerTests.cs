@@ -445,7 +445,7 @@ public class PbtDbManagerTests
         content.SelfDestructedStorageAddresses[address] = false;
         content.HeaderStorages[SlotRun.RunKey(Eip8297KeyDerivation.HeaderStorageKey(address, 0))] = SlotRun.Empty;
         content.Storages[SlotRun.RunKey(Eip8297KeyDerivation.StorageKey(TestItem.AddressA.ToHash().Bytes, address, 1000))] = SlotRun.Empty;
-        content.RootGroupReference = PbtGroupReference.None;
+        content.RootGroupPointer = 0;
         return new(from, to, TestItem.KeccakB.ValueHash256, content, pool, PbtResourcePool.Usage.MainBlockProcessing);
     }
 

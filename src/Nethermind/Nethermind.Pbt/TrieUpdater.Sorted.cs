@@ -37,7 +37,7 @@ public static partial class TrieUpdater<TKey, TPath>
         /// <summary>The change in stored size across the groups this node was folded from, still owed to the caller's boundary slot.</summary>
         public long SizeDelta;
         /// <summary>The first physical group owned by the result, including a descendant surviving a removed group.</summary>
-        public PbtGroupReference GroupReference;
+        public ulong GroupPointer;
         public readonly bool IsEmpty => Length == 0;
     }
 
@@ -120,12 +120,12 @@ public static partial class TrieUpdater<TKey, TPath>
         // A spanning branch may inline two leaves as well, so it is checked first: it carries down the size the owner holds
         // of everything below the boundary slot on the way here, which keeps the owner's accounting.
         if (IsAbsentGroupBelow(current, bitDepth))
-            absent = new(bitDepth, current.BranchSlot(path, bitDepth), ownerReader.DescendantBytes(BoundarySlot(path.Bytes, ownerReader.BitDepth)), current.GroupReference);
+            absent = new(bitDepth, current.BranchSlot(path, bitDepth), ownerReader.DescendantBytes(BoundarySlot(path.Bytes, ownerReader.BitDepth)), current.GroupPointer);
         else if (OwnsNoGroup(current))
             absent = new(bitDepth, 0, 0);
         else
         {
-            GroupFrameReader<TKey, TPath> reader = context.Store.TryGetNodeGroupRecord(current.GroupReference, path, out PbtGroupRecord record)
+            GroupFrameReader<TKey, TPath> reader = context.Store.TryGetNodeGroupRecord(current.GroupPointer, path, out PbtGroupRecord record)
                 ? new GroupFrameReader<TKey, TPath>(record)
                 : new GroupFrameReader<TKey, TPath>(context.Store.GetNodeGroup(path)
                     ?? throw new InvalidDataException("A referenced PBT node group is missing."), path.BitDepth);
@@ -155,7 +155,7 @@ public static partial class TrieUpdater<TKey, TPath>
         }
         GroupPublication publication = PublishGroup(context, ref reader, writer, path);
         result.SizeDelta = publication.SizeDelta;
-        result.GroupReference = publication.Reference;
+        result.GroupPointer = publication.Pointer;
         return result;
     }
 
@@ -165,7 +165,7 @@ public static partial class TrieUpdater<TKey, TPath>
         where TFrame : struct, IGroupFrame<TKey, TPath>
     {
         writer.ReserveFirstBuffer(reader.PayloadLength);
-        InitializeDescendantReferences(ref reader, writer);
+        InitializeDescendantPointers(ref reader, writer);
         SortedWalk<TFrame> walk = new(context, ref reader, ref hashes, writer, path, input, operations);
         try
         {
@@ -237,7 +237,7 @@ public static partial class TrieUpdater<TKey, TPath>
         foreach (ref SortedSlotFold fold in folds.AsSpan(0, foldCount))
         {
             walk.Writer.AddDescendantDelta(fold.Slot, fold.Result.SizeDelta);
-            walk.Writer.DescendantReferences[fold.Slot] = fold.Result.GroupReference;
+            walk.Writer.DescendantPointers[fold.Slot] = fold.Result.GroupPointer;
             walk.FoldedAheadNodes[fold.Slot] = fold.Result;
             walk.FoldedAheadMask |= 1 << fold.Slot;
         }
@@ -310,7 +310,7 @@ public static partial class TrieUpdater<TKey, TPath>
     {
         Debug.Assert(path.BitDepth == 0, "Stand-in keys name a slot of the root group only.");
         writer.ReserveFirstBuffer(reader.PayloadLength);
-        InitializeDescendantReferences(ref reader, writer);
+        InitializeDescendantPointers(ref reader, writer);
         int slotCount = BitOperations.PopCount((uint)touchedSlots);
         using ArrayPoolList<PbtWriteOperation<TKey>> standIns = new(2 * slotCount);
         int[] slots = new int[slotCount];
@@ -334,7 +334,7 @@ public static partial class TrieUpdater<TKey, TPath>
             foreach (int slot in slots)
             {
                 writer.AddDescendantDelta(slot, foldedAheadNodes[slot].SizeDelta);
-                writer.DescendantReferences[slot] = foldedAheadNodes[slot].GroupReference;
+                writer.DescendantPointers[slot] = foldedAheadNodes[slot].GroupPointer;
                 PbtWriteOperation<TKey> standIn = new(TKey.Create([(byte)(slot << (8 - PbtThreeLevelGroupGeometry.LevelsPerGroup))]), foldedAheadNodes[slot].IsEmpty ? default : ValueKeccak.MaxValue);
                 standIns.Add(standIn);
                 standIns.Add(standIn);
@@ -399,7 +399,7 @@ public static partial class TrieUpdater<TKey, TPath>
         Span<byte> pathBuffer = stackalloc byte[PbtBitPrefix.ByteCount(TPath.MaxBitDepth)];
         PbtTraversalPath path = PbtTraversalPath.FromPath(pathBuffer, groupPath);
         path.AppendMut(slot);
-        AbsentGroupFrame<TKey, TPath> owner = new(bitDepth, slot, descendantBytes, boundary.GroupReference);
+        AbsentGroupFrame<TKey, TPath> owner = new(bitDepth, slot, descendantBytes, boundary.GroupPointer);
         return FoldSortedRange(context, ref owner, boundary, operations, ref path, bitDepth + PbtThreeLevelGroupGeometry.LevelsPerGroup, encoding);
     }
 
@@ -463,7 +463,7 @@ public static partial class TrieUpdater<TKey, TPath>
         PbtBranchReader branch = node.Reader;
         return new SlotNode(PbtNodeCodec.EncodeReanchored(branch, node.AnchorDepth, anchorDepth, branch.LeftHash, branch.RightHash, encoding),
             anchorDepth == node.AnchorDepth ? node.Hash : default)
-        { GroupReference = node.GroupReference };
+        { GroupPointer = node.GroupPointer };
     }
 
     /// <summary>Encodes a group's root branch, stored at the group's depth, anchored higher at <paramref name="anchorDepth"/> after a prefix jump.</summary>
@@ -790,7 +790,7 @@ public static partial class TrieUpdater<TKey, TPath>
         SlotNode result = FoldSortedRange(walk.Context, ref walk.Reader, boundary, operations, ref slotPath, slotDepth, encoding);
         slotPath.Truncate(bitDepth);
         walk.Writer.AddDescendantDelta(slot, result.SizeDelta);
-        walk.Writer.DescendantReferences[slot] = result.GroupReference;
+        walk.Writer.DescendantPointers[slot] = result.GroupPointer;
         return result;
     }
 
@@ -1103,7 +1103,7 @@ public static partial class TrieUpdater<TKey, TPath>
                 CoverKind.Stored => BoundaryNode.StoredAt(ref Reader, cover.Position, Hashes.KnownHash(cover.Position)),
                 _ => cover.Position == RootSource ? _input.InlineLeaf(cover.Right) : BoundaryNode.InlineLeafAt(ref Reader, cover.Position, cover.Right),
             };
-            return boundary with { GroupReference = boundary.IsEmpty || boundary.IsLeaf ? PbtGroupReference.None : Reader.DescendantReference(slot) };
+            return boundary with { GroupPointer = boundary.IsEmpty || boundary.IsLeaf ? 0 : Reader.DescendantPointer(slot) };
         }
     }
 }

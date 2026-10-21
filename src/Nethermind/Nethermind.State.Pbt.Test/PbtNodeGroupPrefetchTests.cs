@@ -42,7 +42,15 @@ public class PbtNodeGroupPrefetchTests
         IPbtPersistence.IReader reader = Reader(skip == PrefetchSkip.MissingAccount ? [TestItem.AddressA] : []);
         using PbtSnapshotBundle bundle = PbtSnapshotBundleTestExtensions.CreateBundle(new PbtResourcePool(new PbtConfig()), reader);
         PbtStorageNodePath[] firstGroups = [FirstGroup(TestItem.AddressA, Eip8297KeyDerivation.AccountZone), FirstGroup(TestItem.AddressA, Eip8297KeyDerivation.StorageZone)];
-        if (skip == PrefetchSkip.SnapshotBacked) bundle.SetTree([.. firstGroups.Select(static path => (path, (byte[]?)null))]);
+        if (skip == PrefetchSkip.SnapshotBacked)
+        {
+            TrackingMemoryProvider memory = new();
+            bundle.SetTree([.. firstGroups.Select(path =>
+            {
+                using RefCountingMemory payload = LifecyclePrefetchPayload(memory, path, 0);
+                return (path, (byte[]?)payload.GetSpan().ToArray());
+            })]);
+        }
         if (skip == PrefetchSkip.ReadByFold)
             foreach (PbtStorageNodePath path in firstGroups) ((IDisposable?)bundle.GetNodeGroup(path))?.Dispose();
         if (skip == PrefetchSkip.EmptyBal) bal = Build.A.BlockAccessList.TestObject;
@@ -100,7 +108,7 @@ public class PbtNodeGroupPrefetchTests
             for (int depth = 267; depth <= 264 + 3 * levels; depth += 3)
                 expected.Add(PbtTestPaths.Prefix<PbtStorageNodePath>(key.Bytes, depth));
         }
-        if (snapshotBacked)
+        if (snapshotBacked && descendantBytes >= 0)
         {
             expected.Remove(storageGroup);
             expected.Remove(deeperSnapshot);
@@ -123,39 +131,6 @@ public class PbtNodeGroupPrefetchTests
             Assert.That(reread, Is.False, "the fold must read prefetched groups from the bundle");
             Assert.That(TrackingMemoryProvider.CountUnreleased(memory.Rented), Is.Zero);
         }
-    }
-
-    [Test]
-    public void NodeGroupPrefetch_skips_groups_absent_from_the_snapshot_tree()
-    {
-        Address[] tombstoned = [TestItem.AddressA, TestItem.AddressB];
-        // The storage group of C is always prefetched, so its read shows the prefetch has run.
-        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList.WithAccountChanges([.. tombstoned.Append(TestItem.AddressC).Select(static address =>
-            Build.An.AccountChanges.WithAddress(address).WithStorageChanges(1000, new StorageChange(1, 1u)).TestObject)]).TestObject;
-        TrackingMemoryProvider memory = new();
-        IPbtPersistence.IReader reader = Reader();
-        using (PbtSnapshotBundle bundle = PbtSnapshotBundleTestExtensions.CreateBundle(new PbtResourcePool(new PbtConfig()), reader))
-        {
-            List<(PbtStorageNodePath Path, byte[]? Payload)> tree = [];
-            foreach (Address address in tombstoned)
-            {
-                PbtStorageNodePath path = FirstGroup(address, Eip8297KeyDerivation.StorageZone);
-                using RefCountingMemory payload = LifecyclePrefetchPayload(memory, path, 1025);
-                tree.Add((path, payload.GetSpan().ToArray()));
-                ValueHash256 address32 = address.ToHash();
-                PbtStoragePath key = Eip8297KeyDerivation.StorageKey(address32.Bytes, Eip8297KeyDerivation.AddressHash(address32.Bytes), 1000);
-                tree.Add((PbtTestPaths.Prefix<PbtStorageNodePath>(key.Bytes, 267), null));
-            }
-            bundle.SetTree([.. tree]);
-
-            PbtWorldStateScope scope = HintBal(bundle, bal);
-            PbtStorageNodePath[] expected = [FirstGroup(TestItem.AddressC, Eip8297KeyDerivation.StorageZone)];
-            Assert.That(() => LifecycleSingleReads(reader), Is.EquivalentTo(expected).After(5000, 10));
-            scope.UpdateRootHash();
-
-            Assert.That(LifecycleSingleReads(reader), Is.EquivalentTo(expected));
-        }
-        Assert.That(TrackingMemoryProvider.CountUnreleased(memory.Rented), Is.Zero);
     }
 
     [Test]

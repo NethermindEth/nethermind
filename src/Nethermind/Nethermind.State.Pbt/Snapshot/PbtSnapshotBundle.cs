@@ -57,19 +57,19 @@ public sealed class PbtSnapshotBundle(
     /// <summary>The group record buffer of this branch's write buffers and local snapshots.</summary>
     public IPbtGroupRecordBuffer GroupRecordBuffer => groupRecordBuffer;
 
-    /// <summary>The last published root reference visible to this branch, an indexed persisted root, or an unresolved persisted root.</summary>
-    public PbtGroupReference RootGroupReference
+    /// <summary>The pointer of the root group this branch last published, else of its tree root's indexed root group, or 0 when neither is in the buffer.</summary>
+    public ulong RootGroupPointer
     {
         get
         {
-            if (!WriteBuffer.RootGroupReference.IsUnknown) return WriteBuffer.RootGroupReference;
-            if (snapshots.Count > 0) return snapshots[^1].MapRootGroupReference(GroupRecordBuffer);
+            if (WriteBuffer.RootGroupPointer != 0) return WriteBuffer.RootGroupPointer;
+            if (TreeRoot == default) return 0;
             if (Volatile.Read(ref _rootLookupPin) is null)
             {
                 IDisposable pin = GroupRecordBuffer.PinAll();
                 if (Interlocked.CompareExchange(ref _rootLookupPin, pin, null) is not null) pin.Dispose();
             }
-            return readOnlyBundle.GetRootGroupReference(GroupRecordBuffer);
+            return GroupRecordBuffer.FindRoot(TreeRoot);
         }
     }
 
@@ -111,12 +111,12 @@ public sealed class PbtSnapshotBundle(
     public void CompleteLeafChanges() => _leafChanges.Reset();
 
     /// <summary>Publishes a completed fold's root group from this bundle's group record buffer and accounts for the groups the fold wrote.</summary>
-    /// <param name="root">The new tree's root group, or None for an empty tree.</param>
+    /// <param name="root">The pointer of the new tree's root group, or 0 for an empty tree.</param>
     /// <param name="count">The number of groups the fold wrote.</param>
     /// <param name="bytes">Their path and payload bytes.</param>
-    public void PublishNodeGroups(PbtGroupReference root, int count, long bytes)
+    public void PublishNodeGroups(ulong root, int count, long bytes)
     {
-        WriteBuffer.RootGroupReference = root;
+        WriteBuffer.RootGroupPointer = root;
         WriteBuffer.AddNodeGroups(count, bytes);
     }
 
@@ -126,7 +126,7 @@ public sealed class PbtSnapshotBundle(
     /// <summary>Returns a caller-owned group lease, or null when the branch's tree has no group there, from its resident tree or the persisted snapshots.</summary>
     /// <returns>False when neither resolves the group, which the persistence reader must then provide.</returns>
     public bool TryGetSnapshotNodeGroup(PbtStorageNodePath groupKey, out RefCountingMemory? payload) =>
-        WriteBuffer.TryFindNodeGroup(RootGroupReference, groupKey, out payload) || readOnlyBundle.TryGetSnapshotNodeGroup(groupKey, out payload);
+        WriteBuffer.TryFindNodeGroup(RootGroupPointer, groupKey, out payload) || readOnlyBundle.TryGetSnapshotNodeGroup(groupKey, out payload);
 
     /// <summary>Reads only persisted layers, keeping the result for this block's later misses.</summary>
     public RefCountingMemory? GetPersistedNodeGroup(PbtStorageNodePath groupKey) =>
@@ -357,22 +357,22 @@ public sealed class PbtSnapshotBundle(
 
     /// <summary>Seals the write buffer into a snapshot and hands its initial lease to the caller.</summary>
     /// <remarks>
-    /// The snapshot's root group reference is None only for the empty tree: a root group this branch's buffer cannot reach is
+    /// The snapshot's root group pointer is 0 only for the empty tree: a root group this branch's buffer cannot reach is
     /// copied back in.
     /// </remarks>
     public PbtSnapshot CollectSnapshot(in StateId from, in StateId to, in ValueHash256 treeRoot)
     {
         if (_accountsAwaitingCode.Count != 0 || PendingMutationCount != 0)
             throw new InvalidOperationException("Pending leaf changes must be folded before collecting a snapshot.");
-        PbtGroupReference rootReference = WriteBuffer.RootGroupReference;
-        if (rootReference.IsUnknown)
+        ulong rootPointer = WriteBuffer.RootGroupPointer;
+        if (rootPointer == 0 && treeRoot != default)
         {
-            if (treeRoot == default) rootReference = PbtGroupReference.None;
-            else if (treeRoot != TreeRoot) throw new InvalidOperationException("The tree root changed without a published root group.");
-            else rootReference = RootGroupReference.IsDirect ? RootGroupReference : CopyRootGroup();
+            if (treeRoot != TreeRoot) throw new InvalidOperationException("The tree root changed without a published root group.");
+            rootPointer = RootGroupPointer;
+            if (rootPointer == 0) rootPointer = CopyRootGroup();
         }
-        if (rootReference.IsDirect) GroupRecordBuffer.SetRoot(treeRoot, rootReference);
-        WriteBuffer.RootGroupReference = rootReference;
+        if (rootPointer != 0) GroupRecordBuffer.SetRoot(treeRoot, rootPointer);
+        WriteBuffer.RootGroupPointer = rootPointer;
         PbtSnapshot snapshot = new(from, to, treeRoot, WriteBuffer, resourcePool, usage);
         snapshot.TryLease();
         snapshots.Add(snapshot);
@@ -385,13 +385,13 @@ public sealed class PbtSnapshotBundle(
     }
 
     /// <exception cref="InvalidDataException">No layer holds a root group for the non-empty tree.</exception>
-    private PbtGroupReference CopyRootGroup()
+    private ulong CopyRootGroup()
     {
         using RefCountingMemory payload = GetNodeGroup(default) ?? throw new InvalidDataException("A referenced PBT node group is missing.");
         ReadOnlySpan<byte> bytes = payload.GetSpan();
-        PbtGroupReference reference = GroupRecordBuffer.Append(default, bytes, PbtGroupLinks.Unknown);
+        ulong pointer = GroupRecordBuffer.Append(default, bytes, default);
         WriteBuffer.AddNodeGroups(1, bytes.Length);
-        return reference;
+        return pointer;
     }
 
     private static PbtSnapshotContent RentWriteBuffer(IPbtResourcePool resourcePool, PbtResourcePool.Usage usage, IPbtGroupRecordBuffer groupRecordBuffer)
