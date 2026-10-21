@@ -204,6 +204,26 @@ public class BaseFlatPersistenceReaderTests
         }
     }
 
+    // A partly cold block: one slow read among three misses is a quarter or more of them, so it decides disk.
+    [Test]
+    public void Prefetch_OneSlowReadAmongFewMisses_SendsThePrefetch()
+    {
+        Address[] accounts = Accounts(70);
+        // Samples of 70 keys are at 0, 8, 17, 26, 35, 43, 52 and 61; three of them miss and the middle one is slow.
+        string[] misses = [.. new[] { 17, 35, 52 }.Select(i => Convert.ToHexString(
+            BaseFlatPersistence.EncodeAccountKeyHashed(new byte[BaseFlatPersistence.AccountKeyLength], accounts[i].ToAccountPath)))];
+        RecordingStore accountStore = new(cached: k => !misses.Contains(k), missDelay: TimeSpan.Zero, slowKey: misses[1]);
+        BasePersistence.ToHashedFlatReader<BaseFlatPersistence.Reader> reader = new(new BaseFlatPersistence.Reader(accountStore, new RecordingStore()));
+
+        PlanAndPrefetch(reader, accounts, [], CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(accountStore.ReadKeys, Is.EqualTo(misses));
+            Assert.That(accountStore.PrefetchedKeys, Has.Count.EqualTo(accounts.Length));
+        }
+    }
+
     // A block whose only miss is slow decides disk: there is no second miss to confirm it.
     [Test]
     public void Prefetch_OnlyMissReadAtDiskSpeed_SendsThePrefetch()

@@ -651,13 +651,15 @@ public static class BasePersistence
         }
 
         /// <summary>
-        /// The timed reads of one column's sampled misses. Two slow reads mean disk; one slow read counts only when it
-        /// is the column's only miss, since a scheduler delay or a large page-cache block can slow a single read, and
-        /// a wrong disk outcome is trusted for <see cref="PrefetchSampling.RecheckInterval"/> blocks.
+        /// The timed reads of one column's sampled misses. Two slow reads mean disk, and so does one slow read that is
+        /// at least a quarter of the timed misses, as in a partly cold block. One slow read among many fast ones is a
+        /// scheduler delay or a large page-cache block, and a wrong disk outcome is trusted for
+        /// <see cref="PrefetchSampling.RecheckInterval"/> blocks.
         /// </summary>
         private struct MissTimings
         {
             private const int SlowReadsForDisk = 2;
+            private const int MissesPerSlowRead = 4;
 
             public int Timed { get; private set; }
             private int _slow;
@@ -670,7 +672,7 @@ public static class BasePersistence
                 return _slow == SlowReadsForDisk;
             }
 
-            public readonly bool IsDisk => _slow == SlowReadsForDisk || (_slow == 1 && Timed == 1);
+            public readonly bool IsDisk => _slow >= SlowReadsForDisk || (_slow == 1 && Timed <= MissesPerSlowRead);
         }
     }
 
