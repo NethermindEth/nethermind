@@ -39,7 +39,8 @@ namespace Nethermind.JsonRpc
             }
         }
 
-        internal ReadOnlyMemory<byte> ParamsUtf8 { get; set; }
+        /// <summary>The UTF-8 JSON of the request's <c>params</c> as read from the transport; empty when <see cref="Params"/> was set instead.</summary>
+        public ReadOnlyMemory<byte> ParamsUtf8 { get; internal set; }
         internal JsonValueKind ParamsKind { get; set; }
 
         internal void DisposeParsedParamsDocument()
