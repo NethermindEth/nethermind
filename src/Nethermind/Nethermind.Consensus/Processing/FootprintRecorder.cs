@@ -59,6 +59,9 @@ internal sealed class FootprintRecorder(IWorldState state) : WorldStateDecorator
     /// <summary>The machine the env runs transactions on; without it a run is taken to read every block context field.</summary>
     public VirtualMachine<EthereumGasPolicy>? Machine { get; set; }
 
+    /// <summary>Whether block processing lets takeovers share commits, so the footprints say which may.</summary>
+    public bool SharesCommits { get; init; }
+
     public void Start(IBlockProcessingProgress progress, int txIndex, CancellationToken token)
     {
         _accountIndex.Clear();
@@ -159,7 +162,8 @@ internal sealed class FootprintRecorder(IWorldState state) : WorldStateDecorator
         return new TransactionFootprint(tx, accounts, slots, effects, in receipt, in result, in _counts.Value)
         {
             Refreshed = refreshed,
-            ContextReads = Machine?.BlockContextReads ?? AllContextReads
+            ContextReads = Machine?.BlockContextReads ?? AllContextReads,
+            SharesCommits = SharesCommits
         };
     }
 

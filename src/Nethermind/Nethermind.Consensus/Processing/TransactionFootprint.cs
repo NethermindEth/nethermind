@@ -45,12 +45,32 @@ internal sealed class TransactionFootprint(
     /// <summary>The storage writes replay makes, one per slot.</summary>
     public int StorageWrites { get; } = CountStorageWrites(effects);
 
+    private bool _sharesCommits;
+    private bool _mayShareCommit;
+
+    /// <summary>
+    /// Whether block processing lets takeovers share commits (<see cref="Nethermind.Config.IBlocksConfig.PreWarmBatchedReplayCommit"/>);
+    /// only then is <see cref="MayShareCommit"/> worked out, on the thread that records the run.
+    /// </summary>
+    public bool SharesCommits
+    {
+        get => _sharesCommits;
+        init
+        {
+            _sharesCommits = value;
+            _mayShareCommit = value && ChangesOnlyBalancesNoncesAndSlots(effects);
+        }
+    }
+
     /// <summary>
     /// Whether replay changes nothing but balances, nonces and slots, so it may share a commit with the replays around it:
     /// it deletes no account, creates none over another, gives none code and clears no storage.
     /// </summary>
-    /// <remarks>A credit may still create the account it pays, or touch an empty one; the world state tells those apart.</remarks>
-    public bool MayShareCommit { get; } = ChangesOnlyBalancesNoncesAndSlots(effects);
+    /// <remarks>
+    /// A credit may still create the account it pays, or touch an empty one; the world state tells those apart. Always
+    /// <see langword="false"/> unless <see cref="SharesCommits"/>.
+    /// </remarks>
+    public bool MayShareCommit => _mayShareCommit;
 
     public ref readonly FootprintReceipt Receipt => ref _receipt;
 
@@ -69,7 +89,7 @@ internal sealed class TransactionFootprint(
 
     /// <summary>This mempool run as the run of the block's <paramref name="tx"/>, with <paramref name="replacedEffects"/> in place of its effects.</summary>
     public TransactionFootprint For(Transaction tx, StateEffect[] replacedEffects) =>
-        new(tx, accounts, slots, replacedEffects, in _receipt, in _result, in _counts) { ContextReads = ContextReads, FromMempool = true };
+        new(tx, accounts, slots, replacedEffects, in _receipt, in _result, in _counts) { ContextReads = ContextReads, FromMempool = true, SharesCommits = SharesCommits };
 
     [SkipLocalsInit]
     public bool Matches(IWorldState state)

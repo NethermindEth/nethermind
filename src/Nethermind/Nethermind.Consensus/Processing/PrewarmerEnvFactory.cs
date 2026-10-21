@@ -39,6 +39,9 @@ public class PrewarmerEnvFactory(
     /// </remarks>
     public bool RecordsFootprints { get; } = (blocksConfig?.PreWarmHandoff ?? false) && IsMarkedForHandoff(parentLifetime);
 
+    /// <summary>Whether block processing lets takeovers share commits (<see cref="IBlocksConfig.PreWarmBatchedReplayCommit"/>).</summary>
+    private bool SharesCommits { get; } = blocksConfig?.PreWarmBatchedReplayCommit ?? false;
+
     private static bool IsMarkedForHandoff(ILifetimeScope scope) =>
         scope.ComponentRegistry.TryGetServiceRegistration(new TypedService(typeof(ITransactionProcessor)), out ServiceRegistration registration)
         && registration.Registration.Metadata.ContainsKey(HandoffMetadata);
@@ -64,7 +67,7 @@ public class PrewarmerEnvFactory(
             if (RecordsFootprints)
             {
                 // At scope level, so the transaction processor and the code repository both read through it.
-                builder.AddDecorator<IWorldState>((_, inner) => recorder = new FootprintRecorder(inner));
+                builder.AddDecorator<IWorldState>((_, inner) => recorder = new FootprintRecorder(inner) { SharesCommits = SharesCommits });
             }
         });
 
