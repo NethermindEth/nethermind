@@ -2,9 +2,9 @@ name: Flaky test auto-fix
 
 on:
   workflow_run:
-    workflows: ["Nethermind/Ethereum tests", "Claude Code Review"]
+    workflows: ["Nethermind/Ethereum tests"]
     types: [completed]
-    branches: [master, "test/flaky-**"]
+    branches: [master]
   workflow_dispatch:
     inputs:
       run_id:
@@ -18,8 +18,6 @@ env:
   LABEL: flaky-test
   BASELINE_RUNS: 200
   BASELINE_SECONDS: 2400
-  FOLLOW_UP_RUNS: 200
-  MAX_REVIEW_ROUNDS: 3
   DOTNET_CLI_TELEMETRY_OPTOUT: 1
 
 defaults:
@@ -87,7 +85,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 270
     concurrency:
-      group: flaky-test-fix
+      group: flaky-test-fix-${{ needs.detect.outputs.branch }}
       cancel-in-progress: false
     permissions:
       contents: read
@@ -161,9 +159,9 @@ jobs:
           gh label create "$LABEL" --color FBCA04 --description "Flaky test" 2>/dev/null || true
           title="Flaky test: $METHOD"
           [ "$VERDICT" = deterministic ] && title="Failing test: $METHOD"
-          excerpt=$(jq -r .excerpt "$RUNNER_TEMP/candidate.json")
+          excerpt=$(jq -r .excerpt_markdown "$RUNNER_TEMP/candidate.json")
           gh issue create --label "$LABEL" --title "$title" --body "$(printf \
-            '`%s` in `%s` failed on master (%s) and failed %s of %s reruns under CPU load in this workflow.\n\n```\n%s\n```\n' \
+            '`%s` in `%s` failed on master (%s) and failed %s of %s reruns under CPU load in this workflow.\n\n%s\n' \
             "$TEST" "$PROJECT" "$FAILED_RUN" "$FAILURES" "$RUNS" "$excerpt")"
 
       - name: Fix the root cause
@@ -311,227 +309,3 @@ jobs:
           gh pr create --draft --base master --head "$BRANCH" --label "$LABEL" \
             --title "Fix flaky $METHOD" --body-file "$RUNNER_TEMP/fix/body.md"
 
-  follow-up:
-    if: |
-      github.event.workflow_run.name == 'Claude Code Review' &&
-      github.event.workflow_run.event == 'pull_request' &&
-      github.event.workflow_run.conclusion == 'success' &&
-      startsWith(github.event.workflow_run.head_branch, 'test/flaky-')
-    runs-on: ubuntu-latest
-    timeout-minutes: 150
-    concurrency:
-      group: flaky-test-follow-up-${{ github.event.workflow_run.head_branch }}
-      cancel-in-progress: false
-    permissions:
-      contents: read
-      pull-requests: read
-      statuses: read
-      id-token: write
-    outputs:
-      verified: ${{ steps.verify.outcome == 'success' }}
-      number: ${{ steps.pr.outputs.number }}
-    env:
-      SHA: ${{ github.event.workflow_run.head_sha }}
-      BRANCH: ${{ github.event.workflow_run.head_branch }}
-    steps:
-      - name: Find the PR and its review verdict
-        id: pr
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          pr=$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$BRANCH" --label "$LABEL" --state open \
-            --json number,isDraft,headRefOid,headRepositoryOwner,commits --jq '.[0] // empty')
-          [ -n "$pr" ] || exit 0
-          [ "$(jq -r .headRepositoryOwner.login <<< "$pr")" = "$GITHUB_REPOSITORY_OWNER" ] || exit 0
-          [ "$(jq -r .headRefOid <<< "$pr")" = "$SHA" ] || exit 0
-          [ "$(jq -r .isDraft <<< "$pr")" = true ] || exit 0
-          status=$(gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/commits/$SHA/statuses?per_page=100" |
-            jq -c 'flatten | map(select(.context == "claude-review/reviewed")) | first // {}')
-          state=$(jq -r '.state // ""' <<< "$status")
-          if [ "$state" = success ] && ! jq -e '.description // "" | startswith("Claude reviewed: no blockers")' <<< "$status" >/dev/null; then
-            state=unavailable
-          fi
-          echo "state=$state" >> "$GITHUB_OUTPUT"
-          echo "number=$(jq -r .number <<< "$pr")" >> "$GITHUB_OUTPUT"
-          echo "rounds=$(( $(jq '.commits | length' <<< "$pr") - 1 ))" >> "$GITHUB_OUTPUT"
-
-      - name: Decide the next step
-        id: next
-        if: steps.pr.outputs.number && contains(fromJSON('["success","failure","unavailable"]'), steps.pr.outputs.state)
-        env:
-          STATE: ${{ steps.pr.outputs.state }}
-          ROUNDS: ${{ steps.pr.outputs.rounds }}
-        run: |
-          if [ "$STATE" = unavailable ]; then echo "step=ask"
-          elif [ "$STATE" = success ]; then echo "step=ready"
-          elif [ "$ROUNDS" -ge "$MAX_REVIEW_ROUNDS" ]; then echo "step=hand-over"
-          else echo "step=fix"
-          fi >> "$GITHUB_OUTPUT"
-
-      - name: Authenticate App
-        if: contains(fromJSON('["ready","hand-over","ask"]'), steps.next.outputs.step)
-        id: notify-app
-        uses: actions/create-github-app-token@v3
-        with:
-          app-id: ${{ vars.APP_ID }}
-          private-key: ${{ secrets.APP_PRIVATE_KEY }}
-
-      - name: Send for review
-        if: steps.next.outputs.step == 'ready'
-        env:
-          GH_TOKEN: ${{ steps.notify-app.outputs.token }}
-          PR: ${{ steps.pr.outputs.number }}
-        run: gh pr ready "$PR" --repo "$GITHUB_REPOSITORY"
-
-      - name: Ask for a review rerun
-        if: steps.next.outputs.step == 'ask'
-        env:
-          GH_TOKEN: ${{ steps.notify-app.outputs.token }}
-          PR: ${{ steps.pr.outputs.number }}
-        run: |
-          gh pr comment "$PR" --repo "$GITHUB_REPOSITORY" \
-            --body "Claude review was unavailable for this commit. To rerun it, add and remove the \`wip\` label."
-
-      - name: Hand over after too many review rounds
-        if: steps.next.outputs.step == 'hand-over'
-        env:
-          GH_TOKEN: ${{ steps.notify-app.outputs.token }}
-          PR: ${{ steps.pr.outputs.number }}
-        run: |
-          gh pr comment "$PR" --repo "$GITHUB_REPOSITORY" \
-            --body "Claude review still has blocking findings after $MAX_REVIEW_ROUNDS rounds; leaving this draft for a maintainer."
-
-      - uses: actions/checkout@v6
-        if: steps.next.outputs.step == 'fix'
-        with:
-          ref: ${{ env.SHA }}
-          persist-credentials: false
-
-      - name: Collect review findings from trusted authors
-        if: steps.next.outputs.step == 'fix'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PR: ${{ steps.pr.outputs.number }}
-        run: |
-          gh api -H "Accept: application/vnd.github.raw" "repos/$GITHUB_REPOSITORY/contents/scripts/ci/flaky_tests.py?ref=master" \
-            > "$RUNNER_TEMP/flaky_tests.py"
-          mkdir -p "$RUNNER_TEMP/claude"
-          python3 "$RUNNER_TEMP/flaky_tests.py" feedback --repo "$GITHUB_REPOSITORY" --pr "$PR" --out "$RUNNER_TEMP/claude/feedback.md"
-          gh pr view "$PR" --repo "$GITHUB_REPOSITORY" --json body --jq .body > "$RUNNER_TEMP/pr-body.md"
-          cp "$RUNNER_TEMP/pr-body.md" "$RUNNER_TEMP/claude/pr-body.md"
-
-      - if: steps.next.outputs.step == 'fix'
-        uses: ./.github/actions/fetch-submodules
-        with:
-          submodules: recursive
-
-      - if: steps.next.outputs.step == 'fix'
-        uses: actions/setup-dotnet@v5
-
-      - name: Address review findings
-        if: steps.next.outputs.step == 'fix'
-        timeout-minutes: 60
-        uses: anthropics/claude-code-action@v1
-        with:
-          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          github_token: ${{ github.token }}
-          prompt: |
-            This branch fixes a flaky test. Claude review marked it not mergeable. The unresolved review findings
-            from trusted authors are in `${{ runner.temp }}/claude/feedback.md`; the PR description, with the project and
-            test filter under Evidence, is in `${{ runner.temp }}/claude/pr-body.md`.
-
-            Fix every unresolved Critical, High and Medium finding. Keep the flaky-test fix intact.
-            Do not change .github/, .agents/, scripts/, AGENTS.md, CLAUDE.md, *.props, *.targets, *.csproj, global.json or NuGet.Config: such changes are rejected.
-            Follow AGENTS.md, CONTRIBUTING.md and .agents/rules/.
-
-            Rebuild the project with `dotnet build ... -c release` and rerun
-            `python3 scripts/ci/flaky_tests.py repeat --project <project> --filter '<test filter>' --runs 200 --budget 1800 --stop-after 1 --out-dir ${{ runner.temp }}/claude/reruns`
-            until it reports 0 failures. Do not commit or push.
-          claude_args: |
-            --model opus
-            --add-dir ${{ runner.temp }}/claude
-            --allowedTools "Read,Edit,Write,Glob,Grep,Bash(dotnet build:*),Bash(python3 scripts/ci/flaky_tests.py:*),Bash(git diff:*),Bash(git status:*),Bash(git log:*)"
-
-      - name: Check the change
-        if: steps.next.outputs.step == 'fix'
-        id: check
-        env:
-          PR_BODY: ${{ runner.temp }}/pr-body.md
-        run: |
-          git add -A
-          git diff --cached --quiet && { echo "::error::Claude produced no change"; exit 1; }
-          git diff --cached --no-renames --name-only -z | xargs -0 python3 "$RUNNER_TEMP/flaky_tests.py" guard
-          project=$(sed -n 's/^- Project: `\(.*\)`$/\1/p' "$PR_BODY")
-          filter=$(sed -n 's/^- Test filter: `\(.*\)`$/\1/p' "$PR_BODY")
-          [[ "$project" =~ ^Nethermind(\.[A-Za-z0-9]+)+\.Test$ ]] || { echo "::error::Bad project in PR body"; exit 1; }
-          mkdir -p "$RUNNER_TEMP/patch"
-          git diff --cached --binary > "$RUNNER_TEMP/patch/fix.patch"
-          echo "project=$project" >> "$GITHUB_OUTPUT"
-          echo "filter=$filter" >> "$GITHUB_OUTPUT"
-
-      - if: steps.check.outcome == 'success'
-        uses: actions/upload-artifact@v7
-        with:
-          name: flaky-follow-up-patch
-          path: ${{ runner.temp }}/patch/fix.patch
-
-      - name: Verify the change
-        if: steps.check.outcome == 'success'
-        id: verify
-        env:
-          PROJECT: ${{ steps.check.outputs.project }}
-          FILTER: ${{ steps.check.outputs.filter }}
-        run: |
-          dotnet build "src/Nethermind/$PROJECT/$PROJECT.csproj" -c release
-          python3 "$RUNNER_TEMP/flaky_tests.py" repeat --project "$PROJECT" --filter "$FILTER" \
-            --runs "$FOLLOW_UP_RUNS" --budget 3600 --stop-after 1 --out-dir "$RUNNER_TEMP/verify" | tee "$RUNNER_TEMP/verify.json"
-          [ "$(jq -r .failures "$RUNNER_TEMP/verify.json")" = 0 ] && [ "$(jq -r .runs "$RUNNER_TEMP/verify.json")" = "$FOLLOW_UP_RUNS" ]
-
-  follow-up-push:
-    needs: follow-up
-    if: needs.follow-up.outputs.verified == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    permissions:
-      contents: read
-    env:
-      SHA: ${{ github.event.workflow_run.head_sha }}
-      BRANCH: ${{ github.event.workflow_run.head_branch }}
-      PR: ${{ needs.follow-up.outputs.number }}
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          ref: ${{ env.SHA }}
-          persist-credentials: false
-
-      - uses: actions/download-artifact@v8
-        with:
-          name: flaky-follow-up-patch
-          path: ${{ runner.temp }}/fix
-
-      - name: Apply the verified change
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh api -H "Accept: application/vnd.github.raw" "repos/$GITHUB_REPOSITORY/contents/scripts/ci/flaky_tests.py?ref=master" \
-            > "$RUNNER_TEMP/flaky_tests.py"
-          git apply --index --binary "$RUNNER_TEMP/fix/fix.patch"
-          git diff --cached --no-renames --name-only -z | xargs -0 python3 "$RUNNER_TEMP/flaky_tests.py" guard
-
-      - name: Authenticate App
-        id: push-app
-        uses: actions/create-github-app-token@v3
-        with:
-          app-id: ${{ vars.APP_ID }}
-          private-key: ${{ secrets.APP_PRIVATE_KEY }}
-
-      - name: Push and request a new review
-        env:
-          GH_TOKEN: ${{ steps.push-app.outputs.token }}
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git -c core.hooksPath=/dev/null commit -m "Address review findings"
-          git push "https://x-access-token:$GH_TOKEN@github.com/$GITHUB_REPOSITORY.git" "HEAD:refs/heads/$BRANCH"
-          gh api -X POST "repos/$GITHUB_REPOSITORY/issues/$PR/labels" -f 'labels[]=wip' --silent
-          gh api -X DELETE "repos/$GITHUB_REPOSITORY/issues/$PR/labels/wip" --silent

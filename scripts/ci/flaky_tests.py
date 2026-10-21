@@ -47,6 +47,8 @@ MIN_VERIFY_SECONDS = 3600
 MAX_VERIFY_SECONDS = 5400
 VERIFY_BUDGET_MARGIN = 1.5
 CONFIDENCE_FACTOR = 3
+SEARCH_ATTEMPTS = 3
+SEARCH_BACKOFF_SECONDS = 60
 SPINNER = "import os, sys\nparent = int(sys.argv[1])\nwhile os.getppid() == parent: pass"
 
 
@@ -111,18 +113,30 @@ def test_filter(failure):
     return f"FullyQualifiedName~{owner}&{name}" if owner else name
 
 
-def gh_count(*args):
-    output = subprocess.run(["gh", *args], check=True, capture_output=True, text=True).stdout
-    return len(json.loads(output or "[]"))
+def gh_search(query):
+    for attempt in range(SEARCH_ATTEMPTS):
+        result = subprocess.run(["gh", "api", "-X", "GET", "search/issues", "-f", f"q={query}", "-f", "per_page=100"],
+                                capture_output=True, text=True)
+        if result.returncode == 0:
+            return json.loads(result.stdout)
+        if "rate limit" not in (result.stdout + result.stderr).lower() or attempt == SEARCH_ATTEMPTS - 1:
+            raise subprocess.CalledProcessError(result.returncode, result.args, result.stdout, result.stderr)
+        time.sleep(SEARCH_BACKOFF_SECONDS)
 
 
 def is_known(repo, method, since):
-    searches = (
-        ("search", "prs", method, "--repo", repo, "--state", "open", "--json", "number"),
-        ("search", "issues", method, "--repo", repo, "--state", "open", "--json", "number"),
-        ("search", "prs", method, "--repo", repo, "--merged-at", f">={since}", "--json", "number"),
-    )
-    return any(gh_count(*search) for search in searches)
+    for item in gh_search(f'repo:{repo} "{method}"')["items"]:
+        merged_at = (item.get("pull_request") or {}).get("merged_at") or ""
+        if item["state"] == "open" or merged_at[:10] >= since:
+            return True
+    return False
+
+
+def markdown_block(text):
+    longest = max((len(run) for run in re.findall(r"`+", text)), default=0)
+    fence = "`" * max(3, longest + 1)
+    body = text.replace("@", "@\u200b")
+    return f"{fence}\n{body}\n{fence}"
 
 
 def branch_name(method):
@@ -135,8 +149,7 @@ def branch_exists(branch):
 
 
 def opened_today(repo, label, today):
-    return gh_count("pr", "list", "--repo", repo, "--state", "all", "--label", label,
-                    "--search", f"created:>={today}", "--json", "number")
+    return gh_search(f"repo:{repo} label:{label} created:>={today}")["total_count"]
 
 
 def select(log_dir, repo, label, daily_limit, lookback_days, today=None):
@@ -305,6 +318,7 @@ def main(argv=None):
             write_outputs({"found": "false", "reason": reason})
             return 0
         print(json.dumps(candidate, indent=2))
+        candidate["excerpt_markdown"] = markdown_block(candidate["excerpt"])
         Path(args.out).write_text(json.dumps(candidate, indent=2), encoding="utf-8")
         write_outputs({key: candidate[key] for key in ("project", "method", "test", "source", "branch", "filter")} | {"found": "true"})
     elif args.command == "repeat":

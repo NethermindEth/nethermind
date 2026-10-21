@@ -134,6 +134,22 @@ class FeedbackTests(unittest.TestCase):
                          "### a.cs:3\n\nHigh: race\n\n### PR comment\n\nPlease rename\n\n### PR comment\n\nRound 2")
 
 
+class SearchTests(unittest.TestCase):
+    def test_known_when_open_or_merged_since(self):
+        def known(*items):
+            with mock.patch.object(flaky_tests, "gh_search", return_value={"items": list(items)}):
+                return flaky_tests.is_known("o/r", "Run_twice", "2026-10-07")
+
+        self.assertTrue(known({"state": "open"}))
+        self.assertTrue(known({"state": "closed", "pull_request": {"merged_at": "2026-10-08T00:00:00Z"}}))
+        self.assertFalse(known({"state": "closed", "pull_request": {"merged_at": "2026-10-01T00:00:00Z"}},
+                               {"state": "closed", "pull_request": {"merged_at": None}}, {"state": "closed"}))
+
+    def test_fences_excerpt_and_breaks_mentions(self):
+        self.assertEqual(flaky_tests.markdown_block("a ``` b @x"), "````\na ``` b @\u200bx\n````")
+        self.assertEqual(flaky_tests.markdown_block("plain"), "```\nplain\n```")
+
+
 class VerdictTests(unittest.TestCase):
     def test_classifies_repeat_outcomes(self):
         self.assertEqual(flaky_tests.classify(200, 0), "not-reproduced")
