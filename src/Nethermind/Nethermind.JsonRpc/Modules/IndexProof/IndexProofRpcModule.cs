@@ -47,19 +47,16 @@ public class IndexProofRpcModule(IIndexTableStore store, IBlockTree blockTree) :
         if (entries is null)
             return ResultWrapper<IndexProofResult[]?>.Fail("Table not found for block", ErrorCodes.ResourceNotFound);
 
-        int typeStart = FindTypeStart(entries, IndexEntryType.LogAddress);
         List<int> leafIndices = [];
-        for (int i = typeStart; i < entries.Count && entries[i].Type == IndexEntryType.LogAddress; i++)
+        int start = FindLowerBound(entries, IndexEntryType.LogAddress, address.Bytes);
+        for (int i = start; i < entries.Count && Matches(entries[i], IndexEntryType.LogAddress, address.Bytes); i++)
         {
-            if (ContentEquals(entries[i], address.Bytes))
+            leafIndices.Add(i);
+            if (leafIndices.Count > MaxLogProofs)
             {
-                leafIndices.Add(i);
-                if (leafIndices.Count > MaxLogProofs)
-                {
-                    return ResultWrapper<IndexProofResult[]?>.Fail(
-                        $"Query matched {leafIndices.Count} logs, exceeding the limit of {MaxLogProofs} proofs per request.",
-                        ErrorCodes.InvalidRequest);
-                }
+                return ResultWrapper<IndexProofResult[]?>.Fail(
+                    $"Query matched {leafIndices.Count} logs, exceeding the limit of {MaxLogProofs} proofs per request.",
+                    ErrorCodes.InvalidRequest);
             }
         }
 
@@ -153,38 +150,35 @@ public class IndexProofRpcModule(IIndexTableStore store, IBlockTree blockTree) :
 
     private static int FindEntry(IReadOnlyList<IndexEntry> entries, IndexEntryType type, ReadOnlySpan<byte> content)
     {
-        int typeStart = FindTypeStart(entries, type);
-        for (int i = typeStart; i < entries.Count && entries[i].Type == type; i++)
-        {
-            if (ContentEquals(entries[i], content))
-                return i;
-        }
-
-        return -1;
-    }
-
-    private static int FindTypeStart(IReadOnlyList<IndexEntry> entries, IndexEntryType type)
-    {
-        int lo = 0, hi = entries.Count - 1;
-        int typeStart = entries.Count;
-        while (lo <= hi)
-        {
-            int mid = lo + ((hi - lo) >> 1);
-            if (entries[mid].Type < type)
-                lo = mid + 1;
-            else
-            {
-                typeStart = mid;
-                hi = mid - 1;
-            }
-        }
-
-        return typeStart;
+        int index = FindLowerBound(entries, type, content);
+        return index < entries.Count && Matches(entries[index], type, content) ? index : -1;
     }
 
     /// <summary>
-    /// Tests an entry's content field against <paramref name="content"/>.
+    /// Returns the index of the first entry not ordered before (<paramref name="type"/>, <paramref name="content"/>),
+    /// or <c>entries.Count</c> if there is none.
     /// </summary>
-    private static bool ContentEquals(in IndexEntry entry, ReadOnlySpan<byte> content) =>
-        entry.ContentBytes.SequenceEqual(content);
+    /// <remarks>Relies on the table order of <see cref="IndexEntry.CompareTo"/>: type first, then content bytes.</remarks>
+    private static int FindLowerBound(IReadOnlyList<IndexEntry> entries, IndexEntryType type, ReadOnlySpan<byte> content)
+    {
+        int lo = 0, hi = entries.Count;
+        while (lo < hi)
+        {
+            int mid = lo + ((hi - lo) >> 1);
+            IndexEntry entry = entries[mid];
+            int cmp = ((ushort)entry.Type).CompareTo((ushort)type);
+            if (cmp == 0)
+                cmp = entry.ContentBytes.SequenceCompareTo(content);
+
+            if (cmp < 0)
+                lo = mid + 1;
+            else
+                hi = mid;
+        }
+
+        return lo;
+    }
+
+    private static bool Matches(in IndexEntry entry, IndexEntryType type, ReadOnlySpan<byte> content) =>
+        entry.Type == type && entry.ContentBytes.SequenceEqual(content);
 }

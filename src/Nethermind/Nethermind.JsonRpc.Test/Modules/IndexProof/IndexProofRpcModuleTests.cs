@@ -114,18 +114,22 @@ public class IndexProofRpcModuleTests
     }
 
     [Test]
-    public void GetLogAddressProofs_multiple_matching_logs_returns_all_proofs()
+    public void GetLogAddressProofs_multiple_matching_logs_returns_all_proofs([Values(0, 1, 2)] int targetIndex)
     {
         using Context context = new();
-        Address targetAddress = TestItem.AddressA;
-        IndexEntry log1 = IndexEntry.CreateLogAddress(targetAddress, 100, 0, 0);
-        IndexEntry log2 = IndexEntry.CreateLogAddress(targetAddress, 100, 1, 0);
-        IndexEntry otherLog = IndexEntry.CreateLogAddress(TestItem.AddressB, 100, 0, 0);
-        List<IndexEntry> entries = [log1, otherLog, log2];
+        Address[] addresses = [TestItem.AddressA, TestItem.AddressB, TestItem.AddressC];
+        List<IndexEntry> entries = [IndexEntry.CreateBlock(TestItem.KeccakA, 100), IndexEntry.CreateTransaction(TestItem.KeccakB, 100, 0, 0)];
+        foreach (Address address in addresses)
+        {
+            entries.Add(IndexEntry.CreateLogAddress(address, 100, 0, 0));
+            entries.Add(IndexEntry.CreateLogAddress(address, 100, 1, 0));
+        }
+
         entries.Sort();
 
         context.Store(0, 100, entries);
 
+        Address targetAddress = addresses[targetIndex];
         IIndexProofRpcModule module = context.Module;
         ResultWrapper<IndexProofResult[]?> result = module.indexProof_getLogAddressProofs(targetAddress, 100);
 
@@ -134,6 +138,11 @@ public class IndexProofRpcModuleTests
         {
             Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
             Assert.That(result.Data!.Length, Is.EqualTo(2));
+            foreach (IndexProofResult proof in result.Data!)
+            {
+                Assert.That(entries[proof.LeafIndex].Type, Is.EqualTo(IndexEntryType.LogAddress));
+                Assert.That(entries[proof.LeafIndex].ContentBytes.ToArray(), Is.EqualTo(targetAddress.Bytes.ToArray()));
+            }
         }
     }
 

@@ -73,19 +73,18 @@ public class IndexTableStoreTests
         store.Store(0, 100, branchA, TestItem.KeccakC);
         store.Store(0, 100, branchB, TestItem.KeccakD);
 
+        IReadOnlyList<IndexEntry> retrievedA = store.Get(0, 100, TestItem.KeccakC);
+        IReadOnlyList<IndexEntry> retrievedB = store.Get(0, 100, TestItem.KeccakD);
+        IReadOnlyList<IndexEntry> latest = store.Get(0, 100);
+
+        Assert.That(retrievedA, Is.Not.Null);
+        Assert.That(retrievedB, Is.Not.Null);
+        Assert.That(latest, Is.Not.Null);
+
         using (Assert.EnterMultipleScope())
         {
-            IReadOnlyList<IndexEntry> retrievedA = store.Get(0, 100, TestItem.KeccakC);
-            IReadOnlyList<IndexEntry> retrievedB = store.Get(0, 100, TestItem.KeccakD);
-            IReadOnlyList<IndexEntry> latest = store.Get(0, 100);
-
-            Assert.That(retrievedA, Is.Not.Null);
             Assert.That(retrievedA[0].CompareTo(branchA[0]), Is.EqualTo(0));
-
-            Assert.That(retrievedB, Is.Not.Null);
             Assert.That(retrievedB[0].CompareTo(branchB[0]), Is.EqualTo(0));
-
-            Assert.That(latest, Is.Not.Null);
             Assert.That(latest[0].CompareTo(branchB[0]), Is.EqualTo(0));
         }
     }

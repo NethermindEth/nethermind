@@ -3,6 +3,8 @@
 
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using Nethermind.Core;
 using Nethermind.Int256;
@@ -36,7 +38,7 @@ public static class IndexProofEngine
         ArgumentOutOfRangeException.ThrowIfNegative(leafIndex);
         ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(leafIndex, sortedEntries.Count);
 
-        return ExtractProof(sortedEntries, BuildTree(sortedEntries), leafIndex);
+        return GenerateProofs(sortedEntries, [leafIndex])[0];
     }
 
     /// <summary>
@@ -59,31 +61,47 @@ public static class IndexProofEngine
             ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(leafIndices[i], sortedEntries.Count, nameof(leafIndices));
         }
 
-        UInt256[][] tree = BuildTree(sortedEntries);
+        int depth = Merkle.NextPowerOfTwoExponent((ulong)sortedEntries.Count);
+        Dictionary<(int Level, int Position), UInt256> siblings = ComputeSiblings(sortedEntries, leafIndices, depth);
         IndexEntryProof[] proofs = new IndexEntryProof[leafIndices.Count];
         for (int i = 0; i < leafIndices.Count; i++)
         {
-            proofs[i] = ExtractProof(sortedEntries, tree, leafIndices[i]);
+            proofs[i] = ExtractProof(sortedEntries, siblings, depth, leafIndices[i]);
         }
 
         return proofs;
     }
 
     /// <summary>
-    /// Builds the padded Merkle tree of a table: element 0 holds the leaf chunks, and each
-    /// subsequent element the level above it, up to the single-node root level.
+    /// Computes the sibling nodes on the paths from <paramref name="leafIndices"/> to the root,
+    /// keyed by tree level and position within that level.
     /// </summary>
     /// <remarks>
     /// The leaf count is padded to <c>2^depth</c> with zero chunks, where <c>depth</c> matches the
     /// <c>List[Hash32, entry_count]</c> limit used by <see cref="IndexTableRootCalculator"/> — for a
     /// single-entry table that is depth 0, whose root is the leaf itself.
+    /// <para>
+    /// Leaves are folded left to right keeping one pending left node per level, so scratch memory is
+    /// <c>O(depth)</c> plus the requested siblings instead of the whole padded tree; hashing stays <c>O(N)</c>.
+    /// Subtrees made only of padding are not hashed: they are the precomputed zero hashes.
+    /// </para>
     /// </remarks>
-    private static UInt256[][] BuildTree(IReadOnlyList<IndexEntry> sortedEntries)
+    private static Dictionary<(int Level, int Position), UInt256> ComputeSiblings(
+        IReadOnlyList<IndexEntry> sortedEntries, IReadOnlyList<int> leafIndices, int depth)
     {
-        int count = sortedEntries.Count;
-        int depth = Merkle.NextPowerOfTwoExponent((ulong)count);
+        Dictionary<(int Level, int Position), UInt256> siblings = new(leafIndices.Count * depth);
+        for (int i = 0; i < leafIndices.Count; i++)
+        {
+            int position = leafIndices[i];
+            for (int level = 0; level < depth; level++)
+            {
+                siblings.TryAdd((level, position ^ 1), Merkle.ZeroHashes[level]);
+                position >>= 1;
+            }
+        }
 
-        UInt256[] leaves = new UInt256[1 << depth];
+        int count = sortedEntries.Count;
+        UInt256[] pendingLeft = new UInt256[depth + 1];
         Span<byte> entryBuffer = stackalloc byte[IndexEntry.MaxEncodedLength];
         Span<byte> hashBuffer = stackalloc byte[SHA256.HashSizeInBytes];
 
@@ -91,37 +109,56 @@ public static class IndexProofEngine
         {
             int encodedLength = sortedEntries[i].Encode(entryBuffer);
             SHA256.HashData(entryBuffer[..encodedLength], hashBuffer);
-            leaves[i] = new UInt256(hashBuffer);
-        }
+            UInt256 node = new(hashBuffer);
 
-        UInt256[][] levels = new UInt256[depth + 1][];
-        levels[0] = leaves;
-
-        for (int d = 1; d <= depth; d++)
-        {
-            UInt256[] child = levels[d - 1];
-            UInt256[] parent = new UInt256[child.Length / 2];
-            for (int i = 0; i < parent.Length; i++)
+            int level = 0;
+            int position = i;
+            RecordSibling(siblings, level, position, node);
+            while ((position & 1) == 1)
             {
-                parent[i] = HashPair(child[i * 2], child[(i * 2) + 1]);
+                node = HashPair(pendingLeft[level], node);
+                level++;
+                position >>= 1;
+                RecordSibling(siblings, level, position, node);
             }
 
-            levels[d] = parent;
+            pendingLeft[level] = node;
         }
 
-        return levels;
+        // Close the partially filled right edge; nodes right of it hold only padding.
+        if (count != 1 << depth)
+        {
+            UInt256 node = Merkle.ZeroHashes[0];
+            for (int level = 0; level < depth; level++)
+            {
+                int position = count >> level;
+                RecordSibling(siblings, level, position, node);
+                node = (position & 1) == 1
+                    ? HashPair(pendingLeft[level], node)
+                    : HashPair(node, Merkle.ZeroHashes[level]);
+            }
+        }
+
+        return siblings;
     }
 
-    private static IndexEntryProof ExtractProof(IReadOnlyList<IndexEntry> sortedEntries, UInt256[][] tree, int leafIndex)
+    private static void RecordSibling(Dictionary<(int Level, int Position), UInt256> siblings, int level, int position, in UInt256 node)
     {
-        int depth = tree.Length - 1;
+        ref UInt256 sibling = ref CollectionsMarshal.GetValueRefOrNullRef(siblings, (level, position));
+        if (!Unsafe.IsNullRef(ref sibling))
+            sibling = node;
+    }
+
+    private static IndexEntryProof ExtractProof(
+        IReadOnlyList<IndexEntry> sortedEntries, Dictionary<(int Level, int Position), UInt256> siblings, int depth, int leafIndex)
+    {
         UInt256[] proof = new UInt256[depth + 1];
 
-        int idx = leafIndex;
-        for (int d = 0; d < depth; d++)
+        int position = leafIndex;
+        for (int level = 0; level < depth; level++)
         {
-            proof[d] = tree[d][idx ^ 1];
-            idx >>= 1;
+            proof[level] = siblings[(level, position ^ 1)];
+            position >>= 1;
         }
 
         // SSZ list roots mix in the length, so the last step of verification pairs the tree root

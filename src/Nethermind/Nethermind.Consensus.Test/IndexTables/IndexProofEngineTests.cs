@@ -32,7 +32,7 @@ public class IndexProofEngineTests
     }
 
     [Test]
-    public void GenerateProof_verifies_against_table_root([Values(1, 2, 3, 4, 5, 8, 17)] int entryCount)
+    public void GenerateProof_verifies_against_table_root([Values(1, 2, 3, 4, 5, 8, 17, 33, 100)] int entryCount)
     {
         List<IndexEntry> entries = BuildEntries(entryCount);
         UInt256 expectedRoot = IndexTableRootCalculator.ComputeRoot(entries);
@@ -48,7 +48,7 @@ public class IndexProofEngineTests
     public void GenerateProofs_matches_proofs_generated_one_at_a_time()
     {
         List<IndexEntry> entries = BuildEntries(9);
-        int[] leafIndices = [0, 3, 8];
+        int[] leafIndices = [0, 3, 8, 3, 1];
 
         IndexEntryProof[] batch = IndexProofEngine.GenerateProofs(entries, leafIndices);
 

@@ -63,7 +63,6 @@ public class IndexTableBenchmarks
         temp1000.Sort();
         _entries1000 = temp1000;
 
-        // Create 4 sub-tables for merging
         _subTablesLevel0 = new(4);
         for (int i = 0; i < 4; i++)
         {
