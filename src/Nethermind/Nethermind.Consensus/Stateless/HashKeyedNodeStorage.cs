@@ -80,9 +80,18 @@ internal sealed class HashKeyedNodeStorage : INodeStorage, INodeStorage.IWriteBa
         ref NodeKey firstKey = ref MemoryMarshal.GetArrayDataReference(keys);
         ref nint firstHead = ref MemoryMarshal.GetArrayDataReference(heads);
         ref nint firstNext = ref MemoryMarshal.GetArrayDataReference(next);
+        ref byte[] firstValue = ref MemoryMarshal.GetArrayDataReference(values);
+        int filterBits = (int)BitOperations.RoundUpToPowerOf2((uint)Math.Max(64, count * FilterBitsPerNode));
+        ulong[] filter = _filter = new ulong[filterBits / 64];
+        ref ulong firstFilterWord = ref MemoryMarshal.GetArrayDataReference(filter);
+        nuint filterMask = (nuint)filterBits - 1;
+        long nodeBytes = 0;
         for (nint i = 0; i < count; i++)
         {
             ref readonly NodeKey key = ref Unsafe.Add(ref firstKey, i);
+            nuint filterBit = key.Leading & filterMask;
+            Unsafe.Add(ref firstFilterWord, (nint)(filterBit >> 6)) |= 1UL << (int)filterBit;
+            nodeBytes += Unsafe.Add(ref firstValue, i).Length;
             nint bucket = key.Bucket(bucketMask);
             ref nint headSlot = ref Unsafe.Add(ref firstHead, bucket);
             nint head = headSlot;
@@ -101,6 +110,8 @@ internal sealed class HashKeyedNodeStorage : INodeStorage, INodeStorage.IWriteBa
                 _overflow[keys[entry - 1]] = values[entry - 1];
             heads[bucket] = Overflowed;
         }
+
+        NodeBytes = nodeBytes;
     }
 
     /// <summary>Keys each of the first <paramref name="count"/> of <paramref name="nodes"/> by its keccak, at the same index of <paramref name="keys"/>.</summary>
@@ -174,7 +185,10 @@ internal sealed class HashKeyedNodeStorage : INodeStorage, INodeStorage.IWriteBa
     internal int FindHeldBranchChildren(ReadOnlySpan<byte> rlp, Span<HeldChild> held) => CreateProbe().FindHeldBranchChildren(rlp, held);
 
     /// <summary>Creates a probe of the nodes held now, for a walk that writes none.</summary>
-    internal WitnessProbe CreateProbe() => new(this, _filter ??= BuildFilter());
+    internal WitnessProbe CreateProbe() => new(this, _filter);
+
+    /// <summary>The total length of the nodes the storage was built from, the seeded empty tree included.</summary>
+    internal long NodeBytes { get; }
 
     /// <summary>A child of a branch that the storage holds.</summary>
     /// <param name="Offset">The offset of the child's keccak in the branch's RLP.</param>
@@ -191,22 +205,8 @@ internal sealed class HashKeyedNodeStorage : INodeStorage, INodeStorage.IWriteBa
     // Enough bits that a keccak the witness lacks rarely finds its bit set.
     private const int FilterBitsPerNode = 16;
 
-    // Of the keccaks' leading bits, one per witness node; built on first use, as only the witness walk reads it.
-    private ulong[]? _filter;
-
-    private ulong[] BuildFilter()
-    {
-        int bits = (int)BitOperations.RoundUpToPowerOf2((uint)Math.Max(64, _keys.Length * FilterBitsPerNode));
-        ulong[] filter = new ulong[bits / 64];
-        nint mask = bits - 1;
-        foreach (NodeKey key in _keys)
-        {
-            nint bit = (nint)key.Leading & mask;
-            filter[bit >> 6] |= 1UL << (int)(bit & 63);
-        }
-
-        return filter;
-    }
+    // Of the keccaks' leading bits, one per witness node; set while bucketing, which reads every key already.
+    private readonly ulong[] _filter;
 
     /// <summary>Finds nodes by keccak with the storage's arrays in hand: a walk keeps one for all its nodes rather than
     /// reloading the arrays from the storage for each.</summary>

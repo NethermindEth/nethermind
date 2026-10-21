@@ -69,7 +69,7 @@ internal sealed class WitnessTrieStoreScopeProvider : TrieStoreScopeProvider
                 break;
         }
 
-        foreach (byte[] node in witness.State.AsSpan()) _bytesBeforeMemo += 2 * node.Length;
+        _bytesBeforeMemo = 2 * _witnessNodes.NodeBytes;
     }
 
     /// <summary>Gets the trie's node storage, reporting each storage node it loads.</summary>
