@@ -125,12 +125,6 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
 
     void WarmUp(Address address);
 
-    /// <inheritdoc cref="IWorldStateScopeProvider.IScope.Prefetch"/>
-    void Prefetch(Span<Address> accounts, Span<StorageCell> slots, CancellationToken cancellationToken) { }
-
-    /// <inheritdoc cref="IWorldStateScopeProvider.IScope.SupportsPrefetch"/>
-    bool SupportsPrefetch => false;
-
     /// <summary>Applies prefix account changes to block-start caches. False leaves state unchanged and requires ordinary replay.</summary>
     bool TryApplyAccountOverlay(IStateReadOverlay overlay) => false;
 

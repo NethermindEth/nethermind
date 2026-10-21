@@ -2042,21 +2042,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
     internal const int MinCalldataWordsForAddressWarm = 8;
     internal const int MaxCalldataAddressesPerBlock = 4096;
 
-    /// <summary>Sorts <paramref name="items"/> and moves each distinct item to the front once.</summary>
-    /// <returns>The distinct items, a prefix of <paramref name="items"/>.</returns>
-    internal static Span<T> SortUnique<T, TComparer>(Span<T> items, TComparer comparer) where TComparer : IComparer<T>
-    {
-        if (items.Length < 2) return items;
-        items.Sort(comparer);
-        int unique = 1;
-        for (int i = 1; i < items.Length; i++)
-        {
-            if (comparer.Compare(items[i], items[unique - 1]) != 0) items[unique++] = items[i];
-        }
-
-        return items[..unique];
-    }
-
     /// <summary>The distinct addresses the block's large calldata names as ABI words, in calldata order; the caller disposes the list.</summary>
     /// <remarks>
     /// Words are deduplicated as they are: an ABI address word is the address left-padded to 32 bytes, the
@@ -2184,13 +2169,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
                     {
                         using IReadOnlyTxProcessingScope scope = env.BuildAtTarget(block.Header);
 
-                        // First, on this worker and scope: the backend decides from a few cached probes, so a cached
-                        // block costs only those, and a cold one has its reads in flight before the warm passes.
-                        // It reuses this guard's scope rather than opening its own: every block after the merge
-                        // names a fee recipient, so the guard holds. With a block access list, HintBal prefetches
-                        // the whole read set instead.
-                        if (Bal is null && scope.WorldState.SupportsPrefetch) PrefetchKnownState(block, scope.WorldState, parallelOptions.CancellationToken);
-
                         WarmupSender(beneficiary, null, scope.WorldState);
 
                         if (WarmWithdrawals)
@@ -2263,73 +2241,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
             catch (OperationCanceledException)
             {
                 // Ignore, block completed cancel
-            }
-        }
-
-        /// <summary>
-        /// Starts one asynchronous batched read of every account and slot known before execution: senders,
-        /// recipients, declared access lists, the beneficiary and withdrawal recipients. The warm passes that follow
-        /// read the same keys one at a time; with their disk reads already overlapped they find the blocks cached.
-        /// </summary>
-        private void PrefetchKnownState(Block block, IWorldState worldState, CancellationToken token)
-        {
-            int count = block.Transactions.Length + (block.InclusionListTransactions?.Length ?? 0);
-            int accountCapacity = 2 * count + 1 + (WarmWithdrawals ? block.Withdrawals!.Length : 0);
-            int slotCapacity = 0;
-            for (int i = 0; i < count; i++)
-            {
-                if (TransactionAt(block, i).AccessList is { IsEmpty: false } accessList)
-                {
-                    (int addresses, int storageKeys) = accessList.Count;
-                    accountCapacity += addresses;
-                    slotCapacity += storageKeys;
-                }
-            }
-
-            // Filled once at the exact bound, then sorted and deduplicated in place: no set, no second copy.
-            Address[] accounts = ArrayPool<Address>.Shared.Rent(accountCapacity);
-            StorageCell[] slots = ArrayPool<StorageCell>.Shared.Rent(slotCapacity);
-            try
-            {
-                int accountCount = 0;
-                int slotCount = 0;
-                for (int i = 0; i < count; i++)
-                {
-                    if ((i & 0x3F) == 0 && token.IsCancellationRequested) return;
-                    Transaction tx = TransactionAt(block, i);
-                    if (tx.SenderAddress is { } sender) accounts[accountCount++] = sender;
-                    if (tx.To is { } recipient) accounts[accountCount++] = recipient;
-                    if (tx.AccessList is { IsEmpty: false } accessList)
-                    {
-                        foreach ((Address address, AccessList.StorageKeysEnumerable storages) in accessList)
-                        {
-                            accounts[accountCount++] = address;
-                            foreach (UInt256 storage in storages) slots[slotCount++] = new StorageCell(address, in storage);
-                        }
-                    }
-                }
-
-                if (Beneficiary is { } beneficiary) accounts[accountCount++] = beneficiary;
-                if (WarmWithdrawals)
-                {
-                    foreach (Withdrawal withdrawal in block.Withdrawals!) accounts[accountCount++] = withdrawal.Address;
-                }
-
-                Span<Address> uniqueAccounts = SortUnique(accounts.AsSpan(0, accountCount), default(AddressComparer));
-                // Sorting by account also keeps each account's slots adjacent, so its hash is computed once.
-                Span<StorageCell> uniqueSlots = SortUnique(slots.AsSpan(0, slotCount), default(StorageCellComparer));
-                if (uniqueAccounts.IsEmpty && uniqueSlots.IsEmpty) return;
-                worldState.Prefetch(uniqueAccounts, uniqueSlots, token);
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException)
-            {
-                // A prefetch only warms caches; the warm passes that follow read and report on their own.
-                PreWarmer._logger.DebugError("Error prefetching transaction state", ex);
-            }
-            finally
-            {
-                ArrayPool<Address>.Shared.Return(accounts, clearArray: true);
-                ArrayPool<StorageCell>.Shared.Return(slots, clearArray: true);
             }
         }
 

@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -57,15 +56,5 @@ namespace Nethermind.Core
         }
 
         public override string ToString() => $"{_address.Value}.{Index}";
-    }
-
-    /// <summary>Orders storage cells by address, then index, so the cells of one account are adjacent.</summary>
-    public readonly struct StorageCellComparer : IComparer<StorageCell>
-    {
-        public int Compare(StorageCell x, StorageCell y)
-        {
-            int byAddress = x.Address.CompareTo(y.Address);
-            return byAddress != 0 ? byAddress : x.Index.CompareTo(y.Index);
-        }
     }
 }
