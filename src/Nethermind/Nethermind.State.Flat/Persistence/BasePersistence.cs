@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers.Binary;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -32,6 +33,19 @@ public static class BasePersistence
 {
     /// <summary>The index of sample <paramref name="sample"/> of <paramref name="sampleCount"/> spread evenly over <paramref name="length"/> keys.</summary>
     private static int SampleIndex(int sample, int sampleCount, int length) => (int)((long)sample * length / sampleCount);
+
+    /// <summary>The longest read of one sampled key that still counts as answered from memory.</summary>
+    /// <remarks>
+    /// A key missing from the block cache can still be in the OS page cache, where a prefetch only repeats the read:
+    /// measured at about 16 us per read there against about 160 us from a cloud disk and 60-100 us from a local NVMe
+    /// drive. A read that the scheduler delays counts as a disk read, so noise only ever sends a prefetch.
+    /// </remarks>
+    internal static readonly TimeSpan MemoryReadLimit = TimeSpan.FromMicroseconds(40);
+
+    internal static readonly long MemoryReadLimitTicks = (long)(MemoryReadLimit.TotalSeconds * Stopwatch.Frequency);
+
+    /// <summary>Whether a read between the two <see cref="Stopwatch"/> timestamps took longer than memory allows.</summary>
+    internal static bool IsDiskRead(long startTimestamp, long endTimestamp) => endTimestamp - startTimestamp > MemoryReadLimitTicks;
 
     public const int StoragePrefixPortion = 4;
 
@@ -513,8 +527,8 @@ public static class BasePersistence
             if (cancellationToken.IsCancellationRequested) return;
             // A few spread-out keys decide before the rest are hashed: when all of them are in memory the block is
             // treated as cached and costs only those probes.
-            if (SampledAccountsCached(accounts)) accounts = default;
-            if (SampledSlotsCached(slots)) slots = default;
+            if (SampledAccountsInMemory(accounts)) accounts = default;
+            if (SampledSlotsInMemory(slots)) slots = default;
             if (accounts.IsEmpty && slots.IsEmpty)
             {
                 Db.Metrics.IncrementPrefetchesSkippedCached();
@@ -556,26 +570,38 @@ public static class BasePersistence
         // Enough probes that a block with a third of its reads cold is sampled cold with over 95% probability.
         private const int PrefetchSamples = 8;
 
-        private bool SampledAccountsCached(ReadOnlySpan<Address> accounts)
+        [SkipLocalsInit]
+        private bool SampledAccountsInMemory(ReadOnlySpan<Address> accounts)
         {
             int sampleCount = Math.Min(accounts.Length, PrefetchSamples);
+            Span<byte> value = stackalloc byte[_accountSpanBufferSize];
             for (int sample = 0; sample < sampleCount; sample++)
             {
-                Address address = accounts[SampleIndex(sample, sampleCount, accounts.Length)];
-                if (!_flatReader.IsAccountCached(address.ToAccountPath)) return false;
+                ValueHash256 path = accounts[SampleIndex(sample, sampleCount, accounts.Length)].ToAccountPath;
+                if (_flatReader.IsAccountCached(path)) continue;
+
+                long start = Stopwatch.GetTimestamp();
+                _flatReader.GetAccount(path, value);
+                if (IsDiskRead(start, Stopwatch.GetTimestamp())) return false;
             }
             return true;
         }
 
-        private bool SampledSlotsCached(ReadOnlySpan<StorageCell> slots)
+        private bool SampledSlotsInMemory(ReadOnlySpan<StorageCell> slots)
         {
             int sampleCount = Math.Min(slots.Length, PrefetchSamples);
             for (int sample = 0; sample < sampleCount; sample++)
             {
                 ref readonly StorageCell cell = ref slots[SampleIndex(sample, sampleCount, slots.Length)];
+                ValueHash256 path = cell.Address.ToAccountPath;
                 ValueHash256 slotHash = ValueKeccak.Zero;
                 StorageTree.ComputeKeyWithLookup(cell.Index, ref slotHash);
-                if (!_flatReader.IsSlotCached(cell.Address.ToAccountPath, slotHash)) return false;
+                if (_flatReader.IsSlotCached(path, slotHash)) continue;
+
+                UInt256 value = default;
+                long start = Stopwatch.GetTimestamp();
+                _flatReader.TryGetStorage(path, slotHash, ref value);
+                if (IsDiskRead(start, Stopwatch.GetTimestamp())) return false;
             }
             return true;
         }
