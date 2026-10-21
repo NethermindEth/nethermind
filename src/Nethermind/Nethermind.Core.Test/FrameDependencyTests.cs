@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
@@ -14,6 +15,19 @@ namespace Nethermind.Core.Test;
 
 public class FrameDependencyTests
 {
+    [Test]
+    public void Child_serialization_requires_empty_proof_exactly_for_empty_dependencies([Values] bool emptyDependencies, [Values] bool emptyProof)
+    {
+        RecursiveProofInput child = new(emptyDependencies ? [] : [new FrameDependency(Eip8288Constants.LeanSphincsScheme, default, default)],
+            emptyProof ? [] : [1]);
+        AggregationInput input = new() { RecursiveProofs = [child] };
+
+        if (emptyDependencies == emptyProof)
+            Assert.DoesNotThrow(() => NativeLeanProofVerifier.SerializeInput(input));
+        else
+            Assert.Throws<ArgumentException>(() => NativeLeanProofVerifier.SerializeInput(input));
+    }
+
     [Test]
     public void ParseFrame_reads_triples_from_frame_data()
     {

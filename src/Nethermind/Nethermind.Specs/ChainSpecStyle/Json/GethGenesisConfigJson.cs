@@ -36,7 +36,6 @@ public class GethGenesisConfigJson : IHasNamedForks
 
     public ulong? HomesteadBlock { get => GetBlock(); set => SetBlock(value); }
     public ulong? DaoForkBlock { get => GetBlock(nameof(Dao)); set => SetBlock(value, nameof(Dao)); }
-    public bool? DaoForkSupport { get; set; }
 
     // EIP-level overrides — not fork labels, kept as plain typed properties.
     public ulong? Eip150Block { get; set; }
@@ -80,6 +79,8 @@ public class GethGenesisConfigJson : IHasNamedForks
     public ulong? Eip8272PrototypeTime { get => GetTime(); set => SetTime(value); }
     /// <summary>Activation time for EIP-7906 transaction outcome assertions, in Unix timestamp seconds; <c>null</c> leaves them unscheduled.</summary>
     public ulong? Eip7906PrototypeTime { get => GetTime(); set => SetTime(value); }
+    /// <summary>Activation time for EIP-4758 SENDALL, in Unix timestamp seconds; <c>null</c> leaves it unscheduled.</summary>
+    public ulong? Eip4758PrototypeTime { get => GetTime(); set => SetTime(value); }
 
     // OIC dict matches "Bpo1" (from CallerMemberName-strip) against the BPO1 fork class.
     public ulong? Bpo1Time { get => GetTime(); set => SetTime(value); }
@@ -99,6 +100,11 @@ public class GethGenesisConfigJson : IHasNamedForks
     /// Not part of EIP-7949; mirrors <c>params.beaconChainGenesisTimestamp</c> of Parity-style chainspecs.
     /// </remarks>
     public ulong? BeaconChainGenesisTimestamp { get; set; }
+
+    /// <summary>
+    /// Nethermind's minimum history retention, in epochs; <c>null</c> uses <see cref="HistoryRetentionConstants.MinEpochsForBlockRequests"/>.
+    /// </summary>
+    public ulong? MinHistoryRetentionEpochs { get; set; }
 
     public Dictionary<string, GethBlobScheduleEntry>? BlobSchedule { get; set; }
 

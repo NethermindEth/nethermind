@@ -358,7 +358,7 @@ public partial class TrieStoreScopeProvider(
 
             OnAccountUpdated = null;
 
-            WriteAccounts(scope._backingStateTree, _dirtyAccounts);
+            scope._backingStateTree.WriteAccounts(_dirtyAccounts);
 
             scope.ClearLoadedAccounts();
 
@@ -366,9 +366,6 @@ public partial class TrieStoreScopeProvider(
             void Trace(Address address, Hash256 storageRoot, Account? account)
                 => logger.Trace($"Update {address} S {account?.StorageRoot} -> {storageRoot}");
         }
-
-        /// <summary>Writes the changed accounts into <paramref name="stateTree"/>.</summary>
-        private static partial void WriteAccounts(StateTree stateTree, Dictionary<AddressAsKey, Account?> accounts);
     }
 
     public partial class StorageTreeBulkWriteBatch(

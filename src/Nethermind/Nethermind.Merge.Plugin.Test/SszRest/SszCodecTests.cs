@@ -32,7 +32,7 @@ public class SszCodecTests
     {
         ExecutionPayloadV4 payload = new();
         if (inclusionCommitment) payload.InclusionLists = [new InclusionListV1 { Transactions = [], RecursiveStark = new() { StarkProofHash = Keccak.Zero, DepsHash = Keccak.Zero } }];
-        else payload.RecursiveStarkProof = [1];
+        else payload.StarkProof = [1];
         Assert.That(() => new SszExecutionPayloadV4(payload), Throws.TypeOf<NotSupportedException>());
     }
 
@@ -828,6 +828,26 @@ public class SszCodecTests
             new GetPayloadV6Result(block, blockValue, new BlobsBundleV2(block), executionRequests: [], shouldOverrideBuilder: false), w);
 
         AssertPragueBuiltPayloadOffsets(w.WrittenSpan, blockValue, expectedShouldOverrideBuilder: 0, version: "V6");
+    }
+
+    [Test]
+    public void EncodeGetPayloadWithWitnessV6Response_embeds_the_built_payload_encoding()
+    {
+        Block block = (Block)SszTestData.MakeV4Payload(blockAccessList: [0xc0], slotNumber: 42UL).TryGetBlock();
+        GetPayloadV6Result result = new(block, new UInt256(7), new BlobsBundleV2(block), executionRequests: [], shouldOverrideBuilder: false);
+        using Witness witness = MakeMinimalWitness();
+
+        byte[] builtPayload = Encode(result, static (r, w) => SszCodec.EncodeGetPayloadV6Response(r, w));
+        byte[] encoded = Encode((result, witness), static (t, w) => SszCodec.EncodeGetPayloadWithWitnessV6Response(t.Item1, t.Item2, w));
+
+        // Both fields are variable-size: an 8-byte fixed section of offsets, then built_payload, then witness.
+        int builtPayloadOffset = (int)BinaryPrimitives.ReadUInt32LittleEndian(encoded);
+        int witnessOffset = (int)BinaryPrimitives.ReadUInt32LittleEndian(encoded.AsSpan(4));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(builtPayloadOffset, Is.EqualTo(8));
+            Assert.That(encoded[builtPayloadOffset..witnessOffset], Is.EqualTo(builtPayload));
+        }
     }
 
     // Shared assertion for the Prague+ BuiltPayload fixed section: identical for V4/V5/V6 since

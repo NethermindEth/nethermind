@@ -74,11 +74,11 @@ public sealed class PayloadBodiesV1DirectResponse : IStreamableResult, IReadOnly
 
             if (item.SourceTransactions is { } sourceTransactions)
             {
-                PayloadBodiesDirectResponseWriter.WritePayloadBody(writer, sourceTransactions, item.Withdrawals, recursiveStarkProof: item.RecursiveStarkProof);
+                PayloadBodiesDirectResponseWriter.WritePayloadBody(writer, sourceTransactions, item.Withdrawals, starkProof: item.StarkProof);
                 return;
             }
 
-            PayloadBodiesDirectResponseWriter.WritePayloadBody(writer, item.EncodedTransactions, item.Withdrawals, recursiveStarkProof: item.RecursiveStarkProof);
+            PayloadBodiesDirectResponseWriter.WritePayloadBody(writer, item.EncodedTransactions, item.Withdrawals, starkProof: item.StarkProof);
         }
     }
 
@@ -136,11 +136,11 @@ internal static class PayloadBodiesDirectResponseWriter
         Withdrawal[]? withdrawals,
         MemoryManager<byte>? blockAccessList = null,
         bool includeBlockAccessList = false,
-        byte[]? recursiveStarkProof = null)
+        byte[]? starkProof = null)
     {
         writer.Write("{\"transactions\":"u8);
         WriteTransactions(writer, transactions);
-        WritePayloadBodySuffix(writer, withdrawals, blockAccessList, includeBlockAccessList, recursiveStarkProof);
+        WritePayloadBodySuffix(writer, withdrawals, blockAccessList, includeBlockAccessList, starkProof);
     }
 
     public static void WritePayloadBody(
@@ -149,11 +149,11 @@ internal static class PayloadBodiesDirectResponseWriter
         Withdrawal[]? withdrawals,
         MemoryManager<byte>? blockAccessList = null,
         bool includeBlockAccessList = false,
-        byte[]? recursiveStarkProof = null)
+        byte[]? starkProof = null)
     {
         writer.Write("{\"transactions\":"u8);
         WriteTransactions(writer, transactions);
-        WritePayloadBodySuffix(writer, withdrawals, blockAccessList, includeBlockAccessList, recursiveStarkProof);
+        WritePayloadBodySuffix(writer, withdrawals, blockAccessList, includeBlockAccessList, starkProof);
     }
 
     public static void WritePayloadBody(
@@ -176,7 +176,7 @@ internal static class PayloadBodiesDirectResponseWriter
         if (ctx.Position < blockEnd)
         {
             ReadOnlySpan<byte> proof = ctx.DecodeByteArraySpan(RlpLimit.For<BlockBody>(Eip8288Constants.MaxAggregateProofBytes, nameof(BlockBody.StarkProof)));
-            WriteRecursiveStarkProof(writer, proof);
+            WriteStarkProof(writer, proof);
         }
         ctx.Check(blockEnd);
 
@@ -189,18 +189,18 @@ internal static class PayloadBodiesDirectResponseWriter
         Withdrawal[]? withdrawals,
         MemoryManager<byte>? blockAccessList,
         bool includeBlockAccessList,
-        byte[]? recursiveStarkProof)
+        byte[]? starkProof)
     {
         writer.Write(",\"withdrawals\":"u8);
         WriteWithdrawals(writer, withdrawals);
-        if (recursiveStarkProof is not null) WriteRecursiveStarkProof(writer, recursiveStarkProof);
+        if (starkProof is not null) WriteStarkProof(writer, starkProof);
         WriteBlockAccessList(writer, blockAccessList, includeBlockAccessList);
         writer.Write("}"u8);
     }
 
-    private static void WriteRecursiveStarkProof(IBufferWriter<byte> writer, ReadOnlySpan<byte> proof)
+    private static void WriteStarkProof(IBufferWriter<byte> writer, ReadOnlySpan<byte> proof)
     {
-        writer.Write(",\"recursiveStarkProof\":"u8);
+        writer.Write(",\"starkProof\":"u8);
         HexWriter.WriteHexString(writer, proof, chunked: true);
     }
 
@@ -264,7 +264,7 @@ internal static class PayloadBodiesDirectResponseWriter
         ArrayPool<byte>.Shared.Return(buffer);
     }
 
-    public static (byte[][] Transactions, Withdrawal[]? Withdrawals, byte[]? RecursiveStarkProof) DecodePayloadBody(byte[] blockRlp)
+    public static (byte[][] Transactions, Withdrawal[]? Withdrawals, byte[]? StarkProof) DecodePayloadBody(byte[] blockRlp)
     {
         RlpReader ctx = new(blockRlp);
         int blockEnd = ctx.ReadSequenceLength() + ctx.Position;

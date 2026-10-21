@@ -78,7 +78,7 @@ public class ProofInclusionListEnforcementTests
         };
         state.InsertCode(sender, code, spec);
         state.SubtractFromBalance(sender, state.GetBalance(sender), spec, out _);
-        if (scenario != "unfunded") state.AddToBalance(sender, 1.Ether, spec, out _);
+        if (scenario is not ("unfunded" or "withdrawal-funded")) state.AddToBalance(sender, 1.Ether, spec, out _);
         if (mixed) state.AddToBalance(TestItem.PrivateKeyB.Address, 1.Ether, spec, out _);
         state.Commit(spec);
 

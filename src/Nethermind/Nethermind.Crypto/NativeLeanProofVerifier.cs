@@ -155,7 +155,7 @@ public sealed unsafe partial class NativeLeanProofVerifier : ILeanProofVerifier
         foreach (RecursiveProofInput child in input.RecursiveProofs)
         {
             // MAX_AGGREGATE_PROOF_BYTES binds private recursive inputs too, before the guest decodes them.
-            if (child.InnerDeps is null || child.Proof.IsEmpty || child.Proof.Length > Eip8288Constants.MaxAggregateProofBytes
+            if (child.InnerDeps is null || (child.InnerDeps.Count == 0) != child.Proof.IsEmpty || child.Proof.Length > Eip8288Constants.MaxAggregateProofBytes
                 || child.InnerDeps.Count > Eip8288Constants.MaxProofDependencies)
                 throw new ArgumentException("Invalid child dependencies", nameof(input));
             writer.Write(child.InnerDeps.Count);

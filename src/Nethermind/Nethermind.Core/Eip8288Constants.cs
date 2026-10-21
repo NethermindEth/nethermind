@@ -13,7 +13,6 @@ namespace Nethermind.Core;
 public static class Eip8288Constants
 {
     /// <summary>Frame mode of a dependency-verification frame (in addition to the EIP-8141 modes).</summary>
-    // EIP-8288 drafts use 3, already allocated to EIP-7906 ASSERT in this prototype.
     public const byte DepVerifyFrameMode = 4;
 
     /// <summary>A dependency triple is <c>scheme (32B, big-endian) || data_hash (32B) || verification_key (32B)</c>.</summary>

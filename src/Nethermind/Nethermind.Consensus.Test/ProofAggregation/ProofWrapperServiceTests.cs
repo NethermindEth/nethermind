@@ -470,7 +470,7 @@ public class ProofWrapperServiceTests
         public byte[] ProveRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, AggregationInput input)
         {
             Inputs.Add(input);
-            if (!RecursiveStarkAggregator.TryAggregate(input, this, Eip8288Verifier.Pinned, out _, out ValueHash256 actual) || actual != depsHash)
+            if (!RecursiveStarkAggregatorTests.TryAggregate(input, this, Eip8288Verifier.Pinned, out _, out ValueHash256 actual) || actual != depsHash)
                 throw new InvalidOperationException("Invalid proving input.");
             return [1];
         }

@@ -18,7 +18,7 @@ public sealed class InclusionListSatisfactionChecker(ISpecProvider specProvider,
     ITransactionProcessor? transactionProcessor = null)
     : IInclusionListSatisfactionChecker
 {
-    public bool IsSatisfied(Block processedBlock, Block suggestedBlock, IWorldState worldState)
+    public bool IsSatisfied(Block processedBlock, Block suggestedBlock, IReadOnlyStateProvider worldState)
     {
         IReleaseSpec spec = specProvider.GetSpec(processedBlock.Header);
         return InclusionListValidator.IsSatisfied(processedBlock, suggestedBlock.InclusionListTransactions,
@@ -28,21 +28,20 @@ public sealed class InclusionListSatisfactionChecker(ISpecProvider specProvider,
         {
             ITransactionProcessor processor = transactionProcessor
                 ?? throw new InvalidOperationException("Frame inclusion lists require a transaction processor.");
-            IBlockAccessListSource? recorder = worldState as IBlockAccessListSource;
+            IWorldState mutableState = worldState as IWorldState
+                ?? throw new InvalidOperationException("Frame inclusion lists require transaction-boundary execution state.");
+            IBlockAccessListSource? recorder = mutableState as IBlockAccessListSource;
             BlockAccessListAtIndex? recordedAccesses = recorder?.GeneratedBlockAccessList;
             recorder?.SetGeneratingBlockAccessList(null);
-            Snapshot snapshot = worldState.TakeSnapshot();
+            Snapshot snapshot = mutableState.TakeSnapshot();
             try
             {
-                // Transaction appendability precedes withdrawals, even though this state includes them.
-                foreach (Withdrawal withdrawal in processedBlock.Withdrawals ?? [])
-                    worldState.SubtractFromBalance(withdrawal.Address, withdrawal.AmountInWei, spec, out _);
                 Address sender = tx.SenderAddress!;
                 if (tx.NonceKeys is { } keys
-                    ? !KeyedNonceManager.IsNonceSetValid(worldState, sender, keys, tx.Nonce)
+                    ? !KeyedNonceManager.IsNonceSetValid(mutableState, sender, keys, tx.Nonce)
                     : worldState.GetNonce(sender) != tx.Nonce) return false;
 
-                FrameTxValidationTracer tracer = new(sender, Eip8141Constants.ExpiryVerifierAddress, worldState, spec);
+                FrameTxValidationTracer tracer = new(sender, Eip8141Constants.ExpiryVerifierAddress, mutableState, spec);
                 processor.SetBlockExecutionContext(processedBlock.Header.Clone());
                 try
                 {
@@ -56,7 +55,7 @@ public sealed class InclusionListSatisfactionChecker(ISpecProvider specProvider,
             }
             finally
             {
-                worldState.Restore(snapshot);
+                mutableState.Restore(snapshot);
                 recorder?.SetGeneratingBlockAccessList(recordedAccesses);
                 processor.SetBlockExecutionContext(processedBlock.Header);
             }

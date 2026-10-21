@@ -200,7 +200,8 @@ public class XdcModule : Module
             ],
             true,
             frameTxPrefixSimulator: ctx.ResolveOptional<IFrameTxPrefixSimulator>(),
-            leanProofStore: ctx.Resolve<LeanProofStore>());
+            leanProofStore: ctx.Resolve<LeanProofStore>(),
+                stateHeaderProvider: ctx.Resolve<IStateHeaderProvider>());
     }
 
     private IMasternodeVotingContract CreateVotingContract(
