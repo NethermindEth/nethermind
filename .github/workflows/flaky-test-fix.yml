@@ -32,7 +32,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           runs=$(gh run list -R "$GITHUB_REPOSITORY" --workflow flaky-test-fix.yml -L 100 --created ">=$(date -u +%F)" \
-            --json conclusion --jq '[.[] | select(.conclusion != "" and .conclusion != "skipped" and .conclusion != "cancelled")] | length')
+            --json databaseId,conclusion --jq "[.[] | select(.databaseId != $GITHUB_RUN_ID and .conclusion != \"skipped\" and .conclusion != \"cancelled\")] | length")
           [ "$runs" -lt 3 ] && echo "ok=true" >> "$GITHUB_OUTPUT" || echo "Daily limit reached"
 
   fix:
