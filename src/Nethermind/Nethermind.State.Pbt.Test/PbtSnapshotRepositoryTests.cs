@@ -15,7 +15,9 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Monitoring.Config;
+using NSubstitute;
 using NUnit.Framework;
+using Nethermind.Pbt.NodeLog;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Pbt.Snapshot;
@@ -69,6 +71,22 @@ public class PbtSnapshotRepositoryTests
             Assert.That(candidate.To, Is.EqualTo(State(expected)));
             Assert.That(candidate.To.BlockNumber - candidate.From.BlockNumber, Is.LessThanOrEqualTo((ulong)compactSize));
         }
+    }
+
+    [Test]
+    public void Dispose_releases_the_group_log_pins_of_in_memory_snapshots([Values] bool compacted)
+    {
+        IPbtGroupLogPin pin = Substitute.For<IPbtGroupLogPin>();
+        IPbtGroupLog log = Substitute.For<IPbtGroupLog>();
+        log.Pin().Returns(pin);
+        PbtSnapshotContent content = new();
+        content.BeginNodeGroupWrites(log);
+        PbtSnapshot snapshot = new(State(0), State(1), default, content, _pool, PbtResourcePool.Usage.MainBlockProcessing);
+        Assert.That(compacted ? _repository.TryAddCompacted(snapshot) : _repository.TryAdd(snapshot), Is.True);
+
+        _repository.Dispose();
+
+        pin.Received(1).Dispose();
     }
 
     [Test]
