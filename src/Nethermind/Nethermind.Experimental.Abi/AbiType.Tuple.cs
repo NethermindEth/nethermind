@@ -51,7 +51,6 @@ public static partial class AbiType
         };
     }
 
-    // TODO: Investigate if we can generalize this code to avoid duplication when dealing with tuples of different sizes
     public static Abi<(T1, T2)> Tuple<T1, T2>(Abi<T1> abi1, Abi<T2> abi2)
     {
         int headSize = checked(abi1.HeadSize + abi2.HeadSize);

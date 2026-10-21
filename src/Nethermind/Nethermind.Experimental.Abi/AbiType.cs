@@ -247,7 +247,6 @@ public static partial class AbiType
         }
     };
 
-    // Synonyms
     public static readonly Abi<UInt256> UInt = UInt256;
     public static readonly Abi<Int256.Int256> Int = Int256;
 }
