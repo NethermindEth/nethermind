@@ -240,23 +240,20 @@ public class DebugRpcModule(
         return options?.StreamMode ?? jsonRpcConfig.EnableTracingStreamMode;
     }
 
-    /// <remarks>Throws when a native tracer's config is malformed, so it fails as a JSON-RPC error before the stream opens.</remarks>
+    /// <remarks>
+    /// A malformed native config is not streamed: the buffered path fails it as a JSON-RPC error before any output,
+    /// and never parses it for an empty block.
+    /// </remarks>
     private bool CanStreamBlockTrace(GethTraceOptions? options)
     {
         if (!(options?.StreamMode ?? jsonRpcConfig.EnableTracingStreamMode)) return false;
         if (string.IsNullOrEmpty(options?.Tracer)) return true;
         if (options.TxHash is not null || !GethLikeNativeTracerFactory.IsNativeTracer(options.Tracer)) return false;
 
-        GethLikeNativeTracerFactory.ValidateTracerConfig(options);
-        return true;
-    }
-
-    /// <remarks>Malformed configs must reach the real constructor so empty and filtered blocks retain their behavior.</remarks>
-    private bool CanStreamBlockByNumberTrace(GethTraceOptions? options)
-    {
         try
         {
-            return CanStreamBlockTrace(options);
+            GethLikeNativeTracerFactory.ValidateTracerConfig(options);
+            return true;
         }
         catch (NativeTracerConfigException)
         {
@@ -543,7 +540,7 @@ public class DebugRpcModule(
         if (options?.Tracer is { Length: > 0 }) options = options with { CaptureJavaScriptErrors = true };
 
         // A malformed native duration must reach the real constructor before it can fail.
-        if ((options?.ParsedTimeout.Error is null || string.IsNullOrEmpty(options.Tracer)) && CanStreamBlockByNumberTrace(options))
+        if ((options?.ParsedTimeout.Error is null || string.IsNullOrEmpty(options.Tracer)) && CanStreamBlockTrace(options))
             return StreamBlockTrace(header, options, blockNumber, validateStructLogTimeout: true);
 
         if (blockNumber.Type == BlockParameterType.BlockNumber && blockFinder.FindBlock(header.Hash!, header.Number) is null)
