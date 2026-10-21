@@ -105,7 +105,7 @@ public static unsafe partial class Bytes
     /// </summary>
     /// <remarks>
     /// Whole words, then a byte tail: the widest access the target has without SIMD.
-    /// Correct at any base; the win needs a word-aligned start, which Bloom's byte[256] has.
+    /// Correct at any base; the win needs a word-aligned start, which Bloom's inline 256-byte field has.
     /// Four words a pass quarters the loop overhead per word.
     /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
