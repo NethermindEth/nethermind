@@ -5,6 +5,7 @@ using System;
 using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
@@ -14,7 +15,9 @@ using Nethermind.Serialization.Json;
 
 namespace Nethermind.Facade.Eth.RpcTransaction;
 
-public class LegacyTransactionForRpc : SignableTransactionForRpc, ITxTyped, IFromTransaction<LegacyTransactionForRpc>
+[GenerateJsonWriter(RegisterWithSerializer = false)]
+[RepopulatableTransaction]
+public class LegacyTransactionForRpc : SignableTransactionForRpc, ITxTyped, IFromTransaction<LegacyTransactionForRpc>, IJsonOnDeserializing, IJsonOnDeserialized
 {
     public static TxType TxType => TxType.Legacy;
 
@@ -35,20 +38,48 @@ public class LegacyTransactionForRpc : SignableTransactionForRpc, ITxTyped, IFro
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public UInt256? Value { get; set; }
 
-    // Required for compatibility with some CLs like Prysm
-    // Accept during deserialization, ignore during serialization
-    // See: https://github.com/NethermindEth/nethermind/pull/6067
+    /// <summary>Sets calldata through the legacy alias for <see cref="Input"/>.</summary>
+    /// <remarks>
+    /// Accepted during deserialization for compatibility with clients such as Prysm, but never serialized.
+    /// When JSON supplies both aliases, their non-null values must be equal; assignments in code update <see cref="Input"/> directly.
+    /// </remarks>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     [JsonConverter(typeof(StrictHexByteArrayConverter))]
-    public byte[]? Data { set { Input = value; } private get { return null; } }
+    public byte[]? Data
+    {
+        private get => null;
+        set
+        {
+            if (_isDeserializing) _data = value ?? _data;
+            else Input = value;
+        }
+    }
+
+    private byte[]? _data;
+    private bool _isDeserializing;
 
     /// <remarks>
-    /// <see cref="Data"/> is an alias when deserializing. An explicit JSON null for either is the same as omitting it,
-    /// so it never clears calldata set by the other.
+    /// <see cref="Data"/> is an alias when deserializing: a request may set either or both, but both must be equal.
+    /// An explicit JSON null for either is the same as omitting it.
     /// </remarks>
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     [JsonConverter(typeof(StrictHexByteArrayConverter))]
-    public byte[]? Input { get; set => field = value ?? field; }
+    public byte[]? Input { get => _input; set => _input = value ?? _input; }
+
+    private byte[]? _input;
+
+    void IJsonOnDeserializing.OnDeserializing() => _isDeserializing = true;
+
+    void IJsonOnDeserialized.OnDeserialized()
+    {
+        _isDeserializing = false;
+        if (_data is null) return;
+        if (Input is not null && !Input.AsSpan().SequenceEqual(_data))
+            throw new SafePublicMessageFormatException(RpcTransactionErrors.DataAndInputDiffer);
+
+        Input = _data;
+        _data = null;
+    }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public virtual UInt256? GasPrice { get; set; }
@@ -71,14 +102,19 @@ public class LegacyTransactionForRpc : SignableTransactionForRpc, ITxTyped, IFro
     public LegacyTransactionForRpc() { }
 
     public LegacyTransactionForRpc(Transaction transaction, in TransactionForRpcContext extraData)
-        : base(transaction, extraData)
+        : base(transaction, extraData) { }
+
+    internal override void Populate(Transaction transaction, in TransactionForRpcContext extraData)
     {
+        base.Populate(transaction, extraData);
+        _data = null;
+        _isDeserializing = false;
         Nonce = transaction.Nonce;
         To = transaction.To;
         From = transaction.SenderAddress;
         Gas = transaction.GasLimit;
         Value = transaction.Value;
-        Input = transaction.Data.AsArray();
+        _input = transaction.Data.AsArray();
         GasPrice = transaction.GasPrice;
 
         Signature? signature = transaction.Signature;
@@ -126,10 +162,14 @@ public class LegacyTransactionForRpc : SignableTransactionForRpc, ITxTyped, IFro
 
         if ((R?.IsZero == false || S?.IsZero == false) && (R is not null || S is not null))
         {
-            ulong v = V is null ? 0
-                : V.Value > 1
-                    ? V.Value.ToUInt64(null) // non protected
-                    : EthereumEcdsaExtensions.CalculateV(ChainId ?? 0, V.Value == 1); // protected
+            ulong v = 0;
+            if (V is not null)
+            {
+                if (V.Value > 1)
+                    v = V.Value.ToUInt64(null); // non protected
+                else if (!EthereumEcdsaExtensions.TryCalculateV(ChainId ?? 0, V.Value == 1, out v)) // protected
+                    return RpcTransactionErrors.NoEip155V(ChainId ?? 0);
+            }
 
             tx.Signature = new(R ?? UInt256.Zero, S ?? UInt256.Zero, v);
         }

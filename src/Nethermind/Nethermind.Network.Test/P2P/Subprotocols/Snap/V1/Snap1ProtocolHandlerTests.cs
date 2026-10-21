@@ -243,6 +243,28 @@ public class Snap1ProtocolHandlerTests
     }
 
     [Test]
+    public void Should_reject_unrequested_response_before_decoding(
+        [Values(Snap1MessageCode.AccountRange, Snap1MessageCode.StorageRanges, Snap1MessageCode.ByteCodes, Snap1MessageCode.TrieNodes)] int messageCode)
+    {
+        ISession session = Substitute.For<ISession>();
+        session.Node.Returns(new Node(TestItem.PublicKeyA, "127.0.0.1", 30303));
+        Snap1ProtocolHandler handler = new(
+            session,
+            Substitute.For<INodeStatsManager>(),
+            new MessageSerializationService(
+                SerializerInfo.Create(new AccountRangeMessageSerializer()),
+                SerializerInfo.Create(new StorageRangesMessageSerializer()),
+                SerializerInfo.Create(new ByteCodesMessageSerializer()),
+                SerializerInfo.Create(new TrieNodesMessageSerializer())),
+            RunImmediatelyScheduler.Instance,
+            LimboLogs.Instance,
+            new SyncConfig(),
+            Substitute.For<ISnapServer>());
+
+        UndecodableResponse.AssertRejectedAsUnrequested(handler.HandleMessage, messageCode);
+    }
+
+    [Test]
     [Explicit]
     public async Task Test_response_bytes_reset_on_error()
     {

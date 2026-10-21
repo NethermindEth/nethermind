@@ -14,6 +14,7 @@ using System.Runtime.Intrinsics.X86;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.Test;
 using Nethermind.Evm.CodeAnalysis;
 using NUnit.Framework;
 
@@ -145,12 +146,12 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(execution.ToArray(), Is.EqualTo(code.ToArray()));
+                Assert.That(execution, Is.SequenceEqualTo(code));
                 Assert.That(padding.ToArray(), Is.All.EqualTo(0));
                 Assert.That(Unsafe.AreSame(ref MemoryMarshal.GetReference(codeInfo.CodeSpan), ref MemoryMarshal.GetReference(execution)), Is.True,
                     "Code must be served from the padded copy rather than keep the caller's array alongside it");
                 Assert.That(Unsafe.AreSame(ref MemoryMarshal.GetReference(codeInfo.ExecutionCodeSpan), ref MemoryMarshal.GetReference(execution)), Is.True);
-                Assert.That(earlierView.ToArray(), Is.EqualTo(code.ToArray()));
+                Assert.That(earlierView, Is.SequenceEqualTo(code));
             }
         }
 
@@ -167,7 +168,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             ReadOnlySpan<byte> padding = MemoryMarshal.CreateReadOnlySpan(ref Unsafe.Add(ref MemoryMarshal.GetReference(execution), execution.Length), CodeInfo.ExecutionPadding);
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(execution.ToArray(), Is.EqualTo(code.ToArray()));
+                Assert.That(execution, Is.SequenceEqualTo(code));
                 Assert.That(padding.ToArray(), Is.All.EqualTo(0));
                 Assert.That(Unsafe.AreSame(ref MemoryMarshal.GetReference(code.Span), ref MemoryMarshal.GetReference(execution)), Is.True);
             }
@@ -185,9 +186,69 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             ReadOnlySpan<byte> padding = MemoryMarshal.CreateReadOnlySpan(ref Unsafe.Add(ref MemoryMarshal.GetReference(execution), execution.Length), CodeInfo.ExecutionPadding);
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(execution.ToArray(), Is.EqualTo(new byte[] { 0x60, 0x60 }));
+                Assert.That(execution, Is.SequenceEqualTo(new byte[] { 0x60, 0x60 }));
                 Assert.That(padding.ToArray(), Is.All.EqualTo(0));
                 Assert.That(Unsafe.AreSame(ref MemoryMarshal.GetReference(code.Span), ref MemoryMarshal.GetReference(execution)), Is.False);
+            }
+        }
+
+        [TestCase(0, TestName = "Apart")]
+        [TestCase(8, TestName = "Overlapping its source")]
+        public unsafe void Placed_code_memory_is_padded_in_place(int sourceOffset)
+        {
+            byte[] memory = GC.AllocateArray<byte>(64, pinned: true);
+            memory.AsSpan().Fill(0xff);
+            byte[] code = [0x60, 0x01, 0x5b];
+            code.CopyTo(memory.AsSpan(sourceOffset));
+            ReadOnlySpan<byte> source = sourceOffset == 0 ? code : memory.AsSpan(sourceOffset, code.Length);
+
+            ReadOnlyMemory<byte> placed = ExecutableCodeMemory.Place(memory, source);
+
+            using MemoryHandle whole = placed.Pin();
+            using MemoryHandle tail = placed[1..].Pin();
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(placed.ToArray(), Is.EqualTo(code));
+                Assert.That(memory.AsSpan(code.Length, CodeInfo.ExecutionPadding).ToArray(), Is.All.EqualTo(0));
+                Assert.That(memory[code.Length + CodeInfo.ExecutionPadding], Is.EqualTo(0xff));
+                Assert.That(Unsafe.AreSame(ref MemoryMarshal.GetReference(placed.Span), ref memory[0]), Is.True);
+                Assert.That((nint)whole.Pointer, Is.EqualTo((nint)Unsafe.AsPointer(ref memory[0])));
+                Assert.That((nint)tail.Pointer, Is.EqualTo((nint)Unsafe.AsPointer(ref memory[1])));
+                Assert.That(ExecutableCodeMemory.IsPlaced(placed), Is.True);
+                Assert.That(ExecutableCodeMemory.TryGetExecutionBuffer(placed, out _), Is.False);
+            }
+        }
+
+        [Test]
+        public void Only_the_whole_of_placed_code_memory_is_recognised()
+        {
+            byte[] memory = GC.AllocateArray<byte>(64, pinned: true);
+            ReadOnlyMemory<byte> placed = ExecutableCodeMemory.Place(memory, [0x60, 0x01, 0x5b]);
+
+            using (Assert.EnterMultipleScope())
+            {
+                // A slice's next bytes are more code; wrapped memory promises no padding.
+                Assert.That(ExecutableCodeMemory.IsPlaced(placed[1..]), Is.False);
+                Assert.That(ExecutableCodeMemory.IsPlaced(placed[..2]), Is.False);
+                Assert.That(ExecutableCodeMemory.IsPlaced(ExecutableCodeMemory.Wrap(memory.AsSpan(0, 3))), Is.False);
+                Assert.That(ExecutableCodeMemory.IsPlaced(ExecutableCodeMemory.Copy(memory.AsSpan(0, 3))), Is.False);
+                Assert.That(ExecutableCodeMemory.IsPlaced(memory.AsMemory(0, 3)), Is.False);
+            }
+        }
+
+        [Test]
+        public void Wrapped_code_memory_reads_in_place()
+        {
+            byte[] memory = GC.AllocateArray<byte>(8, pinned: true);
+            memory.AsSpan().Fill(0x5b);
+
+            ReadOnlyMemory<byte> wrapped = ExecutableCodeMemory.Wrap(memory.AsSpan(2, 4));
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(wrapped.Length, Is.EqualTo(4));
+                Assert.That(Unsafe.AreSame(ref MemoryMarshal.GetReference(wrapped.Span), ref memory[2]), Is.True);
+                Assert.That(Unsafe.AreSame(ref MemoryMarshal.GetReference(wrapped[1..].Span), ref memory[3]), Is.True);
             }
         }
 
@@ -430,6 +491,56 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
                 AssertKernelsMatchReference(code);
             }
+        }
+
+        /// <remarks>
+        /// Even seeds leave out DUPN, SWAPN and EXCHANGE, so a CALLDEST byte is never an EIP-8024 immediate and the analysis
+        /// takes its vectorized form; odd seeds include them, so most samples take the EIP-8024 walk.
+        /// </remarks>
+        [Test]
+        public void Call_destinations_match_the_eip8024_walk([Range(0, 19)] int seed)
+        {
+            byte[] alphabet = seed % 2 == 0
+                ? [0x00, 0x5b, 0xbb, 0x60, 0x61, 0x7f]
+                : [0x00, 0x5b, 0xbb, 0x60, 0x61, 0x7f, 0xe6, 0xe7, 0xe8];
+            uint state = ((uint)seed * 2654435761u) | 1u;
+            for (int sample = 0; sample < 40; sample++)
+            {
+                byte[] code = new byte[1 + (int)(NextRandom(ref state) % (sample % 10 == 0 ? 5000u : 700u))];
+                for (int i = 0; i < code.Length; i++)
+                    code[i] = sample % 4 == 0 ? (byte)NextRandom(ref state) : alphabet[NextRandom(ref state) % (uint)alphabet.Length];
+
+                CodeInfo codeInfo = new(code);
+                Assert.That(codeInfo.JumpAndCallDestinationBitmap, Is.EqualTo(CallDestinationWalk(code)), $"seed {seed} sample {sample}");
+            }
+        }
+
+        [Test]
+        public void Code_without_call_destinations_shares_the_jump_bitmap()
+        {
+            CodeInfo codeInfo = new(new byte[] { (byte)Instruction.PUSH1, (byte)Instruction.CALLDEST - 1, (byte)Instruction.JUMPDEST });
+
+            Assert.That(codeInfo.JumpAndCallDestinationBitmap, Is.SameAs(codeInfo.JumpDestinationBitmap));
+        }
+
+        /// <summary>Marks every JUMPDEST and CALLDEST instruction, stepping over PUSH data and valid EIP-8024 immediates.</summary>
+        private static long[] CallDestinationWalk(byte[] code)
+        {
+            long[] bitmap = JumpDestinationAnalyzer.CreateBitmap(code.Length);
+            // Code that starts with STOP halts before any jump, so it is not analyzed.
+            if (code[0] == (byte)Instruction.STOP) return new long[1];
+
+            for (int pc = 0; pc < code.Length; pc++)
+            {
+                byte op = code[pc];
+                byte next = pc + 1 < code.Length ? code[pc + 1] : (byte)0x5b;
+                if (op is (byte)Instruction.JUMPDEST or (byte)Instruction.CALLDEST) bitmap[pc >> 6] |= 1L << pc;
+                else if (op is >= (byte)Instruction.PUSH1 and <= (byte)Instruction.PUSH32) pc += op - (byte)Instruction.PUSH1 + 1;
+                else if (op is (byte)Instruction.DUPN or (byte)Instruction.SWAPN && next is not (>= 0x5b and <= 0x7f)) pc++;
+                else if (op is (byte)Instruction.EXCHANGE && next is not (>= 0x52 and <= 0x7f)) pc++;
+            }
+
+            return bitmap;
         }
 
         [TestCaseSource(nameof(EdgeCases))]

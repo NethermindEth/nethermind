@@ -37,6 +37,14 @@ public abstract class WorldStateDecorator(IWorldState state) : IWorldState
     public Task HintBal(ReadOnlyBlockAccessList bal)
         => State.HintBal(bal);
 
+    public bool SupportsPrefetch => State.SupportsPrefetch;
+
+    public void Prefetch(Span<Address> accounts, Span<StorageCell> slots, CancellationToken cancellationToken)
+        => State.Prefetch(accounts, slots, cancellationToken);
+
+    public void ApplyBal(ReadOnlyBlockAccessList bal, CancellationToken cancellationToken = default)
+        => State.ApplyBal(bal, cancellationToken);
+
     public bool HasStateForBlock(BlockHeader? baseBlock)
         => State.HasStateForBlock(baseBlock);
 
@@ -69,6 +77,9 @@ public abstract class WorldStateDecorator(IWorldState state) : IWorldState
 
     public virtual void GetOriginal(in StorageCell storageCell, out UInt256 value)
         => State.GetOriginal(in storageCell, out value);
+
+    public virtual UInt256 GetOriginalBalance(Address address)
+        => State.GetOriginalBalance(address);
 
     public virtual void Get(in StorageCell storageCell, out UInt256 value)
         => State.Get(in storageCell, out value);
@@ -107,6 +118,9 @@ public abstract class WorldStateDecorator(IWorldState state) : IWorldState
     public virtual void ClearStorage(Address address)
         => State.ClearStorage(address);
 
+    public virtual bool TryGetStorageBeforeClear(in StorageCell storageCell, out UInt256 value)
+        => State.TryGetStorageBeforeClear(in storageCell, out value);
+
     public virtual void RecalculateStateRoot()
         => State.RecalculateStateRoot();
 
@@ -125,6 +139,15 @@ public abstract class WorldStateDecorator(IWorldState state) : IWorldState
     public virtual bool InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false)
         => State.InsertCode(address, in codeHash, code, spec, isGenesis);
 
+    public virtual void InsertTransientCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec)
+        => State.InsertTransientCode(address, in codeHash, code, spec);
+
+    public virtual void DiscardTransientCode()
+        => State.DiscardTransientCode();
+
+    public virtual bool AdoptCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec)
+        => State.AdoptCode(address, in codeHash, code, spec);
+
     public virtual void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
         => State.AddToBalance(address, in balanceChange, spec, out oldBalance);
 
@@ -142,6 +165,13 @@ public abstract class WorldStateDecorator(IWorldState state) : IWorldState
 
     public virtual void SetNonce(Address address, in ulong nonce)
         => State.SetNonce(address, in nonce);
+
+    // Split, so a subclass that records either call sees both changes.
+    public virtual void SubtractFromBalanceAndSetNonce(Address address, in UInt256 balanceChange, ulong nonce, IReleaseSpec spec)
+    {
+        SubtractFromBalance(address, in balanceChange, spec, out _);
+        SetNonce(address, nonce);
+    }
 
     public virtual void Commit(IReleaseSpec releaseSpec, IWorldStateTracer tracer, bool isGenesis = false, bool commitRoots = true)
         => State.Commit(releaseSpec, tracer, isGenesis, commitRoots);
@@ -163,6 +193,9 @@ public abstract class WorldStateDecorator(IWorldState state) : IWorldState
 
     public virtual void RecordBytecodeAccess(Address address)
         => State.RecordBytecodeAccess(address);
+
+    public virtual void NoteMinimumBalance(Address address, in UInt256 minimum)
+        => State.NoteMinimumBalance(address, in minimum);
 
     public virtual IDisposable? BeginSystemAccountReadSuppression()
         => State.BeginSystemAccountReadSuppression();

@@ -8,6 +8,8 @@ namespace Nethermind.State.Flat.History.Walk;
 
 internal sealed class NodeSeriesState : IDisposable
 {
+    private const int RowsPerCancellationCheck = 1 << 10;
+
     private readonly ChildVector _refs = ChildVector.Rent();
     private NodeViewKind _kind = NodeViewKind.Empty;
     private byte[]? _whole;
@@ -53,14 +55,17 @@ internal sealed class NodeSeriesState : IDisposable
         _presence = presence;
     }
 
-    public void MaterializeStart(CommitmentStore.RowChain newestAtOrBelow)
+    public void MaterializeStart(CommitmentStore.RowChain newestAtOrBelow, CancellationToken token)
     {
         Apply(newestAtOrBelow.CurrentValue);
         if (_kind != NodeViewKind.Branch) return;
 
         ushort missing = Missing();
+        int rows = 0;
         while (missing != 0 && newestAtOrBelow.MoveNext())
         {
+            if ((++rows & (RowsPerCancellationCheck - 1)) == 0) token.ThrowIfCancellationRequested();
+
             ReadOnlySpan<byte> older = newestAtOrBelow.CurrentValue;
             if (!ParentRowCodec.IsBranchRow(older)) break;
 

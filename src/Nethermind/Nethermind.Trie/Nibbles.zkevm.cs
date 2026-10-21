@@ -32,23 +32,25 @@ namespace Nethermind.Trie
             ulong m8 = Unsafe.Add(ref masks, 1);
             ulong mNibble = Unsafe.Add(ref masks, 2);
             ulong mLow = Unsafe.Add(ref masks, 3);
-            int i = 0;
+            // Native-width counters: an int one is re-extended on RV64 at every step and address.
+            nint length = count;
+            nint i = 0;
             // Eight source bytes per read: the zkVM charges a four-byte load roughly eight times an
             // aligned word read, and one load, loop test and address computation now serve two spreads.
-            for (; i + sizeof(ulong) <= count; i += sizeof(ulong))
+            for (; i + sizeof(ulong) <= length; i += sizeof(ulong))
             {
                 ulong src = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, i));
                 Unsafe.WriteUnaligned(ref Unsafe.Add(ref nibbles, i * 2), Spread(src & mLow, m16, m8, mNibble));
                 Unsafe.WriteUnaligned(ref Unsafe.Add(ref nibbles, (i * 2) + sizeof(ulong)), Spread(src >> 32, m16, m8, mNibble));
             }
 
-            for (; i + sizeof(uint) <= count; i += sizeof(uint))
+            for (; i + sizeof(uint) <= length; i += sizeof(uint))
             {
                 Unsafe.WriteUnaligned(ref Unsafe.Add(ref nibbles, i * 2),
                     Spread(Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref bytes, i)), m16, m8, mNibble));
             }
 
-            for (; i < count; i++)
+            for (; i < length; i++)
             {
                 int value = Unsafe.Add(ref bytes, i);
                 Unsafe.Add(ref nibbles, i * 2) = (byte)(value >> 4);
@@ -74,8 +76,9 @@ namespace Nethermind.Trie
             ref ulong masks = ref MemoryMarshal.GetArrayDataReference(SwarMasks);
             ulong m16 = masks;
             ulong m8 = Unsafe.Add(ref masks, 1);
-            int i = 0;
-            for (; i + sizeof(uint) <= count; i += sizeof(uint))
+            nint length = count;
+            nint i = 0;
+            for (; i + sizeof(uint) <= length; i += sizeof(uint))
             {
                 ulong v = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref nibbles, i * 2));
                 // Each 16-bit lane ends up holding one output byte: its high nibble shifted up, its low
@@ -87,7 +90,7 @@ namespace Nethermind.Trie
                 Unsafe.WriteUnaligned(ref Unsafe.Add(ref bytes, i), (uint)packed);
             }
 
-            for (; i < count; i++)
+            for (; i < length; i++)
             {
                 Unsafe.Add(ref bytes, i) =
                     (byte)((Unsafe.Add(ref nibbles, i * 2) << 4) | Unsafe.Add(ref nibbles, i * 2 + 1));
@@ -112,16 +115,16 @@ namespace Nethermind.Trie
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static int CommonPrefixLength(ReadOnlySpan<byte> left, ReadOnlySpan<byte> right)
         {
-            int length = Math.Min(left.Length, right.Length);
+            nint length = Math.Min(left.Length, right.Length);
             ref byte l = ref MemoryMarshal.GetReference(left);
             ref byte r = ref MemoryMarshal.GetReference(right);
-            int i = 0;
+            nint i = 0;
             for (; i + sizeof(ulong) <= length; i += sizeof(ulong))
             {
                 ulong diff = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref l, i)) ^ Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref r, i));
                 if (diff != 0)
                 {
-                    return i + (BitOperations.TrailingZeroCount(diff) >> 3);
+                    return (int)i + (BitOperations.TrailingZeroCount(diff) >> 3);
                 }
             }
 
@@ -130,7 +133,7 @@ namespace Nethermind.Trie
                 if (Unsafe.Add(ref l, i) != Unsafe.Add(ref r, i)) break;
             }
 
-            return i;
+            return (int)i;
         }
     }
 }

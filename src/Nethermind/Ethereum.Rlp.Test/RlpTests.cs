@@ -5,6 +5,7 @@ using System;
 using System.Diagnostics;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
@@ -51,9 +52,9 @@ namespace Ethereum.Rlp.Test
             Assert.That(buffer[5], Is.EqualTo(185));
             Assert.That(buffer[6], Is.EqualTo(1));
             Assert.That(buffer[7], Is.EqualTo(0));
-            Assert.That(buffer.AsSpan(8, 256).ToArray(), Is.EqualTo(new byte[256]));
-            Assert.That(buffer.AsSpan(0, 5).ToArray(), Is.EqualTo(new byte[] { 0xAB, 0xAB, 0xAB, 0xAB, 0xAB }));
-            Assert.That(buffer.AsSpan(5 + total).ToArray(), Is.EqualTo(new byte[] { 0xAB, 0xAB, 0xAB }));
+            Assert.That(buffer.AsSpan(8, 256), Is.SequenceEqualTo(new byte[256]));
+            Assert.That(buffer.AsSpan(0, 5), Is.SequenceEqualTo(new byte[] { 0xAB, 0xAB, 0xAB, 0xAB, 0xAB }));
+            Assert.That(buffer.AsSpan(5 + total), Is.SequenceEqualTo(new byte[] { 0xAB, 0xAB, 0xAB }));
         }
 
         [Test]
@@ -68,7 +69,7 @@ namespace Ethereum.Rlp.Test
             Assert.That(bytes[0], Is.EqualTo(185));
             Assert.That(bytes[1], Is.EqualTo(1));
             Assert.That(bytes[2], Is.EqualTo(0));
-            Assert.That(bytes.AsSpan(3, 256).ToArray(), Is.EqualTo(new byte[256]));
+            Assert.That(bytes.AsSpan(3, 256), Is.SequenceEqualTo(new byte[256]));
         }
 
         [Test]

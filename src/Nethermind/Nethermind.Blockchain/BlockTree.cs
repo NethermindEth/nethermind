@@ -54,6 +54,8 @@ namespace Nethermind.Blockchain
         private readonly IChainLevelInfoRepository _chainLevelInfoRepository;
         private readonly IStateBoundary _stateBoundary;
         private readonly BlockTreeMutationLock _mutationLock;
+        // Low 32 bits: deletions in progress; high 32 bits: deletions completed.
+        private long _deletions;
 
         private readonly Lock _forkChoiceLock = new();
         // Null while unknown; set only after this exact pair was committed. A persisted (null, null) is not unknown.
@@ -442,6 +444,13 @@ namespace Nethermind.Blockchain
                 // below the head that Suggest callers work near, while below-cutoff payloads arrive through Insert.
                 if (block is not null)
                 {
+                    // The header too: a crash can lose a block's deferred header after its chain level is written.
+                    // Queued ahead of the body, as below.
+                    if (_headerStore.Get(header.Hash, shouldCache: false, blockNumber: header.Number) is null)
+                    {
+                        _headerStore.InsertDeferred(header);
+                    }
+
                     if (!_blockStore.HasBlock(header.Number, header.Hash))
                     {
                         _blockStore.InsertDeferred(block);
@@ -468,22 +477,30 @@ namespace Nethermind.Blockchain
 
             SetTotalDifficulty(header);
 
+            if (block is not null && block.Hash is null)
+            {
+                throw new InvalidOperationException("An attempt to suggest block with a null hash.");
+            }
+
+            // A known block may still lack its header: the chain level that makes it known is written at once, while
+            // its deferred header is lost in a crash before the write. Suggesting the block again writes the header,
+            // as the already-known path above writes a missing body.
+            if (!isKnown || (block is not null && _headerStore.Get(header.Hash, shouldCache: false, blockNumber: header.Number) is null))
+            {
+                // Deferred with the body: the engine API path waits for neither database write. Queued ahead of it, as
+                // the deferred writer runs its queue in order: a crash between the two writes then leaves a header
+                // without its body, which the block tree loads as before, never a body without its header, which it
+                // takes for corruption.
+                if (block is not null) _headerStore.InsertDeferred(header);
+                else _headerStore.Insert(header);
+            }
+
             if (block is not null)
             {
-                if (block.Hash is null)
-                {
-                    throw new InvalidOperationException("An attempt to suggest block with a null hash.");
-                }
-
                 // Body and BAL persistence defer off the engine API path; visibility stays synchronous via
                 // each store's pending overlay, and the live block's BAL is freed synchronously as before.
                 _blockStore.InsertDeferred(block);
                 _balStore.InsertFromBlockDeferred(block);
-            }
-
-            if (!isKnown)
-            {
-                _headerStore.Insert(header);
             }
 
             if (!isKnown || fillBeaconBlock)
@@ -516,7 +533,10 @@ namespace Nethermind.Blockchain
                 if (shouldProcess && (bestSuggestedImprovementSatisfied || header.IsGenesis || fillBeaconBlock))
                 {
                     BestSuggestedBody = block;
-                    NewBestSuggestedBlock?.Invoke(this, new BlockEventArgs(block));
+                    NewBestSuggestedBlock?.Invoke(this, new BlockEventArgs(block)
+                    {
+                        NonBlockingProcessing = options.ContainsFlag(BlockTreeSuggestOptions.NonBlockingProcessing)
+                    });
                 }
             }
 
@@ -566,6 +586,29 @@ namespace Nethermind.Blockchain
             return blockHash is null ? null : FindHeader(blockHash, options, blockNumber: number);
         }
 
+        /// <inheritdoc/>
+        /// <remarks>A level outside the cached window is read without caching it, as long scans read many.</remarks>
+        public BlockHeader? FindCanonicalHeaderIfBloomMatches(ulong blockNumber, Func<ReadOnlySpan<byte>, bool> bloomMatches, out bool found)
+        {
+            bool shouldCache = ShouldCache(blockNumber);
+            ChainLevelInfo? level = shouldCache ? LoadLevel(blockNumber) : _chainLevelInfoRepository.LoadLevelWithoutCaching(blockNumber);
+            if (level?.MainChainBlock is not { } blockInfo || blockInfo.BlockHash == Keccak.Zero)
+            {
+                found = false;
+                return null;
+            }
+
+            BlockHeader? header = _headerStore.GetIfBloomMatches(blockInfo.BlockHash, blockNumber, bloomMatches, out found);
+            if (header is not null)
+            {
+                header.Hash ??= blockInfo.BlockHash;
+                SetTotalDifficultyFromBlockInfo(header, blockInfo);
+                if (shouldCache) _headerStore.Cache(header);
+            }
+
+            return header;
+        }
+
         public Hash256? FindBlockHash(ulong blockNumber) => GetBlockHashOnMainOrBestDifficultyHash(blockNumber);
 
         public bool HasBlock(ulong blockNumber, Hash256 blockHash) => _blockStore.HasBlock(blockNumber, blockHash);
@@ -578,6 +621,7 @@ namespace Nethermind.Blockchain
                 return null;
             }
 
+            long deletions = Volatile.Read(ref _deletions);
             BlockHeader? header = _headerStore.Get(blockHash, shouldCache: false, blockNumber: blockNumber);
             if (header is null)
             {
@@ -631,6 +675,7 @@ namespace Nethermind.Blockchain
             if (header is not null && ShouldCache(header.Number))
             {
                 _headerStore.Cache(header);
+                if (OverlappedDeletion(deletions)) (_headerStore as IClearableCache)?.ClearCache();
             }
 
             return header;
@@ -829,6 +874,7 @@ namespace Nethermind.Blockchain
             BestSuggestedBody = Head;
 
             BlockAcceptingNewBlocks();
+            BeginDeletion();
 
             try
             {
@@ -836,6 +882,7 @@ namespace Nethermind.Blockchain
             }
             finally
             {
+                EndDeletion();
                 ReleaseAcceptingNewBlocks();
             }
         }
@@ -910,6 +957,7 @@ namespace Nethermind.Blockchain
                 if (Logger.IsInfo) Logger.Info($"Deleting invalid block {currentHash} at level {currentNumber}");
                 _blockStore.Delete(currentNumber, currentHash);
                 _headerStore.Delete(currentHash);
+                _balStore.Delete(currentNumber, currentHash);
 
                 if (nextHash is null)
                 {
@@ -1131,7 +1179,7 @@ namespace Nethermind.Blockchain
                 // Only needed on FCU reorgs (forceUpdateHeadBlock == true). During forward sync
                 // (BlockDownloader) and forward processing (BlockchainProcessor), the markers above
                 // are either not yet set or belong to the same chain and must not be cleared.
-                if (forceUpdateHeadBlock)
+                if (forceUpdateHeadBlock && ClearStaleMarkersOnForcedHeadUpdate)
                     ClearStaleMarkersAbove(Math.Max(previousHeadNumber, lastNumber), batch);
 
                 for (int i = 0; i < headers.Count; i++)
@@ -1446,16 +1494,17 @@ namespace Nethermind.Blockchain
 
         public bool IsKnownBlock(ulong number, Hash256 blockHash)
         {
+            // Recalculating progress can publish a bound below a concurrently advanced head.
+            // The captured canonical head is already downloaded, regardless of that stale bound.
+            Block? head = Head;
+            if (head is not null && blockHash == head.Hash)
+            {
+                return number == head.Number;
+            }
+
             if (number > BestKnownNumber)
             {
                 return false;
-            }
-
-            // IsKnownBlock will be mainly called when new blocks are incoming
-            // and these are very likely to be all at the head of the chain
-            if (blockHash == Head?.Hash)
-            {
-                return true;
             }
 
             (BlockInfo blockInfo, ChainLevelInfo level) = LoadInfo(number, blockHash, false);
@@ -1697,6 +1746,7 @@ namespace Nethermind.Blockchain
                 return null;
             }
 
+            long deletions = Volatile.Read(ref _deletions);
             Block? block = null;
             blockNumber ??= _headerStore.GetBlockNumber(blockHash);
             if (blockNumber is not null)
@@ -1763,10 +1813,31 @@ namespace Nethermind.Blockchain
             {
                 _blockStore.Cache(block);
                 _headerStore.Cache(block.Header);
+                if (OverlappedDeletion(deletions))
+                {
+                    (_blockStore as IClearableCache)?.ClearCache();
+                    (_headerStore as IClearableCache)?.ClearCache();
+                }
             }
 
             return block;
         }
+
+        /// <summary>Whether a block deletion ran during a lookup that began at <paramref name="deletionsAtLookup"/>.</summary>
+        /// <remarks>
+        /// Lookups cache what they read without the mutation lock, so one overlapping a deletion can re-cache a block it
+        /// has just removed. Call after caching: the fence orders that write before the counter read, so either the
+        /// deletion evicts the entry or this sees the deletion and the caller drops the cache.
+        /// </remarks>
+        private bool OverlappedDeletion(long deletionsAtLookup)
+        {
+            Interlocked.MemoryBarrier();
+            return (uint)deletionsAtLookup != 0 || Volatile.Read(ref _deletions) != deletionsAtLookup;
+        }
+
+        private void BeginDeletion() => Interlocked.Increment(ref _deletions);
+
+        private void EndDeletion() => Interlocked.Add(ref _deletions, (1L << 32) - 1);
 
         private bool IsTotalDifficultyAlwaysZero() =>
             // In some Ethereum tests and possible testnets difficulty of all blocks might be zero
@@ -1904,12 +1975,14 @@ namespace Nethermind.Blockchain
             if (!_mutationLock.TryEnter(out BlockTreeMutationLock.Scope mutation)) throw new InvalidOperationException("Chain mutation contention or overlapping maintenance; retry the request.");
             using BlockTreeMutationLock.Scope mutationScope = mutation;
             BlockAcceptingNewBlocks();
+            BeginDeletion();
             try
             {
                 return DeleteChainSliceCore(startNumber, endNumber, force);
             }
             finally
             {
+                EndDeletion();
                 ReleaseAcceptingNewBlocks();
             }
         }

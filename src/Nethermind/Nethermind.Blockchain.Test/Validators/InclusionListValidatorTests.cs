@@ -8,6 +8,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Specs.Forks;
@@ -79,11 +80,34 @@ public class InclusionListValidatorTests
             .WithGasUsed(gasUsed)
             .WithBaseFeePerGas(baseFee)
             .WithTransactions(blockTxs)
+            .WithBlobGasUsed(0)
+            .WithExcessBlobGas(0)
             .WithInclusionListTransactions(il)
             .TestObject;
 
         IReadOnlyStateProvider state = StateWith(TestItem.AddressA, 10.Ether, senderNonce);
         Assert.That(InclusionListValidator.IsSatisfied(block, state, _specProvider.GetSpec(block.Header), _txValidator), Is.EqualTo(satisfied));
+    }
+
+    [Test]
+    public void Blob_appendability_requires_capacity_and_base_fee(
+        [Values(0UL, Eip4844Constants.GasPerBlob - 1, Eip4844Constants.GasPerBlob)] ulong remainingBlobGas,
+        [Values] bool underpriced,
+        [Values] bool included)
+    {
+        IReleaseSpec spec = Bogota.Instance;
+        Block block = Build.A.Block
+            .WithGasLimit(30_000_000)
+            .WithGasUsed(1_000_000)
+            .WithBlobGasUsed(spec.GasCosts.MaxBlobGasPerBlock - remainingBlobGas)
+            .WithExcessBlobGas(2 * spec.BlobBaseFeeUpdateFraction)
+            .TestObject;
+        Assert.That(BlobGasCalculator.TryCalculateFeePerBlobGas(block.Header, spec.BlobBaseFeeUpdateFraction, out UInt256 blobBaseFee), Is.True);
+        Transaction tx = BuildBlobTx(maxFeePerBlobGas: underpriced ? blobBaseFee - UInt256.One : blobBaseFee);
+        if (included) block = new Block(block.Header, [tx], block.Uncles);
+
+        bool expected = included || underpriced || remainingBlobGas < Eip4844Constants.GasPerBlob;
+        Assert.That(InclusionListValidator.IsSatisfied(block, [tx], StateWith(TestItem.AddressA, 10.Ether, 0), spec, _txValidator), Is.EqualTo(expected));
     }
 
     // Withdrawals land after the block's transactions, so judging against the raw post-block balance
@@ -106,6 +130,28 @@ public class InclusionListValidatorTests
             .TestObject;
 
         // Withdrawing 9.5 of the 10 ether leaves 0.5, below _validTx's ~1.001 ether cost.
+        return InclusionListValidator.IsSatisfied(block, StateWith(TestItem.AddressA, 10.Ether, 0), _specProvider.GetSpec(block.Header), _txValidator);
+    }
+
+    // EIP-8037 admits a transaction per dimension, so an entry that fits the state gas the block actually spent
+    // is appendable even though it exceeds the header's max(execution, state). Numbers are those of
+    // test_preparation_rollback_restores_block_state_budget, where a 97_920-gas state total sits under a
+    // 513_317-gas execution total.
+    [TestCase(34_067_749UL, true, ExpectedResult = false, TestName = "Entry at the exact state budget is appendable")]
+    [TestCase(34_067_750UL, true, ExpectedResult = true, TestName = "Entry one gas past the state budget is not appendable")]
+    // Without the per-dimension totals — no in-memory copy of the executed block left — both fall back to that max.
+    [TestCase(34_067_749UL, false, ExpectedResult = true, TestName = "Entry is judged on the combined gas when dimensions are unknown")]
+    public bool Appendability_is_judged_per_block_gas_dimension(ulong ilGasLimit, bool dimensionsKnown)
+    {
+        Block block = Build.A.Block
+            .WithGasLimit(34_165_669)
+            .WithGasUsed(513_317)
+            .WithBaseFeePerGas(UInt256.Zero)
+            .WithTransactions([])
+            .WithInclusionListTransactions([BuildTx(gasLimit: ilGasLimit, to: TestItem.AddressB)])
+            .TestObject;
+        if (dimensionsKnown) block.Header.GasUsedPerDimension = (513_317, 97_920);
+
         return InclusionListValidator.IsSatisfied(block, StateWith(TestItem.AddressA, 10.Ether, 0), _specProvider.GetSpec(block.Header), _txValidator);
     }
 

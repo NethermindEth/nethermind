@@ -18,7 +18,7 @@ namespace HiveCompare.Models
         [JsonIgnore]
         public Dictionary<string, ClientInfo>? clientInfo { get; set; }
 
-        public override string ToString() => JsonSerializer.Serialize(this, Program.SERIALIZER_OPTIONS);
+        public override string ToString() => JsonSerializer.Serialize(this, HiveCompareJsonContext.Default.TestCase);
     }
 
     public class CaseResult
@@ -36,4 +36,8 @@ namespace HiveCompare.Models
         public string Name { get; set; } = default!;
         public string logFile { get; set; } = default!;
     }
+
+    [JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase, WriteIndented = true)]
+    [JsonSerializable(typeof(HiveTestResult))]
+    internal partial class HiveCompareJsonContext : JsonSerializerContext;
 }

@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
@@ -90,12 +89,11 @@ public class TxBroadcasterTests
 
         Assert.That(_broadcaster.GetSnapshot().Length, Is.EqualTo(addedTxsCount));
 
-        ITxPoolPeer peer = Substitute.For<ITxPoolPeer>();
-        peer.Id.Returns(TestItem.PublicKeyA);
+        RecordingTxPoolPeer peer = new(TestItem.PublicKeyA);
 
         _broadcaster.AddPeer(peer);
 
-        peer.Received(0).SendNewTransactions(Arg.Any<IEnumerable<Transaction>>(), true);
+        Assert.That(peer.BatchCount(sendFullTx: true), Is.EqualTo(0));
 
         _broadcaster.BroadcastPersistentTxs();
         _broadcaster.BroadcastPersistentTxs();
@@ -103,12 +101,12 @@ public class TxBroadcasterTests
         _broadcaster.BroadcastPersistentTxs();
         _broadcaster.BroadcastPersistentTxs();
 
-        peer.Received(1).SendNewTransactions(Arg.Any<IEnumerable<Transaction>>(), true);
+        Assert.That(peer.BatchCount(sendFullTx: true), Is.EqualTo(1));
 
         // Advance time by 2 seconds (throttle is 1 second)
         timestamper.Add(TimeSpan.FromSeconds(2));
 
-        peer.Received(1).SendNewTransactions(Arg.Any<IEnumerable<Transaction>>(), true);
+        Assert.That(peer.BatchCount(sendFullTx: true), Is.EqualTo(1));
 
         _broadcaster.BroadcastPersistentTxs();
         _broadcaster.BroadcastPersistentTxs();
@@ -116,7 +114,7 @@ public class TxBroadcasterTests
         _broadcaster.BroadcastPersistentTxs();
         _broadcaster.BroadcastPersistentTxs();
 
-        peer.Received(2).SendNewTransactions(Arg.Any<IEnumerable<Transaction>>(), true);
+        Assert.That(peer.BatchCount(sendFullTx: true), Is.EqualTo(2));
     }
 
     [Test]
@@ -193,13 +191,12 @@ public class TxBroadcasterTests
         Assert.That(_broadcaster.GetSnapshot().Length, Is.EqualTo(1));
         Assert.That(_broadcaster.GetSnapshot().FirstOrDefault(), Is.EqualTo(lightTx).UsingTransactionComparer());
 
-        ITxPoolPeer peer = Substitute.For<ITxPoolPeer>();
-        peer.Id.Returns(TestItem.PublicKeyA);
+        RecordingTxPoolPeer peer = new(TestItem.PublicKeyA);
 
         _broadcaster.AddPeer(peer);
         _broadcaster.BroadcastPersistentTxs();
 
-        peer.Received(1).SendNewTransactions(Arg.Is<IEnumerable<Transaction>>(t => t.FirstOrDefault().GetLength(true) == size), false);
+        Assert.That(peer.Batches.Count(batch => !batch.SendFullTx && batch.Txs[0].GetLength(true) == size), Is.EqualTo(1));
     }
 
     [Test]
@@ -207,8 +204,8 @@ public class TxBroadcasterTests
     {
         _broadcaster = new TxBroadcaster(_comparer, TimerFactory.Default, _txPoolConfig, _headInfo, _logManager);
         _headInfo.CurrentBaseFee = 0.GWei;
-        RecordingPeer firstPeer = new(TestItem.PublicKeyA);
-        RecordingPeer secondPeer = new(TestItem.PublicKeyB);
+        RecordingTxPoolPeer firstPeer = new(TestItem.PublicKeyA);
+        RecordingTxPoolPeer secondPeer = new(TestItem.PublicKeyB);
         _broadcaster.AddPeer(firstPeer);
         _broadcaster.AddPeer(secondPeer);
         Transaction tx = Build.A.Transaction
@@ -236,7 +233,7 @@ public class TxBroadcasterTests
     public void should_announce_a_blob_carrying_frame_tx_as_a_light_transaction()
     {
         _broadcaster = new TxBroadcaster(_comparer, TimerFactory.Default, _txPoolConfig, _headInfo, _logManager);
-        RecordingPeer peer = new(TestItem.PublicKeyA);
+        RecordingTxPoolPeer peer = new(TestItem.PublicKeyA);
         _broadcaster.AddPeer(peer);
 
         Transaction tx = Build.A.Transaction
@@ -891,6 +888,76 @@ public class TxBroadcasterTests
     }
 
     [Test]
+    public void Timer_announces_each_gossipable_tx_once_to_every_peer()
+    {
+        Transaction[] transactions = new Transaction[6];
+        for (int i = 0; i < transactions.Length; i++)
+        {
+            transactions[i] = Build.A.Transaction.WithNonce((ulong)i).TestObject;
+        }
+        ITxGossipPolicy gossipPolicy = Substitute.For<ITxGossipPolicy>();
+        gossipPolicy.CanGossipTransactions.Returns(true);
+        gossipPolicy.ShouldGossipTransaction(Arg.Any<Transaction>()).Returns(static call => call.Arg<Transaction>().Nonce % 2 == 0);
+        ITimer timer = CreateManuallyTimedBroadcaster(gossipPolicy);
+        RecordingTxPoolPeer[] peers = [new(TestItem.PublicKeyA), new(TestItem.PublicKeyB)];
+        foreach (RecordingTxPoolPeer peer in peers) _broadcaster.AddPeer(peer);
+
+        foreach (Transaction tx in transactions) _broadcaster.Broadcast(tx, isPersistent: false);
+        timer.Elapsed += Raise.Event<EventHandler>(timer, EventArgs.Empty);
+
+        Transaction[] gossipable = transactions.Where(static tx => tx.Nonce % 2 == 0).ToArray();
+        using (Assert.EnterMultipleScope())
+        {
+            gossipPolicy.Received(transactions.Length).ShouldGossipTransaction(Arg.Any<Transaction>());
+            foreach (RecordingTxPoolPeer peer in peers)
+            {
+                Assert.That(peer.Batches.Select(static batch => batch.SendFullTx), Is.All.False);
+                Assert.That(peer.Sent, Is.EquivalentTo(gossipable));
+            }
+        }
+    }
+
+    [Test]
+    public void Timer_skips_the_gossip_policy_when_nothing_can_be_sent([Values] bool canGossipTransactions)
+    {
+        ITxGossipPolicy gossipPolicy = Substitute.For<ITxGossipPolicy>();
+        gossipPolicy.CanGossipTransactions.Returns(canGossipTransactions);
+        gossipPolicy.ShouldGossipTransaction(Arg.Any<Transaction>()).Returns(true);
+        ITimer timer = CreateManuallyTimedBroadcaster(gossipPolicy);
+        if (!canGossipTransactions) _broadcaster.AddPeer(new RecordingTxPoolPeer(TestItem.PublicKeyA));
+        _broadcaster.Broadcast(Build.A.Transaction.TestObject, isPersistent: false);
+
+        timer.Elapsed += Raise.Event<EventHandler>(timer, EventArgs.Empty);
+
+        gossipPolicy.DidNotReceive().ShouldGossipTransaction(Arg.Any<Transaction>());
+    }
+
+    [Test]
+    public void Timer_keeps_running_when_the_gossip_policy_throws()
+    {
+        ITxGossipPolicy gossipPolicy = Substitute.For<ITxGossipPolicy>();
+        gossipPolicy.CanGossipTransactions.Returns(true);
+        gossipPolicy.ShouldGossipTransaction(Arg.Any<Transaction>()).Returns(static _ => throw new InvalidOperationException());
+        ITimer timer = CreateManuallyTimedBroadcaster(gossipPolicy);
+        RecordingTxPoolPeer peer = new(TestItem.PublicKeyA);
+        _broadcaster.AddPeer(peer);
+        _broadcaster.Broadcast(Build.A.Transaction.TestObject, isPersistent: false);
+
+        Assert.That(() => timer.Elapsed += Raise.Event<EventHandler>(timer, EventArgs.Empty), Throws.Nothing);
+        timer.Received(1).Enabled = true;
+        Assert.That(peer.Sent, Is.Empty);
+    }
+
+    private ITimer CreateManuallyTimedBroadcaster(ITxGossipPolicy gossipPolicy)
+    {
+        ITimer timer = Substitute.For<ITimer>();
+        ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
+        timerFactory.CreateTimer(Arg.Any<TimeSpan>()).Returns(timer);
+        _broadcaster = new TxBroadcaster(_comparer, timerFactory, _txPoolConfig, _headInfo, _logManager, gossipPolicy);
+        return timer;
+    }
+
+    [Test]
     public async Task Should_not_send_null_tx_when_adding_concurrently_with_timer_swap()
     {
         // Regression for the gossip NRE seen on gnosis+Flat: BroadcastOnce used to lock on the
@@ -903,7 +970,7 @@ public class TxBroadcasterTests
 
         _broadcaster = new TxBroadcaster(_comparer, timerFactory, _txPoolConfig, _headInfo, _logManager);
 
-        RecordingPeer peer = new(TestItem.PublicKeyA);
+        RecordingTxPoolPeer peer = new(TestItem.PublicKeyA);
         _broadcaster.AddPeer(peer);
 
         const int txCount = 30_000;
@@ -933,27 +1000,10 @@ public class TxBroadcasterTests
         // Final flush of whatever was still accumulated after the adders finished.
         timer.Elapsed += Raise.Event<EventHandler>(timer, EventArgs.Empty);
 
-        Assert.That(peer.SawNull, Is.False, "A null transaction reached the peer - the accumulated tx list was corrupted by a data race.");
-        Assert.That(peer.Sent.Count, Is.EqualTo(txCount), "Every broadcast transaction should be sent exactly once.");
-        Assert.That(peer.Sent.Distinct().Count(), Is.EqualTo(txCount), "No transaction should be sent more than once.");
-    }
-
-    private sealed class RecordingPeer(PublicKey id) : ITxPoolPeer
-    {
-        private readonly ConcurrentBag<Transaction> _sent = [];
-        public PublicKey Id => id;
-        public ulong HeadNumber { get; set; }
-        public bool SawNull { get; private set; }
-        public IReadOnlyCollection<Transaction> Sent => _sent;
-
-        public void SendNewTransactions(IEnumerable<Transaction> txs, bool sendFullTx)
-        {
-            foreach (Transaction tx in txs)
-            {
-                if (tx is null) SawNull = true;
-                else _sent.Add(tx);
-            }
-        }
+        Transaction[] sent = peer.Sent.ToArray();
+        Assert.That(sent, Has.None.Null, "A null transaction reached the peer - the accumulated tx list was corrupted by a data race.");
+        Assert.That(sent.Length, Is.EqualTo(txCount), "Every broadcast transaction should be sent exactly once.");
+        Assert.That(sent.Distinct().Count(), Is.EqualTo(txCount), "No transaction should be sent more than once.");
     }
 
     private (IList<Transaction> expectedTxs, IList<Hash256> expectedHashes) GetTxsAndHashesExpectedToBroadcast(Transaction[] transactions, int expectedCountTotal)

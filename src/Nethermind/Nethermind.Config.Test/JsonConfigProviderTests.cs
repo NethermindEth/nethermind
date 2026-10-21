@@ -36,6 +36,7 @@ public class JsonConfigProviderTests
 
     [TestCase(12ul, typeof(BlocksConfig), nameof(BlocksConfig.SecondsPerSlot))]
     [TestCase(false, typeof(BlocksConfig), nameof(BlocksConfig.RandomizedBlocks))]
+    [TestCase(ProducedBlockDumpOptions.None, typeof(BlocksConfig), nameof(BlocksConfig.DumpProducedBlocks))]
     [TestCase("chainspec/foundation.json", typeof(InitConfig), nameof(InitConfig.ChainSpecPath))]
     [TestCase(DumpOptions.Default, typeof(InitConfig), nameof(InitConfig.AutoDump))]
     public void Test_getDefaultValue<T>(T expected, Type type, string propName)

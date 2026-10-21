@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Core;
+using Nethermind.Evm.Tracing;
 
 namespace Nethermind.TxPool;
 
@@ -27,6 +29,11 @@ public interface IFrameTxPrefixSimulator
     /// <param name="preempt">Checked at entry and polled with <paramref name="token"/>; once it returns true the
     /// simulation does not start or stops, and the result is a node-bound rejection.</param>
     FrameTxSimulationResult Simulate(Transaction tx, bool signaturesPreValidated = false, bool local = false, CancellationToken token = default, Func<bool>? preempt = null);
+
+    /// <summary>Whether the current head's gossip simulation budget is already spent, read without the lock.</summary>
+    /// <remarks>Advisory: lets admission defer before work the simulation would waste. <see cref="Simulate"/> stays
+    /// the authoritative check.</remarks>
+    bool IsHeadBudgetSpent => false;
 }
 
 /// <summary>How far a validation-prefix simulation got.</summary>
@@ -52,13 +59,15 @@ public enum FrameTxSimulationOutcome
 /// <param name="indeterminate">Whether the outcome reflects a bound or a fault rather than the prefix.</param>
 /// <param name="nodeBound">Whether that bound was one this node imposed on itself.</param>
 /// <param name="yielded">Whether the simulation stood aside for work this node was doing at that moment.</param>
+/// <param name="codeDependencies">EIP-8298 targets an accepted prefix relied on whose code could change.</param>
 public readonly struct FrameTxSimulationResult(
     FrameTxSimulationOutcome outcome,
     Address? payer,
     string? reason,
     bool indeterminate = false,
     bool nodeBound = false,
-    bool yielded = false)
+    bool yielded = false,
+    IReadOnlyList<FrameTxCodeDependency>? codeDependencies = null)
 {
     /// <summary>How far the simulation got.</summary>
     public FrameTxSimulationOutcome Outcome { get; } = outcome;
@@ -90,8 +99,12 @@ public readonly struct FrameTxSimulationResult(
     /// <remarks>A spent per-head budget is not yielded: it holds until the next head by design.</remarks>
     public bool Yielded { get; } = yielded;
 
+    /// <summary>EIP-8298 targets an accepted prefix relied on whose code could change through DELEGATECALL or CALLCODE.</summary>
+    public IReadOnlyList<FrameTxCodeDependency> CodeDependencies { get; } = codeDependencies ?? [];
+
     /// <summary>The prefix ran to <paramref name="payer"/>.</summary>
-    public static FrameTxSimulationResult Accept(Address payer) => new(FrameTxSimulationOutcome.Accepted, payer, null);
+    public static FrameTxSimulationResult Accept(Address payer, IReadOnlyList<FrameTxCodeDependency>? codeDependencies = null) =>
+        new(FrameTxSimulationOutcome.Accepted, payer, null, codeDependencies: codeDependencies);
 
     /// <summary>The prefix itself is invalid, so the transaction can be dropped.</summary>
     public static FrameTxSimulationResult Reject(string reason) => new(FrameTxSimulationOutcome.Rejected, null, reason);

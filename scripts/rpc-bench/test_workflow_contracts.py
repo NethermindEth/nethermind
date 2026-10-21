@@ -346,6 +346,35 @@ class ResolverExecutionTests(unittest.TestCase):
                                 "BASELINE_CACHE_HIT": "true", "BASELINE_FALLBACK_IMAGE": "nethermindeth/nethermind:master"})
             return run_in_repo(expand(run_block("Run RPC sweep"), {}), environment, "-eo pipefail", timeout=120)
 
+    def test_single_node_gas_cap_defaults_and_override(self):
+        for tool, node, expected in (({}, {}, "1000000000"),
+                                     ({"eth_call_corpus": True}, {}, "1000000000000"),
+                                     ({}, {"rpc_gas_cap": 2000000000}, "2000000000"),
+                                     ({}, {"rpc_gas_cap": 10**15 - 1}, "999999999999999")):
+            with self.subTest(tool=tool, node=node):
+                result, output = self.run_resolver(json.dumps(tool), IN_TOOL="jsonbench",
+                                                   IN_NODE_CONFIG=json.dumps(node))
+                self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+                self.assertEqual(expected, github_outputs(output)["rpc_gas_cap"])
+
+    def test_invalid_or_ignored_gas_caps_are_rejected(self):
+        for cap in (0, -1, 1.5, "2000000000", True, False, [], {}, 10**15, 10**18):
+            with self.subTest(cap=cap):
+                result, _ = self.run_resolver("{}", IN_TOOL="jsonbench",
+                                               IN_NODE_CONFIG=json.dumps({"rpc_gas_cap": cap}))
+                self.assertNotEqual(0, result.returncode)
+                self.assertIn("rpc_gas_cap must be", result.stdout + result.stderr)
+        result, _ = self.run_resolver('{"clients":"nethermind@image:tag"}',
+                                       IN_NODE_CONFIG='{"rpc_gas_cap":2000000000}')
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("supported only by single-node", result.stdout + result.stderr)
+
+    def test_both_single_node_startups_receive_the_resolved_gas_cap(self):
+        for step in ("Start node", "Start reference node"):
+            with self.subTest(step=step):
+                self.assertIn("RPC_GAS_CAP: ${{ needs.resolve.outputs.rpc_gas_cap }}",
+                              RpcBenchmarkWorkflowTests.step(step))
+
     def test_jsonbench_sweep_accepts_complete_user_clients_with_cache_sentinel(self):
         clients = "nethermind@baseline/image:tag nethermind@candidate/image:tag"
         result, output = self.run_resolver(json.dumps({"clients": clients}))

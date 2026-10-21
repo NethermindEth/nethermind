@@ -11,6 +11,7 @@ using Nethermind.Core;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Threading;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
@@ -55,6 +56,8 @@ public class BranchProcessor(
         if (suggestedBlocks.Count == 0) return [];
 
         Block suggestedBlock = suggestedBlocks[0];
+        ParallelUnbalancedWork.WorkerGroup workerGroup =
+            (options.ContainsFlag(ProcessingOptions.ReadOnlyChain) ? null : ParallelUnbalancedWork.GetCurrentGroup()) ?? new(Environment.ProcessorCount);
         // The scope is opened at the target's parent, but baseBlock still selects the prewarmed caches, so an
         // inconsistent pair would warm one state and execute another without any other symptom.
         Debug.Assert(suggestedBlock.IsGenesis ? baseBlock is null : baseBlock?.Hash == suggestedBlock.ParentHash,
@@ -95,13 +98,16 @@ public class BranchProcessor(
 
         try
         {
-            // Start prewarming as early as possible
             IReleaseSpec spec = specProvider.GetSpec(suggestedBlock.Header);
-            prewarming = PreWarmTransactions(suggestedBlock, baseBlock!, spec, backgroundCancellation.Token);
-            Task? prefetchBlockhash = blockhashProvider.Prefetch(suggestedBlock.Header, backgroundCancellation.Token);
-
-            blocksProcessingEventArgs = new BlocksProcessingEventArgs(suggestedBlocks);
-            BlocksProcessing?.Invoke(this, blocksProcessingEventArgs);
+            Task? prefetchBlockhash;
+            using (workerGroup.Enter())
+            {
+                // Start prewarming as early as possible.
+                prewarming = PreWarmTransactions(suggestedBlock, baseBlock!, spec, backgroundCancellation.Token);
+                prefetchBlockhash = blockhashProvider.Prefetch(suggestedBlock.Header, backgroundCancellation.Token);
+                blocksProcessingEventArgs = new BlocksProcessingEventArgs(suggestedBlocks);
+                BlocksProcessing?.Invoke(this, blocksProcessingEventArgs);
+            }
 
             BlockHeader? preBlockBaseBlock = baseBlock;
 
@@ -114,6 +120,7 @@ public class BranchProcessor(
             for (int i = 0; i < blocksCount; i++)
             {
                 suggestedBlock = suggestedBlocks[i];
+                using ParallelUnbalancedWork.WorkerScope workers = workerGroup.Enter();
                 if (i > 0)
                 {
                     // Refresh spec
@@ -160,6 +167,13 @@ public class BranchProcessor(
                 CancellationTokenExtensions.CancelDisposeAndClear(ref backgroundCancellation);
 
                 processedBlocks[i] = processedBlock;
+
+                // Only the processed header carries the EIP-8037 dimensions, and its consensus twin is what a
+                // later re-validation of this block is handed, so an inclusion list judged then sees the same gas.
+                // Nothing records them for a block with no transaction to record, and since the header's total is
+                // their maximum, spending no gas puts both at zero.
+                if (processedBlock.GasUsed == 0) processedBlock.Header.GasUsedPerDimension ??= (0, 0);
+                suggestedBlock.Header.GasUsedPerDimension = processedBlock.Header.GasUsedPerDimension;
 
                 // A signal, not a rejection: the block is still committed, and it reads post-execution
                 // state. Assigned even under NoValidation, to clear a stale false on a reused instance.
@@ -209,15 +223,6 @@ public class BranchProcessor(
                 prefetchBlockhash = null;
 
                 stateProvider.Reset();
-
-                // Calculate the transaction hashes in the background and release tx sequence memory
-                // Hashes will be required for PersistentReceiptStorage in ForkchoiceUpdatedHandler
-                // Though we still want to release the memory even if syncing rather than processing live
-                // Empty blocks have nothing to hash, so skip the ThreadPool dispatch entirely.
-                if (suggestedBlock.Transactions.Length > 0)
-                {
-                    TxHashCalculator.CalculateInBackground(suggestedBlock);
-                }
             }
 
             return processedBlocks;
@@ -225,7 +230,8 @@ public class BranchProcessor(
         catch (Exception ex) // try to restore at all cost
         {
             processingException = ex;
-            if (_logger.IsWarn) _logger.Warn($"Encountered exception {ex} while processing blocks.");
+            // Cancelling the token is reported by whoever cancelled it: a processing timeout or shutdown.
+            if (_logger.IsWarn && !(ex is OperationCanceledException && token.IsCancellationRequested)) _logger.Warn($"Encountered exception {ex} while processing blocks.");
             CancellationTokenExtensions.CancelDisposeAndClear(ref backgroundCancellation);
             DrainAndClear(ref prewarming);
 
@@ -267,25 +273,5 @@ public class BranchProcessor(
     {
         DisposableExtensions.DisposeAndNull(ref prewarming);
         preWarmer?.ClearCaches();
-    }
-
-    private class TxHashCalculator(Block suggestedBlock) : IThreadPoolWorkItem
-    {
-        public static void CalculateInBackground(Block suggestedBlock) =>
-            // Memory has been reserved on the transactions to delay calculate the hashes
-            // We calculate the hashes in the background to release that memory
-            ThreadPool.UnsafeQueueUserWorkItem(new TxHashCalculator(suggestedBlock), preferLocal: false);
-
-        void IThreadPoolWorkItem.Execute()
-        {
-            // Hashes will be required for PersistentReceiptStorage in TryUpdateMainChain ForkchoiceUpdatedHandler
-            // Which occurs after the block has been processed; however the block is stored in cache and picked up
-            // from there so we can calculate the hashes now for that later use.
-            foreach (Transaction tx in suggestedBlock.Transactions)
-            {
-                // Calculate the hashes to release the memory from the transactionSequence
-                tx.CalculateHashInternal();
-            }
-        }
     }
 }

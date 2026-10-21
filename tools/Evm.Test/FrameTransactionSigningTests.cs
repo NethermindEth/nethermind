@@ -5,6 +5,7 @@ using Evm.T8n.Errors;
 using Evm.T8n.JsonTypes;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Facade.Eth.RpcTransaction;
@@ -75,12 +76,12 @@ public class FrameTransactionSigningTests
 
         Transaction transaction = Fill(BuildInput(key, key.Address, [Entry()]));
 
-        Assert.That(FrameTxValidation.IsWellFormed(transaction, postTxEnabled: true, out string? error), Is.True, error);
+        Assert.That(FrameTxValidation.IsWellFormed(transaction, assertEnabled: true, out string? error), Is.True, error);
 
         // The digest is recomputed from the decoded form, so a fill over a stale preimage fails here.
         Transaction decoded = EncodeDecode(transaction);
 
-        Assert.That(FrameTxValidation.IsWellFormed(decoded, postTxEnabled: true, out error), Is.True, error);
+        Assert.That(FrameTxValidation.IsWellFormed(decoded, assertEnabled: true, out error), Is.True, error);
         Assert.That(transaction.Hash, Is.EqualTo(decoded.Hash));
         AssertSignatureRecoversSigner(decoded, 0, key.Address);
     }
@@ -105,7 +106,7 @@ public class FrameTransactionSigningTests
 
         Transaction transaction = Fill(BuildInput(key, key.Address, [Entry(signature: signature)]));
 
-        Assert.That(transaction.FrameSignatures![0].Signature.ToArray(), Is.EqualTo(signature));
+        Assert.That(transaction.FrameSignatures![0].Signature, Is.SequenceEqualTo(signature));
     }
 
     [Test]
@@ -118,7 +119,7 @@ public class FrameTransactionSigningTests
 
         Transaction transaction = Fill(BuildInput(key, key.Address, [explicitEntry, Entry()]));
 
-        Assert.That(transaction.FrameSignatures![0].Signature.ToArray(), Is.EqualTo(explicitSignature));
+        Assert.That(transaction.FrameSignatures![0].Signature, Is.SequenceEqualTo(explicitSignature));
         AssertSignatureRecoversSigner(transaction, 1, key.Address);
     }
 

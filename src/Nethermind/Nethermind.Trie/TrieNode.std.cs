@@ -1,12 +1,17 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.Intrinsics.X86;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
+using Nethermind.Serialization.Rlp;
+using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Trie
 {
@@ -170,9 +175,96 @@ namespace Nethermind.Trie
             }
         }
 
+        /// <summary>Publishes the RLP a node was resolved from.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void WriteLoadedRlp(CappedArray<byte> value) => WriteRlp(value);
+
+        /// <summary>Gives this clone of <paramref name="original"/> its RLP, <paramref name="rlp"/>.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void InitClonedRlp(CappedArray<byte> rlp, TrieNode original) => InitRlp(rlp);
+
+        /// <summary>What <see cref="ComputeKeccak"/> may reuse of a node's RLP from before it is re-encoded: nothing here.</summary>
+        private readonly struct PreviousRlp { }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private PreviousRlp ReadPreviousRlp() => default;
+
+        /// <summary>Computes the keccak of <paramref name="rlp"/>, this node's encoding.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static Hash256 ComputeKeccak(ReadOnlySpan<byte> rlp, in PreviousRlp previous) =>
+            Nethermind.Core.Crypto.Keccak.Compute(rlp);
+        private void ResolveUnknownNodeWithContext(ITrieNodeResolver tree, in TreePath path, ReadFlags readFlags,
+            ICappedArrayPool? bufferPool)
+        {
+            try
+            {
+                ResolveUnknownNode(tree, path, readFlags, bufferPool);
+            }
+            catch (RlpException rlpException)
+            {
+                ThrowDecodingError(rlpException, path);
+            }
+
+            [DoesNotReturn, StackTraceHidden]
+            void ThrowDecodingError(RlpException rlpException, in TreePath path) => throw new TrieNodeException($"Error when decoding node {Keccak}", path,
+                    Keccak ?? Nethermind.Core.Crypto.Keccak.Zero, rlpException);
+        }
+
+        /// <summary>Returns a dirty node to modify in place of this sealed one.</summary>
+        /// <remarks>A clone: a sealed node may be shared through the trie store's cache with other tries and later blocks.</remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal TrieNode Unseal() => Clone();
+
         /// <summary>Whether a resolved, persisted child is dropped back to its hash once traversed.</summary>
         /// <remarks>Worth it for a long-lived process, whose node cache would otherwise retain every deep
         /// persisted path it has ever walked. See <c>TrieNode.zkevm.cs</c> for why the guest declines.</remarks>
         private const bool PruneTraversedChildren = true;
+
+        /// <summary>Whether a re-encoded branch keeps its previous RLP's value as it stands, rather than walking to it to drop it.</summary>
+        /// <remarks>Not on the host, whose stores can hold a branch read from anywhere: like a fresh encoding, the re-encode drops
+        /// any value. See <c>TrieNode.zkevm.cs</c> for why the guest keeps it.</remarks>
+        private static bool CopiesBranchValue => false;
+
+        /// <summary>Whether a branch hashed as soon as it is encoded keeps the RLP it had rather than its new one.</summary>
+        /// <remarks>Not on the host, which persists the new RLP. See <c>TrieNode.zkevm.cs</c> for the guest.</remarks>
+        private static bool KeepsRlpOfHashedBranch => false;
+
+        /// <summary>Rents the buffer the encoding of the branch at <paramref name="path"/> is written into: from <paramref name="pool"/>.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static CappedArray<byte> RentBranchRlp(ICappedArrayPool? pool, int length, in TreePath path) => pool.SafeRent(length);
+
+        /// <summary>Returns <paramref name="rlp"/>, a branch encoding, in a buffer the node can keep: the one it is in.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static CappedArray<byte> StorableBranchRlp(CappedArray<byte> rlp, ICappedArrayPool? pool) => rlp;
+
+        /// <summary>How <see cref="GetChildWithChildPath"/> is inlined: left to the JIT.</summary>
+        private const MethodImplOptions GetChildWithChildPathInlining = default;
+
+        /// <summary>How <see cref="SetChild"/> is inlined: left to the JIT.</summary>
+        private const MethodImplOptions SetChildInlining = default;
+
+        /// <summary>How <see cref="PrepareRlp"/> is inlined: left to the JIT.</summary>
+        private const MethodImplOptions PrepareRlpInlining = default;
+
+        /// <summary>Called once a node's key has been replaced.</summary>
+        /// <remarks>Nothing to do on the host, whose leaf encoder never reads a leaf's previous RLP.</remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void OnKeyChanged() { }
+
+        /// <summary>Encodes <paramref name="node"/>, a leaf, from the key item of its previous RLP; never on the host.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool TryEncodeLeafWithStoredKey(TrieNode node, ICappedArrayPool? pool, out CappedArray<byte> rlp)
+        {
+            rlp = default;
+            return false;
+        }
+
+        /// <summary>Descends <paramref name="path"/> into child <paramref name="index"/> of the node being encoded.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static void EnterChildPath(ref TreePath path, int index) => path.AppendMut(index);
+
+        /// <summary>Climbs <paramref name="path"/> back out of the child <see cref="EnterChildPath"/> entered.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static void LeaveChildPath(ref TreePath path) => path.TruncateOne();
     }
 }

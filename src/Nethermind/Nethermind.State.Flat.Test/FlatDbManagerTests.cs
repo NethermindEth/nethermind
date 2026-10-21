@@ -9,6 +9,7 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -421,7 +422,7 @@ public class FlatDbManagerTests
             }
             else
             {
-                Assert.That(slot!.WithoutLeadingZeros().ToArray(), Is.EqualTo(Convert.FromHexString(expectedSlotHex)));
+                Assert.That(slot!.WithoutLeadingZeros(), Is.SequenceEqualTo(Convert.FromHexString(expectedSlotHex)));
             }
         }
     }
@@ -589,6 +590,30 @@ public class FlatDbManagerTests
             _persistenceManager.Received(2).LeaseReader();
             staleReader.Received(1).Dispose();
             freshReader.DidNotReceive().Dispose();
+        }
+    }
+
+    // The snap-sync wipe left the persisted pointer at genesis while every reader sat at PreGenesis, so
+    // HasStateForBlock stayed true and each read retried for 5 s before failing as an internal error (-32603).
+    [Test]
+    public async Task GatherReadOnlySnapshotBundle_persisted_pointer_ahead_of_reader_fails_fast_with_state_not_retained()
+    {
+        StateId genesis = CreateStateId(0, rootByte: 1);
+        IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
+        reader.CurrentState.Returns(StateId.PreGenesis);
+        _persistenceManager.LeaseReader().Returns(reader);
+        _persistenceManager.GetCurrentPersistedStateId().Returns(genesis);
+        _snapshotRepository.AssembleSnapshots(genesis, StateId.PreGenesis, Arg.Any<int>())
+            .Returns(_ => new AssembledSnapshotResult(new SnapshotPooledList(0), PersistedSnapshotList.Empty()));
+        _snapshotRepository.HasState(genesis).Returns(false);
+
+        await using FlatDbManager manager = CreateManager();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(() => manager.GatherReadOnlySnapshotBundle(genesis),
+                Throws.TypeOf<StateNotRetainedException>().With.Message.StartsWith("No state available for block 0"));
+            _persistenceManager.Received(2).LeaseReader();
         }
     }
 

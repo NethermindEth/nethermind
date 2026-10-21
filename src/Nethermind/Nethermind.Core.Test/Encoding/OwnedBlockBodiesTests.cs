@@ -46,7 +46,7 @@ public class OwnedBlockBodiesTests
         BlockBody[] blockBodies = { Build.A.Block.WithTransactions(1, MainnetSpecProvider.Instance).TestObject.Body };
         blockBodies[0].Transactions[0].Data = actualMemoryOwner.Memory;
         actualMemoryOwner.Memory.Span.Fill(1);
-        Assert.That(blockBodies[0].Transactions[0].Data.ToArray(), Is.EqualTo(actualMemoryOwner.Memory.ToArray()));
+        Assert.That(blockBodies[0].Transactions[0].Data, Is.SequenceEqualTo(actualMemoryOwner.Memory));
 
         OwnedBlockBodies ownedBlockBodies = new(blockBodies, memoryOwner);
         ownedBlockBodies.Disown();

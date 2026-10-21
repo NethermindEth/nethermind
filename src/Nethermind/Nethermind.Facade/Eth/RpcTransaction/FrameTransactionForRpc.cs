@@ -5,10 +5,13 @@ using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.Facade.Eth.RpcTransaction;
 
 /// <summary>JSON-RPC view of an EIP-8141 frame transaction: the EIP-1559 fee fields plus the frame and hoisted signature lists.</summary>
+[GenerateJsonWriter(RegisterWithSerializer = false)]
+[RepopulatableTransaction]
 public class FrameTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction<FrameTransactionForRpc>
 {
     public new static TxType TxType => TxType.FrameTx;
@@ -27,6 +30,8 @@ public class FrameTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction
 
     /// <summary>EIP-8141 <c>signatures</c>: the entries hoisted out of the frames, verified before any frame
     /// runs and read by frame code through <c>SIGPARAM</c> by index into this list.</summary>
+    /// <remarks>RPC simulation accepts an entry with empty signature bytes as a placeholder and prices it as signed, so
+    /// supply one per entry the signed transaction will carry; entries with signature bytes are still verified.</remarks>
     public FrameSignatureForRpc[]? Signatures { get; set; }
 
     /// <summary><c>max_fee_per_blob_gas</c>, an unconditional field of the signed payload.</summary>
@@ -37,18 +42,18 @@ public class FrameTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public byte[][]? BlobVersionedHashes { get; set; }
 
-    public RecentRootReferenceForRpc[]? RecentRootReferences { get; set; }
-
     [JsonConstructor]
     public FrameTransactionForRpc() { }
 
     public FrameTransactionForRpc(Transaction transaction, in TransactionForRpcContext extraData)
-        : base(transaction, extraData)
+        : base(transaction, extraData) { }
+
+    internal override void Populate(Transaction transaction, in TransactionForRpcContext extraData)
     {
+        base.Populate(transaction, extraData);
         NonceKeys = transaction.NonceKeys;
         Frames = FrameForRpc.FromFrames(transaction.Frames);
         Signatures = FrameSignatureForRpc.FromSignatures(transaction.FrameSignatures);
-        RecentRootReferences = RecentRootReferenceForRpc.FromReferences(transaction.RecentRootReferences);
 
         // Covered by the sig hash, so always reported: a consumer must be able to rebuild the payload.
         MaxFeePerBlobGas = transaction.MaxFeePerBlobGas ?? 0;
@@ -65,9 +70,6 @@ public class FrameTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction
 
         if (!FrameSignatureForRpc.TryToSignatures(Signatures, out TxFrameSignature[]? signatures))
             return RpcTransactionErrors.NullEntryIn("signatures");
-
-        if (!RecentRootReferenceForRpc.TryToReferences(RecentRootReferences, out RecentRootReference[]? references))
-            return RpcTransactionErrors.NullEntryIn("recentRootReferences");
 
         // The caller's gas field is not what this type spends, so the cap the base applied to
         // Transaction.GasLimit leaves the work a frame transaction asks for unbounded.
@@ -89,7 +91,6 @@ public class FrameTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction
         tx.FrameSignatures = signatures;
         tx.MaxFeePerBlobGas = MaxFeePerBlobGas;
         tx.BlobVersionedHashes = BlobVersionedHashes;
-        tx.RecentRootReferences = references;
         return tx;
     }
 

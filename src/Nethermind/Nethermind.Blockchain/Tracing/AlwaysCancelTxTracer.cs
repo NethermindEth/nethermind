@@ -98,6 +98,7 @@ public class AlwaysCancelTxTracer : ITxTracer
     public void ReportActionEnd(ulong gas, ReadOnlyMemory<byte> output) => throw new OperationCanceledException(ErrorMessage);
     public void ReportActionError(EvmExceptionType exceptionType) => throw new OperationCanceledException(ErrorMessage);
     public void ReportActionRemainingGas(ulong gas) => throw new OperationCanceledException(ErrorMessage);
+    public void ReportPrecompileAccountRead(Address address) => throw new OperationCanceledException(ErrorMessage);
     public void ReportRejectedAction(ulong gas, ulong gasLeft, UInt256 value, Address from, Address? to, ReadOnlyMemory<byte> input,
         ExecutionType callType, EvmExceptionType error, bool isPrecompileCall = false) => throw new OperationCanceledException(ErrorMessage);
     public void ReportActionRevert(ulong gas, ReadOnlyMemory<byte> output) => throw new OperationCanceledException(ErrorMessage);

@@ -60,19 +60,26 @@ public static class NetworkHelper
         }
     }
 
-    private static PortInUseException MapOrRethrow(Exception exception, int[]? ports = null, string[]? urls = null)
+    private static ListenerBindException MapOrRethrow(Exception exception, int[]? ports = null, string[]? urls = null)
     {
         if (exception is AggregateException)
             exception = exception.InnerException!;
 
-        switch (exception)
+        // Kestrel wraps the socket error as IOException -> AddressInUseException -> SocketException.
+        bool isSocketError = false;
+        for (Exception? current = exception; current is not null; current = current.InnerException)
         {
-            case SocketException { SocketErrorCode: SocketError.AddressAlreadyInUse or SocketError.AccessDenied }:
-                return ports != null ? new(exception, ports) : new(exception, urls!);
-            default:
-                ExceptionDispatchInfo.Throw(exception);
-                throw exception; // Make compiler happy, should never execute
+            if (current is SocketException { SocketErrorCode: SocketError.AddressAlreadyInUse or SocketError.AccessDenied })
+                return ports is not null ? new PortInUseException(exception, ports) : new PortInUseException(exception, urls!);
+
+            isSocketError |= current is SocketException;
         }
+
+        if (isSocketError)
+            return ports is not null ? new ListenerBindException(exception, ports) : new ListenerBindException(exception, urls!);
+
+        ExceptionDispatchInfo.Throw(exception);
+        throw exception; // Make compiler happy, should never execute
     }
 
     public static T HandlePortTakenError<T>(Func<T> action, params int[] ports)

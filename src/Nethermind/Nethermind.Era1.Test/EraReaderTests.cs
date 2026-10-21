@@ -77,9 +77,7 @@ internal class EraReaderTests
     {
         Transaction source = Build.A.Transaction.Signed().TestObject;
         using PopulatedTestFile file = await PopulatedTestFile.Create(source);
-        HashSet<Transaction> pooled = new(ReferenceEqualityComparer.Instance);
-        for (int i = 0; i < 2_048; i++) pooled.Add(TxDecoder.TxObjectPool.Get());
-        foreach (Transaction transaction in pooled) TxDecoder.TxObjectPool.Return(transaction);
+        HashSet<Transaction> pooled = TransactionPoolTestHelper.Refill();
 
         using EraReader reader = new(file.FilePath);
         (Block block, _) = await reader.GetBlockByNumber(0);
@@ -135,6 +133,14 @@ internal class EraReaderTests
         using EraReader sut = new(tmpFile.FilePath);
         ValueHash256 fileRoot = await sut.VerifyContent(Substitute.For<ISpecProvider>(), Always.Valid, default);
         Assert.That(root, Is.EqualTo(fileRoot));
+    }
+
+    [Test]
+    public async Task CalculateAccumulator_MainnetFile_MatchesStoredAccumulator(
+        [Values("mainnet-00000-5ec1ffb8.era1", "mainnet-00001-a5364e9a.era1", "mainnet-00002-98cbd8a9.era1")] string fileName)
+    {
+        using EraReader sut = new(Path.Combine("testdata/mainnet", fileName));
+        Assert.That(await sut.CalculateAccumulator(), Is.EqualTo(sut.ReadAccumulator()));
     }
 
     [Test]

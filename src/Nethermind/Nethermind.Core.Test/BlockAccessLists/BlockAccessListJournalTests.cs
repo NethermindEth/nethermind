@@ -72,7 +72,7 @@ public class BlockAccessListJournalTests
         // Inspect the bounded cache so these lookups must exercise the binary-search fallback.
         int[] index = (int[])typeof(BalReadStoragePlan)
             .GetField(collideAccounts ? "_addressIndex" : "_slotIndex", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(plan)!;
-        Assert.That(index.AsSpan(0, 4).ToArray(), Is.EqualTo(new[] { 1, 2, 3, 4 }));
+        Assert.That(index.AsSpan(0, 4), Is.SequenceEqualTo(new[] { 1, 2, 3, 4 }));
         Assert.That(index.AsSpan(0, 32).ToArray(), Does.Not.Contain(5));
         BalReadCoverage coverage = plan.CreateCoverage();
         for (int i = 0; i < reads.Count; i++)

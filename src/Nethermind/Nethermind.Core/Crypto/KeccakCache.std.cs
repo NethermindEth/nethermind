@@ -61,8 +61,10 @@ public static unsafe partial class KeccakCache
 
         ref Entry e = ref GetEntry(input, out uint combined);
         if (TryRead(input, ref e, combined, out keccak256)) return;
-        keccak256 = ValueKeccak.Compute(input);
-        Write(input, ref e, combined, in keccak256);
+        // Cached before the output is written, which may alias the input.
+        ValueHash256 digest = ValueKeccak.Compute(input);
+        Write(input, ref e, combined, in digest);
+        keccak256 = digest;
 
         return;
 

@@ -3,11 +3,9 @@
 
 using System;
 using System.Runtime.Intrinsics.X86;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -38,7 +36,7 @@ namespace Nethermind.State;
 /// the same StateProvider would skip re-inserting the bytes, throwing
 /// "Code 0x… is missing from the database" on the next read.
 /// </param>
-public class TrieStoreScopeProvider(
+public partial class TrieStoreScopeProvider(
     ITrieStore trieStore,
     IKeyValueStoreWithBatching codeDb,
     IStateHeaderProvider stateHeaderProvider,
@@ -49,7 +47,8 @@ public class TrieStoreScopeProvider(
     private readonly IStateHeaderProvider _stateHeaderProvider = stateHeaderProvider;
     private readonly ILogManager _logManager = logManager;
     protected StateTree? _backingStateTree;
-    private readonly KeyValueWithBatchingBackedCodeDb _codeDb = new(codeDb, codeDbIsPersistent);
+    // Used as is: the stateless witness' store serves code as executable memory, which the EVM runs without a copy.
+    private readonly IWorldStateScopeProvider.ICodeDb _codeDb = codeDb as IWorldStateScopeProvider.ICodeDb ?? new KeyValueWithBatchingBackedCodeDb(codeDb, codeDbIsPersistent);
 
     protected StateTree BackingStateTree =>
         _backingStateTree ?? throw new InvalidOperationException("A state tree is only available within a world-state scope.");
@@ -130,7 +129,7 @@ public class TrieStoreScopeProvider(
 
         public Account? Get(Address address)
         {
-            ref Account? account = ref CollectionsMarshal.GetValueRefOrAddDefault(_loadedAccounts, address, out bool exists);
+            ref Account? account = ref _loadedAccounts.GetValueRefOrAddDefault(address, out bool exists);
             if (!exists)
             {
                 account = _backingStateTree.Get(address);
@@ -140,6 +139,8 @@ public class TrieStoreScopeProvider(
         }
 
         public void HintGet(Address address, Account? account) => _loadedAccounts.TryAdd(address, account);
+
+        public void ApplyBal(ReadOnlyBlockAccessList bal, CancellationToken cancellationToken) => ScopeBalApplier.Apply(this, bal, _logManager, cancellationToken);
 
         public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null)
         {
@@ -164,7 +165,7 @@ public class TrieStoreScopeProvider(
                 return Task.CompletedTask;
             }
 
-            // Copy the span into a pooled array so the Parallel.For body can capture it.
+            // Copy the span into a pooled array so the parallel loop can capture it.
             ArrayPoolList<ReadOnlyAccountChanges> accountChanges = new(bal.AccountChanges.AsSpan());
 
             _hintBalCts = new CancellationTokenSource();
@@ -173,12 +174,13 @@ public class TrieStoreScopeProvider(
             return _hintBalTask = Task.Run(() =>
             {
                 // PatriciaTree.Get mutates shared TrieNode children in place as it resolves them,
-                // so each Parallel.For iteration must own its StateTree / StorageTree — slots per
+                // so each parallel iteration must own its StateTree / StorageTree — slots per
                 // account are read sequentially on the worker that owns it.
                 ParallelOptions parallelOptions = new() { CancellationToken = token };
                 try
                 {
-                    Parallel.For(0, accountCount, parallelOptions, (i) =>
+                    using ParallelUnbalancedWork.WorkerScope workers = ParallelUnbalancedWork.BeginWorkerScope(Environment.ProcessorCount);
+                    ParallelUnbalancedWork.For(0, accountCount, parallelOptions, (i) =>
                     {
                         if (token.IsCancellationRequested) return;
                         ReadOnlyAccountChanges ac = accountChanges[i];
@@ -260,8 +262,8 @@ public class TrieStoreScopeProvider(
         public IWorldStateScopeProvider.ICodeDb CodeDb => _codeDb1;
 
         internal StateTree _backingStateTree = backingStateTree;
-        private readonly Dictionary<AddressAsKey, StorageTree> _storages = [];
-        private readonly Dictionary<AddressAsKey, Account?> _loadedAccounts = [];
+        private readonly OptimizedDictionary<AddressAsKey, StorageTree> _storages = [];
+        private readonly OptimizedDictionary<AddressAsKey, Account?> _loadedAccounts = [];
         private readonly TrieStoreScopeProvider _scopeProvider = scopeProvider;
         private readonly IWorldStateScopeProvider.ICodeDb _codeDb1 = codeDb;
         private readonly IDisposable _trieStoreCloser = trieStoreCloser;
@@ -318,13 +320,12 @@ public class TrieStoreScopeProvider(
         public IWorldStateScopeProvider.IStorageTree CreateStorageTree(Address address) => LookupStorageTree(address);
     }
 
-    private class WorldStateWriteBatch(
+    private partial class WorldStateWriteBatch(
         TrieStoreWorldStateBackendScope scope,
         int estimatedAccountCount,
         ILogger logger) : IWorldStateScopeProvider.IWorldStateWriteBatch
     {
         private readonly Dictionary<AddressAsKey, Account?> _dirtyAccounts = new(estimatedAccountCount);
-        private readonly ConcurrentQueue<(AddressAsKey, Hash256)> _dirtyStorageTree = new();
         private Action<Address, Hash256>? _markDirty;
 
         public event EventHandler<IWorldStateScopeProvider.AccountUpdated>? OnAccountUpdated;
@@ -357,18 +358,7 @@ public class TrieStoreScopeProvider(
 
             OnAccountUpdated = null;
 
-            if (Avx2.IsSupported && _dirtyAccounts.Count >= KeyHashBatch.MinimumBatchSize)
-            {
-                scope._backingStateTree.SetAccounts(_dirtyAccounts);
-            }
-            else
-            {
-                using StateTree.StateTreeBulkSetter stateSetter = scope._backingStateTree.BeginSet(_dirtyAccounts.Count);
-                foreach (KeyValuePair<AddressAsKey, Account?> kv in _dirtyAccounts)
-                {
-                    stateSetter.Set(kv.Key, kv.Value);
-                }
-            }
+            scope._backingStateTree.WriteAccounts(_dirtyAccounts);
 
             scope.ClearLoadedAccounts();
 
@@ -378,7 +368,7 @@ public class TrieStoreScopeProvider(
         }
     }
 
-    public class StorageTreeBulkWriteBatch(
+    public partial class StorageTreeBulkWriteBatch(
         int estimatedEntries,
         StorageTree storageTree,
         Action<Address, Hash256> onRootUpdated,
@@ -397,7 +387,7 @@ public class TrieStoreScopeProvider(
         private int _writes;
 
         private ArrayPoolList<PatriciaTree.BulkSetEntry>? _bulkWrite =
-            estimatedEntries > MIN_ENTRIES_TO_BATCH
+            estimatedEntries > BulkWriteThreshold
                 ? new(estimatedEntries)
                 : null;
 

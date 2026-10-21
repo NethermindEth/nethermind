@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Runtime.InteropServices;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BlockAccessLists;
@@ -14,6 +13,7 @@ using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Flat.Persistence;
+using Nethermind.State.Healing;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.SnapSync;
 
@@ -27,9 +27,13 @@ public class FlatBalHealing(
     IPersistence persistence,
     ITreeSyncStore store,
     [KeyFilter(DbNames.Code)] IDb codeDb,
+    Lazy<ICodeRecovery> codeRecovery,
     ILogManager logManager) : IBalHealing
 {
     private readonly ILogger _logger = logManager.GetClassLogger<FlatBalHealing>();
+
+    // EIP-8298: hashes of adopted code the code database lacked when the chunk adopting it was applied.
+    private readonly HashSet<ValueHash256> _missingCode = [];
 
     private const int BalsChunkSize = 16;
     private const int MaxInitialCapacity = 1024;
@@ -38,6 +42,8 @@ public class FlatBalHealing(
 
     public Hash256? Reassemble(IReadOnlyCollection<Hash256> updatedStorages, CancellationToken token)
     {
+        // A new healing run starts here; hashes from an abandoned run may no longer be referenced.
+        _missingCode.Clear();
         Hash256? reassembledRoot = trieReassembler.TryReassemble(updatedStorages, token);
         if (reassembledRoot is null)
         {
@@ -65,6 +71,24 @@ public class FlatBalHealing(
     }
 
     public void FinalizeSync(BlockHeader pivot) => store.FinalizeSync(pivot);
+
+    /// <inheritdoc/>
+    public async Task<bool> TryRecoverMissingCode(CancellationToken token)
+    {
+        foreach (ValueHash256 codeHash in _missingCode.ToArray())
+        {
+            if (!codeDb.KeyExists(codeHash.Bytes))
+            {
+                if (await codeRecovery.Value.Recover(codeHash, token) is not { } code) continue;
+                codeDb.Set(codeHash.Bytes, code);
+            }
+
+            _missingCode.Remove(codeHash);
+        }
+
+        if (_missingCode.Count > 0 && _logger.IsDebug) _logger.Debug($"BAL healing: {_missingCode.Count} adopted bytecodes still missing, retrying.");
+        return _missingCode.Count == 0;
+    }
 
     private bool TryCollectBals(BlockHeader from, BlockHeader to, ArrayPoolList<(ulong Number, Hash256 Hash)> toApply, CancellationToken token)
     {
@@ -137,7 +161,8 @@ public class FlatBalHealing(
             RootHash = baseRoot
         };
 
-        Dictionary<AddressAsKey, AccountDelta> deltas = [];
+        BlockAccessListDelta deltas = new();
+        Func<Address, Account?> getAccount = address => reader.GetAccount(address);
         foreach ((ulong number, Hash256 hash) in chunk)
         {
             token.ThrowIfCancellationRequested();
@@ -150,50 +175,30 @@ public class FlatBalHealing(
                 return null;
             }
 
-            foreach (ReadOnlyAccountChanges acc in bal.AccountChanges)
-            {
-                if (!acc.HasStateChanges) continue;
-
-                ref AccountDelta? delta = ref CollectionsMarshal.GetValueRefOrAddDefault(deltas, acc.Address, out _);
-                delta ??= new AccountDelta();
-
-                if (acc.BalanceChanges.Length > 0) delta.Balance = acc.BalanceChanges[^1].Value;
-                if (acc.NonceChanges.Length > 0) delta.Nonce = acc.NonceChanges[^1].Value;
-                if (acc.CodeChanges.Length > 0) delta.Code = acc.CodeChanges[^1];
-
-                if (acc.StorageChanges.Length > 0)
-                {
-                    Dictionary<UInt256, UInt256> slots = delta.Slots ??= [];
-                    foreach (ReadOnlySlotChanges slot in acc.StorageChanges)
-                        if (slot.Changes.Length > 0) slots[slot.Key] = slot.Changes[^1].Value;
-                }
-            }
+            deltas.Add(bal, getAccount);
         }
 
         Span<byte> slotValue = stackalloc byte[EvmWord.Count];
-        foreach ((AddressAsKey key, AccountDelta delta) in deltas)
+        foreach ((AddressAsKey key, BlockAccessListDelta.AccountDelta delta) in deltas.Accounts)
         {
             token.ThrowIfCancellationRequested();
 
             Address address = key.Value;
 
-            Account account = reader.GetAccount(address) ?? Account.TotallyEmpty;
-
-            if (delta.Balance is { } balance) account = account.WithChangedBalance(balance);
-            if (delta.Nonce is { } nonce) account = account.WithChangedNonce(nonce);
             if (delta.Code is { } codeChange)
             {
-                ValueHash256 codeHash = codeChange.CodeHash;
-                codeDb.Set(codeHash.Bytes, codeChange.Code);
-                account = account.WithChangedCodeHash(codeHash.ToCommitment());
+                // Adopted code not deposited in the chunk predates it, but snap may not have fetched it: its source
+                // can have replaced its own code before being downloaded. A miss is recovered before the sync finalizes.
+                if (deltas.TryGetCode(codeChange, out byte[]? code))
+                    codeDb.Set(codeChange.CodeHash.Bytes, code);
+                else if (!codeDb.KeyExists(codeChange.CodeHash.Bytes))
+                    _missingCode.Add(codeChange.CodeHash);
             }
 
-            // EIP-158: a touched empty account is removed, whatever its storage. Wipe it before writing any
-            // slot - SelfDestruct only scans the pre-batch snapshot, so slots written into this batch would
-            // outlive it. A revive later in the chunk skips the wipe, which EIP-6780 makes safe.
-            if (account.IsEmpty)
+            // SelfDestruct scans the pre-batch snapshot; wipe before writing any revived account's slots.
+            if (delta.WipesStorage || delta.Account is null) batch.SelfDestruct(address);
+            if (delta.Account is not { } account)
             {
-                batch.SelfDestruct(address);
                 stateTree.Set(address, null);
                 batch.SetAccount(address, null);
                 continue;
@@ -224,13 +229,5 @@ public class FlatBalHealing(
 
         stateTree.Commit(false, WriteFlags.DisableWAL);
         return stateTree.RootHash;
-    }
-
-    private sealed class AccountDelta
-    {
-        public UInt256? Balance;
-        public ulong? Nonce;
-        public CodeChange? Code;
-        public Dictionary<UInt256, UInt256>? Slots;
     }
 }

@@ -9,7 +9,6 @@ using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using Nethermind.Core.Extensions;
 
 namespace Nethermind.Serialization.Json;
 
@@ -25,22 +24,11 @@ public class LongConverter : JsonConverter<long>
             throw new JsonException("null cannot be assigned to long");
         }
 
-        if (s == Bytes.ZeroHexValue)
+        if (s.StartsWith("0x", StringComparison.Ordinal))
         {
-            return 0L;
-        }
-
-        if (s.StartsWith("0x0"))
-        {
-            return long.Parse(s.AsSpan(2), NumberStyles.AllowHexSpecifier);
-        }
-
-        if (s.StartsWith("0x"))
-        {
-            Span<char> withZero = new(new char[s.Length - 1]);
-            withZero[0] = '0';
-            s.AsSpan(2).CopyTo(withZero[1..]);
-            return long.Parse(withZero, NumberStyles.AllowHexSpecifier);
+            ReadOnlySpan<char> digits = s.AsSpan(2);
+            // The runtime parser skips trailing NULs but needs a digit, so a bare "0x" reads as zero.
+            return digits.TrimEnd('\0').IsEmpty ? 0L : long.Parse(digits, NumberStyles.AllowHexSpecifier);
         }
 
         return long.Parse(s, NumberStyles.Integer);

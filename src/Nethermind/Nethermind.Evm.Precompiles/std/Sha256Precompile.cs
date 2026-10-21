@@ -10,6 +10,8 @@ namespace Nethermind.Evm.Precompiles;
 
 public partial class Sha256Precompile : IPrecompile<Sha256Precompile>
 {
+    public static Address Address { get; } = Address.FromNumber(2);
+
     public partial Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec _)
     {
         Metrics.Sha256Precompile++;

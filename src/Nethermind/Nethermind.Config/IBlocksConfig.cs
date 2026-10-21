@@ -18,6 +18,14 @@ public interface IBlocksConfig : IConfig
         DefaultValue = "null")]
     ulong? TargetBlockGasLimit { get; set; }
 
+    /// <summary>Gets or sets the diagnostic formats dumped for every block build. Defaults to <see cref="ProducedBlockDumpOptions.None"/>.</summary>
+    /// <remarks>Includes payload rebuilds. Keeps the newest 256 files in the system temp directory's <c>nethermind-produced-blocks</c> subdirectory. Geth traces include EVM memory and can consume gigabytes per block.</remarks>
+    [ConfigItem(
+        Description = "Dumps diagnostic traces of every block this node builds, including each payload rebuild, to the `nethermind-produced-blocks` subdirectory of the system temp directory, keeping the newest 256 files. Accepts `None`, `Receipts`, `Parity`, `Geth`, `Rlp`, `RlpLog`, `Default` (receipts and RLP), or `All` (all traces and RLP); flags can be combined. For debugging only: Geth-style traces include EVM memory and can take gigabytes per block.",
+        HiddenFromDocs = true,
+        DefaultValue = "None")]
+    ProducedBlockDumpOptions DumpProducedBlocks { get; set; }
+
     [ConfigItem(
         Description = "The minimum gas premium (or the gas price before the London hard fork) for transactions accepted by the block producer.",
         DefaultValue = "1")]
@@ -63,11 +71,38 @@ public interface IBlocksConfig : IConfig
     [ConfigItem(Description = "Read the code of the contracts a block access list names on background threads ahead of execution. Requires PreWarming.", DefaultValue = "false", HiddenFromDocs = true)]
     bool PrefetchBlockAccessListCode { get; set; }
 
+    /// <summary>Whether block processing takes over a transaction's pre-warm run instead of executing it again.</summary>
+    /// <remarks>
+    /// On by default. Requires <see cref="PreWarming"/>, and applies only on the Ethereum transaction processor, to blocks
+    /// without a block access list (EIP-7928) and before EIP-8037.
+    /// </remarks>
+    [ConfigItem(Description = "Hand pre-warm runs over to block processing. Requires PreWarming. Not applied with a block access list (EIP-7928), from EIP-8037, nor on chains with their own transaction processor.", DefaultValue = "true", HiddenFromDocs = true)]
+    bool PreWarmHandoff { get; set; }
+
+    /// <summary>
+    /// Whether the transaction block processing is executing gets a storage discovery of its own once it has read
+    /// <see cref="PreWarmInFlightReadAheadColdReads"/> values past the pre-block caches.
+    /// </summary>
+    /// <remarks>
+    /// The discovery reads, side by side and on the parent state, the slots block processing is about to read one after
+    /// another; it puts only parent-state values into the caches and records nothing block processing takes over. Off, or
+    /// in a block it does not apply to, storage discovery leaves every transaction block processing has started. Requires
+    /// <see cref="PreWarming"/>; not applied to blocks with a block access list, nor to blocks being produced.
+    /// </remarks>
+    [ConfigItem(Description = "Discover and read ahead the storage of the transaction block processing is executing once it has read PreWarmInFlightReadAheadColdReads values past the pre-block caches. Requires PreWarming.", DefaultValue = "true", HiddenFromDocs = true)]
+    bool PreWarmInFlightReadAhead { get; set; }
+
+    [ConfigItem(Description = "The reads past the pre-block caches within one transaction after which PreWarmInFlightReadAhead starts. `0` starts it at the first.", DefaultValue = "32", HiddenFromDocs = true)]
+    int PreWarmInFlightReadAheadColdReads { get; set; }
+
     [ConfigItem(Description = "The block production timeout, in milliseconds.", DefaultValue = "4000")]
     int BlockProductionTimeoutMs { get; set; }
 
     [ConfigItem(Description = "The genesis block load timeout, in milliseconds.", DefaultValue = "40000")]
     int GenesisTimeoutMs { get; set; }
+
+    [ConfigItem(Description = "The longest a single block may take to process, in milliseconds. It is checked between transactions and as the next block starts, so a single long transaction or the final commit can run past it. A block that runs out of time is abandoned without being marked invalid, and each retry of it gets twice the time, up to 16 times this value. `0` or a negative value disables it.", DefaultValue = "180000")]
+    int BlockProcessingTimeoutMs { get; set; }
 
     [ConfigItem(Description = "The max transaction bytes to add in block production, in kilobytes.", DefaultValue = "7936")]
     long BlockProductionMaxTxKilobytes { get; set; }

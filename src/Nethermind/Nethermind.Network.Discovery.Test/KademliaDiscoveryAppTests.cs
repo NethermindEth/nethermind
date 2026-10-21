@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using DotNetty.Transport.Channels;
 using Nethermind.Config;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Logging;
@@ -43,7 +42,7 @@ public class KademliaDiscoveryAppTests
         await app.StartAsync();
         await app.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
-        InvalidOperationException? exception = Assert.ThrowsAsync<InvalidOperationException>(async () => await app.DisposeAsync());
+        InvalidOperationException? exception = await Assert.ThrowsAsync<InvalidOperationException>(async () => await app.DisposeAsync());
 
         Assert.That(exception?.Message, Is.EqualTo("Stop failed"));
         Assert.That(app.Stopped.Task.IsCompletedSuccessfully, Is.True);
@@ -111,13 +110,15 @@ public class KademliaDiscoveryAppTests
 
         public int DisposeAsyncCoreCalls { get; private set; }
 
-        public void ActivateChannel() => OnChannelActivated(this, EventArgs.Empty);
+        public void ActivateChannel() => OnChannelActivated();
 
         public void AllowInitialization() => ContinueInitialization.TrySetResult();
 
-        public override void InitializeChannel(IChannel channel)
+        internal override void InitializeChannel(IDatagramSocket socket, Action<PooledUdpReceiveResult> forward)
         {
         }
+
+        internal override void Receive(PooledUdpReceiveResult datagram) => datagram.Dispose();
 
         protected override async Task Initialize(CancellationToken cancellationToken)
         {

@@ -50,6 +50,13 @@ public enum ExecutionOptions
     /// </summary>
     FrameSignaturesPreValidated = 64,
 
+    /// <summary>Frame-gas search: retain fee introspection but defer gas escrow until the final probe.
+    /// Only effective together with <see cref="Restore"/>.</summary>
+    FrameGasEstimation = 128,
+
+    /// <summary>With <see cref="Warmup"/>: charge gas and value in full, so a sender that cannot pay fails the run.</summary>
+    StrictWarmup = 256,
+
     /// <summary>
     /// Skip potential fail checks and commit state after execution
     /// </summary>

@@ -59,11 +59,15 @@ jobs:
         run: |
           dotnet test --project src/Nethermind/Nethermind.Core.ZkEvm.Test/Nethermind.Core.ZkEvm.Test.csproj -c release -p:EnableZkEvm=true
           dotnet test --project src/Nethermind/Nethermind.Trie.ZkEvm.Test/Nethermind.Trie.ZkEvm.Test.csproj -c release -p:EnableZkEvm=true
+          dotnet test --project src/Nethermind/Nethermind.State.ZkEvm.Test/Nethermind.State.ZkEvm.Test.csproj -c release -p:EnableZkEvm=true
           dotnet test --project src/Nethermind/Nethermind.Evm.ZkEvm.Test/Nethermind.Evm.ZkEvm.Test.csproj -c release -p:EnableZkEvm=true
 
   build:
     name: Build ${{ matrix.vm }} guest
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
     strategy:
       fail-fast: false
       matrix:
@@ -80,6 +84,25 @@ jobs:
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v6
+
+      - name: Check Docker Hub OIDC availability
+        id: dockerhub
+        env:
+          CONNECTION_ID: ${{ vars.DOCKERHUB_READ_OIDC_CONNECTIONID }}
+        run: |
+          if [[ -n "$ACTIONS_ID_TOKEN_REQUEST_URL" && -n "$CONNECTION_ID" ]]; then echo "available=true" >> "$GITHUB_OUTPUT"; fi
+
+      - name: Log in to Docker Hub
+        # Skipped wherever OIDC is unavailable (forks, Dependabot, callers without
+        # id-token: write); those runs pull anonymously as before.
+        if: steps.dockerhub.outputs.available == 'true'
+        uses: docker/login-action@v4
+        env:
+          DOCKERHUB_OIDC_CONNECTIONID: ${{ vars.DOCKERHUB_READ_OIDC_CONNECTIONID }}
+          # The longest lifetime docker/login-action accepts; the pinned images are pulled once and then cached
+          DOCKERHUB_OIDC_EXPIREIN: 3600
+        with:
+          username: ${{ vars.DOCKERHUB_READ_ORGANIZATION }}
 
       # One bflat image compiles all three; the layout, entry point and exit
       # protocol differ per target and come from the guest's Makefile.
@@ -99,6 +122,9 @@ jobs:
     name: ${{ matrix.vm }} ${{ matrix.block.input }}
     needs: [blocks, build]
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
     timeout-minutes: ${{ matrix.minutes }}
     strategy:
       fail-fast: false
@@ -138,7 +164,7 @@ jobs:
       - name: Download input
         working-directory: src/Nethermind/${{ matrix.project }}/bin
         run: |
-          curl -fsSL "https://us-southeast-1.linodeobjects.com/zktests/20260819/${{ matrix.block.input }}" \
+          curl -fsSL "https://us-southeast-1.linodeobjects.com/zktests/20260930/${{ matrix.block.input }}" \
             -o "${{ matrix.block.input }}"
           echo "${{ matrix.block.hash }}  ${{ matrix.block.input }}" | sha256sum --status -c - || \
             { echo "::error::Checksum failed"; exit 1; }
@@ -148,6 +174,25 @@ jobs:
       # recipes expect it back.
       - name: Restore the executable bit
         run: chmod +x "src/Nethermind/${{ matrix.project }}/bin/nethermind"
+
+      - name: Check Docker Hub OIDC availability
+        id: dockerhub
+        env:
+          CONNECTION_ID: ${{ vars.DOCKERHUB_READ_OIDC_CONNECTIONID }}
+        run: |
+          if [[ -n "$ACTIONS_ID_TOKEN_REQUEST_URL" && -n "$CONNECTION_ID" ]]; then echo "available=true" >> "$GITHUB_OUTPUT"; fi
+
+      - name: Log in to Docker Hub
+        # Skipped wherever OIDC is unavailable (forks, Dependabot, callers without
+        # id-token: write); those runs pull anonymously as before.
+        if: steps.dockerhub.outputs.available == 'true'
+        uses: docker/login-action@v4
+        env:
+          DOCKERHUB_OIDC_CONNECTIONID: ${{ vars.DOCKERHUB_READ_OIDC_CONNECTIONID }}
+          # The longest lifetime docker/login-action accepts; the pinned images are pulled once and then cached
+          DOCKERHUB_OIDC_EXPIREIN: 3600
+        with:
+          username: ${{ vars.DOCKERHUB_READ_ORGANIZATION }}
 
       - name: Run Nethermind guest
         working-directory: src/Nethermind/${{ matrix.project }}

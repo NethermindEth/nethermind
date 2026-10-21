@@ -23,7 +23,6 @@ internal readonly record struct StatelessPayload
     byte[][] EncodedTransactions,
     ulong ChainId,
     ushort SchemaId,
-    ReadOnlyMemory<SszPublicKey> PublicKeys,
     ReadOnlyMemory<Hash256> VersionedHashes,
     Hash256 NewPayloadRequestRoot,
     ISpecProvider SpecProvider

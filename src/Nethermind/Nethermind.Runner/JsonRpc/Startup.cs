@@ -18,6 +18,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using HealthChecks.UI.Client;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Connections;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
@@ -34,10 +35,8 @@ using Nethermind.Api;
 using Nethermind.Config;
 using Nethermind.Core.Authentication;
 using Nethermind.Core.Extensions;
-using Nethermind.Facade.Eth;
 using Nethermind.HealthChecks;
 using Nethermind.JsonRpc;
-using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Nethermind.Runner.Monitoring;
@@ -103,6 +102,7 @@ public class Startup : IStartup
                 .Select(static u => u.Port)
                 .ToHashSet();
 
+        services.AddSingleton<IMemoryPoolFactory<byte>, TransportMemoryPoolFactory>();
         services.Configure<KestrelServerOptions>(options =>
         {
             options.AddServerHeader = false;
@@ -163,9 +163,6 @@ public class Startup : IStartup
 
     public void Configure(IApplicationBuilder app, IWebHostEnvironment env, JsonRpcProcessor jsonRpcProcessor, JsonRpcService jsonRpcService, IJsonRpcLocalStats jsonRpcLocalStats, EthereumJsonSerializer jsonSerializer, ApplicationLifetime lifetime)
     {
-        EthereumJsonSerializer.AddTypeInfoResolver(FacadeJsonContext.Default, JsonTypeInfoResolverPriority.Facade);
-        EthereumJsonSerializer.AddTypeInfoResolver(EthRpcJsonContext.Default, JsonTypeInfoResolverPriority.EthRpc);
-        EthereumJsonSerializer.AddTypeInfoResolver(JsonRpcResponseJsonContext.Default, JsonTypeInfoResolverPriority.JsonRpcResponse);
 
         EthereumJsonSerializer.WarmupSerializer(
             new JsonRpcSuccessResponse { Id = 0 },
@@ -488,7 +485,11 @@ public class Startup : IStartup
         try
         {
             await CollectHttpRequestBodyAsync(ctx, contentLength, effectiveMaxRequestBodySize, collectedBody, ctx.RequestAborted);
-            using JsonRpcContext jsonRpcContext = JsonRpcContext.Http(jsonRpcUrl);
+            JsonRpcContext jsonRpcContext = new(RpcEndpoint.Http, url: jsonRpcUrl)
+            {
+                RemoteAddress = ctx.Connection.RemoteIpAddress,
+                ForwardedFor = ctx.Request.Headers["X-Forwarded-For"]
+            };
             responseSink = new HttpJsonRpcResponseSink(ctx, jsonRpcUrl, _jsonRpcConfig, _jsonRpcLocalStats, _logger, startTime);
 
             await _jsonRpcProcessor.ProcessAsync(

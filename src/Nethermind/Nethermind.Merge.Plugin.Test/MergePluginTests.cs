@@ -139,11 +139,11 @@ public class MergePluginTests
     }
 
     [Test]
-    public void Init_merge_plugin_does_not_throw_exception([Values] bool enabled)
+    public async Task Init_merge_plugin_does_not_throw_exception([Values] bool enabled)
     {
         using IContainer container = BuildContainer();
         _mergeConfig.TerminalTotalDifficulty = enabled ? "0" : null;
-        Assert.DoesNotThrowAsync(async () => await container.Resolve<InitializeMergePlugin>().Execute(default));
+        await Assert.DoesNotThrowAsync(async () => await container.Resolve<InitializeMergePlugin>().Execute(default));
         Assert.DoesNotThrow(() => container.Resolve<IBlockProducerFactory>().InitBlockProducer());
     }
 
@@ -225,6 +225,63 @@ public class MergePluginTests
         using IContainer container = BuildContainer(new ConfigProvider(_mergeConfig, jsonRpcConfig));
         InitializeMergePlugin step = container.Resolve<InitializeMergePlugin>();
         Assert.That(async () => await step.Execute(default), Throws.TypeOf<InvalidConfigurationException>());
+    }
+
+    [TestCase(null, ModuleType.Engine)]
+    [TestCase("/tmp/nethermind.ipc", ModuleType.Eth)]
+    public async Task InitThrowsWhenIpcDoesNotServeEngineApi(string? ipcUnixDomainSocketPath, string ipcModule)
+    {
+        JsonRpcConfig jsonRpcConfig = new()
+        {
+            EnabledModules = [ModuleType.Eth],
+            IpcUnixDomainSocketPath = ipcUnixDomainSocketPath,
+            IpcEnabledModules = [ipcModule]
+        };
+
+        await using IContainer container = BuildContainer(new ConfigProvider(_mergeConfig, jsonRpcConfig));
+        InitializeMergePlugin step = container.Resolve<InitializeMergePlugin>();
+        Assert.That(async () => await step.Execute(default), Throws.TypeOf<InvalidConfigurationException>());
+    }
+
+    [Test]
+    public async Task Init_accepts_engine_api_served_only_over_ipc([Values] bool jsonRpcEnabled)
+    {
+        JsonRpcConfig jsonRpcConfig = new()
+        {
+            Enabled = jsonRpcEnabled,
+            EnabledModules = [ModuleType.Eth],
+            IpcUnixDomainSocketPath = "/tmp/nethermind.ipc",
+            IpcEnabledModules = [ModuleType.Engine]
+        };
+
+        await using IContainer container = BuildContainer(new ConfigProvider(_mergeConfig, jsonRpcConfig));
+        await container.Resolve<InitializeMergePlugin>().Execute(default);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(jsonRpcConfig.Enabled, Is.True);
+            Assert.That(jsonRpcConfig.IpcEnabledModules, Is.EqualTo(new[] { ModuleType.Engine }));
+        }
+    }
+
+    [Test]
+    public void InitThrowsWhenWebSocketsPortTakesEnginePort([Values] bool webSocketsEnabled, [Values] bool configuredViaAdditionalUrls)
+    {
+        JsonRpcConfig jsonRpcConfig = new() { Enabled = true, WebSocketsPort = 8551 };
+        if (configuredViaAdditionalUrls)
+        {
+            jsonRpcConfig.AdditionalRpcUrls = ["http://localhost:8551|http;ws|net;eth;engine|no-auth"];
+        }
+        else
+        {
+            jsonRpcConfig.EnginePort = 8551;
+        }
+
+        using IContainer container = BuildContainer(new ConfigProvider(_mergeConfig, jsonRpcConfig, new InitConfig { WebSocketsEnabled = webSocketsEnabled }));
+        InitializeMergePlugin step = container.Resolve<InitializeMergePlugin>();
+        Assert.That(async () => await step.Execute(default), webSocketsEnabled
+            ? Throws.TypeOf<InvalidConfigurationException>().With.Property(nameof(InvalidConfigurationException.ExitCode)).EqualTo(ExitCodes.NoEngineModule)
+            : Throws.Nothing);
     }
 
     [Test]

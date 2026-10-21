@@ -105,6 +105,37 @@ public class BloomFilterTests
     }
 
     [Test]
+    public void AddUnsynchronized_SetsTheSameBitsAsAdd([Values(1.0, 10.0, 14.0, 30.0)] double bitsPerKey)
+    {
+        const int keys = 2_000;
+        using Bloom atomic = NewBloom(capacity: keys, bitsPerKey: bitsPerKey);
+        using Bloom plain = NewBloom(capacity: keys, bitsPerKey: bitsPerKey);
+
+        for (ulong i = 0; i < keys; i++)
+        {
+            atomic.Add(i * 0x9E3779B97F4A7C15UL);
+            plain.AddUnsynchronized(i * 0x9E3779B97F4A7C15UL);
+        }
+
+        Assert.That(plain.Count, Is.EqualTo(keys));
+        // Same bits set means the same answer for every probe, members and non-members alike.
+        for (ulong probe = 0; probe < 50_000; probe++)
+        {
+            ulong key = probe * 0xC2B2AE3D27D4EB4FUL;
+            Assert.That(plain.MightContain(key), Is.EqualTo(atomic.MightContain(key)), $"probe {probe}");
+        }
+    }
+
+    [Test]
+    public void AddUnsynchronized_AfterDispose_Throws()
+    {
+        Bloom bloom = NewBloom();
+        bloom.Dispose();
+
+        Assert.That(() => bloom.AddUnsynchronized(1), Throws.TypeOf<ObjectDisposedException>());
+    }
+
+    [Test]
     public void Dispose_MultipleTimes_ShouldNotThrow()
     {
         Bloom bloom = NewBloom();

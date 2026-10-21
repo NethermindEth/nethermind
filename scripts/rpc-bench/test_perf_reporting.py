@@ -1222,6 +1222,12 @@ esac
         (snapshots / "reth-25490000").mkdir()
         present_reth = self.validate_paths(BENCHMARK_TOOL="jsonbench-sweep", TOOL_CONFIG=cross_client)
         self.assertEqual(present_reth.returncode, 0, present_reth.stdout + present_reth.stderr)
+        # A bare-type arm with a `+flags` list still mounts its type's set, not one named after the flags.
+        flagged = json.dumps({"clients": "nethermind+--JsonRpc.EnabledModules=Eth,Debug reth+--rpc.gascap=1"})
+        present_flagged = self.validate_paths(BENCHMARK_TOOL="jsonbench-sweep", TOOL_CONFIG=flagged)
+        self.assertEqual(present_flagged.returncode, 0, present_flagged.stdout + present_flagged.stderr)
+        self.assertIn(f"{snapshots.as_posix()}/reth-25490000", present_flagged.stdout)
+        self.assertNotIn("+--", present_flagged.stdout)
 
         # Single-node mode keeps the original contract against `db_source`.
         single = self.validate_paths(DB_SOURCE=parked.as_posix())

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Core.Test;
 using Nethermind.Db;
 using NUnit.Framework;
 using Nethermind.Logging;
@@ -51,7 +52,7 @@ public class HistoryStoreTests
         }
 
         Assert.That(written, Is.GreaterThanOrEqualTo(0));
-        Assert.That(buffer[..written].ToArray(), Is.EqualTo(Convert.FromHexString(expectedHex)));
+        Assert.That(buffer[..written], Is.SequenceEqualTo(Convert.FromHexString(expectedHex)));
     }
 
     [Test]

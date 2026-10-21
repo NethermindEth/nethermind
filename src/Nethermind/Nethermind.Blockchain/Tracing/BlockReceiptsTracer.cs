@@ -15,7 +15,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Blockchain.Tracing;
 
-public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTracer, IJournal<int>, ITxTracerWrapper, IFrameTxReceiptTracer, IInstructionTracingFilter
+public partial class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTracer, IJournal<int>, ITxTracerWrapper, IFrameTxReceiptTracer, IInstructionTracingFilter, ITxDiscardAwareTracer, ITxOutputTracingFilter
 {
     private IBlockTracer _otherTracer = NullBlockTracer.Instance;
 
@@ -28,11 +28,16 @@ public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTrace
     /// <summary>Error reported to tracers for a frame transaction whose derived status is a failure.</summary>
     private const string FrameTxFailedError = "frame failed";
 
+    /// <inheritdoc/>
+    /// <remarks>A block tracer with this capability must forward receipts to its tx tracer; frame-end and rollback reports go directly to the tx tracer.</remarks>
     public void ReportFrameTxReceipt(Address payer, TxFrameReceipt[] frameReceipts)
     {
         _frameTxPayer = payer;
         _frameTxReceipts = frameReceipts;
-        _currentFrameTxTracer?.ReportFrameTxReceipt(payer, frameReceipts);
+        if (_otherTracer is IFrameTxReceiptTracer receiptsTracer)
+            receiptsTracer.ReportFrameTxReceipt(payer, frameReceipts);
+        else
+            _currentFrameTxTracer?.ReportFrameTxReceipt(payer, frameReceipts);
     }
 
     public void ReportFrameEnd(int frameIndex, EvmExceptionType? error) =>
@@ -41,22 +46,20 @@ public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTrace
     public void ReportFramesRolledBack(int fromFrameIndex, int toFrameIndex) =>
         _currentFrameTxTracer?.ReportFramesRolledBack(fromFrameIndex, toFrameIndex);
 
-    /// <summary>The innermost tracer of <paramref name="tracer"/> that takes EIP-8141 frame reports.</summary>
-    /// <remarks>The tracing RPCs hand the processor a wrapped tracer, so the capability is reached through
-    /// the wrapper chain rather than on the outermost one. A <see cref="CompositeTxTracer"/> is not a wrapper
-    /// and ends the walk; no tracing RPC builds one, and a chain that did would need this to fan out.</remarks>
-    private static IFrameTxReceiptTracer? FrameTxTracerOf(ITxTracer tracer)
-    {
-        while (true)
-        {
-            if (tracer is IFrameTxReceiptTracer frameTxTracer) return frameTxTracer;
-            if (tracer is not ITxTracerWrapper wrapper) return null;
-            tracer = wrapper.InnerTracer;
-        }
-    }
     protected Block Block = null!;
+
+    /// <summary>Whether the current transaction is traced only for its receipt.</summary>
+    public bool IsTracingOnlyReceipts =>
+        ReferenceEquals(_otherTracer, NullBlockTracer.Instance) && ReferenceEquals(_currentTxTracer, NullTxTracer.Instance);
+
+    /// <summary>Whether receipts are built; when not, only the block gas accounting is kept.</summary>
+    /// <remarks>For a replay whose receipts nothing reads; logs are then collected only for the wrapped tracers. While off,
+    /// <see cref="LastReceipt"/>, <see cref="TakeSnapshot"/>, <see cref="Restore"/> and <see cref="DiscardLastTx"/> are unsupported.</remarks>
+    internal bool BuildsReceipts { get; set; } = true;
+
     public bool IsTracingReceipt => true;
-    public bool IsCollectingLogs => true;
+    public bool IsTracingOutput => !IsTracingOnlyReceipts;
+    public bool IsCollectingLogs => BuildsReceipts || _currentTxTracer.IsCollectingLogs || _otherTracer is ITxTracer { IsCollectingLogs: true };
     public bool IsTracingActions => _currentTxTracer.IsTracingActions;
     public bool IsTracingOpLevelStorage => _currentTxTracer.IsTracingOpLevelStorage;
     public bool IsTracingMemory => _currentTxTracer.IsTracingMemory;
@@ -79,8 +82,20 @@ public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTrace
 
     public void MarkAsSuccess(Address recipient, in GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
     {
-        TxReceipt receipt = BuildReceipt(recipient, gasSpent, StatusCode.Success, logs, stateRoot);
-        _txReceipts.Add(receipt);
+        byte statusCode;
+        if (BuildsReceipts)
+        {
+            TxReceipt receipt = BuildReceipt(recipient, gasSpent, StatusCode.Success, logs, stateRoot);
+            _txReceipts.Add(receipt);
+            statusCode = receipt.StatusCode;
+        }
+        else
+        {
+            UpdateCumulativeGasTracking(gasSpent);
+            statusCode = CurrentTx!.Type == TxType.FrameTx && _frameTxReceipts is not null
+                ? TxFrameReceipt.AggregateStatus(_frameTxReceipts)
+                : StatusCode.Success;
+        }
 
         // hacky way to support nested receipt tracers
         if (_otherTracer is ITxTracer otherTxTracer)
@@ -91,8 +106,8 @@ public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTrace
         if (_currentTxTracer.IsTracingReceipt)
         {
             // EIP-8141: an included frame transaction is marked successful whatever its frames did, so the
-            // tracer is told the status derived from the frames, which only the built receipt holds.
-            if (receipt.StatusCode == StatusCode.Failure)
+            // tracer is told the status derived from the frames.
+            if (statusCode == StatusCode.Failure)
             {
                 _currentTxTracer.MarkAsFailed(recipient, gasSpent, output, FrameTxFailedError, stateRoot);
             }
@@ -105,7 +120,14 @@ public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTrace
 
     public void MarkAsFailed(Address recipient, in GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null)
     {
-        _txReceipts.Add(BuildFailedReceipt(recipient, gasSpent, error, stateRoot));
+        if (BuildsReceipts)
+        {
+            _txReceipts.Add(BuildFailedReceipt(recipient, gasSpent, error, stateRoot));
+        }
+        else
+        {
+            UpdateCumulativeGasTracking(gasSpent);
+        }
 
         // hacky way to support nested receipt tracers
         if (_otherTracer is ITxTracer otherTxTracer)
@@ -147,12 +169,13 @@ public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTrace
         if (!parallel)
         {
             Block.Header.GasUsed = EthereumGasPolicy.CombineBlockGas(cumulativeBlockGas, cumulativeBlockStateGas);
+            Block.Header.GasUsedPerDimension = (cumulativeBlockGas, cumulativeBlockStateGas);
         }
 
         // Track cumulative receipt gas (post-refund)
         _cumulativeReceiptGas += gasConsumed.SpentGas;
 
-        Debug.Assert(_txReceipts.Count + 1 == _cumulativeBlockGasPerTx.Count,
+        Debug.Assert(!BuildsReceipts || _txReceipts.Count + 1 == _cumulativeBlockGasPerTx.Count,
             "Receipt and gas tracking lists must remain synchronized");
 
         return _cumulativeReceiptGas;
@@ -178,18 +201,21 @@ public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTrace
         TxReceipt txReceipt = CreateReceipt();
         txReceipt.Logs = logEntries;
         txReceipt.TxType = transaction.Type;
-        // Bloom calculated in parallel with other receipts
+        // Bloom calculated in parallel with other receipts, or never under EIP-7668
+        if (_bloomsRemoved) txReceipt.Bloom = Bloom.ZeroLength;
         txReceipt.GasUsedTotal = cumulativeReceiptGas;  // Post-refund cumulative
         txReceipt.StatusCode = statusCode;
         txReceipt.Recipient = transaction.IsContractCreation ? null : recipient;
         txReceipt.BlockHash = Block.Hash;
         txReceipt.BlockNumber = Block.Number;
-        txReceipt.Index = _currentIndex;
+        // The receipt's position, not the count of traced transactions: a producer that discards a
+        // transaction after its trace started must not shift the index of the receipts that follow.
+        txReceipt.Index = _txReceipts.Count;
         txReceipt.GasUsed = gasConsumed.SpentGas;  // Post-refund for this tx
         txReceipt.EffectiveGasPrice = effectiveGasPrice;
         txReceipt.Sender = transaction.SenderAddress;
         txReceipt.ContractAddress = transaction.CreatesTopLevelContract ? recipient : null;
-        txReceipt.TxHash = transaction.Hash;
+        txReceipt.TxHash = ReceiptTxHash(transaction);
         txReceipt.PostTransactionState = stateRoot;
 
         // EIP-7778: execution-dimension block accounting introduces the
@@ -222,6 +248,9 @@ public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTrace
 
         return txReceipt;
     }
+
+    /// <summary>The transaction hash a built receipt carries; <see langword="null"/> when the build does not populate it.</summary>
+    private static partial Hash256? ReceiptTxHash(Transaction transaction);
 
     public void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env) =>
         _currentTxTracer.StartOperation(pc, opcode, gas, env);
@@ -285,11 +314,17 @@ public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTrace
     public void ReportActionEnd(ulong gas, ReadOnlyMemory<byte> output) =>
         _currentTxTracer.ReportActionEnd(gas, output);
 
+    /// <inheritdoc/>
+    public void ReportActionErrorDetails(string error) => _currentTxTracer.ReportActionErrorDetails(error);
+
     public void ReportActionError(EvmExceptionType exceptionType) =>
         _currentTxTracer.ReportActionError(exceptionType);
 
     public void ReportActionRemainingGas(ulong gas) =>
         _currentTxTracer.ReportActionRemainingGas(gas);
+
+    public void ReportPrecompileAccountRead(Address address) =>
+        _currentTxTracer.ReportPrecompileAccountRead(address);
 
     public void ReportRejectedAction(ulong gas, ulong gasLeft, UInt256 value, Address from, Address? to, ReadOnlyMemory<byte> input,
         ExecutionType callType, EvmExceptionType error, bool isPrecompileCall = false) =>
@@ -337,10 +372,12 @@ public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTrace
     }
 
     private ITxTracer _currentTxTracer = NullTxTracer.Instance;
-    protected int _currentIndex { get; private set; }
     private readonly List<TxReceipt> _txReceipts = [];
     private readonly List<(ulong Execution, ulong State)> _cumulativeBlockGasPerTx = [];  // Track pre-refund block gas for restore (execution + EIP-8037 state)
     private ulong _cumulativeReceiptGas;  // Track cumulative post-refund gas for receipts
+
+    /// <summary>EIP-7668: the block's header bloom is zero-length, so receipts carry <see cref="Bloom.ZeroLength"/> and no bloom is accumulated.</summary>
+    private bool _bloomsRemoved;
     protected Transaction? CurrentTx;
     public ReadOnlySpan<TxReceipt> TxReceipts => CollectionsMarshal.AsSpan(_txReceipts);
     public TxReceipt LastReceipt => _txReceipts[^1];
@@ -389,9 +426,21 @@ public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTrace
         // Restore block gas from tracking: max(cumulative_execution, cumulative_state) for EIP-8037
         (ulong cumulativeExecution, ulong cumulativeState) = _cumulativeBlockGasPerTx.Count > 0 ? _cumulativeBlockGasPerTx[^1] : (0, 0);
         Block.Header.GasUsed = EthereumGasPolicy.CombineBlockGas(cumulativeExecution, cumulativeState);
+        Block.Header.GasUsedPerDimension = (cumulativeExecution, cumulativeState);
 
         // Restore receipt gas from remaining receipts (post-refund)
         _cumulativeReceiptGas = _txReceipts.Count > 0 ? _txReceipts[^1].GasUsedTotal : 0;
+    }
+
+    /// <summary>
+    /// Drops the last traced transaction: its receipt, its block gas and its receipt index, and whatever the wrapped
+    /// block tracer recorded for it when that tracer is an <see cref="ITxDiscardAwareTracer"/>.
+    /// </summary>
+    /// <remarks>For a block producer that leaves an executed transaction out of the block.</remarks>
+    public void DiscardLastTx()
+    {
+        Restore(_txReceipts.Count - 1);
+        if (_otherTracer is ITxDiscardAwareTracer discardAware) discardAware.DiscardLastTx();
     }
 
     public void ReportReward(Address author, string rewardType, UInt256 rewardValue) =>
@@ -400,13 +449,17 @@ public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTrace
     public void StartNewBlockTrace(Block block)
     {
         Block = block;
-        _currentIndex = 0;
+        _bloomsRemoved = block.Header.Bloom?.IsZeroLength == true;
         CurrentTx = null;
         _currentTxTracer = NullTxTracer.Instance;
         _currentFrameTxTracer = null;
         int txCount = parallel ? 1 : block.Transactions.Length;
         _txReceipts.Clear();
-        _txReceipts.EnsureCapacity(txCount);
+        if (BuildsReceipts)
+        {
+            _txReceipts.EnsureCapacity(txCount);
+        }
+
         _cumulativeBlockGasPerTx.Clear();
         _cumulativeBlockGasPerTx.EnsureCapacity(txCount);
         _cumulativeReceiptGas = 0;
@@ -446,7 +499,6 @@ public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTrace
         _currentFrameTxTracer = null;
         Block = null!;
         CurrentTx = null;
-        _currentIndex = 0;
         _frameTxPayer = null;
         _frameTxReceipts = null;
         _txReceipts.Clear();
@@ -462,15 +514,11 @@ public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTrace
         _frameTxPayer = null;
         _frameTxReceipts = null;
         _currentTxTracer = _otherTracer.StartNewTxTrace(tx);
-        _currentFrameTxTracer = FrameTxTracerOf(_currentTxTracer);
+        _currentFrameTxTracer = IFrameTxReceiptTracer.FindIn(_currentTxTracer);
         return _currentTxTracer;
     }
 
-    public void EndTxTrace()
-    {
-        _otherTracer.EndTxTrace();
-        _currentIndex++;
-    }
+    public void EndTxTrace() => _otherTracer.EndTxTrace();
 
     public void EndBlockTrace() => EndBlockTrace(accumulateBlockBloom: true);
 
@@ -481,7 +529,7 @@ public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTrace
     public void EndBlockTrace(bool accumulateBlockBloom)
     {
         _otherTracer.EndBlockTrace();
-        if (accumulateBlockBloom && _txReceipts.Count > 0)
+        if (accumulateBlockBloom && _txReceipts.Count > 0 && !_bloomsRemoved)
         {
             Bloom blockBloom = new();
             Block.Header.Bloom = blockBloom;

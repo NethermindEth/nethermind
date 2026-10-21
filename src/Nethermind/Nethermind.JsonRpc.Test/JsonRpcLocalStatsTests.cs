@@ -163,34 +163,67 @@ namespace Nethermind.JsonRpc.Test
         [Test]
         public void Records_metric_when_per_method_enabled_even_without_info_logging()
         {
+            TestLogger silentLogger = new() { IsInfo = false };
+            OneLoggerLogManager silentLogManager = new(new(silentLogger));
+            JsonRpcLocalStats localStats = CreateStats(new JsonRpcConfig { EnablePerMethodMetrics = true }, silentLogManager);
+
+            RecordingMetricObserver observer = RecordMetrics(() =>
+            {
+                localStats.ReportCall(new RpcReport("eth_call", 0, true), elapsedMicroseconds: 123);
+                localStats.ReportCall(new RpcReport("eth_call", 0, true), elapsedMicroseconds: 1);
+                localStats.ReportCall(new RpcReport("eth_call", 0, false), elapsedMicroseconds: 1);
+            });
+
+            Assert.That(silentLogger.LogList, Is.Empty);
+            Assert.That(observer.Observations, Has.Count.EqualTo(3));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(observer.Observations[0].Value, Is.EqualTo(123));
+                Assert.That(observer.Observations[0].Labels, Is.EqualTo(new[] { "eth_call", "success" }));
+                Assert.That(observer.Observations[0].Stable, Is.True);
+                Assert.That(observer.Observations[1].Labels, Is.SameAs(observer.Observations[0].Labels), "labels must be reused across calls");
+                Assert.That(observer.Observations[2].Labels, Is.EqualTo(new[] { "eth_call", "fail" }));
+            }
+        }
+
+        [Test]
+        public async Task Calls_without_a_method_name_are_not_recorded([Values(null, "", " ", "\t", "\n ")] string? method)
+        {
+            JsonRpcLocalStats localStats = CreateStats(new JsonRpcConfig { EnablePerMethodMetrics = true });
+
+            RecordingMetricObserver observer = RecordMetrics(() =>
+                localStats.ReportCall(new RpcReport(method!, 0, false), elapsedMicroseconds: 100));
+            localStats.ReportCall("B", 100, true);
+            MakeTimePass();
+            localStats.ReportCall("A", 300, true);
+
+            Assert.That(observer.Observations, Is.Empty);
+            await CheckLogLine("TOTAL|1|0.100|0.100|0|0.000|0.000|");
+        }
+
+        private static RecordingMetricObserver RecordMetrics(Action report)
+        {
             RecordingMetricObserver observer = new();
             IMetricObserver previous = Metrics.JsonRpcCallDurationMicros;
             Metrics.JsonRpcCallDurationMicros = observer;
             try
             {
-                TestLogger silentLogger = new() { IsInfo = false };
-                OneLoggerLogManager silentLogManager = new(new(silentLogger));
-                JsonRpcLocalStats localStats = CreateStats(new JsonRpcConfig { EnablePerMethodMetrics = true }, silentLogManager);
-
-                localStats.ReportCall(new RpcReport("eth_call", 0, true), elapsedMicroseconds: 123);
-
-                Assert.That(silentLogger.LogList, Is.Empty);
-                Assert.That(observer.Observations, Has.Count.EqualTo(1));
-                Assert.That(observer.Observations[0].Value, Is.EqualTo(123));
-                Assert.That(observer.Observations[0].Labels, Is.EqualTo(new[] { "eth_call", "success" }));
+                report();
             }
             finally
             {
                 Metrics.JsonRpcCallDurationMicros = previous;
             }
+
+            return observer;
         }
 
         private sealed class RecordingMetricObserver : IMetricObserver
         {
-            public List<(double Value, string[] Labels)> Observations { get; } = [];
+            public List<(double Value, string[] Labels, bool Stable)> Observations { get; } = [];
 
             public void Observe(double value, IMetricLabels? labels = null) =>
-                Observations.Add((value, labels?.Labels ?? Array.Empty<string>()));
+                Observations.Add((value, labels?.Labels ?? Array.Empty<string>(), labels is IStableMetricLabels));
         }
 
         private JsonRpcLocalStats CreateStats(IJsonRpcConfig? config = null, ILogManager? logManager = null) => new(_manualTimestamper, config ?? _config, logManager ?? _logManager);

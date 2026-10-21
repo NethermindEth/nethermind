@@ -11,6 +11,7 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.BlockProduction;
+using Nethermind.Merge.Plugin.Data;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Config;
 using Nethermind.Logging;
@@ -22,6 +23,7 @@ using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Optimism.CL;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Serialization.Rlp.TxDecoders;
 using Nethermind.Optimism.Rpc;
 using Nethermind.Optimism.ProtocolVersion;
 using Nethermind.Optimism.Cl.Rpc;
@@ -61,8 +63,8 @@ public class OptimismPlugin(ChainSpec chainSpec, IOptimismConfig optimismConfig)
 
     public void InitTxTypesAndRlpDecoders(INethermindApi api)
     {
-        api.RegisterTxType<DepositTransactionForRpc>(new OptimismTxDecoder<Transaction>(), Always.Valid);
-        api.RegisterTxType<LegacyTransactionForRpc>(new OptimismLegacyTxDecoder(), new OptimismLegacyTxValidator(api.SpecProvider!.ChainId));
+        api.RegisterTxType<DepositTransactionForRpc>(new OptimismTxDecoder(), Always.Valid);
+        api.RegisterTxType<LegacyTransactionForRpc>(new LegacyTxDecoder(allowEmptySignature: true), new OptimismLegacyTxValidator(api.SpecProvider!.ChainId));
         Rlp.RegisterDecoders(typeof(OptimismReceiptMessageDecoder).Assembly, true);
     }
 
@@ -124,6 +126,8 @@ public class OptimismModule(ChainSpec chainSpec, IOptimismConfig optimismConfig)
             .AddDecorator<IEthereumEcdsa, OptimismEthereumEcdsa>()
             .AddDecorator<IBlockProducerTxSourceFactory, OptimismBlockProducerTxSourceFactory>()
             .AddSingleton<IPayloadPreparationService, OptimismPayloadPreparationService>()
+            // The system config sets the gas limit with no bound against the parent's.
+            .AddSingleton(PayloadTransactionCountGuard.Disabled)
             .AddScoped<IGenesisPostProcessor, OptimismGenesisPostProcessor>()
 
             // Rpcs
@@ -140,6 +144,11 @@ public class OptimismModule(ChainSpec chainSpec, IOptimismConfig optimismConfig)
                 new LoggingOptimismSignalSuperchainV1Handler(OptimismConstants.CurrentProtocolVersion, logManager))
             .RegisterSingletonJsonRpcModule<IOptimismEngineRpcModule, OptimismEngineRpcModule>()
             ;
+
+        if (optimismConfig.SequencerUrl is not null)
+        {
+            builder.AddSingleton<ITxPool>(NullTxPool.Instance);
+        }
 
         if (optimismConfig.ClEnabled)
         {

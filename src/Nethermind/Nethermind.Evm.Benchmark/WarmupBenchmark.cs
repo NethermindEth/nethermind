@@ -84,7 +84,7 @@ public class WarmupBenchmark
     [GlobalSetup]
     public void GlobalSetup()
     {
-        _stateProvider = TestWorldStateFactory.CreateForTest();
+        _stateProvider = TestWorldStateFactory.CreateForTest(logManager: NullLogManager.Instance);
         _stateScope = _stateProvider.BeginScope(IWorldState.PreGenesis);
 
         _stateProvider.CreateAccount(TestItem.AddressA, 1_000_000_000.Ether);
@@ -104,14 +104,14 @@ public class WarmupBenchmark
         EthereumVirtualMachine vm = new(
             new TestBlockhashProvider(),
             SpecProvider,
-            LimboLogs.Instance);
+            NullLogManager.Instance);
         _processor = new EthereumTransactionProcessor(
             BlobBaseFeeCalculator.Instance,
             SpecProvider,
             _stateProvider,
             vm,
             codeInfo,
-            LimboLogs.Instance);
+            NullLogManager.Instance);
 
         _simpleTx = Build.A.Transaction
             .WithTo(TestItem.AddressC)

@@ -3,9 +3,11 @@
 
 using System;
 using System.Buffers;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO.Pipelines;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using Nethermind.Core;
@@ -60,7 +62,7 @@ public abstract class SszEndpointHandlerBase : ISszEndpointHandler
         {
             length = encode(value, pipe);
         }
-        catch
+        catch when (pipe.UnflushedBytes != before)
         {
             // Encode advanced bytes into the pipe before throwing; we can't rewind.
             // Abort the connection so the CL doesn't see a 500 with garbled-binary body.
@@ -115,6 +117,7 @@ public abstract class SszEndpointHandlerBase : ISszEndpointHandler
         {
             // JSON-RPC standard codes (-32xxx)
             ErrorCodes.ParseError => "/engine-api/errors/parse-error",
+            ErrorCodes.InvalidParams => "/engine-api/errors/invalid-body",
 
             // Engine-API extension codes (-38xxx)
             MergeErrorCodes.UnknownPayload => "/engine-api/errors/unknown-payload",
@@ -156,8 +159,8 @@ public abstract class SszEndpointHandlerBase : ISszEndpointHandler
                        || string.IsNullOrEmpty(message);
 
         string body = omitDetail
-            ? $"{{\"type\":{JsonSerializer.Serialize(type)}}}"
-            : $"{{\"type\":{JsonSerializer.Serialize(type)},\"detail\":{JsonSerializer.Serialize(message)}}}";
+            ? $"{{\"type\":{JsonSerializer.Serialize(type, SszRestJsonContext.Default.String)}}}"
+            : $"{{\"type\":{JsonSerializer.Serialize(type, SszRestJsonContext.Default.String)},\"detail\":{JsonSerializer.Serialize(message, SszRestJsonContext.Default.String)}}}";
 
         await ctx.Response.WriteAsync(body, ctx.RequestAborted);
     }
@@ -170,8 +173,13 @@ public abstract class SszEndpointHandlerBase : ISszEndpointHandler
         MergeErrorCodes.InvalidPayloadAttributes => StatusCodes.Status422UnprocessableEntity,
         MergeErrorCodes.TooLargeRequest => StatusCodes.Status413PayloadTooLarge,
         MergeErrorCodes.UnsupportedFork => StatusCodes.Status400BadRequest,
+        ErrorCodes.InvalidParams => StatusCodes.Status422UnprocessableEntity,
         ErrorCodes.MethodNotFound => StatusCodes.Status404NotFound,
         ErrorCodes.InternalError => StatusCodes.Status500InternalServerError,
         _ => StatusCodes.Status400BadRequest
     };
 }
+
+[JsonSerializable(typeof(string))]
+[JsonSerializable(typeof(IEnumerable<string>))]
+internal partial class SszRestJsonContext : JsonSerializerContext;

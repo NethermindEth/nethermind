@@ -43,7 +43,7 @@ public class DisposableScopeOverridableEnvTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(scope.Component.WorldState.GetCodeHash(TestItem.AddressA), Is.EqualTo(Keccak.Compute(code)));
-            Assert.That(scope.Component.CodeInfoRepository.GetCachedCodeInfo(TestItem.AddressA, false, Prague.Instance, out _).Code.ToArray(), Is.EqualTo(code));
+            Assert.That(scope.Component.CodeInfoRepository.GetCachedCodeInfo(TestItem.AddressA, false, Prague.Instance, out _).Code, Is.SequenceEqualTo(code));
         }
     }
 

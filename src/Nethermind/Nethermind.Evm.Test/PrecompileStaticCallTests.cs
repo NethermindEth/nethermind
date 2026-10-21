@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.Tracing;
@@ -212,8 +213,8 @@ public class PrecompileStaticCallTests : VirtualMachineTestsBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(tracer.Outputs, Has.Count.EqualTo(2), "precondition: both ID frames report an output");
-            Assert.That(tracer.Outputs[0].ToArray(), Is.EqualTo(first), "the first output must survive the second ID frame");
-            Assert.That(tracer.Outputs[1].ToArray(), Is.EqualTo(second), "the second output is its own input");
+            Assert.That(tracer.Outputs[0], Is.SequenceEqualTo(first), "the first output must survive the second ID frame");
+            Assert.That(tracer.Outputs[1], Is.SequenceEqualTo(second), "the second output is its own input");
         }
     }
 

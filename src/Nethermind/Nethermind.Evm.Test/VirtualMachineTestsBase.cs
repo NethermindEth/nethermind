@@ -2,7 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
+using System.Collections.Generic;
 using System.Numerics;
+using System.Text.Json;
+using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -16,10 +20,12 @@ using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Evm.Tracing;
 using Nethermind.Blockchain.Tracing.GethStyle;
+using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Core.Test.Db;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Evm.State;
+using Nethermind.Evm.GasPolicy;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
@@ -41,6 +47,7 @@ public abstract class VirtualMachineTestsBase
     protected EthereumVirtualMachine Machine { get; private set; }
     protected CacheCodeInfoRepository CodeInfoRepository { get; private set; }
     protected IWorldState TestState { get; private set; }
+    protected IDbProvider DbProvider { get; private set; }
     protected static Address Contract { get; } = new("0xd75a3a95360e44a3874e691fb48d77855f127069");
     protected static Address Sender { get; } = TestItem.AddressA;
     protected static Address Recipient { get; } = TestItem.AddressB;
@@ -54,6 +61,9 @@ public abstract class VirtualMachineTestsBase
     protected virtual ulong BlockNumber => DefaultBlockNumber;
     protected virtual ulong Timestamp => DefaultTimestamp;
 
+    /// <summary>Whether test transactions carry an EIP-155 <c>v</c>; there is none for chain ids above <c>(2^64 - 37) / 2</c>.</summary>
+    protected virtual bool SignWithEip155 => true;
+
     /// <summary>Applies a signed <paramref name="adjustment"/> to a block number, e.g. to target just before/after a fork.</summary>
     protected static ulong AdjustBlockNumber(ulong blockNumber, long adjustment) => (ulong)((long)blockNumber + adjustment);
     protected virtual ISpecProvider SpecProvider => MainnetSpecProvider.Instance;
@@ -61,19 +71,22 @@ public abstract class VirtualMachineTestsBase
 
     protected virtual ILogManager GetLogManager() => LimboLogs.Instance;
 
+    /// <summary>The frame code runner this fixture's machine is constructed with; none by default.</summary>
+    protected virtual FrameCodeRunner<EthereumGasPolicy>? CreateFrameCodeRunner() => null;
+
     [SetUp]
     public virtual void Setup()
     {
         ILogManager logManager = GetLogManager();
 
         _stateDb = new MemDb();
-        IDbProvider dbProvider = TestMemDbProvider.Init();
-        TestState = TestWorldStateFactory.CreateForTest(dbProvider, logManager);
+        DbProvider = TestMemDbProvider.Init();
+        TestState = TestWorldStateFactory.CreateForTest(DbProvider, logManager);
         _worldStateCloser = TestState.BeginScope(IWorldState.PreGenesis);
         _ethereumEcdsa = new EthereumEcdsa(SpecProvider.ChainId);
         IBlockhashProvider blockhashProvider = new TestBlockhashProvider(SpecProvider);
         CodeInfoRepository = new EthereumCodeInfoRepository(TestState);
-        Machine = new EthereumVirtualMachine(blockhashProvider, SpecProvider, logManager);
+        Machine = new EthereumVirtualMachine(blockhashProvider, SpecProvider, logManager, CreateFrameCodeRunner());
         _processor = new EthereumTransactionProcessor(BlobBaseFeeCalculator.Instance, SpecProvider, TestState, Machine, CodeInfoRepository, logManager);
     }
 
@@ -82,6 +95,8 @@ public abstract class VirtualMachineTestsBase
     {
         _stateDb?.Dispose();
         _worldStateCloser?.Dispose();
+        DbProvider?.Dispose();
+        Machine?.Dispose();
     }
 
     protected GethLikeTxTrace ExecuteAndTrace(params byte[] code)
@@ -127,6 +142,52 @@ public abstract class VirtualMachineTestsBase
             IntrinsicGasCalculator.Calculate(transaction, spec, block.Header.GasLimit).Standard);
         _processor.Execute(transaction, new BlockExecutionContext(block.Header, spec), tracer);
         return tracer.BuildResult();
+    }
+
+    /// <summary>Runs <paramref name="code"/> under a <c>trace_*</c> vmTrace, buffered or streamed, and returns each top-level operation.</summary>
+    protected IReadOnlyList<(ulong Cost, bool HasSubtrace, int Pushes)> TraceVmOperations(byte[] code, bool streaming)
+    {
+        (Block block, Transaction transaction) = PrepareTx(Activation, 100000UL, code);
+        BlockExecutionContext context = new(block.Header, Spec);
+        List<(ulong, bool, int)> operations = [];
+        if (!streaming)
+        {
+            ParityLikeTxTracer tracer = new(block, transaction, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff | ParityTraceTypes.VmTrace);
+            _processor.Execute(transaction, context, tracer);
+            foreach (ParityVmOperationTrace operation in tracer.BuildResult().VmTrace.Operations)
+            {
+                operations.Add((operation.Cost, operation.Sub is not null, operation.Push?.Length ?? 0));
+            }
+
+            return operations;
+        }
+
+        ArrayBufferWriter<byte> sink = new();
+        using Utf8JsonWriter writer = new(sink, new JsonWriterOptions { SkipValidation = true });
+        StreamingParityLikeTxTracer streamingTracer = new(
+            block, transaction, ParityTraceTypes.Trace | ParityTraceTypes.VmTrace,
+            writer, pipeWriter: null, CancellationToken.None, fillVmTraceSlot: true);
+        try
+        {
+            _processor.Execute(transaction, context, streamingTracer);
+            streamingTracer.BuildResult();
+        }
+        finally
+        {
+            streamingTracer.ReleaseResources();
+        }
+
+        writer.Flush();
+        using JsonDocument document = JsonDocument.Parse(sink.WrittenMemory);
+        foreach (JsonElement operation in document.RootElement.GetProperty("ops").EnumerateArray())
+        {
+            JsonElement push = operation.GetProperty("ex").GetProperty("push");
+            operations.Add((operation.GetProperty("cost").GetUInt64(),
+                operation.GetProperty("sub").ValueKind is not JsonValueKind.Null,
+                push.ValueKind is JsonValueKind.Array ? push.GetArrayLength() : 0));
+        }
+
+        return operations;
     }
 
     /// <summary>
@@ -264,7 +325,7 @@ public abstract class VirtualMachineTestsBase
             .WithBlobVersionedHashes(blobVersionedHashes)
             .WithNonce(TestState.GetNonce(senderRecipientAndMiner.Sender))
             .To(senderRecipientAndMiner.Recipient)
-            .SignedAndResolved(_ethereumEcdsa, senderRecipientAndMiner.SenderKey)
+            .SignedAndResolved(_ethereumEcdsa, senderRecipientAndMiner.SenderKey, SignWithEip155)
             .TestObject;
 
         Block block = BuildBlock(activation, senderRecipientAndMiner, transaction, blockGasLimit, excessBlobGas, slotNumber);
@@ -306,7 +367,7 @@ public abstract class VirtualMachineTestsBase
             .WithData(input)
             .WithValue(value)
             .To(senderRecipientAndMiner.Recipient)
-            .SignedAndResolved(_ethereumEcdsa, senderRecipientAndMiner.SenderKey)
+            .SignedAndResolved(_ethereumEcdsa, senderRecipientAndMiner.SenderKey, SignWithEip155)
             .TestObject;
 
         Block block = BuildBlock(activation, senderRecipientAndMiner);
@@ -325,7 +386,7 @@ public abstract class VirtualMachineTestsBase
             .WithGasLimit(gasLimit)
             .WithGasPrice(1UL)
             .WithCode(code)
-            .SignedAndResolved(_ethereumEcdsa, senderRecipientAndMiner.SenderKey)
+            .SignedAndResolved(_ethereumEcdsa, senderRecipientAndMiner.SenderKey, SignWithEip155)
             .TestObject;
 
         Block block = BuildBlock(activation, senderRecipientAndMiner);

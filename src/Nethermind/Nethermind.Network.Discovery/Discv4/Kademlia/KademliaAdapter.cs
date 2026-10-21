@@ -218,7 +218,18 @@ public class KademliaAdapter(
         if (MsgSender is { } sender)
         {
             if (token.IsCancellationRequested) return;
-            Task ready = (isResponse ? _responseRateLimiter : _outboundRateLimiter).WaitAsync(token);
+            RateLimiter limiter = isResponse ? _responseRateLimiter : _outboundRateLimiter;
+            // A response sent after the requester's timeout is wasted, and queueing it would let an inbound flood
+            // push every later response further out. Drop it instead and let the backlog drain.
+            // The requester's timeout is unknown (geth waits 500 ms for any reply), so PingTimeout is a deliberately
+            // loose upper bound shared by all response types. The check is not atomic with WaitAsync, so concurrent
+            // senders can overshoot it slightly, and the second Neighbors batch of a FindNode reply may be dropped.
+            if (isResponse && limiter.Backlog > _pingTimeout)
+            {
+                if (Logger.IsTrace) Logger.Trace($"Dropping {msg.MsgType} response, outbound backlog {limiter.Backlog}");
+                return;
+            }
+            Task ready = limiter.WaitAsync(token);
             await ready.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
             if (token.IsCancellationRequested) return;
             await ready;
@@ -272,11 +283,8 @@ public class KademliaAdapter(
         {
             DiscoveryResponse<PongMsg> response = await CallAndWaitForResponse(MsgType.Pong, new PongMsgHandler(msg), receiver, session, msg, _pingTimeout, token);
             if (!response.HasResponse) return null;
-            if (response.Value.FarAddress is not { } pongEndpoint) return null;
 
-            session.OnPongReceived(pongEndpoint);
-            if (!session.HasEndpointBond(endpoint)) return null;
-
+            session.OnPongReceived(endpoint);
             return response.Value;
         }
         finally
@@ -443,13 +451,13 @@ public class KademliaAdapter(
         }
     }
 
-    private async Task HandlePing(Node node, NodeSession session, PingMsg ping, CancellationToken token)
+    private async Task<bool> HandlePing(Node node, NodeSession session, PingMsg ping, CancellationToken token)
     {
         if (Logger.IsTrace) Logger.Trace($"Receive ping from {node}");
         if (ping.Mdc is not { } pingMdc)
         {
             if (Logger.IsTrace) TracePingWithoutHash(node);
-            return;
+            return false;
         }
 
         PongMsg msg = new(ping.FarAddress!, CalculateExpirationTime(), pingMdc, (await nodeRecordProvider.GetCurrentAsync(token)).EnrSequence);
@@ -462,13 +470,14 @@ public class KademliaAdapter(
             bondingPong = await TryBond(node, session, token);
             if (bondingPong is null)
             {
-                return;
+                return false;
             }
         }
 
         ulong? advertisedSequence = HighestSequence(ping.EnrSequence, bondingPong?.EnrSequence);
         await RefreshRemoteRecordIfNewer(node, advertisedSequence, token);
         PublishNode(node, session, ping, advertisedSequence);
+        return true;
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
@@ -495,7 +504,18 @@ public class KademliaAdapter(
             return;
         }
 
+        bool hasUsableSignedPing = signedPing is
+        {
+            Mdc: not null,
+            FarPublicKey: not null,
+            FarAddress: not null,
+            SourceTcpPort: > 0
+        } ping &&
+            ping.FarPublicKey.Equals(node.Id) &&
+            ping.FarAddress.Equals(discoveryEndpoint);
+
         Node? enrNode = null;
+        Node? verifiedEnrNode = null;
         NodeRecord? record = node.Enr;
         if (record is { Signature: not null } &&
             record.EnrSequence >= node.HighestObservedEnrSequence &&
@@ -505,29 +525,33 @@ public class KademliaAdapter(
                 record,
                 DiscoveryAddressSupport.GetFamily(discoveryEndpoint.Address),
                 out Node? candidate) &&
-            candidate.Id.Equals(node.Id) &&
-            candidate.HasDiscoveryEndpoint &&
-            candidate.DiscoveryAddress.Equals(discoveryEndpoint))
+            candidate.Id.Equals(node.Id))
         {
-            candidate.SetVerifiedEnr(record);
-            enrNode = candidate;
+            bool endpointMatchesEnr = candidate.HasDiscoveryEndpoint && candidate.DiscoveryAddress.Equals(discoveryEndpoint);
+            if (endpointMatchesEnr || hasUsableSignedPing)
+            {
+                candidate.SetVerifiedEnr(record);
+                if (endpointMatchesEnr)
+                {
+                    enrNode = candidate;
+                }
+                else
+                {
+                    verifiedEnrNode = candidate;
+                }
+            }
         }
 
-        bool useSignedPing = signedPing is
-        {
-            Mdc: not null,
-            FarPublicKey: not null,
-            FarAddress: not null,
-            SourceTcpPort: > 0
-        } ping &&
-            ping.FarPublicKey.Equals(node.Id) &&
-            ping.FarAddress.Equals(discoveryEndpoint) &&
-            enrNode is null;
+        bool useSignedPing = hasUsableSignedPing && enrNode is null;
         Node peerCandidate;
         if (useSignedPing)
         {
             peerCandidate = new Node(node.Id, node.Address, node.DiscoveryPort);
             peerCandidate.ObserveEnrSequence(node.HighestObservedEnrSequence);
+            if (verifiedEnrNode is not null)
+            {
+                peerCandidate.MergeEnrStateFrom(verifiedEnrNode);
+            }
         }
         else if (enrNode is not null)
         {
@@ -592,8 +616,10 @@ public class KademliaAdapter(
                 case MsgType.Ping:
                     PingMsg ping = (PingMsg)msg;
                     if (!ValidatePingAddress(ping)) return;
-                    await HandlePing(node, session, ping, token);
-                    nodeHealthTracker.Value.OnIncomingMessageFrom(node);
+                    if (await HandlePing(node, session, ping, token))
+                    {
+                        nodeHealthTracker.Value.OnIncomingMessageFrom(node);
+                    }
                     break;
                 case MsgType.FindNode:
                     if (await HandleFindNode(node, session, (FindNodeMsg)msg, token))

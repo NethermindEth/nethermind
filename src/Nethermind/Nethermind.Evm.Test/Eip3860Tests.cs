@@ -17,7 +17,7 @@ namespace Nethermind.Evm.Test
         protected override ulong BlockNumber => MainnetSpecProvider.ParisBlockNumber;
         protected override ulong Timestamp => MainnetSpecProvider.ShanghaiBlockTimestamp;
 
-        private readonly ulong _transactionCallCost = GasCostOf.Transaction + 100 + 7 * GasCostOf.VeryLow;
+        private readonly ulong _transactionCallCost = GasCostOf.Transaction + GasCostOf.ColdAccountAccess + 7 * GasCostOf.VeryLow;
 
         [TestCase("0x61013860006000f0", false, 32039)] //length 312
         [TestCase("0x61013860006000f0", true, 32059)] //extra 20 cost

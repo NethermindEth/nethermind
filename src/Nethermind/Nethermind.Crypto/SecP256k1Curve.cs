@@ -25,6 +25,6 @@ public static class SecP256k1Curve
     // fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141
     // 115792089237316195423570985008687907852837564279074904382605163141518161494337
     public static readonly UInt256 N = new(13822214165235122497ul, 13451932020343611451ul, 18446744073709551614ul, 18446744073709551615ul);
-    public static readonly UInt256 HalfN = N / 2;
-    public static readonly UInt256 HalfNPlusOne = HalfN + 1;
+    public static readonly UInt256 HalfN = new(0xDFE92F46681B20A0ul, 0x5D576E7357A4501Dul, 0xFFFFFFFFFFFFFFFFul, 0x7FFFFFFFFFFFFFFFul);
+    public static readonly UInt256 HalfNPlusOne = new(0xDFE92F46681B20A1ul, 0x5D576E7357A4501Dul, 0xFFFFFFFFFFFFFFFFul, 0x7FFFFFFFFFFFFFFFul);
 }

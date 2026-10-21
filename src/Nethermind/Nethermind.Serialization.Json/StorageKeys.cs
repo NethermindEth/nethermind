@@ -32,7 +32,7 @@ public sealed class StorageKeysConverter : JsonConverter<StorageKeys>
     {
         if (reader.TokenType == JsonTokenType.String)
         {
-            return JsonSerializer.Deserialize<StorageKeys>(reader.GetString()!, options) ?? throw new JsonException();
+            return TypeInfoJsonSerializer.Deserialize<StorageKeys>(reader.GetString()!, options) ?? throw new JsonException();
         }
 
         if (reader.TokenType != JsonTokenType.StartArray)

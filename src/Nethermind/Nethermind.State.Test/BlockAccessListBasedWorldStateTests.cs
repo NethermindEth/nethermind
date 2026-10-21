@@ -148,6 +148,28 @@ public class BlockAccessListBasedWorldStateTests
     }
 
     [Test]
+    public void Storage_before_clear_is_not_read_from_the_shared_state()
+    {
+        IWorldState inner = TestWorldStateFactory.CreateForTest();
+        StorageCell cell = new(TestItem.AddressA, 1);
+        using (inner.BeginScope(IWorldState.PreGenesis))
+        {
+            inner.CreateAccount(TestItem.AddressA, UInt256.One);
+            inner.Set(cell, (UInt256)5);
+            inner.Commit(Spec);
+            inner.ClearStorage(TestItem.AddressA);
+            BlockAccessListBasedWorldState bws = new(inner, Logger);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(inner.TryGetStorageBeforeClear(in cell, out UInt256 shared), Is.True);
+                Assert.That(shared, Is.EqualTo((UInt256)5));
+                Assert.That(bws.TryGetStorageBeforeClear(in cell, out _), Is.False);
+            }
+        }
+    }
+
+    [Test]
     public void Traced_balance_creation_preserves_existence_across_repeated_touches(
         [Values("missing", "empty", "funded")] string parentState,
         [Values(0u, 5u)] uint balanceChange)
@@ -748,6 +770,56 @@ public class BlockAccessListBasedWorldStateTests
         static byte[]? Read(ReadOnlyMemory<byte> code) => code.IsNull() ? null : code.ToArray();
     }
 
+    // EIP-8298: an adopted change declares only a hash, whose bytecode is declared at a lower index or is pre-block.
+    [Test]
+    public void GetCode_ResolvesAdoptedCodeByHash([Values] bool declaredInBlock)
+    {
+        byte[] code = [0x60, 0x2a];
+        ValueHash256 hash = ValueKeccak.Compute(code);
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(
+                Build.An.AccountChanges.WithAddress(TestItem.AddressA).WithCodeChanges(CodeChange.Adopted(2, hash)).TestObject,
+                Build.An.AccountChanges.WithAddress(TestItem.AddressB).WithCodeChanges(declaredInBlock ? [new CodeChange(1, code)] : []).TestObject)
+            .TestObject;
+
+        (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState(3, bal, ws =>
+        {
+            if (declaredInBlock) return;
+            ws.CreateAccount(TestItem.AddressB, 1);
+            ws.InsertCode(TestItem.AddressB, hash, code, Spec);
+        });
+        using (scope)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(bws.GetCodeHash(TestItem.AddressA), Is.EqualTo(hash), "code hash");
+                Assert.That(bws.GetCode(TestItem.AddressA).ToArray(), Is.EqualTo(code), "code");
+                Assert.That(bws.TryGetAccount(TestItem.AddressA, out AccountStruct account), Is.True, "exists");
+                Assert.That(account.CodeHash, Is.EqualTo(hash), "account code hash");
+            }
+        }
+    }
+
+    // A suggested BAL adopting a hash with no source bytecode is malformed: the parallel path retries sequentially
+    // only on InvalidBlockLevelAccessListException, so the code database's InvalidOperationException must not escape.
+    [Test]
+    public void GetCode_AdoptedHashWithoutSourceBytecode_ThrowsInvalidBlockLevelAccessList([Values] bool declaredAtSameIndex)
+    {
+        byte[] code = [0x60, 0x2a];
+        ValueHash256 hash = ValueKeccak.Compute(code);
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(
+                Build.An.AccountChanges.WithAddress(TestItem.AddressA).WithCodeChanges(CodeChange.Adopted(2, hash)).TestObject,
+                Build.An.AccountChanges.WithAddress(TestItem.AddressB).WithCodeChanges(declaredAtSameIndex ? [new CodeChange(3, code)] : []).TestObject)
+            .TestObject;
+
+        (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState(3, bal);
+        using (scope)
+        {
+            Assert.Throws<BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException>(() => bws.GetCode(TestItem.AddressA));
+        }
+    }
+
     [Test]
     public void GetBalance_FallsThroughToParentReader_WhenBalHasNoEntry()
     {
@@ -865,7 +937,7 @@ public class BlockAccessListBasedWorldStateTests
             genesisSetup: ws => ws.CreateAccount(TestItem.AddressA, 0));
         using (scope)
         {
-            Assert.That(bws.GetCode(TestItem.AddressA).ToArray(), Is.EqualTo(priorTxCode));
+            Assert.That(bws.GetCode(TestItem.AddressA), Is.SequenceEqualTo(priorTxCode));
         }
     }
 
@@ -890,7 +962,7 @@ public class BlockAccessListBasedWorldStateTests
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(byAddress.IsNull(), Is.False);
-                Assert.That(byAddress.ToArray(), Is.EqualTo(hasCode ? code : Array.Empty<byte>()));
+                Assert.That(byAddress, Is.SequenceEqualTo(hasCode ? code : Array.Empty<byte>()));
                 Assert.That(bws.GetCode(ValueKeccak.Compute(code)).IsNull(), Is.True, "undeclared code is left to the by-address read");
             }
         }
@@ -918,7 +990,7 @@ public class BlockAccessListBasedWorldStateTests
             CodeInfo codeInfo = new CodeInfoRepository(traced, new EthereumPrecompileProvider())
                 .GetCachedCodeInfo(TestItem.AddressA, followDelegation: false, Spec, out _);
 
-            Assert.That(codeInfo.CodeSpan.ToArray(), Is.EqualTo(code));
+            Assert.That(codeInfo.CodeSpan, Is.SequenceEqualTo(code));
             codeDb.KeyWasRead(ValueKeccak.Compute(code).ToByteArray(), 0);
         }
     }

@@ -5,6 +5,7 @@ using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
@@ -12,19 +13,19 @@ using Nethermind.Int256;
 namespace Nethermind.Evm;
 
 /// <summary>
-/// EIP-7906 transaction-assertion opcodes, valid only inside a POST_TX frame.
+/// EIP-7906 transaction-assertion opcodes, valid only inside an ASSERT frame.
 /// https://eips.ethereum.org/EIPS/eip-7906
 /// </summary>
 /// <remarks>Operands the spec marks "must be 0" are reserved: a non-zero value exceptional-halts.</remarks>
 public static partial class EvmInstructions
 {
-    /// <summary>TXTRACE (0xb7): enumerate the transaction's state diff and events by index.</summary>
+    /// <summary>TXTRACE (0xb6): enumerate the transaction's state diff and events by index.</summary>
     [SkipLocalsInit]
     public static EvmExceptionType InstructionTxTrace<TGasPolicy, TTracingInst>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
-        if (!TryGetPostTxView(vm, out TransactionDiffView view, out FrameTxContext ctx)) return EvmExceptionType.BadInstruction;
+        if (!TryGetAssertFrameView(vm, out TransactionDiffView view, out FrameTxContext ctx)) return EvmExceptionType.BadInstruction;
 
         if (!TGasPolicy.UpdateGas<TxTraceGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
         if (!stack.PopUInt256(out UInt256 param, out UInt256 index)) return EvmExceptionType.StackUnderflow;
@@ -115,17 +116,24 @@ public static partial class EvmInstructions
         }
     }
 
-    /// <summary>TXDIFF (0xb8): keyed access to a single account's diff, warm/cold priced per EIP-2929.</summary>
+    /// <summary>TXDIFF (0xb7): keyed access to a single account's diff, warm/cold priced per EIP-2929.</summary>
     [SkipLocalsInit]
     public static EvmExceptionType InstructionTxDiff<TGasPolicy, TTracingInst>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
-        if (!TryGetPostTxView(vm, out TransactionDiffView view, out _)) return EvmExceptionType.BadInstruction;
+        if (!TryGetAssertFrameView(vm, out TransactionDiffView view, out _)) return EvmExceptionType.BadInstruction;
 
-        // Spec stack order: param on top, address second, in3 (slot key / local index / unused) third.
+        // Spec stack order: param, address or topic, then in3 (slot key / local index / unused).
         if (!stack.PopUInt256(out UInt256 param)) return EvmExceptionType.StackUnderflow;
-        if (param > 0x0A) return EvmExceptionType.BadInstruction;
+        if (param > 0x0C) return EvmExceptionType.BadInstruction;
+        if (param >= 0x0B)
+        {
+            if (!stack.PopUInt256(out UInt256 topicValue, out UInt256 localIndex))
+                return EvmExceptionType.StackUnderflow;
+            ValueHash256 topic = topicValue.ToValueHash();
+            return TxDiffTopicView<TGasPolicy, TTracingInst>(ref gas, (byte)param.u0, view, in topic, in localIndex, ref stack);
+        }
         Address? address = stack.PopAddress(vm.AddressCache);
         if (address is null) return EvmExceptionType.StackUnderflow;
         if (!stack.PopUInt256(out UInt256 in3)) return EvmExceptionType.StackUnderflow;
@@ -142,6 +150,23 @@ public static partial class EvmInstructions
         };
     }
 
+    // 0x0B/0x0C: topic1..3 views, flat priced without account or storage access.
+    private static EvmExceptionType TxDiffTopicView<TGasPolicy, TTracingInst>(ref TGasPolicy gas, byte param, TransactionDiffView view, in ValueHash256 topic, in UInt256 localIndex, ref EvmStack stack)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TTracingInst : struct, IFlag
+    {
+        if (!TGasPolicy.UpdateGas<TxTraceGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
+        return param switch
+        {
+            0x0B => localIndex.IsZero
+                ? stack.PushUInt256<TTracingInst>((UInt256)(ulong)view.TopicEventCount(in topic))
+                : EvmExceptionType.BadInstruction,
+            _ => view.TryGetTopicEventGlobalIndex(in topic, in localIndex, out int globalIndex)
+                ? stack.PushUInt256<TTracingInst>((UInt256)(ulong)globalIndex)
+                : EvmExceptionType.BadInstruction,
+        };
+    }
+
     // 0x00 before / 0x01 after. The live read enters the EIP-7928 list like any other state read.
     private static EvmExceptionType TxDiffStorage<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref TGasPolicy gas, byte param, Address address, in UInt256 key, AccountChangesAtIndex? account, ref EvmStack stack)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
@@ -154,6 +179,7 @@ public static partial class EvmInstructions
             return stack.PushUInt256<TTracingInst>(before);
         // "after", or an unmodified slot's "before": the current live value.
         vm.WorldState.Get(in cell, out UInt256 value);
+        if (param == 0x00 && vm.WorldState.TryGetStorageBeforeClear(in cell, out UInt256 beforeClear)) value = beforeClear;
         EvmExceptionType pushResult = stack.PushUInt256<TTracingInst>(value);
 
         // Reported like SLOAD, so a trace over a failed assertion shows the slot it read.
@@ -212,14 +238,14 @@ public static partial class EvmInstructions
         };
     }
 
-    /// <summary>EVENTDATACOPY (0xb9): copy a log's non-indexed data into memory. Gas is CALLDATACOPY-shaped,
+    /// <summary>EVENTDATACOPY (0xb8): copy a log's non-indexed data into memory. Gas is CALLDATACOPY-shaped,
     /// but an out-of-range read halts rather than zero-padding.</summary>
     [SkipLocalsInit]
     public static EvmExceptionType InstructionEventDataCopy<TGasPolicy, TTracingInst>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
-        if (!TryGetPostTxView(vm, out TransactionDiffView view, out _)) return EvmExceptionType.BadInstruction;
+        if (!TryGetAssertFrameView(vm, out TransactionDiffView view, out _)) return EvmExceptionType.BadInstruction;
 
         // Spec stack order (top to bottom): eventIndex, memOffset, dataOffset, length.
         if (!stack.PopUInt256(out UInt256 eventIndex, out UInt256 memOffset, out UInt256 dataOffset, out UInt256 length))
@@ -230,18 +256,18 @@ public static partial class EvmInstructions
             vm, ref gas, in memOffset, in dataOffset, in length, view.Logs[(int)eventIndex.u0].Data);
     }
 
-    /// <summary>Diff view for the current frame tx, built once and shared. False outside a POST_TX
+    /// <summary>Diff view for the current frame tx, built once and shared. False outside an ASSERT
     /// frame, or when no EIP-7928 slice is recording to source it from.</summary>
-    private static bool TryGetPostTxView<TGasPolicy>(VirtualMachine<TGasPolicy> vm, out TransactionDiffView view, out FrameTxContext ctx)
+    private static bool TryGetAssertFrameView<TGasPolicy>(VirtualMachine<TGasPolicy> vm, out TransactionDiffView view, out FrameTxContext ctx)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
         view = null!;
         ctx = null!;
         FrameTxContext? frameContext = vm.TxExecutionContext.FrameTxContext;
-        if (frameContext is null || frameContext.CurrentFrame.Mode != FrameMode.PostTx) return false;
+        if (frameContext is null || frameContext.CurrentFrame.Mode != FrameMode.Assert) return false;
         ctx = frameContext;
 
-        if (frameContext.PostTxDiffView is TransactionDiffView cached)
+        if (frameContext.AssertFrameDiffView is TransactionDiffView cached)
         {
             view = cached;
             return true;
@@ -251,7 +277,7 @@ public static partial class EvmInstructions
             return false;
 
         view = TransactionDiffView.Build(slice, vm.VmState.AccessTracker.Logs.ToArray());
-        frameContext.PostTxDiffView = view;
+        frameContext.AssertFrameDiffView = view;
         return true;
     }
 

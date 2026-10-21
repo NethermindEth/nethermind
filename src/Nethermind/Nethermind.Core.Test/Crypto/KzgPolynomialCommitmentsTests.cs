@@ -2,10 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.IO;
 using System.Reflection;
 using System.Runtime.Loader;
 using System.Threading.Tasks;
 using CkzgLib;
+using Nethermind.Core.Test.IO;
 using Nethermind.Crypto;
 using Nethermind.Logging;
 using NUnit.Framework;
@@ -32,16 +34,26 @@ public class KzgPolynomialCommitmentsTests
             .With.InnerException.Matches<Exception>(IsSetupUnavailable)));
 
     [Test]
-    public void Failed_load_is_not_reported_as_an_invalid_proof() => WithFreshSetupState(kzg =>
+    public void Failed_load_is_not_reported_as_an_invalid_proof([Values] bool malformed) => WithFreshSetupState(kzg =>
     {
-        // A missing file makes the loader throw ArgumentException, the type proof verification maps to false.
-        Assert.That(() => StartLoad(kzg, "missing-kzg-trusted-setup.txt").GetAwaiter().GetResult(), Throws.ArgumentException);
+        using TempPath setupPath = TempPath.GetTempFile();
+        if (malformed) File.WriteAllText(setupPath.Path, "2\nzz\nzz\n");
+
+        Exception? failure = Assert.Catch(() => StartLoad(kzg, setupPath.Path).GetAwaiter().GetResult());
+        Assert.That(failure, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(IsSetupUnavailable(failure!), Is.True);
+            Assert.That(failure!.Message, Does.Contain(setupPath.Path));
+            Assert.That(failure.InnerException, malformed ? Is.TypeOf<InvalidOperationException>() : Is.TypeOf<ArgumentException>());
+            Assert.That(kzg.GetProperty(nameof(KzgPolynomialCommitments.IsInitialized))!.GetValue(null), Is.False);
+        }
 
         VerifyProof verify = kzg.GetMethod(nameof(KzgPolynomialCommitments.VerifyProof))!.CreateDelegate<VerifyProof>();
 
         Assert.That(() => verify(new byte[Ckzg.BytesPerCommitment], new byte[Ckzg.BytesPerFieldElement],
                 new byte[Ckzg.BytesPerFieldElement], new byte[Ckzg.BytesPerProof]),
-            Throws.Exception.Matches<Exception>(IsSetupUnavailable).With.InnerException.TypeOf<ArgumentException>());
+            Throws.Exception.SameAs(failure));
     });
 
     /// <remarks>
@@ -73,8 +85,8 @@ public class KzgPolynomialCommitmentsTests
     }
 
     // The isolated context has its own copy of the exception type, so it is matched by name.
-    private static bool IsSetupUnavailable(Exception exception) =>
-        exception.GetType().FullName == typeof(KzgSetupUnavailableException).FullName;
+    private static bool IsSetupUnavailable(Exception? exception) =>
+        exception?.GetType().FullName == typeof(KzgSetupUnavailableException).FullName;
 
     private static Task StartLoad(Type kzg, string? setupFilePath) =>
         (Task)kzg.GetMethod(nameof(KzgPolynomialCommitments.InitializeAsync))!.Invoke(null, [default(ILogger), setupFilePath])!;
