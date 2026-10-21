@@ -37,8 +37,11 @@ internal sealed class WitnessTrieStoreScopeProvider : TrieStoreScopeProvider
     private readonly OptimizedHashSet<ValueHash256> _storageRoots = [];
     private readonly OptimizedHashSet<ValueHash256> _pendingStorageRoots = [];
 
-    // The held children of the branch being walked at each depth: every level of the walk is one nibble shallower.
-    private readonly byte[]?[] _heldNodes = new byte[]?[(HashedKeyNibbles + 1) * BranchChildren];
+    private readonly HashKeyedNodeStorage.HeldChild[] _held = new HashKeyedNodeStorage.HeldChild[BranchChildren];
+
+    // Nodes yet to walk. Depth first, at most fifteen siblings wait at each of the key's nibbles, each a level deeper.
+    private PendingNode[] _pending = new PendingNode[BranchChildren * (HashedKeyNibbles + 1)];
+    private int _pendingCount;
 
     // Whether a node passes depends on it and its depth alone, so once the walk has read twice the witness' bytes, which
     // takes nodes reached along several paths, each pair is walked once. Otherwise a witness could reference one node from
@@ -95,28 +98,39 @@ internal sealed class WitnessTrieStoreScopeProvider : TrieStoreScopeProvider
         if (_pendingStorageRoots.Count != 0 && _pendingStorageRoots.Remove(keccak)) ValidatePaths(keccak.Bytes);
     }
 
+    /// <remarks>Depth first, from a stack rather than by recursion: a call per node, saving the registers the walk
+    /// keeps, cost more than the node's own checks.</remarks>
     private void ValidatePaths(ReadOnlySpan<byte> root)
     {
-        byte[]? rlp = _witnessNodes.Find(root);
-        if (rlp is not null) ValidateHashedNode(root, rlp, HashedKeyNibbles);
+        byte[]? rootRlp = _witnessNodes.Find(root);
+        if (rootRlp is null) return;
+
+        _pendingCount = 0;
+        Push(rootRlp, root.ToArray(), 0, HashedKeyNibbles);
+        while (_pendingCount != 0)
+        {
+            PendingNode node = _pending[--_pendingCount];
+            byte[] rlp = node.Rlp;
+            if ((_bytesBeforeMemo -= rlp.Length) < 0
+                && !(_walked ??= []).Add(new WalkedNode(new ValueHash256(node.Parent.AsSpan(node.KeccakOffset, Hash256.Size)), node.RemainingNibbles)))
+            {
+                continue;
+            }
+
+            ValidateNode(rlp, 0, rlp.Length, node.RemainingNibbles);
+        }
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private void ValidateHashedNode(ReadOnlySpan<byte> keccak, byte[] rlp, int remainingNibbles)
+    /// <summary>Validates the node at <paramref name="start"/> of <paramref name="array"/>, stacking the hashed children
+    /// the witness holds.</summary>
+    /// <remarks>Only a hashed node stacks children: an inlined node is too short to reference a keccak.</remarks>
+    private void ValidateNode(byte[] array, int start, int length, int remainingNibbles)
     {
-        if ((_bytesBeforeMemo -= rlp.Length) < 0 && !(_walked ??= []).Add(new WalkedNode(new ValueHash256(keccak), remainingNibbles))) return;
-
-        ValidateNode(rlp, remainingNibbles);
-    }
-
-    private void ValidateNode(ReadOnlySpan<byte> rlp, int remainingNibbles)
-    {
-        Span<int> held = stackalloc int[BranchChildren];
-        Span<byte[]?> heldNodes = _heldNodes.AsSpan(remainingNibbles * BranchChildren, BranchChildren);
-        int heldCount = _witnessNodes.FindHeldBranchChildren(rlp, held, heldNodes);
+        Span<HashKeyedNodeStorage.HeldChild> held = _held;
+        int heldCount = _witnessNodes.FindHeldBranchChildren(array.AsSpan(start, length), held);
         if (heldCount < 0)
         {
-            ValidateOtherNode(rlp, remainingNibbles);
+            ValidateOtherNode(array, start, length, remainingNibbles);
             return;
         }
 
@@ -124,8 +138,18 @@ internal sealed class WitnessTrieStoreScopeProvider : TrieStoreScopeProvider
 
         for (int i = 0; i < heldCount; i++)
         {
-            ValidateHashedNode(rlp.Slice(held[i], Hash256.Size), heldNodes[i]!, remainingNibbles - 1);
+            Push(held[i].Node, array, start + held[i].Offset, remainingNibbles - 1);
         }
+    }
+
+    /// <param name="rlp">The node.</param>
+    /// <param name="parent">The array holding the node's keccak, the memo's key.</param>
+    /// <param name="keccakOffset">Where in <paramref name="parent"/> the node's keccak starts.</param>
+    /// <param name="remainingNibbles">The nibbles of the hashed key left below the node.</param>
+    private void Push(byte[] rlp, byte[] parent, int keccakOffset, int remainingNibbles)
+    {
+        if (_pendingCount == _pending.Length) Array.Resize(ref _pending, 2 * _pending.Length);
+        _pending[_pendingCount++] = new PendingNode(rlp, parent, keccakOffset, remainingNibbles);
     }
 
     /// <summary>Validates a node other than a branch of hashed or empty children: a leaf, an extension, the empty node
@@ -133,9 +157,9 @@ internal sealed class WitnessTrieStoreScopeProvider : TrieStoreScopeProvider
     /// <remarks>Kept out of <see cref="ValidateNode"/>, whose every call would otherwise save the registers this
     /// decoding takes.</remarks>
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private void ValidateOtherNode(ReadOnlySpan<byte> rlp, int remainingNibbles)
+    private void ValidateOtherNode(byte[] array, int start, int length, int remainingNibbles)
     {
-        RlpReader reader = new(rlp);
+        RlpReader reader = new(array.AsSpan(start, length));
         // Not a list: the empty node.
         if (!reader.IsSequenceNext()) return;
 
@@ -149,7 +173,7 @@ internal sealed class WitnessTrieStoreScopeProvider : TrieStoreScopeProvider
             reader.Position = firstItem;
             for (int i = 0; i < BranchChildren; i++)
             {
-                ValidateChild(ref reader, remainingNibbles - 1);
+                ValidateChild(ref reader, array, start, remainingNibbles - 1);
             }
 
             return;
@@ -169,18 +193,20 @@ internal sealed class WitnessTrieStoreScopeProvider : TrieStoreScopeProvider
             // The spec rejects an empty extension on decode; it would not advance the walk either.
             if (nibbles == 0 || nibbles >= remainingNibbles) ThrowPathExceedsKey();
 
-            ValidateChild(ref reader, remainingNibbles - nibbles);
+            ValidateChild(ref reader, array, start, remainingNibbles - nibbles);
         }
     }
 
-    private void ValidateChild(ref RlpReader reader, int remainingNibbles)
+    /// <param name="reader">At the child, over the node starting at <paramref name="start"/> of <paramref name="array"/>.</param>
+    private void ValidateChild(ref RlpReader reader, byte[] array, int start, int remainingNibbles)
     {
         if (reader.IsSequenceNext())
         {
-            ReadOnlySpan<byte> inlined = reader.PeekNextItem();
+            int inlinedStart = start + reader.Position;
+            int inlinedLength = reader.PeekNextRlpLength();
             reader.SkipItem();
-            _bytesBeforeMemo -= inlined.Length;
-            ValidateNode(inlined, remainingNibbles);
+            _bytesBeforeMemo -= inlinedLength;
+            ValidateNode(array, inlinedStart, inlinedLength, remainingNibbles);
             return;
         }
 
@@ -188,7 +214,7 @@ internal sealed class WitnessTrieStoreScopeProvider : TrieStoreScopeProvider
         if (reference.Length != Hash256.Size) return;
 
         byte[]? rlp = _witnessNodes.Find(reference);
-        if (rlp is not null) ValidateHashedNode(reference, rlp, remainingNibbles);
+        if (rlp is not null) Push(rlp, array, start + reader.Position - Hash256.Size, remainingNibbles);
     }
 
     [DoesNotReturn]
@@ -196,6 +222,8 @@ internal sealed class WitnessTrieStoreScopeProvider : TrieStoreScopeProvider
         throw new TrieException("A witness trie path does not end at the length of its hashed keys");
 
     private readonly record struct WalkedNode(ValueHash256 Hash, int RemainingNibbles);
+
+    private readonly record struct PendingNode(byte[] Rlp, byte[] Parent, int KeccakOffset, int RemainingNibbles);
 
     /// <summary>The host's node storage, reporting each storage node it loads as <see cref="HashKeyedNodeStorage"/>
     /// does.</summary>

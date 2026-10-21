@@ -202,17 +202,16 @@ public class HashKeyedNodeStorageTests
             items[2 * (i - BranchChildren / 2) + 1] = Rlp.Encode(HashOf(held[i]).Bytes);
         }
         byte[] branch = Rlp.Encode(items).Bytes;
-        int[] offsets = new int[BranchChildren];
-        byte[][] nodes = new byte[BranchChildren][];
+        HashKeyedNodeStorage.HeldChild[] children = new HashKeyedNodeStorage.HeldChild[BranchChildren];
 
-        int count = storage.FindHeldBranchChildren(branch, offsets, nodes);
+        int count = storage.FindHeldBranchChildren(branch, children);
 
         Assert.That(count, Is.EqualTo(heldCount));
         Assert.That(branch, full ? Has.Length.EqualTo(532) : Has.Length.LessThan(532), "only a full branch takes the fast path");
         for (int i = 0; i < count; i++)
         {
-            Assert.That(nodes[i], Is.EqualTo(storage.Get(null, TreePath.Empty, new ValueHash256(branch.AsSpan(offsets[i], 32)))));
-            Assert.That(nodes[i], Is.Not.Null);
+            Assert.That(children[i].Node, Is.EqualTo(storage.Get(null, TreePath.Empty, new ValueHash256(branch.AsSpan(children[i].Offset, 32)))));
+            Assert.That(children[i].Node, Is.Not.Null);
         }
     }
 
@@ -221,7 +220,7 @@ public class HashKeyedNodeStorageTests
     {
         HashKeyedNodeStorage storage = Storage(Nodes);
 
-        Assert.That(storage.FindHeldBranchChildren(node, new int[BranchChildren], new byte[BranchChildren][]), Is.EqualTo(-1));
+        Assert.That(storage.FindHeldBranchChildren(node, new HashKeyedNodeStorage.HeldChild[BranchChildren]), Is.EqualTo(-1));
     }
 
     private static IEnumerable<TestCaseData> NodesOfOtherShapes()
