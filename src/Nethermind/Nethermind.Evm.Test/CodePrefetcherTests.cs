@@ -8,6 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.State;
 using NUnit.Framework;
@@ -38,7 +39,7 @@ public class CodePrefetcherTests
         prefetching.Wait(TimeSpan.FromSeconds(10));
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(taking.Result.ToArray(), Is.EqualTo(Code));
+            Assert.That(taking.Result, Is.SequenceEqualTo(Code));
             Assert.That(codeDb.Reads, Is.EqualTo(1));
         }
     }
@@ -64,7 +65,7 @@ public class CodePrefetcherTests
         prefetcher.Prefetch(in CodeHash);
         ReadOnlyMemory<byte> code = prefetcher.Take(in CodeHash);
         Assert.That(MemoryMarshal.TryGetArray(code, out ArraySegment<byte> array), "the test store serves arrays");
-        Assert.That(code.ToArray(), Is.EqualTo(Code));
+        Assert.That(code, Is.SequenceEqualTo(Code));
         return new WeakReference(array.Array);
     }
 
@@ -117,7 +118,7 @@ public class CodePrefetcherTests
         prefetcher.Enqueue(in CodeHash);
 
         Assert.That(codeDb.ReadStarted.Wait(TimeSpan.FromSeconds(10)), "no reader picked up the queued code");
-        Assert.That(prefetcher.Take(in CodeHash).ToArray(), Is.EqualTo(Code));
+        Assert.That(prefetcher.Take(in CodeHash), Is.SequenceEqualTo(Code));
         Assert.That(codeDb.Reads, Is.EqualTo(1));
     }
 

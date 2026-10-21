@@ -7,6 +7,7 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages;
 using Nethermind.Network.Test;
@@ -77,7 +78,7 @@ public class XdcPooledTransactionMessagesTests
         serializer.Serialize(buffer, message);
         using XdcGetPooledTransactionsMessage deserialized = serializer.Deserialize(buffer);
 
-        Assert.That(deserialized.Hashes.AsSpan().ToArray(), Is.EqualTo(ValueHashes));
+        Assert.That(deserialized.Hashes.AsSpan(), Is.SequenceEqualTo(ValueHashes));
         Assert.That(deserialized.PacketType, Is.EqualTo(XdcMessageCode.GetPooledTransactions));
     }
 

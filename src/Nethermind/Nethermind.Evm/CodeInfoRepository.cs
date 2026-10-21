@@ -41,6 +41,8 @@ public class CodeInfoRepository : ICodeInfoRepository
     /// 257 slots, and anything outside the range falls back to the dictionary.</remarks>
     private const int MaxIndexedNumber = 0x100;
 
+    private readonly CodeInfo _emptyCodeInfo = CodeInfo.Empty;
+
     public CodeInfoRepository(IWorldState worldState, IPrecompileProvider precompileProvider)
     {
         _localPrecompiles = precompileProvider.GetPrecompiles();
@@ -79,7 +81,7 @@ public class CodeInfoRepository : ICodeInfoRepository
 
         CodeInfo codeInfo = InternalGetCodeInfo(codeSource);
 
-        delegationAddress = codeInfo.DelegatedAddress;
+        delegationAddress = codeInfo.DelegatedAddress is { } delegated && vmSpec.IsEip7702Enabled ? delegated : null;
         if (delegationAddress is not null)
         {
             if (followDelegation)
@@ -93,6 +95,9 @@ public class CodeInfoRepository : ICodeInfoRepository
 
     public IPrecompile? GetPrecompile(Address codeSource, IReleaseSpec vmSpec) =>
         vmSpec.IsPrecompile(codeSource) ? PrecompileCodeInfo(codeSource).Precompile : null;
+
+    public CodeInfo GetDelegatedCodeInfo(Address target, IReleaseSpec vmSpec) =>
+        vmSpec.IsPrecompile(target) ? _emptyCodeInfo : InternalGetCodeInfo(target);
 
     /// <summary>Resolves a precompile's <see cref="CodeInfo"/> from its number, then from the map.</summary>
     /// <remarks>The map still has to answer for a number above <see cref="MaxIndexedNumber"/>, which the
@@ -116,8 +121,9 @@ public class CodeInfoRepository : ICodeInfoRepository
     /// <summary>Resolves the code stored under <paramref name="codeHash"/> for <paramref name="address"/>.</summary>
     /// <remarks>Overridden by a repository that serves code from a cache instead of the world state.</remarks>
     protected virtual CodeInfo LoadCodeInfo(Address address, in ValueHash256 codeHash) =>
-        codeHash == ValueKeccak.OfAnEmptyString ? CodeInfo.Empty : GetCodeInfo(_worldState, address, in codeHash);
+        codeHash == ValueKeccak.OfAnEmptyString ? _emptyCodeInfo : GetCodeInfo(_worldState, address, in codeHash);
 
+    [SkipLocalsInit]
     internal static CodeInfo GetCodeInfo(IWorldState worldState, Address address, in ValueHash256 codeHash)
     {
         // The one chokepoint where code is resolved by hash; record here so the witness also captures the account's trie path.
@@ -151,6 +157,15 @@ public class CodeInfoRepository : ICodeInfoRepository
     {
         codeHash = code.Length == 0 ? ValueKeccak.OfAnEmptyString : ValueKeccak.Compute(code.Span);
         return worldState.InsertCode(codeOwner, in codeHash, code, spec);
+    }
+
+    public void InsertTransientCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec) =>
+        InsertTransientCode(_worldState, code, codeOwner, spec);
+
+    public static void InsertTransientCode(IWorldState worldState, ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec)
+    {
+        ValueHash256 codeHash = code.Length == 0 ? ValueKeccak.OfAnEmptyString : ValueKeccak.Compute(code.Span);
+        worldState.InsertTransientCode(codeOwner, in codeHash, code, spec);
     }
 
     public void SetDelegation(Address codeSource, Address authority, IReleaseSpec spec) =>

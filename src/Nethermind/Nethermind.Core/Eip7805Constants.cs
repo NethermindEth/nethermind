@@ -19,17 +19,14 @@ public static class Eip7805Constants
 
     /// <summary>Entries one member's list can carry.</summary>
     /// <remarks>
-    /// Consensus gossip caps a member's <c>transactions</c> at <see cref="MaxBytesPerInclusionList"/> and an
-    /// empty entry still costs its SSZ offset, so the cap divided by the offset width is the entry ceiling
-    /// the transport enforces. Entries that decode to nothing are conforming, so no tighter bound holds.
+    /// Consensus gossip caps the summed byte length of a member's <c>transactions</c> at
+    /// <see cref="MaxBytesPerInclusionList"/> and rejects an empty entry, so every entry costs at least one byte.
     /// </remarks>
-    public const int MaxTransactionsPerInclusionList = MaxBytesPerInclusionList / SszOffsetBytes;
+    public const int MaxTransactionsPerInclusionList = MaxBytesPerInclusionList;
 
     /// <summary>Transaction bytes the flattened aggregate can carry.</summary>
     public const int MaxAggregateInclusionListBytes = InclusionListCommitteeSize * MaxBytesPerInclusionList;
 
     /// <summary>Entries the flattened aggregate can carry.</summary>
     public const int MaxAggregateInclusionListTransactions = InclusionListCommitteeSize * MaxTransactionsPerInclusionList;
-
-    private const int SszOffsetBytes = 4;
 }

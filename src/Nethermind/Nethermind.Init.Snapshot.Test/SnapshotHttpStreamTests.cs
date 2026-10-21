@@ -71,18 +71,18 @@ public class SnapshotHttpStreamTests
     }
 
     [Test]
-    public void Read_SourceChangesMidDownload_ThrowsSnapshotSourceChanged()
+    public async Task Read_SourceChangesMidDownload_ThrowsSnapshotSourceChanged()
     {
         _server.Content = BuildContent(100_000);
         _server.SwitchSourceAfterRequests(2, BuildContent(500), "\"v2\"");
 
-        Assert.ThrowsAsync<SnapshotSourceChangedException>(
+        await Assert.ThrowsAsync<SnapshotSourceChangedException>(
             () => DownloadAsync(connections: 1),
             "a snapshot replaced on the server mid-download must abort the stream instead of mixing two objects");
     }
 
     [Test]
-    public void Read_SourceLengthChangesOnRangelessServerWithoutETag_ThrowsSnapshotSourceChanged()
+    public async Task Read_SourceLengthChangesOnRangelessServerWithoutETag_ThrowsSnapshotSourceChanged()
     {
         _server.Content = BuildContent(100_000);
         _server.SupportsRanges = false;
@@ -90,31 +90,31 @@ public class SnapshotHttpStreamTests
         _server.DropFirstAttemptPerRangeAfterBytes = 30_000;
         _server.SwitchSourceAfterRequests(2, BuildContent(50_000), null);
 
-        Assert.ThrowsAsync<SnapshotSourceChangedException>(
+        await Assert.ThrowsAsync<SnapshotSourceChangedException>(
             () => DownloadAsync(connections: 1),
             "a rotated source without an ETag must be detected by its length instead of splicing two objects together");
     }
 
     [Test]
-    public void Read_ETagDisappearsMidDownloadWithoutChecksum_Throws()
+    public async Task Read_ETagDisappearsMidDownloadWithoutChecksum_Throws()
     {
         _server.Content = BuildContent(100_000);
         _server.DropETagAfterRequests = 1;
         using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(60));
 
-        Assert.ThrowsAsync<InvalidDataException>(
+        await Assert.ThrowsAsync<InvalidDataException>(
             () => DownloadAsync(connections: 1, computeChecksum: false, cancellationToken: timeout.Token),
             "a source that stops identifying itself must abort the stream, because nothing else would notice a same-size replacement");
     }
 
     [Test]
-    public void Read_ServerNeverDeliversBytes_GivesUpInsteadOfRetryingForever()
+    public async Task Read_ServerNeverDeliversBytes_GivesUpInsteadOfRetryingForever()
     {
         _server.Content = BuildContent(100_000);
         _server.DropEveryAttemptAfterBytes = 0;
         using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(60));
 
-        Assert.ThrowsAsync<IOException>(
+        await Assert.ThrowsAsync<IOException>(
             () => DownloadAsync(connections: 1, maxNoProgressRetries: 3, cancellationToken: timeout.Token),
             "a connection that accepts the range and then delivers nothing must be bounded, otherwise node startup hangs forever");
     }
@@ -132,13 +132,13 @@ public class SnapshotHttpStreamTests
             Is.Not.Empty, "a redirect that keeps or raises the transport must be followed");
 
     [Test]
-    public void Read_ServerReturnsNotFoundMidDownload_ThrowsWithoutRetrying()
+    public async Task Read_ServerReturnsNotFoundMidDownload_ThrowsWithoutRetrying()
     {
         _server.Content = BuildContent(100_000);
         _server.FailWithNotFoundAfterRequests = 1;
         using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(60));
 
-        Assert.ThrowsAsync<HttpRequestException>(
+        await Assert.ThrowsAsync<HttpRequestException>(
             () => DownloadAsync(connections: 2, cancellationToken: timeout.Token),
             "a permanent HTTP error must abort the stream instead of retrying forever");
     }

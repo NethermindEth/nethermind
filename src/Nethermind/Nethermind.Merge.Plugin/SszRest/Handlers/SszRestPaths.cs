@@ -22,10 +22,19 @@ public static class SszRestPaths
     /// </summary>
     /// <remarks>
     /// To add support for a new fork, add it as a <see cref="Forks.NamedReleaseSpec"/> with its
-    /// engine-API version overrides and update the <c>latest</c> argument here.
+    /// engine-API version overrides and update the <c>latest</c> argument here and the marker EIPs in
+    /// <see cref="GetEngineApiForkName"/>.
     /// </remarks>
     private static readonly Dictionary<string, Forks.NamedReleaseSpec> _forkSpecByUrl =
         BuildForkSpecsByUrl(Forks.Bogota.Instance);
+
+    private static readonly string _parisForkName = nameof(Forks.Paris).ToLowerInvariant();
+    private static readonly string _shanghaiForkName = nameof(Forks.Shanghai).ToLowerInvariant();
+    private static readonly string _cancunForkName = nameof(Forks.Cancun).ToLowerInvariant();
+    private static readonly string _pragueForkName = nameof(Forks.Prague).ToLowerInvariant();
+    private static readonly string _osakaForkName = nameof(Forks.Osaka).ToLowerInvariant();
+    private static readonly string _amsterdamForkName = nameof(Forks.Amsterdam).ToLowerInvariant();
+    private static readonly string _bogotaForkName = nameof(Forks.Bogota).ToLowerInvariant();
 
     private static Dictionary<string, Forks.NamedReleaseSpec> BuildForkSpecsByUrl(Forks.NamedReleaseSpec latest)
     {
@@ -73,6 +82,9 @@ public static class SszRestPaths
 
     public const string PayloadWithWitness = "payloads/witness";
 
+    /// <summary>A templated resource: <c>SszMiddleware</c> matches any payload id in place of <c>{payloadId}</c>.</summary>
+    public const string BuiltPayloadWithWitness = "payloads/{payloadId}/witness";
+
     public const string InclusionList = "inclusion_list";
 
     /// <summary>How a resource's fork and version are determined by <c>SszMiddleware</c>.</summary>
@@ -106,6 +118,7 @@ public static class SszRestPaths
     public const string PostBlobsV3 = $"POST {BasePath}blobs/v3";
     public const string PostBlobsV4 = $"POST {BasePath}blobs/v4";
     public const string PostPayloadsWitness = $"POST {BasePath}payloads/witness";
+    public const string GetPayloadsWitness = $"GET {BasePath}payloads/{{payload_id}}/witness";
     public const string GetInclusionList = $"GET {BasePath}inclusion_list";
 
     // Fork-scoped endpoint → selector pulling its method version off a fork spec, keyed by resource
@@ -127,6 +140,8 @@ public static class SszRestPaths
             [Payloads] = static spec => spec.EngineApiGetPayloadVersion,
             [PayloadBodiesByRange] = static spec => spec.EngineApiPayloadBodiesByRangeVersion,
             [InclusionList] = static spec => spec.IsEip7805Enabled ? 1 : null,
+            // Like the POST witness endpoint: the getPayload version, from the EIP-7928 fork onward.
+            [BuiltPayloadWithWitness] = static spec => spec.IsEip7928Enabled ? spec.EngineApiGetPayloadVersion : null,
         }.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>Every recognized fork-scoped (HTTP method, resource) pair, derived from the tables above.</summary>
@@ -168,18 +183,23 @@ public static class SszRestPaths
     }
 
     /// <summary>
-    /// Returns the fork name that owns <paramref name="spec"/>'s engine API surface, walking up the
-    /// parent chain so BPO forks resolve to their parent (e.g. <c>bpo1 → osaka</c>). Matched
+    /// Returns the fork name that owns <paramref name="spec"/>'s engine API surface. Matched
     /// case-insensitively against the <c>Eth-Execution-Version</c> value, so it is returned as-is
     /// (no per-call lowercasing).
     /// </summary>
-    public static string? GetEngineApiForkName(IReleaseSpec spec)
+    /// <remarks>
+    /// Each fork is detected by its marker EIP rather than by <see cref="Forks.NamedReleaseSpec"/> identity,
+    /// because chainspec-based networks build plain release specs. BPO eras therefore resolve to their base
+    /// fork (e.g. <c>bpo1 → osaka</c>), and anything before Shanghai resolves to <c>paris</c>.
+    /// </remarks>
+    public static string GetEngineApiForkName(IReleaseSpec spec) => spec switch
     {
-        for (Forks.NamedReleaseSpec? n = spec as Forks.NamedReleaseSpec; n is not null; n = n.Parent)
-        {
-            if (n.Name is { } name && _forkSpecByUrl.ContainsKey(name))
-                return name;
-        }
-        return null;
-    }
+        { IsBogotaEnabled: true } => _bogotaForkName,
+        { IsAmsterdamEnabled: true } => _amsterdamForkName,
+        { IsOsakaEnabled: true } => _osakaForkName,
+        { IsPragueEnabled: true } => _pragueForkName,
+        { IsCancunEnabled: true } => _cancunForkName,
+        { IsShanghaiEnabled: true } => _shanghaiForkName,
+        _ => _parisForkName
+    };
 }

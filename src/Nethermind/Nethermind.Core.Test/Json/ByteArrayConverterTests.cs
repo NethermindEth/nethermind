@@ -204,7 +204,7 @@ public class ByteArrayConverterTests : ConverterTestBase<byte[]>
             }
             else
             {
-                Assert.That(result?.AsSpan().ToArray(), Is.EqualTo(expected), "pooled bytes must match the byte[] converter");
+                Assert.That(result!.AsSpan(), Is.SequenceEqualTo(expected), "pooled bytes must match the byte[] converter");
             }
         }
     }

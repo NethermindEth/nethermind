@@ -202,7 +202,8 @@ public class BlockHeader
     public BlockHeader Clone()
     {
         BlockHeader header = (BlockHeader)MemberwiseClone();
-        header.Bloom = Bloom?.Clone() ?? new Bloom();
+        // Header blooms are never mutated in place, so the clone shares the instance.
+        header.Bloom ??= new Bloom();
         return header;
     }
 

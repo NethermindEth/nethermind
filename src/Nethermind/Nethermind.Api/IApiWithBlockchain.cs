@@ -22,11 +22,11 @@ namespace Nethermind.Api
 
         IManualBlockProductionTrigger ManualBlockProductionTrigger { get; }
         IMainProcessingContext MainProcessingContext { get; }
-        ITxSender? TxSender { get; set; }
+        ITxSender? TxSender { get; }
         INonceManager? NonceManager { get; }
-        ITxPool? TxPool { get; set; }
+        ITxPool? TxPool { get; }
 
-        ITransactionComparerProvider? TransactionComparerProvider { get; set; }
+        ITransactionComparerProvider? TransactionComparerProvider { get; }
 
         [SkipServiceCollection]
         TxValidator? TxValidator { get; }

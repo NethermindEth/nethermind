@@ -462,7 +462,7 @@ public class TraceStoreRpcModuleTests
 
         // Written as the RPC server writes it, so the streaming case runs the streamed filter, not the buffered one.
         JToken result = JToken.Parse(Encoding.UTF8.GetString(await Serialize(response)))["result"]!;
-        return [.. result.Select(static trace => $"{trace["action"]!["from"] ?? "reward"} -> {trace["action"]!["to"] ?? trace["action"]!["author"] ?? trace["result"]?["address"]}")];
+        return [.. result.Select(static trace => $"{trace["action"]!["from"] ?? "reward"} -> {trace["action"]!["to"] ?? trace["action"]!["author"] ?? (trace["result"] as JObject)?["address"]}")];
     }
 
     [Test]
@@ -670,6 +670,33 @@ public class TraceStoreRpcModuleTests
     }
 
     [Test]
+    public void block_lookups_report_an_unknown_block_as_not_found([Values] bool replay, [Values("number", "hash", "safe")] string selector)
+    {
+        TestContext test = new();
+        BlockParameter unknown = selector switch
+        {
+            "number" => new(test.BlockFinder.Head!.Number + 1),
+            "hash" => new(TestItem.KeccakH),
+            _ => BlockParameter.Safe,
+        };
+
+        int errorCode = replay
+            ? test.Module.trace_replayBlockTransactions(unknown, ["trace"]).ErrorCode
+            : test.Module.trace_block(unknown).ErrorCode;
+
+        Assert.That(errorCode, Is.EqualTo(ErrorCodes.StandardResourceNotFound));
+    }
+
+    [Test]
+    public async Task trace_filter_reports_an_unknown_bound_as_not_found(
+        [Values("{\"fromBlock\":\"safe\",\"toBlock\":\"latest\"}", "{\"fromBlock\":\"0x1\",\"toBlock\":\"safe\"}")] string filter)
+    {
+        string response = await FilterJson(new TestContext(), filter);
+
+        Assert.That((int?)JToken.Parse(response)["error"]?["code"], Is.EqualTo(ErrorCodes.StandardResourceNotFound), response);
+    }
+
+    [Test]
     public async Task trace_filter_by_hash_returns_an_error_for_an_unknown_or_side_chain_block(
         [Values] bool sideChain, [Values("", ",\"count\":0")] string count, [Values(0, 1, 2)] int parallelization)
     {
@@ -689,7 +716,7 @@ public class TraceStoreRpcModuleTests
         JToken? error = JToken.Parse(response)["error"];
         using (Assert.EnterMultipleScope())
         {
-            Assert.That((int?)error?["code"], Is.EqualTo(sideChain ? ErrorCodes.InvalidInput : ErrorCodes.ResourceNotFound), response);
+            Assert.That((int?)error?["code"], Is.EqualTo(sideChain ? ErrorCodes.InvalidInput : ErrorCodes.StandardResourceNotFound), response);
             Assert.That((string?)error?["message"], Is.EqualTo(sideChain ? $"{hash} block is not canonical" : "header not found"), response);
         }
         test.InnerModule.DidNotReceive().trace_filter(Arg.Any<TraceFilterForRpc>());
@@ -707,7 +734,7 @@ public class TraceStoreRpcModuleTests
         await using AsyncCompletingStream stream = new();
         PipeWriter writer = PipeWriter.Create(stream);
 
-        Assert.DoesNotThrowAsync(async () => await streaming.WriteToAsync(writer, CancellationToken.None));
+        await Assert.DoesNotThrowAsync(async () => await streaming.WriteToAsync(writer, CancellationToken.None));
 
         await writer.CompleteAsync();
     }

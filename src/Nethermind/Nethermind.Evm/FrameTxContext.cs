@@ -13,6 +13,7 @@ using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Evm;
 
@@ -24,26 +25,26 @@ namespace Nethermind.Evm;
 /// <paramref name="nonceKeys"/> is set.</param>
 /// <param name="frames">The envelope's frames, in execution order.</param>
 /// <param name="signatures">The envelope's signature entries, already validated when execution begins.</param>
-/// <param name="sigHash">The canonical signature hash the entries that carry no explicit <c>msg</c> sign.</param>
+/// <param name="transaction">The envelope <see cref="SigHash"/> is computed from on first read.</param>
+/// <param name="sigHash">The canonical signature hash when validation already computed it.</param>
 /// <param name="maxCost">The gas and blob-gas cost the payer's approval reserves up front.</param>
 /// <param name="maxPriorityFeePerGas">EIP-1559 <c>max_priority_fee_per_gas</c> of the envelope.</param>
 /// <param name="maxFeePerGas">EIP-1559 <c>max_fee_per_gas</c> of the envelope.</param>
 /// <param name="maxFeePerBlobGas">EIP-4844 <c>max_fee_per_blob_gas</c> of the envelope, zero when it carries no blobs.</param>
 /// <param name="legacyNonce">The sender's account nonce before any frame executed.</param>
-/// <param name="recentRootReferences">EIP-8272 recent-root references of the signed envelope.</param>
 /// <param name="nonceKeys">EIP-8250 nonce keys, or <see langword="null"/> for a plain account nonce.</param>
 public sealed class FrameTxContext(
     Address sender,
     ulong nonce,
     TxFrame[] frames,
     TxFrameSignature[] signatures,
-    ValueHash256 sigHash,
+    Transaction transaction,
+    ValueHash256? sigHash,
     in UInt256 maxCost,
     in UInt256 maxPriorityFeePerGas,
     in UInt256 maxFeePerGas,
     in UInt256 maxFeePerBlobGas,
     in UInt256 legacyNonce,
-    RecentRootReference[]? recentRootReferences = null,
     UInt256[]? nonceKeys = null)
 {
     /// <summary>The transaction sender: the default target of a frame and signer of an entry that names none.</summary>
@@ -76,7 +77,11 @@ public sealed class FrameTxContext(
     public TxFrameSignature[] Signatures { get; } = signatures;
 
     /// <summary>The hash entries carrying no explicit <c>msg</c> are taken to have signed.</summary>
-    public ValueHash256 SigHash { get; } = sigHash;
+    /// <remarks>Computed on first read unless validation supplied it: only a canonical-hash signature entry and
+    /// <c>TXPARAM(0x08)</c> need it.</remarks>
+    public ValueHash256 SigHash => _sigHash ??= FrameTxSigHash.ComputeValue(transaction);
+
+    private ValueHash256? _sigHash = sigHash;
 
     /// <summary>The cost an approving payer reserves up front: the whole gas budget plus blob gas at the
     /// envelope's maximum prices.</summary>
@@ -93,10 +98,6 @@ public sealed class FrameTxContext(
 
     /// <summary>EIP-4844 <c>max_fee_per_blob_gas</c> of the envelope; zero when it carries no blobs.</summary>
     public UInt256 MaxFeePerBlobGas { get; } = maxFeePerBlobGas;
-
-    /// <summary>The EIP-8272 recent-root references of the signed envelope, empty when it carries none.</summary>
-    /// <remarks>Absent and empty are different envelopes but indistinguishable to executing code.</remarks>
-    public RecentRootReference[] RecentRootReferences { get; } = recentRootReferences ?? [];
 
     /// <summary>Index of the frame currently executing; set by the outer loop before each frame.</summary>
     public int CurrentFrameIndex { get; set; }
@@ -132,8 +133,8 @@ public sealed class FrameTxContext(
     /// <summary>The frame the outer loop is currently executing.</summary>
     public TxFrame CurrentFrame => Frames[CurrentFrameIndex];
 
-    /// <summary>EIP-7906: lazily-built, sorted view of this transaction's state diff and logs, shared by its POST_TX frames.</summary>
-    internal TransactionDiffView? PostTxDiffView { get; set; }
+    /// <summary>EIP-7906: lazily-built, sorted view of this transaction's state diff and logs, shared by its ASSERT frames.</summary>
+    internal TransactionDiffView? AssertFrameDiffView { get; set; }
 
     /// <summary>A frame's target with the omitted-target encoding resolved to the sender.</summary>
     public Address ResolvedTarget(int frameIndex) => Frames[frameIndex].Target ?? Sender;
@@ -213,7 +214,7 @@ public sealed class FrameTxContext(
             if (NonceKeys is not { } keys || !KeyedNonceManager.UsesKeyedDomain(keys))
             {
                 if (worldState.GetNonce(Sender) >= Eip8250Constants.MaxNonceSeq) return FrameApprovalOutcome.NonceExhausted;
-                createsSender = !worldState.AccountExists(Sender);
+                createsSender = worldState.IsDeadAccount(Sender);
             }
         }
 

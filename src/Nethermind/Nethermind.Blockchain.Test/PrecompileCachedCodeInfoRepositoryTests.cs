@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Frozen;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -536,6 +537,40 @@ public class PrecompileCachedCodeInfoRepositoryTests
 
         buffer[2] = 7;
         Assert.That(copied, Is.EqualTo(key), "a copy must own its data, not follow later writes to the source buffer");
+    }
+
+    private const int MaxUnpaidKeyLength = 1024;
+
+    private static IEnumerable<TestCaseData> CachedFlatFeePrecompiles()
+    {
+        byte[] oversized = new byte[1024 * 1024];
+        oversized.AsSpan().Fill(1);
+
+        foreach (KeyValuePair<AddressAsKey, CodeInfo> entry in new EthereumPrecompileProvider().GetPrecompiles())
+        {
+            IPrecompile precompile = entry.Value.Precompile!;
+            if (precompile.SupportsCaching && precompile.DataGasCost(oversized, Osaka.Instance) == 0)
+                yield return new TestCaseData(precompile, oversized).SetArgDisplayNames(precompile.Name);
+        }
+    }
+
+    /// <remarks>
+    /// The cache hashes the normalized input before the precompile runs, so a precompile charging nothing per
+    /// input byte must not let the key grow with the input, or the caller gets that hashing unpaid.
+    /// </remarks>
+    [TestCaseSource(nameof(CachedFlatFeePrecompiles))]
+    public void NormalizeInput_OfFlatFeePrecompile_BoundsTheKeyAndKeepsTheResult(IPrecompile precompile, byte[] oversized)
+    {
+        ReadOnlyMemory<byte> normalized = precompile.NormalizeInput(oversized);
+        Result<byte[]> expected = precompile.Run(oversized, Osaka.Instance);
+        Result<byte[]> actual = precompile.Run(normalized, Osaka.Instance);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(normalized.Length, Is.LessThanOrEqualTo(MaxUnpaidKeyLength));
+            Assert.That(actual.Error, Is.EqualTo(expected.Error));
+            Assert.That(actual.Data, Is.EqualTo(expected.Data));
+        }
     }
 
     private class TestPrecompile(bool supportsCaching, Action? onRun = null, byte[]? fixedOutput = null) : IPrecompile

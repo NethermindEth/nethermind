@@ -13,18 +13,18 @@
       },
       "Microsoft.Build.Tasks.Git": {
         "type": "Direct",
-        "requested": "[10.0.401, )",
-        "resolved": "10.0.401",
-        "contentHash": "ZYctNuT10V9IYyCFydy63DXx0ggZQuynuzQOdLvW62dPgzjIz7f0ISEP75RGiq1jFQh8p6TmGSqxeQZQ87LCig==",
+        "requested": "[10.0.402, )",
+        "resolved": "10.0.402",
+        "contentHash": "k4TuSlseeYpFMIZP3X/MFHNKe+yNDIfVDlvu2ABiWaFWFQFwdsjqmoLTjtrD6YZ5vS2LT1TEZ9JT2kokfLdd0w==",
         "dependencies": {
-          "System.IO.Hashing": "10.0.12"
+          "System.IO.Hashing": "10.0.13"
         }
       },
       "Microsoft.Extensions.FileProviders.Embedded": {
         "type": "Direct",
-        "requested": "[10.0.12, )",
-        "resolved": "10.0.12",
-        "contentHash": "u9y/tTPnkv+lsIqN4NRjhzh5XGv7pPCXjPEdbYVK9daidg+xFFEHv//gTlrjZJAKLMcHbArnCU/wVl0KrPJEJA=="
+        "requested": "[10.0.13, )",
+        "resolved": "10.0.13",
+        "contentHash": "H4baeis/dx/NZ87070hjvJc5mry36x68yQjiMKS3uFxa2tlAwWAciZZh3baTjGCDc7ChURQdLOzPLVsXfkAEFw=="
       },
       "Microsoft.VisualStudio.Azure.Containers.Tools.Targets": {
         "type": "Direct",
@@ -43,15 +43,15 @@
       },
       "Pyroscope": {
         "type": "Direct",
-        "requested": "[1.4.0, )",
-        "resolved": "1.4.0",
-        "contentHash": "omApCiV0DH+u9r/w3XXmnrJXXXYEyCYyJunW9UfzfPCVHhEoI+cv0n/dLbqDfgsbc+bg2ilgcRpNaiifvM2Wig=="
+        "requested": "[1.5.1, )",
+        "resolved": "1.5.1",
+        "contentHash": "9E7oFEyshokcx85hO4J5ii7TmiPQlgBt3T3+vVd4ducaNoIWVy2ClpB7vxWnbq2mVOyEEd7gdqHhQdrYkXSPYQ=="
       },
       "System.CommandLine": {
         "type": "Direct",
-        "requested": "[2.0.12, )",
-        "resolved": "2.0.12",
-        "contentHash": "FpW672e6qqrTd1EfKqsvUtFZaJWlTlszUR1o8tdakXhkzKbnEZVndtpfd4K3fUPCFcIs9UmcswMyYGJP1zp/rg=="
+        "requested": "[2.0.13, )",
+        "resolved": "2.0.13",
+        "contentHash": "TIO2lMV+sSP7WW7pD/oCRHD9ENWY+jqwXmYzgks3R46cEdDzwjQOAhsiBn+M3EegfGjgTpa2h+eIrcU+AM2k6A=="
       },
       "AspNetCore.HealthChecks.UI.Core": {
         "type": "Transitive",
@@ -90,13 +90,13 @@
       },
       "FastEnum.Core": {
         "type": "Transitive",
-        "resolved": "2.0.7",
-        "contentHash": "gBG7/2imq9GVigYmFCUCkR4oJ4Ju2QZkL0MV0sdJMfah9JTUNh8lQlO92pbfl3EjST70KpSrrcdjA2cp0pgZ1w=="
+        "resolved": "2.0.8",
+        "contentHash": "3i2kf5vD45U0w7d0b2bccKVOTL71HUq3iji9FiXs6AV6Vy7ftcpwFiy06MqnhZx7PrnMiC92Rljh+Lntg159oQ=="
       },
       "FastEnum.Generators": {
         "type": "Transitive",
-        "resolved": "2.0.7",
-        "contentHash": "qMYtM8CF0iseltPUPH7QYuUI6ofQX5WYDmyYZeWUUPAdFd0idHggpdvWKrafQFh5x7JUwCBJqYpsAYchFSEXQw=="
+        "resolved": "2.0.8",
+        "contentHash": "0VHS8JvV7U61FpA6dfUXX5Oob37+lUIdiGCCq9xhnoVEY5n26pLo9eDu2sBPWytLGzzh77fO6ZLXs/e04QYmYQ=="
       },
       "Fractions": {
         "type": "Transitive",
@@ -128,8 +128,8 @@
       },
       "JetBrains.HabitatDetector": {
         "type": "Transitive",
-        "resolved": "1.4.6",
-        "contentHash": "kNN79C3hIt+1AzPNKbddouXXGaL84bi2T42Zsa2A0nXyatg1V5q+WLI9NddCtWjMdb9CLkDem2VIc/5lHWaXJQ==",
+        "resolved": "1.5.0",
+        "contentHash": "GazZUoCunH1vrruUvy147lYfgcm2Ns6MCh76XmKZBViosvvYMLyt+JD2PWL8Lm6Ctdo3iQoPYgkStrxhrHbjEQ==",
         "dependencies": {
           "JetBrains.FormatRipper": "2.4.0"
         }
@@ -170,13 +170,13 @@
       },
       "Microsoft.ClearScript.Core": {
         "type": "Transitive",
-        "resolved": "7.5.1",
-        "contentHash": "GuCo9rODubVJGR/cTS4+PIfLsXBz2JUtrUg3II3i+vb1GI0WWO4SLGZfnixtALeKhgBP+5hiKRE3pdmkC4pgFg=="
+        "resolved": "7.5.1.1",
+        "contentHash": "H3R4OaqQPfwxewnZcvTU6qUFyzJ05FchBD4IlO6Z0WO3iWh8PyAWHDcnt4FUmo/t0m40o8rkgnJ7g9pDT7pwJQ=="
       },
       "Microsoft.ClearScript.V8.ICUData": {
         "type": "Transitive",
-        "resolved": "7.5.1",
-        "contentHash": "QuyrzwPU54Np1zxF8NVKQjPghCGs3WEaEsgYWfdCwBHKWLjprtkKH1dl0+lE0gf8hkGalAOH5B5wOctrZ6jEoA=="
+        "resolved": "7.5.1.1",
+        "contentHash": "Jg3yFIWPkfsjOHzVUTbA0VgnxXBtX9BwSL00E8HIljFm3f203e+mlJYO0tTHnqetA0xZyLKbRjRuPotUP/47Nw=="
       },
       "Microsoft.CodeAnalysis.Common": {
         "type": "Transitive",
@@ -251,24 +251,24 @@
       },
       "Microsoft.IdentityModel.Abstractions": {
         "type": "Transitive",
-        "resolved": "8.22.0",
-        "contentHash": "LU3V3owsu4vGpCg2kyL7SsQEuHwcoJ8FSNBqzLADzCf3/PcKUTcx5Plsd51DoTJMfK/WigXV/03UhaN5JXE6uQ=="
+        "resolved": "8.23.0",
+        "contentHash": "JjiBkKj12OKvuWr+kB5sQwb7fmWW5bi03Mq/rd2Fu/7YwZ1RWQO9KhI9lBxki4o1VvY0wzqny8c7nwx1uuZzVg=="
       },
       "Microsoft.IdentityModel.Logging": {
         "type": "Transitive",
-        "resolved": "8.22.0",
-        "contentHash": "G9Tl0yXSlr2pkXv4EpXjO16M4q6oo9N/od+gNyOusZ8yM8LZg1H3f/QOMFuOJiV6znzY5MkAREU97JRRnqpEQw==",
+        "resolved": "8.23.0",
+        "contentHash": "wSXXOoV4b4hhRcC492jyNBZkO0LWrcWtWP5Cl5ujrON3vTMlufXDT39gTZfBhFAZCV2XJtNU6DLHMDR6E9YpUg==",
         "dependencies": {
-          "Microsoft.IdentityModel.Abstractions": "8.22.0"
+          "Microsoft.IdentityModel.Abstractions": "8.23.0"
         }
       },
       "Microsoft.IdentityModel.Tokens": {
         "type": "Transitive",
-        "resolved": "8.22.0",
-        "contentHash": "i4lywKKUuVmheCUA+w/q8QNPReNI0qanHI9hhz48AFqD1ljyb8sxPL2RbXOGiPV13XdJ4kxieL9ukS7tD43LxA==",
+        "resolved": "8.23.0",
+        "contentHash": "PUowLq8gqICt+oepHWmKBOJmnVmWoQ5dOVn2CgwFMBZZOAEMHgCQLWs8ONYdsjAyjhDHaFy+AAx0OMG/oV06Zw==",
         "dependencies": {
           "Microsoft.Bcl.Cryptography": "10.0.2",
-          "Microsoft.IdentityModel.Logging": "8.22.0"
+          "Microsoft.IdentityModel.Logging": "8.23.0"
         }
       },
       "Microsoft.NETCore.Platforms": {
@@ -476,8 +476,8 @@
       },
       "Polly.Core": {
         "type": "Transitive",
-        "resolved": "8.7.0",
-        "contentHash": "BS2t+nsBer16PIebCEPNBK5fgMisADQyRCd7K+BgkMWpFmSaiYE+rVVNpFhGRqUkJmNSLmw0uCNzHHWfgml28Q=="
+        "resolved": "8.8.0",
+        "contentHash": "TewV9uNFsoRFggoFbTAGFwsMYPuckA+wTIpQPyhLL9BANRPQRENz2S4bwATrB3HBOakN5oKLFIllPiDnVecmJg=="
       },
       "prometheus-net": {
         "type": "Transitive",
@@ -549,15 +549,15 @@
       },
       "Testably.Abstractions.FileSystem.Interface": {
         "type": "Transitive",
-        "resolved": "10.3.0",
-        "contentHash": "5ebMaoADkzjfW7GnZYKaUebV8XmUn++C/4sKk1PTzCiddEgbSKBq3pW4EWEi70rYJAK0gA1yDWrYFeHq18FvHQ=="
+        "resolved": "10.4.0",
+        "contentHash": "7G5NzIjs7544Dit0uuvYOOAzD8E4alQS2ENPGT3HV1Ks/1r55O7X4d9g6L273n70IDkgqNdBCmrkWxJLn0xCZA=="
       },
       "Testably.Abstractions.Interface": {
         "type": "Transitive",
-        "resolved": "10.3.0",
-        "contentHash": "/8+o3JUia3/0q9w8yldI4Ll8DiMEIZIGdW4+qYXI6kC2CzZTE6qKZYM36+9jEc2cHjpFIPuSi+sBWxHFR7OfFg==",
+        "resolved": "10.4.0",
+        "contentHash": "SqrrVKStB55YqSP+oAQEBwSww4rhx3JQFXuVCaeQzNCjdTPegvOKM4UIR4TXsIH+Z1BJnPnb6ZN0USvMl4vD4g==",
         "dependencies": {
-          "Testably.Abstractions.FileSystem.Interface": "10.3.0"
+          "Testably.Abstractions.FileSystem.Interface": "10.4.0"
         }
       },
       "Tmds.LibC": {
@@ -569,165 +569,166 @@
         "type": "Project",
         "dependencies": {
           "MathNet.Numerics.FSharp": "[5.0.0, )",
-          "Nethermind.Core": "[2.2.0-preview, )"
+          "Nethermind.Core": "[2.3.0-preview, )"
         }
       },
       "nethermind.api": {
         "type": "Project",
         "dependencies": {
-          "Nethermind.Blockchain": "[2.2.0-preview, )",
-          "Nethermind.Facade": "[2.2.0-preview, )",
-          "Nethermind.History": "[2.2.0-preview, )",
-          "Nethermind.JsonRpc": "[2.2.0-preview, )",
-          "Nethermind.Monitoring": "[2.2.0-preview, )",
-          "Nethermind.Network": "[2.2.0-preview, )",
-          "Nethermind.Sockets": "[2.2.0-preview, )"
+          "Nethermind.Blockchain": "[2.3.0-preview, )",
+          "Nethermind.Facade": "[2.3.0-preview, )",
+          "Nethermind.History": "[2.3.0-preview, )",
+          "Nethermind.JsonRpc": "[2.3.0-preview, )",
+          "Nethermind.Monitoring": "[2.3.0-preview, )",
+          "Nethermind.Network": "[2.3.0-preview, )",
+          "Nethermind.Sockets": "[2.3.0-preview, )"
         }
       },
       "nethermind.balrecorder": {
         "type": "Project",
         "dependencies": {
-          "Nethermind.Api": "[2.2.0-preview, )",
-          "Nethermind.Blockchain": "[2.2.0-preview, )",
-          "Nethermind.Config": "[2.2.0-preview, )",
-          "Nethermind.Consensus": "[2.2.0-preview, )",
-          "Nethermind.Crypto": "[2.2.0-preview, )"
+          "Nethermind.Api": "[2.3.0-preview, )",
+          "Nethermind.Blockchain": "[2.3.0-preview, )",
+          "Nethermind.Config": "[2.3.0-preview, )",
+          "Nethermind.Consensus": "[2.3.0-preview, )",
+          "Nethermind.Crypto": "[2.3.0-preview, )"
         }
       },
       "nethermind.blockchain": {
         "type": "Project",
         "dependencies": {
           "Collections.Pooled": "[1.0.82, )",
-          "Microsoft.ClearScript.V8": "[7.5.1, )",
-          "Microsoft.ClearScript.V8.Native.linux-arm64": "[7.5.1, )",
-          "Microsoft.ClearScript.V8.Native.linux-x64": "[7.5.1, )",
-          "Microsoft.ClearScript.V8.Native.osx-arm64": "[7.5.1, )",
-          "Microsoft.ClearScript.V8.Native.osx-x64": "[7.5.1, )",
-          "Microsoft.ClearScript.V8.Native.win-x64": "[7.5.1, )",
-          "Nethermind.Abi": "[2.2.0-preview, )",
-          "Nethermind.Core": "[2.2.0-preview, )",
-          "Nethermind.Db": "[2.2.0-preview, )",
-          "Nethermind.Evm": "[2.2.0-preview, )",
-          "Nethermind.Evm.Precompiles": "[2.2.0-preview, )",
-          "Nethermind.Network.Stats": "[2.2.0-preview, )",
-          "Nethermind.Specs": "[2.2.0-preview, )",
-          "Nethermind.State": "[2.2.0-preview, )",
-          "Nethermind.TxPool": "[2.2.0-preview, )",
-          "Polly": "[8.7.0, )"
+          "Microsoft.ClearScript.V8": "[7.5.1.1, )",
+          "Microsoft.ClearScript.V8.Native.linux-arm64": "[7.5.1.1, )",
+          "Microsoft.ClearScript.V8.Native.linux-x64": "[7.5.1.1, )",
+          "Microsoft.ClearScript.V8.Native.osx-arm64": "[7.5.1.1, )",
+          "Microsoft.ClearScript.V8.Native.osx-x64": "[7.5.1.1, )",
+          "Microsoft.ClearScript.V8.Native.win-arm64": "[7.5.1.1, )",
+          "Microsoft.ClearScript.V8.Native.win-x64": "[7.5.1.1, )",
+          "Nethermind.Abi": "[2.3.0-preview, )",
+          "Nethermind.Core": "[2.3.0-preview, )",
+          "Nethermind.Db": "[2.3.0-preview, )",
+          "Nethermind.Evm": "[2.3.0-preview, )",
+          "Nethermind.Evm.Precompiles": "[2.3.0-preview, )",
+          "Nethermind.Network.Stats": "[2.3.0-preview, )",
+          "Nethermind.Specs": "[2.3.0-preview, )",
+          "Nethermind.State": "[2.3.0-preview, )",
+          "Nethermind.TxPool": "[2.3.0-preview, )",
+          "Polly": "[8.8.0, )"
         }
       },
       "nethermind.blockprofiler": {
         "type": "Project",
         "dependencies": {
-          "JetBrains.Profiler.Api": "[1.4.11, )",
-          "Nethermind.Api": "[2.2.0-preview, )",
-          "Nethermind.Consensus": "[2.2.0-preview, )"
+          "JetBrains.Profiler.Api": "[1.4.13, )",
+          "Nethermind.Api": "[2.3.0-preview, )",
+          "Nethermind.Consensus": "[2.3.0-preview, )"
         }
       },
       "nethermind.censorshipdetector.plugin": {
         "type": "Project",
         "dependencies": {
-          "Nethermind.Api": "[2.2.0-preview, )",
-          "Nethermind.Blockchain": "[2.2.0-preview, )",
-          "Nethermind.Config": "[2.2.0-preview, )",
-          "Nethermind.Consensus": "[2.2.0-preview, )",
-          "Nethermind.Core": "[2.2.0-preview, )",
-          "Nethermind.Crypto": "[2.2.0-preview, )",
-          "Nethermind.Init": "[2.2.0-preview, )",
-          "Nethermind.Logging": "[2.2.0-preview, )",
-          "Nethermind.Merge.Plugin": "[2.2.0-preview, )",
-          "Nethermind.TxPool": "[2.2.0-preview, )"
+          "Nethermind.Api": "[2.3.0-preview, )",
+          "Nethermind.Blockchain": "[2.3.0-preview, )",
+          "Nethermind.Config": "[2.3.0-preview, )",
+          "Nethermind.Consensus": "[2.3.0-preview, )",
+          "Nethermind.Core": "[2.3.0-preview, )",
+          "Nethermind.Crypto": "[2.3.0-preview, )",
+          "Nethermind.Init": "[2.3.0-preview, )",
+          "Nethermind.Logging": "[2.3.0-preview, )",
+          "Nethermind.Merge.Plugin": "[2.3.0-preview, )",
+          "Nethermind.TxPool": "[2.3.0-preview, )"
         }
       },
       "nethermind.config": {
         "type": "Project",
         "dependencies": {
-          "Nethermind.Core": "[2.2.0-preview, )",
-          "Nethermind.Network.Enr": "[2.2.0-preview, )",
+          "Nethermind.Core": "[2.3.0-preview, )",
+          "Nethermind.Network.Enr": "[2.3.0-preview, )",
           "NonBlocking": "[2.1.2, )",
-          "System.Configuration.ConfigurationManager": "[10.0.12, )"
+          "System.Configuration.ConfigurationManager": "[10.0.13, )"
         }
       },
       "nethermind.consensus": {
         "type": "Project",
         "dependencies": {
           "Collections.Pooled": "[1.0.82, )",
-          "Nethermind.Blockchain": "[2.2.0-preview, )",
-          "Nethermind.Config": "[2.2.0-preview, )",
-          "Nethermind.Core": "[2.2.0-preview, )",
-          "Nethermind.Crypto": "[2.2.0-preview, )",
-          "Nethermind.Evm": "[2.2.0-preview, )",
-          "Nethermind.TxPool": "[2.2.0-preview, )"
+          "Nethermind.Blockchain": "[2.3.0-preview, )",
+          "Nethermind.Config": "[2.3.0-preview, )",
+          "Nethermind.Core": "[2.3.0-preview, )",
+          "Nethermind.Crypto": "[2.3.0-preview, )",
+          "Nethermind.Evm": "[2.3.0-preview, )",
+          "Nethermind.TxPool": "[2.3.0-preview, )"
         }
       },
       "nethermind.consensus.aura": {
         "type": "Project",
         "dependencies": {
           "BouncyCastle.Cryptography": "[2.7.0, )",
-          "Nethermind.Abi": "[2.2.0-preview, )",
-          "Nethermind.Api": "[2.2.0-preview, )",
-          "Nethermind.Blockchain": "[2.2.0-preview, )",
-          "Nethermind.Facade": "[2.2.0-preview, )",
-          "Nethermind.Init": "[2.2.0-preview, )",
-          "Nethermind.Specs": "[2.2.0-preview, )",
-          "Nethermind.Synchronization": "[2.2.0-preview, )",
+          "Nethermind.Abi": "[2.3.0-preview, )",
+          "Nethermind.Api": "[2.3.0-preview, )",
+          "Nethermind.Blockchain": "[2.3.0-preview, )",
+          "Nethermind.Facade": "[2.3.0-preview, )",
+          "Nethermind.Init": "[2.3.0-preview, )",
+          "Nethermind.Specs": "[2.3.0-preview, )",
+          "Nethermind.Synchronization": "[2.3.0-preview, )",
           "Nito.Collections.Deque": "[1.2.1, )"
         }
       },
       "nethermind.consensus.clique": {
         "type": "Project",
         "dependencies": {
-          "Nethermind.Api": "[2.2.0-preview, )",
-          "Nethermind.Blockchain": "[2.2.0-preview, )",
-          "Nethermind.Consensus": "[2.2.0-preview, )",
-          "Nethermind.JsonRpc": "[2.2.0-preview, )"
+          "Nethermind.Api": "[2.3.0-preview, )",
+          "Nethermind.Blockchain": "[2.3.0-preview, )",
+          "Nethermind.Consensus": "[2.3.0-preview, )",
+          "Nethermind.JsonRpc": "[2.3.0-preview, )"
         }
       },
       "nethermind.consensus.ethash": {
         "type": "Project",
         "dependencies": {
-          "Nethermind.Api": "[2.2.0-preview, )",
-          "Nethermind.Blockchain": "[2.2.0-preview, )",
-          "Nethermind.Consensus": "[2.2.0-preview, )",
-          "Nethermind.Core": "[2.2.0-preview, )",
-          "Nethermind.Crypto": "[2.2.0-preview, )",
-          "Nethermind.Serialization.Rlp": "[2.2.0-preview, )",
-          "Nethermind.Specs": "[2.2.0-preview, )"
+          "Nethermind.Api": "[2.3.0-preview, )",
+          "Nethermind.Blockchain": "[2.3.0-preview, )",
+          "Nethermind.Consensus": "[2.3.0-preview, )",
+          "Nethermind.Core": "[2.3.0-preview, )",
+          "Nethermind.Crypto": "[2.3.0-preview, )",
+          "Nethermind.Serialization.Rlp": "[2.3.0-preview, )",
+          "Nethermind.Specs": "[2.3.0-preview, )"
         }
       },
       "nethermind.core": {
         "type": "Project",
         "dependencies": {
-          "Autofac": "[9.3.1, )",
+          "Autofac": "[9.3.4, )",
           "Autofac.Extensions.DependencyInjection": "[11.0.2, )",
-          "FastEnum": "[2.0.7, )",
+          "FastEnum": "[2.0.8, )",
           "Microsoft.IO.RecyclableMemoryStream": "[3.0.1, )",
-          "Microsoft.IdentityModel.JsonWebTokens": "[8.22.0, )",
-          "Nethermind.Crypto.SecP256k1": "[1.7.0, )",
-          "Nethermind.Logging": "[2.2.0-preview, )",
-          "Nethermind.Numerics.Int256": "[1.9.0, )",
-          "Nethermind.Serialization.Ssz": "[2.2.0-preview, )",
+          "Microsoft.IdentityModel.JsonWebTokens": "[8.23.0, )",
+          "Nethermind.Crypto.SecP256k1": "[0.8.0.42, )",
+          "Nethermind.Logging": "[2.3.0-preview, )",
+          "Nethermind.Numerics.Int256": "[1.12.0, )",
+          "Nethermind.Serialization.Ssz": "[2.3.0-preview, )",
           "NonBlocking": "[2.1.2, )",
-          "Testably.Abstractions": "[10.3.0, )"
+          "Testably.Abstractions": "[10.4.0, )"
         }
       },
       "nethermind.crypto": {
         "type": "Project",
         "dependencies": {
           "BouncyCastle.Cryptography": "[2.7.0, )",
-          "Ckzg.Bindings": "[2.1.8.1641, )",
-          "Nethermind.Core": "[2.2.0-preview, )",
-          "Nethermind.Crypto.Bls": "[1.1.0, )",
-          "Nethermind.Serialization.Rlp": "[2.2.0-preview, )",
-          "System.Security.Cryptography.ProtectedData": "[10.0.12, )"
+          "Ckzg.Bindings": "[2.1.8.1680, )",
+          "Nethermind.Core": "[2.3.0-preview, )",
+          "Nethermind.Crypto.Bls": "[0.3.17.15, )",
+          "Nethermind.Serialization.Rlp": "[2.3.0-preview, )",
+          "System.Security.Cryptography.ProtectedData": "[10.0.13, )"
         }
       },
       "nethermind.db": {
         "type": "Project",
         "dependencies": {
-          "Nethermind.Config": "[2.2.0-preview, )",
-          "Nethermind.Serialization.Rlp": "[2.2.0-preview, )",
-          "Nethermind.TurboPForBindings": "[1.0.0, )",
+          "Nethermind.Config": "[2.3.0-preview, )",
+          "Nethermind.Serialization.Rlp": "[2.3.0-preview, )",
+          "Nethermind.TurboPForBindings": "[1.2.0, )",
           "NonBlocking": "[2.1.2, )"
         }
       },
@@ -735,33 +736,33 @@
         "type": "Project",
         "dependencies": {
           "ConcurrentHashSet": "[1.3.0, )",
-          "Nethermind.Api": "[2.2.0-preview, )",
-          "Nethermind.Db": "[2.2.0-preview, )",
-          "Nethermind.RocksDbBindings": "[11.8.1-preview.140, 11.8.1-preview.140]",
+          "Nethermind.Api": "[2.3.0-preview, )",
+          "Nethermind.Db": "[2.3.0-preview, )",
+          "Nethermind.RocksDbBindings": "[11.8.1.183, 11.8.1.183]",
           "NonBlocking": "[2.1.2, )"
         }
       },
       "nethermind.db.rpc": {
         "type": "Project",
         "dependencies": {
-          "Nethermind.Db": "[2.2.0-preview, )",
-          "Nethermind.JsonRpc": "[2.2.0-preview, )",
-          "Nethermind.Serialization.Json": "[2.2.0-preview, )",
-          "Nethermind.State": "[2.2.0-preview, )"
+          "Nethermind.Db": "[2.3.0-preview, )",
+          "Nethermind.JsonRpc": "[2.3.0-preview, )",
+          "Nethermind.Serialization.Json": "[2.3.0-preview, )",
+          "Nethermind.State": "[2.3.0-preview, )"
         }
       },
       "nethermind.era1": {
         "type": "Project",
         "dependencies": {
           "CommunityToolkit.HighPerformance": "[8.4.2, )",
-          "Nethermind.Api": "[2.2.0-preview, )",
-          "Nethermind.Blockchain": "[2.2.0-preview, )",
-          "Nethermind.Consensus": "[2.2.0-preview, )",
-          "Nethermind.Core": "[2.2.0-preview, )",
-          "Nethermind.JsonRpc": "[2.2.0-preview, )",
-          "Nethermind.Serialization.Rlp": "[2.2.0-preview, )",
-          "Nethermind.Serialization.Ssz": "[2.2.0-preview, )",
-          "Nethermind.State": "[2.2.0-preview, )",
+          "Nethermind.Api": "[2.3.0-preview, )",
+          "Nethermind.Blockchain": "[2.3.0-preview, )",
+          "Nethermind.Consensus": "[2.3.0-preview, )",
+          "Nethermind.Core": "[2.3.0-preview, )",
+          "Nethermind.JsonRpc": "[2.3.0-preview, )",
+          "Nethermind.Serialization.Rlp": "[2.3.0-preview, )",
+          "Nethermind.Serialization.Ssz": "[2.3.0-preview, )",
+          "Nethermind.State": "[2.3.0-preview, )",
           "Snappier": "[1.3.1, )"
         }
       },
@@ -769,79 +770,79 @@
         "type": "Project",
         "dependencies": {
           "CommunityToolkit.HighPerformance": "[8.4.2, )",
-          "Nethermind.Api": "[2.2.0-preview, )",
-          "Nethermind.Blockchain": "[2.2.0-preview, )",
-          "Nethermind.Consensus": "[2.2.0-preview, )",
-          "Nethermind.Core": "[2.2.0-preview, )",
-          "Nethermind.Era1": "[2.2.0-preview, )",
-          "Nethermind.History": "[2.2.0-preview, )",
-          "Nethermind.JsonRpc": "[2.2.0-preview, )",
-          "Nethermind.Serialization.Rlp": "[2.2.0-preview, )",
-          "Nethermind.Serialization.Ssz": "[2.2.0-preview, )",
-          "Nethermind.State": "[2.2.0-preview, )",
-          "Polly": "[8.7.0, )",
+          "Nethermind.Api": "[2.3.0-preview, )",
+          "Nethermind.Blockchain": "[2.3.0-preview, )",
+          "Nethermind.Consensus": "[2.3.0-preview, )",
+          "Nethermind.Core": "[2.3.0-preview, )",
+          "Nethermind.Era1": "[2.3.0-preview, )",
+          "Nethermind.History": "[2.3.0-preview, )",
+          "Nethermind.JsonRpc": "[2.3.0-preview, )",
+          "Nethermind.Serialization.Rlp": "[2.3.0-preview, )",
+          "Nethermind.Serialization.Ssz": "[2.3.0-preview, )",
+          "Nethermind.State": "[2.3.0-preview, )",
+          "Polly": "[8.8.0, )",
           "Snappier": "[1.3.1, )"
         }
       },
       "nethermind.ethstats": {
         "type": "Project",
         "dependencies": {
-          "Nethermind.Api": "[2.2.0-preview, )",
-          "Nethermind.Blockchain": "[2.2.0-preview, )",
-          "Nethermind.Core": "[2.2.0-preview, )",
-          "Nethermind.Init": "[2.2.0-preview, )",
-          "Nethermind.JsonRpc": "[2.2.0-preview, )",
-          "Nethermind.Logging": "[2.2.0-preview, )",
-          "Nethermind.Network": "[2.2.0-preview, )",
-          "Websocket.Client": "[5.5.0, )"
+          "Nethermind.Api": "[2.3.0-preview, )",
+          "Nethermind.Blockchain": "[2.3.0-preview, )",
+          "Nethermind.Core": "[2.3.0-preview, )",
+          "Nethermind.Init": "[2.3.0-preview, )",
+          "Nethermind.JsonRpc": "[2.3.0-preview, )",
+          "Nethermind.Logging": "[2.3.0-preview, )",
+          "Nethermind.Network": "[2.3.0-preview, )",
+          "Websocket.Client": "[5.5.1, )"
         }
       },
       "nethermind.evm": {
         "type": "Project",
         "dependencies": {
           "Collections.Pooled": "[1.0.82, )",
-          "Nethermind.Core": "[2.2.0-preview, )",
-          "Nethermind.Crypto": "[2.2.0-preview, )",
-          "Nethermind.Serialization.Rlp": "[2.2.0-preview, )",
-          "Nethermind.Specs": "[2.2.0-preview, )"
+          "Nethermind.Core": "[2.3.0-preview, )",
+          "Nethermind.Crypto": "[2.3.0-preview, )",
+          "Nethermind.Serialization.Rlp": "[2.3.0-preview, )",
+          "Nethermind.Specs": "[2.3.0-preview, )"
         }
       },
       "nethermind.evm.precompiles": {
         "type": "Project",
         "dependencies": {
-          "Nethermind.Core": "[2.2.0-preview, )",
-          "Nethermind.Crypto": "[2.2.0-preview, )",
-          "Nethermind.Crypto.Bls": "[1.1.0, )",
-          "Nethermind.Crypto.SecP256r1": "[1.1.0, )",
-          "Nethermind.Evm": "[2.2.0-preview, )",
-          "Nethermind.GmpBindings": "[2.0.0, )",
-          "Nethermind.MclBindings": "[2.0.0, )",
-          "Nethermind.Serialization.Rlp": "[2.2.0-preview, )",
-          "Nethermind.Specs": "[2.2.0-preview, )"
+          "Nethermind.Core": "[2.3.0-preview, )",
+          "Nethermind.Crypto": "[2.3.0-preview, )",
+          "Nethermind.Crypto.Bls": "[0.3.17.15, )",
+          "Nethermind.Crypto.SecP256r1": "[1.2.0, )",
+          "Nethermind.Evm": "[2.3.0-preview, )",
+          "Nethermind.GmpBindings": "[6.3.0.195, )",
+          "Nethermind.MclBindings": "[4.30.0.119, )",
+          "Nethermind.Serialization.Rlp": "[2.3.0-preview, )",
+          "Nethermind.Specs": "[2.3.0-preview, )"
         }
       },
       "nethermind.externalsigner.plugin": {
         "type": "Project",
         "dependencies": {
-          "Nethermind.Api": "[2.2.0-preview, )",
-          "Nethermind.JsonRpc": "[2.2.0-preview, )"
+          "Nethermind.Api": "[2.3.0-preview, )",
+          "Nethermind.JsonRpc": "[2.3.0-preview, )"
         }
       },
       "nethermind.facade": {
         "type": "Project",
         "dependencies": {
-          "Nethermind.Consensus": "[2.2.0-preview, )",
-          "Nethermind.Core": "[2.2.0-preview, )",
-          "Nethermind.Crypto": "[2.2.0-preview, )",
-          "Nethermind.History": "[2.2.0-preview, )",
-          "Nethermind.Synchronization": "[2.2.0-preview, )",
+          "Nethermind.Consensus": "[2.3.0-preview, )",
+          "Nethermind.Core": "[2.3.0-preview, )",
+          "Nethermind.Crypto": "[2.3.0-preview, )",
+          "Nethermind.History": "[2.3.0-preview, )",
+          "Nethermind.Synchronization": "[2.3.0-preview, )",
           "NonBlocking": "[2.1.2, )"
         }
       },
       "nethermind.flashbots": {
         "type": "Project",
         "dependencies": {
-          "Nethermind.Merge.Plugin": "[2.2.0-preview, )"
+          "Nethermind.Merge.Plugin": "[2.3.0-preview, )"
         }
       },
       "nethermind.healthchecks": {
@@ -850,73 +851,73 @@
           "AspNetCore.HealthChecks.UI": "[9.0.0, )",
           "AspNetCore.HealthChecks.UI.InMemory.Storage": "[9.0.0, )",
           "KubernetesClient": "[19.0.2, )",
-          "Nethermind.Api": "[2.2.0-preview, )",
-          "Nethermind.Init": "[2.2.0-preview, )",
-          "Nethermind.Merge.Plugin": "[2.2.0-preview, )"
+          "Nethermind.Api": "[2.3.0-preview, )",
+          "Nethermind.Init": "[2.3.0-preview, )",
+          "Nethermind.Merge.Plugin": "[2.3.0-preview, )"
         }
       },
       "nethermind.history": {
         "type": "Project",
         "dependencies": {
-          "Nethermind.Consensus": "[2.2.0-preview, )"
+          "Nethermind.Consensus": "[2.3.0-preview, )"
         }
       },
       "nethermind.hive": {
         "type": "Project",
         "dependencies": {
-          "Nethermind.Api": "[2.2.0-preview, )",
-          "Nethermind.Init": "[2.2.0-preview, )"
+          "Nethermind.Api": "[2.3.0-preview, )",
+          "Nethermind.Init": "[2.3.0-preview, )"
         }
       },
       "nethermind.init": {
         "type": "Project",
         "dependencies": {
-          "Nethermind.Api": "[2.2.0-preview, )",
-          "Nethermind.Db.Rocks": "[2.2.0-preview, )",
-          "Nethermind.Db.Rpc": "[2.2.0-preview, )",
-          "Nethermind.Era1": "[2.2.0-preview, )",
-          "Nethermind.EraE": "[2.2.0-preview, )",
-          "Nethermind.Network.Discovery": "[2.2.0-preview, )",
-          "Nethermind.Network.Dns": "[2.2.0-preview, )",
-          "Nethermind.Network.Enr": "[2.2.0-preview, )",
-          "Nethermind.Specs": "[2.2.0-preview, )",
-          "Nethermind.State.Flat": "[2.2.0-preview, )",
-          "Nethermind.State.Flat.History": "[2.2.0-preview, )",
-          "Nethermind.Synchronization": "[2.2.0-preview, )"
+          "Nethermind.Api": "[2.3.0-preview, )",
+          "Nethermind.Db.Rocks": "[2.3.0-preview, )",
+          "Nethermind.Db.Rpc": "[2.3.0-preview, )",
+          "Nethermind.Era1": "[2.3.0-preview, )",
+          "Nethermind.EraE": "[2.3.0-preview, )",
+          "Nethermind.Network.Discovery": "[2.3.0-preview, )",
+          "Nethermind.Network.Dns": "[2.3.0-preview, )",
+          "Nethermind.Network.Enr": "[2.3.0-preview, )",
+          "Nethermind.Specs": "[2.3.0-preview, )",
+          "Nethermind.State.Flat": "[2.3.0-preview, )",
+          "Nethermind.State.Flat.History": "[2.3.0-preview, )",
+          "Nethermind.Synchronization": "[2.3.0-preview, )"
         }
       },
       "nethermind.init.snapshot": {
         "type": "Project",
         "dependencies": {
-          "Nethermind.Api": "[2.2.0-preview, )",
-          "Nethermind.Init": "[2.2.0-preview, )",
+          "Nethermind.Api": "[2.3.0-preview, )",
+          "Nethermind.Init": "[2.3.0-preview, )",
           "ZstdSharp.Port": "[0.8.8, )"
         }
       },
       "nethermind.jsonrpc": {
         "type": "Project",
         "dependencies": {
-          "Nethermind.Abi": "[2.2.0-preview, )",
-          "Nethermind.Blockchain": "[2.2.0-preview, )",
-          "Nethermind.Config": "[2.2.0-preview, )",
-          "Nethermind.Consensus": "[2.2.0-preview, )",
-          "Nethermind.Core": "[2.2.0-preview, )",
-          "Nethermind.Crypto": "[2.2.0-preview, )",
-          "Nethermind.Evm": "[2.2.0-preview, )",
-          "Nethermind.Facade": "[2.2.0-preview, )",
-          "Nethermind.History": "[2.2.0-preview, )",
-          "Nethermind.Network": "[2.2.0-preview, )",
-          "Nethermind.Network.Dns": "[2.2.0-preview, )",
-          "Nethermind.Sockets": "[2.2.0-preview, )",
-          "Nethermind.Synchronization": "[2.2.0-preview, )",
-          "Nethermind.Wallet": "[2.2.0-preview, )"
+          "Nethermind.Abi": "[2.3.0-preview, )",
+          "Nethermind.Blockchain": "[2.3.0-preview, )",
+          "Nethermind.Config": "[2.3.0-preview, )",
+          "Nethermind.Consensus": "[2.3.0-preview, )",
+          "Nethermind.Core": "[2.3.0-preview, )",
+          "Nethermind.Crypto": "[2.3.0-preview, )",
+          "Nethermind.Evm": "[2.3.0-preview, )",
+          "Nethermind.Facade": "[2.3.0-preview, )",
+          "Nethermind.History": "[2.3.0-preview, )",
+          "Nethermind.Network": "[2.3.0-preview, )",
+          "Nethermind.Network.Dns": "[2.3.0-preview, )",
+          "Nethermind.Sockets": "[2.3.0-preview, )",
+          "Nethermind.Synchronization": "[2.3.0-preview, )",
+          "Nethermind.Wallet": "[2.3.0-preview, )"
         }
       },
       "nethermind.jsonrpc.tracestore": {
         "type": "Project",
         "dependencies": {
-          "Nethermind.Api": "[2.2.0-preview, )",
-          "Nethermind.Init": "[2.2.0-preview, )"
+          "Nethermind.Api": "[2.3.0-preview, )",
+          "Nethermind.Init": "[2.3.0-preview, )"
         }
       },
       "nethermind.kademlia": {
@@ -928,10 +929,10 @@
       "nethermind.keystore": {
         "type": "Project",
         "dependencies": {
-          "Nethermind.Config": "[2.2.0-preview, )",
-          "Nethermind.Core": "[2.2.0-preview, )",
-          "Nethermind.Crypto": "[2.2.0-preview, )",
-          "Nethermind.Serialization.Json": "[2.2.0-preview, )",
+          "Nethermind.Config": "[2.3.0-preview, )",
+          "Nethermind.Core": "[2.3.0-preview, )",
+          "Nethermind.Crypto": "[2.3.0-preview, )",
+          "Nethermind.Serialization.Json": "[2.3.0-preview, )",
           "SCrypt": "[2.0.0.2, )"
         }
       },
@@ -941,44 +942,44 @@
       "nethermind.logging.microsoft": {
         "type": "Project",
         "dependencies": {
-          "Nethermind.Logging": "[2.2.0-preview, )"
+          "Nethermind.Logging": "[2.3.0-preview, )"
         }
       },
       "nethermind.logging.nlog": {
         "type": "Project",
         "dependencies": {
           "NLog": "[5.5.1, )",
-          "Nethermind.Logging": "[2.2.0-preview, )"
+          "Nethermind.Logging": "[2.3.0-preview, )"
         }
       },
       "nethermind.merge.aura": {
         "type": "Project",
         "dependencies": {
-          "Nethermind.Blockchain": "[2.2.0-preview, )",
-          "Nethermind.Consensus": "[2.2.0-preview, )",
-          "Nethermind.Consensus.AuRa": "[2.2.0-preview, )",
-          "Nethermind.Core": "[2.2.0-preview, )",
-          "Nethermind.Db": "[2.2.0-preview, )",
-          "Nethermind.Evm": "[2.2.0-preview, )",
-          "Nethermind.Init": "[2.2.0-preview, )",
-          "Nethermind.Merge.Plugin": "[2.2.0-preview, )",
-          "Nethermind.Specs": "[2.2.0-preview, )",
-          "Nethermind.State": "[2.2.0-preview, )"
+          "Nethermind.Blockchain": "[2.3.0-preview, )",
+          "Nethermind.Consensus": "[2.3.0-preview, )",
+          "Nethermind.Consensus.AuRa": "[2.3.0-preview, )",
+          "Nethermind.Core": "[2.3.0-preview, )",
+          "Nethermind.Db": "[2.3.0-preview, )",
+          "Nethermind.Evm": "[2.3.0-preview, )",
+          "Nethermind.Init": "[2.3.0-preview, )",
+          "Nethermind.Merge.Plugin": "[2.3.0-preview, )",
+          "Nethermind.Specs": "[2.3.0-preview, )",
+          "Nethermind.State": "[2.3.0-preview, )"
         }
       },
       "nethermind.merge.plugin": {
         "type": "Project",
         "dependencies": {
-          "Nethermind.Api": "[2.2.0-preview, )",
-          "Nethermind.Init": "[2.2.0-preview, )",
-          "Nethermind.Serialization.Ssz": "[2.2.0-preview, )"
+          "Nethermind.Api": "[2.3.0-preview, )",
+          "Nethermind.Init": "[2.3.0-preview, )",
+          "Nethermind.Serialization.Ssz": "[2.3.0-preview, )"
         }
       },
       "nethermind.monitoring": {
         "type": "Project",
         "dependencies": {
-          "Nethermind.Config": "[2.2.0-preview, )",
-          "Nethermind.Logging": "[2.2.0-preview, )",
+          "Nethermind.Config": "[2.3.0-preview, )",
+          "Nethermind.Logging": "[2.3.0-preview, )",
           "prometheus-net.AspNetCore": "[8.2.1, )"
         }
       },
@@ -986,300 +987,311 @@
         "type": "Project",
         "dependencies": {
           "Crc32.NET": "[1.2.0, )",
-          "Nethermind.Blockchain": "[2.2.0-preview, )",
-          "Nethermind.Config": "[2.2.0-preview, )",
-          "Nethermind.Core": "[2.2.0-preview, )",
-          "Nethermind.Crypto": "[2.2.0-preview, )",
+          "Nethermind.Blockchain": "[2.3.0-preview, )",
+          "Nethermind.Config": "[2.3.0-preview, )",
+          "Nethermind.Core": "[2.3.0-preview, )",
+          "Nethermind.Crypto": "[2.3.0-preview, )",
           "Nethermind.DotNetty.Handlers": "[0.8.0.11, )",
-          "Nethermind.Network.Contract": "[2.2.0-preview, )",
-          "Nethermind.Network.Enr": "[2.2.0-preview, )",
-          "Nethermind.Network.Stats": "[2.2.0-preview, )",
-          "Nethermind.Synchronization": "[2.2.0-preview, )",
+          "Nethermind.Network.Contract": "[2.3.0-preview, )",
+          "Nethermind.Network.Enr": "[2.3.0-preview, )",
+          "Nethermind.Network.Stats": "[2.3.0-preview, )",
+          "Nethermind.Synchronization": "[2.3.0-preview, )",
           "Snappier": "[1.3.1, )"
         }
       },
       "nethermind.network.contract": {
         "type": "Project",
         "dependencies": {
-          "Nethermind.Config": "[2.2.0-preview, )"
+          "Nethermind.Config": "[2.3.0-preview, )"
         }
       },
       "nethermind.network.discovery": {
         "type": "Project",
         "dependencies": {
           "Collections.Pooled": "[1.0.82, )",
-          "Nethermind.Api": "[2.2.0-preview, )",
-          "Nethermind.Crypto": "[2.2.0-preview, )",
-          "Nethermind.Facade": "[2.2.0-preview, )",
-          "Nethermind.Kademlia": "[2.2.0-preview, )",
-          "Nethermind.Logging.Microsoft": "[2.2.0-preview, )",
-          "Nethermind.Network": "[2.2.0-preview, )",
-          "Nethermind.Network.Enr": "[2.2.0-preview, )"
+          "Nethermind.Api": "[2.3.0-preview, )",
+          "Nethermind.Crypto": "[2.3.0-preview, )",
+          "Nethermind.Facade": "[2.3.0-preview, )",
+          "Nethermind.Kademlia": "[2.3.0-preview, )",
+          "Nethermind.Logging.Microsoft": "[2.3.0-preview, )",
+          "Nethermind.Network": "[2.3.0-preview, )",
+          "Nethermind.Network.Enr": "[2.3.0-preview, )"
         }
       },
       "nethermind.network.dns": {
         "type": "Project",
         "dependencies": {
           "DnsClient": "[1.8.0, )",
-          "Nethermind.Network": "[2.2.0-preview, )",
-          "Nethermind.Network.Enr": "[2.2.0-preview, )"
+          "Nethermind.Network": "[2.3.0-preview, )",
+          "Nethermind.Network.Enr": "[2.3.0-preview, )"
         }
       },
       "nethermind.network.enr": {
         "type": "Project",
         "dependencies": {
-          "Nethermind.Crypto": "[2.2.0-preview, )",
-          "Nethermind.Serialization.Rlp": "[2.2.0-preview, )"
+          "Nethermind.Crypto": "[2.3.0-preview, )",
+          "Nethermind.Serialization.Rlp": "[2.3.0-preview, )"
         }
       },
       "nethermind.network.stats": {
         "type": "Project",
         "dependencies": {
-          "Nethermind.Config": "[2.2.0-preview, )",
-          "Nethermind.Core": "[2.2.0-preview, )",
-          "Nethermind.Logging": "[2.2.0-preview, )",
-          "Nethermind.Network.Contract": "[2.2.0-preview, )",
-          "Nethermind.Network.Enr": "[2.2.0-preview, )"
+          "Nethermind.Config": "[2.3.0-preview, )",
+          "Nethermind.Core": "[2.3.0-preview, )",
+          "Nethermind.Logging": "[2.3.0-preview, )",
+          "Nethermind.Network.Contract": "[2.3.0-preview, )",
+          "Nethermind.Network.Enr": "[2.3.0-preview, )"
         }
       },
       "nethermind.opcodetracing.plugin": {
         "type": "Project",
         "dependencies": {
-          "Nethermind.Api": "[2.2.0-preview, )",
-          "Nethermind.Blockchain": "[2.2.0-preview, )",
-          "Nethermind.Config": "[2.2.0-preview, )",
-          "Nethermind.Core": "[2.2.0-preview, )",
-          "Nethermind.Evm": "[2.2.0-preview, )",
-          "Nethermind.Init": "[2.2.0-preview, )",
-          "Nethermind.Logging": "[2.2.0-preview, )",
-          "Nethermind.Synchronization": "[2.2.0-preview, )"
+          "Nethermind.Api": "[2.3.0-preview, )",
+          "Nethermind.Blockchain": "[2.3.0-preview, )",
+          "Nethermind.Config": "[2.3.0-preview, )",
+          "Nethermind.Core": "[2.3.0-preview, )",
+          "Nethermind.Evm": "[2.3.0-preview, )",
+          "Nethermind.Init": "[2.3.0-preview, )",
+          "Nethermind.Logging": "[2.3.0-preview, )",
+          "Nethermind.Synchronization": "[2.3.0-preview, )"
         }
       },
       "nethermind.optimism": {
         "type": "Project",
         "dependencies": {
-          "Google.Protobuf": "[3.35.1, )",
-          "Nethermind.Api": "[2.2.0-preview, )",
-          "Nethermind.Blockchain": "[2.2.0-preview, )",
-          "Nethermind.Consensus": "[2.2.0-preview, )",
-          "Nethermind.Core": "[2.2.0-preview, )",
-          "Nethermind.Init": "[2.2.0-preview, )",
-          "Nethermind.JsonRpc": "[2.2.0-preview, )",
+          "Google.Protobuf": "[3.36.2, )",
+          "Nethermind.Api": "[2.3.0-preview, )",
+          "Nethermind.Blockchain": "[2.3.0-preview, )",
+          "Nethermind.Consensus": "[2.3.0-preview, )",
+          "Nethermind.Core": "[2.3.0-preview, )",
+          "Nethermind.Init": "[2.3.0-preview, )",
+          "Nethermind.JsonRpc": "[2.3.0-preview, )",
           "Nethermind.Libp2p": "[1.0.0-preview.45, )",
           "Nethermind.Libp2p.Protocols.PubsubPeerDiscovery": "[1.0.0-preview.45, )",
-          "Nethermind.Merge.Plugin": "[2.2.0-preview, )",
+          "Nethermind.Merge.Plugin": "[2.3.0-preview, )",
           "Snappier": "[1.3.1, )"
         }
       },
       "nethermind.portfolioviewer.plugin": {
         "type": "Project",
         "dependencies": {
-          "Microsoft.Extensions.FileProviders.Embedded": "[10.0.12, )",
-          "Nethermind.Api": "[2.2.0-preview, )",
-          "Nethermind.Blockchain": "[2.2.0-preview, )",
-          "Nethermind.Consensus": "[2.2.0-preview, )",
-          "Nethermind.Facade": "[2.2.0-preview, )",
-          "Nethermind.History": "[2.2.0-preview, )",
-          "Nethermind.JsonRpc": "[2.2.0-preview, )"
+          "Microsoft.Extensions.FileProviders.Embedded": "[10.0.13, )",
+          "Nethermind.Api": "[2.3.0-preview, )",
+          "Nethermind.Blockchain": "[2.3.0-preview, )",
+          "Nethermind.Consensus": "[2.3.0-preview, )",
+          "Nethermind.Facade": "[2.3.0-preview, )",
+          "Nethermind.History": "[2.3.0-preview, )",
+          "Nethermind.JsonRpc": "[2.3.0-preview, )"
+        }
+      },
+      "nethermind.sendpolicy.plugin": {
+        "type": "Project",
+        "dependencies": {
+          "Nethermind.Api": "[2.3.0-preview, )",
+          "Nethermind.Config": "[2.3.0-preview, )",
+          "Nethermind.Core": "[2.3.0-preview, )",
+          "Nethermind.Crypto": "[2.3.0-preview, )",
+          "Nethermind.Logging": "[2.3.0-preview, )",
+          "Nethermind.TxPool": "[2.3.0-preview, )"
         }
       },
       "nethermind.seq": {
         "type": "Project",
         "dependencies": {
-          "Nethermind.Config": "[2.2.0-preview, )"
+          "Nethermind.Config": "[2.3.0-preview, )"
         }
       },
       "nethermind.serialization.json": {
         "type": "Project",
         "dependencies": {
-          "Microsoft.ClearScript.V8": "[7.5.1, )",
-          "Nethermind.Core": "[2.2.0-preview, )"
+          "Microsoft.ClearScript.V8": "[7.5.1.1, )",
+          "Nethermind.Core": "[2.3.0-preview, )"
         }
       },
       "nethermind.serialization.rlp": {
         "type": "Project",
         "dependencies": {
-          "Ckzg.Bindings": "[2.1.8.1641, )",
-          "Nethermind.Core": "[2.2.0-preview, )",
+          "Ckzg.Bindings": "[2.1.8.1680, )",
+          "Nethermind.Core": "[2.3.0-preview, )",
           "Nethermind.DotNetty.Buffers": "[0.8.0.11, )"
         }
       },
       "nethermind.serialization.ssz": {
         "type": "Project",
         "dependencies": {
-          "Nethermind.Numerics.Int256": "[1.9.0, )"
+          "Nethermind.Numerics.Int256": "[1.12.0, )"
         }
       },
       "nethermind.shutter": {
         "type": "Project",
         "dependencies": {
-          "Google.Protobuf": "[3.35.1, )",
-          "Nethermind.Blockchain": "[2.2.0-preview, )",
-          "Nethermind.Consensus": "[2.2.0-preview, )",
-          "Nethermind.Core": "[2.2.0-preview, )",
-          "Nethermind.Crypto": "[2.2.0-preview, )",
-          "Nethermind.Init": "[2.2.0-preview, )",
+          "Google.Protobuf": "[3.36.2, )",
+          "Nethermind.Blockchain": "[2.3.0-preview, )",
+          "Nethermind.Consensus": "[2.3.0-preview, )",
+          "Nethermind.Core": "[2.3.0-preview, )",
+          "Nethermind.Crypto": "[2.3.0-preview, )",
+          "Nethermind.Init": "[2.3.0-preview, )",
           "Nethermind.Libp2p": "[1.0.0-preview.45, )",
           "Nethermind.Libp2p.Protocols.PubsubPeerDiscovery": "[1.0.0-preview.45, )",
-          "Nethermind.Logging.Microsoft": "[2.2.0-preview, )",
-          "Nethermind.Merge.Plugin": "[2.2.0-preview, )",
-          "Nethermind.Network.Discovery": "[2.2.0-preview, )",
-          "Nethermind.Serialization.Ssz": "[2.2.0-preview, )",
-          "Nethermind.Specs": "[2.2.0-preview, )"
+          "Nethermind.Logging.Microsoft": "[2.3.0-preview, )",
+          "Nethermind.Merge.Plugin": "[2.3.0-preview, )",
+          "Nethermind.Network.Discovery": "[2.3.0-preview, )",
+          "Nethermind.Serialization.Ssz": "[2.3.0-preview, )",
+          "Nethermind.Specs": "[2.3.0-preview, )"
         }
       },
       "nethermind.sockets": {
         "type": "Project",
         "dependencies": {
-          "Nethermind.Core": "[2.2.0-preview, )",
-          "Nethermind.Logging": "[2.2.0-preview, )",
-          "Nethermind.Serialization.Json": "[2.2.0-preview, )"
+          "Nethermind.Core": "[2.3.0-preview, )",
+          "Nethermind.Logging": "[2.3.0-preview, )",
+          "Nethermind.Serialization.Json": "[2.3.0-preview, )"
         }
       },
       "nethermind.specs": {
         "type": "Project",
         "dependencies": {
-          "Nethermind.Config": "[2.2.0-preview, )",
-          "Nethermind.Core": "[2.2.0-preview, )",
-          "Nethermind.Serialization.Json": "[2.2.0-preview, )",
+          "Nethermind.Config": "[2.3.0-preview, )",
+          "Nethermind.Core": "[2.3.0-preview, )",
+          "Nethermind.Serialization.Json": "[2.3.0-preview, )",
           "ZstdSharp.Port": "[0.8.8, )"
         }
       },
       "nethermind.state": {
         "type": "Project",
         "dependencies": {
-          "Nethermind.Core": "[2.2.0-preview, )",
-          "Nethermind.Db": "[2.2.0-preview, )",
-          "Nethermind.Evm": "[2.2.0-preview, )",
-          "Nethermind.Serialization.Rlp": "[2.2.0-preview, )",
-          "Nethermind.Trie": "[2.2.0-preview, )"
+          "Nethermind.Core": "[2.3.0-preview, )",
+          "Nethermind.Db": "[2.3.0-preview, )",
+          "Nethermind.Evm": "[2.3.0-preview, )",
+          "Nethermind.Serialization.Rlp": "[2.3.0-preview, )",
+          "Nethermind.Trie": "[2.3.0-preview, )"
         }
       },
       "nethermind.state.flat": {
         "type": "Project",
         "dependencies": {
           "Collections.Pooled": "[1.0.82, )",
-          "Nethermind.Blockchain": "[2.2.0-preview, )",
-          "Nethermind.Core": "[2.2.0-preview, )",
-          "Nethermind.Db": "[2.2.0-preview, )",
-          "Nethermind.Evm": "[2.2.0-preview, )",
-          "Nethermind.Serialization.Rlp": "[2.2.0-preview, )",
-          "Nethermind.State": "[2.2.0-preview, )",
-          "Nethermind.Synchronization": "[2.2.0-preview, )",
-          "Nethermind.Trie": "[2.2.0-preview, )",
-          "System.IO.Hashing": "[10.0.12, )"
+          "Nethermind.Blockchain": "[2.3.0-preview, )",
+          "Nethermind.Core": "[2.3.0-preview, )",
+          "Nethermind.Db": "[2.3.0-preview, )",
+          "Nethermind.Evm": "[2.3.0-preview, )",
+          "Nethermind.Serialization.Rlp": "[2.3.0-preview, )",
+          "Nethermind.State": "[2.3.0-preview, )",
+          "Nethermind.Synchronization": "[2.3.0-preview, )",
+          "Nethermind.Trie": "[2.3.0-preview, )",
+          "System.IO.Hashing": "[10.0.13, )"
         }
       },
       "nethermind.state.flat.history": {
         "type": "Project",
         "dependencies": {
-          "Nethermind.Core": "[2.2.0-preview, )",
-          "Nethermind.Db": "[2.2.0-preview, )",
-          "Nethermind.Serialization.Rlp": "[2.2.0-preview, )",
-          "Nethermind.State": "[2.2.0-preview, )",
-          "Nethermind.State.Flat": "[2.2.0-preview, )",
-          "Nethermind.Trie": "[2.2.0-preview, )"
+          "Nethermind.Core": "[2.3.0-preview, )",
+          "Nethermind.Db": "[2.3.0-preview, )",
+          "Nethermind.Serialization.Rlp": "[2.3.0-preview, )",
+          "Nethermind.State": "[2.3.0-preview, )",
+          "Nethermind.State.Flat": "[2.3.0-preview, )",
+          "Nethermind.Trie": "[2.3.0-preview, )"
         }
       },
       "nethermind.statediff.core": {
         "type": "Project",
         "dependencies": {
-          "Nethermind.Core": "[2.2.0-preview, )",
-          "Nethermind.Serialization.Rlp": "[2.2.0-preview, )",
-          "Nethermind.Trie": "[2.2.0-preview, )"
+          "Nethermind.Core": "[2.3.0-preview, )",
+          "Nethermind.Serialization.Rlp": "[2.3.0-preview, )",
+          "Nethermind.Trie": "[2.3.0-preview, )"
         }
       },
       "nethermind.statediffswriter": {
         "type": "Project",
         "dependencies": {
-          "Nethermind.Api": "[2.2.0-preview, )",
-          "Nethermind.Db": "[2.2.0-preview, )",
-          "Nethermind.Db.Rocks": "[2.2.0-preview, )",
-          "Nethermind.Init": "[2.2.0-preview, )",
-          "Nethermind.State.Flat": "[2.2.0-preview, )",
-          "Nethermind.StateDiff.Core": "[2.2.0-preview, )",
-          "Nethermind.Trie": "[2.2.0-preview, )"
+          "Nethermind.Api": "[2.3.0-preview, )",
+          "Nethermind.Db": "[2.3.0-preview, )",
+          "Nethermind.Db.Rocks": "[2.3.0-preview, )",
+          "Nethermind.Init": "[2.3.0-preview, )",
+          "Nethermind.State.Flat": "[2.3.0-preview, )",
+          "Nethermind.StateDiff.Core": "[2.3.0-preview, )",
+          "Nethermind.Trie": "[2.3.0-preview, )"
         }
       },
       "nethermind.synchronization": {
         "type": "Project",
         "dependencies": {
           "ConcurrentHashSet": "[1.3.0, )",
-          "Nethermind.Consensus": "[2.2.0-preview, )",
-          "Nethermind.History": "[2.2.0-preview, )",
-          "Nethermind.Logging": "[2.2.0-preview, )",
-          "Nethermind.Network.Contract": "[2.2.0-preview, )",
-          "Nethermind.Trie": "[2.2.0-preview, )",
+          "Nethermind.Consensus": "[2.3.0-preview, )",
+          "Nethermind.History": "[2.3.0-preview, )",
+          "Nethermind.Logging": "[2.3.0-preview, )",
+          "Nethermind.Network.Contract": "[2.3.0-preview, )",
+          "Nethermind.Trie": "[2.3.0-preview, )",
           "NonBlocking": "[2.1.2, )"
         }
       },
       "nethermind.taiko": {
         "type": "Project",
         "dependencies": {
-          "Nethermind.Api": "[2.2.0-preview, )",
-          "Nethermind.Blockchain": "[2.2.0-preview, )",
-          "Nethermind.Consensus": "[2.2.0-preview, )",
-          "Nethermind.Core": "[2.2.0-preview, )",
-          "Nethermind.Evm": "[2.2.0-preview, )",
-          "Nethermind.Evm.Precompiles": "[2.2.0-preview, )",
-          "Nethermind.Init": "[2.2.0-preview, )",
-          "Nethermind.JsonRpc": "[2.2.0-preview, )",
-          "Nethermind.Logging": "[2.2.0-preview, )",
-          "Nethermind.Merge.Plugin": "[2.2.0-preview, )",
-          "Nethermind.Serialization.Json": "[2.2.0-preview, )"
+          "Nethermind.Api": "[2.3.0-preview, )",
+          "Nethermind.Blockchain": "[2.3.0-preview, )",
+          "Nethermind.Consensus": "[2.3.0-preview, )",
+          "Nethermind.Core": "[2.3.0-preview, )",
+          "Nethermind.Evm": "[2.3.0-preview, )",
+          "Nethermind.Evm.Precompiles": "[2.3.0-preview, )",
+          "Nethermind.Init": "[2.3.0-preview, )",
+          "Nethermind.JsonRpc": "[2.3.0-preview, )",
+          "Nethermind.Logging": "[2.3.0-preview, )",
+          "Nethermind.Merge.Plugin": "[2.3.0-preview, )",
+          "Nethermind.Serialization.Json": "[2.3.0-preview, )"
         }
       },
       "nethermind.trie": {
         "type": "Project",
         "dependencies": {
-          "Nethermind.Core": "[2.2.0-preview, )",
-          "Nethermind.Db": "[2.2.0-preview, )",
-          "Nethermind.Serialization.Rlp": "[2.2.0-preview, )",
+          "Nethermind.Core": "[2.3.0-preview, )",
+          "Nethermind.Db": "[2.3.0-preview, )",
+          "Nethermind.Serialization.Rlp": "[2.3.0-preview, )",
           "NonBlocking": "[2.1.2, )"
         }
       },
       "nethermind.txpool": {
         "type": "Project",
         "dependencies": {
-          "Nethermind.Config": "[2.2.0-preview, )",
-          "Nethermind.Core": "[2.2.0-preview, )",
-          "Nethermind.Crypto": "[2.2.0-preview, )",
-          "Nethermind.Db": "[2.2.0-preview, )",
-          "Nethermind.Evm": "[2.2.0-preview, )",
-          "Nethermind.Evm.Precompiles": "[2.2.0-preview, )",
-          "Nethermind.Network.Contract": "[2.2.0-preview, )",
-          "Nethermind.State": "[2.2.0-preview, )",
+          "Nethermind.Config": "[2.3.0-preview, )",
+          "Nethermind.Core": "[2.3.0-preview, )",
+          "Nethermind.Crypto": "[2.3.0-preview, )",
+          "Nethermind.Db": "[2.3.0-preview, )",
+          "Nethermind.Evm": "[2.3.0-preview, )",
+          "Nethermind.Evm.Precompiles": "[2.3.0-preview, )",
+          "Nethermind.Network.Contract": "[2.3.0-preview, )",
+          "Nethermind.State": "[2.3.0-preview, )",
           "NonBlocking": "[2.1.2, )"
         }
       },
       "nethermind.upnp.plugin": {
         "type": "Project",
         "dependencies": {
-          "Nethermind.Api": "[2.2.0-preview, )",
-          "Open.NAT.Core": "[2.1.0.5, )"
+          "Nethermind.Api": "[2.3.0-preview, )",
+          "SharpOpenNat": "[4.0.19, )"
         }
       },
       "nethermind.wallet": {
         "type": "Project",
         "dependencies": {
-          "Nethermind.Core": "[2.2.0-preview, )",
-          "Nethermind.KeyStore": "[2.2.0-preview, )",
-          "Nethermind.Serialization.Rlp": "[2.2.0-preview, )",
-          "Nethermind.TxPool": "[2.2.0-preview, )"
+          "Nethermind.Core": "[2.3.0-preview, )",
+          "Nethermind.KeyStore": "[2.3.0-preview, )",
+          "Nethermind.Serialization.Rlp": "[2.3.0-preview, )",
+          "Nethermind.TxPool": "[2.3.0-preview, )"
         }
       },
       "nethermind.xdc": {
         "type": "Project",
         "dependencies": {
-          "Nethermind.Api": "[2.2.0-preview, )",
-          "Nethermind.Blockchain": "[2.2.0-preview, )",
-          "Nethermind.Consensus": "[2.2.0-preview, )",
-          "Nethermind.Core": "[2.2.0-preview, )",
-          "Nethermind.Init": "[2.2.0-preview, )",
-          "Nethermind.JsonRpc": "[2.2.0-preview, )",
-          "Nethermind.Network.Discovery": "[2.2.0-preview, )",
-          "Nethermind.Serialization.Rlp": "[2.2.0-preview, )",
-          "Nethermind.State": "[2.2.0-preview, )"
+          "Nethermind.Api": "[2.3.0-preview, )",
+          "Nethermind.Blockchain": "[2.3.0-preview, )",
+          "Nethermind.Consensus": "[2.3.0-preview, )",
+          "Nethermind.Core": "[2.3.0-preview, )",
+          "Nethermind.Init": "[2.3.0-preview, )",
+          "Nethermind.JsonRpc": "[2.3.0-preview, )",
+          "Nethermind.Network.Discovery": "[2.3.0-preview, )",
+          "Nethermind.Serialization.Rlp": "[2.3.0-preview, )",
+          "Nethermind.State": "[2.3.0-preview, )"
         }
       },
       "AspNetCore.HealthChecks.UI": {
@@ -1305,9 +1317,9 @@
       },
       "Autofac": {
         "type": "CentralTransitive",
-        "requested": "[9.3.1, )",
-        "resolved": "9.3.1",
-        "contentHash": "WCDp+kYLr+r9enkRDt4PYRzj321P/c+8SICxHhWo9gkVNqE9EziiYyUMa7A0ce27SK6qgRWYCK0zp19J2ykVHw=="
+        "requested": "[9.3.4, )",
+        "resolved": "9.3.4",
+        "contentHash": "sKldkrIDjhic/BtE6KBl50VjwnuVVOXMnJgh9CsG5uHa8IsGR1BkvjyF6UifPfXPfnkauPqJrAF0QF+JhhRTsw=="
       },
       "Autofac.Extensions.DependencyInjection": {
         "type": "CentralTransitive",
@@ -1326,9 +1338,9 @@
       },
       "Ckzg.Bindings": {
         "type": "CentralTransitive",
-        "requested": "[2.1.8.1641, )",
-        "resolved": "2.1.8.1641",
-        "contentHash": "xeeTkR6VES+mCWFOa+yN507kTihU+KR5SdHsDll/dTaHQtttI8tuvp+/91cghl8N4b0+olTXt31X5sWzF89hag=="
+        "requested": "[2.1.8.1680, )",
+        "resolved": "2.1.8.1680",
+        "contentHash": "SSJpHH7aXLUgCV4ism0fS91GyCDJ71JISXZfQcCoaYVaNDahgIQxWTQwj4vCnA85Inh3jr3sAn5Yt12vNthlBA=="
       },
       "Collections.Pooled": {
         "type": "CentralTransitive",
@@ -1365,27 +1377,27 @@
       },
       "FastEnum": {
         "type": "CentralTransitive",
-        "requested": "[2.0.7, )",
-        "resolved": "2.0.7",
-        "contentHash": "jbLA6E9Hq7OiPwYFE57CsFEqgTO+Dgc49dpBAsdoAp8K0qg8oO3PyIBSCh2KgF0f/KkQOgkwB9OoK0oi68NY1A==",
+        "requested": "[2.0.8, )",
+        "resolved": "2.0.8",
+        "contentHash": "k8FbfxFOLuhqDGmDkaHvtzCpYKfEJpZ3dVb56UtF+V00jM5UC5owdMf1zqNBNgVqvDop7YRzcIT8NImB1W5Q3A==",
         "dependencies": {
-          "FastEnum.Core": "2.0.7",
-          "FastEnum.Generators": "2.0.7"
+          "FastEnum.Core": "2.0.8",
+          "FastEnum.Generators": "2.0.8"
         }
       },
       "Google.Protobuf": {
         "type": "CentralTransitive",
-        "requested": "[3.35.1, )",
-        "resolved": "3.35.1",
-        "contentHash": "pxtkuXhR8svkvDTQrYew9GZQt6eWhblz/V/WKUFrQgkHYlQPsumJTeF6ppHRJpe6j9ffukkd5lQULiiKaek4xA=="
+        "requested": "[3.36.2, )",
+        "resolved": "3.36.2",
+        "contentHash": "Ci1q1iJg74qAE5riTA2FbMS0wPbpruPQI/JQ9DrAsRo2VsSxgt1e/pmxGxgrci+pXJEgrSYg2vPl8rrStZkclQ=="
       },
       "JetBrains.Profiler.Api": {
         "type": "CentralTransitive",
-        "requested": "[1.4.11, )",
-        "resolved": "1.4.11",
-        "contentHash": "4XOA72p49dmzT9k2NyhSVYnLxjw+OPJpXen2gNFsbWquZPjnpoPqXJosVfeONDOST52cgAg3c1q/cBa6/R3NLQ==",
+        "requested": "[1.4.13, )",
+        "resolved": "1.4.13",
+        "contentHash": "abkSB+SOgLMPfOGJtl2XQ+ioSUYBtZxiKDOGCpNZ4WU7ZbAzhldrpRwDMsQnIJJcNhEawGtbhcI+Gk3ktx2RXQ==",
         "dependencies": {
-          "JetBrains.HabitatDetector": "1.4.6"
+          "JetBrains.HabitatDetector": "1.5.0"
         }
       },
       "KubernetesClient": {
@@ -1410,44 +1422,50 @@
       },
       "Microsoft.ClearScript.V8": {
         "type": "CentralTransitive",
-        "requested": "[7.5.1, )",
-        "resolved": "7.5.1",
-        "contentHash": "RflEJEMkidCKIOKALPwjvZXjjIUrIjgyXhgiyfrb8Ybnd2yxmNct7DOX3eWQYuHCyDe+wuTYBZaj3XaAlDMNDg==",
+        "requested": "[7.5.1.1, )",
+        "resolved": "7.5.1.1",
+        "contentHash": "oEJxEMqzzC8XYE9kA1ajmfmloAuSlNIzNyrIfwROXkKjfeePptvUT22MqHfV6rRV4//B7XShlq7VM6o2ZM1eZQ==",
         "dependencies": {
-          "Microsoft.ClearScript.Core": "7.5.1",
-          "Microsoft.ClearScript.V8.ICUData": "7.5.1",
+          "Microsoft.ClearScript.Core": "7.5.1.1",
+          "Microsoft.ClearScript.V8.ICUData": "7.5.1.1",
           "Newtonsoft.Json": "13.0.3"
         }
       },
       "Microsoft.ClearScript.V8.Native.linux-arm64": {
         "type": "CentralTransitive",
-        "requested": "[7.5.1, )",
-        "resolved": "7.5.1",
-        "contentHash": "9QwgJVIAWlO/ltBuvVHj40dSKyctir7DUWe0zgWnaqeM4sgTO8QVrG5f+qjwo8uRYDKt15EPfqhAD8Y6+I3sXQ=="
+        "requested": "[7.5.1.1, )",
+        "resolved": "7.5.1.1",
+        "contentHash": "y9Hb11O75GmzGS2xn5DvIJ0M89qiEYbwsYRkpA4w9bO/opu0R10KACHJYPgph8sMePIJzRABtA7KIPBxS4+VbQ=="
       },
       "Microsoft.ClearScript.V8.Native.linux-x64": {
         "type": "CentralTransitive",
-        "requested": "[7.5.1, )",
-        "resolved": "7.5.1",
-        "contentHash": "B+JPK6ZnflitblwHl7WZ/6argp3+czixo10vYXbF9D5KgjclJbeppxj5FpJnH6Hv1Ua0Ql+TduoSX53fhYh5AQ=="
+        "requested": "[7.5.1.1, )",
+        "resolved": "7.5.1.1",
+        "contentHash": "ZzX0d8KD3h1mkHji3qMZA5gllbArSJErOcgpmOgXp6MNVEcA08TED+InXAS/lnubEs1q0mflnXjHcXIptjDYSA=="
       },
       "Microsoft.ClearScript.V8.Native.osx-arm64": {
         "type": "CentralTransitive",
-        "requested": "[7.5.1, )",
-        "resolved": "7.5.1",
-        "contentHash": "Fir3WvZX4e+rrLb+Py9+O4940STW9/UUBO2bXYxNE8lZhEIJwTvMnGeJ/KdrioHmAsJRMbcYN1P2PjQf2oNQ/Q=="
+        "requested": "[7.5.1.1, )",
+        "resolved": "7.5.1.1",
+        "contentHash": "MfzQquSw2wXBjg24JZE6kjPxE04H+GOlqnSGmXl1Lk0fFbGixxqFSRqQ2TAlEuEQ5pdOmTf40VEzba67J6Kf1w=="
       },
       "Microsoft.ClearScript.V8.Native.osx-x64": {
         "type": "CentralTransitive",
-        "requested": "[7.5.1, )",
-        "resolved": "7.5.1",
-        "contentHash": "e31DyJwiTDLsCWEv2wkAtOPJqKGi5qQ2tnILjeqe6RD7b0EazXXq2wEFmEbx9aQs++mrb1oWpCOeLur+Qlb0Ig=="
+        "requested": "[7.5.1.1, )",
+        "resolved": "7.5.1.1",
+        "contentHash": "4G7Dx91cote/k3cPhXzeM1GrloPQftKrF/SCaNsjdZQGW4G5tWGYTQewG1/DCLeJ2pngh+32Kkp/JTOnFF1MQg=="
+      },
+      "Microsoft.ClearScript.V8.Native.win-arm64": {
+        "type": "CentralTransitive",
+        "requested": "[7.5.1.1, )",
+        "resolved": "7.5.1.1",
+        "contentHash": "ZvAKQ+zKsn7QGmKefd8Eh1AjascYR4j5QDchNwJkEbYxlFJNY1Q9QNjdExS4NG4QDOqp2iD1WkQgR70ZX4BnIQ=="
       },
       "Microsoft.ClearScript.V8.Native.win-x64": {
         "type": "CentralTransitive",
-        "requested": "[7.5.1, )",
-        "resolved": "7.5.1",
-        "contentHash": "fkCJta+xF2W3+L6NwRzqIV0VYD/WVcrZHyxgbOe5iTl321Td0w5loBWGVXlgG5fsuv2FEcba1GLE1CbeJrzMRw=="
+        "requested": "[7.5.1.1, )",
+        "resolved": "7.5.1.1",
+        "contentHash": "N79bR+RG7FD8wv/tdXZuOLDx3YAQ+mSB5P0gcUNMGEFO4DljRSPlJcEzHLrPvrlPzNnc3aV6Rx2v5V3qordPJg=="
       },
       "Microsoft.CodeAnalysis.Analyzers": {
         "type": "CentralTransitive",
@@ -1481,11 +1499,11 @@
       },
       "Microsoft.IdentityModel.JsonWebTokens": {
         "type": "CentralTransitive",
-        "requested": "[8.22.0, )",
-        "resolved": "8.22.0",
-        "contentHash": "kv6peMLjALZLDAy2H3F77KjVRdwiscn2p/g3ui2chcbuEcAX2MpAbyDcYnJ7Vyh8jZ1aJWrniUMCDWoOgnu4NQ==",
+        "requested": "[8.23.0, )",
+        "resolved": "8.23.0",
+        "contentHash": "ePEm+mv5iswzckE3mygh52uFUeQpVlHa1B10nS4jpEyNV5tL1mLgRS9U5sMaRlhsPRsZ1DJP0+FhxSrOIfMGIg==",
         "dependencies": {
-          "Microsoft.IdentityModel.Tokens": "8.22.0"
+          "Microsoft.IdentityModel.Tokens": "8.23.0"
         }
       },
       "Microsoft.IO.RecyclableMemoryStream": {
@@ -1496,21 +1514,21 @@
       },
       "Nethermind.Crypto.Bls": {
         "type": "CentralTransitive",
-        "requested": "[1.1.0, )",
-        "resolved": "1.1.0",
-        "contentHash": "0twAxphu4RDD173wG6EjhUfkS80HuyL+CeGOGolJWUFFgZ07YtsIQgep5gRHfKRkhPHCCgcOHMjkuoQf3/mc7Q=="
+        "requested": "[0.3.17.15, )",
+        "resolved": "0.3.17.15",
+        "contentHash": "+xr/mF5oUDoh6z1e71p3wBmO9QcOD6hYNFrx04iEhxHWzfIa9E5+/qS5nS1XX5faKaw5s6PWNIxLVg9HUkVCxQ=="
       },
       "Nethermind.Crypto.SecP256k1": {
         "type": "CentralTransitive",
-        "requested": "[1.7.0, )",
-        "resolved": "1.7.0",
-        "contentHash": "mF200wb8fOBDHz449QkGUUSsW9wGGfngqObckMYZ9PFuXugdpbaGPN1Udy73mpct/i+1GIHGQLmFkXb131arRw=="
+        "requested": "[0.8.0.42, )",
+        "resolved": "0.8.0.42",
+        "contentHash": "BNc3CNTJAJTLkCHcOyY1YC/5Ww8S3ZU6IK3SQjnuKv4hInRJ1jzCxazCypYi+vAFYE4pO3ZQ8X06BkSrkVn9fQ=="
       },
       "Nethermind.Crypto.SecP256r1": {
         "type": "CentralTransitive",
-        "requested": "[1.1.0, )",
-        "resolved": "1.1.0",
-        "contentHash": "iX5hym1X8odR5QwBLeicStQuDbjqxLx7e9ltoBe3+EN+S6vyc6DJxYSY8TpOp2QnB5Hf3g7yguWvmsKnpIPE2w=="
+        "requested": "[1.2.0, )",
+        "resolved": "1.2.0",
+        "contentHash": "fZcpjrDznXD5EzL5cNWSH429qd3/uP9t3lNUuFnv9gAG1kaNw0QhSz+ZvVKB0sV92/0nNSVcTL0TRVOVQ/PNdw=="
       },
       "Nethermind.DotNetty.Buffers": {
         "type": "CentralTransitive",
@@ -1545,9 +1563,9 @@
       },
       "Nethermind.GmpBindings": {
         "type": "CentralTransitive",
-        "requested": "[2.0.0, )",
-        "resolved": "2.0.0",
-        "contentHash": "nMhuS5f4pLwm3ACbST6Q7u8p3/vclmSTiWeTeyNOi2MurwTVMbLZYZB26HyiwnurslVu8LQqkZ9z8QekYYt9RQ=="
+        "requested": "[6.3.0.195, )",
+        "resolved": "6.3.0.195",
+        "contentHash": "mksPt3wW+A6b9fyZG78NqxZqgLPjosfvMhg9cxEC5eaIs4KRvBWtClKxsMAFfPLzjfqiPXa4QfHoaRRzyrd10w=="
       },
       "Nethermind.Libp2p": {
         "type": "CentralTransitive",
@@ -1582,30 +1600,30 @@
       },
       "Nethermind.MclBindings": {
         "type": "CentralTransitive",
-        "requested": "[2.0.0, )",
-        "resolved": "2.0.0",
-        "contentHash": "tkJtkmKPlvCbz4lanrVDQqWyTcsUWhly1Vv/zNUldPD8d+Sy7aGRm2L28SeQkubSLP7of5JVw1SIN6BiVA1AUQ=="
+        "requested": "[4.30.0.119, )",
+        "resolved": "4.30.0.119",
+        "contentHash": "8J/3Jp6PvAB9ypBx5Lln3n7XEEmc3SUNbktCxlR6IwR8yIuAZ7woX8XL7t0zb4MvQ6DCL1/rtR6Qnc3vd/sBbw=="
       },
       "Nethermind.Numerics.Int256": {
         "type": "CentralTransitive",
-        "requested": "[1.9.0, )",
-        "resolved": "1.9.0",
-        "contentHash": "MJyHqfo4yqDb7hX/PqxjRcOxUb8+/Zea34aJ5a2U8OXbnVaMx2TVjQWOH5oTfuHF5TNlA91eKjfECvzU2uB9Vw==",
+        "requested": "[1.12.0, )",
+        "resolved": "1.12.0",
+        "contentHash": "nHl3l2Y2OEaK8H22vGYUd6SFzwzmSpdi75HgP9C2m3/1YqP89nBaapMs5F+30fKbLIFBTG4ZbrSBbuJFNvt8AA==",
         "dependencies": {
           "System.IO.Hashing": "10.0.10"
         }
       },
       "Nethermind.RocksDbBindings": {
         "type": "CentralTransitive",
-        "requested": "[11.8.1-preview.140, 11.8.1-preview.140]",
-        "resolved": "11.8.1-preview.140",
-        "contentHash": "2FK9/uKMLnP7IxYYm9bwyf2e/VnrnajNNakZoRTiDh0jKb2/A0PqxNdZjHX3JosaKIzqB9dZKbhD81uKgFbE0w=="
+        "requested": "[11.8.1.183, 11.8.1.183]",
+        "resolved": "11.8.1.183",
+        "contentHash": "pbfaFsIUVPmlE0jx4A9Wme+IF3p+IiwipEZjRqdsU8gbk+VlsBqdT9g05SDzMpkT3rWjoVbyMtzzY0XLeZmQ+w=="
       },
       "Nethermind.TurboPForBindings": {
         "type": "CentralTransitive",
-        "requested": "[1.0.0, )",
-        "resolved": "1.0.0",
-        "contentHash": "G5L8iaJusi7h4zkFtiSEhA8VRX7l6SsupdKRZ7QiHIzYR/860i/HS4wZ+/Uxn2fqkU4WRBuj+aGLFyX1x0VGCw=="
+        "requested": "[1.2.0, )",
+        "resolved": "1.2.0",
+        "contentHash": "VlK4W/KzFX0lXgxZ+pu6OEYx0MQM7BJq9Ox1ZGalmPNciK4DHS5/HzrXV4yD24KnLqV+fHzbiHPLXFmTclFFuw=="
       },
       "Nito.Collections.Deque": {
         "type": "CentralTransitive",
@@ -1625,19 +1643,13 @@
         "resolved": "2.1.2",
         "contentHash": "yTP24PcuFmUw1RxQgYmIMxvpAJ1ciT/zv8Sb7OZHTuM/x9Tupz+DvEqeu9HykSYmI3/bGuy1ZZ7k/rZgfuIAuw=="
       },
-      "Open.NAT.Core": {
-        "type": "CentralTransitive",
-        "requested": "[2.1.0.5, )",
-        "resolved": "2.1.0.5",
-        "contentHash": "F/4WoNK1rYCMGZM6B1LVlgxf2wLogJc2ohMZxwmJw7Aky2Hc1IgFZvEj/cxcv5QQSFTvPN5AWYKomFXHukOUIg=="
-      },
       "Polly": {
         "type": "CentralTransitive",
-        "requested": "[8.7.0, )",
-        "resolved": "8.7.0",
-        "contentHash": "0qR4f0OR8FeCAfLWcfwzAM7w6EmpUgwa22PgxKjcL25dEAto7sKpQQXbtxp38vVvK+V3RFkh/TeI7g/iUdoYIQ==",
+        "requested": "[8.8.0, )",
+        "resolved": "8.8.0",
+        "contentHash": "1/jm0wQA0hjcY8OcGx2HLzj4Tx33IpmEWWPUcekt07V7VO8suAUmeDRD7VM5wy9614pJMI2M0TB1pwKVflh4CQ==",
         "dependencies": {
-          "Polly.Core": "8.7.0"
+          "Polly.Core": "8.8.0"
         }
       },
       "prometheus-net.AspNetCore": {
@@ -1655,6 +1667,12 @@
         "resolved": "2.0.0.2",
         "contentHash": "ZSDp3iPpXw4KW+e1yKQbarn1byN8aP+B0FNy0oMPC+htu6XVxqr1ezeSfG4kmRWG4VUu1RT0Zp3HzkH6inrIIw=="
       },
+      "SharpOpenNat": {
+        "type": "CentralTransitive",
+        "requested": "[4.0.19, )",
+        "resolved": "4.0.19",
+        "contentHash": "kc9xubcDMkIuFYX9zcVIEG6/MMSCHumNsgWSJxLvz2miAiHh8lVIuah67j/hu+GlUkuD/HVAhUrllTbUyOBRKg=="
+      },
       "Snappier": {
         "type": "CentralTransitive",
         "requested": "[1.3.1, )",
@@ -1663,39 +1681,39 @@
       },
       "System.Configuration.ConfigurationManager": {
         "type": "CentralTransitive",
-        "requested": "[10.0.12, )",
-        "resolved": "10.0.12",
-        "contentHash": "6KP/CGB9YymJuhNorm5FS/urQJB40h6t4DIiXN8J1VT/jINZHNgjzcdWRHGYuXGLwO7SCOq5K/OMAnh6oRbeLg==",
+        "requested": "[10.0.13, )",
+        "resolved": "10.0.13",
+        "contentHash": "BkkGt1IDGMaNkSWJR+hEN3V/UMvyoYKW0rG7rlhKQwS2Ghn+9dt98aV7syIMK+ChumTk+IbDF4k0QXqVs9Zudg==",
         "dependencies": {
-          "System.Security.Cryptography.ProtectedData": "10.0.12"
+          "System.Security.Cryptography.ProtectedData": "10.0.13"
         }
       },
       "System.IO.Hashing": {
         "type": "CentralTransitive",
-        "requested": "[10.0.12, )",
-        "resolved": "10.0.12",
-        "contentHash": "jDix4bBMYnpZdSPcnY+KDV6ik3SRMzpMKby/bZl/XUwIiflwRNAFZ0oOl61R/pSaveIJ8t1gs2BUlrGsPs/bcg=="
+        "requested": "[10.0.13, )",
+        "resolved": "10.0.13",
+        "contentHash": "ZlcywyQ7FJmgOV2nctdfOEPGS0kRK8T2CdOoPr6F4HPYpmjSo6GQfj3yTyOzNO6B+2U84/JKSPkJJMWqLmVsMw=="
       },
       "System.Security.Cryptography.ProtectedData": {
         "type": "CentralTransitive",
-        "requested": "[10.0.12, )",
-        "resolved": "10.0.12",
-        "contentHash": "wO0W8VDMeRJZakRySOmemAnrBZMwEFRlbfBtATxUiLf2I3IhSRnCp1Vt157NWptdE4IJ7eftd5n8q9LtaKHFTQ=="
+        "requested": "[10.0.13, )",
+        "resolved": "10.0.13",
+        "contentHash": "aUSmC6cPjFLSE0rDTsmkR3wvUOnscqewebOaaELEToh12sNmoltZqT3f0C81mJ1zhxKjWco25soHTvYwsXCsUw=="
       },
       "Testably.Abstractions": {
         "type": "CentralTransitive",
-        "requested": "[10.3.0, )",
-        "resolved": "10.3.0",
-        "contentHash": "LBjsMX2+KJpwlXtFyA+K4ORYaMgn+W07Za/YFGk0b3moYJiKHSe/wxjRBl47+o7OpQWYWmoJdUUrrGDrcTr6Qg==",
+        "requested": "[10.4.0, )",
+        "resolved": "10.4.0",
+        "contentHash": "iVkk0uqdbuasAYd79kPRGXyDOmTcrjKpsgYHFbS1H2JrrdFcn/1GpYifp8fwpOqZYOWMGvBWfuvPQNClAqJ7/Q==",
         "dependencies": {
-          "Testably.Abstractions.Interface": "10.3.0"
+          "Testably.Abstractions.Interface": "10.4.0"
         }
       },
       "Websocket.Client": {
         "type": "CentralTransitive",
-        "requested": "[5.5.0, )",
-        "resolved": "5.5.0",
-        "contentHash": "xJ5pTXiNSfwOzJVFcrUF1JROo63zjETJgIA4+ik/JxOJdNEv15e3NZ6bgpNQkyWhapcedP5HCa96hn9YCXwenw==",
+        "requested": "[5.5.1, )",
+        "resolved": "5.5.1",
+        "contentHash": "sOUd8f3jTgdidTLAJXtzFbnA6pJVtrjTaUTQupWBOk4PZupop2af59o61PKuE4wUUXga4hWkPTEekVJFktp3Vg==",
         "dependencies": {
           "Microsoft.IO.RecyclableMemoryStream": "3.0.1",
           "System.Reactive": "6.1.0"
@@ -1727,81 +1745,87 @@
       },
       "Ckzg.Bindings": {
         "type": "CentralTransitive",
-        "requested": "[2.1.8.1641, )",
-        "resolved": "2.1.8.1641",
-        "contentHash": "xeeTkR6VES+mCWFOa+yN507kTihU+KR5SdHsDll/dTaHQtttI8tuvp+/91cghl8N4b0+olTXt31X5sWzF89hag=="
+        "requested": "[2.1.8.1680, )",
+        "resolved": "2.1.8.1680",
+        "contentHash": "SSJpHH7aXLUgCV4ism0fS91GyCDJ71JISXZfQcCoaYVaNDahgIQxWTQwj4vCnA85Inh3jr3sAn5Yt12vNthlBA=="
       },
       "Microsoft.ClearScript.V8.Native.linux-arm64": {
         "type": "CentralTransitive",
-        "requested": "[7.5.1, )",
-        "resolved": "7.5.1",
-        "contentHash": "9QwgJVIAWlO/ltBuvVHj40dSKyctir7DUWe0zgWnaqeM4sgTO8QVrG5f+qjwo8uRYDKt15EPfqhAD8Y6+I3sXQ=="
+        "requested": "[7.5.1.1, )",
+        "resolved": "7.5.1.1",
+        "contentHash": "y9Hb11O75GmzGS2xn5DvIJ0M89qiEYbwsYRkpA4w9bO/opu0R10KACHJYPgph8sMePIJzRABtA7KIPBxS4+VbQ=="
       },
       "Microsoft.ClearScript.V8.Native.linux-x64": {
         "type": "CentralTransitive",
-        "requested": "[7.5.1, )",
-        "resolved": "7.5.1",
-        "contentHash": "B+JPK6ZnflitblwHl7WZ/6argp3+czixo10vYXbF9D5KgjclJbeppxj5FpJnH6Hv1Ua0Ql+TduoSX53fhYh5AQ=="
+        "requested": "[7.5.1.1, )",
+        "resolved": "7.5.1.1",
+        "contentHash": "ZzX0d8KD3h1mkHji3qMZA5gllbArSJErOcgpmOgXp6MNVEcA08TED+InXAS/lnubEs1q0mflnXjHcXIptjDYSA=="
       },
       "Microsoft.ClearScript.V8.Native.osx-arm64": {
         "type": "CentralTransitive",
-        "requested": "[7.5.1, )",
-        "resolved": "7.5.1",
-        "contentHash": "Fir3WvZX4e+rrLb+Py9+O4940STW9/UUBO2bXYxNE8lZhEIJwTvMnGeJ/KdrioHmAsJRMbcYN1P2PjQf2oNQ/Q=="
+        "requested": "[7.5.1.1, )",
+        "resolved": "7.5.1.1",
+        "contentHash": "MfzQquSw2wXBjg24JZE6kjPxE04H+GOlqnSGmXl1Lk0fFbGixxqFSRqQ2TAlEuEQ5pdOmTf40VEzba67J6Kf1w=="
       },
       "Microsoft.ClearScript.V8.Native.osx-x64": {
         "type": "CentralTransitive",
-        "requested": "[7.5.1, )",
-        "resolved": "7.5.1",
-        "contentHash": "e31DyJwiTDLsCWEv2wkAtOPJqKGi5qQ2tnILjeqe6RD7b0EazXXq2wEFmEbx9aQs++mrb1oWpCOeLur+Qlb0Ig=="
+        "requested": "[7.5.1.1, )",
+        "resolved": "7.5.1.1",
+        "contentHash": "4G7Dx91cote/k3cPhXzeM1GrloPQftKrF/SCaNsjdZQGW4G5tWGYTQewG1/DCLeJ2pngh+32Kkp/JTOnFF1MQg=="
+      },
+      "Microsoft.ClearScript.V8.Native.win-arm64": {
+        "type": "CentralTransitive",
+        "requested": "[7.5.1.1, )",
+        "resolved": "7.5.1.1",
+        "contentHash": "ZvAKQ+zKsn7QGmKefd8Eh1AjascYR4j5QDchNwJkEbYxlFJNY1Q9QNjdExS4NG4QDOqp2iD1WkQgR70ZX4BnIQ=="
       },
       "Microsoft.ClearScript.V8.Native.win-x64": {
         "type": "CentralTransitive",
-        "requested": "[7.5.1, )",
-        "resolved": "7.5.1",
-        "contentHash": "fkCJta+xF2W3+L6NwRzqIV0VYD/WVcrZHyxgbOe5iTl321Td0w5loBWGVXlgG5fsuv2FEcba1GLE1CbeJrzMRw=="
+        "requested": "[7.5.1.1, )",
+        "resolved": "7.5.1.1",
+        "contentHash": "N79bR+RG7FD8wv/tdXZuOLDx3YAQ+mSB5P0gcUNMGEFO4DljRSPlJcEzHLrPvrlPzNnc3aV6Rx2v5V3qordPJg=="
       },
       "Nethermind.Crypto.Bls": {
         "type": "CentralTransitive",
-        "requested": "[1.1.0, )",
-        "resolved": "1.1.0",
-        "contentHash": "0twAxphu4RDD173wG6EjhUfkS80HuyL+CeGOGolJWUFFgZ07YtsIQgep5gRHfKRkhPHCCgcOHMjkuoQf3/mc7Q=="
+        "requested": "[0.3.17.15, )",
+        "resolved": "0.3.17.15",
+        "contentHash": "+xr/mF5oUDoh6z1e71p3wBmO9QcOD6hYNFrx04iEhxHWzfIa9E5+/qS5nS1XX5faKaw5s6PWNIxLVg9HUkVCxQ=="
       },
       "Nethermind.Crypto.SecP256k1": {
         "type": "CentralTransitive",
-        "requested": "[1.7.0, )",
-        "resolved": "1.7.0",
-        "contentHash": "mF200wb8fOBDHz449QkGUUSsW9wGGfngqObckMYZ9PFuXugdpbaGPN1Udy73mpct/i+1GIHGQLmFkXb131arRw=="
+        "requested": "[0.8.0.42, )",
+        "resolved": "0.8.0.42",
+        "contentHash": "BNc3CNTJAJTLkCHcOyY1YC/5Ww8S3ZU6IK3SQjnuKv4hInRJ1jzCxazCypYi+vAFYE4pO3ZQ8X06BkSrkVn9fQ=="
       },
       "Nethermind.Crypto.SecP256r1": {
         "type": "CentralTransitive",
-        "requested": "[1.1.0, )",
-        "resolved": "1.1.0",
-        "contentHash": "iX5hym1X8odR5QwBLeicStQuDbjqxLx7e9ltoBe3+EN+S6vyc6DJxYSY8TpOp2QnB5Hf3g7yguWvmsKnpIPE2w=="
+        "requested": "[1.2.0, )",
+        "resolved": "1.2.0",
+        "contentHash": "fZcpjrDznXD5EzL5cNWSH429qd3/uP9t3lNUuFnv9gAG1kaNw0QhSz+ZvVKB0sV92/0nNSVcTL0TRVOVQ/PNdw=="
       },
       "Nethermind.GmpBindings": {
         "type": "CentralTransitive",
-        "requested": "[2.0.0, )",
-        "resolved": "2.0.0",
-        "contentHash": "nMhuS5f4pLwm3ACbST6Q7u8p3/vclmSTiWeTeyNOi2MurwTVMbLZYZB26HyiwnurslVu8LQqkZ9z8QekYYt9RQ=="
+        "requested": "[6.3.0.195, )",
+        "resolved": "6.3.0.195",
+        "contentHash": "mksPt3wW+A6b9fyZG78NqxZqgLPjosfvMhg9cxEC5eaIs4KRvBWtClKxsMAFfPLzjfqiPXa4QfHoaRRzyrd10w=="
       },
       "Nethermind.MclBindings": {
         "type": "CentralTransitive",
-        "requested": "[2.0.0, )",
-        "resolved": "2.0.0",
-        "contentHash": "tkJtkmKPlvCbz4lanrVDQqWyTcsUWhly1Vv/zNUldPD8d+Sy7aGRm2L28SeQkubSLP7of5JVw1SIN6BiVA1AUQ=="
+        "requested": "[4.30.0.119, )",
+        "resolved": "4.30.0.119",
+        "contentHash": "8J/3Jp6PvAB9ypBx5Lln3n7XEEmc3SUNbktCxlR6IwR8yIuAZ7woX8XL7t0zb4MvQ6DCL1/rtR6Qnc3vd/sBbw=="
       },
       "Nethermind.RocksDbBindings": {
         "type": "CentralTransitive",
-        "requested": "[11.8.1-preview.140, 11.8.1-preview.140]",
-        "resolved": "11.8.1-preview.140",
-        "contentHash": "2FK9/uKMLnP7IxYYm9bwyf2e/VnrnajNNakZoRTiDh0jKb2/A0PqxNdZjHX3JosaKIzqB9dZKbhD81uKgFbE0w=="
+        "requested": "[11.8.1.183, 11.8.1.183]",
+        "resolved": "11.8.1.183",
+        "contentHash": "pbfaFsIUVPmlE0jx4A9Wme+IF3p+IiwipEZjRqdsU8gbk+VlsBqdT9g05SDzMpkT3rWjoVbyMtzzY0XLeZmQ+w=="
       },
       "Nethermind.TurboPForBindings": {
         "type": "CentralTransitive",
-        "requested": "[1.0.0, )",
-        "resolved": "1.0.0",
-        "contentHash": "G5L8iaJusi7h4zkFtiSEhA8VRX7l6SsupdKRZ7QiHIzYR/860i/HS4wZ+/Uxn2fqkU4WRBuj+aGLFyX1x0VGCw=="
+        "requested": "[1.2.0, )",
+        "resolved": "1.2.0",
+        "contentHash": "VlK4W/KzFX0lXgxZ+pu6OEYx0MQM7BJq9Ox1ZGalmPNciK4DHS5/HzrXV4yD24KnLqV+fHzbiHPLXFmTclFFuw=="
       }
     },
     "net10.0/linux-x64": {
@@ -1817,81 +1841,87 @@
       },
       "Ckzg.Bindings": {
         "type": "CentralTransitive",
-        "requested": "[2.1.8.1641, )",
-        "resolved": "2.1.8.1641",
-        "contentHash": "xeeTkR6VES+mCWFOa+yN507kTihU+KR5SdHsDll/dTaHQtttI8tuvp+/91cghl8N4b0+olTXt31X5sWzF89hag=="
+        "requested": "[2.1.8.1680, )",
+        "resolved": "2.1.8.1680",
+        "contentHash": "SSJpHH7aXLUgCV4ism0fS91GyCDJ71JISXZfQcCoaYVaNDahgIQxWTQwj4vCnA85Inh3jr3sAn5Yt12vNthlBA=="
       },
       "Microsoft.ClearScript.V8.Native.linux-arm64": {
         "type": "CentralTransitive",
-        "requested": "[7.5.1, )",
-        "resolved": "7.5.1",
-        "contentHash": "9QwgJVIAWlO/ltBuvVHj40dSKyctir7DUWe0zgWnaqeM4sgTO8QVrG5f+qjwo8uRYDKt15EPfqhAD8Y6+I3sXQ=="
+        "requested": "[7.5.1.1, )",
+        "resolved": "7.5.1.1",
+        "contentHash": "y9Hb11O75GmzGS2xn5DvIJ0M89qiEYbwsYRkpA4w9bO/opu0R10KACHJYPgph8sMePIJzRABtA7KIPBxS4+VbQ=="
       },
       "Microsoft.ClearScript.V8.Native.linux-x64": {
         "type": "CentralTransitive",
-        "requested": "[7.5.1, )",
-        "resolved": "7.5.1",
-        "contentHash": "B+JPK6ZnflitblwHl7WZ/6argp3+czixo10vYXbF9D5KgjclJbeppxj5FpJnH6Hv1Ua0Ql+TduoSX53fhYh5AQ=="
+        "requested": "[7.5.1.1, )",
+        "resolved": "7.5.1.1",
+        "contentHash": "ZzX0d8KD3h1mkHji3qMZA5gllbArSJErOcgpmOgXp6MNVEcA08TED+InXAS/lnubEs1q0mflnXjHcXIptjDYSA=="
       },
       "Microsoft.ClearScript.V8.Native.osx-arm64": {
         "type": "CentralTransitive",
-        "requested": "[7.5.1, )",
-        "resolved": "7.5.1",
-        "contentHash": "Fir3WvZX4e+rrLb+Py9+O4940STW9/UUBO2bXYxNE8lZhEIJwTvMnGeJ/KdrioHmAsJRMbcYN1P2PjQf2oNQ/Q=="
+        "requested": "[7.5.1.1, )",
+        "resolved": "7.5.1.1",
+        "contentHash": "MfzQquSw2wXBjg24JZE6kjPxE04H+GOlqnSGmXl1Lk0fFbGixxqFSRqQ2TAlEuEQ5pdOmTf40VEzba67J6Kf1w=="
       },
       "Microsoft.ClearScript.V8.Native.osx-x64": {
         "type": "CentralTransitive",
-        "requested": "[7.5.1, )",
-        "resolved": "7.5.1",
-        "contentHash": "e31DyJwiTDLsCWEv2wkAtOPJqKGi5qQ2tnILjeqe6RD7b0EazXXq2wEFmEbx9aQs++mrb1oWpCOeLur+Qlb0Ig=="
+        "requested": "[7.5.1.1, )",
+        "resolved": "7.5.1.1",
+        "contentHash": "4G7Dx91cote/k3cPhXzeM1GrloPQftKrF/SCaNsjdZQGW4G5tWGYTQewG1/DCLeJ2pngh+32Kkp/JTOnFF1MQg=="
+      },
+      "Microsoft.ClearScript.V8.Native.win-arm64": {
+        "type": "CentralTransitive",
+        "requested": "[7.5.1.1, )",
+        "resolved": "7.5.1.1",
+        "contentHash": "ZvAKQ+zKsn7QGmKefd8Eh1AjascYR4j5QDchNwJkEbYxlFJNY1Q9QNjdExS4NG4QDOqp2iD1WkQgR70ZX4BnIQ=="
       },
       "Microsoft.ClearScript.V8.Native.win-x64": {
         "type": "CentralTransitive",
-        "requested": "[7.5.1, )",
-        "resolved": "7.5.1",
-        "contentHash": "fkCJta+xF2W3+L6NwRzqIV0VYD/WVcrZHyxgbOe5iTl321Td0w5loBWGVXlgG5fsuv2FEcba1GLE1CbeJrzMRw=="
+        "requested": "[7.5.1.1, )",
+        "resolved": "7.5.1.1",
+        "contentHash": "N79bR+RG7FD8wv/tdXZuOLDx3YAQ+mSB5P0gcUNMGEFO4DljRSPlJcEzHLrPvrlPzNnc3aV6Rx2v5V3qordPJg=="
       },
       "Nethermind.Crypto.Bls": {
         "type": "CentralTransitive",
-        "requested": "[1.1.0, )",
-        "resolved": "1.1.0",
-        "contentHash": "0twAxphu4RDD173wG6EjhUfkS80HuyL+CeGOGolJWUFFgZ07YtsIQgep5gRHfKRkhPHCCgcOHMjkuoQf3/mc7Q=="
+        "requested": "[0.3.17.15, )",
+        "resolved": "0.3.17.15",
+        "contentHash": "+xr/mF5oUDoh6z1e71p3wBmO9QcOD6hYNFrx04iEhxHWzfIa9E5+/qS5nS1XX5faKaw5s6PWNIxLVg9HUkVCxQ=="
       },
       "Nethermind.Crypto.SecP256k1": {
         "type": "CentralTransitive",
-        "requested": "[1.7.0, )",
-        "resolved": "1.7.0",
-        "contentHash": "mF200wb8fOBDHz449QkGUUSsW9wGGfngqObckMYZ9PFuXugdpbaGPN1Udy73mpct/i+1GIHGQLmFkXb131arRw=="
+        "requested": "[0.8.0.42, )",
+        "resolved": "0.8.0.42",
+        "contentHash": "BNc3CNTJAJTLkCHcOyY1YC/5Ww8S3ZU6IK3SQjnuKv4hInRJ1jzCxazCypYi+vAFYE4pO3ZQ8X06BkSrkVn9fQ=="
       },
       "Nethermind.Crypto.SecP256r1": {
         "type": "CentralTransitive",
-        "requested": "[1.1.0, )",
-        "resolved": "1.1.0",
-        "contentHash": "iX5hym1X8odR5QwBLeicStQuDbjqxLx7e9ltoBe3+EN+S6vyc6DJxYSY8TpOp2QnB5Hf3g7yguWvmsKnpIPE2w=="
+        "requested": "[1.2.0, )",
+        "resolved": "1.2.0",
+        "contentHash": "fZcpjrDznXD5EzL5cNWSH429qd3/uP9t3lNUuFnv9gAG1kaNw0QhSz+ZvVKB0sV92/0nNSVcTL0TRVOVQ/PNdw=="
       },
       "Nethermind.GmpBindings": {
         "type": "CentralTransitive",
-        "requested": "[2.0.0, )",
-        "resolved": "2.0.0",
-        "contentHash": "nMhuS5f4pLwm3ACbST6Q7u8p3/vclmSTiWeTeyNOi2MurwTVMbLZYZB26HyiwnurslVu8LQqkZ9z8QekYYt9RQ=="
+        "requested": "[6.3.0.195, )",
+        "resolved": "6.3.0.195",
+        "contentHash": "mksPt3wW+A6b9fyZG78NqxZqgLPjosfvMhg9cxEC5eaIs4KRvBWtClKxsMAFfPLzjfqiPXa4QfHoaRRzyrd10w=="
       },
       "Nethermind.MclBindings": {
         "type": "CentralTransitive",
-        "requested": "[2.0.0, )",
-        "resolved": "2.0.0",
-        "contentHash": "tkJtkmKPlvCbz4lanrVDQqWyTcsUWhly1Vv/zNUldPD8d+Sy7aGRm2L28SeQkubSLP7of5JVw1SIN6BiVA1AUQ=="
+        "requested": "[4.30.0.119, )",
+        "resolved": "4.30.0.119",
+        "contentHash": "8J/3Jp6PvAB9ypBx5Lln3n7XEEmc3SUNbktCxlR6IwR8yIuAZ7woX8XL7t0zb4MvQ6DCL1/rtR6Qnc3vd/sBbw=="
       },
       "Nethermind.RocksDbBindings": {
         "type": "CentralTransitive",
-        "requested": "[11.8.1-preview.140, 11.8.1-preview.140]",
-        "resolved": "11.8.1-preview.140",
-        "contentHash": "2FK9/uKMLnP7IxYYm9bwyf2e/VnrnajNNakZoRTiDh0jKb2/A0PqxNdZjHX3JosaKIzqB9dZKbhD81uKgFbE0w=="
+        "requested": "[11.8.1.183, 11.8.1.183]",
+        "resolved": "11.8.1.183",
+        "contentHash": "pbfaFsIUVPmlE0jx4A9Wme+IF3p+IiwipEZjRqdsU8gbk+VlsBqdT9g05SDzMpkT3rWjoVbyMtzzY0XLeZmQ+w=="
       },
       "Nethermind.TurboPForBindings": {
         "type": "CentralTransitive",
-        "requested": "[1.0.0, )",
-        "resolved": "1.0.0",
-        "contentHash": "G5L8iaJusi7h4zkFtiSEhA8VRX7l6SsupdKRZ7QiHIzYR/860i/HS4wZ+/Uxn2fqkU4WRBuj+aGLFyX1x0VGCw=="
+        "requested": "[1.2.0, )",
+        "resolved": "1.2.0",
+        "contentHash": "VlK4W/KzFX0lXgxZ+pu6OEYx0MQM7BJq9Ox1ZGalmPNciK4DHS5/HzrXV4yD24KnLqV+fHzbiHPLXFmTclFFuw=="
       }
     },
     "net10.0/osx-arm64": {
@@ -1907,81 +1937,87 @@
       },
       "Ckzg.Bindings": {
         "type": "CentralTransitive",
-        "requested": "[2.1.8.1641, )",
-        "resolved": "2.1.8.1641",
-        "contentHash": "xeeTkR6VES+mCWFOa+yN507kTihU+KR5SdHsDll/dTaHQtttI8tuvp+/91cghl8N4b0+olTXt31X5sWzF89hag=="
+        "requested": "[2.1.8.1680, )",
+        "resolved": "2.1.8.1680",
+        "contentHash": "SSJpHH7aXLUgCV4ism0fS91GyCDJ71JISXZfQcCoaYVaNDahgIQxWTQwj4vCnA85Inh3jr3sAn5Yt12vNthlBA=="
       },
       "Microsoft.ClearScript.V8.Native.linux-arm64": {
         "type": "CentralTransitive",
-        "requested": "[7.5.1, )",
-        "resolved": "7.5.1",
-        "contentHash": "9QwgJVIAWlO/ltBuvVHj40dSKyctir7DUWe0zgWnaqeM4sgTO8QVrG5f+qjwo8uRYDKt15EPfqhAD8Y6+I3sXQ=="
+        "requested": "[7.5.1.1, )",
+        "resolved": "7.5.1.1",
+        "contentHash": "y9Hb11O75GmzGS2xn5DvIJ0M89qiEYbwsYRkpA4w9bO/opu0R10KACHJYPgph8sMePIJzRABtA7KIPBxS4+VbQ=="
       },
       "Microsoft.ClearScript.V8.Native.linux-x64": {
         "type": "CentralTransitive",
-        "requested": "[7.5.1, )",
-        "resolved": "7.5.1",
-        "contentHash": "B+JPK6ZnflitblwHl7WZ/6argp3+czixo10vYXbF9D5KgjclJbeppxj5FpJnH6Hv1Ua0Ql+TduoSX53fhYh5AQ=="
+        "requested": "[7.5.1.1, )",
+        "resolved": "7.5.1.1",
+        "contentHash": "ZzX0d8KD3h1mkHji3qMZA5gllbArSJErOcgpmOgXp6MNVEcA08TED+InXAS/lnubEs1q0mflnXjHcXIptjDYSA=="
       },
       "Microsoft.ClearScript.V8.Native.osx-arm64": {
         "type": "CentralTransitive",
-        "requested": "[7.5.1, )",
-        "resolved": "7.5.1",
-        "contentHash": "Fir3WvZX4e+rrLb+Py9+O4940STW9/UUBO2bXYxNE8lZhEIJwTvMnGeJ/KdrioHmAsJRMbcYN1P2PjQf2oNQ/Q=="
+        "requested": "[7.5.1.1, )",
+        "resolved": "7.5.1.1",
+        "contentHash": "MfzQquSw2wXBjg24JZE6kjPxE04H+GOlqnSGmXl1Lk0fFbGixxqFSRqQ2TAlEuEQ5pdOmTf40VEzba67J6Kf1w=="
       },
       "Microsoft.ClearScript.V8.Native.osx-x64": {
         "type": "CentralTransitive",
-        "requested": "[7.5.1, )",
-        "resolved": "7.5.1",
-        "contentHash": "e31DyJwiTDLsCWEv2wkAtOPJqKGi5qQ2tnILjeqe6RD7b0EazXXq2wEFmEbx9aQs++mrb1oWpCOeLur+Qlb0Ig=="
+        "requested": "[7.5.1.1, )",
+        "resolved": "7.5.1.1",
+        "contentHash": "4G7Dx91cote/k3cPhXzeM1GrloPQftKrF/SCaNsjdZQGW4G5tWGYTQewG1/DCLeJ2pngh+32Kkp/JTOnFF1MQg=="
+      },
+      "Microsoft.ClearScript.V8.Native.win-arm64": {
+        "type": "CentralTransitive",
+        "requested": "[7.5.1.1, )",
+        "resolved": "7.5.1.1",
+        "contentHash": "ZvAKQ+zKsn7QGmKefd8Eh1AjascYR4j5QDchNwJkEbYxlFJNY1Q9QNjdExS4NG4QDOqp2iD1WkQgR70ZX4BnIQ=="
       },
       "Microsoft.ClearScript.V8.Native.win-x64": {
         "type": "CentralTransitive",
-        "requested": "[7.5.1, )",
-        "resolved": "7.5.1",
-        "contentHash": "fkCJta+xF2W3+L6NwRzqIV0VYD/WVcrZHyxgbOe5iTl321Td0w5loBWGVXlgG5fsuv2FEcba1GLE1CbeJrzMRw=="
+        "requested": "[7.5.1.1, )",
+        "resolved": "7.5.1.1",
+        "contentHash": "N79bR+RG7FD8wv/tdXZuOLDx3YAQ+mSB5P0gcUNMGEFO4DljRSPlJcEzHLrPvrlPzNnc3aV6Rx2v5V3qordPJg=="
       },
       "Nethermind.Crypto.Bls": {
         "type": "CentralTransitive",
-        "requested": "[1.1.0, )",
-        "resolved": "1.1.0",
-        "contentHash": "0twAxphu4RDD173wG6EjhUfkS80HuyL+CeGOGolJWUFFgZ07YtsIQgep5gRHfKRkhPHCCgcOHMjkuoQf3/mc7Q=="
+        "requested": "[0.3.17.15, )",
+        "resolved": "0.3.17.15",
+        "contentHash": "+xr/mF5oUDoh6z1e71p3wBmO9QcOD6hYNFrx04iEhxHWzfIa9E5+/qS5nS1XX5faKaw5s6PWNIxLVg9HUkVCxQ=="
       },
       "Nethermind.Crypto.SecP256k1": {
         "type": "CentralTransitive",
-        "requested": "[1.7.0, )",
-        "resolved": "1.7.0",
-        "contentHash": "mF200wb8fOBDHz449QkGUUSsW9wGGfngqObckMYZ9PFuXugdpbaGPN1Udy73mpct/i+1GIHGQLmFkXb131arRw=="
+        "requested": "[0.8.0.42, )",
+        "resolved": "0.8.0.42",
+        "contentHash": "BNc3CNTJAJTLkCHcOyY1YC/5Ww8S3ZU6IK3SQjnuKv4hInRJ1jzCxazCypYi+vAFYE4pO3ZQ8X06BkSrkVn9fQ=="
       },
       "Nethermind.Crypto.SecP256r1": {
         "type": "CentralTransitive",
-        "requested": "[1.1.0, )",
-        "resolved": "1.1.0",
-        "contentHash": "iX5hym1X8odR5QwBLeicStQuDbjqxLx7e9ltoBe3+EN+S6vyc6DJxYSY8TpOp2QnB5Hf3g7yguWvmsKnpIPE2w=="
+        "requested": "[1.2.0, )",
+        "resolved": "1.2.0",
+        "contentHash": "fZcpjrDznXD5EzL5cNWSH429qd3/uP9t3lNUuFnv9gAG1kaNw0QhSz+ZvVKB0sV92/0nNSVcTL0TRVOVQ/PNdw=="
       },
       "Nethermind.GmpBindings": {
         "type": "CentralTransitive",
-        "requested": "[2.0.0, )",
-        "resolved": "2.0.0",
-        "contentHash": "nMhuS5f4pLwm3ACbST6Q7u8p3/vclmSTiWeTeyNOi2MurwTVMbLZYZB26HyiwnurslVu8LQqkZ9z8QekYYt9RQ=="
+        "requested": "[6.3.0.195, )",
+        "resolved": "6.3.0.195",
+        "contentHash": "mksPt3wW+A6b9fyZG78NqxZqgLPjosfvMhg9cxEC5eaIs4KRvBWtClKxsMAFfPLzjfqiPXa4QfHoaRRzyrd10w=="
       },
       "Nethermind.MclBindings": {
         "type": "CentralTransitive",
-        "requested": "[2.0.0, )",
-        "resolved": "2.0.0",
-        "contentHash": "tkJtkmKPlvCbz4lanrVDQqWyTcsUWhly1Vv/zNUldPD8d+Sy7aGRm2L28SeQkubSLP7of5JVw1SIN6BiVA1AUQ=="
+        "requested": "[4.30.0.119, )",
+        "resolved": "4.30.0.119",
+        "contentHash": "8J/3Jp6PvAB9ypBx5Lln3n7XEEmc3SUNbktCxlR6IwR8yIuAZ7woX8XL7t0zb4MvQ6DCL1/rtR6Qnc3vd/sBbw=="
       },
       "Nethermind.RocksDbBindings": {
         "type": "CentralTransitive",
-        "requested": "[11.8.1-preview.140, 11.8.1-preview.140]",
-        "resolved": "11.8.1-preview.140",
-        "contentHash": "2FK9/uKMLnP7IxYYm9bwyf2e/VnrnajNNakZoRTiDh0jKb2/A0PqxNdZjHX3JosaKIzqB9dZKbhD81uKgFbE0w=="
+        "requested": "[11.8.1.183, 11.8.1.183]",
+        "resolved": "11.8.1.183",
+        "contentHash": "pbfaFsIUVPmlE0jx4A9Wme+IF3p+IiwipEZjRqdsU8gbk+VlsBqdT9g05SDzMpkT3rWjoVbyMtzzY0XLeZmQ+w=="
       },
       "Nethermind.TurboPForBindings": {
         "type": "CentralTransitive",
-        "requested": "[1.0.0, )",
-        "resolved": "1.0.0",
-        "contentHash": "G5L8iaJusi7h4zkFtiSEhA8VRX7l6SsupdKRZ7QiHIzYR/860i/HS4wZ+/Uxn2fqkU4WRBuj+aGLFyX1x0VGCw=="
+        "requested": "[1.2.0, )",
+        "resolved": "1.2.0",
+        "contentHash": "VlK4W/KzFX0lXgxZ+pu6OEYx0MQM7BJq9Ox1ZGalmPNciK4DHS5/HzrXV4yD24KnLqV+fHzbiHPLXFmTclFFuw=="
       }
     },
     "net10.0/osx-x64": {
@@ -1997,81 +2033,183 @@
       },
       "Ckzg.Bindings": {
         "type": "CentralTransitive",
-        "requested": "[2.1.8.1641, )",
-        "resolved": "2.1.8.1641",
-        "contentHash": "xeeTkR6VES+mCWFOa+yN507kTihU+KR5SdHsDll/dTaHQtttI8tuvp+/91cghl8N4b0+olTXt31X5sWzF89hag=="
+        "requested": "[2.1.8.1680, )",
+        "resolved": "2.1.8.1680",
+        "contentHash": "SSJpHH7aXLUgCV4ism0fS91GyCDJ71JISXZfQcCoaYVaNDahgIQxWTQwj4vCnA85Inh3jr3sAn5Yt12vNthlBA=="
       },
       "Microsoft.ClearScript.V8.Native.linux-arm64": {
         "type": "CentralTransitive",
-        "requested": "[7.5.1, )",
-        "resolved": "7.5.1",
-        "contentHash": "9QwgJVIAWlO/ltBuvVHj40dSKyctir7DUWe0zgWnaqeM4sgTO8QVrG5f+qjwo8uRYDKt15EPfqhAD8Y6+I3sXQ=="
+        "requested": "[7.5.1.1, )",
+        "resolved": "7.5.1.1",
+        "contentHash": "y9Hb11O75GmzGS2xn5DvIJ0M89qiEYbwsYRkpA4w9bO/opu0R10KACHJYPgph8sMePIJzRABtA7KIPBxS4+VbQ=="
       },
       "Microsoft.ClearScript.V8.Native.linux-x64": {
         "type": "CentralTransitive",
-        "requested": "[7.5.1, )",
-        "resolved": "7.5.1",
-        "contentHash": "B+JPK6ZnflitblwHl7WZ/6argp3+czixo10vYXbF9D5KgjclJbeppxj5FpJnH6Hv1Ua0Ql+TduoSX53fhYh5AQ=="
+        "requested": "[7.5.1.1, )",
+        "resolved": "7.5.1.1",
+        "contentHash": "ZzX0d8KD3h1mkHji3qMZA5gllbArSJErOcgpmOgXp6MNVEcA08TED+InXAS/lnubEs1q0mflnXjHcXIptjDYSA=="
       },
       "Microsoft.ClearScript.V8.Native.osx-arm64": {
         "type": "CentralTransitive",
-        "requested": "[7.5.1, )",
-        "resolved": "7.5.1",
-        "contentHash": "Fir3WvZX4e+rrLb+Py9+O4940STW9/UUBO2bXYxNE8lZhEIJwTvMnGeJ/KdrioHmAsJRMbcYN1P2PjQf2oNQ/Q=="
+        "requested": "[7.5.1.1, )",
+        "resolved": "7.5.1.1",
+        "contentHash": "MfzQquSw2wXBjg24JZE6kjPxE04H+GOlqnSGmXl1Lk0fFbGixxqFSRqQ2TAlEuEQ5pdOmTf40VEzba67J6Kf1w=="
       },
       "Microsoft.ClearScript.V8.Native.osx-x64": {
         "type": "CentralTransitive",
-        "requested": "[7.5.1, )",
-        "resolved": "7.5.1",
-        "contentHash": "e31DyJwiTDLsCWEv2wkAtOPJqKGi5qQ2tnILjeqe6RD7b0EazXXq2wEFmEbx9aQs++mrb1oWpCOeLur+Qlb0Ig=="
+        "requested": "[7.5.1.1, )",
+        "resolved": "7.5.1.1",
+        "contentHash": "4G7Dx91cote/k3cPhXzeM1GrloPQftKrF/SCaNsjdZQGW4G5tWGYTQewG1/DCLeJ2pngh+32Kkp/JTOnFF1MQg=="
+      },
+      "Microsoft.ClearScript.V8.Native.win-arm64": {
+        "type": "CentralTransitive",
+        "requested": "[7.5.1.1, )",
+        "resolved": "7.5.1.1",
+        "contentHash": "ZvAKQ+zKsn7QGmKefd8Eh1AjascYR4j5QDchNwJkEbYxlFJNY1Q9QNjdExS4NG4QDOqp2iD1WkQgR70ZX4BnIQ=="
       },
       "Microsoft.ClearScript.V8.Native.win-x64": {
         "type": "CentralTransitive",
-        "requested": "[7.5.1, )",
-        "resolved": "7.5.1",
-        "contentHash": "fkCJta+xF2W3+L6NwRzqIV0VYD/WVcrZHyxgbOe5iTl321Td0w5loBWGVXlgG5fsuv2FEcba1GLE1CbeJrzMRw=="
+        "requested": "[7.5.1.1, )",
+        "resolved": "7.5.1.1",
+        "contentHash": "N79bR+RG7FD8wv/tdXZuOLDx3YAQ+mSB5P0gcUNMGEFO4DljRSPlJcEzHLrPvrlPzNnc3aV6Rx2v5V3qordPJg=="
       },
       "Nethermind.Crypto.Bls": {
         "type": "CentralTransitive",
-        "requested": "[1.1.0, )",
-        "resolved": "1.1.0",
-        "contentHash": "0twAxphu4RDD173wG6EjhUfkS80HuyL+CeGOGolJWUFFgZ07YtsIQgep5gRHfKRkhPHCCgcOHMjkuoQf3/mc7Q=="
+        "requested": "[0.3.17.15, )",
+        "resolved": "0.3.17.15",
+        "contentHash": "+xr/mF5oUDoh6z1e71p3wBmO9QcOD6hYNFrx04iEhxHWzfIa9E5+/qS5nS1XX5faKaw5s6PWNIxLVg9HUkVCxQ=="
       },
       "Nethermind.Crypto.SecP256k1": {
         "type": "CentralTransitive",
-        "requested": "[1.7.0, )",
-        "resolved": "1.7.0",
-        "contentHash": "mF200wb8fOBDHz449QkGUUSsW9wGGfngqObckMYZ9PFuXugdpbaGPN1Udy73mpct/i+1GIHGQLmFkXb131arRw=="
+        "requested": "[0.8.0.42, )",
+        "resolved": "0.8.0.42",
+        "contentHash": "BNc3CNTJAJTLkCHcOyY1YC/5Ww8S3ZU6IK3SQjnuKv4hInRJ1jzCxazCypYi+vAFYE4pO3ZQ8X06BkSrkVn9fQ=="
       },
       "Nethermind.Crypto.SecP256r1": {
         "type": "CentralTransitive",
-        "requested": "[1.1.0, )",
-        "resolved": "1.1.0",
-        "contentHash": "iX5hym1X8odR5QwBLeicStQuDbjqxLx7e9ltoBe3+EN+S6vyc6DJxYSY8TpOp2QnB5Hf3g7yguWvmsKnpIPE2w=="
+        "requested": "[1.2.0, )",
+        "resolved": "1.2.0",
+        "contentHash": "fZcpjrDznXD5EzL5cNWSH429qd3/uP9t3lNUuFnv9gAG1kaNw0QhSz+ZvVKB0sV92/0nNSVcTL0TRVOVQ/PNdw=="
       },
       "Nethermind.GmpBindings": {
         "type": "CentralTransitive",
-        "requested": "[2.0.0, )",
-        "resolved": "2.0.0",
-        "contentHash": "nMhuS5f4pLwm3ACbST6Q7u8p3/vclmSTiWeTeyNOi2MurwTVMbLZYZB26HyiwnurslVu8LQqkZ9z8QekYYt9RQ=="
+        "requested": "[6.3.0.195, )",
+        "resolved": "6.3.0.195",
+        "contentHash": "mksPt3wW+A6b9fyZG78NqxZqgLPjosfvMhg9cxEC5eaIs4KRvBWtClKxsMAFfPLzjfqiPXa4QfHoaRRzyrd10w=="
       },
       "Nethermind.MclBindings": {
         "type": "CentralTransitive",
-        "requested": "[2.0.0, )",
-        "resolved": "2.0.0",
-        "contentHash": "tkJtkmKPlvCbz4lanrVDQqWyTcsUWhly1Vv/zNUldPD8d+Sy7aGRm2L28SeQkubSLP7of5JVw1SIN6BiVA1AUQ=="
+        "requested": "[4.30.0.119, )",
+        "resolved": "4.30.0.119",
+        "contentHash": "8J/3Jp6PvAB9ypBx5Lln3n7XEEmc3SUNbktCxlR6IwR8yIuAZ7woX8XL7t0zb4MvQ6DCL1/rtR6Qnc3vd/sBbw=="
       },
       "Nethermind.RocksDbBindings": {
         "type": "CentralTransitive",
-        "requested": "[11.8.1-preview.140, 11.8.1-preview.140]",
-        "resolved": "11.8.1-preview.140",
-        "contentHash": "2FK9/uKMLnP7IxYYm9bwyf2e/VnrnajNNakZoRTiDh0jKb2/A0PqxNdZjHX3JosaKIzqB9dZKbhD81uKgFbE0w=="
+        "requested": "[11.8.1.183, 11.8.1.183]",
+        "resolved": "11.8.1.183",
+        "contentHash": "pbfaFsIUVPmlE0jx4A9Wme+IF3p+IiwipEZjRqdsU8gbk+VlsBqdT9g05SDzMpkT3rWjoVbyMtzzY0XLeZmQ+w=="
       },
       "Nethermind.TurboPForBindings": {
         "type": "CentralTransitive",
-        "requested": "[1.0.0, )",
-        "resolved": "1.0.0",
-        "contentHash": "G5L8iaJusi7h4zkFtiSEhA8VRX7l6SsupdKRZ7QiHIzYR/860i/HS4wZ+/Uxn2fqkU4WRBuj+aGLFyX1x0VGCw=="
+        "requested": "[1.2.0, )",
+        "resolved": "1.2.0",
+        "contentHash": "VlK4W/KzFX0lXgxZ+pu6OEYx0MQM7BJq9Ox1ZGalmPNciK4DHS5/HzrXV4yD24KnLqV+fHzbiHPLXFmTclFFuw=="
+      }
+    },
+    "net10.0/win-arm64": {
+      "libsodium": {
+        "type": "Transitive",
+        "resolved": "1.0.20",
+        "contentHash": "fMO6HpAbvLagobzBH6eU36riWF01lCAweX34D5eugqjuXA+WS5MnV1ngE+2Sw3LvGvxZlmyLp9416t57dMZ5og=="
+      },
+      "Tmds.LibC": {
+        "type": "Transitive",
+        "resolved": "0.2.0",
+        "contentHash": "+RvLuNHOLW7cxzgDe9yHLoayBgjsuH2/gJtJnuVMxweKrxxYT6TwQNAmt06SFWpjwk68aRcwwD4FfMMA6tZvVA=="
+      },
+      "Ckzg.Bindings": {
+        "type": "CentralTransitive",
+        "requested": "[2.1.8.1680, )",
+        "resolved": "2.1.8.1680",
+        "contentHash": "SSJpHH7aXLUgCV4ism0fS91GyCDJ71JISXZfQcCoaYVaNDahgIQxWTQwj4vCnA85Inh3jr3sAn5Yt12vNthlBA=="
+      },
+      "Microsoft.ClearScript.V8.Native.linux-arm64": {
+        "type": "CentralTransitive",
+        "requested": "[7.5.1.1, )",
+        "resolved": "7.5.1.1",
+        "contentHash": "y9Hb11O75GmzGS2xn5DvIJ0M89qiEYbwsYRkpA4w9bO/opu0R10KACHJYPgph8sMePIJzRABtA7KIPBxS4+VbQ=="
+      },
+      "Microsoft.ClearScript.V8.Native.linux-x64": {
+        "type": "CentralTransitive",
+        "requested": "[7.5.1.1, )",
+        "resolved": "7.5.1.1",
+        "contentHash": "ZzX0d8KD3h1mkHji3qMZA5gllbArSJErOcgpmOgXp6MNVEcA08TED+InXAS/lnubEs1q0mflnXjHcXIptjDYSA=="
+      },
+      "Microsoft.ClearScript.V8.Native.osx-arm64": {
+        "type": "CentralTransitive",
+        "requested": "[7.5.1.1, )",
+        "resolved": "7.5.1.1",
+        "contentHash": "MfzQquSw2wXBjg24JZE6kjPxE04H+GOlqnSGmXl1Lk0fFbGixxqFSRqQ2TAlEuEQ5pdOmTf40VEzba67J6Kf1w=="
+      },
+      "Microsoft.ClearScript.V8.Native.osx-x64": {
+        "type": "CentralTransitive",
+        "requested": "[7.5.1.1, )",
+        "resolved": "7.5.1.1",
+        "contentHash": "4G7Dx91cote/k3cPhXzeM1GrloPQftKrF/SCaNsjdZQGW4G5tWGYTQewG1/DCLeJ2pngh+32Kkp/JTOnFF1MQg=="
+      },
+      "Microsoft.ClearScript.V8.Native.win-arm64": {
+        "type": "CentralTransitive",
+        "requested": "[7.5.1.1, )",
+        "resolved": "7.5.1.1",
+        "contentHash": "ZvAKQ+zKsn7QGmKefd8Eh1AjascYR4j5QDchNwJkEbYxlFJNY1Q9QNjdExS4NG4QDOqp2iD1WkQgR70ZX4BnIQ=="
+      },
+      "Microsoft.ClearScript.V8.Native.win-x64": {
+        "type": "CentralTransitive",
+        "requested": "[7.5.1.1, )",
+        "resolved": "7.5.1.1",
+        "contentHash": "N79bR+RG7FD8wv/tdXZuOLDx3YAQ+mSB5P0gcUNMGEFO4DljRSPlJcEzHLrPvrlPzNnc3aV6Rx2v5V3qordPJg=="
+      },
+      "Nethermind.Crypto.Bls": {
+        "type": "CentralTransitive",
+        "requested": "[0.3.17.15, )",
+        "resolved": "0.3.17.15",
+        "contentHash": "+xr/mF5oUDoh6z1e71p3wBmO9QcOD6hYNFrx04iEhxHWzfIa9E5+/qS5nS1XX5faKaw5s6PWNIxLVg9HUkVCxQ=="
+      },
+      "Nethermind.Crypto.SecP256k1": {
+        "type": "CentralTransitive",
+        "requested": "[0.8.0.42, )",
+        "resolved": "0.8.0.42",
+        "contentHash": "BNc3CNTJAJTLkCHcOyY1YC/5Ww8S3ZU6IK3SQjnuKv4hInRJ1jzCxazCypYi+vAFYE4pO3ZQ8X06BkSrkVn9fQ=="
+      },
+      "Nethermind.Crypto.SecP256r1": {
+        "type": "CentralTransitive",
+        "requested": "[1.2.0, )",
+        "resolved": "1.2.0",
+        "contentHash": "fZcpjrDznXD5EzL5cNWSH429qd3/uP9t3lNUuFnv9gAG1kaNw0QhSz+ZvVKB0sV92/0nNSVcTL0TRVOVQ/PNdw=="
+      },
+      "Nethermind.GmpBindings": {
+        "type": "CentralTransitive",
+        "requested": "[6.3.0.195, )",
+        "resolved": "6.3.0.195",
+        "contentHash": "mksPt3wW+A6b9fyZG78NqxZqgLPjosfvMhg9cxEC5eaIs4KRvBWtClKxsMAFfPLzjfqiPXa4QfHoaRRzyrd10w=="
+      },
+      "Nethermind.MclBindings": {
+        "type": "CentralTransitive",
+        "requested": "[4.30.0.119, )",
+        "resolved": "4.30.0.119",
+        "contentHash": "8J/3Jp6PvAB9ypBx5Lln3n7XEEmc3SUNbktCxlR6IwR8yIuAZ7woX8XL7t0zb4MvQ6DCL1/rtR6Qnc3vd/sBbw=="
+      },
+      "Nethermind.RocksDbBindings": {
+        "type": "CentralTransitive",
+        "requested": "[11.8.1.183, 11.8.1.183]",
+        "resolved": "11.8.1.183",
+        "contentHash": "pbfaFsIUVPmlE0jx4A9Wme+IF3p+IiwipEZjRqdsU8gbk+VlsBqdT9g05SDzMpkT3rWjoVbyMtzzY0XLeZmQ+w=="
+      },
+      "Nethermind.TurboPForBindings": {
+        "type": "CentralTransitive",
+        "requested": "[1.2.0, )",
+        "resolved": "1.2.0",
+        "contentHash": "VlK4W/KzFX0lXgxZ+pu6OEYx0MQM7BJq9Ox1ZGalmPNciK4DHS5/HzrXV4yD24KnLqV+fHzbiHPLXFmTclFFuw=="
       }
     },
     "net10.0/win-x64": {
@@ -2087,81 +2225,87 @@
       },
       "Ckzg.Bindings": {
         "type": "CentralTransitive",
-        "requested": "[2.1.8.1641, )",
-        "resolved": "2.1.8.1641",
-        "contentHash": "xeeTkR6VES+mCWFOa+yN507kTihU+KR5SdHsDll/dTaHQtttI8tuvp+/91cghl8N4b0+olTXt31X5sWzF89hag=="
+        "requested": "[2.1.8.1680, )",
+        "resolved": "2.1.8.1680",
+        "contentHash": "SSJpHH7aXLUgCV4ism0fS91GyCDJ71JISXZfQcCoaYVaNDahgIQxWTQwj4vCnA85Inh3jr3sAn5Yt12vNthlBA=="
       },
       "Microsoft.ClearScript.V8.Native.linux-arm64": {
         "type": "CentralTransitive",
-        "requested": "[7.5.1, )",
-        "resolved": "7.5.1",
-        "contentHash": "9QwgJVIAWlO/ltBuvVHj40dSKyctir7DUWe0zgWnaqeM4sgTO8QVrG5f+qjwo8uRYDKt15EPfqhAD8Y6+I3sXQ=="
+        "requested": "[7.5.1.1, )",
+        "resolved": "7.5.1.1",
+        "contentHash": "y9Hb11O75GmzGS2xn5DvIJ0M89qiEYbwsYRkpA4w9bO/opu0R10KACHJYPgph8sMePIJzRABtA7KIPBxS4+VbQ=="
       },
       "Microsoft.ClearScript.V8.Native.linux-x64": {
         "type": "CentralTransitive",
-        "requested": "[7.5.1, )",
-        "resolved": "7.5.1",
-        "contentHash": "B+JPK6ZnflitblwHl7WZ/6argp3+czixo10vYXbF9D5KgjclJbeppxj5FpJnH6Hv1Ua0Ql+TduoSX53fhYh5AQ=="
+        "requested": "[7.5.1.1, )",
+        "resolved": "7.5.1.1",
+        "contentHash": "ZzX0d8KD3h1mkHji3qMZA5gllbArSJErOcgpmOgXp6MNVEcA08TED+InXAS/lnubEs1q0mflnXjHcXIptjDYSA=="
       },
       "Microsoft.ClearScript.V8.Native.osx-arm64": {
         "type": "CentralTransitive",
-        "requested": "[7.5.1, )",
-        "resolved": "7.5.1",
-        "contentHash": "Fir3WvZX4e+rrLb+Py9+O4940STW9/UUBO2bXYxNE8lZhEIJwTvMnGeJ/KdrioHmAsJRMbcYN1P2PjQf2oNQ/Q=="
+        "requested": "[7.5.1.1, )",
+        "resolved": "7.5.1.1",
+        "contentHash": "MfzQquSw2wXBjg24JZE6kjPxE04H+GOlqnSGmXl1Lk0fFbGixxqFSRqQ2TAlEuEQ5pdOmTf40VEzba67J6Kf1w=="
       },
       "Microsoft.ClearScript.V8.Native.osx-x64": {
         "type": "CentralTransitive",
-        "requested": "[7.5.1, )",
-        "resolved": "7.5.1",
-        "contentHash": "e31DyJwiTDLsCWEv2wkAtOPJqKGi5qQ2tnILjeqe6RD7b0EazXXq2wEFmEbx9aQs++mrb1oWpCOeLur+Qlb0Ig=="
+        "requested": "[7.5.1.1, )",
+        "resolved": "7.5.1.1",
+        "contentHash": "4G7Dx91cote/k3cPhXzeM1GrloPQftKrF/SCaNsjdZQGW4G5tWGYTQewG1/DCLeJ2pngh+32Kkp/JTOnFF1MQg=="
+      },
+      "Microsoft.ClearScript.V8.Native.win-arm64": {
+        "type": "CentralTransitive",
+        "requested": "[7.5.1.1, )",
+        "resolved": "7.5.1.1",
+        "contentHash": "ZvAKQ+zKsn7QGmKefd8Eh1AjascYR4j5QDchNwJkEbYxlFJNY1Q9QNjdExS4NG4QDOqp2iD1WkQgR70ZX4BnIQ=="
       },
       "Microsoft.ClearScript.V8.Native.win-x64": {
         "type": "CentralTransitive",
-        "requested": "[7.5.1, )",
-        "resolved": "7.5.1",
-        "contentHash": "fkCJta+xF2W3+L6NwRzqIV0VYD/WVcrZHyxgbOe5iTl321Td0w5loBWGVXlgG5fsuv2FEcba1GLE1CbeJrzMRw=="
+        "requested": "[7.5.1.1, )",
+        "resolved": "7.5.1.1",
+        "contentHash": "N79bR+RG7FD8wv/tdXZuOLDx3YAQ+mSB5P0gcUNMGEFO4DljRSPlJcEzHLrPvrlPzNnc3aV6Rx2v5V3qordPJg=="
       },
       "Nethermind.Crypto.Bls": {
         "type": "CentralTransitive",
-        "requested": "[1.1.0, )",
-        "resolved": "1.1.0",
-        "contentHash": "0twAxphu4RDD173wG6EjhUfkS80HuyL+CeGOGolJWUFFgZ07YtsIQgep5gRHfKRkhPHCCgcOHMjkuoQf3/mc7Q=="
+        "requested": "[0.3.17.15, )",
+        "resolved": "0.3.17.15",
+        "contentHash": "+xr/mF5oUDoh6z1e71p3wBmO9QcOD6hYNFrx04iEhxHWzfIa9E5+/qS5nS1XX5faKaw5s6PWNIxLVg9HUkVCxQ=="
       },
       "Nethermind.Crypto.SecP256k1": {
         "type": "CentralTransitive",
-        "requested": "[1.7.0, )",
-        "resolved": "1.7.0",
-        "contentHash": "mF200wb8fOBDHz449QkGUUSsW9wGGfngqObckMYZ9PFuXugdpbaGPN1Udy73mpct/i+1GIHGQLmFkXb131arRw=="
+        "requested": "[0.8.0.42, )",
+        "resolved": "0.8.0.42",
+        "contentHash": "BNc3CNTJAJTLkCHcOyY1YC/5Ww8S3ZU6IK3SQjnuKv4hInRJ1jzCxazCypYi+vAFYE4pO3ZQ8X06BkSrkVn9fQ=="
       },
       "Nethermind.Crypto.SecP256r1": {
         "type": "CentralTransitive",
-        "requested": "[1.1.0, )",
-        "resolved": "1.1.0",
-        "contentHash": "iX5hym1X8odR5QwBLeicStQuDbjqxLx7e9ltoBe3+EN+S6vyc6DJxYSY8TpOp2QnB5Hf3g7yguWvmsKnpIPE2w=="
+        "requested": "[1.2.0, )",
+        "resolved": "1.2.0",
+        "contentHash": "fZcpjrDznXD5EzL5cNWSH429qd3/uP9t3lNUuFnv9gAG1kaNw0QhSz+ZvVKB0sV92/0nNSVcTL0TRVOVQ/PNdw=="
       },
       "Nethermind.GmpBindings": {
         "type": "CentralTransitive",
-        "requested": "[2.0.0, )",
-        "resolved": "2.0.0",
-        "contentHash": "nMhuS5f4pLwm3ACbST6Q7u8p3/vclmSTiWeTeyNOi2MurwTVMbLZYZB26HyiwnurslVu8LQqkZ9z8QekYYt9RQ=="
+        "requested": "[6.3.0.195, )",
+        "resolved": "6.3.0.195",
+        "contentHash": "mksPt3wW+A6b9fyZG78NqxZqgLPjosfvMhg9cxEC5eaIs4KRvBWtClKxsMAFfPLzjfqiPXa4QfHoaRRzyrd10w=="
       },
       "Nethermind.MclBindings": {
         "type": "CentralTransitive",
-        "requested": "[2.0.0, )",
-        "resolved": "2.0.0",
-        "contentHash": "tkJtkmKPlvCbz4lanrVDQqWyTcsUWhly1Vv/zNUldPD8d+Sy7aGRm2L28SeQkubSLP7of5JVw1SIN6BiVA1AUQ=="
+        "requested": "[4.30.0.119, )",
+        "resolved": "4.30.0.119",
+        "contentHash": "8J/3Jp6PvAB9ypBx5Lln3n7XEEmc3SUNbktCxlR6IwR8yIuAZ7woX8XL7t0zb4MvQ6DCL1/rtR6Qnc3vd/sBbw=="
       },
       "Nethermind.RocksDbBindings": {
         "type": "CentralTransitive",
-        "requested": "[11.8.1-preview.140, 11.8.1-preview.140]",
-        "resolved": "11.8.1-preview.140",
-        "contentHash": "2FK9/uKMLnP7IxYYm9bwyf2e/VnrnajNNakZoRTiDh0jKb2/A0PqxNdZjHX3JosaKIzqB9dZKbhD81uKgFbE0w=="
+        "requested": "[11.8.1.183, 11.8.1.183]",
+        "resolved": "11.8.1.183",
+        "contentHash": "pbfaFsIUVPmlE0jx4A9Wme+IF3p+IiwipEZjRqdsU8gbk+VlsBqdT9g05SDzMpkT3rWjoVbyMtzzY0XLeZmQ+w=="
       },
       "Nethermind.TurboPForBindings": {
         "type": "CentralTransitive",
-        "requested": "[1.0.0, )",
-        "resolved": "1.0.0",
-        "contentHash": "G5L8iaJusi7h4zkFtiSEhA8VRX7l6SsupdKRZ7QiHIzYR/860i/HS4wZ+/Uxn2fqkU4WRBuj+aGLFyX1x0VGCw=="
+        "requested": "[1.2.0, )",
+        "resolved": "1.2.0",
+        "contentHash": "VlK4W/KzFX0lXgxZ+pu6OEYx0MQM7BJq9Ox1ZGalmPNciK4DHS5/HzrXV4yD24KnLqV+fHzbiHPLXFmTclFFuw=="
       }
     }
   }

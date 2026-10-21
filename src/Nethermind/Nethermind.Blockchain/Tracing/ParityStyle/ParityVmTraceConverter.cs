@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.Blockchain.Tracing.ParityStyle;
 
@@ -12,11 +13,33 @@ public class ParityVmTraceConverter : JsonConverter<ParityVmTrace>
 {
     public override void Write(Utf8JsonWriter writer, ParityVmTrace value, JsonSerializerOptions options)
     {
+        byte[] code = value.Code ?? [];
         writer.WriteStartObject();
         writer.WritePropertyName("code"u8);
-        JsonSerializer.Serialize(writer, value.Code ?? [], options);
+        TypeInfoJsonSerializer.Serialize(writer, code, options);
         writer.WritePropertyName("ops"u8);
-        JsonSerializer.Serialize(writer, value.Operations, options);
+        if (value.Operations is null)
+        {
+            writer.WriteNullValue();
+        }
+        else
+        {
+            writer.WriteStartArray();
+            foreach (ParityVmOperationTrace? operation in value.Operations)
+            {
+                if (operation is null)
+                {
+                    writer.WriteNullValue();
+                }
+                else
+                {
+                    ParityVmOperationTraceConverter.WriteOperation(writer, operation, code, options);
+                }
+            }
+
+            writer.WriteEndArray();
+        }
+
         writer.WriteEndObject();
     }
 
@@ -43,7 +66,7 @@ public class ParityVmTraceConverter : JsonConverter<ParityVmTrace>
             if (reader.ValueTextEquals("code"u8))
             {
                 reader.Read();
-                value.Code = JsonSerializer.Deserialize<byte[]>(ref reader, options);
+                value.Code = TypeInfoJsonSerializer.Deserialize<byte[]>(ref reader, options);
             }
             else if (reader.ValueTextEquals("ops"u8))
             {

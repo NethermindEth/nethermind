@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
@@ -10,6 +11,7 @@ namespace Nethermind.Evm
 {
     public static class TransactionExtensions
     {
+        [SkipLocalsInit]
         public static Address GetRecipient(this Transaction tx, in UInt256 nonce) =>
             tx.To ?? (tx.IsSystem()
                 ? tx.SenderAddress!

@@ -103,11 +103,11 @@ public class BlockFinderExtensionsTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void SearchForBlocksOnMainChain_stops_after_a_missing_to_block()
+    public void SearchForHeadersOnMainChain_stops_after_a_missing_to_block()
     {
         IBlockFinder blockFinder = Build.A.BlockTree().OfChainLength(3).TestObject;
 
-        List<SearchResult<Block>> results = blockFinder.SearchForBlocksOnMainChain(new BlockParameter(0UL), new BlockParameter(10UL)).ToList();
+        List<SearchResult<BlockHeader>> results = blockFinder.SearchForHeadersOnMainChain(new BlockParameter(0UL), new BlockParameter(10UL)).ToList();
 
         Assert.That(results, Has.Count.EqualTo(1));
         Assert.That(results[0].ErrorCode, Is.EqualTo(ErrorCodes.ResourceNotFound));

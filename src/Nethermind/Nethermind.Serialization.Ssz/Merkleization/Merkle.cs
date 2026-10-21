@@ -228,6 +228,7 @@ public static partial class Merkle
     }
 
     /// <summary>Merkleizes <paramref name="chunks"/> followed by the at most one chunk of <paramref name="lastChunk"/> progressively.</summary>
+    [SkipLocalsInit]
     private static void MerkleizeProgressive(out UInt256 root, ReadOnlySpan<UInt256> chunks, ReadOnlySpan<UInt256> lastChunk, ulong numLeaves)
     {
         ArgumentOutOfRangeException.ThrowIfZero(numLeaves, nameof(numLeaves));

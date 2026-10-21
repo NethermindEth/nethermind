@@ -106,12 +106,12 @@ public class ParityAccountStateChangeJsonConverter : JsonConverter<ParityAccount
         if (reader.ValueTextEquals("+"u8))
         {
             reader.Read();
-            change.After = JsonSerializer.Deserialize<T>(ref reader, options);
+            change.After = TypeInfoJsonSerializer.Deserialize<T>(ref reader, options);
         }
         else if (reader.ValueTextEquals("-"u8))
         {
             reader.Read();
-            change.Before = JsonSerializer.Deserialize<T>(ref reader, options);
+            change.Before = TypeInfoJsonSerializer.Deserialize<T>(ref reader, options);
         }
         else if (reader.ValueTextEquals("*"u8))
         {
@@ -130,13 +130,13 @@ public class ParityAccountStateChangeJsonConverter : JsonConverter<ParityAccount
                 if (reader.ValueTextEquals("from"u8))
                 {
                     reader.Read();
-                    change.Before = JsonSerializer.Deserialize<T>(ref reader, options);
+                    change.Before = TypeInfoJsonSerializer.Deserialize<T>(ref reader, options);
                     hasFrom = true;
                 }
                 else if (reader.ValueTextEquals("to"u8))
                 {
                     reader.Read();
-                    change.After = JsonSerializer.Deserialize<T>(ref reader, options);
+                    change.After = TypeInfoJsonSerializer.Deserialize<T>(ref reader, options);
                     hasTo = true;
                 }
                 else
@@ -179,14 +179,14 @@ public class ParityAccountStateChangeJsonConverter : JsonConverter<ParityAccount
             {
                 writer.WriteStartObject();
                 writer.WritePropertyName("+"u8);
-                JsonSerializer.Serialize(writer, change.After, options);
+                TypeInfoJsonSerializer.Serialize(writer, change.After, options);
                 writer.WriteEndObject();
             }
             else if (change.After is null)
             {
                 writer.WriteStartObject();
                 writer.WritePropertyName("-"u8);
-                JsonSerializer.Serialize(writer, change.Before, options);
+                TypeInfoJsonSerializer.Serialize(writer, change.Before, options);
                 writer.WriteEndObject();
             }
             else
@@ -195,9 +195,9 @@ public class ParityAccountStateChangeJsonConverter : JsonConverter<ParityAccount
                 writer.WritePropertyName("*"u8);
                 writer.WriteStartObject();
                 writer.WritePropertyName("from"u8);
-                JsonSerializer.Serialize(writer, change.Before, options);
+                TypeInfoJsonSerializer.Serialize(writer, change.Before, options);
                 writer.WritePropertyName("to"u8);
-                JsonSerializer.Serialize(writer, change.After, options);
+                TypeInfoJsonSerializer.Serialize(writer, change.After, options);
                 writer.WriteEndObject();
                 writer.WriteEndObject();
             }
@@ -216,14 +216,14 @@ public class ParityAccountStateChangeJsonConverter : JsonConverter<ParityAccount
             {
                 writer.WriteStartObject();
                 writer.WritePropertyName("+"u8);
-                JsonSerializer.Serialize(writer, change.After, options);
+                TypeInfoJsonSerializer.Serialize(writer, change.After, options);
                 writer.WriteEndObject();
             }
             else if (change.After is null)
             {
                 writer.WriteStartObject();
                 writer.WritePropertyName("-"u8);
-                JsonSerializer.Serialize(writer, change.Before, options);
+                TypeInfoJsonSerializer.Serialize(writer, change.Before, options);
                 writer.WriteEndObject();
             }
             else
@@ -232,9 +232,9 @@ public class ParityAccountStateChangeJsonConverter : JsonConverter<ParityAccount
                 writer.WritePropertyName("*"u8);
                 writer.WriteStartObject();
                 writer.WritePropertyName("from"u8);
-                JsonSerializer.Serialize(writer, change.Before, options);
+                TypeInfoJsonSerializer.Serialize(writer, change.Before, options);
                 writer.WritePropertyName("to"u8);
-                JsonSerializer.Serialize(writer, change.After, options);
+                TypeInfoJsonSerializer.Serialize(writer, change.After, options);
                 writer.WriteEndObject();
                 writer.WriteEndObject();
             }

@@ -4,7 +4,6 @@
 using System;
 using System.Buffers;
 using System.Collections.Generic;
-using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Nethermind.Core;
@@ -18,12 +17,17 @@ namespace Nethermind.Facade.Eth.RpcTransaction;
 public class AccessListForRpc
 {
     private readonly IEnumerable<Item> _items;
+    private readonly AccessList? _accessList;
+
+    private static readonly AccessListForRpc Empty = new(AccessList.Empty);
 
     public AccessListForRpc() => _items = Array.Empty<Item>();
 
     private AccessListForRpc(IEnumerable<Item> items) => _items = items;
 
-    private class Item
+    private AccessListForRpc(AccessList accessList) : this() => _accessList = accessList;
+
+    internal class Item
     {
         public Address Address { get; set; }
 
@@ -40,12 +44,15 @@ public class AccessListForRpc
     }
 
     public static AccessListForRpc FromAccessList(AccessList? accessList) =>
-        accessList is null
-        ? new AccessListForRpc([])
-        : new AccessListForRpc(accessList.Select(static item => new Item(item.Address, [.. item.StorageKeys])));
+        accessList is null || accessList.IsEmpty ? Empty : new(accessList);
 
     public AccessList ToAccessList()
     {
+        if (_accessList is not null)
+        {
+            return _accessList;
+        }
+
         AccessList.Builder builder = new();
         foreach (Item item in _items)
         {
@@ -97,14 +104,22 @@ public class AccessListForRpc
                     if (reader.TokenType != JsonTokenType.PropertyName)
                         throw new JsonException("Expected property name");
 
-                    string propName = reader.GetString() ?? throw new JsonException("Property name cannot be null");
+                    bool isAddress = reader.ValueTextEquals("address"u8);
+                    bool isStorageKeys = !isAddress && reader.ValueTextEquals("storageKeys"u8);
+                    if (!isAddress && !isStorageKeys)
+                    {
+                        string propName = reader.GetString() ?? throw new JsonException("Property name cannot be null");
+                        isAddress = string.Equals(propName, nameof(Item.Address), StringComparison.OrdinalIgnoreCase);
+                        isStorageKeys = string.Equals(propName, nameof(Item.StorageKeys), StringComparison.OrdinalIgnoreCase);
+                    }
+
                     reader.Read(); // move to property value
 
-                    if (string.Equals(propName, nameof(Item.Address), StringComparison.OrdinalIgnoreCase))
+                    if (isAddress)
                     {
-                        address = JsonSerializer.Deserialize<Address>(ref reader, options);
+                        address = TypeInfoJsonSerializer.Deserialize<Address>(ref reader, options);
                     }
-                    else if (string.Equals(propName, nameof(Item.StorageKeys), StringComparison.OrdinalIgnoreCase))
+                    else if (isStorageKeys)
                     {
                         if (reader.TokenType == JsonTokenType.Null)
                         {
@@ -157,6 +172,30 @@ public class AccessListForRpc
         }
 
 
-        public override void Write(Utf8JsonWriter writer, AccessListForRpc value, JsonSerializerOptions options) => JsonSerializer.Serialize(writer, value._items, options);
+        public override void Write(Utf8JsonWriter writer, AccessListForRpc value, JsonSerializerOptions options)
+        {
+            if (value._accessList is null)
+            {
+                TypeInfoJsonSerializer.Serialize(writer, value._items, options);
+                return;
+            }
+
+            writer.WriteStartArray();
+            foreach ((Address address, AccessList.StorageKeysEnumerable storageKeys) in value._accessList)
+            {
+                writer.WriteStartObject();
+                writer.WritePropertyName("address"u8);
+                ByteArrayConverter.Convert(writer, address.Bytes, skipLeadingZeros: false);
+                writer.WritePropertyName("storageKeys"u8);
+                writer.WriteStartArray();
+                foreach (UInt256 key in storageKeys)
+                {
+                    HexWriter.WriteUInt256HexRawValue(writer, key, zeroPadded: true);
+                }
+                writer.WriteEndArray();
+                writer.WriteEndObject();
+            }
+            writer.WriteEndArray();
+        }
     }
 }

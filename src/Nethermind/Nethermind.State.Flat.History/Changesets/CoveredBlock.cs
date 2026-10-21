@@ -107,7 +107,7 @@ internal sealed class CoveredBlock(BlockChangesets rows, RangeOverlay? earlierBl
             if (lease is null) return false;
             try
             {
-                slot.Arm(_earlierBlocks is null ? view : new ChainedReadOverlay(view, _earlierBlocks), lease, lease.Cache);
+                slot.Arm(view, lease, lease.Cache, _earlierBlocks);
             }
             catch
             {

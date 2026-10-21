@@ -15,6 +15,7 @@ using Nethermind.Logging;
 using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
+using Nethermind.State;
 using Nethermind.Synchronization.Peers;
 using NSubstitute;
 using Nethermind.Core.Test.Builders;
@@ -52,7 +53,8 @@ public class TaikoEngineApiTests
             new MergeConfig(),
             Substitute.For<ILogManager>(),
             Substitute.For<IBlockProcessingPauseControl>(),
-            new BlockTreeMutationLock()
+            new BlockTreeMutationLock(),
+            StateReaderWithEveryState()
         );
 
         ResultWrapper<ForkchoiceUpdatedV1Result> beforeNewBlockAdded = await forkchoiceUpdatedHandler.Handle(new ForkchoiceStateV1(genesisBlock.Hash!, futureBlock.Hash!, futureBlock.Hash!), null, 2);
@@ -70,6 +72,13 @@ public class TaikoEngineApiTests
             blockTree.Head.Returns(block);
             blockTree.HeadHash.Returns(block.Hash!);
         }
+    }
+
+    private static IStateReader StateReaderWithEveryState()
+    {
+        IStateReader stateReader = Substitute.For<IStateReader>();
+        stateReader.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(true);
+        return stateReader;
     }
 
     [TestCase(100ul, 100ul, true, TestName = "Equal timestamps allowed for Pacaya")]
@@ -102,7 +111,8 @@ public class TaikoEngineApiTests
             new MergeConfig(),
             Substitute.For<ILogManager>(),
             Substitute.For<IBlockProcessingPauseControl>(),
-            new BlockTreeMutationLock()
+            new BlockTreeMutationLock(),
+            StateReaderWithEveryState()
         );
 
         PayloadAttributes payloadAttributes = new()

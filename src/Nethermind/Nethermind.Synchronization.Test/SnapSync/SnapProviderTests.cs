@@ -147,6 +147,86 @@ public class SnapProviderTests
         Assert.That(snapProvider.AddStorageRange(request, response), Is.EqualTo(expected));
     }
 
+    // A peer with no slots past a continuation's origin replies with no slot list and only the proof of the origin -
+    // geth's server and ours both do. That proves the rest of the range empty, so the account's large storage is
+    // complete; failing it would request the very same range again for ever.
+    [Test]
+    public void AddStorageRange_ProofOfAbsencePastTheOrigin_CompletesTheLargeStorage()
+    {
+        (PathWithAccount account, PathWithStorageSlot[] slots, StateTree stateTree) = BuildAccountWithStorage(100);
+        ValueHash256 origin = slots[^1].Path.IncrementPath();
+
+        using IContainer container = CreateContainerBuilder(new TestSyncConfig { SnapSyncAccountRangePartitionCount = 1 })
+            .WithSuggestedHeaderOfStateRoot(Keccak.EmptyTreeHash)
+            .Build();
+
+        SnapProvider snapProvider = container.Resolve<SnapProvider>();
+        ProgressTracker progressTracker = container.Resolve<ProgressTracker>();
+        DrainAccountRangePartition(progressTracker);
+
+        Assert.That(AnswerStorageContinuationWithProofOnly(snapProvider, progressTracker, account, origin, ProveStorage(stateTree, account.Path, origin)),
+            Is.EqualTo(AddRangeResult.OK));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(progressTracker.LargeStorageProgressCount, Is.Zero, "the account's large storage is complete");
+            Assert.That(progressTracker.IsSnapGetRangesFinished(), Is.True, "nothing is queued again for the account");
+        }
+    }
+
+    // A proof that does not prove the rest of the range empty must fail the range, and the account must be re-proven
+    // from its origin rather than have its storage restarted from 0.
+    [TestCase(false, TestName = "{m} (junk proof)")]
+    [TestCase(true, TestName = "{m} (real proof, slots past the origin withheld)")]
+    public void AddStorageRange_ProofWithoutSlotLists_IsScoredAsAFailedRangeAndKeepsTheOrigin(bool realProof)
+    {
+        const int slotCount = 100;
+        (PathWithAccount account, PathWithStorageSlot[] slots, StateTree stateTree) = BuildAccountWithStorage(slotCount);
+        ValueHash256 origin = slots[slotCount / 2].Path;
+        byte[][] proof = realProof ? ProveStorage(stateTree, account.Path, origin) : [[0x0]];
+
+        using IContainer container = CreateContainerBuilder(new TestSyncConfig { SnapSyncAccountRangePartitionCount = 1 })
+            .WithSuggestedHeaderOfStateRoot(Keccak.EmptyTreeHash)
+            .Build();
+
+        SnapProvider snapProvider = container.Resolve<SnapProvider>();
+        ProgressTracker progressTracker = container.Resolve<ProgressTracker>();
+        DrainAccountRangePartition(progressTracker);
+
+        Assert.That(AnswerStorageContinuationWithProofOnly(snapProvider, progressTracker, account, origin, proof), Is.Not.EqualTo(AddRangeResult.OK));
+
+        progressTracker.IsFinished(out SnapSyncBatch? refresh);
+        using (refresh)
+        {
+            Assert.That(refresh!.AccountsToRefreshRequest, Is.Not.Null);
+            Assert.That(refresh.AccountsToRefreshRequest!.Paths[0].StorageStartingHash, Is.EqualTo(origin), "the account is re-proven from its origin, not restarted");
+        }
+    }
+
+    // DequeStorageToRetrieveRequest builds a batch from whatever it dequeues, so a batch can carry no account. A
+    // proof-only reply to it is not a proof of absence for any account and must not be read as one for account 0.
+    [Test]
+    public void AddStorageRange_ProofOnlyReplyToABatchWithoutAccounts_IsOutOfBounds()
+    {
+        using IContainer container = CreateContainerBuilder(new TestSyncConfig { SnapSyncAccountRangePartitionCount = 1 })
+            .WithSuggestedHeaderOfStateRoot(Keccak.EmptyTreeHash)
+            .Build();
+
+        SnapProvider snapProvider = container.Resolve<SnapProvider>();
+        ProgressTracker progressTracker = container.Resolve<ProgressTracker>();
+        DrainAccountRangePartition(progressTracker);
+
+        using StorageRange request = CreateStorageRange(0);
+        using SlotsAndProofs response = new()
+        {
+            PathsAndSlots = new ArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>>(0),
+            Proofs = new ByteArrayListAdapter(new List<byte[]> { new byte[] { 0x0 } }.ToPooledList()),
+        };
+
+        Assert.That(snapProvider.AddStorageRange(request, response), Is.EqualTo(AddRangeResult.OutOfBounds));
+        Assert.That(progressTracker.IsSnapGetRangesFinished(), Is.True, "an empty batch queues nothing again");
+    }
+
     [Test]
     public void AddStorageRange_ResponseHasMoreSlotListsThanRequestedAccounts_KeepsRangePhaseCompletable()
     {
@@ -785,34 +865,7 @@ public class SnapProviderTests
     [Test]
     public void AddStorageRange_ShouldPersistEntries()
     {
-        const int slotCount = 6;
-        TestMemDb stateDb = new();
-        TestRawTrieStore store = new(stateDb);
-
-        // Build storage tree with RLP-encoded 32-byte values
-        Hash256 accountHash = TestItem.Tree.AccountAddress0;
-        StorageTree storageTree = new(store.GetTrieStore(accountHash), LimboLogs.Instance);
-        PathWithStorageSlot[] slots = new PathWithStorageSlot[slotCount];
-        for (int i = 0; i < slotCount; i++)
-        {
-            ValueHash256 slotKey = Keccak.Compute(i.ToBigEndianByteArray());
-            byte[] value = (i + 1).ToBigEndianByteArray();
-            byte[] rlpValue = Rlp.Encode(value).Bytes;
-            storageTree.Set(slotKey, rlpValue, false);
-            slots[i] = new PathWithStorageSlot(slotKey, rlpValue);
-        }
-        storageTree.Commit();
-        Array.Sort(slots, (a, b) => a.Path.CompareTo(b.Path));
-
-        StateTree stateTree = new(store.GetTrieStore(null), LimboLogs.Instance);
-        stateTree.Set(accountHash, Build.An.Account.WithBalance(1).WithStorageRoot(storageTree.RootHash).TestObject);
-        stateTree.Commit();
-
-        // Collect proofs
-        AccountProofCollector proofCollector = new(accountHash.Bytes,
-            new ValueHash256[] { Keccak.Zero, slots[^1].Path });
-        stateTree.Accept(proofCollector, stateTree.RootHash);
-        AccountProof proof = proofCollector.BuildResult();
+        (PathWithAccount account, PathWithStorageSlot[] slots, StateTree stateTree) = BuildAccountWithStorage(6);
 
         using IContainer container = CreateContainer();
         SnapProvider snapProvider = container.Resolve<SnapProvider>();
@@ -820,15 +873,12 @@ public class SnapProviderTests
         StorageRange storageRange = new()
         {
             StartingHash = Keccak.Zero,
-            Accounts = new ArrayPoolList<PathWithAccount>(1)
-            {
-                new(accountHash, new Account(0, 1).WithChangedStorageRoot(storageTree.RootHash))
-            },
+            Accounts = new ArrayPoolList<PathWithAccount>(1) { account },
         };
 
         Assert.That(snapProvider.AddStorageRangeForAccount(
             storageRange, 0, slots,
-            new ByteArrayListAdapter(proof.StorageProofs[0].Proof.Concat(proof.StorageProofs[1].Proof).ToArray().ToPooledList())), Is.EqualTo(AddRangeResult.OK));
+            new ByteArrayListAdapter(ProveStorage(stateTree, account.Path, Keccak.Zero, slots[^1].Path).ToPooledList())), Is.EqualTo(AddRangeResult.OK));
     }
 
     [Test]
@@ -991,6 +1041,74 @@ public class SnapProviderTests
         }
 
         return new SlotsAndProofs { PathsAndSlots = pathsAndSlots, Proofs = EmptyByteArrayList.Instance };
+    }
+
+    /// <summary>
+    /// Builds the storage trie of one account from <paramref name="slotCount"/> slots, and a state trie holding that
+    /// account to take storage proofs from.
+    /// </summary>
+    private static (PathWithAccount Account, PathWithStorageSlot[] Slots, StateTree StateTree) BuildAccountWithStorage(int slotCount)
+    {
+        TestMemDb stateDb = new();
+        TestRawTrieStore store = new(stateDb);
+
+        // Build storage tree with RLP-encoded 32-byte values
+        Hash256 accountHash = TestItem.Tree.AccountAddress0;
+        StorageTree storageTree = new(store.GetTrieStore(accountHash), LimboLogs.Instance);
+        PathWithStorageSlot[] slots = new PathWithStorageSlot[slotCount];
+        for (int i = 0; i < slotCount; i++)
+        {
+            ValueHash256 slotKey = Keccak.Compute(i.ToBigEndianByteArray());
+            byte[] value = (i + 1).ToBigEndianByteArray();
+            byte[] rlpValue = Rlp.Encode(value).Bytes;
+            storageTree.Set(slotKey, rlpValue, false);
+            slots[i] = new PathWithStorageSlot(slotKey, rlpValue);
+        }
+        storageTree.Commit();
+        Array.Sort(slots, (a, b) => a.Path.CompareTo(b.Path));
+
+        StateTree stateTree = new(store.GetTrieStore(null), LimboLogs.Instance);
+        stateTree.Set(accountHash, Build.An.Account.WithBalance(1).WithStorageRoot(storageTree.RootHash).TestObject);
+        stateTree.Commit();
+
+        return (new PathWithAccount(accountHash, new Account(0, 1).WithChangedStorageRoot(storageTree.RootHash)), slots, stateTree);
+    }
+
+    private static byte[][] ProveStorage(StateTree stateTree, in ValueHash256 accountPath, params ValueHash256[] slotPaths)
+    {
+        AccountProofCollector proofCollector = new(accountPath.Bytes, slotPaths);
+        stateTree.Accept(proofCollector, stateTree.RootHash);
+        return proofCollector.BuildResult().StorageProofs.SelectMany(static storageProof => storageProof.Proof).ToArray();
+    }
+
+    /// <summary>
+    /// Queues <paramref name="account"/>'s storage continuation from <paramref name="origin"/> and answers it the way a
+    /// peer with no slots to serve there does: no slot list, only <paramref name="proof"/>.
+    /// </summary>
+    private static AddRangeResult AnswerStorageContinuationWithProofOnly(
+        SnapProvider snapProvider, ProgressTracker progressTracker, PathWithAccount account, ValueHash256 origin, byte[][] proof)
+    {
+        progressTracker.EnqueueNextSlot(new StorageRange
+        {
+            Accounts = new ArrayPoolList<PathWithAccount>(1) { account },
+            StartingHash = origin,
+            LimitHash = Keccak.MaxValue
+        });
+
+        progressTracker.IsFinished(out SnapSyncBatch? batch);
+        using (batch)
+        {
+            Assert.That(batch!.StorageRangeRequest, Is.Not.Null);
+            batch.StorageRangeResponse = new SlotsAndProofs
+            {
+                PathsAndSlots = new ArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>>(0),
+                Proofs = new ByteArrayListAdapter(proof.ToPooledList()),
+            };
+
+            AddRangeResult result = snapProvider.AddStorageRange(batch.StorageRangeRequest!, batch.StorageRangeResponse);
+            snapProvider.ReleaseRequest(batch, responseHandled: true);
+            return result;
+        }
     }
 
     private static (ISnapStateServer, Hash256) BuildSnapServerFromEntries((Hash256, Account)[] entries)

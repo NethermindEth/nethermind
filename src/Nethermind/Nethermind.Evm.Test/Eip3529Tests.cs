@@ -22,37 +22,37 @@ namespace Nethermind.Evm.Test
     public class Eip3529Tests : VirtualMachineTestsBase
     {
 
-        [TestCase("0x60006000556000600055", 3012UL, 15000UL, 1)]
-        [TestCase("0x60006000556001600055", 3012UL, 2800UL, 1)]
-        [TestCase("0x60006000556002600055", 3012UL, 0UL, 1)]
-        [TestCase("0x60026000556000600055", 3012UL, 15000UL, 1)]
-        [TestCase("0x60026000556003600055", 3012UL, 0UL, 1)]
-        [TestCase("0x60026000556001600055", 3012UL, 2800UL, 1)]
-        [TestCase("0x60026000556002600055", 3012UL, 0UL, 1)]
-        [TestCase("0x60016000556000600055", 3012UL, 15000UL, 1)]
-        [TestCase("0x60016000556002600055", 3012UL, 0UL, 1)]
-        [TestCase("0x60016000556001600055", 212UL, 0UL, 1)]
-        [TestCase("0x600160005560006000556001600055", 40118UL, 19900UL, 0)]
-        [TestCase("0x600060005560016000556000600055", 5918UL, 17800UL, 1)]
+        [TestCase("0x60006000556000600055", 5112UL, 15000UL, 1)]
+        [TestCase("0x60006000556001600055", 5112UL, 2800UL, 1)]
+        [TestCase("0x60006000556002600055", 5112UL, 0UL, 1)]
+        [TestCase("0x60026000556000600055", 5112UL, 15000UL, 1)]
+        [TestCase("0x60026000556003600055", 5112UL, 0UL, 1)]
+        [TestCase("0x60026000556001600055", 5112UL, 2800UL, 1)]
+        [TestCase("0x60026000556002600055", 5112UL, 0UL, 1)]
+        [TestCase("0x60016000556000600055", 5112UL, 15000UL, 1)]
+        [TestCase("0x60016000556002600055", 5112UL, 0UL, 1)]
+        [TestCase("0x60016000556001600055", 2312UL, 0UL, 1)]
+        [TestCase("0x600160005560006000556001600055", 42218UL, 19900UL, 0)]
+        [TestCase("0x600060005560016000556000600055", 8018UL, 17800UL, 1)]
         public void Before_introducing_eip3529(string codeHex, ulong gasUsed, ulong refund, byte originalValue) => Test(codeHex, gasUsed, refund, originalValue, false);
 
-        [TestCase("0x60006000556000600055", 212UL, 0UL, 0)]
-        [TestCase("0x60006000556001600055", 20112UL, 0UL, 0)]
-        [TestCase("0x60016000556000600055", 20112UL, 19900UL, 0)]
-        [TestCase("0x60016000556002600055", 20112UL, 0UL, 0)]
-        [TestCase("0x60016000556001600055", 20112UL, 0UL, 0)]
-        [TestCase("0x60006000556000600055", 3012UL, 4800UL, 1)]
-        [TestCase("0x60006000556001600055", 3012UL, 2800UL, 1)]
-        [TestCase("0x60006000556002600055", 3012UL, 0UL, 1)]
-        [TestCase("0x60026000556000600055", 3012UL, 4800UL, 1)]
-        [TestCase("0x60026000556003600055", 3012UL, 0UL, 1)]
-        [TestCase("0x60026000556001600055", 3012UL, 2800UL, 1)]
-        [TestCase("0x60026000556002600055", 3012UL, 0UL, 1)]
-        [TestCase("0x60016000556000600055", 3012UL, 4800UL, 1)]
-        [TestCase("0x60016000556002600055", 3012UL, 0UL, 1)]
-        [TestCase("0x60016000556001600055", 212UL, 0UL, 1)]
-        [TestCase("0x600160005560006000556001600055", 40118UL, 19900UL, 0)]
-        [TestCase("0x600060005560016000556000600055", 5918UL, 7600UL, 1)]
+        [TestCase("0x60006000556000600055", 2312UL, 0UL, 0)]
+        [TestCase("0x60006000556001600055", 22212UL, 0UL, 0)]
+        [TestCase("0x60016000556000600055", 22212UL, 19900UL, 0)]
+        [TestCase("0x60016000556002600055", 22212UL, 0UL, 0)]
+        [TestCase("0x60016000556001600055", 22212UL, 0UL, 0)]
+        [TestCase("0x60006000556000600055", 5112UL, 4800UL, 1)]
+        [TestCase("0x60006000556001600055", 5112UL, 2800UL, 1)]
+        [TestCase("0x60006000556002600055", 5112UL, 0UL, 1)]
+        [TestCase("0x60026000556000600055", 5112UL, 4800UL, 1)]
+        [TestCase("0x60026000556003600055", 5112UL, 0UL, 1)]
+        [TestCase("0x60026000556001600055", 5112UL, 2800UL, 1)]
+        [TestCase("0x60026000556002600055", 5112UL, 0UL, 1)]
+        [TestCase("0x60016000556000600055", 5112UL, 4800UL, 1)]
+        [TestCase("0x60016000556002600055", 5112UL, 0UL, 1)]
+        [TestCase("0x60016000556001600055", 2312UL, 0UL, 1)]
+        [TestCase("0x600160005560006000556001600055", 42218UL, 19900UL, 0)]
+        [TestCase("0x600060005560016000556000600055", 8018UL, 7600UL, 1)]
         public void After_introducing_eip3529(string codeHex, ulong gasUsed, ulong refund, byte originalValue) => Test(codeHex, gasUsed, refund, originalValue, true);
 
         private void Test(string codeHex, ulong gasUsed, ulong refund, byte originalValue, bool eip3529Enabled)
@@ -148,7 +148,7 @@ namespace Nethermind.Evm.Test
             Transaction tx2 = Build.A.Transaction.WithCode(byteCode1).WithGasLimit(gasLimit).WithNonce(2).SignedAndResolved(ecdsa, TestItem.PrivateKeyA).TestObject;
             // self destruct contract
             Transaction tx3 = Build.A.Transaction.WithCode(byteCode2).WithGasLimit(gasLimit).WithNonce(3).SignedAndResolved(ecdsa, TestItem.PrivateKeyA).TestObject;
-            uint gasUsedByTx3 = 37767;
+            uint gasUsedByTx3 = 44867;
 
             ulong blockNumber = eip3529Enabled ? MainnetSpecProvider.LondonBlockNumber : MainnetSpecProvider.LondonBlockNumber - 1;
             Block block = Build.A.Block.WithNumber(blockNumber).WithTransactions(tx0, tx1, tx2, tx3).WithGasLimit(2 * gasLimit).TestObject;

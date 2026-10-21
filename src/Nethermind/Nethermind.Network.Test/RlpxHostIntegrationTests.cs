@@ -349,6 +349,26 @@ public class RlpxHostIntegrationTests
     }
 
     [Test]
+    public async Task Listener_SurfacesUnassignedAddress()
+    {
+        // RFC 5737 documentation address, never assigned to a local interface.
+        const string unassignedIp = "192.0.2.1";
+        await using IContainer container = CreateListenerContainer(unassignedIp, IPAddress.Parse(unassignedIp), GetAvailablePort());
+        RlpxHost host = container.Resolve<RlpxHost>();
+        NetworkListenerState listenerState = container.Resolve<NetworkListenerState>();
+        try
+        {
+            Assert.That(async () => await host.Init(),
+                Throws.TypeOf<ListenerBindException>().With.InnerException.TypeOf<SocketException>());
+            Assert.That(listenerState.RlpxAddress, Is.Null);
+        }
+        finally
+        {
+            await host.Shutdown();
+        }
+    }
+
+    [Test]
     public async Task ListenerStateSubscriberFailure_DoesNotAffectBindOrShutdown()
     {
         int port = GetAvailablePort();
@@ -985,7 +1005,7 @@ public class RlpxHostIntegrationTests
 
         public IChannel CreateClient() => new TcpSocketChannel();
 
-        public IChannel CreateDatagramChannel() => new SocketDatagramChannel();
+        public IDatagramSocket CreateDatagramSocket() => throw new NotSupportedException();
     }
 
     private abstract class ClientChannelFactory : IChannelFactory
@@ -997,7 +1017,7 @@ public class RlpxHostIntegrationTests
 
         public abstract IChannel CreateClient();
 
-        public IChannel CreateDatagramChannel() => new SocketDatagramChannel();
+        public IDatagramSocket CreateDatagramSocket() => throw new NotSupportedException();
     }
 
     private sealed class PendingClientChannelFactory : ClientChannelFactory

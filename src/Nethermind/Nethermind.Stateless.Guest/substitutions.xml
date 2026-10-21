@@ -1,0 +1,42 @@
+<!--
+  SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+  SPDX-License-Identifier: LGPL-3.0-only
+
+  Substitutions every guest applies; a guest's own substitutions.xml adds to these.
+  The universal float-elimination set ships inside bflat and is applied automatically
+  for each guest's -\-libc.
+-->
+<linker>
+  <assembly fullname="System.Private.CoreLib">
+    <!-- Nethermind's config binder is the only ChangeType caller in the closure, and the
+         guest builds its config objects directly - but reachability alone compiles the
+         whole IConvertible conversion matrix. Throwing keeps a future string-bound path loud. -->
+    <type fullname="System.Convert">
+      <method signature="System.Object ChangeType(System.Object,System.Type)" body="remove" />
+      <method signature="System.Object ChangeType(System.Object,System.Type,System.IFormatProvider)" body="remove" />
+    </type>
+    <!-- The crash-info blob is for a debugger reading a dump; the guest has neither, and a fail-fast exits
+         the same way without it. -->
+    <type fullname="System.RuntimeExceptionHelpers">
+      <method signature="System.Void SerializeCrashInfo(System.Runtime.RhFailFastReason,System.String,System.Exception)" body="stub" />
+    </type>
+  </assembly>
+  <assembly fullname="Nethermind.Core">
+    <!-- Formatting a block, header, transaction or signature pulls in DateTime, time zone and number
+         formatting. The guest reaches these only from log sites behind a NullLogManager and from failure
+         messages it never publishes; a throw exits through ZkvmThrow with the same failure output. Stubs
+         cannot return a string, so they throw instead. -->
+    <type fullname="Nethermind.Core.Block">
+      <method signature="System.String ToString(Nethermind.Core.Block/Format)" body="remove" />
+    </type>
+    <type fullname="Nethermind.Core.BlockHeader">
+      <method signature="System.String ToString(System.String)" body="remove" />
+    </type>
+    <type fullname="Nethermind.Core.Transaction">
+      <method signature="System.String ToString(System.String)" body="remove" />
+    </type>
+    <type fullname="Nethermind.Core.Crypto.Signature">
+      <method signature="System.String ToString()" body="remove" />
+    </type>
+  </assembly>
+</linker>

@@ -5,6 +5,7 @@ using System;
 using System.IO;
 using System.Linq;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
@@ -54,8 +55,8 @@ public class StorageLayerTests
         }
 
         // Read back via the raw mmap pointer — the same access path ArenaByteReader uses.
-        Assert.That(new ReadOnlySpan<byte>(arena.BasePtr, data1.Length).ToArray(), Is.EqualTo(data1));
-        Assert.That(new ReadOnlySpan<byte>(arena.BasePtr + data1.Length, data2.Length).ToArray(), Is.EqualTo(data2));
+        Assert.That(new ReadOnlySpan<byte>(arena.BasePtr, data1.Length), Is.SequenceEqualTo(data1));
+        Assert.That(new ReadOnlySpan<byte>(arena.BasePtr + data1.Length, data2.Length), Is.SequenceEqualTo(data2));
         Assert.That(arena.MappedSize, Is.EqualTo(1024 * 1024));
     }
 

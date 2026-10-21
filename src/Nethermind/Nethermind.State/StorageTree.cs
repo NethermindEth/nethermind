@@ -124,7 +124,11 @@ namespace Nethermind.State
             RlpReader reader = new(encoded);
             ReadOnlySpan<byte> decoded = reader.DecodeByteArraySpan();
             if (decoded.Length > 32) throw new TrieException("Storage value exceeds 256 bits");
-            value = new UInt256(decoded, isBigEndian: true);
+            // Right-aligned into a full word first: UInt256 assembles a shorter value a byte at a time.
+            Span<byte> padded = stackalloc byte[32];
+            padded.Clear();
+            decoded.CopyTo(padded[(32 - decoded.Length)..]);
+            value = new UInt256(padded, isBigEndian: true);
         }
 
         public void HintSet(in UInt256 index)

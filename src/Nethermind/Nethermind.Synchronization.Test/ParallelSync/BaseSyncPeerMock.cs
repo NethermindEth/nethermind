@@ -21,7 +21,7 @@ public class BaseSyncPeerMock : ISyncPeer, ISnapSyncPeer
     public virtual PublicKey Id { get; } = null!;
     public ulong HeadNumber { get; set; }
     public virtual string ClientId { get; set; } = null!;
-    public virtual void SendNewTransactions(IEnumerable<Transaction> txs, bool sendFullTx) =>
+    public virtual void SendNewTransactions(System.ReadOnlySpan<Transaction> txs, bool sendFullTx) =>
         throw new System.NotImplementedException();
 
     public void RegisterSatelliteProtocol<T>(string protocol, T protocolHandler) where T : class =>

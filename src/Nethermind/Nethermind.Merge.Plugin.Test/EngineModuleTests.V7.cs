@@ -4,34 +4,319 @@
 using System;
 using System.Collections.Concurrent;
 using System.Linq;
+using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.BlockAccessLists;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus;
+using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
+using Nethermind.Consensus.Stateless;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Container;
+using Nethermind.Core.Test.Threading;
+using Nethermind.Crypto;
+using Nethermind.Evm;
+using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Test;
+using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using Nethermind.State;
 using Nethermind.Trie;
 using Nethermind.TxPool;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Merge.Plugin.Test;
 
 public partial class EngineModuleTests
 {
+    [Test]
+    public void Inclusion_list_bal_view_skips_state_for_full_or_included_blocks([Values] bool fullBlock)
+    {
+        Transaction entry = BuildInclusionListTransfer();
+        Block block = Build.A.Block.WithGasLimit(30_000_000).WithGasUsed(fullBlock ? 30_000_000UL : 0)
+            .WithTransactions(fullBlock ? [] : [entry]).WithInclusionListTransactions([entry]).TestObject;
+        IReadOnlyStateProvider committed = Substitute.For<IReadOnlyStateProvider>();
+        IReadOnlyStateProvider parent = Substitute.For<IReadOnlyStateProvider>();
+        InclusionListCommittedState state = new(committed, (uint)block.Transactions.Length + 1,
+            () => throw new AssertionException("The validator must not decode an unused BAL."), () => parent);
+
+        bool satisfied = InclusionListValidator.IsSatisfied(block, state, Bogota.Instance, Substitute.For<ITxValidator>());
+
+        Assert.That(satisfied, Is.True);
+        committed.DidNotReceive().TryGetAccount(Arg.Any<Address>(), out Arg.Any<AccountStruct>());
+        parent.DidNotReceive().TryGetAccount(Arg.Any<Address>(), out Arg.Any<AccountStruct>());
+    }
+
+    [Test]
+    public void Inclusion_list_committed_state_uses_latest_bal_values([Values(0U, 1U)] uint priorIndex)
+    {
+        byte[] delegation = [.. Eip7702Constants.DelegationHeader, .. TestItem.AddressA.Bytes];
+        AccountStruct finalAccount = new(8, 2.Ether, Keccak.EmptyTreeHash, ValueKeccak.Compute([0x00]));
+        IReadOnlyStateProvider committed = Substitute.For<IReadOnlyStateProvider>();
+        committed.TryGetAccount(TestItem.AddressB, out Arg.Any<AccountStruct>()).Returns(call => { call[1] = finalAccount; return true; });
+        ValueHash256 oldCodeHash = ValueKeccak.Compute(delegation);
+        ReadOnlyAccountChanges changes = new(TestItem.AddressB, [], [],
+            [new(priorIndex, 1.Ether), new(2, 2.Ether)], [new(priorIndex, 7), new(2, 8)],
+            [new(priorIndex, delegation), new(2, [0x00])]);
+        InclusionListCommittedState state = new(committed, 2, () => new([changes], 1),
+            () => throw new AssertionException("A complete BAL prefix must not require parent state."));
+
+        state.TryGetAccount(TestItem.AddressB, out AccountStruct account);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(account.Balance, Is.EqualTo(1.Ether));
+            Assert.That(account.Nonce, Is.EqualTo(7));
+            Assert.That(account.CodeHash, Is.EqualTo(oldCodeHash));
+            Assert.That(((IReadOnlyStateProvider)state).IsDelegatedCode(TestItem.AddressB), Is.True);
+            Assert.That(state.Available, Is.True);
+        }
+    }
+
+    [Test]
+    public void Inclusion_list_committed_state_restores_storage([Values] bool priorChange, [Values] bool finalizationChanged)
+    {
+        StorageCell cell = new(TestItem.AddressB, UInt256.One);
+        IReadOnlyStateProvider committed = Substitute.For<IReadOnlyStateProvider>();
+        committed.When(state => state.Get(in cell, out Arg.Any<UInt256>())).Do(call => call[1] = (UInt256)5);
+        IReadOnlyStateProvider parent = Substitute.For<IReadOnlyStateProvider>();
+        parent.When(state => state.Get(in cell, out Arg.Any<UInt256>())).Do(call => call[1] = (UInt256)3);
+        StorageChange[] changes = finalizationChanged
+            ? priorChange ? [new(1, 4), new(2, 5)] : [new(2, 5)]
+            : [new(1, 5)];
+        ReadOnlyAccountChanges account = new(TestItem.AddressB, [new(cell.Index, changes)], [], [], [], []);
+        InclusionListCommittedState state = new(committed, 2, () => new([account], 1), () => parent);
+
+        state.Get(in cell, out UInt256 value);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(value, Is.EqualTo((UInt256)(finalizationChanged ? priorChange ? 4 : 3 : 5)));
+            Assert.That(state.Available, Is.True);
+        }
+    }
+
+    [Test]
+    public void Inclusion_list_committed_state_reads_addresses_outside_the_bal()
+    {
+        AccountStruct expected = new(0, 1.Ether);
+        IReadOnlyStateProvider committed = Substitute.For<IReadOnlyStateProvider>();
+        committed.TryGetAccount(TestItem.AddressB, out Arg.Any<AccountStruct>()).Returns(call => { call[1] = expected; return true; });
+        InclusionListCommittedState state = new(committed, 2, () => new(), () => null);
+
+        bool found = state.TryGetAccount(TestItem.AddressB, out AccountStruct account);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found, Is.True);
+            Assert.That(account, Is.EqualTo(expected));
+            Assert.That(state.Available, Is.True);
+        }
+    }
+
+    [Test]
+    public void Inclusion_list_committed_state_preserves_empty_account_existence([Values] bool existed, [Values] bool finalizationCreatedBalance)
+    {
+        IReadOnlyStateProvider committed = Substitute.For<IReadOnlyStateProvider>();
+        AccountStruct finalAccount = finalizationCreatedBalance ? new(1.Ether) : AccountStruct.TotallyEmpty;
+        committed.TryGetAccount(TestItem.AddressB, out Arg.Any<AccountStruct>())
+            .Returns(call => { call[1] = finalAccount; return finalizationCreatedBalance || existed; });
+        IReadOnlyStateProvider parent = Substitute.For<IReadOnlyStateProvider>();
+        parent.TryGetAccount(TestItem.AddressB, out Arg.Any<AccountStruct>())
+            .Returns(call => { call[1] = AccountStruct.TotallyEmpty; return existed; });
+        ReadOnlyAccountChanges changes = new(TestItem.AddressB, [], [], finalizationCreatedBalance ? [new(2, 1.Ether)] : [], [], []);
+        InclusionListCommittedState state = new(committed, 2, () => new([changes], 1), () => parent);
+
+        bool found = state.TryGetAccount(TestItem.AddressB, out AccountStruct account);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found, Is.EqualTo(existed));
+            Assert.That(state.AccountExists(TestItem.AddressB), Is.EqualTo(existed), "cached existence");
+            Assert.That(account.IsEmpty, Is.True);
+            Assert.That(state.Available, Is.True);
+        }
+    }
+
+    [Test]
+    public void Inclusion_list_committed_state_serves_empty_code_without_reading_state()
+    {
+        InclusionListCommittedState state = new(Substitute.For<IReadOnlyStateProvider>(), 2,
+            () => throw new AssertionException("Empty code needs no BAL."), () => null);
+
+        ReadOnlyMemory<byte> code = state.GetCode(Keccak.OfAnEmptyString.ValueHash256);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(code.IsEmpty, Is.True);
+            Assert.That(state.Available, Is.True);
+        }
+    }
+
+    [Test]
+    public void Inclusion_list_committed_state_keeps_accounts_deleted_before_finalization_absent()
+    {
+        IReadOnlyStateProvider committed = Substitute.For<IReadOnlyStateProvider>();
+        AccountStruct finalAccount = new(1.Ether);
+        committed.TryGetAccount(TestItem.AddressB, out Arg.Any<AccountStruct>()).Returns(call => { call[1] = finalAccount; return true; });
+        ReadOnlyAccountChanges changes = new(TestItem.AddressB, [], [], [new(1, 0), new(2, 1.Ether)], [], []);
+        InclusionListCommittedState state = new(committed, 2, () => new([changes], 1),
+            () => throw new AssertionException("The prefix already records the account deletion."));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(state.AccountExists(TestItem.AddressB), Is.False);
+            Assert.That(state.Available, Is.True);
+        }
+    }
+
+    [Test]
+    public void Inclusion_list_committed_state_requires_parent_only_for_missing_prefix([Values] bool parentAvailable, [Values] bool finalizationChanged)
+    {
+        IReadOnlyStateProvider committed = Substitute.For<IReadOnlyStateProvider>();
+        AccountStruct finalAccount = new(0, 2.Ether);
+        committed.TryGetAccount(TestItem.AddressB, out Arg.Any<AccountStruct>()).Returns(call => { call[1] = finalAccount; return true; });
+        IReadOnlyStateProvider parent = Substitute.For<IReadOnlyStateProvider>();
+        AccountStruct parentAccount = new(0, 1.Ether);
+        parent.TryGetAccount(TestItem.AddressB, out Arg.Any<AccountStruct>()).Returns(call => { call[1] = parentAccount; return true; });
+        ReadOnlyAccountChanges changes = new(TestItem.AddressB, [], [], finalizationChanged ? [new(2, 2.Ether)] : [], [], []);
+        InclusionListCommittedState state = new(committed, 2, () => new([changes], 1), () => parentAvailable ? parent : null);
+
+        state.TryGetAccount(TestItem.AddressB, out AccountStruct account);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(state.Available, Is.EqualTo(parentAvailable || !finalizationChanged));
+            if (state.Available) Assert.That(account.Balance, Is.EqualTo(finalizationChanged ? 1.Ether : 2.Ether));
+        }
+    }
+
+    [Test]
+    public async Task Inclusion_list_recheck_needs_a_valid_bal_only_for_account_checks([Values] UnavailableBal reason, [Values] bool omittedEntry)
+    {
+        IBlockAccessListStore unavailable = Substitute.For<IBlockAccessListStore>();
+        if (reason == UnavailableBal.Corrupt) unavailable.Get(Arg.Any<ulong>(), Arg.Any<Hash256>()).Returns(_ => throw new RlpException("Malformed BAL"));
+        if (reason == UnavailableBal.Mismatched) unavailable.Get(Arg.Any<ulong>(), Arg.Any<Hash256>()).Returns(new ReadOnlyBlockAccessList([], 0, Keccak.Zero));
+        using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance, new MergeConfig { TerminalTotalDifficulty = "0" },
+            configurer: builder => builder.UpdateSingleton<NewPayloadHandler>(inner => inner.AddSingleton(unavailable)));
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+        ExecutionPayloadV4 payload = await BuildAndInsertEmptyBlock(rpc, chain.BlockTree.HeadHash, 2);
+        chain.BlockTree.FindBlock(payload.BlockHash, BlockTreeLookupOptions.None)!.BlockAccessList = null;
+        byte[][] list = omittedEntry ? [Rlp.Encode(BuildInclusionListTransfer()).Bytes] : [];
+
+        bool? result = chain.Container.Resolve<IInclusionListComplianceEvaluator>().TryEvaluate(payload.BlockHash, list);
+
+        Assert.That(result, Is.EqualTo(omittedEntry ? (bool?)null : true));
+    }
+
+    public enum UnavailableBal { Missing, Corrupt, Mismatched }
+
+    [Test]
+    public async Task Inclusion_list_recheck_requires_executed_block([Values] bool executed)
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance, new MergeConfig { TerminalTotalDifficulty = "0" });
+        ExecutionPayloadV4 payload = await BuildAndInsertEmptyBlock(chain.EngineRpcModule, chain.BlockTree.HeadHash, 2);
+        chain.BlockTree.GetInfo(payload.BlockNumber, payload.BlockHash).Info!.WasProcessed = executed;
+
+        bool? answer = chain.Container.Resolve<IInclusionListComplianceEvaluator>().TryEvaluate(payload.BlockHash,
+            [Rlp.Encode(BuildInclusionListTransfer()).Bytes]);
+
+        Assert.That(answer, Is.EqualTo(executed ? false : (bool?)null));
+    }
+
+    [Test]
+    public async Task NewPayloadV6_rechecks_changed_list_before_finalization([Values] FinalizationChange change)
+    {
+        Address sender = TestItem.PrivateKeyD.Address;
+        byte[] ordinaryCode = [0x00];
+        byte[] delegation = [.. Eip7702Constants.DelegationHeader, .. TestItem.AddressA.Bytes];
+        bool funded = change is not (FinalizationChange.Funding or FinalizationChange.Withdrawal);
+        using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance,
+            new MergeConfig { TerminalTotalDifficulty = "0" }, configurer: builder => builder
+                .WithGenesisPostProcessor((_, state) =>
+                {
+                    state.CreateAccount(sender, funded ? 1.Ether : 0);
+                    byte[] code = change == FinalizationChange.Code ? ordinaryCode
+                        : change == FinalizationChange.Delegation ? delegation : [];
+                    if (code.Length > 0) state.InsertCode(sender, ValueKeccak.Compute(code), code, Bogota.Instance);
+                })
+                .AddDecorator<IExecutionRequestsProcessor>((context, inner) => new FinalizationAccountChange(inner, (state, spec) =>
+                {
+                    switch (change)
+                    {
+                        case FinalizationChange.Funding:
+                            state.AddToBalanceAndCreateIfNotExists(sender, 1.Ether, spec);
+                            break;
+                        case FinalizationChange.Debit:
+                            state.SubtractFromBalance(sender, state.GetBalance(sender), spec, out _);
+                            break;
+                        case FinalizationChange.Nonce:
+                            state.SetNonce(sender, 1);
+                            break;
+                        case FinalizationChange.Code:
+                        case FinalizationChange.Delegation:
+                            byte[] code = change == FinalizationChange.Code ? [] : ordinaryCode;
+                            state.InsertCode(sender, ValueKeccak.Compute(code), code, spec);
+                            break;
+                    }
+                })));
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+        Hash256 parent = chain.BlockTree.HeadHash;
+        PayloadAttributes attributes = BuildBogotaPayloadAttributes([]);
+        if (change == FinalizationChange.Withdrawal)
+            attributes.Withdrawals = [Build.A.Withdrawal.WithRecipient(sender).WithAmount(1_000_000_000).TestObject];
+        ResultWrapper<ForkchoiceUpdatedV2Result> build = await rpc.engine_forkchoiceUpdatedV5(new(parent, Keccak.Zero, parent), attributes);
+        ResultWrapper<GetPayloadV6Result?> built = await rpc.engine_getPayloadV6(Bytes.FromHexString(build.Data.PayloadId!));
+        ExecutionPayloadV4 payload = built.Data!.ExecutionPayload;
+        ResultWrapper<PayloadStatusV2> initial = await rpc.engine_newPayloadV6(payload, [], Keccak.Zero, built.Data.ExecutionRequests, []);
+        Assert.That(initial.Data.Status, Is.EqualTo(PayloadStatus.Valid));
+        await rpc.engine_forkchoiceUpdatedV5(new(payload.BlockHash, payload.BlockHash, payload.BlockHash), null);
+        Transaction omitted = Build.A.Transaction.WithNonce(0).WithMaxFeePerGas(10.GWei).WithMaxPriorityFeePerGas(2.GWei)
+            .WithGasLimit(100_000).WithValue(0).WithTo(TestItem.AddressA).SignedAndResolved(TestItem.PrivateKeyD).TestObject;
+        byte[][] inclusionList = [Rlp.Encode(omitted).Bytes];
+
+        ResultWrapper<PayloadStatusV2> resend = await rpc.engine_newPayloadV6(payload, [], Keccak.Zero, built.Data.ExecutionRequests, inclusionList);
+        ResultWrapper<ForkchoiceUpdatedV2Result> forkchoice = await rpc.engine_forkchoiceUpdatedV5(new(payload.BlockHash, payload.BlockHash, payload.BlockHash), null);
+        chain.BlockTree.FindBlock(payload.BlockHash, BlockTreeLookupOptions.None)!.BlockAccessList = null;
+        bool? storedAnswer = chain.Container.Resolve<IInclusionListComplianceEvaluator>().TryEvaluate(payload.BlockHash, inclusionList);
+        bool expected = change is FinalizationChange.Funding or FinalizationChange.Withdrawal or FinalizationChange.Code;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(resend.Data.Status, Is.EqualTo(PayloadStatus.Valid));
+            Assert.That(resend.Data.InclusionListSatisfied, Is.EqualTo(expected));
+            Assert.That(forkchoice.Data.PayloadStatus.InclusionListSatisfied, Is.EqualTo(expected));
+            Assert.That(storedAnswer, Is.EqualTo(expected));
+        }
+    }
+
+    public enum FinalizationChange { Funding, Debit, Nonce, Code, Delegation, Withdrawal }
+
+    private sealed class FinalizationAccountChange(IExecutionRequestsProcessor inner, Action<IWorldState, IReleaseSpec> change) : IExecutionRequestsProcessor
+    {
+        public void ProcessExecutionRequests(Block block, IWorldState state, TxReceipt[] receipts, IReleaseSpec spec)
+        {
+            inner.ProcessExecutionRequests(block, state, receipts, spec);
+            if (block.Number > 0) change(state, spec);
+        }
+    }
+
     [Test]
     public async Task Should_process_block_as_expected_V7()
     {
@@ -81,6 +366,28 @@ public partial class EngineModuleTests
             // execution-apis#609: FCU V5 reports the head's inclusion-list compliance retained from newPayloadV6.
             Assert.That(finalFcu.Data.PayloadStatus.InclusionListSatisfied, Is.True);
         }
+    }
+
+    [Test]
+    public async Task NewPayloadV6_accepts_empty_hex_logs_bloom_of_log_less_block([Values] bool eip7668)
+    {
+        IReleaseSpec spec = eip7668 ? new OverridableReleaseSpec(Bogota.Instance) { IsEip7668Enabled = true } : Bogota.Instance;
+        using MergeTestBlockchain chain = await CreateBlockchain(spec, new MergeConfig { TerminalTotalDifficulty = "0" });
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+        Hash256 startingHead = chain.BlockTree.HeadHash;
+        ResultWrapper<ForkchoiceUpdatedV2Result> fcuResult = await rpc.engine_forkchoiceUpdatedV5(
+            new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead), BuildBogotaPayloadAttributes(inclusionList: []));
+        ResultWrapper<GetPayloadV6Result?> payloadResult = await rpc.engine_getPayloadV6(Bytes.FromHexString(fcuResult.Data.PayloadId!));
+
+        // Before EIP-7668 "0x" reads as the zero bloom, so the hash computed over 256 zero bytes still matches.
+        JsonNode payloadJson = JsonNode.Parse(chain.JsonSerializer.Serialize(payloadResult.Data!.ExecutionPayload))!;
+        payloadJson["logsBloom"] = "0x";
+        ExecutionPayloadV4 executionPayload = chain.JsonSerializer.Deserialize<ExecutionPayloadV4>(payloadJson.ToJsonString())!;
+
+        ResultWrapper<PayloadStatusV2> newPayload = await rpc.engine_newPayloadV6(
+            executionPayload, [], Keccak.Zero, payloadResult.Data!.ExecutionRequests, []);
+
+        Assert.That(newPayload.Data.Status, Is.EqualTo(PayloadStatus.Valid), newPayload.Data.ValidationError);
     }
 
     [Test]
@@ -226,8 +533,6 @@ public partial class EngineModuleTests
         Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
     }
 
-    // Consensus gossip caps each member's list by bytes, and an empty entry costs only its SSZ offset, so
-    // a conforming member can carry ~2,048 entries. An aggregate of such members must not be rejected.
     [Test]
     public async Task NewPayloadV6_accepts_an_aggregate_of_entry_dense_conforming_members()
     {
@@ -240,9 +545,8 @@ public partial class EngineModuleTests
             BuildBogotaPayloadAttributes(inclusionList: []));
         ResultWrapper<GetPayloadV6Result?> payloadResult = await rpc.engine_getPayloadV6(Bytes.FromHexString(fcu.Data.PayloadId!));
 
-        // Three members of 1,400 empty entries each: 5,600 SSZ bytes apiece, well inside the per-member cap.
-        byte[][] aggregate = new byte[3 * 1400][];
-        for (int i = 0; i < aggregate.Length; i++) aggregate[i] = [];
+        byte[][] aggregate = new byte[Eip7805Constants.MaxAggregateInclusionListBytes / 2][];
+        for (int i = 0; i < aggregate.Length; i++) aggregate[i] = [(byte)(i >> 8), (byte)i];
 
         ResultWrapper<PayloadStatusV2> result = await rpc.engine_newPayloadV6(
             payloadResult.Data!.ExecutionPayload, [], Keccak.Zero, payloadResult.Data!.ExecutionRequests, aggregate);
@@ -699,7 +1003,7 @@ public partial class EngineModuleTests
         ConcurrentDictionary<Hash256, byte> pruned = new();
         CommitWaitProbe probe = new();
         using MergeTestBlockchain chain = await CreateBlockchainWithPrunableState(pruned,
-            builder => builder.AddDecorator<IBlockProcessingQueue>((_, inner) => new CommitWaitObservingQueue(inner, probe)),
+            builder => builder.AddDecorator<IBlockProcessingQueue>((_, inner) => new CommitWaitObservingQueue(inner, probe, typeof(NewPayloadHandler))),
             Bogota.Instance);
         IEngineRpcModule rpc = chain.EngineRpcModule;
         Hash256 genesisHash = chain.BlockTree.HeadHash!;
@@ -718,21 +1022,10 @@ public partial class EngineModuleTests
         await rpc.engine_forkchoiceUpdatedV5(new ForkchoiceStateV1(genesisHash, Keccak.Zero, Keccak.Zero), payloadAttributes: null);
         pruned[block.BlockHash] = 0;
 
-        // Holds the processing thread between the re-execution's verdict and its commit.
-        TaskCompletionSource commit = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        chain.Container.Resolve<IBlockProcessingQueue>().BlockExecuted += (_, e) =>
-        {
-            if (e.BlockHash == block.BlockHash) commit.Task.Wait(TimeSpan.FromSeconds(30));
-        };
+        TaskCompletionSource commit = HoldCommit(chain, block.BlockHash);
 
         Assert.That((await rpc.engine_newPayloadV6(block, [], Keccak.Zero, requests, [])).Data.Status, Is.EqualTo(PayloadStatus.Valid));
-        using (Assert.EnterMultipleScope())
-        {
-            ResultWrapper<ForkchoiceUpdatedV2Result> toBlock = await rpc.engine_forkchoiceUpdatedV5(
-                new ForkchoiceStateV1(block.BlockHash, Keccak.Zero, Keccak.Zero), payloadAttributes: null);
-            Assert.That(toBlock.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
-            Assert.That(chain.BlockTree.Head!.Hash, Is.EqualTo(block.BlockHash));
-        }
+        MoveHeadBeforeCommit(chain, block.BlockHash);
 
         // A different list misses the (block, IL) cache; release the commit once the re-send waits on it or answers.
         Transaction censoredTx = Build.A.Transaction
@@ -1135,6 +1428,152 @@ public partial class EngineModuleTests
         }
     }
 
+    /// <summary>
+    /// A payload resent with another inclusion list while the copy a timed-out request left behind is still queued.
+    /// That copy's verdict judged the list it carried, so it must not answer the resend.
+    /// </summary>
+    [Test, NonParallelizable]
+    public async Task NewPayloadV6_validates_resent_inclusion_list_independently_of_queued_copy()
+    {
+        CommitWaitProbe probe = new();
+        using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance,
+            new MergeConfig { TerminalTotalDifficulty = "0", NewPayloadBlockProcessingTimeout = 30_000 },
+            configurer: builder => builder.AddDecorator<IBlockProcessingQueue>((_, inner) => new CommitWaitObservingQueue(inner, probe, typeof(NewPayloadHandler))));
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+        Block parent = chain.BlockTree.Head!;
+
+        ResultWrapper<ForkchoiceUpdatedV2Result> build = await rpc.engine_forkchoiceUpdatedV5(
+            new ForkchoiceStateV1(parent.Hash!, Keccak.Zero, parent.Hash!), BuildBogotaPayloadAttributes(inclusionList: []));
+        ResultWrapper<GetPayloadV6Result?> built = await rpc.engine_getPayloadV6(Bytes.FromHexString(build.Data.PayloadId!));
+        ExecutionPayloadV4 payload = built.Data!.ExecutionPayload;
+        byte[][] requests = built.Data!.ExecutionRequests!;
+        Assert.That(payload.Transactions, Is.Empty);
+
+        payload.ParentBeaconBlockRoot = Keccak.Zero;
+        payload.ExecutionRequests = requests;
+        Block queuedCopy = payload.TryGetBlock(parent.TotalDifficulty).Data!;
+        queuedCopy.Header.IsPostMerge = true;
+        Assert.That(queuedCopy.CalculateHash(), Is.EqualTo(payload.BlockHash));
+
+        TaskCompletionSource releaseProcessing = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TestBranchProcessorInterceptor branchProcessor = (TestBranchProcessorInterceptor)chain.BranchProcessor;
+        TaskCompletionSource firstCopyQueued = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource secondCopyQueued = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        chain.BlockProcessingQueue.BlockAdded += (_, e) =>
+        {
+            if (e.Block.Hash != payload.BlockHash) return;
+            if (ReferenceEquals(e.Block, queuedCopy)) firstCopyQueued.TrySetResult();
+            else secondCopyQueued.TrySetResult();
+        };
+
+        Task<ResultWrapper<PayloadStatusV2>> resend;
+        try
+        {
+            OccupyBlockProcessor(chain, parent, releaseProcessing.Task);
+            Assert.That(await chain.BlockTree.SuggestBlockAsync(queuedCopy, BlockTreeSuggestOptions.ForceDontSetAsMain), Is.EqualTo(AddBlockResult.Added));
+            _ = Task.Run(async () => await chain.BlockProcessingQueue.Enqueue(queuedCopy, ProcessingOptions.EthereumMerge));
+            await firstCopyQueued.Task.WaitAsync(TimeSpan.FromSeconds(10));
+
+            probe.Watch(payload.BlockHash);
+            resend = rpc.engine_newPayloadV6(payload, [], Keccak.Zero, requests, [Rlp.Encode(BuildInclusionListTransfer()).Bytes]);
+            await Task.WhenAny(secondCopyQueued.Task, probe.RemovalWaitPending.Task).WaitAsync(TimeSpan.FromSeconds(10));
+        }
+        finally
+        {
+            releaseProcessing.TrySetResult();
+            branchProcessor.ProcessingRelease = null;
+        }
+
+        ResultWrapper<PayloadStatusV2> result = await resend;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Valid));
+            Assert.That(result.Data.InclusionListSatisfied, Is.False);
+        }
+    }
+
+    /// <summary>
+    /// A payload resent after its newPayload timed out, while the copy that request queued is still waiting.
+    /// A resend without that copy's list must not take its verdict; one with the same list takes it on that copy's
+    /// verdict, before the copy commits.
+    /// </summary>
+    [TestCase(false, true, TestName = "NewPayloadV6_does_not_answer_an_empty_list_resend_from_a_queued_copy_with_a_list")]
+    [TestCase(true, false, TestName = "NewPayloadV6_answers_a_same_list_resend_from_the_queued_copy")]
+    [NonParallelizable]
+    public async Task NewPayloadV6_answers_a_resend_after_a_timeout_against_its_own_list(bool resendSameList, bool satisfied)
+    {
+        const int budgetMs = 3_000;
+        CommitWaitProbe probe = new();
+        // The handler's budget runs on this clock, so only the first request times out, and only when the test says so.
+        ManualTimeProvider clock = new();
+        using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance,
+            new MergeConfig { TerminalTotalDifficulty = "0", NewPayloadBlockProcessingTimeout = budgetMs },
+            configurer: builder => builder
+                .AddDecorator<IBlockProcessingQueue>((_, inner) => new CommitWaitObservingQueue(inner, probe, typeof(NewPayloadHandler)))
+                .UpdateSingleton<NewPayloadHandler>(inner => inner.AddSingleton<TimeProvider>(clock)));
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+        Block parent = chain.BlockTree.Head!;
+        byte[][] inclusionList = [Rlp.Encode(BuildInclusionListTransfer()).Bytes];
+
+        ResultWrapper<ForkchoiceUpdatedV2Result> build = await rpc.engine_forkchoiceUpdatedV5(
+            new ForkchoiceStateV1(parent.Hash!, Keccak.Zero, parent.Hash!), BuildBogotaPayloadAttributes(inclusionList: []));
+        ResultWrapper<GetPayloadV6Result?> built = await rpc.engine_getPayloadV6(Bytes.FromHexString(build.Data.PayloadId!));
+        ExecutionPayloadV4 payload = built.Data!.ExecutionPayload;
+        byte[][] requests = built.Data!.ExecutionRequests!;
+        Assert.That(payload.Transactions, Is.Empty);
+
+        int copiesQueued = 0;
+        int executed = 0;
+        TaskCompletionSource resendAnswered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource firstCopyQueued = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource secondCopyQueued = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        chain.BlockProcessingQueue.BlockAdded += (_, e) =>
+        {
+            if (e.Block.Hash != payload.BlockHash) return;
+            int copy = Interlocked.Increment(ref copiesQueued);
+            if (copy == 1) firstCopyQueued.TrySetResult();
+            else if (copy == 2) secondCopyQueued.TrySetResult();
+        };
+        chain.BlockProcessingQueue.BlockExecuted += (_, e) =>
+        {
+            if (e.BlockHash != payload.BlockHash) return;
+            if (Interlocked.Increment(ref executed) == 1 && resendSameList) resendAnswered.Task.Wait(TimeSpan.FromSeconds(10));
+        };
+
+        TaskCompletionSource releaseProcessing = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TestBranchProcessorInterceptor branchProcessor = (TestBranchProcessorInterceptor)chain.BranchProcessor;
+        Task<ResultWrapper<PayloadStatusV2>> resend;
+        try
+        {
+            OccupyBlockProcessor(chain, parent, releaseProcessing.Task);
+            Task<ResultWrapper<PayloadStatusV2>> timingOut = rpc.engine_newPayloadV6(payload, [], Keccak.Zero, requests, inclusionList);
+            // Out of budget only once its copy is queued, so the request leaves that copy behind with its list. The
+            // clock fires only the last timer it created, which here is this request's timeout.
+            await firstCopyQueued.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            clock.AdvanceAndFireTimer(TimeSpan.FromMilliseconds(budgetMs));
+            ResultWrapper<PayloadStatusV2> timedOut = await timingOut.WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.That(timedOut.Data.Status, Is.EqualTo(PayloadStatus.Syncing));
+
+            probe.Watch(payload.BlockHash);
+            resend = rpc.engine_newPayloadV6(payload, [], Keccak.Zero, requests, resendSameList ? inclusionList : []);
+            await Task.WhenAny(secondCopyQueued.Task, probe.RemovalWaitPending.Task).WaitAsync(TimeSpan.FromSeconds(10));
+        }
+        finally
+        {
+            releaseProcessing.TrySetResult();
+            branchProcessor.ProcessingRelease = null;
+        }
+
+        ResultWrapper<PayloadStatusV2> result = await resend.WaitAsync(TimeSpan.FromSeconds(10));
+        resendAnswered.TrySetResult();
+        await WaitForCommit(chain, payload.BlockHash);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Valid));
+            Assert.That(result.Data.InclusionListSatisfied, Is.EqualTo(satisfied));
+        }
+    }
+
     /// <summary>Builds a Bogota chain whose <see cref="NewPayloadHandler"/> reads state through <paramref name="headState"/>.</summary>
     private async Task<MergeTestBlockchain> CreateBlockchainWithHeadState(HeadStateInterceptor headState,
         MergeConfig? mergeConfig = null, Action<ContainerBuilder>? configure = null)
@@ -1292,8 +1731,9 @@ public partial class EngineModuleTests
             new MergeConfig { TerminalTotalDifficulty = "0", NewPayloadCacheSize = newPayloadCacheSize },
             configurer: builder => builder
                 .WithGenesisPostProcessor((genesis, _) => genesis.Header.GasLimit = gasLimit)
+                // Every handler resolves its own decorated reader, so all share the first one's count.
                 .AddDecorator<IStateReader>((_, reader) =>
-                    accountReader = new AccountReadCountingStateReader(reader, TestItem.AddressC)));
+                    accountReader ??= new AccountReadCountingStateReader(reader, TestItem.AddressC)));
         IEngineRpcModule rpc = chain.EngineRpcModule;
 
         // A transaction of its own, so the block's execution dimension outgrows its state dimension.
@@ -1382,6 +1822,46 @@ public partial class EngineModuleTests
         }
     }
 
+    [Test]
+    public async Task Account_read_count_tracks_only_the_resend_execution_context()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain();
+        BlockHeader header = chain.BlockTree.Head!.Header;
+        AccountReadCountingStateReader reader = new(chain.StateReader, TestItem.AddressC)
+        {
+            TrackedBlockHash = header.Hash
+        };
+        TaskCompletionSource<(bool Exists, AccountStruct Account)> unrelatedRead = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        ThreadPool.UnsafeQueueUserWorkItem(_ =>
+        {
+            try
+            {
+                bool exists = reader.TryGetAccount(header, TestItem.AddressC, out AccountStruct account);
+                unrelatedRead.SetResult((exists, account));
+            }
+            catch (Exception exception)
+            {
+                unrelatedRead.SetException(exception);
+            }
+        }, null);
+
+        (bool exists, AccountStruct account) = await unrelatedRead.Task.WaitAsync(chain.CancellationToken);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exists, Is.True);
+            Assert.That(account.Balance, Is.GreaterThan(UInt256.Zero));
+            Assert.That(reader.AccountReads, Is.Zero, "background reports are outside the payload resend");
+        }
+
+        bool resendExists = reader.TryGetAccount(header, TestItem.AddressC, out AccountStruct resendAccount);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(resendExists, Is.True);
+            Assert.That(resendAccount.Balance, Is.EqualTo(account.Balance));
+            Assert.That(reader.AccountReads, Is.EqualTo(1), "the resend still charges its real account read");
+        }
+    }
+
     /// <summary>Entries exercising known and ambiguous compliance after gas-dimension cache loss.</summary>
     public enum InclusionListEntry { Boundary, Included, Small, WrongNonce }
 
@@ -1389,7 +1869,12 @@ public partial class EngineModuleTests
     private sealed class AccountReadCountingStateReader(IStateReader inner, Address sender) : IStateReader
     {
         private int _accountReads;
-        public Hash256? TrackedBlockHash { get; set; }
+        private readonly AsyncLocal<Hash256?> _trackedBlockHash = new();
+        public Hash256? TrackedBlockHash
+        {
+            get => _trackedBlockHash.Value;
+            set => _trackedBlockHash.Value = value;
+        }
         public int AccountReads => Volatile.Read(ref _accountReads);
 
         public bool TryGetAccount(BlockHeader? baseBlock, Address address, out AccountStruct account)
@@ -1422,6 +1907,87 @@ public partial class EngineModuleTests
         await rpc.engine_forkchoiceUpdatedV5(
             new ForkchoiceStateV1(payload.BlockHash, checkpoint, checkpoint), payloadAttributes: null);
         return payload;
+    }
+
+    /// <summary>
+    /// A block that runs EIP-8360 TCREATE twice at one address and then pays the wiped account is accepted by a
+    /// second node in the fixture's execution mode, and its witness re-executes statelessly to the same state root.
+    /// </summary>
+    [Test]
+    public virtual async Task Eip8360_tcreate_block_validates_on_another_node_and_from_its_witness()
+    {
+        IReleaseSpec spec = new OverridableReleaseSpec(Bogota.Instance) { IsEip8360Enabled = true };
+        using MergeTestBlockchain producer = await CreateBlockchain(spec, new MergeConfig { TerminalTotalDifficulty = "0" });
+        using MergeTestBlockchain validator = await CreateBlockchain(spec, new MergeConfig { TerminalTotalDifficulty = "0" });
+
+        byte[] salt = new UInt256(8360).ToBigEndian();
+        byte[] runtime = Prepare.EvmCode.PushData(42).PushData(0).Op(Instruction.MSTORE).Return(32, 0).Done;
+        // Sends 2 of its endowment of 5 out and writes transient storage before deploying.
+        byte[] init = Prepare.EvmCode.CallWithValue(TestItem.AddressB, 100_000, 2).Op(Instruction.POP).SSTORE(0, [7]).ForInitOf(runtime).Done;
+        ulong nonce = producer.ReadOnlyState.GetNonce(TestItem.AddressA);
+        Address factory = ContractAddress.From(TestItem.AddressA, nonce);
+        Address tcreated = ContractAddress.FromTransientCreate(factory, salt, init);
+        byte[] factoryCode = Prepare.EvmCode
+            .TCreate(init, salt, 5).PushData(0).Op(Instruction.SSTORE)
+            .PushData(32).PushData(0).PushData(0).PushData(0).PushData(0).PushData(tcreated).PushData(200_000)
+            .Op(Instruction.CALL).Op(Instruction.POP)
+            .PushData(0).Op(Instruction.MLOAD).PushData(1).Op(Instruction.SSTORE)
+            .STOP().Done;
+        Transaction[] txs =
+        [
+            Build.A.Transaction.WithNonce(nonce).WithCode(Prepare.EvmCode.ForInitOf(factoryCode).Done).WithGasLimit(800_000)
+                .SignedAndResolved(producer.EthereumEcdsa, TestItem.PrivateKeyA).TestObject,
+            Build.A.Transaction.WithNonce(nonce + 1).WithTo(factory).WithValue(5).WithGasLimit(900_000)
+                .SignedAndResolved(producer.EthereumEcdsa, TestItem.PrivateKeyA).TestObject,
+            Build.A.Transaction.WithNonce(nonce + 2).WithTo(factory).WithValue(5).WithGasLimit(900_000)
+                .SignedAndResolved(producer.EthereumEcdsa, TestItem.PrivateKeyA).TestObject,
+            Build.A.Transaction.WithNonce(nonce + 3).WithTo(tcreated).WithValue(1).WithGasLimit(900_000)
+                .SignedAndResolved(producer.EthereumEcdsa, TestItem.PrivateKeyA).TestObject,
+        ];
+        foreach (Transaction tx in txs)
+        {
+            Assert.That(producer.TxPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+        }
+
+        Hash256 head = producer.BlockTree.HeadHash;
+        Task improved = producer.WaitForImprovedBlock(head, minTransactions: txs.Length);
+        ResultWrapper<ForkchoiceUpdatedV2Result> fcu = await producer.EngineRpcModule.engine_forkchoiceUpdatedV5(
+            new ForkchoiceStateV1(head, Keccak.Zero, head), BuildBogotaPayloadAttributes(inclusionList: []));
+        Assert.That(fcu.Result.ResultType, Is.EqualTo(ResultType.Success), fcu.Result.Error);
+        await improved;
+        ResultWrapper<GetPayloadV6Result?> payload = await producer.EngineRpcModule.engine_getPayloadV6(Bytes.FromHexString(fcu.Data.PayloadId!));
+        ExecutionPayloadV4 executionPayload = payload.Data!.ExecutionPayload;
+        Assert.That(executionPayload.Transactions, Has.Length.EqualTo(txs.Length));
+
+        BlockHeader parent = validator.BlockTree.Head!.Header;
+        ResultWrapper<NewPayloadWithWitnessV1Result> result = await validator.EngineRpcModule.engine_newPayloadWithWitnessV6(
+            executionPayload, [], Keccak.Zero, payload.Data.ExecutionRequests, []);
+        Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Valid), result.Data.ValidationError);
+
+        Block suggested = executionPayload.TryGetBlock().Data!;
+        StatelessBlockProcessingEnv stateless = new(result.Data.ExecutionWitness!, validator.SpecProvider, Always.Valid, LimboLogs.Instance);
+        Hash256? statelessRoot;
+        using (stateless.WorldState.BeginScope(parent))
+        {
+            (Block processed, _) = stateless.BlockProcessor.ProcessOne(suggested, ProcessingOptions.ProducingBlock, NullBlockTracer.Instance, validator.SpecProvider.GetSpec(suggested.Header));
+            statelessRoot = processed.Header.StateRoot;
+        }
+
+        await validator.EngineRpcModule.engine_forkchoiceUpdatedV5(
+            new ForkchoiceStateV1(executionPayload.BlockHash, executionPayload.BlockHash, executionPayload.BlockHash), null);
+        BlockHeader block = validator.BlockTree.Head!.Header;
+        validator.StateReader.GetStorage(block, factory, 0, out UInt256 lastTCreate);
+        validator.StateReader.GetStorage(block, factory, 1, out UInt256 calledCode);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(statelessRoot, Is.EqualTo(executionPayload.StateRoot), "the witness covers the end-of-transaction wipe");
+            Assert.That(block.Hash, Is.EqualTo(executionPayload.BlockHash));
+            Assert.That(lastTCreate, Is.EqualTo(new UInt256(tcreated.Bytes, isBigEndian: true)), "the second TCREATE in the block succeeds");
+            Assert.That(calledCode, Is.EqualTo((UInt256)42));
+            Assert.That(validator.StateReader.GetBalance(block, tcreated), Is.EqualTo((UInt256)7));
+            Assert.That(validator.StateReader.GetNonce(block, tcreated), Is.Zero);
+            Assert.That(validator.StateReader.GetCodeHash(block, tcreated), Is.EqualTo(Keccak.OfAnEmptyString.ValueHash256));
+        }
     }
 
     private PayloadAttributes BuildBogotaPayloadAttributes(byte[][] inclusionList, ulong targetGasLimit = 30_000_000UL, ulong? timestamp = null, ulong slotNumber = 1) => new()

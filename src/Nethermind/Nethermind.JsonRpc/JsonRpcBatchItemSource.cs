@@ -13,38 +13,31 @@ namespace Nethermind.JsonRpc;
 /// </remarks>
 internal interface IJsonRpcBatchItemSource
 {
-    /// <summary>The item count if the source already knows it, otherwise <c>null</c> - see <see cref="ScanCount"/>.</summary>
-    int? KnownCount { get; }
-
-    /// <summary>Counts the items by scanning the batch. Only worth calling when <see cref="KnownCount"/> is <c>null</c> and the count is actually needed.</summary>
-    int ScanCount();
+    /// <summary>The number of items in the batch.</summary>
+    int Count { get; }
 
     /// <summary>Advances to the next batch item and decodes it.</summary>
     /// <param name="request">The decoded request, or <c>null</c> when the item is not a usable JSON-RPC request object.</param>
-    /// <param name="ownedDocument">A document whose lifetime the caller must extend to the end of the batch, or <c>null</c>.</param>
     /// <param name="decodeException">Why the item could not be decoded, when that is the reason <paramref name="request"/> is <c>null</c>.</param>
     /// <returns><c>false</c> once the batch is exhausted. An undecodable item still returns <c>true</c>, so the loop can answer it with -32600.</returns>
-    bool TryGetNext(out JsonRpcRequest? request, out JsonDocument? ownedDocument, out Exception? decodeException);
+    bool TryGetNext(out JsonRpcRequest? request, out Exception? decodeException);
 }
 
 /// <summary>Batch items taken from an already-parsed JSON array.</summary>
 /// <remarks>
 /// <c>params</c> comes back as a <see cref="JsonElement"/> into the enclosing document, which the caller disposes,
-/// so this source never hands out an owned document and never leaves raw params behind.
+/// so this source never leaves raw params behind.
 /// </remarks>
 internal struct DocumentBatchItemSource(JsonElement rootElement) : IJsonRpcBatchItemSource
 {
     private readonly int _count = rootElement.GetArrayLength();
     private JsonElement.ArrayEnumerator _items = rootElement.EnumerateArray();
 
-    public readonly int? KnownCount => _count;
+    public readonly int Count => _count;
 
-    public readonly int ScanCount() => _count;
-
-    public bool TryGetNext(out JsonRpcRequest? request, out JsonDocument? ownedDocument, out Exception? decodeException)
+    public bool TryGetNext(out JsonRpcRequest? request, out Exception? decodeException)
     {
         request = null;
-        ownedDocument = null;
         decodeException = null;
 
         if (!_items.MoveNext())
@@ -72,59 +65,52 @@ internal struct DocumentBatchItemSource(JsonElement rootElement) : IJsonRpcBatch
 }
 
 /// <summary>Batch items sliced straight out of the request bytes, without parsing the array into a document first.</summary>
-internal struct MemoryBatchItemSource(ReadOnlyMemory<byte> batchBody) : IJsonRpcBatchItemSource
+/// <param name="batchBody">One complete, already validated JSON array.</param>
+/// <param name="count">The number of items in <paramref name="batchBody"/>, counted while validating it.</param>
+internal struct MemoryBatchItemSource(ReadOnlyMemory<byte> batchBody, int count) : IJsonRpcBatchItemSource
 {
     private readonly ReadOnlyMemory<byte> _batchBody = batchBody;
+    private readonly int _count = count;
     private JsonReaderState _readerState;
     private int _offset;
     private bool _started;
 
-    /// <remarks>Null because counting means a second pass over the body; the caller decides whether that is worth it.</remarks>
-    public readonly int? KnownCount => null;
+    public readonly int Count => _count;
 
-    public readonly int ScanCount() => JsonRpcArrayReader.CountItems(_batchBody);
-
-    public bool TryGetNext(out JsonRpcRequest? request, out JsonDocument? ownedDocument, out Exception? decodeException)
+    /// <remarks>
+    /// An object item is decoded by the same reader that walks the array, so the envelope pass doubles as the skip
+    /// over the item. Any other item, or an object that fails to decode, is skipped from its start.
+    /// </remarks>
+    public bool TryGetNext(out JsonRpcRequest? request, out Exception? decodeException)
     {
         request = null;
-        ownedDocument = null;
         decodeException = null;
 
-        if (!JsonRpcArrayReader.TryReadNextItem(_batchBody, ref _offset, ref _readerState, ref _started, out ReadOnlyMemory<byte> itemBody))
+        ReadOnlyMemory<byte> unread = _batchBody[_offset..];
+        Utf8JsonReader reader = new(unread.Span, isFinalBlock: true, state: _readerState);
+        bool hasItem = JsonRpcArrayReader.TryReadItemStart(ref reader, ref _started);
+        if (hasItem)
         {
-            return false;
-        }
-
-        JsonDocument? requestDocument = null;
-        try
-        {
-            if (JsonRpcRequestDecoder.TryReadObjectRequest(itemBody, out JsonRpcRequest? directRequest))
+            if (reader.TokenType == JsonTokenType.StartObject)
             {
-                request = directRequest;
-                return true;
+                try
+                {
+                    request = JsonRpcRequestDecoder.ReadObjectRequest(unread, ref reader);
+                }
+                catch (Exception ex) when (JsonRpcRequestDecoder.IsRequestDecodingException(ex))
+                {
+                    decodeException = ex;
+                }
             }
 
-            // The envelope reader refused it, so fall back to a full parse - the item may still be a valid object
-            // that only the general parser accepts.
-            requestDocument = JsonDocument.Parse(itemBody);
-            if (requestDocument.RootElement.ValueKind == JsonValueKind.Object)
+            if (request is null)
             {
-                request = JsonRpcRequestDecoder.CreateRequest(requestDocument.RootElement);
-                ownedDocument = requestDocument;
-                requestDocument = null;
-                return true;
+                reader.Skip();
             }
         }
-        catch (Exception ex) when (JsonRpcRequestDecoder.IsRequestDecodingException(ex))
-        {
-            decodeException = ex;
-        }
-        finally
-        {
-            // Non-null only when ownership was not handed over: a non-object root, or a throw part-way through.
-            requestDocument?.Dispose();
-        }
 
-        return true;
+        _offset += (int)reader.BytesConsumed;
+        _readerState = reader.CurrentState;
+        return hasItem;
     }
 }

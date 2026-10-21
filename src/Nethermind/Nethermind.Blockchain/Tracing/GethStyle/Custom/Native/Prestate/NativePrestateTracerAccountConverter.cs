@@ -21,27 +21,33 @@ public class NativePrestateTracerAccountConverter : JsonConverter<NativePrestate
             if (value.Balance is not null)
             {
                 writer.WritePropertyName("balance"u8);
-                JsonSerializer.Serialize(writer, value.Balance, options);
+                TypeInfoJsonSerializer.Serialize(writer, value.Balance, options);
             }
 
             ForcedNumberConversion.Value = NumberConversion.Decimal;
             if (value.Nonce is not null)
             {
                 writer.WritePropertyName("nonce"u8);
-                JsonSerializer.Serialize(writer, value.Nonce, options);
+                TypeInfoJsonSerializer.Serialize(writer, value.Nonce, options);
             }
 
-            if (!value.Code.IsEmpty)
+            if (!value.Code.IsEmpty || value.IncludeEmptyCode)
             {
                 writer.WritePropertyName("code"u8);
                 ByteArrayConverter.Convert(writer, value.Code.Span, skipLeadingZeros: false);
+            }
+
+            if (value.CodeHash is { } codeHash)
+            {
+                writer.WritePropertyName("codeHash"u8);
+                HexWriter.WriteFixed32HexRawValue(writer, codeHash.Bytes);
             }
 
             ForcedNumberConversion.Value = NumberConversion.ZeroPaddedHex;
             if (value.Storage?.Count > 0)
             {
                 writer.WritePropertyName("storage"u8);
-                JsonSerializer.Serialize(writer, value.Storage, options);
+                TypeInfoJsonSerializer.Serialize(writer, value.Storage, options);
             }
 
             writer.WriteEndObject();

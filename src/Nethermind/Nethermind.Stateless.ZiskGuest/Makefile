@@ -14,7 +14,26 @@ GUEST_EXTLIB := libziskos
 # BIN_DIR must be set before the include - BFLAT_REFS expands it.
 include $(MAKEFILE_DIR)/../Nethermind.Stateless.Guest/build.mk
 
-ZISK_IMAGE ?= nethermindeth/zisk:1.3.1-alpha@sha256:992e95afa5e7096c7365c85114ae9222e485d485acec709b4309d2e407fa01b6
+# A larger inlining budget and inlinee size limits (values in hex): code size costs
+# a zkVM next to nothing. Measured flat on OpenVM, which does not set them.
+OPT_FLAGS += \
+	--codegenopt JitInlineBudget=100 \
+	--codegenopt JitExtDefaultPolicyMaxIL=400 \
+	--codegenopt JitExtDefaultPolicyMaxILRoot=800 \
+	--codegenopt JitExtDefaultPolicyMaxBB=40
+
+# Fewer executed instructions for more compile time and code size (values in hex).
+# Tracking every local is most of the gain: the default 0x400 leaves locals of the
+# largest methods out of register allocation.
+OPT_FLAGS += \
+	--codegenopt JitMaxLocalsToTrack=10000 \
+	--codegenopt JitCloneLoopsSizeLimit=1000 \
+	--codegenopt JitLoopInversionSizeLimit=400 \
+	--codegenopt 'JitOptRepeat=*' \
+	--codegenopt JitOptRepeatCount=2 \
+	--codegenopt JitEnableHeadTailMerge=0
+
+ZISK_IMAGE ?= nethermindeth/zisk:1.3.2-alpha@sha256:31a0c7f9de175765e7e81da719bdc2409060de8d23ec8683672d7ee22b798a3f
 
 run:
 	@$(REQUIRE_INPUT)

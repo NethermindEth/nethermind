@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Numerics;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -75,10 +76,12 @@ namespace Nethermind.Serialization.Rlp
                 return false;
             }
 
+            int end = position + length;
             reader.DecodeULong(ref position, out ulong nonce);
             reader.DecodeUInt256(ref position, out UInt256 balance);
             position = DecodeValueHash(reader, position, Keccak.EmptyTreeHash.ValueHash256, out ValueHash256 storageRoot);
             endPosition = DecodeValueHash(reader, position, Keccak.OfAnEmptyString.ValueHash256, out ValueHash256 codeHash);
+            RlpHelpers.Check(endPosition, end);
 
             account = new AccountStruct(nonce, balance, storageRoot, codeHash);
             return true;
@@ -140,13 +143,66 @@ namespace Nethermind.Serialization.Rlp
         /// <see cref="RlpDecoder{T}.EncodeAsBytes"/> incurs. The buffer is allocated uninitialized
         /// because encoding fills it completely.
         /// </remarks>
+        [SkipLocalsInit]
         public byte[] EncodeAsBytes(Account account)
         {
             int contentLength = GetContentLength(account);
             byte[] bytes = GC.AllocateUninitializedArray<byte>(Rlp.LengthOfSequence(contentLength));
-            RlpWriter writer = new(bytes);
-            Encode(account, ref writer, contentLength);
+            // The fixed shape is written straight into the array, keeping the position in a register rather than in a
+            // writer, which stores it back after every item.
+            Span<byte> destination = bytes;
+            int position = Rlp.StartSequence(destination, 0, contentLength);
+            position = EncodeWord(destination, position, account.Nonce);
+            position = EncodeWord(destination, position, account.Balance);
+            position = _slimFormat && !account.HasStorage
+                ? EncodeEmptyByteArray(destination, position)
+                : Rlp.Encode(destination, position, account.StorageRoot);
+            if (_slimFormat && !account.HasCode)
+            {
+                EncodeEmptyByteArray(destination, position);
+            }
+            else
+            {
+                Rlp.Encode(destination, position, account.CodeHash);
+            }
+
             return bytes;
+        }
+
+        private static int EncodeEmptyByteArray(Span<byte> destination, int position)
+        {
+            destination[position] = Rlp.EmptyByteArrayByte;
+            return position + 1;
+        }
+
+        /// <summary>Encodes <paramref name="value"/> as the RLP of its big-endian bytes without leading zeros.</summary>
+        /// <remarks>The length comes from the top non-zero limb, rather than from a byte-wise scan for the first non-zero byte.</remarks>
+        [SkipLocalsInit]
+        private static int EncodeWord(Span<byte> destination, int position, in UInt256 value)
+        {
+            ulong top;
+            int lowerLimbs;
+            if (value.u3 != 0) { top = value.u3; lowerLimbs = 3; }
+            else if (value.u2 != 0) { top = value.u2; lowerLimbs = 2; }
+            else if (value.u1 != 0) { top = value.u1; lowerLimbs = 1; }
+            else
+            {
+                top = value.u0;
+                lowerLimbs = 0;
+                if (top < Rlp.EmptyByteArrayByte)
+                {
+                    destination[position] = top == 0 ? Rlp.EmptyByteArrayByte : (byte)top;
+                    return position + 1;
+                }
+            }
+
+            int length = (lowerLimbs + 1) * sizeof(ulong) - BitOperations.LeadingZeroCount(top) / 8;
+            Unsafe.SkipInit(out ValueHash256 bigEndian);
+            Span<byte> bytes = bigEndian.BytesAsSpan;
+            value.ToBigEndian(bytes);
+            destination[position] = (byte)(Rlp.EmptyByteArrayByte + length);
+            bytes[^length..].CopyTo(destination[(position + 1)..]);
+            return position + 1 + length;
         }
 
         public int GetLength(Account[] accounts)
@@ -218,10 +274,13 @@ namespace Nethermind.Serialization.Rlp
                 return null;
             }
 
+            int end = position + length;
             reader.DecodeULong(ref position, out ulong nonce);
             reader.DecodeUInt256(ref position, out UInt256 balance);
             position = DecodeHash(reader, position, Keccak.EmptyTreeHash, out Hash256 storageRoot);
-            decoderContext.Position = DecodeHash(reader, position, Keccak.OfAnEmptyString, out Hash256 codeHash);
+            position = DecodeHash(reader, position, Keccak.OfAnEmptyString, out Hash256 codeHash);
+            RlpHelpers.Check(position, end);
+            decoderContext.Position = position;
 
             if (ReferenceEquals(storageRoot, Keccak.EmptyTreeHash) && ReferenceEquals(codeHash, Keccak.OfAnEmptyString))
             {

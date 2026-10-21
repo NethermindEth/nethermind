@@ -29,6 +29,8 @@ namespace Nethermind.Consensus.Producers
             .AddScoped<IBlockProcessor.IBlockTransactionsExecutor, BlockProcessor.BlockProductionTransactionsExecutor>()
             .AddDecorator<IWithdrawalProcessor, BlockProductionWithdrawalProcessor>()
             .AddScoped<IBlockchainProcessor, MainStateBlockBuildingChainProcessor>()
+            .AddDecorator<IBlockchainProcessor, TracingProducedBlockProcessor>()
+            .AddDecorator<IBlockchainProcessor, BlockBuildingTrackingProcessor>()
             .AddScoped<IBlockProducerEnv, BlockProducerEnv>();
 
         private static ITransactionProcessorAdapter CreateBuildUpAdapter(ITransactionProcessor transactionProcessor)

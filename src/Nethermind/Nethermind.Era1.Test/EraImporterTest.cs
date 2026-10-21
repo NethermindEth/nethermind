@@ -6,9 +6,20 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core.Test.Builders;
 using System.IO.Abstractions;
 using Autofac;
+using Nethermind.Consensus;
+using Nethermind.Consensus.Ethash;
+using Nethermind.Core.Specs;
+using Nethermind.Merge.Plugin;
+using Nethermind.Specs;
+using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.Specs.Forks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Messages;
+using Nethermind.Core.Caching;
+using Nethermind.Crypto;
 using Nethermind.Era1.Exceptions;
+using NSubstitute;
 
 namespace Nethermind.Era1.Test;
 
@@ -61,6 +72,31 @@ public class EraImporterTest
 
         IEraImporter sut = targetCtx.Resolve<IEraImporter>();
         Assert.That(() => sut.Import(testCtx.ResolveTempDirPath(), 0, 0, null, CancellationToken.None), Throws.TypeOf<EraVerificationException>());
+    }
+
+    [Test]
+    public async Task ImportAsArchiveSync_ValidatesBlockAgainstItsParent()
+    {
+        await using IContainer testCtx = await EraTestModule.CreateExportedEraEnv(64);
+        Block genesis = testCtx.Resolve<IBlockTree>().FindBlock(0)!;
+
+        IBlockTree blockTree = Build.A.BlockTree().TestObject;
+        blockTree.SuggestBlock(genesis, BlockTreeSuggestOptions.None);
+
+        // The archive's own verification passes; only the parent-relative rules, which processing cannot catch, reject.
+        IBlockValidator blockValidator = Substitute.For<IBlockValidator>();
+        blockValidator.ValidateBodyAgainstHeader(Arg.Any<BlockHeader>(), Arg.Any<BlockBody>(), out Arg.Any<string?>()).Returns(true);
+        blockValidator.ValidateOrphanedBlock(Arg.Any<Block>(), out Arg.Any<string?>()).Returns(true);
+        blockValidator.ValidateSuggestedBlock(Arg.Any<Block>(), Arg.Any<BlockHeader>(), out Arg.Any<string?>(), Arg.Any<bool>()).Returns(false);
+
+        await using IContainer targetCtx = EraTestModule.BuildContainerBuilder()
+            .AddSingleton<IBlockTree>(blockTree)
+            .AddSingleton<IBlockValidator>(blockValidator)
+            .Build();
+
+        IEraImporter sut = targetCtx.Resolve<IEraImporter>();
+        Assert.That(() => sut.Import(testCtx.ResolveTempDirPath(), 0, 0, null, CancellationToken.None), Throws.TypeOf<EraVerificationException>());
+        blockValidator.Received().ValidateSuggestedBlock(Arg.Is<Block>(b => b.Number == 1), Arg.Is<BlockHeader>(p => p.Hash == genesis.Hash), out Arg.Any<string?>(), Arg.Any<bool>());
     }
 
     [Test]
@@ -217,5 +253,105 @@ public class EraImporterTest
             Path.Join(destinationPath, EraExporter.AccumulatorFileName), token);
 
         Assert.That(async () => await act(), Throws.TypeOf<ArgumentException>());
+    }
+
+    public enum ImportedHeader
+    {
+        Valid,
+        ProofOfWorkAfterProofOfStake,
+        ProofOfWorkAfterTerminalBlock,
+        NonIncreasingTimestamp,
+        UnknownParent
+    }
+
+    [Test]
+    public async Task Import_WithRealValidator([Values] ImportedHeader importedHeader)
+    {
+        bool terminalParent = importedHeader == ImportedHeader.ProofOfWorkAfterTerminalBlock;
+        bool proofOfWorkChild = importedHeader is ImportedHeader.ProofOfWorkAfterProofOfStake or ImportedHeader.ProofOfWorkAfterTerminalBlock;
+        TestSpecProvider specProvider = new(Paris.Instance) { TerminalTotalDifficulty = 1_000_000 };
+        Block genesis = Build.A.Block.Genesis.WithDifficulty(terminalParent ? 1UL : 1_000_000UL).WithTimestamp(1_663_000_000).TestObject;
+        BlockBuilder parentBuilder = Build.A.Block.WithParent(genesis).WithPostMergeRules();
+        if (terminalParent)
+            parentBuilder.WithDifficulty(999_999).WithPostMergeFlag(false);
+        Block parent = parentBuilder.TestObject;
+        BlockBuilder childBuilder = Build.A.Block.WithParent(parent).WithPostMergeRules().WithTotalDifficulty(1_000_000UL);
+        if (importedHeader == ImportedHeader.NonIncreasingTimestamp)
+            childBuilder.WithTimestamp(parent.Timestamp);
+        Block child = childBuilder.TestObject;
+        Block targetParent = importedHeader == ImportedHeader.UnknownParent
+            ? Build.A.Block.WithParent(genesis).WithPostMergeRules().WithExtraData([1]).TestObject
+            : parent;
+        BlockTreeBuilder targetTreeBuilder = new(genesis, specProvider);
+        BlockTree targetTree = targetTreeBuilder.WithBlocks(genesis, targetParent).TestObject;
+        targetTree.TryUpdateMainChain(targetParent.Header, true, forceUpdateHeadBlock: true, preloadedBlocks: [targetParent]);
+        await using IContainer targetCtx = new ContainerBuilder()
+            .AddModule(new EraTestModule(useRealValidator: true))
+            .AddModule(new EthHashModule(new MiningConfig()))
+            .AddSingleton<IBlockTree>(targetTree)
+            .AddSingleton<ISpecProvider>(specProvider)
+            .AddSingleton<ITimestamper>(new Timestamper(1_663_000_100L))
+            .AddSingleton(new ChainSpec { Genesis = genesis, Parameters = new ChainParameters { TerminalTotalDifficulty = 1_000_000 } })
+            .AddSingleton<IMergeConfig>(new MergeConfig())
+            .AddSingleton<IPoSSwitcher, PoSSwitcher>()
+            .AddDecorator<IHeaderValidator, MergeHeaderValidator>()
+            .AddDecorator<ISealValidator, MergeSealValidator>()
+            .Build();
+        if (proofOfWorkChild)
+        {
+            child.Header.IsPostMerge = false;
+            child.Header.Difficulty = targetCtx.Resolve<IDifficultyCalculator>().Calculate(child.Header, parent.Header);
+            // Self-consistent archive metadata can claim pre-merge TD; the local parent establishes consensus.
+            child.Header.TotalDifficulty = child.Difficulty;
+            child.Header.Hash = child.Header.CalculateHash();
+        }
+        string exportPath = targetCtx.ResolveTempDirPath();
+        Directory.CreateDirectory(exportPath);
+        string fileName = EraPathUtils.Filename(EraTestModule.TestNetwork, 0, Keccak.Zero);
+        ValueHash256 checksum;
+        using (EraWriter writer = new(Path.Join(exportPath, fileName), specProvider))
+        {
+            await writer.Add(child, []);
+            (_, checksum) = await writer.Finalize();
+        }
+        await File.WriteAllTextAsync(Path.Join(exportPath, EraExporter.ChecksumsFileName), $"{checksum} {fileName}");
+        IEraImporter importer = targetCtx.Resolve<IEraImporter>();
+        Hash256? finalizedBeforeImport = targetTree.FinalizedHash;
+        if (terminalParent)
+        {
+            targetCtx.Resolve<IPoSSwitcher>();
+            ((IClearableCache)targetTreeBuilder.HeaderStore).ClearCache();
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(targetTree.FindHeader(parent.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded)!.TotalDifficulty, Is.Null);
+                Assert.That(targetTree.GetInfo(parent.Number, parent.Hash!).Info?.TotalDifficulty, Is.EqualTo(specProvider.TerminalTotalDifficulty));
+            }
+        }
+
+        if (importedHeader == ImportedHeader.Valid)
+        {
+            await importer.Import(exportPath, 2, 2, null, CancellationToken.None);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(targetTree.FindBlock(child.Hash!, BlockTreeLookupOptions.None), Is.Not.Null);
+                Assert.That(targetTree.FinalizedHash, Is.EqualTo(child.Hash));
+            }
+        }
+        else
+        {
+            string expectedError = proofOfWorkChild
+                ? "A proof-of-work block cannot follow a terminal or proof-of-stake parent."
+                : BlockErrorMessages.InvalidTimestamp;
+            Assert.That(() => importer.Import(exportPath, 2, 2, null, CancellationToken.None),
+                importedHeader == ImportedHeader.UnknownParent
+                    ? Throws.TypeOf<EraImportException>().With.Message.Contains("Unknown parent")
+                    : Throws.TypeOf<EraVerificationException>().With.Message.Contains(expectedError));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(targetTree.FindBlock(child.Hash!, BlockTreeLookupOptions.None), Is.Null);
+                Assert.That(targetTree.Head!.Hash, Is.EqualTo(targetParent.Hash));
+                Assert.That(targetTree.FinalizedHash, Is.EqualTo(finalizedBeforeImport));
+            }
+        }
     }
 }

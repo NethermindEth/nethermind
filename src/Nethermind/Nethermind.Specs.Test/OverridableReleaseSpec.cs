@@ -70,6 +70,8 @@ namespace Nethermind.Specs.Test
         public bool IsEip7623Enabled { get; set; } = spec.IsEip7623Enabled;
         public bool IsEip7976Enabled { get; set; } = spec.IsEip7976Enabled;
         public bool IsEip7981Enabled { get; set; } = spec.IsEip7981Enabled;
+        public bool IsEip8131Enabled { get; set; } = spec.IsEip8131Enabled;
+        public bool IsEip8279Enabled { get; set; } = spec.IsEip8279Enabled;
         public bool IsEip7918Enabled { get; set; } = spec.IsEip7918Enabled;
         public bool IsEip7883Enabled { get; set; } = spec.IsEip7883Enabled;
         public bool IsEip7934Enabled { get; set; } = spec.IsEip7934Enabled;
@@ -102,6 +104,8 @@ namespace Nethermind.Specs.Test
         public bool IsEip8272Enabled { get; set; } = spec.IsEip8272Enabled;
 
         public bool IsEip7906Enabled { get; set; } = spec.IsEip7906Enabled;
+        public bool IsEip8151Enabled { get; set; } = spec.IsEip8151Enabled;
+        public bool IsEip7979Enabled { get; set; } = spec.IsEip7979Enabled;
         public bool IsEip4788Enabled { get; set; } = spec.IsEip4788Enabled;
         public bool IsEip4844FeeCollectorEnabled { get; set; } = spec.IsEip4844FeeCollectorEnabled;
         public Address? Eip4788ContractAddress { get; set; } = spec.Eip4788ContractAddress;
@@ -120,6 +124,7 @@ namespace Nethermind.Specs.Test
         public ulong ElasticityMultiplier { get; set; } = spec.ElasticityMultiplier;
         public IBaseFeeCalculator BaseFeeCalculator { get; set; } = spec.BaseFeeCalculator;
         public bool IsEip8024Enabled { get; set; } = spec.IsEip8024Enabled;
+        public bool IsEip4758Enabled { get; set; } = spec.IsEip4758Enabled;
         public bool IsEip6110Enabled { get; set; } = spec.IsEip6110Enabled;
         public Address? DepositContractAddress { get; set; } = spec.DepositContractAddress;
         public bool IsEip7594Enabled { get; set; } = spec.IsEip7594Enabled;
@@ -128,11 +133,18 @@ namespace Nethermind.Specs.Test
         public bool IsEip8037Enabled { get; set; } = spec.IsEip8037Enabled;
         public bool IsEip7708Enabled { get; set; } = spec.IsEip7708Enabled;
         public bool IsEip7778Enabled { get; set; } = spec.IsEip7778Enabled;
+        public bool IsEip8116Enabled { get; set; } = spec.IsEip8116Enabled;
+        public bool IsEip7668Enabled { get; set; } = spec.IsEip7668Enabled;
         public bool IsEip7843Enabled => spec.IsEip7843Enabled;
         public bool IsEip7954Enabled { get; set; } = spec.IsEip7954Enabled;
         public bool IsEip8246Enabled { get; set; } = spec.IsEip8246Enabled;
+        public bool IsEip8253Enabled { get; set; } = spec.IsEip8253Enabled;
         public bool IsEip2780Enabled { get; set; } = spec.IsEip2780Enabled;
+        public bool IsEip5920Enabled { get; set; } = spec.IsEip5920Enabled;
+        public bool IsEip8360Enabled { get; set; } = spec.IsEip8360Enabled;
+        public bool IsEip3298Enabled { get; set; } = spec.IsEip3298Enabled;
         public bool IsEip7805Enabled { get; set; } = spec.IsEip7805Enabled;
+        public bool IsEip8298Enabled { get; set; } = spec.IsEip8298Enabled;
         public SpecGasCosts GasCosts => new(this);
 
         private FrozenSet<AddressAsKey>? _precompiles;

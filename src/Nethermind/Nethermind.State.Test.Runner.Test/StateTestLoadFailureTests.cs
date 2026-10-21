@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
+using System.Threading.Tasks;
 using Ethereum.Test.Base;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -81,17 +82,17 @@ public class StateTestLoadFailureTests
     }
 
     [Test]
-    public void Unrecoverable_signature_keeps_the_state_unchanged()
+    public async Task Unrecoverable_signature_keeps_the_state_unchanged()
     {
         GeneralStateTest rejected = LoadTest(PinnedOutOfRangeSignatureTxBytes());
         StateTestsRunner runner = new(WhenTrace.Never, traceMemory: false, traceStack: false, chainId: BlockchainIds.Mainnet, suppressOutput: true);
-        EthereumTestResult rejectedResult = runner.RunSingleTest(rejected);
+        EthereumTestResult rejectedResult = await runner.RunSingleTestAsync(rejected);
         Assert.That(rejectedResult.StateRoot, Is.Not.Null);
 
         GeneralStateTest unrecoverable = LoadTest(PinnedUnrecoverableSignatureTxBytes());
         Assert.That(unrecoverable.Transaction.SenderAddress, Is.Null);
         unrecoverable.PostHash = rejectedResult.StateRoot;
-        EthereumTestResult result = runner.RunSingleTest(unrecoverable);
+        EthereumTestResult result = await runner.RunSingleTestAsync(unrecoverable);
 
         using (Assert.EnterMultipleScope())
         {
@@ -101,12 +102,12 @@ public class StateTestLoadFailureTests
     }
 
     [Test]
-    public void Runner_reports_a_load_failure_instead_of_running_the_test()
+    public async Task Runner_reports_a_load_failure_instead_of_running_the_test()
     {
         StateTestsRunner runner = new(WhenTrace.Never, traceMemory: false, traceStack: false, chainId: BlockchainIds.Mainnet, suppressOutput: true);
         GeneralStateTest test = new() { Name = "fixture.json", LoadFailure = "Failed to load: boom" };
 
-        EthereumTestResult result = runner.RunSingleTest(test);
+        EthereumTestResult result = await runner.RunSingleTestAsync(test);
 
         using (Assert.EnterMultipleScope())
         {
