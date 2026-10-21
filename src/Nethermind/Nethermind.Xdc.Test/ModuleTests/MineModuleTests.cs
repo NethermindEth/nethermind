@@ -71,11 +71,8 @@ internal class MineModuleTests
 
         XdcHotStuff _hotstuff = (XdcHotStuff)xdcBlockchain.BlockProducerRunner;
 
-        int blocksProposed = 0;
-        xdcBlockchain.ConsensusModule.BlockProduced += (sender, args) =>
-        {
-            blocksProposed++;
-        };
+        ProposalTracker tracker = new();
+        xdcBlockchain.ConsensusModule.BlockProduced += tracker.OnBlockProduced;
 
         TaskCompletionSource newRoundWaitHandle = new(TaskCreationOptions.RunContinuationsAsynchronously);
         xdcBlockchain.XdcContext.NewRoundSetEvent += (sender, args) =>
@@ -97,7 +94,9 @@ internal class MineModuleTests
         {
             Assert.Fail("Timeout waiting for new round event");
         }
-        Assert.That(blocksProposed, Is.EqualTo(1));
+        // XdcBlockSuggester handles BlockProduced first, so the round can finish before the tracker runs.
+        await tracker.FirstProposal.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.That(tracker.Count, Is.EqualTo(1));
     }
 
     [Test]

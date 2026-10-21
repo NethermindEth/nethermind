@@ -873,6 +873,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             await using IContainer client = await CreateNode(TestItem.PrivateKeyF, (cfg, spec) =>
             {
                 EnableBlockAccessListsFromGenesis(spec);
+                cfg.GetConfig<ISyncConfig>().ReconstructFinalizedStateFromBlockAccessLists = true;
                 ConfigureLocalNetwork(cfg, AllocatePort());
                 return Task.CompletedTask;
             }, serverKey);
@@ -1605,7 +1606,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             IBlockProcessor blockProcessor,
             BlockProcessorExceptionDetector blockProcessorExceptionDetector) : IBlockProcessor
         {
-            public event Action? TransactionsExecuted
+            public event Action<Block>? TransactionsExecuted
             {
                 add => blockProcessor.TransactionsExecuted += value;
                 remove => blockProcessor.TransactionsExecuted -= value;

@@ -264,8 +264,9 @@ public class DebugBridgeTests
                 Assert.That(result.Result.Error, Is.EqualTo(expectedError));
             }
             Assert.That(tree.Head!.Hash, Is.EqualTo(blocks[retainedHead].Hash));
-            Assert.That(tree.FindBlock(blocks[3].Hash!, BlockTreeLookupOptions.None), accepted ? Is.Null : Is.Not.Null);
-            Assert.That(tree.FindBlock(blocks[4].Hash!, BlockTreeLookupOptions.None), accepted ? Is.Null : Is.Not.Null);
+            // Not FindBlock: rewind listeners load removed blocks in the background and may briefly re-cache them across the deletion.
+            Assert.That(tree.HasBlock(3, blocks[3].Hash!), Is.EqualTo(!accepted));
+            Assert.That(tree.HasBlock(4, blocks[4].Hash!), Is.EqualTo(!accepted));
             Assert.That(tree.FindBlock(blocks[1].Hash!, BlockTreeLookupOptions.None), Is.Not.Null);
             Assert.That(tree.LowestInsertedHeader!.Hash, Is.EqualTo(blocks[history == HistoricalSync.Headers ? 2 : 1].Hash));
             Assert.That(pointers.LowestInsertedBodyNumber, Is.EqualTo(history is HistoricalSync.Bodies or HistoricalSync.BodyAboveHead ? 2 : history == HistoricalSync.BodyFloor ? 3 : 1));
@@ -875,8 +876,8 @@ public class DebugBridgeTests
         IDebugRpcModule first = factory.Create();
         await using ILifetimeScope wrappedScope = container.BeginLifetimeScope(builder => builder
             .AddSingleton<IBlockTree>(new BlockTreeOverlay(blockTree.AsReadOnly(), blockTree))
-            .AddSingleton<IGethStyleTracer>(Substitute.For<IGethStyleTracer>()));
-        IDebugRpcModule second = wrappedScope.Resolve<IDebugRpcModule>();
+            .AddScoped<IRpcModuleFactory<IDebugRpcModule>, DebugModuleFactory>());
+        IDebugRpcModule second = wrappedScope.Resolve<IRpcModuleFactory<IDebugRpcModule>>().Create();
         // Explicit rendezvous holds the mutation open; timeouts only prevent a hung test.
         TaskCompletionSource mutationEntered = new(TaskCreationOptions.RunContinuationsAsynchronously);
         using ManualResetEventSlim releaseMutation = new();
