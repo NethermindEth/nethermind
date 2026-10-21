@@ -816,6 +816,7 @@ namespace Nethermind.Trie
         /// <param name="path"></param>
         /// <param name="node"></param>
         /// <returns></returns>
+        [SkipLocalsInit]
         internal TrieNode? MaybeCombineNode(ref TreePath path, TrieNode node, TrieNode? originalNode)
         {
             Debug.Assert(node.IsBranch, "MaybeCombineNode requires a branch node.");
