@@ -63,6 +63,12 @@ public static class BasePersistence
     /// <summary>Whether a read between the two <see cref="Stopwatch"/> timestamps took longer than memory allows.</summary>
     internal static bool IsDiskRead(long startTimestamp, long endTimestamp) => endTimestamp - startTimestamp > MemoryReadLimitTicks;
 
+    /// <summary>
+    /// MEASUREMENT BRANCH ONLY (bench/prefetch-pagecache-gate), never part of a product change: true makes the plan
+    /// behave as the master sampler, eight probes and any block-cache miss sends the column, with no timing or state.
+    /// </summary>
+    public static bool BenchDisablePageCacheGate;
+
     public const int StoragePrefixPortion = 4;
 
     private static readonly byte[] CurrentStateKey = Keccak.Compute("CurrentState").BytesToArray();
@@ -595,7 +601,8 @@ public static class BasePersistence
         [SkipLocalsInit]
         private bool AccountsNeedPrefetch(ReadOnlySpan<Address> samples)
         {
-            PrefetchSampling.Column? column = sampling?.Accounts;
+            bool masterSampler = Volatile.Read(ref BenchDisablePageCacheGate);
+            PrefetchSampling.Column? column = masterSampler ? null : sampling?.Accounts;
             Span<byte> value = stackalloc byte[_accountSpanBufferSize];
             // Under a page-cache outcome one probe is kept; only a slow read of it makes the block decide in full.
             if (column?.TrustMissesInMemory() == true && !IsSlowAccountMiss(samples[samples.Length / 2].ToAccountPath, value)) return false;
@@ -606,6 +613,7 @@ public static class BasePersistence
             {
                 ValueHash256 path = samples[SampleIndex(i, probes, samples.Length)].ToAccountPath;
                 if (_flatReader.IsAccountCached(path)) continue;
+                if (masterSampler) return true;
                 if (misses.Missed++ == 0 && column?.TrustMissAsDiskRead() == true) return true;
 
                 long start = Stopwatch.GetTimestamp();
@@ -629,7 +637,8 @@ public static class BasePersistence
 
         private bool SlotsNeedPrefetch(ReadOnlySpan<StorageCell> samples)
         {
-            PrefetchSampling.Column? column = sampling?.Slots;
+            bool masterSampler = Volatile.Read(ref BenchDisablePageCacheGate);
+            PrefetchSampling.Column? column = masterSampler ? null : sampling?.Slots;
             // Under a page-cache outcome one probe is kept; only a slow read of it makes the block decide in full.
             if (column?.TrustMissesInMemory() == true && !IsSlowSlotMiss(samples[samples.Length / 2])) return false;
 
@@ -642,6 +651,7 @@ public static class BasePersistence
                 ValueHash256 slotHash = ValueKeccak.Zero;
                 StorageTree.ComputeKeyWithLookup(cell.Index, ref slotHash);
                 if (_flatReader.IsSlotCached(path, slotHash)) continue;
+                if (masterSampler) return true;
                 if (misses.Missed++ == 0 && column?.TrustMissAsDiskRead() == true) return true;
 
                 UInt256 value = default;

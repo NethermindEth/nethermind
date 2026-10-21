@@ -1,0 +1,80 @@
+name: Benchmark async state prefetch
+
+# Measurement-only workflow on bench/prefetch-pagecache-gate; never part of a product PR. Measures the page-cache
+# gate of perf/prefetch-pagecache-gate: no prefetch against prefetch, both arms in the same binary.
+
+on:
+  push:
+    branches: [bench/prefetch-pagecache-gate]
+    paths:
+      - benchmarks/async-prefetch/**
+      - src/Nethermind/Nethermind.Core/**
+      - src/Nethermind/Nethermind.Db/**
+      - src/Nethermind/Nethermind.Db.Rocks/**
+      - src/Nethermind/Nethermind.State.Flat/**
+      - .github/workflows/benchmark-async-prefetch.yml
+
+permissions:
+  contents: read
+
+jobs:
+  bench:
+    name: ${{ matrix.arch }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            runner: ubuntu-latest
+          - arch: arm64
+            runner: ubuntu-26.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 300
+    env:
+      DATA: ${{ github.workspace }}/../async-prefetch-db
+      RESULTS: ${{ github.workspace }}/results
+      ACCOUNTS: "2000000"
+      ROUNDS: "8"
+      BLOCKS: "32"
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+
+      - name: Record environment
+        run: |
+          mkdir -p "$RESULTS"
+          git rev-parse HEAD > "$RESULTS/source.txt"
+          lscpu > "$RESULTS/cpu.txt"
+          free -m > "$RESULTS/memory.txt"
+          df -h > "$RESULTS/disk.txt"
+          sudo -n true
+
+      - name: Run prefetch tests
+        run: |
+          dotnet build src/Nethermind/Nethermind.State.Flat.Test/Nethermind.State.Flat.Test.csproj -c Release
+          dotnet run --project src/Nethermind/Nethermind.State.Flat.Test -c Release --no-build -- --filter "FullyQualifiedName~Prefetch" | tee "$RESULTS/tests.log"
+
+      - name: Build harness
+        run: dotnet build benchmarks/async-prefetch/AsyncPrefetch.csproj -c Release
+
+      - name: Build database
+        run: |
+          app=$(find . -path "*bin*" -name AsyncPrefetch.dll | head -1)
+          dotnet "$app" --mode build --data "$DATA" --accounts "$ACCOUNTS" | tee "$RESULTS/build.log"
+
+      - name: Measure
+        run: |
+          app=$(find . -path "*bin*" -name AsyncPrefetch.dll | head -1)
+          dotnet "$app" --mode run --data "$DATA" --accounts "$ACCOUNTS" --rounds "$ROUNDS" --blocks "$BLOCKS" --drop true \
+            --out "$RESULTS/results.json" | tee "$RESULTS/measurement.log"
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: async-prefetch-${{ matrix.arch }}
+          path: results
+          if-no-files-found: error
