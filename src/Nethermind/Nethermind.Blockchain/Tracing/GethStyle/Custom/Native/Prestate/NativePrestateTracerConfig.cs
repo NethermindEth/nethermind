@@ -9,6 +9,9 @@ public class NativePrestateTracerConfig
 {
     public bool DiffMode { get; init; }
 
+    /// <summary>Gets whether to include initially empty accounts. Defaults to false; cannot be combined with diff mode.</summary>
+    public bool IncludeEmpty { get; init; }
+
     /// <summary>Gets whether to omit contract code bytes. Defaults to false; code hashes remain included.</summary>
     public bool DisableCode { get; init; }
 
@@ -21,6 +24,7 @@ public class NativePrestateTracerConfig
         return new()
         {
             DiffMode = config?.DiffMode ?? false,
+            IncludeEmpty = config?.IncludeEmpty ?? false,
             DisableCode = config?.DisableCode ?? false,
             DisableStorage = config?.DisableStorage ?? false
         };
@@ -30,6 +34,8 @@ public class NativePrestateTracerConfig
     internal sealed class JsonConfig
     {
         public bool? DiffMode { get; set => field = value ?? field; } = false;
+
+        public bool? IncludeEmpty { get; set => field = value ?? field; } = false;
 
         public bool? DisableCode { get; set => field = value ?? field; } = false;
 

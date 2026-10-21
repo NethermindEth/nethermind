@@ -85,18 +85,39 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
             return;
         }
 
+        _diagnostics.RecordRequest(requestBody);
+
         if (options.InputMode != JsonRpcInputMode.SingleDocument)
         {
-            PipeReader reader = PipeReader.Create(new ReadOnlySequence<byte>(requestBody));
-            // Only the pipe path reads the timeout budget; ProcessCoreAsync returns it in its own finally.
-            CancellationTokenSource? timeoutSource = RentTimeout(context);
-            await ProcessCoreAsync(reader, context, sink, options, timeoutSource, timeoutSource?.Token ?? CancellationToken.None, cancellationToken);
+            await ProcessCompleteMessageToSink(requestBody, context, sink, cancellationToken);
             return;
         }
 
-        _diagnostics.RecordRequest(requestBody);
-
         await ProcessSingleDocumentMemoryToSink(requestBody, context, sink, options, cancellationToken);
+    }
+
+    private async ValueTask ProcessCompleteMessageToSink(ReadOnlyMemory<byte> message, JsonRpcContext context, IJsonRpcResponseSink sink, CancellationToken cancellationToken)
+    {
+        JsonRpcResult.Entry? result;
+        try
+        {
+            (_, result) = await ProcessCompleteDocumentsAsync(message, context, sink, cancellationToken);
+        }
+        catch (BadHttpRequestException e)
+        {
+            Handle(e);
+            return;
+        }
+        catch (ConnectionResetException e)
+        {
+            Handle(e);
+            return;
+        }
+
+        if (result.HasValue)
+        {
+            await WriteSingleEntryAsync(result.Value, sink, cancellationToken);
+        }
     }
 
     private async ValueTask ProcessCoreAsync(

@@ -3,11 +3,13 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
+using Microsoft.AspNetCore.Http;
 using Nethermind.Blockchain.Find;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
@@ -25,6 +27,7 @@ using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Test;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Handlers;
+using Nethermind.Merge.Plugin.SszRest;
 using Nethermind.Merge.Plugin.SszRest.Handlers;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
@@ -54,6 +57,7 @@ public partial class EngineModuleTests
                 .AddModule(new TestNethermindModule(Amsterdam.Instance))
                 .AddSingleton<IEngineRpcModule>(_ => engineModule())
                 .AddSingleton<WitnessRendezvous>(rendezvous)
+                .AddSingleton<BlockWitnessGenerator>()
                 .AddSingleton<NewPayloadWithWitnessHandler>();
 
             if (blockFinder is not null) builder.AddSingleton<IBlockFinder>(blockFinder);
@@ -616,6 +620,37 @@ public partial class EngineModuleTests
     }
 
     [Test]
+    public async Task E2E_built_payload_witness_equals_the_witness_of_submitting_the_payload()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.Instance);
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+        chain.AddTransactions(BuildWitnessTransfer(chain));
+        byte[] payloadId = await StartAmsterdamPayload(chain, expectedTxCount: 1);
+
+        DefaultHttpContext ctx = new() { Response = { Body = new MemoryStream() } };
+        await new GetPayloadWithWitnessSszHandler(rpc, chain.Container.Resolve<BlockWitnessGenerator>())
+            .HandleAsync(ctx, EngineApiVersions.GetPayload.V6, payloadId.ToHexString(true).AsMemory(), default);
+
+        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
+        BuiltPayloadWithWitnessV6Wire.Decode(((MemoryStream)ctx.Response.Body).ToArray(), out BuiltPayloadWithWitnessV6Wire wire);
+
+        GetPayloadV6Result built = (await rpc.engine_getPayloadV6(payloadId)).Data!;
+        using ResultWrapper<NewPayloadWithWitnessV1Result> submitted = await rpc.engine_newPayloadWithWitnessV5(
+            built.ExecutionPayload, [], TestItem.KeccakE, built.ExecutionRequests ?? []);
+        Witness submittedWitness = submitted.Data.ExecutionWitness!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(submitted.Data.Status, Is.EqualTo(PayloadStatus.Valid));
+            Assert.That(wire.BuiltPayload.ExecutionPayload.Transactions, Has.Length.EqualTo(1),
+                "the witness must belong to the snapshot carrying the submitted transaction");
+            Assert.That(wire.Witness.State!.Select(static n => n.Bytes), Is.EqualTo(submittedWitness.State.ToArray()));
+            Assert.That(wire.Witness.Codes!.Select(static c => c.Bytes), Is.EqualTo(submittedWitness.Codes.ToArray()));
+            Assert.That(wire.Witness.Headers!.Select(static h => h.Bytes), Is.EqualTo(submittedWitness.Headers.ToArray()));
+        }
+    }
+
+    [Test]
     public async Task E2E_witness_is_serialized_as_an_rlp_data_string()
     {
         using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.Instance);
@@ -896,6 +931,18 @@ public partial class EngineModuleTests
     private static async Task<(ExecutionPayloadV4 Payload, byte[][]? ExecutionRequests)>
         BuildAmsterdamPayload(MergeTestBlockchain chain, int expectedTxCount = 0)
     {
+        byte[] payloadIdBytes = await StartAmsterdamPayload(chain, expectedTxCount);
+        ResultWrapper<GetPayloadV6Result?> getPayload = await chain.EngineRpcModule.engine_getPayloadV6(payloadIdBytes);
+        Assert.That(getPayload.Data, Is.Not.Null);
+        Assert.That(getPayload.Data!.ExecutionPayload.Transactions, Has.Length.AtLeast(expectedTxCount),
+            "payload must carry the submitted transactions");
+
+        return (getPayload.Data!.ExecutionPayload, getPayload.Data!.ExecutionRequests);
+    }
+
+    /// <summary>Starts an Amsterdam build on the head and returns its payload id once the build has improved.</summary>
+    private static async Task<byte[]> StartAmsterdamPayload(MergeTestBlockchain chain, int expectedTxCount)
+    {
         IEngineRpcModule rpc = chain.EngineRpcModule;
         Block head = chain.BlockTree.Head!;
 
@@ -920,13 +967,7 @@ public partial class EngineModuleTests
 
         await improvementWait;
 
-        byte[] payloadIdBytes = Nethermind.Core.Extensions.Bytes.FromHexString(fcuResult.Data.PayloadId!);
-        ResultWrapper<GetPayloadV6Result?> getPayload = await rpc.engine_getPayloadV6(payloadIdBytes);
-        Assert.That(getPayload.Data, Is.Not.Null);
-        Assert.That(getPayload.Data!.ExecutionPayload.Transactions, Has.Length.AtLeast(expectedTxCount),
-            "payload must carry the submitted transactions");
-
-        return (getPayload.Data!.ExecutionPayload, getPayload.Data!.ExecutionRequests);
+        return Nethermind.Core.Extensions.Bytes.FromHexString(fcuResult.Data.PayloadId!);
     }
 
     private sealed class CountingBranchProcessorDecorator(IBranchProcessor inner, Action onProcess)

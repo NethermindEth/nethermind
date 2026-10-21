@@ -12,7 +12,6 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
-using EvmMetrics = Nethermind.Evm.Metrics;
 
 namespace Nethermind.Consensus.Processing;
 
@@ -125,7 +124,6 @@ public class PrewarmerTxAdapter(
         GasConsumed gas = receipt.Gas;
         tx.SpentGas = gas.SpentGas;
         tx.BlockGasUsed = gas.EffectiveBlockGas;
-        EvmMetrics.UpdateBlockGasPrice(tx.CalculateEffectiveGasPrice(spec.IsEip1559Enabled, header.BaseFeePerGas));
         footprint.Counts.Flush();
 
         if (receipt.Success)

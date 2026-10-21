@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Concurrent;
 using System.Text;
 using System.Threading;
 using System.Timers;
@@ -17,28 +16,21 @@ namespace Nethermind.Network.P2P.Analyzers
     /// </summary>
     public class DisconnectsAnalyzer : IDisconnectsAnalyzer, IDisposable
     {
+        private const int ReasonCount = byte.MaxValue + 1;
+
         private readonly Timer _timer;
         private readonly ILogger _logger;
         private readonly StringBuilder _builder = new();
 
-        private readonly ConcurrentDictionary<DisconnectCategory, int> _disconnectsA = new();
-        private readonly ConcurrentDictionary<DisconnectCategory, int> _disconnectsB = new();
-
-        private ConcurrentDictionary<DisconnectCategory, int> _disconnects;
+        // One stable counter per (type, reason). A flush takes each counter with Interlocked.Exchange,
+        // so every increment lands in exactly one flush without a lock or buffer swap.
+        private readonly int[] _disconnects = new int[Enum.GetValues<DisconnectType>().Length * ReasonCount];
 
         private int _disconnectCount = 0;
-
-        private readonly struct DisconnectCategory(DisconnectReason reason, DisconnectType type)
-        {
-            public DisconnectReason Reason { get; } = reason;
-
-            public DisconnectType Type { get; } = type;
-        }
 
         public DisconnectsAnalyzer(ILogManager? logManager)
         {
             _logger = logManager?.GetClassLogger<DisconnectsAnalyzer>() ?? throw new ArgumentNullException(nameof(logManager));
-            _disconnects = _disconnectsA;
 
             _timer = new Timer(10000);
             _timer.Elapsed += TimerOnElapsed;
@@ -56,20 +48,18 @@ namespace Nethermind.Network.P2P.Analyzers
 
         private void TimerOnElapsed(object sender, ElapsedEventArgs e)
         {
-            ConcurrentDictionary<DisconnectCategory, int> localCopy = _disconnects;
-            _disconnects = ReferenceEquals(_disconnects, _disconnectsA) ? _disconnectsB : _disconnectsA;
-
             _builder.AppendLine("Disconnect reasons:");
-            foreach ((DisconnectCategory key, int value) in localCopy)
+            for (int i = 0; i < _disconnects.Length; i++)
             {
+                int count = Interlocked.Exchange(ref _disconnects[i], 0);
+                if (count == 0) continue;
+
                 _builder.AppendLine(
                     "  "
-                    + key.Type.ToString().PadRight(8)
-                    + key.Reason.ToString().PadRight(24)
-                    + value.ToString().PadLeft(4));
+                    + ((DisconnectType)(i / ReasonCount)).ToString().PadRight(8)
+                    + ((DisconnectReason)(i % ReasonCount)).ToString().PadRight(24)
+                    + count.ToString().PadLeft(4));
             }
-
-            localCopy.Clear();
 
             _logger.Info(_builder.ToString());
             _builder.Clear();
@@ -79,7 +69,7 @@ namespace Nethermind.Network.P2P.Analyzers
         public void ReportDisconnect(DisconnectReason reason, DisconnectType type, string? details)
         {
             Interlocked.Increment(ref _disconnectCount);
-            _disconnects.AddOrUpdate(new DisconnectCategory(reason, type), static _ => 1, static (_, i) => i + 1);
+            Interlocked.Increment(ref _disconnects[(int)type * ReasonCount + (byte)reason]);
 
             if (type == DisconnectType.Local && details is not null)
             {

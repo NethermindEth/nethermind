@@ -270,8 +270,11 @@ public class CompositeDiscoveryAppTests
             Assert.Ignore("IPv6 is not supported on this host.");
         }
 
-        using Socket? ipv6Blocker = portInUse ? CreateUdpListenerSocket(IPAddress.IPv6Any, 0) : null;
-        int port = ipv6Blocker is not null ? ((IPEndPoint)ipv6Blocker.LocalEndPoint!).Port : GetAvailableUdpPort();
+        // A port allocated in the IPv6 namespace may already be taken on IPv4, so reserve the IPv4 port
+        // and hold it until the fallback binds.
+        using Socket ipv4Reservation = CreateUdpListenerSocket(IPAddress.Any, 0);
+        int port = ((IPEndPoint)ipv4Reservation.LocalEndPoint!).Port;
+        using Socket? ipv6Blocker = portInUse ? CreateUdpListenerSocket(IPAddress.IPv6Any, port) : null;
         NetworkListenerState listenerState = new(IPAddress.Any, IPAddress.IPv6Any, LimboLogs.Instance);
         InterfaceLogger underlyingLogger = Substitute.For<InterfaceLogger>();
         underlyingLogger.IsWarn.Returns(true);
@@ -281,7 +284,15 @@ public class CompositeDiscoveryAppTests
         try
         {
             pool.Bind(
-                address => CreateSocket(portInUse ? address : IPAddress.Any, createdSockets),
+                address =>
+                {
+                    if (address.Equals(listenerState.FallbackAddress))
+                    {
+                        ipv4Reservation.Dispose();
+                    }
+
+                    return CreateSocket(portInUse ? address : IPAddress.Any, createdSockets);
+                },
                 port,
                 datagram =>
                 {

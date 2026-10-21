@@ -277,6 +277,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
     private static Account ThrowIfNull(Address address)
         => throw new InvalidOperationException($"Account {address} is null when updating code hash");
 
+    [SkipLocalsInit]
     private void SetNewBalance(Address address, in UInt256 balanceChange, IReleaseSpec releaseSpec, bool isSubtracting, out UInt256 oldBalance)
     {
         _needsStateRootUpdate = true;
@@ -1260,6 +1261,41 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         [DoesNotReturn, StackTraceHidden]
         static Account ThrowNullAccount(Address address)
             => throw new InvalidOperationException($"Account {address} is null when incrementing nonce");
+    }
+
+    internal void SubtractFromBalanceAndSetNonce(Address address, in UInt256 balanceChange, ulong nonce)
+    {
+        // Subtracting zero leaves the account untouched.
+        if (balanceChange.IsZero)
+        {
+            SetNonce(address, nonce);
+            return;
+        }
+
+        _needsStateRootUpdate = true;
+        Account account = GetThroughCache(address) ?? ThrowNonExistingAccount();
+        if (account.Balance < balanceChange)
+        {
+            ThrowInsufficientBalanceException(address);
+        }
+
+        UInt256 newBalance = account.Balance - balanceChange;
+        Account changedAccount = new(nonce, newBalance, account.StorageRoot, account.CodeHash);
+        if (_logger.IsTrace) Trace(address, account, changedAccount);
+
+        PushUpdate(address, changedAccount);
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        void Trace(Address address, Account account, Account changedAccount)
+            => _logger.Trace($"Update {address} B {account.Balance.ToHexString(skipLeadingZeros: true)} -> {changedAccount.Balance.ToHexString(skipLeadingZeros: true)} N {account.Nonce} -> {changedAccount.Nonce}");
+
+        [DoesNotReturn, StackTraceHidden]
+        static Account ThrowNonExistingAccount()
+            => throw new InvalidOperationException("Updating balance of a non-existing account");
+
+        [DoesNotReturn, StackTraceHidden]
+        static void ThrowInsufficientBalanceException(Address address)
+            => throw new InsufficientBalanceException(address);
     }
 
     private readonly struct Change(Address address, Account? account, ChangeType type, int prevIdx)
