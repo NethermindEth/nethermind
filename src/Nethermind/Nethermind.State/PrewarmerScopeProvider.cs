@@ -318,32 +318,6 @@ public class PrewarmerScopeProvider(
 
         public void HintGet(Address address, Account? account) => baseScope.HintGet(address, account);
 
-        public bool SupportsPrefetch => baseScope.SupportsPrefetch;
-
-        /// <summary>Forwards only keys the pre-block caches do not hold: a cached key is never read from persistence.</summary>
-        /// <remarks>
-        /// Unlike the warm hints below, a capturing scope forwards a prefetch too: its keys are named by the block's own
-        /// transactions, never derived from placeholder values.
-        /// </remarks>
-        public void Prefetch(Span<Address> accounts, Span<StorageCell> slots, CancellationToken cancellationToken)
-        {
-            // Compacted in place: cached keys are dropped without copying the others.
-            int keptAccounts = 0;
-            foreach (Address address in accounts)
-            {
-                AddressAsKey key = address;
-                if (!preBlockCache.TryGetValue(in key, out _)) accounts[keptAccounts++] = address;
-            }
-
-            int keptSlots = 0;
-            foreach (StorageCell cell in slots)
-            {
-                if (!storageCache.TryGetValue(in cell, out _)) slots[keptSlots++] = cell;
-            }
-
-            if (keptAccounts != 0 || keptSlots != 0) baseScope.Prefetch(accounts[..keptAccounts], slots[..keptSlots], cancellationToken);
-        }
-
         // Populator hints target the block's consumer scope (whose commit walks the hinted paths);
         // consumer hints go straight to the backend. Capturing (discovery) scopes execute on placeholder
         // values, so their hinted addresses and slots can be fictitious — never forward them.
