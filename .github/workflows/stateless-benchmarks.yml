@@ -158,7 +158,7 @@ jobs:
       # correctness and cost come from the same execution and cannot describe different builds.
       #
       # A block of ~400M steps emulates in about 45 s here, so the eleven of them plus the image pull
-      # land near a quarter of an hour; the cap below is headroom for a slower runner, not a budget.
+      # land near eight minutes; the cap below is headroom for a slower runner, not a budget.
       - name: Measure
         id: measure
         working-directory: ${{ env.GUEST_DIR }}
