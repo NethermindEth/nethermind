@@ -38,6 +38,23 @@ public static class AbiCodec
         }
     }
 
+    /// <summary>Decodes the value whose canonical encoding under <paramref name="signature"/> is exactly <paramref name="source"/>.</summary>
+    /// <remarks>
+    /// The input must start with the method ID, unless <paramref name="signature"/> is unnamed, and end right after the value.
+    /// Codecs from <see cref="AbiType"/> also require:
+    /// <list type="bullet">
+    /// <item>offsets equal to where the encoder writes each tail, so tails are contiguous and in order;</item>
+    /// <item>integers correctly sign- or zero-extended from their declared width;</item>
+    /// <item><c>bool</c> values of 0 or 1;</item>
+    /// <item><c>address</c> values with the upper 12 bytes zero;</item>
+    /// <item>zero padding after <c>bytes</c>, <c>bytesN</c> and <c>string</c> contents;</item>
+    /// <item>valid UTF-8 in <c>string</c>;</item>
+    /// <item>lengths that fit the input.</item>
+    /// </list>
+    /// </remarks>
+    /// <exception cref="AbiException">
+    /// <paramref name="source"/> is not such an encoding. Any other exception raised while decoding becomes the <see cref="Exception.InnerException"/>.
+    /// </exception>
     public static T Decode<T>(AbiSignature<T> signature, ReadOnlySpan<byte> source)
     {
         try
