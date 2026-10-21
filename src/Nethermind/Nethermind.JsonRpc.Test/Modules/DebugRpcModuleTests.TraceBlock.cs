@@ -1069,14 +1069,23 @@ public partial class DebugRpcModuleTests
 
     private static IEnumerable<TestCaseData> ReplayAvailabilityCases()
     {
-        foreach (string method in new[] { "debug_traceBlockByHash", "debug_traceBlockByNumber", "debug_traceBlock",
-                     "debug_traceTransactionInBlockByHash", "debug_traceTransactionInBlockByIndex" })
-            foreach (bool streaming in new[] { false, true })
-                foreach (bool parentAvailable in new[] { false, true })
+        (string Method, bool UsesRlp)[] methods =
+        [
+            ("debug_traceBlockByHash", false),
+            ("debug_traceBlockByNumber", false),
+            ("debug_traceBlock", true),
+            ("debug_traceTransactionInBlockByHash", true),
+            ("debug_traceTransactionInBlockByIndex", true)
+        ];
+        bool[] values = [false, true];
+        string[] suffixes = ["00", "c0"];
+        foreach ((string method, bool usesRlp) in methods)
+            foreach (bool streaming in values)
+                foreach (bool parentAvailable in values)
                 {
                     yield return new TestCaseData(method, streaming, parentAvailable, "");
-                    if (method is "debug_traceBlock" or "debug_traceTransactionInBlockByHash" or "debug_traceTransactionInBlockByIndex")
-                        foreach (string suffix in new[] { "00", "c0" })
+                    if (usesRlp)
+                        foreach (string suffix in suffixes)
                             yield return new TestCaseData(method, streaming, parentAvailable, suffix);
                 }
     }
