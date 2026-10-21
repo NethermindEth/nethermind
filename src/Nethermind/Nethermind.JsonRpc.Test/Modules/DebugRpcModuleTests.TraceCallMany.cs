@@ -242,7 +242,26 @@ public partial class DebugRpcModuleTests
 
         string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCallMany", new[] { bundle }, "latest");
 
-        Assert.That(response, Does.Contain(RpcTransactionErrors.AtLeastOneBlobInBlobTransaction));
+        Assert.That(response, Does.Contain(RpcTransactionErrors.BlobFeeCapWithoutBlobHashes));
+    }
+
+    [Test]
+    public async Task Debug_trace_calls_reject_a_withdrawals_block_override([Values] bool many)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Cancun.Instance));
+        object call = new { from = TestItem.AddressA.ToString(), to = TestItem.AddressB.ToString(), gas = "0x5208" };
+        object withdrawals = new { withdrawals = new[] { new { index = "0x0", validatorIndex = "0x0", address = TestItem.AddressC.ToString(), amount = "0x1" } } };
+
+        string response = many
+            ? await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCallMany", new[] { new { transactions = new[] { call }, blockOverride = withdrawals } }, "latest")
+            : await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall", call, "latest", new { blockOverrides = withdrawals });
+
+        JToken error = JToken.Parse(response)["error"]!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(error["code"]!.Value<int>(), Is.EqualTo(ErrorCodes.InvalidParams));
+            Assert.That(error["message"]!.Value<string>(), Is.EqualTo(BlockOverride.WithdrawalsNotSupported));
+        }
     }
 
     [Test]

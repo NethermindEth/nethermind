@@ -156,17 +156,18 @@ public class TransactionForRpcTests
         Assert.That(DeserializeTransactionForRpc(serialized).Type, Is.EqualTo(transaction.Type));
     }
 
-    [TestCase("""{"maxFeePerBlobGas":"0x1"}""")]
-    [TestCase("""{"maxFeePerBlobGas":"0x0","maxFeePerGas":"0x7"}""")]
-    [TestCase("""{"blobVersionedHashes":[]}""")]
-    public void A_blob_fee_cap_without_blob_hashes_or_an_empty_list_names_a_blob_call_that_is_rejected(string json)
+    [TestCase("""{"maxFeePerBlobGas":"0x1"}""", RpcTransactionErrors.BlobFeeCapWithoutBlobHashes)]
+    [TestCase("""{"maxFeePerBlobGas":"0x0","maxFeePerGas":"0x7"}""", RpcTransactionErrors.BlobFeeCapWithoutBlobHashes)]
+    [TestCase("""{"maxFeePerBlobGas":"0x1","blobVersionedHashes":[]}""", RpcTransactionErrors.AtLeastOneBlobInBlobTransaction)]
+    [TestCase("""{"blobVersionedHashes":[]}""", RpcTransactionErrors.AtLeastOneBlobInBlobTransaction)]
+    public void A_blob_fee_cap_without_blob_hashes_or_an_empty_list_names_a_blob_call_that_is_rejected(string json, string error)
     {
         TransactionForRpc call = DeserializeTransactionForRpc(json);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(call, Is.TypeOf<BlobTransactionForRpc>());
-            Assert.That(call.ToTransaction().Error, Is.EqualTo(RpcTransactionErrors.AtLeastOneBlobInBlobTransaction));
+            Assert.That(call.ToTransaction().Error, Is.EqualTo(error));
         }
     }
 

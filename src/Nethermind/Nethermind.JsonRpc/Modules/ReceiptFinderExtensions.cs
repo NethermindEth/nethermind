@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
@@ -31,46 +30,16 @@ namespace Nethermind.JsonRpc.Modules
                 : receiptFinder.GetBlockReceipts(searchResult.Object, specProvider);
         }
 
-        /// <remarks>The result owns pooled receipts; the RPC stack disposes it after serialization.</remarks>
         internal static ResultWrapper<IEnumerable<ReceiptForRpc>?> GetBlockReceipts(this IReceiptFinder receiptFinder, Block block, ISpecProvider specProvider)
         {
             Transaction[] transactions = block.Transactions;
             TxReceipt[] receipts = receiptFinder.Get(block) ?? new TxReceipt[transactions.Length];
             IReleaseSpec spec = specProvider.GetSpec(block.Header);
-            int count = Math.Min(receipts.Length, transactions.Length);
-            ReceiptsForRpc<ReceiptForRpc> result = new(count);
-            try
-            {
-                // A running sum equals the per-receipt scan only when every index is its position.
-                bool positionalIndexes = HasPositionalIndexes(receipts);
-                int logIndexStart = 0;
-                for (int i = 0; i < count; i++)
-                {
-                    TxReceipt receipt = receipts[i];
-                    Transaction transaction = transactions[i];
-                    // EIP-8116: logIndex counts within the receipt.
-                    int receiptLogIndexStart = spec.IsEip8116Enabled ? 0 : positionalIndexes ? logIndexStart : receipts.GetBlockLogFirstIndex(receipt.Index);
-                    result.Add(new ReceiptForRpc(transaction.Hash, receipt, block.Timestamp, transaction.GetGasInfo(spec, block.Header), receiptLogIndexStart));
-                    logIndexStart += receipt.Logs?.Length ?? 0;
-                }
-            }
-            catch
-            {
-                result.Dispose();
-                throw;
-            }
+            // EIP-8116: logIndex counts within the receipt.
+            ReceiptsForRpc<ReceiptForRpc> result = new(receipts, transactions, spec.IsEip8116Enabled, (target, receipt, transaction, logIndexStart) =>
+                target.Populate(transaction.Hash, receipt, block.Timestamp, transaction.GetGasInfo(spec, block.Header), logIndexStart));
 
             return ResultWrapper<IEnumerable<ReceiptForRpc>?>.Success(result);
-        }
-
-        private static bool HasPositionalIndexes(TxReceipt[] receipts)
-        {
-            for (int i = 0; i < receipts.Length; i++)
-            {
-                if (receipts[i].Index != i) return false;
-            }
-
-            return true;
         }
     }
 }

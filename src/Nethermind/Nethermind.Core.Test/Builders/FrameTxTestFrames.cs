@@ -114,8 +114,8 @@ public static class FrameTxTestFrames
     public static TxFrame Execution(ulong gasLimit = 1_000) =>
         new(FrameMode.Sender, FrameFlags.None, TestItem.AddressB, gasLimit, UInt256.Zero, default);
 
-    public static TxFrame PostTx(ulong gasLimit = 1_000) =>
-        new(FrameMode.PostTx, FrameFlags.None, TestItem.AddressB, gasLimit, UInt256.Zero, default);
+    public static TxFrame AssertFrame(ulong gasLimit = 1_000) =>
+        new(FrameMode.Assert, FrameFlags.None, TestItem.AddressB, gasLimit, UInt256.Zero, default);
 
     /// <summary>A VERIFY frame carrying no approval scope: a validation step ahead of the approving frame.</summary>
     /// <remarks>The prefix grammar names no shape starting with one, so a layout leading with it is unrecognized.</remarks>

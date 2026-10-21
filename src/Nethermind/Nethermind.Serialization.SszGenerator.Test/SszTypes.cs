@@ -111,6 +111,14 @@ namespace Nethermind.Serialization.SszGenerator.Test
         public byte[]? Bytes { get; set; }
     }
 
+    /// <summary>A byte list whose field name matches a local of the generated array decoder.</summary>
+    [SszContainer(isCollectionItself: true)]
+    public partial struct ByteListItselfNamedDecoded
+    {
+        [SszList(3)]
+        public byte[]? Decoded { get; set; }
+    }
+
     [SszContainer(isCollectionItself: true)]
     public partial class ByteListClassItself
     {

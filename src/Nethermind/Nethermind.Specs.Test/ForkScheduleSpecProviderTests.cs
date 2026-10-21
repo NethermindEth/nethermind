@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using NUnit.Framework;
@@ -121,4 +122,21 @@ public class ForkScheduleSpecProviderTests
     [TestCaseSource(nameof(ExpectedTransitionActivations))]
     public void Transition_activations_match_expected(ForkScheduleSpecProvider provider, ForkActivation[] expected) =>
         Assert.That(provider.TransitionActivations, Is.EqualTo(expected));
+
+    public static IEnumerable<TestCaseData> ExpectedSealEngines
+    {
+        get
+        {
+            yield return new TestCaseData(MainnetSpecProvider.Instance, SealEngineType.Ethash) { TestName = "Mainnet" };
+            yield return new TestCaseData(GnosisSpecProvider.Instance, SealEngineType.AuRa) { TestName = "Gnosis" };
+            yield return new TestCaseData(ChiadoSpecProvider.Instance, SealEngineType.AuRa) { TestName = "Chiado" };
+            yield return new TestCaseData(SepoliaSpecProvider.Instance, SealEngineType.Ethash) { TestName = "Sepolia" };
+            yield return new TestCaseData(HoodiSpecProvider.Instance, SealEngineType.Ethash) { TestName = "Hoodi" };
+            yield return new TestCaseData(MordenSpecProvider.Instance, SealEngineType.Ethash) { TestName = "Morden" };
+        }
+    }
+
+    [TestCaseSource(nameof(ExpectedSealEngines))]
+    public void Seal_engine_is_reported_through_the_interface(ISpecProvider provider, string expected) =>
+        Assert.That(provider.SealEngine, Is.EqualTo(expected));
 }

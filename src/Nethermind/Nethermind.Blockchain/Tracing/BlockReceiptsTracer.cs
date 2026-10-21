@@ -15,7 +15,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Blockchain.Tracing;
 
-public partial class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTracer, IJournal<int>, ITxTracerWrapper, IFrameTxReceiptTracer, IInstructionTracingFilter
+public partial class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTracer, IJournal<int>, ITxTracerWrapper, IFrameTxReceiptTracer, IInstructionTracingFilter, ITxDiscardAwareTracer, ITxOutputTracingFilter
 {
     private IBlockTracer _otherTracer = NullBlockTracer.Instance;
 
@@ -52,8 +52,14 @@ public partial class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, 
     public bool IsTracingOnlyReceipts =>
         ReferenceEquals(_otherTracer, NullBlockTracer.Instance) && ReferenceEquals(_currentTxTracer, NullTxTracer.Instance);
 
+    /// <summary>Whether receipts are built; when not, only the block gas accounting is kept.</summary>
+    /// <remarks>For a replay whose receipts nothing reads; logs are then collected only for the wrapped tracers. While off,
+    /// <see cref="LastReceipt"/>, <see cref="TakeSnapshot"/>, <see cref="Restore"/> and <see cref="DiscardLastTx"/> are unsupported.</remarks>
+    internal bool BuildsReceipts { get; set; } = true;
+
     public bool IsTracingReceipt => true;
-    public bool IsCollectingLogs => true;
+    public bool IsTracingOutput => !IsTracingOnlyReceipts;
+    public bool IsCollectingLogs => BuildsReceipts || _currentTxTracer.IsCollectingLogs || _otherTracer is ITxTracer { IsCollectingLogs: true };
     public bool IsTracingActions => _currentTxTracer.IsTracingActions;
     public bool IsTracingOpLevelStorage => _currentTxTracer.IsTracingOpLevelStorage;
     public bool IsTracingMemory => _currentTxTracer.IsTracingMemory;
@@ -76,8 +82,20 @@ public partial class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, 
 
     public void MarkAsSuccess(Address recipient, in GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
     {
-        TxReceipt receipt = BuildReceipt(recipient, gasSpent, StatusCode.Success, logs, stateRoot);
-        _txReceipts.Add(receipt);
+        byte statusCode;
+        if (BuildsReceipts)
+        {
+            TxReceipt receipt = BuildReceipt(recipient, gasSpent, StatusCode.Success, logs, stateRoot);
+            _txReceipts.Add(receipt);
+            statusCode = receipt.StatusCode;
+        }
+        else
+        {
+            UpdateCumulativeGasTracking(gasSpent);
+            statusCode = CurrentTx!.Type == TxType.FrameTx && _frameTxReceipts is not null
+                ? TxFrameReceipt.AggregateStatus(_frameTxReceipts)
+                : StatusCode.Success;
+        }
 
         // hacky way to support nested receipt tracers
         if (_otherTracer is ITxTracer otherTxTracer)
@@ -88,8 +106,8 @@ public partial class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, 
         if (_currentTxTracer.IsTracingReceipt)
         {
             // EIP-8141: an included frame transaction is marked successful whatever its frames did, so the
-            // tracer is told the status derived from the frames, which only the built receipt holds.
-            if (receipt.StatusCode == StatusCode.Failure)
+            // tracer is told the status derived from the frames.
+            if (statusCode == StatusCode.Failure)
             {
                 _currentTxTracer.MarkAsFailed(recipient, gasSpent, output, FrameTxFailedError, stateRoot);
             }
@@ -102,7 +120,14 @@ public partial class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, 
 
     public void MarkAsFailed(Address recipient, in GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null)
     {
-        _txReceipts.Add(BuildFailedReceipt(recipient, gasSpent, error, stateRoot));
+        if (BuildsReceipts)
+        {
+            _txReceipts.Add(BuildFailedReceipt(recipient, gasSpent, error, stateRoot));
+        }
+        else
+        {
+            UpdateCumulativeGasTracking(gasSpent);
+        }
 
         // hacky way to support nested receipt tracers
         if (_otherTracer is ITxTracer otherTxTracer)
@@ -150,7 +175,7 @@ public partial class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, 
         // Track cumulative receipt gas (post-refund)
         _cumulativeReceiptGas += gasConsumed.SpentGas;
 
-        Debug.Assert(_txReceipts.Count + 1 == _cumulativeBlockGasPerTx.Count,
+        Debug.Assert(!BuildsReceipts || _txReceipts.Count + 1 == _cumulativeBlockGasPerTx.Count,
             "Receipt and gas tracking lists must remain synchronized");
 
         return _cumulativeReceiptGas;
@@ -407,6 +432,17 @@ public partial class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, 
         _cumulativeReceiptGas = _txReceipts.Count > 0 ? _txReceipts[^1].GasUsedTotal : 0;
     }
 
+    /// <summary>
+    /// Drops the last traced transaction: its receipt, its block gas and its receipt index, and whatever the wrapped
+    /// block tracer recorded for it when that tracer is an <see cref="ITxDiscardAwareTracer"/>.
+    /// </summary>
+    /// <remarks>For a block producer that leaves an executed transaction out of the block.</remarks>
+    public void DiscardLastTx()
+    {
+        Restore(_txReceipts.Count - 1);
+        if (_otherTracer is ITxDiscardAwareTracer discardAware) discardAware.DiscardLastTx();
+    }
+
     public void ReportReward(Address author, string rewardType, UInt256 rewardValue) =>
         _otherTracer.ReportReward(author, rewardType, rewardValue);
 
@@ -419,7 +455,11 @@ public partial class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, 
         _currentFrameTxTracer = null;
         int txCount = parallel ? 1 : block.Transactions.Length;
         _txReceipts.Clear();
-        _txReceipts.EnsureCapacity(txCount);
+        if (BuildsReceipts)
+        {
+            _txReceipts.EnsureCapacity(txCount);
+        }
+
         _cumulativeBlockGasPerTx.Clear();
         _cumulativeBlockGasPerTx.EnsureCapacity(txCount);
         _cumulativeReceiptGas = 0;

@@ -58,6 +58,10 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
         IsTracingActions = true;
         IsTracingMemory = true;
         IsTracingStack = true;
+        // The script sees storage through db and has no return data on log, so the per-operation hooks would only
+        // build values for empty callbacks.
+        IsTracingOpLevelStorage = false;
+        IsTracingReturnData = false;
 
         _engine = engine;
         _db = db;
@@ -66,7 +70,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
         if (_captureErrors)
         {
             _callbacks = [];
-            _log.stack = new Log.Stack(default, engine);
+            _log.stack.InputErrorEngine = engine;
             _log.memory.InputErrorEngine = engine;
             engine.PrepareNullThrowCapture();
 
@@ -91,7 +95,15 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
                 Invoke(TracerFunctions.setup, options.TracerConfig?.ToString() ?? "{}");
             }
 
-            TimeSpan timeout = options.Timeout ?? DefaultTimeout;
+            TimeSpan timeout;
+            try
+            {
+                timeout = options.ResolveTimeout() ?? DefaultTimeout;
+            }
+            catch (TraceDurationFormatException exception) when (_captureErrors)
+            {
+                throw new JavaScriptTraceFailure(exception);
+            }
             if (timeout <= TimeSpan.Zero || timeout > MaxTimeout)
                 throw new ArgumentOutOfRangeException(nameof(options), timeout, $"Tracer timeout must be between 1ns and {MaxTimeout.TotalMinutes}m.");
             _cts = new CancellationTokenSource(timeout);
@@ -202,7 +214,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
     {
         _log.refund = CurrentRefund;
         _log.pc = pc;
-        _log.op = new Log.Opcode(opcode);
+        _log.op = Log.Opcode.Of(opcode);
         _log.gas = gas;
         _log.depth = env.GetGethTraceDepth();
         _log.error = null;
@@ -283,7 +295,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
                 UInt256.AddOverflow(sourceOffset, _operationStack.PeekUInt256(2), out UInt256 endOffset);
                 byte[] faultStack = _operationStack.ToRawBytes();
                 endOffset.ToBigEndian(faultStack.AsSpan((_operationStack.Count - 2) * EvmStack.WordSize, EvmStack.WordSize));
-                _log.stack = new Log.Stack(new TraceStack(faultStack), _captureErrors ? _engine : null);
+                _log.stack.Items = new TraceStack(faultStack);
             }
         }
         Invoke(TracerFunctions.fault);
@@ -367,7 +379,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
     {
         base.SetOperationStack(stack);
         _operationStack = stack;
-        _log.stack = new Log.Stack(stack, _captureErrors ? _engine : null);
+        _log.stack.Items = stack;
 
         if (!_pendingStep || _failedBeforeExecution)
             InvokeStep();
@@ -517,6 +529,8 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
                 || JavaScriptTraceFailure.IsRecoverable(exception, observedNullThrow)))
         {
             _engine.ThrowIfInterrupted();
+            if (function == TracerFunctions.setup)
+                throw new JavaScriptTraceFailure(exception, inputError ?? exception.Message);
             _traceError = inputError ?? exception.Message;
             return null;
         }

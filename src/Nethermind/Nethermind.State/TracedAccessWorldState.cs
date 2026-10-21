@@ -112,17 +112,23 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
     {
         bool covered = ReadCoverage?.TryMark(storageCell) == true;
         AccountChangesAtIndex accountChanges = GeneratingBlockAccessList.RecordReadAndGet(storageCell.Address);
-        ref StorageChange change = ref CollectionsMarshal.GetValueRefOrNullRef(accountChanges.StorageChanges, storageCell.Index);
-        bool hasChange = !Unsafe.IsNullRef(ref change);
-        if (!covered && !hasChange) accountChanges.AddStorageRead(in storageCell.Index);
         _lastReadStorageCell = storageCell;
         _lastReadStorageChanges = accountChanges;
 
-        if (parallel && hasChange)
+        if (parallel)
         {
-            value = change.Value;
-            return;
+            ref StorageChange change = ref CollectionsMarshal.GetValueRefOrNullRef(accountChanges.StorageChanges, storageCell.Index);
+            if (!Unsafe.IsNullRef(ref change))
+            {
+                value = change.Value;
+                return;
+            }
+
+            if (!covered) accountChanges.AddStorageRead(in storageCell.Index);
         }
+        // The decorated state already holds this transaction's writes, so the value needs no change lookup.
+        else if (!covered) accountChanges.AddStorageReadUnchecked(in storageCell.Index);
+
         base.Get(in storageCell, out value);
     }
 
@@ -134,6 +140,12 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
         base.IncrementNonce(address, delta, out oldNonce);
         oldNonce = currentNonce ?? oldNonce;
         _generatingBlockAccessList.AddNonceChange(address, oldNonce + delta);
+    }
+
+    public override void SubtractFromBalanceAndSetNonce(Address address, in UInt256 balanceChange, ulong nonce, IReleaseSpec spec)
+    {
+        if (_generatingBlockAccessList is null) State.SubtractFromBalanceAndSetNonce(address, in balanceChange, nonce, spec);
+        else base.SubtractFromBalanceAndSetNonce(address, in balanceChange, nonce, spec);
     }
 
     public override void SetNonce(Address address, in ulong nonce)

@@ -89,7 +89,8 @@ public class BlockForRpc
         ParentHash = block.ParentHash;
         ReceiptsRoot = block.ReceiptsRoot;
         Sha3Uncles = block.UnclesHash;
-        Size = block.EncodedSize ?? BlockDecoder.GetLength(block, RlpBehaviors.None);
+        // Blocks built from payloads have no stored encoding, so the length is computed once and kept.
+        Size = block.EncodedSize ??= BlockDecoder.GetLength(block, RlpBehaviors.None);
         StateRoot = block.StateRoot;
         Timestamp = block.Timestamp;
 

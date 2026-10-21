@@ -206,7 +206,7 @@ public class FrameTxDecoderTests
         {
             Assert.That((byte)decoded.Frames![0].Mode, Is.EqualTo(mode), "the decoder silently normalized the mode");
             Assert.That((byte)decoded.Frames[0].Flags, Is.EqualTo(flags), "the decoder silently normalized the flags");
-            Assert.That(FrameTxValidation.IsWellFormed(decoded, postTxEnabled: true, out string? error), Is.False);
+            Assert.That(FrameTxValidation.IsWellFormed(decoded, assertEnabled: true, out string? error), Is.False);
             Assert.That(error, Is.EqualTo(expectedError));
         }
     }

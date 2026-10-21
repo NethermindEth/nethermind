@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
@@ -81,5 +82,30 @@ public class MainProcessingContextTests
                 .TestObject);
 
         Assert.That(totalTransactionProcessed, Is.EqualTo(1));
+    }
+
+    [Test]
+    public async Task HasSubscribers_follows_TransactionProcessed_subscriptions()
+    {
+        await using IContainer ctx = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(Cancun.Instance))
+            .Build();
+
+        IMainProcessingContext mainProcessingContext = ctx.Resolve<IMainProcessingContext>();
+        BlockProcessor.BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler handler =
+            (BlockProcessor.BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler)mainProcessingContext;
+        EventHandler<TxProcessedEventArgs> subscriber = static (_, _) => { };
+
+        bool before = handler.HasSubscribers;
+        mainProcessingContext.TransactionProcessed += subscriber;
+        bool subscribed = handler.HasSubscribers;
+        mainProcessingContext.TransactionProcessed -= subscriber;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(before, Is.False);
+            Assert.That(subscribed, Is.True);
+            Assert.That(handler.HasSubscribers, Is.False);
+        }
     }
 }

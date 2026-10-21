@@ -349,13 +349,17 @@ internal static partial class SszCodecHelpers
         }
     }
 
+    // Inlined into every byte-list element's decode, where the message's string handler would be zeroed per element.
     internal static void ValidateSszListLimit<T>(ReadOnlySpan<T> items, ulong limit, string typeName, string fieldName)
     {
         if ((ulong)items.Length > limit)
         {
-            ThrowInvalidSszValue(typeName, fieldName, $"expected at most {limit} elements but found {items.Length}.");
+            ThrowSszListLimitExceeded(items.Length, limit, typeName, fieldName);
         }
     }
+
+    private static void ThrowSszListLimitExceeded(int length, ulong limit, string typeName, string fieldName) =>
+        ThrowInvalidSszValue(typeName, fieldName, $"expected at most {limit} elements but found {length}.");
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static byte[] DecodeSszByteList(ReadOnlySpan<byte> data, ulong limit, string typeName, string fieldName)
@@ -634,7 +638,7 @@ internal static partial class SszCodecHelpers
 
         string lowerCased = name.Substring(0, 1).ToLower() + name.Substring(1);
 
-        return lowerCased == "data" || lowerCased == "container" || lowerCased.Contains("offset") ? $"_{lowerCased}" : lowerCased;
+        return lowerCased == "data" || lowerCased == "container" || lowerCased == "decoded" || lowerCased.Contains("offset") ? $"_{lowerCased}" : lowerCased;
     }
 
     /// <summary>
@@ -1345,7 +1349,8 @@ using static Nethermind.Serialization.SszCodecHelpers;
         int firstOffset = DecodeSszOffset(data.Slice(0, 4));
         int length = ValidateSszVariableItemCount(data, firstOffset, ""{decl.TypeReferenceName}[]"")" : $@"ValidateSszMultipleOf(data.Length, {decl.StaticLength}, ""{decl.TypeReferenceName}[]"");
         int length = data.Length / {decl.StaticLength}")};
-        container = new {decl.TypeReferenceName}[length];
+        {decl.TypeReferenceName}[] decoded = new {decl.TypeReferenceName}[length];
+        container = decoded;
 {Whitespace}
         {(decl.IsVariable ? @$"int index = 0;
         int offset = firstOffset;
@@ -1353,14 +1358,14 @@ using static Nethermind.Serialization.SszCodecHelpers;
         {{
             int nextOffset = DecodeSszOffset(data.Slice(nextOffsetIndex, {SszType.PointerLength}));
             ValidateSszNextOffset(data, offset, nextOffset, ""{decl.TypeReferenceName}[]"");
-            {DecodeCollectionItem("data.Slice(offset, nextOffset - offset)", "container[index]")}
+            {DecodeCollectionItem("data.Slice(offset, nextOffset - offset)", "decoded[index]")}
             offset = nextOffset;
         }}
 {Whitespace}
-        {DecodeCollectionItem("data.Slice(offset)", "container[index]")}" : @$"int offset = 0;
+        {DecodeCollectionItem("data.Slice(offset)", "decoded[index]")}" : @$"int offset = 0;
         for(int index = 0; index < length; index++)
         {{
-            Decode(data.Slice(offset, {decl.StaticLength}), out container[index]);
+            Decode(data.Slice(offset, {decl.StaticLength}), out decoded[index]);
             offset += {decl.StaticLength};
         }}")}
     }}
@@ -1552,7 +1557,8 @@ using static Nethermind.Serialization.SszCodecHelpers;
         int firstOffset = DecodeSszOffset(data.Slice(0, 4));
         int length = ValidateSszVariableItemCount(data, firstOffset, ""{decl.TypeReferenceName}[]"")" : $@"ValidateSszMultipleOf(data.Length, {decl.StaticLength}, ""{decl.TypeReferenceName}[]"");
         int length = data.Length / {decl.StaticLength}")};
-        container = new {decl.TypeReferenceName}[length];
+        {decl.TypeReferenceName}[] decoded = new {decl.TypeReferenceName}[length];
+        container = decoded;
 {Whitespace}
         {(decl.IsVariable ? @$"int index = 0;
         int offset = firstOffset;
@@ -1560,14 +1566,14 @@ using static Nethermind.Serialization.SszCodecHelpers;
         {{
             int nextOffset = DecodeSszOffset(data.Slice(nextOffsetIndex, {SszType.PointerLength}));
             ValidateSszNextOffset(data, offset, nextOffset, ""{decl.TypeReferenceName}[]"");
-            Decode(data.Slice(offset, nextOffset - offset), out container[index]);
+            Decode(data.Slice(offset, nextOffset - offset), out decoded[index]);
             offset = nextOffset;
         }}
 {Whitespace}
-        Decode(data.Slice(offset), out container[index]);" : @$"int offset = 0;
+        Decode(data.Slice(offset), out decoded[index]);" : @$"int offset = 0;
         for(int index = 0; index < length; index++)
         {{
-            Decode(data.Slice(offset, {decl.StaticLength}), out container[index]);
+            Decode(data.Slice(offset, {decl.StaticLength}), out decoded[index]);
             offset += {decl.StaticLength};
         }}")}
     }}
@@ -1751,7 +1757,8 @@ using static Nethermind.Serialization.SszCodecHelpers;
         ValidateSszMinimumLength(data.Length, {SszType.PointerLength}, ""{decl.TypeReferenceName}[]"");
         int firstOffset = DecodeSszOffset(data.Slice(0, 4));
         int length = ValidateSszVariableItemCount(data, firstOffset, ""{decl.TypeReferenceName}[]"");
-        container = new {decl.TypeReferenceName}[length];
+        {decl.TypeReferenceName}[] decoded = new {decl.TypeReferenceName}[length];
+        container = decoded;
 {Whitespace}
         int index = 0;
         int offset = firstOffset;
@@ -1759,11 +1766,11 @@ using static Nethermind.Serialization.SszCodecHelpers;
         {{
             int nextOffset = DecodeSszOffset(data.Slice(nextOffsetIndex, {SszType.PointerLength}));
             ValidateSszNextOffset(data, offset, nextOffset, ""{decl.TypeReferenceName}[]"");
-            Decode(data.Slice(offset, nextOffset - offset), out container[index]);
+            Decode(data.Slice(offset, nextOffset - offset), out decoded[index]);
             offset = nextOffset;
         }}
 {Whitespace}
-        Decode(data.Slice(offset), out container[index]);
+        Decode(data.Slice(offset), out decoded[index]);
     }}
 {Whitespace}
     public static void Decode(ReadOnlySpan<byte> data, out {decl.TypeReferenceName} container)

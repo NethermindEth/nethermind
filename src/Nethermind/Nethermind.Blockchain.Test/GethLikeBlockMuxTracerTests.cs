@@ -26,9 +26,12 @@ public class GethLikeBlockMuxTracerTests
         Child child = new(count, resource);
         using GethLikeBlockMuxTracer mux = Create(child);
         mux.StartNewTxTrace(Build.A.Transaction.TestObject);
-        Assert.That(Assert.Throws<InvalidOperationException>(() => mux.BuildResult())!.Message,
-            Is.EqualTo("Mux child returned a different number of transaction traces."));
-        Assert.That(resource.Disposals, Is.EqualTo(count));
+        InvalidOperationException? exception = Assert.Throws<InvalidOperationException>(() => mux.BuildResult());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exception!.Message, Is.EqualTo("Mux child returned a different number of transaction traces."));
+            Assert.That(resource.Disposals, Is.EqualTo(count));
+        }
     }
 
     [Test]

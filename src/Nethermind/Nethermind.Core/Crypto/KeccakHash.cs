@@ -159,7 +159,7 @@ public sealed partial class KeccakHash
     /// <summary>Computes the Keccak-256 digest of each of the first <paramref name="count"/> of <paramref name="nodes"/>
     /// into the same index of <paramref name="hashes"/>.</summary>
     /// <remarks>The guest keeps <paramref name="nodes"/>, which must not change afterwards, with the sponge states the
-    /// leading rate blocks of its full branches leave, so that a branch re-encoded from one of them is re-hashed from
+    /// leading rate blocks of its nodes leave, so that a branch re-encoded from one of them is re-hashed from
     /// its first changed block. See <c>KeccakHash.std.cs</c> and <c>.zkevm.cs</c>.</remarks>
     internal static partial void ComputeHash256OfWitnessNodes(byte[][] nodes, int count, Span<ValueHash256> hashes);
 
@@ -168,6 +168,11 @@ public sealed partial class KeccakHash
     /// <remarks>The trie node the entry resolves reads the tag back. A no-op on the host.
     /// See <c>KeccakHash.std.cs</c> and <c>.zkevm.cs</c>.</remarks>
     internal static partial void NoteWitnessNodeLoaded(nint tag);
+
+    /// <summary>Hands over <paramref name="consumed"/>, decoded input no longer read, to hold the sponge states that
+    /// <see cref="ComputeHash256OfWitnessNodes"/> keeps.</summary>
+    /// <remarks>A no-op on the host. See <c>KeccakHash.std.cs</c> and <c>.zkevm.cs</c>.</remarks>
+    internal static partial void DonateConsumedInput(ReadOnlySpan<byte> consumed);
 
     /// <summary>Writes the Keccak-256 digest of <paramref name="input"/> to <paramref name="output"/> through
     /// <see cref="ComputeHash256"/>, where that is the target's faster path.</summary>

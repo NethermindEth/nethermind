@@ -14,5 +14,6 @@ public class DatabaseMigrationsModule : Autofac.Module
         .AddSingleton<IDatabaseMigration, ReceiptMigration>()
         .Bind<IReceiptsMigration, ReceiptMigration>()
         .AddSingleton<IDatabaseMigration, ReceiptFixMigration>()
-        .AddSingleton<IDatabaseMigration, TotalDifficultyFixMigration>();
+        .AddSingleton<IDatabaseMigration, TotalDifficultyFixMigration>()
+        .AddSingleton<IDatabaseMigration, ReceiptTxHashesMigration>();
 }

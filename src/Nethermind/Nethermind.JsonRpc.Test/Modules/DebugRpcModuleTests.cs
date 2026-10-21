@@ -3,12 +3,17 @@
 
 using System;
 using System.Buffers;
+using System.Collections.Concurrent;
+using System.Collections.Frozen;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Text;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Core;
 using Nethermind.Core.Container;
@@ -18,6 +23,8 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
+using Nethermind.Evm.CodeAnalysis;
+using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
@@ -28,6 +35,7 @@ using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.State;
 using Newtonsoft.Json.Linq;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Modules;
@@ -315,6 +323,30 @@ public partial class DebugRpcModuleTests
             Assert.That((int?)json["error"]?["code"], Is.EqualTo(-32000), response);
             Assert.That((string?)json["error"]?["message"], Is.EqualTo($"transaction index {block.Transactions.Length} out of range for block {block.Hash}"), response);
             Assert.That(json["result"], Is.Null, response);
+        }
+    }
+
+    [Test]
+    public async Task Debug_traceCall_txIndex_checks_parent_state_before_bounds()
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
+        Block parent = chain.BlockTree.Head!;
+        Block empty = await chain.AddBlock();
+        parent.Header.StateRoot = TestItem.KeccakA;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chain.Bridge.HasStateForBlock(parent.Header), Is.False);
+            Assert.That(chain.Bridge.HasStateForBlock(empty.Header), Is.True);
+        }
+
+        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceCall",
+            new { to = TestItem.AddressD.ToString(), gas = "0x186a0" }, empty.Hash!.ToString(), new { txIndex = "0x1" });
+        JToken json = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.ResourceUnavailable), response);
+            Assert.That((string?)json["error"]?["message"],
+                Is.EqualTo($"No state available for block {parent.Header.ToString(BlockHeader.Format.FullHashAndNumber)}"), response);
         }
     }
 
@@ -790,13 +822,9 @@ public partial class DebugRpcModuleTests
         RpcTest.AssertSuccess(response);
     }
 
-    [TestCase(null, null)]
-    [TestCase(null, "callTracer")]
-    [TestCase(false, null)]
-    [TestCase(false, "callTracer")]
-    [TestCase(true, null)]
-    [TestCase(true, "callTracer")]
-    public async Task Debug_traceCall_validates_requested_chain_id(bool? mismatch, string? tracer)
+    [Test]
+    public async Task Debug_traceCall_validates_requested_chain_id(
+        [Values(null, false, true)] bool? mismatch, [Values(null, "callTracer")] string? tracer)
     {
         TestSpecProvider provider = new(Cancun.Instance);
         using Context ctx = await Context.Create(provider);
@@ -816,45 +844,84 @@ public partial class DebugRpcModuleTests
         }
         else
         {
-            Assert.That(json["error"], Is.Null);
-            Assert.That(json["result"], Is.Not.Null);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(json["error"], Is.Null);
+                Assert.That(json["result"], Is.Not.Null);
+            }
+        }
+    }
+
+    [TestCase(TxType.SetCode, null, null)]
+    [TestCase(TxType.SetCode, null, "0x0")]
+    [TestCase(TxType.Blob, "0x0", null)]
+    [TestCase(TxType.Blob, "0x0", "0x0")]
+    [TestCase(TxType.Blob, "0x1", null)]
+    [TestCase(TxType.Blob, "0x1", "0x0")]
+    public async Task Debug_traceCall_rejects_transaction_types_before_activation(TxType type, string? blobFeeCap, string? txIndex)
+    {
+        IReleaseSpec spec = type == TxType.SetCode ? Cancun.Instance : Shanghai.Instance;
+        using Context ctx = await Context.Create(new TestSpecProvider(spec));
+        Dictionary<string, object> call = new()
+        {
+            ["to"] = TestItem.AddressC.ToString(),
+            ["gas"] = "0x186a0",
+            ["type"] = "0x" + ((byte)type).ToString("x")
+        };
+        if (type == TxType.SetCode)
+            call["authorizationList"] = new[] { new { chainId = "0x1", address = TestItem.AddressB.ToString(), nonce = "0x0", yParity = "0x0", r = "0x1", s = "0x1" } };
+        else
+        {
+            call["maxFeePerBlobGas"] = blobFeeCap!;
+            call["blobVersionedHashes"] = new[] { "0x01" + new string('0', 62) };
+        }
+
+        string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall", call, "latest", new { txIndex });
+        JToken json = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(json["result"], Is.Null, response);
+            Assert.That((string?)json["error"]?["message"], Is.EqualTo(TxErrorMessages.InvalidTxType(spec.Name)), response);
+            Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidInput), response);
         }
     }
 
     private static IEnumerable<TestCaseData> UnsupportedBlockOverrides()
     {
-        (string Json, string? Field)[] cases =
+        (string Json, string? Error, int? Code)[] cases =
         [
-            ("{\"beaconRoot\":\"0x0000000000000000000000000000000000000000000000000000000000000000\"}", "beaconRoot"),
-            ("{\"withdrawals\":[]}", "withdrawals"),
-            ("{\"beaconRoot\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"withdrawals\":[]}", "beaconRoot"),
-            ("{\"beaconRoot\":null,\"withdrawals\":null}", null)
+            ("{\"beaconRoot\":\"0x0000000000000000000000000000000000000000000000000000000000000000\"}", "block override \"beaconRoot\" is not supported for this RPC method", ErrorCodes.InvalidInput),
+            ("{\"withdrawals\":[]}", BlockOverride.WithdrawalsNotSupported, ErrorCodes.InvalidParams),
+            ("{\"beaconRoot\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"withdrawals\":[]}", BlockOverride.WithdrawalsNotSupported, ErrorCodes.InvalidParams),
+            ("{\"beaconRoot\":null,\"withdrawals\":null}", null, null)
         ];
-        foreach ((string json, string? field) in cases)
+        foreach ((string json, string? error, int? code) in cases)
             foreach (string? tracer in new string?[] { null, "callTracer" })
-                yield return new TestCaseData(json, field, tracer);
+                yield return new TestCaseData(json, error, code, tracer);
     }
 
     [TestCaseSource(nameof(UnsupportedBlockOverrides))]
-    public async Task Debug_traceCall_validates_unsupported_block_overrides(string overrides, string? rejectedField, string? tracer)
+    public async Task Debug_traceCall_validates_unsupported_block_overrides(string overrides, string? expectedError, int? expectedCode, string? tracer)
     {
         using Context ctx = await Context.Create();
         string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall",
             new { to = TestItem.AddressC.ToString(), gas = "0x186a0" }, "latest",
             new { tracer, blockOverrides = JsonSerializer.Deserialize<JsonElement>(overrides) });
         JToken json = JToken.Parse(response);
-        if (rejectedField is null)
+        if (expectedError is null)
         {
-            Assert.That(json["error"], Is.Null);
-            Assert.That(json["result"], Is.Not.Null);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(json["error"], Is.Null);
+                Assert.That(json["result"], Is.Not.Null);
+            }
         }
         else
         {
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(json["error"]?["code"]?.Value<int>(), Is.EqualTo(ErrorCodes.InvalidInput));
-                Assert.That(json["error"]?["message"]?.Value<string>(),
-                    Is.EqualTo($"block override \"{rejectedField}\" is not supported for this RPC method"));
+                Assert.That(json["error"]?["code"]?.Value<int>(), Is.EqualTo(expectedCode));
+                Assert.That(json["error"]?["message"]?.Value<string>(), Is.EqualTo(expectedError));
             }
         }
     }
@@ -882,10 +949,8 @@ public partial class DebugRpcModuleTests
         }
     }
 
-    [TestCase(null)]
-    [TestCase("null")]
-    [TestCase("{}")]
-    public async Task Debug_traceCall_mux_accepts_empty_configuration(string? config)
+    [Test]
+    public async Task Debug_traceCall_mux_accepts_empty_configuration([Values(null, "null", "{}")] string? config)
     {
         using Context ctx = await Context.Create();
         Dictionary<string, object> options = new() { ["tracer"] = "muxTracer" };
@@ -897,9 +962,8 @@ public partial class DebugRpcModuleTests
         Assert.That(JToken.Parse(response)["result"], Is.EqualTo(JObject.Parse("{}")).Using(JToken.EqualityComparer));
     }
 
-    [TestCase(null)]
-    [TestCase("0x0")]
-    public async Task Debug_traceCall_mux_matches_individual_native_and_nested_tracers(string? txIndex)
+    [Test]
+    public async Task Debug_traceCall_mux_matches_individual_native_and_nested_tracers([Values(null, "0x0")] string? txIndex)
     {
         using Context ctx = await Context.Create();
         Dictionary<string, object> children = new()
@@ -1041,9 +1105,8 @@ public partial class DebugRpcModuleTests
         }
     }
 
-    [TestCase(null)]
-    [TestCase("0x0")]
-    public async Task Debug_traceCall_rejects_prestate_diff_with_include_empty(string? txIndex)
+    [Test]
+    public async Task Debug_traceCall_rejects_prestate_diff_with_include_empty([Values(null, "0x0")] string? txIndex)
     {
         using Context ctx = await Context.Create();
         string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall",
@@ -1057,9 +1120,8 @@ public partial class DebugRpcModuleTests
         }
     }
 
-    [TestCase(null)]
-    [TestCase("callTracer")]
-    public async Task Debug_traceCall_rejects_conflicting_storage_overrides(string? tracer)
+    [Test]
+    public async Task Debug_traceCall_rejects_conflicting_storage_overrides([Values(null, "callTracer")] string? tracer)
     {
         using Context ctx = await Context.Create();
         const string address = "0xc200000000000000000000000000000000000000";
@@ -1154,12 +1216,287 @@ public partial class DebugRpcModuleTests
     }
 
     [Test]
-    public async Task Debug_traceCall_selects_block_and_state_before_conflicting_storage(
-        [Values("pending", "missing", "unavailable", "unavailable-parent")] string selection, [Values] bool streaming)
+    public async Task Debug_traceCall_rejects_precompile_move_collision_before_fee_validation([Values] bool streaming)
     {
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
             .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = streaming }).Build();
-        if (selection == "unavailable") chain.BlockTree.Head!.Header.StateRoot = TestItem.KeccakA;
+        Block block = chain.BlockTree.Head!;
+        BlockHeader parent = chain.BlockTree.FindHeader(block.ParentHash!)!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(block.IsGenesis, Is.False);
+            Assert.That(parent, Is.Not.Null);
+            Assert.That(chain.Bridge.HasStateForBlock(block.Header), Is.True);
+            Assert.That(chain.Bridge.HasStateForBlock(parent), Is.True);
+        }
+
+        const string source = "0x0000000000000000000000000000000000000001";
+        const string destination = "0x0000000000000000000000000000000000000002";
+        object options = new
+        {
+            stateOverrides = new Dictionary<string, object>
+            {
+                [source] = new { movePrecompileToAddress = destination },
+                [destination] = new { }
+            }
+        };
+        Dictionary<string, object> mixedFees = new()
+        {
+            ["from"] = TestItem.AddressB.ToString(),
+            ["to"] = TestItem.AddressD.ToString(),
+            ["gas"] = "0x186a0",
+            ["gasPrice"] = "0x1",
+            ["maxFeePerGas"] = "0x2"
+        };
+        Dictionary<string, object> validFees = new(mixedFees);
+        validFees.Remove("maxFeePerGas");
+        string selector = block.Hash!.ToString();
+        string feeResponse = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceCall", mixedFees, selector);
+        AssertTraceCallInputError(feeResponse, "both gasPrice and (maxFeePerGas or maxPriorityFeePerGas) specified");
+
+        string collisionResponse = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceCall", validFees, selector, options);
+        string expectedCollision = $"account {destination} is already overridden";
+        AssertTraceCallInputError(collisionResponse, expectedCollision);
+
+        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceCall", mixedFees, selector, options);
+        AssertTraceCallInputError(response, expectedCollision);
+    }
+
+    private static void AssertTraceCallInputError(string response, string message)
+    {
+        JToken json = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidInput), response);
+            Assert.That((string?)json["error"]?["message"], Is.EqualTo(message), response);
+            Assert.That(json["result"], Is.Null, response);
+            Assert.That(json["error"]?["data"], Is.Null, response);
+            Assert.That((int?)json["id"], Is.EqualTo(67), response);
+        }
+    }
+
+    [Test]
+    public async Task Debug_traceCall_orders_override_validation(
+        [Values] bool streaming, [Values] bool reverse,
+        [Values("move-before-storage", "storage-before-move", "source-before-destination", "move-before-own-storage")] string scenario)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = streaming }).Build();
+        Address source = scenario == "source-before-destination" ? Address.Zero : new("0x0000000000000000000000000000000000000001");
+        Address destination = new("0x0000000000000000000000000000000000000002");
+        Dictionary<string, object> sourceOverride = new() { ["movePrecompileToAddress"] = destination.ToString() };
+        if (scenario == "move-before-own-storage")
+        {
+            sourceOverride["state"] = new { };
+            sourceOverride["stateDiff"] = new { };
+        }
+        Dictionary<string, object> overrides = new()
+        {
+            [source.ToString()] = sourceOverride,
+            [destination.ToString()] = new { }
+        };
+        if (scenario is "move-before-storage" or "storage-before-move")
+            overrides[(scenario == "move-before-storage" ? new Address("0x0000000000000000000000000000000000000003") : Address.Zero).ToString()] = new { state = new { }, stateDiff = new { } };
+        if (reverse)
+        {
+            KeyValuePair<string, object>[] entries = new KeyValuePair<string, object>[overrides.Count];
+            ((ICollection<KeyValuePair<string, object>>)overrides).CopyTo(entries, 0);
+            Array.Reverse(entries);
+            overrides.Clear();
+            foreach (KeyValuePair<string, object> entry in entries) overrides.Add(entry.Key, entry.Value);
+        }
+        string expected = scenario switch
+        {
+            "source-before-destination" => $"Account {source} is not a precompile",
+            "storage-before-move" => $"account {Address.Zero} has both 'state' and 'stateDiff'",
+            _ => $"account {destination} is already overridden"
+        };
+        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceCall",
+            new { to = TestItem.AddressC.ToString(), gasPrice = "0x1", maxFeePerGas = "0x2" }, "latest",
+            new { stateOverrides = overrides });
+        AssertTraceCallInputError(response, expected);
+    }
+
+    [Test]
+    public async Task Debug_traceCall_uses_the_trace_repository_for_custom_precompile_preflight(
+        [Values] bool streaming, [Values] bool indexed)
+    {
+        Address source = new("0x0000000000000000000000000000000000010001");
+        Address destination = new("0x0000000000000000000000000000000000020000");
+        TestSpecProvider specs = new(Berlin.Instance)
+        {
+            ForkOnBlockNumber = 100,
+            NextForkSpec = new ExtraPrecompileSpec(source)
+        };
+        IPrecompileProvider provider = Substitute.For<IPrecompileProvider>();
+        Dictionary<AddressAsKey, CodeInfo> precompiles = new(new EthereumPrecompileProvider().GetPrecompiles())
+        {
+            [source] = new CodeInfo(IdentityPrecompile.Instance)
+        };
+        provider.GetPrecompiles().Returns(precompiles.ToFrozenDictionary());
+        ConcurrentBag<PrecompileRepositoryProbe> repositories = [];
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = streaming }).Build(builder => builder
+                .AddSingleton<ISpecProvider>(specs)
+                .AddSingleton<IPrecompileProvider>(provider)
+                .AddDecorator<ICodeInfoRepository>((_, inner) =>
+                {
+                    PrecompileRepositoryProbe probe = new(inner, source);
+                    repositories.Add(probe);
+                    return probe;
+                })
+                .AddDecorator<IOverridableCodeInfoRepository>((_, inner) =>
+                {
+                    OverridablePrecompileRepositoryProbe probe = new(inner, source);
+                    repositories.Add(probe);
+                    return probe;
+                }));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(specs.GetSpec((ForkActivation)100).IsPrecompile(source), Is.True);
+            Assert.That(chain.SpecProvider.GetSpec((ForkActivation)100).IsPrecompile(source), Is.True,
+                "the test-chain spec wrapper must retain the custom precompile set");
+            Assert.That(chain.SpecProvider.GetSpec((ForkActivation)1).IsPrecompile(source), Is.False);
+        }
+        IDebugRpcModule module = chain.DebugRpcModule;
+        Hash256 originalRoot = chain.BlockTree.Head!.StateRoot!;
+        Dictionary<string, object> mixedFees = new()
+        {
+            ["from"] = TestItem.AddressB.ToString(),
+            ["to"] = destination.ToString(),
+            ["gas"] = "0x186a0",
+            ["gasPrice"] = "0x1",
+            ["maxFeePerGas"] = "0x2"
+        };
+        Dictionary<string, object> collision = new()
+        {
+            [source.ToString()] = new { movePrecompileToAddress = destination.ToString() },
+            [destination.ToString()] = new { }
+        };
+        string inactive = await RpcTest.TestSerializedRequest(module, "debug_traceCall", mixedFees, "latest",
+            new { stateOverrides = collision });
+        AssertTraceCallInputError(inactive, $"Account {source} is not a precompile");
+        object collisionOptions = new
+        {
+            txIndex = indexed ? "0x0" : null,
+            blockOverrides = new { number = "0x64" },
+            stateOverrides = collision
+        };
+        string rejected = await RpcTest.TestSerializedRequest(module, "debug_traceCall", mixedFees, "latest", collisionOptions);
+        AssertTraceCallInputError(rejected, $"account {destination} is already overridden");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(CountRepositoryReads(repositories).Precompile, Is.GreaterThan(0));
+            Assert.That(CountRepositoryReads(repositories).Code, Is.Zero, "preflight must not use the stateful lookup");
+            Assert.That(chain.BlockTree.Head.StateRoot, Is.EqualTo(originalRoot));
+        }
+
+        object validMove = new
+        {
+            txIndex = indexed ? "0x0" : null,
+            blockOverrides = new { number = "0x64" },
+            stateOverrides = new Dictionary<string, object> { [source.ToString()] = new { movePrecompileToAddress = destination.ToString() } }
+        };
+        string feeOnly = await RpcTest.TestSerializedRequest(module, "debug_traceCall", mixedFees, "latest", validMove);
+        AssertTraceCallInputError(feeOnly, "both gasPrice and (maxFeePerGas or maxPriorityFeePerGas) specified");
+        Assert.That(CountRepositoryReads(repositories).Code, Is.Zero);
+
+        string success = await RpcTest.TestSerializedRequest(module, "debug_traceCall",
+            new { from = TestItem.AddressB.ToString(), to = destination.ToString(), gas = "0x186a0", data = "0x010203" }, "latest", validMove);
+        JToken json = JToken.Parse(success);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(json["error"], Is.Null, success);
+            Assert.That((bool?)json["result"]?["failed"], Is.False, success);
+            Assert.That((string?)json["result"]?["returnValue"], Is.EqualTo("0x010203"), success);
+            int moves = 0;
+            int sourceReads = 0;
+            foreach (PrecompileRepositoryProbe probe in repositories)
+            {
+                if (probe is OverridablePrecompileRepositoryProbe overridable)
+                {
+                    moves += overridable.Moves;
+                    Assert.That(probe.SourceCodeReads, Is.EqualTo(overridable.Moves));
+                    if (overridable.Moves != 0)
+                        Assert.That(probe.PrecompileReads, Is.GreaterThan(0),
+                            "preflight must use the same decorator as override application");
+                }
+                else
+                    sourceReads += probe.SourceCodeReads;
+            }
+            Assert.That(sourceReads, Is.EqualTo(2),
+                "application must retain its source-check and move lookups");
+            Assert.That(moves, Is.GreaterThan(0));
+            Assert.That(chain.BlockTree.Head.StateRoot, Is.EqualTo(originalRoot));
+        }
+        int readsAfterMove = CountRepositoryReads(repositories).Code;
+        string afterReset = await RpcTest.TestSerializedRequest(module, "debug_traceCall", mixedFees, "latest", collisionOptions);
+        AssertTraceCallInputError(afterReset, $"account {destination} is already overridden");
+        Assert.That(CountRepositoryReads(repositories).Code, Is.EqualTo(readsAfterMove));
+    }
+
+    private static (int Precompile, int Code) CountRepositoryReads(IEnumerable<PrecompileRepositoryProbe> repositories)
+    {
+        int precompile = 0;
+        int code = 0;
+        foreach (PrecompileRepositoryProbe probe in repositories)
+        {
+            precompile += probe.PrecompileReads;
+            code += probe.SourceCodeReads;
+        }
+        return (precompile, code);
+    }
+
+    private sealed class ExtraPrecompileSpec(Address source) : ReleaseSpecDecorator(Berlin.Instance), IReleaseSpec
+    {
+        FrozenSet<AddressAsKey> IReleaseSpec.Precompiles { get; } =
+            new HashSet<AddressAsKey>(((IReleaseSpec)Berlin.Instance).Precompiles) { source }.ToFrozenSet();
+        bool IReleaseSpec.IsPrecompile(Address address) => address == source || ((IReleaseSpec)Berlin.Instance).IsPrecompile(address);
+    }
+
+    private class PrecompileRepositoryProbe(ICodeInfoRepository inner, Address source) : ICodeInfoRepository
+    {
+        public int PrecompileReads;
+        public int SourceCodeReads;
+        public bool IsCodeOverridable => inner.IsCodeOverridable;
+        public IPrecompile? GetPrecompile(Address address, IReleaseSpec spec)
+        {
+            if (address == source) Interlocked.Increment(ref PrecompileReads);
+            return inner.GetPrecompile(address, spec);
+        }
+        public CodeInfo GetCachedCodeInfo(Address address, bool followDelegation, IReleaseSpec spec, out Address? delegation)
+        {
+            if (address == source) Interlocked.Increment(ref SourceCodeReads);
+            return inner.GetCachedCodeInfo(address, followDelegation, spec, out delegation);
+        }
+        public CodeInfo GetDelegatedCodeInfo(Address address, IReleaseSpec spec) => inner.GetDelegatedCodeInfo(address, spec);
+        public void InsertCode(ReadOnlyMemory<byte> code, Address address, IReleaseSpec spec) => inner.InsertCode(code, address, spec);
+        public void InsertTransientCode(ReadOnlyMemory<byte> code, Address address, IReleaseSpec spec) => inner.InsertTransientCode(code, address, spec);
+        public void SetDelegation(Address codeSource, Address authority, IReleaseSpec spec) => inner.SetDelegation(codeSource, authority, spec);
+        public bool TryGetDelegation(Address address, IReleaseSpec spec, [NotNullWhen(true)] out Address? delegatedAddress) => inner.TryGetDelegation(address, spec, out delegatedAddress);
+    }
+
+    private sealed class OverridablePrecompileRepositoryProbe(IOverridableCodeInfoRepository inner, Address source)
+        : PrecompileRepositoryProbe(inner, source), IOverridableCodeInfoRepository
+    {
+        public int Moves;
+        public void SetCodeOverride(IReleaseSpec spec, Address address, CodeInfo code) => inner.SetCodeOverride(spec, address, code);
+        public void MovePrecompile(IReleaseSpec spec, Address source, Address destination)
+        {
+            Interlocked.Increment(ref Moves);
+            inner.MovePrecompile(spec, source, destination);
+        }
+        public void ResetOverrides() => inner.ResetOverrides();
+        public void ResetPrecompileOverrides(IReleaseSpec spec) => inner.ResetPrecompileOverrides(spec);
+    }
+
+    [Test]
+    public async Task Debug_traceCall_selects_block_and_state_before_conflicting_storage(
+        [Values("pending", "missing", "unavailable", "unavailable-parent", "unavailable-with-withdrawals")] string selection, [Values] bool streaming, [Values] bool movePrecompile)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = streaming }).Build();
+        if (selection is "unavailable" or "unavailable-with-withdrawals") chain.BlockTree.Head!.Header.StateRoot = TestItem.KeccakA;
         if (selection == "unavailable-parent")
         {
             Block parent = chain.BlockTree.Head!;
@@ -1177,10 +1514,20 @@ public partial class DebugRpcModuleTests
             new
             {
                 txIndex = selection == "unavailable-parent" ? "0x0" : null,
-                stateOverrides = new Dictionary<string, object> { [TestItem.AddressC.ToString()] = new { state = new { }, stateDiff = new { } } }
+                blockOverrides = selection == "unavailable-with-withdrawals" ? new { withdrawals = Array.Empty<object>() } : null,
+                stateOverrides = new Dictionary<string, object>
+                {
+                    [TestItem.AddressC.ToString()] = new
+                    {
+                        state = new { },
+                        stateDiff = new { },
+                        movePrecompileToAddress = movePrecompile ? TestItem.AddressB.ToString() : null
+                    }
+                }
             });
         (int code, string message) = selection switch
         {
+            "unavailable-with-withdrawals" => (ErrorCodes.InvalidParams, BlockOverride.WithdrawalsNotSupported),
             "pending" => (ErrorCodes.InvalidInput, "tracing on top of pending is not supported"),
             "missing" => (ErrorCodes.ResourceNotFound, "header not found"),
             _ => (ErrorCodes.ResourceUnavailable, "No state available")
@@ -1434,12 +1781,20 @@ public partial class DebugRpcModuleTests
         new TestCaseData(true, true, false, false, true).SetName("Prestate_diff_includes_storage_clear_without_code"),
         new TestCaseData(true, false, true, false, false).SetName("Prestate_diff_omits_disabled_storage_changes"),
         new TestCaseData(true, false, false, true, false).SetName("Prestate_diff_omits_reverted_storage_write"),
-        new TestCaseData(true, false, false, true, true).SetName("Prestate_diff_omits_reverted_storage_clear")
+        new TestCaseData(true, false, false, true, true).SetName("Prestate_diff_omits_reverted_storage_clear"),
+        new TestCaseData(false, false, false, false, false, """{"disableCode":null,"disableStorage":null}""").SetName("Prestate_null_field_options_default_false"),
+        new TestCaseData(false, true, true, false, false, """{"disableCode":true,"disableCode":null,"disableStorage":true,"disableStorage":null}""").SetName("Prestate_null_field_options_preserve_true"),
+        new TestCaseData(false, false, false, false, false, """{"disableCode":false,"disableCode":null,"disableStorage":false,"disableStorage":null}""").SetName("Prestate_null_field_options_preserve_false"),
+        new TestCaseData(false, true, true, false, false, """{"disableCode":false,"disableCode":null,"disableCode":true,"disableStorage":false,"disableStorage":null,"disableStorage":true}""").SetName("Prestate_field_options_last_true_wins"),
+        new TestCaseData(false, false, false, false, false, """{"disableCode":true,"disableCode":null,"disableCode":false,"disableStorage":true,"disableStorage":null,"disableStorage":false}""").SetName("Prestate_field_options_last_false_wins"),
+        new TestCaseData(false, true, false, false, false, """{"disableCode":"true","disableCode":null,"disableStorage":"false","disableStorage":null}""").SetName("Prestate_null_string_disableCode_preserves_true_with_storage"),
+        new TestCaseData(true, true, true, false, false, """{"diffMode":true,"disableCode":"true","disableCode":null,"disableStorage":"true","disableStorage":null}""").SetName("Prestate_diff_null_field_options_preserve_string_true"),
+        new TestCaseData(true, false, false, false, false, """{"diffMode":true,"disableCode":"false","disableCode":null,"disableStorage":"false","disableStorage":null}""").SetName("Prestate_diff_null_field_options_preserve_string_false")
     ];
 
     [TestCaseSource(nameof(PrestateFieldOptionCases))]
     public async Task Debug_traceCall_prestate_respects_field_options(
-        bool diffMode, bool disableCode, bool disableStorage, bool revert, bool clearStorage)
+        bool diffMode, bool disableCode, bool disableStorage, bool revert, bool clearStorage, string? config = null)
     {
         using Context ctx = await Context.Create();
         string sender = TestItem.AddressA.ToString();
@@ -1461,7 +1816,7 @@ public partial class DebugRpcModuleTests
             new
             {
                 tracer = "prestateTracer",
-                tracerConfig = new { diffMode, disableCode, disableStorage },
+                tracerConfig = JsonSerializer.Deserialize<JsonElement>(config ?? JsonSerializer.Serialize(new { diffMode, disableCode, disableStorage })),
                 stateOverrides = overrides,
                 blockOverrides = new { feeRecipient = beneficiary }
             });

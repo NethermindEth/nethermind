@@ -116,12 +116,12 @@ public class ReorgTests
             stateProvider,
             blockhashProvider,
             new InclusionListSatisfactionChecker(MainnetSpecProvider.Instance, Substitute.For<ITxValidator>()),
-            LimboLogs.Instance);
+            LimboLogs.Instance,
+            Substitute.For<IWorldStateManager>());
 
         _blockchainProcessor = new BlockchainProcessor(
             _blockTree,
             branchProcessor,
-            specProvider,
             [new RecoverSignatures(
                 ecdsa,
                 specProvider,

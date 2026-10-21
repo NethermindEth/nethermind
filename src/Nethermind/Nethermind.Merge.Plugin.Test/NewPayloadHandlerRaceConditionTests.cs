@@ -62,6 +62,9 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
     private static readonly FieldInfo? QueuedCopiesField =
         typeof(NewPayloadHandler).GetField("_queuedCopies", BindingFlags.Instance | BindingFlags.NonPublic);
 
+    private static readonly FieldInfo? TimeoutField =
+        typeof(NewPayloadHandler).GetField("_timeout", BindingFlags.Instance | BindingFlags.NonPublic);
+
     // The long budget outlasts the answer wait, so a runner stall cannot turn the answer into Syncing,
     // and a handler that waits for the wrong event is still pending when the wait gives up.
     private const int LongRequestBudgetMs = 60_000;
@@ -91,7 +94,13 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         block.Header.IsPostMerge = true;
         TrackingExecutionPayload payload = TrackingExecutionPayload.Create(block);
         ParallelUnbalancedWork.WorkerGroup? decodingWorkers = null;
-        payload.OnDecoding = workers => decodingWorkers = workers;
+        bool singleProcessor = Nethermind.Core.Cpu.RuntimeInformation.IsSingleProcessor;
+        payload.OnDecoding = workers =>
+        {
+            decodingWorkers = workers;
+            // An invalid hash cancels recovery right after decoding, which could otherwise stop it before its first sender.
+            if (invalidHash && !singleProcessor) Assert.That(entered.Task.Wait(TimeSpan.FromSeconds(10)), Is.True, "Recovery did not start before decoding finished");
+        };
         Transaction[] transactions = payload.TryGetTransactions().Data!;
         if (invalidHash) payload.BlockHash = TestItem.KeccakB;
         using NewPayloadHandler handler = CreateHandler(block, AddBlockResult.AlreadyKnown,
@@ -102,7 +111,6 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         {
             ResultWrapper<PayloadStatusV1> result = await handler.HandleAsync(payload);
             progress = recovery.GetInFlight(transactions);
-            bool singleProcessor = Nethermind.Core.Cpu.RuntimeInformation.IsSingleProcessor;
             ParallelUnbalancedWork.WorkerGroup? observed = singleProcessor
                 ? null : await entered.Task.WaitAsync(TimeSpan.FromSeconds(10));
             using (Assert.EnterMultipleScope())
@@ -652,7 +660,12 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
     /// second copy that is answered and gone while the first is still held. A re-submission with another inclusion
     /// list must go on waiting for the held copy, which would otherwise run first and answer it.
     /// </summary>
-    [Test, MaxTime(30_000)]
+    /// <remarks>
+    /// No wall-clock limit: only the first request needs a short budget, and the later ones get a long one so a
+    /// stalled runner cannot answer them SYNCING before their verdicts land. The budget is raised through
+    /// `_timeout`, which the handler reads once per request.
+    /// </remarks>
+    [Test]
     public async Task ValidateBlockAndProcess_waits_for_a_held_copy_with_another_inclusion_list_after_a_same_list_retry_has_finished()
     {
         Block block = PostMergeBlock();
@@ -672,11 +685,11 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
                 {
                     case 1:
                         firstEnqueueEntered.TrySetResult();
-                        firstEnqueueReleased.Task.Wait(TimeSpan.FromSeconds(20));
+                        firstEnqueueReleased.Task.Wait(LongRequestBudgetMs);
                         break;
                     case 2:
                         retryEnqueued.TrySetResult();
-                        retryEnqueueReleased.Task.Wait(TimeSpan.FromSeconds(20));
+                        retryEnqueueReleased.Task.Wait(LongRequestBudgetMs);
                         break;
                     default:
                         resentEnqueued.TrySetResult();
@@ -706,14 +719,15 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         {
             Task<ResultWrapper<PayloadStatusV1>> held = handler.HandleAsync(heldPayload);
             await firstEnqueueEntered.Task.WaitAsync(TimeSpan.FromSeconds(10));
-            Assert.That((await held.WaitAsync(TimeSpan.FromSeconds(10))).Data.Status, Is.EqualTo(PayloadStatus.Syncing), "the first request gives up while its copy is still on the way to the queue");
+            Assert.That((await held.WaitAsync(AnswerWait)).Data.Status, Is.EqualTo(PayloadStatus.Syncing), "the first request gives up while its copy is still on the way to the queue");
+            TimeoutField!.SetValue(handler, TimeSpan.FromMilliseconds(LongRequestBudgetMs));
 
             Task<ResultWrapper<PayloadStatusV1>> retry = handler.HandleAsync(retryPayload);
             await retryEnqueued.Task.WaitAsync(TimeSpan.FromSeconds(10));
             Task bothCopiesWait = WaitForEarlierCopies(handler, block.Hash!);
             retryEnqueueReleased.SetResult();
             processingQueue.BlockExecuted += Raise.EventWith(new BlockVerdictEventArgs(block.Hash!, ProcessingResult.Success));
-            Assert.That((await retry.WaitAsync(TimeSpan.FromSeconds(10))).Data.Status, Is.EqualTo(PayloadStatus.Valid));
+            Assert.That((await retry.WaitAsync(AnswerWait)).Data.Status, Is.EqualTo(PayloadStatus.Valid));
             Assert.That(() => GetQueuedCopies(handler, block.Hash!).Length, Is.EqualTo(1).After(10_000, 10), "the retry's copy has left the queue and the held copy has not");
             Assert.That(bothCopiesWait.IsCompleted, Is.False, "a wait started while both copies were outstanding must outlast the retry's copy");
 
@@ -732,7 +746,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
 
         await resentEnqueued.Task.WaitAsync(TimeSpan.FromSeconds(10));
         processingQueue.BlockExecuted += Raise.EventWith(new BlockVerdictEventArgs(block.Hash!, ProcessingResult.InclusionListUnsatisfied));
-        ResultWrapper<PayloadStatusV1> result = await resent.WaitAsync(TimeSpan.FromSeconds(10));
+        ResultWrapper<PayloadStatusV1> result = await resent.WaitAsync(AnswerWait);
 
         Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.InclusionListUnsatisfied), "the answer judges this request's own inclusion list");
     }

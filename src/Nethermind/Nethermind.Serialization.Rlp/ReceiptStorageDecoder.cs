@@ -5,6 +5,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 
 #pragma warning disable 618
@@ -47,6 +48,11 @@ namespace Nethermind.Serialization.Rlp
             }
             else
             {
+                if (firstItem.Length != 0 && firstItem.Length != Hash256.Size)
+                {
+                    ThrowUnexpectedPostStateLength(firstItem.Length);
+                }
+
                 txReceipt.PostTransactionState = firstItem.Length == 0 ? null : new Hash256(firstItem);
             }
 
@@ -117,6 +123,10 @@ namespace Nethermind.Serialization.Rlp
 
             txReceipt.Logs = logEntries.ToArray();
             return txReceipt;
+
+            [DoesNotReturn, StackTraceHidden]
+            static void ThrowUnexpectedPostStateLength(int length)
+                => throw new RlpException($"Unexpected post-transaction state length {length}; expected 0 or {Hash256.Size} bytes");
         }
 
         public override void Encode<TWriter>(ref TWriter writer, TxReceipt? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

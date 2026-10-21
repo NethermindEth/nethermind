@@ -7,14 +7,16 @@
 -->
 <linker>
   <assembly fullname="Nethermind.Core">
-    <!-- Only OpenVM's runtime exports the XORIN instruction Keccak absorbs aligned input with. -->
-    <type fullname="Nethermind.Core.Crypto.OpenVmXorinFlag">
+    <!-- The shared build leaves the flag off and this guest turns it on, switching on what only OpenVM offers:
+         the XORIN instruction Keccak absorbs aligned input with, and the division hint MULMOD takes its quotient
+         and remainder from. -->
+    <type fullname="Nethermind.Core.OpenVmFlag">
       <method signature="System.Boolean get_IsActive()" body="stub" value="true" />
     </type>
   </assembly>
   <assembly fullname="Nethermind.Evm">
-    <!-- Only OpenVM's runtime exports the 256-bit multiplication MUL runs on. -->
-    <type fullname="Nethermind.Evm.OpenVmBigIntFlag">
+    <!-- mul.S multiplies on the bigint extension. -->
+    <type fullname="Nethermind.Evm.GuestMulFlag">
       <method signature="System.Boolean get_IsActive()" body="stub" value="true" />
     </type>
   </assembly>
