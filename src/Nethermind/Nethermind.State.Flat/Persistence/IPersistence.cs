@@ -64,8 +64,11 @@ public interface IPersistence
         /// </summary>
         /// <param name="accountSamples">Up to <see cref="BasePersistence.PrefetchSamples"/> accounts spread over the block's accounts; may be filtered in place.</param>
         /// <param name="slotSamples">Up to <see cref="BasePersistence.PrefetchSamples"/> slots spread over the block's slots; may be filtered in place.</param>
-        /// <remarks>Readers that do not decide prefetch every column.</remarks>
-        PrefetchColumns PlanPrefetch(Span<Address> accountSamples, Span<StorageCell> slotSamples) => PrefetchColumns.All;
+        /// <remarks>
+        /// Prefetches nothing by default: a wrapper that does not forward the plan loses the prefetch, it never sends one
+        /// a cached block did not need.
+        /// </remarks>
+        PrefetchColumns PlanPrefetch(Span<Address> accountSamples, Span<StorageCell> slotSamples) => PrefetchColumns.None;
 
         /// <summary>Starts reading <paramref name="accounts"/> and <paramref name="slots"/> from the store so later reads find them in memory.</summary>
         /// <param name="accounts">The accounts to read ahead. The reader may reorder, filter or overwrite them in place.</param>
