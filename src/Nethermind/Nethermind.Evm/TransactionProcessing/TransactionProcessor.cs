@@ -150,6 +150,7 @@ namespace Nethermind.Evm.TransactionProcessing
         }
     }
 
+    [SkipLocalsInit]
     public abstract partial class TransactionProcessorBase<TGasPolicy> : TransactionProcessorBase, ITransactionProcessor
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
