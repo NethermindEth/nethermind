@@ -597,7 +597,7 @@ public static class BasePersistence
             if (column?.TrustMissesInMemory() == true) return false;
 
             Span<byte> value = stackalloc byte[_accountSpanBufferSize];
-            int probes = column?.LastBlockCached == true ? Math.Min(samples.Length, CachedRunSamples) : samples.Length;
+            int probes = column?.TryProbeFewer() == true ? Math.Min(samples.Length, CachedRunSamples) : samples.Length;
             MissTimings misses = default;
             for (int i = 0; i < probes; i++)
             {
@@ -610,7 +610,7 @@ public static class BasePersistence
                 if (misses.Add(IsDiskRead(start, Stopwatch.GetTimestamp()))) break;
             }
 
-            return Decide(column, misses);
+            return Decide(column, misses, probes == samples.Length);
         }
 
         private bool SlotsNeedPrefetch(ReadOnlySpan<StorageCell> samples)
@@ -618,7 +618,7 @@ public static class BasePersistence
             PrefetchSampling.Column? column = sampling?.Slots;
             if (column?.TrustMissesInMemory() == true) return false;
 
-            int probes = column?.LastBlockCached == true ? Math.Min(samples.Length, CachedRunSamples) : samples.Length;
+            int probes = column?.TryProbeFewer() == true ? Math.Min(samples.Length, CachedRunSamples) : samples.Length;
             MissTimings misses = default;
             for (int i = 0; i < probes; i++)
             {
@@ -635,10 +635,10 @@ public static class BasePersistence
                 if (misses.Add(IsDiskRead(start, Stopwatch.GetTimestamp()))) break;
             }
 
-            return Decide(column, misses);
+            return Decide(column, misses, probes == samples.Length);
         }
 
-        private static bool Decide(PrefetchSampling.Column? column, in MissTimings misses)
+        private static bool Decide(PrefetchSampling.Column? column, in MissTimings misses, bool allSamples)
         {
             if (misses.IsDisk)
             {
@@ -646,7 +646,7 @@ public static class BasePersistence
                 return true;
             }
 
-            column?.RecordInMemory(misses.Timed != 0);
+            column?.RecordInMemory(misses.Timed != 0, allSamples);
             return false;
         }
 

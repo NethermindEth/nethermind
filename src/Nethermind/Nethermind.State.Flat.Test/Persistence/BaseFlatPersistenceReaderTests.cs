@@ -287,7 +287,7 @@ public class BaseFlatPersistenceReaderTests
         }
     }
 
-    // After a block whose misses were read from the page cache, the next RecheckInterval blocks skip the decision
+    // After a block whose misses were read from the page cache, the next MemoryRecheckInterval blocks skip the decision
     // without a probe or a read, and the block after them decides again.
     [Test]
     [Retry(3)]
@@ -300,16 +300,16 @@ public class BaseFlatPersistenceReaderTests
         Address[] accounts = Accounts(70);
         List<int> probes = [];
 
-        for (int block = 0; block < PrefetchSampling.RecheckInterval + 2; block++)
+        for (int block = 0; block < PrefetchSampling.MemoryRecheckInterval + 2; block++)
         {
             accountStore.ProbedKeys.Clear();
             PlanAndPrefetch(reader, accounts, [], CancellationToken.None);
             probes.Add(accountStore.ProbedKeys.Count);
         }
 
-        int[] expected = new int[PrefetchSampling.RecheckInterval + 2];
+        int[] expected = new int[PrefetchSampling.MemoryRecheckInterval + 2];
         expected[0] = BasePersistence.PrefetchSamples;
-        expected[PrefetchSampling.RecheckInterval + 1] = BasePersistence.PrefetchSamples;
+        expected[PrefetchSampling.MemoryRecheckInterval + 1] = BasePersistence.PrefetchSamples;
         using (Assert.EnterMultipleScope())
         {
             Assert.That(probes, Is.EqualTo(expected));
@@ -343,6 +343,28 @@ public class BaseFlatPersistenceReaderTests
             Assert.That(probes, Is.EqualTo(new[] { 8, 2, 2, 8 }));
             Assert.That(accountStore.PrefetchedKeys, Has.Count.EqualTo(accounts.Length));
         }
+    }
+
+    // A block whose eight samples are all cached starts a run of CachedRunBlocks blocks that probe two; the run does
+    // not extend itself, so the block after it probes all eight again.
+    [Test]
+    public void Plan_CachedRun_LastsCachedRunBlocksThenProbesAllSamples()
+    {
+        RecordingStore accountStore = new(cached: static _ => true);
+        BasePersistence.ToHashedFlatReader<BaseFlatPersistence.Reader> reader = new(
+            new BaseFlatPersistence.Reader(accountStore, new RecordingStore()), sampling: new PrefetchSampling());
+        Address[] accounts = Accounts(70);
+        List<int> probes = [];
+
+        for (int block = 0; block < PrefetchSampling.CachedRunBlocks + 2; block++)
+        {
+            accountStore.ProbedKeys.Clear();
+            PlanAndPrefetch(reader, accounts, [], CancellationToken.None);
+            probes.Add(accountStore.ProbedKeys.Count);
+        }
+
+        int[] expected = [8, .. Enumerable.Repeat(2, PrefetchSampling.CachedRunBlocks), 8];
+        Assert.That(probes, Is.EqualTo(expected));
     }
 
     [Test]
