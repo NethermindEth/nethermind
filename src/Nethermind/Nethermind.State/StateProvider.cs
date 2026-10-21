@@ -1298,7 +1298,6 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
             => throw new InsufficientBalanceException(address);
     }
 
-    [SkipLocalsInit]
     private readonly struct Change(Address address, Account? account, ChangeType type, int prevIdx)
     {
         public readonly Address Address = address;
