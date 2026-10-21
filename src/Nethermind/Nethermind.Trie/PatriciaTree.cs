@@ -134,6 +134,10 @@ namespace Nethermind.Trie
         /// <summary>Throws where this build cannot commit a trie; see <c>PatriciaTree.zkevm.cs</c>.</summary>
         partial void ThrowIfCommitUnsupported();
 
+        /// <summary>Reads the value at <paramref name="rawKey"/> straight from its bytes, where this build does.</summary>
+        /// <returns>Whether it did; when not, the caller walks the key's nibbles.</returns>
+        private partial bool TryGetByRawKey(ReadOnlySpan<byte> rawKey, Hash256? rootHash, out ReadOnlySpan<byte> value);
+
         public void Commit(bool skipRoot = false, WriteFlags writeFlags = WriteFlags.None)
         {
             if (!_allowCommits)
@@ -343,6 +347,8 @@ namespace Nethermind.Trie
         [DebuggerStepThrough]
         public virtual ReadOnlySpan<byte> Get(ReadOnlySpan<byte> rawKey, Hash256? rootHash = null)
         {
+            if (TryGetByRawKey(rawKey, rootHash, out ReadOnlySpan<byte> value)) return value;
+
             byte[]? array = null;
             try
             {
@@ -596,8 +602,8 @@ namespace Nethermind.Trie
                 if (!node.IsBranch)
                 {
                     Span<byte> remainingKey = key[(int)consumed..];
-                    int commonPrefixLength = Nibbles.CommonPrefixLength(remainingKey, node.Key);
-                    if (commonPrefixLength == node.Key!.Length)
+                    int commonPrefixLength = 0;
+                    if (IsLeafWithKey(node, remainingKey) || (commonPrefixLength = Nibbles.CommonPrefixLength(remainingKey, node.Key)) == node.Key!.Length)
                     {
                         if (node.IsExtension)
                         {
@@ -613,7 +619,7 @@ namespace Nethermind.Trie
                             });
 
                             // Continue loop with the child as current node
-                            consumed += node!.Key.Length;
+                            consumed += node!.Key!.Length;
                             node = extensionChild;
 
                             continue;
@@ -783,6 +789,7 @@ namespace Nethermind.Trie
         /// <param name="path"></param>
         /// <param name="node"></param>
         /// <returns></returns>
+        [SkipLocalsInit]
         internal TrieNode? MaybeCombineNode(ref TreePath path, TrieNode node, TrieNode? originalNode)
         {
             Debug.Assert(node.IsBranch, "MaybeCombineNode requires a branch node.");

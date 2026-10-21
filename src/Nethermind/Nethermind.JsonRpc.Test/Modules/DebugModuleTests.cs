@@ -27,6 +27,8 @@ using Nethermind.Core.Test.IO;
 using Nethermind.Db;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Call;
+using Nethermind.Evm;
+using Nethermind.Evm.Precompiles;
 using Nethermind.Facade;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Facade.Simulate;
@@ -38,6 +40,7 @@ using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using NSubstitute;
+using NSubstitute.Core;
 using NSubstitute.ReturnsExtensions;
 using NUnit.Framework;
 using Newtonsoft.Json.Linq;
@@ -55,6 +58,7 @@ public class DebugModuleTests
     private readonly IBlockFinder _blockFinder = Substitute.For<IBlockFinder>();
     private readonly IBlockchainBridge _blockchainBridge = Substitute.For<IBlockchainBridge>();
     private readonly MemDb _blocksDb = new();
+    private readonly ICodeInfoRepository _codeInfoRepository = Substitute.For<ICodeInfoRepository>();
 
     private DebugRpcModule CreateModule() => new(
         LimboLogs.Instance,
@@ -64,7 +68,8 @@ public class DebugModuleTests
         _blockchainBridge,
         new BlocksConfig(),
         _blockFinder,
-        new BlockForRpcFactory());
+        new BlockForRpcFactory(),
+        _codeInfoRepository);
 
     private Task<JsonRpcResponse> Request(string method, params object?[]? parameters) =>
         RpcTest.TestRequest<IDebugRpcModule>(CreateModule(), method, parameters);
@@ -839,6 +844,46 @@ public class DebugModuleTests
         {
             _debugBridge.Received(1).GetBlockTrace(Arg.Is<BlockParameter>(p => p.BlockHash == validated.Hash),
                 Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>());
+        }
+    }
+
+    [Test]
+    public void DebugTraceCall_PreflightOnlyUsesReadOnlyRepositoryLookup([Values] bool streaming, [Values] bool mixedFees)
+    {
+        Block block = Build.A.Block.WithNumber(1).TestObject;
+        BlockParameter selector = new(block.Hash!);
+        _blockFinder.Head.Returns(block);
+        _jsonRpcConfig.EnableTracingStreamMode = streaming;
+        _blockFinder.FindHeader(selector).Returns(block.Header);
+        _blockchainBridge.HasStateForBlock(block.Header).Returns(true);
+        _codeInfoRepository.GetPrecompile(TestItem.AddressA, Arg.Any<IReleaseSpec>()).Returns(IdentityPrecompile.Instance);
+        _codeInfoRepository.ClearReceivedCalls();
+        GethTraceOptions options = new()
+        {
+            StateOverrides = new()
+            {
+                [TestItem.AddressA] = new() { MovePrecompileToAddress = TestItem.AddressB },
+                [TestItem.AddressB] = new()
+            }
+        };
+        TransactionForRpc call = new EIP1559TransactionForRpc
+        {
+            To = TestItem.AddressC,
+            GasPrice = 1,
+            MaxFeePerGas = mixedFees ? 2 : null
+        };
+
+        using ResultWrapper<GethLikeTxTrace> actual = CreateModule().debug_traceCall(call, selector, options);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actual.ErrorCode, Is.EqualTo(ErrorCodes.InvalidInput));
+            Assert.That(actual.Result.Error, Is.EqualTo($"account {TestItem.AddressB} is already overridden"));
+            _codeInfoRepository.Received(1).GetPrecompile(TestItem.AddressA, Arg.Any<IReleaseSpec>());
+            foreach (ICall received in _codeInfoRepository.ReceivedCalls())
+                Assert.That(received.GetMethodInfo().Name, Is.EqualTo(nameof(ICodeInfoRepository.GetPrecompile)),
+                    "preflight must not read account code, reset/move overrides or mutate the repository");
+            _debugBridge.DidNotReceiveWithAnyArgs().GetTransactionTrace(default(Transaction)!, default!, default, default, default, default);
         }
     }
 
