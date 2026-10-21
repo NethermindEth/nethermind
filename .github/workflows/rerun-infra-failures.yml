@@ -1,0 +1,54 @@
+name: Re-run infrastructure failures
+
+on:
+  workflow_run:
+    workflows:
+      - Nethermind/Ethereum tests
+      - Nethermind extra test variants
+      - Nethermind tests (Single Proc)
+      - Nethermind tests (Trie DB)
+    types: [completed]
+
+permissions:
+  actions: write
+
+jobs:
+  rerun:
+    name: Re-run jobs that failed before running tests
+    # Only the first attempt, so a persistent infrastructure failure cannot loop
+    if: github.event.workflow_run.conclusion == 'failure' && github.event.workflow_run.run_attempt == 1
+    runs-on: ubuntu-latest
+    steps:
+      - name: Re-run failed jobs if only setup steps failed
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+        run: |
+          infra=0
+          real=0
+          while IFS=$'\t' read -r id job step; do
+            case "$step" in
+              "Set up job" | "Enable long paths (Windows)" | "Fetch submodules" | "Wait for submodules" | \
+              "Set up .NET" | "Download test binaries" | "Download runner artifact" | "Download EEST fixtures")
+                echo "Infrastructure failure: $job ($step)"
+                infra=$((infra + 1)) ;;
+              "Check result") ;; # the summary job fails whenever any other job does
+              *)
+                # A lost runner leaves no failed step, and a failed artifact upload can fail any step
+                annotations=$(gh api "repos/${{ github.repository }}/check-runs/$id/annotations" --jq '.[].message')
+                if grep -q -E "The hosted runner lost communication with the server|Failed to FinalizeArtifact" <<< "$annotations"; then
+                  echo "Infrastructure failure: $job (${step:-runner lost})"
+                  infra=$((infra + 1))
+                else
+                  echo "Test failure: $job (${step:-no failed step})"
+                  real=$((real + 1))
+                fi ;;
+            esac
+          done < <(gh api "repos/${{ github.repository }}/actions/runs/$RUN_ID/attempts/1/jobs?per_page=100" --paginate \
+            --jq '.jobs[] | select(.conclusion == "failure") | [.id, .name, ([.steps[] | select(.conclusion == "failure") | .name] | first // "")] | @tsv')
+
+          # With a test failure the run fails anyway, and a re-run would only give flaky tests another chance
+          if [[ $infra -gt 0 && $real -eq 0 ]]; then
+            gh api --method POST "repos/${{ github.repository }}/actions/runs/$RUN_ID/rerun-failed-jobs"
+            echo "Re-ran $infra failed job(s) in run $RUN_ID" >> "$GITHUB_STEP_SUMMARY"
+          fi
