@@ -211,8 +211,6 @@ async Task RunClientAsync(CancellationToken stoppingToken)
     VerifiedHead GetHead()
     {
         VerifiedHead snapshot = Volatile.Read(ref head) ?? throw new RpcException(-32000, "Waiting for an authenticated execution header.");
-        if (!IsHeadFresh(snapshot, 3600))
-            throw new RpcException(-32000, "Verified finality is more than one hour old; waiting for consensus sync.");
         return snapshot;
     }
     VerifiedHead? GetLatestHead() => Volatile.Read(ref latestHead);
@@ -225,7 +223,7 @@ async Task RunClientAsync(CancellationToken stoppingToken)
         snapshot?.IsFresh(CurrentSlot(), maximumAgeSeconds / spec.SecondsPerSlot) ?? false;
     using VerifiedCall calls = new(execution, execution.SpecProvider, logManager);
     using VerifiedRpc rpc = new(execution, GetHead, spec.ChainId, calls, execution.SpecProvider, GetLatestHead,
-        latest => IsHeadFresh(latest, OptimisticHeadMaxAgeSeconds));
+        latest => IsHeadFresh(latest, OptimisticHeadMaxAgeSeconds), finalized => IsHeadFresh(finalized, 3600));
     await using VerifiedSubscriptions subscriptions = new(execution, rpc, logger);
     app.MapPost("/", (HttpContext context) => RpcEndpoint.HandleAsync(context, rpc, logger));
     LightClientHost.ConfigureRequestPolicy(app, rpcUrl);

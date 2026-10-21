@@ -415,23 +415,110 @@ public class VerifiedRpcTests
     }
 
     [Test]
-    public async Task Stale_finality_still_rejects_finalized_and_historical_reads()
+    public async Task Stale_finality_rejects_explicit_finalized_aliases_before_execution(
+        [Values("eth_getBalance", "eth_getBlockByNumber", "eth_getLogs", "eth_getProof", "eth_feeHistory")] string method)
     {
         using Provider provider = new(new Account(7, 123));
-        using VerifiedRpc rpc = new(provider, () => throw new RpcException(-32000, "Finality is stale."), 1,
-            specProvider: MainnetSpecProvider.Instance, getLatestHead: () => provider.Head);
-
-        (string method, JsonElement parameters)[] requests =
-        [
-            ("eth_getBalance", Parameters(AccountAddress.ToString(), "finalized")),
-            ("eth_getBalance", Parameters(AccountAddress.ToString(), "0x9")),
-            ("eth_getBlockByNumber", Parameters("finalized", false)),
-            ("eth_getLogs", Parameters(new { fromBlock = "finalized", toBlock = "finalized" })),
-        ];
-        foreach ((string method, JsonElement parameters) in requests)
+        using VerifiedRpc rpc = new(provider, () => provider.Head, 1,
+            specProvider: MainnetSpecProvider.Instance, getLatestHead: () => provider.Head, isFinalizedHeadFresh: _ => false);
+        JsonElement parameters = method switch
         {
-            RpcException? error = await Assert.ThrowsAsync<RpcException>(async () => await rpc.InvokeAsync(method, parameters, CancellationToken.None));
-            Assert.That(error!.Message, Is.EqualTo("Finality is stale."), method);
+            "eth_getBalance" => Parameters(AccountAddress.ToString(), "finalized"),
+            "eth_getBlockByNumber" => Parameters("finalized", false),
+            "eth_getLogs" => Parameters(new { fromBlock = "finalized", toBlock = "latest" }),
+            "eth_getProof" => Parameters(AccountAddress.ToString(), Array.Empty<string>(), "finalized"),
+            _ => Parameters("0x1", "finalized", Array.Empty<int>()),
+        };
+
+        RpcException? error = await Assert.ThrowsAsync<RpcException>(async () => await rpc.InvokeAsync(method, parameters, CancellationToken.None));
+
+        Assert.That(error!.Code, Is.EqualTo(-32000));
+        AssertNoExecutionRequests(provider);
+    }
+
+    [Test]
+    public async Task Stale_finality_keeps_authenticated_pinned_state_ancestors_available(
+        [Values("eth_getBalance", "eth_getCode", "eth_getProof")] string method, [Values(0, 1, 2, 3)] int selectorKind,
+        [Values] bool optimistic)
+    {
+        using Provider provider = optimistic ? OptimisticProvider() : new(new Account(7, 123), headNumber: 300);
+        if (!optimistic)
+            provider.HistoricalHeader = Provider.CreateHeader(299, Keccak.Compute("retained finalized ancestor"), provider.Head.StateRoot);
+        BlockHeader header = provider.HistoricalHeader!;
+        object selector = selectorKind switch
+        {
+            0 => VerifiedRpc.Quantity(header.Number),
+            1 => new { blockNumber = VerifiedRpc.Quantity(header.Number) },
+            2 => header.Hash!.ToString(),
+            _ => new { blockHash = header.Hash!.ToString(), requireCanonical = true },
+        };
+        using VerifiedRpc rpc = new(provider, () => provider.Head, 1,
+            specProvider: MainnetSpecProvider.Instance, getLatestHead: () => provider.LatestHead, isFinalizedHeadFresh: _ => false);
+        JsonElement parameters = method == "eth_getProof"
+            ? Parameters(AccountAddress.ToString(), Array.Empty<string>(), selector) : Parameters(AccountAddress.ToString(), selector);
+
+        object result = await rpc.InvokeAsync(method, parameters, CancellationToken.None);
+
+        if (method == "eth_getProof")
+        {
+            JsonElement proof = (JsonElement)result;
+            byte[][] witness = proof.GetProperty("accountProof").EnumerateArray().Select(item => Convert.FromHexString(item.GetString()!.AsSpan(2))).ToArray();
+            Assert.That(ExecutionProofVerifier.VerifyAccount(header.StateRoot!, AccountAddress, witness).Balance, Is.EqualTo((UInt256)123));
+        }
+        else Assert.That(result, Is.EqualTo(method == "eth_getBalance" ? "0x7b" : optimistic ? "0x602a00" : "0x"));
+        Assert.That(provider.LastCanonicalAnchor, Is.EqualTo(optimistic ? provider.LatestHead : provider.Head));
+        Assert.That(provider.LastQueriedHead!.BlockHash, Is.EqualTo(header.Hash));
+    }
+
+    [Test]
+    public async Task Stale_finality_keeps_authenticated_block_ancestors_available([Values] bool byHash, [Values] bool optimistic)
+    {
+        using Provider provider = optimistic ? OptimisticProvider() : new(new Account(7, 123), headNumber: 300);
+        if (!optimistic)
+            provider.HistoricalHeader = Provider.CreateHeader(299, Keccak.Compute("retained finalized block"), provider.Head.StateRoot);
+        BlockHeader header = provider.HistoricalHeader!;
+        using VerifiedRpc rpc = new(provider, () => provider.Head, 1,
+            specProvider: MainnetSpecProvider.Instance, getLatestHead: () => provider.LatestHead, isFinalizedHeadFresh: _ => false);
+
+        JsonElement block = (JsonElement)await rpc.InvokeAsync(byHash ? "eth_getBlockByHash" : "eth_getBlockByNumber",
+            Parameters(byHash ? header.Hash!.ToString() : VerifiedRpc.Quantity(header.Number), false), CancellationToken.None);
+
+        Assert.That(block.GetProperty("hash").GetString(), Is.EqualTo(header.Hash!.ToString()));
+        Assert.That(provider.LastCanonicalAnchor, Is.EqualTo(optimistic ? provider.LatestHead : provider.Head));
+    }
+
+    [Test]
+    public async Task Stale_finality_keeps_authenticated_log_ranges_available([Values] bool optimistic)
+    {
+        LogRangeSource source = new();
+        using VerifiedRpc rpc = new(source, () => source.Head(320), 1,
+            specProvider: MainnetSpecProvider.Instance, getLatestHead: () => source.Head(325), isFinalizedHeadFresh: _ => false);
+        ulong last = optimistic ? 325UL : 320UL;
+
+        JsonElement logs = (JsonElement)await rpc.InvokeAsync("eth_getLogs",
+            Parameters(new { fromBlock = "0x13f", toBlock = VerifiedRpc.Quantity(last), address = AccountAddress.ToString() }), CancellationToken.None);
+
+        AssertRangeLogs(logs, source, 319, last);
+    }
+
+    [Test]
+    public async Task Stale_finality_keeps_finalized_transaction_search_available(
+        [Values("eth_getTransactionByHash", "eth_getTransactionReceipt")] string method)
+    {
+        LogRangeSource source = new(signTransactions: true);
+        int finalizedReads = 0;
+        using VerifiedRpc rpc = new(source, () => { finalizedReads++; return source.Head(300); }, 1,
+            specProvider: MainnetSpecProvider.Instance, getLatestHead: () => source.Head(325), isFinalizedHeadFresh: _ => false);
+        string hash = source[300].Transactions[1].Hash!.ToString();
+
+        JsonElement transaction = (JsonElement)await rpc.InvokeAsync(method, Parameters(hash), CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(transaction.GetProperty(method == "eth_getTransactionByHash" ? "hash" : "transactionHash").GetString(), Is.EqualTo(hash));
+            Assert.That(transaction.GetProperty("blockHash").GetString(), Is.EqualTo(source.Head(300).BlockHash.ToString()));
+            Assert.That(transaction.GetProperty("blockNumber").GetString(), Is.EqualTo(VerifiedRpc.Quantity(300)));
+            Assert.That(finalizedReads, Is.EqualTo(1));
         }
     }
 
@@ -1386,8 +1473,10 @@ public class VerifiedRpcTests
         internal int ReceiptReads { get; private set; }
         internal Block this[ulong number] => _blocks[number];
 
-        internal LogRangeSource(ulong first = 300, ulong last = 325)
+        internal LogRangeSource(ulong first = 300, ulong last = 325, bool signTransactions = false)
         {
+            using PrivateKey? key = signTransactions ? new("0x0000000000000000000000000000000000000000000000000000000000000001") : null;
+            EthereumEcdsa signer = new(1);
             Hash256 parent = Keccak.Zero;
             for (ulong number = first; number <= last; number++)
             {
@@ -1396,6 +1485,7 @@ public class VerifiedRpcTests
                 for (int index = 0; index < 2; index++)
                 {
                     Transaction transaction = new() { Nonce = (ulong)index, To = AccountAddress, Value = number, GasLimit = 21_000, GasPrice = 1 };
+                    if (key is not null) signer.Sign(key, transaction, true);
                     transaction.Hash = transaction.CalculateHash();
                     transactions[index] = transaction;
                     receipts[index] = new TxReceipt

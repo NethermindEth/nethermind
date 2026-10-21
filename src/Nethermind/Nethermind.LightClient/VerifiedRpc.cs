@@ -13,7 +13,7 @@ namespace Nethermind.LightClient;
 
 internal sealed class VerifiedRpc(IExecutionStateSource execution, Func<VerifiedHead> getHead, ulong chainId,
     VerifiedCall? calls = null, ISpecProvider? specProvider = null, Func<VerifiedHead?>? getLatestHead = null,
-    Func<VerifiedHead, bool>? isLatestHeadFresh = null)
+    Func<VerifiedHead, bool>? isLatestHeadFresh = null, Func<VerifiedHead, bool>? isFinalizedHeadFresh = null)
     : IDisposable
 {
     private const ulong HistoricalStateDepth = 32;
@@ -350,7 +350,7 @@ internal sealed class VerifiedRpc(IExecutionStateSource execution, Func<Verified
                 throw new RpcException(-32001, "Block is not in the selected authenticated chain.");
             return canonical;
         }
-        if (value == "finalized") return await execution.GetHeaderAsync(pinnedFinalized ?? getHead(), cancellationToken);
+        if (value == "finalized") return await execution.GetHeaderAsync(FinalizedHead(pinnedFinalized), cancellationToken);
         UInt256 parsed = ParseQuantity(selector);
         if (latest is not null && parsed == (UInt256)latest.Number)
             return await execution.GetHeaderAsync(latest, cancellationToken);
@@ -400,6 +400,7 @@ internal sealed class VerifiedRpc(IExecutionStateSource execution, Func<Verified
             return await _data!.GetLogsAsync([latest], addresses, topics, cancellationToken);
         }
         VerifiedHead finalized = getHead();
+        if (IsFinalizedTag(from) || IsFinalizedTag(to)) finalized = FinalizedHead(finalized);
         ulong first = ParseLogBlock(from, finalized, current);
         ulong last = ParseLogBlock(to, finalized, current);
         if (first > last) throw InvalidParameters();
@@ -428,6 +429,17 @@ internal sealed class VerifiedRpc(IExecutionStateSource execution, Func<Verified
         }
         return await _data!.GetLogsAsync(headers, addresses, topics, cancellationToken);
     }
+
+    private VerifiedHead FinalizedHead(VerifiedHead? pinned = null)
+    {
+        VerifiedHead head = pinned ?? getHead();
+        if (!(isFinalizedHeadFresh?.Invoke(head) ?? true))
+            throw new RpcException(-32000, "Verified finality is more than one hour old; waiting for consensus sync.");
+        return head;
+    }
+
+    private static bool IsFinalizedTag(JsonElement selector) =>
+        selector.ValueKind == JsonValueKind.String && selector.GetString() == "finalized";
 
     private static ulong ParseLogBlock(JsonElement selector, VerifiedHead finalized, VerifiedHead? latest)
     {
@@ -511,7 +523,7 @@ internal sealed class VerifiedRpc(IExecutionStateSource execution, Func<Verified
                 if (requested == hashAnchor.BlockHash) return (hashAnchor, false);
                 return await HistoricalStateHashAsync(hashAnchor, optimistic, block, cancellationToken);
             }
-            if (selector == "finalized") return (getHead(), false);
+            if (selector == "finalized") return (FinalizedHead(), false);
             UInt256 number = ParseQuantity(block);
             VerifiedHead? latest = getLatestHead?.Invoke();
             if (latest is not null && number == (UInt256)latest.Number)
