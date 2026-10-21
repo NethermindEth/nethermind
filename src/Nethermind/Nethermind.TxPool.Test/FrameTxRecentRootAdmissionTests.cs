@@ -92,20 +92,20 @@ public class FrameTxRecentRootAdmissionTests
             .PushData(Eip8272Constants.RecentRootAddress).Op(Instruction.GAS).Op(Instruction.STATICCALL).Op(Instruction.POP)
             .PushData((byte)FrameFlags.ApproveExecutionAndPayment).PushData(0).PushData(0).Op(Instruction.APPROVE).Done;
         await BuildHarness(Eip8272Constants.RecentRootCode.ToArray(), committedSlot: HeadSlot, senderCode);
-        TxFrame selfVerify = new(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: 10_000, UInt256.Zero, RecentRootFrame(HeadSlot).Data.ToArray());
+        TxFrame selfVerify = new(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: 200_000, UInt256.Zero, RecentRootFrame(HeadSlot).Data.ToArray());
 
         Assert.That(Submit([RecentRootFrame(HeadSlot), selfVerify]), Is.EqualTo(AcceptTxResult.FrameSimulationFailed));
     }
 
-    private static TxFrame RecentRootFrame(ulong slot) => FrameTxTestFrames.RecentRootVerify(20_000, (SourceId, slot, Root));
+    private static TxFrame RecentRootFrame(ulong slot) => FrameTxTestFrames.RecentRootVerify(60_000, (SourceId, slot, Root));
 
     private static TxFrame SelfVerifyFrame() =>
-        new(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: 10_000, UInt256.Zero, default);
+        new(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: 60_000, UInt256.Zero, default);
 
-    private static TxFrame ExpiryFrame() => FrameTxTestFrames.ExpiryAt(ulong.MaxValue, gasLimit: 10_000);
+    private static TxFrame ExpiryFrame() => FrameTxTestFrames.ExpiryAt(ulong.MaxValue, gasLimit: 50_000);
 
     private static TxFrame DeployFrame() =>
-        new(FrameMode.Default, FrameFlags.None, Factory, executionGasLimit: 50_000, stateGasLimit: 200_000, UInt256.Zero, default);
+        new(FrameMode.Default, FrameFlags.None, Factory, executionGasLimit: 100_000, stateGasLimit: 200_000, UInt256.Zero, default);
 
     /// <remarks>A <see cref="Deployed"/> sender runs the code its deploy frame installs, which approves without a signature.</remarks>
     private AcceptTxResult Submit(TxFrame[] frames, Address? sender = null)

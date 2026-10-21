@@ -84,7 +84,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             {
                 disconnectRequest = ResetIfElapsed();
 
-                if (!accepted)
+                // A peer may relay valid work within its own, higher validation headroom.
+                if (!accepted && accepted != AcceptTxResult.FrameTxVerifyGasTooHigh)
                 {
                     if (accepted == AcceptTxResult.Invalid)
                     {

@@ -170,7 +170,7 @@ public class FrameTxProducerRetryMeasurement
     /// signature/Groth16 shapes the mempool/flood harnesses measure at the same nominal ceiling. These rows
     /// are not CPU-comparable; only the declared-gas axis is shared.</remarks>
     [TestCase(true, 235_800ul, TestName = "control: a prefix that approves is included and paid for")]
-    [TestCase(false, Eip8141Constants.MaxVerifyGas, TestName = "never approves, at the default MAX_VERIFY_GAS")]
+    [TestCase(false, 300_000ul, TestName = "never approves, at 300,000 gas")]
     [TestCase(false, 235_800ul, TestName = "never approves, at the current profile budget")]
     public async Task ProducerRetriesAFailingPrefix(bool approves, ulong verifyGas)
     {

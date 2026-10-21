@@ -542,8 +542,10 @@ public class FrameTxPrefixSimulatorTests
         processor.Received(1).SetBlockExecutionContext(Arg.Is<BlockHeader>(header => header.SlotNumber == expectedSlot));
     }
 
-    [TestCase(0ul, Eip8141Constants.MaxVerifyGas)]
-    [TestCase(100_000ul, Eip8141Constants.MaxVerifyGas)]
+    [TestCase(0ul, 100_000ul)]
+    [TestCase(1ul, 100_000ul)]
+    [TestCase(100_000ul, 100_000ul)]
+    [TestCase(300_000ul, 300_000ul)]
     [TestCase(500_000ul, 500_000ul)]
     public void Simulate_RunsThePrefixUnderTheConfiguredVerifyGasButNeverBelowTheDefault(ulong configured, ulong expected)
     {

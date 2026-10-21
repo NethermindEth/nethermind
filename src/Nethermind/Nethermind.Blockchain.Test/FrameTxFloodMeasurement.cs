@@ -182,7 +182,6 @@ public partial class FrameTxFloodMeasurement
         ulong ceiling = isSignatureStuffed ? 500_000
             : Groth16Sweeps.TryGetValue(shape, out Groth16Sweep sweep) ? sweep.SweepCeiling
             : Eip8141Constants.MaxVerifyGas;
-        if (!isSignatureStuffed) Eip8141MeasurementGuards.SkipIfCeilingUnreachable(ceiling);
         await BuildChain(shape, ceiling);
 
         long simulationFailuresBefore = Volatile.Read(ref Nethermind.TxPool.Metrics.PendingTransactionsFrameTxSimulationFailed);
@@ -686,8 +685,7 @@ public partial class FrameTxFloodMeasurement
     {
         string path = Environment.GetEnvironmentVariable("FRAME_FLOOD_OUT")
                       ?? Path.Combine(Path.GetTempPath(), "frame-tx-flood.txt");
-        // Recorded on every row so a reader of -results.txt alone, without PROVENANCE.txt, can tell whether
-        // the build ran against the stock MAX_VERIFY_GAS or one patched by raise_verify_gas_const.
+        // Record the shared floor alongside each row's configured headroom.
         string record = $"RESULT {line} max_verify_gas_const={Eip8141Constants.MaxVerifyGas} "
                         + $"block_processing_signal={(s_blockProcessingSignal ? "on" : "off")} "
                         + $"runner={Environment.GetEnvironmentVariable("RUNNER_NAME") ?? "local"}";

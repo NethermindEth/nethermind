@@ -183,11 +183,11 @@ public class FrameTxVerifyDosMeasurement
 
     /// <summary>The unpaid gas one block-production attempt burns on a prefix that never approves — the
     /// per-attempt multiplicand for the pool-retention count measured in the TxPool tests.</summary>
-    /// <remarks>The default public-pool ceiling is <see cref="Eip8141Constants.MaxVerifyGas"/>. The
-    /// soispoke v2 declared validation budget (225,000 VERIFY + 8,000 recent-root + 2,800 signature) is
-    /// above it; that row measures block execution outside the default public-pool policy.</remarks>
+    /// <remarks>Measures the shared floor and the larger soispoke v2 declared validation budget
+    /// (225,000 VERIFY + 8,000 recent-root + 2,800 signature). Block execution is independent of
+    /// the node's public-pool headroom.</remarks>
     [TestCase(235_800L, TestName = "burn at soispoke v2's declared validation budget")]
-    [TestCase((long)Eip8141Constants.MaxVerifyGas, TestName = "burn at the retainable ceiling")]
+    [TestCase((long)Eip8141Constants.MaxVerifyGas, TestName = "burn at the shared verification floor")]
     public void UnpaidBurnPerAttempt(long verifyGas)
     {
         _stateProvider.CreateAccount(Sender, 1.Ether);

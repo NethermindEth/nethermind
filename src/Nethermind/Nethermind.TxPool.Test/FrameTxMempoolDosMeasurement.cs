@@ -59,7 +59,7 @@ public class FrameTxMempoolDosMeasurement
     private const int Samples = 1_000;
     private const long BlockGasLimit = 30_000_000;
 
-    /// <summary>Maximum per-frame verification budget enforced by the processor.</summary>
+    /// <summary>Shared verification floor used by the baseline measurement.</summary>
     private const ulong VerifyGas = Eip8141Constants.MaxVerifyGas;
 
     private const ulong Ceiling100k = 100_000;
@@ -186,6 +186,7 @@ public class FrameTxMempoolDosMeasurement
     private List<double> _simulateMicros = null!;
 
     private ulong _frameExecutionGasLimit = VerifyGas;
+    private ulong _verifyGasCeiling = VerifyGas;
 
     private TxFrameSignature[] _frameSignatures = [];
 
@@ -273,12 +274,11 @@ public class FrameTxMempoolDosMeasurement
         }
         else
         {
-            AssertCeilingIsReachable(shape, ceiling);
             _frameExecutionGasLimit = ceiling;
             code = PrefixCode(shape);
         }
 
-        await BuildHarness(code);
+        await BuildHarness(code, isGroth16 ? sweep.SweepCeiling : ceiling);
 
         // Probe outside the timed loop to verify that the intended workload entered the EVM.
         FrameGasReadout gas = isGroth16
@@ -509,16 +509,6 @@ public class FrameTxMempoolDosMeasurement
         _ => "validation prefix frame reverted"
     };
 
-    private static void AssertCeilingIsReachable(string label, ulong ceiling)
-    {
-        if (ceiling > Eip8141Constants.MaxVerifyGas)
-        {
-            Assert.Ignore($"{label} needs a frame budget of {ceiling}, but CapFrameGas bounds it at "
-                          + $"Eip8141Constants.MaxVerifyGas = {Eip8141Constants.MaxVerifyGas}. The constant is compile-time "
-                          + "inlined, so measuring this point takes a source edit and a rebuild.");
-        }
-    }
-
     /// <summary>
     /// Probes a synthetic shape outside the timed path and verifies that it received and consumed the gas
     /// its measurement claims.
@@ -529,7 +519,7 @@ public class FrameTxMempoolDosMeasurement
 
         Assert.That(readout.Available, Is.GreaterThanOrEqualTo(ceiling - MaxFrameEntryCharge),
             $"{shape} entered the EVM with {readout.Available} gas against the {ceiling} it declared. CapFrameGas "
-            + $"clamped it at Eip8141Constants.MaxVerifyGas = {Eip8141Constants.MaxVerifyGas}, so these are the "
+            + $"clamped it below the configured budget {_verifyGasCeiling}, so these are the "
             + "constant's numbers wearing this ceiling's label.");
 
         if (shape == "banned-opcode")
@@ -556,6 +546,7 @@ public class FrameTxMempoolDosMeasurement
     {
         BlockHeader head = _blockTree.Head!.Header;
         FrameGasProbeTracer probe = tracer ?? new FrameGasProbeTracer();
+        probe.MaxVerifyGas = _verifyGasCeiling;
 
         using IReadOnlyTxProcessorSource source = _chain!.ReadOnlyTxProcessingEnvFactory.Create();
         using (IReadOnlyTxProcessingScope scope = source.Build(head))
@@ -617,8 +608,6 @@ public class FrameTxMempoolDosMeasurement
     /// <summary>Loads runtime bytecode and invalid calldata for one Groth16 sweep point.</summary>
     private byte[] LoadGroth16Sweep(Groth16Sweep sweep)
     {
-        AssertCeilingIsReachable(sweep.Directory, sweep.FrameGasLimit);
-
         byte[] verifierCode = Groth16Artifact(sweep, "verifier.hex");
         _frameCalldataPrefix = Groth16Artifact(sweep, "calldata-invalid.hex");
         _frameExecutionGasLimit = sweep.FrameGasLimit;
@@ -652,7 +641,7 @@ public class FrameTxMempoolDosMeasurement
         DumpHistogram(sweep.Directory, probe);
         Assert.That(readout.Available, Is.GreaterThanOrEqualTo(sweep.FrameGasLimit - MaxFrameEntryCharge),
             $"{sweep.Directory} entered the EVM with {readout.Available} gas against the {sweep.FrameGasLimit} it "
-            + $"declared. CapFrameGas clamped it at Eip8141Constants.MaxVerifyGas = {Eip8141Constants.MaxVerifyGas}, "
+            + $"declared. CapFrameGas clamped it below the configured budget {_verifyGasCeiling}, "
             + "so these are the constant's numbers wearing this ceiling's label.");
         if (sweep.Failure == Groth16Failure.RevertsProofInvalid)
         {
@@ -764,6 +753,7 @@ public class FrameTxMempoolDosMeasurement
     /// separately, which is what the two views existing at all is here to check.</remarks>
     private async Task BuildHarness(byte[] senderCode, ulong verifyGasCeiling = 0)
     {
+        _verifyGasCeiling = Math.Max(verifyGasCeiling, Eip8141Constants.MaxVerifyGas);
         _chain = await BasicTestBlockchain.Create(builder =>
         {
             builder.AddSingleton(_specProvider);
@@ -902,8 +892,12 @@ public class FrameTxMempoolDosMeasurement
     }
 
     /// <summary>Traces the outermost validation frame to record gas, instructions, calls, and termination.</summary>
-    private sealed class FrameGasProbeTracer : TxTracer
+    private sealed class FrameGasProbeTracer : TxTracer, IFrameTxPrefixTracer
     {
+        public ulong MaxVerifyGas { get; set; } = Eip8141Constants.MaxVerifyGas;
+
+        public void StartPrefixFrame(TxFrame frame, bool isDeployFrame, Address target) { }
+
         private int _depth;
         private ulong _entryGas;
 

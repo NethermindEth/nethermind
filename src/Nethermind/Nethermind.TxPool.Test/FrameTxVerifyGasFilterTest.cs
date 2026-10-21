@@ -17,7 +17,7 @@ namespace Nethermind.TxPool.Test;
 [Parallelizable(ParallelScope.All)]
 internal class FrameTxVerifyGasFilterTest
 {
-    private const ulong ConfiguredMaxVerifyGas = Eip8141Constants.MaxVerifyGas / 3;
+    private const ulong ConfiguredMaxVerifyGas = 200_000;
 
     // An unrecognized layout is charged its whole frame list: whether an approving DEFAULT frame approves at
     // all depends on sender-controlled code, so the frames behind it may still run before any gas is paid.
@@ -34,15 +34,20 @@ internal class FrameTxVerifyGasFilterTest
             .SetName("a prefix exactly at the configured ceiling is accepted");
         yield return new TestCaseData(new[] { ApprovingDefault(ConfiguredMaxVerifyGas + 1) }, AcceptTxResult.FrameTxVerifyGasTooHigh, (ulong?)ConfiguredMaxVerifyGas)
             .SetName("a prefix one gas over the configured ceiling is rejected");
-        // Pin the published MAX_VERIFY_GAS independently of the implementation constant.
         yield return new TestCaseData(new[] { SelfVerify(100_000) }, AcceptTxResult.Accepted, null)
-            .SetName("the default ceiling accepts MAX_VERIFY_GAS");
-        yield return new TestCaseData(new[] { SelfVerify(100_001) }, AcceptTxResult.FrameTxVerifyGasTooHigh, null)
-            .SetName("the default ceiling rejects one gas above MAX_VERIFY_GAS");
-        yield return new TestCaseData(new[] { SelfVerify(300_000) }, AcceptTxResult.Accepted, (ulong?)300_000)
-            .SetName("a raised test-network ceiling accepts its configured limit");
-        yield return new TestCaseData(new[] { SelfVerify(300_001) }, AcceptTxResult.FrameTxVerifyGasTooHigh, (ulong?)300_000)
-            .SetName("a raised test-network ceiling rejects one gas above its configured limit");
+            .SetName("the node default admits work at the shared floor");
+        yield return new TestCaseData(new[] { SelfVerify(100_001) }, AcceptTxResult.Accepted, null)
+            .SetName("the node default admits work above the shared floor");
+        yield return new TestCaseData(new[] { SelfVerify(235_800) }, AcceptTxResult.Accepted, null)
+            .SetName("the node default admits the soispoke profile budget");
+        yield return new TestCaseData(new[] { SelfVerify(300_000) }, AcceptTxResult.Accepted, null)
+            .SetName("the node default admits work at its 300k headroom");
+        yield return new TestCaseData(new[] { SelfVerify(300_001) }, AcceptTxResult.FrameTxVerifyGasTooHigh, null)
+            .SetName("the node default rejects work above its 300k headroom");
+        yield return new TestCaseData(new[] { SelfVerify(500_000) }, AcceptTxResult.Accepted, (ulong?)500_000)
+            .SetName("raised headroom accepts its configured limit");
+        yield return new TestCaseData(new[] { SelfVerify(500_001) }, AcceptTxResult.FrameTxVerifyGasTooHigh, (ulong?)500_000)
+            .SetName("raised headroom rejects one gas above its configured limit");
     }
 
     [TestCaseSource(nameof(PrefixCases))]
@@ -58,11 +63,24 @@ internal class FrameTxVerifyGasFilterTest
     }
 
     [Test]
-    public void Accept_IncludesSignatureVerificationAtThePublicCeiling([Values(0UL, 1UL)] ulong excessGas)
+    public void Accept_IncludesSignatureVerificationInTheConfiguredBudget(
+        [Values(100_000UL, 300_000UL)] ulong budget, [Values(0UL, 1UL)] ulong excessGas)
     {
         Transaction tx = FrameTx(TestItem.AddressA, [Secp256k1Signature(TestItem.AddressA)],
-            SelfVerify(100_000 - Eip8141Constants.Secp256k1VerificationGasCost + excessGas));
-        FrameTxVerifyGasFilter filter = new(new TxPoolConfig(), LimboLogs.Instance.GetClassLogger<FrameTxVerifyGasFilterTest>());
+            SelfVerify(budget - Eip8141Constants.Secp256k1VerificationGasCost + excessGas));
+        FrameTxVerifyGasFilter filter = new(new TxPoolConfig { FrameTxMaxVerifyGas = budget }, LimboLogs.Instance.GetClassLogger<FrameTxVerifyGasFilterTest>());
+        TxFilteringState state = new(tx, Substitute.For<IAccountStateProvider>(), Eip8141Prototype.Instance);
+
+        Assert.That(filter.Accept(tx, ref state, TxHandlingOptions.None),
+            Is.EqualTo(excessGas == 0 ? AcceptTxResult.Accepted : AcceptTxResult.FrameTxVerifyGasTooHigh));
+    }
+
+    [Test]
+    public void Accept_PositiveBudgetCannotFallBelowTheSharedFloor(
+        [Values(1UL, 99_999UL, 100_000UL)] ulong configured, [Values(0UL, 1UL)] ulong excessGas)
+    {
+        Transaction tx = FrameTx(SelfVerify(100_000 + excessGas));
+        FrameTxVerifyGasFilter filter = new(new TxPoolConfig { FrameTxMaxVerifyGas = configured }, LimboLogs.Instance.GetClassLogger<FrameTxVerifyGasFilterTest>());
         TxFilteringState state = new(tx, Substitute.For<IAccountStateProvider>(), Eip8141Prototype.Instance);
 
         Assert.That(filter.Accept(tx, ref state, TxHandlingOptions.None),

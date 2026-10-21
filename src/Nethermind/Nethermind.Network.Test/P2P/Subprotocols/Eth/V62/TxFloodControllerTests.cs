@@ -168,6 +168,23 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         }
 
         [Test]
+        public void Local_verification_headroom_rejections_do_not_penalize_the_peer([Values] bool otherRejection)
+        {
+            for (int i = 0; i < 6001; i++)
+            {
+                _controller.Report(AcceptTxResult.FrameTxVerifyGasTooHigh);
+            }
+
+            if (otherRejection) _controller.Report(AcceptTxResult.NonceGap);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_controller.IsDowngraded, Is.False);
+                _session.DidNotReceiveWithAnyArgs().InitiateDisconnect(DisconnectReason.TxFlooding, null);
+            }
+        }
+
+        [Test]
         public void Deferred_frame_simulation_throttles_but_never_disconnects()
         {
             // The peer does not choose when this node sheds simulation load, so a deferral must not
