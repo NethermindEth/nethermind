@@ -412,7 +412,6 @@ public class OptimismEthRpcModuleTest
         Transaction tx = Build.A.Transaction
             .WithType(TxType.Legacy)
             .WithHash(TestItem.KeccakA)
-            .WithSenderAddress(TestItem.AddressA)
             .TestObject;
         Block block = Build.A.Block
             .WithHeader(Build.A.BlockHeader
@@ -427,6 +426,7 @@ public class OptimismEthRpcModuleTest
             BlockNumber = block.Number,
             Index = 0x20,
             DepositReceiptVersion = 0x30,
+            Sender = TestItem.AddressA,
         };
 
         TestRpcBlockchain rpcBlockchain = await BuildOptimismRpc(MockBlockFinder(block), MockReceiptFinder(block, receipt));
@@ -436,7 +436,7 @@ public class OptimismEthRpcModuleTest
                             "jsonrpc":"2.0",
                             "result": {
                                 "type": "0x0",
-                                "from": "{{tx.SenderAddress!.Bytes.ToHexString(withZeroX: true)}}",
+                                "from": "{{TestItem.AddressA.Bytes.ToHexString(withZeroX: true)}}",
                                 "to": "0x0000000000000000000000000000000000000000",
                                 "value": "0x1",
                                 "gas": "0x5208",

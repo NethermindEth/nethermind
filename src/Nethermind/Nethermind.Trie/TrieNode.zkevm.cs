@@ -188,11 +188,11 @@ namespace Nethermind.Trie
         private PreviousRlp ReadPreviousRlp() => new(_rlpArray, (nint)(_rlpSeqAndLength >> 32));
 
         /// <summary>Computes the keccak of <paramref name="rlp"/>, this node's encoding.</summary>
-        /// <remarks>A full branch re-encoded from a witness node resumes from the sponge state of its unchanged leading
+        /// <remarks>A branch re-encoded from a witness node resumes from the sponge state of its unchanged leading
         /// rate blocks; see <see cref="KeccakHash.ComputeHash256OfEdited"/>.</remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static Hash256 ComputeKeccak(ReadOnlySpan<byte> rlp, in PreviousRlp previous) =>
-            rlp.Length == FullBranchRlpLength
+            KeccakHash.IsResumable(rlp.Length)
                 ? new Hash256(KeccakHash.ComputeHash256OfEdited(rlp, previous.Array, previous.Tag))
                 : Nethermind.Core.Crypto.Keccak.Compute(rlp);
 
@@ -226,10 +226,64 @@ namespace Nethermind.Trie
         /// the trie decodes 34,789 times, so 8,764 of those decodes are repeats.</remarks>
         private const bool PruneTraversedChildren = false;
 
+        /// <summary>Whether a re-encoded branch keeps its previous RLP's value as it stands, rather than walking to it to drop it.</summary>
+        /// <remarks>Every branch RLP in the guest comes from the witness, under the parent block's state root, or from this
+        /// encoder, and neither holds a value: state and storage keys are all 32 bytes. So the value is the last byte, 0x80,
+        /// and copying it spares the walk over the slots past a branch's last changed child.</remarks>
+        private static bool CopiesBranchValue => true;
+
+        /// <summary>Whether a branch hashed as soon as it is encoded keeps the RLP it had rather than its new one.</summary>
+        /// <remarks>
+        /// The guest never commits a trie, so a new branch RLP has no reader once hashed: a parent takes the hash, and a
+        /// write that reaches the branch again unseals it and re-encodes it from its slots. The RLP kept, from the witness
+        /// or none for a branch built in this block, still encodes every null slot, as a slot is only ever filled. So the
+        /// new RLP is written to scratch from <see cref="RentBranchRlp"/> and dropped, which spares the memory a stored copy
+        /// per encoded branch would first-touch. A branch short enough to be embedded is kept as before: its parent copies it.
+        /// Only where <see cref="FirstTouchMemoryFlag"/> is on: the other guests pay more for the scratch bookkeeping than they save.
+        /// </remarks>
+        private static bool KeepsRlpOfHashedBranch => FirstTouchMemoryFlag.IsActive;
+
+        /// <summary>The scratch branches are encoded into; see <see cref="KeepsRlpOfHashedBranch"/>.</summary>
+        /// <remarks>A class of its own, with no initializer, so each access is a plain load rather than a class-initialization check.</remarks>
+        private static class BranchRlpScratch
+        {
+            /// <summary>Per depth, the scratch a branch at that depth is encoded into.</summary>
+            /// <remarks>A branch's children are all deeper, so one is hashed before any other branch at its depth is encoded.
+            /// Sixty-four depths: a branch has a child one nibble deeper, and a path is at most sixty-four nibbles.</remarks>
+            public static byte[]?[]? ByDepth;
+        }
+
+        /// <summary>Rents the buffer the encoding of the branch at <paramref name="path"/> is written into: where
+        /// <see cref="KeepsRlpOfHashedBranch"/>, the scratch for its depth, else from <paramref name="pool"/>.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static CappedArray<byte> RentBranchRlp(ICappedArrayPool? pool, int length, in TreePath path) =>
+            KeepsRlpOfHashedBranch ? RentBranchRlpScratch(length, path) : pool.SafeRent(length);
+
+        /// <summary>Rents the scratch for the depth of <paramref name="path"/>, holding at least <paramref name="length"/> bytes.</summary>
+        /// <remarks>Valid until the next branch at that depth is encoded; <see cref="StorableBranchRlp"/> copies out what a node keeps.</remarks>
+        private static CappedArray<byte> RentBranchRlpScratch(int length, in TreePath path)
+        {
+            ref byte[]? scratch = ref (BranchRlpScratch.ByDepth ??= new byte[2 * Hash256.Size][])[path.Length];
+            if (scratch is null || scratch.Length < length) scratch = new byte[Math.Max(length, FullBranchRlpLength)];
+            return new CappedArray<byte>(scratch, length);
+        }
+
+        /// <summary>Returns <paramref name="rlp"/>, a branch encoding, in a buffer the node can keep: a copy out of the scratch.</summary>
+        private static CappedArray<byte> StorableBranchRlp(CappedArray<byte> rlp, ICappedArrayPool? pool)
+        {
+            CappedArray<byte> copy = pool.SafeRent(rlp.Length);
+            rlp.AsSpan().CopyTo(copy.AsSpan());
+            return copy;
+        }
+
         /// <summary>How <see cref="GetChildWithChildPath"/> is inlined: always.</summary>
         /// <remarks><see cref="PatriciaTree"/>'s set walk outgrows the inliner's budget and
         /// would otherwise call it out of line per level, a frame and five saved registers for a slot load and a type test.</remarks>
         private const MethodImplOptions GetChildWithChildPathInlining = MethodImplOptions.AggressiveInlining;
+
+        /// <summary>How <see cref="ResolveChildFromRlp"/> is inlined: always.</summary>
+        /// <remarks>Nearly every witness node is a child resolved once, and the call spilled the walk's live registers around it.</remarks>
+        private const MethodImplOptions ResolveChildFromRlpInlining = MethodImplOptions.AggressiveInlining;
 
         /// <summary>How <see cref="SetChild"/> is inlined: always.</summary>
         /// <remarks>Called per level as a trie write climbs back to the root, where an out-of-line call costs more than the
@@ -284,6 +338,51 @@ namespace Nethermind.Trie
             Rlp.Encode(destination, position + keyItemLength, value);
             return true;
         }
+
+        /// <summary>Resolves child <paramref name="i"/> from an RLP other than a full branch's, most often a branch with empty slots.</summary>
+        /// <remarks>
+        /// Skips the slots before the child knowing only the two item shapes such a branch holds, an empty slot and a hash,
+        /// and hands any other shape, an extension or a node without RLP to <see cref="ResolveChildFromAnyRlp"/>. Every
+        /// call it makes is a tail call, so unlike that general item scan it saves no registers.
+        /// </remarks>
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private object? ResolveChildFromSparseRlp(ITrieNodeResolver tree, ref TreePath childPath, ref object? data, int i, CappedArray<byte> rlp)
+        {
+            ReadOnlySpan<byte> span = rlp.AsSpan();
+            if (span.Length == 0 || span[0] < 0xc0 || _nodeData is not BranchData)
+                return ResolveChildFromAnyRlp(tree, ref childPath, ref data, i, rlp);
+
+            int position = span[0] < 0xf8 ? 1 : 1 + span[0] - 0xf7;
+            for (int skipped = 0; skipped < i; skipped++)
+            {
+                int prefix = span[position];
+                if (prefix == EmptyItem) position++;
+                else if (prefix == HashItem) position += 1 + Hash256.Size;
+                else return ResolveChildFromAnyRlp(tree, ref childPath, ref data, i, rlp);
+            }
+
+            switch (span[position])
+            {
+                case EmptyItem:
+                    data = _nullNode;
+                    return _nullNode;
+                case HashItem:
+                    return ResolveHashedChild(tree, ref childPath, ref data, span.Slice(position + 1, Hash256.Size));
+                default:
+                    return ResolveChildFromAnyRlp(tree, ref childPath, ref data, i, rlp);
+            }
+        }
+
+        private const int EmptyItem = 0x80;
+        private const int HashItem = 0x80 + Hash256.Size;
+
+        /// <summary>Creates the data of a leaf decoded from this node's RLP, with the hex-prefix key <paramref name="compactKey"/>
+        /// ending at <paramref name="compactKeyEnd"/>.</summary>
+        /// <remarks>The key stays in the RLP until read: an RLP array is never written once a node holds it here, as the
+        /// guest's buffer pool hands out fresh arrays and takes none back.</remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private LeafData CreateLeafData(ReadOnlySpan<byte> compactKey, int compactKeyEnd, CappedArray<byte> value) =>
+            new(_rlpArray!, compactKeyEnd - compactKey.Length, compactKey.Length, value);
 
         /// <summary>Deepens <paramref name="path"/> by one level for a child of the node being encoded, leaving its nibbles alone.</summary>
         /// <remarks>

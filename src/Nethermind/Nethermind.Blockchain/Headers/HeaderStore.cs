@@ -5,6 +5,7 @@ using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.IO;
+using System.Runtime.CompilerServices;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
@@ -106,6 +107,87 @@ public class HeaderStore : IHeaderStore, IClearableCache
             header = _headerDb.Get(blockNumber.Value, blockHash, _headerDecoder, _headerCache, shouldCache: shouldCache);
         }
         return header ?? _headerDb.Get(blockHash, _headerDecoder, _headerCache, shouldCache: shouldCache);
+    }
+
+    /// <inheritdoc/>
+    [SkipLocalsInit]
+    public BlockHeader? GetIfBloomMatches(Hash256 blockHash, ulong blockNumber, Func<ReadOnlySpan<byte>, bool> bloomMatches, out bool found)
+    {
+        BlockHeader? header = _headerCache.Get(in blockHash.ValueHash256);
+        if (header is null && _pending is not null) _pending.TryGet(blockHash, out header);
+        if (header is not null)
+        {
+            found = true;
+            return bloomMatches(header.Bloom!.Bytes) ? header : null;
+        }
+
+        Span<byte> key = stackalloc byte[NumberPrefixedKeyLength];
+        KeyValueStoreExtensions.GetBlockNumPrefixedKey(blockNumber, blockHash, key);
+        header = ReadIfBloomMatches(key, bloomMatches, out found);
+        return found ? header : ReadIfBloomMatches(blockHash.Bytes, bloomMatches, out found);
+    }
+
+    private BlockHeader? ReadIfBloomMatches(ReadOnlySpan<byte> key, Func<ReadOnlySpan<byte>, bool> bloomMatches, out bool found)
+    {
+        if (_headerDb is IReadOnlyNativeKeyValueStore native)
+        {
+            ReadOnlySpan<byte> slice = native.GetNativeSlice(key, out IntPtr handle);
+            if (slice.IsNull())
+            {
+                found = false;
+                return null;
+            }
+
+            try
+            {
+                return DecodeIfBloomMatches(slice, bloomMatches, out found);
+            }
+            finally
+            {
+                native.DangerousReleaseHandle(handle);
+            }
+        }
+
+        Span<byte> data = _headerDb.GetSpan(key);
+        if (data.IsNull())
+        {
+            found = false;
+            return null;
+        }
+
+        try
+        {
+            return DecodeIfBloomMatches(data, bloomMatches, out found);
+        }
+        finally
+        {
+            _headerDb.DangerousReleaseMemory(data);
+        }
+    }
+
+    private BlockHeader? DecodeIfBloomMatches(ReadOnlySpan<byte> rlp, Func<ReadOnlySpan<byte>, bool> bloomMatches, out bool found)
+    {
+        found = rlp.Length != 0;
+        if (!found) return null;
+
+        // A zero-length bloom is left to the decoder, which checks it against the spec.
+        bool bloomTested = TryReadBloom(rlp, out ReadOnlySpan<byte> bloom);
+        if (bloomTested && !bloomMatches(bloom)) return null;
+
+        RlpReader reader = new(rlp);
+        BlockHeader? header = _headerDecoder.Decode(ref reader, RlpBehaviors.AllowExtraBytes);
+        found = header is not null;
+        return found && (bloomTested || bloomMatches(header!.Bloom!.Bytes)) ? header : null;
+    }
+
+    private static bool TryReadBloom(ReadOnlySpan<byte> headerRlp, out ReadOnlySpan<byte> bloom)
+    {
+        RlpReader reader = new(headerRlp);
+        reader.ReadSequenceLength();
+        // Parent hash, uncles hash, beneficiary, state root, transactions root and receipts root precede the bloom.
+        reader.SkipItems(6);
+        bloom = reader.DecodeByteArraySpan();
+        return bloom.Length == Bloom.ByteLength;
     }
 
     public void Cache(BlockHeader header) => _headerCache.Set(in header.Hash.ValueHash256, header);

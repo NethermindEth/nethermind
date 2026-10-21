@@ -38,6 +38,11 @@ public class BalFetcher(
     private readonly int _allocateTimeoutMs = syncConfig.SyncDispatcherAllocateTimeoutMs;
     private readonly ILogger _logger = logManager.GetClassLogger<BalFetcher>();
 
+    // Peers whose last answer held none of the window's missing BALs, skipped until the window completes or no other
+    // peer is eligible. Kept across calls, as healing retries the same range.
+    private readonly HashSet<PeerInfo> _answeredEmpty = [];
+    private readonly Lock _answeredEmptyLock = new();
+
     public async Task<bool> EnsureRange(BlockHeader from, BlockHeader to, CancellationToken token)
     {
         for (ulong windowStart = from.Number + 1; windowStart <= to.Number; windowStart += WindowSize)
@@ -45,6 +50,7 @@ public class BalFetcher(
             ulong windowEnd = Math.Min(windowStart + WindowSize - 1, to.Number);
 
             int noProgress = 0;
+            bool fetched = false;
             while (true)
             {
                 token.ThrowIfCancellationRequested();
@@ -63,17 +69,33 @@ public class BalFetcher(
                         missing.Add(header);
                 }
 
-                if (missing.Count == 0) break;
+                if (missing.Count == 0)
+                {
+                    // A peer that lacked this window's BALs may hold the next window's. A window that was already
+                    // complete leaves the set alone, so a retried range still skips them at the window that stalled.
+                    if (fetched) lock (_answeredEmptyLock) _answeredEmpty.Clear();
+                    break;
+                }
                 if (noProgress >= MaxNoProgressRounds)
                 {
                     if (_logger.IsWarn) _logger.Warn($"No peer served block access lists for {missing.Count} of blocks {windowStart}..{windowEnd} after {MaxNoProgressRounds} attempts.");
                     return false;
                 }
 
+                fetched = true;
                 int stored;
-                using (SyncPeerAllocation allocation = await peerPool.Allocate(PeerStrategy, AllocationContexts.State, _allocateTimeoutMs, token))
+                using (SyncPeerAllocation allocation = await peerPool.Allocate(new SkipAnsweredEmptyStrategy(this), AllocationContexts.State, _allocateTimeoutMs, token))
                 {
-                    stored = allocation.Current is null ? 0 : await FetchFromPeer(allocation.Current, missing, token);
+                    if (allocation.Current is null)
+                    {
+                        // No eligible peer: let the ones that answered empty be asked again.
+                        lock (_answeredEmptyLock) _answeredEmpty.Clear();
+                        stored = 0;
+                    }
+                    else
+                    {
+                        stored = await FetchFromPeer(allocation.Current, missing, token);
+                    }
                 }
 
                 if (stored == 0)
@@ -137,6 +159,7 @@ public class BalFetcher(
         // match the header it was requested by is provable misbehaviour; a failed request may be an honest timeout.
         if (invalidBalError is not null) peerPool.ReportBreachOfProtocol(peer, DisconnectReason.InvalidTxOrUncle, $"invalid block access list: {invalidBalError}");
         else if (requestFailed) peerPool.ReportWeakPeer(peer, AllocationContexts.State);
+        else if (stored == 0) lock (_answeredEmptyLock) _answeredEmpty.Add(peer);
         return stored;
     }
 
@@ -145,6 +168,14 @@ public class BalFetcher(
         if (!BlockAccessListHashValidator.Validate(header, rlp, out error)) return false;
         balStore.Insert(header.Number, header.Hash!, rlp);
         return true;
+    }
+
+    private sealed class SkipAnsweredEmptyStrategy(BalFetcher fetcher) : FilterPeerAllocationStrategy(PeerStrategy)
+    {
+        protected override bool Filter(PeerInfo peer)
+        {
+            lock (fetcher._answeredEmptyLock) return !fetcher._answeredEmpty.Contains(peer);
+        }
     }
 
     private sealed class BalCapablePeerAllocationStrategy(IPeerAllocationStrategy strategy)

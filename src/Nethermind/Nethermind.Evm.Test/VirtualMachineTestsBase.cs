@@ -25,6 +25,7 @@ using Nethermind.Core.Test.Db;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Evm.State;
+using Nethermind.Evm.GasPolicy;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
@@ -60,12 +61,18 @@ public abstract class VirtualMachineTestsBase
     protected virtual ulong BlockNumber => DefaultBlockNumber;
     protected virtual ulong Timestamp => DefaultTimestamp;
 
+    /// <summary>Whether test transactions carry an EIP-155 <c>v</c>; there is none for chain ids above <c>(2^64 - 37) / 2</c>.</summary>
+    protected virtual bool SignWithEip155 => true;
+
     /// <summary>Applies a signed <paramref name="adjustment"/> to a block number, e.g. to target just before/after a fork.</summary>
     protected static ulong AdjustBlockNumber(ulong blockNumber, long adjustment) => (ulong)((long)blockNumber + adjustment);
     protected virtual ISpecProvider SpecProvider => MainnetSpecProvider.Instance;
     protected IReleaseSpec Spec => SpecProvider.GetSpec(Activation);
 
     protected virtual ILogManager GetLogManager() => LimboLogs.Instance;
+
+    /// <summary>The frame code runner this fixture's machine is constructed with; none by default.</summary>
+    protected virtual FrameCodeRunner<EthereumGasPolicy>? CreateFrameCodeRunner() => null;
 
     [SetUp]
     public virtual void Setup()
@@ -79,7 +86,7 @@ public abstract class VirtualMachineTestsBase
         _ethereumEcdsa = new EthereumEcdsa(SpecProvider.ChainId);
         IBlockhashProvider blockhashProvider = new TestBlockhashProvider(SpecProvider);
         CodeInfoRepository = new EthereumCodeInfoRepository(TestState);
-        Machine = new EthereumVirtualMachine(blockhashProvider, SpecProvider, logManager);
+        Machine = new EthereumVirtualMachine(blockhashProvider, SpecProvider, logManager, CreateFrameCodeRunner());
         _processor = new EthereumTransactionProcessor(BlobBaseFeeCalculator.Instance, SpecProvider, TestState, Machine, CodeInfoRepository, logManager);
     }
 
@@ -318,7 +325,7 @@ public abstract class VirtualMachineTestsBase
             .WithBlobVersionedHashes(blobVersionedHashes)
             .WithNonce(TestState.GetNonce(senderRecipientAndMiner.Sender))
             .To(senderRecipientAndMiner.Recipient)
-            .SignedAndResolved(_ethereumEcdsa, senderRecipientAndMiner.SenderKey)
+            .SignedAndResolved(_ethereumEcdsa, senderRecipientAndMiner.SenderKey, SignWithEip155)
             .TestObject;
 
         Block block = BuildBlock(activation, senderRecipientAndMiner, transaction, blockGasLimit, excessBlobGas, slotNumber);
@@ -360,7 +367,7 @@ public abstract class VirtualMachineTestsBase
             .WithData(input)
             .WithValue(value)
             .To(senderRecipientAndMiner.Recipient)
-            .SignedAndResolved(_ethereumEcdsa, senderRecipientAndMiner.SenderKey)
+            .SignedAndResolved(_ethereumEcdsa, senderRecipientAndMiner.SenderKey, SignWithEip155)
             .TestObject;
 
         Block block = BuildBlock(activation, senderRecipientAndMiner);
@@ -379,7 +386,7 @@ public abstract class VirtualMachineTestsBase
             .WithGasLimit(gasLimit)
             .WithGasPrice(1UL)
             .WithCode(code)
-            .SignedAndResolved(_ethereumEcdsa, senderRecipientAndMiner.SenderKey)
+            .SignedAndResolved(_ethereumEcdsa, senderRecipientAndMiner.SenderKey, SignWithEip155)
             .TestObject;
 
         Block block = BuildBlock(activation, senderRecipientAndMiner);

@@ -52,6 +52,9 @@ public interface ITxPoolConfig : IConfig
     [ConfigItem(DefaultValue = "1000", Description = "The total time, in milliseconds, spent simulating EIP-8141 validation prefixes per chain head. Once spent, opaque frame transactions are rejected until the next head. `0` to lift the limit.")]
     int FrameTxSimulationBudgetPerHeadMs { get; set; }
 
+    [ConfigItem(DefaultValue = "false", Description = "EIP-8141: whether each peer gets a fair share of `FrameTxSimulationBudgetPerHeadMs` for frame transactions that fail validation. Once a peer has spent its share, its next frame transactions in that head are dropped unvalidated and count as rejections towards its flood limits. Ignored when `FrameTxSimulationBudgetPerHeadMs` is `0`.")]
+    bool FrameTxPeerSimulationFairShare { get; set; }
+
     [ConfigItem(DefaultValue = "1", Description = "EIP-8141: the number of distinct chain heads a frame transaction may fail to approve any payment across, during block production, before the pool evicts it. Some failures turn on head state that only a new head can clear (an out-of-range recent-root reference, a SENDER frame reached before its approval), so the budget is counted per head: repeated production passes against the same head spend a single unit. A value above `1` keeps a transiently-failing transaction for that many heads at the cost of re-simulating its validation prefix once per head; `1` (or below) evicts on the first failed attempt, the pre-budget behaviour. The budget is counted per pool residency, not per transaction: an evicted transaction may be resubmitted, and a resubmitted one is granted a fresh budget, because the failures it buys heads for turn on chain state that the time out of the pool may have cleared. Raising it therefore multiplies by that factor the production-time simulation a peer can provoke by re-gossiping a transaction that keeps failing.")]
     int FrameTxEvictionRetryBudget { get; set; }
 

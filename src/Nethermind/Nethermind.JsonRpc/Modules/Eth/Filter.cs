@@ -60,7 +60,7 @@ public class Filter : IJsonRpcParam
             {
                 FromBlock = hasFromBlock && fromBlockElement.ValueKind != JsonValueKind.Null
                     ? BlockParameterConverter.GetBlockParameter(fromBlockElement.ToString())
-                    : BlockParameter.Earliest;
+                    : BlockParameter.Latest;
                 ToBlock = hasToBlock && toBlockElement.ValueKind != JsonValueKind.Null
                     ? BlockParameterConverter.GetBlockParameter(toBlockElement.ToString())
                     : BlockParameter.Latest;

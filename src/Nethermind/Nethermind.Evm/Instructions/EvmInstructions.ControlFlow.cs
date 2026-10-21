@@ -354,9 +354,9 @@ public static partial class EvmInstructions
     }
 
     /// <summary>
-    /// Executes the SELFDESTRUCT opcode.
+    /// Executes the SELFDESTRUCT opcode (SENDALL under EIP-4758).
     /// This method handles gas adjustments, account balance transfers,
-    /// and marks the executing account for destruction.
+    /// and marks the executing account for destruction where the fork still allows it.
     /// </summary>
     [SkipLocalsInit]
     internal static EvmExceptionType InstructionSelfDestruct<TGasPolicy, TEip8037, TEip7708, TSpec>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
@@ -396,10 +396,11 @@ public static partial class EvmInstructions
             goto OutOfGas;
 
         Address executingAccount = vmState.Env.ExecutingAccount;
-        bool createInSameTx = vmState.AccessTracker.CreateList.Contains(executingAccount);
-        bool selfdestructOnlyOnSameTx = TSpec.SelfdestructOnlyOnSameTransaction;
-        // Mark the executing account for destruction if allowed.
-        if (!selfdestructOnlyOnSameTx || createInSameTx)
+        // Mark the executing account for destruction if allowed: always before EIP-6780, only when created in this
+        // transaction under it, and never under EIP-4758 (SENDALL), which only moves the balance.
+        bool destroys = !TSpec.IsEip4758Enabled
+            && (!TSpec.SelfdestructOnlyOnSameTransaction || vmState.AccessTracker.CreateList.Contains(executingAccount));
+        if (destroys)
             vmState.AccessTracker.ToBeDestroyed(executingAccount);
 
         // Retrieve the current balance for transfer.
@@ -458,9 +459,10 @@ public static partial class EvmInstructions
             state.AddToBalance(inheritor, result, spec);
         }
 
-        // Self-targeting SELFDESTRUCT moves no ETH and emits no log: a pure no-op for the EIP-6780
-        // case (not in the destroy list), while EIP-8246 still finalizes but preserves the balance.
-        if (inheritor.Equals(executingAccount) && (TSpec.RemoveSelfdestructBurn || (selfdestructOnlyOnSameTx && !createInSameTx)))
+        // Self-targeting SELFDESTRUCT moves no ETH and emits no log: a pure no-op for a surviving account (EIP-6780
+        // outside the creation transaction, or always under EIP-4758), while EIP-8246 still finalizes but preserves
+        // the balance.
+        if (inheritor.Equals(executingAccount) && (TSpec.RemoveSelfdestructBurn || !destroys))
             goto Stop;
 
         vm.AddSelfDestructLog<TEip8037, TEip7708>(executingAccount, inheritor, result);

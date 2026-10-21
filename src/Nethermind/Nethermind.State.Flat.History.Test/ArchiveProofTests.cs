@@ -764,6 +764,100 @@ public class ArchiveProofTests
             "the reattached child changed while the branch above it was gone; the re-formed branch's row must carry it, or the reader fills it from the row written before the collapse and has to rebuild the branch from the (here corrupt) history rows");
     }
 
+    [TestCase("12", null, true)]
+    [TestCase("1234", "1235", true)]
+    [TestCase("12", null, false)]
+    [TestCase("1234", "1235", false)]
+    public void A_composed_node_captured_at_the_tip_over_children_with_no_node_of_their_own_is_served_from_commitments_alone(string path, string? siblingPath, bool atTheTip)
+    {
+        // Depth 1 is composed from the rows of its children at depth 2. Under a leaf or an extension at depth 1 no
+        // child holds a node of its own, so the tip has to record their views, or the reader rebuilds the composed
+        // node from the (here corrupt) history rows.
+        _policy = new CommitmentDepthPolicy(CommitmentDepthPolicy.MinIntervalLog2);
+        Address proven = AddressUnder(path, 0x5000_0000);
+        List<Address> accounts = [proven, AddressUnder("7a", 0x5100_0000), AddressUnder("7b", 0x5200_0000)];
+        if (siblingPath is not null) accounts.Add(AddressUnder(siblingPath, 0x5300_0000));
+
+        ReplaceChain();
+        _chain.AddBlock(0, block =>
+        {
+            foreach (Address address in accounts) block.SetBalance(address, 100);
+        });
+        _chain.AddBlock(1, block => block.SetBalance(proven, 200));
+        _chain.PublishWatermark();
+        if (atTheTip) CaptureAtTheTip();
+        else BuildCommitments();
+
+        AccountProof expected = _chain.ExpectedProof(proven, 1);
+
+        CorruptEveryAccountRow();
+
+        Assert.That(ProveFromArchive(proven, 1).Proof, Is.EqualTo(expected.Proof),
+            "the children of the composed node at 1 hold no node of their own; their rows must carry the views under the leaf or extension there");
+    }
+
+    [Test]
+    public void A_composed_node_over_a_child_whose_rows_record_it_empty_is_served_from_commitments_alone()
+    {
+        // Depth 1 is composed from its children at depth 2. In a small trie many of them are empty, and a child whose
+        // rows record it as empty must not be rebuilt from the history rows: under a long chain that reads every row
+        // under its path, which runs out of the scan budget.
+        (Address proven, Address vanished) = BuildSmallTrieWithAnEmptiedChild();
+
+        AccountProof expected = _chain.ExpectedProof(proven, 3);
+        AccountProof expectedAbsent = _chain.ExpectedProof(vanished, 3);
+
+        CorruptEveryAccountRow();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ProveFromArchive(proven, 3).Proof, Is.EqualTo(expected.Proof),
+                "the child at 10 is empty from block 1 on and its rows say so; rebuilding it reads the (here corrupt) history row of the deleted account");
+            Assert.That(ProveFromArchive(vanished, 3).Proof, Is.EqualTo(expectedAbsent.Proof),
+                "an absence proof through the same composed node takes the same empty child");
+        }
+    }
+
+    [Test]
+    public void A_composed_node_over_a_child_wrongly_recorded_empty_is_resolved_again_without_trusting_empty_rows()
+    {
+        (Address proven, Address _) = BuildSmallTrieWithAnEmptiedChild();
+        AccountProof expected = _chain.ExpectedProof(proven, 3);
+        CorruptAccountRowsOf(AddressUnder("13", 0x4100_0000));
+
+        byte[] prefix = new byte[CommitmentKeyLayout.PathBytes(2) + 1];
+        int prefixLength = CommitmentKeyLayout.WritePathPrefix(prefix, TreePath.FromHexString("12"), exact: true);
+        byte[] key = new byte[64];
+        int keyLength = CommitmentKeyLayout.WriteRowKey(key, epoch: 0, CommitmentKeyLayout.FineTier, prefix.AsSpan(0, prefixLength), suffix: 3);
+        byte[] row = new byte[ParentRowCodec.MaxBranchRowLength];
+        int rowLength = ParentRowCodec.EncodeEmpty(3, row);
+        _historyColumns.GetColumnDb(FlatHistoryColumns.AccountCommitments).PutSpan(key.AsSpan(0, keyLength), row.AsSpan(0, rowLength));
+
+        Assert.That(ProveFromArchive(proven, 3).Proof, Is.EqualTo(expected.Proof),
+            "the newest row of the present child at 12 says empty, so the composed node misses its hash check; resolving it again without trusting empty rows rebuilds only that child, while rebuilding the whole node at 1 reads the (here corrupt) history rows of the account at 13");
+    }
+
+    private (Address Proven, Address Vanished) BuildSmallTrieWithAnEmptiedChild()
+    {
+        _policy = new CommitmentDepthPolicy(CommitmentDepthPolicy.MinIntervalLog2);
+        Address proven = AddressUnder("12", 0x4000_0000);
+        Address sibling = AddressUnder("13", 0x4100_0000);
+        Address vanished = AddressUnder("10", 0x4200_0000);
+        Address[] elsewhere = [AddressUnder("7a", 0x4300_0000), AddressUnder("7b", 0x4400_0000)];
+
+        ReplaceChain();
+        _chain.AddBlock(0, block =>
+        {
+            foreach (Address address in new[] { proven, sibling, vanished, elsewhere[0], elsewhere[1] }) block.SetBalance(address, 100);
+        });
+        _chain.AddBlock(1, block => block.SetAccount(vanished, null));
+        _chain.AddBlock(2, block => block.SetBalance(proven, 200));
+        _chain.AddBlock(3, block => block.SetBalance(elsewhere[0], 300));
+        _chain.PublishWatermark();
+        BuildCommitments();
+        return (proven, vanished);
+    }
+
     [Test]
     public void A_storage_proof_at_a_windows_last_change_is_served_from_commitments_alone([Values(1L, 40L)] long maxRowsPerPartition)
     {
@@ -2618,6 +2712,14 @@ public class ArchiveProofTests
     {
         IDb column = _historyColumns.GetColumnDb(FlatHistoryColumns.StorageHistory);
         foreach (byte[] key in AllKeys(column)) column.PutSpan(key, Nethermind.Serialization.Rlp.Rlp.Encode(new byte[] { 0xEE, 0xEE }).Bytes);
+    }
+
+    private void CorruptAccountRowsOf(Address address)
+    {
+        IDb column = _historyColumns.GetColumnDb(FlatHistoryColumns.AccountHistory);
+        byte[] tampered = Nethermind.Serialization.Rlp.AccountDecoder.Slim.EncodeAsBytes(new Account(9999, 9999));
+        byte[] accountPath = Keccak.Compute(address.Bytes).BytesToArray();
+        foreach (byte[] key in AllKeys(column).Where(key => key.AsSpan().StartsWith(accountPath))) column.PutSpan(key, tampered);
     }
 
     private void CorruptEveryAccountRow()

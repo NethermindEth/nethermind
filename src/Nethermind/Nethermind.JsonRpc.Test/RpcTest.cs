@@ -71,16 +71,20 @@ public static class RpcTest
         return await service.SendRequestAsync(request, new JsonRpcContext(RpcEndpoint.Http));
     }
 
-    public static async Task<string> TestSerializedRequest<T>(T module, string method, params object?[]? parameters) where T : class, IRpcModule
+    public static Task<string> TestSerializedRequest<T>(T module, string method, params object?[]? parameters) where T : class, IRpcModule =>
+        TestSerializedRequest(
+            module,
+            module is IContextAwareRpcModule { Context: not null } contextAwareModule ? contextAwareModule.Context : new JsonRpcContext(RpcEndpoint.Http),
+            method,
+            parameters);
+
+    public static async Task<string> TestSerializedRequest<T>(T module, JsonRpcContext context, string method, params object?[]? parameters) where T : class, IRpcModule
     {
         await using IContainer container = CreateContainerForModule<T>(module);
 
         IJsonRpcService service = container.Resolve<IJsonRpcService>();
         JsonRpcRequest request = BuildJsonRequest(method, parameters);
 
-        using JsonRpcContext context = module is IContextAwareRpcModule { Context: not null } contextAwareModule
-            ? contextAwareModule.Context
-            : new JsonRpcContext(RpcEndpoint.Http);
         using JsonRpcResponse response = await service.SendRequestAsync(request, context).ConfigureAwait(false);
 
         if (response.TryGetStreamableResult(out _))
@@ -102,7 +106,7 @@ public static class RpcTest
         string serialized = Encoding.UTF8.GetString(writer.WrittenSpan);
         await TestContext.Out.WriteLineAsync(serialized);
 
-        Assert.That(writer.WrittenCount, Is.EqualTo(serialized.Length));
+        Assert.That(writer.WrittenCount, Is.EqualTo(Encoding.UTF8.GetByteCount(serialized)));
 
         return serialized;
     }
@@ -113,7 +117,7 @@ public static class RpcTest
         await using IContainer container = CreateContainerForModule<T>(module);
 
         IJsonRpcService service = container.Resolve<IJsonRpcService>();
-        using JsonRpcContext context = new(RpcEndpoint.Http);
+        JsonRpcContext context = new(RpcEndpoint.Http);
         using JsonRpcResponse response = await service.SendRequestAsync(BuildJsonRequest(method, parameters), context);
 
         Assert.That(response.TryGetStreamableResult(out _), Is.True, $"precondition: {method} must return a streamed result");

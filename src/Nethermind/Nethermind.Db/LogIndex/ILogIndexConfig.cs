@@ -21,8 +21,8 @@ public interface ILogIndexConfig : IConfig
     public bool Reset { get; set; }
 
     [ConfigItem(
-        Description = "Max allowed reorg depth for the index.",
-        DefaultValue = "64",
+        Description = "Max allowed reorg depth for the index. Defaults to `Pruning.PruningBoundary` when not set.",
+        DefaultValue = "null",
         HiddenFromDocs = true
     )]
     public ulong? MaxReorgDepth { get; set; }
@@ -78,7 +78,7 @@ public interface ILogIndexConfig : IConfig
 
     [ConfigItem(
         Description = "Number of newly added blocks after which to run DB compaction.",
-        DefaultValue = "262,144",
+        DefaultValue = "262144",
         HiddenFromDocs = true
     )]
     public int CompactionDistance { get; set; }

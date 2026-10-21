@@ -155,6 +155,71 @@ public class LongConverterTests : ConverterTestBase<long>
         }
     }
 
+    [TestCase("0x0", 0UL)]
+    [TestCase("0x", 0UL)]
+    [TestCase("0x\0", 0UL)]
+    [TestCase("0x1\0", 1UL)]
+    [TestCase("0x5", 5UL)]
+    [TestCase("0x00ff", 255UL)]
+    [TestCase("0xaBcD", 0xabcdUL)]
+    [TestCase("0xffffffffffffffff", ulong.MaxValue)]
+    [TestCase("0x0000000000000000000001", 1UL)]
+    [TestCase("0", 0UL)]
+    [TestCase("0123", 123UL)]
+    [TestCase(" 42 ", 42UL)]
+    [TestCase("18446744073709551615", ulong.MaxValue)]
+    public void FromString_parses_hex_and_decimal(string s, ulong expected)
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ULongConverter.FromString(s), Is.EqualTo(expected));
+            if (expected <= long.MaxValue || s.StartsWith("0x", StringComparison.Ordinal))
+                Assert.That(LongConverter.FromString(s), Is.EqualTo(unchecked((long)expected)));
+        }
+    }
+
+    [TestCase("", typeof(FormatException))]
+    [TestCase("0x ", typeof(FormatException))]
+    [TestCase("0xg", typeof(FormatException))]
+    [TestCase("0x0g", typeof(FormatException))]
+    [TestCase("0x-1", typeof(FormatException))]
+    [TestCase("0X10", typeof(FormatException))]
+    [TestCase("x10", typeof(FormatException))]
+    [TestCase("0x10000000000000000", typeof(OverflowException))]
+    [TestCase("0x010000000000000000", typeof(OverflowException))]
+    [TestCase("\u200B0x1", typeof(FormatException))]
+    public void FromString_rejects_invalid_input(string s, Type exceptionType)
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(() => ULongConverter.FromString(s), Throws.TypeOf(exceptionType));
+            Assert.That(() => LongConverter.FromString(s), Throws.TypeOf(exceptionType));
+        }
+    }
+
+    [Test]
+    public void FromString_handles_sign_and_null()
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(LongConverter.FromString("-1"), Is.EqualTo(-1L));
+            Assert.That(() => ULongConverter.FromString("-1"), Throws.TypeOf<OverflowException>());
+            Assert.That(() => LongConverter.FromString((string)null!), Throws.TypeOf<JsonException>());
+            Assert.That(() => ULongConverter.FromString((string)null!), Throws.TypeOf<ArgumentNullException>());
+        }
+    }
+
+    [Test]
+    public void FromString_does_not_allocate([Values("0x0", "0x9", "0xffffffffffffffff", "123")] string s)
+    {
+        ULongConverter.FromString(s);
+        LongConverter.FromString(s);
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        ULongConverter.FromString(s);
+        LongConverter.FromString(s);
+        Assert.That(GC.GetAllocatedBytesForCurrentThread() - before, Is.Zero);
+    }
+
     private static T Parse<T>(string digits) where T : struct, INumberBase<T> =>
         NumericConverterHelper.Parse<T>(System.Text.Encoding.ASCII.GetBytes("0x" + digits));
 }

@@ -4,7 +4,6 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
@@ -131,6 +130,7 @@ public abstract class GethLikeTxTracer<TEntry>(GethTraceOptions options, long? d
     protected TEntry? CurrentTraceEntry { get; set; }
 
     private bool _gasCostAlreadySetForCurrentOp;
+    private byte[]? _lastReturnData;
 
     public override void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env)
     {
@@ -207,7 +207,17 @@ public abstract class GethLikeTxTracer<TEntry>(GethTraceOptions options, long? d
     public override void SetOperationReturnData(ReadOnlySpan<byte> returnData)
     {
         if (CurrentTraceEntry is not null && !returnData.IsEmpty)
-            CurrentTraceEntry.ReturnData = returnData.ToHexString(true);
+            CurrentTraceEntry.ReturnData = GetReturnData(returnData);
+    }
+
+    // Return data only changes when a call returns, so consecutive opcodes share one copy. A change allocates a new
+    // array instead of overwriting the old one, because earlier entries still point to it.
+    private byte[] GetReturnData(ReadOnlySpan<byte> returnData)
+    {
+        if (_lastReturnData is null || !returnData.SequenceEqual(_lastReturnData))
+            _lastReturnData = returnData.ToArray();
+
+        return _lastReturnData;
     }
 
     public override GethLikeTxTrace BuildResult()

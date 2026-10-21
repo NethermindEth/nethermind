@@ -25,7 +25,7 @@ GUEST_EXTLIB ?= lib$(GUEST_LIBC)
 # .NET 11, not 10: both pass the soft-float suite, but 11 is the line it is
 # maintained on. It costs ~2.6% more SP1 cycles and ~2.5% more ZisK steps over
 # the nine stateless-tests blocks, and gives ~6.5% smaller binaries.
-BFLAT_IMAGE ?= nethermindeth/bflat-riscv64-11:07740486775be81201b33eba9848db052eacaf2b@sha256:8b4dfe69d409541940e74c2775f2c23d4440f16e0a239e93ceaf47e070296de5
+BFLAT_IMAGE ?= nethermindeth/bflat-riscv64-11:321edc6406497fbd6c6e09f717307e82df47bb90@sha256:7863dce1e70b735cc72a1edaa3e96c7410d6d452525e21a8dee283c99dc38396
 
 # Every target decodes rv64im only and reads the whole .text up front, so even
 # unreachable F/D/C/A instructions reject the guest - fail at build time instead.
@@ -46,9 +46,6 @@ TRIM_FLAGS ?= --no-stacktrace-data --ldflags=--strip-all
 # Objects a guest links besides the managed closure and its bindings library, each
 # assembled from the .S of the same name in the guest's directory.
 GUEST_OBJECTS ?=
-
-# Linker flags a guest adds, each passed to bflat as --ldflags.
-GUEST_LDFLAGS ?=
 
 # Main, the ZkvmThrow export and the failure protocol are one file shared by all
 # three guests; each guest's Program.cs supplies only WriteOutput. bflat compiles
@@ -138,7 +135,6 @@ build: dotnet-build $(addprefix $(GUEST_DIR)/,$(GUEST_OBJECTS))
 		$(BFLAT_REFS) \
 		--extlib $(BIN_DIR)/runtimes/linux-riscv64/native/$(GUEST_EXTLIB).bflat.manifest \
 		$(foreach object,$(GUEST_OBJECTS),--ldflags=$(SRC_DIR)/$(object)) \
-		$(foreach flag,$(GUEST_LDFLAGS),--ldflags=$(flag)) \
 		--map $(SRC_DIR)/Program.map.xml \
 		$(ISA_GATES) \
 		$(GUEST_OUT) \

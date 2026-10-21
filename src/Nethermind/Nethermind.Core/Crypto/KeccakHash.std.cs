@@ -56,6 +56,9 @@ public sealed partial class KeccakHash
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static partial void NoteWitnessNodeLoaded(nint tag) { }
 
+    /// <inheritdoc cref="KeccakHash.DonateConsumedInput" />
+    internal static partial void DonateConsumedInput(ReadOnlySpan<byte> consumed) { }
+
     // update the state with given number of rounds
     private static partial void KeccakF(Span<ulong> st)
     {

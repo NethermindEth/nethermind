@@ -1,8 +1,10 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Buffers;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Threading;
 using Nethermind.Core;
@@ -587,8 +589,47 @@ public class GethLikeTxMemoryTracerTests : GethLikeTracerTestsBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(call.ReturnData, Is.Null, "no return data before the call executes");
-            Assert.That(topLevelStop.ReturnData, Is.EqualTo($"0x{word}"), "return data visible after the inner call returns");
+            Assert.That(topLevelStop.ReturnData?.ToArray(), Is.EqualTo(Bytes.FromHexString(word)), "return data visible after the inner call returns");
         }
+    }
+
+    [Test]
+    public void Unchanged_returndata_shares_one_copy_across_opcodes()
+    {
+        const string word = "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff";
+        const string otherWord = "ffeeddccbbaa99887766554433221100ffeeddccbbaa99887766554433221100";
+
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
+        TestState.InsertCode(TestItem.AddressC, Prepare.EvmCode.StoreDataInMemory(0, word).Return(32, 0).Done, Spec);
+        TestState.CreateAccount(TestItem.AddressD, 1.Ether);
+        TestState.InsertCode(TestItem.AddressD, Prepare.EvmCode.StoreDataInMemory(0, otherWord).Return(32, 0).Done, Spec);
+        TestState.Commit(Spec);
+
+        byte[] code = Prepare.EvmCode
+            .Call(TestItem.AddressC, 50000)
+            .Call(TestItem.AddressC, 50000)
+            .Call(TestItem.AddressD, 50000)
+            .Op(Instruction.STOP)
+            .Done;
+
+        GethLikeTxTrace trace = ExecuteAndTrace(GethTraceOptions.Default with { EnableReturnData = true }, code);
+
+        byte[] wordBytes = Bytes.FromHexString(word);
+        GethTxTraceEntry[] firstReturn = trace.Entries.Where(e => e.Depth == 1 && e.ReturnData is { } data && data.Span.SequenceEqual(wordBytes)).ToArray();
+        GethTxTraceEntry topLevelStop = trace.Entries.Last(e => e.Opcode == "STOP" && e.Depth == 1);
+        string json = new EthereumJsonSerializer().Serialize(trace);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(firstReturn, Has.Length.GreaterThan(1));
+            Assert.That(firstReturn.All(e => ReturnDataArray(e) == ReturnDataArray(firstReturn[0])), Is.True);
+            Assert.That(topLevelStop.ReturnData?.ToArray(), Is.EqualTo(Bytes.FromHexString(otherWord)));
+            Assert.That(json, Does.Contain($"\"returnData\":\"0x{word}\""));
+            Assert.That(json, Does.Contain($"\"returnData\":\"0x{otherWord}\""));
+        }
+
+        static byte[]? ReturnDataArray(GethTxTraceEntry entry) =>
+            MemoryMarshal.TryGetArray(entry.ReturnData!.Value, out ArraySegment<byte> segment) ? segment.Array : null;
     }
 
     [Test]
@@ -661,6 +702,28 @@ public class GethLikeTxMemoryTracerTests : GethLikeTracerTestsBase
 
         Assert.That(trace.Entries.Any(e => e.Opcode == "SLOAD"), Is.True, "expected an SLOAD entry");
 
+        AssertStreamingMatchesInMemory(code);
+    }
+
+    [Test]
+    public void Streamed_deep_stack_of_mixed_width_words_matches_in_memory()
+    {
+        const int depth = 300;
+        Prepare prepare = Prepare.EvmCode;
+        for (int i = 0; i < depth; i++)
+        {
+            prepare.PushData((i % 4) switch
+            {
+                0 => UInt256.Zero,
+                1 => (UInt256)i,
+                2 => (UInt256.One << 159) + (UInt256)i,
+                _ => UInt256.MaxValue >> (i % 8),
+            });
+        }
+        byte[] code = prepare.Op(Instruction.STOP).Done;
+
+        Assert.That(ExecuteStreamingTracerEntries(code)[^1].GetProperty("stack").GetArrayLength(), Is.EqualTo(depth),
+            "precondition: the last entry carries the whole stack");
         AssertStreamingMatchesInMemory(code);
     }
 

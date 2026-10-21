@@ -1,6 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.IO;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.State;
@@ -56,19 +59,58 @@ public partial class StorageProviderTests
     }
 
     [Test]
-    public void EndScope_RetainedPendingBuffer_ReleasesBuffer()
+    public void EndScope_PendingBuffer_ReleasedOnlyWhenGrown([Values(1, PersistentStorageProvider.RetainedPendingCapacity + 1)] int slotCount)
     {
         using Context ctx = new(UseFlat, setInitialState: false);
         WorldState provider = BuildStorageProvider(ctx);
         using (provider.BeginScope(IWorldState.PreGenesis))
         {
-            StorageCell cell = new(TestItem.AddressA, UInt256.Zero);
-            provider.Get(cell, out _);
+            provider.Get(new StorageCell(TestItem.AddressA, UInt256.Zero), out _);
             provider.Commit(Frontier.Instance);
-            provider.Get(cell, out _);
+            for (int i = 1; i <= slotCount; i++)
+            {
+                provider.Get(new StorageCell(TestItem.AddressA, (UInt256)i), out _);
+            }
+
             Assert.That(GetPrivateField(provider._persistentStorageProvider, "_pendingOriginalValues"), Is.Not.Null);
         }
 
-        Assert.That(GetPrivateField(provider._persistentStorageProvider, "_pendingOriginalValues"), Is.Null);
+        bool grown = slotCount > PersistentStorageProvider.RetainedPendingCapacity;
+        Assert.That(GetPrivateField(provider._persistentStorageProvider, "_pendingOriginalValues"), grown ? Is.Null : Is.Not.Null);
+    }
+
+    /// <remarks>Only debug builds report an undisposed list, from its finalizer, so release builds pass trivially.</remarks>
+    [Test]
+    [NonParallelizable]
+    public void EndScope_KeptPendingBuffer_IsNotReportedAsLeaked()
+    {
+        TextWriter stderr = Console.Error;
+        using StringWriter captured = new();
+        Console.SetError(captured);
+        try
+        {
+            KeepPendingBufferAndDropProvider();
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+        }
+        finally
+        {
+            Console.SetError(stderr);
+        }
+
+        Assert.That(captured.ToString(), Does.Not.Contain(nameof(PersistentStorageProvider)));
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        void KeepPendingBufferAndDropProvider()
+        {
+            using Context ctx = new(UseFlat, setInitialState: false);
+            WorldState provider = BuildStorageProvider(ctx);
+            using (provider.BeginScope(IWorldState.PreGenesis))
+            {
+                provider.Get(new StorageCell(TestItem.AddressA, UInt256.Zero), out _);
+            }
+
+            Assert.That(GetPrivateField(provider._persistentStorageProvider, "_pendingOriginalValues"), Is.Not.Null);
+        }
     }
 }

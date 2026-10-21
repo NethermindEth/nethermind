@@ -1020,6 +1020,7 @@ public class SyncServerTests
         public ulong? BalCutoffBlockNumber => null;
         public BlockHeader? OldestBlockHeader { get; set; }
         public ulong OldestUnreclaimedBlockNumber => 0;
+        public ulong RetentionEpochs => 0;
         public event EventHandler<OnNewOldestBlockArgs>? NewOldestBlock;
         public void SchedulePruneHistory() { }
         public ulong GetRetentionBlocks(ulong retentionEpochs) => 0;

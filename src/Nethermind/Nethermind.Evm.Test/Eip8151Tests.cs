@@ -415,7 +415,7 @@ public class Eip8151Tests : VirtualMachineTestsBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(call.To, Is.EqualTo(PrecompiledAddresses.ECRecover), "to");
-            Assert.That(call.Output!.ToArray(), Is.EqualTo(eip8151Enabled ? new byte[32] : AsWord(Signer).ToBigEndian()), "output");
+            Assert.That(call.Output.ToArray(), Is.EqualTo(eip8151Enabled ? new byte[32] : AsWord(Signer).ToBigEndian()), "output");
             Assert.That(call.GasUsed, Is.EqualTo(eip8151Enabled ? EcRecoverBaseCost + ColdAccountAccess : EcRecoverBaseCost), "gas used");
         }
     }

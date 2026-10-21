@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
@@ -19,6 +20,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Evm;
+using Nethermind.Facade;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Facade.Simulate;
@@ -28,6 +30,7 @@ using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
+using Nethermind.State.Proofs;
 using Nethermind.State.Repositories;
 using NUnit.Framework;
 using ResultType = Nethermind.Facade.Proxy.Models.Simulate.ResultType;
@@ -36,6 +39,103 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth.Simulate;
 
 public class EthSimulateTestsBlocksAndTransactions
 {
+    private const string Calls = "\"calls\":[{\"from\":\"0xc000000000000000000000000000000000000000\",\"to\":\"0xc100000000000000000000000000000000000000\"}]";
+
+    [TestCase("{\"blockOverrides\":{\"bogusField\":\"0x1\"}," + Calls + "}", TestName = "Simulate rejects an unknown block override key")]
+    [TestCase("{\"stateOverrides\":{\"0xc100000000000000000000000000000000000000\":{\"balance\":\"0x1\",\"bogusField\":\"0x1\"}}," + Calls + "}", TestName = "Simulate rejects an unknown account override key")]
+    [TestCase("{\"blockOverrides\":{\"difficulty\":\"0x1\"}," + Calls + "}", TestName = "Simulate rejects a difficulty override")]
+    [TestCase("{\"blockOverrides\":{\"beaconRoot\":\"0x0000000000000000000000000000000000000000000000000000000000000001\"}," + Calls + "}", TestName = "Simulate rejects a beacon root override")]
+    [TestCase("{\"blockOverrides\":{\"beaconRoot\":null}," + Calls + "}", TestName = "Simulate rejects a null beacon root override")]
+    [TestCase("{\"blockOverrides\":{\"BEACONROOT\":null}," + Calls + "}", TestName = "Simulate rejects a differently cased beacon root override")]
+    [TestCase("{\"blockOverrides\":{\"bea\\u0063onRoot\":null}," + Calls + "}", TestName = "Simulate rejects an escaped beacon root override")]
+    [TestCase("{\"blockOverrides\":{\"number\":\"0x80\",\"Number\":\"0x81\"}," + Calls + "}", TestName = "Simulate rejects two block override keys for one field")]
+    [TestCase("{\"stateOverrides\":{\"0xc100000000000000000000000000000000000000\":{\"code\":\"0x00\",\"Code\":\"0x01\"}}," + Calls + "}", TestName = "Simulate rejects two account override keys for one field")]
+    public async Task Simulate_rejects_override_keys_it_does_not_support(string blockStateCall)
+    {
+        using TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+
+        string response = await chain.TestEthRpc("eth_simulateV1", SimulatePayloadJson(blockStateCall), "latest");
+
+        Assert.That(ErrorCode(response), Is.EqualTo(ErrorCodes.InvalidParams), response);
+    }
+
+    [TestCase("{\"blockOverrides\":{\"Number\":\"0x80\"}," + Calls + "}", TestName = "Simulate takes a block override key in another case")]
+    [TestCase("{\"stateOverrides\":{\"0xc100000000000000000000000000000000000000\":{\"Code\":\"0x00\"}}," + Calls + "}", TestName = "Simulate takes an account override key in another case")]
+    [TestCase("{\"blockOverrides\":{\"number\":\"0x80\",\"time\":\"0xffffffff\",\"gasLimit\":\"0x1c9c380\",\"feeRecipient\":\"0xc200000000000000000000000000000000000000\",\"prevRandao\":\"0x0000000000000000000000000000000000000000000000000000000000000001\",\"baseFeePerGas\":\"0x0\",\"blobBaseFee\":\"0x1\",\"withdrawals\":[]},\"stateOverrides\":{\"0xc100000000000000000000000000000000000000\":{\"nonce\":\"0x1\",\"balance\":\"0x1\",\"code\":\"0x00\",\"stateDiff\":{\"0x0000000000000000000000000000000000000000000000000000000000000001\":\"0x0000000000000000000000000000000000000000000000000000000000000002\"}},\"0xc200000000000000000000000000000000000000\":{\"state\":{\"0x0000000000000000000000000000000000000000000000000000000000000001\":\"0x0000000000000000000000000000000000000000000000000000000000000002\"}},\"0x0000000000000000000000000000000000000001\":{\"movePrecompileToAddress\":\"0xc400000000000000000000000000000000000000\"}}," + Calls + "}", TestName = "Simulate takes every supported override key")]
+    public async Task Simulate_takes_override_keys_it_supports(string blockStateCall)
+    {
+        using TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+
+        string response = await chain.TestEthRpc("eth_simulateV1", SimulatePayloadJson(blockStateCall), "latest");
+
+        Assert.That(ErrorCode(response), Is.Null, response);
+    }
+
+    [Test]
+    public async Task Simulate_processes_withdrawal_overrides()
+    {
+        using TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain(Osaka.Instance);
+        // PUSH20 0xc3.. BALANCE PUSH1 0 MSTORE PUSH1 32 PUSH1 0 RETURN
+        const string balanceOfRecipient = "0x73c30000000000000000000000000000000000000031600052602060" + "00f3";
+        const string withdrawal = "{\"index\":\"0x0\",\"validatorIndex\":\"0x1\",\"address\":\"0xc300000000000000000000000000000000000000\",\"amount\":\"0x2\"}";
+        JsonElement payload = SimulatePayloadJson(
+            "{\"blockOverrides\":{\"withdrawals\":[" + withdrawal + "]},\"stateOverrides\":{\"0xc100000000000000000000000000000000000000\":{\"code\":\"" + balanceOfRecipient + "\"}}}," +
+            "{" + Calls + "}");
+
+        string response = await chain.TestEthRpc("eth_simulateV1", payload, "latest");
+
+        using JsonDocument document = JsonDocument.Parse(response);
+        JsonElement blocks = document.RootElement.GetProperty("result");
+        Hash256 expectedRoot = new WithdrawalTrie([new Withdrawal { Index = 0, ValidatorIndex = 1, Address = new Address("0xc300000000000000000000000000000000000000"), AmountInGwei = 2 }]).RootHash;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blocks[0].GetProperty("withdrawals").GetArrayLength(), Is.EqualTo(1), response);
+            Assert.That(blocks[0].GetProperty("withdrawalsRoot").GetString(), Is.EqualTo(expectedRoot.ToString()), response);
+            Assert.That(blocks[1].GetProperty("withdrawalsRoot").GetString(), Is.EqualTo(Keccak.EmptyTreeHash.ToString()), response);
+            Assert.That(blocks[1].GetProperty("calls")[0].GetProperty("returnData").GetString(), Is.EqualTo("0x" + 2_000_000_000UL.ToString("x64")), response);
+        }
+    }
+
+    [TestCase("debug_simulateV1")]
+    [TestCase("trace_simulateV1")]
+    public async Task Debug_and_trace_simulate_reject_an_unknown_override_key(string method)
+    {
+        using TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+        JsonElement payload = SimulatePayloadJson("{\"blockOverrides\":{\"bogusField\":\"0x1\"}," + Calls + "}");
+
+        string response = method == "debug_simulateV1"
+            ? await RpcTest.TestSerializedRequest(chain.DebugRpcModule, method, payload, "latest")
+            : await RpcTest.TestSerializedRequest(chain.TraceRpcModule, method, payload, "latest");
+
+        Assert.That(ErrorCode(response), Is.EqualTo(ErrorCodes.InvalidParams), response);
+    }
+
+    [Test]
+    public async Task Eth_call_still_ignores_an_unknown_account_override_key()
+    {
+        using TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+        JsonElement call = ParseJson("{\"from\":\"0xc000000000000000000000000000000000000000\",\"to\":\"0xc100000000000000000000000000000000000000\"}");
+        JsonElement stateOverride = ParseJson("{\"0xc100000000000000000000000000000000000000\":{\"balance\":\"0x1\",\"bogusField\":\"0x1\"}}");
+
+        string response = await chain.TestEthRpc("eth_call", call, "latest", stateOverride);
+
+        Assert.That(ErrorCode(response), Is.Null, response);
+    }
+
+    private static JsonElement SimulatePayloadJson(string blockStateCall) => ParseJson($"{{\"blockStateCalls\":[{blockStateCall}]}}");
+
+    private static JsonElement ParseJson(string json)
+    {
+        using JsonDocument document = JsonDocument.Parse(json);
+        return document.RootElement.Clone();
+    }
+
+    private static int? ErrorCode(string response)
+    {
+        using JsonDocument document = JsonDocument.Parse(response);
+        return document.RootElement.TryGetProperty("error", out JsonElement error) ? error.GetProperty("code").GetInt32() : null;
+    }
+
     private const ulong StateGasBlockLimit = 200_000;
     private const ulong RemainingStateGasAfterSstore = StateGasBlockLimit - (ulong)GasCostOf.SSetState;
     private const ulong TwoSstoreRequestGasCap = 200_000;
@@ -971,6 +1071,49 @@ public class EthSimulateTestsBlocksAndTransactions
         Assert.That(callResult.ReturnData, Is.Not.Null);
         Assert.That(callResult.ReturnData!.Length, Is.EqualTo(32));
         Assert.That(new Hash256(callResult.ReturnData), Is.EqualTo(expected));
+    }
+
+    /// <summary>
+    /// On a chain that merges by terminal total difficulty without pinning the terminal block (Mainnet, Sepolia), the
+    /// merge block number stays unknown. A block simulated on top of the terminal PoW block is post-merge (EIP-3675), so
+    /// PREVRANDAO reads <c>blockOverrides.prevRandao</c> rather than the difficulty the block inherits from its parent.
+    /// </summary>
+    [TestCase("0xc300000000000000000000000000000000000000000000000000000000000001", TestName = "prevrandao_on_terminal_block_returns_overridden_value")]
+    [TestCase(null, TestName = "prevrandao_on_terminal_block_without_override_returns_zero")]
+    public async Task eth_simulateV1_prevrandao_on_terminal_block_of_chain_merged_by_ttd(string? overrideHex)
+    {
+        TestSpecProvider specProvider = new(Cancun.Instance);
+        TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(new TestRpcBlockchain()).Build(specProvider);
+        BlockHeader head = chain.BlockFinder.Head!.Header;
+        specProvider.TerminalTotalDifficulty = head.TotalDifficulty;
+        Assert.That(specProvider.MergeBlockNumber, Is.Null);
+        Assert.That(head.Difficulty, Is.Not.EqualTo(UInt256.Zero));
+
+        Hash256? overrideHash = overrideHex is not null ? new Hash256(overrideHex) : null;
+        SimulatePayload<TransactionForRpc> payload = new()
+        {
+            BlockStateCalls =
+            [
+                new()
+                {
+                    BlockOverrides = overrideHash is not null ? new BlockOverride { PrevRandao = overrideHash } : null,
+                    StateOverrides = new Dictionary<Address, AccountOverride>
+                    {
+                        { TestItem.AddressC, new AccountOverride { Code = PrevRandaoBytecode } },
+                        { TestItem.AddressA, new AccountOverride { Balance = 1.Ether } }
+                    },
+                    Calls = [new LegacyTransactionForRpc { From = TestItem.AddressA, To = TestItem.AddressC, Gas = 100_000 }]
+                }
+            ]
+        };
+
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
+            chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
+
+        Assert.That(result.Result.ResultType, Is.EqualTo(Core.ResultType.Success), result.Result.Error);
+        SimulateCallResult callResult = result.Data.Single().Calls.Single();
+        Assert.That(callResult.Status, Is.EqualTo((ulong)ResultType.Success));
+        Assert.That(new Hash256(callResult.ReturnData!), Is.EqualTo(overrideHash ?? Hash256.Zero));
     }
 
     // Regression test for https://github.com/NethermindEth/nethermind/issues/8480
@@ -2528,6 +2671,191 @@ public class EthSimulateTestsBlocksAndTransactions
         SimulateCallResult[] calls = SimulateSingleBlock(chain, payload);
         Assert.That(calls.Select(static c => c.Error), Is.All.Null);
         Assert.That(new UInt256(calls[1].ReturnData, isBigEndian: true), Is.EqualTo((UInt256)42));
+    }
+
+    private static readonly Address FreshAccountSender = TestItem.AddressD;
+    private static readonly PrivateKey FreshAuthorityKey = TestItem.PrivateKeys[200];
+    private static readonly Address FreshAccount = new("0xd100000000000000000000000000000000000000");
+    private static readonly Address StopContract = new("0xc400000000000000000000000000000000000000");
+
+    /// <summary>
+    /// eth_simulateV1 charges the accounts a call creates as eth_call does: a fresh EIP-7702 authority that is also the
+    /// call target, and a value transfer to a fresh account, pay NEW_ACCOUNT (EIP-8037 state gas on Amsterdam), and an
+    /// authority that does not exist earns no EIP-7702 refund (Osaka). A fresh sender that authorizes itself exists by
+    /// then, its nonce bumped first, so it pays neither. With one gas short the call fails, or is rejected, in both.
+    /// </summary>
+    [Test]
+    public async Task eth_simulateV1_charges_a_fresh_account_like_eth_call(
+        [Values("Osaka", "Amsterdam")] string fork,
+        [Values("authority is target", "authority is sender", "value transfer")] string scenario,
+        [Values] bool tightGas,
+        [Values] bool validation)
+    {
+        using TestRpcBlockchain chain = await BuildFreshAccountChain(fork);
+        TransactionForRpc CreateCall(ulong gas) => scenario switch
+        {
+            "authority is target" => CreateAuthorizationCall(chain, FreshAuthorityKey.Address, gas),
+            "authority is sender" => CreateAuthorizationCall(chain, TestItem.AddressB, gas, from: FreshAuthorityKey.Address, authorizationNonce: 1),
+            _ => new LegacyTransactionForRpc { From = FreshAccountSender, To = FreshAccount, Value = 1, Gas = gas, GasPrice = UInt256.Zero }
+        };
+
+        ulong gas = 400_000;
+        if (tightGas)
+        {
+            CallOutput ample = CallLikeEthCall(chain, CreateCall(gas));
+            Assert.That(ample.Error, Is.Null);
+            gas = ample.GasSpent - 1;
+        }
+
+        CallOutput expected = CallLikeEthCall(chain, CreateCall(gas));
+        if (expected.InputError)
+        {
+            // One gas short of a charge that is intrinsic gas is rejected before execution.
+            Assert.That(tightGas, Is.True, expected.Error);
+            Assert.That(RunFreshAccountSimulation(chain, validation, [CreateCall(gas)]).Result.ResultType, Is.EqualTo(Core.ResultType.Failure));
+            return;
+        }
+
+        SimulateCallResult actual = SimulateFreshAccountBlocks(chain, validation, [CreateCall(gas)])[0].Calls.Single();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actual.GasUsed, Is.EqualTo(expected.GasSpent));
+            Assert.That(actual.Status, Is.EqualTo(expected.Error is null ? 1UL : 0UL), expected.Error);
+            if (fork == "Amsterdam" && !tightGas)
+            {
+                Assert.That(actual.GasUsed, scenario == "authority is sender"
+                    ? Is.LessThan((ulong)GasCostOf.NewAccountState)
+                    : Is.GreaterThan((ulong)GasCostOf.NewAccountState));
+            }
+        }
+    }
+
+    /// <summary>
+    /// A fresh EIP-7702 authority stays fresh for the call that authorizes it when a later call in the block targets it
+    /// or is sent by it.
+    /// </summary>
+    [Test]
+    public async Task eth_simulateV1_charges_a_fresh_authority_that_a_later_call_uses(
+        [Values("Osaka", "Amsterdam")] string fork,
+        [Values] bool laterCallSentByAuthority,
+        [Values] bool validation)
+    {
+        using TestRpcBlockchain chain = await BuildFreshAccountChain(fork);
+        CallOutput expected = CallLikeEthCall(chain, CreateAuthorizationCall(chain, TestItem.AddressB, 400_000));
+
+        SimulateCallResult[] calls = SimulateFreshAccountBlocks(chain, validation,
+        [
+            CreateAuthorizationCall(chain, TestItem.AddressB, 400_000),
+            laterCallSentByAuthority
+                // The authorization bumped the authority's nonce to 1.
+                ? new LegacyTransactionForRpc { From = FreshAuthorityKey.Address, To = TestItem.AddressB, Gas = 100_000, GasPrice = UInt256.Zero, Nonce = 1 }
+                : new LegacyTransactionForRpc { From = FreshAccountSender, To = FreshAuthorityKey.Address, Gas = 100_000, GasPrice = UInt256.Zero }
+        ])[0].Calls.ToArray();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(expected.Error, Is.Null);
+            Assert.That(calls.Select(static c => c.Error), Is.All.Null);
+            Assert.That(calls[0].GasUsed, Is.EqualTo(expected.GasSpent));
+        }
+    }
+
+    /// <summary>
+    /// A call to a fresh account leaves no account behind: the block's state root is the one a zero-value call to an
+    /// existing account gives, and a later block still charges that address as a fresh EIP-7702 authority. A zero-value
+    /// call touches the account, so EIP-158 would delete an empty one; a value transfer one gas short of EIP-8037
+    /// NEW_ACCOUNT runs out of gas without touching it, so an empty account created before the block would stay.
+    /// </summary>
+    [TestCase("Osaka", false, false)]
+    [TestCase("Osaka", false, true)]
+    [TestCase("Amsterdam", false, false)]
+    [TestCase("Amsterdam", false, true)]
+    [TestCase("Amsterdam", true, false)]
+    [TestCase("Amsterdam", true, true)]
+    public async Task eth_simulateV1_call_to_a_fresh_account_leaves_no_account(string fork, bool transferRunsOutOfGas, bool validation)
+    {
+        using TestRpcBlockchain chain = await BuildFreshAccountChain(fork);
+        Address authority = FreshAuthorityKey.Address;
+        CallOutput expected = CallLikeEthCall(chain, CreateAuthorizationCall(chain, TestItem.AddressB, 400_000));
+
+        LegacyTransactionForRpc CreateTransfer(ulong gas) =>
+            new() { From = FreshAccountSender, To = authority, Value = transferRunsOutOfGas ? UInt256.One : UInt256.Zero, Gas = gas, GasPrice = UInt256.Zero };
+        ulong gas = transferRunsOutOfGas ? CallLikeEthCall(chain, CreateTransfer(100_000)).GasSpent - 1 : 100_000;
+
+        IReadOnlyList<SimulateBlockResult<SimulateCallResult>> toFresh = SimulateFreshAccountBlocks(chain, validation,
+            [CreateTransfer(gas)],
+            [CreateAuthorizationCall(chain, TestItem.AddressB, 400_000)]);
+        IReadOnlyList<SimulateBlockResult<SimulateCallResult>> toExisting = SimulateFreshAccountBlocks(chain, validation,
+            [new LegacyTransactionForRpc { From = FreshAccountSender, To = TestItem.AddressB, Gas = 100_000, GasPrice = UInt256.Zero }]);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(expected.Error, Is.Null);
+            Assert.That(toFresh[0].Calls.Single().Status, Is.EqualTo(transferRunsOutOfGas ? 0UL : 1UL));
+            Assert.That(toFresh[1].Calls.Single().Error, Is.Null);
+            Assert.That(toFresh[0].StateRoot, Is.EqualTo(toExisting[0].StateRoot));
+            Assert.That(toFresh[1].Calls.Single().GasUsed, Is.EqualTo(expected.GasSpent));
+        }
+    }
+
+    private static Task<TestRpcBlockchain> BuildFreshAccountChain(string fork) =>
+        fork == "Amsterdam" ? BuildAmsterdamBalChain() : EthRpcSimulateTestsBase.CreateChain(Osaka.Instance);
+
+    private static Dictionary<Address, AccountOverride> FreshAccountStateOverrides() => new()
+    {
+        { FreshAccountSender, new AccountOverride { Balance = 1.Ether } },
+        { StopContract, new AccountOverride { Code = [0x00] } }
+    };
+
+    /// <summary>
+    /// A call from <paramref name="from"/> (<see cref="FreshAccountSender"/> by default) to <paramref name="to"/> that
+    /// delegates <see cref="FreshAuthorityKey"/> to <see cref="StopContract"/>.
+    /// </summary>
+    private static SetCodeTransactionForRpc CreateAuthorizationCall(
+        TestRpcBlockchain chain, Address to, ulong gas, Address? from = null, ulong authorizationNonce = 0)
+    {
+        AuthorizationTuple authorization = new EthereumEcdsa(chain.SpecProvider.ChainId)
+            .Sign(FreshAuthorityKey, chain.SpecProvider.ChainId, StopContract, authorizationNonce);
+        return new SetCodeTransactionForRpc
+        {
+            From = from ?? FreshAccountSender,
+            To = to,
+            Gas = gas,
+            AuthorizationList = AuthorizationListForRpc.FromAuthorizationList([authorization]),
+            MaxFeePerGas = 0,
+            MaxPriorityFeePerGas = 0,
+            GasPrice = null
+        };
+    }
+
+    /// <summary>Runs <paramref name="call"/> through the eth_call path, on the head state with the same overrides as the simulation.</summary>
+    private static CallOutput CallLikeEthCall(TestRpcBlockchain chain, TransactionForRpc call) =>
+        chain.Bridge.Call(chain.BlockTree.Head!.Header, call.ToTransaction().Data!, FreshAccountStateOverrides());
+
+    private static IReadOnlyList<SimulateBlockResult<SimulateCallResult>> SimulateFreshAccountBlocks(
+        TestRpcBlockchain chain, bool validation, params TransactionForRpc[][] blocks)
+    {
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result = RunFreshAccountSimulation(chain, validation, blocks);
+        Assert.That(result.Result.ResultType, Is.EqualTo(Core.ResultType.Success), result.Result.Error);
+        return result.Data!;
+    }
+
+    private static ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> RunFreshAccountSimulation(
+        TestRpcBlockchain chain, bool validation, params TransactionForRpc[][] blocks)
+    {
+        SimulatePayload<TransactionForRpc> payload = new()
+        {
+            BlockStateCalls = blocks.Select((calls, i) => new BlockStateCall<TransactionForRpc>
+            {
+                BlockOverrides = new BlockOverride { BaseFeePerGas = 0 },
+                StateOverrides = i == 0 ? FreshAccountStateOverrides() : null,
+                Calls = calls
+            }).ToList(),
+            Validation = validation
+        };
+
+        return chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
     }
 
     /// <summary>

@@ -114,7 +114,7 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
             MaximumExtraDataSize = parameters.MaximumExtraDataSize ?? 32,
             MinGasLimit = parameters.MinGasLimit ?? 5000UL,
             MinHistoryRetentionEpochs = parameters.MinHistoryRetentionEpochs ?? HistoryRetentionConstants.MinEpochsForBlockRequests,
-            MinBalRetentionEpochs = parameters.MinBalRetentionEpochs ?? HistoryRetentionConstants.WeakSubjectivityPeriodEpochs,
+            MinBalRetentionEpochs = parameters.MinBalRetentionEpochs ?? HistoryRetentionConstants.HistoryPruneEpochs,
             MaxCodeSize = parameters.MaxCodeSize,
             MaxCodeSizeTransition = parameters.MaxCodeSizeTransition,
             MaxCodeSizeTransitionTimestamp = parameters.MaxCodeSizeTransitionTimestamp,
@@ -251,6 +251,7 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
             Eip8279TransitionTimestamp = parameters.Eip8279TransitionTimestamp,
             Eip7805TransitionTimestamp = parameters.Eip7805TransitionTimestamp,
             Eip8298TransitionTimestamp = parameters.Eip8298TransitionTimestamp,
+            Eip4758TransitionTimestamp = parameters.Eip4758TransitionTimestamp,
         };
 
         chainSpec.Parameters.ExpandAll(parameters);

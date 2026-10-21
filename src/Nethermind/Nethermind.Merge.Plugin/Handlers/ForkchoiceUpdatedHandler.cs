@@ -135,6 +135,14 @@ public class ForkchoiceUpdatedHandler(
 
         if (invalidChainTracker.IsOnKnownInvalidChain(forkchoiceState.HeadBlockHash, out Hash256? lastValidHash))
         {
+            // A queued ancestor can still fail execution and move latestValidHash backwards.
+            if (lastValidHash is not null && !processingQueue.WaitUntilRemovedAsync(lastValidHash).IsCompleted)
+            {
+                return ForkchoiceUpdatedV1Result.Syncing;
+            }
+
+            // Queue removal publishes invalidation before completing, so refresh the earlier snapshot.
+            invalidChainTracker.IsOnKnownInvalidChain(forkchoiceState.HeadBlockHash, out lastValidHash);
             if (_logger.IsWarn) _logger.Warn($"Received Invalid {forkchoiceState} {payloadAttributes} - {forkchoiceState.HeadBlockHash} is known to be a part of an invalid chain.");
             return ForkchoiceUpdatedV1Result.Invalid(lastValidHash);
         }
@@ -154,7 +162,7 @@ public class ForkchoiceUpdatedHandler(
             if (headBlockHeader is null)
             {
                 if (_logger.IsDebug) _logger.Debug($"Attempting to fetch header from peer: {simpleRequestStr}.");
-                headBlockHeader = await syncPeerPool.FetchHeaderFromPeer(forkchoiceState.HeadBlockHash);
+                headBlockHeader = await syncPeerPool.FetchHeaderFromPeer(forkchoiceState.HeadBlockHash, logger: _logger);
             }
 
             if (headBlockHeader is not null)

@@ -343,7 +343,7 @@ public class Eth72ProtocolHandler(
         return true;
     }
 
-    protected override void SendNewTransactionsCore(IEnumerable<Transaction> txs, bool sendFullTx)
+    protected override void SendNewTransactionsCore(ReadOnlySpan<Transaction> txs, bool sendFullTx)
     {
         if (sendFullTx)
         {
@@ -351,7 +351,7 @@ public class Eth72ProtocolHandler(
             return;
         }
 
-        using ArrayPoolList<Transaction> pendingTransactions = new(NewPooledTransactionHashesMessage72.MaxCount);
+        using ArrayPoolList<Transaction> pendingTransactions = new(Math.Min(txs.Length, NewPooledTransactionHashesMessage72.MaxCount));
         BlobCellMask? pendingMask = null;
         foreach (Transaction tx in txs)
         {
@@ -472,7 +472,7 @@ public class Eth72ProtocolHandler(
             if (shouldRequestTx
                 && (_blobSupportEnabled || !supportsBlobs))
             {
-                TxShapeAnnouncements.Set(hash, (txSize, txType));
+                SetTxShape(in hash, (txSize, txType));
                 hashesToRequest ??= new(Math.Min(hashes.Length - i, 256));
 
                 if ((txSize > packetSizeLeft && toRequestCount > 0) || toRequestCount >= 256)
@@ -1719,7 +1719,7 @@ public class Eth72ProtocolHandler(
             return false;
         }
 
-        if (TxShapeAnnouncements.Delete(tx.Hash, out (int Size, TxType Type) txShape)
+        if (TryTakeTxShape(tx.Hash!, out (int Size, TxType Type) txShape)
             && (!MatchesAnnouncedTransactionSize(tx, txShape.Size) || tx.Type != txShape.Type))
         {
             return false;

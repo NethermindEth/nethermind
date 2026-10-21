@@ -28,6 +28,10 @@ public ref struct TxFilteringState(Transaction tx, IAccountStateProvider account
     /// node's block work: a deferral would drop it until someone announces it again.</remarks>
     internal bool ReAddedFromReorg { get; init; }
 
+    /// <summary>Set once the pool has spent frame validation work on this transaction: verified its signatures or
+    /// executed its validation prefix. A peer's validation budget stays charged for a rejection after this point.</summary>
+    internal bool FrameValidationRan { get; set; }
+
     /// <summary>Whether a filter has taken this transaction's EIP-8141 paymaster slot and still owes its release.</summary>
     /// <remarks>The slot is counted before the filters that follow can reject, so the pool unwinds it once the
     /// outcome is known rather than leaving the sponsor permanently short.</remarks>

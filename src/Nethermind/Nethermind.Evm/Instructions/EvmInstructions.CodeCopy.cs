@@ -51,8 +51,13 @@ public static partial class EvmInstructions
         where TTracingInst : struct, IFlag
     {
         ulong words = EvmCalculations.Div32Ceiling(in result, out bool outOfGas);
-        if (TTracingInst.IsActive && !outOfGas && words <= (ulong.MaxValue - GasCostOf.VeryLow) / GasCostOf.Memory)
-            vm.TraceMemoryOperationGasCost(in a, in result, GasCostOf.VeryLow + GasCostOf.Memory * words);
+        if (TTracingInst.IsActive)
+        {
+            if (TGasPolicy.GetRemainingGas(in gas) < GasCostOf.VeryLow)
+                vm.TraceOperationGasCost(GasCostOf.VeryLow);
+            else if (!outOfGas && words <= (ulong.MaxValue - GasCostOf.VeryLow) / GasCostOf.Memory)
+                vm.TraceMemoryOperationGasCost(in a, in result, GasCostOf.VeryLow + GasCostOf.Memory * words);
+        }
         if (!TGasPolicy.TryConsumeDataCopyGas(ref gas, vm.Spec, isExternalCode: false, words)) return EvmExceptionType.OutOfGas;
         if (outOfGas) goto OutOfGas;
 
@@ -95,8 +100,13 @@ public static partial class EvmInstructions
         bool traceError = DispatchFlags.ConstTracing && (TTracingInst.IsActive || vm.IsTracingActions);
         ulong traceInitialGas = traceError ? TGasPolicy.GetRemainingGas(in gas) : 0;
         ulong words = EvmCalculations.Div32Ceiling(in size, out bool outOfGas);
-        if (TTracingInst.IsActive && !outOfGas && words <= (ulong.MaxValue - GasCostOf.VeryLow) / GasCostOf.Memory)
-            vm.TraceMemoryOperationGasCost(in destOffset, in size, GasCostOf.VeryLow + GasCostOf.Memory * words);
+        if (TTracingInst.IsActive)
+        {
+            if (TGasPolicy.GetRemainingGas(in gas) < GasCostOf.VeryLow)
+                vm.TraceOperationGasCost(GasCostOf.VeryLow);
+            else if (!outOfGas && words <= (ulong.MaxValue - GasCostOf.VeryLow) / GasCostOf.Memory)
+                vm.TraceMemoryOperationGasCost(in destOffset, in size, GasCostOf.VeryLow + GasCostOf.Memory * words);
+        }
         if (!TGasPolicy.TryConsumeDataCopyGas(ref gas, vm.Spec, isExternalCode: false, words)) goto OutOfGas;
         if (outOfGas) goto OutOfGas;
 

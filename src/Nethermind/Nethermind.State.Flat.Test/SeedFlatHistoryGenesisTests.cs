@@ -31,6 +31,7 @@ public class SeedFlatHistoryGenesisTests
     private SnapshotableMemColumnsDb<FlatHistoryColumns> _historyColumns = null!;
     private HistoryWriter _writer = null!;
     private HistoryReader _reader = null!;
+    private PivotHistoryImageWriter _image = null!;
 
     [SetUp]
     public void SetUp()
@@ -42,11 +43,13 @@ public class SeedFlatHistoryGenesisTests
         HistoryRowFormat rowFormat = HistoryRowFormat.Resolve(availability, config);
         _writer = new HistoryWriter(_db, _historyColumns, config, availability, rowFormat, LimboLogs.Instance, commitments: null);
         _reader = new HistoryReader(_db, _historyColumns, availability, rowFormat, LimboLogs.Instance);
+        _image = new PivotHistoryImageWriter(_db, _historyColumns, config, availability, rowFormat, new Lazy<IPivotStateSource>(Substitute.For<IPivotStateSource>()), LimboLogs.Instance);
     }
 
     [TearDown]
     public void TearDown()
     {
+        _image.Dispose();
         _db.Dispose();
         _historyColumns.Dispose();
     }
@@ -131,14 +134,14 @@ public class SeedFlatHistoryGenesisTests
     {
         ChainSpec chainSpec = new() { Allocations = new() { [TestItem.AddressA] = new ChainSpecAllocation(1000) } };
 
-        SeedFlatHistoryGenesis step = new(CreatePolicy(flatActive: false), chainSpec, BlockTree(), _writer, _reader, LimboLogs.Instance);
+        SeedFlatHistoryGenesis step = new(CreatePolicy(flatActive: false), chainSpec, BlockTree(), _writer, _reader, _image, LimboLogs.Instance);
         await step.Execute(CancellationToken.None);
 
         Assert.That(_reader.HasHistoryForBlock(0), Is.False);
     }
 
     private SeedFlatHistoryGenesis Step(ChainSpec chainSpec, int headBlockNumber = 100, bool hasGenesis = true) =>
-        new(CreatePolicy(flatActive: true), chainSpec, BlockTree(headBlockNumber, hasGenesis), _writer, _reader, LimboLogs.Instance);
+        new(CreatePolicy(flatActive: true), chainSpec, BlockTree(headBlockNumber, hasGenesis), _writer, _reader, _image, LimboLogs.Instance);
 
     private static IBlockTree BlockTree(int headBlockNumber = 100, bool hasGenesis = true)
     {
