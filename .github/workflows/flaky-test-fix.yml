@@ -203,7 +203,7 @@ jobs:
         run: |
           git add -A
           git diff --cached --quiet && { echo "::error::Claude produced no change"; exit 1; }
-          git diff --cached --name-only -z | xargs -0 python3 "$RUNNER_TEMP/flaky_tests.py" guard
+          git diff --cached --no-renames --name-only -z | xargs -0 python3 "$RUNNER_TEMP/flaky_tests.py" guard
           mkdir -p "$RUNNER_TEMP/patch"
           git diff --cached --binary > "$RUNNER_TEMP/patch/fix.patch"
           echo "base=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
@@ -289,7 +289,7 @@ jobs:
         run: |
           cp scripts/ci/flaky_tests.py "$RUNNER_TEMP/flaky_tests.py"
           git apply --index --binary "$RUNNER_TEMP/fix/fix.patch"
-          git diff --cached --name-only -z | xargs -0 python3 "$RUNNER_TEMP/flaky_tests.py" guard
+          git diff --cached --no-renames --name-only -z | xargs -0 python3 "$RUNNER_TEMP/flaky_tests.py" guard
 
       - name: Authenticate App
         id: gh-app
@@ -460,7 +460,7 @@ jobs:
         run: |
           git add -A
           git diff --cached --quiet && { echo "::error::Claude produced no change"; exit 1; }
-          git diff --cached --name-only -z | xargs -0 python3 "$RUNNER_TEMP/flaky_tests.py" guard
+          git diff --cached --no-renames --name-only -z | xargs -0 python3 "$RUNNER_TEMP/flaky_tests.py" guard
           project=$(sed -n 's/^- Project: `\(.*\)`$/\1/p' "$PR_BODY")
           filter=$(sed -n 's/^- Test filter: `\(.*\)`$/\1/p' "$PR_BODY")
           [[ "$project" =~ ^Nethermind(\.[A-Za-z0-9]+)+\.Test$ ]] || { echo "::error::Bad project in PR body"; exit 1; }
@@ -516,7 +516,7 @@ jobs:
           gh api -H "Accept: application/vnd.github.raw" "repos/$GITHUB_REPOSITORY/contents/scripts/ci/flaky_tests.py?ref=master" \
             > "$RUNNER_TEMP/flaky_tests.py"
           git apply --index --binary "$RUNNER_TEMP/fix/fix.patch"
-          git diff --cached --name-only -z | xargs -0 python3 "$RUNNER_TEMP/flaky_tests.py" guard
+          git diff --cached --no-renames --name-only -z | xargs -0 python3 "$RUNNER_TEMP/flaky_tests.py" guard
 
       - name: Authenticate App
         id: push-app

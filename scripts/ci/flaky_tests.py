@@ -47,6 +47,7 @@ MIN_VERIFY_SECONDS = 3600
 MAX_VERIFY_SECONDS = 5400
 VERIFY_BUDGET_MARGIN = 1.5
 CONFIDENCE_FACTOR = 3
+SPINNER = "import os, sys\nparent = int(sys.argv[1])\nwhile os.getppid() == parent: pass"
 
 
 def parse_failures(log):
@@ -179,7 +180,7 @@ def classify(runs, failures):
 
 
 def start_cpu_load(processes):
-    return [subprocess.Popen([sys.executable, "-c", "while True: pass"]) for _ in range(processes)]
+    return [subprocess.Popen([sys.executable, "-c", SPINNER, str(os.getpid())]) for _ in range(processes)]
 
 
 def repeat(project, test_filter, runs, budget, stop_after, out_dir, host=None, load=0, run_timeout=600):
