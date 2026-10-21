@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using Nethermind.Core.Buffers;
+using Nethermind.Core.Crypto;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 
@@ -91,6 +93,55 @@ public class GuestLeafKeyTests
         }
 
         Assert.That(tree.Get(RawKey(0xFF)).IsEmpty, Is.True);
+    }
+
+    [Test]
+    public void Sparse_branch_resolves_each_child_from_its_rlp([Values] bool longList)
+    {
+        const int embeddedIndex = 13;
+        byte[] embedded = [0xc2, 0x20, 0x01];
+        byte[]?[] children = new byte[TrieNode.BranchesCount][];
+        for (int i = 0; i < children.Length; i++)
+        {
+            if (!(longList ? i % 3 == 0 : i == 9)) continue;
+            // Empty-item bytes inside the hash, so a skip that lands in it reads a wrong child rather than falling back.
+            byte[] hash = new byte[Hash256.Size];
+            hash.AsSpan().Fill(0x80);
+            hash[0] = (byte)(i + 1);
+            children[i] = hash;
+        }
+
+        // An embedded child is resolved, and skipped over, by the general item scan.
+        children[embeddedIndex] = embedded;
+        TrieNode branch = new(NodeType.Unknown, SparseBranchRlp(children));
+        branch.ResolveNode(NullTrieNodeResolver.Instance, TreePath.Empty);
+
+        using (Assert.EnterMultipleScope())
+        {
+            for (int i = 0; i < children.Length; i++)
+            {
+                TreePath path = TreePath.Empty;
+                TrieNode? child = branch.GetChild(NullTrieNodeResolver.Instance, ref path, i);
+                if (children[i] is null) Assert.That(child, Is.Null, $"child {i}");
+                else if (i == embeddedIndex) Assert.That(child!.FullRlp.AsSpan().ToArray(), Is.EqualTo(embedded), $"child {i}");
+                else Assert.That(child!.Keccak, Is.EqualTo(new Hash256(children[i]!)), $"child {i}");
+            }
+        }
+    }
+
+    /// <summary>A branch RLP holding <paramref name="children"/>, each a hash or an embedded node, and no value.</summary>
+    private static byte[] SparseBranchRlp(byte[]?[] children)
+    {
+        List<byte> content = [];
+        foreach (byte[]? child in children)
+        {
+            if (child is null) content.Add(0x80);
+            else if (child.Length == Hash256.Size) content.AddRange([0xa0, .. child]);
+            else content.AddRange(child);
+        }
+
+        content.Add(0x80);
+        return content.Count < 56 ? [(byte)(0xc0 + content.Count), .. content] : [0xf8, (byte)content.Count, .. content];
     }
 
     /// <summary>A sealed leaf decoded from RLP, as the guest reads one from its witness.</summary>

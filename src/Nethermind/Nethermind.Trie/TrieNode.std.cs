@@ -241,6 +241,8 @@ namespace Nethermind.Trie
         private const MethodImplOptions GetChildWithChildPathInlining = default;
 
         /// <summary>How <see cref="ResolveChildFromRlp"/> is inlined: never.</summary>
+        /// <remarks>Out of line so the resolved-child check of <see cref="ResolveChildWithChildPath"/> stays small enough to
+        /// inline into every walk.</remarks>
         private const MethodImplOptions ResolveChildFromRlpInlining = MethodImplOptions.NoInlining;
 
         /// <summary>How <see cref="SetChild"/> is inlined: left to the JIT.</summary>

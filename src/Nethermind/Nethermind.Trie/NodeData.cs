@@ -151,5 +151,4 @@ public sealed partial class LeafData : INodeWithKey
     public ref object? this[int index] => throw new IndexOutOfRangeException();
 
     INodeData INodeData.Clone() => new LeafData(Key, _value);
-
 }
