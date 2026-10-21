@@ -1,8 +1,11 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Buffers;
+using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Blockchain.BlockAccessLists;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
@@ -10,6 +13,8 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
+using Nethermind.Db;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
@@ -195,6 +200,75 @@ public class BlockAccessListStoreTests
         store.InsertFromBlockDeferred(block);
 
         Assert.That(ReadDurable(db, block), Is.EqualTo(bal));
+    }
+
+    [Test]
+    public async Task Range_deletion_releases_the_sync_gate_before_reclaim([Values] bool deferred)
+    {
+        using RangeTrackingDb db = new();
+        await using DeferredBlockDataWriter writer = deferred ? DeferredWriteTestHelpers.ManualWriter() : DeferredWriteTestHelpers.DisabledWriter();
+        ContainerBuilder builder = new();
+        builder.RegisterModule(new TestNethermindModule());
+        builder.RegisterInstance(db).Keyed<IDb>(DbNames.BlockAccessLists);
+        builder.RegisterInstance(writer).As<IDeferredBlockDataWriter>().ExternallyOwned();
+        using IContainer container = builder.Build();
+        IBlockAccessListStore store = container.Resolve<IBlockAccessListStore>();
+        Block oldBlock = BlockWithBal(5, [0xc0]);
+        store.InsertFromBlockDeferred(oldBlock);
+
+        bool deletedUnderLock = false;
+        db.Removing = () => deletedUnderLock = store.WriteLock.IsHeldByCurrentThread;
+        TaskCompletionSource reclaimStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        using ManualResetEventSlim finishReclaim = new();
+        db.Reclaiming = () =>
+        {
+            reclaimStarted.SetResult();
+            if (!finishReclaim.Wait(TimeSpan.FromSeconds(10))) throw new TimeoutException();
+        };
+
+        Task deletion = Task.Run(() => store.DeleteRange(1, 6));
+        Task? insertion = null;
+        try
+        {
+            await reclaimStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            insertion = Task.Run(() =>
+            {
+                lock (store.WriteLock)
+                {
+                    store.Insert(6, TestItem.KeccakB, new byte[] { 0xc0 });
+                }
+            });
+            await insertion.WaitAsync(TimeSpan.FromSeconds(10));
+            writer.Pump();
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(deletedUnderLock, Is.True);
+                Assert.That(store.Exists(oldBlock.Number, oldBlock.Hash!), Is.False);
+                Assert.That(store.Exists(6, TestItem.KeccakB), Is.True);
+                Assert.That(deletion.IsCompleted, Is.False, "reclaim is still blocked while sync inserts retained data");
+            }
+        }
+        finally
+        {
+            finishReclaim.Set();
+            await deletion.WaitAsync(TimeSpan.FromSeconds(10));
+            if (insertion is not null) await insertion.WaitAsync(TimeSpan.FromSeconds(10));
+        }
+    }
+
+    private sealed class RangeTrackingDb : TestMemDb, IRangeRemovableKeyValueStore
+    {
+        public Action? Removing { get; set; }
+        public Action? Reclaiming { get; set; }
+
+        void IRangeRemovableKeyValueStore.RemoveRange(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive)
+        {
+            Removing?.Invoke();
+            base.RemoveRange(firstKeyInclusive, lastKeyExclusive);
+        }
+
+        void IRangeRemovableKeyValueStore.ReclaimRange(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive) => Reclaiming?.Invoke();
     }
 
     private static Block BlockWithBal(ulong number, byte[] encodedBal)
