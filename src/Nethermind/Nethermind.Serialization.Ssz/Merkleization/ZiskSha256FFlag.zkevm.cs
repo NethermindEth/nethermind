@@ -8,7 +8,8 @@ namespace Nethermind.Serialization.Ssz.Merkleization;
 /// The three guests link one managed closure, and only ZisK's runtime exports <c>syscall_sha256_f</c>, so the
 /// choice cannot be a compile-time symbol here. <see cref="IsActive"/> is <see langword="false"/> as written; the
 /// ZisK guest's <c>substitutions.xml</c> stubs it to <see langword="true"/> at link time. ILC then folds the check,
-/// so the ZisK guest calls the precompile directly and the other guests never reference its symbol.
+/// so the ZisK guest calls the precompile directly and the other guests never reference its symbol. This assembly
+/// does not reference <c>Nethermind.Core</c>, so it cannot share <c>ZiskFlag</c>.
 /// </remarks>
 internal readonly struct ZiskSha256FFlag
 {

@@ -1921,7 +1921,7 @@ public class RetryCacheTests
         await Task.WhenAll(firstDisposal, concurrentDisposal).WaitAsync(TimeSpan.FromMilliseconds(AssertTimeoutMs));
 
         Assert.DoesNotThrow(() => cache.Received(1));
-        Assert.DoesNotThrowAsync(async () => await cache.DisposeAsync());
+        await Assert.DoesNotThrowAsync(async () => await cache.DisposeAsync());
     }
 
     [Test]

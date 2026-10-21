@@ -155,13 +155,13 @@ public class BeaconRequestsTests
     }
 
     [Test]
-    public void Propagates_caller_cancellation()
+    public async Task Propagates_caller_cancellation()
     {
         Block block = Build.A.Block.WithTimestamp(GenesisTime + 12).WithRequestsHash(ExpectedHash([ExpectedConsolidations()])).TestObject;
         using HttpClient client = new(new HangingHandler());
         using CancellationTokenSource cts = new(TimeSpan.FromMilliseconds(100));
 
-        Assert.ThrowsAsync(Is.InstanceOf<OperationCanceledException>(), () => BeaconRequests.TryFetch(BeaconUrl, block, cts.Token, client));
+        await Assert.ThrowsAsync(Is.InstanceOf<OperationCanceledException>(), () => BeaconRequests.TryFetch(BeaconUrl, block, cts.Token, client));
     }
 
     private const ulong GenesisTime = 1_606_824_023;

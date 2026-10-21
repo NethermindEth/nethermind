@@ -398,6 +398,78 @@ namespace Nethermind.Core.Test.Encoding
             Assert.That(Decode, Throws.InstanceOf<RlpException>());
         }
 
+        [Test]
+        public void Decoder_registered_over_built_in_type_is_used_to_encode_and_decode(
+            [Values(TxType.Legacy, TxType.AccessList, TxType.EIP1559, TxType.Blob, TxType.SetCode, TxType.FrameTx)] TxType txType,
+            [Values] bool existingTransaction)
+        {
+            // A plugin replacing a standard type's decoder must own its wire form, not the built-in codec.
+            IsolatedTxDecoder decoder = new();
+            MarkerTxDecoder marker = new(txType);
+            decoder.RegisterDecoder(marker);
+            // An empty list decodes as no transaction, so a legacy sequence needs an item.
+            byte[] encoded = txType == TxType.Legacy ? [0xc1, 0x80] : [(byte)txType, Rlp.EmptyListByte];
+
+            Assert.That(decoder.Encode(new Transaction { Type = txType }).Bytes, Is.EqualTo(MarkerTxDecoder.Encoding));
+            RlpReader reader = new(encoded);
+            Transaction? transaction = existingTransaction ? new Transaction() : null;
+            decoder.Decode(ref reader, ref transaction, RlpBehaviors.SkipTypedWrapping);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(transaction, Is.SameAs(marker.DecodedTransaction));
+                Assert.That(reader.Position, Is.EqualTo(encoded.Length));
+            }
+        }
+
+        [Test]
+        public void Legacy_empty_signature_decodes_as_unsigned_only_when_allowed([Values] bool allowEmptySignature)
+        {
+            // A missing signature encodes as v = 0 with empty r and s.
+            byte[] encoded = _txDecoder.Encode(new Transaction { Type = TxType.Legacy, GasLimit = 21_000, To = Address.Zero }).Bytes;
+            IsolatedTxDecoder decoder = new();
+            decoder.RegisterDecoder(new Serialization.Rlp.TxDecoders.LegacyTxDecoder(allowEmptySignature: allowEmptySignature));
+
+            if (allowEmptySignature)
+            {
+                Assert.That(Decode().Signature, Is.Null);
+            }
+            else
+            {
+                Assert.That(() => Decode(), Throws.InstanceOf<RlpException>());
+            }
+
+            Transaction Decode()
+            {
+                RlpReader reader = new(encoded);
+                return decoder.Decode(ref reader)!;
+            }
+        }
+
+        private sealed class IsolatedTxDecoder : TxDecoder<Transaction>;
+
+        private sealed class MarkerTxDecoder(TxType txType) : Serialization.Rlp.TxDecoders.ITxDecoder
+        {
+            public static readonly byte[] Encoding = [0xc1, 0x2a];
+            public Transaction DecodedTransaction { get; } = new();
+
+            public TxType Type => txType;
+
+            public void Decode(ref Transaction? transaction, int txSequenceStart, ReadOnlySpan<byte> transactionSequence,
+                ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+            {
+                transaction = DecodedTransaction;
+                decoderContext.Position = txSequenceStart + transactionSequence.Length;
+            }
+
+            public void Encode<TWriter>(Transaction transaction, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None,
+                bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
+                where TWriter : struct, IRlpWriteBackend, allows ref struct => writer.Write(Encoding);
+
+            public int GetLength(Transaction transaction, RlpBehaviors rlpBehaviors, bool forSigning = false,
+                bool isEip155Enabled = false, ulong chainId = 0) => Encoding.Length;
+        }
+
         public static IEnumerable<(string, Hash256)> SkipTypedWrappingTestCases()
         {
             yield return

@@ -54,7 +54,7 @@ public partial class BlockAccessListManager(
     private Task? _balWarmupTask;
     private BalReadStoragePlan? _readPlan;
     // Null in a build that folds parallel execution out, so nothing behind the pool is compiled.
-    private readonly Lazy<ParallelTxProcessorWithWorldStateManager>? _parallelTxProcessorWithWorldStateManager = ExecutionFlags.ParallelExecution
+    private readonly Lazy<ParallelTxProcessorWithWorldStateManager>? _parallelTxProcessorWithWorldStateManager = !ZkEvmFlag.IsActive
         ? new Lazy<ParallelTxProcessorWithWorldStateManager>(() => new(stateProvider, logManager, prewarmerEnvFactory, preBlockCaches, readOnlyTxProcessingEnvFactory, txProcessorFactory))
         : null;
     private readonly Lazy<SequentialTxProcessorWithWorldStateManager> _sequentialTxProcessorWithWorldStateManager =
@@ -86,6 +86,8 @@ public partial class BlockAccessListManager(
     // surplus-reads budget must leave room for what their own execution grant can read.
     private ulong _postExecutionReadAllowance;
     private bool _hasGeneratedValidationIndexUpdates;
+    // Number of leading rows (0, 1, ...) that ValidateBlockAccessList has compared against the suggested BAL.
+    private uint _validatedRowCount;
     // for tests
     internal bool HasGeneratedValidationIndexUpdates => _hasGeneratedValidationIndexUpdates;
     // Latched when a per-tx slice surfaces a generated-only account that the column index
@@ -128,7 +130,7 @@ public partial class BlockAccessListManager(
         Enabled = _blockAccessListsEnabled && !suggestedBlock.IsGenesis;
         _isBuilding = options.ContainsFlag(ProcessingOptions.ProducingBlock);
 
-        ParallelExecutionEnabled = ExecutionFlags.ParallelExecution
+        ParallelExecutionEnabled = !ZkEvmFlag.IsActive
             && Enabled
             && blocksConfig.ParallelExecution
             && !options.ContainsFlag(ProcessingOptions.ForceSequentialBlockAccessList)
@@ -155,8 +157,8 @@ public partial class BlockAccessListManager(
             {
                 BlockAccessListValidationIndex.AddressIndex addressIndex = new();
                 ReadOnlyBlockAccessList suggested = suggestedBlock.BlockAccessList;
-                _suggestedValidationIndex = BlockAccessListValidationIndex.Build(suggested, suggestedBlock.Transactions.Length, addressIndex);
-                _generatedValidationIndex = new(suggestedBlock.Transactions.Length, addressIndex, _suggestedValidationIndex, suggested.TotalStorageReads, suggested.TotalStorageChangeEvents, trackStorageReads: _readPlan is null);
+                _suggestedValidationIndex = BlockAccessListValidationIndex.Build(suggested, suggestedBlock.Header, suggestedBlock.Transactions.Length, addressIndex);
+                _generatedValidationIndex = new(suggestedBlock.Transactions.Length, addressIndex, _suggestedValidationIndex, suggested.TotalStorageReads, suggested.TotalStorageChangeEvents, trackStorageReads: VerifyOnly && _readPlan is null);
                 ulong suggestedReads = 0;
                 foreach (ReadOnlyAccountChanges ac in suggested.AccountChanges)
                 {
@@ -173,7 +175,7 @@ public partial class BlockAccessListManager(
     // Only the parallel executor drains the hint; sequential execution contends with the warming reads.
     private Task? StartBalReadWarmup(Block suggestedBlock)
     {
-        if (!ExecutionFlags.ParallelExecution || !BatchReadEnabled || !ParallelExecutionEnabled || suggestedBlock.BlockAccessList is null)
+        if (ZkEvmFlag.IsActive || !BatchReadEnabled || !ParallelExecutionEnabled || suggestedBlock.BlockAccessList is null)
             return null;
 
         try
@@ -190,7 +192,7 @@ public partial class BlockAccessListManager(
     public void WaitForBalWarmup()
     {
         // Only the parallel path starts warming, so a build without it has nothing to wait for.
-        if (!ExecutionFlags.ParallelExecution) return;
+        if (ZkEvmFlag.IsActive) return;
 
         Task? task = _balWarmupTask;
         if (task is null) return;
@@ -214,9 +216,15 @@ public partial class BlockAccessListManager(
 
     public void Setup(Block block)
     {
+        // A block that does not run in parallel releases what an earlier parallel block that failed still kept.
+        if (!ParallelExecutionEnabled && _parallelTxProcessorWithWorldStateManager is { IsValueCreated: true } parallel)
+        {
+            parallel.Value.ReleaseKeptParentReaders();
+        }
+
         if (Enabled)
         {
-            _txProcessorWithWorldStateManager = ExecutionFlags.ParallelExecution && ParallelExecutionEnabled
+            _txProcessorWithWorldStateManager = !ZkEvmFlag.IsActive && ParallelExecutionEnabled
                 ? _parallelTxProcessorWithWorldStateManager!.Value
                 : _sequentialTxProcessorWithWorldStateManager.Value;
             CheckInitialized();
@@ -252,6 +260,16 @@ public partial class BlockAccessListManager(
         }
     }
 
+    public int CountPendingTransactionItems()
+    {
+        // Block building runs sequentially, so the current slice is the single processor's.
+        if (!Enabled || ParallelExecutionEnabled || _currentGeneratedBlockAccessList is null) return 0;
+
+        CheckInitialized();
+        BlockAccessListAtIndex? slice = _txProcessorWithWorldStateManager.Get(null).WorldState.GetGeneratingBlockAccessList();
+        return slice is null ? 0 : _currentGeneratedBlockAccessList.CountNewItems(slice);
+    }
+
     public void Rollback()
     {
         if (Enabled)
@@ -263,7 +281,7 @@ public partial class BlockAccessListManager(
 
     public void ReturnTxProcessor(uint balIndex)
     {
-        if (ExecutionFlags.ParallelExecution && Enabled && ParallelExecutionEnabled)
+        if (!ZkEvmFlag.IsActive && Enabled && ParallelExecutionEnabled)
         {
             // Eagerly detach the worker's generated BAL into a per-tx slot and recycle the
             // pool slot. Workers therefore never block on the validator — but the validator
@@ -276,7 +294,7 @@ public partial class BlockAccessListManager(
     public void Dispose()
     {
         DisposableExtensions.DisposeAndNull(ref _readPlan);
-        if (ExecutionFlags.ParallelExecution && _parallelTxProcessorWithWorldStateManager!.IsValueCreated)
+        if (!ZkEvmFlag.IsActive && _parallelTxProcessorWithWorldStateManager!.IsValueCreated)
         {
             _parallelTxProcessorWithWorldStateManager.Value.Dispose();
         }
@@ -324,6 +342,7 @@ public partial class BlockAccessListManager(
         _generatedChargeableStorageReads = 0ul;
         _postExecutionReadAllowance = 0ul;
         _hasGeneratedValidationIndexUpdates = false;
+        _validatedRowCount = 0;
         _hasGeneratedRequiredReadAccountMismatch = false;
         _currentGeneratedBlockAccessList = null;
     }

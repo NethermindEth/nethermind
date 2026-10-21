@@ -43,6 +43,8 @@ public class McsLock
 
     internal ThreadNode CurrentThreadNodeForTesting => _node.Value!;
 
+    internal ThreadNode? TailForTesting => Volatile.Read(ref _tail);
+
     /// <summary>
     /// Acquires the lock. If the lock is already held, the calling thread is placed into a queue and
     /// spins or sleeps until the lock becomes available.

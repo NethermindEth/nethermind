@@ -48,6 +48,7 @@ namespace Nethermind.Serialization.Json
 
         private static readonly List<JsonConverter> _additionalConverters = [];
         private static readonly List<JsonTypeInfoResolverRegistration> _additionalResolvers = [];
+        private static readonly List<IJsonTypeInfoResolver> _generatedWriterResolvers = [];
         private static bool _strictHexFormat;
         private static int _optionsVersion;
 
@@ -87,7 +88,7 @@ namespace Nethermind.Serialization.Json
 
         private static JsonSerializerOptions CreateOptions(bool indented, bool strictQuantity = false, IEnumerable<JsonConverter>? instanceConverters = null, int maxDepth = DefaultMaxDepth)
         {
-            SnapshotGlobalOptions(out bool strictHexFormat, out JsonConverter[] additionalConverters, out JsonTypeInfoResolverRegistration[] additionalResolvers);
+            SnapshotGlobalOptions(out bool strictHexFormat, out JsonConverter[] additionalConverters, out JsonTypeInfoResolverRegistration[] additionalResolvers, out IJsonTypeInfoResolver[] generatedWriterResolvers);
 
             JsonSerializerOptions result = new()
             {
@@ -100,7 +101,7 @@ namespace Nethermind.Serialization.Json
                 PropertyNameCaseInsensitive = true,
                 MaxDepth = maxDepth,
                 Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
-                TypeInfoResolver = BuildTypeInfoResolver(additionalResolvers),
+                TypeInfoResolver = BuildTypeInfoResolver(generatedWriterResolvers, additionalResolvers),
                 Converters =
                 {
                     new LongConverter(strictQuantity),
@@ -144,6 +145,17 @@ namespace Nethermind.Serialization.Json
             result.Converters.AddRange(additionalConverters);
             result.Converters.AddRange(instanceConverters ?? Array.Empty<JsonConverter>());
             return result;
+        }
+
+        /// <summary>Adds a resolver for a generated JSON writer, queried before every metadata resolver.</summary>
+        internal static void AddGeneratedWriterResolver(IJsonTypeInfoResolver resolver)
+        {
+            ArgumentNullException.ThrowIfNull(resolver);
+            lock (_globalOptionsLock)
+            {
+                _generatedWriterResolvers.Add(resolver);
+                RefreshGlobalOptionsNoLock();
+            }
         }
 
         public static void AddConverter(JsonConverter converter)
@@ -308,11 +320,13 @@ namespace Nethermind.Serialization.Json
             Interlocked.Increment(ref _optionsVersion);
         }
 
-        private static void SnapshotGlobalOptions(out bool strictHexFormat, out JsonConverter[] additionalConverters, out JsonTypeInfoResolverRegistration[] additionalResolvers)
+        private static void SnapshotGlobalOptions(out bool strictHexFormat, out JsonConverter[] additionalConverters, out JsonTypeInfoResolverRegistration[] additionalResolvers,
+            out IJsonTypeInfoResolver[] generatedWriterResolvers)
         {
             lock (_globalOptionsLock)
             {
                 strictHexFormat = _strictHexFormat;
+                generatedWriterResolvers = [.. _generatedWriterResolvers];
                 additionalConverters = new JsonConverter[_additionalConverters.Count];
                 for (int i = 0; i < _additionalConverters.Count; i++)
                 {
@@ -329,20 +343,22 @@ namespace Nethermind.Serialization.Json
             }
         }
 
-        private static IJsonTypeInfoResolver BuildTypeInfoResolver(IReadOnlyList<JsonTypeInfoResolverRegistration> additionalResolvers)
+        private static IJsonTypeInfoResolver BuildTypeInfoResolver(IJsonTypeInfoResolver[] generatedWriterResolvers, IReadOnlyList<JsonTypeInfoResolverRegistration> additionalResolvers)
         {
             IJsonTypeInfoResolver? reflectionResolver = CreateReflectionResolver();
+            int generatedCount = generatedWriterResolvers.Length;
             int additionalResolversCount = additionalResolvers.Count;
-            IJsonTypeInfoResolver[] resolverChain = new IJsonTypeInfoResolver[additionalResolversCount + (reflectionResolver is null ? 1 : 2)];
-            resolverChain[0] = SerializationJsonContext.Default;
+            IJsonTypeInfoResolver[] resolverChain = new IJsonTypeInfoResolver[generatedCount + additionalResolversCount + (reflectionResolver is null ? 1 : 2)];
+            generatedWriterResolvers.CopyTo(resolverChain, 0);
+            resolverChain[generatedCount] = SerializationJsonContext.Default;
             for (int i = 0; i < additionalResolversCount; i++)
             {
-                resolverChain[i + 1] = additionalResolvers[i].Resolver;
+                resolverChain[generatedCount + i + 1] = additionalResolvers[i].Resolver;
             }
 
             if (reflectionResolver is not null)
             {
-                resolverChain[additionalResolversCount + 1] = reflectionResolver;
+                resolverChain[generatedCount + additionalResolversCount + 1] = reflectionResolver;
             }
 
             return JsonTypeInfoResolver.Combine(resolverChain);

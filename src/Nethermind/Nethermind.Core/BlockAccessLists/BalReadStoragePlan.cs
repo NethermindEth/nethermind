@@ -4,7 +4,6 @@
 using System;
 using System.Buffers;
 using System.Buffers.Binary;
-using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.CompilerServices;
@@ -18,14 +17,13 @@ namespace Nethermind.Core.BlockAccessLists;
 /// Bounded probes and sorted fallbacks allow cheap hashes without unbounded collision chains.
 /// Dispose only after all execution workers have stopped using the plan.
 /// </remarks>
-public sealed class BalReadStoragePlan : IDisposable
+public sealed partial class BalReadStoragePlan : IDisposable
 {
     private const int MaxProbes = 4;
     private readonly ReadOnlyAccountChangesView _accounts;
     private readonly (int Start, int TableStart, int Mask)[] _readOffsets;
     private readonly int[] _addressIndex;
     private int[] _slotIndex = [];
-    private readonly ConcurrentQueue<BalReadCoverage> _workers = new();
     private ulong[] _chargeableReads;
     private bool _disposed;
 

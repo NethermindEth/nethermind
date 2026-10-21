@@ -15,6 +15,8 @@ using Nethermind.Serialization.Json;
 
 namespace Nethermind.Facade.Eth.RpcTransaction;
 
+[GenerateJsonWriter(RegisterWithSerializer = false)]
+[RepopulatableTransaction]
 public class LegacyTransactionForRpc : SignableTransactionForRpc, ITxTyped, IFromTransaction<LegacyTransactionForRpc>, IJsonOnDeserializing, IJsonOnDeserialized
 {
     public static TxType TxType => TxType.Legacy;
@@ -62,7 +64,9 @@ public class LegacyTransactionForRpc : SignableTransactionForRpc, ITxTyped, IFro
     /// </remarks>
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     [JsonConverter(typeof(StrictHexByteArrayConverter))]
-    public byte[]? Input { get; set => field = value ?? field; }
+    public byte[]? Input { get => _input; set => _input = value ?? _input; }
+
+    private byte[]? _input;
 
     void IJsonOnDeserializing.OnDeserializing() => _isDeserializing = true;
 
@@ -98,14 +102,19 @@ public class LegacyTransactionForRpc : SignableTransactionForRpc, ITxTyped, IFro
     public LegacyTransactionForRpc() { }
 
     public LegacyTransactionForRpc(Transaction transaction, in TransactionForRpcContext extraData)
-        : base(transaction, extraData)
+        : base(transaction, extraData) { }
+
+    internal override void Populate(Transaction transaction, in TransactionForRpcContext extraData)
     {
+        base.Populate(transaction, extraData);
+        _data = null;
+        _isDeserializing = false;
         Nonce = transaction.Nonce;
         To = transaction.To;
         From = transaction.SenderAddress;
         Gas = transaction.GasLimit;
         Value = transaction.Value;
-        Input = transaction.Data.AsArray();
+        _input = transaction.Data.AsArray();
         GasPrice = transaction.GasPrice;
 
         Signature? signature = transaction.Signature;
@@ -153,10 +162,14 @@ public class LegacyTransactionForRpc : SignableTransactionForRpc, ITxTyped, IFro
 
         if ((R?.IsZero == false || S?.IsZero == false) && (R is not null || S is not null))
         {
-            ulong v = V is null ? 0
-                : V.Value > 1
-                    ? V.Value.ToUInt64(null) // non protected
-                    : EthereumEcdsaExtensions.CalculateV(ChainId ?? 0, V.Value == 1); // protected
+            ulong v = 0;
+            if (V is not null)
+            {
+                if (V.Value > 1)
+                    v = V.Value.ToUInt64(null); // non protected
+                else if (!EthereumEcdsaExtensions.TryCalculateV(ChainId ?? 0, V.Value == 1, out v)) // protected
+                    return RpcTransactionErrors.NoEip155V(ChainId ?? 0);
+            }
 
             tx.Signature = new(R ?? UInt256.Zero, S ?? UInt256.Zero, v);
         }

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
@@ -19,6 +20,13 @@ namespace Nethermind.TxPool
         IChainHeadSpecProvider SpecProvider { get; }
 
         IReadOnlyStateProvider ReadOnlyStateProvider { get; }
+
+        /// <summary>The canonical head header together with a state view bound to that same header.</summary>
+        /// <returns><c>false</c> when the chain has no head yet.</returns>
+        /// <remarks><see cref="ReadOnlyStateProvider"/> resolves the head on every read, so a header read beside it
+        /// can belong to a different head. A check that must hold the header and the state it reads to one head
+        /// takes both from here.</remarks>
+        bool TryGetHeadState([NotNullWhen(true)] out BlockHeader? head, [NotNullWhen(true)] out IReadOnlyStateProvider? state);
 
         /// <summary>
         /// Number of the last block moved onto the canonical chain.
@@ -56,5 +64,16 @@ namespace Nethermind.TxPool
         bool IsBuildingBlock { get; }
 
         event EventHandler<BlockReplacementEventArgs> HeadChanged;
+
+        /// <summary>Raised for each block taken off the canonical chain when the head moves back below it.</summary>
+        /// <remarks>Raised from the tip down, before the <see cref="HeadChanged"/> events of the same update. Such a block
+        /// is not reported again as the <see cref="BlockReplacementEventArgs.PreviousBlock"/> of a later head. Only the
+        /// header is passed, so a deep rewind loads nothing here; <see cref="FindRemovedBlock"/> loads the body on demand.
+        /// Unlike the head facts above, the default is a provider that reports no removals.</remarks>
+        event EventHandler<BlockHeaderEventArgs> BlockRemovedFromMain { add { } remove { } }
+
+        /// <summary>Loads a block reported by <see cref="BlockRemovedFromMain"/>.</summary>
+        /// <returns><c>null</c> when the block is no longer stored, or from a provider that reports no removals.</returns>
+        Block? FindRemovedBlock(BlockHeader header) => null;
     }
 }

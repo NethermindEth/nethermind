@@ -175,6 +175,21 @@ public class FlatDbManagerTests
     }
 
     [Test]
+    public async Task DisposeAsync_KeepsTheInMemoryTailAfterDrainingPersistence([Values] bool processExitAlreadyCancelled, [Values] bool conversionThrows)
+    {
+        (FlatDbManager manager, StateId snapshotTo) = CreateManagerWithQueuedSnapshot(processExitAlreadyCancelled);
+        if (conversionThrows) _persistenceManager.PersistInMemoryTailForShutdown(Arg.Any<CancellationToken>()).Returns(_ => throw new InvalidOperationException("disk full"));
+
+        await Assert.ThatAsync(async () => await manager.DisposeAsync(), Throws.Nothing, "the conversion is an optimisation and must not fail shutdown");
+
+        Received.InOrder(() =>
+        {
+            _ = _persistenceManager.AddToPersistence(snapshotTo);
+            _persistenceManager.PersistInMemoryTailForShutdown(Arg.Is<CancellationToken>(t => t.CanBeCanceled));
+        });
+    }
+
+    [Test]
     public async Task AddSnapshot_QueuedCompactionAndPersistence_AreDrainedOnDispose(
         [Values] bool processExitAlreadyCancelled)
     {
@@ -590,6 +605,30 @@ public class FlatDbManagerTests
             _persistenceManager.Received(2).LeaseReader();
             staleReader.Received(1).Dispose();
             freshReader.DidNotReceive().Dispose();
+        }
+    }
+
+    // The snap-sync wipe left the persisted pointer at genesis while every reader sat at PreGenesis, so
+    // HasStateForBlock stayed true and each read retried for 5 s before failing as an internal error (-32603).
+    [Test]
+    public async Task GatherReadOnlySnapshotBundle_persisted_pointer_ahead_of_reader_fails_fast_with_state_not_retained()
+    {
+        StateId genesis = CreateStateId(0, rootByte: 1);
+        IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
+        reader.CurrentState.Returns(StateId.PreGenesis);
+        _persistenceManager.LeaseReader().Returns(reader);
+        _persistenceManager.GetCurrentPersistedStateId().Returns(genesis);
+        _snapshotRepository.AssembleSnapshots(genesis, StateId.PreGenesis, Arg.Any<int>())
+            .Returns(_ => new AssembledSnapshotResult(new SnapshotPooledList(0), PersistedSnapshotList.Empty()));
+        _snapshotRepository.HasState(genesis).Returns(false);
+
+        await using FlatDbManager manager = CreateManager();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(() => manager.GatherReadOnlySnapshotBundle(genesis),
+                Throws.TypeOf<StateNotRetainedException>().With.Message.StartsWith("No state available for block 0"));
+            _persistenceManager.Received(2).LeaseReader();
         }
     }
 

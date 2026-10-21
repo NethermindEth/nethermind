@@ -347,6 +347,11 @@ namespace Nethermind.Core.Specs
         bool IsEip7906Enabled { get; }
 
         /// <summary>
+        /// EIP-8151: ecRecover returns the recovered address only when its raw code is empty or an EIP-7702 delegation.
+        /// </summary>
+        bool IsEip8151Enabled { get; }
+
+        /// <summary>
         /// EIP-7979: call and return opcodes (<c>CALLSUB</c>, <c>CALLDEST</c>, <c>RETURNSUB</c>) with a per-frame return stack.
         /// </summary>
         /// <remarks>Assumes EIP-8024 is active: a <c>CALLDEST</c> byte in a valid EIP-8024 immediate is never a destination.</remarks>
@@ -427,6 +432,16 @@ namespace Nethermind.Core.Specs
         /// byte (calldata, access-list entries, authorizations and blob versioned hashes) at the floor.
         /// </remarks>
         bool IsEip8131Enabled { get; }
+
+        /// <summary>
+        /// EIP-8279: Block Access List Byte Floor.
+        /// </summary>
+        /// <remarks>
+        /// Meters the bytes execution adds to the EIP-7928 block access list at 64 gas per byte into the transaction
+        /// floor, checked against the gas limit before each insertion, and adds each authorization's worst-case block
+        /// access list bytes to the static floor. Requires EIP-8131.
+        /// </remarks>
+        bool IsEip8279Enabled { get; }
 
         /// <summary>
         /// Should transactions be validated against chainId.
@@ -517,6 +532,17 @@ namespace Nethermind.Core.Specs
         public bool IsEip2780Enabled { get; }
 
         /// <summary>
+        /// EIP-5920: PAY opcode (<c>0xfc</c>), transferring ether to an address without executing its code.
+        /// </summary>
+        /// <remarks>Requires EIP-2929 and EIP-7523; the opcode's access and new-account rules assume both.</remarks>
+        public bool IsEip5920Enabled { get; }
+
+        /// <summary>
+        /// EIP-8360: TCREATE opcode, creating contracts whose code, nonce and storage exist only for one transaction.
+        /// </summary>
+        bool IsEip8360Enabled { get; }
+
+        /// <summary>
         /// EIP-3298: Remove the SSTORE storage-clear refund and the EIP-3529 transaction refund cap.
         /// </summary>
         /// <remarks>
@@ -531,6 +557,20 @@ namespace Nethermind.Core.Specs
         /// EIP-7805: Inclusion lists
         /// </summary>
         bool IsEip7805Enabled { get; }
+
+        /// <summary>
+        /// EIP-8298: SETCODEFROM code reuse instruction
+        /// </summary>
+        public bool IsEip8298Enabled { get; }
+
+        /// <summary>
+        /// EIP-4758: Deactivate SELFDESTRUCT (SENDALL).
+        /// </summary>
+        /// <remarks>
+        /// SELFDESTRUCT only moves the executing account's whole balance to the beneficiary and halts. It never
+        /// destroys the account, removing the same-transaction deletion EIP-6780 kept and the EIP-8246 tombstone.
+        /// </remarks>
+        public bool IsEip4758Enabled => false;
 
         /// <summary>
         /// Precomputed gas cost and refund constants derived from this spec.

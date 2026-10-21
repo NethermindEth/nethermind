@@ -38,6 +38,7 @@ public class GethLikeTxTraceCollectionConverter : JsonConverter<GethLikeTxTraceC
 
             GethLikeTxTrace trace = null;
             Hash256? txHash = null;
+            string? error = null;
 
             while (reader.Read())
             {
@@ -58,6 +59,13 @@ public class GethLikeTxTraceCollectionConverter : JsonConverter<GethLikeTxTraceC
                     continue;
                 }
 
+                if (reader.ValueTextEquals("error"u8))
+                {
+                    reader.Read();
+                    error = reader.GetString();
+                    continue;
+                }
+
                 if (reader.ValueTextEquals("txHash"u8))
                 {
                     reader.Read();
@@ -68,6 +76,11 @@ public class GethLikeTxTraceCollectionConverter : JsonConverter<GethLikeTxTraceC
                 throw new JsonException($"Unexpected property: {reader.GetString()}");
             }
 
+            if (error is not null)
+            {
+                if (trace is not null) throw new JsonException("Both result and error properties");
+                trace = new GethLikeTxTrace { TraceError = error };
+            }
             if (trace is null)
             {
                 throw new JsonException("Missing result property");
@@ -96,17 +109,23 @@ public class GethLikeTxTraceCollectionConverter : JsonConverter<GethLikeTxTraceC
 
         foreach (GethLikeTxTrace trace in value.Traces)
         {
-            writer.WriteStartObject();
-
-            writer.WritePropertyName("result"u8);
-            TypeInfoJsonSerializer.Serialize(writer, trace, options);
-
-            writer.WritePropertyName("txHash"u8);
-            TypeInfoJsonSerializer.Serialize(writer, trace.TxHash, options);
-
-            writer.WriteEndObject();
+            WriteEntry(writer, trace, options);
         }
 
         writer.WriteEndArray();
+    }
+
+    internal static void WriteEntry(Utf8JsonWriter writer, GethLikeTxTrace trace, JsonSerializerOptions options)
+    {
+        writer.WriteStartObject();
+        if (trace.TraceError is { } error) writer.WriteString("error"u8, error);
+        else
+        {
+            writer.WritePropertyName("result"u8);
+            TypeInfoJsonSerializer.Serialize(writer, trace, options);
+        }
+        writer.WritePropertyName("txHash"u8);
+        TypeInfoJsonSerializer.Serialize(writer, trace.TxHash, options);
+        writer.WriteEndObject();
     }
 }

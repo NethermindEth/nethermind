@@ -1,7 +1,10 @@
 <Solution>
   <Folder Name="/Nethermind.Stateless.Guest/">
     <File Path="Nethermind.Stateless.Guest/build.mk" />
+    <File Path="Nethermind.Stateless.Guest/Guest.props" />
     <File Path="Nethermind.Stateless.Guest/Program.cs" />
+    <File Path="Nethermind.Stateless.Guest/README.md" />
+    <File Path="Nethermind.Stateless.Guest/substitutions.xml" />
   </Folder>
   <Folder Name="/Nethermind/">
     <Project Path="Nethermind.Abi/Nethermind.Abi.csproj" />

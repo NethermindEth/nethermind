@@ -9,7 +9,6 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Facade.Eth;
-using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
@@ -59,7 +58,7 @@ public class L2Api(
             Timestamp = block.Timestamp.ToUInt64(null),
             Withdrawals = block.Withdrawals?.ToArray()
         };
-        Transaction[] txs = block.Transactions.Cast<TransactionForRpc>().Select(t =>
+        Transaction[] txs = (block.Transactions?.Full ?? throw new InvalidOperationException("Block was fetched without full transactions")).Select(t =>
         {
             Result<Transaction> result = t.ToTransaction();
             return result.IsError ? throw new InvalidOperationException($"Failed to convert transaction: {result.Error}") : result.Data;

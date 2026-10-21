@@ -191,7 +191,7 @@ public class WaitAnyWhereTests
             failed,
             pending.Task);
 
-        Assert.ThrowsAsync(cancelled ? typeof(TaskCanceledException) : typeof(InvalidOperationException), () => anyWhere);
+        await Assert.ThrowsAsync(cancelled ? typeof(TaskCanceledException) : typeof(InvalidOperationException), () => anyWhere);
 
         // The straggler produces its result only after the failure has already unwound the call.
         pending.SetResult(straggler);
@@ -209,7 +209,7 @@ public class WaitAnyWhereTests
         Task<Disposable> anyWhere = Wait.AnyWhere(
             _ => throw new InvalidOperationException(), Task.FromResult(current), pending.Task);
 
-        Assert.ThrowsAsync<InvalidOperationException>(() => anyWhere);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => anyWhere);
         Assert.That(current.DisposeCount, Is.EqualTo(1));
 
         pending.SetResult(straggler);

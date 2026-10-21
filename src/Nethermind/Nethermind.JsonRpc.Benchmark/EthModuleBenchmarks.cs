@@ -80,7 +80,7 @@ namespace Nethermind.JsonRpc.Benchmark
                 NullTxPool.Instance,
                 NullTxSender.Instance,
                 NullWallet.Instance,
-                LimboLogs.Instance,
+                NullLogManager.Instance,
                 specProvider,
                 _container.Resolve<IGasPriceOracle>(),
                 _container.Resolve<IEthSyncingInfo>(),

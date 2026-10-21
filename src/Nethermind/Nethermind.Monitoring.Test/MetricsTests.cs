@@ -394,7 +394,7 @@ public class MetricsTests
     }
 
     [Test]
-    public void UpdateAllMetrics_does_not_throw_when_registration_is_concurrent()
+    public async Task UpdateAllMetrics_does_not_throw_when_registration_is_concurrent()
     {
         MetricsConfig metricsConfig = new() { Enabled = true };
         MetricsController metricsController = new(metricsConfig);
@@ -429,7 +429,7 @@ public class MetricsTests
             }
         });
 
-        Assert.DoesNotThrowAsync(() => Task.WhenAll(updater, registrar));
+        await Assert.DoesNotThrowAsync(() => Task.WhenAll(updater, registrar));
     }
 
     [Test]

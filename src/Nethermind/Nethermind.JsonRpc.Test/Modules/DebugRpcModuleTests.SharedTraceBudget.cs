@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -13,6 +14,7 @@ using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
@@ -32,6 +34,18 @@ namespace Nethermind.JsonRpc.Test.Modules;
 
 public partial class DebugRpcModuleTests
 {
+    [Test]
+    public async Task Debug_traceCall_log_indices_include_prefix_transactions([Values] bool revertFirst)
+    {
+        string[] responses = await TraceLogsBeforeAndAfterIndexing(revertFirst, (chain, block) =>
+            RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceCall",
+                new { from = TestItem.AddressB.ToString(), input = block.Transactions[2].Data.ToArray().ToHexString(true), gas = "0x186a0" },
+                block.Hash!, new { tracer = "callTracer", tracerConfig = new { withLog = true }, txIndex = "0x2" }));
+
+        AssertLastTransactionLogIndex(responses, revertFirst);
+    }
+
+
     [Test]
     public async Task Debug_traceTransaction_log_indices_include_preceding_transactions([Values] bool revertFirst, [Values(true, "true")] object withLog)
     {
@@ -132,7 +146,7 @@ public partial class DebugRpcModuleTests
                 .AddSingleton<ISpecProvider>(new TestSpecProvider(Prague.Instance) { AllowTestChainOverride = false })
                 .AddSingleton<IPrefixStateSeedSource>(seeds)
                 .AddSingleton(budget)
-                .AddSingleton<ParallelTraceBudgets, ISpecProvider>(specProvider => new ParallelTraceBudgets(specProvider, budget, ParallelTraceBudget.Bounded(1)))
+                .AddSingleton<ParallelTraceBudgets, ISpecProvider>(specProvider => new ParallelTraceBudgets(specProvider, budget, changesetSeeds: true))
                 .AddDecorator<ITransactionProcessorAdapter>((_, inner) => new BudgetCountingAdapter(inner, counter)));
         BlockHeader parent = chain.BlockTree.Head!.Header;
         ulong nonce = chain.WorldStateManager.GlobalStateReader.GetNonce(parent, TestItem.AddressB);
@@ -178,6 +192,75 @@ public partial class DebugRpcModuleTests
             Task.Run(() => RpcTest.TestSerializedRequest(chain.TraceRpcModule, "trace_block", block.Hash)));
     }
 
+    [TestCase("trace_block", null)]
+    [TestCase("trace_filter", null)]
+    [TestCase("trace_replayBlockTransactions", "trace")]
+    [TestCase("trace_replayBlockTransactions", "trace,stateDiff")]
+    [TestCase("trace_replayBlockTransactions", "trace,vmTrace,stateDiff")]
+    [TestCase("trace_replayBlockTransactions", "stateDiff")]
+    public async Task ParityTraces_OnAnIndexedBlock_StreamLikeTheReplay(string method, string? traceTypes)
+    {
+        using SnapshotableMemColumnsDb<FlatHistoryColumns> columns = new();
+        TransactionChangesetIndex index = new(columns, new FlatDbConfig { HistoryTransactionIndexEnabled = true });
+        OpenedBlockCount seeds = new(new ChangesetPrefixStateSeedSource(index));
+        using ParallelTraceBudget budget = new(2);
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = true })
+            .Build(builder => builder
+                .AddSingleton<ISpecProvider>(new TestSpecProvider(Prague.Instance) { AllowTestChainOverride = false })
+                .AddSingleton<IPrefixStateSeedSource>(seeds)
+                .AddSingleton(budget)
+                .AddSingleton<ParallelTraceBudgets, ISpecProvider>(specProvider => new ParallelTraceBudgets(specProvider, budget, changesetSeeds: true)));
+        BlockHeader parent = chain.BlockTree.Head!.Header;
+        ulong nonce = chain.WorldStateManager.GlobalStateReader.GetNonce(parent, TestItem.AddressB);
+        byte[][] codes =
+        [
+            Prepare.EvmCode.CallWithValue(TestItem.AddressC, 5_000, 1).Call(TestItem.AddressD, 5_000).Log(0, 0).STOP().Done,
+            Prepare.EvmCode.Call(TestItem.AddressC, 5_000).Revert(0, 0).Done,
+            Prepare.EvmCode.Create(Prepare.EvmCode.ForInitOf(Prepare.EvmCode.Op(Instruction.STOP).Done).Done, 0).STOP().Done,
+            Prepare.EvmCode.Call(TestItem.AddressC, 5_000).Op(Instruction.INVALID).Done,
+            Prepare.EvmCode.PersistData("0x01", "0x02").PushData(TestItem.AddressC).Op(Instruction.SELFDESTRUCT).Done,
+            Prepare.EvmCode.CallWithValue(TestItem.AddressE, 5_000, 1_000).STOP().Done,
+        ];
+        // More transactions than workers, in two rounds, so each recycled tracer meets every kind of frame.
+        Transaction[] transactions = new Transaction[2 * (codes.Length + 1)];
+        for (int i = 0; i < transactions.Length; i++)
+        {
+            int kind = i % (codes.Length + 1);
+            TransactionBuilder<Transaction> tx = kind == codes.Length
+                ? Build.A.Transaction.WithTo(TestItem.AddressC)
+                : Build.A.Transaction.WithCode(codes[kind]);
+            transactions[i] = tx.WithValue(kind == codes.Length - 1 ? 0 : 10).WithNonce(nonce + (ulong)i)
+                .WithGasLimit(300_000).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        }
+        Block block = await chain.AddBlock(transactions);
+        Assert.That(block.Transactions, Has.Length.EqualTo(transactions.Length), "precondition: every transaction is in the block");
+
+        object[] parameters = method switch
+        {
+            "trace_block" => [block.Hash!],
+            "trace_filter" => [new { fromBlock = $"0x{block.Number:x}", toBlock = $"0x{block.Number:x}" }],
+            _ => [block.Hash!, traceTypes!.Split(',')],
+        };
+        string replayed = await RpcTest.TestSerializedRequest(chain.TraceRpcModule, method, parameters);
+        Assert.That(seeds.Opened, Is.Zero, "precondition: before the block is indexed it is replayed");
+        IndexThroughTheCapture(chain, index, block, parent);
+        string first = await RpcTest.TestSerializedRequest(chain.TraceRpcModule, method, parameters);
+        string second = await RpcTest.TestSerializedRequest(chain.TraceRpcModule, method, parameters);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(seeds.Opened, Is.EqualTo(2), "precondition: the indexed block is traced in parallel");
+            Assert.That(JToken.Parse(replayed)["error"], Is.Null, replayed);
+            Assert.That(second, Is.EqualTo(first));
+            // The streamed replay writes a vmTrace operation's sub-trace ahead of its other fields.
+            if (traceTypes?.Contains("vmTrace") == true)
+                Assert.That(JToken.DeepEquals(JToken.Parse(first), JToken.Parse(replayed)), Is.True, first);
+            else
+                Assert.That(first, Is.EqualTo(replayed));
+        }
+    }
+
     [Test]
     public async Task Debug_traceBlockByHash_WithATransactionFilter_ReturnsThatTransactionAlone_OnAnIndexedBlock()
     {
@@ -192,7 +275,7 @@ public partial class DebugRpcModuleTests
                 .AddSingleton<ISpecProvider>(new TestSpecProvider(Prague.Instance) { AllowTestChainOverride = false })
                 .AddSingleton<IPrefixStateSeedSource>(seeds)
                 .AddSingleton(budget)
-                .AddSingleton<ParallelTraceBudgets, ISpecProvider>(specProvider => new ParallelTraceBudgets(specProvider, budget, ParallelTraceBudget.Bounded(1)))
+                .AddSingleton<ParallelTraceBudgets, ISpecProvider>(specProvider => new ParallelTraceBudgets(specProvider, budget, changesetSeeds: true))
                 .AddDecorator<ITransactionProcessorAdapter>((_, inner) => new BudgetCountingAdapter(inner, counter)));
         BlockHeader parent = chain.BlockTree.Head!.Header;
         ulong nonce = chain.WorldStateManager.GlobalStateReader.GetNonce(parent, TestItem.AddressB);
@@ -270,11 +353,11 @@ public partial class DebugRpcModuleTests
         }
     }
 
-    public enum ReceiptAvailability { Stored, Missing, Unreproducible }
+    public enum ReceiptAvailability { Stored, Missing, Truncated, Unreproducible }
 
     // Without usable receipts both paths number the logs from the body they replay, as the receipts would.
     [Test]
-    public async Task Debug_traceBlockByHash_callTracer_withLog_OnAnIndexedBlock_ResolvesTheReceiptsOnce([Values] ReceiptAvailability availability)
+    public async Task Debug_traceBlockByHash_callTracer_withLog_OnAnIndexedBlock_ResolvesTheReceiptsOnce([Values] ReceiptAvailability availability, [Values] bool streamMode)
     {
         using SnapshotableMemColumnsDb<FlatHistoryColumns> columns = new();
         TransactionChangesetIndex index = new(columns, new FlatDbConfig { HistoryTransactionIndexEnabled = true });
@@ -286,7 +369,7 @@ public partial class DebugRpcModuleTests
                 .AddSingleton<ISpecProvider>(new TestSpecProvider(Prague.Instance) { AllowTestChainOverride = false })
                 .AddSingleton<IPrefixStateSeedSource>(seeds)
                 .AddSingleton(budget)
-                .AddSingleton<ParallelTraceBudgets, ISpecProvider>(specProvider => new ParallelTraceBudgets(specProvider, budget, ParallelTraceBudget.Bounded(1)))
+                .AddSingleton<ParallelTraceBudgets, ISpecProvider>(specProvider => new ParallelTraceBudgets(specProvider, budget, changesetSeeds: true))
                 .AddKeyedSingleton<IReceiptFinder>(IReceiptFinder.RegenerableKey, ctx => new CountingReceiptFinder(ctx.Resolve<IReceiptFinder>(), availability)));
         BlockHeader parent = chain.BlockTree.Head!.Header;
         ulong nonce = chain.WorldStateManager.GlobalStateReader.GetNonce(parent, TestItem.AddressB);
@@ -299,9 +382,11 @@ public partial class DebugRpcModuleTests
         CountingReceiptFinder receipts = (CountingReceiptFinder)chain.Container.ResolveKeyed<IReceiptFinder>(IReceiptFinder.RegenerableKey);
 
         int before = receipts.BlockGets;
-        GethTraceOptions options = new() { Tracer = "callTracer", TracerConfig = JsonSerializer.Deserialize<JsonElement>("""{"withLog":true}""") };
+        int iteratorsBefore = receipts.IteratorReads;
+        GethTraceOptions options = new() { Tracer = "callTracer", TracerConfig = JsonSerializer.Deserialize<JsonElement>("""{"withLog":true}"""), StreamMode = streamMode };
         string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceBlockByHash", block.Hash, options);
         int blockTraceGets = receipts.BlockGets - before;
+        int blockTraceIterators = receipts.IteratorReads - iteratorsBefore;
         string single = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceTransaction", transactions[^1].Hash, options);
 
         JArray result = (JArray)JToken.Parse(response)["result"]!;
@@ -312,15 +397,71 @@ public partial class DebugRpcModuleTests
                 Assert.That((string)result[i]!["result"]!["logs"]![0]!["index"]!, Is.EqualTo($"0x{i:x}"), response);
             Assert.That((string)JToken.Parse(single)["result"]!["logs"]![0]!["index"]!, Is.EqualTo($"0x{transactions.Length - 1:x}"), single);
             // Read once on the calling thread: the parallel workers share it, and the replay it falls back to reads none.
-            Assert.That(blockTraceGets, Is.EqualTo(1));
+            // Stored receipts are counted without decoding them; only an iterator that cannot answer leads to the full read.
+            Assert.That(blockTraceIterators, Is.EqualTo(1));
+            Assert.That(blockTraceGets, Is.EqualTo(availability is ReceiptAvailability.Missing or ReceiptAvailability.Truncated ? 1 : 0));
         }
+    }
+
+    [Test]
+    public async Task Debug_traceBlockByHash_NativeTracerFailingOnAnIndexedBlock_StreamsTheTracedPrefixAndASentinel()
+    {
+        using SnapshotableMemColumnsDb<FlatHistoryColumns> columns = new();
+        TransactionChangesetIndex index = new(columns, new FlatDbConfig { HistoryTransactionIndexEnabled = true });
+        ChangesetPrefixStateSeedSource seeds = new(index);
+        using ParallelTraceBudget budget = new(2);
+        Hash256? failingTx = null;
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = true })
+            .Build(builder => builder
+                .AddSingleton<ISpecProvider>(new TestSpecProvider(Prague.Instance) { AllowTestChainOverride = false })
+                .AddSingleton<IPrefixStateSeedSource>(seeds)
+                .AddSingleton(budget)
+                .AddSingleton<ParallelTraceBudgets, ISpecProvider>(specProvider => new ParallelTraceBudgets(specProvider, budget, changesetSeeds: true))
+                .AddDecorator<ITransactionProcessorAdapter>((_, inner) => new FailingAdapter(inner, () => failingTx)));
+        BlockHeader parent = chain.BlockTree.Head!.Header;
+        ulong nonce = chain.WorldStateManager.GlobalStateReader.GetNonce(parent, TestItem.AddressB);
+        Transaction[] transactions = new Transaction[3];
+        for (int i = 0; i < transactions.Length; i++)
+            transactions[i] = Build.A.Transaction.WithTo(TestItem.AddressC).WithNonce(nonce + (ulong)i)
+                .WithValue(1).WithGasLimit(100_000).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        Block block = await chain.AddBlock(transactions);
+        IndexThroughTheCapture(chain, index, block, parent);
+        failingTx = transactions[1].Hash;
+
+        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceBlockByHash", block.Hash, new GethTraceOptions { Tracer = "callTracer" });
+
+        JToken parsed = JToken.Parse(response);
+        JArray result = (JArray)parsed["result"]!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(parsed["error"], Is.Null, "the failure comes after the stream opened, so it cannot be a top-level error");
+            Assert.That(result, Has.Count.InRange(1, transactions.Length), response);
+            for (int i = 0; i < result.Count - 1; i++)
+                Assert.That((string)result[i]!["txHash"]!, Is.EqualTo(transactions[i].Hash!.ToString()), "entries before the failure are the block's prefix, in order");
+            Assert.That((string)result[result.Count - 1]!["error"]!, Does.Contain("simulated mid-block failure"), response);
+        }
+    }
+
+    private sealed class FailingAdapter(ITransactionProcessorAdapter inner, Func<Hash256?> failingTx) : ITransactionProcessorAdapter
+    {
+        public TransactionResult Execute(Transaction transaction, ITxTracer txTracer) =>
+            transaction.Hash is not null && transaction.Hash == failingTx()
+                ? throw new InvalidOperationException("simulated mid-block failure")
+                : inner.Execute(transaction, txTracer);
+
+        public void SetBlockExecutionContext(in BlockExecutionContext context) => inner.SetBlockExecutionContext(context);
+        public void PrepareForInclusionCheck(Transaction transaction, ulong stateGasAvailable) => inner.PrepareForInclusionCheck(transaction, stateGasAvailable);
     }
 
     private sealed class CountingReceiptFinder(IReceiptFinder inner, ReceiptAvailability availability) : IReceiptFinder
     {
         private int _blockGets;
+        private int _iteratorReads;
 
         public int BlockGets => Volatile.Read(ref _blockGets);
+
+        public int IteratorReads => Volatile.Read(ref _iteratorReads);
 
         public Hash256? FindBlockHash(Hash256 txHash) => inner.FindBlockHash(txHash);
 
@@ -339,11 +480,27 @@ public partial class DebugRpcModuleTests
 
         public bool CanGetReceiptsByHash(ulong blockNumber) => inner.CanGetReceiptsByHash(blockNumber);
 
-        public bool TryGetReceiptsIterator(ulong blockNumber, Hash256 blockHash, out ReceiptsIterator iterator) =>
-            inner.TryGetReceiptsIterator(blockNumber, blockHash, out iterator);
+        public bool TryGetReceiptsIterator(ulong blockNumber, Hash256 blockHash, out ReceiptsIterator iterator)
+        {
+            Interlocked.Increment(ref _iteratorReads);
+            switch (availability)
+            {
+                case ReceiptAvailability.Missing:
+                    iterator = default;
+                    return false;
+                case ReceiptAvailability.Unreproducible:
+                    throw new ResourceNotFoundException($"No receipts for block {blockNumber}");
+                case ReceiptAvailability.Truncated:
+                    // Fewer stored receipts than transactions: the count cannot be trusted, so the full read decides.
+                    iterator = new ReceiptsIterator(inner.Get(blockHash)[..^1]);
+                    return true;
+                default:
+                    return inner.TryGetReceiptsIterator(blockNumber, blockHash, out iterator);
+            }
+        }
     }
 
-    private static void IndexThroughTheCapture(TestRpcBlockchain chain, TransactionChangesetIndex index, Block block, BlockHeader parent)
+    internal static void IndexThroughTheCapture(TestRpcBlockchain chain, TransactionChangesetIndex index, Block block, BlockHeader parent)
     {
         using TransactionChangesetIndex.BlockCapture capture = index.StartBlock((ulong)block.Number);
         using IDisposable scope = chain.MainWorldState.BeginScope(parent);
@@ -377,5 +534,21 @@ public partial class DebugRpcModuleTests
 
         public void SetBlockExecutionContext(in BlockExecutionContext context) => inner.SetBlockExecutionContext(context);
         public void PrepareForInclusionCheck(Transaction transaction, ulong stateGasAvailable) => inner.PrepareForInclusionCheck(transaction, stateGasAvailable);
+    }
+
+    private sealed class OpenedBlockCount(IPrefixStateSeedSource inner) : IPrefixStateSeedSource
+    {
+        public int Opened;
+
+        public bool Enabled => inner.Enabled;
+
+        public bool TrySeed(Block block, int transactionIndex, StateReadOverlaySlot slot) => inner.TrySeed(block, transactionIndex, slot);
+
+        public bool TryOpenBlock(Block block, [NotNullWhen(true)] out ICoveredBlock? covered)
+        {
+            if (!inner.TryOpenBlock(block, out covered)) return false;
+            Interlocked.Increment(ref Opened);
+            return true;
+        }
     }
 }

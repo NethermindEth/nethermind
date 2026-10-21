@@ -18,6 +18,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using HealthChecks.UI.Client;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Connections;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
@@ -101,6 +102,7 @@ public class Startup : IStartup
                 .Select(static u => u.Port)
                 .ToHashSet();
 
+        services.AddSingleton<IMemoryPoolFactory<byte>, TransportMemoryPoolFactory>();
         services.Configure<KestrelServerOptions>(options =>
         {
             options.AddServerHeader = false;
@@ -483,7 +485,11 @@ public class Startup : IStartup
         try
         {
             await CollectHttpRequestBodyAsync(ctx, contentLength, effectiveMaxRequestBodySize, collectedBody, ctx.RequestAborted);
-            using JsonRpcContext jsonRpcContext = JsonRpcContext.Http(jsonRpcUrl);
+            JsonRpcContext jsonRpcContext = new(RpcEndpoint.Http, url: jsonRpcUrl)
+            {
+                RemoteAddress = ctx.Connection.RemoteIpAddress,
+                ForwardedFor = ctx.Request.Headers["X-Forwarded-For"]
+            };
             responseSink = new HttpJsonRpcResponseSink(ctx, jsonRpcUrl, _jsonRpcConfig, _jsonRpcLocalStats, _logger, startTime);
 
             await _jsonRpcProcessor.ProcessAsync(

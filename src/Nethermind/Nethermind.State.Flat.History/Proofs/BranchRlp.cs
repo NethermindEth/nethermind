@@ -57,6 +57,24 @@ internal static class BranchRlp
         return contentLength == 0;
     }
 
+    public static bool TryReadChild(ReadOnlySpan<byte> nodeRlp, int index, out int referenceLength, out ValueHash256 hash)
+    {
+        hash = default;
+        RlpReader reader = new(nodeRlp);
+        int length = reader.ReadSequenceLength();
+        if (reader.PeekNumberOfItemsRemaining(reader.Position + length) != BranchItems)
+        {
+            referenceLength = 0;
+            return false;
+        }
+
+        reader.SkipItems(index);
+        ReadOnlySpan<byte> reference = ReadChild(ref reader);
+        referenceLength = reference.Length;
+        if (referenceLength == Hash256.Size) hash = new ValueHash256(reference);
+        return true;
+    }
+
     public static int EncodedLength(ChildVector children) => Rlp.LengthOfSequence(ContentLength(children));
 
     public static int Encode(ChildVector children, Span<byte> rlp)

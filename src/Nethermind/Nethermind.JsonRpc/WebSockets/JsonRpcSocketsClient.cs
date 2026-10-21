@@ -4,11 +4,12 @@
 using System;
 using System.Buffers;
 using System.IO;
-using System.IO.Pipelines;
+using System.Net;
 using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Primitives;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Utils;
 using Nethermind.JsonRpc.Modules;
@@ -53,19 +54,27 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
         IJsonSerializer jsonSerializer,
         JsonRpcUrl? url = null,
         long? maxBatchResponseBodySize = null,
-        int concurrency = 1)
-        : base(clientName, stream, jsonSerializer)
+        int concurrency = 1,
+        long? maxRequestBodySize = null,
+        IPAddress? remoteAddress = null,
+        StringValues forwardedFor = default)
+        : base(clientName, stream, jsonSerializer, RequestSizeLimit(maxRequestBodySize))
     {
         _jsonRpcProcessor = jsonRpcProcessor;
         _jsonRpcLocalStats = jsonRpcLocalStats;
         _maxBatchResponseBodySize = maxBatchResponseBodySize;
-        _jsonRpcContext = new JsonRpcContext(endpointType, this, url);
+        _jsonRpcContext = new JsonRpcContext(endpointType, this, url) { RemoteAddress = remoteAddress, ForwardedFor = forwardedFor };
         _processChannel = Channel.CreateBounded<ProcessRequest>(new BoundedChannelOptions(concurrency)
         {
             SingleWriter = true
         });
         _workerTaskCount = concurrency;
     }
+
+    private static int RequestSizeLimit(long? maxRequestBodySize) =>
+        (int)Math.Min(maxRequestBodySize ?? MAX_REQUEST_BODY_SIZE_FOR_ENGINE_API, MAX_REQUEST_BODY_SIZE_FOR_ENGINE_API);
+
+    public bool IsClosed => Volatile.Read(ref _disposed) == 1;
 
     /// <remarks>Idempotent: a subscription can disconnect a lagging client while its owner still holds it.</remarks>
     public override void Dispose()
@@ -78,7 +87,6 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
         {
             _sendFailure.Dispose();
         }
-        _jsonRpcContext.Dispose();
         Closed?.Invoke(this, EventArgs.Empty);
     }
 
@@ -148,7 +156,6 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
 
     private async Task HandleRequest(Memory<byte> data, CancellationToken cancellationToken = default)
     {
-        PipeReader request = PipeReader.Create(new ReadOnlySequence<byte>(data));
         using SocketJsonRpcResponseSink<TStream> sink = new(
             _stream,
             _jsonRpcLocalStats,
@@ -157,7 +164,7 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
             _jsonRpcContext);
 
         await _jsonRpcProcessor.ProcessAsync(
-            request,
+            data,
             _jsonRpcContext,
             sink,
             new JsonRpcProcessingOptions(JsonRpcInputMode.MultipleDocuments),

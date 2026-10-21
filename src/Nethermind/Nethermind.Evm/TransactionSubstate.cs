@@ -24,11 +24,11 @@ public readonly ref struct TransactionSubstate
     private const int RevertPrefix = 4;
     private const int WordSize = EvmPooledMemory.WordSize;
 
-    public static readonly byte[] ErrorFunctionSelector = Keccak.Compute("Error(string)").BytesToArray()[..RevertPrefix];
-    public static readonly byte[] PanicFunctionSelector = Keccak.Compute("Panic(uint256)").BytesToArray()[..RevertPrefix];
+    public static byte[] ErrorFunctionSelector => field ??= Keccak.Compute("Error(string)").BytesToArray()[..RevertPrefix];
+    public static byte[] PanicFunctionSelector => field ??= Keccak.Compute("Panic(uint256)").BytesToArray()[..RevertPrefix];
 
 
-    private static readonly FrozenDictionary<ulong, string> PanicReasons = new Dictionary<ulong, string>
+    private static FrozenDictionary<ulong, string> PanicReasons => field ??= new Dictionary<ulong, string>
     {
         { 0x00, "generic panic" },
         { 0x01, "assert(false)" },

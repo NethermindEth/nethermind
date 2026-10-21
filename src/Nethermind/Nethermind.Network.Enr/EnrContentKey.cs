@@ -45,6 +45,12 @@ namespace Nethermind.Network.Enr
         public static ReadOnlySpan<byte> SecP256k1U8 => "secp256k1"u8;
 
         /// <summary>
+        /// Snap protocol support, a list of served snap versions; empty means snap/1 only
+        /// </summary>
+        public const string Snap = "snap";
+        public static ReadOnlySpan<byte> SnapU8 => "snap"u8;
+
+        /// <summary>
         /// TCP port, big endian integer
         /// </summary>
         public const string Tcp = "tcp";

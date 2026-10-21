@@ -4,10 +4,14 @@
 using System;
 using System.Diagnostics.CodeAnalysis;
 using Autofac;
+using Autofac.Core;
 using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Eip2930;
+using Nethermind.Core.Extensions;
+using Nethermind.Evm;
+using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
@@ -19,18 +23,29 @@ public class PrewarmerEnvFactory(
     IWorldStateManager worldStateManager,
     ILogManager logManager,
     ILifetimeScope parentLifetime,
-    IBlocksConfig? blocksConfig = null,
-    ITransactionProcessor? transactionProcessor = null)
+    IBlocksConfig? blocksConfig = null)
 {
+    /// <summary>Metadata of an <see cref="ITransactionProcessor"/> registration whose execution the handoff mirrors.</summary>
+    public const string HandoffMetadata = "PrewarmHandoff";
+
+    /// <summary>The most memory warming lets the block's code retain, so warming cannot spend execution's budget.</summary>
+    private static readonly long WarmingCodeMaxBytes = 256.MiB;
+
     /// <summary>Whether the envs record the footprints block processing takes over.</summary>
     /// <remarks>
-    /// Set by <see cref="IBlocksConfig.PreWarmHandoff"/>, off without a blocks config. Only on the Ethereum transaction
-    /// processor: other chains' processors charge and validate differently.
+    /// Set by <see cref="IBlocksConfig.PreWarmHandoff"/>, off without a blocks config. Only where the transaction
+    /// processor registration carries <see cref="HandoffMetadata"/>, as the Ethereum one does: other chains' processors
+    /// charge and validate differently. Decorating the processor keeps the registration, and with it the mark.
     /// </remarks>
-    public bool RecordsFootprints { get; } = (blocksConfig?.PreWarmHandoff ?? false) && transactionProcessor is EthereumTransactionProcessor;
+    public bool RecordsFootprints { get; } = (blocksConfig?.PreWarmHandoff ?? false) && IsMarkedForHandoff(parentLifetime);
+
+    private static bool IsMarkedForHandoff(ILifetimeScope scope) =>
+        scope.ComponentRegistry.TryGetServiceRegistration(new TypedService(typeof(ITransactionProcessor)), out ServiceRegistration registration)
+        && registration.Registration.Metadata.ContainsKey(HandoffMetadata);
 
     public IPrewarmerEnv Create(PreBlockCaches preBlockCaches)
     {
+        BlockCodeCache? warmingCodeCache = parentLifetime.ResolveOptional<BlockCodeCache>()?.WithLimit(WarmingCodeMaxBytes);
         PrewarmerState prewarmerState = new(preBlockCaches, isPrewarmer: true);
         PrewarmerScopeProvider worldState = new(
             worldStateManager.CreateResettableWorldState(),
@@ -45,6 +60,7 @@ public class PrewarmerEnvFactory(
                 .AddSingleton<IPrewarmerState>(prewarmerState)
                 .AddSingleton<IWorldStateScopeProvider>(worldState)
                 .AddSingleton<AutoReadOnlyTxProcessingEnvFactory.AutoReadOnlyTxProcessingEnv>();
+            if (warmingCodeCache is not null) builder.AddSingleton<ICodeCache>(warmingCodeCache);
             if (RecordsFootprints)
             {
                 // At scope level, so the transaction processor and the code repository both read through it.
@@ -55,6 +71,8 @@ public class PrewarmerEnvFactory(
         try
         {
             AutoReadOnlyTxProcessingEnvFactory.AutoReadOnlyTxProcessingEnv env = childScope.Resolve<AutoReadOnlyTxProcessingEnvFactory.AutoReadOnlyTxProcessingEnv>();
+            // The env's transaction processor runs on the scope's one machine.
+            recorder?.Machine = childScope.Resolve<IVirtualMachine>() as VirtualMachine<EthereumGasPolicy>;
             return new PrewarmerEnv(childScope, env, childScope.Resolve<IHasAccessList[]>(), recorder);
         }
         catch

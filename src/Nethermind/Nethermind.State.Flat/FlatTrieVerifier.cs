@@ -1,14 +1,14 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Buffers.Binary;
-using System.Collections.Concurrent;
 using System.Threading.Channels;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
+using Nethermind.State.Flat.Collections;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.Trie;
@@ -19,7 +19,7 @@ namespace Nethermind.State.Flat;
 /// <summary>
 /// Verifier for flat DB against trie state.
 /// - Hashed mode: Single-pass co-iteration (flat and trie share same sort order)
-/// - Preimage mode: Two-pass verification using PatriciaTree.Get() directly
+/// - Preimage mode: Flat re-sorted by hash on disk, then co-iterated like hashed mode
 /// </summary>
 public class FlatTrieVerifier
 {
@@ -27,11 +27,14 @@ public class FlatTrieVerifier
     private const int StorageChannelCapacity = 1024;
     private const int FlatKeyLength = 20;
     private const int PartitionCount = 8;
+    private const int AccountSpoolBufferBytes = 64 * 1024 * 1024;
+    private const long AccountSpoolLogInterval = 10_000_000;
 
     private readonly IFlatDbManager? _flatDbManager;
     private readonly IPersistence? _persistence;
     private readonly ILogManager _logManager;
     private readonly ILogger _logger;
+    private readonly string _scratchDirectory;
 
     private readonly int _storageWorkerCount = Math.Max(1, Environment.ProcessorCount - 1);
 
@@ -44,12 +47,14 @@ public class FlatTrieVerifier
     private int _busyStorageWorkers;
     private int _offloadedPartitions;
 
-    public FlatTrieVerifier(IFlatDbManager flatDbManager, IPersistence persistence, ILogManager logManager)
+    /// <param name="scratchDirectory">Where preimage mode spools flat state while re-sorting it by hash.</param>
+    public FlatTrieVerifier(IFlatDbManager flatDbManager, IPersistence persistence, ILogManager logManager, string scratchDirectory)
     {
         _flatDbManager = flatDbManager;
         _persistence = persistence;
         _logManager = logManager;
         _logger = logManager.GetClassLogger<FlatTrieVerifier>();
+        _scratchDirectory = scratchDirectory;
     }
 
     // Internal constructor for testing
@@ -57,7 +62,11 @@ public class FlatTrieVerifier
     {
         _logManager = logManager;
         _logger = logManager.GetClassLogger<FlatTrieVerifier>();
+        _scratchDirectory = Path.GetTempPath();
     }
+
+    /// <summary>Preimage storage slots of one account sorted in memory before spilling to disk.</summary>
+    internal int PreimageSlotsInMemory { get; init; } = 1_000_000;
 
     public VerificationStats Stats => new(
         Interlocked.Read(ref _accountCount),
@@ -267,11 +276,14 @@ public class FlatTrieVerifier
     }
 
     /// <summary>
-    /// Preimage mode: Two-pass verification using PatriciaTree.Get() directly for RLP lookup.
-    /// Pass 1: Iterate flat sequentially (can't partition by hash since flat uses raw addresses), lookup each in trie
-    /// Pass 2: Iterate trie partitions in parallel, check against seen set - detects entries missing in flat
-    /// Note: Flat iteration is not parallelized because addresses don't partition by hash.
+    /// Preimage mode: re-sorts the flat accounts by address hash, then co-iterates them with the trie leaves.
     /// </summary>
+    /// <remarks>
+    /// Flat keys preimage accounts by raw address, so its order is unrelated to the trie's. Phase 1 reads only flat,
+    /// spooling (address hash → address, account) into one <see cref="SortedSpool"/> under the scratch directory.
+    /// Phase 2 walks the spool and the trie in the same order, so the trie is read sequentially instead of by one
+    /// root-to-leaf lookup per account, and accounts missing on either side fall out of the merge.
+    /// </remarks>
     private void VerifyPreimageMode(
         IPersistence.IPersistenceReader reader,
         IScopedTrieStore trieStore,
@@ -280,94 +292,128 @@ public class FlatTrieVerifier
         VisitorProgressTracker progressTracker,
         CancellationToken cancellationToken)
     {
-        // PatriciaTree for direct RLP lookup (thread-safe for reads)
-        PatriciaTree? tree = stateRoot != Keccak.EmptyTreeHash ? new(trieStore, _logManager) : null;
+        string spoolDirectory = Path.Combine(_scratchDirectory, Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(spoolDirectory);
+        try
+        {
+            using SortedSpool accounts = new(spoolDirectory, AccountSpoolBufferBytes, writerCount: 1, _logManager, cancellationToken)
+            {
+                FinalMerge = () => { if (_logger.IsInfo) _logger.Info("Merging sorted flat accounts..."); }
+            };
+            SpoolPreimageAccounts(reader, accounts, cancellationToken);
 
-        // Thread-safe set of verified trie paths to avoid double-counting in pass 2
-        ConcurrentDictionary<ulong, byte> verifiedTriePaths = new();
+            using SortedSpool.Cursor flatAccounts = accounts.Read();
+            VerifySpooledPreimageAccounts(flatAccounts, trieStore, stateRoot, storageWriter, progressTracker, cancellationToken);
+        }
+        finally
+        {
+            Directory.Delete(spoolDirectory, recursive: true);
+        }
+    }
 
-        TreePath progressPath = TreePath.Empty;
-
-        // Pass 1: Flat -> Trie (sequential - can't partition raw addresses by hash)
+    /// <summary>
+    /// Phase 1 of preimage mode: spools every flat account keyed by its address hash, without reading the trie.
+    /// </summary>
+    /// <remarks>
+    /// The account iterator's upper bound is exclusive, so the all-0xFF address, which holds a balance on mainnet, is
+    /// read with a point lookup instead.
+    /// </remarks>
+    private void SpoolPreimageAccounts(IPersistence.IPersistenceReader reader, SortedSpool accounts, CancellationToken cancellationToken)
+    {
+        using SortedSpool.Writer writer = accounts.CreateWriter();
+        long spooled = 0;
         using (IPersistence.IFlatIterator flatIter = reader.CreateAccountIterator(ValueKeccak.Zero, ValueKeccak.MaxValue))
         {
             while (flatIter.MoveNext())
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                Interlocked.Increment(ref _accountCount);
-
-                // In preimage mode, flat key contains raw address bytes
-                ValueHash256 flatKey = flatIter.CurrentKey;
-                Hash256 trieHash = Keccak.Compute(flatKey.Bytes[..20]);
-                ulong hashKey = BinaryPrimitives.ReadUInt64LittleEndian(trieHash.Bytes);
-
-                // Direct RLP lookup using PatriciaTree.Get()
-                ReadOnlySpan<byte> trieAccountRlp = tree is not null ? tree.Get(trieHash.Bytes, stateRoot) : [];
-
-                if (trieAccountRlp.IsEmpty)
-                {
-                    Interlocked.Increment(ref _missingInTrie);
-                    if (_logger.IsWarn) _logger.Warn($"Account in flat not found in trie. Address: {new Address(flatKey.Bytes[..20])}");
-                    DiagnoseTriePath(trieStore, stateRoot, flatKey);
-                    continue;
-                }
-
-                verifiedTriePaths.TryAdd(hashKey, 0);
-                TreePath triePath = TreePath.FromPath(trieHash.Bytes);
-                if (triePath.Truncate(VisitorProgressTracker.Level3Depth) != progressPath)
-                {
-                    progressPath = triePath.Truncate(VisitorProgressTracker.Level3Depth);
-                    progressTracker.OnNodeVisited(progressPath, isStorage: false);
-                }
-
-                VerifyAccountMatchPreimageWithRlp(flatIter.CurrentValue, trieAccountRlp, flatKey, trieHash.ValueHash256, storageWriter, cancellationToken);
+                SpoolPreimageAccount(writer, flatIter.CurrentKey, flatIter.CurrentValue);
+                if (++spooled % AccountSpoolLogInterval == 0 && _logger.IsInfo) _logger.Info($"Sorting flat accounts: {spooled:N0} read");
             }
         }
 
-        // Pass 2: Trie -> Flat (parallelized across partitions - trie uses hashes which partition evenly)
-        Task[] pass2Tasks = new Task[PartitionCount];
-        for (int i = 0; i < PartitionCount; i++)
+        Address lastAddress = new("0xffffffffffffffffffffffffffffffffffffffff");
+        if (reader.GetAccount(lastAddress) is { } lastAccount)
         {
-            int partition = i;
-            pass2Tasks[i] = Task.Run(() =>
-                VerifyPreimageModePass2Partition(partition, trieStore, stateRoot, progressTracker, verifiedTriePaths, cancellationToken),
-                cancellationToken);
+            ValueHash256 lastAddressKey = ValueKeccak.Zero;
+            lastAddress.Bytes.CopyTo(lastAddressKey.BytesAsSpan);
+            using ArrayPoolSpan<byte> lastAccountRlp = AccountDecoder.Slim.EncodeToArrayPoolSpan(lastAccount);
+            SpoolPreimageAccount(writer, lastAddressKey, lastAccountRlp);
         }
-        Task.WaitAll(pass2Tasks, cancellationToken);
+    }
+
+    private static void SpoolPreimageAccount(SortedSpool.Writer writer, in ValueHash256 flatKey, ReadOnlySpan<byte> accountRlp)
+    {
+        // In preimage mode, flat key contains raw address bytes
+        ReadOnlySpan<byte> address = flatKey.Bytes[..FlatKeyLength];
+        ValueHash256 addressHash = ValueKeccak.Compute(address);
+        Span<byte> record = stackalloc byte[byte.MaxValue];
+        address.CopyTo(record);
+        accountRlp.CopyTo(record[FlatKeyLength..]);
+        writer.Add(addressHash.Bytes, record[..(FlatKeyLength + accountRlp.Length)]);
     }
 
     /// <summary>
-    /// Pass 2 of preimage mode verification for a single partition.
+    /// Phase 2 of preimage mode: co-iterates the spooled accounts with the trie leaves, both in address hash order.
     /// </summary>
-    private void VerifyPreimageModePass2Partition(
-        int partition,
+    private void VerifySpooledPreimageAccounts(
+        SortedSpool.Cursor flatAccounts,
         IScopedTrieStore trieStore,
         Hash256 stateRoot,
+        ChannelWriter<StorageVerificationJob> storageWriter,
         VisitorProgressTracker progressTracker,
-        ConcurrentDictionary<ulong, byte> verifiedTriePaths,
         CancellationToken cancellationToken)
     {
-        (ValueHash256 startKey, ValueHash256 endKey) = GetPartitionBounds(partition);
+        // Trie node keys are path-ordered, so this forward scan benefits from iterator readahead.
+        TrieNodeResolverWithReadFlags readAheadTrieStore = new(trieStore, ReadFlags.HintReadAhead);
+        TrieLeafIterator trieIter = new(readAheadTrieStore, stateRoot, LogTrieNodeException);
+
+        bool hasFlat = flatAccounts.MoveNext();
+        bool hasTrie = trieIter.MoveNext();
+
         TreePath progressPath = TreePath.Empty;
 
-        TrieLeafIterator trieIter = new(trieStore, stateRoot, LogTrieNodeException, startKey, endKey);
-        while (trieIter.MoveNext())
+        while (hasFlat || hasTrie)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            ulong triePathKey = BinaryPrimitives.ReadUInt64LittleEndian(trieIter.CurrentPath.Path.Bytes);
+            ValueHash256 addressHash = hasFlat ? new ValueHash256(flatAccounts.Key) : default;
+            int cmp = CompareStorageKeys(addressHash, hasTrie ? trieIter.CurrentPath : default, hasFlat, hasTrie);
 
-            if (verifiedTriePaths.ContainsKey(triePathKey))
-                continue;
-
-            Interlocked.Increment(ref _accountCount);
-            Interlocked.Increment(ref _missingInFlat);
-            if (trieIter.CurrentPath.Truncate(VisitorProgressTracker.Level3Depth) != progressPath)
+            if (cmp == 0)
             {
-                progressPath = trieIter.CurrentPath.Truncate(VisitorProgressTracker.Level3Depth);
-                progressTracker.OnNodeVisited(progressPath, isStorage: false);
+                Interlocked.Increment(ref _accountCount);
+                if (trieIter.CurrentPath.Truncate(VisitorProgressTracker.Level3Depth) != progressPath)
+                {
+                    progressPath = trieIter.CurrentPath.Truncate(VisitorProgressTracker.Level3Depth);
+                    progressTracker.OnNodeVisited(progressPath, isStorage: false);
+                }
+                ValueHash256 flatKey = ValueKeccak.Zero;
+                flatAccounts.Value[..FlatKeyLength].CopyTo(flatKey.BytesAsSpan);
+                VerifyAccountMatch(flatAccounts.Value[FlatKeyLength..], trieIter.CurrentLeaf!, flatKey, trieIter.CurrentPath, isPreimageMode: true, trieStore, storageWriter, cancellationToken);
+                hasFlat = flatAccounts.MoveNext();
+                hasTrie = trieIter.MoveNext();
             }
-            if (_logger.IsWarn) _logger.Warn($"Account in trie not found in flat. TriePath: {trieIter.CurrentPath}");
+            else if (cmp < 0 || !hasTrie)
+            {
+                Interlocked.Increment(ref _accountCount);
+                Interlocked.Increment(ref _missingInTrie);
+                if (_logger.IsWarn) _logger.Warn($"Account in flat not found in trie. Address: {new Address(flatAccounts.Value[..FlatKeyLength])}");
+                DiagnoseTriePath(trieStore, stateRoot, addressHash);
+                hasFlat = flatAccounts.MoveNext();
+            }
+            else
+            {
+                Interlocked.Increment(ref _accountCount);
+                Interlocked.Increment(ref _missingInFlat);
+                if (trieIter.CurrentPath.Truncate(VisitorProgressTracker.Level3Depth) != progressPath)
+                {
+                    progressPath = trieIter.CurrentPath.Truncate(VisitorProgressTracker.Level3Depth);
+                    progressTracker.OnNodeVisited(progressPath, isStorage: false);
+                }
+                if (_logger.IsWarn) _logger.Warn($"Account in trie not found in flat. TriePath: {trieIter.CurrentPath}");
+                hasTrie = trieIter.MoveNext();
+            }
         }
     }
 
@@ -408,34 +454,6 @@ public class FlatTrieVerifier
         {
             Hash256 fullPath = triePath.Path.ToCommitment();
             StorageVerificationJob job = new(flatKey, fullPath, trieAccount.StorageRoot, isPreimageMode);
-            storageWriter.WriteAsync(job, cancellationToken).AsTask().Wait(cancellationToken);
-        }
-    }
-
-    private void VerifyAccountMatchPreimageWithRlp(
-        ReadOnlySpan<byte> flatAccountRlp,
-        ReadOnlySpan<byte> trieAccountRlp,
-        in ValueHash256 flatKey,
-        in ValueHash256 trieHash,
-        ChannelWriter<StorageVerificationJob> storageWriter,
-        CancellationToken cancellationToken)
-    {
-        RlpReader flatReader = new(flatAccountRlp);
-        Account? flatAccount = AccountDecoder.Slim.Decode(ref flatReader);
-
-        RlpReader trieReader = new(trieAccountRlp);
-        Account? trieAccount = AccountDecoder.Instance.Decode(ref trieReader);
-
-        if (flatAccount != trieAccount)
-        {
-            Interlocked.Increment(ref _mismatchedAccount);
-            if (_logger.IsWarn) _logger.Warn($"Mismatched account. Hash: {trieHash}. Flat: {flatAccount}, Trie: {trieAccount}");
-        }
-
-        if (trieAccount is not null)
-        {
-            Hash256 fullPath = trieHash.ToCommitment();
-            StorageVerificationJob job = new(flatKey, fullPath, trieAccount.StorageRoot, true);
             storageWriter.WriteAsync(job, cancellationToken).AsTask().Wait(cancellationToken);
         }
     }
@@ -703,6 +721,14 @@ public class FlatTrieVerifier
     private static bool MoveNextFlat(IPersistence.IFlatIterator flatIter, bool endExclusive, in ValueHash256 endKey) =>
         flatIter.MoveNext() && (!endExclusive || flatIter.CurrentKey < endKey);
 
+    /// <summary>
+    /// Verifies a preimage-keyed storage by co-iterating its flat slots, re-sorted by slot hash, with the trie leaves.
+    /// </summary>
+    /// <remarks>
+    /// Flat keys preimage storage by raw slot, so its order is unrelated to the trie's; <see cref="HashSortedSlotPool"/>
+    /// re-sorts it within bounded memory. A slot only in the pool is missing in trie and is reported by slot; a leaf
+    /// only in the trie is missing in flat and is reported by its slot hash.
+    /// </remarks>
     private void VerifyStoragePreimage(
         StorageVerificationJob job,
         IPersistence.IPersistenceReader reader,
@@ -717,55 +743,58 @@ public class FlatTrieVerifier
         }
 
         IScopedTrieStore storageTrieStore = (IScopedTrieStore)trieStore.GetStorageTrieNodeResolver(job.TrieAccountPath);
-        PatriciaTree storageTree = new(storageTrieStore, _logManager);
 
-        HashSet<ulong> verifiedSlots = [];
-
-        // Pass 1: Flat -> Trie
+        using HashSortedSlotPool flatSlots = new(_scratchDirectory, _logManager, cancellationToken) { MaxInMemoryEntries = PreimageSlotsInMemory };
         using (IPersistence.IFlatIterator flatIter = reader.CreateStorageIterator(job.FlatAccountKey, ValueKeccak.Zero, ValueKeccak.MaxValue))
         {
             while (flatIter.MoveNext())
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                Interlocked.Increment(ref _slotCount);
-
-                // In preimage mode, flat key is raw slot bytes (big-endian UInt256)
-                ValueHash256 flatSlotKey = flatIter.CurrentKey;
-                Hash256 slotHash = Keccak.Compute(flatSlotKey.Bytes);
-                ulong hashKey = BinaryPrimitives.ReadUInt64LittleEndian(slotHash.Bytes);
-
-                // Direct RLP lookup using PatriciaTree.Get()
-                ReadOnlySpan<byte> trieValueRlp = storageTree.Get(slotHash.Bytes, job.StorageRoot);
-
-                if (trieValueRlp.IsEmpty)
-                {
-                    if (!IsZeroValue(flatIter.CurrentValue))
-                    {
-                        Interlocked.Increment(ref _missingInTrie);
-                        if (_logger.IsWarn) _logger.Warn($"Storage slot in flat not in trie. Account: {job.FlatAccountKey}, Slot: {flatSlotKey}");
-                    }
-                    continue;
-                }
-
-                verifiedSlots.Add(hashKey);
-                VerifySlotMatchPreimageWithRlp(flatIter.CurrentValue, trieValueRlp, job.FlatAccountKey, flatSlotKey);
+                flatSlots.Add(flatIter.CurrentKey, flatIter.CurrentValue);
             }
         }
+        flatSlots.CompleteAdding();
 
-        // Pass 2: Trie -> Flat (check for entries in trie not in flat)
         TrieLeafIterator trieIter = new(storageTrieStore, job.StorageRoot, LogTrieNodeException);
-        while (trieIter.MoveNext())
+
+        bool hasFlat = flatSlots.MoveNext();
+        bool hasTrie = trieIter.MoveNext();
+
+        while (hasFlat || hasTrie)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            ulong triePathKey = BinaryPrimitives.ReadUInt64LittleEndian(trieIter.CurrentPath.Path.Bytes);
+            int cmp = CompareStorageKeys(
+                hasFlat ? flatSlots.SlotHash : default,
+                hasTrie ? trieIter.CurrentPath : default,
+                hasFlat,
+                hasTrie);
 
-            if (verifiedSlots.Contains(triePathKey))
-                continue;
-
-            Interlocked.Increment(ref _slotCount);
-            Interlocked.Increment(ref _missingInFlat);
-            if (_logger.IsWarn) _logger.Warn($"Storage slot in trie not in flat. Account: {job.FlatAccountKey}, TriePath: {trieIter.CurrentPath}");
+            if (cmp == 0)
+            {
+                Interlocked.Increment(ref _slotCount);
+                VerifySlotMatch(flatSlots.Value, trieIter.CurrentLeaf!, job.FlatAccountKey, flatSlots.Slot);
+                hasFlat = flatSlots.MoveNext();
+                hasTrie = trieIter.MoveNext();
+            }
+            else if (cmp < 0 || !hasTrie)
+            {
+                Interlocked.Increment(ref _slotCount);
+                if (!IsZeroValue(flatSlots.Value))
+                {
+                    Interlocked.Increment(ref _missingInTrie);
+                    if (_logger.IsWarn) _logger.Warn($"Storage slot in flat not in trie. Account: {job.FlatAccountKey}, Slot: {flatSlots.Slot}");
+                    DiagnoseTriePath(storageTrieStore, job.StorageRoot, flatSlots.SlotHash);
+                }
+                hasFlat = flatSlots.MoveNext();
+            }
+            else
+            {
+                Interlocked.Increment(ref _slotCount);
+                Interlocked.Increment(ref _missingInFlat);
+                if (_logger.IsWarn) _logger.Warn($"Storage slot in trie not in flat. Account: {job.FlatAccountKey}, TriePath: {trieIter.CurrentPath}");
+                hasTrie = trieIter.MoveNext();
+            }
         }
     }
 
@@ -791,22 +820,6 @@ public class FlatTrieVerifier
 
         RlpReader ctx = new(trieValue);
         byte[] decodedTrieValue = ctx.DecodeByteArray();
-
-        ReadOnlySpan<byte> flatTrimmed = flatValue.WithoutLeadingZeros();
-        ReadOnlySpan<byte> trieTrimmed = decodedTrieValue.AsSpan().WithoutLeadingZeros();
-
-        if (!Bytes.AreEqual(flatTrimmed, trieTrimmed))
-        {
-            Interlocked.Increment(ref _mismatchedSlot);
-            if (_logger.IsWarn) _logger.Warn($"Mismatched slot. Account: {accountKey}, Slot: {slotKey}. Flat: {flatTrimmed.ToHexString()}, Trie: {trieTrimmed.ToHexString()}");
-        }
-    }
-
-    private void VerifySlotMatchPreimageWithRlp(ReadOnlySpan<byte> flatValue, ReadOnlySpan<byte> trieValueRlp, in ValueHash256 accountKey, in ValueHash256 slotKey)
-    {
-        // Decode RLP to get the actual value
-        RlpReader reader = new(trieValueRlp);
-        byte[] decodedTrieValue = reader.DecodeByteArray();
 
         ReadOnlySpan<byte> flatTrimmed = flatValue.WithoutLeadingZeros();
         ReadOnlySpan<byte> trieTrimmed = decodedTrieValue.AsSpan().WithoutLeadingZeros();

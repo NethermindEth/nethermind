@@ -3,7 +3,6 @@
 
 using System;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
@@ -27,6 +26,7 @@ public class GethLikeTxMemoryTracer : GethLikeTxTracer<GethTxMemoryTraceEntry>
         IsTracingMemory = IsTracingFullMemory;
         IsTracingRefunds = true;
         IsTracingActions = true;
+        options.ResolveTimeout();
     }
 
     /// <inheritdoc/>
@@ -45,6 +45,21 @@ public class GethLikeTxMemoryTracer : GethLikeTxTracer<GethTxMemoryTraceEntry>
 
         int? storageCount = entry.StorageDelta.HasValue ? ++_storageUpdates : null;
         _resultSize += GethLikeTxTraceConverter.EstimateEntrySize(entry, storageCount);
+    }
+
+    /// <inheritdoc/>
+    public override void ReportOperationError(EvmExceptionType error)
+    {
+        if (CurrentTraceEntry?.Opcode == "INVALID")
+        {
+            CurrentTraceEntry.GasCost = 0;
+            return;
+        }
+        if (error == EvmExceptionType.BadInstruction && CurrentTraceEntry is not null)
+            CurrentTraceEntry.GasCost = 0;
+        if (error == EvmExceptionType.StaticCallViolation && CurrentTraceEntry?.Opcode == "SSTORE")
+            CurrentTraceEntry.Error = "out of gas: write protection";
+        if (!IsExecutionFault(error)) base.ReportOperationError(error);
     }
 
     public override GethLikeTxTrace BuildResult()
@@ -83,11 +98,5 @@ public class GethLikeTxMemoryTracer : GethLikeTxTracer<GethTxMemoryTraceEntry>
             return;
 
         CurrentTraceEntry.StorageDelta = (address, storageIndex, new UInt256(value, isBigEndian: true));
-    }
-
-    public override void SetOperationReturnData(ReadOnlySpan<byte> returnData)
-    {
-        if (CurrentTraceEntry is not null && !returnData.IsEmpty)
-            CurrentTraceEntry.ReturnData = returnData.ToHexString(true);
     }
 }

@@ -1171,7 +1171,7 @@ namespace Nethermind.Network.Test
                 NetworkConfig.MaxActivePeers = maxActivePeers;
                 NetworkConfig.PeersPersistenceInterval = 50;
                 NetworkConfig.NumConcurrentOutgoingConnects = parallelism;
-                NetworkConfig.MaxOutgoingConnectPerSec = 1000000; // no limit in unit test
+                NetworkConfig.MaxOutgoingConnectPerSec = int.MaxValue; // zero interval: a finite rate can throttle a back-to-back dial off the fast path
                 StaticNodesManager = Substitute.For<IStaticNodesManager>();
                 StaticNodesManager.DiscoverNodes(Arg.Any<CancellationToken>()).Returns(AsyncEnumerable.Empty<Node>());
                 TestNodeSource = new TestNodeSource();

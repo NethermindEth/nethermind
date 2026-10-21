@@ -58,6 +58,7 @@ namespace Nethermind.Serialization.Rlp
             rlp.ReadSequenceLength(ref position, out int logEntryLength);
             Rlp.GuardLimit(logEntryLength, rlp.Data.Length - position, RlpLimit);
             int logEntryCheck = position + logEntryLength;
+            rlp = new(rlp.Data[..logEntryCheck]);
 
             rlp.DecodeAddress(ref position, out Address address);
             rlp.ReadSequenceLength(ref position, out int topicsLength);

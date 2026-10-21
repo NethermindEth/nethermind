@@ -5,6 +5,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using System.Threading.Tasks;
 using BenchmarkDotNet.Attributes;
@@ -62,7 +63,7 @@ public class BackgroundTaskSchedulerBenchmarks
     public async Task ScheduleAndDrainDuringBlockProcessing()
     {
         await using BackgroundTaskScheduler scheduler = new(
-            _branchProcessor, _chainHeadInfo, Concurrency, Capacity, LimboLogs.Instance);
+            _branchProcessor, _chainHeadInfo, Concurrency, Capacity, NullLogManager.Instance);
 
         int totalScheduled = 0;
         int totalExecuted = 0;
@@ -114,7 +115,7 @@ public class BackgroundTaskSchedulerBenchmarks
     public async Task ScheduleAndDrainWithoutBlockProcessing()
     {
         await using BackgroundTaskScheduler scheduler = new(
-            _branchProcessor, _chainHeadInfo, Concurrency, Capacity, LimboLogs.Instance);
+            _branchProcessor, _chainHeadInfo, Concurrency, Capacity, NullLogManager.Instance);
 
         int totalScheduled = 0;
         int totalExecuted = 0;
@@ -169,6 +170,12 @@ public class BackgroundTaskSchedulerBenchmarks
     {
         public IChainHeadSpecProvider SpecProvider => null!;
         public IReadOnlyStateProvider ReadOnlyStateProvider => null!;
+        public bool TryGetHeadState([NotNullWhen(true)] out BlockHeader? head, [NotNullWhen(true)] out IReadOnlyStateProvider? state)
+        {
+            head = null;
+            state = null;
+            return false;
+        }
         public ulong HeadNumber => 0;
         public ulong HeadTimestamp => 0;
         public ulong? BlockGasLimit => null;

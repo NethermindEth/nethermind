@@ -2,13 +2,17 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Linq;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
+using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Flat.Persistence;
+using Nethermind.State.Flat.Persistence.TrieNodeLog;
 using Nethermind.State.Flat.Sync.Snap;
 using Nethermind.State.Snap;
 using Nethermind.Synchronization.SnapSync;
@@ -21,7 +25,7 @@ namespace Nethermind.State.Flat.Test.Sync.Snap;
 [TestFixture]
 public class FlatSnapTrieFactoryTests
 {
-    private static (FlatSnapTrieFactory factory, IPersistence persistence, IPersistence.IPersistenceReader reader) Build(bool doubleWriteCheck = false)
+    private static (FlatSnapTrieFactory factory, IPersistence persistence, IPersistence.IPersistenceReader reader) Build(bool doubleWriteCheck = false, IPersistenceManager? persistenceManager = null)
     {
         IPersistence persistence = Substitute.For<IPersistence>();
         IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
@@ -34,7 +38,7 @@ public class FlatSnapTrieFactoryTests
         ISyncConfig syncConfig = Substitute.For<ISyncConfig>();
         syncConfig.EnableSnapDoubleWriteCheck.Returns(doubleWriteCheck);
 
-        FlatSnapTrieFactory factory = new(persistence, syncConfig, LimboLogs.Instance);
+        FlatSnapTrieFactory factory = new(persistence, persistenceManager ?? Substitute.For<IPersistenceManager>(), syncConfig, LimboLogs.Instance);
         return (factory, persistence, reader);
     }
 
@@ -62,6 +66,49 @@ public class FlatSnapTrieFactoryTests
         factory.EnsureInitialize();
 
         persistence.Received(1).Clear();
+    }
+
+    // The wipe drops the persisted state pointer. A stale cached pointer (genesis, flushed at startup) kept
+    // HasStateForBlock true for the whole sync, so every read of it retried for 5 s and failed with -32603.
+    [Test]
+    public void EnsureInitialize_ResetsPersistedStatePointerAfterClear()
+    {
+        IPersistenceManager persistenceManager = Substitute.For<IPersistenceManager>();
+        (FlatSnapTrieFactory factory, IPersistence persistence, _) = Build(persistenceManager: persistenceManager);
+
+        factory.EnsureInitialize();
+
+        Received.InOrder(() =>
+        {
+            persistence.Clear();
+            persistenceManager.ResetPersistedStateId();
+        });
+    }
+
+    [Test]
+    public void EnsureInitialize_WarnsOnlyWhenDiscardingState_AndLogsWipeDuration([Values] bool hasState)
+    {
+        RocksDbPersistence persistence = new(new SnapshotableMemColumnsDb<FlatDbColumns>(), LimboLogs.Instance, NullTrieNodeLog.Instance);
+        if (hasState)
+        {
+            using IPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL);
+            batch.SetAccountRaw(Keccak.Zero.ValueHash256, new Account(1));
+        }
+
+        TestLogger logger = new();
+        FlatSnapTrieFactory factory = new(persistence, Substitute.For<IPersistenceManager>(), Substitute.For<ISyncConfig>(), new OneLoggerLogManager(new ILogger(logger)));
+
+        factory.EnsureInitialize();
+
+        using IPersistence.IPersistenceReader reader = persistence.CreateReader();
+        using IPersistence.IFlatIterator iterator = reader.CreateAccountIterator(ValueKeccak.Zero, ValueKeccak.MaxValue);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(iterator.MoveNext(), Is.False);
+            Assert.That(logger.LogList.Count(static l => l.Contains("cannot resume")), Is.EqualTo(hasState ? 1 : 0));
+            Assert.That(logger.LogList.Count(static l => l.StartsWith("Cleared database in")), Is.EqualTo(1));
+            Assert.That(logger.LogList.FindIndex(static l => l == "Clearing database"), Is.EqualTo(0), "the first line must come before the probe");
+        }
     }
 
     [Test]

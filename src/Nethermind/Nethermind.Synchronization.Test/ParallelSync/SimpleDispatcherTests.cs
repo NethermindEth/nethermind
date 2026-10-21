@@ -438,7 +438,7 @@ public class SimpleDispatcherTests
             feed.ReleaseHandleResponse.TrySetResult();
         }
 
-        Assert.ThrowsAsync<TaskCanceledException>(() => runTask.WaitAsync(CancellationToken.None));
+        await Assert.ThrowsAsync<TaskCanceledException>(() => runTask.WaitAsync(CancellationToken.None));
         using (Assert.EnterMultipleScope())
         {
             Assert.That(await completedWhenRunReturned, Is.EqualTo(1), "Run must wait for in-flight HandleResponse");

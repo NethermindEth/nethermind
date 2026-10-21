@@ -6,7 +6,6 @@ using System.Diagnostics;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
@@ -47,12 +46,10 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
     private readonly IReleaseSpec? _frameTxSpec;
     private readonly NativeCallTracerConfig _config;
     private readonly BlockLogIndex? _blockLogIndex;
-    private readonly ArrayPoolList<NativeCallTracerCallFrame> _callStack = new(1024);
-    private readonly ArrayPoolList<ulong> _logIndexAtEntry = new(1024);
-    private readonly CompositeDisposable _disposables = [];
+    private readonly ArrayPoolList<NativeCallTracerCallFrame> _callStack;
+    private readonly ArrayPoolList<ulong>? _logIndexAtEntry;
 
     private EvmExceptionType? _error;
-    private ulong _remainingGas;
     private ulong _logIndexStart;
     private ulong _logIndex;
     private bool _framesCollapsed = false;
@@ -80,7 +77,8 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
         _frameTx = _isFrameTx ? tx : null;
         _frameTxSpec = _isFrameTx ? spec : null;
 
-        _config = TypeInfoJsonSerializer.Deserialize<NativeCallTracerConfig>(options.TracerConfig, EthereumJsonSerializer.JsonOptions) ?? new NativeCallTracerConfig();
+        _config = NativeCallTracerConfig.FromJson(options.TracerConfig, EthereumJsonSerializer.JsonOptions);
+        _callStack = new(1024);
 
         if (_config.WithLog)
         {
@@ -88,10 +86,9 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
             _blockLogIndex = options.LogIndex;
             _logIndexStart = (ulong)(_blockLogIndex?.Next ?? 0);
             _logIndex = _logIndexStart;
+            _logIndexAtEntry = new ArrayPoolList<ulong>(16);
         }
     }
-
-    protected override GethLikeTxTrace CreateTrace() => new(_disposables);
 
     public override bool IsTracingInstructions => false;
 
@@ -108,7 +105,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
         {
             NativeCallTracerCallFrame firstCallFrame = _callStack[0];
             _callStack.RemoveAt(0);
-            _disposables.Add(firstCallFrame);
+            result.Disposable = firstCallFrame;
 
             result.TxHash = _txHash;
             result.CustomTracerResult = new GethLikeCustomTrace { Value = firstCallFrame };
@@ -125,17 +122,14 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
 
         // BuildResult already removed the frame it handed to the trace, so everything still here is ours.
         _callStack.DisposeRecursive();
-        _logIndexAtEntry.Dispose();
+        _logIndexAtEntry?.Dispose();
     }
 
     public override void ReportAction(ulong gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
     {
         base.ReportAction(gas, value, from, to, input, callType, isPrecompileCall);
 
-        if (_config.WithLog)
-        {
-            _logIndexAtEntry.Add(_logIndex);
-        }
+        _logIndexAtEntry?.Add(_logIndex);
 
         if (_config.OnlyTopCall && Depth > 0)
             return;
@@ -149,9 +143,11 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
             // A frame transaction's top-level invocations each carry their own limit; the whole
             // transaction's belongs to the synthetic root CollapseFrameRoots builds.
             Gas = Depth == 0 && !_isFrameTx ? _gasLimit : gas,
-            Value = callOpcode == Instruction.STATICCALL ? null : value,
-            Input = input.Span.ToPooledList()
+            Value = callOpcode == Instruction.STATICCALL ? null : value
         };
+        // A top-level input is the transaction's own data; a nested one is a view into the caller's pooled memory.
+        if (Depth == 0) callFrame.Input = input;
+        else callFrame.CopyInput(input.Span);
         _callStack.Add(callFrame);
     }
 
@@ -175,13 +171,11 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
             log.Data,
             log.Topics,
             index,
-            (ulong)callFrame.Calls.Count);
+            (ulong)callFrame.CallsSpan.Length);
 
         callFrame.Logs ??= new ArrayPoolList<NativeCallTracerLogEntry>(8);
         callFrame.Logs.Add(callLog);
     }
-
-    public override void ReportActionRemainingGas(ulong gas) => _remainingGas = gas;
 
     public override void ReportActionEnd(ulong gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
     {
@@ -195,12 +189,16 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
         base.ReportActionEnd(gas, output);
     }
 
-    public override void ReportActionError(EvmExceptionType evmExceptionType)
+    /// <inheritdoc/>
+    public override void ReportActionErrorDetails(string error)
     {
-        _error = evmExceptionType;
-        OnExit(_remainingGas, null, _error);
-        base.ReportActionError(evmExceptionType);
+        if (_callStack.Count != 0 && (!_config.OnlyTopCall || Depth == 0))
+            _callStack[^1].Error = error;
     }
+
+    /// <inheritdoc/>
+    /// <remarks>An exceptional halt consumes all of the frame's gas, so its <c>gasUsed</c> equals its <c>gas</c>.</remarks>
+    public override void ReportActionError(EvmExceptionType evmExceptionType) => OnError(0, evmExceptionType);
 
     /// <summary>
     /// Like Geth, records a call or creation that failed its precheck or collided as a frame that failed with that
@@ -210,8 +208,14 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
         ReadOnlyMemory<byte> input, ExecutionType callType, EvmExceptionType error, bool isPrecompileCall = false)
     {
         ReportAction(gas, value, from, to!, input, callType, isPrecompileCall);
-        ReportActionRemainingGas(gasLeft);
-        ReportActionError(error);
+        OnError(gasLeft, error);
+    }
+
+    private void OnError(ulong gasLeft, EvmExceptionType error)
+    {
+        _error = error;
+        OnExit(gasLeft, null, _error);
+        base.ReportActionError(error);
     }
 
     public override void ReportActionRevert(ulong gas, ReadOnlyMemory<byte> output)
@@ -246,7 +250,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
         if (_callStack.Count == 0) return;
         NativeCallTracerCallFrame firstCallFrame = _callStack[0];
         firstCallFrame.GasUsed = gasSpent.SpentGas;
-        firstCallFrame.Output = new ArrayPoolList<byte>(output);
+        firstCallFrame.Output = output;
         ApplyTwoDimensionalGas(firstCallFrame, in gasSpent);
 
         if (_config.WithLog)
@@ -266,11 +270,11 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
         firstCallFrame.GasUsed = gasSpent.SpentGas;
         ApplyTwoDimensionalGas(firstCallFrame, in gasSpent);
         if (output is not null)
-            firstCallFrame.Output = new ArrayPoolList<byte>(output);
+            firstCallFrame.Output = output;
 
         if (_isFrameTx)
         {
-            // A frame transaction fails at the transaction level — a POST_TX frame failing before dispatch
+            // A frame transaction fails at the transaction level — an ASSERT frame failing before dispatch
             // reports no EVM error at all — so the reason the processor gives is the root's.
             firstCallFrame.Error = error ?? EvmExceptionType.Revert.GetEvmExceptionDescription();
         }
@@ -290,7 +294,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
             {
                 // The synthetic root's error is transaction-level, so it must not propagate: the committed
                 // frames keep their logs as the receipt does, having been cleared against it already.
-                foreach (NativeCallTracerCallFrame frameCallFrame in firstCallFrame.Calls.AsSpan())
+                foreach (NativeCallTracerCallFrame frameCallFrame in firstCallFrame.CallsSpan)
                 {
                     ClearFailedLogs(frameCallFrame, parentFailed: false);
                 }
@@ -402,7 +406,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
 
                 if (_config.WithLog && frameReceipt.Logs.Length == 0)
                 {
-                    // The receipt is what the frame committed: an unrolled atomic batch and a POST_TX
+                    // The receipt is what the frame committed: an unrolled atomic batch and an ASSERT
                     // rollback both keep the frame's success status while dropping its logs.
                     ClearFailedLogs(frameCallFrame, parentFailed: true);
                 }
@@ -425,14 +429,14 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
     private NativeCallTracerCallFrame BuildUndispatchedFrame(int frameIndex, TxFrameReceipt frameReceipt)
     {
         TxFrame frame = _frames![frameIndex];
-        bool isStatic = frame.Mode is FrameMode.Verify or FrameMode.PostTx;
+        bool isStatic = frame.Mode is FrameMode.Verify or FrameMode.Assert;
         return new NativeCallTracerCallFrame
         {
             Type = isStatic ? Instruction.STATICCALL : Instruction.CALL,
             From = frame.Mode == FrameMode.Sender ? _sender : Eip8141Constants.EntryPointAddress,
             To = frame.Target ?? _sender,
             Value = isStatic ? null : frame.Value,
-            Input = frame.Data.Span.ToPooledList(),
+            Input = frame.Data,
             Error = UndispatchedFrameError(frameIndex, frameReceipt)
         };
     }
@@ -466,7 +470,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
 
     private void OnExit(ulong gas, ReadOnlyMemory<byte>? output, EvmExceptionType? error = null)
     {
-        if (_config.WithLog)
+        if (_logIndexAtEntry is not null)
         {
             // Logs of a halted frame never reach the receipt, so they do not consume an index.
             ulong logIndexAtEntry = _logIndexAtEntry[^1];
@@ -510,13 +514,13 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
 
     /// <summary>Records an EVM halt on a call frame, for the root frame and the nested ones alike.</summary>
     /// <remarks>
-    /// A CREATE or CREATE2 frame that halted deployed no contract, so its <c>to</c> is dropped —
+    /// A CREATE, CREATE2 or TCREATE frame that halted deployed no contract, so its <c>to</c> is dropped —
     /// the execution-apis <c>CallFrame</c> schema requires it to be omitted there.
     /// </remarks>
     private static void MarkFrameFailed(NativeCallTracerCallFrame callFrame, EvmExceptionType error)
     {
-        callFrame.Error = error.GetEvmExceptionDescription();
-        if (callFrame.Type is Instruction.CREATE or Instruction.CREATE2)
+        callFrame.Error ??= error.GetEvmExceptionDescription();
+        if (callFrame.Type is Instruction.CREATE or Instruction.CREATE2 or Instruction.TCREATE)
         {
             callFrame.To = null;
         }
@@ -528,20 +532,19 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
         {
             MarkFrameFailed(callFrame, error.Value);
 
-            if (error == EvmExceptionType.Revert && output?.Length != 0)
+            if (error == EvmExceptionType.Revert && output is { IsEmpty: false } revertOutput)
             {
-                ArrayPoolList<byte> outputList = output?.Span.ToPooledList();
-                callFrame.Output = outputList;
+                callFrame.CopyOutput(revertOutput.Span);
 
-                if (outputList?.Count >= 4)
+                if (revertOutput.Length >= 4)
                 {
-                    ProcessRevertReason(callFrame, output.Value);
+                    ProcessRevertReason(callFrame, revertOutput);
                 }
             }
         }
         else
         {
-            callFrame.Output = output?.Span.ToPooledList();
+            callFrame.CopyOutput(output.GetValueOrDefault().Span);
         }
     }
 
@@ -569,7 +572,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
             callFrame.Logs = null;
         }
 
-        foreach (NativeCallTracerCallFrame childCallFrame in callFrame.Calls.AsSpan())
+        foreach (NativeCallTracerCallFrame childCallFrame in callFrame.CallsSpan)
         {
             ClearFailedLogs(childCallFrame, failed);
         }

@@ -16,6 +16,7 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.ChainSpecStyle.Json;
+using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
 namespace Nethermind.Specs.Test.ChainSpecStyle;
@@ -39,10 +40,10 @@ public class ChainSpecLoaderTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(chainSpec.Parameters.Eip1559BaseFeeInitialValue, Is.EqualTo(1.GWei), $"fork base fee");
+            Assert.That(new ChainSpecBasedSpecProvider(chainSpec).GenesisSpec.ForkBaseFee, Is.EqualTo(1.GWei), $"fork base fee");
+            Assert.That(chainSpec.Parameters.MinHistoryRetentionEpochs, Is.EqualTo(HistoryRetentionConstants.MinEpochsForBlockRequests));
             Assert.That(chainSpec.NetworkId, Is.EqualTo(1), $"{nameof(chainSpec.NetworkId)}");
-            Assert.That(chainSpec.Name, Is.EqualTo("Ethereum"), $"{nameof(chainSpec.Name)}");
-            Assert.That(chainSpec.DataDir, Is.EqualTo("ethereum"), $"{nameof(chainSpec.Name)}");
+            Assert.That(chainSpec.Name, Is.EqualTo("Ethereum"), nameof(chainSpec.Name));
             Assert.That(chainSpec.SealEngineType, Is.EqualTo(SealEngineType.Ethash), "engine");
 
             Assert.That(chainSpec.HomesteadBlockNumber, Is.EqualTo(MainnetSpecProvider.HomesteadBlockNumber));
@@ -50,7 +51,7 @@ public class ChainSpecLoaderTests
             Assert.That(chainSpec.TangerineWhistleBlockNumber, Is.EqualTo(MainnetSpecProvider.TangerineWhistleBlockNumber));
             Assert.That(chainSpec.SpuriousDragonBlockNumber, Is.EqualTo(MainnetSpecProvider.SpuriousDragonBlockNumber));
             Assert.That(chainSpec.ByzantiumBlockNumber, Is.EqualTo(MainnetSpecProvider.ByzantiumBlockNumber));
-            Assert.That(chainSpec.ConstantinopleBlockNumber, Is.EqualTo(null));
+            Assert.That(chainSpec.ConstantinopleBlockNumber, Is.EqualTo(MainnetSpecProvider.ConstantinopleFixBlockNumber));
             Assert.That(chainSpec.ConstantinopleFixBlockNumber, Is.EqualTo(MainnetSpecProvider.ConstantinopleFixBlockNumber));
             Assert.That(chainSpec.IstanbulBlockNumber, Is.EqualTo(MainnetSpecProvider.IstanbulBlockNumber));
             Assert.That(chainSpec.MuirGlacierNumber, Is.EqualTo(MainnetSpecProvider.MuirGlacierBlockNumber));
@@ -101,13 +102,13 @@ public class ChainSpecLoaderTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(chainSpec.NetworkId, Is.EqualTo(11155111), $"{nameof(chainSpec.NetworkId)}");
-            Assert.That(chainSpec.Name, Is.EqualTo("Sepolia Testnet"), $"{nameof(chainSpec.Name)}");
-            Assert.That(chainSpec.DataDir, Is.EqualTo("sepolia"), $"{nameof(chainSpec.Name)}");
+            Assert.That(chainSpec.Name, Is.EqualTo("Sepolia Testnet"), nameof(chainSpec.Name));
             Assert.That(chainSpec.SealEngineType, Is.EqualTo(SealEngineType.Ethash), "engine");
             Assert.That(chainSpec.Bootnodes, Has.Length.EqualTo(5), nameof(chainSpec.Bootnodes));
 
             Assert.That(chainSpec.LondonBlockNumber, Is.EqualTo(0L));
             Assert.That(chainSpec.ShanghaiTimestamp, Is.EqualTo(1677557088));
+            Assert.That(chainSpec.Parameters.MinHistoryRetentionEpochs, Is.EqualTo(HistoryRetentionConstants.HistoryPruneEpochs), "Glamsterdam is live");
         }
     }
 
@@ -179,13 +180,50 @@ public class ChainSpecLoaderTests
     }
 
     [Test]
-    public void Genesis_requests_hash_matches_builder_request_activation([Values(0ul, 1ul)] ulong transitionTimestamp)
+    public void Can_load_explicit_null_blob_schedule()
+    {
+        const string json = """
+            {
+                "name": "Test",
+                "engine": { "NethDev": {} },
+                "params": { "networkID": "1", "blobSchedule": null },
+                "genesis": {
+                    "seal": { "ethereum": { "nonce": "0x0", "mixHash": "0x0000000000000000000000000000000000000000000000000000000000000000" } },
+                    "difficulty": "0x1",
+                    "gasLimit": "0x1000000",
+                    "timestamp": "0x0"
+                }
+            }
+            """;
+
+        using MemoryStream stream = new(Encoding.UTF8.GetBytes(json));
+        ChainSpec chainSpec = new ChainSpecLoader(new EthereumJsonSerializer(), LimboLogs.Instance).Load(stream);
+
+        Assert.That(chainSpec.Parameters.BlobSchedule, Is.Empty);
+    }
+
+    [Test]
+    public void Bal_retention_floor_defaults_to_history_prune_epochs()
+    {
+        string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../", "Chains/spaceneth.json");
+        using MemoryStream gethGenesis = new(Encoding.UTF8.GetBytes("""{ "config": { "chainId": 1 }, "difficulty": "0x1", "gasLimit": "0x8000000", "alloc": {} }"""));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(LoadChainSpec(path).Parameters.MinBalRetentionEpochs, Is.EqualTo(HistoryRetentionConstants.HistoryPruneEpochs), "chainspec");
+            Assert.That(new GethGenesisLoader(new EthereumJsonSerializer()).Load(gethGenesis).Parameters.MinBalRetentionEpochs, Is.EqualTo(HistoryRetentionConstants.HistoryPruneEpochs), "geth genesis");
+            Assert.That(Olympic.Instance.MinBalRetentionEpochs, Is.EqualTo(HistoryRetentionConstants.HistoryPruneEpochs), "built-in forks");
+        }
+    }
+
+    /// <summary>Loads a chain spec whose genesis, at timestamp 0, follows <paramref name="transitionParam"/> set to <paramref name="transitionTimestamp"/>.</summary>
+    private static ChainSpec LoadChainSpecWithTransition(string transitionParam, ulong transitionTimestamp)
     {
         string json = $$"""
             {
                 "name": "Test",
                 "engine": { "NethDev": {} },
-                "params": { "networkID": "1", "eip8282TransitionTimestamp": "0x{{transitionTimestamp:x}}" },
+                "params": { "networkID": "1", "{{transitionParam}}": "0x{{transitionTimestamp:x}}" },
                 "genesis": {
                     "seal": { "ethereum": { "nonce": "0x0", "mixHash": "0x0000000000000000000000000000000000000000000000000000000000000000" } },
                     "difficulty": "0x1",
@@ -195,13 +233,59 @@ public class ChainSpecLoaderTests
             }
             """;
         using MemoryStream stream = new(Encoding.UTF8.GetBytes(json));
-        ChainSpec chainSpec = new ChainSpecLoader(new EthereumJsonSerializer(), LimboLogs.Instance).Load(stream);
+        return new ChainSpecLoader(new EthereumJsonSerializer(), LimboLogs.Instance).Load(stream);
+    }
+
+    [Test]
+    public void Genesis_requests_hash_matches_builder_request_activation([Values(0ul, 1ul)] ulong transitionTimestamp)
+    {
+        ChainSpec chainSpec = LoadChainSpecWithTransition("eip8282TransitionTimestamp", transitionTimestamp);
         bool activeAtGenesis = transitionTimestamp == 0;
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(new ChainSpecBasedSpecProvider(chainSpec).GenesisSpec.IsEip8282Enabled, Is.EqualTo(activeAtGenesis));
             Assert.That(chainSpec.Genesis!.Header.RequestsHash, Is.EqualTo(activeAtGenesis ? ExecutionRequestExtensions.EmptyRequestsHash : null));
+        }
+    }
+
+    [Test]
+    public void Eip8116_activates_at_its_transition_timestamp()
+    {
+        const ulong transitionTimestamp = 0x10;
+        string json = $$"""
+            {
+                "name": "Test",
+                "engine": { "NethDev": {} },
+                "params": { "networkID": "1", "eip8116TransitionTimestamp": "0x{{transitionTimestamp:x}}" },
+                "genesis": {
+                    "seal": { "ethereum": { "nonce": "0x0", "mixHash": "0x0000000000000000000000000000000000000000000000000000000000000000" } },
+                    "difficulty": "0x1",
+                    "gasLimit": "0x1000000",
+                    "timestamp": "0x0"
+                }
+            }
+            """;
+        using MemoryStream stream = new(Encoding.UTF8.GetBytes(json));
+        ChainSpecBasedSpecProvider provider = new(new ChainSpecLoader(new EthereumJsonSerializer(), LimboLogs.Instance).Load(stream));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(provider.GetSpec((1, transitionTimestamp - 1)).IsEip8116Enabled, Is.False);
+            Assert.That(provider.GetSpec((1, transitionTimestamp)).IsEip8116Enabled, Is.True);
+        }
+    }
+
+    [Test]
+    public void Genesis_logs_bloom_is_zero_length_when_eip7668_is_active([Values(0ul, 1ul)] ulong transitionTimestamp)
+    {
+        ChainSpec chainSpec = LoadChainSpecWithTransition("eip7668TransitionTimestamp", transitionTimestamp);
+        bool activeAtGenesis = transitionTimestamp == 0;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(new ChainSpecBasedSpecProvider(chainSpec).GenesisSpec.IsEip7668Enabled, Is.EqualTo(activeAtGenesis));
+            Assert.That(chainSpec.Genesis!.Header.Bloom, Is.SameAs(activeAtGenesis ? Bloom.ZeroLength : Bloom.Empty));
         }
     }
 
@@ -266,8 +350,8 @@ public class ChainSpecLoaderTests
         if (underlyingType == typeof(UInt256)) return (UInt256)77777;
         if (underlyingType == typeof(Address)) return new Address("0x1111111111111111111111111111111111111111");
         if (underlyingType == typeof(Hash256)) return new Hash256("0x1111111111111111111111111111111111111111111111111111111111111111");
-        if (type == typeof(SortedSet<BlobScheduleSettings>))
-            return new SortedSet<BlobScheduleSettings> { new() { Timestamp = 100, Target = 3, Max = 6, BaseFeeUpdateFraction = 3338477 } };
+        if (type == typeof(List<BlobScheduleSettings>))
+            return new List<BlobScheduleSettings> { new() { Timestamp = 100, Target = 3, Max = 6, BaseFeeUpdateFraction = 3338477 } };
         return null;
     }
 

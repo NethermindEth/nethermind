@@ -28,6 +28,18 @@ namespace Nethermind.Merge.Plugin
         protected override bool Validate<TOrphaned>(BlockHeader header, BlockHeader? parent, bool isUncle, out string? error, bool validateHash)
         {
             error = null;
+            // Archive imports omit TD; the local parent still constrains the consensus transition (EIP-3675).
+            if (header.Difficulty != 0 && parent is not null)
+            {
+                (bool isTerminalParent, bool isPostMergeParent) = poSSwitcher.GetBlockConsensusInfo(parent);
+                if (isTerminalParent || isPostMergeParent)
+                {
+                    error = "A proof-of-work block cannot follow a terminal or proof-of-stake parent.";
+                    if (_logger.IsWarn) _logger.Warn($"Invalid block header {header.ToString(BlockHeader.Format.Short)} - {error}");
+                    return false;
+                }
+            }
+
             return poSSwitcher.IsPostMerge(header)
                 ? ValidateTheMergeChecks(header) && base.Validate<TOrphaned>(header, parent, isUncle, out error, validateHash)
                 : ValidatePoWTotalDifficulty(header) && (

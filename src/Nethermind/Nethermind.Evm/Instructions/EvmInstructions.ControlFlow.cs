@@ -71,7 +71,7 @@ public static partial class EvmInstructions
     }
 
     /// <summary>
-    /// Executes an untraced, non-cancelable JUMP while carrying the landed JUMPDEST count in the
+    /// Executes an untraced JUMP while carrying the landed JUMPDEST count in the
     /// dispatch frame. The <typeparamref name="TUseVmCounter"/> specialization keeps the hot
     /// host path independent of the VM when the counter is flushed by the caller.
     /// </summary>
@@ -254,22 +254,43 @@ public static partial class EvmInstructions
         where TSkipCallDest : struct, IFlag
     {
         if (!TGasPolicy.UpdateGas<CallSubGasCost>(ref gas)) return new OpcodeResult(programCounter, EvmExceptionType.OutOfGas);
-        if (!stack.EnsureDepth(1)) goto StackUnderflow;
-        nint destination = CallDestination(ref stack.PopBytesByRefUnchecked(), ref stack);
-        if (destination < 0) goto InvalidJumpDestination;
-        if (!vm.VmState.TryPushReturnAddress((int)programCounter)) goto ReturnStackOverflow;
-        if (!SkipJumpDest<TGasPolicy, TSkipCallDest>(vm, ref gas, destination, out programCounter))
-            return new OpcodeResult(programCounter, EvmExceptionType.OutOfGas);
-        PrefetchCodeAtDestination(ref stack, programCounter);
+        if (!stack.EnsureDepth(1)) return new OpcodeResult(programCounter, EvmExceptionType.StackUnderflow);
+        nint callOpCodeCount = 0;
+        EvmExceptionType result = CallSubTo<TGasPolicy, TSkipCallDest, OnFlag>(
+            ref stack, ref gas, vm, JumpDestination(ref stack.PopBytesByRefUnchecked(), ref stack), ref programCounter, ref callOpCodeCount);
+        return new OpcodeResult(programCounter, result);
+    }
 
-        return new OpcodeResult(programCounter, EvmExceptionType.None);
-        // Jump forward to be unpredicted by the branch predictor.
-    StackUnderflow:
-        return new OpcodeResult(programCounter, EvmExceptionType.StackUnderflow);
-    InvalidJumpDestination:
-        return new OpcodeResult(programCounter, EvmExceptionType.InvalidJumpDestination);
-    ReturnStackOverflow:
-        return new OpcodeResult(programCounter, EvmExceptionType.ReturnStackOverflow);
+    /// <summary>
+    /// Completes an EIP-7979 <c>CALLSUB</c> whose gas is charged: checks that <paramref name="destination"/> is a
+    /// <c>CALLDEST</c>, pushes the return address and moves to the destination.
+    /// </summary>
+    /// <param name="destination">The destination as <see cref="JumpDestination(ref byte, ref EvmStack)"/> returns it.</param>
+    /// <param name="programCounter">The return address on entry; the destination, or past its <c>CALLDEST</c>, on success.</param>
+    /// <remarks>
+    /// Requires <see cref="EvmStack.UseCallDestinations"/>, whose bitmap marks both markers; the code byte tells
+    /// them apart. A marked position is inside the code, so the byte read is in bounds.
+    /// </remarks>
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static EvmExceptionType CallSubTo<TGasPolicy, TSkipCallDest, TUseVmCounter>(
+        ref EvmStack stack,
+        ref TGasPolicy gas,
+        VirtualMachine<TGasPolicy> vm,
+        nint destination,
+        ref nint programCounter,
+        ref nint opCodeCount)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TSkipCallDest : struct, IFlag
+        where TUseVmCounter : struct, IFlag
+    {
+        if (destination < 0 || Unsafe.Add(ref stack.Code, destination) != (byte)Instruction.CALLDEST)
+            return EvmExceptionType.InvalidJumpDestination;
+        if (!vm.VmState.TryPushReturnAddress((int)programCounter)) return EvmExceptionType.ReturnStackOverflow;
+        if (!SkipJumpDest<TGasPolicy, TSkipCallDest, TUseVmCounter>(vm, ref gas, destination, ref opCodeCount, out programCounter))
+            return EvmExceptionType.OutOfGas;
+        PrefetchCodeAtDestination(ref stack, programCounter);
+        return EvmExceptionType.None;
     }
 
     /// <summary>EIP-7979 <c>RETURNSUB</c>: resumes at the position popped off the frame's return stack.</summary>
@@ -303,8 +324,9 @@ public static partial class EvmInstructions
     /// </summary>
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static EvmExceptionType InstructionRevert<TGasPolicy>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
+    public static EvmExceptionType InstructionRevert<TGasPolicy, TTracingInst>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TTracingInst : struct, IFlag
     {
         // Attempt to pop memory offset and length; if either fails, signal a stack underflow.
         if (!stack.PopMemoryPositionAndUInt256(out UInt256 position, out UInt256 length))
@@ -313,12 +335,15 @@ public static partial class EvmInstructions
         }
 
         // Ensure sufficient gas for any required memory expansion.
+        if (DispatchFlags.ConstTracing && TTracingInst.IsActive)
+            vm.TraceMemoryOperationGasCost(in position, in length);
+
         if (!TGasPolicy.UpdateMemoryCost(ref gas, in position, in length, ref vm.VmState.Memory))
         {
             goto OutOfGas;
         }
 
-        vm.StageReturnData(vm.VmState.Memory.LoadSpanAfterGas(in position, in length));
+        vm.StageReturnData(vm.VmState.Memory.LoadSpanAfterGas(in position, in length), isRevert: true);
 
         return EvmExceptionType.Revert;
         // Jump forward to be unpredicted by the branch predictor.
@@ -329,9 +354,9 @@ public static partial class EvmInstructions
     }
 
     /// <summary>
-    /// Executes the SELFDESTRUCT opcode.
+    /// Executes the SELFDESTRUCT opcode (SENDALL under EIP-4758).
     /// This method handles gas adjustments, account balance transfers,
-    /// and marks the executing account for destruction.
+    /// and marks the executing account for destruction where the fork still allows it.
     /// </summary>
     [SkipLocalsInit]
     internal static EvmExceptionType InstructionSelfDestruct<TGasPolicy, TEip8037, TEip7708, TSpec>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
@@ -366,11 +391,16 @@ public static partial class EvmInstructions
         if (!TSpec.TryConsumeAccountAccessGas<TGasPolicy>(ref gas, spec, in vmState.AccessTracker, vm.IsTracingAccess, inheritor, AccountAccessKind.SelfDestructBeneficiary))
             goto OutOfGas;
 
+        // EIP-8279: the beneficiary enters the block access list on the transaction's first touch.
+        if (TSpec.IsEip8279Enabled && !vm.TryMeterBalAddress(inheritor))
+            goto OutOfGas;
+
         Address executingAccount = vmState.Env.ExecutingAccount;
-        bool createInSameTx = vmState.AccessTracker.CreateList.Contains(executingAccount);
-        bool selfdestructOnlyOnSameTx = TSpec.SelfdestructOnlyOnSameTransaction;
-        // Mark the executing account for destruction if allowed.
-        if (!selfdestructOnlyOnSameTx || createInSameTx)
+        // Mark the executing account for destruction if allowed: always before EIP-6780, only when created in this
+        // transaction under it, and never under EIP-4758 (SENDALL), which only moves the balance.
+        bool destroys = !TSpec.IsEip4758Enabled
+            && (!TSpec.SelfdestructOnlyOnSameTransaction || vmState.AccessTracker.CreateList.Contains(executingAccount));
+        if (destroys)
             vmState.AccessTracker.ToBeDestroyed(executingAccount);
 
         // Retrieve the current balance for transfer.
@@ -395,6 +425,30 @@ public static partial class EvmInstructions
 
         if (outOfGas) goto OutOfGas;
 
+        // EIP-8360: price the balance changes of TCREATE accounts on either side of the transfer. A self-targeting
+        // SELFDESTRUCT moves no value; a pre-EIP-8246 burn happens at tx finalization, outside the tables.
+        if (TSpec.IsEip8360Enabled && vmState.AccessTracker.TransientCreates is not null && !result.IsZero && !inheritor.Equals(executingAccount))
+        {
+            if (vmState.IsTransientCreateContext
+                && vmState.AccessTracker.IsTransientCreate(state, executingAccount, out UInt256 original)
+                && !vm.TryChargeTransientCreateBalanceChange(vmState, ref gas, in original, in result, UInt256.Zero))
+            {
+                goto OutOfGas;
+            }
+
+            if (vmState.AccessTracker.IsTransientCreate(state, inheritor, out original))
+            {
+                UInt256 inheritorBalance = state.GetBalance(inheritor);
+                if (!vm.TryChargeTransientCreateBalanceChange(vmState, ref gas, in original, in inheritorBalance, inheritorBalance + result))
+                    goto OutOfGas;
+            }
+        }
+
+        // EIP-8279: a sweep to another account puts both post balances in the block access list.
+        if (TSpec.IsEip8279Enabled && !result.IsZero && !inheritor.Equals(executingAccount)
+            && !vm.TryMeterBalData(2 * Eip8279Constants.BalanceBytes))
+            goto OutOfGas;
+
         // Transfer the self-destruct balance without creating an empty beneficiary.
         if (!inheritorAccountExists)
         {
@@ -405,9 +459,10 @@ public static partial class EvmInstructions
             state.AddToBalance(inheritor, result, spec);
         }
 
-        // Self-targeting SELFDESTRUCT moves no ETH and emits no log: a pure no-op for the EIP-6780
-        // case (not in the destroy list), while EIP-8246 still finalizes but preserves the balance.
-        if (inheritor.Equals(executingAccount) && (TSpec.RemoveSelfdestructBurn || (selfdestructOnlyOnSameTx && !createInSameTx)))
+        // Self-targeting SELFDESTRUCT moves no ETH and emits no log: a pure no-op for a surviving account (EIP-6780
+        // outside the creation transaction, or always under EIP-4758), while EIP-8246 still finalizes but preserves
+        // the balance.
+        if (inheritor.Equals(executingAccount) && (TSpec.RemoveSelfdestructBurn || !destroys))
             goto Stop;
 
         vm.AddSelfDestructLog<TEip8037, TEip7708>(executingAccount, inheritor, result);
@@ -474,23 +529,6 @@ public static partial class EvmInstructions
         stack.IsJumpDestination(jumpDestination)
             ? jumpDestination
             : -1;
-
-    /// <summary>
-    /// Reads an EIP-7979 <c>CALLSUB</c> destination out of the stack slot that holds it, returning it, or <c>-1</c>
-    /// when it is not a <c>CALLDEST</c>.
-    /// </summary>
-    /// <remarks>
-    /// Requires <see cref="EvmStack.UseCallDestinations"/>, whose bitmap marks both markers; the code byte tells
-    /// them apart. A marked position is inside the code, so the byte read is in bounds.
-    /// </remarks>
-    /// <inheritdoc cref="JumpDestination(ref byte, ref EvmStack)" path="/param"/>
-    [SkipLocalsInit]
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static nint CallDestination(ref byte slot, ref EvmStack stack)
-    {
-        nint destination = JumpDestination(ref slot, ref stack);
-        return destination >= 0 && Unsafe.Add(ref stack.Code, destination) == (byte)Instruction.CALLDEST ? destination : -1;
-    }
 
     /// <summary>Prefetches the bytecode cache line at a taken jump's next instruction.</summary>
     /// <remarks>Hints the target explicitly to reduce cache misses after non-sequential control flow.</remarks>

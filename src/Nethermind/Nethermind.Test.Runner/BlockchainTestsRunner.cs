@@ -26,7 +26,9 @@ public readonly record struct BlockchainTestsRunnerOptions(
 
 public class BlockchainTestsRunner(in BlockchainTestsRunnerOptions options, ITestSourceLoader? testsSource = null) : BlockchainTestBase, IBlockchainTestRunner
 {
-    protected override ILogManager? ComponentLogManagerOverride => _suppressOutput ? new TestLogManager(LogLevel.Error) : null;
+    // Component logs write to stderr, which a traced run reserves for the JSONL trace.
+    protected override ILogManager? ComponentLogManagerOverride =>
+        _trace ? LimboLogs.Instance : _suppressOutput ? new TestLogManager(LogLevel.Error) : null;
     protected override bool? ParallelExecutionOverride => _parallelExecution;
     protected override bool? ParallelExecutionBatchReadOverride => _parallelExecutionBatchRead;
     private readonly ConsoleColor _defaultColor = Console.ForegroundColor;
@@ -118,6 +120,11 @@ public class BlockchainTestsRunner(in BlockchainTestsRunnerOptions options, ITes
 
     private void ReportResult(EthereumTestResult result)
     {
+        // A traced run reserves stderr for the JSONL trace that consumers parse line by line;
+        // the result itself still lands in the results document.
+        if (_trace)
+            return;
+
         if (_suppressOutput)
         {
             ReportSuppressedResult(result);

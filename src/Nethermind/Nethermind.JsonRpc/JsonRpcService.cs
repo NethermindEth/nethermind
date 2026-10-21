@@ -113,18 +113,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
     {
         const string GetLogsMethodName = "eth_getLogs";
 
-        JsonRpcErrorResponse? value = PrepareParameters(
-            request,
-            methodName,
-            method,
-            out object?[]? parameters,
-            out int parameterCount,
-            out bool returnParametersToPool);
-        if (value is not null)
-        {
-            return value;
-        }
-
+        // Rented before decoding so that requests the pool queues or sheds do not pay for, or hold, decoded params.
         IRpcModule rpcModule = await _rpcModuleProvider.Rent(method);
         if (rpcModule is IContextAwareRpcModule contextAwareModule)
         {
@@ -135,12 +124,34 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         IResultWrapper? resultWrapper = null;
         try
         {
-            object? invocationResult = parameterCount switch
+            JsonRpcErrorResponse? value;
+            object?[]? parameters;
+            int parameterCount;
+            bool returnParametersToPool;
+            try
             {
-                0 when method.DirectNoParameterInvoker is { } directInvoker => directInvoker(rpcModule),
-                > 0 when method.DirectParameterInvoker is { } directInvoker => directInvoker(rpcModule, parameters!),
-                _ => method.Invoker.Invoke(rpcModule, parameters.AsSpan(0, parameterCount)),
-            };
+                value = PrepareParameters(
+                    request,
+                    methodName,
+                    method,
+                    out parameters,
+                    out parameterCount,
+                    out returnParametersToPool);
+            }
+            catch (Exception ex)
+            {
+                // Binding failures are answered inside; anything escaping is a node fault, not an invocation error.
+                returnImmediately = true;
+                return ReturnErrorResponse(request, ex);
+            }
+
+            if (value is not null)
+            {
+                returnImmediately = true;
+                return value;
+            }
+
+            object? invocationResult = Invoke(method, rpcModule, parameters, parameterCount, context);
             ReturnParameters(parameters, returnParametersToPool);
 
             switch (invocationResult)
@@ -193,6 +204,26 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         }
 
         return HandleUnsupportedResultWrapper(request, methodName, returnAction);
+    }
+
+    /// <summary>Invokes the method with <paramref name="context"/> as <see cref="JsonRpcContext.Current"/> until it returns or yields.</summary>
+    private static object? Invoke(ResolvedMethodInfo method, IRpcModule rpcModule, object?[]? parameters, int parameterCount, JsonRpcContext context)
+    {
+        JsonRpcContext? outerContext = JsonRpcContext.Current;
+        JsonRpcContext.Current = context;
+        try
+        {
+            return parameterCount switch
+            {
+                0 when method.DirectNoParameterInvoker is { } directInvoker => directInvoker(rpcModule),
+                > 0 when method.DirectParameterInvoker is { } directInvoker => directInvoker(rpcModule, parameters!),
+                _ => method.Invoker.Invoke(rpcModule, parameters.AsSpan(0, parameterCount)),
+            };
+        }
+        finally
+        {
+            JsonRpcContext.Current = outerContext;
+        }
     }
 
     // Kept out of ExecuteAsync so its state machine does not hoist the captured locals into a closure on every call.
@@ -1131,6 +1162,8 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         static (int? ErrorType, string ErrorMessage, bool OperatorActionable) GetErrorResult(string methodName, JsonRpcContext context, ModuleResolution result, string module) => result switch
         {
             ModuleResolution.Unknown => (ErrorCodes.MethodNotFound, ErrorMessages.MethodNotFound(methodName), false),
+            ModuleResolution.Disabled when context.RpcEndpoint == RpcEndpoint.IPC => (ErrorCodes.InvalidRequest,
+                $"The method '{methodName}' is found but the namespace '{module}' is disabled for IPC. Consider adding the namespace '{module}' to JsonRpc.IpcEnabledModules, or to JsonRpc.EnabledModules when IpcEnabledModules is unset or empty.", true),
             ModuleResolution.Disabled => (ErrorCodes.InvalidRequest,
                 $"The method '{methodName}' is found but the namespace '{module}' is disabled for {context.Url?.ToString() ?? "n/a"}. Consider adding the namespace '{module}' to JsonRpc.AdditionalRpcUrls for an additional URL, or to JsonRpc.EnabledModules for the default URL.", true),
             ModuleResolution.EndpointDisabled => (ErrorCodes.InvalidRequest,

@@ -20,7 +20,7 @@ public abstract class IndexedChangeDecoder<T> : RlpDecoder<T>
         int length = ctx.ReadSequenceLength();
         int check = length + ctx.Position;
 
-        T result = DecodeFields(ref ctx);
+        T result = DecodeFields(ref ctx, check);
 
         if (!rlpBehaviors.HasFlag(RlpBehaviors.AllowExtraBytes))
         {
@@ -45,6 +45,11 @@ public abstract class IndexedChangeDecoder<T> : RlpDecoder<T>
     /// Decode Index + value field and return a new T.
     /// </summary>
     protected abstract T DecodeFields(ref RlpReader ctx);
+
+    /// <summary>
+    /// Decode the fields of a change whose sequence ends at <paramref name="end"/>, for a change with optional trailing fields.
+    /// </summary>
+    protected virtual T DecodeFields(ref RlpReader ctx, int end) => DecodeFields(ref ctx);
 
     /// <summary>
     /// Encode only the value field (Index is handled by the base).

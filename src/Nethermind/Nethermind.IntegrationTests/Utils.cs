@@ -132,8 +132,7 @@ public static class Utils
     public static async Task<ContainerBuilder> BuildEngineApiProxyContainerAsync(string[] command)
     {
         string image = await GetEngineApiProxyImageAsync();
-        return new ContainerBuilder()
-            .WithImage(image)
+        return new ContainerBuilder(image)
             .WithCommand(command);
     }
 
@@ -146,8 +145,7 @@ public static class Utils
     {
         string image = await GetNethermindImageAsync();
 
-        ContainerBuilder builder = new ContainerBuilder()
-            .WithImage(image)
+        ContainerBuilder builder = new ContainerBuilder(image)
             // The image is either explicitly supplied by the test runner or built locally above.
             // Do not contact a registry for a local integration-test image.
             .WithImagePullPolicy(PullPolicy.Never)
@@ -519,8 +517,7 @@ public static class Utils
         long genesisTimestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
 
         const string genesisDoneMarker = "NETHERMIND_GENESIS_DONE";
-        ContainerBuilder generatorBuilder = new ContainerBuilder()
-            .WithImage(GetGenesisGeneratorImage())
+        ContainerBuilder generatorBuilder = new ContainerBuilder(GetGenesisGeneratorImage())
             .WithEnvironment("PRESET_BASE", "mainnet")
             .WithEnvironment("CHAIN_ID", DevnetChainId.ToString())
             .WithEnvironment("NUMBER_OF_VALIDATORS", validatorCount.ToString())
@@ -547,18 +544,17 @@ public static class Utils
             // strategy can latch onto even though the container exits as soon as generation finishes.
             .WithEntrypoint("/bin/bash", "-c")
             .WithCommand($"/work/entrypoint.sh all && echo {genesisDoneMarker}")
-            .WithWaitStrategy(Wait.ForUnixContainer().UntilMessageIsLogged(genesisDoneMarker))
+            .WithWaitStrategy(Wait.ForUnixContainer().UntilMessageIsLogged(genesisDoneMarker, o => o.WithMode(WaitStrategyMode.OneShot)))
             .Build();
         await generator.StartAsync();
         await generator.DisposeAsync();
 
         const string keysDoneMarker = "NETHERMIND_KEYS_DONE";
-        IContainer keygen = new ContainerBuilder()
-            .WithImage(GetValidatorKeysImage())
+        IContainer keygen = new ContainerBuilder(GetValidatorKeysImage())
             .WithBindMount(dataDir, "/data", AccessMode.ReadWrite)
             .WithEntrypoint("/bin/sh", "-c")
             .WithCommand($"/app/eth2-val-tools keystores --source-mnemonic '{DevnetMnemonic}' --source-min 0 --source-max {validatorCount} --out-loc /data/validators && echo {keysDoneMarker}")
-            .WithWaitStrategy(Wait.ForUnixContainer().UntilMessageIsLogged(keysDoneMarker))
+            .WithWaitStrategy(Wait.ForUnixContainer().UntilMessageIsLogged(keysDoneMarker, o => o.WithMode(WaitStrategyMode.OneShot)))
             .Build();
         await keygen.StartAsync();
         await keygen.DisposeAsync();
@@ -619,8 +615,7 @@ public static class Utils
         string networkAlias,
         string executionEndpoint,
         string feeRecipient) =>
-        new ContainerBuilder()
-            .WithImage(GetLighthouseImage())
+        new ContainerBuilder(GetLighthouseImage())
             .WithNetwork(network)
             .WithNetworkAliases(networkAlias)
             // Expose the beacon HTTP API so tests can query the CL's canonical head from the host.
@@ -652,8 +647,7 @@ public static class Utils
         INetwork network,
         string beaconNodeUrl,
         string feeRecipient) =>
-        new ContainerBuilder()
-            .WithImage(GetLighthouseImage())
+        new ContainerBuilder(GetLighthouseImage())
             .WithNetwork(network)
             .WithBindMount(genesis.TestnetDirHostPath, "/testnet", AccessMode.ReadOnly)
             .WithBindMount(genesis.ValidatorKeysHostPath, "/keys", AccessMode.ReadWrite)

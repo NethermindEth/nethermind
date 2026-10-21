@@ -43,12 +43,7 @@ public sealed class GethLikeTxTraceStreamingResult(IReadOnlyCollection<GethLikeT
         {
             foreach (GethLikeTxTrace trace in traces)
             {
-                jsonWriter.WriteStartObject();
-                jsonWriter.WritePropertyName("result"u8);
-                TypeInfoJsonSerializer.Serialize(jsonWriter, trace, EthereumJsonSerializer.JsonOptions);
-                jsonWriter.WritePropertyName("txHash"u8);
-                TypeInfoJsonSerializer.Serialize(jsonWriter, trace.TxHash, EthereumJsonSerializer.JsonOptions);
-                jsonWriter.WriteEndObject();
+                GethLikeTxTraceCollectionConverter.WriteEntry(jsonWriter, trace, EthereumJsonSerializer.JsonOptions);
                 jsonWriter.Flush();
 
                 FlushResult flushResult = await writer.FlushAsync(cancellationToken);

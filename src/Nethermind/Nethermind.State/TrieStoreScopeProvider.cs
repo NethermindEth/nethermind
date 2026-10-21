@@ -3,7 +3,6 @@
 
 using System;
 using System.Runtime.Intrinsics.X86;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
@@ -37,7 +36,7 @@ namespace Nethermind.State;
 /// the same StateProvider would skip re-inserting the bytes, throwing
 /// "Code 0x… is missing from the database" on the next read.
 /// </param>
-public class TrieStoreScopeProvider(
+public partial class TrieStoreScopeProvider(
     ITrieStore trieStore,
     IKeyValueStoreWithBatching codeDb,
     IStateHeaderProvider stateHeaderProvider,
@@ -48,7 +47,8 @@ public class TrieStoreScopeProvider(
     private readonly IStateHeaderProvider _stateHeaderProvider = stateHeaderProvider;
     private readonly ILogManager _logManager = logManager;
     protected StateTree? _backingStateTree;
-    private readonly KeyValueWithBatchingBackedCodeDb _codeDb = new(codeDb, codeDbIsPersistent);
+    // Used as is: the stateless witness' store serves code as executable memory, which the EVM runs without a copy.
+    private readonly IWorldStateScopeProvider.ICodeDb _codeDb = codeDb as IWorldStateScopeProvider.ICodeDb ?? new KeyValueWithBatchingBackedCodeDb(codeDb, codeDbIsPersistent);
 
     protected StateTree BackingStateTree =>
         _backingStateTree ?? throw new InvalidOperationException("A state tree is only available within a world-state scope.");
@@ -140,7 +140,7 @@ public class TrieStoreScopeProvider(
 
         public void HintGet(Address address, Account? account) => _loadedAccounts.TryAdd(address, account);
 
-        public void ApplyBal(ReadOnlyBlockAccessList bal) => ScopeBalApplier.Apply(this, bal);
+        public void ApplyBal(ReadOnlyBlockAccessList bal, CancellationToken cancellationToken) => ScopeBalApplier.Apply(this, bal, _logManager, cancellationToken);
 
         public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null)
         {
@@ -303,6 +303,7 @@ public class TrieStoreScopeProvider(
             _storages.Clear();
         }
 
+        [SkipLocalsInit]
         internal StorageTree LookupStorageTree(Address address)
         {
             if (_storages.TryGetValue(address, out StorageTree? storageTree))
@@ -320,13 +321,12 @@ public class TrieStoreScopeProvider(
         public IWorldStateScopeProvider.IStorageTree CreateStorageTree(Address address) => LookupStorageTree(address);
     }
 
-    private class WorldStateWriteBatch(
+    private partial class WorldStateWriteBatch(
         TrieStoreWorldStateBackendScope scope,
         int estimatedAccountCount,
         ILogger logger) : IWorldStateScopeProvider.IWorldStateWriteBatch
     {
         private readonly Dictionary<AddressAsKey, Account?> _dirtyAccounts = new(estimatedAccountCount);
-        private readonly ConcurrentQueue<(AddressAsKey, Hash256)> _dirtyStorageTree = new();
         private Action<Address, Hash256>? _markDirty;
 
         public event EventHandler<IWorldStateScopeProvider.AccountUpdated>? OnAccountUpdated;
@@ -359,22 +359,7 @@ public class TrieStoreScopeProvider(
 
             OnAccountUpdated = null;
 
-#if ZK_EVM
-            SetEachAccount(scope._backingStateTree, _dirtyAccounts);
-#else
-            if (Avx2.IsSupported && _dirtyAccounts.Count >= KeyHashBatch.MinimumBatchSize)
-            {
-                scope._backingStateTree.SetAccounts(_dirtyAccounts);
-            }
-            else
-            {
-                using StateTree.StateTreeBulkSetter stateSetter = scope._backingStateTree.BeginSet(_dirtyAccounts.Count);
-                foreach (KeyValuePair<AddressAsKey, Account?> kv in _dirtyAccounts)
-                {
-                    stateSetter.Set(kv.Key, kv.Value);
-                }
-            }
-#endif
+            scope._backingStateTree.WriteAccounts(_dirtyAccounts);
 
             scope.ClearLoadedAccounts();
 
@@ -382,30 +367,9 @@ public class TrieStoreScopeProvider(
             void Trace(Address address, Hash256 storageRoot, Account? account)
                 => logger.Trace($"Update {address} S {account?.StorageRoot} -> {storageRoot}");
         }
-
-#if ZK_EVM
-        /// <summary>Writes the changed accounts into <paramref name="stateTree"/> one at a time, deletions last.</summary>
-        /// <remarks>
-        /// The guest's counterpart of the bulk set: on its one core, sorting the entries and recursing over them
-        /// costs more than the shared descent saves. Deletions go last, as storage writes do in
-        /// <c>ProcessStorageChanges</c>, so a branch is only collapsed once every insert has landed.
-        /// </remarks>
-        private static void SetEachAccount(StateTree stateTree, Dictionary<AddressAsKey, Account?> accounts)
-        {
-            foreach (KeyValuePair<AddressAsKey, Account?> kv in accounts)
-            {
-                if (kv.Value is not null) stateTree.Set(kv.Key.Value, kv.Value);
-            }
-
-            foreach (KeyValuePair<AddressAsKey, Account?> kv in accounts)
-            {
-                if (kv.Value is null) stateTree.Set(kv.Key.Value, null);
-            }
-        }
-#endif
     }
 
-    public class StorageTreeBulkWriteBatch(
+    public partial class StorageTreeBulkWriteBatch(
         int estimatedEntries,
         StorageTree storageTree,
         Action<Address, Hash256> onRootUpdated,
@@ -418,15 +382,6 @@ public class TrieStoreScopeProvider(
 
         /// <summary>Writes above which a batch that only hashes its tree hashes it in parallel.</summary>
         private const int MinWritesToHashInParallel = 64;
-
-        /// <summary>Estimated entries above which the writes are applied together through <see cref="PatriciaTree.BulkSet"/>.</summary>
-        /// <remarks>Never in the guest: see <c>SetEachAccount</c> for why one set at a time is cheaper there. The guest's
-        /// <c>PatriciaTree.IsUnchangedPendingLevel</c> relies on its writes going one at a time.</remarks>
-#if ZK_EVM
-        private const int BulkWriteThreshold = int.MaxValue;
-#else
-        private const int BulkWriteThreshold = MIN_ENTRIES_TO_BATCH;
-#endif
 
         private bool _hasSelfDestruct;
         private bool _wasSetCalled = false;

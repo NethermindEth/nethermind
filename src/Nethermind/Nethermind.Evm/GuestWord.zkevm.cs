@@ -1,13 +1,13 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Buffers.Binary;
 using System.Numerics;
 using System.Runtime.CompilerServices;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Evm;
 
-internal static class GuestWord
+internal static unsafe class GuestWord
 {
     /// <summary>Writes <paramref name="value"/>, zero-extended, into the slot whose low limb is <paramref name="word"/>.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -226,16 +226,72 @@ internal static class GuestWord
     }
 
     /// <summary>Loads a big-endian word into a stack slot in limb layout.</summary>
+    /// <remarks>
+    /// Where <see cref="StrictAlignmentFlag"/> is on and <paramref name="source"/> is on a word boundary, the limbs are
+    /// loaded whole and byte-swapped: one alignment test for the word instead of a byte gather per limb.
+    /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static void LoadBigEndian(ref ulong slot, ref byte source)
     {
-        ulong limb3 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref source));
-        ulong limb2 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref source, 8)));
-        ulong limb1 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref source, 16)));
-        ulong limb0 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref source, 24)));
+        if (StrictAlignmentFlag.IsActive && IsWordAligned(ref source))
+        {
+            LoadAlignedBigEndian(ref slot, AlignedWords(ref source));
+            return;
+        }
+
+        ulong limb3 = ZkEvmBitOperations.ReadUInt64BigEndian(ref source);
+        ulong limb2 = ZkEvmBitOperations.ReadUInt64BigEndian(ref Unsafe.Add(ref source, 8));
+        ulong limb1 = ZkEvmBitOperations.ReadUInt64BigEndian(ref Unsafe.Add(ref source, 16));
+        ulong limb0 = ZkEvmBitOperations.ReadUInt64BigEndian(ref Unsafe.Add(ref source, 24));
         slot = limb0;
         Unsafe.Add(ref slot, 1) = limb1;
         Unsafe.Add(ref slot, 2) = limb2;
         Unsafe.Add(ref slot, 3) = limb3;
     }
+
+    /// <summary>Stores a word big-endian to the 32 bytes at <paramref name="destination"/>, given its limbs from the most significant.</summary>
+    /// <remarks>The store counterpart of <see cref="LoadBigEndian"/>.</remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static void StoreBigEndian(ref byte destination, ulong limb3, ulong limb2, ulong limb1, ulong limb0)
+    {
+        if (StrictAlignmentFlag.IsActive && IsWordAligned(ref destination))
+        {
+            StoreAlignedBigEndian(AlignedWords(ref destination), limb3, limb2, limb1, limb0);
+            return;
+        }
+
+        ZkEvmBitOperations.WriteUInt64BigEndian(ref destination, limb3);
+        ZkEvmBitOperations.WriteUInt64BigEndian(ref Unsafe.Add(ref destination, 8), limb2);
+        ZkEvmBitOperations.WriteUInt64BigEndian(ref Unsafe.Add(ref destination, 16), limb1);
+        ZkEvmBitOperations.WriteUInt64BigEndian(ref Unsafe.Add(ref destination, 24), limb0);
+    }
+
+    // Separate from their callers so the IL that SP1 alone runs does not count against their inlining elsewhere.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void LoadAlignedBigEndian(ref ulong slot, ulong* words)
+    {
+        ZkEvmBitOperations.LoadSwapMasks(out ulong m8, out ulong m16);
+        slot = ZkEvmBitOperations.Swap(words[3], m8, m16);
+        Unsafe.Add(ref slot, 1) = ZkEvmBitOperations.Swap(words[2], m8, m16);
+        Unsafe.Add(ref slot, 2) = ZkEvmBitOperations.Swap(words[1], m8, m16);
+        Unsafe.Add(ref slot, 3) = ZkEvmBitOperations.Swap(words[0], m8, m16);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void StoreAlignedBigEndian(ulong* words, ulong limb3, ulong limb2, ulong limb1, ulong limb0)
+    {
+        ZkEvmBitOperations.LoadSwapMasks(out ulong m8, out ulong m16);
+        words[0] = ZkEvmBitOperations.Swap(limb3, m8, m16);
+        words[1] = ZkEvmBitOperations.Swap(limb2, m8, m16);
+        words[2] = ZkEvmBitOperations.Swap(limb1, m8, m16);
+        words[3] = ZkEvmBitOperations.Swap(limb0, m8, m16);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool IsWordAligned(ref byte bytes) => ((nuint)Unsafe.AsPointer(ref bytes) & (sizeof(ulong) - 1)) == 0;
+
+    /// <summary><paramref name="bytes"/>, already on a word boundary, rounded down to it so the JIT proves the accesses through it aligned.</summary>
+    /// <remarks>The same no-op rounding <c>AlignedSlot</c> applies to stack slots; nothing between it and the accesses can move the buffer.</remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static ulong* AlignedWords(ref byte bytes) => (ulong*)((nuint)Unsafe.AsPointer(ref bytes) & ~(nuint)(sizeof(ulong) - 1));
 }
