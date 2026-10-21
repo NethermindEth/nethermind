@@ -133,14 +133,14 @@ public partial class DebugRpcModuleTests
         [Values] bool empty) =>
         await AssertNativeConfigError("debug_traceBlockByNumber", tracer, configuration, empty);
 
-    [TestCase("debug_traceBlockByHash", "callTracer", "{\"onlyTopCall\":17}", false, false)]
-    [TestCase("debug_traceBlockByHash", "prestateTracer", "{\"diffMode\":[]}", false, false)]
-    [TestCase("debug_traceBlockByHash", "prestateTracer", "17", false, false)]
-    [TestCase("debug_traceBlockByHash", "prestateTracer", "{\"diffMode\":[]}", true, false)]
-    [TestCase("debug_traceBlockByHash", "prestateTracer", "{\"diffMode\":[]}", false, true)]
+    [TestCase("callTracer", "{\"onlyTopCall\":17}", false, false)]
+    [TestCase("prestateTracer", "{\"diffMode\":[]}", false, false)]
+    [TestCase("prestateTracer", "17", false, false)]
+    [TestCase("prestateTracer", "{\"diffMode\":[]}", true, false)]
+    [TestCase("prestateTracer", "{\"diffMode\":[]}", false, true)]
     public async Task Debug_traceBlockByHash_native_config_errors_are_execution_input_errors(
-        string method, string tracer, string configuration, bool empty, bool unknown) =>
-        await AssertNativeConfigError(method, tracer, configuration, empty, unknown);
+        string tracer, string configuration, bool empty, bool unknown) =>
+        await AssertNativeConfigError("debug_traceBlockByHash", tracer, configuration, empty, unknown);
 
     [Test]
     public async Task Debug_traceTransaction_native_config_errors_remain_invalid_params() =>
@@ -190,10 +190,11 @@ public partial class DebugRpcModuleTests
 
     [Test]
     [NonParallelizable]
+    [Repeat(2)]
     public async Task Debug_native_tracer_host_json_errors_remain_invalid_params_when_buffered(
         [Values("debug_traceBlockByHash", "debug_traceBlockByNumber")] string method)
     {
-        string tracer = nameof(Debug_native_tracer_host_json_errors_remain_invalid_params_when_buffered) + method;
+        string tracer = $"native-host-buffered-{method}-{Guid.NewGuid():N}";
         GethLikeNativeTracerFactory.RegisterTracer(tracer, static (_, _, _, _) => throw new JsonException("host construction failure"));
         await AssertNativeConfigError(method, tracer, "{}", empty: false, expectedError: ErrorCodes.InvalidParams, streamMode: false);
     }
