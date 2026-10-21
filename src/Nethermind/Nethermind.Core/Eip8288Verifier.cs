@@ -21,12 +21,6 @@ public readonly record struct Eip8288Verifier(ValueHash256 AggregatedVk)
     /// <summary>The key of the recursive guest pinned by tools/lean-ffi.</summary>
     public static readonly ValueHash256 PinnedAggregatedVk = new(Eip8288Constants.AggregatedVk);
 
-    /// <summary>The pinned leanSPHINCS verification parameters: the NiceTry/Daisugi Keccak SPHINCS profile.</summary>
-    private static readonly ValueHash256 LeanSphincsParams = ValueKeccak.Compute("ethereum/8288/leanSPHINCS/pinned-keccak-sphincs"u8);
-
-    /// <summary>The pinned leanSTARK verification parameters: the pinned backend's generic CPU proof format.</summary>
-    private static readonly ValueHash256 LeanStarkParams = ValueKeccak.Compute("ethereum/8288/leanSTARK/pinned-generic-cpu"u8);
-
     public static Eip8288Verifier Pinned { get; } = new(PinnedAggregatedVk);
 
     /// <summary>The verifier fixed by <paramref name="spec"/>.</summary>
@@ -37,10 +31,17 @@ public readonly record struct Eip8288Verifier(ValueHash256 AggregatedVk)
     /// <remarks>The prototype pins one parameter set per scheme, so a fork can change only <see cref="AggregatedVk"/>.</remarks>
     public ValueHash256 SchemeParams(byte scheme) => scheme switch
     {
-        Eip8288Constants.LeanSphincsScheme => LeanSphincsParams,
-        Eip8288Constants.LeanStarkScheme => LeanStarkParams,
+        Eip8288Constants.LeanSphincsScheme => SchemeParameters.LeanSphincs,
+        Eip8288Constants.LeanStarkScheme => SchemeParameters.LeanStark,
         _ => default
     };
+
+    // Fork construction needs only the aggregate key; defer hashing until direct-witness validation.
+    private static class SchemeParameters
+    {
+        internal static readonly ValueHash256 LeanSphincs = ValueKeccak.Compute("ethereum/8288/leanSPHINCS/pinned-keccak-sphincs"u8);
+        internal static readonly ValueHash256 LeanStark = ValueKeccak.Compute("ethereum/8288/leanSTARK/pinned-generic-cpu"u8);
+    }
 
     public override string ToString() => $"AGGREGATED_VK {AggregatedVk.ToShortString()}";
 }

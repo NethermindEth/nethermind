@@ -72,12 +72,13 @@ empty `stark_proof`. Blocks, wrappers and inclusion-list proofs reject a `stark_
 before recursive coverage can replace them. These bounds are not process memory guarantees.
 
 The current EIP-8288 companion places `stark_proof` in the block body and commits to
-`[keccak256(stark_proof), block_deps_hash]` in the header. Header synchronization therefore
+`keccak256(stark_proof)` and `block_deps_hash` as two flat 32-byte header fields. Header synchronization therefore
 uses compact commitments. `eth` `BlockBodies` carry `stark_proof` after the existing fields from
 the activating fork on every `eth` version, as for withdrawals. Block decoding and validation
 enforce `MAX_AGGREGATE_PROOF_BYTES`, the proof hash, and the exact dependency union, verifying
 under the block fork's `AGGREGATED_VK`. Engine payloads and payload-body responses
-carry `recursiveStarkProof`; an empty dependency union requires an empty proof.
+carry a single `starkProof` field; the execution layer derives the dependency commitment from
+the payload transactions. An empty dependency union requires an empty proof.
 The decoded block cache skips proofs above 64 KiB. Invalid-block diagnostics retain large
 proof-bearing records in a separate eight-entry / 64 MiB tier, counting body proofs and
 returning owned copies.

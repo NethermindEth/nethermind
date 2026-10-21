@@ -17,6 +17,10 @@ namespace Nethermind.Consensus.ProofAggregation;
 /// <summary>Serializes proving and shares verified completed steps between aggregation callers.</summary>
 public sealed class ProductionProofCache(ILeanProofVerifier verifier, ILogManager? logManager = null) : ILeanProofVerifier
 {
+    // This type is reachable from the zkVM guest, which rejects floating-point instructions.
+    private static long ElapsedMilliseconds(long start) =>
+        (long)((Int128)(Stopwatch.GetTimestamp() - start) * 1000 / Stopwatch.Frequency);
+
     private readonly ILogger _logger = (logManager ?? NullLogManager.Instance).GetClassLogger<ProductionProofCache>();
     private const int MaxEntries = 64;
     private const long MaxBytes = 32 * 1024 * 1024;
@@ -293,7 +297,7 @@ public sealed class ProductionProofCache(ILeanProofVerifier verifier, ILogManage
             // Preserve authenticated work before a caller checks its cancellation or proposal deadline.
             long started = Stopwatch.GetTimestamp();
             byte[] proof = verifier.ProveRecursiveStark(in statement, aggregatedVk, input);
-            long elapsed = (long)Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+            long elapsed = ElapsedMilliseconds(started);
             Interlocked.Increment(ref Metrics.LeanNativeProofs);
             Interlocked.Add(ref Metrics.LeanNativeProveMilliseconds, elapsed);
             Metrics.LeanNativeProveLastMilliseconds = elapsed;
@@ -302,7 +306,7 @@ public sealed class ProductionProofCache(ILeanProofVerifier verifier, ILogManage
                 && verifier.VerifyRecursiveStark(in statement, aggregatedVk, proof);
             if (_logger.IsInfo)
                 _logger.Info($"Lean native {(background ? "background" : "production")} proof: prove {elapsed} ms, verify " +
-                    $"{(long)Stopwatch.GetElapsedTime(started).TotalMilliseconds} ms, {proof.Length} bytes; {input.Deps.Count} direct, " +
+                    $"{ElapsedMilliseconds(started)} ms, {proof.Length} bytes; {input.Deps.Count} direct, " +
                     $"{input.RecursiveProofs.Count} recursive, {input.Discards.Count} discarded{(cancellationToken.IsCancellationRequested ? ", caller canceled" : "")}");
             if (!valid) throw new InvalidOperationException("Produced EIP-8288 proof failed verification.");
             RememberVerified(VerifiedKey(in statement, aggregatedVk, proof));
