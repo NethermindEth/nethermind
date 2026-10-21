@@ -378,11 +378,9 @@ namespace Nethermind.Evm.TransactionProcessing
         /// <param name="delegationAddress">The delegation target encoded by the source account, if any.</param>
         /// <returns>The code information used to create the top-level execution environment.</returns>
         /// <remarks>
-        /// This hook runs on the regular top-level frame path. Processors that need it for recipients that
-        /// may use the simple-transfer optimization must also disable that optimization. Under EIP-8037,
-        /// this hook resolves the delegation designator only; the delegated target is loaded after its
-        /// delayed access charge by a direct repository lookup. Frame transactions likewise resolve their
-        /// delegated target directly.
+        /// This hook resolves code for both the simple-transfer preload and the regular top-level frame
+        /// path. Under EIP-8037, it resolves the delegation designator only; the delegated target is loaded
+        /// after its delayed access charge. Frame transactions likewise resolve their delegated target directly.
         /// </remarks>
         protected virtual CodeInfo ResolveTopLevelCodeInfo(
             ICodeInfoRepository codeInfoRepository,
@@ -408,7 +406,7 @@ namespace Nethermind.Evm.TransactionProcessing
             Address? recipient = tx.To;
             if (recipient is null || !IsSimpleTransferFastPathCandidate(tx)) return null;
 
-            preloadedCodeInfo = _codeInfoRepository.GetCachedCodeInfo(recipient, followDelegation: !spec.IsEip8037Enabled, spec, out preloadedDelegationAddress);
+            preloadedCodeInfo = ResolveTopLevelCodeInfo(_codeInfoRepository, recipient, followDelegation: !spec.IsEip8037Enabled, spec, out preloadedDelegationAddress);
             return HasNoExecutableCode(preloadedCodeInfo, preloadedDelegationAddress) ? recipient : null;
         }
 

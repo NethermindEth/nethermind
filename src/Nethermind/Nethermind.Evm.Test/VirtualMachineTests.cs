@@ -3759,6 +3759,7 @@ public sealed class VirtualMachineExtensionHooksTests
             .AddModule(new TestNethermindModule(new OverridableReleaseSpec(Prague.Instance) { IsEip7708Enabled = true }))
             .AddScoped<IVirtualMachine, HookedVirtualMachine>()
             .AddScoped<ITransactionProcessor, HookedTransactionProcessor>()
+            .AddScoped<CodeResolvingTransactionProcessor>()
             .Build();
         _scope = _container.BeginLifetimeScope(builder =>
             builder.AddSingleton<IWorldStateScopeProvider>(_container.Resolve<IWorldStateManager>().GlobalWorldState));
@@ -4089,6 +4090,27 @@ public sealed class VirtualMachineExtensionHooksTests
         }
     }
 
+    [Test]
+    public void Transaction_processor_resolves_overridden_top_level_code_before_simple_transfer_fast_path([Values] bool recipientHasStoredCode)
+    {
+        byte[] storedCode = Prepare.EvmCode.SSTORE(0, [1]).Done;
+        byte[] effectiveCode = Prepare.EvmCode.SSTORE(0, [2]).Done;
+        (Block block, Transaction transaction) = PrepareTx(recipientHasStoredCode ? storedCode : null, value: 0);
+        CodeResolvingTransactionProcessor processor = _scope.Resolve<CodeResolvingTransactionProcessor>();
+        processor.EffectiveCode = effectiveCode;
+        TestAllTracerWithOutput result = new();
+        processor.Execute(transaction, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), result);
+        StorageCell cell = new(transaction.To!, UInt256.Zero);
+        _worldState.Get(in cell, out UInt256 value);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Error, Is.Null);
+            Assert.That(processor.TopLevelCodeResolutions, Is.EqualTo(1));
+            Assert.That(value, Is.EqualTo((UInt256)2));
+        }
+    }
+
     private void Deploy(byte[] code)
     {
         _worldState.CreateAccount(Child, 1.Ether);
@@ -4312,6 +4334,38 @@ public sealed class VirtualMachineExtensionHooksTests
         {
             TopLevelCodeResolutions++;
             return base.ResolveTopLevelCodeInfo(codeInfoRepository, codeSource, followDelegation, spec, out delegationAddress);
+        }
+    }
+
+    private sealed class CodeResolvingTransactionProcessor(
+        ITransactionProcessor.IBlobBaseFeeCalculator blobBaseFeeCalculator,
+        ISpecProvider specProvider,
+        IWorldState worldState,
+        IVirtualMachine virtualMachine,
+        ICodeInfoRepository codeInfoRepository,
+        ILogManager logManager)
+        : EthereumTransactionProcessorBase(
+            blobBaseFeeCalculator,
+            specProvider,
+            worldState,
+            virtualMachine,
+            codeInfoRepository,
+            logManager)
+    {
+        public byte[] EffectiveCode { get; set; } = [];
+
+        public int TopLevelCodeResolutions { get; private set; }
+
+        protected override CodeInfo ResolveTopLevelCodeInfo(
+            ICodeInfoRepository codeInfoRepository,
+            Address codeSource,
+            bool followDelegation,
+            IReleaseSpec spec,
+            out Address? delegationAddress)
+        {
+            TopLevelCodeResolutions++;
+            delegationAddress = null;
+            return new CodeInfo(EffectiveCode);
         }
     }
 }
