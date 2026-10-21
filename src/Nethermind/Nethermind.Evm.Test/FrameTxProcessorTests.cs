@@ -2368,8 +2368,7 @@ public partial class FrameTxProcessorTests
         DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
         DeployContract(Observer, Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
         DeployContract(Recipient, Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done);
-        // TXDIFF 0x01 is a live read, so the frame passes only once the unroll has taken the write back out.
-        DeployContract(assertion, AssertAll((Txdiff(0x01, Observer, 0), To32(UInt256.Zero))));
+        DeployContract(assertion, AssertAll((Txtrace(0x01, 0), To32(UInt256.Zero))));
 
         Transaction tx = FrameTx(nonce: 0,
             SelfVerifyFrame(),
@@ -4252,7 +4251,7 @@ public partial class FrameTxProcessorTests
 
     [Test]
     public void Execute_AssertionOpcodeOutsideAssertFrame_HaltsExceptionally(
-        [Values(Instruction.TXTRACE, Instruction.TXDIFF, Instruction.EVENTDATACOPY)] Instruction opcode)
+        [Values(Instruction.TXTRACE, Instruction.EVENTDATACOPY)] Instruction opcode)
     {
         // Four operands cover the widest of the three; a halt leaves any surplus unread.
         DeploySmartSender(Prepare.EvmCode
@@ -4265,7 +4264,7 @@ public partial class FrameTxProcessorTests
     // The opcodes are in the jump table for every transaction once EIP-7906 is on.
     [Test]
     public void Execute_AssertionOpcodeInOrdinaryTransaction_HaltsExceptionally(
-        [Values(Instruction.TXTRACE, Instruction.TXDIFF, Instruction.EVENTDATACOPY)] Instruction opcode)
+        [Values(Instruction.TXTRACE, Instruction.EVENTDATACOPY)] Instruction opcode)
     {
         DeployContract(Recipient, Prepare.EvmCode
             .PushData(0).PushData(0).PushData(0).PushData(0).Op(opcode).Op(Instruction.STOP).Done);
@@ -4290,31 +4289,13 @@ public partial class FrameTxProcessorTests
         }
     }
 
-    [TestCase(false, TestName = "Execute_TxDiff_ReadsStorageDiffAndChangeFlags_Sequential")]
-    [TestCase(true, TestName = "Execute_TxDiff_ReadsStorageDiffAndChangeFlags_Parallel")]
-    public void Execute_TxDiff_ReadsStorageDiffAndChangeFlags(bool parallel)
-    {
-        DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
-        DeployContract(Observer, Prepare.EvmCode.PushData(99).PushData(5).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
-        DeployContract(Recipient, AssertAll(
-            (Txdiff(0x01, Observer, 5), To32(99)),      // slot_value_after
-            (Txdiff(0x00, Observer, 5), To32(0)),       // slot_value_before
-            (Txdiff(0x06, Observer, 0), To32(1)),       // address_slots_count
-            (Txdiff(0x0A, Observer, 0), To32(0b0100)))); // change flags: storage only
-
-        (_, CallOutputTracer tracer) = ProcessTraced(FrameTx(nonce: 0,
-            SelfVerifyFrame(), Frame(FrameMode.Sender, target: Observer), Frame(FrameMode.Assert, target: Recipient)), parallel);
-
-        Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
-    }
-
     // Negative control: proves a passing assertion above is not just an inert harness.
     [Test]
-    public void Execute_TxDiff_WrongExpectation_FailsTheAssertion()
+    public void Execute_TxTrace_WrongExpectation_FailsTheAssertion()
     {
         DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
         DeployContract(Observer, Prepare.EvmCode.PushData(99).PushData(5).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
-        DeployContract(Recipient, AssertAll((Txdiff(0x01, Observer, 5), To32(100))));
+        DeployContract(Recipient, AssertAll((Txtrace(0x09, 0), To32(100))));
 
         (_, CallOutputTracer tracer) = ProcessTraced(FrameTx(nonce: 0,
             SelfVerifyFrame(), Frame(FrameMode.Sender, target: Observer), Frame(FrameMode.Assert, target: Recipient)));
@@ -4322,47 +4303,24 @@ public partial class FrameTxProcessorTests
         Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure));
     }
 
-    [Test]
-    public void Execute_TxTrace_EnumeratesStorageChangesAndCounts()
+    [TestCase(false, TestName = "Execute_TxTrace_EnumeratesStorageChangesAndCounts_Sequential")]
+    [TestCase(true, TestName = "Execute_TxTrace_EnumeratesStorageChangesAndCounts_Parallel")]
+    public void Execute_TxTrace_EnumeratesStorageChangesAndCounts(bool parallel)
     {
         DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
         DeployContract(Observer, Prepare.EvmCode.PushData(99).PushData(5).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
         DeployContract(Recipient, AssertAll(
-            (Txtrace(0x01, 0), To32(1)),                       // slots_changed
-            (Txtrace(0x02, 0), To32(0)),                       // contracts_deployed
-            (Txtrace(0x06, 0), To32(AddressAsWord(Observer))), // slot-change address at index 0
-            (Txtrace(0x07, 0), To32(5)),                       // slot key
-            (Txtrace(0x08, 0), To32(0)),                       // slot value before
-            (Txtrace(0x09, 0), To32(99))));                    // slot value after
+            (Txtrace(0x01, 0), To32(1)),
+            (Txtrace(0x02, 0), To32(0)),
+            (Txtrace(0x07, 0), To32(AddressAsWord(Observer))),
+            (Txtrace(0x08, 0), To32(0)),
+            (Txtrace(0x09, 0), To32(99)),
+            (Txtrace(0x0A, 0), To32(5))));
 
         (_, CallOutputTracer tracer) = ProcessTraced(FrameTx(nonce: 0,
-            SelfVerifyFrame(), Frame(FrameMode.Sender, target: Observer), Frame(FrameMode.Assert, target: Recipient)));
+            SelfVerifyFrame(), Frame(FrameMode.Sender, target: Observer), Frame(FrameMode.Assert, target: Recipient)), parallel);
 
         Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
-    }
-
-    [TestCase((byte)0x0B, 0ul, 2ul, true, StatusCode.Success)]
-    [TestCase((byte)0x0C, 0ul, 1ul, true, StatusCode.Success)]
-    [TestCase((byte)0x0C, 1ul, 2ul, true, StatusCode.Success)]
-    [TestCase((byte)0x0B, 1ul, 2ul, true, StatusCode.Failure)]
-    [TestCase((byte)0x0C, 2ul, 0ul, true, StatusCode.Failure)]
-    [TestCase((byte)0x0C, 0ul, 0ul, false, StatusCode.Failure)]
-    [TestCase((byte)0x0B, 0ul, 0ul, false, StatusCode.Success)]
-    public void Execute_TxDiff_ReadsPerTopicViews(byte param, ulong index, ulong expected, bool knownTopic, byte expectedStatus)
-    {
-        UInt256 topic = new(Keccak.Compute("topic").Bytes, isBigEndian: true);
-        DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
-        DeployContract(Observer, Prepare.EvmCode
-            .PushData(topic).PushData(0).PushData(0).Op(Instruction.LOG1)
-            .PushData(topic).PushData(topic).PushData(0x22).PushData(0).PushData(0).Op(Instruction.LOG3)
-            .PushData(topic).PushData(0x22).PushData(0).PushData(0).Op(Instruction.LOG2).Done);
-        byte[] query = Prepare.EvmCode.PushData(index).PushData(knownTopic ? topic : (UInt256)0x33).PushData((UInt256)param).Op(Instruction.TXDIFF).Done;
-        DeployContract(Recipient, AssertAll((query, To32(expected))));
-
-        (_, CallOutputTracer tracer) = ProcessTraced(FrameTx(nonce: 0,
-            SelfVerifyFrame(), Frame(FrameMode.Sender, target: Observer), Frame(FrameMode.Assert, target: Recipient)));
-
-        Assert.That(tracer.StatusCode, Is.EqualTo(expectedStatus));
     }
 
     [Test]
@@ -4376,13 +4334,11 @@ public partial class FrameTxProcessorTests
             .PushData(topic).PushData(32).PushData(0).Op(Instruction.LOG1)
             .Op(Instruction.STOP).Done);
         DeployContract(Recipient, AssertAll(
-            (Txtrace(0x0C, 0), To32(1)),                        // events_count
-            (Txtrace(0x0D, 0), To32(AddressAsWord(Observer))),  // event address
-            (Txtrace(0x0E, 0), To32(1)),                        // topic count
-            (Txtrace(0x0F, 0), To32(topic)),                    // topic0
-            (Txtrace(0x13, 0), To32(32)),                       // data length
-            (Txdiff(0x08, Observer, 0), To32(1)),               // address_events_count
-                                                                // EVENTDATACOPY(event, memOffset, dataOffset, length), then MLOAD.
+            (Txtrace(0x11, 0), To32(1)),
+            (Txtrace(0x12, 0), To32(AddressAsWord(Observer))),
+            (Txtrace(0x13, 0), To32(1)),
+            (Txtrace(0x14, 0), To32(topic)),
+            (Txtrace(0x18, 0), To32(32)),
             (Prepare.EvmCode.PushData(32).PushData(0).PushData(0).PushData(0)
                 .Op(Instruction.EVENTDATACOPY).PushData(0).Op(Instruction.MLOAD).Done, To32(data))));
 
@@ -4423,11 +4379,10 @@ public partial class FrameTxProcessorTests
         return tracer.StatusCode;
     }
 
-    // 0x0F..0x12 are topic0..topic3; the log carries one topic, so the rest halt.
-    [TestCase((byte)0x0F, ExpectedResult = StatusCode.Success, TestName = "Execute_TxTraceTopic_PresentTopic_Reads")]
-    [TestCase((byte)0x10, ExpectedResult = StatusCode.Failure, TestName = "Execute_TxTraceTopic_MissingTopic1_HaltsExceptionally")]
-    [TestCase((byte)0x11, ExpectedResult = StatusCode.Failure, TestName = "Execute_TxTraceTopic_MissingTopic2_HaltsExceptionally")]
-    [TestCase((byte)0x12, ExpectedResult = StatusCode.Failure, TestName = "Execute_TxTraceTopic_MissingTopic3_HaltsExceptionally")]
+    [TestCase((byte)0x14, ExpectedResult = StatusCode.Success, TestName = "Execute_TxTraceTopic_PresentTopic_Reads")]
+    [TestCase((byte)0x15, ExpectedResult = StatusCode.Failure, TestName = "Execute_TxTraceTopic_MissingTopic1_HaltsExceptionally")]
+    [TestCase((byte)0x16, ExpectedResult = StatusCode.Failure, TestName = "Execute_TxTraceTopic_MissingTopic2_HaltsExceptionally")]
+    [TestCase((byte)0x17, ExpectedResult = StatusCode.Failure, TestName = "Execute_TxTraceTopic_MissingTopic3_HaltsExceptionally")]
     public byte Execute_TxTraceEventTopic_MissingTopicHalts(byte param)
     {
         DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
@@ -4452,109 +4407,77 @@ public partial class FrameTxProcessorTests
         return tracer.StatusCode;
     }
 
-    // A TXDIFF param that falls back to live state reads like any other state-reading opcode.
-    [TestCase(true, false, TestName = "Execute_TxDiffLiveRead_RecordsTheAccountInTheBlockAccessList")]
-    [TestCase(false, false, TestName = "Execute_WithoutTxDiff_TheAccountStaysOutOfTheBlockAccessList")]
-    [TestCase(true, true, TestName = "Execute_TxDiffLiveRead_RecordsTheAccountInTheBlockAccessList_Parallel")]
-    [TestCase(false, true, TestName = "Execute_WithoutTxDiff_TheAccountStaysOutOfTheBlockAccessList_Parallel")]
-    public void Execute_TxDiffLiveRead_IsRecordedInTheBlockAccessList(bool readBalance, bool parallel)
+    [TestCase(false, TestName = "Execute_TxTrace_Create2_ListsTheCodeAndNonceChanges")]
+    [TestCase(true, TestName = "Execute_TxTrace_Create2_ListsTheCodeAndNonceChanges_Parallel")]
+    public void Execute_TxTrace_Create2_ListsTheCodeAndNonceChanges(bool parallel)
     {
+        byte[] runtimeCode = Prepare.EvmCode.Op(Instruction.STOP).Done;
+        byte[] initCode = Prepare.EvmCode.ForInitOf(runtimeCode).Done;
+        byte[] salt = new byte[32];
+        Address deployed = ContractAddress.From(Observer, salt, initCode);
+
         DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
-        DeployContract(Observer, Prepare.EvmCode.Op(Instruction.STOP).Done);
-        DeployContract(Recipient, readBalance
-            ? [.. Txdiff(0x03, Observer, 0), (byte)Instruction.POP, (byte)Instruction.STOP]
-            : Prepare.EvmCode.Op(Instruction.STOP).Done);
-
-        (_, CallOutputTracer tracer) = ProcessTraced(
-            FrameTx(nonce: 0, SelfVerifyFrame(), Frame(FrameMode.Assert, target: Recipient)), out BlockAccessListAtIndex slice, parallel);
-
-        using (Assert.EnterMultipleScope())
+        DeployContract(Observer, Prepare.EvmCode.Create2(initCode, salt, UInt256.Zero).Op(Instruction.POP).Op(Instruction.STOP).Done);
+        Address[] nonces = SortedAscending(Sender, Observer, deployed);
+        List<(byte[] producer, byte[] expected32)> asserts =
+        [
+            (Txtrace(0x02, 0), To32(1)),
+            (Txtrace(0x0B, 0), To32(AddressAsWord(deployed))),
+            (Txtrace(0x0C, 0), Keccak.OfAnEmptyString.BytesToArray()),
+            (Txtrace(0x0D, 0), Keccak.Compute(runtimeCode).BytesToArray()),
+            (Txtrace(0x03, 0), To32((UInt256)nonces.Length)),
+        ];
+        for (int i = 0; i < nonces.Length; i++)
         {
-            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
-            Assert.That(slice.HasAccount(Observer), Is.EqualTo(readBalance));
+            asserts.Add((Txtrace(0x0E, (UInt256)i), To32(AddressAsWord(nonces[i]))));
+            asserts.Add((Txtrace(0x0F, (UInt256)i), To32(0)));
+            asserts.Add((Txtrace(0x10, (UInt256)i), To32(1)));
         }
+        DeployContract(Recipient, AssertAll([.. asserts]));
+
+        (_, CallOutputTracer tracer) = ProcessTraced(FrameTx(nonce: 0,
+            SelfVerifyFrame(), Frame(FrameMode.Sender, target: Observer), Frame(FrameMode.Assert, target: Recipient)), parallel);
+
+        Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
     }
 
-    // A failed assertion is diagnosed from the trace, so TXDIFF's live read has to appear there
-    // like an SLOAD rather than as gas charged against no visible access.
-    [Test]
-    public void Execute_TxDiffLiveRead_IsReportedToTheStorageTracer()
+    [TestCase((byte)0x03, 0u, ExpectedResult = StatusCode.Success, TestName = "Execute_TxTraceNoncesChanged_ZeroIndex_Reads")]
+    [TestCase((byte)0x03, 1u, ExpectedResult = StatusCode.Failure, TestName = "Execute_TxTraceNoncesChanged_NonZeroIndex_HaltsExceptionally")]
+    [TestCase((byte)0x02, 1u, ExpectedResult = StatusCode.Failure, TestName = "Execute_TxTraceCodesChanged_NonZeroIndex_HaltsExceptionally")]
+    [TestCase((byte)0x10, 0u, ExpectedResult = StatusCode.Success, TestName = "Execute_TxTraceNonceAfter_SenderEntry_Reads")]
+    [TestCase((byte)0x0E, 1u, ExpectedResult = StatusCode.Failure, TestName = "Execute_TxTraceNonceAddress_PastTheEnd_HaltsExceptionally")]
+    [TestCase((byte)0x0F, 1u, ExpectedResult = StatusCode.Failure, TestName = "Execute_TxTraceNonceBefore_PastTheEnd_HaltsExceptionally")]
+    [TestCase((byte)0x0B, 0u, ExpectedResult = StatusCode.Failure, TestName = "Execute_TxTraceCodeAddress_EmptyTable_HaltsExceptionally")]
+    [TestCase((byte)0x0D, 0u, ExpectedResult = StatusCode.Failure, TestName = "Execute_TxTraceCodeAfter_EmptyTable_HaltsExceptionally")]
+    [TestCase((byte)0x1A, 0u, ExpectedResult = StatusCode.Success, TestName = "Execute_TxTraceGasPayer_Reads")]
+    [TestCase((byte)0x1B, 0u, ExpectedResult = StatusCode.Failure, TestName = "Execute_TxTraceParamPastGasPayer_HaltsExceptionally")]
+    public byte Execute_TxTraceCodeAndNonceTables_HaltOutOfRange(byte param, uint index)
     {
         DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
-        DeployContract(Observer, Prepare.EvmCode.PushData(99).PushData(5).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
-        DeployContract(Recipient, [.. Txdiff(0x01, Observer, 5), (byte)Instruction.POP, (byte)Instruction.STOP]);
-
-        StorageReadTracer tracer = new();
-        TransactionResult result = ProcessTraced(FrameTx(nonce: 0,
-            SelfVerifyFrame(), Frame(FrameMode.Sender, target: Observer), Frame(FrameMode.Assert, target: Recipient)), tracer);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(result.TransactionExecuted, Is.True);
-            Assert.That(tracer.Reads, Does.Contain((Observer, (UInt256)5, (UInt256)99)));
-        }
-    }
-
-    private sealed class StorageReadTracer : TxTracer
-    {
-        public StorageReadTracer() => IsTracingOpLevelStorage = true;
-
-        public List<(Address Address, UInt256 Key, UInt256 Value)> Reads { get; } = [];
-
-        public override void LoadOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value)
-            => Reads.Add((address, storageIndex, new UInt256(value, isBigEndian: true)));
-    }
-
-    // Same reserved-operand rule on TXDIFF: 0x0A (account_change_flags) marks in3 "must be 0".
-    [TestCase(0, ExpectedResult = StatusCode.Success, TestName = "Execute_TxDiffAddressParam_ZeroIn3_Succeeds")]
-    [TestCase(1, ExpectedResult = StatusCode.Failure, TestName = "Execute_TxDiffAddressParam_NonZeroIn3_HaltsExceptionally")]
-    public byte Execute_TxDiffAddressParam_In3MustBeZero(int in3)
-    {
-        DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
-        DeployContract(Recipient, [.. Txdiff(0x0A, Observer, (UInt256)in3), (byte)Instruction.STOP]);
+        DeployContract(Recipient, AssertAll(
+            (Txtrace(0x02, 0), To32(0)),
+            (Txtrace(0x03, 0), To32(1)),
+            (Txtrace(0x0E, 0), To32(AddressAsWord(Sender))),
+            (Txtrace(0x0F, 0), To32(0)),
+            (Txtrace(0x10, 0), To32(1)),
+            ([.. Txtrace(param, index), (byte)Instruction.POP, (byte)Instruction.PUSH1, 1], To32(1))));
 
         (_, CallOutputTracer tracer) = ProcessTraced(FrameTx(nonce: 0, SelfVerifyFrame(), Frame(FrameMode.Assert, target: Recipient)));
 
         return tracer.StatusCode;
     }
 
-    // The deployment branch reads the code change recorded for a freshly created account, and TXDIFF's
-    // "before" side resolves it through PreTxCode; no other test drives those captures from an opcode.
-    [Test]
-    public void Execute_TxTraceAndTxDiff_ReadDeploymentPrestate()
-    {
-        byte[] runtimeCode = Prepare.EvmCode.Op(Instruction.STOP).Done;
-        byte[] initCode = Prepare.EvmCode.ForInitOf(runtimeCode).Done;
-        byte[] salt = new byte[32];
-        Address deployed = ContractAddress.From(Observer, salt, initCode);
-        byte[] deployedCodeHash = Keccak.Compute(runtimeCode).BytesToArray();
-
-        DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
-        DeployContract(Observer, Prepare.EvmCode.Create2(initCode, salt, UInt256.Zero).Op(Instruction.POP).Op(Instruction.STOP).Done);
-        DeployContract(Recipient, AssertAll(
-            (Txtrace(0x02, 0), To32(1)),                                        // contracts_deployed
-            (Txtrace(0x0A, 0), To32(AddressAsWord(deployed))),                  // deployed address
-            (Txtrace(0x0B, 0), deployedCodeHash),                               // deployed code hash
-            (Txdiff(0x04, deployed, 0), Keccak.OfAnEmptyString.BytesToArray()), // code hash before
-            (Txdiff(0x05, deployed, 0), deployedCodeHash)));                    // code hash after
-
-        (_, CallOutputTracer tracer) = ProcessTraced(FrameTx(nonce: 0,
-            SelfVerifyFrame(), Frame(FrameMode.Sender, target: Observer), Frame(FrameMode.Assert, target: Recipient)));
-
-        Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
-    }
-
     public enum StorageWipe { WipeOnly, WriteOtherKey, WriteSameKeyThenRevert, RewritePrestate }
 
-    [TestCase(StorageWipe.WipeOnly, 0ul, 0ul, 0, false, TestName = "Execute_TxDiff_StorageWipe_UnwrittenSlotsReadTheirPrestate")]
-    [TestCase(StorageWipe.WriteOtherKey, 7ul, 0ul, 1, false, TestName = "Execute_TxDiff_StorageWipe_WrittenSlotReadsItsPrestate")]
-    [TestCase(StorageWipe.WriteSameKeyThenRevert, 5ul, 9ul, 0, false, TestName = "Execute_TxDiff_StorageWipe_RevertedCreationKeepsThePrestate")]
-    [TestCase(StorageWipe.RewritePrestate, 5ul, 0ul, 0, false, TestName = "Execute_TxDiff_StorageWipe_RewrittenPrestateIsNotAChange")]
-    [TestCase(StorageWipe.WipeOnly, 0ul, 0ul, 0, true, TestName = "Execute_TxDiff_StorageWipe_UnwrittenSlotsReadTheirPrestate_Parallel")]
-    [TestCase(StorageWipe.WriteOtherKey, 7ul, 0ul, 1, true, TestName = "Execute_TxDiff_StorageWipe_WrittenSlotReadsItsPrestate_Parallel")]
-    [TestCase(StorageWipe.WriteSameKeyThenRevert, 5ul, 9ul, 0, true, TestName = "Execute_TxDiff_StorageWipe_RevertedCreationKeepsThePrestate_Parallel")]
-    [TestCase(StorageWipe.RewritePrestate, 5ul, 0ul, 0, true, TestName = "Execute_TxDiff_StorageWipe_RewrittenPrestateIsNotAChange_Parallel")]
-    public void Execute_TxDiff_StorageWipe_ReadsTheTruePrestate(StorageWipe wipe, ulong afterA, ulong afterB, int slotsChanged, bool parallel)
+    [TestCase(StorageWipe.WipeOnly, 0ul, 0, false, TestName = "Execute_TxTrace_StorageWipe_UnwrittenSlotsAreNotListed")]
+    [TestCase(StorageWipe.WriteOtherKey, 7ul, 1, false, TestName = "Execute_TxTrace_StorageWipe_WrittenSlotReadsItsPrestate")]
+    [TestCase(StorageWipe.WriteSameKeyThenRevert, 5ul, 0, false, TestName = "Execute_TxTrace_StorageWipe_RevertedCreationKeepsThePrestate")]
+    [TestCase(StorageWipe.RewritePrestate, 5ul, 0, false, TestName = "Execute_TxTrace_StorageWipe_RewrittenPrestateIsNotAChange")]
+    [TestCase(StorageWipe.WipeOnly, 0ul, 0, true, TestName = "Execute_TxTrace_StorageWipe_UnwrittenSlotsAreNotListed_Parallel")]
+    [TestCase(StorageWipe.WriteOtherKey, 7ul, 1, true, TestName = "Execute_TxTrace_StorageWipe_WrittenSlotReadsItsPrestate_Parallel")]
+    [TestCase(StorageWipe.WriteSameKeyThenRevert, 5ul, 0, true, TestName = "Execute_TxTrace_StorageWipe_RevertedCreationKeepsThePrestate_Parallel")]
+    [TestCase(StorageWipe.RewritePrestate, 5ul, 0, true, TestName = "Execute_TxTrace_StorageWipe_RewrittenPrestateIsNotAChange_Parallel")]
+    public void Execute_TxTrace_StorageWipe_ReadsTheTruePrestate(StorageWipe wipe, ulong afterA, int slotsChanged, bool parallel)
     {
         UInt256 keyA = 0xa1;
         UInt256 keyB = 0xb2;
@@ -4578,13 +4501,16 @@ public partial class FrameTxProcessorTests
         DeployContract(Observer, Prepare.EvmCode.Create2(initCode, salt, UInt256.Zero).Op(Instruction.POP).Op(Instruction.STOP).Done);
         List<(byte[] producer, byte[] expected32)> asserts =
         [
-            (Txdiff(0x00, created, keyB), To32(9)),
-            (Txdiff(0x01, created, keyB), To32(afterB)),
-            (Txdiff(0x00, created, keyA), To32(5)),
-            (Txdiff(0x01, created, keyA), To32(afterA)),
             (Txtrace(0x01, 0), To32((UInt256)slotsChanged)),
+            (Txtrace(0x02, 0), To32(0)),
         ];
-        if (slotsChanged == 1) asserts.Add((Txtrace(0x08, 0), To32(5)));
+        if (slotsChanged == 1)
+        {
+            asserts.Add((Txtrace(0x07, 0), To32(AddressAsWord(created))));
+            asserts.Add((Txtrace(0x08, 0), To32(5)));
+            asserts.Add((Txtrace(0x09, 0), To32(afterA)));
+            asserts.Add((Txtrace(0x0A, 0), To32(keyA)));
+        }
         DeployContract(Recipient, AssertAll([.. asserts]));
 
         (_, CallOutputTracer tracer) = ProcessTraced(FrameTx(nonce: 0,
@@ -4600,8 +4526,8 @@ public partial class FrameTxProcessorTests
     {
         DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
         DeployContract(Recipient, AssertAll(
-            (Txtrace(0x15, 0), To32(AddressAsWord(Sender))),
-            ([.. Txtrace(0x14, 0), .. Txparam(0x06), (byte)Instruction.EQ], To32(1))));
+            (Txtrace(0x1A, 0), To32(AddressAsWord(Sender))),
+            ([.. Txtrace(0x19, 0), .. Txparam(0x06), (byte)Instruction.EQ], To32(1))));
 
         (_, CallOutputTracer tracer) = ProcessTraced(FrameTx(nonce: 0,
             SelfVerifyFrame(), Frame(FrameMode.Assert, target: Recipient)));
@@ -4613,21 +4539,17 @@ public partial class FrameTxProcessorTests
 
     private static TestCaseData[] BalancePrestateScenarios() =>
     [
-        new TestCaseData(BalanceMove.Net) { TestName = "Execute_TxDiffBalance_NetChange_SeparatesBeforeFromAfter" },
-        new TestCaseData(BalanceMove.NetZero) { TestName = "Execute_TxDiffBalance_NetZeroMove_ReportsTheUnchangedBalance" },
-        new TestCaseData(BalanceMove.Reverted) { TestName = "Execute_TxDiffBalance_RevertedMove_KeepsThePreTxCapture" },
+        new TestCaseData(BalanceMove.Net) { TestName = "Execute_TxTraceBalance_NetChange_SeparatesBeforeFromAfter" },
+        new TestCaseData(BalanceMove.NetZero) { TestName = "Execute_TxTraceBalance_NetZeroMove_IsNotListed" },
+        new TestCaseData(BalanceMove.Reverted) { TestName = "Execute_TxTraceBalance_RevertedMove_KeepsThePreTxCapture" },
     ];
 
-    // TXDIFF reads "before" from PreTxBalance only while the account carries a net change, and the live
-    // balance otherwise; a capture lost to collapse or rollback would report zero through both branches.
     [TestCaseSource(nameof(BalancePrestateScenarios))]
-    public void Execute_TxDiffBalance_ReadsThePreTxCapture(BalanceMove move)
+    public void Execute_TxTraceBalance_ReadsThePreTxCapture(BalanceMove move)
     {
         UInt256 initial = 5_000;
         UInt256 transferred = 1_000;
         Address sink = TestItem.AddressD;
-        // A reverting sink hands the value back, so only the net-zero move leaves the balance where it started.
-        UInt256 expectedAfter = move == BalanceMove.NetZero ? initial : initial + transferred;
 
         DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
         if (move == BalanceMove.Reverted)
@@ -4639,9 +4561,16 @@ public partial class FrameTxProcessorTests
             ? Prepare.EvmCode.Op(Instruction.STOP).Done
             : Prepare.EvmCode.CallWithValue(sink, 50_000, transferred).Op(Instruction.POP).Op(Instruction.STOP).Done,
             initial);
-        DeployContract(Recipient, AssertAll(
-            (Txdiff(0x02, Observer, 0), To32(initial)),
-            (Txdiff(0x03, Observer, 0), To32(expectedAfter))));
+        Address[] changed = SortedAscending(Sender, move == BalanceMove.NetZero ? sink : Observer);
+        List<(byte[] producer, byte[] expected32)> asserts = [(Txtrace(0x00, 0), To32((UInt256)changed.Length))];
+        for (int i = 0; i < changed.Length; i++)
+        {
+            asserts.Add((Txtrace(0x04, (UInt256)i), To32(AddressAsWord(changed[i]))));
+            if (changed[i] != Observer) continue;
+            asserts.Add((Txtrace(0x05, (UInt256)i), To32(initial)));
+            asserts.Add((Txtrace(0x06, (UInt256)i), To32(initial + transferred)));
+        }
+        DeployContract(Recipient, AssertAll([.. asserts]));
 
         (_, CallOutputTracer tracer) = ProcessTraced(FrameTx(nonce: 0,
             SelfVerifyFrame(),
@@ -4676,9 +4605,11 @@ public partial class FrameTxProcessorTests
     private static byte[] Txtrace(byte param, UInt256 index)
         => Prepare.EvmCode.PushData(index).PushData((UInt256)param).Op(Instruction.TXTRACE).Done;
 
-    // TXDIFF stack order is (param, address, in3) with param on top.
-    private static byte[] Txdiff(byte param, Address address, UInt256 in3)
-        => Prepare.EvmCode.PushData(in3).PushData(address).PushData((UInt256)param).Op(Instruction.TXDIFF).Done;
+    private static Address[] SortedAscending(params Address[] addresses)
+    {
+        Array.Sort(addresses, static (x, y) => x.Bytes.SequenceCompareTo(y.Bytes));
+        return addresses;
+    }
 
     private static byte[] To32(in UInt256 value)
     {
@@ -4772,7 +4703,7 @@ public partial class FrameTxProcessorTests
         DeployContract(Recipient, AssertAll(
             (Txtrace(0x01, 0), To32(1)),            // slots_changed
             (Txtrace(0x09, 0), To32(99)),           // slot value after
-            (Txdiff(0x00, Observer, 5), To32(0)))); // slot_value_before
+            (Txtrace(0x08, 0), To32(0))));
 
         (TransactionResult result, CallOutputTracer tracer) = CallSimulated(FrameTx(nonce: 0,
             SelfVerifyFrame(), Frame(FrameMode.Sender, target: Observer), Frame(FrameMode.Assert, target: Recipient)));
@@ -4942,11 +4873,11 @@ public partial class FrameTxProcessorTests
     [TestCase(Instruction.SIGPARAM, (byte)0xB4, TestName = "RegistryByte_SIGPARAM_0xB4")]
     [TestCase(Instruction.SIGDATACOPY, (byte)0xB5, TestName = "RegistryByte_SIGDATACOPY_0xB5")]
     [TestCase(Instruction.TXTRACE, (byte)0xB6, TestName = "RegistryByte_TXTRACE_0xB6")]
-    [TestCase(Instruction.TXDIFF, (byte)0xB7, TestName = "RegistryByte_TXDIFF_0xB7")]
-    [TestCase(Instruction.EVENTDATACOPY, (byte)0xB8, TestName = "RegistryByte_EVENTDATACOPY_0xB8")]
+    [TestCase(Instruction.EVENTDATACOPY, (byte)0xB7, TestName = "RegistryByte_EVENTDATACOPY_0xB7")]
     public void FrameOpcodeByte_MatchesTheSpecRegistry(Instruction opcode, byte registryByte)
         => Assert.That((byte)opcode, Is.EqualTo(registryByte));
 
+    [TestCase((byte)0xB8, TestName = "UnallocatedFrameOpcode_0xB8_Halts")]
     [TestCase((byte)0xB9, TestName = "UnallocatedFrameOpcode_0xB9_Halts")]
     [TestCase((byte)0xBA, TestName = "UnallocatedFrameOpcode_0xBA_Halts")]
     [TestCase((byte)0xBB, TestName = "UnallocatedFrameOpcode_0xBB_Halts")]
