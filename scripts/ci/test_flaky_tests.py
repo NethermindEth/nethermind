@@ -108,9 +108,10 @@ class FilterTests(unittest.TestCase):
 class GuardTests(unittest.TestCase):
     def test_blocks_ci_and_build_configuration(self):
         paths = [".github/workflows/x.yml", "scripts/ci/flaky_tests.py", "src/Directory.Build.props",
-                 "src/Nethermind/X.targets", "src/Nethermind/X.Test/X.Test.csproj", "global.json", "src/Nethermind/NuGet.Config",
+                 "src/Nethermind/X.targets", "src/Nethermind/X.Test/X.Test.csproj", "global.json", "AGENTS.md",
+                 "src/Nethermind/CLAUDE.md", ".agents/rules/git.md", "src/Nethermind/NuGet.Config",
                  "src/Nethermind/Nethermind.Core/Foo.cs", "src/Nethermind/Nethermind.Core.Test/FooTests.cs"]
-        self.assertEqual(flaky_tests.blocked_paths(paths), paths[:7])
+        self.assertEqual(flaky_tests.blocked_paths(paths), paths[:10])
 
 
 class FeedbackTests(unittest.TestCase):

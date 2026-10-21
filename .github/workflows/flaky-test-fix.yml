@@ -179,7 +179,7 @@ jobs:
             Find the root cause and fix it with the smallest change. The bug may be in the test or in production code;
             if production code races, fix the production code. Do not add retries, sleeps, longer timeouts,
             [Retry]/[Ignore]/[Explicit] attributes, or category exclusions, and do not weaken assertions.
-            Do not change .github/, scripts/, *.props, *.targets, *.csproj, global.json or NuGet.Config: such changes are rejected.
+            Do not change .github/, .agents/, scripts/, AGENTS.md, CLAUDE.md, *.props, *.targets, *.csproj, global.json or NuGet.Config: such changes are rejected.
             Follow AGENTS.md, CONTRIBUTING.md and .agents/rules/.
 
             Verify before you finish:
@@ -332,7 +332,7 @@ jobs:
           PR: ${{ steps.pr.outputs.number }}
         run: |
           gh pr comment "$PR" --repo "$GITHUB_REPOSITORY" \
-            --body "Claude review was unavailable for this commit; a maintainer can rerun it with \`@claude review\`."
+            --body "Claude review was unavailable for this commit. To rerun it, add and remove the \`wip\` label."
 
       - name: Hand over after too many review rounds
         if: steps.next.outputs.step == 'hand-over'
@@ -383,7 +383,7 @@ jobs:
             test filter under Evidence, is in `${{ runner.temp }}/claude/pr-body.md`.
 
             Fix every unresolved Critical, High and Medium finding. Keep the flaky-test fix intact.
-            Do not change .github/, scripts/, *.props, *.targets, *.csproj, global.json or NuGet.Config: such changes are rejected.
+            Do not change .github/, .agents/, scripts/, AGENTS.md, CLAUDE.md, *.props, *.targets, *.csproj, global.json or NuGet.Config: such changes are rejected.
             Follow AGENTS.md, CONTRIBUTING.md and .agents/rules/.
 
             Rebuild the project with `dotnet build ... -c release` and rerun
