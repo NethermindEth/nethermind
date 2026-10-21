@@ -543,6 +543,73 @@ public class BlockAccessListsSyncFeedTests
     }
 
     [Test]
+    public async Task Unavailable_heights_finish_after_the_cutoff_retreats([Values] bool advancesAgain)
+    {
+        ISpecProvider specProvider = SetUpChainWithActivation(pivot: 4, activation: 1, timestampActivation: false, headersAvailable: true, []);
+        _syncPeerPool
+            .EstimateRequestLimit(Arg.Any<RequestType>(), Arg.Any<IPeerAllocationStrategy>(), Arg.Any<AllocationContexts>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<int?>(1));
+        _blockTree.Head.Returns(Build.A.Block.WithNumber(100).TestObject);
+        _historyPruner.GetRetentionBlocks(Arg.Any<ulong>()).Returns(10UL);
+        _feed.Dispose();
+        _feed = CreateFeed(specProvider);
+        _feed.InitializeFeed();
+        _feed.Activate();
+
+        _historyPruner.BalCutoffBlockNumber.Returns(3UL);
+        using (BlockAccessListsSyncBatch first = (await _feed.PrepareRequest())!)
+        {
+            Assert.That(first.Infos[0]!.BlockNumber, Is.EqualTo(4));
+            first.Response = BuildBlockAccessLists(EmptyBlockAccessList);
+            _feed.HandleResponse(first);
+        }
+        _historyPruner.BalCutoffBlockNumber.Returns(2UL);
+
+        BlockInfo? previous = null;
+        for (int i = 0; i < BlockAccessListsSyncFeed.MaxUnavailableResponses; i++)
+        {
+            using BlockAccessListsSyncBatch batch = (await _feed.PrepareRequest())!;
+            previous = batch.Infos[0]!;
+            Assert.That(previous.BlockNumber, Is.EqualTo(3));
+            ReportUnavailable(batch, TestItem.PublicKeys[i]);
+        }
+        using (BlockAccessListsSyncBatch batch = (await _feed.PrepareRequest())!)
+        {
+            Assert.That(batch.Infos[0]!.BlockNumber, Is.EqualTo(2));
+            ReportUnavailable(batch, TestItem.PublicKeyA);
+        }
+        Assert.That(_feed.UnavailableHeightsCount, Is.EqualTo(1), "the newly admitted height must accumulate peer responses");
+
+        if (advancesAgain)
+        {
+            _historyPruner.BalCutoffBlockNumber.Returns(3UL);
+            using BlockAccessListsSyncBatch stale = new([previous]);
+            ReportUnavailable(stale, TestItem.PublicKeyA);
+            Assert.That(_feed.UnavailableHeightsCount, Is.Zero, "advancing again must sweep heights admitted after the rewind");
+        }
+
+        for (int i = 0; i < 5 * BlockAccessListsSyncFeed.MaxUnavailableResponses; i++)
+        {
+            using BlockAccessListsSyncBatch? batch = await _feed.PrepareRequest();
+            if (batch is null) break;
+            ReportUnavailable(batch, TestItem.PublicKeys[i % BlockAccessListsSyncFeed.MaxUnavailableResponses]);
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_feed.IsFinished, Is.True);
+            Assert.That(_syncPointers.LowestInsertedBlockAccessListBlockNumber, Is.Zero);
+            Assert.That(_feed.UnavailableHeightsCount, Is.Zero);
+        }
+
+        void ReportUnavailable(BlockAccessListsSyncBatch batch, PublicKey nodeId)
+        {
+            batch.Response = BuildBlockAccessLists((byte[]?)null);
+            batch.ResponseSourcePeer = CreateSession(nodeId);
+            _feed.HandleResponse(batch);
+        }
+    }
+
+    [Test]
     public async Task Stops_tracking_unavailable_heights_once_the_pruning_cutoff_passes_them()
     {
         ISpecProvider specProvider = SetUpChainWithActivation(pivot: 3, activation: 1, timestampActivation: false, headersAvailable: true, []);

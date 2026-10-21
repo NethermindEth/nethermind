@@ -415,7 +415,7 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
 
         lock (_unavailable)
         {
-            if (blockNumber < ulong.Max(SkippedBelow, _unavailableCutoff) || _syncStatusList.IsInserted(blockNumber)) return false;
+            if (blockNumber < SkippedBelow || _syncStatusList.IsInserted(blockNumber)) return false;
 
             HashSet<PublicKey> peers = _unavailable.GetOrAdd(blockNumber, static _ => []);
             peers.Add(nodeId);
@@ -430,15 +430,17 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
     private void RemoveSkippedUnavailable()
     {
         ulong skippedBelow = SkippedBelow;
-        if (skippedBelow <= Volatile.Read(ref _unavailableCutoff)) return;
+        if (skippedBelow == Volatile.Read(ref _unavailableCutoff)) return;
 
         lock (_unavailable)
         {
-            if (skippedBelow <= _unavailableCutoff) return;
-
-            foreach (KeyValuePair<ulong, HashSet<PublicKey>> entry in _unavailable)
+            skippedBelow = SkippedBelow;
+            if (skippedBelow > _unavailableCutoff)
             {
-                if (entry.Key < skippedBelow) _unavailable.TryRemove(entry.Key, out _);
+                foreach (KeyValuePair<ulong, HashSet<PublicKey>> entry in _unavailable)
+                {
+                    if (entry.Key < skippedBelow) _unavailable.TryRemove(entry.Key, out _);
+                }
             }
 
             Volatile.Write(ref _unavailableCutoff, skippedBelow);
