@@ -522,7 +522,7 @@ public class BalCatchUpBenchmark
     /// <summary>Times each block's processing: execution, or the list's application with its state root.</summary>
     private sealed class TimingBlockProcessor(IBlockProcessor inner, BlockTiming timing) : IBlockProcessor
     {
-        public event Action? TransactionsExecuted
+        public event Action<Block>? TransactionsExecuted
         {
             add => inner.TransactionsExecuted += value;
             remove => inner.TransactionsExecuted -= value;
