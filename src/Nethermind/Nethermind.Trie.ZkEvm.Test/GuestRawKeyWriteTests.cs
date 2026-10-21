@@ -50,8 +50,7 @@ public class GuestRawKeyWriteTests
         TrieNode built = new(LeafData.WithKeyFrom(rawKey, start, value));
         TrieNode reference = TrieNodeFactory.CreateLeaf(nibbles, value);
 
-        Assert.That(Encode(built), Is.EqualTo(Encode(reference)));
-        Assert.That(built.Key, Is.EqualTo(nibbles));
+        AssertSameLeaf(built, reference);
     }
 
     [Test]
@@ -178,8 +177,7 @@ public class GuestRawKeyWriteTests
         Assert.That(actual!.NodeType, Is.EqualTo(expected.NodeType));
         if (expected.IsLeaf)
         {
-            Assert.That(Encode(actual), Is.EqualTo(Encode(expected)));
-            Assert.That(actual.Key, Is.EqualTo(expected.Key));
+            AssertSameLeaf(actual, expected);
             return;
         }
 
@@ -189,6 +187,17 @@ public class GuestRawKeyWriteTests
             TreePath actualPath = TreePath.Empty;
             TreePath expectedPath = TreePath.Empty;
             AssertSameTrie(actual.GetChild(NullTrieNodeResolver.Instance, ref actualPath, i), expected.GetChild(NullTrieNodeResolver.Instance, ref expectedPath, i));
+        }
+    }
+
+    private static void AssertSameLeaf(TrieNode actual, TrieNode expected)
+    {
+        byte[] actualRlp = Encode(actual);
+        byte[] expectedRlp = Encode(expected);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actualRlp, Is.EqualTo(expectedRlp));
+            Assert.That(actual.Key, Is.EqualTo(expected.Key));
         }
     }
 

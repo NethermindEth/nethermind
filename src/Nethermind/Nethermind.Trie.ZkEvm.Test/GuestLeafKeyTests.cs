@@ -61,8 +61,11 @@ public class GuestLeafKeyTests
         TrieNode leaf = DecodedLeaf(key).Unseal();
         leaf.Value = new CappedArray<byte>([2]);
 
-        Assert.That(((LeafData)leaf.NodeData!).TryGetCompactKey(out _), Is.True);
-        Assert.That(leaf.Key, Is.EqualTo(key));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(((LeafData)leaf.NodeData!).TryGetCompactKey(out _), Is.True);
+            Assert.That(leaf.Key, Is.EqualTo(key));
+        }
     }
 
     [Test]
