@@ -455,18 +455,17 @@ new AsyncFunction('github', 'context', 'process', script)(github, context, {env:
 
     @unittest.skipUnless(sys.platform == "linux", "workflow shell runs on Linux")
     def test_measured_log_must_match_output_and_have_no_failure_markers(self):
-        start = self.WORKFLOW.index('            grep -Fxq "${output}${suffix}"')
+        start = self.WORKFLOW.index('            grep -Fxq "${output}"')
         end = self.WORKFLOW.index('            python3 "$BENCH_DEFINITIONS', start)
         gate = textwrap.dedent(self.WORKFLOW[start:end])
-        expected = "a" * 64
-        suffix = "0101000000000000000100"
-        for log, passes in ((expected + suffix, True), ("wrong", False),
-                            (expected + suffix + "00", False),
-                            (expected + suffix + "\nException", False),
-                            (expected + suffix + "\nInvalid Blocks", False)):
+        expected = "a" * 64 + "0101000000000000000100"
+        for log, passes in ((expected, True), ("wrong", False),
+                            (expected + "00", False),
+                            (expected + "\nException", False),
+                            (expected + "\nInvalid Blocks", False)):
             with self.subTest(log=log), tempfile.TemporaryDirectory() as directory:
                 (Path(directory) / "stats.log").write_text(log + "\n")
-                env = dict(os.environ, RUNNER_TEMP=directory, input="1.ssz", output=expected, suffix=suffix)
+                env = dict(os.environ, RUNNER_TEMP=directory, input="1.ssz", output=expected)
                 result = subprocess.run(["bash", "-c", gate], env=env, capture_output=True, text=True)
                 self.assertEqual(result.returncode == 0, passes, result.stdout + result.stderr)
 
@@ -515,7 +514,7 @@ new AsyncFunction('github', 'context', 'process', script)(github, context, {env:
             guest = "src/Nethermind/Nethermind.Stateless.ZiskGuest"
             (source / guest).mkdir(parents=True)
             (source / "scripts/zisk-bench").mkdir(parents=True)
-            definitions = [{"input": f"{i}.ssz", "hash": "0" * 64, "output": "1" * 64} for i in range(9)]
+            definitions = [{"input": f"{i}.ssz", "hash": "0" * 64, "output": "1" * 86} for i in range(9)]
             manifest = source / guest / "inputs.json"
             manifest.write_text(json.dumps([42] if base_invalid else definitions))
             instrument = source / "scripts/zisk-bench/report.py"
@@ -532,9 +531,9 @@ new AsyncFunction('github', 'context', 'process', script)(github, context, {env:
             instrument.write_text("changed instrument")
             candidate = json.loads(json.dumps(definitions))
             if change in ("hash", "output"):
-                candidate[0][change] = "2" * 64
+                candidate[0][change] = "2" * (64 if change == "hash" else 86)
             elif change == "add":
-                candidate.append({"input": "9.ssz", "hash": "0" * 64, "output": "1" * 64})
+                candidate.append({"input": "9.ssz", "hash": "0" * 64, "output": "1" * 86})
             elif change == "remove":
                 candidate.pop()
             elif change == "duplicate":
@@ -609,7 +608,7 @@ new AsyncFunction('github', 'context', 'process', script)(github, context, {env:
             guest = "src/Nethermind/Nethermind.Stateless.ZiskGuest"
             (repo / guest).mkdir(parents=True)
             (repo / "scripts/zisk-bench").mkdir(parents=True)
-            definitions = [{"input": "1.ssz", "hash": "0" * 64, "output": "1" * 64}]
+            definitions = [{"input": "1.ssz", "hash": "0" * 64, "output": "1" * 86}]
             (repo / guest / "inputs.json").write_text(json.dumps(definitions))
             (repo / "scripts/zisk-bench/report.py").write_text("instrument")
 
@@ -687,7 +686,7 @@ class InputListTests(unittest.TestCase):
         for entry in inputs:
             self.assertRegex(entry["input"], r"^[0-9]+\.ssz$")
             self.assertRegex(entry["hash"], r"^[0-9a-f]{64}$")
-            self.assertRegex(entry["output"], r"^[0-9a-f]{64}$")
+            self.assertRegex(entry["output"], r"^[0-9a-f]{86}$")
             # What OpenVM proves: keccak256 of the result, checked against its public-values window.
             self.assertRegex(entry["digest"], r"^[0-9a-f]{64}$")
 

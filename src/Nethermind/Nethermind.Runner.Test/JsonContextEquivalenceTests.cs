@@ -133,6 +133,9 @@ public class JsonContextEquivalenceTests
         [typeof(Nethermind.JsonRpc.Data.AccountInfoForRpc)] = "response only",
         [typeof(Nethermind.Xdc.RPC.XdcAccountInfo)] = "response only",
         [typeof(Nethermind.Xdc.RPC.XdcTransactionAndReceiptProof)] = "response only",
+        // Nullable shadows that ignore null: an absent member passes null and the base keeps its default.
+        [typeof(Nethermind.Blockchain.Tracing.GethStyle.GethTraceOptions).Assembly.GetType(
+            "Nethermind.Blockchain.Tracing.GethStyle.GethTraceOptionsConverter+WireOptions", throwOnError: true)!] = "null shadows",
     };
 
     /// <remarks>
