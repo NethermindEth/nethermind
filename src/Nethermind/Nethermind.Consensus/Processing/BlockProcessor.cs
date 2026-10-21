@@ -72,7 +72,7 @@ public partial class BlockProcessor(
     public sealed class BlockAccessListSequentialRetryException(BlockHeader block, string message, Exception? innerException = null)
         : InvalidBlockException(block, message, innerException);
 
-    public event Action? TransactionsExecuted;
+    public event Action<Block>? TransactionsExecuted;
 
     public virtual (Block Block, TxReceipt[] Receipts) ProcessOne(Block suggestedBlock, ProcessingOptions options, IBlockTracer blockTracer, IReleaseSpec spec, CancellationToken token)
     {
@@ -223,7 +223,7 @@ public partial class BlockProcessor(
 
         // Signal that transactions are done — subscribers can cancel background work (e.g. prewarmer)
         // to free the thread pool for blooms, receipts root, state root parallel work below
-        TransactionsExecuted?.Invoke();
+        TransactionsExecuted?.Invoke(block);
 
         return FinalizeBlock(block, blockTracer, options, spec, receipts);
     }

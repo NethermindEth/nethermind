@@ -85,6 +85,7 @@ public class HistoryPruner : IHistoryPruner
     private readonly Dictionary<ulong, bool> _sweepBloomDecisions = [];
     private Func<ulong, bool>? _sweepRetentionLookup;
     private ulong _balsDeletePointer = 1;
+    private ulong _balAdmissionFloor;
     private ulong _lastSavedBlocksDeletePointer = 1;
     private ulong _lastSavedBlocksReclaimCursor = 1;
     private ulong _sliceCleanupCursor = 1;
@@ -112,7 +113,6 @@ public class HistoryPruner : IHistoryPruner
         IHeaderStore headerStore,
         IDbProvider dbProvider,
         IHistoryConfig historyConfig,
-        IPruningConfig pruningConfig,
         IBlocksConfig blocksConfig,
         ISyncConfig syncConfig,
         IProcessExitSource processExitSource,
@@ -134,9 +134,7 @@ public class HistoryPruner : IHistoryPruner
         _historyConfig = historyConfig;
         _receiptRetention = receiptRetention;
         _enabled = historyConfig.Enabled();
-        // An archive node keeps its access lists unless given a retention.
         _balPruningOnly = !_enabled
-            && (historyConfig.BalRetentionEpochs is not null || pruningConfig.Mode != PruningMode.None)
             && specProvider.GetFinalSpec().BlockLevelAccessListsEnabled;
         _pruningInterval = historyConfig.PruningInterval * SlotsPerEpoch;
         _minHistoryRetentionEpochs = specProvider.GenesisSpec.MinHistoryRetentionEpochs;
@@ -148,7 +146,9 @@ public class HistoryPruner : IHistoryPruner
         _defaultReceiptsColumn = dbProvider.ReceiptsDb.GetColumnDb(ReceiptsColumns.Default);
         _minDeletableBlockNumber = (_blockTree.Genesis?.Number ?? 0) + 1; // do not remove genesis
 
+        byte[]? balsPointer = _metadataDb.Get(MetadataDbKeys.BlockAccessListPruningDeletePointer);
         (ulong? persistedPointer, ulong? persistedCursor) = ReadPersistedPointers(_metadataDb);
+        _balAdmissionFloor = ulong.Max(balsPointer is null ? 0 : new RlpReader(balsPointer).DecodeULong(), persistedPointer ?? 0);
         ulong snapshotPointer = persistedPointer ?? 0;
         ulong barrierFloor = _blockTree.GetLowestBlock(); // still the config barrier here - nothing has raised it yet
         // An absent cursor defaults to the pointer, as at load: on a per-block-pruned database everything below the boundary is gone.
@@ -220,7 +220,17 @@ public class HistoryPruner : IHistoryPruner
     public ulong RetentionEpochs => _historyConfig.RetentionEpochs ?? _minHistoryRetentionEpochs;
 
     // One extra epoch: the CL serves from the start of the epoch N back, up to 31 slots below head - N*32.
-    public ulong? BalCutoffBlockNumber => _enabled || _balPruningOnly ? CalculateRollingCutoff(_balRetentionEpochs + 1) : null;
+    public ulong? BalCutoffBlockNumber
+    {
+        get
+        {
+            if (!_enabled && !_balPruningOnly) return null;
+
+            ulong floor = Volatile.Read(ref _balAdmissionFloor);
+            ulong? cutoff = CalculateRollingCutoff(_balRetentionEpochs + 1);
+            return cutoff is { } current ? ulong.Max(current, floor) : floor == 0 ? null : floor;
+        }
+    }
 
     internal ulong BalsDeletePointer => _balsDeletePointer;
 
@@ -690,7 +700,7 @@ public class HistoryPruner : IHistoryPruner
                 // It can stop short, and the rest of the chunk stops with it rather than stranding undecided heights.
                 to = RetainSlicedAndReclaimTheRest(from, to, cancellationToken);
 
-                _blockAccessListStore.DeleteRange(from, to);
+                DeleteBlockAccessListsRange(from, to);
 
                 _blocksReclaimCursor = to;
                 if (_balsDeletePointer < to)
@@ -1047,6 +1057,13 @@ public class HistoryPruner : IHistoryPruner
         _txIndexSweepCursorLoaded = true;
     }
 
+    private void DeleteBlockAccessListsRange(ulong from, ulong to)
+    {
+        // Publish before deletion so a rewind cannot reopen the range. Failed deletions retry from the unchanged pointer.
+        Volatile.Write(ref _balAdmissionFloor, ulong.Max(_balAdmissionFloor, to));
+        _blockAccessListStore.DeleteRange(from, to);
+    }
+
     private void PruneBlockAccessLists(ulong upperExclusive, CancellationToken cancellationToken)
     {
         ulong limit = ulong.Min(upperExclusive, _blockTree.SyncPivot.BlockNumber);
@@ -1059,7 +1076,7 @@ public class HistoryPruner : IHistoryPruner
             for (ulong from = start; from < limit;)
             {
                 ulong to = ulong.Min(from + ChunkStep(reclaimed, cancellationToken), limit);
-                _blockAccessListStore.DeleteRange(from, to);
+                DeleteBlockAccessListsRange(from, to);
 
                 _balsDeletePointer = to;
                 Metrics.OldestStoredBlockAccessListBlockNumber = _balsDeletePointer;

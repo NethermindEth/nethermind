@@ -46,6 +46,9 @@ public class EthSimulateTestsBlocksAndTransactions
     [TestCase("{\"stateOverrides\":{\"0xc100000000000000000000000000000000000000\":{\"balance\":\"0x1\",\"bogusField\":\"0x1\"}}," + Calls + "}", TestName = "Simulate rejects an unknown account override key")]
     [TestCase("{\"blockOverrides\":{\"difficulty\":\"0x1\"}," + Calls + "}", TestName = "Simulate rejects a difficulty override")]
     [TestCase("{\"blockOverrides\":{\"beaconRoot\":\"0x0000000000000000000000000000000000000000000000000000000000000001\"}," + Calls + "}", TestName = "Simulate rejects a beacon root override")]
+    [TestCase("{\"blockOverrides\":{\"beaconRoot\":null}," + Calls + "}", TestName = "Simulate rejects a null beacon root override")]
+    [TestCase("{\"blockOverrides\":{\"BEACONROOT\":null}," + Calls + "}", TestName = "Simulate rejects a differently cased beacon root override")]
+    [TestCase("{\"blockOverrides\":{\"bea\\u0063onRoot\":null}," + Calls + "}", TestName = "Simulate rejects an escaped beacon root override")]
     [TestCase("{\"blockOverrides\":{\"number\":\"0x80\",\"Number\":\"0x81\"}," + Calls + "}", TestName = "Simulate rejects two block override keys for one field")]
     [TestCase("{\"stateOverrides\":{\"0xc100000000000000000000000000000000000000\":{\"code\":\"0x00\",\"Code\":\"0x01\"}}," + Calls + "}", TestName = "Simulate rejects two account override keys for one field")]
     public async Task Simulate_rejects_override_keys_it_does_not_support(string blockStateCall)

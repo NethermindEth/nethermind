@@ -175,6 +175,21 @@ public class FlatDbManagerTests
     }
 
     [Test]
+    public async Task DisposeAsync_KeepsTheInMemoryTailAfterDrainingPersistence([Values] bool processExitAlreadyCancelled, [Values] bool conversionThrows)
+    {
+        (FlatDbManager manager, StateId snapshotTo) = CreateManagerWithQueuedSnapshot(processExitAlreadyCancelled);
+        if (conversionThrows) _persistenceManager.PersistInMemoryTailForShutdown(Arg.Any<CancellationToken>()).Returns(_ => throw new InvalidOperationException("disk full"));
+
+        await Assert.ThatAsync(async () => await manager.DisposeAsync(), Throws.Nothing, "the conversion is an optimisation and must not fail shutdown");
+
+        Received.InOrder(() =>
+        {
+            _ = _persistenceManager.AddToPersistence(snapshotTo);
+            _persistenceManager.PersistInMemoryTailForShutdown(Arg.Is<CancellationToken>(t => t.CanBeCanceled));
+        });
+    }
+
+    [Test]
     public async Task AddSnapshot_QueuedCompactionAndPersistence_AreDrainedOnDispose(
         [Values] bool processExitAlreadyCancelled)
     {

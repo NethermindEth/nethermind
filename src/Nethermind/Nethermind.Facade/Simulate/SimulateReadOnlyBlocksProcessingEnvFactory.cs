@@ -39,8 +39,12 @@ public class SimulateReadOnlyBlocksProcessingEnvFactory(
     IReadOnlyList<IBlockValidationModule> validationModules,
     ILogManager? logManager = null) : ISimulateReadOnlyBlocksProcessingEnvFactory
 {
+    // Read once: the root scope's registrations do not change after it is built.
+    private IReadOnlyQueryModule[]? _readOnlyQueryModules;
+
     public ISimulateReadOnlyBlocksProcessingEnv Create()
     {
+        IReadOnlyQueryModule[] readOnlyQueryModules = _readOnlyQueryModules ??= rootLifetimeScope.Resolve<IReadOnlyQueryModule[]>();
         IReadOnlyDbProvider editableDbProvider = new ReadOnlyDbProvider(dbProvider, true);
         IOverridableEnv overridableEnv = overridableEnvFactory.Create();
 
@@ -83,7 +87,9 @@ public class SimulateReadOnlyBlocksProcessingEnvFactory(
             .AddSingleton<IIndexTableStore>(tmpIndexTableStore)
             .AddScoped<SimulateRequestState>()
             .BindScoped<IBlobBaseFeeOverrideProvider, SimulateRequestState>()
-            .AddScoped<SimulateReadOnlyBlocksProcessingEnv>());
+            .AddScoped<SimulateReadOnlyBlocksProcessingEnv>()
+            // Last, so nothing above overrides what a module registers; the simulate decorators above still wrap it.
+            .AddReadOnlyQueryModules(readOnlyQueryModules, ReadOnlyQueryKind.Simulate));
 
         envLifetimeScope.Disposer.AddInstanceForDisposal(editableDbProvider);
 
