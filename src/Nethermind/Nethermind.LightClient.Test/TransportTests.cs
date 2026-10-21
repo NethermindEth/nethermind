@@ -6,13 +6,16 @@ using System.Net;
 using System.Text;
 using System.Text.Json;
 using Autofac;
+using DotNetty.Buffers;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Config;
@@ -22,17 +25,246 @@ using Nethermind.Network;
 using Nethermind.Network.Config;
 using Nethermind.Network.Discovery;
 using Nethermind.Network.Enr;
+using Nethermind.Network.Contract.P2P;
+using Nethermind.Network.P2P.Messages;
+using Nethermind.Network.P2P.ProtocolHandlers;
+using Nethermind.Network.P2P.Subprotocols.Snap.V1;
+using Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages;
+using Nethermind.Network.P2P.Subprotocols.Snap.V2.Messages;
+using Nethermind.Network.Rlpx;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State.Proofs;
+using Nethermind.State.Snap;
+using Nethermind.State.SnapServer;
 using Nethermind.Stats.Model;
 using Nethermind.TxPool;
+using NSubstitute;
+using ISession = Nethermind.Network.P2P.ISession;
+using ReferenceCountUtil = DotNetty.Common.Utilities.ReferenceCountUtil;
 
 namespace Nethermind.LightClient.Test;
 
 public class TransportTests
 {
+    [Test]
+    public async Task Light_client_snap_factory_answers_unavailable_without_losing_outbound_queries(
+        [Values(1, 2)] int version,
+        [Values(0, 2, 4)] int requestType)
+    {
+        await using ExecutionPeerTransport transport = SnapTransport();
+        using SnapSession peer = new(Services(transport), version);
+        using StorageRange storage = new()
+        {
+            RootHash = Hash256.Zero,
+            Accounts = new ArrayPoolList<PathWithAccount>(1) { new(Keccak.Zero.ValueHash256, Account.TotallyEmpty) },
+        };
+        using P2PMessage request = requestType switch
+        {
+            0 => new GetAccountRangeMessage { RequestId = 42, AccountRange = new(Hash256.Zero, Keccak.Zero.ValueHash256), ResponseBytes = 1024 },
+            2 => new GetStorageRangeMessage { RequestId = 42, StorageRange = storage.Copy(), ResponseBytes = 1024 },
+            _ => new GetByteCodesMessage { RequestId = 42, Hashes = new ArrayPoolList<ValueHash256>(1) { Keccak.Zero.ValueHash256 }, Bytes = 1024 },
+        };
+
+        byte[] expected = requestType == 4 ? [0xc2, 42, 0xc0] : [0xc3, 42, 0xc0, 0xc0];
+        await peer.AssertUnavailableThenQueryAsync(request, expected);
+    }
+
+    [Test]
+    public async Task Light_client_snap1_factory_answers_unavailable_trie_nodes()
+    {
+        await using ExecutionPeerTransport transport = SnapTransport();
+        using SnapSession peer = new(Services(transport), 1);
+        using GetTrieNodesMessage request = new()
+        {
+            RequestId = 42,
+            RootHash = Hash256.Zero,
+            Paths = PathGroup.EncodeToRlpPathGroupList([new PathGroup { Group = [[0x11]] }]),
+            Bytes = 1024,
+        };
+
+        await peer.AssertUnavailableThenQueryAsync(request, [0xc2, 42, 0xc0]);
+    }
+
+    [Test]
+    public async Task Light_client_snap2_factory_preserves_positional_unavailable_bal_entries(
+        [Values(0L, 1L, 2L, 3L, long.MaxValue)] long byteLimit)
+    {
+        await using ExecutionPeerTransport transport = SnapTransport();
+        using SnapSession peer = new(Services(transport), 2);
+        using GetBlockAccessListsMessage request = new()
+        {
+            RequestId = 42,
+            BlockHashes = new ArrayPoolList<ValueHash256>(3) { Keccak.Zero.ValueHash256, Keccak.Compute("second").ValueHash256, Keccak.Compute("third").ValueHash256 },
+            Bytes = byteLimit,
+        };
+        int count = (int)Math.Min(3, byteLimit);
+        byte[] expected = new byte[3 + count];
+        expected[0] = (byte)(0xc2 + count);
+        expected[1] = 42;
+        expected[2] = (byte)(0xc0 + count);
+        expected.AsSpan(3).Fill(0x80);
+
+        await peer.AssertUnavailableThenQueryAsync(request, expected);
+    }
+
+    [Test]
+    public async Task Light_client_snap2_factory_answers_empty_bal_hash_list()
+    {
+        await using ExecutionPeerTransport transport = SnapTransport();
+        using SnapSession peer = new(Services(transport), 2);
+        using GetBlockAccessListsMessage request = new()
+        {
+            RequestId = 42,
+            BlockHashes = IOwnedReadOnlyList<ValueHash256>.Empty,
+            Bytes = 1024,
+        };
+
+        await peer.AssertUnavailableThenQueryAsync(request, [0xc2, 42, 0xc0]);
+    }
+
+    [Test]
+    public async Task Light_client_snap_bal_unavailable_prefix_respects_budget_and_cancellation(
+        [Values(-1L, 0L, 1L, 2L, 3L, long.MaxValue)] long byteLimit,
+        [Values] bool canceled)
+    {
+        await using ExecutionPeerTransport transport = SnapTransport();
+        ISnapServer server = Services(transport).Resolve<ISnapServer>();
+        using CancellationTokenSource stop = new();
+        if (canceled) stop.Cancel();
+        using IByteArrayList result = server.GetBlockAccessLists([Keccak.Zero.ValueHash256, Keccak.Zero.ValueHash256, Keccak.Zero.ValueHash256], byteLimit, stop.Token);
+
+        Assert.That(result.Count, Is.EqualTo(canceled ? 0 : Math.Clamp(byteLimit, 0, 3)));
+        for (int i = 0; i < result.Count; i++) Assert.That(result[i].IsEmpty, Is.True);
+    }
+
+    [Test]
+    public async Task Light_client_snap_bal_response_has_a_hard_allocation_bound()
+    {
+        await using ExecutionPeerTransport transport = SnapTransport();
+        IReadOnlyList<ValueHash256> hashes = Substitute.For<IReadOnlyList<ValueHash256>>();
+        hashes.Count.Returns((int)ISnapStateServer.HardResponseByteLimit + 1);
+
+        using IByteArrayList result = Services(transport).Resolve<ISnapServer>()
+            .GetBlockAccessLists(hashes, long.MaxValue, CancellationToken.None);
+
+        Assert.That(result.Count, Is.EqualTo(ISnapStateServer.HardResponseByteLimit));
+        Assert.That(result[^1].IsEmpty, Is.True);
+    }
+
+    [Test]
+    public async Task Light_client_snap_hello_download_capabilities_do_not_advertise_enr_serving()
+    {
+        await using ExecutionPeerTransport transport = SnapTransport();
+        IContainer services = Services(transport);
+        SnapEnrAdvertisement enr = services.Resolve<SnapEnrAdvertisement>();
+        IProtocolsManager manager = services.Resolve<IProtocolsManager>();
+        Capability[] capabilities = (Capability[])typeof(ProtocolsManager)
+            .GetMethod("GetAdvertisedCapabilities", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(manager, null)!;
+
+        using IDisposable scope = Assert.EnterMultipleScope();
+        Assert.That(NoopSnapServer.Instance.CanServe, Is.False);
+        Assert.That(services.Resolve<ISyncConfig>().SnapServingEnabled, Is.False);
+        Assert.That(enr.ServesSnap, Is.False);
+        Assert.That(enr.ServesSnap2, Is.False);
+        Assert.That(capabilities, Does.Contain(new Capability(Protocol.Snap, 1)));
+        Assert.That(capabilities, Does.Contain(new Capability(Protocol.Snap, 2)));
+    }
+
+    private static ExecutionPeerTransport SnapTransport() => new("sepolia", Nethermind.Logging.LimboLogs.Instance,
+        new VerifiedHead(0, 0, KnownHashes.SepoliaGenesis, Hash256.Zero), 1_800_000_000);
+
+    private sealed class SnapSession : IDisposable
+    {
+        private readonly ISession _session = Substitute.For<ISession>();
+        private readonly IMessageSerializationService _serializer;
+        private readonly IZeroProtocolHandler _handler;
+        private readonly TaskCompletionSource<(int Type, byte[] Rlp)> _response = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        internal SnapSession(IContainer services, int version)
+        {
+            _serializer = services.Resolve<IMessageSerializationService>();
+            using PrivateKey key = new("0x0000000000000000000000000000000000000000000000000000000000000001");
+            _session.Node.Returns(new Node(key.PublicKey, "127.0.0.1", 30303));
+            _session.When(session => session.InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>()))
+                .Do(call => _response.TrySetException(new InvalidOperationException($"Unexpected disconnect: {call[0]} {call[1]}")));
+            IProtocolHandler? created = null;
+            foreach (IProtocolHandlerFactory factory in services.Resolve<IProtocolHandlerFactory[]>())
+            {
+                if (factory.ProtocolCode == Protocol.Snap && factory.TryCreate(_session, version, out created)) break;
+            }
+            Assert.That(created, Is.AssignableTo<IZeroProtocolHandler>());
+            _handler = (IZeroProtocolHandler)created!;
+            _session.When(session => session.DeliverMessage(Arg.Any<P2PMessage>())).Do(call =>
+            {
+                using P2PMessage message = call.Arg<P2PMessage>();
+                if (message is GetByteCodesMessage outgoing)
+                {
+                    using ByteCodesMessage reply = new(new ByteArrayListAdapter(new ArrayPoolList<byte[]>(1) { new byte[] { 0x60, 0x00 } }))
+                    {
+                        RequestId = outgoing.RequestId,
+                    };
+                    Deliver(reply);
+                }
+                else
+                {
+                    IByteBuffer buffer = Serialize(message);
+                    try
+                    {
+                        buffer.ReadByte();
+                        byte[] rlp = new byte[buffer.ReadableBytes];
+                        buffer.ReadBytes(rlp);
+                        _response.TrySetResult((message.PacketType, rlp));
+                    }
+                    finally { buffer.Release(); }
+                }
+            });
+        }
+
+        internal async Task AssertUnavailableThenQueryAsync(P2PMessage request, byte[] expected)
+        {
+            Deliver(request);
+            (int type, byte[] rlp) = await _response.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(type, Is.EqualTo(request.PacketType + 1));
+                Assert.That(rlp, Is.EqualTo(expected));
+            }
+            using IByteArrayList code = await ((ISnapSyncPeer)_handler)
+                .GetByteCodes([Keccak.Compute("requested code").ValueHash256], CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.That(code.Count, Is.EqualTo(1));
+            Assert.That(code[0].ToArray(), Is.EqualTo(new byte[] { 0x60, 0x00 }));
+            _session.DidNotReceive().InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
+        }
+
+        private void Deliver(P2PMessage message)
+        {
+            IByteBuffer buffer = Serialize(message);
+            buffer.ReadByte();
+            ZeroPacket packet = new(buffer) { PacketType = (byte)message.PacketType };
+            try { _handler.HandleMessage(packet); }
+            finally { ReferenceCountUtil.Release(packet); }
+        }
+
+        public void Dispose() => _handler.Dispose();
+
+        private IByteBuffer Serialize(P2PMessage message) => message switch
+        {
+            GetAccountRangeMessage value => _serializer.ZeroSerialize(value),
+            AccountRangeMessage value => _serializer.ZeroSerialize(value),
+            GetStorageRangeMessage value => _serializer.ZeroSerialize(value),
+            StorageRangeMessage value => _serializer.ZeroSerialize(value),
+            GetByteCodesMessage value => _serializer.ZeroSerialize(value),
+            ByteCodesMessage value => _serializer.ZeroSerialize(value),
+            GetTrieNodesMessage value => _serializer.ZeroSerialize(value),
+            TrieNodesMessage value => _serializer.ZeroSerialize(value),
+            GetBlockAccessListsMessage value => _serializer.ZeroSerialize(value),
+            BlockAccessListsMessage value => _serializer.ZeroSerialize(value),
+            _ => throw new ArgumentException("Unexpected SNAP test message.", nameof(message)),
+        };
+    }
+
     [Test]
     public async Task Execution_port_configures_both_tcp_and_discovery([Values(1, 30317, 65535)] int port)
     {

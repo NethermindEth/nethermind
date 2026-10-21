@@ -5,6 +5,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
   <ItemGroup>
+    <PackageReference Include="NSubstitute" />
     <Using Include="NUnit.Framework" />
     <ProjectReference Include="../Nethermind.LightClient/Nethermind.LightClient.csproj" />
     <Content Include="TestData/**/*" CopyToOutputDirectory="PreserveNewest" />

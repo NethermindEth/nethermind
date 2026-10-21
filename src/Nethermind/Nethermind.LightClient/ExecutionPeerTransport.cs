@@ -118,7 +118,7 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
             IsPeersPersistenceOn = false,
             ClientIdMatcher = "(?i)^(?!.*enrscout)",
         };
-        SyncConfig sync = new() { SnapSync = true, FastSync = false };
+        SyncConfig sync = new() { SnapSync = true, FastSync = false, SnapServingEnabled = false };
         DiscoveryConfig discovery = new() { DiscoveryVersion = DiscoveryVersion.V5 };
         ConfigProvider config = new(init, net, sync, discovery, new FlatDbConfig { Enabled = false });
         ContainerBuilder builder = new();
@@ -882,7 +882,7 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
             builder.RegisterInstance(new MemDbFactory()).As<IDbFactory>();
             builder.RegisterInstance(transactionRelay).As<ITxPool>();
             builder.RegisterInstance(LightTxGossipPolicy.Instance).As<ITxGossipPolicySource>();
-            builder.RegisterInstance(NoopSnapServer.Instance).As<ISnapServer>();
+            builder.RegisterInstance(new LightSnapServer()).As<ISnapServer>();
             builder.RegisterInstance(syncServer).As<ISyncServer>();
             builder.RegisterInstance(new LightGossipPolicy()).As<IGossipPolicy>();
             builder.RegisterType<LightPeerRequestScheduler>().As<IBackgroundTaskScheduler>().SingleInstance();
@@ -893,6 +893,46 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
                 .WithAttributeFiltering()
                 .SingleInstance();
         }
+    }
+
+    /// <summary>Returns unavailable SNAP data while retaining sessions used for downloads.</summary>
+    private sealed class LightSnapServer : ISnapServer
+    {
+        public bool CanServe => true;
+
+        public IByteArrayList GetTrieNodes(IReadOnlyList<PathGroup> pathSet, Hash256 rootHash, long byteLimit,
+            CancellationToken cancellationToken) => EmptyByteArrayList.Instance;
+
+        public IByteArrayList GetByteCodes(IReadOnlyList<ValueHash256> requestedHashes, long byteLimit,
+            CancellationToken cancellationToken) => EmptyByteArrayList.Instance;
+
+        public IByteArrayList GetBlockAccessLists(IReadOnlyList<ValueHash256> blockHashes, long byteLimit,
+            CancellationToken cancellationToken)
+        {
+            int count = (int)Math.Min(blockHashes.Count, Math.Clamp(byteLimit, 0L, ISnapStateServer.HardResponseByteLimit));
+            if (count == 0 || cancellationToken.IsCancellationRequested) return EmptyByteArrayList.Instance;
+
+            ArrayPoolList<byte[]> entries = new(count);
+            try
+            {
+                for (int i = 0; i < count && !cancellationToken.IsCancellationRequested; i++) entries.Add([]);
+                return new ByteArrayListAdapter(entries);
+            }
+            catch
+            {
+                entries.Dispose();
+                throw;
+            }
+        }
+
+        public (IOwnedReadOnlyList<PathWithAccount>, IByteArrayList) GetAccountRanges(Hash256 rootHash,
+            in ValueHash256 startingHash, in ValueHash256? limitHash, long byteLimit,
+            CancellationToken cancellationToken) => (ArrayPoolList<PathWithAccount>.Empty(), EmptyByteArrayList.Instance);
+
+        public (IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>>, IByteArrayList) GetStorageRanges(
+            Hash256 rootHash, IReadOnlyList<PathWithAccount> accounts, in ValueHash256? startingHash,
+            in ValueHash256? limitHash, long byteLimit, CancellationToken cancellationToken) =>
+            (ArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>>.Empty(), EmptyByteArrayList.Instance);
     }
 
     private sealed class LightCapabilities(bool snap2) : IP2PCapabilityResolver
