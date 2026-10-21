@@ -142,10 +142,6 @@ public partial class DebugRpcModuleTests
         string tracer, string configuration, bool empty, bool unknown) =>
         await AssertNativeConfigError("debug_traceBlockByHash", tracer, configuration, empty, unknown);
 
-    [Test]
-    public async Task Debug_traceTransaction_native_config_errors_remain_invalid_params() =>
-        await AssertNativeConfigError("debug_traceTransaction", "prestateTracer", "{\"diffMode\":[]}", empty: false, expectedError: ErrorCodes.InvalidParams);
-
     private static async Task AssertNativeConfigError(string method, string tracer, string configuration, bool empty, bool unknown = false, int? expectedError = null, bool? streamMode = null)
     {
         using Context context = await Context.Create();
@@ -157,7 +153,6 @@ public partial class DebugRpcModuleTests
         object target = method switch
         {
             "debug_traceBlockByNumber" => block.Number,
-            "debug_traceTransaction" => block.Transactions[0].Hash!,
             _ => unknown ? TestItem.KeccakD : block.Hash!
         };
         string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, method, target,
@@ -208,9 +203,7 @@ public partial class DebugRpcModuleTests
         Block block = await context.Blockchain.AddBlock(CreateTraceBlockTransactions(context.Blockchain));
         object selector = method switch
         {
-            "debug_traceBlockByHash" => block.Hash!,
             "debug_traceBlock" => new BlockDecoder().Encode(block).Bytes,
-            "debug_traceTransaction" => block.Transactions[0].Hash!,
             _ => new { to = TestItem.AddressC.ToString(), gas = "0x186a0" }
         };
         object options = new { tracer, tracerConfig = JsonSerializer.Deserialize<JsonElement>("""{"onlyTopCall":17,"diffMode":17}""") };

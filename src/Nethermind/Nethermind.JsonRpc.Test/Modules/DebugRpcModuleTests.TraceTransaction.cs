@@ -77,7 +77,7 @@ public partial class DebugRpcModuleTests
     [NonParallelizable]
     public async Task Debug_traceTransaction_native_host_errors_keep_existing_classification(string failureKind, int expectedError)
     {
-        string tracer = nameof(Debug_traceTransaction_native_host_errors_keep_existing_classification) + failureKind;
+        string tracer = $"{nameof(Debug_traceTransaction_native_host_errors_keep_existing_classification)}-{failureKind}-{Guid.NewGuid():N}";
         Exception failure = failureKind switch
         {
             "json" => new JsonException("host construction failure"),
