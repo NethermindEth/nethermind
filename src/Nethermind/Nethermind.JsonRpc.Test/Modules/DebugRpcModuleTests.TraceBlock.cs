@@ -373,11 +373,8 @@ public partial class DebugRpcModuleTests
         }
     }
 
-    [TestCase("17")]
-    [TestCase("[]")]
-    [TestCase("\"bad\"")]
-    [TestCase("true")]
-    public async Task Debug_traceBlockByNumber_rejects_non_object_options(string optionsJson)
+    [Test]
+    public async Task Debug_traceBlockByNumber_rejects_non_object_options([Values("17", "[]", "\"bad\"", "true")] string optionsJson)
     {
         using Context context = await Context.Create();
         using JsonDocument options = JsonDocument.Parse(optionsJson);
@@ -406,9 +403,8 @@ public partial class DebugRpcModuleTests
         Assert.That(JToken.DeepEquals(JToken.Parse(actual), JToken.Parse(expected)), Is.True, actual);
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public async Task Debug_traceBlockByNumber_streaming_matches_buffered_output(bool enableMemory)
+    [Test]
+    public async Task Debug_traceBlockByNumber_streaming_matches_buffered_output([Values] bool enableMemory)
     {
         using Context context = await Context.Create();
         Block block = await context.Blockchain.AddBlock(CreateTraceBlockTransactions(context.Blockchain));

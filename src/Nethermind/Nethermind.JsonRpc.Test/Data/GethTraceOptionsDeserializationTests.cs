@@ -141,11 +141,8 @@ public class GethTraceOptionsDeserializationTests
         }
     }
 
-    [TestCase("17")]
-    [TestCase("[]")]
-    [TestCase("\"bad\"")]
-    [TestCase("true")]
-    public void ByNumber_options_reject_non_object_roots_with_json_exception(string json) =>
+    [Test]
+    public void ByNumber_options_reject_non_object_roots_with_json_exception([Values("17", "[]", "\"bad\"", "true")] string json) =>
         Assert.Throws<JsonException>(() => JsonSerializer.Deserialize<GethTraceOptions>(json, CreateByNumberSerializerOptions()));
 
     [Test]
