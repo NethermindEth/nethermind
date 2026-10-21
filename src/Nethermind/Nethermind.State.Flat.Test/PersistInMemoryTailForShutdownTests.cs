@@ -15,7 +15,6 @@ using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.IO;
@@ -130,7 +129,7 @@ public class PersistInMemoryTailForShutdownTests
         {
             Assert.That(converted, Is.Zero);
             Assert.That(session.Repository.HasBasePersistedSnapshot(State(1)), Is.False);
-            if (reason != "cancelled") Assert.That(session.Barrier.ReceivedCalls(), Is.Empty, "nothing to persist, nothing to flush");
+            Assert.That(session.Barrier.ReceivedCalls(), Is.Empty, "nothing to persist, nothing to flush");
         }
     }
 
@@ -325,22 +324,24 @@ public class PersistInMemoryTailForShutdownTests
     private sealed class Session : IDisposable
     {
         private readonly FlatTestContainer _tier;
-        private readonly ResourcePool _pool;
-        public PersistenceManager Manager { get; }
+        private readonly IResourcePool _pool;
+        public IPersistenceManager Manager { get; }
         public SnapshotRepository Repository => _tier.Repository;
         public IPersistedSnapshotLoader Loader => _tier.Loader;
         public IStatePersistenceBarrier Barrier { get; } = Substitute.For<IStatePersistenceBarrier>();
 
         public Session(FlatDbConfig config, string path, IDb catalog)
         {
-            _tier = new FlatTestContainer(config, baseDbPath: path, catalogDb: catalog);
-            _pool = new ResourcePool(config);
             IPersistence persistence = Substitute.For<IPersistence>();
             IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
             reader.CurrentState.Returns(Block0);
             persistence.CreateReader().Returns(reader);
-            Manager = new PersistenceManager(config, _tier.Resolve<ICompactionSchedule>(), UnavailableStateHeaderProvider.Instance, persistence,
-                Repository, Barrier, LimboLogs.Instance, Substitute.For<IPersistedSnapshotCompactor>(), _tier.Loader, Substitute.For<IProcessExitSource>());
+            _tier = new FlatTestContainer(config, baseDbPath: path, catalogDb: catalog, configure: builder => builder
+                .AddSingleton(persistence)
+                .AddSingleton(Barrier)
+                .AddSingleton(Substitute.For<IPersistedSnapshotCompactor>()));
+            _pool = _tier.Resolve<IResourcePool>();
+            Manager = _tier.Resolve<IPersistenceManager>();
         }
 
         public void AddChain(StateId from, ulong count)
@@ -364,10 +365,6 @@ public class PersistInMemoryTailForShutdownTests
 
         public Snapshot? Lease(StateId state) => Repository.TryLeaseInMemoryState(state, SnapshotTier.InMemoryBase, out Snapshot? snapshot) ? snapshot : null;
 
-        public void Dispose()
-        {
-            Manager.Dispose();
-            _tier.Dispose();
-        }
+        public void Dispose() => _tier.Dispose();
     }
 }

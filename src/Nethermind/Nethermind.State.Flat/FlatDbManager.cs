@@ -541,7 +541,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
     /// <summary>How long a clean shutdown may spend converting the in-memory tail.</summary>
     /// <remarks>
     /// Spent before the databases close, so a supervisor's stop grace period (Docker's default is 10 s) should leave
-    /// room for it. Each converted block is durable on its own, so being killed midway only shortens what is kept.
+    /// room for it. The budget is checked between blocks; an in-flight flush or conversion may run past it.
     /// </remarks>
     internal static readonly TimeSpan ShutdownTailBudget = TimeSpan.FromSeconds(10);
 

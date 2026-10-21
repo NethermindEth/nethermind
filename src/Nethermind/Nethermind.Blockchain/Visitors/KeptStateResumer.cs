@@ -21,11 +21,13 @@ namespace Nethermind.Blockchain.Visitors;
 /// </remarks>
 public static class KeptStateResumer
 {
+    /// <summary>Resumes retained canonical state before startup block replay begins.</summary>
     /// <returns>The number of blocks the head moved over.</returns>
     public static ulong Resume(IBlockTree blockTree, IStateReader stateReader, ILogManager logManager)
     {
         if (blockTree.Head?.Header is not { } head) return 0;
 
+        // Oldest-first persistence and this contiguous walk keep every retained snapshot reachable from the disk state.
         BlockHeader? last = null;
         for (ulong number = head.Number + 1; number <= blockTree.BestKnownNumber; number++)
         {

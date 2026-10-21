@@ -572,7 +572,7 @@ public class PersistenceManager(
     /// </remarks>
     public int PersistInMemoryTailForShutdown(CancellationToken cancellationToken)
     {
-        if (!_enableLongFinality) return 0;
+        if (!_enableLongFinality || cancellationToken.IsCancellationRequested) return 0;
 
         using SemaphoreSlimExtensions.Scope _ = _persistenceLock.EnterScope();
         if (snapshotRepository.GetLastCommittedStateId() is not { } head) return 0;
@@ -584,13 +584,14 @@ public class PersistenceManager(
             StateId cursor = head;
             while (!IsOnDisk(cursor, currentPersistedState))
             {
+                if (cancellationToken.IsCancellationRequested) return 0;
                 // A gap means the head's state cannot be reached from disk, so converting part of it would not help.
                 if (!snapshotRepository.TryLeaseInMemoryState(cursor, SnapshotTier.InMemoryBase, out Snapshot? snapshot)) return 0;
                 tail.Add(snapshot);
                 cursor = snapshot.From;
             }
 
-            if (tail.Count == 0) return 0;
+            if (tail.Count == 0 || cancellationToken.IsCancellationRequested) return 0;
 
             persistenceBarrier.FlushDeferred();
 
