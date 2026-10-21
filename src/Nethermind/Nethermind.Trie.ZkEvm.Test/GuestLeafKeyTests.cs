@@ -86,15 +86,22 @@ public class GuestLeafKeyTests
         Assert.That(tree.Get(RawKey(0xFF)).IsEmpty, Is.True);
     }
 
-    [Test]
-    public void Sparse_branch_resolves_each_child_from_its_rlp([Values] bool longList)
+    [TestCase(1, 4, TestName = "Short list")]
+    [TestCase(5, 4, TestName = "0xf8 list")]
+    // 0x180 bytes long, so the second length byte reads as an empty item to a header skip one byte short.
+    [TestCase(12, 16, TestName = "0xf9 list")]
+    public void Sparse_branch_resolves_each_child_from_its_rlp(int lastSlots, int embeddedLength)
     {
         const int embeddedIndex = 13;
-        byte[] embedded = [0xc2, 0x20, 0x01];
+        byte[] embedded = new byte[embeddedLength];
+        embedded.AsSpan().Fill(0x80);
+        embedded[0] = (byte)(0xc0 + embeddedLength - 1);
+        embedded[1] = 0x20;
+        embedded[2] = (byte)(0x80 + embeddedLength - 3);
         byte[]?[] children = new byte[TrieNode.BranchesCount][];
         for (int i = 0; i < children.Length; i++)
         {
-            if (!(longList ? i % 3 == 0 : i == 9)) continue;
+            if (i < children.Length - lastSlots) continue;
             // Empty-item bytes inside the hash, so a skip that lands in it reads a wrong child rather than falling back.
             byte[] hash = new byte[Hash256.Size];
             hash.AsSpan().Fill(0x80);
@@ -132,7 +139,10 @@ public class GuestLeafKeyTests
         }
 
         content.Add(0x80);
-        return content.Count < 56 ? [(byte)(0xc0 + content.Count), .. content] : [0xf8, (byte)content.Count, .. content];
+        int length = content.Count;
+        return length < 56 ? [(byte)(0xc0 + length), .. content]
+            : length < 256 ? [0xf8, (byte)length, .. content]
+            : [0xf9, (byte)(length >> 8), (byte)length, .. content];
     }
 
     /// <summary>A sealed leaf decoded from RLP, as the guest reads one from its witness.</summary>
