@@ -270,7 +270,7 @@ public class BlockAccessListValidationIndexTests
             foreach (BalanceChange bc in acc.BalanceChanges)
                 GetSlice(slicesByIndex, bc.Index).AddBalanceChange(acc.Address, before: bc.Value + UInt256.One, after: bc.Value);
             foreach (NonceChange nc in acc.NonceChanges)
-                GetSlice(slicesByIndex, nc.Index).AddNonceChange(acc.Address, nc.Value);
+                GetSlice(slicesByIndex, nc.Index).AddNonceChange(acc.Address, 0, nc.Value);
             foreach (CodeChange cc in acc.CodeChanges)
             {
                 if (cc.IsAdopted) GetSlice(slicesByIndex, cc.Index).AddAdoptedCodeChange(acc.Address, before: Array.Empty<byte>(), after: cc.Code, cc.CodeHash);

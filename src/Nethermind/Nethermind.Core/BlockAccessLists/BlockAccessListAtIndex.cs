@@ -173,7 +173,7 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
         AddNonceChange(address, after);
     }
 
-    public void AddNonceChange(Address address, ulong newNonce)
+    private void AddNonceChange(Address address, ulong newNonce)
     {
         if (newNonce == 0)
         {
