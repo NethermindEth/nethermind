@@ -50,6 +50,7 @@ public class GethGenesisParityTests
     private static readonly HashSet<string> ForksWithoutBlobScheduleKey =
     [
         // Single-EIP prototypes riding on Amsterdam's blob parameters; devnets key blob changes by the fork they run on.
+        nameof(Eip4758Prototype),
         nameof(Eip8141Prototype),
         nameof(Eip8250Prototype),
         nameof(Eip8272Prototype),
