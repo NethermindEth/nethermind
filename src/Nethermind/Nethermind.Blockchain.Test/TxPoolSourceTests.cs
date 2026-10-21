@@ -442,42 +442,74 @@ public class TxPoolSourceTests
     [Test]
     public void GetTransactions_selects_max_fee_frame_tx_only_when_it_covers_the_required_max_fee([Values] bool blobs, [Values] bool coversBudget)
     {
-        OverridableReleaseSpec spec = new(Bogota.Instance) { IsEip8141Enabled = true, IsEip7999Enabled = true };
-        TestSingleReleaseSpecProvider specProvider = new(spec);
-        TransactionComparerProvider transactionComparerProvider = new(specProvider, Build.A.BlockTree().TestObject);
-        BlockHeader parent = Build.A.BlockHeader.WithNumber(0).WithExcessBlobGas(0).WithBaseFee(1.GWei).TestObject;
-        BlockHeader targetBlock = Build.A.BlockHeader.WithNumber(1).TestObject;
-        UInt256 baseFee = BaseFeeCalculator.Calculate(parent, spec);
-        Assert.That(BlobGasCalculator.TryCalculateFeePerBlobGas(0, spec.BlobBaseFeeUpdateFraction, out UInt256 feePerBlobGas), Is.True);
-
-        Transaction tx = BuildFrameBlobTxWithSidecar(senderByte: 1, blobCount: blobs ? 1 : 0);
-        if (!blobs) tx.NetworkWrapper = null;
-        tx.GasLimit = FrameTxValidation.TotalGasLimit(tx.Frames);
-        tx.MaxFeePerBlobGas = null;
-        tx.MaxFee = 0;
-        Assert.That(FrameTxValidation.TryCalculateGasBudget(tx, spec, out _, out _, out ulong maxGas), Is.True);
-        UInt256 requiredMaxFee = (UInt256)maxGas * baseFee + (UInt256)tx.GetBlobGas() * feePerBlobGas;
-        UInt256 maxFee = coversBudget ? requiredMaxFee : requiredMaxFee - 1;
-        tx.MaxFee = maxFee;
-        tx.DecodedMaxFeePerGas = FrameTxValidation.ImpliedMaxFeePerGas(maxFee, tx.GasLimit);
-        tx.Hash = tx.CalculateHash();
-
+        Transaction tx = BuildMaxFeeFrameTx(blobs, coversBudget, out UInt256 baseFee);
         ITxPool txPool = Substitute.For<ITxPool>();
         Dictionary<AddressAsKey, Transaction[]> pending = new() { { tx.SenderAddress!, [tx] } };
         SetPendingForProduction(txPool, transactions: blobs ? null : pending, blobTransactions: blobs ? pending : null);
-        txPool.SupportsBlobs.Returns(true);
-        ITxFilterPipeline txFilterPipeline = Substitute.For<ITxFilterPipeline>();
-        txFilterPipeline.Execute(Arg.Any<Transaction>(), Arg.Any<BlockHeader>(), Arg.Any<IReleaseSpec>()).Returns(true);
-        TxPoolTxSource txSource = new(txPool, specProvider, transactionComparerProvider, LimboLogs.Instance,
-            txFilterPipeline, new BlocksConfig { SecondsPerSlot = 12 }, CreateSpecChangeTxValidator(specProvider));
 
-        Transaction[] result = txSource.GetTransactions(parent, targetBlock, long.MaxValue).ToArray();
+        Transaction[] result = GetMaxFeeFrameTxSelection(txPool);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(tx.CanPayBaseFee(baseFee), Is.True, "the per-gas view clears the base fee either way");
             Assert.That(result.Contains(tx), Is.EqualTo(coversBudget));
         }
+    }
+
+    // A revalidated pool hands block building frameless blob records, which bound max_gas only from below.
+    [Test]
+    public void GetTransactions_checks_the_required_max_fee_of_a_revalidated_light_blob_record([Values] bool coversBudget)
+    {
+        Transaction tx = BuildMaxFeeFrameTx(blobs: true, coversBudget, out _);
+        ITxPool txPool = Substitute.For<ITxPool>();
+        SetPendingForProduction(txPool,
+            blobTransactions: new Dictionary<AddressAsKey, Transaction[]> { { tx.SenderAddress!, [new LightTransaction(tx)] } },
+            isRevalidated: true);
+        txPool.TryGetPendingBlobTransaction(tx.Hash!, out Arg.Any<Transaction?>())
+            .Returns(callInfo =>
+            {
+                callInfo[1] = tx;
+                return true;
+            });
+
+        Transaction[] result = GetMaxFeeFrameTxSelection(txPool);
+
+        Assert.That(result.Contains(tx), Is.EqualTo(coversBudget));
+    }
+
+    private static readonly OverridableReleaseSpec BogotaWithMaxFee = new(Bogota.Instance) { IsEip8141Enabled = true, IsEip7999Enabled = true };
+    private static readonly BlockHeader MaxFeeParent = Build.A.BlockHeader.WithNumber(0).WithExcessBlobGas(0).WithBaseFee(1.GWei).TestObject;
+
+    /// <summary>A max_fee frame tx one wei short of <c>required_max_fee</c> at <see cref="MaxFeeParent"/>'s child, or exactly at it.</summary>
+    private static Transaction BuildMaxFeeFrameTx(bool blobs, bool coversBudget, out UInt256 baseFee)
+    {
+        baseFee = BaseFeeCalculator.Calculate(MaxFeeParent, BogotaWithMaxFee);
+        BlobGasCalculator.TryCalculateFeePerBlobGas(0, BogotaWithMaxFee.BlobBaseFeeUpdateFraction, out UInt256 feePerBlobGas);
+
+        Transaction tx = BuildFrameBlobTxWithSidecar(senderByte: 1, blobCount: blobs ? 1 : 0);
+        if (!blobs) tx.NetworkWrapper = null;
+        tx.GasLimit = FrameTxValidation.TotalGasLimit(tx.Frames);
+        tx.MaxFeePerBlobGas = null;
+        tx.MaxFee = 0;
+        FrameTxValidation.TryCalculateGasBudget(tx, BogotaWithMaxFee, out _, out _, out ulong maxGas);
+        UInt256 requiredMaxFee = (UInt256)maxGas * baseFee + (UInt256)tx.GetBlobGas() * feePerBlobGas;
+        UInt256 maxFee = coversBudget ? requiredMaxFee : requiredMaxFee - 1;
+        tx.MaxFee = maxFee;
+        tx.DecodedMaxFeePerGas = FrameTxValidation.ImpliedMaxFeePerGas(maxFee, tx.GasLimit);
+        tx.Hash = tx.CalculateHash();
+        return tx;
+    }
+
+    private static Transaction[] GetMaxFeeFrameTxSelection(ITxPool txPool)
+    {
+        TestSingleReleaseSpecProvider specProvider = new(BogotaWithMaxFee);
+        txPool.SupportsBlobs.Returns(true);
+        ITxFilterPipeline txFilterPipeline = Substitute.For<ITxFilterPipeline>();
+        txFilterPipeline.Execute(Arg.Any<Transaction>(), Arg.Any<BlockHeader>(), Arg.Any<IReleaseSpec>()).Returns(true);
+        TxPoolTxSource txSource = new(txPool, specProvider, new TransactionComparerProvider(specProvider, Build.A.BlockTree().TestObject),
+            LimboLogs.Instance, txFilterPipeline, new BlocksConfig { SecondsPerSlot = 12 }, CreateSpecChangeTxValidator(specProvider));
+
+        return txSource.GetTransactions(MaxFeeParent, Build.A.BlockHeader.WithNumber(1).TestObject, long.MaxValue).ToArray();
     }
 
     [Test]

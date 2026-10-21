@@ -205,9 +205,11 @@ namespace Nethermind.Consensus.Producers
                         continue;
                     }
 
-                    if (validateForkSensitiveState)
+                    // A frameless record only bounds max_gas from below, so a max_fee is checked exactly on the full tx.
+                    if (validateForkSensitiveState || (blobTx.MaxFee is not null && blobTx.Frames is null))
                     {
-                        if (blobTx is LightTransaction lightTransaction
+                        if (validateForkSensitiveState
+                            && blobTx is LightTransaction lightTransaction
                             && lightTxValidator is not null
                             && !lightTxValidator.IsWellFormedLight(lightTransaction, spec))
                         {
@@ -215,7 +217,8 @@ namespace Nethermind.Consensus.Producers
                         }
 
                         if (!TryResolveBlob(blobTx, spec, out Transaction? fullBlobTx)
-                            || !IsForkSensitiveStateValid(fullBlobTx, spec))
+                            || (validateForkSensitiveState && !IsForkSensitiveStateValid(fullBlobTx, spec))
+                            || !FrameTxValidation.CoversRequiredMaxFee(fullBlobTx, spec, baseFee, feePerBlobGas))
                         {
                             rejectedBlobCount += txBlobCount;
                             if (rejectedBlobCount > maxRejectedBlobsToConsider)
