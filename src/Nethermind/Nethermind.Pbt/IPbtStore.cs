@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Diagnostics.CodeAnalysis;
+using System.Buffers;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Memory;
 using Nethermind.Pbt.NodeBuffer;
@@ -11,28 +11,13 @@ namespace Nethermind.Pbt;
 /// <summary>Destination of complete node-group replacements; stores accept them only through an <see cref="IPbtConcurrentWriter"/>.</summary>
 public interface IPbtNodeGroupSink
 {
-    /// <summary>Replaces or deletes the complete group identified by <paramref name="groupKey"/>.</summary>
-    /// <remarks>
-    /// The path is borrowed only for this call; retained identities must be immutable snapshots.
-    /// A null payload deletes the group. A non-null payload is borrowed for the call; the caller retains
-    /// its reference and must release it. Implementations retaining the immutable payload acquire their
-    /// own reference before replacing the previous payload. Invalid keys or payloads leave the group unchanged.
-    /// A null payload can delete an empty physical group while its logical subtree survives compression.
-    /// </remarks>
-    void SetNodeGroup(scoped in PbtTraversalPath groupKey, RefCountingMemory? payload);
-
     /// <summary>Reserves contiguous, zero-filled bytes for group records, registered with the buffer when the batch is disposed.</summary>
-    /// <returns>False for a payload-only sink, which receives <see cref="SetNodeGroup"/> instead.</returns>
     /// <remarks>
     /// The caller fills the batch with complete records before publishing their pointers to a parent. The store keeps the
-    /// records alive through fold completion and publication. A deletion writes no record and goes through <see cref="SetNodeGroup"/>.
+    /// records alive through fold completion and publication. A removed group writes no record: it is simply no longer linked.
     /// </remarks>
     /// <param name="alignedTotalLength">The total length of the records, a multiple of <see cref="PbtGroupRecordCodec.RecordAlignment"/>.</param>
-    bool TryStartWriteBatch(int alignedTotalLength, [NotNullWhen(true)] out IPbtGroupRecordWriteBatch? batch)
-    {
-        batch = null;
-        return false;
-    }
+    IPbtGroupRecordWriteBatch StartWriteBatch(int alignedTotalLength);
 }
 
 /// <summary>Backing store used by <see cref="TrieUpdater"/> for canonical complete-key mutations.</summary>
@@ -50,6 +35,7 @@ public interface IPbtStore
     }
 
     /// <summary>Marks a successful root fold, allowing stores to publish its handed-off writes on disposal.</summary>
+    /// <remarks>A fold without changes is not completed, as it writes nothing; a completed fold that wrote no root group emptied the tree.</remarks>
     void CompleteFold() { }
 
     /// <summary>Gets a caller-owned lease for the complete group identified by <paramref name="groupKey"/>.</summary>
@@ -74,15 +60,47 @@ public interface IPbtStore
 /// <summary>A single-worker writer created by <see cref="IPbtStore.CreateWriter"/>; disposing it hands its writes to the store.</summary>
 public interface IPbtConcurrentWriter : IPbtNodeGroupSink, IDisposable;
 
-/// <summary>Forwards every write immediately, for stores whose own sink accepts concurrent writes.</summary>
-public sealed class PbtPassThroughWriter(IPbtNodeGroupSink store) : IPbtConcurrentWriter
+/// <summary>Hands every record to <paramref name="onRecord"/> as soon as its batch is disposed, for stores that keep groups by path.</summary>
+/// <remarks>
+/// Each batch is pooled memory that the record borrows only for the callback. Its records link no pointer, so such a store
+/// serves the fold's reads through <see cref="IPbtStore.GetNodeGroup"/>.
+/// </remarks>
+public sealed class PbtRecordCallbackWriter(Action<PbtGroupRecord> onRecord) : IPbtConcurrentWriter
 {
     /// <inheritdoc/>
-    public bool TryStartWriteBatch(int alignedTotalLength, [NotNullWhen(true)] out IPbtGroupRecordWriteBatch? batch) =>
-        store.TryStartWriteBatch(alignedTotalLength, out batch);
-
-    public void SetNodeGroup(scoped in PbtTraversalPath groupKey, RefCountingMemory? payload) =>
-        store.SetNodeGroup(groupKey, payload);
+    public IPbtGroupRecordWriteBatch StartWriteBatch(int alignedTotalLength) => new WriteBatch(onRecord, alignedTotalLength);
 
     public void Dispose() { }
+
+    private sealed class WriteBatch : IPbtGroupRecordWriteBatch
+    {
+        private readonly Action<PbtGroupRecord> _onRecord;
+        private readonly byte[] _bytes;
+        private readonly int _length;
+
+        public WriteBatch(Action<PbtGroupRecord> onRecord, int length)
+        {
+            _onRecord = onRecord;
+            _length = length;
+            _bytes = ArrayPool<byte>.Shared.Rent(length);
+            Bytes.Clear();
+        }
+
+        public ulong BasePointer => 0;
+
+        public Span<byte> Bytes => _bytes.AsSpan(0, _length);
+
+        public void Dispose()
+        {
+            try
+            {
+                for (int offset = 0; offset < _length; offset += PbtGroupRecordCodec.AlignedLength(PbtGroupRecordCodec.Length(_bytes.AsSpan(offset))))
+                    _onRecord(new PbtGroupRecord(_bytes.AsMemory(0, _length), offset));
+            }
+            finally
+            {
+                ArrayPool<byte>.Shared.Return(_bytes);
+            }
+        }
+    }
 }

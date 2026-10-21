@@ -132,14 +132,15 @@ public sealed class PbtReadOnlySnapshotBundle(
         }
     }
 
-    /// <summary>Returns a caller-owned group lease, or null when a persisted snapshot has no group there, from the newest in-memory tree or the persisted snapshots.</summary>
+    /// <summary>Returns a caller-owned group lease, or null when a persisted snapshot has no group there, from the persisted snapshots.</summary>
+    /// <remarks>In-memory snapshots are not probed: their groups are in the group record buffer, which the bundle walks first.</remarks>
     /// <returns>False when neither resolves the group, which the persistence reader must then provide.</returns>
     public bool TryGetSnapshotNodeGroup(PbtStorageNodePath groupKey, out RefCountingMemory? payload)
     {
         GuardDispose();
         long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
         payload = null;
-        bool found = snapshots.Count > 0 && snapshots[^1].Content.TryFindNodeGroup(snapshots[^1].RootGroupPointer, groupKey, out payload);
+        bool found = false;
         for (int index = persistedSnapshots.Count - 1; !found && index >= 0; index--) found = persistedSnapshots[index].TryGetNodeGroup(groupKey, out payload);
         if (!found) return false;
         if (recordDetailedMetrics)

@@ -3,20 +3,21 @@
 
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Memory;
+using Nethermind.Pbt.NodeBuffer;
 
 namespace Nethermind.Pbt;
 
 /// <summary>
 /// Node-group store for folding strictly ascending leaves in windows from an empty tree; it retains only the rightmost
-/// group at each depth and writes every group through to <paramref name="writeThrough"/>.
+/// group at each depth and hands every group record to <paramref name="writeThrough"/>.
 /// </summary>
 /// <remarks>
 /// A key above every folded key reaches an existing group only when that group's path prefixes the largest folded key,
 /// so the rightmost group at each depth is the only one a later window can read, and every other group is only written through.
 /// Zones and buckets fold concurrently, so a group superseded during a fold stays readable until the fold ends.
 /// </remarks>
-/// <param name="writeThrough">Receives every group the fold writes, one call at a time under this store's lock.</param>
-public sealed class PbtRightmostGroupStore(IPbtNodeGroupSink writeThrough) : IPbtStore, IPbtNodeGroupSink, IDisposable
+/// <param name="writeThrough">Receives every group record the fold writes, borrowed for the call, one call at a time under this store's lock.</param>
+public sealed class PbtRightmostGroupStore(Action<PbtGroupRecord> writeThrough) : IPbtStore, IDisposable
 {
     private readonly Lock _lock = new();
     private readonly Group[] _edge = new Group[PbtVariableTreeKey.MaxLength * 8 + 1];
@@ -36,23 +37,24 @@ public sealed class PbtRightmostGroupStore(IPbtNodeGroupSink writeThrough) : IPb
         }
     }
 
-    public void SetNodeGroup(scoped in PbtTraversalPath groupKey, RefCountingMemory? payload)
+    public IPbtConcurrentWriter CreateWriter() => new PbtRecordCallbackWriter(Retain);
+
+    private void Retain(PbtGroupRecord record)
     {
-        PbtStorageNodePath path = groupKey.ToPath<PbtStorageNodePath>();
+        PbtStorageNodePath path = record.Path;
         lock (_lock)
         {
-            writeThrough.SetNodeGroup(groupKey, payload);
-            ref Group edge = ref _edge[groupKey.BitDepth];
+            writeThrough(record);
+            ref Group edge = ref _edge[path.BitDepth];
             if (edge.Payload is not null && path.CompareTo(edge.Path) < 0) return;
-            payload?.AcquireLease();
-            ref Group superseded = ref _superseded[groupKey.BitDepth];
+            RefCountingMemory payload = PooledRefCountingMemoryProvider.Instance.Rent(record.Payload.Length);
+            record.Payload.Span.CopyTo(payload.GetSpan());
+            ref Group superseded = ref _superseded[path.BitDepth];
             if (superseded.Payload is null) superseded = edge;
             else ((IDisposable?)edge.Payload)?.Dispose();
             edge = new(path, payload);
         }
     }
-
-    public IPbtConcurrentWriter CreateWriter() => new PbtPassThroughWriter(this);
 
     /// <summary>Releases the groups the last fold superseded; call once each fold ends.</summary>
     public void ReleaseSuperseded()

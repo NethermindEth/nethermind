@@ -9,6 +9,7 @@ using Nethermind.Core.Threading;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Pbt;
+using Nethermind.Pbt.NodeBuffer;
 using Nethermind.State.Pbt.Persistence;
 
 namespace Nethermind.State.Pbt;
@@ -37,7 +38,7 @@ public sealed class PbtRebuilder(PbtRocksDbPersistence target, IPbtConfig config
         ValueHash256 root;
         using (StagingSink staging = new(target, cancellationToken))
         {
-            root = PbtSortedLeafFold.FoldWindows(source, staging, windowSize, _foldQuota, _foldFanOut, CommitWindow, cancellationToken);
+            root = PbtSortedLeafFold.FoldWindows(source, staging.Write, windowSize, _foldQuota, _foldFanOut, CommitWindow, cancellationToken);
 
             void CommitWindow(int leaves)
             {
@@ -54,14 +55,16 @@ public sealed class PbtRebuilder(PbtRocksDbPersistence target, IPbtConfig config
 
     /// <summary>Writes a window's groups into one staging batch, committed once the window folds.</summary>
     /// <remarks>Not thread-safe: <see cref="PbtRightmostGroupStore"/> serializes its writes.</remarks>
-    private sealed class StagingSink(PbtRocksDbPersistence target, CancellationToken cancellationToken) : IPbtNodeGroupSink, IDisposable
+    private sealed class StagingSink(PbtRocksDbPersistence target, CancellationToken cancellationToken) : IDisposable
     {
         private IPbtPersistence.IWriteBatch? _batch;
 
-        public void SetNodeGroup(scoped in PbtTraversalPath groupKey, RefCountingMemory? payload)
+        public void Write(PbtGroupRecord record)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            (_batch ??= target.CreateStagingWriteBatch()).SetNodeGroup(groupKey.ToPath<PbtStorageNodePath>(), payload);
+            using RefCountingMemory payload = PooledRefCountingMemoryProvider.Instance.Rent(record.Payload.Length);
+            record.Payload.Span.CopyTo(payload.GetSpan());
+            (_batch ??= target.CreateStagingWriteBatch()).SetNodeGroup(record.Path, payload);
         }
 
         public void Commit()

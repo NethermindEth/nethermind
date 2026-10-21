@@ -62,11 +62,7 @@ public static partial class TrieUpdater
         accountFold.Add(changes.Code);
         storageFold.Add(changes.Storage);
         int touchedSlots = (accountFold.IsEmpty ? 0 : 1 << AccountSlot) | (storageFold.IsEmpty ? 0 : 1 << StorageSlot);
-        if (touchedSlots == 0)
-        {
-            store.CompleteFold();
-            return currentRoot;
-        }
+        if (touchedSlots == 0) return currentRoot;
 
         ForeignSlotFold foldSlot = (int slot, in BoundaryNode boundary, long descendantBytes, Span<byte> encoding) => slot == AccountSlot
             ? accountFold.Fold(slot, boundary, descendantBytes, encoding)

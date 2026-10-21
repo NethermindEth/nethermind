@@ -186,17 +186,11 @@ internal static class PbtStoreTestExtensions
         return store.GetNodeGroup(cursor);
     }
 
-    internal static void SetNodeGroup<TPath>(this IPbtStore store, TPath groupKey, RefCountingMemory? payload)
+    internal static void SetNodeGroup<TPath>(this PbtNodeGroupStore store, TPath groupKey, RefCountingMemory? payload)
         where TPath : struct, IPbtNodePath<TPath>
     {
         PbtTraversalPath cursor = PbtTraversalPath.FromPath(stackalloc byte[PbtVariableTreeKey.MaxLength], groupKey);
         store.SetNodeGroup(cursor, payload);
-    }
-
-    internal static void SetNodeGroup(this IPbtStore store, scoped in PbtTraversalPath groupKey, RefCountingMemory? payload)
-    {
-        using IPbtConcurrentWriter writer = store.CreateWriter();
-        writer.SetNodeGroup(groupKey, payload);
     }
 
     internal static GroupFrameReader<PbtVariableTreeKey, PbtStorageNodePath> ReadGroup<TPath>(TPath groupKey, ReadOnlySpan<byte> payload)

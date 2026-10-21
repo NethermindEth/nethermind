@@ -4,6 +4,7 @@
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Memory;
 using Nethermind.Core.Threading;
+using Nethermind.Pbt.NodeBuffer;
 
 namespace Nethermind.Pbt;
 
@@ -12,14 +13,14 @@ public static class PbtSortedLeafFold
 {
     public const int DefaultWindowSize = 2_000_000;
 
-    /// <summary>Folds leaves into a tree from empty, window by window, writing every group through to <paramref name="writeThrough"/>.</summary>
+    /// <summary>Folds leaves into a tree from empty, window by window, handing every group record to <paramref name="writeThrough"/>.</summary>
     /// <remarks>Reads are served from the tree's right edge in memory (see <see cref="PbtRightmostGroupStore"/>), never from where the groups were written.</remarks>
     /// <param name="source">Strictly ascending leaves; an out-of-order leaf is not detected and yields a wrong root.</param>
-    /// <param name="writeThrough">Receives every group the fold writes, one call at a time.</param>
+    /// <param name="writeThrough">Receives every group record the fold writes, borrowed for the call, one call at a time.</param>
     /// <param name="windowSize">Maximum leaves per tree update.</param>
     /// <param name="onWindowFolded">Called with the window's leaf count once its fold ends.</param>
     /// <returns>The tree root.</returns>
-    public static ValueHash256 FoldWindows(IEnumerator<RebuildEntry> source, IPbtNodeGroupSink writeThrough, int windowSize,
+    public static ValueHash256 FoldWindows(IEnumerator<RebuildEntry> source, Action<PbtGroupRecord> writeThrough, int windowSize,
         ConcurrencyController foldQuota, FoldFanOut foldFanOut, Action<int> onWindowFolded, CancellationToken cancellationToken)
     {
         using PbtRightmostGroupStore store = new(writeThrough);
@@ -58,14 +59,7 @@ public static class PbtSortedLeafFold
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(windowSize);
         using IEnumerator<RebuildEntry> source = leaves.GetEnumerator();
-        return FoldWindows(source, NullNodeGroupSink.Instance, windowSize, new ConcurrencyController(foldConcurrency),
+        return FoldWindows(source, static _ => { }, windowSize, new ConcurrencyController(foldConcurrency),
             FoldFanOut.Default, static _ => { }, cancellationToken);
-    }
-
-    private sealed class NullNodeGroupSink : IPbtNodeGroupSink
-    {
-        public static readonly NullNodeGroupSink Instance = new();
-
-        public void SetNodeGroup(scoped in PbtTraversalPath groupKey, RefCountingMemory? payload) { }
     }
 }

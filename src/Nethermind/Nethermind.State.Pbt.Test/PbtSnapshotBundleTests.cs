@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -132,7 +131,13 @@ public class PbtSnapshotBundleTests
         }
         PbtSnapshotContent shared = pool.GetSnapshotContent(PbtResourcePool.Usage.MainBlockProcessing);
         PbtSnapshotContent local = pool.GetSnapshotContent(PbtResourcePool.Usage.MainBlockProcessing);
-        if (memoryTier == 2) shared.SetTree((path, memory));
+        if (memoryTier == 2)
+        {
+            shared.SetTree((path, memory));
+            // An unchanged block inherits its parent's tree.
+            local.BeginNodeGroupWrites(shared.GroupRecordBuffer!);
+            local.RootGroupPointer = shared.RootGroupPointer;
+        }
         if (memoryTier == 1) local.SetTree((path, memory));
         Reader reader = new(default, null) { GroupPayload = database };
         PbtReadOnlySnapshotBundle readOnly = new(PbtSnapshotBundleTestExtensions.Chain(pool, shared), reader, false, persisted, PbtSnapshotBundleTestExtensions.NoNodeGroupPin, slotFilterBitsPerKey: 0);
@@ -315,13 +320,11 @@ public class PbtSnapshotBundleTests
             System.Threading.Tasks.Parallel.For(0, 1000, iteration =>
             {
                 using IPbtConcurrentWriter writer = store.CreateWriter();
-                PbtTraversalPath path = new(Span<byte>.Empty);
-                for (int write = 0; write < 2; write++)
+                for (int write = 0; write < (emptied ? 0 : 2); write++)
                 {
-                    writer.TryStartWriteBatch(PbtGroupRecordCodec.AlignedLength(PbtGroupRecordCodec.Length(encoding.Length)), out IPbtGroupRecordWriteBatch? batch);
-                    using (batch) encoding.CopyTo(PbtGroupRecordCodec.WriteGroup(batch!.Bytes, groupPath, default, encoding.Length));
+                    using IPbtGroupRecordWriteBatch batch = writer.StartWriteBatch(PbtGroupRecordCodec.AlignedLength(PbtGroupRecordCodec.Length(encoding.Length)));
+                    encoding.CopyTo(PbtGroupRecordCodec.WriteGroup(batch.Bytes, groupPath, default, encoding.Length));
                 }
-                if (emptied) writer.SetNodeGroup(path, null);
             });
 
             using RefCountingMemory? pending = bundle.GetNodeGroup(groupPath);
@@ -337,7 +340,7 @@ public class PbtSnapshotBundleTests
             Assert.That(snapshot.RootGroupPointer != 0, Is.EqualTo(complete && !emptied));
             Assert.That(found, Is.EqualTo(complete && !emptied));
             Assert.That(current?.GetSpan().ToArray(), Is.EqualTo(emptied || !complete ? null : encoding));
-            Assert.That(snapshot.Content.NodeGroupCount, Is.EqualTo(complete ? 2000 : 0), "every reserved group counts towards the layer's size bound");
+            Assert.That(snapshot.Content.NodeGroupCount, Is.EqualTo(complete && !emptied ? 2000 : 0), "every reserved group counts towards the layer's size bound");
         }
     }
 
@@ -515,7 +518,9 @@ public class PbtSnapshotBundleTests
         using PbtSnapshotBundle bundle = new(localSnapshots, new PbtReadOnlySnapshotBundle(sharedSnapshots, reader, recordDetailedMetrics: false, new PbtPersistedSnapshotList(0), PbtSnapshotBundleTestExtensions.NoNodeGroupPin, slotFilterBitsPerKey: 0), PbtSnapshotTestExtensions.DefaultGroupRecordBuffer, pool, PbtResourcePool.Usage.MainBlockProcessing, filterInMemorySlotReads: false);
         if (newestTier == 3) PublishRoot(bundle, tombstone ? null : write);
 
-        int answeringTier = tombstone ? newestTier - 1 : newestTier;
+        // An emptied snapshot tree has no root to walk the buffer from, so it falls through to persistence; a write buffer
+        // that published no root walks the newest snapshot's tree.
+        int answeringTier = !tombstone ? newestTier : newestTier == 3 ? 2 : 0;
         bool snapshotFound = bundle.TryGetSnapshotNodeGroup(wideGroupKey, out RefCountingMemory? snapshotPayload);
         using (snapshotPayload)
         using (Assert.EnterMultipleScope())
@@ -538,7 +543,7 @@ public class PbtSnapshotBundleTests
     }
 
     [Test]
-    public void Snapshot_group_resolution_honors_persisted_and_newer_memory_trees([Values] bool tombstone, [Values] bool newerMemory)
+    public void Snapshot_group_resolution_reads_only_persisted_trees([Values] bool tombstone, [Values] bool newerMemory)
     {
         using PbtPersistedTestStore store = new();
         using PbtSnapshotRepository repository = new(new MetricsConfig(), NullSnapshotCatalog.Instance, new PbtPersistedPublicationGate());
@@ -565,7 +570,7 @@ public class PbtSnapshotBundleTests
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(found, Is.EqualTo(newerMemory || !tombstone));
-                Assert.That(payload?.Memory.ToArray(), Is.EqualTo(!tombstone && newerMemory ? memoryEncoding : newerMemory || !tombstone ? persistedEncoding : null));
+                Assert.That(payload?.Memory.ToArray(), Is.EqualTo(newerMemory || !tombstone ? persistedEncoding : null));
                 Assert.That(reader.GroupReadCount, Is.Zero);
             }
         }
@@ -1097,17 +1102,7 @@ public class PbtSnapshotBundleTests
 
         private sealed class Writer(CountingStore owner, IPbtConcurrentWriter writer) : IPbtConcurrentWriter
         {
-            public bool TryStartWriteBatch(int alignedTotalLength, [NotNullWhen(true)] out IPbtGroupRecordWriteBatch? batch)
-            {
-                bool started = writer.TryStartWriteBatch(alignedTotalLength, out IPbtGroupRecordWriteBatch? written);
-                batch = started ? new Batch(owner, written!) : null;
-                return started;
-            }
-            public void SetNodeGroup(scoped in PbtTraversalPath path, RefCountingMemory? payload)
-            {
-                owner.Apply(path.ToPath<PbtStorageNodePath>());
-                writer.SetNodeGroup(path, payload);
-            }
+            public IPbtGroupRecordWriteBatch StartWriteBatch(int alignedTotalLength) => new Batch(owner, writer.StartWriteBatch(alignedTotalLength));
             public void Dispose() => writer.Dispose();
         }
 

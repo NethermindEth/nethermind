@@ -4,20 +4,23 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Memory;
 using Nethermind.Pbt;
+using Nethermind.Pbt.NodeBuffer;
 
 namespace Nethermind.State.Pbt.Test;
 
 /// <summary>In-memory store of canonical nodes grouped by three-level ownership boundaries.</summary>
-public sealed class PbtNodeGroupStore(IRefCountingMemoryProvider? memoryProvider = null) : IPbtStore, IPbtNodeGroupSink, IDisposable
+public sealed class PbtNodeGroupStore(IRefCountingMemoryProvider? memoryProvider = null) : IPbtStore, IDisposable
 {
-    public IPbtConcurrentWriter CreateWriter() => new PbtPassThroughWriter(this);
+    public IPbtConcurrentWriter CreateWriter() => new PbtRecordCallbackWriter(SetNodeGroup);
 
     private readonly IRefCountingMemoryProvider _memoryProvider = memoryProvider ?? PooledRefCountingMemoryProvider.Instance;
     private readonly System.Threading.Lock _groupLock = new();
     private Dictionary<PbtStorageNodePath, RefCountingMemory> _groups = [];
+    private bool _rootWritten;
     private bool _disposed;
 
     /// <summary>Reconstructs a store from canonical node-group payloads.</summary>
@@ -74,15 +77,42 @@ public sealed class PbtNodeGroupStore(IRefCountingMemoryProvider? memoryProvider
         }
     }
 
-    /// <inheritdoc/>
-    public void SetNodeGroup(scoped in PbtTraversalPath groupKey, RefCountingMemory? payload)
+    /// <summary>Drops the groups the completed fold left unreachable, as persistence keeps only the new tree's groups.</summary>
+    /// <remarks>A completed fold that wrote no root group emptied the tree.</remarks>
+    public void CompleteFold()
+    {
+        RetainTreeGroups(!_rootWritten);
+        _rootWritten = false;
+    }
+
+    /// <summary>Drops every group the tree from the root group no longer reaches, or every group of an empty tree.</summary>
+    public void RetainTreeGroups(bool emptyTree)
+    {
+        HashSet<PbtStorageNodePath> reachable = emptyTree ? [] : [.. this.EnumerateRecords().Select(static record => PbtTestPaths.Locate(record.Path).GroupKey)];
+        lock (_groupLock)
+            foreach (PbtStorageNodePath key in _groups.Keys.ToArray())
+                if (!reachable.Contains(key) && _groups.Remove(key, out RefCountingMemory? payload)) ((IDisposable)payload).Dispose();
+    }
+
+    /// <summary>Copies a fold's group record into the store.</summary>
+    public void SetNodeGroup(PbtGroupRecord record)
+    {
+        if (record.Path.BitDepth == 0) _rootWritten = true;
+        using RefCountingMemory payload = _memoryProvider.Rent(record.Payload.Length);
+        record.Payload.Span.CopyTo(payload.GetSpan());
+        SetNodeGroup(record.Path, payload);
+    }
+
+    /// <summary>Replaces the group at <paramref name="groupKey"/>, or deletes it for a null payload, which the store then leases.</summary>
+    public void SetNodeGroup(scoped in PbtTraversalPath groupKey, RefCountingMemory? payload) => SetNodeGroup(groupKey.ToPath<PbtStorageNodePath>(), payload);
+
+    private void SetNodeGroup(PbtStorageNodePath storagePath, RefCountingMemory? payload)
     {
         lock (_groupLock)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
-            if (!PbtThreeLevelGroupGeometry.IsGroupDepth(groupKey.BitDepth))
-                throw new ArgumentException("A group key depth must be a three-level boundary.", nameof(groupKey));
-            PbtStorageNodePath storagePath = groupKey.ToPath<PbtStorageNodePath>();
+            if (!PbtThreeLevelGroupGeometry.IsGroupDepth(storagePath.BitDepth))
+                throw new ArgumentException("A group key depth must be a three-level boundary.", nameof(storagePath));
             if (payload is not null) PbtNodeGroupCodec.ValidateNodes(storagePath, payload.GetSpan());
 
             _groups.TryGetValue(storagePath, out RefCountingMemory? previous);

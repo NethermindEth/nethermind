@@ -652,9 +652,10 @@ public class PbtNodeGroupTests
         Assert.That(store.PhysicalRecords(), Is.EqualTo(initial));
     }
 
-    private sealed class PoisoningStore(PbtNodeGroupStore inner) : IPbtStore, IPbtNodeGroupSink, IDisposable
+    private sealed class PoisoningStore(PbtNodeGroupStore inner) : IPbtStore, IDisposable
     {
-        public IPbtConcurrentWriter CreateWriter() => new PbtPassThroughWriter(this);
+        public IPbtConcurrentWriter CreateWriter() => Inner.CreateWriter();
+        public void CompleteFold() => Inner.CompleteFold();
 
         private readonly ArrayPool<byte> _pool = ArrayPool<byte>.Create();
         internal PbtNodeGroupStore Inner { get; } = inner;
@@ -674,7 +675,6 @@ public class PbtNodeGroupTests
                 () => ReleasedGroupDepths.Add(groupDepth)));
         }
 
-        public void SetNodeGroup(scoped in PbtTraversalPath groupKey, RefCountingMemory? payload) => Inner.SetNodeGroup(groupKey, payload);
         public void Dispose() => Inner.Dispose();
     }
 
@@ -693,12 +693,13 @@ public class PbtNodeGroupTests
     }
 
     /// <summary>Counts every group fetch, and the fetches that found a group.</summary>
-    private sealed class CountingStore(PbtNodeGroupStore inner) : IPbtStore, IPbtNodeGroupSink
+    private sealed class CountingStore(PbtNodeGroupStore inner) : IPbtStore
     {
         private int _fetches;
         private int _loads;
 
-        public IPbtConcurrentWriter CreateWriter() => new PbtPassThroughWriter(this);
+        public IPbtConcurrentWriter CreateWriter() => inner.CreateWriter();
+        public void CompleteFold() => inner.CompleteFold();
 
         internal int Fetches => _fetches;
         internal int Loads => _loads;
@@ -710,8 +711,6 @@ public class PbtNodeGroupTests
             if (payload is not null) Interlocked.Increment(ref _loads);
             return payload;
         }
-
-        public void SetNodeGroup(scoped in PbtTraversalPath groupKey, RefCountingMemory? payload) => inner.SetNodeGroup(groupKey, payload);
     }
 
     [Test]
@@ -1092,9 +1091,9 @@ public class PbtNodeGroupTests
         return PbtNodeGroupEncoder.Encode(path, [new PbtNodeRecord(node, LeafBranch(node, 1))], default);
     }
 
-    private sealed class WarmReadStore(IPbtStore store) : IPbtStore, IPbtNodeGroupSink
+    private sealed class WarmReadStore(IPbtStore store) : IPbtStore
     {
-        public IPbtConcurrentWriter CreateWriter() => new PbtPassThroughWriter(this);
+        public IPbtConcurrentWriter CreateWriter() => new PbtRecordCallbackWriter(static _ => throw new AssertionException("Group frame reads must never write."));
 
         internal List<PbtStorageNodePath> Reads { get; } = [];
         internal RefCountingMemory? Payload { get; set; }
@@ -1106,9 +1105,6 @@ public class PbtNodeGroupTests
             payload.AcquireLease();
             return payload;
         }
-
-        public void SetNodeGroup(scoped in PbtTraversalPath groupKey, RefCountingMemory? payload) =>
-            throw new AssertionException("Group frame reads must never write.");
     }
 
     private static byte[] RootGroup(byte[] encoding)

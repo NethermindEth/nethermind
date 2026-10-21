@@ -9,17 +9,18 @@ using System.Collections.Generic;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Memory;
 using Nethermind.Pbt;
+using Nethermind.Pbt.NodeBuffer;
 
 namespace Nethermind.Benchmarks.State;
 
 /// <summary>An in-memory store whose writes land in an overlay above fixed base groups, so the base tree can be reused.</summary>
 /// <remarks>Parallel folds read and publish from several threads, each group from one, so the overlay is a concurrent map; the base is read-only once built.</remarks>
-internal sealed class PbtOverlayStore : IPbtStore, IPbtNodeGroupSink, IDisposable
+internal sealed class PbtOverlayStore : IPbtStore, IDisposable
 {
     private readonly Dictionary<PbtStorageNodePath, RefCountingMemory> _base = [];
     private readonly ConcurrentDictionary<PbtStorageNodePath, RefCountingMemory?> _overlay = new();
 
-    public IPbtConcurrentWriter CreateWriter() => new PbtPassThroughWriter(this);
+    public IPbtConcurrentWriter CreateWriter() => new PbtRecordCallbackWriter(SetNodeGroup);
 
     public RefCountingMemory? GetNodeGroup(scoped in PbtTraversalPath groupKey)
     {
@@ -29,12 +30,12 @@ internal sealed class PbtOverlayStore : IPbtStore, IPbtNodeGroupSink, IDisposabl
         return payload;
     }
 
-    public void SetNodeGroup(scoped in PbtTraversalPath groupKey, RefCountingMemory? payload)
+    private void SetNodeGroup(PbtGroupRecord record)
     {
-        payload?.AcquireLease();
-        PbtStorageNodePath key = groupKey.ToPath<PbtStorageNodePath>();
-        if (_overlay.TryGetValue(key, out RefCountingMemory? previous)) ((IDisposable?)previous)?.Dispose();
-        _overlay[key] = payload;
+        RefCountingMemory payload = PooledRefCountingMemoryProvider.Instance.Rent(record.Payload.Length);
+        record.Payload.Span.CopyTo(payload.GetSpan());
+        if (_overlay.TryGetValue(record.Path, out RefCountingMemory? previous)) ((IDisposable?)previous)?.Dispose();
+        _overlay[record.Path] = payload;
     }
 
     public void CommitOverlay()

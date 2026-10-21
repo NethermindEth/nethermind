@@ -11,6 +11,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Memory;
 using Nethermind.Pbt;
+using Nethermind.Pbt.NodeBuffer;
 using NUnit.Framework;
 using static Nethermind.State.Pbt.Test.PbtStoreTestExtensions;
 
@@ -1106,7 +1107,7 @@ public class Eip8297CanonicalTreeTests
         ValueHash256 emptiedRoot = store.Fold(changedRoot, [(AccountKey(0x00), null), (AccountKey(0x40), null)]);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(store.Applies, Is.EqualTo(4), "deleting both leaves publishes the group once");
+            Assert.That(store.Applies, Is.EqualTo(3), "deleting both leaves writes no group");
             Assert.That(emptiedRoot, Is.EqualTo(default(ValueHash256)));
             Assert.That(store.Inner.EnumerateNodeGroupKeys(), Is.Empty);
         }
@@ -1199,7 +1200,7 @@ public class Eip8297CanonicalTreeTests
     public void Group_outputs_retain_only_store_leases_after_mutations_and_partition_folds([Values] bool parallel)
     {
         TrackingMemoryProvider memoryProvider = new() { FillByte = 0xFF };
-        using PbtNodeGroupStore store = new();
+        using PbtNodeGroupStore store = new(memoryProvider);
         using PbtNodeGroupStore expectedStore = new();
         EipReferenceTree oracle = new();
         ValueHash256 root = default;
@@ -1276,21 +1277,22 @@ public class Eip8297CanonicalTreeTests
             (ZoneKey("ff000000"), Value(5)), (ZoneKey("ff800000"), Value(6)),
         ];
         Assert.Catch(() => ApplyTracked(store, default, changes, parallel, memoryProvider));
-        AssertOnlyPublishedRentalsRemain(innerStore, memoryProvider);
+        AssertOnlyPublishedRentalsRemain(innerStore, storeProvider);
         innerStore.Dispose();
         Assert.That(TrackingMemoryProvider.CountUnreleased(memoryProvider.Rented), Is.Zero);
         Assert.That(TrackingMemoryProvider.CountUnreleased(storeProvider.Rented), Is.Zero);
     }
 
-    private sealed class FailingPublishStore(IPbtStore store, int failedDepth) : IPbtStore, IPbtNodeGroupSink
+    private sealed class FailingPublishStore(PbtNodeGroupStore store, int failedDepth) : IPbtStore
     {
-        public IPbtConcurrentWriter CreateWriter() => new PbtPassThroughWriter(this);
+        public IPbtConcurrentWriter CreateWriter() => new PbtRecordCallbackWriter(SetNodeGroup);
+        public void CompleteFold() => store.CompleteFold();
 
         public RefCountingMemory? GetNodeGroup(scoped in PbtTraversalPath groupKey) => store.GetNodeGroup(groupKey);
-        public void SetNodeGroup(scoped in PbtTraversalPath groupKey, RefCountingMemory? payload)
+        private void SetNodeGroup(PbtGroupRecord record)
         {
-            if (groupKey.BitDepth == failedDepth) throw new InvalidOperationException("Configured publish failure.");
-            store.SetNodeGroup(groupKey, payload);
+            if (record.Path.BitDepth == failedDepth) throw new InvalidOperationException("Configured publish failure.");
+            store.SetNodeGroup(record);
         }
     }
 
@@ -1349,7 +1351,7 @@ public class Eip8297CanonicalTreeTests
         int pairBranchLength = PbtNodeCodec.BranchLength(singlePair ? 8 : 0, inlineKeyLength, inlineKeyLength);
         int storedNodes = singlePair ? 1 : leafCount / 4;
         TrackingMemoryProvider provider = new() { FillByte = 0xFF };
-        using PbtNodeGroupStore store = new();
+        using PbtNodeGroupStore store = new(provider);
         EipReferenceTree oracle = new();
         (byte[] Key, byte[]? Value)[] changes = new (byte[], byte[]?)[leafCount];
         for (int index = 0; index < leafCount; index++)
@@ -1541,9 +1543,10 @@ public class Eip8297CanonicalTreeTests
         Assert.That(store.UnreleasedMemoryCount, Is.Zero);
     }
 
-    private sealed class CountingPbtStore : IPbtStore, IPbtNodeGroupSink
+    private sealed class CountingPbtStore : IPbtStore
     {
-        public IPbtConcurrentWriter CreateWriter() => new PbtPassThroughWriter(this);
+        public IPbtConcurrentWriter CreateWriter() => new PbtRecordCallbackWriter(SetNodeGroup);
+        public void CompleteFold() => Inner.CompleteFold();
 
         internal TrackingMemoryProvider MemoryProvider { get; } = new();
         internal PbtNodeGroupStore Inner { get; }
@@ -1587,12 +1590,12 @@ public class Eip8297CanonicalTreeTests
             return innerPayload;
         }
 
-        public void SetNodeGroup(scoped in PbtTraversalPath groupKey, RefCountingMemory? payload)
+        private void SetNodeGroup(PbtGroupRecord record)
         {
             Applies++;
-            OnApply?.Invoke(groupKey.ToPath<PbtStorageNodePath>());
+            OnApply?.Invoke(record.Path);
             if (ThrowOnApply) throw new InvalidOperationException("Configured write failure.");
-            Inner.SetNodeGroup(groupKey, payload);
+            Inner.SetNodeGroup(record);
         }
 
         internal void ResetReads()

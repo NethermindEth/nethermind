@@ -181,7 +181,6 @@ public class PbtMetricsTests
                 content.SetSlot(headerStorageKey, deleted ? default : slot);
                 content.SetSlot(storageKey, deleted ? default : slot);
             }
-            content.SetTree((groupKey.ToPath<PbtStorageNodePath>(), deleted ? null : payload.GetSpan().ToArray()));
             if (!deleted) content.Codes[codeHash] = code;
         }
         IPbtResourcePool pool = Substitute.For<IPbtResourcePool>();
@@ -201,6 +200,8 @@ public class PbtMetricsTests
 
         string tier = snapshotHit ? "snapshot" : scenario == "missing" ? "persistence_null" : "persistence";
         string fallthroughTier = deleted ? "persistence" : tier;
+        // In-memory groups are read from the group record buffer, never through the read-only bundle.
+        string groupTier = snapshotHit ? "persistence" : tier;
         bool empty = deleted || scenario == "missing";
         using (Assert.EnterMultipleScope())
         {
@@ -212,7 +213,7 @@ public class PbtMetricsTests
             Assert.That(actualGroup?.GetSpan().ToArray(), Is.EqualTo(scenario == "missing" ? null : payload.GetSpan().ToArray()));
             Assert.That(actualCode, Is.SameAs(scenario == "missing" ? null : code));
             Assert.That(_readOnlyBundleTime.Labels, Is.EqualTo(detailedMetrics
-                ? new[] { $"account_{tier}", $"storage_header_{tier}", $"storage_{tier}", $"storage_run_header_{tier}", $"storage_run_{tier}", $"node_group_{partition}_{fallthroughTier}", $"code_{fallthroughTier}" }
+                ? new[] { $"account_{tier}", $"storage_header_{tier}", $"storage_{tier}", $"storage_run_header_{tier}", $"storage_run_{tier}", $"node_group_{partition}_{groupTier}", $"code_{fallthroughTier}" }
                 : []));
             Assert.That(_readOnlyBundleTime.Observations, Has.Count.EqualTo(detailedMetrics ? 7 : 0));
             Assert.That(_readOnlyBundleTime.Observations, Is.All.GreaterThanOrEqualTo(0));

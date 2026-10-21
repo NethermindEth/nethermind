@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Memory;
@@ -44,10 +43,6 @@ public sealed class PbtSnapshotStore(PbtSnapshotBundle bundle) : IPbtStore, IDis
     public void CompleteFold() => _complete = true;
 
     /// <inheritdoc/>
-    /// <remarks>
-    /// A miss also searches the in-memory snapshot trees: an overlay buffer cannot reach a shared snapshot written after its
-    /// pin, so such a branch's root lookup misses.
-    /// </remarks>
     public RefCountingMemory? GetNodeGroup(scoped in PbtTraversalPath groupKey)
     {
         PbtStorageNodePath storagePath = groupKey.ToPath<PbtStorageNodePath>();
@@ -80,24 +75,19 @@ public sealed class PbtSnapshotStore(PbtSnapshotBundle bundle) : IPbtStore, IDis
         {
             if (_complete)
             {
-                ulong? root = null;
+                ulong root = 0;
                 int count = 0;
                 long bytes = 0;
                 foreach (ArrayPoolList<ulong> buffer in _handedOff)
                     foreach (ulong pointer in buffer)
                     {
-                        if (pointer == 0)
-                        {
-                            root = 0;
-                            continue;
-                        }
                         if (!Buffer.TryLocate(pointer, out PbtGroupRecord group)) throw new InvalidOperationException("A pinned group record no longer resolves.");
                         PbtStorageNodePath path = group.Path;
                         if (path.BitDepth == 0) root = pointer;
                         count++;
                         bytes += ((path.BitDepth + 7) >> 3) + group.Payload.Length;
                     }
-                if (root is { } published) bundle.PublishNodeGroups(published, count, bytes);
+                bundle.PublishNodeGroups(root, count, bytes);
             }
         }
         finally
@@ -109,21 +99,14 @@ public sealed class PbtSnapshotStore(PbtSnapshotBundle bundle) : IPbtStore, IDis
 
     private sealed class ConcurrentWriter(PbtSnapshotStore store) : IPbtConcurrentWriter
     {
-        // The pointers of the written records, and 0 for a removed root group.
+        // The pointers of the written records.
         private readonly ArrayPoolList<ulong> _buffer = new(16);
 
-        public bool TryStartWriteBatch(int alignedTotalLength, [NotNullWhen(true)] out IPbtGroupRecordWriteBatch? batch)
+        public IPbtGroupRecordWriteBatch StartWriteBatch(int alignedTotalLength)
         {
-            batch = store.Buffer.StartWriteBatch(alignedTotalLength);
+            IPbtGroupRecordWriteBatch batch = store.Buffer.StartWriteBatch(alignedTotalLength);
             _buffer.Add(batch.BasePointer);
-            return true;
-        }
-
-        /// <remarks>Only called for a removed group: every write batch here starts, so folds write groups in place.</remarks>
-        public void SetNodeGroup(scoped in PbtTraversalPath groupKey, RefCountingMemory? payload)
-        {
-            if (payload is not null) throw new NotSupportedException("Snapshot folds write buffer records.");
-            if (groupKey.BitDepth == 0) _buffer.Add(0);
+            return batch;
         }
 
         public void Dispose()

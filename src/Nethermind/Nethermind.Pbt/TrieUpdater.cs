@@ -100,8 +100,7 @@ public static partial class TrieUpdater<TKey, TPath>
     /// <summary>Publishes a frame's group and returns the size change of the group and everything folded below it.</summary>
     /// <remarks>
     /// Each stored descendant size is the loaded (or inherited) size of its slot adjusted by the change folded below that
-    /// slot. A group that stays absent stores nothing, so only the folded change survives, and the store is not told
-    /// to delete a group it never held.
+    /// slot. A group that is or becomes absent writes no record, so only the folded change survives.
     /// </remarks>
     public static long PublishGroup<TFrame>(IPbtNodeGroupSink sink, ref TFrame reader, PbtNodeGroupWriter<TPath> writer,
         scoped in PbtTraversalPath path)
@@ -133,25 +132,14 @@ public static partial class TrieUpdater<TKey, TPath>
             else surviving = links[slot];
         }
         int length = writer.GetPayloadLength(descendantBytes, candidateSlots);
-        ulong pointer = 0;
-        if (length != 0 || reader.PayloadLength != 0)
+        ulong pointer = surviving;
+        if (length != 0)
         {
-            if (length != 0 && sink.TryStartWriteBatch(PbtGroupRecordCodec.AlignedLength(PbtGroupRecordCodec.Length(length)), out IPbtGroupRecordWriteBatch? batch))
-            {
-                using (batch)
-                {
-                    writer.DetachTo(PbtGroupRecordCodec.WriteGroup(batch.Bytes, path.ToPath<PbtStorageNodePath>(), links, length), descendantBytes, candidateSlots);
-                    pointer = batch.BasePointer;
-                }
-            }
-            else
-            {
-                using RefCountingMemory? payload = writer.Detach(descendantBytes, candidateSlots);
-                sink.SetNodeGroup(path, payload);
-            }
+            using IPbtGroupRecordWriteBatch batch = sink.StartWriteBatch(PbtGroupRecordCodec.AlignedLength(PbtGroupRecordCodec.Length(length)));
+            writer.DetachTo(PbtGroupRecordCodec.WriteGroup(batch.Bytes, path.ToPath<PbtStorageNodePath>(), links, length), descendantBytes, candidateSlots);
+            pointer = batch.BasePointer;
         }
         else writer.DetachTo(Span<byte>.Empty, descendantBytes, candidateSlots);
-        if (length == 0) pointer = surviving;
         return new GroupPublication(length - reader.PayloadLength + deltaTotal, pointer);
     }
 
