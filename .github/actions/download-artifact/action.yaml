@@ -3,6 +3,7 @@ description: >-
   Runs actions/download-artifact, retrying up to 10 attempts with growing pauses, as the artifact service
   sometimes drops the connection (e.g. ECONNRESET). Takes the inputs of
   actions/download-artifact that the workflows use. Run after actions/checkout, as this action is local.
+  Use actions/download-artifact directly when the artifact may be missing: each failed attempt adds a pause of up to 45 s.
 
 inputs:
   name:

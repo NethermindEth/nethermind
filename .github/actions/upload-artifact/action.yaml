@@ -3,6 +3,8 @@ description: >-
   Runs actions/upload-artifact, retrying up to 10 attempts with growing pauses, as the artifact service
   sometimes fails (e.g. "Failed to FinalizeArtifact"). Takes the inputs of
   actions/upload-artifact that the workflows use. Run after actions/checkout, as this action is local.
+  Use actions/upload-artifact directly when a failure always repeats, e.g. with if-no-files-found: error
+  after a step that may not write the files: each failed attempt adds a pause of up to 45 s.
 
 inputs:
   name:
@@ -60,7 +62,7 @@ runs:
         retention-days: ${{ inputs.retention-days }}
         compression-level: ${{ inputs.compression-level }}
         include-hidden-files: ${{ inputs.include-hidden-files }}
-        overwrite: true # a failed attempt can leave a partial artifact with this name
+        overwrite: ${{ inputs.overwrite }}
 
     - name: Wait before attempt 3
       if: steps.attempt2.outcome == 'failure'
@@ -79,7 +81,7 @@ runs:
         retention-days: ${{ inputs.retention-days }}
         compression-level: ${{ inputs.compression-level }}
         include-hidden-files: ${{ inputs.include-hidden-files }}
-        overwrite: true # a failed attempt can leave a partial artifact with this name
+        overwrite: ${{ inputs.overwrite }}
 
     - name: Wait before attempt 4
       if: steps.attempt3.outcome == 'failure'
@@ -98,7 +100,7 @@ runs:
         retention-days: ${{ inputs.retention-days }}
         compression-level: ${{ inputs.compression-level }}
         include-hidden-files: ${{ inputs.include-hidden-files }}
-        overwrite: true # a failed attempt can leave a partial artifact with this name
+        overwrite: ${{ inputs.overwrite }}
 
     - name: Wait before attempt 5
       if: steps.attempt4.outcome == 'failure'
@@ -117,7 +119,7 @@ runs:
         retention-days: ${{ inputs.retention-days }}
         compression-level: ${{ inputs.compression-level }}
         include-hidden-files: ${{ inputs.include-hidden-files }}
-        overwrite: true # a failed attempt can leave a partial artifact with this name
+        overwrite: ${{ inputs.overwrite }}
 
     - name: Wait before attempt 6
       if: steps.attempt5.outcome == 'failure'
@@ -136,7 +138,7 @@ runs:
         retention-days: ${{ inputs.retention-days }}
         compression-level: ${{ inputs.compression-level }}
         include-hidden-files: ${{ inputs.include-hidden-files }}
-        overwrite: true # a failed attempt can leave a partial artifact with this name
+        overwrite: ${{ inputs.overwrite }}
 
     - name: Wait before attempt 7
       if: steps.attempt6.outcome == 'failure'
@@ -155,7 +157,7 @@ runs:
         retention-days: ${{ inputs.retention-days }}
         compression-level: ${{ inputs.compression-level }}
         include-hidden-files: ${{ inputs.include-hidden-files }}
-        overwrite: true # a failed attempt can leave a partial artifact with this name
+        overwrite: ${{ inputs.overwrite }}
 
     - name: Wait before attempt 8
       if: steps.attempt7.outcome == 'failure'
@@ -174,7 +176,7 @@ runs:
         retention-days: ${{ inputs.retention-days }}
         compression-level: ${{ inputs.compression-level }}
         include-hidden-files: ${{ inputs.include-hidden-files }}
-        overwrite: true # a failed attempt can leave a partial artifact with this name
+        overwrite: ${{ inputs.overwrite }}
 
     - name: Wait before attempt 9
       if: steps.attempt8.outcome == 'failure'
@@ -193,7 +195,7 @@ runs:
         retention-days: ${{ inputs.retention-days }}
         compression-level: ${{ inputs.compression-level }}
         include-hidden-files: ${{ inputs.include-hidden-files }}
-        overwrite: true # a failed attempt can leave a partial artifact with this name
+        overwrite: ${{ inputs.overwrite }}
 
     - name: Wait before attempt 10
       if: steps.attempt9.outcome == 'failure'
@@ -211,4 +213,4 @@ runs:
         retention-days: ${{ inputs.retention-days }}
         compression-level: ${{ inputs.compression-level }}
         include-hidden-files: ${{ inputs.include-hidden-files }}
-        overwrite: true # a failed attempt can leave a partial artifact with this name
+        overwrite: ${{ inputs.overwrite }}
