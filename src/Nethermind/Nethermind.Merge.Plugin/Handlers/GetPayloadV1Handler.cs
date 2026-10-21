@@ -28,6 +28,8 @@ namespace Nethermind.Merge.Plugin.Handlers;
 public class GetPayloadV1Handler(IPayloadPreparationService payloadPreparationService, ISpecProvider specProvider, ILogManager logManager)
     : GetPayloadHandlerBase<ExecutionPayload>(EngineApiVersions.GetPayload.V1, payloadPreparationService, specProvider, logManager)
 {
+    protected override bool ValidateFork(IReleaseSpec spec) => !spec.IsCancunEnabled;
+
     protected override ExecutionPayload GetPayloadResultFromBlock(IBlockProductionContext context) =>
         ExecutionPayload.Create(context.CurrentBestBlock!);
 }
