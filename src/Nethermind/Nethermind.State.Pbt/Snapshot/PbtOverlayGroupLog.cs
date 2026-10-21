@@ -19,7 +19,7 @@ namespace Nethermind.State.Pbt.Snapshot;
 /// </remarks>
 public sealed class PbtOverlayGroupLog : IPbtGroupLog, IDisposable
 {
-    private const int LocalGenerationBytes = 1024 * 1024;
+    private const int LocalGenerationBytes = 128 * 1024;
 
     private readonly IPbtGroupLog _global;
     private readonly PbtGroupLog _local;
