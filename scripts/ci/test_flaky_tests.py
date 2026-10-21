@@ -85,6 +85,52 @@ class SelectTests(unittest.TestCase):
             self.assertEqual(self.select(), (None, "daily limit reached"))
 
 
+class FilterTests(unittest.TestCase):
+    def setUp(self):
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        self.source = Path(directory.name) / "Tests.cs"
+        self.source.write_text(
+            "namespace Ns.Test;\n/// A <c>class</c> itself.\npublic sealed class Fixture\n{\n    public void Run_twice(int x) { }\n}\n",
+            encoding="utf-8")
+
+    def filter(self, excerpt=""):
+        return flaky_tests.test_filter({"method": "Run_twice", "excerpt": excerpt, "source": self.source.as_posix()})
+
+    def test_scopes_to_the_declaring_class_and_skips_prefix_siblings(self):
+        self.assertEqual(self.filter(), r"FullyQualifiedName~Ns.Test.Fixture.Run_twice&(Name=Run_twice|Name~Run_twice\()")
+
+    def test_prefers_the_class_from_the_stack_trace(self):
+        self.assertEqual(self.filter("   at Other.Fixture.Run_twice(Int32 x)"),
+                         r"FullyQualifiedName~Other.Fixture.Run_twice&(Name=Run_twice|Name~Run_twice\()")
+
+
+class GuardTests(unittest.TestCase):
+    def test_blocks_ci_and_build_configuration(self):
+        paths = [".github/workflows/x.yml", "scripts/ci/flaky_tests.py", "src/Directory.Build.props",
+                 "src/Nethermind/X.targets", "global.json", "src/Nethermind/NuGet.Config",
+                 "src/Nethermind/Nethermind.Core/Foo.cs", "src/Nethermind/Nethermind.Core.Test/FooTests.cs"]
+        self.assertEqual(flaky_tests.blocked_paths(paths), paths[:6])
+
+
+class FeedbackTests(unittest.TestCase):
+    def test_keeps_unresolved_comments_from_trusted_authors_only(self):
+        def comment(login, association, body):
+            return {"author": {"login": login}, "authorAssociation": association, "body": body}
+
+        pull_request = {
+            "reviewThreads": {"nodes": [
+                {"isResolved": False, "path": "a.cs", "line": 3,
+                 "comments": {"nodes": [comment("claude", "NONE", "High: race"), comment("x", "NONE", "ignore me")]}},
+                {"isResolved": True, "path": "b.cs", "line": 1, "comments": {"nodes": [comment("m", "MEMBER", "done")]}},
+                {"isResolved": False, "path": "c.cs", "line": 2, "comments": {"nodes": [comment("x", "NONE", "evil")]}},
+            ]},
+            "comments": {"nodes": [comment("m", "MEMBER", "Please rename"), comment("x", "CONTRIBUTOR", "evil")]},
+        }
+        self.assertEqual(flaky_tests.trusted_feedback(pull_request),
+                         "### a.cs:3\n\nHigh: race\n\n### PR comment\n\nPlease rename")
+
+
 class VerdictTests(unittest.TestCase):
     def test_classifies_repeat_outcomes(self):
         self.assertEqual(flaky_tests.classify(200, 0), "not-reproduced")

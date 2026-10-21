@@ -19,6 +19,23 @@ FAILED = re.compile(r"^failed (?P<name>.+?) \((?P<duration>[\dhmsµn ]+)\)$")
 RESULT = re.compile(r"^(passed|failed|skipped) .+ \([\dhmsµn ]+\)$|^Test run summary|^\s*(total|failed|succeeded|skipped|duration):")
 PROJECT = re.compile(r"^Nethermind(\.[A-Za-z0-9]+)+\.Test$")
 METHOD = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+NAMESPACE = re.compile(r"^\s*namespace\s+([\w.]+)", re.MULTILINE)
+CLASS = re.compile(r"^[ \t]*(?:(?:public|internal|private|protected|sealed|static|partial|abstract|file)\s+)*(?:record\s+)?class\s+(\w+)", re.MULTILINE)
+PROTECTED_PATH = re.compile(r"^(\.github/|scripts/)|\.(props|targets)$|(^|/)(global\.json|nuget\.config)$", re.IGNORECASE)
+TRUSTED_ASSOCIATIONS = {"OWNER", "MEMBER", "COLLABORATOR"}
+REVIEW_BOT = "claude"
+REVIEW_THREADS = """
+query($owner: String!, $name: String!, $number: Int!) {
+  repository(owner: $owner, name: $name) {
+    pullRequest(number: $number) {
+      reviewThreads(first: 100) {
+        nodes { isResolved path line comments(first: 50) { nodes { author { login } authorAssociation body } } }
+      }
+      comments(last: 50) { nodes { author { login } authorAssociation body } }
+    }
+  }
+}
+"""
 EXCERPT_LINES = 40
 EXCERPT_CHARS = 4000
 SOURCE_ROOT = Path("src/Nethermind")
@@ -68,6 +85,28 @@ def find_source(project, method):
     return None
 
 
+def test_class(failure):
+    trace = re.search(rf"\bat ([\w.]+)\.{re.escape(failure['method'])}\(", failure["excerpt"])
+    if trace:
+        return trace.group(1)
+    if not failure.get("source"):
+        return None
+    text = Path(failure["source"]).read_text(encoding="utf-8", errors="replace")
+    declaration = re.search(rf"\b{re.escape(failure['method'])}\s*\(", text)
+    namespace = NAMESPACE.search(text)
+    classes = CLASS.findall(text[:declaration.start()]) if declaration else []
+    if not (namespace and classes):
+        return None
+    return f"{namespace.group(1)}.{classes[-1]}"
+
+
+def test_filter(failure):
+    method = failure["method"]
+    name = f"(Name={method}|Name~{method}\\()"
+    owner = test_class(failure)
+    return f"FullyQualifiedName~{owner}.{method}&{name}" if owner else name
+
+
 def gh_count(*args):
     output = subprocess.run(["gh", *args], check=True, capture_output=True, text=True).stdout
     return len(json.loads(output or "[]"))
@@ -112,7 +151,8 @@ def select(log_dir, repo, label, daily_limit, lookback_days, today=None):
             branch = branch_name(failure["method"])
             if source is None or branch_exists(branch) or is_known(repo, failure["method"], since):
                 continue
-            return dict(failure, source=source, branch=branch), None
+            candidate = dict(failure, source=source, branch=branch)
+            return dict(candidate, filter=test_filter(candidate)), None
     return None, "no new flaky test candidate"
 
 
@@ -166,6 +206,34 @@ def repeat(project, test_filter, runs, budget, stop_after, out_dir, host=None, l
             "verdict": classify(done, failures)}
 
 
+def blocked_paths(paths):
+    return [path for path in paths if PROTECTED_PATH.search(path)]
+
+
+def is_trusted(comment):
+    login = (comment.get("author") or {}).get("login", "")
+    return login == REVIEW_BOT or comment.get("authorAssociation") in TRUSTED_ASSOCIATIONS
+
+
+def trusted_feedback(pull_request):
+    sections = []
+    for thread in pull_request["reviewThreads"]["nodes"]:
+        comments = [c for c in thread["comments"]["nodes"] if is_trusted(c)]
+        if thread["isResolved"] or not comments:
+            continue
+        sections.append(f"### {thread['path']}:{thread['line']}\n\n" + "\n\n---\n\n".join(c["body"] for c in comments))
+    sections += [f"### PR comment\n\n{c['body']}" for c in pull_request["comments"]["nodes"] if is_trusted(c)]
+    return "\n\n".join(sections)
+
+
+def fetch_feedback(repo, number):
+    owner, name = repo.split("/")
+    output = subprocess.run(["gh", "api", "graphql", "-f", f"query={REVIEW_THREADS}", "-f", f"owner={owner}",
+                             "-f", f"name={name}", "-F", f"number={number}"],
+                            check=True, capture_output=True, text=True).stdout
+    return trusted_feedback(json.loads(output)["data"]["repository"]["pullRequest"])
+
+
 def write_outputs(values):
     path = os.environ.get("GITHUB_OUTPUT")
     if not path:
@@ -204,6 +272,14 @@ def main(argv=None):
     runs_parser.add_argument("runs", type=int)
     runs_parser.add_argument("failures", type=int)
 
+    guard_parser = commands.add_parser("guard")
+    guard_parser.add_argument("paths", nargs="*")
+
+    feedback_parser = commands.add_parser("feedback")
+    feedback_parser.add_argument("--repo", required=True)
+    feedback_parser.add_argument("--pr", type=int, required=True)
+    feedback_parser.add_argument("--out", required=True)
+
     args = parser.parse_args(argv)
     if args.command == "select":
         candidate, reason = select(args.log_dir, args.repo, args.label, args.daily_limit, args.lookback_days)
@@ -213,12 +289,19 @@ def main(argv=None):
             return 0
         print(json.dumps(candidate, indent=2))
         Path(args.out).write_text(json.dumps(candidate, indent=2), encoding="utf-8")
-        write_outputs({key: candidate[key] for key in ("project", "method", "test", "source", "branch")} | {"found": "true"})
+        write_outputs({key: candidate[key] for key in ("project", "method", "test", "source", "branch", "filter")} | {"found": "true"})
     elif args.command == "repeat":
         result = repeat(args.project, args.filter, args.runs, args.budget, args.stop_after, args.out_dir,
                         load=args.load)
         print(json.dumps(result))
         write_outputs(result)
+    elif args.command == "guard":
+        blocked = blocked_paths(args.paths)
+        for path in blocked:
+            print(f"::error::The fix may not change {path}")
+        return 1 if blocked else 0
+    elif args.command == "feedback":
+        Path(args.out).write_text(fetch_feedback(args.repo, args.pr), encoding="utf-8")
     else:
         runs = required_runs(args.runs, args.failures)
         print(runs)
