@@ -415,6 +415,51 @@ public partial class DebugRpcModuleTests
         }
     }
 
+    [Test]
+    public async Task Debug_traceBlockByNumber_rejects_non_object_options([Values("17", "[]", "\"bad\"", "true")] string optionsJson)
+    {
+        using Context context = await Context.Create();
+        using JsonDocument options = JsonDocument.Parse(optionsJson);
+
+        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceBlockByNumber",
+            context.Blockchain.BlockTree.Head!.Number, options.RootElement);
+
+        Assert.That((int?)JToken.Parse(response)["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidParams), response);
+    }
+
+    [Test]
+    public async Task Debug_traceBlockByNumber_null_boolean_preserves_trace_output(
+        [Values("disableStorage", "disableStack", "enableMemory", "enableReturnData")] string property,
+        [Values] bool enabled, [Values] bool streamMode)
+    {
+        using Context context = await Context.Create();
+        Block block = await context.Blockchain.AddBlock(CreateTraceBlockTransactions(context.Blockchain));
+        string members = $"\"limit\":1000,\"streamMode\":{streamMode.ToString().ToLowerInvariant()},\"{property}\":{enabled.ToString().ToLowerInvariant()}";
+        using JsonDocument baselineOptions = JsonDocument.Parse("{" + members + "}");
+        using JsonDocument nullOptions = JsonDocument.Parse($"{{\"{property}\":null," + members + "}");
+
+        string expected = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceBlockByNumber", block.Number, baselineOptions.RootElement);
+        string actual = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceBlockByNumber", block.Number, nullOptions.RootElement);
+
+        Assert.That(JToken.Parse(expected)["error"], Is.Null, expected);
+        Assert.That(JToken.DeepEquals(JToken.Parse(actual), JToken.Parse(expected)), Is.True, actual);
+    }
+
+    [Test]
+    public async Task Debug_traceBlockByNumber_streaming_matches_buffered_output([Values] bool enableMemory)
+    {
+        using Context context = await Context.Create();
+        Block block = await context.Blockchain.AddBlock(CreateTraceBlockTransactions(context.Blockchain));
+
+        string buffered = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceBlockByNumber", block.Number,
+            new { enableMemory, enableReturnData = true, streamMode = false });
+        string streamed = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceBlockByNumber", block.Number,
+            new { enableMemory, enableReturnData = true, streamMode = true });
+
+        Assert.That(JToken.Parse(buffered)["error"], Is.Null, buffered);
+        Assert.That(JToken.DeepEquals(JToken.Parse(streamed), JToken.Parse(buffered)), Is.True, streamed);
+    }
+
     [TestCase(false, "\"bad\"", "lookup")]
     [TestCase(false, "\"5s\"", "lookup")]
     [TestCase(true, "\"bad\"", "constructor")]
