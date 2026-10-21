@@ -297,12 +297,10 @@ namespace Nethermind.Facade
             stateOverride is { Count: > 0 } || blobBaseFeeOverride is not null ||
             blockOverride is not null && HasBlockOverrides(blockOverride);
 
-        internal static string? GetUnsupportedBlockOverrideError(BlockOverride? blockOverride)
-        {
-            string? field = blockOverride?.BeaconRoot is not null ? "beaconRoot"
-                : blockOverride?.Withdrawals is not null ? "withdrawals" : null;
-            return field is null ? null : $"block override \"{field}\" is not supported for this RPC method";
-        }
+        internal static string? GetUnsupportedBlockOverrideError(BlockOverride? blockOverride) =>
+            blockOverride?.BeaconRoot is not null ? "block override \"beaconRoot\" is not supported for this RPC method"
+            : blockOverride?.Withdrawals is not null ? BlockOverride.WithdrawalsNotSupported
+            : null;
 
         private static bool HasBlockOverrides(BlockOverride blockOverride) =>
             blockOverride.Number is not null ||
