@@ -54,18 +54,17 @@ namespace Nethermind.LightClient;
 internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisposable
 {
     private const int ExecutionRequestLimit = 4;
+    private const int SnapRequestLimit = 8;
     private readonly IContainer _services;
     private readonly ILogManager _logManager;
     private readonly Nethermind.Logging.ILogger _logger;
     private readonly CancellationTokenSource _stop = new();
     private readonly SemaphoreSlim _executionDataRequests = new(ExecutionRequestLimit, ExecutionRequestLimit);
-    private readonly MemoryCache _executionCooldowns = new(new MemoryCacheOptions { SizeLimit = 256 });
-    private readonly ConcurrentDictionary<AllocationContexts, PeerInfo> _preferredExecutionPeers = new();
-    private readonly ConcurrentDictionary<AllocationContexts, PeerInfo> _lastExecutionPeers = new();
+    private readonly MemoryCache _peerCooldowns = new(new MemoryCacheOptions { SizeLimit = 256 });
+    private readonly ConcurrentDictionary<AllocationContexts, PeerInfo> _preferredPeers = new();
+    private readonly ConcurrentDictionary<AllocationContexts, PeerInfo> _lastPeers = new();
     private readonly TimeProvider _clock;
-    private readonly SemaphoreSlim _snapRequests = new(8);
-    private readonly MemoryCache _snapCooldowns = new(new MemoryCacheOptions { SizeLimit = 256 });
-    private PeerInfo? _preferredSnapPeer;
+    private readonly SemaphoreSlim _snapRequests = new(SnapRequestLimit, SnapRequestLimit);
     private readonly LightSyncServer _syncServer;
     private readonly BoundedTransactionRelay _transactionRelay = new();
     private readonly HostedAccountState? _hostedAccounts;
@@ -187,7 +186,7 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
 
     private async Task MaintainSnapCapacityAsync()
     {
-        using PeriodicTimer timer = new(TimeSpan.FromSeconds(10));
+        using PeriodicTimer timer = new(TimeSpan.FromSeconds(10), _clock);
         ISyncPeerPool pool = _services.Resolve<ISyncPeerPool>();
         try
         {
@@ -195,12 +194,12 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
             {
                 int availableSnap = 0;
                 foreach (PeerInfo peer in pool.InitializedPeers)
-                    if (!_snapCooldowns.TryGetValue(peer.SyncPeer.Id, out _)
+                    if (!IsCooling(peer, AllocationContexts.Snap)
                         && peer.SyncPeer.TryGetSatelliteProtocol<ISnapSyncPeer>(Protocol.Snap, out _)) availableSnap++;
                 if (availableSnap >= 4 || pool.InitializedPeersCount < 14) continue;
                 foreach (PeerInfo peer in pool.InitializedPeers)
                 {
-                    if (peer.SyncPeer.IsPriority || !_snapCooldowns.TryGetValue(peer.SyncPeer.Id, out _)
+                    if (peer.SyncPeer.IsPriority || !IsCooling(peer, AllocationContexts.Snap)
                         && peer.SyncPeer.TryGetSatelliteProtocol<ISnapSyncPeer>(Protocol.Snap, out _)) continue;
                     peer.SyncPeer.Disconnect(DisconnectReason.DropWorstPeer, "Reserving light-client connection capacity for SNAP peers");
                     break;
@@ -616,20 +615,32 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
             throw new InvalidDataException("Execution peer returned receipts inconsistent with the verified header.");
     }
 
-    private async Task<T> RequestExecutionAsync<T>(AllocationContexts context, Func<ISyncPeer, CancellationToken, Task<T>> request,
+    private Task<T> RequestExecutionAsync<T>(AllocationContexts context, Func<ISyncPeer, CancellationToken, Task<T>> request,
         CancellationToken cancellationToken, Func<ISyncPeer, bool>? canServe = null,
-        string failureMessage = "No execution peer supplied authenticated block data.")
+        string failureMessage = "No execution peer supplied authenticated block data.") =>
+        RequestFromPeersAsync(context, static peer => peer, request, cancellationToken, canServe, failureMessage);
+
+    private Task<T> RequestAsync<T>(Func<ISnapSyncPeer, CancellationToken, Task<T>> request, CancellationToken cancellationToken) =>
+        RequestFromPeersAsync(AllocationContexts.Snap,
+            static peer => peer.TryGetSatelliteProtocol<ISnapSyncPeer>(Protocol.Snap, out ISnapSyncPeer? snap) ? snap : null,
+            request, cancellationToken, null, "No execution peer supplied a valid SNAP proof for the selected verified state.");
+
+    private async Task<T> RequestFromPeersAsync<TPeer, T>(AllocationContexts context, Func<ISyncPeer, TPeer?> selectPeer,
+        Func<TPeer, CancellationToken, Task<T>> request, CancellationToken cancellationToken,
+        Func<ISyncPeer, bool>? canServe, string failureMessage) where TPeer : class
     {
+        SemaphoreSlim requests = context == AllocationContexts.Snap ? _snapRequests : _executionDataRequests;
         CancellationToken stopToken = _stop.Token;
         using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(30), _clock);
         using CancellationTokenSource deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, stopToken, timeout.Token);
         try
         {
-            await _executionDataRequests.WaitAsync(deadline.Token);
+            await requests.WaitAsync(deadline.Token);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested && !stopToken.IsCancellationRequested)
         {
-            throw new RpcException(-32000, "Timed out waiting for an available execution data request slot.");
+            string kind = context == AllocationContexts.Snap ? "SNAP" : "execution data";
+            throw new RpcException(-32000, $"Timed out waiting for an available {kind} request slot.");
         }
         try
         {
@@ -637,8 +648,8 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
             while (!deadline.IsCancellationRequested)
             {
                 bool hasCapablePeer = false;
-                _preferredExecutionPeers.TryGetValue(context, out PeerInfo? preferred);
-                _lastExecutionPeers.TryGetValue(context, out PeerInfo? last);
+                _preferredPeers.TryGetValue(context, out PeerInfo? preferred);
+                _lastPeers.TryGetValue(context, out PeerInfo? last);
                 using ArrayPoolList<PeerInfo> peers = new(pool.PeerCount);
                 foreach (PeerInfo peer in pool.InitializedPeers) peers.Add(peer);
                 int start = 0;
@@ -655,18 +666,18 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
                     PeerInfo peer = peers[index];
                     if (deadline.IsCancellationRequested) break;
                     if (canServe is not null && !canServe(peer.SyncPeer)) continue;
+                    TPeer? protocolPeer = selectPeer(peer.SyncPeer);
+                    if (protocolPeer is null) continue;
                     hasCapablePeer = true;
-                    (PublicKey, AllocationContexts) key = (peer.SyncPeer.Id, context);
-                    if (_executionCooldowns.TryGetValue(key, out long failedAt)
-                        && _clock.GetElapsedTime(failedAt) < TimeSpan.FromMinutes(1)) continue;
+                    if (IsCooling(peer, context)) continue;
                     // Scheduling progress survives an overall timeout without blaming the interrupted peer.
-                    _lastExecutionPeers[context] = peer;
+                    _lastPeers[context] = peer;
                     try
                     {
                         using CancellationTokenSource peerTimeout = new(TimeSpan.FromSeconds(10), _clock);
                         using CancellationTokenSource peerAttempt = CancellationTokenSource.CreateLinkedTokenSource(deadline.Token, peerTimeout.Token);
-                        T result = await request(peer.SyncPeer, peerAttempt.Token);
-                        _preferredExecutionPeers[context] = peer;
+                        T result = await request(protocolPeer, peerAttempt.Token);
+                        _preferredPeers[context] = peer;
                         return result;
                     }
                     catch (Exception) when (cancellationToken.IsCancellationRequested || stopToken.IsCancellationRequested || timeout.IsCancellationRequested) { break; }
@@ -676,10 +687,18 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
                     }
                     catch (Exception exception)
                     {
-                        _executionCooldowns.Set(key, _clock.GetTimestamp(), new MemoryCacheEntryOptions { Size = 1 });
-                        _preferredExecutionPeers.TryRemove(new KeyValuePair<AllocationContexts, PeerInfo>(context, peer));
+                        TimeSpan duration = context == AllocationContexts.Snap && exception is not InvalidDataException
+                            ? TimeSpan.FromSeconds(15) : TimeSpan.FromMinutes(1);
+                        _peerCooldowns.Set((peer.SyncPeer.Id, context), (_clock.GetTimestamp(), duration), new MemoryCacheEntryOptions { Size = 1 });
+                        _preferredPeers.TryRemove(new KeyValuePair<AllocationContexts, PeerInfo>(context, peer));
                         pool.ReportWeakPeer(peer, context);
-                        if (_logger.IsWarn) _logger.Warn($"Execution {context} peer {peer.SyncPeer.Node:c} failed: {exception.GetType().Name}: {exception.Message}");
+                        if (_logger.IsWarn)
+                        {
+                            string detail = $"{exception.GetType().Name}: {exception.Message}";
+                            _logger.Warn(context == AllocationContexts.Snap
+                                ? $"SNAP peer {peer.SyncPeer.Node:c} could not serve the selected state: {detail}"
+                                : $"Execution {context} peer {peer.SyncPeer.Node:c} failed: {detail}");
+                        }
                     }
                 }
                 if (canServe is not null && !hasCapablePeer && !deadline.IsCancellationRequested)
@@ -692,81 +711,13 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
         }
         finally
         {
-            _executionDataRequests.Release();
+            requests.Release();
         }
     }
 
-    private async Task<T> RequestAsync<T>(Func<ISnapSyncPeer, CancellationToken, Task<T>> request, CancellationToken cancellationToken)
-    {
-        using CancellationTokenSource deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _stop.Token);
-        deadline.CancelAfter(TimeSpan.FromSeconds(30));
-        try
-        {
-            await _snapRequests.WaitAsync(deadline.Token);
-        }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested && !_stop.IsCancellationRequested)
-        {
-            throw new RpcException(-32000, "Timed out waiting for an available SNAP request slot.");
-        }
-        try
-        {
-            return await RequestFromPeerAsync(request, deadline, cancellationToken);
-        }
-        finally
-        {
-            _snapRequests.Release();
-        }
-    }
-
-    private async Task<T> RequestFromPeerAsync<T>(Func<ISnapSyncPeer, CancellationToken, Task<T>> request,
-        CancellationTokenSource deadline, CancellationToken cancellationToken)
-    {
-        ISyncPeerPool pool = _services.Resolve<ISyncPeerPool>();
-        while (!deadline.IsCancellationRequested)
-        {
-            PeerInfo? preferred = Volatile.Read(ref _preferredSnapPeer);
-            IEnumerable<PeerInfo> peers = preferred is null ? pool.InitializedPeers : PreferredFirst(preferred, pool.InitializedPeers);
-            foreach (PeerInfo peer in peers)
-            {
-                if (_snapCooldowns.TryGetValue(peer.SyncPeer.Id, out _)) continue;
-                if (!peer.SyncPeer.TryGetSatelliteProtocol<ISnapSyncPeer>(Protocol.Snap, out ISnapSyncPeer? snap)) continue;
-                try
-                {
-                    using CancellationTokenSource peerTimeout = CancellationTokenSource.CreateLinkedTokenSource(deadline.Token);
-                    peerTimeout.CancelAfter(TimeSpan.FromSeconds(10));
-                    T result = await request(snap, peerTimeout.Token);
-                    Volatile.Write(ref _preferredSnapPeer, peer);
-                    return result;
-                }
-                catch (OperationCanceledException) when (deadline.IsCancellationRequested)
-                {
-                    break;
-                }
-                catch (Exception exception) when (exception is not OperationCanceledException || !deadline.IsCancellationRequested)
-                {
-                    _snapCooldowns.Set(peer.SyncPeer.Id, true, new MemoryCacheEntryOptions
-                    {
-                        Size = 1,
-                        AbsoluteExpirationRelativeToNow = exception is InvalidDataException ? TimeSpan.FromMinutes(1) : TimeSpan.FromSeconds(15),
-                    });
-                    pool.ReportWeakPeer(peer, AllocationContexts.Snap);
-                    Interlocked.CompareExchange(ref _preferredSnapPeer, null, peer);
-                    if (_logger.IsWarn) _logger.Warn($"SNAP peer {peer.SyncPeer.Node:c} could not serve the selected state: {exception.GetType().Name}: {exception.Message}");
-                }
-            }
-            await Task.Delay(TimeSpan.FromSeconds(1), deadline.Token).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
-        }
-        cancellationToken.ThrowIfCancellationRequested();
-        throw new RpcException(-32000, "No execution peer supplied a valid SNAP proof for the selected verified state.");
-    }
-
-    private static IEnumerable<PeerInfo> PreferredFirst(PeerInfo preferred, IEnumerable<PeerInfo> peers)
-    {
-        foreach (PeerInfo peer in peers)
-            if (ReferenceEquals(peer, preferred)) { yield return peer; break; }
-        foreach (PeerInfo peer in peers)
-            if (!ReferenceEquals(peer, preferred)) yield return peer;
-    }
+    private bool IsCooling(PeerInfo peer, AllocationContexts context) =>
+        _peerCooldowns.TryGetValue((peer.SyncPeer.Id, context), out (long Timestamp, TimeSpan Duration) failure)
+        && _clock.GetElapsedTime(failure.Timestamp) < failure.Duration;
 
     internal static Account VerifyAccountRange(Hash256 stateRoot, Address address, AccountsAndProofs response, ILogManager logManager)
     {
@@ -851,6 +802,7 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
         await _stop.CancelAsync();
         // Callers must leave the selector before its cooldown cache and services are disposed.
         for (int i = 0; i < ExecutionRequestLimit; i++) await _executionDataRequests.WaitAsync();
+        for (int i = 0; i < SnapRequestLimit; i++) await _snapRequests.WaitAsync();
         if (history is not null) await history.DisposeAsync();
         if (_snapCapacityTask is not null)
         {
@@ -873,8 +825,7 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
         if (_discovery is not null) await _discovery.StopAsync();
         if (_host is not null) await _host.Shutdown();
         await _services.DisposeAsync();
-        _executionCooldowns.Dispose();
-        _snapCooldowns.Dispose();
+        _peerCooldowns.Dispose();
         _stop.Dispose();
     }
 
