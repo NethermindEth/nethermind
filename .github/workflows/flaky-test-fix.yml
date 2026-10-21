@@ -251,7 +251,7 @@ jobs:
           path: ${{ runner.temp }}/body/body.md
 
       - name: Record a failed fix attempt
-        if: failure() && steps.baseline.outcome != 'skipped'
+        if: (failure() || cancelled()) && steps.baseline.outcome != 'skipped'
         env:
           GH_TOKEN: ${{ github.token }}
           TEST: ${{ needs.detect.outputs.test }}
