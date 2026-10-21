@@ -60,10 +60,6 @@ public class WorldStateScopeOperationLogger(IWorldStateScopeProvider baseScopePr
 
         public void HintWarmSlot(Address address, in UInt256 index) => innerScope.HintWarmSlot(address, in index);
 
-        public void Prefetch(Span<Address> accounts, Span<StorageCell> slots, CancellationToken cancellationToken) => innerScope.Prefetch(accounts, slots, cancellationToken);
-
-        public bool SupportsPrefetch => innerScope.SupportsPrefetch;
-
         public void Dispose()
         {
             innerScope.Dispose();

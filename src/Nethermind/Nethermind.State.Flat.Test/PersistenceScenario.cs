@@ -1016,13 +1016,4 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
         bool expected = IsPreimage(configuration.FlatDbConfig.Layout);
         Assert.That(reader.IsPreimageMode, Is.EqualTo(expected));
     }
-
-    [Test]
-    public void SupportsPrefetch_IsFalseOnlyForPreimageLayouts()
-    {
-        using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
-
-        // Preimage keys are not hashed, so the hashed prefetch does not apply to them.
-        Assert.That(reader is IPersistence.IPrefetchingReader { SupportsPrefetch: true }, Is.EqualTo(!IsPreimage(configuration.FlatDbConfig.Layout)));
-    }
 }

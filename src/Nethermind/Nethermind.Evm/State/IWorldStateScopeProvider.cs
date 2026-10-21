@@ -84,19 +84,6 @@ public interface IWorldStateScopeProvider
         void HintWarmSlot(Address address, in UInt256 index) { }
 
         /// <summary>
-        /// Starts reading accounts and slots that will be read soon from persisted state, without returning them,
-        /// so that cold disk reads overlap. No-op for backends without asynchronous reads.
-        /// </summary>
-        /// <remarks>
-        /// The spans are the caller's scratch: layers filter them in place, so their contents may change. Once
-        /// <paramref name="cancellationToken"/> is cancelled no further batch is started; reads already started complete.
-        /// </remarks>
-        void Prefetch(Span<Address> accounts, Span<StorageCell> slots, CancellationToken cancellationToken) { }
-
-        /// <summary>Whether <see cref="Prefetch"/> does anything, so callers can skip gathering keys.</summary>
-        bool SupportsPrefetch => false;
-
-        /// <summary>
         /// Get the account information for the following address.
         /// Note: Do not rely on <see cref="Account.StorageRoot"/> as it may be modified after write. Instead use <see cref="IStorageTree.RootHash"/>.
         /// </summary>
