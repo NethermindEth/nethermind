@@ -60,27 +60,6 @@ public interface IPersistence
         bool IsPreimageMode { get; }
     }
 
-    /// <summary>A persistence reader that can start reading accounts and slots from its store ahead of use.</summary>
-    /// <remarks>
-    /// An optional capability, so readers that cannot prefetch, test doubles included, need not implement it. The spans
-    /// are the caller's scratch: readers filter them in place, so their contents may change.
-    /// </remarks>
-    public interface IPrefetchingReader
-    {
-        /// <summary>Starts reading <paramref name="accounts"/> and <paramref name="slots"/> from the store so later reads find them in memory.</summary>
-        /// <param name="accounts">The accounts to read ahead. The reader may reorder, filter or overwrite them in place.</param>
-        /// <param name="slots">The slots to read ahead. The reader may reorder, filter or overwrite them in place.</param>
-        /// <remarks>
-        /// Best effort: the call returns without waiting for the reads, never reports a failed read, and does not change
-        /// what later reads return. The spans are used only during the call and are not kept.
-        /// </remarks>
-        void Prefetch(Span<Address> accounts, Span<StorageCell> slots, CancellationToken cancellationToken);
-
-        /// <summary>Whether <see cref="Prefetch"/> reads anything ahead. A wrapper reports what the reader it wraps reports,
-        /// so a caller that gets false skips collecting the keys.</summary>
-        bool SupportsPrefetch => true;
-    }
-
     public interface IWriteBatch : IDisposable
     {
         void SelfDestruct(Address addr);

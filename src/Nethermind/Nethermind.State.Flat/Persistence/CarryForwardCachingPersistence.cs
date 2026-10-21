@@ -240,7 +240,7 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
     }
 
     private sealed class CachingReader(CarryForwardCachingPersistence parent, IPersistence.IPersistenceReader inner, long generation)
-        : IPersistence.IPersistenceReader, IPersistence.IPrefetchingReader
+        : IPersistence.IPersistenceReader
     {
         // A reader is shared by every thread reading its state, so enabled counters must support concurrent updates.
         // DetailedMetricsEnabled is captured once per reader after normal startup registration to avoid its hot-path
@@ -302,35 +302,6 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
         public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey) => inner.CreateAccountIterator(startKey, endKey);
         public IPersistence.IFlatIterator CreateStorageIterator(in ValueHash256 accountKey, in ValueHash256 startSlotKey, in ValueHash256 endSlotKey) => inner.CreateStorageIterator(accountKey, startSlotKey, endSlotKey);
         public bool IsPreimageMode => inner.IsPreimageMode;
-
-        public bool SupportsPrefetch => inner is IPersistence.IPrefetchingReader { SupportsPrefetch: true };
-
-        /// <summary>Forwards only the keys this cache cannot serve, so a prefetch never reads what a later read finds here.</summary>
-        public void Prefetch(Span<Address> accounts, Span<StorageCell> slots, CancellationToken cancellationToken)
-        {
-            if (inner is not IPersistence.IPrefetchingReader prefetcher) return;
-            if (parent.IsCurrent(generation))
-            {
-                // Compacted in place: cached keys are dropped without copying the others.
-                int keptAccounts = 0;
-                foreach (Address address in accounts)
-                {
-                    if (!parent._accounts.ContainsKey(address)) accounts[keptAccounts++] = address;
-                }
-
-                int keptSlots = 0;
-                foreach (StorageCell cell in slots)
-                {
-                    ulong hash = CarryForwardSlotTable.Hash(cell.Address, cell.Index);
-                    if (!parent._slots.TryGet(hash, cell.Address, cell.Index, out _, out _)) slots[keptSlots++] = cell;
-                }
-
-                accounts = accounts[..keptAccounts];
-                slots = slots[..keptSlots];
-            }
-
-            prefetcher.Prefetch(accounts, slots, cancellationToken);
-        }
 
         /// <remarks>
         /// Reading through the reader afterwards is a caller bug, and once the persistence is disposed too it reads freed
