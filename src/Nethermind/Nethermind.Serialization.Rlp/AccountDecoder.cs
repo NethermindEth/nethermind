@@ -143,6 +143,7 @@ namespace Nethermind.Serialization.Rlp
         /// <see cref="RlpDecoder{T}.EncodeAsBytes"/> incurs. The buffer is allocated uninitialized
         /// because encoding fills it completely.
         /// </remarks>
+        [SkipLocalsInit]
         public byte[] EncodeAsBytes(Account account)
         {
             int contentLength = GetContentLength(account);
